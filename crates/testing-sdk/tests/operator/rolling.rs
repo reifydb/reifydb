@@ -5,7 +5,7 @@
 //! buffer capacity so eviction is reached on most seeds, and many event times land in the same
 //! bucket so within-bucket accumulation and partial removal are reached too.
 
-use reifydb_sdk::operator::{FFIOperatorAdapter, windowed::rolling::RollingDriver};
+use reifydb_sdk::operator::{ExternCOperatorAdapter, windowed::rolling::RollingDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
@@ -30,7 +30,7 @@ fn value_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<FFIOperatorAdapter<RollingDriver<RollingSum>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<RollingDriver<RollingSum>>>::builder()
 		.with_input_shape(common::rolling_shape())
 		.with_output_shape(common::rolling_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

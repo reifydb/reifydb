@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_sdk::operator::FFIOperator;
+use reifydb_sdk::operator::ExternCOperator;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	operator::{
@@ -23,7 +23,7 @@ use super::{
 	schema::ChaosSchema,
 	strategy::ColumnRegistry,
 };
-use crate::harness::FFIOperatorHarness;
+use crate::harness::ExternCOperatorHarness;
 
 #[derive(Debug)]
 pub struct ChaosOutcome {
@@ -78,17 +78,17 @@ impl ChaosOutcome {
 	}
 }
 
-pub struct RunnableChaos<T: FFIOperator> {
+pub struct RunnableChaos<T: ExternCOperator> {
 	pub context: ChaosContext,
 	pub scenario: Scenario,
 	pub schema: Arc<ChaosSchema>,
 	pub registry: Arc<ColumnRegistry>,
 	pub tolerances: Tolerances,
 	pub oracle: OracleFn,
-	pub harness: FFIOperatorHarness<T>,
+	pub harness: ExternCOperatorHarness<T>,
 }
 
-impl<T: FFIOperator> RunnableChaos<T> {
+impl<T: ExternCOperator> RunnableChaos<T> {
 	pub fn run(mut self) -> ChaosOutcome {
 		let scenario = self.scenario;
 		let workload = SamplerWorkload::new(self.schema.clone(), self.registry.clone());

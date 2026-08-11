@@ -165,7 +165,8 @@ mod tests {
 		};
 
 		// SAFETY: `fields` and every name buffer borrow locals that stay alive past this call.
-		let decoded = unsafe { unmarshal_row_shape(&extern_c).expect("unmarshal must succeed for valid extern-C") };
+		let decoded =
+			unsafe { unmarshal_row_shape(&extern_c).expect("unmarshal must succeed for valid extern-C") };
 
 		assert_eq!(
 			decoded.fingerprint(),

@@ -686,7 +686,7 @@ impl FlowEngineInner {
 			{
 				let _ = (operator, inputs);
 
-				return Err(Error::from(FlowGraphError::FfiUnsupportedOnWasm));
+				return Err(Error::from(FlowGraphError::ExternUnsupportedOnWasm));
 			}
 		}
 		Ok(())

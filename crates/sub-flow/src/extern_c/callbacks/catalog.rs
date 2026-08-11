@@ -89,8 +89,9 @@ fn marshal_row_shape(shape: &RowShape) -> Result<ExternCRowShape, &'static str> 
 		for (i, field) in shape.fields().iter().enumerate() {
 			match marshal_row_shape_field(field) {
 				// SAFETY: `ptr` is the non-null host_alloc block of `size` bytes above, so it holds
-				// `field_count` slots at align 8 >= align_of::<ExternCRowShapeField>(), and `i` is below
-				// that count; ExternCRowShapeField is Copy, so the write drops nothing uninitialised.
+				// `field_count` slots at align 8 >= align_of::<ExternCRowShapeField>(), and `i` is
+				// below that count; ExternCRowShapeField is Copy, so the write drops nothing
+				// uninitialised.
 				Ok(field_ffi) => unsafe {
 					*ptr.add(i) = field_ffi;
 				},

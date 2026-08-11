@@ -11,12 +11,12 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
+pub mod bridge;
 pub mod generator;
 pub mod harness;
-pub mod native;
 pub mod state;
 
-pub use native::assert_backend_parity;
+pub use bridge::assert_backend_parity;
 
 /// Named here so a guest author never has to import `ApplyOperator` from `reifydb-sub-flow` just
 /// to write down the type of a fixture.

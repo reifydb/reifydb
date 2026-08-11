@@ -1,6 +1,6 @@
 [package]
 name = "reifydb-abi"
-description = "C ABI definitions for ReifyDB FFI operators"
+description = "C ABI definitions for ReifyDB extern-C operators"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

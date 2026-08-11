@@ -39,8 +39,8 @@ fn columns_to_extern_c(columns: &'static [OperatorColumn]) -> ExternCOperatorCol
 	let extern_c_columns: Vec<ExternCOperatorColumn> = columns
 		.iter()
 		.map(|c| {
-			let extern_c_type =
-				type_constraint_to_extern_c(&c.type_constraint).expect("constraint exceeds tag capacity");
+			let extern_c_type = type_constraint_to_extern_c(&c.type_constraint)
+				.expect("constraint exceeds tag capacity");
 			ExternCOperatorColumn {
 				name: str_to_buffer(c.name),
 				base_type: extern_c_type.base_type,

@@ -37,8 +37,8 @@ use reifydb_catalog::vtable::{
 		primary_key_columns::SystemPrimaryKeyColumns,
 		primary_keys::SystemPrimaryKeys,
 		procedures::{
-			ffi::SystemProceduresFFI, native::SystemProceduresNative, rql::SystemProceduresRql,
-			test::SystemProceduresTest, wasm::SystemProceduresWasm,
+			extern_c::SystemProceduresExternC, extern_wasm::SystemProceduresExternWasm,
+			in_process::SystemProceduresInProcess, rql::SystemProceduresRql, test::SystemProceduresTest,
 		},
 		queues::SystemQueues,
 		relationships::SystemRelationships,
@@ -171,9 +171,9 @@ fn compile_procedures_vtable(name: &str, context: &QueryContext) -> VTables {
 	match name {
 		"rql" => VTables::ProceduresRql(SystemProceduresRql::new()),
 		"test" => VTables::ProceduresTest(SystemProceduresTest::new()),
-		"native" => VTables::ProceduresNative(SystemProceduresNative::new(catalog)),
-		"ffi" => VTables::ProceduresFFI(SystemProceduresFFI::new(catalog)),
-		"wasm" => VTables::ProceduresWasm(SystemProceduresWasm::new(catalog)),
+		"in_process" => VTables::ProceduresInProcess(SystemProceduresInProcess::new(catalog)),
+		"extern_c" => VTables::ProceduresExternC(SystemProceduresExternC::new(catalog)),
+		"extern_wasm" => VTables::ProceduresExternWasm(SystemProceduresExternWasm::new(catalog)),
 		_ => panic!("Unknown system::procedures virtual table: {}", name),
 	}
 }

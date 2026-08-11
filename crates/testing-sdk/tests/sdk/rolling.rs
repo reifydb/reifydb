@@ -11,14 +11,14 @@ use reifydb_sdk::{
 	config::Config,
 	error::Result,
 	operator::{
-		FFIOperatorAdapter, column::operator::OperatorColumn, context::OperatorContext, view::RowView,
+		ExternCOperatorAdapter, column::operator::OperatorColumn, context::OperatorContext, view::RowView,
 		windowed::rolling::*,
 	},
 	row,
 };
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::FFIOperatorHarnessBuilder,
+	harness::ExternCOperatorHarnessBuilder,
 };
 use reifydb_value::{
 	factory::time::millis,
@@ -144,7 +144,7 @@ fn input_row(rn: u64, group: &str, window_start: u64, value: f64) -> CoreRow {
 
 #[test]
 fn single_insert_emits_insert() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -159,7 +159,7 @@ fn single_insert_emits_insert() {
 #[test]
 fn multiple_events_accumulate_within_one_window() {
 	// Two rows sharing a window coordinate must accumulate, not overwrite each other.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
 	let out = h
@@ -176,7 +176,7 @@ fn multiple_events_accumulate_within_one_window() {
 #[test]
 fn partial_remove_within_window_keeps_window_alive() {
 	// Removing one of two events inside a window must leave the window standing, not drop it.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h
@@ -193,7 +193,7 @@ fn partial_remove_within_window_keeps_window_alive() {
 
 #[test]
 fn update_within_window_applies_post_minus_pre() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -208,7 +208,7 @@ fn update_within_window_applies_post_minus_pre() {
 
 #[test]
 fn buffer_fills_then_evicts_oldest_window() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
 	let out = h
@@ -228,7 +228,7 @@ fn buffer_fills_then_evicts_oldest_window() {
 fn late_window_event_accepted_without_sealing() {
 	// Without a seal envelope there is no implicit high-water gate, so a late event merges
 	// into its older coordinate; capacity eviction is what bounds this driver.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 5.0)).build()).expect("apply");
@@ -240,7 +240,7 @@ fn late_window_event_accepted_without_sealing() {
 fn remove_clears_buffer_emits_remove() {
 	// Emptying the buffer has to withdraw the previously emitted row; leaking a ghost row is
 	// what breaks reorg retraction.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -253,7 +253,7 @@ fn remove_clears_buffer_emits_remove() {
 
 #[test]
 fn multiple_groups_isolate_buffers() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
 	let out = h
@@ -330,7 +330,7 @@ impl RollingRegistration for SealedRollingSum {
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
 	// grows without bound; nothing moves here after the initial batch except the watermark.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<SealedRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<SealedRollingSum>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h
@@ -355,7 +355,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 #[test]
 fn an_ungated_rolling_operator_arms_no_seal_timer() {
 	// An operator that never opted into sealing must not acquire a retention policy.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");

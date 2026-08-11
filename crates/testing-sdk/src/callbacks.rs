@@ -76,7 +76,7 @@ unsafe extern "C" fn test_realloc(ptr: *mut u8, old_size: usize, new_size: usize
 ///
 /// `ctx` must be non-null and its `txn_ptr` must point at a live `TestContext` that outlives
 /// the returned reference; the `'static` lifetime is forged and is not checked.
-unsafe fn get_test_context(ctx: *mut ContextFFI) -> &'static TestContext {
+unsafe fn get_test_context(ctx: *mut ExternCContext) -> &'static TestContext {
 	// SAFETY: the caller guarantees ctx is valid and its txn_ptr is a live TestContext.
 	unsafe {
 		let txn_ptr = (*ctx).txn_ptr;
@@ -91,13 +91,13 @@ fn test_state_envelope(operator_id: u64, group: GroupId, keyspace: Keyspace, suf
 #[unsafe(no_mangle)]
 extern "C" fn test_state_get(
 	_operator_id: u64,
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	key_ptr: *const u8,
 	key_len: usize,
-	output: *mut BufferFFI,
+	output: *mut ExternCBuffer,
 ) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() || output.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: pointers null-checked above; caller owns (key_ptr, key_len); value_ptr checked too.
@@ -120,9 +120,9 @@ extern "C" fn test_state_get(
 				(*output).len = value_bytes.len();
 				(*output).cap = value_bytes.len();
 
-				FFI_OK
+				EXTERN_C_OK
 			}
-			None => FFI_NOT_FOUND,
+			None => EXTERN_C_NOT_FOUND,
 		}
 	}
 }
@@ -130,14 +130,14 @@ extern "C" fn test_state_get(
 #[unsafe(no_mangle)]
 extern "C" fn test_state_set(
 	_operator_id: u64,
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	key_ptr: *const u8,
 	key_len: usize,
 	value_ptr: *const u8,
 	value_len: usize,
 ) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() || value_ptr.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: pointers null-checked above; caller owns both (key_ptr, key_len) and (value_ptr, value_len).
@@ -151,14 +151,19 @@ extern "C" fn test_state_set(
 
 		test_ctx.set_state(key, value_bytes.to_vec());
 
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut ContextFFI, key_ptr: *const u8, key_len: usize) -> i32 {
+extern "C" fn test_state_remove(
+	_operator_id: u64,
+	ctx: *mut ExternCContext,
+	key_ptr: *const u8,
+	key_len: usize,
+) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: both pointers null-checked above; caller owns (key_ptr, key_len) as a readable region.
@@ -170,21 +175,21 @@ extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut ContextFFI, key_ptr
 
 		test_ctx.remove_state(&key);
 
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut ContextFFI) -> i32 {
+extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut ExternCContext) -> i32 {
 	if ctx.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: ctx is null-checked above and points at a live ContextFFI for this call.
+	// SAFETY: ctx is null-checked above and points at a live ExternCContext for this call.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		test_ctx.clear_state();
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
@@ -198,19 +203,19 @@ struct TestStateIterator {
 #[unsafe(no_mangle)]
 extern "C" fn test_state_get_many(
 	_operator_id: u64,
-	ctx: *mut ContextFFI,
-	keys: *const KeyRefFFI,
+	ctx: *mut ExternCContext,
+	keys: *const ExternCKeyRef,
 	keys_len: usize,
-	iterator_out: *mut *mut StateIteratorFFI,
+	iterator_out: *mut *mut ExternCStateIterator,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 	if keys_len > 0 && keys.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: ctx and iterator_out checked; keys checked when keys_len > 0; each KeyRefFFI when its len > 0.
+	// SAFETY: ctx and iterator_out checked; keys checked when keys_len > 0; each ExternCKeyRef when its len > 0.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
@@ -238,22 +243,22 @@ extern "C" fn test_state_get_many(
 			position: 0,
 		});
 
-		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
+		*iterator_out = Box::into_raw(iter) as *mut ExternCStateIterator;
 
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 #[unsafe(no_mangle)]
 extern "C" fn test_state_prefix(
 	_operator_id: u64,
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	prefix_ptr: *const u8,
 	prefix_len: usize,
-	iterator_out: *mut *mut StateIteratorFFI,
+	iterator_out: *mut *mut ExternCStateIterator,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: ctx and iterator_out null-checked; prefix_ptr read only when non-null with a non-zero len.
@@ -288,21 +293,21 @@ extern "C" fn test_state_prefix(
 			position: 0,
 		});
 
-		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
+		*iterator_out = Box::into_raw(iter) as *mut ExternCStateIterator;
 
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 #[unsafe(no_mangle)]
 extern "C" fn test_state_iterator_next(
-	iterator: *mut StateIteratorFFI,
-	out: *mut StateEntryFFI,
+	iterator: *mut ExternCStateIterator,
+	out: *mut ExternCStateEntry,
 	cap: usize,
 	out_len: *mut usize,
 ) -> i32 {
 	if iterator.is_null() || out.is_null() || out_len.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: all three pointers null-checked; iterator is one this module minted; writes stay under cap.
@@ -312,12 +317,12 @@ extern "C" fn test_state_iterator_next(
 		let mut written = 0usize;
 		while written < cap && iter.position < iter.items.len() {
 			let (key, value) = &iter.items[iter.position];
-			*out.add(written) = StateEntryFFI {
-				key: StateSliceFFI {
+			*out.add(written) = ExternCStateEntry {
+				key: ExternCStateSlice {
 					ptr: key.as_ptr(),
 					len: key.len(),
 				},
-				value: StateSliceFFI {
+				value: ExternCStateSlice {
 					ptr: value.as_ptr(),
 					len: value.len(),
 				},
@@ -328,14 +333,14 @@ extern "C" fn test_state_iterator_next(
 		*out_len = written;
 
 		if written == 0 {
-			return FFI_END_OF_ITERATION;
+			return EXTERN_C_END_OF_ITERATION;
 		}
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn test_state_iterator_free(iterator: *mut StateIteratorFFI) {
+extern "C" fn test_state_iterator_free(iterator: *mut ExternCStateIterator) {
 	if iterator.is_null() {
 		return;
 	}
@@ -353,17 +358,17 @@ const BOUND_EXCLUDED: u8 = 2;
 #[unsafe(no_mangle)]
 extern "C" fn test_state_range(
 	_operator_id: u64,
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	start_ptr: *const u8,
 	start_len: usize,
 	start_bound_type: u8,
 	end_ptr: *const u8,
 	end_len: usize,
 	end_bound_type: u8,
-	iterator_out: *mut *mut StateIteratorFFI,
+	iterator_out: *mut *mut ExternCStateIterator,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: ctx and iterator_out null-checked; a bound pointer is read only when bounded and non-null.
@@ -416,9 +421,9 @@ extern "C" fn test_state_range(
 			position: 0,
 		});
 
-		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
+		*iterator_out = Box::into_raw(iter) as *mut ExternCStateIterator;
 
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
@@ -436,9 +441,14 @@ struct TestStoreIterator {
 	position: usize,
 }
 
-extern "C" fn test_store_get(ctx: *mut ContextFFI, key: *const u8, key_len: usize, output: *mut BufferFFI) -> i32 {
+extern "C" fn test_store_get(
+	ctx: *mut ExternCContext,
+	key: *const u8,
+	key_len: usize,
+	output: *mut ExternCBuffer,
+) -> i32 {
 	if ctx.is_null() || key.is_null() || output.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: pointers null-checked above; caller owns (key, key_len); value_ptr checked before the copy.
@@ -456,16 +466,21 @@ extern "C" fn test_store_get(ctx: *mut ContextFFI, key: *const u8, key_len: usiz
 				(*output).ptr = value_ptr;
 				(*output).len = bytes.len();
 				(*output).cap = bytes.len();
-				FFI_OK
+				EXTERN_C_OK
 			}
-			None => FFI_NOT_FOUND,
+			None => EXTERN_C_NOT_FOUND,
 		}
 	}
 }
 
-extern "C" fn test_store_contains_key(ctx: *mut ContextFFI, key: *const u8, key_len: usize, result: *mut u8) -> i32 {
+extern "C" fn test_store_contains_key(
+	ctx: *mut ExternCContext,
+	key: *const u8,
+	key_len: usize,
+	result: *mut u8,
+) -> i32 {
 	if ctx.is_null() || key.is_null() || result.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: pointers null-checked above; caller owns (key, key_len) to read and result to write.
@@ -473,18 +488,18 @@ extern "C" fn test_store_contains_key(ctx: *mut ContextFFI, key: *const u8, key_
 		let test_ctx = get_test_context(ctx);
 		let encoded = EncodedKey::new(from_raw_parts(key, key_len));
 		*result = u8::from(test_ctx.get_store(&encoded).is_some());
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 extern "C" fn test_store_prefix(
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	prefix: *const u8,
 	prefix_len: usize,
-	iterator_out: *mut *mut StoreIteratorFFI,
+	iterator_out: *mut *mut ExternCStoreIterator,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: ctx and iterator_out null-checked; prefix read only when non-null with a non-zero len.
@@ -506,23 +521,23 @@ extern "C" fn test_store_prefix(
 			items,
 			position: 0,
 		});
-		*iterator_out = Box::into_raw(iter) as *mut StoreIteratorFFI;
-		FFI_OK
+		*iterator_out = Box::into_raw(iter) as *mut ExternCStoreIterator;
+		EXTERN_C_OK
 	}
 }
 
 extern "C" fn test_store_range(
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	start: *const u8,
 	start_len: usize,
 	start_bound_type: u8,
 	end: *const u8,
 	end_len: usize,
 	end_bound_type: u8,
-	iterator_out: *mut *mut StoreIteratorFFI,
+	iterator_out: *mut *mut ExternCStoreIterator,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: ctx and iterator_out null-checked; a bound pointer is read only when bounded and non-null.
@@ -552,25 +567,25 @@ extern "C" fn test_store_range(
 			items,
 			position: 0,
 		});
-		*iterator_out = Box::into_raw(iter) as *mut StoreIteratorFFI;
-		FFI_OK
+		*iterator_out = Box::into_raw(iter) as *mut ExternCStoreIterator;
+		EXTERN_C_OK
 	}
 }
 
 extern "C" fn test_store_iterator_next(
-	iterator: *mut StoreIteratorFFI,
-	key_out: *mut BufferFFI,
-	value_out: *mut BufferFFI,
+	iterator: *mut ExternCStoreIterator,
+	key_out: *mut ExternCBuffer,
+	value_out: *mut ExternCBuffer,
 ) -> i32 {
 	if iterator.is_null() || key_out.is_null() || value_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: all three pointers null-checked; iterator is one this module minted; copies are checked.
 	unsafe {
 		let iter = &mut *(iterator as *mut TestStoreIterator);
 		if iter.position >= iter.items.len() {
-			return FFI_END_OF_ITERATION;
+			return EXTERN_C_END_OF_ITERATION;
 		}
 
 		let (key, value) = &iter.items[iter.position];
@@ -595,11 +610,11 @@ extern "C" fn test_store_iterator_next(
 		(*value_out).len = value.len();
 		(*value_out).cap = value.len();
 
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
-extern "C" fn test_store_iterator_free(iterator: *mut StoreIteratorFFI) {
+extern "C" fn test_store_iterator_free(iterator: *mut ExternCStoreIterator) {
 	if iterator.is_null() {
 		return;
 	}
@@ -617,18 +632,19 @@ use reifydb_abi::{
 		memory::MemoryCallbacks, row_shape::RowShapeCallbacks, rql::RqlCallbacks, state::StateCallbacks,
 		store::StoreCallbacks,
 	},
-	catalog::row_shape::RowShapeFFI,
+	catalog::row_shape::ExternCRowShape,
 	constants::{
-		FFI_END_OF_ITERATION, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK, GROUP_ABSENT,
+		EXTERN_C_END_OF_ITERATION, EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_NULL_PTR, EXTERN_C_NOT_FOUND,
+		EXTERN_C_OK, GROUP_ABSENT,
 	},
 	context::{
-		context::ContextFFI,
-		iterators::{StateIteratorFFI, StoreIteratorFFI},
+		context::ExternCContext,
+		iterators::{ExternCStateIterator, ExternCStoreIterator},
 	},
 	data::{
-		buffer::BufferFFI,
-		key_ref::KeyRefFFI,
-		state::{StateEntryFFI, StateSliceFFI},
+		buffer::ExternCBuffer,
+		key_ref::ExternCKeyRef,
+		state::{ExternCStateEntry, ExternCStateSlice},
 	},
 	operator::timer::TimerKind,
 };
@@ -647,39 +663,43 @@ use crate::{
 	},
 };
 
-extern "C" fn test_catalog_find_row_shape(_ctx: *mut ContextFFI, _fingerprint: u64, _output: *mut RowShapeFFI) -> i32 {
+extern "C" fn test_catalog_find_row_shape(
+	_ctx: *mut ExternCContext,
+	_fingerprint: u64,
+	_output: *mut ExternCRowShape,
+) -> i32 {
 	1
 }
 
-extern "C" fn test_catalog_free_row_shape(_row_shape: *mut RowShapeFFI) {}
+extern "C" fn test_catalog_free_row_shape(_row_shape: *mut ExternCRowShape) {}
 
 /// # Safety
 ///
 /// Unconditional stub: it returns an error without reading any argument, so no pointer
 /// contract applies yet. Reinstate one here before giving it a body.
 unsafe extern "C" fn test_rql(
-	_ctx: *mut ContextFFI,
+	_ctx: *mut ExternCContext,
 	_rql_ptr: *const u8,
 	_rql_len: usize,
 	_params_ptr: *const u8,
 	_params_len: usize,
-	_result_out: *mut BufferFFI,
+	_result_out: *mut ExternCBuffer,
 ) -> i32 {
-	FFI_ERROR_INTERNAL
+	EXTERN_C_ERROR_INTERNAL
 }
 
 extern "C" fn test_intern_groups(
 	operator_id: u64,
-	ctx: *mut ContextFFI,
-	groups: *const KeyRefFFI,
+	ctx: *mut ExternCContext,
+	groups: *const ExternCKeyRef,
 	groups_len: usize,
 	ids_out: *mut u64,
 ) -> i32 {
 	if ctx.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 	if groups_len > 0 && (groups.is_null() || ids_out.is_null()) {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: ctx checked; groups and ids_out checked when groups_len > 0; writes stay under groups_len.
@@ -724,26 +744,26 @@ extern "C" fn test_intern_groups(
 				}
 			}
 		}
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 extern "C" fn test_arm_timer(
 	_operator_id: u64,
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	at_millis: u64,
 	kind: u8,
 	key: *const u8,
 	key_len: usize,
 ) -> i32 {
 	if ctx.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 	if key_len > 0 && key.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 	let Some(kind) = TimerKind::from_u8(kind) else {
-		return FFI_ERROR_INTERNAL;
+		return EXTERN_C_ERROR_INTERNAL;
 	};
 
 	// SAFETY: ctx null-checked and key null-checked when key_len > 0, so the region is readable.
@@ -761,25 +781,25 @@ extern "C" fn test_arm_timer(
 		});
 	}
 
-	FFI_OK
+	EXTERN_C_OK
 }
 
 extern "C" fn test_disarm_timer(
 	_operator_id: u64,
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	at_millis: u64,
 	kind: u8,
 	key: *const u8,
 	key_len: usize,
 ) -> i32 {
 	if ctx.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 	if key_len > 0 && key.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 	let Some(kind) = TimerKind::from_u8(kind) else {
-		return FFI_ERROR_INTERNAL;
+		return EXTERN_C_ERROR_INTERNAL;
 	};
 
 	// SAFETY: ctx null-checked and key null-checked when key_len > 0, so the region is readable.
@@ -797,17 +817,17 @@ extern "C" fn test_disarm_timer(
 		});
 	}
 
-	FFI_OK
+	EXTERN_C_OK
 }
 
 extern "C" fn test_flow_watermark(
 	_operator_id: u64,
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	millis_out: *mut u64,
 	present_out: *mut u8,
 ) -> i32 {
 	if ctx.is_null() || millis_out.is_null() || present_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: all three pointers null-checked; both out-params are caller-owned cells, written not read.
@@ -825,21 +845,21 @@ extern "C" fn test_flow_watermark(
 		}
 	}
 
-	FFI_OK
+	EXTERN_C_OK
 }
 
 extern "C" fn test_lookup_groups(
 	operator_id: u64,
-	ctx: *mut ContextFFI,
-	groups: *const KeyRefFFI,
+	ctx: *mut ExternCContext,
+	groups: *const ExternCKeyRef,
 	groups_len: usize,
 	ids_out: *mut u64,
 ) -> i32 {
 	if ctx.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 	if groups_len > 0 && (groups.is_null() || ids_out.is_null()) {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: ctx checked; groups and ids_out checked when groups_len > 0; writes stay under groups_len.
@@ -867,24 +887,24 @@ extern "C" fn test_lookup_groups(
 				_ => GROUP_ABSENT,
 			};
 		}
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 extern "C" fn test_get_or_create_row_numbers(
 	operator_id: u64,
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	group: u64,
-	keys: *const KeyRefFFI,
+	keys: *const ExternCKeyRef,
 	keys_len: usize,
 	row_numbers_out: *mut u64,
 	is_new_out: *mut u8,
 ) -> i32 {
 	if ctx.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 	if keys_len > 0 && (keys.is_null() || row_numbers_out.is_null() || is_new_out.is_null()) {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: ctx checked; keys and both out arrays checked when keys_len > 0; writes stay under it.
@@ -931,19 +951,19 @@ extern "C" fn test_get_or_create_row_numbers(
 				}
 			}
 		}
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 extern "C" fn test_remove_row_number(
 	operator_id: u64,
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	group: u64,
 	key_ptr: *const u8,
 	key_len: usize,
 ) -> i32 {
 	if ctx.is_null() || (key_len > 0 && key_ptr.is_null()) {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 	// SAFETY: ctx is null-checked above and key_ptr is null-checked whenever key_len is non-zero,
 	// so (key_ptr, key_len) is a readable region the caller owns for the duration of the call.
@@ -961,20 +981,20 @@ extern "C" fn test_remove_row_number(
 			key_bytes.to_vec(),
 		);
 		test_ctx.remove_state(&map_key);
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 extern "C" fn test_remove_row_numbers_below(
 	operator_id: u64,
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	group: u64,
 	upper_ptr: *const u8,
 	upper_len: usize,
-	output: *mut BufferFFI,
+	output: *mut ExternCBuffer,
 ) -> i32 {
 	if ctx.is_null() || output.is_null() || (upper_len > 0 && upper_ptr.is_null()) {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 	// SAFETY: ctx and output are null-checked above and upper_ptr is null-checked whenever
 	// upper_len is non-zero. The buffer written into output is allocated here and its pointer is
@@ -1031,26 +1051,26 @@ extern "C" fn test_remove_row_numbers_below(
 		} else {
 			let out_ptr = test_alloc(packed.len());
 			if out_ptr.is_null() {
-				return FFI_ERROR_INTERNAL;
+				return EXTERN_C_ERROR_INTERNAL;
 			}
 			ptr::copy_nonoverlapping(packed.as_ptr(), out_ptr, packed.len());
 			(*output).ptr = out_ptr;
 			(*output).len = packed.len();
 			(*output).cap = packed.len();
 		}
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 extern "C" fn test_dictionary_id_by_name(
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	name_ptr: *const u8,
 	name_len: usize,
 	out_id: *mut u64,
 	found: *mut u8,
 ) -> i32 {
 	if ctx.is_null() || name_ptr.is_null() || out_id.is_null() || found.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: every pointer is null-checked above; the caller owns (name_ptr, name_len) as a
@@ -1059,7 +1079,7 @@ extern "C" fn test_dictionary_id_by_name(
 		let test_ctx = get_test_context(ctx);
 		let name = match from_utf8(from_raw_parts(name_ptr, name_len)) {
 			Ok(name) => name,
-			Err(_) => return FFI_ERROR_INTERNAL,
+			Err(_) => return EXTERN_C_ERROR_INTERNAL,
 		};
 		match test_ctx.dictionary_id_by_name(name) {
 			Some(id) => {
@@ -1068,12 +1088,12 @@ extern "C" fn test_dictionary_id_by_name(
 			}
 			None => *found = 0,
 		}
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 extern "C" fn test_dictionary_find(
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	dictionary_id: u64,
 	value_ptr: *const u8,
 	value_len: usize,
@@ -1082,7 +1102,7 @@ extern "C" fn test_dictionary_find(
 	found: *mut u8,
 ) -> i32 {
 	if ctx.is_null() || value_ptr.is_null() || out_id.is_null() || out_id_type.is_null() || found.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: every pointer is null-checked above; the caller owns (value_ptr, value_len) as a
@@ -1098,13 +1118,18 @@ extern "C" fn test_dictionary_find(
 			}
 			None => *found = 0,
 		}
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
-extern "C" fn test_dictionary_get(ctx: *mut ContextFFI, dictionary_id: u64, id: u128, output: *mut BufferFFI) -> i32 {
+extern "C" fn test_dictionary_get(
+	ctx: *mut ExternCContext,
+	dictionary_id: u64,
+	id: u128,
+	output: *mut ExternCBuffer,
+) -> i32 {
 	if ctx.is_null() || output.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: ctx and output are null-checked above, and the freshly allocated value_ptr is
@@ -1121,9 +1146,9 @@ extern "C" fn test_dictionary_get(ctx: *mut ContextFFI, dictionary_id: u64, id: 
 				(*output).ptr = value_ptr;
 				(*output).len = value_bytes.len();
 				(*output).cap = value_bytes.len();
-				FFI_OK
+				EXTERN_C_OK
 			}
-			None => FFI_NOT_FOUND,
+			None => EXTERN_C_NOT_FOUND,
 		}
 	}
 }

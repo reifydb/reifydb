@@ -25,9 +25,10 @@ pub(super) fn raw_store_get(ctx: &ExternCOperatorContext, key: &EncodedKey) -> R
 		cap: 0,
 	};
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid for the
-	// whole guest call; key_bytes outlives the callback, which only reads it. On EXTERN_C_OK the host writes a buffer of
-	// output.len initialised bytes, copied out before memory.free releases it with the length it was allocated at.
+	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// for the whole guest call; key_bytes outlives the callback, which only reads it. On EXTERN_C_OK the host
+	// writes a buffer of output.len initialised bytes, copied out before memory.free releases it with the length
+	// it was allocated at.
 	unsafe {
 		let result =
 			((*ctx.ctx).callbacks.store.get)(ctx.ctx, key_bytes.as_ptr(), key_bytes.len(), &mut output);
@@ -56,8 +57,9 @@ pub(super) fn raw_store_contains_key(ctx: &ExternCOperatorContext, key: &Encoded
 	let key_bytes = key.as_bytes();
 	let mut result_byte: u8 = 0;
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid for the
-	// whole guest call; key_bytes outlives the callback, and result_byte is a live local slot the host writes.
+	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// for the whole guest call; key_bytes outlives the callback, and result_byte is a live local slot the host
+	// writes.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.store.contains_key)(
 			ctx.ctx,
@@ -84,8 +86,8 @@ pub(super) fn raw_store_prefix(
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut ExternCStoreIterator = null_mut();
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid for the
-	// whole guest call; prefix_bytes outlives the callback. The handle the host opens is passed once to
+	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// for the whole guest call; prefix_bytes outlives the callback. The handle the host opens is passed once to
 	// collect_iterator_results, discharging its precondition that the handle is fresh and freed exactly there.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.store.prefix)(
@@ -115,9 +117,9 @@ pub(super) fn raw_store_range(
 ) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let mut iterator: *mut ExternCStoreIterator = null_mut();
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid for the
-	// whole guest call; each bound pointer is null with length 0 or borrows a key that outlives the callback. The
-	// handle the host opens is passed once to collect_iterator_results, which owns and frees it.
+	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// for the whole guest call; each bound pointer is null with length 0 or borrows a key that outlives the
+	// callback. The handle the host opens is passed once to collect_iterator_results, which owns and frees it.
 	unsafe {
 		let (start_ptr, start_len, start_bound_type) = match start {
 			Bound::Unbounded => (ptr::null(), 0, BOUND_UNBOUNDED),

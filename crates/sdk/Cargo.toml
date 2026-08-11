@@ -30,7 +30,7 @@ uuid.workspace = true
 reifydb-testing-sdk = { workspace = true }
 
 [[test]]
-name = "ffi"
-path = "tests/ffi.rs"
+name = "extern_c"
+path = "tests/extern_c.rs"
 
 

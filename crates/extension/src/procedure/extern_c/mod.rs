@@ -185,7 +185,12 @@ impl ExternCProcedure {
 		with_registry(&self.builder_registry, || {
 			// SAFETY: instance is non-null under the held Mutex; params_bytes outlives the call.
 			call_with_abort_on_panic("procedure::call", || unsafe {
-				(self.vtable.call)(instance, extern_c_ctx_ptr, params_bytes.as_ptr(), params_bytes.len())
+				(self.vtable.call)(
+					instance,
+					extern_c_ctx_ptr,
+					params_bytes.as_ptr(),
+					params_bytes.len(),
+				)
 			})
 		})
 	}

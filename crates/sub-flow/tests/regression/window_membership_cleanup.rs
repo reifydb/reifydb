@@ -27,7 +27,8 @@ use reifydb_flow::{
 	},
 };
 use reifydb_routine::{
-	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
+	function::default_in_process_functions, monoid::default_in_process_monoids,
+	procedure::default_in_process_procedures,
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
@@ -48,9 +49,9 @@ const WINDOW_SECS: i64 = 3_600;
 
 fn routines() -> Routines {
 	let b = Routines::builder();
-	let b = default_native_functions(b);
-	let b = default_native_procedures(b);
-	default_native_monoids(b).configure()
+	let b = default_in_process_functions(b);
+	let b = default_in_process_procedures(b);
+	default_in_process_monoids(b).configure()
 }
 
 fn harness(kind: WindowKind) -> Harness<WindowOperator> {

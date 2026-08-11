@@ -57,7 +57,10 @@ impl ProcedureLoader {
 		unsafe {
 			let get_descriptor: Symbol<extern "C" fn() -> *const ExternCProcedureDescriptor> =
 				library.get(b"extern_c_procedure_get_descriptor\0").map_err(|e| {
-					SdkError::Other(format!("Failed to find extern_c_procedure_get_descriptor: {}", e))
+					SdkError::Other(format!(
+						"Failed to find extern_c_procedure_get_descriptor: {}",
+						e
+					))
 				})?;
 
 			let descriptor_ptr = get_descriptor();
@@ -122,9 +125,10 @@ impl ProcedureLoader {
 		let library = self.cache.get(path).unwrap();
 		// SAFETY: the ABI declares this symbol as ExternCProcedureCreateFn and the cache keeps it loaded.
 		let create_fn: ExternCProcedureCreateFn = unsafe {
-			let create_symbol: Symbol<ExternCProcedureCreateFn> = library
-				.get(b"extern_c_procedure_create\0")
-				.map_err(|e| SdkError::Other(format!("Failed to find extern_c_procedure_create: {}", e)))?;
+			let create_symbol: Symbol<ExternCProcedureCreateFn> =
+				library.get(b"extern_c_procedure_create\0").map_err(|e| {
+					SdkError::Other(format!("Failed to find extern_c_procedure_create: {}", e))
+				})?;
 
 			*create_symbol
 		};
@@ -170,7 +174,10 @@ impl Default for ProcedureLoader {
 	}
 }
 
-pub fn register_procedures_from_dir(dir: &Path, mut builder: RoutinesConfigurator) -> ExternCResult<RoutinesConfigurator> {
+pub fn register_procedures_from_dir(
+	dir: &Path,
+	mut builder: RoutinesConfigurator,
+) -> ExternCResult<RoutinesConfigurator> {
 	let loader = extern_c_procedure_loader();
 	let mut loader_guard = loader.write();
 

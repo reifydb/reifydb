@@ -42,13 +42,14 @@ use reifydb_core::{
 use reifydb_engine::remote::RemoteRegistry;
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_extension::procedure::ffi_loader::register_procedures_from_dir;
+use reifydb_extension::procedure::extern_c::loader::register_procedures_from_dir;
 use reifydb_extension::{
-	procedure::wasm_loader::register_wasm_procedures_from_dir,
+	procedure::extern_wasm::loader::register_extern_wasm_procedures_from_dir,
 	transform::registry::{Transforms, TransformsConfigurator},
 };
 use reifydb_routine::{
-	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
+	function::default_in_process_functions, monoid::default_in_process_monoids,
+	procedure::default_in_process_procedures,
 };
 use reifydb_routine_abi::registry::{Routines, RoutinesConfigurator};
 use reifydb_rql::RqlVersion;
@@ -466,9 +467,9 @@ impl DatabaseBuilder {
 
 		let routines = {
 			let mut routines_builder = Routines::builder();
-			routines_builder = default_native_functions(routines_builder);
-			routines_builder = default_native_procedures(routines_builder);
-			routines_builder = default_native_monoids(routines_builder);
+			routines_builder = default_in_process_functions(routines_builder);
+			routines_builder = default_in_process_procedures(routines_builder);
+			routines_builder = default_in_process_monoids(routines_builder);
 
 			#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 			if let Some(dir) = &self.procedure_dir {
@@ -476,7 +477,7 @@ impl DatabaseBuilder {
 			}
 
 			if let Some(dir) = &self.wasm_procedure_dir {
-				routines_builder = register_wasm_procedures_from_dir(dir, routines_builder)?;
+				routines_builder = register_extern_wasm_procedures_from_dir(dir, routines_builder)?;
 			}
 
 			if let Some(configurator) = self.routines_configurator {

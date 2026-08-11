@@ -26,8 +26,9 @@ pub(super) fn raw_id_by_name(ctx: &ExternCOperatorContext, name: &str) -> Result
 	let mut out_id: u64 = 0;
 	let mut found: u8 = 0;
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid for the
-	// whole guest call; name_bytes outlives the callback, and out_id and found are live local slots the host fills.
+	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// for the whole guest call; name_bytes outlives the callback, and out_id and found are live local slots the
+	// host fills.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.dictionary.id_by_name)(
 			ctx.ctx,
@@ -60,9 +61,9 @@ pub(super) fn raw_find(
 	let mut out_id_type: u8 = 0;
 	let mut found: u8 = 0;
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid for the
-	// whole guest call; value_bytes outlives the callback, and out_id, out_id_type and found are live local slots
-	// the host writes.
+	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// for the whole guest call; value_bytes outlives the callback, and out_id, out_id_type and found are live
+	// local slots the host writes.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.dictionary.find)(
 			ctx.ctx,
@@ -99,9 +100,9 @@ pub(super) fn raw_get(
 		cap: 0,
 	};
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid for the
-	// whole guest call. On EXTERN_C_OK the host writes a buffer of output.len initialised bytes, copied out before
-	// memory.free releases it with the length it was allocated with.
+	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// for the whole guest call. On EXTERN_C_OK the host writes a buffer of output.len initialised bytes, copied
+	// out before memory.free releases it with the length it was allocated with.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.dictionary.get)(ctx.ctx, dictionary.0, id.to_u128(), &mut output);
 

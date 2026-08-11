@@ -17,23 +17,23 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemProceduresNative {
+pub struct SystemProceduresExternWasm {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
-impl SystemProceduresNative {
+impl SystemProceduresExternWasm {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			vtable: SystemCatalog::get_system_procedures_native_table().clone(),
+			vtable: SystemCatalog::get_system_procedures_extern_wasm_table().clone(),
 			catalog,
 			exhausted: false,
 		}
 	}
 }
 
-impl BaseVTable for SystemProceduresNative {
+impl BaseVTable for SystemProceduresExternWasm {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -44,51 +44,36 @@ impl BaseVTable for SystemProceduresNative {
 			return Ok(None);
 		}
 
-		let mut ids = Vec::new();
-		let mut namespace_ids = Vec::new();
-		let mut names = Vec::new();
-		let mut native_names = Vec::new();
+		let mut id_col = ColumnBuffer::uint8_with_capacity(0);
+		let mut ns_col = ColumnBuffer::uint8_with_capacity(0);
+		let mut name_col = ColumnBuffer::utf8_with_capacity(0);
+		let mut handler_col = ColumnBuffer::utf8_with_capacity(0);
+		let mut module_col = ColumnBuffer::uint8_with_capacity(0);
 
 		for entry in self.catalog.cache.procedures.iter() {
-			if let Some(Procedure::Native {
+			if let Some(Procedure::ExternWasm {
 				id,
 				namespace,
 				name,
-				native_name,
+				handler_name,
+				module_id,
 				..
 			}) = entry.value().get_latest()
 			{
-				ids.push(*id);
-				namespace_ids.push(namespace.0);
-				names.push(name.clone());
-				native_names.push(native_name.clone());
+				id_col.push(*id);
+				ns_col.push(namespace.0);
+				name_col.push(name.as_str());
+				handler_col.push(handler_name.as_str());
+				module_col.push(module_id.0);
 			}
-		}
-
-		let len = ids.len();
-		let mut id_col = ColumnBuffer::uint8_with_capacity(len);
-		let mut ns_col = ColumnBuffer::uint8_with_capacity(len);
-		let mut name_col = ColumnBuffer::utf8_with_capacity(len);
-		let mut native_col = ColumnBuffer::utf8_with_capacity(len);
-
-		for v in &ids {
-			id_col.push(*v);
-		}
-		for v in &namespace_ids {
-			ns_col.push(*v);
-		}
-		for v in &names {
-			name_col.push(v.as_str());
-		}
-		for v in &native_names {
-			native_col.push(v.as_str());
 		}
 
 		let columns = vec![
 			ColumnWithName::new(Fragment::internal("id"), id_col),
 			ColumnWithName::new(Fragment::internal("namespace_id"), ns_col),
 			ColumnWithName::new(Fragment::internal("name"), name_col),
-			ColumnWithName::new(Fragment::internal("native_name"), native_col),
+			ColumnWithName::new(Fragment::internal("handler_name"), handler_col),
+			ColumnWithName::new(Fragment::internal("module_id"), module_col),
 		];
 
 		self.exhausted = true;

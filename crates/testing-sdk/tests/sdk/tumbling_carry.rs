@@ -14,14 +14,14 @@ use reifydb_sdk::{
 	config::Config,
 	error::Result,
 	operator::{
-		FFIOperatorAdapter, column::operator::OperatorColumn, context::OperatorContext, view::RowView,
+		ExternCOperatorAdapter, column::operator::OperatorColumn, context::OperatorContext, view::RowView,
 		windowed::tumbling_carry::*,
 	},
 	row,
 };
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::FFIOperatorHarnessBuilder,
+	harness::ExternCOperatorHarnessBuilder,
 };
 use reifydb_value::{
 	factory::time::millis,
@@ -129,7 +129,7 @@ fn input_row(rn: u64, group: &str, ts: u64, price: f64) -> CoreRow {
 
 #[test]
 fn first_window_has_no_carry() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");
 	let out = h
@@ -149,7 +149,7 @@ fn first_window_has_no_carry() {
 fn remove_empties_window_emits_remove() {
 	// Emptying a window has to withdraw the previously emitted row; leaking a ghost row is
 	// what breaks reorg retraction.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -163,7 +163,7 @@ fn remove_empties_window_emits_remove() {
 
 #[test]
 fn second_window_carries_in_prior_window_close() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");
 	// The window closes on the largest ts, so 20 is what the next window must carry.
@@ -184,7 +184,7 @@ fn second_window_carries_in_prior_window_close() {
 #[test]
 fn carry_rotates_across_three_windows_in_one_batch() {
 	// Windows opened in one batch must still rotate the carry in window order, not batch order.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");
 	let out = h
@@ -211,7 +211,7 @@ fn carry_rotates_across_three_windows_in_one_batch() {
 fn update_in_current_window_recomputes_carry() {
 	// The carry is derived from the window value, so an update to the closing observation must
 	// change what the next window carries in.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -230,7 +230,7 @@ fn update_in_current_window_recomputes_carry() {
 fn late_event_accepted_without_sealing() {
 	// Without a seal envelope there is no gate, so a late event reopens its earlier window;
 	// bounding mutability is the opt-in seal gate's job, not an implicit high-water drop.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 20.0)).build()).expect("apply");
@@ -294,7 +294,7 @@ impl TumblingCarryRegistration for SealedCarry {
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// Carry windows prune relative to the newest window a group has seen, so a group that
 	// stops reporting freezes; only the watermark can drive its reclamation.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<SealedCarry>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingCarryDriver<SealedCarry>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h
@@ -327,7 +327,7 @@ fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
 	// watermark advances exactly as the feed does - from the rows' own #time, which is what
 	// `max_input_time` feeds it in production - so a ladder that keeps receiving must keep
 	// publishing, however many windows it has crossed.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<SealedCarry>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingCarryDriver<SealedCarry>>>::new()
 		.build()
 		.expect("harness");
 
@@ -356,7 +356,7 @@ fn a_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
 	// late mutations for that window have to be refused, or a stalled group's buckets accumulate
 	// without limit. SealedCarry seals 120ms after a 60ms window, so a watermark at 10_000ms is
 	// far outside the envelope of the window starting at 0.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<SealedCarry>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingCarryDriver<SealedCarry>>>::new()
 		.build()
 		.expect("harness");
 
@@ -378,7 +378,7 @@ fn a_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
 #[test]
 fn an_ungated_carry_operator_arms_no_seal_timer() {
 	// An operator that never opted into sealing must not acquire a retention policy.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
+	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");

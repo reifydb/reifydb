@@ -11,7 +11,7 @@ use reifydb_sdk::{
 	config::Config,
 	error::Result,
 	operator::{
-		FFIOperatorAdapter,
+		ExternCOperatorAdapter,
 		column::operator::OperatorColumn,
 		context::OperatorContext,
 		view::RowView,
@@ -24,7 +24,7 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::FFIOperatorHarnessBuilder,
+	harness::ExternCOperatorHarnessBuilder,
 };
 use reifydb_value::{
 	factory::time::millis,
@@ -172,9 +172,10 @@ fn input_row(rn: u64, group: &str, window_start: u64, value: f64) -> CoreRow {
 
 #[test]
 fn baseline_excludes_newest_window() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
-		.build()
-		.expect("harness");
+	let mut h =
+		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+			.build()
+			.expect("harness");
 	// The newest window must be excluded from its own baseline: mean(10, 20) = 15, not 30.
 	let out = h
 		.apply(TestChangeBuilder::new()
@@ -193,9 +194,10 @@ fn baseline_excludes_newest_window() {
 fn remove_clears_buffer_emits_remove() {
 	// Emptying the buffer has to withdraw the previously emitted row; leaking a ghost row is
 	// what breaks reorg retraction.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
-		.build()
-		.expect("harness");
+	let mut h =
+		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+			.build()
+			.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 	assert_eq!(out.diffs.len(), 1);
@@ -206,9 +208,10 @@ fn remove_clears_buffer_emits_remove() {
 
 #[test]
 fn update_window_value_keeps_running_consistent() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
-		.build()
-		.expect("harness");
+	let mut h =
+		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+			.build()
+			.expect("harness");
 	let _ = h
 		.apply(TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 0, 10.0))
@@ -229,9 +232,10 @@ fn update_window_value_keeps_running_consistent() {
 
 #[test]
 fn eviction_drops_oldest_from_running() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
-		.build()
-		.expect("harness");
+	let mut h =
+		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+			.build()
+			.expect("harness");
 	// A fourth window evicts window 0, and the running moments have to drop it too or the
 	// baseline keeps counting a value no longer in the buffer.
 	let out = h
@@ -324,7 +328,9 @@ impl RollingRegistration for SealedVelocity {
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
 	// grows without bound; nothing moves here after the initial batch except the watermark.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<SealedVelocity>>>::new()
+	let mut h =
+		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<SealedVelocity>>>::new(
+		)
 		.build()
 		.expect("harness");
 	let _ = h
@@ -350,7 +356,9 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 fn a_sealed_incremental_window_drops_a_mutation_for_a_sealed_coordinate() {
 	// The gate has to refuse late mutations, not merely reclaim state: accepting one would
 	// reopen a coordinate whose value was already published as final.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<SealedVelocity>>>::new()
+	let mut h =
+		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<SealedVelocity>>>::new(
+		)
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 600, 10.0)).build()).expect("apply");
@@ -364,9 +372,10 @@ fn a_sealed_incremental_window_drops_a_mutation_for_a_sealed_coordinate() {
 #[test]
 fn an_ungated_incremental_operator_arms_no_seal_timer() {
 	// An operator that never opted into sealing must not acquire a retention policy.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
-		.build()
-		.expect("harness");
+	let mut h =
+		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+			.build()
+			.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 
 	assert!(h.armed_timers().is_empty(), "an operator with seal_after = None must arm no timer");

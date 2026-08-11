@@ -31,7 +31,7 @@ use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 };
 use reifydb_sdk::{config::Config, operator::OperatorLogic};
-use reifydb_sub_flow::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
+use reifydb_sub_flow::operator::bridge::{BridgeOperator, BridgeOperatorAdapter};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
 use reifydb_transaction::{
@@ -91,8 +91,8 @@ impl Harness<ApplyOperator> {
 		ttl: Option<Duration>,
 	) -> Self {
 		Self::new(|_| {
-			let bridged = NativeBridgedOperator::new(
-				Box::new(NativeOperatorAdapter::new(logic, operator, capabilities)),
+			let bridged = BridgeOperator::new(
+				Box::new(BridgeOperatorAdapter::new(logic, operator, capabilities)),
 				operator,
 				capabilities,
 			);

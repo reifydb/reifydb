@@ -22,9 +22,9 @@ pub enum RqlTrigger {
 pub enum ProcedureKind {
 	Rql,
 	Test,
-	Native,
-	FFI,
-	Wasm,
+	InProcess,
+	ExternC,
+	ExternWasm,
 }
 
 impl ProcedureKind {
@@ -32,16 +32,16 @@ impl ProcedureKind {
 		match self {
 			ProcedureKind::Rql => "rql",
 			ProcedureKind::Test => "test",
-			ProcedureKind::Native => "native",
-			ProcedureKind::FFI => "ffi",
-			ProcedureKind::Wasm => "wasm",
+			ProcedureKind::InProcess => "in_process",
+			ProcedureKind::ExternC => "extern_c",
+			ProcedureKind::ExternWasm => "extern_wasm",
 		}
 	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(transparent)]
-pub struct WasmModuleId(pub u64);
+pub struct ExternWasmModuleId(pub u64);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProcedureParam {
@@ -70,34 +70,34 @@ pub enum Procedure {
 		body: String,
 	},
 
-	Native {
+	InProcess {
 		id: ProcedureId,
 		namespace: NamespaceId,
 		name: String,
 		params: Vec<ProcedureParam>,
 		return_type: Option<TypeConstraint>,
-		native_name: String,
+		handler_name: String,
 	},
 
-	FFI {
+	ExternC {
 		id: ProcedureId,
 		namespace: NamespaceId,
 		name: String,
 		params: Vec<ProcedureParam>,
 		return_type: Option<TypeConstraint>,
-		native_name: String,
+		handler_name: String,
 		library_path: PathBuf,
 		entry_symbol: String,
 	},
 
-	Wasm {
+	ExternWasm {
 		id: ProcedureId,
 		namespace: NamespaceId,
 		name: String,
 		params: Vec<ProcedureParam>,
 		return_type: Option<TypeConstraint>,
-		native_name: String,
-		module_id: WasmModuleId,
+		handler_name: String,
+		module_id: ExternWasmModuleId,
 	},
 }
 
@@ -112,15 +112,15 @@ impl Procedure {
 				id,
 				..
 			}
-			| Procedure::Native {
+			| Procedure::InProcess {
 				id,
 				..
 			}
-			| Procedure::FFI {
+			| Procedure::ExternC {
 				id,
 				..
 			}
-			| Procedure::Wasm {
+			| Procedure::ExternWasm {
 				id,
 				..
 			} => *id,
@@ -137,15 +137,15 @@ impl Procedure {
 				namespace,
 				..
 			}
-			| Procedure::Native {
+			| Procedure::InProcess {
 				namespace,
 				..
 			}
-			| Procedure::FFI {
+			| Procedure::ExternC {
 				namespace,
 				..
 			}
-			| Procedure::Wasm {
+			| Procedure::ExternWasm {
 				namespace,
 				..
 			} => *namespace,
@@ -162,15 +162,15 @@ impl Procedure {
 				name,
 				..
 			}
-			| Procedure::Native {
+			| Procedure::InProcess {
 				name,
 				..
 			}
-			| Procedure::FFI {
+			| Procedure::ExternC {
 				name,
 				..
 			}
-			| Procedure::Wasm {
+			| Procedure::ExternWasm {
 				name,
 				..
 			} => name.as_str(),
@@ -187,15 +187,15 @@ impl Procedure {
 				params,
 				..
 			}
-			| Procedure::Native {
+			| Procedure::InProcess {
 				params,
 				..
 			}
-			| Procedure::FFI {
+			| Procedure::ExternC {
 				params,
 				..
 			}
-			| Procedure::Wasm {
+			| Procedure::ExternWasm {
 				params,
 				..
 			} => params,
@@ -212,15 +212,15 @@ impl Procedure {
 				return_type,
 				..
 			}
-			| Procedure::Native {
+			| Procedure::InProcess {
 				return_type,
 				..
 			}
-			| Procedure::FFI {
+			| Procedure::ExternC {
 				return_type,
 				..
 			}
-			| Procedure::Wasm {
+			| Procedure::ExternWasm {
 				return_type,
 				..
 			} => return_type.as_ref(),
@@ -235,15 +235,15 @@ impl Procedure {
 			Procedure::Test {
 				..
 			} => ProcedureKind::Test,
-			Procedure::Native {
+			Procedure::InProcess {
 				..
-			} => ProcedureKind::Native,
-			Procedure::FFI {
+			} => ProcedureKind::InProcess,
+			Procedure::ExternC {
 				..
-			} => ProcedureKind::FFI,
-			Procedure::Wasm {
+			} => ProcedureKind::ExternC,
+			Procedure::ExternWasm {
 				..
-			} => ProcedureKind::Wasm,
+			} => ProcedureKind::ExternWasm,
 		}
 	}
 
@@ -263,20 +263,20 @@ impl Procedure {
 		}
 	}
 
-	pub fn native_name(&self) -> Option<&str> {
+	pub fn handler_name(&self) -> Option<&str> {
 		match self {
-			Procedure::Native {
-				native_name,
+			Procedure::InProcess {
+				handler_name,
 				..
 			}
-			| Procedure::FFI {
-				native_name,
+			| Procedure::ExternC {
+				handler_name,
 				..
 			}
-			| Procedure::Wasm {
-				native_name,
+			| Procedure::ExternWasm {
+				handler_name,
 				..
-			} => Some(native_name.as_str()),
+			} => Some(handler_name.as_str()),
 			_ => None,
 		}
 	}

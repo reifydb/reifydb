@@ -3,8 +3,8 @@
 
 use reifydb_cdc::error::CdcError;
 use reifydb_core::error::diagnostic::flow::{
-	flow_catch_up_read_failed, native_abi_tag_mismatch, native_create_failed, native_library_not_loaded,
-	native_operator_not_found, native_symbol_not_found,
+	extern_abi_tag_mismatch, extern_create_failed, extern_library_not_loaded, extern_operator_not_found,
+	extern_symbol_not_found, flow_catch_up_read_failed,
 };
 use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
 
@@ -72,20 +72,20 @@ impl IntoDiagnostic for ExternOperatorError {
 			ExternOperatorError::AbiTagMismatch {
 				plugin,
 				host,
-			} => native_abi_tag_mismatch(plugin, host),
+			} => extern_abi_tag_mismatch(plugin, host),
 			ExternOperatorError::LibraryNotLoaded {
 				path,
-			} => native_library_not_loaded(&path),
+			} => extern_library_not_loaded(&path),
 			ExternOperatorError::SymbolNotFound {
 				symbol,
 				cause,
-			} => native_symbol_not_found(symbol, cause),
+			} => extern_symbol_not_found(symbol, cause),
 			ExternOperatorError::OperatorNotFound {
 				operator,
-			} => native_operator_not_found(&operator),
+			} => extern_operator_not_found(&operator),
 			ExternOperatorError::CreateFailed {
 				cause,
-			} => native_create_failed(cause),
+			} => extern_create_failed(cause),
 		}
 	}
 }

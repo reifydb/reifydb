@@ -38,6 +38,7 @@ use crate::{
 		column::{row::Row, sink::extern_c::ExternCRowSink},
 		diff::DiffStart,
 	},
+	rql::raw_query,
 	state::{
 		State,
 		extern_c::{
@@ -47,7 +48,6 @@ use crate::{
 	},
 	store::Store,
 };
-use crate::rql::raw_query;
 
 pub struct ExternCRowEmit<'a> {
 	builder: ColumnsBuilder<'a>,
@@ -116,8 +116,8 @@ impl ExternCOperatorContext {
 	}
 
 	pub fn operator_id(&self) -> OperatorId {
-		// SAFETY: ExternCOperatorContext::new asserts self.ctx is non-null, and the host keeps the ExternCContext
-		// alive and aligned for at least the lifetime of &self.
+		// SAFETY: ExternCOperatorContext::new asserts self.ctx is non-null, and the host keeps the
+		// ExternCContext alive and aligned for at least the lifetime of &self.
 		unsafe { OperatorId((*self.ctx).operator_id) }
 	}
 
@@ -302,8 +302,8 @@ impl OperatorContext for ExternCOperatorContext {
 		ExternCOperatorContext::operator_id(self)
 	}
 	fn written_at(&self) -> DateTime {
-		// SAFETY: ExternCOperatorContext::new asserts self.ctx is non-null, and the host keeps the ExternCContext
-		// alive and aligned for at least the lifetime of &self.
+		// SAFETY: ExternCOperatorContext::new asserts self.ctx is non-null, and the host keeps the
+		// ExternCContext alive and aligned for at least the lifetime of &self.
 		DateTime::from_nanos(unsafe { (*self.ctx).written_at_nanos })
 	}
 	fn state(&mut self) -> impl StateApi + '_ {

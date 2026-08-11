@@ -4,7 +4,10 @@
 use std::{slice::from_raw_parts, str::from_utf8};
 
 use reifydb_abi::{
-	constants::{EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_NULL_PTR, EXTERN_C_NOT_FOUND, EXTERN_C_OK},
+	constants::{
+		EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_NULL_PTR, EXTERN_C_NOT_FOUND,
+		EXTERN_C_OK,
+	},
 	context::context::ExternCContext,
 	data::buffer::ExternCBuffer,
 };

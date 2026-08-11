@@ -5,10 +5,10 @@ use std::{cell::Cell, collections::HashMap, fmt, mem, ptr, slice, str};
 
 use reifydb_abi::{
 	callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
-	context::context::ContextFFI,
+	context::context::ExternCContext,
 	data::column::ColumnTypeCode,
 };
-use reifydb_codec::ffi::cells::{
+use reifydb_codec::extern_c::cells::{
 	decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
 };
 use reifydb_core::{
@@ -181,7 +181,7 @@ fn is_var_len(type_code: ColumnTypeCode) -> bool {
 /// The returned handle is a packed id, never a real pointer; it must only be passed back to
 /// the other `test_*` buffer callbacks on the same thread that acquired it.
 pub(crate) unsafe extern "C" fn test_acquire(
-	_ctx: *mut ContextFFI,
+	_ctx: *mut ExternCContext,
 	type_code: ColumnTypeCode,
 	capacity: usize,
 ) -> *mut ColumnBufferHandle {
@@ -397,7 +397,7 @@ pub(crate) unsafe extern "C" fn test_release(handle: *mut ColumnBufferHandle) {
 /// entries, and the row-number array must hold `row_count`. The handles are consumed: each
 /// must name a committed buffer and must not be used again after this returns.
 pub(crate) unsafe extern "C" fn test_emit_diff(
-	_ctx: *mut ContextFFI,
+	_ctx: *mut ExternCContext,
 	kind: EmitDiffKind,
 	pre_handles_ptr: *const *mut ColumnBufferHandle,
 	pre_name_ptrs: *const *const u8,

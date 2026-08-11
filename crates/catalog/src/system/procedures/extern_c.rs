@@ -10,16 +10,16 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
-use crate::system::ids::{columns::procedures::ffi::*, vtable::PROCEDURES_FFI};
+use crate::system::ids::{columns::procedures::extern_c::*, vtable::PROCEDURES_EXTERN_C};
 
-pub fn procedures_ffi() -> Arc<VTable> {
+pub fn procedures_extern_c() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
-			id: PROCEDURES_FFI,
+			id: PROCEDURES_EXTERN_C,
 			namespace: NamespaceId::SYSTEM_PROCEDURES,
-			name: "ffi".to_string(),
+			name: "extern_c".to_string(),
 			columns: vec![
 				Column {
 					id: ID,
@@ -49,8 +49,8 @@ pub fn procedures_ffi() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: NATIVE_NAME,
-					name: "native_name".to_string(),
+					id: HANDLER_NAME,
+					name: "handler_name".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(3),

@@ -1,26 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// An `Err` from an operator's apply must abort the process. On the FFI backend that abort lives in
-// the `ffi_apply` export at the `.so` boundary, so this drives the operator through
-// `drive_ffi_apply` rather than the in-process harness. Forked because abort kills the process.
-
 use std::{env, process::Command};
 
-use reifydb_sdk::operator::FFIOperatorAdapter;
+use reifydb_sdk::operator::ExternCOperatorAdapter;
 use reifydb_test_harness::operator::change::trigger;
-use reifydb_testing_sdk::harness::drive_ffi_apply;
+use reifydb_testing_sdk::harness::drive_extern_c_apply;
 
 use crate::common::ErroringOperator;
 
-const CHILD_ENV: &str = "REIFYDB_OPERATOR_ERROR_ABORT_FFI_CHILD";
-const CHILD_TEST: &str = "ffi::error_abort::apply_error_aborts";
+const CHILD_ENV: &str = "REIFYDB_OPERATOR_ERROR_ABORT_EXTERN_C_CHILD";
+const CHILD_TEST: &str = "extern_c::error_abort::apply_error_aborts";
 
 #[test]
 fn apply_error_aborts() {
+	// The abort lives in the `extern_c_apply` export, so this must drive the `.so` boundary, not the harness.
 	if env::var(CHILD_ENV).is_ok() {
-		let _ = drive_ffi_apply::<FFIOperatorAdapter<ErroringOperator>>(&trigger());
-		eprintln!("ffi_apply returned instead of aborting");
+		let _ = drive_extern_c_apply::<ExternCOperatorAdapter<ErroringOperator>>(&trigger());
+		eprintln!("extern_c_apply returned instead of aborting");
 		return;
 	}
 

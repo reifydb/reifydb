@@ -41,7 +41,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
-use reifydb_routine::{function::default_native_functions, procedure::default_native_procedures};
+use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{
@@ -258,8 +258,8 @@ impl WasmDB {
 
 		let routines = {
 			let b = Routines::builder();
-			let b = default_native_functions(b);
-			default_native_procedures(b).configure()
+			let b = default_in_process_functions(b);
+			default_in_process_procedures(b).configure()
 		};
 
 		let eventbus_clone = eventbus.clone();
@@ -296,7 +296,7 @@ impl WasmDB {
 		console_log("[WASM] CDC producer actor registered!");
 
 		let flow_config = FlowConfig {
-			operators_dir: None, // No FFI operators in WASM
+			operators_dir: None,
 			custom_operators: Default::default(),
 			connector_registry: Default::default(),
 		};

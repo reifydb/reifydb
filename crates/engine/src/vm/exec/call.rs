@@ -450,20 +450,20 @@ impl<'a> Vm<'a> {
 		)?;
 
 		match proc_def {
-			Procedure::Native {
-				native_name,
+			Procedure::InProcess {
+				handler_name,
 				..
 			}
-			| Procedure::FFI {
-				native_name,
+			| Procedure::ExternC {
+				handler_name,
 				..
 			}
-			| Procedure::Wasm {
-				native_name,
+			| Procedure::ExternWasm {
+				handler_name,
 				..
 			} => {
-				let native_name = native_name.clone();
-				if let Some(routine) = ctx.services.routines.get_procedure(&native_name) {
+				let handler_name = handler_name.clone();
+				if let Some(routine) = ctx.services.routines.get_procedure(&handler_name) {
 					let call_params = Params::Positional(Arc::new(args));
 					let identity = ctx.tx.identity();
 					let mut proc_ctx = RoutineProcedureContext {
@@ -491,11 +491,11 @@ impl<'a> Vm<'a> {
 				} else {
 					Err(TypeError::Procedure {
 						kind: ProcedureErrorKind::NoRegisteredImplementation {
-							name: native_name.clone(),
+							name: handler_name.clone(),
 						},
 						message: format!(
-							"native procedure '{}' has no registered implementation",
-							native_name
+							"procedure handler '{}' has no registered implementation",
+							handler_name
 						),
 						fragment: name.clone(),
 					}

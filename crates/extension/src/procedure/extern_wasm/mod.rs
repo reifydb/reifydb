@@ -56,8 +56,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ExternWasmProcedure {
 		})?;
 
 		let label = format!("WASM procedure '{}'", self.info.name);
-		let output_bytes =
-			invoke_extern_wasm_module(&self.wasm_bytes, "procedure", &params_bytes, &label).map_err(ext_err)?;
+		let output_bytes = invoke_extern_wasm_module(&self.wasm_bytes, "procedure", &params_bytes, &label)
+			.map_err(ext_err)?;
 
 		Ok(unmarshal_columns_from_bytes(&output_bytes))
 	}

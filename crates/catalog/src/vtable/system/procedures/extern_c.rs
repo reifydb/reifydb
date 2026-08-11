@@ -17,23 +17,23 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemProceduresFFI {
+pub struct SystemProceduresExternC {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
-impl SystemProceduresFFI {
+impl SystemProceduresExternC {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			vtable: SystemCatalog::get_system_procedures_ffi_table().clone(),
+			vtable: SystemCatalog::get_system_procedures_extern_c_table().clone(),
 			catalog,
 			exhausted: false,
 		}
 	}
 }
 
-impl BaseVTable for SystemProceduresFFI {
+impl BaseVTable for SystemProceduresExternC {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -47,16 +47,16 @@ impl BaseVTable for SystemProceduresFFI {
 		let mut id_col = ColumnBuffer::uint8_with_capacity(0);
 		let mut ns_col = ColumnBuffer::uint8_with_capacity(0);
 		let mut name_col = ColumnBuffer::utf8_with_capacity(0);
-		let mut native_col = ColumnBuffer::utf8_with_capacity(0);
+		let mut handler_col = ColumnBuffer::utf8_with_capacity(0);
 		let mut library_col = ColumnBuffer::utf8_with_capacity(0);
 		let mut entry_col = ColumnBuffer::utf8_with_capacity(0);
 
 		for entry in self.catalog.cache.procedures.iter() {
-			if let Some(Procedure::FFI {
+			if let Some(Procedure::ExternC {
 				id,
 				namespace,
 				name,
-				native_name,
+				handler_name,
 				library_path,
 				entry_symbol,
 				..
@@ -65,7 +65,7 @@ impl BaseVTable for SystemProceduresFFI {
 				id_col.push(*id);
 				ns_col.push(namespace.0);
 				name_col.push(name.as_str());
-				native_col.push(native_name.as_str());
+				handler_col.push(handler_name.as_str());
 				library_col.push(library_path.to_string_lossy().as_ref());
 				entry_col.push(entry_symbol.as_str());
 			}
@@ -75,7 +75,7 @@ impl BaseVTable for SystemProceduresFFI {
 			ColumnWithName::new(Fragment::internal("id"), id_col),
 			ColumnWithName::new(Fragment::internal("namespace_id"), ns_col),
 			ColumnWithName::new(Fragment::internal("name"), name_col),
-			ColumnWithName::new(Fragment::internal("native_name"), native_col),
+			ColumnWithName::new(Fragment::internal("handler_name"), handler_col),
 			ColumnWithName::new(Fragment::internal("library_path"), library_col),
 			ColumnWithName::new(Fragment::internal("entry_symbol"), entry_col),
 		];

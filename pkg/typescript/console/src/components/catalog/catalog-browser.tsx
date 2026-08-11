@@ -117,7 +117,7 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
   const load_catalog = async () => {
     setLoading(true);
     try {
-      const [ns_rows, table_rows, view_rows, vtable_rows, rb_rows, col_rows, vtable_col_rows, proc_rql_rows, proc_test_rows, proc_native_rows, proc_ffi_rows, proc_wasm_rows, handler_rows, enum_rows, event_rows, dict_rows, migration_rows] = await Promise.all([
+      const [ns_rows, table_rows, view_rows, vtable_rows, rb_rows, col_rows, vtable_col_rows, proc_rql_rows, proc_test_rows, proc_in_process_rows, proc_extern_c_rows, proc_extern_wasm_rows, handler_rows, enum_rows, event_rows, dict_rows, migration_rows] = await Promise.all([
         query_rows(executor, 'FROM system::namespaces MAP { id, name, local_name, parent_id }'),
         query_rows(executor, 'FROM system::tables MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::views MAP { id, namespace_id, name, kind }'),
@@ -127,16 +127,16 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
         query_rows(executor, 'FROM system::virtual_table_columns MAP { vtable_id, name, type, position }'),
         query_rows(executor, 'FROM system::procedures::rql MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::procedures::test MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::procedures::native MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::procedures::ffi MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::procedures::wasm MAP { id, namespace_id, name }'),
+        query_rows(executor, 'FROM system::procedures::in_process MAP { id, namespace_id, name }'),
+        query_rows(executor, 'FROM system::procedures::extern_c MAP { id, namespace_id, name }'),
+        query_rows(executor, 'FROM system::procedures::extern_wasm MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::handlers MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::enums MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::events MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::dictionaries MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::migrations MAP { name }'),
       ]);
-      const proc_rows = [...proc_rql_rows, ...proc_test_rows, ...proc_native_rows, ...proc_ffi_rows, ...proc_wasm_rows];
+      const proc_rows = [...proc_rql_rows, ...proc_test_rows, ...proc_in_process_rows, ...proc_extern_c_rows, ...proc_extern_wasm_rows];
 
       // Build namespace tree nodes: id → NamespaceTree
       const ns_by_id = new Map<number, NamespaceTree>();

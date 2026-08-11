@@ -39,7 +39,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_routine::{function::default_native_functions, procedure::default_native_procedures};
+use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{
@@ -151,8 +151,8 @@ impl Bridge {
 
 		let routines = {
 			let b = Routines::builder();
-			let b = default_native_functions(b);
-			default_native_procedures(b).configure()
+			let b = default_in_process_functions(b);
+			default_in_process_procedures(b).configure()
 		};
 
 		let eventbus_clone = eventbus.clone();

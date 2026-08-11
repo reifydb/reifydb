@@ -96,7 +96,7 @@ pub struct ProfilerInstruments {
 	transport: Arc<Histogram>,
 	task: Arc<Histogram>,
 	policy: Arc<Histogram>,
-	ffi: Arc<Histogram>,
+	extern_c: Arc<Histogram>,
 	cache: Arc<Histogram>,
 	row_shape: Arc<Histogram>,
 	api: Arc<Histogram>,
@@ -194,9 +194,9 @@ impl ProfilerInstruments {
 				"Profiler category Policy duration (us)",
 				PLAN_BOUNDS,
 			),
-			ffi: duration_histogram(
-				"profiler.ffi.duration_us",
-				"Profiler category Ffi duration (us)",
+			extern_c: duration_histogram(
+				"profiler.extern_c.duration_us",
+				"Profiler category ExternC duration (us)",
 				STORAGE_BOUNDS,
 			),
 			cache: duration_histogram(
@@ -259,7 +259,7 @@ impl ProfilerInstruments {
 			ProfilerCategory::Transport => &self.transport,
 			ProfilerCategory::Task => &self.task,
 			ProfilerCategory::Policy => &self.policy,
-			ProfilerCategory::Ffi => &self.ffi,
+			ProfilerCategory::ExternC => &self.extern_c,
 			ProfilerCategory::Cache => &self.cache,
 			ProfilerCategory::RowShape => &self.row_shape,
 			ProfilerCategory::Api => &self.api,

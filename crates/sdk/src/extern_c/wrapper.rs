@@ -18,7 +18,7 @@ use reifydb_abi::{
 	data::state::ExternCStateUsage,
 	flow::{
 		change::ExternCChange,
-		diff::{ExternCDiff, DiffType},
+		diff::{DiffType, ExternCDiff},
 	},
 	operator::{timer::TimerKind, vtable::ExternCOperatorVTable},
 };
@@ -27,7 +27,9 @@ use reifydb_flow::window::span::WindowCoord;
 use reifydb_value::value::datetime::DateTime;
 use tracing::{error, instrument, warn};
 
-use crate::operator::{ExternCOperator, change::BorrowedChange, context::extern_c::ExternCOperatorContext, timer::Timer};
+use crate::operator::{
+	ExternCOperator, change::BorrowedChange, context::extern_c::ExternCOperatorContext, timer::Timer,
+};
 
 thread_local! {
 	static EXTERN_C_FATAL_DETAIL: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -63,12 +65,12 @@ unsafe fn describe_change_input(input: *const ExternCChange) -> String {
 	if input.is_null() {
 		return "<null>".to_string();
 	}
-	// SAFETY: input was checked non-null above and this fn's contract makes it one initialised, aligned ExternCChange
-	// that outlives the call.
+	// SAFETY: input was checked non-null above and this fn's contract makes it one initialised, aligned
+	// ExternCChange that outlives the call.
 	let change = unsafe { &*input };
 	let types = if !change.diffs.is_null() && change.diff_count > 0 {
-		// SAFETY: this fn's contract makes diffs cover diff_count initialised, aligned ExternCDiff; non-null and a
-		// non-zero count are checked in this branch's condition.
+		// SAFETY: this fn's contract makes diffs cover diff_count initialised, aligned ExternCDiff; non-null
+		// and a non-zero count are checked in this branch's condition.
 		let diffs: &[ExternCDiff] = unsafe { slice::from_raw_parts(change.diffs, change.diff_count) };
 		let names: Vec<&'static str> = diffs
 			.iter()
@@ -207,8 +209,8 @@ pub unsafe extern "C" fn extern_c_apply<O: ExternCOperator>(
 
 	if code < 0 {
 		let detail = take_fatal_detail().unwrap_or_default();
-		// SAFETY: discharges describe_change_input; extern_c_apply's contract holds for input and its diffs array
-		// for the whole call, and null is handled inside.
+		// SAFETY: discharges describe_change_input; extern_c_apply's contract holds for input and its diffs
+		// array for the whole call, and null is handled inside.
 		let input_desc = unsafe { describe_change_input(input) };
 		print_extern_c_fatal(
 			"extern_c_apply",
@@ -309,7 +311,14 @@ pub unsafe extern "C" fn extern_c_seal_after_ms<O: ExternCOperator>(instance: *m
 			let bt = Backtrace::force_capture();
 			let detail = describe_panic_payload(&payload);
 			error!("Panic in extern_c_seal_after_ms - aborting");
-			print_extern_c_fatal("extern_c_seal_after_ms", any::type_name::<O>(), -99, &detail, None, Some(&bt));
+			print_extern_c_fatal(
+				"extern_c_seal_after_ms",
+				any::type_name::<O>(),
+				-99,
+				&detail,
+				None,
+				Some(&bt),
+			);
 			abort();
 		}
 	}
@@ -376,14 +385,28 @@ pub unsafe extern "C" fn extern_c_flush_state<O: ExternCOperator>(
 		}
 		Ok((Err(e), _)) => {
 			error!("operator flush_state failed - aborting");
-			print_extern_c_fatal("extern_c_flush_state", any::type_name::<O>(), -2, &format!("{:?}", e), None, None);
+			print_extern_c_fatal(
+				"extern_c_flush_state",
+				any::type_name::<O>(),
+				-2,
+				&format!("{:?}", e),
+				None,
+				None,
+			);
 			abort();
 		}
 		Err(payload) => {
 			let bt = Backtrace::force_capture();
 			let detail = describe_panic_payload(&payload);
 			error!("Panic in extern_c_flush_state - aborting");
-			print_extern_c_fatal("extern_c_flush_state", any::type_name::<O>(), -99, &detail, None, Some(&bt));
+			print_extern_c_fatal(
+				"extern_c_flush_state",
+				any::type_name::<O>(),
+				-99,
+				&detail,
+				None,
+				Some(&bt),
+			);
 			abort();
 		}
 	}
@@ -395,7 +418,10 @@ pub unsafe extern "C" fn extern_c_flush_state<O: ExternCOperator>(
 ///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>`.
 /// - `out` must be a valid, writable, aligned pointer to a `ExternCStateUsage`.
-pub unsafe extern "C" fn extern_c_sample<O: ExternCOperator>(instance: *mut c_void, out: *mut ExternCStateUsage) -> i32 {
+pub unsafe extern "C" fn extern_c_sample<O: ExternCOperator>(
+	instance: *mut c_void,
+	out: *mut ExternCStateUsage,
+) -> i32 {
 	if instance.is_null() || out.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}

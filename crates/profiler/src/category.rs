@@ -24,7 +24,7 @@ pub enum ProfilerCategory {
 	Transport = 13,
 	Task = 14,
 	Policy = 15,
-	Ffi = 16,
+	ExternC = 16,
 	Cache = 17,
 	RowShape = 18,
 	Api = 19,
@@ -51,7 +51,7 @@ pub const ALL_CATEGORIES: [ProfilerCategory; CATEGORY_COUNT] = [
 	ProfilerCategory::Transport,
 	ProfilerCategory::Task,
 	ProfilerCategory::Policy,
-	ProfilerCategory::Ffi,
+	ProfilerCategory::ExternC,
 	ProfilerCategory::Cache,
 	ProfilerCategory::RowShape,
 	ProfilerCategory::Api,
@@ -82,7 +82,7 @@ impl ProfilerCategory {
 			13 => Some(ProfilerCategory::Transport),
 			14 => Some(ProfilerCategory::Task),
 			15 => Some(ProfilerCategory::Policy),
-			16 => Some(ProfilerCategory::Ffi),
+			16 => Some(ProfilerCategory::ExternC),
 			17 => Some(ProfilerCategory::Cache),
 			18 => Some(ProfilerCategory::RowShape),
 			19 => Some(ProfilerCategory::Api),
@@ -93,8 +93,8 @@ impl ProfilerCategory {
 	}
 
 	pub fn from_span_name(name: &str) -> Option<Self> {
-		if name.starts_with("flow::ffi::") {
-			Some(ProfilerCategory::Ffi)
+		if name.starts_with("flow::extern_c::") {
+			Some(ProfilerCategory::ExternC)
 		} else if name.starts_with("flow::") {
 			Some(ProfilerCategory::Flow)
 		} else if name.starts_with("transaction::") {
@@ -144,11 +144,11 @@ impl ProfilerCategory {
 			Some(ProfilerCategory::Task)
 		} else if name.starts_with("policy::") {
 			Some(ProfilerCategory::Policy)
-		} else if name.starts_with("ffi::")
+		} else if name.starts_with("extern_c::")
 			|| name.starts_with("procedure::")
 			|| name.starts_with("transform::")
 		{
-			Some(ProfilerCategory::Ffi)
+			Some(ProfilerCategory::ExternC)
 		} else {
 			None
 		}
@@ -172,7 +172,7 @@ impl ProfilerCategory {
 			ProfilerCategory::Transport => "transport",
 			ProfilerCategory::Task => "task",
 			ProfilerCategory::Policy => "policy",
-			ProfilerCategory::Ffi => "ffi",
+			ProfilerCategory::ExternC => "extern_c",
 			ProfilerCategory::Cache => "cache",
 			ProfilerCategory::RowShape => "row_shape",
 			ProfilerCategory::Api => "api",
@@ -310,11 +310,20 @@ mod tests {
 		);
 		assert_eq!(ProfilerCategory::from_span_name("task::spawn"), Some(ProfilerCategory::Task));
 		assert_eq!(ProfilerCategory::from_span_name("policy::enforce"), Some(ProfilerCategory::Policy));
-		assert_eq!(ProfilerCategory::from_span_name("ffi::callback"), Some(ProfilerCategory::Ffi));
-		assert_eq!(ProfilerCategory::from_span_name("procedure::ffi::execute"), Some(ProfilerCategory::Ffi));
-		assert_eq!(ProfilerCategory::from_span_name("transform::ffi::apply"), Some(ProfilerCategory::Ffi));
-		// flow::ffi:: must beat the broader flow:: -> Flow rule so FFI boundary cost is attributed to Ffi.
-		assert_eq!(ProfilerCategory::from_span_name("flow::ffi::vtable_call"), Some(ProfilerCategory::Ffi));
+		assert_eq!(ProfilerCategory::from_span_name("extern_c::callback"), Some(ProfilerCategory::ExternC));
+		assert_eq!(
+			ProfilerCategory::from_span_name("procedure::extern_c::execute"),
+			Some(ProfilerCategory::ExternC)
+		);
+		assert_eq!(
+			ProfilerCategory::from_span_name("transform::extern_c::apply"),
+			Some(ProfilerCategory::ExternC)
+		);
+		// flow::extern_c:: must beat the broader flow:: -> Flow rule, or boundary cost is attributed to Flow.
+		assert_eq!(
+			ProfilerCategory::from_span_name("flow::extern_c::vtable_call"),
+			Some(ProfilerCategory::ExternC)
+		);
 		assert_eq!(ProfilerCategory::from_span_name("flow::engine::apply"), Some(ProfilerCategory::Flow));
 	}
 

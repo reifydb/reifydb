@@ -127,9 +127,11 @@ impl<'a> State<'a> {
 		end: Bound<&GroupStateKey>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()> {
-		for (k, row) in
-			extern_c::range(self.ctx, start.map(GroupStateKey::as_encoded), end.map(GroupStateKey::as_encoded))?
-		{
+		for (k, row) in extern_c::range(
+			self.ctx,
+			start.map(GroupStateKey::as_encoded),
+			end.map(GroupStateKey::as_encoded),
+		)? {
 			let Some(k) = GroupStateKey::from_framed(k) else {
 				continue;
 			};
@@ -140,8 +142,9 @@ impl<'a> State<'a> {
 
 	#[inline]
 	fn written_at(&self) -> DateTime {
-		// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null, and the host keeps the ExternCContext alive
-		// and aligned for at least the lifetime of the borrow this State was created from.
+		// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null, and the host keeps the
+		// ExternCContext alive and aligned for at least the lifetime of the borrow this State was created
+		// from.
 		DateTime::from_nanos(unsafe { (*self.ctx.ctx).written_at_nanos })
 	}
 }

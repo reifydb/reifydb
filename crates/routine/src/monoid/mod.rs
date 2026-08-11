@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use reifydb_routine_abi::registry::RoutinesConfigurator;
 
-pub fn default_native_monoids(builder: RoutinesConfigurator) -> RoutinesConfigurator {
+pub fn default_in_process_monoids(builder: RoutinesConfigurator) -> RoutinesConfigurator {
 	builder.register_builtin_monoid(Arc::new(math::sum::Sum::new()))
 		.register_builtin_monoid(Arc::new(math::min::Min::new()))
 		.register_builtin_monoid(Arc::new(math::max::Max::new()))

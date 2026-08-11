@@ -147,9 +147,11 @@ fn call_vtable(
 	operator_id: OperatorId,
 ) -> i32 {
 	// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
-	// ExternCOperatorHandle::drop calls destroy; extern_c_ctx_ptr and extern_c_input point at caller-owned values that outlive
-	// the call, and the host holds no Rust borrow of either while the guest runs.
-	let result = catch_unwind(AssertUnwindSafe(|| unsafe { (vtable.apply)(instance, extern_c_ctx_ptr, extern_c_input) }));
+	// ExternCOperatorHandle::drop calls destroy; extern_c_ctx_ptr and extern_c_input point at caller-owned values
+	// that outlive the call, and the host holds no Rust borrow of either while the guest runs.
+	let result = catch_unwind(AssertUnwindSafe(|| unsafe {
+		(vtable.apply)(instance, extern_c_ctx_ptr, extern_c_input)
+	}));
 
 	match result {
 		Ok(code) => code,
@@ -181,7 +183,8 @@ fn ensure_flush_slot(
 		let captured_executor = executor;
 		let captured_id = operator_id;
 		let persist: PersistFn = Box::new(move |txn, _value: Box<dyn Any>| {
-			let extern_c_ctx = new_extern_c_context(txn, &captured_executor, captured_id, create_host_callbacks());
+			let extern_c_ctx =
+				new_extern_c_context(txn, &captured_executor, captured_id, create_host_callbacks());
 			let extern_c_ctx_ptr = &extern_c_ctx as *const _ as *mut ExternCContext;
 			let inst = captured_instance;
 			let mut usage = ExternCStateUsage::default();
@@ -199,7 +202,10 @@ fn ensure_flush_slot(
 				))
 				.into()),
 				Err(_) => {
-					error!(operator_id = captured_id.0, "extern-C operator panicked during flush_state");
+					error!(
+						operator_id = captured_id.0,
+						"extern-C operator panicked during flush_state"
+					);
 					abort();
 				}
 			}
@@ -237,7 +243,8 @@ impl Operator for ExternCOperatorHandle {
 		// SAFETY: the arena is thread-local and the previous apply's guest call has returned, so
 		// no pointer into it is still live when it is cleared and re-borrowed.
 		EXTERN_C_MARSHAL_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
-		let extern_c_input = EXTERN_C_MARSHAL_ARENA.with(|cell| marshal_input(unsafe { &mut *cell.get() }, &change));
+		let extern_c_input =
+			EXTERN_C_MARSHAL_ARENA.with(|cell| marshal_input(unsafe { &mut *cell.get() }, &change));
 
 		let version = change.version;
 		let changed_at = change.changed_at;
@@ -250,9 +257,11 @@ impl Operator for ExternCOperatorHandle {
 
 		if result_code != 0 {
 			let _ = self.builder_registry.drain();
-			return Err(
-				SdkError::Other(format!("extern-C operator apply failed with code: {}", result_code)).into()
-			);
+			return Err(SdkError::Other(format!(
+				"extern-C operator apply failed with code: {}",
+				result_code
+			))
+			.into());
 		}
 
 		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, changed_at);
@@ -274,8 +283,8 @@ impl Operator for ExternCOperatorHandle {
 		let extern_c_ctx_ptr = self.cached_ctx.get();
 
 		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
-		// Drop calls destroy; extern_c_ctx_ptr is this operator's cached ExternCContext with no Rust borrow of it
-		// live during the call, and key's ptr/len describe a slice of `timer`, which outlives the call.
+		// Drop calls destroy; extern_c_ctx_ptr is this operator's cached ExternCContext with no Rust borrow of
+		// it live during the call, and key's ptr/len describe a slice of `timer`, which outlives the call.
 		let result_code = self.invoke_under_panic_guard("on_timer", || unsafe {
 			(self.vtable.on_timer)(
 				self.instance,

@@ -5,8 +5,8 @@ use std::{mem, ops::Bound, ptr, slice::from_raw_parts};
 
 use reifydb_abi::{
 	constants::{
-		EXTERN_C_END_OF_ITERATION, EXTERN_C_ERROR_ALLOC, EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_NULL_PTR, EXTERN_C_NOT_FOUND, EXTERN_C_OK,
-		GROUP_ABSENT,
+		EXTERN_C_END_OF_ITERATION, EXTERN_C_ERROR_ALLOC, EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_NULL_PTR,
+		EXTERN_C_NOT_FOUND, EXTERN_C_OK, GROUP_ABSENT,
 	},
 	context::{context::ExternCContext, iterators::ExternCStateIterator},
 	data::{

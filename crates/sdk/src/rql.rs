@@ -16,9 +16,10 @@ pub(crate) fn raw_query(ctx: &ExternCOperatorContext, query: &str, params: Param
 
 	let mut output = ExternCBuffer::empty();
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid for the
-	// whole guest call; query and params_bytes outlive the callback. Discharges ExternCBuffer::as_slice: the host
-	// leaves output either empty or pointing at a live host allocation of output.len bytes that nothing here frees.
+	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// for the whole guest call; query and params_bytes outlive the callback. Discharges ExternCBuffer::as_slice:
+	// the host leaves output either empty or pointing at a live host allocation of output.len bytes that nothing
+	// here frees.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.rql.rql)(
 			ctx.ctx,

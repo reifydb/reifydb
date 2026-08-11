@@ -394,7 +394,7 @@ fn category_label(c: ProfilerCategory) -> &'static str {
 		ProfilerCategory::Transport => "Transport",
 		ProfilerCategory::Task => "Task",
 		ProfilerCategory::Policy => "Policy",
-		ProfilerCategory::Ffi => "Ffi",
+		ProfilerCategory::ExternC => "ExternC",
 		ProfilerCategory::Cache => "Cache",
 		ProfilerCategory::RowShape => "RowShape",
 		ProfilerCategory::Api => "Api",

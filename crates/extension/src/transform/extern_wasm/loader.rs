@@ -33,8 +33,9 @@ pub fn load_transforms_from_dir(dir: &Path) -> Result<Transforms> {
 			.map_err(|e| SdkError::Other(format!("Failed to read WASM file {}: {}", path.display(), e)))?;
 
 		let name_for_closure = name.clone();
-		builder = builder
-			.register(&name, move || ExternWasmTransform::new(name_for_closure.clone(), wasm_bytes.clone()));
+		builder = builder.register(&name, move || {
+			ExternWasmTransform::new(name_for_closure.clone(), wasm_bytes.clone())
+		});
 	}
 
 	Ok(builder.configure())

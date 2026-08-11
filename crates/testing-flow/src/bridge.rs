@@ -33,25 +33,25 @@ use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
 	config::Config,
 	operator::{
-		FFIOperatorAdapter, OperatorLogic, OperatorMetadata,
+		ExternCOperatorAdapter, OperatorLogic, OperatorMetadata,
 		context::{OperatorContext, StateApi, StoreApi},
 	},
 };
 use reifydb_sub_flow::operator::{
-	context::native::NativeOperatorContext,
-	native::{FlowNativeBridge, NativeBridgedOperator, NativeOperatorAdapter},
+	bridge::{BridgeOperator, BridgeOperatorAdapter, FlowBridge},
+	context::bridge::BridgeOperatorContext,
 };
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::FFIOperatorHarness};
+use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarness};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	Result,
 	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 
-pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> {
+pub struct BridgeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> {
 	engine: TestEngine,
-	operator: NativeBridgedOperator,
+	operator: BridgeOperator,
 	operator_id: OperatorId,
 	version: u64,
 	pending: Pending,
@@ -61,9 +61,9 @@ pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> 
 	_phantom: PhantomData<C>,
 }
 
-impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
-	pub fn builder() -> NativeOperatorHarnessBuilder<C> {
-		NativeOperatorHarnessBuilder::new()
+impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
+	pub fn builder() -> BridgeOperatorHarnessBuilder<C> {
+		BridgeOperatorHarnessBuilder::new()
 	}
 
 	fn begin_txn(&mut self) -> DepFlowTransaction {
@@ -140,14 +140,14 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 	pub fn state_value<V: OperatorState>(&mut self, key: &GroupStateKey) -> Option<V> {
 		let operator = self.operator_id;
 		if let Some(txn) = self.current.as_mut() {
-			let mut bridge = FlowNativeBridge::new(txn, operator);
-			let mut ctx = NativeOperatorContext::new(&mut bridge, operator);
+			let mut bridge = FlowBridge::new(txn, operator);
+			let mut ctx = BridgeOperatorContext::new(&mut bridge, operator);
 			return ctx.state().get::<V>(key).expect("state get");
 		}
 		let mut txn = self.begin_txn();
 		let value = {
-			let mut bridge = FlowNativeBridge::new(&mut txn, operator);
-			let mut ctx = NativeOperatorContext::new(&mut bridge, operator);
+			let mut bridge = FlowBridge::new(&mut txn, operator);
+			let mut ctx = BridgeOperatorContext::new(&mut bridge, operator);
 			ctx.state().get::<V>(key).expect("state get")
 		};
 		self.end_txn(txn);
@@ -170,8 +170,8 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		let operator = self.operator_id;
 		let mut txn = self.begin_txn();
 		let rows = {
-			let mut bridge = FlowNativeBridge::new(&mut txn, operator);
-			let mut ctx = NativeOperatorContext::new(&mut bridge, operator);
+			let mut bridge = FlowBridge::new(&mut txn, operator);
+			let mut ctx = BridgeOperatorContext::new(&mut bridge, operator);
 			ctx.store().range(start, end).expect("store range")
 		};
 		self.end_txn(txn);
@@ -213,7 +213,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 	}
 }
 
-impl<C: OperatorLogic + OperatorMetadata + 'static> Index<usize> for NativeOperatorHarness<C> {
+impl<C: OperatorLogic + OperatorMetadata + 'static> Index<usize> for BridgeOperatorHarness<C> {
 	type Output = Change;
 
 	fn index(&self, index: usize) -> &Self::Output {
@@ -221,20 +221,20 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> Index<usize> for NativeOpera
 	}
 }
 
-pub struct NativeOperatorHarnessBuilder<C> {
+pub struct BridgeOperatorHarnessBuilder<C> {
 	config: HashMap<String, Value>,
 	operator_id: OperatorId,
 	version: CommitVersion,
 	_phantom: PhantomData<C>,
 }
 
-impl<C: OperatorLogic + OperatorMetadata + 'static> Default for NativeOperatorHarnessBuilder<C> {
+impl<C: OperatorLogic + OperatorMetadata + 'static> Default for BridgeOperatorHarnessBuilder<C> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder<C> {
+impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarnessBuilder<C> {
 	pub fn new() -> Self {
 		Self {
 			config: HashMap::new(),
@@ -268,21 +268,21 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 		self
 	}
 
-	pub fn build(self) -> Result<NativeOperatorHarness<C>> {
+	pub fn build(self) -> Result<BridgeOperatorHarness<C>> {
 		let engine = TestEngine::new();
 		let core = C::create(
 			self.operator_id,
 			&Config::new(<C as OperatorMetadata>::NAME, self.config.clone().into_iter().collect()),
 		)?;
 		let capabilities = <C as OperatorMetadata>::CAPABILITIES;
-		let adapter = NativeOperatorAdapter::new(core, self.operator_id, capabilities);
-		let operator = NativeBridgedOperator::new(Box::new(adapter), self.operator_id, capabilities);
+		let adapter = BridgeOperatorAdapter::new(core, self.operator_id, capabilities);
+		let operator = BridgeOperator::new(Box::new(adapter), self.operator_id, capabilities);
 
 		let substrate = FlowSubstrate {
 			operators: engine.inner().operator_state(),
 			..FlowSubstrate::default()
 		};
-		Ok(NativeOperatorHarness {
+		Ok(BridgeOperatorHarness {
 			engine,
 			operator,
 			operator_id: self.operator_id,
@@ -329,26 +329,26 @@ fn render_change(change: &Change) -> Vec<DiffRender> {
 		.collect()
 }
 
-fn run_ffi<C>(config: &[(&str, Value)], inputs: &[Change]) -> Vec<Change>
+fn run_extern_c<C>(config: &[(&str, Value)], inputs: &[Change]) -> Vec<Change>
 where
 	C: OperatorLogic + OperatorMetadata + 'static,
 {
-	let mut harness = FFIOperatorHarness::<FFIOperatorAdapter<C>>::builder()
+	let mut harness = ExternCOperatorHarness::<ExternCOperatorAdapter<C>>::builder()
 		.with_config(config.iter().cloned())
 		.build()
-		.expect("ffi harness build");
-	inputs.iter().map(|input| harness.apply(input.clone()).expect("ffi apply")).collect()
+		.expect("extern-C harness build");
+	inputs.iter().map(|input| harness.apply(input.clone()).expect("extern-C apply")).collect()
 }
 
-fn run_native<C>(config: &[(&str, Value)], inputs: &[Change]) -> Vec<Change>
+fn run_bridge<C>(config: &[(&str, Value)], inputs: &[Change]) -> Vec<Change>
 where
 	C: OperatorLogic + OperatorMetadata + 'static,
 {
-	let mut harness = NativeOperatorHarness::<C>::builder()
+	let mut harness = BridgeOperatorHarness::<C>::builder()
 		.with_config(config.iter().cloned())
 		.build()
-		.expect("native harness build");
-	inputs.iter().map(|input| harness.apply(input.clone()).expect("native apply")).collect()
+		.expect("bridge harness build");
+	inputs.iter().map(|input| harness.apply(input.clone()).expect("bridge apply")).collect()
 }
 
 pub fn assert_backend_parity<C>(config: Vec<(&str, Value)>, scenarios: &[(&str, Vec<Change>)])
@@ -356,22 +356,22 @@ where
 	C: OperatorLogic + OperatorMetadata + 'static,
 {
 	for (name, inputs) in scenarios {
-		let ffi = run_ffi::<C>(&config, inputs);
-		let native = run_native::<C>(&config, inputs);
+		let extern_c = run_extern_c::<C>(&config, inputs);
+		let bridge = run_bridge::<C>(&config, inputs);
 
 		assert_eq!(
-			ffi.len(),
-			native.len(),
-			"scenario '{name}': ffi emitted {} outputs, native emitted {}",
-			ffi.len(),
-			native.len()
+			extern_c.len(),
+			bridge.len(),
+			"scenario '{name}': extern-C emitted {} outputs, bridge emitted {}",
+			extern_c.len(),
+			bridge.len()
 		);
 
-		for (i, (f, n)) in ffi.iter().zip(native.iter()).enumerate() {
+		for (i, (f, n)) in extern_c.iter().zip(bridge.iter()).enumerate() {
 			assert_eq!(
 				render_change(f),
 				render_change(n),
-				"scenario '{name}' apply #{i}: ffi vs native emitted-output mismatch"
+				"scenario '{name}' apply #{i}: extern-C vs bridge emitted-output mismatch"
 			);
 		}
 	}

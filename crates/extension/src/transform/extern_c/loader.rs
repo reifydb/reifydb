@@ -59,7 +59,10 @@ impl TransformLoader {
 		unsafe {
 			let get_descriptor: Symbol<extern "C" fn() -> *const ExternCTransformDescriptor> =
 				library.get(b"extern_c_transform_get_descriptor\0").map_err(|e| {
-					SdkError::Other(format!("Failed to find extern_c_transform_get_descriptor: {}", e))
+					SdkError::Other(format!(
+						"Failed to find extern_c_transform_get_descriptor: {}",
+						e
+					))
 				})?;
 
 			let descriptor_ptr = get_descriptor();
@@ -124,9 +127,10 @@ impl TransformLoader {
 		let library = self.cache.get(path).unwrap();
 		// SAFETY: the ABI declares this symbol as ExternCTransformCreateFn and the cache keeps it loaded.
 		let create_fn: ExternCTransformCreateFn = unsafe {
-			let create_symbol: Symbol<ExternCTransformCreateFn> = library
-				.get(b"extern_c_transform_create\0")
-				.map_err(|e| SdkError::Other(format!("Failed to find extern_c_transform_create: {}", e)))?;
+			let create_symbol: Symbol<ExternCTransformCreateFn> =
+				library.get(b"extern_c_transform_create\0").map_err(|e| {
+					SdkError::Other(format!("Failed to find extern_c_transform_create: {}", e))
+				})?;
 
 			*create_symbol
 		};

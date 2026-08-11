@@ -182,7 +182,7 @@ fn span_name_for(category: ProfilerCategory) -> &'static str {
 		Transport => "transport",
 		Task => "task",
 		Policy => "policy",
-		Ffi => "ffi",
+		ExternC => "extern_c",
 		Cache => "cache",
 		RowShape => "row_shape",
 		Api => "api",

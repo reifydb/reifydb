@@ -10,11 +10,11 @@ use reifydb_sdk::{
 	config::Config,
 	error::Result,
 	operator::{
-		FFIOperator, OperatorMetadata,
+		ExternCOperator, OperatorMetadata,
 		builder::{ColumnsBuilder, CommittedColumn},
 		change::{BorrowedChange, BorrowedColumns},
 		column::operator::OperatorColumn,
-		context::ffi::FFIOperatorContext,
+		context::extern_c::ExternCOperatorContext,
 	},
 };
 use reifydb_testing_chaos::operator::{event::ChaosBatch, view::MaterializedView};
@@ -33,12 +33,12 @@ impl OperatorMetadata for PassthroughOperator {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl FFIOperator for PassthroughOperator {
+impl ExternCOperator for PassthroughOperator {
 	fn new(_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 		let mut builder = ctx.builder();
 		for diff in input.diffs() {
 			match diff.kind() {
@@ -66,12 +66,12 @@ impl OperatorMetadata for DoubleInsertOperator {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl FFIOperator for DoubleInsertOperator {
+impl ExternCOperator for DoubleInsertOperator {
 	fn new(_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 		let mut builder = ctx.builder();
 		for diff in input.diffs() {
 			match diff.kind() {
@@ -101,12 +101,12 @@ impl OperatorMetadata for SwallowsRemoveOperator {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl FFIOperator for SwallowsRemoveOperator {
+impl ExternCOperator for SwallowsRemoveOperator {
 	fn new(_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 		let mut builder = ctx.builder();
 		for diff in input.diffs() {
 			match diff.kind() {

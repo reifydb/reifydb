@@ -7,7 +7,7 @@ use std::{
 	ptr::null,
 };
 
-use reifydb_abi::context::context::ContextFFI;
+use reifydb_abi::context::context::ExternCContext;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -22,9 +22,9 @@ use reifydb_flow::window::{
 	span::{WindowCoord, WindowSpan},
 };
 use reifydb_sdk::operator::{
-	column::{row::Row, sink::native::NativeRowSink},
-	context::ffi::FFIOperatorContext,
-	view::{ColumnsView, RowView, native::NativeColumnsView},
+	column::{row::Row, sink::bridge::BridgeRowSink},
+	context::extern_c::ExternCOperatorContext,
+	view::{ColumnsView, RowView, bridge::BridgeColumnsView},
 	windowed::{
 		rolling::RollingOperator, rolling_top_k::RollingTopKOperator, tumbling::TumblingOperator,
 		tumbling_carry::TumblingCarryOperator,
@@ -39,16 +39,16 @@ use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::R
 use super::{context::ChaosContext, materialize::materialize_history};
 use crate::{callbacks::create_test_callbacks, context::TestContext};
 
-fn with_oracle_ctx<R>(f: impl FnOnce(&mut FFIOperatorContext) -> R) -> R {
+fn with_oracle_ctx<R>(f: impl FnOnce(&mut ExternCOperatorContext) -> R) -> R {
 	let test_ctx = TestContext::new(CommitVersion(1));
-	let mut ffi_context = ContextFFI {
+	let mut extern_c_context = ExternCContext {
 		txn_ptr: &test_ctx as *const TestContext as *mut c_void,
 		executor_ptr: null(),
 		operator_id: 1,
 		written_at_nanos: 0,
 		callbacks: create_test_callbacks(),
 	};
-	let mut op_ctx = FFIOperatorContext::new(&mut ffi_context as *mut ContextFFI);
+	let mut op_ctx = ExternCOperatorContext::new(&mut extern_c_context as *mut ExternCContext);
 	f(&mut op_ctx)
 }
 
@@ -148,7 +148,7 @@ where
 	A: TumblingOperator,
 {
 	let columns = Columns::from_row(row);
-	let view = NativeColumnsView::new(&columns);
+	let view = BridgeColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = row_view.row_time()?;
 	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
@@ -160,7 +160,7 @@ fn materialize_outputs<O: Row>(
 	now: DateTime,
 	output_key_columns: &[String],
 ) -> MaterializedView {
-	let mut sink = NativeRowSink::new(<O as Row>::COLUMNS).expect("output sink");
+	let mut sink = BridgeRowSink::new(<O as Row>::COLUMNS).expect("output sink");
 	let mut row_numbers: Vec<RowNumber> = Vec::new();
 	let mut count = 0u64;
 	for output in outputs {
@@ -335,7 +335,7 @@ where
 	A: RollingOperator,
 {
 	let columns = Columns::from_row(row);
-	let view = NativeColumnsView::new(&columns);
+	let view = BridgeColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = row_view.row_time()?;
 	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
@@ -645,7 +645,7 @@ where
 	A: RollingTopKOperator,
 {
 	let columns = Columns::from_row(row);
-	let view = NativeColumnsView::new(&columns);
+	let view = BridgeColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = row_view.row_time()?;
 	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
@@ -661,7 +661,7 @@ where
 	A: TumblingCarryOperator,
 {
 	let columns = Columns::from_row(row);
-	let view = NativeColumnsView::new(&columns);
+	let view = BridgeColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = row_view.row_time()?;
 	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;

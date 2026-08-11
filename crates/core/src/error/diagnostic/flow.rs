@@ -322,11 +322,11 @@ pub fn flow_unknown_operator(operator: &str) -> Diagnostic {
 	)
 }
 
-pub fn flow_ffi_unsupported_on_wasm() -> Diagnostic {
+pub fn flow_extern_unsupported_on_wasm() -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_027",
-		"FFI operators are not supported on the wasm target".to_string(),
-		"Native/FFI operators cannot be loaded in a wasm runtime. Use only built-in operators.",
+		"extern operators are not supported on the wasm target".to_string(),
+		"Extern operators cannot be loaded in a wasm runtime. Use only built-in operators.",
 	)
 }
 
@@ -351,45 +351,45 @@ pub fn flow_unknown_diff_origin(operator: &str, origin: Option<String>) -> Diagn
 	)
 }
 
-pub fn native_abi_tag_mismatch(plugin: u32, host: u32) -> Diagnostic {
+pub fn extern_abi_tag_mismatch(plugin: u32, host: u32) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_031",
-		format!("native operator ABI tag mismatch: plugin reports {:#06x}, host expects {:#06x}", plugin, host),
-		"The native operator library was built against a different ABI than this host. Rebuild the native \
+		format!("extern operator ABI tag mismatch: plugin reports {:#06x}, host expects {:#06x}", plugin, host),
+		"The extern operator library was built against a different ABI than this host. Rebuild the extern \
 		 operators against the current version.",
 	)
 }
 
-pub fn native_library_not_loaded(path: &str) -> Diagnostic {
+pub fn extern_library_not_loaded(path: &str) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_032",
-		format!("native operator library not loaded: {}", path),
-		"The native operator shared library could not be loaded. Check that the .so exists and is readable.",
+		format!("extern operator library not loaded: {}", path),
+		"The extern operator shared library could not be loaded. Check that the .so exists and is readable.",
 	)
 }
 
-pub fn native_symbol_not_found(symbol: &str, cause: String) -> Diagnostic {
+pub fn extern_symbol_not_found(symbol: &str, cause: String) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_033",
-		format!("native operator symbol '{}' not found: {}", symbol, cause),
-		"The native operator library is missing an expected symbol. It may be built against a different ABI \
+		format!("extern operator symbol '{}' not found: {}", symbol, cause),
+		"The extern operator library is missing an expected symbol. It may be built against a different ABI \
 		 or be the wrong library.",
 	)
 }
 
-pub fn native_operator_not_found(operator: &str) -> Diagnostic {
+pub fn extern_operator_not_found(operator: &str) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_034",
-		format!("native operator '{}' not found", operator),
-		"No loaded native library provides this operator. Check the operators directory and the operator name.",
+		format!("extern operator '{}' not found", operator),
+		"No loaded extern library provides this operator. Check the operators directory and the operator name.",
 	)
 }
 
-pub fn native_create_failed(cause: String) -> Diagnostic {
+pub fn extern_create_failed(cause: String) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_035",
-		format!("failed to create native/FFI operator: {}", cause),
-		"The native operator's create function returned an error. See the underlying cause.",
+		format!("failed to create extern operator: {}", cause),
+		"The extern operator's create function returned an error. See the underlying cause.",
 	)
 }
 

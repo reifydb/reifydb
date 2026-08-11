@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Backend-agnostic support shared by the ffi/ and native/ operator-test twins. No assertions live
-// here - each twin holds the expectations and differs only by its `Harness` backend type.
-
 #![allow(dead_code)]
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};

@@ -11,7 +11,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
 		id::{NamespaceId, ProcedureId},
-		procedure::{Procedure, ProcedureParam, WasmModuleId},
+		procedure::{ExternWasmModuleId, Procedure, ProcedureParam},
 	},
 };
 use reifydb_runtime::context::clock::Clock;
@@ -28,29 +28,29 @@ static EPHEMERAL_ID: AtomicU64 = AtomicU64::new(ProcedureId::SYSTEM_RESERVED_STA
 
 #[derive(Debug, Clone)]
 pub enum EphemeralProcedureDescriptor {
-	Native {
+	InProcess {
 		namespace: NamespaceId,
 		name: String,
 		params: Vec<ProcedureParam>,
 		return_type: Option<TypeConstraint>,
-		native_name: String,
+		handler_name: String,
 	},
-	FFI {
+	ExternC {
 		namespace: NamespaceId,
 		name: String,
 		params: Vec<ProcedureParam>,
 		return_type: Option<TypeConstraint>,
-		native_name: String,
+		handler_name: String,
 		library_path: PathBuf,
 		entry_symbol: String,
 	},
-	Wasm {
+	ExternWasm {
 		namespace: NamespaceId,
 		name: String,
 		params: Vec<ProcedureParam>,
 		return_type: Option<TypeConstraint>,
-		native_name: String,
-		module_id: WasmModuleId,
+		handler_name: String,
+		module_id: ExternWasmModuleId,
 	},
 }
 
@@ -76,52 +76,52 @@ pub fn load_ephemeral_procedures(
 	for desc in descriptors {
 		let id = ProcedureId::ephemeral(EPHEMERAL_ID.fetch_add(1, Ordering::SeqCst));
 		let proc = match desc {
-			EphemeralProcedureDescriptor::Native {
+			EphemeralProcedureDescriptor::InProcess {
 				namespace,
 				name,
 				params,
 				return_type,
-				native_name,
-			} => Procedure::Native {
+				handler_name,
+			} => Procedure::InProcess {
 				id,
 				namespace,
 				name,
 				params,
 				return_type,
-				native_name,
+				handler_name,
 			},
-			EphemeralProcedureDescriptor::FFI {
+			EphemeralProcedureDescriptor::ExternC {
 				namespace,
 				name,
 				params,
 				return_type,
-				native_name,
+				handler_name,
 				library_path,
 				entry_symbol,
-			} => Procedure::FFI {
+			} => Procedure::ExternC {
 				id,
 				namespace,
 				name,
 				params,
 				return_type,
-				native_name,
+				handler_name,
 				library_path,
 				entry_symbol,
 			},
-			EphemeralProcedureDescriptor::Wasm {
+			EphemeralProcedureDescriptor::ExternWasm {
 				namespace,
 				name,
 				params,
 				return_type,
-				native_name,
+				handler_name,
 				module_id,
-			} => Procedure::Wasm {
+			} => Procedure::ExternWasm {
 				id,
 				namespace,
 				name,
 				params,
 				return_type,
-				native_name,
+				handler_name,
 				module_id,
 			},
 		};
@@ -175,7 +175,7 @@ pub fn bootstrap_system_procedures(
 	)?;
 
 	let descriptors = vec![
-		EphemeralProcedureDescriptor::Native {
+		EphemeralProcedureDescriptor::InProcess {
 			namespace: ensure_namespace(
 				&catalog_api,
 				&mut admin,
@@ -196,9 +196,9 @@ pub fn bootstrap_system_procedures(
 				},
 			],
 			return_type: None,
-			native_name: "system::config::set".to_string(),
+			handler_name: "system::config::set".to_string(),
 		},
-		EphemeralProcedureDescriptor::Native {
+		EphemeralProcedureDescriptor::InProcess {
 			namespace: ensure_namespace(
 				&catalog_api,
 				&mut admin,
@@ -219,37 +219,37 @@ pub fn bootstrap_system_procedures(
 				},
 			],
 			return_type: None,
-			native_name: "system::source::complete_through".to_string(),
+			handler_name: "system::source::complete_through".to_string(),
 		},
-		EphemeralProcedureDescriptor::Native {
+		EphemeralProcedureDescriptor::InProcess {
 			namespace: rql_namespace,
 			name: "tokenize".to_string(),
 			params: vec![rql_query_param()],
 			return_type: None,
-			native_name: "rql::tokenize".to_string(),
+			handler_name: "rql::tokenize".to_string(),
 		},
-		EphemeralProcedureDescriptor::Native {
+		EphemeralProcedureDescriptor::InProcess {
 			namespace: rql_namespace,
 			name: "ast".to_string(),
 			params: vec![rql_query_param()],
 			return_type: None,
-			native_name: "rql::ast".to_string(),
+			handler_name: "rql::ast".to_string(),
 		},
-		EphemeralProcedureDescriptor::Native {
+		EphemeralProcedureDescriptor::InProcess {
 			namespace: rql_namespace,
 			name: "logical".to_string(),
 			params: vec![rql_query_param()],
 			return_type: None,
-			native_name: "rql::logical".to_string(),
+			handler_name: "rql::logical".to_string(),
 		},
-		EphemeralProcedureDescriptor::Native {
+		EphemeralProcedureDescriptor::InProcess {
 			namespace: rql_namespace,
 			name: "explain".to_string(),
 			params: vec![rql_query_param()],
 			return_type: None,
-			native_name: "rql::explain".to_string(),
+			handler_name: "rql::explain".to_string(),
 		},
-		EphemeralProcedureDescriptor::Native {
+		EphemeralProcedureDescriptor::InProcess {
 			namespace: graphql_namespace,
 			name: "explain".to_string(),
 			params: vec![ProcedureParam {
@@ -257,7 +257,7 @@ pub fn bootstrap_system_procedures(
 				param_type: TypeConstraint::unconstrained(ValueType::Utf8),
 			}],
 			return_type: None,
-			native_name: "graphql::explain".to_string(),
+			handler_name: "graphql::explain".to_string(),
 		},
 	];
 

@@ -8,7 +8,11 @@ use crate::{context::context::ExternCContext, data::state::ExternCStateUsage, fl
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ExternCOperatorVTable {
-	pub apply: unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ExternCContext, input: *const ExternCChange) -> i32,
+	pub apply: unsafe extern "C" fn(
+		instance: *mut c_void,
+		ctx: *mut ExternCContext,
+		input: *const ExternCChange,
+	) -> i32,
 
 	pub on_timer: unsafe extern "C" fn(
 		instance: *mut c_void,
@@ -21,8 +25,11 @@ pub struct ExternCOperatorVTable {
 
 	pub destroy: unsafe extern "C" fn(instance: *mut c_void),
 
-	pub flush_state:
-		unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ExternCContext, usage: *mut ExternCStateUsage) -> i32,
+	pub flush_state: unsafe extern "C" fn(
+		instance: *mut c_void,
+		ctx: *mut ExternCContext,
+		usage: *mut ExternCStateUsage,
+	) -> i32,
 
 	pub sample: unsafe extern "C" fn(instance: *mut c_void, out: *mut ExternCStateUsage) -> i32,
 

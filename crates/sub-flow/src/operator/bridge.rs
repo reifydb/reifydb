@@ -53,7 +53,9 @@ fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -
 		Ok(Err(e)) => {
 			error!(
 				operator_id = operator.0,
-				stage, "bridged operator returned an error; operators must not fail - aborting: {:?}", e
+				stage,
+				"bridged operator returned an error; operators must not fail - aborting: {:?}",
+				e
 			);
 			abort();
 		}

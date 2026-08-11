@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 //! reifydb-abi stays dependency-free, so its ColumnTypeCode duplicates the ValueKind discriminants
-//! rather than importing them. These pin the two tables together: if they diverge, every FFI plugin
+//! rather than importing them. These pin the two tables together: if they diverge, every extern-C plugin
 //! silently decodes garbage, so the fix is to renumber ColumnTypeCode, never to relax the test.
 
 use reifydb_abi::data::column::ColumnTypeCode;

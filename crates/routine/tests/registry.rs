@@ -4,14 +4,15 @@
 use std::sync::Arc;
 
 use reifydb_routine::{
-	function::default_native_functions,
-	monoid::{default_native_monoids, math::sum::Sum},
-	procedure::{clock::set::ClockSetProcedure, default_native_procedures},
+	function::default_in_process_functions,
+	monoid::{default_in_process_monoids, math::sum::Sum},
+	procedure::{clock::set::ClockSetProcedure, default_in_process_procedures},
 };
 use reifydb_routine_abi::{Procedure, monoid::Monoid, registry::Routines};
 
 fn registry() -> Routines {
-	default_native_monoids(default_native_procedures(default_native_functions(Routines::builder()))).configure()
+	default_in_process_monoids(default_in_process_procedures(default_in_process_functions(Routines::builder())))
+		.configure()
 }
 
 #[test]
@@ -73,7 +74,7 @@ fn alias_returns_same_arc_as_canonical() {
 #[test]
 fn raw_registration_shadows_builtin() {
 	let user_proc: Arc<dyn Procedure> = Arc::new(ClockSetProcedure::new());
-	let r = default_native_procedures(Routines::builder()).register_procedure(user_proc.clone()).configure();
+	let r = default_in_process_procedures(Routines::builder()).register_procedure(user_proc.clone()).configure();
 	let resolved = r.get_procedure("clock::set").unwrap();
 	assert!(Arc::ptr_eq(&resolved, &user_proc));
 }
@@ -81,7 +82,7 @@ fn raw_registration_shadows_builtin() {
 #[test]
 fn monoid_registration_shadows_builtin() {
 	let user_monoid: Arc<dyn Monoid> = Arc::new(Sum::new());
-	let r = default_native_monoids(Routines::builder()).register_monoid(user_monoid.clone()).configure();
+	let r = default_in_process_monoids(Routines::builder()).register_monoid(user_monoid.clone()).configure();
 	let resolved = r.get_monoid("math::sum").unwrap();
 	assert!(Arc::ptr_eq(&resolved, &user_monoid));
 }

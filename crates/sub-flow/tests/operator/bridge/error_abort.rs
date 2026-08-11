@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// An `Err` from a native operator's apply must abort the process rather than propagate as a Result.
-// Forked because abort kills the process; the FFI counterpart aborts in the `ffi_apply` export.
-
 use std::{env, process::Command};
 
 use reifydb_test_harness::operator::change::trigger;
@@ -11,15 +8,17 @@ use reifydb_test_harness::operator::change::trigger;
 use super::Harness;
 use crate::common::ErroringOperator;
 
-const CHILD_ENV: &str = "REIFYDB_OPERATOR_ERROR_ABORT_NATIVE_CHILD";
-const CHILD_TEST: &str = "native::error_abort::apply_error_aborts";
+const CHILD_ENV: &str = "REIFYDB_OPERATOR_ERROR_ABORT_BRIDGE_CHILD";
+const CHILD_TEST: &str = "bridge::error_abort::apply_error_aborts";
 
 #[test]
 fn apply_error_aborts() {
+	// An `Err` from a bridged operator's apply must abort, never propagate as a Result; forked because abort kills
+	// the process.
 	if env::var(CHILD_ENV).is_ok() {
 		let mut harness = Harness::<ErroringOperator>::builder().build().expect("harness build");
 		let _ = harness.apply(trigger());
-		eprintln!("native apply returned instead of aborting");
+		eprintln!("bridge apply returned instead of aborting");
 		return;
 	}
 

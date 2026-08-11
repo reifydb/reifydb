@@ -9,9 +9,15 @@ use crate::{
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct StoreCallbacks {
-	pub get: extern "C" fn(ctx: *mut ExternCContext, key: *const u8, key_len: usize, output: *mut ExternCBuffer) -> i32,
+	pub get: extern "C" fn(
+		ctx: *mut ExternCContext,
+		key: *const u8,
+		key_len: usize,
+		output: *mut ExternCBuffer,
+	) -> i32,
 
-	pub contains_key: extern "C" fn(ctx: *mut ExternCContext, key: *const u8, key_len: usize, result: *mut u8) -> i32,
+	pub contains_key:
+		extern "C" fn(ctx: *mut ExternCContext, key: *const u8, key_len: usize, result: *mut u8) -> i32,
 
 	pub prefix: extern "C" fn(
 		ctx: *mut ExternCContext,

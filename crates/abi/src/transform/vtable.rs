@@ -8,8 +8,11 @@ use crate::{context::context::ExternCContext, data::column::ExternCColumns};
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ExternCTransformVTable {
-	pub transform:
-		unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ExternCContext, input: *const ExternCColumns) -> i32,
+	pub transform: unsafe extern "C" fn(
+		instance: *mut c_void,
+		ctx: *mut ExternCContext,
+		input: *const ExternCColumns,
+	) -> i32,
 
 	pub destroy: unsafe extern "C" fn(instance: *mut c_void),
 }

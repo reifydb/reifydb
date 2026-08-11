@@ -10,16 +10,16 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
-use crate::system::ids::{columns::procedures::wasm::*, vtable::PROCEDURES_WASM};
+use crate::system::ids::{columns::procedures::in_process::*, vtable::PROCEDURES_IN_PROCESS};
 
-pub fn procedures_wasm() -> Arc<VTable> {
+pub fn procedures_in_process() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
-			id: PROCEDURES_WASM,
+			id: PROCEDURES_IN_PROCESS,
 			namespace: NamespaceId::SYSTEM_PROCEDURES,
-			name: "wasm".to_string(),
+			name: "in_process".to_string(),
 			columns: vec![
 				Column {
 					id: ID,
@@ -49,20 +49,11 @@ pub fn procedures_wasm() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: NATIVE_NAME,
-					name: "native_name".to_string(),
+					id: HANDLER_NAME,
+					name: "handler_name".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(3),
-					auto_increment: false,
-					dictionary_id: None,
-				},
-				Column {
-					id: MODULE_ID,
-					name: "module_id".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
-					properties: vec![],
-					index: ColumnIndex(4),
 					auto_increment: false,
 					dictionary_id: None,
 				},

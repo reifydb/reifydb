@@ -89,8 +89,8 @@ use policy_operations::policy_operations;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
 use procedures::{
-	ffi::procedures_ffi, native::procedures_native, rql::procedures_rql, test::procedures_test,
-	wasm::procedures_wasm,
+	extern_c::procedures_extern_c, extern_wasm::procedures_extern_wasm, in_process::procedures_in_process,
+	rql::procedures_rql, test::procedures_test,
 };
 use relationships::relationships;
 use roles::roles;
@@ -307,41 +307,41 @@ pub mod ids {
 				pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, RETURN_TYPE, BODY];
 			}
 
-			pub mod native {
+			pub mod in_process {
 				use reifydb_core::interface::catalog::id::ColumnId;
 
 				pub const ID: ColumnId = ColumnId(1);
 				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 				pub const NAME: ColumnId = ColumnId(3);
-				pub const NATIVE_NAME: ColumnId = ColumnId(4);
+				pub const HANDLER_NAME: ColumnId = ColumnId(4);
 
-				pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, NATIVE_NAME];
+				pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, HANDLER_NAME];
 			}
 
-			pub mod ffi {
+			pub mod extern_c {
 				use reifydb_core::interface::catalog::id::ColumnId;
 
 				pub const ID: ColumnId = ColumnId(1);
 				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 				pub const NAME: ColumnId = ColumnId(3);
-				pub const NATIVE_NAME: ColumnId = ColumnId(4);
+				pub const HANDLER_NAME: ColumnId = ColumnId(4);
 				pub const LIBRARY_PATH: ColumnId = ColumnId(5);
 				pub const ENTRY_SYMBOL: ColumnId = ColumnId(6);
 
 				pub const ALL: [ColumnId; 6] =
-					[ID, NAMESPACE_ID, NAME, NATIVE_NAME, LIBRARY_PATH, ENTRY_SYMBOL];
+					[ID, NAMESPACE_ID, NAME, HANDLER_NAME, LIBRARY_PATH, ENTRY_SYMBOL];
 			}
 
-			pub mod wasm {
+			pub mod extern_wasm {
 				use reifydb_core::interface::catalog::id::ColumnId;
 
 				pub const ID: ColumnId = ColumnId(1);
 				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 				pub const NAME: ColumnId = ColumnId(3);
-				pub const NATIVE_NAME: ColumnId = ColumnId(4);
+				pub const HANDLER_NAME: ColumnId = ColumnId(4);
 				pub const MODULE_ID: ColumnId = ColumnId(5);
 
-				pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, NATIVE_NAME, MODULE_ID];
+				pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, HANDLER_NAME, MODULE_ID];
 			}
 		}
 
@@ -907,9 +907,9 @@ pub mod ids {
 
 		pub const PROCEDURES_RQL: VTableId = VTableId(51);
 		pub const PROCEDURES_TEST: VTableId = VTableId(52);
-		pub const PROCEDURES_NATIVE: VTableId = VTableId(53);
-		pub const PROCEDURES_FFI: VTableId = VTableId(54);
-		pub const PROCEDURES_WASM: VTableId = VTableId(55);
+		pub const PROCEDURES_IN_PROCESS: VTableId = VTableId(53);
+		pub const PROCEDURES_EXTERN_C: VTableId = VTableId(54);
+		pub const PROCEDURES_EXTERN_WASM: VTableId = VTableId(55);
 
 		pub const BINDINGS_HTTP: VTableId = VTableId(56);
 		pub const BINDINGS_GRPC: VTableId = VTableId(57);
@@ -968,9 +968,9 @@ pub mod ids {
 			EVENTS,
 			PROCEDURES_RQL,
 			PROCEDURES_TEST,
-			PROCEDURES_NATIVE,
-			PROCEDURES_FFI,
-			PROCEDURES_WASM,
+			PROCEDURES_IN_PROCESS,
+			PROCEDURES_EXTERN_C,
+			PROCEDURES_EXTERN_WASM,
 			BINDINGS_HTTP,
 			BINDINGS_GRPC,
 			BINDINGS_WS,
@@ -1170,16 +1170,16 @@ impl SystemCatalog {
 		procedures_test()
 	}
 
-	pub fn get_system_procedures_native_table() -> Arc<VTable> {
-		procedures_native()
+	pub fn get_system_procedures_in_process_table() -> Arc<VTable> {
+		procedures_in_process()
 	}
 
-	pub fn get_system_procedures_ffi_table() -> Arc<VTable> {
-		procedures_ffi()
+	pub fn get_system_procedures_extern_c_table() -> Arc<VTable> {
+		procedures_extern_c()
 	}
 
-	pub fn get_system_procedures_wasm_table() -> Arc<VTable> {
-		procedures_wasm()
+	pub fn get_system_procedures_extern_wasm_table() -> Arc<VTable> {
+		procedures_extern_wasm()
 	}
 
 	pub fn get_system_bindings_http_table() -> Arc<VTable> {

@@ -52,7 +52,10 @@ pub fn type_constraint_to_extern_c(tc: &TypeConstraint) -> Result<ExternCTypeCon
 pub fn type_constraint_from_extern_c(extern_c: &ExternCTypeConstraint) -> Result<TypeConstraint, DecodeError> {
 	let ty = TypeTag::from_byte(extern_c.base_type)?.to_type()?;
 	Ok(match extern_c.constraint_type {
-		1 => TypeConstraint::with_constraint(ty, Constraint::MaxBytes(MaxBytes::new(extern_c.constraint_param1))),
+		1 => TypeConstraint::with_constraint(
+			ty,
+			Constraint::MaxBytes(MaxBytes::new(extern_c.constraint_param1)),
+		),
 		2 => TypeConstraint::with_constraint(
 			ty,
 			Constraint::PrecisionScale(

@@ -242,7 +242,7 @@ pub enum CatalogError {
 	},
 
 	#[error(
-		"cannot drop {kind} procedure `{name}`: native/FFI/WASM procedures are managed by the runtime registry, not DDL"
+		"cannot drop {kind} procedure `{name}`: in-process/extern-C/extern-wasm procedures are managed by the runtime registry, not DDL"
 	)]
 	CannotDropEphemeralProcedure {
 		kind: String,
@@ -250,7 +250,9 @@ pub enum CatalogError {
 		fragment: Fragment,
 	},
 
-	#[error("cannot register {kind} procedure as ephemeral: only Native/FFI/WASM variants are accepted")]
+	#[error(
+		"cannot register {kind} procedure as ephemeral: only InProcess/ExternC/ExternWasm variants are accepted"
+	)]
 	CannotRegisterPersistentAsEphemeral {
 		kind: String,
 	},
@@ -1298,13 +1300,13 @@ impl IntoDiagnostic for CatalogError {
 				code: "CA_084".to_string(),
 				rql: None,
 				message: format!(
-					"cannot drop {} procedure `{}`: native/FFI/WASM procedures are managed by the runtime registry, not DDL",
+					"cannot drop {} procedure `{}`: in-process/extern-C/extern-wasm procedures are managed by the runtime registry, not DDL",
 					kind, name
 				),
 				fragment,
 				label: Some("cannot drop system-managed procedure".to_string()),
 				help: Some(
-					"native, FFI, and WASM procedures are repopulated on every boot from the runtime registry - remove them from the binary or plugin directory instead"
+					"in-process, extern-C, and extern-wasm procedures are repopulated on every boot from the runtime registry - remove them from the binary or plugin directory instead"
 						.to_string(),
 				),
 				column: None,
@@ -1319,7 +1321,7 @@ impl IntoDiagnostic for CatalogError {
 				code: "CA_085".to_string(),
 				rql: None,
 				message: format!(
-					"cannot register {} procedure as ephemeral: only Native/FFI/WASM variants are accepted",
+					"cannot register {} procedure as ephemeral: only InProcess/ExternC/ExternWasm variants are accepted",
 					kind
 				),
 				fragment: Fragment::None,

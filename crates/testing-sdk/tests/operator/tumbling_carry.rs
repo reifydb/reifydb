@@ -5,7 +5,7 @@
 //! window's carried close, so the carry must rotate exactly once per boundary crossing and
 //! survive Updates and Removes inside the current window.
 
-use reifydb_sdk::operator::{FFIOperatorAdapter, windowed::tumbling_carry::TumblingCarryDriver};
+use reifydb_sdk::operator::{ExternCOperatorAdapter, windowed::tumbling_carry::TumblingCarryDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
@@ -35,7 +35,7 @@ fn run(none_values: bool, scenario: Scenario, seed: u64, retention: Option<u64>)
 	if let Some(l) = retention {
 		config.push(("__retention", Value::Uint8(l)));
 	}
-	ChaosHarness::<FFIOperatorAdapter<TumblingCarryDriver<TwapCarry>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<TumblingCarryDriver<TwapCarry>>>::builder()
 		.with_input_shape(common::carry_shape())
 		.with_output_shape(common::carry_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

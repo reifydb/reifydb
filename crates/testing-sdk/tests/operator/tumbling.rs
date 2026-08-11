@@ -5,7 +5,7 @@
 //! the real operator and through `tumbling_accumulator_oracle`, and the materialized tables
 //! must agree. Covers an invertible sum, a removal-safe multiset min, and sealing OHLCV.
 
-use reifydb_sdk::operator::{FFIOperatorAdapter, windowed::tumbling::TumblingDriver};
+use reifydb_sdk::operator::{ExternCOperatorAdapter, windowed::tumbling::TumblingDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
@@ -30,7 +30,7 @@ fn size_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<FFIOperatorAdapter<TumblingDriver<VolumeTumbling>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<TumblingDriver<VolumeTumbling>>>::builder()
 		.with_input_shape(common::tumbling_shape())
 		.with_output_shape(common::volume_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -50,7 +50,7 @@ fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome 
 }
 
 fn run_min(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<FFIOperatorAdapter<TumblingDriver<MinTumbling>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<TumblingDriver<MinTumbling>>>::builder()
 		.with_input_shape(common::tumbling_shape())
 		.with_output_shape(common::min_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -76,7 +76,7 @@ fn run_ohlcv(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 	} else {
 		samplers::f64_range(10.0..500.0)
 	};
-	ChaosHarness::<FFIOperatorAdapter<TumblingDriver<OhlcvSealingTumbling>>>::builder()
+	ChaosHarness::<ExternCOperatorAdapter<TumblingDriver<OhlcvSealingTumbling>>>::builder()
 		.with_input_shape(common::ohlcv_shape())
 		.with_output_shape(common::ohlcv_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

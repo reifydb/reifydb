@@ -5,9 +5,7 @@ use std::{mem, mem::size_of, ptr, slice, str};
 
 use reifydb_abi::data::{
 	column::ColumnTypeCode,
-	extern_wasm::{
-		EXTERN_WASM_COLUMNS_HEADER_SIZE, EXTERN_WASM_COLUMN_SIZE, ExternWasmColumn, ExternWasmColumns,
-	},
+	extern_wasm::{EXTERN_WASM_COLUMN_SIZE, EXTERN_WASM_COLUMNS_HEADER_SIZE, ExternWasmColumn, ExternWasmColumns},
 };
 use reifydb_codec::extern_c::cells::{
 	decode_any_cell, decode_decimal_cell, decode_duration_cell, decode_int_cell, decode_uint_cell, encode_any_cell,

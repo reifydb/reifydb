@@ -7,14 +7,14 @@ use reifydb_sdk::{
 	config::Config,
 	error::Result,
 	operator::{
-		FFIOperator, OperatorMetadata,
+		ExternCOperator, OperatorMetadata,
 		change::BorrowedChange,
 		column::{batch::InsertBatch, operator::OperatorColumn},
-		context::ffi::FFIOperatorContext,
+		context::extern_c::ExternCOperatorContext,
 	},
 	row,
 };
-use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder};
+use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
 use reifydb_value::value::{
 	date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
 };
@@ -36,11 +36,11 @@ impl OperatorMetadata for OpU8 {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpU8 {
+impl ExternCOperator for OpU8 {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<U8Row, _>::new(ctx, 3)?;
 		for (i, &v) in [0u8, 1, u8::MAX].iter().enumerate() {
 			batch.push(
@@ -56,7 +56,7 @@ impl FFIOperator for OpU8 {
 
 #[test]
 fn scalar_u8_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpU8>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpU8>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -82,11 +82,11 @@ impl OperatorMetadata for OpU16 {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpU16 {
+impl ExternCOperator for OpU16 {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<U16Row, _>::new(ctx, 3)?;
 		for (i, &v) in [0u16, 1, u16::MAX].iter().enumerate() {
 			batch.push(
@@ -102,7 +102,7 @@ impl FFIOperator for OpU16 {
 
 #[test]
 fn scalar_u16_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpU16>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpU16>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -128,11 +128,11 @@ impl OperatorMetadata for OpU32 {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpU32 {
+impl ExternCOperator for OpU32 {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<U32Row, _>::new(ctx, 3)?;
 		for (i, &v) in [0u32, 1, u32::MAX].iter().enumerate() {
 			batch.push(
@@ -148,7 +148,7 @@ impl FFIOperator for OpU32 {
 
 #[test]
 fn scalar_u32_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpU32>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpU32>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -174,11 +174,11 @@ impl OperatorMetadata for OpU64 {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpU64 {
+impl ExternCOperator for OpU64 {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<U64Row, _>::new(ctx, 3)?;
 		for (i, &v) in [0u64, 1, u64::MAX].iter().enumerate() {
 			batch.push(
@@ -194,7 +194,7 @@ impl FFIOperator for OpU64 {
 
 #[test]
 fn scalar_u64_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpU64>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpU64>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -220,11 +220,11 @@ impl OperatorMetadata for OpI8 {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpI8 {
+impl ExternCOperator for OpI8 {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<I8Row, _>::new(ctx, 3)?;
 		for (i, &v) in [i8::MIN, 0_i8, i8::MAX].iter().enumerate() {
 			batch.push(
@@ -240,7 +240,7 @@ impl FFIOperator for OpI8 {
 
 #[test]
 fn scalar_i8_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpI8>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpI8>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -266,11 +266,11 @@ impl OperatorMetadata for OpI16 {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpI16 {
+impl ExternCOperator for OpI16 {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<I16Row, _>::new(ctx, 3)?;
 		for (i, &v) in [i16::MIN, 0_i16, i16::MAX].iter().enumerate() {
 			batch.push(
@@ -286,7 +286,7 @@ impl FFIOperator for OpI16 {
 
 #[test]
 fn scalar_i16_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpI16>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpI16>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -312,11 +312,11 @@ impl OperatorMetadata for OpI32 {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpI32 {
+impl ExternCOperator for OpI32 {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<I32Row, _>::new(ctx, 3)?;
 		for (i, &v) in [i32::MIN, 0_i32, i32::MAX].iter().enumerate() {
 			batch.push(
@@ -332,7 +332,7 @@ impl FFIOperator for OpI32 {
 
 #[test]
 fn scalar_i32_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpI32>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpI32>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -358,11 +358,11 @@ impl OperatorMetadata for OpI64 {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpI64 {
+impl ExternCOperator for OpI64 {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<I64Row, _>::new(ctx, 3)?;
 		for (i, &v) in [i64::MIN, 0_i64, i64::MAX].iter().enumerate() {
 			batch.push(
@@ -378,7 +378,7 @@ impl FFIOperator for OpI64 {
 
 #[test]
 fn scalar_i64_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpI64>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpI64>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -404,11 +404,11 @@ impl OperatorMetadata for OpF32 {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpF32 {
+impl ExternCOperator for OpF32 {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<F32Row, _>::new(ctx, 3)?;
 		for (i, &v) in [0.0_f32, -1.5_f32, f32::MAX].iter().enumerate() {
 			batch.push(
@@ -424,7 +424,7 @@ impl FFIOperator for OpF32 {
 
 #[test]
 fn scalar_f32_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpF32>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpF32>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -450,11 +450,11 @@ impl OperatorMetadata for OpF64 {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpF64 {
+impl ExternCOperator for OpF64 {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<F64Row, _>::new(ctx, 3)?;
 		for (i, &v) in [0.0_f64, -1.5_f64, f64::MAX].iter().enumerate() {
 			batch.push(
@@ -470,7 +470,7 @@ impl FFIOperator for OpF64 {
 
 #[test]
 fn scalar_f64_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpF64>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpF64>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -496,11 +496,11 @@ impl OperatorMetadata for OpBool {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpBool {
+impl ExternCOperator for OpBool {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<BoolRow, _>::new(ctx, 3)?;
 		for (i, &v) in [true, false, true].iter().enumerate() {
 			batch.push(
@@ -516,7 +516,7 @@ impl FFIOperator for OpBool {
 
 #[test]
 fn bool_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpBool>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpBool>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -542,11 +542,11 @@ impl OperatorMetadata for OpUtf8 {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpUtf8 {
+impl ExternCOperator for OpUtf8 {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let values = ["", "hello", "こんにちは"];
 		let mut batch = InsertBatch::<Utf8Row, _>::new(ctx, values.len())?;
 		for (i, &s) in values.iter().enumerate() {
@@ -563,7 +563,7 @@ impl FFIOperator for OpUtf8 {
 
 #[test]
 fn utf8_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpUtf8>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpUtf8>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -582,11 +582,11 @@ impl OperatorMetadata for OpUtf8Growth {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpUtf8Growth {
+impl ExternCOperator for OpUtf8Growth {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		// AVG_BYTES for String is 24; 20 rows * 24 = 480 bytes pre-allocated.
 		// Each string is 100 bytes so total 2000 bytes forces VarLenWriter::ensure_capacity.
 		let mut batch = InsertBatch::<Utf8Row, _>::new(ctx, 20)?;
@@ -604,7 +604,7 @@ impl FFIOperator for OpUtf8Growth {
 
 #[test]
 fn utf8_capacity_growth() {
-	let mut h = FFIOperatorHarnessBuilder::<OpUtf8Growth>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpUtf8Growth>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 20);
@@ -629,11 +629,11 @@ impl OperatorMetadata for OpBlob {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpBlob {
+impl ExternCOperator for OpBlob {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let rows = [
 			BlobRow {
 				b: vec![],
@@ -655,7 +655,7 @@ impl FFIOperator for OpBlob {
 
 #[test]
 fn blob_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpBlob>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpBlob>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -681,11 +681,11 @@ impl OperatorMetadata for OpDecimal {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpDecimal {
+impl ExternCOperator for OpDecimal {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<DecimalRow, _>::new(ctx, 3)?;
 		batch.push(
 			RowNumber(1),
@@ -711,7 +711,7 @@ impl FFIOperator for OpDecimal {
 
 #[test]
 fn decimal_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpDecimal>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpDecimal>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -739,11 +739,11 @@ impl OperatorMetadata for OpWide {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpWide {
+impl ExternCOperator for OpWide {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<WideRow, _>::new(ctx, 1)?;
 		batch.push(
 			RowNumber(1),
@@ -758,7 +758,7 @@ impl FFIOperator for OpWide {
 
 #[test]
 fn wide_integers_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpWide>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpWide>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 1);
@@ -783,11 +783,11 @@ impl OperatorMetadata for OpDate {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpDate {
+impl ExternCOperator for OpDate {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let values =
 			[Date::default(), Date::new(2024, 3, 15).expect("date"), Date::new(2554, 1, 1).expect("date")];
 		let mut batch = InsertBatch::<DateRow, _>::new(ctx, values.len())?;
@@ -805,7 +805,7 @@ impl FFIOperator for OpDate {
 
 #[test]
 fn scalar_date_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpDate>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpDate>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -831,11 +831,11 @@ impl OperatorMetadata for OpDateTime {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpDateTime {
+impl ExternCOperator for OpDateTime {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let values = [
 			DateTime::from_nanos(0),
 			DateTime::from_nanos(1_700_000_000_000_000_000),
@@ -856,7 +856,7 @@ impl FFIOperator for OpDateTime {
 
 #[test]
 fn scalar_datetime_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpDateTime>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpDateTime>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -882,11 +882,11 @@ impl OperatorMetadata for OpTime {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpTime {
+impl ExternCOperator for OpTime {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let values = [
 			Time::default(),
 			Time::new(14, 30, 45, 123_456_789).expect("time"),
@@ -907,7 +907,7 @@ impl FFIOperator for OpTime {
 
 #[test]
 fn scalar_time_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpTime>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpTime>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
@@ -933,11 +933,11 @@ impl OperatorMetadata for OpDuration {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
-impl FFIOperator for OpDuration {
+impl ExternCOperator for OpDuration {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 		let values = [
 			Duration::default(),
 			Duration::new(13, 5, 3_600_000_000_000).expect("duration"),
@@ -958,7 +958,7 @@ impl FFIOperator for OpDuration {
 
 #[test]
 fn scalar_duration_roundtrip() {
-	let mut h = FFIOperatorHarnessBuilder::<OpDuration>::new().build().expect("harness");
+	let mut h = ExternCOperatorHarnessBuilder::<OpDuration>::new().build().expect("harness");
 	let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);

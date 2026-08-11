@@ -74,7 +74,10 @@ impl ExternCOperatorLoader {
 		unsafe {
 			let get_descriptor: Symbol<extern "C" fn() -> *const ExternCOperatorDescriptor> =
 				library.get(b"extern_c_operator_get_descriptor\0").map_err(|e| {
-					SdkError::Other(format!("Failed to find extern_c_operator_get_descriptor: {}", e))
+					SdkError::Other(format!(
+						"Failed to find extern_c_operator_get_descriptor: {}",
+						e
+					))
 				})?;
 
 			let descriptor_ptr = get_descriptor();
@@ -153,9 +156,10 @@ impl ExternCOperatorLoader {
 		let library = self.cache.get(path).unwrap();
 		// SAFETY: the ABI declares this symbol as ExternCOperatorCreateFn and the cache keeps it loaded.
 		let create_fn: ExternCOperatorCreateFn = unsafe {
-			let create_symbol: Symbol<ExternCOperatorCreateFn> = library
-				.get(b"extern_c_operator_create\0")
-				.map_err(|e| SdkError::Other(format!("Failed to find extern_c_operator_create: {}", e)))?;
+			let create_symbol: Symbol<ExternCOperatorCreateFn> =
+				library.get(b"extern_c_operator_create\0").map_err(|e| {
+					SdkError::Other(format!("Failed to find extern_c_operator_create: {}", e))
+				})?;
 
 			*create_symbol
 		};

@@ -13,7 +13,8 @@ use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
 #[cfg(test)]
 use reifydb_routine::{
-	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
+	function::default_in_process_functions, monoid::default_in_process_monoids,
+	procedure::default_in_process_procedures,
 };
 use reifydb_routine_abi::{Procedure, registry::Routines};
 use reifydb_rql::compiler::Compiler;
@@ -91,9 +92,9 @@ impl Services {
 		let store = SingleStore::testing_memory();
 
 		let routines_builder = Routines::builder();
-		let routines_builder = default_native_functions(routines_builder);
-		let routines_builder = default_native_procedures(routines_builder);
-		let routines_builder = default_native_monoids(routines_builder);
+		let routines_builder = default_in_process_functions(routines_builder);
+		let routines_builder = default_in_process_procedures(routines_builder);
+		let routines_builder = default_in_process_monoids(routines_builder);
 		let routines = routines_builder.configure();
 
 		let mut services = Self::new(

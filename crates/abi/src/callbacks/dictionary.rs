@@ -24,5 +24,10 @@ pub struct DictionaryCallbacks {
 		found: *mut u8,
 	) -> i32,
 
-	pub get: extern "C" fn(ctx: *mut ExternCContext, dictionary_id: u64, id: u128, output: *mut ExternCBuffer) -> i32,
+	pub get: extern "C" fn(
+		ctx: *mut ExternCContext,
+		dictionary_id: u64,
+		id: u128,
+		output: *mut ExternCBuffer,
+	) -> i32,
 }

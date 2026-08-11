@@ -88,7 +88,8 @@ impl Transform for ExternCTransform {
 	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
 		// SAFETY: the arena is thread-local and nothing marshalled into it outlives a call.
 		EXTERN_C_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
-		let extern_c_input = EXTERN_C_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).marshal_columns(&input) });
+		let extern_c_input =
+			EXTERN_C_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).marshal_columns(&input) });
 
 		let extern_c_ctx_ptr = self.cached_ctx.get();
 		// SAFETY: cached_ctx owns the ExternCContext for the life of self and apply is not re-entrant.
@@ -105,8 +106,11 @@ impl Transform for ExternCTransform {
 
 		if result_code != 0 {
 			let _ = self.builder_registry.drain();
-			return Err(SdkError::Other(format!("extern-C transform apply failed with code: {}", result_code))
-				.into());
+			return Err(SdkError::Other(format!(
+				"extern-C transform apply failed with code: {}",
+				result_code
+			))
+			.into());
 		}
 
 		Ok(single_columns_from_registry(&self.builder_registry))
@@ -190,11 +194,23 @@ pub(crate) mod stubs {
 		EXTERN_C_ERROR_INTERNAL
 	}
 
-	extern "C" fn intern_groups(_: u64, _: *mut ExternCContext, _: *const ExternCKeyRef, _: usize, _: *mut u64) -> i32 {
+	extern "C" fn intern_groups(
+		_: u64,
+		_: *mut ExternCContext,
+		_: *const ExternCKeyRef,
+		_: usize,
+		_: *mut u64,
+	) -> i32 {
 		EXTERN_C_ERROR_INTERNAL
 	}
 
-	extern "C" fn lookup_groups(_: u64, _: *mut ExternCContext, _: *const ExternCKeyRef, _: usize, _: *mut u64) -> i32 {
+	extern "C" fn lookup_groups(
+		_: u64,
+		_: *mut ExternCContext,
+		_: *const ExternCKeyRef,
+		_: usize,
+		_: *mut u64,
+	) -> i32 {
 		EXTERN_C_ERROR_INTERNAL
 	}
 
@@ -296,7 +312,12 @@ pub(crate) mod stubs {
 	extern "C" fn store_contains_key(_: *mut ExternCContext, _: *const u8, _: usize, _: *mut u8) -> i32 {
 		EXTERN_C_ERROR_INTERNAL
 	}
-	extern "C" fn store_prefix(_: *mut ExternCContext, _: *const u8, _: usize, _: *mut *mut ExternCStoreIterator) -> i32 {
+	extern "C" fn store_prefix(
+		_: *mut ExternCContext,
+		_: *const u8,
+		_: usize,
+		_: *mut *mut ExternCStoreIterator,
+	) -> i32 {
 		EXTERN_C_ERROR_INTERNAL
 	}
 	extern "C" fn store_range(
@@ -311,7 +332,11 @@ pub(crate) mod stubs {
 	) -> i32 {
 		EXTERN_C_ERROR_INTERNAL
 	}
-	extern "C" fn store_iterator_next(_: *mut ExternCStoreIterator, _: *mut ExternCBuffer, _: *mut ExternCBuffer) -> i32 {
+	extern "C" fn store_iterator_next(
+		_: *mut ExternCStoreIterator,
+		_: *mut ExternCBuffer,
+		_: *mut ExternCBuffer,
+	) -> i32 {
 		EXTERN_C_ERROR_INTERNAL
 	}
 	extern "C" fn store_iterator_free(_: *mut ExternCStoreIterator) {}

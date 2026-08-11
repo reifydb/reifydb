@@ -10,7 +10,7 @@ use std::{
 };
 
 use ptr::null;
-use reifydb_abi::{context::context::ContextFFI, operator::timer::TimerKind};
+use reifydb_abi::{context::context::ExternCContext, operator::timer::TimerKind};
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
@@ -35,12 +35,13 @@ use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
 	config::Config,
 	error::Result,
-	ffi::{
+	extern_c::{
 		arena::Arena,
-		wrapper::{OperatorWrapper, ffi_apply},
+		wrapper::{OperatorWrapper, extern_c_apply},
 	},
 	operator::{
-		FFIOperator, OperatorMetadata, change::BorrowedChange, context::ffi::FFIOperatorContext, timer::Timer,
+		ExternCOperator, OperatorMetadata, change::BorrowedChange, context::extern_c::ExternCOperatorContext,
+		timer::Timer,
 	},
 };
 use reifydb_testing_chaos::operator::subject::Subject;
@@ -67,10 +68,10 @@ pub struct ReclaimedGroups {
 	pub keys: Count,
 }
 
-pub struct FFIOperatorHarness<T: FFIOperator> {
+pub struct ExternCOperatorHarness<T: ExternCOperator> {
 	operator: T,
 	context: Box<TestContext>,
-	ffi_context: Box<ContextFFI>,
+	extern_c_context: Box<ExternCContext>,
 	config: HashMap<String, Value>,
 	operator_id: OperatorId,
 	clock: Clock,
@@ -81,13 +82,13 @@ pub struct FFIOperatorHarness<T: FFIOperator> {
 	input_arena: Arena,
 }
 
-impl<T: FFIOperator> FFIOperatorHarness<T> {
-	pub fn builder() -> FFIOperatorHarnessBuilder<T> {
-		FFIOperatorHarnessBuilder::new()
+impl<T: ExternCOperator> ExternCOperatorHarness<T> {
+	pub fn builder() -> ExternCOperatorHarnessBuilder<T> {
+		ExternCOperatorHarnessBuilder::new()
 	}
 
 	fn refresh_written_at(&mut self) {
-		self.ffi_context.written_at_nanos = self.clock.now().to_nanos();
+		self.extern_c_context.written_at_nanos = self.clock.now().to_nanos();
 	}
 
 	pub fn apply(&mut self, input: Change) -> Result<Change> {
@@ -97,15 +98,15 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		let origin = input.origin.clone();
 
 		self.input_arena.clear();
-		let ffi_change = self.input_arena.marshal_change(&input);
-		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+		let extern_c_change = self.input_arena.marshal_change(&input);
+		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContext;
 
 		let result: Result<()> = with_registry(&self.builder_registry, || {
-			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
-			// SAFETY: ffi_change lives on this stack frame and the arena backing its
+			let mut op_ctx = ExternCOperatorContext::new(extern_c_ctx_ptr);
+			// SAFETY: extern_c_change lives on this stack frame and the arena backing its
 			// buffers is neither cleared nor dropped until after the closure returns, so
 			// the borrow cannot outlive its data.
-			let borrowed = unsafe { BorrowedChange::from_raw(&ffi_change as *const _) };
+			let borrowed = unsafe { BorrowedChange::from_raw(&extern_c_change as *const _) };
 			self.operator.apply(&mut op_ctx, borrowed)?;
 
 			self.operator.flush_state(&mut op_ctx)
@@ -131,15 +132,15 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		let origin = input.origin.clone();
 
 		self.input_arena.clear();
-		let ffi_change = self.input_arena.marshal_change(&input);
-		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+		let extern_c_change = self.input_arena.marshal_change(&input);
+		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContext;
 
 		let result: Result<()> = with_registry(&self.builder_registry, || {
-			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
-			// SAFETY: ffi_change lives on this stack frame and the arena backing its
+			let mut op_ctx = ExternCOperatorContext::new(extern_c_ctx_ptr);
+			// SAFETY: extern_c_change lives on this stack frame and the arena backing its
 			// buffers is neither cleared nor dropped until after the closure returns, so
 			// the borrow cannot outlive its data.
-			let borrowed = unsafe { BorrowedChange::from_raw(&ffi_change as *const _) };
+			let borrowed = unsafe { BorrowedChange::from_raw(&extern_c_change as *const _) };
 			self.operator.apply(&mut op_ctx, borrowed)
 		});
 
@@ -158,18 +159,18 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 
 	pub fn flush(&mut self) -> Result<()> {
 		self.refresh_written_at();
-		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContext;
 		with_registry(&self.builder_registry, || {
-			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
+			let mut op_ctx = ExternCOperatorContext::new(extern_c_ctx_ptr);
 			self.operator.flush_state(&mut op_ctx)
 		})
 	}
 
 	pub fn fire_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<()> {
 		self.refresh_written_at();
-		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContext;
 		with_registry(&self.builder_registry, || {
-			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
+			let mut op_ctx = ExternCOperatorContext::new(extern_c_ctx_ptr);
 			self.operator.on_timer(
 				&mut op_ctx,
 				Timer {
@@ -376,9 +377,9 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		Ok(())
 	}
 
-	pub fn create_operator_context(&mut self) -> FFIOperatorContext {
+	pub fn create_operator_context(&mut self) -> ExternCOperatorContext {
 		self.refresh_written_at();
-		FFIOperatorContext::new(&mut *self.ffi_context as *mut ContextFFI)
+		ExternCOperatorContext::new(&mut *self.extern_c_context as *mut ExternCContext)
 	}
 
 	pub fn operator(&self) -> &T {
@@ -394,7 +395,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	}
 }
 
-impl<T: FFIOperator> Index<usize> for FFIOperatorHarness<T> {
+impl<T: ExternCOperator> Index<usize> for ExternCOperatorHarness<T> {
 	type Output = Change;
 
 	fn index(&self, index: usize) -> &Self::Output {
@@ -402,7 +403,7 @@ impl<T: FFIOperator> Index<usize> for FFIOperatorHarness<T> {
 	}
 }
 
-pub struct FFIOperatorHarnessBuilder<T: FFIOperator> {
+pub struct ExternCOperatorHarnessBuilder<T: ExternCOperator> {
 	config: HashMap<String, Value>,
 	operator_id: OperatorId,
 	version: CommitVersion,
@@ -412,13 +413,13 @@ pub struct FFIOperatorHarnessBuilder<T: FFIOperator> {
 	_phantom: PhantomData<T>,
 }
 
-impl<T: FFIOperator> Default for FFIOperatorHarnessBuilder<T> {
+impl<T: ExternCOperator> Default for ExternCOperatorHarnessBuilder<T> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
+impl<T: ExternCOperator> ExternCOperatorHarnessBuilder<T> {
 	pub fn new() -> Self {
 		Self {
 			config: HashMap::new(),
@@ -479,7 +480,7 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 		self
 	}
 
-	pub fn build(self) -> Result<FFIOperatorHarness<T>> {
+	pub fn build(self) -> Result<ExternCOperatorHarness<T>> {
 		let context = Box::new(TestContext::new(self.version));
 
 		for (k, v) in self.initial_state {
@@ -490,7 +491,7 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 			context.seed_dictionary_interning(name, *id, id_type.clone(), entries);
 		}
 
-		let ffi_context = Box::new(ContextFFI {
+		let extern_c_context = Box::new(ExternCContext {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
 			executor_ptr: null(),
 			operator_id: self.operator_id.0,
@@ -501,10 +502,10 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 		let operator =
 			T::new(self.operator_id, &Config::new("operator", self.config.clone().into_iter().collect()))?;
 
-		Ok(FFIOperatorHarness {
+		Ok(ExternCOperatorHarness {
 			operator,
 			context,
-			ffi_context,
+			extern_c_context,
 			config: self.config,
 			operator_id: self.operator_id,
 			clock: self.clock,
@@ -515,9 +516,9 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 	}
 }
 
-pub fn drive_ffi_apply<O: FFIOperator + OperatorMetadata>(input: &Change) -> i32 {
+pub fn drive_extern_c_apply<O: ExternCOperator + OperatorMetadata>(input: &Change) -> i32 {
 	let context = Box::new(TestContext::new(CommitVersion(1)));
-	let mut ffi_context = ContextFFI {
+	let mut extern_c_context = ExternCContext {
 		txn_ptr: &*context as *const TestContext as *mut c_void,
 		executor_ptr: null(),
 		operator_id: 1,
@@ -529,14 +530,18 @@ pub fn drive_ffi_apply<O: FFIOperator + OperatorMetadata>(input: &Change) -> i32
 	let mut wrapper = OperatorWrapper::new(operator);
 
 	let mut arena = Arena::new();
-	let ffi_change = arena.marshal_change(input);
+	let extern_c_change = arena.marshal_change(input);
 
 	let registry = TestBuilderRegistry::new();
 	// SAFETY: the wrapper, context and change all outlive the call, and the arena backing the
 	// change's buffers is still alive, so every pointer crossing the boundary is valid for its
 	// whole duration.
 	with_registry(&registry, || unsafe {
-		ffi_apply::<O>(wrapper.as_ptr(), &mut ffi_context as *mut ContextFFI, &ffi_change as *const _)
+		extern_c_apply::<O>(
+			wrapper.as_ptr(),
+			&mut extern_c_context as *mut ExternCContext,
+			&extern_c_change as *const _,
+		)
 	})
 }
 
@@ -577,11 +582,11 @@ pub mod tests {
 	use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
 	use reifydb_sdk::{
 		operator::{
-			FFIOperator, OperatorMetadata,
+			ExternCOperator, OperatorMetadata,
 			builder::{ColumnsBuilder, CommittedColumn},
 			change::{BorrowedChange, BorrowedColumns},
 			column::operator::OperatorColumn,
-			context::{OperatorContext, ffi::FFIOperatorContext},
+			context::{OperatorContext, extern_c::ExternCOperatorContext},
 		},
 		row,
 	};
@@ -608,7 +613,7 @@ pub mod tests {
 		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 
-	impl FFIOperator for TestOperator {
+	impl ExternCOperator for TestOperator {
 		fn new(operator_id: OperatorId, config: &Config) -> Result<Self> {
 			Ok(Self {
 				_node_id: operator_id,
@@ -616,7 +621,7 @@ pub mod tests {
 			})
 		}
 
-		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 			forward_diffs_passthrough(ctx, &input)
 		}
 	}
@@ -633,12 +638,12 @@ pub mod tests {
 		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 
-	impl FFIOperator for StatefulTestOperator {
+	impl ExternCOperator for StatefulTestOperator {
 		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 			for diff in input.diffs() {
 				let post = match diff.kind() {
 					DiffType::Insert | DiffType::Update => Some(diff.post()),
@@ -663,7 +668,7 @@ pub mod tests {
 		}
 	}
 
-	fn forward_diffs_passthrough(ctx: &mut FFIOperatorContext, input: &BorrowedChange<'_>) -> Result<()> {
+	fn forward_diffs_passthrough(ctx: &mut ExternCOperatorContext, input: &BorrowedChange<'_>) -> Result<()> {
 		let mut builder = ctx.builder();
 		for diff in input.diffs() {
 			match diff.kind() {
@@ -761,7 +766,7 @@ pub mod tests {
 
 	#[test]
 	fn test_harness_builder() {
-		let result = FFIOperatorHarnessBuilder::<TestOperator>::new()
+		let result = ExternCOperatorHarnessBuilder::<TestOperator>::new()
 			.with_node_id(OperatorId(42))
 			.with_version(CommitVersion(10))
 			.add_config("key", Value::Utf8("value".into()))
@@ -776,7 +781,7 @@ pub mod tests {
 
 	#[test]
 	fn test_harness_with_stateful_operator() {
-		let mut harness = FFIOperatorHarnessBuilder::<StatefulTestOperator>::new()
+		let mut harness = ExternCOperatorHarnessBuilder::<StatefulTestOperator>::new()
 			.with_node_id(OperatorId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -795,7 +800,7 @@ pub mod tests {
 
 	#[test]
 	fn test_harness_history_index() {
-		let mut harness = FFIOperatorHarnessBuilder::<StatefulTestOperator>::new()
+		let mut harness = ExternCOperatorHarnessBuilder::<StatefulTestOperator>::new()
 			.with_node_id(OperatorId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -829,7 +834,7 @@ pub mod tests {
 
 	#[test]
 	fn test_harness_multiple_operations() {
-		let mut harness = FFIOperatorHarnessBuilder::<StatefulTestOperator>::new()
+		let mut harness = ExternCOperatorHarnessBuilder::<StatefulTestOperator>::new()
 			.build()
 			.expect("Failed to build harness");
 
@@ -871,12 +876,12 @@ pub mod tests {
 		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 
-	impl FFIOperator for TimerTestOperator {
+	impl ExternCOperator for TimerTestOperator {
 		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 			// Row n arms a Seal timer at n milliseconds, so a test picks which timers are due
 			// purely by choosing the row numbers it inserts.
 			for diff in input.diffs() {
@@ -894,7 +899,7 @@ pub mod tests {
 			Ok(())
 		}
 
-		fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
+		fn on_timer(&mut self, ctx: &mut ExternCOperatorContext, timer: Timer<'_>) -> Result<()> {
 			// State is what proves on_timer reached the operator; a fired count alone would
 			// still pass if the harness popped the wheel and dropped the callback.
 			ctx.state().set::<i64>(&probe_row_key(timer.at.to_nanos()), &1i64)
@@ -923,16 +928,16 @@ pub mod tests {
 		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 
-	impl FFIOperator for SealEmittingOperator {
+	impl ExternCOperator for SealEmittingOperator {
 		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, _ctx: &mut FFIOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, _ctx: &mut ExternCOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
 			Ok(())
 		}
 
-		fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
+		fn on_timer(&mut self, ctx: &mut ExternCOperatorContext, timer: Timer<'_>) -> Result<()> {
 			ctx.emit_insert(
 				&[SealRow {
 					total: timer.at.to_millis() as i64,
@@ -946,7 +951,7 @@ pub mod tests {
 	fn a_timer_emission_reaches_the_caller_as_a_change() {
 		// Without a drain per timer, emitted diffs sit in the registry and surface attributed to
 		// whichever apply comes next, or vanish when none does.
-		let mut harness = FFIOperatorHarness::<SealEmittingOperator>::builder().build().unwrap();
+		let mut harness = ExternCOperatorHarness::<SealEmittingOperator>::builder().build().unwrap();
 
 		let change = harness
 			.on_timer(DateTime::from_epoch_millis(7_000).unwrap(), TimerKind::Seal, &[])
@@ -966,7 +971,7 @@ pub mod tests {
 	fn a_timer_that_emits_nothing_reports_no_change() {
 		// The empty case must be None rather than an empty Change, or a driver's drain loop could
 		// never tell "nothing left to withdraw" from "withdrew an empty batch" and would spin.
-		let mut harness = FFIOperatorHarness::<TimerTestOperator>::builder().build().unwrap();
+		let mut harness = ExternCOperatorHarness::<TimerTestOperator>::builder().build().unwrap();
 
 		let change = harness
 			.on_timer(DateTime::from_epoch_millis(1).unwrap(), TimerKind::Seal, &[])
@@ -989,14 +994,14 @@ pub mod tests {
 		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 
-	impl FFIOperator for RearmingTimerTestOperator {
+	impl ExternCOperator for RearmingTimerTestOperator {
 		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 			Ok(Self {
 				fires: 0,
 			})
 		}
 
-		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 			for diff in input.diffs() {
 				if !matches!(diff.kind(), DiffType::Insert) {
 					continue;
@@ -1012,7 +1017,7 @@ pub mod tests {
 			Ok(())
 		}
 
-		fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
+		fn on_timer(&mut self, ctx: &mut ExternCOperatorContext, timer: Timer<'_>) -> Result<()> {
 			// Re-arms one millisecond out, still at or below the watermark the test advances
 			// to; the limit is what keeps this off advance_watermark's runaway panic.
 			self.fires += 1;
@@ -1032,7 +1037,7 @@ pub mod tests {
 	fn an_armed_guest_timer_fires_when_the_harness_watermark_passes_it() {
 		// The timer must fire because the watermark reached it, with no further input arriving;
 		// otherwise a guest test cannot tell "sealed by the clock" from "sealed by the next row".
-		let mut harness = FFIOperatorHarnessBuilder::<TimerTestOperator>::new()
+		let mut harness = ExternCOperatorHarnessBuilder::<TimerTestOperator>::new()
 			.with_node_id(OperatorId(1))
 			.build()
 			.unwrap();
@@ -1060,7 +1065,7 @@ pub mod tests {
 	fn advancing_the_harness_watermark_twice_fires_a_timer_once() {
 		// A resurrected timer would make every seal fire once per subsequent advance, silently
 		// inflating retraction counts.
-		let mut harness = FFIOperatorHarnessBuilder::<TimerTestOperator>::new()
+		let mut harness = ExternCOperatorHarnessBuilder::<TimerTestOperator>::new()
 			.with_node_id(OperatorId(1))
 			.build()
 			.unwrap();
@@ -1079,7 +1084,7 @@ pub mod tests {
 	fn a_timer_rearmed_inside_on_timer_below_the_watermark_fires_in_the_same_advance() {
 		// Session windows re-arm on every extending event, so arming below an already-passed
 		// watermark is normal and the real wheel picks it up in the same round.
-		let mut harness = FFIOperatorHarnessBuilder::<RearmingTimerTestOperator>::new()
+		let mut harness = ExternCOperatorHarnessBuilder::<RearmingTimerTestOperator>::new()
 			.with_node_id(OperatorId(1))
 			.build()
 			.unwrap();
@@ -1112,7 +1117,7 @@ pub mod tests {
 		const GROUP: GroupId = GroupId(7);
 		let accumulator = group_state_key(NODE, GROUP, Keyspace::ACCUMULATOR).encode();
 		let mapping = group_state_key(NODE, GROUP, Keyspace::ROW_NUMBER_MAPPING).encode();
-		let mut harness = FFIOperatorHarnessBuilder::<TestOperator>::new()
+		let mut harness = ExternCOperatorHarnessBuilder::<TestOperator>::new()
 			.with_node_id(NODE)
 			.with_initial_state(group_state_key(NODE, GROUP, Keyspace::ACCUMULATOR), vec![1])
 			.with_initial_state(group_state_key(NODE, GROUP, Keyspace::ROW_NUMBER_MAPPING), vec![2])
@@ -1137,7 +1142,7 @@ pub mod tests {
 		const NODE: OperatorId = OperatorId(1);
 		let dictionary = group_state_key(NODE, GroupId::ROOT, Keyspace::GROUP_DICTIONARY).encode();
 		let counter = group_state_key(NODE, GroupId::ROOT, Keyspace::NODE_COUNTER).encode();
-		let mut harness = FFIOperatorHarnessBuilder::<TestOperator>::new()
+		let mut harness = ExternCOperatorHarnessBuilder::<TestOperator>::new()
 			.with_node_id(NODE)
 			.with_initial_state(group_state_key(NODE, GroupId::ROOT, Keyspace::GROUP_DICTIONARY), vec![1])
 			.with_initial_state(group_state_key(NODE, GroupId::ROOT, Keyspace::NODE_COUNTER), vec![2])
@@ -1152,9 +1157,9 @@ pub mod tests {
 	}
 }
 
-impl<T: FFIOperator> Subject for FFIOperatorHarness<T> {
+impl<T: ExternCOperator> Subject for ExternCOperatorHarness<T> {
 	fn apply(&mut self, change: Change) -> ValueResult<Change> {
-		FFIOperatorHarness::apply(self, change).map_err(Into::into)
+		ExternCOperatorHarness::apply(self, change).map_err(Into::into)
 	}
 
 	fn tick(&mut self, at_ms: u64) -> ValueResult<Option<Change>> {

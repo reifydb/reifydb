@@ -28,7 +28,7 @@ pub mod strategy;
 
 use bridge::OracleFn;
 use context::ChaosContext;
-use reifydb_sdk::operator::FFIOperator;
+use reifydb_sdk::operator::ExternCOperator;
 use reifydb_testing_chaos::operator::{
 	compare::Tolerances,
 	event::ChaosBatch,
@@ -39,7 +39,7 @@ use runner::RunnableChaos;
 use schema::{ChaosSchema, KeyStrategy};
 use strategy::{ColumnRegistry, ColumnSampler, RowContent, samplers};
 
-use crate::harness::FFIOperatorHarness;
+use crate::harness::ExternCOperatorHarness;
 
 #[derive(Debug)]
 pub enum ChaosError {
@@ -83,11 +83,11 @@ pub type ChaosResult<T> = Result<T, ChaosError>;
 const DEFAULT_STEPS: u32 = 200;
 
 /// Namespace only; the active object is the [`RunnableChaos`] that `build()` returns.
-pub struct ChaosHarness<T: FFIOperator> {
+pub struct ChaosHarness<T: ExternCOperator> {
 	_phantom: PhantomData<T>,
 }
 
-impl<T: FFIOperator> ChaosHarness<T> {
+impl<T: ExternCOperator> ChaosHarness<T> {
 	pub fn builder() -> ChaosHarnessBuilder<T> {
 		ChaosHarnessBuilder::new()
 	}
@@ -95,7 +95,7 @@ impl<T: FFIOperator> ChaosHarness<T> {
 
 /// Required: input/output shape, key strategy, output key, one sampler per input
 /// column, and an oracle. Everything else has a default.
-pub struct ChaosHarnessBuilder<T: FFIOperator> {
+pub struct ChaosHarnessBuilder<T: ExternCOperator> {
 	seed: u64,
 	scenario: Scenario,
 	supported_ops: SupportedOps,
@@ -113,13 +113,13 @@ pub struct ChaosHarnessBuilder<T: FFIOperator> {
 	_phantom: PhantomData<T>,
 }
 
-impl<T: FFIOperator> Default for ChaosHarnessBuilder<T> {
+impl<T: ExternCOperator> Default for ChaosHarnessBuilder<T> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<T: FFIOperator> ChaosHarnessBuilder<T> {
+impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
 	pub fn new() -> Self {
 		Self {
 			seed: 0,
@@ -167,7 +167,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 	}
 
 	/// Config handed to `T::new`; mirrors
-	/// [`crate::harness::FFIOperatorHarnessBuilder::with_config`].
+	/// [`crate::harness::ExternCOperatorHarnessBuilder::with_config`].
 	pub fn with_config<I, K>(mut self, config: I) -> Self
 	where
 		I: IntoIterator<Item = (K, Value)>,
@@ -259,7 +259,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 
 		let context = ChaosContext::new(self.seed);
 
-		let mut builder = FFIOperatorHarness::<T>::builder()
+		let mut builder = ExternCOperatorHarness::<T>::builder()
 			.with_node_id(self.operator_id)
 			.with_version(self.version)
 			.with_clock(context.clock.clone());
@@ -332,8 +332,8 @@ mod tests {
 		config::Config,
 		error::Result,
 		operator::{
-			FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
-			context::ffi::FFIOperatorContext,
+			ExternCOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
+			context::extern_c::ExternCOperatorContext,
 		},
 	};
 	use reifydb_testing_chaos::operator::scenario::BatchSize;
@@ -355,12 +355,12 @@ mod tests {
 		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 
-	impl FFIOperator for NoOpOperator {
+	impl ExternCOperator for NoOpOperator {
 		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, _ctx: &mut FFIOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, _ctx: &mut ExternCOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
 			Ok(())
 		}
 	}
