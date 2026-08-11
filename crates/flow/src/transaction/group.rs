@@ -401,7 +401,6 @@ mod tests {
 			pending: PendingLayers::empty(),
 			query: parent.multi.begin_query().unwrap(),
 			state_query: parent.multi.begin_query().unwrap(),
-			single: parent.single.clone(),
 			catalog: Catalog::testing(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(0)),

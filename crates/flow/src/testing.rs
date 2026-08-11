@@ -40,7 +40,6 @@ impl<'a> FlowTxnBuilder<'a> {
 			pending: PendingLayers::empty(),
 			query: self.engine.multi().begin_query().unwrap(),
 			state_query: self.engine.multi().begin_query().unwrap(),
-			single: self.engine.inner().single().clone(),
 			catalog: self.catalog,
 			interceptors: Interceptors::new(),
 			clock: self.clock,

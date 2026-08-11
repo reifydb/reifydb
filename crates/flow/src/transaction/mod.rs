@@ -76,7 +76,6 @@ use reifydb_transaction::{
 		},
 	},
 	multi::transaction::read::MultiReadTransaction,
-	single::SingleTransaction,
 	transaction::admin::AdminTransaction,
 };
 use reifydb_value::{Result, value::datetime::DateTime};
@@ -115,7 +114,6 @@ pub struct DeferredParams {
 	pub pending: PendingLayers,
 	pub query: MultiReadTransaction,
 	pub state_query: MultiReadTransaction,
-	pub single: SingleTransaction,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub clock: Clock,
@@ -128,7 +126,6 @@ pub struct FlowTransactionInner {
 	pub pending: PendingLayers,
 	pub query: MultiReadTransaction,
 	pub state_query: Option<MultiReadTransaction>,
-	pub single: SingleTransaction,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
@@ -202,7 +199,6 @@ impl DepFlowTransaction {
 				pending: PendingLayers::empty(),
 				query,
 				state_query: Some(state_query),
-				single: parent.single.clone(),
 				catalog: catalog.clone(),
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
@@ -227,7 +223,6 @@ impl DepFlowTransaction {
 				pending: params.pending,
 				query,
 				state_query: Some(state_query),
-				single: params.single,
 				catalog: params.catalog.clone(),
 				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
@@ -302,7 +297,6 @@ impl DepFlowTransaction {
 	pub fn ephemeral(
 		version: CommitVersion,
 		query: MultiReadTransaction,
-		single: SingleTransaction,
 		catalog: Catalog,
 		state: HashMap<EncodedKey, EncodedBytes>,
 		clock: Clock,
@@ -316,7 +310,6 @@ impl DepFlowTransaction {
 				pending: PendingLayers::empty(),
 				query: pq,
 				state_query: None,
-				single,
 				catalog: catalog.clone(),
 				interceptors: Interceptors::new(),
 				accumulator: ChangeAccumulator::new(),
@@ -402,9 +395,8 @@ impl DepFlowTransaction {
 		&self.inner().catalog
 	}
 
-	pub fn query_and_single(&self) -> (MultiReadTransaction, SingleTransaction) {
-		let inner = self.inner();
-		(inner.query.clone(), inner.single.clone())
+	pub fn query(&self) -> MultiReadTransaction {
+		self.inner().query.clone()
 	}
 
 	pub fn clock(&self) -> &Clock {

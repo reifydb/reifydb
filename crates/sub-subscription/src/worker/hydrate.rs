@@ -81,7 +81,6 @@ impl SubscriptionWorkerActor {
 		let mut txn = DepFlowTransaction::ephemeral(
 			version,
 			self.engine.multi().begin_query()?,
-			self.engine.single_owned(),
 			self.catalog.clone(),
 			keyed,
 			flow_engine.clock().clone(),

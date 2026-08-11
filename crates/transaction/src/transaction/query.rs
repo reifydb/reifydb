@@ -89,6 +89,16 @@ impl QueryTransaction {
 		}
 	}
 
+	#[instrument(name = "transaction::query::read_only", level = "debug", skip_all)]
+	pub fn read_only(multi: MultiReadTransaction, identity: IdentityId) -> Self {
+		Self {
+			multi,
+			single: None,
+			identity,
+			executor: None,
+		}
+	}
+
 	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
 		self.executor = Some(executor);
 	}

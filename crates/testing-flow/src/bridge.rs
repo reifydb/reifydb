@@ -67,7 +67,6 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
 			pending: PendingLayers::with_top(mem::take(&mut self.pending)),
 			query,
 			state_query,
-			single: self.engine.inner().single().clone(),
 			catalog: Catalog::testing(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(1000)),

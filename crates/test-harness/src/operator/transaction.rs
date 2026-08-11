@@ -69,7 +69,6 @@ impl<'a> FlowTxnBuilder<'a> {
 			pending: PendingLayers::empty(),
 			query: self.engine.multi().begin_query().unwrap(),
 			state_query: self.engine.multi().begin_query().unwrap(),
-			single: self.engine.inner().single().clone(),
 			catalog: self.catalog,
 			interceptors: Interceptors::new(),
 			clock: self.clock,
@@ -85,14 +84,7 @@ impl<'a> FlowTxnBuilder<'a> {
 	pub fn ephemeral(self) -> DepFlowTransaction {
 		let query = self.engine.multi().begin_query().unwrap();
 		let version = self.version;
-		let mut txn = DepFlowTransaction::ephemeral(
-			version,
-			query,
-			self.engine.inner().single().clone(),
-			self.catalog,
-			HashMap::new(),
-			self.clock,
-		);
+		let mut txn = DepFlowTransaction::ephemeral(version, query, self.catalog, HashMap::new(), self.clock);
 		txn.set_change_coordinate(default_coordinate(version));
 		txn
 	}

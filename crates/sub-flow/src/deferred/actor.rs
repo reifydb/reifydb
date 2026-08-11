@@ -1025,7 +1025,6 @@ mod pull_protocol {
 				pending: PendingLayers::empty(),
 				query: self.engine.multi().begin_query().expect("query"),
 				state_query: self.engine.multi().begin_query().expect("state query"),
-				single: self.engine.single().clone(),
 				catalog: self.engine.catalog(),
 				interceptors: self.engine.create_interceptors(),
 				clock: self.engine.clock().clone(),
