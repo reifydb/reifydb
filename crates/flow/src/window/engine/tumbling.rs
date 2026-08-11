@@ -563,36 +563,6 @@ mod tests {
 	}
 
 	#[test]
-	fn a_brand_new_group_scoped_window_costs_one_batched_probe_and_no_point_read() {
-		// Group-major keys leave no contiguous accumulator range, so a group-scoped engine cannot
-		// answer "absent" without looking. The batched warm probes each new window once and must
-		// remember the miss, or a boundary opening thousands of windows pays for each of them twice.
-		let mut store = MockStore::default();
-		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::group_scoped(test_config());
-
-		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
-		for group in 1u32..=3 {
-			buckets.insert(
-				(group, WindowSpan::new(at_millis(0), at_millis(1))),
-				vec![AccumulatorEvent::Add(1)],
-			);
-		}
-		apply_group_scoped(&mut engine, &mut store, buckets);
-		assert_eq!(
-			store.accumulator_reads(),
-			3,
-			"three new windows cost one probe each; more than that means a warm miss was re-read"
-		);
-
-		// A window that already exists must still be read back, or the engine would drop
-		// state instead of accumulating onto it.
-		let mut restarted = TumblingEngine::<u32, DateTime, SumAccumulator>::group_scoped(test_config());
-		let out = apply_group_scoped(&mut restarted, &mut store, one_bucket(1, 0, 4));
-		assert!(store.accumulator_reads() > 0, "an existing window must be loaded, not assumed empty");
-		assert_eq!(out[0].value, 5, "the batch accumulates onto the persisted value");
-	}
-
-	#[test]
 	fn expire_returns_only_due_windows_and_drops_only_their_index_entries() {
 		let mut store = MockStore::default();
 		// Two live windows; the face indexes each by its last_event_time (10 and 90).

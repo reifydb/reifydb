@@ -541,7 +541,6 @@ pub(crate) mod test_support {
 		groups: HashMap<Vec<u8>, GroupId>,
 		rows: HashMap<(GroupId, Vec<u8>), u64>,
 		next_row: u64,
-		accumulator_reads: usize,
 		timers: Option<Vec<RecordedTimer>>,
 		flow_watermark: Option<DateTime>,
 	}
@@ -566,22 +565,6 @@ pub(crate) mod test_support {
 			};
 			timers.push(recorded);
 			Ok(())
-		}
-
-		/// Batched lookups that reached the accumulator keyspace. Point reads and range scans are
-		/// not counted: the question this serves is how many futile round trips a batch pays.
-		pub(crate) fn accumulator_reads(&self) -> usize {
-			self.accumulator_reads
-		}
-
-		fn note_reads(&mut self, keys: &[GroupStateKey]) {
-			self.accumulator_reads += keys
-				.iter()
-				.filter(|key| {
-					OperatorStateKey::decode_inner(key.as_slice())
-						.is_some_and(|(_, found, _)| found == Keyspace::ACCUMULATOR)
-				})
-				.count();
 		}
 
 		fn keyspace_count(&self, keyspace: Keyspace) -> usize {
@@ -715,7 +698,6 @@ pub(crate) mod test_support {
 			keys: &[GroupStateKey],
 			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 		) -> Result<()> {
-			self.note_reads(keys);
 			for key in keys {
 				if let Some(b) = self.data.get(key.as_slice()) {
 					visit(key.clone(), b.clone())?;

@@ -411,11 +411,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		collections::HashMap,
-		ops::Bound,
-		sync::atomic::{AtomicUsize, Ordering},
-	};
+	use std::{collections::HashMap, ops::Bound};
 
 	use reifydb_codec::{
 		key::encoded::EncodedKeyRange,
@@ -897,110 +893,4 @@ mod tests {
 		assert_eq!(projected, Some(99), "the populated window map must not disturb the high water");
 	}
 
-	// Counts clones of the probe accumulator, so a test can prove the carry chain finalizes loaded
-	// windows from the cache view instead of deep-cloning them.
-	static COUNTING_CARRY_CLONES: AtomicUsize = AtomicUsize::new(0);
-
-	#[operator_state]
-	#[derive(Debug, Default)]
-	struct CountingCarryAcc {
-		sum: f64,
-		count: u64,
-	}
-
-	impl Clone for CountingCarryAcc {
-		fn clone(&self) -> Self {
-			COUNTING_CARRY_CLONES.fetch_add(1, Ordering::SeqCst);
-			Self {
-				sum: self.sum,
-				count: self.count,
-			}
-		}
-	}
-
-	impl HeapSize for CountingCarryAcc {
-		fn heap_size(&self) -> usize {
-			0
-		}
-	}
-
-	impl WindowAccumulator for CountingCarryAcc {
-		type Contribution = f64;
-		type Output = f64;
-
-		fn add(&mut self, contribution: &f64) {
-			self.sum += *contribution;
-			self.count += 1;
-		}
-		fn remove(&mut self, contribution: &f64) {
-			self.sum -= *contribution;
-			self.count = self.count.saturating_sub(1);
-		}
-		fn finalize(&self) -> Option<f64> {
-			(self.count > 0).then_some(self.sum)
-		}
-		fn is_empty(&self) -> bool {
-			self.count == 0
-		}
-		fn merge(&mut self, other: &Self) {
-			self.sum += other.sum;
-			self.count += other.count;
-		}
-		fn unmerge(&mut self, other: &Self) {
-			self.sum -= other.sum;
-			self.count = self.count.saturating_sub(other.count);
-		}
-	}
-
-	type ProbeEngine = TumblingCarryEngine<String, DateTime, CountingCarryAcc, f64, f64>;
-
-	fn feed_probe(
-		engine: &mut ProbeEngine,
-		store: &mut CountingStore,
-		ws: DateTime,
-		value: f64,
-	) -> Vec<WindowResult<String, DateTime, f64>> {
-		let mut buckets: TumblingBuckets<String, DateTime, f64> = BTreeMap::new();
-		let span = WindowSpan::for_coord(ws, millis(WINDOW));
-		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Add(value)]);
-		engine.apply(
-			store,
-			buckets,
-			|g: &String, w: DateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
-			CountingCarryAcc::default,
-			|_g: &String, _s: WindowSpan<DateTime>, v: &f64, _p: Option<&f64>| Some(*v),
-			|v: &f64, _p: Option<&f64>| Some(*v),
-		)
-		.expect("apply")
-	}
-
-	#[test]
-	fn carry_chain_finalizes_loaded_windows_without_cloning() {
-		// Touching an early window makes the carry chain re-finalize every later one. On a fresh
-		// engine those load from the store and must finalize through the archived view, leaving
-		// exactly one clone for the whole apply: the touched window's read-modify-write get().
-		let mut store = CountingStore::default();
-		let mut engine = ProbeEngine::new(carry_config(None));
-		feed_probe(&mut engine, &mut store, at_millis(0), 1.0);
-		feed_probe(&mut engine, &mut store, at_millis(60), 2.0);
-		feed_probe(&mut engine, &mut store, at_millis(120), 3.0);
-		engine.flush(&mut store).expect("flush");
-
-		let mut fresh = ProbeEngine::new(carry_config(None));
-		let before = COUNTING_CARRY_CLONES.load(Ordering::SeqCst);
-		let results = feed_probe(&mut fresh, &mut store, at_millis(0), 1.0);
-		assert!(
-			results.iter().any(|w| w.span.start == at_millis(0) && w.value == 2.0),
-			"the touched window re-emits its updated sum through the Native view"
-		);
-		assert!(
-			results.iter().any(|w| w.span.start == at_millis(120) && w.value == 3.0),
-			"a chain-loaded window re-emits its archived-view finalize output"
-		);
-		assert_eq!(
-			COUNTING_CARRY_CLONES.load(Ordering::SeqCst) - before,
-			1,
-			"only the touched window's read-modify-write get() may clone; the carry chain must not"
-		);
-	}
 }

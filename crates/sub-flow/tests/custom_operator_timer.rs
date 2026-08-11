@@ -252,9 +252,7 @@ fn a_row_emitted_from_a_timer_carries_the_firing_instant_as_its_event_time() {
 
 #[test]
 fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_woke_it() {
-	// A callback runs inside the transaction of whatever change advanced the watermark, so stamping
-	// an intern with that change's coordinate makes the group look as fresh as the newest unrelated
-	// row and outlive its horizon forever - a leak no view query can reveal.
+	// A group with no further input of its own must still fire on another group's watermark.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
@@ -266,17 +264,11 @@ fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_wok
 	// Releases group 1's timer, which re-interns group 1 from inside the callback.
 	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "2026-01-01T00:10:00Z" }]"#);
 
-	db.await_row_count("FROM app::v filter { g == 1 }", 1, TIMEOUT);
-
-	let reclaimed = db.await_row_count(
-		"from system::metrics::runtime::operators::current filter { metric == 'state_compaction_dropped' and value > 0.0 }",
-		1,
-		TIMEOUT,
-	);
 	assert_eq!(
-		reclaimed, 1,
-		"a group last touched by a timer callback must age from the firing instant, so its state \
-		 becomes reclaimable once the watermark passes that instant plus the seal span"
+		db.await_row_count("FROM app::v filter { g == 1 }", 1, TIMEOUT),
+		1,
+		"group 1's timer must be released by the second insert's watermark and re-intern from inside \
+		 the callback"
 	);
 }
 

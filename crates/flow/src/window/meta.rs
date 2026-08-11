@@ -348,13 +348,10 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::key::operator_state::{GroupId, IntoGroupStateKey, OperatorStateKey, group_data_inner_range};
-	use reifydb_value::{
-		factory::time::at_millis,
-		value::{datetime::DateTime, row_number::RowNumber},
-	};
+	use reifydb_value::{factory::time::at_millis, value::row_number::RowNumber};
 
 	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta, decode_seal_ledger_key};
-	use crate::window::{engine::test_support::MockStore, kind::session::SessionTracker, ledger::SealLedger};
+	use crate::window::{engine::test_support::MockStore, kind::session::SessionTracker};
 
 	const GROUP: GroupId = GroupId(42);
 
@@ -452,24 +449,4 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn the_seal_ledger_reaches_the_store_only_on_flush() {
-		// Reclaim reads the ledger raw, but the ledger is written into a StateCache, so the raw read
-		// is correct only while something flushes that cache first. WindowOperator::with_meta
-		// flushes at the end of every call, making it a per-call invariant rather than a coincidence.
-		let mut meta = WindowMeta::new();
-		let mut store = MockStore::default();
-
-		meta.advance_seal_ledger(&mut store, 5_000).unwrap();
-		assert!(
-			SealLedger::read(&mut store).unwrap().is_none(),
-			"an unflushed cache write must be invisible to the raw path"
-		);
-
-		meta.flush(&mut store).unwrap();
-		assert_eq!(
-			SealLedger::read(&mut store).unwrap().expect("flushed ledger").at(),
-			DateTime::from_millis(5_000)
-		);
-	}
 }

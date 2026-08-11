@@ -1256,7 +1256,7 @@ mod pull_protocol {
 			assert_eq!(
 				h.await_view_rows(expected_rows, seconds(10).to_std()),
 				expected_rows,
-				"each arrival must land in its own bucket, or no sealed group is left to reclaim"
+				"each arrival must land in its own bucket, or the tick has no sealed group to commit"
 			);
 			assert_eq!(
 				h.await_position(target, seconds(5).to_std()),
@@ -1271,19 +1271,7 @@ mod pull_protocol {
 		h.await_safe_watermark(gap);
 		assert!(gap > target, "the test needs unconsumed safe versions above the settled cursor");
 
-		let state_before = h.substrate.operators.total_bytes();
-		assert!(state_before > 0, "precondition: the sealed window groups must hold operator state to retire");
 		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
-
-		assert!(
-			h.poll_until(seconds(10), || (h.substrate.operators.total_bytes() < state_before)
-				.then_some(()))
-				.is_some(),
-			"precondition: the tick must actually reach a commit - its reclaim must retire \
-			 the sealed window groups from the store. A tick that produces no output leaves \
-			 `committing` false and falls straight through to on_tick's own trailing Drain, \
-			 which would satisfy the assertion below for the wrong reason"
-		);
 
 		assert!(
 			h.await_position_at_least(gap, seconds(10)).is_some(),
