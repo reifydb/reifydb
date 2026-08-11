@@ -8,8 +8,8 @@ use reifydb_value::error::Error as TypeError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExtensionError {
-	#[error("extern-C load error: {0}")]
-	ExternCLoad(String),
+	#[error("extern load error: {0}")]
+	ExternError(String),
 
 	#[error("extern-WASM load error: {0}")]
 	ExternWasmLoad(String),
@@ -37,9 +37,6 @@ pub enum ExtensionError {
 
 	#[error("IO error: {0}")]
 	Io(#[from] io::Error),
-
-	#[error(transparent)]
-	ExternC(#[from] SdkError),
 
 	#[error(transparent)]
 	Other(Box<dyn Error + Send + Sync>),

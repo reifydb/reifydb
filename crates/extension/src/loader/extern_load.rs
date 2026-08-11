@@ -10,11 +10,11 @@ use libloading::{Library, Symbol};
 
 use crate::error::ExtensionError;
 
-pub struct LibraryCache {
+pub struct ExternLoad {
 	libraries: HashMap<PathBuf, Library>,
 }
 
-impl LibraryCache {
+impl ExternLoad {
 	pub fn new() -> Self {
 		Self {
 			libraries: HashMap::new(),
@@ -26,7 +26,7 @@ impl LibraryCache {
 			// SAFETY: loading runs the object's initializers; only trusted paths reach here.
 			let lib = unsafe {
 				Library::new(path).map_err(|e| {
-					ExtensionError::ExternCLoad(format!(
+					ExtensionError::ExternError(format!(
 						"Failed to load library {}: {}",
 						path.display(),
 						e
@@ -38,6 +38,13 @@ impl LibraryCache {
 		Ok(())
 	}
 
+	pub fn library(&mut self, path: &Path) -> Result<&Library, ExtensionError> {
+		self.load(path)?;
+		self.libraries
+			.get(path)
+			.ok_or_else(|| ExtensionError::ExternError(format!("library not loaded: {}", path.display())))
+	}
+
 	pub fn get(&self, path: &Path) -> Option<&Library> {
 		self.libraries.get(path)
 	}
@@ -47,8 +54,7 @@ impl LibraryCache {
 	}
 
 	pub fn check_magic(&mut self, path: &Path, symbol_name: &[u8], expected: u32) -> Result<bool, ExtensionError> {
-		self.load(path)?;
-		let library = self.libraries.get(path).unwrap();
+		let library = self.library(path)?;
 
 		// SAFETY: the ABI declares the magic symbol with this signature; Symbol borrows the library.
 		let magic_result: Result<Symbol<extern "C" fn() -> u32>, _> = unsafe { library.get(symbol_name) };
@@ -66,13 +72,13 @@ impl LibraryCache {
 	}
 }
 
-impl Default for LibraryCache {
+impl Default for ExternLoad {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl Drop for LibraryCache {
+impl Drop for ExternLoad {
 	fn drop(&mut self) {
 		self.libraries.clear();
 	}

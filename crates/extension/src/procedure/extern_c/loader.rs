@@ -19,8 +19,8 @@ use reifydb_sdk::error::{Result as ExternCResult, SdkError};
 
 use super::ExternCProcedure;
 use crate::loader::{
-	cache::LibraryCache,
 	extern_c::{buffer_to_string, validate_api_version},
+	extern_load::ExternLoad,
 };
 
 static GLOBAL_EXTERN_C_PROCEDURE_LOADER: OnceLock<RwLock<ProcedureLoader>> = OnceLock::new();
@@ -30,14 +30,14 @@ pub fn extern_c_procedure_loader() -> &'static RwLock<ProcedureLoader> {
 }
 
 pub struct ProcedureLoader {
-	cache: LibraryCache,
+	cache: ExternLoad,
 	procedure_paths: HashMap<String, PathBuf>,
 }
 
 impl ProcedureLoader {
 	fn new() -> Self {
 		Self {
-			cache: LibraryCache::new(),
+			cache: ExternLoad::new(),
 			procedure_paths: HashMap::new(),
 		}
 	}
@@ -122,7 +122,7 @@ impl ProcedureLoader {
 		let descriptor = self.get_descriptor(path)?;
 		self.validate_and_register(&descriptor, path)?;
 
-		let library = self.cache.get(path).unwrap();
+		let library = self.cache.library(path).map_err(|e| SdkError::Other(e.to_string()))?;
 		// SAFETY: the ABI declares this symbol as ExternCProcedureCreateFn and the cache keeps it loaded.
 		let create_fn: ExternCProcedureCreateFn = unsafe {
 			let create_symbol: Symbol<ExternCProcedureCreateFn> =

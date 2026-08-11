@@ -25,8 +25,8 @@ use reifydb_sdk::error::{Result as ExternCResult, SdkError};
 use reifydb_value::value::constraint::TypeConstraint;
 
 use crate::loader::{
-	cache::LibraryCache,
 	extern_c::{buffer_to_string, validate_api_version},
+	extern_load::ExternLoad,
 };
 
 static GLOBAL_EXTERN_C_OPERATOR_LOADER: OnceLock<RwLock<ExternCOperatorLoader>> = OnceLock::new();
@@ -46,7 +46,7 @@ pub fn check_operator_abi_tag(abi_tag: u32) -> ExternCResult<()> {
 }
 
 pub struct ExternCOperatorLoader {
-	cache: LibraryCache,
+	cache: ExternLoad,
 
 	operator_paths: HashMap<String, PathBuf>,
 }
@@ -54,7 +54,7 @@ pub struct ExternCOperatorLoader {
 impl ExternCOperatorLoader {
 	fn new() -> Self {
 		Self {
-			cache: LibraryCache::new(),
+			cache: ExternLoad::new(),
 			operator_paths: HashMap::new(),
 		}
 	}
@@ -153,7 +153,7 @@ impl ExternCOperatorLoader {
 		let descriptor = self.get_descriptor(path)?;
 		self.validate_and_register(&descriptor, path)?;
 
-		let library = self.cache.get(path).unwrap();
+		let library = self.cache.library(path).map_err(|e| SdkError::Other(e.to_string()))?;
 		// SAFETY: the ABI declares this symbol as ExternCOperatorCreateFn and the cache keeps it loaded.
 		let create_fn: ExternCOperatorCreateFn = unsafe {
 			let create_symbol: Symbol<ExternCOperatorCreateFn> =

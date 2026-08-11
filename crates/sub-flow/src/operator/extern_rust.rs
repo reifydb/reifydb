@@ -9,7 +9,7 @@ use std::{
 
 use libloading::Symbol;
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_extension::loader::cache::LibraryCache;
+use reifydb_extension::loader::extern_load::ExternLoad;
 use reifydb_flow::operator::BoxedOperator;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::config::Config;
@@ -73,14 +73,14 @@ pub fn extern_rust_operator_loader() -> &'static RwLock<ExternRustOperatorLoader
 }
 
 pub struct ExternRustOperatorLoader {
-	cache: LibraryCache,
+	cache: ExternLoad,
 	operator_paths: HashMap<String, PathBuf>,
 }
 
 impl ExternRustOperatorLoader {
 	fn new() -> Self {
 		Self {
-			cache: LibraryCache::new(),
+			cache: ExternLoad::new(),
 			operator_paths: HashMap::new(),
 		}
 	}
@@ -168,7 +168,11 @@ impl ExternRustOperatorLoader {
 
 		self.descriptor(&path)?;
 
-		let library = self.cache.get(&path).unwrap();
+		let library = self.cache.library(&path).map_err(|_| {
+			Error::from(ExternOperatorError::LibraryNotLoaded {
+				path: operator.to_string(),
+			})
+		})?;
 		// SAFETY: load_library and descriptor accepted this path, so the object was built against this
 		// crate and declares the create symbol with this signature; the copied-out pointer is called
 		// before this method returns, while &mut self still holds the cache entry that keeps it mapped.
