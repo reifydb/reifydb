@@ -3677,7 +3677,6 @@ dependencies = [
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sub-api",
- "reifydb-sub-flow",
  "reifydb-subscription",
  "reifydb-test-harness",
  "reifydb-transaction",

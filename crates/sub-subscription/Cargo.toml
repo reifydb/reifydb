@@ -25,7 +25,6 @@ reifydb-macro = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sub-api = { workspace = true }
-reifydb-sub-flow = { workspace = true }
 reifydb-subscription = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }

@@ -42,7 +42,9 @@ use reifydb_core::{
 };
 use reifydb_engine::{engine::StandardEngine, subscription::SubscriptionServiceRef};
 use reifydb_flow::{
-	engine::FlowEngineInner, operator::metrics::OperatorSampleRegistry, transaction::substrate::FlowSubstrate,
+	engine::FlowEngineInner,
+	operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
+	transaction::substrate::FlowSubstrate,
 };
 use reifydb_runtime::{
 	actor::{
@@ -54,7 +56,6 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
-use reifydb_sub_flow::{builder::CustomOperators, operator::provider::StandardOperatorProvider};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_value::{Result, value::duration::Duration};
 
@@ -85,7 +86,6 @@ impl SubscriptionSubsystem {
 		cdc_store: CdcStore,
 		store: Arc<SubscriptionStore>,
 		_runtime_context: RuntimeContext,
-		custom_operators: CustomOperators,
 		consumer_watermark: CdcConsumerWatermark,
 		source_tracker: SubscriptionSourceTracker,
 		position_tracker: SubscriptionPositionTracker,
@@ -97,15 +97,8 @@ impl SubscriptionSubsystem {
 		let delivery = Arc::new(DeliveryBuffer::new(store.clone()));
 
 		let num_workers = Self::resolve_worker_count(&catalog, &spawner);
-		let (workers, worker_handles) = Self::spawn_worker_pool(
-			&engine,
-			&catalog,
-			&store,
-			&delivery,
-			&custom_operators,
-			&spawner,
-			num_workers,
-		);
+		let (workers, worker_handles) =
+			Self::spawn_worker_pool(&engine, &catalog, &store, &delivery, &spawner, num_workers);
 
 		let state = Arc::new(SubscriptionState {
 			store: store.clone(),
@@ -168,7 +161,6 @@ impl SubscriptionSubsystem {
 		catalog: &Catalog,
 		store: &Arc<SubscriptionStore>,
 		delivery: &Arc<DeliveryBuffer>,
-		custom_operators: &CustomOperators,
 		spawner: &ActorSpawner,
 		num_workers: usize,
 	) -> (Vec<ActorRef<SubscriptionWorkerMessage>>, Vec<ActorHandle<SubscriptionWorkerMessage>>) {
@@ -177,11 +169,10 @@ impl SubscriptionSubsystem {
 		let mut worker_handles: Vec<ActorHandle<SubscriptionWorkerMessage>> = Vec::with_capacity(num_workers);
 		for i in 0..num_workers {
 			let cat = catalog.clone();
-			let exec = engine.executor();
-			let routines = exec.routines.clone();
+			let routines = engine.executor().routines.clone();
 			let bus = engine.event_bus().clone();
 			let rc = RuntimeContext::with_clock(clock.clone());
-			let provider = Arc::new(StandardOperatorProvider::new(custom_operators.clone(), exec));
+			let provider = Arc::new(EmptyOperatorProvider);
 			let substrate =
 				FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
 			let factory = move || {
@@ -270,7 +261,6 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 
 		let runtime_context = RuntimeContext::with_clock(clock);
 		let store = Arc::new(SubscriptionStore::new(1024));
-		let custom_operators = CustomOperators::default();
 
 		let consumer_watermark = CdcConsumerWatermark::new();
 		ioc.register_service::<CdcConsumerWatermark>(consumer_watermark.clone());
@@ -290,7 +280,6 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 			cdc_store,
 			store.clone(),
 			runtime_context,
-			custom_operators,
 			consumer_watermark,
 			source_tracker,
 			position_tracker,
