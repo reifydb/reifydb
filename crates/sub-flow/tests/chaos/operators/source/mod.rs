@@ -15,7 +15,6 @@ pub mod oracle;
 pub mod workload;
 
 use rand::RngExt;
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	common::TimeSource,
 	interface::{
@@ -28,6 +27,7 @@ use reifydb_core::{
 			view::{SeriesView, View, ViewKind},
 		},
 		change::Change,
+		flow::OperatorCapability,
 	},
 	value::column::columns::Columns,
 };

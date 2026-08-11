@@ -108,7 +108,6 @@ fn output_frontiers(
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
 		common::TimeDomain,
@@ -116,6 +115,7 @@ mod tests {
 			WithEventBus,
 			catalog::id::{SeriesId, TableId, ViewId},
 			change::Change,
+			flow::OperatorCapability,
 		},
 	};
 	use reifydb_rql::flow::{

@@ -2706,7 +2706,6 @@ dependencies = [
  "opentelemetry",
  "rayon",
  "reifydb",
- "reifydb-abi",
  "reifydb-allocator",
  "reifydb-auth",
  "reifydb-build",
@@ -2763,10 +2762,6 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
 ]
-
-[[package]]
-name = "reifydb-abi"
-version = "0.8.1"
 
 [[package]]
 name = "reifydb-allocator"
@@ -2840,7 +2835,6 @@ version = "0.8.1"
 dependencies = [
  "crossbeam-skiplist",
  "once_cell",
- "reifydb-abi",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
@@ -2930,7 +2924,6 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "postcard",
- "reifydb-abi",
  "reifydb-build",
  "reifydb-runtime",
  "reifydb-value",
@@ -2966,7 +2959,6 @@ dependencies = [
  "num-traits",
  "paste",
  "postcard",
- "reifydb-abi",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-engine",
@@ -2996,7 +2988,6 @@ dependencies = [
  "bumpalo",
  "indexmap",
  "postcard",
- "reifydb-abi",
  "reifydb-auth",
  "reifydb-build",
  "reifydb-catalog",
@@ -3052,7 +3043,6 @@ version = "0.8.1"
 dependencies = [
  "libloading",
  "postcard",
- "reifydb-abi",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
@@ -3074,7 +3064,6 @@ dependencies = [
  "dashmap",
  "indexmap",
  "postcard",
- "reifydb-abi",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-codec",
@@ -3272,7 +3261,6 @@ dependencies = [
  "bumpalo",
  "postcard",
  "rand 0.10.1",
- "reifydb-abi",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
@@ -3377,7 +3365,6 @@ dependencies = [
  "rand 0.10.1",
  "rayon",
  "reifydb",
- "reifydb-abi",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-cdc",
@@ -3665,7 +3652,6 @@ dependencies = [
  "postcard",
  "rand 0.10.1",
  "reifydb",
- "reifydb-abi",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-cdc",
@@ -3735,7 +3721,6 @@ name = "reifydb-test-harness"
 version = "0.8.1"
 dependencies = [
  "reifydb",
- "reifydb-abi",
  "reifydb-auth",
  "reifydb-build",
  "reifydb-catalog",
@@ -3785,7 +3770,6 @@ dependencies = [
 name = "reifydb-testing-flow"
 version = "0.8.1"
 dependencies = [
- "reifydb-abi",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-codec",
@@ -3822,7 +3806,6 @@ name = "reifydb-testing-sdk"
 version = "0.8.1"
 dependencies = [
  "rand 0.10.1",
- "reifydb-abi",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",

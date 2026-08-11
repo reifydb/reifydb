@@ -13,7 +13,6 @@ reifydb-build = { workspace = true }
 
 [dependencies]
 reifydb-test-harness = { workspace = true }
-reifydb-abi = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }

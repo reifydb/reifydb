@@ -12,7 +12,6 @@ description = "Test harness and chaos framework for ReifyDB SDK operators"
 reifydb-build = { workspace = true }
 
 [dependencies]
-reifydb-abi.workspace = true
 reifydb-codec = { workspace = true }
 reifydb-core.workspace = true
 reifydb-flow = { workspace = true }

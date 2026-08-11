@@ -3,6 +3,7 @@
 
 use std::{
 	alloc::{Layout, alloc, dealloc},
+	ffi::c_void,
 	slice::from_raw_parts,
 	str::from_utf8,
 };
@@ -398,27 +399,32 @@ extern "C" fn test_state_range(
 
 use std::ptr;
 
-use reifydb_abi::{
-	callbacks::{
-		builder::BuilderCallbacks, dictionary::DictionaryCallbacks, host::HostCallbacks,
-		memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks,
-	},
-	constants::{
-		EXTERN_C_END_OF_ITERATION, EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_NULL_PTR, EXTERN_C_NOT_FOUND,
-		EXTERN_C_OK, GROUP_ABSENT,
-	},
-	context::{context::ExternCContext, iterators::ExternCStateIterator},
-	data::{
-		buffer::ExternCBuffer,
-		key_ref::ExternCKeyRef,
-		state::{ExternCStateEntry, ExternCStateSlice},
-	},
-	operator::timer::TimerKind,
-};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	state::store::TimerKind,
+};
+use reifydb_sdk::{
+	common::extern_c::wire::{
+		buffer::ExternCBuffer,
+		callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks, rql::RqlCallbacks},
+		key_ref::ExternCKeyRef,
+		status::{
+			EXTERN_C_END_OF_ITERATION, EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_NULL_PTR,
+			EXTERN_C_NOT_FOUND, EXTERN_C_OK,
+		},
+	},
+	flow::operator::extern_c::wire::{
+		callbacks::{
+			OperatorCallbacks,
+			dictionary::DictionaryCallbacks,
+			state::{GROUP_ABSENT, StateCallbacks},
+		},
+		context::ExternCContext,
+		iterators::ExternCStateIterator,
+		state::{ExternCStateEntry, ExternCStateSlice},
+	},
 };
 use reifydb_value::value::datetime::DateTime;
 
@@ -435,7 +441,7 @@ use crate::{
 /// Unconditional stub: it returns an error without reading any argument, so no pointer
 /// contract applies yet. Reinstate one here before giving it a body.
 unsafe extern "C" fn test_rql(
-	_ctx: *mut ExternCContext,
+	_ctx: *mut c_void,
 	_rql_ptr: *const u8,
 	_rql_len: usize,
 	_params_ptr: *const u8,
@@ -910,8 +916,8 @@ extern "C" fn test_dictionary_get(
 	}
 }
 
-pub fn create_test_callbacks() -> HostCallbacks {
-	HostCallbacks {
+pub fn create_test_callbacks() -> OperatorCallbacks {
+	OperatorCallbacks {
 		memory: MemoryCallbacks {
 			alloc: test_alloc,
 			free: test_free,

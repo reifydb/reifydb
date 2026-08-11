@@ -683,7 +683,7 @@ pub(crate) mod test_support {
 		}
 	}
 
-	use reifydb_abi::operator::timer::TimerKind;
+	use reifydb_core::state::store::TimerKind;
 
 	impl StateStore for MockStore {
 		fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {

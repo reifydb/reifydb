@@ -27,7 +27,6 @@ reifydb-flow = { workspace = true, features = ["runtime"] }
 reifydb-store-operator = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-routine-abi = { workspace = true }
-reifydb-abi = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sdk = { workspace = true }
 reifydb-rql = { workspace = true }
@@ -54,7 +53,6 @@ reifydb-routine = { workspace = true }
 reifydb-testing-sdk = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-value = { workspace = true }
-reifydb-abi = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb = { workspace = true, features = ["testing"] }
 reifydb-test-harness = { workspace = true, features = ["operator"] }

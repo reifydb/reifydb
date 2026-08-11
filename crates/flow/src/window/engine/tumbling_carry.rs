@@ -417,12 +417,14 @@ mod tests {
 		sync::atomic::{AtomicUsize, Ordering},
 	};
 
-	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::{
 		key::encoded::EncodedKeyRange,
 		row::operator::{EncodedOperatorRow, decode},
 	};
-	use reifydb_core::key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey};
+	use reifydb_core::{
+		key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey},
+		state::store::TimerKind,
+	};
 	use reifydb_value::{
 		factory::time::{at_millis, millis},
 		value::{datetime::DateTime, duration::Duration, row_number::RowNumber},

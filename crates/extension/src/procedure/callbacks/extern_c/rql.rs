@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{panic, ptr, slice, str};
+use std::{ffi::c_void, panic, ptr, slice, str};
 
-use reifydb_abi::{
-	constants::{EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_OK},
-	context::context::ExternCContext,
-	data::buffer::ExternCBuffer,
-};
 use reifydb_codec::{
 	frame::{encode::encode_frames, options::EncodeOptions},
 	value::decode_params,
+};
+use reifydb_sdk::{
+	common::extern_c::wire::{
+		buffer::ExternCBuffer,
+		status::{EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_OK},
+	},
+	procedure::extern_c::wire::context::ExternCContext,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::params::Params;
@@ -23,12 +25,12 @@ use super::memory::host_alloc;
 ///
 /// # Safety
 ///
-/// - `ctx` must be a valid pointer to a `ExternCContext` whose `txn_ptr` points to a live `Transaction`.
+/// - `ctx` must be a valid pointer to a procedure `ExternCContext` whose `txn_ptr` points to a live `Transaction`.
 /// - `rql_ptr` must be valid for reading `rql_len` bytes of valid UTF-8.
 /// - `params_ptr` must be valid for reading `params_len` bytes, or null if `params_len` is 0.
 /// - `result_out` must be a valid pointer to a `ExternCBuffer` for writing.
 pub unsafe extern "C" fn host_rql(
-	ctx: *mut ExternCContext,
+	ctx: *mut c_void,
 	rql_ptr: *const u8,
 	rql_len: usize,
 	params_ptr: *const u8,
@@ -61,7 +63,7 @@ pub unsafe extern "C" fn host_rql(
 				}
 			};
 
-			let ctx_ref = &mut *ctx;
+			let ctx_ref = &mut *(ctx as *mut ExternCContext);
 			let tx = &mut *(ctx_ref.txn_ptr as *mut Transaction<'_>);
 
 			let result = tx.rql(rql_str, params);

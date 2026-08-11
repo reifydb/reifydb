@@ -3,13 +3,15 @@
 
 use std::{collections::HashMap, marker::PhantomData, mem, ops::Index};
 
-use reifydb_abi::flow::diff::DiffType;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::operator::OperatorState;
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
-	interface::{catalog::flow::OperatorId, change::Change},
+	interface::{
+		catalog::flow::OperatorId,
+		change::{Change, DiffType},
+	},
 	key::{Key, kind::KeyKind, operator_state::GroupStateKey},
 	row::Row,
 	value::column::columns::Columns,
@@ -22,9 +24,10 @@ use reifydb_flow::{
 	},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_sdk::operator::{
-	ExternCOperatorAdapter, OperatorLogic, OperatorMetadata,
+use reifydb_sdk::flow::operator::{
+	OperatorLogic, OperatorMetadata,
 	context::{OperatorContext, StateApi},
+	extern_c::binding::operator::ExternCOperatorAdapter,
 };
 use reifydb_sub_flow::operator::{
 	bridge::{BridgeOperator, BridgeOperatorAdapter, FlowBridge},

@@ -5,13 +5,16 @@ pub mod loader;
 
 use std::{cell::UnsafeCell, ffi::c_void, ptr};
 
-use reifydb_abi::{
-	callbacks::{builder::BuilderCallbacks, host::HostCallbacks, memory::MemoryCallbacks},
-	context::context::ExternCContext,
-	transform::{descriptor::ExternCTransformDescriptor, vtable::ExternCTransformVTable},
-};
 use reifydb_core::value::column::columns::Columns;
-use reifydb_sdk::{error::SdkError, extern_c::arena::Arena};
+use reifydb_sdk::{
+	common::extern_c::wire::callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks},
+	error::SdkError,
+	flow::operator::extern_c::binding::arena::Arena,
+	transform::extern_c::wire::{
+		callbacks::TransformCallbacks, context::ExternCContext, descriptor::ExternCTransformDescriptor,
+		vtable::ExternCTransformVTable,
+	},
+};
 use reifydb_value::{self, Result};
 use tracing::instrument;
 
@@ -56,7 +59,6 @@ impl ExternCTransform {
 			cached_ctx: UnsafeCell::new(ExternCContext {
 				txn_ptr: ptr::null_mut(),
 				executor_ptr: ptr::null(),
-				operator_id: 0,
 				written_at_nanos: 0,
 				callbacks: pure_host_callbacks(),
 			}),
@@ -117,15 +119,12 @@ impl Transform for ExternCTransform {
 	}
 }
 
-fn pure_host_callbacks() -> HostCallbacks {
-	HostCallbacks {
+fn pure_host_callbacks() -> TransformCallbacks {
+	TransformCallbacks {
 		memory: MemoryCallbacks {
 			alloc: memory::host_alloc,
 			free: memory::host_free,
 		},
-		state: stubs::state(),
-		rql: stubs::rql(),
-		dictionary: stubs::dictionary(),
 		builder: BuilderCallbacks {
 			acquire: host_builder_acquire,
 			data_ptr: host_builder_data_ptr,
@@ -136,200 +135,5 @@ fn pure_host_callbacks() -> HostCallbacks {
 			release: host_builder_release,
 			emit_diff: host_builder_emit_diff,
 		},
-	}
-}
-
-pub(crate) mod stubs {
-	use reifydb_abi::{
-		callbacks::{dictionary::DictionaryCallbacks, rql::RqlCallbacks, state::StateCallbacks},
-		constants::EXTERN_C_ERROR_INTERNAL,
-		context::{context::ExternCContext, iterators::ExternCStateIterator},
-		data::{buffer::ExternCBuffer, key_ref::ExternCKeyRef, state::ExternCStateEntry},
-	};
-
-	pub fn state() -> StateCallbacks {
-		StateCallbacks {
-			get: state_get,
-			set: state_set,
-			remove: state_remove,
-			clear: state_clear,
-			prefix: state_prefix,
-			range: state_range,
-			iterator_next: state_iterator_next,
-			iterator_free: state_iterator_free,
-			get_many: state_get_many,
-			get_or_create_row_numbers,
-			remove_row_number,
-			remove_row_numbers_below,
-			intern_groups,
-			lookup_groups,
-			arm_timer,
-			disarm_timer,
-			flow_watermark,
-		}
-	}
-
-	extern "C" fn arm_timer(_: u64, _: *mut ExternCContext, _: u64, _: u8, _: *const u8, _: usize) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-
-	extern "C" fn disarm_timer(_: u64, _: *mut ExternCContext, _: u64, _: u8, _: *const u8, _: usize) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-
-	extern "C" fn flow_watermark(_: u64, _: *mut ExternCContext, _: *mut u64, _: *mut u8) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-
-	extern "C" fn intern_groups(
-		_: u64,
-		_: *mut ExternCContext,
-		_: *const ExternCKeyRef,
-		_: usize,
-		_: *mut u64,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-
-	extern "C" fn lookup_groups(
-		_: u64,
-		_: *mut ExternCContext,
-		_: *const ExternCKeyRef,
-		_: usize,
-		_: *mut u64,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-
-	extern "C" fn get_or_create_row_numbers(
-		_: u64,
-		_: *mut ExternCContext,
-		_: u64,
-		_: *const ExternCKeyRef,
-		_: usize,
-		_: *mut u64,
-		_: *mut u8,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-
-	extern "C" fn remove_row_number(_: u64, _: *mut ExternCContext, _: u64, _: *const u8, _: usize) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-
-	extern "C" fn remove_row_numbers_below(
-		_: u64,
-		_: *mut ExternCContext,
-		_: u64,
-		_: *const u8,
-		_: usize,
-		_: *mut ExternCBuffer,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-
-	extern "C" fn state_get_many(
-		_: u64,
-		_: *mut ExternCContext,
-		_: *const ExternCKeyRef,
-		_: usize,
-		_: *mut *mut ExternCStateIterator,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-
-	extern "C" fn state_get(_: u64, _: *mut ExternCContext, _: *const u8, _: usize, _: *mut ExternCBuffer) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn state_set(_: u64, _: *mut ExternCContext, _: *const u8, _: usize, _: *const u8, _: usize) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn state_remove(_: u64, _: *mut ExternCContext, _: *const u8, _: usize) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn state_clear(_: u64, _: *mut ExternCContext) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn state_prefix(
-		_: u64,
-		_: *mut ExternCContext,
-		_: *const u8,
-		_: usize,
-		_: *mut *mut ExternCStateIterator,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn state_range(
-		_: u64,
-		_: *mut ExternCContext,
-		_: *const u8,
-		_: usize,
-		_: u8,
-		_: *const u8,
-		_: usize,
-		_: u8,
-		_: *mut *mut ExternCStateIterator,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn state_iterator_next(
-		_: *mut ExternCStateIterator,
-		_: *mut ExternCStateEntry,
-		_: usize,
-		_: *mut usize,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn state_iterator_free(_: *mut ExternCStateIterator) {}
-
-	pub fn dictionary() -> DictionaryCallbacks {
-		DictionaryCallbacks {
-			id_by_name: dictionary_id_by_name,
-			find: dictionary_find,
-			get: dictionary_get,
-		}
-	}
-
-	extern "C" fn dictionary_id_by_name(
-		_: *mut ExternCContext,
-		_: *const u8,
-		_: usize,
-		_: *mut u64,
-		_: *mut u8,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn dictionary_find(
-		_: *mut ExternCContext,
-		_: u64,
-		_: *const u8,
-		_: usize,
-		_: *mut u128,
-		_: *mut u8,
-		_: *mut u8,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn dictionary_get(_: *mut ExternCContext, _: u64, _: u128, _: *mut ExternCBuffer) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-
-	pub fn rql() -> RqlCallbacks {
-		RqlCallbacks {
-			rql: rql_unsupported,
-		}
-	}
-
-	/// # Safety
-	/// Dereferences nothing; `unsafe` is only present to match the `RqlCallbacks` signature.
-	unsafe extern "C" fn rql_unsupported(
-		_: *mut ExternCContext,
-		_: *const u8,
-		_: usize,
-		_: *const u8,
-		_: usize,
-		_: *mut ExternCBuffer,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
 	}
 }

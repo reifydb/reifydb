@@ -4,7 +4,6 @@
 use std::{ops::Bound, sync::Arc};
 
 use dashmap::DashMap;
-use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::{
 	decode_u64_asc, encode_u64_asc,
 	encoded::{EncodedKey, EncodedKeyRange},
@@ -15,6 +14,7 @@ use reifydb_core::{
 		EncodableKey,
 		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
 	},
+	state::store::TimerKind,
 };
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 

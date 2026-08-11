@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::constraint::type_constraint_to_extern_c;
+use reifydb_codec::constraint::encode_type_constraint;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -63,7 +63,7 @@ impl BaseVTable for SystemRowShapeFields {
 			let fingerprint = *shape.fingerprint();
 
 			for (idx, field) in shape.fields().iter().enumerate() {
-				let extern_c = type_constraint_to_extern_c(&field.constraint)
+				let extern_c = encode_type_constraint(&field.constraint)
 					.expect("constraint exceeds tag capacity");
 
 				fingerprints.push(fingerprint);

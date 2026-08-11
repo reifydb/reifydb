@@ -5,7 +5,9 @@
 //! window's carried close, so the carry must rotate exactly once per boundary crossing and
 //! survive Updates and Removes inside the current window.
 
-use reifydb_sdk::operator::{ExternCOperatorAdapter, windowed::tumbling_carry::TumblingCarryDriver};
+use reifydb_sdk::flow::operator::{
+	extern_c::binding::operator::ExternCOperatorAdapter, windowed::tumbling_carry::TumblingCarryDriver,
+};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,

@@ -123,13 +123,15 @@ where
 mod tests {
 	use std::{collections::HashMap, ops::Bound};
 
-	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::row::operator::EncodedOperatorRow;
 	use reifydb_macro::operator_state;
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 	use super::*;
-	use crate::key::operator_state::{GroupId, GroupStateKey, Keyspace};
+	use crate::{
+		key::operator_state::{GroupId, GroupStateKey, Keyspace},
+		state::store::TimerKind,
+	};
 
 	/// A bare `String` would read as some other group's prefix; this frames the tests' string keys
 	/// the way an operator does.

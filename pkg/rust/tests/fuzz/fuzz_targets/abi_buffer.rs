@@ -4,7 +4,8 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use reifydb_abi::data::buffer::ExternCBuffer;
+use reifydb_sdk::common::extern_c::wire::buffer::ExternCBuffer;
+
 
 fuzz_target!(|data: &[u8]| {
     let buf = ExternCBuffer::from_slice(data);

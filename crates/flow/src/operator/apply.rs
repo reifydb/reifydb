@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::Change},
+	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
@@ -79,7 +78,6 @@ impl Operator for ApplyOperator {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_core::interface::{
 		catalog::{
 			flow::OperatorId,
@@ -87,6 +85,7 @@ mod tests {
 			view::{TableView, View, ViewKind},
 		},
 		change::Change,
+		flow::OperatorCapability,
 	};
 	use reifydb_value::{Result, value::duration::Duration};
 

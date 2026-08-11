@@ -4,7 +4,7 @@
 //! Foundational types, traits, on-disk encodings, and runtime primitives shared across the entire ReifyDB workspace.
 //!
 //! Every other crate in the workspace depends on `core`, and `core` depends only on the foundational crates
-//! (`reifydb-abi`, `reifydb-codec`, `reifydb-macro`, `reifydb-runtime`, `reifydb-value`). Its purpose is to break what
+//! (`reifydb-codec`, `reifydb-macro`, `reifydb-runtime`, `reifydb-value`). Its purpose is to break what
 //! would otherwise be a forest of circular
 //! dependencies between the storage tier, query engine, catalog, transaction manager, policy enforcer, and
 //! subscription/flow runtime: each of those crates implements traits defined here and consumes data shapes defined

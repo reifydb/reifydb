@@ -89,8 +89,8 @@ pub fn read_sealed_through(txn: &mut DepFlowTransaction, operator: OperatorId) -
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::state::store::TimerKind;
 
 	use super::*;
 	use crate::window::engine::test_support::MockStore;

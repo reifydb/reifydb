@@ -4,7 +4,7 @@
 pub mod loader;
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_sdk::marshal::extern_wasm::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
+use reifydb_sdk::common::extern_wasm::marshal::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
 use reifydb_value::Result;
 
 use super::{Transform, context::TransformContext};

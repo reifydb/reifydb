@@ -14,7 +14,6 @@ default = []
 reifydb-build = { workspace = true }
 
 [dependencies]
-reifydb-abi = { workspace = true }
 reifydb-cdc = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }

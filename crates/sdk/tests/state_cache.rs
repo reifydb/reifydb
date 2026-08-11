@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::catalog::flow::OperatorId,
+	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator_state::{GroupStateKey, IntoGroupStateKey, Keyspace},
 	metrics::heap::HeapSize,
 	state::cache::StateCache,
@@ -11,9 +10,12 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_sdk::{
 	error::Result,
-	operator::{
-		ExternCOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
-		context::extern_c::ExternCOperatorContext, windowed::bridge::OperatorContextStore,
+	flow::operator::{
+		OperatorMetadata,
+		change::BorrowedChange,
+		column::operator::OperatorColumn,
+		extern_c::binding::{context::ExternCOperatorContext, operator::ExternCOperator},
+		windowed::bridge::OperatorContextStore,
 	},
 };
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};

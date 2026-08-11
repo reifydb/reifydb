@@ -3,7 +3,6 @@
 
 use std::{cell::UnsafeCell, collections::HashMap, ops::Bound};
 
-use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_codec::{
 	key::{
 		decode_u64_asc, encode_u64_asc, encode_u128_asc,
@@ -27,6 +26,7 @@ use reifydb_core::{
 			view::View,
 		},
 		change::{Change, ChangeOrigin, Diff},
+		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
 	key::{
@@ -38,6 +38,7 @@ use reifydb_core::{
 	},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
+	state::store::TimerKind,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_macro::operator_state;

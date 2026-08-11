@@ -31,7 +31,6 @@ pub use builder::{
 pub use context::{RuntimeProvider, SyncContext, SystemContext};
 pub use database::Database;
 pub use health::HealthMonitor;
-pub use reifydb_abi as abi;
 pub use reifydb_allocator as allocator;
 pub use reifydb_auth as auth;
 pub use reifydb_catalog as catalog;

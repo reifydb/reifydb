@@ -8,26 +8,23 @@
 use std::time::Duration as StdDuration;
 
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
-use reifydb_abi::{
-	flow::diff::DiffType,
-	operator::{capabilities::OperatorCapability, timer::TimerKind},
-};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	interface::catalog::flow::OperatorId,
+	interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
 	key::operator_state::{Keyspace, OperatorStateKey},
+	state::store::TimerKind,
 };
 use reifydb_sdk::{
 	error::Result as SdkResult,
-	operator::{
+	flow::operator::{
 		OperatorLogic, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::OperatorContext,
+		state::RawStatefulOperator,
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
 	row,
-	state::RawStatefulOperator,
 };
 use reifydb_value::{
 	config::Config,

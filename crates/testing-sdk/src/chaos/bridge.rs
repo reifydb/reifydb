@@ -241,8 +241,8 @@ impl Model<GuestRow> for ReplayModel {
 mod tests {
 	use std::ops::Range;
 
-	use reifydb_abi::flow::diff::DiffType;
 	use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
+	use reifydb_core::interface::change::DiffType;
 	use reifydb_testing_chaos::operator::{
 		drive::drive,
 		scenario::{BatchSize, Scenario, SupportedOps},

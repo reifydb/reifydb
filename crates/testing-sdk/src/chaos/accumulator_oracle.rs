@@ -7,7 +7,6 @@ use std::{
 	ptr::null,
 };
 
-use reifydb_abi::context::context::ExternCContext;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -21,9 +20,9 @@ use reifydb_flow::window::{
 	accumulator::WindowAccumulator,
 	span::{WindowCoord, WindowSpan},
 };
-use reifydb_sdk::operator::{
+use reifydb_sdk::flow::operator::{
 	column::{row::Row, sink::bridge::BridgeRowSink},
-	context::extern_c::ExternCOperatorContext,
+	extern_c::{binding::context::ExternCOperatorContext, wire::context::ExternCContext},
 	view::{ColumnsView, RowView, bridge::BridgeColumnsView},
 	windowed::{
 		rolling::RollingOperator, rolling_top_k::RollingTopKOperator, tumbling::TumblingOperator,
@@ -44,8 +43,8 @@ fn with_oracle_ctx<R>(f: impl FnOnce(&mut ExternCOperatorContext) -> R) -> R {
 	let mut extern_c_context = ExternCContext {
 		txn_ptr: &test_ctx as *const TestContext as *mut c_void,
 		executor_ptr: null(),
-		operator_id: 1,
 		written_at_nanos: 0,
+		operator_id: 1,
 		callbacks: create_test_callbacks(),
 	};
 	let mut op_ctx = ExternCOperatorContext::new(&mut extern_c_context as *mut ExternCContext);

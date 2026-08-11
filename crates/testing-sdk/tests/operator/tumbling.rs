@@ -5,7 +5,9 @@
 //! the real operator and through `tumbling_accumulator_oracle`, and the materialized tables
 //! must agree. Covers an invertible sum, a removal-safe multiset min, and sealing OHLCV.
 
-use reifydb_sdk::operator::{ExternCOperatorAdapter, windowed::tumbling::TumblingDriver};
+use reifydb_sdk::flow::operator::{
+	extern_c::binding::operator::ExternCOperatorAdapter, windowed::tumbling::TumblingDriver,
+};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,

@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::{
-	flow::diff::DiffType,
-	operator::capabilities::{OperatorCapability, from_bitmask},
-};
 use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShapeField};
-use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
+use reifydb_core::{
+	interface::{
+		catalog::flow::OperatorId,
+		change::DiffType,
+		flow::{OperatorCapability, from_bitmask},
+	},
+	metrics::heap::HeapSize,
+	row::Row as CoreRow,
+};
 use reifydb_flow::window::{
 	accumulator::{
 		WindowAccumulator,
@@ -16,9 +20,11 @@ use reifydb_flow::window::{
 };
 use reifydb_sdk::{
 	error::Result,
-	extern_c::exports::create_descriptor,
-	operator::{
-		ExternCOperatorAdapter, column::operator::OperatorColumn, context::OperatorContext, view::RowView,
+	flow::operator::{
+		column::operator::OperatorColumn,
+		context::OperatorContext,
+		extern_c::binding::{exports::create_descriptor, operator::ExternCOperatorAdapter},
+		view::RowView,
 		windowed::tumbling::*,
 	},
 	row,

@@ -3,13 +3,14 @@
 
 use std::{ptr, slice::from_raw_parts};
 
-use reifydb_abi::{
-	constants::{EXTERN_C_ERROR_ALLOC, EXTERN_C_OK},
-	data::{buffer::ExternCBuffer, key_ref::ExternCKeyRef},
-};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::key::operator_state::GroupStateKey;
 use reifydb_extension::procedure::callbacks::extern_c::memory::host_alloc;
+use reifydb_sdk::common::extern_c::wire::{
+	buffer::ExternCBuffer,
+	key_ref::ExternCKeyRef,
+	status::{EXTERN_C_ERROR_ALLOC, EXTERN_C_OK},
+};
 use reifydb_value::util::cowvec::CowVec;
 
 // SAFETY: `ptr` must be valid for reads of `len` bytes.

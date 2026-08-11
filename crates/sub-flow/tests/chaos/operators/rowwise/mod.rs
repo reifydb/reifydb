@@ -7,9 +7,8 @@ pub mod workload;
 use std::sync::Arc;
 
 use rand::RngExt;
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::Change},
+	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	value::column::columns::Columns,
 };
 use reifydb_flow::{

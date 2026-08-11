@@ -15,7 +15,6 @@
 pub mod oracle;
 
 use rand::RngExt;
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -28,6 +27,7 @@ use reifydb_core::{
 			view::{RingBufferView, SeriesView, TableView, View, ViewKind},
 		},
 		change::{Change, Diff},
+		flow::OperatorCapability,
 		resolved::{ResolvedNamespace, ResolvedView},
 	},
 	value::column::columns::Columns,

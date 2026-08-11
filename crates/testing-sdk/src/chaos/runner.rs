@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_sdk::operator::ExternCOperator;
+use reifydb_sdk::flow::operator::extern_c::binding::operator::ExternCOperator;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	operator::{

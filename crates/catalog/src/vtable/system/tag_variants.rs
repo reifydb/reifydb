@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::constraint::type_constraint_to_extern_c;
+use reifydb_codec::constraint::encode_type_constraint;
 use reifydb_core::{
 	interface::catalog::{sumtype::SumTypeKind, vtable::VTable},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -73,7 +73,7 @@ impl BaseVTable for SystemTagVariants {
 					field_types.push(0u8);
 				} else {
 					for (idx, field) in variant.fields.iter().enumerate() {
-						let extern_c = type_constraint_to_extern_c(&field.field_type)
+						let extern_c = encode_type_constraint(&field.field_type)
 							.expect("constraint exceeds tag capacity");
 						ids.push(st.id.0);
 						variant_tags.push(variant.tag);

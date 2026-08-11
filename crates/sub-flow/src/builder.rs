@@ -4,15 +4,18 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_abi::operator::capabilities::to_bitmask;
+use reifydb_core::interface::flow::to_bitmask;
 use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::OperatorId};
 use reifydb_flow::operator::BoxedOperator;
-use reifydb_sdk::connector::{
-	sink::{InProcessSink, InProcessSinkMetadata},
-	source::{InProcessSource, InProcessSourceMetadata},
-};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_sdk::operator::{OperatorLogic, OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
+use reifydb_sdk::flow::operator::OperatorLogic;
+use reifydb_sdk::flow::{
+	connector::{
+		sink::{InProcessSink, InProcessSinkMetadata},
+		source::{InProcessSource, InProcessSourceMetadata},
+	},
+	operator::{OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn},
+};
 use reifydb_value::{Result, config::Config};
 
 use crate::connector::ConnectorRegistry;

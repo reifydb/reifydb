@@ -3,23 +3,23 @@
 
 use core::ffi::c_void;
 
-use reifydb_abi::{callbacks::host::HostCallbacks, context::context::ExternCContext};
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_engine::vm::executor::Executor;
 use reifydb_flow::transaction::DepFlowTransaction;
+use reifydb_sdk::flow::operator::extern_c::wire::{callbacks::OperatorCallbacks, context::ExternCContext};
 
 pub(crate) fn new_extern_c_context(
 	txn: &mut DepFlowTransaction,
 	executor: &Executor,
 	operator_id: OperatorId,
-	callbacks: HostCallbacks,
+	callbacks: OperatorCallbacks,
 ) -> ExternCContext {
 	let written_at_nanos = txn.written_at().to_nanos();
 	ExternCContext {
 		txn_ptr: txn as *mut _ as *mut c_void,
 		executor_ptr: executor as *const _ as *const c_void,
-		operator_id: operator_id.0,
 		written_at_nanos,
+		operator_id: operator_id.0,
 		callbacks,
 	}
 }

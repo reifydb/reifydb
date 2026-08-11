@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::callbacks::{
-	builder::BuilderCallbacks, dictionary::DictionaryCallbacks, host::HostCallbacks, memory::MemoryCallbacks,
-	rql::RqlCallbacks, state::StateCallbacks,
-};
 use reifydb_extension::{callbacks::extern_c::builder, procedure::callbacks::extern_c::memory};
+use reifydb_sdk::{
+	common::extern_c::wire::callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks, rql::RqlCallbacks},
+	flow::operator::extern_c::wire::callbacks::{
+		OperatorCallbacks, dictionary::DictionaryCallbacks, state::StateCallbacks,
+	},
+};
 
 pub mod dictionary;
 mod marshal;
@@ -13,8 +15,8 @@ pub mod rql;
 pub mod state;
 pub mod state_iterator;
 
-pub fn create_host_callbacks() -> HostCallbacks {
-	HostCallbacks {
+pub fn create_host_callbacks() -> OperatorCallbacks {
+	OperatorCallbacks {
 		memory: MemoryCallbacks {
 			alloc: memory::host_alloc,
 			free: memory::host_free,

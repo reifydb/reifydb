@@ -3,15 +3,18 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShapeField};
-use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
+use reifydb_core::{
+	interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
+	metrics::heap::HeapSize,
+	row::Row as CoreRow,
+};
 use reifydb_flow::window::accumulator::{WindowAccumulator, invertible::Moments};
 use reifydb_sdk::{
 	error::Result,
-	operator::{
-		ExternCOperatorAdapter, column::operator::OperatorColumn, context::OperatorContext, view::RowView,
-		windowed::rolling::*,
+	flow::operator::{
+		column::operator::OperatorColumn, context::OperatorContext,
+		extern_c::binding::operator::ExternCOperatorAdapter, view::RowView, windowed::rolling::*,
 	},
 	row,
 };

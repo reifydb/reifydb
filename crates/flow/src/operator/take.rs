@@ -6,7 +6,6 @@ use std::{
 	slice::from_ref,
 };
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
 	operator::{decode, encode},
@@ -16,6 +15,7 @@ use reifydb_core::{
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
+		flow::OperatorCapability,
 	},
 	metrics::heap::HeapSize,
 	value::column::columns::Columns,

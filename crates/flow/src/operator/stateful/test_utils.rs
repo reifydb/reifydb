@@ -2,13 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod test {
-	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_codec::row::{
 		operator::EncodedOperatorRow,
 		shape::{RowFamily, RowShape},
 	};
 	use reifydb_core::{
-		interface::{catalog::flow::OperatorId, change::Change},
+		interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 		key::operator_state::{GroupStateKey, Keyspace},
 	};
 	use reifydb_test_harness::engine::TestEngine;

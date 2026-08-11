@@ -28,7 +28,6 @@ runtime = [
 ]
 
 [dependencies]
-reifydb-abi = { workspace = true }
 reifydb-catalog = { workspace = true, optional = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }

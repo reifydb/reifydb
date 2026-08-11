@@ -8,7 +8,6 @@
 
 use std::sync::Arc;
 
-use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::operator::{EncodedOperatorRow, decode},
@@ -20,6 +19,7 @@ use reifydb_core::{
 		EncodableKey,
 		operator_state::{Keyspace, OperatorStateKey},
 	},
+	state::store::TimerKind,
 };
 use reifydb_flow::{
 	context::FlowContext,

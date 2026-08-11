@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::operator::EncodedOperatorRow,
@@ -12,7 +11,7 @@ use reifydb_core::{
 		EncodableKey,
 		operator_state::{GroupId, GroupStateKey, OperatorStateKey},
 	},
-	state::store::StateStore,
+	state::store::{StateStore, TimerKind},
 };
 use reifydb_value::{
 	Result,

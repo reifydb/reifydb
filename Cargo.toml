@@ -24,7 +24,6 @@ members = [
     "crates/profiler",
     "crates/macro",
     "crates/macro-impl",
-    "crates/abi",
     "crates/sub-raft",
     "crates/runtime",
     "crates/sdk",
@@ -109,7 +108,6 @@ default-members = [
     "crates/profiler",
     "crates/macro",
     "crates/macro-impl",
-    "crates/abi",
     "crates/runtime",
     "crates/sdk",
     "crates/rql",
@@ -228,7 +226,6 @@ reifydb-extension = { version = "0.8.1", path = "crates/extension" }
 reifydb-flow = { version = "0.8.1", path = "crates/flow" }
 reifydb-policy = { version = "0.8.1", path = "crates/policy" }
 reifydb-profiler = { version = "0.8.1", path = "crates/profiler" }
-reifydb-abi = { version = "0.8.1", path = "crates/abi" }
 reifydb-runtime = { version = "0.8.1", path = "crates/runtime" }
 reifydb-sdk = { version = "0.8.1", path = "crates/sdk" }
 reifydb-rql = { version = "0.8.1", path = "crates/rql" }

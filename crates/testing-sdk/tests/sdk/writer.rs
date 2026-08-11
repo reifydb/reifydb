@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::interface::{catalog::flow::OperatorId, flow::OperatorCapability};
 use reifydb_sdk::{
 	error::Result,
-	operator::{
-		ExternCOperator, OperatorMetadata,
+	flow::operator::{
+		OperatorMetadata,
 		change::BorrowedChange,
 		column::{batch::InsertBatch, operator::OperatorColumn},
-		context::extern_c::ExternCOperatorContext,
+		extern_c::binding::{context::ExternCOperatorContext, operator::ExternCOperator},
 	},
 	row,
 };

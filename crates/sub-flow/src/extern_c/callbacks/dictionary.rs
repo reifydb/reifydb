@@ -3,17 +3,19 @@
 
 use std::{slice::from_raw_parts, str::from_utf8};
 
-use reifydb_abi::{
-	constants::{
-		EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_NULL_PTR, EXTERN_C_NOT_FOUND,
-		EXTERN_C_OK,
-	},
-	context::context::ExternCContext,
-	data::buffer::ExternCBuffer,
-};
 use reifydb_codec::{
 	tag::type_tag_byte,
 	value::{decode_value, encode_value},
+};
+use reifydb_sdk::{
+	common::extern_c::wire::{
+		buffer::ExternCBuffer,
+		status::{
+			EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_NULL_PTR,
+			EXTERN_C_NOT_FOUND, EXTERN_C_OK,
+		},
+	},
+	flow::operator::extern_c::wire::context::ExternCContext,
 };
 use reifydb_value::value::{
 	Value,

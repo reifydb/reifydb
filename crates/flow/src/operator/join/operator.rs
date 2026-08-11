@@ -4,13 +4,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 use postcard::to_extend;
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::{
 	common::JoinType,
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
+		flow::OperatorCapability,
 	},
 	key::operator_state::GroupId,
 	metrics::heap::OperatorSample,

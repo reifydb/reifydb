@@ -10,7 +10,7 @@
 
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::value::column::columns::Columns;
-use reifydb_sdk::operator::view::{ColumnsView, RowView, bridge::BridgeColumnsView};
+use reifydb_sdk::flow::operator::view::{ColumnsView, RowView, bridge::BridgeColumnsView};
 use reifydb_testing_sdk::builders::TestOperatorRowBuilder;
 use reifydb_value::value::{Value, datetime::DateTime, value_type::ValueType};
 

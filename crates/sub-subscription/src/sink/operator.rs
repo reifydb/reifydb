@@ -3,12 +3,12 @@
 
 use std::{collections::BTreeSet, sync::Arc};
 
-use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::row::operator::{decode, encode};
 use reifydb_core::{
 	interface::{
 		catalog::{flow::OperatorId, id::SubscriptionId, subscription::IMPLICIT_COLUMN_OP},
-		change::{Change, Diff},
+		change::{Change, Diff, DiffType},
+		flow::OperatorCapability,
 	},
 	internal,
 	metrics::heap::HeapSize,

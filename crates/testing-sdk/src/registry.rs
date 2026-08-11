@@ -1,21 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::Cell, collections::HashMap, fmt, mem, ptr, slice, str};
+use std::{cell::Cell, collections::HashMap, ffi::c_void, fmt, mem, ptr, slice, str};
 
-use reifydb_abi::{
-	callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
-	context::context::ExternCContext,
-	data::column::ColumnTypeCode,
-};
-use reifydb_codec::extern_c::cells::{
-	decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
+use reifydb_codec::{
+	extern_c::cells::{
+		decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
+	},
+	tag::ValueKind,
 };
 use reifydb_core::{
 	interface::change::{Diff, Diffs},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_sdk::common::extern_c::wire::callbacks::builder::{ColumnBufferHandle, EmitDiffKind};
 use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
@@ -59,7 +58,7 @@ enum Slot {
 }
 
 pub struct Active {
-	pub type_code: ColumnTypeCode,
+	pub type_code: ValueKind,
 	pub data: Vec<u8>,
 	pub offsets: Option<Vec<u64>>,
 	pub bitvec: Option<Vec<u8>>,
@@ -142,37 +141,32 @@ fn current() -> Option<&'static TestBuilderRegistry> {
 	REGISTRY.with(|cell| cell.get())
 }
 
-fn elem_size_for(type_code: ColumnTypeCode) -> usize {
+fn elem_size_for(type_code: ValueKind) -> usize {
 	match type_code {
-		ColumnTypeCode::Bool => 1,
-		ColumnTypeCode::Float4 | ColumnTypeCode::Int4 | ColumnTypeCode::Uint4 | ColumnTypeCode::Date => 4,
-		ColumnTypeCode::Int1 | ColumnTypeCode::Uint1 => 1,
-		ColumnTypeCode::Int2 | ColumnTypeCode::Uint2 => 2,
-		ColumnTypeCode::Float8
-		| ColumnTypeCode::Int8
-		| ColumnTypeCode::Uint8
-		| ColumnTypeCode::DateTime
-		| ColumnTypeCode::Time => 8,
-		ColumnTypeCode::Int16 | ColumnTypeCode::Uint16 => 16,
-		ColumnTypeCode::Duration
-		| ColumnTypeCode::IdentityId
-		| ColumnTypeCode::Uuid4
-		| ColumnTypeCode::Uuid7
-		| ColumnTypeCode::DictionaryId => 16,
-		ColumnTypeCode::Utf8 | ColumnTypeCode::Blob => 1,
-		ColumnTypeCode::Int | ColumnTypeCode::Uint | ColumnTypeCode::Decimal | ColumnTypeCode::Any => 1,
-		ColumnTypeCode::Undefined => 1,
+		ValueKind::Boolean => 1,
+		ValueKind::Float4 | ValueKind::Int4 | ValueKind::Uint4 | ValueKind::Date => 4,
+		ValueKind::Int1 | ValueKind::Uint1 => 1,
+		ValueKind::Int2 | ValueKind::Uint2 => 2,
+		ValueKind::Float8 | ValueKind::Int8 | ValueKind::Uint8 | ValueKind::DateTime | ValueKind::Time => 8,
+		ValueKind::Int16 | ValueKind::Uint16 => 16,
+		ValueKind::Duration
+		| ValueKind::IdentityId
+		| ValueKind::Uuid4
+		| ValueKind::Uuid7
+		| ValueKind::DictionaryId => 16,
+		ValueKind::Utf8 | ValueKind::Blob => 1,
+		ValueKind::Int | ValueKind::Uint | ValueKind::Decimal | ValueKind::Any => 1,
+		ValueKind::None | ValueKind::Type | ValueKind::List | ValueKind::Record | ValueKind::Tuple => 1,
 	}
 }
 
-fn is_var_len(type_code: ColumnTypeCode) -> bool {
+fn is_var_len(type_code: ValueKind) -> bool {
 	matches!(
 		type_code,
-		ColumnTypeCode::Utf8
-			| ColumnTypeCode::Blob
-			| ColumnTypeCode::Int | ColumnTypeCode::Uint
-			| ColumnTypeCode::Decimal
-			| ColumnTypeCode::Any | ColumnTypeCode::DictionaryId
+		ValueKind::Utf8
+			| ValueKind::Blob | ValueKind::Int
+			| ValueKind::Uint | ValueKind::Decimal
+			| ValueKind::Any | ValueKind::DictionaryId
 	)
 }
 
@@ -181,8 +175,8 @@ fn is_var_len(type_code: ColumnTypeCode) -> bool {
 /// The returned handle is a packed id, never a real pointer; it must only be passed back to
 /// the other `test_*` buffer callbacks on the same thread that acquired it.
 pub(crate) unsafe extern "C" fn test_acquire(
-	_ctx: *mut ExternCContext,
-	type_code: ColumnTypeCode,
+	_ctx: *mut c_void,
+	type_code: ValueKind,
 	capacity: usize,
 ) -> *mut ColumnBufferHandle {
 	let Some(registry) = current() else {
@@ -397,7 +391,7 @@ pub(crate) unsafe extern "C" fn test_release(handle: *mut ColumnBufferHandle) {
 /// entries, and the row-number array must hold `row_count`. The handles are consumed: each
 /// must name a committed buffer and must not be used again after this returns.
 pub(crate) unsafe extern "C" fn test_emit_diff(
-	_ctx: *mut ExternCContext,
+	_written_at_nanos: u64,
 	kind: EmitDiffKind,
 	pre_handles_ptr: *const *mut ColumnBufferHandle,
 	pre_name_ptrs: *const *const u8,
@@ -525,7 +519,7 @@ fn assemble(
 }
 
 pub(crate) fn finalize_buffer(
-	type_code: ColumnTypeCode,
+	type_code: ValueKind,
 	mut data: Vec<u8>,
 	offsets: Option<Vec<u64>>,
 	bitvec: Option<Vec<u8>>,
@@ -543,51 +537,51 @@ pub(crate) fn finalize_buffer(
 	};
 
 	let inner = match type_code {
-		ColumnTypeCode::Bool => {
+		ValueKind::Boolean => {
 			let bv = BitVec::from_raw(data, written_count);
 			ColumnBuffer::Bool(BoolContainer::from_parts(bv))
 		}
-		ColumnTypeCode::Float4 => to_numeric::<f32>(&data, written_count, ColumnBuffer::Float4)?,
-		ColumnTypeCode::Float8 => to_numeric::<f64>(&data, written_count, ColumnBuffer::Float8)?,
-		ColumnTypeCode::Int1 => to_numeric::<i8>(&data, written_count, ColumnBuffer::Int1)?,
-		ColumnTypeCode::Int2 => to_numeric::<i16>(&data, written_count, ColumnBuffer::Int2)?,
-		ColumnTypeCode::Int4 => to_numeric::<i32>(&data, written_count, ColumnBuffer::Int4)?,
-		ColumnTypeCode::Int8 => to_numeric::<i64>(&data, written_count, ColumnBuffer::Int8)?,
-		ColumnTypeCode::Int16 => to_numeric::<i128>(&data, written_count, ColumnBuffer::Int16)?,
-		ColumnTypeCode::Uint1 => to_numeric::<u8>(&data, written_count, ColumnBuffer::Uint1)?,
-		ColumnTypeCode::Uint2 => to_numeric::<u16>(&data, written_count, ColumnBuffer::Uint2)?,
-		ColumnTypeCode::Uint4 => to_numeric::<u32>(&data, written_count, ColumnBuffer::Uint4)?,
-		ColumnTypeCode::Uint8 => to_numeric::<u64>(&data, written_count, ColumnBuffer::Uint8)?,
-		ColumnTypeCode::Uint16 => to_numeric::<u128>(&data, written_count, ColumnBuffer::Uint16)?,
-		ColumnTypeCode::Date => {
+		ValueKind::Float4 => to_numeric::<f32>(&data, written_count, ColumnBuffer::Float4)?,
+		ValueKind::Float8 => to_numeric::<f64>(&data, written_count, ColumnBuffer::Float8)?,
+		ValueKind::Int1 => to_numeric::<i8>(&data, written_count, ColumnBuffer::Int1)?,
+		ValueKind::Int2 => to_numeric::<i16>(&data, written_count, ColumnBuffer::Int2)?,
+		ValueKind::Int4 => to_numeric::<i32>(&data, written_count, ColumnBuffer::Int4)?,
+		ValueKind::Int8 => to_numeric::<i64>(&data, written_count, ColumnBuffer::Int8)?,
+		ValueKind::Int16 => to_numeric::<i128>(&data, written_count, ColumnBuffer::Int16)?,
+		ValueKind::Uint1 => to_numeric::<u8>(&data, written_count, ColumnBuffer::Uint1)?,
+		ValueKind::Uint2 => to_numeric::<u16>(&data, written_count, ColumnBuffer::Uint2)?,
+		ValueKind::Uint4 => to_numeric::<u32>(&data, written_count, ColumnBuffer::Uint4)?,
+		ValueKind::Uint8 => to_numeric::<u64>(&data, written_count, ColumnBuffer::Uint8)?,
+		ValueKind::Uint16 => to_numeric::<u128>(&data, written_count, ColumnBuffer::Uint16)?,
+		ValueKind::Date => {
 			let v = bytes_to_vec::<Date>(&data, written_count)?;
 			ColumnBuffer::Date(TemporalContainer::from_parts(v))
 		}
-		ColumnTypeCode::DateTime => {
+		ValueKind::DateTime => {
 			let v = bytes_to_vec::<DateTime>(&data, written_count)?;
 			ColumnBuffer::DateTime(TemporalContainer::from_parts(v))
 		}
-		ColumnTypeCode::Time => {
+		ValueKind::Time => {
 			let v = bytes_to_vec::<Time>(&data, written_count)?;
 			ColumnBuffer::Time(TemporalContainer::from_parts(v))
 		}
-		ColumnTypeCode::Duration => {
+		ValueKind::Duration => {
 			let v = bytes_to_vec::<Duration>(&data, written_count)?;
 			ColumnBuffer::Duration(TemporalContainer::from_parts(v))
 		}
-		ColumnTypeCode::IdentityId => {
+		ValueKind::IdentityId => {
 			let v = bytes_to_vec::<IdentityId>(&data, written_count)?;
 			ColumnBuffer::IdentityId(IdentityIdContainer::from_parts(v))
 		}
-		ColumnTypeCode::Uuid4 => {
+		ValueKind::Uuid4 => {
 			let v = bytes_to_vec::<Uuid4>(&data, written_count)?;
 			ColumnBuffer::Uuid4(UuidContainer::from_parts(v))
 		}
-		ColumnTypeCode::Uuid7 => {
+		ValueKind::Uuid7 => {
 			let v = bytes_to_vec::<Uuid7>(&data, written_count)?;
 			ColumnBuffer::Uuid7(UuidContainer::from_parts(v))
 		}
-		ColumnTypeCode::Utf8 => {
+		ValueKind::Utf8 => {
 			let offsets = offsets.unwrap_or_else(|| vec![0u64]);
 			let payload_len = *offsets.last().unwrap_or(&0) as usize;
 			data.truncate(payload_len);
@@ -596,7 +590,7 @@ pub(crate) fn finalize_buffer(
 				max_bytes: MaxBytes::MAX,
 			}
 		}
-		ColumnTypeCode::Blob => {
+		ValueKind::Blob => {
 			let offsets = offsets.unwrap_or_else(|| vec![0u64]);
 			let payload_len = *offsets.last().unwrap_or(&0) as usize;
 			data.truncate(payload_len);
@@ -605,7 +599,7 @@ pub(crate) fn finalize_buffer(
 				max_bytes: MaxBytes::MAX,
 			}
 		}
-		ColumnTypeCode::Int => {
+		ValueKind::Int => {
 			let v = decode_per_element::<Int>(&data, &offsets, written_count, |bytes| {
 				Some(decode_int_cell(bytes))
 			})?;
@@ -614,7 +608,7 @@ pub(crate) fn finalize_buffer(
 				max_bytes: MaxBytes::MAX,
 			}
 		}
-		ColumnTypeCode::Uint => {
+		ValueKind::Uint => {
 			let v = decode_per_element::<Uint>(&data, &offsets, written_count, |bytes| {
 				Some(decode_uint_cell(bytes))
 			})?;
@@ -623,7 +617,7 @@ pub(crate) fn finalize_buffer(
 				max_bytes: MaxBytes::MAX,
 			}
 		}
-		ColumnTypeCode::Decimal => {
+		ValueKind::Decimal => {
 			let v = decode_per_element::<Decimal>(&data, &offsets, written_count, |bytes| {
 				decode_decimal_cell(bytes).ok()
 			})?;
@@ -633,14 +627,14 @@ pub(crate) fn finalize_buffer(
 				scale: Scale::MIN,
 			}
 		}
-		ColumnTypeCode::Any => {
+		ValueKind::Any => {
 			let values: Vec<Value> =
 				decode_per_element::<Value>(&data, &offsets, written_count, |bytes| {
 					decode_any_cell(bytes).ok()
 				})?;
 			ColumnBuffer::Any(AnyContainer::from_vec(values))
 		}
-		ColumnTypeCode::DictionaryId => {
+		ValueKind::DictionaryId => {
 			let entries: Vec<DictionaryEntryId> =
 				decode_per_element::<DictionaryEntryId>(&data, &offsets, written_count, |bytes| {
 					decode_dictionary_id_cell(bytes).ok()

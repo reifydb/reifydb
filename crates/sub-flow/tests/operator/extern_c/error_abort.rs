@@ -3,7 +3,7 @@
 
 use std::{env, process::Command};
 
-use reifydb_sdk::operator::ExternCOperatorAdapter;
+use reifydb_sdk::flow::operator::extern_c::binding::operator::ExternCOperatorAdapter;
 use reifydb_test_harness::operator::change::trigger;
 use reifydb_testing_sdk::harness::drive_extern_c_apply;
 

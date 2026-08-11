@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::state::store::StateStore;
+use reifydb_core::state::store::{StateStore, TimerKind};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},

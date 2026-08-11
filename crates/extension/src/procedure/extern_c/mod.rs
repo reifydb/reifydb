@@ -5,32 +5,32 @@ pub mod loader;
 
 use std::{cell::UnsafeCell, ffi::c_void, ptr};
 
-use reifydb_abi::{
-	callbacks::{builder::BuilderCallbacks, host::HostCallbacks, memory::MemoryCallbacks, rql::RqlCallbacks},
-	context::context::ExternCContext,
-	procedure::{descriptor::ExternCProcedureDescriptor, vtable::ExternCProcedureVTable},
-};
 use reifydb_codec::value::encode_params;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_sdk::{error::SdkError, extern_c::arena::Arena};
+use reifydb_sdk::{
+	common::extern_c::wire::callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks, rql::RqlCallbacks},
+	error::SdkError,
+	flow::operator::extern_c::binding::arena::Arena,
+	procedure::extern_c::wire::{
+		callbacks::ProcedureCallbacks, context::ExternCContext, descriptor::ExternCProcedureDescriptor,
+		vtable::ExternCProcedureVTable,
+	},
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{reifydb_assertions, value::value_type::ValueType};
 use tracing::instrument;
 
 use super::callbacks::extern_c::{memory, rql};
-use crate::{
-	callbacks::extern_c::{
-		builder::{
-			BuilderRegistry, host_builder_acquire, host_builder_bitvec_ptr, host_builder_commit,
-			host_builder_data_ptr, host_builder_emit_diff, host_builder_grow, host_builder_offsets_ptr,
-			host_builder_release, with_registry,
-		},
-		panic::call_with_abort_on_panic,
-		single_columns_from_registry,
+use crate::callbacks::extern_c::{
+	builder::{
+		BuilderRegistry, host_builder_acquire, host_builder_bitvec_ptr, host_builder_commit,
+		host_builder_data_ptr, host_builder_emit_diff, host_builder_grow, host_builder_offsets_ptr,
+		host_builder_release, with_registry,
 	},
-	transform::extern_c::stubs,
+	panic::call_with_abort_on_panic,
+	single_columns_from_registry,
 };
 
 thread_local! {
@@ -64,7 +64,6 @@ impl ExternCProcedure {
 			cached_ctx: UnsafeCell::new(ExternCContext {
 				txn_ptr: ptr::null_mut(),
 				executor_ptr: ptr::null(),
-				operator_id: 0,
 				written_at_nanos: 0,
 				callbacks: procedure_host_callbacks(),
 			}),
@@ -86,17 +85,15 @@ impl Drop for ExternCProcedure {
 	}
 }
 
-fn procedure_host_callbacks() -> HostCallbacks {
-	HostCallbacks {
+fn procedure_host_callbacks() -> ProcedureCallbacks {
+	ProcedureCallbacks {
 		memory: MemoryCallbacks {
 			alloc: memory::host_alloc,
 			free: memory::host_free,
 		},
-		state: stubs::state(),
 		rql: RqlCallbacks {
 			rql: rql::host_rql,
 		},
-		dictionary: stubs::dictionary(),
 		builder: BuilderCallbacks {
 			acquire: host_builder_acquire,
 			data_ptr: host_builder_data_ptr,

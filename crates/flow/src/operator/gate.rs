@@ -3,7 +3,6 @@
 
 use std::{cell::UnsafeCell, sync::Arc};
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::key::{
 	decode_u64_asc, encode_u64_asc,
 	encoded::{EncodedKey, EncodedKeyRange},
@@ -12,6 +11,7 @@ use reifydb_core::{
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
+		flow::OperatorCapability,
 	},
 	key::operator_state::{
 		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,

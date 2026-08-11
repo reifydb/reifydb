@@ -3,19 +3,6 @@
 
 use std::{mem, ops::Bound, ptr, slice::from_raw_parts};
 
-use reifydb_abi::{
-	constants::{
-		EXTERN_C_END_OF_ITERATION, EXTERN_C_ERROR_ALLOC, EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_NULL_PTR,
-		EXTERN_C_NOT_FOUND, EXTERN_C_OK, GROUP_ABSENT,
-	},
-	context::{context::ExternCContext, iterators::ExternCStateIterator},
-	data::{
-		buffer::ExternCBuffer,
-		key_ref::ExternCKeyRef,
-		state::{ExternCStateEntry, ExternCStateSlice},
-	},
-	operator::timer::TimerKind,
-};
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::operator::EncodedOperatorRow,
@@ -23,9 +10,26 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, GroupStateKey},
+	state::store::TimerKind,
 };
 use reifydb_extension::procedure::callbacks::extern_c::memory::{host_alloc, host_free};
 use reifydb_flow::timer::Timer;
+use reifydb_sdk::{
+	common::extern_c::wire::{
+		buffer::ExternCBuffer,
+		key_ref::ExternCKeyRef,
+		status::{
+			EXTERN_C_END_OF_ITERATION, EXTERN_C_ERROR_ALLOC, EXTERN_C_ERROR_INTERNAL,
+			EXTERN_C_ERROR_NULL_PTR, EXTERN_C_NOT_FOUND, EXTERN_C_OK,
+		},
+	},
+	flow::operator::extern_c::wire::{
+		callbacks::state::GROUP_ABSENT,
+		context::ExternCContext,
+		iterators::ExternCStateIterator,
+		state::{ExternCStateEntry, ExternCStateSlice},
+	},
+};
 use reifydb_value::value::datetime::DateTime;
 
 use super::{

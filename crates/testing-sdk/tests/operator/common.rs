@@ -12,12 +12,14 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::shape::{RowFamily, RowShape, RowShapeField},
 };
-use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize};
+use reifydb_core::{
+	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	metrics::heap::HeapSize,
+};
 use reifydb_flow::window::{
 	accumulator::{
 		WindowAccumulator,
@@ -28,7 +30,7 @@ use reifydb_flow::window::{
 };
 use reifydb_sdk::{
 	error::Result,
-	operator::{
+	flow::operator::{
 		column::operator::OperatorColumn,
 		context::OperatorContext,
 		view::RowView,

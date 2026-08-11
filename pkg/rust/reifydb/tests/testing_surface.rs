@@ -2,8 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{
-	abi::operator::capabilities::OperatorCapability,
-	core::interface::catalog::flow::OperatorId,
+	core::interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	sdk::{
 		error::Result as SdkResult,
 		operator::{

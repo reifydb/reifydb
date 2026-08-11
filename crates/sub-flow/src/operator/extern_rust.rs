@@ -200,8 +200,8 @@ impl Default for ExternRustOperatorLoader {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::constants::OPERATOR_ABI_TAG;
 	use reifydb_extension::operator::extern_c::loader::check_operator_abi_tag;
+	use reifydb_sdk::flow::operator::extern_c::wire::types::OPERATOR_ABI_TAG;
 
 	use super::{EXTERN_RUST_ABI_TAG, check_extern_rust_abi_tag};
 

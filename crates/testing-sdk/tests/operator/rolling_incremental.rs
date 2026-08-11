@@ -6,7 +6,9 @@
 //! `combine`. Any drift between the incrementally maintained running state and a from-scratch
 //! recomputation is a mismatch here, which is the bug class the incremental path exists to risk.
 
-use reifydb_sdk::operator::{ExternCOperatorAdapter, windowed::rolling_incremental::RollingIncrementalDriver};
+use reifydb_sdk::flow::operator::{
+	extern_c::binding::operator::ExternCOperatorAdapter, windowed::rolling_incremental::RollingIncrementalDriver,
+};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,

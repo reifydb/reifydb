@@ -10,7 +10,6 @@ use std::{
 };
 
 use ptr::null;
-use reifydb_abi::{context::context::ExternCContext, operator::timer::TimerKind};
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
@@ -30,16 +29,23 @@ use reifydb_core::{
 		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	},
 	row::Row,
+	state::store::TimerKind,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
 	error::Result,
-	extern_c::{
-		arena::Arena,
-		wrapper::{OperatorWrapper, extern_c_apply},
-	},
-	operator::{
-		ExternCOperator, OperatorMetadata, change::BorrowedChange, context::extern_c::ExternCOperatorContext,
+	flow::operator::{
+		OperatorMetadata,
+		change::BorrowedChange,
+		extern_c::{
+			binding::{
+				arena::Arena,
+				context::ExternCOperatorContext,
+				operator::ExternCOperator,
+				wrapper::{OperatorWrapper, extern_c_apply},
+			},
+			wire::context::ExternCContext,
+		},
 		timer::Timer,
 	},
 };
@@ -479,8 +485,8 @@ impl<T: ExternCOperator> ExternCOperatorHarnessBuilder<T> {
 		let extern_c_context = Box::new(ExternCContext {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
 			executor_ptr: null(),
-			operator_id: self.operator_id.0,
 			written_at_nanos: self.clock.now().to_nanos(),
+			operator_id: self.operator_id.0,
 			callbacks: create_test_callbacks(),
 		});
 
@@ -506,8 +512,8 @@ pub fn drive_extern_c_apply<O: ExternCOperator + OperatorMetadata>(input: &Chang
 	let mut extern_c_context = ExternCContext {
 		txn_ptr: &*context as *const TestContext as *mut c_void,
 		executor_ptr: null(),
-		operator_id: 1,
 		written_at_nanos: 0,
+		operator_id: 1,
 		callbacks: create_test_callbacks(),
 	};
 
@@ -560,18 +566,22 @@ impl TestMetadataHarness {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_abi::{
-		callbacks::builder::EmitDiffKind, data::column::ColumnTypeCode, flow::diff::DiffType,
-		operator::capabilities::OperatorCapability,
+	use reifydb_codec::tag::ValueKind;
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
 	};
-	use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
 	use reifydb_sdk::{
-		operator::{
-			ExternCOperator, OperatorMetadata,
-			builder::{ColumnsBuilder, CommittedColumn},
+		common::extern_c::{
+			binding::builder::{ColumnsBuilder, CommittedColumn},
+			wire::callbacks::builder::EmitDiffKind,
+		},
+		flow::operator::{
+			OperatorMetadata,
 			change::{BorrowedChange, BorrowedColumns},
 			column::operator::OperatorColumn,
-			context::{OperatorContext, extern_c::ExternCOperatorContext},
+			context::OperatorContext,
+			extern_c::binding::{context::ExternCOperatorContext, operator::ExternCOperator},
 		},
 		row,
 	};
@@ -723,7 +733,7 @@ pub mod tests {
 					core::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
 				}
 			}
-			if matches!(type_code, ColumnTypeCode::Utf8 | ColumnTypeCode::Blob) {
+			if matches!(type_code, ValueKind::Utf8 | ValueKind::Blob) {
 				let off = col.offsets();
 				let dst_off = active.offsets_ptr();
 				if !dst_off.is_null() && !off.is_empty() {

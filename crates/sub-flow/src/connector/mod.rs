@@ -7,11 +7,11 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_sdk::{
-	connector::{
+	error::{Result as SdkResult, SdkError},
+	flow::connector::{
 		sink::{InProcessSink, InProcessSinkMetadata},
 		source::{InProcessSource, InProcessSourceMetadata},
 	},
-	error::{Result as SdkResult, SdkError},
 };
 use reifydb_value::config::Config;
 
@@ -87,12 +87,14 @@ impl Default for ConnectorRegistry {
 #[cfg(test)]
 mod tests {
 	use reifydb_sdk::{
-		connector::{
-			sink::SinkRecord,
-			source::{SourceBatch, SourceEmitter, SourceMode},
-		},
 		error::Result,
-		operator::column::operator::OperatorColumn,
+		flow::{
+			connector::{
+				sink::SinkRecord,
+				source::{SourceBatch, SourceEmitter, SourceMode},
+			},
+			operator::column::operator::OperatorColumn,
+		},
 	};
 
 	use super::*;

@@ -4,7 +4,7 @@
 // A keyed sliding-window count must accumulate across applies within a window and reset for a new
 // one. Pinning the exact emitted (window_start, count) per apply is what catches lost state.
 
-use reifydb_abi::flow::diff::DiffType;
+use reifydb_core::interface::change::DiffType;
 use reifydb_test_harness::operator::change::{diff_kind, row_ints, window_change};
 
 use super::Harness;

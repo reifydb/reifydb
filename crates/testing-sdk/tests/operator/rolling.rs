@@ -5,7 +5,9 @@
 //! buffer capacity so eviction is reached on most seeds, and many event times land in the same
 //! bucket so within-bucket accumulation and partial removal are reached too.
 
-use reifydb_sdk::operator::{ExternCOperatorAdapter, windowed::rolling::RollingDriver};
+use reifydb_sdk::flow::operator::{
+	extern_c::binding::operator::ExternCOperatorAdapter, windowed::rolling::RollingDriver,
+};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,

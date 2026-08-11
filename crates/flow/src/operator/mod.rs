@@ -3,9 +3,8 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::Change},
+	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };

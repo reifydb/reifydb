@@ -7,7 +7,6 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::operator::{OperatorState, decode},
@@ -16,6 +15,7 @@ use reifydb_core::{
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
+		flow::OperatorCapability,
 	},
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	value::column::columns::Columns,

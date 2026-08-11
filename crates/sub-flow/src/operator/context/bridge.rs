@@ -3,7 +3,6 @@
 
 use std::{marker::PhantomData, mem, ops::Bound, slice::from_ref};
 
-use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{
@@ -15,15 +14,16 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator_state::{GroupId, GroupStateKey},
+	state::store::TimerKind,
 };
 use reifydb_flow::window::event::Polarity;
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
-	operator::{
+	flow::operator::{
 		column::{row::Row, sink::bridge::BridgeRowSink},
 		context::{DictionaryApi, OperatorContext, RowEmit, StateApi, UpdateEmit},
+		state::{decode_payload, encode_payload},
 	},
-	state::{decode_payload, encode_payload},
 };
 use reifydb_value::{
 	Result,

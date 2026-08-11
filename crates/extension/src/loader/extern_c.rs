@@ -3,7 +3,7 @@
 
 use std::{slice, str};
 
-use reifydb_abi::{constants::CURRENT_API, data::buffer::ExternCBuffer};
+use reifydb_sdk::common::{api::CURRENT_API, extern_c::wire::buffer::ExternCBuffer};
 
 use crate::error::ExtensionError;
 

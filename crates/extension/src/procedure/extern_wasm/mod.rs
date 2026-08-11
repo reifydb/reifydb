@@ -6,7 +6,7 @@ pub mod loader;
 use postcard::to_stdvec;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
-use reifydb_sdk::{error::SdkError, marshal::extern_wasm::unmarshal_columns_from_bytes};
+use reifydb_sdk::{common::extern_wasm::marshal::unmarshal_columns_from_bytes, error::SdkError};
 use reifydb_value::{error::Error, value::value_type::ValueType};
 
 use crate::{error::ExtensionError, loader::extern_wasm::invoke_extern_wasm_module};

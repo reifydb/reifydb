@@ -746,7 +746,7 @@ mod source {
 			SOURCE
 		}
 
-		fn capabilities(&self) -> &[reifydb_abi::operator::capabilities::OperatorCapability] {
+		fn capabilities(&self) -> &[reifydb_core::interface::flow::OperatorCapability] {
 			match self {
 				Op::Series(o) => o.capabilities(),
 				Op::Table(o) => o.capabilities(),

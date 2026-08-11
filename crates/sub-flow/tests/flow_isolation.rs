@@ -8,18 +8,17 @@
 use std::{thread, time::Duration as StdDuration};
 
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
-use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::interface::{catalog::flow::OperatorId, flow::OperatorCapability};
 use reifydb_sdk::{
 	error::Result as SdkResult,
-	operator::{
+	flow::operator::{
 		OperatorLogic, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::OperatorContext,
+		state::{RawStatefulOperator, utils::empty_state_key},
 		view::{ChangeView, ColumnsView, DiffView},
 	},
 	row,
-	state::{RawStatefulOperator, utils::empty_state_key},
 };
 use reifydb_value::{
 	config::Config,

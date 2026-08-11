@@ -28,7 +28,7 @@ pub mod strategy;
 
 use bridge::OracleFn;
 use context::ChaosContext;
-use reifydb_sdk::operator::ExternCOperator;
+use reifydb_sdk::flow::operator::extern_c::binding::operator::ExternCOperator;
 use reifydb_testing_chaos::operator::{
 	compare::Tolerances,
 	event::ChaosBatch,
@@ -326,13 +326,15 @@ impl IntoColumnSampler for Range<f64> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
+	use reifydb_core::interface::flow::OperatorCapability;
 	use reifydb_sdk::{
 		error::Result,
-		operator::{
-			ExternCOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
-			context::extern_c::ExternCOperatorContext,
+		flow::operator::{
+			OperatorMetadata,
+			change::BorrowedChange,
+			column::operator::OperatorColumn,
+			extern_c::binding::{context::ExternCOperatorContext, operator::ExternCOperator},
 		},
 	};
 	use reifydb_testing_chaos::operator::scenario::BatchSize;

@@ -7,7 +7,7 @@ use std::{
 	ptr,
 };
 
-use reifydb_sdk::extern_c::arena::Arena;
+use reifydb_sdk::flow::operator::extern_c::binding::arena::Arena;
 
 thread_local! {
 	static CURRENT_ARENA: RefCell<Option<*mut Arena>> = const { RefCell::new(None) };

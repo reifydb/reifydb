@@ -7,7 +7,7 @@ use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns:
 use reifydb_routine_abi::{
 	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
-use reifydb_sdk::marshal::extern_wasm::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
+use reifydb_sdk::common::extern_wasm::marshal::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
 use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::loader::extern_wasm::invoke_extern_wasm_module;

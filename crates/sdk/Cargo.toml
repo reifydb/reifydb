@@ -15,7 +15,6 @@ reifydb-build = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-flow = { workspace = true }
 bumpalo.workspace = true
-reifydb-abi.workspace = true
 reifydb-core.workspace = true
 reifydb-runtime.workspace = true
 reifydb-value.workspace = true

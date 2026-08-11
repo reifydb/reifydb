@@ -9,13 +9,15 @@ use std::{
 };
 
 use libloading::Symbol;
-use reifydb_abi::procedure::{
-	descriptor::ExternCProcedureDescriptor,
-	types::{ExternCProcedureCreateFn, PROCEDURE_MAGIC},
-};
 use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_sdk::error::{Result as ExternCResult, SdkError};
+use reifydb_sdk::{
+	error::{Result as ExternCResult, SdkError},
+	procedure::extern_c::wire::{
+		descriptor::ExternCProcedureDescriptor,
+		types::{ExternCProcedureCreateFn, PROCEDURE_MAGIC},
+	},
+};
 
 use super::ExternCProcedure;
 use crate::loader::{

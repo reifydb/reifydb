@@ -8,16 +8,16 @@ use std::{
 	process::abort,
 };
 
-use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 };
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{catalog::flow::OperatorId, change::Change},
+	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	key::operator_state::{GroupId, GroupStateKey},
 	metrics::heap::OperatorSample,
+	state::store::TimerKind,
 };
 use reifydb_flow::{
 	operator::Operator,
@@ -26,7 +26,7 @@ use reifydb_flow::{
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
-	operator::{OperatorLogic, timer::Timer as SdkTimer, view::bridge::BridgeChangeView},
+	flow::operator::{OperatorLogic, timer::Timer as SdkTimer, view::bridge::BridgeChangeView},
 };
 use reifydb_value::{
 	Result,

@@ -4,8 +4,8 @@
 pub mod builder;
 pub mod panic;
 
-use reifydb_abi::callbacks::builder::EmitDiffKind;
 use reifydb_core::value::column::columns::Columns;
+use reifydb_sdk::common::extern_c::wire::callbacks::builder::EmitDiffKind;
 
 use crate::callbacks::extern_c::builder::BuilderRegistry;
 

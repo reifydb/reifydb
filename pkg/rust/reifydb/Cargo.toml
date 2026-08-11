@@ -8,7 +8,6 @@ repository.workspace = true
 description = "A modern, real-time database with streaming and analytical capabilities"
 
 [dependencies]
-reifydb-abi = { workspace = true }
 reifydb-allocator = { workspace = true }
 reifydb-auth = { workspace = true }
 reifydb-catalog = { workspace = true }

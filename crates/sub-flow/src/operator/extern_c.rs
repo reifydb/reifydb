@@ -10,23 +10,12 @@ use std::{
 	ptr,
 };
 
-use reifydb_abi::{
-	callbacks::builder::EmitDiffKind,
-	constants::{EXTERN_C_OK, EXTERN_C_SAMPLE_NO_DATA},
-	context::context::ExternCContext,
-	data::state::ExternCStateUsage,
-	flow::change::ExternCChange,
-	operator::{
-		capabilities::{OperatorCapability, from_bitmask},
-		descriptor::ExternCOperatorDescriptor,
-		vtable::ExternCOperatorVTable,
-	},
-};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
+		flow::{OperatorCapability, from_bitmask},
 	},
 	metrics::heap::{OperatorSample, StateMemory},
 	value::column::columns::Columns,
@@ -38,7 +27,23 @@ use reifydb_flow::{
 	timer::Timer,
 	transaction::{DepFlowTransaction, slot::PersistFn},
 };
-use reifydb_sdk::{error::SdkError, extern_c::arena::Arena};
+use reifydb_sdk::{
+	common::extern_c::wire::{
+		callbacks::builder::EmitDiffKind,
+		status::{EXTERN_C_OK, EXTERN_C_SAMPLE_NO_DATA},
+	},
+	error::SdkError,
+	flow::{
+		extern_c::wire::change::ExternCChange,
+		operator::extern_c::{
+			binding::arena::Arena,
+			wire::{
+				context::ExternCContext, descriptor::ExternCOperatorDescriptor,
+				state::ExternCStateUsage, vtable::ExternCOperatorVTable,
+			},
+		},
+	},
+};
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -97,8 +102,8 @@ impl ExternCOperatorHandle {
 			cached_ctx: UnsafeCell::new(ExternCContext {
 				txn_ptr: ptr::null_mut(),
 				executor_ptr: ptr::null(),
-				operator_id: operator_id.0,
 				written_at_nanos: 0,
+				operator_id: operator_id.0,
 				callbacks: create_host_callbacks(),
 			}),
 		}
@@ -390,7 +395,7 @@ fn drain_emitted_diffs(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::data::state::ExternCStateUsage;
+	use reifydb_sdk::flow::operator::extern_c::wire::state::ExternCStateUsage;
 
 	use super::sample_from_usage;
 

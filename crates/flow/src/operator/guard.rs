@@ -4,10 +4,10 @@
 use std::process::abort;
 
 use Diff::*;
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::interface::{
 	catalog::flow::OperatorId,
 	change::{Change, Diff},
+	flow::OperatorCapability,
 };
 use tracing::error;
 

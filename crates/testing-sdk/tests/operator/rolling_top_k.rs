@@ -5,7 +5,9 @@
 //! window space makes ranks appear, change and vanish across batches, which is what reaches
 //! the per-secondary-key emission and the high-water-driven Remove path.
 
-use reifydb_sdk::operator::{ExternCOperatorAdapter, windowed::rolling_top_k::RollingTopKDriver};
+use reifydb_sdk::flow::operator::{
+	extern_c::binding::operator::ExternCOperatorAdapter, windowed::rolling_top_k::RollingTopKDriver,
+};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,

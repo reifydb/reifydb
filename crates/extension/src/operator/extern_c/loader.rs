@@ -9,19 +9,19 @@ use std::{
 };
 
 use libloading::Symbol;
-use reifydb_abi::{
-	constants::OPERATOR_ABI_TAG,
-	data::constraint::ExternCTypeConstraint,
-	operator::{
-		column::ExternCOperatorColumns,
-		descriptor::ExternCOperatorDescriptor,
-		types::{ExternCOperatorCreateFn, OPERATOR_MAGIC},
-	},
-};
-use reifydb_codec::constraint::type_constraint_from_extern_c;
+use reifydb_codec::constraint::{EncodedTypeConstraint, decode_type_constraint};
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_sdk::error::{Result as ExternCResult, SdkError};
+use reifydb_sdk::{
+	error::{Result as ExternCResult, SdkError},
+	flow::{
+		extern_c::wire::schema::ExternCOperatorColumns,
+		operator::extern_c::wire::{
+			descriptor::ExternCOperatorDescriptor,
+			types::{ExternCOperatorCreateFn, OPERATOR_ABI_TAG, OPERATOR_MAGIC},
+		},
+	},
+};
 use reifydb_value::value::constraint::TypeConstraint;
 
 use crate::loader::{
@@ -249,7 +249,7 @@ unsafe fn extract_column_defs(column_defs: &ExternCOperatorColumns) -> Vec<Colum
 		// SAFETY: i < column_count and the pointer is non-null, so this stays inside the array.
 		let col = unsafe { &*column_defs.columns.add(i) };
 
-		let field_type = type_constraint_from_extern_c(&ExternCTypeConstraint {
+		let field_type = decode_type_constraint(&EncodedTypeConstraint {
 			base_type: col.base_type,
 			constraint_type: col.constraint_type,
 			constraint_param1: col.constraint_param1,

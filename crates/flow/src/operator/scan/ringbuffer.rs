@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{
 		catalog::{flow::OperatorId, ringbuffer::RingBuffer},
 		change::{Change, Diff},
+		flow::OperatorCapability,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };

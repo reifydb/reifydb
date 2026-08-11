@@ -9,12 +9,14 @@ use std::{
 };
 
 use libloading::Symbol;
-use reifydb_abi::transform::{
-	descriptor::ExternCTransformDescriptor,
-	types::{ExternCTransformCreateFn, TRANSFORM_MAGIC},
-};
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_sdk::error::{Result as ExternCResult, SdkError};
+use reifydb_sdk::{
+	error::{Result as ExternCResult, SdkError},
+	transform::extern_c::wire::{
+		descriptor::ExternCTransformDescriptor,
+		types::{ExternCTransformCreateFn, TRANSFORM_MAGIC},
+	},
+};
 
 use super::ExternCTransform;
 use crate::{

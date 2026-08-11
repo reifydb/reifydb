@@ -3,7 +3,6 @@
 
 use std::{cell::UnsafeCell, collections::HashMap};
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	key::{encode_u8, encode_u64_varint, encoded::EncodedKey, serializer::KeySerializer},
 	row::{
@@ -22,6 +21,7 @@ use reifydb_core::{
 			view::{View, ViewSortKey},
 		},
 		change::{Change, ChangeOrigin, Diff},
+		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
 	key::{

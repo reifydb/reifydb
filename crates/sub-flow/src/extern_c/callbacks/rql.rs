@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{panic, ptr, slice, str};
+use std::{ffi::c_void, panic, ptr, slice, str};
 
-use reifydb_abi::{
-	constants::{EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_OK},
-	context::context::ExternCContext,
-	data::buffer::ExternCBuffer,
-};
 use reifydb_codec::{
 	frame::{encode::encode_frames, options::EncodeOptions},
 	value::decode_params,
 };
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::procedure::callbacks::extern_c::memory::host_alloc;
+use reifydb_sdk::{
+	common::extern_c::wire::{
+		buffer::ExternCBuffer,
+		status::{EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_OK},
+	},
+	flow::operator::extern_c::wire::context::ExternCContext,
+};
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
 use reifydb_value::{params::Params, value::identity::IdentityId};
 use tracing::error;
@@ -26,7 +28,7 @@ use crate::extern_c::context::get_transaction_mut;
 /// call. `rql_ptr` must point to `rql_len` valid UTF-8 bytes. If `params_ptr` is non-null it
 /// must point to `params_len` valid bytes holding codec-encoded params.
 pub unsafe extern "C" fn host_rql(
-	ctx: *mut ExternCContext,
+	ctx: *mut c_void,
 	rql_ptr: *const u8,
 	rql_len: usize,
 	params_ptr: *const u8,
@@ -62,7 +64,7 @@ pub unsafe extern "C" fn host_rql(
 				}
 			};
 
-			let ctx_ref = &mut *ctx;
+			let ctx_ref = &mut *(ctx as *mut ExternCContext);
 
 			if ctx_ref.executor_ptr.is_null() {
 				error!("host_rql: executor_ptr is null");

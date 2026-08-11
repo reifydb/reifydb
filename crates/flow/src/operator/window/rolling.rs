@@ -623,14 +623,13 @@ mod tests {
 		ops::Bound,
 	};
 
-	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
 		row::operator::EncodedOperatorRow,
 	};
 	use reifydb_core::{
 		key::operator_state::{GroupId, GroupStateKey},
-		state::store::StateStore,
+		state::store::{StateStore, TimerKind},
 	};
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
 

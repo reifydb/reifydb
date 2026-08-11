@@ -3,7 +3,6 @@
 
 use std::{mem, sync::Arc};
 
-use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -15,8 +14,10 @@ use reifydb_core::{
 	interface::{
 		catalog::{flow::OperatorId, object::ObjectId},
 		change::{Change, Diff},
+		flow::OperatorCapability,
 	},
 	key::{EncodableKey, Key, kind::KeyKind, operator_state::OperatorStateKey},
+	state::store::TimerKind,
 };
 use reifydb_flow::{
 	operator::{Operator, OperatorCell, apply::ApplyOperator, scan::series::SourceSeriesOperator},
@@ -30,7 +31,7 @@ use reifydb_runtime::context::{
 	RuntimeContext,
 	clock::{Clock, MockClock},
 };
-use reifydb_sdk::operator::OperatorLogic;
+use reifydb_sdk::flow::operator::OperatorLogic;
 use reifydb_sub_flow::operator::bridge::{BridgeOperator, BridgeOperatorAdapter};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};

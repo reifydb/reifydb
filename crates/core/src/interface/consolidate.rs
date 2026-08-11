@@ -4,11 +4,10 @@
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
-use reifydb_abi::flow::diff::DiffType;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	interface::change::{ChangeOrigin, Diff},
+	interface::change::{ChangeOrigin, Diff, DiffType},
 	value::column::columns::Columns,
 };
 
@@ -392,7 +391,6 @@ fn append_into(target: &mut Option<Columns>, source: Columns) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::flow::diff::DiffType;
 	use reifydb_value::value::Value;
 
 	use super::*;

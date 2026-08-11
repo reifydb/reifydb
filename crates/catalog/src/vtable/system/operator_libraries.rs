@@ -3,9 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::catalog::vtable::VTable,
+	interface::{catalog::vtable::VTable, flow::OperatorCapability},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;

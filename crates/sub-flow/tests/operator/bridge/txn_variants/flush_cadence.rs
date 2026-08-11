@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::change::{Change, Diffs},
 };
 use reifydb_flow::{operator::Operator, transaction::DepFlowTransaction};
-use reifydb_sdk::operator::OperatorMetadata;
+use reifydb_sdk::flow::operator::OperatorMetadata;
 use reifydb_sub_flow::operator::bridge::{BridgeOperator, BridgeOperatorAdapter};
 use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine};
 use reifydb_value::value::datetime::DateTime;

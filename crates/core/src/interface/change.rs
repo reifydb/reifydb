@@ -3,7 +3,6 @@
 
 use std::mem;
 
-use reifydb_abi::flow::diff::DiffType;
 use reifydb_value::{Result, value::datetime::DateTime};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -16,6 +15,16 @@ use crate::{
 	},
 	value::column::columns::Columns,
 };
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiffType {
+	Insert = 1,
+
+	Update = 2,
+
+	Remove = 3,
+}
 
 pub type Diffs = SmallVec<[Diff; 4]>;
 

@@ -3,17 +3,19 @@
 
 #![allow(dead_code)]
 
-use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_codec::{
+	row::shape::{RowFamily, RowShape, RowShapeField},
+	tag::ValueKind,
+};
+use reifydb_core::interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability};
 use reifydb_sdk::{
+	common::extern_c::binding::builder::{ColumnsBuilder, CommittedColumn},
 	error::Result,
-	operator::{
-		ExternCOperator, OperatorMetadata,
-		builder::{ColumnsBuilder, CommittedColumn},
+	flow::operator::{
+		OperatorMetadata,
 		change::{BorrowedChange, BorrowedColumns},
 		column::operator::OperatorColumn,
-		context::extern_c::ExternCOperatorContext,
+		extern_c::binding::{context::ExternCOperatorContext, operator::ExternCOperator},
 	},
 };
 use reifydb_testing_chaos::operator::{event::ChaosBatch, view::MaterializedView};
@@ -179,10 +181,10 @@ fn byte_clone_columns(
 		}
 		if matches!(
 			type_code,
-			ColumnTypeCode::Utf8
-				| ColumnTypeCode::Blob | ColumnTypeCode::Int
-				| ColumnTypeCode::Uint | ColumnTypeCode::Decimal
-				| ColumnTypeCode::Any | ColumnTypeCode::DictionaryId
+			ValueKind::Utf8
+				| ValueKind::Blob | ValueKind::Int
+				| ValueKind::Uint | ValueKind::Decimal
+				| ValueKind::Any | ValueKind::DictionaryId
 		) {
 			let off = col.offsets();
 			let dst_off = active.offsets_ptr();

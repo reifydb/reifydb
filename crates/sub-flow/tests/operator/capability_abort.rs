@@ -6,12 +6,12 @@
 
 use std::{env, process::Command};
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
+		flow::OperatorCapability,
 	},
 	value::column::columns::Columns,
 };
