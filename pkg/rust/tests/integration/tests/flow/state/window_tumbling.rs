@@ -4,14 +4,14 @@
 use std::time::Duration;
 
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
+use reifydb_test_harness::assert::column_values;
 
 const TIMEOUT: Duration = Duration::from_secs(15);
 
+const WINDOW_NODE_TYPE: u8 = 15;
+
 const ACCUMULATORS: &str = "from system::metrics::flow::state::current
 	filter { keyspace == 'ACCUMULATOR' }";
-
-const IDENTITY: &str = "from system::metrics::flow::state::current
-	filter { phase == 'identity' }";
 
 const SURFACE: &str = "from system::metrics::flow::state::current";
 
@@ -24,6 +24,48 @@ fn setup() -> TestDb {
 			.build()
 			.expect("build memory db with flow and a fast metrics cadence"),
 	)
+}
+
+fn window_operator(db: &TestDb) -> u64 {
+	let rql = format!("FROM system::operators FILTER {{ node_type == {WINDOW_NODE_TYPE} }} MAP {{ id }}");
+	let frames = db.query(&rql);
+	let values = column_values(frames.first().expect("system::operators returned no frame"), "id");
+	match values.as_slice() {
+		[Value::Uint8(id)] => *id,
+		other => panic!("expected exactly one window operator, found {other:?}"),
+	}
+}
+
+fn state_of(operator: u64) -> String {
+	format!("from system::metrics::flow::state::current filter {{ operator == {operator} }}")
+}
+
+fn per_window_state_of(operator: u64) -> String {
+	// Group zero is the operator's own root scope, so only the other groups hold per-window state.
+	format!("{} filter {{ group != 0 }}", state_of(operator))
+}
+
+fn assert_only_bounded_bookkeeping_survives(db: &TestDb, operator: u64) {
+	// Each of these is bounded per operator or per partition; anything per-window here would grow without end.
+	let frames = db.query(&state_of(operator));
+	let frame = frames.first().expect("a sealed operator must still report its bookkeeping");
+
+	assert_eq!(
+		column_values(frame, "keyspace"),
+		vec![
+			Value::Utf8("NODE_COUNTER".to_string()),
+			Value::Utf8("SEAL_LEDGER".to_string()),
+			Value::Utf8("WINDOW_META".to_string()),
+		],
+		"the counter keeps row numbers unique, the ledger keeps sealing monotonic, the meta drops late events; surface now: {:?}",
+		db.query(&state_of(operator))
+	);
+	assert_eq!(
+		column_values(frame, "keys"),
+		vec![Value::Uint8(1), Value::Uint8(1), Value::Uint8(1)],
+		"none of these may hold a key per window; surface now: {:?}",
+		db.query(&state_of(operator))
+	);
 }
 
 fn tumbling_window(db: &TestDb) {
@@ -62,11 +104,18 @@ fn a_live_window_reports_the_accumulator_holding_its_aggregate() {
 }
 
 #[test]
-fn a_sealed_window_has_its_data_state_reaped_and_its_identity_kept() {
-	// State that outlives the seal is exactly the leak the reaper exists to prevent.
+fn a_sealed_window_has_both_its_data_and_its_identity_reaped() {
+	// A sealed window is closed to everything, so sparing its identity would leave a reachable address per window.
 	let db = setup();
 	tumbling_window(&db);
 	fill_first_window(&db);
+	let operator = window_operator(&db);
+	let per_window = per_window_state_of(operator);
+	assert!(
+		db.row_count(&per_window) > 0,
+		"precondition: open windows must report state; surface now: {:?}",
+		db.query(SURFACE)
+	);
 
 	advance_past_the_reap(&db);
 
@@ -78,10 +127,14 @@ fn a_sealed_window_has_its_data_state_reaped_and_its_identity_kept() {
 		db.query(SURFACE)
 	);
 
-	assert!(
-		db.row_count(IDENTITY) >= 1,
-		"the reaper erases the data phase only; identity state must survive to keep row numbers stable"
+	let remaining = db.await_exact_row_count(&per_window, 0, TIMEOUT);
+	assert_eq!(
+		remaining,
+		0,
+		"a sealed window must keep neither its accumulator nor the mapping addressing it; surface now: {:?}",
+		db.query(&state_of(operator))
 	);
+	assert_only_bounded_bookkeeping_survives(&db, operator);
 }
 
 #[test]
