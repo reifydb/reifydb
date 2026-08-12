@@ -5,10 +5,10 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 mod auth;
+mod catalog;
 mod dictionary_durability;
 mod export;
 mod flow;
-mod interceptor;
 mod metric;
 mod persistence;
 mod system_config;
