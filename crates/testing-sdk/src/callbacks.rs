@@ -396,12 +396,12 @@ extern "C" fn test_state_range(
 	}
 }
 
-use std::ptr;
+use std::{ops::Bound, ptr};
 
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey, group_identity_inner_range, node_prefix},
 	state::store::TimerKind,
 };
 use reifydb_sdk::{
@@ -562,6 +562,58 @@ extern "C" fn test_disarm_timer(
 			kind,
 			key,
 		});
+	}
+
+	EXTERN_C_OK
+}
+
+fn test_in_identity_range(prefix: &[u8], range: &EncodedKeyRange, key: &EncodedKey) -> bool {
+	let Some(inner) = key.as_slice().strip_prefix(prefix) else {
+		return false;
+	};
+	let after_start = match &range.start {
+		Bound::Included(s) => inner >= s.as_slice(),
+		Bound::Excluded(s) => inner > s.as_slice(),
+		Bound::Unbounded => true,
+	};
+	let before_end = match &range.end {
+		Bound::Included(e) => inner <= e.as_slice(),
+		Bound::Excluded(e) => inner < e.as_slice(),
+		Bound::Unbounded => true,
+	};
+	after_start && before_end
+}
+
+extern "C" fn test_reclaim_group_identity(
+	operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	group: u64,
+	limit: usize,
+	removed_out: *mut usize,
+	more_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() || removed_out.is_null() || more_out.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: all three pointers null-checked; both out-params are caller-owned cells, written not read.
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let prefix = node_prefix(OperatorId(operator_id));
+		let range = group_identity_inner_range(GroupId(group));
+		let mut doomed: Vec<EncodedKey> = test_ctx
+			.state_keys()
+			.into_iter()
+			.filter(|key| test_in_identity_range(&prefix, &range, key))
+			.collect();
+		doomed.sort();
+		let more = doomed.len() > limit;
+		doomed.truncate(limit);
+		for key in &doomed {
+			test_ctx.remove_state(key);
+		}
+		*removed_out = doomed.len();
+		*more_out = more as u8;
 	}
 
 	EXTERN_C_OK
@@ -924,6 +976,7 @@ pub fn create_test_callbacks() -> OperatorCallbacks {
 			arm_timer: test_arm_timer,
 			disarm_timer: test_disarm_timer,
 			flow_watermark: test_flow_watermark,
+			reclaim_group_identity: test_reclaim_group_identity,
 		},
 		dictionary: DictionaryCallbacks {
 			id_by_name: test_dictionary_id_by_name,

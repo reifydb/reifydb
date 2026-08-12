@@ -12,7 +12,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
 	state::store::TimerKind,
 };
-use reifydb_flow::{operator::host::HostContext, window::event::Polarity};
+use reifydb_flow::{operator::host::HostContext, state::reclaim::ReclaimOutcome, window::event::Polarity};
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
@@ -332,6 +332,11 @@ impl GuestContext for InProcessContext<'_> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).remove_row_numbers_below(group, upper) }.map_err(to_sdk_err)
+	}
+	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> SdkResult<ReclaimOutcome> {
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).reclaim_group_identity(group, limit) }.map_err(to_sdk_err)
 	}
 	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<InProcessEmit<'_>> {
 		let now = self.now;

@@ -11,20 +11,10 @@ use reifydb_core::{
 };
 use reifydb_value::{Result, count::Count, reifydb_assertions};
 
-use crate::transaction::{group::GroupTxn, state::StateTxn};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ReclaimOutcome {
-	pub removed: Count,
-	pub more: bool,
-}
-
-impl ReclaimOutcome {
-	pub const NOTHING: Self = Self {
-		removed: Count::ZERO,
-		more: false,
-	};
-}
+use crate::{
+	state::reclaim::ReclaimOutcome,
+	transaction::{group::GroupTxn, state::StateTxn},
+};
 
 pub trait ReclaimTxn: StateTxn + GroupTxn {
 	fn reclaim_group_identity(

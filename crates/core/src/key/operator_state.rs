@@ -337,6 +337,10 @@ impl GroupStateKey {
 		is_framed_inner(key.as_slice()).then_some(Self(key))
 	}
 
+	pub fn bound_unchecked(key: EncodedKey) -> Self {
+		Self(key)
+	}
+
 	pub fn as_encoded(&self) -> &EncodedKey {
 		&self.0
 	}

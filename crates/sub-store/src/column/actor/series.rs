@@ -26,14 +26,12 @@ use reifydb_core::{
 };
 use reifydb_engine::{
 	engine::StandardEngine,
-	vm::{
-		stack::SymbolTable,
-		volcano::{
-			query::{QueryContext, QueryNode, query_budget},
-			scan::series::SeriesScanNode,
-		},
+	vm::volcano::{
+		query::{QueryContext, QueryNode, query_budget},
+		scan::series::SeriesScanNode,
 	},
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_runtime::actor::{
 	context::Context,
 	system::ActorConfig,

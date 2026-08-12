@@ -32,16 +32,11 @@ use reifydb_value::{
 
 use crate::{
 	operator::stateful::StateIterator,
-	state::reaper::IdentityReclaim,
+	state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 	timer::Timer,
 	transaction::{
-		FlowTransaction,
-		dictionary::DictionaryTxn,
-		group::GroupTxn,
-		reclaim::{ReclaimOutcome, ReclaimTxn},
-		row_number::RowNumberTxn,
-		state::StateTxn,
-		timer::TimerTxn,
+		FlowTransaction, dictionary::DictionaryTxn, group::GroupTxn, reclaim::ReclaimTxn,
+		row_number::RowNumberTxn, state::StateTxn, timer::TimerTxn,
 	},
 };
 

@@ -13,7 +13,7 @@ use reifydb_core::key::operator_state::GroupStateKey;
 use reifydb_value::{error::Error as ValueError, value::datetime::DateTime};
 
 use crate::{
-	error::Result,
+	error::{Result, SdkError},
 	flow::operator::{
 		context::{GuestContext, GuestState},
 		extern_c::binding::{context::ExternCContext, state as extern_c},
@@ -58,9 +58,11 @@ impl<'a> State<'a> {
 	pub fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> Result<Vec<(GroupStateKey, T)>> {
 		extern_c::prefix(self.ctx, prefix.as_encoded())?
 			.into_iter()
-			.filter_map(|(k, row)| GroupStateKey::from_framed(k).map(|k| (k, row)))
 			.map(|(k, row)| {
-				Ok((k, decode_payload(&EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?))
+				Ok((
+					framed(k)?,
+					decode_payload(&EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?,
+				))
 			})
 			.collect()
 	}
@@ -69,18 +71,17 @@ impl<'a> State<'a> {
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
 		extern_c::get_many(self.ctx, &raw)?
 			.into_iter()
-			.filter_map(|(k, row)| GroupStateKey::from_framed(k).map(|k| (k, row)))
 			.map(|(k, row)| {
-				Ok((k, decode_payload(&EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?))
+				Ok((
+					framed(k)?,
+					decode_payload(&EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?,
+				))
 			})
 			.collect()
 	}
 
 	pub fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>> {
-		Ok(extern_c::prefix(self.ctx, prefix.as_encoded())?
-			.into_iter()
-			.filter_map(|(k, _)| GroupStateKey::from_framed(k))
-			.collect())
+		extern_c::prefix(self.ctx, prefix.as_encoded())?.into_iter().map(|(k, _)| framed(k)).collect()
 	}
 
 	pub fn range<T: OperatorState>(
@@ -90,9 +91,11 @@ impl<'a> State<'a> {
 	) -> Result<Vec<(GroupStateKey, T)>> {
 		extern_c::range(self.ctx, start.map(GroupStateKey::as_encoded), end.map(GroupStateKey::as_encoded))?
 			.into_iter()
-			.filter_map(|(k, row)| GroupStateKey::from_framed(k).map(|k| (k, row)))
 			.map(|(k, row)| {
-				Ok((k, decode_payload(&EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?))
+				Ok((
+					framed(k)?,
+					decode_payload(&EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?,
+				))
 			})
 			.collect()
 	}
@@ -115,10 +118,7 @@ impl<'a> State<'a> {
 	) -> Result<()> {
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
 		for (k, row) in extern_c::get_many(self.ctx, &raw)? {
-			let Some(k) = GroupStateKey::from_framed(k) else {
-				continue;
-			};
-			visit(k, EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?;
+			visit(framed(k)?, EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?;
 		}
 		Ok(())
 	}
@@ -134,10 +134,7 @@ impl<'a> State<'a> {
 			start.map(GroupStateKey::as_encoded),
 			end.map(GroupStateKey::as_encoded),
 		)? {
-			let Some(k) = GroupStateKey::from_framed(k) else {
-				continue;
-			};
-			visit(k, EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?;
+			visit(framed(k)?, EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?;
 		}
 		Ok(())
 	}
@@ -148,6 +145,14 @@ impl<'a> State<'a> {
 		// ExternCContextRaw alive and aligned for at least the lifetime of the borrow this State was created
 		// from.
 		DateTime::from_nanos(unsafe { (*self.ctx.ctx).written_at_nanos })
+	}
+}
+
+#[inline]
+fn framed(key: EncodedKey) -> Result<GroupStateKey> {
+	match GroupStateKey::from_framed(key) {
+		Some(key) => Ok(key),
+		None => Err(SdkError::Serialization("host returned a state key that is not framed".to_string())),
 	}
 }
 

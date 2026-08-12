@@ -12,7 +12,10 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, OperatorSample},
 };
 use reifydb_flow::{
-	state::seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
+	state::{
+		reaper::{drain, enqueue, queued},
+		seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
+	},
 	timer::Timer as FlowTimer,
 	window::{
 		accumulator::WindowAccumulator,
@@ -47,6 +50,8 @@ use crate::{
 		},
 	},
 };
+
+const SEAL_REAP_BATCH: usize = 256;
 
 type AccumulatorContribution<A> = <<A as TumblingOperator>::Accumulator as WindowAccumulator>::Contribution;
 type AccumulatorValue<A> = <<A as TumblingOperator>::Accumulator as WindowAccumulator>::Output;
@@ -186,13 +191,21 @@ where
 	fn expire_through<C: GuestContext>(
 		engine: &mut TumblingEngine<A::GroupKey, DateTime, A::Accumulator>,
 		store: &mut GuestAsHost<'_, C>,
-		horizon: DateTime,
+		frontier: DateTime,
+		seal_after: Duration,
 	) -> Result<()> {
+		let horizon = seal_horizon_of(frontier, seal_after);
 		if horizon <= <DateTime as Coord>::from_order(0) {
 			return Ok(());
 		}
-		engine.expire(store, horizon.to_order().saturating_sub(1))?;
+		for window in engine.expire(store, horizon.to_order().saturating_sub(1))? {
+			enqueue(store, window.group_id)?;
+		}
 		engine.expire_meta(store, horizon.to_order())?;
+		drain(store, engine, SEAL_REAP_BATCH)?;
+		if !queued(store, 1)?.is_empty() {
+			arm_seal_timer(store, frontier, seal_after)?;
+		}
 		Ok(())
 	}
 
@@ -280,7 +293,7 @@ where
 			key: EncodedKey::new(timer.key),
 		});
 		let frontier = advance_seal_frontier(&mut store, fired)?;
-		Self::expire_through(engine, &mut store, seal_horizon_of(frontier, seal_after))
+		Self::expire_through(engine, &mut store, frontier, seal_after)
 	}
 
 	fn seal_after(&self) -> Option<Duration> {
@@ -318,7 +331,7 @@ where
 			if dropped > 0 {
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
-			Self::expire_through(engine, &mut store, horizon)?;
+			Self::expire_through(engine, &mut store, watermark, seal_after)?;
 			if buckets.is_empty() {
 				return Ok(());
 			}

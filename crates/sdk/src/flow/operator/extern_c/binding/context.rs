@@ -13,7 +13,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
 	state::store::TimerKind,
 };
-use reifydb_flow::window::event::Polarity;
+use reifydb_flow::{state::reclaim::ReclaimOutcome, window::event::Polarity};
 use reifydb_value::value::{
 	Value,
 	datetime::DateTime,
@@ -34,7 +34,8 @@ use crate::{
 				sink::ExternCRowSink,
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
-					intern_groups, lookup_groups, remove_row_number, remove_row_numbers_below,
+					intern_groups, lookup_groups, reclaim_group_identity, remove_row_number,
+					remove_row_numbers_below,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -161,6 +162,10 @@ impl ExternCContext {
 
 	pub fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
 		remove_row_numbers_below(self, group, upper)
+	}
+
+	pub fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
+		reclaim_group_identity(self, group, limit)
 	}
 
 	pub fn builder(&mut self) -> ColumnsBuilder<'_> {
@@ -291,6 +296,9 @@ impl GuestContext for ExternCContext {
 	}
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
 		ExternCContext::remove_row_numbers_below(self, group, upper)
+	}
+	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
+		ExternCContext::reclaim_group_identity(self, group, limit)
 	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCRowEmit<'_>> {
 		let mut builder = self.builder();

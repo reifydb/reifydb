@@ -23,9 +23,8 @@ use reifydb_value::{
 };
 
 use crate::{
-	state::reaper::IdentityReclaim,
+	state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 	timer::Timer,
-	transaction::reclaim::ReclaimOutcome,
 	window::accumulator::WindowAccumulator,
 };
 
@@ -278,9 +277,8 @@ impl StateStore for MockStore {
 			matched.truncate(limit);
 		}
 		for (k, b) in matched {
-			let Some(k) = GroupStateKey::from_framed(EncodedKey::new(k)) else {
-				continue;
-			};
+			let k = GroupStateKey::from_framed(EncodedKey::new(k))
+				.expect("fake store holds an unframed state key");
 			visit(k, b)?;
 		}
 		Ok(())

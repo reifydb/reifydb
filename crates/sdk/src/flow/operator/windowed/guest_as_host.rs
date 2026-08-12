@@ -11,6 +11,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
 	state::store::{StateStore, TimerKind, TimerStore},
 };
+use reifydb_flow::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, row_number::RowNumber},
@@ -33,6 +34,12 @@ impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
 
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
 		Ok(self.0.flow_watermark()?)
+	}
+}
+
+impl<C: GuestContext> IdentityReclaim for GuestAsHost<'_, C> {
+	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
+		Ok(self.0.reclaim_group_identity(group, limit)?)
 	}
 }
 
@@ -67,13 +74,11 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()> {
 		let bound = |b: &Bound<EncodedKey>| match b {
-			Bound::Included(k) => GroupStateKey::from_framed(k.clone()).map(Bound::Included),
-			Bound::Excluded(k) => GroupStateKey::from_framed(k.clone()).map(Bound::Excluded),
-			Bound::Unbounded => Some(Bound::Unbounded),
+			Bound::Included(k) => Bound::Included(GroupStateKey::bound_unchecked(k.clone())),
+			Bound::Excluded(k) => Bound::Excluded(GroupStateKey::bound_unchecked(k.clone())),
+			Bound::Unbounded => Bound::Unbounded,
 		};
-		let (Some(start), Some(end)) = (bound(&range.start), bound(&range.end)) else {
-			return Ok(());
-		};
+		let (start, end) = (bound(&range.start), bound(&range.end));
 		let (start, end) = (start.as_ref(), end.as_ref());
 		let mut remaining = limit;
 		self.0.state().range_bytes_visit(start, end, &mut |k, v| match remaining.as_mut() {

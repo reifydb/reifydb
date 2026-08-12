@@ -5,7 +5,9 @@ use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{key::operator_state::GroupId, state::store::TimerKind};
+use reifydb_flow::state::reclaim::ReclaimOutcome;
 use reifydb_value::{
+	count::Count,
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
@@ -409,6 +411,35 @@ pub(crate) fn arm_timer(ctx: &mut ExternCContext, at: DateTime, kind: TimerKind,
 	}
 
 	Ok(())
+}
+
+pub(crate) fn reclaim_group_identity(ctx: &mut ExternCContext, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
+	let mut removed = 0usize;
+	let mut more = 0u8;
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null, and the host keeps the ExternCContextRaw alive
+	// and aligned for the whole guest call; removed and more are local stack slots.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.reclaim_group_identity)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			group.0,
+			limit,
+			&mut removed,
+			&mut more,
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!(
+				"host_reclaim_group_identity failed with code {}",
+				result
+			)));
+		}
+	}
+
+	Ok(ReclaimOutcome {
+		removed: Count::new(removed as u64),
+		more: more != 0,
+	})
 }
 
 pub(crate) fn flow_watermark(ctx: &mut ExternCContext) -> Result<Option<DateTime>> {

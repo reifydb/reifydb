@@ -30,12 +30,10 @@ fn sealing_append(db: &TestDb) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::a { id: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE TABLE app::b { id: int4, v: int4, ts: datetime } with { time: event(ts) }");
-	db.admin(
-		r#"CREATE DEFERRED VIEW app::u { id: int4, v: int4 } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::u { id: int4, v: int4 } AS {
 			FROM app::a
 				| append { from app::b } with { seal: { duration: '1s' } }
-		}"#,
-	);
+		}"#);
 }
 
 fn fill_both_inputs(db: &TestDb) {
@@ -93,12 +91,10 @@ fn unsealed_append(db: &TestDb) {
 	db.admin("CREATE NAMESPACE keep");
 	db.admin("CREATE TABLE keep::a { id: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE TABLE keep::b { id: int4, v: int4, ts: datetime } with { time: event(ts) }");
-	db.admin(
-		r#"CREATE DEFERRED VIEW keep::u { id: int4, v: int4 } AS {
+	db.admin(r#"CREATE DEFERRED VIEW keep::u { id: int4, v: int4 } AS {
 			FROM keep::a
 				| append { from keep::b }
-		}"#,
-	);
+		}"#);
 }
 
 #[test]
@@ -110,7 +106,12 @@ fn a_live_row_reports_the_state_that_maps_it_to_its_output_row() {
 
 	let live = db.row_count(ANCHORS);
 
-	assert_eq!(live, 2, "each source row must report the anchor arming its seal; surface now: {:?}", db.query(SURFACE));
+	assert_eq!(
+		live,
+		2,
+		"each source row must report the anchor arming its seal; surface now: {:?}",
+		db.query(SURFACE)
+	);
 }
 
 #[test]
@@ -308,7 +309,12 @@ fn removing_a_source_row_before_its_seal_takes_its_state_and_its_published_row()
 	db.await_all_flows(TIMEOUT);
 
 	let survivors = db.await_exact_row_count(ANCHORS, 1, TIMEOUT);
-	assert_eq!(survivors, 1, "only the surviving source row may keep an anchor; surface now: {:?}", db.query(SURFACE));
+	assert_eq!(
+		survivors,
+		1,
+		"only the surviving source row may keep an anchor; surface now: {:?}",
+		db.query(SURFACE)
+	);
 	assert_eq!(db.row_count("FROM app::u FILTER { v == 5 }"), 0, "and the removed row must leave the view");
 }
 

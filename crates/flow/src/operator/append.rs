@@ -750,7 +750,11 @@ mod tests {
 
 		let group = group_of(&mut txn, &op, 0, 7).expect("the row is interned");
 		assert_eq!(index_entries(&mut txn, &op), 1, "an update re-arms one entry, it does not add one");
-		assert_eq!(anchor_of(&mut txn, &op, group), Some(at_millis(30_001)), "and the due time follows the row");
+		assert_eq!(
+			anchor_of(&mut txn, &op, group),
+			Some(at_millis(30_001)),
+			"and the due time follows the row"
+		);
 	}
 
 	#[test]
@@ -790,7 +794,8 @@ mod tests {
 
 	#[test]
 	fn a_mutation_arriving_after_the_seal_is_counted_rather_than_translated() {
-		// A sealed row's published row is frozen, so the discarded mutation must be counted or it vanishes silently.
+		// A sealed row's published row is frozen, so the discarded mutation must be counted or it vanishes
+		// silently.
 		let engine = TestEngine::new();
 		let mut op = sealing(24);
 		let mut txn = txn_at(&engine, op.operator, 100);

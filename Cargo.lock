@@ -3635,6 +3635,7 @@ dependencies = [
  "reifydb-column",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-evaluate",
  "reifydb-runtime",
  "reifydb-sqlite",
  "reifydb-sub-api",

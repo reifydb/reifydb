@@ -138,4 +138,13 @@ pub struct StateCallbacks {
 		millis_out: *mut u64,
 		present_out: *mut u8,
 	) -> i32,
+
+	pub reclaim_group_identity: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ExternCContextRaw,
+		group: u64,
+		limit: usize,
+		removed_out: *mut usize,
+		more_out: *mut u8,
+	) -> i32,
 }

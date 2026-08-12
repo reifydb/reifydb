@@ -584,6 +584,33 @@ pub(super) extern "C" fn host_arm_timer(
 	}
 }
 
+pub(super) extern "C" fn host_reclaim_group_identity(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	group: u64,
+	limit: usize,
+	removed_out: *mut usize,
+	more_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() || removed_out.is_null() || more_out.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: null-checked above; `ctx` must be the context this host handed to the guest for the
+	// duration of the call, and the out pointers must be valid for writes.
+	unsafe {
+		let host = get_host_mut(&mut *ctx);
+		match host.reclaim_group_identity(GroupId(group), limit) {
+			Ok(outcome) => {
+				*removed_out = outcome.removed.as_u64() as usize;
+				*more_out = outcome.more as u8;
+				EXTERN_C_OK
+			}
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
+		}
+	}
+}
+
 pub(super) extern "C" fn host_flow_watermark(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,

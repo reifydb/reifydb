@@ -113,7 +113,6 @@ fn a_group_that_hits_the_budget_stays_queued_for_the_next_tick() {
 
 #[test]
 fn draining_frees_the_identity_phase_once_the_data_phase_is_gone() {
-	// A sealed group is unreachable, so identity left behind is dead weight nothing ever collects.
 	let mut store = MockStore::default();
 	let accumulator = key(DOOMED, Keyspace::ACCUMULATOR, 1);
 	let mapping = key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, 1);
@@ -131,7 +130,6 @@ fn draining_frees_the_identity_phase_once_the_data_phase_is_gone() {
 
 #[test]
 fn a_budget_spent_on_the_data_phase_defers_identity_to_the_next_tick() {
-	// Reclaiming identity before the data is drained strands the rest: nothing resolves the group to finish it.
 	let mut store = MockStore::default();
 	let mapping = key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, 1);
 	for i in 0..2 {

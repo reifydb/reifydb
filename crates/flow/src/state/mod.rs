@@ -3,4 +3,5 @@
 
 pub(crate) mod expiry;
 pub mod reaper;
+pub mod reclaim;
 pub mod seal;
