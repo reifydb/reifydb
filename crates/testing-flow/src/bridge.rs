@@ -17,7 +17,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
-	operator::Operator,
+	operator::{Operator, bridge::FlowBridge},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
@@ -31,7 +31,7 @@ use reifydb_sdk::flow::operator::{
 	extern_c::binding::operator::ExternCOperatorAdapter,
 };
 use reifydb_sub_flow::operator::{
-	bridge::{BridgeOperator, BridgeOperatorAdapter, FlowBridge},
+	bridge::{BridgeOperator, BridgeOperatorAdapter},
 	context::bridge::BridgeOperatorContext,
 };
 use reifydb_test_harness::engine::TestEngine;
@@ -103,28 +103,41 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
 	}
 
 	pub fn apply(&mut self, input: Change) -> Result<Change> {
+		let operator = self.operator_id;
 		let mut txn = self.begin_txn();
-		let output = self.operator.apply(&mut txn, input)?;
-		self.operator.flush(&mut txn)?;
+		let output = {
+			let mut bridge = FlowBridge::new(&mut txn, operator);
+			let output = self.operator.apply(&mut bridge, input)?;
+			self.operator.flush(&mut bridge)?;
+			output
+		};
 		self.end_txn(txn);
 		self.history.push(output.clone());
 		Ok(output)
 	}
 
 	pub fn apply_without_flush(&mut self, input: Change) -> Result<Change> {
+		let operator = self.operator_id;
 		let mut txn = self.begin_txn();
-		let output = self.operator.apply(&mut txn, input)?;
+		let output = {
+			let mut bridge = FlowBridge::new(&mut txn, operator);
+			self.operator.apply(&mut bridge, input)?
+		};
 		self.current = Some(txn);
 		self.history.push(output.clone());
 		Ok(output)
 	}
 
 	pub fn flush(&mut self) -> Result<()> {
+		let operator = self.operator_id;
 		let mut txn = match self.current.take() {
 			Some(txn) => txn,
 			None => self.begin_txn(),
 		};
-		self.operator.flush(&mut txn)?;
+		{
+			let mut bridge = FlowBridge::new(&mut txn, operator);
+			self.operator.flush(&mut bridge)?;
+		}
 		self.end_txn(txn);
 		Ok(())
 	}

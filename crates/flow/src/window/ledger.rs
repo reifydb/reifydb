@@ -51,11 +51,11 @@ impl FiredAt {
 pub struct SealLedger;
 
 impl SealLedger {
-	pub fn read(store: &mut impl StateStore) -> Result<Option<SealedThrough>> {
+	pub fn read(store: &mut (impl StateStore + ?Sized)) -> Result<Option<SealedThrough>> {
 		Ok(Self::read_order(store)?.map(SealedThrough::from_order))
 	}
 
-	pub fn advance(store: &mut impl StateStore, fired: FiredAt) -> Result<SealedThrough> {
+	pub fn advance(store: &mut (impl StateStore + ?Sized), fired: FiredAt) -> Result<SealedThrough> {
 		let fired_order = fired.at().to_order();
 		let current = Self::read_order(store)?.unwrap_or(0);
 		if fired_order <= current {
@@ -69,7 +69,7 @@ impl SealLedger {
 		Ok(SealedThrough::from_order(fired_order))
 	}
 
-	pub fn read_order(store: &mut impl StateStore) -> Result<Option<u64>> {
+	pub fn read_order(store: &mut (impl StateStore + ?Sized)) -> Result<Option<u64>> {
 		let Some(bytes) = store.state_get(&seal_ledger_key())? else {
 			return Ok(None);
 		};

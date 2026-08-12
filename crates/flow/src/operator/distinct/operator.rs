@@ -40,11 +40,11 @@ use crate::{
 	error::FlowStateError,
 	operator::{
 		Operator,
+		bridge::Bridge,
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
 		drops::SealedDrops,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::FlowTransaction,
 };
 
 const LAYOUT_KEY_PREFIX: u8 = 0x02;
@@ -126,17 +126,16 @@ impl DistinctOperator {
 		}
 	}
 
-	fn hydrate_once<T: FlowTransaction>(&mut self, txn: &mut T) -> Result<()> {
+	fn hydrate_once(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
-		self.state.state.layout = self.plan.load_layout(txn)?;
+		self.state.state.layout = self.plan.load_layout(bridge)?;
 		self.hydrated = true;
 		Ok(())
 	}
 
-	fn flush_state<T: FlowTransaction>(&mut self, txn: &mut T) -> Result<()> {
-		let plan = self.plan.clone();
+	fn flush_state(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
 		let working = &mut self.state;
 		let dirty: Vec<(Hash128, DateTime)> = working.state.dirty.drain().collect();
 		for (hash, at) in dirty {
@@ -149,9 +148,9 @@ impl DistinctOperator {
 							cause: e.to_string(),
 						})
 					})?;
-					utils::state_set(plan.operator, txn, &key, row)?;
+					utils::state_set(bridge, &key, row)?;
 				}
-				None => utils::state_remove(plan.operator, txn, &key)?,
+				None => utils::state_remove(bridge, &key)?,
 			}
 		}
 		if let Some(at) = working.state.layout_changed_at.take() {
@@ -161,7 +160,7 @@ impl DistinctOperator {
 					cause: e.to_string(),
 				})
 			})?;
-			utils::state_set(plan.operator, txn, &DistinctPlan::layout_storage_key(), layout_row)?;
+			utils::state_set(bridge, &DistinctPlan::layout_storage_key(), layout_row)?;
 		}
 		Ok(())
 	}
@@ -185,8 +184,8 @@ impl DistinctPlan {
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_entry", level = "trace", skip_all)]
-	fn load_entry<T: FlowTransaction>(&self, txn: &mut T, group: GroupId) -> Result<LoadedEntry> {
-		match utils::state_get(self.operator, txn, &Self::entry_key(group))? {
+	fn load_entry(&self, bridge: &mut dyn Bridge, group: GroupId) -> Result<LoadedEntry> {
+		match utils::state_get(bridge, &Self::entry_key(group))? {
 			Some(row) => {
 				if row.is_empty() {
 					return Ok(LoadedEntry::Empty);
@@ -204,8 +203,8 @@ impl DistinctPlan {
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_layout", level = "trace", skip_all)]
-	fn load_layout<T: FlowTransaction>(&self, txn: &mut T) -> Result<DistinctLayout> {
-		match utils::state_get(self.operator, txn, &Self::layout_storage_key())? {
+	fn load_layout(&self, bridge: &mut dyn Bridge) -> Result<DistinctLayout> {
+		match utils::state_get(bridge, &Self::layout_storage_key())? {
 			Some(row) => {
 				if row.is_empty() {
 					return Ok(DistinctLayout::new());
@@ -256,9 +255,9 @@ impl DistinctPlan {
 	}
 }
 
-impl<T: FlowTransaction> RawStatefulOperator<T> for DistinctOperator {}
+impl RawStatefulOperator for DistinctOperator {}
 
-impl<T: FlowTransaction> Operator<T> for DistinctOperator {
+impl Operator for DistinctOperator {
 	fn id(&self) -> OperatorId {
 		self.plan.operator
 	}
@@ -267,17 +266,16 @@ impl<T: FlowTransaction> Operator<T> for DistinctOperator {
 		CAPABILITIES
 	}
 
-	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
-		self.hydrate_once(txn)?;
+	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+		self.hydrate_once(bridge)?;
 
 		let plan = self.plan.clone();
 		let operator_id = plan.operator;
 		let ordered = plan.batch_hashes(&change.diffs)?;
 		let working = &mut self.state;
 
-		let group_keys: Vec<EncodedKey> =
-			ordered.iter().map(|hash| DistinctPlan::group_bytes(*hash)).collect();
-		let interned = txn.intern_groups(operator_id, &group_keys)?;
+		let group_keys: Vec<EncodedKey> = ordered.iter().map(|hash| DistinctPlan::group_bytes(*hash)).collect();
+		let interned = bridge.intern_groups(&group_keys)?;
 		let mut fresh: HashMap<Hash128, bool> = HashMap::with_capacity(ordered.len());
 		for (hash, (group, is_new)) in ordered.iter().zip(interned) {
 			working.groups.insert(*hash, group);
@@ -289,7 +287,7 @@ impl<T: FlowTransaction> Operator<T> for DistinctOperator {
 				if fresh[&hash] {
 					continue;
 				}
-				match plan.load_entry(txn, working.groups[&hash])? {
+				match plan.load_entry(bridge, working.groups[&hash])? {
 					LoadedEntry::Present(entry) => {
 						working.state.entries.insert(hash, entry);
 					}
@@ -308,8 +306,12 @@ impl<T: FlowTransaction> Operator<T> for DistinctOperator {
 					post,
 					..
 				} => {
-					let insert_result =
-						plan.process_insert(txn, &mut working.state, &working.groups, &post)?;
+					let insert_result = plan.process_insert(
+						bridge,
+						&mut working.state,
+						&working.groups,
+						&post,
+					)?;
 					result.extend(insert_result);
 				}
 				Diff::Update {
@@ -318,7 +320,7 @@ impl<T: FlowTransaction> Operator<T> for DistinctOperator {
 					..
 				} => {
 					let update_result = plan.process_update(
-						txn,
+						bridge,
 						&mut working.state,
 						&working.groups,
 						&pre,
@@ -331,7 +333,7 @@ impl<T: FlowTransaction> Operator<T> for DistinctOperator {
 					..
 				} => {
 					let remove_result =
-						plan.process_remove(txn, &mut working.state, &working.groups, &pre)?;
+						plan.process_remove(bridge, &mut working.state, &working.groups, &pre)?;
 					result.extend(remove_result);
 				}
 			}
@@ -340,8 +342,8 @@ impl<T: FlowTransaction> Operator<T> for DistinctOperator {
 		Ok(Change::from_flow(operator_id, change.version, result, change.changed_at))
 	}
 
-	fn flush(&mut self, txn: &mut T) -> Result<()> {
-		self.flush_state(txn)
+	fn flush(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
+		self.flush_state(bridge)
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

@@ -28,7 +28,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_flow::{
 	engine::{FlowEngineInner, execution::frontier::WatermarkHolds},
 	operator::metrics::OperatorSampleRegistry,
-	transaction::{deferred::DeferredTransaction, substrate::FlowSubstrate},
+	transaction::substrate::FlowSubstrate,
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
@@ -113,7 +113,7 @@ pub struct FlowActor {
 }
 
 pub struct FlowActorState {
-	flow_engine: FlowEngineInner<DeferredTransaction>,
+	flow_engine: FlowEngineInner,
 	source_objects: Arc<BTreeSet<ObjectId>>,
 	completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	cursor: CommitVersion,
@@ -202,7 +202,7 @@ impl FlowActor {
 		ctx.schedule_once(backoff, || FlowActorMessage::Drain);
 	}
 
-	fn build_flow_engine(&self) -> FlowEngineInner<DeferredTransaction> {
+	fn build_flow_engine(&self) -> FlowEngineInner {
 		FlowEngineInner::new(
 			self.engine.catalog(),
 			self.engine.executor().routines.clone(),
@@ -214,7 +214,7 @@ impl FlowActor {
 		)
 	}
 
-	fn register_flow(&self, flow_engine: &mut FlowEngineInner<DeferredTransaction>) -> Result<()> {
+	fn register_flow(&self, flow_engine: &mut FlowEngineInner) -> Result<()> {
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		flow_engine.register(&mut txn, self.flow.clone())?;
 		txn.rollback()?;
@@ -727,7 +727,10 @@ mod pull_protocol {
 			operator_state::{Keyspace, OperatorStateKey},
 		},
 	};
-	use reifydb_flow::{operator::provider::EmptyOperatorProvider, transaction::DeferredParams};
+	use reifydb_flow::{
+		operator::provider::EmptyOperatorProvider,
+		transaction::{DeferredParams, deferred::DeferredTransaction},
+	};
 	use reifydb_runtime::sync::waiter::WaiterHandle;
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_test_harness::engine::TestEngine;

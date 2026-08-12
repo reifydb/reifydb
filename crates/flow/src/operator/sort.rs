@@ -8,7 +8,7 @@ use reifydb_core::{
 use reifydb_rql::expression::Expression;
 use reifydb_value::Result;
 
-use crate::{operator::Operator, transaction::FlowTransaction};
+use crate::operator::{Operator, bridge::Bridge};
 
 pub struct SortOperator {
 	parent_schema: Option<Columns>,
@@ -30,7 +30,7 @@ impl SortOperator {
 	}
 }
 
-impl<T: FlowTransaction> Operator<T> for SortOperator {
+impl Operator for SortOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -39,7 +39,7 @@ impl<T: FlowTransaction> Operator<T> for SortOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, _txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 		// TODO: Implement single-encoded sort processing
 
 		Ok(Change::from_flow(self.operator, change.version, change.diffs, change.changed_at))

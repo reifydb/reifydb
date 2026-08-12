@@ -21,7 +21,10 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, fragment::Fragment, value::system_columns::SystemColumns};
 use tracing::instrument;
 
-use crate::{context::FlowContext, operator::Operator, transaction::FlowTransaction};
+use crate::{
+	context::FlowContext,
+	operator::{Operator, bridge::Bridge},
+};
 
 pub struct ExtendOperator {
 	parent_schema: Option<Columns>,
@@ -121,7 +124,7 @@ impl ExtendOperator {
 	}
 }
 
-impl<T: FlowTransaction> Operator<T> for ExtendOperator {
+impl Operator for ExtendOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -130,7 +133,7 @@ impl<T: FlowTransaction> Operator<T> for ExtendOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, _txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {

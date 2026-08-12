@@ -42,10 +42,10 @@ use crate::{
 	error::{FlowGraphError, FlowStateError},
 	operator::{
 		Operator,
+		bridge::Bridge,
 		join::{Emitted, Identity},
 		stateful::raw::RawStatefulOperator,
 	},
-	transaction::FlowTransaction,
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -202,7 +202,7 @@ impl JoinOperator {
 	}
 
 	pub(crate) fn snapshot_ledger(&self) -> SnapshotLedger {
-		SnapshotLedger::new(self.operator)
+		SnapshotLedger::new()
 	}
 
 	#[instrument(name = "flow::operator::join::compute_keys", level = "trace", skip_all, fields(rows = columns.row_count()))]
@@ -276,9 +276,9 @@ impl JoinOperator {
 		Ok(hashes)
 	}
 
-	pub(crate) fn unmatched_left_columns<T: FlowTransaction>(
+	pub(crate) fn unmatched_left_columns(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		left: &Columns,
 		left_idx: usize,
 		identity: Identity,
@@ -290,7 +290,7 @@ impl JoinOperator {
 		serializer.extend_u64(left_row_number.0);
 		let composite_key = serializer.finish();
 
-		let (row_numbers, fresh, existing) = self.identities(txn, &[composite_key], identity)?;
+		let (row_numbers, fresh, existing) = self.identities(bridge, &[composite_key], identity)?;
 		if fresh.is_empty() && existing.is_empty() {
 			return Ok(Emitted::empty());
 		}
@@ -300,20 +300,20 @@ impl JoinOperator {
 		Ok(Self::split(built, &fresh, &existing))
 	}
 
-	fn identities<T: FlowTransaction>(
+	fn identities(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		keys: &[EncodedKey],
 		identity: Identity,
 	) -> Result<(Vec<RowNumber>, Vec<usize>, Vec<usize>)> {
 		match identity {
 			Identity::Mint => {
-				let minted = txn.get_or_create_row_numbers(self.operator, GroupId::ROOT, keys)?;
+				let minted = bridge.get_or_create_row_numbers(GroupId::ROOT, keys)?;
 				let (fresh, existing) = (0..keys.len()).partition(|index| minted[*index].1);
 				Ok((minted.iter().map(|(number, _)| *number).collect(), fresh, existing))
 			}
 			Identity::Existing | Identity::Consume => {
-				let resolved = txn.get_row_numbers(self.operator, GroupId::ROOT, keys)?;
+				let resolved = bridge.get_row_numbers(GroupId::ROOT, keys)?;
 				let existing: Vec<usize> = resolved
 					.iter()
 					.enumerate()
@@ -321,7 +321,7 @@ impl JoinOperator {
 					.collect();
 				if identity == Identity::Consume {
 					for index in &existing {
-						txn.remove_row_number(self.operator, GroupId::ROOT, &keys[*index])?;
+						bridge.remove_row_number(GroupId::ROOT, &keys[*index])?;
 					}
 				}
 				Ok((
@@ -340,9 +340,9 @@ impl JoinOperator {
 		}
 	}
 
-	pub(crate) fn unmatched_left_columns_batch<T: FlowTransaction>(
+	pub(crate) fn unmatched_left_columns_batch(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		left: &Columns,
 		left_indices: &[usize],
 		identity: Identity,
@@ -362,20 +362,20 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let (row_numbers, fresh, existing) = self.identities(txn, &composite_keys, identity)?;
+		let (row_numbers, fresh, existing) = self.identities(bridge, &composite_keys, identity)?;
 
 		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
 		let built = builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema);
 		Ok(Self::split(built, &fresh, &existing))
 	}
 
-	pub(crate) fn cleanup_left_row_joins<T: FlowTransaction>(&self, txn: &mut T, left_number: u64) -> Result<()> {
+	pub(crate) fn cleanup_left_row_joins(&self, bridge: &mut dyn Bridge, left_number: u64) -> Result<()> {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_number);
 		let prefix = serializer.finish();
 
-		txn.remove_row_numbers_by_prefix(self.operator, GroupId::ROOT, &prefix)
+		bridge.remove_row_numbers_by_prefix(GroupId::ROOT, &prefix)
 	}
 
 	fn make_composite_key(left_num: RowNumber, right_num: RowNumber) -> EncodedKey {
@@ -386,9 +386,9 @@ impl JoinOperator {
 		serializer.finish()
 	}
 
-	pub(crate) fn join_columns_one_to_many<T: FlowTransaction>(
+	pub(crate) fn join_columns_one_to_many(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		left: &Columns,
 		left_idx: usize,
 		right: &Columns,
@@ -408,16 +408,16 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let (row_numbers, fresh, existing) = self.identities(txn, &composite_keys, identity)?;
+		let (row_numbers, fresh, existing) = self.identities(bridge, &composite_keys, identity)?;
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
 		let built = builder.join_one_to_many(&row_numbers, left, left_idx, right);
 		Ok(Self::split(built, &fresh, &existing))
 	}
 
-	pub(crate) fn join_columns_many_to_one<T: FlowTransaction>(
+	pub(crate) fn join_columns_many_to_one(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		left: &Columns,
 		right: &Columns,
 		right_idx: usize,
@@ -437,16 +437,16 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let (row_numbers, fresh, existing) = self.identities(txn, &composite_keys, identity)?;
+		let (row_numbers, fresh, existing) = self.identities(bridge, &composite_keys, identity)?;
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
 		let built = builder.join_many_to_one(&row_numbers, left, right, right_idx);
 		Ok(Self::split(built, &fresh, &existing))
 	}
 
-	pub(crate) fn join_columns_cartesian<T: FlowTransaction>(
+	pub(crate) fn join_columns_cartesian(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		left: &Columns,
 		left_indices: &[usize],
 		right: &Columns,
@@ -470,7 +470,7 @@ impl JoinOperator {
 			}
 		}
 
-		let (row_numbers, fresh, existing) = self.identities(txn, &composite_keys, identity)?;
+		let (row_numbers, fresh, existing) = self.identities(bridge, &composite_keys, identity)?;
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
 		let built = builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices);
@@ -505,9 +505,9 @@ impl JoinOperator {
 	}
 }
 
-impl<T: FlowTransaction> RawStatefulOperator<T> for JoinOperator {}
+impl RawStatefulOperator for JoinOperator {}
 
-impl<T: FlowTransaction> Operator<T> for JoinOperator {
+impl Operator for JoinOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -520,7 +520,7 @@ impl<T: FlowTransaction> Operator<T> for JoinOperator {
 		Some(OperatorSample::default())
 	}
 
-	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.operator
 		{
@@ -531,7 +531,7 @@ impl<T: FlowTransaction> Operator<T> for JoinOperator {
 			return Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at));
 		}
 
-		let mut state = JoinState::new(self.operator);
+		let mut state = JoinState::new();
 		let mut result = Vec::with_capacity(change.diffs.len() * 2);
 
 		let version = change.version;
@@ -552,17 +552,31 @@ impl<T: FlowTransaction> Operator<T> for JoinOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_join_insert(txn, &post, compiled_exprs, side, &mut state, &mut result)?,
+				} => self.apply_join_insert(
+					bridge,
+					&post,
+					compiled_exprs,
+					side,
+					&mut state,
+					&mut result,
+				)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_join_remove(txn, &pre, compiled_exprs, side, &mut state, &mut result)?,
+				} => self.apply_join_remove(
+					bridge,
+					&pre,
+					compiled_exprs,
+					side,
+					&mut state,
+					&mut result,
+				)?,
 				Diff::Update {
 					pre,
 					post,
 					..
 				} => self.apply_join_update(
-					txn,
+					bridge,
 					&pre,
 					&post,
 					compiled_exprs,
@@ -581,9 +595,9 @@ impl JoinOperator {
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "flow::operator::join::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_join_insert<T: FlowTransaction>(
+	fn apply_join_insert(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		post: &Columns,
 		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
@@ -601,13 +615,15 @@ impl JoinOperator {
 				};
 				let diffs = match key {
 					Some(key_hash) => self.strategy.handle_insert(
-						txn,
+						bridge,
 						post,
 						&[row_idx],
 						key_hash,
 						&mut ctx,
 					)?,
-					None => self.strategy.handle_insert_undefined(txn, post, row_idx, &mut ctx)?,
+					None => self
+						.strategy
+						.handle_insert_undefined(bridge, post, row_idx, &mut ctx)?,
 				};
 				result.extend(diffs);
 			}
@@ -623,7 +639,7 @@ impl JoinOperator {
 				state,
 				operator: self,
 			};
-			result.extend(self.strategy.handle_insert(txn, post, indices, key_hash, &mut ctx)?);
+			result.extend(self.strategy.handle_insert(bridge, post, indices, key_hash, &mut ctx)?);
 		}
 
 		for row_idx in undefined {
@@ -632,7 +648,7 @@ impl JoinOperator {
 				state,
 				operator: self,
 			};
-			result.extend(self.strategy.handle_insert_undefined(txn, post, row_idx, &mut ctx)?);
+			result.extend(self.strategy.handle_insert_undefined(bridge, post, row_idx, &mut ctx)?);
 		}
 
 		Ok(())
@@ -641,9 +657,9 @@ impl JoinOperator {
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "flow::operator::join::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn apply_join_remove<T: FlowTransaction>(
+	fn apply_join_remove(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		pre: &Columns,
 		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
@@ -660,10 +676,16 @@ impl JoinOperator {
 					operator: self,
 				};
 				let diffs = match key {
-					Some(key_hash) => {
-						self.strategy.handle_remove(txn, pre, &[row_idx], key_hash, &mut ctx)?
+					Some(key_hash) => self.strategy.handle_remove(
+						bridge,
+						pre,
+						&[row_idx],
+						key_hash,
+						&mut ctx,
+					)?,
+					None => {
+						self.strategy.handle_remove_undefined(bridge, pre, row_idx, &mut ctx)?
 					}
-					None => self.strategy.handle_remove_undefined(txn, pre, row_idx, &mut ctx)?,
 				};
 				result.extend(diffs);
 			}
@@ -679,7 +701,7 @@ impl JoinOperator {
 				state,
 				operator: self,
 			};
-			result.extend(self.strategy.handle_remove(txn, pre, indices, key_hash, &mut ctx)?);
+			result.extend(self.strategy.handle_remove(bridge, pre, indices, key_hash, &mut ctx)?);
 		}
 
 		for row_idx in undefined {
@@ -688,7 +710,7 @@ impl JoinOperator {
 				state,
 				operator: self,
 			};
-			result.extend(self.strategy.handle_remove_undefined(txn, pre, row_idx, &mut ctx)?);
+			result.extend(self.strategy.handle_remove_undefined(bridge, pre, row_idx, &mut ctx)?);
 		}
 
 		Ok(())
@@ -697,9 +719,9 @@ impl JoinOperator {
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "flow::operator::join::update", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_join_update<T: FlowTransaction>(
+	fn apply_join_update(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		pre: &Columns,
 		post: &Columns,
 		compiled_exprs: &[CompiledExpr],
@@ -723,11 +745,11 @@ impl JoinOperator {
 						pre: &pre_key,
 						post: &post_key,
 					};
-					self.strategy.handle_update(txn, pre, post, &[row_idx], keys, &mut ctx)?
+					self.strategy.handle_update(bridge, pre, post, &[row_idx], keys, &mut ctx)?
 				}
 				(Some(pre_key), None) => {
 					let mut diffs = self.strategy.handle_remove(
-						txn,
+						bridge,
 						pre,
 						&[row_idx],
 						&pre_key,
@@ -735,14 +757,15 @@ impl JoinOperator {
 					)?;
 					diffs.extend(self
 						.strategy
-						.handle_insert_undefined(txn, post, row_idx, &mut ctx)?);
+						.handle_insert_undefined(bridge, post, row_idx, &mut ctx)?);
 					diffs
 				}
 				(None, Some(post_key)) => {
-					let mut diffs =
-						self.strategy.handle_remove_undefined(txn, pre, row_idx, &mut ctx)?;
+					let mut diffs = self
+						.strategy
+						.handle_remove_undefined(bridge, pre, row_idx, &mut ctx)?;
 					diffs.extend(self.strategy.handle_insert(
-						txn,
+						bridge,
 						post,
 						&[row_idx],
 						&post_key,
@@ -750,9 +773,9 @@ impl JoinOperator {
 					)?);
 					diffs
 				}
-				(None, None) => {
-					self.strategy.handle_update_both_undefined(txn, pre, post, row_idx, &mut ctx)?
-				}
+				(None, None) => self
+					.strategy
+					.handle_update_both_undefined(bridge, pre, post, row_idx, &mut ctx)?,
 			};
 			result.extend(diffs);
 		}

@@ -180,7 +180,7 @@ impl Aggregation {
 		self.engine_meta.as_mut().expect("engine_meta opened at apply/tick entry")
 	}
 
-	pub(crate) fn engine_meta_flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	pub(crate) fn engine_meta_flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		if let Some(cache) = self.engine_meta.as_mut() {
 			cache.flush(store)?;
 		}

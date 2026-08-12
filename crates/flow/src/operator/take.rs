@@ -33,9 +33,9 @@ use crate::{
 	error::FlowStateError,
 	operator::{
 		Operator,
+		bridge::Bridge,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::FlowTransaction,
 };
 
 #[operator_state]
@@ -102,16 +102,16 @@ impl TakeOperator {
 		}
 	}
 
-	fn hydrate_once<T: FlowTransaction>(&mut self, txn: &mut T) -> Result<()> {
+	fn hydrate_once(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
-		self.state = self.plan.load_take_state(txn)?;
+		self.state = self.plan.load_take_state(bridge)?;
 		self.hydrated = true;
 		Ok(())
 	}
 
-	fn flush_state<T: FlowTransaction>(&mut self, txn: &mut T) -> Result<()> {
+	fn flush_state(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
 		if !self.hydrated {
 			return Ok(());
 		}
@@ -121,7 +121,7 @@ impl TakeOperator {
 				cause: e.to_string(),
 			})
 		})?;
-		utils::state_set(self.plan.operator, txn, &utils::empty_state_key(), row)?;
+		utils::state_set(bridge, &utils::empty_state_key(), row)?;
 		Ok(())
 	}
 
@@ -131,9 +131,9 @@ impl TakeOperator {
 }
 
 impl TakePlan {
-	fn load_take_state<T: FlowTransaction>(&self, txn: &mut T) -> Result<TakeState> {
+	fn load_take_state(&self, bridge: &mut dyn Bridge) -> Result<TakeState> {
 		let key = utils::empty_state_key();
-		let Some(row) = utils::state_get(self.operator, txn, &key)? else {
+		let Some(row) = utils::state_get(bridge, &key)? else {
 			return Ok(TakeState::default());
 		};
 		if row.is_empty() {
@@ -314,9 +314,9 @@ impl TakePlan {
 	}
 }
 
-impl<T: FlowTransaction> RawStatefulOperator<T> for TakeOperator {}
+impl RawStatefulOperator for TakeOperator {}
 
-impl<T: FlowTransaction> Operator<T> for TakeOperator {
+impl Operator for TakeOperator {
 	fn id(&self) -> OperatorId {
 		self.plan.operator
 	}
@@ -325,8 +325,8 @@ impl<T: FlowTransaction> Operator<T> for TakeOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
-		self.hydrate_once(txn)?;
+	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+		self.hydrate_once(bridge)?;
 		let plan = self.plan.clone();
 		let state = &mut self.state;
 
@@ -354,8 +354,8 @@ impl<T: FlowTransaction> Operator<T> for TakeOperator {
 		Ok(Change::from_flow(plan.operator, version, output_diffs, change.changed_at))
 	}
 
-	fn flush(&mut self, txn: &mut T) -> Result<()> {
-		self.flush_state(txn)
+	fn flush(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
+		self.flush_state(bridge)
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

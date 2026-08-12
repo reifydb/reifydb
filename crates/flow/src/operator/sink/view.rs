@@ -69,12 +69,7 @@ pub struct SinkTableViewOperator {
 }
 
 impl SinkTableViewOperator {
-	pub fn new(
-		operator: OperatorId,
-		view: ResolvedView,
-		storage: TableId,
-		partition_by: Vec<String>,
-	) -> Self {
+	pub fn new(operator: OperatorId, view: ResolvedView, storage: TableId, partition_by: Vec<String>) -> Self {
 		let mut key_prefix: Vec<u8> = Vec::with_capacity(10);
 		key_prefix.push(encode_u8(KeyKind::Row as u8));
 		serialize_object_id(&ObjectId::table(storage), &mut key_prefix);
@@ -241,8 +236,13 @@ impl SinkTableViewOperator {
 		for row_idx in 0..row_count {
 			let pre_row_number = source_pre.row_numbers()[row_idx];
 			let post_row_number = source_post.row_numbers()[row_idx];
-			let (_, mut post_encoded) =
-				encode_row_at_index(source_post, row_idx, &self.shape, post_row_number, &field_columns)?;
+			let (_, mut post_encoded) = encode_row_at_index(
+				source_post,
+				row_idx,
+				&self.shape,
+				post_row_number,
+				&field_columns,
+			)?;
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
@@ -272,7 +272,8 @@ impl SinkTableViewOperator {
 				)
 			};
 
-			let mut prior_created = self.created_at.get(&post_row_number).copied().filter(|c| !c.is_epoch());
+			let mut prior_created =
+				self.created_at.get(&post_row_number).copied().filter(|c| !c.is_epoch());
 			if prior_created.is_none() && pre_row_number != post_row_number {
 				prior_created = self.created_at.get(&pre_row_number).copied().filter(|c| !c.is_epoch());
 			}

@@ -12,6 +12,7 @@ use reifydb_value::Result;
 
 use crate::{
 	engine::{FlowEngineInner, execution::dispatch::Node},
+	operator::bridge::FlowBridge,
 	timer::Timer,
 	transaction::{ChangeCoordinate, FlowTransaction},
 };
@@ -19,8 +20,8 @@ use crate::{
 const MAX_TIMER_ROUNDS: u32 = 4_096;
 const MAX_TIMERS_PER_DISPATCH: usize = 8_192;
 
-impl<T: FlowTransaction> FlowEngineInner<T> {
-	pub(super) fn dispatch_due_timers(
+impl FlowEngineInner {
+	pub(super) fn dispatch_due_timers<T: FlowTransaction>(
 		&mut self,
 		txn: &mut T,
 		flow: &FlowDag,
@@ -101,8 +102,9 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 				});
 				let fired = match node {
 					Node::Operator(operator) => {
-						let fired = operator.on_timer(txn, timer)?;
-						operator.flush(txn)?;
+						let mut bridge = FlowBridge::new(txn, operator.id());
+						let fired = operator.on_timer(&mut bridge, timer)?;
+						operator.flush(&mut bridge)?;
 						fired
 					}
 					Node::DurableSink(sink) => txn.run_durable_sink_timer(&mut **sink, timer)?,

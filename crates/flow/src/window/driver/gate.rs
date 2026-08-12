@@ -36,7 +36,7 @@ impl SealGate {
 		self.policy.seal_instant_from_order(horizon).at() > self.frontier
 	}
 
-	pub fn arm<S: TimerStore>(
+	pub fn arm<S: TimerStore + ?Sized>(
 		&self,
 		store: &mut S,
 		key: &EncodedKey,
@@ -54,7 +54,12 @@ impl SealGate {
 	}
 }
 
-pub fn disarm_seal<S: TimerStore>(store: &mut S, policy: SealPolicy, key: &EncodedKey, horizon: u64) -> Result<()> {
+pub fn disarm_seal<S: TimerStore + ?Sized>(
+	store: &mut S,
+	policy: SealPolicy,
+	key: &EncodedKey,
+	horizon: u64,
+) -> Result<()> {
 	store.disarm_timer(policy.seal_instant_from_order(horizon).at(), TimerKind::Seal, key)
 }
 
@@ -69,7 +74,7 @@ impl EvictionGate {
 		}
 	}
 
-	pub fn rearm<S: TimerStore>(
+	pub fn rearm<S: TimerStore + ?Sized>(
 		&self,
 		store: &mut S,
 		key: &EncodedKey,

@@ -37,7 +37,6 @@ use reifydb_flow::{
 		join::operator::{JoinOperator, JoinSideConfig},
 		window::operator::{WindowConfig, WindowOperator},
 	},
-	transaction::deferred::DeferredTransaction,
 };
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,
@@ -118,7 +117,7 @@ fn change_of(events: &[Event]) -> Change {
 	Change::from_flow(SOURCE, CommitVersion(1), diffs, DateTime::default())
 }
 
-fn feed<O: Operator<DeferredTransaction>>(h: &mut Harness<O>, events: &[Event], slices: &[usize]) -> Vec<Diff> {
+fn feed<O: Operator>(h: &mut Harness<O>, events: &[Event], slices: &[usize]) -> Vec<Diff> {
 	let mut emitted = Vec::new();
 	for chunk in chunks(events, slices) {
 		let out = h.apply(change_of(chunk)).expect("the change applies");

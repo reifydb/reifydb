@@ -17,9 +17,11 @@ use reifydb_codec::{
 	},
 };
 #[cfg(test)]
-use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
+use reifydb_core::interface::catalog::{
+	config::{ConfigKey, GetConfig},
+	flow::OperatorId,
+};
 use reifydb_core::{
-	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
 	value::column::columns::Columns,
 };
@@ -35,10 +37,10 @@ use super::{cache::GroupCache, state::JoinSide};
 use crate::{
 	error::FlowStateError,
 	operator::{
+		bridge::Bridge,
 		join::strategy::hash::columns_from_block,
 		stateful::utils::{state_get, state_range, state_remove, state_set},
 	},
-	transaction::FlowTransaction,
 };
 
 const ROW_NUMBER_BYTES: usize = 8;
@@ -54,33 +56,27 @@ pub(crate) fn body_bytes(row: &EncodedOperatorRow) -> EncodedBytes {
 }
 
 pub(crate) struct Store {
-	operator_id: OperatorId,
 	side: JoinSide,
 	shape_cache: RowShapeCacheCell,
 	cache: GroupCache<Option<(EncodedBytes, Columns)>>,
 }
 
 impl Store {
-	pub(crate) fn new(operator_id: OperatorId, side: JoinSide) -> Self {
+	pub(crate) fn new(side: JoinSide) -> Self {
 		Self {
-			operator_id,
 			side,
 			shape_cache: RowShapeCacheCell::new(SHAPE_CACHE_CAPACITY),
 			cache: GroupCache::new(),
 		}
 	}
 
-	pub(crate) fn slot<T: FlowTransaction>(
-		&self,
-		txn: &mut T,
-		group: GroupId,
-	) -> Result<Option<(EncodedBytes, Columns)>> {
+	pub(crate) fn slot(&self, bridge: &mut dyn Bridge, group: GroupId) -> Result<Option<(EncodedBytes, Columns)>> {
 		if let Some(cached) = self.cache.get(group) {
 			return Ok(cached);
 		}
-		let entry = match self.get_row_in(txn, group, SLOT)? {
+		let entry = match self.get_row_in(bridge, group, SLOT)? {
 			Some(row) => {
-				let columns = columns_from_block(txn, self, vec![(SLOT, row.clone())])?;
+				let columns = columns_from_block(bridge, self, vec![(SLOT, row.clone())])?;
 				Some((row, columns))
 			}
 			None => None,
@@ -93,13 +89,12 @@ impl Store {
 		self.cache.remove(group);
 	}
 
-	fn resolve<T: FlowTransaction>(&self, txn: &mut T, hash: &Hash128) -> Result<Option<GroupId>> {
-		txn.lookup_group(self.operator_id, &group_bytes(hash))
+	fn resolve(&self, bridge: &mut dyn Bridge, hash: &Hash128) -> Result<Option<GroupId>> {
+		bridge.lookup_group(&group_bytes(hash))
 	}
 
-	fn intern<T: FlowTransaction>(&self, txn: &mut T, hash: &Hash128) -> Result<GroupId> {
-		let (group, _) = txn.intern_group(self.operator_id, &group_bytes(hash))?;
-		Ok(group)
+	fn intern(&self, bridge: &mut dyn Bridge, hash: &Hash128) -> Result<GroupId> {
+		bridge.intern_group(&group_bytes(hash))
 	}
 
 	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> GroupStateKey {
@@ -118,112 +113,112 @@ impl Store {
 	}
 
 	#[instrument(name = "flow::operator::join::store::put_row", level = "trace", skip_all)]
-	pub(crate) fn put_row<T: FlowTransaction>(
+	pub(crate) fn put_row(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		hash: &Hash128,
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
 	) -> Result<()> {
-		let group = self.intern(txn, hash)?;
-		self.write_row(txn, group, row_number, row)
+		let group = self.intern(bridge, hash)?;
+		self.write_row(bridge, group, row_number, row)
 	}
 
-	pub(crate) fn write_row<T: FlowTransaction>(
+	pub(crate) fn write_row(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group: GroupId,
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
 	) -> Result<()> {
 		self.forget_slot(group);
 		let key = self.row_key(group, row_number);
-		state_set(self.operator_id, txn, &key, row.clone())
+		state_set(bridge, &key, row.clone())
 	}
 
-	pub(crate) fn group_of<T: FlowTransaction>(&self, txn: &mut T, hash: &Hash128) -> Result<Option<GroupId>> {
-		self.resolve(txn, hash)
+	pub(crate) fn group_of(&self, bridge: &mut dyn Bridge, hash: &Hash128) -> Result<Option<GroupId>> {
+		self.resolve(bridge, hash)
 	}
 
-	pub(crate) fn group_for<T: FlowTransaction>(&self, txn: &mut T, hash: &Hash128) -> Result<GroupId> {
-		self.intern(txn, hash)
+	pub(crate) fn group_for(&self, bridge: &mut dyn Bridge, hash: &Hash128) -> Result<GroupId> {
+		self.intern(bridge, hash)
 	}
 
-	pub(crate) fn get_row_in<T: FlowTransaction>(
+	pub(crate) fn get_row_in(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<Option<EncodedBytes>> {
 		let key = self.row_key(group, row_number);
-		Ok(state_get(self.operator_id, txn, &key)?.as_ref().map(body_bytes))
+		Ok(state_get(bridge, &key)?.as_ref().map(body_bytes))
 	}
 
-	pub(crate) fn update_row<T: FlowTransaction>(
+	pub(crate) fn update_row(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		hash: &Hash128,
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
 	) -> Result<bool> {
-		let Some(group) = self.resolve(txn, hash)? else {
+		let Some(group) = self.resolve(bridge, hash)? else {
 			return Ok(false);
 		};
-		self.update_row_in(txn, group, row_number, row)
+		self.update_row_in(bridge, group, row_number, row)
 	}
 
-	pub(crate) fn update_row_in<T: FlowTransaction>(
+	pub(crate) fn update_row_in(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group: GroupId,
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
 	) -> Result<bool> {
 		let key = self.row_key(group, row_number);
-		if state_get(self.operator_id, txn, &key)?.is_none() {
+		if state_get(bridge, &key)?.is_none() {
 			return Ok(false);
 		}
 		self.forget_slot(group);
-		state_set(self.operator_id, txn, &key, row.clone())?;
+		state_set(bridge, &key, row.clone())?;
 		Ok(true)
 	}
 
-	pub(crate) fn remove_row<T: FlowTransaction>(
+	pub(crate) fn remove_row(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		hash: &Hash128,
 		row_number: RowNumber,
 	) -> Result<bool> {
-		let Some(group) = self.resolve(txn, hash)? else {
+		let Some(group) = self.resolve(bridge, hash)? else {
 			return Ok(false);
 		};
-		if self.get_row_in(txn, group, row_number)?.is_none() {
+		if self.get_row_in(bridge, group, row_number)?.is_none() {
 			return Ok(false);
 		}
-		self.remove_row_in(txn, group, row_number)?;
+		self.remove_row_in(bridge, group, row_number)?;
 		Ok(true)
 	}
 
-	pub(crate) fn remove_row_in<T: FlowTransaction>(
+	pub(crate) fn remove_row_in(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<()> {
 		self.forget_slot(group);
 		let key = self.row_key(group, row_number);
-		state_remove(self.operator_id, txn, &key)
+		state_remove(bridge, &key)
 	}
 
 	#[instrument(name = "flow::operator::join::rows_for_key", level = "trace", skip_all, fields(limit = limit))]
-	pub(crate) fn rows_for_key<T: FlowTransaction>(
+	pub(crate) fn rows_for_key(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		hash: &Hash128,
 		after: Option<&RowNumber>,
 		limit: usize,
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-		let Some(group) = self.resolve(txn, hash)? else {
+		let Some(group) = self.resolve(bridge, hash)? else {
 			return Ok(Vec::new());
 		};
 		let mut range = self.rows_range(group);
@@ -231,7 +226,7 @@ impl Store {
 			range.start = Bound::Excluded(self.row_key(group, *after).into_encoded());
 		}
 		let mut out = Vec::new();
-		for entry in state_range(self.operator_id, txn, range) {
+		for entry in state_range(bridge, range) {
 			let (full_key, bytes) = entry?;
 			if let Some(rn) = row_number_from_key(full_key.as_slice()) {
 				out.push((rn, body_bytes(&EncodedOperatorRow::try_from(bytes)?)));
@@ -244,24 +239,24 @@ impl Store {
 		Ok(out)
 	}
 
-	pub(crate) fn contains_key<T: FlowTransaction>(&self, txn: &mut T, hash: &Hash128) -> Result<bool> {
-		let Some(group) = self.resolve(txn, hash)? else {
+	pub(crate) fn contains_key(&self, bridge: &mut dyn Bridge, hash: &Hash128) -> Result<bool> {
+		let Some(group) = self.resolve(bridge, hash)? else {
 			return Ok(false);
 		};
 		let range = self.rows_range(group);
-		Ok(state_range(self.operator_id, txn, range).next().transpose()?.is_some())
+		Ok(state_range(bridge, range).next().transpose()?.is_some())
 	}
 
-	pub(crate) fn get_row_shape<T: FlowTransaction>(
+	pub(crate) fn get_row_shape(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		fingerprint: RowShapeFingerprint,
 	) -> Result<Option<RowShape>> {
 		if let Some(shape) = self.shape_cache.get(&fingerprint) {
 			return Ok(Some(shape));
 		}
 		let key = self.schema_key(fingerprint);
-		match state_get(self.operator_id, txn, &key)? {
+		match state_get(bridge, &key)? {
 			Some(row) => {
 				if row.is_empty() {
 					return Ok(None);
@@ -281,13 +276,13 @@ impl Store {
 		}
 	}
 
-	pub(crate) fn set_row_shape<T: FlowTransaction>(&self, txn: &mut T, shape: &RowShape) -> Result<()> {
+	pub(crate) fn set_row_shape(&self, bridge: &mut dyn Bridge, shape: &RowShape) -> Result<()> {
 		let fingerprint = shape.fingerprint();
 		if self.shape_cache.contains_key(&fingerprint) {
 			return Ok(());
 		}
 		let key = self.schema_key(fingerprint);
-		if state_get(self.operator_id, txn, &key)?.is_some() {
+		if state_get(bridge, &key)?.is_some() {
 			self.shape_cache.insert(shape.clone());
 			return Ok(());
 		}
@@ -297,7 +292,7 @@ impl Store {
 				cause: e.to_string(),
 			})
 		})?;
-		state_set(self.operator_id, txn, &key, row)?;
+		state_set(bridge, &key, row)?;
 		self.shape_cache.insert(shape.clone());
 		Ok(())
 	}
@@ -318,7 +313,11 @@ mod tests {
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
-	use crate::testing::FlowTxn;
+	use crate::{
+		operator::bridge::FlowBridge,
+		testing::FlowTxn,
+		transaction::{FlowTransaction, deferred::DeferredTransaction},
+	};
 
 	fn h(v: u128) -> Hash128 {
 		Hash128(v)
@@ -332,36 +331,42 @@ mod tests {
 		EncodedOperatorRow::timeless(&[payload])
 	}
 
+	fn b<'a>(txn: &'a mut DeferredTransaction, operator: OperatorId) -> FlowBridge<'a, DeferredTransaction> {
+		FlowBridge::new(txn, operator)
+	}
+
 	/// Resolve-then-read, the composition production used before callers began holding the group
 	/// across a batch. Kept here so the read-path assertions still exercise both halves together.
-	fn get_row<T: FlowTransaction>(
+	fn get_row(
 		store: &Store,
-		txn: &mut T,
+		operator: OperatorId,
+		txn: &mut DeferredTransaction,
 		hash: &Hash128,
 		row_number: RowNumber,
 	) -> Result<Option<EncodedBytes>> {
-		let Some(group) = store.group_of(txn, hash)? else {
+		let Some(group) = store.group_of(&mut b(txn, operator), hash)? else {
 			return Ok(None);
 		};
-		store.get_row_in(txn, group, row_number)
+		store.get_row_in(&mut b(txn, operator), group, row_number)
 	}
 
 	#[test]
 	fn put_row_then_rows_for_key_returns_inserted() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(OperatorId(1), JoinSide::Left);
+		let operator = OperatorId(1);
+		let store = Store::new(JoinSide::Left);
 
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20)).unwrap();
-		store.put_row(&mut txn, &h(0xBBB), rn(3), &row(0x30)).unwrap();
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(2), &row(0x20)).unwrap();
+		store.put_row(&mut b(&mut txn, operator), &h(0xBBB), rn(3), &row(0x30)).unwrap();
 
-		let rows_a = store.rows_for_key(&mut txn, &h(0xAAA), None, 64).unwrap();
+		let rows_a = store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), None, 64).unwrap();
 		assert_eq!(rows_a.len(), 2);
 		assert_eq!(rows_a[0].0, rn(1));
 		assert_eq!(rows_a[1].0, rn(2));
 
-		let rows_b = store.rows_for_key(&mut txn, &h(0xBBB), None, 64).unwrap();
+		let rows_b = store.rows_for_key(&mut b(&mut txn, operator), &h(0xBBB), None, 64).unwrap();
 		assert_eq!(rows_b.len(), 1);
 		assert_eq!(rows_b[0].0, rn(3));
 	}
@@ -373,14 +378,15 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(50);
-		let left = Store::new(operator, JoinSide::Left);
-		let right = Store::new(operator, JoinSide::Right);
+		let left = Store::new(JoinSide::Left);
+		let right = Store::new(JoinSide::Right);
 
-		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		right.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x20)).unwrap();
+		left.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		right.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x20)).unwrap();
 
-		let left_row = get_row(&left, &mut txn, &h(0xAAA), rn(1)).unwrap().expect("left row present");
-		let right_row = get_row(&right, &mut txn, &h(0xAAA), rn(1)).unwrap().expect("right row present");
+		let left_row = get_row(&left, operator, &mut txn, &h(0xAAA), rn(1)).unwrap().expect("left row present");
+		let right_row =
+			get_row(&right, operator, &mut txn, &h(0xAAA), rn(1)).unwrap().expect("right row present");
 		assert_eq!(left_row.as_slice(), &[0x10u8][..]);
 		assert_eq!(right_row.as_slice(), &[0x20u8][..]);
 
@@ -403,15 +409,15 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(51);
-		let store = Store::new(operator, JoinSide::Left);
+		let store = Store::new(JoinSide::Left);
 
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
 
-		assert!(get_row(&store, &mut txn, &h(0xCCC), rn(1)).unwrap().is_none());
-		assert!(store.rows_for_key(&mut txn, &h(0xCCC), None, 8).unwrap().is_empty());
-		assert!(!store.contains_key(&mut txn, &h(0xCCC)).unwrap());
-		assert!(!store.remove_row(&mut txn, &h(0xCCC), rn(1)).unwrap());
-		assert!(!store.update_row(&mut txn, &h(0xCCC), rn(1), &row(0x20)).unwrap());
+		assert!(get_row(&store, operator, &mut txn, &h(0xCCC), rn(1)).unwrap().is_none());
+		assert!(store.rows_for_key(&mut b(&mut txn, operator), &h(0xCCC), None, 8).unwrap().is_empty());
+		assert!(!store.contains_key(&mut b(&mut txn, operator), &h(0xCCC)).unwrap());
+		assert!(!store.remove_row(&mut b(&mut txn, operator), &h(0xCCC), rn(1)).unwrap());
+		assert!(!store.update_row(&mut b(&mut txn, operator), &h(0xCCC), rn(1), &row(0x20)).unwrap());
 
 		assert!(
 			txn.lookup_group(operator, &group_bytes(&h(0xCCC))).unwrap().is_none(),
@@ -425,20 +431,21 @@ mod tests {
 		// point read must never fall back to a sibling row under the same hash.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(OperatorId(5), JoinSide::Right);
+		let operator = OperatorId(5);
+		let store = Store::new(JoinSide::Right);
 
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		store.put_row(&mut txn, &h(0xAAA), RowNumber::MAX, &row(0x20)).unwrap();
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), RowNumber::MAX, &row(0x20)).unwrap();
 
-		let slot = get_row(&store, &mut txn, &h(0xAAA), RowNumber::MAX).unwrap();
+		let slot = get_row(&store, operator, &mut txn, &h(0xAAA), RowNumber::MAX).unwrap();
 		assert_eq!(slot.expect("slot present").as_slice(), &[0x20u8][..]);
 
 		assert!(
-			get_row(&store, &mut txn, &h(0xAAA), rn(99)).unwrap().is_none(),
+			get_row(&store, operator, &mut txn, &h(0xAAA), rn(99)).unwrap().is_none(),
 			"a row number that was never written must not resolve to any sibling row"
 		);
 		assert!(
-			get_row(&store, &mut txn, &h(0xBBB), RowNumber::MAX).unwrap().is_none(),
+			get_row(&store, operator, &mut txn, &h(0xBBB), RowNumber::MAX).unwrap().is_none(),
 			"a different hash must not share the slot stored under another hash"
 		);
 	}
@@ -447,12 +454,13 @@ mod tests {
 	fn update_row_overwrites_existing_returns_true() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(OperatorId(2), JoinSide::Right);
+		let operator = OperatorId(2);
+		let store = Store::new(JoinSide::Right);
 
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		assert!(store.update_row(&mut txn, &h(0xAAA), rn(1), &row(0x99)).unwrap());
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		assert!(store.update_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x99)).unwrap());
 
-		let rows = store.rows_for_key(&mut txn, &h(0xAAA), None, 64).unwrap();
+		let rows = store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), None, 64).unwrap();
 		assert_eq!(rows.len(), 1);
 		assert_eq!(rows[0].1.as_slice(), &[0x99u8][..]);
 	}
@@ -461,29 +469,31 @@ mod tests {
 	fn update_row_returns_false_when_missing() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(OperatorId(3), JoinSide::Left);
+		let operator = OperatorId(3);
+		let store = Store::new(JoinSide::Left);
 
-		assert!(!store.update_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap());
-		assert!(store.rows_for_key(&mut txn, &h(0xAAA), None, 64).unwrap().is_empty());
+		assert!(!store.update_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap());
+		assert!(store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), None, 64).unwrap().is_empty());
 	}
 
 	#[test]
 	fn remove_row_returns_existence_and_contains_key_reports_empty() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(OperatorId(4), JoinSide::Left);
+		let operator = OperatorId(4);
+		let store = Store::new(JoinSide::Left);
 
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20)).unwrap();
-		assert!(store.contains_key(&mut txn, &h(0xAAA)).unwrap());
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(2), &row(0x20)).unwrap();
+		assert!(store.contains_key(&mut b(&mut txn, operator), &h(0xAAA)).unwrap());
 
-		assert!(store.remove_row(&mut txn, &h(0xAAA), rn(1)).unwrap());
-		assert!(store.contains_key(&mut txn, &h(0xAAA)).unwrap());
+		assert!(store.remove_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1)).unwrap());
+		assert!(store.contains_key(&mut b(&mut txn, operator), &h(0xAAA)).unwrap());
 
-		assert!(store.remove_row(&mut txn, &h(0xAAA), rn(2)).unwrap());
-		assert!(!store.contains_key(&mut txn, &h(0xAAA)).unwrap());
+		assert!(store.remove_row(&mut b(&mut txn, operator), &h(0xAAA), rn(2)).unwrap());
+		assert!(!store.contains_key(&mut b(&mut txn, operator), &h(0xAAA)).unwrap());
 
-		assert!(!store.remove_row(&mut txn, &h(0xAAA), rn(99)).unwrap());
+		assert!(!store.remove_row(&mut b(&mut txn, operator), &h(0xAAA), rn(99)).unwrap());
 	}
 
 	#[test]
@@ -495,26 +505,29 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(46);
-		let store = Store::new(operator, JoinSide::Left);
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		store.put_row(&mut txn, &h(0xAAA), rn(3), &row(0x30)).unwrap();
+		let store = Store::new(JoinSide::Left);
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(3), &row(0x30)).unwrap();
 		let group =
 			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
 
-		store.remove_row_in(&mut txn, group, rn(2)).unwrap();
-		store.remove_row_in(&mut txn, group, rn(2)).unwrap();
+		store.remove_row_in(&mut b(&mut txn, operator), group, rn(2)).unwrap();
+		store.remove_row_in(&mut b(&mut txn, operator), group, rn(2)).unwrap();
 
-		assert!(store.get_row_in(&mut txn, group, rn(2)).unwrap().is_none());
-		assert!(store.contains_key(&mut txn, &h(0xAAA)).unwrap(), "the key still holds two rows");
-		let rows = store.rows_for_key(&mut txn, &h(0xAAA), None, 64).unwrap();
+		assert!(store.get_row_in(&mut b(&mut txn, operator), group, rn(2)).unwrap().is_none());
+		assert!(
+			store.contains_key(&mut b(&mut txn, operator), &h(0xAAA)).unwrap(),
+			"the key still holds two rows"
+		);
+		let rows = store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), None, 64).unwrap();
 		assert_eq!(
 			rows.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(),
 			vec![rn(1), rn(3)],
 			"a tombstone for a row that was never stored must not surface in the key's scan"
 		);
 
-		store.remove_row_in(&mut txn, group, rn(1)).unwrap();
-		let rows = store.rows_for_key(&mut txn, &h(0xAAA), None, 64).unwrap();
+		store.remove_row_in(&mut b(&mut txn, operator), group, rn(1)).unwrap();
+		let rows = store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), None, 64).unwrap();
 		assert_eq!(
 			rows.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(),
 			vec![rn(3)],
@@ -526,12 +539,13 @@ mod tests {
 	fn get_row_shape_round_trips_written_shape() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(OperatorId(20), JoinSide::Left);
+		let operator = OperatorId(20);
+		let store = Store::new(JoinSide::Left);
 
 		let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int4, ValueType::Utf8]);
-		store.set_row_shape(&mut txn, &shape).unwrap();
+		store.set_row_shape(&mut b(&mut txn, operator), &shape).unwrap();
 
-		let got = store.get_row_shape(&mut txn, shape.fingerprint()).unwrap();
+		let got = store.get_row_shape(&mut b(&mut txn, operator), shape.fingerprint()).unwrap();
 		assert_eq!(got, Some(shape));
 	}
 
@@ -544,11 +558,11 @@ mod tests {
 		let operator = OperatorId(21);
 		let shape = RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("f0", ValueType::Int4)]);
 
-		let writer = Store::new(operator, JoinSide::Left);
-		writer.set_row_shape(&mut txn, &shape).unwrap();
+		let writer = Store::new(JoinSide::Left);
+		writer.set_row_shape(&mut b(&mut txn, operator), &shape).unwrap();
 
-		let reader = Store::new(operator, JoinSide::Left);
-		let got = reader.get_row_shape(&mut txn, shape.fingerprint()).unwrap();
+		let reader = Store::new(JoinSide::Left);
+		let got = reader.get_row_shape(&mut b(&mut txn, operator), shape.fingerprint()).unwrap();
 		assert_eq!(got, Some(shape), "a cold in-memory cache must fall back to the persisted shape");
 	}
 
@@ -559,46 +573,50 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(52);
-		let left = Store::new(operator, JoinSide::Left);
-		let right = Store::new(operator, JoinSide::Right);
+		let left = Store::new(JoinSide::Left);
+		let right = Store::new(JoinSide::Right);
 
 		let shape = RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("f0", ValueType::Int4)]);
-		left.set_row_shape(&mut txn, &shape).unwrap();
+		left.set_row_shape(&mut b(&mut txn, operator), &shape).unwrap();
 
-		let cold_right = Store::new(operator, JoinSide::Right);
+		let cold_right = Store::new(JoinSide::Right);
 		assert_eq!(
-			cold_right.get_row_shape(&mut txn, shape.fingerprint()).unwrap(),
+			cold_right.get_row_shape(&mut b(&mut txn, operator), shape.fingerprint()).unwrap(),
 			None,
 			"one side writing a shape must not publish it to the other side"
 		);
 
-		right.set_row_shape(&mut txn, &shape).unwrap();
-		let cold_right = Store::new(operator, JoinSide::Right);
-		assert_eq!(cold_right.get_row_shape(&mut txn, shape.fingerprint()).unwrap(), Some(shape));
+		right.set_row_shape(&mut b(&mut txn, operator), &shape).unwrap();
+		let cold_right = Store::new(JoinSide::Right);
+		assert_eq!(
+			cold_right.get_row_shape(&mut b(&mut txn, operator), shape.fingerprint()).unwrap(),
+			Some(shape)
+		);
 	}
 
 	#[test]
 	fn rows_for_key_pages_with_resume_cursor() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(OperatorId(30), JoinSide::Left);
+		let operator = OperatorId(30);
+		let store = Store::new(JoinSide::Left);
 
 		for i in 1..=4u64 {
-			store.put_row(&mut txn, &h(0xAAA), rn(i), &row(i as u8)).unwrap();
+			store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(i), &row(i as u8)).unwrap();
 		}
 		// A different hash must not leak into the scanned key's blocks.
-		store.put_row(&mut txn, &h(0xBBB), rn(99), &row(0xFF)).unwrap();
+		store.put_row(&mut b(&mut txn, operator), &h(0xBBB), rn(99), &row(0xFF)).unwrap();
 
-		let page1 = store.rows_for_key(&mut txn, &h(0xAAA), None, 2).unwrap();
+		let page1 = store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), None, 2).unwrap();
 		assert_eq!(page1.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(), vec![rn(1), rn(2)]);
 
 		let after = page1.last().unwrap().0;
-		let page2 = store.rows_for_key(&mut txn, &h(0xAAA), Some(&after), 2).unwrap();
+		let page2 = store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), Some(&after), 2).unwrap();
 		assert_eq!(page2.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(), vec![rn(3), rn(4)]);
 
 		// Resuming past the last row of an exact-multiple key must terminate, not wrap.
 		let after = page2.last().unwrap().0;
-		let page3 = store.rows_for_key(&mut txn, &h(0xAAA), Some(&after), 2).unwrap();
+		let page3 = store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), Some(&after), 2).unwrap();
 		assert!(page3.is_empty(), "scan must end exactly at the key's last row");
 	}
 
@@ -606,21 +624,28 @@ mod tests {
 	fn rows_for_key_stitches_full_and_partial_blocks_without_loss() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(OperatorId(31), JoinSide::Right);
+		let operator = OperatorId(31);
+		let store = Store::new(JoinSide::Right);
 
 		// Paging is now the only way to read a key, so the boundary risk moved into the caller's
 		// loop: a wrong resume cursor drops or repeats the rows either side of a full block.
 		let block_size = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize);
 		let total = block_size + 3;
 		for i in 1..=total {
-			store.put_row(&mut txn, &h(0xCCC), rn(i), &row(0x01)).unwrap();
+			store.put_row(&mut b(&mut txn, operator), &h(0xCCC), rn(i), &row(0x01)).unwrap();
 		}
 
 		let mut got: Vec<u64> = Vec::new();
 		let mut after: Option<RowNumber> = None;
 		while got.len() <= total as usize {
-			let block =
-				store.rows_for_key(&mut txn, &h(0xCCC), after.as_ref(), block_size as usize).unwrap();
+			let block = store
+				.rows_for_key(
+					&mut b(&mut txn, operator),
+					&h(0xCCC),
+					after.as_ref(),
+					block_size as usize,
+				)
+				.unwrap();
 			if block.is_empty() {
 				break;
 			}
@@ -635,10 +660,11 @@ mod tests {
 	fn get_row_shape_returns_none_when_shape_absent() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(OperatorId(22), JoinSide::Right);
+		let operator = OperatorId(22);
+		let store = Store::new(JoinSide::Right);
 
 		let fp = RowShape::testing(RowFamily::Pod, &[ValueType::Int4]).fingerprint();
-		assert_eq!(store.get_row_shape(&mut txn, fp).unwrap(), None);
+		assert_eq!(store.get_row_shape(&mut b(&mut txn, operator), fp).unwrap(), None);
 	}
 
 	#[test]
@@ -648,21 +674,22 @@ mod tests {
 		// has to be retained rather than only the first.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(OperatorId(23), JoinSide::Right);
+		let operator = OperatorId(23);
+		let store = Store::new(JoinSide::Right);
 
 		let narrow = RowShape::testing(RowFamily::Pod, &[ValueType::Int4]);
 		let wide = RowShape::testing(RowFamily::Pod, &[ValueType::Int4, ValueType::Utf8]);
 
-		store.set_row_shape(&mut txn, &narrow).unwrap();
-		store.set_row_shape(&mut txn, &wide).unwrap();
+		store.set_row_shape(&mut b(&mut txn, operator), &narrow).unwrap();
+		store.set_row_shape(&mut b(&mut txn, operator), &wide).unwrap();
 
 		assert_eq!(
-			store.get_row_shape(&mut txn, narrow.fingerprint()).unwrap(),
+			store.get_row_shape(&mut b(&mut txn, operator), narrow.fingerprint()).unwrap(),
 			Some(narrow),
 			"the first shape this instance ever wrote must still resolve"
 		);
 		assert_eq!(
-			store.get_row_shape(&mut txn, wide.fingerprint()).unwrap(),
+			store.get_row_shape(&mut b(&mut txn, operator), wide.fingerprint()).unwrap(),
 			Some(wide),
 			"a second, differently-shaped write on the same instance must not be dropped"
 		);
@@ -684,13 +711,13 @@ mod tests {
 			],
 		);
 
-		let writer = Store::new(operator, JoinSide::Right);
-		writer.set_row_shape(&mut txn, &narrow).unwrap();
-		writer.set_row_shape(&mut txn, &wide).unwrap();
+		let writer = Store::new(JoinSide::Right);
+		writer.set_row_shape(&mut b(&mut txn, operator), &narrow).unwrap();
+		writer.set_row_shape(&mut b(&mut txn, operator), &wide).unwrap();
 
-		let reader = Store::new(operator, JoinSide::Right);
+		let reader = Store::new(JoinSide::Right);
 		assert_eq!(
-			reader.get_row_shape(&mut txn, wide.fingerprint()).unwrap(),
+			reader.get_row_shape(&mut b(&mut txn, operator), wide.fingerprint()).unwrap(),
 			Some(wide),
 			"a cold in-memory cache must fall back to the persisted second shape, not just the first"
 		);
@@ -702,14 +729,15 @@ mod tests {
 		// paths; a path that disagreed would emit or drop join output for that key.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(OperatorId(40), JoinSide::Right);
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		let operator = OperatorId(40);
+		let store = Store::new(JoinSide::Right);
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
 
-		assert!(!store.contains_key(&mut txn, &h(0xBBB)).unwrap());
-		assert!(store.rows_for_key(&mut txn, &h(0xBBB), None, 8).unwrap().is_empty());
-		assert!(get_row(&store, &mut txn, &h(0xBBB), RowNumber::MAX).unwrap().is_none());
-		assert!(!store.remove_row(&mut txn, &h(0xBBB), rn(1)).unwrap());
-		assert!(!store.update_row(&mut txn, &h(0xBBB), rn(1), &row(0x20)).unwrap());
+		assert!(!store.contains_key(&mut b(&mut txn, operator), &h(0xBBB)).unwrap());
+		assert!(store.rows_for_key(&mut b(&mut txn, operator), &h(0xBBB), None, 8).unwrap().is_empty());
+		assert!(get_row(&store, operator, &mut txn, &h(0xBBB), RowNumber::MAX).unwrap().is_none());
+		assert!(!store.remove_row(&mut b(&mut txn, operator), &h(0xBBB), rn(1)).unwrap());
+		assert!(!store.update_row(&mut b(&mut txn, operator), &h(0xBBB), rn(1), &row(0x20)).unwrap());
 	}
 
 	#[test]
@@ -718,15 +746,16 @@ mod tests {
 		// removal; reporting absent early would strand the surviving row.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(OperatorId(41), JoinSide::Left);
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20)).unwrap();
+		let operator = OperatorId(41);
+		let store = Store::new(JoinSide::Left);
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(2), &row(0x20)).unwrap();
 
-		assert!(store.remove_row(&mut txn, &h(0xAAA), rn(1)).unwrap());
-		assert!(store.contains_key(&mut txn, &h(0xAAA)).unwrap(), "one row remains");
+		assert!(store.remove_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1)).unwrap());
+		assert!(store.contains_key(&mut b(&mut txn, operator), &h(0xAAA)).unwrap(), "one row remains");
 
-		assert!(store.remove_row(&mut txn, &h(0xAAA), rn(2)).unwrap());
-		assert!(!store.contains_key(&mut txn, &h(0xAAA)).unwrap());
+		assert!(store.remove_row(&mut b(&mut txn, operator), &h(0xAAA), rn(2)).unwrap());
+		assert!(!store.contains_key(&mut b(&mut txn, operator), &h(0xAAA)).unwrap());
 	}
 
 	#[test]
@@ -736,14 +765,14 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(45);
-		let writer = Store::new(operator, JoinSide::Right);
-		writer.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		let writer = Store::new(JoinSide::Right);
+		writer.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
 
-		let restarted = Store::new(operator, JoinSide::Right);
+		let restarted = Store::new(JoinSide::Right);
 		assert!(
-			restarted.contains_key(&mut txn, &h(0xAAA)).unwrap(),
+			restarted.contains_key(&mut b(&mut txn, operator), &h(0xAAA)).unwrap(),
 			"a persisted key must survive a cold store as present"
 		);
-		assert!(!restarted.contains_key(&mut txn, &h(0xBBB)).unwrap());
+		assert!(!restarted.contains_key(&mut b(&mut txn, operator), &h(0xBBB)).unwrap());
 	}
 }

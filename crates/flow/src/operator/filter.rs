@@ -25,7 +25,10 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::{context::FlowContext, operator::Operator, transaction::FlowTransaction};
+use crate::{
+	context::FlowContext,
+	operator::{Operator, bridge::Bridge},
+};
 
 pub struct FilterOperator {
 	parent_schema: Option<Columns>,
@@ -124,7 +127,7 @@ impl FilterOperator {
 	}
 }
 
-impl<T: FlowTransaction> Operator<T> for FilterOperator {
+impl Operator for FilterOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -133,7 +136,7 @@ impl<T: FlowTransaction> Operator<T> for FilterOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, _txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs {

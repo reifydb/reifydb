@@ -151,7 +151,7 @@ pub(crate) fn load_batch_meta<S, C>(
 	key: &MetaKey,
 ) -> Result<BatchMeta<C>>
 where
-	S: StateStore,
+	S: StateStore + ?Sized,
 	C: Slot,
 {
 	let initial = meta.get(store, key)?.and_then(|meta| meta.high_water);
@@ -167,7 +167,7 @@ pub(crate) fn persist_batch_meta<S, G, C>(
 	loaded: HashMap<G, BatchMeta<C>>,
 ) -> Result<()>
 where
-	S: StateStore,
+	S: StateStore + ?Sized,
 	for<'a> &'a G: IntoEncodedKey,
 	C: Slot,
 {
@@ -203,7 +203,7 @@ pub(crate) fn sweep_stale_meta<S, M>(
 	low_water: &mut Option<u64>,
 ) -> Result<usize>
 where
-	S: StateStore,
+	S: StateStore + ?Sized,
 	M: MetaHighWater + Clone + OperatorState + HeapSize,
 {
 	if low_water.is_some_and(|lw| lw >= threshold) {

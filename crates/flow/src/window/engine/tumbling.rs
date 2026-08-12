@@ -101,7 +101,7 @@ where
 		}
 	}
 
-	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	fn hydrate_once<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -114,7 +114,7 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn reindex_window<S: StateStore>(
+	pub fn reindex_window<S: StateStore + ?Sized>(
 		&mut self,
 		store: &mut S,
 		group: &G,
@@ -152,7 +152,7 @@ where
 		new_accumulator: NA,
 	) -> Result<Vec<WindowResult<G, C, Accumulator::Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		K: Fn(&G, C) -> (GroupId, EncodedKey),
 		NA: Fn() -> Accumulator,
 	{
@@ -179,13 +179,13 @@ where
 		Ok(results)
 	}
 
-	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		self.accumulators.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: StateStore>(
+	fn warm_and_load_meta<S: StateStore + ?Sized>(
 		&mut self,
 		store: &mut S,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
@@ -216,7 +216,7 @@ where
 		slot_key: &K,
 	) -> Result<SlotResolved<G, C>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		K: Fn(&G, C) -> (GroupId, EncodedKey),
 	{
 		let mut resolved: SlotResolved<G, C> = HashMap::with_capacity(order.len());
@@ -246,7 +246,7 @@ where
 		new_accumulator: &NA,
 	) -> Result<Vec<WindowResult<G, C, Accumulator::Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		NA: Fn() -> Accumulator,
 	{
 		let mut results: Vec<WindowResult<G, C, Accumulator::Output>> = Vec::new();
@@ -346,7 +346,11 @@ where
 		Ok(results)
 	}
 
-	pub fn expire<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<Vec<ExpiredWindow<G, C>>> {
+	pub fn expire<S: StateStore + ?Sized>(
+		&mut self,
+		store: &mut S,
+		threshold: u64,
+	) -> Result<Vec<ExpiredWindow<G, C>>> {
 		self.hydrate_once(store)?;
 		let due = self.expiry.due(store, threshold, self.expire_batch)?;
 
@@ -363,11 +367,11 @@ where
 		Ok(out)
 	}
 
-	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		persist_batch_meta(store, &mut self.meta, meta_loaded)
 	}
 
-	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn expire_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 }

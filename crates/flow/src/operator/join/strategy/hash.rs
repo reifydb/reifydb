@@ -7,10 +7,7 @@ use reifydb_codec::row::{
 	shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
-	interface::{
-		catalog::config::{ConfigKey, GetConfig},
-		change::Diff,
-	},
+	interface::{catalog::config::ConfigKey, change::Diff},
 	internal,
 	key::operator_state::GroupId,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -26,9 +23,9 @@ use reifydb_value::{
 };
 use tracing::{Span, instrument};
 
-use crate::{
-	operator::join::{Identity, operator::JoinOperator, row::JoinStateRow, state::JoinSide, store::Store},
-	transaction::FlowTransaction,
+use crate::operator::{
+	bridge::Bridge,
+	join::{Identity, operator::JoinOperator, row::JoinStateRow, state::JoinSide, store::Store},
 };
 
 #[cfg(test)]
@@ -37,10 +34,14 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
-	use crate::testing::FlowTxn;
+	use crate::{operator::bridge::FlowBridge, testing::FlowTxn, transaction::deferred::DeferredTransaction};
 
 	fn h(v: u128) -> Hash128 {
 		Hash128(v)
+	}
+
+	fn bridge(txn: &mut DeferredTransaction, operator: OperatorId) -> FlowBridge<'_, DeferredTransaction> {
+		FlowBridge::new(txn, operator)
 	}
 
 	fn columns_with_fields(fields: &[(&str, i32)], row_number: u64) -> Columns {
@@ -60,20 +61,28 @@ mod tests {
 		// ever persisted.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let mut store = Store::new(OperatorId(70), JoinSide::Right);
+		let operator = OperatorId(70);
+		let mut store = Store::new(JoinSide::Right);
 
 		let key_a = h(0xA);
 		let resolved = columns_with_fields(&[("mint", 1), ("decimals", 8)], 1);
-		add_to_state_entry_batch(&mut txn, &mut store, &key_a, &resolved, &[0]).unwrap();
+		add_to_state_entry_batch(&mut bridge(&mut txn, operator), &mut store, &key_a, &resolved, &[0]).unwrap();
 
 		let key_b = h(0xB);
 		let freshly_discovered = columns_with_fields(&[("mint", 2), ("decimals", 6), ("bump", 255)], 2);
-		add_to_state_entry_batch(&mut txn, &mut store, &key_b, &freshly_discovered, &[0]).unwrap();
+		add_to_state_entry_batch(
+			&mut bridge(&mut txn, operator),
+			&mut store,
+			&key_b,
+			&freshly_discovered,
+			&[0],
+		)
+		.unwrap();
 
-		let block_b = store.rows_for_key(&mut txn, &key_b, None, 10).unwrap();
+		let block_b = store.rows_for_key(&mut bridge(&mut txn, operator), &key_b, None, 10).unwrap();
 		assert_eq!(block_b.len(), 1);
-		let read_back =
-			columns_from_block(&mut txn, &store, block_b).expect("row shape for key B must be found");
+		let read_back = columns_from_block(&mut bridge(&mut txn, operator), &store, block_b)
+			.expect("row shape for key B must be found");
 		assert_eq!(read_back.row_count(), 1);
 		assert_eq!(read_back.len(), 3, "key B's own 3-field shape must be the one used to decode it");
 	}
@@ -84,19 +93,20 @@ mod tests {
 		// can carry different shape fingerprints and each must decode with its own.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let mut store = Store::new(OperatorId(71), JoinSide::Right);
+		let operator = OperatorId(71);
+		let mut store = Store::new(JoinSide::Right);
 		let key = h(0xC);
 
 		let row1 = columns_with_fields(&[("mint", 111), ("flag", 1)], 1);
-		add_to_state_entry_batch(&mut txn, &mut store, &key, &row1, &[0]).unwrap();
+		add_to_state_entry_batch(&mut bridge(&mut txn, operator), &mut store, &key, &row1, &[0]).unwrap();
 
 		// The same column set in the opposite order, which is a different fingerprint.
 		let row2 = columns_with_fields(&[("flag", 999), ("mint", 222)], 2);
-		add_to_state_entry_batch(&mut txn, &mut store, &key, &row2, &[0]).unwrap();
+		add_to_state_entry_batch(&mut bridge(&mut txn, operator), &mut store, &key, &row2, &[0]).unwrap();
 
-		let block = store.rows_for_key(&mut txn, &key, None, 10).unwrap();
+		let block = store.rows_for_key(&mut bridge(&mut txn, operator), &key, None, 10).unwrap();
 		assert_eq!(block.len(), 2);
-		let read_back = columns_from_block(&mut txn, &store, block).unwrap();
+		let read_back = columns_from_block(&mut bridge(&mut txn, operator), &store, block).unwrap();
 
 		let mint = read_back.column("mint").unwrap();
 		let flag = read_back.column("flag").unwrap();
@@ -136,8 +146,8 @@ pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize, no
 }
 
 #[instrument(name = "flow::operator::join::add_state_entry", level = "trace", skip_all)]
-pub(crate) fn add_to_state_entry_batch<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn add_to_state_entry_batch(
+	bridge: &mut dyn Bridge,
 	store: &mut Store,
 	key_hash: &Hash128,
 	columns: &Columns,
@@ -147,11 +157,11 @@ pub(crate) fn add_to_state_entry_batch<T: FlowTransaction>(
 		return Ok(());
 	}
 	let shape = build_shape(columns);
-	store.set_row_shape(txn, &shape)?;
-	let group = store.group_for(txn, key_hash)?;
+	store.set_row_shape(bridge, &shape)?;
+	let group = store.group_for(bridge, key_hash)?;
 	for &idx in indices {
-		let row = encode_row(&shape, columns, idx, txn.written_at());
-		store.write_row(txn, group, columns.row_numbers()[idx], &row)?;
+		let row = encode_row(&shape, columns, idx, bridge.written_at());
+		store.write_row(bridge, group, columns.row_numbers()[idx], &row)?;
 	}
 	Ok(())
 }
@@ -161,15 +171,15 @@ pub(crate) struct EntryUpdate {
 	shape: RowShape,
 }
 
-pub(crate) fn prepare_entry_update<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn prepare_entry_update(
+	bridge: &mut dyn Bridge,
 	store: &Store,
 	key_hash: &Hash128,
 	post: &Columns,
 ) -> Result<Option<EntryUpdate>> {
 	let shape = build_shape(post);
-	store.set_row_shape(txn, &shape)?;
-	let Some(group) = store.group_of(txn, key_hash)? else {
+	store.set_row_shape(bridge, &shape)?;
+	let Some(group) = store.group_of(bridge, key_hash)? else {
 		return Ok(None);
 	};
 	Ok(Some(EntryUpdate {
@@ -178,30 +188,30 @@ pub(crate) fn prepare_entry_update<T: FlowTransaction>(
 	}))
 }
 
-pub(crate) fn update_row_in_entry<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn update_row_in_entry(
+	bridge: &mut dyn Bridge,
 	store: &Store,
 	prepared: &EntryUpdate,
 	pre_row_number: RowNumber,
 	post: &Columns,
 	row_idx: usize,
 ) -> Result<bool> {
-	let row = encode_row(&prepared.shape, post, row_idx, txn.written_at());
+	let row = encode_row(&prepared.shape, post, row_idx, bridge.written_at());
 	let post_row_number = post.row_numbers()[row_idx];
 	if pre_row_number == post_row_number {
-		store.update_row_in(txn, prepared.group, post_row_number, &row)
+		store.update_row_in(bridge, prepared.group, post_row_number, &row)
 	} else {
-		if store.get_row_in(txn, prepared.group, pre_row_number)?.is_none() {
+		if store.get_row_in(bridge, prepared.group, pre_row_number)?.is_none() {
 			return Ok(false);
 		}
-		store.remove_row_in(txn, prepared.group, pre_row_number)?;
-		store.write_row(txn, prepared.group, post_row_number, &row)?;
+		store.remove_row_in(bridge, prepared.group, pre_row_number)?;
+		store.write_row(bridge, prepared.group, post_row_number, &row)?;
 		Ok(true)
 	}
 }
 
-pub(crate) fn update_single_row_in_entry<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn update_single_row_in_entry(
+	bridge: &mut dyn Bridge,
 	store: &Store,
 	key_hash: &Hash128,
 	pre_row_number: RowNumber,
@@ -209,38 +219,34 @@ pub(crate) fn update_single_row_in_entry<T: FlowTransaction>(
 	row_idx: usize,
 ) -> Result<bool> {
 	let shape = build_shape(post);
-	store.set_row_shape(txn, &shape)?;
-	let row = encode_row(&shape, post, row_idx, txn.written_at());
+	store.set_row_shape(bridge, &shape)?;
+	let row = encode_row(&shape, post, row_idx, bridge.written_at());
 	let post_row_number = post.row_numbers()[row_idx];
 	if pre_row_number == post_row_number {
-		store.update_row(txn, key_hash, post_row_number, &row)
+		store.update_row(bridge, key_hash, post_row_number, &row)
 	} else {
-		if !store.remove_row(txn, key_hash, pre_row_number)? {
+		if !store.remove_row(bridge, key_hash, pre_row_number)? {
 			return Ok(false);
 		}
-		store.put_row(txn, key_hash, post_row_number, &row)?;
+		store.put_row(bridge, key_hash, post_row_number, &row)?;
 		Ok(true)
 	}
 }
 
-pub(crate) fn is_first_right_row<T: FlowTransaction>(
-	txn: &mut T,
-	right_store: &Store,
-	key_hash: &Hash128,
-) -> Result<bool> {
-	Ok(!right_store.contains_key(txn, key_hash)?)
+pub(crate) fn is_first_right_row(bridge: &mut dyn Bridge, right_store: &Store, key_hash: &Hash128) -> Result<bool> {
+	Ok(!right_store.contains_key(bridge, key_hash)?)
 }
 
 #[instrument(name = "flow::operator::join::decode_run", level = "trace", skip_all, fields(rows = bytes_slice.len()))]
-fn decode_run<T: FlowTransaction>(
-	txn: &mut T,
+fn decode_run(
+	bridge: &mut dyn Bridge,
 	store: &Store,
 	fingerprint: RowShapeFingerprint,
 	ids: &[RowNumber],
 	bytes_slice: &[EncodedBytes],
 ) -> Result<Columns> {
 	let shape = store
-		.get_row_shape(txn, fingerprint)?
+		.get_row_shape(bridge, fingerprint)?
 		.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
 	let rows: Vec<&JoinStateRow> = bytes_slice.iter().map(JoinStateRow::view).collect();
 	let bodies: Vec<EncodedBytes> = rows.iter().map(|row| row.body_bytes()).collect();
@@ -299,8 +305,8 @@ fn merge_runs(runs: Vec<Columns>) -> Columns {
 }
 
 #[instrument(name = "flow::operator::join::columns_from_block", level = "trace", skip_all, fields(rows = block.len()))]
-pub(crate) fn columns_from_block<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn columns_from_block(
+	bridge: &mut dyn Bridge,
 	store: &Store,
 	block: Vec<(RowNumber, EncodedBytes)>,
 ) -> Result<Columns> {
@@ -312,7 +318,7 @@ pub(crate) fn columns_from_block<T: FlowTransaction>(
 	for (id, row) in block {
 		let fingerprint = JoinStateRow::view(&row).fingerprint();
 		if run_fingerprint.is_some_and(|current| current != fingerprint) {
-			runs.push(decode_run(txn, store, run_fingerprint.unwrap(), &run_ids, &run)?);
+			runs.push(decode_run(bridge, store, run_fingerprint.unwrap(), &run_ids, &run)?);
 			run_ids.clear();
 			run.clear();
 		}
@@ -321,7 +327,7 @@ pub(crate) fn columns_from_block<T: FlowTransaction>(
 		run.push(row);
 	}
 	if let Some(fingerprint) = run_fingerprint {
-		runs.push(decode_run(txn, store, fingerprint, &run_ids, &run)?);
+		runs.push(decode_run(bridge, store, fingerprint, &run_ids, &run)?);
 	}
 
 	if runs.len() == 1 {
@@ -330,37 +336,32 @@ pub(crate) fn columns_from_block<T: FlowTransaction>(
 	Ok(merge_runs(runs))
 }
 
-fn stream_join_blocks<T: FlowTransaction, F>(
-	txn: &mut T,
-	store: &Store,
-	key_hash: &Hash128,
-	join_block: F,
-) -> Result<Vec<Diff>>
+fn stream_join_blocks<F>(bridge: &mut dyn Bridge, store: &Store, key_hash: &Hash128, join_block: F) -> Result<Vec<Diff>>
 where
-	F: FnMut(&mut T, &Columns) -> Result<Vec<Diff>>,
+	F: FnMut(&mut dyn Bridge, &Columns) -> Result<Vec<Diff>>,
 {
 	let mut join_block = join_block;
-	stream_join_blocks_encoded(txn, store, key_hash, false, |txn, opposite, _| join_block(txn, opposite))
+	stream_join_blocks_encoded(bridge, store, key_hash, false, |bridge, opposite, _| join_block(bridge, opposite))
 }
 
 #[instrument(name = "flow::operator::join::probe", level = "trace", skip_all, fields(blocks = tracing::field::Empty, rows = tracing::field::Empty))]
-pub(crate) fn stream_join_blocks_encoded<T: FlowTransaction, F>(
-	txn: &mut T,
+pub(crate) fn stream_join_blocks_encoded<F>(
+	bridge: &mut dyn Bridge,
 	store: &Store,
 	key_hash: &Hash128,
 	want_encoded: bool,
 	mut join_block: F,
 ) -> Result<Vec<Diff>>
 where
-	F: FnMut(&mut T, &Columns, &[(RowNumber, EncodedBytes)]) -> Result<Vec<Diff>>,
+	F: FnMut(&mut dyn Bridge, &Columns, &[(RowNumber, EncodedBytes)]) -> Result<Vec<Diff>>,
 {
-	let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
+	let limit = bridge.config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
 	let mut out = Vec::new();
 	let mut after: Option<RowNumber> = None;
 	let mut blocks = 0u64;
 	let mut rows = 0u64;
 	loop {
-		let block = store.rows_for_key(txn, key_hash, after.as_ref(), limit)?;
+		let block = store.rows_for_key(bridge, key_hash, after.as_ref(), limit)?;
 		if block.is_empty() {
 			break;
 		}
@@ -372,8 +373,8 @@ where
 			true => block.clone(),
 			false => Vec::new(),
 		};
-		let opposite = columns_from_block(txn, store, block)?;
-		out.extend(join_block(txn, &opposite, &encoded)?);
+		let opposite = columns_from_block(bridge, store, block)?;
+		out.extend(join_block(bridge, &opposite, &encoded)?);
 		if exhausted {
 			break;
 		}
@@ -392,26 +393,26 @@ pub(crate) struct JoinEmitContext<'a> {
 }
 
 #[instrument(name = "flow::operator::join::emit_update_joined", level = "trace", skip_all)]
-pub(crate) fn emit_update_joined_columns<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn emit_update_joined_columns(
+	bridge: &mut dyn Bridge,
 	pre: &Columns,
 	post: &Columns,
 	row_idx: usize,
 	primary_side: JoinSide,
 	ctx: &JoinEmitContext<'_>,
 ) -> Result<Vec<Diff>> {
-	stream_join_blocks(txn, ctx.opposite_store, ctx.key_hash, |txn, opposite| {
+	stream_join_blocks(bridge, ctx.opposite_store, ctx.key_hash, |bridge, opposite| {
 		let (pre_joined, post_joined) = match primary_side {
 			JoinSide::Left => (
 				ctx.operator.join_columns_one_to_many(
-					txn,
+					bridge,
 					pre,
 					row_idx,
 					opposite,
 					Identity::Existing,
 				)?,
 				ctx.operator.join_columns_one_to_many(
-					txn,
+					bridge,
 					post,
 					row_idx,
 					opposite,
@@ -420,14 +421,14 @@ pub(crate) fn emit_update_joined_columns<T: FlowTransaction>(
 			),
 			JoinSide::Right => (
 				ctx.operator.join_columns_many_to_one(
-					txn,
+					bridge,
 					opposite,
 					pre,
 					row_idx,
 					Identity::Existing,
 				)?,
 				ctx.operator.join_columns_many_to_one(
-					txn,
+					bridge,
 					opposite,
 					post,
 					row_idx,
@@ -445,8 +446,8 @@ pub(crate) fn emit_update_joined_columns<T: FlowTransaction>(
 }
 
 #[instrument(name = "flow::operator::join::emit_joined", level = "trace", skip_all)]
-pub(crate) fn emit_joined_columns_batch<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn emit_joined_columns_batch(
+	bridge: &mut dyn Bridge,
 	primary: &Columns,
 	primary_indices: &[usize],
 	primary_side: JoinSide,
@@ -456,11 +457,11 @@ pub(crate) fn emit_joined_columns_batch<T: FlowTransaction>(
 		return Ok(Vec::new());
 	}
 
-	stream_join_blocks(txn, ctx.opposite_store, ctx.key_hash, |txn, opposite| {
+	stream_join_blocks(bridge, ctx.opposite_store, ctx.key_hash, |bridge, opposite| {
 		let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
 		let joined = match primary_side {
 			JoinSide::Left => ctx.operator.join_columns_cartesian(
-				txn,
+				bridge,
 				primary,
 				primary_indices,
 				opposite,
@@ -468,7 +469,7 @@ pub(crate) fn emit_joined_columns_batch<T: FlowTransaction>(
 				Identity::Mint,
 			)?,
 			JoinSide::Right => ctx.operator.join_columns_cartesian(
-				txn,
+				bridge,
 				opposite,
 				&opposite_indices,
 				primary,
@@ -482,8 +483,8 @@ pub(crate) fn emit_joined_columns_batch<T: FlowTransaction>(
 }
 
 #[instrument(name = "flow::operator::join::emit_remove_joined", level = "trace", skip_all)]
-pub(crate) fn emit_remove_joined_columns_batch<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn emit_remove_joined_columns_batch(
+	bridge: &mut dyn Bridge,
 	primary: &Columns,
 	primary_indices: &[usize],
 	primary_side: JoinSide,
@@ -493,11 +494,11 @@ pub(crate) fn emit_remove_joined_columns_batch<T: FlowTransaction>(
 		return Ok(Vec::new());
 	}
 
-	stream_join_blocks(txn, ctx.opposite_store, ctx.key_hash, |txn, opposite| {
+	stream_join_blocks(bridge, ctx.opposite_store, ctx.key_hash, |bridge, opposite| {
 		let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
 		let joined = match primary_side {
 			JoinSide::Left => ctx.operator.join_columns_cartesian(
-				txn,
+				bridge,
 				primary,
 				primary_indices,
 				opposite,
@@ -505,7 +506,7 @@ pub(crate) fn emit_remove_joined_columns_batch<T: FlowTransaction>(
 				Identity::Consume,
 			)?,
 			JoinSide::Right => ctx.operator.join_columns_cartesian(
-				txn,
+				bridge,
 				opposite,
 				&opposite_indices,
 				primary,
@@ -519,26 +520,26 @@ pub(crate) fn emit_remove_joined_columns_batch<T: FlowTransaction>(
 }
 
 #[instrument(name = "flow::operator::join::for_each_left_block", level = "trace", skip_all)]
-pub(crate) fn for_each_left_block<T: FlowTransaction, F>(
-	txn: &mut T,
+pub(crate) fn for_each_left_block<F>(
+	bridge: &mut dyn Bridge,
 	left_store: &Store,
 	key_hash: &Hash128,
 	mut on_block: F,
 ) -> Result<()>
 where
-	F: FnMut(&mut T, &Columns) -> Result<()>,
+	F: FnMut(&mut dyn Bridge, &Columns) -> Result<()>,
 {
-	let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
+	let limit = bridge.config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
 	let mut after: Option<RowNumber> = None;
 	loop {
-		let block = left_store.rows_for_key(txn, key_hash, after.as_ref(), limit)?;
+		let block = left_store.rows_for_key(bridge, key_hash, after.as_ref(), limit)?;
 		if block.is_empty() {
 			break;
 		}
 		let last = block.last().unwrap().0;
 		let exhausted = block.len() < limit;
-		let left_columns = columns_from_block(txn, left_store, block)?;
-		on_block(txn, &left_columns)?;
+		let left_columns = columns_from_block(bridge, left_store, block)?;
+		on_block(bridge, &left_columns)?;
 		if exhausted {
 			break;
 		}

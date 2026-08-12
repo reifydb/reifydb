@@ -576,7 +576,7 @@ pub trait FlowTransaction: Sized + Send + 'static {
 	}
 
 	fn find_dictionary(&self, id: DictionaryId) -> Option<Dictionary> {
-		self.catalog().cache().find_dictionary_at(id, self.version())
+		self.catalog().cache().find_dictionary(id)
 	}
 
 	fn find_dictionary_by_name(&self, name: &str) -> Option<Dictionary> {

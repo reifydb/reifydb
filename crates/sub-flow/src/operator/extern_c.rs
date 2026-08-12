@@ -2,11 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	cell::{Cell, UnsafeCell},
+	cell::UnsafeCell,
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
-	ptr,
 };
 
 use reifydb_core::{
@@ -21,12 +20,14 @@ use reifydb_core::{
 };
 use reifydb_extension::{
 	callbacks::extern_c::builder::{BuilderRegistry, with_registry},
-	operator::callbacks::extern_c::{context::new_extern_c_context, create_host_callbacks},
+	operator::callbacks::extern_c::{
+		context::{ExternCBridge, new_extern_c_context},
+		create_host_callbacks,
+	},
 };
 use reifydb_flow::{
-	operator::{Operator, scale_from_millis},
+	operator::{Operator, bridge::Bridge, scale_from_millis},
 	timer::Timer,
-	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
 use reifydb_sdk::{
 	common::extern_c::wire::{
@@ -67,10 +68,6 @@ pub struct ExternCOperatorHandle {
 	operator_id: OperatorId,
 
 	builder_registry: BuilderRegistry,
-
-	last_registered_txn: Cell<u64>,
-
-	cached_ctx: ExternCContext,
 }
 
 impl ExternCOperatorHandle {
@@ -84,24 +81,7 @@ impl ExternCOperatorHandle {
 			instance,
 			operator_id,
 			builder_registry: BuilderRegistry::new(),
-			last_registered_txn: Cell::new(u64::MAX),
-			cached_ctx: ExternCContext {
-				txn_ptr: ptr::null_mut(),
-				written_at_nanos: 0,
-				operator_id: operator_id.0,
-				callbacks: create_host_callbacks(),
-			},
 		}
-	}
-
-	fn ensure_txn_setup(&mut self, txn: &mut DeferredTransaction) -> Result<()> {
-		let txn_version = txn.version().0;
-		if self.last_registered_txn.get() != txn_version {
-			self.last_registered_txn.set(txn_version);
-			self.cached_ctx.txn_ptr = txn as *mut _ as *mut c_void;
-		}
-		self.cached_ctx.written_at_nanos = txn.written_at().to_nanos();
-		Ok(())
 	}
 }
 
@@ -154,7 +134,7 @@ fn call_vtable(
 	}
 }
 
-impl Operator<DeferredTransaction> for ExternCOperatorHandle {
+impl Operator for ExternCOperatorHandle {
 	fn id(&self) -> OperatorId {
 		self.operator_id
 	}
@@ -169,9 +149,11 @@ impl Operator<DeferredTransaction> for ExternCOperatorHandle {
 		scale_from_millis(Some(unsafe { (self.vtable.seal_after_ms)(self.instance) }))
 	}
 
-	fn flush(&mut self, txn: &mut DeferredTransaction) -> Result<()> {
-		let extern_c_ctx = new_extern_c_context(txn, self.operator_id, create_host_callbacks());
-		let extern_c_ctx_ptr = &extern_c_ctx as *const _ as *mut ExternCContext;
+	fn flush(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
+		let mut host_bridge = ExternCBridge::new(bridge);
+		let mut extern_c_ctx =
+			new_extern_c_context(&mut host_bridge, self.operator_id, create_host_callbacks());
+		let extern_c_ctx_ptr = &raw mut extern_c_ctx;
 		let mut usage = ExternCStateUsage::default();
 		// SAFETY: vtable and instance come from the loaded operator's descriptor and stay valid until Drop
 		// calls destroy; extern_c_ctx and usage are locals that outlive the call with no Rust borrow of them
@@ -181,12 +163,16 @@ impl Operator<DeferredTransaction> for ExternCOperatorHandle {
 		}));
 		match result {
 			Ok(EXTERN_C_OK) | Ok(EXTERN_C_SAMPLE_NO_DATA) => Ok(()),
-			Ok(code) => {
-				Err(SdkError::Other(format!("extern-C operator flush_state failed with code: {}", code))
-					.into())
-			}
+			Ok(code) => Err(SdkError::Other(format!(
+				"extern-C operator flush_state failed with code: {}",
+				code
+			))
+			.into()),
 			Err(_) => {
-				error!(operator_id = self.operator_id.0, "extern-C operator panicked during flush_state");
+				error!(
+					operator_id = self.operator_id.0,
+					"extern-C operator panicked during flush_state"
+				);
 				abort();
 			}
 		}
@@ -197,9 +183,7 @@ impl Operator<DeferredTransaction> for ExternCOperatorHandle {
 		input_diff_count = change.diffs.len(),
 		output_diff_count = field::Empty
 	))]
-	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
-		self.ensure_txn_setup(txn)?;
-
+	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 		// SAFETY: the arena is thread-local and the previous apply's guest call has returned, so
 		// no pointer into it is still live when it is cleared and re-borrowed.
 		EXTERN_C_MARSHAL_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
@@ -209,7 +193,10 @@ impl Operator<DeferredTransaction> for ExternCOperatorHandle {
 		let version = change.version;
 		let changed_at = change.changed_at;
 
-		let extern_c_ctx_ptr = &raw mut self.cached_ctx;
+		let mut host_bridge = ExternCBridge::new(bridge);
+		let mut extern_c_ctx =
+			new_extern_c_context(&mut host_bridge, self.operator_id, create_host_callbacks());
+		let extern_c_ctx_ptr = &raw mut extern_c_ctx;
 
 		let result_code = with_registry(&self.builder_registry, || {
 			call_vtable(&self.vtable, self.instance, extern_c_ctx_ptr, &extern_c_input, self.operator_id)
@@ -235,16 +222,18 @@ impl Operator<DeferredTransaction> for ExternCOperatorHandle {
 		operator_id = self.operator_id.0,
 		output_diff_count = field::Empty
 	))]
-	fn on_timer(&mut self, txn: &mut DeferredTransaction, timer: Timer) -> Result<Option<Change>> {
-		self.ensure_txn_setup(txn)?;
-
-		let version = txn.version();
+	fn on_timer(&mut self, bridge: &mut dyn Bridge, timer: Timer) -> Result<Option<Change>> {
+		let version = bridge.version();
 		let key = timer.key.as_ref();
-		let extern_c_ctx_ptr = &raw mut self.cached_ctx;
+
+		let mut host_bridge = ExternCBridge::new(bridge);
+		let mut extern_c_ctx =
+			new_extern_c_context(&mut host_bridge, self.operator_id, create_host_callbacks());
+		let extern_c_ctx_ptr = &raw mut extern_c_ctx;
 
 		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
-		// Drop calls destroy; extern_c_ctx_ptr is this operator's cached ExternCContext with no Rust borrow of
-		// it live during the call, and key's ptr/len describe a slice of `timer`, which outlives the call.
+		// Drop calls destroy; extern_c_ctx_ptr is a local ExternCContext with no Rust borrow of it live
+		// during the call, and key's ptr/len describe a slice of `timer`, which outlives the call.
 		let result_code = self.invoke_under_panic_guard("on_timer", || unsafe {
 			(self.vtable.on_timer)(
 				self.instance,

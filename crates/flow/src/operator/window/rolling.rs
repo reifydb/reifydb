@@ -27,10 +27,9 @@ use crate::{
 			accumulator::{RowAccumulator, WindowSlotKey},
 			engine::{WindowGroups, group_of, intern_window_groups},
 		},
+		bridge::Bridge,
 		stateful::utils,
-		store::OperatorStateStore,
 	},
-	transaction::FlowTransaction,
 	window::{
 		accumulator::WindowAccumulator,
 		coord::{OrdinalCoord, RowSpan},
@@ -164,13 +163,9 @@ fn rolling_span(operator: &WindowOperator, lag: Duration) -> Duration {
 type RollingEngineBuckets<C> = RollingBuckets<Hash128, C, (WindowSlotKey, Vec<Option<Value>>)>;
 
 #[instrument(name = "flow::operator::window::intern_partitions", level = "trace", skip_all, fields(partitions = touched.len()))]
-fn intern_partitions<T: FlowTransaction>(
-	operator: &WindowOperator,
-	txn: &mut T,
-	touched: &[Hash128],
-) -> Result<WindowGroups> {
+fn intern_partitions(bridge: &mut dyn Bridge, touched: &[Hash128]) -> Result<WindowGroups> {
 	let partitions: Vec<(Hash128, u64)> = touched.iter().map(|hash| (*hash, 0)).collect();
-	intern_window_groups(operator.core.operator, txn, &partitions)
+	intern_window_groups(bridge, &partitions)
 }
 
 fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
@@ -241,7 +236,7 @@ fn combine_rolling<C: RollingDomain>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn route_rolling_columns<C: RollingDomain, T: FlowTransaction>(
+fn route_rolling_columns<C: RollingDomain>(
 	operator: &WindowOperator,
 	columns: &Columns,
 	is_add: bool,
@@ -280,21 +275,17 @@ fn route_rolling_columns<C: RollingDomain, T: FlowTransaction>(
 }
 
 #[instrument(name = "flow::operator::window::rolling", level = "trace", skip_all)]
-pub fn apply_rolling_engine<T: FlowTransaction>(
-	operator: &mut WindowOperator,
-	txn: &mut T,
-	change: Change,
-) -> Result<Change> {
+pub fn apply_rolling_engine(operator: &mut WindowOperator, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 	if operator.is_count_based() {
-		apply_rolling::<OrdinalCoord, T>(operator, txn, change)
+		apply_rolling::<OrdinalCoord>(operator, bridge, change)
 	} else {
-		apply_rolling::<DateTime, T>(operator, txn, change)
+		apply_rolling::<DateTime>(operator, bridge, change)
 	}
 }
 
-fn apply_rolling<C: RollingDomain, T: FlowTransaction>(
+fn apply_rolling<C: RollingDomain>(
 	operator: &mut WindowOperator,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	change: Change,
 ) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
@@ -310,7 +301,7 @@ fn apply_rolling<C: RollingDomain, T: FlowTransaction>(
 			Diff::Insert {
 				post,
 				..
-			} => route_rolling_columns::<C, T>(
+			} => route_rolling_columns::<C>(
 				operator,
 				post,
 				true,
@@ -322,7 +313,7 @@ fn apply_rolling<C: RollingDomain, T: FlowTransaction>(
 			Diff::Remove {
 				pre,
 				..
-			} => route_rolling_columns::<C, T>(
+			} => route_rolling_columns::<C>(
 				operator,
 				pre,
 				false,
@@ -336,7 +327,7 @@ fn apply_rolling<C: RollingDomain, T: FlowTransaction>(
 				post,
 				..
 			} => {
-				route_rolling_columns::<C, T>(
+				route_rolling_columns::<C>(
 					operator,
 					pre,
 					false,
@@ -345,7 +336,7 @@ fn apply_rolling<C: RollingDomain, T: FlowTransaction>(
 					&mut touched,
 					&mut touched_set,
 				)?;
-				route_rolling_columns::<C, T>(
+				route_rolling_columns::<C>(
 					operator,
 					post,
 					true,
@@ -362,7 +353,7 @@ fn apply_rolling<C: RollingDomain, T: FlowTransaction>(
 		return Ok(Change::from_flow(operator.core.operator, change.version, Vec::new(), change.changed_at));
 	}
 
-	let ledger = operator.seal_ledger(txn)?;
+	let ledger = operator.seal_ledger(bridge)?;
 	let eviction = C::eviction(operator, ledger.at(), lag);
 
 	if let Some(horizon) = C::seal_horizon(operator, ledger.at()) {
@@ -389,56 +380,52 @@ fn apply_rolling<C: RollingDomain, T: FlowTransaction>(
 	}
 
 	let runnable = rolling_runnable(operator, &kinds);
-	let armed_before = rolling_earliest_expiry::<C, T>(operator, txn, runnable, lag)?;
+	let armed_before = rolling_earliest_expiry::<C>(operator, bridge, runnable, lag)?;
 
-	let groups = intern_partitions(operator, txn, &touched)?;
-	let results = {
-		let mut store = OperatorStateStore::new(txn, operator.core.operator);
-		if runnable {
-			let engine = C::engine(operator, true, lag);
-			let res = engine.apply_running(
-				&mut store,
-				buckets,
-				eviction,
-				|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
-				|| RowAccumulator::new(&kinds, grace),
-			)?;
-			engine.flush(&mut store)?;
-			res
-		} else {
-			let engine = C::engine(operator, false, lag);
-			let res = engine.apply_evicting(
-				&mut store,
-				buckets,
-				eviction,
-				|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
-				|| RowAccumulator::new(&kinds, grace),
-				|_g, buffer| combine_rolling::<C>(buffer, &kinds, lag, grace),
-			)?;
-			engine.flush(&mut store)?;
-			res
-		}
+	let groups = intern_partitions(bridge, &touched)?;
+	let results = if runnable {
+		let engine = C::engine(operator, true, lag);
+		let res = engine.apply_running(
+			bridge,
+			buckets,
+			eviction,
+			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
+			|| RowAccumulator::new(&kinds, grace),
+		)?;
+		engine.flush(bridge)?;
+		res
+	} else {
+		let engine = C::engine(operator, false, lag);
+		let res = engine.apply_evicting(
+			bridge,
+			buckets,
+			eviction,
+			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
+			|| RowAccumulator::new(&kinds, grace),
+			|_g, buffer| combine_rolling::<C>(buffer, &kinds, lag, grace),
+		)?;
+		engine.flush(bridge)?;
+		res
 	};
 
-	rearm_rolling_seal::<C, T>(operator, txn, armed_before, runnable, lag)?;
+	rearm_rolling_seal::<C>(operator, bridge, armed_before, runnable, lag)?;
 
-	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &groups)?;
+	let diffs = finish_rolling_results(operator, bridge, &change, &results, &group_values, &groups)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
-fn rolling_earliest_expiry<C: RollingDomain, T: FlowTransaction>(
+fn rolling_earliest_expiry<C: RollingDomain>(
 	operator: &mut WindowOperator,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	runnable: bool,
 	lag: C::Span,
 ) -> Result<Option<C>> {
-	let mut store = OperatorStateStore::new(txn, operator.core.operator);
-	Ok(C::engine(operator, runnable, lag).earliest_expiry(&mut store)?.map(C::from_order))
+	Ok(C::engine(operator, runnable, lag).earliest_expiry(bridge)?.map(C::from_order))
 }
 
-fn rearm_rolling_seal<C: RollingDomain, T: FlowTransaction>(
+fn rearm_rolling_seal<C: RollingDomain>(
 	operator: &mut WindowOperator,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	before: Option<C>,
 	runnable: bool,
 	lag: C::Span,
@@ -446,19 +433,17 @@ fn rearm_rolling_seal<C: RollingDomain, T: FlowTransaction>(
 	if !C::seals_on_timer() {
 		return Ok(());
 	}
-	let after = rolling_earliest_expiry::<C, T>(operator, txn, runnable, lag)?;
+	let after = rolling_earliest_expiry::<C>(operator, bridge, runnable, lag)?;
 	if before == after {
 		return Ok(());
 	}
-	let operator_id = operator.core.operator;
 	let gate = EvictionGate::new(rolling_span(operator, operator.rolling_lag()));
-	let mut store = OperatorStateStore::new(txn, operator_id);
-	gate.rearm(&mut store, &EncodedKey::new(Vec::new()), before.map(C::to_order), after.map(C::to_order))
+	gate.rearm(bridge, &EncodedKey::new(Vec::new()), before.map(C::to_order), after.map(C::to_order))
 }
 
-fn finish_rolling_results<T: FlowTransaction>(
+fn finish_rolling_results(
 	operator: &mut WindowOperator,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	change: &Change,
 	results: &[RollingResult<Hash128, Vec<Value>>],
 	group_values: &HashMap<Hash128, Vec<Value>>,
@@ -467,10 +452,9 @@ fn finish_rolling_results<T: FlowTransaction>(
 	let ts = change.changed_at;
 	let time = ts;
 	let mut diffs = Vec::new();
-	let mut store = OperatorStateStore::new(txn, operator.core.operator);
 	for r in results {
 		let group_id = group_of(groups, r.group, 0);
-		let prior = operator.meta_slot().rolling_meta(&mut store, group_id)?;
+		let prior = operator.meta_slot().rolling_meta(bridge, group_id)?;
 		if matches!(r.kind, EmitKind::Remove) {
 			if let Some(m) = prior {
 				let pre = operator.core.build_engine_row(
@@ -481,7 +465,7 @@ fn finish_rolling_results<T: FlowTransaction>(
 					time,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				operator.meta_slot().drop_rolling_meta(&mut store, group_id)?;
+				operator.meta_slot().drop_rolling_meta(bridge, group_id)?;
 			}
 			continue;
 		}
@@ -502,7 +486,7 @@ fn finish_rolling_results<T: FlowTransaction>(
 			(_, None) => diffs.push(Diff::update(Columns::from_row(&post), Columns::from_row(&post))),
 		}
 		operator.meta_slot().put_rolling_meta(
-			&mut store,
+			bridge,
 			group_id,
 			RollingMeta {
 				group_hash: r.group.0,
@@ -516,9 +500,9 @@ fn finish_rolling_results<T: FlowTransaction>(
 }
 
 #[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
-pub fn seal_rolling_engine<T: FlowTransaction>(
+pub fn seal_rolling_engine(
 	operator: &mut WindowOperator,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
 	let Some(size) = operator.size_duration() else {
@@ -531,36 +515,34 @@ pub fn seal_rolling_engine<T: FlowTransaction>(
 	let grace = operator.grace();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let ts = fired.at();
-	operator.advance_seal_ledger(txn, fired)?;
+	operator.advance_seal_ledger(bridge, fired)?;
 	let cutoff = rolling_over_time(operator, lag).eviction_cutoff(ts);
 	let time = ts;
 	let runnable = rolling_runnable(operator, &kinds);
-	let armed_before = rolling_earliest_expiry::<DateTime, T>(operator, txn, runnable, lag)?;
+	let armed_before = rolling_earliest_expiry::<DateTime>(operator, bridge, runnable, lag)?;
 
 	let expiries = match cutoff {
 		Some(cutoff) => {
-			let mut store = OperatorStateStore::new(txn, operator.core.operator);
 			if runnable {
 				let engine = <DateTime as RollingDomain>::engine(operator, true, lag);
-				let res = engine.expire_before_running(&mut store, cutoff)?;
-				engine.flush(&mut store)?;
+				let res = engine.expire_before_running(bridge, cutoff)?;
+				engine.flush(bridge)?;
 				res
 			} else {
 				let engine = <DateTime as RollingDomain>::engine(operator, false, lag);
-				let res = engine.expire_before(&mut store, cutoff, |_g, buffer| {
+				let res = engine.expire_before(bridge, cutoff, |_g, buffer| {
 					combine_rolling::<DateTime>(buffer, &kinds, lag, grace)
 				})?;
-				engine.flush(&mut store)?;
+				engine.flush(bridge)?;
 				res
 			}
 		}
 		None => Vec::new(),
 	};
 	Span::current().record("expired", expiries.len());
-	rearm_rolling_seal::<DateTime, T>(operator, txn, armed_before, runnable, lag)?;
+	rearm_rolling_seal::<DateTime>(operator, bridge, armed_before, runnable, lag)?;
 
 	let mut diffs = Vec::new();
-	let mut store = OperatorStateStore::new(txn, operator.core.operator);
 	for expiry in expiries {
 		match expiry {
 			RollingExpiry::Update {
@@ -569,7 +551,7 @@ pub fn seal_rolling_engine<T: FlowTransaction>(
 				group_id,
 				value,
 			} => {
-				let Some(meta) = operator.meta_slot().rolling_meta(&mut store, group_id)? else {
+				let Some(meta) = operator.meta_slot().rolling_meta(bridge, group_id)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -588,7 +570,7 @@ pub fn seal_rolling_engine<T: FlowTransaction>(
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 				operator.meta_slot().put_rolling_meta(
-					&mut store,
+					bridge,
 					group_id,
 					RollingMeta {
 						group_hash: meta.group_hash,
@@ -603,7 +585,7 @@ pub fn seal_rolling_engine<T: FlowTransaction>(
 				group: _,
 				group_id,
 			} => {
-				let Some(meta) = operator.meta_slot().rolling_meta(&mut store, group_id)? else {
+				let Some(meta) = operator.meta_slot().rolling_meta(bridge, group_id)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -614,7 +596,7 @@ pub fn seal_rolling_engine<T: FlowTransaction>(
 					time,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				operator.meta_slot().drop_rolling_meta(&mut store, group_id)?;
+				operator.meta_slot().drop_rolling_meta(bridge, group_id)?;
 			}
 		}
 	}

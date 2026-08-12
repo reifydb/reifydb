@@ -22,10 +22,7 @@ use reifydb_engine::{
 	engine::StandardEngine,
 	subscription::{HydrateError, HydrateOutcome, SubscriptionContext},
 };
-use reifydb_flow::{
-	engine::FlowEngineInner,
-	transaction::ephemeral::EphemeralTransaction,
-};
+use reifydb_flow::engine::FlowEngineInner;
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
@@ -44,7 +41,7 @@ use crate::{sink::DeliveryBuffer, store::SubscriptionStore, subsystem::registrat
 mod dispatch;
 mod hydrate;
 
-pub type SubscriptionEngineFactory = Box<dyn FnOnce() -> FlowEngineInner<EphemeralTransaction> + Send>;
+pub type SubscriptionEngineFactory = Box<dyn FnOnce() -> FlowEngineInner + Send>;
 
 pub enum SubscriptionWorkerMessage {
 	Dispatch {
@@ -95,7 +92,7 @@ impl SubscriptionFlowState {
 }
 
 pub struct SubscriptionWorkerState {
-	flow_engine: FlowEngineInner<EphemeralTransaction>,
+	flow_engine: FlowEngineInner,
 	flows: HashMap<FlowId, SubscriptionFlowState>,
 	carry_lease: Option<VersionLeaseGuard>,
 }
@@ -117,7 +114,7 @@ impl SubscriptionWorkerActor {
 		delivery: Arc<DeliveryBuffer>,
 	) -> Self
 	where
-		F: FnOnce() -> FlowEngineInner<EphemeralTransaction> + Send + 'static,
+		F: FnOnce() -> FlowEngineInner + Send + 'static,
 	{
 		Self {
 			engine,

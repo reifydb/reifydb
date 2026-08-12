@@ -24,10 +24,9 @@ use reifydb_core::{
 use reifydb_flow::{
 	context::FlowContext,
 	operator::{
-		Operator, aggregation::operator::AggregateOperator, filter::FilterOperator, gate::GateOperator,
-		map::MapOperator,
+		Operator, aggregation::operator::AggregateOperator, bridge::Bridge, filter::FilterOperator,
+		gate::GateOperator, map::MapOperator,
 	},
-	transaction::deferred::DeferredTransaction,
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -163,26 +162,26 @@ pub const MATRIX: [Chain; 3] = [
 /// operator's output change to the next, so composing them inside one `apply` is both the smallest
 /// change and the faithful one.
 pub struct Pipeline {
-	stage: Box<dyn Operator<DeferredTransaction> + Send>,
+	stage: Box<dyn Operator + Send>,
 	terminal: AggregateOperator,
 }
 
-impl Operator<DeferredTransaction> for Pipeline {
+impl Operator for Pipeline {
 	fn id(&self) -> OperatorId {
-		Operator::<DeferredTransaction>::id(&self.terminal)
+		Operator::id(&self.terminal)
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		Operator::<DeferredTransaction>::capabilities(&self.terminal)
+		Operator::capabilities(&self.terminal)
 	}
 
-	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change, reifydb_value::error::Error> {
-		let staged = self.stage.apply(txn, change)?;
-		self.terminal.apply(txn, staged)
+	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change, reifydb_value::error::Error> {
+		let staged = self.stage.apply(bridge, change)?;
+		self.terminal.apply(bridge, staged)
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
-		Operator::<DeferredTransaction>::output_schema(&self.terminal)
+		Operator::output_schema(&self.terminal)
 	}
 }
 
@@ -195,7 +194,7 @@ pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
 		.collect();
 	let ctx = Arc::new(FlowContext::default());
 
-	let stage: Box<dyn Operator<DeferredTransaction> + Send> = match chain {
+	let stage: Box<dyn Operator + Send> = match chain {
 		Chain::Filter {
 			..
 		} => Box::new(FilterOperator::new(

@@ -8,17 +8,22 @@ use tracing::{Span, field, instrument};
 
 use crate::{
 	engine::FlowEngineInner,
-	operator::{BoxedOperator, guard::enforce_apply_capabilities, sink::BoxedDurableSink},
+	operator::{BoxedOperator, bridge::FlowBridge, guard::enforce_apply_capabilities, sink::BoxedDurableSink},
 	transaction::FlowTransaction,
 };
 
-pub(super) enum Node<'a, T: FlowTransaction> {
-	Operator(&'a mut BoxedOperator<T>),
+pub(super) enum Node<'a> {
+	Operator(&'a mut BoxedOperator),
 	DurableSink(&'a mut BoxedDurableSink),
 }
 
-impl<T: FlowTransaction> FlowEngineInner<T> {
-	pub(super) fn dispatch_node(&mut self, txn: &mut T, operator: &FlowNode, inbox: Vec<Change>) -> Result<Change> {
+impl FlowEngineInner {
+	pub(super) fn dispatch_node<T: FlowTransaction>(
+		&mut self,
+		txn: &mut T,
+		operator: &FlowNode,
+		inbox: Vec<Change>,
+	) -> Result<Change> {
 		let merged = Change::merge(inbox)?;
 		let version = merged.version;
 		let changed_at = merged.changed_at;
@@ -40,7 +45,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		apply_time_us = field::Empty,
 		coalesce_time_us = field::Empty
 	))]
-	fn apply(&mut self, txn: &mut T, operator: &FlowNode, change: Change) -> Result<Change> {
+	fn apply<T: FlowTransaction>(&mut self, txn: &mut T, operator: &FlowNode, change: Change) -> Result<Change> {
 		let FlowEngineInner {
 			operators,
 			durable_sinks,
@@ -61,8 +66,9 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		let result = match node {
 			Node::Operator(operator) => {
 				enforce_apply_capabilities(operator.id(), operator.capabilities(), &change);
-				let result = operator.apply(txn, change)?;
-				operator.flush(txn)?;
+				let mut bridge = FlowBridge::new(txn, operator.id());
+				let result = operator.apply(&mut bridge, change)?;
+				operator.flush(&mut bridge)?;
 				result
 			}
 			Node::DurableSink(sink) => {

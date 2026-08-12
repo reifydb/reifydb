@@ -3,10 +3,8 @@
 
 use std::{cell::RefCell, collections::HashMap};
 
-use reifydb_core::{
-	interface::store::MultiVersionBatch,
-	key::{EncodableKey, operator_state::OperatorStateKey},
-};
+use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_core::key::operator_state::GroupStateKey;
 
 pub type StateIteratorHandle = u64;
 type StateIteratorBatch = (*const (Vec<u8>, Vec<u8>), usize);
@@ -21,15 +19,8 @@ struct BatchIterator {
 }
 
 impl BatchIterator {
-	fn new(batch: MultiVersionBatch) -> Self {
-		let items = batch
-			.items
-			.into_iter()
-			.filter_map(|multi| {
-				let state_key = OperatorStateKey::decode(&multi.key)?;
-				Some((state_key.inner().as_slice().to_vec(), multi.bytes.to_vec()))
-			})
-			.collect();
+	fn new(entries: Vec<(GroupStateKey, EncodedBytes)>) -> Self {
+		let items = entries.into_iter().map(|(key, bytes)| (key.as_slice().to_vec(), bytes.to_vec())).collect();
 
 		Self {
 			items,
@@ -67,8 +58,8 @@ impl IteratorRegistry {
 	}
 }
 
-pub(crate) fn create_iterator(batch: MultiVersionBatch) -> StateIteratorHandle {
-	let iter = BatchIterator::new(batch);
+pub(crate) fn create_iterator(entries: Vec<(GroupStateKey, EncodedBytes)>) -> StateIteratorHandle {
+	let iter = BatchIterator::new(entries);
 	ITERATOR_REGISTRY.with(|r| r.borrow_mut().insert(iter))
 }
 
@@ -90,24 +81,13 @@ pub(crate) fn free_iterator(handle: StateIteratorHandle) -> bool {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-	use reifydb_core::{
-		common::CommitVersion,
-		interface::{
-			catalog::flow::OperatorId,
-			store::{MultiVersionBatch, MultiVersionRow},
-		},
-		key::{
-			EncodableKey,
-			operator_state::{GroupId, Keyspace, OperatorStateKey},
-		},
-	};
+	use reifydb_core::key::operator_state::{GroupId, Keyspace, OperatorStateKey};
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 
-	fn make_state_key(operator_id: u64, key: &[u8]) -> EncodedKey {
-		OperatorStateKey::new(OperatorId(operator_id), GroupId::ROOT, Keyspace::CUSTOM, key.to_vec()).encode()
+	fn make_state_key(_operator_id: u64, key: &[u8]) -> GroupStateKey {
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM, key.to_vec())
 	}
 
 	fn decoded_suffix(framed: &[u8]) -> Vec<u8> {
@@ -120,18 +100,9 @@ pub mod tests {
 
 	#[test]
 	fn test_create_and_free_iterator() {
-		let items = vec![MultiVersionRow {
-			key: make_state_key(1, b"key1"),
-			bytes: make_value(b"value1"),
-			version: CommitVersion(1),
-		}];
+		let items = vec![(make_state_key(1, b"key1"), make_value(b"value1"))];
 
-		let batch = MultiVersionBatch {
-			items,
-			has_more: false,
-		};
-
-		let handle = create_iterator(batch);
+		let handle = create_iterator(items);
 		assert!(handle > 0);
 
 		let freed = free_iterator(handle);
@@ -156,24 +127,11 @@ pub mod tests {
 	#[test]
 	fn test_iterator_next() {
 		let items = vec![
-			MultiVersionRow {
-				key: make_state_key(1, b"key1"),
-				bytes: make_value(b"value1"),
-				version: CommitVersion(1),
-			},
-			MultiVersionRow {
-				key: make_state_key(1, b"key2"),
-				bytes: make_value(b"value2"),
-				version: CommitVersion(1),
-			},
+			(make_state_key(1, b"key1"), make_value(b"value1")),
+			(make_state_key(1, b"key2"), make_value(b"value2")),
 		];
 
-		let batch = MultiVersionBatch {
-			items,
-			has_more: false,
-		};
-
-		let handle = create_iterator(batch);
+		let handle = create_iterator(items);
 
 		let (key1, val1) = next_one(handle).unwrap();
 		assert_eq!(decoded_suffix(&key1), b"key1");
@@ -190,18 +148,8 @@ pub mod tests {
 
 	#[test]
 	fn test_iterator_batch_respects_cap_then_exhausts() {
-		let items = (0u8..5)
-			.map(|n| MultiVersionRow {
-				key: make_state_key(1, &[b'k', n]),
-				bytes: make_value(&[b'v', n]),
-				version: CommitVersion(1),
-			})
-			.collect();
-		let batch = MultiVersionBatch {
-			items,
-			has_more: false,
-		};
-		let handle = create_iterator(batch);
+		let items = (0u8..5).map(|n| (make_state_key(1, &[b'k', n]), make_value(&[b'v', n]))).collect();
+		let handle = create_iterator(items);
 
 		let (_, first) = next_iterator_batch(handle, 3).unwrap();
 		assert_eq!(first, 3, "a batch call must fill at most cap entries");
@@ -224,29 +172,12 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_iterators() {
-		let items1 = vec![MultiVersionRow {
-			key: make_state_key(1, b"iter1"),
-			bytes: make_value(b"value1"),
-			version: CommitVersion(1),
-		}];
+		let items1 = vec![(make_state_key(1, b"iter1"), make_value(b"value1"))];
 
-		let items2 = vec![MultiVersionRow {
-			key: make_state_key(2, b"iter2"),
-			bytes: make_value(b"value2"),
-			version: CommitVersion(1),
-		}];
+		let items2 = vec![(make_state_key(2, b"iter2"), make_value(b"value2"))];
 
-		let batch1 = MultiVersionBatch {
-			items: items1,
-			has_more: false,
-		};
-		let batch2 = MultiVersionBatch {
-			items: items2,
-			has_more: false,
-		};
-
-		let handle1 = create_iterator(batch1);
-		let handle2 = create_iterator(batch2);
+		let handle1 = create_iterator(items1);
+		let handle2 = create_iterator(items2);
 
 		assert_ne!(handle1, handle2);
 

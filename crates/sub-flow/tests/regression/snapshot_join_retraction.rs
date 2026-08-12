@@ -22,6 +22,7 @@ use reifydb_flow::{
 	context::FlowContext,
 	operator::{
 		Operator,
+		bridge::FlowBridge,
 		join::operator::{JoinOperator, JoinSideConfig},
 	},
 };
@@ -135,11 +136,17 @@ fn a_left_update_retracts_against_the_right_value_it_was_emitted_with() {
 	let mut operator = join(&engine);
 	let mut txn = engine.flow_txn().deferred();
 
-	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]))
-		.expect("the right slot is seeded");
+	operator.apply(
+		&mut FlowBridge::new(&mut txn, JOIN_OPERATOR),
+		change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]),
+	)
+	.expect("the right slot is seeded");
 
 	let inserted = operator
-		.apply(&mut txn, change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT_OPERATOR)]))
+		.apply(
+			&mut FlowBridge::new(&mut txn, JOIN_OPERATOR),
+			change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT_OPERATOR)]),
+		)
 		.expect("the left row joins");
 	let [
 		Diff::Insert {
@@ -153,7 +160,7 @@ fn a_left_update_retracts_against_the_right_value_it_was_emitted_with() {
 	assert_eq!(right_value(post), 10, "the left row must be emitted against the slot it found");
 
 	operator.apply(
-		&mut txn,
+		&mut FlowBridge::new(&mut txn, JOIN_OPERATOR),
 		change(vec![tagged(
 			Diff::update(row(&RIGHT_COLUMNS, 100, 1, 10), row(&RIGHT_COLUMNS, 100, 1, 20)),
 			RIGHT_OPERATOR,
@@ -163,7 +170,7 @@ fn a_left_update_retracts_against_the_right_value_it_was_emitted_with() {
 
 	let updated = operator
 		.apply(
-			&mut txn,
+			&mut FlowBridge::new(&mut txn, JOIN_OPERATOR),
 			change(vec![tagged(
 				Diff::update(row(&LEFT_COLUMNS, 1, 1, 7), row(&LEFT_COLUMNS, 1, 1, 8)),
 				LEFT_OPERATOR,
@@ -199,14 +206,20 @@ fn a_right_side_change_alone_emits_nothing() {
 	let mut operator = join(&engine);
 	let mut txn = engine.flow_txn().deferred();
 
-	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]))
-		.expect("the right slot is seeded");
-	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT_OPERATOR)]))
-		.expect("the left row joins");
+	operator.apply(
+		&mut FlowBridge::new(&mut txn, JOIN_OPERATOR),
+		change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]),
+	)
+	.expect("the right slot is seeded");
+	operator.apply(
+		&mut FlowBridge::new(&mut txn, JOIN_OPERATOR),
+		change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT_OPERATOR)]),
+	)
+	.expect("the left row joins");
 
 	let moved = operator
 		.apply(
-			&mut txn,
+			&mut FlowBridge::new(&mut txn, JOIN_OPERATOR),
 			change(vec![tagged(
 				Diff::update(row(&RIGHT_COLUMNS, 100, 1, 10), row(&RIGHT_COLUMNS, 100, 1, 20)),
 				RIGHT_OPERATOR,
@@ -225,14 +238,20 @@ fn a_left_update_against_an_unchanged_slot_still_reports_both_sides() {
 	let mut operator = join(&engine);
 	let mut txn = engine.flow_txn().deferred();
 
-	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]))
-		.expect("the right slot is seeded");
-	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT_OPERATOR)]))
-		.expect("the left row joins");
+	operator.apply(
+		&mut FlowBridge::new(&mut txn, JOIN_OPERATOR),
+		change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]),
+	)
+	.expect("the right slot is seeded");
+	operator.apply(
+		&mut FlowBridge::new(&mut txn, JOIN_OPERATOR),
+		change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT_OPERATOR)]),
+	)
+	.expect("the left row joins");
 
 	let updated = operator
 		.apply(
-			&mut txn,
+			&mut FlowBridge::new(&mut txn, JOIN_OPERATOR),
 			change(vec![tagged(
 				Diff::update(row(&LEFT_COLUMNS, 1, 1, 7), row(&LEFT_COLUMNS, 1, 1, 8)),
 				LEFT_OPERATOR,

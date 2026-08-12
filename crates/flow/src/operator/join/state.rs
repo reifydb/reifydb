@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::Keyspace};
+use reifydb_core::key::operator_state::Keyspace;
 
 use crate::operator::join::store::Store;
 
@@ -11,10 +11,10 @@ pub(crate) struct JoinState {
 }
 
 impl JoinState {
-	pub(crate) fn new(operator_id: OperatorId) -> Self {
+	pub(crate) fn new() -> Self {
 		Self {
-			left: Store::new(operator_id, JoinSide::Left),
-			right: Store::new(operator_id, JoinSide::Right),
+			left: Store::new(JoinSide::Left),
+			right: Store::new(JoinSide::Right),
 		}
 	}
 }

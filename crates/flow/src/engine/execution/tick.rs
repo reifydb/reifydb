@@ -7,13 +7,13 @@ use tracing::instrument;
 
 use crate::{engine::FlowEngineInner, transaction::FlowTransaction};
 
-impl<T: FlowTransaction> FlowEngineInner<T> {
+impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process_tick", level = "debug", skip(self, txn), fields(
 		flow_id = ?flow_id,
 		timestamp = %timestamp,
 		checkpoint = checkpoint.0
 	))]
-	pub fn process_tick(
+	pub fn process_tick<T: FlowTransaction>(
 		&mut self,
 		txn: &mut T,
 		flow_id: FlowId,

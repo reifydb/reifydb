@@ -31,15 +31,13 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_flow::{
-	operator::{
-		Operator,
-		scan::{
-			ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
-			view::SourceViewOperator,
-		},
+use reifydb_flow::operator::{
+	Operator,
+	bridge::Bridge,
+	scan::{
+		ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
+		view::SourceViewOperator,
 	},
-	transaction::deferred::DeferredTransaction,
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::{
@@ -83,40 +81,40 @@ pub enum SourceOp {
 	RingBuffer(SourceRingBufferOperator),
 }
 
-impl Operator<DeferredTransaction> for SourceOp {
+impl Operator for SourceOp {
 	fn id(&self) -> OperatorId {
 		match self {
-			SourceOp::Series(o) => Operator::<DeferredTransaction>::id(o),
-			SourceOp::Table(o) => Operator::<DeferredTransaction>::id(o),
-			SourceOp::View(o) => Operator::<DeferredTransaction>::id(o),
-			SourceOp::RingBuffer(o) => Operator::<DeferredTransaction>::id(o),
+			SourceOp::Series(o) => Operator::id(o),
+			SourceOp::Table(o) => Operator::id(o),
+			SourceOp::View(o) => Operator::id(o),
+			SourceOp::RingBuffer(o) => Operator::id(o),
 		}
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		match self {
-			SourceOp::Series(o) => Operator::<DeferredTransaction>::capabilities(o),
-			SourceOp::Table(o) => Operator::<DeferredTransaction>::capabilities(o),
-			SourceOp::View(o) => Operator::<DeferredTransaction>::capabilities(o),
-			SourceOp::RingBuffer(o) => Operator::<DeferredTransaction>::capabilities(o),
+			SourceOp::Series(o) => Operator::capabilities(o),
+			SourceOp::Table(o) => Operator::capabilities(o),
+			SourceOp::View(o) => Operator::capabilities(o),
+			SourceOp::RingBuffer(o) => Operator::capabilities(o),
 		}
 	}
 
-	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 		match self {
-			SourceOp::Series(o) => o.apply(txn, change),
-			SourceOp::Table(o) => o.apply(txn, change),
-			SourceOp::View(o) => o.apply(txn, change),
-			SourceOp::RingBuffer(o) => o.apply(txn, change),
+			SourceOp::Series(o) => o.apply(bridge, change),
+			SourceOp::Table(o) => o.apply(bridge, change),
+			SourceOp::View(o) => o.apply(bridge, change),
+			SourceOp::RingBuffer(o) => o.apply(bridge, change),
 		}
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
 		match self {
-			SourceOp::Series(o) => Operator::<DeferredTransaction>::output_schema(o),
-			SourceOp::Table(o) => Operator::<DeferredTransaction>::output_schema(o),
-			SourceOp::View(o) => Operator::<DeferredTransaction>::output_schema(o),
-			SourceOp::RingBuffer(o) => Operator::<DeferredTransaction>::output_schema(o),
+			SourceOp::Series(o) => Operator::output_schema(o),
+			SourceOp::Table(o) => Operator::output_schema(o),
+			SourceOp::View(o) => Operator::output_schema(o),
+			SourceOp::RingBuffer(o) => Operator::output_schema(o),
 		}
 	}
 }

@@ -182,7 +182,7 @@ where
 		}
 	}
 
-	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	fn hydrate_once<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -226,7 +226,7 @@ where
 		combine: CB,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		K: Fn(&G) -> (GroupId, EncodedKey),
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
@@ -250,7 +250,7 @@ where
 		combine: CB,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		K: Fn(&G) -> (GroupId, EncodedKey),
 		NA: Fn() -> Accumulator,
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
@@ -278,7 +278,7 @@ where
 		Ok(results)
 	}
 
-	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		self.buffers.flush(store)?;
 		if let Some(running) = &mut self.running {
 			running.flush(store)?;
@@ -287,7 +287,7 @@ where
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: StateStore>(
+	fn warm_and_load_meta<S: StateStore + ?Sized>(
 		&mut self,
 		store: &mut S,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
@@ -346,7 +346,7 @@ where
 		indexed: bool,
 	) -> Result<BTreeMap<G, GroupSlot<C, Accumulator, Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		K: Fn(&G) -> (GroupId, EncodedKey),
 		NA: Fn() -> Accumulator,
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
@@ -448,7 +448,7 @@ where
 		indexed: bool,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
 		let mut results: Vec<RollingResult<G, Output>> = Vec::new();
@@ -515,7 +515,7 @@ where
 		Ok(results)
 	}
 
-	fn load_running<S: StateStore>(
+	fn load_running<S: StateStore + ?Sized>(
 		&mut self,
 		store: &mut S,
 		buffer: &RollingBuffer<C, Accumulator>,
@@ -539,7 +539,7 @@ where
 		new_accumulator: NA,
 	) -> Result<Vec<RollingResult<G, Accumulator::Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		K: Fn(&G) -> (GroupId, EncodedKey),
 		NA: Fn() -> Accumulator,
 	{
@@ -769,7 +769,7 @@ where
 		cutoff: C,
 	) -> Result<Vec<RollingExpiry<G, Accumulator::Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 	{
 		reifydb_assertions! {
 			assert!(
@@ -896,11 +896,11 @@ where
 		Ok(out)
 	}
 
-	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn expire_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
-	pub fn earliest_expiry<S: StateStore>(&mut self, store: &mut S) -> Result<Option<u64>> {
+	pub fn earliest_expiry<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<Option<u64>> {
 		self.hydrate_once(store)?;
 		self.expiry.earliest(store)
 	}
@@ -912,7 +912,7 @@ where
 		combine: CB,
 	) -> Result<Vec<RollingExpiry<G, Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
 		self.hydrate_once(store)?;
@@ -982,7 +982,7 @@ where
 		Ok(out)
 	}
 
-	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		persist_batch_meta(store, &mut self.meta, meta_loaded)
 	}
 }

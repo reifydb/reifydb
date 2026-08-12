@@ -22,8 +22,8 @@ pub struct WatermarkHold {
 
 pub type WatermarkHolds = Vec<WatermarkHold>;
 
-impl<T: FlowTransaction> FlowEngineInner<T> {
-	pub fn holds(&self, txn: &mut T, flow_id: FlowId) -> Result<WatermarkHolds> {
+impl FlowEngineInner {
+	pub fn holds<T: FlowTransaction>(&self, txn: &mut T, flow_id: FlowId) -> Result<WatermarkHolds> {
 		let Some(flow) = self.flows.get(&flow_id) else {
 			return Ok(Vec::new());
 		};
@@ -65,7 +65,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 fn output_frontiers<T: FlowTransaction>(
 	txn: &mut T,
 	flow: &FlowDag,
-	operators: &BTreeMap<OperatorId, BoxedOperator<T>>,
+	operators: &BTreeMap<OperatorId, BoxedOperator>,
 	topo: &[OperatorId],
 ) -> Result<BTreeMap<OperatorId, DateTime>> {
 	let watermarks = txn.source_watermarks();
@@ -135,7 +135,9 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::{Operator, metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
+		operator::{
+			Operator, bridge::Bridge, metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider,
+		},
 		transaction::{deferred::DeferredTransaction, substrate::FlowSubstrate},
 	};
 
@@ -168,7 +170,7 @@ mod tests {
 		horizon: Option<Duration>,
 	}
 
-	impl Operator<DeferredTransaction> for Sealing {
+	impl Operator for Sealing {
 		fn id(&self) -> OperatorId {
 			self.operator
 		}
@@ -177,7 +179,7 @@ mod tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+		fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 
@@ -190,7 +192,7 @@ mod tests {
 		Duration::from_milliseconds_const(seconds * 1_000)
 	}
 
-	fn engine_inner(engine: &TestEngine) -> FlowEngineInner<DeferredTransaction> {
+	fn engine_inner(engine: &TestEngine) -> FlowEngineInner {
 		FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
@@ -255,7 +257,7 @@ mod tests {
 
 	struct Harness {
 		engine: TestEngine,
-		inner: FlowEngineInner<DeferredTransaction>,
+		inner: FlowEngineInner,
 		builder: FlowBuilder,
 		edges: u64,
 	}

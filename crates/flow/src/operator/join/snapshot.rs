@@ -9,7 +9,7 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::Diff},
+	interface::change::Diff,
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	value::column::columns::Columns,
 };
@@ -27,6 +27,7 @@ use reifydb_value::{
 use crate::{
 	error::FlowStateError,
 	operator::{
+		bridge::Bridge,
 		join::{
 			Identity,
 			operator::JoinOperator,
@@ -38,7 +39,6 @@ use crate::{
 		},
 		stateful::utils::{state_get, state_range, state_remove, state_set},
 	},
-	transaction::FlowTransaction,
 };
 
 const ROW_NUMBER_BYTES: usize = 8;
@@ -69,15 +69,11 @@ struct Pin {
 	retired: Option<Vec<u8>>,
 }
 
-pub(crate) struct SnapshotLedger {
-	operator_id: OperatorId,
-}
+pub(crate) struct SnapshotLedger;
 
 impl SnapshotLedger {
-	pub(crate) fn new(operator_id: OperatorId) -> Self {
-		Self {
-			operator_id,
-		}
+	pub(crate) fn new() -> Self {
+		Self
 	}
 
 	fn published_key(&self, group: GroupId, left: RowNumber, right: RowNumber) -> GroupStateKey {
@@ -108,9 +104,9 @@ impl SnapshotLedger {
 		OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PIN, suffix)
 	}
 
-	pub(crate) fn publish<T: FlowTransaction>(
+	pub(crate) fn publish(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group: GroupId,
 		left: RowNumber,
 		right: RowNumber,
@@ -118,25 +114,26 @@ impl SnapshotLedger {
 	) -> Result<()> {
 		let version = ContentVersion::of(content);
 		let key = self.published_key(group, left, right);
-		if let Some(existing) = state_get(self.operator_id, txn, &key)? {
+		if let Some(existing) = state_get(bridge, &key)? {
 			let previous = decode_version(&existing)?;
 			if previous == version {
 				return Ok(());
 			}
-			self.unpin(txn, group, right, previous)?;
+			self.unpin(bridge, group, right, previous)?;
 		}
-		state_set(self.operator_id, txn, &key, encode_version(txn, version)?)?;
-		self.pin(txn, group, right, version)
+		let row = encode_version(bridge, version)?;
+		state_set(bridge, &key, row)?;
+		self.pin(bridge, group, right, version)
 	}
 
-	pub(crate) fn published<T: FlowTransaction>(
+	pub(crate) fn published(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group: GroupId,
 		left: RowNumber,
 	) -> Result<Vec<(PublishedRight, ContentVersion)>> {
 		let mut out = Vec::new();
-		for entry in state_range(self.operator_id, txn, self.published_prefix(group, left)) {
+		for entry in state_range(bridge, self.published_prefix(group, left)) {
 			let (key, row) = entry?;
 			let Some(right) = decode_published(key.as_slice()) else {
 				continue;
@@ -146,54 +143,45 @@ impl SnapshotLedger {
 		Ok(out)
 	}
 
-	pub(crate) fn publish_unmatched<T: FlowTransaction>(
-		&self,
-		txn: &mut T,
-		group: GroupId,
-		left: RowNumber,
-	) -> Result<()> {
+	pub(crate) fn publish_unmatched(&self, bridge: &mut dyn Bridge, group: GroupId, left: RowNumber) -> Result<()> {
 		let key = self.unmatched_key(group, left);
-		if state_get(self.operator_id, txn, &key)?.is_some() {
+		if state_get(bridge, &key)?.is_some() {
 			return Ok(());
 		}
-		state_set(self.operator_id, txn, &key, encode_version(txn, ContentVersion(0))?)
+		let row = encode_version(bridge, ContentVersion(0))?;
+		state_set(bridge, &key, row)
 	}
 
-	pub(crate) fn release_unmatched<T: FlowTransaction>(
-		&self,
-		txn: &mut T,
-		group: GroupId,
-		left: RowNumber,
-	) -> Result<()> {
-		state_remove(self.operator_id, txn, &self.unmatched_key(group, left))
+	pub(crate) fn release_unmatched(&self, bridge: &mut dyn Bridge, group: GroupId, left: RowNumber) -> Result<()> {
+		state_remove(bridge, &self.unmatched_key(group, left))
 	}
 
-	pub(crate) fn release<T: FlowTransaction>(
+	pub(crate) fn release(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group: GroupId,
 		left: RowNumber,
 		right: RowNumber,
 	) -> Result<Option<EncodedBytes>> {
 		let key = self.published_key(group, left, right);
-		let Some(row) = state_get(self.operator_id, txn, &key)? else {
+		let Some(row) = state_get(bridge, &key)? else {
 			return Ok(None);
 		};
 		let version = decode_version(&row)?;
-		state_remove(self.operator_id, txn, &key)?;
-		self.unpin(txn, group, right, version)
+		state_remove(bridge, &key)?;
+		self.unpin(bridge, group, right, version)
 	}
 
-	pub(crate) fn retire<T: FlowTransaction>(
+	pub(crate) fn retire(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group: GroupId,
 		right: RowNumber,
 		content: &EncodedBytes,
 	) -> Result<()> {
 		let version = ContentVersion::of(content);
 		let key = self.pin_key(group, right, version);
-		let Some(existing) = state_get(self.operator_id, txn, &key)? else {
+		let Some(existing) = state_get(bridge, &key)? else {
 			return Ok(());
 		};
 		let mut pin = decode_pin(&existing)?;
@@ -201,18 +189,19 @@ impl SnapshotLedger {
 			return Ok(());
 		}
 		pin.retired = Some(content.0.to_vec());
-		state_set(self.operator_id, txn, &key, encode_pin(txn, &pin)?)
+		let row = encode_pin(bridge, &pin)?;
+		state_set(bridge, &key, row)
 	}
 
-	fn pin<T: FlowTransaction>(
+	fn pin(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group: GroupId,
 		right: RowNumber,
 		version: ContentVersion,
 	) -> Result<()> {
 		let key = self.pin_key(group, right, version);
-		let mut pin = match state_get(self.operator_id, txn, &key)? {
+		let mut pin = match state_get(bridge, &key)? {
 			Some(existing) => decode_pin(&existing)?,
 			None => Pin {
 				refs: 0,
@@ -220,26 +209,30 @@ impl SnapshotLedger {
 			},
 		};
 		pin.refs += 1;
-		state_set(self.operator_id, txn, &key, encode_pin(txn, &pin)?)
+		let row = encode_pin(bridge, &pin)?;
+		state_set(bridge, &key, row)
 	}
 
-	fn unpin<T: FlowTransaction>(
+	fn unpin(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group: GroupId,
 		right: RowNumber,
 		version: ContentVersion,
 	) -> Result<Option<EncodedBytes>> {
 		let key = self.pin_key(group, right, version);
-		let Some(existing) = state_get(self.operator_id, txn, &key)? else {
+		let Some(existing) = state_get(bridge, &key)? else {
 			return Ok(None);
 		};
 		let mut pin = decode_pin(&existing)?;
 		pin.refs = pin.refs.saturating_sub(1);
 		let content = pin.retired.clone().map(|bytes| EncodedBytes(CowVec::new(bytes)));
 		match pin.refs {
-			0 => state_remove(self.operator_id, txn, &key)?,
-			_ => state_set(self.operator_id, txn, &key, encode_pin(txn, &pin)?)?,
+			0 => state_remove(bridge, &key)?,
+			_ => {
+				let row = encode_pin(bridge, &pin)?;
+				state_set(bridge, &key, row)?
+			}
 		}
 		Ok(content)
 	}
@@ -259,8 +252,8 @@ fn decode_published(bytes: &[u8]) -> Option<PublishedRight> {
 	}
 }
 
-fn encode_version<T: FlowTransaction>(txn: &T, version: ContentVersion) -> Result<EncodedOperatorRow> {
-	encode(&version.0, txn.written_at()).map_err(|e| {
+fn encode_version(bridge: &dyn Bridge, version: ContentVersion) -> Result<EncodedOperatorRow> {
+	encode(&version.0, bridge.written_at()).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state: "snapshot published version",
 			cause: e.to_string(),
@@ -277,8 +270,8 @@ fn decode_version(row: &EncodedOperatorRow) -> Result<ContentVersion> {
 	})
 }
 
-fn encode_pin<T: FlowTransaction>(txn: &T, pin: &Pin) -> Result<EncodedOperatorRow> {
-	encode(pin, txn.written_at()).map_err(|e| {
+fn encode_pin(bridge: &dyn Bridge, pin: &Pin) -> Result<EncodedOperatorRow> {
+	encode(pin, bridge.written_at()).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state: "snapshot pin",
 			cause: e.to_string(),
@@ -297,16 +290,21 @@ fn decode_pin(row: &EncodedOperatorRow) -> Result<Pin> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::interface::catalog::flow::OperatorId;
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
-	use crate::testing::FlowTxn;
+	use crate::{operator::bridge::FlowBridge, testing::FlowTxn, transaction::deferred::DeferredTransaction};
 
 	const NODE: OperatorId = OperatorId(90);
 	const GROUP: GroupId = GroupId(3);
 
 	fn ledger() -> SnapshotLedger {
-		SnapshotLedger::new(NODE)
+		SnapshotLedger::new()
+	}
+
+	fn b(txn: &mut DeferredTransaction) -> FlowBridge<'_, DeferredTransaction> {
+		FlowBridge::new(txn, NODE)
 	}
 
 	fn encoded_bytes(payload: &[u8]) -> EncodedBytes {
@@ -333,10 +331,10 @@ mod tests {
 		let ledger = ledger();
 		let published_against = encoded_bytes(b"v1");
 
-		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &published_against).unwrap();
-		ledger.retire(&mut txn, GROUP, rn(7), &published_against).unwrap();
+		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &published_against).unwrap();
+		ledger.retire(&mut b(&mut txn), GROUP, rn(7), &published_against).unwrap();
 
-		let released = ledger.release(&mut txn, GROUP, rn(1), rn(7)).unwrap();
+		let released = ledger.release(&mut b(&mut txn), GROUP, rn(1), rn(7)).unwrap();
 		assert_eq!(released, Some(published_against), "the retired version must come back verbatim");
 	}
 
@@ -348,10 +346,10 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
 
-		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &encoded_bytes(b"v1")).unwrap();
+		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &encoded_bytes(b"v1")).unwrap();
 
 		assert_eq!(
-			ledger.release(&mut txn, GROUP, rn(1), rn(7)).unwrap(),
+			ledger.release(&mut b(&mut txn), GROUP, rn(1), rn(7)).unwrap(),
 			None,
 			"an un-retired version must send the caller to the right side rather than duplicate it"
 		);
@@ -367,13 +365,13 @@ mod tests {
 		let shared = encoded_bytes(b"shared");
 
 		for left in 1..=3u64 {
-			ledger.publish(&mut txn, GROUP, rn(left), rn(7), &shared).unwrap();
+			ledger.publish(&mut b(&mut txn), GROUP, rn(left), rn(7), &shared).unwrap();
 		}
-		ledger.retire(&mut txn, GROUP, rn(7), &shared).unwrap();
+		ledger.retire(&mut b(&mut txn), GROUP, rn(7), &shared).unwrap();
 
 		for left in 1..=3u64 {
 			assert_eq!(
-				ledger.release(&mut txn, GROUP, rn(left), rn(7)).unwrap(),
+				ledger.release(&mut b(&mut txn), GROUP, rn(left), rn(7)).unwrap(),
 				Some(shared.clone()),
 				"left row {left} must still see the version it published against"
 			);
@@ -390,20 +388,20 @@ mod tests {
 		let content = encoded_bytes(b"v1");
 		let version = ContentVersion::of(&content);
 
-		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &content).unwrap();
-		ledger.publish(&mut txn, GROUP, rn(2), rn(7), &content).unwrap();
-		ledger.retire(&mut txn, GROUP, rn(7), &content).unwrap();
+		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &content).unwrap();
+		ledger.publish(&mut b(&mut txn), GROUP, rn(2), rn(7), &content).unwrap();
+		ledger.retire(&mut b(&mut txn), GROUP, rn(7), &content).unwrap();
 
-		ledger.release(&mut txn, GROUP, rn(1), rn(7)).unwrap();
+		ledger.release(&mut b(&mut txn), GROUP, rn(1), rn(7)).unwrap();
 		let key = ledger.pin_key(GROUP, rn(7), version);
 		assert!(
-			state_get(NODE, &mut txn, &key).unwrap().is_some(),
+			state_get(&mut b(&mut txn), &key).unwrap().is_some(),
 			"a version another left row still references must stay"
 		);
 
-		ledger.release(&mut txn, GROUP, rn(2), rn(7)).unwrap();
+		ledger.release(&mut b(&mut txn), GROUP, rn(2), rn(7)).unwrap();
 		assert!(
-			state_get(NODE, &mut txn, &key).unwrap().is_none(),
+			state_get(&mut b(&mut txn), &key).unwrap().is_none(),
 			"the last release must take the record with it"
 		);
 	}
@@ -419,13 +417,13 @@ mod tests {
 		let first = encoded_bytes(b"v1");
 		let second = encoded_bytes(b"v2");
 
-		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &first).unwrap();
-		ledger.retire(&mut txn, GROUP, rn(7), &first).unwrap();
-		ledger.publish(&mut txn, GROUP, rn(2), rn(7), &second).unwrap();
-		ledger.retire(&mut txn, GROUP, rn(7), &second).unwrap();
+		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &first).unwrap();
+		ledger.retire(&mut b(&mut txn), GROUP, rn(7), &first).unwrap();
+		ledger.publish(&mut b(&mut txn), GROUP, rn(2), rn(7), &second).unwrap();
+		ledger.retire(&mut b(&mut txn), GROUP, rn(7), &second).unwrap();
 
-		assert_eq!(ledger.release(&mut txn, GROUP, rn(1), rn(7)).unwrap(), Some(first));
-		assert_eq!(ledger.release(&mut txn, GROUP, rn(2), rn(7)).unwrap(), Some(second));
+		assert_eq!(ledger.release(&mut b(&mut txn), GROUP, rn(1), rn(7)).unwrap(), Some(first));
+		assert_eq!(ledger.release(&mut b(&mut txn), GROUP, rn(2), rn(7)).unwrap(), Some(second));
 	}
 
 	#[test]
@@ -439,15 +437,15 @@ mod tests {
 		let second = encoded_bytes(b"v2");
 		let stale = ledger.pin_key(GROUP, rn(7), ContentVersion::of(&first));
 
-		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &first).unwrap();
-		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &second).unwrap();
+		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &first).unwrap();
+		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &second).unwrap();
 
 		assert!(
-			state_get(NODE, &mut txn, &stale).unwrap().is_none(),
+			state_get(&mut b(&mut txn), &stale).unwrap().is_none(),
 			"the version the left row no longer holds must be released"
 		);
 		assert_eq!(
-			ledger.published(&mut txn, GROUP, rn(1)).unwrap(),
+			ledger.published(&mut b(&mut txn), GROUP, rn(1)).unwrap(),
 			vec![(PublishedRight::Row(rn(7)), ContentVersion::of(&second))],
 			"and the pair must now name the version it was republished against"
 		);
@@ -461,16 +459,16 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
 
-		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &encoded_bytes(b"a")).unwrap();
-		ledger.publish(&mut txn, GROUP, rn(1), rn(8), &encoded_bytes(b"b")).unwrap();
-		ledger.publish(&mut txn, GROUP, rn(2), rn(9), &encoded_bytes(b"c")).unwrap();
+		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(7), &encoded_bytes(b"a")).unwrap();
+		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(8), &encoded_bytes(b"b")).unwrap();
+		ledger.publish(&mut b(&mut txn), GROUP, rn(2), rn(9), &encoded_bytes(b"c")).unwrap();
 
 		let mut rights: Vec<PublishedRight> =
-			ledger.published(&mut txn, GROUP, rn(1)).unwrap().into_iter().map(|(r, _)| r).collect();
+			ledger.published(&mut b(&mut txn), GROUP, rn(1)).unwrap().into_iter().map(|(r, _)| r).collect();
 		rights.sort_by_key(published_order);
 		assert_eq!(rights, vec![PublishedRight::Row(rn(7)), PublishedRight::Row(rn(8))]);
 		assert_eq!(
-			ledger.published(&mut txn, GROUP, rn(2))
+			ledger.published(&mut b(&mut txn), GROUP, rn(2))
 				.unwrap()
 				.into_iter()
 				.map(|(r, _)| r)
@@ -487,8 +485,8 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
 
-		assert_eq!(ledger.release(&mut txn, GROUP, rn(1), rn(7)).unwrap(), None);
-		assert!(ledger.published(&mut txn, GROUP, rn(1)).unwrap().is_empty());
+		assert_eq!(ledger.release(&mut b(&mut txn), GROUP, rn(1), rn(7)).unwrap(), None);
+		assert!(ledger.published(&mut b(&mut txn), GROUP, rn(1)).unwrap().is_empty());
 	}
 
 	#[test]
@@ -500,10 +498,10 @@ mod tests {
 		let ledger = ledger();
 		let content = encoded_bytes(b"v1");
 
-		ledger.retire(&mut txn, GROUP, rn(7), &content).unwrap();
+		ledger.retire(&mut b(&mut txn), GROUP, rn(7), &content).unwrap();
 
 		let key = ledger.pin_key(GROUP, rn(7), ContentVersion::of(&content));
-		assert!(state_get(NODE, &mut txn, &key).unwrap().is_none());
+		assert!(state_get(&mut b(&mut txn), &key).unwrap().is_none());
 	}
 }
 
@@ -513,8 +511,8 @@ pub(crate) struct SnapshotJoinContext<'a> {
 	pub(crate) right_store: &'a Store,
 }
 
-pub(crate) fn publish_joined<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn publish_joined(
+	bridge: &mut dyn Bridge,
 	ctx: &SnapshotJoinContext,
 	key_hash: &Hash128,
 	left: &Columns,
@@ -524,74 +522,82 @@ pub(crate) fn publish_joined<T: FlowTransaction>(
 	if left_indices.is_empty() {
 		return Ok(Vec::new());
 	}
-	let group = ctx.right_store.group_for(txn, key_hash)?;
+	let group = ctx.right_store.group_for(bridge, key_hash)?;
 	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 
-	let mut diffs = stream_join_blocks_encoded(txn, ctx.right_store, key_hash, true, |txn, opposite, encoded| {
-		let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
-		let joined = ctx.operator.join_columns_cartesian(
-			txn,
-			left,
-			left_indices,
-			opposite,
-			&opposite_indices,
-			Identity::Mint,
-		)?;
-		if joined.is_empty() {
-			return Ok(Vec::new());
-		}
-		for left_number in &left_numbers {
-			for (right_number, content) in encoded {
-				ctx.ledger.publish(txn, group, *left_number, *right_number, content)?;
+	let mut diffs =
+		stream_join_blocks_encoded(bridge, ctx.right_store, key_hash, true, |bridge, opposite, encoded| {
+			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
+			let joined = ctx.operator.join_columns_cartesian(
+				bridge,
+				left,
+				left_indices,
+				opposite,
+				&opposite_indices,
+				Identity::Mint,
+			)?;
+			if joined.is_empty() {
+				return Ok(Vec::new());
 			}
-		}
-		Ok(joined.published())
-	})?;
+			for left_number in &left_numbers {
+				for (right_number, content) in encoded {
+					ctx.ledger.publish(bridge, group, *left_number, *right_number, content)?;
+				}
+			}
+			Ok(joined.published())
+		})?;
 
 	if !diffs.is_empty() || !outer {
 		return Ok(diffs);
 	}
 	for left_number in &left_numbers {
-		ctx.ledger.publish_unmatched(txn, group, *left_number)?;
+		ctx.ledger.publish_unmatched(bridge, group, *left_number)?;
 	}
-	diffs.extend(ctx.operator.unmatched_left_columns_batch(txn, left, left_indices, Identity::Mint)?.published());
+	diffs.extend(ctx
+		.operator
+		.unmatched_left_columns_batch(bridge, left, left_indices, Identity::Mint)?
+		.published());
 	Ok(diffs)
 }
 
-pub(crate) fn withdraw_joined<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn withdraw_joined(
+	bridge: &mut dyn Bridge,
 	ctx: &SnapshotJoinContext,
 	key_hash: &Hash128,
 	left: &Columns,
 	left_idx: usize,
 ) -> Result<Vec<Diff>> {
-	let Some(group) = ctx.right_store.group_of(txn, key_hash)? else {
+	let Some(group) = ctx.right_store.group_of(bridge, key_hash)? else {
 		return Ok(Vec::new());
 	};
 	let left_number = left.row_numbers()[left_idx];
 	let mut out = Vec::new();
-	for (right, _) in ctx.ledger.published(txn, group, left_number)? {
+	for (right, _) in ctx.ledger.published(bridge, group, left_number)? {
 		let right_number = match right {
 			PublishedRight::Unmatched => {
-				ctx.ledger.release_unmatched(txn, group, left_number)?;
-				let unmatched =
-					ctx.operator.unmatched_left_columns(txn, left, left_idx, Identity::Consume)?;
+				ctx.ledger.release_unmatched(bridge, group, left_number)?;
+				let unmatched = ctx.operator.unmatched_left_columns(
+					bridge,
+					left,
+					left_idx,
+					Identity::Consume,
+				)?;
 				out.extend(unmatched.withdrawn());
 				continue;
 			}
 			PublishedRight::Row(right_number) => right_number,
 		};
-		let released = ctx.ledger.release(txn, group, left_number, right_number)?;
+		let released = ctx.ledger.release(bridge, group, left_number, right_number)?;
 		let content = match released {
 			Some(retired) => Some(retired),
-			None => ctx.right_store.get_row_in(txn, group, right_number)?,
+			None => ctx.right_store.get_row_in(bridge, group, right_number)?,
 		};
 		let Some(content) = content else {
 			continue;
 		};
-		let opposite = columns_from_block(txn, ctx.right_store, vec![(right_number, content)])?;
+		let opposite = columns_from_block(bridge, ctx.right_store, vec![(right_number, content)])?;
 		let joined = ctx.operator.join_columns_cartesian(
-			txn,
+			bridge,
 			left,
 			&[left_idx],
 			&opposite,
@@ -603,8 +609,8 @@ pub(crate) fn withdraw_joined<T: FlowTransaction>(
 	Ok(out)
 }
 
-pub(crate) fn resync_joined<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn resync_joined(
+	bridge: &mut dyn Bridge,
 	ctx: &SnapshotJoinContext,
 	keys: UpdateKeys,
 	pre: &Columns,
@@ -612,13 +618,13 @@ pub(crate) fn resync_joined<T: FlowTransaction>(
 	left_idx: usize,
 	outer: bool,
 ) -> Result<Vec<Diff>> {
-	let mut out = withdraw_joined(txn, ctx, keys.pre, pre, left_idx)?;
-	out.extend(publish_joined(txn, ctx, keys.post, post, &[left_idx], outer)?);
+	let mut out = withdraw_joined(bridge, ctx, keys.pre, pre, left_idx)?;
+	out.extend(publish_joined(bridge, ctx, keys.post, post, &[left_idx], outer)?);
 	Ok(out)
 }
 
-pub(crate) fn publish_slot<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn publish_slot(
+	bridge: &mut dyn Bridge,
 	ctx: &SnapshotJoinContext,
 	key_hash: &Hash128,
 	left: &Columns,
@@ -628,65 +634,65 @@ pub(crate) fn publish_slot<T: FlowTransaction>(
 	if left_indices.is_empty() {
 		return Ok(None);
 	}
-	let group = ctx.right_store.group_for(txn, key_hash)?;
+	let group = ctx.right_store.group_for(bridge, key_hash)?;
 	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 
-	let Some((content, slot)) = ctx.right_store.slot(txn, group)? else {
+	let Some((content, slot)) = ctx.right_store.slot(bridge, group)? else {
 		if !outer {
 			return Ok(None);
 		}
 		for left_number in &left_numbers {
-			ctx.ledger.publish_unmatched(txn, group, *left_number)?;
+			ctx.ledger.publish_unmatched(bridge, group, *left_number)?;
 		}
 		return Ok(Some(ctx.operator.unmatched_left_latest(left, left_indices)));
 	};
 
 	for left_number in &left_numbers {
-		ctx.ledger.publish(txn, group, *left_number, SLOT, &content)?;
+		ctx.ledger.publish(bridge, group, *left_number, SLOT, &content)?;
 	}
 	Ok(Some(ctx.operator.join_left_with_slot(left, left_indices, &slot)))
 }
 
-pub(crate) fn withdraw_slot<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn withdraw_slot(
+	bridge: &mut dyn Bridge,
 	ctx: &SnapshotJoinContext,
 	group: GroupId,
 	left: &Columns,
 	left_idx: usize,
 ) -> Result<Option<Columns>> {
 	let left_number = left.row_numbers()[left_idx];
-	for (right, _) in ctx.ledger.published(txn, group, left_number)? {
+	for (right, _) in ctx.ledger.published(bridge, group, left_number)? {
 		let right_number = match right {
 			PublishedRight::Unmatched => {
-				ctx.ledger.release_unmatched(txn, group, left_number)?;
+				ctx.ledger.release_unmatched(bridge, group, left_number)?;
 				return Ok(Some(ctx.operator.unmatched_left_latest(left, &[left_idx])));
 			}
 			PublishedRight::Row(right_number) => right_number,
 		};
-		let released = ctx.ledger.release(txn, group, left_number, right_number)?;
+		let released = ctx.ledger.release(bridge, group, left_number, right_number)?;
 		let content = match released {
 			Some(retired) => Some(retired),
-			None => ctx.right_store.get_row_in(txn, group, right_number)?,
+			None => ctx.right_store.get_row_in(bridge, group, right_number)?,
 		};
 		let Some(content) = content else {
 			continue;
 		};
-		let slot = columns_from_block(txn, ctx.right_store, vec![(right_number, content)])?;
+		let slot = columns_from_block(bridge, ctx.right_store, vec![(right_number, content)])?;
 		return Ok(Some(ctx.operator.join_left_with_slot(left, &[left_idx], &slot)));
 	}
 	Ok(None)
 }
 
-pub(crate) fn retain_published_slot<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn retain_published_slot(
+	bridge: &mut dyn Bridge,
 	ctx: &SnapshotJoinContext,
 	group: GroupId,
 	left: RowNumber,
 ) -> Result<Option<Columns>> {
-	let Some((content, slot)) = ctx.right_store.slot(txn, group)? else {
+	let Some((content, slot)) = ctx.right_store.slot(bridge, group)? else {
 		return Ok(None);
 	};
-	let mut records = ctx.ledger.published(txn, group, left)?;
+	let mut records = ctx.ledger.published(bridge, group, left)?;
 	let Some((right, recorded)) = records.pop() else {
 		return Ok(None);
 	};
@@ -696,25 +702,21 @@ pub(crate) fn retain_published_slot<T: FlowTransaction>(
 	Ok(Some(slot))
 }
 
-pub(crate) fn retire_slot<T: FlowTransaction>(
-	txn: &mut T,
-	ctx: &SnapshotJoinContext,
-	key_hash: &Hash128,
-) -> Result<()> {
-	retire_right(txn, ctx, key_hash, SLOT)
+pub(crate) fn retire_slot(bridge: &mut dyn Bridge, ctx: &SnapshotJoinContext, key_hash: &Hash128) -> Result<()> {
+	retire_right(bridge, ctx, key_hash, SLOT)
 }
 
-pub(crate) fn retire_right<T: FlowTransaction>(
-	txn: &mut T,
+pub(crate) fn retire_right(
+	bridge: &mut dyn Bridge,
 	ctx: &SnapshotJoinContext,
 	key_hash: &Hash128,
 	row_number: RowNumber,
 ) -> Result<()> {
-	let Some(group) = ctx.right_store.group_of(txn, key_hash)? else {
+	let Some(group) = ctx.right_store.group_of(bridge, key_hash)? else {
 		return Ok(());
 	};
-	let Some(content) = ctx.right_store.get_row_in(txn, group, row_number)? else {
+	let Some(content) = ctx.right_store.get_row_in(bridge, group, row_number)? else {
 		return Ok(());
 	};
-	ctx.ledger.retire(txn, group, row_number, &content)
+	ctx.ledger.retire(bridge, group, row_number, &content)
 }

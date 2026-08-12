@@ -5,80 +5,34 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 };
-use reifydb_core::{
-	interface::catalog::flow::OperatorId,
-	key::{
-		EncodableKey,
-		operator_state::{GroupStateKey, OperatorStateKey, node_prefix},
-	},
-};
-use reifydb_transaction::multi::RangeScope;
+use reifydb_core::key::operator_state::GroupStateKey;
 use reifydb_value::Result;
 
 use super::StateIterator;
-use crate::transaction::FlowTransaction;
+use crate::operator::bridge::Bridge;
 
-pub fn state_get<T: FlowTransaction>(
-	id: OperatorId,
-	txn: &mut T,
-	key: &GroupStateKey,
-) -> Result<Option<EncodedOperatorRow>> {
-	txn.state_get(id, key)
+pub fn state_get(bridge: &mut dyn Bridge, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+	bridge.state_get(key)
 }
 
-pub fn state_set<T: FlowTransaction>(
-	id: OperatorId,
-	txn: &mut T,
-	key: &GroupStateKey,
-	row: EncodedOperatorRow,
-) -> Result<()> {
-	txn.state_set(id, key, row)
+pub fn state_set(bridge: &mut dyn Bridge, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
+	bridge.state_set(key, row)
 }
 
-pub fn state_remove<T: FlowTransaction>(id: OperatorId, txn: &mut T, key: &GroupStateKey) -> Result<()> {
-	txn.state_remove(id, key)
+pub fn state_remove(bridge: &mut dyn Bridge, key: &GroupStateKey) -> Result<()> {
+	bridge.state_remove(key)
 }
 
-pub fn state_scan_all<T: FlowTransaction>(id: OperatorId, txn: &mut T) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
-	let range = OperatorStateKey::node_range(id);
-	let stream = txn.range(range, RangeScope::All, 1024);
-	let mut items = Vec::new();
-	for result in stream {
-		let multi = result?;
-		if let Some(state_key) = OperatorStateKey::decode(&multi.key) {
-			items.push((state_key.inner(), multi.bytes));
-		} else {
-			items.push((multi.key, multi.bytes));
-		}
-	}
-	Ok(items)
+pub fn state_scan_all(bridge: &mut dyn Bridge) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+	bridge.state_scan_all()
 }
 
-pub fn state_range<'a, T: FlowTransaction>(
-	id: OperatorId,
-	txn: &'a mut T,
-	range: EncodedKeyRange,
-) -> StateIterator<'a> {
-	let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(id)));
-	StateIterator::new(txn.range(prefixed_range, RangeScope::All, 1024))
+pub fn state_range<'a>(bridge: &'a mut dyn Bridge, range: EncodedKeyRange) -> StateIterator<'a> {
+	bridge.state_range_iter(range)
 }
 
-pub fn state_clear<T: FlowTransaction>(id: OperatorId, txn: &mut T) -> Result<()> {
-	let range = OperatorStateKey::node_range(id);
-	let keys_to_remove = {
-		let stream = txn.range(range, RangeScope::All, 1024);
-		let mut keys = Vec::new();
-		for result in stream {
-			let multi = result?;
-			keys.push(multi.key);
-		}
-		keys
-	};
-
-	for key in keys_to_remove {
-		txn.remove(&key)?;
-	}
-	Ok(())
+pub fn state_clear(bridge: &mut dyn Bridge) -> Result<()> {
+	bridge.state_clear()
 }
 
 pub fn empty_state_key() -> GroupStateKey {
@@ -93,10 +47,23 @@ pub fn empty_key() -> EncodedKey {
 pub mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
+	use reifydb_core::{
+		interface::catalog::flow::OperatorId,
+		key::operator_state::{OperatorStateKey, node_prefix},
+	};
 	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_transaction::multi::RangeScope;
 
 	use super::*;
-	use crate::{operator::stateful::test_utils::test::*, testing::FlowTxn};
+	use crate::{
+		operator::{bridge::FlowBridge, stateful::test_utils::test::*},
+		testing::FlowTxn,
+		transaction::{FlowTransaction, deferred::DeferredTransaction},
+	};
+
+	fn bridge(txn: &mut DeferredTransaction, operator: OperatorId) -> FlowBridge<'_, DeferredTransaction> {
+		FlowBridge::new(txn, operator)
+	}
 
 	#[test]
 	fn test_state_get_existing() {
@@ -106,9 +73,9 @@ pub mod tests {
 		let key = test_key("get");
 		let row = test_row();
 
-		state_set(operator_id, &mut txn, &key, row.clone()).unwrap();
+		state_set(&mut bridge(&mut txn, operator_id), &key, row.clone()).unwrap();
 
-		let result = state_get(operator_id, &mut txn, &key).unwrap();
+		let result = state_get(&mut bridge(&mut txn, operator_id), &key).unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &row);
 	}
@@ -120,7 +87,7 @@ pub mod tests {
 		let operator_id = OperatorId(1);
 		let key = test_key("nonexistent");
 
-		let result = state_get(operator_id, &mut txn, &key).unwrap();
+		let result = state_get(&mut bridge(&mut txn, operator_id), &key).unwrap();
 		assert!(result.is_none());
 	}
 
@@ -133,12 +100,12 @@ pub mod tests {
 		let row1 = EncodedOperatorRow::timeless(&[1, 2, 3]);
 		let row2 = EncodedOperatorRow::timeless(&[4, 5, 6]);
 
-		state_set(operator_id, &mut txn, &key, row1.clone()).unwrap();
-		let result = state_get(operator_id, &mut txn, &key).unwrap().unwrap();
+		state_set(&mut bridge(&mut txn, operator_id), &key, row1.clone()).unwrap();
+		let result = state_get(&mut bridge(&mut txn, operator_id), &key).unwrap().unwrap();
 		assert_row_eq(&result, &row1);
 
-		state_set(operator_id, &mut txn, &key, row2.clone()).unwrap();
-		let result = state_get(operator_id, &mut txn, &key).unwrap().unwrap();
+		state_set(&mut bridge(&mut txn, operator_id), &key, row2.clone()).unwrap();
+		let result = state_get(&mut bridge(&mut txn, operator_id), &key).unwrap().unwrap();
 		assert_row_eq(&result, &row2);
 	}
 
@@ -148,11 +115,11 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("remove");
-		state_set(operator_id, &mut txn, &key, test_row()).unwrap();
-		assert!(state_get(operator_id, &mut txn, &key).unwrap().is_some());
+		state_set(&mut bridge(&mut txn, operator_id), &key, test_row()).unwrap();
+		assert!(state_get(&mut bridge(&mut txn, operator_id), &key).unwrap().is_some());
 
-		state_remove(operator_id, &mut txn, &key).unwrap();
-		assert!(state_get(operator_id, &mut txn, &key).unwrap().is_none());
+		state_remove(&mut bridge(&mut txn, operator_id), &key).unwrap();
+		assert!(state_get(&mut bridge(&mut txn, operator_id), &key).unwrap().is_none());
 	}
 
 	#[test]
@@ -163,10 +130,11 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("scan_{:02}", i)); // padded so the keys sort numerically
-			state_set(operator_id, &mut txn, &key, EncodedOperatorRow::timeless(&[i as u8])).unwrap();
+			state_set(&mut bridge(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(&[i as u8]))
+				.unwrap();
 		}
 
-		let entries: Vec<_> = state_scan_all(operator_id, &mut txn).unwrap();
+		let entries: Vec<_> = state_scan_all(&mut bridge(&mut txn, operator_id)).unwrap();
 		assert_eq!(entries.len(), 5);
 
 		// The scan path is untyped, so the payload only surfaces once the row header is stripped.
@@ -185,14 +153,15 @@ pub mod tests {
 		let keys = vec!["a", "b", "c", "d", "e"];
 		for key_suffix in &keys {
 			let key = test_key(key_suffix);
-			state_set(operator_id, &mut txn, &key, test_row()).unwrap();
+			state_set(&mut bridge(&mut txn, operator_id), &key, test_row()).unwrap();
 		}
 
 		let range = EncodedKeyRange::new(
 			Included(test_key("b").into_encoded()),
 			Excluded(test_key("d").into_encoded()),
 		);
-		let entries: Vec<_> = state_range(operator_id, &mut txn, range).collect::<Result<Vec<_>>>().unwrap();
+		let entries: Vec<_> =
+			state_range(&mut bridge(&mut txn, operator_id), range).collect::<Result<Vec<_>>>().unwrap();
 
 		// b and c, but not the excluded end d.
 		assert_eq!(entries.len(), 2);
@@ -206,7 +175,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("range_{}", i));
-			state_set(operator_id, &mut txn, &key, test_row()).unwrap();
+			state_set(&mut bridge(&mut txn, operator_id), &key, test_row()).unwrap();
 		}
 
 		let entries = {
@@ -242,7 +211,7 @@ pub mod tests {
 
 		for i in 0..3 {
 			let key = test_key(&format!("clear_{}", i));
-			state_set(operator_id, &mut txn, &key, test_row()).unwrap();
+			state_set(&mut bridge(&mut txn, operator_id), &key, test_row()).unwrap();
 		}
 
 		let count = {
@@ -257,7 +226,7 @@ pub mod tests {
 		};
 		assert_eq!(count, 3);
 
-		state_clear(operator_id, &mut txn).unwrap();
+		state_clear(&mut bridge(&mut txn, operator_id)).unwrap();
 
 		let count = {
 			let range = OperatorStateKey::node_range(operator_id);
@@ -289,18 +258,18 @@ pub mod tests {
 		let row1 = EncodedOperatorRow::timeless(&[1]);
 		let row2 = EncodedOperatorRow::timeless(&[2]);
 
-		state_set(node1, &mut txn, &key, row1.clone()).unwrap();
-		state_set(node2, &mut txn, &key, row2.clone()).unwrap();
+		state_set(&mut bridge(&mut txn, node1), &key, row1.clone()).unwrap();
+		state_set(&mut bridge(&mut txn, node2), &key, row2.clone()).unwrap();
 
-		let result1 = state_get(node1, &mut txn, &key).unwrap().unwrap();
-		let result2 = state_get(node2, &mut txn, &key).unwrap().unwrap();
+		let result1 = state_get(&mut bridge(&mut txn, node1), &key).unwrap().unwrap();
+		let result2 = state_get(&mut bridge(&mut txn, node2), &key).unwrap().unwrap();
 
 		assert_row_eq(&result1, &row1);
 		assert_row_eq(&result2, &row2);
 
-		state_clear(node1, &mut txn).unwrap();
-		assert!(state_get(node1, &mut txn, &key).unwrap().is_none());
-		assert!(state_get(node2, &mut txn, &key).unwrap().is_some());
+		state_clear(&mut bridge(&mut txn, node1)).unwrap();
+		assert!(state_get(&mut bridge(&mut txn, node1), &key).unwrap().is_none());
+		assert!(state_get(&mut bridge(&mut txn, node2), &key).unwrap().is_some());
 	}
 
 	#[test]
@@ -312,8 +281,8 @@ pub mod tests {
 
 		let large_row = EncodedOperatorRow::timeless(&[0xAB; 10240]);
 
-		state_set(operator_id, &mut txn, &key, large_row.clone()).unwrap();
-		let result = state_get(operator_id, &mut txn, &key).unwrap().unwrap();
+		state_set(&mut bridge(&mut txn, operator_id), &key, large_row.clone()).unwrap();
+		let result = state_get(&mut bridge(&mut txn, operator_id), &key).unwrap().unwrap();
 
 		assert_row_eq(&result, &large_row);
 	}

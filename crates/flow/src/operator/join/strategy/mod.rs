@@ -4,12 +4,12 @@
 use reifydb_core::{common::JoinType, interface::change::Diff, value::column::columns::Columns};
 use reifydb_value::util::hash::Hash128;
 
-use crate::{
-	operator::join::{
+use crate::operator::{
+	bridge::Bridge,
+	join::{
 		operator::JoinOperator,
 		state::{JoinSide, JoinState},
 	},
-	transaction::FlowTransaction,
 };
 
 pub(crate) mod hash;
@@ -55,87 +55,87 @@ impl JoinStrategy {
 		}
 	}
 
-	pub(crate) fn handle_insert_undefined<T: FlowTransaction>(
+	pub(crate) fn handle_insert_undefined(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		post: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_insert_undefined(txn, post, row_idx, ctx),
-			JoinStrategy::Inner(s) => s.handle_insert_undefined(txn, post, row_idx, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_insert_undefined(txn, post, row_idx, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_insert_undefined(txn, post, row_idx, ctx),
+			JoinStrategy::Left(s) => s.handle_insert_undefined(bridge, post, row_idx, ctx),
+			JoinStrategy::Inner(s) => s.handle_insert_undefined(bridge, post, row_idx, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_insert_undefined(bridge, post, row_idx, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_insert_undefined(bridge, post, row_idx, ctx),
 		}
 	}
 
-	pub(crate) fn handle_remove_undefined<T: FlowTransaction>(
+	pub(crate) fn handle_remove_undefined(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		pre: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_remove_undefined(txn, pre, row_idx, ctx),
-			JoinStrategy::Inner(s) => s.handle_remove_undefined(txn, pre, row_idx, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_remove_undefined(txn, pre, row_idx, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_remove_undefined(txn, pre, row_idx, ctx),
+			JoinStrategy::Left(s) => s.handle_remove_undefined(bridge, pre, row_idx, ctx),
+			JoinStrategy::Inner(s) => s.handle_remove_undefined(bridge, pre, row_idx, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_remove_undefined(bridge, pre, row_idx, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_remove_undefined(bridge, pre, row_idx, ctx),
 		}
 	}
 
-	pub(crate) fn handle_update_both_undefined<T: FlowTransaction>(
+	pub(crate) fn handle_update_both_undefined(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_update_both_undefined(txn, pre, post, row_idx, ctx),
-			JoinStrategy::Inner(s) => s.handle_update_both_undefined(txn, pre, post, row_idx, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_update_both_undefined(txn, pre, post, row_idx, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_update_both_undefined(txn, pre, post, row_idx, ctx),
+			JoinStrategy::Left(s) => s.handle_update_both_undefined(bridge, pre, post, row_idx, ctx),
+			JoinStrategy::Inner(s) => s.handle_update_both_undefined(bridge, pre, post, row_idx, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_update_both_undefined(bridge, pre, post, row_idx, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_update_both_undefined(bridge, pre, post, row_idx, ctx),
 		}
 	}
 
-	pub(crate) fn handle_insert<T: FlowTransaction>(
+	pub(crate) fn handle_insert(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_insert(txn, post, indices, key_hash, ctx),
-			JoinStrategy::Inner(s) => s.handle_insert(txn, post, indices, key_hash, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_insert(txn, post, indices, key_hash, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_insert(txn, post, indices, key_hash, ctx),
+			JoinStrategy::Left(s) => s.handle_insert(bridge, post, indices, key_hash, ctx),
+			JoinStrategy::Inner(s) => s.handle_insert(bridge, post, indices, key_hash, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_insert(bridge, post, indices, key_hash, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_insert(bridge, post, indices, key_hash, ctx),
 		}
 	}
 
-	pub(crate) fn handle_remove<T: FlowTransaction>(
+	pub(crate) fn handle_remove(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_remove(txn, pre, indices, key_hash, ctx),
-			JoinStrategy::Inner(s) => s.handle_remove(txn, pre, indices, key_hash, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_remove(txn, pre, indices, key_hash, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_remove(txn, pre, indices, key_hash, ctx),
+			JoinStrategy::Left(s) => s.handle_remove(bridge, pre, indices, key_hash, ctx),
+			JoinStrategy::Inner(s) => s.handle_remove(bridge, pre, indices, key_hash, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_remove(bridge, pre, indices, key_hash, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_remove(bridge, pre, indices, key_hash, ctx),
 		}
 	}
 
-	pub(crate) fn handle_update<T: FlowTransaction>(
+	pub(crate) fn handle_update(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],
@@ -143,10 +143,10 @@ impl JoinStrategy {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_update(txn, pre, post, indices, keys, ctx),
-			JoinStrategy::Inner(s) => s.handle_update(txn, pre, post, indices, keys, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_update(txn, pre, post, indices, keys, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_update(txn, pre, post, indices, keys, ctx),
+			JoinStrategy::Left(s) => s.handle_update(bridge, pre, post, indices, keys, ctx),
+			JoinStrategy::Inner(s) => s.handle_update(bridge, pre, post, indices, keys, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_update(bridge, pre, post, indices, keys, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_update(bridge, pre, post, indices, keys, ctx),
 		}
 	}
 }

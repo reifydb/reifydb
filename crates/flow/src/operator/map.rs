@@ -21,7 +21,10 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, fragment::Fragment, value::system_columns::SystemColumns};
 use tracing::instrument;
 
-use crate::{context::FlowContext, operator::Operator, transaction::FlowTransaction};
+use crate::{
+	context::FlowContext,
+	operator::{Operator, bridge::Bridge},
+};
 
 pub struct MapOperator {
 	parent_schema: Option<Columns>,
@@ -120,7 +123,7 @@ impl MapOperator {
 	}
 }
 
-impl<T: FlowTransaction> Operator<T> for MapOperator {
+impl Operator for MapOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -129,7 +132,7 @@ impl<T: FlowTransaction> Operator<T> for MapOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, _txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {

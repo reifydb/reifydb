@@ -4,12 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_engine::subscription::SubscriptionContext;
-use reifydb_flow::{
-	context::FlowContext,
-	engine::FlowEngineInner,
-	operator::apply::ApplyOperator,
-	transaction::ephemeral::EphemeralTransaction,
-};
+use reifydb_flow::{context::FlowContext, engine::FlowEngineInner, operator::apply::ApplyOperator};
 use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
@@ -17,7 +12,7 @@ use reifydb_value::Result;
 use crate::sink::{DeliveryBuffer, operator::EphemeralSinkSubscriptionOperator};
 
 pub(crate) fn register_ephemeral_flow(
-	engine: &mut FlowEngineInner<EphemeralTransaction>,
+	engine: &mut FlowEngineInner,
 	txn: &mut Transaction<'_>,
 	flow: FlowDag,
 	ctx: &SubscriptionContext,
@@ -41,12 +36,7 @@ pub(crate) fn register_ephemeral_flow(
 				let op = EphemeralSinkSubscriptionOperator::new(operator_id, ctx.id, delivery.clone());
 				engine.insert_operator(
 					operator_id,
-					Box::new(ApplyOperator::new(
-						parent_schema,
-						operator_id,
-						Box::new(op),
-						None,
-					)),
+					Box::new(ApplyOperator::new(parent_schema, operator_id, Box::new(op), None)),
 				);
 			}
 			_ => {

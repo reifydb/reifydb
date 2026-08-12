@@ -11,7 +11,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-use reifydb_flow::{operator::apply::ApplyOperator, transaction::deferred::DeferredTransaction};
+use reifydb_flow::operator::apply::ApplyOperator;
 
 pub mod bridge;
 pub mod generator;
@@ -20,4 +20,4 @@ pub mod state;
 
 /// Named here so a guest author never has to import `ApplyOperator` from `reifydb-sub-flow` just
 /// to write down the type of a fixture.
-pub type GuestHarness = harness::Harness<ApplyOperator<DeferredTransaction>>;
+pub type GuestHarness = harness::Harness<ApplyOperator>;

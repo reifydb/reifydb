@@ -36,8 +36,7 @@ use tracing::instrument;
 
 use crate::{
 	context::FlowContext,
-	operator::{Operator, stateful::raw::RawStatefulOperator, store::OperatorStateStore},
-	transaction::FlowTransaction,
+	operator::{Operator, bridge::Bridge, stateful::raw::RawStatefulOperator},
 };
 
 #[operator_state]
@@ -93,7 +92,7 @@ impl GateState {
 		}
 	}
 
-	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	fn hydrate_once<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -102,15 +101,15 @@ impl GateState {
 		Ok(())
 	}
 
-	fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	fn flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		self.visibility.flush(store)
 	}
 
-	fn is_visible<S: StateStore>(&mut self, store: &mut S, rn: RowNumber) -> Result<bool> {
+	fn is_visible<S: StateStore + ?Sized>(&mut self, store: &mut S, rn: RowNumber) -> Result<bool> {
 		Ok(self.visibility.get(store, &VisibilityKey(rn))?.is_some())
 	}
 
-	fn mark_visible<S: StateStore>(&mut self, store: &mut S, rn: RowNumber) -> Result<()> {
+	fn mark_visible<S: StateStore + ?Sized>(&mut self, store: &mut S, rn: RowNumber) -> Result<()> {
 		self.visibility.put(
 			store,
 			&VisibilityKey(rn),
@@ -120,7 +119,7 @@ impl GateState {
 		)
 	}
 
-	fn mark_invisible<S: StateStore>(&mut self, store: &mut S, rn: RowNumber) -> Result<()> {
+	fn mark_invisible<S: StateStore + ?Sized>(&mut self, store: &mut S, rn: RowNumber) -> Result<()> {
 		self.visibility.remove(store, &VisibilityKey(rn))
 	}
 
@@ -210,22 +209,22 @@ impl GateOperator {
 		Ok(mask)
 	}
 
-	fn is_visible<T: FlowTransaction>(&mut self, txn: &mut T, rn: RowNumber) -> Result<bool> {
-		self.state.is_visible(&mut OperatorStateStore::new(txn, self.operator), rn)
+	fn is_visible(&mut self, bridge: &mut dyn Bridge, rn: RowNumber) -> Result<bool> {
+		self.state.is_visible(bridge, rn)
 	}
 
-	fn mark_visible<T: FlowTransaction>(&mut self, txn: &mut T, rn: RowNumber) -> Result<()> {
-		self.state.mark_visible(&mut OperatorStateStore::new(txn, self.operator), rn)
+	fn mark_visible(&mut self, bridge: &mut dyn Bridge, rn: RowNumber) -> Result<()> {
+		self.state.mark_visible(bridge, rn)
 	}
 
-	fn mark_invisible<T: FlowTransaction>(&mut self, txn: &mut T, rn: RowNumber) -> Result<()> {
-		self.state.mark_invisible(&mut OperatorStateStore::new(txn, self.operator), rn)
+	fn mark_invisible(&mut self, bridge: &mut dyn Bridge, rn: RowNumber) -> Result<()> {
+		self.state.mark_invisible(bridge, rn)
 	}
 }
 
-impl<T: FlowTransaction> RawStatefulOperator<T> for GateOperator {}
+impl RawStatefulOperator for GateOperator {}
 
-impl<T: FlowTransaction> Operator<T> for GateOperator {
+impl Operator for GateOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -238,8 +237,8 @@ impl<T: FlowTransaction> Operator<T> for GateOperator {
 		self.state.sample()
 	}
 
-	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
-		self.state.hydrate_once(&mut OperatorStateStore::new(txn, self.operator))?;
+	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+		self.state.hydrate_once(bridge)?;
 
 		let mut result = Vec::new();
 
@@ -248,20 +247,20 @@ impl<T: FlowTransaction> Operator<T> for GateOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_gate_insert(txn, &post, &mut result)?,
+				} => self.apply_gate_insert(bridge, &post, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_gate_update(txn, pre, post, &mut result)?,
+				} => self.apply_gate_update(bridge, pre, post, &mut result)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_gate_remove(txn, pre, &mut result)?,
+				} => self.apply_gate_remove(bridge, pre, &mut result)?,
 			}
 		}
 
-		self.state.flush(&mut OperatorStateStore::new(txn, self.operator))?;
+		self.state.flush(bridge)?;
 
 		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
 	}
@@ -274,12 +273,7 @@ impl<T: FlowTransaction> Operator<T> for GateOperator {
 impl GateOperator {
 	#[inline]
 	#[instrument(name = "flow::operator::gate::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_gate_insert<T: FlowTransaction>(
-		&mut self,
-		txn: &mut T,
-		post: &Columns,
-		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	fn apply_gate_insert(&mut self, bridge: &mut dyn Bridge, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
 		if post.row_numbers().is_empty() {
 			let mask = self.evaluate(post)?;
 			let passing_indices: Vec<usize> =
@@ -295,7 +289,7 @@ impl GateOperator {
 		for (i, &pass) in mask.iter().enumerate() {
 			let rn = post.row_numbers()[i];
 			if pass {
-				self.mark_visible(txn, rn)?;
+				self.mark_visible(bridge, rn)?;
 				passing_indices.push(i);
 			}
 		}
@@ -307,9 +301,9 @@ impl GateOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::gate::update", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_gate_update<T: FlowTransaction>(
+	fn apply_gate_update(
 		&mut self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		pre: Columns,
 		post: Columns,
 		result: &mut Vec<Diff>,
@@ -328,10 +322,10 @@ impl GateOperator {
 		let mut insert_indices = Vec::new();
 
 		for (i, (&rn, &mask_val)) in post.row_numbers().iter().zip(mask.iter()).enumerate() {
-			if self.is_visible(txn, rn)? {
+			if self.is_visible(bridge, rn)? {
 				update_indices.push(i);
 			} else if mask_val {
-				self.mark_visible(txn, rn)?;
+				self.mark_visible(bridge, rn)?;
 				insert_indices.push(i);
 			}
 		}
@@ -350,12 +344,7 @@ impl GateOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::gate::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn apply_gate_remove<T: FlowTransaction>(
-		&mut self,
-		txn: &mut T,
-		pre: Columns,
-		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	fn apply_gate_remove(&mut self, bridge: &mut dyn Bridge, pre: Columns, result: &mut Vec<Diff>) -> Result<()> {
 		if pre.row_numbers().is_empty() {
 			result.push(Diff::Remove {
 				pre,
@@ -367,8 +356,8 @@ impl GateOperator {
 		let mut remove_indices = Vec::new();
 		for i in 0..pre.row_numbers().len() {
 			let rn = pre.row_numbers()[i];
-			if self.is_visible(txn, rn)? {
-				self.mark_invisible(txn, rn)?;
+			if self.is_visible(bridge, rn)? {
+				self.mark_invisible(bridge, rn)?;
 				remove_indices.push(i);
 			}
 		}

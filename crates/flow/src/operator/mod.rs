@@ -11,7 +11,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::{timer::Timer, transaction::FlowTransaction};
+use crate::{operator::bridge::Bridge, timer::Timer};
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
@@ -23,6 +23,7 @@ pub fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
 pub mod aggregation;
 pub mod append;
 pub mod apply;
+pub mod bridge;
 pub mod distinct;
 pub mod drops;
 pub mod extend;
@@ -37,22 +38,21 @@ pub mod scan;
 pub mod sink;
 pub mod sort;
 pub mod stateful;
-pub mod store;
 pub mod take;
 pub mod window;
 
-pub trait Operator<T: FlowTransaction>: Send {
+pub trait Operator: Send {
 	fn id(&self) -> OperatorId;
 
 	fn capabilities(&self) -> &[OperatorCapability];
 
-	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change>;
+	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change>;
 
-	fn flush(&mut self, _txn: &mut T) -> Result<()> {
+	fn flush(&mut self, _bridge: &mut dyn Bridge) -> Result<()> {
 		Ok(())
 	}
 
-	fn on_timer(&mut self, _txn: &mut T, _timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, _bridge: &mut dyn Bridge, _timer: Timer) -> Result<Option<Change>> {
 		Ok(None)
 	}
 
@@ -69,7 +69,7 @@ pub trait Operator<T: FlowTransaction>: Send {
 	}
 }
 
-pub type BoxedOperator<T> = Box<dyn Operator<T>>;
+pub type BoxedOperator = Box<dyn Operator>;
 
 pub fn max_input_time(change: &Change) -> Option<DateTime> {
 	change.diffs

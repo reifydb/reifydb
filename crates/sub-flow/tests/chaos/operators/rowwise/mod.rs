@@ -13,8 +13,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	context::FlowContext,
-	operator::{Operator, extend::ExtendOperator, filter::FilterOperator, map::MapOperator},
-	transaction::deferred::DeferredTransaction,
+	operator::{Operator, bridge::Bridge, extend::ExtendOperator, filter::FilterOperator, map::MapOperator},
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -146,36 +145,36 @@ pub enum Rowwise {
 	Extend(ExtendOperator),
 }
 
-impl Operator<DeferredTransaction> for Rowwise {
+impl Operator for Rowwise {
 	fn id(&self) -> OperatorId {
 		match self {
-			Rowwise::Filter(op) => Operator::<DeferredTransaction>::id(op),
-			Rowwise::Map(op) => Operator::<DeferredTransaction>::id(op),
-			Rowwise::Extend(op) => Operator::<DeferredTransaction>::id(op),
+			Rowwise::Filter(op) => Operator::id(op),
+			Rowwise::Map(op) => Operator::id(op),
+			Rowwise::Extend(op) => Operator::id(op),
 		}
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		match self {
-			Rowwise::Filter(op) => Operator::<DeferredTransaction>::capabilities(op),
-			Rowwise::Map(op) => Operator::<DeferredTransaction>::capabilities(op),
-			Rowwise::Extend(op) => Operator::<DeferredTransaction>::capabilities(op),
+			Rowwise::Filter(op) => Operator::capabilities(op),
+			Rowwise::Map(op) => Operator::capabilities(op),
+			Rowwise::Extend(op) => Operator::capabilities(op),
 		}
 	}
 
-	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 		match self {
-			Rowwise::Filter(op) => op.apply(txn, change),
-			Rowwise::Map(op) => op.apply(txn, change),
-			Rowwise::Extend(op) => op.apply(txn, change),
+			Rowwise::Filter(op) => op.apply(bridge, change),
+			Rowwise::Map(op) => op.apply(bridge, change),
+			Rowwise::Extend(op) => op.apply(bridge, change),
 		}
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
 		match self {
-			Rowwise::Filter(op) => Operator::<DeferredTransaction>::output_schema(op),
-			Rowwise::Map(op) => Operator::<DeferredTransaction>::output_schema(op),
-			Rowwise::Extend(op) => Operator::<DeferredTransaction>::output_schema(op),
+			Rowwise::Filter(op) => Operator::output_schema(op),
+			Rowwise::Map(op) => Operator::output_schema(op),
+			Rowwise::Extend(op) => Operator::output_schema(op),
 		}
 	}
 }

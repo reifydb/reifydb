@@ -548,15 +548,13 @@ mod source {
 		},
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
-	use reifydb_flow::{
-		operator::{
-			Operator,
-			scan::{
-				ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator,
-				table::SourceTableOperator, view::SourceViewOperator,
-			},
+	use reifydb_flow::operator::{
+		Operator,
+		bridge::Bridge,
+		scan::{
+			ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
+			view::SourceViewOperator,
 		},
-		transaction::deferred::DeferredTransaction,
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::harness::Harness;
@@ -741,30 +739,26 @@ mod source {
 		Ring(SourceRingBufferOperator),
 	}
 
-	impl Operator<DeferredTransaction> for Op {
+	impl Operator for Op {
 		fn id(&self) -> OperatorId {
 			SOURCE
 		}
 
 		fn capabilities(&self) -> &[reifydb_core::interface::flow::OperatorCapability] {
 			match self {
-				Op::Series(o) => Operator::<DeferredTransaction>::capabilities(o),
-				Op::Table(o) => Operator::<DeferredTransaction>::capabilities(o),
-				Op::View(o) => Operator::<DeferredTransaction>::capabilities(o),
-				Op::Ring(o) => Operator::<DeferredTransaction>::capabilities(o),
+				Op::Series(o) => Operator::capabilities(o),
+				Op::Table(o) => Operator::capabilities(o),
+				Op::View(o) => Operator::capabilities(o),
+				Op::Ring(o) => Operator::capabilities(o),
 			}
 		}
 
-		fn apply(
-			&mut self,
-			txn: &mut reifydb_flow::transaction::deferred::DeferredTransaction,
-			change: Change,
-		) -> reifydb_value::Result<Change> {
+		fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> reifydb_value::Result<Change> {
 			match self {
-				Op::Series(o) => o.apply(txn, change),
-				Op::Table(o) => o.apply(txn, change),
-				Op::View(o) => o.apply(txn, change),
-				Op::Ring(o) => o.apply(txn, change),
+				Op::Series(o) => o.apply(bridge, change),
+				Op::Table(o) => o.apply(bridge, change),
+				Op::View(o) => o.apply(bridge, change),
+				Op::Ring(o) => o.apply(bridge, change),
 			}
 		}
 

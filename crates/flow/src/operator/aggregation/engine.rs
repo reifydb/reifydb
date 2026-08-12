@@ -5,10 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_codec::key::{encode_u64_asc, encode_u128_asc, encoded::EncodedKey};
 use reifydb_core::{
-	interface::{
-		catalog::flow::OperatorId,
-		change::{Change, Diff},
-	},
+	interface::change::{Change, Diff},
 	key::operator_state::GroupId,
 	value::column::columns::Columns,
 };
@@ -25,8 +22,7 @@ use super::{
 	core::Aggregation,
 };
 use crate::{
-	operator::{stateful::utils, store::OperatorStateStore},
-	transaction::FlowTransaction,
+	operator::{bridge::Bridge, stateful::utils},
 	window::{
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor,
@@ -61,17 +57,13 @@ pub(crate) fn partition_group_key(partition: Hash128) -> EncodedKey {
 }
 
 #[instrument(name = "flow::operator::aggregation::intern_groups", level = "trace", skip_all, fields(windows = windows.len()))]
-pub(crate) fn intern_window_groups<T: FlowTransaction>(
-	operator: OperatorId,
-	txn: &mut T,
-	windows: &[(Hash128, u64)],
-) -> Result<WindowGroups> {
+pub(crate) fn intern_window_groups(bridge: &mut dyn Bridge, windows: &[(Hash128, u64)]) -> Result<WindowGroups> {
 	if windows.is_empty() {
 		return Ok(WindowGroups::new());
 	}
 	let keys: Vec<EncodedKey> = windows.iter().map(|(p, w)| window_group_key(*p, *w)).collect();
-	let interned = txn.intern_groups(operator, &keys)?;
-	Ok(windows.iter().copied().zip(interned.into_iter().map(|(id, _)| id)).collect())
+	let interned = bridge.intern_groups(&keys)?;
+	Ok(windows.iter().copied().zip(interned.into_iter().map(|(group, _)| group)).collect())
 }
 
 pub(crate) fn group_of(groups: &WindowGroups, partition: Hash128, window_id: u64) -> GroupId {
@@ -131,9 +123,9 @@ where
 
 #[allow(clippy::too_many_arguments)]
 #[instrument(name = "flow::operator::aggregation::finish", level = "trace", skip_all, fields(buckets = buckets.len()))]
-pub(crate) fn finish_tumbling_engine<T: FlowTransaction>(
+pub(crate) fn finish_tumbling_engine(
 	core: &mut Aggregation,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	change: &Change,
 	buckets: EngineBuckets,
 	group_values: &HashMap<Hash128, Vec<Value>>,
@@ -149,57 +141,53 @@ pub(crate) fn finish_tumbling_engine<T: FlowTransaction>(
 		Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(engine_config))
 	});
 	let results = {
-		let mut store = OperatorStateStore::new(txn, core.operator);
 		let res = engine.apply(
-			&mut store,
+			bridge,
 			buckets,
 			&arrival,
 			|hash, window_start| (group_of(groups, *hash, window_start.to_order()), utils::empty_key()),
 			|| RowAccumulator::new(kinds, grace),
 		)?;
-		engine.flush(&mut store)?;
+		engine.flush(bridge)?;
 		res
 	};
 
-	{
-		let mut store = OperatorStateStore::new(txn, core.operator);
-		for r in &results {
-			let group = group_of(groups, r.group, r.span.start.to_order());
-			let window_start = r.span.start.to_order();
-			let prior_meta = core.engine_meta().get(&mut store, &EngineMetaKey(group))?;
-			let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
-			let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
-			match r.kind {
-				EmitKind::Remove => {
-					engine.reindex_window(
-						&mut store,
-						&r.group,
-						r.span.start,
-						group,
-						&utils::empty_key(),
-						prior_index,
-						None,
-					)?;
-					core.engine_meta().remove(&mut store, &EngineMetaKey(group))?;
-				}
-				EmitKind::Insert | EmitKind::Update => {
-					let batch_max = window_max_ts.get(&(r.group, r.span)).map(|ts| ts.to_order());
-					let last_event_time = prior_last.max(batch_max);
-					let new_index = anchor.of(window_start, last_event_time);
-					engine.reindex_window(
-						&mut store,
-						&r.group,
-						r.span.start,
-						group,
-						&utils::empty_key(),
-						prior_index,
-						new_index,
-					)?;
-					let meta = EngineMeta {
-						last_event_time: last_event_time.unwrap_or_default(),
-					};
-					core.engine_meta().put(&mut store, &EngineMetaKey(group), meta)?;
-				}
+	for r in &results {
+		let group = group_of(groups, r.group, r.span.start.to_order());
+		let window_start = r.span.start.to_order();
+		let prior_meta = core.engine_meta().get(bridge, &EngineMetaKey(group))?;
+		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
+		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
+		match r.kind {
+			EmitKind::Remove => {
+				engine.reindex_window(
+					bridge,
+					&r.group,
+					r.span.start,
+					group,
+					&utils::empty_key(),
+					prior_index,
+					None,
+				)?;
+				core.engine_meta().remove(bridge, &EngineMetaKey(group))?;
+			}
+			EmitKind::Insert | EmitKind::Update => {
+				let batch_max = window_max_ts.get(&(r.group, r.span)).map(|ts| ts.to_order());
+				let last_event_time = prior_last.max(batch_max);
+				let new_index = anchor.of(window_start, last_event_time);
+				engine.reindex_window(
+					bridge,
+					&r.group,
+					r.span.start,
+					group,
+					&utils::empty_key(),
+					prior_index,
+					new_index,
+				)?;
+				let meta = EngineMeta {
+					last_event_time: last_event_time.unwrap_or_default(),
+				};
+				core.engine_meta().put(bridge, &EngineMetaKey(group), meta)?;
 			}
 		}
 	}

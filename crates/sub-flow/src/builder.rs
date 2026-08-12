@@ -6,7 +6,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_core::interface::flow::to_bitmask;
 use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::OperatorId};
-use reifydb_flow::{operator::BoxedOperator, transaction::deferred::DeferredTransaction};
+use reifydb_flow::operator::BoxedOperator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::OperatorLogic;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
@@ -16,8 +16,7 @@ use reifydb_value::{Result, config::Config};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use crate::operator::bridge::{BridgeOperator, BridgeOperatorAdapter};
 
-pub(crate) type OperatorFactory =
-	Arc<dyn Fn(OperatorId, &Config) -> Result<BoxedOperator<DeferredTransaction>> + Send + Sync>;
+pub(crate) type OperatorFactory = Arc<dyn Fn(OperatorId, &Config) -> Result<BoxedOperator> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct CustomOperatorEntry {
@@ -97,9 +96,11 @@ impl FlowConfigurator {
 				factory: Arc::new(|operator, config| {
 					let logic = O::create(operator, config)?;
 					let adapter = BridgeOperatorAdapter::new(logic, operator, O::CAPABILITIES);
-					let bridged: BoxedOperator<DeferredTransaction> = Box::new(
-						BridgeOperator::new(Box::new(adapter), operator, O::CAPABILITIES),
-					);
+					let bridged: BoxedOperator = Box::new(BridgeOperator::new(
+						Box::new(adapter),
+						operator,
+						O::CAPABILITIES,
+					));
 					Ok(bridged)
 				}),
 				abi: None,

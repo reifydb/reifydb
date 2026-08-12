@@ -120,7 +120,7 @@ where
 	}
 
 	#[instrument(name = "flow::window::meta_hydrate", level = "debug", skip_all)]
-	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	fn hydrate_once<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -129,7 +129,7 @@ where
 		Ok(())
 	}
 
-	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn expire_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
 		self.hydrate_once(store)?;
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
@@ -145,7 +145,7 @@ where
 		carry_forward: CF,
 	) -> Result<Vec<WindowResult<G, C, Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		K: Fn(&G, C) -> EncodedKey,
 		NA: Fn() -> Accumulator,
 		BO: Fn(&G, WindowSpan<C>, &Accumulator::Output, Option<&Carry>) -> Option<Output>,
@@ -313,13 +313,13 @@ where
 		Ok(results)
 	}
 
-	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		self.accumulators.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: StateStore>(
+	fn warm_and_load_meta<S: StateStore + ?Sized>(
 		&mut self,
 		store: &mut S,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
@@ -351,7 +351,7 @@ where
 		row_key: &K,
 	) -> Result<SlotResolved>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		K: Fn(&G, C) -> EncodedKey,
 	{
 		let mut survivor_keys: Vec<EncodedKey> = Vec::new();
@@ -397,7 +397,7 @@ where
 			.collect())
 	}
 
-	fn persist_meta<S: StateStore>(
+	fn persist_meta<S: StateStore + ?Sized>(
 		&mut self,
 		store: &mut S,
 		meta_loaded: MetaLoaded<G, C, Carry, Output>,

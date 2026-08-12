@@ -15,30 +15,24 @@
 pub mod oracle;
 
 use rand::RngExt;
-use reifydb_core::{
-	interface::{
-		catalog::{
-			column::{Column, ColumnIndex},
-			flow::OperatorId,
-			id::{ColumnId, NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
-			namespace::Namespace,
-			object::ObjectId,
-			series::SeriesKey,
-			view::{RingBufferView, SeriesView, TableView, View, ViewKind},
-		},
-		change::{Change, Diff},
-		flow::OperatorCapability,
-		resolved::{ResolvedNamespace, ResolvedView},
+use reifydb_core::interface::{
+	catalog::{
+		column::{Column, ColumnIndex},
+		flow::OperatorId,
+		id::{ColumnId, NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+		namespace::Namespace,
+		object::ObjectId,
+		series::SeriesKey,
+		view::{RingBufferView, SeriesView, TableView, View, ViewKind},
 	},
-	value::column::columns::Columns,
+	change::{Change, Diff},
+	flow::OperatorCapability,
+	resolved::{ResolvedNamespace, ResolvedView},
 };
 use reifydb_flow::{
-	operator::{
-		Operator,
-		sink::{
-			DurableSink, ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
-			view::SinkTableViewOperator,
-		},
+	operator::sink::{
+		DurableSink, ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
+		view::SinkTableViewOperator,
 	},
 	transaction::deferred::DeferredTransaction,
 };
@@ -153,7 +147,7 @@ pub enum SinkOp {
 	Ring(SinkRingBufferViewOperator),
 }
 
-impl Operator<DeferredTransaction> for SinkOp {
+impl DurableSink for SinkOp {
 	fn id(&self) -> OperatorId {
 		match self {
 			SinkOp::Table(o) => o.id(),
@@ -176,11 +170,6 @@ impl Operator<DeferredTransaction> for SinkOp {
 			SinkOp::Series(o) => o.apply(txn, change),
 			SinkOp::Ring(o) => o.apply(txn, change),
 		}
-	}
-
-	fn output_schema(&self) -> Option<Columns> {
-		// A durable sink is terminal and never published a schema; all three arms returned None.
-		None
 	}
 }
 
@@ -217,13 +206,7 @@ pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
 				tag: None,
 				sort: vec![],
 			});
-			SinkOp::Series(SinkSeriesViewOperator::new(
-				SINK,
-				resolved(def),
-				SeriesId(9),
-				key,
-				partition_by,
-			))
+			SinkOp::Series(SinkSeriesViewOperator::new(SINK, resolved(def), SeriesId(9), key, partition_by))
 		}
 		Kind::Ring {
 			capacity,
@@ -262,7 +245,7 @@ impl Subject for SinkSubject {
 	fn apply(&mut self, change: Change) -> Result<Change> {
 		let version = change.version;
 		let changed_at = change.changed_at;
-		let entries = self.harness.apply_emitting(change)?;
+		let entries = self.harness.apply_emitting_sink(change)?;
 
 		let mut diffs: Vec<Diff> = Vec::with_capacity(entries.len());
 		for (object, diff) in entries {

@@ -24,11 +24,11 @@ impl<'a> Mint<'a> {
 		EventCoord::of(row)
 	}
 
-	pub fn ordinal<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<OrdinalCoord> {
+	pub fn ordinal<S: StateStore + ?Sized>(&mut self, store: &mut S, group: GroupId) -> Result<OrdinalCoord> {
 		Ok(OrdinalCoord::from_arrival_counter(self.meta.get_and_increment_count(store, group)?))
 	}
 
-	pub fn membership<S: StateStore>(
+	pub fn membership<S: StateStore + ?Sized>(
 		&mut self,
 		store: &mut S,
 		group: GroupId,
@@ -37,7 +37,7 @@ impl<'a> Mint<'a> {
 		self.meta.lookup_row_index(store, group, row_number)
 	}
 
-	pub fn record_membership<S: StateStore>(
+	pub fn record_membership<S: StateStore + ?Sized>(
 		&mut self,
 		store: &mut S,
 		group: GroupId,
@@ -47,7 +47,7 @@ impl<'a> Mint<'a> {
 		self.meta.store_row_index(store, group, row_number, window_id)
 	}
 
-	pub fn drop_membership<S: StateStore>(
+	pub fn drop_membership<S: StateStore + ?Sized>(
 		&mut self,
 		store: &mut S,
 		group: GroupId,

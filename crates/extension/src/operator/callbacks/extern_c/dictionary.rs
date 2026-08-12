@@ -7,7 +7,6 @@ use reifydb_codec::{
 	tag::type_tag_byte,
 	value::{decode_value, encode_value},
 };
-use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sdk::{
 	common::extern_c::wire::{
 		buffer::ExternCBuffer,
@@ -23,7 +22,7 @@ use reifydb_value::value::{
 	dictionary::{DictionaryEntryId, DictionaryId},
 };
 
-use super::{context::get_transaction_mut, marshal::write_buffer};
+use super::{context::get_bridge_mut, marshal::write_buffer};
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_dictionary_id_by_name(
@@ -38,7 +37,7 @@ pub(super) extern "C" fn host_dictionary_id_by_name(
 	}
 
 	// SAFETY: all four pointers are null-checked above; the guest must pass back the ExternCContext the
-	// host handed it for this call (discharging get_transaction_mut), a `name_ptr` valid for reads of
+	// host handed it for this call (discharging get_bridge_mut), a `name_ptr` valid for reads of
 	// `name_len` bytes, and `out_id`/`found` valid and aligned for one u64 and one u8 write.
 	unsafe {
 		let name = match from_utf8(from_raw_parts(name_ptr, name_len)) {
@@ -46,15 +45,19 @@ pub(super) extern "C" fn host_dictionary_id_by_name(
 			Err(_) => return EXTERN_C_ERROR_INVALID_UTF8,
 		};
 
-		let flow_txn = get_transaction_mut(&mut *ctx);
-		match flow_txn.find_dictionary_by_name(name) {
-			Some(dictionary) => {
-				*out_id = dictionary.id.0;
+		let bridge = get_bridge_mut(&mut *ctx);
+		match bridge.dictionary_id_by_name(name) {
+			Ok(Some(id)) => {
+				*out_id = id.0;
 				*found = 1;
+				EXTERN_C_OK
 			}
-			None => *found = 0,
+			Ok(None) => {
+				*found = 0;
+				EXTERN_C_OK
+			}
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
-		EXTERN_C_OK
 	}
 }
 
@@ -81,13 +84,8 @@ pub(super) extern "C" fn host_dictionary_find(
 			Err(_) => return EXTERN_C_ERROR_INTERNAL,
 		};
 
-		let flow_txn = get_transaction_mut(&mut *ctx);
-		let Some(dictionary) = flow_txn.find_dictionary(DictionaryId(dictionary_id)) else {
-			*found = 0;
-			return EXTERN_C_OK;
-		};
-
-		match flow_txn.find_in_dictionary(&dictionary, &value) {
+		let bridge = get_bridge_mut(&mut *ctx);
+		match bridge.dictionary_find(DictionaryId(dictionary_id), &value) {
 			Ok(Some(id)) => {
 				*out_id = id.to_u128();
 				*out_id_type = type_tag_byte(&id.id_type());
@@ -115,20 +113,21 @@ pub(super) extern "C" fn host_dictionary_get(
 	}
 
 	// SAFETY: `ctx` and `output` are null-checked above; the guest must pass back the ExternCContext the
-	// host handed it for this call (discharging get_transaction_mut) and an `output` valid and aligned
+	// host handed it for this call (discharging get_bridge_mut) and an `output` valid and aligned
 	// for one ExternCBuffer write whose buffer it then releases via memory.free.
 	unsafe {
-		let flow_txn = get_transaction_mut(&mut *ctx);
-		let Some(dictionary) = flow_txn.find_dictionary(DictionaryId(dictionary_id)) else {
+		let bridge = get_bridge_mut(&mut *ctx);
+		let dictionary = DictionaryId(dictionary_id);
+		let Some(id_type) = bridge.dictionary_id_type(dictionary) else {
 			return EXTERN_C_NOT_FOUND;
 		};
 
-		let entry_id = match DictionaryEntryId::from_u128(id, dictionary.id_type.clone()) {
+		let entry_id = match DictionaryEntryId::from_u128(id, id_type) {
 			Ok(entry_id) => entry_id,
 			Err(_) => return EXTERN_C_ERROR_INTERNAL,
 		};
 
-		match flow_txn.get_from_dictionary(&dictionary, entry_id) {
+		match bridge.dictionary_get(dictionary, entry_id) {
 			Ok(Some(value)) => match encode_value(&value) {
 				Ok(bytes) => write_buffer(output, &bytes),
 				Err(_) => EXTERN_C_ERROR_INTERNAL,

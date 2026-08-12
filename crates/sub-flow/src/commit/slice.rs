@@ -70,7 +70,7 @@ impl SliceComputer {
 	#[allow(clippy::too_many_arguments)]
 	pub fn compute_pulled(
 		&self,
-		flow_engine: &mut FlowEngineInner<DeferredTransaction>,
+		flow_engine: &mut FlowEngineInner,
 		items: &[Arc<Cdc>],
 		cursor: SliceCursor,
 		advance_to: CommitVersion,
@@ -114,7 +114,7 @@ impl SliceComputer {
 
 	fn skip_or_checkpoint(
 		&self,
-		flow_engine: &mut FlowEngineInner<DeferredTransaction>,
+		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
 		advance_to: CommitVersion,
 		durable_cursor: CommitVersion,
@@ -141,7 +141,7 @@ impl SliceComputer {
 
 	pub(crate) fn resolved_holds(
 		&self,
-		flow_engine: &mut FlowEngineInner<DeferredTransaction>,
+		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
 		state_version: CommitVersion,
 	) -> Result<WatermarkHolds> {
@@ -172,7 +172,7 @@ impl SliceComputer {
 
 	fn compute(
 		&self,
-		flow_engine: &mut FlowEngineInner<DeferredTransaction>,
+		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
 		state_version: CommitVersion,
 		changes: Vec<Change>,
@@ -222,7 +222,7 @@ impl SliceComputer {
 
 	pub fn tick(
 		&self,
-		flow_engine: &mut FlowEngineInner<DeferredTransaction>,
+		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
 		timestamp: DateTime,
 		checkpoint: CommitVersion,
@@ -545,7 +545,7 @@ mod integration {
 	fn pull_step(
 		engine: &StandardEngine,
 		computer: &SliceComputer,
-		flow_engine: &mut FlowEngineInner<DeferredTransaction>,
+		flow_engine: &mut FlowEngineInner,
 		cursor: SliceCursor,
 		config: &SliceConfig,
 		overlay: &mut FlowWriteOverlay,
@@ -571,7 +571,7 @@ mod integration {
 			.expect("compute_pulled"))
 	}
 
-	fn build_flow_engine(engine: &StandardEngine) -> FlowEngineInner<DeferredTransaction> {
+	fn build_flow_engine(engine: &StandardEngine) -> FlowEngineInner {
 		FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
@@ -585,7 +585,7 @@ mod integration {
 
 	fn seeding_txn(
 		engine: &StandardEngine,
-		flow_engine: &FlowEngineInner<DeferredTransaction>,
+		flow_engine: &FlowEngineInner,
 		version: CommitVersion,
 	) -> DeferredTransaction {
 		let (_current, lease) = engine.acquire_current_snapshot_lease().unwrap();

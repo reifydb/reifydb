@@ -5,14 +5,12 @@ use std::{mem, ops::Bound, ptr, slice::from_raw_parts};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::EncodedOperatorRow,
+	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 };
 use reifydb_core::{
-	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, GroupStateKey},
 	state::store::TimerKind,
 };
-use reifydb_flow::{timer::Timer, transaction::FlowTransaction};
 use reifydb_sdk::{
 	common::extern_c::wire::{
 		buffer::ExternCBuffer,
@@ -32,7 +30,7 @@ use reifydb_sdk::{
 use reifydb_value::value::datetime::DateTime;
 
 use super::{
-	context::get_transaction_mut,
+	context::get_bridge_mut,
 	marshal::{encoded_bytes, encoded_key, encoded_keys, state_key, write_buffer},
 	state_iterator::{self, StateIteratorHandle},
 };
@@ -43,9 +41,13 @@ struct StateIteratorInternal {
 	handle: StateIteratorHandle,
 }
 
+fn iterator_entries(entries: Vec<(GroupStateKey, EncodedOperatorRow)>) -> Vec<(GroupStateKey, EncodedBytes)> {
+	entries.into_iter().map(|(key, row)| (key, row.bytes().clone())).collect()
+}
+
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_get(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	key_ptr: *const u8,
 	key_len: usize,
@@ -56,17 +58,17 @@ pub(super) extern "C" fn host_state_get(
 	}
 
 	// SAFETY: `ctx`, `key_ptr` and `output` are null-checked above; the guest must pass back the
-	// ExternCContext the host handed it for this call (discharging get_transaction_mut and state_key), and
+	// ExternCContext the host handed it for this call (discharging get_bridge_mut and state_key), and
 	// an `output` valid and aligned for one ExternCBuffer write that it then frees via memory.free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
-		let flow_txn = get_transaction_mut(ctx_handle);
+		let bridge = get_bridge_mut(ctx_handle);
 
 		let Some(key) = state_key(key_ptr, key_len) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 
-		let result = flow_txn.state_get(OperatorId(operator_id), &key);
+		let result = bridge.state_get(&key);
 
 		match result {
 			Ok(Some(row)) => write_buffer(output, row.bytes().as_slice()),
@@ -78,7 +80,7 @@ pub(super) extern "C" fn host_state_get(
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_set(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	key_ptr: *const u8,
 	key_len: usize,
@@ -94,7 +96,7 @@ pub(super) extern "C" fn host_state_set(
 	// state_key) and a `value_ptr` valid for `value_len` reads (discharging encoded_bytes).
 	unsafe {
 		let ctx_handle = &mut *ctx;
-		let flow_txn = get_transaction_mut(ctx_handle);
+		let bridge = get_bridge_mut(ctx_handle);
 
 		let Some(key) = state_key(key_ptr, key_len) else {
 			return EXTERN_C_ERROR_INTERNAL;
@@ -104,7 +106,7 @@ pub(super) extern "C" fn host_state_set(
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 
-		match flow_txn.state_set(OperatorId(operator_id), &key, row) {
+		match bridge.state_set(&key, row) {
 			Ok(_) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
@@ -113,7 +115,7 @@ pub(super) extern "C" fn host_state_set(
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_remove(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	key_ptr: *const u8,
 	key_len: usize,
@@ -123,17 +125,17 @@ pub(super) extern "C" fn host_state_remove(
 	}
 
 	// SAFETY: `ctx` and `key_ptr` are null-checked above; the guest must pass back the ExternCContext the
-	// host handed it for this call (discharging get_transaction_mut) and a `key_ptr` valid for reads
+	// host handed it for this call (discharging get_bridge_mut) and a `key_ptr` valid for reads
 	// of `key_len` bytes (discharging state_key).
 	unsafe {
 		let ctx_handle = &mut *ctx;
-		let flow_txn = get_transaction_mut(ctx_handle);
+		let bridge = get_bridge_mut(ctx_handle);
 
 		let Some(key) = state_key(key_ptr, key_len) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 
-		match flow_txn.state_remove(OperatorId(operator_id), &key) {
+		match bridge.state_remove(&key) {
 			Ok(_) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
@@ -141,19 +143,18 @@ pub(super) extern "C" fn host_state_remove(
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut ExternCContext) -> i32 {
+pub(super) extern "C" fn host_state_clear(_operator_id: u64, ctx: *mut ExternCContext) -> i32 {
 	if ctx.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: `ctx` is null-checked above and the guest must pass back the ExternCContext the host handed
-	// it for this call, which discharges get_transaction_mut.
+	// it for this call, which discharges get_bridge_mut.
 	unsafe {
 		let ctx_handle = &mut *ctx;
-		let flow_txn = get_transaction_mut(ctx_handle);
-		let operator_id = OperatorId(operator_id);
+		let bridge = get_bridge_mut(ctx_handle);
 
-		let result = flow_txn.state_clear(operator_id);
+		let result = bridge.state_clear();
 
 		match result {
 			Ok(_) => EXTERN_C_OK,
@@ -164,7 +165,7 @@ pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut ExternCCon
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_prefix(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	prefix_ptr: *const u8,
 	prefix_len: usize,
@@ -179,8 +180,7 @@ pub(super) extern "C" fn host_state_prefix(
 	// and an `iterator_out` valid for one pointer write; the handle is freed via state.iterator_free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
-		let flow_txn = get_transaction_mut(ctx_handle);
-		let operator_id = OperatorId(operator_id);
+		let bridge = get_bridge_mut(ctx_handle);
 
 		let prefix_bytes = if prefix_ptr.is_null() {
 			vec![]
@@ -188,16 +188,15 @@ pub(super) extern "C" fn host_state_prefix(
 			from_raw_parts(prefix_ptr, prefix_len).to_vec()
 		};
 
-		let result = if prefix_bytes.is_empty() {
-			flow_txn.state_scan_all(operator_id)
+		let range = if prefix_bytes.is_empty() {
+			EncodedKeyRange::all()
 		} else {
-			let range = EncodedKeyRange::prefix(&prefix_bytes);
-			flow_txn.state_range_all(operator_id, range)
+			EncodedKeyRange::prefix(&prefix_bytes)
 		};
 
-		match result {
-			Ok(batch) => {
-				let handle = state_iterator::create_iterator(batch);
+		match bridge.state_range(range) {
+			Ok(entries) => {
+				let handle = state_iterator::create_iterator(iterator_entries(entries));
 
 				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
 					as *mut StateIteratorInternal;
@@ -227,7 +226,7 @@ const BOUND_EXCLUDED: u8 = 2;
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_get_many(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	keys: *const ExternCKeyRef,
 	keys_len: usize,
@@ -246,8 +245,7 @@ pub(super) extern "C" fn host_state_get_many(
 	// `iterator_out` valid for one pointer write; the handle is freed via state.iterator_free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
-		let flow_txn = get_transaction_mut(ctx_handle);
-		let operator_id = OperatorId(operator_id);
+		let bridge = get_bridge_mut(ctx_handle);
 
 		let key_refs = if keys_len == 0 {
 			&[]
@@ -271,9 +269,9 @@ pub(super) extern "C" fn host_state_get_many(
 			encoded_keys.push(framed);
 		}
 
-		match flow_txn.state_get_many(operator_id, &encoded_keys) {
-			Ok(batch) => {
-				let handle = state_iterator::create_iterator(batch);
+		match bridge.state_get_many(&encoded_keys) {
+			Ok(entries) => {
+				let handle = state_iterator::create_iterator(iterator_entries(entries));
 
 				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
 					as *mut StateIteratorInternal;
@@ -299,7 +297,7 @@ pub(super) extern "C" fn host_state_get_many(
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_range(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	start_ptr: *const u8,
 	start_len: usize,
@@ -319,8 +317,7 @@ pub(super) extern "C" fn host_state_range(
 	// write; the handle is freed via state.iterator_free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
-		let flow_txn = get_transaction_mut(ctx_handle);
-		let operator_id = OperatorId(operator_id);
+		let bridge = get_bridge_mut(ctx_handle);
 
 		let start_bound = match start_bound_type {
 			BOUND_UNBOUNDED => Bound::Unbounded,
@@ -361,11 +358,11 @@ pub(super) extern "C" fn host_state_range(
 		};
 
 		let range = EncodedKeyRange::new(start_bound, end_bound);
-		let result = flow_txn.state_range_all(operator_id, range);
+		let result = bridge.state_range(range);
 
 		match result {
-			Ok(batch) => {
-				let handle = state_iterator::create_iterator(batch);
+			Ok(entries) => {
+				let handle = state_iterator::create_iterator(iterator_entries(entries));
 
 				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
 					as *mut StateIteratorInternal;
@@ -453,7 +450,7 @@ pub(super) extern "C" fn host_state_iterator_free(iterator: *mut ExternCStateIte
 }
 
 pub(super) extern "C" fn host_get_or_create_row_numbers(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	group: u64,
 	keys: *const ExternCKeyRef,
@@ -473,11 +470,11 @@ pub(super) extern "C" fn host_get_or_create_row_numbers(
 	// for this call, `keys` satisfying encoded_keys, and both out arrays valid and aligned for
 	// `keys_len` writes - get_or_create_row_numbers returns exactly one result per key.
 	unsafe {
-		let flow_txn = get_transaction_mut(&mut *ctx);
+		let bridge = get_bridge_mut(&mut *ctx);
 		let Some(encoded_keys) = encoded_keys(keys, keys_len) else {
 			return EXTERN_C_ERROR_NULL_PTR;
 		};
-		match flow_txn.get_or_create_row_numbers(OperatorId(operator_id), GroupId(group), &encoded_keys) {
+		match bridge.get_or_create_row_numbers(GroupId(group), &encoded_keys) {
 			Ok(results) => {
 				for (i, (row_number, is_new)) in results.iter().enumerate() {
 					*row_numbers_out.add(i) = row_number.0;
@@ -491,7 +488,7 @@ pub(super) extern "C" fn host_get_or_create_row_numbers(
 }
 
 pub(super) extern "C" fn host_remove_row_number(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	group: u64,
 	key_ptr: *const u8,
@@ -501,10 +498,13 @@ pub(super) extern "C" fn host_remove_row_number(
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` is null-checked above, as is `key_ptr` whenever `key_len` is non-zero; the guest must
+	// pass back the ExternCContext the host handed it for this call (discharging get_bridge_mut) and a
+	// `key_ptr` valid for reads of `key_len` bytes (discharging encoded_key).
 	unsafe {
-		let flow_txn = get_transaction_mut(&mut *ctx);
+		let bridge = get_bridge_mut(&mut *ctx);
 		let key = encoded_key(key_ptr, key_len);
-		match flow_txn.remove_row_number(OperatorId(operator_id), GroupId(group), &key) {
+		match bridge.remove_row_number(GroupId(group), &key) {
 			Ok(_) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
@@ -512,7 +512,7 @@ pub(super) extern "C" fn host_remove_row_number(
 }
 
 pub(super) extern "C" fn host_remove_row_numbers_below(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	group: u64,
 	upper_ptr: *const u8,
@@ -523,10 +523,14 @@ pub(super) extern "C" fn host_remove_row_numbers_below(
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` and `output` are null-checked above, as is `upper_ptr` whenever `upper_len` is
+	// non-zero; the guest must pass back the ExternCContext the host handed it for this call, an
+	// `upper_ptr` valid for `upper_len` reads (discharging encoded_key) and an `output` valid and aligned
+	// for one ExternCBuffer write whose buffer it then releases via memory.free.
 	unsafe {
-		let flow_txn = get_transaction_mut(&mut *ctx);
+		let bridge = get_bridge_mut(&mut *ctx);
 		let upper = encoded_key(upper_ptr, upper_len);
-		match flow_txn.remove_row_numbers_below(OperatorId(operator_id), GroupId(group), &upper) {
+		match bridge.remove_row_numbers_below(GroupId(group), &upper) {
 			Ok(dropped) => {
 				if dropped.is_empty() {
 					(*output).ptr = ptr::null_mut();
@@ -546,7 +550,7 @@ pub(super) extern "C" fn host_remove_row_numbers_below(
 }
 
 pub(super) extern "C" fn host_arm_timer(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	at_millis: u64,
 	kind: u8,
@@ -564,21 +568,16 @@ pub(super) extern "C" fn host_arm_timer(
 	};
 
 	// SAFETY: `ctx` is null-checked above, as is `key` whenever `key_len` is non-zero; the guest must
-	// pass back the ExternCContext the host handed it for this call (discharging get_transaction_mut) and
+	// pass back the ExternCContext the host handed it for this call (discharging get_bridge_mut) and
 	// a `key` valid for reads of `key_len` bytes, which the zero-length arm never touches.
 	unsafe {
-		let flow_txn = get_transaction_mut(&mut *ctx);
+		let bridge = get_bridge_mut(&mut *ctx);
 		let key = if key_len == 0 {
 			EncodedKey::new(Vec::new())
 		} else {
 			EncodedKey::new(from_raw_parts(key, key_len))
 		};
-		let timer = Timer {
-			at: DateTime::from_millis(at_millis),
-			kind,
-			key,
-		};
-		match flow_txn.arm_timer(OperatorId(operator_id), &timer) {
+		match bridge.arm_timer(DateTime::from_millis(at_millis), kind, &key) {
 			Ok(()) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
@@ -598,23 +597,25 @@ pub(super) extern "C" fn host_flow_watermark(
 	// SAFETY: null-checked above; `ctx` must be the context this host handed to the guest for the
 	// duration of the call, and the out pointers must be valid for writes.
 	unsafe {
-		let flow_txn = get_transaction_mut(&mut *ctx);
-		match flow_txn.flow_watermark() {
-			Some(watermark) => {
+		let bridge = get_bridge_mut(&mut *ctx);
+		match bridge.flow_watermark() {
+			Ok(Some(watermark)) => {
 				*millis_out = watermark.to_millis();
 				*present_out = 1;
+				EXTERN_C_OK
 			}
-			None => {
+			Ok(None) => {
 				*millis_out = 0;
 				*present_out = 0;
+				EXTERN_C_OK
 			}
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
-		EXTERN_C_OK
 	}
 }
 
 pub(super) extern "C" fn host_disarm_timer(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	at_millis: u64,
 	kind: u8,
@@ -632,21 +633,16 @@ pub(super) extern "C" fn host_disarm_timer(
 	};
 
 	// SAFETY: `ctx` is null-checked above, as is `key` whenever `key_len` is non-zero; the guest must
-	// pass back the ExternCContext the host handed it for this call (discharging get_transaction_mut) and
+	// pass back the ExternCContext the host handed it for this call (discharging get_bridge_mut) and
 	// a `key` valid for reads of `key_len` bytes, which the zero-length arm never touches.
 	unsafe {
-		let flow_txn = get_transaction_mut(&mut *ctx);
+		let bridge = get_bridge_mut(&mut *ctx);
 		let key = if key_len == 0 {
 			EncodedKey::new(Vec::new())
 		} else {
 			EncodedKey::new(from_raw_parts(key, key_len))
 		};
-		let timer = Timer {
-			at: DateTime::from_millis(at_millis),
-			kind,
-			key,
-		};
-		match flow_txn.disarm_timer(OperatorId(operator_id), &timer) {
+		match bridge.disarm_timer(DateTime::from_millis(at_millis), kind, &key) {
 			Ok(()) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
@@ -654,7 +650,7 @@ pub(super) extern "C" fn host_disarm_timer(
 }
 
 pub(super) extern "C" fn host_intern_groups(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	groups: *const ExternCKeyRef,
 	groups_len: usize,
@@ -672,11 +668,11 @@ pub(super) extern "C" fn host_intern_groups(
 	// satisfying encoded_keys, and an `ids_out` valid and aligned for `groups_len` u64 writes -
 	// intern_groups returns exactly one id per group.
 	unsafe {
-		let flow_txn = get_transaction_mut(&mut *ctx);
+		let bridge = get_bridge_mut(&mut *ctx);
 		let Some(keys) = encoded_keys(groups, groups_len) else {
 			return EXTERN_C_ERROR_NULL_PTR;
 		};
-		match flow_txn.intern_groups(OperatorId(operator_id), &keys) {
+		match bridge.intern_groups(&keys) {
 			Ok(interned) => {
 				for (index, (group, _)) in interned.iter().enumerate() {
 					*ids_out.add(index) = group.0;
@@ -689,7 +685,7 @@ pub(super) extern "C" fn host_intern_groups(
 }
 
 pub(super) extern "C" fn host_lookup_groups(
-	operator_id: u64,
+	_operator_id: u64,
 	ctx: *mut ExternCContext,
 	groups: *const ExternCKeyRef,
 	groups_len: usize,
@@ -704,19 +700,21 @@ pub(super) extern "C" fn host_lookup_groups(
 
 	// SAFETY: `ctx` is null-checked above, and for a non-zero `groups_len` so are `groups` and
 	// `ids_out`; the guest must pass back the ExternCContext the host handed it for this call, `groups`
-	// satisfying encoded_keys, and an `ids_out` valid and aligned for `groups_len` u64 writes - the
-	// loop below indexes `keys`, which encoded_keys builds one entry per group.
+	// satisfying encoded_keys, and an `ids_out` valid and aligned for `groups_len` u64 writes -
+	// lookup_groups returns exactly one entry per group.
 	unsafe {
-		let flow_txn = get_transaction_mut(&mut *ctx);
+		let bridge = get_bridge_mut(&mut *ctx);
 		let Some(keys) = encoded_keys(groups, groups_len) else {
 			return EXTERN_C_ERROR_NULL_PTR;
 		};
-		for (index, key) in keys.iter().enumerate() {
-			match flow_txn.lookup_group(OperatorId(operator_id), key) {
-				Ok(found) => *ids_out.add(index) = found.map_or(GROUP_ABSENT, |group| group.0),
-				Err(_) => return EXTERN_C_ERROR_INTERNAL,
+		match bridge.lookup_groups(&keys) {
+			Ok(found) => {
+				for (index, group) in found.iter().enumerate() {
+					*ids_out.add(index) = group.map_or(GROUP_ABSENT, |group| group.0);
+				}
+				EXTERN_C_OK
 			}
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
-		EXTERN_C_OK
 	}
 }

@@ -12,10 +12,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_flow::{
-	operator::{Operator, stateful::raw::RawStatefulOperator},
-	transaction::ephemeral::EphemeralTransaction,
-};
+use reifydb_flow::operator::{Operator, bridge::Bridge, stateful::raw::RawStatefulOperator};
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
@@ -44,11 +41,7 @@ pub struct EphemeralSinkSubscriptionOperator {
 }
 
 impl EphemeralSinkSubscriptionOperator {
-	pub fn new(
-		operator: OperatorId,
-		subscription_id: SubscriptionId,
-		delivery: Arc<DeliveryBuffer>,
-	) -> Self {
+	pub fn new(operator: OperatorId, subscription_id: SubscriptionId, delivery: Arc<DeliveryBuffer>) -> Self {
 		Self {
 			plan: Arc::new(EphemeralSinkPlan {
 				operator,
@@ -90,9 +83,9 @@ impl EphemeralSinkPlan {
 	}
 }
 
-impl RawStatefulOperator<EphemeralTransaction> for EphemeralSinkSubscriptionOperator {}
+impl RawStatefulOperator for EphemeralSinkSubscriptionOperator {}
 
-impl Operator<EphemeralTransaction> for EphemeralSinkSubscriptionOperator {
+impl Operator for EphemeralSinkSubscriptionOperator {
 	fn id(&self) -> OperatorId {
 		self.plan.operator
 	}
@@ -101,7 +94,7 @@ impl Operator<EphemeralTransaction> for EphemeralSinkSubscriptionOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, _txn: &mut EphemeralTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 		let plan = self.plan.clone();
 		let state = &mut self.state;
 

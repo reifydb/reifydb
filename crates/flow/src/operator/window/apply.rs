@@ -5,7 +5,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use reifydb_core::{
 	interface::change::{Change, Diff},
 	key::operator_state::{GroupId, IntoGroupStateKey},
-	state::store::StateStore,
 	value::column::columns::Columns,
 };
 use reifydb_value::{
@@ -25,10 +24,9 @@ use crate::{
 				route_into_buckets, slot_coord, window_group_key,
 			},
 		},
+		bridge::Bridge,
 		stateful::utils,
-		store::OperatorStateStore,
 	},
-	transaction::FlowTransaction,
 	window::{
 		coord::{EventCoord, RowSpan},
 		driver::{gate::disarm_seal, sweep::SealSweep},
@@ -73,14 +71,8 @@ fn route_engine_columns(
 	)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn intern_window_group<T: FlowTransaction>(
-	operator: &WindowOperator,
-	txn: &mut T,
-	hash: Hash128,
-	span: WindowSpan<DateTime>,
-) -> Result<()> {
-	txn.intern_group(operator.core.operator, &window_group_key(hash, span.start.to_order()))?;
+fn intern_window_group(bridge: &mut dyn Bridge, hash: Hash128, span: WindowSpan<DateTime>) -> Result<()> {
+	bridge.intern_group(&window_group_key(hash, span.start.to_order()))?;
 	Ok(())
 }
 
@@ -114,9 +106,9 @@ fn push_count_event(
 	group_values.entry(hash).or_insert_with(|| gvals.to_vec());
 }
 
-fn route_count_tumbling<T: FlowTransaction>(
+fn route_count_tumbling(
 	operator: &mut WindowOperator,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	change: &Change,
 	buckets: &mut EngineBuckets,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
@@ -134,10 +126,15 @@ fn route_count_tumbling<T: FlowTransaction>(
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
 				let times = operator.row_times(post, post.row_count())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-					let ordinal = operator.get_and_increment_global_count(txn, *hash)?;
+					let ordinal = operator.get_and_increment_global_count(bridge, *hash)?;
 					let window_id = rows.window_id(ordinal);
-					operator.store_row_index(txn, *hash, post.row_numbers()[row_idx], window_id)?;
-					intern_window_group(operator, txn, *hash, ordinal_window_span(window_id))?;
+					operator.store_row_index(
+						bridge,
+						*hash,
+						post.row_numbers()[row_idx],
+						window_id,
+					)?;
+					intern_window_group(bridge, *hash, ordinal_window_span(window_id))?;
 					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
 					let coord = slot_coord(true, times[row_idx], post.row_numbers()[row_idx].0);
 					push_count_event(
@@ -165,7 +162,7 @@ fn route_count_tumbling<T: FlowTransaction>(
 					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
 					let coord = slot_coord(true, times[row_idx], pre.row_numbers()[row_idx].0);
 					for window_id in
-						operator.lookup_row_index(txn, *hash, pre.row_numbers()[row_idx])?
+						operator.lookup_row_index(bridge, *hash, pre.row_numbers()[row_idx])?
 					{
 						push_count_event(
 							buckets,
@@ -180,7 +177,7 @@ fn route_count_tumbling<T: FlowTransaction>(
 							times[row_idx],
 						);
 					}
-					operator.drop_row_index(txn, *hash, pre.row_numbers()[row_idx])?;
+					operator.drop_row_index(bridge, *hash, pre.row_numbers()[row_idx])?;
 				}
 			}
 			Diff::Update {
@@ -194,22 +191,17 @@ fn route_count_tumbling<T: FlowTransaction>(
 				let times = operator.row_times(post, post.row_count())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 					let row_number = pre.row_numbers()[row_idx];
-					let existing = operator.lookup_row_index(txn, *hash, row_number)?;
+					let existing = operator.lookup_row_index(bridge, *hash, row_number)?;
 					if existing.is_empty() {
-						let ordinal = operator.get_and_increment_global_count(txn, *hash)?;
+						let ordinal = operator.get_and_increment_global_count(bridge, *hash)?;
 						let window_id = rows.window_id(ordinal);
 						operator.store_row_index(
-							txn,
+							bridge,
 							*hash,
 							post.row_numbers()[row_idx],
 							window_id,
 						)?;
-						intern_window_group(
-							operator,
-							txn,
-							*hash,
-							ordinal_window_span(window_id),
-						)?;
+						intern_window_group(bridge, *hash, ordinal_window_span(window_id))?;
 						let contribution =
 							operator.core.build_contribution(post, &post_cols, row_idx);
 						let coord =
@@ -268,11 +260,7 @@ fn route_count_tumbling<T: FlowTransaction>(
 }
 
 #[instrument(name = "flow::operator::window::tumbling", level = "trace", skip_all)]
-pub fn apply_tumbling_engine<T: FlowTransaction>(
-	operator: &mut WindowOperator,
-	txn: &mut T,
-	change: Change,
-) -> Result<Change> {
+pub fn apply_tumbling_engine(operator: &mut WindowOperator, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 	let window_size = operator.size_duration().unwrap_or_default();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 
@@ -284,7 +272,7 @@ pub fn apply_tumbling_engine<T: FlowTransaction>(
 	if operator.is_count_based() {
 		route_count_tumbling(
 			operator,
-			txn,
+			bridge,
 			&change,
 			&mut buckets,
 			&mut group_values,
@@ -352,7 +340,7 @@ pub fn apply_tumbling_engine<T: FlowTransaction>(
 
 	gate_and_arm_seals(
 		operator,
-		txn,
+		bridge,
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
@@ -360,7 +348,7 @@ pub fn apply_tumbling_engine<T: FlowTransaction>(
 		ExpiryAnchor::WindowStart,
 	)?;
 
-	let groups = intern_batch(operator, txn, &arrival)?;
+	let groups = intern_batch(bridge, &arrival)?;
 
 	let engine_config = operator.engine_config();
 	let engine_grace = operator.grace();
@@ -371,7 +359,7 @@ pub fn apply_tumbling_engine<T: FlowTransaction>(
 	};
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
-		txn,
+		bridge,
 		&change,
 		buckets,
 		&group_values,
@@ -387,24 +375,20 @@ pub fn apply_tumbling_engine<T: FlowTransaction>(
 }
 
 #[instrument(name = "flow::operator::window::intern", level = "trace", skip_all, fields(windows = arrival.len()))]
-fn intern_batch<T: FlowTransaction>(
-	operator: &WindowOperator,
-	txn: &mut T,
-	arrival: &[(Hash128, WindowSpan<DateTime>)],
-) -> Result<WindowGroups> {
+fn intern_batch(bridge: &mut dyn Bridge, arrival: &[(Hash128, WindowSpan<DateTime>)]) -> Result<WindowGroups> {
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
-	intern_window_groups(operator.core.operator, txn, &windows)
+	intern_window_groups(bridge, &windows)
 }
 
-fn sliding_insert_anchors<T: FlowTransaction>(
+fn sliding_insert_anchors(
 	operator: &mut WindowOperator,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	hash: Hash128,
 	event_ts: DateTime,
 	is_count: bool,
 ) -> Result<Vec<u64>> {
 	let coord = if is_count {
-		operator.get_and_increment_global_count(txn, hash)?.value()
+		operator.get_and_increment_global_count(bridge, hash)?.value()
 	} else {
 		event_ts.to_order()
 	};
@@ -412,11 +396,7 @@ fn sliding_insert_anchors<T: FlowTransaction>(
 }
 
 #[instrument(name = "flow::operator::window::sliding", level = "trace", skip_all)]
-pub fn apply_sliding_engine<T: FlowTransaction>(
-	operator: &mut WindowOperator,
-	txn: &mut T,
-	change: Change,
-) -> Result<Change> {
+pub fn apply_sliding_engine(operator: &mut WindowOperator, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let is_count = operator.is_count_based();
 	let window_size = operator.size_duration().unwrap_or_default();
@@ -447,22 +427,17 @@ pub fn apply_sliding_engine<T: FlowTransaction>(
 						timestamps[row_idx]
 					};
 					let window_ids =
-						sliding_insert_anchors(operator, txn, *hash, event_ts, is_count)?;
+						sliding_insert_anchors(operator, bridge, *hash, event_ts, is_count)?;
 					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
 					let coord = slot_coord(is_count, event_ts, post.row_numbers()[row_idx].0);
 					for wid in &window_ids {
 						operator.store_row_index(
-							txn,
+							bridge,
 							*hash,
 							post.row_numbers()[row_idx],
 							*wid,
 						)?;
-						intern_window_group(
-							operator,
-							txn,
-							*hash,
-							operator.sliding_window_span(*wid),
-						)?;
+						intern_window_group(bridge, *hash, operator.sliding_window_span(*wid))?;
 						push_count_event(
 							&mut buckets,
 							&mut group_values,
@@ -498,7 +473,9 @@ pub fn apply_sliding_engine<T: FlowTransaction>(
 					};
 					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
 					let coord = slot_coord(is_count, event_ts, pre.row_numbers()[row_idx].0);
-					for wid in operator.lookup_row_index(txn, *hash, pre.row_numbers()[row_idx])? {
+					for wid in
+						operator.lookup_row_index(bridge, *hash, pre.row_numbers()[row_idx])?
+					{
 						push_count_event(
 							&mut buckets,
 							&mut group_values,
@@ -512,7 +489,7 @@ pub fn apply_sliding_engine<T: FlowTransaction>(
 							event_ts,
 						);
 					}
-					operator.drop_row_index(txn, *hash, pre.row_numbers()[row_idx])?;
+					operator.drop_row_index(bridge, *hash, pre.row_numbers()[row_idx])?;
 				}
 			}
 			Diff::Update {
@@ -536,24 +513,23 @@ pub fn apply_sliding_engine<T: FlowTransaction>(
 					} else {
 						timestamps[row_idx]
 					};
-					let existing = operator.lookup_row_index(txn, *hash, row_number)?;
+					let existing = operator.lookup_row_index(bridge, *hash, row_number)?;
 					if existing.is_empty() {
 						let window_ids = sliding_insert_anchors(
-							operator, txn, *hash, event_ts, is_count,
+							operator, bridge, *hash, event_ts, is_count,
 						)?;
 						let contribution =
 							operator.core.build_contribution(post, &post_cols, row_idx);
 						let coord = slot_coord(is_count, event_ts, row_number.0);
 						for wid in &window_ids {
 							operator.store_row_index(
-								txn,
+								bridge,
 								*hash,
 								post.row_numbers()[row_idx],
 								*wid,
 							)?;
 							intern_window_group(
-								operator,
-								txn,
+								bridge,
 								*hash,
 								operator.sliding_window_span(*wid),
 							)?;
@@ -610,7 +586,7 @@ pub fn apply_sliding_engine<T: FlowTransaction>(
 
 	gate_and_arm_seals(
 		operator,
-		txn,
+		bridge,
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
@@ -618,7 +594,7 @@ pub fn apply_sliding_engine<T: FlowTransaction>(
 		ExpiryAnchor::WindowStart,
 	)?;
 
-	let groups = intern_batch(operator, txn, &arrival)?;
+	let groups = intern_batch(bridge, &arrival)?;
 
 	let engine_config = operator.engine_config();
 	let engine_grace = operator.grace();
@@ -629,7 +605,7 @@ pub fn apply_sliding_engine<T: FlowTransaction>(
 	};
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
-		txn,
+		bridge,
 		&change,
 		buckets,
 		&group_values,
@@ -644,9 +620,9 @@ pub fn apply_sliding_engine<T: FlowTransaction>(
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
-fn session_assign<T: FlowTransaction>(
+fn session_assign(
 	operator: &mut WindowOperator,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	hash: Hash128,
 	event_ts: DateTime,
 	kind: &SessionKind,
@@ -655,7 +631,7 @@ fn session_assign<T: FlowTransaction>(
 ) -> Result<Option<u64>> {
 	let mut tracker = match trackers.get(&hash) {
 		Some(&tracker) => tracker,
-		None => operator.load_session_tracker(txn, hash)?,
+		None => operator.load_session_tracker(bridge, hash)?,
 	};
 	let assignment = kind.assign(&mut tracker, EventCoord::of(&event_ts));
 	if let Some(closed) = assignment.closed() {
@@ -668,11 +644,7 @@ fn session_assign<T: FlowTransaction>(
 }
 
 #[instrument(name = "flow::operator::window::session", level = "trace", skip_all)]
-pub fn apply_session_engine<T: FlowTransaction>(
-	operator: &mut WindowOperator,
-	txn: &mut T,
-	change: Change,
-) -> Result<Change> {
+pub fn apply_session_engine(operator: &mut WindowOperator, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let kind = operator.session_kind();
 
@@ -697,7 +669,7 @@ pub fn apply_session_engine<T: FlowTransaction>(
 					let event_ts = timestamps[row_idx];
 					if let Some(session_id) = session_assign(
 						operator,
-						txn,
+						bridge,
 						*hash,
 						event_ts,
 						&kind,
@@ -705,17 +677,12 @@ pub fn apply_session_engine<T: FlowTransaction>(
 						&mut closes,
 					)? {
 						operator.store_row_index(
-							txn,
+							bridge,
 							*hash,
 							post.row_numbers()[row_idx],
 							session_id,
 						)?;
-						intern_window_group(
-							operator,
-							txn,
-							*hash,
-							ordinal_window_span(session_id),
-						)?;
+						intern_window_group(bridge, *hash, ordinal_window_span(session_id))?;
 						let contribution =
 							operator.core.build_contribution(post, &slot_cols, row_idx);
 						let coord = slot_coord(false, event_ts, post.row_numbers()[row_idx].0);
@@ -747,7 +714,7 @@ pub fn apply_session_engine<T: FlowTransaction>(
 					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
 					let coord = slot_coord(false, event_ts, pre.row_numbers()[row_idx].0);
 					for session_id in
-						operator.lookup_row_index(txn, *hash, pre.row_numbers()[row_idx])?
+						operator.lookup_row_index(bridge, *hash, pre.row_numbers()[row_idx])?
 					{
 						push_count_event(
 							&mut buckets,
@@ -762,7 +729,7 @@ pub fn apply_session_engine<T: FlowTransaction>(
 							event_ts,
 						);
 					}
-					operator.drop_row_index(txn, *hash, pre.row_numbers()[row_idx])?;
+					operator.drop_row_index(bridge, *hash, pre.row_numbers()[row_idx])?;
 				}
 			}
 			Diff::Update {
@@ -778,11 +745,11 @@ pub fn apply_session_engine<T: FlowTransaction>(
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = timestamps[row_idx];
 					let existing =
-						operator.lookup_row_index(txn, *hash, pre.row_numbers()[row_idx])?;
+						operator.lookup_row_index(bridge, *hash, pre.row_numbers()[row_idx])?;
 					if existing.is_empty() {
 						if let Some(session_id) = session_assign(
 							operator,
-							txn,
+							bridge,
 							*hash,
 							event_ts,
 							&kind,
@@ -790,14 +757,13 @@ pub fn apply_session_engine<T: FlowTransaction>(
 							&mut closes,
 						)? {
 							operator.store_row_index(
-								txn,
+								bridge,
 								*hash,
 								post.row_numbers()[row_idx],
 								session_id,
 							)?;
 							intern_window_group(
-								operator,
-								txn,
+								bridge,
 								*hash,
 								ordinal_window_span(session_id),
 							)?;
@@ -861,12 +827,12 @@ pub fn apply_session_engine<T: FlowTransaction>(
 	}
 
 	for (hash, tracker) in &trackers {
-		operator.save_session_tracker(txn, *hash, tracker)?;
+		operator.save_session_tracker(bridge, *hash, tracker)?;
 	}
 
 	gate_and_arm_seals(
 		operator,
-		txn,
+		bridge,
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
@@ -874,13 +840,13 @@ pub fn apply_session_engine<T: FlowTransaction>(
 		ExpiryAnchor::LastEvent,
 	)?;
 
-	let groups = intern_batch(operator, txn, &arrival)?;
+	let groups = intern_batch(bridge, &arrival)?;
 
 	let engine_config = operator.engine_config();
 	let engine_grace = operator.grace();
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
-		txn,
+		bridge,
 		&change,
 		buckets,
 		&group_values,
@@ -895,10 +861,9 @@ pub fn apply_session_engine<T: FlowTransaction>(
 
 	let mut disarm: Vec<(Hash128, u64, u64)> = Vec::new();
 	{
-		let operator_id = operator.core.operator;
 		let mut closing: Vec<(Hash128, u64, GroupId)> = Vec::with_capacity(closes.len());
 		for (hash, session_id) in &closes {
-			if let Some(group) = txn.lookup_group(operator_id, &window_group_key(*hash, *session_id))? {
+			if let Some(group) = bridge.lookup_group(&window_group_key(*hash, *session_id))? {
 				closing.push((*hash, *session_id, group));
 			}
 		}
@@ -906,16 +871,15 @@ pub fn apply_session_engine<T: FlowTransaction>(
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
 			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(config))
 		});
-		let mut store = OperatorStateStore::new(txn, operator_id);
 		for (hash, session_id, group) in &closing {
 			let accumulator_key = WindowStateKey::new(*group, utils::empty_key()).into_group_state_key();
-			let meta = operator.core.engine_meta().get(&mut store, &EngineMetaKey(*group))?;
+			let meta = operator.core.engine_meta().get(bridge, &EngineMetaKey(*group))?;
 			let prior_last = meta.as_ref().map(|m| m.last_event_time).unwrap_or(0);
 			if prior_last > 0 {
 				disarm.push((*hash, *session_id, prior_last));
 			}
 			engine.reindex_window(
-				&mut store,
+				bridge,
 				hash,
 				<DateTime as WindowCoord>::from_order(*session_id),
 				*group,
@@ -923,18 +887,16 @@ pub fn apply_session_engine<T: FlowTransaction>(
 				(prior_last > 0).then_some(prior_last),
 				None,
 			)?;
-			store.state_remove(&accumulator_key)?;
-			operator.core.engine_meta().remove(&mut store, &EngineMetaKey(*group))?;
+			bridge.state_remove(&accumulator_key)?;
+			operator.core.engine_meta().remove(bridge, &EngineMetaKey(*group))?;
 		}
 		*operator.core.tumbling_engine_slot() = Some(engine);
 	}
 
 	if !operator.is_count_based() {
-		let operator_id = operator.core.operator;
 		let policy = operator.session_policy();
-		let mut store = OperatorStateStore::new(txn, operator_id);
 		for (hash, session_id, prior_last) in disarm {
-			disarm_seal(&mut store, policy, &window_group_key(hash, session_id), prior_last)?;
+			disarm_seal(bridge, policy, &window_group_key(hash, session_id), prior_last)?;
 		}
 	}
 
@@ -942,9 +904,9 @@ pub fn apply_session_engine<T: FlowTransaction>(
 }
 
 #[instrument(name = "flow::operator::window::gate_seals", level = "trace", skip_all)]
-fn gate_and_arm_seals<T: FlowTransaction>(
+fn gate_and_arm_seals(
 	operator: &mut WindowOperator,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	buckets: &mut EngineBuckets,
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
 	window_max_ts: &HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
@@ -954,23 +916,21 @@ fn gate_and_arm_seals<T: FlowTransaction>(
 	if policy.is_inert() || operator.is_count_based() {
 		return Ok(());
 	}
-	let gate = operator.seal_gate(txn, policy)?;
-	let operator_id = operator.core.operator;
+	let gate = operator.seal_gate(bridge, policy)?;
 	let mut known: Vec<Option<GroupId>> = Vec::with_capacity(buckets.len());
 	for (hash, span) in buckets.keys() {
-		known.push(txn.lookup_group(operator_id, &window_group_key(*hash, span.start.to_order()))?);
+		known.push(bridge.lookup_group(&window_group_key(*hash, span.start.to_order()))?);
 	}
 	let mut sealed: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut rearm: Vec<(Hash128, u64, Option<u64>, u64)> = Vec::new();
 	let mut dropped = 0u64;
 	{
-		let mut store = OperatorStateStore::new(txn, operator_id);
 		for ((key, events), group) in buckets.iter().zip(known) {
 			let prior_last = match group {
 				Some(group) => operator
 					.core
 					.engine_meta()
-					.get(&mut store, &EngineMetaKey(group))?
+					.get(bridge, &EngineMetaKey(group))?
 					.map(|m| m.last_event_time),
 				None => None,
 			};
@@ -990,11 +950,8 @@ fn gate_and_arm_seals<T: FlowTransaction>(
 		}
 	}
 
-	{
-		let mut store = OperatorStateStore::new(txn, operator_id);
-		for (hash, window_start, prior_horizon, horizon) in rearm {
-			gate.arm(&mut store, &window_group_key(hash, window_start), prior_horizon, horizon)?;
-		}
+	for (hash, window_start, prior_horizon, horizon) in rearm {
+		gate.arm(bridge, &window_group_key(hash, window_start), prior_horizon, horizon)?;
 	}
 
 	if sealed.is_empty() {
@@ -1011,27 +968,26 @@ fn gate_and_arm_seals<T: FlowTransaction>(
 
 #[tracing::instrument(name = "flow::window::seal", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
 #[instrument(name = "flow::operator::window::seal", level = "trace", skip_all)]
-fn seal_due_windows<T: FlowTransaction>(
+fn seal_due_windows(
 	operator: &mut WindowOperator,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	fired: FiredAt,
 	policy: SealPolicy,
 ) -> Result<Vec<Diff>> {
 	if policy.is_inert() {
 		return Ok(Vec::new());
 	}
-	operator.advance_seal_ledger(txn, fired)?;
+	operator.advance_seal_ledger(bridge, fired)?;
 	let Some(threshold) = SealSweep::new(policy).horizon(fired) else {
 		return Ok(Vec::new());
 	};
 	let config = operator.engine_config();
 	let expired = {
-		let mut store = OperatorStateStore::new(txn, operator.core.operator);
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
 			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(config))
 		});
-		let res = engine.expire(&mut store, threshold.to_order())?;
-		engine.flush(&mut store)?;
+		let res = engine.expire(bridge, threshold.to_order())?;
+		engine.flush(bridge)?;
 		*operator.core.tumbling_engine_slot() = Some(engine);
 		res
 	};
@@ -1039,25 +995,25 @@ fn seal_due_windows<T: FlowTransaction>(
 	Ok(Vec::new())
 }
 
-pub fn seal_session_engine<T: FlowTransaction>(
+pub fn seal_session_engine(
 	operator: &mut WindowOperator,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
 	let policy = operator.session_policy();
-	seal_due_windows(operator, txn, fired, policy)
+	seal_due_windows(operator, bridge, fired, policy)
 }
 
-pub fn seal_engine_windows<T: FlowTransaction>(
+pub fn seal_engine_windows(
 	operator: &mut WindowOperator,
-	txn: &mut T,
+	bridge: &mut dyn Bridge,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
 	let Some(window_size) = operator.size_duration() else {
 		return Ok(Vec::new());
 	};
 	let policy = SealPolicy::tumbling(window_size, operator.grace());
-	seal_due_windows(operator, txn, fired, policy)
+	seal_due_windows(operator, bridge, fired, policy)
 }
 
 #[cfg(test)]

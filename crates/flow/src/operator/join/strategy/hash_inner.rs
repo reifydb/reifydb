@@ -11,20 +11,20 @@ use super::{
 		emit_update_joined_columns, update_single_row_in_entry,
 	},
 };
-use crate::{
-	operator::join::{
+use crate::operator::{
+	bridge::Bridge,
+	join::{
 		snapshot::{SnapshotJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
 		state::JoinSide,
 	},
-	transaction::FlowTransaction,
 };
 
 pub(crate) struct InnerHashJoin;
 
 impl InnerHashJoin {
-	pub(crate) fn handle_insert_undefined<T: FlowTransaction>(
+	pub(crate) fn handle_insert_undefined(
 		&self,
-		_txn: &mut T,
+		_bridge: &mut dyn Bridge,
 		_post: &Columns,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
@@ -32,9 +32,9 @@ impl InnerHashJoin {
 		Ok(Vec::new())
 	}
 
-	pub(crate) fn handle_remove_undefined<T: FlowTransaction>(
+	pub(crate) fn handle_remove_undefined(
 		&self,
-		_txn: &mut T,
+		_bridge: &mut dyn Bridge,
 		_pre: &Columns,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
@@ -42,9 +42,9 @@ impl InnerHashJoin {
 		Ok(Vec::new())
 	}
 
-	pub(crate) fn handle_update_both_undefined<T: FlowTransaction>(
+	pub(crate) fn handle_update_both_undefined(
 		&self,
-		_txn: &mut T,
+		_bridge: &mut dyn Bridge,
 		_pre: &Columns,
 		_post: &Columns,
 		_row_idx: usize,
@@ -53,9 +53,9 @@ impl InnerHashJoin {
 		Ok(Vec::new())
 	}
 
-	pub(crate) fn handle_insert<T: FlowTransaction>(
+	pub(crate) fn handle_insert(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -69,10 +69,10 @@ impl InnerHashJoin {
 
 		match ctx.side {
 			JoinSide::Left => {
-				add_to_state_entry_batch(txn, &mut ctx.state.left, key_hash, post, indices)?;
+				add_to_state_entry_batch(bridge, &mut ctx.state.left, key_hash, post, indices)?;
 			}
 			JoinSide::Right => {
-				add_to_state_entry_batch(txn, &mut ctx.state.right, key_hash, post, indices)?;
+				add_to_state_entry_batch(bridge, &mut ctx.state.right, key_hash, post, indices)?;
 			}
 		}
 
@@ -87,7 +87,7 @@ impl InnerHashJoin {
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			result.extend(publish_joined(txn, &snapshot_ctx, key_hash, post, indices, false)?);
+			result.extend(publish_joined(bridge, &snapshot_ctx, key_hash, post, indices, false)?);
 			return Ok(result);
 		}
 
@@ -100,14 +100,14 @@ impl InnerHashJoin {
 			operator: ctx.operator,
 		};
 
-		result.extend(emit_joined_columns_batch(txn, post, indices, ctx.side, &emit_ctx)?);
+		result.extend(emit_joined_columns_batch(bridge, post, indices, ctx.side, &emit_ctx)?);
 
 		Ok(result)
 	}
 
-	pub(crate) fn handle_remove<T: FlowTransaction>(
+	pub(crate) fn handle_remove(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -129,12 +129,18 @@ impl InnerHashJoin {
 			match ctx.side {
 				JoinSide::Left => {
 					for &idx in indices {
-						result.extend(withdraw_joined(txn, &snapshot_ctx, key_hash, pre, idx)?);
+						result.extend(withdraw_joined(
+							bridge,
+							&snapshot_ctx,
+							key_hash,
+							pre,
+							idx,
+						)?);
 					}
 				}
 				JoinSide::Right => {
 					for &idx in indices {
-						retire_right(txn, &snapshot_ctx, key_hash, pre.row_numbers()[idx])?;
+						retire_right(bridge, &snapshot_ctx, key_hash, pre.row_numbers()[idx])?;
 					}
 				}
 			}
@@ -152,27 +158,27 @@ impl InnerHashJoin {
 				operator: ctx.operator,
 			};
 
-			result.extend(emit_remove_joined_columns_batch(txn, pre, indices, ctx.side, &emit_ctx)?);
+			result.extend(emit_remove_joined_columns_batch(bridge, pre, indices, ctx.side, &emit_ctx)?);
 		}
 
 		let group = match ctx.side {
-			JoinSide::Left => ctx.state.left.group_of(txn, key_hash)?,
-			JoinSide::Right => ctx.state.right.group_of(txn, key_hash)?,
+			JoinSide::Left => ctx.state.left.group_of(bridge, key_hash)?,
+			JoinSide::Right => ctx.state.right.group_of(bridge, key_hash)?,
 		};
 		for &idx in indices {
 			let row_number = pre.row_numbers()[idx];
 
 			if matches!(ctx.side, JoinSide::Left) {
-				ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
+				ctx.operator.cleanup_left_row_joins(bridge, *row_number)?;
 			}
 
 			if let Some(group) = group {
 				match ctx.side {
 					JoinSide::Left => {
-						ctx.state.left.remove_row_in(txn, group, row_number)?;
+						ctx.state.left.remove_row_in(bridge, group, row_number)?;
 					}
 					JoinSide::Right => {
-						ctx.state.right.remove_row_in(txn, group, row_number)?;
+						ctx.state.right.remove_row_in(bridge, group, row_number)?;
 					}
 				}
 			}
@@ -181,9 +187,9 @@ impl InnerHashJoin {
 		Ok(result)
 	}
 
-	pub(crate) fn handle_update<T: FlowTransaction>(
+	pub(crate) fn handle_update(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],
@@ -195,22 +201,22 @@ impl InnerHashJoin {
 		}
 
 		if keys.pre != keys.post {
-			let mut result = self.handle_remove(txn, pre, indices, keys.pre, ctx)?;
-			result.extend(self.handle_insert(txn, post, indices, keys.post, ctx)?);
+			let mut result = self.handle_remove(bridge, pre, indices, keys.pre, ctx)?;
+			result.extend(self.handle_insert(bridge, post, indices, keys.post, ctx)?);
 			return Ok(result);
 		}
 
 		let mut result = Vec::new();
 		for &row_idx in indices {
-			result.extend(self.update_in_place_one_row(txn, pre, post, row_idx, keys, ctx)?);
+			result.extend(self.update_in_place_one_row(bridge, pre, post, row_idx, keys, ctx)?);
 		}
 		Ok(result)
 	}
 
 	#[inline]
-	fn update_in_place_one_row<T: FlowTransaction>(
+	fn update_in_place_one_row(
 		&self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
@@ -228,9 +234,10 @@ impl InnerHashJoin {
 			};
 			return match ctx.side {
 				JoinSide::Left => {
-					let diffs = resync_joined(txn, &snapshot_ctx, keys, pre, post, row_idx, false)?;
+					let diffs =
+						resync_joined(bridge, &snapshot_ctx, keys, pre, post, row_idx, false)?;
 					update_single_row_in_entry(
-						txn,
+						bridge,
 						&ctx.state.left,
 						keys.pre,
 						pre_row_number,
@@ -240,9 +247,9 @@ impl InnerHashJoin {
 					Ok(diffs)
 				}
 				JoinSide::Right => {
-					retire_right(txn, &snapshot_ctx, keys.pre, pre_row_number)?;
+					retire_right(bridge, &snapshot_ctx, keys.pre, pre_row_number)?;
 					update_single_row_in_entry(
-						txn,
+						bridge,
 						&ctx.state.right,
 						keys.pre,
 						pre_row_number,
@@ -256,7 +263,7 @@ impl InnerHashJoin {
 
 		let updated = match ctx.side {
 			JoinSide::Left => update_single_row_in_entry(
-				txn,
+				bridge,
 				&ctx.state.left,
 				keys.pre,
 				pre_row_number,
@@ -264,7 +271,7 @@ impl InnerHashJoin {
 				row_idx,
 			)?,
 			JoinSide::Right => update_single_row_in_entry(
-				txn,
+				bridge,
 				&ctx.state.right,
 				keys.pre,
 				pre_row_number,
@@ -274,7 +281,7 @@ impl InnerHashJoin {
 		};
 
 		if !updated {
-			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
+			return self.handle_insert(bridge, post, &[row_idx], keys.post, ctx);
 		}
 
 		if ctx.operator.snapshot && matches!(ctx.side, JoinSide::Right) {
@@ -290,6 +297,6 @@ impl InnerHashJoin {
 			operator: ctx.operator,
 		};
 
-		emit_update_joined_columns(txn, pre, post, row_idx, ctx.side, &emit_ctx)
+		emit_update_joined_columns(bridge, pre, post, row_idx, ctx.side, &emit_ctx)
 	}
 }

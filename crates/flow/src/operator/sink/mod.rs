@@ -8,7 +8,6 @@ pub mod view;
 
 use std::sync::LazyLock;
 
-use postcard::from_bytes;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, SourceRowBuilder},
 	shape::{RowFamily, RowShape},
@@ -17,7 +16,6 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			column::Column as CatalogColumn,
-			dictionary::Dictionary,
 			flow::OperatorId,
 			property::{ColumnPropertyKind, ColumnSaturationStrategy},
 		},
@@ -35,14 +33,16 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, row_number::RowNumber},
+	value::{
+		Value,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		identity::IdentityId,
+		row_number::RowNumber,
+		value_type::ValueType,
+	},
 };
 
-use crate::{
-	error::FlowSinkError,
-	timer::Timer,
-	transaction::{FlowTransaction, deferred::DeferredTransaction},
-};
+use crate::{error::FlowSinkError, operator::bridge::Bridge, timer::Timer, transaction::deferred::DeferredTransaction};
 
 /// A durable view sink: the terminal node that writes a flow's output into a table, series or
 /// ring buffer. Unlike an [`crate::operator::Operator`] it needs the whole transaction (raw
@@ -217,36 +217,42 @@ fn stamp_source_row<B: SourceRowBuilder>(
 	Ok((row_number, encoded.freeze_bytes()))
 }
 
-pub(crate) fn decode_dictionary_columns<T: FlowTransaction>(columns: &mut Columns, txn: &mut T) -> Result<()> {
-	let dict_columns: Vec<(usize, Dictionary)> = {
-		let catalog = txn.catalog();
-		columns.iter()
+pub(crate) fn decode_dictionary_columns(columns: &mut Columns, bridge: &mut dyn Bridge) -> Result<()> {
+	let dict_columns: Vec<(usize, DictionaryId, ValueType)> = {
+		let ids: Vec<(usize, DictionaryId)> = columns
+			.iter()
 			.enumerate()
 			.filter_map(|(pos, col)| {
 				if let ColumnBuffer::DictionaryId(container) = col.data() {
-					let dict_id = container.dictionary_id()?;
-					let dictionary = catalog.cache().find_dictionary(dict_id)?;
-					Some((pos, dictionary))
+					Some((pos, container.dictionary_id()?))
 				} else {
 					None
 				}
 			})
-			.collect()
+			.collect();
+		ids.into_iter()
+			.map(|(pos, id)| {
+				let value_type = bridge.dictionary_value_type(id).ok_or_else(|| {
+					Error::from(FlowSinkError::DictionaryNotFound {
+						dictionary_id: format!("{:?}", id),
+						column: columns.name_at(pos).to_string(),
+					})
+				})?;
+				Ok((pos, id, value_type))
+			})
+			.collect::<Result<Vec<_>>>()?
 	};
 
-	let registry = txn.dictionary_allocators();
-	for (col_pos, dictionary) in &dict_columns {
-		let col = &columns[*col_pos];
-		let row_count = col.len();
-		let mut new_data = ColumnBuffer::with_capacity(dictionary.value_type.clone(), row_count);
+	for (col_pos, dictionary, value_type) in &dict_columns {
+		let row_count = columns[*col_pos].len();
+		let mut new_data = ColumnBuffer::with_capacity(value_type.clone(), row_count);
 
 		for row_idx in 0..row_count {
-			let id_value = col.get_value(row_idx);
+			let id_value = columns[*col_pos].get_value(row_idx);
 			let value = match DictionaryEntryId::from_value(&id_value) {
-				Some(entry_id) => match registry.get(dictionary, entry_id.to_u128())? {
-					Some(bytes) => from_bytes(&bytes).unwrap_or(Value::none()),
-					None => Value::none(),
-				},
+				Some(entry_id) => {
+					bridge.dictionary_get(*dictionary, entry_id)?.unwrap_or(Value::none())
+				}
 				None => Value::none(),
 			};
 			new_data.push_value(value);
@@ -278,7 +284,10 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::transaction::{DeferredParams, deferred::DeferredTransaction, substrate::FlowSubstrate};
+	use crate::{
+		operator::bridge::FlowBridge,
+		transaction::{DeferredParams, deferred::DeferredTransaction, substrate::FlowSubstrate},
+	};
 
 	fn flow_txn(engine: &TestEngine, registry: &DictionaryAllocatorRegistry) -> DeferredTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
@@ -296,10 +305,14 @@ mod tests {
 	}
 
 	fn dictionary_column(dictionary: &Dictionary, entry_id: DictionaryEntryId) -> Columns {
+		dictionary_column_with_id(dictionary.id, entry_id)
+	}
+
+	fn dictionary_column_with_id(dictionary: DictionaryId, entry_id: DictionaryEntryId) -> Columns {
 		let mut buffer = ColumnBuffer::with_capacity(ValueType::DictionaryId, 1);
 		buffer.push_value(entry_id.to_value());
 		if let ColumnBuffer::DictionaryId(container) = &mut buffer {
-			container.set_dictionary_id(dictionary.id);
+			container.set_dictionary_id(dictionary);
 		}
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("m"), buffer)],
@@ -398,7 +411,7 @@ mod tests {
 			let mut txn = flow_txn(&engine, &decode_registry);
 			let mut columns = dictionary_column(&dictionary, entry_id.clone());
 			let before = decode_store.read_count();
-			decode_dictionary_columns(&mut columns, &mut txn).unwrap();
+			decode_dictionary_columns(&mut columns, &mut FlowBridge::new(&mut txn, OperatorId(1))).unwrap();
 			assert_eq!(
 				decode_store.read_count() - before,
 				1,
@@ -411,7 +424,7 @@ mod tests {
 			let mut txn = flow_txn(&engine, &decode_registry);
 			let mut columns = dictionary_column(&dictionary, entry_id);
 			let before = decode_store.read_count();
-			decode_dictionary_columns(&mut columns, &mut txn).unwrap();
+			decode_dictionary_columns(&mut columns, &mut FlowBridge::new(&mut txn, OperatorId(1))).unwrap();
 			assert_eq!(
 				decode_store.read_count() - before,
 				0,
@@ -419,5 +432,27 @@ mod tests {
 			);
 			assert_eq!(columns[0].get_value(0), Value::Utf8("sol".to_string()));
 		}
+	}
+
+	#[test]
+	fn a_dictionary_column_whose_dictionary_is_gone_fails_the_decode() {
+		// An unresolvable dictionary must fail the decode; skipping the column emits raw internal ids as user
+		// values.
+		let engine = TestEngine::new();
+		let single = engine.begin_admin(IdentityId::system()).unwrap().single.clone();
+		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)));
+		let mut txn = flow_txn(&engine, &registry);
+
+		let mut columns = dictionary_column_with_id(DictionaryId(9999), DictionaryEntryId::U2(1));
+		let err = decode_dictionary_columns(&mut columns, &mut FlowBridge::new(&mut txn, OperatorId(1)))
+			.expect_err("a dictionary missing from the catalog must fail the decode");
+
+		assert_eq!(err.code, "FLOW_037", "expected FLOW_037, got {:?}: {}", err.code, err.message);
+		assert!(err.message.contains("9999"), "the error must name the missing dictionary: {}", err.message);
+		assert_eq!(
+			columns[0].get_value(0),
+			DictionaryEntryId::U2(1).to_value(),
+			"the column must be left as-is rather than partly rewritten"
+		);
 	}
 }

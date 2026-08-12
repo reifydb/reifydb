@@ -31,7 +31,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, node_prefix},
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		ringbuffer::RingBufferMetadataKey,
 		row::RowKey,
@@ -42,6 +42,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_macro::operator_state;
+use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -62,10 +63,7 @@ use super::{
 };
 use crate::{
 	error::FlowStateError,
-	operator::{
-		join::column::JoinedColumnsBuilder,
-		stateful::{StateIterator, utils},
-	},
+	operator::{bridge::FlowBridge, join::column::JoinedColumnsBuilder, stateful::StateIterator},
 	timer::Timer,
 	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
@@ -449,19 +447,20 @@ fn decode_u64(row: &EncodedOperatorRow, state: &'static str) -> Result<u64> {
 
 impl SinkRingBufferViewOperator {
 	fn state_get(&self, txn: &mut DeferredTransaction, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
-		utils::state_get(self.operator, txn, key)
+		txn.state_get(self.operator, key)
 	}
 
 	fn state_set(&self, txn: &mut DeferredTransaction, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
-		utils::state_set(self.operator, txn, key, row)
+		txn.state_set(self.operator, key, row)
 	}
 
 	fn state_remove(&self, txn: &mut DeferredTransaction, key: &GroupStateKey) -> Result<()> {
-		utils::state_remove(self.operator, txn, key)
+		txn.state_remove(self.operator, key)
 	}
 
 	fn state_range<'a>(&self, txn: &'a mut DeferredTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
-		utils::state_range(self.operator, txn, range)
+		let prefixed = range.with_prefix(EncodedKey::new(node_prefix(self.operator)));
+		StateIterator::new(txn.range(prefixed, RangeScope::All, 1024))
 	}
 }
 
@@ -953,7 +952,7 @@ impl SinkRingBufferViewOperator {
 			.collect();
 		let mut evicted = Columns::with_system(storage_columns, SystemColumns::default());
 		evicted.append_rows(shape, evicted_bytes_vec, evicted_rns)?;
-		decode_dictionary_columns(&mut evicted, txn)?;
+		decode_dictionary_columns(&mut evicted, &mut FlowBridge::new(txn, self.operator))?;
 		Ok(Some(Diff::remove(evicted)))
 	}
 

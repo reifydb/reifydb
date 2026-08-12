@@ -9,23 +9,22 @@ use reifydb_core::{
 use reifydb_value::{Result, value::duration::Duration};
 
 use crate::{
-	operator::{BoxedOperator, Operator, max_input_time, stamp_output_time},
+	operator::{BoxedOperator, Operator, bridge::Bridge, max_input_time, stamp_output_time},
 	timer::Timer,
-	transaction::FlowTransaction,
 };
 
-pub struct ApplyOperator<T: FlowTransaction> {
+pub struct ApplyOperator {
 	parent_schema: Option<Columns>,
 	operator: OperatorId,
-	inner: BoxedOperator<T>,
+	inner: BoxedOperator,
 	_ttl: Option<Duration>,
 }
 
-impl<T: FlowTransaction> ApplyOperator<T> {
+impl ApplyOperator {
 	pub fn new(
 		parent_schema: Option<Columns>,
 		operator: OperatorId,
-		inner: BoxedOperator<T>,
+		inner: BoxedOperator,
 		ttl: Option<Duration>,
 	) -> Self {
 		Self {
@@ -41,7 +40,7 @@ impl<T: FlowTransaction> ApplyOperator<T> {
 	}
 }
 
-impl<T: FlowTransaction> Operator<T> for ApplyOperator<T> {
+impl Operator for ApplyOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -54,20 +53,20 @@ impl<T: FlowTransaction> Operator<T> for ApplyOperator<T> {
 		self.inner.seal_span()
 	}
 
-	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 		let inherited = max_input_time(&change);
-		let mut out = self.inner.apply(txn, change)?;
+		let mut out = self.inner.apply(bridge, change)?;
 		stamp_output_time(&mut out, inherited);
 		Ok(out)
 	}
 
-	fn flush(&mut self, txn: &mut T) -> Result<()> {
-		self.inner.flush(txn)
+	fn flush(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
+		self.inner.flush(bridge)
 	}
 
-	fn on_timer(&mut self, txn: &mut T, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, bridge: &mut dyn Bridge, timer: Timer) -> Result<Option<Change>> {
 		let at = timer.at;
-		let mut out = self.inner.on_timer(txn, timer)?;
+		let mut out = self.inner.on_timer(bridge, timer)?;
 		if let Some(change) = out.as_mut() {
 			stamp_output_time(change, Some(at));
 		}
@@ -89,7 +88,7 @@ mod tests {
 	use reifydb_value::{Result, value::duration::Duration};
 
 	use super::ApplyOperator;
-	use crate::{operator::{Operator, scale_from_millis}, transaction::deferred::DeferredTransaction};
+	use crate::operator::{Operator, bridge::Bridge, scale_from_millis};
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("representable duration")
@@ -113,7 +112,7 @@ mod tests {
 		seal: Option<Duration>,
 	}
 
-	impl Operator<DeferredTransaction> for SealingInner {
+	impl Operator for SealingInner {
 		fn id(&self) -> OperatorId {
 			OperatorId(7)
 		}
@@ -122,7 +121,7 @@ mod tests {
 			&[]
 		}
 
-		fn apply(&mut self, _txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+		fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 

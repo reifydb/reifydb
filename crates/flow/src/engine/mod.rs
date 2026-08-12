@@ -28,10 +28,7 @@ use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,
 };
-use reifydb_runtime::{
-	context::{RuntimeContext, clock::Clock},
-	sync::rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard},
-};
+use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use tracing::instrument;
 
 use crate::{
@@ -39,13 +36,13 @@ use crate::{
 		BoxedOperator, Operator, metrics::OperatorSampleRegistry, provider::OperatorProvider,
 		sink::BoxedDurableSink,
 	},
-	transaction::{FlowTransaction, substrate::FlowSubstrate},
+	transaction::substrate::FlowSubstrate,
 };
 
-pub struct FlowEngineInner<T: FlowTransaction> {
+pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,
 	pub(crate) routines: Routines,
-	pub(crate) operators: BTreeMap<OperatorId, BoxedOperator<T>>,
+	pub(crate) operators: BTreeMap<OperatorId, BoxedOperator>,
 	pub(crate) durable_sinks: BTreeMap<OperatorId, BoxedDurableSink>,
 	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
 	pub(crate) sources: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
@@ -55,61 +52,12 @@ pub struct FlowEngineInner<T: FlowTransaction> {
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
 	pub(crate) runtime_context: RuntimeContext,
-	pub(crate) operator_provider: Arc<dyn OperatorProvider<T>>,
+	pub(crate) operator_provider: Arc<dyn OperatorProvider>,
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
 }
 
-pub struct FlowEngine<T: FlowTransaction> {
-	inner: Arc<RwLock<FlowEngineInner<T>>>,
-}
-
-impl<T: FlowTransaction> Clone for FlowEngine<T> {
-	fn clone(&self) -> Self {
-		Self {
-			inner: self.inner.clone(),
-		}
-	}
-}
-
-impl<T: FlowTransaction> FlowEngine<T> {
-	#[allow(clippy::too_many_arguments)]
-	pub fn new(
-		catalog: Catalog,
-		routines: Routines,
-		event_bus: EventBus,
-		runtime_context: RuntimeContext,
-		operator_provider: Arc<dyn OperatorProvider<T>>,
-		substrate: FlowSubstrate,
-		operator_samples: OperatorSampleRegistry,
-	) -> Self {
-		Self {
-			inner: Arc::new(RwLock::new(FlowEngineInner::new(
-				catalog,
-				routines,
-				event_bus,
-				runtime_context,
-				operator_provider,
-				substrate,
-				operator_samples,
-			))),
-		}
-	}
-
-	pub fn read(&self) -> RwLockReadGuard<'_, FlowEngineInner<T>> {
-		self.inner.read()
-	}
-
-	pub fn read_recursive(&self) -> RwLockReadGuard<'_, FlowEngineInner<T>> {
-		self.inner.read_recursive()
-	}
-
-	pub fn write(&self) -> RwLockWriteGuard<'_, FlowEngineInner<T>> {
-		self.inner.write()
-	}
-}
-
-impl<T: FlowTransaction> FlowEngineInner<T> {
+impl FlowEngineInner {
 	#[instrument(
 		name = "flow::engine::new",
 		level = "debug",
@@ -121,7 +69,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		routines: Routines,
 		event_bus: EventBus,
 		runtime_context: RuntimeContext,
-		operator_provider: Arc<dyn OperatorProvider<T>>,
+		operator_provider: Arc<dyn OperatorProvider>,
 		substrate: FlowSubstrate,
 		operator_samples: OperatorSampleRegistry,
 	) -> Self {
@@ -166,11 +114,11 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		&self.substrate
 	}
 
-	pub fn operator(&self, operator_id: OperatorId) -> Option<&dyn Operator<T>> {
+	pub fn operator(&self, operator_id: OperatorId) -> Option<&dyn Operator> {
 		self.operators.get(&operator_id).map(|operator| &**operator)
 	}
 
-	pub fn insert_operator(&mut self, operator_id: OperatorId, operator: BoxedOperator<T>) {
+	pub fn insert_operator(&mut self, operator_id: OperatorId, operator: BoxedOperator) {
 		self.operators.insert(operator_id, operator);
 	}
 
@@ -268,10 +216,7 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
-	use crate::{
-		operator::{provider::EmptyOperatorProvider, scan::series::SourceSeriesOperator},
-		transaction::deferred::DeferredTransaction,
-	};
+	use crate::operator::{provider::EmptyOperatorProvider, scan::series::SourceSeriesOperator};
 
 	#[test]
 	fn removing_a_flow_drops_its_operators_state() {
@@ -280,7 +225,7 @@ mod tests {
 		// Mutation falsified against: removing the drop_operator_state call from remove_flow (per-operator
 		// bytes and the process-wide total both stay non-zero).
 		let engine = TestEngine::new();
-		let mut inner = FlowEngineInner::<DeferredTransaction>::new(
+		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
 			engine.event_bus().clone(),

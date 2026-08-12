@@ -1,22 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{marker::PhantomData, mem, ops::Bound, slice::from_ref};
+use std::{marker::PhantomData, mem, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{
-		bytes::EncodedBytes,
-		operator::{EncodedOperatorRow, OperatorState},
-	},
+	row::operator::{EncodedOperatorRow, OperatorState},
 };
 use reifydb_core::{
-	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator_state::{GroupId, GroupStateKey},
 	state::store::TimerKind,
 };
-use reifydb_flow::window::event::Polarity;
+use reifydb_flow::{operator::bridge::Bridge, window::event::Polarity};
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
@@ -25,58 +21,23 @@ use reifydb_sdk::{
 		state::{decode_payload, encode_payload},
 	},
 };
-use reifydb_value::{
-	Result,
-	error::Error as ValueError,
-	value::{
-		Value,
-		datetime::DateTime,
-		dictionary::{DictionaryEntryId, DictionaryId},
-		row_number::RowNumber,
-	},
+use reifydb_value::value::{
+	Value,
+	datetime::DateTime,
+	dictionary::{DictionaryEntryId, DictionaryId},
+	row_number::RowNumber,
 };
-
-pub trait Bridge {
-	fn written_at(&self) -> DateTime;
-	fn version(&self) -> CommitVersion;
-
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedBytes>>;
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedBytes)>>;
-	fn state_set(&mut self, key: &GroupStateKey, value: EncodedBytes) -> Result<()>;
-	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
-	fn state_clear(&mut self) -> Result<()>;
-	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedBytes)>>;
-
-	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>>;
-	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
-	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
-	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
-	fn flow_watermark(&mut self) -> Result<Option<DateTime>>;
-	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
-	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
-	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
-
-	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
-	fn dictionary_find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>>;
-	fn dictionary_get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>>;
-
-	fn state_get_many_visit(
-		&mut self,
-		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(&GroupStateKey, &EncodedBytes) -> SdkResult<()>,
-	) -> SdkResult<()>;
-}
 
 fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
 }
 
-fn decode<T: OperatorState>(bytes: &EncodedBytes) -> SdkResult<T> {
-	decode_payload(&EncodedOperatorRow::try_from(bytes.clone()).map_err(ValueError::from)?)
+fn decode<T: OperatorState>(row: &EncodedOperatorRow) -> SdkResult<T> {
+	decode_payload(row)
 }
 
-fn encode<T: OperatorState>(value: &T, now: DateTime) -> SdkResult<EncodedBytes> {
-	Ok(encode_payload(value, now)?.into_bytes())
+fn encode<T: OperatorState>(value: &T, now: DateTime) -> SdkResult<EncodedOperatorRow> {
+	encode_payload(value, now)
 }
 
 pub struct BridgeOperatorContext<'a> {
@@ -222,16 +183,13 @@ impl StateApi for BridgeState<'_> {
 	fn get_bytes(&self, key: &GroupStateKey) -> SdkResult<Option<EncodedOperatorRow>> {
 		// SAFETY: bridge is the &'a mut dyn Bridge BridgeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
-			Some(row) => Ok(Some(EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)),
-			None => Ok(None),
-		}
+		unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)
 	}
 
 	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> SdkResult<()> {
 		// SAFETY: bridge is the &'a mut dyn Bridge BridgeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.bridge).state_set(key, payload.into_bytes()) }.map_err(to_sdk_err)
+		unsafe { (*self.bridge).state_set(key, payload) }.map_err(to_sdk_err)
 	}
 
 	fn get_many_bytes_visit(
@@ -242,12 +200,8 @@ impl StateApi for BridgeState<'_> {
 		// SAFETY: bridge is the &'a mut dyn Bridge BridgeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
 		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
-		unsafe {
-			(*self.bridge).state_get_many_visit(keys, &mut |k, row| {
-				let bytes = EncodedOperatorRow::try_from(row.clone()).map_err(ValueError::from)?;
-				visit(k.clone(), bytes)
-			})
-		}
+		unsafe { (*self.bridge).state_get_many_visit(keys, &mut |k, row| Ok(visit(k, row)?)) }
+			.map_err(to_sdk_err)
 	}
 
 	fn range_bytes_visit(
@@ -264,8 +218,7 @@ impl StateApi for BridgeState<'_> {
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
 		for (k, row) in rows {
-			let bytes = EncodedOperatorRow::try_from(row).map_err(ValueError::from)?;
-			visit(k, bytes)?;
+			visit(k, row)?;
 		}
 		Ok(())
 	}
@@ -330,7 +283,11 @@ impl OperatorContext for BridgeOperatorContext<'_> {
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<GroupId>> {
 		// SAFETY: bridge is the &'a mut dyn Bridge this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.bridge).intern_groups(groups) }.map_err(to_sdk_err)
+		Ok(unsafe { (*self.bridge).intern_groups(groups) }
+			.map_err(to_sdk_err)?
+			.into_iter()
+			.map(|(group, _)| group)
+			.collect())
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<Option<GroupId>>> {
 		// SAFETY: bridge is the &'a mut dyn Bridge this context was built from; PhantomData keeps
@@ -356,11 +313,7 @@ impl OperatorContext for BridgeOperatorContext<'_> {
 	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<(RowNumber, bool)> {
 		// SAFETY: bridge is the &'a mut dyn Bridge this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		Ok(unsafe { (*self.bridge).get_or_create_row_numbers(group, from_ref(key)) }
-			.map_err(to_sdk_err)?
-			.into_iter()
-			.next()
-			.unwrap())
+		unsafe { (*self.bridge).get_or_create_row_number(group, key) }.map_err(to_sdk_err)
 	}
 	fn get_or_create_row_numbers(
 		&mut self,

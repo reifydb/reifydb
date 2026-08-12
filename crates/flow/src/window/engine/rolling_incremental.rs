@@ -74,12 +74,12 @@ where
 		}
 	}
 
-	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn expire_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
 		self.hydrate_once(store)?;
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
-	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	fn hydrate_once<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -99,7 +99,7 @@ where
 		combine_running: CR,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		K: Fn(&G) -> EncodedKey,
 		WC: Fn(&Accumulator::Output) -> Running::Contribution,
 		CR: Fn(&G, &Running, &Accumulator::Output, C) -> Option<Output>,
@@ -247,14 +247,14 @@ where
 		Ok(results)
 	}
 
-	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		self.buffers.flush(store)?;
 		self.running.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: StateStore>(
+	fn warm_and_load_meta<S: StateStore + ?Sized>(
 		&mut self,
 		store: &mut S,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
@@ -286,7 +286,7 @@ where
 		row_key: &K,
 	) -> Result<BufferRows<G>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		K: Fn(&G) -> EncodedKey,
 	{
 		let mut buffer_rows: BufferRows<G> = HashMap::new();
@@ -328,7 +328,7 @@ where
 		Ok(buffer_rows)
 	}
 
-	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		persist_batch_meta(store, &mut self.meta, meta_loaded)
 	}
 }

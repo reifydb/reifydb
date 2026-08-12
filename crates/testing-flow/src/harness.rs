@@ -20,7 +20,7 @@ use reifydb_core::{
 	state::store::TimerKind,
 };
 use reifydb_flow::{
-	operator::{Operator, apply::ApplyOperator},
+	operator::{Operator, apply::ApplyOperator, bridge::FlowBridge, sink::DurableSink},
 	timer::Timer,
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
@@ -46,7 +46,7 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 
-pub struct Harness<O: Operator<DeferredTransaction>> {
+pub struct Harness<O> {
 	engine: TestEngine,
 	operator: O,
 	clock: MockClock,
@@ -56,7 +56,7 @@ pub struct Harness<O: Operator<DeferredTransaction>> {
 	catalog: Catalog,
 }
 
-impl<O: Operator<DeferredTransaction>> Harness<O> {
+impl<O> Harness<O> {
 	pub fn new(build: impl FnOnce(RuntimeContext) -> O) -> Self {
 		Self::with_engine(|_, runtime| build(runtime))
 	}
@@ -83,79 +83,6 @@ impl<O: Operator<DeferredTransaction>> Harness<O> {
 			substrate,
 			catalog: Catalog::testing(),
 		}
-	}
-}
-
-impl Harness<ApplyOperator<DeferredTransaction>> {
-	pub fn guest<C: OperatorLogic + 'static>(
-		logic: C,
-		operator: OperatorId,
-		capabilities: &'static [OperatorCapability],
-		ttl: Option<Duration>,
-	) -> Self {
-		Self::new(|_| {
-			let bridged = BridgeOperator::new(
-				Box::new(BridgeOperatorAdapter::new(logic, operator, capabilities)),
-				operator,
-				capabilities,
-			);
-			ApplyOperator::new(None, operator, Box::new(bridged), ttl)
-		})
-	}
-
-	pub fn guest_from_config<C: OperatorLogic + 'static>(
-		operator: OperatorId,
-		capabilities: &'static [OperatorCapability],
-		config: Vec<(&str, Value)>,
-		ttl: Option<Duration>,
-	) -> Result<Self> {
-		let config = Config::new("operator", config.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
-		Ok(Self::guest(C::create(operator, &config)?, operator, capabilities, ttl))
-	}
-}
-
-impl<O: Operator<DeferredTransaction>> Harness<O> {
-	pub fn with_dictionaries(mut self) -> Self {
-		self.catalog = self.engine.inner().catalog().clone();
-		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
-		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)));
-		self.substrate = FlowSubstrate::with_dictionary(registry, self.engine.inner().operator_state());
-		self
-	}
-
-	pub fn dictionary_registry(&self) -> DictionaryAllocatorRegistry {
-		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
-		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)))
-	}
-
-	pub fn engine(&self) -> &TestEngine {
-		&self.engine
-	}
-
-	pub fn footprint(&mut self) -> Result<StateFootprint> {
-		let operator = self.operator.id();
-		let mut txn = self.begin(DateTime::default());
-		let batch = txn.state_range(operator, EncodedKeyRange::all(), None, "test::harness")?;
-		let mut footprint = StateFootprint::default();
-		for item in &batch.items {
-			let decoded = OperatorStateKey::decode(&item.key);
-			match decoded {
-				Some(state) if state.keyspace.is_identity() => footprint.identity_rows += 1,
-				Some(state) if state.group.is_root() => footprint.node_scoped_data_rows += 1,
-				_ => footprint.data_rows += 1,
-			}
-		}
-		self.end(txn);
-		Ok(footprint)
-	}
-
-	pub fn state_items(&mut self) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
-		let operator = self.operator.id();
-		let mut txn = self.begin(DateTime::default());
-		let batch = txn.state_range(operator, EncodedKeyRange::all(), None, "test::harness")?;
-		let items = batch.items.into_iter().map(|item| (item.key, item.bytes)).collect();
-		self.end(txn);
-		Ok(items)
 	}
 
 	fn begin(&mut self, at: DateTime) -> DeferredTransaction {
@@ -199,17 +126,10 @@ impl<O: Operator<DeferredTransaction>> Harness<O> {
 		self.pending = rest;
 		self.version += 1;
 	}
+}
 
-	pub fn apply(&mut self, change: Change) -> Result<Change> {
-		let at = coordinate_of(&change);
-		let mut txn = self.begin(at);
-		let out = self.operator.apply(&mut txn, change)?;
-		self.operator.flush(&mut txn)?;
-		self.end(txn);
-		Ok(out)
-	}
-
-	pub fn apply_emitting(&mut self, change: Change) -> Result<Vec<(ObjectId, Diff)>> {
+impl<O: DurableSink> Harness<O> {
+	pub fn apply_emitting_sink(&mut self, change: Change) -> Result<Vec<(ObjectId, Diff)>> {
 		let at = coordinate_of(&change);
 		let mut txn = self.begin(at);
 		self.operator.apply(&mut txn, change)?;
@@ -218,11 +138,117 @@ impl<O: Operator<DeferredTransaction>> Harness<O> {
 		self.end(txn);
 		Ok(emitted)
 	}
+}
+
+impl Harness<ApplyOperator> {
+	pub fn guest<C: OperatorLogic + 'static>(
+		logic: C,
+		operator: OperatorId,
+		capabilities: &'static [OperatorCapability],
+		ttl: Option<Duration>,
+	) -> Self {
+		Self::new(|_| {
+			let bridged = BridgeOperator::new(
+				Box::new(BridgeOperatorAdapter::new(logic, operator, capabilities)),
+				operator,
+				capabilities,
+			);
+			ApplyOperator::new(None, operator, Box::new(bridged), ttl)
+		})
+	}
+
+	pub fn guest_from_config<C: OperatorLogic + 'static>(
+		operator: OperatorId,
+		capabilities: &'static [OperatorCapability],
+		config: Vec<(&str, Value)>,
+		ttl: Option<Duration>,
+	) -> Result<Self> {
+		let config = Config::new("operator", config.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
+		Ok(Self::guest(C::create(operator, &config)?, operator, capabilities, ttl))
+	}
+}
+
+impl<O: Operator> Harness<O> {
+	pub fn with_dictionaries(mut self) -> Self {
+		self.catalog = self.engine.inner().catalog().clone();
+		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
+		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)));
+		self.substrate = FlowSubstrate::with_dictionary(registry, self.engine.inner().operator_state());
+		self
+	}
+
+	pub fn dictionary_registry(&self) -> DictionaryAllocatorRegistry {
+		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
+		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)))
+	}
+
+	pub fn engine(&self) -> &TestEngine {
+		&self.engine
+	}
+
+	pub fn footprint(&mut self) -> Result<StateFootprint> {
+		let operator = self.operator.id();
+		let mut txn = self.begin(DateTime::default());
+		let batch = txn.state_range(operator, EncodedKeyRange::all(), None, "test::harness")?;
+		let mut footprint = StateFootprint::default();
+		for item in &batch.items {
+			let decoded = OperatorStateKey::decode(&item.key);
+			match decoded {
+				Some(state) if state.keyspace.is_identity() => footprint.identity_rows += 1,
+				Some(state) if state.group.is_root() => footprint.node_scoped_data_rows += 1,
+				_ => footprint.data_rows += 1,
+			}
+		}
+		self.end(txn);
+		Ok(footprint)
+	}
+
+	pub fn state_items(&mut self) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+		let operator = self.operator.id();
+		let mut txn = self.begin(DateTime::default());
+		let batch = txn.state_range(operator, EncodedKeyRange::all(), None, "test::harness")?;
+		let items = batch.items.into_iter().map(|item| (item.key, item.bytes)).collect();
+		self.end(txn);
+		Ok(items)
+	}
+
+	pub fn apply(&mut self, change: Change) -> Result<Change> {
+		let at = coordinate_of(&change);
+		let operator = self.operator.id();
+		let mut txn = self.begin(at);
+		let out = {
+			let mut bridge = FlowBridge::new(&mut txn, operator);
+			let out = self.operator.apply(&mut bridge, change)?;
+			self.operator.flush(&mut bridge)?;
+			out
+		};
+		self.end(txn);
+		Ok(out)
+	}
+
+	pub fn apply_emitting(&mut self, change: Change) -> Result<Vec<(ObjectId, Diff)>> {
+		let at = coordinate_of(&change);
+		let operator = self.operator.id();
+		let mut txn = self.begin(at);
+		{
+			let mut bridge = FlowBridge::new(&mut txn, operator);
+			self.operator.apply(&mut bridge, change)?;
+			self.operator.flush(&mut bridge)?;
+		}
+		let emitted = txn.take_accumulator_entries();
+		self.end(txn);
+		Ok(emitted)
+	}
 
 	pub fn on_timer(&mut self, timer: Timer) -> Result<Option<Change>> {
+		let operator = self.operator.id();
 		let mut txn = self.begin(timer.at);
-		let out = self.operator.on_timer(&mut txn, timer)?;
-		self.operator.flush(&mut txn)?;
+		let out = {
+			let mut bridge = FlowBridge::new(&mut txn, operator);
+			let out = self.operator.on_timer(&mut bridge, timer)?;
+			self.operator.flush(&mut bridge)?;
+			out
+		};
 		self.end(txn);
 		Ok(out)
 	}
@@ -252,11 +278,15 @@ impl<O: Operator<DeferredTransaction>> Harness<O> {
 					at: Some(timer.at),
 					version: CommitVersion(self.version),
 				});
-				if let Some(change) = self.operator.on_timer(&mut txn, timer)? {
+				let mut bridge = FlowBridge::new(&mut txn, operator);
+				if let Some(change) = self.operator.on_timer(&mut bridge, timer)? {
 					emitted.push(change);
 				}
 			}
-			self.operator.flush(&mut txn)?;
+			{
+				let mut bridge = FlowBridge::new(&mut txn, operator);
+				self.operator.flush(&mut bridge)?;
+			}
 			self.end(txn);
 		}
 	}
@@ -316,7 +346,7 @@ mod tests {
 	}
 }
 
-impl<O: Operator<DeferredTransaction>> Subject for Harness<O> {
+impl<O: Operator> Subject for Harness<O> {
 	fn apply(&mut self, change: Change) -> Result<Change> {
 		Harness::apply(self, change)
 	}

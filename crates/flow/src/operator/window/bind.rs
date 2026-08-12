@@ -13,8 +13,7 @@ use reifydb_value::{
 
 use super::operator::WindowOperator;
 use crate::{
-	operator::{aggregation::engine::partition_group_key, store::OperatorStateStore},
-	transaction::FlowTransaction,
+	operator::{aggregation::engine::partition_group_key, bridge::Bridge},
 	window::{
 		coord::{EventCoord, OrdinalCoord, RowSpan},
 		driver::{gate::SealGate, mint::Mint},
@@ -49,25 +48,23 @@ impl WindowOperator {
 		self.session_kind().seal_policy(self.grace())
 	}
 
-	pub(super) fn load_session_tracker<T: FlowTransaction>(
+	pub(super) fn load_session_tracker(
 		&mut self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group_hash: Hash128,
 	) -> Result<SessionTracker> {
-		let group = self.partition_group(txn, group_hash)?;
-		let mut store = OperatorStateStore::new(txn, self.core.operator);
-		self.meta_slot().load_session(&mut store, group)
+		let group = self.partition_group(bridge, group_hash)?;
+		self.meta_slot().load_session(bridge, group)
 	}
 
-	pub(super) fn save_session_tracker<T: FlowTransaction>(
+	pub(super) fn save_session_tracker(
 		&mut self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group_hash: Hash128,
 		tracker: &SessionTracker,
 	) -> Result<()> {
-		let group = self.partition_group(txn, group_hash)?;
-		let mut store = OperatorStateStore::new(txn, self.core.operator);
-		self.meta_slot().save_session(&mut store, group, tracker)
+		let group = self.partition_group(bridge, group_hash)?;
+		self.meta_slot().save_session(bridge, group, tracker)
 	}
 
 	fn sliding_over_time(&self) -> Option<SlidingOverTime> {
@@ -113,68 +110,61 @@ impl WindowOperator {
 		)
 	}
 
-	pub(super) fn partition_group<T: FlowTransaction>(&self, txn: &mut T, partition: Hash128) -> Result<GroupId> {
-		let (group, _) = txn.intern_group(self.core.operator, &partition_group_key(partition))?;
-		Ok(group)
+	pub(super) fn partition_group(&self, bridge: &mut dyn Bridge, partition: Hash128) -> Result<GroupId> {
+		bridge.intern_group(&partition_group_key(partition))
 	}
 
-	pub fn store_row_index<T: FlowTransaction>(
+	pub fn store_row_index(
 		&mut self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group_hash: Hash128,
 		row_number: RowNumber,
 		window_id: u64,
 	) -> Result<()> {
-		let group = self.partition_group(txn, group_hash)?;
-		let mut store = OperatorStateStore::new(txn, self.core.operator);
-		Mint::new(self.meta_slot()).record_membership(&mut store, group, row_number, window_id)
+		let group = self.partition_group(bridge, group_hash)?;
+		Mint::new(self.meta_slot()).record_membership(bridge, group, row_number, window_id)
 	}
 
-	pub(super) fn lookup_row_index<T: FlowTransaction>(
+	pub(super) fn lookup_row_index(
 		&mut self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group_hash: Hash128,
 		row_number: RowNumber,
 	) -> Result<Vec<u64>> {
-		let group = self.partition_group(txn, group_hash)?;
-		let mut store = OperatorStateStore::new(txn, self.core.operator);
-		Mint::new(self.meta_slot()).membership(&mut store, group, row_number)
+		let group = self.partition_group(bridge, group_hash)?;
+		Mint::new(self.meta_slot()).membership(bridge, group, row_number)
 	}
 
-	pub(super) fn drop_row_index<T: FlowTransaction>(
+	pub(super) fn drop_row_index(
 		&mut self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group_hash: Hash128,
 		row_number: RowNumber,
 	) -> Result<()> {
-		let group = self.partition_group(txn, group_hash)?;
-		let mut store = OperatorStateStore::new(txn, self.core.operator);
-		Mint::new(self.meta_slot()).drop_membership(&mut store, group, row_number)
+		let group = self.partition_group(bridge, group_hash)?;
+		Mint::new(self.meta_slot()).drop_membership(bridge, group, row_number)
 	}
 
-	pub fn get_and_increment_global_count<T: FlowTransaction>(
+	pub fn get_and_increment_global_count(
 		&mut self,
-		txn: &mut T,
+		bridge: &mut dyn Bridge,
 		group_hash: Hash128,
 	) -> Result<OrdinalCoord> {
-		let group = self.partition_group(txn, group_hash)?;
-		let mut store = OperatorStateStore::new(txn, self.core.operator);
-		Mint::new(self.meta_slot()).ordinal(&mut store, group)
+		let group = self.partition_group(bridge, group_hash)?;
+		Mint::new(self.meta_slot()).ordinal(bridge, group)
 	}
 
-	pub(super) fn seal_ledger<T: FlowTransaction>(&mut self, txn: &mut T) -> Result<SealedThrough> {
-		let mut store = OperatorStateStore::new(txn, self.core.operator);
-		Ok(SealedThrough::from_order(self.meta_slot().seal_ledger(&mut store)?))
+	pub(super) fn seal_ledger(&mut self, bridge: &mut dyn Bridge) -> Result<SealedThrough> {
+		Ok(SealedThrough::from_order(self.meta_slot().seal_ledger(bridge)?))
 	}
 
-	pub(super) fn advance_seal_ledger<T: FlowTransaction>(&mut self, txn: &mut T, fired: FiredAt) -> Result<()> {
-		let mut store = OperatorStateStore::new(txn, self.core.operator);
-		self.meta_slot().advance_seal_ledger(&mut store, fired.at().to_order())
+	pub(super) fn advance_seal_ledger(&mut self, bridge: &mut dyn Bridge, fired: FiredAt) -> Result<()> {
+		self.meta_slot().advance_seal_ledger(bridge, fired.at().to_order())
 	}
 
-	pub(super) fn seal_gate<T: FlowTransaction>(&mut self, txn: &mut T, policy: SealPolicy) -> Result<SealGate> {
-		let watermark = txn.flow_watermark();
-		let ledger = self.seal_ledger(txn)?;
+	pub(super) fn seal_gate(&mut self, bridge: &mut dyn Bridge, policy: SealPolicy) -> Result<SealGate> {
+		let watermark = bridge.flow_watermark()?;
+		let ledger = self.seal_ledger(bridge)?;
 		Ok(SealGate::new(policy, Some(ledger), watermark))
 	}
 }

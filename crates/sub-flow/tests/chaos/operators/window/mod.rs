@@ -10,9 +10,7 @@ pub mod tumbling;
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	common::WindowKind, interface::catalog::flow::OperatorId, value::column::columns::Columns,
-};
+use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId, value::column::columns::Columns};
 use reifydb_flow::{
 	context::FlowContext,
 	operator::window::operator::{WindowConfig, WindowOperator},

@@ -95,7 +95,7 @@ where
 		}
 	}
 
-	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	fn hydrate_once<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -104,7 +104,7 @@ where
 		Ok(())
 	}
 
-	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn expire_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
@@ -119,7 +119,7 @@ where
 		combine: CB,
 	) -> Result<Vec<TopKEmit<Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		SKF: Fn(&G) -> EncodedKey,
 		RKF: Fn(&G, &SK) -> EncodedKey,
 		CB: Fn(&G, &RollingTopKBuffer<C, Accumulator>) -> RollingTopKEmit<SK, Output>,
@@ -143,14 +143,14 @@ where
 		Ok(emits)
 	}
 
-	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
 		self.buffers.flush(store)?;
 		self.last_emit.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: StateStore>(
+	fn warm_and_load_meta<S: StateStore + ?Sized>(
 		&mut self,
 		store: &mut S,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
@@ -182,7 +182,7 @@ where
 		state_key: &SKF,
 	) -> Result<StateRows<G>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		SKF: Fn(&G) -> EncodedKey,
 	{
 		let mut state_rows: StateRows<G> = HashMap::new();
@@ -233,7 +233,7 @@ where
 		capacity: usize,
 	) -> Result<BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		SKF: Fn(&G) -> EncodedKey,
 	{
 		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>> = BTreeMap::new();
@@ -339,7 +339,7 @@ where
 		combine: &CB,
 	) -> Result<Vec<TopKEmit<Output>>>
 	where
-		S: StateStore,
+		S: StateStore + ?Sized,
 		RKF: Fn(&G, &SK) -> EncodedKey,
 		CB: Fn(&G, &RollingTopKBuffer<C, Accumulator>) -> RollingTopKEmit<SK, Output>,
 	{
@@ -415,7 +415,7 @@ where
 		Ok(emits)
 	}
 
-	fn persist_meta<S: StateStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		persist_batch_meta(store, &mut self.meta, meta_loaded)
 	}
 }
