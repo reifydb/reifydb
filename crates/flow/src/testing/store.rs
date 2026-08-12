@@ -18,10 +18,16 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
+	count::Count,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::{timer::Timer, window::accumulator::WindowAccumulator};
+use crate::{
+	state::reaper::IdentityReclaim,
+	timer::Timer,
+	transaction::reclaim::ReclaimOutcome,
+	window::accumulator::WindowAccumulator,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RecordedTimer {
@@ -163,6 +169,40 @@ impl MockStore {
 }
 
 use reifydb_core::state::store::{TimerKind, TimerStore};
+
+impl IdentityReclaim for MockStore {
+	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
+		let rows: Vec<Vec<u8>> =
+			self.rows.keys().filter(|(owner, _)| *owner == group).map(|(_, key)| key.clone()).collect();
+		let keys: Vec<Vec<u8>> = self
+			.data
+			.keys()
+			.filter(|key| {
+				OperatorStateKey::decode_inner(key)
+					.is_some_and(|(owner, keyspace, _)| owner == group && keyspace.is_identity())
+			})
+			.cloned()
+			.collect();
+		let total = rows.len() + keys.len();
+		let mut removed = 0usize;
+		for key in rows.into_iter().take(limit) {
+			self.rows.remove(&(group, key));
+			removed += 1;
+		}
+		for key in keys.into_iter().take(limit.saturating_sub(removed)) {
+			self.data.remove(&key);
+			removed += 1;
+		}
+		let more = removed < total;
+		if !more {
+			self.groups.retain(|_, owner| *owner != group);
+		}
+		Ok(ReclaimOutcome {
+			removed: Count::new(removed as u64),
+			more,
+		})
+	}
+}
 
 impl TimerStore for MockStore {
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {

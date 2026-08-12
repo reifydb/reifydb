@@ -20,6 +20,7 @@ use reifydb_core::{
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
+	count::Count,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -31,6 +32,7 @@ use reifydb_value::{
 
 use crate::{
 	operator::stateful::StateIterator,
+	state::reaper::IdentityReclaim,
 	timer::Timer,
 	transaction::{
 		FlowTransaction,
@@ -43,7 +45,7 @@ use crate::{
 	},
 };
 
-pub trait HostContext: StateStore + TimerStore {
+pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 	fn version(&self) -> CommitVersion;
 
 	fn config_uint8(&self, key: ConfigKey) -> u64;
@@ -202,6 +204,16 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 
 	fn written_at(&self) -> DateTime {
 		self.now
+	}
+}
+
+impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
+	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
+		let outcome = self.txn.reclaim_group_identity(self.operator, group, limit)?;
+		if outcome.removed > Count::ZERO {
+			self.txn.invalidate_row_number_groups(self.operator, &GroupSet::new([group]));
+		}
+		Ok(outcome)
 	}
 }
 

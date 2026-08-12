@@ -13,11 +13,17 @@ use reifydb_core::{
 };
 use reifydb_value::Result;
 
+use crate::transaction::reclaim::ReclaimOutcome;
+
 #[cfg(test)]
 mod tests;
 
 pub trait Reaper {
 	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()>;
+}
+
+pub trait IdentityReclaim: StateStore {
+	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
 }
 
 pub struct StoreReaper;
@@ -51,7 +57,7 @@ pub fn queued(store: &mut dyn StateStore, limit: usize) -> Result<Vec<GroupId>> 
 	Ok(groups)
 }
 
-pub fn drain<R>(store: &mut dyn StateStore, reaper: &mut R, budget: usize) -> Result<usize>
+pub fn drain<R>(store: &mut dyn IdentityReclaim, reaper: &mut R, budget: usize) -> Result<usize>
 where
 	R: Reaper,
 {
@@ -64,7 +70,11 @@ where
 		let freed = reap_group(store, group, reaper, allowance)?;
 		spent += freed;
 		if freed < allowance {
-			store.state_remove(&queue_key(group))?;
+			let outcome = store.reclaim_identity(group, allowance - freed)?;
+			spent += outcome.removed.as_u64() as usize;
+			if !outcome.more {
+				store.state_remove(&queue_key(group))?;
+			}
 		}
 	}
 	Ok(spent)
