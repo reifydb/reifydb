@@ -47,7 +47,6 @@ use reifydb_value::{
 use tracing::{Span, field, instrument};
 
 pub mod deferred;
-pub mod dictionary;
 pub mod ephemeral;
 pub mod frontier;
 pub mod group;
@@ -58,7 +57,6 @@ pub mod state;
 pub mod substrate;
 pub mod timer;
 pub mod watermark;
-pub mod write;
 
 use crate::{
 	operator::sink::DurableSink,
