@@ -13,7 +13,10 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
-	key::operator_state::{GroupId, GroupStateKey},
+	key::{
+		EncodableKey,
+		operator_state::{GroupId, GroupStateKey, OperatorStateKey},
+	},
 	metrics::heap::OperatorSample,
 	state::store::TimerKind,
 };
@@ -53,6 +56,10 @@ fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -
 			abort();
 		}
 	}
+}
+
+fn unscope(key: &EncodedKey) -> Option<GroupStateKey> {
+	GroupStateKey::from_framed(OperatorStateKey::decode(key)?.inner())
 }
 
 pub trait BridgedOperator: Send {
@@ -113,7 +120,7 @@ impl<T: FlowTransaction> Bridge for FlowBridge<'_, T> {
 			.state_get_many(self.operator, keys)?
 			.items
 			.into_iter()
-			.filter_map(|r| GroupStateKey::from_framed(r.key).map(|k| (k, r.bytes)))
+			.filter_map(|r| Some((unscope(&r.key)?, r.bytes)))
 			.collect())
 	}
 	fn state_set(&mut self, key: &GroupStateKey, row: EncodedBytes) -> Result<()> {
@@ -130,7 +137,7 @@ impl<T: FlowTransaction> Bridge for FlowBridge<'_, T> {
 			.state_range_all(self.operator, range)?
 			.items
 			.into_iter()
-			.filter_map(|r| GroupStateKey::from_framed(r.key).map(|k| (k, r.bytes)))
+			.filter_map(|r| Some((unscope(&r.key)?, r.bytes)))
 			.collect())
 	}
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
@@ -194,7 +201,7 @@ impl<T: FlowTransaction> Bridge for FlowBridge<'_, T> {
 	) -> SdkResult<()> {
 		let batch = self.txn.state_get_many(self.operator, keys).map_err(|e| SdkError::Other(e.to_string()))?;
 		for r in &batch.items {
-			let Some(key) = GroupStateKey::from_framed(r.key.clone()) else {
+			let Some(key) = unscope(&r.key) else {
 				continue;
 			};
 			visit(&key, &r.bytes)?;
@@ -336,7 +343,11 @@ impl<T: FlowTransaction> Operator<T> for BridgeOperator {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{common::CommitVersion, interface::change::Change, key::operator_state::GroupId};
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::change::Change,
+		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	};
 	use reifydb_flow::{
 		operator::Operator,
 		transaction::{ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction},
@@ -347,7 +358,10 @@ mod tests {
 		value::{datetime::DateTime, duration::Duration},
 	};
 
-	use super::{Bridge, BridgeOperator, BridgedOperator, EncodedKey, FlowBridge, OperatorCapability, OperatorId};
+	use super::{
+		Bridge, BridgeOperator, BridgedOperator, EncodedKey, EncodedKeyRange, EncodedOperatorRow, FlowBridge,
+		GroupStateKey, OperatorCapability, OperatorId,
+	};
 
 	const NODE: OperatorId = OperatorId(1);
 
@@ -374,6 +388,45 @@ mod tests {
 			vec![GroupId::FIRST],
 			"the earlier read must not have consumed an id from the counter"
 		);
+	}
+
+	fn stored_key(suffix: &str) -> GroupStateKey {
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::ACCUMULATOR, suffix.as_bytes())
+	}
+
+	#[test]
+	fn a_dylib_batch_read_hands_back_the_key_the_guest_wrote() {
+		// The store returns operator-scoped keys, so handing one back unstripped makes the guest's own lookups miss.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
+		txn.set_change_coordinate(ChangeCoordinate {
+			at: Some(DateTime::from_millis(0)),
+			version: CommitVersion(7),
+		});
+		let mut bridge = FlowBridge::new(&mut txn, NODE);
+
+		let written = stored_key("entry");
+		bridge.state_set(&written, EncodedOperatorRow::timeless(&[7]).into()).unwrap();
+
+		let from_get_many: Vec<GroupStateKey> =
+			bridge.state_get_many(&[written.clone()]).unwrap().into_iter().map(|(key, _)| key).collect();
+		assert_eq!(from_get_many, vec![written.clone()], "state_get_many must return the key that was written");
+
+		let from_range: Vec<GroupStateKey> = bridge
+			.state_range(EncodedKeyRange::all())
+			.unwrap()
+			.into_iter()
+			.map(|(key, _)| key)
+			.collect();
+		assert_eq!(from_range, vec![written.clone()], "state_range must return the key that was written");
+
+		let mut visited = Vec::new();
+		bridge.state_get_many_visit(&[written.clone()], &mut |key, _| {
+			visited.push(key.clone());
+			Ok(())
+		})
+		.unwrap();
+		assert_eq!(visited, vec![written], "state_get_many_visit must visit the key that was written");
 	}
 
 	struct RecordingBridged;
