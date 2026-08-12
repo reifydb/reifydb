@@ -88,7 +88,7 @@ pub trait SpawnBinary<SOURCE> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-mod native {
+mod host {
 	use reifydb_value::reifydb_assertions;
 	use wasmtime::{Config, Engine as WtEngine, Instance, Linker, Module, ResourceLimiter, Result, Store, Val};
 
@@ -272,6 +272,6 @@ mod stub {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use native::Engine;
+pub use host::Engine;
 #[cfg(target_arch = "wasm32")]
 pub use stub::Engine;

@@ -203,6 +203,12 @@ pub struct WindowMeta {
 	hydrated: bool,
 }
 
+impl Default for WindowMeta {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl WindowMeta {
 	pub fn new() -> Self {
 		Self {

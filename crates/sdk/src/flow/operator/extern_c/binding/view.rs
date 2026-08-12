@@ -373,11 +373,7 @@ impl<'a> ColumnsView for BorrowedColumns<'a> {
 }
 
 fn diff_kind(code: DiffType) -> DiffType {
-	match code {
-		DiffType::Insert => DiffType::Insert,
-		DiffType::Update => DiffType::Update,
-		DiffType::Remove => DiffType::Remove,
-	}
+	code
 }
 
 impl<'a> DiffView for BorrowedDiff<'a> {

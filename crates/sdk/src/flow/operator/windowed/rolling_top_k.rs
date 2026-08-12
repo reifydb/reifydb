@@ -241,7 +241,7 @@ where
 				capacity,
 				|group| aggregator.encode_state_key(group),
 				|group, secondary| aggregator.encode_row_key(group, secondary),
-				|group, buffer| aggregator.combine(group, buffer).into(),
+				|group, buffer| aggregator.combine(group, buffer),
 			)?
 		};
 

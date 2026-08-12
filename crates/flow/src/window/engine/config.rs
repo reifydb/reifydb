@@ -90,6 +90,8 @@ impl<C: WindowAnchor> TumblingCarryConfigBuilder<C> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_value::value::datetime::DateTime;
+
 	use super::*;
 
 	#[test]
@@ -101,7 +103,7 @@ mod tests {
 
 	#[test]
 	fn a_carry_config_forwards_its_base() {
-		let config: TumblingCarryConfig<reifydb_value::value::datetime::DateTime> =
+		let config: TumblingCarryConfig<DateTime> =
 			TumblingCarryConfig::builder(WindowEngineConfig::builder().expire_batch(7).build())
 				.retention(None)
 				.build();

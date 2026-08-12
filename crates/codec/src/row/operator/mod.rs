@@ -3,6 +3,7 @@
 
 use std::{cell::RefCell, collections::BTreeMap, mem, ops::Deref};
 
+use postcard::{from_bytes, to_extend};
 use reifydb_value::{
 	byte_size::ByteSize,
 	encoding::LeBytes,
@@ -262,7 +263,7 @@ where
 {
 	let mut buffer = ENCODE_BUFFER.with(|cell| mem::take(&mut *cell.borrow_mut()));
 	buffer.clear();
-	let mut filled = postcard::to_extend(value, buffer).map_err(|e| OperatorError::Serialization(e.to_string()))?;
+	let mut filled = to_extend(value, buffer).map_err(|e| OperatorError::Serialization(e.to_string()))?;
 	let result = EncodedOperatorRow::new(&filled, now);
 	filled.clear();
 	ENCODE_BUFFER.with(|cell| *cell.borrow_mut() = filled);
@@ -273,7 +274,7 @@ pub fn decode_body<T>(row: &EncodedOperatorRow) -> Result<T, OperatorError>
 where
 	T: DeserializeOwned,
 {
-	postcard::from_bytes(row.body()).map_err(|e| OperatorError::Deserialization(e.to_string()))
+	from_bytes(row.body()).map_err(|e| OperatorError::Deserialization(e.to_string()))
 }
 
 pub fn decode<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T, OperatorError> {

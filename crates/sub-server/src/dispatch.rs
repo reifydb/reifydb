@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 #[cfg(not(reifydb_single_threaded))]
-pub use native::{dispatch, dispatch_subscribe};
+pub use host::{dispatch, dispatch_subscribe};
 
 #[cfg(not(reifydb_single_threaded))]
-mod native {
+mod host {
 	use std::sync::Arc;
 
 	use reifydb_core::{
