@@ -143,6 +143,15 @@ impl ColumnId {
 	pub const CDC_SNAPSHOTS_COUNT: ColumnId = ColumnId(1131);
 	pub const SOURCE_COMPLETENESS_OBJECT_ID: ColumnId = ColumnId(1132);
 	pub const SOURCE_COMPLETENESS_COMPLETE_THROUGH: ColumnId = ColumnId(1133);
+	pub const FLOW_STATE_SNAPSHOTS_TS: ColumnId = ColumnId(1134);
+	pub const FLOW_STATE_SNAPSHOTS_OPERATOR: ColumnId = ColumnId(1135);
+	pub const FLOW_STATE_SNAPSHOTS_GROUP: ColumnId = ColumnId(1136);
+	pub const FLOW_STATE_SNAPSHOTS_KEYSPACE: ColumnId = ColumnId(1137);
+	pub const FLOW_STATE_SNAPSHOTS_PHASE: ColumnId = ColumnId(1138);
+	pub const FLOW_STATE_SNAPSHOTS_KEYS: ColumnId = ColumnId(1139);
+	pub const FLOW_STATE_SNAPSHOTS_KEY_BYTES: ColumnId = ColumnId(1140);
+	pub const FLOW_STATE_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1141);
+	pub const FLOW_STATE_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1142);
 
 	pub const RUNTIME_MEMORY_SNAPSHOTS_COLUMNS: [ColumnId; 6] = [
 		Self::RUNTIME_MEMORY_SNAPSHOTS_TS,
@@ -283,6 +292,18 @@ impl ColumnId {
 
 	pub const SOURCE_COMPLETENESS_COLUMNS: [ColumnId; 2] =
 		[Self::SOURCE_COMPLETENESS_OBJECT_ID, Self::SOURCE_COMPLETENESS_COMPLETE_THROUGH];
+
+	pub const FLOW_STATE_SNAPSHOTS_COLUMNS: [ColumnId; 9] = [
+		Self::FLOW_STATE_SNAPSHOTS_TS,
+		Self::FLOW_STATE_SNAPSHOTS_OPERATOR,
+		Self::FLOW_STATE_SNAPSHOTS_GROUP,
+		Self::FLOW_STATE_SNAPSHOTS_KEYSPACE,
+		Self::FLOW_STATE_SNAPSHOTS_PHASE,
+		Self::FLOW_STATE_SNAPSHOTS_KEYS,
+		Self::FLOW_STATE_SNAPSHOTS_KEY_BYTES,
+		Self::FLOW_STATE_SNAPSHOTS_VALUE_BYTES,
+		Self::FLOW_STATE_SNAPSHOTS_TOTAL_BYTES,
+	];
 }
 
 impl Deref for ColumnId {
@@ -1413,6 +1434,7 @@ impl SeriesId {
 	pub const LIFECYCLE_SNAPSHOTS: SeriesId = SeriesId(1031);
 	pub const STORAGE_SNAPSHOTS: SeriesId = SeriesId(1032);
 	pub const CDC_SNAPSHOTS: SeriesId = SeriesId(1033);
+	pub const FLOW_STATE_SNAPSHOTS: SeriesId = SeriesId(1035);
 
 	#[inline]
 	pub fn to_u64(self) -> u64 {
@@ -1960,7 +1982,7 @@ impl<'de> Deserialize<'de> for SinkId {
 
 pub(crate) const RESERVED_USER_ID_START: u64 = 16385;
 
-const RESERVED_NAMESPACE_IDS: [u64; 22] = [
+const RESERVED_NAMESPACE_IDS: [u64; 24] = [
 	NamespaceId::ROOT.0,
 	NamespaceId::SYSTEM.0,
 	NamespaceId::DEFAULT.0,
@@ -1983,9 +2005,11 @@ const RESERVED_NAMESPACE_IDS: [u64; 22] = [
 	NamespaceId::SYSTEM_METRICS_LIFECYCLE.0,
 	NamespaceId::SYSTEM_SOURCE.0,
 	NamespaceId::STORAGE.0,
+	NamespaceId::SYSTEM_METRICS_FLOW.0,
+	NamespaceId::SYSTEM_METRICS_FLOW_STATE.0,
 ];
 
-const RESERVED_SOURCE_IDS: [u64; 13] = [
+const RESERVED_SOURCE_IDS: [u64; 14] = [
 	RingBufferId::REQUEST_HISTORY.0,
 	RingBufferId::STATEMENT_STATS.0,
 	SeriesId::RUNTIME_MEMORY_SNAPSHOTS.0,
@@ -1998,6 +2022,7 @@ const RESERVED_SOURCE_IDS: [u64; 13] = [
 	SeriesId::LIFECYCLE_SNAPSHOTS.0,
 	SeriesId::STORAGE_SNAPSHOTS.0,
 	SeriesId::CDC_SNAPSHOTS.0,
+	SeriesId::FLOW_STATE_SNAPSHOTS.0,
 	TableId::SOURCE_COMPLETENESS.0,
 ];
 

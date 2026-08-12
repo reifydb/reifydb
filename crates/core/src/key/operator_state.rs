@@ -252,6 +252,8 @@ impl OperatorStateKey {
 		serializer.to_encoded_key()
 	}
 
+	pub const GROUP_KEYSPACE_PREFIX_LEN: u32 = (size_of::<u64>() + size_of::<u8>()) as u32;
+
 	pub fn inner_encoded(group: GroupId, keyspace: Keyspace, suffix: impl AsRef<[u8]>) -> GroupStateKey {
 		let suffix = suffix.as_ref();
 		let mut serializer = KeySerializer::with_capacity(12 + suffix.len());

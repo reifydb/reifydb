@@ -22,6 +22,7 @@ reifydb-runtime = { workspace = true }
 reifydb-sqlite = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-store-multi = { workspace = true }
+reifydb-store-operator = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true, optional = true }
 reifydb-transaction = { workspace = true }

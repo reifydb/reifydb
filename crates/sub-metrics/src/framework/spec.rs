@@ -17,6 +17,7 @@ pub enum MetricsDomain {
 	Storage,
 	Cdc,
 	ProfilerSpans,
+	FlowState,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -233,7 +234,7 @@ mod tests {
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 10] = [
+	pub const ALL: [MetricsDomain; 11] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
@@ -244,7 +245,12 @@ impl MetricsDomain {
 		MetricsDomain::Storage,
 		MetricsDomain::Cdc,
 		MetricsDomain::ProfilerSpans,
+		MetricsDomain::FlowState,
 	];
+
+	pub fn ephemeral(self) -> bool {
+		matches!(self, MetricsDomain::FlowState)
+	}
 
 	pub fn snapshots_path(self) -> &'static str {
 		match self {
@@ -258,6 +264,7 @@ impl MetricsDomain {
 			MetricsDomain::Storage => "system::metrics::storage::snapshots",
 			MetricsDomain::Cdc => "system::metrics::cdc::snapshots",
 			MetricsDomain::ProfilerSpans => "system::metrics::profiler::spans::snapshots",
+			MetricsDomain::FlowState => "system::metrics::flow::state::snapshots",
 		}
 	}
 
@@ -359,6 +366,24 @@ impl MetricsDomain {
 					level("superseded_value_bytes", ValueType::Uint8),
 					level("superseded_bytes", ValueType::Uint8),
 					level("superseded_count", ValueType::Uint8),
+					level("total_bytes", ValueType::Uint8),
+				],
+				has_total: false,
+			},
+			MetricsDomain::FlowState => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_FLOW_STATE,
+				shape: DomainShape::Wide,
+				dimensions: vec![
+					dim("operator", ValueType::Uint8),
+					dim("group", ValueType::Uint8),
+					dim("keyspace", ValueType::Utf8),
+					dim("phase", ValueType::Utf8),
+				],
+				measures: vec![
+					level("keys", ValueType::Uint8),
+					level("key_bytes", ValueType::Uint8),
+					level("value_bytes", ValueType::Uint8),
 					level("total_bytes", ValueType::Uint8),
 				],
 				has_total: false,

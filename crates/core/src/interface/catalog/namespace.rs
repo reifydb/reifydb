@@ -30,6 +30,8 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_LIFECYCLE: NamespaceId = NamespaceId(40);
 	pub const SYSTEM_SOURCE: NamespaceId = NamespaceId(41);
 	pub const STORAGE: NamespaceId = NamespaceId(42);
+	pub const SYSTEM_METRICS_FLOW: NamespaceId = NamespaceId(43);
+	pub const SYSTEM_METRICS_FLOW_STATE: NamespaceId = NamespaceId(44);
 	pub const GRAPHQL: NamespaceId = NamespaceId(55);
 }
 

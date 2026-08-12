@@ -89,6 +89,9 @@ impl MetricsAccumulator {
 			}
 			return;
 		};
+		if domain.ephemeral() {
+			state.rows.clear();
+		}
 		for row in rows {
 			reifydb_assertions! {
 				let expected_dimensions = match state.spec.shape {

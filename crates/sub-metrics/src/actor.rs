@@ -28,6 +28,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::Tier,
 	},
+	key::operator_state::{Keyspace, OperatorStateKey},
 	metrics::{
 		execution::StatementMetrics,
 		sample::{MetricKind, Reading},
@@ -43,6 +44,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 };
 use reifydb_store_multi::MultiStore;
+use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -340,6 +342,11 @@ impl MetricsFlushActor {
 			}
 			Err(e) => error!("Failed to collect cdc metrics rows: {}", e),
 		}
+		let _ = sampler.send(SamplerMessage::Push {
+			domain: MetricsDomain::FlowState,
+			surface: Surface::Current,
+			rows: flow_state_rows(&engine.operator_state()),
+		});
 	}
 
 	#[inline]
@@ -496,6 +503,37 @@ fn level_count(metric: &'static str, count: u64) -> Measure {
 		metric,
 		reading: Reading::Count(Count::new(count)),
 		kind: MetricKind::Level,
+	}
+}
+
+fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
+	store.census(OperatorStateKey::GROUP_KEYSPACE_PREFIX_LEN)
+		.into_iter()
+		.filter_map(|entry| {
+			let (group, keyspace, _) = OperatorStateKey::decode_inner(&entry.prefix)?;
+			Some(MetricsRow {
+				dimensions: vec![
+					Value::Uint8(entry.operator.0),
+					Value::Uint8(group.0),
+					Value::Utf8(keyspace.name().to_string()),
+					Value::Utf8(phase_name(keyspace).to_string()),
+				],
+				measures: vec![
+					level_count("keys", entry.keys),
+					level_bytes("key_bytes", entry.key_bytes),
+					level_bytes("value_bytes", entry.value_bytes),
+					level_bytes("total_bytes", entry.key_bytes + entry.value_bytes),
+				],
+			})
+		})
+		.collect()
+}
+
+fn phase_name(keyspace: Keyspace) -> &'static str {
+	if keyspace.is_data() {
+		"data"
+	} else {
+		"identity"
 	}
 }
 

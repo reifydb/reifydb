@@ -7,6 +7,7 @@
 mod auth;
 mod dictionary_durability;
 mod export;
+mod flow;
 mod interceptor;
 mod metric;
 mod persistence;

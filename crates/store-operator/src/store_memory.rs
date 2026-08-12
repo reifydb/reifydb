@@ -23,6 +23,15 @@ impl OperatorBatch {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperatorStateCensus {
+	pub operator: OperatorId,
+	pub prefix: Vec<u8>,
+	pub keys: u64,
+	pub key_bytes: u64,
+	pub value_bytes: u64,
+}
+
 #[derive(Clone)]
 pub struct OperatorStore;
 
@@ -59,6 +68,10 @@ impl OperatorStore {
 
 	pub fn total_bytes(&self) -> u64 {
 		0
+	}
+
+	pub fn census(&self, _prefix_len: u32) -> Vec<OperatorStateCensus> {
+		Vec::new()
 	}
 
 	pub fn drop_operator_state(&self, _operator: OperatorId) {}

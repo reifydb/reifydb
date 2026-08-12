@@ -3437,6 +3437,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sqlite",
  "reifydb-store-multi",
+ "reifydb-store-operator",
  "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-sub-server",

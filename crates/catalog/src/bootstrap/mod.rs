@@ -44,6 +44,7 @@ use crate::{
 pub mod binding;
 pub mod completeness;
 pub mod epoch;
+pub mod flow;
 pub mod identity;
 pub mod instruments;
 pub mod lifecycle;
@@ -69,6 +70,7 @@ pub fn bootstrap_system_objects(
 	instruments::bootstrap_instruments(multi, single, catalog, eventbus)?;
 	epoch::bootstrap_epoch(multi, single, catalog, eventbus)?;
 	lifecycle::bootstrap_lifecycle(multi, single, catalog, eventbus)?;
+	flow::bootstrap_flow(multi, single, catalog, eventbus)?;
 	completeness::bootstrap_completeness(multi, single, catalog, eventbus)?;
 	load_catalog_cache(multi, single, catalog)?;
 	Ok(())

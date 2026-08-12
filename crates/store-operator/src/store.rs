@@ -18,6 +18,9 @@ use reifydb_sqlite::{
 use reifydb_value::util::cowvec::CowVec;
 use rusqlite::{Connection, ToSql, params};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Clone)]
 pub struct OperatorBatch {
 	pub items: Vec<(EncodedKey, EncodedOperatorRow)>,
@@ -31,6 +34,15 @@ impl OperatorBatch {
 			has_more: false,
 		}
 	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperatorStateCensus {
+	pub operator: OperatorId,
+	pub prefix: Vec<u8>,
+	pub keys: u64,
+	pub key_bytes: u64,
+	pub value_bytes: u64,
 }
 
 #[derive(Clone)]
@@ -190,6 +202,37 @@ impl OperatorStore {
 			|row| row.get::<_, i64>(0),
 		)
 		.expect("operator state size query failed") as u64
+	}
+
+	pub fn census(&self, prefix_len: u32) -> Vec<OperatorStateCensus> {
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Vec::new();
+		};
+		let mut stmt = conn
+			.prepare_cached(
+				r#"SELECT "operator", substr("key", 1, ?1) AS "prefix", COUNT(*),
+				          SUM(LENGTH("key")), SUM(LENGTH("bytes"))
+				   FROM "operator_state"
+				   GROUP BY "operator", "prefix"
+				   ORDER BY "operator", "prefix""#,
+			)
+			.expect("operator state census could not be prepared");
+		let mut rows = stmt.query(params![prefix_len as i64]).expect("operator state census failed");
+
+		let mut out = Vec::new();
+		while let Some(row) = rows.next().expect("operator state census failed") {
+			out.push(OperatorStateCensus {
+				operator: OperatorId(
+					row.get::<_, i64>(0).expect("census rows carry an operator") as u64
+				),
+				prefix: row.get(1).expect("census rows carry a blob prefix"),
+				keys: row.get::<_, i64>(2).expect("census rows carry a key count") as u64,
+				key_bytes: row.get::<_, i64>(3).expect("census rows carry a key byte sum") as u64,
+				value_bytes: row.get::<_, i64>(4).expect("census rows carry a value byte sum") as u64,
+			});
+		}
+		out
 	}
 
 	pub fn drop_operator_state(&self, operator: OperatorId) {
