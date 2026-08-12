@@ -132,7 +132,7 @@ where
 #[allow(clippy::too_many_arguments)]
 #[instrument(name = "flow::operator::aggregation::finish", level = "trace", skip_all, fields(buckets = buckets.len()))]
 pub(crate) fn finish_tumbling_engine<T: FlowTransaction>(
-	core: &Aggregation,
+	core: &mut Aggregation,
 	txn: &mut T,
 	change: &Change,
 	buckets: EngineBuckets,

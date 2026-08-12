@@ -50,9 +50,8 @@ use crate::{
 };
 
 pub(crate) trait RollingDomain: WindowAnchor + Hash + HeapSize + Send + Sync {
-	#[allow(clippy::mut_from_ref)]
 	fn engine(
-		operator: &WindowOperator,
+		operator: &mut WindowOperator,
 		runnable: bool,
 		lag: Self::Span,
 	) -> &mut RollingEngine<Hash128, Self, RowAccumulator>;
@@ -74,7 +73,7 @@ pub(crate) trait RollingDomain: WindowAnchor + Hash + HeapSize + Send + Sync {
 
 impl RollingDomain for OrdinalCoord {
 	fn engine(
-		operator: &WindowOperator,
+		operator: &mut WindowOperator,
 		runnable: bool,
 		lag: RowSpan,
 	) -> &mut RollingEngine<Hash128, OrdinalCoord, RowAccumulator> {
@@ -114,7 +113,7 @@ impl RollingDomain for OrdinalCoord {
 
 impl RollingDomain for DateTime {
 	fn engine(
-		operator: &WindowOperator,
+		operator: &mut WindowOperator,
 		runnable: bool,
 		lag: Duration,
 	) -> &mut RollingEngine<Hash128, DateTime, RowAccumulator> {
@@ -179,16 +178,17 @@ fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
 }
 
 fn counted_row_engine(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	runnable: bool,
 	lag: RowSpan,
 ) -> &mut RollingEngine<Hash128, OrdinalCoord, RowAccumulator> {
+	let config = operator.engine_config();
 	let slot = operator.rolling_engine_slot();
 	if !matches!(slot, Some(RollingEngineSlot::CountedRow(_))) {
 		let engine = if runnable {
-			RollingEngine::new_runnable_group_scoped(operator.engine_config()).with_lag(lag)
+			RollingEngine::new_runnable_group_scoped(config).with_lag(lag)
 		} else {
-			RollingEngine::group_scoped(operator.engine_config())
+			RollingEngine::group_scoped(config)
 		};
 		*slot = Some(RollingEngineSlot::CountedRow(Box::new(engine)));
 	}
@@ -199,16 +199,17 @@ fn counted_row_engine(
 }
 
 fn timed_row_engine(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	runnable: bool,
 	lag: Duration,
 ) -> &mut RollingEngine<Hash128, DateTime, RowAccumulator> {
+	let config = operator.engine_config();
 	let slot = operator.rolling_engine_slot();
 	if !matches!(slot, Some(RollingEngineSlot::TimedRow(_))) {
 		let engine = if runnable {
-			RollingEngine::new_runnable_group_scoped(operator.engine_config()).with_lag(lag)
+			RollingEngine::new_runnable_group_scoped(config).with_lag(lag)
 		} else {
-			RollingEngine::group_scoped(operator.engine_config())
+			RollingEngine::group_scoped(config)
 		};
 		*slot = Some(RollingEngineSlot::TimedRow(Box::new(engine)));
 	}
@@ -280,7 +281,7 @@ fn route_rolling_columns<C: RollingDomain, T: FlowTransaction>(
 
 #[instrument(name = "flow::operator::window::rolling", level = "trace", skip_all)]
 pub fn apply_rolling_engine<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	change: Change,
 ) -> Result<Change> {
@@ -292,7 +293,7 @@ pub fn apply_rolling_engine<T: FlowTransaction>(
 }
 
 fn apply_rolling<C: RollingDomain, T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	change: Change,
 ) -> Result<Change> {
@@ -426,7 +427,7 @@ fn apply_rolling<C: RollingDomain, T: FlowTransaction>(
 }
 
 fn rolling_earliest_expiry<C: RollingDomain, T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	runnable: bool,
 	lag: C::Span,
@@ -436,7 +437,7 @@ fn rolling_earliest_expiry<C: RollingDomain, T: FlowTransaction>(
 }
 
 fn rearm_rolling_seal<C: RollingDomain, T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	before: Option<C>,
 	runnable: bool,
@@ -456,7 +457,7 @@ fn rearm_rolling_seal<C: RollingDomain, T: FlowTransaction>(
 }
 
 fn finish_rolling_results<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	change: &Change,
 	results: &[RollingResult<Hash128, Vec<Value>>],
@@ -516,7 +517,7 @@ fn finish_rolling_results<T: FlowTransaction>(
 
 #[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
 pub fn seal_rolling_engine<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {

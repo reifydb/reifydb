@@ -70,7 +70,7 @@ pub struct ExternCOperatorHandle {
 
 	last_registered_txn: Cell<u64>,
 
-	cached_ctx: UnsafeCell<ExternCContext>,
+	cached_ctx: ExternCContext,
 }
 
 impl ExternCOperatorHandle {
@@ -85,25 +85,22 @@ impl ExternCOperatorHandle {
 			operator_id,
 			builder_registry: BuilderRegistry::new(),
 			last_registered_txn: Cell::new(u64::MAX),
-			cached_ctx: UnsafeCell::new(ExternCContext {
+			cached_ctx: ExternCContext {
 				txn_ptr: ptr::null_mut(),
 				written_at_nanos: 0,
 				operator_id: operator_id.0,
 				callbacks: create_host_callbacks(),
-			}),
+			},
 		}
 	}
 
-	fn ensure_txn_setup(&self, txn: &mut DeferredTransaction) -> Result<()> {
+	fn ensure_txn_setup(&mut self, txn: &mut DeferredTransaction) -> Result<()> {
 		let txn_version = txn.version().0;
-		// SAFETY: one actor drives this operator and no guest call is in flight here, so
-		// the context cell is not aliased while this &mut exists.
-		let ctx = unsafe { &mut *self.cached_ctx.get() };
 		if self.last_registered_txn.get() != txn_version {
 			self.last_registered_txn.set(txn_version);
-			ctx.txn_ptr = txn as *mut _ as *mut c_void;
+			self.cached_ctx.txn_ptr = txn as *mut _ as *mut c_void;
 		}
-		ctx.written_at_nanos = txn.written_at().to_nanos();
+		self.cached_ctx.written_at_nanos = txn.written_at().to_nanos();
 		Ok(())
 	}
 }
@@ -212,7 +209,7 @@ impl Operator<DeferredTransaction> for ExternCOperatorHandle {
 		let version = change.version;
 		let changed_at = change.changed_at;
 
-		let extern_c_ctx_ptr = self.cached_ctx.get();
+		let extern_c_ctx_ptr = &raw mut self.cached_ctx;
 
 		let result_code = with_registry(&self.builder_registry, || {
 			call_vtable(&self.vtable, self.instance, extern_c_ctx_ptr, &extern_c_input, self.operator_id)
@@ -243,7 +240,7 @@ impl Operator<DeferredTransaction> for ExternCOperatorHandle {
 
 		let version = txn.version();
 		let key = timer.key.as_ref();
-		let extern_c_ctx_ptr = self.cached_ctx.get();
+		let extern_c_ctx_ptr = &raw mut self.cached_ctx;
 
 		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
 		// Drop calls destroy; extern_c_ctx_ptr is this operator's cached ExternCContext with no Rust borrow of

@@ -115,7 +115,7 @@ fn push_count_event(
 }
 
 fn route_count_tumbling<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	change: &Change,
 	buckets: &mut EngineBuckets,
@@ -269,7 +269,7 @@ fn route_count_tumbling<T: FlowTransaction>(
 
 #[instrument(name = "flow::operator::window::tumbling", level = "trace", skip_all)]
 pub fn apply_tumbling_engine<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	change: Change,
 ) -> Result<Change> {
@@ -362,8 +362,15 @@ pub fn apply_tumbling_engine<T: FlowTransaction>(
 
 	let groups = intern_batch(operator, txn, &arrival)?;
 
+	let engine_config = operator.engine_config();
+	let engine_grace = operator.grace();
+	let expiry_anchor = if operator.is_count_based() {
+		ExpiryAnchor::Unindexed
+	} else {
+		ExpiryAnchor::WindowStart
+	};
 	let diffs = finish_tumbling_engine(
-		&operator.core,
+		&mut operator.core,
 		txn,
 		&change,
 		buckets,
@@ -372,13 +379,9 @@ pub fn apply_tumbling_engine<T: FlowTransaction>(
 		window_max_ts,
 		&groups,
 		&kinds,
-		operator.engine_config(),
-		operator.grace(),
-		if operator.is_count_based() {
-			ExpiryAnchor::Unindexed
-		} else {
-			ExpiryAnchor::WindowStart
-		},
+		engine_config,
+		engine_grace,
+		expiry_anchor,
 	)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
@@ -394,7 +397,7 @@ fn intern_batch<T: FlowTransaction>(
 }
 
 fn sliding_insert_anchors<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	hash: Hash128,
 	event_ts: DateTime,
@@ -410,7 +413,7 @@ fn sliding_insert_anchors<T: FlowTransaction>(
 
 #[instrument(name = "flow::operator::window::sliding", level = "trace", skip_all)]
 pub fn apply_sliding_engine<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	change: Change,
 ) -> Result<Change> {
@@ -617,8 +620,15 @@ pub fn apply_sliding_engine<T: FlowTransaction>(
 
 	let groups = intern_batch(operator, txn, &arrival)?;
 
+	let engine_config = operator.engine_config();
+	let engine_grace = operator.grace();
+	let expiry_anchor = if operator.is_count_based() {
+		ExpiryAnchor::Unindexed
+	} else {
+		ExpiryAnchor::WindowStart
+	};
 	let diffs = finish_tumbling_engine(
-		&operator.core,
+		&mut operator.core,
 		txn,
 		&change,
 		buckets,
@@ -627,19 +637,15 @@ pub fn apply_sliding_engine<T: FlowTransaction>(
 		window_max_ts,
 		&groups,
 		&kinds,
-		operator.engine_config(),
-		operator.grace(),
-		if operator.is_count_based() {
-			ExpiryAnchor::Unindexed
-		} else {
-			ExpiryAnchor::WindowStart
-		},
+		engine_config,
+		engine_grace,
+		expiry_anchor,
 	)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
 fn session_assign<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	hash: Hash128,
 	event_ts: DateTime,
@@ -663,7 +669,7 @@ fn session_assign<T: FlowTransaction>(
 
 #[instrument(name = "flow::operator::window::session", level = "trace", skip_all)]
 pub fn apply_session_engine<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	change: Change,
 ) -> Result<Change> {
@@ -870,8 +876,10 @@ pub fn apply_session_engine<T: FlowTransaction>(
 
 	let groups = intern_batch(operator, txn, &arrival)?;
 
+	let engine_config = operator.engine_config();
+	let engine_grace = operator.grace();
 	let diffs = finish_tumbling_engine(
-		&operator.core,
+		&mut operator.core,
 		txn,
 		&change,
 		buckets,
@@ -880,8 +888,8 @@ pub fn apply_session_engine<T: FlowTransaction>(
 		window_max_ts,
 		&groups,
 		&kinds,
-		operator.engine_config(),
-		operator.grace(),
+		engine_config,
+		engine_grace,
 		ExpiryAnchor::LastEvent,
 	)?;
 
@@ -894,10 +902,9 @@ pub fn apply_session_engine<T: FlowTransaction>(
 				closing.push((*hash, *session_id, group));
 			}
 		}
+		let config = operator.engine_config();
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(
-				operator.engine_config(),
-			))
+			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(config))
 		});
 		let mut store = OperatorStateStore::new(txn, operator_id);
 		for (hash, session_id, group) in &closing {
@@ -936,7 +943,7 @@ pub fn apply_session_engine<T: FlowTransaction>(
 
 #[instrument(name = "flow::operator::window::gate_seals", level = "trace", skip_all)]
 fn gate_and_arm_seals<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	buckets: &mut EngineBuckets,
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
@@ -1005,7 +1012,7 @@ fn gate_and_arm_seals<T: FlowTransaction>(
 #[tracing::instrument(name = "flow::window::seal", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
 #[instrument(name = "flow::operator::window::seal", level = "trace", skip_all)]
 fn seal_due_windows<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	fired: FiredAt,
 	policy: SealPolicy,
@@ -1017,12 +1024,11 @@ fn seal_due_windows<T: FlowTransaction>(
 	let Some(threshold) = SealSweep::new(policy).horizon(fired) else {
 		return Ok(Vec::new());
 	};
+	let config = operator.engine_config();
 	let expired = {
 		let mut store = OperatorStateStore::new(txn, operator.core.operator);
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(
-				operator.engine_config(),
-			))
+			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(config))
 		});
 		let res = engine.expire(&mut store, threshold.to_order())?;
 		engine.flush(&mut store)?;
@@ -1034,22 +1040,24 @@ fn seal_due_windows<T: FlowTransaction>(
 }
 
 pub fn seal_session_engine<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
-	seal_due_windows(operator, txn, fired, operator.session_policy())
+	let policy = operator.session_policy();
+	seal_due_windows(operator, txn, fired, policy)
 }
 
 pub fn seal_engine_windows<T: FlowTransaction>(
-	operator: &WindowOperator,
+	operator: &mut WindowOperator,
 	txn: &mut T,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
 	let Some(window_size) = operator.size_duration() else {
 		return Ok(Vec::new());
 	};
-	seal_due_windows(operator, txn, fired, SealPolicy::tumbling(window_size, operator.grace()))
+	let policy = SealPolicy::tumbling(window_size, operator.grace());
+	seal_due_windows(operator, txn, fired, policy)
 }
 
 #[cfg(test)]

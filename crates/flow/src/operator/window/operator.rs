@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::UnsafeCell, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_core::{
 	common::{CommitVersion, WindowKind, WindowSize},
@@ -70,8 +70,8 @@ pub struct WindowOperator {
 
 	pub grace: Duration,
 	sealed_drops: SealedDrops,
-	rolling_engine: UnsafeCell<Option<RollingEngineSlot>>,
-	meta: UnsafeCell<WindowMeta>,
+	rolling_engine: Option<RollingEngineSlot>,
+	meta: WindowMeta,
 }
 
 impl WindowOperator {
@@ -91,33 +91,30 @@ impl WindowOperator {
 			kind: config.kind,
 			grace: config.grace,
 			sealed_drops: SealedDrops::new(config.operator, "mutations targeting sealed windows"),
-			rolling_engine: UnsafeCell::new(None),
-			meta: UnsafeCell::new(WindowMeta::new()),
+			rolling_engine: None,
+			meta: WindowMeta::new(),
 		}
 	}
 
-	#[allow(clippy::mut_from_ref)]
-	pub(super) fn meta_slot(&self) -> &mut WindowMeta {
-		// SAFETY: apply and tick run single-threaded on one actor and never re-enter, so no other
-		// borrow of the UnsafeCell is live while this &mut exists.
-		unsafe { &mut *self.meta.get() }
+	pub(super) fn meta_slot(&mut self) -> &mut WindowMeta {
+		&mut self.meta
 	}
 
-	fn with_meta<T: FlowTransaction, R>(&self, txn: &mut T, f: impl FnOnce(&mut T) -> Result<R>) -> Result<R> {
+	fn open_meta<T: FlowTransaction>(&mut self, txn: &mut T) -> Result<()> {
 		let operator = self.core.operator;
-		self.meta_slot().hydrate_once(&mut OperatorStateStore::new(txn, operator))?;
+		self.meta.hydrate_once(&mut OperatorStateStore::new(txn, operator))?;
 		self.core.engine_meta_open();
-		let out = f(txn)?;
-		self.meta_slot().flush(&mut OperatorStateStore::new(txn, operator))?;
-		self.core.engine_meta_flush(&mut OperatorStateStore::new(txn, operator))?;
-		Ok(out)
+		Ok(())
 	}
 
-	#[allow(clippy::mut_from_ref)]
-	pub(crate) fn rolling_engine_slot(&self) -> &mut Option<RollingEngineSlot> {
-		// SAFETY: apply and tick run single-threaded on one actor and never re-enter, and every caller
-		// drops its engine borrow before taking the next, so no other borrow of the cell is live.
-		unsafe { &mut *self.rolling_engine.get() }
+	fn close_meta<T: FlowTransaction>(&mut self, txn: &mut T) -> Result<()> {
+		let operator = self.core.operator;
+		self.meta.flush(&mut OperatorStateStore::new(txn, operator))?;
+		self.core.engine_meta_flush(&mut OperatorStateStore::new(txn, operator))
+	}
+
+	pub(crate) fn rolling_engine_slot(&mut self) -> &mut Option<RollingEngineSlot> {
+		&mut self.rolling_engine
 	}
 
 	pub(crate) fn engine_config(&self) -> WindowEngineConfig {
@@ -205,7 +202,8 @@ impl<T: FlowTransaction> Operator<T> for WindowOperator {
 	}
 
 	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
-		self.with_meta(txn, |txn| match &self.kind {
+		self.open_meta(txn)?;
+		let out = match self.kind {
 			WindowKind::Tumbling {
 				..
 			} => apply_tumbling_engine(self, txn, change),
@@ -218,35 +216,37 @@ impl<T: FlowTransaction> Operator<T> for WindowOperator {
 			WindowKind::Session {
 				..
 			} => apply_session_engine(self, txn, change),
-		})
+		}?;
+		self.close_meta(txn)?;
+		Ok(out)
 	}
 
 	fn on_timer(&mut self, txn: &mut T, timer: Timer) -> Result<Option<Change>> {
 		let fired = FiredAt::of(&timer);
-		self.with_meta(txn, |txn| {
-			let diffs = match &self.kind {
-				WindowKind::Tumbling {
-					..
-				}
-				| WindowKind::Sliding {
-					..
-				} => seal_engine_windows(self, txn, fired)?,
-				WindowKind::Rolling {
-					size: WindowSize::Duration(_),
-					..
-				} => seal_rolling_engine(self, txn, fired)?,
-				WindowKind::Session {
-					..
-				} => seal_session_engine(self, txn, fired)?,
-				_ => vec![],
-			};
-
-			if diffs.is_empty() {
-				Ok(None)
-			} else {
-				Ok(Some(Change::from_flow(self.core.operator, CommitVersion(0), diffs, timer.at)))
+		self.open_meta(txn)?;
+		let diffs = match self.kind {
+			WindowKind::Tumbling {
+				..
 			}
-		})
+			| WindowKind::Sliding {
+				..
+			} => seal_engine_windows(self, txn, fired)?,
+			WindowKind::Rolling {
+				size: WindowSize::Duration(_),
+				..
+			} => seal_rolling_engine(self, txn, fired)?,
+			WindowKind::Session {
+				..
+			} => seal_session_engine(self, txn, fired)?,
+			_ => vec![],
+		};
+		self.close_meta(txn)?;
+
+		if diffs.is_empty() {
+			Ok(None)
+		} else {
+			Ok(Some(Change::from_flow(self.core.operator, CommitVersion(0), diffs, timer.at)))
+		}
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

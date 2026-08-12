@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::UnsafeCell, collections::HashMap};
+use std::collections::HashMap;
 
 use reifydb_codec::{
 	key::{encode_u8, encode_u64_varint, encoded::EncodedKey, serializer::KeySerializer},
@@ -65,8 +65,8 @@ pub struct SinkTableViewOperator {
 	shape: RowShape,
 	sort: Vec<ViewSortKey>,
 	partition_indices: Vec<usize>,
-	verified_partitions: UnsafeCell<HashMap<Partition, Vec<Value>>>,
-	created_at: UnsafeCell<HashMap<RowNumber, DateTime>>,
+	verified_partitions: HashMap<Partition, Vec<Value>>,
+	created_at: HashMap<RowNumber, DateTime>,
 }
 
 impl SinkTableViewOperator {
@@ -94,28 +94,14 @@ impl SinkTableViewOperator {
 			shape,
 			sort,
 			partition_indices,
-			verified_partitions: UnsafeCell::new(HashMap::new()),
-			created_at: UnsafeCell::new(HashMap::new()),
+			verified_partitions: HashMap::new(),
+			created_at: HashMap::new(),
 		}
 	}
 
 	#[inline]
 	fn is_partitioned(&self) -> bool {
 		!self.partition_indices.is_empty()
-	}
-
-	#[allow(clippy::mut_from_ref)]
-	fn verified_partitions(&self) -> &mut HashMap<Partition, Vec<Value>> {
-		// SAFETY: an operator is reachable from one thread at a time and each apply helper takes this
-		// borrow once, calling nothing that reaches the cell again, so no other borrow is live.
-		unsafe { &mut *self.verified_partitions.get() }
-	}
-
-	#[allow(clippy::mut_from_ref)]
-	fn created_at_cache(&self) -> &mut HashMap<RowNumber, DateTime> {
-		// SAFETY: an operator is reachable from one thread at a time and each apply helper takes this
-		// borrow once, calling nothing that reaches the cell again, so no other borrow is live.
-		unsafe { &mut *self.created_at.get() }
 	}
 
 	#[inline]
@@ -172,24 +158,21 @@ impl Operator<DeferredTransaction> for SinkTableViewOperator {
 	}
 
 	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
-		let view = self.view.def();
-		let shape = &self.shape;
-
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_table_view_insert(txn, view, shape, post)?,
+				} => self.apply_table_view_insert(txn, post)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_table_view_update(txn, view, shape, pre, post)?,
+				} => self.apply_table_view_update(txn, pre, post)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_table_view_remove(txn, view, pre)?,
+				} => self.apply_table_view_remove(txn, pre)?,
 			}
 		}
 
@@ -200,26 +183,19 @@ impl Operator<DeferredTransaction> for SinkTableViewOperator {
 impl SinkTableViewOperator {
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_table_view_insert(
-		&self,
-		txn: &mut DeferredTransaction,
-		view: &View,
-		shape: &RowShape,
-		post: &Columns,
-	) -> Result<()> {
-		let coerced = coerce_columns(post, view.columns())?;
-		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
+	fn apply_table_view_insert(&mut self, txn: &mut DeferredTransaction, post: &Columns) -> Result<()> {
+		let coerced = coerce_columns(post, self.view.def().columns())?;
+		let dict_encoded = dictionary_encode_view_columns(txn, self.view.def(), &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.row_count();
-		let field_columns = shape_field_columns(source, shape);
+		let field_columns = shape_field_columns(source, &self.shape);
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_bytes_list: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 
-		let verified = self.verified_partitions();
-		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers()[row_idx];
-			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
+			let (_, encoded) =
+				encode_row_at_index(source, row_idx, &self.shape, row_number, &field_columns)?;
 			let key = if self.is_partitioned() {
 				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
 				resolve_partition_flow(
@@ -227,51 +203,47 @@ impl SinkTableViewOperator {
 					ObjectId::table(self.storage),
 					partition,
 					&values,
-					verified,
+					&mut self.verified_partitions,
 				)?;
 				self.partitioned_key(source, row_idx, partition, row_number)
 			} else {
 				self.clustered_key(source, row_idx, row_number)
 			};
-			remember_created_at(cache, row_number, read_created_at(&encoded));
+			remember_created_at(&mut self.created_at, row_number, read_created_at(&encoded));
 			keys.push(key);
 			encoded_bytes_list.push(encoded);
 		}
 
 		txn.set_batch(&keys, &encoded_bytes_list)?;
 
-		emit_view_change(txn, view, Diff::insert(coerced));
+		emit_view_change(txn, self.view.def(), Diff::insert(coerced));
 		Ok(())
 	}
 
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_table_view_update(
-		&self,
+		&mut self,
 		txn: &mut DeferredTransaction,
-		view: &View,
-		shape: &RowShape,
 		pre: &Columns,
 		post: &Columns,
 	) -> Result<()> {
-		let coerced_pre = coerce_columns(pre, view.columns())?;
-		let coerced_post = coerce_columns(post, view.columns())?;
-		let dict_pre = dictionary_encode_view_columns(txn, view, &coerced_pre)?;
-		let dict_post = dictionary_encode_view_columns(txn, view, &coerced_post)?;
+		let coerced_pre = coerce_columns(pre, self.view.def().columns())?;
+		let coerced_post = coerce_columns(post, self.view.def().columns())?;
+		let dict_pre = dictionary_encode_view_columns(txn, self.view.def(), &coerced_pre)?;
+		let dict_post = dictionary_encode_view_columns(txn, self.view.def(), &coerced_post)?;
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
 		let row_count = source_post.row_count();
-		let field_columns = shape_field_columns(source_post, shape);
+		let field_columns = shape_field_columns(source_post, &self.shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		let verified = self.verified_partitions();
-		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
 			let pre_row_number = source_pre.row_numbers()[row_idx];
 			let post_row_number = source_post.row_numbers()[row_idx];
 			let (_, mut post_encoded) =
-				encode_row_at_index(source_post, row_idx, shape, post_row_number, &field_columns)?;
+				encode_row_at_index(source_post, row_idx, &self.shape, post_row_number, &field_columns)?;
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
@@ -288,7 +260,7 @@ impl SinkTableViewOperator {
 					ObjectId::table(self.storage),
 					post_partition,
 					&post_values,
-					verified,
+					&mut self.verified_partitions,
 				)?;
 				(
 					self.partitioned_key(source_pre, row_idx, pre_partition, pre_row_number),
@@ -301,9 +273,9 @@ impl SinkTableViewOperator {
 				)
 			};
 
-			let mut prior_created = cache.get(&post_row_number).copied().filter(|c| !c.is_epoch());
+			let mut prior_created = self.created_at.get(&post_row_number).copied().filter(|c| !c.is_epoch());
 			if prior_created.is_none() && pre_row_number != post_row_number {
-				prior_created = cache.get(&pre_row_number).copied().filter(|c| !c.is_epoch());
+				prior_created = self.created_at.get(&pre_row_number).copied().filter(|c| !c.is_epoch());
 			}
 			if prior_created.is_none() {
 				prior_created = match txn.get(&post_key)? {
@@ -334,16 +306,16 @@ impl SinkTableViewOperator {
 			if let Some(c) = prior_created
 				&& post_encoded.len() >= SHAPE_HEADER_SIZE
 			{
-				let updated = shape.updated_at(&post_encoded);
+				let updated = self.shape.updated_at(&post_encoded);
 				let mut builder = EncodedTableRow::from(post_encoded).thaw();
 				builder.set_timestamps(c, updated);
 				post_encoded = builder.freeze_bytes();
 			}
 
 			if pre_row_number != post_row_number {
-				cache.remove(&pre_row_number);
+				self.created_at.remove(&pre_row_number);
 			}
-			remember_created_at(cache, post_row_number, read_created_at(&post_encoded));
+			remember_created_at(&mut self.created_at, post_row_number, read_created_at(&post_encoded));
 
 			pre_keys.push(pre_key);
 			post_keys.push(post_key);
@@ -353,22 +325,21 @@ impl SinkTableViewOperator {
 		txn.remove_batch(&pre_keys)?;
 		txn.set_batch(&post_keys, &post_encoded_bytes_vec)?;
 
-		emit_view_change(txn, view, Diff::update(coerced_pre, coerced_post));
+		emit_view_change(txn, self.view.def(), Diff::update(coerced_pre, coerced_post));
 		Ok(())
 	}
 
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn apply_table_view_remove(&self, txn: &mut DeferredTransaction, view: &View, pre: &Columns) -> Result<()> {
-		let coerced = coerce_columns(pre, view.columns())?;
-		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
+	fn apply_table_view_remove(&mut self, txn: &mut DeferredTransaction, pre: &Columns) -> Result<()> {
+		let coerced = coerce_columns(pre, self.view.def().columns())?;
+		let dict_encoded = dictionary_encode_view_columns(txn, self.view.def(), &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.row_count();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers()[row_idx];
-			cache.remove(&row_number);
+			self.created_at.remove(&row_number);
 			let key = if self.is_partitioned() {
 				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
 				self.partitioned_key(source, row_idx, partition, row_number)
@@ -380,7 +351,7 @@ impl SinkTableViewOperator {
 
 		txn.remove_batch(&keys)?;
 
-		emit_view_change(txn, view, Diff::remove(coerced));
+		emit_view_change(txn, self.view.def(), Diff::remove(coerced));
 		Ok(())
 	}
 }

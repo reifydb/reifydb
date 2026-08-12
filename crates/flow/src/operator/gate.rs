@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::UnsafeCell, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_codec::key::{
 	decode_u64_asc, encode_u64_asc,
@@ -136,7 +136,7 @@ pub struct GateOperator {
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	ctx: Arc<FlowContext>,
-	state: UnsafeCell<GateState>,
+	state: GateState,
 }
 
 impl GateOperator {
@@ -163,7 +163,7 @@ impl GateOperator {
 			routines,
 			runtime_context,
 			ctx,
-			state: UnsafeCell::new(GateState::new()),
+			state: GateState::new(),
 		}
 	}
 
@@ -210,30 +210,16 @@ impl GateOperator {
 		Ok(mask)
 	}
 
-	#[allow(clippy::mut_from_ref)]
-	fn state_slot(&self) -> &mut GateState {
-		// SAFETY: one actor drives this operator and apply never re-enters, so no other borrow
-		// of the UnsafeCell is live while this &mut exists.
-		unsafe { &mut *self.state.get() }
+	fn is_visible<T: FlowTransaction>(&mut self, txn: &mut T, rn: RowNumber) -> Result<bool> {
+		self.state.is_visible(&mut OperatorStateStore::new(txn, self.operator), rn)
 	}
 
-	fn with_state<T: FlowTransaction, R>(&self, txn: &mut T, f: impl FnOnce(&mut T) -> Result<R>) -> Result<R> {
-		self.state_slot().hydrate_once(&mut OperatorStateStore::new(txn, self.operator))?;
-		let out = f(txn)?;
-		self.state_slot().flush(&mut OperatorStateStore::new(txn, self.operator))?;
-		Ok(out)
+	fn mark_visible<T: FlowTransaction>(&mut self, txn: &mut T, rn: RowNumber) -> Result<()> {
+		self.state.mark_visible(&mut OperatorStateStore::new(txn, self.operator), rn)
 	}
 
-	fn is_visible<T: FlowTransaction>(&self, txn: &mut T, rn: RowNumber) -> Result<bool> {
-		self.state_slot().is_visible(&mut OperatorStateStore::new(txn, self.operator), rn)
-	}
-
-	fn mark_visible<T: FlowTransaction>(&self, txn: &mut T, rn: RowNumber) -> Result<()> {
-		self.state_slot().mark_visible(&mut OperatorStateStore::new(txn, self.operator), rn)
-	}
-
-	fn mark_invisible<T: FlowTransaction>(&self, txn: &mut T, rn: RowNumber) -> Result<()> {
-		self.state_slot().mark_invisible(&mut OperatorStateStore::new(txn, self.operator), rn)
+	fn mark_invisible<T: FlowTransaction>(&mut self, txn: &mut T, rn: RowNumber) -> Result<()> {
+		self.state.mark_invisible(&mut OperatorStateStore::new(txn, self.operator), rn)
 	}
 }
 
@@ -249,33 +235,35 @@ impl<T: FlowTransaction> Operator<T> for GateOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		self.state_slot().sample()
+		self.state.sample()
 	}
 
 	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
-		self.with_state(txn, |txn| {
-			let mut result = Vec::new();
+		self.state.hydrate_once(&mut OperatorStateStore::new(txn, self.operator))?;
 
-			for diff in change.diffs {
-				match diff {
-					Diff::Insert {
-						post,
-						..
-					} => self.apply_gate_insert(txn, &post, &mut result)?,
-					Diff::Update {
-						pre,
-						post,
-						..
-					} => self.apply_gate_update(txn, pre, post, &mut result)?,
-					Diff::Remove {
-						pre,
-						..
-					} => self.apply_gate_remove(txn, pre, &mut result)?,
-				}
+		let mut result = Vec::new();
+
+		for diff in change.diffs {
+			match diff {
+				Diff::Insert {
+					post,
+					..
+				} => self.apply_gate_insert(txn, &post, &mut result)?,
+				Diff::Update {
+					pre,
+					post,
+					..
+				} => self.apply_gate_update(txn, pre, post, &mut result)?,
+				Diff::Remove {
+					pre,
+					..
+				} => self.apply_gate_remove(txn, pre, &mut result)?,
 			}
+		}
 
-			Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
-		})
+		self.state.flush(&mut OperatorStateStore::new(txn, self.operator))?;
+
+		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
@@ -287,7 +275,7 @@ impl GateOperator {
 	#[inline]
 	#[instrument(name = "flow::operator::gate::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_gate_insert<T: FlowTransaction>(
-		&self,
+		&mut self,
 		txn: &mut T,
 		post: &Columns,
 		result: &mut Vec<Diff>,
@@ -320,7 +308,7 @@ impl GateOperator {
 	#[inline]
 	#[instrument(name = "flow::operator::gate::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_gate_update<T: FlowTransaction>(
-		&self,
+		&mut self,
 		txn: &mut T,
 		pre: Columns,
 		post: Columns,
@@ -362,7 +350,12 @@ impl GateOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::gate::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn apply_gate_remove<T: FlowTransaction>(&self, txn: &mut T, pre: Columns, result: &mut Vec<Diff>) -> Result<()> {
+	fn apply_gate_remove<T: FlowTransaction>(
+		&mut self,
+		txn: &mut T,
+		pre: Columns,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
 		if pre.row_numbers().is_empty() {
 			result.push(Diff::Remove {
 				pre,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::UnsafeCell, sync::Arc};
+use std::sync::Arc;
 
 use postcard::to_stdvec;
 use reifydb_codec::row::{
@@ -75,8 +75,8 @@ pub struct Aggregation {
 
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
-	tumbling_engine: UnsafeCell<Option<Box<TumblingEngine<Hash128, DateTime, RowAccumulator>>>>,
-	engine_meta: UnsafeCell<Option<StateCache<EngineMetaKey, EngineMeta>>>,
+	tumbling_engine: Option<Box<TumblingEngine<Hash128, DateTime, RowAccumulator>>>,
+	engine_meta: Option<StateCache<EngineMetaKey, EngineMeta>>,
 	pub ctx: Arc<FlowContext>,
 }
 
@@ -158,40 +158,30 @@ impl Aggregation {
 			compiled_outputs,
 			routines,
 			runtime_context,
-			tumbling_engine: UnsafeCell::new(None),
-			engine_meta: UnsafeCell::new(None),
+			tumbling_engine: None,
+			engine_meta: None,
 			ctx,
 		}
 	}
 
-	#[allow(clippy::mut_from_ref)]
 	pub(crate) fn tumbling_engine_slot(
-		&self,
+		&mut self,
 	) -> &mut Option<Box<TumblingEngine<Hash128, DateTime, RowAccumulator>>> {
-		// SAFETY: one actor owns this operator and apply/tick never re-enter, so no other borrow
-		// of the UnsafeCell is live while this &mut exists.
-		unsafe { &mut *self.tumbling_engine.get() }
+		&mut self.tumbling_engine
 	}
 
-	pub(crate) fn engine_meta_open(&self) {
-		// SAFETY: one actor owns this operator and apply/tick run single-threaded, so no other
-		// borrow of the UnsafeCell is live while this &mut exists.
-		let slot = unsafe { &mut *self.engine_meta.get() };
-		if slot.is_none() {
-			*slot = Some(StateCache::new());
+	pub(crate) fn engine_meta_open(&mut self) {
+		if self.engine_meta.is_none() {
+			self.engine_meta = Some(StateCache::new());
 		}
 	}
 
-	#[allow(clippy::mut_from_ref)]
-	pub(crate) fn engine_meta(&self) -> &mut StateCache<EngineMetaKey, EngineMeta> {
-		// SAFETY: single-threaded per actor, so no other borrow of the UnsafeCell is live; the
-		// slot is non-none because engine_meta_open runs at the apply/tick entry.
-		unsafe { (*self.engine_meta.get()).as_mut().expect("engine_meta opened at apply/tick entry") }
+	pub(crate) fn engine_meta(&mut self) -> &mut StateCache<EngineMetaKey, EngineMeta> {
+		self.engine_meta.as_mut().expect("engine_meta opened at apply/tick entry")
 	}
 
-	pub(crate) fn engine_meta_flush<S: StateStore>(&self, store: &mut S) -> Result<()> {
-		// SAFETY: single-threaded per actor; no aliasing &mut engine_meta borrow is live here.
-		if let Some(cache) = unsafe { &mut *self.engine_meta.get() } {
+	pub(crate) fn engine_meta_flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
+		if let Some(cache) = self.engine_meta.as_mut() {
 			cache.flush(store)?;
 		}
 		Ok(())

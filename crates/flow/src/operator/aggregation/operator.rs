@@ -86,7 +86,7 @@ impl<T: FlowTransaction> Operator<T> for AggregateOperator {
 	}
 
 	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
-		apply_aggregate_engine(&self.core, txn, change)
+		apply_aggregate_engine(&mut self.core, txn, change)
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -99,7 +99,7 @@ impl<T: FlowTransaction> Operator<T> for AggregateOperator {
 }
 
 pub fn apply_aggregate_engine<T: FlowTransaction>(
-	core: &Aggregation,
+	core: &mut Aggregation,
 	txn: &mut T,
 	change: Change,
 ) -> Result<Change> {

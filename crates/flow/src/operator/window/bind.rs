@@ -50,7 +50,7 @@ impl WindowOperator {
 	}
 
 	pub(super) fn load_session_tracker<T: FlowTransaction>(
-		&self,
+		&mut self,
 		txn: &mut T,
 		group_hash: Hash128,
 	) -> Result<SessionTracker> {
@@ -60,7 +60,7 @@ impl WindowOperator {
 	}
 
 	pub(super) fn save_session_tracker<T: FlowTransaction>(
-		&self,
+		&mut self,
 		txn: &mut T,
 		group_hash: Hash128,
 		tracker: &SessionTracker,
@@ -119,7 +119,7 @@ impl WindowOperator {
 	}
 
 	pub fn store_row_index<T: FlowTransaction>(
-		&self,
+		&mut self,
 		txn: &mut T,
 		group_hash: Hash128,
 		row_number: RowNumber,
@@ -131,7 +131,7 @@ impl WindowOperator {
 	}
 
 	pub(super) fn lookup_row_index<T: FlowTransaction>(
-		&self,
+		&mut self,
 		txn: &mut T,
 		group_hash: Hash128,
 		row_number: RowNumber,
@@ -142,7 +142,7 @@ impl WindowOperator {
 	}
 
 	pub(super) fn drop_row_index<T: FlowTransaction>(
-		&self,
+		&mut self,
 		txn: &mut T,
 		group_hash: Hash128,
 		row_number: RowNumber,
@@ -153,7 +153,7 @@ impl WindowOperator {
 	}
 
 	pub fn get_and_increment_global_count<T: FlowTransaction>(
-		&self,
+		&mut self,
 		txn: &mut T,
 		group_hash: Hash128,
 	) -> Result<OrdinalCoord> {
@@ -162,17 +162,17 @@ impl WindowOperator {
 		Mint::new(self.meta_slot()).ordinal(&mut store, group)
 	}
 
-	pub(super) fn seal_ledger<T: FlowTransaction>(&self, txn: &mut T) -> Result<SealedThrough> {
+	pub(super) fn seal_ledger<T: FlowTransaction>(&mut self, txn: &mut T) -> Result<SealedThrough> {
 		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		Ok(SealedThrough::from_order(self.meta_slot().seal_ledger(&mut store)?))
 	}
 
-	pub(super) fn advance_seal_ledger<T: FlowTransaction>(&self, txn: &mut T, fired: FiredAt) -> Result<()> {
+	pub(super) fn advance_seal_ledger<T: FlowTransaction>(&mut self, txn: &mut T, fired: FiredAt) -> Result<()> {
 		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		self.meta_slot().advance_seal_ledger(&mut store, fired.at().to_order())
 	}
 
-	pub(super) fn seal_gate<T: FlowTransaction>(&self, txn: &mut T, policy: SealPolicy) -> Result<SealGate> {
+	pub(super) fn seal_gate<T: FlowTransaction>(&mut self, txn: &mut T, policy: SealPolicy) -> Result<SealGate> {
 		let watermark = txn.flow_watermark();
 		let ledger = self.seal_ledger(txn)?;
 		Ok(SealGate::new(policy, Some(ledger), watermark))

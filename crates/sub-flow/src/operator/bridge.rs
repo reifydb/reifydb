@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	cell::UnsafeCell,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
 };
@@ -61,9 +60,9 @@ pub trait BridgedOperator: Send {
 
 	fn capabilities(&self) -> &'static [OperatorCapability];
 
-	fn apply(&self, bridge: &mut dyn Bridge, change: Change) -> Result<Change>;
+	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change>;
 
-	fn on_timer(&self, _bridge: &mut dyn Bridge, _timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, _bridge: &mut dyn Bridge, _timer: Timer) -> Result<Option<Change>> {
 		Ok(None)
 	}
 
@@ -71,7 +70,7 @@ pub trait BridgedOperator: Send {
 		None
 	}
 
-	fn flush_state(&self, _bridge: &mut dyn Bridge) -> Result<()> {
+	fn flush_state(&mut self, _bridge: &mut dyn Bridge) -> Result<()> {
 		Ok(())
 	}
 
@@ -205,7 +204,7 @@ impl<T: FlowTransaction> Bridge for FlowBridge<'_, T> {
 }
 
 pub struct BridgeOperatorAdapter<C> {
-	logic: UnsafeCell<C>,
+	logic: C,
 	operator: OperatorId,
 	capabilities: &'static [OperatorCapability],
 }
@@ -213,14 +212,12 @@ pub struct BridgeOperatorAdapter<C> {
 impl<C> BridgeOperatorAdapter<C> {
 	pub fn new(logic: C, operator: OperatorId, capabilities: &'static [OperatorCapability]) -> Self {
 		Self {
-			logic: UnsafeCell::new(logic),
+			logic,
 			operator,
 			capabilities,
 		}
 	}
 }
-
-unsafe impl<C: Send> Send for BridgeOperatorAdapter<C> {}
 
 impl<C: OperatorLogic + 'static> BridgedOperator for BridgeOperatorAdapter<C> {
 	fn id(&self) -> OperatorId {
@@ -231,15 +228,13 @@ impl<C: OperatorLogic + 'static> BridgedOperator for BridgeOperatorAdapter<C> {
 		self.capabilities
 	}
 
-	fn apply(&self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 		let version = change.version;
 		let changed_at = change.changed_at;
 		let mut ctx = BridgeOperatorContext::new(bridge, self.operator);
 		{
 			let view = BridgeChangeView::new(&change);
-			// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the
-			// logic only reaches the context, never back into this cell; no other borrow is live.
-			let logic = unsafe { &mut *self.logic.get() };
+			let logic = &mut self.logic;
 			run_or_abort(self.operator, "apply", || logic.apply(&mut ctx, view));
 		}
 		let diffs = ctx.take_diffs();
@@ -247,27 +242,19 @@ impl<C: OperatorLogic + 'static> BridgedOperator for BridgeOperatorAdapter<C> {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time and no apply or
-		// timer call is in flight here; no other borrow of the cell is live.
-		let logic = unsafe { &*self.logic.get() };
-		logic.sample()
+		self.logic.sample()
 	}
 
 	fn seal_after(&self) -> Option<Duration> {
-		// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time and no apply or
-		// timer call is in flight here; no other borrow of the cell is live.
-		let logic = unsafe { &*self.logic.get() };
-		logic.seal_after()
+		self.logic.seal_after()
 	}
 
-	fn on_timer(&self, bridge: &mut dyn Bridge, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, bridge: &mut dyn Bridge, timer: Timer) -> Result<Option<Change>> {
 		let at = timer.at;
 		let version = bridge.version();
 		let mut ctx = BridgeOperatorContext::new(bridge, self.operator);
 		{
-			// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the
-			// logic only reaches the context, never back into this cell; no other borrow is live.
-			let logic = unsafe { &mut *self.logic.get() };
+			let logic = &mut self.logic;
 			run_or_abort(self.operator, "on_timer", || {
 				logic.on_timer(
 					&mut ctx,
@@ -286,11 +273,9 @@ impl<C: OperatorLogic + 'static> BridgedOperator for BridgeOperatorAdapter<C> {
 		Ok(Some(Change::from_flow(self.operator, version, diffs, at)))
 	}
 
-	fn flush_state(&self, bridge: &mut dyn Bridge) -> Result<()> {
+	fn flush_state(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
 		let mut ctx = BridgeOperatorContext::new(bridge, self.operator);
-		// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the logic
-		// only reaches the context, never back into this cell; no other borrow is live.
-		let logic = unsafe { &mut *self.logic.get() };
+		let logic = &mut self.logic;
 		run_or_abort(self.operator, "flush_state", || logic.flush_state(&mut ctx));
 		Ok(())
 	}
@@ -315,8 +300,6 @@ impl BridgeOperator {
 		}
 	}
 }
-
-unsafe impl Send for BridgeOperator {}
 
 impl<T: FlowTransaction> Operator<T> for BridgeOperator {
 	fn id(&self) -> OperatorId {
@@ -404,7 +387,7 @@ mod tests {
 			&[]
 		}
 
-		fn apply(&self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+		fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 

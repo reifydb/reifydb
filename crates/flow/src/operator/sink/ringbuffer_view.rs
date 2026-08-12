@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::UnsafeCell, collections::HashMap, ops::Bound};
+use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::{
@@ -119,7 +119,7 @@ pub struct SinkRingBufferViewOperator {
 	announce_evictions: bool,
 	ttl: Option<Duration>,
 	partition_indices: Vec<usize>,
-	verified_partitions: UnsafeCell<HashMap<Partition, Vec<Value>>>,
+	verified_partitions: HashMap<Partition, Vec<Value>>,
 }
 
 impl SinkRingBufferViewOperator {
@@ -142,20 +142,13 @@ impl SinkRingBufferViewOperator {
 			announce_evictions,
 			ttl,
 			partition_indices,
-			verified_partitions: UnsafeCell::new(HashMap::new()),
+			verified_partitions: HashMap::new(),
 		}
 	}
 
 	#[inline]
 	fn is_partitioned(&self) -> bool {
 		!self.partition_indices.is_empty()
-	}
-
-	#[allow(clippy::mut_from_ref)]
-	fn verified_partitions(&self) -> &mut HashMap<Partition, Vec<Value>> {
-		// SAFETY: an operator is reachable from one thread at a time and each apply helper takes this
-		// borrow once, calling nothing that reaches the cell again, so no other borrow is live.
-		unsafe { &mut *self.verified_partitions.get() }
 	}
 
 	#[inline]
@@ -747,7 +740,7 @@ impl SinkRingBufferViewOperator {
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
 	fn apply_ringbuffer_insert(
-		&self,
+		&mut self,
 		txn: &mut DeferredTransaction,
 		view: &View,
 		shape: &RowShape,
@@ -768,7 +761,6 @@ impl SinkRingBufferViewOperator {
 		let mut values_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 
 		if self.is_partitioned() {
-			let verified = self.verified_partitions();
 			let mut groups: Vec<(Partition, Vec<Value>, Vec<usize>)> = Vec::new();
 			let mut group_index: HashMap<Partition, usize> = HashMap::new();
 			for row_idx in 0..row_count {
@@ -783,7 +775,13 @@ impl SinkRingBufferViewOperator {
 			}
 			for (partition, values, rows) in groups {
 				note_touched(touched, values.clone());
-				resolve_partition_flow(txn, object_id.into(), partition, &values, verified)?;
+				resolve_partition_flow(
+					txn,
+					object_id.into(),
+					partition,
+					&values,
+					&mut self.verified_partitions,
+				)?;
 				if !partition_metadata.contains_key(&values) {
 					let loaded = self.read_partition_metadata(txn, &values)?;
 					partition_metadata.insert(values.clone(), loaded);
@@ -943,7 +941,7 @@ impl SinkRingBufferViewOperator {
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
 	fn apply_ringbuffer_update(
-		&self,
+		&mut self,
 		txn: &mut DeferredTransaction,
 		view: &View,
 		shape: &RowShape,
@@ -960,7 +958,6 @@ impl SinkRingBufferViewOperator {
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
 		let row_count = source_post.row_count();
 		let field_columns = shape_field_columns(source_post, shape);
-		let verified = self.verified_partitions();
 		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let pre_source_rn = source_pre.row_numbers()[row_idx];
@@ -971,7 +968,13 @@ impl SinkRingBufferViewOperator {
 				let (post_partition, post_values) =
 					partition_of(&self.partition_indices, &coerced_post, row_idx);
 				ensure_partition_unchanged(object_id.into(), pre_partition, post_partition)?;
-				resolve_partition_flow(txn, object_id.into(), post_partition, &post_values, verified)?;
+				resolve_partition_flow(
+					txn,
+					object_id.into(),
+					post_partition,
+					&post_values,
+					&mut self.verified_partitions,
+				)?;
 				note_touched(touched, post_values);
 				Some(post_partition)
 			} else {

@@ -190,6 +190,9 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 		"precondition: the floor must leave the mapping behind, or there is nothing to collide with"
 	);
 
+	// flush writes without clearing, so only a rebuilt operator has genuinely forgotten the value
+	op = make_op(6, &engine);
+
 	let second = op.apply(&mut txn, build_insert(42, 2)).unwrap();
 	let Some(diff) = second.diffs.first() else {
 		panic!("a value the operator has forgotten must be republished, not swallowed");
