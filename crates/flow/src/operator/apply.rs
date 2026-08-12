@@ -9,13 +9,13 @@ use reifydb_core::{
 use reifydb_value::{Result, value::duration::Duration};
 
 use crate::{
-	operator::{BoxedOperator, Operator, OperatorCell, max_input_time, stamp_output_time},
+	operator::{BoxedOperator, Operator, max_input_time, stamp_output_time},
 	timer::Timer,
 	transaction::FlowTransaction,
 };
 
 pub struct ApplyOperator<T: FlowTransaction> {
-	parent: OperatorCell<T>,
+	parent_schema: Option<Columns>,
 	operator: OperatorId,
 	inner: BoxedOperator<T>,
 	_ttl: Option<Duration>,
@@ -23,13 +23,13 @@ pub struct ApplyOperator<T: FlowTransaction> {
 
 impl<T: FlowTransaction> ApplyOperator<T> {
 	pub fn new(
-		parent: OperatorCell<T>,
+		parent_schema: Option<Columns>,
 		operator: OperatorId,
 		inner: BoxedOperator<T>,
 		ttl: Option<Duration>,
 	) -> Self {
 		Self {
-			parent,
+			parent_schema,
 			operator,
 			inner,
 			_ttl: ttl,
@@ -37,7 +37,7 @@ impl<T: FlowTransaction> ApplyOperator<T> {
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.parent.output_schema()
+		self.parent_schema.clone()
 	}
 }
 
@@ -81,39 +81,14 @@ impl<T: FlowTransaction> Operator<T> for ApplyOperator<T> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{
-		catalog::{
-			flow::OperatorId,
-			id::{NamespaceId, TableId, ViewId},
-			view::{TableView, View, ViewKind},
-		},
-		change::Change,
-		flow::OperatorCapability,
-	};
+	use reifydb_core::interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability};
 	use reifydb_value::{Result, value::duration::Duration};
 
 	use super::ApplyOperator;
-	use crate::{
-		operator::{Operator, OperatorCell, scale_from_millis, scan::view::SourceViewOperator},
-		transaction::deferred::DeferredTransaction,
-	};
+	use crate::{operator::{Operator, scale_from_millis}, transaction::deferred::DeferredTransaction};
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("representable duration")
-	}
-
-	fn noop_parent() -> OperatorCell<DeferredTransaction> {
-		let view = View::Table(TableView {
-			id: ViewId(1),
-			namespace: NamespaceId(1),
-			name: "noop".to_string(),
-			kind: ViewKind::Deferred,
-			columns: vec![],
-			primary_key: None,
-			storage: TableId(1),
-			sort: vec![],
-		});
-		OperatorCell::new(SourceViewOperator::new(OperatorId(0), view))
 	}
 
 	#[test]
@@ -157,7 +132,7 @@ mod tests {
 		// A ttl says how long rows are kept, not how long a window stays amendable, so folding it in here would
 		// hold every published frontier back by the whole retention window.
 		let ttl_only = ApplyOperator::new(
-			noop_parent(),
+			None,
 			OperatorId(7),
 			Box::new(SealingInner {
 				seal: None,
@@ -167,7 +142,7 @@ mod tests {
 		assert_eq!(ttl_only.seal_span(), None);
 
 		let sealing = ApplyOperator::new(
-			noop_parent(),
+			None,
 			OperatorId(7),
 			Box::new(SealingInner {
 				seal: Some(ms(65_000)),

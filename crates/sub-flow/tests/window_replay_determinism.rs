@@ -20,16 +20,12 @@ use reifydb_core::{
 		operator_state::{Keyspace, OperatorStateKey},
 	},
 	state::store::TimerKind,
+	value::column::columns::Columns,
 };
 use reifydb_flow::{
 	context::FlowContext,
-	operator::{
-		OperatorCell,
-		scan::series::SourceSeriesOperator,
-		window::operator::{WindowConfig, WindowOperator},
-	},
+	operator::window::operator::{WindowConfig, WindowOperator},
 	timer::Timer,
-	transaction::deferred::DeferredTransaction,
 	window::meta::EngineMeta,
 };
 use reifydb_routine::{
@@ -44,7 +40,6 @@ use reifydb_value::{
 	value::{duration::Duration, row_number::RowNumber},
 };
 
-const SOURCE: OperatorId = OperatorId(0);
 const SUBJECT: OperatorId = OperatorId(1);
 const GROUP: i32 = 1;
 
@@ -60,11 +55,11 @@ fn routines() -> Routines {
 	default_in_process_monoids(b).configure()
 }
 
-fn harness(kind: WindowKind, clock_ms: u64) -> Harness<WindowOperator<DeferredTransaction>> {
+fn harness(kind: WindowKind, clock_ms: u64) -> Harness<WindowOperator> {
 	Harness::with_engine(move |engine, runtime| {
 		engine.mock_clock().set_millis(clock_ms);
 		WindowOperator::new(WindowConfig {
-			parent: OperatorCell::new(SourceSeriesOperator::new(SOURCE)),
+			parent_schema: Some(Columns::empty()),
 			operator: SUBJECT,
 			kind,
 			group_by: parse_expression("g").expect("group_by parses"),
@@ -87,7 +82,7 @@ struct Snapshot {
 	armed_timers: usize,
 }
 
-fn snapshot(h: &mut Harness<WindowOperator<DeferredTransaction>>) -> Snapshot {
+fn snapshot(h: &mut Harness<WindowOperator>) -> Snapshot {
 	let mut keys = Vec::new();
 	let mut data_values = Vec::new();
 	let mut metas = Vec::new();

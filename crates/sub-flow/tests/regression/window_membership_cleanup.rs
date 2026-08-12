@@ -17,15 +17,11 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::catalog::flow::OperatorId,
+	value::column::columns::Columns,
 };
 use reifydb_flow::{
 	context::FlowContext,
-	operator::{
-		OperatorCell,
-		scan::series::SourceSeriesOperator,
-		window::operator::{WindowConfig, WindowOperator},
-	},
-	transaction::deferred::DeferredTransaction,
+	operator::window::operator::{WindowConfig, WindowOperator},
 };
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,
@@ -39,7 +35,6 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
 
-const SOURCE: OperatorId = OperatorId(0);
 const SUBJECT: OperatorId = OperatorId(1);
 const BASE_MS: u64 = 1_000_000;
 
@@ -55,10 +50,10 @@ fn routines() -> Routines {
 	default_in_process_monoids(b).configure()
 }
 
-fn harness(kind: WindowKind) -> Harness<WindowOperator<DeferredTransaction>> {
+fn harness(kind: WindowKind) -> Harness<WindowOperator> {
 	Harness::new(move |runtime| {
 		WindowOperator::new(WindowConfig {
-			parent: OperatorCell::new(SourceSeriesOperator::new(SOURCE)),
+			parent_schema: Some(Columns::empty()),
 			operator: SUBJECT,
 			kind: kind.clone(),
 			group_by: parse_expression("g").expect("group_by parses"),

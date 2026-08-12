@@ -7,11 +7,7 @@ use reifydb_codec::key::encoded::EncodedKeyRange;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{
-			flow::OperatorId,
-			id::{NamespaceId, TableId, ViewId},
-			view::{TableView, View, ViewKind},
-		},
+		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
 	},
 	key::{
@@ -32,33 +28,16 @@ use reifydb_value::{
 
 use crate::{
 	context::FlowContext,
-	operator::{
-		Operator, OperatorCell, distinct::operator::DistinctOperator, scan::view::SourceViewOperator,
-		stateful::utils,
-	},
+	operator::{Operator, distinct::operator::DistinctOperator, stateful::utils},
 	testing::FlowTxn,
 	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
 
-fn noop_parent() -> OperatorCell<DeferredTransaction> {
-	let view = View::Table(TableView {
-		id: ViewId(1),
-		namespace: NamespaceId(1),
-		name: "noop".to_string(),
-		kind: ViewKind::Deferred,
-		columns: vec![],
-		primary_key: None,
-		storage: TableId(1),
-		sort: vec![],
-	});
-	OperatorCell::new(SourceViewOperator::new(OperatorId(0), view))
-}
-
-fn make_op(operator_id: u64, engine: &TestEngine) -> DistinctOperator<DeferredTransaction> {
+fn make_op(operator_id: u64, engine: &TestEngine) -> DistinctOperator {
 	let routines = engine.executor().routines.clone();
 	let rc = RuntimeContext::with_clock(engine.clock().clone());
 	DistinctOperator::new(
-		noop_parent(),
+		None,
 		OperatorId(operator_id),
 		Vec::new(),
 		routines,
@@ -99,11 +78,11 @@ fn build_remove(value: i64, row_num: u64) -> Change {
 }
 
 fn persisted_rows(
-	op: &DistinctOperator<DeferredTransaction>,
+	op: &DistinctOperator,
 	txn: &mut DeferredTransaction,
 ) -> BTreeMap<Vec<u8>, Vec<u8>> {
 	let mut out = BTreeMap::new();
-	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
+	let batch = txn.state_range(op.operator, EncodedKeyRange::all(), None, "test").unwrap();
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if decoded.keyspace == Keyspace::DISTINCT_ENTRY {
@@ -116,15 +95,15 @@ fn persisted_rows(
 	out
 }
 
-fn layout_row(op: &DistinctOperator<DeferredTransaction>, txn: &mut DeferredTransaction) -> Option<Vec<u8>> {
-	utils::state_get(op.id(), txn, &DistinctOperator::<DeferredTransaction>::layout_storage_key())
+fn layout_row(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Option<Vec<u8>> {
+	utils::state_get(op.operator, txn, &DistinctOperator::layout_storage_key())
 		.unwrap()
 		.map(|row| row.body().to_vec())
 }
 
-fn entry_groups(op: &DistinctOperator<DeferredTransaction>, txn: &mut DeferredTransaction) -> Vec<GroupId> {
+fn entry_groups(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Vec<GroupId> {
 	let mut out = Vec::new();
-	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
+	let batch = txn.state_range(op.operator, EncodedKeyRange::all(), None, "test").unwrap();
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if decoded.keyspace == Keyspace::DISTINCT_ENTRY {
@@ -135,18 +114,18 @@ fn entry_groups(op: &DistinctOperator<DeferredTransaction>, txn: &mut DeferredTr
 }
 
 fn erase_group_data(
-	op: &DistinctOperator<DeferredTransaction>,
+	op: &DistinctOperator,
 	txn: &mut DeferredTransaction,
 	group: GroupId,
 ) -> usize {
-	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
+	let batch = txn.state_range(op.operator, EncodedKeyRange::all(), None, "test").unwrap();
 	let mut erased = 0;
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if decoded.group == group && decoded.keyspace.is_data() {
 			let key = GroupStateKey::from_framed(decoded.inner())
 				.expect("distinct state rows carry a framed inner key");
-			txn.state_remove(op.id(), &key).unwrap();
+			txn.state_remove(op.operator, &key).unwrap();
 			erased += 1;
 		}
 	}
@@ -203,7 +182,7 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 	let erased = erase_group_data(&op, &mut txn, groups[0]);
 	assert!(erased > 0, "precondition: compaction must have erased the entry");
 	assert!(
-		txn.get_row_number(op.id(), groups[0], &utils::empty_key()).unwrap().is_some(),
+		txn.get_row_number(op.operator, groups[0], &utils::empty_key()).unwrap().is_some(),
 		"precondition: the floor must leave the mapping behind, or there is nothing to collide with"
 	);
 

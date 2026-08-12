@@ -28,7 +28,7 @@ use super::{
 use crate::{
 	context::FlowContext,
 	operator::{
-		Operator, OperatorCell,
+		Operator,
 		aggregation::{accumulator::RowAccumulator, core::Aggregation},
 		drops::SealedDrops,
 		stateful::raw::RawStatefulOperator,
@@ -47,8 +47,8 @@ use crate::{
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
-pub struct WindowConfig<T: FlowTransaction> {
-	pub parent: OperatorCell<T>,
+pub struct WindowConfig {
+	pub parent_schema: Option<Columns>,
 	pub operator: OperatorId,
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
@@ -64,8 +64,8 @@ pub(crate) enum RollingEngineSlot {
 	TimedRow(Box<RollingEngine<Hash128, DateTime, RowAccumulator>>),
 }
 
-pub struct WindowOperator<T: FlowTransaction> {
-	pub core: Aggregation<T>,
+pub struct WindowOperator {
+	pub core: Aggregation,
 	pub kind: WindowKind,
 
 	pub grace: Duration,
@@ -74,11 +74,11 @@ pub struct WindowOperator<T: FlowTransaction> {
 	meta: UnsafeCell<WindowMeta>,
 }
 
-impl<T: FlowTransaction> WindowOperator<T> {
-	pub fn new(config: WindowConfig<T>) -> Self {
+impl WindowOperator {
+	pub fn new(config: WindowConfig) -> Self {
 		let core = Aggregation::new(
 			config.operator,
-			config.parent,
+			config.parent_schema,
 			config.group_by,
 			config.aggregations,
 			config.routines,
@@ -103,7 +103,7 @@ impl<T: FlowTransaction> WindowOperator<T> {
 		unsafe { &mut *self.meta.get() }
 	}
 
-	fn with_meta<R>(&self, txn: &mut T, f: impl FnOnce(&mut T) -> Result<R>) -> Result<R> {
+	fn with_meta<T: FlowTransaction, R>(&self, txn: &mut T, f: impl FnOnce(&mut T) -> Result<R>) -> Result<R> {
 		let operator = self.core.operator;
 		self.meta_slot().hydrate_once(&mut OperatorStateStore::new(txn, operator))?;
 		self.core.engine_meta_open();
@@ -189,9 +189,9 @@ impl<T: FlowTransaction> WindowOperator<T> {
 	}
 }
 
-impl<T: FlowTransaction> RawStatefulOperator<T> for WindowOperator<T> {}
+impl<T: FlowTransaction> RawStatefulOperator<T> for WindowOperator {}
 
-impl<T: FlowTransaction> Operator<T> for WindowOperator<T> {
+impl<T: FlowTransaction> Operator<T> for WindowOperator {
 	fn id(&self) -> OperatorId {
 		self.core.operator
 	}
@@ -250,6 +250,6 @@ impl<T: FlowTransaction> Operator<T> for WindowOperator<T> {
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
-		self.core.parent.output_schema()
+		self.core.parent_schema.clone()
 	}
 }

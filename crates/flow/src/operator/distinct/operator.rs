@@ -39,7 +39,7 @@ use crate::{
 	context::FlowContext,
 	error::FlowStateError,
 	operator::{
-		Operator, OperatorCell,
+		Operator,
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
 		drops::SealedDrops,
 		stateful::{raw::RawStatefulOperator, utils},
@@ -65,8 +65,8 @@ enum LoadedEntry {
 	Present(DistinctEntry),
 }
 
-pub struct DistinctOperator<T: FlowTransaction> {
-	parent: OperatorCell<T>,
+pub struct DistinctOperator {
+	parent_schema: Option<Columns>,
 	pub(super) operator: OperatorId,
 	pub(super) compiled_expressions: Vec<CompiledExpr>,
 	pub(super) routines: Routines,
@@ -76,9 +76,9 @@ pub struct DistinctOperator<T: FlowTransaction> {
 	pub(super) _ttl: Option<Duration>,
 }
 
-impl<T: FlowTransaction> DistinctOperator<T> {
+impl DistinctOperator {
 	pub fn new(
-		parent: OperatorCell<T>,
+		parent_schema: Option<Columns>,
 		operator: OperatorId,
 		expressions: Vec<Expression>,
 		routines: Routines,
@@ -96,7 +96,7 @@ impl<T: FlowTransaction> DistinctOperator<T> {
 			.expect("Failed to compile expressions");
 
 		Self {
-			parent,
+			parent_schema,
 			operator,
 			compiled_expressions,
 			routines,
@@ -108,7 +108,7 @@ impl<T: FlowTransaction> DistinctOperator<T> {
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.parent.output_schema()
+		self.parent_schema.clone()
 	}
 
 	pub(super) fn group_bytes(hash: Hash128) -> EncodedKey {
@@ -124,7 +124,7 @@ impl<T: FlowTransaction> DistinctOperator<T> {
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_entry", level = "trace", skip_all)]
-	fn load_entry(&self, txn: &mut T, group: GroupId) -> Result<LoadedEntry> {
+	fn load_entry<T: FlowTransaction>(&self, txn: &mut T, group: GroupId) -> Result<LoadedEntry> {
 		match utils::state_get(self.operator, txn, &Self::entry_key(group))? {
 			Some(row) => {
 				if row.is_empty() {
@@ -143,7 +143,7 @@ impl<T: FlowTransaction> DistinctOperator<T> {
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_layout", level = "trace", skip_all)]
-	fn load_layout(&self, txn: &mut T) -> Result<DistinctLayout> {
+	fn load_layout<T: FlowTransaction>(&self, txn: &mut T) -> Result<DistinctLayout> {
 		match utils::state_get(self.operator, txn, &Self::layout_storage_key())? {
 			Some(row) => {
 				if row.is_empty() {
@@ -195,9 +195,9 @@ impl<T: FlowTransaction> DistinctOperator<T> {
 	}
 }
 
-impl<T: FlowTransaction> RawStatefulOperator<T> for DistinctOperator<T> {}
+impl<T: FlowTransaction> RawStatefulOperator<T> for DistinctOperator {}
 
-impl<T: FlowTransaction> Operator<T> for DistinctOperator<T> {
+impl<T: FlowTransaction> Operator<T> for DistinctOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}

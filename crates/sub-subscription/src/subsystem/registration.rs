@@ -34,16 +34,19 @@ pub(crate) fn register_ephemeral_flow(
 			OperatorDef::SinkSubscription {
 				..
 			} => {
-				let parent = engine.operator(operator.inputs[0]).expect("Parent operator not found");
-				let op = EphemeralSinkSubscriptionOperator::new(
-					parent.clone(),
-					operator_id,
-					ctx.id,
-					delivery.clone(),
-				);
+				let parent_schema = engine
+					.operator(operator.inputs[0])
+					.expect("Parent operator not found")
+					.output_schema();
+				let op = EphemeralSinkSubscriptionOperator::new(operator_id, ctx.id, delivery.clone());
 				engine.insert_operator(
 					operator_id,
-					OperatorCell::new(ApplyOperator::new(parent, operator_id, Box::new(op), None)),
+					OperatorCell::new(ApplyOperator::new(
+						parent_schema,
+						operator_id,
+						Box::new(op),
+						None,
+					)),
 				);
 			}
 			_ => {

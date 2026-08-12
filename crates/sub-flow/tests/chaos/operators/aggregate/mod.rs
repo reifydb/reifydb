@@ -5,10 +5,8 @@ pub mod oracle;
 pub mod workload;
 
 use rand::{RngExt, rngs::StdRng};
-use reifydb_flow::{
-	operator::{OperatorCell, aggregation::operator::AggregateOperator, scan::series::SourceSeriesOperator},
-	transaction::deferred::DeferredTransaction,
-};
+use reifydb_core::value::column::columns::Columns;
+use reifydb_flow::operator::aggregation::operator::AggregateOperator;
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_testing_chaos::{
@@ -26,7 +24,7 @@ use crate::{
 	operators::{
 		aggregate::{
 			oracle::AggregateOracle,
-			workload::{AGGREGATE_OPERATOR, AggregateWorkload, SOURCE_OPERATOR},
+			workload::{AGGREGATE_OPERATOR, AggregateWorkload},
 		},
 		routines,
 	},
@@ -93,10 +91,9 @@ impl Agg {
 	}
 }
 
-pub fn build(agg: Agg, runtime: RuntimeContext) -> AggregateOperator<DeferredTransaction> {
-	let parent = OperatorCell::new(SourceSeriesOperator::new(SOURCE_OPERATOR));
+pub fn build(agg: Agg, runtime: RuntimeContext) -> AggregateOperator {
 	AggregateOperator::new(
-		parent,
+		Some(Columns::empty()),
 		AGGREGATE_OPERATOR,
 		parse_expression(GROUP_COLUMN).expect("group_by parses"),
 		parse_expression(agg.expression()).expect("aggregation parses"),

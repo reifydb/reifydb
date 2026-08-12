@@ -22,7 +22,7 @@ use tracing::instrument;
 
 use crate::{
 	error::FlowGraphError,
-	operator::{Operator, OperatorCell, drops::SealedDrops},
+	operator::{Operator, drops::SealedDrops},
 	transaction::FlowTransaction,
 };
 
@@ -32,10 +32,10 @@ const REMOVE_RECLAIM_LIMIT: usize = 8;
 
 const DROP_REASON: &str = "mutations whose source row mapping was reclaimed";
 
-pub struct AppendOperator<T: FlowTransaction> {
+pub struct AppendOperator {
 	operator: OperatorId,
 
-	parents: Vec<OperatorCell<T>>,
+	parent_schema: Option<Columns>,
 
 	input_nodes: Vec<OperatorId>,
 
@@ -44,21 +44,20 @@ pub struct AppendOperator<T: FlowTransaction> {
 	_ttl: Option<Duration>,
 }
 
-impl<T: FlowTransaction> AppendOperator<T> {
+impl AppendOperator {
 	pub fn new(
 		operator: OperatorId,
-		parents: Vec<OperatorCell<T>>,
+		parent_schema: Option<Columns>,
 		input_nodes: Vec<OperatorId>,
 		ttl: Option<Duration>,
 	) -> Self {
 		reifydb_assertions! {
-			assert_eq!(parents.len(), input_nodes.len());
-			assert!(parents.len() >= 2, "Append requires at least 2 inputs");
+			assert!(input_nodes.len() >= 2, "Append requires at least 2 inputs");
 		}
 
 		Self {
 			operator,
-			parents,
+			parent_schema,
 			input_nodes,
 			dropped: SealedDrops::new(operator, DROP_REASON),
 			_ttl: ttl,
@@ -69,7 +68,7 @@ impl<T: FlowTransaction> AppendOperator<T> {
 	pub(crate) fn new_for_state_tests(operator: OperatorId) -> Self {
 		Self {
 			operator,
-			parents: Vec::new(),
+			parent_schema: None,
 			input_nodes: Vec::new(),
 			dropped: SealedDrops::new(operator, DROP_REASON),
 			_ttl: None,
@@ -77,7 +76,7 @@ impl<T: FlowTransaction> AppendOperator<T> {
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.parents[0].output_schema()
+		self.parent_schema.clone()
 	}
 
 	fn parent_index_for_origin(&self, origin: &ChangeOrigin) -> Option<usize> {
@@ -105,7 +104,7 @@ impl<T: FlowTransaction> AppendOperator<T> {
 	}
 }
 
-impl<T: FlowTransaction> Operator<T> for AppendOperator<T> {
+impl<T: FlowTransaction> Operator<T> for AppendOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -167,10 +166,14 @@ impl<T: FlowTransaction> Operator<T> for AppendOperator<T> {
 	}
 }
 
-impl<T: FlowTransaction> AppendOperator<T> {
+impl AppendOperator {
 	#[inline]
 	#[instrument(name = "flow::operator::append::create_row_numbers", level = "trace", skip_all, fields(groups = groups.len()))]
-	fn translate_create_row_numbers(&self, txn: &mut T, groups: &[EncodedKey]) -> Result<Vec<RowNumber>> {
+	fn translate_create_row_numbers<T: FlowTransaction>(
+		&self,
+		txn: &mut T,
+		groups: &[EncodedKey],
+	) -> Result<Vec<RowNumber>> {
 		let interned = txn.intern_groups(self.operator, groups)?;
 		let mut output_row_numbers = Vec::with_capacity(interned.len());
 		for (group, _) in interned {
@@ -183,7 +186,7 @@ impl<T: FlowTransaction> AppendOperator<T> {
 
 	#[inline]
 	#[instrument(name = "flow::operator::append::lookup_row_numbers", level = "trace", skip_all, fields(groups = groups.len()))]
-	fn lookup_row_numbers(
+	fn lookup_row_numbers<T: FlowTransaction>(
 		&self,
 		txn: &mut T,
 		groups: &[EncodedKey],
@@ -205,7 +208,12 @@ impl<T: FlowTransaction> AppendOperator<T> {
 
 	#[inline]
 	#[instrument(name = "flow::operator::append::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn translate_append_insert(&self, txn: &mut T, parent_index: usize, post: Columns) -> Result<Option<Diff>> {
+	fn translate_append_insert<T: FlowTransaction>(
+		&self,
+		txn: &mut T,
+		parent_index: usize,
+		post: Columns,
+	) -> Result<Option<Diff>> {
 		if post.row_count() == 0 {
 			return Ok(None);
 		}
@@ -217,7 +225,7 @@ impl<T: FlowTransaction> AppendOperator<T> {
 
 	#[inline]
 	#[instrument(name = "flow::operator::append::update", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn translate_append_update(
+	fn translate_append_update<T: FlowTransaction>(
 		&self,
 		txn: &mut T,
 		parent_index: usize,
@@ -240,7 +248,12 @@ impl<T: FlowTransaction> AppendOperator<T> {
 
 	#[inline]
 	#[instrument(name = "flow::operator::append::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn translate_append_remove(&self, txn: &mut T, parent_index: usize, pre: Columns) -> Result<Option<Diff>> {
+	fn translate_append_remove<T: FlowTransaction>(
+		&self,
+		txn: &mut T,
+		parent_index: usize,
+		pre: Columns,
+	) -> Result<Option<Diff>> {
 		if pre.row_count() == 0 {
 			return Ok(None);
 		}
@@ -271,8 +284,6 @@ mod tests {
 		testing::FlowTxn,
 		transaction::{ChangeCoordinate, deferred::DeferredTransaction},
 	};
-
-	type AppendOperator = crate::operator::append::AppendOperator<DeferredTransaction>;
 
 	fn op(operator: u64) -> AppendOperator {
 		AppendOperator::new_for_state_tests(OperatorId(operator))
@@ -490,6 +501,9 @@ mod tests {
 	fn append_reports_no_operator_sample() {
 		// Append's mappings live in the shared row-number registry, so a mapping leak here is
 		// attributed through the registry's per-operator metrics, not a per-operator sample.
-		assert!(op(11).sample().is_none(), "append has no owned operator state to sample");
+		assert!(
+			Operator::<DeferredTransaction>::sample(&op(11)).is_none(),
+			"append has no owned operator state to sample"
+		);
 	}
 }

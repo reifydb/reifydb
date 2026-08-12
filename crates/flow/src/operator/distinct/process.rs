@@ -34,7 +34,7 @@ fn row_time<T: FlowTransaction>(txn: &T, columns: &Columns, row_idx: usize) -> D
 	}
 }
 
-impl<T: FlowTransaction> DistinctOperator<T> {
+impl DistinctOperator {
 	pub(super) fn with_stable_rn(cols: Columns, stable_rn: RowNumber) -> Columns {
 		Columns::with_system(
 			cols.iter().map(|c| ColumnWithName::new(c.name().clone(), c.data().clone())).collect(),
@@ -115,7 +115,7 @@ impl<T: FlowTransaction> DistinctOperator<T> {
 		}
 	}
 
-	pub(super) fn process_insert(
+	pub(super) fn process_insert<T: FlowTransaction>(
 		&self,
 		txn: &mut T,
 		state: &mut DistinctState,
@@ -206,7 +206,7 @@ impl<T: FlowTransaction> DistinctOperator<T> {
 		Ok(result)
 	}
 
-	pub(super) fn process_update(
+	pub(super) fn process_update<T: FlowTransaction>(
 		&self,
 		txn: &mut T,
 		state: &mut DistinctState,
@@ -365,7 +365,7 @@ impl<T: FlowTransaction> DistinctOperator<T> {
 		Ok(result)
 	}
 
-	pub(super) fn process_remove(
+	pub(super) fn process_remove<T: FlowTransaction>(
 		&self,
 		txn: &mut T,
 		state: &mut DistinctState,

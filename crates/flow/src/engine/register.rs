@@ -182,15 +182,13 @@ impl FlowEngineInner<DeferredTransaction> {
 		view: ViewId,
 		table: TableId,
 	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
-
+		self.require_parent(first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_table(&mut txn.reborrow(), table)?.partition_by;
 		self.operators.insert(
 			operator_id,
 			OperatorCell::new(SinkTableViewOperator::new(
-				parent,
 				operator_id,
 				resolved,
 				table,
@@ -212,7 +210,7 @@ impl FlowEngineInner<DeferredTransaction> {
 		ringbuffer: RingBufferId,
 		capacity: u64,
 	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
+		self.require_parent(first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?.partition_by;
@@ -225,7 +223,6 @@ impl FlowEngineInner<DeferredTransaction> {
 		self.operators.insert(
 			operator_id,
 			OperatorCell::new(SinkRingBufferViewOperator::new(
-				parent,
 				operator_id,
 				resolved,
 				ringbuffer,
@@ -250,14 +247,13 @@ impl FlowEngineInner<DeferredTransaction> {
 		series: SeriesId,
 		key: SeriesKey,
 	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
+		self.require_parent(first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_series(&mut txn.reborrow(), series)?.partition_by;
 		self.operators.insert(
 			operator_id,
 			OperatorCell::new(SinkSeriesViewOperator::new(
-				parent,
 				operator_id,
 				resolved,
 				series,
@@ -445,11 +441,11 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		conditions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		self.operators.insert(
 			operator_id,
 			OperatorCell::new(FilterOperator::new(
-				parent,
+				parent_schema,
 				operator_id,
 				conditions,
 				self.routines.clone(),
@@ -468,11 +464,11 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		conditions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		self.operators.insert(
 			operator_id,
 			OperatorCell::new(GateOperator::new(
-				parent,
+				parent_schema,
 				operator_id,
 				conditions,
 				self.routines.clone(),
@@ -491,11 +487,11 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		self.operators.insert(
 			operator_id,
 			OperatorCell::new(MapOperator::new(
-				parent,
+				parent_schema,
 				operator_id,
 				expressions,
 				self.routines.clone(),
@@ -514,11 +510,11 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		self.operators.insert(
 			operator_id,
 			OperatorCell::new(ExtendOperator::new(
-				parent,
+				parent_schema,
 				operator_id,
 				expressions,
 				self.routines.clone(),
@@ -531,16 +527,16 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 
 	#[inline]
 	fn add_sort(&mut self, operator_id: OperatorId, inputs: &[OperatorId]) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		self.operators
-			.insert(operator_id, OperatorCell::new(SortOperator::new(parent, operator_id, Vec::new())));
+			.insert(operator_id, OperatorCell::new(SortOperator::new(parent_schema, operator_id, Vec::new())));
 		Ok(())
 	}
 
 	#[inline]
 	fn add_take(&mut self, operator_id: OperatorId, inputs: &[OperatorId], limit: usize) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
-		self.operators.insert(operator_id, OperatorCell::new(TakeOperator::new(parent, operator_id, limit)));
+		let parent_schema = self.parent_schema(first_input(inputs)?)?;
+		self.operators.insert(operator_id, OperatorCell::new(TakeOperator::new(parent_schema, operator_id, limit)));
 		Ok(())
 	}
 
@@ -571,7 +567,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		let left_node = inputs[0];
 		let right_node = inputs[1];
 
-		let left_parent = self
+		let left_schema = self
 			.operators
 			.get(&left_node)
 			.ok_or_else(|| {
@@ -579,9 +575,10 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 					input: "left parent".to_string(),
 				})
 			})?
-			.clone();
+			.output_schema()
+			.unwrap_or_default();
 
-		let right_parent = self
+		let right_schema = self
 			.operators
 			.get(&right_node)
 			.ok_or_else(|| {
@@ -589,11 +586,8 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 					input: "right parent".to_string(),
 				})
 			})?
-			.clone();
-
-		let left_schema = left_parent.output_schema().unwrap_or_default();
-		let right_schema =
-			right_parent.output_schema().expect("right side of join must have a statically known schema");
+			.output_schema()
+			.expect("right side of join must have a statically known schema");
 
 		let (left_exprs, right_exprs) = if natural {
 			let common = common_column_names(&left_schema, &right_schema);
@@ -647,12 +641,12 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		let ttl = self.operator_ttl(txn, operator_id)?;
 		self.operators.insert(
 			operator_id,
 			OperatorCell::new(DistinctOperator::new(
-				parent,
+				parent_schema,
 				operator_id,
 				expressions,
 				self.routines.clone(),
@@ -679,10 +673,10 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 			}));
 		}
 
-		let mut parents = Vec::with_capacity(inputs.len());
+		let mut parent_schemas = Vec::with_capacity(inputs.len());
 
 		for input_node_id in inputs {
-			let parent = self
+			let schema = self
 				.operators
 				.get(input_node_id)
 				.ok_or_else(|| {
@@ -690,14 +684,15 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 						input: format!("{:?}", input_node_id),
 					})
 				})?
-				.clone();
-			parents.push(parent);
+				.output_schema();
+			parent_schemas.push(schema);
 		}
 
+		let parent_schema = parent_schemas.swap_remove(0);
 		let ttl = self.operator_ttl(txn, operator_id)?;
 		self.operators.insert(
 			operator_id,
-			OperatorCell::new(AppendOperator::new(operator_id, parents, inputs.to_vec(), ttl)),
+			OperatorCell::new(AppendOperator::new(operator_id, parent_schema, inputs.to_vec(), ttl)),
 		);
 		Ok(())
 	}
@@ -714,13 +709,13 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		let config = evaluate_operator_config(expressions.as_slice(), &self.routines, &self.runtime_context)?;
 		let cfg = Config::new(operator.as_str(), config);
 		let ttl = self.operator_ttl(txn, operator_id)?;
-		let parent = self.parent(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 
 		let provider = self.operator_provider.clone();
 		let inner = provider.provide(operator_id, &cfg)?;
 
 		self.operators
-			.insert(operator_id, OperatorCell::new(ApplyOperator::new(parent, operator_id, inner, ttl)));
+			.insert(operator_id, OperatorCell::new(ApplyOperator::new(parent_schema, operator_id, inner, ttl)));
 		Ok(())
 	}
 
@@ -736,9 +731,9 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		grace: Duration,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		let operator = WindowOperator::new(WindowConfig {
-			parent,
+			parent_schema,
 			operator: operator_id,
 			kind: kind.clone(),
 			group_by: group_by.clone(),
@@ -761,9 +756,9 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		let operator = AggregateOperator::new(
-			parent,
+			parent_schema,
 			operator_id,
 			by,
 			map,
@@ -779,15 +774,16 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		Ok(self.catalog.find_operator_settings(txn, operator_id)?.and_then(|s| s.ttl).map(|ttl| ttl.duration))
 	}
 
-	fn parent(&self, input: OperatorId) -> Result<OperatorCell<T>> {
-		Ok(self.operators
-			.get(&input)
-			.ok_or_else(|| {
-				Error::from(FlowGraphError::ParentOperatorNotFound {
-					input: format!("{:?}", input),
-				})
-			})?
-			.clone())
+	fn require_parent(&self, input: OperatorId) -> Result<&OperatorCell<T>> {
+		self.operators.get(&input).ok_or_else(|| {
+			Error::from(FlowGraphError::ParentOperatorNotFound {
+				input: format!("{:?}", input),
+			})
+		})
+	}
+
+	fn parent_schema(&self, input: OperatorId) -> Result<Option<Columns>> {
+		Ok(self.require_parent(input)?.output_schema())
 	}
 
 	#[inline]

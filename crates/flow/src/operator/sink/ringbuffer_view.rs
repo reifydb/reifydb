@@ -62,7 +62,7 @@ use super::{
 };
 use crate::{
 	error::FlowStateError,
-	operator::{Operator, OperatorCell, join::column::JoinedColumnsBuilder, stateful::raw::RawStatefulOperator},
+	operator::{Operator, join::column::JoinedColumnsBuilder, stateful::raw::RawStatefulOperator},
 	timer::Timer,
 	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
@@ -112,8 +112,6 @@ fn decode_expiry_key(bytes: &[u8]) -> Result<(u64, u64)> {
 }
 
 pub struct SinkRingBufferViewOperator {
-	#[allow(dead_code)]
-	parent: OperatorCell<DeferredTransaction>,
 	operator: OperatorId,
 	view: ResolvedView,
 	ringbuffer_id: RingBufferId,
@@ -127,7 +125,6 @@ pub struct SinkRingBufferViewOperator {
 impl SinkRingBufferViewOperator {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		parent: OperatorCell<DeferredTransaction>,
 		operator: OperatorId,
 		view: ResolvedView,
 		ringbuffer_id: RingBufferId,
@@ -138,7 +135,6 @@ impl SinkRingBufferViewOperator {
 	) -> Self {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		Self {
-			parent,
 			operator,
 			view,
 			ringbuffer_id,
@@ -1109,10 +1105,7 @@ mod tests {
 	use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, identity::IdentityId};
 
 	use super::*;
-	use crate::{
-		operator::scan::view::SourceViewOperator, testing::FlowTxn,
-		transaction::substrate::apply_operator_state,
-	};
+	use crate::{testing::FlowTxn, transaction::substrate::apply_operator_state};
 
 	const RB: RingBufferId = RingBufferId(42);
 	const T0: u64 = 1_000_000_000_000;
@@ -1168,13 +1161,12 @@ mod tests {
 			ResolvedNamespace::new(Fragment::internal("test"), Namespace::system()),
 			view.clone(),
 		);
-		let parent = OperatorCell::new(SourceViewOperator::new(OperatorId(9), view));
 		let partition_by = if partitioned {
 			vec!["base".to_string()]
 		} else {
 			Vec::new()
 		};
-		SinkRingBufferViewOperator::new(parent, OperatorId(1), resolved, RB, 100, propagate, ttl, partition_by)
+		SinkRingBufferViewOperator::new(OperatorId(1), resolved, RB, 100, propagate, ttl, partition_by)
 	}
 
 	fn deferred_txn(engine: &TestEngine) -> DeferredTransaction {

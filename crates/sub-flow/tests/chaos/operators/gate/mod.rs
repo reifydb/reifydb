@@ -7,11 +7,8 @@ pub mod workload;
 use std::sync::Arc;
 
 use rand::RngExt;
-use reifydb_flow::{
-	context::FlowContext,
-	operator::{OperatorCell, gate::GateOperator, scan::series::SourceSeriesOperator},
-	transaction::deferred::DeferredTransaction,
-};
+use reifydb_core::value::column::columns::Columns;
+use reifydb_flow::{context::FlowContext, operator::gate::GateOperator};
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_testing_chaos::{
@@ -28,7 +25,7 @@ use crate::{
 	operators::{
 		gate::{
 			oracle::GateOracle,
-			workload::{GATE_OPERATOR, GateWorkload, PAYLOAD_COLUMN, SOURCE_OPERATOR},
+			workload::{GATE_OPERATOR, GateWorkload, PAYLOAD_COLUMN},
 		},
 		routines,
 	},
@@ -38,10 +35,9 @@ pub fn condition(threshold: i64) -> String {
 	format!("{PAYLOAD_COLUMN} > {threshold}")
 }
 
-pub fn build(threshold: i64, runtime: RuntimeContext) -> GateOperator<DeferredTransaction> {
-	let parent = OperatorCell::new(SourceSeriesOperator::new(SOURCE_OPERATOR));
+pub fn build(threshold: i64, runtime: RuntimeContext) -> GateOperator {
 	GateOperator::new(
-		parent,
+		Some(Columns::empty()),
 		GATE_OPERATOR,
 		parse_expression(&condition(threshold)).expect("the gate condition parses"),
 		routines(),

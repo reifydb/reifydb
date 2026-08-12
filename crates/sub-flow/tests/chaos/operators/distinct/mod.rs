@@ -7,11 +7,8 @@ pub mod workload;
 use std::sync::Arc;
 
 use rand::{RngExt, rngs::StdRng};
-use reifydb_flow::{
-	context::FlowContext,
-	operator::{OperatorCell, distinct::operator::DistinctOperator, scan::series::SourceSeriesOperator},
-	transaction::deferred::DeferredTransaction,
-};
+use reifydb_core::value::column::columns::Columns;
+use reifydb_flow::{context::FlowContext, operator::distinct::operator::DistinctOperator};
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_testing_chaos::{
@@ -28,16 +25,15 @@ use crate::{
 	operators::{
 		distinct::{
 			oracle::DistinctOracle,
-			workload::{DISTINCT_OPERATOR, DistinctWorkload, KEY_COLUMN, SOURCE_OPERATOR},
+			workload::{DISTINCT_OPERATOR, DistinctWorkload, KEY_COLUMN},
 		},
 		routines,
 	},
 };
 
-pub fn build(runtime: RuntimeContext) -> DistinctOperator<DeferredTransaction> {
-	let parent = OperatorCell::new(SourceSeriesOperator::new(SOURCE_OPERATOR));
+pub fn build(runtime: RuntimeContext) -> DistinctOperator {
 	DistinctOperator::new(
-		parent,
+		Some(Columns::empty()),
 		DISTINCT_OPERATOR,
 		parse_expression(KEY_COLUMN).expect("the distinct key parses"),
 		routines(),

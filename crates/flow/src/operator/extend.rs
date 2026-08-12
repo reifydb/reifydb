@@ -21,14 +21,10 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, fragment::Fragment, value::system_columns::SystemColumns};
 use tracing::instrument;
 
-use crate::{
-	context::FlowContext,
-	operator::{Operator, OperatorCell},
-	transaction::FlowTransaction,
-};
+use crate::{context::FlowContext, operator::Operator, transaction::FlowTransaction};
 
-pub struct ExtendOperator<T: FlowTransaction> {
-	parent: OperatorCell<T>,
+pub struct ExtendOperator {
+	parent_schema: Option<Columns>,
 	operator: OperatorId,
 	expressions: Vec<Expression>,
 	compiled_expressions: Vec<CompiledExpr>,
@@ -37,9 +33,9 @@ pub struct ExtendOperator<T: FlowTransaction> {
 	ctx: Arc<FlowContext>,
 }
 
-impl<T: FlowTransaction> ExtendOperator<T> {
+impl ExtendOperator {
 	pub fn new(
-		parent: OperatorCell<T>,
+		parent_schema: Option<Columns>,
 		operator: OperatorId,
 		expressions: Vec<Expression>,
 		routines: Routines,
@@ -56,7 +52,7 @@ impl<T: FlowTransaction> ExtendOperator<T> {
 			.expect("Failed to compile expressions");
 
 		Self {
-			parent,
+			parent_schema,
 			operator,
 			expressions,
 			compiled_expressions,
@@ -67,7 +63,7 @@ impl<T: FlowTransaction> ExtendOperator<T> {
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.parent.output_schema()
+		self.parent_schema.clone()
 	}
 
 	#[instrument(name = "flow::operator::extend::extend", level = "trace", skip_all, fields(rows = columns.row_count()))]
@@ -125,7 +121,7 @@ impl<T: FlowTransaction> ExtendOperator<T> {
 	}
 }
 
-impl<T: FlowTransaction> Operator<T> for ExtendOperator<T> {
+impl<T: FlowTransaction> Operator<T> for ExtendOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}

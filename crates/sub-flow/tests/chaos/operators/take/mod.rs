@@ -5,10 +5,8 @@ pub mod oracle;
 pub mod workload;
 
 use rand::RngExt;
-use reifydb_flow::{
-	operator::{OperatorCell, scan::series::SourceSeriesOperator, take::TakeOperator},
-	transaction::deferred::DeferredTransaction,
-};
+use reifydb_core::value::column::columns::Columns;
+use reifydb_flow::operator::take::TakeOperator;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},
@@ -22,7 +20,7 @@ use crate::{
 	framework::harness::Harness,
 	operators::take::{
 		oracle::TakeOracle,
-		workload::{SOURCE_OPERATOR, TAKE_OPERATOR, TakeWorkload},
+		workload::{TAKE_OPERATOR, TakeWorkload},
 	},
 };
 
@@ -32,9 +30,8 @@ pub const fn exact_oracle_ceiling(limit: usize) -> usize {
 	limit * 5
 }
 
-pub fn build(limit: usize) -> TakeOperator<DeferredTransaction> {
-	let parent = OperatorCell::new(SourceSeriesOperator::new(SOURCE_OPERATOR));
-	TakeOperator::new(parent, TAKE_OPERATOR, limit)
+pub fn build(limit: usize) -> TakeOperator {
+	TakeOperator::new(Some(Columns::empty()), TAKE_OPERATOR, limit)
 }
 
 #[derive(Debug, Clone)]

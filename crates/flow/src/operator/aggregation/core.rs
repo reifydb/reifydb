@@ -34,8 +34,7 @@ use reifydb_value::{
 use crate::{
 	context::FlowContext,
 	error::FlowStateError,
-	operator::{OperatorCell, aggregation::accumulator::RowAccumulator},
-	transaction::FlowTransaction,
+	operator::aggregation::accumulator::RowAccumulator,
 	window::{
 		engine::tumbling::TumblingEngine,
 		meta::{EngineMeta, EngineMetaKey},
@@ -59,9 +58,9 @@ fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
 	RowShape::new(RowFamily::Table, fields)
 }
 
-pub struct Aggregation<T: FlowTransaction> {
+pub struct Aggregation {
 	pub operator: OperatorId,
-	pub parent: OperatorCell<T>,
+	pub parent_schema: Option<Columns>,
 	pub compiled_group_by: Vec<CompiledExpr>,
 	pub group_names: Vec<String>,
 	pub aggregate_output_names: Vec<String>,
@@ -81,11 +80,11 @@ pub struct Aggregation<T: FlowTransaction> {
 	pub ctx: Arc<FlowContext>,
 }
 
-impl<T: FlowTransaction> Aggregation<T> {
+impl Aggregation {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		operator: OperatorId,
-		parent: OperatorCell<T>,
+		parent_schema: Option<Columns>,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
 		routines: Routines,
@@ -149,7 +148,7 @@ impl<T: FlowTransaction> Aggregation<T> {
 
 		Self {
 			operator,
-			parent,
+			parent_schema,
 			compiled_group_by,
 			group_names,
 			aggregate_output_names,

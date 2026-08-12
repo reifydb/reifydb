@@ -26,18 +26,15 @@ use reifydb_core::{
 use reifydb_flow::{
 	context::FlowContext,
 	operator::{
-		OperatorCell,
 		aggregation::operator::AggregateOperator,
 		distinct::operator::DistinctOperator,
 		extend::ExtendOperator,
 		filter::FilterOperator,
 		gate::GateOperator,
 		map::MapOperator,
-		scan::series::SourceSeriesOperator,
 		take::TakeOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
-	transaction::deferred::DeferredTransaction,
 };
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,
@@ -48,7 +45,6 @@ use reifydb_rql::expression::parse_expression;
 use reifydb_testing_flow::{generator, harness::Harness};
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber};
 
-const SOURCE: OperatorId = OperatorId(0);
 const SUBJECT: OperatorId = OperatorId(1);
 
 // Past the epoch, so a row that lost its stamp is visibly different from one that kept it.
@@ -61,8 +57,8 @@ fn routines() -> Routines {
 	default_in_process_monoids(b).configure()
 }
 
-fn source() -> OperatorCell<DeferredTransaction> {
-	OperatorCell::new(SourceSeriesOperator::new(SOURCE))
+fn source() -> Option<Columns> {
+	Some(Columns::empty())
 }
 
 fn row(number: u64, group: i32, value: i64) -> reifydb_core::row::Row {
@@ -267,7 +263,7 @@ fn a_window_update_retracts_the_total_it_previously_published() {
 	const SECS: i64 = 60;
 	let mut harness = Harness::new(|runtime| {
 		WindowOperator::new(WindowConfig {
-			parent: source(),
+			parent_schema: source(),
 			operator: SUBJECT,
 			kind: WindowKind::Tumbling {
 				size: WindowSize::Duration(Duration::from_seconds(SECS).expect("representable")),

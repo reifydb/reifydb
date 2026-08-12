@@ -31,7 +31,7 @@ use super::{
 };
 use crate::{
 	context::FlowContext,
-	operator::{Operator, OperatorCell, store::OperatorStateStore},
+	operator::{Operator, store::OperatorStateStore},
 	transaction::FlowTransaction,
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
@@ -41,14 +41,14 @@ use crate::{
 
 type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Option<Value>>)>;
 
-pub struct AggregateOperator<T: FlowTransaction> {
-	core: Aggregation<T>,
+pub struct AggregateOperator {
+	core: Aggregation,
 	_ttl: Option<Duration>,
 }
 
-impl<T: FlowTransaction> AggregateOperator<T> {
+impl AggregateOperator {
 	pub fn new(
-		parent: OperatorCell<T>,
+		parent_schema: Option<Columns>,
 		operator: OperatorId,
 		by: Vec<Expression>,
 		map: Vec<Expression>,
@@ -59,7 +59,7 @@ impl<T: FlowTransaction> AggregateOperator<T> {
 		Self {
 			core: Aggregation::new(
 				operator,
-				parent,
+				parent_schema,
 				by,
 				map,
 				routines,
@@ -72,11 +72,11 @@ impl<T: FlowTransaction> AggregateOperator<T> {
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.core.parent.output_schema()
+		self.core.parent_schema.clone()
 	}
 }
 
-impl<T: FlowTransaction> Operator<T> for AggregateOperator<T> {
+impl<T: FlowTransaction> Operator<T> for AggregateOperator {
 	fn id(&self) -> OperatorId {
 		self.core.operator
 	}
@@ -99,7 +99,7 @@ impl<T: FlowTransaction> Operator<T> for AggregateOperator<T> {
 }
 
 pub fn apply_aggregate_engine<T: FlowTransaction>(
-	core: &Aggregation<T>,
+	core: &Aggregation,
 	txn: &mut T,
 	change: Change,
 ) -> Result<Change> {

@@ -16,7 +16,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	operator::{
-		Operator, OperatorCell,
+		Operator,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
 	transaction::{FlowTransaction, ephemeral::EphemeralTransaction, slot::PersistFn},
@@ -39,8 +39,6 @@ struct DeliveredState {
 }
 
 pub struct EphemeralSinkSubscriptionOperator {
-	#[allow(dead_code)]
-	parent: OperatorCell<EphemeralTransaction>,
 	operator: OperatorId,
 	subscription_id: SubscriptionId,
 	delivery: Arc<DeliveryBuffer>,
@@ -48,13 +46,11 @@ pub struct EphemeralSinkSubscriptionOperator {
 
 impl EphemeralSinkSubscriptionOperator {
 	pub fn new(
-		parent: OperatorCell<EphemeralTransaction>,
 		operator: OperatorId,
 		subscription_id: SubscriptionId,
 		delivery: Arc<DeliveryBuffer>,
 	) -> Self {
 		Self {
-			parent,
 			operator,
 			subscription_id,
 			delivery,

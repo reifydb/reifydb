@@ -34,8 +34,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	operator::{
-		Operator, OperatorCell,
-		scan::series::SourceSeriesOperator,
+		Operator,
 		sink::{
 			ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
 			view::SinkTableViewOperator,
@@ -189,7 +188,6 @@ impl Operator<DeferredTransaction> for SinkOp {
 }
 
 pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
-	let parent = OperatorCell::new(SourceSeriesOperator::new(SOURCE));
 	let partition_by = layout.partition_by();
 
 	match kind {
@@ -204,7 +202,7 @@ pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
 				storage: TableId(7),
 				sort: vec![],
 			});
-			SinkOp::Table(SinkTableViewOperator::new(parent, SINK, resolved(def), TableId(7), partition_by))
+			SinkOp::Table(SinkTableViewOperator::new(SINK, resolved(def), TableId(7), partition_by))
 		}
 		Kind::Series => {
 			let key = SeriesKey::Integer {
@@ -223,7 +221,6 @@ pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
 				sort: vec![],
 			});
 			SinkOp::Series(SinkSeriesViewOperator::new(
-				parent,
 				SINK,
 				resolved(def),
 				SeriesId(9),
@@ -246,7 +243,6 @@ pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
 				sort: vec![],
 			});
 			SinkOp::Ring(SinkRingBufferViewOperator::new(
-				parent,
 				SINK,
 				resolved(def),
 				RingBufferId(11),

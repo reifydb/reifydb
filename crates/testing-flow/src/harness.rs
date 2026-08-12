@@ -20,7 +20,7 @@ use reifydb_core::{
 	state::store::TimerKind,
 };
 use reifydb_flow::{
-	operator::{Operator, OperatorCell, apply::ApplyOperator, scan::series::SourceSeriesOperator},
+	operator::{Operator, apply::ApplyOperator},
 	timer::Timer,
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
@@ -99,12 +99,7 @@ impl Harness<ApplyOperator<DeferredTransaction>> {
 				operator,
 				capabilities,
 			);
-			ApplyOperator::new(
-				OperatorCell::new(SourceSeriesOperator::new(OperatorId(0))),
-				operator,
-				Box::new(bridged),
-				ttl,
-			)
+			ApplyOperator::new(None, operator, Box::new(bridged), ttl)
 		})
 	}
 

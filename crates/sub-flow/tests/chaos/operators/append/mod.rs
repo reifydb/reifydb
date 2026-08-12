@@ -5,11 +5,8 @@ pub mod oracle;
 pub mod workload;
 
 use rand::{RngExt, rngs::StdRng};
-use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_flow::{
-	operator::{OperatorCell, append::AppendOperator, scan::series::SourceSeriesOperator},
-	transaction::deferred::DeferredTransaction,
-};
+use reifydb_core::{interface::catalog::flow::OperatorId, value::column::columns::Columns};
+use reifydb_flow::operator::append::AppendOperator;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},
@@ -28,15 +25,13 @@ use crate::{
 	},
 };
 
-pub fn build(inputs: usize) -> AppendOperator<DeferredTransaction> {
+pub fn build(inputs: usize) -> AppendOperator {
 	build_with_ttl(inputs, None)
 }
 
-pub fn build_with_ttl(inputs: usize, ttl: Option<Duration>) -> AppendOperator<DeferredTransaction> {
+pub fn build_with_ttl(inputs: usize, ttl: Option<Duration>) -> AppendOperator {
 	let operators: Vec<OperatorId> = (0..inputs).map(input).collect();
-	let parents =
-		operators.iter().map(|operator| OperatorCell::new(SourceSeriesOperator::new(*operator))).collect();
-	AppendOperator::new(APPEND_OPERATOR, parents, operators, ttl)
+	AppendOperator::new(APPEND_OPERATOR, Some(Columns::empty()), operators, ttl)
 }
 
 #[derive(Debug, Clone)]

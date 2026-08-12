@@ -8,34 +8,29 @@ use reifydb_core::{
 use reifydb_rql::expression::Expression;
 use reifydb_value::Result;
 
-use crate::{
-	operator::{Operator, OperatorCell},
-	transaction::FlowTransaction,
-};
+use crate::{operator::Operator, transaction::FlowTransaction};
 
-pub struct SortOperator<T: FlowTransaction> {
-	parent: OperatorCell<T>,
+pub struct SortOperator {
+	parent_schema: Option<Columns>,
 	operator: OperatorId,
 	_expressions: Vec<Expression>,
 }
 
-impl<T: FlowTransaction> SortOperator<T> {
-	pub fn new(parent: OperatorCell<T>, operator: OperatorId, _expressions: Vec<Expression>) -> Self {
+impl SortOperator {
+	pub fn new(parent_schema: Option<Columns>, operator: OperatorId, _expressions: Vec<Expression>) -> Self {
 		Self {
-			parent,
+			parent_schema,
 			operator,
 			_expressions,
 		}
 	}
-}
 
-impl<T: FlowTransaction> SortOperator<T> {
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.parent.output_schema()
+		self.parent_schema.clone()
 	}
 }
 
-impl<T: FlowTransaction> Operator<T> for SortOperator<T> {
+impl<T: FlowTransaction> Operator<T> for SortOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}

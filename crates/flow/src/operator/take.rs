@@ -31,7 +31,7 @@ use tracing::instrument;
 use crate::{
 	error::FlowStateError,
 	operator::{
-		Operator, OperatorCell,
+		Operator,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
 	transaction::{FlowTransaction, slot::PersistFn},
@@ -48,8 +48,8 @@ struct TakeState {
 	row_data: HashMap<RowNumber, EncodedBytes>,
 }
 
-pub struct TakeOperator<T: FlowTransaction> {
-	parent: OperatorCell<T>,
+pub struct TakeOperator {
+	parent_schema: Option<Columns>,
 	operator: OperatorId,
 	limit: usize,
 }
@@ -82,16 +82,16 @@ fn decode_take_bytes(shape: &RowShape, row_number: RowNumber, encoded: &EncodedB
 	Columns::from_encoded_bytes(shape, &[row_number], from_ref(encoded))
 }
 
-impl<T: FlowTransaction> TakeOperator<T> {
-	pub fn new(parent: OperatorCell<T>, operator: OperatorId, limit: usize) -> Self {
+impl TakeOperator {
+	pub fn new(parent_schema: Option<Columns>, operator: OperatorId, limit: usize) -> Self {
 		Self {
-			parent,
+			parent_schema,
 			operator,
 			limit,
 		}
 	}
 
-	fn load_take_state(&self, txn: &mut T) -> Result<TakeState> {
+	fn load_take_state<T: FlowTransaction>(&self, txn: &mut T) -> Result<TakeState> {
 		let key = utils::empty_state_key();
 		let Some(row) = utils::state_get(self.operator, txn, &key)? else {
 			return Ok(TakeState::default());
@@ -108,7 +108,7 @@ impl<T: FlowTransaction> TakeOperator<T> {
 	}
 
 	#[inline]
-	fn acquire_take_state(&self, txn: &mut T) -> Result<(TakeState, PersistFn<T>)> {
+	fn acquire_take_state<T: FlowTransaction>(&self, txn: &mut T) -> Result<(TakeState, PersistFn<T>)> {
 		let operator_id = self.operator;
 		txn.take_operator_state::<TakeState, _>(operator_id, |txn| {
 			let s = self.load_take_state(txn)?;
@@ -128,7 +128,7 @@ impl<T: FlowTransaction> TakeOperator<T> {
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.parent.output_schema()
+		self.parent_schema.clone()
 	}
 
 	#[inline]
@@ -298,9 +298,9 @@ impl<T: FlowTransaction> TakeOperator<T> {
 	}
 }
 
-impl<T: FlowTransaction> RawStatefulOperator<T> for TakeOperator<T> {}
+impl<T: FlowTransaction> RawStatefulOperator<T> for TakeOperator {}
 
-impl<T: FlowTransaction> Operator<T> for TakeOperator<T> {
+impl<T: FlowTransaction> Operator<T> for TakeOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}

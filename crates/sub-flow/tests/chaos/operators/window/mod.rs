@@ -10,15 +10,12 @@ pub mod tumbling;
 
 use std::sync::Arc;
 
-use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId};
+use reifydb_core::{
+	common::WindowKind, interface::catalog::flow::OperatorId, value::column::columns::Columns,
+};
 use reifydb_flow::{
 	context::FlowContext,
-	operator::{
-		OperatorCell,
-		scan::series::SourceSeriesOperator,
-		window::operator::{WindowConfig, WindowOperator},
-	},
-	transaction::deferred::DeferredTransaction,
+	operator::window::operator::{WindowConfig, WindowOperator},
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -33,12 +30,11 @@ pub struct WindowSpec {
 
 use crate::operators::routines;
 
-pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator<DeferredTransaction> {
+pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
 	let operator = OperatorId(1);
-	let parent = OperatorCell::new(SourceSeriesOperator::new(OperatorId(0)));
 
 	WindowOperator::new(WindowConfig {
-		parent,
+		parent_schema: Some(Columns::empty()),
 		operator,
 		kind: spec.kind.clone(),
 		group_by: parse_expression(spec.group_by).expect("group_by parses"),

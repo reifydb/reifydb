@@ -89,8 +89,8 @@ pub(crate) fn slot_coord(is_count: bool, event_ts: DateTime, row_number: u64) ->
 
 #[allow(clippy::too_many_arguments)]
 #[instrument(name = "flow::operator::aggregation::route", level = "trace", skip_all, fields(rows = columns.row_count()))]
-pub(crate) fn route_into_buckets<T: FlowTransaction, F>(
-	core: &Aggregation<T>,
+pub(crate) fn route_into_buckets<F>(
+	core: &Aggregation,
 	columns: &Columns,
 	is_add: bool,
 	assign: F,
@@ -132,7 +132,7 @@ where
 #[allow(clippy::too_many_arguments)]
 #[instrument(name = "flow::operator::aggregation::finish", level = "trace", skip_all, fields(buckets = buckets.len()))]
 pub(crate) fn finish_tumbling_engine<T: FlowTransaction>(
-	core: &Aggregation<T>,
+	core: &Aggregation,
 	txn: &mut T,
 	change: &Change,
 	buckets: EngineBuckets,

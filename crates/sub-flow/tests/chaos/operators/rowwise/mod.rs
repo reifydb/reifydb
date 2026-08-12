@@ -13,10 +13,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	context::FlowContext,
-	operator::{
-		Operator, OperatorCell, extend::ExtendOperator, filter::FilterOperator, map::MapOperator,
-		scan::series::SourceSeriesOperator,
-	},
+	operator::{Operator, extend::ExtendOperator, filter::FilterOperator, map::MapOperator},
 	transaction::deferred::DeferredTransaction,
 };
 use reifydb_rql::expression::parse_expression;
@@ -37,10 +34,7 @@ use crate::{
 		routines,
 		rowwise::{
 			oracle::RowwiseOracle,
-			workload::{
-				IDENTITY_COLUMN, PAYLOAD_COLUMN, ROWWISE_OPERATOR, RowwiseRow, RowwiseWorkload,
-				SOURCE_OPERATOR,
-			},
+			workload::{IDENTITY_COLUMN, PAYLOAD_COLUMN, ROWWISE_OPERATOR, RowwiseRow, RowwiseWorkload},
 		},
 	},
 };
@@ -144,29 +138,28 @@ pub const MATRIX: [Shape; 3] = [
 	Shape::Extend,
 ];
 
-/// One of the three, as a concrete type. `OperatorCell` erases to `Arc<dyn Operator<T>>` and so does not
-/// itself implement `Operator`, and the harness needs a sized subject; an enum that delegates is the
+/// One of the three, as a concrete type. The harness needs a sized subject; an enum that delegates is the
 /// smallest thing that gives all three shapes one driver.
 pub enum Rowwise {
-	Filter(FilterOperator<DeferredTransaction>),
-	Map(MapOperator<DeferredTransaction>),
-	Extend(ExtendOperator<DeferredTransaction>),
+	Filter(FilterOperator),
+	Map(MapOperator),
+	Extend(ExtendOperator),
 }
 
 impl Operator<DeferredTransaction> for Rowwise {
 	fn id(&self) -> OperatorId {
 		match self {
-			Rowwise::Filter(op) => op.id(),
-			Rowwise::Map(op) => op.id(),
-			Rowwise::Extend(op) => op.id(),
+			Rowwise::Filter(op) => Operator::<DeferredTransaction>::id(op),
+			Rowwise::Map(op) => Operator::<DeferredTransaction>::id(op),
+			Rowwise::Extend(op) => Operator::<DeferredTransaction>::id(op),
 		}
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		match self {
-			Rowwise::Filter(op) => op.capabilities(),
-			Rowwise::Map(op) => op.capabilities(),
-			Rowwise::Extend(op) => op.capabilities(),
+			Rowwise::Filter(op) => Operator::<DeferredTransaction>::capabilities(op),
+			Rowwise::Map(op) => Operator::<DeferredTransaction>::capabilities(op),
+			Rowwise::Extend(op) => Operator::<DeferredTransaction>::capabilities(op),
 		}
 	}
 
@@ -180,15 +173,15 @@ impl Operator<DeferredTransaction> for Rowwise {
 
 	fn output_schema(&self) -> Option<Columns> {
 		match self {
-			Rowwise::Filter(op) => op.output_schema(),
-			Rowwise::Map(op) => op.output_schema(),
-			Rowwise::Extend(op) => op.output_schema(),
+			Rowwise::Filter(op) => Operator::<DeferredTransaction>::output_schema(op),
+			Rowwise::Map(op) => Operator::<DeferredTransaction>::output_schema(op),
+			Rowwise::Extend(op) => Operator::<DeferredTransaction>::output_schema(op),
 		}
 	}
 }
 
 pub fn build(shape: Shape, runtime: RuntimeContext) -> Rowwise {
-	let parent = OperatorCell::new(SourceSeriesOperator::new(SOURCE_OPERATOR));
+	let parent_schema = Some(Columns::empty());
 	let expressions: Vec<_> = shape
 		.rql()
 		.iter()
@@ -199,18 +192,23 @@ pub fn build(shape: Shape, runtime: RuntimeContext) -> Rowwise {
 		Shape::Filter {
 			..
 		} => Rowwise::Filter(FilterOperator::new(
-			parent,
+			parent_schema,
 			ROWWISE_OPERATOR,
 			expressions,
 			routines(),
 			runtime,
 			ctx,
 		)),
-		Shape::Map => {
-			Rowwise::Map(MapOperator::new(parent, ROWWISE_OPERATOR, expressions, routines(), runtime, ctx))
-		}
+		Shape::Map => Rowwise::Map(MapOperator::new(
+			parent_schema,
+			ROWWISE_OPERATOR,
+			expressions,
+			routines(),
+			runtime,
+			ctx,
+		)),
 		Shape::Extend => Rowwise::Extend(ExtendOperator::new(
-			parent,
+			parent_schema,
 			ROWWISE_OPERATOR,
 			expressions,
 			routines(),

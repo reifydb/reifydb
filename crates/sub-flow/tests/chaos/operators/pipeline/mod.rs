@@ -24,8 +24,8 @@ use reifydb_core::{
 use reifydb_flow::{
 	context::FlowContext,
 	operator::{
-		Operator, OperatorCell, aggregation::operator::AggregateOperator, filter::FilterOperator,
-		gate::GateOperator, map::MapOperator, scan::series::SourceSeriesOperator,
+		Operator, aggregation::operator::AggregateOperator, filter::FilterOperator, gate::GateOperator,
+		map::MapOperator,
 	},
 	transaction::deferred::DeferredTransaction,
 };
@@ -164,16 +164,16 @@ pub const MATRIX: [Chain; 3] = [
 /// change and the faithful one.
 pub struct Pipeline {
 	stage: Box<dyn Operator<DeferredTransaction> + Send>,
-	terminal: AggregateOperator<DeferredTransaction>,
+	terminal: AggregateOperator,
 }
 
 impl Operator<DeferredTransaction> for Pipeline {
 	fn id(&self) -> OperatorId {
-		self.terminal.id()
+		Operator::<DeferredTransaction>::id(&self.terminal)
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		self.terminal.capabilities()
+		Operator::<DeferredTransaction>::capabilities(&self.terminal)
 	}
 
 	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change, reifydb_value::error::Error> {
@@ -182,12 +182,12 @@ impl Operator<DeferredTransaction> for Pipeline {
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
-		self.terminal.output_schema()
+		Operator::<DeferredTransaction>::output_schema(&self.terminal)
 	}
 }
 
 pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
-	let source = OperatorCell::new(SourceSeriesOperator::new(SOURCE_OPERATOR));
+	let source_schema = Some(Columns::empty());
 	let expressions: Vec<_> = chain
 		.stage_rql()
 		.iter()
@@ -199,7 +199,7 @@ pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
 		Chain::Filter {
 			..
 		} => Box::new(FilterOperator::new(
-			source.clone(),
+			source_schema.clone(),
 			STAGE_OPERATOR,
 			expressions,
 			routines(),
@@ -207,7 +207,7 @@ pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
 			ctx.clone(),
 		)),
 		Chain::Map => Box::new(MapOperator::new(
-			source.clone(),
+			source_schema.clone(),
 			STAGE_OPERATOR,
 			expressions,
 			routines(),
@@ -217,7 +217,7 @@ pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
 		Chain::Gate {
 			..
 		} => Box::new(GateOperator::new(
-			source.clone(),
+			source_schema.clone(),
 			STAGE_OPERATOR,
 			expressions,
 			routines(),
@@ -227,7 +227,7 @@ pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
 	};
 
 	let terminal = AggregateOperator::new(
-		source,
+		source_schema,
 		TERMINAL_OPERATOR,
 		parse_expression(GROUP_COLUMN).expect("group_by parses"),
 		parse_expression(&format!("{TOTAL_COLUMN}: math::sum({})", chain.summed_column()))

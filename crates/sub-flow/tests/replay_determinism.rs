@@ -32,10 +32,9 @@ use reifydb_core::{
 use reifydb_flow::{
 	context::FlowContext,
 	operator::{
-		Operator, OperatorCell,
+		Operator,
 		distinct::operator::DistinctOperator,
 		join::operator::{JoinOperator, JoinSideConfig},
-		scan::series::SourceSeriesOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
 	transaction::deferred::DeferredTransaction,
@@ -161,7 +160,7 @@ mod distinct {
 		let mut h = Harness::with_engine(move |engine, runtime| {
 			engine.mock_clock().set_millis(clock_ms);
 			DistinctOperator::new(
-				OperatorCell::new(SourceSeriesOperator::new(SOURCE)),
+				Some(Columns::empty()),
 				SUBJECT,
 				parse_expression("v").expect("the distinct key parses"),
 				routines(),
@@ -607,11 +606,11 @@ mod join {
 	}
 }
 
-fn window_harness(kind: WindowKind, grace: Duration, clock_ms: u64) -> Harness<WindowOperator<DeferredTransaction>> {
+fn window_harness(kind: WindowKind, grace: Duration, clock_ms: u64) -> Harness<WindowOperator> {
 	Harness::with_engine(move |engine, runtime| {
 		engine.mock_clock().set_millis(clock_ms);
 		WindowOperator::new(WindowConfig {
-			parent: OperatorCell::new(SourceSeriesOperator::new(SOURCE)),
+			parent_schema: Some(Columns::empty()),
 			operator: SUBJECT,
 			kind,
 			group_by: parse_expression("g").expect("group_by parses"),

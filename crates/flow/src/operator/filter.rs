@@ -25,14 +25,10 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::{
-	context::FlowContext,
-	operator::{Operator, OperatorCell},
-	transaction::FlowTransaction,
-};
+use crate::{context::FlowContext, operator::Operator, transaction::FlowTransaction};
 
-pub struct FilterOperator<T: FlowTransaction> {
-	parent: OperatorCell<T>,
+pub struct FilterOperator {
+	parent_schema: Option<Columns>,
 	operator: OperatorId,
 	compiled_conditions: Vec<CompiledExpr>,
 	routines: Routines,
@@ -40,9 +36,9 @@ pub struct FilterOperator<T: FlowTransaction> {
 	ctx: Arc<FlowContext>,
 }
 
-impl<T: FlowTransaction> FilterOperator<T> {
+impl FilterOperator {
 	pub fn new(
-		parent: OperatorCell<T>,
+		parent_schema: Option<Columns>,
 		operator: OperatorId,
 		conditions: Vec<Expression>,
 		routines: Routines,
@@ -58,7 +54,7 @@ impl<T: FlowTransaction> FilterOperator<T> {
 			.collect();
 
 		Self {
-			parent,
+			parent_schema,
 			operator,
 			compiled_conditions,
 			routines,
@@ -128,7 +124,7 @@ impl<T: FlowTransaction> FilterOperator<T> {
 	}
 }
 
-impl<T: FlowTransaction> Operator<T> for FilterOperator<T> {
+impl<T: FlowTransaction> Operator<T> for FilterOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -166,10 +162,10 @@ impl<T: FlowTransaction> Operator<T> for FilterOperator<T> {
 	}
 }
 
-impl<T: FlowTransaction> FilterOperator<T> {
+impl FilterOperator {
 	#[inline]
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.parent.output_schema()
+		self.parent_schema.clone()
 	}
 
 	#[instrument(name = "flow::operator::filter::insert", level = "trace", skip_all, fields(rows = post.row_count()))]

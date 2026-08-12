@@ -42,13 +42,11 @@ use super::{
 	view::dictionary_encode_view_columns,
 };
 use crate::{
-	operator::{Operator, OperatorCell},
+	operator::Operator,
 	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
 
 pub struct SinkSeriesViewOperator {
-	#[allow(dead_code)]
-	parent: OperatorCell<DeferredTransaction>,
 	operator: OperatorId,
 	view: ResolvedView,
 	series_id: SeriesId,
@@ -60,7 +58,6 @@ pub struct SinkSeriesViewOperator {
 
 impl SinkSeriesViewOperator {
 	pub fn new(
-		parent: OperatorCell<DeferredTransaction>,
 		operator: OperatorId,
 		view: ResolvedView,
 		series_id: SeriesId,
@@ -69,7 +66,6 @@ impl SinkSeriesViewOperator {
 	) -> Self {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		Self {
-			parent,
 			operator,
 			view,
 			series_id,

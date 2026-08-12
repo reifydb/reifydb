@@ -49,15 +49,13 @@ use super::{
 };
 use crate::{
 	error::FlowSinkError,
-	operator::{Operator, OperatorCell},
+	operator::Operator,
 	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
 
 pub struct SinkTableViewOperator {
-	#[allow(dead_code)]
-	parent: OperatorCell<DeferredTransaction>,
 	operator: OperatorId,
 	view: ResolvedView,
 	storage: TableId,
@@ -73,7 +71,6 @@ pub struct SinkTableViewOperator {
 
 impl SinkTableViewOperator {
 	pub fn new(
-		parent: OperatorCell<DeferredTransaction>,
 		operator: OperatorId,
 		view: ResolvedView,
 		storage: TableId,
@@ -89,7 +86,6 @@ impl SinkTableViewOperator {
 		let sort = view.def().sort().to_vec();
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		Self {
-			parent,
 			operator,
 			view,
 			storage,
@@ -493,7 +489,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::{operator::scan::view::SourceViewOperator, testing::FlowTxn};
+	use crate::testing::FlowTxn;
 
 	fn test_view_def() -> View {
 		View::Table(TableView {
@@ -522,8 +518,7 @@ mod tests {
 			ResolvedNamespace::new(Fragment::internal("system"), Namespace::system()),
 			test_view_def(),
 		);
-		let parent = OperatorCell::new(SourceViewOperator::new(OperatorId(9), test_view_def()));
-		SinkTableViewOperator::new(parent, OperatorId(1), resolved, TableId(7), vec![])
+		SinkTableViewOperator::new(OperatorId(1), resolved, TableId(7), vec![])
 	}
 
 	fn one_row(v: f64, ts_nanos: u64) -> Columns {

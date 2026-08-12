@@ -47,8 +47,8 @@ use crate::{
 
 #[allow(clippy::too_many_arguments)]
 #[instrument(name = "flow::operator::window::route", level = "trace", skip_all, fields(rows = columns.row_count()))]
-fn route_engine_columns<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+fn route_engine_columns(
+	operator: &WindowOperator,
 	columns: &Columns,
 	is_add: bool,
 	window_size: Duration,
@@ -75,7 +75,7 @@ fn route_engine_columns<T: FlowTransaction>(
 
 #[allow(clippy::too_many_arguments)]
 fn intern_window_group<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+	operator: &WindowOperator,
 	txn: &mut T,
 	hash: Hash128,
 	span: WindowSpan<DateTime>,
@@ -115,7 +115,7 @@ fn push_count_event(
 }
 
 fn route_count_tumbling<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+	operator: &WindowOperator,
 	txn: &mut T,
 	change: &Change,
 	buckets: &mut EngineBuckets,
@@ -269,7 +269,7 @@ fn route_count_tumbling<T: FlowTransaction>(
 
 #[instrument(name = "flow::operator::window::tumbling", level = "trace", skip_all)]
 pub fn apply_tumbling_engine<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+	operator: &WindowOperator,
 	txn: &mut T,
 	change: Change,
 ) -> Result<Change> {
@@ -385,7 +385,7 @@ pub fn apply_tumbling_engine<T: FlowTransaction>(
 
 #[instrument(name = "flow::operator::window::intern", level = "trace", skip_all, fields(windows = arrival.len()))]
 fn intern_batch<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+	operator: &WindowOperator,
 	txn: &mut T,
 	arrival: &[(Hash128, WindowSpan<DateTime>)],
 ) -> Result<WindowGroups> {
@@ -394,7 +394,7 @@ fn intern_batch<T: FlowTransaction>(
 }
 
 fn sliding_insert_anchors<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+	operator: &WindowOperator,
 	txn: &mut T,
 	hash: Hash128,
 	event_ts: DateTime,
@@ -410,7 +410,7 @@ fn sliding_insert_anchors<T: FlowTransaction>(
 
 #[instrument(name = "flow::operator::window::sliding", level = "trace", skip_all)]
 pub fn apply_sliding_engine<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+	operator: &WindowOperator,
 	txn: &mut T,
 	change: Change,
 ) -> Result<Change> {
@@ -639,7 +639,7 @@ pub fn apply_sliding_engine<T: FlowTransaction>(
 }
 
 fn session_assign<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+	operator: &WindowOperator,
 	txn: &mut T,
 	hash: Hash128,
 	event_ts: DateTime,
@@ -663,7 +663,7 @@ fn session_assign<T: FlowTransaction>(
 
 #[instrument(name = "flow::operator::window::session", level = "trace", skip_all)]
 pub fn apply_session_engine<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+	operator: &WindowOperator,
 	txn: &mut T,
 	change: Change,
 ) -> Result<Change> {
@@ -936,7 +936,7 @@ pub fn apply_session_engine<T: FlowTransaction>(
 
 #[instrument(name = "flow::operator::window::gate_seals", level = "trace", skip_all)]
 fn gate_and_arm_seals<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+	operator: &WindowOperator,
 	txn: &mut T,
 	buckets: &mut EngineBuckets,
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
@@ -1005,7 +1005,7 @@ fn gate_and_arm_seals<T: FlowTransaction>(
 #[tracing::instrument(name = "flow::window::seal", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
 #[instrument(name = "flow::operator::window::seal", level = "trace", skip_all)]
 fn seal_due_windows<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+	operator: &WindowOperator,
 	txn: &mut T,
 	fired: FiredAt,
 	policy: SealPolicy,
@@ -1034,7 +1034,7 @@ fn seal_due_windows<T: FlowTransaction>(
 }
 
 pub fn seal_session_engine<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+	operator: &WindowOperator,
 	txn: &mut T,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
@@ -1042,7 +1042,7 @@ pub fn seal_session_engine<T: FlowTransaction>(
 }
 
 pub fn seal_engine_windows<T: FlowTransaction>(
-	operator: &WindowOperator<T>,
+	operator: &WindowOperator,
 	txn: &mut T,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
