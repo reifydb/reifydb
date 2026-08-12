@@ -41,6 +41,12 @@ pub enum DomainShape {
 	Wide,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PushKind {
+	Census,
+	Update,
+}
+
 #[derive(Clone, Debug)]
 pub struct DimensionSpec {
 	pub name: &'static str,
@@ -248,8 +254,18 @@ impl MetricsDomain {
 		MetricsDomain::FlowState,
 	];
 
-	pub fn ephemeral(self) -> bool {
-		matches!(self, MetricsDomain::FlowState)
+	pub fn push_kind(self) -> PushKind {
+		match self {
+			MetricsDomain::Storage | MetricsDomain::Cdc | MetricsDomain::FlowState => PushKind::Census,
+			MetricsDomain::RuntimeMemory
+			| MetricsDomain::RuntimeWatermarks
+			| MetricsDomain::RuntimeOperators
+			| MetricsDomain::ReadBuffer
+			| MetricsDomain::Instruments
+			| MetricsDomain::Epoch
+			| MetricsDomain::Lifecycle
+			| MetricsDomain::ProfilerSpans => PushKind::Update,
+		}
 	}
 
 	pub fn snapshots_path(self) -> &'static str {

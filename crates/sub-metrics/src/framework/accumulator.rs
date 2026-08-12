@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_core::{
 	metrics::sample::{MetricKind, Reading},
@@ -15,7 +15,7 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
 };
 
-use crate::framework::spec::{DomainShape, DomainSpec, MeasureSpec, MetricsDomain, Surface};
+use crate::framework::spec::{DomainShape, DomainSpec, MeasureSpec, MetricsDomain, PushKind, Surface};
 
 #[derive(Clone, Debug)]
 pub struct Measure {
@@ -89,8 +89,9 @@ impl MetricsAccumulator {
 			}
 			return;
 		};
-		if domain.ephemeral() {
-			state.rows.clear();
+		if domain.push_kind() == PushKind::Census && surface == Surface::Current {
+			let present: BTreeSet<&Vec<Value>> = rows.iter().map(|row| &row.dimensions).collect();
+			state.rows.retain(|dimensions, _| present.contains(dimensions));
 		}
 		for row in rows {
 			reifydb_assertions! {
@@ -705,6 +706,105 @@ mod tests {
 		assert!(
 			matches!(column_values(current, "freelist_pages")[0], Value::None { .. }),
 			"an absent optional measure must publish none"
+		);
+	}
+
+	#[test]
+	fn a_census_drops_rows_that_stop_being_reported() {
+		// A dropped object vanishes from the census; keeping its row reports deleted bytes as live.
+		let mut acc = MetricsAccumulator::new([MetricsDomain::Storage.spec()]);
+		let storage_row = |id: u64, bytes: u64| MetricsRow {
+			dimensions: vec![
+				Value::Utf8("table".to_string()),
+				Value::Uint8(id),
+				Value::Uint8(1),
+				Value::Utf8("buffer".to_string()),
+			],
+			measures: vec![Measure {
+				metric: "live_bytes",
+				reading: Reading::Bytes(ByteSize::from_bytes(bytes)),
+				kind: MetricKind::Level,
+			}],
+		};
+
+		acc.push(MetricsDomain::Storage, Surface::Current, vec![storage_row(1, 100), storage_row(2, 200)]);
+		let published = acc.roll(now(1_000));
+		let current = surface(&published, MetricsDomain::Storage, Surface::Current);
+		assert_eq!(column_values(current, "id"), vec![Value::Uint8(1), Value::Uint8(2)]);
+		assert_eq!(column_values(current, "live_bytes"), vec![Value::Uint8(100), Value::Uint8(200)]);
+
+		acc.push(MetricsDomain::Storage, Surface::Current, vec![storage_row(2, 200)]);
+		let published = acc.roll(now(2_000));
+		let current = surface(&published, MetricsDomain::Storage, Surface::Current);
+		assert_eq!(
+			column_values(current, "id"),
+			vec![Value::Uint8(2)],
+			"a gauge row that stops being reported must not survive the next push"
+		);
+	}
+
+	#[test]
+	fn a_surviving_census_row_keeps_measures_the_new_push_omits() {
+		// Eviction is per vanished row, never a wipe: state a census omits for a live row must survive.
+		let mut acc = MetricsAccumulator::new([MetricsDomain::Storage.spec()]);
+		let dimensions = vec![
+			Value::Utf8("table".to_string()),
+			Value::Uint8(1),
+			Value::Uint8(1),
+			Value::Utf8("buffer".to_string()),
+		];
+		let measure = |metric: &'static str, bytes: u64| Measure {
+			metric,
+			reading: Reading::Bytes(ByteSize::from_bytes(bytes)),
+			kind: MetricKind::Level,
+		};
+
+		acc.push(
+			MetricsDomain::Storage,
+			Surface::Current,
+			vec![MetricsRow {
+				dimensions: dimensions.clone(),
+				measures: vec![measure("live_bytes", 100), measure("total_bytes", 300)],
+			}],
+		);
+		acc.roll(now(1_000));
+
+		acc.push(
+			MetricsDomain::Storage,
+			Surface::Current,
+			vec![MetricsRow {
+				dimensions,
+				measures: vec![measure("live_bytes", 150)],
+			}],
+		);
+		let published = acc.roll(now(2_000));
+		let current = surface(&published, MetricsDomain::Storage, Surface::Current);
+		assert_eq!(column_values(current, "live_bytes"), vec![Value::Uint8(150)]);
+		assert_eq!(
+			column_values(current, "total_bytes"),
+			vec![Value::Uint8(300)],
+			"a wipe would republish this as zero; only per-row eviction keeps it"
+		);
+	}
+
+	#[test]
+	fn an_update_domain_keeps_rows_that_stop_being_reported() {
+		// A quiet producer is not a vanished one, so its last level must stand.
+		let mut acc = operators_accumulator();
+		acc.push(
+			MetricsDomain::RuntimeOperators,
+			Surface::Current,
+			vec![level_row("n1", "state_bytes", 42), level_row("n2", "state_bytes", 7)],
+		);
+		acc.roll(now(1_000));
+
+		acc.push(MetricsDomain::RuntimeOperators, Surface::Current, vec![level_row("n1", "state_bytes", 42)]);
+		let published = acc.roll(now(2_000));
+		let current = surface(&published, MetricsDomain::RuntimeOperators, Surface::Current);
+		assert_eq!(
+			long_value(current, "n2", "state_bytes"),
+			Some((7.0, "level".to_string())),
+			"a folding domain must hold a level whose producer went quiet"
 		);
 	}
 

@@ -32,30 +32,18 @@ impl MetricsObject {
 
 	pub fn resolve(txn: &mut Transaction<'_>, metric_id: MetricsId) -> Result<Option<ResolvedMetric>> {
 		match metric_id {
-			MetricsId::Object(ObjectId::Table(id)) => {
-				let namespace_id = CatalogStore::find_table(txn, id)?.map_or(0, |t| t.namespace.0);
-				Ok(Some(ResolvedMetric::plain(MetricsObject::Table, id.0, namespace_id)))
-			}
-			MetricsId::Object(ObjectId::View(id)) => {
-				let namespace_id = CatalogStore::find_view(txn, id)?.map_or(0, |v| v.namespace().0);
-				Ok(Some(ResolvedMetric::plain(MetricsObject::View, id.0, namespace_id)))
-			}
-			MetricsId::Object(ObjectId::TableVirtual(id)) => {
-				let namespace_id = VTableRegistry::find_vtable(txn, id)?.map_or(0, |vt| vt.namespace.0);
-				Ok(Some(ResolvedMetric::plain(MetricsObject::TableVirtual, id.0, namespace_id)))
-			}
-			MetricsId::Object(ObjectId::RingBuffer(id)) => {
-				let namespace_id = CatalogStore::find_ringbuffer(txn, id)?.map_or(0, |r| r.namespace.0);
-				Ok(Some(ResolvedMetric::plain(MetricsObject::RingBuffer, id.0, namespace_id)))
-			}
-			MetricsId::Object(ObjectId::Dictionary(id)) => {
-				let namespace_id = CatalogStore::find_dictionary(txn, id)?.map_or(0, |d| d.namespace.0);
-				Ok(Some(ResolvedMetric::plain(MetricsObject::Dictionary, id.0, namespace_id)))
-			}
-			MetricsId::Object(ObjectId::Series(id)) => {
-				let namespace_id = CatalogStore::find_series(txn, id)?.map_or(0, |s| s.namespace.0);
-				Ok(Some(ResolvedMetric::plain(MetricsObject::Series, id.0, namespace_id)))
-			}
+			MetricsId::Object(ObjectId::Table(id)) => Ok(CatalogStore::find_table(txn, id)?
+				.map(|t| ResolvedMetric::plain(MetricsObject::Table, id.0, t.namespace.0))),
+			MetricsId::Object(ObjectId::View(id)) => Ok(CatalogStore::find_view(txn, id)?
+				.map(|v| ResolvedMetric::plain(MetricsObject::View, id.0, v.namespace().0))),
+			MetricsId::Object(ObjectId::TableVirtual(id)) => Ok(VTableRegistry::find_vtable(txn, id)?
+				.map(|vt| ResolvedMetric::plain(MetricsObject::TableVirtual, id.0, vt.namespace.0))),
+			MetricsId::Object(ObjectId::RingBuffer(id)) => Ok(CatalogStore::find_ringbuffer(txn, id)?
+				.map(|r| ResolvedMetric::plain(MetricsObject::RingBuffer, id.0, r.namespace.0))),
+			MetricsId::Object(ObjectId::Dictionary(id)) => Ok(CatalogStore::find_dictionary(txn, id)?
+				.map(|d| ResolvedMetric::plain(MetricsObject::Dictionary, id.0, d.namespace.0))),
+			MetricsId::Object(ObjectId::Series(id)) => Ok(CatalogStore::find_series(txn, id)?
+				.map(|s| ResolvedMetric::plain(MetricsObject::Series, id.0, s.namespace.0))),
 			MetricsId::System => {
 				Ok(Some(ResolvedMetric::plain(MetricsObject::System, 0, NamespaceId::SYSTEM.0)))
 			}

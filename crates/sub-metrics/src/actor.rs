@@ -313,35 +313,24 @@ impl MetricsFlushActor {
 		let Some((engine, _)) = &self.drain else {
 			return;
 		};
-		let mut query = match engine.begin_query(IdentityId::system()) {
-			Ok(query) => query,
-			Err(e) => {
-				error!("Failed to begin metrics resolution transaction: {}", e);
-				return;
-			}
-		};
+		let mut query =
+			engine.begin_query(IdentityId::system()).expect("metrics resolution transaction must begin");
 		let mut txn = Transaction::Query(&mut query);
 		let reader = MetricsReader::new(self.single_store.clone());
-		match storage_rows(&reader, &mut txn) {
-			Ok(rows) => {
-				let _ = sampler.send(SamplerMessage::Push {
-					domain: MetricsDomain::Storage,
-					surface: Surface::Current,
-					rows,
-				});
-			}
-			Err(e) => error!("Failed to collect storage metrics rows: {}", e),
-		}
-		match cdc_rows(&reader, &mut txn) {
-			Ok(rows) => {
-				let _ = sampler.send(SamplerMessage::Push {
-					domain: MetricsDomain::Cdc,
-					surface: Surface::Current,
-					rows,
-				});
-			}
-			Err(e) => error!("Failed to collect cdc metrics rows: {}", e),
-		}
+		let storage = storage_rows(&reader, &mut txn)
+			.expect("storage census must complete; a partial one evicts live rows");
+		let _ = sampler.send(SamplerMessage::Push {
+			domain: MetricsDomain::Storage,
+			surface: Surface::Current,
+			rows: storage,
+		});
+		let cdc =
+			cdc_rows(&reader, &mut txn).expect("cdc census must complete; a partial one evicts live rows");
+		let _ = sampler.send(SamplerMessage::Push {
+			domain: MetricsDomain::Cdc,
+			surface: Surface::Current,
+			rows: cdc,
+		});
 		let _ = sampler.send(SamplerMessage::Push {
 			domain: MetricsDomain::FlowState,
 			surface: Surface::Current,
@@ -540,7 +529,7 @@ fn phase_name(keyspace: Keyspace) -> &'static str {
 fn storage_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) -> Result<Vec<MetricsRow>> {
 	let mut rows = Vec::new();
 	for tier in [Tier::Buffer, Tier::Persistent] {
-		for (metric_id, combined) in reader.scan_tier(tier).unwrap_or_default() {
+		for (metric_id, combined) in reader.scan_tier(tier)? {
 			let Some(resolved) = MetricsObject::resolve(txn, metric_id)? else {
 				continue;
 			};
@@ -586,7 +575,7 @@ fn storage_row(
 
 fn cdc_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) -> Result<Vec<MetricsRow>> {
 	let mut rows = Vec::new();
-	for (metric_id, metrics) in reader.cdc_reader().scan_all().unwrap_or_default() {
+	for (metric_id, metrics) in reader.cdc_reader().scan_all()? {
 		let Some(resolved) = MetricsObject::resolve(txn, metric_id)? else {
 			continue;
 		};
