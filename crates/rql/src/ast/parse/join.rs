@@ -28,14 +28,14 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (ttl, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (seal, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
 			with,
 			using_clause,
 			alias,
-			ttl,
+			seal,
 			snapshot,
 			latest,
 			rql: self.source_since(start),
@@ -62,14 +62,14 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(As)?;
 		let alias = self.consume_identifier()?.fragment;
-		let (ttl, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (seal, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::NaturalJoin {
 			token,
 			with,
 			join_type,
 			alias,
-			ttl,
+			seal,
 			snapshot,
 			latest,
 			rql: self.source_since(start),
@@ -87,14 +87,14 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (ttl, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (seal, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
 			with,
 			using_clause,
 			alias,
-			ttl,
+			seal,
 			snapshot,
 			latest,
 			rql: self.source_since(start),
@@ -112,14 +112,14 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (ttl, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (seal, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::LeftJoin {
 			token,
 			with,
 			using_clause,
 			alias,
-			ttl,
+			seal,
 			snapshot,
 			latest,
 			rql: self.source_since(start),
@@ -631,7 +631,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::InnerJoin {
-			ttl,
+			seal: ttl,
 			..
 		} = result.first_unchecked().as_join()
 		else {
@@ -654,7 +654,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::InnerJoin {
-			ttl,
+			seal: ttl,
 			..
 		} = result.first_unchecked().as_join()
 		else {
@@ -677,7 +677,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::LeftJoin {
-			ttl,
+			seal: ttl,
 			..
 		} = result.first_unchecked().as_join()
 		else {
@@ -733,7 +733,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::InnerJoin {
-			ttl,
+			seal: ttl,
 			snapshot,
 			..
 		} = result.first_unchecked().as_join()

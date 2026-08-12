@@ -213,7 +213,7 @@ fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
 	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 20.0, ts: "2026-01-01T14:00:00Z" }]"#);
 	db.await_row_count("FROM app::r | filter { g == 1 and total == 20.0 }", 1, TIMEOUT);
 
-	// Five hours behind the ledger, so past interval + grace and refused as late. It is batched
+	// Five hours behind the ledger, so past interval + seal and refused as late. It is batched
 	// with an admitted row for another group so the batch cannot early-return on empty buckets.
 	db.command(
 		r#"INSERT app::t [{ id: 3, g: 1, v: 99.0, ts: "2026-01-01T09:00:00Z" }, { id: 4, g: 2, v: 1.0, ts: "2026-01-01T14:00:00Z" }]"#,
@@ -231,7 +231,7 @@ fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
 
 #[test]
 fn retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact() {
-	// The same "no result means gone" confusion through the other door: grace is wider than the
+	// The same "no result means gone" confusion through the other door: seal is wider than the
 	// interval, so a coordinate can be new enough to admit while already older than the trailing
 	// window. Retracting one changes nothing, and that silence must not withdraw the group.
 	let db = setup();
@@ -256,7 +256,7 @@ fn retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact() {
 		db.query_as_root("FROM app::r", ())
 	);
 
-	// 11:30 is still inside interval + grace of the 13:00 watermark, so this delete is admitted
+	// 11:30 is still inside interval + seal of the 13:00 watermark, so this delete is admitted
 	// and routed - but it targets a coordinate the window no longer holds.
 	db.command("DELETE app::t FILTER { id == 1 }");
 	db.await_all_flows(TIMEOUT);

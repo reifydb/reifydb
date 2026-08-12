@@ -96,9 +96,9 @@ fn a_source_that_never_reports_holds_every_window_open() {
 	);
 }
 
-/// One table feeding a tumbling window, with the grace left to the caller so a corpus can be run
+/// One table feeding a tumbling window, with the seal left to the caller so a corpus can be run
 /// either entirely inside the windows' horizons or past them.
-fn ordering_pair(grace: &str) -> (TestDb, TestDb) {
+fn ordering_pair(seal: &str) -> (TestDb, TestDb) {
 	let pair = (setup(), setup());
 	for db in [&pair.0, &pair.1] {
 		db.admin("CREATE NAMESPACE app");
@@ -106,7 +106,7 @@ fn ordering_pair(grace: &str) -> (TestDb, TestDb) {
 		db.admin(&format!(r#"CREATE DEFERRED VIEW app::w {{ g: int4, total: int8 }} AS {{
 				FROM app::t
 					| window tumbling {{ total: math::sum(v) }}
-						with {{ interval: "1s", seal: "{grace}" }}
+						with {{ interval: "1s", seal: "{seal}" }}
 						by {{ g }}
 			}}"#));
 	}
@@ -131,7 +131,7 @@ fn view_rows(db: &TestDb) -> Vec<reifydb::Frame> {
 #[test]
 fn two_arrival_orders_of_the_same_corpus_produce_the_same_open_windows() {
 	// Bucketing, grouping, aggregation and the #time stamp must be pure functions of the data, so
-	// a different arrival order lands the same windows with the same stamps. The 10s grace holds
+	// a different arrival order lands the same windows with the same stamps. The 10s seal holds
 	// every horizon open, so admission cannot depend on order either.
 	let (forward, reverse) = ordering_pair("10s");
 

@@ -12,8 +12,8 @@ use crate::framework::workload::WindowRow;
 ///
 /// Sum is the fold every pinned window corpus was recorded against and stays the default, so adding
 /// this enum does not re-point them. Min and max are here because they are not merely a different
-/// arithmetic: `AggregateSlot::invertible` reports them invertible only when grace is zero, so a
-/// window declaring grace runs them through the sealing accumulator instead of the multiset - a
+/// arithmetic: `AggregateSlot::invertible` reports them invertible only when seal is zero, so a
+/// window declaring seal runs them through the sealing accumulator instead of the multiset - a
 /// different code path that no sweep reached while sum was the only fold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fold {
@@ -46,7 +46,7 @@ impl Fold {
 
 /// Which fixed-grid windows a coordinate belongs to. This is the only thing that differs between
 /// tumbling and sliding: both anchor their seal horizon on the window start, both close at
-/// `start + size + grace`, and both accumulate the same way.
+/// `start + size + seal`, and both accumulate the same way.
 pub trait Grid {
 	fn windows_of(&self, coord_ms: u64) -> Vec<u64>;
 }
@@ -68,10 +68,10 @@ struct Contribution {
 }
 
 impl<G: Grid> GridOracle<G> {
-	pub fn new(grid: G, size_ms: u64, grace_ms: u64) -> Self {
+	pub fn new(grid: G, size_ms: u64, seal_ms: u64) -> Self {
 		Self {
 			grid,
-			cutoff_ms: size_ms + grace_ms,
+			cutoff_ms: size_ms + seal_ms,
 			ledger: 0,
 			contributions: Vec::new(),
 			fold: Fold::Sum,

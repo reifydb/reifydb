@@ -538,7 +538,7 @@ mod tests {
 			.is_err(),
 			"internal_state_cache_size was removed and must not be silently accepted"
 		);
-		// One admissible span cannot be two numbers: grace is the whole allowance, so accepting lateness
+		// One admissible span cannot be two numbers: seal is the whole allowance, so accepting lateness
 		// again lets a user widen a horizon the seal gate does not honour.
 		assert!(
 			parse_window_config(r#"window tumbling { count(*) } with { interval: "5m", lateness: "30s" }"#)

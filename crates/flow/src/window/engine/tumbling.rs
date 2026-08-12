@@ -23,14 +23,14 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
-	seal::expiry::ExpiryIndex,
+	seal::expiry::{ExpiryIndex, expiry_key},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
 			accumulator_range, config::WindowEngineConfig, decode_meta_key, decode_window_state_key,
-			expiry_key, load_batch_meta, meta_key_for, meta_range, note_when_expiry_capped,
-			persist_batch_meta, sweep_stale_meta,
+			load_batch_meta, meta_key_for, meta_range, note_when_expiry_capped, persist_batch_meta,
+			sweep_stale_meta,
 		},
 		span::{WindowAnchor, WindowSpan},
 	},
@@ -393,13 +393,13 @@ mod tests {
 
 	use crate::{
 		seal::coord::Coord,
+		testing::store::{MockStore, SumAccumulator},
 		window::{
 			accumulator::WindowAccumulator,
 			engine::{
 				AccumulatorEvent, EmitKind, GroupMeta, MetaHighWater, WindowResult,
 				config::WindowEngineConfig,
 				meta_key_for,
-				test_support::{MockStore, SumAccumulator},
 				tumbling::{TumblingBuckets, TumblingEngine},
 			},
 			span::WindowSpan,

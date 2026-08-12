@@ -429,11 +429,9 @@ mod tests {
 	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
 
 	use super::{RollingTopKBuffer, RollingTopKEmit, RollingTopKEngine, TopKEmit};
-	use crate::window::engine::{
-		AccumulatorEvent,
-		config::WindowEngineConfig,
-		rolling::RollingBuckets,
-		test_support::{MockStore, SumAccumulator},
+	use crate::{
+		testing::store::{MockStore, SumAccumulator},
+		window::engine::{AccumulatorEvent, config::WindowEngineConfig, rolling::RollingBuckets},
 	};
 
 	fn test_config() -> WindowEngineConfig {

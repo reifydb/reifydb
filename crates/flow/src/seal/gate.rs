@@ -99,7 +99,7 @@ mod tests {
 	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
-	use crate::window::engine::test_support::{MockStore, RecordedTimer};
+	use crate::testing::store::{MockStore, RecordedTimer};
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
@@ -212,7 +212,7 @@ mod tests {
 
 	#[test]
 	fn eviction_rearms_on_the_bare_span_and_never_on_the_seal_instant() {
-		// Rolling eviction is a retention boundary, not a gate, so it carries neither the grace nor
+		// Rolling eviction is a retention boundary, not a gate, so it carries neither the seal nor
 		// the strict-gate +1. Both mistakes silently keep too much state on every group, forever.
 		let mut store = MockStore::recording_timers();
 		let gate = EvictionGate::new(ms(1_000));

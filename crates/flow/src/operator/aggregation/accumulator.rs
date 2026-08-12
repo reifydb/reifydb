@@ -96,7 +96,7 @@ fn endpoint(seal: Duration) -> SealingEndpoint<WindowSlotKey, Value> {
 	if seal.is_zero() {
 		SealingEndpoint::default()
 	} else {
-		SealingEndpoint::with_grace(seal)
+		SealingEndpoint::with_seal(seal)
 	}
 }
 
@@ -125,14 +125,14 @@ impl AggregateSlot {
 				if seal.is_zero() {
 					AggregateSlot::Min(Multiset::default())
 				} else {
-					AggregateSlot::MinSealed(SealingMin::with_grace(seal))
+					AggregateSlot::MinSealed(SealingMin::with_seal(seal))
 				}
 			}
 			SlotKind::Max => {
 				if seal.is_zero() {
 					AggregateSlot::Max(Multiset::default())
 				} else {
-					AggregateSlot::MaxSealed(SealingMax::with_grace(seal))
+					AggregateSlot::MaxSealed(SealingMax::with_seal(seal))
 				}
 			}
 			SlotKind::First => AggregateSlot::First(endpoint(seal)),
@@ -962,10 +962,10 @@ mod tests {
 
 	#[test]
 	fn lateness_seals_aged_min_max_and_drops_late_retraction() {
-		// An entry more than one grace behind the high-water mark is folded into the sealed
+		// An entry more than one seal behind the high-water mark is folded into the sealed
 		// scalar, so retracting it is a no-op: the deliberate memory-vs-exactness trade.
-		let grace = Duration::from_seconds(5).unwrap();
-		let mut a = RowAccumulator::new(&[SlotKind::Max], grace);
+		let seal = Duration::from_seconds(5).unwrap();
+		let mut a = RowAccumulator::new(&[SlotKind::Max], seal);
 		a.add(&(coord(0), vec![i4(100)])); // becomes sealed once high-water passes 5s
 		a.add(&(coord(10), vec![i4(50)]));
 		assert_eq!(a.finalize(), Some(vec![Value::Int4(100)]), "sealed max still dominates");
@@ -974,9 +974,9 @@ mod tests {
 		assert_eq!(
 			a.finalize(),
 			Some(vec![Value::Int4(100)]),
-			"retraction older than grace is a no-op, so the sealed max survives"
+			"retraction older than seal is a no-op, so the sealed max survives"
 		);
-		// A retraction still inside the grace window does take effect.
+		// A retraction still inside the seal window does take effect.
 		a.add(&(coord(12), vec![i4(70)]));
 		a.remove(&(coord(12), vec![i4(70)]));
 		assert_eq!(a.finalize(), Some(vec![Value::Int4(100)]));
@@ -984,7 +984,7 @@ mod tests {
 
 	#[test]
 	fn lateness_none_min_max_is_exact_under_retraction() {
-		// Without grace, Min/Max use the exact Multiset and a retraction of any prior
+		// Without seal, Min/Max use the exact Multiset and a retraction of any prior
 		// value is honored regardless of age.
 		let mut a = accumulator(&[SlotKind::Max]);
 		add(&mut a, 0, vec![i4(100)]);
@@ -997,18 +997,18 @@ mod tests {
 	fn sealed_merge_matches_one_combined_accumulator() {
 		// Rolling merges sub-accumulators; a sealed Min/Max/endpoint merge must equal one
 		// accumulator that saw all contributions.
-		let grace = Duration::from_seconds(60).unwrap();
+		let seal = Duration::from_seconds(60).unwrap();
 		let kinds = [SlotKind::Min, SlotKind::Max, SlotKind::First, SlotKind::Last];
 		let rows = [(5, 30), (8, 10), (3, 50), (12, 20)];
-		let mut whole = RowAccumulator::new(&kinds, grace);
+		let mut whole = RowAccumulator::new(&kinds, seal);
 		for (i, (v, _)) in rows.iter().enumerate() {
 			whole.add(&(coord((i as u64) * 10), vec![i4(*v), i4(*v), i4(*v), i4(*v)]));
 		}
-		let mut left = RowAccumulator::new(&kinds, grace);
+		let mut left = RowAccumulator::new(&kinds, seal);
 		for (i, (v, _)) in rows[..2].iter().enumerate() {
 			left.add(&(coord((i as u64) * 10), vec![i4(*v), i4(*v), i4(*v), i4(*v)]));
 		}
-		let mut right = RowAccumulator::new(&kinds, grace);
+		let mut right = RowAccumulator::new(&kinds, seal);
 		for (i, (v, _)) in rows[2..].iter().enumerate() {
 			right.add(&(coord(((i + 2) as u64) * 10), vec![i4(*v), i4(*v), i4(*v), i4(*v)]));
 		}
@@ -1207,7 +1207,7 @@ mod tests {
 		assert!(RowAccumulator::invertible(&[SlotKind::Min, SlotKind::Max], zero));
 		assert!(
 			!RowAccumulator::invertible(&[SlotKind::Min], Duration::from_seconds(60).unwrap()),
-			"grace turns Min/Max into sealed slots, which cannot unmerge"
+			"seal turns Min/Max into sealed slots, which cannot unmerge"
 		);
 		assert!(!RowAccumulator::invertible(&[SlotKind::Sum, SlotKind::First], zero));
 		assert!(!RowAccumulator::invertible(&[SlotKind::Last], zero));

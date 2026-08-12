@@ -3163,7 +3163,7 @@ impl<'bump> Parser<'bump> {
 		self.advance()?;
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut ttl: Option<AstTtl<'bump>> = None;
+		let mut seal: Option<AstTtl<'bump>> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -3175,14 +3175,14 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
-				"ttl" => {
-					ttl = Some(self.parse_ttl()?);
+				"seal" => {
+					seal = Some(self.parse_ttl()?);
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'ttl'".to_string(),
+							expected: "'seal'".to_string(),
 						},
 						message: format!("unexpected key '{}' in operator WITH clause", other),
 						fragment,
@@ -3194,7 +3194,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
-		Ok(ttl)
+		Ok(seal)
 	}
 
 	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinSeal<'bump>>, bool, bool)> {

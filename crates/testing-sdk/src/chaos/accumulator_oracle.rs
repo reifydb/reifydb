@@ -16,7 +16,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
-	seal::coord::Coord as CoordTrait,
+	seal::coord::Coord,
 	window::{accumulator::WindowAccumulator, span::WindowSpan},
 };
 use reifydb_sdk::flow::operator::{
@@ -49,9 +49,9 @@ fn with_oracle_ctx<R>(f: impl FnOnce(&mut ExternCOperatorContext) -> R) -> R {
 	f(&mut op_ctx)
 }
 
-type Coord = DateTime;
+type TumblingCoord = DateTime;
 type Group<A> = <A as TumblingOperator>::GroupKey;
-type WindowKey<A> = (Group<A>, Coord);
+type WindowKey<A> = (Group<A>, TumblingCoord);
 
 pub fn tumbling_accumulator_oracle<A>(
 	aggregate: &A,
@@ -64,8 +64,8 @@ where
 	A::Output: Row,
 {
 	let mut accumulators: HashMap<WindowKey<A>, A::Accumulator> = HashMap::new();
-	let mut spans: HashMap<WindowKey<A>, WindowSpan<Coord>> = HashMap::new();
-	let mut high_water: HashMap<Group<A>, Coord> = HashMap::new();
+	let mut spans: HashMap<WindowKey<A>, WindowSpan<TumblingCoord>> = HashMap::new();
+	let mut high_water: HashMap<Group<A>, TumblingCoord> = HashMap::new();
 	let mut last_visible: HashMap<WindowKey<A>, A::Output> = HashMap::new();
 
 	for batch in batches {
@@ -101,9 +101,9 @@ fn apply_leg<A>(
 	aggregate: &A,
 	row: &CoreRow,
 	is_add: bool,
-	snapshot: &HashMap<Group<A>, Coord>,
+	snapshot: &HashMap<Group<A>, TumblingCoord>,
 	accumulators: &mut HashMap<WindowKey<A>, A::Accumulator>,
-	spans: &mut HashMap<WindowKey<A>, WindowSpan<Coord>>,
+	spans: &mut HashMap<WindowKey<A>, WindowSpan<TumblingCoord>>,
 	touched: &mut BTreeSet<WindowKey<A>>,
 ) where
 	A: TumblingOperator,
@@ -140,7 +140,7 @@ fn apply_leg<A>(
 fn extract_one<A>(
 	aggregate: &A,
 	row: &CoreRow,
-) -> Option<(Group<A>, Coord, <A::Accumulator as WindowAccumulator>::Contribution)>
+) -> Option<(Group<A>, TumblingCoord, <A::Accumulator as WindowAccumulator>::Contribution)>
 where
 	A: TumblingOperator,
 {

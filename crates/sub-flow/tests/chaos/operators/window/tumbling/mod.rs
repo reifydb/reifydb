@@ -24,7 +24,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct Params {
 	pub size_secs: u64,
-	pub grace_secs: u64,
+	pub seal_secs: u64,
 	pub groups: i32,
 	pub steps: u32,
 	pub max_batch: u32,
@@ -51,11 +51,11 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 /// The same corpus and grid under a different fold.
 ///
 /// Min and max are not just different arithmetic here: `AggregateSlot::invertible` calls them
-/// invertible only when grace is zero, so a graced window runs them through the sealing accumulator
-/// rather than the multiset. Driving both grace settings is what reaches both.
+/// invertible only when seal is zero, so a sealed window runs them through the sealing accumulator
+/// rather than the multiset. Driving both seal settings is what reaches both.
 pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
-	let grace_ms = params.grace_secs * 1_000;
+	let seal_ms = params.seal_secs * 1_000;
 
 	let spec = WindowSpec {
 		kind: WindowKind::Tumbling {
@@ -63,7 +63,7 @@ pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: fold.rql(),
-		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
+		seal: Duration::from_seconds(params.seal_secs as i64).unwrap(),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
@@ -76,7 +76,7 @@ pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 			size_ms,
 		},
 		size_ms,
-		grace_ms,
+		seal_ms,
 	)
 	.with_fold(fold);
 
@@ -86,7 +86,7 @@ pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 			params.steps,
 			params.max_batch,
 			params.coord_span_ms,
-			params.coord_span_ms + size_ms + grace_ms + 10_000,
+			params.coord_span_ms + size_ms + seal_ms + 10_000,
 		)
 		.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
 		&mut harness,
@@ -105,12 +105,12 @@ const SIZE_SECS: [u64; 6] = [1, 5, 15, 30, 60, 120];
 pub fn random_params(seed: u64) -> (u64, Params) {
 	let (mut rng, sequence_seed) = split(seed);
 	let size_secs = pick(&mut rng, &SIZE_SECS);
-	let grace_secs = fuzz::grace_secs(&mut rng, size_secs);
+	let seal_secs = fuzz::seal_secs(&mut rng, size_secs);
 	let coord_span_ms = fuzz::coord_span_ms(&mut rng, size_secs);
 	let mix = fuzz::mix(&mut rng);
 	let params = Params {
 		size_secs,
-		grace_secs,
+		seal_secs,
 		groups: mix.groups,
 		steps: mix.steps,
 		max_batch: mix.max_batch,
@@ -158,9 +158,9 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		// A count window forces grace to zero through its own accessor, so the sweep declares it
+		// A count window forces seal to zero through its own accessor, so the sweep declares it
 		// zero rather than pretending it is a knob.
-		grace: Duration::default(),
+		seal: Duration::default(),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
@@ -219,7 +219,7 @@ pub fn drive_count_random(seed: u64) {
 /// aggregate has to survive all three.
 pub fn drive_flow_shaped(seed: u64, params: Params) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
-	let grace_ms = params.grace_secs * 1_000;
+	let seal_ms = params.seal_secs * 1_000;
 
 	let spec = WindowSpec {
 		kind: WindowKind::Tumbling {
@@ -227,7 +227,7 @@ pub fn drive_flow_shaped(seed: u64, params: Params) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
+		seal: Duration::from_seconds(params.seal_secs as i64).unwrap(),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
@@ -240,7 +240,7 @@ pub fn drive_flow_shaped(seed: u64, params: Params) -> Corpus {
 			size_ms,
 		},
 		size_ms,
-		grace_ms,
+		seal_ms,
 	);
 
 	driver::drive(
@@ -254,7 +254,7 @@ pub fn drive_flow_shaped(seed: u64, params: Params) -> Corpus {
 				params.steps,
 				params.max_batch,
 				params.coord_span_ms,
-				params.coord_span_ms + size_ms + grace_ms + 10_000,
+				params.coord_span_ms + size_ms + seal_ms + 10_000,
 			)
 			.with_mix(params.remove_pct, params.update_pct, params.seal_pct)
 			.with_max_live(24)

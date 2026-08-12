@@ -341,14 +341,16 @@ mod tests {
 	use reifydb_core::state::store::StateStore;
 	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
 
-	use crate::window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, EmitKind,
-			config::WindowEngineConfig,
-			rolling::{RollingBuckets, RollingResult},
-			rolling_incremental::RollingIncrementalEngine,
-			test_support::{MockStore, SumAccumulator},
+	use crate::{
+		testing::store::{MockStore, SumAccumulator},
+		window::{
+			accumulator::WindowAccumulator,
+			engine::{
+				AccumulatorEvent, EmitKind,
+				config::WindowEngineConfig,
+				rolling::{RollingBuckets, RollingResult},
+				rolling_incremental::RollingIncrementalEngine,
+			},
 		},
 	};
 

@@ -320,8 +320,8 @@ mod time_window {
 	use super::*;
 
 	fn events() -> Vec<Event> {
-		// Two groups spread over five 2s buckets, with one late-but-in-grace row (rn 8 lands at
-		// 2.5s after rows reached 6s) so the grace path participates in the comparison.
+		// Two groups spread over five 2s buckets, with one late-but-in-seal row (rn 8 lands at
+		// 2.5s after rows reached 6s) so the seal path participates in the comparison.
 		let rows: [(u64, i32, i64, u64); 10] = [
 			(1, 1, 5, 500),
 			(2, 2, 7, 1_000),
@@ -366,7 +366,7 @@ mod time_window {
 
 	#[test]
 	fn time_window_state_is_identical_across_wall_clocks() {
-		// The pre-settle snapshot is compared too: armed seal and grace timers are state (the
+		// The pre-settle snapshot is compared too: armed seal and seal timers are state (the
 		// wheel keyspace), and their rows are written while timers are still outstanding. A
 		// clock read stamped at arm time only exists BEFORE the wheel drains, so comparing
 		// only the settled state would let it escape.
@@ -605,7 +605,7 @@ mod join {
 	}
 }
 
-fn window_harness(kind: WindowKind, grace: Duration, clock_ms: u64) -> Harness<WindowOperator> {
+fn window_harness(kind: WindowKind, seal: Duration, clock_ms: u64) -> Harness<WindowOperator> {
 	Harness::with_engine(move |engine, runtime| {
 		engine.mock_clock().set_millis(clock_ms);
 		WindowOperator::new(WindowConfig {
@@ -616,7 +616,7 @@ fn window_harness(kind: WindowKind, grace: Duration, clock_ms: u64) -> Harness<W
 			aggregations: parse_expression("total: math::sum(v)").expect("aggregation parses"),
 			runtime_context: runtime,
 			routines: routines(),
-			seal: grace,
+			seal,
 			ctx: Arc::new(FlowContext::default()),
 		})
 	})

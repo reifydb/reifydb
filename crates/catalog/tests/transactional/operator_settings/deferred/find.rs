@@ -16,7 +16,7 @@ fn deferred_append_view_persists_operator_ttl() {
 	t.admin("CREATE TABLE os_app_d::s1 { id: int4, val: int4 }");
 	t.admin("CREATE TABLE os_app_d::s2 { id: int4, val: int4 }");
 	t.admin("CREATE DEFERRED VIEW os_app_d::merged { id: int4, val: int4 } AS { \
-		 FROM os_app_d::s1 append { FROM os_app_d::s2 } with { ttl: { duration: \"1s\" } } }");
+		 FROM os_app_d::s1 append { FROM os_app_d::s2 } with { seal: { duration: \"1s\" } } }");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let ns = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "os_app_d").unwrap().unwrap();

@@ -44,7 +44,7 @@ fn flow_consumer_watermark_advances_to_committed_version() {
 		std::thread::sleep(StdDuration::from_millis(5));
 	}
 
-	// Queried with no grace poll, so `flow_consumer() >= target` has to be a true materialization
+	// Queried with no seal poll, so `flow_consumer() >= target` has to be a true materialization
 	// barrier: a watermark that advanced on discovery reads an empty view here.
 	let rows: usize = db.row_count("FROM app::v");
 	assert_eq!(

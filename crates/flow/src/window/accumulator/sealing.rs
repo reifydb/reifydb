@@ -21,7 +21,7 @@ use crate::{
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
 struct SealingBase<C: Slot, V> {
-	grace: Option<SlotSpan<C>>,
+	seal: Option<SlotSpan<C>>,
 	high_water: Option<C>,
 	tail: BTreeMap<C, V>,
 }
@@ -29,7 +29,7 @@ struct SealingBase<C: Slot, V> {
 impl<C: Slot, V> Default for SealingBase<C, V> {
 	fn default() -> Self {
 		Self {
-			grace: None,
+			seal: None,
 			high_water: None,
 			tail: BTreeMap::new(),
 		}
@@ -37,9 +37,9 @@ impl<C: Slot, V> Default for SealingBase<C, V> {
 }
 
 impl<C: Slot, V> SealingBase<C, V> {
-	fn with_grace(grace: SlotSpan<C>) -> Self {
+	fn with_seal(seal: SlotSpan<C>) -> Self {
 		Self {
-			grace: Some(grace),
+			seal: Some(seal),
 			high_water: None,
 			tail: BTreeMap::new(),
 		}
@@ -52,7 +52,7 @@ impl<C: Slot, V> SealingBase<C, V> {
 		});
 		self.tail.insert(coord, value);
 		let mut aged = Vec::new();
-		let (Some(hw), Some(l)) = (self.high_water, self.grace) else {
+		let (Some(hw), Some(l)) = (self.high_water, self.seal) else {
 			return aged;
 		};
 		while let Some((&c, _)) = self.tail.iter().next() {
@@ -95,9 +95,9 @@ impl<C: Slot, V: Ord> Default for SealingMax<C, V> {
 }
 
 impl<C: Slot, V: Ord + Clone> SealingMax<C, V> {
-	pub fn with_grace(grace: SlotSpan<C>) -> Self {
+	pub fn with_seal(seal: SlotSpan<C>) -> Self {
 		Self {
-			base: SealingBase::with_grace(grace),
+			base: SealingBase::with_seal(seal),
 			sealed: None,
 		}
 	}
@@ -179,9 +179,9 @@ impl<C: Slot, V: Ord> Default for SealingMin<C, V> {
 }
 
 impl<C: Slot, V: Ord + Clone> SealingMin<C, V> {
-	pub fn with_grace(grace: SlotSpan<C>) -> Self {
+	pub fn with_seal(seal: SlotSpan<C>) -> Self {
 		Self {
-			base: SealingBase::with_grace(grace),
+			base: SealingBase::with_seal(seal),
 			sealed: None,
 		}
 	}
@@ -263,9 +263,9 @@ impl<C: Slot, V> Default for SealingEndpoint<C, V> {
 }
 
 impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
-	pub fn with_grace(grace: SlotSpan<C>) -> Self {
+	pub fn with_seal(seal: SlotSpan<C>) -> Self {
 		Self {
-			base: SealingBase::with_grace(grace),
+			base: SealingBase::with_seal(seal),
 			sealed_open: None,
 		}
 	}
@@ -388,9 +388,9 @@ impl<C: Slot, F: SealFold> Default for SealingFold<C, F> {
 }
 
 impl<C: Slot, F: SealFold> SealingFold<C, F> {
-	pub fn with_grace(grace: SlotSpan<C>) -> Self {
+	pub fn with_seal(seal: SlotSpan<C>) -> Self {
 		Self {
-			base: SealingBase::with_grace(grace),
+			base: SealingBase::with_seal(seal),
 			sealed: F::State::default(),
 			last_sealed: None,
 			marker: PhantomData,
@@ -448,9 +448,9 @@ impl<C: Slot, V> Default for SealingTail<C, V> {
 }
 
 impl<C: Slot, V: Clone> SealingTail<C, V> {
-	pub fn with_grace(grace: SlotSpan<C>) -> Self {
+	pub fn with_seal(seal: SlotSpan<C>) -> Self {
 		Self {
-			base: SealingBase::with_grace(grace),
+			base: SealingBase::with_seal(seal),
 		}
 	}
 
@@ -486,9 +486,9 @@ impl<C: Slot, V> Default for TailAccumulator<C, V> {
 }
 
 impl<C: Slot, V: Clone> TailAccumulator<C, V> {
-	pub fn with_grace(grace: SlotSpan<C>) -> Self {
+	pub fn with_seal(seal: SlotSpan<C>) -> Self {
 		Self {
-			events: SealingTail::with_grace(grace),
+			events: SealingTail::with_seal(seal),
 		}
 	}
 }

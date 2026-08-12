@@ -12,7 +12,7 @@ use reifydb_testing_chaos::fuzz::pick;
 /// lands in that band across sizes spanning two orders of magnitude.
 const GRACE_RATIOS: [(u64, u64); 5] = [(0, 1), (1, 2), (1, 1), (2, 1), (3, 1)];
 
-pub fn grace_secs(rng: &mut StdRng, size_secs: u64) -> u64 {
+pub fn seal_secs(rng: &mut StdRng, size_secs: u64) -> u64 {
 	let (numerator, denominator) = pick(rng, &GRACE_RATIOS);
 	size_secs * numerator / denominator
 }

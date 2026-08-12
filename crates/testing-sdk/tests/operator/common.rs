@@ -311,9 +311,9 @@ pub struct OhlcvAcc {
 impl Default for OhlcvAcc {
 	fn default() -> Self {
 		Self {
-			high: SealingMax::with_grace(millis(OHLCV_GRACE)),
-			low: SealingMin::with_grace(millis(OHLCV_GRACE)),
-			ends: SealingEndpoint::with_grace(millis(OHLCV_GRACE)),
+			high: SealingMax::with_seal(millis(OHLCV_GRACE)),
+			low: SealingMin::with_seal(millis(OHLCV_GRACE)),
+			ends: SealingEndpoint::with_seal(millis(OHLCV_GRACE)),
 		}
 	}
 }

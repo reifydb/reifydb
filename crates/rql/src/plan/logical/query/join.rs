@@ -75,7 +75,7 @@ impl<'bump> Compiler<'bump> {
 				with,
 				using_clause,
 				alias,
-				ttl,
+				seal,
 				snapshot,
 				latest,
 				rql,
@@ -83,8 +83,8 @@ impl<'bump> Compiler<'bump> {
 			} => {
 				let with = self.compile_join_subquery(with, &alias, tx)?;
 				let on = build_join_expressions(using_clause, &alias)?;
-				let ttl = match ttl {
-					Some(ast_ttl) => Some(Self::compile_join_seal(ast_ttl)?),
+				let ttl = match seal {
+					Some(ast_seal) => Some(Self::compile_join_seal(ast_seal)?),
 					None => None,
 				};
 
@@ -102,7 +102,7 @@ impl<'bump> Compiler<'bump> {
 				with,
 				using_clause,
 				alias,
-				ttl,
+				seal,
 				snapshot,
 				latest,
 				rql,
@@ -110,8 +110,8 @@ impl<'bump> Compiler<'bump> {
 			} => {
 				let with = self.compile_join_subquery(with, &alias, tx)?;
 				let on = build_join_expressions(using_clause, &alias)?;
-				let ttl = match ttl {
-					Some(ast_ttl) => Some(Self::compile_join_seal(ast_ttl)?),
+				let ttl = match seal {
+					Some(ast_seal) => Some(Self::compile_join_seal(ast_seal)?),
 					None => None,
 				};
 
@@ -129,15 +129,15 @@ impl<'bump> Compiler<'bump> {
 				with,
 				join_type,
 				alias,
-				ttl,
+				seal,
 				snapshot,
 				latest,
 				rql,
 				..
 			} => {
 				let with = self.compile_natural_join_subquery(with, &alias, tx)?;
-				let ttl = match ttl {
-					Some(ast_ttl) => Some(Self::compile_join_seal(ast_ttl)?),
+				let ttl = match seal {
+					Some(ast_seal) => Some(Self::compile_join_seal(ast_seal)?),
 					None => None,
 				};
 

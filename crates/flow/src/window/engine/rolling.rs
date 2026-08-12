@@ -24,13 +24,13 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use crate::{
 	seal::{
 		coord::{Coord, IsZero},
-		expiry::ExpiryIndex,
+		expiry::{ExpiryIndex, expiry_key},
 	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaKey, RunningKey, buffer_range,
-			config::WindowEngineConfig, decode_buffer_key, decode_meta_key, decode_running_key, expiry_key,
+			config::WindowEngineConfig, decode_buffer_key, decode_meta_key, decode_running_key,
 			load_batch_meta, meta_key_for, meta_range, note_when_expiry_capped, persist_batch_meta,
 			running_range, sweep_stale_meta,
 		},
@@ -1003,13 +1003,16 @@ mod tests {
 		value::datetime::DateTime,
 	};
 
-	use crate::window::engine::{
-		AccumulatorEvent, EmitKind,
-		config::WindowEngineConfig,
-		rolling::{
-			RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry, RollingResult,
+	use crate::{
+		testing::store::{MockStore, SumAccumulator},
+		window::engine::{
+			AccumulatorEvent, EmitKind,
+			config::WindowEngineConfig,
+			rolling::{
+				RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
+				RollingResult,
+			},
 		},
-		test_support::{MockStore, SumAccumulator},
 	};
 
 	fn test_config() -> WindowEngineConfig {

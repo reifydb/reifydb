@@ -23,7 +23,7 @@ use crate::{
 pub struct Params {
 	pub size_secs: u64,
 	pub slide_secs: u64,
-	pub grace_secs: u64,
+	pub seal_secs: u64,
 	pub groups: i32,
 	pub steps: u32,
 	pub max_batch: u32,
@@ -54,7 +54,7 @@ impl Grid for SlidingGrid {
 pub fn drive(seed: u64, params: Params) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let slide_ms = params.slide_secs * 1_000;
-	let grace_ms = params.grace_secs * 1_000;
+	let seal_ms = params.seal_secs * 1_000;
 	assert!(slide_ms < size_ms, "the sweep only covers overlapping sliding windows; slide must be < size");
 
 	let spec = WindowSpec {
@@ -64,7 +64,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
+		seal: Duration::from_seconds(params.seal_secs as i64).unwrap(),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
@@ -78,7 +78,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 			slide_ms,
 		},
 		size_ms,
-		grace_ms,
+		seal_ms,
 	);
 
 	driver::drive(
@@ -87,7 +87,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 			params.steps,
 			params.max_batch,
 			params.coord_span_ms,
-			params.coord_span_ms + size_ms + grace_ms + 10_000,
+			params.coord_span_ms + size_ms + seal_ms + 10_000,
 		)
 		.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
 		&mut harness,
@@ -109,13 +109,13 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 	// Bounded below so a coordinate never lands in more than about eight windows at once; a slide of
 	// one second against a two minute size puts every row in 120 of them.
 	let slide_secs = rng.random_range((size_secs / 8).max(1)..size_secs);
-	let grace_secs = fuzz::grace_secs(&mut rng, size_secs);
+	let seal_secs = fuzz::seal_secs(&mut rng, size_secs);
 	let coord_span_ms = fuzz::coord_span_ms(&mut rng, size_secs);
 	let mix = fuzz::mix(&mut rng);
 	let params = Params {
 		size_secs,
 		slide_secs,
-		grace_secs,
+		seal_secs,
 		groups: mix.groups,
 		steps: mix.steps,
 		max_batch: mix.max_batch,
@@ -180,7 +180,7 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		grace: Duration::default(),
+		seal: Duration::default(),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));

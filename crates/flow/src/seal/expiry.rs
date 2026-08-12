@@ -4,20 +4,36 @@
 use std::{collections::BTreeMap, mem::size_of};
 
 use reifydb_codec::{
-	key::{decode_u64, encode_u64, encoded::EncodedKeyRange},
+	key::{
+		decode_u64, encode_u64,
+		encoded::{EncodedKeyRange, IntoEncodedKey},
+	},
 	row::operator::{OperatorState, decode},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
 	state::store::StateStore,
 };
 use reifydb_value::Result;
 use tracing::instrument;
 
-use crate::window::engine::expiry_range;
+/// The due-ordered expiry index lives in the root group so a group's entries survive the phase-1 range
+/// delete and drain on their own.
+pub(crate) fn expiry_range() -> EncodedKeyRange {
+	keyspace_inner_range(GroupId::ROOT, Keyspace::EXPIRY)
+}
 
-fn expiry_all_range() -> EncodedKeyRange {
-	expiry_range()
+pub(crate) fn expiry_key<G>(expiry: u64, group: &G, suffix: &[u8]) -> GroupStateKey
+where
+	for<'a> &'a G: IntoEncodedKey,
+{
+	let group = group.into_encoded_key();
+	let group = group.as_ref();
+	let mut tail = Vec::with_capacity(8 + group.len() + suffix.len());
+	tail.extend_from_slice(&encode_u64(expiry));
+	tail.extend_from_slice(group);
+	tail.extend_from_slice(suffix);
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::EXPIRY, tail)
 }
 
 fn due_start(threshold: u64) -> GroupStateKey {
@@ -42,7 +58,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		if self.entries.is_none() {
 			let mut map = BTreeMap::new();
 			let mut bytes = 0u64;
-			store.state_range_visit(expiry_all_range(), None, &mut |key, payload| {
+			store.state_range_visit(expiry_range(), None, &mut |key, payload| {
 				bytes += entry_bytes::<E>(&key);
 				map.insert(key, decode::<E>(&payload)?);
 				Ok(())
@@ -107,8 +123,8 @@ mod tests {
 	use reifydb_core::key::operator_state::GroupStateKey;
 	use reifydb_macro::operator_state;
 
-	use super::ExpiryIndex;
-	use crate::window::engine::{expiry_key, test_support::MockStore};
+	use super::{ExpiryIndex, expiry_key};
+	use crate::testing::store::MockStore;
 
 	#[operator_state]
 	#[derive(Clone, Debug, PartialEq)]
