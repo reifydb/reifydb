@@ -1,15 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	cmp::Ordering,
-	iter,
-	ops::{
-		Bound,
-		Bound::{Excluded, Included, Unbounded},
-	},
-	vec,
-};
+use std::{cmp::Ordering, iter, ops::Bound, vec};
 
 use iter::Peekable;
 use reifydb_codec::{
@@ -20,17 +12,11 @@ use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, store::MultiVersionRow},
-	key::{
-		Key,
-		kind::KeyKind,
-		operator_state::{OperatorStateKey, node_prefix},
-	},
+	key::{Key, kind::KeyKind, operator_state::OperatorStateKey},
 };
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_value::Result;
 use vec::IntoIter;
-
-use crate::transaction::substrate::operator_state_coordinates;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadFrom {
@@ -133,29 +119,6 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyKind::Relationship => ReadFrom::Query,
 		},
 	}
-}
-
-pub(crate) fn operator_state_scope(range: &EncodedKeyRange) -> Option<(OperatorId, EncodedKeyRange)> {
-	let start_key = match range.start.as_ref() {
-		Included(key) | Excluded(key) => key,
-		Unbounded => return None,
-	};
-	if Key::kind(start_key) != Some(KeyKind::OperatorState) {
-		return None;
-	}
-	let (operator, _) =
-		operator_state_coordinates(start_key).expect("an OperatorState-routed key must carry an operator id");
-	let prefix = EncodedKey::new(node_prefix(operator));
-	let strip = |bound: Bound<&EncodedKey>| match bound {
-		Included(key) if key.as_slice().starts_with(prefix.as_slice()) => {
-			Included(EncodedKey::new(&key.as_slice()[prefix.len()..]))
-		}
-		Excluded(key) if key.as_slice().starts_with(prefix.as_slice()) => {
-			Excluded(EncodedKey::new(&key.as_slice()[prefix.len()..]))
-		}
-		_ => Unbounded,
-	};
-	Some((operator, EncodedKeyRange::new(strip(range.start.as_ref()), strip(range.end.as_ref()))))
 }
 
 pub(crate) struct OperatorStateRangeIter {
@@ -400,4 +363,3 @@ where
 		version,
 	}
 }
-

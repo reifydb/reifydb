@@ -6,6 +6,9 @@
 #[path = "transaction/common.rs"]
 mod common;
 
+#[path = "transaction/core.rs"]
+mod core;
+
 #[path = "transaction/dictionary.rs"]
 mod dictionary;
 
@@ -14,9 +17,6 @@ mod frontier;
 
 #[path = "transaction/group.rs"]
 mod group;
-
-#[path = "transaction/read.rs"]
-mod read;
 
 #[path = "transaction/reclaim.rs"]
 mod reclaim;
@@ -32,6 +32,3 @@ mod timer;
 
 #[path = "transaction/watermark.rs"]
 mod watermark;
-
-#[path = "transaction/write.rs"]
-mod write;

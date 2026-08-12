@@ -14,6 +14,7 @@ use tracing::{info, warn};
 use crate::transaction::{
 	FlowTransaction,
 	group::{decode_payload, encode_payload},
+	state::StateTxn,
 };
 
 const PERSIST_BUCKET_MS: u64 = 1_000;
@@ -126,4 +127,3 @@ impl SourceWatermarks {
 		Ok(())
 	}
 }
-

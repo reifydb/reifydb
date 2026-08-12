@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_flow::transaction::{FlowTransaction, state::StateTxn};
 use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine, key, make_row};
 use reifydb_value::value::datetime::DateTime;
 

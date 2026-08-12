@@ -35,7 +35,7 @@ use crate::{
 		stateful::utils,
 	},
 	testing::FlowTxn,
-	transaction::{FlowTransaction, deferred::DeferredTransaction},
+	transaction::{deferred::DeferredTransaction, row_number::RowNumberTxn, state::StateTxn},
 };
 
 fn make_op(operator_id: u64, engine: &TestEngine) -> DistinctOperator {

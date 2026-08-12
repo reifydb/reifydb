@@ -8,6 +8,10 @@ use reifydb_core::{
 	actors::pending::PendingLayers,
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 };
+use reifydb_flow::transaction::{
+	DeferredParams, FlowTransaction, deferred::DeferredTransaction, dictionary::DictionaryTxn,
+	substrate::FlowSubstrate,
+};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
@@ -16,10 +20,6 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 };
 use reifydb_value::value::{Value, dictionary::DictionaryId, identity::IdentityId, value_type::ValueType};
-
-use reifydb_flow::transaction::{
-	DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate,
-};
 
 fn mints() -> Dictionary {
 	Dictionary {

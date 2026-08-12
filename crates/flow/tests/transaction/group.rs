@@ -15,6 +15,7 @@ use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	group::*,
+	state::StateTxn,
 	substrate::{FlowSubstrate, apply_operator_state},
 };
 use reifydb_runtime::{

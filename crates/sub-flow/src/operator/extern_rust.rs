@@ -185,7 +185,7 @@ impl ExternRustOperatorLoader {
 			*create_symbol
 		};
 
-		Ok(create(operator_id, config)?)
+		create(operator_id, config)
 	}
 }
 

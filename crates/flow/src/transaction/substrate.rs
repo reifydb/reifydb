@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
-use reifydb_core::{
-	actors::pending::{Pending, PendingWrite},
-	interface::catalog::flow::OperatorId,
-	key::operator_state::OperatorStateKey,
-};
+use reifydb_codec::row::operator::EncodedOperatorRow;
+use reifydb_core::actors::pending::{Pending, PendingWrite};
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 
 use crate::transaction::{
-	frontier::OutputFrontiers, group::GroupInterner, row_number::RowNumberProvider, timer::TimerWheel,
+	frontier::OutputFrontiers,
+	group::GroupInterner,
+	row_number::RowNumberProvider,
+	scope::{OperatorScope, operator_state_coordinates},
+	timer::TimerWheel,
 	watermark::SourceWatermarks,
 };
 
@@ -40,13 +40,13 @@ impl FlowSubstrate {
 	}
 }
 
-pub fn operator_state_coordinates(key: &EncodedKey) -> Option<(OperatorId, EncodedKey)> {
-	OperatorStateKey::decode_operator(key)
-}
-
 pub fn apply_operator_state(store: &OperatorStore, pending: &Pending) {
 	for (key, write) in pending.iter_sorted() {
-		let Some((operator, inner)) = operator_state_coordinates(key) else {
+		let Some(OperatorScope {
+			operator,
+			inner,
+		}) = operator_state_coordinates(key)
+		else {
 			continue;
 		};
 		match write {

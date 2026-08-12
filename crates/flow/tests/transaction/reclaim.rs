@@ -12,13 +12,16 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, group_inner_range},
 };
+use reifydb_flow::transaction::{
+	ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction, group::GroupTxn,
+	reclaim::ReclaimTxn, state::StateTxn, substrate::FlowSubstrate,
+};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
-use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
-
-use reifydb_flow::transaction::{
-	ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate,
+use reifydb_value::{
+	count::Count,
+	value::{datetime::DateTime, identity::IdentityId},
 };
 
 const NODE: OperatorId = OperatorId(1);
@@ -78,7 +81,7 @@ fn the_identity_reclaim_erases_the_range_and_stops_the_group_resolving() {
 
 	let outcome = txn.reclaim_group_identity(NODE, id, 100).unwrap();
 
-	assert_eq!(outcome.removed, 3, "the substrate record, the seeded record row and the mapping");
+	assert_eq!(outcome.removed, Count::new(3), "the substrate record, the seeded record row and the mapping");
 	assert!(!outcome.more);
 	assert_eq!(count(&mut txn, group_inner_range(id)), 0, "the group's range must be empty");
 	assert_eq!(
@@ -102,7 +105,7 @@ fn a_bounded_identity_reclaim_keeps_the_dictionary_until_the_range_is_drained() 
 	}
 
 	let partial = txn.reclaim_group_identity(NODE, id, 2).unwrap();
-	assert_eq!(partial.removed, 2);
+	assert_eq!(partial.removed, Count::new(2));
 	assert!(partial.more, "the caller must learn the group is not drained");
 	assert_eq!(
 		txn.lookup_group(NODE, &group_bytes).unwrap(),

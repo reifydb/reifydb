@@ -22,7 +22,7 @@ use reifydb_core::{
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions, value::row_number::RowNumber};
 
-use crate::transaction::FlowTransaction;
+use crate::transaction::{FlowTransaction, state::StateTxn};
 
 const DEFAULT_BYTE_BUDGET: u64 = 1024 * 1024;
 const HYDRATE_CHUNK: usize = 8_192;
@@ -570,3 +570,76 @@ impl RowNumberProvider {
 	}
 }
 
+pub trait RowNumberTxn: FlowTransaction {
+	fn get_or_create_row_number(
+		&mut self,
+		operator: OperatorId,
+		group: GroupId,
+		key: &EncodedKey,
+	) -> Result<(RowNumber, bool)> {
+		let provider = self.row_numbers();
+		provider.get_or_create_row_number(operator, group, self, key)
+	}
+
+	fn get_or_create_row_numbers(
+		&mut self,
+		operator: OperatorId,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> Result<Vec<(RowNumber, bool)>> {
+		let provider = self.row_numbers();
+		provider.get_or_create_row_numbers(operator, group, self, keys)
+	}
+
+	fn get_row_number(
+		&mut self,
+		operator: OperatorId,
+		group: GroupId,
+		key: &EncodedKey,
+	) -> Result<Option<RowNumber>> {
+		let provider = self.row_numbers();
+		provider.get_row_number(operator, group, self, key)
+	}
+
+	fn get_row_numbers(
+		&mut self,
+		operator: OperatorId,
+		group: GroupId,
+		keys: &[EncodedKey],
+	) -> Result<Vec<Option<RowNumber>>> {
+		let provider = self.row_numbers();
+		provider.get_row_numbers(operator, group, self, keys)
+	}
+
+	fn remove_row_number(&mut self, operator: OperatorId, group: GroupId, key: &EncodedKey) -> Result<bool> {
+		let provider = self.row_numbers();
+		provider.remove_row_number(operator, group, self, key)
+	}
+
+	fn remove_row_numbers_below(
+		&mut self,
+		operator: OperatorId,
+		group: GroupId,
+		upper: &EncodedKey,
+	) -> Result<Vec<RowNumber>> {
+		let provider = self.row_numbers();
+		provider.drop_below(operator, group, self, upper)
+	}
+
+	fn remove_row_numbers_by_prefix(
+		&mut self,
+		operator: OperatorId,
+		group: GroupId,
+		key_prefix: &[u8],
+	) -> Result<()> {
+		let provider = self.row_numbers();
+		provider.remove_by_prefix(operator, group, self, key_prefix)
+	}
+
+	fn invalidate_row_number_groups(&mut self, operator: OperatorId, groups: &GroupSet) {
+		let provider = self.row_numbers();
+		provider.invalidate_groups(operator, groups)
+	}
+}
+
+impl<T: FlowTransaction> RowNumberTxn for T {}

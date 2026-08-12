@@ -122,4 +122,3 @@ impl OutputFrontiers {
 		}
 	}
 }
-

@@ -32,7 +32,15 @@ use reifydb_value::{
 use crate::{
 	operator::stateful::StateIterator,
 	timer::Timer,
-	transaction::{FlowTransaction, reclaim::ReclaimOutcome},
+	transaction::{
+		FlowTransaction,
+		dictionary::DictionaryTxn,
+		group::GroupTxn,
+		reclaim::{ReclaimOutcome, ReclaimTxn},
+		row_number::RowNumberTxn,
+		state::StateTxn,
+		timer::TimerTxn,
+	},
 };
 
 pub trait HostContext: StateStore + TimerStore {

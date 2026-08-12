@@ -84,8 +84,9 @@ use crate::{
 	timer::Timer,
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
-		read::{OperatorStateRangeIter, ReadFrom, operator_state_scope, read_from},
-		substrate::{FlowSubstrate, operator_state_coordinates},
+		read::{OperatorStateRangeIter, ReadFrom, read_from},
+		scope::{OperatorRangeScope, OperatorScope, operator_state_coordinates, operator_state_scope},
+		substrate::FlowSubstrate,
 	},
 };
 
@@ -163,9 +164,11 @@ pub(crate) fn deferred_storage_get(
 ) -> Result<Option<EncodedBytes>> {
 	let route = read_from(key);
 	if matches!(route, ReadFrom::OperatorState) {
-		let (operator, inner_key) =
-			operator_state_coordinates(key).expect("an OperatorState-routed key must carry an operator id");
-		return Ok(operators.get(operator, &inner_key).map(EncodedOperatorRow::into_bytes));
+		let OperatorScope {
+			operator,
+			inner,
+		} = operator_state_coordinates(key).expect("an OperatorState-routed key must carry an operator id");
+		return Ok(operators.get(operator, &inner).map(EncodedOperatorRow::into_bytes));
 	}
 	let query = match route {
 		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
@@ -183,9 +186,12 @@ pub(crate) fn deferred_storage_contains(
 ) -> Result<bool> {
 	let query = match read_from(key) {
 		ReadFrom::OperatorState => {
-			let (operator, inner_key) = operator_state_coordinates(key)
+			let OperatorScope {
+				operator,
+				inner,
+			} = operator_state_coordinates(key)
 				.expect("an OperatorState-routed key must carry an operator id");
-			return Ok(operators.contains(operator, &inner_key));
+			return Ok(operators.contains(operator, &inner));
 		}
 		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
 		ReadFrom::Query => query,
@@ -202,14 +208,12 @@ pub(crate) fn deferred_storage_range<'a>(
 	scope: RangeScope,
 	batch_size: usize,
 ) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a> {
-	if let Some((operator, inner_range)) = operator_state_scope(&range) {
-		return Box::new(OperatorStateRangeIter::new(
-			operators.clone(),
-			operator,
-			inner_range,
-			batch_size,
-			version,
-		));
+	if let Some(OperatorRangeScope {
+		operator,
+		inner,
+	}) = operator_state_scope(&range)
+	{
+		return Box::new(OperatorStateRangeIter::new(operators.clone(), operator, inner, batch_size, version));
 	}
 	let query = deferred_range_target(query, state_query, &range);
 	Box::new(query.range(range, scope, batch_size))
@@ -224,10 +228,13 @@ pub(crate) fn deferred_storage_range_rev<'a>(
 	scope: RangeScope,
 	batch_size: usize,
 ) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a> {
-	if let Some((operator, inner_range)) = operator_state_scope(&range) {
-		let mut items =
-			OperatorStateRangeIter::new(operators.clone(), operator, inner_range, batch_size, version)
-				.collect::<Vec<_>>();
+	if let Some(OperatorRangeScope {
+		operator,
+		inner,
+	}) = operator_state_scope(&range)
+	{
+		let mut items = OperatorStateRangeIter::new(operators.clone(), operator, inner, batch_size, version)
+			.collect::<Vec<_>>();
 		items.reverse();
 		return Box::new(items.into_iter());
 	}
@@ -259,9 +266,11 @@ pub(crate) fn deferred_fetch_state_external(
 	items: &mut Vec<MultiVersionRow>,
 ) {
 	for encoded_key in keys {
-		let (operator, inner_key) =
-			operator_state_coordinates(encoded_key).expect("state_get_many keys must carry an operator id");
-		if let Some(row) = operators.get(operator, &inner_key) {
+		let OperatorScope {
+			operator,
+			inner,
+		} = operator_state_coordinates(encoded_key).expect("state_get_many keys must carry an operator id");
+		if let Some(row) = operators.get(operator, &inner) {
 			items.push(MultiVersionRow {
 				key: encoded_key.clone(),
 				bytes: row.into_bytes(),

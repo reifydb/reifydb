@@ -65,7 +65,7 @@ use crate::{
 	error::FlowStateError,
 	operator::{host::TxnHostContext, join::column::JoinedColumnsBuilder, stateful::StateIterator},
 	timer::Timer,
-	transaction::{FlowTransaction, deferred::DeferredTransaction},
+	transaction::{FlowTransaction, deferred::DeferredTransaction, state::StateTxn, timer::TimerTxn},
 };
 
 fn partition_suffix(partition: Option<Partition>) -> Vec<u8> {

@@ -281,7 +281,10 @@ mod tests {
 	use crate::{
 		operator::host::TxnHostContext,
 		testing::FlowTxn,
-		transaction::{ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction},
+		transaction::{
+			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupTxn,
+			row_number::RowNumberTxn, state::StateTxn,
+		},
 	};
 
 	fn op(operator: u64) -> AppendOperator {

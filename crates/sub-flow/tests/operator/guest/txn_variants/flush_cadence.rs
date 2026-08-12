@@ -5,7 +5,10 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::change::{Change, Diffs},
 };
-use reifydb_flow::{operator::host::TxnHostContext, transaction::FlowTransaction};
+use reifydb_flow::{
+	operator::host::TxnHostContext,
+	transaction::{FlowTransaction, state::StateTxn},
+};
 use reifydb_sdk::flow::operator::OperatorMetadata;
 use reifydb_sub_flow::operator::mount::mount;
 use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine};
