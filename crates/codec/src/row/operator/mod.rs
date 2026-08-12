@@ -259,7 +259,7 @@ thread_local! {
 
 pub fn encode<T>(value: &T, now: DateTime) -> Result<EncodedOperatorRow, OperatorError>
 where
-	T: Serialize + ?Sized,
+	T: Serialize,
 {
 	let mut buffer = ENCODE_BUFFER.with(|cell| mem::take(&mut *cell.borrow_mut()));
 	buffer.clear();

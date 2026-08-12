@@ -161,7 +161,7 @@ pub trait Function: for<'a> Routine<context::FunctionContext<'a>> {
 
 pub trait Procedure: for<'a, 'tx> Routine<context::ProcedureContext<'a, 'tx>> {}
 
-impl<T: ?Sized> Procedure for T where T: for<'a, 'tx> Routine<context::ProcedureContext<'a, 'tx>> {}
+impl<T> Procedure for T where T: for<'a, 'tx> Routine<context::ProcedureContext<'a, 'tx>> {}
 
 pub trait Accumulator: Send + Sync {
 	fn update(&mut self, args: &Columns, groups: &GroupRows) -> Result<(), RoutineError>;

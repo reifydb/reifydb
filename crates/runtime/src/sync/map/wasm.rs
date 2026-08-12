@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	borrow::Borrow,
 	collections::HashMap,
 	hash::Hash,
 	sync::{Arc, RwLock},
@@ -54,10 +53,8 @@ where
 	}
 
 	#[inline]
-	pub fn get<Q>(&self, key: &Q) -> Option<V>
+	pub fn get(&self, key: &K) -> Option<V>
 	where
-		K: Borrow<Q>,
-		Q: Hash + Eq + ?Sized,
 		V: Clone,
 	{
 		let map = self.inner.read().unwrap();
@@ -65,20 +62,14 @@ where
 	}
 
 	#[inline]
-	pub fn contains_key<Q>(&self, key: &Q) -> bool
-	where
-		K: Borrow<Q>,
-		Q: Hash + Eq + ?Sized,
-	{
+	pub fn contains_key(&self, key: &K) -> bool {
 		let map = self.inner.read().unwrap();
 		map.contains_key(key)
 	}
 
 	#[inline]
-	pub fn with_read<Q, R, F>(&self, key: &Q, f: F) -> Option<R>
+	pub fn with_read<R, F>(&self, key: &K, f: F) -> Option<R>
 	where
-		K: Borrow<Q>,
-		Q: Hash + Eq + ?Sized,
 		F: FnOnce(&V) -> R,
 	{
 		let map = self.inner.read().unwrap();
@@ -91,11 +82,7 @@ where
 	}
 
 	#[inline]
-	pub fn remove<Q>(&self, key: &Q) -> Option<V>
-	where
-		K: Borrow<Q>,
-		Q: Hash + Eq + ?Sized,
-	{
+	pub fn remove(&self, key: &K) -> Option<V> {
 		self.inner.write().unwrap().remove(key)
 	}
 
@@ -118,10 +105,8 @@ where
 	}
 
 	#[inline]
-	pub fn with_write<Q, R, F>(&self, key: &Q, f: F) -> Option<R>
+	pub fn with_write<R, F>(&self, key: &K, f: F) -> Option<R>
 	where
-		K: Borrow<Q>,
-		Q: Hash + Eq + ?Sized,
 		F: FnOnce(&mut V) -> R,
 	{
 		self.inner.write().unwrap().get_mut(key).map(f)

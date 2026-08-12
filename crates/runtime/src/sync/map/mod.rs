@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Borrow, hash::Hash};
+use std::hash::Hash;
 
 use cfg_if::cfg_if;
 
@@ -48,29 +48,21 @@ where
 	}
 
 	#[inline]
-	pub fn get<Q>(&self, key: &Q) -> Option<V>
+	pub fn get(&self, key: &K) -> Option<V>
 	where
-		K: Borrow<Q>,
-		Q: Hash + Eq + ?Sized,
 		V: Clone,
 	{
 		self.inner.get(key)
 	}
 
 	#[inline]
-	pub fn contains_key<Q>(&self, key: &Q) -> bool
-	where
-		K: Borrow<Q>,
-		Q: Hash + Eq + ?Sized,
-	{
+	pub fn contains_key(&self, key: &K) -> bool {
 		self.inner.contains_key(key)
 	}
 
 	#[inline]
-	pub fn with_read<Q, R, F>(&self, key: &Q, f: F) -> Option<R>
+	pub fn with_read<R, F>(&self, key: &K, f: F) -> Option<R>
 	where
-		K: Borrow<Q>,
-		Q: Hash + Eq + ?Sized,
 		F: FnOnce(&V) -> R,
 	{
 		self.inner.with_read(key, f)
@@ -85,11 +77,7 @@ where
 	}
 
 	#[inline]
-	pub fn remove<Q>(&self, key: &Q) -> Option<V>
-	where
-		K: Borrow<Q>,
-		Q: Hash + Eq + ?Sized,
-	{
+	pub fn remove(&self, key: &K) -> Option<V> {
 		self.inner.remove(key)
 	}
 
@@ -110,10 +98,8 @@ where
 	}
 
 	#[inline]
-	pub fn with_write<Q, R, F>(&self, key: &Q, f: F) -> Option<R>
+	pub fn with_write<R, F>(&self, key: &K, f: F) -> Option<R>
 	where
-		K: Borrow<Q>,
-		Q: Hash + Eq + ?Sized,
 		F: FnOnce(&mut V) -> R,
 	{
 		self.inner.with_write(key, f)
