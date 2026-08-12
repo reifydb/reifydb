@@ -23,8 +23,6 @@ use reifydb_value::{
 
 use crate::{timer::Timer, window::accumulator::WindowAccumulator};
 
-/// One wheel mutation a shell issued, in issue order. Arm and disarm are distinct variants
-/// because the pair is order-sensitive: a disarm landing after its arm cancels a live timer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RecordedTimer {
 	Armed(Timer),
@@ -60,8 +58,6 @@ pub(crate) struct MockStore {
 }
 
 impl MockStore {
-	/// Opt in to recording wheel mutations. The default store still refuses them, so the
-	/// engine suites keep proving that the engine itself never touches the wheel.
 	pub(crate) fn recording_timers() -> Self {
 		Self {
 			timers: Some(Vec::new()),
@@ -116,8 +112,6 @@ impl MockStore {
 		self.keyspace_count(Keyspace::WINDOW_META)
 	}
 
-	/// Simulates phase-1 group reclamation: the accumulators are erased while the
-	/// due-ordered expiry index, which lives outside the group's range, is left behind.
 	pub(crate) fn drop_accumulator_entries(&mut self) -> usize {
 		let keys: Vec<Vec<u8>> = self
 			.data
@@ -134,9 +128,6 @@ impl MockStore {
 		keys.len()
 	}
 
-	/// The same phase, widened to every data keyspace a group can hold - the shape engines that
-	/// keep no ACCUMULATOR see. The root group is spared, and the row-number mapping survives on
-	/// top of that because it is an identity keyspace rather than a data one.
 	pub(crate) fn drop_group_data_entries(&mut self) -> usize {
 		let keys: Vec<Vec<u8>> = self
 			.data

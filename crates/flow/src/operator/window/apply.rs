@@ -2,9 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::change::{Change, Diff},
 	key::operator_state::{GroupId, IntoGroupStateKey},
+	state::store::TimerKind,
 	value::column::columns::Columns,
 };
 use reifydb_value::{
@@ -27,7 +29,10 @@ use crate::{
 		bridge::Bridge,
 		stateful::utils,
 	},
-	state::seal::{coord::Coord, gate::disarm_seal, ledger::FiredAt, policy::SealPolicy, sweep::SealSweep},
+	state::{
+		reaper::{drain, enqueue},
+		seal::{coord::Coord, gate::disarm_seal, ledger::FiredAt, policy::SealPolicy, sweep::SealSweep},
+	},
 	window::{
 		coord::{EventCoord, RowSpan},
 		engine::{AccumulatorEvent, ExpiryAnchor, WindowStateKey, tumbling::TumblingEngine},
@@ -986,11 +991,29 @@ fn seal_due_windows(
 		});
 		let res = engine.expire(bridge, threshold.to_order())?;
 		engine.flush(bridge)?;
+		for window in &res {
+			enqueue(bridge, window.group_id)?;
+		}
+		if !res.is_empty() {
+			let due = fired.at().saturating_add(policy.admissible().duration());
+			bridge.arm_timer(due, TimerKind::Maintenance, &EncodedKey::new(Vec::new()))?;
+		}
 		*operator.core.tumbling_engine_slot() = Some(engine);
 		res
 	};
 	Span::current().record("expired", expired.len());
 	Ok(Vec::new())
+}
+
+pub fn reap_sealed_groups(operator: &mut WindowOperator, bridge: &mut dyn Bridge) -> Result<usize> {
+	let config = operator.engine_config();
+	let budget = config.expire_batch();
+	let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+		Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(config))
+	});
+	let freed = drain(bridge, &mut *engine, budget)?;
+	*operator.core.tumbling_engine_slot() = Some(engine);
+	Ok(freed)
 }
 
 pub fn seal_session_engine(

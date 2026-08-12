@@ -139,6 +139,8 @@ impl Keyspace {
 
 	pub const RINGBUFFER_META: Self = Self(0x29);
 
+	pub const REAP_QUEUE: Self = Self(0x2A);
+
 	pub const CUSTOM: Self = Self(0x40);
 
 	pub fn name(&self) -> &'static str {
@@ -175,6 +177,7 @@ impl Keyspace {
 			Self::JOIN_PUBLISHED => "JOIN_PUBLISHED",
 			Self::JOIN_PIN => "JOIN_PIN",
 			Self::RINGBUFFER_META => "RINGBUFFER_META",
+			Self::REAP_QUEUE => "REAP_QUEUE",
 			Self::CUSTOM => "CUSTOM",
 			_ => "CUSTOM",
 		}
@@ -479,7 +482,7 @@ mod tests {
 
 	/// Every keyspace the substrate declares, with the phase allowed to erase it. The phase is written
 	/// down rather than read back from `is_data`, or a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, Keyspace, Phase); 33] = [
+	const CENSUS: [(&str, Keyspace, Phase); 34] = [
 		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity),
 		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity),
 		("NODE_COUNTER", Keyspace::NODE_COUNTER, Phase::Identity),
@@ -512,6 +515,7 @@ mod tests {
 		("JOIN_PUBLISHED", Keyspace::JOIN_PUBLISHED, Phase::Data),
 		("JOIN_PIN", Keyspace::JOIN_PIN, Phase::Data),
 		("RINGBUFFER_META", Keyspace::RINGBUFFER_META, Phase::Data),
+		("REAP_QUEUE", Keyspace::REAP_QUEUE, Phase::Data),
 		("CUSTOM", Keyspace::CUSTOM, Phase::Data),
 	];
 

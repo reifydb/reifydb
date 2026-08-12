@@ -16,14 +16,17 @@ use reifydb_codec::{
 	row::operator::OperatorState,
 };
 use reifydb_core::{
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, GroupStateKey},
 	state::{cache::StateCache, store::StateStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
-	state::expiry::{ExpiryIndex, expiry_key},
+	state::{
+		expiry::{ExpiryIndex, expiry_key},
+		reaper::Reaper,
+	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -61,6 +64,20 @@ pub struct TumblingIndexEntry<G, C> {
 	window_start: C,
 	group_id: u64,
 	slot_key: Vec<u8>,
+}
+
+impl<S, G, C, Accumulator> Reaper<S> for TumblingEngine<G, C, Accumulator>
+where
+	S: StateStore + ?Sized,
+	C: WindowAnchor + Hash,
+	Accumulator: WindowAccumulator,
+{
+	fn reap(&mut self, store: &mut S, key: &GroupStateKey) -> Result<()> {
+		match decode_window_state_key(key.as_encoded()) {
+			Some(slot) => self.accumulators.remove(store, &slot),
+			None => store.state_remove(key),
+		}
+	}
 }
 
 pub struct TumblingEngine<G, C, Accumulator> {

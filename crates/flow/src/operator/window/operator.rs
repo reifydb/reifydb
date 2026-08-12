@@ -7,6 +7,7 @@ use reifydb_core::{
 	common::{CommitVersion, WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
+	state::store::TimerKind,
 	value::column::columns::Columns,
 };
 use reifydb_routine_abi::registry::Routines;
@@ -20,8 +21,8 @@ use reifydb_value::{
 
 use super::{
 	apply::{
-		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, seal_engine_windows,
-		seal_session_engine,
+		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, reap_sealed_groups,
+		seal_engine_windows, seal_session_engine,
 	},
 	rolling::{apply_rolling_engine, seal_rolling_engine},
 };
@@ -218,6 +219,12 @@ impl Operator for WindowOperator {
 	}
 
 	fn on_timer(&mut self, bridge: &mut dyn Bridge, timer: Timer) -> Result<Option<Change>> {
+		if timer.kind == TimerKind::Maintenance {
+			self.open_meta(bridge)?;
+			reap_sealed_groups(self, bridge)?;
+			self.close_meta(bridge)?;
+			return Ok(None);
+		}
 		let fired = FiredAt::of(&timer);
 		self.open_meta(bridge)?;
 		let diffs = match self.kind {
