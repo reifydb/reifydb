@@ -35,16 +35,13 @@ use reifydb_value::{
 
 use crate::flow::operator::context::GuestContext;
 
-pub(crate) fn seal_frontier(store: &mut (impl StateStore + TimerStore + ?Sized)) -> Result<DateTime> {
+pub(crate) fn seal_frontier(store: &mut (impl StateStore + TimerStore)) -> Result<DateTime> {
 	let ledger = SealLedger::read_order(store)?.unwrap_or(0);
 	let watermark = store.flow_watermark()?.map_or(0, |at| at.to_millis());
 	Ok(<DateTime as Coord>::from_order(ledger.max(watermark)))
 }
 
-pub(crate) fn advance_seal_frontier(
-	store: &mut (impl StateStore + TimerStore + ?Sized),
-	fired: FiredAt,
-) -> Result<DateTime> {
+pub(crate) fn advance_seal_frontier(store: &mut (impl StateStore + TimerStore), fired: FiredAt) -> Result<DateTime> {
 	SealLedger::advance(store, fired)?;
 	seal_frontier(store)
 }

@@ -16,14 +16,14 @@ use reifydb_value::Result;
 #[cfg(test)]
 mod tests;
 
-pub trait Reaper<S: StateStore + ?Sized> {
-	fn reap(&mut self, store: &mut S, key: &GroupStateKey) -> Result<()>;
+pub trait Reaper {
+	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()>;
 }
 
 pub struct StoreReaper;
 
-impl<S: StateStore + ?Sized> Reaper<S> for StoreReaper {
-	fn reap(&mut self, store: &mut S, key: &GroupStateKey) -> Result<()> {
+impl Reaper for StoreReaper {
+	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
 		store.state_remove(key)
 	}
 }
@@ -32,12 +32,12 @@ pub fn queue_key(group: GroupId) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::REAP_QUEUE, encode_u64(group.0))
 }
 
-pub fn enqueue(store: &mut (impl StateStore + ?Sized), group: GroupId) -> Result<()> {
+pub fn enqueue(store: &mut dyn StateStore, group: GroupId) -> Result<()> {
 	let now = store.written_at();
 	store.state_set(&queue_key(group), EncodedOperatorRow::new(&[], now))
 }
 
-pub fn queued(store: &mut (impl StateStore + ?Sized), limit: usize) -> Result<Vec<GroupId>> {
+pub fn queued(store: &mut dyn StateStore, limit: usize) -> Result<Vec<GroupId>> {
 	let mut groups: Vec<GroupId> = Vec::new();
 	store.state_range_visit(keyspace_inner_range(GroupId::ROOT, Keyspace::REAP_QUEUE), None, &mut |key, _| {
 		if groups.len() < limit
@@ -51,10 +51,9 @@ pub fn queued(store: &mut (impl StateStore + ?Sized), limit: usize) -> Result<Ve
 	Ok(groups)
 }
 
-pub fn drain<S, R>(store: &mut S, reaper: &mut R, budget: usize) -> Result<usize>
+pub fn drain<R>(store: &mut dyn StateStore, reaper: &mut R, budget: usize) -> Result<usize>
 where
-	S: StateStore + ?Sized,
-	R: Reaper<S>,
+	R: Reaper,
 {
 	let mut spent = 0usize;
 	for group in queued(store, budget)? {
@@ -71,10 +70,9 @@ where
 	Ok(spent)
 }
 
-pub fn reap_group<S, R>(store: &mut S, group: GroupId, reaper: &mut R, budget: usize) -> Result<usize>
+pub fn reap_group<R>(store: &mut dyn StateStore, group: GroupId, reaper: &mut R, budget: usize) -> Result<usize>
 where
-	S: StateStore + ?Sized,
-	R: Reaper<S>,
+	R: Reaper,
 {
 	let mut doomed: Vec<GroupStateKey> = Vec::new();
 	store.state_range_visit(group_inner_range(group), None, &mut |key, _payload| {

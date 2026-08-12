@@ -133,13 +133,12 @@ impl<C: Slot> BatchMeta<C> {
 	}
 }
 
-pub(crate) fn load_batch_meta<S, C>(
-	store: &mut S,
+pub(crate) fn load_batch_meta<C>(
+	store: &mut dyn StateStore,
 	meta: &mut StateCache<MetaKey, GroupMeta<C>>,
 	key: &MetaKey,
 ) -> Result<BatchMeta<C>>
 where
-	S: StateStore + ?Sized,
 	C: Slot,
 {
 	let initial = meta.get(store, key)?.and_then(|meta| meta.high_water);
@@ -149,13 +148,12 @@ where
 	})
 }
 
-pub(crate) fn persist_batch_meta<S, G, C>(
-	store: &mut S,
+pub(crate) fn persist_batch_meta<G, C>(
+	store: &mut dyn StateStore,
 	meta: &mut StateCache<MetaKey, GroupMeta<C>>,
 	loaded: HashMap<G, BatchMeta<C>>,
 ) -> Result<()>
 where
-	S: StateStore + ?Sized,
 	for<'a> &'a G: IntoEncodedKey,
 	C: Slot,
 {
@@ -184,14 +182,13 @@ pub(crate) fn meta_range() -> EncodedKeyRange {
 /// the threshold skips the scan entirely and keeps the steady-state sweep O(1). Staleness is a
 /// value, not a key prefix, so the scan itself must cover the whole meta keyspace.
 #[instrument(name = "flow::window::sweep_stale_meta", level = "debug", skip_all)]
-pub(crate) fn sweep_stale_meta<S, M>(
-	store: &mut S,
+pub(crate) fn sweep_stale_meta<M>(
+	store: &mut dyn StateStore,
 	meta: &mut StateCache<MetaKey, M>,
 	threshold: u64,
 	low_water: &mut Option<u64>,
 ) -> Result<usize>
 where
-	S: StateStore + ?Sized,
 	M: MetaHighWater + Clone + OperatorState + HeapSize,
 {
 	if low_water.is_some_and(|lw| lw >= threshold) {

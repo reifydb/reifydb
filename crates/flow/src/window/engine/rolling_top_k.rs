@@ -95,7 +95,7 @@ where
 		}
 	}
 
-	fn hydrate_once<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
+	fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -104,14 +104,14 @@ where
 		Ok(())
 	}
 
-	pub fn expire_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn apply<S, SKF, RKF, CB>(
+	pub fn apply<SKF, RKF, CB>(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
 		capacity: usize,
 		state_key: SKF,
@@ -119,7 +119,6 @@ where
 		combine: CB,
 	) -> Result<Vec<TopKEmit<Output>>>
 	where
-		S: StateStore + ?Sized,
 		SKF: Fn(&G) -> EncodedKey,
 		RKF: Fn(&G, &SK) -> EncodedKey,
 		CB: Fn(&G, &RollingTopKBuffer<C, Accumulator>) -> RollingTopKEmit<SK, Output>,
@@ -143,16 +142,16 @@ where
 		Ok(emits)
 	}
 
-	pub fn flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
 		self.buffers.flush(store)?;
 		self.last_emit.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: StateStore + ?Sized>(
+	fn warm_and_load_meta(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C>> {
 		let meta_keys: Vec<MetaKey> = buckets
@@ -174,15 +173,14 @@ where
 		Ok(meta_loaded)
 	}
 
-	fn resolve_state_rows<S, SKF>(
+	fn resolve_state_rows<SKF>(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C>,
 		state_key: &SKF,
 	) -> Result<StateRows<G>>
 	where
-		S: StateStore + ?Sized,
 		SKF: Fn(&G) -> EncodedKey,
 	{
 		let mut state_rows: StateRows<G> = HashMap::new();
@@ -223,9 +221,9 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn apply_events_into_buffers<S, SKF>(
+	fn apply_events_into_buffers<SKF>(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &mut MetaLoaded<G, C>,
 		state_rows: &StateRows<G>,
@@ -233,7 +231,6 @@ where
 		capacity: usize,
 	) -> Result<BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>>>
 	where
-		S: StateStore + ?Sized,
 		SKF: Fn(&G) -> EncodedKey,
 	{
 		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>> = BTreeMap::new();
@@ -331,15 +328,14 @@ where
 		Ok(group_slots)
 	}
 
-	fn diff_emits<S, RKF, CB>(
+	fn diff_emits<RKF, CB>(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		group_slots: BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>>,
 		row_key: &RKF,
 		combine: &CB,
 	) -> Result<Vec<TopKEmit<Output>>>
 	where
-		S: StateStore + ?Sized,
 		RKF: Fn(&G, &SK) -> EncodedKey,
 		CB: Fn(&G, &RollingTopKBuffer<C, Accumulator>) -> RollingTopKEmit<SK, Output>,
 	{
@@ -415,7 +411,7 @@ where
 		Ok(emits)
 	}
 
-	fn persist_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		persist_batch_meta(store, &mut self.meta, meta_loaded)
 	}
 }

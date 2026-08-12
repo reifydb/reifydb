@@ -66,13 +66,12 @@ pub struct TumblingIndexEntry<G, C> {
 	slot_key: Vec<u8>,
 }
 
-impl<S, G, C, Accumulator> Reaper<S> for TumblingEngine<G, C, Accumulator>
+impl<G, C, Accumulator> Reaper for TumblingEngine<G, C, Accumulator>
 where
-	S: StateStore + ?Sized,
 	C: WindowAnchor + Hash,
 	Accumulator: WindowAccumulator,
 {
-	fn reap(&mut self, store: &mut S, key: &GroupStateKey) -> Result<()> {
+	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
 		match decode_window_state_key(key.as_encoded()) {
 			Some(slot) => self.accumulators.remove(store, &slot),
 			None => store.state_remove(key),
@@ -121,7 +120,7 @@ where
 		}
 	}
 
-	fn hydrate_once<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
+	fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -134,9 +133,9 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn reindex_window<S: StateStore + ?Sized>(
+	pub fn reindex_window(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		group: &G,
 		window_start: C,
 		id: GroupId,
@@ -163,16 +162,15 @@ where
 		Ok(())
 	}
 
-	pub fn apply<S, K, NA>(
+	pub fn apply<K, NA>(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
 		order: &[(G, WindowSpan<C>)],
 		slot_key: K,
 		new_accumulator: NA,
 	) -> Result<Vec<WindowResult<G, C, Accumulator::Output>>>
 	where
-		S: StateStore + ?Sized,
 		K: Fn(&G, C) -> (GroupId, EncodedKey),
 		NA: Fn() -> Accumulator,
 	{
@@ -199,15 +197,15 @@ where
 		Ok(results)
 	}
 
-	pub fn flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
 		self.accumulators.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: StateStore + ?Sized>(
+	fn warm_and_load_meta(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C>> {
 		let meta_keys: Vec<MetaKey> = buckets
@@ -229,14 +227,13 @@ where
 		Ok(meta_loaded)
 	}
 
-	fn resolve_slots<S, K>(
+	fn resolve_slots<K>(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		order: &[(G, WindowSpan<C>)],
 		slot_key: &K,
 	) -> Result<SlotResolved<G, C>>
 	where
-		S: StateStore + ?Sized,
 		K: Fn(&G, C) -> (GroupId, EncodedKey),
 	{
 		let mut resolved: SlotResolved<G, C> = HashMap::with_capacity(order.len());
@@ -256,9 +253,9 @@ where
 		Ok(resolved)
 	}
 
-	fn apply_events<S, NA>(
+	fn apply_events<NA>(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		mut buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
 		order: &[(G, WindowSpan<C>)],
 		slot_resolved: &SlotResolved<G, C>,
@@ -266,7 +263,6 @@ where
 		new_accumulator: &NA,
 	) -> Result<Vec<WindowResult<G, C, Accumulator::Output>>>
 	where
-		S: StateStore + ?Sized,
 		NA: Fn() -> Accumulator,
 	{
 		let mut results: Vec<WindowResult<G, C, Accumulator::Output>> = Vec::new();
@@ -366,11 +362,7 @@ where
 		Ok(results)
 	}
 
-	pub fn expire<S: StateStore + ?Sized>(
-		&mut self,
-		store: &mut S,
-		threshold: u64,
-	) -> Result<Vec<ExpiredWindow<G, C>>> {
+	pub fn expire(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<Vec<ExpiredWindow<G, C>>> {
 		self.hydrate_once(store)?;
 		let due = self.expiry.due(store, threshold, self.expire_batch)?;
 
@@ -387,11 +379,11 @@ where
 		Ok(out)
 	}
 
-	fn persist_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		persist_batch_meta(store, &mut self.meta, meta_loaded)
 	}
 
-	pub fn expire_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 }

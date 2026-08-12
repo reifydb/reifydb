@@ -35,7 +35,7 @@ where
 	for<'a> &'a K: IntoGroupStateKey,
 	V: Clone + OperatorState + HeapSize,
 {
-	pub fn get(&mut self, store: &mut (impl StateStore + ?Sized), key: &K) -> Result<Option<V>> {
+	pub fn get(&mut self, store: &mut dyn StateStore, key: &K) -> Result<Option<V>> {
 		let encoded_key = key.into_group_state_key();
 		match store.state_get(&encoded_key)? {
 			Some(bytes) => Ok(Some(decode::<V>(&bytes)?)),
@@ -43,39 +43,34 @@ where
 		}
 	}
 
-	pub fn take(&mut self, store: &mut (impl StateStore + ?Sized), key: &K) -> Result<Option<V>> {
+	pub fn take(&mut self, store: &mut dyn StateStore, key: &K) -> Result<Option<V>> {
 		self.get(store, key)
 	}
 
-	pub fn warm(&mut self, _store: &mut (impl StateStore + ?Sized), _keys: &[K]) -> Result<()> {
+	pub fn warm(&mut self, _store: &mut dyn StateStore, _keys: &[K]) -> Result<()> {
 		Ok(())
 	}
 
 	pub fn hydrate(
 		&mut self,
-		_store: &mut (impl StateStore + ?Sized),
+		_store: &mut dyn StateStore,
 		_range: EncodedKeyRange,
 		_decode_key: impl Fn(&EncodedKey) -> Option<K>,
 	) -> Result<()> {
 		Ok(())
 	}
 
-	pub fn set(&mut self, store: &mut (impl StateStore + ?Sized), key: &K, value: &V) -> Result<()> {
+	pub fn set(&mut self, store: &mut dyn StateStore, key: &K, value: &V) -> Result<()> {
 		let encoded_key = key.into_group_state_key();
 		let payload = value.encode_state(store.written_at())?;
 		store.state_set(&encoded_key, payload)
 	}
 
-	pub fn put(&mut self, store: &mut (impl StateStore + ?Sized), key: &K, value: V) -> Result<()> {
+	pub fn put(&mut self, store: &mut dyn StateStore, key: &K, value: V) -> Result<()> {
 		self.set(store, key, &value)
 	}
 
-	pub fn modify<R>(
-		&mut self,
-		store: &mut (impl StateStore + ?Sized),
-		key: &K,
-		f: impl FnOnce(&mut V) -> R,
-	) -> Result<R>
+	pub fn modify<R>(&mut self, store: &mut dyn StateStore, key: &K, f: impl FnOnce(&mut V) -> R) -> Result<R>
 	where
 		V: Default,
 	{
@@ -90,12 +85,12 @@ where
 		Ok(result)
 	}
 
-	pub fn remove(&mut self, store: &mut (impl StateStore + ?Sized), key: &K) -> Result<()> {
+	pub fn remove(&mut self, store: &mut dyn StateStore, key: &K) -> Result<()> {
 		let encoded_key = key.into_group_state_key();
 		store.state_remove(&encoded_key)
 	}
 
-	pub fn flush(&mut self, _store: &mut (impl StateStore + ?Sized)) -> Result<()> {
+	pub fn flush(&mut self, _store: &mut dyn StateStore) -> Result<()> {
 		Ok(())
 	}
 }
@@ -106,14 +101,14 @@ where
 	for<'a> &'a K: IntoGroupStateKey,
 	V: Clone + Default + OperatorState + HeapSize,
 {
-	pub fn get_or_default(&mut self, store: &mut (impl StateStore + ?Sized), key: &K) -> Result<V> {
+	pub fn get_or_default(&mut self, store: &mut dyn StateStore, key: &K) -> Result<V> {
 		match self.get(store, key)? {
 			Some(value) => Ok(value),
 			None => Ok(V::default()),
 		}
 	}
 
-	pub fn update<U>(&mut self, store: &mut (impl StateStore + ?Sized), key: &K, updater: U) -> Result<V>
+	pub fn update<U>(&mut self, store: &mut dyn StateStore, key: &K, updater: U) -> Result<V>
 	where
 		U: FnOnce(&mut V) -> Result<()>,
 	{

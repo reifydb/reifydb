@@ -54,7 +54,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	}
 
 	#[instrument(name = "flow::seal::expiry_hydrate", level = "debug", skip_all)]
-	fn hydrate(&mut self, store: &mut (impl StateStore + ?Sized)) -> Result<&mut BTreeMap<GroupStateKey, E>> {
+	fn hydrate(&mut self, store: &mut dyn StateStore) -> Result<&mut BTreeMap<GroupStateKey, E>> {
 		if self.entries.is_none() {
 			let mut map = BTreeMap::new();
 			let mut bytes = 0u64;
@@ -69,12 +69,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		Ok(self.entries.as_mut().expect("hydrated above"))
 	}
 
-	pub(crate) fn set(
-		&mut self,
-		store: &mut (impl StateStore + ?Sized),
-		key: GroupStateKey,
-		entry: E,
-	) -> Result<()> {
+	pub(crate) fn set(&mut self, store: &mut dyn StateStore, key: GroupStateKey, entry: E) -> Result<()> {
 		store.state_set(&key, entry.encode_state(store.written_at())?)?;
 		if let Some(map) = self.entries.as_mut() {
 			let added = entry_bytes::<E>(&key);
@@ -85,7 +80,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		Ok(())
 	}
 
-	pub(crate) fn drop_key(&mut self, store: &mut (impl StateStore + ?Sized), key: &GroupStateKey) -> Result<()> {
+	pub(crate) fn drop_key(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
 		store.state_remove(key)?;
 		if let Some(map) = self.entries.as_mut()
 			&& map.remove(key).is_some()
@@ -97,7 +92,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 
 	pub(crate) fn due(
 		&mut self,
-		store: &mut (impl StateStore + ?Sized),
+		store: &mut dyn StateStore,
 		threshold: u64,
 		limit: usize,
 	) -> Result<Vec<(GroupStateKey, E)>> {
@@ -105,7 +100,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		Ok(map.range(due_start(threshold)..).take(limit).map(|(k, e)| (k.clone(), e.clone())).collect())
 	}
 
-	pub(crate) fn earliest(&mut self, store: &mut (impl StateStore + ?Sized)) -> Result<Option<u64>> {
+	pub(crate) fn earliest(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
 		let map = self.hydrate(store)?;
 		Ok(map.last_key_value().and_then(|(key, _)| {
 			let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;

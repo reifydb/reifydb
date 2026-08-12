@@ -120,7 +120,7 @@ where
 	}
 
 	#[instrument(name = "flow::window::meta_hydrate", level = "debug", skip_all)]
-	fn hydrate_once<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
+	fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -129,15 +129,15 @@ where
 		Ok(())
 	}
 
-	pub fn expire_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
 		self.hydrate_once(store)?;
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn apply<S, K, NA, BO, CF>(
+	pub fn apply<K, NA, BO, CF>(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
 		row_key: K,
 		new_accumulator: NA,
@@ -145,7 +145,6 @@ where
 		carry_forward: CF,
 	) -> Result<Vec<WindowResult<G, C, Output>>>
 	where
-		S: StateStore + ?Sized,
 		K: Fn(&G, C) -> EncodedKey,
 		NA: Fn() -> Accumulator,
 		BO: Fn(&G, WindowSpan<C>, &Accumulator::Output, Option<&Carry>) -> Option<Output>,
@@ -313,15 +312,15 @@ where
 		Ok(results)
 	}
 
-	pub fn flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
 		self.accumulators.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: StateStore + ?Sized>(
+	fn warm_and_load_meta(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C, Carry, Output>> {
 		let meta_keys: Vec<MetaKey> = buckets
@@ -343,15 +342,14 @@ where
 		Ok(meta_loaded)
 	}
 
-	fn resolve_survivor_rows<S, K>(
+	fn resolve_survivor_rows<K>(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C, Carry, Output>,
 		row_key: &K,
 	) -> Result<SlotResolved>
 	where
-		S: StateStore + ?Sized,
 		K: Fn(&G, C) -> EncodedKey,
 	{
 		let mut survivor_keys: Vec<EncodedKey> = Vec::new();
@@ -397,9 +395,9 @@ where
 			.collect())
 	}
 
-	fn persist_meta<S: StateStore + ?Sized>(
+	fn persist_meta(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		meta_loaded: MetaLoaded<G, C, Carry, Output>,
 	) -> Result<()> {
 		for (group, meta) in meta_loaded {

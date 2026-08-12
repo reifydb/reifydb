@@ -74,12 +74,12 @@ where
 		}
 	}
 
-	pub fn expire_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
 		self.hydrate_once(store)?;
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
-	fn hydrate_once<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
+	fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -89,9 +89,9 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn apply<S, K, WC, CR, Output>(
+	pub fn apply<K, WC, CR, Output>(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
 		capacity: usize,
 		row_key: K,
@@ -99,7 +99,6 @@ where
 		combine_running: CR,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
-		S: StateStore + ?Sized,
 		K: Fn(&G) -> EncodedKey,
 		WC: Fn(&Accumulator::Output) -> Running::Contribution,
 		CR: Fn(&G, &Running, &Accumulator::Output, C) -> Option<Output>,
@@ -247,16 +246,16 @@ where
 		Ok(results)
 	}
 
-	pub fn flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
 		self.buffers.flush(store)?;
 		self.running.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
 
-	fn warm_and_load_meta<S: StateStore + ?Sized>(
+	fn warm_and_load_meta(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C>> {
 		let meta_keys: Vec<MetaKey> = buckets
@@ -278,15 +277,14 @@ where
 		Ok(meta_loaded)
 	}
 
-	fn resolve_buffer_rows<S, K>(
+	fn resolve_buffer_rows<K>(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C>,
 		row_key: &K,
 	) -> Result<BufferRows<G>>
 	where
-		S: StateStore + ?Sized,
 		K: Fn(&G) -> EncodedKey,
 	{
 		let mut buffer_rows: BufferRows<G> = HashMap::new();
@@ -328,7 +326,7 @@ where
 		Ok(buffer_rows)
 	}
 
-	fn persist_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		persist_batch_meta(store, &mut self.meta, meta_loaded)
 	}
 }

@@ -92,7 +92,7 @@ impl GateState {
 		}
 	}
 
-	fn hydrate_once<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
+	fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -101,15 +101,15 @@ impl GateState {
 		Ok(())
 	}
 
-	fn flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
+	fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
 		self.visibility.flush(store)
 	}
 
-	fn is_visible<S: StateStore + ?Sized>(&mut self, store: &mut S, rn: RowNumber) -> Result<bool> {
+	fn is_visible(&mut self, store: &mut dyn StateStore, rn: RowNumber) -> Result<bool> {
 		Ok(self.visibility.get(store, &VisibilityKey(rn))?.is_some())
 	}
 
-	fn mark_visible<S: StateStore + ?Sized>(&mut self, store: &mut S, rn: RowNumber) -> Result<()> {
+	fn mark_visible(&mut self, store: &mut dyn StateStore, rn: RowNumber) -> Result<()> {
 		self.visibility.put(
 			store,
 			&VisibilityKey(rn),
@@ -119,7 +119,7 @@ impl GateState {
 		)
 	}
 
-	fn mark_invisible<S: StateStore + ?Sized>(&mut self, store: &mut S, rn: RowNumber) -> Result<()> {
+	fn mark_invisible(&mut self, store: &mut dyn StateStore, rn: RowNumber) -> Result<()> {
 		self.visibility.remove(store, &VisibilityKey(rn))
 	}
 

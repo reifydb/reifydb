@@ -223,7 +223,7 @@ impl WindowMeta {
 		}
 	}
 
-	pub fn hydrate_once<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
+	pub fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
@@ -232,7 +232,7 @@ impl WindowMeta {
 		Ok(())
 	}
 
-	pub fn flush<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<()> {
+	pub fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
 		self.seal_ledger.flush(store)?;
 		self.count.flush(store)?;
 		self.row_index.flush(store)?;
@@ -241,11 +241,11 @@ impl WindowMeta {
 		Ok(())
 	}
 
-	pub fn seal_ledger<S: StateStore + ?Sized>(&mut self, store: &mut S) -> Result<u64> {
+	pub fn seal_ledger(&mut self, store: &mut dyn StateStore) -> Result<u64> {
 		Ok(self.seal_ledger.get_or_default(store, &SealLedgerKey)?.sealed_through)
 	}
 
-	pub fn advance_seal_ledger<S: StateStore + ?Sized>(&mut self, store: &mut S, coord: u64) -> Result<()> {
+	pub fn advance_seal_ledger(&mut self, store: &mut dyn StateStore, coord: u64) -> Result<()> {
 		if coord > self.seal_ledger(store)? {
 			self.seal_ledger.put(
 				store,
@@ -258,11 +258,7 @@ impl WindowMeta {
 		Ok(())
 	}
 
-	pub fn get_and_increment_count<S: StateStore + ?Sized>(
-		&mut self,
-		store: &mut S,
-		group: GroupId,
-	) -> Result<u64> {
+	pub fn get_and_increment_count(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<u64> {
 		let key = CountKey(group);
 		let current = self.count.get_or_default(store, &key)?.value;
 		self.count.put(
@@ -275,18 +271,18 @@ impl WindowMeta {
 		Ok(current)
 	}
 
-	pub fn lookup_row_index<S: StateStore + ?Sized>(
+	pub fn lookup_row_index(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<Vec<u64>> {
 		Ok(self.row_index.get_or_default(store, &RowIndexKey(group, row_number))?.window_ids)
 	}
 
-	pub fn store_row_index<S: StateStore + ?Sized>(
+	pub fn store_row_index(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		group: GroupId,
 		row_number: RowNumber,
 		window_id: u64,
@@ -299,20 +295,16 @@ impl WindowMeta {
 		self.row_index.put(store, &key, state)
 	}
 
-	pub fn drop_row_index<S: StateStore + ?Sized>(
+	pub fn drop_row_index(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<()> {
 		self.row_index.remove(store, &RowIndexKey(group, row_number))
 	}
 
-	pub fn load_session<S: StateStore + ?Sized>(
-		&mut self,
-		store: &mut S,
-		group: GroupId,
-	) -> Result<SessionTracker> {
+	pub fn load_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<SessionTracker> {
 		let Some(state) = self.session.get(store, &SessionKey(group))? else {
 			return Ok(SessionTracker::default());
 		};
@@ -323,9 +315,9 @@ impl WindowMeta {
 		))
 	}
 
-	pub fn save_session<S: StateStore + ?Sized>(
+	pub fn save_session(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		group: GroupId,
 		tracker: &SessionTracker,
 	) -> Result<()> {
@@ -340,24 +332,20 @@ impl WindowMeta {
 		)
 	}
 
-	pub fn rolling_meta<S: StateStore + ?Sized>(
-		&mut self,
-		store: &mut S,
-		group: GroupId,
-	) -> Result<Option<RollingMeta>> {
+	pub fn rolling_meta(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<Option<RollingMeta>> {
 		self.rolling_meta.get(store, &RollingMetaKey(group))
 	}
 
-	pub fn put_rolling_meta<S: StateStore + ?Sized>(
+	pub fn put_rolling_meta(
 		&mut self,
-		store: &mut S,
+		store: &mut dyn StateStore,
 		group: GroupId,
 		meta: RollingMeta,
 	) -> Result<()> {
 		self.rolling_meta.put(store, &RollingMetaKey(group), meta)
 	}
 
-	pub fn drop_rolling_meta<S: StateStore + ?Sized>(&mut self, store: &mut S, group: GroupId) -> Result<()> {
+	pub fn drop_rolling_meta(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<()> {
 		self.rolling_meta.remove(store, &RollingMetaKey(group))
 	}
 }
