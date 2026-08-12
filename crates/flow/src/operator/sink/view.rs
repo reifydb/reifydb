@@ -171,7 +171,7 @@ impl Operator<DeferredTransaction> for SinkTableViewOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def();
 		let shape = &self.shape;
 
@@ -560,7 +560,7 @@ mod tests {
 		// operator must recover it with zero store reads and a rebuilt one must still fall back
 		// to the store. A wrong value means the cache served a stale or foreign row.
 		let engine = TestEngine::new();
-		let sink = test_sink();
+		let mut sink = test_sink();
 
 		let mut txn = engine.flow_txn().clock_millis(0).deferred();
 		sink.apply(
@@ -596,7 +596,7 @@ mod tests {
 		);
 		assert_eq!(stored.updated_at(), DateTime::from_nanos(5_000), "updated_at must advance on every update");
 
-		let rebuilt = test_sink();
+		let mut rebuilt = test_sink();
 		let mut txn = engine.flow_txn().clock_millis(0).deferred();
 		rebuilt.apply(
 			&mut txn,

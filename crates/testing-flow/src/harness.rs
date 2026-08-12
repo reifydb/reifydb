@@ -204,7 +204,7 @@ impl<O: Operator<DeferredTransaction>> Harness<O> {
 		let at = coordinate_of(&change);
 		let mut txn = self.begin(at);
 		let out = self.operator.apply(&mut txn, change)?;
-		txn.flush_operator_states()?;
+		self.operator.flush(&mut txn)?;
 		self.end(txn);
 		Ok(out)
 	}
@@ -213,7 +213,7 @@ impl<O: Operator<DeferredTransaction>> Harness<O> {
 		let at = coordinate_of(&change);
 		let mut txn = self.begin(at);
 		self.operator.apply(&mut txn, change)?;
-		txn.flush_operator_states()?;
+		self.operator.flush(&mut txn)?;
 		let emitted = txn.take_accumulator_entries();
 		self.end(txn);
 		Ok(emitted)
@@ -222,7 +222,7 @@ impl<O: Operator<DeferredTransaction>> Harness<O> {
 	pub fn on_timer(&mut self, timer: Timer) -> Result<Option<Change>> {
 		let mut txn = self.begin(timer.at);
 		let out = self.operator.on_timer(&mut txn, timer)?;
-		txn.flush_operator_states()?;
+		self.operator.flush(&mut txn)?;
 		self.end(txn);
 		Ok(out)
 	}
@@ -256,7 +256,7 @@ impl<O: Operator<DeferredTransaction>> Harness<O> {
 					emitted.push(change);
 				}
 			}
-			txn.flush_operator_states()?;
+			self.operator.flush(&mut txn)?;
 			self.end(txn);
 		}
 	}

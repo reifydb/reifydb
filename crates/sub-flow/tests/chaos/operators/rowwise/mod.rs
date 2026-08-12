@@ -163,7 +163,7 @@ impl Operator<DeferredTransaction> for Rowwise {
 		}
 	}
 
-	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		match self {
 			Rowwise::Filter(op) => op.apply(txn, change),
 			Rowwise::Map(op) => op.apply(txn, change),

@@ -201,7 +201,6 @@ impl SliceComputer {
 
 		flow_engine.process_batch(&mut txn, changes, flow_id)?;
 		let holds = flow_engine.holds(&mut txn, flow_id)?;
-		txn.flush_operator_states()?;
 
 		let view_changes = self.consolidated_view_changes(&mut txn, state_version)?;
 
@@ -244,7 +243,6 @@ impl SliceComputer {
 		});
 
 		flow_engine.process_tick(&mut txn, flow_id, timestamp, checkpoint)?;
-		txn.flush_operator_states()?;
 
 		let view_changes = self.consolidated_view_changes(&mut txn, state_version)?;
 		Ok((txn.take_pending(), view_changes))
@@ -639,7 +637,6 @@ mod integration {
 		let mut seed = seeding_txn(&engine, &flow_engine, version);
 		let watermarks = seed.source_watermarks();
 		watermarks.advance(OperatorId(1), &mut seed, at_millis(30_000)).unwrap();
-		seed.flush_operator_states().unwrap();
 
 		let computer = SliceComputer::new(engine.clone());
 		let held = computer.resolved_holds(&mut flow_engine, flow, version).unwrap();

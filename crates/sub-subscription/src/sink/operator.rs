@@ -3,31 +3,25 @@
 
 use std::{collections::BTreeSet, sync::Arc};
 
-use reifydb_codec::row::operator::{decode, encode};
 use reifydb_core::{
 	interface::{
 		catalog::{flow::OperatorId, id::SubscriptionId, subscription::IMPLICIT_COLUMN_OP},
 		change::{Change, Diff, DiffType},
 		flow::OperatorCapability,
 	},
-	internal,
 	metrics::heap::HeapSize,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::{
-	operator::{
-		Operator,
-		stateful::{raw::RawStatefulOperator, utils},
-	},
-	transaction::{FlowTransaction, ephemeral::EphemeralTransaction, slot::PersistFn},
+	operator::{Operator, stateful::raw::RawStatefulOperator},
+	transaction::ephemeral::EphemeralTransaction,
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
-	error::Error,
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
+	value::{row_number::RowNumber, system_columns::SystemColumns},
 };
 
 use crate::sink::DeliveryBuffer;
@@ -38,10 +32,15 @@ struct DeliveredState {
 	rows: BTreeSet<RowNumber>,
 }
 
-pub struct EphemeralSinkSubscriptionOperator {
+pub struct EphemeralSinkPlan {
 	operator: OperatorId,
 	subscription_id: SubscriptionId,
 	delivery: Arc<DeliveryBuffer>,
+}
+
+pub struct EphemeralSinkSubscriptionOperator {
+	plan: Arc<EphemeralSinkPlan>,
+	state: DeliveredState,
 }
 
 impl EphemeralSinkSubscriptionOperator {
@@ -51,24 +50,17 @@ impl EphemeralSinkSubscriptionOperator {
 		delivery: Arc<DeliveryBuffer>,
 	) -> Self {
 		Self {
-			operator,
-			subscription_id,
-			delivery,
+			plan: Arc::new(EphemeralSinkPlan {
+				operator,
+				subscription_id,
+				delivery,
+			}),
+			state: DeliveredState::default(),
 		}
 	}
+}
 
-	fn load_delivered_state(&self, txn: &mut EphemeralTransaction) -> Result<DeliveredState> {
-		let key = utils::empty_state_key();
-		let Some(row) = utils::state_get(self.operator, txn, &key)? else {
-			return Ok(DeliveredState::default());
-		};
-		if row.is_empty() {
-			return Ok(DeliveredState::default());
-		}
-		decode::<DeliveredState>(&row)
-			.map_err(|e| Error(Box::new(internal!("Failed to deserialize DeliveredState: {}", e))))
-	}
-
+impl EphemeralSinkPlan {
 	fn add_implicit_columns(columns: &Columns, op: DiffType) -> Columns {
 		let row_count = columns.row_count();
 
@@ -102,62 +94,40 @@ impl RawStatefulOperator<EphemeralTransaction> for EphemeralSinkSubscriptionOper
 
 impl Operator<EphemeralTransaction> for EphemeralSinkSubscriptionOperator {
 	fn id(&self) -> OperatorId {
-		self.operator
+		self.plan.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut EphemeralTransaction, change: Change) -> Result<Change> {
-		let (mut state, persist) = self.take_delivered_state(txn)?;
+	fn apply(&mut self, _txn: &mut EphemeralTransaction, change: Change) -> Result<Change> {
+		let plan = self.plan.clone();
+		let state = &mut self.state;
 
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_insert(&mut state, post),
+				} => plan.apply_insert(state, post),
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_update(&mut state, pre, post),
+				} => plan.apply_update(state, pre, post),
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_remove(&mut state, pre),
+				} => plan.apply_remove(state, pre),
 			}
 		}
 
-		txn.put_operator_state(self.operator, state, persist);
-
-		Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at))
+		Ok(Change::from_flow(plan.operator, change.version, Vec::new(), change.changed_at))
 	}
 }
 
-impl EphemeralSinkSubscriptionOperator {
-	#[inline]
-	fn take_delivered_state(
-		&self,
-		txn: &mut EphemeralTransaction,
-	) -> Result<(DeliveredState, PersistFn<EphemeralTransaction>)> {
-		let operator_id = self.operator;
-
-		txn.take_operator_state::<DeliveredState, _>(operator_id, |txn| {
-			let s = self.load_delivered_state(txn)?;
-			let persist: PersistFn<EphemeralTransaction> = Box::new(move |txn, value| {
-				let state = value.downcast::<DeliveredState>().expect("DeliveredState slot type");
-				let row = encode(&*state, DateTime::MAX).map_err(|e| {
-					Error(Box::new(internal!("Failed to serialize DeliveredState: {}", e)))
-				})?;
-				utils::state_set(operator_id, txn, &utils::empty_state_key(), row)?;
-				Ok(())
-			});
-			Ok((s, persist))
-		})
-	}
-
+impl EphemeralSinkPlan {
 	fn apply_insert(&self, state: &mut DeliveredState, post: &Columns) {
 		let row_count = post.row_count();
 		let mut new_indices: Vec<usize> = Vec::with_capacity(row_count);

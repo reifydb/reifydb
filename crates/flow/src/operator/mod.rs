@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Deref, sync::Arc};
-
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
@@ -43,16 +41,18 @@ pub mod store;
 pub mod take;
 pub mod window;
 
-use guard::enforce_apply_capabilities;
-
 pub trait Operator<T: FlowTransaction>: Send {
 	fn id(&self) -> OperatorId;
 
 	fn capabilities(&self) -> &[OperatorCapability];
 
-	fn apply(&self, txn: &mut T, change: Change) -> Result<Change>;
+	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change>;
 
-	fn on_timer(&self, _txn: &mut T, _timer: Timer) -> Result<Option<Change>> {
+	fn flush(&mut self, _txn: &mut T) -> Result<()> {
+		Ok(())
+	}
+
+	fn on_timer(&mut self, _txn: &mut T, _timer: Timer) -> Result<Option<Change>> {
 		Ok(None)
 	}
 
@@ -69,41 +69,7 @@ pub trait Operator<T: FlowTransaction>: Send {
 	}
 }
 
-pub type BoxedOperator<T> = Box<dyn Operator<T> + Send>;
-
-pub struct OperatorCell<T: FlowTransaction>(Arc<dyn Operator<T> + Send>);
-
-impl<T: FlowTransaction> Clone for OperatorCell<T> {
-	fn clone(&self) -> Self {
-		Self(self.0.clone())
-	}
-}
-
-impl<T: FlowTransaction> OperatorCell<T> {
-	#[allow(clippy::arc_with_non_send_sync)]
-	pub fn new(operator: impl Operator<T> + 'static) -> Self {
-		Self(Arc::new(operator))
-	}
-
-	pub fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
-		enforce_apply_capabilities(self.id(), self.capabilities(), &change);
-		self.0.apply(txn, change)
-	}
-}
-
-impl<T: FlowTransaction> Deref for OperatorCell<T> {
-	type Target = dyn Operator<T> + Send;
-
-	fn deref(&self) -> &Self::Target {
-		&*self.0
-	}
-}
-
-// SAFETY: operators are keyed by OperatorId and never shared between flows, so an OperatorCell value
-// is reachable from exactly one thread at a time and the inner Arc is only cloned or dereferenced
-// from that owning thread. No aliasing of the !Sync interior can occur.
-unsafe impl<T: FlowTransaction> Send for OperatorCell<T> {}
-unsafe impl<T: FlowTransaction> Sync for OperatorCell<T> {}
+pub type BoxedOperator<T> = Box<dyn Operator<T>>;
 
 pub fn max_input_time(change: &Change) -> Option<DateTime> {
 	change.diffs

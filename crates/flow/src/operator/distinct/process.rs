@@ -18,7 +18,7 @@ use reifydb_value::{
 use crate::{
 	operator::{
 		distinct::{
-			operator::DistinctOperator,
+			operator::DistinctPlan,
 			state::{DistinctEntry, DistinctState, SerializedRow},
 		},
 		stateful::utils,
@@ -34,7 +34,7 @@ fn row_time<T: FlowTransaction>(txn: &T, columns: &Columns, row_idx: usize) -> D
 	}
 }
 
-impl DistinctOperator {
+impl DistinctPlan {
 	pub(super) fn with_stable_rn(cols: Columns, stable_rn: RowNumber) -> Columns {
 		Columns::with_system(
 			cols.iter().map(|c| ColumnWithName::new(c.name().clone(), c.data().clone())).collect(),

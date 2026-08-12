@@ -39,7 +39,7 @@ impl<T: FlowTransaction> Operator<T> for SourceViewOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		let mut decoded_diffs = Vec::with_capacity(change.diffs.len());
 		for diff in change.diffs {
 			decoded_diffs.push(match diff {

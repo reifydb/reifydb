@@ -45,7 +45,7 @@ use crate::{
 	engine::FlowEngineInner,
 	error::FlowGraphError,
 	operator::{
-		OperatorCell,
+		BoxedOperator,
 		aggregation::operator::AggregateOperator,
 		append::AppendOperator,
 		apply::ApplyOperator,
@@ -188,7 +188,7 @@ impl FlowEngineInner<DeferredTransaction> {
 		let partition_by = self.catalog.get_table(&mut txn.reborrow(), table)?.partition_by;
 		self.operators.insert(
 			operator_id,
-			OperatorCell::new(SinkTableViewOperator::new(
+			Box::new(SinkTableViewOperator::new(
 				operator_id,
 				resolved,
 				table,
@@ -222,7 +222,7 @@ impl FlowEngineInner<DeferredTransaction> {
 		let row_ttl = ttl.as_ref().map(|t| t.duration);
 		self.operators.insert(
 			operator_id,
-			OperatorCell::new(SinkRingBufferViewOperator::new(
+			Box::new(SinkRingBufferViewOperator::new(
 				operator_id,
 				resolved,
 				ringbuffer,
@@ -253,7 +253,7 @@ impl FlowEngineInner<DeferredTransaction> {
 		let partition_by = self.catalog.get_series(&mut txn.reborrow(), series)?.partition_by;
 		self.operators.insert(
 			operator_id,
-			OperatorCell::new(SinkSeriesViewOperator::new(
+			Box::new(SinkSeriesViewOperator::new(
 				operator_id,
 				resolved,
 				series,
@@ -401,7 +401,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
 
 		self.add_source(flow.id, operator_id, ObjectId::table(table.id));
-		self.operators.insert(operator_id, OperatorCell::new(SourceTableOperator::new(operator_id, table)));
+		self.operators.insert(operator_id, Box::new(SourceTableOperator::new(operator_id, table)));
 		Ok(())
 	}
 
@@ -415,7 +415,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 	) -> Result<()> {
 		let rb = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
 		self.add_source(flow.id, operator_id, ObjectId::ringbuffer(rb.id));
-		self.operators.insert(operator_id, OperatorCell::new(SourceRingBufferOperator::new(operator_id, rb)));
+		self.operators.insert(operator_id, Box::new(SourceRingBufferOperator::new(operator_id, rb)));
 		Ok(())
 	}
 
@@ -429,7 +429,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 	) -> Result<()> {
 		let s = self.catalog.get_series(&mut txn.reborrow(), series)?;
 		self.add_source(flow.id, operator_id, ObjectId::series(s.id));
-		self.operators.insert(operator_id, OperatorCell::new(SourceSeriesOperator::new(operator_id)));
+		self.operators.insert(operator_id, Box::new(SourceSeriesOperator::new(operator_id)));
 		Ok(())
 	}
 
@@ -444,7 +444,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		self.operators.insert(
 			operator_id,
-			OperatorCell::new(FilterOperator::new(
+			Box::new(FilterOperator::new(
 				parent_schema,
 				operator_id,
 				conditions,
@@ -467,7 +467,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		self.operators.insert(
 			operator_id,
-			OperatorCell::new(GateOperator::new(
+			Box::new(GateOperator::new(
 				parent_schema,
 				operator_id,
 				conditions,
@@ -490,7 +490,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		self.operators.insert(
 			operator_id,
-			OperatorCell::new(MapOperator::new(
+			Box::new(MapOperator::new(
 				parent_schema,
 				operator_id,
 				expressions,
@@ -513,7 +513,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		self.operators.insert(
 			operator_id,
-			OperatorCell::new(ExtendOperator::new(
+			Box::new(ExtendOperator::new(
 				parent_schema,
 				operator_id,
 				expressions,
@@ -529,14 +529,14 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 	fn add_sort(&mut self, operator_id: OperatorId, inputs: &[OperatorId]) -> Result<()> {
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		self.operators
-			.insert(operator_id, OperatorCell::new(SortOperator::new(parent_schema, operator_id, Vec::new())));
+			.insert(operator_id, Box::new(SortOperator::new(parent_schema, operator_id, Vec::new())));
 		Ok(())
 	}
 
 	#[inline]
 	fn add_take(&mut self, operator_id: OperatorId, inputs: &[OperatorId], limit: usize) -> Result<()> {
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
-		self.operators.insert(operator_id, OperatorCell::new(TakeOperator::new(parent_schema, operator_id, limit)));
+		self.operators.insert(operator_id, Box::new(TakeOperator::new(parent_schema, operator_id, limit)));
 		Ok(())
 	}
 
@@ -605,7 +605,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 
 		self.operators.insert(
 			operator_id,
-			OperatorCell::new(JoinOperator::new(
+			Box::new(JoinOperator::new(
 				JoinSideConfig {
 					schema: left_schema,
 					operator: left_node,
@@ -645,7 +645,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		let ttl = self.operator_ttl(txn, operator_id)?;
 		self.operators.insert(
 			operator_id,
-			OperatorCell::new(DistinctOperator::new(
+			Box::new(DistinctOperator::new(
 				parent_schema,
 				operator_id,
 				expressions,
@@ -692,7 +692,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		let ttl = self.operator_ttl(txn, operator_id)?;
 		self.operators.insert(
 			operator_id,
-			OperatorCell::new(AppendOperator::new(operator_id, parent_schema, inputs.to_vec(), ttl)),
+			Box::new(AppendOperator::new(operator_id, parent_schema, inputs.to_vec(), ttl)),
 		);
 		Ok(())
 	}
@@ -715,7 +715,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		let inner = provider.provide(operator_id, &cfg)?;
 
 		self.operators
-			.insert(operator_id, OperatorCell::new(ApplyOperator::new(parent_schema, operator_id, inner, ttl)));
+			.insert(operator_id, Box::new(ApplyOperator::new(parent_schema, operator_id, inner, ttl)));
 		Ok(())
 	}
 
@@ -743,7 +743,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 			grace,
 			ctx: Arc::clone(ctx),
 		});
-		self.operators.insert(operator_id, OperatorCell::new(operator));
+		self.operators.insert(operator_id, Box::new(operator));
 		Ok(())
 	}
 
@@ -766,7 +766,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 			self.runtime_context.clone(),
 			self.operator_ttl(txn, operator_id)?,
 		);
-		self.operators.insert(operator_id, OperatorCell::new(operator));
+		self.operators.insert(operator_id, Box::new(operator));
 		Ok(())
 	}
 
@@ -774,7 +774,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		Ok(self.catalog.find_operator_settings(txn, operator_id)?.and_then(|s| s.ttl).map(|ttl| ttl.duration))
 	}
 
-	fn require_parent(&self, input: OperatorId) -> Result<&OperatorCell<T>> {
+	fn require_parent(&self, input: OperatorId) -> Result<&BoxedOperator<T>> {
 		self.operators.get(&input).ok_or_else(|| {
 			Error::from(FlowGraphError::ParentOperatorNotFound {
 				input: format!("{:?}", input),
@@ -799,7 +799,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 
 		self.add_source(flow.id, operator_id, view.storage_id().into());
 
-		self.operators.insert(operator_id, OperatorCell::new(SourceViewOperator::new(operator_id, view)));
+		self.operators.insert(operator_id, Box::new(SourceViewOperator::new(operator_id, view)));
 		Ok(())
 	}
 

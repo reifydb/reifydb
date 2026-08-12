@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::HashMap,
-	ops::Bound::{Excluded, Included, Unbounded},
-};
+use std::ops::Bound::{Excluded, Included, Unbounded};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
@@ -14,7 +11,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::PendingLayers,
 	common::CommitVersion,
-	interface::{catalog::flow::OperatorId, store::MultiVersionRow},
+	interface::store::MultiVersionRow,
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
@@ -85,7 +82,6 @@ use tracing::instrument;
 use crate::transaction::{
 	ChangeCoordinate, DeferredParams, FlowTransaction,
 	read::{OperatorStateRangeIter, ReadFrom, operator_state_scope, read_from},
-	slot::OperatorStateSlot,
 	substrate::{FlowSubstrate, operator_state_coordinates},
 };
 
@@ -98,8 +94,6 @@ pub struct DeferredTransaction {
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
 	pub clock: Clock,
-
-	pub operator_states: HashMap<OperatorId, OperatorStateSlot<Self>>,
 
 	pub change_coordinate: Option<ChangeCoordinate>,
 
@@ -131,7 +125,6 @@ impl DeferredTransaction {
 			interceptors,
 			accumulator: ChangeAccumulator::new(),
 			clock,
-			operator_states: HashMap::new(),
 			change_coordinate: None,
 			flow_watermark: None,
 			substrate: FlowSubstrate::new(),
@@ -151,7 +144,6 @@ impl DeferredTransaction {
 			interceptors: params.interceptors,
 			accumulator: ChangeAccumulator::new(),
 			clock: params.clock,
-			operator_states: HashMap::new(),
 			change_coordinate: None,
 			flow_watermark: None,
 			substrate: params.substrate,
@@ -306,10 +298,6 @@ impl FlowTransaction for DeferredTransaction {
 
 	fn accumulator_mut(&mut self) -> &mut ChangeAccumulator {
 		&mut self.accumulator
-	}
-
-	fn operator_states_mut(&mut self) -> &mut HashMap<OperatorId, OperatorStateSlot<Self>> {
-		&mut self.operator_states
 	}
 
 	fn change_coordinate(&self) -> Option<ChangeCoordinate> {

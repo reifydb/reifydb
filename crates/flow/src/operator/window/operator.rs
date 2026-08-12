@@ -204,7 +204,7 @@ impl<T: FlowTransaction> Operator<T> for WindowOperator {
 		None
 	}
 
-	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		self.with_meta(txn, |txn| match &self.kind {
 			WindowKind::Tumbling {
 				..
@@ -221,7 +221,7 @@ impl<T: FlowTransaction> Operator<T> for WindowOperator {
 		})
 	}
 
-	fn on_timer(&self, txn: &mut T, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, txn: &mut T, timer: Timer) -> Result<Option<Change>> {
 		let fired = FiredAt::of(&timer);
 		self.with_meta(txn, |txn| {
 			let diffs = match &self.kind {

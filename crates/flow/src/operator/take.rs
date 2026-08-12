@@ -4,6 +4,7 @@
 use std::{
 	collections::{BTreeMap, HashMap},
 	slice::from_ref,
+	sync::Arc,
 };
 
 use reifydb_codec::row::{
@@ -34,7 +35,7 @@ use crate::{
 		Operator,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::{FlowTransaction, slot::PersistFn},
+	transaction::FlowTransaction,
 };
 
 #[operator_state]
@@ -48,10 +49,16 @@ struct TakeState {
 	row_data: HashMap<RowNumber, EncodedBytes>,
 }
 
-pub struct TakeOperator {
+pub struct TakePlan {
 	parent_schema: Option<Columns>,
 	operator: OperatorId,
 	limit: usize,
+}
+
+pub struct TakeOperator {
+	plan: Arc<TakePlan>,
+	state: TakeState,
+	hydrated: bool,
 }
 
 fn row_shape_from_columns(cols: &Columns) -> RowShape {
@@ -85,12 +92,45 @@ fn decode_take_bytes(shape: &RowShape, row_number: RowNumber, encoded: &EncodedB
 impl TakeOperator {
 	pub fn new(parent_schema: Option<Columns>, operator: OperatorId, limit: usize) -> Self {
 		Self {
-			parent_schema,
-			operator,
-			limit,
+			plan: Arc::new(TakePlan {
+				parent_schema,
+				operator,
+				limit,
+			}),
+			state: TakeState::default(),
+			hydrated: false,
 		}
 	}
 
+	fn hydrate_once<T: FlowTransaction>(&mut self, txn: &mut T) -> Result<()> {
+		if self.hydrated {
+			return Ok(());
+		}
+		self.state = self.plan.load_take_state(txn)?;
+		self.hydrated = true;
+		Ok(())
+	}
+
+	fn flush_state<T: FlowTransaction>(&mut self, txn: &mut T) -> Result<()> {
+		if !self.hydrated {
+			return Ok(());
+		}
+		let row = encode(&self.state, DateTime::MAX).map_err(|e| {
+			Error::from(FlowStateError::Encode {
+				state: "TakeState",
+				cause: e.to_string(),
+			})
+		})?;
+		utils::state_set(self.plan.operator, txn, &utils::empty_state_key(), row)?;
+		Ok(())
+	}
+
+	pub(crate) fn output_schema(&self) -> Option<Columns> {
+		self.plan.parent_schema.clone()
+	}
+}
+
+impl TakePlan {
 	fn load_take_state<T: FlowTransaction>(&self, txn: &mut T) -> Result<TakeState> {
 		let key = utils::empty_state_key();
 		let Some(row) = utils::state_get(self.operator, txn, &key)? else {
@@ -105,30 +145,6 @@ impl TakeOperator {
 				cause: e.to_string(),
 			})
 		})
-	}
-
-	#[inline]
-	fn acquire_take_state<T: FlowTransaction>(&self, txn: &mut T) -> Result<(TakeState, PersistFn<T>)> {
-		let operator_id = self.operator;
-		txn.take_operator_state::<TakeState, _>(operator_id, |txn| {
-			let s = self.load_take_state(txn)?;
-			let persist: PersistFn<T> = Box::new(move |txn, value| {
-				let state = value.downcast::<TakeState>().expect("TakeState slot type");
-				let row = encode(&*state, DateTime::MAX).map_err(|e| {
-					Error::from(FlowStateError::Encode {
-						state: "TakeState",
-						cause: e.to_string(),
-					})
-				})?;
-				utils::state_set(operator_id, txn, &utils::empty_state_key(), row)?;
-				Ok(())
-			});
-			Ok((s, persist))
-		})
-	}
-
-	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.parent_schema.clone()
 	}
 
 	#[inline]
@@ -302,16 +318,17 @@ impl<T: FlowTransaction> RawStatefulOperator<T> for TakeOperator {}
 
 impl<T: FlowTransaction> Operator<T> for TakeOperator {
 	fn id(&self) -> OperatorId {
-		self.operator
+		self.plan.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
-		let operator_id = self.operator;
-		let (mut state, persist) = self.acquire_take_state(txn)?;
+	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
+		self.hydrate_once(txn)?;
+		let plan = self.plan.clone();
+		let state = &mut self.state;
 
 		let mut output_diffs = Vec::new();
 		let version = change.version;
@@ -321,22 +338,24 @@ impl<T: FlowTransaction> Operator<T> for TakeOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_insert_diff(&mut state, post, &mut output_diffs),
+				} => plan.apply_insert_diff(state, post, &mut output_diffs),
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_update_diff(&mut state, pre, post, &mut output_diffs),
+				} => plan.apply_update_diff(state, pre, post, &mut output_diffs),
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_remove_diff(&mut state, pre, &mut output_diffs),
+				} => plan.apply_remove_diff(state, pre, &mut output_diffs),
 			}
 		}
 
-		txn.put_operator_state(operator_id, state, persist);
+		Ok(Change::from_flow(plan.operator, version, output_diffs, change.changed_at))
+	}
 
-		Ok(Change::from_flow(self.operator, version, output_diffs, change.changed_at))
+	fn flush(&mut self, txn: &mut T) -> Result<()> {
+		self.flush_state(txn)
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

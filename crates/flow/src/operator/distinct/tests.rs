@@ -28,7 +28,11 @@ use reifydb_value::{
 
 use crate::{
 	context::FlowContext,
-	operator::{Operator, distinct::operator::DistinctOperator, stateful::utils},
+	operator::{
+		Operator,
+		distinct::operator::{DistinctOperator, DistinctPlan},
+		stateful::utils,
+	},
 	testing::FlowTxn,
 	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
@@ -82,7 +86,7 @@ fn persisted_rows(
 	txn: &mut DeferredTransaction,
 ) -> BTreeMap<Vec<u8>, Vec<u8>> {
 	let mut out = BTreeMap::new();
-	let batch = txn.state_range(op.operator, EncodedKeyRange::all(), None, "test").unwrap();
+	let batch = txn.state_range(op.plan.operator, EncodedKeyRange::all(), None, "test").unwrap();
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if decoded.keyspace == Keyspace::DISTINCT_ENTRY {
@@ -96,14 +100,14 @@ fn persisted_rows(
 }
 
 fn layout_row(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Option<Vec<u8>> {
-	utils::state_get(op.operator, txn, &DistinctOperator::layout_storage_key())
+	utils::state_get(op.plan.operator, txn, &DistinctPlan::layout_storage_key())
 		.unwrap()
 		.map(|row| row.body().to_vec())
 }
 
 fn entry_groups(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Vec<GroupId> {
 	let mut out = Vec::new();
-	let batch = txn.state_range(op.operator, EncodedKeyRange::all(), None, "test").unwrap();
+	let batch = txn.state_range(op.plan.operator, EncodedKeyRange::all(), None, "test").unwrap();
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if decoded.keyspace == Keyspace::DISTINCT_ENTRY {
@@ -118,14 +122,14 @@ fn erase_group_data(
 	txn: &mut DeferredTransaction,
 	group: GroupId,
 ) -> usize {
-	let batch = txn.state_range(op.operator, EncodedKeyRange::all(), None, "test").unwrap();
+	let batch = txn.state_range(op.plan.operator, EncodedKeyRange::all(), None, "test").unwrap();
 	let mut erased = 0;
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if decoded.group == group && decoded.keyspace.is_data() {
 			let key = GroupStateKey::from_framed(decoded.inner())
 				.expect("distinct state rows carry a framed inner key");
-			txn.state_remove(op.operator, &key).unwrap();
+			txn.state_remove(op.plan.operator, &key).unwrap();
 			erased += 1;
 		}
 	}
@@ -136,23 +140,23 @@ fn erase_group_data(
 fn flush_persists_only_mutated_entries() {
 	let engine = TestEngine::new();
 	let mock_clock = engine.mock_clock();
-	let op = make_op(4, &engine);
+	let mut op = make_op(4, &engine);
 	let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 
 	op.apply(&mut txn, build_insert(42, 1)).unwrap();
 	op.apply(&mut txn, build_insert(43, 2)).unwrap();
-	txn.flush_operator_states().unwrap();
+	op.flush(&mut txn).unwrap();
 	let after_first = persisted_rows(&op, &mut txn);
 	assert_eq!(after_first.len(), 3, "two distinct entry rows plus the layout row");
 
 	mock_clock.advance_millis(10);
 	op.apply(&mut txn, build_remove(42, 99)).unwrap();
-	txn.flush_operator_states().unwrap();
+	op.flush(&mut txn).unwrap();
 	assert_eq!(persisted_rows(&op, &mut txn), after_first, "a read-only touch must not rewrite any persisted row");
 
 	mock_clock.advance_millis(10);
 	op.apply(&mut txn, build_insert(44, 3)).unwrap();
-	txn.flush_operator_states().unwrap();
+	op.flush(&mut txn).unwrap();
 	let after_third = persisted_rows(&op, &mut txn);
 	assert_eq!(after_third.len(), 4, "exactly one new distinct entry row");
 	for (key, row) in &after_first {
@@ -163,7 +167,7 @@ fn flush_persists_only_mutated_entries() {
 #[test]
 fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_holds() {
 	let engine = TestEngine::new();
-	let op = make_op(6, &engine);
+	let mut op = make_op(6, &engine);
 	let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 
 	let first = op.apply(&mut txn, build_insert(42, 1)).unwrap();
@@ -175,14 +179,14 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 		panic!("the first sighting of a value must be an insert");
 	};
 	let published = post.row_numbers()[0];
-	txn.flush_operator_states().unwrap();
+	op.flush(&mut txn).unwrap();
 
 	let groups = entry_groups(&op, &mut txn);
 	assert_eq!(groups.len(), 1, "precondition: exactly one distinct entry is persisted");
 	let erased = erase_group_data(&op, &mut txn, groups[0]);
 	assert!(erased > 0, "precondition: compaction must have erased the entry");
 	assert!(
-		txn.get_row_number(op.operator, groups[0], &utils::empty_key()).unwrap().is_some(),
+		txn.get_row_number(op.plan.operator, groups[0], &utils::empty_key()).unwrap().is_some(),
 		"precondition: the floor must leave the mapping behind, or there is nothing to collide with"
 	);
 
@@ -208,15 +212,15 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 fn layout_row_rewritten_only_on_change() {
 	let engine = TestEngine::new();
 	let mock_clock = engine.mock_clock();
-	let op = make_op(5, &engine);
+	let mut op = make_op(5, &engine);
 	let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 
 	op.apply(&mut txn, build_insert(42, 1)).unwrap();
-	txn.flush_operator_states().unwrap();
+	op.flush(&mut txn).unwrap();
 	let first_layout = layout_row(&op, &mut txn).expect("layout row present after the first flush");
 
 	mock_clock.advance_millis(10);
 	op.apply(&mut txn, build_insert(45, 2)).unwrap();
-	txn.flush_operator_states().unwrap();
+	op.flush(&mut txn).unwrap();
 	assert_eq!(layout_row(&op, &mut txn), Some(first_layout), "an unchanged layout must not be rewritten");
 }

@@ -14,7 +14,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		checkpoint = checkpoint.0
 	))]
 	pub fn process_tick(
-		&self,
+		&mut self,
 		txn: &mut T,
 		flow_id: FlowId,
 		timestamp: DateTime,

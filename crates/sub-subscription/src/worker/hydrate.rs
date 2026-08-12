@@ -13,7 +13,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::subscription::{HydrateError, HydrateOutcome};
-use reifydb_flow::transaction::{FlowTransaction, ephemeral::EphemeralTransaction};
+use reifydb_flow::transaction::ephemeral::EphemeralTransaction;
 use reifydb_rql::fingerprint::request::fingerprint_request;
 use reifydb_runtime::context::clock::Instant;
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
@@ -76,7 +76,6 @@ impl SubscriptionWorkerActor {
 		let flow_state = flows.get_mut(&flow_id).expect("hydrated flow registered");
 
 		let keyed = mem::take(&mut flow_state.keyed_state);
-		let operators = mem::take(&mut flow_state.operator_states);
 
 		let mut txn = EphemeralTransaction::new(
 			version,
@@ -85,7 +84,6 @@ impl SubscriptionWorkerActor {
 			keyed,
 			flow_engine.clock().clone(),
 		);
-		txn.install_operator_states(operators);
 
 		for (shape, shape_columns) in source_frames {
 			for columns in shape_columns {
@@ -100,7 +98,6 @@ impl SubscriptionWorkerActor {
 
 		txn.merge_state();
 		flow_state.keyed_state = txn.take_state();
-		flow_state.operator_states = txn.drain_operator_states();
 		Ok(())
 	}
 

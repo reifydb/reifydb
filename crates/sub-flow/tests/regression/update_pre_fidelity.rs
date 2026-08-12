@@ -756,7 +756,7 @@ mod source {
 		}
 
 		fn apply(
-			&self,
+			&mut self,
 			txn: &mut reifydb_flow::transaction::deferred::DeferredTransaction,
 			change: Change,
 		) -> reifydb_value::Result<Change> {

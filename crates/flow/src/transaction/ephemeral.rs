@@ -19,7 +19,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::{PendingLayers, PendingWrite},
 	common::CommitVersion,
-	interface::{catalog::flow::OperatorId, store::MultiVersionRow},
+	interface::store::MultiVersionRow,
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
@@ -31,7 +31,6 @@ use reifydb_value::{Result, value::datetime::DateTime};
 use crate::transaction::{
 	ChangeCoordinate, FlowTransaction,
 	read::{ReadFrom, read_from},
-	slot::OperatorStateSlot,
 	substrate::FlowSubstrate,
 };
 
@@ -42,8 +41,6 @@ pub struct EphemeralTransaction {
 	pub catalog: Catalog,
 	pub accumulator: ChangeAccumulator,
 	pub clock: Clock,
-
-	pub operator_states: HashMap<OperatorId, OperatorStateSlot<Self>>,
 
 	pub change_coordinate: Option<ChangeCoordinate>,
 
@@ -72,7 +69,6 @@ impl EphemeralTransaction {
 			catalog,
 			accumulator: ChangeAccumulator::new(),
 			clock,
-			operator_states: HashMap::new(),
 			change_coordinate: None,
 			flow_watermark: None,
 			substrate: FlowSubstrate::new(),
@@ -240,10 +236,6 @@ impl FlowTransaction for EphemeralTransaction {
 
 	fn accumulator_mut(&mut self) -> &mut ChangeAccumulator {
 		&mut self.accumulator
-	}
-
-	fn operator_states_mut(&mut self) -> &mut HashMap<OperatorId, OperatorStateSlot<Self>> {
-		&mut self.operator_states
 	}
 
 	fn change_coordinate(&self) -> Option<ChangeCoordinate> {

@@ -7,7 +7,7 @@ use reifydb_engine::subscription::SubscriptionContext;
 use reifydb_flow::{
 	context::FlowContext,
 	engine::FlowEngineInner,
-	operator::{OperatorCell, apply::ApplyOperator},
+	operator::apply::ApplyOperator,
 	transaction::ephemeral::EphemeralTransaction,
 };
 use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
@@ -41,7 +41,7 @@ pub(crate) fn register_ephemeral_flow(
 				let op = EphemeralSinkSubscriptionOperator::new(operator_id, ctx.id, delivery.clone());
 				engine.insert_operator(
 					operator_id,
-					OperatorCell::new(ApplyOperator::new(
+					Box::new(ApplyOperator::new(
 						parent_schema,
 						operator_id,
 						Box::new(op),

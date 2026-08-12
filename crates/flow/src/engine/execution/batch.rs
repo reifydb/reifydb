@@ -46,7 +46,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		row_count = change.row_count(),
 		nodes_processed = field::Empty
 	))]
-	pub fn process(&self, txn: &mut T, change: Change, flow_id: FlowId) -> Result<()> {
+	pub fn process(&mut self, txn: &mut T, change: Change, flow_id: FlowId) -> Result<()> {
 		self.process_batch(txn, vec![change], flow_id)
 	}
 
@@ -57,7 +57,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		version_count = field::Empty,
 		nodes_processed = field::Empty
 	))]
-	pub fn process_batch(&self, txn: &mut T, changes: Vec<Change>, flow_id: FlowId) -> Result<()> {
+	pub fn process_batch(&mut self, txn: &mut T, changes: Vec<Change>, flow_id: FlowId) -> Result<()> {
 		let flow = match self.flows.get(&flow_id) {
 			Some(f) => f.clone(),
 			None => return Ok(()),
@@ -101,7 +101,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 
 	#[inline]
 	fn process_version(
-		&self,
+		&mut self,
 		txn: &mut T,
 		flow: &FlowDag,
 		flow_id: FlowId,
@@ -146,7 +146,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 	}
 
 	pub(super) fn run_topology(
-		&self,
+		&mut self,
 		txn: &mut T,
 		flow: &FlowDag,
 		mut pending: HashMap<OperatorId, Vec<Change>>,

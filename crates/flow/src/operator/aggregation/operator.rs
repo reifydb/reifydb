@@ -85,7 +85,7 @@ impl<T: FlowTransaction> Operator<T> for AggregateOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		apply_aggregate_engine(&self.core, txn, change)
 	}
 

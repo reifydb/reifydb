@@ -6,10 +6,10 @@ use reifydb_rql::flow::operator::FlowNode;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
-use crate::{engine::FlowEngineInner, transaction::FlowTransaction};
+use crate::{engine::FlowEngineInner, operator::guard::enforce_apply_capabilities, transaction::FlowTransaction};
 
 impl<T: FlowTransaction> FlowEngineInner<T> {
-	pub(super) fn dispatch_node(&self, txn: &mut T, operator: &FlowNode, inbox: Vec<Change>) -> Result<Change> {
+	pub(super) fn dispatch_node(&mut self, txn: &mut T, operator: &FlowNode, inbox: Vec<Change>) -> Result<Change> {
 		let merged = Change::merge(inbox)?;
 		let version = merged.version;
 		let changed_at = merged.changed_at;
@@ -31,19 +31,27 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		apply_time_us = field::Empty,
 		coalesce_time_us = field::Empty
 	))]
-	fn apply(&self, txn: &mut T, operator: &FlowNode, change: Change) -> Result<Change> {
-		let lock_start = self.runtime_context.clock.instant();
-		let operator = self.operators.get(&operator.id).unwrap().clone();
+	fn apply(&mut self, txn: &mut T, operator: &FlowNode, change: Change) -> Result<Change> {
+		let FlowEngineInner {
+			operators,
+			runtime_context,
+			..
+		} = self;
+
+		let lock_start = runtime_context.clock.instant();
+		let operator = operators.get_mut(&operator.id).unwrap();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
 		Span::current().record("input_rows", change.row_count());
 
-		let apply_start = self.runtime_context.clock.instant();
+		let apply_start = runtime_context.clock.instant();
+		enforce_apply_capabilities(operator.id(), operator.capabilities(), &change);
 		let result = operator.apply(txn, change)?;
+		operator.flush(txn)?;
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs_raw", result.diffs.len());
 
-		let coalesce_start = self.runtime_context.clock.instant();
+		let coalesce_start = runtime_context.clock.instant();
 		Span::current().record("coalesce_time_us", coalesce_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs", result.diffs.len());
 		Span::current().record("output_rows", result.row_count());

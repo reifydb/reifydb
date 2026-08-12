@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	any::Any,
 	cell::{Cell, UnsafeCell},
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
@@ -27,7 +26,7 @@ use reifydb_extension::{
 use reifydb_flow::{
 	operator::{Operator, scale_from_millis},
 	timer::Timer,
-	transaction::{FlowTransaction, deferred::DeferredTransaction, slot::PersistFn},
+	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
 use reifydb_sdk::{
 	common::extern_c::wire::{
@@ -57,11 +56,6 @@ use tracing::{Span, error, field, instrument};
 thread_local! {
 	static EXTERN_C_MARSHAL_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
 }
-
-#[derive(Clone, Copy)]
-struct SendableInstance(*mut c_void);
-unsafe impl Send for SendableInstance {}
-unsafe impl Sync for SendableInstance {}
 
 pub struct ExternCOperatorHandle {
 	capabilities: Box<[OperatorCapability]>,
@@ -106,7 +100,6 @@ impl ExternCOperatorHandle {
 		// the context cell is not aliased while this &mut exists.
 		let ctx = unsafe { &mut *self.cached_ctx.get() };
 		if self.last_registered_txn.get() != txn_version {
-			ensure_flush_slot(txn, self.operator_id, self.vtable, self.instance)?;
 			self.last_registered_txn.set(txn_version);
 			ctx.txn_ptr = txn as *mut _ as *mut c_void;
 		}
@@ -164,51 +157,6 @@ fn call_vtable(
 	}
 }
 
-fn ensure_flush_slot(
-	txn: &mut DeferredTransaction,
-	operator_id: OperatorId,
-	vtable: ExternCOperatorVTable,
-	instance: *mut c_void,
-) -> Result<()> {
-	let send_instance = SendableInstance(instance);
-	let _ = txn.operator_state(operator_id, move |_txn| {
-		let captured_instance = send_instance;
-		let captured_vtable = vtable;
-		let captured_id = operator_id;
-		let persist: PersistFn<DeferredTransaction> = Box::new(move |txn, _value: Box<dyn Any>| {
-			let extern_c_ctx = new_extern_c_context(txn, captured_id, create_host_callbacks());
-			let extern_c_ctx_ptr = &extern_c_ctx as *const _ as *mut ExternCContext;
-			let inst = captured_instance;
-			let mut usage = ExternCStateUsage::default();
-			// SAFETY: captured_vtable and inst.0 come from the loaded operator's descriptor and the
-			// operator outlives the transaction running this persist closure; extern_c_ctx and usage are
-			// locals that stay alive for the call with no Rust borrow of them live during it.
-			let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-				(captured_vtable.flush_state)(inst.0, extern_c_ctx_ptr, &mut usage)
-			}));
-			match result {
-				Ok(EXTERN_C_OK) | Ok(EXTERN_C_SAMPLE_NO_DATA) => Ok(()),
-				Ok(code) => Err(SdkError::Other(format!(
-					"extern-C operator flush_state failed with code: {}",
-					code
-				))
-				.into()),
-				Err(_) => {
-					error!(
-						operator_id = captured_id.0,
-						"extern-C operator panicked during flush_state"
-					);
-					abort();
-				}
-			}
-		});
-
-		Ok(((), persist))
-	})?;
-	txn.mark_state_dirty(operator_id);
-	Ok(())
-}
-
 impl Operator<DeferredTransaction> for ExternCOperatorHandle {
 	fn id(&self) -> OperatorId {
 		self.operator_id
@@ -224,12 +172,35 @@ impl Operator<DeferredTransaction> for ExternCOperatorHandle {
 		scale_from_millis(Some(unsafe { (self.vtable.seal_after_ms)(self.instance) }))
 	}
 
+	fn flush(&mut self, txn: &mut DeferredTransaction) -> Result<()> {
+		let extern_c_ctx = new_extern_c_context(txn, self.operator_id, create_host_callbacks());
+		let extern_c_ctx_ptr = &extern_c_ctx as *const _ as *mut ExternCContext;
+		let mut usage = ExternCStateUsage::default();
+		// SAFETY: vtable and instance come from the loaded operator's descriptor and stay valid until Drop
+		// calls destroy; extern_c_ctx and usage are locals that outlive the call with no Rust borrow of them
+		// live during it.
+		let result = catch_unwind(AssertUnwindSafe(|| unsafe {
+			(self.vtable.flush_state)(self.instance, extern_c_ctx_ptr, &mut usage)
+		}));
+		match result {
+			Ok(EXTERN_C_OK) | Ok(EXTERN_C_SAMPLE_NO_DATA) => Ok(()),
+			Ok(code) => {
+				Err(SdkError::Other(format!("extern-C operator flush_state failed with code: {}", code))
+					.into())
+			}
+			Err(_) => {
+				error!(operator_id = self.operator_id.0, "extern-C operator panicked during flush_state");
+				abort();
+			}
+		}
+	}
+
 	#[instrument(name = "flow::extern_c::apply", level = "trace", skip_all, fields(
 		operator_id = self.operator_id.0,
 		input_diff_count = change.diffs.len(),
 		output_diff_count = field::Empty
 	))]
-	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		self.ensure_txn_setup(txn)?;
 
 		// SAFETY: the arena is thread-local and the previous apply's guest call has returned, so
@@ -267,7 +238,7 @@ impl Operator<DeferredTransaction> for ExternCOperatorHandle {
 		operator_id = self.operator_id.0,
 		output_diff_count = field::Empty
 	))]
-	fn on_timer(&self, txn: &mut DeferredTransaction, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, txn: &mut DeferredTransaction, timer: Timer) -> Result<Option<Change>> {
 		self.ensure_txn_setup(txn)?;
 
 		let version = txn.version();

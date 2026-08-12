@@ -54,14 +54,18 @@ impl<T: FlowTransaction> Operator<T> for ApplyOperator<T> {
 		self.inner.seal_span()
 	}
 
-	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		let inherited = max_input_time(&change);
 		let mut out = self.inner.apply(txn, change)?;
 		stamp_output_time(&mut out, inherited);
 		Ok(out)
 	}
 
-	fn on_timer(&self, txn: &mut T, timer: Timer) -> Result<Option<Change>> {
+	fn flush(&mut self, txn: &mut T) -> Result<()> {
+		self.inner.flush(txn)
+	}
+
+	fn on_timer(&mut self, txn: &mut T, timer: Timer) -> Result<Option<Change>> {
 		let at = timer.at;
 		let mut out = self.inner.on_timer(txn, timer)?;
 		if let Some(change) = out.as_mut() {
@@ -118,7 +122,7 @@ mod tests {
 			&[]
 		}
 
-		fn apply(&self, _txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+		fn apply(&mut self, _txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 

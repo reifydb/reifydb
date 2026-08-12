@@ -132,7 +132,7 @@ fn a_left_update_retracts_against_the_right_value_it_was_emitted_with() {
 	// carried, and a consumer that trusts `pre` (chaindex block_trade builds its retraction from
 	// pre_data verbatim) subtracts exactly this. A `pre` of 20 subtracts something never added.
 	let engine = TestEngine::new();
-	let operator = join(&engine);
+	let mut operator = join(&engine);
 	let mut txn = engine.flow_txn().deferred();
 
 	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]))
@@ -196,7 +196,7 @@ fn a_right_side_change_alone_emits_nothing() {
 	// nothing of its own. Re-emitting here would retract and re-issue every left row still inside
 	// the ttl every time a dimension row ticked.
 	let engine = TestEngine::new();
-	let operator = join(&engine);
+	let mut operator = join(&engine);
 	let mut txn = engine.flow_txn().deferred();
 
 	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]))
@@ -222,7 +222,7 @@ fn a_left_update_against_an_unchanged_slot_still_reports_both_sides() {
 	// The shortcut path: when the slot has not moved the operator skips the ledger round trip. It
 	// must still emit the same pair, with the right value on both halves.
 	let engine = TestEngine::new();
-	let operator = join(&engine);
+	let mut operator = join(&engine);
 	let mut txn = engine.flow_txn().deferred();
 
 	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]))

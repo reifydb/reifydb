@@ -176,7 +176,7 @@ impl Operator<DeferredTransaction> for Pipeline {
 		Operator::<DeferredTransaction>::capabilities(&self.terminal)
 	}
 
-	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change, reifydb_value::error::Error> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change, reifydb_value::error::Error> {
 		let staged = self.stage.apply(txn, change)?;
 		self.terminal.apply(txn, staged)
 	}

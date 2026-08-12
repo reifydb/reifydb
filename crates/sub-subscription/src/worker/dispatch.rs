@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	engine::FlowEngineInner,
-	transaction::{FlowTransaction, ephemeral::EphemeralTransaction},
+	transaction::ephemeral::EphemeralTransaction,
 };
 use reifydb_transaction::{error::TransactionError, multi::transaction::read::MultiReadTransaction};
 use reifydb_value::Result;
@@ -102,7 +102,7 @@ impl SubscriptionWorkerActor {
 	#[inline]
 	fn evaluate_flow(
 		&self,
-		flow_engine: &FlowEngineInner<EphemeralTransaction>,
+		flow_engine: &mut FlowEngineInner<EphemeralTransaction>,
 		flow_state: &mut SubscriptionFlowState,
 		base_query: &MultiReadTransaction,
 		change: &Change,
@@ -116,7 +116,6 @@ impl SubscriptionWorkerActor {
 		}
 
 		let keyed = mem::take(&mut flow_state.keyed_state);
-		let operators = mem::take(&mut flow_state.operator_states);
 
 		let mut query = base_query.clone();
 		query.read_as_of_version_inclusive(change.version);
@@ -128,7 +127,6 @@ impl SubscriptionWorkerActor {
 			keyed,
 			flow_engine.clock().clone(),
 		);
-		txn.install_operator_states(operators);
 
 		let flow_change =
 			Change::from_flow(operator_id, change.version, change.diffs.clone(), change.changed_at);
@@ -139,7 +137,6 @@ impl SubscriptionWorkerActor {
 			}
 		}
 		flow_state.keyed_state = txn.take_state();
-		flow_state.operator_states = txn.drain_operator_states();
 	}
 }
 

@@ -14,10 +14,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{
-			flow::{FlowId, OperatorId},
-			id::SubscriptionId,
-		},
+		catalog::{flow::FlowId, id::SubscriptionId},
 		change::Change,
 	},
 };
@@ -27,7 +24,7 @@ use reifydb_engine::{
 };
 use reifydb_flow::{
 	engine::FlowEngineInner,
-	transaction::{ephemeral::EphemeralTransaction, slot::CarriedOperatorState},
+	transaction::ephemeral::EphemeralTransaction,
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
@@ -84,7 +81,6 @@ pub enum SubscriptionWorkerMessage {
 }
 
 struct SubscriptionFlowState {
-	operator_states: HashMap<OperatorId, CarriedOperatorState>,
 	keyed_state: HashMap<EncodedKey, EncodedBytes>,
 	gate: Option<CommitVersion>,
 }
@@ -92,7 +88,6 @@ struct SubscriptionFlowState {
 impl SubscriptionFlowState {
 	fn new(gate: Option<CommitVersion>) -> Self {
 		Self {
-			operator_states: HashMap::new(),
 			keyed_state: HashMap::new(),
 			gate,
 		}

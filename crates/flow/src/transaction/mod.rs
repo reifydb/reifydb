@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	any::Any,
-	collections::{BTreeMap, HashMap},
-	mem,
-};
+use std::collections::BTreeMap;
 
 use postcard::from_bytes;
 use reifydb_catalog::catalog::Catalog;
@@ -58,7 +54,6 @@ pub mod group;
 pub mod read;
 pub mod reclaim;
 pub mod row_number;
-pub mod slot;
 pub mod state;
 pub mod substrate;
 pub mod timer;
@@ -72,7 +67,6 @@ use crate::{
 		read::{flow_merge_pending_iterator, flow_merge_pending_iterator_rev},
 		reclaim::ReclaimOutcome,
 		row_number::RowNumberProvider,
-		slot::{CarriedOperatorState, OperatorStateSlot, PersistFn},
 		state::scoped_key,
 		substrate::FlowSubstrate,
 		timer::TimerWheel,
@@ -114,8 +108,6 @@ pub trait FlowTransaction: Sized + Send + 'static {
 	fn pending_layers_mut(&mut self) -> &mut PendingLayers;
 
 	fn accumulator_mut(&mut self) -> &mut ChangeAccumulator;
-
-	fn operator_states_mut(&mut self) -> &mut HashMap<OperatorId, OperatorStateSlot<Self>>;
 
 	fn change_coordinate(&self) -> Option<ChangeCoordinate>;
 
@@ -466,98 +458,6 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		let entries: Vec<_> = acc.entries_from(0).to_vec();
 		acc.clear();
 		entries
-	}
-
-	fn operator_state<S, F>(&mut self, operator: OperatorId, load: F) -> Result<&mut S>
-	where
-		S: 'static + Send,
-		F: FnOnce(&mut Self) -> Result<(S, PersistFn<Self>)>,
-	{
-		if !self.operator_states_mut().contains_key(&operator) {
-			let (state, persist) = load(self)?;
-			let slot = OperatorStateSlot {
-				value: Box::new(state),
-				dirty: false,
-				persist,
-			};
-			self.operator_states_mut().insert(operator, slot);
-		}
-		let slot = self.operator_states_mut().get_mut(&operator).expect("just inserted");
-		Ok(slot.value.downcast_mut::<S>().expect("operator state type mismatch"))
-	}
-
-	fn mark_state_dirty(&mut self, operator: OperatorId) {
-		if let Some(slot) = self.operator_states_mut().get_mut(&operator) {
-			slot.dirty = true;
-		}
-	}
-
-	fn take_operator_state<S, F>(&mut self, operator: OperatorId, load: F) -> Result<(S, PersistFn<Self>)>
-	where
-		S: 'static + Send,
-		F: FnOnce(&mut Self) -> Result<(S, PersistFn<Self>)>,
-	{
-		if let Some(slot) = self.operator_states_mut().remove(&operator) {
-			let value = slot.value.downcast::<S>().map_err(|_| ()).expect("operator state type mismatch");
-			Ok((*value, slot.persist))
-		} else {
-			load(self)
-		}
-	}
-
-	fn put_operator_state<S>(&mut self, operator: OperatorId, state: S, persist: PersistFn<Self>)
-	where
-		S: 'static + Send,
-	{
-		self.operator_states_mut().insert(
-			operator,
-			OperatorStateSlot {
-				value: Box::new(state),
-				dirty: true,
-				persist,
-			},
-		);
-	}
-
-	#[instrument(name = "flow::actor::flush_state", level = "debug", skip_all)]
-	fn flush_operator_states(&mut self) -> Result<()> {
-		let states = mem::take(self.operator_states_mut());
-		for (_, slot) in states {
-			if slot.dirty {
-				(slot.persist)(self, slot.value)?;
-			}
-		}
-		Ok(())
-	}
-
-	fn install_operator_states(&mut self, states: HashMap<OperatorId, CarriedOperatorState>) {
-		for (operator, carried) in states {
-			if self.operator_states_mut().contains_key(&operator) {
-				continue;
-			}
-			self.operator_states_mut().insert(
-				operator,
-				OperatorStateSlot {
-					value: carried.value,
-					dirty: false,
-					persist: Box::new(|_: &mut Self, _: Box<dyn Any>| Ok(())),
-				},
-			);
-		}
-	}
-
-	fn drain_operator_states(&mut self) -> HashMap<OperatorId, CarriedOperatorState> {
-		mem::take(self.operator_states_mut())
-			.into_iter()
-			.map(|(operator, slot)| {
-				(
-					operator,
-					CarriedOperatorState {
-						value: slot.value,
-					},
-				)
-			})
-			.collect()
 	}
 
 	fn intern_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<(GroupId, bool)> {

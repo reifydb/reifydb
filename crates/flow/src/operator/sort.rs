@@ -39,7 +39,7 @@ impl<T: FlowTransaction> Operator<T> for SortOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, _txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, _txn: &mut T, change: Change) -> Result<Change> {
 		// TODO: Implement single-encoded sort processing
 
 		Ok(Change::from_flow(self.operator, change.version, change.diffs, change.changed_at))

@@ -130,7 +130,7 @@ impl<T: FlowTransaction> Operator<T> for ExtendOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, _txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, _txn: &mut T, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {

@@ -11,7 +11,7 @@ use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
-	engine::FlowEngineInner, operator::OperatorCell, transaction::FlowTransaction, window::engine::seal_horizon,
+	engine::FlowEngineInner, operator::BoxedOperator, transaction::FlowTransaction, window::engine::seal_horizon,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +65,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 fn output_frontiers<T: FlowTransaction>(
 	txn: &mut T,
 	flow: &FlowDag,
-	operators: &BTreeMap<OperatorId, OperatorCell<T>>,
+	operators: &BTreeMap<OperatorId, BoxedOperator<T>>,
 	topo: &[OperatorId],
 ) -> Result<BTreeMap<OperatorId, DateTime>> {
 	let watermarks = txn.source_watermarks();
@@ -177,7 +177,7 @@ mod tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&self, _txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+		fn apply(&mut self, _txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 
@@ -280,7 +280,7 @@ mod tests {
 		fn sealing(mut self, id: u64, horizon: Duration) -> Self {
 			self.inner.operators.insert(
 				OperatorId(id),
-				OperatorCell::new(Sealing {
+				Box::new(Sealing {
 					operator: OperatorId(id),
 					horizon: Some(horizon),
 				}),

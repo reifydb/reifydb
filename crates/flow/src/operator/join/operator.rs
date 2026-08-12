@@ -520,7 +520,7 @@ impl<T: FlowTransaction> Operator<T> for JoinOperator {
 		Some(OperatorSample::default())
 	}
 
-	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.operator
 		{

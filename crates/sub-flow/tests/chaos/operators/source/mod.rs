@@ -102,7 +102,7 @@ impl Operator<DeferredTransaction> for SourceOp {
 		}
 	}
 
-	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		match self {
 			SourceOp::Series(o) => o.apply(txn, change),
 			SourceOp::Table(o) => o.apply(txn, change),

@@ -21,7 +21,7 @@ const MAX_TIMERS_PER_DISPATCH: usize = 8_192;
 
 impl<T: FlowTransaction> FlowEngineInner<T> {
 	pub(super) fn dispatch_due_timers(
-		&self,
+		&mut self,
 		txn: &mut T,
 		flow: &FlowDag,
 		version: CommitVersion,
@@ -88,14 +88,16 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 				let Some(graph_node) = flow.get_operator(&operator_id) else {
 					continue;
 				};
-				let Some(operator) = self.operators.get(&operator_id).cloned() else {
+				let Some(operator) = self.operators.get_mut(&operator_id) else {
 					continue;
 				};
 				txn.set_change_coordinate(ChangeCoordinate {
 					at: Some(timer.at),
 					version,
 				});
-				let Some(result) = operator.on_timer(txn, timer)? else {
+				let fired = operator.on_timer(txn, timer)?;
+				operator.flush(txn)?;
+				let Some(result) = fired else {
 					continue;
 				};
 				if result.diffs.is_empty() {

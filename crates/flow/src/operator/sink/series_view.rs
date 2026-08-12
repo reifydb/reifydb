@@ -97,7 +97,7 @@ impl Operator<DeferredTransaction> for SinkSeriesViewOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(RowFamily::Series, view.columns());
 		let object_id = StorageId::series(self.series_id);

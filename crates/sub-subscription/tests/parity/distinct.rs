@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::common::{Row, normalize, random_rows, run_path_incremental, run_path_snapshot};
+use reifydb::testing::db::TestDb;
+use reifydb_core::value::column::columns::Columns;
+use reifydb_value::value::Value;
+
+use crate::common::{
+	Row, drain_after_consumer_caught_up, extract_sub_id, make_db, normalize, random_rows, run_path_incremental,
+	run_path_snapshot,
+};
 
 #[test]
 fn distinct_emits_most_recent_row_per_key() {
@@ -36,6 +43,50 @@ fn distinct_emits_most_recent_row_per_key() {
 		normalize(run_path_incremental(rql, &rows)),
 		expected,
 		"incremental path must emit the most recent row seen for each distinct key"
+	);
+}
+
+fn ops_and_qty(batches: Vec<Columns>) -> Vec<(u8, i32)> {
+	// normalize collapses the op sequence into a final state, so an insert and an update read alike there.
+	let mut out = Vec::new();
+	for cols in batches {
+		let op_col = cols.iter().find(|c| c.name().text() == "_op").expect("subscription output carries _op");
+		let qty_col = cols.iter().find(|c| c.name().text() == "qty").expect("subscription output carries qty");
+		for i in 0..cols.row_count() {
+			let op = match op_col.data().get_value(i) {
+				Value::Uint1(v) => v,
+				other => panic!("expected Uint1 _op, got {:?}", other),
+			};
+			let qty = match qty_col.data().get_value(i) {
+				Value::Int4(v) => v,
+				other => panic!("expected Int4 qty, got {:?}", other),
+			};
+			out.push((op, qty));
+		}
+	}
+	out
+}
+
+fn subscribe(db: &TestDb, rql: &str) -> reifydb_core::interface::catalog::id::SubscriptionId {
+	extract_sub_id(&db.admin(&format!("CREATE SUBSCRIPTION AS {{ {} }}", rql)))
+}
+
+#[test]
+fn distinct_state_outlives_the_transaction_that_produced_it() {
+	// Each commit is its own change on its own transaction, so operator state must outlive the transaction.
+	let db = make_db();
+	let sub_id = subscribe(&db, "from app::t | distinct {id}");
+
+	db.command("INSERT app::t [{id: 4, qty: 948, ts_ms: 1}]");
+	// Commit 2 arrives as an update to the delivered row only if the sink kept its delivered-row set.
+	db.command("INSERT app::t [{id: 4, qty: 351, ts_ms: 2}]");
+	// Commit 3 resurrects the shadowed qty=948 row only if distinct kept its entry map.
+	db.command("DELETE app::t FILTER { qty == 351 }");
+
+	assert_eq!(
+		ops_and_qty(drain_after_consumer_caught_up(&db, sub_id)),
+		vec![(1u8, 948), (2u8, 351), (2u8, 948)],
+		"operator state must carry across the three commits"
 	);
 }
 

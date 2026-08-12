@@ -35,14 +35,14 @@ use reifydb_runtime::{
 use tracing::instrument;
 
 use crate::{
-	operator::{OperatorCell, metrics::OperatorSampleRegistry, provider::OperatorProvider},
+	operator::{BoxedOperator, Operator, metrics::OperatorSampleRegistry, provider::OperatorProvider},
 	transaction::{FlowTransaction, substrate::FlowSubstrate},
 };
 
 pub struct FlowEngineInner<T: FlowTransaction> {
 	pub(crate) catalog: Catalog,
 	pub(crate) routines: Routines,
-	pub(crate) operators: BTreeMap<OperatorId, OperatorCell<T>>,
+	pub(crate) operators: BTreeMap<OperatorId, BoxedOperator<T>>,
 	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
 	pub(crate) sources: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
 	pub(crate) sinks: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
@@ -161,11 +161,11 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 		&self.substrate
 	}
 
-	pub fn operator(&self, operator_id: OperatorId) -> Option<OperatorCell<T>> {
-		self.operators.get(&operator_id).cloned()
+	pub fn operator(&self, operator_id: OperatorId) -> Option<&dyn Operator<T>> {
+		self.operators.get(&operator_id).map(|operator| &**operator)
 	}
 
-	pub fn insert_operator(&mut self, operator_id: OperatorId, operator: OperatorCell<T>) {
+	pub fn insert_operator(&mut self, operator_id: OperatorId, operator: BoxedOperator<T>) {
 		self.operators.insert(operator_id, operator);
 	}
 
@@ -296,7 +296,7 @@ mod tests {
 			},
 		));
 		inner.register_flow_dag(builder.build());
-		inner.insert_operator(operator, OperatorCell::new(SourceSeriesOperator::new(operator)));
+		inner.insert_operator(operator, Box::new(SourceSeriesOperator::new(operator)));
 
 		let store = inner.substrate.operators.clone();
 		store.set(operator, EncodedKey::new(b"k"), EncodedOperatorRow::timeless(&[1u8; 64]));

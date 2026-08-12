@@ -117,7 +117,7 @@ impl<T: FlowTransaction> Operator<T> for AppendOperator {
 		None
 	}
 
-	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		let parent_origin = change.origin.clone();
 		let mut result_diffs = Vec::with_capacity(change.diffs.len());
 

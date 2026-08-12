@@ -44,7 +44,7 @@ use crate::{
 		drops::SealedDrops,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::{FlowTransaction, slot::PersistFn},
+	transaction::FlowTransaction,
 };
 
 const LAYOUT_KEY_PREFIX: u8 = 0x02;
@@ -65,7 +65,7 @@ enum LoadedEntry {
 	Present(DistinctEntry),
 }
 
-pub struct DistinctOperator {
+pub struct DistinctPlan {
 	parent_schema: Option<Columns>,
 	pub(super) operator: OperatorId,
 	pub(super) compiled_expressions: Vec<CompiledExpr>,
@@ -74,6 +74,12 @@ pub struct DistinctOperator {
 	pub(super) ctx: Arc<FlowContext>,
 	pub(super) dropped: SealedDrops,
 	pub(super) _ttl: Option<Duration>,
+}
+
+pub struct DistinctOperator {
+	pub(super) plan: Arc<DistinctPlan>,
+	state: DistinctWorkingSet,
+	hydrated: bool,
 }
 
 impl DistinctOperator {
@@ -96,21 +102,76 @@ impl DistinctOperator {
 			.expect("Failed to compile expressions");
 
 		Self {
-			parent_schema,
-			operator,
-			compiled_expressions,
-			routines,
-			runtime_context,
-			ctx,
-			dropped: SealedDrops::new(operator, DROP_REASON),
-			_ttl: ttl,
+			plan: Arc::new(DistinctPlan {
+				parent_schema,
+				operator,
+				compiled_expressions,
+				routines,
+				runtime_context,
+				ctx,
+				dropped: SealedDrops::new(operator, DROP_REASON),
+				_ttl: ttl,
+			}),
+			state: DistinctWorkingSet {
+				state: DistinctState {
+					entries: IndexMap::new(),
+					layout: DistinctLayout::new(),
+					dirty: HashMap::new(),
+					layout_changed_at: None,
+				},
+				loaded: HashSet::new(),
+				groups: HashMap::new(),
+			},
+			hydrated: false,
 		}
 	}
 
-	pub(crate) fn output_schema(&self) -> Option<Columns> {
-		self.parent_schema.clone()
+	fn hydrate_once<T: FlowTransaction>(&mut self, txn: &mut T) -> Result<()> {
+		if self.hydrated {
+			return Ok(());
+		}
+		self.state.state.layout = self.plan.load_layout(txn)?;
+		self.hydrated = true;
+		Ok(())
 	}
 
+	fn flush_state<T: FlowTransaction>(&mut self, txn: &mut T) -> Result<()> {
+		let plan = self.plan.clone();
+		let working = &mut self.state;
+		let dirty: Vec<(Hash128, DateTime)> = working.state.dirty.drain().collect();
+		for (hash, at) in dirty {
+			let key = DistinctPlan::entry_key(working.groups[&hash]);
+			match working.state.entries.get(&hash) {
+				Some(entry) => {
+					let row = entry.encode_state(at).map_err(|e| {
+						Error::from(FlowStateError::Encode {
+							state: "DistinctEntry",
+							cause: e.to_string(),
+						})
+					})?;
+					utils::state_set(plan.operator, txn, &key, row)?;
+				}
+				None => utils::state_remove(plan.operator, txn, &key)?,
+			}
+		}
+		if let Some(at) = working.state.layout_changed_at.take() {
+			let layout_row = working.state.layout.encode_state(at).map_err(|e| {
+				Error::from(FlowStateError::Encode {
+					state: "DistinctLayout",
+					cause: e.to_string(),
+				})
+			})?;
+			utils::state_set(plan.operator, txn, &DistinctPlan::layout_storage_key(), layout_row)?;
+		}
+		Ok(())
+	}
+
+	pub(crate) fn output_schema(&self) -> Option<Columns> {
+		self.plan.parent_schema.clone()
+	}
+}
+
+impl DistinctPlan {
 	pub(super) fn group_bytes(hash: Hash128) -> EncodedKey {
 		EncodedKey::new(hash.0.to_be_bytes())
 	}
@@ -199,62 +260,23 @@ impl<T: FlowTransaction> RawStatefulOperator<T> for DistinctOperator {}
 
 impl<T: FlowTransaction> Operator<T> for DistinctOperator {
 	fn id(&self) -> OperatorId {
-		self.operator
+		self.plan.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		CAPABILITIES
 	}
 
-	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
-		let operator_id = self.operator;
-		let ordered = self.batch_hashes(&change.diffs)?;
+	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
+		self.hydrate_once(txn)?;
 
-		let (mut working, persist) = txn.take_operator_state::<DistinctWorkingSet, _>(operator_id, |txn| {
-			let layout = self.load_layout(txn)?;
-			let working = DistinctWorkingSet {
-				state: DistinctState {
-					entries: IndexMap::new(),
-					layout,
-					dirty: HashMap::new(),
-					layout_changed_at: None,
-				},
-				loaded: HashSet::new(),
-				groups: HashMap::new(),
-			};
-			let persist: PersistFn<T> = Box::new(move |txn, value| {
-				let working =
-					*value.downcast::<DistinctWorkingSet>().expect("DistinctWorkingSet slot type");
-				for (hash, at) in &working.state.dirty {
-					let key = Self::entry_key(working.groups[hash]);
-					match working.state.entries.get(hash) {
-						Some(entry) => {
-							let row = entry.encode_state(*at).map_err(|e| {
-								Error::from(FlowStateError::Encode {
-									state: "DistinctEntry",
-									cause: e.to_string(),
-								})
-							})?;
-							utils::state_set(operator_id, txn, &key, row)?;
-						}
-						None => utils::state_remove(operator_id, txn, &key)?,
-					}
-				}
-				if let Some(at) = working.state.layout_changed_at {
-					let layout_row = working.state.layout.encode_state(at).map_err(|e| {
-						Error::from(FlowStateError::Encode {
-							state: "DistinctLayout",
-							cause: e.to_string(),
-						})
-					})?;
-					utils::state_set(operator_id, txn, &Self::layout_storage_key(), layout_row)?;
-				}
-				Ok(())
-			});
-			Ok((working, persist))
-		})?;
+		let plan = self.plan.clone();
+		let operator_id = plan.operator;
+		let ordered = plan.batch_hashes(&change.diffs)?;
+		let working = &mut self.state;
 
-		let group_keys: Vec<EncodedKey> = ordered.iter().map(|hash| Self::group_bytes(*hash)).collect();
+		let group_keys: Vec<EncodedKey> =
+			ordered.iter().map(|hash| DistinctPlan::group_bytes(*hash)).collect();
 		let interned = txn.intern_groups(operator_id, &group_keys)?;
 		let mut fresh: HashMap<Hash128, bool> = HashMap::with_capacity(ordered.len());
 		for (hash, (group, is_new)) in ordered.iter().zip(interned) {
@@ -267,7 +289,7 @@ impl<T: FlowTransaction> Operator<T> for DistinctOperator {
 				if fresh[&hash] {
 					continue;
 				}
-				match self.load_entry(txn, working.groups[&hash])? {
+				match plan.load_entry(txn, working.groups[&hash])? {
 					LoadedEntry::Present(entry) => {
 						working.state.entries.insert(hash, entry);
 					}
@@ -287,7 +309,7 @@ impl<T: FlowTransaction> Operator<T> for DistinctOperator {
 					..
 				} => {
 					let insert_result =
-						self.process_insert(txn, &mut working.state, &working.groups, &post)?;
+						plan.process_insert(txn, &mut working.state, &working.groups, &post)?;
 					result.extend(insert_result);
 				}
 				Diff::Update {
@@ -295,7 +317,7 @@ impl<T: FlowTransaction> Operator<T> for DistinctOperator {
 					post,
 					..
 				} => {
-					let update_result = self.process_update(
+					let update_result = plan.process_update(
 						txn,
 						&mut working.state,
 						&working.groups,
@@ -309,15 +331,17 @@ impl<T: FlowTransaction> Operator<T> for DistinctOperator {
 					..
 				} => {
 					let remove_result =
-						self.process_remove(txn, &mut working.state, &working.groups, &pre)?;
+						plan.process_remove(txn, &mut working.state, &working.groups, &pre)?;
 					result.extend(remove_result);
 				}
 			}
 		}
 
-		txn.put_operator_state(operator_id, working, persist);
+		Ok(Change::from_flow(operator_id, change.version, result, change.changed_at))
+	}
 
-		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
+	fn flush(&mut self, txn: &mut T) -> Result<()> {
+		self.flush_state(txn)
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

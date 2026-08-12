@@ -2,8 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	any::Any,
-	cell::{Cell, UnsafeCell},
+	cell::UnsafeCell,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
 };
@@ -19,11 +18,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	state::store::TimerKind,
 };
-use reifydb_flow::{
-	operator::Operator,
-	timer::Timer,
-	transaction::{FlowTransaction, slot::PersistFn},
-};
+use reifydb_flow::{operator::Operator, timer::Timer, transaction::FlowTransaction};
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{OperatorLogic, timer::Timer as SdkTimer, view::bridge::BridgeChangeView},
@@ -301,15 +296,10 @@ impl<C: OperatorLogic + 'static> BridgedOperator for BridgeOperatorAdapter<C> {
 	}
 }
 
-#[derive(Clone, Copy)]
-struct SendableBridged(*const dyn BridgedOperator);
-unsafe impl Send for SendableBridged {}
-
 pub struct BridgeOperator {
 	inner: BoxedBridgedOperator,
 	operator: OperatorId,
 	capabilities: &'static [OperatorCapability],
-	last_registered_txn: Cell<u64>,
 }
 
 impl BridgeOperator {
@@ -322,30 +312,7 @@ impl BridgeOperator {
 			inner,
 			operator,
 			capabilities,
-			last_registered_txn: Cell::new(u64::MAX),
 		}
-	}
-
-	fn ensure_flush_slot<T: FlowTransaction>(&self, txn: &mut T) -> Result<()> {
-		let txn_version = txn.version().0;
-		if self.last_registered_txn.get() != txn_version {
-			let captured = SendableBridged(&*self.inner as *const dyn BridgedOperator);
-			let operator = self.operator;
-			let persist: PersistFn<T> = Box::new(move |txn: &mut T, _value: Box<dyn Any>| {
-				let captured = captured;
-				// SAFETY: captured.0 points at the heap allocation of self.inner, which is stable
-				// across moves of the wrapper and outlives the transaction running this persist
-				// closure, since the actor owning the operator also drives that transaction.
-				let bridged = unsafe { &*captured.0 };
-				let mut bridge = FlowBridge::new(txn, operator);
-				bridged.flush_state(&mut bridge)?;
-				Ok(())
-			});
-			let _ = txn.operator_state::<(), _>(operator, move |_txn| Ok(((), persist)))?;
-			txn.mark_state_dirty(operator);
-			self.last_registered_txn.set(txn_version);
-		}
-		Ok(())
 	}
 }
 
@@ -360,18 +327,21 @@ impl<T: FlowTransaction> Operator<T> for BridgeOperator {
 		self.capabilities
 	}
 
-	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
-		self.ensure_flush_slot(txn)?;
+	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		let mut bridge = FlowBridge::new(txn, self.operator);
 		self.inner.apply(&mut bridge, change)
+	}
+
+	fn flush(&mut self, txn: &mut T) -> Result<()> {
+		let mut bridge = FlowBridge::new(txn, self.operator);
+		self.inner.flush_state(&mut bridge)
 	}
 
 	fn seal_span(&self) -> Option<Duration> {
 		self.inner.seal_after().filter(|span| !span.is_zero())
 	}
 
-	fn on_timer(&self, txn: &mut T, timer: Timer) -> Result<Option<Change>> {
-		self.ensure_flush_slot(txn)?;
+	fn on_timer(&mut self, txn: &mut T, timer: Timer) -> Result<Option<Change>> {
 		let mut bridge = FlowBridge::new(txn, self.operator);
 		self.inner.on_timer(&mut bridge, timer)
 	}

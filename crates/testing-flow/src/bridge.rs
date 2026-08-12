@@ -105,7 +105,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
 	pub fn apply(&mut self, input: Change) -> Result<Change> {
 		let mut txn = self.begin_txn();
 		let output = self.operator.apply(&mut txn, input)?;
-		txn.flush_operator_states()?;
+		self.operator.flush(&mut txn)?;
 		self.end_txn(txn);
 		self.history.push(output.clone());
 		Ok(output)
@@ -124,7 +124,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
 			Some(txn) => txn,
 			None => self.begin_txn(),
 		};
-		txn.flush_operator_states()?;
+		self.operator.flush(&mut txn)?;
 		self.end_txn(txn);
 		Ok(())
 	}

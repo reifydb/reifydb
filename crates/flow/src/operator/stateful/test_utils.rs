@@ -63,7 +63,7 @@ pub mod test {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&self, _txn: &mut T, _change: Change) -> Result<Change> {
+		fn apply(&mut self, _txn: &mut T, _change: Change) -> Result<Change> {
 			todo!()
 		}
 	}

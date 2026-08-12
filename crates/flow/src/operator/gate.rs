@@ -252,7 +252,7 @@ impl<T: FlowTransaction> Operator<T> for GateOperator {
 		self.state_slot().sample()
 	}
 
-	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		self.with_state(txn, |txn| {
 			let mut result = Vec::new();
 

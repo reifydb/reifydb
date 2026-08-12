@@ -462,7 +462,7 @@ impl Operator<DeferredTransaction> for SinkRingBufferViewOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, view.columns());
 		let object_id = StorageId::ringbuffer(self.ringbuffer_id);
@@ -535,7 +535,7 @@ impl Operator<DeferredTransaction> for SinkRingBufferViewOperator {
 		Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at))
 	}
 
-	fn on_timer(&self, txn: &mut DeferredTransaction, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, txn: &mut DeferredTransaction, timer: Timer) -> Result<Option<Change>> {
 		if timer.kind != TimerKind::RowTtl || self.ttl.is_none() {
 			return Ok(None);
 		}
@@ -1210,7 +1210,7 @@ mod tests {
 
 	fn insert(
 		engine: &TestEngine,
-		op: &SinkRingBufferViewOperator,
+		op: &mut SinkRingBufferViewOperator,
 		partitioned: bool,
 		rows: &[(&str, i32)],
 		first_source_rn: u64,
@@ -1220,7 +1220,7 @@ mod tests {
 
 	fn insert_at(
 		engine: &TestEngine,
-		op: &SinkRingBufferViewOperator,
+		op: &mut SinkRingBufferViewOperator,
 		partitioned: bool,
 		rows: &[(&str, i32)],
 		first_source_rn: u64,
@@ -1243,20 +1243,21 @@ mod tests {
 
 	fn fire(
 		engine: &TestEngine,
-		op: &SinkRingBufferViewOperator,
+		op: &mut SinkRingBufferViewOperator,
 		partition_values: &[Value],
 		at: u64,
 	) -> Option<Change> {
 		// Stands in for the dispatcher. Eviction is decided by the timer's own instant, so
 		// neither the operator nor the test needs a clock.
 		let mut txn = deferred_txn(engine);
+		let key = op.timer_key(partition_values);
 		let out = op
 			.on_timer(
 				&mut txn,
 				Timer {
 					at: DateTime::from_nanos(at),
 					kind: TimerKind::RowTtl,
-					key: op.timer_key(partition_values),
+					key,
 				},
 			)
 			.unwrap();
@@ -1321,10 +1322,10 @@ mod tests {
 		// A ttl-less ring arms no RowTtl timer, so this firing can only arrive by mistake:
 		// capacity is its only bound, and evicting here truncates a buffer meant to stay whole.
 		let engine = TestEngine::new();
-		let op = build_op(true, true, None);
-		insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
+		let mut op = build_op(true, true, None);
+		insert(&engine, &mut op, true, &[("us", 1), ("us", 2)], 1);
 
-		let out = fire(&engine, &op, &base("us"), AFTER);
+		let out = fire(&engine, &mut op, &base("us"), AFTER);
 		assert!(out.is_none(), "a ttl-less ring buffer must never evict on a timer");
 		assert_eq!(row_entry_count(&engine, &op, &base("us")), 2, "no row-entry state may be reclaimed");
 		assert_eq!(metadata(&engine, &base("us")).unwrap().count, 2);
@@ -1335,10 +1336,10 @@ mod tests {
 		// The direction a cold start lands in: a watermark short of row_time + ttl must find
 		// nothing due and never fall back to "evict what looks old".
 		let engine = TestEngine::new();
-		let op = build_op(true, true, Some(hour_ttl()));
-		insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
+		let mut op = build_op(true, true, Some(hour_ttl()));
+		insert(&engine, &mut op, true, &[("us", 1), ("us", 2)], 1);
 
-		let out = fire(&engine, &op, &base("us"), T0);
+		let out = fire(&engine, &mut op, &base("us"), T0);
 		assert!(out.is_none());
 		assert_eq!(
 			row_entry_count(&engine, &op, &base("us")),
@@ -1353,12 +1354,12 @@ mod tests {
 		// A quiet partition's whole per-partition state must be reclaimed rather than stranded,
 		// while a partition that received fresher rows is left untouched.
 		let engine = TestEngine::new();
-		let op = build_op(true, true, Some(hour_ttl()));
+		let mut op = build_op(true, true, Some(hour_ttl()));
 
-		insert_at(&engine, &op, true, &[("us", 1), ("us", 2)], 1, T0);
-		insert_at(&engine, &op, true, &[("eu", 3), ("eu", 4)], 3, AFTER);
+		insert_at(&engine, &mut op, true, &[("us", 1), ("us", 2)], 1, T0);
+		insert_at(&engine, &mut op, true, &[("eu", 3), ("eu", 4)], 3, AFTER);
 
-		let out = fire(&engine, &op, &base("us"), AFTER);
+		let out = fire(&engine, &mut op, &base("us"), AFTER);
 		assert!(out.is_some(), "delete-mode eviction of real rows must announce a downstream change");
 
 		assert!(
@@ -1376,16 +1377,16 @@ mod tests {
 	#[test]
 	fn partial_expiry_decrements_count_and_advances_head_to_the_survivor() {
 		let engine = TestEngine::new();
-		let op = build_op(true, true, Some(hour_ttl()));
+		let mut op = build_op(true, true, Some(hour_ttl()));
 
-		insert_at(&engine, &op, true, &[("us", 1), ("us", 2)], 1, T0);
-		insert_at(&engine, &op, true, &[("us", 3), ("us", 4)], 3, AFTER);
+		insert_at(&engine, &mut op, true, &[("us", 1), ("us", 2)], 1, T0);
+		insert_at(&engine, &mut op, true, &[("us", 3), ("us", 4)], 3, AFTER);
 
 		let before = metadata(&engine, &base("us")).unwrap();
 		assert_eq!(before.count, 4);
 		let survivor_head = before.head + 2;
 
-		fire(&engine, &op, &base("us"), AFTER);
+		fire(&engine, &mut op, &base("us"), AFTER);
 
 		let after = metadata(&engine, &base("us")).expect("partition still has survivors");
 		assert_eq!(after.count, 2, "the two expired rows must be subtracted");
@@ -1399,11 +1400,11 @@ mod tests {
 		// Suppressing the announcement must not suppress the reclamation: state still goes, only
 		// the downstream change is withheld.
 		let engine = TestEngine::new();
-		let op = build_op(true, false, Some(hour_ttl()));
+		let mut op = build_op(true, false, Some(hour_ttl()));
 
-		insert_at(&engine, &op, true, &[("us", 1), ("us", 2)], 1, T0);
+		insert_at(&engine, &mut op, true, &[("us", 1), ("us", 2)], 1, T0);
 
-		let out = fire(&engine, &op, &base("us"), AFTER);
+		let out = fire(&engine, &mut op, &base("us"), AFTER);
 		assert!(out.is_none(), "drop mode must not announce evictions downstream");
 		assert!(metadata(&engine, &base("us")).is_none(), "drop mode must still reclaim operator state");
 		assert_eq!(row_entry_count(&engine, &op, &base("us")), 0);
@@ -1413,12 +1414,12 @@ mod tests {
 	#[test]
 	fn non_partitioned_eviction_reclaims_state() {
 		let engine = TestEngine::new();
-		let op = build_op(false, true, Some(hour_ttl()));
+		let mut op = build_op(false, true, Some(hour_ttl()));
 
-		insert_at(&engine, &op, false, &[("", 1), ("", 2)], 1, T0);
-		insert_at(&engine, &op, false, &[("", 3)], 3, AFTER);
+		insert_at(&engine, &mut op, false, &[("", 1), ("", 2)], 1, T0);
+		insert_at(&engine, &mut op, false, &[("", 3)], 3, AFTER);
 
-		fire(&engine, &op, &[], AFTER);
+		fire(&engine, &mut op, &[], AFTER);
 
 		let global = metadata(&engine, &[]).expect("the global ring keeps a single metadata key");
 		assert_eq!(global.count, 1, "only the fresh row remains counted");
@@ -1432,15 +1433,15 @@ mod tests {
 		// can put the first row to expire physically after a survivor, so the head has to be
 		// recomputed from what is left rather than advanced by the evicted count.
 		let engine = TestEngine::new();
-		let op = build_op(true, true, Some(hour_ttl()));
+		let mut op = build_op(true, true, Some(hour_ttl()));
 
-		insert_at(&engine, &op, true, &[("us", 1)], 1, AFTER);
+		insert_at(&engine, &mut op, true, &[("us", 1)], 1, AFTER);
 		let head_before = metadata(&engine, &base("us")).unwrap().head;
-		insert_at(&engine, &op, true, &[("us", 2)], 2, T0);
+		insert_at(&engine, &mut op, true, &[("us", 2)], 2, T0);
 
 		assert_eq!(metadata(&engine, &base("us")).unwrap().count, 2, "precondition: both rows are live");
 
-		fire(&engine, &op, &base("us"), AFTER);
+		fire(&engine, &mut op, &base("us"), AFTER);
 
 		let after = metadata(&engine, &base("us")).expect("the fresh row survives");
 		assert_eq!(after.count, 1, "only the row whose own time already expired is evicted");

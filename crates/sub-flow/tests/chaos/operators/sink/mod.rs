@@ -170,7 +170,7 @@ impl Operator<DeferredTransaction> for SinkOp {
 		}
 	}
 
-	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		match self {
 			SinkOp::Table(o) => o.apply(txn, change),
 			SinkOp::Series(o) => o.apply(txn, change),
