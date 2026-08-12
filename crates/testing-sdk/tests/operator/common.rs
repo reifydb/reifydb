@@ -20,13 +20,18 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 };
-use reifydb_flow::window::{
-	accumulator::{
-		WindowAccumulator,
-		invertible::{KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64, RetainedAccumulator},
-		sealing::{SealingEndpoint, SealingMax, SealingMin},
+use reifydb_flow::{
+	seal::coord::Coord,
+	window::{
+		accumulator::{
+			WindowAccumulator,
+			invertible::{
+				KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64, RetainedAccumulator,
+			},
+			sealing::{SealingEndpoint, SealingMax, SealingMin},
+		},
+		span::WindowSpan,
 	},
-	span::{WindowCoord, WindowSpan},
 };
 use reifydb_sdk::{
 	error::Result,

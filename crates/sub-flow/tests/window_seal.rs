@@ -23,7 +23,7 @@ fn two_source_window(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 			FROM app::fast APPEND { FROM app::slow }
 				| window tumbling { total: math::sum(v) }
-					with { interval: "1s", grace: "0s" }
+					with { interval: "1s", seal: "0s" }
 					by { g }
 		}"#);
 }
@@ -106,7 +106,7 @@ fn ordering_pair(grace: &str) -> (TestDb, TestDb) {
 		db.admin(&format!(r#"CREATE DEFERRED VIEW app::w {{ g: int4, total: int8 }} AS {{
 				FROM app::t
 					| window tumbling {{ total: math::sum(v) }}
-						with {{ interval: "1s", grace: "{grace}" }}
+						with {{ interval: "1s", seal: "{grace}" }}
 						by {{ g }}
 			}}"#));
 	}
@@ -260,7 +260,7 @@ fn a_window_stays_open_while_the_wall_clock_runs_past_it() {
 	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: int8 } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
-					with { interval: "2s", grace: "0s" }
+					with { interval: "2s", seal: "0s" }
 					by { g }
 		}"#);
 
@@ -306,7 +306,7 @@ fn a_session_that_keeps_extending_seals_only_after_its_final_gap() {
 	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } AS {
 			FROM app::t
 				| window session { total: math::sum(v) }
-					with { gap: "2s", grace: "0s" }
+					with { gap: "2s", seal: "0s" }
 					by { g }
 		}"#);
 
@@ -336,7 +336,7 @@ fn a_row_at_the_epoch_is_refused_once_its_window_has_sealed() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
-					with { interval: "1s", grace: "3s" }
+					with { interval: "1s", seal: "3s" }
 					by { g }
 		}"#);
 

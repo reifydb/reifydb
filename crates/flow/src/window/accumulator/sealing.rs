@@ -13,7 +13,10 @@ use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
 use super::WindowAccumulator;
-use crate::window::span::{Slot, SlotSpan, WindowCoord};
+use crate::{
+	seal::coord::Coord,
+	window::span::{Slot, SlotSpan},
+};
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]

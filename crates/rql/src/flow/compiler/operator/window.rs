@@ -21,7 +21,7 @@ pub(crate) struct WindowCompiler {
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub grace: Duration,
+	pub seal: Duration,
 }
 
 impl From<WindowNode> for WindowCompiler {
@@ -31,7 +31,7 @@ impl From<WindowNode> for WindowCompiler {
 			kind: node.kind,
 			group_by: node.group_by,
 			aggregations: node.aggregations,
-			grace: node.grace,
+			seal: node.seal,
 		}
 	}
 }
@@ -52,7 +52,7 @@ impl CompileOperator for WindowCompiler {
 				kind: self.kind,
 				group_by: self.group_by,
 				aggregations: self.aggregations,
-				grace: self.grace,
+				seal: self.seal,
 			},
 		)?;
 

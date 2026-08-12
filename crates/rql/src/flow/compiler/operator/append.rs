@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::OperatorId, row::OperatorTtl};
+use reifydb_core::{interface::catalog::flow::OperatorId, row::OperatorSeal};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -17,7 +17,7 @@ use crate::{
 pub(crate) struct AppendCompiler {
 	pub left: Box<QueryPlan>,
 	pub right: Box<QueryPlan>,
-	pub ttl: Option<OperatorTtl>,
+	pub ttl: Option<OperatorSeal>,
 }
 
 impl From<AppendQueryNode> for AppendCompiler {

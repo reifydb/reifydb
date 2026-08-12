@@ -34,13 +34,12 @@ use crate::{
 		drops::SealedDrops,
 		stateful::raw::RawStatefulOperator,
 	},
+	seal::{coord::Coord, ledger::FiredAt},
 	timer::Timer,
 	window::{
 		coord::OrdinalCoord,
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},
-		ledger::FiredAt,
 		meta::WindowMeta,
-		span::WindowCoord,
 	},
 };
 
@@ -54,7 +53,7 @@ pub struct WindowConfig {
 	pub aggregations: Vec<Expression>,
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
-	pub grace: Duration,
+	pub seal: Duration,
 	pub ctx: Arc<FlowContext>,
 }
 
@@ -67,7 +66,7 @@ pub struct WindowOperator {
 	pub core: Aggregation,
 	pub kind: WindowKind,
 
-	pub grace: Duration,
+	pub seal: Duration,
 	sealed_drops: SealedDrops,
 	rolling_engine: Option<RollingEngineSlot>,
 	meta: WindowMeta,
@@ -88,7 +87,7 @@ impl WindowOperator {
 		Self {
 			core,
 			kind: config.kind,
-			grace: config.grace,
+			seal: config.seal,
 			sealed_drops: SealedDrops::new(config.operator, "mutations targeting sealed windows"),
 			rolling_engine: None,
 			meta: WindowMeta::new(),
@@ -122,16 +121,16 @@ impl WindowOperator {
 		self.kind.size().is_some_and(|m| m.is_count())
 	}
 
-	pub fn grace(&self) -> Duration {
+	pub fn seal(&self) -> Duration {
 		if self.is_count_based() {
 			Duration::default()
 		} else {
-			self.grace
+			self.seal
 		}
 	}
 
-	pub fn grace_ms(&self) -> u64 {
-		self.grace().milliseconds().unwrap_or(0) as u64
+	pub fn seal_ms(&self) -> u64 {
+		self.seal().milliseconds().unwrap_or(0) as u64
 	}
 
 	pub(crate) fn note_sealed_drops(&self, dropped: u64) {
@@ -176,7 +175,7 @@ impl WindowOperator {
 		Ok((0..row_count)
 			.map(|i| {
 				columns.time().get(i).map_or(DateTime::default(), |dt| {
-					<DateTime as WindowCoord>::from_order(dt.to_epoch_millis() as u64)
+					<DateTime as Coord>::from_order(dt.to_epoch_millis() as u64)
 				})
 			})
 			.collect())

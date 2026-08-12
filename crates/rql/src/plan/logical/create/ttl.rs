@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::row::{JoinTtl, OperatorTtl, Ttl};
+use reifydb_core::row::{JoinSeal, OperatorSeal, Ttl};
 use reifydb_value::value::temporal::parse::duration::parse_duration;
 
 use crate::{
 	Result,
-	ast::ast::{AstJoinTtl, AstTtl},
+	ast::ast::{AstJoinSeal, AstTtl},
 	diagnostic::AstError,
 	plan::logical::Compiler,
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_operator_ttl(ast: AstTtl<'bump>) -> Result<OperatorTtl> {
+	pub(crate) fn compile_operator_seal(ast: AstTtl<'bump>) -> Result<OperatorSeal> {
 		if let Some(token) = &ast.announce {
 			return Err(AstError::UnexpectedToken {
 				expected: "no 'announce' clause: operator state is excluded from CDC".to_string(),
@@ -20,21 +20,21 @@ impl<'bump> Compiler<'bump> {
 			}
 			.into());
 		}
-		Ok(OperatorTtl {
+		Ok(OperatorSeal {
 			duration: Self::compile_ttl(ast)?.duration,
 		})
 	}
 
-	pub(crate) fn compile_join_ttl(ast: AstJoinTtl<'bump>) -> Result<JoinTtl> {
+	pub(crate) fn compile_join_seal(ast: AstJoinSeal<'bump>) -> Result<JoinSeal> {
 		let left = match ast.left {
-			Some(side) => Some(Self::compile_operator_ttl(side)?),
+			Some(side) => Some(Self::compile_operator_seal(side)?),
 			None => None,
 		};
 		let right = match ast.right {
-			Some(side) => Some(Self::compile_operator_ttl(side)?),
+			Some(side) => Some(Self::compile_operator_seal(side)?),
 			None => None,
 		};
-		Ok(JoinTtl {
+		Ok(JoinSeal {
 			left,
 			right,
 		})

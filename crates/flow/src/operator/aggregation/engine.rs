@@ -23,6 +23,7 @@ use super::{
 };
 use crate::{
 	operator::{bridge::Bridge, stateful::utils},
+	seal::coord::Coord,
 	window::{
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor,
@@ -30,7 +31,7 @@ use crate::{
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
 		meta::{EngineMeta, EngineMetaKey},
-		span::{WindowCoord, WindowSpan},
+		span::WindowSpan,
 	},
 };
 
@@ -134,7 +135,7 @@ pub(crate) fn finish_tumbling_engine(
 	groups: &WindowGroups,
 	kinds: &[SlotKind],
 	engine_config: WindowEngineConfig,
-	grace: Duration,
+	seal: Duration,
 	anchor: ExpiryAnchor,
 ) -> Result<Vec<Diff>> {
 	let mut engine = core.tumbling_engine_slot().take().unwrap_or_else(|| {
@@ -146,7 +147,7 @@ pub(crate) fn finish_tumbling_engine(
 			buckets,
 			&arrival,
 			|hash, window_start| (group_of(groups, *hash, window_start.to_order()), utils::empty_key()),
-			|| RowAccumulator::new(kinds, grace),
+			|| RowAccumulator::new(kinds, seal),
 		)?;
 		engine.flush(bridge)?;
 		res
@@ -254,10 +255,10 @@ mod bucket_start_tests {
 		// max-contributor stamp would vary with arrival and change retention decisions.
 		let bucket = 1_700_000_000_000u64;
 
-		assert_eq!(<DateTime as WindowCoord>::from_order(bucket), DateTime::from_epoch_millis(bucket).unwrap());
+		assert_eq!(<DateTime as Coord>::from_order(bucket), DateTime::from_epoch_millis(bucket).unwrap());
 		assert_eq!(
-			<DateTime as WindowCoord>::from_order(bucket),
-			<DateTime as WindowCoord>::from_order(bucket),
+			<DateTime as Coord>::from_order(bucket),
+			<DateTime as Coord>::from_order(bucket),
 			"the stamp depends on the bucket alone, so it cannot vary between two runs"
 		);
 	}
@@ -266,8 +267,8 @@ mod bucket_start_tests {
 	fn adjacent_buckets_get_distinct_stamps_in_bucket_order() {
 		// A chained rollup (1s -> 1m) collapses onto one instant unless distinct buckets get
 		// distinct stamps.
-		let first = <DateTime as WindowCoord>::from_order(1_700_000_000_000);
-		let second = <DateTime as WindowCoord>::from_order(1_700_000_001_000);
+		let first = <DateTime as Coord>::from_order(1_700_000_000_000);
+		let second = <DateTime as Coord>::from_order(1_700_000_001_000);
 
 		assert!(first < second, "bucket order must survive into #time");
 		assert_eq!(second - first, Duration::from_seconds(1).unwrap(), "a 1s bucket step is 1s in #time");
@@ -277,14 +278,13 @@ mod bucket_start_tests {
 	fn a_far_future_bucket_saturates_rather_than_wrapping() {
 		// An unrepresentable bucket must still order above a real one; wrapping would make it
 		// look ancient and be evicted at once.
-		assert_eq!(<DateTime as WindowCoord>::from_order(u64::MAX), DateTime::MAX);
-		assert!(<DateTime as WindowCoord>::from_order(u64::MAX)
-			> <DateTime as WindowCoord>::from_order(1_700_000_000_000));
+		assert_eq!(<DateTime as Coord>::from_order(u64::MAX), DateTime::MAX);
+		assert!(<DateTime as Coord>::from_order(u64::MAX) > <DateTime as Coord>::from_order(1_700_000_000_000));
 	}
 
 	#[test]
 	fn the_zero_bucket_maps_to_the_epoch() {
 		// An unset window_start must not be mistakeable for a real time far from zero.
-		assert_eq!(<DateTime as WindowCoord>::from_order(0), DateTime::EPOCH);
+		assert_eq!(<DateTime as Coord>::from_order(0), DateTime::EPOCH);
 	}
 }

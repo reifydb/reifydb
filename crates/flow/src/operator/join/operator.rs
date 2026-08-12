@@ -136,8 +136,8 @@ pub struct JoinOperator {
 	pub(crate) snapshot: bool,
 	natural: bool,
 	pub(crate) latest: bool,
-	_left_ttl: Option<Duration>,
-	_right_ttl: Option<Duration>,
+	_left_seal: Option<Duration>,
+	_right_seal: Option<Duration>,
 	ctx: Arc<FlowContext>,
 }
 
@@ -154,8 +154,8 @@ impl JoinOperator {
 		snapshot: bool,
 		natural: bool,
 		latest: bool,
-		left_ttl: Option<Duration>,
-		right_ttl: Option<Duration>,
+		left_seal: Option<Duration>,
+		right_seal: Option<Duration>,
 		ctx: Arc<FlowContext>,
 	) -> Self {
 		let left_node = left.operator;
@@ -195,8 +195,8 @@ impl JoinOperator {
 			snapshot,
 			natural,
 			latest,
-			_left_ttl: left_ttl,
-			_right_ttl: right_ttl,
+			_left_seal: left_seal,
+			_right_seal: right_seal,
 			ctx,
 		}
 	}

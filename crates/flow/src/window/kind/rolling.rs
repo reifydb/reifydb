@@ -3,10 +3,12 @@
 
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
-use crate::window::{
-	coord::RowSpan,
-	policy::{EvictionPolicy, SealPolicy},
-	span::WindowCoord,
+use crate::{
+	seal::{
+		coord::Coord,
+		policy::{EvictionPolicy, SealPolicy},
+	},
+	window::coord::RowSpan,
 };
 
 pub struct RollingOverTime {
@@ -26,8 +28,8 @@ impl RollingOverTime {
 		self.size.try_add(self.lag).unwrap_or(self.lag)
 	}
 
-	pub fn seal_policy(&self, grace: Duration) -> SealPolicy {
-		SealPolicy::rolling(self.span(), grace)
+	pub fn seal_policy(&self, seal: Duration) -> SealPolicy {
+		SealPolicy::rolling(self.span(), seal)
 	}
 
 	pub fn eviction_policy(&self) -> EvictionPolicy {
@@ -38,8 +40,8 @@ impl RollingOverTime {
 		ledger.checked_sub_span(self.span())
 	}
 
-	pub fn seal_horizon(&self, ledger: DateTime, grace: Duration) -> DateTime {
-		ledger.saturating_sub_span(self.seal_policy(grace).admissible().duration())
+	pub fn seal_horizon(&self, ledger: DateTime, seal: Duration) -> DateTime {
+		ledger.saturating_sub_span(self.seal_policy(seal).admissible().duration())
 	}
 }
 

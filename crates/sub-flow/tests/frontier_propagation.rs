@@ -42,7 +42,7 @@ fn window_behind_two_view_hops(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW sil::w { g: int4, total: int8 } AS {
 			FROM sil::mid_busy APPEND { FROM sil::mid_quiet }
 				| window tumbling { total: math::sum(v) }
-					with { interval: "1s", grace: "0s" }
+					with { interval: "1s", seal: "0s" }
 					by { g }
 		}"#);
 }
@@ -56,7 +56,7 @@ fn window_over_two_tables(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW dir::w { g: int4, total: int8 } AS {
 			FROM dir::busy APPEND { FROM dir::quiet }
 				| window tumbling { total: math::sum(v) }
-					with { interval: "1s", grace: "0s" }
+					with { interval: "1s", seal: "0s" }
 					by { g }
 		}"#);
 }
@@ -149,7 +149,7 @@ fn window_behind_a_two_view_chain(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW deep::w { g: int4, total: int8 } AS {
 			FROM deep::mid_busy APPEND { FROM deep::q2 }
 				| window tumbling { total: math::sum(v) }
-					with { interval: "1s", grace: "0s" }
+					with { interval: "1s", seal: "0s" }
 					by { g }
 		}"#);
 }

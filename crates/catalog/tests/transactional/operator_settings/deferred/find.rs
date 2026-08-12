@@ -34,7 +34,7 @@ fn deferred_append_view_persists_operator_ttl() {
 	let mut ttls = Vec::new();
 	for id in node_ids {
 		if let Some(settings) = catalog.find_operator_settings(&mut Transaction::Admin(&mut txn), id).unwrap() {
-			if let Some(ttl) = settings.ttl {
+			if let Some(ttl) = settings.seal {
 				ttls.push(ttl.duration);
 			}
 		}
@@ -52,7 +52,7 @@ fn deferred_join_view_persists_join_ttl() {
 	t.admin("CREATE TABLE os_join_d::rhs { k: int4, rv: int4 }");
 	t.admin("CREATE DEFERRED VIEW os_join_d::joined { k: int4, lv: int4, rv: int4 } AS { \
 		 FROM os_join_d::lhs \
-		 inner join { FROM os_join_d::rhs } as r using (k, r.k) with { ttl: { left: { duration: \"1s\" } } } \
+		 inner join { FROM os_join_d::rhs } as r using (k, r.k) with { seal: { left: { duration: \"1s\" } } } \
 		 map { k: k, lv: lv, rv: r_rv } }");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();

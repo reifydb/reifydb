@@ -39,7 +39,7 @@ pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
 		aggregations: parse_expression(spec.aggregations).expect("aggregations parse"),
 		runtime_context: runtime,
 		routines: routines(),
-		grace: spec.grace,
+		seal: spec.grace,
 		ctx: Arc::new(FlowContext::default()),
 	})
 }

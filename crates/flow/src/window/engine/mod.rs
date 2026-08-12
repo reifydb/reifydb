@@ -6,7 +6,6 @@
 //! construction, handing over pre-bucketed events and translating [`WindowResult`]s into diffs.
 
 pub mod config;
-pub(crate) mod expiry;
 pub mod rolling;
 pub mod rolling_incremental;
 pub mod rolling_top_k;
@@ -33,26 +32,15 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::row_number::RowNumber};
 use tracing::{debug, instrument};
 
-use crate::window::span::{Slot, WindowCoord, WindowSpan};
+use crate::{
+	seal::coord::Coord,
+	window::span::{Slot, WindowSpan},
+};
 
 /// One contribution routed to a window accumulator.
 pub enum AccumulatorEvent<C> {
 	Add(C),
 	Remove(C),
-}
-
-/// Anchors strictly below the returned horizon are sealed: immutable and eligible for reclamation.
-///
-/// `seal_after` is the coordinate's own span type, which is what stops a millisecond span being
-/// subtracted from a nanosecond instant.
-pub fn seal_horizon<C: WindowCoord>(watermark: C, seal_after: C::Span) -> C {
-	watermark.saturating_sub_span(seal_after)
-}
-
-/// Strictly below: a window sitting exactly one seal span behind the watermark is still reachable
-/// by a late event, so sealing it would discard a legitimate retraction.
-pub fn is_sealed<C: WindowCoord>(anchor: C, horizon: C) -> bool {
-	anchor < horizon
 }
 
 fn note_when_expiry_capped(expired: usize, expire_batch: usize) {

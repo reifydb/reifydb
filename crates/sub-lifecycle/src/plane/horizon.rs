@@ -22,9 +22,9 @@ pub fn max_retention_horizon(catalog: &Catalog) -> Duration {
 		.into_iter()
 		.flat_map(|(_, settings)| {
 			let join = settings.join.into_iter().flat_map(|join| [join.left, join.right]);
-			settings.ttl.into_iter().chain(join.flatten())
+			settings.seal.into_iter().chain(join.flatten())
 		})
-		.map(|ttl| ttl.duration);
+		.map(|seal| seal.duration);
 
 	rows.chain(operators).fold(floor, |longest, declared| longest.max(declared))
 }

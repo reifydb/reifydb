@@ -73,7 +73,7 @@ pub struct DistinctPlan {
 	pub(super) runtime_context: RuntimeContext,
 	pub(super) ctx: Arc<FlowContext>,
 	pub(super) dropped: SealedDrops,
-	pub(super) _ttl: Option<Duration>,
+	pub(super) _seal: Option<Duration>,
 }
 
 pub struct DistinctOperator {
@@ -90,7 +90,7 @@ impl DistinctOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
-		ttl: Option<Duration>,
+		seal: Option<Duration>,
 	) -> Self {
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
@@ -110,7 +110,7 @@ impl DistinctOperator {
 				runtime_context,
 				ctx,
 				dropped: SealedDrops::new(operator, DROP_REASON),
-				_ttl: ttl,
+				_seal: seal,
 			}),
 			state: DistinctWorkingSet {
 				state: DistinctState {

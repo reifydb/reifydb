@@ -8,7 +8,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::window::policy::{EvictionPolicy, SealPolicy, SealedThrough};
+use crate::seal::policy::{EvictionPolicy, SealPolicy, SealedThrough};
 
 pub struct SealGate {
 	policy: SealPolicy,

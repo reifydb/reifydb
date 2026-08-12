@@ -372,8 +372,8 @@ impl FlowEngineInner {
 				kind,
 				group_by,
 				aggregations,
-				grace,
-			} => self.add_window(operator_id, &inputs, kind, group_by, aggregations, grace, ctx)?,
+				seal,
+			} => self.add_window(operator_id, &inputs, kind, group_by, aggregations, seal, ctx)?,
 		}
 
 		Ok(())
@@ -585,11 +585,11 @@ impl FlowEngineInner {
 			(left, right)
 		};
 
-		let join_ttl = self.catalog.find_operator_settings(txn, operator_id)?.and_then(|s| s.join);
-		let left = join_ttl.as_ref().and_then(|j| j.left.as_ref());
-		let left_ttl = left.map(|t| t.duration);
-		let right = join_ttl.as_ref().and_then(|j| j.right.as_ref());
-		let right_ttl = right.map(|t| t.duration);
+		let join_seal = self.catalog.find_operator_settings(txn, operator_id)?.and_then(|s| s.join);
+		let left = join_seal.as_ref().and_then(|j| j.left.as_ref());
+		let left_seal = left.map(|t| t.duration);
+		let right = join_seal.as_ref().and_then(|j| j.right.as_ref());
+		let right_seal = right.map(|t| t.duration);
 
 		self.operators.insert(
 			operator_id,
@@ -612,8 +612,8 @@ impl FlowEngineInner {
 				snapshot,
 				natural,
 				latest,
-				left_ttl,
-				right_ttl,
+				left_seal,
+				right_seal,
 				Arc::clone(ctx),
 			)),
 		);
@@ -630,7 +630,7 @@ impl FlowEngineInner {
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
-		let ttl = self.operator_ttl(txn, operator_id)?;
+		let seal = self.operator_seal(txn, operator_id)?;
 		self.operators.insert(
 			operator_id,
 			Box::new(DistinctOperator::new(
@@ -640,7 +640,7 @@ impl FlowEngineInner {
 				self.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
-				ttl,
+				seal,
 			)),
 		);
 		Ok(())
@@ -677,10 +677,10 @@ impl FlowEngineInner {
 		}
 
 		let parent_schema = parent_schemas.swap_remove(0);
-		let ttl = self.operator_ttl(txn, operator_id)?;
+		let seal = self.operator_seal(txn, operator_id)?;
 		self.operators.insert(
 			operator_id,
-			Box::new(AppendOperator::new(operator_id, parent_schema, inputs.to_vec(), ttl)),
+			Box::new(AppendOperator::new(operator_id, parent_schema, inputs.to_vec(), seal)),
 		);
 		Ok(())
 	}
@@ -696,14 +696,14 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let config = evaluate_operator_config(expressions.as_slice(), &self.routines, &self.runtime_context)?;
 		let cfg = Config::new(operator.as_str(), config);
-		let ttl = self.operator_ttl(txn, operator_id)?;
+		let seal = self.operator_seal(txn, operator_id)?;
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 
 		let provider = self.operator_provider.clone();
 		let inner = provider.provide(operator_id, &cfg)?;
 
 		self.operators
-			.insert(operator_id, Box::new(ApplyOperator::new(parent_schema, operator_id, inner, ttl)));
+			.insert(operator_id, Box::new(ApplyOperator::new(parent_schema, operator_id, inner, seal)));
 		Ok(())
 	}
 
@@ -716,7 +716,7 @@ impl FlowEngineInner {
 		kind: WindowKind,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
-		grace: Duration,
+		seal: Duration,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
@@ -728,7 +728,7 @@ impl FlowEngineInner {
 			aggregations: aggregations.clone(),
 			runtime_context: self.runtime_context.clone(),
 			routines: self.routines.clone(),
-			grace,
+			seal,
 			ctx: Arc::clone(ctx),
 		});
 		self.operators.insert(operator_id, Box::new(operator));
@@ -752,14 +752,17 @@ impl FlowEngineInner {
 			map,
 			self.routines.clone(),
 			self.runtime_context.clone(),
-			self.operator_ttl(txn, operator_id)?,
+			self.operator_seal(txn, operator_id)?,
 		);
 		self.operators.insert(operator_id, Box::new(operator));
 		Ok(())
 	}
 
-	fn operator_ttl(&self, txn: &mut Transaction<'_>, operator_id: OperatorId) -> Result<Option<Duration>> {
-		Ok(self.catalog.find_operator_settings(txn, operator_id)?.and_then(|s| s.ttl).map(|ttl| ttl.duration))
+	fn operator_seal(&self, txn: &mut Transaction<'_>, operator_id: OperatorId) -> Result<Option<Duration>> {
+		Ok(self.catalog
+			.find_operator_settings(txn, operator_id)?
+			.and_then(|s| s.seal)
+			.map(|seal| seal.duration))
 	}
 
 	fn require_parent(&self, input: OperatorId) -> Result<&BoxedOperator> {

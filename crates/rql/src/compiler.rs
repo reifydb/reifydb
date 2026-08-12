@@ -437,7 +437,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 			kind: node.kind,
 			group_by: node.group_by,
 			aggregations: node.aggregations,
-			grace: node.grace,
+			seal: node.seal,
 		}),
 		PhysicalPlan::Scalarize(node) => QueryPlan::Scalarize(nodes::ScalarizeNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),

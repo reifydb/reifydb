@@ -37,7 +37,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		}
 	}
 
-	#[instrument(name = "flow::window::expiry_hydrate", level = "debug", skip_all)]
+	#[instrument(name = "flow::seal::expiry_hydrate", level = "debug", skip_all)]
 	fn hydrate(&mut self, store: &mut (impl StateStore + ?Sized)) -> Result<&mut BTreeMap<GroupStateKey, E>> {
 		if self.entries.is_none() {
 			let mut map = BTreeMap::new();

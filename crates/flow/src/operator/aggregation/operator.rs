@@ -32,9 +32,10 @@ use super::{
 use crate::{
 	context::FlowContext,
 	operator::{Operator, bridge::Bridge},
+	seal::coord::Coord,
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
-		span::{WindowCoord, WindowSpan},
+		span::WindowSpan,
 	},
 };
 
@@ -42,7 +43,7 @@ type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Opti
 
 pub struct AggregateOperator {
 	core: Aggregation,
-	_ttl: Option<Duration>,
+	_seal: Option<Duration>,
 }
 
 impl AggregateOperator {
@@ -53,7 +54,7 @@ impl AggregateOperator {
 		map: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
-		ttl: Option<Duration>,
+		seal: Option<Duration>,
 	) -> Self {
 		Self {
 			core: Aggregation::new(
@@ -66,7 +67,7 @@ impl AggregateOperator {
 				AggregateContext::Grouped,
 				Arc::new(FlowContext::default()),
 			),
-			_ttl: ttl,
+			_seal: seal,
 		}
 	}
 
@@ -108,10 +109,7 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, bridge: &mut dyn Bridge, c
 
 	let degenerate_span = |_row_idx: usize| {
 		(
-			WindowSpan::new(
-				<DateTime as WindowCoord>::from_order(0),
-				<DateTime as WindowCoord>::from_order(1),
-			),
+			WindowSpan::new(<DateTime as Coord>::from_order(0), <DateTime as Coord>::from_order(1)),
 			DateTime::default(),
 		)
 	};

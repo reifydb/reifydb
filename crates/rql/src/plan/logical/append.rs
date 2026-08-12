@@ -49,7 +49,7 @@ impl<'bump> Compiler<'bump> {
 			} => {
 				let with = self.compile(with.statement, tx)?;
 				let ttl = match ttl {
-					Some(ast_ttl) => Some(Self::compile_operator_ttl(ast_ttl)?),
+					Some(ast_ttl) => Some(Self::compile_operator_seal(ast_ttl)?),
 					None => None,
 				};
 				Ok(LogicalPlan::Append(AppendNode::Query {

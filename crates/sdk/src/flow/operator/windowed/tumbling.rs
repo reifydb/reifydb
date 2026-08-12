@@ -12,15 +12,15 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, OperatorSample},
 };
 use reifydb_flow::{
+	seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
 	timer::Timer as FlowTimer,
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, is_sealed,
+			AccumulatorEvent, EmitKind,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
-		ledger::FiredAt,
-		span::{WindowCoord, WindowSpan},
+		span::WindowSpan,
 	},
 };
 use reifydb_value::{
@@ -188,7 +188,7 @@ where
 		store: &mut OperatorContextStore<'_, C>,
 		horizon: DateTime,
 	) -> Result<()> {
-		if horizon <= <DateTime as WindowCoord>::from_order(0) {
+		if horizon <= <DateTime as Coord>::from_order(0) {
 			return Ok(());
 		}
 		engine.expire(store, horizon.to_order().saturating_sub(1))?;

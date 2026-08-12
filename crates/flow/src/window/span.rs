@@ -6,128 +6,31 @@ use std::fmt::Debug;
 use reifydb_codec::row::operator::StateCodec;
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
-use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
+use reifydb_value::value::datetime::DateTime;
 
-pub trait WindowCoord: Copy + Ord + Debug {
-	type Span: Copy + Ord + Debug + IsZero + Default + Send + Sync;
-
-	const MAX: Self;
-
-	fn saturating_sub_span(self, span: Self::Span) -> Self;
-
-	fn checked_sub_span(self, span: Self::Span) -> Option<Self>;
-
-	fn add_span(self, span: Self::Span) -> Self;
-
-	fn floor_to(self, span: Self::Span) -> Self;
-
-	fn span_since(self, earlier: Self) -> Self::Span;
-
-	fn to_order(self) -> u64;
-
-	fn from_order(order: u64) -> Self;
-
-	fn span_millis(span: Self::Span) -> Option<u64>;
-}
-
-impl WindowCoord for DateTime {
-	type Span = Duration;
-
-	const MAX: Self = DateTime::MAX;
-
-	fn saturating_sub_span(self, span: Duration) -> Self {
-		self.saturating_sub(span)
-	}
-
-	fn checked_sub_span(self, span: Duration) -> Option<Self> {
-		self.checked_sub(span)
-	}
-
-	fn add_span(self, span: Duration) -> Self {
-		self + span
-	}
-
-	fn floor_to(self, span: Duration) -> Self {
-		self - (self % span)
-	}
-
-	fn span_since(self, earlier: Self) -> Duration {
-		self - earlier
-	}
-
-	fn to_order(self) -> u64 {
-		self.to_epoch_millis() as u64
-	}
-
-	fn from_order(order: u64) -> Self {
-		DateTime::from_epoch_millis(order).unwrap_or(DateTime::MAX)
-	}
-
-	fn span_millis(span: Duration) -> Option<u64> {
-		span.milliseconds().ok().and_then(|ms| u64::try_from(ms).ok())
-	}
-}
+use crate::seal::coord::{Coord, IsZero};
 
 pub type SlotCoord<S> = <S as Slot>::Coord;
 
-pub trait WindowAnchor: Slot<Coord = Self> + WindowCoord {}
+pub trait WindowAnchor: Slot<Coord = Self> + Coord {}
 
-impl<T> WindowAnchor for T where T: Slot<Coord = T> + WindowCoord {}
+impl<T> WindowAnchor for T where T: Slot<Coord = T> + Coord {}
 
-pub type SlotSpan<S> = <<S as Slot>::Coord as WindowCoord>::Span;
+pub type SlotSpan<S> = <<S as Slot>::Coord as Coord>::Span;
 
 pub trait Slot: Copy + Ord + Debug + StateCodec {
-	type Coord: WindowCoord;
+	type Coord: Coord;
 
 	fn order_key(&self) -> Self::Coord;
 
 	fn from_order_key(coord: Self::Coord) -> Self;
 }
 
-pub trait IsZero {
-	fn is_zero(&self) -> bool;
-}
-
-impl IsZero for u64 {
-	#[inline]
-	fn is_zero(&self) -> bool {
-		*self == 0
-	}
-}
-
-impl IsZero for Duration {
-	#[inline]
-	fn is_zero(&self) -> bool {
-		*self == Duration::zero()
-	}
-}
-
-impl IsZero for DateTime {
-	#[inline]
-	fn is_zero(&self) -> bool {
-		*self == DateTime::default()
-	}
-}
-
-impl IsZero for Date {
-	#[inline]
-	fn is_zero(&self) -> bool {
-		*self == Date::default()
-	}
-}
-
-impl IsZero for Time {
-	#[inline]
-	fn is_zero(&self) -> bool {
-		*self == Time::default()
-	}
-}
-
 impl Slot for DateTime {
 	type Coord = DateTime;
 
 	fn order_key(&self) -> DateTime {
-		<DateTime as WindowCoord>::from_order(self.to_epoch_millis() as u64)
+		<DateTime as Coord>::from_order(self.to_epoch_millis() as u64)
 	}
 
 	fn from_order_key(coord: DateTime) -> Self {
@@ -150,7 +53,7 @@ impl<T: HeapSize> HeapSize for WindowSpan<T> {
 
 impl<C> WindowSpan<C>
 where
-	C: WindowCoord,
+	C: Coord,
 {
 	#[inline]
 	pub fn for_coord(coord: C, span: C::Span) -> Self {
@@ -193,10 +96,13 @@ where
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::factory::time::{at_millis, millis};
+	use reifydb_value::{
+		factory::time::{at_millis, millis},
+		value::duration::Duration,
+	};
 
 	use super::*;
-	use crate::window::engine::{is_sealed, seal_horizon};
+	use crate::seal::policy::{is_sealed, seal_horizon};
 
 	#[test]
 	fn for_coord_aligns_datetime_to_span() {
@@ -262,7 +168,7 @@ mod tests {
 			DateTime::from_epoch_millis(6_000_000).expect("representable"),
 			"a minute behind the watermark is a minute, not a million times less"
 		);
-		assert_eq!(<DateTime as WindowCoord>::span_millis(one_minute), Some(60_000));
+		assert_eq!(<DateTime as Coord>::span_millis(one_minute), Some(60_000));
 	}
 
 	#[test]
@@ -270,7 +176,7 @@ mod tests {
 		// to_order/from_order are the persisted expiry-index encoding. They must be exact inverses:
 		// a lossy round trip would move a window's anchor and either seal it early or strand it.
 		let coord = DateTime::from_epoch_millis(1_234_567).expect("representable");
-		assert_eq!(<DateTime as WindowCoord>::from_order(coord.to_order()), coord);
+		assert_eq!(<DateTime as Coord>::from_order(coord.to_order()), coord);
 	}
 
 	#[test]

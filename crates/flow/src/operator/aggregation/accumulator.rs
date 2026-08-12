@@ -16,13 +16,16 @@ use reifydb_value::{
 	},
 };
 
-use crate::window::{
-	accumulator::{
-		WindowAccumulator,
-		invertible::Multiset,
-		sealing::{SealingEndpoint, SealingMax, SealingMin},
+use crate::{
+	seal::coord::Coord,
+	window::{
+		accumulator::{
+			WindowAccumulator,
+			invertible::Multiset,
+			sealing::{SealingEndpoint, SealingMax, SealingMin},
+		},
+		span::Slot,
 	},
-	span::{Slot, WindowCoord},
 };
 
 #[operator_state]
@@ -51,7 +54,7 @@ impl Slot for WindowSlotKey {
 	type Coord = DateTime;
 
 	fn order_key(&self) -> DateTime {
-		<DateTime as WindowCoord>::from_order(self.timestamp.to_epoch_millis() as u64)
+		<DateTime as Coord>::from_order(self.timestamp.to_epoch_millis() as u64)
 	}
 
 	fn from_order_key(coord: DateTime) -> Self {
@@ -89,16 +92,16 @@ pub enum AggregateSlot {
 	Last(SealingEndpoint<WindowSlotKey, Value>),
 }
 
-fn endpoint(grace: Duration) -> SealingEndpoint<WindowSlotKey, Value> {
-	if grace.is_zero() {
+fn endpoint(seal: Duration) -> SealingEndpoint<WindowSlotKey, Value> {
+	if seal.is_zero() {
 		SealingEndpoint::default()
 	} else {
-		SealingEndpoint::with_grace(grace)
+		SealingEndpoint::with_grace(seal)
 	}
 }
 
 impl AggregateSlot {
-	fn empty(kind: SlotKind, grace: Duration) -> Self {
+	fn empty(kind: SlotKind, seal: Duration) -> Self {
 		match kind {
 			SlotKind::Count {
 				count_star,
@@ -119,21 +122,21 @@ impl AggregateSlot {
 				seen_negative: false,
 			},
 			SlotKind::Min => {
-				if grace.is_zero() {
+				if seal.is_zero() {
 					AggregateSlot::Min(Multiset::default())
 				} else {
-					AggregateSlot::MinSealed(SealingMin::with_grace(grace))
+					AggregateSlot::MinSealed(SealingMin::with_grace(seal))
 				}
 			}
 			SlotKind::Max => {
-				if grace.is_zero() {
+				if seal.is_zero() {
 					AggregateSlot::Max(Multiset::default())
 				} else {
-					AggregateSlot::MaxSealed(SealingMax::with_grace(grace))
+					AggregateSlot::MaxSealed(SealingMax::with_grace(seal))
 				}
 			}
-			SlotKind::First => AggregateSlot::First(endpoint(grace)),
-			SlotKind::Last => AggregateSlot::Last(endpoint(grace)),
+			SlotKind::First => AggregateSlot::First(endpoint(seal)),
+			SlotKind::Last => AggregateSlot::Last(endpoint(seal)),
 		}
 	}
 
@@ -510,9 +513,9 @@ impl HeapSize for RowAccumulator {
 }
 
 impl RowAccumulator {
-	pub fn new(kinds: &[SlotKind], grace: Duration) -> Self {
+	pub fn new(kinds: &[SlotKind], seal: Duration) -> Self {
 		Self {
-			slots: kinds.iter().map(|k| AggregateSlot::empty(*k, grace)).collect(),
+			slots: kinds.iter().map(|k| AggregateSlot::empty(*k, seal)).collect(),
 		}
 	}
 
@@ -528,14 +531,14 @@ impl RowAccumulator {
 		}
 	}
 
-	pub fn invertible(kinds: &[SlotKind], grace: Duration) -> bool {
+	pub fn invertible(kinds: &[SlotKind], seal: Duration) -> bool {
 		kinds.iter().all(|kind| match kind {
 			SlotKind::Count {
 				..
 			}
 			| SlotKind::Sum
 			| SlotKind::Avg => true,
-			SlotKind::Min | SlotKind::Max => grace.is_zero(),
+			SlotKind::Min | SlotKind::Max => seal.is_zero(),
 			SlotKind::First | SlotKind::Last => false,
 		})
 	}

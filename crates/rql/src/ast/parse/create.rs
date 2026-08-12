@@ -18,7 +18,7 @@ use crate::{
 			AstCreatePrimaryKey, AstCreateProcedure, AstCreateQueue, AstCreateRelationship,
 			AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
 			AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest, AstCreateTransactionalView,
-			AstHydrationConfig, AstIndexColumn, AstJoinTtl, AstPersistent, AstPolicyTargetType,
+			AstHydrationConfig, AstIndexColumn, AstJoinSeal, AstPersistent, AstPolicyTargetType,
 			AstPrimaryKey, AstProcedureParam, AstQueueDeduplicate, AstQueueDispatch, AstQueueFifo,
 			AstQueueRetention, AstQueueRetry, AstRelationshipCardinality, AstRelationshipJunction,
 			AstRowSettings, AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType,
@@ -3062,7 +3062,7 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_join_ttl(&mut self) -> Result<AstJoinTtl<'bump>> {
+	fn parse_join_seal(&mut self) -> Result<AstJoinSeal<'bump>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut left: Option<AstTtl<'bump>> = None;
@@ -3086,7 +3086,7 @@ impl<'bump> Parser<'bump> {
 							kind: AstErrorKind::UnexpectedToken {
 								expected: "single 'left' entry".to_string(),
 							},
-							message: "'left' specified more than once in join ttl"
+							message: "'left' specified more than once in join seal"
 								.to_string(),
 							fragment,
 						}));
@@ -3100,7 +3100,7 @@ impl<'bump> Parser<'bump> {
 							kind: AstErrorKind::UnexpectedToken {
 								expected: "single 'right' entry".to_string(),
 							},
-							message: "'right' specified more than once in join ttl"
+							message: "'right' specified more than once in join seal"
 								.to_string(),
 							fragment,
 						}));
@@ -3114,7 +3114,7 @@ impl<'bump> Parser<'bump> {
 							expected: "'left' or 'right'".to_string(),
 						},
 						message: format!(
-							"unexpected key '{}' in join ttl; expected 'left' or 'right'",
+							"unexpected key '{}' in join seal; expected 'left' or 'right'",
 							other
 						),
 						fragment,
@@ -3145,12 +3145,12 @@ impl<'bump> Parser<'bump> {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "at least one of 'left' or 'right'".to_string(),
 				},
-				message: "join ttl must specify at least one side ('left' or 'right')".to_string(),
+				message: "join seal must specify at least one side ('left' or 'right')".to_string(),
 				fragment,
 			}));
 		}
 
-		Ok(AstJoinTtl {
+		Ok(AstJoinSeal {
 			left,
 			right,
 		})
@@ -3197,14 +3197,14 @@ impl<'bump> Parser<'bump> {
 		Ok(ttl)
 	}
 
-	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinTtl<'bump>>, bool, bool)> {
+	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinSeal<'bump>>, bool, bool)> {
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
 			return Ok((None, false, false));
 		}
 		self.advance()?;
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut ttl: Option<AstJoinTtl<'bump>> = None;
+		let mut seal: Option<AstJoinSeal<'bump>> = None;
 		let mut snapshot: bool = false;
 		let mut latest: bool = false;
 
@@ -3218,8 +3218,8 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
-				"ttl" => {
-					ttl = Some(self.parse_join_ttl()?);
+				"seal" => {
+					seal = Some(self.parse_join_seal()?);
 				}
 				"snapshot" => {
 					let value = self.advance()?;
@@ -3267,7 +3267,7 @@ impl<'bump> Parser<'bump> {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'ttl', 'snapshot', or 'latest'".to_string(),
+							expected: "'seal', 'snapshot', or 'latest'".to_string(),
 						},
 						message: format!("unexpected key '{}' in join WITH clause", other),
 						fragment,
@@ -3279,7 +3279,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
-		Ok((ttl, snapshot, latest))
+		Ok((seal, snapshot, latest))
 	}
 
 	fn parse_create_relationship(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {

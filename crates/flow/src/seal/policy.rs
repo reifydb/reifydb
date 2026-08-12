@@ -3,7 +3,7 @@
 
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
-use crate::window::span::WindowCoord;
+use crate::seal::coord::Coord;
 
 pub const SEAL_GATE_STEP: Duration = Duration::from_milliseconds_const(1);
 
@@ -39,7 +39,7 @@ pub struct SealedThrough(DateTime);
 
 impl SealedThrough {
 	pub fn from_order(order: u64) -> Self {
-		Self(<DateTime as WindowCoord>::from_order(order))
+		Self(<DateTime as Coord>::from_order(order))
 	}
 
 	pub fn at(self) -> DateTime {
@@ -53,20 +53,20 @@ pub struct SealPolicy {
 }
 
 impl SealPolicy {
-	pub fn tumbling(size: Duration, grace: Duration) -> Self {
-		Self::extended_by_grace(size, grace)
+	pub fn tumbling(size: Duration, seal: Duration) -> Self {
+		Self::extended_by_seal(size, seal)
 	}
 
-	pub fn sliding(size: Duration, grace: Duration) -> Self {
-		Self::extended_by_grace(size, grace)
+	pub fn sliding(size: Duration, seal: Duration) -> Self {
+		Self::extended_by_seal(size, seal)
 	}
 
-	pub fn session(gap: Duration, grace: Duration) -> Self {
-		Self::extended_by_grace(gap, grace)
+	pub fn session(gap: Duration, seal: Duration) -> Self {
+		Self::extended_by_seal(gap, seal)
 	}
 
-	pub fn rolling(span: Duration, grace: Duration) -> Self {
-		Self::extended_by_grace(span, grace)
+	pub fn rolling(span: Duration, seal: Duration) -> Self {
+		Self::extended_by_seal(span, seal)
 	}
 
 	pub fn of(admissible: Duration) -> Self {
@@ -75,9 +75,9 @@ impl SealPolicy {
 		}
 	}
 
-	fn extended_by_grace(base: Duration, grace: Duration) -> Self {
+	fn extended_by_seal(base: Duration, seal: Duration) -> Self {
 		Self {
-			admissible: AdmissibleSpan(base.try_add(grace).unwrap_or(base)),
+			admissible: AdmissibleSpan(base.try_add(seal).unwrap_or(base)),
 		}
 	}
 
@@ -94,12 +94,20 @@ impl SealPolicy {
 	}
 
 	pub fn seal_instant_from_order(self, anchor_order: u64) -> SealInstant {
-		self.seal_instant(<DateTime as WindowCoord>::from_order(anchor_order))
+		self.seal_instant(<DateTime as Coord>::from_order(anchor_order))
 	}
 
 	pub fn sealed_anchor(self, at: DateTime) -> Option<DateTime> {
 		at.checked_sub(self.admissible.0).and_then(|anchor| anchor.checked_sub(SEAL_GATE_STEP))
 	}
+}
+
+pub fn seal_horizon<C: Coord>(watermark: C, seal_after: C::Span) -> C {
+	watermark.saturating_sub_span(seal_after)
+}
+
+pub fn is_sealed<C: Coord>(anchor: C, horizon: C) -> bool {
+	anchor < horizon
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,7 +127,7 @@ impl EvictionPolicy {
 	}
 
 	pub fn eviction_instant_from_order(self, anchor_order: u64) -> EvictionInstant {
-		self.eviction_instant(<DateTime as WindowCoord>::from_order(anchor_order))
+		self.eviction_instant(<DateTime as Coord>::from_order(anchor_order))
 	}
 }
 

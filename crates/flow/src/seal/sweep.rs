@@ -3,7 +3,7 @@
 
 use reifydb_value::value::datetime::DateTime;
 
-use crate::window::{ledger::FiredAt, policy::SealPolicy};
+use crate::seal::{ledger::FiredAt, policy::SealPolicy};
 
 pub struct SealSweep {
 	policy: SealPolicy,
@@ -28,7 +28,7 @@ mod tests {
 	use reifydb_value::value::duration::Duration;
 
 	use super::*;
-	use crate::{timer::Timer, window::span::WindowCoord};
+	use crate::{seal::coord::Coord, timer::Timer};
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)

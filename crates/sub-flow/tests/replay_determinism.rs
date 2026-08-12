@@ -616,7 +616,7 @@ fn window_harness(kind: WindowKind, grace: Duration, clock_ms: u64) -> Harness<W
 			aggregations: parse_expression("total: math::sum(v)").expect("aggregation parses"),
 			runtime_context: runtime,
 			routines: routines(),
-			grace,
+			seal: grace,
 			ctx: Arc::new(FlowContext::default()),
 		})
 	})

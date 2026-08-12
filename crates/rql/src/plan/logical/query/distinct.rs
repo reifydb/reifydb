@@ -10,7 +10,7 @@ use crate::{
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_distinct(&self, ast: AstDistinct<'bump>) -> Result<LogicalPlan<'bump>> {
 		let ttl = match ast.ttl {
-			Some(ast_ttl) => Some(Self::compile_operator_ttl(ast_ttl)?),
+			Some(ast_ttl) => Some(Self::compile_operator_seal(ast_ttl)?),
 			None => None,
 		};
 

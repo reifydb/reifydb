@@ -23,7 +23,7 @@ fn rolling_sum_accumulates_correctly_across_separate_commits() {
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { interval: "1h", grace: "5m" }
+					with { interval: "1h", seal: "5m" }
 					by { g }
 		}"#);
 
@@ -75,7 +75,7 @@ fn a_processing_domain_rolling_window_rolls_up_over_the_rows_own_times() {
 	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { interval: "1h", grace: "5m" }
+					with { interval: "1h", seal: "5m" }
 					by { g }
 		}"#);
 
@@ -130,7 +130,7 @@ fn an_event_view_over_an_event_source_buckets_by_the_declared_column_not_by_arri
 	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { interval: "1h", grace: "5m" }
+					with { interval: "1h", seal: "5m" }
 					by { g }
 		}"#);
 
@@ -168,7 +168,7 @@ fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { interval: "1h", grace: "5m" }
+					with { interval: "1h", seal: "5m" }
 					by { g }
 		}"#);
 
@@ -201,7 +201,7 @@ fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { interval: "1h", grace: "5m" }
+					with { interval: "1h", seal: "5m" }
 					by { g }
 		}"#);
 
@@ -240,7 +240,7 @@ fn retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact() {
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
-					with { interval: "1h", grace: "5m" }
+					with { interval: "1h", seal: "5m" }
 					by { g }
 		}"#);
 

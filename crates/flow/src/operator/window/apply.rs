@@ -27,19 +27,17 @@ use crate::{
 		bridge::Bridge,
 		stateful::utils,
 	},
+	seal::{coord::Coord, gate::disarm_seal, ledger::FiredAt, policy::SealPolicy, sweep::SealSweep},
 	window::{
 		coord::{EventCoord, RowSpan},
-		driver::{gate::disarm_seal, sweep::SealSweep},
 		engine::{AccumulatorEvent, ExpiryAnchor, WindowStateKey, tumbling::TumblingEngine},
 		kind::{
 			ordinal_window_span,
 			session::{SessionKind, SessionTracker},
 			tumbling::TumblingOverRows,
 		},
-		ledger::FiredAt,
 		meta::EngineMetaKey,
-		policy::SealPolicy,
-		span::{WindowCoord, WindowSpan},
+		span::WindowSpan,
 	},
 };
 
@@ -344,14 +342,14 @@ pub fn apply_tumbling_engine(operator: &mut WindowOperator, bridge: &mut dyn Bri
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		SealPolicy::tumbling(window_size, operator.grace()),
+		SealPolicy::tumbling(window_size, operator.seal()),
 		ExpiryAnchor::WindowStart,
 	)?;
 
 	let groups = intern_batch(bridge, &arrival)?;
 
 	let engine_config = operator.engine_config();
-	let engine_grace = operator.grace();
+	let engine_seal = operator.seal();
 	let expiry_anchor = if operator.is_count_based() {
 		ExpiryAnchor::Unindexed
 	} else {
@@ -368,7 +366,7 @@ pub fn apply_tumbling_engine(operator: &mut WindowOperator, bridge: &mut dyn Bri
 		&groups,
 		&kinds,
 		engine_config,
-		engine_grace,
+		engine_seal,
 		expiry_anchor,
 	)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
@@ -590,14 +588,14 @@ pub fn apply_sliding_engine(operator: &mut WindowOperator, bridge: &mut dyn Brid
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		SealPolicy::tumbling(window_size, operator.grace()),
+		SealPolicy::tumbling(window_size, operator.seal()),
 		ExpiryAnchor::WindowStart,
 	)?;
 
 	let groups = intern_batch(bridge, &arrival)?;
 
 	let engine_config = operator.engine_config();
-	let engine_grace = operator.grace();
+	let engine_seal = operator.seal();
 	let expiry_anchor = if operator.is_count_based() {
 		ExpiryAnchor::Unindexed
 	} else {
@@ -614,7 +612,7 @@ pub fn apply_sliding_engine(operator: &mut WindowOperator, bridge: &mut dyn Brid
 		&groups,
 		&kinds,
 		engine_config,
-		engine_grace,
+		engine_seal,
 		expiry_anchor,
 	)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
@@ -843,7 +841,7 @@ pub fn apply_session_engine(operator: &mut WindowOperator, bridge: &mut dyn Brid
 	let groups = intern_batch(bridge, &arrival)?;
 
 	let engine_config = operator.engine_config();
-	let engine_grace = operator.grace();
+	let engine_seal = operator.seal();
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
 		bridge,
@@ -855,7 +853,7 @@ pub fn apply_session_engine(operator: &mut WindowOperator, bridge: &mut dyn Brid
 		&groups,
 		&kinds,
 		engine_config,
-		engine_grace,
+		engine_seal,
 		ExpiryAnchor::LastEvent,
 	)?;
 
@@ -881,7 +879,7 @@ pub fn apply_session_engine(operator: &mut WindowOperator, bridge: &mut dyn Brid
 			engine.reindex_window(
 				bridge,
 				hash,
-				<DateTime as WindowCoord>::from_order(*session_id),
+				<DateTime as Coord>::from_order(*session_id),
 				*group,
 				&utils::empty_key(),
 				(prior_last > 0).then_some(prior_last),
@@ -1012,7 +1010,7 @@ pub fn seal_engine_windows(
 	let Some(window_size) = operator.size_duration() else {
 		return Ok(Vec::new());
 	};
-	let policy = SealPolicy::tumbling(window_size, operator.grace());
+	let policy = SealPolicy::tumbling(window_size, operator.seal());
 	seal_due_windows(operator, bridge, fired, policy)
 }
 
@@ -1021,9 +1019,9 @@ mod tests {
 	use reifydb_value::{factory::time::at_millis, value::duration::Duration};
 
 	use super::SealPolicy;
-	use crate::window::{
-		engine::{is_sealed, seal_horizon},
-		span::WindowCoord,
+	use crate::seal::{
+		coord::Coord,
+		policy::{is_sealed, seal_horizon},
 	};
 
 	#[test]

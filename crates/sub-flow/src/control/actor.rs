@@ -1230,7 +1230,7 @@ mod pull_protocol {
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
 				FROM app::t
 					| window tumbling { total: math::sum(v) }
-						with { interval: "1s", grace: "0s" }
+						with { interval: "1s", seal: "0s" }
 						by { g }
 			}"#,
 		);
@@ -1291,7 +1291,7 @@ mod pull_protocol {
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
 				FROM app::t
 					| window tumbling { total: math::sum(v) }
-						with { interval: "1s", grace: "0s" }
+						with { interval: "1s", seal: "0s" }
 						by { g }
 			}"#,
 		);

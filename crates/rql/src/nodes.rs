@@ -30,7 +30,7 @@ use reifydb_core::{
 			ResolvedView,
 		},
 	},
-	row::{JoinTtl, OperatorTtl, Ttl},
+	row::{JoinSeal, OperatorSeal, Ttl},
 	sort::{SortDirection, SortKey},
 };
 use reifydb_value::{
@@ -620,14 +620,14 @@ pub struct AggregateNode {
 	pub input: Box<QueryPlan>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
-	pub ttl: Option<OperatorTtl>,
+	pub ttl: Option<OperatorSeal>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DistinctNode {
 	pub input: Box<QueryPlan>,
 	pub columns: Vec<ResolvedColumn>,
-	pub ttl: Option<OperatorTtl>,
+	pub ttl: Option<OperatorSeal>,
 }
 
 #[derive(Debug, Clone)]
@@ -724,7 +724,7 @@ pub struct JoinInnerNode {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<JoinTtl>,
+	pub ttl: Option<JoinSeal>,
 	pub snapshot: bool,
 	pub latest: bool,
 }
@@ -735,7 +735,7 @@ pub struct JoinLeftNode {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<JoinTtl>,
+	pub ttl: Option<JoinSeal>,
 	pub snapshot: bool,
 	pub latest: bool,
 }
@@ -746,7 +746,7 @@ pub struct JoinNaturalNode {
 	pub right: Box<QueryPlan>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<JoinTtl>,
+	pub ttl: Option<JoinSeal>,
 	pub snapshot: bool,
 	pub latest: bool,
 }
@@ -755,7 +755,7 @@ pub struct JoinNaturalNode {
 pub struct AppendQueryNode {
 	pub left: Box<QueryPlan>,
 	pub right: Box<QueryPlan>,
-	pub ttl: Option<OperatorTtl>,
+	pub ttl: Option<OperatorSeal>,
 }
 
 #[derive(Debug, Clone)]
@@ -787,7 +787,7 @@ pub struct ApplyNode {
 	pub input: Option<Box<QueryPlan>>,
 	pub operator: Fragment, // FIXME becomes OperatorIdentifier
 	pub expressions: Vec<Expression>,
-	pub ttl: Option<OperatorTtl>,
+	pub ttl: Option<OperatorSeal>,
 }
 
 #[derive(Debug, Clone)]
@@ -908,7 +908,7 @@ pub struct WindowNode {
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub grace: Duration,
+	pub seal: Duration,
 }
 
 #[derive(Debug, Clone)]

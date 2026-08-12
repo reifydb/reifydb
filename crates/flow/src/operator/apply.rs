@@ -17,7 +17,7 @@ pub struct ApplyOperator {
 	parent_schema: Option<Columns>,
 	operator: OperatorId,
 	inner: BoxedOperator,
-	_ttl: Option<Duration>,
+	_seal: Option<Duration>,
 }
 
 impl ApplyOperator {
@@ -25,13 +25,13 @@ impl ApplyOperator {
 		parent_schema: Option<Columns>,
 		operator: OperatorId,
 		inner: BoxedOperator,
-		ttl: Option<Duration>,
+		seal: Option<Duration>,
 	) -> Self {
 		Self {
 			parent_schema,
 			operator,
 			inner,
-			_ttl: ttl,
+			_seal: seal,
 		}
 	}
 

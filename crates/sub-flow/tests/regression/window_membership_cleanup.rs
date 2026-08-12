@@ -60,7 +60,7 @@ fn harness(kind: WindowKind) -> Harness<WindowOperator> {
 			aggregations: parse_expression("total: math::sum(v)").expect("aggregation parses"),
 			runtime_context: runtime,
 			routines: routines(),
-			grace: Duration::default(),
+			seal: Duration::default(),
 			ctx: Arc::new(FlowContext::default()),
 		})
 	})

@@ -3,10 +3,13 @@
 
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
-use crate::window::{
-	coord::{EventCoord, OrdinalCoord, RowSpan},
-	kind::ordinal_window_span,
-	span::{WindowCoord, WindowSpan},
+use crate::{
+	seal::coord::Coord,
+	window::{
+		coord::{EventCoord, OrdinalCoord, RowSpan},
+		kind::ordinal_window_span,
+		span::WindowSpan,
+	},
 };
 
 fn fits(size: u64, slide: u64) -> Option<(u64, u64)> {
@@ -32,7 +35,7 @@ impl SlidingOverTime {
 	}
 
 	pub fn span(&self, anchor: u64) -> WindowSpan<DateTime> {
-		let start = <DateTime as WindowCoord>::from_order(anchor);
+		let start = <DateTime as Coord>::from_order(anchor);
 		WindowSpan::new(start, start.saturating_add(self.size))
 	}
 

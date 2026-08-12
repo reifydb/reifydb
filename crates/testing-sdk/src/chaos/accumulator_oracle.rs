@@ -15,9 +15,9 @@ use reifydb_core::{
 	row::Row as CoreRow,
 	value::column::columns::Columns,
 };
-use reifydb_flow::window::{
-	accumulator::WindowAccumulator,
-	span::{WindowCoord, WindowSpan},
+use reifydb_flow::{
+	seal::coord::Coord as CoordTrait,
+	window::{accumulator::WindowAccumulator, span::WindowSpan},
 };
 use reifydb_sdk::flow::operator::{
 	column::{row::Row, sink::bridge::BridgeRowSink},

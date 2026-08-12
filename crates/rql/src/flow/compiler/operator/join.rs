@@ -4,7 +4,7 @@
 use reifydb_core::{
 	common::JoinType::{self, Inner, Left},
 	interface::catalog::flow::OperatorId,
-	row::JoinTtl,
+	row::JoinSeal,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
@@ -25,7 +25,7 @@ pub(crate) struct JoinCompiler {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<String>,
-	pub ttl: Option<JoinTtl>,
+	pub ttl: Option<JoinSeal>,
 	pub snapshot: bool,
 	pub natural: bool,
 	pub latest: bool,

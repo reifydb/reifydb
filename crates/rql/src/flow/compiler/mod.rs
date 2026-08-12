@@ -17,7 +17,7 @@ use reifydb_core::{
 		view::View,
 	},
 	internal,
-	row::{JoinTtl, OperatorSettings, OperatorTtl},
+	row::{JoinSeal, OperatorSeal, OperatorSettings},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_value::{Result, error::Error, value::blob::Blob};
@@ -187,17 +187,17 @@ impl FlowCompiler {
 		&self,
 		txn: &mut Transaction<'_>,
 		operator_id: OperatorId,
-		ttl: Option<OperatorTtl>,
+		seal: Option<OperatorSeal>,
 	) -> Result<()> {
 		if self.ephemeral {
 			return Ok(());
 		}
-		if let Some(ttl) = ttl {
+		if let Some(seal) = seal {
 			create_operator_settings(
 				txn.admin_mut(),
 				operator_id,
 				&OperatorSettings {
-					ttl: Some(ttl),
+					seal: Some(seal),
 					join: None,
 				},
 			)?;
@@ -209,7 +209,7 @@ impl FlowCompiler {
 		&self,
 		txn: &mut Transaction<'_>,
 		operator_id: OperatorId,
-		join: Option<JoinTtl>,
+		join: Option<JoinSeal>,
 	) -> Result<()> {
 		if self.ephemeral {
 			return Ok(());
@@ -224,7 +224,7 @@ impl FlowCompiler {
 			txn.admin_mut(),
 			operator_id,
 			&OperatorSettings {
-				ttl: None,
+				seal: None,
 				join: Some(join),
 			},
 		)?;

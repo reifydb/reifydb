@@ -26,7 +26,7 @@ fn sliding_window(db: &TestDb, size: &str, slide: &str, grace: &str) {
 	db.admin(&format!(r#"CREATE DEFERRED VIEW app::w {{ g: int4, total: int8 }} AS {{
 				FROM app::t
 					| window sliding {{ total: math::sum(v) }}
-						with {{ interval: "{size}", slide: "{slide}", grace: "{grace}" }}
+						with {{ interval: "{size}", slide: "{slide}", seal: "{grace}" }}
 						by {{ g }}
 			}}"#));
 }

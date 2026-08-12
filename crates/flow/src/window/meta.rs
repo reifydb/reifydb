@@ -17,10 +17,12 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::window::{
-	kind::session::SessionTracker,
-	ledger::{SealLedgerState, seal_ledger_key},
-	span::WindowCoord,
+use crate::{
+	seal::{
+		coord::Coord,
+		ledger::{SealLedgerState, seal_ledger_key},
+	},
+	window::kind::session::SessionTracker,
 };
 
 #[operator_state]
@@ -316,8 +318,8 @@ impl WindowMeta {
 		};
 		Ok(SessionTracker::resumed(
 			state.session_id,
-			<DateTime as WindowCoord>::from_order(state.last_event_time),
-			<DateTime as WindowCoord>::from_order(state.session_start),
+			<DateTime as Coord>::from_order(state.last_event_time),
+			<DateTime as Coord>::from_order(state.session_start),
 		))
 	}
 

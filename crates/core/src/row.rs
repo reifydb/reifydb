@@ -43,21 +43,21 @@ impl RowSettings {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorSettings {
-	pub ttl: Option<OperatorTtl>,
+	pub seal: Option<OperatorSeal>,
 
-	pub join: Option<JoinTtl>,
+	pub join: Option<JoinSeal>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OperatorTtl {
+pub struct OperatorSeal {
 	pub duration: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct JoinTtl {
-	pub left: Option<OperatorTtl>,
+pub struct JoinSeal {
+	pub left: Option<OperatorSeal>,
 
-	pub right: Option<OperatorTtl>,
+	pub right: Option<OperatorSeal>,
 }
 
 pub fn row_shape_from_columns(family: RowFamily, value: &[Column]) -> RowShape {

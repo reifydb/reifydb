@@ -427,8 +427,9 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::window::{
-		accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig, span::WindowCoord,
+	use crate::{
+		seal::coord::Coord,
+		window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig},
 	};
 
 	// Allocates a distinct row number per key; the state.rs mock collapses every key onto row 1,

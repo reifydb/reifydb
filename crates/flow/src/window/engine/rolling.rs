@@ -21,15 +21,21 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
-use crate::window::{
-	accumulator::WindowAccumulator,
-	engine::{
-		AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaKey, RunningKey, buffer_range,
-		config::WindowEngineConfig, decode_buffer_key, decode_meta_key, decode_running_key,
-		expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range, note_when_expiry_capped,
-		persist_batch_meta, running_range, sweep_stale_meta,
+use crate::{
+	seal::{
+		coord::{Coord, IsZero},
+		expiry::ExpiryIndex,
 	},
-	span::{IsZero, Slot, WindowCoord},
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaKey, RunningKey, buffer_range,
+			config::WindowEngineConfig, decode_buffer_key, decode_meta_key, decode_running_key, expiry_key,
+			load_batch_meta, meta_key_for, meta_range, note_when_expiry_capped, persist_batch_meta,
+			running_range, sweep_stale_meta,
+		},
+		span::Slot,
+	},
 };
 
 pub type RollingBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
@@ -95,7 +101,7 @@ pub struct RollingEngine<G, C: Slot, Accumulator> {
 	expiry: ExpiryIndex<RollingIndexEntry<G>>,
 	meta_low_water: Option<u64>,
 	expire_batch: usize,
-	lag: <C::Coord as WindowCoord>::Span,
+	lag: <C::Coord as Coord>::Span,
 	hydrated: bool,
 	group_scoped: bool,
 	_pd: PhantomData<G>,
@@ -123,15 +129,15 @@ fn merge_into<A: WindowAccumulator>(running: &mut A, other: &A) {
 	}
 }
 
-fn frontier_for<C: Slot>(lag: <C::Coord as WindowCoord>::Span, high_water: &Option<C>) -> Option<C::Coord> {
+fn frontier_for<C: Slot>(lag: <C::Coord as Coord>::Span, high_water: &Option<C>) -> Option<C::Coord> {
 	if lag.is_zero() {
-		Some(<C::Coord as WindowCoord>::MAX)
+		Some(<C::Coord as Coord>::MAX)
 	} else {
 		high_water.as_ref().map(|hw| hw.order_key().saturating_sub_span(lag))
 	}
 }
 
-fn is_merged_coord<C: WindowCoord>(coord: C, frontier: Option<C>) -> bool {
+fn is_merged_coord<C: Coord>(coord: C, frontier: Option<C>) -> bool {
 	frontier.is_some_and(|f| coord <= f)
 }
 
@@ -212,7 +218,7 @@ where
 		engine
 	}
 
-	pub fn with_lag(mut self, lag: <C::Coord as WindowCoord>::Span) -> Self {
+	pub fn with_lag(mut self, lag: <C::Coord as Coord>::Span) -> Self {
 		self.lag = lag;
 		self
 	}
@@ -588,7 +594,7 @@ where
 					let old_frontier = frontier_for(self.lag, &meta.high_water());
 					let prior_min = coord_min_key(&buffer);
 					let merged_before = prior_min.is_some_and(|m| {
-						is_merged_coord(<C::Coord as WindowCoord>::from_order(m), old_frontier)
+						is_merged_coord(<C::Coord as Coord>::from_order(m), old_frontier)
 					});
 					let running = if merged_before {
 						self.load_running(store, &buffer, group_id, &key, old_frontier)?
@@ -705,9 +711,8 @@ where
 					)?;
 				}
 			}
-			let merged_any = new_min.is_some_and(|m| {
-				is_merged_coord(<C::Coord as WindowCoord>::from_order(m), new_frontier)
-			});
+			let merged_any = new_min
+				.is_some_and(|m| is_merged_coord(<C::Coord as Coord>::from_order(m), new_frontier));
 			let output = if merged_any {
 				slot.running.finalize()
 			} else {
@@ -786,7 +791,7 @@ where
 			let group_id = GroupId(entry.group_id);
 			self.expiry.drop_key(store, &index_key)?;
 			let frontier = if self.lag.is_zero() {
-				Some(<C::Coord as WindowCoord>::MAX)
+				Some(<C::Coord as Coord>::MAX)
 			} else {
 				let lag = self.lag;
 				self.meta
@@ -822,8 +827,8 @@ where
 				}
 			}
 			let new_min = coord_min_key(&buffer);
-			let merged_any = new_min
-				.is_some_and(|m| is_merged_coord(<C::Coord as WindowCoord>::from_order(m), frontier));
+			let merged_any =
+				new_min.is_some_and(|m| is_merged_coord(<C::Coord as Coord>::from_order(m), frontier));
 			let finalized = if merged_any {
 				running.finalize()
 			} else {

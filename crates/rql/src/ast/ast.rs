@@ -866,7 +866,7 @@ pub struct AstTtl<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstJoinTtl<'bump> {
+pub struct AstJoinSeal<'bump> {
 	pub left: Option<AstTtl<'bump>>,
 	pub right: Option<AstTtl<'bump>>,
 }
@@ -1505,7 +1505,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
-		ttl: Option<AstJoinTtl<'bump>>,
+		ttl: Option<AstJoinSeal<'bump>>,
 		snapshot: bool,
 		latest: bool,
 		rql: &'bump str,
@@ -1515,7 +1515,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
-		ttl: Option<AstJoinTtl<'bump>>,
+		ttl: Option<AstJoinSeal<'bump>>,
 		snapshot: bool,
 		latest: bool,
 		rql: &'bump str,
@@ -1525,7 +1525,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		join_type: Option<JoinType>,
 		alias: BumpFragment<'bump>,
-		ttl: Option<AstJoinTtl<'bump>>,
+		ttl: Option<AstJoinSeal<'bump>>,
 		snapshot: bool,
 		latest: bool,
 		rql: &'bump str,

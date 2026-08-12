@@ -84,7 +84,7 @@ impl<'bump> Compiler<'bump> {
 				let with = self.compile_join_subquery(with, &alias, tx)?;
 				let on = build_join_expressions(using_clause, &alias)?;
 				let ttl = match ttl {
-					Some(ast_ttl) => Some(Self::compile_join_ttl(ast_ttl)?),
+					Some(ast_ttl) => Some(Self::compile_join_seal(ast_ttl)?),
 					None => None,
 				};
 
@@ -111,7 +111,7 @@ impl<'bump> Compiler<'bump> {
 				let with = self.compile_join_subquery(with, &alias, tx)?;
 				let on = build_join_expressions(using_clause, &alias)?;
 				let ttl = match ttl {
-					Some(ast_ttl) => Some(Self::compile_join_ttl(ast_ttl)?),
+					Some(ast_ttl) => Some(Self::compile_join_seal(ast_ttl)?),
 					None => None,
 				};
 
@@ -137,7 +137,7 @@ impl<'bump> Compiler<'bump> {
 			} => {
 				let with = self.compile_natural_join_subquery(with, &alias, tx)?;
 				let ttl = match ttl {
-					Some(ast_ttl) => Some(Self::compile_join_ttl(ast_ttl)?),
+					Some(ast_ttl) => Some(Self::compile_join_seal(ast_ttl)?),
 					None => None,
 				};
 

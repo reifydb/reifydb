@@ -40,7 +40,7 @@ pub struct AppendOperator {
 
 	dropped: SealedDrops,
 
-	_ttl: Option<Duration>,
+	_seal: Option<Duration>,
 }
 
 impl AppendOperator {
@@ -48,7 +48,7 @@ impl AppendOperator {
 		operator: OperatorId,
 		parent_schema: Option<Columns>,
 		input_nodes: Vec<OperatorId>,
-		ttl: Option<Duration>,
+		seal: Option<Duration>,
 	) -> Self {
 		reifydb_assertions! {
 			assert!(input_nodes.len() >= 2, "Append requires at least 2 inputs");
@@ -59,7 +59,7 @@ impl AppendOperator {
 			parent_schema,
 			input_nodes,
 			dropped: SealedDrops::new(operator, DROP_REASON),
-			_ttl: ttl,
+			_seal: seal,
 		}
 	}
 
@@ -70,7 +70,7 @@ impl AppendOperator {
 			parent_schema: None,
 			input_nodes: Vec::new(),
 			dropped: SealedDrops::new(operator, DROP_REASON),
-			_ttl: None,
+			_seal: None,
 		}
 	}
 

@@ -625,7 +625,7 @@ pub mod tests {
 	fn test_inner_join_with_ttl_both_sides() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { ttl: { left: { duration: '1h' }, right: { duration: '2d' } } }";
+			with { seal: { left: { duration: '1h' }, right: { duration: '2d' } } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -648,7 +648,7 @@ pub mod tests {
 	fn test_inner_join_with_ttl_only_left() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { ttl: { left: { duration: '10m', on: updated } } }";
+			with { seal: { left: { duration: '10m', on: updated } } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -671,7 +671,7 @@ pub mod tests {
 	fn test_left_join_with_ttl_only_right() {
 		let bump = Bump::new();
 		let source = "left join { from orders } as o using (id, o.user_id) \
-			with { ttl: { right: { duration: '1d' } } }";
+			with { seal: { right: { duration: '1d' } } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -691,7 +691,7 @@ pub mod tests {
 	#[test]
 	fn test_join_with_ttl_empty_body_rejected() {
 		let bump = Bump::new();
-		let source = "inner join { from orders } as o using (id, o.user_id) with { ttl: { } }";
+		let source = "inner join { from orders } as o using (id, o.user_id) with { seal: { } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
@@ -702,7 +702,7 @@ pub mod tests {
 	fn test_join_with_old_single_ttl_shorthand_rejected() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { ttl: { duration: '1h' } }";
+			with { seal: { duration: '1h' } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
@@ -716,7 +716,7 @@ pub mod tests {
 	fn test_join_with_unknown_side_key_rejected() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { ttl: { middle: { duration: '1h' } } }";
+			with { seal: { middle: { duration: '1h' } } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
@@ -727,7 +727,7 @@ pub mod tests {
 	fn test_join_with_ttl_and_snapshot() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { ttl: { left: { duration: '5m' } }, snapshot: true }";
+			with { seal: { left: { duration: '5m' } }, snapshot: true }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -750,7 +750,7 @@ pub mod tests {
 	fn test_join_with_latest_flag() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { snapshot: true, latest: true, ttl: { left: { duration: '10s', on: created, announce: false } } }";
+			with { snapshot: true, latest: true, seal: { left: { duration: '10s', on: created, announce: false } } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();

@@ -42,7 +42,7 @@ struct ParsedConfig {
 	pub slide_count: Option<Declared<u64>>,
 	pub gap: Option<Declared<Duration>>,
 	pub lag: Option<Declared<Duration>>,
-	pub grace: Option<Declared<Duration>>,
+	pub seal: Option<Declared<Duration>>,
 	pub window: Fragment,
 }
 
@@ -51,7 +51,7 @@ pub struct WindowNode {
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub grace: Duration,
+	pub seal: Duration,
 	pub rql: String,
 }
 
@@ -69,7 +69,7 @@ impl<'bump> Compiler<'bump> {
 			kind,
 			group_by,
 			aggregations,
-			grace: Declared::value_of(&parsed.grace).unwrap_or_default(),
+			seal: Declared::value_of(&parsed.seal).unwrap_or_default(),
 			rql,
 		}))
 	}
@@ -78,9 +78,9 @@ impl<'bump> Compiler<'bump> {
 		if !kind.size().is_some_and(|size| size.is_count()) {
 			return Ok(());
 		}
-		if let Some(declared) = &parsed.grace {
+		if let Some(declared) = &parsed.seal {
 			return Err(AstError::UnexpectedToken {
-				expected: "no grace on count-based windows (grace needs a time domain)".to_string(),
+				expected: "no seal on count-based windows (seal needs a time domain)".to_string(),
 				fragment: declared.fragment.clone(),
 			}
 			.into());
@@ -344,9 +344,9 @@ impl<'bump> Compiler<'bump> {
 					.into());
 				}
 			}
-			"grace" => {
+			"seal" => {
 				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.grace = Some(Declared {
+					config.seal = Some(Declared {
 						value: parse_duration(frag.to_owned())?,
 						fragment: frag.to_owned(),
 					});
@@ -360,7 +360,7 @@ impl<'bump> Compiler<'bump> {
 			}
 			_ => {
 				return Err(AstError::UnexpectedToken {
-					expected: "interval, count, slide, gap, lag, or grace".to_string(),
+					expected: "interval, count, slide, gap, lag, or seal".to_string(),
 					fragment: config_item.key.token.fragment.to_owned(),
 				}
 				.into());
@@ -417,7 +417,7 @@ mod tests {
 	fn a_missing_measure_points_at_the_window() {
 		// An error about something absent has no key to point at, so it has to fall back to the window token;
 		// otherwise the author cannot tell which window in the statement lacks the measure.
-		let parsed = parse_window_config(r#"window tumbling { count(*) } with { grace: "1s" }"#).unwrap();
+		let parsed = parse_window_config(r#"window tumbling { count(*) } with { seal: "1s" }"#).unwrap();
 
 		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
 		assert_eq!(err.fragment.text(), "window", "the window token is the fallback span");

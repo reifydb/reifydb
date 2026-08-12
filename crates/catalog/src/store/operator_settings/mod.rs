@@ -6,7 +6,7 @@ mod find;
 pub(crate) mod shape;
 
 use reifydb_codec::row::catalog::{EncodedCatalogRow, EncodedCatalogRowBuilder};
-use reifydb_core::row::{JoinTtl, OperatorSettings, OperatorTtl};
+use reifydb_core::row::{JoinSeal, OperatorSeal, OperatorSettings};
 use reifydb_value::value::duration::Duration;
 
 use self::shape::operator_settings;
@@ -22,7 +22,7 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedCa
 		}
 		None => {
 			operator_settings::set_is_join(&mut row, false);
-			encode_side(&mut row, &settings.ttl, operator_settings::DURATION);
+			encode_side(&mut row, &settings.seal, operator_settings::DURATION);
 		}
 	}
 
@@ -34,31 +34,31 @@ pub(crate) fn decode_operator_settings(bytes: &EncodedCatalogRow) -> Option<Oper
 		let left = decode_side(bytes, operator_settings::LEFT_DURATION);
 		let right = decode_side(bytes, operator_settings::RIGHT_DURATION);
 		Some(OperatorSettings {
-			ttl: None,
-			join: Some(JoinTtl {
+			seal: None,
+			join: Some(JoinSeal {
 				left,
 				right,
 			}),
 		})
 	} else {
 		Some(OperatorSettings {
-			ttl: decode_side(bytes, operator_settings::DURATION),
+			seal: decode_side(bytes, operator_settings::DURATION),
 			join: None,
 		})
 	}
 }
 
-fn encode_side(row: &mut EncodedCatalogRowBuilder, ttl: &Option<OperatorTtl>, duration_idx: usize) {
-	let duration = ttl.as_ref().map(|ttl| ttl.duration).unwrap_or_else(Duration::zero);
+fn encode_side(row: &mut EncodedCatalogRowBuilder, seal: &Option<OperatorSeal>, duration_idx: usize) {
+	let duration = seal.as_ref().map(|seal| seal.duration).unwrap_or_else(Duration::zero);
 	operator_settings::SHAPE.set::<Duration>(row, duration_idx, duration);
 }
 
-fn decode_side(bytes: &EncodedCatalogRow, duration_idx: usize) -> Option<OperatorTtl> {
+fn decode_side(bytes: &EncodedCatalogRow, duration_idx: usize) -> Option<OperatorSeal> {
 	let duration = operator_settings::SHAPE.get::<Duration>(bytes.as_slice(), duration_idx);
 	if duration.is_zero() {
 		return None;
 	}
-	Some(OperatorTtl {
+	Some(OperatorSeal {
 		duration,
 	})
 }
@@ -67,8 +67,8 @@ fn decode_side(bytes: &EncodedCatalogRow, duration_idx: usize) -> Option<Operato
 pub mod tests {
 	use super::*;
 
-	fn ttl(duration: Duration) -> OperatorTtl {
-		OperatorTtl {
+	fn ttl(duration: Duration) -> OperatorSeal {
+		OperatorSeal {
 			duration,
 		}
 	}
@@ -81,15 +81,15 @@ pub mod tests {
 	#[test]
 	fn single_ttl_roundtrips() {
 		roundtrip(OperatorSettings {
-			ttl: Some(ttl(Duration::from_minutes(5).unwrap())),
+			seal: Some(ttl(Duration::from_minutes(5).unwrap())),
 			join: None,
 		});
 		roundtrip(OperatorSettings {
-			ttl: Some(ttl(Duration::from_hours(1).unwrap())),
+			seal: Some(ttl(Duration::from_hours(1).unwrap())),
 			join: None,
 		});
 		roundtrip(OperatorSettings {
-			ttl: None,
+			seal: None,
 			join: None,
 		});
 	}
@@ -100,29 +100,29 @@ pub mod tests {
 		let r = ttl(Duration::from_minutes(2).unwrap());
 
 		roundtrip(OperatorSettings {
-			ttl: None,
-			join: Some(JoinTtl {
+			seal: None,
+			join: Some(JoinSeal {
 				left: Some(l.clone()),
 				right: Some(r.clone()),
 			}),
 		});
 		roundtrip(OperatorSettings {
-			ttl: None,
-			join: Some(JoinTtl {
+			seal: None,
+			join: Some(JoinSeal {
 				left: Some(l),
 				right: None,
 			}),
 		});
 		roundtrip(OperatorSettings {
-			ttl: None,
-			join: Some(JoinTtl {
+			seal: None,
+			join: Some(JoinSeal {
 				left: None,
 				right: Some(r),
 			}),
 		});
 		roundtrip(OperatorSettings {
-			ttl: None,
-			join: Some(JoinTtl {
+			seal: None,
+			join: Some(JoinSeal {
 				left: None,
 				right: None,
 			}),

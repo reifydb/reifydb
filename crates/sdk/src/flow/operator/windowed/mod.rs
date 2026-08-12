@@ -19,11 +19,13 @@ use reifydb_core::{
 	key::operator_state::GroupId,
 	state::store::{StateStore, TimerKind, TimerStore},
 };
-use reifydb_flow::window::{
-	engine::config::WindowEngineConfig,
-	ledger::{FiredAt, SealLedger},
-	policy::SEAL_GATE_STEP,
-	span::{WindowCoord, WindowSpan},
+use reifydb_flow::{
+	seal::{
+		coord::Coord,
+		ledger::{FiredAt, SealLedger},
+		policy::SEAL_GATE_STEP,
+	},
+	window::{engine::config::WindowEngineConfig, span::WindowSpan},
 };
 use reifydb_value::{
 	Result,
@@ -36,7 +38,7 @@ use crate::flow::operator::context::OperatorContext;
 pub(crate) fn seal_frontier(store: &mut (impl StateStore + TimerStore + ?Sized)) -> Result<DateTime> {
 	let ledger = SealLedger::read_order(store)?.unwrap_or(0);
 	let watermark = store.flow_watermark()?.map_or(0, |at| at.to_millis());
-	Ok(<DateTime as WindowCoord>::from_order(ledger.max(watermark)))
+	Ok(<DateTime as Coord>::from_order(ledger.max(watermark)))
 }
 
 pub(crate) fn advance_seal_frontier(

@@ -97,7 +97,7 @@ pub enum OperatorDef {
 		kind: WindowKind,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
-		grace: Duration,
+		seal: Duration,
 	},
 }
 

@@ -30,19 +30,18 @@ use crate::{
 		bridge::Bridge,
 		stateful::utils,
 	},
+	seal::{gate::EvictionGate, ledger::FiredAt, policy::is_sealed},
 	window::{
 		accumulator::WindowAccumulator,
 		coord::{OrdinalCoord, RowSpan},
-		driver::gate::EvictionGate,
 		engine::{
-			AccumulatorEvent, EmitKind, is_sealed,
+			AccumulatorEvent, EmitKind,
 			rolling::{
 				RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
 				RollingResult,
 			},
 		},
 		kind::rolling::{RollingOverRows, RollingOverTime},
-		ledger::FiredAt,
 		meta::RollingMeta,
 		span::WindowAnchor,
 	},
@@ -140,7 +139,7 @@ impl RollingDomain for DateTime {
 
 	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<DateTime> {
 		Some(rolling_over_time(operator, Self::lag(operator.rolling_lag()))
-			.seal_horizon(ledger, operator.grace()))
+			.seal_horizon(ledger, operator.seal()))
 	}
 
 	fn needs_event_timestamps() -> bool {
@@ -169,7 +168,7 @@ fn intern_partitions(bridge: &mut dyn Bridge, touched: &[Hash128]) -> Result<Win
 }
 
 fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
-	!operator.is_count_based() && RowAccumulator::invertible(kinds, operator.grace())
+	!operator.is_count_based() && RowAccumulator::invertible(kinds, operator.seal())
 }
 
 fn counted_row_engine(
@@ -218,11 +217,11 @@ fn combine_rolling<C: RollingDomain>(
 	buffer: &RollingBuffer<C, RowAccumulator>,
 	kinds: &[SlotKind],
 	lag: C::Span,
-	grace: Duration,
+	seal: Duration,
 ) -> Option<Vec<Value>> {
 	let (&newest, _) = buffer.iter().next_back()?;
 	let aggregate_cutoff = newest.saturating_sub_span(lag);
-	let mut merged = RowAccumulator::new(kinds, grace);
+	let mut merged = RowAccumulator::new(kinds, seal);
 	let mut any = false;
 	for (_coord, accumulator) in buffer.range(..=aggregate_cutoff) {
 		merged.merge(accumulator);
@@ -289,7 +288,7 @@ fn apply_rolling<C: RollingDomain>(
 	change: Change,
 ) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let grace = operator.grace();
+	let seal = operator.seal();
 	let lag = C::lag(operator.rolling_lag());
 
 	let mut buckets: RollingEngineBuckets<C> = BTreeMap::new();
@@ -390,7 +389,7 @@ fn apply_rolling<C: RollingDomain>(
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
-			|| RowAccumulator::new(&kinds, grace),
+			|| RowAccumulator::new(&kinds, seal),
 		)?;
 		engine.flush(bridge)?;
 		res
@@ -401,8 +400,8 @@ fn apply_rolling<C: RollingDomain>(
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
-			|| RowAccumulator::new(&kinds, grace),
-			|_g, buffer| combine_rolling::<C>(buffer, &kinds, lag, grace),
+			|| RowAccumulator::new(&kinds, seal),
+			|_g, buffer| combine_rolling::<C>(buffer, &kinds, lag, seal),
 		)?;
 		engine.flush(bridge)?;
 		res
@@ -512,7 +511,7 @@ pub fn seal_rolling_engine(
 		return Ok(Vec::new());
 	}
 	let lag = <DateTime as RollingDomain>::lag(operator.rolling_lag());
-	let grace = operator.grace();
+	let seal = operator.seal();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let ts = fired.at();
 	operator.advance_seal_ledger(bridge, fired)?;
@@ -531,7 +530,7 @@ pub fn seal_rolling_engine(
 			} else {
 				let engine = <DateTime as RollingDomain>::engine(operator, false, lag);
 				let res = engine.expire_before(bridge, cutoff, |_g, buffer| {
-					combine_rolling::<DateTime>(buffer, &kinds, lag, grace)
+					combine_rolling::<DateTime>(buffer, &kinds, lag, seal)
 				})?;
 				engine.flush(bridge)?;
 				res
@@ -621,7 +620,10 @@ mod tests {
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
 
 	use super::*;
-	use crate::window::{engine::config::WindowEngineConfig, policy::EvictionPolicy, span::WindowCoord};
+	use crate::{
+		seal::{coord::Coord, policy::EvictionPolicy},
+		window::engine::config::WindowEngineConfig,
+	};
 
 	fn ordinal(value: u64) -> OrdinalCoord {
 		OrdinalCoord::from_arrival_counter(value)

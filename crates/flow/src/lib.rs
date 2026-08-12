@@ -11,6 +11,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod factory;
+pub mod seal;
 pub mod timer;
 pub mod window;
 

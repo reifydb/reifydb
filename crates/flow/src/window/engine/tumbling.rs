@@ -22,15 +22,18 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
-use crate::window::{
-	accumulator::WindowAccumulator,
-	engine::{
-		AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
-		accumulator_range, config::WindowEngineConfig, decode_meta_key, decode_window_state_key,
-		expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range, note_when_expiry_capped,
-		persist_batch_meta, sweep_stale_meta,
+use crate::{
+	seal::expiry::ExpiryIndex,
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
+			accumulator_range, config::WindowEngineConfig, decode_meta_key, decode_window_state_key,
+			expiry_key, load_batch_meta, meta_key_for, meta_range, note_when_expiry_capped,
+			persist_batch_meta, sweep_stale_meta,
+		},
+		span::{WindowAnchor, WindowSpan},
 	},
-	span::{WindowAnchor, WindowSpan},
 };
 
 pub type TumblingBuckets<G, C, Contribution> = BTreeMap<(G, WindowSpan<C>), Vec<AccumulatorEvent<Contribution>>>;
@@ -388,16 +391,19 @@ mod tests {
 	use reifydb_macro::operator_state;
 	use reifydb_value::{Result, factory::time::at_millis, value::datetime::DateTime};
 
-	use crate::window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, EmitKind, GroupMeta, MetaHighWater, WindowResult,
-			config::WindowEngineConfig,
-			meta_key_for,
-			test_support::{MockStore, SumAccumulator},
-			tumbling::{TumblingBuckets, TumblingEngine},
+	use crate::{
+		seal::coord::Coord,
+		window::{
+			accumulator::WindowAccumulator,
+			engine::{
+				AccumulatorEvent, EmitKind, GroupMeta, MetaHighWater, WindowResult,
+				config::WindowEngineConfig,
+				meta_key_for,
+				test_support::{MockStore, SumAccumulator},
+				tumbling::{TumblingBuckets, TumblingEngine},
+			},
+			span::WindowSpan,
 		},
-		span::{WindowCoord, WindowSpan},
 	};
 
 	fn test_config() -> WindowEngineConfig {

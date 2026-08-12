@@ -9,9 +9,9 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	row::Row as CoreRow,
 };
-use reifydb_flow::window::{
-	accumulator::invertible::RetainedAccumulator,
-	span::{WindowCoord, WindowSpan},
+use reifydb_flow::{
+	seal::coord::Coord,
+	window::{accumulator::invertible::RetainedAccumulator, span::WindowSpan},
 };
 use reifydb_sdk::{
 	error::Result,

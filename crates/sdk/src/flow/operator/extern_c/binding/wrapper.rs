@@ -13,7 +13,7 @@ use std::{
 };
 
 use reifydb_core::{interface::change::DiffType, metrics::heap::OperatorSample, state::store::TimerKind};
-use reifydb_flow::window::span::WindowCoord;
+use reifydb_flow::seal::coord::Coord;
 use reifydb_value::value::datetime::DateTime;
 use tracing::{error, instrument, warn};
 
@@ -306,7 +306,7 @@ pub unsafe extern "C" fn extern_c_on_timer<O: ExternCOperator>(
 pub unsafe extern "C" fn extern_c_seal_after_ms<O: ExternCOperator>(instance: *mut c_void) -> u64 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
-		wrapper.operator.seal_after().and_then(<DateTime as WindowCoord>::span_millis).unwrap_or(0)
+		wrapper.operator.seal_after().and_then(<DateTime as Coord>::span_millis).unwrap_or(0)
 	}));
 
 	match result {

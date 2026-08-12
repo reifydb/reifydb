@@ -14,18 +14,22 @@ use reifydb_value::{
 use super::operator::WindowOperator;
 use crate::{
 	operator::{aggregation::engine::partition_group_key, bridge::Bridge},
+	seal::{
+		coord::Coord,
+		gate::SealGate,
+		ledger::FiredAt,
+		policy::{SealPolicy, SealedThrough},
+	},
 	window::{
 		coord::{EventCoord, OrdinalCoord, RowSpan},
-		driver::{gate::SealGate, mint::Mint},
+		driver::mint::Mint,
 		kind::{
 			ordinal_window_span,
 			session::{SessionKind, SessionTracker},
 			sliding::{SlidingOverRows, SlidingOverTime},
 			tumbling::TumblingOverRows,
 		},
-		ledger::FiredAt,
-		policy::{SealPolicy, SealedThrough},
-		span::{WindowCoord, WindowSpan},
+		span::WindowSpan,
 	},
 };
 
@@ -45,7 +49,7 @@ impl WindowOperator {
 	}
 
 	pub(super) fn session_policy(&self) -> SealPolicy {
-		self.session_kind().seal_policy(self.grace())
+		self.session_kind().seal_policy(self.seal())
 	}
 
 	pub(super) fn load_session_tracker(
@@ -91,7 +95,7 @@ impl WindowOperator {
 
 	pub fn sliding_window_anchors(&self, timestamp_or_row_index: u64) -> Vec<u64> {
 		if let Some(kind) = self.sliding_over_time() {
-			let instant = <DateTime as WindowCoord>::from_order(timestamp_or_row_index);
+			let instant = <DateTime as Coord>::from_order(timestamp_or_row_index);
 			return kind.anchors(EventCoord::of(&instant));
 		}
 		if let Some(kind) = self.sliding_over_rows() {

@@ -11,12 +11,15 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	row::Row as CoreRow,
 };
-use reifydb_flow::window::{
-	accumulator::{
-		WindowAccumulator,
-		invertible::{Moments, Multiset, OrdF64},
+use reifydb_flow::{
+	seal::coord::Coord,
+	window::{
+		accumulator::{
+			WindowAccumulator,
+			invertible::{Moments, Multiset, OrdF64},
+		},
+		span::WindowSpan,
 	},
-	span::{WindowCoord, WindowSpan},
 };
 use reifydb_sdk::{
 	error::Result,

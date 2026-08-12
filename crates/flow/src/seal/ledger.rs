@@ -15,8 +15,8 @@ use reifydb_value::{Result, value::datetime::DateTime};
 #[cfg(feature = "runtime")]
 use crate::transaction::FlowTransaction;
 use crate::{
+	seal::{coord::Coord, policy::SealedThrough},
 	timer::Timer,
-	window::{policy::SealedThrough, span::WindowCoord},
 };
 
 #[operator_state]

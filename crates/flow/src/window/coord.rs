@@ -7,7 +7,10 @@ use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
-use crate::window::span::{IsZero, Slot, WindowCoord};
+use crate::{
+	seal::coord::{Coord, IsZero},
+	window::span::Slot,
+};
 
 pub trait TimeStamped {
 	fn row_time(&self) -> DateTime;
@@ -90,7 +93,7 @@ impl HeapSize for OrdinalCoord {
 	}
 }
 
-impl WindowCoord for OrdinalCoord {
+impl Coord for OrdinalCoord {
 	type Span = RowSpan;
 
 	const MAX: Self = Self {
@@ -215,7 +218,7 @@ mod tests {
 		assert_eq!(coord.saturating_sub_span(RowSpan::of(64)), OrdinalCoord::from_arrival_counter(36));
 		assert_eq!(coord.add_span(RowSpan::of(5)), OrdinalCoord::from_arrival_counter(105));
 		assert_eq!(coord.span_since(OrdinalCoord::from_arrival_counter(60)), RowSpan::of(40));
-		assert_eq!(<OrdinalCoord as WindowCoord>::span_millis(RowSpan::of(64)), None);
+		assert_eq!(<OrdinalCoord as Coord>::span_millis(RowSpan::of(64)), None);
 	}
 
 	#[test]
