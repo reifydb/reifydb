@@ -5,7 +5,7 @@ use core::ffi::c_void;
 
 use crate::flow::{
 	extern_c::wire::change::ExternCChange,
-	operator::extern_c::wire::{context::ExternCContext, state::ExternCStateUsage},
+	operator::extern_c::wire::{context::ExternCContextRaw, state::ExternCStateUsage},
 };
 
 #[repr(C)]
@@ -13,13 +13,13 @@ use crate::flow::{
 pub struct ExternCOperatorVTable {
 	pub apply: unsafe extern "C" fn(
 		instance: *mut c_void,
-		ctx: *mut ExternCContext,
+		ctx: *mut ExternCContextRaw,
 		input: *const ExternCChange,
 	) -> i32,
 
 	pub on_timer: unsafe extern "C" fn(
 		instance: *mut c_void,
-		ctx: *mut ExternCContext,
+		ctx: *mut ExternCContextRaw,
 		at_millis: u64,
 		kind: u8,
 		key: *const u8,
@@ -30,7 +30,7 @@ pub struct ExternCOperatorVTable {
 
 	pub flush_state: unsafe extern "C" fn(
 		instance: *mut c_void,
-		ctx: *mut ExternCContext,
+		ctx: *mut ExternCContextRaw,
 		usage: *mut ExternCStateUsage,
 	) -> i32,
 

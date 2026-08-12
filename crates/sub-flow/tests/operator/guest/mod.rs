@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_testing_flow::bridge::BridgeOperatorHarness;
+use reifydb_testing_flow::guest::GuestOperatorHarness;
 
-pub type Harness<C> = BridgeOperatorHarness<C>;
+pub type Harness<C> = GuestOperatorHarness<C>;
 
 mod error_abort;
 mod flush_cadence;

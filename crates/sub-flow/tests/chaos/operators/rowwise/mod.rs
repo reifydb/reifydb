@@ -13,7 +13,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	context::FlowContext,
-	operator::{Operator, bridge::Bridge, extend::ExtendOperator, filter::FilterOperator, map::MapOperator},
+	operator::{HostOperator, extend::ExtendOperator, filter::FilterOperator, host::HostContext, map::MapOperator},
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -145,36 +145,36 @@ pub enum Rowwise {
 	Extend(ExtendOperator),
 }
 
-impl Operator for Rowwise {
+impl HostOperator for Rowwise {
 	fn id(&self) -> OperatorId {
 		match self {
-			Rowwise::Filter(op) => Operator::id(op),
-			Rowwise::Map(op) => Operator::id(op),
-			Rowwise::Extend(op) => Operator::id(op),
+			Rowwise::Filter(op) => HostOperator::id(op),
+			Rowwise::Map(op) => HostOperator::id(op),
+			Rowwise::Extend(op) => HostOperator::id(op),
 		}
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		match self {
-			Rowwise::Filter(op) => Operator::capabilities(op),
-			Rowwise::Map(op) => Operator::capabilities(op),
-			Rowwise::Extend(op) => Operator::capabilities(op),
+			Rowwise::Filter(op) => HostOperator::capabilities(op),
+			Rowwise::Map(op) => HostOperator::capabilities(op),
+			Rowwise::Extend(op) => HostOperator::capabilities(op),
 		}
 	}
 
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		match self {
-			Rowwise::Filter(op) => op.apply(bridge, change),
-			Rowwise::Map(op) => op.apply(bridge, change),
-			Rowwise::Extend(op) => op.apply(bridge, change),
+			Rowwise::Filter(op) => op.apply(host, change),
+			Rowwise::Map(op) => op.apply(host, change),
+			Rowwise::Extend(op) => op.apply(host, change),
 		}
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
 		match self {
-			Rowwise::Filter(op) => Operator::output_schema(op),
-			Rowwise::Map(op) => Operator::output_schema(op),
-			Rowwise::Extend(op) => Operator::output_schema(op),
+			Rowwise::Filter(op) => HostOperator::output_schema(op),
+			Rowwise::Map(op) => HostOperator::output_schema(op),
+			Rowwise::Extend(op) => HostOperator::output_schema(op),
 		}
 	}
 }

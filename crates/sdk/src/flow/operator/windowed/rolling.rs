@@ -36,17 +36,17 @@ use tracing::debug;
 use crate::{
 	error::Result,
 	flow::operator::{
-		OperatorLogic, OperatorMetadata,
+		GuestOperator, OperatorMetadata,
 		column::{
 			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
-		context::OperatorContext,
+		context::GuestContext,
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore, bucket_of, group_of,
+			advance_seal_frontier, arm_seal_timer, bucket_of, group_of, guest_as_host::GuestAsHost,
 			intern_window_groups, seal_frontier, seal_horizon_of, window_engine_config,
 		},
 	},
@@ -71,7 +71,7 @@ pub trait RollingOperator {
 
 	fn extract(
 		&self,
-		ctx: &mut impl OperatorContext,
+		ctx: &mut impl GuestContext,
 		row: &impl RowView,
 	) -> Option<(Self::GroupKey, AccumulatorContribution<Self>)>;
 
@@ -119,7 +119,7 @@ where
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn route(&self, ctx: &mut impl OperatorContext, change: &impl ChangeView) -> Buckets<A> {
+	fn route(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Buckets<A> {
 		let mut buckets: Buckets<A> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
@@ -149,7 +149,7 @@ where
 
 	fn push_all<C: ColumnsView>(
 		&self,
-		ctx: &mut impl OperatorContext,
+		ctx: &mut impl GuestContext,
 		cols: &C,
 		buckets: &mut Buckets<A>,
 		is_add: bool,
@@ -176,7 +176,7 @@ where
 
 	fn push_updates<P: ColumnsView, Q: ColumnsView>(
 		&self,
-		ctx: &mut impl OperatorContext,
+		ctx: &mut impl GuestContext,
 		pre: &P,
 		post: &Q,
 		buckets: &mut Buckets<A>,
@@ -204,7 +204,7 @@ where
 
 	#[inline]
 	fn emit_batches(
-		ctx: &mut impl OperatorContext,
+		ctx: &mut impl GuestContext,
 		inserts: Vec<(RowNumber, A::Output)>,
 		updates: Vec<(RowNumber, A::Output)>,
 		removes: Vec<(RowNumber, A::Output)>,
@@ -243,9 +243,9 @@ where
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn expire_through<C: OperatorContext>(
+	fn expire_through<C: GuestContext>(
 		engine: &mut RollingEngine<A::GroupKey, DateTime, A::Accumulator>,
-		store: &mut OperatorContextStore<'_, C>,
+		store: &mut GuestAsHost<'_, C>,
 		horizon: DateTime,
 	) -> Result<()> {
 		if horizon > <DateTime as Coord>::from_order(0) {
@@ -269,7 +269,7 @@ where
 	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
 }
 
-impl<A> OperatorLogic for RollingDriver<A>
+impl<A> GuestOperator for RollingDriver<A>
 where
 	A: RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
@@ -291,11 +291,11 @@ where
 		})
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl OperatorContext, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
 		let Some(seal_after) = self.aggregator.seal_after() else {
 			return Ok(());
 		};
-		let mut store = OperatorContextStore(ctx);
+		let mut store = GuestAsHost(ctx);
 		let fired = FiredAt::of(&FlowTimer {
 			at: timer.at,
 			kind: timer.kind,
@@ -309,7 +309,7 @@ where
 		self.aggregator.seal_after()
 	}
 
-	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
 		let mut buckets = self.route(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
@@ -317,7 +317,7 @@ where
 
 		let seal_after = self.aggregator.seal_after();
 		if let Some(seal_after) = seal_after {
-			let mut store = OperatorContextStore(ctx);
+			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, coord)| *coord).max();
 			if let Some(newest) = newest {
 				arm_seal_timer(&mut store, newest, seal_after)?;
@@ -359,7 +359,7 @@ where
 				..
 			} = &mut *self;
 			let capacity = aggregator.capacity();
-			let mut store = OperatorContextStore(ctx);
+			let mut store = GuestAsHost(ctx);
 			engine.apply(
 				&mut store,
 				buckets,
@@ -386,7 +386,7 @@ where
 		Self::emit_batches(ctx, inserts, updates, removes)?;
 
 		if !removed_groups.is_empty() {
-			let mut store = OperatorContextStore(ctx);
+			let mut store = GuestAsHost(ctx);
 			for group in &removed_groups {
 				store.remove_row_number(
 					group_of(&groups, group, ()),
@@ -398,8 +398,8 @@ where
 		Ok(())
 	}
 
-	fn flush_state(&mut self, ctx: &mut impl OperatorContext) -> Result<()> {
-		let mut store = OperatorContextStore(ctx);
+	fn flush_state(&mut self, ctx: &mut impl GuestContext) -> Result<()> {
+		let mut store = GuestAsHost(ctx);
 		self.engine.flush(&mut store)?;
 		Ok(())
 	}

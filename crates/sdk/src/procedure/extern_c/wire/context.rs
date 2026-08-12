@@ -6,7 +6,7 @@ use core::ffi::c_void;
 use crate::procedure::extern_c::wire::callbacks::ProcedureCallbacks;
 
 #[repr(C)]
-pub struct ExternCContext {
+pub struct ExternCContextRaw {
 	pub txn_ptr: *mut c_void,
 
 	pub executor_ptr: *const c_void,

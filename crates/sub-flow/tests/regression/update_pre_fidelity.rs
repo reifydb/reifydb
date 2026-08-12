@@ -549,8 +549,8 @@ mod source {
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
 	use reifydb_flow::operator::{
-		Operator,
-		bridge::Bridge,
+		HostOperator,
+		host::HostContext,
 		scan::{
 			ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
 			view::SourceViewOperator,
@@ -739,26 +739,26 @@ mod source {
 		Ring(SourceRingBufferOperator),
 	}
 
-	impl Operator for Op {
+	impl HostOperator for Op {
 		fn id(&self) -> OperatorId {
 			SOURCE
 		}
 
 		fn capabilities(&self) -> &[reifydb_core::interface::flow::OperatorCapability] {
 			match self {
-				Op::Series(o) => Operator::capabilities(o),
-				Op::Table(o) => Operator::capabilities(o),
-				Op::View(o) => Operator::capabilities(o),
-				Op::Ring(o) => Operator::capabilities(o),
+				Op::Series(o) => HostOperator::capabilities(o),
+				Op::Table(o) => HostOperator::capabilities(o),
+				Op::View(o) => HostOperator::capabilities(o),
+				Op::Ring(o) => HostOperator::capabilities(o),
 			}
 		}
 
-		fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> reifydb_value::Result<Change> {
+		fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> reifydb_value::Result<Change> {
 			match self {
-				Op::Series(o) => o.apply(bridge, change),
-				Op::Table(o) => o.apply(bridge, change),
-				Op::View(o) => o.apply(bridge, change),
-				Op::Ring(o) => o.apply(bridge, change),
+				Op::Series(o) => o.apply(host, change),
+				Op::Table(o) => o.apply(host, change),
+				Op::View(o) => o.apply(host, change),
+				Op::Ring(o) => o.apply(host, change),
 			}
 		}
 

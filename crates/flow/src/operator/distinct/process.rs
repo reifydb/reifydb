@@ -16,17 +16,17 @@ use reifydb_value::{
 };
 
 use crate::operator::{
-	bridge::Bridge,
 	distinct::{
 		operator::DistinctPlan,
 		state::{DistinctEntry, DistinctState, SerializedRow},
 	},
+	host::HostContext,
 	stateful::utils,
 };
 
-fn row_time(bridge: &dyn Bridge, columns: &Columns, row_idx: usize) -> DateTime {
+fn row_time(host: &dyn HostContext, columns: &Columns, row_idx: usize) -> DateTime {
 	if columns.time().is_empty() {
-		bridge.written_at()
+		host.written_at()
 	} else {
 		columns.time()[row_idx]
 	}
@@ -115,7 +115,7 @@ impl DistinctPlan {
 
 	pub(super) fn process_insert(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		state: &mut DistinctState,
 		groups: &HashMap<Hash128, GroupId>,
 		columns: &Columns,
@@ -127,7 +127,7 @@ impl DistinctPlan {
 		}
 
 		if state.layout.update_from_columns(columns) {
-			state.layout_changed_at = Some(row_time(bridge, columns, 0));
+			state.layout_changed_at = Some(row_time(host, columns, 0));
 		}
 		let hashes = self.compute_hashes(columns)?;
 
@@ -168,7 +168,7 @@ impl DistinctPlan {
 			}
 		}
 		for (row_idx, &hash) in hashes.iter().enumerate() {
-			state.dirty.insert(hash, row_time(bridge, columns, row_idx));
+			state.dirty.insert(hash, row_time(host, columns, row_idx));
 		}
 
 		new_entries.sort_by_key(|&(i, _)| columns.row_numbers()[i]);
@@ -177,8 +177,7 @@ impl DistinctPlan {
 		let mut minted: Vec<(usize, RowNumber)> = Vec::with_capacity(new_entries.len());
 		let mut republished: Vec<(usize, RowNumber)> = Vec::new();
 		for &(row_idx, hash) in &new_entries {
-			let (stable_rn, is_new) =
-				bridge.get_or_create_row_number(groups[&hash], &utils::empty_key())?;
+			let (stable_rn, is_new) = host.get_or_create_row_number(groups[&hash], &utils::empty_key())?;
 			if is_new {
 				minted.push((row_idx, stable_rn));
 			} else {
@@ -194,7 +193,7 @@ impl DistinctPlan {
 		}
 
 		for (old_serialized, new_idx, hash) in swap_pairs {
-			let (stable_rn, _) = bridge.get_or_create_row_number(groups[&hash], &utils::empty_key())?;
+			let (stable_rn, _) = host.get_or_create_row_number(groups[&hash], &utils::empty_key())?;
 			let pre_cols = Self::with_stable_rn(old_serialized.to_columns(&state.layout), stable_rn);
 			let post_cols = Self::with_stable_rn(columns.extract_by_indices(&[new_idx]), stable_rn);
 			result.push(Diff::update(pre_cols, post_cols));
@@ -205,7 +204,7 @@ impl DistinctPlan {
 
 	pub(super) fn process_update(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		state: &mut DistinctState,
 		groups: &HashMap<Hash128, GroupId>,
 		pre_columns: &Columns,
@@ -217,7 +216,7 @@ impl DistinctPlan {
 		}
 
 		if state.layout.update_from_columns(post_columns) {
-			state.layout_changed_at = Some(row_time(bridge, post_columns, 0));
+			state.layout_changed_at = Some(row_time(host, post_columns, 0));
 		}
 		let pre_hashes = self.compute_hashes(pre_columns)?;
 		let post_hashes = self.compute_hashes(post_columns)?;
@@ -235,15 +234,15 @@ impl DistinctPlan {
 				let visible = if let Some(entry) = state.entries.get_mut(&pre_hash) {
 					let visible_rn = entry.rows.keys().next_back().copied();
 					entry.rows.insert(row_number, new_serialized);
-					state.dirty.insert(pre_hash, row_time(bridge, post_columns, row_idx));
+					state.dirty.insert(pre_hash, row_time(host, post_columns, row_idx));
 					visible_rn == Some(row_number)
 				} else {
 					dropped += 1;
 					false
 				};
 				if visible {
-					let (stable_rn, _) = bridge
-						.get_or_create_row_number(groups[&pre_hash], &utils::empty_key())?;
+					let (stable_rn, _) =
+						host.get_or_create_row_number(groups[&pre_hash], &utils::empty_key())?;
 					let pre_out = Self::with_stable_rn(
 						pre_columns.extract_by_indices(&[row_idx]),
 						stable_rn,
@@ -262,7 +261,7 @@ impl DistinctPlan {
 					let prev_rn = entry.rows.keys().next_back().copied().unwrap();
 					let removed = entry.rows.remove(&row_number).is_some();
 					if removed {
-						state.dirty.insert(pre_hash, row_time(bridge, post_columns, row_idx));
+						state.dirty.insert(pre_hash, row_time(host, post_columns, row_idx));
 						if entry.rows.is_empty() {
 							Some((true, None))
 						} else {
@@ -310,13 +309,13 @@ impl DistinctPlan {
 					);
 					(true, None)
 				};
-			state.dirty.insert(post_hash, row_time(bridge, post_columns, row_idx));
+			state.dirty.insert(post_hash, row_time(host, post_columns, row_idx));
 
 			if let Some((pre_is_empty, pre_new_visible_opt)) = pre_mutation {
 				let (stable_rn, _) =
-					bridge.get_or_create_row_number(groups[&pre_hash], &utils::empty_key())?;
+					host.get_or_create_row_number(groups[&pre_hash], &utils::empty_key())?;
 				if pre_is_empty {
-					bridge.remove_row_number(groups[&pre_hash], &utils::empty_key())?;
+					host.remove_row_number(groups[&pre_hash], &utils::empty_key())?;
 					result.push(Diff::remove(Self::with_stable_rn(
 						pre_columns.extract_by_indices(&[row_idx]),
 						stable_rn,
@@ -335,7 +334,7 @@ impl DistinctPlan {
 			let (post_is_new, post_displaced_opt) = post_mutation;
 			if post_is_new || post_displaced_opt.is_some() {
 				let (stable_rn, minted) =
-					bridge.get_or_create_row_number(groups[&post_hash], &utils::empty_key())?;
+					host.get_or_create_row_number(groups[&post_hash], &utils::empty_key())?;
 				let post_out =
 					Self::with_stable_rn(post_columns.extract_by_indices(&[row_idx]), stable_rn);
 				match post_displaced_opt {
@@ -355,7 +354,7 @@ impl DistinctPlan {
 
 	pub(super) fn process_remove(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		state: &mut DistinctState,
 		groups: &HashMap<Hash128, GroupId>,
 		columns: &Columns,
@@ -385,7 +384,7 @@ impl DistinctPlan {
 			if !removed {
 				continue;
 			}
-			state.dirty.insert(hash, row_time(bridge, columns, row_idx));
+			state.dirty.insert(hash, row_time(host, columns, row_idx));
 
 			if entry.rows.is_empty() {
 				empty_hashes.push(hash);
@@ -410,10 +409,10 @@ impl DistinctPlan {
 			let Some(new_visible_opt) = mutation else {
 				continue;
 			};
-			let (stable_rn, _) = bridge.get_or_create_row_number(groups[&hash], &utils::empty_key())?;
+			let (stable_rn, _) = host.get_or_create_row_number(groups[&hash], &utils::empty_key())?;
 			match new_visible_opt {
 				None => {
-					bridge.remove_row_number(groups[&hash], &utils::empty_key())?;
+					host.remove_row_number(groups[&hash], &utils::empty_key())?;
 					result.push(Diff::remove(Self::with_stable_rn(
 						columns.extract_by_indices(&[row_idx]),
 						stable_rn,

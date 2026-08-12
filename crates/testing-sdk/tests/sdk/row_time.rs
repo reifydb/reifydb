@@ -10,7 +10,7 @@
 
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::value::column::columns::Columns;
-use reifydb_sdk::flow::operator::view::{ColumnsView, RowView, bridge::BridgeColumnsView};
+use reifydb_sdk::flow::operator::view::{ColumnsView, RowView, in_process::InProcessColumnsView};
 use reifydb_testing_sdk::builders::TestOperatorRowBuilder;
 use reifydb_value::value::{Value, datetime::DateTime, value_type::ValueType};
 
@@ -36,7 +36,7 @@ fn a_stamped_row_reports_its_stamp_as_row_time() {
 	let built = row(1, "BTC", 10.0).with_time(at).build();
 
 	let columns = Columns::from_row(&built);
-	let view = BridgeColumnsView::new(&columns);
+	let view = InProcessColumnsView::new(&columns);
 	let seen = view.row(0).expect("row 0").row_time();
 
 	assert_eq!(seen, Some(at), "row_time must report the stamp the row was built with");
@@ -51,7 +51,7 @@ fn an_unstamped_row_reads_as_absent_not_as_the_epoch() {
 	let built = row(1, "BTC", 10.0).build();
 
 	let columns = Columns::from_row(&built);
-	let view = BridgeColumnsView::new(&columns);
+	let view = InProcessColumnsView::new(&columns);
 
 	assert_eq!(view.row(0).expect("row 0").row_time(), None, "an unstamped row must report no #time at all");
 }
@@ -63,7 +63,7 @@ fn a_row_stamped_at_the_epoch_is_present_not_absent() {
 	let built = row(1, "BTC", 10.0).with_time(DateTime::default()).build();
 
 	let columns = Columns::from_row(&built);
-	let view = BridgeColumnsView::new(&columns);
+	let view = InProcessColumnsView::new(&columns);
 	let seen = view.row(0).expect("row 0").row_time();
 
 	assert_eq!(seen, Some(DateTime::default()), "an explicit epoch stamp must survive as a value");
@@ -82,7 +82,7 @@ fn distinct_stamps_survive_independently_across_rows_in_one_batch() {
 	let later = Columns::from_row(&row(2, "BTC", 20.0).with_time(second).build());
 	columns.append(later).expect("append");
 
-	let view = BridgeColumnsView::new(&columns);
+	let view = InProcessColumnsView::new(&columns);
 	assert_eq!(view.row_count(), 2, "precondition: both rows are in one batch");
 	assert_eq!(view.row(0).expect("row 0").row_time(), Some(first));
 	assert_eq!(

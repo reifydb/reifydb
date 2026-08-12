@@ -33,7 +33,7 @@ use tracing::instrument;
 
 use crate::{
 	operator::{
-		BoxedOperator, Operator, metrics::OperatorSampleRegistry, provider::OperatorProvider,
+		BoxedHostOperator, HostOperator, metrics::OperatorSampleRegistry, provider::OperatorProvider,
 		sink::BoxedDurableSink,
 	},
 	transaction::substrate::FlowSubstrate,
@@ -42,7 +42,7 @@ use crate::{
 pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,
 	pub(crate) routines: Routines,
-	pub(crate) operators: BTreeMap<OperatorId, BoxedOperator>,
+	pub(crate) operators: BTreeMap<OperatorId, BoxedHostOperator>,
 	pub(crate) durable_sinks: BTreeMap<OperatorId, BoxedDurableSink>,
 	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
 	pub(crate) sources: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
@@ -114,11 +114,11 @@ impl FlowEngineInner {
 		&self.substrate
 	}
 
-	pub fn operator(&self, operator_id: OperatorId) -> Option<&dyn Operator> {
+	pub fn operator(&self, operator_id: OperatorId) -> Option<&dyn HostOperator> {
 		self.operators.get(&operator_id).map(|operator| &**operator)
 	}
 
-	pub fn insert_operator(&mut self, operator_id: OperatorId, operator: BoxedOperator) {
+	pub fn insert_operator(&mut self, operator_id: OperatorId, operator: BoxedHostOperator) {
 		self.operators.insert(operator_id, operator);
 	}
 

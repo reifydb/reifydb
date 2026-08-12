@@ -5,7 +5,7 @@
 //! driver owns diff routing, boundary math, late-event drop and state persistence in one place, so an operator
 //! only describes its accumulator and how to build an output row.
 
-pub mod bridge;
+pub mod guest_as_host;
 pub mod rolling;
 pub mod rolling_incremental;
 pub mod rolling_top_k;
@@ -33,7 +33,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::flow::operator::context::OperatorContext;
+use crate::flow::operator::context::GuestContext;
 
 pub(crate) fn seal_frontier(store: &mut (impl StateStore + TimerStore + ?Sized)) -> Result<DateTime> {
 	let ledger = SealLedger::read_order(store)?.unwrap_or(0);
@@ -65,7 +65,7 @@ pub(crate) fn arm_seal_timer(store: &mut impl TimerStore, newest_window: DateTim
 pub(crate) type WindowGroups<G, C> = HashMap<(G, C), GroupId>;
 
 pub(crate) fn intern_window_groups<G, C>(
-	ctx: &mut impl OperatorContext,
+	ctx: &mut impl GuestContext,
 	windows: impl IntoIterator<Item = ((G, C), EncodedKey)>,
 ) -> Result<WindowGroups<G, C>>
 where

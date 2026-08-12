@@ -12,7 +12,7 @@ use super::{
 	},
 };
 use crate::operator::{
-	bridge::Bridge,
+	host::HostContext,
 	join::{
 		snapshot::{SnapshotJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
 		state::JoinSide,
@@ -24,7 +24,7 @@ pub(crate) struct InnerHashJoin;
 impl InnerHashJoin {
 	pub(crate) fn handle_insert_undefined(
 		&self,
-		_bridge: &mut dyn Bridge,
+		_host: &mut dyn HostContext,
 		_post: &Columns,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
@@ -34,7 +34,7 @@ impl InnerHashJoin {
 
 	pub(crate) fn handle_remove_undefined(
 		&self,
-		_bridge: &mut dyn Bridge,
+		_host: &mut dyn HostContext,
 		_pre: &Columns,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
@@ -44,7 +44,7 @@ impl InnerHashJoin {
 
 	pub(crate) fn handle_update_both_undefined(
 		&self,
-		_bridge: &mut dyn Bridge,
+		_host: &mut dyn HostContext,
 		_pre: &Columns,
 		_post: &Columns,
 		_row_idx: usize,
@@ -55,7 +55,7 @@ impl InnerHashJoin {
 
 	pub(crate) fn handle_insert(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -69,10 +69,10 @@ impl InnerHashJoin {
 
 		match ctx.side {
 			JoinSide::Left => {
-				add_to_state_entry_batch(bridge, &mut ctx.state.left, key_hash, post, indices)?;
+				add_to_state_entry_batch(host, &mut ctx.state.left, key_hash, post, indices)?;
 			}
 			JoinSide::Right => {
-				add_to_state_entry_batch(bridge, &mut ctx.state.right, key_hash, post, indices)?;
+				add_to_state_entry_batch(host, &mut ctx.state.right, key_hash, post, indices)?;
 			}
 		}
 
@@ -87,7 +87,7 @@ impl InnerHashJoin {
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			result.extend(publish_joined(bridge, &snapshot_ctx, key_hash, post, indices, false)?);
+			result.extend(publish_joined(host, &snapshot_ctx, key_hash, post, indices, false)?);
 			return Ok(result);
 		}
 
@@ -100,14 +100,14 @@ impl InnerHashJoin {
 			operator: ctx.operator,
 		};
 
-		result.extend(emit_joined_columns_batch(bridge, post, indices, ctx.side, &emit_ctx)?);
+		result.extend(emit_joined_columns_batch(host, post, indices, ctx.side, &emit_ctx)?);
 
 		Ok(result)
 	}
 
 	pub(crate) fn handle_remove(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -130,7 +130,7 @@ impl InnerHashJoin {
 				JoinSide::Left => {
 					for &idx in indices {
 						result.extend(withdraw_joined(
-							bridge,
+							host,
 							&snapshot_ctx,
 							key_hash,
 							pre,
@@ -140,7 +140,7 @@ impl InnerHashJoin {
 				}
 				JoinSide::Right => {
 					for &idx in indices {
-						retire_right(bridge, &snapshot_ctx, key_hash, pre.row_numbers()[idx])?;
+						retire_right(host, &snapshot_ctx, key_hash, pre.row_numbers()[idx])?;
 					}
 				}
 			}
@@ -158,27 +158,27 @@ impl InnerHashJoin {
 				operator: ctx.operator,
 			};
 
-			result.extend(emit_remove_joined_columns_batch(bridge, pre, indices, ctx.side, &emit_ctx)?);
+			result.extend(emit_remove_joined_columns_batch(host, pre, indices, ctx.side, &emit_ctx)?);
 		}
 
 		let group = match ctx.side {
-			JoinSide::Left => ctx.state.left.group_of(bridge, key_hash)?,
-			JoinSide::Right => ctx.state.right.group_of(bridge, key_hash)?,
+			JoinSide::Left => ctx.state.left.group_of(host, key_hash)?,
+			JoinSide::Right => ctx.state.right.group_of(host, key_hash)?,
 		};
 		for &idx in indices {
 			let row_number = pre.row_numbers()[idx];
 
 			if matches!(ctx.side, JoinSide::Left) {
-				ctx.operator.cleanup_left_row_joins(bridge, *row_number)?;
+				ctx.operator.cleanup_left_row_joins(host, *row_number)?;
 			}
 
 			if let Some(group) = group {
 				match ctx.side {
 					JoinSide::Left => {
-						ctx.state.left.remove_row_in(bridge, group, row_number)?;
+						ctx.state.left.remove_row_in(host, group, row_number)?;
 					}
 					JoinSide::Right => {
-						ctx.state.right.remove_row_in(bridge, group, row_number)?;
+						ctx.state.right.remove_row_in(host, group, row_number)?;
 					}
 				}
 			}
@@ -189,7 +189,7 @@ impl InnerHashJoin {
 
 	pub(crate) fn handle_update(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],
@@ -201,14 +201,14 @@ impl InnerHashJoin {
 		}
 
 		if keys.pre != keys.post {
-			let mut result = self.handle_remove(bridge, pre, indices, keys.pre, ctx)?;
-			result.extend(self.handle_insert(bridge, post, indices, keys.post, ctx)?);
+			let mut result = self.handle_remove(host, pre, indices, keys.pre, ctx)?;
+			result.extend(self.handle_insert(host, post, indices, keys.post, ctx)?);
 			return Ok(result);
 		}
 
 		let mut result = Vec::new();
 		for &row_idx in indices {
-			result.extend(self.update_in_place_one_row(bridge, pre, post, row_idx, keys, ctx)?);
+			result.extend(self.update_in_place_one_row(host, pre, post, row_idx, keys, ctx)?);
 		}
 		Ok(result)
 	}
@@ -216,7 +216,7 @@ impl InnerHashJoin {
 	#[inline]
 	fn update_in_place_one_row(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
@@ -235,9 +235,9 @@ impl InnerHashJoin {
 			return match ctx.side {
 				JoinSide::Left => {
 					let diffs =
-						resync_joined(bridge, &snapshot_ctx, keys, pre, post, row_idx, false)?;
+						resync_joined(host, &snapshot_ctx, keys, pre, post, row_idx, false)?;
 					update_single_row_in_entry(
-						bridge,
+						host,
 						&ctx.state.left,
 						keys.pre,
 						pre_row_number,
@@ -247,9 +247,9 @@ impl InnerHashJoin {
 					Ok(diffs)
 				}
 				JoinSide::Right => {
-					retire_right(bridge, &snapshot_ctx, keys.pre, pre_row_number)?;
+					retire_right(host, &snapshot_ctx, keys.pre, pre_row_number)?;
 					update_single_row_in_entry(
-						bridge,
+						host,
 						&ctx.state.right,
 						keys.pre,
 						pre_row_number,
@@ -263,7 +263,7 @@ impl InnerHashJoin {
 
 		let updated = match ctx.side {
 			JoinSide::Left => update_single_row_in_entry(
-				bridge,
+				host,
 				&ctx.state.left,
 				keys.pre,
 				pre_row_number,
@@ -271,7 +271,7 @@ impl InnerHashJoin {
 				row_idx,
 			)?,
 			JoinSide::Right => update_single_row_in_entry(
-				bridge,
+				host,
 				&ctx.state.right,
 				keys.pre,
 				pre_row_number,
@@ -281,7 +281,7 @@ impl InnerHashJoin {
 		};
 
 		if !updated {
-			return self.handle_insert(bridge, post, &[row_idx], keys.post, ctx);
+			return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
 		}
 
 		if ctx.operator.snapshot && matches!(ctx.side, JoinSide::Right) {
@@ -297,6 +297,6 @@ impl InnerHashJoin {
 			operator: ctx.operator,
 		};
 
-		emit_update_joined_columns(bridge, pre, post, row_idx, ctx.side, &emit_ctx)
+		emit_update_joined_columns(host, pre, post, row_idx, ctx.side, &emit_ctx)
 	}
 }

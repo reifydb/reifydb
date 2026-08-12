@@ -13,8 +13,8 @@
 
 use reifydb_flow::operator::apply::ApplyOperator;
 
-pub mod bridge;
 pub mod generator;
+pub mod guest;
 pub mod harness;
 pub mod state;
 

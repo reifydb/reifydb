@@ -17,10 +17,10 @@ use reifydb_core::{
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	flow::operator::{
-		OperatorLogic, OperatorMetadata,
+		GuestOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
-		context::OperatorContext,
-		state::RawStatefulOperator,
+		context::GuestContext,
+		state::GuestRawOperator,
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
@@ -69,7 +69,7 @@ struct Alarm {
 	seal_after_ms: u64,
 }
 
-impl RawStatefulOperator for Alarm {}
+impl GuestRawOperator for Alarm {}
 
 impl OperatorMetadata for Alarm {
 	const NAME: &'static str = "alarm";
@@ -84,7 +84,7 @@ fn group_key(g: i32) -> EncodedKey {
 	EncodedKey::new(g.to_be_bytes())
 }
 
-impl OperatorLogic for Alarm {
+impl GuestOperator for Alarm {
 	fn create(_operator_id: OperatorId, config: &Config) -> SdkResult<Self> {
 		Ok(Alarm {
 			seal_after_ms: config.u64_or("seal", SEAL_AFTER_MS),
@@ -95,7 +95,7 @@ impl OperatorLogic for Alarm {
 		Some(Duration::from_milliseconds_const(self.seal_after_ms as i64))
 	}
 
-	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {
 		// Emits nothing. Every row this operator produces comes out of on_timer, so a view row is
 		// proof that a callback ran - not that a change passed through.
 		for i in 0..change.diff_count() {
@@ -125,7 +125,7 @@ impl OperatorLogic for Alarm {
 		Ok(())
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl OperatorContext, timer: Timer<'_>) -> SdkResult<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> SdkResult<()> {
 		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
 		let key = group_key(g);
 		let group = ctx.intern_group(&key)?;
@@ -278,7 +278,7 @@ struct Snooze {
 	disarm_offset_ms: u64,
 }
 
-impl RawStatefulOperator for Snooze {}
+impl GuestRawOperator for Snooze {}
 
 impl OperatorMetadata for Snooze {
 	const NAME: &'static str = "snooze";
@@ -290,7 +290,7 @@ impl OperatorMetadata for Snooze {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl OperatorLogic for Snooze {
+impl GuestOperator for Snooze {
 	fn create(_operator_id: OperatorId, config: &Config) -> SdkResult<Self> {
 		Ok(Snooze {
 			disarm_offset_ms: config.u64_or("disarm_offset", 0),
@@ -301,7 +301,7 @@ impl OperatorLogic for Snooze {
 		Some(Duration::from_milliseconds_const(SEAL_AFTER_MS as i64))
 	}
 
-	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {
 		// The session-window shape reduced to essentials: every row pushes the group's wake-up
 		// later, so the instant armed a moment ago must be cancelled rather than left to fire.
 		for i in 0..change.diff_count() {
@@ -340,7 +340,7 @@ impl OperatorLogic for Snooze {
 		Ok(())
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl OperatorContext, timer: Timer<'_>) -> SdkResult<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> SdkResult<()> {
 		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
 		let group = ctx.intern_group(&group_key(g))?;
 		let fired_at = timer.at.to_millis() as i64;

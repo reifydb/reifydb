@@ -41,10 +41,10 @@ use crate::{
 	context::FlowContext,
 	error::{FlowGraphError, FlowStateError},
 	operator::{
-		Operator,
-		bridge::Bridge,
+		HostOperator,
+		host::HostContext,
 		join::{Emitted, Identity},
-		stateful::raw::RawStatefulOperator,
+		stateful::raw::HostRawOperator,
 	},
 };
 
@@ -278,7 +278,7 @@ impl JoinOperator {
 
 	pub(crate) fn unmatched_left_columns(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		left: &Columns,
 		left_idx: usize,
 		identity: Identity,
@@ -290,7 +290,7 @@ impl JoinOperator {
 		serializer.extend_u64(left_row_number.0);
 		let composite_key = serializer.finish();
 
-		let (row_numbers, fresh, existing) = self.identities(bridge, &[composite_key], identity)?;
+		let (row_numbers, fresh, existing) = self.identities(host, &[composite_key], identity)?;
 		if fresh.is_empty() && existing.is_empty() {
 			return Ok(Emitted::empty());
 		}
@@ -302,18 +302,18 @@ impl JoinOperator {
 
 	fn identities(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		keys: &[EncodedKey],
 		identity: Identity,
 	) -> Result<(Vec<RowNumber>, Vec<usize>, Vec<usize>)> {
 		match identity {
 			Identity::Mint => {
-				let minted = bridge.get_or_create_row_numbers(GroupId::ROOT, keys)?;
+				let minted = host.get_or_create_row_numbers(GroupId::ROOT, keys)?;
 				let (fresh, existing) = (0..keys.len()).partition(|index| minted[*index].1);
 				Ok((minted.iter().map(|(number, _)| *number).collect(), fresh, existing))
 			}
 			Identity::Existing | Identity::Consume => {
-				let resolved = bridge.get_row_numbers(GroupId::ROOT, keys)?;
+				let resolved = host.get_row_numbers(GroupId::ROOT, keys)?;
 				let existing: Vec<usize> = resolved
 					.iter()
 					.enumerate()
@@ -321,7 +321,7 @@ impl JoinOperator {
 					.collect();
 				if identity == Identity::Consume {
 					for index in &existing {
-						bridge.remove_row_number(GroupId::ROOT, &keys[*index])?;
+						host.remove_row_number(GroupId::ROOT, &keys[*index])?;
 					}
 				}
 				Ok((
@@ -342,7 +342,7 @@ impl JoinOperator {
 
 	pub(crate) fn unmatched_left_columns_batch(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		left: &Columns,
 		left_indices: &[usize],
 		identity: Identity,
@@ -362,20 +362,20 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let (row_numbers, fresh, existing) = self.identities(bridge, &composite_keys, identity)?;
+		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
 		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
 		let built = builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema);
 		Ok(Self::split(built, &fresh, &existing))
 	}
 
-	pub(crate) fn cleanup_left_row_joins(&self, bridge: &mut dyn Bridge, left_number: u64) -> Result<()> {
+	pub(crate) fn cleanup_left_row_joins(&self, host: &mut dyn HostContext, left_number: u64) -> Result<()> {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_number);
 		let prefix = serializer.finish();
 
-		bridge.remove_row_numbers_by_prefix(GroupId::ROOT, &prefix)
+		host.remove_row_numbers_by_prefix(GroupId::ROOT, &prefix)
 	}
 
 	fn make_composite_key(left_num: RowNumber, right_num: RowNumber) -> EncodedKey {
@@ -388,7 +388,7 @@ impl JoinOperator {
 
 	pub(crate) fn join_columns_one_to_many(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		left: &Columns,
 		left_idx: usize,
 		right: &Columns,
@@ -408,7 +408,7 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let (row_numbers, fresh, existing) = self.identities(bridge, &composite_keys, identity)?;
+		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
 		let built = builder.join_one_to_many(&row_numbers, left, left_idx, right);
@@ -417,7 +417,7 @@ impl JoinOperator {
 
 	pub(crate) fn join_columns_many_to_one(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		left: &Columns,
 		right: &Columns,
 		right_idx: usize,
@@ -437,7 +437,7 @@ impl JoinOperator {
 			})
 			.collect();
 
-		let (row_numbers, fresh, existing) = self.identities(bridge, &composite_keys, identity)?;
+		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
 		let built = builder.join_many_to_one(&row_numbers, left, right, right_idx);
@@ -446,7 +446,7 @@ impl JoinOperator {
 
 	pub(crate) fn join_columns_cartesian(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		left: &Columns,
 		left_indices: &[usize],
 		right: &Columns,
@@ -470,7 +470,7 @@ impl JoinOperator {
 			}
 		}
 
-		let (row_numbers, fresh, existing) = self.identities(bridge, &composite_keys, identity)?;
+		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
 		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
 		let built = builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices);
@@ -505,9 +505,9 @@ impl JoinOperator {
 	}
 }
 
-impl RawStatefulOperator for JoinOperator {}
+impl HostRawOperator for JoinOperator {}
 
-impl Operator for JoinOperator {
+impl HostOperator for JoinOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -520,7 +520,7 @@ impl Operator for JoinOperator {
 		Some(OperatorSample::default())
 	}
 
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.operator
 		{
@@ -552,31 +552,17 @@ impl Operator for JoinOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_join_insert(
-					bridge,
-					&post,
-					compiled_exprs,
-					side,
-					&mut state,
-					&mut result,
-				)?,
+				} => self.apply_join_insert(host, &post, compiled_exprs, side, &mut state, &mut result)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_join_remove(
-					bridge,
-					&pre,
-					compiled_exprs,
-					side,
-					&mut state,
-					&mut result,
-				)?,
+				} => self.apply_join_remove(host, &pre, compiled_exprs, side, &mut state, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
 					..
 				} => self.apply_join_update(
-					bridge,
+					host,
 					&pre,
 					&post,
 					compiled_exprs,
@@ -597,7 +583,7 @@ impl JoinOperator {
 	#[instrument(name = "flow::operator::join::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_join_insert(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		post: &Columns,
 		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
@@ -615,15 +601,13 @@ impl JoinOperator {
 				};
 				let diffs = match key {
 					Some(key_hash) => self.strategy.handle_insert(
-						bridge,
+						host,
 						post,
 						&[row_idx],
 						key_hash,
 						&mut ctx,
 					)?,
-					None => self
-						.strategy
-						.handle_insert_undefined(bridge, post, row_idx, &mut ctx)?,
+					None => self.strategy.handle_insert_undefined(host, post, row_idx, &mut ctx)?,
 				};
 				result.extend(diffs);
 			}
@@ -639,7 +623,7 @@ impl JoinOperator {
 				state,
 				operator: self,
 			};
-			result.extend(self.strategy.handle_insert(bridge, post, indices, key_hash, &mut ctx)?);
+			result.extend(self.strategy.handle_insert(host, post, indices, key_hash, &mut ctx)?);
 		}
 
 		for row_idx in undefined {
@@ -648,7 +632,7 @@ impl JoinOperator {
 				state,
 				operator: self,
 			};
-			result.extend(self.strategy.handle_insert_undefined(bridge, post, row_idx, &mut ctx)?);
+			result.extend(self.strategy.handle_insert_undefined(host, post, row_idx, &mut ctx)?);
 		}
 
 		Ok(())
@@ -659,7 +643,7 @@ impl JoinOperator {
 	#[instrument(name = "flow::operator::join::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_join_remove(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
@@ -677,15 +661,13 @@ impl JoinOperator {
 				};
 				let diffs = match key {
 					Some(key_hash) => self.strategy.handle_remove(
-						bridge,
+						host,
 						pre,
 						&[row_idx],
 						key_hash,
 						&mut ctx,
 					)?,
-					None => {
-						self.strategy.handle_remove_undefined(bridge, pre, row_idx, &mut ctx)?
-					}
+					None => self.strategy.handle_remove_undefined(host, pre, row_idx, &mut ctx)?,
 				};
 				result.extend(diffs);
 			}
@@ -701,7 +683,7 @@ impl JoinOperator {
 				state,
 				operator: self,
 			};
-			result.extend(self.strategy.handle_remove(bridge, pre, indices, key_hash, &mut ctx)?);
+			result.extend(self.strategy.handle_remove(host, pre, indices, key_hash, &mut ctx)?);
 		}
 
 		for row_idx in undefined {
@@ -710,7 +692,7 @@ impl JoinOperator {
 				state,
 				operator: self,
 			};
-			result.extend(self.strategy.handle_remove_undefined(bridge, pre, row_idx, &mut ctx)?);
+			result.extend(self.strategy.handle_remove_undefined(host, pre, row_idx, &mut ctx)?);
 		}
 
 		Ok(())
@@ -721,7 +703,7 @@ impl JoinOperator {
 	#[instrument(name = "flow::operator::join::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_join_update(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		post: &Columns,
 		compiled_exprs: &[CompiledExpr],
@@ -745,11 +727,11 @@ impl JoinOperator {
 						pre: &pre_key,
 						post: &post_key,
 					};
-					self.strategy.handle_update(bridge, pre, post, &[row_idx], keys, &mut ctx)?
+					self.strategy.handle_update(host, pre, post, &[row_idx], keys, &mut ctx)?
 				}
 				(Some(pre_key), None) => {
 					let mut diffs = self.strategy.handle_remove(
-						bridge,
+						host,
 						pre,
 						&[row_idx],
 						&pre_key,
@@ -757,15 +739,14 @@ impl JoinOperator {
 					)?;
 					diffs.extend(self
 						.strategy
-						.handle_insert_undefined(bridge, post, row_idx, &mut ctx)?);
+						.handle_insert_undefined(host, post, row_idx, &mut ctx)?);
 					diffs
 				}
 				(None, Some(post_key)) => {
-					let mut diffs = self
-						.strategy
-						.handle_remove_undefined(bridge, pre, row_idx, &mut ctx)?;
+					let mut diffs =
+						self.strategy.handle_remove_undefined(host, pre, row_idx, &mut ctx)?;
 					diffs.extend(self.strategy.handle_insert(
-						bridge,
+						host,
 						post,
 						&[row_idx],
 						&post_key,
@@ -775,7 +756,7 @@ impl JoinOperator {
 				}
 				(None, None) => self
 					.strategy
-					.handle_update_both_undefined(bridge, pre, post, row_idx, &mut ctx)?,
+					.handle_update_both_undefined(host, pre, post, row_idx, &mut ctx)?,
 			};
 			result.extend(diffs);
 		}

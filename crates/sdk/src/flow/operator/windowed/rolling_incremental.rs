@@ -28,19 +28,18 @@ use tracing::debug;
 use crate::{
 	error::Result,
 	flow::operator::{
-		OperatorLogic, OperatorMetadata,
+		GuestOperator, OperatorMetadata,
 		column::{
 			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
-		context::OperatorContext,
+		context::GuestContext,
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			advance_seal_frontier, arm_seal_timer,
-			bridge::OperatorContextStore,
-			bucket_of,
+			advance_seal_frontier, arm_seal_timer, bucket_of,
+			guest_as_host::GuestAsHost,
 			rolling::{RollingOperator, RollingRegistration},
 			seal_frontier, seal_horizon_of, window_engine_config,
 		},
@@ -87,9 +86,9 @@ where
 	WindowContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn expire_through<C: OperatorContext>(
+	fn expire_through<C: GuestContext>(
 		engine: &mut RollingIncrementalEngine<A::GroupKey, DateTime, A::Accumulator, A::Running>,
-		store: &mut OperatorContextStore<'_, C>,
+		store: &mut GuestAsHost<'_, C>,
 		horizon: DateTime,
 	) -> Result<()> {
 		if horizon > <DateTime as Coord>::from_order(0) {
@@ -113,7 +112,7 @@ where
 	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
 }
 
-impl<A> OperatorLogic for RollingIncrementalDriver<A>
+impl<A> GuestOperator for RollingIncrementalDriver<A>
 where
 	A: RollingIncrementalOperator + RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
@@ -136,11 +135,11 @@ where
 		})
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl OperatorContext, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
 		let Some(seal_after) = self.aggregator.seal_after() else {
 			return Ok(());
 		};
-		let mut store = OperatorContextStore(ctx);
+		let mut store = GuestAsHost(ctx);
 		let fired = FiredAt::of(&FlowTimer {
 			at: timer.at,
 			kind: timer.kind,
@@ -154,14 +153,14 @@ where
 		self.aggregator.seal_after()
 	}
 
-	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
 		let mut buckets = self.route_diffs_to_buckets(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
 		}
 
 		if let Some(seal_after) = self.aggregator.seal_after() {
-			let mut store = OperatorContextStore(ctx);
+			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, coord)| *coord).max();
 			if let Some(newest) = newest {
 				arm_seal_timer(&mut store, newest, seal_after)?;
@@ -193,7 +192,7 @@ where
 				..
 			} = &mut *self;
 			let capacity = aggregator.capacity();
-			let mut store = OperatorContextStore(ctx);
+			let mut store = GuestAsHost(ctx);
 			engine.apply(
 				&mut store,
 				buckets,
@@ -221,8 +220,8 @@ where
 		Ok(())
 	}
 
-	fn flush_state(&mut self, ctx: &mut impl OperatorContext) -> Result<()> {
-		let mut store = OperatorContextStore(ctx);
+	fn flush_state(&mut self, ctx: &mut impl GuestContext) -> Result<()> {
+		let mut store = GuestAsHost(ctx);
 		self.engine.flush(&mut store)?;
 		Ok(())
 	}
@@ -241,7 +240,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	#[inline]
-	fn route_diffs_to_buckets(&self, ctx: &mut impl OperatorContext, change: &impl ChangeView) -> EventBuckets<A> {
+	fn route_diffs_to_buckets(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> EventBuckets<A> {
 		let mut buckets: EventBuckets<A> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
@@ -338,7 +337,7 @@ where
 
 	#[inline]
 	fn emit_batches(
-		ctx: &mut impl OperatorContext,
+		ctx: &mut impl GuestContext,
 		inserts: &[(RowNumber, A::Output)],
 		updates: &[(RowNumber, A::Output)],
 		removes: &[(RowNumber, A::Output)],

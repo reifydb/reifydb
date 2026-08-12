@@ -35,7 +35,7 @@ use crate::{
 	transaction::{FlowTransaction, reclaim::ReclaimOutcome},
 };
 
-pub trait Bridge: StateStore + TimerStore {
+pub trait HostContext: StateStore + TimerStore {
 	fn version(&self) -> CommitVersion;
 
 	fn config_uint8(&self, key: ConfigKey) -> u64;
@@ -79,13 +79,13 @@ pub trait Bridge: StateStore + TimerStore {
 	fn dictionary_get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>>;
 }
 
-pub struct FlowBridge<'a, T: FlowTransaction> {
+pub struct TxnHostContext<'a, T: FlowTransaction> {
 	txn: &'a mut T,
 	operator: OperatorId,
 	now: DateTime,
 }
 
-impl<'a, T: FlowTransaction> FlowBridge<'a, T> {
+impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 	pub fn new(txn: &'a mut T, operator: OperatorId) -> Self {
 		let now = txn.written_at();
 		Self {
@@ -96,7 +96,7 @@ impl<'a, T: FlowTransaction> FlowBridge<'a, T> {
 	}
 }
 
-impl<T: FlowTransaction> TimerStore for FlowBridge<'_, T> {
+impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.txn.arm_timer(
 			self.operator,
@@ -124,7 +124,7 @@ impl<T: FlowTransaction> TimerStore for FlowBridge<'_, T> {
 	}
 }
 
-impl<T: FlowTransaction> StateStore for FlowBridge<'_, T> {
+impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
 		self.txn.state_get(self.operator, key)
 	}
@@ -161,7 +161,7 @@ impl<T: FlowTransaction> StateStore for FlowBridge<'_, T> {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()> {
-		let batch = self.txn.state_range(self.operator, range, limit, "operator::bridge_visit")?;
+		let batch = self.txn.state_range(self.operator, range, limit, "operator::host_visit")?;
 		for r in batch.items {
 			if let Some(decoded) = OperatorStateKey::decode(&r.key)
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
@@ -197,7 +197,7 @@ impl<T: FlowTransaction> StateStore for FlowBridge<'_, T> {
 	}
 }
 
-impl<T: FlowTransaction> Bridge for FlowBridge<'_, T> {
+impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	fn version(&self) -> CommitVersion {
 		self.txn.version()
 	}

@@ -14,7 +14,7 @@ use tracing::error;
 
 use crate::procedure::extern_c::{
 	binding::{context::ExternCProcedureContext, procedure::ExternCProcedure},
-	wire::{context::ExternCContext, vtable::ExternCProcedureVTable},
+	wire::{context::ExternCContextRaw, vtable::ExternCProcedureVTable},
 };
 
 pub struct ProcedureWrapper<T: ExternCProcedure> {
@@ -36,10 +36,10 @@ impl<T: ExternCProcedure> ProcedureWrapper<T> {
 /// # Safety
 ///
 /// - `instance` must be a valid pointer to a `ProcedureWrapper<T>`.
-/// - `ctx` must point to a valid `ExternCContext` for the duration of the call.
+/// - `ctx` must point to a valid `ExternCContextRaw` for the duration of the call.
 pub unsafe extern "C" fn extern_c_procedure_call<T: ExternCProcedure>(
 	instance: *mut c_void,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	params_ptr: *const u8,
 	params_len: usize,
 ) -> i32 {

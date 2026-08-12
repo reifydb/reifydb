@@ -13,7 +13,7 @@ use reifydb_extension::operator::extern_c::loader::extern_c_operator_loader;
 use reifydb_flow::error::FlowStateError;
 use reifydb_flow::{
 	error::FlowGraphError,
-	operator::{BoxedOperator, provider::OperatorProvider},
+	operator::{BoxedHostOperator, provider::OperatorProvider},
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_value::params::Params;
@@ -41,7 +41,7 @@ impl StandardOperatorProvider {
 }
 
 impl OperatorProvider for StandardOperatorProvider {
-	fn provide(&self, operator_id: OperatorId, config: &Config) -> Result<BoxedOperator> {
+	fn provide(&self, operator_id: OperatorId, config: &Config) -> Result<BoxedHostOperator> {
 		let operator = config.name();
 
 		if let Some(factory) = self.custom.get(operator) {
@@ -82,7 +82,7 @@ impl StandardOperatorProvider {
 		operator: &str,
 		operator_id: OperatorId,
 		config: &Config,
-	) -> Result<BoxedOperator> {
+	) -> Result<BoxedHostOperator> {
 		let loader = extern_c_operator_loader();
 		let mut loader_write = loader.write();
 

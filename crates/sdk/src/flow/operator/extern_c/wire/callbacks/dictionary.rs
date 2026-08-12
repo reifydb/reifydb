@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::{common::extern_c::wire::buffer::ExternCBuffer, flow::operator::extern_c::wire::context::ExternCContext};
+use crate::{
+	common::extern_c::wire::buffer::ExternCBuffer, flow::operator::extern_c::wire::context::ExternCContextRaw,
+};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct DictionaryCallbacks {
 	pub id_by_name: extern "C" fn(
-		ctx: *mut ExternCContext,
+		ctx: *mut ExternCContextRaw,
 		name_ptr: *const u8,
 		name_len: usize,
 		out_id: *mut u64,
@@ -15,7 +17,7 @@ pub struct DictionaryCallbacks {
 	) -> i32,
 
 	pub find: extern "C" fn(
-		ctx: *mut ExternCContext,
+		ctx: *mut ExternCContextRaw,
 		dictionary_id: u64,
 		value_ptr: *const u8,
 		value_len: usize,
@@ -25,7 +27,7 @@ pub struct DictionaryCallbacks {
 	) -> i32,
 
 	pub get: extern "C" fn(
-		ctx: *mut ExternCContext,
+		ctx: *mut ExternCContextRaw,
 		dictionary_id: u64,
 		id: u128,
 		output: *mut ExternCBuffer,

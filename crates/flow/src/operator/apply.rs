@@ -9,14 +9,14 @@ use reifydb_core::{
 use reifydb_value::{Result, value::duration::Duration};
 
 use crate::{
-	operator::{BoxedOperator, Operator, bridge::Bridge, max_input_time, stamp_output_time},
+	operator::{BoxedHostOperator, HostOperator, host::HostContext, max_input_time, stamp_output_time},
 	timer::Timer,
 };
 
 pub struct ApplyOperator {
 	parent_schema: Option<Columns>,
 	operator: OperatorId,
-	inner: BoxedOperator,
+	inner: BoxedHostOperator,
 	_seal: Option<Duration>,
 }
 
@@ -24,7 +24,7 @@ impl ApplyOperator {
 	pub fn new(
 		parent_schema: Option<Columns>,
 		operator: OperatorId,
-		inner: BoxedOperator,
+		inner: BoxedHostOperator,
 		seal: Option<Duration>,
 	) -> Self {
 		Self {
@@ -40,7 +40,7 @@ impl ApplyOperator {
 	}
 }
 
-impl Operator for ApplyOperator {
+impl HostOperator for ApplyOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -53,20 +53,20 @@ impl Operator for ApplyOperator {
 		self.inner.seal_span()
 	}
 
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		let inherited = max_input_time(&change);
-		let mut out = self.inner.apply(bridge, change)?;
+		let mut out = self.inner.apply(host, change)?;
 		stamp_output_time(&mut out, inherited);
 		Ok(out)
 	}
 
-	fn flush(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
-		self.inner.flush(bridge)
+	fn flush(&mut self, host: &mut dyn HostContext) -> Result<()> {
+		self.inner.flush(host)
 	}
 
-	fn on_timer(&mut self, bridge: &mut dyn Bridge, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
 		let at = timer.at;
-		let mut out = self.inner.on_timer(bridge, timer)?;
+		let mut out = self.inner.on_timer(host, timer)?;
 		if let Some(change) = out.as_mut() {
 			stamp_output_time(change, Some(at));
 		}
@@ -88,7 +88,7 @@ mod tests {
 	use reifydb_value::{Result, value::duration::Duration};
 
 	use super::ApplyOperator;
-	use crate::operator::{Operator, bridge::Bridge, scale_from_millis};
+	use crate::operator::{HostOperator, host::HostContext, scale_from_millis};
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("representable duration")
@@ -112,7 +112,7 @@ mod tests {
 		seal: Option<Duration>,
 	}
 
-	impl Operator for SealingInner {
+	impl HostOperator for SealingInner {
 		fn id(&self) -> OperatorId {
 			OperatorId(7)
 		}
@@ -121,7 +121,7 @@ mod tests {
 			&[]
 		}
 
-		fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 

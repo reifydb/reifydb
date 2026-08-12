@@ -9,17 +9,17 @@ use crate::{
 	error::SdkError,
 	flow::operator::{
 		column::row::Row,
-		context::{OperatorContext, RowEmit, UpdateEmit},
+		context::{GuestContext, GuestEmit, GuestUpdateEmit},
 	},
 };
 
-pub struct InsertBatch<'a, R: Row, O: OperatorContext + 'a> {
+pub struct InsertBatch<'a, R: Row, O: GuestContext + 'a> {
 	emit: O::InsertEmit<'a>,
 	row_numbers: Vec<RowNumber>,
 	_row: PhantomData<R>,
 }
 
-impl<'a, R: Row, O: OperatorContext + 'a> InsertBatch<'a, R, O> {
+impl<'a, R: Row, O: GuestContext + 'a> InsertBatch<'a, R, O> {
 	pub fn new(ctx: &'a mut O, row_capacity: usize) -> Result<Self, SdkError> {
 		Ok(Self {
 			emit: ctx.insert_emit::<R>(row_capacity)?,
@@ -52,13 +52,13 @@ impl<'a, R: Row, O: OperatorContext + 'a> InsertBatch<'a, R, O> {
 	}
 }
 
-pub struct UpdateBatch<'a, R: Row, O: OperatorContext + 'a> {
+pub struct UpdateBatch<'a, R: Row, O: GuestContext + 'a> {
 	emit: O::UpdateEmit<'a>,
 	row_numbers: Vec<RowNumber>,
 	_row: PhantomData<R>,
 }
 
-impl<'a, R: Row, O: OperatorContext + 'a> UpdateBatch<'a, R, O> {
+impl<'a, R: Row, O: GuestContext + 'a> UpdateBatch<'a, R, O> {
 	pub fn new(ctx: &'a mut O, row_capacity: usize) -> Result<Self, SdkError> {
 		Ok(Self {
 			emit: ctx.update_emit::<R>(row_capacity)?,
@@ -92,13 +92,13 @@ impl<'a, R: Row, O: OperatorContext + 'a> UpdateBatch<'a, R, O> {
 	}
 }
 
-pub struct RemoveBatch<'a, R: Row, O: OperatorContext + 'a> {
+pub struct RemoveBatch<'a, R: Row, O: GuestContext + 'a> {
 	emit: O::RemoveEmit<'a>,
 	row_numbers: Vec<RowNumber>,
 	_row: PhantomData<R>,
 }
 
-impl<'a, R: Row, O: OperatorContext + 'a> RemoveBatch<'a, R, O> {
+impl<'a, R: Row, O: GuestContext + 'a> RemoveBatch<'a, R, O> {
 	pub fn new(ctx: &'a mut O, row_capacity: usize) -> Result<Self, SdkError> {
 		Ok(Self {
 			emit: ctx.remove_emit::<R>(row_capacity)?,

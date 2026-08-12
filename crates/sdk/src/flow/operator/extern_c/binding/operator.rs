@@ -10,8 +10,8 @@ use reifydb_value::{config::Config, value::duration::Duration};
 use crate::{
 	error::Result,
 	flow::operator::{
-		OperatorLogic, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
-		extern_c::binding::context::ExternCOperatorContext, timer::Timer,
+		GuestOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
+		extern_c::binding::context::ExternCContext, timer::Timer,
 	},
 };
 
@@ -20,9 +20,9 @@ pub trait ExternCOperator: 'static {
 	where
 		Self: Sized;
 
-	fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()>;
+	fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()>;
 
-	fn on_timer(&mut self, _ctx: &mut ExternCOperatorContext, _timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, _ctx: &mut ExternCContext, _timer: Timer<'_>) -> Result<()> {
 		Ok(())
 	}
 
@@ -30,7 +30,7 @@ pub trait ExternCOperator: 'static {
 		None
 	}
 
-	fn flush_state(&mut self, _ctx: &mut ExternCOperatorContext) -> Result<()> {
+	fn flush_state(&mut self, _ctx: &mut ExternCContext) -> Result<()> {
 		Ok(())
 	}
 
@@ -52,18 +52,18 @@ impl<C: OperatorMetadata> OperatorMetadata for ExternCOperatorAdapter<C> {
 	const CAPABILITIES: &'static [OperatorCapability] = C::CAPABILITIES;
 }
 
-impl<C: OperatorLogic + OperatorMetadata + 'static> ExternCOperator for ExternCOperatorAdapter<C> {
+impl<C: GuestOperator + OperatorMetadata + 'static> ExternCOperator for ExternCOperatorAdapter<C> {
 	fn new(operator_id: OperatorId, config: &Config) -> Result<Self> {
 		Ok(Self {
 			core: C::create(operator_id, config)?,
 		})
 	}
 
-	fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
 		self.core.apply(ctx, input)
 	}
 
-	fn on_timer(&mut self, ctx: &mut ExternCOperatorContext, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut ExternCContext, timer: Timer<'_>) -> Result<()> {
 		self.core.on_timer(ctx, timer)
 	}
 
@@ -71,7 +71,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> ExternCOperator for ExternCO
 		self.core.seal_after()
 	}
 
-	fn flush_state(&mut self, ctx: &mut ExternCOperatorContext) -> Result<()> {
+	fn flush_state(&mut self, ctx: &mut ExternCContext) -> Result<()> {
 		self.core.flush_state(ctx)
 	}
 

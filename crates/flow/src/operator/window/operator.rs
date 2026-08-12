@@ -29,11 +29,11 @@ use super::{
 use crate::{
 	context::FlowContext,
 	operator::{
-		Operator,
+		HostOperator,
 		aggregation::{accumulator::RowAccumulator, core::Aggregation},
-		bridge::Bridge,
 		drops::SealedDrops,
-		stateful::raw::RawStatefulOperator,
+		host::HostContext,
+		stateful::raw::HostRawOperator,
 	},
 	state::seal::{coord::Coord, ledger::FiredAt},
 	timer::Timer,
@@ -99,15 +99,15 @@ impl WindowOperator {
 		&mut self.meta
 	}
 
-	fn open_meta(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
-		self.meta.hydrate_once(bridge)?;
+	fn open_meta(&mut self, host: &mut dyn HostContext) -> Result<()> {
+		self.meta.hydrate_once(host)?;
 		self.core.engine_meta_open();
 		Ok(())
 	}
 
-	fn close_meta(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
-		self.meta.flush(bridge)?;
-		self.core.engine_meta_flush(bridge)
+	fn close_meta(&mut self, host: &mut dyn HostContext) -> Result<()> {
+		self.meta.flush(host)?;
+		self.core.engine_meta_flush(host)
 	}
 
 	pub(crate) fn rolling_engine_slot(&mut self) -> &mut Option<RollingEngineSlot> {
@@ -183,9 +183,9 @@ impl WindowOperator {
 	}
 }
 
-impl RawStatefulOperator for WindowOperator {}
+impl HostRawOperator for WindowOperator {}
 
-impl Operator for WindowOperator {
+impl HostOperator for WindowOperator {
 	fn id(&self) -> OperatorId {
 		self.core.operator
 	}
@@ -198,52 +198,52 @@ impl Operator for WindowOperator {
 		None
 	}
 
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
-		self.open_meta(bridge)?;
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		self.open_meta(host)?;
 		let out = match self.kind {
 			WindowKind::Tumbling {
 				..
-			} => apply_tumbling_engine(self, bridge, change),
+			} => apply_tumbling_engine(self, host, change),
 			WindowKind::Sliding {
 				..
-			} => apply_sliding_engine(self, bridge, change),
+			} => apply_sliding_engine(self, host, change),
 			WindowKind::Rolling {
 				..
-			} => apply_rolling_engine(self, bridge, change),
+			} => apply_rolling_engine(self, host, change),
 			WindowKind::Session {
 				..
-			} => apply_session_engine(self, bridge, change),
+			} => apply_session_engine(self, host, change),
 		}?;
-		self.close_meta(bridge)?;
+		self.close_meta(host)?;
 		Ok(out)
 	}
 
-	fn on_timer(&mut self, bridge: &mut dyn Bridge, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
 		if timer.kind == TimerKind::Maintenance {
-			self.open_meta(bridge)?;
-			reap_sealed_groups(self, bridge)?;
-			self.close_meta(bridge)?;
+			self.open_meta(host)?;
+			reap_sealed_groups(self, host)?;
+			self.close_meta(host)?;
 			return Ok(None);
 		}
 		let fired = FiredAt::of(&timer);
-		self.open_meta(bridge)?;
+		self.open_meta(host)?;
 		let diffs = match self.kind {
 			WindowKind::Tumbling {
 				..
 			}
 			| WindowKind::Sliding {
 				..
-			} => seal_engine_windows(self, bridge, fired)?,
+			} => seal_engine_windows(self, host, fired)?,
 			WindowKind::Rolling {
 				size: WindowSize::Duration(_),
 				..
-			} => seal_rolling_engine(self, bridge, fired)?,
+			} => seal_rolling_engine(self, host, fired)?,
 			WindowKind::Session {
 				..
-			} => seal_session_engine(self, bridge, fired)?,
+			} => seal_session_engine(self, host, fired)?,
 			_ => vec![],
 		};
-		self.close_meta(bridge)?;
+		self.close_meta(host)?;
 
 		if diffs.is_empty() {
 			Ok(None)

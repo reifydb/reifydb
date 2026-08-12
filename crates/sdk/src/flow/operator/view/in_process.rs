@@ -14,12 +14,12 @@ use reifydb_value::value::{
 
 use super::{ChangeView, ColumnsView, DiffView, RowView};
 
-pub struct BridgeRowView<'a> {
+pub struct InProcessRowView<'a> {
 	columns: &'a Columns,
 	index: usize,
 }
 
-impl<'a> BridgeRowView<'a> {
+impl<'a> InProcessRowView<'a> {
 	pub fn new(columns: &'a Columns, index: usize) -> Self {
 		Self {
 			columns,
@@ -44,7 +44,7 @@ impl<'a> BridgeRowView<'a> {
 	}
 }
 
-impl<'a> RowView for BridgeRowView<'a> {
+impl<'a> RowView for InProcessRowView<'a> {
 	fn is_defined(&self, name: &str) -> bool {
 		self.buffer(name).map(|b| b.is_defined(self.index)).unwrap_or(false)
 	}
@@ -142,11 +142,11 @@ impl<'a> RowView for BridgeRowView<'a> {
 	}
 }
 
-pub struct BridgeColumnsView<'a> {
+pub struct InProcessColumnsView<'a> {
 	columns: &'a Columns,
 }
 
-impl<'a> BridgeColumnsView<'a> {
+impl<'a> InProcessColumnsView<'a> {
 	pub fn new(columns: &'a Columns) -> Self {
 		Self {
 			columns,
@@ -154,7 +154,7 @@ impl<'a> BridgeColumnsView<'a> {
 	}
 }
 
-impl<'a> ColumnsView for BridgeColumnsView<'a> {
+impl<'a> ColumnsView for InProcessColumnsView<'a> {
 	fn row_count(&self) -> usize {
 		self.columns.row_count()
 	}
@@ -163,15 +163,15 @@ impl<'a> ColumnsView for BridgeColumnsView<'a> {
 		if index >= self.columns.row_count() {
 			return None;
 		}
-		Some(BridgeRowView::new(self.columns, index))
+		Some(InProcessRowView::new(self.columns, index))
 	}
 }
 
-pub struct BridgeDiffView<'a> {
+pub struct InProcessDiffView<'a> {
 	diff: &'a Diff,
 }
 
-impl<'a> BridgeDiffView<'a> {
+impl<'a> InProcessDiffView<'a> {
 	pub fn new(diff: &'a Diff) -> Self {
 		Self {
 			diff,
@@ -179,25 +179,25 @@ impl<'a> BridgeDiffView<'a> {
 	}
 }
 
-impl<'a> DiffView for BridgeDiffView<'a> {
+impl<'a> DiffView for InProcessDiffView<'a> {
 	fn kind(&self) -> DiffType {
 		self.diff.kind()
 	}
 
 	fn pre(&self) -> Option<impl ColumnsView + '_> {
-		self.diff.pre().map(BridgeColumnsView::new)
+		self.diff.pre().map(InProcessColumnsView::new)
 	}
 
 	fn post(&self) -> Option<impl ColumnsView + '_> {
-		self.diff.post().map(BridgeColumnsView::new)
+		self.diff.post().map(InProcessColumnsView::new)
 	}
 }
 
-pub struct BridgeChangeView<'a> {
+pub struct InProcessChangeView<'a> {
 	change: &'a Change,
 }
 
-impl<'a> BridgeChangeView<'a> {
+impl<'a> InProcessChangeView<'a> {
 	pub fn new(change: &'a Change) -> Self {
 		Self {
 			change,
@@ -205,7 +205,7 @@ impl<'a> BridgeChangeView<'a> {
 	}
 }
 
-impl<'a> ChangeView for BridgeChangeView<'a> {
+impl<'a> ChangeView for InProcessChangeView<'a> {
 	fn version(&self) -> u64 {
 		self.change.version.0
 	}
@@ -219,6 +219,6 @@ impl<'a> ChangeView for BridgeChangeView<'a> {
 	}
 
 	fn diff(&self, index: usize) -> Option<impl DiffView + '_> {
-		self.change.diffs.get(index).map(BridgeDiffView::new)
+		self.change.diffs.get(index).map(InProcessDiffView::new)
 	}
 }

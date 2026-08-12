@@ -14,8 +14,8 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		change::BorrowedChange,
 		column::operator::OperatorColumn,
-		extern_c::binding::{context::ExternCOperatorContext, operator::ExternCOperator},
-		windowed::bridge::OperatorContextStore,
+		extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
+		windowed::guest_as_host::GuestAsHost,
 	},
 };
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
@@ -88,7 +88,7 @@ impl HeapSize for SumState {
 	}
 }
 
-/// Exists only so the harness can hand out a real `ExternCOperatorContext`; the cache, not the operator, is under test.
+/// Exists only so the harness can hand out a real `ExternCContext`; the cache, not the operator, is under test.
 struct PassthroughOperator;
 
 impl OperatorMetadata for PassthroughOperator {
@@ -105,7 +105,7 @@ impl ExternCOperator for PassthroughOperator {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, _ctx: &mut ExternCOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, _ctx: &mut ExternCContext, _input: BorrowedChange<'_>) -> Result<()> {
 		Ok(())
 	}
 }
@@ -122,13 +122,13 @@ fn test_cache_set_and_get() {
 	};
 
 	let mut ctx = harness.create_operator_context();
-	cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
+	cache.set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 
 	// Nothing buffers the write, so the value must be in host storage the moment set returns.
 	assert_eq!(harness.state().len(), 1);
 
 	let mut ctx = harness.create_operator_context();
-	let retrieved = cache.get(&mut OperatorContextStore(&mut ctx), &key).expect("Get failed");
+	let retrieved = cache.get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 	assert_eq!(retrieved, Some(value));
 }
 
@@ -145,13 +145,13 @@ fn test_cache_set_persists_to_extern_c_and_flush_is_inert() {
 
 	// Set is the sole point at which state reaches host storage; nothing is left pending for flush.
 	let mut ctx = harness.create_operator_context();
-	cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
+	cache.set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 	let persisted = harness.snapshot_state();
 	assert_eq!(persisted.len(), 1, "Set must write through to host storage");
 
 	// Operators still call flush; re-issuing the write here would stamp every key a second time.
 	let mut ctx = harness.create_operator_context();
-	cache.flush(&mut OperatorContextStore(&mut ctx)).expect("Flush failed");
+	cache.flush(&mut GuestAsHost(&mut ctx)).expect("Flush failed");
 	assert_eq!(harness.snapshot_state(), persisted, "Flush must leave host storage byte-identical");
 }
 
@@ -164,7 +164,7 @@ fn test_cache_get_or_default_creates_default() {
 	let key = TestKey::new("new_key");
 
 	let mut ctx = harness.create_operator_context();
-	let result = cache.get_or_default(&mut OperatorContextStore(&mut ctx), &key).expect("get_or_default failed");
+	let result = cache.get_or_default(&mut GuestAsHost(&mut ctx), &key).expect("get_or_default failed");
 
 	assert_eq!(result.count, 0);
 }
@@ -182,13 +182,12 @@ fn test_cache_get_or_default_returns_existing() {
 
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
+		cache.set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 	}
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let result =
-			cache.get_or_default(&mut OperatorContextStore(&mut ctx), &key).expect("get_or_default failed");
+		let result = cache.get_or_default(&mut GuestAsHost(&mut ctx), &key).expect("get_or_default failed");
 
 		assert_eq!(result.count, 50, "Should return existing value, not default");
 	}
@@ -205,7 +204,7 @@ fn test_cache_update() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let result = cache
-			.update(&mut OperatorContextStore(&mut ctx), &key, |s| {
+			.update(&mut GuestAsHost(&mut ctx), &key, |s| {
 				s.count += 10;
 				Ok(())
 			})
@@ -217,7 +216,7 @@ fn test_cache_update() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let result = cache
-			.update(&mut OperatorContextStore(&mut ctx), &key, |s| {
+			.update(&mut GuestAsHost(&mut ctx), &key, |s| {
 				s.count += 5;
 				Ok(())
 			})
@@ -229,7 +228,7 @@ fn test_cache_update() {
 	// The returned value must agree with host storage, otherwise the second update read a stale base.
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut OperatorContextStore(&mut ctx), &key).expect("Get failed");
+		let result = cache.get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 		assert_eq!(
 			result,
 			Some(CounterState {
@@ -253,7 +252,7 @@ fn test_cache_multiple_keys() {
 			let value = SumState {
 				total: i * 10,
 			};
-			cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
+			cache.set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 		}
 	}
 
@@ -264,7 +263,7 @@ fn test_cache_multiple_keys() {
 		let mut ctx = harness.create_operator_context();
 		for i in 0..5 {
 			let key = TestKey::new(&format!("sum_{}", i));
-			let result = cache.get(&mut OperatorContextStore(&mut ctx), &key).expect("Get failed");
+			let result = cache.get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 			assert_eq!(
 				result,
 				Some(SumState {
@@ -293,8 +292,8 @@ fn test_cache_tuple_keys() {
 
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.set(&mut OperatorContextStore(&mut ctx), &key1, &value1).expect("Set failed");
-		cache.set(&mut OperatorContextStore(&mut ctx), &key2, &value2).expect("Set failed");
+		cache.set(&mut GuestAsHost(&mut ctx), &key1, &value1).expect("Set failed");
+		cache.set(&mut GuestAsHost(&mut ctx), &key2, &value2).expect("Set failed");
 	}
 
 	// Two composite keys must never frame onto one row, otherwise the second set eats the first.
@@ -302,8 +301,8 @@ fn test_cache_tuple_keys() {
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let result1 = cache.get(&mut OperatorContextStore(&mut ctx), &key1).expect("Get failed");
-		let result2 = cache.get(&mut OperatorContextStore(&mut ctx), &key2).expect("Get failed");
+		let result1 = cache.get(&mut GuestAsHost(&mut ctx), &key1).expect("Get failed");
+		let result2 = cache.get(&mut GuestAsHost(&mut ctx), &key2).expect("Get failed");
 		assert_eq!(result1, Some(value1));
 		assert_eq!(result2, Some(value2));
 	}
@@ -320,7 +319,7 @@ fn test_cache_tuple_key_update() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let result = cache
-			.update(&mut OperatorContextStore(&mut ctx), &key, |s| {
+			.update(&mut GuestAsHost(&mut ctx), &key, |s| {
 				s.total += 500;
 				Ok(())
 			})
@@ -332,7 +331,7 @@ fn test_cache_tuple_key_update() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let result = cache
-			.update(&mut OperatorContextStore(&mut ctx), &key, |s| {
+			.update(&mut GuestAsHost(&mut ctx), &key, |s| {
 				s.total += 250;
 				Ok(())
 			})
@@ -355,7 +354,7 @@ fn test_cache_get_reloads_from_host_storage() {
 	{
 		let mut writer: StateCache<TestKey, CounterState> = StateCache::new();
 		let mut ctx = harness.create_operator_context();
-		writer.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
+		writer.set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 	}
 
 	// A reader that never saw the write can only answer from host storage, never from an in-process copy.
@@ -363,14 +362,14 @@ fn test_cache_get_reloads_from_host_storage() {
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut OperatorContextStore(&mut ctx), &key).expect("Get failed");
+		let result = cache.get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 		assert_eq!(result, Some(value.clone()));
 	}
 
 	// A get must never consume the row, otherwise the next read of the same key strands the operator.
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut OperatorContextStore(&mut ctx), &key).expect("Get failed");
+		let result = cache.get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 		assert_eq!(result, Some(value));
 	}
 }
@@ -391,7 +390,7 @@ fn test_cache_with_operator_apply() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let diff_count = input.diffs.len() as i64;
-		cache.update(&mut OperatorContextStore(&mut ctx), &TestKey::new("event_counter"), |s| {
+		cache.update(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter"), |s| {
 			s.count += diff_count;
 			Ok(())
 		})
@@ -403,7 +402,7 @@ fn test_cache_with_operator_apply() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let diff_count = input2.diffs.len() as i64;
-		cache.update(&mut OperatorContextStore(&mut ctx), &TestKey::new("event_counter"), |s| {
+		cache.update(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter"), |s| {
 			s.count += diff_count;
 			Ok(())
 		})
@@ -412,9 +411,7 @@ fn test_cache_with_operator_apply() {
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache
-			.get(&mut OperatorContextStore(&mut ctx), &TestKey::new("event_counter"))
-			.expect("Get failed");
+		let result = cache.get(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter")).expect("Get failed");
 		assert_eq!(
 			result,
 			Some(CounterState {

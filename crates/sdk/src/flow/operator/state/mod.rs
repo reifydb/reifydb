@@ -15,17 +15,17 @@ use reifydb_value::{error::Error as ValueError, value::datetime::DateTime};
 use crate::{
 	error::Result,
 	flow::operator::{
-		context::{OperatorContext, StateApi},
-		extern_c::binding::{context::ExternCOperatorContext, state as extern_c},
+		context::{GuestContext, GuestState},
+		extern_c::binding::{context::ExternCContext, state as extern_c},
 	},
 };
 
 pub struct State<'a> {
-	ctx: &'a mut ExternCOperatorContext,
+	ctx: &'a mut ExternCContext,
 }
 
 impl<'a> State<'a> {
-	pub(crate) fn new(ctx: &'a mut ExternCOperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut ExternCContext) -> Self {
 		Self {
 			ctx,
 		}
@@ -144,8 +144,8 @@ impl<'a> State<'a> {
 
 	#[inline]
 	fn written_at(&self) -> DateTime {
-		// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null, and the host keeps the
-		// ExternCContext alive and aligned for at least the lifetime of the borrow this State was created
+		// SAFETY: ExternCContext::new asserts ctx.ctx is non-null, and the host keeps the
+		// ExternCContextRaw alive and aligned for at least the lifetime of the borrow this State was created
 		// from.
 		DateTime::from_nanos(unsafe { (*self.ctx.ctx).written_at_nanos })
 	}
@@ -161,29 +161,25 @@ pub fn decode_payload<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T> {
 	Ok(decode(row).map_err(ValueError::from)?)
 }
 
-pub trait RawStatefulOperator {
-	fn state_get<T: OperatorState>(
-		&self,
-		ctx: &mut impl OperatorContext,
-		key: &GroupStateKey,
-	) -> Result<Option<T>> {
+pub trait GuestRawOperator {
+	fn state_get<T: OperatorState>(&self, ctx: &mut impl GuestContext, key: &GroupStateKey) -> Result<Option<T>> {
 		ctx.state().get(key)
 	}
 
 	fn state_set<T: OperatorState>(
 		&self,
-		ctx: &mut impl OperatorContext,
+		ctx: &mut impl GuestContext,
 		key: &GroupStateKey,
 		value: &T,
 	) -> Result<()> {
 		ctx.state().set(key, value)
 	}
 
-	fn state_remove(&self, ctx: &mut impl OperatorContext, key: &GroupStateKey) -> Result<()> {
+	fn state_remove(&self, ctx: &mut impl GuestContext, key: &GroupStateKey) -> Result<()> {
 		ctx.state().remove(key)
 	}
 
-	fn state_clear(&self, ctx: &mut impl OperatorContext) -> Result<()> {
+	fn state_clear(&self, ctx: &mut impl GuestContext) -> Result<()> {
 		ctx.state().clear()
 	}
 }

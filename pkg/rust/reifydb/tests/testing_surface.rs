@@ -6,7 +6,7 @@ use reifydb::{
 	sdk::{
 		error::Result as SdkResult,
 		operator::{
-			OperatorLogic, OperatorMetadata, column::operator::OperatorColumn, context::OperatorContext,
+			GuestOperator, OperatorMetadata, column::operator::OperatorColumn, context::GuestContext,
 			view::ChangeView,
 		},
 	},
@@ -28,12 +28,12 @@ impl OperatorMetadata for Inert {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl OperatorLogic for Inert {
+impl GuestOperator for Inert {
 	fn create(_node: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(Inert)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl OperatorContext, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
 		Ok(())
 	}
 }

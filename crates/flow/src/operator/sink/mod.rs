@@ -42,10 +42,12 @@ use reifydb_value::{
 	},
 };
 
-use crate::{error::FlowSinkError, operator::bridge::Bridge, timer::Timer, transaction::deferred::DeferredTransaction};
+use crate::{
+	error::FlowSinkError, operator::host::HostContext, timer::Timer, transaction::deferred::DeferredTransaction,
+};
 
 /// A durable view sink: the terminal node that writes a flow's output into a table, series or
-/// ring buffer. Unlike an [`crate::operator::Operator`] it needs the whole transaction (raw
+/// ring buffer. Unlike an [`crate::operator::HostOperator`] it needs the whole transaction (raw
 /// keyspace writes, change tracking, dictionary allocation and catalog lookups), so it is
 /// dispatched off a separate map and only ever exists on the deferred path.
 pub trait DurableSink: Send {
@@ -217,7 +219,7 @@ fn stamp_source_row<B: SourceRowBuilder>(
 	Ok((row_number, encoded.freeze_bytes()))
 }
 
-pub(crate) fn decode_dictionary_columns(columns: &mut Columns, bridge: &mut dyn Bridge) -> Result<()> {
+pub(crate) fn decode_dictionary_columns(columns: &mut Columns, host: &mut dyn HostContext) -> Result<()> {
 	let dict_columns: Vec<(usize, DictionaryId, ValueType)> = {
 		let ids: Vec<(usize, DictionaryId)> = columns
 			.iter()
@@ -232,7 +234,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, bridge: &mut dyn 
 			.collect();
 		ids.into_iter()
 			.map(|(pos, id)| {
-				let value_type = bridge.dictionary_value_type(id).ok_or_else(|| {
+				let value_type = host.dictionary_value_type(id).ok_or_else(|| {
 					Error::from(FlowSinkError::DictionaryNotFound {
 						dictionary_id: format!("{:?}", id),
 						column: columns.name_at(pos).to_string(),
@@ -250,9 +252,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, bridge: &mut dyn 
 		for row_idx in 0..row_count {
 			let id_value = columns[*col_pos].get_value(row_idx);
 			let value = match DictionaryEntryId::from_value(&id_value) {
-				Some(entry_id) => {
-					bridge.dictionary_get(*dictionary, entry_id)?.unwrap_or(Value::none())
-				}
+				Some(entry_id) => host.dictionary_get(*dictionary, entry_id)?.unwrap_or(Value::none()),
 				None => Value::none(),
 			};
 			new_data.push_value(value);
@@ -285,7 +285,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::bridge::FlowBridge,
+		operator::host::TxnHostContext,
 		transaction::{DeferredParams, deferred::DeferredTransaction, substrate::FlowSubstrate},
 	};
 
@@ -411,7 +411,8 @@ mod tests {
 			let mut txn = flow_txn(&engine, &decode_registry);
 			let mut columns = dictionary_column(&dictionary, entry_id.clone());
 			let before = decode_store.read_count();
-			decode_dictionary_columns(&mut columns, &mut FlowBridge::new(&mut txn, OperatorId(1))).unwrap();
+			decode_dictionary_columns(&mut columns, &mut TxnHostContext::new(&mut txn, OperatorId(1)))
+				.unwrap();
 			assert_eq!(
 				decode_store.read_count() - before,
 				1,
@@ -424,7 +425,8 @@ mod tests {
 			let mut txn = flow_txn(&engine, &decode_registry);
 			let mut columns = dictionary_column(&dictionary, entry_id);
 			let before = decode_store.read_count();
-			decode_dictionary_columns(&mut columns, &mut FlowBridge::new(&mut txn, OperatorId(1))).unwrap();
+			decode_dictionary_columns(&mut columns, &mut TxnHostContext::new(&mut txn, OperatorId(1)))
+				.unwrap();
 			assert_eq!(
 				decode_store.read_count() - before,
 				0,
@@ -444,7 +446,7 @@ mod tests {
 		let mut txn = flow_txn(&engine, &registry);
 
 		let mut columns = dictionary_column_with_id(DictionaryId(9999), DictionaryEntryId::U2(1));
-		let err = decode_dictionary_columns(&mut columns, &mut FlowBridge::new(&mut txn, OperatorId(1)))
+		let err = decode_dictionary_columns(&mut columns, &mut TxnHostContext::new(&mut txn, OperatorId(1)))
 			.expect_err("a dictionary missing from the catalog must fail the decode");
 
 		assert_eq!(err.code, "FLOW_037", "expected FLOW_037, got {:?}: {}", err.code, err.message);

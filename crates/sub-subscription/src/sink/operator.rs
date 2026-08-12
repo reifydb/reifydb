@@ -12,7 +12,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_flow::operator::{Operator, bridge::Bridge, stateful::raw::RawStatefulOperator};
+use reifydb_flow::operator::{HostOperator, host::HostContext, stateful::raw::HostRawOperator};
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
@@ -83,9 +83,9 @@ impl EphemeralSinkPlan {
 	}
 }
 
-impl RawStatefulOperator for EphemeralSinkSubscriptionOperator {}
+impl HostRawOperator for EphemeralSinkSubscriptionOperator {}
 
-impl Operator for EphemeralSinkSubscriptionOperator {
+impl HostOperator for EphemeralSinkSubscriptionOperator {
 	fn id(&self) -> OperatorId {
 		self.plan.operator
 	}
@@ -94,7 +94,7 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+	fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		let plan = self.plan.clone();
 		let state = &mut self.state;
 

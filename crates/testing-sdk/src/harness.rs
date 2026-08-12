@@ -38,11 +38,11 @@ use reifydb_sdk::{
 		extern_c::{
 			binding::{
 				arena::Arena,
-				context::ExternCOperatorContext,
+				context::ExternCContext,
 				operator::ExternCOperator,
 				wrapper::{OperatorWrapper, extern_c_apply},
 			},
-			wire::context::ExternCContext,
+			wire::context::ExternCContextRaw,
 		},
 		timer::Timer,
 	},
@@ -75,7 +75,7 @@ pub struct ReclaimedGroups {
 pub struct ExternCOperatorHarness<T: ExternCOperator> {
 	operator: T,
 	context: Box<TestContext>,
-	extern_c_context: Box<ExternCContext>,
+	extern_c_context: Box<ExternCContextRaw>,
 	config: HashMap<String, Value>,
 	operator_id: OperatorId,
 	clock: Clock,
@@ -103,10 +103,10 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 
 		self.input_arena.clear();
 		let extern_c_change = self.input_arena.marshal_change(&input);
-		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContext;
+		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContextRaw;
 
 		let result: Result<()> = with_registry(&self.builder_registry, || {
-			let mut op_ctx = ExternCOperatorContext::new(extern_c_ctx_ptr);
+			let mut op_ctx = ExternCContext::new(extern_c_ctx_ptr);
 			// SAFETY: extern_c_change lives on this stack frame and the arena backing its
 			// buffers is neither cleared nor dropped until after the closure returns, so
 			// the borrow cannot outlive its data.
@@ -137,10 +137,10 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 
 		self.input_arena.clear();
 		let extern_c_change = self.input_arena.marshal_change(&input);
-		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContext;
+		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContextRaw;
 
 		let result: Result<()> = with_registry(&self.builder_registry, || {
-			let mut op_ctx = ExternCOperatorContext::new(extern_c_ctx_ptr);
+			let mut op_ctx = ExternCContext::new(extern_c_ctx_ptr);
 			// SAFETY: extern_c_change lives on this stack frame and the arena backing its
 			// buffers is neither cleared nor dropped until after the closure returns, so
 			// the borrow cannot outlive its data.
@@ -163,18 +163,18 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 
 	pub fn flush(&mut self) -> Result<()> {
 		self.refresh_written_at();
-		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContext;
+		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContextRaw;
 		with_registry(&self.builder_registry, || {
-			let mut op_ctx = ExternCOperatorContext::new(extern_c_ctx_ptr);
+			let mut op_ctx = ExternCContext::new(extern_c_ctx_ptr);
 			self.operator.flush_state(&mut op_ctx)
 		})
 	}
 
 	pub fn fire_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<()> {
 		self.refresh_written_at();
-		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContext;
+		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContextRaw;
 		with_registry(&self.builder_registry, || {
-			let mut op_ctx = ExternCOperatorContext::new(extern_c_ctx_ptr);
+			let mut op_ctx = ExternCContext::new(extern_c_ctx_ptr);
 			self.operator.on_timer(
 				&mut op_ctx,
 				Timer {
@@ -366,9 +366,9 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 		Ok(())
 	}
 
-	pub fn create_operator_context(&mut self) -> ExternCOperatorContext {
+	pub fn create_operator_context(&mut self) -> ExternCContext {
 		self.refresh_written_at();
-		ExternCOperatorContext::new(&mut *self.extern_c_context as *mut ExternCContext)
+		ExternCContext::new(&mut *self.extern_c_context as *mut ExternCContextRaw)
 	}
 
 	pub fn operator(&self) -> &T {
@@ -480,7 +480,7 @@ impl<T: ExternCOperator> ExternCOperatorHarnessBuilder<T> {
 			context.seed_dictionary_interning(name, *id, id_type.clone(), entries);
 		}
 
-		let extern_c_context = Box::new(ExternCContext {
+		let extern_c_context = Box::new(ExternCContextRaw {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
 			written_at_nanos: self.clock.now().to_nanos(),
 			operator_id: self.operator_id.0,
@@ -506,7 +506,7 @@ impl<T: ExternCOperator> ExternCOperatorHarnessBuilder<T> {
 
 pub fn drive_extern_c_apply<O: ExternCOperator + OperatorMetadata>(input: &Change) -> i32 {
 	let context = Box::new(TestContext::new(CommitVersion(1)));
-	let mut extern_c_context = ExternCContext {
+	let mut extern_c_context = ExternCContextRaw {
 		txn_ptr: &*context as *const TestContext as *mut c_void,
 		written_at_nanos: 0,
 		operator_id: 1,
@@ -526,7 +526,7 @@ pub fn drive_extern_c_apply<O: ExternCOperator + OperatorMetadata>(input: &Chang
 	with_registry(&registry, || unsafe {
 		extern_c_apply::<O>(
 			wrapper.as_ptr(),
-			&mut extern_c_context as *mut ExternCContext,
+			&mut extern_c_context as *mut ExternCContextRaw,
 			&extern_c_change as *const _,
 		)
 	})
@@ -566,8 +566,8 @@ pub mod tests {
 			OperatorMetadata,
 			change::{BorrowedChange, BorrowedColumns},
 			column::operator::OperatorColumn,
-			context::OperatorContext,
-			extern_c::binding::{context::ExternCOperatorContext, operator::ExternCOperator},
+			context::GuestContext,
+			extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
 		},
 		row,
 	};
@@ -601,7 +601,7 @@ pub mod tests {
 			})
 		}
 
-		fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
 			forward_diffs_passthrough(ctx, &input)
 		}
 	}
@@ -622,7 +622,7 @@ pub mod tests {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
 			for diff in input.diffs() {
 				let post = match diff.kind() {
 					DiffType::Insert | DiffType::Update => Some(diff.post()),
@@ -647,7 +647,7 @@ pub mod tests {
 		}
 	}
 
-	fn forward_diffs_passthrough(ctx: &mut ExternCOperatorContext, input: &BorrowedChange<'_>) -> Result<()> {
+	fn forward_diffs_passthrough(ctx: &mut ExternCContext, input: &BorrowedChange<'_>) -> Result<()> {
 		let mut builder = ctx.builder();
 		for diff in input.diffs() {
 			match diff.kind() {
@@ -858,7 +858,7 @@ pub mod tests {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
 			// Row n arms a Seal timer at n milliseconds, so a test picks which timers are due
 			// purely by choosing the row numbers it inserts.
 			for diff in input.diffs() {
@@ -876,7 +876,7 @@ pub mod tests {
 			Ok(())
 		}
 
-		fn on_timer(&mut self, ctx: &mut ExternCOperatorContext, timer: Timer<'_>) -> Result<()> {
+		fn on_timer(&mut self, ctx: &mut ExternCContext, timer: Timer<'_>) -> Result<()> {
 			// State is what proves on_timer reached the operator; a fired count alone would
 			// still pass if the harness popped the wheel and dropped the callback.
 			ctx.state().set::<i64>(&probe_row_key(timer.at.to_nanos()), &1i64)
@@ -909,11 +909,11 @@ pub mod tests {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, _ctx: &mut ExternCOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, _ctx: &mut ExternCContext, _input: BorrowedChange<'_>) -> Result<()> {
 			Ok(())
 		}
 
-		fn on_timer(&mut self, ctx: &mut ExternCOperatorContext, timer: Timer<'_>) -> Result<()> {
+		fn on_timer(&mut self, ctx: &mut ExternCContext, timer: Timer<'_>) -> Result<()> {
 			ctx.emit_insert(
 				&[SealRow {
 					total: timer.at.to_millis() as i64,
@@ -976,7 +976,7 @@ pub mod tests {
 			})
 		}
 
-		fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
 			for diff in input.diffs() {
 				if !matches!(diff.kind(), DiffType::Insert) {
 					continue;
@@ -992,7 +992,7 @@ pub mod tests {
 			Ok(())
 		}
 
-		fn on_timer(&mut self, ctx: &mut ExternCOperatorContext, timer: Timer<'_>) -> Result<()> {
+		fn on_timer(&mut self, ctx: &mut ExternCContext, timer: Timer<'_>) -> Result<()> {
 			// Re-arms one millisecond out, still at or below the watermark the test advances
 			// to; the limit is what keeps this off advance_watermark's runaway panic.
 			self.fires += 1;

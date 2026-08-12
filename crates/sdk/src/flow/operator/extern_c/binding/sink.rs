@@ -58,7 +58,7 @@ impl<'a> AnyWriter<'a> {
 	) -> Result<AnyWriter<'a>, SdkError> {
 		// SAFETY: this only launders the outer borrow's lifetime up to `'a`; each writer copies the
 		// ctx pointer and buffer handle out of the builder and never keeps a reference into it, and
-		// the ExternCContext behind that pointer outlives `'a`.
+		// the ExternCContextRaw behind that pointer outlives `'a`.
 		let builder: &mut ColumnsBuilder<'a> =
 			unsafe { core::mem::transmute::<&mut ColumnsBuilder<'_>, &mut ColumnsBuilder<'a>>(builder) };
 		Ok(match type_code {

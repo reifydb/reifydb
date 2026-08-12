@@ -14,7 +14,7 @@ use reifydb_sdk::{
 	error::SdkError,
 	flow::operator::extern_c::binding::arena::Arena,
 	procedure::extern_c::wire::{
-		callbacks::ProcedureCallbacks, context::ExternCContext, descriptor::ExternCProcedureDescriptor,
+		callbacks::ProcedureCallbacks, context::ExternCContextRaw, descriptor::ExternCProcedureDescriptor,
 		vtable::ExternCProcedureVTable,
 	},
 };
@@ -47,7 +47,7 @@ pub struct ExternCProcedure {
 
 	builder_registry: BuilderRegistry,
 
-	cached_ctx: UnsafeCell<ExternCContext>,
+	cached_ctx: UnsafeCell<ExternCContextRaw>,
 }
 
 impl ExternCProcedure {
@@ -61,7 +61,7 @@ impl ExternCProcedure {
 			vtable,
 			instance: Mutex::new(instance),
 			builder_registry: BuilderRegistry::new(),
-			cached_ctx: UnsafeCell::new(ExternCContext {
+			cached_ctx: UnsafeCell::new(ExternCContextRaw {
 				txn_ptr: ptr::null_mut(),
 				executor_ptr: ptr::null(),
 				written_at_nanos: 0,
@@ -151,7 +151,7 @@ impl ExternCProcedure {
 	#[inline]
 	fn prepare_extern_c_context(&self, ctx: &mut ProcedureContext<'_, '_>) {
 		let extern_c_ctx_ptr = self.cached_ctx.get();
-		// SAFETY: cached_ctx owns the ExternCContext for the life of self; execute holds the Mutex.
+		// SAFETY: cached_ctx owns the ExternCContextRaw for the life of self; execute holds the Mutex.
 		unsafe {
 			(*extern_c_ctx_ptr).txn_ptr = ctx.tx as *mut Transaction<'_> as *mut c_void;
 			(*extern_c_ctx_ptr).written_at_nanos = ctx.runtime_context.clock.now().to_nanos();

@@ -54,7 +54,7 @@ pub use reifydb_export as export;
 pub use reifydb_export::options::{ExportOptions, ObjectKind};
 pub use reifydb_extension as extension;
 #[cfg(feature = "sub_flow")]
-pub use reifydb_flow::operator::{BoxedOperator, Operator};
+pub use reifydb_flow::operator::{BoxedHostOperator, HostOperator};
 #[cfg(feature = "sub_flow")]
 pub use reifydb_flow::state::seal;
 #[cfg(feature = "sub_flow")]
@@ -68,7 +68,7 @@ pub mod routine {
 	pub use reifydb_routine_abi as abi;
 }
 #[cfg(feature = "sub_flow")]
-pub use reifydb_flow::operator::stateful::raw::RawStatefulOperator;
+pub use reifydb_flow::operator::stateful::raw::HostRawOperator;
 pub use reifydb_routine::{function, procedure};
 pub use reifydb_rql as rql;
 pub use reifydb_runtime as runtime;

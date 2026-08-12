@@ -32,17 +32,17 @@ use tracing::debug;
 use crate::{
 	error::Result,
 	flow::operator::{
-		OperatorLogic, OperatorMetadata,
+		GuestOperator, OperatorMetadata,
 		column::{
 			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
-		context::OperatorContext,
+		context::GuestContext,
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore, bucket_of, seal_frontier,
+			advance_seal_frontier, arm_seal_timer, bucket_of, guest_as_host::GuestAsHost, seal_frontier,
 			seal_horizon_of, window_engine_config,
 		},
 	},
@@ -70,7 +70,7 @@ pub trait RollingTopKOperator {
 
 	fn extract(
 		&self,
-		ctx: &mut impl OperatorContext,
+		ctx: &mut impl GuestContext,
 		row: &impl RowView,
 	) -> Option<(Self::GroupKey, AccumulatorContribution<Self>)>;
 
@@ -126,9 +126,9 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	#[allow(clippy::type_complexity)]
-	fn expire_through<C: OperatorContext>(
+	fn expire_through<C: GuestContext>(
 		engine: &mut RollingTopKEngine<A::GroupKey, DateTime, A::Accumulator, A::SecondaryKey, A::Output>,
-		store: &mut OperatorContextStore<'_, C>,
+		store: &mut GuestAsHost<'_, C>,
 		horizon: DateTime,
 	) -> Result<()> {
 		if horizon > <DateTime as Coord>::from_order(0) {
@@ -152,7 +152,7 @@ where
 	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
 }
 
-impl<A> OperatorLogic for RollingTopKDriver<A>
+impl<A> GuestOperator for RollingTopKDriver<A>
 where
 	A: RollingTopKRegistration + Send + Sync + 'static,
 	A::Output: Row + Send + Sync + HeapSize,
@@ -175,11 +175,11 @@ where
 		})
 	}
 
-	fn on_timer(&mut self, ctx: &mut impl OperatorContext, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
 		let Some(seal_after) = self.aggregator.seal_after() else {
 			return Ok(());
 		};
-		let mut store = OperatorContextStore(ctx);
+		let mut store = GuestAsHost(ctx);
 		let fired = FiredAt::of(&FlowTimer {
 			at: timer.at,
 			kind: timer.kind,
@@ -193,7 +193,7 @@ where
 		self.aggregator.seal_after()
 	}
 
-	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
 		let mut buckets = self.route_diffs_to_buckets(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
@@ -201,7 +201,7 @@ where
 
 		let seal_after = self.aggregator.seal_after();
 		if let Some(seal_after) = seal_after {
-			let mut store = OperatorContextStore(ctx);
+			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, coord)| *coord).max();
 			if let Some(newest) = newest {
 				arm_seal_timer(&mut store, newest, seal_after)?;
@@ -233,7 +233,7 @@ where
 				..
 			} = &mut *self;
 			let capacity = aggregator.capacity();
-			let mut store = OperatorContextStore(ctx);
+			let mut store = GuestAsHost(ctx);
 			engine.apply(
 				&mut store,
 				buckets,
@@ -269,8 +269,8 @@ where
 		Ok(())
 	}
 
-	fn flush_state(&mut self, ctx: &mut impl OperatorContext) -> Result<()> {
-		let mut store = OperatorContextStore(ctx);
+	fn flush_state(&mut self, ctx: &mut impl GuestContext) -> Result<()> {
+		let mut store = GuestAsHost(ctx);
 		self.engine.flush(&mut store)?;
 		Ok(())
 	}
@@ -288,7 +288,7 @@ where
 {
 	#[inline]
 	#[allow(clippy::type_complexity)]
-	fn route_diffs_to_buckets(&self, ctx: &mut impl OperatorContext, change: &impl ChangeView) -> Buckets<A> {
+	fn route_diffs_to_buckets(&self, ctx: &mut impl GuestContext, change: &impl ChangeView) -> Buckets<A> {
 		let mut buckets: Buckets<A> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
@@ -379,7 +379,7 @@ where
 
 	#[inline]
 	fn emit_three_batches(
-		ctx: &mut impl OperatorContext,
+		ctx: &mut impl GuestContext,
 		inserts: &[(RowNumber, A::Output)],
 		updates: &[(RowNumber, A::Output, A::Output)],
 		removes: &[(RowNumber, A::Output)],

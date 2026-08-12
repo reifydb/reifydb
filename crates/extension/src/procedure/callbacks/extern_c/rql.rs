@@ -12,7 +12,7 @@ use reifydb_sdk::{
 		buffer::ExternCBuffer,
 		status::{EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_OK},
 	},
-	procedure::extern_c::wire::context::ExternCContext,
+	procedure::extern_c::wire::context::ExternCContextRaw,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::params::Params;
@@ -25,7 +25,7 @@ use super::memory::host_alloc;
 ///
 /// # Safety
 ///
-/// - `ctx` must be a valid pointer to a procedure `ExternCContext` whose `txn_ptr` points to a live `Transaction`.
+/// - `ctx` must be a valid pointer to a procedure `ExternCContextRaw` whose `txn_ptr` points to a live `Transaction`.
 /// - `rql_ptr` must be valid for reading `rql_len` bytes of valid UTF-8.
 /// - `params_ptr` must be valid for reading `params_len` bytes, or null if `params_len` is 0.
 /// - `result_out` must be a valid pointer to a `ExternCBuffer` for writing.
@@ -63,7 +63,7 @@ pub unsafe extern "C" fn host_rql(
 				}
 			};
 
-			let ctx_ref = &mut *(ctx as *mut ExternCContext);
+			let ctx_ref = &mut *(ctx as *mut ExternCContextRaw);
 			let tx = &mut *(ctx_ref.txn_ptr as *mut Transaction<'_>);
 
 			let result = tx.rql(rql_str, params);

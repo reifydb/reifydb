@@ -22,7 +22,7 @@ use super::{
 	core::Aggregation,
 };
 use crate::{
-	operator::{bridge::Bridge, stateful::utils},
+	operator::{host::HostContext, stateful::utils},
 	state::seal::coord::Coord,
 	window::{
 		engine::{
@@ -58,12 +58,12 @@ pub(crate) fn partition_group_key(partition: Hash128) -> EncodedKey {
 }
 
 #[instrument(name = "flow::operator::aggregation::intern_groups", level = "trace", skip_all, fields(windows = windows.len()))]
-pub(crate) fn intern_window_groups(bridge: &mut dyn Bridge, windows: &[(Hash128, u64)]) -> Result<WindowGroups> {
+pub(crate) fn intern_window_groups(host: &mut dyn HostContext, windows: &[(Hash128, u64)]) -> Result<WindowGroups> {
 	if windows.is_empty() {
 		return Ok(WindowGroups::new());
 	}
 	let keys: Vec<EncodedKey> = windows.iter().map(|(p, w)| window_group_key(*p, *w)).collect();
-	let interned = bridge.intern_groups(&keys)?;
+	let interned = host.intern_groups(&keys)?;
 	Ok(windows.iter().copied().zip(interned.into_iter().map(|(group, _)| group)).collect())
 }
 
@@ -126,7 +126,7 @@ where
 #[instrument(name = "flow::operator::aggregation::finish", level = "trace", skip_all, fields(buckets = buckets.len()))]
 pub(crate) fn finish_tumbling_engine(
 	core: &mut Aggregation,
-	bridge: &mut dyn Bridge,
+	host: &mut dyn HostContext,
 	change: &Change,
 	buckets: EngineBuckets,
 	group_values: &HashMap<Hash128, Vec<Value>>,
@@ -143,26 +143,26 @@ pub(crate) fn finish_tumbling_engine(
 	});
 	let results = {
 		let res = engine.apply(
-			bridge,
+			host,
 			buckets,
 			&arrival,
 			|hash, window_start| (group_of(groups, *hash, window_start.to_order()), utils::empty_key()),
 			|| RowAccumulator::new(kinds, seal),
 		)?;
-		engine.flush(bridge)?;
+		engine.flush(host)?;
 		res
 	};
 
 	for r in &results {
 		let group = group_of(groups, r.group, r.span.start.to_order());
 		let window_start = r.span.start.to_order();
-		let prior_meta = core.engine_meta().get(bridge, &EngineMetaKey(group))?;
+		let prior_meta = core.engine_meta().get(host, &EngineMetaKey(group))?;
 		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
 		match r.kind {
 			EmitKind::Remove => {
 				engine.reindex_window(
-					bridge,
+					host,
 					&r.group,
 					r.span.start,
 					group,
@@ -170,14 +170,14 @@ pub(crate) fn finish_tumbling_engine(
 					prior_index,
 					None,
 				)?;
-				core.engine_meta().remove(bridge, &EngineMetaKey(group))?;
+				core.engine_meta().remove(host, &EngineMetaKey(group))?;
 			}
 			EmitKind::Insert | EmitKind::Update => {
 				let batch_max = window_max_ts.get(&(r.group, r.span)).map(|ts| ts.to_order());
 				let last_event_time = prior_last.max(batch_max);
 				let new_index = anchor.of(window_start, last_event_time);
 				engine.reindex_window(
-					bridge,
+					host,
 					&r.group,
 					r.span.start,
 					group,
@@ -188,7 +188,7 @@ pub(crate) fn finish_tumbling_engine(
 				let meta = EngineMeta {
 					last_event_time: last_event_time.unwrap_or_default(),
 				};
-				core.engine_meta().put(bridge, &EngineMetaKey(group), meta)?;
+				core.engine_meta().put(host, &EngineMetaKey(group), meta)?;
 			}
 		}
 	}

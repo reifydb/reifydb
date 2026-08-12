@@ -19,7 +19,7 @@ use crate::{
 	},
 	error::{Result, SdkError},
 	flow::operator::extern_c::{
-		binding::context::ExternCOperatorContext,
+		binding::context::ExternCContext,
 		wire::{
 			callbacks::state::GROUP_ABSENT,
 			iterators::ExternCStateIterator,
@@ -33,7 +33,7 @@ use crate::{
 	key_len = key.as_bytes().len(),
 	found
 ))]
-pub(crate) fn get(ctx: &ExternCOperatorContext, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
+pub(crate) fn get(ctx: &ExternCContext, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 	let key_bytes = key.as_bytes();
 	let mut output = ExternCBuffer {
 		ptr: null_mut(),
@@ -41,7 +41,7 @@ pub(crate) fn get(ctx: &ExternCOperatorContext, key: &EncodedKey) -> Result<Opti
 		cap: 0,
 	};
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; key_bytes outlives the callback, which only reads it. On EXTERN_C_OK the host
 	// writes a buffer of output.len initialised bytes, copied out before memory.free releases it with the length
 	// it was allocated at.
@@ -79,11 +79,11 @@ pub(crate) fn get(ctx: &ExternCOperatorContext, key: &EncodedKey) -> Result<Opti
 	key_len = key.as_bytes().len(),
 	value_len = value.as_ref().len()
 ))]
-pub(crate) fn set(ctx: &mut ExternCOperatorContext, key: &EncodedKey, value: &EncodedBytes) -> Result<()> {
+pub(crate) fn set(ctx: &mut ExternCContext, key: &EncodedKey, value: &EncodedBytes) -> Result<()> {
 	let key_bytes = key.as_bytes();
 	let value_bytes = value.as_ref();
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; key_bytes and value_bytes borrow guest allocations that outlive the callback,
 	// which only reads them.
 	unsafe {
@@ -108,10 +108,10 @@ pub(crate) fn set(ctx: &mut ExternCOperatorContext, key: &EncodedKey, value: &En
 	operator_id = ctx.operator_id().0,
 	key_len = key.as_bytes().len()
 ))]
-pub(crate) fn remove(ctx: &mut ExternCOperatorContext, key: &EncodedKey) -> Result<()> {
+pub(crate) fn remove(ctx: &mut ExternCContext, key: &EncodedKey) -> Result<()> {
 	let key_bytes = key.as_bytes();
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; key_bytes outlives the callback, which only reads it.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.remove)(
@@ -134,7 +134,7 @@ pub(crate) fn remove(ctx: &mut ExternCOperatorContext, key: &EncodedKey) -> Resu
 	key_count = keys.len(),
 	result_count
 ))]
-pub(crate) fn get_many(ctx: &ExternCOperatorContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+pub(crate) fn get_many(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	if keys.is_empty() {
 		Span::current().record("result_count", 0);
 		return Ok(Vec::new());
@@ -153,7 +153,7 @@ pub(crate) fn get_many(ctx: &ExternCOperatorContext, keys: &[EncodedKey]) -> Res
 
 	let mut iterator: *mut ExternCStateIterator = null_mut();
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; key_refs borrows keys that outlive the callback. The handle the host opens is
 	// passed once to collect_iterator_results, discharging its precondition that the handle is fresh and freed
 	// exactly there.
@@ -179,11 +179,11 @@ pub(crate) fn get_many(ctx: &ExternCOperatorContext, keys: &[EncodedKey]) -> Res
 	prefix_len = prefix.as_bytes().len(),
 	result_count
 ))]
-pub(crate) fn prefix(ctx: &ExternCOperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+pub(crate) fn prefix(ctx: &ExternCContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut ExternCStateIterator = null_mut();
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; prefix_bytes outlives the callback. The handle the host opens is passed once to
 	// collect_iterator_results, discharging its precondition that the handle is fresh and freed exactly there.
 	unsafe {
@@ -212,13 +212,13 @@ const BOUND_EXCLUDED: u8 = 2;
 	result_count
 ))]
 pub(crate) fn range(
-	ctx: &ExternCOperatorContext,
+	ctx: &ExternCContext,
 	start: Bound<&EncodedKey>,
 	end: Bound<&EncodedKey>,
 ) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let mut iterator: *mut ExternCStateIterator = null_mut();
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; each bound pointer is null with length 0 or borrows a key that outlives the
 	// callback. The handle the host opens is passed once to collect_iterator_results, which owns and frees it.
 	unsafe {
@@ -256,12 +256,12 @@ pub(crate) fn range(
 
 /// # Safety
 ///
-/// `ctx.ctx` must point to a live `ExternCContext` whose state callbacks are valid,
+/// `ctx.ctx` must point to a live `ExternCContextRaw` whose state callbacks are valid,
 /// and `iterator` must be null or an open handle from that context's state
 /// scan/range callback that has not yet been freed. This takes ownership of the
 /// handle and frees it before returning, so the caller must not free it again.
 unsafe fn collect_iterator_results(
-	ctx: &ExternCOperatorContext,
+	ctx: &ExternCContext,
 	iterator: *mut ExternCStateIterator,
 ) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	if iterator.is_null() {
@@ -337,8 +337,8 @@ unsafe fn collect_iterator_results(
 #[instrument(name = "flow::operator::extern_c::binding::state::clear", level = "trace", skip(ctx), fields(
 	operator_id = ctx.operator_id().0
 ))]
-pub(crate) fn clear(ctx: &mut ExternCOperatorContext) -> Result<()> {
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+pub(crate) fn clear(ctx: &mut ExternCContext) -> Result<()> {
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; no guest pointer crosses the boundary here.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.clear)((*ctx.ctx).operator_id, ctx.ctx);
@@ -363,14 +363,14 @@ fn key_refs(keys: &[EncodedKey]) -> Vec<ExternCKeyRef> {
 		.collect()
 }
 
-pub(crate) fn intern_groups(ctx: &mut ExternCOperatorContext, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
+pub(crate) fn intern_groups(ctx: &mut ExternCContext, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
 	if groups.is_empty() {
 		return Ok(Vec::new());
 	}
 	let refs = key_refs(groups);
 	let mut ids = vec![0u64; groups.len()];
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; refs borrows groups for the duration of the call, and ids is a live, initialised
 	// array of exactly groups.len() u64 slots for the host to fill.
 	unsafe {
@@ -389,15 +389,10 @@ pub(crate) fn intern_groups(ctx: &mut ExternCOperatorContext, groups: &[EncodedK
 	Ok(ids.into_iter().map(GroupId).collect())
 }
 
-pub(crate) fn arm_timer(
-	ctx: &mut ExternCOperatorContext,
-	at: DateTime,
-	kind: TimerKind,
-	key: &EncodedKey,
-) -> Result<()> {
+pub(crate) fn arm_timer(ctx: &mut ExternCContext, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 	let bytes = key.as_bytes();
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; bytes outlives the callback, which only reads it.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.arm_timer)(
@@ -416,11 +411,11 @@ pub(crate) fn arm_timer(
 	Ok(())
 }
 
-pub(crate) fn flow_watermark(ctx: &mut ExternCOperatorContext) -> Result<Option<DateTime>> {
+pub(crate) fn flow_watermark(ctx: &mut ExternCContext) -> Result<Option<DateTime>> {
 	let mut millis = 0u64;
 	let mut present = 0u8;
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null, and the host keeps the ExternCContext alive
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null, and the host keeps the ExternCContextRaw alive
 	// and aligned for the whole guest call; millis and present are local stack slots.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.flow_watermark)(
@@ -437,15 +432,10 @@ pub(crate) fn flow_watermark(ctx: &mut ExternCOperatorContext) -> Result<Option<
 	Ok((present != 0).then(|| DateTime::from_millis(millis)))
 }
 
-pub(crate) fn disarm_timer(
-	ctx: &mut ExternCOperatorContext,
-	at: DateTime,
-	kind: TimerKind,
-	key: &EncodedKey,
-) -> Result<()> {
+pub(crate) fn disarm_timer(ctx: &mut ExternCContext, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 	let bytes = key.as_bytes();
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; bytes outlives the callback, which only reads it.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.disarm_timer)(
@@ -464,14 +454,14 @@ pub(crate) fn disarm_timer(
 	Ok(())
 }
 
-pub(crate) fn lookup_groups(ctx: &mut ExternCOperatorContext, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+pub(crate) fn lookup_groups(ctx: &mut ExternCContext, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
 	if groups.is_empty() {
 		return Ok(Vec::new());
 	}
 	let refs = key_refs(groups);
 	let mut ids = vec![0u64; groups.len()];
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; refs borrows groups for the duration of the call, and ids is a live, initialised
 	// array of exactly groups.len() u64 slots for the host to fill.
 	unsafe {
@@ -491,7 +481,7 @@ pub(crate) fn lookup_groups(ctx: &mut ExternCOperatorContext, groups: &[EncodedK
 }
 
 pub(crate) fn get_or_create_row_numbers(
-	ctx: &mut ExternCOperatorContext,
+	ctx: &mut ExternCContext,
 	group: GroupId,
 	keys: &[EncodedKey],
 ) -> Result<Vec<(RowNumber, bool)>> {
@@ -502,7 +492,7 @@ pub(crate) fn get_or_create_row_numbers(
 	let mut row_numbers = vec![0u64; keys.len()];
 	let mut is_new = vec![0u8; keys.len()];
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; key_refs borrows keys for the duration of the call, and row_numbers and is_new are
 	// live, initialised arrays of exactly keys.len() slots each for the host to fill.
 	unsafe {
@@ -526,9 +516,9 @@ pub(crate) fn get_or_create_row_numbers(
 	Ok(row_numbers.into_iter().zip(is_new).map(|(rn, new)| (RowNumber(rn), new != 0)).collect())
 }
 
-pub(crate) fn remove_row_number(ctx: &mut ExternCOperatorContext, group: GroupId, key: &EncodedKey) -> Result<()> {
+pub(crate) fn remove_row_number(ctx: &mut ExternCContext, group: GroupId, key: &EncodedKey) -> Result<()> {
 	let key_bytes = key.as_bytes();
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; key_bytes outlives the callback, which only reads it.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.remove_row_number)(
@@ -547,7 +537,7 @@ pub(crate) fn remove_row_number(ctx: &mut ExternCOperatorContext, group: GroupId
 }
 
 pub(crate) fn remove_row_numbers_below(
-	ctx: &mut ExternCOperatorContext,
+	ctx: &mut ExternCContext,
 	group: GroupId,
 	upper: &EncodedKey,
 ) -> Result<Vec<RowNumber>> {
@@ -557,7 +547,7 @@ pub(crate) fn remove_row_numbers_below(
 		len: 0,
 		cap: 0,
 	};
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; upper_bytes outlives the callback. On EXTERN_C_OK the host writes a buffer of
 	// output.len initialised bytes, read before memory.free releases it with the length it was allocated with.
 	unsafe {

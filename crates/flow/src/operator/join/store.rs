@@ -37,7 +37,7 @@ use super::{cache::GroupCache, state::JoinSide};
 use crate::{
 	error::FlowStateError,
 	operator::{
-		bridge::Bridge,
+		host::HostContext,
 		join::strategy::hash::columns_from_block,
 		stateful::utils::{state_get, state_range, state_remove, state_set},
 	},
@@ -70,13 +70,17 @@ impl Store {
 		}
 	}
 
-	pub(crate) fn slot(&self, bridge: &mut dyn Bridge, group: GroupId) -> Result<Option<(EncodedBytes, Columns)>> {
+	pub(crate) fn slot(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+	) -> Result<Option<(EncodedBytes, Columns)>> {
 		if let Some(cached) = self.cache.get(group) {
 			return Ok(cached);
 		}
-		let entry = match self.get_row_in(bridge, group, SLOT)? {
+		let entry = match self.get_row_in(host, group, SLOT)? {
 			Some(row) => {
-				let columns = columns_from_block(bridge, self, vec![(SLOT, row.clone())])?;
+				let columns = columns_from_block(host, self, vec![(SLOT, row.clone())])?;
 				Some((row, columns))
 			}
 			None => None,
@@ -89,12 +93,12 @@ impl Store {
 		self.cache.remove(group);
 	}
 
-	fn resolve(&self, bridge: &mut dyn Bridge, hash: &Hash128) -> Result<Option<GroupId>> {
-		bridge.lookup_group(&group_bytes(hash))
+	fn resolve(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<Option<GroupId>> {
+		host.lookup_group(&group_bytes(hash))
 	}
 
-	fn intern(&self, bridge: &mut dyn Bridge, hash: &Hash128) -> Result<GroupId> {
-		bridge.intern_group(&group_bytes(hash))
+	fn intern(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<GroupId> {
+		host.intern_group(&group_bytes(hash))
 	}
 
 	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> GroupStateKey {
@@ -115,110 +119,110 @@ impl Store {
 	#[instrument(name = "flow::operator::join::store::put_row", level = "trace", skip_all)]
 	pub(crate) fn put_row(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		hash: &Hash128,
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
 	) -> Result<()> {
-		let group = self.intern(bridge, hash)?;
-		self.write_row(bridge, group, row_number, row)
+		let group = self.intern(host, hash)?;
+		self.write_row(host, group, row_number, row)
 	}
 
 	pub(crate) fn write_row(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		group: GroupId,
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
 	) -> Result<()> {
 		self.forget_slot(group);
 		let key = self.row_key(group, row_number);
-		state_set(bridge, &key, row.clone())
+		state_set(host, &key, row.clone())
 	}
 
-	pub(crate) fn group_of(&self, bridge: &mut dyn Bridge, hash: &Hash128) -> Result<Option<GroupId>> {
-		self.resolve(bridge, hash)
+	pub(crate) fn group_of(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<Option<GroupId>> {
+		self.resolve(host, hash)
 	}
 
-	pub(crate) fn group_for(&self, bridge: &mut dyn Bridge, hash: &Hash128) -> Result<GroupId> {
-		self.intern(bridge, hash)
+	pub(crate) fn group_for(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<GroupId> {
+		self.intern(host, hash)
 	}
 
 	pub(crate) fn get_row_in(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<Option<EncodedBytes>> {
 		let key = self.row_key(group, row_number);
-		Ok(state_get(bridge, &key)?.as_ref().map(body_bytes))
+		Ok(state_get(host, &key)?.as_ref().map(body_bytes))
 	}
 
 	pub(crate) fn update_row(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		hash: &Hash128,
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
 	) -> Result<bool> {
-		let Some(group) = self.resolve(bridge, hash)? else {
+		let Some(group) = self.resolve(host, hash)? else {
 			return Ok(false);
 		};
-		self.update_row_in(bridge, group, row_number, row)
+		self.update_row_in(host, group, row_number, row)
 	}
 
 	pub(crate) fn update_row_in(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		group: GroupId,
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
 	) -> Result<bool> {
 		let key = self.row_key(group, row_number);
-		if state_get(bridge, &key)?.is_none() {
+		if state_get(host, &key)?.is_none() {
 			return Ok(false);
 		}
 		self.forget_slot(group);
-		state_set(bridge, &key, row.clone())?;
+		state_set(host, &key, row.clone())?;
 		Ok(true)
 	}
 
 	pub(crate) fn remove_row(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		hash: &Hash128,
 		row_number: RowNumber,
 	) -> Result<bool> {
-		let Some(group) = self.resolve(bridge, hash)? else {
+		let Some(group) = self.resolve(host, hash)? else {
 			return Ok(false);
 		};
-		if self.get_row_in(bridge, group, row_number)?.is_none() {
+		if self.get_row_in(host, group, row_number)?.is_none() {
 			return Ok(false);
 		}
-		self.remove_row_in(bridge, group, row_number)?;
+		self.remove_row_in(host, group, row_number)?;
 		Ok(true)
 	}
 
 	pub(crate) fn remove_row_in(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<()> {
 		self.forget_slot(group);
 		let key = self.row_key(group, row_number);
-		state_remove(bridge, &key)
+		state_remove(host, &key)
 	}
 
 	#[instrument(name = "flow::operator::join::rows_for_key", level = "trace", skip_all, fields(limit = limit))]
 	pub(crate) fn rows_for_key(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		hash: &Hash128,
 		after: Option<&RowNumber>,
 		limit: usize,
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-		let Some(group) = self.resolve(bridge, hash)? else {
+		let Some(group) = self.resolve(host, hash)? else {
 			return Ok(Vec::new());
 		};
 		let mut range = self.rows_range(group);
@@ -226,7 +230,7 @@ impl Store {
 			range.start = Bound::Excluded(self.row_key(group, *after).into_encoded());
 		}
 		let mut out = Vec::new();
-		for entry in state_range(bridge, range) {
+		for entry in state_range(host, range) {
 			let (full_key, bytes) = entry?;
 			if let Some(rn) = row_number_from_key(full_key.as_slice()) {
 				out.push((rn, body_bytes(&EncodedOperatorRow::try_from(bytes)?)));
@@ -239,24 +243,24 @@ impl Store {
 		Ok(out)
 	}
 
-	pub(crate) fn contains_key(&self, bridge: &mut dyn Bridge, hash: &Hash128) -> Result<bool> {
-		let Some(group) = self.resolve(bridge, hash)? else {
+	pub(crate) fn contains_key(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<bool> {
+		let Some(group) = self.resolve(host, hash)? else {
 			return Ok(false);
 		};
 		let range = self.rows_range(group);
-		Ok(state_range(bridge, range).next().transpose()?.is_some())
+		Ok(state_range(host, range).next().transpose()?.is_some())
 	}
 
 	pub(crate) fn get_row_shape(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		fingerprint: RowShapeFingerprint,
 	) -> Result<Option<RowShape>> {
 		if let Some(shape) = self.shape_cache.get(&fingerprint) {
 			return Ok(Some(shape));
 		}
 		let key = self.schema_key(fingerprint);
-		match state_get(bridge, &key)? {
+		match state_get(host, &key)? {
 			Some(row) => {
 				if row.is_empty() {
 					return Ok(None);
@@ -276,13 +280,13 @@ impl Store {
 		}
 	}
 
-	pub(crate) fn set_row_shape(&self, bridge: &mut dyn Bridge, shape: &RowShape) -> Result<()> {
+	pub(crate) fn set_row_shape(&self, host: &mut dyn HostContext, shape: &RowShape) -> Result<()> {
 		let fingerprint = shape.fingerprint();
 		if self.shape_cache.contains_key(&fingerprint) {
 			return Ok(());
 		}
 		let key = self.schema_key(fingerprint);
-		if state_get(bridge, &key)?.is_some() {
+		if state_get(host, &key)?.is_some() {
 			self.shape_cache.insert(shape.clone());
 			return Ok(());
 		}
@@ -292,7 +296,7 @@ impl Store {
 				cause: e.to_string(),
 			})
 		})?;
-		state_set(bridge, &key, row)?;
+		state_set(host, &key, row)?;
 		self.shape_cache.insert(shape.clone());
 		Ok(())
 	}
@@ -314,7 +318,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::bridge::FlowBridge,
+		operator::host::TxnHostContext,
 		testing::FlowTxn,
 		transaction::{FlowTransaction, deferred::DeferredTransaction},
 	};
@@ -331,8 +335,8 @@ mod tests {
 		EncodedOperatorRow::timeless(&[payload])
 	}
 
-	fn b<'a>(txn: &'a mut DeferredTransaction, operator: OperatorId) -> FlowBridge<'a, DeferredTransaction> {
-		FlowBridge::new(txn, operator)
+	fn b<'a>(txn: &'a mut DeferredTransaction, operator: OperatorId) -> TxnHostContext<'a, DeferredTransaction> {
+		TxnHostContext::new(txn, operator)
 	}
 
 	/// Resolve-then-read, the composition production used before callers began holding the group

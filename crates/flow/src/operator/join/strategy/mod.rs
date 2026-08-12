@@ -5,7 +5,7 @@ use reifydb_core::{common::JoinType, interface::change::Diff, value::column::col
 use reifydb_value::util::hash::Hash128;
 
 use crate::operator::{
-	bridge::Bridge,
+	host::HostContext,
 	join::{
 		operator::JoinOperator,
 		state::{JoinSide, JoinState},
@@ -57,85 +57,85 @@ impl JoinStrategy {
 
 	pub(crate) fn handle_insert_undefined(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		post: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_insert_undefined(bridge, post, row_idx, ctx),
-			JoinStrategy::Inner(s) => s.handle_insert_undefined(bridge, post, row_idx, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_insert_undefined(bridge, post, row_idx, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_insert_undefined(bridge, post, row_idx, ctx),
+			JoinStrategy::Left(s) => s.handle_insert_undefined(host, post, row_idx, ctx),
+			JoinStrategy::Inner(s) => s.handle_insert_undefined(host, post, row_idx, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_insert_undefined(host, post, row_idx, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_insert_undefined(host, post, row_idx, ctx),
 		}
 	}
 
 	pub(crate) fn handle_remove_undefined(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_remove_undefined(bridge, pre, row_idx, ctx),
-			JoinStrategy::Inner(s) => s.handle_remove_undefined(bridge, pre, row_idx, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_remove_undefined(bridge, pre, row_idx, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_remove_undefined(bridge, pre, row_idx, ctx),
+			JoinStrategy::Left(s) => s.handle_remove_undefined(host, pre, row_idx, ctx),
+			JoinStrategy::Inner(s) => s.handle_remove_undefined(host, pre, row_idx, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_remove_undefined(host, pre, row_idx, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_remove_undefined(host, pre, row_idx, ctx),
 		}
 	}
 
 	pub(crate) fn handle_update_both_undefined(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_update_both_undefined(bridge, pre, post, row_idx, ctx),
-			JoinStrategy::Inner(s) => s.handle_update_both_undefined(bridge, pre, post, row_idx, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_update_both_undefined(bridge, pre, post, row_idx, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_update_both_undefined(bridge, pre, post, row_idx, ctx),
+			JoinStrategy::Left(s) => s.handle_update_both_undefined(host, pre, post, row_idx, ctx),
+			JoinStrategy::Inner(s) => s.handle_update_both_undefined(host, pre, post, row_idx, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_update_both_undefined(host, pre, post, row_idx, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_update_both_undefined(host, pre, post, row_idx, ctx),
 		}
 	}
 
 	pub(crate) fn handle_insert(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_insert(bridge, post, indices, key_hash, ctx),
-			JoinStrategy::Inner(s) => s.handle_insert(bridge, post, indices, key_hash, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_insert(bridge, post, indices, key_hash, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_insert(bridge, post, indices, key_hash, ctx),
+			JoinStrategy::Left(s) => s.handle_insert(host, post, indices, key_hash, ctx),
+			JoinStrategy::Inner(s) => s.handle_insert(host, post, indices, key_hash, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_insert(host, post, indices, key_hash, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_insert(host, post, indices, key_hash, ctx),
 		}
 	}
 
 	pub(crate) fn handle_remove(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_remove(bridge, pre, indices, key_hash, ctx),
-			JoinStrategy::Inner(s) => s.handle_remove(bridge, pre, indices, key_hash, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_remove(bridge, pre, indices, key_hash, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_remove(bridge, pre, indices, key_hash, ctx),
+			JoinStrategy::Left(s) => s.handle_remove(host, pre, indices, key_hash, ctx),
+			JoinStrategy::Inner(s) => s.handle_remove(host, pre, indices, key_hash, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_remove(host, pre, indices, key_hash, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_remove(host, pre, indices, key_hash, ctx),
 		}
 	}
 
 	pub(crate) fn handle_update(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],
@@ -143,10 +143,10 @@ impl JoinStrategy {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_update(bridge, pre, post, indices, keys, ctx),
-			JoinStrategy::Inner(s) => s.handle_update(bridge, pre, post, indices, keys, ctx),
-			JoinStrategy::LatestLeft(s) => s.handle_update(bridge, pre, post, indices, keys, ctx),
-			JoinStrategy::LatestInner(s) => s.handle_update(bridge, pre, post, indices, keys, ctx),
+			JoinStrategy::Left(s) => s.handle_update(host, pre, post, indices, keys, ctx),
+			JoinStrategy::Inner(s) => s.handle_update(host, pre, post, indices, keys, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_update(host, pre, post, indices, keys, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_update(host, pre, post, indices, keys, ctx),
 		}
 	}
 }

@@ -26,7 +26,7 @@ use crate::{
 	error::Result,
 	flow::operator::{
 		column::row::Row,
-		context::{DictionaryApi, OperatorContext, RowEmit, StateApi, UpdateEmit},
+		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit},
 		dictionary::Dictionary,
 		diff::DiffStart,
 		extern_c::{
@@ -37,7 +37,7 @@ use crate::{
 					intern_groups, lookup_groups, remove_row_number, remove_row_numbers_below,
 				},
 			},
-			wire::context::ExternCContext,
+			wire::context::ExternCContextRaw,
 		},
 		state::State,
 	},
@@ -50,7 +50,7 @@ pub struct ExternCRowEmit<'a> {
 	kind: Polarity,
 }
 
-impl<'a> RowEmit for ExternCRowEmit<'a> {
+impl<'a> GuestEmit for ExternCRowEmit<'a> {
 	type Sink = ExternCRowSink<'a>;
 	fn sink(&mut self) -> &mut ExternCRowSink<'a> {
 		&mut self.sink
@@ -72,7 +72,7 @@ pub struct ExternCUpdateEmit<'a> {
 	names: Vec<&'static str>,
 }
 
-impl<'a> UpdateEmit for ExternCUpdateEmit<'a> {
+impl<'a> GuestUpdateEmit for ExternCUpdateEmit<'a> {
 	type Sink = ExternCRowSink<'a>;
 	fn pre(&mut self) -> &mut ExternCRowSink<'a> {
 		&mut self.pre
@@ -97,21 +97,21 @@ impl<'a> UpdateEmit for ExternCUpdateEmit<'a> {
 	}
 }
 
-pub struct ExternCOperatorContext {
-	pub(crate) ctx: *mut ExternCContext,
+pub struct ExternCContext {
+	pub(crate) ctx: *mut ExternCContextRaw,
 }
 
-impl ExternCOperatorContext {
-	pub fn new(ctx: *mut ExternCContext) -> Self {
-		assert!(!ctx.is_null(), "ExternCContext pointer must not be null");
+impl ExternCContext {
+	pub fn new(ctx: *mut ExternCContextRaw) -> Self {
+		assert!(!ctx.is_null(), "ExternCContextRaw pointer must not be null");
 		Self {
 			ctx,
 		}
 	}
 
 	pub fn operator_id(&self) -> OperatorId {
-		// SAFETY: ExternCOperatorContext::new asserts self.ctx is non-null, and the host keeps the
-		// ExternCContext alive and aligned for at least the lifetime of &self.
+		// SAFETY: ExternCContext::new asserts self.ctx is non-null, and the host keeps the
+		// ExternCContextRaw alive and aligned for at least the lifetime of &self.
 		unsafe { OperatorId((*self.ctx).operator_id) }
 	}
 
@@ -174,7 +174,7 @@ impl ExternCOperatorContext {
 	}
 }
 
-impl StateApi for State<'_> {
+impl GuestState for State<'_> {
 	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> Result<Option<T>> {
 		State::get(self, key)
 	}
@@ -233,7 +233,7 @@ impl StateApi for State<'_> {
 	}
 }
 
-impl DictionaryApi for Dictionary<'_> {
+impl GuestDictionary for Dictionary<'_> {
 	fn id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {
 		Dictionary::id_by_name(self, name)
 	}
@@ -245,52 +245,52 @@ impl DictionaryApi for Dictionary<'_> {
 	}
 }
 
-impl OperatorContext for ExternCOperatorContext {
+impl GuestContext for ExternCContext {
 	type InsertEmit<'a> = ExternCRowEmit<'a>;
 	type UpdateEmit<'a> = ExternCUpdateEmit<'a>;
 	type RemoveEmit<'a> = ExternCRowEmit<'a>;
 
 	fn operator_id(&self) -> OperatorId {
-		ExternCOperatorContext::operator_id(self)
+		ExternCContext::operator_id(self)
 	}
 	fn written_at(&self) -> DateTime {
-		// SAFETY: ExternCOperatorContext::new asserts self.ctx is non-null, and the host keeps the
-		// ExternCContext alive and aligned for at least the lifetime of &self.
+		// SAFETY: ExternCContext::new asserts self.ctx is non-null, and the host keeps the
+		// ExternCContextRaw alive and aligned for at least the lifetime of &self.
 		DateTime::from_nanos(unsafe { (*self.ctx).written_at_nanos })
 	}
-	fn state(&mut self) -> impl StateApi + '_ {
-		ExternCOperatorContext::state(self)
+	fn state(&mut self) -> impl GuestState + '_ {
+		ExternCContext::state(self)
 	}
-	fn dictionary(&mut self) -> impl DictionaryApi + '_ {
-		ExternCOperatorContext::dictionary(self)
+	fn dictionary(&mut self) -> impl GuestDictionary + '_ {
+		ExternCContext::dictionary(self)
 	}
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
-		ExternCOperatorContext::intern_groups(self, groups)
+		ExternCContext::intern_groups(self, groups)
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
-		ExternCOperatorContext::lookup_groups(self, groups)
+		ExternCContext::lookup_groups(self, groups)
 	}
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
-		ExternCOperatorContext::arm_timer(self, at, kind, key)
+		ExternCContext::arm_timer(self, at, kind, key)
 	}
 	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
-		ExternCOperatorContext::disarm_timer(self, at, kind, key)
+		ExternCContext::disarm_timer(self, at, kind, key)
 	}
 
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
-		ExternCOperatorContext::flow_watermark(self)
+		ExternCContext::flow_watermark(self)
 	}
 	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		ExternCOperatorContext::get_or_create_row_number(self, group, key)
+		ExternCContext::get_or_create_row_number(self, group, key)
 	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		ExternCOperatorContext::get_or_create_row_numbers(self, group, keys)
+		ExternCContext::get_or_create_row_numbers(self, group, keys)
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		ExternCOperatorContext::remove_row_number(self, group, key)
+		ExternCContext::remove_row_number(self, group, key)
 	}
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		ExternCOperatorContext::remove_row_numbers_below(self, group, upper)
+		ExternCContext::remove_row_numbers_below(self, group, upper)
 	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCRowEmit<'_>> {
 		let mut builder = self.builder();

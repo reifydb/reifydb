@@ -45,7 +45,7 @@ use crate::{
 	engine::FlowEngineInner,
 	error::FlowGraphError,
 	operator::{
-		BoxedOperator,
+		BoxedHostOperator,
 		aggregation::operator::AggregateOperator,
 		append::AppendOperator,
 		apply::ApplyOperator,
@@ -765,7 +765,7 @@ impl FlowEngineInner {
 			.map(|seal| seal.duration))
 	}
 
-	fn require_parent(&self, input: OperatorId) -> Result<&BoxedOperator> {
+	fn require_parent(&self, input: OperatorId) -> Result<&BoxedHostOperator> {
 		self.operators.get(&input).ok_or_else(|| {
 			Error::from(FlowGraphError::ParentOperatorNotFound {
 				input: format!("{:?}", input),

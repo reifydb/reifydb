@@ -10,7 +10,7 @@ use reifydb_value::value::{Value, decimal::Decimal, row_number::RowNumber, value
 use crate::{
 	common::extern_c::binding::builder::{ColumnBuilder, ColumnsBuilder, CommittedColumn},
 	error::SdkError,
-	flow::operator::extern_c::binding::context::ExternCOperatorContext,
+	flow::operator::extern_c::binding::context::ExternCContext,
 };
 
 pub struct DiffStart<'a> {
@@ -18,7 +18,7 @@ pub struct DiffStart<'a> {
 }
 
 impl<'a> DiffStart<'a> {
-	pub(crate) fn new(ctx: &'a mut ExternCOperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut ExternCContext) -> Self {
 		Self {
 			inner: ColumnsBuilder::new(
 				ctx.ctx as *mut c_void,

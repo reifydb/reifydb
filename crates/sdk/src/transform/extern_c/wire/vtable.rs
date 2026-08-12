@@ -3,14 +3,14 @@
 
 use core::ffi::c_void;
 
-use crate::{common::extern_c::wire::columns::ExternCColumns, transform::extern_c::wire::context::ExternCContext};
+use crate::{common::extern_c::wire::columns::ExternCColumns, transform::extern_c::wire::context::ExternCContextRaw};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ExternCTransformVTable {
 	pub transform: unsafe extern "C" fn(
 		instance: *mut c_void,
-		ctx: *mut ExternCContext,
+		ctx: *mut ExternCContextRaw,
 		input: *const ExternCColumns,
 	) -> i32,
 

@@ -39,11 +39,11 @@ use crate::{
 	context::FlowContext,
 	error::FlowStateError,
 	operator::{
-		Operator,
-		bridge::Bridge,
+		HostOperator,
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
 		drops::SealedDrops,
-		stateful::{raw::RawStatefulOperator, utils},
+		host::HostContext,
+		stateful::{raw::HostRawOperator, utils},
 	},
 };
 
@@ -126,16 +126,16 @@ impl DistinctOperator {
 		}
 	}
 
-	fn hydrate_once(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
+	fn hydrate_once(&mut self, host: &mut dyn HostContext) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
-		self.state.state.layout = self.plan.load_layout(bridge)?;
+		self.state.state.layout = self.plan.load_layout(host)?;
 		self.hydrated = true;
 		Ok(())
 	}
 
-	fn flush_state(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
+	fn flush_state(&mut self, host: &mut dyn HostContext) -> Result<()> {
 		let working = &mut self.state;
 		let dirty: Vec<(Hash128, DateTime)> = working.state.dirty.drain().collect();
 		for (hash, at) in dirty {
@@ -148,9 +148,9 @@ impl DistinctOperator {
 							cause: e.to_string(),
 						})
 					})?;
-					utils::state_set(bridge, &key, row)?;
+					utils::state_set(host, &key, row)?;
 				}
-				None => utils::state_remove(bridge, &key)?,
+				None => utils::state_remove(host, &key)?,
 			}
 		}
 		if let Some(at) = working.state.layout_changed_at.take() {
@@ -160,7 +160,7 @@ impl DistinctOperator {
 					cause: e.to_string(),
 				})
 			})?;
-			utils::state_set(bridge, &DistinctPlan::layout_storage_key(), layout_row)?;
+			utils::state_set(host, &DistinctPlan::layout_storage_key(), layout_row)?;
 		}
 		Ok(())
 	}
@@ -184,8 +184,8 @@ impl DistinctPlan {
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_entry", level = "trace", skip_all)]
-	fn load_entry(&self, bridge: &mut dyn Bridge, group: GroupId) -> Result<LoadedEntry> {
-		match utils::state_get(bridge, &Self::entry_key(group))? {
+	fn load_entry(&self, host: &mut dyn HostContext, group: GroupId) -> Result<LoadedEntry> {
+		match utils::state_get(host, &Self::entry_key(group))? {
 			Some(row) => {
 				if row.is_empty() {
 					return Ok(LoadedEntry::Empty);
@@ -203,8 +203,8 @@ impl DistinctPlan {
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_layout", level = "trace", skip_all)]
-	fn load_layout(&self, bridge: &mut dyn Bridge) -> Result<DistinctLayout> {
-		match utils::state_get(bridge, &Self::layout_storage_key())? {
+	fn load_layout(&self, host: &mut dyn HostContext) -> Result<DistinctLayout> {
+		match utils::state_get(host, &Self::layout_storage_key())? {
 			Some(row) => {
 				if row.is_empty() {
 					return Ok(DistinctLayout::new());
@@ -255,9 +255,9 @@ impl DistinctPlan {
 	}
 }
 
-impl RawStatefulOperator for DistinctOperator {}
+impl HostRawOperator for DistinctOperator {}
 
-impl Operator for DistinctOperator {
+impl HostOperator for DistinctOperator {
 	fn id(&self) -> OperatorId {
 		self.plan.operator
 	}
@@ -266,8 +266,8 @@ impl Operator for DistinctOperator {
 		CAPABILITIES
 	}
 
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
-		self.hydrate_once(bridge)?;
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		self.hydrate_once(host)?;
 
 		let plan = self.plan.clone();
 		let operator_id = plan.operator;
@@ -275,7 +275,7 @@ impl Operator for DistinctOperator {
 		let working = &mut self.state;
 
 		let group_keys: Vec<EncodedKey> = ordered.iter().map(|hash| DistinctPlan::group_bytes(*hash)).collect();
-		let interned = bridge.intern_groups(&group_keys)?;
+		let interned = host.intern_groups(&group_keys)?;
 		let mut fresh: HashMap<Hash128, bool> = HashMap::with_capacity(ordered.len());
 		for (hash, (group, is_new)) in ordered.iter().zip(interned) {
 			working.groups.insert(*hash, group);
@@ -287,7 +287,7 @@ impl Operator for DistinctOperator {
 				if fresh[&hash] {
 					continue;
 				}
-				match plan.load_entry(bridge, working.groups[&hash])? {
+				match plan.load_entry(host, working.groups[&hash])? {
 					LoadedEntry::Present(entry) => {
 						working.state.entries.insert(hash, entry);
 					}
@@ -306,12 +306,8 @@ impl Operator for DistinctOperator {
 					post,
 					..
 				} => {
-					let insert_result = plan.process_insert(
-						bridge,
-						&mut working.state,
-						&working.groups,
-						&post,
-					)?;
+					let insert_result =
+						plan.process_insert(host, &mut working.state, &working.groups, &post)?;
 					result.extend(insert_result);
 				}
 				Diff::Update {
@@ -320,7 +316,7 @@ impl Operator for DistinctOperator {
 					..
 				} => {
 					let update_result = plan.process_update(
-						bridge,
+						host,
 						&mut working.state,
 						&working.groups,
 						&pre,
@@ -333,7 +329,7 @@ impl Operator for DistinctOperator {
 					..
 				} => {
 					let remove_result =
-						plan.process_remove(bridge, &mut working.state, &working.groups, &pre)?;
+						plan.process_remove(host, &mut working.state, &working.groups, &pre)?;
 					result.extend(remove_result);
 				}
 			}
@@ -342,8 +338,8 @@ impl Operator for DistinctOperator {
 		Ok(Change::from_flow(operator_id, change.version, result, change.changed_at))
 	}
 
-	fn flush(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
-		self.flush_state(bridge)
+	fn flush(&mut self, host: &mut dyn HostContext) -> Result<()> {
+		self.flush_state(host)
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

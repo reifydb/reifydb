@@ -8,12 +8,14 @@ use tracing::{Span, field, instrument};
 
 use crate::{
 	engine::FlowEngineInner,
-	operator::{BoxedOperator, bridge::FlowBridge, guard::enforce_apply_capabilities, sink::BoxedDurableSink},
+	operator::{
+		BoxedHostOperator, guard::enforce_apply_capabilities, host::TxnHostContext, sink::BoxedDurableSink,
+	},
 	transaction::FlowTransaction,
 };
 
 pub(super) enum Node<'a> {
-	Operator(&'a mut BoxedOperator),
+	Operator(&'a mut BoxedHostOperator),
 	DurableSink(&'a mut BoxedDurableSink),
 }
 
@@ -66,9 +68,9 @@ impl FlowEngineInner {
 		let result = match node {
 			Node::Operator(operator) => {
 				enforce_apply_capabilities(operator.id(), operator.capabilities(), &change);
-				let mut bridge = FlowBridge::new(txn, operator.id());
-				let result = operator.apply(&mut bridge, change)?;
-				operator.flush(&mut bridge)?;
+				let mut host = TxnHostContext::new(txn, operator.id());
+				let result = operator.apply(&mut host, change)?;
+				operator.flush(&mut host)?;
 				result
 			}
 			Node::DurableSink(sink) => {

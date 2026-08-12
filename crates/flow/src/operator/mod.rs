@@ -11,7 +11,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::{operator::bridge::Bridge, timer::Timer};
+use crate::{operator::host::HostContext, timer::Timer};
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
@@ -23,13 +23,13 @@ pub fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
 pub mod aggregation;
 pub mod append;
 pub mod apply;
-pub mod bridge;
 pub mod distinct;
 pub mod drops;
 pub mod extend;
 pub mod filter;
 pub mod gate;
 pub mod guard;
+pub mod host;
 pub mod join;
 pub mod map;
 pub mod metrics;
@@ -41,18 +41,18 @@ pub mod stateful;
 pub mod take;
 pub mod window;
 
-pub trait Operator: Send {
+pub trait HostOperator: Send {
 	fn id(&self) -> OperatorId;
 
 	fn capabilities(&self) -> &[OperatorCapability];
 
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change>;
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change>;
 
-	fn flush(&mut self, _bridge: &mut dyn Bridge) -> Result<()> {
+	fn flush(&mut self, _host: &mut dyn HostContext) -> Result<()> {
 		Ok(())
 	}
 
-	fn on_timer(&mut self, _bridge: &mut dyn Bridge, _timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<Change>> {
 		Ok(None)
 	}
 
@@ -69,7 +69,7 @@ pub trait Operator: Send {
 	}
 }
 
-pub type BoxedOperator = Box<dyn Operator>;
+pub type BoxedHostOperator = Box<dyn HostOperator>;
 
 pub fn max_input_time(change: &Change) -> Option<DateTime> {
 	change.diffs

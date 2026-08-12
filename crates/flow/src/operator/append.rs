@@ -22,7 +22,7 @@ use tracing::instrument;
 
 use crate::{
 	error::FlowGraphError,
-	operator::{Operator, bridge::Bridge, drops::SealedDrops},
+	operator::{HostOperator, drops::SealedDrops, host::HostContext},
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -103,7 +103,7 @@ impl AppendOperator {
 	}
 }
 
-impl Operator for AppendOperator {
+impl HostOperator for AppendOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -116,7 +116,7 @@ impl Operator for AppendOperator {
 		None
 	}
 
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		let parent_origin = change.origin.clone();
 		let mut result_diffs = Vec::with_capacity(change.diffs.len());
 
@@ -133,7 +133,7 @@ impl Operator for AppendOperator {
 					post,
 					..
 				} => {
-					if let Some(d) = self.translate_append_insert(bridge, parent_index, post)? {
+					if let Some(d) = self.translate_append_insert(host, parent_index, post)? {
 						result_diffs.push(d);
 					}
 				}
@@ -142,9 +142,7 @@ impl Operator for AppendOperator {
 					post,
 					..
 				} => {
-					if let Some(d) =
-						self.translate_append_update(bridge, parent_index, pre, post)?
-					{
+					if let Some(d) = self.translate_append_update(host, parent_index, pre, post)? {
 						result_diffs.push(d);
 					}
 				}
@@ -152,7 +150,7 @@ impl Operator for AppendOperator {
 					pre,
 					..
 				} => {
-					if let Some(d) = self.translate_append_remove(bridge, parent_index, pre)? {
+					if let Some(d) = self.translate_append_remove(host, parent_index, pre)? {
 						result_diffs.push(d);
 					}
 				}
@@ -172,13 +170,13 @@ impl AppendOperator {
 	#[instrument(name = "flow::operator::append::create_row_numbers", level = "trace", skip_all, fields(groups = groups.len()))]
 	fn translate_create_row_numbers(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		groups: &[EncodedKey],
 	) -> Result<Vec<RowNumber>> {
-		let interned = bridge.intern_groups(groups)?;
+		let interned = host.intern_groups(groups)?;
 		let mut output_row_numbers = Vec::with_capacity(interned.len());
 		for (group, _) in interned {
-			let (output_row_number, _) = bridge.get_or_create_row_number(group, &Self::mapping_key())?;
+			let (output_row_number, _) = host.get_or_create_row_number(group, &Self::mapping_key())?;
 			output_row_numbers.push(output_row_number);
 		}
 		Ok(output_row_numbers)
@@ -188,16 +186,16 @@ impl AppendOperator {
 	#[instrument(name = "flow::operator::append::lookup_row_numbers", level = "trace", skip_all, fields(groups = groups.len()))]
 	fn lookup_row_numbers(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		groups: &[EncodedKey],
 	) -> Result<Option<(Vec<RowNumber>, Vec<GroupId>)>> {
 		let mut output_row_numbers = Vec::with_capacity(groups.len());
 		let mut ids = Vec::with_capacity(groups.len());
 		for group_bytes in groups {
-			let Some(group) = bridge.lookup_group(group_bytes)? else {
+			let Some(group) = host.lookup_group(group_bytes)? else {
 				return Ok(None);
 			};
-			let Some(row_number) = bridge.get_row_number(group, &Self::mapping_key())? else {
+			let Some(row_number) = host.get_row_number(group, &Self::mapping_key())? else {
 				return Ok(None);
 			};
 			output_row_numbers.push(row_number);
@@ -210,7 +208,7 @@ impl AppendOperator {
 	#[instrument(name = "flow::operator::append::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn translate_append_insert(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		parent_index: usize,
 		post: Columns,
 	) -> Result<Option<Diff>> {
@@ -218,7 +216,7 @@ impl AppendOperator {
 			return Ok(None);
 		}
 		let groups = Self::group_keys(parent_index, &post);
-		let output_row_numbers = self.translate_create_row_numbers(bridge, &groups)?;
+		let output_row_numbers = self.translate_create_row_numbers(host, &groups)?;
 		let output = post.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::insert(output)))
 	}
@@ -227,7 +225,7 @@ impl AppendOperator {
 	#[instrument(name = "flow::operator::append::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn translate_append_update(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		parent_index: usize,
 		pre: Columns,
 		post: Columns,
@@ -236,11 +234,11 @@ impl AppendOperator {
 			return Ok(None);
 		}
 		let groups = Self::group_keys(parent_index, &pre);
-		let Some((output_row_numbers, _)) = self.lookup_row_numbers(bridge, &groups)? else {
+		let Some((output_row_numbers, _)) = self.lookup_row_numbers(host, &groups)? else {
 			self.dropped.note(post.row_count() as u64);
 			return Ok(None);
 		};
-		bridge.intern_groups(&groups)?;
+		host.intern_groups(&groups)?;
 		let pre_output = pre.with_row_numbers(output_row_numbers.clone());
 		let post_output = post.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::update(pre_output, post_output)))
@@ -250,7 +248,7 @@ impl AppendOperator {
 	#[instrument(name = "flow::operator::append::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn translate_append_remove(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		parent_index: usize,
 		pre: Columns,
 	) -> Result<Option<Diff>> {
@@ -258,14 +256,14 @@ impl AppendOperator {
 			return Ok(None);
 		}
 		let groups = Self::group_keys(parent_index, &pre);
-		let Some((output_row_numbers, ids)) = self.lookup_row_numbers(bridge, &groups)? else {
+		let Some((output_row_numbers, ids)) = self.lookup_row_numbers(host, &groups)? else {
 			self.dropped.note(pre.row_count() as u64);
 			return Ok(None);
 		};
 		for group in &ids {
-			bridge.reclaim_group_identity(*group, REMOVE_RECLAIM_LIMIT)?;
+			host.reclaim_group_identity(*group, REMOVE_RECLAIM_LIMIT)?;
 		}
-		bridge.invalidate_row_number_groups(&GroupSet::new(ids));
+		host.invalidate_row_number_groups(&GroupSet::new(ids));
 		let output = pre.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::remove(output)))
 	}
@@ -281,7 +279,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::bridge::FlowBridge,
+		operator::host::TxnHostContext,
 		testing::FlowTxn,
 		transaction::{ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction},
 	};
@@ -290,8 +288,8 @@ mod tests {
 		AppendOperator::new_for_state_tests(OperatorId(operator))
 	}
 
-	fn bridge<'a>(txn: &'a mut DeferredTransaction, op: &AppendOperator) -> FlowBridge<'a, DeferredTransaction> {
-		FlowBridge::new(txn, op.operator)
+	fn host<'a>(txn: &'a mut DeferredTransaction, op: &AppendOperator) -> TxnHostContext<'a, DeferredTransaction> {
+		TxnHostContext::new(txn, op.operator)
 	}
 
 	fn txn_at(engine: &TestEngine, _operator: OperatorId, coordinate: u64) -> DeferredTransaction {
@@ -329,7 +327,7 @@ mod tests {
 		let op = op(1);
 		let mut txn = txn_at(&engine, op.operator, 100);
 
-		let assigned = op.translate_append_insert(&mut bridge(&mut txn, &op), 0, rows(&[42])).unwrap().unwrap();
+		let assigned = op.translate_append_insert(&mut host(&mut txn, &op), 0, rows(&[42])).unwrap().unwrap();
 		let Diff::Insert {
 			post,
 			..
@@ -356,13 +354,13 @@ mod tests {
 
 		let first = op
 			.translate_create_row_numbers(
-				&mut bridge(&mut txn, &op),
+				&mut host(&mut txn, &op),
 				&AppendOperator::group_keys(0, &rows(&[7])),
 			)
 			.unwrap();
 		let second = op
 			.translate_create_row_numbers(
-				&mut bridge(&mut txn, &op),
+				&mut host(&mut txn, &op),
 				&AppendOperator::group_keys(0, &rows(&[7])),
 			)
 			.unwrap();
@@ -381,13 +379,13 @@ mod tests {
 
 		let left = op
 			.translate_create_row_numbers(
-				&mut bridge(&mut txn, &op),
+				&mut host(&mut txn, &op),
 				&AppendOperator::group_keys(0, &rows(&[7])),
 			)
 			.unwrap();
 		let right = op
 			.translate_create_row_numbers(
-				&mut bridge(&mut txn, &op),
+				&mut host(&mut txn, &op),
 				&AppendOperator::group_keys(1, &rows(&[7])),
 			)
 			.unwrap();
@@ -410,10 +408,10 @@ mod tests {
 		let mut txn = txn_at(&engine, op.operator, 100);
 
 		assert!(op
-			.translate_append_update(&mut bridge(&mut txn, &op), 0, rows(&[99]), rows(&[99]))
+			.translate_append_update(&mut host(&mut txn, &op), 0, rows(&[99]), rows(&[99]))
 			.unwrap()
 			.is_none());
-		assert!(op.translate_append_remove(&mut bridge(&mut txn, &op), 0, rows(&[99])).unwrap().is_none());
+		assert!(op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[99])).unwrap().is_none());
 
 		assert_eq!(group_of(&mut txn, &op, 0, 99), None, "a lookup must not have interned the missing row");
 	}
@@ -425,13 +423,10 @@ mod tests {
 		let engine = TestEngine::new();
 		let op = op(5);
 		let mut txn = txn_at(&engine, op.operator, 100);
-		op.translate_create_row_numbers(
-			&mut bridge(&mut txn, &op),
-			&AppendOperator::group_keys(0, &rows(&[1])),
-		)
-		.unwrap();
+		op.translate_create_row_numbers(&mut host(&mut txn, &op), &AppendOperator::group_keys(0, &rows(&[1])))
+			.unwrap();
 
-		assert!(op.translate_append_remove(&mut bridge(&mut txn, &op), 0, rows(&[1, 2])).unwrap().is_none());
+		assert!(op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[1, 2])).unwrap().is_none());
 		assert!(
 			group_of(&mut txn, &op, 0, 1).is_some(),
 			"the row that did resolve must not have been reclaimed by a batch that failed"
@@ -447,7 +442,7 @@ mod tests {
 		let op = op(12);
 		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_create_row_numbers(
-			&mut bridge(&mut txn, &op),
+			&mut host(&mut txn, &op),
 			&AppendOperator::group_keys(0, &rows(&[1, 2])),
 		)
 		.unwrap();
@@ -455,10 +450,10 @@ mod tests {
 		assert!(txn.remove_row_number(op.operator, stripped, &AppendOperator::mapping_key()).unwrap());
 
 		assert!(op
-			.translate_append_update(&mut bridge(&mut txn, &op), 0, rows(&[1, 2]), rows(&[1, 2]))
+			.translate_append_update(&mut host(&mut txn, &op), 0, rows(&[1, 2]), rows(&[1, 2]))
 			.unwrap()
 			.is_none());
-		assert!(op.translate_append_remove(&mut bridge(&mut txn, &op), 0, rows(&[1, 2])).unwrap().is_none());
+		assert!(op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[1, 2])).unwrap().is_none());
 		assert!(
 			group_of(&mut txn, &op, 0, 1).is_some(),
 			"the row that did resolve must survive a batch that could not translate"
@@ -475,26 +470,18 @@ mod tests {
 		let mut txn = txn_at(&engine, op.operator, 100);
 		assert_eq!(op.dropped.total(), 0, "nothing has been dropped yet");
 
-		assert!(op.translate_append_remove(&mut bridge(&mut txn, &op), 0, rows(&[99])).unwrap().is_none());
+		assert!(op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[99])).unwrap().is_none());
 		assert_eq!(op.dropped.total(), 1, "a remove for an unknown row discards that row");
 
 		assert!(op
-			.translate_append_update(
-				&mut bridge(&mut txn, &op),
-				0,
-				rows(&[1, 2, 3, 4]),
-				rows(&[1, 2, 3, 4])
-			)
+			.translate_append_update(&mut host(&mut txn, &op), 0, rows(&[1, 2, 3, 4]), rows(&[1, 2, 3, 4]))
 			.unwrap()
 			.is_none());
 		assert_eq!(op.dropped.total(), 5, "an update for four unknown rows discards four more");
 
-		op.translate_create_row_numbers(
-			&mut bridge(&mut txn, &op),
-			&AppendOperator::group_keys(0, &rows(&[7])),
-		)
-		.unwrap();
-		op.translate_append_remove(&mut bridge(&mut txn, &op), 0, rows(&[7]))
+		op.translate_create_row_numbers(&mut host(&mut txn, &op), &AppendOperator::group_keys(0, &rows(&[7])))
+			.unwrap();
+		op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[7]))
 			.unwrap()
 			.expect("a known row must translate");
 		assert_eq!(op.dropped.total(), 5, "a mutation that did translate must not be counted as a drop");
@@ -508,15 +495,12 @@ mod tests {
 		let engine = TestEngine::new();
 		let op = op(6);
 		let mut txn = txn_at(&engine, op.operator, 100);
-		op.translate_create_row_numbers(
-			&mut bridge(&mut txn, &op),
-			&AppendOperator::group_keys(0, &rows(&[5])),
-		)
-		.unwrap();
+		op.translate_create_row_numbers(&mut host(&mut txn, &op), &AppendOperator::group_keys(0, &rows(&[5])))
+			.unwrap();
 		let group = group_of(&mut txn, &op, 0, 5).expect("precondition: the row is interned");
 		assert!(group_rows(&mut txn, &op, group) > 0);
 
-		op.translate_append_remove(&mut bridge(&mut txn, &op), 0, rows(&[5]))
+		op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[5]))
 			.unwrap()
 			.expect("a known row must translate");
 
@@ -533,7 +517,7 @@ mod tests {
 		let op = op(14);
 		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_create_row_numbers(
-			&mut bridge(&mut txn, &op),
+			&mut host(&mut txn, &op),
 			&AppendOperator::group_keys(0, &rows(&[1, 2])),
 		)
 		.unwrap();
@@ -544,7 +528,7 @@ mod tests {
 			"precondition: both mappings are cached"
 		);
 
-		op.translate_append_remove(&mut bridge(&mut txn, &op), 0, rows(&[1]))
+		op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[1]))
 			.unwrap()
 			.expect("a known row must translate");
 
@@ -559,6 +543,6 @@ mod tests {
 	fn append_reports_no_operator_sample() {
 		// Append's mappings live in the shared row-number registry, so a mapping leak here is
 		// attributed through the registry's per-operator metrics, not a per-operator sample.
-		assert!(Operator::sample(&op(11)).is_none(), "append has no owned operator state to sample");
+		assert!(HostOperator::sample(&op(11)).is_none(), "append has no owned operator state to sample");
 	}
 }

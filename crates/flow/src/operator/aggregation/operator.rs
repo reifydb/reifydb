@@ -31,7 +31,7 @@ use super::{
 };
 use crate::{
 	context::FlowContext,
-	operator::{Operator, bridge::Bridge},
+	operator::{HostOperator, host::HostContext},
 	state::seal::coord::Coord,
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
@@ -76,7 +76,7 @@ impl AggregateOperator {
 	}
 }
 
-impl Operator for AggregateOperator {
+impl HostOperator for AggregateOperator {
 	fn id(&self) -> OperatorId {
 		self.core.operator
 	}
@@ -85,8 +85,8 @@ impl Operator for AggregateOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
-		apply_aggregate_engine(&mut self.core, bridge, change)
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		apply_aggregate_engine(&mut self.core, host, change)
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -98,7 +98,7 @@ impl Operator for AggregateOperator {
 	}
 }
 
-pub fn apply_aggregate_engine(core: &mut Aggregation, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 	core.engine_meta_open();
 	let kinds = core.slot_kinds.clone().expect("aggregate requires representable slot kinds");
 
@@ -174,11 +174,11 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, bridge: &mut dyn Bridge, c
 	let engine_config = WindowEngineConfig::builder().build();
 
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
-	let groups = intern_window_groups(bridge, &windows)?;
+	let groups = intern_window_groups(host, &windows)?;
 
 	let diffs = finish_tumbling_engine(
 		core,
-		bridge,
+		host,
 		&change,
 		buckets,
 		&group_values,
@@ -190,6 +190,6 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, bridge: &mut dyn Bridge, c
 		Duration::default(),
 		ExpiryAnchor::Unindexed,
 	)?;
-	core.engine_meta_flush(bridge)?;
+	core.engine_meta_flush(host)?;
 	Ok(Change::from_flow(core.operator, change.version, diffs, change.changed_at))
 }

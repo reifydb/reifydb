@@ -17,7 +17,7 @@ pub mod test {
 		value::{identity::IdentityId, value_type::ValueType},
 	};
 
-	use crate::operator::{Operator, bridge::Bridge};
+	use crate::operator::{HostOperator, host::HostContext};
 
 	pub struct TestOperator {
 		pub id: OperatorId,
@@ -54,7 +54,7 @@ pub mod test {
 		}
 	}
 
-	impl Operator for TestOperator {
+	impl HostOperator for TestOperator {
 		fn id(&self) -> OperatorId {
 			self.id
 		}
@@ -63,7 +63,7 @@ pub mod test {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _bridge: &mut dyn Bridge, _change: Change) -> Result<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, _change: Change) -> Result<Change> {
 			todo!()
 		}
 	}

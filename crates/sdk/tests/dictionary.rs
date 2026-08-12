@@ -4,7 +4,7 @@
 use std::ffi::c_void;
 
 use reifydb_core::common::CommitVersion;
-use reifydb_sdk::flow::operator::extern_c::{binding::context::ExternCOperatorContext, wire::context::ExternCContext};
+use reifydb_sdk::flow::operator::extern_c::{binding::context::ExternCContext, wire::context::ExternCContextRaw};
 use reifydb_testing_sdk::{callbacks::create_test_callbacks, context::TestContext};
 use reifydb_value::value::{Value, dictionary::DictionaryId, value_type::ValueType};
 
@@ -18,13 +18,13 @@ fn dictionary_round_trips_through_extern_c() {
 		&[(1, Value::Utf8("MINTA".to_string())), (2, Value::Utf8("MINTB".to_string()))],
 	);
 
-	let mut extern_c_context = ExternCContext {
+	let mut extern_c_context = ExternCContextRaw {
 		txn_ptr: &test_ctx as *const TestContext as *mut c_void,
 		written_at_nanos: 0,
 		operator_id: 1,
 		callbacks: create_test_callbacks(),
 	};
-	let mut ctx = ExternCOperatorContext::new(&mut extern_c_context as *mut ExternCContext);
+	let mut ctx = ExternCContext::new(&mut extern_c_context as *mut ExternCContextRaw);
 
 	let id = ctx.dictionary().id_by_name("solana::mints").unwrap().expect("dictionary id");
 	assert_eq!(id, DictionaryId(7));

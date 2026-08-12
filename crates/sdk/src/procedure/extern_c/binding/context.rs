@@ -12,16 +12,16 @@ use crate::{
 		wire::{buffer::ExternCBuffer, status::EXTERN_C_OK},
 	},
 	error::{Result, SdkError},
-	procedure::extern_c::wire::context::ExternCContext,
+	procedure::extern_c::wire::context::ExternCContextRaw,
 };
 
 pub struct ExternCProcedureContext {
-	pub(crate) ctx: *mut ExternCContext,
+	pub(crate) ctx: *mut ExternCContextRaw,
 }
 
 impl ExternCProcedureContext {
-	pub fn new(ctx: *mut ExternCContext) -> Self {
-		assert!(!ctx.is_null(), "ExternCContext pointer must not be null");
+	pub fn new(ctx: *mut ExternCContextRaw) -> Self {
+		assert!(!ctx.is_null(), "ExternCContextRaw pointer must not be null");
 		Self {
 			ctx,
 		}
@@ -50,8 +50,8 @@ pub(crate) fn raw_procedure_query(ctx: &ExternCProcedureContext, query: &str, pa
 
 	let mut output = ExternCBuffer::empty();
 
-	// SAFETY: ExternCProcedureContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
-	// for the whole procedure call; query and params_bytes outlive the callback. Discharges
+	// SAFETY: ExternCProcedureContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw
+	// valid for the whole procedure call; query and params_bytes outlive the callback. Discharges
 	// ExternCBuffer::as_slice: the host leaves output either empty or pointing at a live host allocation of
 	// output.len bytes that nothing here frees.
 	unsafe {

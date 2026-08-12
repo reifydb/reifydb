@@ -13,7 +13,7 @@ use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
 		column::operator::OperatorColumn,
-		context::OperatorContext,
+		context::GuestContext,
 		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
@@ -68,7 +68,7 @@ impl RollingOperator for TestVelocity {
 		millis(1)
 	}
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
+	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
 		let group = row.utf8("group")?.to_string();
 		let value = row.f64("value")?;
 		Some((group, value))
@@ -273,7 +273,7 @@ impl RollingOperator for SealedVelocity {
 		Some(millis(120))
 	}
 
-	fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
+	fn extract(&self, ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
 		TestVelocity {
 			capacity: 3,
 		}

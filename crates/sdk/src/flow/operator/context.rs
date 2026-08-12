@@ -24,20 +24,20 @@ use crate::{
 	flow::operator::column::{row::Row, sink::RowSink},
 };
 
-pub trait RowEmit {
+pub trait GuestEmit {
 	type Sink: RowSink;
 	fn sink(&mut self) -> &mut Self::Sink;
 	fn finish(self, row_numbers: &[RowNumber]) -> Result<()>;
 }
 
-pub trait UpdateEmit {
+pub trait GuestUpdateEmit {
 	type Sink: RowSink;
 	fn pre(&mut self) -> &mut Self::Sink;
 	fn post(&mut self) -> &mut Self::Sink;
 	fn finish(self, row_numbers: &[RowNumber]) -> Result<()>;
 }
 
-pub trait StateApi {
+pub trait GuestState {
 	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> Result<Option<T>>;
 	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()>;
 	fn remove(&mut self, key: &GroupStateKey) -> Result<()>;
@@ -69,27 +69,27 @@ pub trait StateApi {
 	) -> Result<()>;
 }
 
-pub trait DictionaryApi {
+pub trait GuestDictionary {
 	fn id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
 	fn find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>>;
 	fn get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>>;
 }
 
-pub trait OperatorContext {
-	type InsertEmit<'a>: RowEmit
+pub trait GuestContext {
+	type InsertEmit<'a>: GuestEmit
 	where
 		Self: 'a;
-	type UpdateEmit<'a>: UpdateEmit
+	type UpdateEmit<'a>: GuestUpdateEmit
 	where
 		Self: 'a;
-	type RemoveEmit<'a>: RowEmit
+	type RemoveEmit<'a>: GuestEmit
 	where
 		Self: 'a;
 
 	fn operator_id(&self) -> OperatorId;
 	fn written_at(&self) -> DateTime;
-	fn state(&mut self) -> impl StateApi + '_;
-	fn dictionary(&mut self) -> impl DictionaryApi + '_;
+	fn state(&mut self) -> impl GuestState + '_;
+	fn dictionary(&mut self) -> impl GuestDictionary + '_;
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>>;
 	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
 		Ok(self.intern_groups(from_ref(group))?.remove(0))

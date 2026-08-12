@@ -32,9 +32,9 @@ use tracing::instrument;
 use crate::{
 	error::FlowStateError,
 	operator::{
-		Operator,
-		bridge::Bridge,
-		stateful::{raw::RawStatefulOperator, utils},
+		HostOperator,
+		host::HostContext,
+		stateful::{raw::HostRawOperator, utils},
 	},
 };
 
@@ -102,16 +102,16 @@ impl TakeOperator {
 		}
 	}
 
-	fn hydrate_once(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
+	fn hydrate_once(&mut self, host: &mut dyn HostContext) -> Result<()> {
 		if self.hydrated {
 			return Ok(());
 		}
-		self.state = self.plan.load_take_state(bridge)?;
+		self.state = self.plan.load_take_state(host)?;
 		self.hydrated = true;
 		Ok(())
 	}
 
-	fn flush_state(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
+	fn flush_state(&mut self, host: &mut dyn HostContext) -> Result<()> {
 		if !self.hydrated {
 			return Ok(());
 		}
@@ -121,7 +121,7 @@ impl TakeOperator {
 				cause: e.to_string(),
 			})
 		})?;
-		utils::state_set(bridge, &utils::empty_state_key(), row)?;
+		utils::state_set(host, &utils::empty_state_key(), row)?;
 		Ok(())
 	}
 
@@ -131,9 +131,9 @@ impl TakeOperator {
 }
 
 impl TakePlan {
-	fn load_take_state(&self, bridge: &mut dyn Bridge) -> Result<TakeState> {
+	fn load_take_state(&self, host: &mut dyn HostContext) -> Result<TakeState> {
 		let key = utils::empty_state_key();
-		let Some(row) = utils::state_get(bridge, &key)? else {
+		let Some(row) = utils::state_get(host, &key)? else {
 			return Ok(TakeState::default());
 		};
 		if row.is_empty() {
@@ -314,9 +314,9 @@ impl TakePlan {
 	}
 }
 
-impl RawStatefulOperator for TakeOperator {}
+impl HostRawOperator for TakeOperator {}
 
-impl Operator for TakeOperator {
+impl HostOperator for TakeOperator {
 	fn id(&self) -> OperatorId {
 		self.plan.operator
 	}
@@ -325,8 +325,8 @@ impl Operator for TakeOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
-		self.hydrate_once(bridge)?;
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		self.hydrate_once(host)?;
 		let plan = self.plan.clone();
 		let state = &mut self.state;
 
@@ -354,8 +354,8 @@ impl Operator for TakeOperator {
 		Ok(Change::from_flow(plan.operator, version, output_diffs, change.changed_at))
 	}
 
-	fn flush(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
-		self.flush_state(bridge)
+	fn flush(&mut self, host: &mut dyn HostContext) -> Result<()> {
+		self.flush_state(host)
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

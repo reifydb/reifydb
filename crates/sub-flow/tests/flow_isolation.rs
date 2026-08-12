@@ -12,10 +12,10 @@ use reifydb_core::interface::{catalog::flow::OperatorId, flow::OperatorCapabilit
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	flow::operator::{
-		OperatorLogic, OperatorMetadata,
+		GuestOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
-		context::OperatorContext,
-		state::{RawStatefulOperator, utils::empty_state_key},
+		context::GuestContext,
+		state::{GuestRawOperator, utils::empty_state_key},
 		view::{ChangeView, ColumnsView, DiffView},
 	},
 	row,
@@ -31,7 +31,7 @@ const SLOW_APPLY: StdDuration = StdDuration::from_secs(5);
 // flow's actor; the fast view's actor runs elsewhere.
 struct SlowCounter;
 
-impl RawStatefulOperator for SlowCounter {}
+impl GuestRawOperator for SlowCounter {}
 
 struct CountRow {
 	seen: i64,
@@ -56,12 +56,12 @@ impl OperatorMetadata for SlowCounter {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl OperatorLogic for SlowCounter {
+impl GuestOperator for SlowCounter {
 	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(SlowCounter)
 	}
 
-	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {
 		thread::sleep(SLOW_APPLY);
 
 		let mut seen = 0i64;

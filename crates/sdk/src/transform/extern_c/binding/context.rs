@@ -3,15 +3,17 @@
 
 use core::ffi::c_void;
 
-use crate::{common::extern_c::binding::builder::ColumnsBuilder, transform::extern_c::wire::context::ExternCContext};
+use crate::{
+	common::extern_c::binding::builder::ColumnsBuilder, transform::extern_c::wire::context::ExternCContextRaw,
+};
 
 pub struct ExternCTransformContext {
-	pub(crate) ctx: *mut ExternCContext,
+	pub(crate) ctx: *mut ExternCContextRaw,
 }
 
 impl ExternCTransformContext {
-	pub fn new(ctx: *mut ExternCContext) -> Self {
-		assert!(!ctx.is_null(), "ExternCContext pointer must not be null");
+	pub fn new(ctx: *mut ExternCContextRaw) -> Self {
+		assert!(!ctx.is_null(), "ExternCContextRaw pointer must not be null");
 		Self {
 			ctx,
 		}

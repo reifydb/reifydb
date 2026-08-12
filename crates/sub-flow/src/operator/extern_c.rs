@@ -21,12 +21,12 @@ use reifydb_core::{
 use reifydb_extension::{
 	callbacks::extern_c::builder::{BuilderRegistry, with_registry},
 	operator::callbacks::extern_c::{
-		context::{ExternCBridge, new_extern_c_context},
+		context::{ExternCHostContext, new_extern_c_context},
 		create_host_callbacks,
 	},
 };
 use reifydb_flow::{
-	operator::{Operator, bridge::Bridge, scale_from_millis},
+	operator::{HostOperator, host::HostContext, scale_from_millis},
 	timer::Timer,
 };
 use reifydb_sdk::{
@@ -40,7 +40,7 @@ use reifydb_sdk::{
 		operator::extern_c::{
 			binding::arena::Arena,
 			wire::{
-				context::ExternCContext, descriptor::ExternCOperatorDescriptor,
+				context::ExternCContextRaw, descriptor::ExternCOperatorDescriptor,
 				state::ExternCStateUsage, vtable::ExternCOperatorVTable,
 			},
 		},
@@ -107,7 +107,7 @@ fn marshal_input(arena: &mut Arena, change: &Change) -> ExternCChange {
 fn call_vtable(
 	vtable: &ExternCOperatorVTable,
 	instance: *mut c_void,
-	extern_c_ctx_ptr: *mut ExternCContext,
+	extern_c_ctx_ptr: *mut ExternCContextRaw,
 	extern_c_input: &ExternCChange,
 	operator_id: OperatorId,
 ) -> i32 {
@@ -134,7 +134,7 @@ fn call_vtable(
 	}
 }
 
-impl Operator for ExternCOperatorHandle {
+impl HostOperator for ExternCOperatorHandle {
 	fn id(&self) -> OperatorId {
 		self.operator_id
 	}
@@ -149,10 +149,9 @@ impl Operator for ExternCOperatorHandle {
 		scale_from_millis(Some(unsafe { (self.vtable.seal_after_ms)(self.instance) }))
 	}
 
-	fn flush(&mut self, bridge: &mut dyn Bridge) -> Result<()> {
-		let mut host_bridge = ExternCBridge::new(bridge);
-		let mut extern_c_ctx =
-			new_extern_c_context(&mut host_bridge, self.operator_id, create_host_callbacks());
+	fn flush(&mut self, host: &mut dyn HostContext) -> Result<()> {
+		let mut host_ctx = ExternCHostContext::new(host);
+		let mut extern_c_ctx = new_extern_c_context(&mut host_ctx, self.operator_id, create_host_callbacks());
 		let extern_c_ctx_ptr = &raw mut extern_c_ctx;
 		let mut usage = ExternCStateUsage::default();
 		// SAFETY: vtable and instance come from the loaded operator's descriptor and stay valid until Drop
@@ -183,7 +182,7 @@ impl Operator for ExternCOperatorHandle {
 		input_diff_count = change.diffs.len(),
 		output_diff_count = field::Empty
 	))]
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		// SAFETY: the arena is thread-local and the previous apply's guest call has returned, so
 		// no pointer into it is still live when it is cleared and re-borrowed.
 		EXTERN_C_MARSHAL_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
@@ -193,9 +192,8 @@ impl Operator for ExternCOperatorHandle {
 		let version = change.version;
 		let changed_at = change.changed_at;
 
-		let mut host_bridge = ExternCBridge::new(bridge);
-		let mut extern_c_ctx =
-			new_extern_c_context(&mut host_bridge, self.operator_id, create_host_callbacks());
+		let mut host_ctx = ExternCHostContext::new(host);
+		let mut extern_c_ctx = new_extern_c_context(&mut host_ctx, self.operator_id, create_host_callbacks());
 		let extern_c_ctx_ptr = &raw mut extern_c_ctx;
 
 		let result_code = with_registry(&self.builder_registry, || {
@@ -222,17 +220,16 @@ impl Operator for ExternCOperatorHandle {
 		operator_id = self.operator_id.0,
 		output_diff_count = field::Empty
 	))]
-	fn on_timer(&mut self, bridge: &mut dyn Bridge, timer: Timer) -> Result<Option<Change>> {
-		let version = bridge.version();
+	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+		let version = host.version();
 		let key = timer.key.as_ref();
 
-		let mut host_bridge = ExternCBridge::new(bridge);
-		let mut extern_c_ctx =
-			new_extern_c_context(&mut host_bridge, self.operator_id, create_host_callbacks());
+		let mut host_ctx = ExternCHostContext::new(host);
+		let mut extern_c_ctx = new_extern_c_context(&mut host_ctx, self.operator_id, create_host_callbacks());
 		let extern_c_ctx_ptr = &raw mut extern_c_ctx;
 
 		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
-		// Drop calls destroy; extern_c_ctx_ptr is a local ExternCContext with no Rust borrow of it live
+		// Drop calls destroy; extern_c_ctx_ptr is a local ExternCContextRaw with no Rust borrow of it live
 		// during the call, and key's ptr/len describe a slice of `timer`, which outlives the call.
 		let result_code = self.invoke_under_panic_guard("on_timer", || unsafe {
 			(self.vtable.on_timer)(

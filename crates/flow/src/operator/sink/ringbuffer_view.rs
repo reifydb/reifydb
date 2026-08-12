@@ -63,7 +63,7 @@ use super::{
 };
 use crate::{
 	error::FlowStateError,
-	operator::{bridge::FlowBridge, join::column::JoinedColumnsBuilder, stateful::StateIterator},
+	operator::{host::TxnHostContext, join::column::JoinedColumnsBuilder, stateful::StateIterator},
 	timer::Timer,
 	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
@@ -952,7 +952,7 @@ impl SinkRingBufferViewOperator {
 			.collect();
 		let mut evicted = Columns::with_system(storage_columns, SystemColumns::default());
 		evicted.append_rows(shape, evicted_bytes_vec, evicted_rns)?;
-		decode_dictionary_columns(&mut evicted, &mut FlowBridge::new(txn, self.operator))?;
+		decode_dictionary_columns(&mut evicted, &mut TxnHostContext::new(txn, self.operator))?;
 		Ok(Some(Diff::remove(evicted)))
 	}
 

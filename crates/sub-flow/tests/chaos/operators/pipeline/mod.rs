@@ -24,8 +24,8 @@ use reifydb_core::{
 use reifydb_flow::{
 	context::FlowContext,
 	operator::{
-		Operator, aggregation::operator::AggregateOperator, bridge::Bridge, filter::FilterOperator,
-		gate::GateOperator, map::MapOperator,
+		HostOperator, aggregation::operator::AggregateOperator, filter::FilterOperator, gate::GateOperator,
+		host::HostContext, map::MapOperator,
 	},
 };
 use reifydb_rql::expression::parse_expression;
@@ -158,30 +158,30 @@ pub const MATRIX: [Chain; 3] = [
 	},
 ];
 
-/// Two operators as one subject. The harness drives a single `Operator`, and a real flow feeds each
+/// Two operators as one subject. The harness drives a single `HostOperator`, and a real flow feeds each
 /// operator's output change to the next, so composing them inside one `apply` is both the smallest
 /// change and the faithful one.
 pub struct Pipeline {
-	stage: Box<dyn Operator + Send>,
+	stage: Box<dyn HostOperator + Send>,
 	terminal: AggregateOperator,
 }
 
-impl Operator for Pipeline {
+impl HostOperator for Pipeline {
 	fn id(&self) -> OperatorId {
-		Operator::id(&self.terminal)
+		HostOperator::id(&self.terminal)
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		Operator::capabilities(&self.terminal)
+		HostOperator::capabilities(&self.terminal)
 	}
 
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change, reifydb_value::error::Error> {
-		let staged = self.stage.apply(bridge, change)?;
-		self.terminal.apply(bridge, staged)
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change, reifydb_value::error::Error> {
+		let staged = self.stage.apply(host, change)?;
+		self.terminal.apply(host, staged)
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
-		Operator::output_schema(&self.terminal)
+		HostOperator::output_schema(&self.terminal)
 	}
 }
 
@@ -194,7 +194,7 @@ pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
 		.collect();
 	let ctx = Arc::new(FlowContext::default());
 
-	let stage: Box<dyn Operator + Send> = match chain {
+	let stage: Box<dyn HostOperator + Send> = match chain {
 		Chain::Filter {
 			..
 		} => Box::new(FilterOperator::new(

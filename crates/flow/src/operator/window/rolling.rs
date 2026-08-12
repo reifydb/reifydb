@@ -27,7 +27,7 @@ use crate::{
 			accumulator::{RowAccumulator, WindowSlotKey},
 			engine::{WindowGroups, group_of, intern_window_groups},
 		},
-		bridge::Bridge,
+		host::HostContext,
 		stateful::utils,
 	},
 	state::seal::{gate::EvictionGate, ledger::FiredAt, policy::is_sealed},
@@ -162,9 +162,9 @@ fn rolling_span(operator: &WindowOperator, lag: Duration) -> Duration {
 type RollingEngineBuckets<C> = RollingBuckets<Hash128, C, (WindowSlotKey, Vec<Option<Value>>)>;
 
 #[instrument(name = "flow::operator::window::intern_partitions", level = "trace", skip_all, fields(partitions = touched.len()))]
-fn intern_partitions(bridge: &mut dyn Bridge, touched: &[Hash128]) -> Result<WindowGroups> {
+fn intern_partitions(host: &mut dyn HostContext, touched: &[Hash128]) -> Result<WindowGroups> {
 	let partitions: Vec<(Hash128, u64)> = touched.iter().map(|hash| (*hash, 0)).collect();
-	intern_window_groups(bridge, &partitions)
+	intern_window_groups(host, &partitions)
 }
 
 fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
@@ -274,17 +274,21 @@ fn route_rolling_columns<C: RollingDomain>(
 }
 
 #[instrument(name = "flow::operator::window::rolling", level = "trace", skip_all)]
-pub fn apply_rolling_engine(operator: &mut WindowOperator, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+pub fn apply_rolling_engine(
+	operator: &mut WindowOperator,
+	host: &mut dyn HostContext,
+	change: Change,
+) -> Result<Change> {
 	if operator.is_count_based() {
-		apply_rolling::<OrdinalCoord>(operator, bridge, change)
+		apply_rolling::<OrdinalCoord>(operator, host, change)
 	} else {
-		apply_rolling::<DateTime>(operator, bridge, change)
+		apply_rolling::<DateTime>(operator, host, change)
 	}
 }
 
 fn apply_rolling<C: RollingDomain>(
 	operator: &mut WindowOperator,
-	bridge: &mut dyn Bridge,
+	host: &mut dyn HostContext,
 	change: Change,
 ) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
@@ -352,7 +356,7 @@ fn apply_rolling<C: RollingDomain>(
 		return Ok(Change::from_flow(operator.core.operator, change.version, Vec::new(), change.changed_at));
 	}
 
-	let ledger = operator.seal_ledger(bridge)?;
+	let ledger = operator.seal_ledger(host)?;
 	let eviction = C::eviction(operator, ledger.at(), lag);
 
 	if let Some(horizon) = C::seal_horizon(operator, ledger.at()) {
@@ -379,52 +383,52 @@ fn apply_rolling<C: RollingDomain>(
 	}
 
 	let runnable = rolling_runnable(operator, &kinds);
-	let armed_before = rolling_earliest_expiry::<C>(operator, bridge, runnable, lag)?;
+	let armed_before = rolling_earliest_expiry::<C>(operator, host, runnable, lag)?;
 
-	let groups = intern_partitions(bridge, &touched)?;
+	let groups = intern_partitions(host, &touched)?;
 	let results = if runnable {
 		let engine = C::engine(operator, true, lag);
 		let res = engine.apply_running(
-			bridge,
+			host,
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
 			|| RowAccumulator::new(&kinds, seal),
 		)?;
-		engine.flush(bridge)?;
+		engine.flush(host)?;
 		res
 	} else {
 		let engine = C::engine(operator, false, lag);
 		let res = engine.apply_evicting(
-			bridge,
+			host,
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
 			|| RowAccumulator::new(&kinds, seal),
 			|_g, buffer| combine_rolling::<C>(buffer, &kinds, lag, seal),
 		)?;
-		engine.flush(bridge)?;
+		engine.flush(host)?;
 		res
 	};
 
-	rearm_rolling_seal::<C>(operator, bridge, armed_before, runnable, lag)?;
+	rearm_rolling_seal::<C>(operator, host, armed_before, runnable, lag)?;
 
-	let diffs = finish_rolling_results(operator, bridge, &change, &results, &group_values, &groups)?;
+	let diffs = finish_rolling_results(operator, host, &change, &results, &group_values, &groups)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
 fn rolling_earliest_expiry<C: RollingDomain>(
 	operator: &mut WindowOperator,
-	bridge: &mut dyn Bridge,
+	host: &mut dyn HostContext,
 	runnable: bool,
 	lag: C::Span,
 ) -> Result<Option<C>> {
-	Ok(C::engine(operator, runnable, lag).earliest_expiry(bridge)?.map(C::from_order))
+	Ok(C::engine(operator, runnable, lag).earliest_expiry(host)?.map(C::from_order))
 }
 
 fn rearm_rolling_seal<C: RollingDomain>(
 	operator: &mut WindowOperator,
-	bridge: &mut dyn Bridge,
+	host: &mut dyn HostContext,
 	before: Option<C>,
 	runnable: bool,
 	lag: C::Span,
@@ -432,17 +436,17 @@ fn rearm_rolling_seal<C: RollingDomain>(
 	if !C::seals_on_timer() {
 		return Ok(());
 	}
-	let after = rolling_earliest_expiry::<C>(operator, bridge, runnable, lag)?;
+	let after = rolling_earliest_expiry::<C>(operator, host, runnable, lag)?;
 	if before == after {
 		return Ok(());
 	}
 	let gate = EvictionGate::new(rolling_span(operator, operator.rolling_lag()));
-	gate.rearm(bridge, &EncodedKey::new(Vec::new()), before.map(C::to_order), after.map(C::to_order))
+	gate.rearm(host, &EncodedKey::new(Vec::new()), before.map(C::to_order), after.map(C::to_order))
 }
 
 fn finish_rolling_results(
 	operator: &mut WindowOperator,
-	bridge: &mut dyn Bridge,
+	host: &mut dyn HostContext,
 	change: &Change,
 	results: &[RollingResult<Hash128, Vec<Value>>],
 	group_values: &HashMap<Hash128, Vec<Value>>,
@@ -453,7 +457,7 @@ fn finish_rolling_results(
 	let mut diffs = Vec::new();
 	for r in results {
 		let group_id = group_of(groups, r.group, 0);
-		let prior = operator.meta_slot().rolling_meta(bridge, group_id)?;
+		let prior = operator.meta_slot().rolling_meta(host, group_id)?;
 		if matches!(r.kind, EmitKind::Remove) {
 			if let Some(m) = prior {
 				let pre = operator.core.build_engine_row(
@@ -464,7 +468,7 @@ fn finish_rolling_results(
 					time,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				operator.meta_slot().drop_rolling_meta(bridge, group_id)?;
+				operator.meta_slot().drop_rolling_meta(host, group_id)?;
 			}
 			continue;
 		}
@@ -485,7 +489,7 @@ fn finish_rolling_results(
 			(_, None) => diffs.push(Diff::update(Columns::from_row(&post), Columns::from_row(&post))),
 		}
 		operator.meta_slot().put_rolling_meta(
-			bridge,
+			host,
 			group_id,
 			RollingMeta {
 				group_hash: r.group.0,
@@ -501,7 +505,7 @@ fn finish_rolling_results(
 #[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
 pub fn seal_rolling_engine(
 	operator: &mut WindowOperator,
-	bridge: &mut dyn Bridge,
+	host: &mut dyn HostContext,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
 	let Some(size) = operator.size_duration() else {
@@ -514,32 +518,32 @@ pub fn seal_rolling_engine(
 	let seal = operator.seal();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let ts = fired.at();
-	operator.advance_seal_ledger(bridge, fired)?;
+	operator.advance_seal_ledger(host, fired)?;
 	let cutoff = rolling_over_time(operator, lag).eviction_cutoff(ts);
 	let time = ts;
 	let runnable = rolling_runnable(operator, &kinds);
-	let armed_before = rolling_earliest_expiry::<DateTime>(operator, bridge, runnable, lag)?;
+	let armed_before = rolling_earliest_expiry::<DateTime>(operator, host, runnable, lag)?;
 
 	let expiries = match cutoff {
 		Some(cutoff) => {
 			if runnable {
 				let engine = <DateTime as RollingDomain>::engine(operator, true, lag);
-				let res = engine.expire_before_running(bridge, cutoff)?;
-				engine.flush(bridge)?;
+				let res = engine.expire_before_running(host, cutoff)?;
+				engine.flush(host)?;
 				res
 			} else {
 				let engine = <DateTime as RollingDomain>::engine(operator, false, lag);
-				let res = engine.expire_before(bridge, cutoff, |_g, buffer| {
+				let res = engine.expire_before(host, cutoff, |_g, buffer| {
 					combine_rolling::<DateTime>(buffer, &kinds, lag, seal)
 				})?;
-				engine.flush(bridge)?;
+				engine.flush(host)?;
 				res
 			}
 		}
 		None => Vec::new(),
 	};
 	Span::current().record("expired", expiries.len());
-	rearm_rolling_seal::<DateTime>(operator, bridge, armed_before, runnable, lag)?;
+	rearm_rolling_seal::<DateTime>(operator, host, armed_before, runnable, lag)?;
 
 	let mut diffs = Vec::new();
 	for expiry in expiries {
@@ -550,7 +554,7 @@ pub fn seal_rolling_engine(
 				group_id,
 				value,
 			} => {
-				let Some(meta) = operator.meta_slot().rolling_meta(bridge, group_id)? else {
+				let Some(meta) = operator.meta_slot().rolling_meta(host, group_id)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -569,7 +573,7 @@ pub fn seal_rolling_engine(
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
 				operator.meta_slot().put_rolling_meta(
-					bridge,
+					host,
 					group_id,
 					RollingMeta {
 						group_hash: meta.group_hash,
@@ -584,7 +588,7 @@ pub fn seal_rolling_engine(
 				group: _,
 				group_id,
 			} => {
-				let Some(meta) = operator.meta_slot().rolling_meta(bridge, group_id)? else {
+				let Some(meta) = operator.meta_slot().rolling_meta(host, group_id)? else {
 					continue;
 				};
 				let pre = operator.core.build_engine_row(
@@ -595,7 +599,7 @@ pub fn seal_rolling_engine(
 					time,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				operator.meta_slot().drop_rolling_meta(bridge, group_id)?;
+				operator.meta_slot().drop_rolling_meta(host, group_id)?;
 			}
 		}
 	}

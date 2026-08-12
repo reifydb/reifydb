@@ -20,7 +20,7 @@ use reifydb_core::{
 	state::store::TimerKind,
 };
 use reifydb_flow::{
-	operator::{Operator, apply::ApplyOperator, bridge::FlowBridge, sink::DurableSink},
+	operator::{HostOperator, apply::ApplyOperator, host::TxnHostContext, sink::DurableSink},
 	timer::Timer,
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
@@ -32,8 +32,8 @@ use reifydb_runtime::context::{
 	RuntimeContext,
 	clock::{Clock, MockClock},
 };
-use reifydb_sdk::flow::operator::OperatorLogic;
-use reifydb_sub_flow::operator::bridge::{BridgeOperator, BridgeOperatorAdapter};
+use reifydb_sdk::flow::operator::GuestOperator;
+use reifydb_sub_flow::operator::mount::mount;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
 use reifydb_transaction::{
@@ -141,23 +141,16 @@ impl<O: DurableSink> Harness<O> {
 }
 
 impl Harness<ApplyOperator> {
-	pub fn guest<C: OperatorLogic + 'static>(
+	pub fn guest<C: GuestOperator + 'static>(
 		logic: C,
 		operator: OperatorId,
 		capabilities: &'static [OperatorCapability],
 		ttl: Option<Duration>,
 	) -> Self {
-		Self::new(|_| {
-			let bridged = BridgeOperator::new(
-				Box::new(BridgeOperatorAdapter::new(logic, operator, capabilities)),
-				operator,
-				capabilities,
-			);
-			ApplyOperator::new(None, operator, Box::new(bridged), ttl)
-		})
+		Self::new(|_| ApplyOperator::new(None, operator, mount(logic, operator, capabilities), ttl))
 	}
 
-	pub fn guest_from_config<C: OperatorLogic + 'static>(
+	pub fn guest_from_config<C: GuestOperator + 'static>(
 		operator: OperatorId,
 		capabilities: &'static [OperatorCapability],
 		config: Vec<(&str, Value)>,
@@ -168,7 +161,7 @@ impl Harness<ApplyOperator> {
 	}
 }
 
-impl<O: Operator> Harness<O> {
+impl<O: HostOperator> Harness<O> {
 	pub fn with_dictionaries(mut self) -> Self {
 		self.catalog = self.engine.inner().catalog().clone();
 		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
@@ -217,9 +210,9 @@ impl<O: Operator> Harness<O> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(at);
 		let out = {
-			let mut bridge = FlowBridge::new(&mut txn, operator);
-			let out = self.operator.apply(&mut bridge, change)?;
-			self.operator.flush(&mut bridge)?;
+			let mut host = TxnHostContext::new(&mut txn, operator);
+			let out = self.operator.apply(&mut host, change)?;
+			self.operator.flush(&mut host)?;
 			out
 		};
 		self.end(txn);
@@ -231,9 +224,9 @@ impl<O: Operator> Harness<O> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(at);
 		{
-			let mut bridge = FlowBridge::new(&mut txn, operator);
-			self.operator.apply(&mut bridge, change)?;
-			self.operator.flush(&mut bridge)?;
+			let mut host = TxnHostContext::new(&mut txn, operator);
+			self.operator.apply(&mut host, change)?;
+			self.operator.flush(&mut host)?;
 		}
 		let emitted = txn.take_accumulator_entries();
 		self.end(txn);
@@ -244,9 +237,9 @@ impl<O: Operator> Harness<O> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(timer.at);
 		let out = {
-			let mut bridge = FlowBridge::new(&mut txn, operator);
-			let out = self.operator.on_timer(&mut bridge, timer)?;
-			self.operator.flush(&mut bridge)?;
+			let mut host = TxnHostContext::new(&mut txn, operator);
+			let out = self.operator.on_timer(&mut host, timer)?;
+			self.operator.flush(&mut host)?;
 			out
 		};
 		self.end(txn);
@@ -278,14 +271,14 @@ impl<O: Operator> Harness<O> {
 					at: Some(timer.at),
 					version: CommitVersion(self.version),
 				});
-				let mut bridge = FlowBridge::new(&mut txn, operator);
-				if let Some(change) = self.operator.on_timer(&mut bridge, timer)? {
+				let mut host = TxnHostContext::new(&mut txn, operator);
+				if let Some(change) = self.operator.on_timer(&mut host, timer)? {
 					emitted.push(change);
 				}
 			}
 			{
-				let mut bridge = FlowBridge::new(&mut txn, operator);
-				self.operator.flush(&mut bridge)?;
+				let mut host = TxnHostContext::new(&mut txn, operator);
+				self.operator.flush(&mut host)?;
 			}
 			self.end(txn);
 		}
@@ -346,7 +339,7 @@ mod tests {
 	}
 }
 
-impl<O: Operator> Subject for Harness<O> {
+impl<O: HostOperator> Subject for Harness<O> {
 	fn apply(&mut self, change: Change) -> Result<Change> {
 		Harness::apply(self, change)
 	}

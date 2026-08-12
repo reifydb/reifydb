@@ -24,9 +24,9 @@ use crate::{
 		operator::{
 			change::BorrowedChange,
 			extern_c::{
-				binding::{context::ExternCOperatorContext, operator::ExternCOperator},
+				binding::{context::ExternCContext, operator::ExternCOperator},
 				wire::{
-					context::ExternCContext, state::ExternCStateUsage,
+					context::ExternCContextRaw, state::ExternCStateUsage,
 					vtable::ExternCOperatorVTable,
 				},
 			},
@@ -171,14 +171,14 @@ impl<O: ExternCOperator> OperatorWrapper<O> {
 /// # Safety
 ///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
-/// - `ctx` must be a valid pointer to a `ExternCContext`.
+/// - `ctx` must be a valid pointer to a `ExternCContextRaw`.
 /// - `input` must be a valid pointer to a `ExternCChange` whose buffer pointers are valid for the duration of the call.
 #[instrument(name = "flow::operator::extern_c::apply", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
 ))]
 pub unsafe extern "C" fn extern_c_apply<O: ExternCOperator>(
 	instance: *mut c_void,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	input: *const ExternCChange,
 ) -> i32 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
@@ -190,7 +190,7 @@ pub unsafe extern "C" fn extern_c_apply<O: ExternCOperator>(
 		// SAFETY: discharges BorrowedChange::from_raw; input was checked non-null above and extern_c_apply's
 		// contract keeps the ExternCChange and its buffers live for the borrow, which ends with this closure.
 		let borrowed = unsafe { BorrowedChange::from_raw(input) };
-		let mut op_ctx = ExternCOperatorContext::new(ctx);
+		let mut op_ctx = ExternCContext::new(ctx);
 		match wrapper.operator.apply(&mut op_ctx, borrowed) {
 			Ok(()) => 0,
 			Err(e) => {
@@ -232,13 +232,13 @@ pub unsafe extern "C" fn extern_c_apply<O: ExternCOperator>(
 /// # Safety
 ///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
-/// - `ctx` must be a valid pointer to a `ExternCContext`.
+/// - `ctx` must be a valid pointer to a `ExternCContextRaw`.
 #[instrument(name = "flow::operator::extern_c::on_timer", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
 ))]
 pub unsafe extern "C" fn extern_c_on_timer<O: ExternCOperator>(
 	instance: *mut c_void,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	at_millis: u64,
 	kind: u8,
 	key: *const u8,
@@ -262,7 +262,7 @@ pub unsafe extern "C" fn extern_c_on_timer<O: ExternCOperator>(
 				unsafe { slice::from_raw_parts(key, key_len) }
 			},
 		};
-		let mut op_ctx = ExternCOperatorContext::new(ctx);
+		let mut op_ctx = ExternCContext::new(ctx);
 
 		match wrapper.operator.on_timer(&mut op_ctx, timer) {
 			Ok(()) => 0,
@@ -357,10 +357,10 @@ pub unsafe extern "C" fn extern_c_destroy<O: ExternCOperator>(instance: *mut c_v
 /// # Safety
 ///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>`.
-/// - `ctx` must point to a valid `ExternCContext` for the duration of the call.
+/// - `ctx` must point to a valid `ExternCContextRaw` for the duration of the call.
 pub unsafe extern "C" fn extern_c_flush_state<O: ExternCOperator>(
 	instance: *mut c_void,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	usage: *mut ExternCStateUsage,
 ) -> i32 {
 	if instance.is_null() || ctx.is_null() || usage.is_null() {
@@ -371,7 +371,7 @@ pub unsafe extern "C" fn extern_c_flush_state<O: ExternCOperator>(
 		// SAFETY: instance was checked non-null above and extern_c_flush_state's contract makes it a live,
 		// aligned OperatorWrapper<O>; this is the only borrow of it taken in this call.
 		let wrapper = unsafe { &mut *(instance as *mut OperatorWrapper<O>) };
-		let mut op_ctx = ExternCOperatorContext::new(ctx);
+		let mut op_ctx = ExternCContext::new(ctx);
 		let outcome = wrapper.operator.flush_state(&mut op_ctx);
 		let report = wrapper.operator.sample();
 		(outcome, report)

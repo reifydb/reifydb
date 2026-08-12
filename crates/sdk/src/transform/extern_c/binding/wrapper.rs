@@ -14,7 +14,7 @@ use crate::{
 	flow::operator::change::BorrowedColumns,
 	transform::extern_c::{
 		binding::{context::ExternCTransformContext, transform::ExternCTransform},
-		wire::{context::ExternCContext, vtable::ExternCTransformVTable},
+		wire::{context::ExternCContextRaw, vtable::ExternCTransformVTable},
 	},
 };
 
@@ -37,11 +37,11 @@ impl<T: ExternCTransform> TransformWrapper<T> {
 /// # Safety
 ///
 /// - `instance` must be a valid pointer to a `TransformWrapper<T>`.
-/// - `ctx` must point to a valid `ExternCContext`.
+/// - `ctx` must point to a valid `ExternCContextRaw`.
 /// - `input` must point to a valid `ExternCColumns`.
 pub unsafe extern "C" fn extern_c_transform<T: ExternCTransform>(
 	instance: *mut c_void,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	input: *const ExternCColumns,
 ) -> i32 {
 	let result = catch_unwind(AssertUnwindSafe(|| {

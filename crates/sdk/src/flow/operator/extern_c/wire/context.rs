@@ -6,7 +6,7 @@ use core::ffi::c_void;
 use crate::flow::operator::extern_c::wire::callbacks::OperatorCallbacks;
 
 #[repr(C)]
-pub struct ExternCContext {
+pub struct ExternCContextRaw {
 	pub txn_ptr: *mut c_void,
 
 	pub written_at_nanos: u64,

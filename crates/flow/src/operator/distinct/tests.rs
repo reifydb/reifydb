@@ -29,9 +29,9 @@ use reifydb_value::{
 use crate::{
 	context::FlowContext,
 	operator::{
-		Operator,
-		bridge::FlowBridge,
+		HostOperator,
 		distinct::operator::{DistinctOperator, DistinctPlan},
+		host::TxnHostContext,
 		stateful::utils,
 	},
 	testing::FlowTxn,
@@ -52,8 +52,8 @@ fn make_op(operator_id: u64, engine: &TestEngine) -> DistinctOperator {
 	)
 }
 
-fn bridge(txn: &mut DeferredTransaction, operator: OperatorId) -> FlowBridge<'_, DeferredTransaction> {
-	FlowBridge::new(txn, operator)
+fn host(txn: &mut DeferredTransaction, operator: OperatorId) -> TxnHostContext<'_, DeferredTransaction> {
+	TxnHostContext::new(txn, operator)
 }
 
 fn build_insert(value: i64, row_num: u64) -> Change {
@@ -102,7 +102,7 @@ fn persisted_rows(op: &DistinctOperator, txn: &mut DeferredTransaction) -> BTree
 }
 
 fn layout_row(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Option<Vec<u8>> {
-	utils::state_get(&mut bridge(txn, op.plan.operator), &DistinctPlan::layout_storage_key())
+	utils::state_get(&mut host(txn, op.plan.operator), &DistinctPlan::layout_storage_key())
 		.unwrap()
 		.map(|row| row.body().to_vec())
 }
@@ -142,20 +142,20 @@ fn flush_persists_only_mutated_entries() {
 	let operator = op.plan.operator;
 	let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 
-	op.apply(&mut bridge(&mut txn, operator), build_insert(42, 1)).unwrap();
-	op.apply(&mut bridge(&mut txn, operator), build_insert(43, 2)).unwrap();
-	op.flush(&mut bridge(&mut txn, operator)).unwrap();
+	op.apply(&mut host(&mut txn, operator), build_insert(42, 1)).unwrap();
+	op.apply(&mut host(&mut txn, operator), build_insert(43, 2)).unwrap();
+	op.flush(&mut host(&mut txn, operator)).unwrap();
 	let after_first = persisted_rows(&op, &mut txn);
 	assert_eq!(after_first.len(), 3, "two distinct entry rows plus the layout row");
 
 	mock_clock.advance_millis(10);
-	op.apply(&mut bridge(&mut txn, operator), build_remove(42, 99)).unwrap();
-	op.flush(&mut bridge(&mut txn, operator)).unwrap();
+	op.apply(&mut host(&mut txn, operator), build_remove(42, 99)).unwrap();
+	op.flush(&mut host(&mut txn, operator)).unwrap();
 	assert_eq!(persisted_rows(&op, &mut txn), after_first, "a read-only touch must not rewrite any persisted row");
 
 	mock_clock.advance_millis(10);
-	op.apply(&mut bridge(&mut txn, operator), build_insert(44, 3)).unwrap();
-	op.flush(&mut bridge(&mut txn, operator)).unwrap();
+	op.apply(&mut host(&mut txn, operator), build_insert(44, 3)).unwrap();
+	op.flush(&mut host(&mut txn, operator)).unwrap();
 	let after_third = persisted_rows(&op, &mut txn);
 	assert_eq!(after_third.len(), 4, "exactly one new distinct entry row");
 	for (key, row) in &after_first {
@@ -170,7 +170,7 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 	let operator = op.plan.operator;
 	let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 
-	let first = op.apply(&mut bridge(&mut txn, operator), build_insert(42, 1)).unwrap();
+	let first = op.apply(&mut host(&mut txn, operator), build_insert(42, 1)).unwrap();
 	let Some(Diff::Insert {
 		post,
 		..
@@ -179,7 +179,7 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 		panic!("the first sighting of a value must be an insert");
 	};
 	let published = post.row_numbers()[0];
-	op.flush(&mut bridge(&mut txn, operator)).unwrap();
+	op.flush(&mut host(&mut txn, operator)).unwrap();
 
 	let groups = entry_groups(&op, &mut txn);
 	assert_eq!(groups.len(), 1, "precondition: exactly one distinct entry is persisted");
@@ -192,7 +192,7 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 
 	op = make_op(6, &engine);
 
-	let second = op.apply(&mut bridge(&mut txn, operator), build_insert(42, 2)).unwrap();
+	let second = op.apply(&mut host(&mut txn, operator), build_insert(42, 2)).unwrap();
 	let Some(diff) = second.diffs.first() else {
 		panic!("a value the operator has forgotten must be republished, not swallowed");
 	};
@@ -218,12 +218,12 @@ fn layout_row_rewritten_only_on_change() {
 	let operator = op.plan.operator;
 	let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
 
-	op.apply(&mut bridge(&mut txn, operator), build_insert(42, 1)).unwrap();
-	op.flush(&mut bridge(&mut txn, operator)).unwrap();
+	op.apply(&mut host(&mut txn, operator), build_insert(42, 1)).unwrap();
+	op.flush(&mut host(&mut txn, operator)).unwrap();
 	let first_layout = layout_row(&op, &mut txn).expect("layout row present after the first flush");
 
 	mock_clock.advance_millis(10);
-	op.apply(&mut bridge(&mut txn, operator), build_insert(45, 2)).unwrap();
-	op.flush(&mut bridge(&mut txn, operator)).unwrap();
+	op.apply(&mut host(&mut txn, operator), build_insert(45, 2)).unwrap();
+	op.flush(&mut host(&mut txn, operator)).unwrap();
 	assert_eq!(layout_row(&op, &mut txn), Some(first_layout), "an unchanged layout must not be rewritten");
 }

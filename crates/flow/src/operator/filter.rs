@@ -27,7 +27,7 @@ use tracing::instrument;
 
 use crate::{
 	context::FlowContext,
-	operator::{Operator, bridge::Bridge},
+	operator::{HostOperator, host::HostContext},
 };
 
 pub struct FilterOperator {
@@ -127,7 +127,7 @@ impl FilterOperator {
 	}
 }
 
-impl Operator for FilterOperator {
+impl HostOperator for FilterOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -136,7 +136,7 @@ impl Operator for FilterOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+	fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs {

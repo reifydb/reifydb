@@ -14,13 +14,13 @@ use reifydb_value::{
 
 use crate::{error::SdkError, flow::operator::column::sink::RowSink};
 
-pub struct BridgeRowSink {
+pub struct InProcessRowSink {
 	names: Vec<&'static str>,
 	types: Vec<ValueType>,
 	cols: Vec<ColumnBuffer>,
 }
 
-impl BridgeRowSink {
+impl InProcessRowSink {
 	pub fn new(columns: &'static [(&'static str, ValueKind)]) -> Result<Self, SdkError> {
 		let mut names = Vec::with_capacity(columns.len());
 		let mut types = Vec::with_capacity(columns.len());
@@ -92,7 +92,7 @@ fn code_to_type(code: ValueKind) -> Result<ValueType, SdkError> {
 	})
 }
 
-impl RowSink for BridgeRowSink {
+impl RowSink for InProcessRowSink {
 	#[inline]
 	fn push_u8(&mut self, col: usize, v: u8) {
 		self.push(col, Value::Uint1(v));

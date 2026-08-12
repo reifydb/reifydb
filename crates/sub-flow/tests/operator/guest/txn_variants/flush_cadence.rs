@@ -5,12 +5,9 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::change::{Change, Diffs},
 };
-use reifydb_flow::{
-	operator::{Operator, bridge::FlowBridge},
-	transaction::FlowTransaction,
-};
+use reifydb_flow::{operator::host::TxnHostContext, transaction::FlowTransaction};
 use reifydb_sdk::flow::operator::OperatorMetadata;
-use reifydb_sub_flow::operator::bridge::{BridgeOperator, BridgeOperatorAdapter};
+use reifydb_sub_flow::operator::mount::mount;
 use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine};
 use reifydb_value::value::datetime::DateTime;
 
@@ -19,17 +16,16 @@ use crate::common::{FlushProbe, flush_probe_key};
 fn assert_flush_is_deferred<T: FlowTransaction>(txn: &mut T) {
 	// Re-asserted across every FlowTransaction variant, or a variant that flushed during apply would go unnoticed.
 	let capabilities = <FlushProbe as OperatorMetadata>::CAPABILITIES;
-	let inner = BridgeOperatorAdapter::new(FlushProbe, OPERATOR_ID, capabilities);
-	let mut op = BridgeOperator::new(Box::new(inner), OPERATOR_ID, capabilities);
+	let mut op = mount(FlushProbe, OPERATOR_ID, capabilities);
 	let change = Change::from_flow(OPERATOR_ID, CommitVersion(1), Diffs::new(), DateTime::from_nanos(0));
 
-	op.apply(&mut FlowBridge::new(txn, OPERATOR_ID), change).unwrap();
+	op.apply(&mut TxnHostContext::new(txn, OPERATOR_ID), change).unwrap();
 	assert!(
 		txn.state_get(OPERATOR_ID, &flush_probe_key()).unwrap().is_none(),
-		"bridge must defer flush_state to commit, but state was persisted during apply"
+		"guest must defer flush_state to commit, but state was persisted during apply"
 	);
 
-	op.flush(&mut FlowBridge::new(txn, OPERATOR_ID)).unwrap();
+	op.flush(&mut TxnHostContext::new(txn, OPERATOR_ID)).unwrap();
 	assert!(
 		txn.state_get(OPERATOR_ID, &flush_probe_key()).unwrap().is_some(),
 		"the operator's own flush must persist the deferred state"

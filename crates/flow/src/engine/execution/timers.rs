@@ -12,7 +12,7 @@ use reifydb_value::Result;
 
 use crate::{
 	engine::{FlowEngineInner, execution::dispatch::Node},
-	operator::bridge::FlowBridge,
+	operator::host::TxnHostContext,
 	timer::Timer,
 	transaction::{ChangeCoordinate, FlowTransaction},
 };
@@ -102,9 +102,9 @@ impl FlowEngineInner {
 				});
 				let fired = match node {
 					Node::Operator(operator) => {
-						let mut bridge = FlowBridge::new(txn, operator.id());
-						let fired = operator.on_timer(&mut bridge, timer)?;
-						operator.flush(&mut bridge)?;
+						let mut host = TxnHostContext::new(txn, operator.id());
+						let fired = operator.on_timer(&mut host, timer)?;
+						operator.flush(&mut host)?;
 						fired
 					}
 					Node::DurableSink(sink) => txn.run_durable_sink_timer(&mut **sink, timer)?,

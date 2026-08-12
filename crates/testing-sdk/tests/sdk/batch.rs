@@ -11,7 +11,7 @@ use reifydb_sdk::{
 			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 		},
-		extern_c::binding::{context::ExternCOperatorContext, operator::ExternCOperator},
+		extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
 	},
 	row,
 };
@@ -47,7 +47,7 @@ impl ExternCOperator for EmitOpInsert {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<Bar, _>::new(ctx, 3)?;
 		batch.push(
 			RowNumber(1),
@@ -125,7 +125,7 @@ impl ExternCOperator for EmitOpEmpty {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
 		InsertBatch::<Bar, _>::new(ctx, 0)?.finish()
 	}
 }
@@ -150,7 +150,7 @@ impl ExternCOperator for EmitOpUpdate {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = UpdateBatch::<Bar, _>::new(ctx, 1)?;
 		batch.push(
 			RowNumber(1),
@@ -209,7 +209,7 @@ impl ExternCOperator for EmitOpRemove {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = RemoveBatch::<Bar, _>::new(ctx, 2)?;
 		batch.push(
 			RowNumber(1),
@@ -258,7 +258,7 @@ impl ExternCOperator for EmitOpBig {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<Bar, _>::new(ctx, 100)?;
 		for i in 0..100u64 {
 			batch.push(
@@ -310,7 +310,7 @@ impl ExternCOperator for EmitOpOptU64 {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<OptU64Row, _>::new(ctx, 4)?;
 		batch.push(
 			RowNumber(1),
@@ -378,7 +378,7 @@ impl ExternCOperator for EmitOpOptStr {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<OptStrRow, _>::new(ctx, 4)?;
 		batch.push(
 			RowNumber(1),
@@ -446,7 +446,7 @@ impl ExternCOperator for EmitOpOptBlob {
 	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
-	fn apply(&mut self, ctx: &mut ExternCOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCContext, _: BorrowedChange<'_>) -> Result<()> {
 		let mut batch = InsertBatch::<OptBlobRow, _>::new(ctx, 3)?;
 		batch.push(
 			RowNumber(1),

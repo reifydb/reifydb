@@ -9,17 +9,17 @@ use reifydb_value::value::{
 use crate::{
 	error::Result,
 	flow::operator::extern_c::binding::{
-		context::ExternCOperatorContext,
+		context::ExternCContext,
 		dictionary::{raw_find, raw_get, raw_id_by_name},
 	},
 };
 
 pub struct Dictionary<'a> {
-	ctx: &'a mut ExternCOperatorContext,
+	ctx: &'a mut ExternCContext,
 }
 
 impl<'a> Dictionary<'a> {
-	pub(crate) fn new(ctx: &'a mut ExternCOperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut ExternCContext) -> Self {
 		Self {
 			ctx,
 		}

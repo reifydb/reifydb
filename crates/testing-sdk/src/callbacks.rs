@@ -45,7 +45,7 @@ unsafe extern "C" fn test_free(ptr: *mut u8, size: usize) {
 ///
 /// `ctx` must be non-null and its `txn_ptr` must point at a live `TestContext` that outlives
 /// the returned reference; the `'static` lifetime is forged and is not checked.
-unsafe fn get_test_context(ctx: *mut ExternCContext) -> &'static TestContext {
+unsafe fn get_test_context(ctx: *mut ExternCContextRaw) -> &'static TestContext {
 	// SAFETY: the caller guarantees ctx is valid and its txn_ptr is a live TestContext.
 	unsafe {
 		let txn_ptr = (*ctx).txn_ptr;
@@ -60,7 +60,7 @@ fn test_state_envelope(operator_id: u64, group: GroupId, keyspace: Keyspace, suf
 #[unsafe(no_mangle)]
 extern "C" fn test_state_get(
 	_operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	key_ptr: *const u8,
 	key_len: usize,
 	output: *mut ExternCBuffer,
@@ -99,7 +99,7 @@ extern "C" fn test_state_get(
 #[unsafe(no_mangle)]
 extern "C" fn test_state_set(
 	_operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	key_ptr: *const u8,
 	key_len: usize,
 	value_ptr: *const u8,
@@ -127,7 +127,7 @@ extern "C" fn test_state_set(
 #[unsafe(no_mangle)]
 extern "C" fn test_state_remove(
 	_operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	key_ptr: *const u8,
 	key_len: usize,
 ) -> i32 {
@@ -149,12 +149,12 @@ extern "C" fn test_state_remove(
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut ExternCContext) -> i32 {
+extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut ExternCContextRaw) -> i32 {
 	if ctx.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: ctx is null-checked above and points at a live ExternCContext for this call.
+	// SAFETY: ctx is null-checked above and points at a live ExternCContextRaw for this call.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		test_ctx.clear_state();
@@ -172,7 +172,7 @@ struct TestStateIterator {
 #[unsafe(no_mangle)]
 extern "C" fn test_state_get_many(
 	_operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	keys: *const ExternCKeyRef,
 	keys_len: usize,
 	iterator_out: *mut *mut ExternCStateIterator,
@@ -221,7 +221,7 @@ extern "C" fn test_state_get_many(
 #[unsafe(no_mangle)]
 extern "C" fn test_state_prefix(
 	_operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	prefix_ptr: *const u8,
 	prefix_len: usize,
 	iterator_out: *mut *mut ExternCStateIterator,
@@ -327,7 +327,7 @@ const BOUND_EXCLUDED: u8 = 2;
 #[unsafe(no_mangle)]
 extern "C" fn test_state_range(
 	_operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	start_ptr: *const u8,
 	start_len: usize,
 	start_bound_type: u8,
@@ -420,7 +420,7 @@ use reifydb_sdk::{
 			dictionary::DictionaryCallbacks,
 			state::{GROUP_ABSENT, StateCallbacks},
 		},
-		context::ExternCContext,
+		context::ExternCContextRaw,
 		iterators::ExternCStateIterator,
 		state::{ExternCStateEntry, ExternCStateSlice},
 	},
@@ -437,7 +437,7 @@ use crate::{
 
 extern "C" fn test_intern_groups(
 	operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	groups: *const ExternCKeyRef,
 	groups_len: usize,
 	ids_out: *mut u64,
@@ -497,7 +497,7 @@ extern "C" fn test_intern_groups(
 
 extern "C" fn test_arm_timer(
 	_operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	at_millis: u64,
 	kind: u8,
 	key: *const u8,
@@ -533,7 +533,7 @@ extern "C" fn test_arm_timer(
 
 extern "C" fn test_disarm_timer(
 	_operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	at_millis: u64,
 	kind: u8,
 	key: *const u8,
@@ -569,7 +569,7 @@ extern "C" fn test_disarm_timer(
 
 extern "C" fn test_flow_watermark(
 	_operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	millis_out: *mut u64,
 	present_out: *mut u8,
 ) -> i32 {
@@ -597,7 +597,7 @@ extern "C" fn test_flow_watermark(
 
 extern "C" fn test_lookup_groups(
 	operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	groups: *const ExternCKeyRef,
 	groups_len: usize,
 	ids_out: *mut u64,
@@ -640,7 +640,7 @@ extern "C" fn test_lookup_groups(
 
 extern "C" fn test_get_or_create_row_numbers(
 	operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	group: u64,
 	keys: *const ExternCKeyRef,
 	keys_len: usize,
@@ -704,7 +704,7 @@ extern "C" fn test_get_or_create_row_numbers(
 
 extern "C" fn test_remove_row_number(
 	operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	group: u64,
 	key_ptr: *const u8,
 	key_len: usize,
@@ -734,7 +734,7 @@ extern "C" fn test_remove_row_number(
 
 extern "C" fn test_remove_row_numbers_below(
 	operator_id: u64,
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	group: u64,
 	upper_ptr: *const u8,
 	upper_len: usize,
@@ -810,7 +810,7 @@ extern "C" fn test_remove_row_numbers_below(
 }
 
 extern "C" fn test_dictionary_id_by_name(
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	name_ptr: *const u8,
 	name_len: usize,
 	out_id: *mut u64,
@@ -840,7 +840,7 @@ extern "C" fn test_dictionary_id_by_name(
 }
 
 extern "C" fn test_dictionary_find(
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	dictionary_id: u64,
 	value_ptr: *const u8,
 	value_len: usize,
@@ -870,7 +870,7 @@ extern "C" fn test_dictionary_find(
 }
 
 extern "C" fn test_dictionary_get(
-	ctx: *mut ExternCContext,
+	ctx: *mut ExternCContextRaw,
 	dictionary_id: u64,
 	id: u128,
 	output: *mut ExternCBuffer,

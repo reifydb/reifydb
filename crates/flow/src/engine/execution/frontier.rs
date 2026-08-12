@@ -11,7 +11,7 @@ use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
-	engine::FlowEngineInner, operator::BoxedOperator, state::seal::policy::seal_horizon,
+	engine::FlowEngineInner, operator::BoxedHostOperator, state::seal::policy::seal_horizon,
 	transaction::FlowTransaction,
 };
 
@@ -66,7 +66,7 @@ impl FlowEngineInner {
 fn output_frontiers<T: FlowTransaction>(
 	txn: &mut T,
 	flow: &FlowDag,
-	operators: &BTreeMap<OperatorId, BoxedOperator>,
+	operators: &BTreeMap<OperatorId, BoxedHostOperator>,
 	topo: &[OperatorId],
 ) -> Result<BTreeMap<OperatorId, DateTime>> {
 	let watermarks = txn.source_watermarks();
@@ -137,7 +137,8 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::{
-			Operator, bridge::Bridge, metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider,
+			HostOperator, host::HostContext, metrics::OperatorSampleRegistry,
+			provider::EmptyOperatorProvider,
 		},
 		transaction::{deferred::DeferredTransaction, substrate::FlowSubstrate},
 	};
@@ -171,7 +172,7 @@ mod tests {
 		horizon: Option<Duration>,
 	}
 
-	impl Operator for Sealing {
+	impl HostOperator for Sealing {
 		fn id(&self) -> OperatorId {
 			self.operator
 		}
@@ -180,7 +181,7 @@ mod tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 

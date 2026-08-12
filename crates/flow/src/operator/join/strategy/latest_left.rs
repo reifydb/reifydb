@@ -12,7 +12,7 @@ use super::{
 	latest_inner::{republished_slot, update_diff},
 };
 use crate::operator::{
-	bridge::Bridge,
+	host::HostContext,
 	join::{
 		snapshot::{SnapshotJoinContext, publish_slot, retire_slot, withdraw_slot},
 		state::JoinSide,
@@ -24,7 +24,7 @@ pub(crate) struct LatestLeftHashJoin;
 impl LatestLeftHashJoin {
 	pub(crate) fn handle_insert_undefined(
 		&self,
-		_bridge: &mut dyn Bridge,
+		_host: &mut dyn HostContext,
 		post: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
@@ -37,7 +37,7 @@ impl LatestLeftHashJoin {
 
 	pub(crate) fn handle_remove_undefined(
 		&self,
-		_bridge: &mut dyn Bridge,
+		_host: &mut dyn HostContext,
 		pre: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
@@ -50,7 +50,7 @@ impl LatestLeftHashJoin {
 
 	pub(crate) fn handle_update_both_undefined(
 		&self,
-		_bridge: &mut dyn Bridge,
+		_host: &mut dyn HostContext,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
@@ -69,7 +69,7 @@ impl LatestLeftHashJoin {
 	#[instrument(name = "flow::operator::join::latest_left::handle_insert", level = "trace", skip_all, fields(rows = indices.len()))]
 	pub(crate) fn handle_insert(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -88,26 +88,26 @@ impl LatestLeftHashJoin {
 						right_store: &ctx.state.right,
 					};
 					let published =
-						publish_slot(bridge, &snapshot_ctx, key_hash, post, indices, true)?;
+						publish_slot(host, &snapshot_ctx, key_hash, post, indices, true)?;
 					return Ok(published
 						.map(|columns| vec![Diff::insert(columns)])
 						.unwrap_or_default());
 				}
-				add_to_state_entry_batch(bridge, &mut ctx.state.left, key_hash, post, indices)?;
-				let joined = match read_right_slot(bridge, &ctx.state.right, key_hash)? {
+				add_to_state_entry_batch(host, &mut ctx.state.left, key_hash, post, indices)?;
+				let joined = match read_right_slot(host, &ctx.state.right, key_hash)? {
 					Some(slot) => ctx.operator.join_left_with_slot(post, indices, &slot),
 					None => ctx.operator.unmatched_left_latest(post, indices),
 				};
 				Ok(vec![Diff::insert(joined)])
 			}
-			JoinSide::Right => self.handle_right_insert(bridge, post, indices, key_hash, ctx),
+			JoinSide::Right => self.handle_right_insert(host, post, indices, key_hash, ctx),
 		}
 	}
 
 	#[instrument(name = "flow::operator::join::latest_left::handle_right_insert", level = "trace", skip_all, fields(rows = indices.len()))]
 	fn handle_right_insert(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -120,15 +120,15 @@ impl LatestLeftHashJoin {
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			retire_slot(bridge, &snapshot_ctx, key_hash)?;
-			overwrite_right_slot(bridge, &ctx.state.right, key_hash, post, indices)?;
+			retire_slot(host, &snapshot_ctx, key_hash)?;
+			overwrite_right_slot(host, &ctx.state.right, key_hash, post, indices)?;
 			return Ok(Vec::new());
 		}
-		let old = read_right_slot(bridge, &ctx.state.right, key_hash)?;
-		let new = overwrite_right_slot(bridge, &ctx.state.right, key_hash, post, indices)?;
+		let old = read_right_slot(host, &ctx.state.right, key_hash)?;
+		let new = overwrite_right_slot(host, &ctx.state.right, key_hash, post, indices)?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
-		for_each_left_block(bridge, &ctx.state.left, key_hash, |_bridge, left| {
+		for_each_left_block(host, &ctx.state.left, key_hash, |_host, left| {
 			let left_indices: Vec<usize> = (0..left.row_count()).collect();
 			match (&old, &new) {
 				(Some(old_slot), Some(new_slot)) => {
@@ -151,7 +151,7 @@ impl LatestLeftHashJoin {
 	#[instrument(name = "flow::operator::join::latest_left::handle_remove", level = "trace", skip_all)]
 	pub(crate) fn handle_remove(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -170,10 +170,10 @@ impl LatestLeftHashJoin {
 						right_store: &ctx.state.right,
 					};
 					let mut withdrawn = Vec::new();
-					if let Some(group) = ctx.state.right.group_of(bridge, key_hash)? {
+					if let Some(group) = ctx.state.right.group_of(host, key_hash)? {
 						for &idx in indices {
 							if let Some(columns) =
-								withdraw_slot(bridge, &snapshot_ctx, group, pre, idx)?
+								withdraw_slot(host, &snapshot_ctx, group, pre, idx)?
 							{
 								withdrawn.push(Diff::remove(columns));
 							}
@@ -181,25 +181,25 @@ impl LatestLeftHashJoin {
 					}
 					return Ok(withdrawn);
 				}
-				let removed = match read_right_slot(bridge, &ctx.state.right, key_hash)? {
+				let removed = match read_right_slot(host, &ctx.state.right, key_hash)? {
 					Some(slot) => ctx.operator.join_left_with_slot(pre, indices, &slot),
 					None => ctx.operator.unmatched_left_latest(pre, indices),
 				};
 				let result = vec![Diff::remove(removed)];
-				if let Some(group) = ctx.state.left.group_of(bridge, key_hash)? {
+				if let Some(group) = ctx.state.left.group_of(host, key_hash)? {
 					for &idx in indices {
-						ctx.state.left.remove_row_in(bridge, group, pre.row_numbers()[idx])?;
+						ctx.state.left.remove_row_in(host, group, pre.row_numbers()[idx])?;
 					}
 				}
 				Ok(result)
 			}
-			JoinSide::Right => self.handle_right_remove(bridge, key_hash, ctx),
+			JoinSide::Right => self.handle_right_remove(host, key_hash, ctx),
 		}
 	}
 
 	fn handle_right_remove(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
@@ -210,16 +210,16 @@ impl LatestLeftHashJoin {
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			retire_slot(bridge, &snapshot_ctx, key_hash)?;
-			remove_right_slot(bridge, &ctx.state.right, key_hash)?;
+			retire_slot(host, &snapshot_ctx, key_hash)?;
+			remove_right_slot(host, &ctx.state.right, key_hash)?;
 			return Ok(Vec::new());
 		}
-		let old = read_right_slot(bridge, &ctx.state.right, key_hash)?;
-		remove_right_slot(bridge, &ctx.state.right, key_hash)?;
+		let old = read_right_slot(host, &ctx.state.right, key_hash)?;
+		remove_right_slot(host, &ctx.state.right, key_hash)?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
 		if let Some(old_slot) = old {
-			for_each_left_block(bridge, &ctx.state.left, key_hash, |_bridge, left| {
+			for_each_left_block(host, &ctx.state.left, key_hash, |_host, left| {
 				let left_indices: Vec<usize> = (0..left.row_count()).collect();
 				let pre = operator.join_left_with_slot(left, &left_indices, &old_slot);
 				let post = operator.unmatched_left_latest(left, &left_indices);
@@ -233,7 +233,7 @@ impl LatestLeftHashJoin {
 	#[instrument(name = "flow::operator::join::latest_left::handle_update", level = "trace", skip_all)]
 	pub(crate) fn handle_update(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],
@@ -245,8 +245,8 @@ impl LatestLeftHashJoin {
 		}
 
 		if keys.pre != keys.post {
-			let mut result = self.handle_remove(bridge, pre, indices, keys.pre, ctx)?;
-			result.extend(self.handle_insert(bridge, post, indices, keys.post, ctx)?);
+			let mut result = self.handle_remove(host, pre, indices, keys.pre, ctx)?;
+			result.extend(self.handle_insert(host, post, indices, keys.post, ctx)?);
 			return Ok(result);
 		}
 
@@ -260,10 +260,10 @@ impl LatestLeftHashJoin {
 						right_store: &ctx.state.right,
 					};
 					let mut result = Vec::new();
-					let withdraw_group = ctx.state.right.group_of(bridge, keys.pre)?;
+					let withdraw_group = ctx.state.right.group_of(host, keys.pre)?;
 					for &idx in indices {
 						if let Some(slot) = republished_slot(
-							bridge,
+							host,
 							&snapshot_ctx,
 							withdraw_group,
 							pre,
@@ -278,12 +278,12 @@ impl LatestLeftHashJoin {
 						}
 						let withdrawn = match withdraw_group {
 							Some(group) => {
-								withdraw_slot(bridge, &snapshot_ctx, group, pre, idx)?
+								withdraw_slot(host, &snapshot_ctx, group, pre, idx)?
 							}
 							None => None,
 						};
 						let published = publish_slot(
-							bridge,
+							host,
 							&snapshot_ctx,
 							keys.post,
 							post,
@@ -295,11 +295,11 @@ impl LatestLeftHashJoin {
 					return Ok(result);
 				}
 
-				let prepared = prepare_entry_update(bridge, &ctx.state.left, keys.pre, post)?;
+				let prepared = prepare_entry_update(host, &ctx.state.left, keys.pre, post)?;
 				for &idx in indices {
 					if let Some(prepared) = &prepared {
 						update_row_in_entry(
-							bridge,
+							host,
 							&ctx.state.left,
 							prepared,
 							pre.row_numbers()[idx],
@@ -308,20 +308,20 @@ impl LatestLeftHashJoin {
 						)?;
 					}
 				}
-				let (pre_joined, post_joined) =
-					match read_right_slot(bridge, &ctx.state.right, keys.pre)? {
-						Some(slot) => (
-							ctx.operator.join_left_with_slot(pre, indices, &slot),
-							ctx.operator.join_left_with_slot(post, indices, &slot),
-						),
-						None => (
-							ctx.operator.unmatched_left_latest(pre, indices),
-							ctx.operator.unmatched_left_latest(post, indices),
-						),
-					};
+				let (pre_joined, post_joined) = match read_right_slot(host, &ctx.state.right, keys.pre)?
+				{
+					Some(slot) => (
+						ctx.operator.join_left_with_slot(pre, indices, &slot),
+						ctx.operator.join_left_with_slot(post, indices, &slot),
+					),
+					None => (
+						ctx.operator.unmatched_left_latest(pre, indices),
+						ctx.operator.unmatched_left_latest(post, indices),
+					),
+				};
 				Ok(vec![Diff::update(pre_joined, post_joined)])
 			}
-			JoinSide::Right => self.handle_right_insert(bridge, post, indices, keys.post, ctx),
+			JoinSide::Right => self.handle_right_insert(host, post, indices, keys.post, ctx),
 		}
 	}
 }

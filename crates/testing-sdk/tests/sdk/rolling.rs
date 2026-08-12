@@ -13,7 +13,7 @@ use reifydb_flow::window::accumulator::{WindowAccumulator, invertible::Moments};
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
-		column::operator::OperatorColumn, context::OperatorContext,
+		column::operator::OperatorColumn, context::GuestContext,
 		extern_c::binding::operator::ExternCOperatorAdapter, view::RowView, windowed::rolling::*,
 	},
 	row,
@@ -88,7 +88,7 @@ impl RollingOperator for TestRollingSum {
 		millis(1)
 	}
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
+	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
 		let group = row.utf8("group")?.to_string();
 		let value = row.f64("value")?;
 		Some((group, value))
@@ -293,7 +293,7 @@ impl RollingOperator for SealedRollingSum {
 		Some(millis(120))
 	}
 
-	fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
+	fn extract(&self, ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
 		TestRollingSum {
 			capacity: 3,
 		}

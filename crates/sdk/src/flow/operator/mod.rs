@@ -24,7 +24,7 @@ use reifydb_value::{config::Config, value::duration::Duration};
 
 use crate::{
 	error::Result,
-	flow::operator::{column::operator::OperatorColumn, context::OperatorContext, timer::Timer, view::ChangeView},
+	flow::operator::{column::operator::OperatorColumn, context::GuestContext, timer::Timer, view::ChangeView},
 };
 
 pub trait OperatorMetadata {
@@ -36,14 +36,14 @@ pub trait OperatorMetadata {
 	const CAPABILITIES: &'static [OperatorCapability];
 }
 
-pub trait OperatorLogic: Send + Sync {
+pub trait GuestOperator: Send + Sync {
 	fn create(operator_id: OperatorId, config: &Config) -> Result<Self>
 	where
 		Self: Sized;
 
-	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()>;
+	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()>;
 
-	fn on_timer(&mut self, _ctx: &mut impl OperatorContext, _timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, _ctx: &mut impl GuestContext, _timer: Timer<'_>) -> Result<()> {
 		Ok(())
 	}
 
@@ -51,7 +51,7 @@ pub trait OperatorLogic: Send + Sync {
 		None
 	}
 
-	fn flush_state(&mut self, _ctx: &mut impl OperatorContext) -> Result<()> {
+	fn flush_state(&mut self, _ctx: &mut impl GuestContext) -> Result<()> {
 		Ok(())
 	}
 

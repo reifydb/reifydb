@@ -18,15 +18,15 @@ use crate::{
 		status::{EXTERN_C_NOT_FOUND, EXTERN_C_OK},
 	},
 	error::{Result, SdkError},
-	flow::operator::extern_c::binding::context::ExternCOperatorContext,
+	flow::operator::extern_c::binding::context::ExternCContext,
 };
 
-pub(crate) fn raw_id_by_name(ctx: &ExternCOperatorContext, name: &str) -> Result<Option<DictionaryId>> {
+pub(crate) fn raw_id_by_name(ctx: &ExternCContext, name: &str) -> Result<Option<DictionaryId>> {
 	let name_bytes = name.as_bytes();
 	let mut out_id: u64 = 0;
 	let mut found: u8 = 0;
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; name_bytes outlives the callback, and out_id and found are live local slots the
 	// host fills.
 	unsafe {
@@ -51,7 +51,7 @@ pub(crate) fn raw_id_by_name(ctx: &ExternCOperatorContext, name: &str) -> Result
 }
 
 pub(crate) fn raw_find(
-	ctx: &ExternCOperatorContext,
+	ctx: &ExternCContext,
 	dictionary: DictionaryId,
 	value: &Value,
 ) -> Result<Option<DictionaryEntryId>> {
@@ -61,7 +61,7 @@ pub(crate) fn raw_find(
 	let mut out_id_type: u8 = 0;
 	let mut found: u8 = 0;
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; value_bytes outlives the callback, and out_id, out_id_type and found are live
 	// local slots the host writes.
 	unsafe {
@@ -89,18 +89,14 @@ pub(crate) fn raw_find(
 	}
 }
 
-pub(crate) fn raw_get(
-	ctx: &ExternCOperatorContext,
-	dictionary: DictionaryId,
-	id: DictionaryEntryId,
-) -> Result<Option<Value>> {
+pub(crate) fn raw_get(ctx: &ExternCContext, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>> {
 	let mut output = ExternCBuffer {
 		ptr: null_mut(),
 		len: 0,
 		cap: 0,
 	};
 
-	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call. On EXTERN_C_OK the host writes a buffer of output.len initialised bytes, copied
 	// out before memory.free releases it with the length it was allocated with.
 	unsafe {

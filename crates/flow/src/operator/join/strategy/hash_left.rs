@@ -12,7 +12,7 @@ use super::{
 	},
 };
 use crate::operator::{
-	bridge::Bridge,
+	host::HostContext,
 	join::{
 		Identity,
 		snapshot::{SnapshotJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
@@ -25,7 +25,7 @@ pub(crate) struct LeftHashJoin;
 impl LeftHashJoin {
 	pub(crate) fn handle_insert_undefined(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		post: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
@@ -33,7 +33,7 @@ impl LeftHashJoin {
 		match ctx.side {
 			JoinSide::Left => Ok(ctx
 				.operator
-				.unmatched_left_columns(bridge, post, row_idx, Identity::Mint)?
+				.unmatched_left_columns(host, post, row_idx, Identity::Mint)?
 				.published()),
 			JoinSide::Right => Ok(Vec::new()),
 		}
@@ -41,7 +41,7 @@ impl LeftHashJoin {
 
 	pub(crate) fn handle_remove_undefined(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
@@ -51,8 +51,8 @@ impl LeftHashJoin {
 		match ctx.side {
 			JoinSide::Left => {
 				let unmatched =
-					ctx.operator.unmatched_left_columns(bridge, pre, row_idx, Identity::Consume)?;
-				ctx.operator.cleanup_left_row_joins(bridge, *row_number)?;
+					ctx.operator.unmatched_left_columns(host, pre, row_idx, Identity::Consume)?;
+				ctx.operator.cleanup_left_row_joins(host, *row_number)?;
 				Ok(unmatched.withdrawn().into_iter().collect())
 			}
 			JoinSide::Right => Ok(Vec::new()),
@@ -61,7 +61,7 @@ impl LeftHashJoin {
 
 	pub(crate) fn handle_update_both_undefined(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
@@ -69,21 +69,13 @@ impl LeftHashJoin {
 	) -> Result<Vec<Diff>> {
 		match ctx.side {
 			JoinSide::Left => {
-				let unmatched_pre = ctx.operator.unmatched_left_columns(
-					bridge,
-					pre,
-					row_idx,
-					Identity::Existing,
-				)?;
+				let unmatched_pre =
+					ctx.operator.unmatched_left_columns(host, pre, row_idx, Identity::Existing)?;
 				if unmatched_pre.is_empty() {
 					return Ok(Vec::new());
 				}
-				let unmatched_post = ctx.operator.unmatched_left_columns(
-					bridge,
-					post,
-					row_idx,
-					Identity::Existing,
-				)?;
+				let unmatched_post =
+					ctx.operator.unmatched_left_columns(host, post, row_idx, Identity::Existing)?;
 				Ok(vec![Diff::update(unmatched_pre.existing, unmatched_post.existing)])
 			}
 			JoinSide::Right => Ok(Vec::new()),
@@ -92,7 +84,7 @@ impl LeftHashJoin {
 
 	pub(crate) fn handle_insert(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -102,21 +94,21 @@ impl LeftHashJoin {
 			return Ok(Vec::new());
 		}
 		match ctx.side {
-			JoinSide::Left => self.handle_insert_left(bridge, post, indices, key_hash, ctx),
-			JoinSide::Right => self.handle_insert_right(bridge, post, indices, key_hash, ctx),
+			JoinSide::Left => self.handle_insert_left(host, post, indices, key_hash, ctx),
+			JoinSide::Right => self.handle_insert_right(host, post, indices, key_hash, ctx),
 		}
 	}
 
 	#[inline]
 	fn handle_insert_left(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		add_to_state_entry_batch(bridge, &mut ctx.state.left, key_hash, post, indices)?;
+		add_to_state_entry_batch(host, &mut ctx.state.left, key_hash, post, indices)?;
 
 		if ctx.operator.snapshot {
 			let ledger = ctx.operator.snapshot_ledger();
@@ -125,7 +117,7 @@ impl LeftHashJoin {
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			return publish_joined(bridge, &snapshot_ctx, key_hash, post, indices, true);
+			return publish_joined(host, &snapshot_ctx, key_hash, post, indices, true);
 		}
 
 		let emit_ctx = JoinEmitContext {
@@ -133,37 +125,37 @@ impl LeftHashJoin {
 			key_hash,
 			operator: ctx.operator,
 		};
-		let joined = emit_joined_columns_batch(bridge, post, indices, JoinSide::Left, &emit_ctx)?;
+		let joined = emit_joined_columns_batch(host, post, indices, JoinSide::Left, &emit_ctx)?;
 		if !joined.is_empty() {
 			return Ok(joined);
 		}
-		Ok(ctx.operator.unmatched_left_columns_batch(bridge, post, indices, Identity::Mint)?.published())
+		Ok(ctx.operator.unmatched_left_columns_batch(host, post, indices, Identity::Mint)?.published())
 	}
 
 	#[inline]
 	fn handle_insert_right(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		let is_first = is_first_right_row(bridge, &ctx.state.right, key_hash)?;
+		let is_first = is_first_right_row(host, &ctx.state.right, key_hash)?;
 
 		let mut result = Vec::new();
-		add_to_state_entry_batch(bridge, &mut ctx.state.right, key_hash, post, indices)?;
+		add_to_state_entry_batch(host, &mut ctx.state.right, key_hash, post, indices)?;
 
 		if ctx.operator.snapshot {
 			return Ok(result);
 		}
 
-		if is_first && ctx.state.left.contains_key(bridge, key_hash)? {
+		if is_first && ctx.state.left.contains_key(host, key_hash)? {
 			let operator = ctx.operator;
-			for_each_left_block(bridge, &ctx.state.left, key_hash, |bridge, left_columns| {
+			for_each_left_block(host, &ctx.state.left, key_hash, |host, left_columns| {
 				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
 				let unmatched = operator.unmatched_left_columns_batch(
-					bridge,
+					host,
 					left_columns,
 					&left_indices,
 					Identity::Consume,
@@ -179,13 +171,13 @@ impl LeftHashJoin {
 			operator: ctx.operator,
 		};
 
-		result.extend(emit_joined_columns_batch(bridge, post, indices, JoinSide::Right, &emit_ctx)?);
+		result.extend(emit_joined_columns_batch(host, post, indices, JoinSide::Right, &emit_ctx)?);
 		Ok(result)
 	}
 
 	pub(crate) fn handle_remove(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -195,15 +187,15 @@ impl LeftHashJoin {
 			return Ok(Vec::new());
 		}
 		match ctx.side {
-			JoinSide::Left => self.handle_remove_left(bridge, pre, indices, key_hash, ctx),
-			JoinSide::Right => self.handle_remove_right(bridge, pre, indices, key_hash, ctx),
+			JoinSide::Left => self.handle_remove_left(host, pre, indices, key_hash, ctx),
+			JoinSide::Right => self.handle_remove_right(host, pre, indices, key_hash, ctx),
 		}
 	}
 
 	#[inline]
 	fn handle_remove_left(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -218,7 +210,7 @@ impl LeftHashJoin {
 			};
 			let mut withdrawn = Vec::new();
 			for &idx in indices {
-				withdrawn.extend(withdraw_joined(bridge, &snapshot_ctx, key_hash, pre, idx)?);
+				withdrawn.extend(withdraw_joined(host, &snapshot_ctx, key_hash, pre, idx)?);
 			}
 			withdrawn
 		} else {
@@ -228,10 +220,10 @@ impl LeftHashJoin {
 				operator: ctx.operator,
 			};
 			let mut emitted =
-				emit_remove_joined_columns_batch(bridge, pre, indices, JoinSide::Left, &emit_ctx)?;
+				emit_remove_joined_columns_batch(host, pre, indices, JoinSide::Left, &emit_ctx)?;
 			if emitted.is_empty() {
 				let unmatched = ctx.operator.unmatched_left_columns_batch(
-					bridge,
+					host,
 					pre,
 					indices,
 					Identity::Consume,
@@ -241,12 +233,12 @@ impl LeftHashJoin {
 			emitted
 		};
 
-		let left_group = ctx.state.left.group_of(bridge, key_hash)?;
+		let left_group = ctx.state.left.group_of(host, key_hash)?;
 		for &idx in indices {
 			let row_number = pre.row_numbers()[idx];
-			ctx.operator.cleanup_left_row_joins(bridge, *row_number)?;
+			ctx.operator.cleanup_left_row_joins(host, *row_number)?;
 			if let Some(group) = left_group {
-				ctx.state.left.remove_row_in(bridge, group, row_number)?;
+				ctx.state.left.remove_row_in(host, group, row_number)?;
 			}
 		}
 		Ok(result)
@@ -255,7 +247,7 @@ impl LeftHashJoin {
 	#[inline]
 	fn handle_remove_right(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -271,7 +263,7 @@ impl LeftHashJoin {
 			};
 
 			result.extend(emit_remove_joined_columns_batch(
-				bridge,
+				host,
 				pre,
 				indices,
 				JoinSide::Right,
@@ -287,24 +279,24 @@ impl LeftHashJoin {
 				right_store: &ctx.state.right,
 			};
 			for &idx in indices {
-				retire_right(bridge, &snapshot_ctx, key_hash, pre.row_numbers()[idx])?;
+				retire_right(host, &snapshot_ctx, key_hash, pre.row_numbers()[idx])?;
 			}
 		}
 
-		let right_group = ctx.state.right.group_of(bridge, key_hash)?;
+		let right_group = ctx.state.right.group_of(host, key_hash)?;
 		for &idx in indices {
 			let row_number = pre.row_numbers()[idx];
 			if let Some(group) = right_group {
-				ctx.state.right.remove_row_in(bridge, group, row_number)?;
+				ctx.state.right.remove_row_in(host, group, row_number)?;
 			}
 		}
 
-		if !ctx.operator.snapshot && !ctx.state.right.contains_key(bridge, key_hash)? {
+		if !ctx.operator.snapshot && !ctx.state.right.contains_key(host, key_hash)? {
 			let operator = ctx.operator;
-			for_each_left_block(bridge, &ctx.state.left, key_hash, |bridge, left_columns| {
+			for_each_left_block(host, &ctx.state.left, key_hash, |host, left_columns| {
 				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
 				let unmatched = operator.unmatched_left_columns_batch(
-					bridge,
+					host,
 					left_columns,
 					&left_indices,
 					Identity::Mint,
@@ -318,7 +310,7 @@ impl LeftHashJoin {
 
 	pub(crate) fn handle_update(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],
@@ -330,16 +322,16 @@ impl LeftHashJoin {
 		}
 
 		if keys.pre != keys.post {
-			let mut result = self.handle_remove(bridge, pre, indices, keys.pre, ctx)?;
-			result.extend(self.handle_insert(bridge, post, indices, keys.post, ctx)?);
+			let mut result = self.handle_remove(host, pre, indices, keys.pre, ctx)?;
+			result.extend(self.handle_insert(host, post, indices, keys.post, ctx)?);
 			return Ok(result);
 		}
 
 		let mut result = Vec::new();
 		for &row_idx in indices {
 			let diffs = match ctx.side {
-				JoinSide::Left => self.update_in_place_left(bridge, pre, post, row_idx, keys, ctx)?,
-				JoinSide::Right => self.update_in_place_right(bridge, pre, post, row_idx, keys, ctx)?,
+				JoinSide::Left => self.update_in_place_left(host, pre, post, row_idx, keys, ctx)?,
+				JoinSide::Right => self.update_in_place_right(host, pre, post, row_idx, keys, ctx)?,
 			};
 			result.extend(diffs);
 		}
@@ -349,7 +341,7 @@ impl LeftHashJoin {
 	#[inline]
 	fn update_in_place_left(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
@@ -365,22 +357,16 @@ impl LeftHashJoin {
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			let resynced = resync_joined(bridge, &snapshot_ctx, keys, pre, post, row_idx, true)?;
-			if !update_single_row_in_entry(
-				bridge,
-				&ctx.state.left,
-				keys.pre,
-				pre_row_number,
-				post,
-				row_idx,
-			)? {
-				return self.handle_insert(bridge, post, &[row_idx], keys.post, ctx);
+			let resynced = resync_joined(host, &snapshot_ctx, keys, pre, post, row_idx, true)?;
+			if !update_single_row_in_entry(host, &ctx.state.left, keys.pre, pre_row_number, post, row_idx)?
+			{
+				return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
 			}
 			return Ok(resynced);
 		}
 
-		if !update_single_row_in_entry(bridge, &ctx.state.left, keys.pre, pre_row_number, post, row_idx)? {
-			return self.handle_insert(bridge, post, &[row_idx], keys.post, ctx);
+		if !update_single_row_in_entry(host, &ctx.state.left, keys.pre, pre_row_number, post, row_idx)? {
+			return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
 		}
 
 		let emit_ctx = JoinEmitContext {
@@ -389,22 +375,22 @@ impl LeftHashJoin {
 			operator: ctx.operator,
 		};
 
-		let joined = emit_update_joined_columns(bridge, pre, post, row_idx, JoinSide::Left, &emit_ctx)?;
+		let joined = emit_update_joined_columns(host, pre, post, row_idx, JoinSide::Left, &emit_ctx)?;
 		if !joined.is_empty() {
 			return Ok(joined);
 		}
-		let unmatched_pre = ctx.operator.unmatched_left_columns(bridge, pre, row_idx, Identity::Existing)?;
+		let unmatched_pre = ctx.operator.unmatched_left_columns(host, pre, row_idx, Identity::Existing)?;
 		if unmatched_pre.is_empty() {
 			return Ok(Vec::new());
 		}
-		let unmatched_post = ctx.operator.unmatched_left_columns(bridge, post, row_idx, Identity::Existing)?;
+		let unmatched_post = ctx.operator.unmatched_left_columns(host, post, row_idx, Identity::Existing)?;
 		Ok(vec![Diff::update(unmatched_pre.existing, unmatched_post.existing)])
 	}
 
 	#[inline]
 	fn update_in_place_right(
 		&self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
@@ -420,11 +406,11 @@ impl LeftHashJoin {
 				operator: ctx.operator,
 				right_store: &ctx.state.right,
 			};
-			retire_right(bridge, &snapshot_ctx, keys.pre, pre_row_number)?;
+			retire_right(host, &snapshot_ctx, keys.pre, pre_row_number)?;
 		}
 
-		if !update_single_row_in_entry(bridge, &ctx.state.right, keys.pre, pre_row_number, post, row_idx)? {
-			return self.handle_insert(bridge, post, &[row_idx], keys.post, ctx);
+		if !update_single_row_in_entry(host, &ctx.state.right, keys.pre, pre_row_number, post, row_idx)? {
+			return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
 		}
 
 		if ctx.operator.snapshot {
@@ -437,6 +423,6 @@ impl LeftHashJoin {
 			operator: ctx.operator,
 		};
 
-		emit_update_joined_columns(bridge, pre, post, row_idx, JoinSide::Right, &emit_ctx)
+		emit_update_joined_columns(host, pre, post, row_idx, JoinSide::Right, &emit_ctx)
 	}
 }

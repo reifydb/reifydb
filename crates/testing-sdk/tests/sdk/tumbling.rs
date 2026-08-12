@@ -25,7 +25,7 @@ use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
 		column::operator::OperatorColumn,
-		context::OperatorContext,
+		context::GuestContext,
 		extern_c::binding::{exports::create_descriptor, operator::ExternCOperatorAdapter},
 		view::RowView,
 		windowed::tumbling::*,
@@ -106,7 +106,7 @@ impl TumblingOperator for TestVolume {
 	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
+	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
 		let group = row.utf8("group")?.to_string();
 		let size = row.f64("size")?;
 		Some((group, size))
@@ -153,7 +153,7 @@ impl TumblingOperator for SealedVolume {
 	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
 
-	fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
+	fn extract(&self, ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
 		TestVolume.extract(ctx, row)
 	}
 
@@ -241,7 +241,7 @@ impl TumblingOperator for TestMin {
 	type Accumulator = MinAccumulator;
 	type Output = MinOut;
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, OrdF64)> {
+	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, OrdF64)> {
 		let group = row.utf8("group")?.to_string();
 		let size = row.f64("size")?;
 		Some((group, OrdF64::new(size)?))

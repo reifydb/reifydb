@@ -8,17 +8,17 @@ use reifydb_test_harness::operator::change::trigger;
 use super::Harness;
 use crate::common::ErroringOperator;
 
-const CHILD_ENV: &str = "REIFYDB_OPERATOR_ERROR_ABORT_BRIDGE_CHILD";
-const CHILD_TEST: &str = "bridge::error_abort::apply_error_aborts";
+const CHILD_ENV: &str = "REIFYDB_OPERATOR_ERROR_ABORT_GUEST_CHILD";
+const CHILD_TEST: &str = "guest::error_abort::apply_error_aborts";
 
 #[test]
 fn apply_error_aborts() {
-	// An `Err` from a bridged operator's apply must abort, never propagate as a Result; forked because abort kills
+	// An `Err` from a guest operator's apply must abort, never propagate as a Result; forked because abort kills
 	// the process.
 	if env::var(CHILD_ENV).is_ok() {
 		let mut harness = Harness::<ErroringOperator>::builder().build().expect("harness build");
 		let _ = harness.apply(trigger());
-		eprintln!("bridge apply returned instead of aborting");
+		eprintln!("guest apply returned instead of aborting");
 		return;
 	}
 

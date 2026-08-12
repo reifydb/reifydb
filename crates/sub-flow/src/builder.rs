@@ -6,17 +6,17 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_core::interface::flow::to_bitmask;
 use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::OperatorId};
-use reifydb_flow::operator::BoxedOperator;
+use reifydb_flow::operator::BoxedHostOperator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_sdk::flow::operator::OperatorLogic;
+use reifydb_sdk::flow::operator::GuestOperator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
 use reifydb_value::{Result, config::Config};
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use crate::operator::bridge::{BridgeOperator, BridgeOperatorAdapter};
+use crate::operator::mount::mount;
 
-pub(crate) type OperatorFactory = Arc<dyn Fn(OperatorId, &Config) -> Result<BoxedOperator> + Send + Sync>;
+pub(crate) type OperatorFactory = Arc<dyn Fn(OperatorId, &Config) -> Result<BoxedHostOperator> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct CustomOperatorEntry {
@@ -88,20 +88,14 @@ impl FlowConfigurator {
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn register_operator<O>(mut self) -> Self
 	where
-		O: OperatorLogic + OperatorMetadata + 'static,
+		O: GuestOperator + OperatorMetadata + 'static,
 	{
 		self.custom_operators.insert(
 			O::NAME.to_string(),
 			CustomOperatorEntry {
 				factory: Arc::new(|operator, config| {
 					let logic = O::create(operator, config)?;
-					let adapter = BridgeOperatorAdapter::new(logic, operator, O::CAPABILITIES);
-					let bridged: BoxedOperator = Box::new(BridgeOperator::new(
-						Box::new(adapter),
-						operator,
-						O::CAPABILITIES,
-					));
-					Ok(bridged)
+					Ok(mount(logic, operator, O::CAPABILITIES))
 				}),
 				abi: None,
 				version: <O as OperatorMetadata>::VERSION.to_string(),

@@ -11,10 +11,10 @@ use reifydb_core::{
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
-		OperatorLogic, OperatorMetadata,
+		GuestOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
-		context::{OperatorContext, StateApi},
-		state::RawStatefulOperator,
+		context::{GuestContext, GuestState},
+		state::GuestRawOperator,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
 	row,
@@ -59,7 +59,7 @@ const WINDOW_OUTPUT_COLUMNS: &[OperatorColumn] = &[
 /// Exercises keyed window state accumulating across applies.
 pub struct ParityWindow;
 
-impl RawStatefulOperator for ParityWindow {}
+impl GuestRawOperator for ParityWindow {}
 
 impl OperatorMetadata for ParityWindow {
 	const NAME: &'static str = "parity_window";
@@ -70,12 +70,12 @@ impl OperatorMetadata for ParityWindow {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl OperatorLogic for ParityWindow {
+impl GuestOperator for ParityWindow {
 	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(ParityWindow)
 	}
 
-	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {
 		let mut emissions: Vec<(i64, i64)> = Vec::new();
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -157,12 +157,12 @@ impl OperatorMetadata for RowNumberProbe {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl OperatorLogic for RowNumberProbe {
+impl GuestOperator for RowNumberProbe {
 	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(RowNumberProbe)
 	}
 
-	fn apply(&mut self, ctx: &mut impl OperatorContext, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
 		// A row-number key is a SUFFIX - the host frames it under ROW_NUMBER_MAPPING itself.
 		let key = EncodedKey::new(b"fixed-window-key");
 		let (rn, is_new) = ctx.get_or_create_row_number(GroupId::ROOT, &key)?;
@@ -189,16 +189,16 @@ impl OperatorMetadata for FlushProbe {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl OperatorLogic for FlushProbe {
+impl GuestOperator for FlushProbe {
 	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(FlushProbe)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl OperatorContext, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
 		Ok(())
 	}
 
-	fn flush_state(&mut self, ctx: &mut impl OperatorContext) -> SdkResult<()> {
+	fn flush_state(&mut self, ctx: &mut impl GuestContext) -> SdkResult<()> {
 		ctx.state().set::<i64>(&flush_probe_key(), &FLUSH_PROBE_VALUE)
 	}
 }
@@ -221,12 +221,12 @@ impl OperatorMetadata for NoopOperator {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl OperatorLogic for NoopOperator {
+impl GuestOperator for NoopOperator {
 	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(NoopOperator)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl OperatorContext, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
 		Ok(())
 	}
 }
@@ -243,12 +243,12 @@ impl OperatorMetadata for ErroringOperator {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl OperatorLogic for ErroringOperator {
+impl GuestOperator for ErroringOperator {
 	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(ErroringOperator)
 	}
 
-	fn apply(&mut self, _ctx: &mut impl OperatorContext, _change: impl ChangeView) -> SdkResult<()> {
+	fn apply(&mut self, _ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
 		Err(SdkError::Other("operator apply must abort, not return Err".to_string()))
 	}
 }

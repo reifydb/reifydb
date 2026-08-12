@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod bridge;
+pub mod in_process;
 
 use reifydb_core::interface::change::DiffType;
 use reifydb_value::value::{

@@ -20,7 +20,7 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		change::{BorrowedChange, BorrowedColumns},
 		column::operator::OperatorColumn,
-		extern_c::binding::{context::ExternCOperatorContext, operator::ExternCOperator},
+		extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
 	},
 };
 use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
@@ -48,7 +48,7 @@ impl ExternCOperator for PassthroughOperator {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
 		let mut builder = ctx.builder();
 		for diff in input.diffs() {
 			match diff.kind() {

@@ -32,8 +32,8 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_flow::operator::{
-	Operator,
-	bridge::Bridge,
+	HostOperator,
+	host::HostContext,
 	scan::{
 		ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
 		view::SourceViewOperator,
@@ -73,7 +73,7 @@ pub enum Kind {
 
 pub const MATRIX: [Kind; 4] = [Kind::Series, Kind::Table, Kind::View, Kind::RingBuffer];
 
-/// United here because `Harness` is generic over a concrete `Operator`.
+/// United here because `Harness` is generic over a concrete `HostOperator`.
 pub enum SourceOp {
 	Series(SourceSeriesOperator),
 	Table(SourceTableOperator),
@@ -81,40 +81,40 @@ pub enum SourceOp {
 	RingBuffer(SourceRingBufferOperator),
 }
 
-impl Operator for SourceOp {
+impl HostOperator for SourceOp {
 	fn id(&self) -> OperatorId {
 		match self {
-			SourceOp::Series(o) => Operator::id(o),
-			SourceOp::Table(o) => Operator::id(o),
-			SourceOp::View(o) => Operator::id(o),
-			SourceOp::RingBuffer(o) => Operator::id(o),
+			SourceOp::Series(o) => HostOperator::id(o),
+			SourceOp::Table(o) => HostOperator::id(o),
+			SourceOp::View(o) => HostOperator::id(o),
+			SourceOp::RingBuffer(o) => HostOperator::id(o),
 		}
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		match self {
-			SourceOp::Series(o) => Operator::capabilities(o),
-			SourceOp::Table(o) => Operator::capabilities(o),
-			SourceOp::View(o) => Operator::capabilities(o),
-			SourceOp::RingBuffer(o) => Operator::capabilities(o),
+			SourceOp::Series(o) => HostOperator::capabilities(o),
+			SourceOp::Table(o) => HostOperator::capabilities(o),
+			SourceOp::View(o) => HostOperator::capabilities(o),
+			SourceOp::RingBuffer(o) => HostOperator::capabilities(o),
 		}
 	}
 
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		match self {
-			SourceOp::Series(o) => o.apply(bridge, change),
-			SourceOp::Table(o) => o.apply(bridge, change),
-			SourceOp::View(o) => o.apply(bridge, change),
-			SourceOp::RingBuffer(o) => o.apply(bridge, change),
+			SourceOp::Series(o) => o.apply(host, change),
+			SourceOp::Table(o) => o.apply(host, change),
+			SourceOp::View(o) => o.apply(host, change),
+			SourceOp::RingBuffer(o) => o.apply(host, change),
 		}
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
 		match self {
-			SourceOp::Series(o) => Operator::output_schema(o),
-			SourceOp::Table(o) => Operator::output_schema(o),
-			SourceOp::View(o) => Operator::output_schema(o),
-			SourceOp::RingBuffer(o) => Operator::output_schema(o),
+			SourceOp::Series(o) => HostOperator::output_schema(o),
+			SourceOp::Table(o) => HostOperator::output_schema(o),
+			SourceOp::View(o) => HostOperator::output_schema(o),
+			SourceOp::RingBuffer(o) => HostOperator::output_schema(o),
 		}
 	}
 }

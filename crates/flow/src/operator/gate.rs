@@ -36,7 +36,7 @@ use tracing::instrument;
 
 use crate::{
 	context::FlowContext,
-	operator::{Operator, bridge::Bridge, stateful::raw::RawStatefulOperator},
+	operator::{HostOperator, host::HostContext, stateful::raw::HostRawOperator},
 };
 
 #[operator_state]
@@ -209,22 +209,22 @@ impl GateOperator {
 		Ok(mask)
 	}
 
-	fn is_visible(&mut self, bridge: &mut dyn Bridge, rn: RowNumber) -> Result<bool> {
-		self.state.is_visible(bridge, rn)
+	fn is_visible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<bool> {
+		self.state.is_visible(host, rn)
 	}
 
-	fn mark_visible(&mut self, bridge: &mut dyn Bridge, rn: RowNumber) -> Result<()> {
-		self.state.mark_visible(bridge, rn)
+	fn mark_visible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<()> {
+		self.state.mark_visible(host, rn)
 	}
 
-	fn mark_invisible(&mut self, bridge: &mut dyn Bridge, rn: RowNumber) -> Result<()> {
-		self.state.mark_invisible(bridge, rn)
+	fn mark_invisible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<()> {
+		self.state.mark_invisible(host, rn)
 	}
 }
 
-impl RawStatefulOperator for GateOperator {}
+impl HostRawOperator for GateOperator {}
 
-impl Operator for GateOperator {
+impl HostOperator for GateOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -237,8 +237,8 @@ impl Operator for GateOperator {
 		self.state.sample()
 	}
 
-	fn apply(&mut self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
-		self.state.hydrate_once(bridge)?;
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		self.state.hydrate_once(host)?;
 
 		let mut result = Vec::new();
 
@@ -247,20 +247,20 @@ impl Operator for GateOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_gate_insert(bridge, &post, &mut result)?,
+				} => self.apply_gate_insert(host, &post, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_gate_update(bridge, pre, post, &mut result)?,
+				} => self.apply_gate_update(host, pre, post, &mut result)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_gate_remove(bridge, pre, &mut result)?,
+				} => self.apply_gate_remove(host, pre, &mut result)?,
 			}
 		}
 
-		self.state.flush(bridge)?;
+		self.state.flush(host)?;
 
 		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
 	}
@@ -273,7 +273,12 @@ impl Operator for GateOperator {
 impl GateOperator {
 	#[inline]
 	#[instrument(name = "flow::operator::gate::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_gate_insert(&mut self, bridge: &mut dyn Bridge, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
+	fn apply_gate_insert(
+		&mut self,
+		host: &mut dyn HostContext,
+		post: &Columns,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
 		if post.row_numbers().is_empty() {
 			let mask = self.evaluate(post)?;
 			let passing_indices: Vec<usize> =
@@ -289,7 +294,7 @@ impl GateOperator {
 		for (i, &pass) in mask.iter().enumerate() {
 			let rn = post.row_numbers()[i];
 			if pass {
-				self.mark_visible(bridge, rn)?;
+				self.mark_visible(host, rn)?;
 				passing_indices.push(i);
 			}
 		}
@@ -303,7 +308,7 @@ impl GateOperator {
 	#[instrument(name = "flow::operator::gate::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_gate_update(
 		&mut self,
-		bridge: &mut dyn Bridge,
+		host: &mut dyn HostContext,
 		pre: Columns,
 		post: Columns,
 		result: &mut Vec<Diff>,
@@ -322,10 +327,10 @@ impl GateOperator {
 		let mut insert_indices = Vec::new();
 
 		for (i, (&rn, &mask_val)) in post.row_numbers().iter().zip(mask.iter()).enumerate() {
-			if self.is_visible(bridge, rn)? {
+			if self.is_visible(host, rn)? {
 				update_indices.push(i);
 			} else if mask_val {
-				self.mark_visible(bridge, rn)?;
+				self.mark_visible(host, rn)?;
 				insert_indices.push(i);
 			}
 		}
@@ -344,7 +349,12 @@ impl GateOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::gate::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn apply_gate_remove(&mut self, bridge: &mut dyn Bridge, pre: Columns, result: &mut Vec<Diff>) -> Result<()> {
+	fn apply_gate_remove(
+		&mut self,
+		host: &mut dyn HostContext,
+		pre: Columns,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
 		if pre.row_numbers().is_empty() {
 			result.push(Diff::Remove {
 				pre,
@@ -356,8 +366,8 @@ impl GateOperator {
 		let mut remove_indices = Vec::new();
 		for i in 0..pre.row_numbers().len() {
 			let rn = pre.row_numbers()[i];
-			if self.is_visible(bridge, rn)? {
-				self.mark_invisible(bridge, rn)?;
+			if self.is_visible(host, rn)? {
+				self.mark_invisible(host, rn)?;
 				remove_indices.push(i);
 			}
 		}

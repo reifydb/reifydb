@@ -17,7 +17,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
-	operator::{Operator, bridge::FlowBridge},
+	operator::{BoxedHostOperator, host::TxnHostContext},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
@@ -26,14 +26,11 @@ use reifydb_flow::{
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::flow::operator::{
-	OperatorLogic, OperatorMetadata,
-	context::{OperatorContext, StateApi},
+	GuestOperator, OperatorMetadata,
+	context::{GuestContext, GuestState},
 	extern_c::binding::operator::ExternCOperatorAdapter,
 };
-use reifydb_sub_flow::operator::{
-	bridge::{BridgeOperator, BridgeOperatorAdapter},
-	context::bridge::BridgeOperatorContext,
-};
+use reifydb_sub_flow::operator::{context::in_process::InProcessContext, mount::mount};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarness};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
@@ -43,9 +40,9 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 
-pub struct BridgeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> {
+pub struct GuestOperatorHarness<C: GuestOperator + OperatorMetadata + 'static> {
 	engine: TestEngine,
-	operator: BridgeOperator,
+	operator: BoxedHostOperator,
 	operator_id: OperatorId,
 	version: u64,
 	pending: Pending,
@@ -55,9 +52,9 @@ pub struct BridgeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> 
 	_phantom: PhantomData<C>,
 }
 
-impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
-	pub fn builder() -> BridgeOperatorHarnessBuilder<C> {
-		BridgeOperatorHarnessBuilder::new()
+impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
+	pub fn builder() -> GuestOperatorHarnessBuilder<C> {
+		GuestOperatorHarnessBuilder::new()
 	}
 
 	fn begin_txn(&mut self) -> DeferredTransaction {
@@ -106,9 +103,9 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
 		let operator = self.operator_id;
 		let mut txn = self.begin_txn();
 		let output = {
-			let mut bridge = FlowBridge::new(&mut txn, operator);
-			let output = self.operator.apply(&mut bridge, input)?;
-			self.operator.flush(&mut bridge)?;
+			let mut host = TxnHostContext::new(&mut txn, operator);
+			let output = self.operator.apply(&mut host, input)?;
+			self.operator.flush(&mut host)?;
 			output
 		};
 		self.end_txn(txn);
@@ -120,8 +117,8 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
 		let operator = self.operator_id;
 		let mut txn = self.begin_txn();
 		let output = {
-			let mut bridge = FlowBridge::new(&mut txn, operator);
-			self.operator.apply(&mut bridge, input)?
+			let mut host = TxnHostContext::new(&mut txn, operator);
+			self.operator.apply(&mut host, input)?
 		};
 		self.current = Some(txn);
 		self.history.push(output.clone());
@@ -135,8 +132,8 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
 			None => self.begin_txn(),
 		};
 		{
-			let mut bridge = FlowBridge::new(&mut txn, operator);
-			self.operator.flush(&mut bridge)?;
+			let mut host = TxnHostContext::new(&mut txn, operator);
+			self.operator.flush(&mut host)?;
 		}
 		self.end_txn(txn);
 		Ok(())
@@ -145,14 +142,14 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
 	pub fn state_value<V: OperatorState>(&mut self, key: &GroupStateKey) -> Option<V> {
 		let operator = self.operator_id;
 		if let Some(txn) = self.current.as_mut() {
-			let mut bridge = FlowBridge::new(txn, operator);
-			let mut ctx = BridgeOperatorContext::new(&mut bridge, operator);
+			let mut host = TxnHostContext::new(txn, operator);
+			let mut ctx = InProcessContext::new(&mut host, operator);
 			return ctx.state().get::<V>(key).expect("state get");
 		}
 		let mut txn = self.begin_txn();
 		let value = {
-			let mut bridge = FlowBridge::new(&mut txn, operator);
-			let mut ctx = BridgeOperatorContext::new(&mut bridge, operator);
+			let mut host = TxnHostContext::new(&mut txn, operator);
+			let mut ctx = InProcessContext::new(&mut host, operator);
 			ctx.state().get::<V>(key).expect("state get")
 		};
 		self.end_txn(txn);
@@ -194,7 +191,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
 	}
 }
 
-impl<C: OperatorLogic + OperatorMetadata + 'static> Index<usize> for BridgeOperatorHarness<C> {
+impl<C: GuestOperator + OperatorMetadata + 'static> Index<usize> for GuestOperatorHarness<C> {
 	type Output = Change;
 
 	fn index(&self, index: usize) -> &Self::Output {
@@ -202,20 +199,20 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> Index<usize> for BridgeOpera
 	}
 }
 
-pub struct BridgeOperatorHarnessBuilder<C> {
+pub struct GuestOperatorHarnessBuilder<C> {
 	config: HashMap<String, Value>,
 	operator_id: OperatorId,
 	version: CommitVersion,
 	_phantom: PhantomData<C>,
 }
 
-impl<C: OperatorLogic + OperatorMetadata + 'static> Default for BridgeOperatorHarnessBuilder<C> {
+impl<C: GuestOperator + OperatorMetadata + 'static> Default for GuestOperatorHarnessBuilder<C> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarnessBuilder<C> {
+impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilder<C> {
 	pub fn new() -> Self {
 		Self {
 			config: HashMap::new(),
@@ -249,21 +246,20 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarnessBuilder
 		self
 	}
 
-	pub fn build(self) -> Result<BridgeOperatorHarness<C>> {
+	pub fn build(self) -> Result<GuestOperatorHarness<C>> {
 		let engine = TestEngine::new();
 		let core = C::create(
 			self.operator_id,
 			&Config::new(<C as OperatorMetadata>::NAME, self.config.clone().into_iter().collect()),
 		)?;
 		let capabilities = <C as OperatorMetadata>::CAPABILITIES;
-		let adapter = BridgeOperatorAdapter::new(core, self.operator_id, capabilities);
-		let operator = BridgeOperator::new(Box::new(adapter), self.operator_id, capabilities);
+		let operator = mount(core, self.operator_id, capabilities);
 
 		let substrate = FlowSubstrate {
 			operators: engine.inner().operator_state(),
 			..FlowSubstrate::default()
 		};
-		Ok(BridgeOperatorHarness {
+		Ok(GuestOperatorHarness {
 			engine,
 			operator,
 			operator_id: self.operator_id,
@@ -312,7 +308,7 @@ fn render_change(change: &Change) -> Vec<DiffRender> {
 
 fn run_extern_c<C>(config: &[(&str, Value)], inputs: &[Change]) -> Vec<Change>
 where
-	C: OperatorLogic + OperatorMetadata + 'static,
+	C: GuestOperator + OperatorMetadata + 'static,
 {
 	let mut harness = ExternCOperatorHarness::<ExternCOperatorAdapter<C>>::builder()
 		.with_config(config.iter().cloned())
@@ -321,38 +317,38 @@ where
 	inputs.iter().map(|input| harness.apply(input.clone()).expect("extern-C apply")).collect()
 }
 
-fn run_bridge<C>(config: &[(&str, Value)], inputs: &[Change]) -> Vec<Change>
+fn run_guest<C>(config: &[(&str, Value)], inputs: &[Change]) -> Vec<Change>
 where
-	C: OperatorLogic + OperatorMetadata + 'static,
+	C: GuestOperator + OperatorMetadata + 'static,
 {
-	let mut harness = BridgeOperatorHarness::<C>::builder()
+	let mut harness = GuestOperatorHarness::<C>::builder()
 		.with_config(config.iter().cloned())
 		.build()
-		.expect("bridge harness build");
-	inputs.iter().map(|input| harness.apply(input.clone()).expect("bridge apply")).collect()
+		.expect("host harness build");
+	inputs.iter().map(|input| harness.apply(input.clone()).expect("host apply")).collect()
 }
 
 pub fn assert_backend_parity<C>(config: Vec<(&str, Value)>, scenarios: &[(&str, Vec<Change>)])
 where
-	C: OperatorLogic + OperatorMetadata + 'static,
+	C: GuestOperator + OperatorMetadata + 'static,
 {
 	for (name, inputs) in scenarios {
 		let extern_c = run_extern_c::<C>(&config, inputs);
-		let bridge = run_bridge::<C>(&config, inputs);
+		let host = run_guest::<C>(&config, inputs);
 
 		assert_eq!(
 			extern_c.len(),
-			bridge.len(),
-			"scenario '{name}': extern-C emitted {} outputs, bridge emitted {}",
+			host.len(),
+			"scenario '{name}': extern-C emitted {} outputs, host emitted {}",
 			extern_c.len(),
-			bridge.len()
+			host.len()
 		);
 
-		for (i, (f, n)) in extern_c.iter().zip(bridge.iter()).enumerate() {
+		for (i, (f, n)) in extern_c.iter().zip(host.iter()).enumerate() {
 			assert_eq!(
 				render_change(f),
 				render_change(n),
-				"scenario '{name}' apply #{i}: extern-C vs bridge emitted-output mismatch"
+				"scenario '{name}' apply #{i}: extern-C vs host emitted-output mismatch"
 			);
 		}
 	}

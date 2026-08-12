@@ -11,7 +11,7 @@ use reifydb_sdk::{
 	error::SdkError,
 	flow::operator::extern_c::binding::arena::Arena,
 	transform::extern_c::wire::{
-		callbacks::TransformCallbacks, context::ExternCContext, descriptor::ExternCTransformDescriptor,
+		callbacks::TransformCallbacks, context::ExternCContextRaw, descriptor::ExternCTransformDescriptor,
 		vtable::ExternCTransformVTable,
 	},
 };
@@ -44,7 +44,7 @@ pub struct ExternCTransform {
 
 	builder_registry: BuilderRegistry,
 
-	cached_ctx: UnsafeCell<ExternCContext>,
+	cached_ctx: UnsafeCell<ExternCContextRaw>,
 }
 
 impl ExternCTransform {
@@ -56,7 +56,7 @@ impl ExternCTransform {
 			vtable,
 			instance,
 			builder_registry: BuilderRegistry::new(),
-			cached_ctx: UnsafeCell::new(ExternCContext {
+			cached_ctx: UnsafeCell::new(ExternCContextRaw {
 				txn_ptr: ptr::null_mut(),
 				executor_ptr: ptr::null(),
 				written_at_nanos: 0,
@@ -94,7 +94,7 @@ impl Transform for ExternCTransform {
 			EXTERN_C_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).marshal_columns(&input) });
 
 		let extern_c_ctx_ptr = self.cached_ctx.get();
-		// SAFETY: cached_ctx owns the ExternCContext for the life of self and apply is not re-entrant.
+		// SAFETY: cached_ctx owns the ExternCContextRaw for the life of self and apply is not re-entrant.
 		unsafe {
 			(*extern_c_ctx_ptr).written_at_nanos = ctx.runtime_context.clock.now().to_nanos();
 		}

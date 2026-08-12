@@ -32,7 +32,7 @@ use reifydb_core::{
 use reifydb_flow::{
 	context::FlowContext,
 	operator::{
-		Operator,
+		HostOperator,
 		distinct::operator::DistinctOperator,
 		join::operator::{JoinOperator, JoinSideConfig},
 		window::operator::{WindowConfig, WindowOperator},
@@ -117,7 +117,7 @@ fn change_of(events: &[Event]) -> Change {
 	Change::from_flow(SOURCE, CommitVersion(1), diffs, DateTime::default())
 }
 
-fn feed<O: Operator>(h: &mut Harness<O>, events: &[Event], slices: &[usize]) -> Vec<Diff> {
+fn feed<O: HostOperator>(h: &mut Harness<O>, events: &[Event], slices: &[usize]) -> Vec<Diff> {
 	let mut emitted = Vec::new();
 	for chunk in chunks(events, slices) {
 		let out = h.apply(change_of(chunk)).expect("the change applies");

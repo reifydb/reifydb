@@ -9,30 +9,30 @@ use reifydb_core::key::operator_state::GroupStateKey;
 use reifydb_value::Result;
 
 use super::StateIterator;
-use crate::operator::bridge::Bridge;
+use crate::operator::host::HostContext;
 
-pub fn state_get(bridge: &mut dyn Bridge, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
-	bridge.state_get(key)
+pub fn state_get(host: &mut dyn HostContext, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+	host.state_get(key)
 }
 
-pub fn state_set(bridge: &mut dyn Bridge, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
-	bridge.state_set(key, row)
+pub fn state_set(host: &mut dyn HostContext, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
+	host.state_set(key, row)
 }
 
-pub fn state_remove(bridge: &mut dyn Bridge, key: &GroupStateKey) -> Result<()> {
-	bridge.state_remove(key)
+pub fn state_remove(host: &mut dyn HostContext, key: &GroupStateKey) -> Result<()> {
+	host.state_remove(key)
 }
 
-pub fn state_scan_all(bridge: &mut dyn Bridge) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
-	bridge.state_scan_all()
+pub fn state_scan_all(host: &mut dyn HostContext) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+	host.state_scan_all()
 }
 
-pub fn state_range<'a>(bridge: &'a mut dyn Bridge, range: EncodedKeyRange) -> StateIterator<'a> {
-	bridge.state_range_iter(range)
+pub fn state_range<'a>(host: &'a mut dyn HostContext, range: EncodedKeyRange) -> StateIterator<'a> {
+	host.state_range_iter(range)
 }
 
-pub fn state_clear(bridge: &mut dyn Bridge) -> Result<()> {
-	bridge.state_clear()
+pub fn state_clear(host: &mut dyn HostContext) -> Result<()> {
+	host.state_clear()
 }
 
 pub fn empty_state_key() -> GroupStateKey {
@@ -56,13 +56,13 @@ pub mod tests {
 
 	use super::*;
 	use crate::{
-		operator::{bridge::FlowBridge, stateful::test_utils::test::*},
+		operator::{host::TxnHostContext, stateful::test_utils::test::*},
 		testing::FlowTxn,
 		transaction::{FlowTransaction, deferred::DeferredTransaction},
 	};
 
-	fn bridge(txn: &mut DeferredTransaction, operator: OperatorId) -> FlowBridge<'_, DeferredTransaction> {
-		FlowBridge::new(txn, operator)
+	fn host(txn: &mut DeferredTransaction, operator: OperatorId) -> TxnHostContext<'_, DeferredTransaction> {
+		TxnHostContext::new(txn, operator)
 	}
 
 	#[test]
@@ -73,9 +73,9 @@ pub mod tests {
 		let key = test_key("get");
 		let row = test_row();
 
-		state_set(&mut bridge(&mut txn, operator_id), &key, row.clone()).unwrap();
+		state_set(&mut host(&mut txn, operator_id), &key, row.clone()).unwrap();
 
-		let result = state_get(&mut bridge(&mut txn, operator_id), &key).unwrap();
+		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &row);
 	}
@@ -87,7 +87,7 @@ pub mod tests {
 		let operator_id = OperatorId(1);
 		let key = test_key("nonexistent");
 
-		let result = state_get(&mut bridge(&mut txn, operator_id), &key).unwrap();
+		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap();
 		assert!(result.is_none());
 	}
 
@@ -100,12 +100,12 @@ pub mod tests {
 		let row1 = EncodedOperatorRow::timeless(&[1, 2, 3]);
 		let row2 = EncodedOperatorRow::timeless(&[4, 5, 6]);
 
-		state_set(&mut bridge(&mut txn, operator_id), &key, row1.clone()).unwrap();
-		let result = state_get(&mut bridge(&mut txn, operator_id), &key).unwrap().unwrap();
+		state_set(&mut host(&mut txn, operator_id), &key, row1.clone()).unwrap();
+		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap().unwrap();
 		assert_row_eq(&result, &row1);
 
-		state_set(&mut bridge(&mut txn, operator_id), &key, row2.clone()).unwrap();
-		let result = state_get(&mut bridge(&mut txn, operator_id), &key).unwrap().unwrap();
+		state_set(&mut host(&mut txn, operator_id), &key, row2.clone()).unwrap();
+		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap().unwrap();
 		assert_row_eq(&result, &row2);
 	}
 
@@ -115,11 +115,11 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("remove");
-		state_set(&mut bridge(&mut txn, operator_id), &key, test_row()).unwrap();
-		assert!(state_get(&mut bridge(&mut txn, operator_id), &key).unwrap().is_some());
+		state_set(&mut host(&mut txn, operator_id), &key, test_row()).unwrap();
+		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_some());
 
-		state_remove(&mut bridge(&mut txn, operator_id), &key).unwrap();
-		assert!(state_get(&mut bridge(&mut txn, operator_id), &key).unwrap().is_none());
+		state_remove(&mut host(&mut txn, operator_id), &key).unwrap();
+		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_none());
 	}
 
 	#[test]
@@ -130,11 +130,11 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("scan_{:02}", i)); // padded so the keys sort numerically
-			state_set(&mut bridge(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(&[i as u8]))
+			state_set(&mut host(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(&[i as u8]))
 				.unwrap();
 		}
 
-		let entries: Vec<_> = state_scan_all(&mut bridge(&mut txn, operator_id)).unwrap();
+		let entries: Vec<_> = state_scan_all(&mut host(&mut txn, operator_id)).unwrap();
 		assert_eq!(entries.len(), 5);
 
 		// The scan path is untyped, so the payload only surfaces once the row header is stripped.
@@ -153,7 +153,7 @@ pub mod tests {
 		let keys = vec!["a", "b", "c", "d", "e"];
 		for key_suffix in &keys {
 			let key = test_key(key_suffix);
-			state_set(&mut bridge(&mut txn, operator_id), &key, test_row()).unwrap();
+			state_set(&mut host(&mut txn, operator_id), &key, test_row()).unwrap();
 		}
 
 		let range = EncodedKeyRange::new(
@@ -161,7 +161,7 @@ pub mod tests {
 			Excluded(test_key("d").into_encoded()),
 		);
 		let entries: Vec<_> =
-			state_range(&mut bridge(&mut txn, operator_id), range).collect::<Result<Vec<_>>>().unwrap();
+			state_range(&mut host(&mut txn, operator_id), range).collect::<Result<Vec<_>>>().unwrap();
 
 		// b and c, but not the excluded end d.
 		assert_eq!(entries.len(), 2);
@@ -175,7 +175,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("range_{}", i));
-			state_set(&mut bridge(&mut txn, operator_id), &key, test_row()).unwrap();
+			state_set(&mut host(&mut txn, operator_id), &key, test_row()).unwrap();
 		}
 
 		let entries = {
@@ -211,7 +211,7 @@ pub mod tests {
 
 		for i in 0..3 {
 			let key = test_key(&format!("clear_{}", i));
-			state_set(&mut bridge(&mut txn, operator_id), &key, test_row()).unwrap();
+			state_set(&mut host(&mut txn, operator_id), &key, test_row()).unwrap();
 		}
 
 		let count = {
@@ -226,7 +226,7 @@ pub mod tests {
 		};
 		assert_eq!(count, 3);
 
-		state_clear(&mut bridge(&mut txn, operator_id)).unwrap();
+		state_clear(&mut host(&mut txn, operator_id)).unwrap();
 
 		let count = {
 			let range = OperatorStateKey::node_range(operator_id);
@@ -258,18 +258,18 @@ pub mod tests {
 		let row1 = EncodedOperatorRow::timeless(&[1]);
 		let row2 = EncodedOperatorRow::timeless(&[2]);
 
-		state_set(&mut bridge(&mut txn, node1), &key, row1.clone()).unwrap();
-		state_set(&mut bridge(&mut txn, node2), &key, row2.clone()).unwrap();
+		state_set(&mut host(&mut txn, node1), &key, row1.clone()).unwrap();
+		state_set(&mut host(&mut txn, node2), &key, row2.clone()).unwrap();
 
-		let result1 = state_get(&mut bridge(&mut txn, node1), &key).unwrap().unwrap();
-		let result2 = state_get(&mut bridge(&mut txn, node2), &key).unwrap().unwrap();
+		let result1 = state_get(&mut host(&mut txn, node1), &key).unwrap().unwrap();
+		let result2 = state_get(&mut host(&mut txn, node2), &key).unwrap().unwrap();
 
 		assert_row_eq(&result1, &row1);
 		assert_row_eq(&result2, &row2);
 
-		state_clear(&mut bridge(&mut txn, node1)).unwrap();
-		assert!(state_get(&mut bridge(&mut txn, node1), &key).unwrap().is_none());
-		assert!(state_get(&mut bridge(&mut txn, node2), &key).unwrap().is_some());
+		state_clear(&mut host(&mut txn, node1)).unwrap();
+		assert!(state_get(&mut host(&mut txn, node1), &key).unwrap().is_none());
+		assert!(state_get(&mut host(&mut txn, node2), &key).unwrap().is_some());
 	}
 
 	#[test]
@@ -281,8 +281,8 @@ pub mod tests {
 
 		let large_row = EncodedOperatorRow::timeless(&[0xAB; 10240]);
 
-		state_set(&mut bridge(&mut txn, operator_id), &key, large_row.clone()).unwrap();
-		let result = state_get(&mut bridge(&mut txn, operator_id), &key).unwrap().unwrap();
+		state_set(&mut host(&mut txn, operator_id), &key, large_row.clone()).unwrap();
+		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap().unwrap();
 
 		assert_row_eq(&result, &large_row);
 	}

@@ -20,9 +20,9 @@ use reifydb_flow::{
 	window::{accumulator::WindowAccumulator, span::WindowSpan},
 };
 use reifydb_sdk::flow::operator::{
-	column::{row::Row, sink::bridge::BridgeRowSink},
-	extern_c::{binding::context::ExternCOperatorContext, wire::context::ExternCContext},
-	view::{ColumnsView, RowView, bridge::BridgeColumnsView},
+	column::{row::Row, sink::in_process::InProcessRowSink},
+	extern_c::{binding::context::ExternCContext, wire::context::ExternCContextRaw},
+	view::{ColumnsView, RowView, in_process::InProcessColumnsView},
 	windowed::{
 		rolling::RollingOperator, rolling_top_k::RollingTopKOperator, tumbling::TumblingOperator,
 		tumbling_carry::TumblingCarryOperator,
@@ -37,15 +37,15 @@ use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::R
 use super::{context::ChaosContext, materialize::materialize_history};
 use crate::{callbacks::create_test_callbacks, context::TestContext};
 
-fn with_oracle_ctx<R>(f: impl FnOnce(&mut ExternCOperatorContext) -> R) -> R {
+fn with_oracle_ctx<R>(f: impl FnOnce(&mut ExternCContext) -> R) -> R {
 	let test_ctx = TestContext::new(CommitVersion(1));
-	let mut extern_c_context = ExternCContext {
+	let mut extern_c_context = ExternCContextRaw {
 		txn_ptr: &test_ctx as *const TestContext as *mut c_void,
 		written_at_nanos: 0,
 		operator_id: 1,
 		callbacks: create_test_callbacks(),
 	};
-	let mut op_ctx = ExternCOperatorContext::new(&mut extern_c_context as *mut ExternCContext);
+	let mut op_ctx = ExternCContext::new(&mut extern_c_context as *mut ExternCContextRaw);
 	f(&mut op_ctx)
 }
 
@@ -145,7 +145,7 @@ where
 	A: TumblingOperator,
 {
 	let columns = Columns::from_row(row);
-	let view = BridgeColumnsView::new(&columns);
+	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = row_view.row_time()?;
 	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
@@ -157,7 +157,7 @@ fn materialize_outputs<O: Row>(
 	now: DateTime,
 	output_key_columns: &[String],
 ) -> MaterializedView {
-	let mut sink = BridgeRowSink::new(<O as Row>::COLUMNS).expect("output sink");
+	let mut sink = InProcessRowSink::new(<O as Row>::COLUMNS).expect("output sink");
 	let mut row_numbers: Vec<RowNumber> = Vec::new();
 	let mut count = 0u64;
 	for output in outputs {
@@ -332,7 +332,7 @@ where
 	A: RollingOperator,
 {
 	let columns = Columns::from_row(row);
-	let view = BridgeColumnsView::new(&columns);
+	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = row_view.row_time()?;
 	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
@@ -642,7 +642,7 @@ where
 	A: RollingTopKOperator,
 {
 	let columns = Columns::from_row(row);
-	let view = BridgeColumnsView::new(&columns);
+	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = row_view.row_time()?;
 	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
@@ -658,7 +658,7 @@ where
 	A: TumblingCarryOperator,
 {
 	let columns = Columns::from_row(row);
-	let view = BridgeColumnsView::new(&columns);
+	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
 	let coord = row_view.row_time()?;
 	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;

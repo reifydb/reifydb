@@ -10,20 +10,17 @@ use std::{
 use libloading::Symbol;
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_extension::loader::extern_load::ExternLoad;
-use reifydb_flow::operator::BoxedOperator;
+use reifydb_flow::operator::BoxedHostOperator;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_value::{Result, config::Config, error::Error, value::constraint::TypeConstraint};
 
-use crate::{
-	error::ExternOperatorError,
-	operator::bridge::{BoxedBridgedOperator, BridgeOperator},
-};
+use crate::error::ExternOperatorError;
 
 pub const EXTERN_RUST_OPERATOR_MAGIC: u32 = 0x5244_424E;
 
 pub const EXTERN_RUST_ABI_TAG: u32 = 0x0308;
 
-pub type ExternRustOperatorCreateFn = fn(OperatorId, &Config) -> Result<BoxedBridgedOperator>;
+pub type ExternRustOperatorCreateFn = fn(OperatorId, &Config) -> Result<BoxedHostOperator>;
 
 pub struct ExternRustOperatorColumn {
 	pub name: String,
@@ -150,7 +147,7 @@ impl ExternRustOperatorLoader {
 		operator: &str,
 		operator_id: OperatorId,
 		config: &Config,
-	) -> Result<BoxedOperator> {
+	) -> Result<BoxedHostOperator> {
 		let path = self
 			.operator_paths
 			.get(operator)
@@ -188,9 +185,7 @@ impl ExternRustOperatorLoader {
 			*create_symbol
 		};
 
-		let bridged = create(operator_id, config)?;
-		let capabilities = bridged.capabilities();
-		Ok(Box::new(BridgeOperator::new(bridged, operator_id, capabilities)))
+		Ok(create(operator_id, config)?)
 	}
 }
 

@@ -334,7 +334,7 @@ mod tests {
 			OperatorMetadata,
 			change::BorrowedChange,
 			column::operator::OperatorColumn,
-			extern_c::binding::{context::ExternCOperatorContext, operator::ExternCOperator},
+			extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
 		},
 	};
 	use reifydb_testing_chaos::operator::scenario::BatchSize;
@@ -360,7 +360,7 @@ mod tests {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, _ctx: &mut ExternCOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, _ctx: &mut ExternCContext, _input: BorrowedChange<'_>) -> Result<()> {
 			Ok(())
 		}
 	}

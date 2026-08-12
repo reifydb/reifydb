@@ -16,7 +16,7 @@ use reifydb_flow::{
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
-		column::operator::OperatorColumn, context::OperatorContext,
+		column::operator::OperatorColumn, context::GuestContext,
 		extern_c::binding::operator::ExternCOperatorAdapter, view::RowView, windowed::tumbling_carry::*,
 	},
 	row,
@@ -61,7 +61,7 @@ impl TumblingCarryOperator for TestCarry {
 	type Output = CarryOut;
 	type Carry = f64;
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
+	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
 		let ts = row.u64("ts")?;
 		let price = row.f64("price")?;
@@ -249,7 +249,7 @@ impl TumblingCarryOperator for SealedCarry {
 	type Output = CarryOut;
 	type Carry = f64;
 
-	fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
+	fn extract(&self, ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		TestCarry.extract(ctx, row)
 	}
 

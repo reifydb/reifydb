@@ -8,13 +8,13 @@ use tracing::instrument;
 
 use super::hash::{build_shape, columns_from_block, encode_row};
 use crate::operator::{
-	bridge::Bridge,
+	host::HostContext,
 	join::store::{Store, body_bytes},
 };
 
 #[instrument(name = "flow::operator::join::latest::overwrite_right_slot", level = "trace", skip_all, fields(rows = indices.len()))]
 pub(crate) fn overwrite_right_slot(
-	bridge: &mut dyn Bridge,
+	host: &mut dyn HostContext,
 	right: &Store,
 	key_hash: &Hash128,
 	columns: &Columns,
@@ -24,29 +24,33 @@ pub(crate) fn overwrite_right_slot(
 		return Ok(None);
 	}
 	let shape = build_shape(columns);
-	right.set_row_shape(bridge, &shape)?;
+	right.set_row_shape(host, &shape)?;
 	let mut stored: Option<EncodedOperatorRow> = None;
 	for &idx in indices {
-		let row = encode_row(&shape, columns, idx, bridge.written_at());
-		right.put_row(bridge, key_hash, RowNumber::MAX, &row)?;
+		let row = encode_row(&shape, columns, idx, host.written_at());
+		right.put_row(host, key_hash, RowNumber::MAX, &row)?;
 		stored = Some(row);
 	}
 	match stored {
-		Some(row) => Ok(Some(columns_from_block(bridge, right, vec![(RowNumber::MAX, body_bytes(&row))])?)),
+		Some(row) => Ok(Some(columns_from_block(host, right, vec![(RowNumber::MAX, body_bytes(&row))])?)),
 		None => Ok(None),
 	}
 }
 
 #[instrument(name = "flow::operator::join::latest::read_right_slot", level = "trace", skip_all)]
-pub(crate) fn read_right_slot(bridge: &mut dyn Bridge, right: &Store, key_hash: &Hash128) -> Result<Option<Columns>> {
-	let Some(group) = right.group_of(bridge, key_hash)? else {
+pub(crate) fn read_right_slot(
+	host: &mut dyn HostContext,
+	right: &Store,
+	key_hash: &Hash128,
+) -> Result<Option<Columns>> {
+	let Some(group) = right.group_of(host, key_hash)? else {
 		return Ok(None);
 	};
-	Ok(right.slot(bridge, group)?.map(|(_, columns)| columns))
+	Ok(right.slot(host, group)?.map(|(_, columns)| columns))
 }
 
 #[instrument(name = "flow::operator::join::latest::remove_right_slot", level = "trace", skip_all)]
-pub(crate) fn remove_right_slot(bridge: &mut dyn Bridge, right: &Store, key_hash: &Hash128) -> Result<()> {
-	right.remove_row(bridge, key_hash, RowNumber::MAX)?;
+pub(crate) fn remove_right_slot(host: &mut dyn HostContext, right: &Store, key_hash: &Hash128) -> Result<()> {
+	right.remove_row(host, key_hash, RowNumber::MAX)?;
 	Ok(())
 }

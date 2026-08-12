@@ -23,7 +23,7 @@ use tracing::instrument;
 
 use crate::{
 	context::FlowContext,
-	operator::{Operator, bridge::Bridge},
+	operator::{HostOperator, host::HostContext},
 };
 
 pub struct MapOperator {
@@ -123,7 +123,7 @@ impl MapOperator {
 	}
 }
 
-impl Operator for MapOperator {
+impl HostOperator for MapOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -132,7 +132,7 @@ impl Operator for MapOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
+	fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {

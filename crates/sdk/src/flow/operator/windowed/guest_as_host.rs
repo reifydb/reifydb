@@ -16,11 +16,11 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::flow::operator::context::{OperatorContext, StateApi};
+use crate::flow::operator::context::{GuestContext, GuestState};
 
-pub struct OperatorContextStore<'a, C: OperatorContext>(pub &'a mut C);
+pub struct GuestAsHost<'a, C: GuestContext>(pub &'a mut C);
 
-impl<C: OperatorContext> TimerStore for OperatorContextStore<'_, C> {
+impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.0.arm_timer(at, kind, key)?;
 		Ok(())
@@ -36,7 +36,7 @@ impl<C: OperatorContext> TimerStore for OperatorContextStore<'_, C> {
 	}
 }
 
-impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
+impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
 		Ok(self.0.state().get_bytes(key)?)
 	}

@@ -16,7 +16,7 @@ use reifydb_flow::window::accumulator::{
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
-		column::operator::OperatorColumn, context::OperatorContext,
+		column::operator::OperatorColumn, context::GuestContext,
 		extern_c::binding::operator::ExternCOperatorAdapter, view::RowView, windowed::rolling_top_k::*,
 	},
 	row,
@@ -66,7 +66,7 @@ impl RollingTopKOperator for TestTopVolume {
 		millis(1)
 	}
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
+	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
 		let trader = row.u64("trader")?;
 		let volume = row.f64("volume")?;
@@ -308,7 +308,7 @@ impl RollingTopKOperator for SealedTopVolume {
 		Some(millis(120))
 	}
 
-	fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
+	fn extract(&self, ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		TestTopVolume.extract(ctx, row)
 	}
 

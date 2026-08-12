@@ -140,7 +140,7 @@ fn resolved(def: View) -> ResolvedView {
 	)
 }
 
-/// United here because `Harness` is generic over a concrete `Operator`.
+/// United here because `Harness` is generic over a concrete `HostOperator`.
 pub enum SinkOp {
 	Table(SinkTableViewOperator),
 	Series(SinkSeriesViewOperator),
