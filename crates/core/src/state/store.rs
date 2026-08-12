@@ -70,7 +70,9 @@ pub trait StateStore {
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 
 	fn written_at(&self) -> DateTime;
+}
 
+pub trait TimerStore {
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 
 	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;

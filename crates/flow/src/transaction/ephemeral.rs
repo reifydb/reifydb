@@ -19,19 +19,24 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::{PendingLayers, PendingWrite},
 	common::CommitVersion,
-	interface::store::MultiVersionRow,
+	interface::{change::Change, store::MultiVersionRow},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	change_accumulator::ChangeAccumulator,
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 };
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, error::Error, value::datetime::DateTime};
 
-use crate::transaction::{
-	ChangeCoordinate, FlowTransaction,
-	read::{ReadFrom, read_from},
-	substrate::FlowSubstrate,
+use crate::{
+	error::FlowGraphError,
+	operator::sink::DurableSink,
+	timer::Timer,
+	transaction::{
+		ChangeCoordinate, FlowTransaction,
+		read::{ReadFrom, read_from},
+		substrate::FlowSubstrate,
+	},
 };
 
 pub struct EphemeralTransaction {
@@ -252,6 +257,18 @@ impl FlowTransaction for EphemeralTransaction {
 
 	fn set_flow_watermark(&mut self, watermark: DateTime) {
 		self.flow_watermark = Some(watermark);
+	}
+
+	fn run_durable_sink(&mut self, _sink: &mut dyn DurableSink, _change: Change) -> Result<Change> {
+		Err(Error::from(FlowGraphError::UnsupportedNode {
+			kind: "DurableSink",
+		}))
+	}
+
+	fn run_durable_sink_timer(&mut self, _sink: &mut dyn DurableSink, _timer: Timer) -> Result<Option<Change>> {
+		Err(Error::from(FlowGraphError::UnsupportedNode {
+			kind: "DurableSink",
+		}))
 	}
 
 	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {

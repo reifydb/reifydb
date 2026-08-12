@@ -634,7 +634,7 @@ mod tests {
 	};
 	use reifydb_core::{
 		key::operator_state::{GroupId, GroupStateKey},
-		state::store::{StateStore, TimerKind},
+		state::store::{StateStore, TimerKind, TimerStore},
 	};
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
 
@@ -719,7 +719,7 @@ mod tests {
 		next_row: u64,
 	}
 
-	impl StateStore for MockStore {
+	impl TimerStore for MockStore {
 		fn arm_timer(&mut self, _at: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
 			unreachable!("the window engine never arms timers; only the shell above it does")
 		}
@@ -731,7 +731,9 @@ mod tests {
 		fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
 			Ok(None)
 		}
+	}
 
+	impl StateStore for MockStore {
 		fn intern_group(&mut self, group: &EncodedKey) -> ValueResult<GroupId> {
 			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
 			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))

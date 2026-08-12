@@ -99,6 +99,7 @@ impl FlowEngineInner<DeferredTransaction> {
 			if let Err(err) = self.add(txn, &flow, operator, &ctx) {
 				for id in &added {
 					self.operators.remove(id);
+					self.durable_sinks.remove(id);
 				}
 				for entries in self.sources.values_mut() {
 					entries.retain(|(fid, _)| *fid != flow.id);
@@ -136,7 +137,7 @@ impl FlowEngineInner<DeferredTransaction> {
 				table,
 			} => {
 				reifydb_assertions! {
-					assert!(!self.operators.contains_key(&operator_id), "Operator already registered");
+					assert!(!self.durable_sinks.contains_key(&operator_id), "Operator already registered");
 				}
 				self.add_sink_table_view(txn, flow, operator_id, &inputs, view, table)
 			}
@@ -146,7 +147,7 @@ impl FlowEngineInner<DeferredTransaction> {
 				capacity,
 			} => {
 				reifydb_assertions! {
-					assert!(!self.operators.contains_key(&operator_id), "Operator already registered");
+					assert!(!self.durable_sinks.contains_key(&operator_id), "Operator already registered");
 				}
 				self.add_sink_ringbuffer_view(
 					txn,
@@ -164,7 +165,7 @@ impl FlowEngineInner<DeferredTransaction> {
 				key,
 			} => {
 				reifydb_assertions! {
-					assert!(!self.operators.contains_key(&operator_id), "Operator already registered");
+					assert!(!self.durable_sinks.contains_key(&operator_id), "Operator already registered");
 				}
 				self.add_sink_series_view(txn, flow, operator_id, &inputs, view, series, key)
 			}
@@ -186,7 +187,7 @@ impl FlowEngineInner<DeferredTransaction> {
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_table(&mut txn.reborrow(), table)?.partition_by;
-		self.operators.insert(
+		self.durable_sinks.insert(
 			operator_id,
 			Box::new(SinkTableViewOperator::new(
 				operator_id,
@@ -220,7 +221,7 @@ impl FlowEngineInner<DeferredTransaction> {
 			.and_then(|settings| settings.ttl);
 		let announce_evictions = ttl.as_ref().map(|ttl| ttl.announce).unwrap_or(true);
 		let row_ttl = ttl.as_ref().map(|t| t.duration);
-		self.operators.insert(
+		self.durable_sinks.insert(
 			operator_id,
 			Box::new(SinkRingBufferViewOperator::new(
 				operator_id,
@@ -251,7 +252,7 @@ impl FlowEngineInner<DeferredTransaction> {
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_series(&mut txn.reborrow(), series)?.partition_by;
-		self.operators.insert(
+		self.durable_sinks.insert(
 			operator_id,
 			Box::new(SinkSeriesViewOperator::new(
 				operator_id,

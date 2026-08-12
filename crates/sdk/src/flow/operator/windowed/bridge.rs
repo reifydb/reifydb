@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
-	state::store::{StateStore, TimerKind},
+	state::store::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_value::{
 	Result,
@@ -20,7 +20,7 @@ use crate::flow::operator::context::{OperatorContext, StateApi};
 
 pub struct OperatorContextStore<'a, C: OperatorContext>(pub &'a mut C);
 
-impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
+impl<C: OperatorContext> TimerStore for OperatorContextStore<'_, C> {
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.0.arm_timer(at, kind, key)?;
 		Ok(())
@@ -34,7 +34,9 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
 		Ok(self.0.flow_watermark()?)
 	}
+}
 
+impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
 		Ok(self.0.state().get_bytes(key)?)
 	}

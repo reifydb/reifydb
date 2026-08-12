@@ -11,7 +11,7 @@ use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
 
 use crate::{
-	engine::FlowEngineInner,
+	engine::{FlowEngineInner, execution::dispatch::Node},
 	timer::Timer,
 	transaction::{ChangeCoordinate, FlowTransaction},
 };
@@ -88,15 +88,25 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 				let Some(graph_node) = flow.get_operator(&operator_id) else {
 					continue;
 				};
-				let Some(operator) = self.operators.get_mut(&operator_id) else {
-					continue;
+				let node = match self.operators.get_mut(&operator_id) {
+					Some(operator) => Node::Operator(operator),
+					None => match self.durable_sinks.get_mut(&operator_id) {
+						Some(sink) => Node::DurableSink(sink),
+						None => continue,
+					},
 				};
 				txn.set_change_coordinate(ChangeCoordinate {
 					at: Some(timer.at),
 					version,
 				});
-				let fired = operator.on_timer(txn, timer)?;
-				operator.flush(txn)?;
+				let fired = match node {
+					Node::Operator(operator) => {
+						let fired = operator.on_timer(txn, timer)?;
+						operator.flush(txn)?;
+						fired
+					}
+					Node::DurableSink(sink) => txn.run_durable_sink_timer(&mut **sink, timer)?,
+				};
 				let Some(result) = fired else {
 					continue;
 				};

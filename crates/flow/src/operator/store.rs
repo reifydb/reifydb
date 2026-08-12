@@ -11,7 +11,7 @@ use reifydb_core::{
 		EncodableKey,
 		operator_state::{GroupId, GroupStateKey, OperatorStateKey},
 	},
-	state::store::{StateStore, TimerKind},
+	state::store::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_value::{
 	Result,
@@ -19,6 +19,10 @@ use reifydb_value::{
 };
 
 use crate::{timer::Timer, transaction::FlowTransaction};
+
+pub trait OperatorStore: StateStore + TimerStore {}
+
+impl<S: StateStore + TimerStore> OperatorStore for S {}
 
 pub struct OperatorStateStore<'a, T: FlowTransaction> {
 	txn: &'a mut T,
@@ -37,7 +41,7 @@ impl<'a, T: FlowTransaction> OperatorStateStore<'a, T> {
 	}
 }
 
-impl<T: FlowTransaction> StateStore for OperatorStateStore<'_, T> {
+impl<T: FlowTransaction> TimerStore for OperatorStateStore<'_, T> {
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.txn.arm_timer(
 			self.operator,
@@ -63,7 +67,9 @@ impl<T: FlowTransaction> StateStore for OperatorStateStore<'_, T> {
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
 		Ok(self.txn.flow_watermark())
 	}
+}
 
+impl<T: FlowTransaction> StateStore for OperatorStateStore<'_, T> {
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
 		self.txn.state_get(self.operator, key)
 	}

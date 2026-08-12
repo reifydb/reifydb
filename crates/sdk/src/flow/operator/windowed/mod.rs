@@ -17,7 +17,7 @@ use std::{collections::HashMap, hash::Hash};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	key::operator_state::GroupId,
-	state::store::{StateStore, TimerKind},
+	state::store::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_flow::window::{
 	engine::config::WindowEngineConfig,
@@ -33,13 +33,13 @@ use reifydb_value::{
 
 use crate::flow::operator::context::OperatorContext;
 
-pub(crate) fn seal_frontier(store: &mut impl StateStore) -> Result<DateTime> {
+pub(crate) fn seal_frontier(store: &mut (impl StateStore + TimerStore)) -> Result<DateTime> {
 	let ledger = SealLedger::read_order(store)?.unwrap_or(0);
 	let watermark = store.flow_watermark()?.map_or(0, |at| at.to_millis());
 	Ok(<DateTime as WindowCoord>::from_order(ledger.max(watermark)))
 }
 
-pub(crate) fn advance_seal_frontier(store: &mut impl StateStore, fired: FiredAt) -> Result<DateTime> {
+pub(crate) fn advance_seal_frontier(store: &mut (impl StateStore + TimerStore), fired: FiredAt) -> Result<DateTime> {
 	SealLedger::advance(store, fired)?;
 	seal_frontier(store)
 }
@@ -52,7 +52,7 @@ pub(crate) fn seal_horizon_of(frontier: DateTime, seal_after: Duration) -> DateT
 	frontier.saturating_sub(seal_after)
 }
 
-pub(crate) fn arm_seal_timer(store: &mut impl StateStore, newest_window: DateTime, seal_after: Duration) -> Result<()> {
+pub(crate) fn arm_seal_timer(store: &mut impl TimerStore, newest_window: DateTime, seal_after: Duration) -> Result<()> {
 	let at = newest_window.saturating_add(seal_after).saturating_add(SEAL_GATE_STEP);
 	store.arm_timer(at, TimerKind::Seal, &EncodedKey::new(Vec::new()))
 }

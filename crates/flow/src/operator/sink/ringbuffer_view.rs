@@ -55,14 +55,17 @@ use reifydb_value::{
 use smallvec::smallvec;
 
 use super::{
-	coerce_columns, decode_dictionary_columns, encode_row_at_index,
+	DurableSink, coerce_columns, decode_dictionary_columns, encode_row_at_index,
 	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 	view::dictionary_encode_view_columns,
 };
 use crate::{
 	error::FlowStateError,
-	operator::{Operator, join::column::JoinedColumnsBuilder, stateful::raw::RawStatefulOperator},
+	operator::{
+		join::column::JoinedColumnsBuilder,
+		stateful::{StateIterator, utils},
+	},
 	timer::Timer,
 	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
@@ -444,9 +447,25 @@ fn decode_u64(row: &EncodedOperatorRow, state: &'static str) -> Result<u64> {
 	})
 }
 
-impl RawStatefulOperator<DeferredTransaction> for SinkRingBufferViewOperator {}
+impl SinkRingBufferViewOperator {
+	fn state_get(&self, txn: &mut DeferredTransaction, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+		utils::state_get(self.operator, txn, key)
+	}
 
-impl Operator<DeferredTransaction> for SinkRingBufferViewOperator {
+	fn state_set(&self, txn: &mut DeferredTransaction, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
+		utils::state_set(self.operator, txn, key, row)
+	}
+
+	fn state_remove(&self, txn: &mut DeferredTransaction, key: &GroupStateKey) -> Result<()> {
+		utils::state_remove(self.operator, txn, key)
+	}
+
+	fn state_range<'a>(&self, txn: &'a mut DeferredTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
+		utils::state_range(self.operator, txn, range)
+	}
+}
+
+impl DurableSink for SinkRingBufferViewOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}

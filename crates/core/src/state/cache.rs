@@ -130,7 +130,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		key::operator_state::{GroupId, GroupStateKey, Keyspace},
-		state::store::TimerKind,
+		state::store::{TimerKind, TimerStore},
 	};
 
 	/// A bare `String` would read as some other group's prefix; this frames the tests' string keys
@@ -185,7 +185,7 @@ mod tests {
 		now: DateTime,
 	}
 
-	impl StateStore for MockStore {
+	impl TimerStore for MockStore {
 		fn arm_timer(&mut self, _at: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
 			unreachable!("the window engine never arms timers; only the shell above it does")
 		}
@@ -197,7 +197,9 @@ mod tests {
 		fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
 			Ok(None)
 		}
+	}
 
+	impl StateStore for MockStore {
 		fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
 			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
 			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))

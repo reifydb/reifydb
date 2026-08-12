@@ -36,7 +36,7 @@ use reifydb_flow::{
 	operator::{
 		Operator,
 		sink::{
-			ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
+			DurableSink, ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
 			view::SinkTableViewOperator,
 		},
 	},
@@ -179,11 +179,8 @@ impl Operator<DeferredTransaction> for SinkOp {
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
-		match self {
-			SinkOp::Table(o) => o.output_schema(),
-			SinkOp::Series(o) => o.output_schema(),
-			SinkOp::Ring(o) => o.output_schema(),
-		}
+		// A durable sink is terminal and never published a schema; all three arms returned None.
+		None
 	}
 }
 

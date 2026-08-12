@@ -18,9 +18,12 @@ use reifydb_core::{
 		catalog::{
 			column::Column as CatalogColumn,
 			dictionary::Dictionary,
+			flow::OperatorId,
 			property::{ColumnPropertyKind, ColumnSaturationStrategy},
 		},
+		change::Change,
 		evaluate::TargetColumn,
+		flow::OperatorCapability,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
@@ -35,7 +38,33 @@ use reifydb_value::{
 	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, row_number::RowNumber},
 };
 
-use crate::{error::FlowSinkError, transaction::FlowTransaction};
+use crate::{
+	error::FlowSinkError,
+	timer::Timer,
+	transaction::{FlowTransaction, deferred::DeferredTransaction},
+};
+
+/// A durable view sink: the terminal node that writes a flow's output into a table, series or
+/// ring buffer. Unlike an [`crate::operator::Operator`] it needs the whole transaction (raw
+/// keyspace writes, change tracking, dictionary allocation and catalog lookups), so it is
+/// dispatched off a separate map and only ever exists on the deferred path.
+pub trait DurableSink: Send {
+	fn id(&self) -> OperatorId;
+
+	fn capabilities(&self) -> &[OperatorCapability];
+
+	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change>;
+
+	fn flush(&mut self, _txn: &mut DeferredTransaction) -> Result<()> {
+		Ok(())
+	}
+
+	fn on_timer(&mut self, _txn: &mut DeferredTransaction, _timer: Timer) -> Result<Option<Change>> {
+		Ok(None)
+	}
+}
+
+pub type BoxedDurableSink = Box<dyn DurableSink>;
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);

@@ -6,7 +6,16 @@ use reifydb_rql::flow::operator::FlowNode;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
-use crate::{engine::FlowEngineInner, operator::guard::enforce_apply_capabilities, transaction::FlowTransaction};
+use crate::{
+	engine::FlowEngineInner,
+	operator::{BoxedOperator, guard::enforce_apply_capabilities, sink::BoxedDurableSink},
+	transaction::FlowTransaction,
+};
+
+pub(super) enum Node<'a, T: FlowTransaction> {
+	Operator(&'a mut BoxedOperator<T>),
+	DurableSink(&'a mut BoxedDurableSink),
+}
 
 impl<T: FlowTransaction> FlowEngineInner<T> {
 	pub(super) fn dispatch_node(&mut self, txn: &mut T, operator: &FlowNode, inbox: Vec<Change>) -> Result<Change> {
@@ -34,20 +43,33 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 	fn apply(&mut self, txn: &mut T, operator: &FlowNode, change: Change) -> Result<Change> {
 		let FlowEngineInner {
 			operators,
+			durable_sinks,
 			runtime_context,
 			..
 		} = self;
 
 		let lock_start = runtime_context.clock.instant();
-		let operator = operators.get_mut(&operator.id).unwrap();
+		let node = match operators.get_mut(&operator.id) {
+			Some(operator) => Node::Operator(operator),
+			None => Node::DurableSink(durable_sinks.get_mut(&operator.id).unwrap()),
+		};
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
 		Span::current().record("input_rows", change.row_count());
 
 		let apply_start = runtime_context.clock.instant();
-		enforce_apply_capabilities(operator.id(), operator.capabilities(), &change);
-		let result = operator.apply(txn, change)?;
-		operator.flush(txn)?;
+		let result = match node {
+			Node::Operator(operator) => {
+				enforce_apply_capabilities(operator.id(), operator.capabilities(), &change);
+				let result = operator.apply(txn, change)?;
+				operator.flush(txn)?;
+				result
+			}
+			Node::DurableSink(sink) => {
+				enforce_apply_capabilities(sink.id(), sink.capabilities(), &change);
+				txn.run_durable_sink(&mut **sink, change)?
+			}
+		};
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs_raw", result.diffs.len());
 

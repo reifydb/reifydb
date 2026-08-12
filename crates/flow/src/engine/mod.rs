@@ -35,7 +35,10 @@ use reifydb_runtime::{
 use tracing::instrument;
 
 use crate::{
-	operator::{BoxedOperator, Operator, metrics::OperatorSampleRegistry, provider::OperatorProvider},
+	operator::{
+		BoxedOperator, Operator, metrics::OperatorSampleRegistry, provider::OperatorProvider,
+		sink::BoxedDurableSink,
+	},
 	transaction::{FlowTransaction, substrate::FlowSubstrate},
 };
 
@@ -43,6 +46,7 @@ pub struct FlowEngineInner<T: FlowTransaction> {
 	pub(crate) catalog: Catalog,
 	pub(crate) routines: Routines,
 	pub(crate) operators: BTreeMap<OperatorId, BoxedOperator<T>>,
+	pub(crate) durable_sinks: BTreeMap<OperatorId, BoxedDurableSink>,
 	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
 	pub(crate) sources: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
 	pub(crate) sinks: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
@@ -125,6 +129,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 			catalog,
 			routines,
 			operators: BTreeMap::new(),
+			durable_sinks: BTreeMap::new(),
 			flows: BTreeMap::new(),
 			sources: BTreeMap::new(),
 			sinks: BTreeMap::new(),
@@ -192,6 +197,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 
 	pub fn clear(&mut self) {
 		self.operators.clear();
+		self.durable_sinks.clear();
 		self.flows.clear();
 		self.sources.clear();
 		self.sinks.clear();
@@ -205,6 +211,7 @@ impl<T: FlowTransaction> FlowEngineInner<T> {
 
 		for operator_id in node_ids {
 			self.operators.remove(&operator_id);
+			self.durable_sinks.remove(&operator_id);
 			self.substrate.row.evict(operator_id);
 			self.substrate.operators.drop_operator_state(operator_id);
 		}

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::state::store::{StateStore, TimerKind};
+use reifydb_core::state::store::{TimerKind, TimerStore};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
@@ -36,7 +36,7 @@ impl SealGate {
 		self.policy.seal_instant_from_order(horizon).at() > self.frontier
 	}
 
-	pub fn arm<S: StateStore>(
+	pub fn arm<S: TimerStore>(
 		&self,
 		store: &mut S,
 		key: &EncodedKey,
@@ -54,7 +54,7 @@ impl SealGate {
 	}
 }
 
-pub fn disarm_seal<S: StateStore>(store: &mut S, policy: SealPolicy, key: &EncodedKey, horizon: u64) -> Result<()> {
+pub fn disarm_seal<S: TimerStore>(store: &mut S, policy: SealPolicy, key: &EncodedKey, horizon: u64) -> Result<()> {
 	store.disarm_timer(policy.seal_instant_from_order(horizon).at(), TimerKind::Seal, key)
 }
 
@@ -69,7 +69,7 @@ impl EvictionGate {
 		}
 	}
 
-	pub fn rearm<S: StateStore>(
+	pub fn rearm<S: TimerStore>(
 		&self,
 		store: &mut S,
 		key: &EncodedKey,

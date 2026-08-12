@@ -11,7 +11,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::PendingLayers,
 	common::CommitVersion,
-	interface::store::MultiVersionRow,
+	interface::{change::Change, store::MultiVersionRow},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
@@ -79,10 +79,14 @@ use reifydb_transaction::{
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
-use crate::transaction::{
-	ChangeCoordinate, DeferredParams, FlowTransaction,
-	read::{OperatorStateRangeIter, ReadFrom, operator_state_scope, read_from},
-	substrate::{FlowSubstrate, operator_state_coordinates},
+use crate::{
+	operator::sink::DurableSink,
+	timer::Timer,
+	transaction::{
+		ChangeCoordinate, DeferredParams, FlowTransaction,
+		read::{OperatorStateRangeIter, ReadFrom, operator_state_scope, read_from},
+		substrate::{FlowSubstrate, operator_state_coordinates},
+	},
 };
 
 pub struct DeferredTransaction {
@@ -314,6 +318,18 @@ impl FlowTransaction for DeferredTransaction {
 
 	fn set_flow_watermark(&mut self, watermark: DateTime) {
 		self.flow_watermark = Some(watermark);
+	}
+
+	fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change> {
+		let out = sink.apply(self, change)?;
+		sink.flush(self)?;
+		Ok(out)
+	}
+
+	fn run_durable_sink_timer(&mut self, sink: &mut dyn DurableSink, timer: Timer) -> Result<Option<Change>> {
+		let out = sink.on_timer(self, timer)?;
+		sink.flush(self)?;
+		Ok(out)
 	}
 
 	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {

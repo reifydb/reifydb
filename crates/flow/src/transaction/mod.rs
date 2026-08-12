@@ -61,6 +61,7 @@ pub mod watermark;
 pub mod write;
 
 use crate::{
+	operator::sink::DurableSink,
 	timer::Timer,
 	transaction::{
 		group::GroupInterner,
@@ -116,6 +117,14 @@ pub trait FlowTransaction: Sized + Send + 'static {
 	fn flow_watermark(&self) -> Option<DateTime>;
 
 	fn set_flow_watermark(&mut self, watermark: DateTime);
+
+	/// Runs a durable view sink against this transaction, applying the change and flushing it.
+	/// Only [`crate::transaction::deferred::DeferredTransaction`] can carry one; every other
+	/// variant must reject the node rather than skip it silently.
+	fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change>;
+
+	/// Fires a durable view sink's timer against this transaction and flushes it.
+	fn run_durable_sink_timer(&mut self, sink: &mut dyn DurableSink, timer: Timer) -> Result<Option<Change>>;
 
 	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>>;
 

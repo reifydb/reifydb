@@ -43,13 +43,12 @@ use smallvec::smallvec;
 use tracing::instrument;
 
 use super::{
-	coerce_columns, encode_row_at_index,
+	DurableSink, coerce_columns, encode_row_at_index,
 	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 };
 use crate::{
 	error::FlowSinkError,
-	operator::Operator,
 	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
 
@@ -148,7 +147,7 @@ impl SinkTableViewOperator {
 	}
 }
 
-impl Operator<DeferredTransaction> for SinkTableViewOperator {
+impl DurableSink for SinkTableViewOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}

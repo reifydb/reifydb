@@ -666,9 +666,9 @@ pub(crate) mod test_support {
 		}
 	}
 
-	use reifydb_core::state::store::TimerKind;
+	use reifydb_core::state::store::{TimerKind, TimerStore};
 
-	impl StateStore for MockStore {
+	impl TimerStore for MockStore {
 		fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 			self.record_timer(RecordedTimer::armed(at, kind, key.clone()))
 		}
@@ -680,7 +680,9 @@ pub(crate) mod test_support {
 		fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
 			Ok(self.flow_watermark)
 		}
+	}
 
+	impl StateStore for MockStore {
 		fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
 			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
 			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))
