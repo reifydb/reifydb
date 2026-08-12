@@ -8,7 +8,7 @@ pub mod tumbling;
 
 use reifydb_value::value::datetime::DateTime;
 
-use crate::{seal::coord::Coord, window::span::WindowSpan};
+use crate::{state::seal::coord::Coord, window::span::WindowSpan};
 
 pub fn ordinal_window_span(window_id: u64) -> WindowSpan<DateTime> {
 	WindowSpan::new(<DateTime as Coord>::from_order(window_id), <DateTime as Coord>::from_order(window_id + 1))

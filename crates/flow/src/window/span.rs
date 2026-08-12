@@ -8,7 +8,7 @@ use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::value::datetime::DateTime;
 
-use crate::seal::coord::{Coord, IsZero};
+use crate::state::seal::coord::{Coord, IsZero};
 
 pub type SlotCoord<S> = <S as Slot>::Coord;
 
@@ -102,7 +102,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::seal::policy::{is_sealed, seal_horizon};
+	use crate::state::seal::policy::{is_sealed, seal_horizon};
 
 	#[test]
 	fn for_coord_aligns_datetime_to_span() {

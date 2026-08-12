@@ -22,9 +22,9 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	seal::{
-		coord::{Coord, IsZero},
+	state::{
 		expiry::{ExpiryIndex, expiry_key},
+		seal::coord::{Coord, IsZero},
 	},
 	window::{
 		accumulator::WindowAccumulator,

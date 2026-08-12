@@ -23,7 +23,7 @@ use super::{
 };
 use crate::{
 	operator::{bridge::Bridge, stateful::utils},
-	seal::coord::Coord,
+	state::seal::coord::Coord,
 	window::{
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor,

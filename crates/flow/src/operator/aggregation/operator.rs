@@ -32,7 +32,7 @@ use super::{
 use crate::{
 	context::FlowContext,
 	operator::{Operator, bridge::Bridge},
-	seal::coord::Coord,
+	state::seal::coord::Coord,
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
 		span::WindowSpan,

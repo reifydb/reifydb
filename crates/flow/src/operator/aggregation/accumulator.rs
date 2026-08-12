@@ -17,7 +17,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	seal::coord::Coord,
+	state::seal::coord::Coord,
 	window::{
 		accumulator::{
 			WindowAccumulator,

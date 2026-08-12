@@ -17,7 +17,7 @@ use reifydb_core::{
 	state::store::StateStore,
 };
 use reifydb_flow::{
-	seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
+	state::seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
 	timer::Timer as FlowTimer,
 	window::{
 		accumulator::WindowAccumulator,

@@ -20,7 +20,7 @@ use reifydb_core::{
 	state::store::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_flow::{
-	seal::{
+	state::seal::{
 		coord::Coord,
 		ledger::{FiredAt, SealLedger},
 		policy::SEAL_GATE_STEP,

@@ -30,7 +30,7 @@ use crate::{
 		bridge::Bridge,
 		stateful::utils,
 	},
-	seal::{gate::EvictionGate, ledger::FiredAt, policy::is_sealed},
+	state::seal::{gate::EvictionGate, ledger::FiredAt, policy::is_sealed},
 	window::{
 		accumulator::WindowAccumulator,
 		coord::{OrdinalCoord, RowSpan},
@@ -621,7 +621,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		seal::{coord::Coord, policy::EvictionPolicy},
+		state::seal::{coord::Coord, policy::EvictionPolicy},
 		window::engine::config::WindowEngineConfig,
 	};
 

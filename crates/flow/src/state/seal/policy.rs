@@ -3,7 +3,7 @@
 
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
-use crate::seal::coord::Coord;
+use crate::state::seal::coord::Coord;
 
 pub const SEAL_GATE_STEP: Duration = Duration::from_milliseconds_const(1);
 

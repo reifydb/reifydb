@@ -34,7 +34,7 @@ use crate::{
 		drops::SealedDrops,
 		stateful::raw::RawStatefulOperator,
 	},
-	seal::{coord::Coord, ledger::FiredAt},
+	state::seal::{coord::Coord, ledger::FiredAt},
 	timer::Timer,
 	window::{
 		coord::OrdinalCoord,

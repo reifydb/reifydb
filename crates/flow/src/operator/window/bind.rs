@@ -14,7 +14,7 @@ use reifydb_value::{
 use super::operator::WindowOperator;
 use crate::{
 	operator::{aggregation::engine::partition_group_key, bridge::Bridge},
-	seal::{
+	state::seal::{
 		coord::Coord,
 		gate::SealGate,
 		ledger::FiredAt,

@@ -21,7 +21,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 };
 use reifydb_flow::{
-	seal::coord::Coord,
+	state::seal::coord::Coord,
 	window::{
 		accumulator::{
 			WindowAccumulator,

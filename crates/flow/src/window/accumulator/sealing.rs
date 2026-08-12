@@ -14,7 +14,7 @@ use reifydb_macro::operator_state;
 
 use super::WindowAccumulator;
 use crate::{
-	seal::coord::Coord,
+	state::seal::coord::Coord,
 	window::span::{Slot, SlotSpan},
 };
 

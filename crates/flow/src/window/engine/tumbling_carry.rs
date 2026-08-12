@@ -428,7 +428,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		seal::coord::Coord,
+		state::seal::coord::Coord,
 		window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig},
 	};
 

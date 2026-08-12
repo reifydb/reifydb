@@ -13,7 +13,7 @@ use std::{
 };
 
 use reifydb_core::{interface::change::DiffType, metrics::heap::OperatorSample, state::store::TimerKind};
-use reifydb_flow::seal::coord::Coord;
+use reifydb_flow::state::seal::coord::Coord;
 use reifydb_value::value::datetime::DateTime;
 use tracing::{error, instrument, warn};
 

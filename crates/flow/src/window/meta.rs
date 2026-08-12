@@ -18,7 +18,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	seal::{
+	state::seal::{
 		coord::Coord,
 		ledger::{SealLedgerState, seal_ledger_key},
 	},

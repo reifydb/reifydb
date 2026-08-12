@@ -27,7 +27,7 @@ use crate::{
 		bridge::Bridge,
 		stateful::utils,
 	},
-	seal::{coord::Coord, gate::disarm_seal, ledger::FiredAt, policy::SealPolicy, sweep::SealSweep},
+	state::seal::{coord::Coord, gate::disarm_seal, ledger::FiredAt, policy::SealPolicy, sweep::SealSweep},
 	window::{
 		coord::{EventCoord, RowSpan},
 		engine::{AccumulatorEvent, ExpiryAnchor, WindowStateKey, tumbling::TumblingEngine},
@@ -1019,7 +1019,7 @@ mod tests {
 	use reifydb_value::{factory::time::at_millis, value::duration::Duration};
 
 	use super::SealPolicy;
-	use crate::seal::{
+	use crate::state::seal::{
 		coord::Coord,
 		policy::{is_sealed, seal_horizon},
 	};

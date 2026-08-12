@@ -23,7 +23,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
-	seal::expiry::{ExpiryIndex, expiry_key},
+	state::expiry::{ExpiryIndex, expiry_key},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -392,7 +392,7 @@ mod tests {
 	use reifydb_value::{Result, factory::time::at_millis, value::datetime::DateTime};
 
 	use crate::{
-		seal::coord::Coord,
+		state::seal::coord::Coord,
 		testing::store::{MockStore, SumAccumulator},
 		window::{
 			accumulator::WindowAccumulator,

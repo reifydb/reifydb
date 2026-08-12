@@ -33,7 +33,7 @@ use reifydb_value::{Result, value::row_number::RowNumber};
 use tracing::{debug, instrument};
 
 use crate::{
-	seal::coord::Coord,
+	state::seal::coord::Coord,
 	window::span::{Slot, WindowSpan},
 };
 

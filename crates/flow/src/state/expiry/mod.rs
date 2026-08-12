@@ -40,7 +40,7 @@ fn due_start(threshold: u64) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::EXPIRY, encode_u64(threshold))
 }
 
-pub(crate) struct ExpiryIndex<E> {
+pub struct ExpiryIndex<E> {
 	entries: Option<BTreeMap<GroupStateKey, E>>,
 	bytes: u64,
 }

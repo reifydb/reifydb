@@ -3,7 +3,7 @@
 
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
-use crate::{seal::policy::SealPolicy, window::coord::EventCoord};
+use crate::{state::seal::policy::SealPolicy, window::coord::EventCoord};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SessionTracker {

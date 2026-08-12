@@ -56,7 +56,7 @@ pub use reifydb_extension as extension;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_flow::operator::{BoxedOperator, Operator};
 #[cfg(feature = "sub_flow")]
-pub use reifydb_flow::seal;
+pub use reifydb_flow::state::seal;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_flow::window;
 pub use reifydb_macro as r#macro;
