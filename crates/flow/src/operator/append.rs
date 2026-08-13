@@ -447,8 +447,7 @@ mod tests {
 	}
 
 	fn fire(op: &mut AppendOperator, txn: &mut DeferredTransaction, at: DateTime, group: GroupId) {
-		// The engine lifts a due timer off the wheel before dispatching, so without the disarm every fired
-		// timer reads as a leak.
+		// The engine lifts a due timer off the wheel before dispatch, so skipping the disarm reads as a leak.
 		let operator = op.operator;
 		let timer = Timer {
 			at,
@@ -460,8 +459,7 @@ mod tests {
 	}
 
 	fn armed_timers(txn: &mut DeferredTransaction, op: &AppendOperator) -> usize {
-		// The wheel is now the only due-ordered schedule, so a stale or duplicated arming shows up exactly
-		// here.
+		// The wheel is the only due-ordered schedule, so a stale or duplicated arming shows up exactly here.
 		txn.state_range(op.operator, keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL), None, "test")
 			.unwrap()
 			.items
@@ -697,8 +695,7 @@ mod tests {
 
 	#[test]
 	fn an_update_moves_the_rows_timer_rather_than_adding_a_second() {
-		// Without cancelling the old arming the row is addressed twice and the stale one comes due while it
-		// lives.
+		// Without cancelling the old arming the row is addressed twice and the stale one fires while it lives.
 		let engine = TestEngine::new();
 		let mut op = sealing(21);
 		let mut txn = txn_at(&engine, op.operator, 100);
