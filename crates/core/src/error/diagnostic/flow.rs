@@ -457,6 +457,45 @@ pub fn flow_rolling_lag_requires_event_time(flow: &str) -> Diagnostic {
 	}
 }
 
+pub fn flow_join_right_seal_conflicts_with_flag(flow: &str, flag: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_048".to_string(),
+		rql: None,
+		message: format!("{flow} declares a right-side join seal alongside `{flag}: true`"),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some(format!(
+			"`{flag}` makes the right side of the join outlive the left rows that read it, so a right seal \
+			 could never take effect. Remove `right` from the seal and keep sealing the left side, or drop \
+			 `{flag}: true`."
+		)),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn flow_join_seal_requires_event_time(flow: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_049".to_string(),
+		rql: None,
+		message: format!("{flow} seals a join but its sources supply no event time"),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some(
+			"a join seal frees a row once the watermark passes its own event time, which only has meaning \
+			 against a source-supplied event time. Declare `with { time: event(<column>) }` on the source \
+			 object this flow reads, or remove the seal."
+				.to_string(),
+		),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn flow_catch_up_read_failed(from: u64, up_to: u64, cause: &str) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_046".to_string(),

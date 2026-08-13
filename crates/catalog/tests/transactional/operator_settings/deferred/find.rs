@@ -48,8 +48,8 @@ fn deferred_join_view_persists_join_ttl() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE os_join_d");
-	t.admin("CREATE TABLE os_join_d::lhs { k: int4, lv: int4 }");
-	t.admin("CREATE TABLE os_join_d::rhs { k: int4, rv: int4 }");
+	t.admin("CREATE TABLE os_join_d::lhs { k: int4, lv: int4, at: datetime } with { time: event(at) }");
+	t.admin("CREATE TABLE os_join_d::rhs { k: int4, rv: int4, at: datetime } with { time: event(at) }");
 	t.admin("CREATE DEFERRED VIEW os_join_d::joined { k: int4, lv: int4, rv: int4 } AS { \
 		 FROM os_join_d::lhs \
 		 inner join { FROM os_join_d::rhs } as r using (k, r.k) with { seal: { left: { duration: \"1s\" } } } \

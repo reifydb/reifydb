@@ -224,6 +224,21 @@ impl Store {
 		Ok(out)
 	}
 
+	pub(crate) fn holds_rows(&self, host: &mut dyn HostContext, group: GroupId) -> Result<bool> {
+		Ok(state_range(host, self.rows_range(group)).next().transpose()?.is_some())
+	}
+
+	pub(crate) fn row_numbers_in(&self, host: &mut dyn HostContext, group: GroupId) -> Result<Vec<RowNumber>> {
+		let mut out = Vec::new();
+		for entry in state_range(host, self.rows_range(group)) {
+			let (full_key, _) = entry?;
+			if let Some(row_number) = row_number_from_key(full_key.as_slice()) {
+				out.push(row_number);
+			}
+		}
+		Ok(out)
+	}
+
 	pub(crate) fn contains_key(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<bool> {
 		let Some(group) = self.resolve(host, hash)? else {
 			return Ok(false);

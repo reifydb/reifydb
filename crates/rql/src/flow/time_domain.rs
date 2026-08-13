@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::catalog::Catalog;
+use reifydb_catalog::{CatalogStore, catalog::Catalog};
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
-	error::diagnostic::flow::flow_rolling_lag_requires_event_time,
+	error::diagnostic::flow::{
+		flow_join_right_seal_conflicts_with_flag, flow_join_seal_requires_event_time,
+		flow_rolling_lag_requires_event_time,
+	},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error};
@@ -67,6 +70,49 @@ pub fn check_window_time_requirements(catalog: &Catalog, txn: &mut Transaction<'
 		} = &operator.ty && source_time_domain(catalog, &mut txn.reborrow(), flow)? != TimeDomain::Event
 		{
 			return Err(Error(Box::new(flow_rolling_lag_requires_event_time(&flow_name))));
+		}
+	}
+
+	Ok(())
+}
+
+pub fn check_join_seal_requirements(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
+	let flow_name = format!("flow {}", flow.id.0);
+
+	for operator_id in flow.topological_order()? {
+		let Some(operator) = flow.get_operator(&operator_id) else {
+			continue;
+		};
+		let OperatorDef::Join {
+			snapshot,
+			latest,
+			..
+		} = &operator.ty
+		else {
+			continue;
+		};
+		let Some(seal) = CatalogStore::find_operator_settings(txn, operator_id)?.and_then(|s| s.join) else {
+			continue;
+		};
+		if seal.left.is_none() && seal.right.is_none() {
+			continue;
+		}
+
+		if seal.right.is_some() {
+			if *snapshot {
+				return Err(Error(Box::new(flow_join_right_seal_conflicts_with_flag(
+					&flow_name, "snapshot",
+				))));
+			}
+			if *latest {
+				return Err(Error(Box::new(flow_join_right_seal_conflicts_with_flag(
+					&flow_name, "latest",
+				))));
+			}
+		}
+
+		if source_time_domain(catalog, &mut txn.reborrow(), flow)? != TimeDomain::Event {
+			return Err(Error(Box::new(flow_join_seal_requires_event_time(&flow_name))));
 		}
 	}
 

@@ -39,4 +39,12 @@ impl JoinSide {
 			Self::Right => 1,
 		}
 	}
+
+	pub(crate) fn from_tag(tag: u8) -> Option<Self> {
+		match tag {
+			0 => Some(Self::Left),
+			1 => Some(Self::Right),
+			_ => None,
+		}
+	}
 }

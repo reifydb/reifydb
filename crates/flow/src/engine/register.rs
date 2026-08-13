@@ -30,7 +30,7 @@ use reifydb_rql::{
 				Window,
 			},
 		},
-		time_domain::check_window_time_requirements,
+		time_domain::{check_join_seal_requirements, check_window_time_requirements},
 	},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
@@ -82,6 +82,7 @@ impl FlowEngineInner {
 		}
 
 		check_window_time_requirements(&self.catalog, txn, &flow)?;
+		check_join_seal_requirements(&self.catalog, txn, &flow)?;
 
 		if !flow.has_timed_source() {
 			info!(
