@@ -6,14 +6,14 @@
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
 		GuestOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
-		context::{GuestContext, GuestState},
+		context::GuestContext,
 		state::GuestRawOperator,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
@@ -174,39 +174,6 @@ impl GuestOperator for RowNumberProbe {
 			&[RowNumber(1)],
 		)
 	}
-}
-
-/// Writes its state only in `flush_state`, never in `apply`, so the flush cadence is observable:
-/// the value must be invisible after apply and appear only after the explicit flush.
-pub struct FlushProbe;
-
-impl OperatorMetadata for FlushProbe {
-	const NAME: &'static str = "flush_probe";
-	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "Writes state only in flush_state to observe flush cadence";
-	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
-}
-
-impl GuestOperator for FlushProbe {
-	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
-		Ok(FlushProbe)
-	}
-
-	fn apply(&mut self, _ctx: &mut impl GuestContext, _change: impl ChangeView) -> SdkResult<()> {
-		Ok(())
-	}
-
-	fn flush_state(&mut self, ctx: &mut impl GuestContext) -> SdkResult<()> {
-		ctx.state().set::<i64>(&flush_probe_key(), &FLUSH_PROBE_VALUE)
-	}
-}
-
-pub const FLUSH_PROBE_VALUE: i64 = 42;
-
-pub fn flush_probe_key() -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM, b"flush-probe")
 }
 
 /// Never touches state; exists only so a harness can be built to exercise the store-facing range API.

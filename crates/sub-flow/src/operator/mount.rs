@@ -80,13 +80,6 @@ impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
 		Ok(Change::from_flow(self.operator, version, diffs, changed_at))
 	}
 
-	fn flush(&mut self, host: &mut dyn HostContext) -> Result<()> {
-		let mut ctx = InProcessContext::new(host, self.operator);
-		let logic = &mut self.logic;
-		run_or_abort(self.operator, "flush_state", || logic.flush_state(&mut ctx));
-		Ok(())
-	}
-
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
 		let at = timer.at;
 		let version = host.version();

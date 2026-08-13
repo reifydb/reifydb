@@ -9,7 +9,5 @@ mod common;
 mod extern_c;
 #[path = "operator/guest/mod.rs"]
 mod guest;
-#[path = "operator/guest/txn_variants/mod.rs"]
-mod txn_variants;
 #[path = "operator/view_sort_terminal.rs"]
 mod view_sort_terminal;

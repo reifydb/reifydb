@@ -111,40 +111,6 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 			// buffers is neither cleared nor dropped until after the closure returns, so
 			// the borrow cannot outlive its data.
 			let borrowed = unsafe { BorrowedChange::from_raw(&extern_c_change as *const _) };
-			self.operator.apply(&mut op_ctx, borrowed)?;
-
-			self.operator.flush_state(&mut op_ctx)
-		});
-
-		drop(input);
-		result?;
-
-		let emitted = self.builder_registry.drain_diffs();
-		let diffs = into_diffs(emitted);
-		let output = match origin {
-			ChangeOrigin::Flow(operator) => Change::from_flow(operator, version, diffs, changed_at),
-			ChangeOrigin::Object(_) => Change::from_flow(self.operator_id, version, diffs, changed_at),
-		};
-		self.history.push(output.clone());
-		Ok(output)
-	}
-
-	pub fn apply_without_flush(&mut self, input: Change) -> Result<Change> {
-		self.refresh_written_at();
-		let version = input.version;
-		let changed_at = input.changed_at;
-		let origin = input.origin.clone();
-
-		self.input_arena.clear();
-		let extern_c_change = self.input_arena.marshal_change(&input);
-		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContextRaw;
-
-		let result: Result<()> = with_registry(&self.builder_registry, || {
-			let mut op_ctx = ExternCContext::new(extern_c_ctx_ptr);
-			// SAFETY: extern_c_change lives on this stack frame and the arena backing its
-			// buffers is neither cleared nor dropped until after the closure returns, so
-			// the borrow cannot outlive its data.
-			let borrowed = unsafe { BorrowedChange::from_raw(&extern_c_change as *const _) };
 			self.operator.apply(&mut op_ctx, borrowed)
 		});
 
@@ -159,15 +125,6 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 		};
 		self.history.push(output.clone());
 		Ok(output)
-	}
-
-	pub fn flush(&mut self) -> Result<()> {
-		self.refresh_written_at();
-		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContextRaw;
-		with_registry(&self.builder_registry, || {
-			let mut op_ctx = ExternCContext::new(extern_c_ctx_ptr);
-			self.operator.flush_state(&mut op_ctx)
-		})
 	}
 
 	pub fn fire_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<()> {

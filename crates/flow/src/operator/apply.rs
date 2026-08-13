@@ -60,10 +60,6 @@ impl HostOperator for ApplyOperator {
 		Ok(out)
 	}
 
-	fn flush(&mut self, host: &mut dyn HostContext) -> Result<()> {
-		self.inner.flush(host)
-	}
-
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
 		let at = timer.at;
 		let mut out = self.inner.on_timer(host, timer)?;

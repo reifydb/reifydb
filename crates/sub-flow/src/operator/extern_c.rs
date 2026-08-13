@@ -149,34 +149,6 @@ impl HostOperator for ExternCOperatorHandle {
 		scale_from_millis(Some(unsafe { (self.vtable.seal_after_ms)(self.instance) }))
 	}
 
-	fn flush(&mut self, host: &mut dyn HostContext) -> Result<()> {
-		let mut host_ctx = ExternCHostContext::new(host);
-		let mut extern_c_ctx = new_extern_c_context(&mut host_ctx, self.operator_id, create_host_callbacks());
-		let extern_c_ctx_ptr = &raw mut extern_c_ctx;
-		let mut usage = ExternCStateUsage::default();
-		// SAFETY: vtable and instance come from the loaded operator's descriptor and stay valid until Drop
-		// calls destroy; extern_c_ctx and usage are locals that outlive the call with no Rust borrow of them
-		// live during it.
-		let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-			(self.vtable.flush_state)(self.instance, extern_c_ctx_ptr, &mut usage)
-		}));
-		match result {
-			Ok(EXTERN_C_OK) | Ok(EXTERN_C_SAMPLE_NO_DATA) => Ok(()),
-			Ok(code) => Err(SdkError::Other(format!(
-				"extern-C operator flush_state failed with code: {}",
-				code
-			))
-			.into()),
-			Err(_) => {
-				error!(
-					operator_id = self.operator_id.0,
-					"extern-C operator panicked during flush_state"
-				);
-				abort();
-			}
-		}
-	}
-
 	#[instrument(name = "flow::extern_c::apply", level = "trace", skip_all, fields(
 		operator_id = self.operator_id.0,
 		input_diff_count = change.diffs.len(),

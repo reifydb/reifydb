@@ -104,40 +104,13 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		let mut txn = self.begin_txn();
 		let output = {
 			let mut host = TxnHostContext::new(&mut txn, operator);
-			let output = self.operator.apply(&mut host, input)?;
-			self.operator.flush(&mut host)?;
-			output
-		};
-		self.end_txn(txn);
-		self.history.push(output.clone());
-		Ok(output)
-	}
-
-	pub fn apply_without_flush(&mut self, input: Change) -> Result<Change> {
-		let operator = self.operator_id;
-		let mut txn = self.begin_txn();
-		let output = {
-			let mut host = TxnHostContext::new(&mut txn, operator);
 			self.operator.apply(&mut host, input)?
 		};
-		self.current = Some(txn);
+		self.end_txn(txn);
 		self.history.push(output.clone());
 		Ok(output)
 	}
 
-	pub fn flush(&mut self) -> Result<()> {
-		let operator = self.operator_id;
-		let mut txn = match self.current.take() {
-			Some(txn) => txn,
-			None => self.begin_txn(),
-		};
-		{
-			let mut host = TxnHostContext::new(&mut txn, operator);
-			self.operator.flush(&mut host)?;
-		}
-		self.end_txn(txn);
-		Ok(())
-	}
 
 	pub fn state_value<V: OperatorState>(&mut self, key: &GroupStateKey) -> Option<V> {
 		let operator = self.operator_id;

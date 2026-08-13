@@ -30,10 +30,6 @@ pub trait ExternCOperator: 'static {
 		None
 	}
 
-	fn flush_state(&mut self, _ctx: &mut ExternCContext) -> Result<()> {
-		Ok(())
-	}
-
 	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}
@@ -69,10 +65,6 @@ impl<C: GuestOperator + OperatorMetadata + 'static> ExternCOperator for ExternCO
 
 	fn seal_after(&self) -> Option<Duration> {
 		self.core.seal_after()
-	}
-
-	fn flush_state(&mut self, ctx: &mut ExternCContext) -> Result<()> {
-		self.core.flush_state(ctx)
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

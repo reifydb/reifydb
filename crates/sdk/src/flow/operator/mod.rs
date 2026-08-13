@@ -51,10 +51,6 @@ pub trait GuestOperator: Send + Sync {
 		None
 	}
 
-	fn flush_state(&mut self, _ctx: &mut impl GuestContext) -> Result<()> {
-		Ok(())
-	}
-
 	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}

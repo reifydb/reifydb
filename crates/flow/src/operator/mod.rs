@@ -48,10 +48,6 @@ pub trait HostOperator: Send {
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change>;
 
-	fn flush(&mut self, _host: &mut dyn HostContext) -> Result<()> {
-		Ok(())
-	}
-
 	fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> Result<Option<Change>> {
 		Ok(None)
 	}

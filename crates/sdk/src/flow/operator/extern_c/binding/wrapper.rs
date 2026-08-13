@@ -352,70 +352,6 @@ pub unsafe extern "C" fn extern_c_destroy<O: ExternCOperator>(instance: *mut c_v
 	}
 }
 
-/// Called once per transaction at commit time, so this is the only point at which guest state reaches the host.
-///
-/// # Safety
-///
-/// - `instance` must be a valid pointer to an `OperatorWrapper<O>`.
-/// - `ctx` must point to a valid `ExternCContextRaw` for the duration of the call.
-pub unsafe extern "C" fn extern_c_flush_state<O: ExternCOperator>(
-	instance: *mut c_void,
-	ctx: *mut ExternCContextRaw,
-	usage: *mut ExternCStateUsage,
-) -> i32 {
-	if instance.is_null() || ctx.is_null() || usage.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	let result = catch_unwind(AssertUnwindSafe(|| {
-		// SAFETY: instance was checked non-null above and extern_c_flush_state's contract makes it a live,
-		// aligned OperatorWrapper<O>; this is the only borrow of it taken in this call.
-		let wrapper = unsafe { &mut *(instance as *mut OperatorWrapper<O>) };
-		let mut op_ctx = ExternCContext::new(ctx);
-		let outcome = wrapper.operator.flush_state(&mut op_ctx);
-		let report = wrapper.operator.sample();
-		(outcome, report)
-	}));
-
-	match result {
-		Ok((Ok(()), None)) => EXTERN_C_SAMPLE_NO_DATA,
-		Ok((Ok(()), report)) => {
-			// SAFETY: usage was null-checked above and the caller guarantees it is aligned and writable
-			// for a ExternCStateUsage for the duration of this call.
-			unsafe {
-				*usage = usage_from_sample(report);
-			}
-			EXTERN_C_OK
-		}
-		Ok((Err(e), _)) => {
-			error!("operator flush_state failed - aborting");
-			print_extern_c_fatal(
-				"extern_c_flush_state",
-				any::type_name::<O>(),
-				-2,
-				&format!("{:?}", e),
-				None,
-				None,
-			);
-			abort();
-		}
-		Err(payload) => {
-			let bt = Backtrace::force_capture();
-			let detail = describe_panic_payload(&payload);
-			error!("Panic in extern_c_flush_state - aborting");
-			print_extern_c_fatal(
-				"extern_c_flush_state",
-				any::type_name::<O>(),
-				-99,
-				&detail,
-				None,
-				Some(&bt),
-			);
-			abort();
-		}
-	}
-}
-
 /// Declining to report is legitimate: `EXTERN_C_SAMPLE_NO_DATA` leaves `out` untouched rather than writing zeroes.
 ///
 /// # Safety
@@ -475,7 +411,6 @@ pub fn create_vtable<O: ExternCOperator>() -> ExternCOperatorVTable {
 		apply: extern_c_apply::<O>,
 		on_timer: extern_c_on_timer::<O>,
 		destroy: extern_c_destroy::<O>,
-		flush_state: extern_c_flush_state::<O>,
 		sample: extern_c_sample::<O>,
 		seal_after_ms: extern_c_seal_after_ms::<O>,
 	}

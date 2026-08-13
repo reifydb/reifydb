@@ -7,6 +7,5 @@ use reifydb_testing_sdk::harness::ExternCOperatorHarness;
 pub type Harness<C> = ExternCOperatorHarness<ExternCOperatorAdapter<C>>;
 
 mod error_abort;
-mod flush_cadence;
 mod row_number_registry;
 mod window_count;

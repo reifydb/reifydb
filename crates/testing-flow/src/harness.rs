@@ -212,9 +212,7 @@ impl<O: HostOperator> Harness<O> {
 		let mut txn = self.begin(at);
 		let out = {
 			let mut host = TxnHostContext::new(&mut txn, operator);
-			let out = self.operator.apply(&mut host, change)?;
-			self.operator.flush(&mut host)?;
-			out
+			self.operator.apply(&mut host, change)?
 		};
 		self.end(txn);
 		Ok(out)
@@ -227,7 +225,6 @@ impl<O: HostOperator> Harness<O> {
 		{
 			let mut host = TxnHostContext::new(&mut txn, operator);
 			self.operator.apply(&mut host, change)?;
-			self.operator.flush(&mut host)?;
 		}
 		let emitted = txn.take_accumulator_entries();
 		self.end(txn);
@@ -239,9 +236,7 @@ impl<O: HostOperator> Harness<O> {
 		let mut txn = self.begin(timer.at);
 		let out = {
 			let mut host = TxnHostContext::new(&mut txn, operator);
-			let out = self.operator.on_timer(&mut host, timer)?;
-			self.operator.flush(&mut host)?;
-			out
+			self.operator.on_timer(&mut host, timer)?
 		};
 		self.end(txn);
 		Ok(out)
@@ -276,10 +271,6 @@ impl<O: HostOperator> Harness<O> {
 				if let Some(change) = self.operator.on_timer(&mut host, timer)? {
 					emitted.push(change);
 				}
-			}
-			{
-				let mut host = TxnHostContext::new(&mut txn, operator);
-				self.operator.flush(&mut host)?;
 			}
 			self.end(txn);
 		}

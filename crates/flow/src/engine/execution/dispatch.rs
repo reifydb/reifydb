@@ -67,9 +67,7 @@ impl FlowEngineInner {
 			Node::Operator(operator) => {
 				enforce_apply_capabilities(operator.id(), operator.capabilities(), &change);
 				let mut host = TxnHostContext::new(txn, operator.id());
-				let result = operator.apply(&mut host, change)?;
-				operator.flush(&mut host)?;
-				result
+				operator.apply(&mut host, change)?
 			}
 			Node::DurableSink(sink) => {
 				enforce_apply_capabilities(sink.id(), sink.capabilities(), &change);
