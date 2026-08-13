@@ -5,7 +5,6 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::interface::store::MultiVersionRow;
 use reifydb_value::Result;
 
-pub mod raw;
 #[cfg(test)]
 pub mod test_utils;
 pub mod utils;

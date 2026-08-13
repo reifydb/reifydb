@@ -33,7 +33,7 @@ use crate::{
 	operator::{
 		HostOperator,
 		host::HostContext,
-		stateful::{raw::HostRawOperator, utils},
+		stateful::utils,
 	},
 };
 
@@ -295,8 +295,6 @@ impl TakePlan {
 		}
 	}
 }
-
-impl HostRawOperator for TakeOperator {}
 
 impl HostOperator for TakeOperator {
 	fn id(&self) -> OperatorId {

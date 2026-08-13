@@ -67,8 +67,6 @@ pub mod routine {
 	pub use reifydb_routine::{function, monoid, procedure};
 	pub use reifydb_routine_abi as abi;
 }
-#[cfg(feature = "sub_flow")]
-pub use reifydb_flow::operator::stateful::raw::HostRawOperator;
 pub use reifydb_routine::{function, procedure};
 pub use reifydb_rql as rql;
 pub use reifydb_runtime as runtime;

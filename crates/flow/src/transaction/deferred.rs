@@ -330,15 +330,11 @@ impl FlowTransaction for DeferredTransaction {
 	}
 
 	fn run_durable_sink(&mut self, sink: &mut dyn DurableSink, change: Change) -> Result<Change> {
-		let out = sink.apply(self, change)?;
-		sink.flush(self)?;
-		Ok(out)
+		sink.apply(self, change)
 	}
 
 	fn run_durable_sink_timer(&mut self, sink: &mut dyn DurableSink, timer: Timer) -> Result<Option<Change>> {
-		let out = sink.on_timer(self, timer)?;
-		sink.flush(self)?;
-		Ok(out)
+		sink.on_timer(self, timer)
 	}
 
 	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {

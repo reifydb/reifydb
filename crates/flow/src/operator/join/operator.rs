@@ -44,7 +44,6 @@ use crate::{
 		HostOperator,
 		host::HostContext,
 		join::{Emitted, Identity},
-		stateful::raw::HostRawOperator,
 	},
 };
 
@@ -504,8 +503,6 @@ impl JoinOperator {
 		}
 	}
 }
-
-impl HostRawOperator for JoinOperator {}
 
 impl HostOperator for JoinOperator {
 	fn id(&self) -> OperatorId {

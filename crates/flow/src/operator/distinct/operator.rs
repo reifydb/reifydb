@@ -43,7 +43,7 @@ use crate::{
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
 		drops::SealedDrops,
 		host::HostContext,
-		stateful::{raw::HostRawOperator, utils},
+		stateful::utils,
 	},
 };
 
@@ -230,8 +230,6 @@ impl DistinctPlan {
 		Ok(touched)
 	}
 }
-
-impl HostRawOperator for DistinctOperator {}
 
 impl HostOperator for DistinctOperator {
 	fn id(&self) -> OperatorId {

@@ -31,7 +31,7 @@ use tracing::instrument;
 
 use crate::{
 	context::FlowContext,
-	operator::{HostOperator, host::HostContext, stateful::raw::HostRawOperator},
+	operator::{HostOperator, host::HostContext},
 };
 
 #[operator_state]
@@ -188,8 +188,6 @@ impl GateOperator {
 		self.state.mark_invisible(host, rn)
 	}
 }
-
-impl HostRawOperator for GateOperator {}
 
 impl HostOperator for GateOperator {
 	fn id(&self) -> OperatorId {

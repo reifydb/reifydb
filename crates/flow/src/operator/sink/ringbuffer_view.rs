@@ -20,12 +20,11 @@ use reifydb_core::{
 		catalog::{
 			flow::OperatorId,
 			id::RingBufferId,
-			object::ObjectId,
 			ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata, encode_ringbuffer_metadata},
 			storage::StorageId,
 			view::View,
 		},
-		change::{Change, ChangeOrigin, Diff},
+		change::{Change, Diff},
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
@@ -53,10 +52,8 @@ use reifydb_value::{
 		system_columns::SystemColumns, value_type::ValueType,
 	},
 };
-use smallvec::smallvec;
-
 use super::{
-	DurableSink, coerce_columns, decode_dictionary_columns, encode_row_at_index,
+	DurableSink, coerce_columns, decode_dictionary_columns, emit_view_change, encode_row_at_index,
 	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 	view::dictionary_encode_view_columns,
@@ -1092,18 +1089,6 @@ impl SinkRingBufferViewOperator {
 		}
 		Ok(())
 	}
-}
-
-#[inline]
-fn emit_view_change(txn: &mut DeferredTransaction, view: &View, diff: Diff) {
-	let version = txn.version();
-	let changed_at = txn.clock().now();
-	txn.track_flow_change(Change {
-		origin: ChangeOrigin::Object(ObjectId::view(view.id())),
-		version,
-		diffs: smallvec![diff],
-		changed_at,
-	});
 }
 
 #[cfg(test)]

@@ -17,15 +17,18 @@ use reifydb_core::{
 		catalog::{
 			column::Column as CatalogColumn,
 			flow::OperatorId,
+			object::ObjectId,
 			property::{ColumnPropertyKind, ColumnSaturationStrategy},
+			view::View,
 		},
-		change::Change,
+		change::{Change, ChangeOrigin, Diff},
 		evaluate::TargetColumn,
 		flow::OperatorCapability,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
+use smallvec::smallvec;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{
@@ -43,7 +46,10 @@ use reifydb_value::{
 };
 
 use crate::{
-	error::FlowSinkError, operator::host::HostContext, timer::Timer, transaction::deferred::DeferredTransaction,
+	error::FlowSinkError,
+	operator::host::HostContext,
+	timer::Timer,
+	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
 
 /// A durable view sink: the terminal node that writes a flow's output into a table, series or
@@ -57,16 +63,23 @@ pub trait DurableSink: Send {
 
 	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change>;
 
-	fn flush(&mut self, _txn: &mut DeferredTransaction) -> Result<()> {
-		Ok(())
-	}
-
 	fn on_timer(&mut self, _txn: &mut DeferredTransaction, _timer: Timer) -> Result<Option<Change>> {
 		Ok(None)
 	}
 }
 
 pub type BoxedDurableSink = Box<dyn DurableSink>;
+
+pub(crate) fn emit_view_change(txn: &mut DeferredTransaction, view: &View, diff: Diff) {
+	let version = txn.version();
+	let changed_at = txn.clock().now();
+	txn.track_flow_change(Change {
+		origin: ChangeOrigin::Object(ObjectId::view(view.id())),
+		version,
+		diffs: smallvec![diff],
+		changed_at,
+	});
+}
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);

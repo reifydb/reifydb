@@ -33,7 +33,6 @@ use crate::{
 		aggregation::{accumulator::RowAccumulator, core::Aggregation},
 		drops::SealedDrops,
 		host::HostContext,
-		stateful::raw::HostRawOperator,
 	},
 	state::seal::{coord::Coord, ledger::FiredAt},
 	timer::Timer,
@@ -171,8 +170,6 @@ impl WindowOperator {
 			.collect())
 	}
 }
-
-impl HostRawOperator for WindowOperator {}
 
 impl HostOperator for WindowOperator {
 	fn id(&self) -> OperatorId {

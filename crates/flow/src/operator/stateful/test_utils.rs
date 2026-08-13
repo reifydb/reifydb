@@ -2,71 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod test {
-	use reifydb_codec::row::{
-		operator::EncodedOperatorRow,
-		shape::{RowFamily, RowShape},
-	};
-	use reifydb_core::{
-		interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
-		key::operator_state::{GroupStateKey, Keyspace},
-	};
+	use reifydb_codec::row::operator::EncodedOperatorRow;
+	use reifydb_core::key::operator_state::{GroupStateKey, Keyspace};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
-	use reifydb_value::{
-		Result,
-		value::{identity::IdentityId, value_type::ValueType},
-	};
-
-	use crate::operator::{HostOperator, host::HostContext};
-
-	pub struct TestOperator {
-		pub id: OperatorId,
-		pub layout: RowShape,
-		pub key_types: Vec<ValueType>,
-	}
-
-	impl TestOperator {
-		pub fn new(id: OperatorId) -> Self {
-			Self {
-				id,
-				layout: RowShape::testing(
-					RowFamily::Pod,
-					&[ValueType::Int8, ValueType::Float8, ValueType::Utf8],
-				),
-				key_types: vec![ValueType::Utf8, ValueType::Int4],
-			}
-		}
-
-		pub fn simple(id: OperatorId) -> Self {
-			Self {
-				id,
-				layout: RowShape::testing(RowFamily::Pod, &[ValueType::Int8]),
-				key_types: vec![],
-			}
-		}
-
-		pub fn with_key_types(id: OperatorId, key_types: Vec<ValueType>) -> Self {
-			Self {
-				id,
-				layout: RowShape::testing(RowFamily::Pod, &[ValueType::Blob, ValueType::Int4]),
-				key_types,
-			}
-		}
-	}
-
-	impl HostOperator for TestOperator {
-		fn id(&self) -> OperatorId {
-			self.id
-		}
-
-		fn capabilities(&self) -> &[OperatorCapability] {
-			OperatorCapability::STANDARD
-		}
-
-		fn apply(&mut self, _host: &mut dyn HostContext, _change: Change) -> Result<Change> {
-			todo!()
-		}
-	}
+	use reifydb_value::value::identity::IdentityId;
 
 	pub fn test_row() -> EncodedOperatorRow {
 		EncodedOperatorRow::timeless(&[1, 2, 3, 4, 5])

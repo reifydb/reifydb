@@ -134,7 +134,6 @@ impl<O: DurableSink> Harness<O> {
 		let at = coordinate_of(&change);
 		let mut txn = self.begin(at);
 		self.operator.apply(&mut txn, change)?;
-		self.operator.flush(&mut txn)?;
 		let emitted = txn.take_accumulator_entries();
 		self.end(txn);
 		Ok(emitted)

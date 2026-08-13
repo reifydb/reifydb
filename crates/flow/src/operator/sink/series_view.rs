@@ -13,10 +13,9 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::{
 		catalog::{
-			flow::OperatorId, id::SeriesId, object::ObjectId, series::SeriesKey, storage::StorageId,
-			view::View,
+			flow::OperatorId, id::SeriesId, series::SeriesKey, storage::StorageId, view::View,
 		},
-		change::{Change, ChangeOrigin, Diff},
+		change::{Change, Diff},
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
@@ -32,11 +31,10 @@ use reifydb_value::{
 	Result,
 	value::{Value, partition::Partition},
 };
-use smallvec::smallvec;
 use tracing::instrument;
 
 use super::{
-	DurableSink, coerce_columns, encode_row_at_index,
+	DurableSink, coerce_columns, emit_view_change, encode_row_at_index,
 	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 	view::dictionary_encode_view_columns,
@@ -283,16 +281,4 @@ impl SinkSeriesViewOperator {
 		emit_view_change(txn, view, Diff::remove(coerced));
 		Ok(())
 	}
-}
-
-#[inline]
-fn emit_view_change(txn: &mut DeferredTransaction, view: &View, diff: Diff) {
-	let version = txn.version();
-	let changed_at = txn.clock().now();
-	txn.track_flow_change(Change {
-		origin: ChangeOrigin::Object(ObjectId::view(view.id())),
-		version,
-		diffs: smallvec![diff],
-		changed_at,
-	});
 }

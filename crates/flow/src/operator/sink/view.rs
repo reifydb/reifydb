@@ -20,7 +20,7 @@ use reifydb_core::{
 			object::ObjectId,
 			view::{View, ViewSortKey},
 		},
-		change::{Change, ChangeOrigin, Diff},
+		change::{Change, Diff},
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
@@ -39,11 +39,10 @@ use reifydb_value::{
 	error::Error,
 	value::{Value, datetime::DateTime, partition::Partition, row_number::RowNumber, value_type::ValueType},
 };
-use smallvec::smallvec;
 use tracing::instrument;
 
 use super::{
-	DurableSink, coerce_columns, encode_row_at_index,
+	DurableSink, coerce_columns, emit_view_change, encode_row_at_index,
 	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 };
@@ -367,17 +366,6 @@ fn remember_created_at(cache: &mut HashMap<RowNumber, DateTime>, row_number: Row
 }
 
 #[inline]
-fn emit_view_change(txn: &mut DeferredTransaction, view: &View, diff: Diff) {
-	let version = txn.version();
-	let changed_at = txn.clock().now();
-	txn.track_flow_change(Change {
-		origin: ChangeOrigin::Object(ObjectId::view(view.id())),
-		version,
-		diffs: smallvec![diff],
-		changed_at,
-	});
-}
-
 pub(crate) fn dictionary_encode_view_columns(
 	txn: &mut DeferredTransaction,
 	view: &View,

@@ -12,7 +12,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_flow::operator::{HostOperator, host::HostContext, stateful::raw::HostRawOperator};
+use reifydb_flow::operator::{HostOperator, host::HostContext};
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
@@ -82,8 +82,6 @@ impl EphemeralSinkPlan {
 		self.delivery.push(self.subscription_id, with_implicit);
 	}
 }
-
-impl HostRawOperator for EphemeralSinkSubscriptionOperator {}
 
 impl HostOperator for EphemeralSinkSubscriptionOperator {
 	fn id(&self) -> OperatorId {

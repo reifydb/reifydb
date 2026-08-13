@@ -285,4 +285,189 @@ pub mod tests {
 
 		assert_row_eq(&result, &large_row);
 	}
+
+	#[test]
+	fn test_simple_state_get_set() {
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator_id = OperatorId(1);
+		let key = test_key("simple_test");
+		let row = test_row();
+
+		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_none());
+
+		state_set(&mut host(&mut txn, operator_id), &key, row.clone()).unwrap();
+		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap();
+		assert!(result.is_some());
+		assert_row_eq(&result.unwrap(), &row);
+	}
+
+	#[test]
+	fn test_simple_state_remove() {
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator_id = OperatorId(1);
+		let key = test_key("remove_test");
+		state_set(&mut host(&mut txn, operator_id), &key, test_row()).unwrap();
+		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_some());
+
+		state_remove(&mut host(&mut txn, operator_id), &key).unwrap();
+		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_none());
+	}
+
+	#[test]
+	fn test_simple_state_scan_all() {
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator_id = OperatorId(1);
+
+		let entries = vec![("key_a", vec![1, 2]), ("key_b", vec![3, 4]), ("key_c", vec![5, 6])];
+		for (key_suffix, data) in &entries {
+			let key = test_key(key_suffix);
+			state_set(&mut host(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(data)).unwrap();
+		}
+
+		let scanned: Vec<_> = state_scan_all(&mut host(&mut txn, operator_id)).unwrap();
+		assert_eq!(scanned.len(), 3);
+	}
+
+	#[test]
+	fn test_simple_state_range() {
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator_id = OperatorId(2);
+
+		for i in 0..10 {
+			let key = test_key(&format!("{:02}", i)); // padded so the keys sort numerically
+			state_set(&mut host(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(&[i as u8]))
+				.unwrap();
+		}
+
+		let range = EncodedKeyRange::new(
+			Included(test_key("02").into_encoded()),
+			Excluded(test_key("05").into_encoded()),
+		);
+		let range_result: Vec<_> =
+			state_range(&mut host(&mut txn, operator_id), range).collect::<Result<Vec<_>>>().unwrap();
+
+		// 02, 03, 04 - the end bound is exclusive.
+		assert_eq!(range_result.len(), 3);
+		// The range path is untyped, so the payload only surfaces once the row header is stripped.
+		for (offset, expected) in [(0usize, 2u8), (1, 3), (2, 4)] {
+			let row = EncodedOperatorRow::try_from(range_result[offset].1.clone()).unwrap();
+			assert_eq!(row.body()[0], expected);
+		}
+	}
+
+	#[test]
+	fn test_simple_state_clear() {
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator_id = OperatorId(3);
+
+		for i in 0..5 {
+			let key = test_key(&format!("clear_{}", i));
+			state_set(&mut host(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(&[i as u8]))
+				.unwrap();
+		}
+
+		let count = state_scan_all(&mut host(&mut txn, operator_id)).unwrap().len();
+		assert_eq!(count, 5);
+
+		state_clear(&mut host(&mut txn, operator_id)).unwrap();
+
+		let count = state_scan_all(&mut host(&mut txn, operator_id)).unwrap().len();
+		assert_eq!(count, 0);
+	}
+
+	#[test]
+	fn test_operator_isolation() {
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator1 = OperatorId(10);
+		let operator2 = OperatorId(20);
+		let shared_key = test_key("shared");
+
+		let row1 = EncodedOperatorRow::timeless(&[1]);
+		let row2 = EncodedOperatorRow::timeless(&[2]);
+
+		state_set(&mut host(&mut txn, operator1), &shared_key, row1.clone()).unwrap();
+		state_set(&mut host(&mut txn, operator2), &shared_key, row2.clone()).unwrap();
+
+		let result1 = state_get(&mut host(&mut txn, operator1), &shared_key).unwrap().unwrap();
+		let result2 = state_get(&mut host(&mut txn, operator2), &shared_key).unwrap().unwrap();
+
+		assert_row_eq(&result1, &row1);
+		assert_row_eq(&result2, &row2);
+	}
+
+	#[test]
+	fn test_empty_range() {
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator_id = OperatorId(4);
+
+		for i in 0..5 {
+			let key = test_key(&format!("item_{}", i));
+			state_set(&mut host(&mut txn, operator_id), &key, test_row()).unwrap();
+		}
+
+		// A range that sorts entirely after the stored keys.
+		let range = EncodedKeyRange::new(
+			Included(test_key("z_aaa").into_encoded()),
+			Excluded(test_key("z_zzz").into_encoded()),
+		);
+		let range_result: Vec<_> =
+			state_range(&mut host(&mut txn, operator_id), range).collect::<Result<Vec<_>>>().unwrap();
+
+		assert_eq!(range_result.len(), 0);
+	}
+
+	#[test]
+	fn test_overwrite_existing_key() {
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator_id = OperatorId(5);
+		let key = test_key("overwrite");
+
+		let row2 = EncodedOperatorRow::timeless(&[2, 2, 2]);
+
+		state_set(&mut host(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(&[1, 1, 1])).unwrap();
+		state_set(&mut host(&mut txn, operator_id), &key, row2.clone()).unwrap();
+
+		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap().unwrap();
+		assert_row_eq(&result, &row2);
+	}
+
+	#[test]
+	fn test_remove_non_existent_key() {
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator_id = OperatorId(6);
+		let key = test_key("non_existent");
+
+		state_remove(&mut host(&mut txn, operator_id), &key).unwrap();
+
+		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_none());
+	}
+
+	#[test]
+	fn test_scan_after_partial_removal() {
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator_id = OperatorId(7);
+
+		for i in 0..5 {
+			let key = test_key(&format!("partial_{}", i));
+			state_set(&mut host(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(&[i as u8]))
+				.unwrap();
+		}
+
+		state_remove(&mut host(&mut txn, operator_id), &test_key("partial_1")).unwrap();
+		state_remove(&mut host(&mut txn, operator_id), &test_key("partial_3")).unwrap();
+
+		// 0, 2 and 4 survive.
+		let remaining: Vec<_> = state_scan_all(&mut host(&mut txn, operator_id)).unwrap();
+		assert_eq!(remaining.len(), 3);
+	}
 }
