@@ -219,12 +219,6 @@ where
 
 		Ok(())
 	}
-
-	fn flush_state(&mut self, ctx: &mut impl GuestContext) -> Result<()> {
-		let mut store = GuestAsHost(ctx);
-		self.engine.flush(&mut store)?;
-		Ok(())
-	}
 }
 
 type EventBuckets<A> = RollingBuckets<<A as RollingOperator>::GroupKey, DateTime, WindowContribution<A>>;

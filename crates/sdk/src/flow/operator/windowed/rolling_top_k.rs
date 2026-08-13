@@ -268,12 +268,6 @@ where
 
 		Ok(())
 	}
-
-	fn flush_state(&mut self, ctx: &mut impl GuestContext) -> Result<()> {
-		let mut store = GuestAsHost(ctx);
-		self.engine.flush(&mut store)?;
-		Ok(())
-	}
 }
 
 impl<A> RollingTopKDriver<A>

@@ -517,7 +517,7 @@ mod integration {
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{
 			read::{ReadFrom, read_from},
-			substrate::FlowSubstrate,
+			substrate::{FlowSubstrate, apply_operator_state},
 		},
 	};
 	use reifydb_rql::flow::{
@@ -637,6 +637,10 @@ mod integration {
 		let mut seed = seeding_txn(&engine, &flow_engine, version);
 		let watermarks = seed.source_watermarks();
 		watermarks.advance(OperatorId(1), &mut seed, at_millis(30_000)).unwrap();
+		// "Restored state" means the watermark row is in the store; an uncommitted advance is not restored
+		// state.
+		let seeded = seed.take_pending();
+		apply_operator_state(&engine.operator_state(), &seeded);
 
 		let computer = SliceComputer::new(engine.clone());
 		let held = computer.resolved_holds(&mut flow_engine, flow, version).unwrap();

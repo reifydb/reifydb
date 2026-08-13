@@ -287,7 +287,7 @@ where
 		let engine_config = window_engine_config(config);
 		Ok(Self {
 			aggregator,
-			engine: RollingEngine::group_scoped(engine_config),
+			engine: RollingEngine::new(engine_config),
 		})
 	}
 
@@ -395,12 +395,6 @@ where
 			}
 		}
 
-		Ok(())
-	}
-
-	fn flush_state(&mut self, ctx: &mut impl GuestContext) -> Result<()> {
-		let mut store = GuestAsHost(ctx);
-		self.engine.flush(&mut store)?;
 		Ok(())
 	}
 }

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub(crate) mod cache;
 pub mod column;
 pub mod operator;
 pub(crate) mod row;

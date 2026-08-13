@@ -29,10 +29,9 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaKey, RunningKey, buffer_range,
-			config::WindowEngineConfig, decode_buffer_key, decode_meta_key, decode_running_key,
-			load_batch_meta, meta_key_for, meta_range, note_when_expiry_capped, persist_batch_meta,
-			running_range, sweep_stale_meta,
+			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaKey, RunningKey,
+			config::WindowEngineConfig, load_batch_meta, meta_key_for, note_when_expiry_capped,
+			persist_batch_meta, sweep_stale_meta,
 		},
 		span::Slot,
 	},
@@ -102,8 +101,6 @@ pub struct RollingEngine<G, C: Slot, Accumulator> {
 	meta_low_water: Option<u64>,
 	expire_batch: usize,
 	lag: <C::Coord as Coord>::Span,
-	hydrated: bool,
-	group_scoped: bool,
 	_pd: PhantomData<G>,
 }
 
@@ -166,14 +163,6 @@ where
 	RollingBuffer<C, Accumulator>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
-		Self::scoped(config, false)
-	}
-
-	pub fn group_scoped(config: WindowEngineConfig) -> Self {
-		Self::scoped(config, true)
-	}
-
-	fn scoped(config: WindowEngineConfig, group_scoped: bool) -> Self {
 		Self {
 			buffers: StateCache::<BufferKey, RollingBuffer<C, Accumulator>>::new(),
 			running: None,
@@ -182,39 +171,13 @@ where
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
 			lag: Default::default(),
-			hydrated: false,
-			group_scoped,
 			_pd: PhantomData,
 		}
 	}
 
-	fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		if self.hydrated {
-			return Ok(());
-		}
-		if !self.group_scoped {
-			self.buffers.hydrate(store, buffer_range(), decode_buffer_key)?;
-			if let Some(running) = &mut self.running {
-				running.hydrate(store, running_range(), decode_running_key)?;
-			}
-		}
-		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
-		self.hydrated = true;
-		Ok(())
-	}
-
 	pub fn new_runnable(config: WindowEngineConfig) -> Self {
-		Self::runnable(config, false)
-	}
-
-	pub fn new_runnable_group_scoped(config: WindowEngineConfig) -> Self {
-		Self::runnable(config, true)
-	}
-
-	fn runnable(config: WindowEngineConfig, group_scoped: bool) -> Self {
-		let running = StateCache::<RunningKey, Accumulator>::new();
-		let mut engine = Self::scoped(config, group_scoped);
-		engine.running = Some(running);
+		let mut engine = Self::new(config);
+		engine.running = Some(StateCache::<RunningKey, Accumulator>::new());
 		engine
 	}
 
@@ -262,9 +225,8 @@ where
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
-		self.hydrate_once(store)?;
 		let indexed = matches!(eviction, RollingEviction::Before(_) | RollingEviction::Nothing);
-		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
+		let mut meta_loaded = self.load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(&buckets, &meta_loaded, &row_key)?;
 		let group_slots = self.apply_events_into_buffers(
 			store,
@@ -282,29 +244,11 @@ where
 		Ok(results)
 	}
 
-	pub fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		self.buffers.flush(store)?;
-		if let Some(running) = &mut self.running {
-			running.flush(store)?;
-		}
-		self.meta.flush(store)?;
-		Ok(())
-	}
-
-	fn warm_and_load_meta(
+	fn load_meta(
 		&mut self,
 		store: &mut dyn StateStore,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C>> {
-		let meta_keys: Vec<MetaKey> = buckets
-			.keys()
-			.map(|(group, _)| group)
-			.collect::<BTreeSet<_>>()
-			.into_iter()
-			.map(meta_key_for)
-			.collect();
-		self.meta.warm(store, &meta_keys)?;
-
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
@@ -560,16 +504,8 @@ where
 				unimplemented!("apply_running supports only Before eviction")
 			}
 		};
-		self.hydrate_once(store)?;
-		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
+		let mut meta_loaded = self.load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(&buckets, &meta_loaded, &row_key)?;
-		if let Some(running) = &mut self.running {
-			let running_keys: Vec<RunningKey> = buffer_rows
-				.values()
-				.map(|(group, slot)| RunningKey::new(*group, slot.clone()))
-				.collect();
-			running.warm(store, &running_keys)?;
-		}
 
 		let mut group_slots: BTreeMap<G, RunnableGroupSlot<C, Accumulator>> = BTreeMap::new();
 		for ((group, coord), events) in buckets {
@@ -774,7 +710,6 @@ where
 				"expire_before_running requires an engine constructed with new_runnable"
 			);
 		}
-		self.hydrate_once(store)?;
 		let due = self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
 
 		let mut out: Vec<RollingExpiry<G, Accumulator::Output>> = Vec::new();
@@ -898,7 +833,6 @@ where
 	}
 
 	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
-		self.hydrate_once(store)?;
 		self.expiry.earliest(store)
 	}
 
@@ -911,7 +845,6 @@ where
 	where
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
-		self.hydrate_once(store)?;
 		let due = self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
 
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
@@ -1052,7 +985,6 @@ mod tests {
 			sum_combine,
 		)
 		.unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(store.meta_entry_count(), 1, "the group's meta is persisted on apply");
 
 		let dropped = engine.expire_meta(&mut store, 100).unwrap();
@@ -1077,7 +1009,6 @@ mod tests {
 			sum_combine,
 		)
 		.unwrap();
-		engine.flush(&mut store).unwrap();
 
 		let dropped = engine.expire_meta(&mut store, 5).unwrap();
 		assert_eq!(dropped, 0, "high water (20) is not below the threshold (5)");
@@ -1104,7 +1035,6 @@ mod tests {
 				sum_combine,
 			)
 			.unwrap();
-		engine.flush(&mut store).unwrap();
 
 		assert_eq!(results.len(), 1, "the group must publish rather than come back empty");
 		assert_eq!(results[0].value, 7, "the contribution at the epoch must survive the tick");
@@ -1130,7 +1060,6 @@ mod tests {
 				sum_combine,
 			)
 			.unwrap();
-		engine.flush(&mut store).unwrap();
 
 		assert!(
 			results.iter().all(|r| r.value == 0),
@@ -1157,13 +1086,11 @@ mod tests {
 			sum_combine,
 		)
 		.unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(store.index_entry_count(), 1, "the group is indexed by its oldest coord");
 
 		// A tick with no new events for this group evicts coords <= 20; coord 30 survives.
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let out = engine.expire_before(&mut store, at_millis(20), sum_combine).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(out.len(), 1);
 		match &out[0] {
 			RollingExpiry::Update {
@@ -1183,7 +1110,6 @@ mod tests {
 		// The next tick evicts the last coord: the group empties and is removed.
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let out = engine.expire_before(&mut store, at_millis(30), sum_combine).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(out.len(), 1);
 		match &out[0] {
 			RollingExpiry::Remove {
@@ -1217,13 +1143,11 @@ mod tests {
 			sum_combine,
 		)
 		.unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(store.index_entry_count(), 2);
 
 		// Cutoff 5 is due only for group 2 (oldest coord 5); group 1 (oldest 100) is untouched.
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let out = engine.expire_before(&mut store, at_millis(5), sum_combine).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(out.len(), 1, "only the group with a due coord is processed");
 		assert!(matches!(&out[0], RollingExpiry::Remove { group, .. } if *group == 2));
 		assert_eq!(store.index_entry_count(), 1, "group 1 keeps its index entry");
@@ -1249,14 +1173,12 @@ mod tests {
 			sum_combine,
 		)
 		.unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(store.index_entry_count(), 3);
 
 		let capped = WindowEngineConfig::builder().expire_batch(2).build();
 
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(capped.clone());
 		let first = engine.expire_before(&mut store, at_millis(1000), sum_combine).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(first.len(), 2, "one tick drains at most expire_batch groups");
 		assert!(matches!(&first[0], RollingExpiry::Remove { group, .. } if *group == 3));
 		assert!(matches!(&first[1], RollingExpiry::Remove { group, .. } if *group == 2));
@@ -1264,7 +1186,6 @@ mod tests {
 
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(capped);
 		let second = engine.expire_before(&mut store, at_millis(1000), sum_combine).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(second.len(), 1, "the next tick picks up the deferred group");
 		assert!(matches!(&second[0], RollingExpiry::Remove { group, .. } if *group == 1));
 		assert_eq!(store.index_entry_count(), 0);
@@ -1282,7 +1203,6 @@ mod tests {
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		let published: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, sum_combine).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(published.len(), 1);
 		assert!(matches!(published[0].kind, EmitKind::Insert));
 		assert_eq!(published[0].value, 5);
@@ -1294,7 +1214,6 @@ mod tests {
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, sum_combine).unwrap();
-		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the group emits exactly one terminal diff");
 		assert!(
@@ -1329,7 +1248,6 @@ mod tests {
 				published_group_1 = out;
 			}
 		}
-		engine.flush(&mut store).unwrap();
 		assert_eq!(published_group_1.len(), 1);
 		assert!(matches!(published_group_1[0].kind, EmitKind::Insert));
 		assert_eq!(published_group_1[0].value, 1);
@@ -1340,7 +1258,6 @@ mod tests {
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(1)]);
 		let withdrawn: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, sum_combine).unwrap();
-		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted group emits exactly one terminal diff");
 		assert!(
@@ -1463,8 +1380,6 @@ mod tests {
 			coord_base += roll(20);
 		}
 
-		recombine.flush(&mut recombine_store).unwrap();
-		runnable.flush(&mut runnable_store).unwrap();
 		assert_eq!(
 			recombine_store.index_entry_count(),
 			runnable_store.index_entry_count(),
@@ -1506,7 +1421,6 @@ mod tests {
 				sum_combine,
 			)
 			.unwrap();
-		recombine.flush(&mut store).unwrap();
 
 		let mut runnable = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
@@ -1532,7 +1446,6 @@ mod tests {
 			vec![(1u32, Some(100i64))],
 			"expiring the pre-fix coords must subtract exactly their contributions"
 		);
-		runnable.flush(&mut store).unwrap();
 
 		// A fresh runnable engine over the flushed state reads the persisted running entry back
 		// without bootstrapping, and drains to a terminal remove.
@@ -1565,7 +1478,6 @@ mod tests {
 				sum_combine,
 			)
 			.unwrap();
-		recombine.flush(&mut store).unwrap();
 		assert_eq!(
 			store.buffer_coord_count::<SumAccumulator>(),
 			2,
@@ -1584,13 +1496,11 @@ mod tests {
 			SumAccumulator::default,
 		)
 		.unwrap();
-		runnable.flush(&mut store).unwrap();
 		assert_eq!(store.buffer_coord_count::<SumAccumulator>(), 4, "every live coord is persisted");
 		assert_eq!(store.buffer_entry_count(), 2, "each live group persists one buffer entry");
 		assert_eq!(store.running_entry_count(), 2, "each live group persists one running entry");
 
 		let drained = runnable.expire_before_running(&mut store, past_every_coord()).unwrap();
-		runnable.flush(&mut store).unwrap();
 		assert_eq!(drained.len(), 2, "both groups drain");
 		assert!(drained.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })));
 		assert_eq!(store.buffer_entry_count(), 0, "terminal removal must delete the group's buffer entry");
@@ -1780,7 +1690,6 @@ mod tests {
 			}
 		}
 		assert!(engine_visible.is_empty(), "the terminal drain must withdraw every visible row");
-		engine.flush(&mut store).unwrap();
 		assert_eq!(store.buffer_entry_count(), 0, "the terminal drain must delete every buffer entry");
 		assert_eq!(store.running_entry_count(), 0, "the terminal drain must delete every running entry");
 		assert_eq!(store.index_entry_count(), 0, "the terminal drain must delete every index entry");
@@ -1848,7 +1757,6 @@ mod tests {
 			vec![(1u32, EmitKind::Remove, 12i64)],
 			"evicting every merged coord while coord 200 is still pending withdraws the row"
 		);
-		engine.flush(&mut store).unwrap();
 		assert_eq!(
 			store.buffer_coord_count::<SumAccumulator>(),
 			1,
@@ -1886,7 +1794,6 @@ mod tests {
 			vec![(1u32, None)],
 			"expiring the only merged coord withdraws the row"
 		);
-		engine.flush(&mut store).unwrap();
 		assert_eq!(
 			store.buffer_coord_count::<SumAccumulator>(),
 			1,

@@ -23,8 +23,7 @@ use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
 		AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, MetaKey, config::WindowEngineConfig,
-		decode_meta_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
-		rolling::RollingBuckets, sweep_stale_meta,
+		load_batch_meta, meta_key_for, persist_batch_meta, rolling::RollingBuckets, sweep_stale_meta,
 	},
 	span::Slot,
 };
@@ -65,7 +64,6 @@ pub struct RollingTopKEngine<G, C, Accumulator, SK, Output> {
 	last_emit: StateCache<EmitKey, RollingTopKEmit<SK, Output>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	meta_low_water: Option<u64>,
-	hydrated: bool,
 	_pd: PhantomData<(G, C, Accumulator)>,
 }
 
@@ -90,18 +88,8 @@ where
 			last_emit: StateCache::<EmitKey, RollingTopKEmit<SK, Output>>::new(),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
 			meta_low_water: None,
-			hydrated: false,
 			_pd: PhantomData,
 		}
-	}
-
-	fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		if self.hydrated {
-			return Ok(());
-		}
-		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
-		self.hydrated = true;
-		Ok(())
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
@@ -126,8 +114,7 @@ where
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
-		self.hydrate_once(store)?;
-		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
+		let mut meta_loaded = self.load_meta(store, &buckets)?;
 		let state_rows = self.resolve_state_rows(store, &buckets, &meta_loaded, &state_key)?;
 		let group_slots = self.apply_events_into_buffers(
 			store,
@@ -142,27 +129,11 @@ where
 		Ok(emits)
 	}
 
-	pub fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		self.buffers.flush(store)?;
-		self.last_emit.flush(store)?;
-		self.meta.flush(store)?;
-		Ok(())
-	}
-
-	fn warm_and_load_meta(
+	fn load_meta(
 		&mut self,
 		store: &mut dyn StateStore,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C>> {
-		let meta_keys: Vec<MetaKey> = buckets
-			.keys()
-			.map(|(group, _)| group)
-			.collect::<BTreeSet<_>>()
-			.into_iter()
-			.map(meta_key_for)
-			.collect();
-		self.meta.warm(store, &meta_keys)?;
-
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
@@ -211,12 +182,9 @@ where
 				 them through the per-bucket get_or_create_row_number fallback, diverging behaviour"
 			);
 		}
-		let emit_keys: Vec<EmitKey> =
-			resolved_rows.iter().map(|(group, rn)| EmitKey::new(*group, *rn)).collect();
 		for (group, resolved) in resolve_order.into_iter().zip(resolved_rows) {
 			state_rows.insert(group, resolved);
 		}
-		self.last_emit.warm(store, &emit_keys)?;
 		Ok(state_rows)
 	}
 
@@ -461,7 +429,6 @@ mod tests {
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		let published = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(published.len(), 1);
 		let published_row = match &published[0] {
 			TopKEmit::Insert {
@@ -479,7 +446,6 @@ mod tests {
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
-		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the group emits exactly one terminal diff");
 		match &withdrawn[0] {
@@ -512,7 +478,6 @@ mod tests {
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		let published = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
-		engine.flush(&mut store).unwrap();
 		let published_row = match &published[0] {
 			TopKEmit::Insert {
 				row_number,
@@ -560,7 +525,6 @@ mod tests {
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
-		engine.flush(&mut store).unwrap();
 		// The mapping is scoped to the interned group, not ROOT, and reclamation deletes by group prefix - a
 		// lookup under the wrong group would report absence and pass while the mapping leaked, so the group is
 		// read back rather than assumed from the allocator.
@@ -570,7 +534,6 @@ mod tests {
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert!(
 			!store.contains_row_mapping(group, &ranked_key),
 			"withdrawing the ranking must reclaim its row-number mapping, not leak it"
@@ -603,7 +566,6 @@ mod tests {
 				};
 			}
 		}
-		engine.flush(&mut store).unwrap();
 		let published_row_1 = published_row_1.expect("group 1 published an Insert");
 
 		// Group 1 was pushed out of the 8-slot cache by the later groups, so the same engine must
@@ -611,7 +573,6 @@ mod tests {
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(1)]);
 		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
-		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted group emits exactly one terminal diff");
 		match &withdrawn[0] {
@@ -691,7 +652,6 @@ mod tests {
 				buckets.entry((1u32, at_millis(coord))).or_default().push(ev);
 			}
 			let emits = engine.apply(&mut store, buckets, CAP, state_key, row_key, combine).unwrap();
-			engine.flush(&mut store).unwrap();
 			for e in &emits {
 				match e {
 					TopKEmit::Insert {

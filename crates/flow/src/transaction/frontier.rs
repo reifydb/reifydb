@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::sync::{
+	Arc,
+	atomic::{AtomicU64, Ordering},
+};
 
 use dashmap::DashMap;
 use reifydb_core::{common::CommitVersion, interface::catalog::object::ObjectId};
@@ -11,7 +14,6 @@ use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 struct Published {
 	frontier_ms: u64,
 	at: CommitVersion,
-	persisted_at: CommitVersion,
 	clamped: bool,
 }
 
@@ -34,6 +36,8 @@ pub type FrontierEntries = Vec<FrontierEntry>;
 #[derive(Clone, Default)]
 pub struct OutputFrontiers {
 	inner: Arc<DashMap<ObjectId, Published>>,
+	generation: Arc<AtomicU64>,
+	persisted: Arc<AtomicU64>,
 }
 
 impl OutputFrontiers {
@@ -62,9 +66,9 @@ impl OutputFrontiers {
 			.or_insert(Published {
 				frontier_ms,
 				at,
-				persisted_at: CommitVersion(0),
 				clamped: true,
 			});
+		self.generation.fetch_add(1, Ordering::AcqRel);
 	}
 
 	pub fn resolve(&self, output: ObjectId, version: CommitVersion) -> Frontier {
@@ -78,10 +82,9 @@ impl OutputFrontiers {
 		}
 	}
 
-	pub fn dirty(&self) -> FrontierEntries {
+	pub fn entries(&self) -> FrontierEntries {
 		self.inner
 			.iter()
-			.filter(|entry| entry.at > entry.persisted_at)
 			.map(|entry| FrontierEntry {
 				output: *entry.key(),
 				frontier: DateTime::from_millis(entry.frontier_ms),
@@ -90,12 +93,16 @@ impl OutputFrontiers {
 			.collect()
 	}
 
-	pub fn mark_persisted(&self, output: ObjectId, at: CommitVersion) {
-		if let Some(mut entry) = self.inner.get_mut(&output)
-			&& at > entry.persisted_at
-		{
-			entry.persisted_at = at;
+	pub fn unpersisted(&self) -> Option<(u64, FrontierEntries)> {
+		let generation = self.generation.load(Ordering::Acquire);
+		if generation == self.persisted.load(Ordering::Acquire) {
+			return None;
 		}
+		Some((generation, self.entries()))
+	}
+
+	pub fn mark_persisted(&self, generation: u64) {
+		self.persisted.fetch_max(generation, Ordering::AcqRel);
 	}
 
 	pub fn hydrate(&self, entries: FrontierEntries) {
@@ -108,7 +115,6 @@ impl OutputFrontiers {
 						*current = Published {
 							frontier_ms,
 							at: entry.at,
-							persisted_at: entry.at,
 							clamped: false,
 						};
 					}
@@ -116,7 +122,6 @@ impl OutputFrontiers {
 				.or_insert(Published {
 					frontier_ms,
 					at: entry.at,
-					persisted_at: entry.at,
 					clamped: false,
 				});
 		}

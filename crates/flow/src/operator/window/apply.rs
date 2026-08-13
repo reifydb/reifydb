@@ -876,9 +876,10 @@ pub fn apply_session_engine(
 			}
 		}
 		let config = operator.engine_config();
-		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(config))
-		});
+		let mut engine =
+			operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+				Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config))
+			});
 		for (hash, session_id, group) in &closing {
 			let accumulator_key = WindowStateKey::new(*group, utils::empty_key()).into_group_state_key();
 			let meta = operator.core.engine_meta().get(host, &EngineMetaKey(*group))?;
@@ -991,11 +992,11 @@ fn seal_due_windows(
 	};
 	let config = operator.engine_config();
 	let expired = {
-		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(config))
-		});
+		let mut engine =
+			operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
+				Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config))
+			});
 		let res = engine.expire(host, threshold.to_order())?;
-		engine.flush(host)?;
 		for window in &res {
 			enqueue(host, window.group_id)?;
 		}
@@ -1013,10 +1014,11 @@ fn seal_due_windows(
 pub fn reap_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostContext) -> Result<usize> {
 	let config = operator.engine_config();
 	let budget = config.expire_batch();
-	let mut engine =
-		operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(config))
-		});
+	let mut engine = operator
+		.core
+		.tumbling_engine_slot()
+		.take()
+		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config)));
 	let freed = drain(host, &mut *engine, budget)?;
 	*operator.core.tumbling_engine_slot() = Some(engine);
 	Ok(freed)

@@ -99,14 +99,12 @@ impl WindowOperator {
 		&mut self.meta
 	}
 
-	fn open_meta(&mut self, host: &mut dyn HostContext) -> Result<()> {
-		self.meta.hydrate_once(host)?;
+	fn open_meta(&mut self, _host: &mut dyn HostContext) -> Result<()> {
 		self.core.engine_meta_open();
 		Ok(())
 	}
 
 	fn close_meta(&mut self, host: &mut dyn HostContext) -> Result<()> {
-		self.meta.flush(host)?;
 		self.core.engine_meta_flush(host)
 	}
 

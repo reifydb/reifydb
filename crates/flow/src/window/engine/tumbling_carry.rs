@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, BTreeSet, HashMap},
+	collections::{BTreeMap, HashMap},
 	fmt::Debug,
 	hash::Hash,
 	marker::PhantomData,
@@ -19,14 +19,12 @@ use reifydb_core::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
-use tracing::instrument;
 
 use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
 		AccumulatorEvent, EmitKind, MetaHighWater, MetaKey, WindowResult, WindowStateKey,
-		config::TumblingCarryConfig, decode_meta_key, meta_key_for, meta_range, sweep_stale_meta,
-		tumbling::TumblingBuckets,
+		config::TumblingCarryConfig, meta_key_for, sweep_stale_meta, tumbling::TumblingBuckets,
 	},
 	span::{SlotSpan, WindowAnchor, WindowSpan},
 };
@@ -91,7 +89,6 @@ pub struct TumblingCarryEngine<G, C: WindowAnchor, Accumulator, Carry, Output> {
 	meta: StateCache<MetaKey, CarryMeta<C, Carry, Output>>,
 	meta_low_water: Option<u64>,
 	retention: Option<SlotSpan<C>>,
-	hydrated: bool,
 	_pd: PhantomData<G>,
 }
 
@@ -114,23 +111,11 @@ where
 			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new(),
 			meta_low_water: None,
 			retention: config.retention(),
-			hydrated: false,
 			_pd: PhantomData,
 		}
 	}
 
-	#[instrument(name = "flow::window::meta_hydrate", level = "debug", skip_all)]
-	fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		if self.hydrated {
-			return Ok(());
-		}
-		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
-		self.hydrated = true;
-		Ok(())
-	}
-
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		self.hydrate_once(store)?;
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
@@ -150,12 +135,11 @@ where
 		BO: Fn(&G, WindowSpan<C>, &Accumulator::Output, Option<&Carry>) -> Option<Output>,
 		CF: Fn(&Accumulator::Output, Option<&Carry>) -> Option<Carry>,
 	{
-		self.hydrate_once(store)?;
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
 		let retention = self.retention;
-		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
+		let mut meta_loaded = self.load_meta(store, &buckets)?;
 		let slot_resolved = self.resolve_survivor_rows(store, &buckets, &meta_loaded, &row_key)?;
 
 		let mut earliest_affected: HashMap<G, C> = HashMap::new();
@@ -312,30 +296,15 @@ where
 		Ok(results)
 	}
 
-	pub fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		self.accumulators.flush(store)?;
-		self.meta.flush(store)?;
-		Ok(())
-	}
-
-	fn warm_and_load_meta(
+	fn load_meta(
 		&mut self,
 		store: &mut dyn StateStore,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C, Carry, Output>> {
-		let meta_keys: Vec<MetaKey> = buckets
-			.keys()
-			.map(|(group, _)| group)
-			.collect::<BTreeSet<_>>()
-			.into_iter()
-			.map(meta_key_for)
-			.collect();
-		self.meta.warm(store, &meta_keys)?;
-
 		let mut meta_loaded: MetaLoaded<G, C, Carry, Output> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let m = self.meta.take(store, &meta_key_for(group))?.unwrap_or_default();
+				let m = self.meta.get(store, &meta_key_for(group))?.unwrap_or_default();
 				meta_loaded.insert(group.clone(), m);
 			}
 		}
@@ -379,9 +348,6 @@ where
 				 (survivor_keys={survivors}, resolved_rows={resolved})"
 			);
 		}
-		let accumulator_keys: Vec<WindowStateKey> =
-			resolved_rows.iter().map(|(group, key)| WindowStateKey::new(*group, key.clone())).collect();
-		self.accumulators.warm(store, &accumulator_keys)?;
 		let mut resolved_rows = resolved_rows.into_iter();
 		Ok(slot_survives
 			.into_iter()
@@ -638,7 +604,6 @@ mod tests {
 		for i in 0..60u64 {
 			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
 		}
-		engine.flush(&mut store).expect("flush");
 		assert!(
 			store.accumulator_count() <= 4,
 			"sealed windows must reclaim their accumulator rows; found {} live rows after 60 windows",
@@ -656,7 +621,6 @@ mod tests {
 		for i in 0..60u64 {
 			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
 		}
-		engine.flush(&mut store).expect("flush");
 		assert!(
 			store.row_mapping_count() <= 4,
 			"sealed windows must reclaim their row-number mappings; found {} live mappings after 60 windows",
@@ -672,7 +636,6 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		let published = feed_group(&mut engine, &mut store, "BTC", at_millis(0), 5.0);
-		engine.flush(&mut store).expect("flush");
 		assert_eq!(published.len(), 1);
 		assert!(matches!(published[0].kind, EmitKind::Insert), "precondition: the window publishes once");
 
@@ -733,7 +696,6 @@ mod tests {
 		for i in 0..3u64 {
 			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
 		}
-		engine.flush(&mut store).expect("flush");
 		let dropped = engine.expire_meta(&mut store, WINDOW).unwrap();
 		assert_eq!(dropped, 0, "high water (2*WINDOW) is not below the threshold (WINDOW)");
 		assert_eq!(store.meta_entry_count(), 1, "an active group within the horizon keeps its meta");
@@ -749,7 +711,6 @@ mod tests {
 		for i in 0..3u64 {
 			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
 		}
-		engine.flush(&mut store).expect("flush");
 		assert_eq!(store.meta_entry_count(), 1);
 
 		let dropped = engine.expire_meta(&mut store, 100 * WINDOW).unwrap();
@@ -766,7 +727,6 @@ mod tests {
 		for i in 0..60u64 {
 			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
 		}
-		engine.flush(&mut store).expect("flush");
 		assert_eq!(
 			store.accumulator_count(),
 			60,
@@ -783,7 +743,6 @@ mod tests {
 
 		let mut engine = Engine::new(carry_config(None));
 		feed(&mut engine, &mut store, at_millis(0), 5.0);
-		engine.flush(&mut store).expect("flush");
 
 		let mut engine = Engine::new(carry_config(None));
 		let span = WindowSpan::for_coord(at_millis(0), millis(WINDOW));
@@ -829,7 +788,6 @@ mod tests {
 				published_g00 = out;
 			}
 		}
-		engine.flush(&mut store).expect("flush");
 		assert_eq!(published_g00.len(), 1);
 		assert!(matches!(published_g00[0].kind, EmitKind::Insert));
 		assert_eq!(published_g00[0].value, 1.0);
@@ -851,7 +809,6 @@ mod tests {
 				|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
 			)
 			.expect("apply");
-		engine.flush(&mut store).expect("flush");
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted window emits exactly one terminal diff");
 		assert!(

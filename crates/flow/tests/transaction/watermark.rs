@@ -85,10 +85,8 @@ fn the_flow_watermark_tracks_the_slowest_source() {
 }
 
 #[test]
-fn a_restart_resumes_from_the_bucketed_persisted_watermark() {
-	// Persistence is bucketed at 1s to bound write amplification, so an advance inside the same
-	// second stays in RAM. Hydrating up to one bucket stale is conservative: retention seals
-	// later than the live value, never earlier.
+fn a_restart_resumes_from_the_last_advance_not_from_an_earlier_one() {
+	// Every advance must reach the store; resuming behind the live value re-seals rows already sealed.
 	let engine = TestEngine::new();
 	let warm = SourceWatermarks::default();
 
@@ -101,20 +99,8 @@ fn a_restart_resumes_from_the_bucketed_persisted_watermark() {
 	let cold = SourceWatermarks::default();
 	assert_eq!(
 		cold.source_watermark(SOURCE_A, &mut cold_txn).unwrap(),
-		at_millis(5_400),
-		"the same-second advance must not have persisted"
-	);
-
-	let mut txn = deferred(&engine, MockClock::from_millis(0));
-	warm.advance(SOURCE_A, &mut txn, at_millis(6_100)).unwrap();
-	commit_pending(&engine, &mut txn);
-
-	let mut cold_txn = deferred(&engine, MockClock::from_millis(0));
-	let cold = SourceWatermarks::default();
-	assert_eq!(
-		cold.source_watermark(SOURCE_A, &mut cold_txn).unwrap(),
-		at_millis(6_100),
-		"crossing the 1s bucket must persist"
+		at_millis(5_900),
+		"a second advance inside the same second must persist too"
 	);
 }
 

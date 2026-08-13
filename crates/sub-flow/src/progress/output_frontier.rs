@@ -49,16 +49,12 @@ pub fn persist(single: &SingleTransaction, entries: &FrontierEntries) -> Result<
 }
 
 pub fn sweep(single: &SingleTransaction, frontiers: &OutputFrontiers) {
-	let dirty = frontiers.dirty();
-	match persist(single, &dirty) {
-		Ok(()) => {
-			for entry in &dirty {
-				frontiers.mark_persisted(entry.output, entry.at);
-			}
-		}
-		Err(e) => {
-			warn!(error = %e, "failed to persist output frontiers; they stay dirty and retry next sweep")
-		}
+	let Some((generation, entries)) = frontiers.unpersisted() else {
+		return;
+	};
+	match persist(single, &entries) {
+		Ok(()) => frontiers.mark_persisted(generation),
+		Err(e) => warn!(error = %e, "failed to persist output frontiers; the next sweep writes them again"),
 	}
 }
 
@@ -178,21 +174,98 @@ mod tests {
 	}
 
 	#[test]
-	fn a_sweep_persists_what_is_dirty_and_leaves_nothing_dirty_behind() {
-		// Without the mark the same entry is rewritten on every later sweep, so an idle server writes forever.
+	fn a_sweep_persists_every_published_frontier() {
+		// A sweep that skips a live entry loses it on restart, since nothing else writes the row.
 		let single = SingleTransaction::testing();
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
 
 		sweep(&single, &frontiers);
 
-		assert_eq!(hydrate(&single.read_store()).unwrap().len(), 1);
-		assert!(frontiers.dirty().is_empty(), "a persisted frontier must not stay dirty");
+		let read = hydrate(&single.read_store()).unwrap();
+		assert_eq!(read.len(), 1);
+		assert_eq!(read[0].frontier, at_millis(9_000));
+	}
+
+	#[test]
+	fn a_quiet_interval_opens_no_commit_at_all() {
+		// Sweeping every 5s forever keeps the store from ever going idle, which starves the WAL reset.
+		let single = SingleTransaction::testing();
+		let frontiers = OutputFrontiers::default();
+		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
+		sweep(&single, &frontiers);
+
+		persist(
+			&single,
+			&vec![FrontierEntry {
+				output: OUTPUT,
+				frontier: at_millis(1),
+				at: CommitVersion(1),
+			}],
+		)
+		.unwrap();
+		sweep(&single, &frontiers);
+
+		assert_eq!(
+			hydrate(&single.read_store()).unwrap()[0].frontier,
+			at_millis(1),
+			"the second sweep rewrote a row nothing had republished"
+		);
+	}
+
+	#[test]
+	fn a_sweep_that_failed_to_persist_is_retried_rather_than_marked_done() {
+		// Marking before the commit lands would strand the frontier until its producer happens to publish
+		// again.
+		let frontiers = OutputFrontiers::default();
+		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
+
+		let (generation, entries) = frontiers.unpersisted().expect("a fresh publish must be unpersisted");
+		assert_eq!(entries.len(), 1);
+
+		assert!(frontiers.unpersisted().is_some(), "reading the entries must not count as persisting them");
+
+		frontiers.mark_persisted(generation);
+		assert!(frontiers.unpersisted().is_none());
+	}
+
+	#[test]
+	fn a_publish_racing_the_persist_is_swept_on_the_next_pass() {
+		// A publish between the snapshot and the mark must not be swallowed; a quiet producer may never
+		// republish.
+		let single = SingleTransaction::testing();
+		let frontiers = OutputFrontiers::default();
+		frontiers.publish(OUTPUT, at_millis(4_000), CommitVersion(10));
+
+		let (generation, entries) = frontiers.unpersisted().unwrap();
+		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
+		persist(&single, &entries).unwrap();
+		frontiers.mark_persisted(generation);
+
+		sweep(&single, &frontiers);
+
+		assert_eq!(hydrate(&single.read_store()).unwrap()[0].frontier, at_millis(9_000));
+	}
+
+	#[test]
+	fn a_hydrated_frontier_is_never_swept_back_to_the_store_it_came_from() {
+		// A restart must not rewrite what it just read, or every restart pays a commit for nothing.
+		let single = SingleTransaction::testing();
+		let frontiers = OutputFrontiers::default();
+
+		frontiers.hydrate(vec![FrontierEntry {
+			output: OUTPUT,
+			frontier: at_millis(9_000),
+			at: CommitVersion(10),
+		}]);
+		sweep(&single, &frontiers);
+
+		assert!(hydrate(&single.read_store()).unwrap().is_empty());
 	}
 
 	#[test]
 	fn a_sweep_persists_a_republish_that_lands_after_the_previous_one() {
-		// The mark is per-stamp, not a flag; marking the object outright would swallow every later publish.
+		// A later publish must overwrite the row, otherwise a restart resumes at a stale frontier.
 		let single = SingleTransaction::testing();
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(OUTPUT, at_millis(4_000), CommitVersion(10));

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
-use dashmap::DashMap;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
@@ -17,42 +14,23 @@ use crate::transaction::{
 	state::StateTxn,
 };
 
-const PERSIST_BUCKET_MS: u64 = 1_000;
-
 const IMPLAUSIBLE_JUMP_MS: u64 = 3_600_000;
 
 pub fn source_watermark_key() -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::SOURCE_WATERMARK, vec![])
 }
 
-#[derive(Default)]
-struct SourceState {
-	hydrated: bool,
-	value: Option<u64>,
-}
-
 #[derive(Clone, Default)]
-pub struct SourceWatermarks {
-	inner: Arc<DashMap<OperatorId, SourceState>>,
-}
+pub struct SourceWatermarks;
 
 impl SourceWatermarks {
 	pub fn advance(&self, source: OperatorId, txn: &mut impl FlowTransaction, at: DateTime) -> Result<()> {
 		let coordinate = at.to_millis();
-		let mut state = self.inner.entry(source).or_default();
-		Self::hydrate_once(&mut state, source, txn)?;
-		let persist = match state.value {
-			Some(previous) => {
-				if coordinate <= previous {
-					return Ok(());
-				}
-				coordinate / PERSIST_BUCKET_MS > previous / PERSIST_BUCKET_MS
-			}
-			None => true,
-		};
-		if let Some(previous) = state.value
-			&& coordinate > previous.saturating_add(IMPLAUSIBLE_JUMP_MS)
-		{
+		let previous = raw(source, txn)?;
+		if coordinate <= previous {
+			return Ok(());
+		}
+		if previous > 0 && coordinate > previous.saturating_add(IMPLAUSIBLE_JUMP_MS) {
 			warn!(
 				source = source.0,
 				from_ms = previous,
@@ -63,15 +41,11 @@ impl SourceWatermarks {
 				 every open window at once"
 			);
 		}
-		state.value = Some(coordinate);
-		if persist {
-			txn.state_set(source, &source_watermark_key(), encode_payload(&coordinate, at)?)?;
-		}
-		Ok(())
+		txn.state_set(source, &source_watermark_key(), encode_payload(&coordinate, at)?)
 	}
 
 	pub fn source_watermark(&self, source: OperatorId, txn: &mut impl FlowTransaction) -> Result<DateTime> {
-		Ok(DateTime::from_millis(self.raw(source, txn)?))
+		Ok(DateTime::from_millis(raw(source, txn)?))
 	}
 
 	pub fn flow_watermark(&self, sources: &[OperatorId], txn: &mut impl FlowTransaction) -> Result<DateTime> {
@@ -86,7 +60,7 @@ impl SourceWatermarks {
 		let mut merged: Option<u64> = None;
 		let mut per_source: Vec<(OperatorId, u64)> = Vec::with_capacity(sources.len());
 		for source in sources {
-			let value = self.raw(*source, txn)?;
+			let value = raw(*source, txn)?;
 			per_source.push((*source, value));
 			merged = Some(match merged {
 				Some(current) => current.min(value),
@@ -109,21 +83,11 @@ impl SourceWatermarks {
 		}
 		Ok(DateTime::from_millis(merged))
 	}
+}
 
-	fn raw(&self, source: OperatorId, txn: &mut impl FlowTransaction) -> Result<u64> {
-		let mut state = self.inner.entry(source).or_default();
-		Self::hydrate_once(&mut state, source, txn)?;
-		Ok(state.value.unwrap_or(0))
-	}
-
-	fn hydrate_once(state: &mut SourceState, source: OperatorId, txn: &mut impl FlowTransaction) -> Result<()> {
-		if state.hydrated {
-			return Ok(());
-		}
-		state.hydrated = true;
-		if let Some(row) = txn.state_get(source, &source_watermark_key())? {
-			state.value = Some(decode_payload::<u64>(&row)?);
-		}
-		Ok(())
+fn raw(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<u64> {
+	match txn.state_get(source, &source_watermark_key())? {
+		Some(row) => decode_payload::<u64>(&row),
+		None => Ok(0),
 	}
 }

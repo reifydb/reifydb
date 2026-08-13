@@ -24,7 +24,7 @@ use crate::window::{
 	engine::{
 		AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, RunningKey, WindowStateKey,
 		config::WindowEngineConfig,
-		decode_meta_key, load_batch_meta, meta_key_for, meta_range, persist_batch_meta,
+		load_batch_meta, meta_key_for, persist_batch_meta,
 		rolling::{RollingBuckets, RollingBuffer, RollingResult},
 		sweep_stale_meta,
 	},
@@ -48,7 +48,6 @@ pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
 	running: StateCache<RunningKey, Running>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	meta_low_water: Option<u64>,
-	hydrated: bool,
 	_pd: PhantomData<G>,
 }
 
@@ -69,23 +68,12 @@ where
 			running: StateCache::<RunningKey, Running>::new(),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
 			meta_low_water: None,
-			hydrated: false,
 			_pd: PhantomData,
 		}
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		self.hydrate_once(store)?;
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
-	}
-
-	fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		if self.hydrated {
-			return Ok(());
-		}
-		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
-		self.hydrated = true;
-		Ok(())
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -103,11 +91,10 @@ where
 		WC: Fn(&Accumulator::Output) -> Running::Contribution,
 		CR: Fn(&G, &Running, &Accumulator::Output, C) -> Option<Output>,
 	{
-		self.hydrate_once(store)?;
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
-		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
+		let mut meta_loaded = self.load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(store, &buckets, &meta_loaded, &row_key)?;
 
 		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, Running, Output>> = BTreeMap::new();
@@ -246,27 +233,11 @@ where
 		Ok(results)
 	}
 
-	pub fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		self.buffers.flush(store)?;
-		self.running.flush(store)?;
-		self.meta.flush(store)?;
-		Ok(())
-	}
-
-	fn warm_and_load_meta(
+	fn load_meta(
 		&mut self,
 		store: &mut dyn StateStore,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C>> {
-		let meta_keys: Vec<MetaKey> = buckets
-			.keys()
-			.map(|(group, _)| group)
-			.collect::<BTreeSet<_>>()
-			.into_iter()
-			.map(meta_key_for)
-			.collect();
-		self.meta.warm(store, &meta_keys)?;
-
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
@@ -314,15 +285,9 @@ where
 				 them through the per-bucket intern_group fallback, diverging behaviour"
 			);
 		}
-		let buffer_keys: Vec<WindowStateKey> =
-			resolved_rows.iter().map(|(group, key)| WindowStateKey::new(*group, key.clone())).collect();
-		let running_keys: Vec<RunningKey> =
-			resolved_rows.iter().map(|(group, key)| RunningKey::new(*group, key.clone())).collect();
 		for (group, resolved) in resolve_order.into_iter().zip(resolved_rows) {
 			buffer_rows.insert(group, resolved);
 		}
-		self.buffers.warm(store, &buffer_keys)?;
-		self.running.warm(store, &running_keys)?;
 		Ok(buffer_rows)
 	}
 
@@ -377,7 +342,6 @@ mod tests {
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		let published: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(published.len(), 1);
 		assert!(matches!(published[0].kind, EmitKind::Insert));
 		assert_eq!(published[0].value, 5);
@@ -390,7 +354,6 @@ mod tests {
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
-		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the group emits exactly one terminal diff");
 		assert!(
@@ -420,7 +383,6 @@ mod tests {
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		let published: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(published.len(), 1);
 		assert!(matches!(published[0].kind, EmitKind::Insert), "precondition: the group publishes once");
 
@@ -469,7 +431,6 @@ mod tests {
 				published_group_1 = out;
 			}
 		}
-		engine.flush(&mut store).unwrap();
 		assert_eq!(published_group_1.len(), 1);
 		assert!(matches!(published_group_1[0].kind, EmitKind::Insert));
 		assert_eq!(published_group_1[0].value, 1);
@@ -480,7 +441,6 @@ mod tests {
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(1)]);
 		let withdrawn: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
-		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted group emits exactly one terminal diff");
 		assert!(

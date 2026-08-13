@@ -33,7 +33,7 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::{cache::GroupCache, state::JoinSide};
+use super::state::JoinSide;
 use crate::{
 	error::FlowStateError,
 	operator::{
@@ -58,7 +58,6 @@ pub(crate) fn body_bytes(row: &EncodedOperatorRow) -> EncodedBytes {
 pub(crate) struct Store {
 	side: JoinSide,
 	shape_cache: RowShapeCacheCell,
-	cache: GroupCache<Option<(EncodedBytes, Columns)>>,
 }
 
 impl Store {
@@ -66,7 +65,6 @@ impl Store {
 		Self {
 			side,
 			shape_cache: RowShapeCacheCell::new(SHAPE_CACHE_CAPACITY),
-			cache: GroupCache::new(),
 		}
 	}
 
@@ -75,22 +73,13 @@ impl Store {
 		host: &mut dyn HostContext,
 		group: GroupId,
 	) -> Result<Option<(EncodedBytes, Columns)>> {
-		if let Some(cached) = self.cache.get(group) {
-			return Ok(cached);
-		}
-		let entry = match self.get_row_in(host, group, SLOT)? {
+		match self.get_row_in(host, group, SLOT)? {
 			Some(row) => {
 				let columns = columns_from_block(host, self, vec![(SLOT, row.clone())])?;
-				Some((row, columns))
+				Ok(Some((row, columns)))
 			}
-			None => None,
-		};
-		self.cache.insert(group, entry.clone());
-		Ok(entry)
-	}
-
-	fn forget_slot(&self, group: GroupId) {
-		self.cache.remove(group);
+			None => Ok(None),
+		}
 	}
 
 	fn resolve(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<Option<GroupId>> {
@@ -135,7 +124,6 @@ impl Store {
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
 	) -> Result<()> {
-		self.forget_slot(group);
 		let key = self.row_key(group, row_number);
 		state_set(host, &key, row.clone())
 	}
@@ -182,7 +170,6 @@ impl Store {
 		if state_get(host, &key)?.is_none() {
 			return Ok(false);
 		}
-		self.forget_slot(group);
 		state_set(host, &key, row.clone())?;
 		Ok(true)
 	}
@@ -209,7 +196,6 @@ impl Store {
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<()> {
-		self.forget_slot(group);
 		let key = self.row_key(group, row_number);
 		state_remove(host, &key)
 	}

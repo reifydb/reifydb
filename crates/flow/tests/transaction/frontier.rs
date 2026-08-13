@@ -70,57 +70,46 @@ fn an_object_that_never_published_stays_distinguishable_from_one_that_published_
 }
 
 #[test]
-fn only_a_publish_ahead_of_what_was_written_is_dirty() {
-	// A quiet interval must write nothing, otherwise every object pays a disk write forever.
+fn a_published_entry_is_reported_for_persistence_at_the_stamp_it_was_published_with() {
+	// A sweep writes whatever entries() reports, so a wrong stamp resurrects a stale frontier on restart.
 	let frontiers = OutputFrontiers::default();
 
-	assert!(frontiers.dirty().is_empty());
+	assert!(frontiers.entries().is_empty());
 
 	frontiers.publish(OUTPUT, at_millis(5_000), CommitVersion(10));
-	assert_eq!(frontiers.dirty(), vec![entry(5_000, 10)]);
-
-	frontiers.mark_persisted(OUTPUT, CommitVersion(10));
-	assert!(frontiers.dirty().is_empty());
-}
-
-#[test]
-fn a_publish_racing_the_sweep_stays_dirty() {
-	// A publish between snapshot and mark must survive; a quiet producer may never publish again.
-	let frontiers = OutputFrontiers::default();
-
-	frontiers.publish(OUTPUT, at_millis(5_000), CommitVersion(10));
-	let swept = frontiers.dirty();
+	assert_eq!(frontiers.entries(), vec![entry(5_000, 10)]);
 
 	frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
-
-	for snapshot in swept {
-		frontiers.mark_persisted(snapshot.output, snapshot.at);
-	}
-
-	assert_eq!(frontiers.dirty(), vec![entry(9_000, 20)]);
+	assert_eq!(frontiers.entries(), vec![entry(9_000, 20)]);
 }
 
 #[test]
-fn a_late_mark_from_an_earlier_sweep_never_lowers_what_was_written() {
-	// A stale mark must never re-dirty a newer write, otherwise overlapping sweeps never converge.
-	let frontiers = OutputFrontiers::default();
-
-	frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
-	frontiers.mark_persisted(OUTPUT, CommitVersion(20));
-	frontiers.mark_persisted(OUTPUT, CommitVersion(10));
-
-	assert!(frontiers.dirty().is_empty());
-}
-
-#[test]
-fn a_hydrated_entry_is_not_dirty() {
-	// Hydrated entries must not be dirty, otherwise every restart rewrites everything unchanged.
+fn a_hydrated_entry_is_readable_but_never_needs_persisting() {
+	// Hydrated rows are already in the store, so counting them as unpersisted rewrites them on every restart.
 	let frontiers = OutputFrontiers::default();
 
 	frontiers.hydrate(vec![entry(5_000, 10)]);
 
-	assert!(frontiers.dirty().is_empty());
+	assert_eq!(frontiers.entries(), vec![entry(5_000, 10)]);
+	assert!(frontiers.unpersisted().is_none());
 	assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(11)), Frontier::Withheld);
+}
+
+#[test]
+fn a_second_publish_at_the_same_frontier_still_needs_persisting() {
+	// The generation counts publishes, not values; a no-op publish must not mask a real one behind it.
+	let frontiers = OutputFrontiers::default();
+
+	frontiers.publish(OUTPUT, at_millis(5_000), CommitVersion(10));
+	let (generation, _) = frontiers.unpersisted().expect("a publish must be unpersisted");
+	frontiers.mark_persisted(generation);
+
+	frontiers.publish(OUTPUT, at_millis(3_000), CommitVersion(20));
+
+	assert!(
+		frontiers.unpersisted().is_some(),
+		"a rejected lower publish still bumps the generation, so the next sweep is a cheap no-op write"
+	);
 }
 
 #[test]

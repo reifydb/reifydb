@@ -3,19 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::key::{
-	decode_u64_asc, encode_u64_asc,
-	encoded::{EncodedKey, EncodedKeyRange},
-};
+use reifydb_codec::key::encode_u64_asc;
 use reifydb_core::{
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{
-		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
-	},
+	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey},
 	metrics::heap::{HeapSize, OperatorSample},
 	state::{cache::StateCache, store::StateStore},
 	value::column::columns::Columns,
@@ -66,43 +61,15 @@ impl IntoGroupStateKey for &VisibilityKey {
 	}
 }
 
-fn decode_visibility_key(key: &EncodedKey) -> Option<VisibilityKey> {
-	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
-	if group != GroupId::ROOT || keyspace != Keyspace::GATE_VISIBILITY {
-		return None;
-	}
-	let rn = decode_u64_asc(suffix.as_slice().try_into().ok()?);
-	Some(VisibilityKey(RowNumber(rn)))
-}
-
-fn visibility_range() -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::ROOT, Keyspace::GATE_VISIBILITY)
-}
-
 struct GateState {
 	visibility: StateCache<VisibilityKey, VisibilityMarker>,
-	hydrated: bool,
 }
 
 impl GateState {
 	fn new() -> Self {
 		Self {
 			visibility: StateCache::new(),
-			hydrated: false,
 		}
-	}
-
-	fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		if self.hydrated {
-			return Ok(());
-		}
-		self.visibility.hydrate(store, visibility_range(), decode_visibility_key)?;
-		self.hydrated = true;
-		Ok(())
-	}
-
-	fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		self.visibility.flush(store)
 	}
 
 	fn is_visible(&mut self, store: &mut dyn StateStore, rn: RowNumber) -> Result<bool> {
@@ -238,8 +205,6 @@ impl HostOperator for GateOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
-		self.state.hydrate_once(host)?;
-
 		let mut result = Vec::new();
 
 		for diff in change.diffs {
@@ -259,8 +224,6 @@ impl HostOperator for GateOperator {
 				} => self.apply_gate_remove(host, pre, &mut result)?,
 			}
 		}
-
-		self.state.flush(host)?;
 
 		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
 	}
@@ -388,7 +351,7 @@ mod tests {
 	};
 	use reifydb_value::value::row_number::RowNumber;
 
-	use super::{VisibilityKey, decode_visibility_key, visibility_range};
+	use super::VisibilityKey;
 
 	#[test]
 	fn a_visibility_key_lives_in_the_root_group_in_its_own_keyspace() {
@@ -424,30 +387,5 @@ mod tests {
 			};
 			assert!(!(start && end), "a visibility marker must not fall inside the range of group {group}");
 		}
-	}
-
-	#[test]
-	fn the_visibility_range_round_trips_its_own_keys_and_admits_nothing_else() {
-		let key = (&VisibilityKey(RowNumber(7))).into_group_state_key();
-		assert_eq!(decode_visibility_key(key.as_encoded()).map(|k| k.0), Some(RowNumber(7)));
-
-		let range = visibility_range();
-		let start = match &range.start {
-			Bound::Included(s) => key.as_bytes() >= s.as_bytes(),
-			Bound::Excluded(s) => key.as_bytes() > s.as_bytes(),
-			Bound::Unbounded => true,
-		};
-		let end = match &range.end {
-			Bound::Included(e) => key.as_bytes() <= e.as_bytes(),
-			Bound::Excluded(e) => key.as_bytes() < e.as_bytes(),
-			Bound::Unbounded => true,
-		};
-		assert!(start && end, "hydration scans this range, so it must contain the keys the operator writes");
-
-		let foreign = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::ACCUMULATOR, 7u64.to_be_bytes());
-		assert!(
-			decode_visibility_key(foreign.as_encoded()).is_none(),
-			"a neighbouring keyspace must not decode as visibility"
-		);
 	}
 }

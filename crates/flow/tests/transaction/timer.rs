@@ -49,18 +49,6 @@ fn commit_pending(engine: &TestEngine, txn: &mut impl FlowTransaction) {
 	apply_operator_state(&engine.inner().operator_state(), &pending);
 }
 
-fn is_hydrated(wheel: &TimerWheel) -> bool {
-	// Reads the earliest-instant hint directly: whether a disarm forces the next dispatch to
-	// re-scan is the whole point of the cache and is invisible in firing behaviour alone.
-	wheel.inner.get(&NODE).expect("the wheel must hold a cache entry once probed").hydrated
-}
-
-fn earliest_hint(wheel: &TimerWheel) -> Option<u64> {
-	// A warm hint that names the wrong instant is worse than a cold one: the dispatch skips the
-	// probe and trusts it, so an instant that is too late strands every timer before it.
-	wheel.inner.get(&NODE).expect("the wheel must hold a cache entry once probed").earliest
-}
-
 fn timer(millis: u64, kind: TimerKind, key: &str) -> Timer {
 	Timer {
 		at: at_millis(millis),
@@ -219,85 +207,6 @@ fn a_capped_take_drains_the_earliest_first_and_leaves_the_rest_armed() {
 }
 
 #[test]
-fn a_drained_take_keeps_the_hint_warm_at_the_first_timer_it_did_not_fire() {
-	// The draining scan already passes over the first timer beyond the watermark, so the wheel
-	// can keep that instant instead of paying for it twice. Discarding it made every dispatch
-	// that found work force the next one to re-probe the whole keyspace, so the cache switched
-	// itself off exactly when the wheel was busiest.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-	let wheel = TimerWheel::default();
-
-	wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "a")).unwrap();
-	wheel.arm(NODE, &mut txn, &timer(9_000, TimerKind::Seal, "b")).unwrap();
-
-	assert_eq!(
-		wheel.take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT).unwrap(),
-		vec![timer(5_000, TimerKind::Seal, "a")],
-		"precondition: the take fires the due timer and leaves the later one armed"
-	);
-
-	assert!(is_hydrated(&wheel), "a take that drained work must not leave the hint cold");
-	assert_eq!(
-		earliest_hint(&wheel),
-		Some(9_000),
-		"the hint must name the timer the watermark excluded, so the next dispatch skips the probe"
-	);
-}
-
-#[test]
-fn a_capped_take_points_the_hint_at_the_timer_the_cap_left_behind() {
-	// The cap stops the scan short of the watermark, so the survivor it names is still due. The
-	// hint has to be that instant: naming anything later would make the next dispatch believe
-	// nothing is due and strand the timers the cap skipped.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-	let wheel = TimerWheel::default();
-
-	for at_ms in [9_000u64, 5_000, 7_000] {
-		wheel.arm(NODE, &mut txn, &timer(at_ms, TimerKind::Seal, "b")).unwrap();
-	}
-
-	assert_eq!(
-		wheel.take_due(NODE, &mut txn, at_millis(10_000), 2).unwrap().len(),
-		2,
-		"precondition: the cap must bite and leave one timer behind"
-	);
-
-	assert!(is_hydrated(&wheel), "a capped take must not leave the hint cold either");
-	assert_eq!(
-		earliest_hint(&wheel),
-		Some(9_000),
-		"the hint must name the first timer the cap skipped, which is still due"
-	);
-}
-
-#[test]
-fn draining_the_wheel_empty_clears_the_hint_rather_than_stranding_it() {
-	// With nothing left the hint must become none, not the instant that was just fired. Keeping
-	// a fired instant would make the next dispatch scan a keyspace it has already emptied, and
-	// keeping it warm is only safe because none is the honest answer here.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-	let wheel = TimerWheel::default();
-
-	wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "a")).unwrap();
-
-	assert_eq!(
-		wheel.take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap(),
-		vec![timer(5_000, TimerKind::Seal, "a")],
-		"precondition: the only armed timer fires"
-	);
-
-	assert!(is_hydrated(&wheel), "an emptied wheel is still a known wheel");
-	assert_eq!(earliest_hint(&wheel), None, "an emptied wheel must report no earliest instant");
-	assert!(
-		wheel.take_due(NODE, &mut txn, at_millis(20_000), NO_LIMIT).unwrap().is_empty(),
-		"the cleared hint must short-circuit the next dispatch instead of re-firing"
-	);
-}
-
-#[test]
 fn a_disarmed_timer_does_not_fire_and_its_replacement_does() {
 	// Sealing is activity-based, so every window kind re-arms as its last event time rises;
 	// without an exact disarm the wheel accumulates a dead timer per extension. The disarmed
@@ -318,52 +227,30 @@ fn a_disarmed_timer_does_not_fire_and_its_replacement_does() {
 }
 
 #[test]
-fn disarming_a_later_timer_keeps_the_earliest_hint_warm() {
-	// Every window re-arm disarms the group's prior seal instant, so a blanket cache drop here
-	// made the next dispatch re-scan the wheel keyspace once per operator per version - the
-	// probe that dominated batch time. A removal above the minimum cannot move the minimum, so
-	// the hint must survive it while the disarmed instant still must not fire.
+fn disarming_either_end_of_the_wheel_leaves_the_other_timer_firing() {
+	// A disarm must remove exactly its own instant; taking the neighbour with it drops a seal silently.
 	let engine = TestEngine::new();
+
 	let mut txn = deferred(&engine);
 	let wheel = TimerWheel::default();
-
 	wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "a")).unwrap();
 	wheel.arm(NODE, &mut txn, &timer(8_000, TimerKind::Seal, "b")).unwrap();
-	assert!(
-		wheel.take_due(NODE, &mut txn, at_millis(1_000), NO_LIMIT).unwrap().is_empty(),
-		"precondition: nothing is due yet, and this probe is what warms the hint"
-	);
-	assert!(is_hydrated(&wheel), "precondition: the probe left the hint warm");
-
 	wheel.disarm(NODE, &mut txn, &timer(8_000, TimerKind::Seal, "b")).unwrap();
-
-	assert!(is_hydrated(&wheel), "disarming above the minimum must not force a re-scan");
 	assert_eq!(
 		wheel.take_due(NODE, &mut txn, at_millis(9_000), NO_LIMIT).unwrap(),
 		vec![timer(5_000, TimerKind::Seal, "a")],
-		"the kept hint must still fire the survivor and never the disarmed instant"
+		"disarming the later instant must leave the earlier one armed"
 	);
-}
 
-#[test]
-fn disarming_the_earliest_timer_drops_the_hint() {
-	// Removing the minimum leaves the wheel with no way to name the next one, so the hint has
-	// to go. Keeping it would gate later dispatches on an instant that is no longer armed.
-	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let wheel = TimerWheel::default();
-
 	wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "a")).unwrap();
 	wheel.arm(NODE, &mut txn, &timer(8_000, TimerKind::Seal, "b")).unwrap();
-	assert!(wheel.take_due(NODE, &mut txn, at_millis(1_000), NO_LIMIT).unwrap().is_empty());
-	assert!(is_hydrated(&wheel), "precondition: the probe left the hint warm");
-
 	wheel.disarm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "a")).unwrap();
-
-	assert!(!is_hydrated(&wheel), "disarming the minimum must force a re-scan");
 	assert_eq!(
 		wheel.take_due(NODE, &mut txn, at_millis(9_000), NO_LIMIT).unwrap(),
-		vec![timer(8_000, TimerKind::Seal, "b")]
+		vec![timer(8_000, TimerKind::Seal, "b")],
+		"disarming the earliest instant must leave the later one armed"
 	);
 }
 

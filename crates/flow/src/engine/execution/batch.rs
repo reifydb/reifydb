@@ -191,12 +191,7 @@ impl FlowEngineInner {
 				continue;
 			}
 
-			let child_count = operator.outputs.len();
-			for (child_idx, child_id) in operator.outputs.iter().enumerate() {
-				if child_idx + 1 == child_count {
-					pending.entry(*child_id).or_default().push(combined_output);
-					break;
-				}
+			for child_id in &operator.outputs {
 				pending.entry(*child_id).or_default().push(combined_output.clone());
 			}
 		}

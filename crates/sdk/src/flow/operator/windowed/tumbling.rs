@@ -274,7 +274,7 @@ where
 		let engine_config = window_engine_config(config);
 		Ok(Self {
 			aggregator,
-			engine: TumblingEngine::group_scoped(engine_config),
+			engine: TumblingEngine::new(engine_config),
 		})
 	}
 
@@ -399,12 +399,6 @@ where
 		}
 		self.emit_batches(ctx, &inserts, &updates, &removes)?;
 
-		Ok(())
-	}
-
-	fn flush_state(&mut self, ctx: &mut impl GuestContext) -> Result<()> {
-		let mut store = GuestAsHost(ctx);
-		self.engine.flush(&mut store)?;
 		Ok(())
 	}
 }

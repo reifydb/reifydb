@@ -729,7 +729,9 @@ mod pull_protocol {
 	};
 	use reifydb_flow::{
 		operator::provider::EmptyOperatorProvider,
-		transaction::{DeferredParams, deferred::DeferredTransaction},
+		transaction::{
+			DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::apply_operator_state,
+		},
 	};
 	use reifydb_runtime::sync::waiter::WaiterHandle;
 	use reifydb_store_operator::store::OperatorStore;
@@ -1034,6 +1036,9 @@ mod pull_protocol {
 			for source in sources {
 				substrate.watermarks.advance(source, &mut txn, at).expect("advance watermark");
 			}
+
+			let advanced = txn.take_pending();
+			apply_operator_state(&substrate.operators, &advanced);
 		}
 
 		fn cdc_records(&self) -> Vec<Cdc> {

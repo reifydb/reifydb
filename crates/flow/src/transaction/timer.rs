@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, sync::Arc};
-
-use dashmap::DashMap;
-use reifydb_codec::key::{
-	decode_u64_asc, encode_u64_asc,
-	encoded::{EncodedKey, EncodedKeyRange},
-};
+use reifydb_codec::key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
@@ -26,8 +20,6 @@ use crate::{
 		state::StateTxn,
 	},
 };
-
-const TAKE_CHUNK: usize = 1_024;
 
 fn timer_suffix(at: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
 	let mut suffix = Vec::with_capacity(9 + key.len());
@@ -66,36 +58,14 @@ fn decode_timer(suffix: &[u8]) -> Timer {
 	}
 }
 
-#[derive(Default)]
-pub struct WheelState {
-	pub hydrated: bool,
-	pub earliest: Option<u64>,
-}
-
-impl WheelState {
-	fn invalidate_if_earliest(&mut self, at: u64) {
-		if self.earliest.is_some_and(|earliest| at <= earliest) {
-			self.hydrated = false;
-			self.earliest = None;
-		}
-	}
-}
-
 #[derive(Clone, Default)]
-pub struct TimerWheel {
-	pub inner: Arc<DashMap<OperatorId, WheelState>>,
-}
+pub struct TimerWheel;
 
 impl TimerWheel {
 	pub fn arm(&self, operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
 		let now = txn.written_at();
 		let at = timer.at.to_millis();
 		if !timer.kind.is_unique() {
-			let mut state = self.inner.entry(operator).or_default();
-			if state.hydrated {
-				state.earliest = Some(state.earliest.map_or(at, |earliest| earliest.min(at)));
-			}
-			drop(state);
 			txn.state_set(
 				operator,
 				&timer_key(timer.at, timer.kind, &timer.key),
@@ -124,15 +94,6 @@ impl TimerWheel {
 			}
 			txn.state_remove(operator, &stale)?;
 		}
-		{
-			let mut state = self.inner.entry(operator).or_default();
-			if let Some(previous) = previous {
-				state.invalidate_if_earliest(previous);
-			}
-			if state.hydrated {
-				state.earliest = Some(state.earliest.map_or(at, |earliest| earliest.min(at)));
-			}
-		}
 		txn.state_set(operator, &timer_key(timer.at, timer.kind, &timer.key), encode_payload(&1u64, now)?)?;
 		txn.state_set(operator, &index, encode_payload(&at, now)?)?;
 		Ok(())
@@ -146,7 +107,6 @@ impl TimerWheel {
 				txn.state_remove(operator, &index)?;
 			}
 		}
-		self.inner.entry(operator).or_default().invalidate_if_earliest(at);
 		txn.state_remove(operator, &timer_key(timer.at, timer.kind, &timer.key))?;
 		Ok(())
 	}
@@ -161,45 +121,18 @@ impl TimerWheel {
 		if limit == 0 {
 			return Ok(Vec::new());
 		}
-		{
-			let mut state = self.inner.entry(operator).or_default();
-			Self::hydrate_once(&mut state, operator, txn)?;
-			match state.earliest {
-				None => return Ok(Vec::new()),
-				Some(earliest) if earliest > watermark.to_millis() => return Ok(Vec::new()),
-				Some(_) => {}
-			}
-			state.hydrated = false;
-		}
-
-		let base = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
+		let range = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
+		let batch = txn.state_range(operator, range, Some(limit), "timer::take_due")?;
 		let ceiling = watermark.to_millis();
 		let mut due = Vec::new();
-		let mut next_earliest = None;
-		let mut start = base.start.clone();
-		'scan: loop {
-			let want = (limit - due.len()).min(TAKE_CHUNK);
-			let range = EncodedKeyRange::new(start, base.end.clone());
-			let batch = txn.state_range(operator, range, Some(want + 1), "timer::take_due")?;
-			let mut last_inner: Option<EncodedKey> = None;
-			for item in &batch.items {
-				let decoded = OperatorStateKey::decode(&item.key)
-					.expect("state_range must return OperatorState keys");
-				let timer = decode_timer(&decoded.suffix);
-				if timer.at.to_millis() > ceiling || due.len() == limit {
-					next_earliest = Some(timer.at.to_millis());
-					break 'scan;
-				}
-				due.push(timer);
-				last_inner = Some(decoded.inner());
-			}
-			if !batch.has_more {
+		for item in &batch.items {
+			let decoded = OperatorStateKey::decode(&item.key)
+				.expect("state_range must return OperatorState keys");
+			let timer = decode_timer(&decoded.suffix);
+			if timer.at.to_millis() > ceiling {
 				break;
 			}
-			let Some(last) = last_inner else {
-				break;
-			};
-			start = Bound::Excluded(last);
+			due.push(timer);
 		}
 
 		for timer in &due {
@@ -212,25 +145,7 @@ impl TimerWheel {
 			}
 		}
 
-		let mut state = self.inner.entry(operator).or_default();
-		state.hydrated = true;
-		state.earliest = next_earliest;
 		Ok(due)
-	}
-
-	fn hydrate_once(state: &mut WheelState, operator: OperatorId, txn: &mut impl FlowTransaction) -> Result<()> {
-		if state.hydrated {
-			return Ok(());
-		}
-		state.hydrated = true;
-		let range = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
-		let batch = txn.state_range(operator, range, Some(1), "timer::hydrate_probe")?;
-		state.earliest = batch.items.first().map(|item| {
-			let decoded = OperatorStateKey::decode(&item.key)
-				.expect("state_range must return OperatorState keys");
-			decode_timer(&decoded.suffix).at.to_millis()
-		});
-		Ok(())
 	}
 }
 

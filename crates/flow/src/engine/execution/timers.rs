@@ -116,12 +116,7 @@ impl FlowEngineInner {
 					continue;
 				}
 				let combined = Change::from_flow(operator_id, version, result.diffs, result.changed_at);
-				let child_count = graph_node.outputs.len();
-				for (child_idx, child_id) in graph_node.outputs.iter().enumerate() {
-					if child_idx + 1 == child_count {
-						pending.entry(*child_id).or_default().push(combined);
-						break;
-					}
+				for child_id in &graph_node.outputs {
 					pending.entry(*child_id).or_default().push(combined.clone());
 				}
 			}

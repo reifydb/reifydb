@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, BTreeSet, HashMap},
+	collections::{BTreeMap, HashMap},
 	fmt::Debug,
 	hash::Hash,
 	marker::PhantomData,
@@ -31,9 +31,8 @@ use crate::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
-			accumulator_range, config::WindowEngineConfig, decode_meta_key, decode_window_state_key,
-			load_batch_meta, meta_key_for, meta_range, note_when_expiry_capped, persist_batch_meta,
-			sweep_stale_meta,
+			config::WindowEngineConfig, decode_window_state_key, load_batch_meta, meta_key_for,
+			note_when_expiry_capped, persist_batch_meta, sweep_stale_meta,
 		},
 		span::{WindowAnchor, WindowSpan},
 	},
@@ -85,8 +84,6 @@ pub struct TumblingEngine<G, C, Accumulator> {
 	expiry: ExpiryIndex<TumblingIndexEntry<G, C>>,
 	meta_low_water: Option<u64>,
 	expire_batch: usize,
-	hydrated: bool,
-	group_scoped: bool,
 	_pd: PhantomData<G>,
 }
 
@@ -100,36 +97,14 @@ where
 	TumblingIndexEntry<G, C>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
-		Self::scoped(config, false)
-	}
-
-	pub fn group_scoped(config: WindowEngineConfig) -> Self {
-		Self::scoped(config, true)
-	}
-
-	fn scoped(config: WindowEngineConfig, group_scoped: bool) -> Self {
 		Self {
 			accumulators: StateCache::<WindowStateKey, Accumulator>::new(),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
 			expiry: ExpiryIndex::new(),
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
-			hydrated: false,
-			group_scoped,
 			_pd: PhantomData,
 		}
-	}
-
-	fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		if self.hydrated {
-			return Ok(());
-		}
-		if !self.group_scoped {
-			self.accumulators.hydrate(store, accumulator_range(), decode_window_state_key)?;
-		}
-		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
-		self.hydrated = true;
-		Ok(())
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -177,9 +152,8 @@ where
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
-		self.hydrate_once(store)?;
-		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
-		let slot_resolved = self.resolve_slots(store, order, &slot_key)?;
+		let mut meta_loaded = self.load_meta(store, &buckets)?;
+		let slot_resolved = Self::resolve_slots(order, &slot_key);
 		reifydb_assertions! {
 			let ordered = slot_resolved.len();
 			let bucketed = buckets.len();
@@ -197,26 +171,11 @@ where
 		Ok(results)
 	}
 
-	pub fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		self.accumulators.flush(store)?;
-		self.meta.flush(store)?;
-		Ok(())
-	}
-
-	fn warm_and_load_meta(
+	fn load_meta(
 		&mut self,
 		store: &mut dyn StateStore,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C>> {
-		let meta_keys: Vec<MetaKey> = buckets
-			.keys()
-			.map(|(group, _)| group)
-			.collect::<BTreeSet<_>>()
-			.into_iter()
-			.map(meta_key_for)
-			.collect();
-		self.meta.warm(store, &meta_keys)?;
-
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
@@ -227,20 +186,13 @@ where
 		Ok(meta_loaded)
 	}
 
-	fn resolve_slots<K>(
-		&mut self,
-		store: &mut dyn StateStore,
-		order: &[(G, WindowSpan<C>)],
-		slot_key: &K,
-	) -> Result<SlotResolved<G, C>>
+	fn resolve_slots<K>(order: &[(G, WindowSpan<C>)], slot_key: &K) -> SlotResolved<G, C>
 	where
 		K: Fn(&G, C) -> (GroupId, EncodedKey),
 	{
 		let mut resolved: SlotResolved<G, C> = HashMap::with_capacity(order.len());
-		let mut resident: Vec<WindowStateKey> = Vec::with_capacity(order.len());
 		for (group, span) in order {
 			let (id, key) = slot_key(group, span.start);
-			resident.push(WindowStateKey::new(id, key.clone()));
 			resolved.insert(
 				(group.clone(), *span),
 				ResolvedSlot {
@@ -249,8 +201,7 @@ where
 				},
 			);
 		}
-		self.accumulators.warm(store, &resident)?;
-		Ok(resolved)
+		resolved
 	}
 
 	fn apply_events<NA>(
@@ -363,7 +314,6 @@ where
 	}
 
 	pub fn expire(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<Vec<ExpiredWindow<G, C>>> {
-		self.hydrate_once(store)?;
 		let due = self.expiry.due(store, threshold, self.expire_batch)?;
 
 		let mut out: Vec<ExpiredWindow<G, C>> = Vec::new();
@@ -482,7 +432,6 @@ mod tests {
 			vec![AccumulatorEvent::Add(contribution)],
 		);
 		let mut results = apply_sums(&mut engine, store, buckets).expect("apply");
-		engine.flush(store).expect("flush");
 		results.pop().expect("one window")
 	}
 
@@ -494,7 +443,6 @@ mod tests {
 			vec![event],
 		);
 		apply_sums(&mut engine, store, buckets).expect("apply");
-		engine.flush(store).expect("flush");
 	}
 
 	fn group_slot(group: &u32, window_start: DateTime) -> (GroupId, EncodedKey) {
@@ -510,7 +458,6 @@ mod tests {
 	) -> Vec<WindowResult<u32, DateTime, i64>> {
 		let order = order_of(&buckets);
 		let out = engine.apply(store, buckets, &order, group_slot, SumAccumulator::default).expect("apply");
-		engine.flush(store).expect("flush");
 		out
 	}
 
@@ -529,7 +476,7 @@ mod tests {
 		// group to separate them. If the group fell out of the accumulator key or the row-number
 		// lookup, every window of the operator would fold into one accumulator under one row.
 		let mut store = MockStore::default();
-		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::group_scoped(test_config());
+		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, WindowSpan::new(at_millis(0), at_millis(1))), vec![AccumulatorEvent::Add(5)]);
@@ -547,7 +494,7 @@ mod tests {
 		assert_eq!(values, vec![5, 7, 9], "no window may see another's contributions");
 
 		// A restart reloads one window's accumulator; it must be that window's alone.
-		let mut restarted = TumblingEngine::<u32, DateTime, SumAccumulator>::group_scoped(test_config());
+		let mut restarted = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let out = apply_group_scoped(&mut restarted, &mut store, one_bucket(1, 0, 1));
 		assert_eq!(out[0].value, 6, "the reloaded accumulator carries only window (1, 0)");
 	}
@@ -558,7 +505,7 @@ mod tests {
 		// the entry - the driver needs that id to drop the per-window meta and release the row number, or it
 		// strands both or erases another group's identity.
 		let mut store = MockStore::default();
-		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::group_scoped(test_config());
+		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let results = apply_group_scoped(&mut engine, &mut store, one_bucket(3, 40, 5));
 		let published = &results[0];
 		let (group, _) = group_slot(&published.group, published.span.start);
@@ -566,7 +513,7 @@ mod tests {
 		engine.reindex_window(&mut store, &published.group, published.span.start, group, &slot, None, Some(10))
 			.unwrap();
 
-		let mut restarted = TumblingEngine::<u32, DateTime, SumAccumulator>::group_scoped(test_config());
+		let mut restarted = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let expired = restarted.expire(&mut store, 10).unwrap();
 
 		assert_eq!(expired.len(), 1);
@@ -594,7 +541,6 @@ mod tests {
 		// Threshold 10: only the window whose expiry (10) is at/under the threshold is due.
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let expired = engine.expire(&mut store, 10).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(expired.len(), 1, "exactly one window is due, not the whole population");
 		assert_eq!(expired[0].window_start, at_millis(0));
 		assert_eq!(store.index_entry_count(), 1, "the due window's index entry is gone, the other remains");
@@ -621,7 +567,6 @@ mod tests {
 
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let expired = engine.expire(&mut store, 10).unwrap();
-		engine.flush(&mut store).unwrap();
 
 		assert_eq!(expired.len(), 1, "the stale entry must still drain, or the index would grow forever");
 		assert_eq!(store.index_entry_count(), 0, "a stale entry drops itself on the scan that finds it");
@@ -663,7 +608,6 @@ mod tests {
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, WindowSpan::new(at_millis(0), at_millis(1))), vec![AccumulatorEvent::Remove(5)]);
 		let results = apply_sums(&mut engine, &mut store, buckets).expect("apply");
-		engine.flush(&mut store).expect("flush");
 
 		assert!(results.is_empty(), "a window that finalizes to nothing publishes nothing");
 		assert!(
@@ -689,7 +633,6 @@ mod tests {
 
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let expired = engine.expire(&mut store, 10).unwrap();
-		engine.flush(&mut store).unwrap();
 
 		assert_eq!(expired.len(), 1);
 		assert_eq!(
@@ -772,7 +715,6 @@ mod tests {
 		// One below the expiry: not due, and the scan leaves the index intact.
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		assert!(engine.expire(&mut store, 49).unwrap().is_empty());
-		engine.flush(&mut store).unwrap();
 		assert_eq!(store.index_entry_count(), 1);
 
 		// Exactly at the expiry: due (the face folds the strict close boundary into the threshold).
@@ -796,7 +738,6 @@ mod tests {
 
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(capped.clone());
 		let first = engine.expire(&mut store, 1000).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(first.len(), 2, "one tick drains at most expire_batch windows");
 		assert_eq!(first[0].window_start, at_millis(200), "inverted key order: newest due drains first");
 		assert_eq!(first[1].window_start, at_millis(100));
@@ -804,7 +745,6 @@ mod tests {
 
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(capped);
 		let second = engine.expire(&mut store, 1000).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(second.len(), 1, "the next tick picks up the deferred backlog");
 		assert_eq!(second[0].window_start, at_millis(0));
 		assert_eq!(store.index_entry_count(), 0);
@@ -837,7 +777,6 @@ mod tests {
 		buckets.insert((1u32, WindowSpan::new(at_millis(0), at_millis(1))), vec![AccumulatorEvent::Add(5)]);
 		let published: Vec<WindowResult<u32, DateTime, i64>> =
 			apply_sums(&mut engine, &mut store, buckets).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(published.len(), 1);
 		assert!(matches!(published[0].kind, EmitKind::Insert));
 		assert_eq!(published[0].value, 5);
@@ -848,7 +787,6 @@ mod tests {
 		buckets.insert((1u32, WindowSpan::new(at_millis(0), at_millis(1))), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn: Vec<WindowResult<u32, DateTime, i64>> =
 			apply_sums(&mut engine, &mut store, buckets).unwrap();
-		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the window emits exactly one terminal diff");
 		assert!(
@@ -882,7 +820,6 @@ mod tests {
 				published_group_1 = out;
 			}
 		}
-		engine.flush(&mut store).unwrap();
 		assert_eq!(published_group_1.len(), 1);
 		assert!(matches!(published_group_1[0].kind, EmitKind::Insert));
 		assert_eq!(published_group_1[0].value, 1);
@@ -893,7 +830,6 @@ mod tests {
 		buckets.insert((1u32, WindowSpan::new(at_millis(0), at_millis(1))), vec![AccumulatorEvent::Remove(1)]);
 		let withdrawn: Vec<WindowResult<u32, DateTime, i64>> =
 			apply_sums(&mut engine, &mut store, buckets).unwrap();
-		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted window emits exactly one terminal diff");
 		assert!(
@@ -973,7 +909,6 @@ mod tests {
 		buckets.insert((1u32, WindowSpan::new(at_millis(0), at_millis(1))), vec![AccumulatorEvent::Add(5)]);
 		buckets.insert((1u32, WindowSpan::new(at_millis(100), at_millis(101))), vec![AccumulatorEvent::Add(7)]);
 		let results = apply_counting(&mut engine, &mut store, buckets).unwrap();
-		engine.flush(&mut store).unwrap();
 		assert_eq!(results.len(), 2);
 		for w in &results {
 			let expiry = if w.span.start == at_millis(0) {
@@ -1021,7 +956,6 @@ mod tests {
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, WindowSpan::new(at_millis(100), at_millis(101))), vec![AccumulatorEvent::Add(5)]);
 		apply_sums(&mut engine, &mut store, buckets).unwrap();
-		engine.flush(&mut store).unwrap();
 
 		let mut fresh = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
@@ -1033,7 +967,6 @@ mod tests {
 			Some(200),
 			"the bump must be durable the moment it is applied"
 		);
-		fresh.flush(&mut store).unwrap();
 
 		let mut third = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		assert_eq!(
@@ -1057,13 +990,11 @@ mod tests {
 				},
 			)
 			.unwrap();
-		engine.meta.flush(&mut store).unwrap();
 
 		let mut fresh = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, WindowSpan::new(at_millis(100), at_millis(101))), vec![AccumulatorEvent::Add(7)]);
 		apply_sums(&mut fresh, &mut store, buckets).unwrap();
-		fresh.flush(&mut store).unwrap();
 
 		let mut third = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		assert_eq!(

@@ -40,12 +40,10 @@ impl FlowEngineInner {
 		num_parents = operator.inputs.len(),
 		input_diffs = change.diffs.len(),
 		input_rows = field::Empty,
-		output_diffs_raw = field::Empty,
 		output_diffs = field::Empty,
 		output_rows = field::Empty,
 		lock_wait_us = field::Empty,
-		apply_time_us = field::Empty,
-		coalesce_time_us = field::Empty
+		apply_time_us = field::Empty
 	))]
 	fn apply<T: FlowTransaction>(&mut self, txn: &mut T, operator: &FlowNode, change: Change) -> Result<Change> {
 		let FlowEngineInner {
@@ -79,10 +77,6 @@ impl FlowEngineInner {
 			}
 		};
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
-		Span::current().record("output_diffs_raw", result.diffs.len());
-
-		let coalesce_start = runtime_context.clock.instant();
-		Span::current().record("coalesce_time_us", coalesce_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs", result.diffs.len());
 		Span::current().record("output_rows", result.row_count());
 		Ok(result)

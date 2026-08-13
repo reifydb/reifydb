@@ -138,9 +138,10 @@ pub(crate) fn finish_tumbling_engine(
 	seal: Duration,
 	anchor: ExpiryAnchor,
 ) -> Result<Vec<Diff>> {
-	let mut engine = core.tumbling_engine_slot().take().unwrap_or_else(|| {
-		Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(engine_config))
-	});
+	let mut engine = core
+		.tumbling_engine_slot()
+		.take()
+		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(engine_config)));
 	let results = {
 		let res = engine.apply(
 			host,
@@ -149,7 +150,6 @@ pub(crate) fn finish_tumbling_engine(
 			|hash, window_start| (group_of(groups, *hash, window_start.to_order()), utils::empty_key()),
 			|| RowAccumulator::new(kinds, seal),
 		)?;
-		engine.flush(host)?;
 		res
 	};
 

@@ -180,9 +180,9 @@ fn counted_row_engine(
 	let slot = operator.rolling_engine_slot();
 	if !matches!(slot, Some(RollingEngineSlot::CountedRow(_))) {
 		let engine = if runnable {
-			RollingEngine::new_runnable_group_scoped(config).with_lag(lag)
+			RollingEngine::new_runnable(config).with_lag(lag)
 		} else {
-			RollingEngine::group_scoped(config)
+			RollingEngine::new(config)
 		};
 		*slot = Some(RollingEngineSlot::CountedRow(Box::new(engine)));
 	}
@@ -201,9 +201,9 @@ fn timed_row_engine(
 	let slot = operator.rolling_engine_slot();
 	if !matches!(slot, Some(RollingEngineSlot::TimedRow(_))) {
 		let engine = if runnable {
-			RollingEngine::new_runnable_group_scoped(config).with_lag(lag)
+			RollingEngine::new_runnable(config).with_lag(lag)
 		} else {
-			RollingEngine::group_scoped(config)
+			RollingEngine::new(config)
 		};
 		*slot = Some(RollingEngineSlot::TimedRow(Box::new(engine)));
 	}
@@ -395,7 +395,6 @@ fn apply_rolling<C: RollingDomain>(
 			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
 			|| RowAccumulator::new(&kinds, seal),
 		)?;
-		engine.flush(host)?;
 		res
 	} else {
 		let engine = C::engine(operator, false, lag);
@@ -407,7 +406,6 @@ fn apply_rolling<C: RollingDomain>(
 			|| RowAccumulator::new(&kinds, seal),
 			|_g, buffer| combine_rolling::<C>(buffer, &kinds, lag, seal),
 		)?;
-		engine.flush(host)?;
 		res
 	};
 
@@ -528,16 +526,12 @@ pub fn seal_rolling_engine(
 		Some(cutoff) => {
 			if runnable {
 				let engine = <DateTime as RollingDomain>::engine(operator, true, lag);
-				let res = engine.expire_before_running(host, cutoff)?;
-				engine.flush(host)?;
-				res
+				engine.expire_before_running(host, cutoff)?
 			} else {
 				let engine = <DateTime as RollingDomain>::engine(operator, false, lag);
-				let res = engine.expire_before(host, cutoff, |_g, buffer| {
+				engine.expire_before(host, cutoff, |_g, buffer| {
 					combine_rolling::<DateTime>(buffer, &kinds, lag, seal)
-				})?;
-				engine.flush(host)?;
-				res
+				})?
 			}
 		}
 		None => Vec::new(),

@@ -194,7 +194,6 @@ where
 	if low_water.is_some_and(|lw| lw >= threshold) {
 		return Ok(0);
 	}
-	meta.flush(store)?;
 	let mut stale: Vec<MetaKey> = Vec::new();
 	let mut min_surviving: Option<u64> = None;
 	store.state_range_visit(meta_range(), None, &mut |key, bytes| {
@@ -215,7 +214,6 @@ where
 	for key in &stale {
 		meta.remove(store, key)?;
 	}
-	meta.flush(store)?;
 	Ok(count)
 }
 
@@ -382,20 +380,6 @@ where
 	MetaKey(group.into_encoded_key())
 }
 
-/// Every accumulator kept in the root group, for engines whose windows are not yet interned as groups. A
-/// group-scoped engine cannot hydrate through one range; its accumulators sit inside their own group.
-pub(crate) fn accumulator_range() -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::ROOT, Keyspace::ACCUMULATOR)
-}
-
-pub(crate) fn buffer_range() -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::ROOT, Keyspace::BUFFER)
-}
-
-pub(crate) fn running_range() -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::ROOT, Keyspace::RUNNING)
-}
-
 /// Which coordinate a window's expiry-index entry is ordered by, and so which coordinate its seal
 /// horizon is measured from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -420,22 +404,6 @@ impl ExpiryAnchor {
 			ExpiryAnchor::LastEvent => last_event,
 		}
 	}
-}
-
-fn decode_group_slot_key(keyspace: Keyspace, key: &EncodedKey) -> Option<(GroupId, EncodedKey)> {
-	let (group, found, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
-	if found != keyspace {
-		return None;
-	}
-	Some((group, EncodedKey::new(suffix)))
-}
-
-pub(crate) fn decode_buffer_key(key: &EncodedKey) -> Option<BufferKey> {
-	decode_group_slot_key(Keyspace::BUFFER, key).map(|(group, slot)| BufferKey::new(group, slot))
-}
-
-pub(crate) fn decode_running_key(key: &EncodedKey) -> Option<RunningKey> {
-	decode_group_slot_key(Keyspace::RUNNING, key).map(|(group, slot)| RunningKey::new(group, slot))
 }
 
 pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey> {

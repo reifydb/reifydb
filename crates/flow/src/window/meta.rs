@@ -3,11 +3,8 @@
 
 use std::mem::size_of;
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	key::operator_state::{
-		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
-	},
+	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey},
 	metrics::heap::HeapSize,
 	state::{cache::StateCache, store::StateStore},
 };
@@ -182,27 +179,12 @@ impl IntoGroupStateKey for &RollingMetaKey {
 	}
 }
 
-fn root_range(keyspace: Keyspace) -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::ROOT, keyspace)
-}
-
-fn root_suffix(keyspace: Keyspace, key: &EncodedKey) -> Option<Vec<u8>> {
-	let (group, found, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
-	(group == GroupId::ROOT && found == keyspace).then_some(suffix)
-}
-
-fn decode_seal_ledger_key(key: &EncodedKey) -> Option<SealLedgerKey> {
-	let suffix = root_suffix(Keyspace::SEAL_LEDGER, key)?;
-	suffix.is_empty().then_some(SealLedgerKey)
-}
-
 pub struct WindowMeta {
 	seal_ledger: StateCache<SealLedgerKey, SealLedgerState>,
 	count: StateCache<CountKey, CountState>,
 	row_index: StateCache<RowIndexKey, RowIndexState>,
 	session: StateCache<SessionKey, SessionState>,
 	rolling_meta: StateCache<RollingMetaKey, RollingMeta>,
-	hydrated: bool,
 }
 
 impl Default for WindowMeta {
@@ -219,26 +201,7 @@ impl WindowMeta {
 			row_index: StateCache::new(),
 			session: StateCache::new(),
 			rolling_meta: StateCache::new(),
-			hydrated: false,
 		}
-	}
-
-	pub fn hydrate_once(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		if self.hydrated {
-			return Ok(());
-		}
-		self.seal_ledger.hydrate(store, root_range(Keyspace::SEAL_LEDGER), decode_seal_ledger_key)?;
-		self.hydrated = true;
-		Ok(())
-	}
-
-	pub fn flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		self.seal_ledger.flush(store)?;
-		self.count.flush(store)?;
-		self.row_index.flush(store)?;
-		self.session.flush(store)?;
-		self.rolling_meta.flush(store)?;
-		Ok(())
 	}
 
 	pub fn seal_ledger(&mut self, store: &mut dyn StateStore) -> Result<u64> {
@@ -358,7 +321,7 @@ mod tests {
 	use reifydb_core::key::operator_state::{GroupId, IntoGroupStateKey, OperatorStateKey, group_data_inner_range};
 	use reifydb_value::{factory::time::at_millis, value::row_number::RowNumber};
 
-	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta, decode_seal_ledger_key};
+	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta};
 	use crate::{testing::store::MockStore, window::kind::session::SessionTracker};
 
 	const GROUP: GroupId = GroupId(42);
@@ -375,18 +338,6 @@ mod tests {
 			Unbounded => true,
 		};
 		above && below
-	}
-
-	#[test]
-	fn the_seal_ledger_key_round_trips() {
-		// The seal ledger is the one meta cache that hydrates through a keyspace range and rebuilds
-		// its key with a decoder. A key that does not survive is dropped from the cache, the ledger
-		// re-derives to "nothing has been sealed", and every late row the gate exists to drop gets in.
-		assert!(
-			decode_seal_ledger_key((&SealLedgerKey).into_group_state_key().as_encoded())
-				== Some(SealLedgerKey),
-			"seal ledger key did not survive the round trip"
-		);
 	}
 
 	#[test]
@@ -449,7 +400,6 @@ mod tests {
 		);
 
 		meta.save_session(&mut store, GROUP, &SessionTracker::resumed(0, at_millis(0), at_millis(0))).unwrap();
-		meta.flush(&mut store).unwrap();
 
 		assert_eq!(
 			meta.load_session(&mut store, GROUP).unwrap(),
