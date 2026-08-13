@@ -48,7 +48,7 @@ use crate::{
 		TierStorage, VersionedGetResult,
 		commit::memory::storage::EvictedVersion,
 		persistent::sqlite::{
-			entry::current_table_name,
+			entry::{current_table_name, current_table_name_to_entry},
 			query::{
 				build_create_current_sql, build_delete_below_version_sql, build_delete_keys_sql,
 				build_get_current_sql, build_get_many_current_sql, build_range_consistent_sql,
@@ -353,7 +353,7 @@ impl SqlitePersistentStorage {
 		Ok(total)
 	}
 
-	pub fn list_current_table_names(&self) -> Result<Vec<String>> {
+	pub fn list_current_entries(&self) -> Result<Vec<EntryKind>> {
 		let guard = self.lock_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(Vec::new());
@@ -368,14 +368,17 @@ impl SqlitePersistentStorage {
 			.map_err(|e| error!(internal(format!("Failed to list current tables: {}", e))))?;
 		let mut out = Vec::new();
 		for name in names {
-			out.push(name.map_err(|e| error!(internal(format!("Failed to read table name: {}", e))))?);
+			let name = name.map_err(|e| error!(internal(format!("Failed to read table name: {}", e))))?;
+			if let Some(kind) = current_table_name_to_entry(&name) {
+				out.push(kind);
+			}
 		}
 		Ok(out)
 	}
 
 	pub fn reap_tombstones(
 		&self,
-		table_name: &str,
+		kind: EntryKind,
 		cutoff_version: CommitVersion,
 		limit: usize,
 	) -> Result<(u64, bool)> {
@@ -383,6 +386,7 @@ impl SqlitePersistentStorage {
 			return Ok((0, false));
 		}
 		let limit = limit.min(i64::MAX as usize);
+		let table_name = &current_table_name(kind);
 		let sql = build_reap_tombstones_sql(table_name, limit);
 		let cutoff = version_to_bytes(cutoff_version);
 		let guard = self.lock_conn();
@@ -400,6 +404,7 @@ impl SqlitePersistentStorage {
 				))));
 			}
 		};
+
 		Ok((reaped, reaped == limit as u64))
 	}
 
@@ -1385,8 +1390,7 @@ mod tests {
 		// re-insert of the reaped key is a legitimate fresh write and must not trip the tripwire.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
-		let table_name = s.table_sql(table()).table_name.clone();
-		s.reap_tombstones(&table_name, CommitVersion(2), 100).unwrap();
+		s.reap_tombstones(table(), CommitVersion(2), 100).unwrap();
 
 		s.set(
 			CommitVersion(3),
@@ -1411,8 +1415,7 @@ mod tests {
 		// nothing. Flushing below the reap high-water is what a reap outrunning the flush watermark does.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
-		let table_name = s.table_sql(table()).table_name.clone();
-		s.reap_tombstones(&table_name, CommitVersion(5), 100).unwrap();
+		s.reap_tombstones(table(), CommitVersion(5), 100).unwrap();
 
 		s.set(CommitVersion(4), HashMap::from([(table(), vec![(key(1), Some(row(b"ghost")))])])).unwrap();
 	}
@@ -1425,8 +1428,7 @@ mod tests {
 		// sweep-only resurrection passes silently.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
-		let table_name = s.table_sql(table()).table_name.clone();
-		s.reap_tombstones(&table_name, CommitVersion(5), 100).unwrap();
+		s.reap_tombstones(table(), CommitVersion(5), 100).unwrap();
 
 		s.persist_sweep(vec![(
 			CommitVersion(4),
@@ -1445,8 +1447,7 @@ mod tests {
 		s.set(CommitVersion(3), HashMap::from([(table(), vec![(key(3), Some(row(b"live")))])])).unwrap();
 		assert_eq!(s.count_current(table()).unwrap(), 3, "the tombstone counts as a physical row until reaped");
 
-		let table_name = s.table_sql(table()).table_name.clone();
-		let (reaped, more) = s.reap_tombstones(&table_name, CommitVersion(10), 100).unwrap();
+		let (reaped, more) = s.reap_tombstones(table(), CommitVersion(10), 100).unwrap();
 
 		assert_eq!(reaped, 1, "only the NULL-valued row is a tombstone");
 		assert!(!more, "a batch below the limit reports no remaining backlog");
@@ -1461,13 +1462,12 @@ mod tests {
 		// may still be unflushed.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
-		let table_name = s.table_sql(table()).table_name.clone();
 
-		let (below, _) = s.reap_tombstones(&table_name, CommitVersion(4), 100).unwrap();
+		let (below, _) = s.reap_tombstones(table(), CommitVersion(4), 100).unwrap();
 		assert_eq!(below, 0, "a tombstone at version 5 must not be reaped under a cutoff of 4");
 		assert_eq!(s.count_current(table()).unwrap(), 1, "the tombstone must still be present");
 
-		let (at, _) = s.reap_tombstones(&table_name, CommitVersion(5), 100).unwrap();
+		let (at, _) = s.reap_tombstones(table(), CommitVersion(5), 100).unwrap();
 		assert_eq!(at, 1, "the cutoff is inclusive: version 5 is reapable at cutoff 5");
 		assert_eq!(s.count_current(table()).unwrap(), 0);
 	}
@@ -1481,12 +1481,11 @@ mod tests {
 			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), None)])])).unwrap();
 		}
 
-		let table_name = s.table_sql(table()).table_name.clone();
-		let (first, more_first) = s.reap_tombstones(&table_name, CommitVersion(10), 2).unwrap();
+		let (first, more_first) = s.reap_tombstones(table(), CommitVersion(10), 2).unwrap();
 		assert_eq!(first, 2, "a limit of 2 caps the first call at two tombstones");
 		assert!(more_first, "hitting the limit must report backlog remaining");
 
-		let (second, more_second) = s.reap_tombstones(&table_name, CommitVersion(10), 2).unwrap();
+		let (second, more_second) = s.reap_tombstones(table(), CommitVersion(10), 2).unwrap();
 		assert_eq!(second, 1, "the third tombstone drains on the next call");
 		assert!(!more_second, "a sub-limit batch reports no further backlog");
 		assert_eq!(s.count_current(table()).unwrap(), 0);

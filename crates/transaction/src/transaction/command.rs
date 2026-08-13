@@ -475,6 +475,17 @@ impl CommandTransaction {
 	}
 
 	#[inline]
+	pub fn range_persistence(
+		&mut self,
+		range: EncodedKeyRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
+		self.check_active()?;
+		Ok(self.cmd.as_mut().unwrap().range_persistence(range, scope, batch_size))
+	}
+
+	#[inline]
 	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,

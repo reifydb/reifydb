@@ -38,7 +38,10 @@ use reifydb_runtime::{
 use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
 use reifydb_sub_lifecycle::{
 	gc::historical::actor::HistoricalGcTask,
-	plane::{RetentionPlane, ledger::FloorSource},
+	plane::{
+		RetentionPlane,
+		ledger::{FloorScope, FloorSource},
+	},
 };
 use reifydb_value::{util::cowvec::CowVec, value::Value};
 
@@ -66,7 +69,7 @@ impl FloorSource for ScriptedWatermark {
 		CommitVersion(u64::MAX)
 	}
 
-	fn flush_watermark(&self) -> CommitVersion {
+	fn flush_watermark(&self, _scope: FloorScope) -> CommitVersion {
 		CommitVersion(u64::MAX)
 	}
 }

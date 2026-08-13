@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
+	interface::store::EntryKind,
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},
 		watermark::{ConsumerPositions, EvictionWatermark},
@@ -17,6 +18,12 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum FloorScope {
+	Global,
+	Kind(EntryKind),
+}
+
 pub trait FloorSource: Send + Sync + 'static {
 	fn query_done_until(&self) -> CommitVersion;
 
@@ -26,7 +33,7 @@ pub trait FloorSource: Send + Sync + 'static {
 
 	fn consumer_position(&self) -> CommitVersion;
 
-	fn flush_watermark(&self) -> CommitVersion;
+	fn flush_watermark(&self, scope: FloorScope) -> CommitVersion;
 }
 
 pub struct HorizonLedger {
@@ -51,7 +58,7 @@ impl HorizonLedger {
 		now.checked_sub(ttl)
 	}
 
-	pub fn term(&self, term: FloorTerm, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
+	pub fn term(&self, term: FloorTerm, scope: FloorScope, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
 		match term {
 			FloorTerm::RowExpiry => self.expiry_instant(now, ttl?).map(Floor::Instant),
 			FloorTerm::RetentionHorizon => self.expiry_cutoff(now, ttl?).map(Floor::Version),
@@ -59,23 +66,30 @@ impl HorizonLedger {
 			FloorTerm::LeaseMin => Some(Floor::Version(self.source.lease_min())),
 			FloorTerm::ConsumerCheckpoint => Some(Floor::Version(self.source.consumer_checkpoint())),
 			FloorTerm::ConsumerPosition => Some(Floor::Version(self.source.consumer_position())),
-			FloorTerm::FlushWatermark => Some(Floor::Version(self.source.flush_watermark())),
+			FloorTerm::FlushWatermark => Some(Floor::Version(self.source.flush_watermark(scope))),
 		}
 	}
 
-	pub fn cutoff(&self, class: RetentionClass, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
-		self.cutoff_with_binding(class, now, ttl).map(|(floor, _)| floor)
+	pub fn cutoff(
+		&self,
+		class: RetentionClass,
+		scope: FloorScope,
+		now: DateTime,
+		ttl: Option<Duration>,
+	) -> Option<Floor> {
+		self.cutoff_with_binding(class, scope, now, ttl).map(|(floor, _)| floor)
 	}
 
 	pub fn cutoff_with_binding(
 		&self,
 		class: RetentionClass,
+		scope: FloorScope,
 		now: DateTime,
 		ttl: Option<Duration>,
 	) -> Option<(Floor, FloorTerm)> {
 		let mut floor: Option<(Floor, FloorTerm)> = None;
 		for term in class.floor_terms() {
-			let resolved = self.term(*term, now, ttl)?;
+			let resolved = self.term(*term, scope, now, ttl)?;
 			floor = Some(match floor {
 				Some((current, binding)) => {
 					reifydb_assertions! {
@@ -131,11 +145,14 @@ impl FloorSource for EngineFloors {
 			.unwrap_or(CommitVersion(u64::MAX))
 	}
 
-	fn flush_watermark(&self) -> CommitVersion {
-		durable_frontier(
-			EvictionWatermark::watermark(&self.engine),
-			self.engine.multi().store().commit().oldest_pending_version(),
-		)
+	fn flush_watermark(&self, scope: FloorScope) -> CommitVersion {
+		let permitted = EvictionWatermark::watermark(&self.engine);
+		let commit = self.engine.multi().store().commit();
+		let oldest_pending = match scope {
+			FloorScope::Global => commit.oldest_pending_version(),
+			FloorScope::Kind(kind) => commit.oldest_pending_for(kind),
+		};
+		durable_frontier(permitted, oldest_pending)
 	}
 }
 
@@ -148,6 +165,7 @@ fn durable_frontier(permitted: CommitVersion, oldest_pending: Option<CommitVersi
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::interface::catalog::{id::TableId, storage::StorageId};
 	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
@@ -174,9 +192,13 @@ mod tests {
 			CommitVersion(u64::MAX)
 		}
 
-		fn flush_watermark(&self) -> CommitVersion {
+		fn flush_watermark(&self, _scope: FloorScope) -> CommitVersion {
 			CommitVersion(u64::MAX)
 		}
+	}
+
+	fn source(id: u64) -> EntryKind {
+		EntryKind::Source(StorageId::Table(TableId(id)))
 	}
 
 	fn ledger() -> HorizonLedger {
@@ -205,7 +227,7 @@ mod tests {
 		let ledger = ledger();
 
 		for term in FloorTerm::all() {
-			let resolved = ledger.term(*term, now(), Some(one_hour()));
+			let resolved = ledger.term(*term, FloorScope::Global, now(), Some(one_hour()));
 			match resolved {
 				Some(Floor::Instant(_)) => assert!(
 					term.is_clock_driven(),
@@ -256,6 +278,41 @@ mod tests {
 		let frontier = durable_frontier(CommitVersion(500), Some(CommitVersion(900)));
 
 		assert_eq!(frontier, CommitVersion(500));
+	}
+
+	#[test]
+	fn a_kind_whose_own_writes_are_flushed_reaps_past_another_kinds_unflushed_write() {
+		// A buffered write can only resurrect a row in its own persistent entry, so one global minimum lets a
+		// single starved kind pin reclamation for every other one forever.
+		let starved = durable_frontier(CommitVersion(7787), Some(CommitVersion(11)));
+		let drained = durable_frontier(CommitVersion(7787), None);
+
+		assert_eq!(starved, CommitVersion(10), "the kind holding the write is still clamped by its own write");
+		assert_eq!(
+			drained,
+			CommitVersion(7787),
+			"a kind with nothing buffered has no resurrection hazard and must reach the permitted \
+			 watermark"
+		);
+	}
+
+	#[test]
+	fn the_flush_watermark_is_the_only_term_that_narrows_to_a_single_kind() {
+		// Scoping a term that has nothing per-kind to say would hand back a floor that silently ignores the
+		// scope, so a caller could believe it asked about one kind and reclaim on another's behalf.
+		let ledger = ledger();
+		let kind = FloorScope::Kind(source(1));
+
+		for term in FloorTerm::all() {
+			let global = ledger.term(*term, FloorScope::Global, now(), Some(one_hour()));
+			let scoped = ledger.term(*term, kind, now(), Some(one_hour()));
+
+			assert_eq!(
+				global, scoped,
+				"{term} resolved differently per kind in a fixture that scripts no per-kind state, \
+				 so it reads scope it cannot honour"
+			);
+		}
 	}
 
 	#[test]

@@ -88,20 +88,20 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn list_current_table_names(&self) -> Result<Vec<String>> {
+	pub fn list_current_entries(&self) -> Result<Vec<EntryKind>> {
 		match self {
-			Self::Sqlite(s) => s.list_current_table_names(),
+			Self::Sqlite(s) => s.list_current_entries(),
 		}
 	}
 
 	pub fn reap_tombstones(
 		&self,
-		table_name: &str,
+		kind: EntryKind,
 		cutoff_version: CommitVersion,
 		limit: usize,
 	) -> Result<(u64, bool)> {
 		match self {
-			Self::Sqlite(s) => s.reap_tombstones(table_name, cutoff_version, limit),
+			Self::Sqlite(s) => s.reap_tombstones(kind, cutoff_version, limit),
 		}
 	}
 
@@ -152,13 +152,13 @@ impl MultiPersistentTier {
 		match *self {}
 	}
 
-	pub fn list_current_table_names(&self) -> Result<Vec<String>> {
+	pub fn list_current_entries(&self) -> Result<Vec<EntryKind>> {
 		match *self {}
 	}
 
 	pub fn reap_tombstones(
 		&self,
-		_table_name: &str,
+		_kind: EntryKind,
 		_cutoff_version: CommitVersion,
 		_limit: usize,
 	) -> Result<(u64, bool)> {

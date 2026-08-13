@@ -437,6 +437,8 @@ pub struct MultiVersionRangeCursor {
 
 	pub exhausted: bool,
 
+	warm: bool,
+
 	warm_bucket: Option<PageId>,
 
 	warm_consumed: u64,
@@ -444,7 +446,17 @@ pub struct MultiVersionRangeCursor {
 
 impl MultiVersionRangeCursor {
 	pub fn new() -> Self {
-		Self::default()
+		Self {
+			warm: true,
+			..Default::default()
+		}
+	}
+
+	pub fn cold() -> Self {
+		Self {
+			warm: false,
+			..Default::default()
+		}
 	}
 
 	pub fn is_exhausted(&self) -> bool {
@@ -694,6 +706,22 @@ impl StandardMultiStore {
 		}
 	}
 
+	pub fn range_persistence(
+		&self,
+		range: EncodedKeyRange,
+		scope: MultiVersionScope,
+		batch_size: usize,
+	) -> MultiVersionRangeIter {
+		MultiVersionRangeIter {
+			store: self.clone(),
+			cursor: MultiVersionRangeCursor::cold(),
+			range,
+			scope,
+			batch_size,
+			current_batch: Vec::new().into_iter(),
+		}
+	}
+
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
@@ -867,6 +895,9 @@ impl StandardMultiStore {
 		cursor: &mut MultiVersionRangeCursor,
 		consumed: usize,
 	) -> Result<()> {
+		if !cursor.warm {
+			return Ok(());
+		}
 		if let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) {
 			maybe_warm_bucket(read, persistent, cursor, scan.table, consumed)?;
 		}

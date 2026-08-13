@@ -242,6 +242,17 @@ impl MultiStore {
 		}
 	}
 
+	pub fn range_persistence(
+		&self,
+		range: EncodedKeyRange,
+		scope: MultiVersionScope,
+		batch_size: usize,
+	) -> MultiVersionRangeIterator<'_> {
+		match self {
+			MultiStore::Standard(store) => Box::new(store.range_persistence(range, scope, batch_size)),
+		}
+	}
+
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,

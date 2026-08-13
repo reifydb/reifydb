@@ -57,6 +57,18 @@ impl MultiCommitBufferTier {
 		}
 	}
 
+	pub fn list_entry_kinds_by_oldest_pending(&self) -> Result<Vec<EntryKind>> {
+		match self {
+			Self::Memory(s) => s.list_entry_kinds_by_oldest_pending(),
+		}
+	}
+
+	pub fn oldest_pending_for(&self, kind: EntryKind) -> Option<CommitVersion> {
+		match self {
+			Self::Memory(s) => s.oldest_pending_for(kind),
+		}
+	}
+
 	pub fn oldest_pending_version(&self) -> Option<CommitVersion> {
 		match self {
 			Self::Memory(s) => s.oldest_pending_version(),

@@ -73,6 +73,33 @@ impl MemoryRowStorage {
 		Ok(self.inner.entries.data.keys())
 	}
 
+	fn collect_oldest_pending(&self) -> Vec<(EntryKind, CommitVersion)> {
+		self.inner
+			.entries
+			.data
+			.keys()
+			.into_iter()
+			.filter_map(|kind| {
+				let entry = self.inner.entries.data.get(&kind)?;
+				let oldest = entry.oldest.read();
+				let version = *oldest.keys().next()?;
+				Some((kind, version))
+			})
+			.collect()
+	}
+
+	pub fn list_entry_kinds_by_oldest_pending(&self) -> Result<Vec<EntryKind>> {
+		let mut pending = self.collect_oldest_pending();
+		pending.sort_by_key(|(_, version)| *version);
+		Ok(pending.into_iter().map(|(kind, _)| kind).collect())
+	}
+
+	pub fn oldest_pending_for(&self, kind: EntryKind) -> Option<CommitVersion> {
+		let entry = self.inner.entries.data.get(&kind)?;
+		let oldest = entry.oldest.read();
+		oldest.keys().next().copied()
+	}
+
 	pub fn count_historical(&self, table: EntryKind) -> Result<u64> {
 		Ok(self.inner
 			.entries
@@ -185,14 +212,7 @@ impl MemoryRowStorage {
 	}
 
 	pub fn oldest_pending_version(&self) -> Option<CommitVersion> {
-		self.inner
-			.entries
-			.data
-			.keys()
-			.into_iter()
-			.filter_map(|kind| self.inner.entries.data.get(&kind))
-			.filter_map(|entry| entry.oldest.read().keys().next().copied())
-			.min()
+		self.collect_oldest_pending().into_iter().map(|(_, version)| version).min()
 	}
 
 	pub fn collect_evictable_below(

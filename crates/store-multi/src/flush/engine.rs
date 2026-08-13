@@ -255,10 +255,10 @@ impl FlushEngine {
 
 	#[inline]
 	fn list_evictable_kinds(&self) -> Option<Vec<EntryKind>> {
-		match self.commit.list_all_entry_kinds() {
+		match self.commit.list_entry_kinds_by_oldest_pending() {
 			Ok(v) => Some(v),
 			Err(e) => {
-				warn!(error = %e, "flush sweep: list_all_entry_kinds failed");
+				warn!(error = %e, "flush sweep: list_entry_kinds_by_oldest_pending failed");
 				None
 			}
 		}
@@ -1055,6 +1055,51 @@ mod tests {
 			),
 			"a Multi entry committed below the watermark must reach the persistent tier; \
 			 dictionary entries and CDC checkpoints live in this keyspace and are lost on restart if it does not"
+		);
+	}
+
+	#[test]
+	fn a_kind_behind_the_budget_prefix_is_still_swept_under_sustained_writes() {
+		const KINDS: u64 = 40;
+		const KEYS_PER_ROUND: u64 = 20;
+		const BUDGET: usize = 40;
+		const ROUNDS: u64 = 60;
+		const FIRST_VERSION: u64 = 1;
+
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1_000_000)));
+		let kinds: Vec<EntryKind> =
+			(0..KINDS).map(|i| EntryKind::Source(StorageId::Table(TableId(i + 1)))).collect();
+
+		let round_writes = |version: u64| {
+			for kind in &kinds {
+				for key in 0..KEYS_PER_ROUND {
+					write(&actor.commit, *kind, &ek(&format!("v{version}-k{key}")), version, "x");
+				}
+			}
+		};
+
+		round_writes(FIRST_VERSION);
+		let mut exhausted = 0;
+		for round in 0..ROUNDS {
+			if actor.sweep_slice(BUDGET).progress.is_yielded() {
+				exhausted += 1;
+			}
+			round_writes(FIRST_VERSION + 1 + round);
+		}
+
+		assert_eq!(
+			exhausted, ROUNDS,
+			"the budget must run out every slice for this to exercise starvation at all"
+		);
+
+		let oldest = actor.commit.oldest_pending_version().expect("writes are still pending");
+		assert!(
+			oldest.0 > FIRST_VERSION,
+			"the oldest pending version is still {} after {ROUNDS} slices, so at least one of the \
+			 {KINDS} kinds was never swept once; that kind pins the durable frontier at the first \
+			 write, which clamps the tombstone reap cutoff to zero and leaves every tombstone in the \
+			 persistent tier undeletable",
+			oldest.0
 		);
 	}
 }

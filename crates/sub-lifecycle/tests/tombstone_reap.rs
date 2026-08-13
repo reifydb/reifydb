@@ -29,7 +29,10 @@ use reifydb_core::{
 use reifydb_runtime::{context::clock::Clock, version_epoch::VersionEpoch};
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_sub_lifecycle::{
-	plane::{RetentionPlane, ledger::FloorSource},
+	plane::{
+		RetentionPlane,
+		ledger::{FloorScope, FloorSource},
+	},
 	store::tombstone::TombstoneReapTask,
 };
 use reifydb_value::{util::cowvec::CowVec, value::Value};
@@ -58,7 +61,7 @@ impl FloorSource for ScriptedFlushWatermark {
 		CommitVersion(u64::MAX)
 	}
 
-	fn flush_watermark(&self) -> CommitVersion {
+	fn flush_watermark(&self, _scope: FloorScope) -> CommitVersion {
 		CommitVersion(self.0.load(Ordering::SeqCst))
 	}
 }

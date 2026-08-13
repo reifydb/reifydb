@@ -54,7 +54,7 @@ pub fn scan_expired(
 	let mut examined = 0usize;
 	let mut current: Option<MultiVersionRow> = None;
 
-	let mut stream = txn.range(range, RangeScope::All, 1024)?;
+	let mut stream = txn.range_persistence(range, RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
 		let entry = entry?;
 		if let Some(cur) = &mut current {

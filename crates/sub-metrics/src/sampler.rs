@@ -322,7 +322,7 @@ fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
 				Some(term) => Value::Utf8(term.to_string()),
 				None => Value::none_of(ValueType::Utf8),
 			};
-			let mut measures = vec![
+			let measures = vec![
 				Measure {
 					metric: "floor_version",
 					reading: Reading::Version(snapshot.floor_version),

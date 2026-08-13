@@ -56,7 +56,10 @@ mod tests {
 	use reifydb_value::value::duration::Duration;
 
 	use super::Measured;
-	use crate::plane::{RetentionPlane, ledger::FloorSource};
+	use crate::plane::{
+		RetentionPlane,
+		ledger::{FloorScope, FloorSource},
+	};
 
 	struct NoFloors;
 
@@ -77,7 +80,7 @@ mod tests {
 			CommitVersion(u64::MAX)
 		}
 
-		fn flush_watermark(&self) -> CommitVersion {
+		fn flush_watermark(&self, _scope: FloorScope) -> CommitVersion {
 			CommitVersion(u64::MAX)
 		}
 	}
