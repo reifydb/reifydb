@@ -58,6 +58,15 @@ pub trait StateStore {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()>;
 
+	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedOperatorRow)>> {
+		let mut last = None;
+		self.state_range_visit(range, None, &mut |key, payload| {
+			last = Some((key, payload));
+			Ok(())
+		})?;
+		Ok(last)
+	}
+
 	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId>;
 
 	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>>;

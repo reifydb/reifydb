@@ -754,8 +754,10 @@ mod tests {
 			limit: Option<usize>,
 			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> ValueResult<()>,
 		) -> ValueResult<()> {
+			// The backing map is a HashMap, so without this sort the visit order is arbitrary and the real
+			// store's key order is not reproduced.
 			let mut seen = 0usize;
-			let entries: Vec<(Vec<u8>, EncodedOperatorRow)> = self
+			let mut entries: Vec<(Vec<u8>, EncodedOperatorRow)> = self
 				.state
 				.iter()
 				.filter(|(k, _)| {
@@ -774,6 +776,7 @@ mod tests {
 				})
 				.map(|(k, v)| (k.clone(), v.clone()))
 				.collect();
+			entries.sort_by(|a, b| a.0.cmp(&b.0));
 			for (k, v) in entries {
 				if let Some(limit) = limit
 					&& seen >= limit

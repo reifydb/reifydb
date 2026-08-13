@@ -46,8 +46,8 @@ impl OutputFrontiers {
 			assert!(
 				at > CommitVersion(0),
 				"an output frontier was published at version zero; every consumer past version \
-				 zero would resolve it as visible while it never becomes dirty, so it never \
-				 reaches disk and the claim vanishes on the next restart"
+				 zero would resolve it as visible, including transactions that ran before the \
+				 frontier was established"
 			);
 		}
 		let frontier_ms = frontier.to_millis();

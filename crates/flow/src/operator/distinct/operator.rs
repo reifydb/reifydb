@@ -53,12 +53,6 @@ const DROP_REASON: &str = "removes whose distinct entry was reclaimed";
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
-pub(super) struct DistinctWorkingSet {
-	pub(super) state: DistinctState,
-	pub(super) loaded: HashSet<Hash128>,
-	pub(super) groups: HashMap<Hash128, GroupId>,
-}
-
 enum LoadedEntry {
 	Absent,
 	Empty,
@@ -77,9 +71,7 @@ pub struct DistinctPlan {
 }
 
 pub struct DistinctOperator {
-	pub(super) plan: Arc<DistinctPlan>,
-	state: DistinctWorkingSet,
-	hydrated: bool,
+	pub(super) plan: DistinctPlan,
 }
 
 impl DistinctOperator {
@@ -102,7 +94,7 @@ impl DistinctOperator {
 			.expect("Failed to compile expressions");
 
 		Self {
-			plan: Arc::new(DistinctPlan {
+			plan: DistinctPlan {
 				parent_schema,
 				operator,
 				compiled_expressions,
@@ -111,58 +103,8 @@ impl DistinctOperator {
 				ctx,
 				dropped: SealedDrops::new(operator, DROP_REASON),
 				_seal: seal,
-			}),
-			state: DistinctWorkingSet {
-				state: DistinctState {
-					entries: IndexMap::new(),
-					layout: DistinctLayout::new(),
-					dirty: HashMap::new(),
-					layout_changed_at: None,
-				},
-				loaded: HashSet::new(),
-				groups: HashMap::new(),
 			},
-			hydrated: false,
 		}
-	}
-
-	fn hydrate_once(&mut self, host: &mut dyn HostContext) -> Result<()> {
-		if self.hydrated {
-			return Ok(());
-		}
-		self.state.state.layout = self.plan.load_layout(host)?;
-		self.hydrated = true;
-		Ok(())
-	}
-
-	fn flush_state(&mut self, host: &mut dyn HostContext) -> Result<()> {
-		let working = &mut self.state;
-		let dirty: Vec<(Hash128, DateTime)> = working.state.dirty.drain().collect();
-		for (hash, at) in dirty {
-			let key = DistinctPlan::entry_key(working.groups[&hash]);
-			match working.state.entries.get(&hash) {
-				Some(entry) => {
-					let row = entry.encode_state(at).map_err(|e| {
-						Error::from(FlowStateError::Encode {
-							state: "DistinctEntry",
-							cause: e.to_string(),
-						})
-					})?;
-					utils::state_set(host, &key, row)?;
-				}
-				None => utils::state_remove(host, &key)?,
-			}
-		}
-		if let Some(at) = working.state.layout_changed_at.take() {
-			let layout_row = working.state.layout.encode_state(at).map_err(|e| {
-				Error::from(FlowStateError::Encode {
-					state: "DistinctLayout",
-					cause: e.to_string(),
-				})
-			})?;
-			utils::state_set(host, &DistinctPlan::layout_storage_key(), layout_row)?;
-		}
-		Ok(())
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
@@ -220,6 +162,40 @@ impl DistinctPlan {
 		}
 	}
 
+	fn persist(
+		&self,
+		host: &mut dyn HostContext,
+		state: &mut DistinctState,
+		groups: &HashMap<Hash128, GroupId>,
+	) -> Result<()> {
+		let dirty: Vec<(Hash128, DateTime)> = state.dirty.drain().collect();
+		for (hash, at) in dirty {
+			let key = Self::entry_key(groups[&hash]);
+			match state.entries.get(&hash) {
+				Some(entry) => {
+					let row = entry.encode_state(at).map_err(|e| {
+						Error::from(FlowStateError::Encode {
+							state: "DistinctEntry",
+							cause: e.to_string(),
+						})
+					})?;
+					utils::state_set(host, &key, row)?;
+				}
+				None => utils::state_remove(host, &key)?,
+			}
+		}
+		if let Some(at) = state.layout_changed_at.take() {
+			let layout_row = state.layout.encode_state(at).map_err(|e| {
+				Error::from(FlowStateError::Encode {
+					state: "DistinctLayout",
+					cause: e.to_string(),
+				})
+			})?;
+			utils::state_set(host, &Self::layout_storage_key(), layout_row)?;
+		}
+		Ok(())
+	}
+
 	#[instrument(name = "flow::operator::distinct::batch_hashes", level = "trace", skip_all, fields(diffs = diffs.len()))]
 	fn batch_hashes(&self, diffs: &[Diff]) -> Result<Vec<Hash128>> {
 		let mut touched: Vec<Hash128> = Vec::new();
@@ -267,35 +243,33 @@ impl HostOperator for DistinctOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
-		self.hydrate_once(host)?;
-
-		let plan = self.plan.clone();
+		let plan = &self.plan;
 		let operator_id = plan.operator;
 		let ordered = plan.batch_hashes(&change.diffs)?;
-		let working = &mut self.state;
+
+		let mut state = DistinctState {
+			entries: IndexMap::new(),
+			layout: plan.load_layout(host)?,
+			dirty: HashMap::new(),
+			layout_changed_at: None,
+		};
 
 		let group_keys: Vec<EncodedKey> = ordered.iter().map(|hash| DistinctPlan::group_bytes(*hash)).collect();
 		let interned = host.intern_groups(&group_keys)?;
-		let mut fresh: HashMap<Hash128, bool> = HashMap::with_capacity(ordered.len());
+		let mut groups: HashMap<Hash128, GroupId> = HashMap::with_capacity(ordered.len());
 		for (hash, (group, is_new)) in ordered.iter().zip(interned) {
-			working.groups.insert(*hash, group);
-			fresh.insert(*hash, is_new);
-		}
-
-		for &hash in &ordered {
-			if working.loaded.insert(hash) {
-				if fresh[&hash] {
-					continue;
+			groups.insert(*hash, group);
+			if is_new {
+				continue;
+			}
+			match plan.load_entry(host, group)? {
+				LoadedEntry::Present(entry) => {
+					state.entries.insert(*hash, entry);
 				}
-				match plan.load_entry(host, working.groups[&hash])? {
-					LoadedEntry::Present(entry) => {
-						working.state.entries.insert(hash, entry);
-					}
-					LoadedEntry::Empty => {
-						working.state.dirty.insert(hash, DateTime::default());
-					}
-					LoadedEntry::Absent => {}
+				LoadedEntry::Empty => {
+					state.dirty.insert(*hash, DateTime::default());
 				}
+				LoadedEntry::Absent => {}
 			}
 		}
 
@@ -306,8 +280,7 @@ impl HostOperator for DistinctOperator {
 					post,
 					..
 				} => {
-					let insert_result =
-						plan.process_insert(host, &mut working.state, &working.groups, &post)?;
+					let insert_result = plan.process_insert(host, &mut state, &groups, &post)?;
 					result.extend(insert_result);
 				}
 				Diff::Update {
@@ -315,31 +288,23 @@ impl HostOperator for DistinctOperator {
 					post,
 					..
 				} => {
-					let update_result = plan.process_update(
-						host,
-						&mut working.state,
-						&working.groups,
-						&pre,
-						&post,
-					)?;
+					let update_result =
+						plan.process_update(host, &mut state, &groups, &pre, &post)?;
 					result.extend(update_result);
 				}
 				Diff::Remove {
 					pre,
 					..
 				} => {
-					let remove_result =
-						plan.process_remove(host, &mut working.state, &working.groups, &pre)?;
+					let remove_result = plan.process_remove(host, &mut state, &groups, &pre)?;
 					result.extend(remove_result);
 				}
 			}
 		}
 
-		Ok(Change::from_flow(operator_id, change.version, result, change.changed_at))
-	}
+		plan.persist(host, &mut state, &groups)?;
 
-	fn flush(&mut self, host: &mut dyn HostContext) -> Result<()> {
-		self.flush_state(host)
+		Ok(Change::from_flow(operator_id, change.version, result, change.changed_at))
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

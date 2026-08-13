@@ -153,6 +153,34 @@ pub trait StateTxn: FlowTransaction {
 		})
 	}
 
+	#[instrument(name = "flow::state::range_rev", level = "debug", skip(self, range), fields(
+		operator_id = id.0,
+		site = site
+	))]
+	fn state_range_rev(
+		&mut self,
+		id: OperatorId,
+		range: EncodedKeyRange,
+		limit: Option<usize>,
+		site: &'static str,
+	) -> Result<MultiVersionBatch> {
+		let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(id)));
+		let iter = self.range_rev(prefixed_range, RangeScope::All, 1024);
+		let mut items = Vec::new();
+		let mut has_more = false;
+		for result in iter {
+			if limit.is_some_and(|l| items.len() == l) {
+				has_more = true;
+				break;
+			}
+			items.push(result?);
+		}
+		Ok(MultiVersionBatch {
+			items,
+			has_more,
+		})
+	}
+
 	#[instrument(name = "flow::state::clear", level = "trace", skip(self), fields(
 		operator_id = id.0,
 		keys_removed = field::Empty

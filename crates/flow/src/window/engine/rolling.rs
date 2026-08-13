@@ -14,7 +14,7 @@ use reifydb_codec::{
 	row::operator::OperatorState,
 };
 use reifydb_core::{
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, GroupStateKey},
 	metrics::heap::HeapSize,
 	state::{cache::StateCache, store::StateStore},
 };
@@ -23,7 +23,7 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
 	state::{
-		expiry::{ExpiryIndex, expiry_key},
+		expiry::{expiry_drop, expiry_due, expiry_earliest, expiry_key, expiry_set},
 		seal::coord::{Coord, IsZero},
 	},
 	window::{
@@ -97,7 +97,6 @@ pub struct RollingEngine<G, C: Slot, Accumulator> {
 	buffers: StateCache<BufferKey, RollingBuffer<C, Accumulator>>,
 	running: Option<StateCache<RunningKey, Accumulator>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
-	expiry: ExpiryIndex<RollingIndexEntry<G>>,
 	meta_low_water: Option<u64>,
 	expire_batch: usize,
 	lag: <C::Coord as Coord>::Span,
@@ -167,7 +166,6 @@ where
 			buffers: StateCache::<BufferKey, RollingBuffer<C, Accumulator>>::new(),
 			running: None,
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
-			expiry: ExpiryIndex::new(),
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
 			lag: Default::default(),
@@ -406,10 +404,10 @@ where
 				let new_index_key = coord_min_key(&slot.buffer);
 				if new_index_key != slot.prior_index_key {
 					if let Some(old) = slot.prior_index_key {
-						self.expiry.drop_key(store, &expiry_key(old, &group, &[]))?;
+						expiry_drop(store, &expiry_key(old, &group, &[]))?;
 					}
 					if let Some(new) = new_index_key {
-						self.expiry.set(
+						expiry_set(
 							store,
 							expiry_key(new, &group, &[]),
 							RollingIndexEntry {
@@ -628,10 +626,10 @@ where
 			let new_min = coord_min_key(&slot.buffer);
 			if new_min != slot.prior_min {
 				if let Some(old) = slot.prior_min {
-					self.expiry.drop_key(store, &expiry_key(old, &group, &[]))?;
+					expiry_drop(store, &expiry_key(old, &group, &[]))?;
 				}
 				if let Some(new) = new_min {
-					self.expiry.set(
+					expiry_set(
 						store,
 						expiry_key(new, &group, &[]),
 						RollingIndexEntry {
@@ -710,13 +708,14 @@ where
 				"expire_before_running requires an engine constructed with new_runnable"
 			);
 		}
-		let due = self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
+		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
+			expiry_due(store, cutoff.order_key().to_order(), self.expire_batch)?;
 
 		let mut out: Vec<RollingExpiry<G, Accumulator::Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let slot = EncodedKey::new(&entry.slot_key);
 			let group_id = GroupId(entry.group_id);
-			self.expiry.drop_key(store, &index_key)?;
+			expiry_drop(store, &index_key)?;
 			let frontier = if self.lag.is_zero() {
 				Some(<C::Coord as Coord>::MAX)
 			} else {
@@ -730,7 +729,7 @@ where
 			let expired: Vec<C> = buffer.range(..=cutoff).map(|(coord, _)| *coord).collect();
 			if expired.is_empty() {
 				if let Some(new) = coord_min_key(&buffer) {
-					self.expiry.set(
+					expiry_set(
 						store,
 						expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
@@ -763,7 +762,7 @@ where
 			};
 			match (new_min, merged_any, finalized) {
 				(Some(new), true, Some(value)) => {
-					self.expiry.set(
+					expiry_set(
 						store,
 						expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
@@ -785,7 +784,7 @@ where
 					});
 				}
 				(Some(new), false, _) => {
-					self.expiry.set(
+					expiry_set(
 						store,
 						expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
@@ -833,7 +832,7 @@ where
 	}
 
 	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
-		self.expiry.earliest(store)
+		expiry_earliest(store)
 	}
 
 	pub fn expire_before<CB, Output>(
@@ -845,13 +844,14 @@ where
 	where
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
-		let due = self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
+		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
+			expiry_due(store, cutoff.order_key().to_order(), self.expire_batch)?;
 
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let slot = EncodedKey::new(&entry.slot_key);
 			let group_id = GroupId(entry.group_id);
-			self.expiry.drop_key(store, &index_key)?;
+			expiry_drop(store, &index_key)?;
 			let mut buffer: RollingBuffer<C, Accumulator> =
 				self.buffers.get(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
 			if buffer.is_empty() {
@@ -861,7 +861,7 @@ where
 			buffer.retain(|&coord, _| coord > cutoff);
 			if buffer.len() == before {
 				if let Some(new) = coord_min_key(&buffer) {
-					self.expiry.set(
+					expiry_set(
 						store,
 						expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
@@ -876,7 +876,7 @@ where
 			match combine(&entry.group, &buffer) {
 				Some(value) if !buffer.is_empty() => {
 					if let Some(new) = coord_min_key(&buffer) {
-						self.expiry.set(
+						expiry_set(
 							store,
 							expiry_key(new, &entry.group, &[]),
 							RollingIndexEntry {

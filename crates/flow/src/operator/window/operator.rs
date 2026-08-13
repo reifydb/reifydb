@@ -99,11 +99,6 @@ impl WindowOperator {
 		&mut self.meta
 	}
 
-	fn open_meta(&mut self, _host: &mut dyn HostContext) -> Result<()> {
-		self.core.engine_meta_open();
-		Ok(())
-	}
-
 	pub(crate) fn rolling_engine_slot(&mut self) -> &mut Option<RollingEngineSlot> {
 		&mut self.rolling_engine
 	}
@@ -193,7 +188,6 @@ impl HostOperator for WindowOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
-		self.open_meta(host)?;
 		let out = match self.kind {
 			WindowKind::Tumbling {
 				..
@@ -213,12 +207,10 @@ impl HostOperator for WindowOperator {
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
 		if timer.kind == TimerKind::Maintenance {
-			self.open_meta(host)?;
 			reap_sealed_groups(self, host)?;
 			return Ok(None);
 		}
 		let fired = FiredAt::of(&timer);
-		self.open_meta(host)?;
 		let diffs = match self.kind {
 			WindowKind::Tumbling {
 				..

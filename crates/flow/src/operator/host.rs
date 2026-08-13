@@ -174,6 +174,18 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		Ok(())
 	}
 
+	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedOperatorRow)>> {
+		let batch = self.txn.state_range_rev(self.operator, range, Some(1), "operator::host_last")?;
+		for r in batch.items {
+			if let Some(decoded) = OperatorStateKey::decode(&r.key)
+				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
+			{
+				return Ok(Some((inner, EncodedOperatorRow::try_from(r.bytes)?)));
+			}
+		}
+		Ok(None)
+	}
+
 	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
 		Ok(self.txn.intern_group(self.operator, group)?.0)
 	}

@@ -4,7 +4,6 @@
 use std::{
 	collections::{BTreeMap, HashMap},
 	slice::from_ref,
-	sync::Arc,
 };
 
 use reifydb_codec::row::{
@@ -56,9 +55,7 @@ pub struct TakePlan {
 }
 
 pub struct TakeOperator {
-	plan: Arc<TakePlan>,
-	state: TakeState,
-	hydrated: bool,
+	plan: TakePlan,
 }
 
 fn row_shape_from_columns(cols: &Columns) -> RowShape {
@@ -92,37 +89,12 @@ fn decode_take_bytes(shape: &RowShape, row_number: RowNumber, encoded: &EncodedB
 impl TakeOperator {
 	pub fn new(parent_schema: Option<Columns>, operator: OperatorId, limit: usize) -> Self {
 		Self {
-			plan: Arc::new(TakePlan {
+			plan: TakePlan {
 				parent_schema,
 				operator,
 				limit,
-			}),
-			state: TakeState::default(),
-			hydrated: false,
+			},
 		}
-	}
-
-	fn hydrate_once(&mut self, host: &mut dyn HostContext) -> Result<()> {
-		if self.hydrated {
-			return Ok(());
-		}
-		self.state = self.plan.load_take_state(host)?;
-		self.hydrated = true;
-		Ok(())
-	}
-
-	fn flush_state(&mut self, host: &mut dyn HostContext) -> Result<()> {
-		if !self.hydrated {
-			return Ok(());
-		}
-		let row = encode(&self.state, DateTime::MAX).map_err(|e| {
-			Error::from(FlowStateError::Encode {
-				state: "TakeState",
-				cause: e.to_string(),
-			})
-		})?;
-		utils::state_set(host, &utils::empty_state_key(), row)?;
-		Ok(())
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
@@ -145,6 +117,16 @@ impl TakePlan {
 				cause: e.to_string(),
 			})
 		})
+	}
+
+	fn store_take_state(&self, host: &mut dyn HostContext, state: &TakeState) -> Result<()> {
+		let row = encode(state, DateTime::MAX).map_err(|e| {
+			Error::from(FlowStateError::Encode {
+				state: "TakeState",
+				cause: e.to_string(),
+			})
+		})?;
+		utils::state_set(host, &utils::empty_state_key(), row)
 	}
 
 	#[inline]
@@ -326,9 +308,7 @@ impl HostOperator for TakeOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
-		self.hydrate_once(host)?;
-		let plan = self.plan.clone();
-		let state = &mut self.state;
+		let mut state = self.plan.load_take_state(host)?;
 
 		let mut output_diffs = Vec::new();
 		let version = change.version;
@@ -338,24 +318,22 @@ impl HostOperator for TakeOperator {
 				Diff::Insert {
 					post,
 					..
-				} => plan.apply_insert_diff(state, post, &mut output_diffs),
+				} => self.plan.apply_insert_diff(&mut state, post, &mut output_diffs),
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => plan.apply_update_diff(state, pre, post, &mut output_diffs),
+				} => self.plan.apply_update_diff(&mut state, pre, post, &mut output_diffs),
 				Diff::Remove {
 					pre,
 					..
-				} => plan.apply_remove_diff(state, pre, &mut output_diffs),
+				} => self.plan.apply_remove_diff(&mut state, pre, &mut output_diffs),
 			}
 		}
 
-		Ok(Change::from_flow(plan.operator, version, output_diffs, change.changed_at))
-	}
+		self.plan.store_take_state(host, &state)?;
 
-	fn flush(&mut self, host: &mut dyn HostContext) -> Result<()> {
-		self.flush_state(host)
+		Ok(Change::from_flow(self.plan.operator, version, output_diffs, change.changed_at))
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

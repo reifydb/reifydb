@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::ops::Bound;
 
 use reifydb_codec::{
 	key::{
@@ -36,67 +36,39 @@ where
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::EXPIRY, tail)
 }
 
-fn due_start(threshold: u64) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::EXPIRY, encode_u64(threshold))
+fn due_range(threshold: u64) -> EncodedKeyRange {
+	let start = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::EXPIRY, encode_u64(threshold));
+	EncodedKeyRange::new(Bound::Included(start.as_encoded().clone()), expiry_range().end)
 }
 
-pub struct ExpiryIndex<E> {
-	entries: Option<BTreeMap<GroupStateKey, E>>,
+pub(crate) fn expiry_set<E: OperatorState>(store: &mut dyn StateStore, key: GroupStateKey, entry: E) -> Result<()> {
+	store.state_set(&key, entry.encode_state(store.written_at())?)
 }
 
-impl<E: OperatorState + Clone> ExpiryIndex<E> {
-	pub(crate) fn new() -> Self {
-		Self {
-			entries: None,
-		}
-	}
+pub(crate) fn expiry_drop(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
+	store.state_remove(key)
+}
 
-	#[instrument(name = "flow::seal::expiry_hydrate", level = "debug", skip_all)]
-	fn hydrate(&mut self, store: &mut dyn StateStore) -> Result<&mut BTreeMap<GroupStateKey, E>> {
-		if self.entries.is_none() {
-			let mut map = BTreeMap::new();
-			store.state_range_visit(expiry_range(), None, &mut |key, payload| {
-				map.insert(key, decode::<E>(&payload)?);
-				Ok(())
-			})?;
-			self.entries = Some(map);
-		}
-		Ok(self.entries.as_mut().expect("hydrated above"))
-	}
-
-	pub(crate) fn set(&mut self, store: &mut dyn StateStore, key: GroupStateKey, entry: E) -> Result<()> {
-		store.state_set(&key, entry.encode_state(store.written_at())?)?;
-		if let Some(map) = self.entries.as_mut() {
-			map.insert(key, entry);
-		}
+#[instrument(name = "flow::seal::expiry_due", level = "debug", skip_all)]
+pub(crate) fn expiry_due<E: OperatorState>(
+	store: &mut dyn StateStore,
+	threshold: u64,
+	limit: usize,
+) -> Result<Vec<(GroupStateKey, E)>> {
+	let mut out = Vec::new();
+	store.state_range_visit(due_range(threshold), Some(limit), &mut |key, payload| {
+		out.push((key, decode::<E>(&payload)?));
 		Ok(())
-	}
+	})?;
+	Ok(out)
+}
 
-	pub(crate) fn drop_key(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
-		store.state_remove(key)?;
-		if let Some(map) = self.entries.as_mut() {
-			map.remove(key);
-		}
-		Ok(())
-	}
-
-	pub(crate) fn due(
-		&mut self,
-		store: &mut dyn StateStore,
-		threshold: u64,
-		limit: usize,
-	) -> Result<Vec<(GroupStateKey, E)>> {
-		let map = self.hydrate(store)?;
-		Ok(map.range(due_start(threshold)..).take(limit).map(|(k, e)| (k.clone(), e.clone())).collect())
-	}
-
-	pub(crate) fn earliest(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
-		let map = self.hydrate(store)?;
-		Ok(map.last_key_value().and_then(|(key, _)| {
-			let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
-			suffix.get(..8).map(|bytes| decode_u64(bytes.try_into().expect("eight expiry bytes")))
-		}))
-	}
+#[instrument(name = "flow::seal::expiry_earliest", level = "debug", skip_all)]
+pub(crate) fn expiry_earliest(store: &mut dyn StateStore) -> Result<Option<u64>> {
+	Ok(store.state_last(expiry_range())?.and_then(|(key, _)| {
+		let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+		suffix.get(..8).map(|bytes| decode_u64(bytes.try_into().expect("eight expiry bytes")))
+	}))
 }
 
 #[cfg(test)]
@@ -104,7 +76,7 @@ mod tests {
 	use reifydb_core::key::operator_state::GroupStateKey;
 	use reifydb_macro::operator_state;
 
-	use super::{ExpiryIndex, expiry_key};
+	use super::{expiry_drop, expiry_due, expiry_earliest, expiry_key, expiry_set};
 	use crate::testing::store::MockStore;
 
 	#[operator_state]
@@ -119,14 +91,11 @@ mod tests {
 
 	#[test]
 	fn due_serves_only_entries_at_or_below_the_threshold_newest_first() {
-		// The index key encodes the expiry inverted, so byte order is descending by expiry. due()
-		// must yield the entries with expiry <= threshold newest first, which is the order the
-		// expire_batch cap relies on to defer the oldest backlog.
+		// Newest-due-first is the order the expire_batch cap relies on to defer the oldest backlog.
 		let mut store = MockStore::default();
-		let mut index = ExpiryIndex::<Entry>::new();
 
 		for (expiry, row) in [(10u64, 1u64), (20, 2), (30, 3)] {
-			index.set(
+			expiry_set(
 				&mut store,
 				key(expiry, expiry as u32),
 				Entry {
@@ -136,18 +105,16 @@ mod tests {
 			.unwrap();
 		}
 
-		let due = index.due(&mut store, 20, 16).unwrap();
+		let due = expiry_due::<Entry>(&mut store, 20, 16).unwrap();
 		let rows: Vec<u64> = due.iter().map(|(_, e)| e.row).collect();
 		assert_eq!(rows, vec![2, 1], "expiry 30 is not yet due; 20 (newest due) precedes 10");
 	}
 
 	#[test]
-	fn hydration_rebuilds_the_mirror_from_persisted_entries() {
-		// A restarted engine starts with an empty mirror; the first due() must see entries the
-		// previous incarnation persisted, or windows silently never expire after a restart.
+	fn a_reader_that_wrote_nothing_still_sees_what_an_earlier_writer_persisted() {
+		// A restarted engine must expire the windows its predecessor armed, or they never expire.
 		let mut store = MockStore::default();
-		let mut first = ExpiryIndex::<Entry>::new();
-		first.set(
+		expiry_set(
 			&mut store,
 			key(10, 1),
 			Entry {
@@ -156,9 +123,8 @@ mod tests {
 		)
 		.unwrap();
 
-		let mut restarted = ExpiryIndex::<Entry>::new();
-		let due = restarted.due(&mut store, 100, 16).unwrap();
-		assert_eq!(due.len(), 1, "the persisted entry must be visible after rehydration");
+		let due = expiry_due::<Entry>(&mut store, 100, 16).unwrap();
+		assert_eq!(due.len(), 1, "the persisted entry must be visible to a reader that never wrote");
 		assert_eq!(
 			due[0].1,
 			Entry {
@@ -168,12 +134,10 @@ mod tests {
 	}
 
 	#[test]
-	fn mutations_before_hydration_reach_the_store_and_survive_hydration() {
-		// set/remove before the first due() write through to the store without a mirror; hydration
-		// must then observe the net result, not a stale or doubled view.
+	fn a_dropped_key_leaves_only_the_surviving_entry() {
+		// A later due must observe the net result of set and drop, never a stale or doubled view.
 		let mut store = MockStore::default();
-		let mut index = ExpiryIndex::<Entry>::new();
-		index.set(
+		expiry_set(
 			&mut store,
 			key(10, 1),
 			Entry {
@@ -181,7 +145,7 @@ mod tests {
 			},
 		)
 		.unwrap();
-		index.set(
+		expiry_set(
 			&mut store,
 			key(20, 2),
 			Entry {
@@ -189,21 +153,19 @@ mod tests {
 			},
 		)
 		.unwrap();
-		index.drop_key(&mut store, &key(10, 1)).unwrap();
+		expiry_drop(&mut store, &key(10, 1)).unwrap();
 
-		let due = index.due(&mut store, 100, 16).unwrap();
+		let due = expiry_due::<Entry>(&mut store, 100, 16).unwrap();
 		assert_eq!(due.len(), 1);
-		assert_eq!(due[0].1.row, 2, "only the surviving entry may remain after hydration");
+		assert_eq!(due[0].1.row, 2, "only the surviving entry may remain");
 	}
 
 	#[test]
 	fn due_respects_the_batch_limit() {
-		// expire_batch bounds tick work; a limit-less due() would drain a due burst in
-		// one tick and stall the flow actor.
+		// Without the cap a due burst drains in one tick and stalls the flow actor.
 		let mut store = MockStore::default();
-		let mut index = ExpiryIndex::<Entry>::new();
 		for expiry in 1u64..=5 {
-			index.set(
+			expiry_set(
 				&mut store,
 				key(expiry, expiry as u32),
 				Entry {
@@ -212,7 +174,32 @@ mod tests {
 			)
 			.unwrap();
 		}
-		let due = index.due(&mut store, 100, 2).unwrap();
+		let due = expiry_due::<Entry>(&mut store, 100, 2).unwrap();
 		assert_eq!(due.len(), 2, "one call serves at most `limit` entries");
+	}
+
+	#[test]
+	fn earliest_reports_the_soonest_expiry_not_the_latest() {
+		// The inverted key order puts the soonest expiry last; reading the first entry would arm the seal timer
+		// for the furthest window.
+		let mut store = MockStore::default();
+		for expiry in [30u64, 10, 20] {
+			expiry_set(
+				&mut store,
+				key(expiry, expiry as u32),
+				Entry {
+					row: expiry,
+				},
+			)
+			.unwrap();
+		}
+		assert_eq!(expiry_earliest(&mut store).unwrap(), Some(10));
+	}
+
+	#[test]
+	fn earliest_of_an_empty_index_is_none() {
+		// An operator with no armed window must report nothing, or the seal timer fires on garbage.
+		let mut store = MockStore::default();
+		assert_eq!(expiry_earliest(&mut store).unwrap(), None);
 	}
 }

@@ -76,7 +76,7 @@ pub struct Aggregation {
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
 	tumbling_engine: Option<Box<TumblingEngine<Hash128, DateTime, RowAccumulator>>>,
-	engine_meta: Option<StateCache<EngineMetaKey, EngineMeta>>,
+	engine_meta: StateCache<EngineMetaKey, EngineMeta>,
 	pub ctx: Arc<FlowContext>,
 }
 
@@ -159,7 +159,7 @@ impl Aggregation {
 			routines,
 			runtime_context,
 			tumbling_engine: None,
-			engine_meta: None,
+			engine_meta: StateCache::new(),
 			ctx,
 		}
 	}
@@ -170,14 +170,8 @@ impl Aggregation {
 		&mut self.tumbling_engine
 	}
 
-	pub(crate) fn engine_meta_open(&mut self) {
-		if self.engine_meta.is_none() {
-			self.engine_meta = Some(StateCache::new());
-		}
-	}
-
 	pub(crate) fn engine_meta(&mut self) -> &mut StateCache<EngineMetaKey, EngineMeta> {
-		self.engine_meta.as_mut().expect("engine_meta opened at apply/tick entry")
+		&mut self.engine_meta
 	}
 
 	pub fn compute_groups(&self, columns: &Columns) -> Result<Vec<(Hash128, Vec<Value>)>> {

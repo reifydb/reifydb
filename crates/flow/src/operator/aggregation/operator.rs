@@ -99,7 +99,6 @@ impl HostOperator for AggregateOperator {
 }
 
 pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext, change: Change) -> Result<Change> {
-	core.engine_meta_open();
 	let kinds = core.slot_kinds.clone().expect("aggregate requires representable slot kinds");
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
