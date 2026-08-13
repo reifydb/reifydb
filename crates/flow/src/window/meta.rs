@@ -322,7 +322,7 @@ mod tests {
 	use reifydb_value::{factory::time::at_millis, value::row_number::RowNumber};
 
 	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta};
-	use crate::{testing::store::MockStore, window::kind::session::SessionTracker};
+	use crate::{state::mock::MockStore, window::kind::session::SessionTracker};
 
 	const GROUP: GroupId = GroupId(42);
 

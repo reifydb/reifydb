@@ -29,6 +29,8 @@ use reifydb_value::{Result, value::datetime::DateTime};
 
 pub mod deferred;
 pub mod dictionary;
+#[cfg(test)]
+pub(crate) mod mock;
 pub mod ephemeral;
 pub mod frontier;
 pub mod group;

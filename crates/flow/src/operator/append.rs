@@ -29,7 +29,7 @@ use crate::{
 	error::FlowGraphError,
 	operator::{HostOperator, drops::SealedDrops, host::HostContext},
 	state::{
-		expiry::{ExpiryIndex, expiry_key},
+		expiry::{expiry_drop, expiry_due, expiry_earliest, expiry_key, expiry_set},
 		reaper::{StoreReaper, drain, enqueue, queue_key, queued},
 		seal::{coord::Coord, ledger::FiredAt, policy::SealPolicy},
 	},
@@ -66,8 +66,6 @@ pub struct AppendOperator {
 	dropped: SealedDrops,
 
 	seal: Option<Duration>,
-
-	expiry: ExpiryIndex<SealEntry>,
 }
 
 impl AppendOperator {
@@ -87,7 +85,6 @@ impl AppendOperator {
 			input_nodes,
 			dropped: SealedDrops::new(operator, DROP_REASON),
 			seal: seal.filter(|span| !span.is_zero()),
-			expiry: ExpiryIndex::new(),
 		}
 	}
 
@@ -99,7 +96,6 @@ impl AppendOperator {
 			input_nodes: Vec::new(),
 			dropped: SealedDrops::new(operator, DROP_REASON),
 			seal: None,
-			expiry: ExpiryIndex::new(),
 		}
 	}
 
@@ -171,10 +167,10 @@ impl AppendOperator {
 			return Ok(());
 		}
 		if let Some(prior) = prior {
-			self.expiry.drop_key(host, &expiry_key(prior.to_order(), &group.0, &[]))?;
+			expiry_drop(host, &expiry_key(prior.to_order(), &group.0, &[]))?;
 			host.state_remove(&queue_key(group))?;
 		}
-		self.expiry.set(
+		expiry_set(
 			host,
 			expiry_key(expiry.to_order(), &group.0, &[]),
 			SealEntry {
@@ -199,14 +195,14 @@ impl AppendOperator {
 			let Some(expiry) = Self::read_anchor(host, *group)? else {
 				continue;
 			};
-			self.expiry.drop_key(host, &expiry_key(expiry.to_order(), &group.0, &[]))?;
+			expiry_drop(host, &expiry_key(expiry.to_order(), &group.0, &[]))?;
 			host.state_remove(&Self::anchor_key(*group))?;
 		}
 		Ok(())
 	}
 
 	fn arm_maintenance(&mut self, host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<()> {
-		let earliest = self.expiry.earliest(host)?.map(<DateTime as Coord>::from_order);
+		let earliest = expiry_earliest(host)?.map(<DateTime as Coord>::from_order);
 		let Some(at) = earliest.into_iter().chain(retry).min() else {
 			return Ok(());
 		};
@@ -217,9 +213,9 @@ impl AppendOperator {
 		let Some(seal) = self.seal else {
 			return Ok(0);
 		};
-		for (key, entry) in self.expiry.due(host, fired.at().to_order(), SEAL_BATCH)? {
+		for (key, entry) in expiry_due::<SealEntry>(host, fired.at().to_order(), SEAL_BATCH)? {
 			enqueue(host, GroupId(entry.group_id))?;
-			self.expiry.drop_key(host, &key)?;
+			expiry_drop(host, &key)?;
 		}
 		let freed = drain(host, &mut StoreReaper, SEAL_BATCH)?;
 		let retry = (!queued(host, 1)?.is_empty()).then(|| fired.at().saturating_add(seal));
@@ -415,10 +411,9 @@ mod tests {
 	use crate::{
 		operator::host::TxnHostContext,
 		state::expiry::expiry_range,
-		testing::FlowTxn,
 		transaction::{
 			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupTxn,
-			row_number::RowNumberTxn, state::StateTxn,
+			mock::FlowTxn, row_number::RowNumberTxn, state::StateTxn,
 		},
 	};
 

@@ -304,7 +304,10 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
-	use crate::{operator::host::TxnHostContext, testing::FlowTxn, transaction::deferred::DeferredTransaction};
+	use crate::{
+		operator::host::TxnHostContext,
+		transaction::{deferred::DeferredTransaction, mock::FlowTxn},
+	};
 
 	const NODE: OperatorId = OperatorId(90);
 	const GROUP: GroupId = GroupId(3);

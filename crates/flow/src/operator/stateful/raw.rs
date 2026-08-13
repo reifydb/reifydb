@@ -47,8 +47,7 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		operator::{host::TxnHostContext, stateful::test_utils::test::*},
-		testing::FlowTxn,
-		transaction::deferred::DeferredTransaction,
+		transaction::{deferred::DeferredTransaction, mock::FlowTxn},
 	};
 
 	impl HostRawOperator for TestOperator {}

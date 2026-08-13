@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub(crate) mod store;
-
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{actors::pending::PendingLayers, common::CommitVersion};
 use reifydb_runtime::context::clock::{Clock, MockClock};

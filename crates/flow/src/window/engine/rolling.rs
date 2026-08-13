@@ -928,13 +928,16 @@ mod tests {
 	};
 
 	use crate::{
-		testing::store::{MockStore, SumAccumulator},
-		window::engine::{
-			AccumulatorEvent, EmitKind,
-			config::WindowEngineConfig,
-			rolling::{
-				RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
-				RollingResult,
+		state::mock::MockStore,
+		window::{
+			accumulator::mock::SumAccumulator,
+			engine::{
+				AccumulatorEvent, EmitKind,
+				config::WindowEngineConfig,
+				rolling::{
+					RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
+					RollingResult,
+				},
 			},
 		},
 	};

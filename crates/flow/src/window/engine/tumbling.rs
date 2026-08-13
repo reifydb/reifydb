@@ -350,10 +350,9 @@ mod tests {
 	use reifydb_value::{Result, factory::time::at_millis, value::datetime::DateTime};
 
 	use crate::{
-		state::seal::coord::Coord,
-		testing::store::{MockStore, SumAccumulator},
+		state::{mock::MockStore, seal::coord::Coord},
 		window::{
-			accumulator::WindowAccumulator,
+			accumulator::{WindowAccumulator, mock::SumAccumulator},
 			engine::{
 				AccumulatorEvent, EmitKind, GroupMeta, MetaHighWater, WindowResult,
 				config::WindowEngineConfig,

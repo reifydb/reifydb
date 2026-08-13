@@ -62,7 +62,7 @@ mod tests {
 	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
-	use crate::testing::store::MockStore;
+	use crate::state::mock::MockStore;
 
 	const GROUP: GroupId = GroupId(42);
 	const OTHER: GroupId = GroupId(43);

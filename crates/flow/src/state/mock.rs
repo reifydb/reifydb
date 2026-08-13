@@ -12,10 +12,8 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
-	metrics::heap::HeapSize,
-	state::store::StateStore,
+	state::store::{StateStore, TimerKind, TimerStore},
 };
-use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	count::Count,
@@ -122,8 +120,7 @@ impl MockStore {
 			.data
 			.keys()
 			.filter(|k| {
-				OperatorStateKey::decode_inner(k)
-					.is_some_and(|(_, found, _)| found == Keyspace::ACCUMULATOR)
+				OperatorStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == Keyspace::ACCUMULATOR)
 			})
 			.cloned()
 			.collect();
@@ -166,8 +163,6 @@ impl MockStore {
 		self.rows.contains_key(&(group, key.as_bytes().to_vec()))
 	}
 }
-
-use reifydb_core::state::store::{TimerKind, TimerStore};
 
 impl IdentityReclaim for MockStore {
 	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
@@ -301,50 +296,5 @@ impl StateStore for MockStore {
 	}
 	fn written_at(&self) -> DateTime {
 		DateTime::EPOCH
-	}
-}
-
-#[operator_state]
-#[derive(Clone, Debug, Default)]
-pub(crate) struct SumAccumulator {
-	pub sum: i64,
-	pub count: u64,
-}
-
-impl HeapSize for SumAccumulator {
-	fn heap_size(&self) -> usize {
-		0
-	}
-}
-
-impl WindowAccumulator for SumAccumulator {
-	type Contribution = i64;
-	type Output = i64;
-
-	fn add(&mut self, contribution: &i64) {
-		self.sum += *contribution;
-		self.count += 1;
-	}
-	fn remove(&mut self, contribution: &i64) {
-		self.sum -= *contribution;
-		self.count = self.count.saturating_sub(1);
-	}
-	fn finalize(&self) -> Option<i64> {
-		if self.count == 0 {
-			None
-		} else {
-			Some(self.sum)
-		}
-	}
-	fn is_empty(&self) -> bool {
-		self.count == 0
-	}
-	fn merge(&mut self, other: &Self) {
-		self.sum += other.sum;
-		self.count += other.count;
-	}
-	fn unmerge(&mut self, other: &Self) {
-		self.sum -= other.sum;
-		self.count = self.count.saturating_sub(other.count);
 	}
 }

@@ -25,6 +25,3 @@ pub mod error;
 pub mod operator;
 #[cfg(feature = "runtime")]
 pub mod transaction;
-
-#[cfg(all(test, feature = "runtime"))]
-pub(crate) mod testing;

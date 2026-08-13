@@ -85,7 +85,7 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
-	use crate::{testing::FlowTxn, transaction::deferred::DeferredTransaction};
+	use crate::transaction::{deferred::DeferredTransaction, mock::FlowTxn};
 
 	fn txn() -> DeferredTransaction {
 		let engine = TestEngine::new();

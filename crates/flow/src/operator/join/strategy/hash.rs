@@ -34,7 +34,10 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
-	use crate::{operator::host::TxnHostContext, testing::FlowTxn, transaction::deferred::DeferredTransaction};
+	use crate::{
+		operator::host::TxnHostContext,
+		transaction::{deferred::DeferredTransaction, mock::FlowTxn},
+	};
 
 	fn h(v: u128) -> Hash128 {
 		Hash128(v)

@@ -288,8 +288,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::host::TxnHostContext,
-		testing::FlowTxn,
-		transaction::{FlowTransaction, deferred::DeferredTransaction, group::GroupTxn},
+		transaction::{FlowTransaction, deferred::DeferredTransaction, group::GroupTxn, mock::FlowTxn},
 	};
 
 	fn h(v: u128) -> Hash128 {

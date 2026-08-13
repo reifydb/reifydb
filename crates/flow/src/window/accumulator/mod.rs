@@ -9,6 +9,9 @@ use reifydb_core::metrics::heap::HeapSize;
 pub mod invertible;
 pub mod sealing;
 
+#[cfg(test)]
+pub(crate) mod mock;
+
 pub trait WindowAccumulator: Clone + Debug + Default + OperatorState + StateCodec + HeapSize {
 	type Contribution: Clone + Debug;
 	type Output: Clone + Debug + PartialEq;

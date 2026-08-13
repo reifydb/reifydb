@@ -394,8 +394,11 @@ mod tests {
 
 	use super::{RollingTopKBuffer, RollingTopKEmit, RollingTopKEngine, TopKEmit};
 	use crate::{
-		testing::store::{MockStore, SumAccumulator},
-		window::engine::{AccumulatorEvent, config::WindowEngineConfig, rolling::RollingBuckets},
+		state::mock::MockStore,
+		window::{
+			accumulator::mock::SumAccumulator,
+			engine::{AccumulatorEvent, config::WindowEngineConfig, rolling::RollingBuckets},
+		},
 	};
 
 	fn test_config() -> WindowEngineConfig {

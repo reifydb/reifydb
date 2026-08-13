@@ -93,7 +93,7 @@ mod tests {
 	use reifydb_core::state::store::TimerKind;
 
 	use super::*;
-	use crate::testing::store::MockStore;
+	use crate::state::mock::MockStore;
 
 	fn timer(millis: u64) -> Timer {
 		Timer {

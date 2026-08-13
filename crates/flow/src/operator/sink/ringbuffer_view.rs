@@ -1126,7 +1126,7 @@ mod tests {
 	use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, identity::IdentityId};
 
 	use super::*;
-	use crate::{testing::FlowTxn, transaction::substrate::apply_operator_state};
+	use crate::transaction::{mock::FlowTxn, substrate::apply_operator_state};
 
 	const RB: RingBufferId = RingBufferId(42);
 	const T0: u64 = 1_000_000_000_000;

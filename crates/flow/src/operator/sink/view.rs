@@ -460,7 +460,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::testing::FlowTxn;
+	use crate::transaction::mock::FlowTxn;
 
 	fn test_view_def() -> View {
 		View::Table(TableView {

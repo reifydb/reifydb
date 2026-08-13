@@ -94,7 +94,7 @@ mod tests {
 	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
-	use crate::testing::store::{MockStore, RecordedTimer};
+	use crate::state::mock::{MockStore, RecordedTimer};
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)

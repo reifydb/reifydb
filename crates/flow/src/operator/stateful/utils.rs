@@ -57,8 +57,7 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		operator::{host::TxnHostContext, stateful::test_utils::test::*},
-		testing::FlowTxn,
-		transaction::{FlowTransaction, deferred::DeferredTransaction},
+		transaction::{FlowTransaction, deferred::DeferredTransaction, mock::FlowTxn},
 	};
 
 	fn host(txn: &mut DeferredTransaction, operator: OperatorId) -> TxnHostContext<'_, DeferredTransaction> {
