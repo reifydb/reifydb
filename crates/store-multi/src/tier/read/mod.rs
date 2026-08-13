@@ -16,10 +16,7 @@ mod tests;
 use std::{
 	collections::{BTreeMap, HashMap},
 	mem::size_of,
-	sync::{
-		Arc,
-		atomic::{AtomicBool, AtomicU8},
-	},
+	sync::Arc,
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
@@ -168,8 +165,7 @@ struct Shard {
 
 struct PoolInner {
 	shards: Box<[Mutex<Shard>]>,
-	bucket_shift: AtomicU8,
-	enabled: AtomicBool,
+	bucket_shift: u8,
 }
 
 #[derive(Clone)]

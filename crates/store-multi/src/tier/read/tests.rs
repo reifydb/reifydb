@@ -171,48 +171,6 @@ fn scan_resistant_eviction_keeps_hot_working_set() {
 }
 
 #[test]
-fn growing_capacity_preserves_pages() {
-	let read = cache(2);
-	read.insert(row(1, 0), CommitVersion(1), Some(val("a")));
-	read.insert(row(2, 0), CommitVersion(1), Some(val("b")));
-	read.set_capacity(8);
-	for object in [1u64, 2] {
-		assert!(
-			matches!(read.get(&row(object, 0), CommitVersion(1)), VersionedGetResult::Value { .. }),
-			"page must survive a capacity grow"
-		);
-	}
-}
-
-#[test]
-fn shrinking_capacity_evicts_only_excess() {
-	let read = cache(8);
-	for object in [1u64, 2, 3, 4] {
-		read.insert(row(object, 0), CommitVersion(1), Some(val("x")));
-	}
-	read.set_capacity(2);
-	assert_eq!(read.resident_pages(), 2, "shrink must leave exactly the new page capacity, not clear the cache");
-}
-
-#[test]
-fn reconfigure_clears_cache_and_applies_new_capacity() {
-	let read = cache(8);
-	read.insert(row(1, 0), CommitVersion(1), Some(val("a")));
-	assert_eq!(read.resident_pages(), 1);
-	read.reconfigure(2, 64);
-	assert_eq!(read.resident_pages(), 0, "reconfigure must clear pages because the page size changed");
-
-	read.insert(row(1, 0), CommitVersion(2), Some(val("a2")));
-	match read.get(&row(1, 0), CommitVersion(2)) {
-		VersionedGetResult::Value {
-			value: v,
-			..
-		} => assert_eq!(v.as_ref(), b"a2"),
-		_ => panic!("expected the repopulated value after reconfigure"),
-	}
-}
-
-#[test]
 fn clone_shares_backing_storage() {
 	let a = cache(4);
 	let b = a.clone();

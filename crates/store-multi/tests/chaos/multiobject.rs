@@ -23,7 +23,7 @@ use reifydb_testing_chaos::fuzz::pick;
 use reifydb_value::util::cowvec::CowVec;
 
 use crate::{
-	fixtures::{build_bytes, flush, sync_persistent_store},
+	fixtures::{build_bytes, flush, sync_persistent_store, sync_persistent_store_with_read, tiny_read_buffer},
 	workload::distinct_rows,
 };
 
@@ -209,9 +209,8 @@ pub fn drive(seed: u64, p: Params) {
 
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
-	let (tiny, _g2) = sync_persistent_store();
 	let page_rows = pick(&mut rng, &[256u64, 512]);
-	tiny.configure_read_buffer(2, page_rows);
+	let (tiny, _g2) = sync_persistent_store_with_read(tiny_read_buffer(2, page_rows));
 	let configs: Vec<(&str, StandardMultiStore)> =
 		vec![("memory", memory), ("persistent", persistent), ("tiny_cache", tiny)];
 

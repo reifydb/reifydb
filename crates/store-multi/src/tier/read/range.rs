@@ -72,9 +72,6 @@ impl MultiReadBufferTier {
 	}
 
 	pub fn finish_warm(&self, page: PageId, entries: Vec<RawEntry>) -> bool {
-		if !self.enabled() {
-			return false;
-		}
 		let shift = self.bucket_shift();
 		let range_complete = key_range_of(page, shift).is_some();
 		let mut shard = self.shard_for(&page).lock();

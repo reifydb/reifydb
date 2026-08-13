@@ -66,6 +66,7 @@ impl Runner {
 				storage,
 			},
 			persistent: None,
+		read: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus: EventBus::new(&spawner),

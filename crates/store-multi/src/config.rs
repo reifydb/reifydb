@@ -7,12 +7,13 @@ use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::value::duration::Duration;
 
-use crate::tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier};
+use crate::tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig};
 
 #[derive(Clone)]
 pub struct MultiStoreConfig {
 	pub commit: CommitBufferConfig,
 	pub persistent: Option<PersistentConfig>,
+	pub read: Option<ReadBufferConfig>,
 	pub retention: RetentionConfig,
 	pub merge_config: MergeConfig,
 	pub event_bus: EventBus,
@@ -27,6 +28,7 @@ impl MultiStoreConfig {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: None,
+			read: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
@@ -42,6 +44,7 @@ impl MultiStoreConfig {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: Some(persistent),
+			read: Some(ReadBufferConfig::default()),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
@@ -63,6 +66,13 @@ pub struct PersistentConfig {
 }
 
 impl PersistentConfig {
+	pub fn opened(storage: MultiPersistentTier) -> Self {
+		Self {
+			storage,
+			flush_interval: Duration::from_seconds(5).unwrap(),
+		}
+	}
+
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(sqlite_config: SqliteConfig) -> Self {
 		Self {

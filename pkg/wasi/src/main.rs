@@ -101,6 +101,7 @@ impl Bridge {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: None,
+			read: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus: eventbus.clone(),

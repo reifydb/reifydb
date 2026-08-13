@@ -38,6 +38,7 @@ fn memory_store() -> StandardMultiStore {
 			storage: MultiCommitBufferTier::memory(),
 		},
 		persistent: None,
+		read: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: reifydb_core::event::EventBus::new(&spawner),

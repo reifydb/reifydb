@@ -4,10 +4,7 @@
 use std::{
 	collections::{HashMap, hash_map::DefaultHasher},
 	hash::{Hash, Hasher},
-	sync::{
-		Arc,
-		atomic::{AtomicBool, AtomicU8, Ordering},
-	},
+	sync::Arc,
 };
 
 use reifydb_core::{
@@ -31,33 +28,13 @@ impl MultiReadBufferTier {
 		Some(Self {
 			inner: Arc::new(PoolInner {
 				shards: build_shards(config, resident_bytes),
-				bucket_shift: AtomicU8::new(config.bucket_shift),
-				enabled: AtomicBool::new(true),
+				bucket_shift: config.bucket_shift,
 			}),
 		})
 	}
 
-	pub(super) fn enabled(&self) -> bool {
-		self.inner.enabled.load(Ordering::Relaxed)
-	}
-
-	pub fn set_budget(&self, budget: Option<ByteSize>) {
-		let shards = &self.inner.shards;
-		let byte_cap = budget
-			.map(|bytes| ByteSize::from_bytes((bytes.as_bytes() / shards.len() as u64).max(1)))
-			.unwrap_or(ByteSize::from_bytes(1));
-		self.inner.enabled.store(budget.is_some(), Ordering::Relaxed);
-		for shard in shards.iter() {
-			let mut shard = shard.lock();
-			shard.pages = HashMap::new();
-			shard.warming = HashMap::new();
-			shard.next_tick = 0;
-			shard.budget = MemoryBudget::new(byte_cap);
-		}
-	}
-
 	pub(super) fn bucket_shift(&self) -> u8 {
-		self.inner.bucket_shift.load(Ordering::Relaxed)
+		self.inner.bucket_shift
 	}
 
 	pub(super) fn shard_for(&self, page: &PageId) -> &Mutex<Shard> {

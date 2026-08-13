@@ -24,7 +24,7 @@ use reifydb_value::util::cowvec::CowVec;
 
 use crate::{
 	STORAGE,
-	fixtures::{build_bytes, flush, sync_persistent_store},
+	fixtures::{build_bytes, flush, sync_persistent_store, sync_persistent_store_with_read, tiny_read_buffer},
 	oracle::{Oracle, Scope},
 	workload::{check_get, check_get_many, check_range, distinct_rows},
 };
@@ -123,12 +123,10 @@ pub fn drive(seed: u64, p: Params) {
 
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
-	let (tiny, _g2) = sync_persistent_store();
-	// Pages large enough that a flushed page exceeds WARM_THRESHOLD (128) and becomes range_complete,
-	// with few resident pages so a multi-page keyspace also churns eviction.
+	// Pages must exceed WARM_THRESHOLD (128) to become range_complete, with few resident pages so eviction still churns.
 	let pages = pick(&mut rng, &[1usize, 2, 3]);
 	let page_rows = pick(&mut rng, &[256u64, 512]);
-	tiny.configure_read_buffer(pages, page_rows);
+	let (tiny, _g2) = sync_persistent_store_with_read(tiny_read_buffer(pages, page_rows));
 	let configs: Vec<(&str, StandardMultiStore)> =
 		vec![("memory", memory), ("persistent", persistent), ("tiny_cache", tiny)];
 

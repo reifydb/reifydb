@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use reifydb_auth::service::AuthConfigurator;
-use reifydb_catalog::{bootstrap::read_configs, cache::CatalogCache};
+use reifydb_catalog::cache::CatalogCache;
 use reifydb_core::interface::catalog::config::ConfigKey;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_profiler::{
@@ -21,7 +21,7 @@ use reifydb_runtime::context::clock::Clock;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig, version_epoch::VersionEpoch};
-use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
+use reifydb_store_multi::tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
@@ -72,45 +72,14 @@ use crate::system::raise_fd_limit;
 fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
-) -> Result<(MultiCommitBufferTier, PoolConfig)> {
+) -> Result<(MultiCommitBufferTier, Option<MultiPersistentTier>, PoolConfig, Option<ReadBufferConfig>)> {
 	let multi_commit_buffer = factory.open_multi_commit_buffer();
-	let persisted = read_configs(
-		Some(&multi_commit_buffer),
-		None,
-		&[
-			ConfigKey::ThreadsAsync,
-			ConfigKey::ThreadsCoordination,
-			ConfigKey::ThreadsFlow,
-			ConfigKey::ThreadsTask,
-			ConfigKey::ThreadsCompute,
-		],
-	)?;
-
-	let resolve = |key: ConfigKey| -> usize {
-		let value = overrides
-			.iter()
-			.rev()
-			.find(|(k, _)| *k == key)
-			.and_then(|(_, v)| key.accept(v.clone()).ok())
-			.unwrap_or_else(|| persisted[&key].clone());
-		match value {
-			Value::Uint2(v) => v as usize,
-			other => panic!("config key {key} expected Uint2, got {other:?}"),
-		}
-	};
-
-	let pools = PoolConfig {
-		coordination_threads: resolve(ConfigKey::ThreadsCoordination),
-		flow_threads: resolve(ConfigKey::ThreadsFlow),
-		maintenance_threads: 1,
-		task_threads: resolve(ConfigKey::ThreadsTask),
-		compute_threads: resolve(ConfigKey::ThreadsCompute),
-		async_threads: resolve(ConfigKey::ThreadsAsync),
-	};
-	Ok((multi_commit_buffer, pools))
+	let multi_persistent = factory.open_multi_persistent();
+	let resolved = resolve_startup_configs(&multi_commit_buffer, multi_persistent.as_ref(), overrides)?;
+	Ok((multi_commit_buffer, multi_persistent, resolved.pools, resolved.read))
 }
 
-use super::{DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, traits::WithSubsystem};
+use super::{DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, startup::resolve_startup_configs, traits::WithSubsystem};
 use crate::{
 	Database, MigrationSource, Result,
 	api::{StorageFactory, transaction},
@@ -327,7 +296,7 @@ impl ServerBuilder {
 		// does not exhaust it (`accept error: Too many open files`).
 		raise_fd_limit();
 
-		let (multi_commit_buffer, pool_config) =
+		let (multi_commit_buffer, multi_persistent, pool_config, read_buffer) =
 			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 
 		let runtime_config = self.runtime_config.unwrap_or_default();
@@ -338,7 +307,12 @@ impl ServerBuilder {
 		let rng = runtime.rng().clone();
 
 		let (multi_store, single_store, operator_store, transaction_single, eventbus) =
-			self.storage_factory.create_with_multi_commit_buffer(multi_commit_buffer, &spawner);
+			self.storage_factory.create_with_multi_commit_buffer(
+				multi_commit_buffer,
+				multi_persistent,
+				read_buffer,
+				&spawner,
+			);
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
 		let (multi, single, eventbus) = transaction(

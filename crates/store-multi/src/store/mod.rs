@@ -16,7 +16,7 @@ use reifydb_core::{
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
+use reifydb_value::util::cowvec::CowVec;
 use tracing::instrument;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -89,7 +89,7 @@ impl StandardMultiStore {
 		let read = config
 			.persistent
 			.is_some()
-			.then(|| MultiReadBufferTier::new(ReadBufferConfig::default()))
+			.then(|| config.read.and_then(MultiReadBufferTier::new))
 			.flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -129,24 +129,6 @@ impl StandardMultiStore {
 			eviction_watermark,
 			event_bus: config.event_bus,
 		})))
-	}
-
-	pub fn configure_read_buffer_capacity(&self, capacity: usize) {
-		if let Some(read) = &self.read {
-			read.set_capacity(capacity);
-		}
-	}
-
-	pub fn configure_read_buffer(&self, resident_pages: usize, page_size_rows: u64) {
-		if let Some(read) = &self.read {
-			read.reconfigure(resident_pages, page_size_rows);
-		}
-	}
-
-	pub fn configure_read_buffer_budget(&self, budget: Option<ByteSize>) {
-		if let Some(read) = &self.read {
-			read.set_budget(budget);
-		}
 	}
 
 	pub fn flush_engine(&self) -> Option<Arc<FlushEngine>> {
@@ -264,6 +246,7 @@ impl StandardMultiStore {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: None,
+			read: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
@@ -282,6 +265,7 @@ impl StandardMultiStore {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: None,
+			read: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
@@ -293,6 +277,11 @@ impl StandardMultiStore {
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn testing_memory_with_persistent_sqlite() -> (Self, SqliteTempPathGuard) {
+		Self::testing_memory_with_persistent_sqlite_read(ReadBufferConfig::default())
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn testing_memory_with_persistent_sqlite_read(read: ReadBufferConfig) -> (Self, SqliteTempPathGuard) {
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::testing(clock.clone());
 		let spawner = actor_system.spawner();
@@ -303,6 +292,7 @@ impl StandardMultiStore {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: Some(persistent),
+			read: Some(read),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
@@ -324,6 +314,7 @@ impl StandardMultiStore {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: Some(persistent),
+			read: Some(ReadBufferConfig::default()),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,

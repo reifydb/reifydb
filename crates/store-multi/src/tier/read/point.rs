@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, sync::atomic::Ordering};
+use std::collections::BTreeMap;
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
@@ -91,9 +91,6 @@ impl MultiReadBufferTier {
 	}
 
 	pub fn insert(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
-		if !self.enabled() {
-			return;
-		}
 		let page_id = page_of(&key, self.bucket_shift());
 		let mut shard = self.shard_for(&page_id).lock();
 		let next = shard.next_tick;
@@ -304,9 +301,6 @@ impl MultiReadBufferTier {
 	}
 
 	pub fn begin_warm(&self, page: PageId) -> bool {
-		if !self.enabled() {
-			return false;
-		}
 		let mut shard = self.shard_for(&page).lock();
 		if shard.warming.contains_key(&page) {
 			return false;
@@ -333,28 +327,4 @@ impl MultiReadBufferTier {
 		}
 	}
 
-	pub fn set_capacity(&self, resident_pages: usize) {
-		let shards = &self.inner.shards;
-		let page_cap = (resident_pages / shards.len()).max(1);
-		for shard in shards.iter() {
-			let mut shard = shard.lock();
-			shard.page_cap = page_cap;
-			shard.evict_to_capacity();
-		}
-	}
-
-	pub fn reconfigure(&self, resident_pages: usize, page_size_rows: u64) {
-		let bucket_shift = page_size_rows.max(1).trailing_zeros() as u8;
-		self.inner.bucket_shift.store(bucket_shift, Ordering::Relaxed);
-		let shards = &self.inner.shards;
-		let page_cap = (resident_pages / shards.len()).max(1);
-		for shard in shards.iter() {
-			let mut shard = shard.lock();
-			shard.page_cap = page_cap;
-			shard.pages.clear();
-			shard.warming.clear();
-			shard.next_tick = 0;
-			shard.budget.reset();
-		}
-	}
 }

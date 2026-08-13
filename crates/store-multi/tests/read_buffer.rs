@@ -16,7 +16,7 @@ use reifydb_core::{
 	delta::Delta,
 	interface::store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 };
-use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
+use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore, tier::read::ReadBufferConfig};
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 fn key(s: &str) -> EncodedKey {
@@ -156,22 +156,23 @@ fn range_scan_does_not_consult_the_read_tier() {
 
 #[test]
 fn capacity_eviction_of_a_cache_entry_never_changes_a_read_result() {
-	// Capacity is a resident-page cap, not an entry cap, and it is a RAM trade only: whether or not a
-	// page survives the shrink, every key must still read correctly.
-	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	// Capacity is a resident-page cap and a RAM trade only: a cap below the pages touched evicts on every read, and every key must still resolve.
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_read(ReadBufferConfig {
+		resident_pages: 1,
+		shards: 1,
+		..ReadBufferConfig::default()
+	});
 	let keys = ["a", "b", "c", "d"];
 	for (i, name) in keys.iter().enumerate() {
 		persistent_only_set(&store, &key(name), 5, &format!("val{i}"));
 		assert_eq!(get(&store, &key(name), 5).as_deref(), Some(format!("val{i}").as_bytes()));
 	}
 
-	store.configure_read_buffer_capacity(1);
-
 	for (i, name) in keys.iter().enumerate() {
 		assert_eq!(
 			get(&store, &key(name), 5).as_deref(),
 			Some(format!("val{i}").as_bytes()),
-			"every key must still read correctly after the read buffer is shrunk and entries evicted"
+			"every key must still read correctly once cache entries have been evicted for capacity"
 		);
 	}
 }

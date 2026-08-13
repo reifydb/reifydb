@@ -13,7 +13,7 @@ use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
-	tier::commit::buffer::MultiCommitBufferTier,
+	tier::{commit::buffer::MultiCommitBufferTier, read::ReadBufferConfig},
 };
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;
@@ -38,6 +38,7 @@ fn test_tiered(path: &Path) {
 				commit: CommitBufferConfig {
 					storage: MultiCommitBufferTier::memory(),
 				},
+				read: Some(ReadBufferConfig::default()),
 				persistent: Some(PersistentConfig::sqlite(sqlite_config)),
 				retention: Default::default(),
 				merge_config: Default::default(),

@@ -16,7 +16,7 @@ use reifydb_store_multi::{
 		CommitBufferConfig as MultiCommitBufferConfig, MultiStoreConfig,
 		PersistentConfig as MultiPersistentConfig,
 	},
-	tier::commit::buffer::MultiCommitBufferTier,
+	tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig},
 };
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::{
@@ -42,17 +42,42 @@ impl StorageFactory {
 		MultiCommitBufferTier::memory()
 	}
 
+	pub(crate) fn open_multi_persistent(&self) -> Option<MultiPersistentTier> {
+		match self {
+			StorageFactory::Memory => None,
+			StorageFactory::Sqlite(config) => Some(MultiPersistentTier::sqlite(multi_sqlite_config(config))),
+		}
+	}
+
 	pub(crate) fn create_with_multi_commit_buffer(
 		&self,
 		multi_commit_buffer: MultiCommitBufferTier,
+		multi_persistent: Option<MultiPersistentTier>,
+		read: Option<ReadBufferConfig>,
 		spawner: &ActorSpawner,
 	) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
 		match self {
 			StorageFactory::Memory => create_memory_store_with(multi_commit_buffer, spawner),
-			StorageFactory::Sqlite(config) => {
-				create_sqlite_store_with(multi_commit_buffer, config.clone(), spawner)
-			}
+			StorageFactory::Sqlite(config) => create_sqlite_store_with(
+				multi_commit_buffer,
+				multi_persistent.expect("sqlite storage must supply an opened persistent tier"),
+				read,
+				config.clone(),
+				spawner,
+			),
 		}
+	}
+}
+
+fn multi_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
+	let path = match &config.path {
+		DbPath::File(p) => DbPath::File(p.with_extension("").join("multi.db")),
+		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("multi.db")),
+		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("multi.db")),
+	};
+	SqliteConfig {
+		path,
+		..config.clone()
 	}
 }
 
@@ -67,6 +92,7 @@ fn create_memory_store_with(
 			storage: multi_commit_buffer,
 		},
 		persistent: None,
+		read: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
@@ -91,26 +117,19 @@ fn create_memory_store_with(
 
 fn create_sqlite_store_with(
 	multi_commit_buffer: MultiCommitBufferTier,
+	multi_persistent: MultiPersistentTier,
+	read: Option<ReadBufferConfig>,
 	config: SqliteConfig,
 	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(spawner);
 
-	let multi_path = match &config.path {
-		DbPath::File(p) => DbPath::File(p.with_extension("").join("multi.db")),
-		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("multi.db")),
-		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("multi.db")),
-	};
-	let multi_config = SqliteConfig {
-		path: multi_path,
-		..config.clone()
-	};
-
 	let multi_store = MultiStore::standard(MultiStoreConfig {
 		commit: MultiCommitBufferConfig {
 			storage: multi_commit_buffer,
 		},
-		persistent: Some(MultiPersistentConfig::sqlite(multi_config)),
+		persistent: Some(MultiPersistentConfig::opened(multi_persistent)),
+		read,
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),

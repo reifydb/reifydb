@@ -5,7 +5,7 @@
 //! the engine needs before it can serve traffic. Idempotent - on a recovered database it confirms
 //! the same objects exist and matches versions rather than rewriting them.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -76,11 +76,19 @@ pub fn bootstrap_system_objects(
 	Ok(())
 }
 
+pub fn reject_duplicate_configs(configs: &[(ConfigKey, Value)]) {
+	let mut seen: HashSet<ConfigKey> = HashSet::with_capacity(configs.len());
+	for (key, _) in configs {
+		assert!(seen.insert(*key), "bootstrap config {key:?} set more than once");
+	}
+}
+
 pub fn seed_bootstrap_configs(
 	multi: &MultiTransaction,
 	catalog: &CatalogCache,
 	configs: &[(ConfigKey, Value)],
 ) -> Result<()> {
+	reject_duplicate_configs(configs);
 	if !configs.is_empty() {
 		let version = multi.version()?;
 		for (key, value) in configs {
@@ -99,6 +107,7 @@ pub fn apply_bootstrap_configs(
 	eventbus: &EventBus,
 	configs: &[(ConfigKey, Value)],
 ) -> Result<()> {
+	reject_duplicate_configs(configs);
 	if configs.is_empty() {
 		return Ok(());
 	}

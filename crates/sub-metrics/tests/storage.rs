@@ -124,6 +124,7 @@ impl Runner {
 					storage: data_storage,
 				},
 				persistent: None,
+				read: None,
 				retention: Default::default(),
 				merge_config: Default::default(),
 				event_bus: event_bus.clone(),

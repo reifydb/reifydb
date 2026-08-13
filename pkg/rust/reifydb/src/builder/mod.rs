@@ -5,6 +5,7 @@ mod database;
 mod embedded;
 mod intercept;
 mod server;
+mod startup;
 pub mod traits;
 
 pub use database::DatabaseBuilder;
