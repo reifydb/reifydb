@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::operator::EncodedOperatorRow,
 };
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
+use reifydb_core::{
+	interface::catalog::flow::OperatorId, key::operator_state::GroupId, metrics::collect::MetricsCollector,
+};
 use reifydb_runtime::shutdown::Shutdown;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
@@ -89,6 +93,10 @@ impl Default for OperatorStore {
 impl OperatorStore {
 	pub fn memory() -> Self {
 		Self
+	}
+
+	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
+		Vec::new()
 	}
 
 	pub fn set(&self, _operator: OperatorId, _key: EncodedKey, _row: EncodedOperatorRow) {}

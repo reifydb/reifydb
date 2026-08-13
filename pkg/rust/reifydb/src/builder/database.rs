@@ -452,12 +452,13 @@ impl DatabaseBuilder {
 
 		self.ioc = self.ioc.register(single_store.clone());
 		self.ioc = self.ioc.register(multi_store.clone());
-		self.ioc = self.ioc.register(operator_store);
+		self.ioc = self.ioc.register(operator_store.clone());
 		self.ioc = self.ioc.register(RetentionMetrics::new());
 
 		let metrics_registry = self.ioc.resolve::<MetricsRegistry>()?;
 		metrics_registry.register_collectors(multi_store.metrics_collectors());
 		metrics_registry.register_collectors(single_store.metrics_collectors());
+		metrics_registry.register_collectors(operator_store.metrics_collectors());
 
 		let transforms = if let Some(configurator) = self.transforms_configurator {
 			configurator(Transforms::builder()).configure()

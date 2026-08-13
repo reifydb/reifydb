@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::thread::spawn;
+
 use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 };
+use reifydb_sqlite::SqliteConfig;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use rusqlite::params;
 
@@ -522,4 +525,67 @@ fn the_anchor_census_reports_one_bucket_per_operator_and_group() {
 			},
 		]
 	);
+}
+
+#[test]
+fn the_in_memory_store_serves_reads_from_its_only_connection() {
+	let store = OperatorStore::memory();
+
+	assert_eq!(store.page_cache_metrics().connections_total.as_u64(), 1);
+}
+
+#[test]
+fn the_sqlite_store_opens_one_reader_per_configured_pool_slot() {
+	let (config, _guard) = SqliteConfig::test();
+	let pool_size = config.read_pool_size as u64;
+	let store = OperatorStore::sqlite(config);
+
+	assert_eq!(store.page_cache_metrics().connections_total.as_u64(), 1 + pool_size);
+}
+
+#[test]
+fn a_pooled_reader_sees_a_write_the_moment_the_writer_commits() {
+	let (config, _guard) = SqliteConfig::test();
+	let store = OperatorStore::sqlite(config);
+	let probe = key(7, 0x10, 1);
+
+	store.set(OperatorId(1), probe.clone(), row(4));
+
+	assert!(store.contains(OperatorId(1), &probe));
+	assert!(store.get(OperatorId(1), &probe).is_some());
+
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator: OperatorId(1),
+		key: probe.clone(),
+	}]);
+
+	assert!(!store.contains(OperatorId(1), &probe), "a committed batch must be visible to the pool too");
+}
+
+#[test]
+fn concurrent_reads_during_writes_do_not_deadlock() {
+	let (config, _guard) = SqliteConfig::test();
+	let store = OperatorStore::sqlite(config);
+	let probe = key(7, 0x10, 1);
+	store.set(OperatorId(1), probe.clone(), row(4));
+
+	let readers: Vec<_> = (0..4)
+		.map(|_| {
+			let store = store.clone();
+			let probe = probe.clone();
+			spawn(move || {
+				for _ in 0..500 {
+					assert!(store.contains(OperatorId(1), &probe));
+				}
+			})
+		})
+		.collect();
+
+	for i in 0..200u64 {
+		store.set(OperatorId(2), key(8, 0x10, (i % 251) as u8), row(8));
+	}
+
+	for reader in readers {
+		reader.join().expect("reader thread panicked (deadlock or read error)");
+	}
 }

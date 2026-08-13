@@ -102,6 +102,7 @@ impl ProfilerCategory {
 		} else if name.starts_with("store::single::")
 			|| name.starts_with("store::multi::")
 			|| name.starts_with("store::cdc::")
+			|| name.starts_with("store::operator::")
 			|| name.starts_with("drop::")
 		{
 			Some(ProfilerCategory::Storage)
@@ -285,6 +286,10 @@ mod tests {
 		assert_eq!(ProfilerCategory::from_span_name("store::single::scan"), Some(ProfilerCategory::Storage));
 		assert_eq!(
 			ProfilerCategory::from_span_name("store::cdc::sqlite::write"),
+			Some(ProfilerCategory::Storage)
+		);
+		assert_eq!(
+			ProfilerCategory::from_span_name("store::operator::range_batch"),
 			Some(ProfilerCategory::Storage)
 		);
 		assert_eq!(ProfilerCategory::from_span_name("drop::range"), Some(ProfilerCategory::Storage));
