@@ -25,7 +25,7 @@ use reifydb_value::{
 };
 use uuid::Uuid;
 
-use super::{CONTAINER_END, decode_i64_varint, decode_u64_varint, decode_u128_varint, deserialize};
+use super::{CONTAINER_END, decode_u128_varint, deserialize};
 use crate::tag::{TypeTag, ValueKind};
 
 pub struct KeyDeserializer<'a> {
@@ -104,10 +104,8 @@ impl<'a> KeyDeserializer<'a> {
 	}
 
 	pub fn read_i64(&mut self) -> Result<i64> {
-		let mut slice = &self.buffer[self.position..];
-		let i = decode_i64_varint(&mut slice)?;
-		self.position = self.buffer.len() - slice.len();
-		Ok(i)
+		let bytes = self.read_exact(8)?;
+		deserialize::<i64>(bytes)
 	}
 
 	pub fn read_i128(&mut self) -> Result<i128> {
@@ -126,17 +124,13 @@ impl<'a> KeyDeserializer<'a> {
 	}
 
 	pub fn read_u32(&mut self) -> Result<u32> {
-		let mut slice = &self.buffer[self.position..];
-		let u = decode_u64_varint(&mut slice)?;
-		self.position = self.buffer.len() - slice.len();
-		Ok(u as u32)
+		let bytes = self.read_exact(4)?;
+		deserialize::<u32>(bytes)
 	}
 
 	pub fn read_u64(&mut self) -> Result<u64> {
-		let mut slice = &self.buffer[self.position..];
-		let u = decode_u64_varint(&mut slice)?;
-		self.position = self.buffer.len() - slice.len();
-		Ok(u)
+		let bytes = self.read_exact(8)?;
+		deserialize::<u64>(bytes)
 	}
 
 	pub fn read_u128(&mut self) -> Result<u128> {

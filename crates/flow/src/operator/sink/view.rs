@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{
-	key::{encode_u8, encode_u64_varint, encoded::EncodedKey, serializer::KeySerializer},
+	key::{encode_u8, encode_u64, encoded::EncodedKey, serializer::KeySerializer},
 	row::{
 		bytes::{EncodedBytes, RowBuilder, SHAPE_HEADER_SIZE, read_created_at},
 		shape::{RowFamily, RowShape},
@@ -101,7 +101,7 @@ impl SinkTableViewOperator {
 	fn row_key(&self, row: RowNumber) -> EncodedKey {
 		let mut buf = Vec::with_capacity(self.key_prefix.len() + 9);
 		buf.extend_from_slice(&self.key_prefix);
-		encode_u64_varint(row.0, &mut buf);
+		buf.extend_from_slice(&encode_u64(row.0));
 		EncodedKey::new(buf)
 	}
 

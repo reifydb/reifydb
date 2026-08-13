@@ -166,15 +166,7 @@ impl IndexEntryKey {
 			.extend_object_id(object)
 			.extend_index_id(index)
 			.extend_raw(key_prefix);
-		let start = serializer.to_encoded_key();
-
-		let mut end = start.as_slice().to_vec();
-		end.push(0xFF);
-
-		EncodedKeyRange {
-			start: Bound::Included(start),
-			end: Bound::Excluded(EncodedKey::new(end)),
-		}
+		EncodedKeyRange::prefix(serializer.to_encoded_key().as_slice())
 	}
 
 	pub fn key_range(

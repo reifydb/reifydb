@@ -948,7 +948,7 @@ mod tests {
 			.len() + 8;
 
 		assert!(
-			interned.as_slice().len() * 4 < raw_group_bytes,
+			interned.as_slice().len() * 3 < raw_group_bytes,
 			"an interned state key ({} bytes) must stay far below a raw-group key ({} bytes)",
 			interned.as_slice().len(),
 			raw_group_bytes

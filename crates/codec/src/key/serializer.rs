@@ -22,8 +22,8 @@ use serde::Serialize;
 
 use super::{
 	CONTAINER_END, encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32,
-	encode_i64_varint, encode_i128, encode_u8, encode_u16, encode_u32_varint, encode_u64_varint, encode_u128,
-	encode_u128_varint, serialize,
+	encode_i64, encode_i128, encode_u8, encode_u16, encode_u32, encode_u64, encode_u128, encode_u128_varint,
+	serialize,
 };
 use crate::{
 	key::{buf::KeyBuf, encoded::EncodedKey, sort::SortOrder},
@@ -93,7 +93,7 @@ impl KeySerializer {
 	}
 
 	pub fn extend_i64<T: Into<i64>>(&mut self, value: T) -> &mut Self {
-		encode_i64_varint(value.into(), &mut self.buffer);
+		self.buffer.extend_from_slice(&encode_i64(value.into()));
 		self
 	}
 
@@ -113,12 +113,12 @@ impl KeySerializer {
 	}
 
 	pub fn extend_u32<T: Into<u32>>(&mut self, value: T) -> &mut Self {
-		encode_u32_varint(value.into(), &mut self.buffer);
+		self.buffer.extend_from_slice(&encode_u32(value.into()));
 		self
 	}
 
 	pub fn extend_u64<T: Into<u64>>(&mut self, value: T) -> &mut Self {
-		encode_u64_varint(value.into(), &mut self.buffer);
+		self.buffer.extend_from_slice(&encode_u64(value.into()));
 		self
 	}
 

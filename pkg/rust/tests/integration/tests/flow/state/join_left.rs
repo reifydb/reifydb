@@ -94,7 +94,7 @@ fn per_key_state_of(operator: u64) -> String {
 	format!("{} filter {{ group != 0 }}", state_of(operator))
 }
 
-fn assert_only_bounded_bookkeeping_survives(db: &TestDb, operator: u64) {
+fn assert_only_bounded_bookkeeping_survives(db: &TestDb, operator: u64, schemas: u64) {
 	// Each survivor is bounded per operator or per side; anything per row or per key here would grow forever.
 	let frames = db.query(&state_of(operator));
 	let frame = frames.first().expect("a sealed operator must still report its bookkeeping");
@@ -107,8 +107,8 @@ fn assert_only_bounded_bookkeeping_survives(db: &TestDb, operator: u64) {
 	);
 	assert_eq!(
 		column_values(frame, "keys"),
-		vec![Value::Uint8(1), Value::Uint8(1)],
-		"one schema and one counter per operator, never a key per row; surface now: {:?}",
+		vec![Value::Uint8(schemas), Value::Uint8(2)],
+		"one schema per side that saw rows and two counters, never a key per row; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
 }
@@ -161,7 +161,7 @@ fn a_sealed_pair_leaves_the_join_operator_holding_nothing_per_key() {
 		"a fully sealed join must hold nothing in any per-key keyspace; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
-	assert_only_bounded_bookkeeping_survives(&db, operator);
+	assert_only_bounded_bookkeeping_survives(&db, operator, 2);
 }
 
 #[test]
@@ -290,7 +290,7 @@ fn a_delete_after_the_seal_frees_no_further_state() {
 		"a sealed join must stay empty through a delete it cannot translate; surface now: {:?}",
 		db.query(SURFACE)
 	);
-	assert_only_bounded_bookkeeping_survives(&db, operator);
+	assert_only_bounded_bookkeeping_survives(&db, operator, 2);
 }
 
 #[test]
@@ -386,7 +386,7 @@ fn an_unmatched_left_row_publishes_none_on_the_right_and_seals_like_any_other() 
 		db.query(&state_of(operator))
 	);
 	assert_eq!(db.row_count("FROM app::j FILTER { lv == 5 }"), 1, "and the row it published must survive the reap");
-	assert_only_bounded_bookkeeping_survives(&db, operator);
+	assert_only_bounded_bookkeeping_survives(&db, operator, 1);
 }
 
 #[test]

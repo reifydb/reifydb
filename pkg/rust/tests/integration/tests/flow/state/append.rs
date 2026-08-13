@@ -81,8 +81,8 @@ fn assert_only_the_row_number_counter_survives(db: &TestDb, operator: u64) {
 	);
 	assert_eq!(
 		column_values(frame, "keys"),
-		vec![Value::Uint8(1)],
-		"the counter is one key per operator, never one per row; surface now: {:?}",
+		vec![Value::Uint8(2)],
+		"the group-id and row-number counters are fixed per operator, never one key per row; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
 }

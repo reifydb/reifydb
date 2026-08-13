@@ -84,9 +84,7 @@ impl PartitionedRowKey {
 		let object = object.into();
 		let mut prefix = KeySerializer::with_capacity(26);
 		prefix.extend_u8(Self::KIND as u8).extend_object_id(object).extend_u128(partition.0);
-		let start = prefix.to_encoded_key();
-		let end = prefix_successor(start.as_slice());
-		EncodedKeyRange::new(Bound::Included(start), end)
+		EncodedKeyRange::prefix(prefix.to_encoded_key().as_slice())
 	}
 
 	pub fn partition_scan_range(
@@ -100,19 +98,6 @@ impl PartitionedRowKey {
 			None => base,
 		}
 	}
-}
-
-fn prefix_successor(prefix: &[u8]) -> Bound<EncodedKey> {
-	let mut end = prefix.to_vec();
-	while let Some(&last) = end.last() {
-		if last == 0xFF {
-			end.pop();
-		} else {
-			*end.last_mut().unwrap() = last + 1;
-			return Bound::Excluded(EncodedKey::new(end));
-		}
-	}
-	Bound::Unbounded
 }
 
 impl EncodableKey for PartitionedRowKey {

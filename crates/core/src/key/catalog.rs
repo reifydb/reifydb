@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::{
-	ByteSink, decode_u64_varint, deserializer::KeyDeserializer, encode_u64_varint, encoded::EncodedKeyBuilder,
+	ByteSink, decode_u64_from, deserializer::KeyDeserializer, encode_u64, encoded::EncodedKeyBuilder,
 	serializer::KeySerializer,
 };
 use reifydb_value::Result;
@@ -17,7 +17,7 @@ use crate::{
 
 pub fn serialize_object_id<B: ByteSink>(object: &ObjectId, out: &mut B) {
 	out.push(object.type_tag());
-	encode_u64_varint(object.as_u64(), out);
+	out.extend_from_slice(&encode_u64(object.as_u64()));
 }
 
 pub fn deserialize_object_id(input: &mut &[u8]) -> Result<ObjectId> {
@@ -27,7 +27,7 @@ pub fn deserialize_object_id(input: &mut &[u8]) -> Result<ObjectId> {
 
 	let type_byte = input[0];
 	*input = &input[1..];
-	let id = decode_u64_varint(input)?;
+	let id = decode_u64_from(input)?;
 
 	match ObjectId::from_type_tag(type_byte, id) {
 		Some(object) => Ok(object),
@@ -39,7 +39,7 @@ pub fn serialize_index_id<B: ByteSink>(index: &IndexId, out: &mut B) {
 	match index {
 		IndexId::Primary(PrimaryKeyId(id)) => {
 			out.push(0x01);
-			encode_u64_varint(*id, out);
+			out.extend_from_slice(&encode_u64(*id));
 		}
 	}
 }
@@ -51,7 +51,7 @@ pub fn deserialize_index_id(input: &mut &[u8]) -> Result<IndexId> {
 
 	let type_byte = input[0];
 	*input = &input[1..];
-	let id = decode_u64_varint(input)?;
+	let id = decode_u64_from(input)?;
 
 	match type_byte {
 		0x01 => Ok(IndexId::Primary(PrimaryKeyId(id))),
@@ -286,7 +286,7 @@ pub mod tests {
 
 		assert!(bytes11 < bytes10, "index(11) should be < index(10) in bytes");
 
-		assert_eq!(bytes10.len(), 2, "IndexId(10) should be 2 bytes");
+		assert_eq!(bytes10.len(), 9, "IndexId(10) should be 9 bytes");
 		assert_eq!(bytes10[0], 0x01, "Primary variant should have type byte 0x01");
 
 		let next_index = IndexId::primary(11);
@@ -303,14 +303,14 @@ pub mod tests {
 		let object_bytes = serialize_object_id(&object);
 		let index_bytes = serialize_index_id(&index);
 
-		assert_eq!(object_bytes.len(), 2, "ObjectId(42) should be 2 bytes");
-		assert_eq!(index_bytes.len(), 2, "IndexId(7) should be 2 bytes");
+		assert_eq!(object_bytes.len(), 9, "ObjectId(42) should be 9 bytes");
+		assert_eq!(index_bytes.len(), 9, "IndexId(7) should be 9 bytes");
 
 		assert_eq!(object_bytes[0], 0x01, "Table object should have type byte 0x01");
 		assert_eq!(index_bytes[0], 0x01, "Primary index should have type byte 0x01");
 
 		let total_prefix_size = 1 + 1 + object_bytes.len() + index_bytes.len();
-		assert_eq!(total_prefix_size, 6, "Total IndexEntryKey prefix should be 6 bytes");
+		assert_eq!(total_prefix_size, 20, "Total IndexEntryKey prefix should be 20 bytes");
 	}
 }
 
@@ -330,8 +330,8 @@ mod moved_catalog_key_tests {
 		serializer.extend_index_id(IndexId::Primary(PrimaryKeyId(123456789)));
 		let result = serializer.finish();
 
-		// IndexId Primary uses 1 byte prefix + u64 varint
-		assert_eq!(result.len(), 5);
+		// A fixed-width id keeps every IndexId the same length, so a constant prefix scan stays exact.
+		assert_eq!(result.len(), 9);
 		assert_eq!(result[0], 0x01); // Primary variant prefix
 
 		// Ids are stored bitwise-inverted, so the smaller id encodes to the larger bytes; the
@@ -349,8 +349,8 @@ mod moved_catalog_key_tests {
 		serializer.extend_object_id(ObjectId::Table(TableId(987654321)));
 		let result = serializer.finish();
 
-		// ObjectId Table uses 1 byte prefix + u64 varint
-		assert_eq!(result.len(), 6);
+		// A fixed-width id keeps every ObjectId the same length, so a constant prefix scan stays exact.
+		assert_eq!(result.len(), 9);
 		assert_eq!(result[0], 0x01); // Table variant prefix
 
 		// Inverted encoding: the larger id sorts below the smaller one; byte 0 is the variant prefix.

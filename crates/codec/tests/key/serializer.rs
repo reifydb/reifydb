@@ -206,27 +206,27 @@ fn test_extend_i64() {
 	let mut serializer = KeySerializer::new();
 	serializer.extend_i64(0i64);
 	let result = serializer.finish();
-	assert_eq!(encode(&result), "7f");
+	assert_eq!(encode(&result), "7fffffffffffffff");
 
 	let mut serializer = KeySerializer::new();
 	serializer.extend_i64(1i64);
 	let result = serializer.finish();
-	assert_eq!(encode(&result), "7e");
+	assert_eq!(encode(&result), "7ffffffffffffffe");
 
 	let mut serializer = KeySerializer::new();
 	serializer.extend_i64(-1i64);
 	let result = serializer.finish();
-	assert_eq!(encode(&result), "80");
+	assert_eq!(encode(&result), "8000000000000000");
 
 	let mut serializer = KeySerializer::new();
 	serializer.extend_i64(i64::MAX);
 	let result = serializer.finish();
-	assert_eq!(encode(&result), "018000000000000000");
+	assert_eq!(encode(&result), "0000000000000000");
 
 	let mut serializer = KeySerializer::new();
 	serializer.extend_i64(i64::MIN);
 	let result = serializer.finish();
-	assert_eq!(encode(&result), "fe7fffffffffffffff");
+	assert_eq!(encode(&result), "ffffffffffffffff");
 }
 
 #[test]
@@ -303,17 +303,17 @@ fn test_extend_u32() {
 	let mut serializer = KeySerializer::new();
 	serializer.extend_u32(0u32);
 	let result = serializer.finish();
-	assert_eq!(encode(&result), "ff");
+	assert_eq!(encode(&result), "ffffffff");
 
 	let mut serializer = KeySerializer::new();
 	serializer.extend_u32(1u32);
 	let result = serializer.finish();
-	assert_eq!(encode(&result), "fe");
+	assert_eq!(encode(&result), "fffffffe");
 
 	let mut serializer = KeySerializer::new();
 	serializer.extend_u32(u32::MAX);
 	let result = serializer.finish();
-	assert_eq!(encode(&result), "0f00000000");
+	assert_eq!(encode(&result), "00000000");
 }
 
 #[test]
@@ -321,22 +321,22 @@ fn test_extend_u64() {
 	let mut serializer = KeySerializer::new();
 	serializer.extend_u64(0u64);
 	let result = serializer.finish();
-	assert_eq!(encode(&result), "ff");
+	assert_eq!(encode(&result), "ffffffffffffffff");
 
 	let mut serializer = KeySerializer::new();
 	serializer.extend_u64(1u64);
 	let result = serializer.finish();
-	assert_eq!(encode(&result), "fe");
+	assert_eq!(encode(&result), "fffffffffffffffe");
 
 	let mut serializer = KeySerializer::new();
 	serializer.extend_u64(65535u64);
 	let result = serializer.finish();
-	assert_eq!(encode(&result), "3f0000");
+	assert_eq!(encode(&result), "ffffffffffff0000");
 
 	let mut serializer = KeySerializer::new();
 	serializer.extend_u64(u64::MAX);
 	let result = serializer.finish();
-	assert_eq!(encode(&result), "000000000000000000");
+	assert_eq!(encode(&result), "0000000000000000");
 }
 
 #[test]
@@ -551,7 +551,7 @@ fn test_datetime() {
 	let datetime = DateTime::from_ymd_hms(2024, 1, 1, 12, 0, 0).unwrap();
 	serializer.extend_datetime(&datetime);
 	let result = serializer.finish();
-	assert_eq!(result.len(), 9); // i64 varint encoding
+	assert_eq!(result.len(), 8);
 }
 
 #[test]
@@ -560,7 +560,7 @@ fn test_time() {
 	let time = Time::from_hms(12, 30, 45).unwrap();
 	serializer.extend_time(&time);
 	let result = serializer.finish();
-	assert_eq!(result.len(), 7); // u64 varint encoding
+	assert_eq!(result.len(), 8);
 }
 
 #[test]
@@ -569,7 +569,7 @@ fn test_interval() {
 	let duration = Duration::from_nanoseconds(1000000).unwrap();
 	serializer.extend_duration(&duration);
 	let result = serializer.finish();
-	assert_eq!(result.len(), 17); // i32 + i32 + i64 varint encoding
+	assert_eq!(result.len(), 16);
 }
 
 #[test]
@@ -578,7 +578,7 @@ fn test_row_number() {
 	let row_number = RowNumber(42);
 	serializer.extend_row_number(&row_number);
 	let result = serializer.finish();
-	assert_eq!(result.len(), 1); // u64 varint encoding
+	assert_eq!(result.len(), 8);
 }
 
 #[test]

@@ -101,8 +101,8 @@ fn assert_only_bounded_bookkeeping_survives(db: &TestDb, operator: u64) {
 	);
 	assert_eq!(
 		column_values(frame, "keys"),
-		vec![Value::Uint8(1), Value::Uint8(1), Value::Uint8(1)],
-		"none of these may hold a key per window; surface now: {:?}",
+		vec![Value::Uint8(2), Value::Uint8(1), Value::Uint8(2)],
+		"two counters and one meta per group, but never a key per window; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
 }

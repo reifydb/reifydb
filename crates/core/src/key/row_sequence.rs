@@ -79,7 +79,7 @@ pub mod tests {
 			object: ObjectId::table(0xABCD),
 		};
 		let encoded = key.encode();
-		let expected = vec![0xF7, 0x01, 0x3F, 0x54, 0x32];
+		let expected = vec![0xF7, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = RowSequenceKey::decode(&encoded).unwrap();

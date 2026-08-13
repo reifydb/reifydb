@@ -208,18 +208,18 @@ fn test_position_tracking() {
 
 	let mut de = KeyDeserializer::from_bytes(&bytes);
 	assert_eq!(de.position(), 0);
-	assert_eq!(de.remaining(), 4);
+	assert_eq!(de.remaining(), 7);
 
 	de.read_u8().unwrap();
 	assert_eq!(de.position(), 1);
-	assert_eq!(de.remaining(), 3);
+	assert_eq!(de.remaining(), 6);
 
 	de.read_u16().unwrap();
 	assert_eq!(de.position(), 3);
-	assert_eq!(de.remaining(), 1);
+	assert_eq!(de.remaining(), 4);
 
 	de.read_u32().unwrap();
-	assert_eq!(de.position(), 4);
+	assert_eq!(de.position(), 7);
 	assert_eq!(de.remaining(), 0);
 	assert!(de.is_empty());
 }

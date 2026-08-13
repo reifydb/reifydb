@@ -99,32 +99,6 @@ pub fn encode_i64(value: i64) -> [u8; 8] {
 	(!(value as u64 ^ 0x8000000000000000)).to_be_bytes()
 }
 
-pub fn encode_i64_varint<B: ByteSink>(value: i64, output: &mut B) {
-	if value >= 0 {
-		if value < 64 {
-			output.push(!(0x80 | value as u8));
-		} else if value < 8192 + 64 {
-			let v = (value - 64) as u16;
-			output.push(!(0xc0 | (v >> 8) as u8));
-			output.push(!(v as u8));
-		} else {
-			output.push(!0xfe);
-			let inv = !(value as u64);
-			output.extend_from_slice(&inv.to_be_bytes());
-		}
-	} else if value >= -64 {
-		output.push(!(0x40 | (value + 64) as u8));
-	} else if value >= -8192 - 64 {
-		let v = (value + 64 + 8192) as u16;
-		output.push(!(0x20 | (v >> 8) as u8));
-		output.push(!(v as u8));
-	} else {
-		output.push(!0x01);
-		let inv = !(value as u64);
-		output.extend_from_slice(&inv.to_be_bytes());
-	}
-}
-
 pub fn encode_i128(value: i128) -> [u8; 16] {
 	(!(value as u128 ^ 0x80000000000000000000000000000000)).to_be_bytes()
 }
@@ -141,16 +115,23 @@ pub fn encode_u32(value: u32) -> [u8; 4] {
 	(!value).to_be_bytes()
 }
 
-pub fn encode_u32_varint<B: ByteSink>(value: u32, output: &mut B) {
-	encode_u64_varint(value as u64, output);
-}
-
 pub fn encode_u64(value: u64) -> [u8; 8] {
 	(!value).to_be_bytes()
 }
 
 pub fn decode_u64(bytes: [u8; 8]) -> u64 {
 	!u64::from_be_bytes(bytes)
+}
+
+pub fn decode_u64_from(input: &mut &[u8]) -> Result<u64> {
+	if input.len() < 8 {
+		return Err(Error::from(TypeError::SerdeKeycode {
+			message: "unexpected end of key while decoding u64".to_string(),
+		}));
+	}
+	let value = decode_u64(input[..8].try_into()?);
+	*input = &input[8..];
+	Ok(value)
 }
 
 pub fn encode_u64_asc(value: u64) -> [u8; 8] {
@@ -219,81 +200,6 @@ pub fn encode_u64_varint<B: ByteSink>(value: u64, output: &mut B) {
 		let inv = !value;
 		output.extend_from_slice(&inv.to_be_bytes());
 	}
-}
-
-pub fn decode_i64_varint(input: &mut &[u8]) -> Result<i64> {
-	if input.is_empty() {
-		return Err(Error::from(TypeError::SerdeKeycode {
-			message: "unexpected end of key while decoding i64 varint".to_string(),
-		}));
-	}
-	let first = !input[0];
-	let len = if first >= 0x80 {
-		if first < 0xc0 {
-			1
-		} else if first < 0xfe {
-			2
-		} else {
-			9
-		}
-	} else if first >= 0x40 {
-		1
-	} else if first >= 0x20 {
-		2
-	} else {
-		9
-	};
-
-	if input.len() < len {
-		return Err(Error::from(TypeError::SerdeKeycode {
-			message: "unexpected end of key while decoding i64 varint".to_string(),
-		}));
-	}
-
-	let mut buf = [0u8; 9];
-	for (dst, &src) in buf[..len].iter_mut().zip(&input[..len]) {
-		*dst = !src;
-	}
-	let mut slice = &buf[..len];
-	let v = varint::decode_i64_varint(&mut slice).ok_or_else(|| {
-		Error::from(TypeError::SerdeKeycode {
-			message: "failed to decode signed varint".to_string(),
-		})
-	})?;
-	*input = &input[len..];
-	Ok(v)
-}
-
-pub fn decode_u64_varint(input: &mut &[u8]) -> Result<u64> {
-	if input.is_empty() {
-		return Err(Error::from(TypeError::SerdeKeycode {
-			message: "unexpected end of key while decoding varint".to_string(),
-		}));
-	}
-	let first = !input[0];
-	let prefix = first.leading_ones() as usize;
-	let len = if prefix == 0 {
-		1
-	} else if prefix < 8 {
-		prefix + 1
-	} else {
-		9
-	};
-
-	if input.len() < len {
-		return Err(Error::from(TypeError::SerdeKeycode {
-			message: "unexpected end of key while decoding varint".to_string(),
-		}));
-	}
-
-	let mut buf = [0u8; 9];
-	for (dst, &src) in buf[..len].iter_mut().zip(&input[..len]) {
-		*dst = !src;
-	}
-	let mut slice = &buf[..len];
-	let v = varint::decode_u64_varint(&mut slice).unwrap();
-	*input = &input[len..];
-	Ok(v)
 }
 
 pub fn encode_u128(value: u128) -> [u8; 16] {

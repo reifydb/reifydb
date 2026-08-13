@@ -37,15 +37,9 @@ impl PolicyOpKey {
 	}
 
 	pub fn policy_scan(policy: PolicyId) -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(9);
-		start.extend_u8(Self::KIND as u8).extend_u64(policy);
-		let mut end = KeySerializer::with_capacity(17);
-		end.extend_u8(Self::KIND as u8).extend_u64(policy);
-		let start_key = start.to_encoded_key();
-		let mut end_bytes = end.to_encoded_key().to_vec();
-
-		end_bytes.extend_from_slice(&[0xFF; 8]);
-		EncodedKeyRange::start_end(Some(start_key), Some(EncodedKey::new(end_bytes)))
+		let mut prefix = KeySerializer::with_capacity(9);
+		prefix.extend_u8(Self::KIND as u8).extend_u64(policy);
+		EncodedKeyRange::prefix(prefix.to_encoded_key().as_slice())
 	}
 }
 
@@ -70,5 +64,32 @@ impl EncodableKey for PolicyOpKey {
 			policy,
 			op_index,
 		})
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::ops::RangeBounds;
+
+	use super::*;
+
+	#[test]
+	fn policy_scan_holds_every_op_index_of_that_policy() {
+		// A fixed 0xFF-padded end bound only covers suffixes of exactly its own width.
+		let range = PolicyOpKey::policy_scan(7);
+
+		for op_index in [0u64, 1, 2, u64::MAX] {
+			let key = PolicyOpKey::encoded(7, op_index);
+			assert!(range.contains(&key), "op index {op_index} must fall inside the policy scan");
+		}
+	}
+
+	#[test]
+	fn policy_scan_excludes_a_neighbouring_policy() {
+		// The scan must not widen into the next policy when the bound is carry-incremented.
+		let range = PolicyOpKey::policy_scan(7);
+
+		assert!(!range.contains(&PolicyOpKey::encoded(6, 1)));
+		assert!(!range.contains(&PolicyOpKey::encoded(8, 1)));
 	}
 }
