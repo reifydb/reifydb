@@ -45,7 +45,9 @@ impl StorageFactory {
 	pub(crate) fn open_multi_persistent(&self) -> Option<MultiPersistentTier> {
 		match self {
 			StorageFactory::Memory => None,
-			StorageFactory::Sqlite(config) => Some(MultiPersistentTier::sqlite(multi_sqlite_config(config))),
+			StorageFactory::Sqlite(config) => {
+				Some(MultiPersistentTier::sqlite(multi_sqlite_config(config)))
+			}
 		}
 	}
 
@@ -69,7 +71,8 @@ impl StorageFactory {
 	}
 }
 
-fn multi_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
+/// The catalog key is the single source for this pragma, so an inherited value must not reach open.
+pub(crate) fn multi_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
 	let path = match &config.path {
 		DbPath::File(p) => DbPath::File(p.with_extension("").join("multi.db")),
 		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("multi.db")),
@@ -77,6 +80,7 @@ fn multi_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
 	};
 	SqliteConfig {
 		path,
+		wal_autocheckpoint: None,
 		..config.clone()
 	}
 }

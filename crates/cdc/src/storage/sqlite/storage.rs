@@ -29,7 +29,7 @@ use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, OptionalExtension, Transaction, params, params_from_iter,
 	types::Value as SqlValue,
 };
-use tracing::{instrument, warn};
+use tracing::instrument;
 
 use crate::{
 	compact::{block, block::CompactBlockSummary, cache::BlockCache},
@@ -124,15 +124,6 @@ impl SqliteCdcStorage {
 	pub fn in_memory() -> (Self, SqliteTempPathGuard) {
 		let (config, guard) = SqliteConfig::in_memory();
 		(Self::new(config), guard)
-	}
-
-	pub fn set_wal_autocheckpoint(&self, frames: u32) {
-		let guard = self.inner.conn.lock();
-		if let Some(conn) = guard.as_ref()
-			&& let Err(e) = conn.pragma_update(None, "wal_autocheckpoint", frames)
-		{
-			warn!(error = %e, "failed to update CDC wal_autocheckpoint pragma");
-		}
 	}
 
 	fn ensure_schema(conn: &Connection) {

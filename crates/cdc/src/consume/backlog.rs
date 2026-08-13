@@ -13,14 +13,13 @@ use std::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::config::ConfigKey,
 		cdc::{Cdc, SystemChange},
 		change::{Change, Diff},
 	},
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_value::{byte_size::ByteSize, reifydb_assertions, value::Value};
+use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 
 pub enum BacklogPull {
 	Hit {
@@ -59,14 +58,6 @@ pub struct FlowBacklog {
 }
 
 impl FlowBacklog {
-	pub fn with_default_limit() -> Self {
-		let limit = match ConfigKey::FlowBacklogMemoryLimit.default_value() {
-			Value::Uint8(bytes) => ByteSize::from_bytes(bytes),
-			other => panic!("FLOW_BACKLOG_MEMORY_LIMIT default must be Uint8 bytes, got {other:?}"),
-		};
-		Self::new(limit)
-	}
-
 	pub fn new(limit: ByteSize) -> Self {
 		Self {
 			shared: Arc::new(BacklogShared {

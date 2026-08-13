@@ -86,21 +86,17 @@ impl StandardMultiStore {
 
 		let eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 
-		let read = config
-			.persistent
-			.is_some()
-			.then(|| config.read.and_then(MultiReadBufferTier::new))
-			.flatten();
+		let read =
+			config.persistent.is_some().then(|| config.read.and_then(MultiReadBufferTier::new)).flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush_engine) = {
 			let persistent_config = config.persistent.clone();
 			let persistent = persistent_config.as_ref().map(|c| c.storage.clone());
 			let flush_engine = match (persistent.as_ref(), persistent_config.as_ref()) {
-				(Some(persistent_storage), Some(persistent_cfg)) => Some(Arc::new(FlushEngine::new(
+				(Some(persistent_storage), Some(_)) => Some(Arc::new(FlushEngine::new(
 					commit.clone(),
 					persistent_storage.clone(),
-					persistent_cfg.flush_interval,
 					row_settings_provider.clone(),
 					eviction_watermark.clone(),
 					read.clone(),
@@ -133,12 +129,6 @@ impl StandardMultiStore {
 
 	pub fn flush_engine(&self) -> Option<Arc<FlushEngine>> {
 		self.flush_engine.clone()
-	}
-
-	pub fn configure_wal_autocheckpoint(&self, frames: u32) {
-		if let Some(persistent) = &self.persistent {
-			persistent.set_checkpoint_threshold(frames);
-		}
 	}
 
 	pub fn insert_read_key(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {

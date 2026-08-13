@@ -20,7 +20,7 @@ use reifydb_store_multi::{
 	store::StandardMultiStore,
 	tier::{TierStorage, commit::buffer::MultiCommitBufferTier, read::ReadBufferConfig},
 };
-use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
+use reifydb_value::util::cowvec::CowVec;
 
 /// Commit buffer + SQLite persistent + read cache on sync_only pools, so the timer-driven flush and
 /// compaction actors never fire on their own and the run stays a pure function of the seed.
@@ -36,7 +36,6 @@ pub fn sync_persistent_store_with_read(read: ReadBufferConfig) -> (StandardMulti
 	std::mem::forget(actor_system);
 	let event_bus = EventBus::new(&spawner);
 	let (persistent, guard) = PersistentConfig::sqlite_in_memory();
-	let persistent = persistent.flush_interval(Duration::from_seconds(86_400).unwrap());
 	let mut config = MultiStoreConfig::sqlite(persistent, spawner, clock, event_bus);
 	config.read = Some(read);
 	let store = StandardMultiStore::new(config).unwrap();

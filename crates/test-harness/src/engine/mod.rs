@@ -59,6 +59,7 @@ use reifydb_transaction::{
 	transaction::admin::AdminTransaction,
 };
 use reifydb_value::{
+	byte_size::ByteSize,
 	fragment::Fragment,
 	params::Params,
 	value::{Value, constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId, value_type::ValueType},
@@ -266,7 +267,9 @@ impl TestEngineBuilder {
 		let cdc_wake_registry = CdcWakeRegistry::new();
 		ioc = ioc.register(cdc_wake_registry.clone());
 
-		let flow_backlog = FlowBacklog::with_default_limit();
+		let flow_backlog = FlowBacklog::new(ByteSize::from_bytes(
+			multi.config().get_config_uint8(ConfigKey::FlowBacklogMemoryLimit),
+		));
 		ioc = ioc.register(flow_backlog.clone());
 
 		let ioc_for_cdc = ioc.clone();

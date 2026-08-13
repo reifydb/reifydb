@@ -62,14 +62,12 @@ pub struct CommitBufferConfig {
 #[derive(Clone)]
 pub struct PersistentConfig {
 	pub storage: MultiPersistentTier,
-	pub flush_interval: Duration,
 }
 
 impl PersistentConfig {
 	pub fn opened(storage: MultiPersistentTier) -> Self {
 		Self {
 			storage,
-			flush_interval: Duration::from_seconds(5).unwrap(),
 		}
 	}
 
@@ -77,7 +75,6 @@ impl PersistentConfig {
 	pub fn sqlite(sqlite_config: SqliteConfig) -> Self {
 		Self {
 			storage: MultiPersistentTier::sqlite(sqlite_config),
-			flush_interval: Duration::from_seconds(5).unwrap(),
 		}
 	}
 
@@ -87,15 +84,9 @@ impl PersistentConfig {
 		(
 			Self {
 				storage,
-				flush_interval: Duration::from_seconds(5).unwrap(),
 			},
 			guard,
 		)
-	}
-
-	pub fn flush_interval(mut self, interval: Duration) -> Self {
-		self.flush_interval = interval;
-		self
 	}
 }
 

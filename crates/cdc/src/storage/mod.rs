@@ -294,14 +294,6 @@ impl CdcStore {
 	}
 
 	#[cfg_attr(any(not(feature = "sqlite"), target_arch = "wasm32"), allow(unused_variables))]
-	pub fn configure_wal_autocheckpoint(&self, frames: u32) {
-		match self {
-			Self::Memory(_) => {}
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.set_wal_autocheckpoint(frames),
-		}
-	}
-
 	pub fn write(&self, cdc: &Cdc) -> CdcStorageResult<()> {
 		match self {
 			Self::Memory(s) => s.write(cdc),

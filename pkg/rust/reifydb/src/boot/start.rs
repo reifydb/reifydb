@@ -3,14 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_cdc::storage::CdcStore;
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_core::{
-	interface::catalog::config::{ConfigKey, GetConfig},
-	key::{
-		EncodableKey,
-		system_version::{SystemVersion, SystemVersionKey},
-	},
+use reifydb_core::key::{
+	EncodableKey,
+	system_version::{SystemVersion, SystemVersionKey},
 };
 use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
 use reifydb_store_multi::MultiStore;
@@ -57,11 +53,6 @@ pub(crate) fn configure_store(engine: &StandardEngine) -> Result<()> {
 
 	let catalog = engine.catalog();
 
-	store.configure_wal_autocheckpoint(catalog.get_config_uint8(ConfigKey::MultiWalAutocheckpoint) as u32);
-	if let Some(cdc_store) = engine.ioc().try_resolve::<CdcStore>() {
-		cdc_store
-			.configure_wal_autocheckpoint(catalog.get_config_uint8(ConfigKey::CdcWalAutocheckpoint) as u32);
-	}
 	store.set_row_settings_provider(Arc::new(catalog.clone()));
 
 	Ok(())

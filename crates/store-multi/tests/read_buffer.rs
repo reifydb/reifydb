@@ -156,7 +156,8 @@ fn range_scan_does_not_consult_the_read_tier() {
 
 #[test]
 fn capacity_eviction_of_a_cache_entry_never_changes_a_read_result() {
-	// Capacity is a resident-page cap and a RAM trade only: a cap below the pages touched evicts on every read, and every key must still resolve.
+	// Capacity is a resident-page cap and a RAM trade only: a cap below the pages touched evicts on every read, and
+	// every key must still resolve.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_read(ReadBufferConfig {
 		resident_pages: 1,
 		shards: 1,

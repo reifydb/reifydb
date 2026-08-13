@@ -123,7 +123,8 @@ pub fn drive(seed: u64, p: Params) {
 
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
-	// Pages must exceed WARM_THRESHOLD (128) to become range_complete, with few resident pages so eviction still churns.
+	// Pages must exceed WARM_THRESHOLD (128) to become range_complete, with few resident pages so eviction still
+	// churns.
 	let pages = pick(&mut rng, &[1usize, 2, 3]);
 	let page_rows = pick(&mut rng, &[256u64, 512]);
 	let (tiny, _g2) = sync_persistent_store_with_read(tiny_read_buffer(pages, page_rows));

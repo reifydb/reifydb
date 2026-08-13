@@ -18,6 +18,8 @@ use crate::Result;
 pub(crate) struct StartupConfig {
 	pub pools: PoolConfig,
 	pub read: Option<ReadBufferConfig>,
+	pub multi_wal_autocheckpoint: u32,
+	pub cdc_wal_autocheckpoint: u32,
 }
 
 const STARTUP_KEYS: &[ConfigKey] = &[
@@ -29,6 +31,8 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::MultiReadBufferPages,
 	ConfigKey::MultiReadBufferPageSize,
 	ConfigKey::MultiReadBufferBytes,
+	ConfigKey::MultiWalAutocheckpoint,
+	ConfigKey::CdcWalAutocheckpoint,
 ];
 
 pub(crate) fn resolve_startup_configs(
@@ -90,5 +94,7 @@ pub(crate) fn resolve_startup_configs(
 	Ok(StartupConfig {
 		pools,
 		read,
+		multi_wal_autocheckpoint: uint8(ConfigKey::MultiWalAutocheckpoint) as u32,
+		cdc_wal_autocheckpoint: uint8(ConfigKey::CdcWalAutocheckpoint) as u32,
 	})
 }

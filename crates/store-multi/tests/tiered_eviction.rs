@@ -53,7 +53,7 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 			storage: MultiCommitBufferTier::memory(),
 		},
 		read: Some(ReadBufferConfig::default()),
-		persistent: Some(persistent.flush_interval(Duration::from_milliseconds(25).unwrap())),
+		persistent: Some(persistent),
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus,

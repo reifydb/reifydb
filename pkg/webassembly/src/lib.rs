@@ -35,7 +35,10 @@ use reifydb_cdc::{
 use reifydb_core::{
 	CoreVersion,
 	event::{EventBus, transaction::PostCommitEvent},
-	interface::version::{ComponentType, HasVersion, SystemVersion},
+	interface::{
+		catalog::config::ConfigKey,
+		version::{ComponentType, HasVersion, SystemVersion},
+	},
 	lifecycle::metrics::RetentionMetrics,
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
@@ -60,7 +63,7 @@ use reifydb_transaction::{
 	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{byte_size::ByteSize, params::Params, value::identity::IdentityId};
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
@@ -244,7 +247,9 @@ impl WasmDB {
 		let cdc_wake_registry = CdcWakeRegistry::new();
 		ioc = ioc.register(cdc_wake_registry.clone());
 
-		let flow_backlog = FlowBacklog::with_default_limit();
+		let flow_backlog = FlowBacklog::new(ByteSize::from_bytes(
+			multi.config().get_config_uint8(ConfigKey::FlowBacklogMemoryLimit),
+		));
 		ioc = ioc.register(flow_backlog.clone());
 
 		// Register RetentionMetrics (required by FlowSubsystem)

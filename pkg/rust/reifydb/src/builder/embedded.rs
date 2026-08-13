@@ -9,7 +9,9 @@ use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_extension::transform::registry::TransformsConfigurator;
 use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig, version_epoch::VersionEpoch};
-use reifydb_store_multi::tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig};
+use reifydb_store_multi::tier::{
+	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig,
+};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
@@ -27,14 +29,20 @@ use reifydb_value::value::Value;
 fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
-) -> Result<(MultiCommitBufferTier, Option<MultiPersistentTier>, PoolConfig, Option<ReadBufferConfig>)> {
+) -> Result<(MultiCommitBufferTier, Option<MultiPersistentTier>, PoolConfig, Option<ReadBufferConfig>, u32)> {
 	let multi_commit_buffer = factory.open_multi_commit_buffer();
 	let multi_persistent = factory.open_multi_persistent();
 	let resolved = resolve_startup_configs(&multi_commit_buffer, multi_persistent.as_ref(), overrides)?;
-	Ok((multi_commit_buffer, multi_persistent, resolved.pools, resolved.read))
+	if let Some(persistent) = multi_persistent.as_ref() {
+		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);
+	}
+	Ok((multi_commit_buffer, multi_persistent, resolved.pools, resolved.read, resolved.cdc_wal_autocheckpoint))
 }
 
-use super::{DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, startup::resolve_startup_configs, traits::WithSubsystem};
+use super::{
+	DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, startup::resolve_startup_configs,
+	traits::WithSubsystem,
+};
 use crate::{
 	Database, MigrationSource, Result,
 	api::{StorageFactory, transaction},
@@ -169,7 +177,7 @@ impl EmbeddedBuilder {
 	}
 
 	pub fn build(self) -> Result<Database> {
-		let (multi_commit_buffer, multi_persistent, pool_config, read_buffer) =
+		let (multi_commit_buffer, multi_persistent, pool_config, read_buffer, cdc_wal_autocheckpoint) =
 			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 		let runtime = Runtime::from_config(self.runtime_config.unwrap_or_default(), pool_config);
 
@@ -177,13 +185,9 @@ impl EmbeddedBuilder {
 		let clock = runtime.clock().clone();
 		let rng = runtime.rng().clone();
 
-		let (multi_store, single_store, operator_store, transaction_single, eventbus) =
-			self.storage_factory.create_with_multi_commit_buffer(
-				multi_commit_buffer,
-				multi_persistent,
-				read_buffer,
-				&spawner,
-			);
+		let (multi_store, single_store, operator_store, transaction_single, eventbus) = self
+			.storage_factory
+			.create_with_multi_commit_buffer(multi_commit_buffer, multi_persistent, read_buffer, &spawner);
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
 		let (multi, single, eventbus) = transaction(
@@ -198,7 +202,7 @@ impl EmbeddedBuilder {
 		let cdc_backend = match &self.storage_factory {
 			StorageFactory::Memory => CdcBackend::Memory,
 			#[cfg(not(target_arch = "wasm32"))]
-			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone()),
+			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone().wal_autocheckpoint(cdc_wal_autocheckpoint)),
 		};
 
 		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus, version_epoch)

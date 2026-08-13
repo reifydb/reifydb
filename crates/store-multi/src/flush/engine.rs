@@ -22,7 +22,6 @@ use reifydb_runtime::{
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::byte_size::ByteSize;
-use reifydb_value::value::duration::Duration;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -50,7 +49,6 @@ pub struct FlushEngineState {
 pub struct FlushEngine {
 	commit: MultiCommitBufferTier,
 	persistent: MultiPersistentTier,
-	flush_interval: Duration,
 	persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 	read: Option<MultiReadBufferTier>,
@@ -79,7 +77,6 @@ impl FlushEngine {
 	pub fn new(
 		commit: MultiCommitBufferTier,
 		persistent: MultiPersistentTier,
-		flush_interval: Duration,
 		persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 		read: Option<MultiReadBufferTier>,
@@ -89,7 +86,6 @@ impl FlushEngine {
 		Self {
 			commit,
 			persistent,
-			flush_interval,
 			persistence,
 			eviction_watermark,
 			read,
@@ -400,7 +396,6 @@ mod tests {
 			FlushEngine::new(
 				buffer,
 				persistent,
-				Duration::from_seconds(5).unwrap(),
 				persistence_lock,
 				watermark_lock,
 				None,
@@ -445,7 +440,6 @@ mod tests {
 			FlushEngine::new(
 				buffer,
 				persistent,
-				Duration::from_seconds(5).unwrap(),
 				persistence_lock,
 				watermark_lock,
 				None,
@@ -526,7 +520,6 @@ mod tests {
 			FlushEngine::new(
 				buffer,
 				persistent,
-				Duration::from_seconds(5).unwrap(),
 				persistence_lock,
 				watermark_lock,
 				Some(read),
