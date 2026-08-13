@@ -373,40 +373,6 @@ impl SqlitePersistentStorage {
 		Ok(out)
 	}
 
-	pub fn freelist_page_count(&self) -> Result<(u64, u64)> {
-		let guard = self.lock_conn();
-		let Some(conn) = guard.as_ref() else {
-			return Ok((0, 0));
-		};
-		let freelist = conn
-			.query_row("PRAGMA freelist_count", [], |row| row.get::<_, i64>(0))
-			.map_err(|e| error!(internal(format!("Failed to read freelist_count: {}", e))))?;
-		let pages = conn
-			.query_row("PRAGMA page_count", [], |row| row.get::<_, i64>(0))
-			.map_err(|e| error!(internal(format!("Failed to read page_count: {}", e))))?;
-		Ok((freelist.max(0) as u64, pages.max(0) as u64))
-	}
-
-	pub fn incremental_vacuum(&self, pages: u64) -> Result<u64> {
-		if pages == 0 {
-			return Ok(0);
-		}
-		let pages = pages.min(i64::MAX as u64);
-		let guard = self.lock_conn();
-		let Some(conn) = guard.as_ref() else {
-			return Ok(0);
-		};
-		let before = conn
-			.query_row("PRAGMA freelist_count", [], |row| row.get::<_, i64>(0))
-			.map_err(|e| error!(internal(format!("Failed to read freelist_count: {}", e))))?;
-		conn.execute_batch(&format!("PRAGMA incremental_vacuum({})", pages))
-			.map_err(|e| error!(internal(format!("Failed to run incremental_vacuum: {}", e))))?;
-		let after = conn
-			.query_row("PRAGMA freelist_count", [], |row| row.get::<_, i64>(0))
-			.map_err(|e| error!(internal(format!("Failed to read freelist_count: {}", e))))?;
-		Ok((before.max(0) as u64).saturating_sub(after.max(0) as u64))
-	}
-
 	pub fn reap_tombstones(
 		&self,
 		table_name: &str,
@@ -1561,47 +1527,5 @@ mod tests {
 			details.iter().any(|d| d.contains(&format!("{table_name}__tombstone"))),
 			"reap discovery must use the partial tombstone index; query plan was {details:?}"
 		);
-	}
-
-	#[test]
-	fn incremental_vacuum_reduces_the_freelist_under_the_page_bound() {
-		// auto_vacuum = INCREMENTAL parks freed pages on the freelist until incremental_vacuum runs, and
-		// one call may reclaim at most the per-slice bound. File truncation is a post-checkpoint concern,
-		// so this asserts freelist_count, never file size.
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		for n in 1..=500u64 {
-			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(row(&vec![0u8; 200])))])]))
-				.unwrap();
-		}
-		let keys: Vec<EncodedKey> = (1..=500u64).map(key).collect();
-		s.delete_keys(table(), &keys).unwrap();
-
-		let (freelist_before, _) = s.freelist_page_count().unwrap();
-		assert!(
-			freelist_before > 0,
-			"deleting a large table under auto_vacuum=INCREMENTAL must leave freed pages on the freelist, \
-			 got {freelist_before}; a zero here means the pragma is not INCREMENTAL"
-		);
-
-		let moved = s.incremental_vacuum(3).unwrap();
-		assert!(moved > 0, "incremental_vacuum must reclaim freed pages, got {moved}");
-		assert!(moved <= 3, "one call must reclaim at most the per-slice page bound (3), got {moved}");
-
-		let (freelist_after, _) = s.freelist_page_count().unwrap();
-		assert_eq!(
-			freelist_after,
-			freelist_before - moved,
-			"the freelist must shrink by exactly the reclaimed page count"
-		);
-	}
-
-	#[test]
-	fn incremental_vacuum_on_an_empty_freelist_is_a_noop() {
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
-
-		let (freelist, _) = s.freelist_page_count().unwrap();
-		assert_eq!(freelist, 0, "a store with only live rows has nothing on the freelist");
-		assert_eq!(s.incremental_vacuum(1024).unwrap(), 0, "vacuuming an empty freelist reclaims nothing");
 	}
 }

@@ -24,7 +24,7 @@ fn snapshots_append_readings_when_the_interval_is_set() {
 	let rows = db.await_row_count("from system::metrics::runtime::watermarks::snapshots", 1, TIMEOUT);
 	assert!(rows >= 1, "the watermarks ::current reading never reached its ::snapshots series");
 
-	// Lifecycle rows carry none-valued optional columns (binding, freelist), so this pins the
+	// Lifecycle rows carry a none-valued optional column (binding), so this pins the
 	// append path's none handling against the wide series schema.
 	let lifecycle = db.await_row_count("from system::metrics::lifecycle::snapshots", 1, TIMEOUT);
 	assert!(lifecycle >= 1, "the lifecycle ::current reading never reached its ::snapshots series");

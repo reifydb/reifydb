@@ -105,18 +105,6 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn freelist_page_count(&self) -> Result<(u64, u64)> {
-		match self {
-			Self::Sqlite(s) => s.freelist_page_count(),
-		}
-	}
-
-	pub fn incremental_vacuum(&self, pages: u64) -> Result<u64> {
-		match self {
-			Self::Sqlite(s) => s.incremental_vacuum(pages),
-		}
-	}
-
 	pub fn set_collecting_accepted(&self, version: CommitVersion, batches: TierBatch) -> Result<Vec<EncodedKey>> {
 		match self {
 			Self::Sqlite(s) => s.set_collecting_accepted(version, batches),
@@ -174,14 +162,6 @@ impl MultiPersistentTier {
 		_cutoff_version: CommitVersion,
 		_limit: usize,
 	) -> Result<(u64, bool)> {
-		match *self {}
-	}
-
-	pub fn freelist_page_count(&self) -> Result<(u64, u64)> {
-		match *self {}
-	}
-
-	pub fn incremental_vacuum(&self, _pages: u64) -> Result<u64> {
 		match *self {}
 	}
 

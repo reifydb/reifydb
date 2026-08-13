@@ -6,4 +6,3 @@
 
 pub mod flush;
 pub mod tombstone;
-pub mod vacuum;

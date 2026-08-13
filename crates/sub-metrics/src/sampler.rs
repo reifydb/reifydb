@@ -335,10 +335,6 @@ fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
 				counter_count("budget_exhausted_slices", snapshot.budget_exhausted_slices),
 				counter_count("gated_slices", snapshot.gated_slices),
 			];
-			if let Some(freelist) = snapshot.freelist {
-				measures.push(level_count("freelist_pages", freelist.freelist_pages));
-				measures.push(level_count("page_count", freelist.page_count));
-			}
 			MetricsRow {
 				dimensions: vec![Value::Utf8(class.name().to_string()), binding],
 				measures,

@@ -35,7 +35,7 @@ use crate::{
 	},
 	plane::{RetentionPlane, horizon::max_retention_horizon, measured::Measured},
 	retention::evictor::RetentionEvictTask,
-	store::{flush::PersistentFlushTask, tombstone::TombstoneReapTask, vacuum::VacuumBudgetTask},
+	store::{flush::PersistentFlushTask, tombstone::TombstoneReapTask},
 	subsystem::LifecycleSubsystem,
 };
 
@@ -138,13 +138,8 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 				),
 				plane.clone(),
 			)));
-			registry.register(Box::new(Measured::new(
-				VacuumBudgetTask::new(store.clone(), plane.clone(), config.clone()),
-				plane.clone(),
-			)));
 		} else {
 			coverage.absent(RetentionClass::TombstoneReap, NO_PERSISTENT_TIER);
-			coverage.absent(RetentionClass::VacuumBudget, NO_PERSISTENT_TIER);
 		}
 
 		registry.register(Box::new(Measured::new(

@@ -5,7 +5,7 @@ use std::{
 	collections::BTreeMap,
 	sync::{
 		Arc,
-		atomic::{AtomicBool, AtomicU64, Ordering},
+		atomic::{AtomicU64, Ordering},
 	},
 };
 
@@ -14,12 +14,6 @@ use crate::lifecycle::class::{Floor, FloorTerm, RetentionClass};
 pub struct GcMetrics {
 	pub objects_scanned: u64,
 	pub versions_dropped: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FreelistGauge {
-	pub freelist_pages: u64,
-	pub page_count: u64,
 }
 
 const STARVATION_WINDOW_NANOS: u64 = 5 * 60 * 1_000_000_000;
@@ -56,8 +50,6 @@ pub struct ClassSnapshot {
 	pub budget_exhausted_slices: u64,
 
 	pub gated_slices: u64,
-
-	pub freelist: Option<FreelistGauge>,
 }
 
 #[derive(Default)]
@@ -72,9 +64,6 @@ struct ClassCounters {
 	stuck_slices: AtomicU64,
 	budget_exhausted_slices: AtomicU64,
 	gated_slices: AtomicU64,
-	freelist_pages: AtomicU64,
-	page_count: AtomicU64,
-	freelist_observed: AtomicBool,
 }
 
 impl ClassCounters {
@@ -155,10 +144,6 @@ impl ClassCounters {
 			stuck_slices: self.stuck_slices.load(Ordering::Relaxed),
 			budget_exhausted_slices: self.budget_exhausted_slices.load(Ordering::Relaxed),
 			gated_slices: self.gated_slices.load(Ordering::Relaxed),
-			freelist: self.freelist_observed.load(Ordering::Relaxed).then(|| FreelistGauge {
-				freelist_pages: self.freelist_pages.load(Ordering::Relaxed),
-				page_count: self.page_count.load(Ordering::Relaxed),
-			}),
 		}
 	}
 }
@@ -213,14 +198,6 @@ impl RetentionMetrics {
 	pub fn record_budget_exhausted(&self, class: RetentionClass) {
 		if let Some(counters) = self.counters(class) {
 			counters.budget_exhausted_slices.fetch_add(1, Ordering::Relaxed);
-		}
-	}
-
-	pub fn record_freelist(&self, class: RetentionClass, gauge: FreelistGauge) {
-		if let Some(counters) = self.counters(class) {
-			counters.freelist_pages.store(gauge.freelist_pages, Ordering::Relaxed);
-			counters.page_count.store(gauge.page_count, Ordering::Relaxed);
-			counters.freelist_observed.store(true, Ordering::Relaxed);
 		}
 	}
 

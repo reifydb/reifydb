@@ -12,7 +12,6 @@ pub fn apply(conn: &Connection, config: &SqliteConfig) -> SqliteResult<()> {
 	if let Some(page_size) = config.page_size {
 		set(conn, "page_size", page_size.as_bytes() as u32)?;
 	}
-	set(conn, "auto_vacuum", "INCREMENTAL")?;
 	set(conn, "secure_delete", "FAST")?;
 	if let Some(journal_mode) = config.journal_mode {
 		set(conn, "journal_mode", journal_mode.as_str())?;

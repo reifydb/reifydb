@@ -81,9 +81,6 @@ pub enum ConfigKey {
 	CommitGroupMaxEntries,
 	TombstoneReapInterval,
 	TombstoneReapBatchSize,
-	VacuumInterval,
-	VacuumFreelistThresholdPercent,
-	VacuumPagesPerSlice,
 }
 
 impl ConfigKey {
@@ -136,9 +133,6 @@ impl ConfigKey {
 			Self::CommitGroupMaxEntries,
 			Self::TombstoneReapInterval,
 			Self::TombstoneReapBatchSize,
-			Self::VacuumInterval,
-			Self::VacuumFreelistThresholdPercent,
-			Self::VacuumPagesPerSlice,
 		]
 	}
 
@@ -197,9 +191,6 @@ impl ConfigKey {
 			Self::CommitGroupMaxEntries => Value::Uint8(256),
 			Self::TombstoneReapInterval => Value::duration_seconds(1),
 			Self::TombstoneReapBatchSize => Value::Uint8(1024),
-			Self::VacuumInterval => Value::duration_seconds(60),
-			Self::VacuumFreelistThresholdPercent => Value::Uint8(20),
-			Self::VacuumPagesPerSlice => Value::Uint8(1024),
 		}
 	}
 
@@ -400,15 +391,6 @@ impl ConfigKey {
 			Self::TombstoneReapBatchSize => {
 				"Max tombstones one reap statement may physically delete per table per slice. Bounds the write-connection hold; remaining tombstones drain on the next slice."
 			}
-			Self::VacuumInterval => {
-				"How often the vacuum task checks the persistent freelist and runs bounded incremental_vacuum."
-			}
-			Self::VacuumFreelistThresholdPercent => {
-				"Free-page ratio (freelist_count / page_count, as a percent) above which the vacuum task reclaims free pages. Below it, freed pages are left for reuse."
-			}
-			Self::VacuumPagesPerSlice => {
-				"Max pages one incremental_vacuum call may reclaim per slice. Bounds the write-connection hold; a larger freelist drains across slices."
-			}
 		}
 	}
 
@@ -461,9 +443,6 @@ impl ConfigKey {
 			Self::CommitGroupMaxEntries => true,
 			Self::TombstoneReapInterval => false,
 			Self::TombstoneReapBatchSize => false,
-			Self::VacuumInterval => false,
-			Self::VacuumFreelistThresholdPercent => false,
-			Self::VacuumPagesPerSlice => false,
 		}
 	}
 
@@ -516,9 +495,6 @@ impl ConfigKey {
 			Self::CommitGroupMaxEntries => &[ValueType::Uint8],
 			Self::TombstoneReapInterval => &[ValueType::Duration],
 			Self::TombstoneReapBatchSize => &[ValueType::Uint8],
-			Self::VacuumInterval => &[ValueType::Duration],
-			Self::VacuumFreelistThresholdPercent => &[ValueType::Uint8],
-			Self::VacuumPagesPerSlice => &[ValueType::Uint8],
 		}
 	}
 
@@ -571,9 +547,6 @@ impl ConfigKey {
 			Self::CommitGroupMaxEntries => false,
 			Self::TombstoneReapInterval => false,
 			Self::TombstoneReapBatchSize => false,
-			Self::VacuumInterval => false,
-			Self::VacuumFreelistThresholdPercent => false,
-			Self::VacuumPagesPerSlice => false,
 		}
 	}
 
@@ -909,9 +882,6 @@ impl fmt::Display for ConfigKey {
 			Self::CommitGroupMaxEntries => write!(f, "COMMIT_GROUP_MAX_ENTRIES"),
 			Self::TombstoneReapInterval => write!(f, "TOMBSTONE_REAP_INTERVAL"),
 			Self::TombstoneReapBatchSize => write!(f, "TOMBSTONE_REAP_BATCH_SIZE"),
-			Self::VacuumInterval => write!(f, "VACUUM_INTERVAL"),
-			Self::VacuumFreelistThresholdPercent => write!(f, "VACUUM_FREELIST_THRESHOLD_PERCENT"),
-			Self::VacuumPagesPerSlice => write!(f, "VACUUM_PAGES_PER_SLICE"),
 		}
 	}
 }
@@ -968,9 +938,6 @@ impl FromStr for ConfigKey {
 			"COMMIT_GROUP_MAX_ENTRIES" => Ok(Self::CommitGroupMaxEntries),
 			"TOMBSTONE_REAP_INTERVAL" => Ok(Self::TombstoneReapInterval),
 			"TOMBSTONE_REAP_BATCH_SIZE" => Ok(Self::TombstoneReapBatchSize),
-			"VACUUM_INTERVAL" => Ok(Self::VacuumInterval),
-			"VACUUM_FREELIST_THRESHOLD_PERCENT" => Ok(Self::VacuumFreelistThresholdPercent),
-			"VACUUM_PAGES_PER_SLICE" => Ok(Self::VacuumPagesPerSlice),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -1142,7 +1109,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 50);
+		assert_eq!(all.len(), 47);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));

@@ -138,8 +138,6 @@ pub enum RetentionClass {
 
 	TombstoneReap,
 
-	VacuumBudget,
-
 	CdcTruncate,
 
 	EpochLog,
@@ -153,7 +151,6 @@ impl RetentionClass {
 			Self::BufferHistoricalGc,
 			Self::PersistentFlush,
 			Self::TombstoneReap,
-			Self::VacuumBudget,
 			Self::CdcTruncate,
 			Self::EpochLog,
 		]
@@ -166,7 +163,6 @@ impl RetentionClass {
 			Self::BufferHistoricalGc => "buffer-historical-gc",
 			Self::PersistentFlush => "persistent-flush",
 			Self::TombstoneReap => "tombstone-reap",
-			Self::VacuumBudget => "vacuum-budget",
 			Self::CdcTruncate => "cdc-truncate",
 			Self::EpochLog => "epoch-log",
 		}
@@ -181,7 +177,6 @@ impl RetentionClass {
 			| Self::TombstoneReap
 			| Self::CdcTruncate
 			| Self::EpochLog => true,
-			Self::VacuumBudget => false,
 		}
 	}
 
@@ -194,7 +189,6 @@ impl RetentionClass {
 				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::ConsumerPosition]
 			}
 			Self::TombstoneReap => &[FloorTerm::FlushWatermark],
-			Self::VacuumBudget => &[],
 			Self::CdcTruncate => &[FloorTerm::ConsumerCheckpoint],
 			Self::EpochLog => &[FloorTerm::RetentionHorizon],
 		}

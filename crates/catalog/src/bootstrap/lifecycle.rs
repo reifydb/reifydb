@@ -64,8 +64,6 @@ fn lifecycle_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 		series_col("binding", ValueType::Utf8),
 		series_col("floor_version", ValueType::Uint8),
 		series_col("backlog_hint", ValueType::Uint8),
-		series_col("freelist_pages", ValueType::Uint8),
-		series_col("page_count", ValueType::Uint8),
 		series_col("work_done", ValueType::Uint8),
 		series_col("slices", ValueType::Uint8),
 		series_col("stuck_slices", ValueType::Uint8),

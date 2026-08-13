@@ -653,63 +653,6 @@ mod tests {
 	}
 
 	#[test]
-	fn optional_wide_measure_publishes_none_when_absent() {
-		// Lifecycle rows without a freelist must read as none, not as a fabricated zero.
-		let mut acc = MetricsAccumulator::new([MetricsDomain::Lifecycle.spec()]);
-		acc.push(
-			MetricsDomain::Lifecycle,
-			Surface::Current,
-			vec![MetricsRow {
-				dimensions: vec![Value::Utf8("short".to_string()), Value::none_of(ValueType::Utf8)],
-				measures: vec![
-					Measure {
-						metric: "floor_version",
-						reading: Reading::Version(12),
-						kind: MetricKind::Level,
-					},
-					Measure {
-						metric: "backlog_hint",
-						reading: Reading::Count(Count::new(4)),
-						kind: MetricKind::Level,
-					},
-					Measure {
-						metric: "work_done",
-						reading: Reading::Count(Count::new(7)),
-						kind: MetricKind::Counter,
-					},
-					Measure {
-						metric: "slices",
-						reading: Reading::Count(Count::new(2)),
-						kind: MetricKind::Counter,
-					},
-					Measure {
-						metric: "stuck_slices",
-						reading: Reading::Count(Count::new(0)),
-						kind: MetricKind::Counter,
-					},
-					Measure {
-						metric: "budget_exhausted_slices",
-						reading: Reading::Count(Count::new(0)),
-						kind: MetricKind::Counter,
-					},
-					Measure {
-						metric: "gated_slices",
-						reading: Reading::Count(Count::new(0)),
-						kind: MetricKind::Counter,
-					},
-				],
-			}],
-		);
-		let published = acc.roll(now(1_000));
-		let current = surface(&published, MetricsDomain::Lifecycle, Surface::Current);
-		assert_eq!(column_values(current, "floor_version"), vec![Value::Uint8(12)]);
-		assert!(
-			matches!(column_values(current, "freelist_pages")[0], Value::None { .. }),
-			"an absent optional measure must publish none"
-		);
-	}
-
-	#[test]
 	fn a_census_drops_rows_that_stop_being_reported() {
 		// A dropped object vanishes from the census; keeping its row reports deleted bytes as live.
 		let mut acc = MetricsAccumulator::new([MetricsDomain::Storage.spec()]);

@@ -30,14 +30,10 @@ use reifydb_value::value::duration::Duration;
 const ALWAYS_ON: [&str; 4] = ["retention-evict-silent", "retention-evict-announced", "historical-gc", "epoch-log"];
 
 /// Classes this subsystem registers no lifecycle task for on this fixture; adding one is a reviewed decision that
-/// exempts it from the coverage assertion below. Three need a persistent tier the memory store lacks and
+/// exempts it from the coverage assertion below. Two need a persistent tier the memory store lacks and
 /// cdc-truncate needs a CdcStore in the IoC.
-const CONDITIONAL: [RetentionClass; 4] = [
-	RetentionClass::PersistentFlush,
-	RetentionClass::CdcTruncate,
-	RetentionClass::TombstoneReap,
-	RetentionClass::VacuumBudget,
-];
+const CONDITIONAL: [RetentionClass; 3] =
+	[RetentionClass::PersistentFlush, RetentionClass::CdcTruncate, RetentionClass::TombstoneReap];
 
 fn lifecycle(subsystem: &dyn Subsystem) -> &LifecycleSubsystem {
 	subsystem
@@ -178,27 +174,6 @@ fn omits_tombstone_reap_when_the_store_has_no_persistent_tier() {
 }
 
 #[test]
-fn omits_vacuum_budget_when_the_store_has_no_persistent_tier() {
-	// With no persistent tier there is no file to compact, so registering the task would only schedule a no-op.
-	// The positive direction rides the sqlite-backed store tests.
-	let test_engine = TestEngine::new();
-	let engine: StandardEngine = test_engine.inner().clone();
-	let ioc = engine
-		.ioc()
-		.clone()
-		.register(engine.clone())
-		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new());
-
-	let names = task_names(create(&ioc).as_ref());
-
-	assert!(
-		!names.iter().any(|n| n == "vacuum-budget"),
-		"vacuum-budget must not register on a memory-only store; registered: {names:?}"
-	);
-}
-
-#[test]
 fn drains_the_registry_so_the_subsystem_is_the_sole_owner_of_every_task() {
 	// The registry is a handoff point, not a shared list: if the factory left tasks behind, a second subsystem
 	// (or a later drain) would run the same task from a second lane, double-driving reclamation cursors.
@@ -321,8 +296,7 @@ fn no_retention_class_is_left_without_an_executor_by_accident() {
 
 /// Classes the factory registers no task for on a memory store, each because the tier it operates on is
 /// absent. The factory must say so on the shared registry rather than leave the boot report to guess.
-const PERSISTENT_ONLY: [RetentionClass; 3] =
-	[RetentionClass::PersistentFlush, RetentionClass::TombstoneReap, RetentionClass::VacuumBudget];
+const PERSISTENT_ONLY: [RetentionClass; 2] = [RetentionClass::PersistentFlush, RetentionClass::TombstoneReap];
 
 #[test]
 fn a_store_without_a_persistent_tier_declares_the_persistent_lanes_absent() {
@@ -418,7 +392,7 @@ fn the_factory_declares_onto_the_registered_coverage_not_a_private_default() {
 	create(&ioc);
 
 	assert_eq!(coverage.owner(RetentionClass::EpochLog), Some("epoch-log"));
-	assert_eq!(coverage.absence(RetentionClass::VacuumBudget), Some("store has no persistent tier"));
+	assert_eq!(coverage.absence(RetentionClass::TombstoneReap), Some("store has no persistent tier"));
 }
 
 #[test]

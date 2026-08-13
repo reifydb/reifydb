@@ -162,15 +162,6 @@ fn level(name: &'static str, data_type: ValueType) -> MeasureSpec {
 	}
 }
 
-fn level_optional(name: &'static str, data_type: ValueType) -> MeasureSpec {
-	MeasureSpec {
-		name,
-		data_type,
-		kind: MetricKind::Level,
-		optional: true,
-	}
-}
-
 fn counter(name: &'static str, data_type: ValueType) -> MeasureSpec {
 	MeasureSpec {
 		name,
@@ -353,8 +344,6 @@ impl MetricsDomain {
 				measures: vec![
 					level("floor_version", ValueType::Uint8),
 					level("backlog_hint", ValueType::Uint8),
-					level_optional("freelist_pages", ValueType::Uint8),
-					level_optional("page_count", ValueType::Uint8),
 					counter("work_done", ValueType::Uint8),
 					counter("slices", ValueType::Uint8),
 					counter("stuck_slices", ValueType::Uint8),

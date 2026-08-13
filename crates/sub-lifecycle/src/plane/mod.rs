@@ -17,7 +17,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},
-		metrics::{ClassSnapshot, FreelistGauge, RetentionMetrics, StuckOnset},
+		metrics::{ClassSnapshot, RetentionMetrics, StuckOnset},
 		watermark::EvictionWatermark,
 	},
 };
@@ -118,10 +118,6 @@ impl RetentionPlane {
 
 	pub fn record_budget_exhausted(&self, class: RetentionClass) {
 		self.inner.metrics.record_budget_exhausted(class);
-	}
-
-	pub fn record_freelist(&self, class: RetentionClass, gauge: FreelistGauge) {
-		self.inner.metrics.record_freelist(class, gauge);
 	}
 
 	pub fn record_gated(&self, class: RetentionClass) {
