@@ -1103,10 +1103,9 @@ mod seal_tests {
 	use super::*;
 	use crate::{
 		operator::host::TxnHostContext,
-		testing::FlowTxn,
 		transaction::{
-			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupTxn,
-			row_number::RowNumberTxn, state::StateTxn, timer::TimerTxn,
+			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupExtension,
+			mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension, timer::TimerExtension,
 		},
 	};
 

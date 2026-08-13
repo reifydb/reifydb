@@ -100,7 +100,6 @@ fn a_removed_key_leaves_the_census() {
 
 #[test]
 fn a_small_group_id_encoded_the_real_way_still_yields_one_bucket_per_keyspace() {
-	// A group narrower than the constant prefix lets suffix bytes leak in and shatters one bucket per suffix.
 	let store = OperatorStore::memory();
 	let group = GroupId(1);
 	let keyspace = Keyspace(0x10);
@@ -120,7 +119,6 @@ fn a_small_group_id_encoded_the_real_way_still_yields_one_bucket_per_keyspace() 
 
 #[test]
 fn real_keys_of_two_small_groups_do_not_collapse_together() {
-	// Adjacent small ids are exactly what a length-prefixed group encoding used to mis-split.
 	let store = OperatorStore::memory();
 	store.set(OperatorId(1), real_key(GroupId(1), Keyspace(0x10), &[0]), row(2));
 	store.set(OperatorId(1), real_key(GroupId(2), Keyspace(0x10), &[0]), row(2));
@@ -135,7 +133,6 @@ fn real_keys_of_two_small_groups_do_not_collapse_together() {
 
 #[test]
 fn real_keys_split_by_keyspace_within_one_group() {
-	// The keyspace byte sits inside the prefix, so one group's data and identity must never be summed together.
 	let store = OperatorStore::memory();
 	let group = GroupId(1);
 	store.set(OperatorId(1), real_key(group, Keyspace(0x10), &[0]), row(2));
@@ -151,7 +148,6 @@ fn real_keys_split_by_keyspace_within_one_group() {
 
 #[test]
 fn a_long_suffix_never_lengthens_the_census_prefix() {
-	// Suffixes longer than the prefix are where a short group encoding leaked most, one bucket per tail byte.
 	let store = OperatorStore::memory();
 	let group = GroupId(3);
 	let keyspace = Keyspace(0x20);
