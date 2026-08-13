@@ -833,7 +833,7 @@ mod pull_protocol {
 		let committer = Committer::new(
 			tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
-			substrate.operators.clone(),
+			substrate.operators.clone().expect("the test substrate carries an operator store"),
 		);
 		let begin_engine = engine.clone();
 		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
@@ -1038,7 +1038,10 @@ mod pull_protocol {
 			}
 
 			let advanced = txn.take_pending();
-			apply_operator_state(&substrate.operators, &advanced);
+			apply_operator_state(
+				substrate.operators.as_ref().expect("the test substrate carries an operator store"),
+				&advanced,
+			);
 		}
 
 		fn cdc_records(&self) -> Vec<Cdc> {
@@ -1507,7 +1510,11 @@ mod pull_protocol {
 		assert_eq!(h.await_position(target, StdDuration::from_secs(5)), Some(target));
 
 		assert!(
-			h.substrate.operators.total_bytes() > 0,
+			h.substrate
+				.operators
+				.as_ref()
+				.expect("the harness substrate carries an operator store")
+				.total_bytes() > 0,
 			"the aggregate's operator state must land in the shared operator store"
 		);
 
@@ -1545,13 +1552,14 @@ mod pull_protocol {
 			.is_ok());
 		assert!(stopped.wait_timeout(seconds(10)), "the first actor must stop before the restart");
 
-		let substrate2 =
-			FlowSubstrate::with_dictionary(h.engine.dictionary_allocators(), OperatorStore::default());
-		assert_eq!(substrate2.operators.total_bytes(), 0, "the restarted operator store starts empty");
+		let (restarted_store, _restarted_guard) = OperatorStore::testing_memory_with_persistent_sqlite();
+		let substrate2 = FlowSubstrate::with_dictionary(h.engine.dictionary_allocators(), restarted_store);
+		let operators2 = substrate2.operators.clone().expect("the test substrate carries an operator store");
+		assert_eq!(operators2.total_bytes(), 0, "the restarted operator store starts empty");
 		let committer2 = Committer::new(
 			h.tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
-			substrate2.operators.clone(),
+			operators2.clone(),
 		);
 		let begin_engine = h.engine.clone();
 		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
@@ -1604,7 +1612,7 @@ mod pull_protocol {
 			health2.poisoned()
 		);
 		assert!(
-			substrate2.operators.total_bytes() > 0,
+			operators2.total_bytes() > 0,
 			"the restarted flow must rebuild its state in its own operator store"
 		);
 		drop(actor2);
@@ -1655,6 +1663,8 @@ mod pull_protocol {
 			.flat_map(|operator| {
 				h.substrate
 					.operators
+					.as_ref()
+					.expect("the harness substrate carries an operator store")
 					.range_batch(
 						operator,
 						EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded),

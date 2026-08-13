@@ -46,7 +46,7 @@ fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(MockClock::from_millis(1000)),
 		substrate: FlowSubstrate {
-			operators: engine.inner().operator_state(),
+			operators: Some(engine.inner().operator_state()),
 			..FlowSubstrate::default()
 		},
 	})
@@ -449,7 +449,7 @@ fn deferred_read_sees_state_committed_above_object_version() {
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),
 		substrate: FlowSubstrate {
-			operators: engine.inner().operator_state(),
+			operators: Some(engine.inner().operator_state()),
 			..FlowSubstrate::default()
 		},
 	});
@@ -489,7 +489,7 @@ fn deferred_read_sees_base_pending_overlay() {
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),
 		substrate: FlowSubstrate {
-			operators: engine.inner().operator_state(),
+			operators: Some(engine.inner().operator_state()),
 			..FlowSubstrate::default()
 		},
 	});

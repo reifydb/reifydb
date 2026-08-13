@@ -47,7 +47,7 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use reifydb_sqlite::SqliteConfig;
+use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
@@ -69,6 +69,7 @@ pub struct TestEngine {
 	engine: StandardEngine,
 	mock_clock: MockClock,
 	_runtime: Runtime,
+	_operator_guard: SqliteTempPathGuard,
 }
 
 impl Default for TestEngine {
@@ -229,7 +230,7 @@ impl TestEngineBuilder {
 		let eventbus = EventBus::new(&spawner);
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory();
-		let operator_store = OperatorStore::memory();
+		let (operator_store, operator_guard) = OperatorStore::testing_memory_with_persistent_sqlite();
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
@@ -313,6 +314,7 @@ impl TestEngineBuilder {
 			engine,
 			mock_clock,
 			_runtime: runtime,
+			_operator_guard: operator_guard,
 		}
 	}
 }

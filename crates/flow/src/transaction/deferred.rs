@@ -107,6 +107,10 @@ pub struct DeferredTransaction {
 }
 
 impl DeferredTransaction {
+	fn operators(&self) -> &OperatorStore {
+		self.substrate.operators.as_ref().expect("flow transaction was built without an operator store")
+	}
+
 	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(params), fields(version = params.version.0))]
 	pub fn new(params: DeferredParams) -> Self {
 		let mut query = params.query;
@@ -310,11 +314,11 @@ impl FlowTransaction for DeferredTransaction {
 	}
 
 	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		deferred_storage_get(&self.substrate.operators, &self.query, &self.state_query, key)
+		deferred_storage_get(self.operators(), &self.query, &self.state_query, key)
 	}
 
 	fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool> {
-		deferred_storage_contains(&self.substrate.operators, &self.query, &self.state_query, key)
+		deferred_storage_contains(self.operators(), &self.query, &self.state_query, key)
 	}
 
 	fn storage_range(
@@ -324,7 +328,7 @@ impl FlowTransaction for DeferredTransaction {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		deferred_storage_range(
-			&self.substrate.operators,
+			self.operators(),
 			&self.query,
 			&self.state_query,
 			self.version,
@@ -341,7 +345,7 @@ impl FlowTransaction for DeferredTransaction {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		deferred_storage_range_rev(
-			&self.substrate.operators,
+			self.operators(),
 			&self.query,
 			&self.state_query,
 			self.version,
@@ -352,7 +356,7 @@ impl FlowTransaction for DeferredTransaction {
 	}
 
 	fn fetch_state_external(&mut self, keys: &[EncodedKey], items: &mut Vec<MultiVersionRow>) -> Result<()> {
-		deferred_fetch_state_external(&self.substrate.operators, self.version, keys, items);
+		deferred_fetch_state_external(self.operators(), self.version, keys, items);
 		Ok(())
 	}
 }

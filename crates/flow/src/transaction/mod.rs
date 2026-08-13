@@ -259,7 +259,7 @@ pub trait FlowTransaction: Sized + Send + 'static {
 	}
 
 	fn operator_store(&self) -> OperatorStore {
-		self.substrate().operators.clone()
+		self.substrate().operators.clone().expect("flow transaction was built without an operator store")
 	}
 
 	fn written_at(&self) -> DateTime {

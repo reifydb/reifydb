@@ -126,8 +126,11 @@ impl FlowSubsystem {
 		});
 		let poll_frontier = CdcConsumerWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
-		let committer =
-			Committer::new(flow_tracker.clone(), materialization.clone(), substrate.operators.clone());
+		let committer = Committer::new(
+			flow_tracker.clone(),
+			materialization.clone(),
+			substrate.operators.clone().expect("the flow substrate is built with an operator store"),
+		);
 		let committer_handle =
 			flow_scope.spawn_flow("flow-committer", CommitterActor::new(committer, group_commit));
 		let committer_ref = committer_handle.actor_ref().clone();

@@ -37,7 +37,7 @@ fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DeferredTransac
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(clock),
 		substrate: FlowSubstrate {
-			operators: engine.inner().operator_state(),
+			operators: Some(engine.inner().operator_state()),
 			..FlowSubstrate::default()
 		},
 	})

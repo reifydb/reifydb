@@ -6,7 +6,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	key::operator_state::{Keyspace, OperatorStateKey},
 };
-use reifydb_store_operator::store::{OperatorStore, OperatorWrite};
+use reifydb_store_operator::{store::OperatorStore, types::OperatorWrite};
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 
 use crate::transaction::{
@@ -23,7 +23,7 @@ pub struct FlowSubstrate {
 	pub watermarks: SourceWatermarks,
 	pub frontiers: OutputFrontiers,
 	pub timers: TimerWheel,
-	pub operators: OperatorStore,
+	pub operators: Option<OperatorStore>,
 }
 
 impl FlowSubstrate {
@@ -34,7 +34,7 @@ impl FlowSubstrate {
 	pub fn with_dictionary(dictionary: DictionaryAllocatorRegistry, operators: OperatorStore) -> Self {
 		Self {
 			dictionary,
-			operators,
+			operators: Some(operators),
 			..Self::default()
 		}
 	}

@@ -112,7 +112,7 @@ impl Bridge {
 			clock: Clock::Real,
 		});
 		let single_store = SingleStore::testing_memory();
-		let operator_store = OperatorStore::memory();
+		let operator_store = OperatorStore::testing_memory();
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();

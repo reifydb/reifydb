@@ -160,7 +160,11 @@ impl FlowEngineInner {
 		for operator_id in node_ids {
 			self.operators.remove(&operator_id);
 			self.durable_sinks.remove(&operator_id);
-			self.substrate.operators.drop_operator_state(operator_id);
+			self.substrate
+				.operators
+				.as_ref()
+				.expect("flow engine was built without an operator store")
+				.drop_operator_state(operator_id);
 		}
 
 		for entries in self.sources.values_mut() {
@@ -233,7 +237,7 @@ mod tests {
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate {
-				operators: engine.inner().operator_state(),
+				operators: Some(engine.inner().operator_state()),
 				..FlowSubstrate::default()
 			},
 			OperatorSampleRegistry::new(),
@@ -251,7 +255,7 @@ mod tests {
 		inner.register_flow_dag(builder.build());
 		inner.insert_operator(operator, Box::new(SourceSeriesOperator::new(operator)));
 
-		let store = inner.substrate.operators.clone();
+		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		store.set(operator, EncodedKey::new(b"k"), EncodedOperatorRow::timeless(&[1u8; 64]));
 		assert!(store.bytes(operator) > 0, "precondition: the operator's state is resident");
 
@@ -272,7 +276,7 @@ mod tests {
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate {
-				operators: engine.inner().operator_state(),
+				operators: Some(engine.inner().operator_state()),
 				..FlowSubstrate::default()
 			},
 			OperatorSampleRegistry::new(),
@@ -290,7 +294,7 @@ mod tests {
 		inner.register_flow_dag(builder.build());
 		inner.insert_operator(operator, Box::new(SourceSeriesOperator::new(operator)));
 
-		let store = inner.substrate.operators.clone();
+		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		store.anchor_set(operator, GroupId(3), 0, RowNumber(1), DateTime::from_millis(5_000));
 		store.anchor_set(operator, GroupId(4), 0, RowNumber(1), DateTime::from_millis(6_000));
 		assert!(store.bytes(operator) > 0, "precondition: the operator's anchors are resident");

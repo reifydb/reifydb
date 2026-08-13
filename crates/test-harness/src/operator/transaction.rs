@@ -72,7 +72,7 @@ impl<'a> FlowTxnBuilder<'a> {
 			interceptors: Interceptors::new(),
 			clock: self.clock,
 			substrate: FlowSubstrate {
-				operators: self.engine.inner().operator_state(),
+				operators: Some(self.engine.inner().operator_state()),
 				..FlowSubstrate::default()
 			},
 		});

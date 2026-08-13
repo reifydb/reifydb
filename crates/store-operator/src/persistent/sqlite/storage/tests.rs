@@ -12,9 +12,12 @@ use reifydb_sqlite::SqliteConfig;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use rusqlite::params;
 
-use super::{
-	ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, ANCHORS_BY_EXPIRY_SQL, OperatorSealAnchor, OperatorSealAnchorCensus,
-	OperatorStateCensus, OperatorStore, OperatorWrite,
+use crate::{
+	persistent::sqlite::storage::{ANCHORS_BY_EXPIRY_SQL, SqliteOperatorStorage as OperatorStore},
+	types::{
+		ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, OperatorSealAnchor, OperatorSealAnchorCensus,
+		OperatorStateCensus, OperatorWrite,
+	},
 };
 
 const PREFIX: u32 = 9;
@@ -47,7 +50,7 @@ fn prefix(group: u64, keyspace: u8) -> Vec<u8> {
 
 #[test]
 fn a_group_id_full_of_zero_bytes_still_separates_its_own_census_bucket() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.set(OperatorId(1), key(7, 0x10, 1), row(2));
 	store.set(OperatorId(1), key(8, 0x10, 1), row(2));
 
@@ -60,7 +63,7 @@ fn a_group_id_full_of_zero_bytes_still_separates_its_own_census_bucket() {
 
 #[test]
 fn keyspaces_of_one_group_are_counted_apart() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.set(OperatorId(1), key(7, 0x10, 1), row(2));
 	store.set(OperatorId(1), key(7, 0xFE, 1), row(2));
 
@@ -73,7 +76,7 @@ fn keyspaces_of_one_group_are_counted_apart() {
 
 #[test]
 fn keys_and_bytes_accumulate_over_a_bucket() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	let (small, large) = (row(2), row(3));
 	let expected_keys = key(7, 0x10, 1).len() + key(7, 0x10, 2).len();
 	let expected_values = small.len() + large.len();
@@ -90,7 +93,7 @@ fn keys_and_bytes_accumulate_over_a_bucket() {
 
 #[test]
 fn the_same_group_under_two_operators_stays_apart() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.set(OperatorId(1), key(7, 0x10, 1), row(2));
 	store.set(OperatorId(2), key(7, 0x10, 1), row(2));
 
@@ -103,7 +106,7 @@ fn the_same_group_under_two_operators_stays_apart() {
 
 #[test]
 fn a_removed_key_leaves_the_census() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.set(OperatorId(1), key(7, 0x10, 1), row(2));
 	store.remove(OperatorId(1), &key(7, 0x10, 1));
 
@@ -112,7 +115,7 @@ fn a_removed_key_leaves_the_census() {
 
 #[test]
 fn a_small_group_id_encoded_the_real_way_still_yields_one_bucket_per_keyspace() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	let group = GroupId(1);
 	let keyspace = Keyspace(0x10);
 	store.set(OperatorId(1), real_key(group, keyspace, &[0]), row(2));
@@ -131,7 +134,7 @@ fn a_small_group_id_encoded_the_real_way_still_yields_one_bucket_per_keyspace() 
 
 #[test]
 fn real_keys_of_two_small_groups_do_not_collapse_together() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.set(OperatorId(1), real_key(GroupId(1), Keyspace(0x10), &[0]), row(2));
 	store.set(OperatorId(1), real_key(GroupId(2), Keyspace(0x10), &[0]), row(2));
 
@@ -145,7 +148,7 @@ fn real_keys_of_two_small_groups_do_not_collapse_together() {
 
 #[test]
 fn real_keys_split_by_keyspace_within_one_group() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	let group = GroupId(1);
 	store.set(OperatorId(1), real_key(group, Keyspace(0x10), &[0]), row(2));
 	store.set(OperatorId(1), real_key(group, Keyspace(0xFE), &[0]), row(2));
@@ -168,7 +171,7 @@ fn anchor(side: u8, row_number: u64, millis: u64) -> OperatorSealAnchor {
 
 #[test]
 fn an_anchor_round_trips_through_a_point_read() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(42), DateTime::from_millis(5_000));
 
@@ -188,7 +191,7 @@ fn an_anchor_round_trips_through_a_point_read() {
 
 #[test]
 fn an_expiry_beyond_the_signed_boundary_of_a_millisecond_still_orders_after_an_earlier_one() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	let far = 1_000_000_000_000u64;
 
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(far));
@@ -202,7 +205,7 @@ fn an_expiry_beyond_the_signed_boundary_of_a_millisecond_still_orders_after_an_e
 
 #[test]
 fn re_arming_an_anchor_moves_its_expiry_instead_of_minting_a_second_row() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(42), DateTime::from_millis(5_000));
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(42), DateTime::from_millis(9_000));
@@ -216,7 +219,7 @@ fn re_arming_an_anchor_moves_its_expiry_instead_of_minting_a_second_row() {
 
 #[test]
 fn an_append_tuple_never_collides_with_either_join_side() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(0), DateTime::from_millis(5_000));
 	store.anchor_set(OperatorId(1), GroupId(7), RIGHT, RowNumber(0), DateTime::from_millis(6_000));
@@ -235,7 +238,7 @@ fn an_append_tuple_never_collides_with_either_join_side() {
 
 #[test]
 fn anchors_come_back_earliest_first_and_the_limit_cuts_the_tail() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	for (row_number, millis) in [(1u64, 9_000u64), (2, 5_000), (3, 7_000)] {
 		store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(row_number), DateTime::from_millis(millis));
 	}
@@ -254,7 +257,7 @@ fn anchors_come_back_earliest_first_and_the_limit_cuts_the_tail() {
 
 #[test]
 fn only_the_addressed_group_answers_a_scan() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
 	store.anchor_set(OperatorId(1), GroupId(8), LEFT, RowNumber(1), DateTime::from_millis(1_000));
 	store.anchor_set(OperatorId(2), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(2_000));
@@ -268,7 +271,7 @@ fn only_the_addressed_group_answers_a_scan() {
 
 #[test]
 fn the_due_scan_takes_the_boundary_instant_and_stops_there() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	for (row_number, millis) in [(1u64, 5_000u64), (2, 6_000), (3, 7_000)] {
 		store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(row_number), DateTime::from_millis(millis));
 	}
@@ -287,7 +290,7 @@ fn the_due_scan_takes_the_boundary_instant_and_stops_there() {
 
 #[test]
 fn the_due_scan_pages_from_the_earliest_end() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	for row_number in 1u64..=5 {
 		store.anchor_set(
 			OperatorId(1),
@@ -313,7 +316,7 @@ fn the_due_scan_pages_from_the_earliest_end() {
 
 #[test]
 fn removing_one_anchor_leaves_its_siblings_standing() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(2), DateTime::from_millis(6_000));
 	store.anchor_set(OperatorId(1), GroupId(7), RIGHT, RowNumber(1), DateTime::from_millis(7_000));
@@ -328,7 +331,7 @@ fn removing_one_anchor_leaves_its_siblings_standing() {
 
 #[test]
 fn removing_a_group_leaves_its_neighbours_intact() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
 	store.anchor_set(OperatorId(1), GroupId(7), RIGHT, RowNumber(2), DateTime::from_millis(6_000));
 	store.anchor_set(OperatorId(1), GroupId(8), LEFT, RowNumber(1), DateTime::from_millis(7_000));
@@ -347,7 +350,7 @@ fn removing_a_group_leaves_its_neighbours_intact() {
 
 #[test]
 fn dropping_an_operator_takes_every_group_it_owns_and_no_other() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
 	store.anchor_set(OperatorId(1), GroupId(8), LEFT, RowNumber(1), DateTime::from_millis(6_000));
 	store.anchor_set(OperatorId(2), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(7_000));
@@ -361,7 +364,7 @@ fn dropping_an_operator_takes_every_group_it_owns_and_no_other() {
 
 #[test]
 fn the_by_expiry_scan_is_answered_by_a_covering_index() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	for row_number in 1u64..=8 {
 		store.anchor_set(
 			OperatorId(1),
@@ -393,7 +396,7 @@ fn the_by_expiry_scan_is_answered_by_a_covering_index() {
 
 #[test]
 fn a_long_suffix_never_lengthens_the_census_prefix() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	let group = GroupId(3);
 	let keyspace = Keyspace(0x20);
 	store.set(OperatorId(1), real_key(group, keyspace, &[9; 24]), row(2));
@@ -409,7 +412,7 @@ fn a_long_suffix_never_lengthens_the_census_prefix() {
 
 #[test]
 fn a_batch_lands_operator_state_and_its_anchors_together() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 
 	store.apply_batch(&[
 		OperatorWrite::Set {
@@ -432,7 +435,7 @@ fn a_batch_lands_operator_state_and_its_anchors_together() {
 
 #[test]
 fn a_batch_applies_a_set_and_a_later_remove_of_the_same_row_in_order() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(1_000));
 
 	store.apply_batch(&[
@@ -456,7 +459,7 @@ fn a_batch_applies_a_set_and_a_later_remove_of_the_same_row_in_order() {
 
 #[test]
 fn an_empty_batch_touches_nothing() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(1_000));
 
 	store.apply_batch(&[]);
@@ -466,7 +469,7 @@ fn an_empty_batch_touches_nothing() {
 
 #[test]
 fn anchors_are_counted_in_the_byte_accounting_of_their_operator() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	let empty = store.total_bytes();
 
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
@@ -479,7 +482,7 @@ fn anchors_are_counted_in_the_byte_accounting_of_their_operator() {
 
 #[test]
 fn dropping_an_operators_state_takes_its_anchors_with_it() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.set(OperatorId(1), real_key(GroupId(7), Keyspace(0x1D), &[1]), row(4));
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
 	store.anchor_set(OperatorId(2), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(6_000));
@@ -497,7 +500,7 @@ fn dropping_an_operators_state_takes_its_anchors_with_it() {
 
 #[test]
 fn the_anchor_census_reports_one_bucket_per_operator_and_group() {
-	let store = OperatorStore::memory();
+	let (store, _guard) = OperatorStore::in_memory();
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
 	store.anchor_set(OperatorId(1), GroupId(7), RIGHT, RowNumber(1), DateTime::from_millis(6_000));
 	store.anchor_set(OperatorId(1), GroupId(8), LEFT, RowNumber(1), DateTime::from_millis(7_000));
@@ -528,17 +531,19 @@ fn the_anchor_census_reports_one_bucket_per_operator_and_group() {
 }
 
 #[test]
-fn the_in_memory_store_serves_reads_from_its_only_connection() {
-	let store = OperatorStore::memory();
+fn the_in_memory_store_pools_readers_like_any_file_backed_one() {
+	let (config, _config_guard) = SqliteConfig::in_memory();
+	let expected = 1 + config.read_pool_size as u64;
+	let (store, _guard) = OperatorStore::in_memory();
 
-	assert_eq!(store.page_cache_metrics().connections_total.as_u64(), 1);
+	assert_eq!(store.page_cache_metrics().connections_total.as_u64(), expected);
 }
 
 #[test]
 fn the_sqlite_store_opens_one_reader_per_configured_pool_slot() {
 	let (config, _guard) = SqliteConfig::test();
 	let pool_size = config.read_pool_size as u64;
-	let store = OperatorStore::sqlite(config);
+	let store = OperatorStore::new(config);
 
 	assert_eq!(store.page_cache_metrics().connections_total.as_u64(), 1 + pool_size);
 }
@@ -546,7 +551,7 @@ fn the_sqlite_store_opens_one_reader_per_configured_pool_slot() {
 #[test]
 fn a_pooled_reader_sees_a_write_the_moment_the_writer_commits() {
 	let (config, _guard) = SqliteConfig::test();
-	let store = OperatorStore::sqlite(config);
+	let store = OperatorStore::new(config);
 	let probe = key(7, 0x10, 1);
 
 	store.set(OperatorId(1), probe.clone(), row(4));
@@ -565,7 +570,7 @@ fn a_pooled_reader_sees_a_write_the_moment_the_writer_commits() {
 #[test]
 fn concurrent_reads_during_writes_do_not_deadlock() {
 	let (config, _guard) = SqliteConfig::test();
-	let store = OperatorStore::sqlite(config);
+	let store = OperatorStore::new(config);
 	let probe = key(7, 0x10, 1);
 	store.set(OperatorId(1), probe.clone(), row(4));
 

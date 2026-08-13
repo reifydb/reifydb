@@ -79,7 +79,10 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 
 	fn end_txn(&mut self, mut txn: DeferredTransaction) {
 		let pending = txn.take_pending();
-		apply_operator_state(&self.substrate.operators, &pending);
+		apply_operator_state(
+			self.substrate.operators.as_ref().expect("the flow harness is built with an operator store"),
+			&pending,
+		);
 		let mut rest = Pending::new();
 		for (key, write) in pending.iter_sorted() {
 			if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
@@ -228,7 +231,7 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilder<
 		let operator = mount(core, self.operator_id, capabilities);
 
 		let substrate = FlowSubstrate {
-			operators: engine.inner().operator_state(),
+			operators: Some(engine.inner().operator_state()),
 			..FlowSubstrate::default()
 		};
 		Ok(GuestOperatorHarness {

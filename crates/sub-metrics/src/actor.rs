@@ -44,7 +44,10 @@ use reifydb_runtime::{
 	context::clock::Clock,
 };
 use reifydb_store_multi::MultiStore;
-use reifydb_store_operator::store::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, OperatorStore};
+use reifydb_store_operator::{
+	store::OperatorStore,
+	types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES},
+};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{

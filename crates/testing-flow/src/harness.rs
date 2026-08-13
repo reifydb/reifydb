@@ -72,7 +72,7 @@ impl<O> Harness<O> {
 		);
 		let operator = build(&engine, runtime);
 		let substrate = FlowSubstrate {
-			operators: engine.inner().operator_state(),
+			operators: Some(engine.inner().operator_state()),
 			..FlowSubstrate::default()
 		};
 		Self {
@@ -108,7 +108,10 @@ impl<O> Harness<O> {
 
 	fn end(&mut self, mut txn: DeferredTransaction) {
 		let pending = txn.take_pending();
-		apply_operator_state(&self.substrate.operators, &pending);
+		apply_operator_state(
+			self.substrate.operators.as_ref().expect("the flow harness is built with an operator store"),
+			&pending,
+		);
 		let mut rest = Pending::new();
 		for (key, write) in pending.iter_sorted() {
 			if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
@@ -276,7 +279,11 @@ impl<O: HostOperator> Harness<O> {
 	}
 
 	pub fn state_bytes(&self) -> u64 {
-		self.substrate.operators.bytes(self.operator.id())
+		self.substrate
+			.operators
+			.as_ref()
+			.expect("the flow harness is built with an operator store")
+			.bytes(self.operator.id())
 	}
 }
 

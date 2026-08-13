@@ -42,7 +42,7 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(MockClock::from_millis(0)),
 		substrate: FlowSubstrate {
-			operators: engine.inner().operator_state(),
+			operators: Some(engine.inner().operator_state()),
 			..FlowSubstrate::default()
 		},
 	});
