@@ -78,7 +78,6 @@ pub struct SealAnchor {
 }
 
 struct GroupAnchors {
-	before: Option<DateTime>,
 	live: HashMap<(u8, u64), DateTime>,
 }
 
@@ -341,7 +340,6 @@ impl JoinOperator {
 		loaded.insert(
 			group,
 			GroupAnchors {
-				before: live.values().copied().min(),
 				live,
 			},
 		);
@@ -359,15 +357,7 @@ impl JoinOperator {
 				Some(earliest) => {
 					host.arm_timer(earliest, TimerKind::Maintenance, &Self::timer_key(*group))?
 				}
-				None => {
-					if let Some(at) = anchors.before {
-						host.disarm_timer(
-							at,
-							TimerKind::Maintenance,
-							&Self::timer_key(*group),
-						)?;
-					}
-				}
+				None => host.disarm_timer_by_key(TimerKind::Maintenance, &Self::timer_key(*group))?,
 			}
 		}
 		Ok(())

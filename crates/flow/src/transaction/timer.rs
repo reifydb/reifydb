@@ -111,6 +111,32 @@ impl TimerWheel {
 		Ok(())
 	}
 
+	pub fn disarm_by_key(
+		&self,
+		operator: OperatorId,
+		txn: &mut impl FlowTransaction,
+		kind: TimerKind,
+		key: &EncodedKey,
+	) -> Result<()> {
+		reifydb_assertions! {
+			assert!(
+				kind.is_unique(),
+				"a non-unique kind holds no timer index, so a disarm addressed by key alone cannot name \
+				 which of its instants to cancel and would leave every one of them armed \
+				 (operator={}, kind={})",
+				operator.0,
+				kind as u8
+			);
+		}
+		let index = index_key(kind, key);
+		let Some(at) = armed_at(operator, txn, &index)? else {
+			return Ok(());
+		};
+		txn.state_remove(operator, &timer_key(DateTime::from_millis(at), kind, key))?;
+		txn.state_remove(operator, &index)?;
+		Ok(())
+	}
+
 	pub fn take_due(
 		&self,
 		operator: OperatorId,
@@ -156,6 +182,10 @@ pub trait TimerExtension: FlowTransaction {
 
 	fn disarm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<()> {
 		self.timer_wheel().disarm(operator, self, timer)
+	}
+
+	fn disarm_timer_by_key(&mut self, operator: OperatorId, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		self.timer_wheel().disarm_by_key(operator, self, kind, key)
 	}
 }
 

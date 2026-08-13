@@ -5,8 +5,9 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::operator::EncodedOperatorRow,
 };
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
 use reifydb_runtime::shutdown::Shutdown;
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 #[derive(Debug, Clone)]
 pub struct OperatorBatch {
@@ -21,6 +22,13 @@ impl OperatorBatch {
 			has_more: false,
 		}
 	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperatorSealAnchor {
+	pub side: u8,
+	pub row_number: RowNumber,
+	pub expiry: DateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +81,51 @@ impl OperatorStore {
 	pub fn census(&self, _prefix_len: u32) -> Vec<OperatorStateCensus> {
 		Vec::new()
 	}
+
+	pub fn anchor_get(
+		&self,
+		_operator: OperatorId,
+		_group: GroupId,
+		_side: u8,
+		_row_number: RowNumber,
+	) -> Option<DateTime> {
+		None
+	}
+
+	pub fn anchors_by_expiry(
+		&self,
+		_operator: OperatorId,
+		_group: GroupId,
+		_limit: u64,
+	) -> Vec<OperatorSealAnchor> {
+		Vec::new()
+	}
+
+	pub fn anchors_due(
+		&self,
+		_operator: OperatorId,
+		_group: GroupId,
+		_at: DateTime,
+		_limit: u64,
+	) -> Vec<OperatorSealAnchor> {
+		Vec::new()
+	}
+
+	pub fn anchor_set(
+		&self,
+		_operator: OperatorId,
+		_group: GroupId,
+		_side: u8,
+		_row_number: RowNumber,
+		_expiry: DateTime,
+	) {
+	}
+
+	pub fn anchor_remove(&self, _operator: OperatorId, _group: GroupId, _side: u8, _row_number: RowNumber) {}
+
+	pub fn anchors_remove_group(&self, _operator: OperatorId, _group: GroupId) {}
+
+	pub fn anchors_drop_operator(&self, _operator: OperatorId) {}
 
 	pub fn drop_operator_state(&self, _operator: OperatorId) {}
 }

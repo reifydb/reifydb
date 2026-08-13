@@ -255,6 +255,76 @@ fn disarming_either_end_of_the_wheel_leaves_the_other_timer_firing() {
 }
 
 #[test]
+fn disarming_by_key_cancels_the_instant_the_index_names_and_spares_every_other_key() {
+	// A disarm by key must follow the index, never the caller's memory, or the live 8_000 row survives.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let wheel = TimerWheel::default();
+
+	wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "emptied")).unwrap();
+	wheel.arm(NODE, &mut txn, &timer(8_000, TimerKind::Maintenance, "emptied")).unwrap();
+	wheel.arm(NODE, &mut txn, &timer(6_000, TimerKind::Maintenance, "neighbour")).unwrap();
+
+	wheel.disarm_by_key(NODE, &mut txn, TimerKind::Maintenance, &EncodedKey::new(b"emptied")).unwrap();
+
+	assert_eq!(
+		wheel.take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap(),
+		vec![timer(6_000, TimerKind::Maintenance, "neighbour")],
+		"only the disarmed key's armed instant may go"
+	);
+}
+
+#[test]
+fn a_key_disarmed_by_key_can_be_armed_again_at_the_very_instant_it_held() {
+	// An index left behind still names 5_000, so the next arm there is skipped as a duplicate and the group never seals.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let wheel = TimerWheel::default();
+
+	wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "refilled")).unwrap();
+	wheel.disarm_by_key(NODE, &mut txn, TimerKind::Maintenance, &EncodedKey::new(b"refilled")).unwrap();
+	wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "refilled")).unwrap();
+
+	assert_eq!(
+		wheel.take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap(),
+		vec![timer(5_000, TimerKind::Maintenance, "refilled")],
+		"a re-arm after a disarm by key must arm a live timer, not be swallowed as a duplicate"
+	);
+}
+
+#[test]
+fn disarming_an_unarmed_key_leaves_the_wheel_untouched() {
+	// A group can be cleared in the batch that created it, so an unarmed key must disarm to nothing at all.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let wheel = TimerWheel::default();
+
+	wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "armed")).unwrap();
+	wheel.disarm_by_key(NODE, &mut txn, TimerKind::Maintenance, &EncodedKey::new(b"never-armed")).unwrap();
+
+	assert_eq!(
+		wheel.take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap(),
+		vec![timer(5_000, TimerKind::Maintenance, "armed")]
+	);
+}
+
+#[test]
+fn a_restart_does_not_fire_a_timer_disarmed_by_key() {
+	// The cold wheel reads only the store, so a disarm that lived in RAM alone fires the emptied group again.
+	let engine = TestEngine::new();
+	let warm = TimerWheel::default();
+
+	let mut txn = deferred(&engine);
+	warm.arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "emptied")).unwrap();
+	warm.disarm_by_key(NODE, &mut txn, TimerKind::Maintenance, &EncodedKey::new(b"emptied")).unwrap();
+	commit_pending(&engine, &mut txn);
+
+	let mut cold_txn = deferred(&engine);
+	let cold = TimerWheel::default();
+	assert!(cold.take_due(NODE, &mut cold_txn, at_millis(9_000), NO_LIMIT).unwrap().is_empty());
+}
+
+#[test]
 fn a_restart_does_not_fire_a_disarmed_timer() {
 	// A disarm is durable, not a RAM-only retraction. A session extended just before a crash
 	// would otherwise seal twice on restart, once for the superseded instant and once for the

@@ -42,6 +42,8 @@ use crate::{
 pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 	fn version(&self) -> CommitVersion;
 
+	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()>;
+
 	fn config_uint8(&self, key: ConfigKey) -> u64;
 
 	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedOperatorRow)>>;
@@ -220,6 +222,10 @@ impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
 impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	fn version(&self) -> CommitVersion {
 		self.txn.version()
+	}
+
+	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		self.txn.disarm_timer_by_key(self.operator, kind, key)
 	}
 
 	fn config_uint8(&self, key: ConfigKey) -> u64 {

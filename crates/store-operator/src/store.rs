@@ -7,7 +7,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 };
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
 use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::{
@@ -15,8 +15,11 @@ use reifydb_sqlite::{
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
-use reifydb_value::util::cowvec::CowVec;
-use rusqlite::{Connection, ToSql, params};
+use reifydb_value::{
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
+use rusqlite::{Connection, Rows, ToSql, params};
 
 #[cfg(test)]
 mod tests;
@@ -34,6 +37,21 @@ impl OperatorBatch {
 			has_more: false,
 		}
 	}
+}
+
+const ANCHORS_BY_EXPIRY_SQL: &str = r#"SELECT "side", "row_number", "expiry" FROM "operator_seal_anchor"
+	   WHERE "operator" = ?1 AND "group" = ?2
+	   ORDER BY "expiry" ASC LIMIT ?3"#;
+
+const ANCHORS_DUE_SQL: &str = r#"SELECT "side", "row_number", "expiry" FROM "operator_seal_anchor"
+	   WHERE "operator" = ?1 AND "group" = ?2 AND "expiry" <= ?3
+	   ORDER BY "expiry" ASC LIMIT ?4"#;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperatorSealAnchor {
+	pub side: u8,
+	pub row_number: RowNumber,
+	pub expiry: DateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -235,6 +253,125 @@ impl OperatorStore {
 		out
 	}
 
+	pub fn anchor_get(
+		&self,
+		operator: OperatorId,
+		group: GroupId,
+		side: u8,
+		row_number: RowNumber,
+	) -> Option<DateTime> {
+		let guard = self.inner.conn.lock();
+		let conn = guard.as_ref()?;
+		let mut stmt = conn
+			.prepare_cached(
+				r#"SELECT "expiry" FROM "operator_seal_anchor"
+				   WHERE "operator" = ?1 AND "group" = ?2 AND "side" = ?3 AND "row_number" = ?4"#,
+			)
+			.expect("seal anchor read could not be prepared");
+		let mut rows = stmt
+			.query(params![operator.0 as i64, group.0 as i64, side as i64, row_number.0 as i64])
+			.expect("seal anchor read failed");
+		let row = rows.next().expect("seal anchor read failed")?;
+		Some(decode_expiry(row.get(0).expect("seal anchors carry an expiry")))
+	}
+
+	pub fn anchors_by_expiry(&self, operator: OperatorId, group: GroupId, limit: u64) -> Vec<OperatorSealAnchor> {
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Vec::new();
+		};
+		let mut stmt =
+			conn.prepare_cached(ANCHORS_BY_EXPIRY_SQL).expect("seal anchor scan could not be prepared");
+		let rows = stmt
+			.query(params![operator.0 as i64, group.0 as i64, limit as i64])
+			.expect("seal anchor scan failed");
+		collect_anchors(rows)
+	}
+
+	pub fn anchors_due(
+		&self,
+		operator: OperatorId,
+		group: GroupId,
+		at: DateTime,
+		limit: u64,
+	) -> Vec<OperatorSealAnchor> {
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Vec::new();
+		};
+		let mut stmt =
+			conn.prepare_cached(ANCHORS_DUE_SQL).expect("seal anchor due scan could not be prepared");
+		let rows = stmt
+			.query(params![operator.0 as i64, group.0 as i64, at.to_millis() as i64, limit as i64])
+			.expect("seal anchor due scan failed");
+		collect_anchors(rows)
+	}
+
+	pub fn anchor_set(
+		&self,
+		operator: OperatorId,
+		group: GroupId,
+		side: u8,
+		row_number: RowNumber,
+		expiry: DateTime,
+	) {
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return;
+		};
+		conn.prepare_cached(
+			r#"INSERT INTO "operator_seal_anchor" ("operator", "group", "side", "row_number", "expiry")
+			   VALUES (?1, ?2, ?3, ?4, ?5)
+			   ON CONFLICT ("operator", "group", "side", "row_number")
+			   DO UPDATE SET "expiry" = excluded."expiry""#,
+		)
+		.expect("seal anchor write could not be prepared")
+		.execute(params![
+			operator.0 as i64,
+			group.0 as i64,
+			side as i64,
+			row_number.0 as i64,
+			expiry.to_millis() as i64
+		])
+		.expect("seal anchor write failed");
+	}
+
+	pub fn anchor_remove(&self, operator: OperatorId, group: GroupId, side: u8, row_number: RowNumber) {
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return;
+		};
+		conn.prepare_cached(
+			r#"DELETE FROM "operator_seal_anchor"
+			   WHERE "operator" = ?1 AND "group" = ?2 AND "side" = ?3 AND "row_number" = ?4"#,
+		)
+		.expect("seal anchor delete could not be prepared")
+		.execute(params![operator.0 as i64, group.0 as i64, side as i64, row_number.0 as i64])
+		.expect("seal anchor delete failed");
+	}
+
+	pub fn anchors_remove_group(&self, operator: OperatorId, group: GroupId) {
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return;
+		};
+		conn.prepare_cached(r#"DELETE FROM "operator_seal_anchor" WHERE "operator" = ?1 AND "group" = ?2"#)
+			.expect("seal anchor group delete could not be prepared")
+			.execute(params![operator.0 as i64, group.0 as i64])
+			.expect("seal anchor group delete failed");
+	}
+
+	pub fn anchors_drop_operator(&self, operator: OperatorId) {
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return;
+		};
+		conn.prepare_cached(r#"DELETE FROM "operator_seal_anchor" WHERE "operator" = ?1"#)
+			.expect("seal anchor operator delete could not be prepared")
+			.execute(params![operator.0 as i64])
+			.expect("seal anchor operator delete failed");
+	}
+
 	pub fn drop_operator_state(&self, operator: OperatorId) {
 		{
 			let guard = self.inner.conn.lock();
@@ -281,6 +418,23 @@ fn push_bound(sql: &mut String, blobs: &mut Vec<Vec<u8>>, bound: Bound<&EncodedK
 	sql.push_str(&format!(r#" AND "key" {} ?{}"#, operator, blobs.len() + 1));
 }
 
+fn decode_expiry(millis: i64) -> DateTime {
+	DateTime::from_millis(u64::try_from(millis).expect("seal anchor expiries are written as unsigned millis"))
+}
+
+fn collect_anchors(mut rows: Rows<'_>) -> Vec<OperatorSealAnchor> {
+	let mut out = Vec::new();
+	while let Some(row) = rows.next().expect("seal anchor scan failed") {
+		out.push(OperatorSealAnchor {
+			side: u8::try_from(row.get::<_, i64>(0).expect("seal anchors carry a side"))
+				.expect("seal anchor sides are written as bytes"),
+			row_number: RowNumber(row.get::<_, i64>(1).expect("seal anchors carry a row number") as u64),
+			expiry: decode_expiry(row.get(2).expect("seal anchors carry an expiry")),
+		});
+	}
+	out
+}
+
 fn decode_row(bytes: Vec<u8>) -> EncodedOperatorRow {
 	EncodedOperatorRow::try_from(EncodedBytes(CowVec::new(bytes)))
 		.expect("operator state is written only through set, which types it")
@@ -293,7 +447,19 @@ fn ensure_schema(conn: &Connection) {
 			"key" BLOB NOT NULL,
 			"bytes" BLOB NOT NULL,
 			PRIMARY KEY ("operator", "key")
-		) WITHOUT ROWID;"#,
+		) WITHOUT ROWID;
+
+		CREATE TABLE IF NOT EXISTS "operator_seal_anchor" (
+			"operator" INTEGER NOT NULL,
+			"group" INTEGER NOT NULL,
+			"side" INTEGER NOT NULL,
+			"row_number" INTEGER NOT NULL,
+			"expiry" INTEGER NOT NULL,
+			PRIMARY KEY ("operator", "group", "side", "row_number")
+		) WITHOUT ROWID;
+
+		CREATE INDEX IF NOT EXISTS "operator_seal_anchor_due"
+			ON "operator_seal_anchor" ("operator", "group", "expiry");"#,
 	)
 	.expect("operator state schema could not be created");
 }
