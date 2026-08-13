@@ -60,7 +60,7 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 	fn begin_txn(&mut self) -> DeferredTransaction {
 		let query = self.engine.multi().begin_query().expect("begin_query");
 		let state_query = self.engine.multi().begin_query().expect("begin_query");
-		let mut txn = DeferredTransaction::from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: CommitVersion(self.version),
 			pending: PendingLayers::with_top(mem::take(&mut self.pending)),
 			query,

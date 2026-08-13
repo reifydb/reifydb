@@ -66,7 +66,7 @@ impl<'a> FlowTxnBuilder<'a> {
 
 	pub fn deferred(self) -> DeferredTransaction {
 		let version = self.version;
-		let mut txn = DeferredTransaction::from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::new(DeferredParams {
 			version,
 			pending: PendingLayers::empty(),
 			query: self.engine.multi().begin_query().unwrap(),

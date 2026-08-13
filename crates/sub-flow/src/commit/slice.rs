@@ -155,7 +155,7 @@ impl SliceComputer {
 		let mut query = base_query;
 		query.read_as_of_version_inclusive(state_version);
 
-		let mut txn = DeferredTransaction::from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: state_version,
 			pending: PendingLayers::empty(),
 			query,
@@ -188,7 +188,7 @@ impl SliceComputer {
 		let mut query = base_query;
 		query.read_as_of_version_inclusive(state_version);
 
-		let mut txn = DeferredTransaction::from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: state_version,
 			pending,
 			query,
@@ -231,7 +231,7 @@ impl SliceComputer {
 		let query = self.engine.multi().begin_query_at_version(&lease)?;
 		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
 
-		let mut txn = DeferredTransaction::from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: state_version,
 			pending: PendingLayers::empty(),
 			query,
@@ -593,7 +593,7 @@ mod integration {
 		let state_query = engine.multi().begin_query_at_version(&lease).unwrap();
 		query.read_as_of_version_inclusive(version);
 
-		DeferredTransaction::from_parts(DeferredParams {
+		DeferredTransaction::new(DeferredParams {
 			version,
 			pending: PendingLayers::empty(),
 			query,
@@ -1004,7 +1004,7 @@ mod integration {
 					overlay.promote(commit_version, pending);
 
 					let pinned_txn = |pending: PendingLayers| {
-						DeferredTransaction::from_parts(DeferredParams {
+						DeferredTransaction::new(DeferredParams {
 							version: advance_to,
 							pending,
 							query: engine.multi().begin_query().unwrap(),
@@ -1142,7 +1142,7 @@ mod integration {
 
 					// The restart window asserted directly rather than by inference, and
 					// it reaches OperatorState as well as Row.
-					let mut empty_overlay = DeferredTransaction::from_parts(DeferredParams {
+					let mut empty_overlay = DeferredTransaction::new(DeferredParams {
 						version: advance_to,
 						pending: PendingLayers::empty(),
 						query: engine.multi().begin_query().unwrap(),

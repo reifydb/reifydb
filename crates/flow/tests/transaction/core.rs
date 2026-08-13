@@ -9,7 +9,7 @@ use reifydb_codec::{
 	row::bytes::EncodedBytes,
 };
 use reifydb_core::common::CommitVersion;
-use reifydb_flow::transaction::{FlowTransaction, deferred::DeferredTransaction};
+use reifydb_flow::transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
@@ -34,13 +34,13 @@ fn get_row(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedByt
 #[test]
 fn test_get_from_pending() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let key = make_key("key1");
 	let value = make_value("value1");
@@ -67,13 +67,13 @@ fn test_get_from_committed() {
 	let parent = t.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
 
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		version,
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let result = txn.get(&key).unwrap();
 	assert_eq!(result, Some(value));
@@ -87,13 +87,13 @@ fn test_get_pending_shadows_committed() {
 	parent.set(&key, make_value("old")).unwrap();
 	let version = parent.version();
 
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		version,
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let new_value = make_value("new");
 	txn.set(&key, new_value.clone()).unwrap();
@@ -110,13 +110,13 @@ fn test_get_removed_returns_none() {
 	parent.set(&key, make_value("value1")).unwrap();
 	let version = parent.version();
 
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		version,
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	txn.remove(&key).unwrap();
 
@@ -127,13 +127,13 @@ fn test_get_removed_returns_none() {
 #[test]
 fn test_get_nonexistent_key() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let result = txn.get(&make_key("missing")).unwrap();
 	assert_eq!(result, None);
@@ -142,13 +142,13 @@ fn test_get_nonexistent_key() {
 #[test]
 fn test_contains_key_pending() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let key = make_key("key1");
 	txn.set(&key, make_value("value1")).unwrap();
@@ -170,13 +170,13 @@ fn test_contains_key_committed() {
 
 	let parent = t.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		version,
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	assert!(txn.contains_key(&key).unwrap());
 }
@@ -189,13 +189,13 @@ fn test_contains_key_removed_returns_false() {
 	parent.set(&key, make_value("value1")).unwrap();
 	let version = parent.version();
 
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		version,
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 	txn.remove(&key).unwrap();
 
 	assert!(!txn.contains_key(&key).unwrap());
@@ -204,13 +204,13 @@ fn test_contains_key_removed_returns_false() {
 #[test]
 fn test_contains_key_nonexistent() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	assert!(!txn.contains_key(&make_key("missing")).unwrap());
 }
@@ -218,13 +218,13 @@ fn test_contains_key_nonexistent() {
 #[test]
 fn test_scan_empty() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let mut iter = txn.range(EncodedKeyRange::all(), RangeScope::All, 1024);
 	assert!(iter.next().is_none());
@@ -233,13 +233,13 @@ fn test_scan_empty() {
 #[test]
 fn test_scan_only_pending() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	txn.set(&make_key("b"), make_value("2")).unwrap();
 	txn.set(&make_key("a"), make_value("1")).unwrap();
@@ -257,13 +257,13 @@ fn test_scan_only_pending() {
 #[test]
 fn test_scan_filters_removes() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	txn.set(&make_key("a"), make_value("1")).unwrap();
 	txn.remove(&make_key("b")).unwrap();
@@ -280,13 +280,13 @@ fn test_scan_filters_removes() {
 #[test]
 fn test_range_empty() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let range = EncodedKeyRange::start_end(Some(make_key("a")), Some(make_key("z")));
 	let mut iter = txn.range(range, RangeScope::All, 1024);
@@ -296,13 +296,13 @@ fn test_range_empty() {
 #[test]
 fn test_range_only_pending() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	txn.set(&make_key("a"), make_value("1")).unwrap();
 	txn.set(&make_key("b"), make_value("2")).unwrap();
@@ -320,13 +320,13 @@ fn test_range_only_pending() {
 #[test]
 fn test_prefix_empty() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let prefix = make_key("test_");
 	let iter = txn.prefix(&prefix).unwrap();
@@ -336,13 +336,13 @@ fn test_prefix_empty() {
 #[test]
 fn test_prefix_only_pending() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	txn.set(&make_key("test_a"), make_value("1")).unwrap();
 	txn.set(&make_key("test_b"), make_value("2")).unwrap();
@@ -360,13 +360,13 @@ fn test_prefix_only_pending() {
 #[test]
 fn test_set_buffers_to_pending() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let key = make_key("key1");
 	let value = make_value("value1");
@@ -379,13 +379,13 @@ fn test_set_buffers_to_pending() {
 #[test]
 fn test_set_multiple_keys() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	txn.set(&make_key("key1"), make_value("value1")).unwrap();
 	txn.set(&make_key("key2"), make_value("value2")).unwrap();
@@ -399,13 +399,13 @@ fn test_set_multiple_keys() {
 #[test]
 fn test_set_overwrites_same_key() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let key = make_key("key1");
 	txn.set(&key, make_value("value1")).unwrap();
@@ -417,13 +417,13 @@ fn test_set_overwrites_same_key() {
 #[test]
 fn test_remove_buffers_to_pending() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let key = make_key("key1");
 	txn.remove(&key).unwrap();
@@ -434,13 +434,13 @@ fn test_remove_buffers_to_pending() {
 #[test]
 fn test_remove_multiple_keys() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	txn.remove(&make_key("key1")).unwrap();
 	txn.remove(&make_key("key2")).unwrap();
@@ -454,13 +454,13 @@ fn test_remove_multiple_keys() {
 #[test]
 fn test_set_then_remove() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let key = make_key("key1");
 	txn.set(&key, make_value("value1")).unwrap();
@@ -474,13 +474,13 @@ fn test_set_then_remove() {
 #[test]
 fn test_remove_then_set() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let key = make_key("key1");
 	txn.remove(&key).unwrap();
@@ -494,13 +494,13 @@ fn test_remove_then_set() {
 #[test]
 fn test_writes_not_visible_to_parent() {
 	let mut parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let key = make_key("key1");
 	let value = make_value("value1");
@@ -520,13 +520,13 @@ fn test_removes_not_visible_to_parent() {
 	assert_eq!(get_row(&mut parent, &key), Some(value.clone()));
 
 	let parent_version = parent.version();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		parent_version,
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 	txn.remove(&key).unwrap();
 
 	assert_eq!(get_row(&mut parent, &key), Some(value));
@@ -535,13 +535,13 @@ fn test_removes_not_visible_to_parent() {
 #[test]
 fn test_mixed_writes_and_removes() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	txn.set(&make_key("write1"), make_value("v1")).unwrap();
 	txn.remove(&make_key("remove1")).unwrap();

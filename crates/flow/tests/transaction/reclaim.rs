@@ -33,7 +33,7 @@ fn payload() -> EncodedOperatorRow {
 fn deferred(engine: &TestEngine) -> DeferredTransaction {
 	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
-	let mut txn = DeferredTransaction::from_parts(DeferredParams {
+	let mut txn = DeferredTransaction::new(DeferredParams {
 		version,
 		pending: PendingLayers::empty(),
 		query: parent.multi.begin_query().unwrap(),

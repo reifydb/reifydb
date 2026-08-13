@@ -28,7 +28,7 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DeferredTransaction {
 	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
-	DeferredTransaction::from_parts(DeferredParams {
+	DeferredTransaction::new(DeferredParams {
 		version,
 		pending: PendingLayers::empty(),
 		query: parent.multi.begin_query().unwrap(),

@@ -42,7 +42,7 @@ fn registry_on(single: &SingleTransaction) -> DictionaryAllocatorRegistry {
 fn flow_txn(engine: &TestEngine, registry: DictionaryAllocatorRegistry) -> DeferredTransaction {
 	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
-	DeferredTransaction::from_parts(DeferredParams {
+	DeferredTransaction::new(DeferredParams {
 		version,
 		pending: PendingLayers::empty(),
 		query: parent.multi.begin_query().unwrap(),

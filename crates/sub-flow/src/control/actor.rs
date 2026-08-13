@@ -1023,7 +1023,7 @@ mod pull_protocol {
 				.filter(|id| self.flow.get_operator(id).is_some_and(|op| op.ty.is_source()))
 				.collect();
 			assert!(!sources.is_empty(), "the flow under test must have a source to advance");
-			let mut txn = DeferredTransaction::from_parts(DeferredParams {
+			let mut txn = DeferredTransaction::new(DeferredParams {
 				version: self.engine.current_version().expect("current version"),
 				pending: PendingLayers::empty(),
 				query: self.engine.multi().begin_query().expect("query"),

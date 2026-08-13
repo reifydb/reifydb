@@ -140,7 +140,7 @@ mod tests {
 			HostOperator, host::HostContext, metrics::OperatorSampleRegistry,
 			provider::EmptyOperatorProvider,
 		},
-		transaction::{deferred::DeferredTransaction, substrate::FlowSubstrate},
+		transaction::{DeferredParams, deferred::DeferredTransaction, substrate::FlowSubstrate},
 	};
 
 	const FLOW: FlowId = FlowId(1);
@@ -209,13 +209,13 @@ mod tests {
 	fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		DeferredTransaction::new(
+		DeferredTransaction::new(DeferredParams::from_parent(
 			&parent,
 			version,
 			Catalog::testing(),
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(0)),
-		)
+		))
 	}
 
 	fn source(id: u64) -> FlowNode {

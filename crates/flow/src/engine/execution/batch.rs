@@ -350,7 +350,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
-		transaction::{deferred::DeferredTransaction, substrate::FlowSubstrate},
+		transaction::{DeferredParams, deferred::DeferredTransaction, substrate::FlowSubstrate},
 	};
 
 	const SOURCE: OperatorId = OperatorId(1);
@@ -371,13 +371,13 @@ mod tests {
 	fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		DeferredTransaction::new(
+		DeferredTransaction::new(DeferredParams::from_parent(
 			&parent,
 			version,
 			Catalog::testing(),
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(0)),
-		)
+		))
 	}
 
 	#[test]

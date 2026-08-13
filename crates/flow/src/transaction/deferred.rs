@@ -74,7 +74,6 @@ use reifydb_transaction::{
 		},
 	},
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
-	transaction::admin::AdminTransaction,
 };
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
@@ -108,35 +107,8 @@ pub struct DeferredTransaction {
 }
 
 impl DeferredTransaction {
-	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(parent, catalog, interceptors, clock), fields(version = version.0))]
-	pub fn new(
-		parent: &AdminTransaction,
-		version: CommitVersion,
-		catalog: Catalog,
-		interceptors: Interceptors,
-		clock: Clock,
-	) -> Self {
-		let mut query = parent.multi.begin_query().unwrap();
-		query.read_as_of_version_inclusive(version);
-
-		let state_query = parent.multi.begin_query().unwrap();
-
-		Self {
-			version,
-			pending: PendingLayers::empty(),
-			query,
-			state_query,
-			catalog,
-			interceptors,
-			accumulator: ChangeAccumulator::new(),
-			clock,
-			change_coordinate: None,
-			flow_watermark: None,
-			substrate: FlowSubstrate::new(),
-		}
-	}
-
-	pub fn from_parts(params: DeferredParams) -> Self {
+	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(params), fields(version = params.version.0))]
+	pub fn new(params: DeferredParams) -> Self {
 		let mut query = params.query;
 		query.read_as_of_version_inclusive(params.version);
 

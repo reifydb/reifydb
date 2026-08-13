@@ -38,7 +38,7 @@ fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 	// Shares the engine's operator state store like every production deferred txn.
 	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
-	DeferredTransaction::from_parts(DeferredParams {
+	DeferredTransaction::new(DeferredParams {
 		version,
 		pending: PendingLayers::empty(),
 		query: parent.multi.begin_query().unwrap(),
@@ -76,13 +76,13 @@ fn stamped_row(payload: &[u8], time: u64) -> EncodedOperatorRow {
 #[test]
 fn test_state_get_set() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let operator_id = OperatorId(1);
 	let key = make_key("state_key");
@@ -97,13 +97,13 @@ fn test_state_get_set() {
 #[test]
 fn test_state_get_many() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let operator_id = OperatorId(1);
 	txn.state_set(operator_id, &make_key("a"), make_value("1")).unwrap();
@@ -132,13 +132,13 @@ fn test_state_get_many() {
 #[test]
 fn test_state_get_nonexistent() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let operator_id = OperatorId(1);
 	let key = make_key("missing");
@@ -150,13 +150,13 @@ fn test_state_get_nonexistent() {
 #[test]
 fn test_state_remove() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let operator_id = OperatorId(1);
 	let key = make_key("state_key");
@@ -172,13 +172,13 @@ fn test_state_remove() {
 #[test]
 fn test_state_isolation_between_nodes() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let node1 = OperatorId(1);
 	let node2 = OperatorId(2);
@@ -194,13 +194,13 @@ fn test_state_isolation_between_nodes() {
 #[test]
 fn test_state_scan_all() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let operator_id = OperatorId(1);
 
@@ -217,13 +217,13 @@ fn test_state_scan_all() {
 #[test]
 fn test_state_scan_only_own_node() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let node1 = OperatorId(1);
 	let node2 = OperatorId(2);
@@ -242,13 +242,13 @@ fn test_state_scan_only_own_node() {
 #[test]
 fn test_state_scan_empty() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let operator_id = OperatorId(1);
 
@@ -259,13 +259,13 @@ fn test_state_scan_empty() {
 #[test]
 fn test_state_range_all() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let operator_id = OperatorId(1);
 
@@ -287,13 +287,13 @@ fn test_state_range_all() {
 #[test]
 fn test_state_clear() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let operator_id = OperatorId(1);
 
@@ -311,13 +311,13 @@ fn test_state_clear() {
 #[test]
 fn test_state_clear_only_own_node() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let node1 = OperatorId(1);
 	let node2 = OperatorId(2);
@@ -335,13 +335,13 @@ fn test_state_clear_only_own_node() {
 #[test]
 fn test_state_clear_empty_node() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let operator_id = OperatorId(1);
 
@@ -351,13 +351,13 @@ fn test_state_clear_empty_node() {
 #[test]
 fn test_state_multiple_nodes() {
 	let parent = create_test_transaction();
-	let mut txn = DeferredTransaction::new(
+	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
 		Clock::Mock(MockClock::from_millis(1000)),
-	);
+	));
 
 	let node1 = OperatorId(1);
 	let node2 = OperatorId(2);
@@ -441,7 +441,7 @@ fn deferred_read_sees_state_committed_above_object_version() {
 	seed_state_row(&engine, operator_id, &make_key("warmup_a"), make_value("a"));
 	seed_state_row(&engine, operator_id, &inner_key, value.clone());
 
-	let mut txn = DeferredTransaction::from_parts(DeferredParams {
+	let mut txn = DeferredTransaction::new(DeferredParams {
 		version: object_version,
 		pending: PendingLayers::empty(),
 		query: engine.multi().begin_query().unwrap(),
@@ -481,7 +481,7 @@ fn deferred_read_sees_base_pending_overlay() {
 	base_pending.insert(full_key(operator_id, &overlaid_key), overlaid_value.clone().into_bytes());
 	base_pending.remove(full_key(operator_id, &committed_key));
 
-	let mut txn = DeferredTransaction::from_parts(DeferredParams {
+	let mut txn = DeferredTransaction::new(DeferredParams {
 		version: low_version,
 		pending: PendingLayers::over(vec![base_pending]),
 		query: engine.multi().begin_query().unwrap(),
@@ -540,7 +540,7 @@ fn deferred_reads_owned_rows_at_state_version() {
 	let committed_at = cmd.commit_unchecked().unwrap();
 	assert!(low_version < committed_at);
 
-	let mut txn = DeferredTransaction::from_parts(DeferredParams {
+	let mut txn = DeferredTransaction::new(DeferredParams {
 		version: low_version,
 		pending: PendingLayers::empty(),
 		query: engine.multi().begin_query().unwrap(),

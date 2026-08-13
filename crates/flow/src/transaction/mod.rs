@@ -24,6 +24,7 @@ use reifydb_transaction::{
 	dictionary::DictionaryAllocatorRegistry,
 	interceptor::interceptors::Interceptors,
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
+	transaction::admin::AdminTransaction,
 };
 use reifydb_value::{Result, value::datetime::DateTime};
 
@@ -70,6 +71,27 @@ pub struct DeferredParams {
 	pub clock: Clock,
 
 	pub substrate: FlowSubstrate,
+}
+
+impl DeferredParams {
+	pub fn from_parent(
+		parent: &AdminTransaction,
+		version: CommitVersion,
+		catalog: Catalog,
+		interceptors: Interceptors,
+		clock: Clock,
+	) -> Self {
+		Self {
+			version,
+			pending: PendingLayers::empty(),
+			query: parent.multi.begin_query().unwrap(),
+			state_query: parent.multi.begin_query().unwrap(),
+			catalog,
+			interceptors,
+			clock,
+			substrate: FlowSubstrate::new(),
+		}
+	}
 }
 
 pub trait FlowTransaction: Sized + Send + 'static {

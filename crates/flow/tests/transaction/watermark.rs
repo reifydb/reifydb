@@ -24,7 +24,7 @@ const SOURCE_B: OperatorId = OperatorId(2);
 fn deferred(engine: &TestEngine, clock: MockClock) -> DeferredTransaction {
 	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
-	DeferredTransaction::from_parts(DeferredParams {
+	DeferredTransaction::new(DeferredParams {
 		version,
 		pending: PendingLayers::empty(),
 		query: parent.multi.begin_query().unwrap(),
