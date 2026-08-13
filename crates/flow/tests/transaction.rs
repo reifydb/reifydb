@@ -3,6 +3,9 @@
 
 #![cfg(feature = "runtime")]
 
+#[path = "transaction/anchor.rs"]
+mod anchor;
+
 #[path = "transaction/common.rs"]
 mod common;
 

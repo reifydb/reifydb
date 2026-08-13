@@ -44,7 +44,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 };
 use reifydb_store_multi::MultiStore;
-use reifydb_store_operator::store::OperatorStore;
+use reifydb_store_operator::store::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, OperatorStore};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -496,7 +496,8 @@ fn level_count(metric: &'static str, count: u64) -> Measure {
 }
 
 fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
-	store.census(OperatorStateKey::GROUP_KEYSPACE_PREFIX_LEN)
+	let mut rows: Vec<MetricsRow> = store
+		.census(OperatorStateKey::GROUP_KEYSPACE_PREFIX_LEN)
 		.into_iter()
 		.filter_map(|entry| {
 			let (group, keyspace, _) = OperatorStateKey::decode_inner(&entry.prefix)?;
@@ -515,7 +516,22 @@ fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 				],
 			})
 		})
-		.collect()
+		.collect();
+	rows.extend(store.anchor_census().into_iter().map(|entry| MetricsRow {
+		dimensions: vec![
+			Value::Uint8(entry.operator.0),
+			Value::Uint8(entry.group.0),
+			Value::Utf8(Keyspace::SEAL_ANCHOR.name().to_string()),
+			Value::Utf8(phase_name(Keyspace::SEAL_ANCHOR).to_string()),
+		],
+		measures: vec![
+			level_count("keys", entry.keys),
+			level_bytes("key_bytes", entry.keys * ANCHOR_KEY_BYTES),
+			level_bytes("value_bytes", entry.keys * ANCHOR_VALUE_BYTES),
+			level_bytes("total_bytes", entry.keys * (ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES)),
+		],
+	}));
+	rows
 }
 
 fn phase_name(keyspace: Keyspace) -> &'static str {

@@ -24,11 +24,48 @@ impl OperatorBatch {
 	}
 }
 
+pub const ANCHOR_KEY_BYTES: u64 = 25;
+
+pub const ANCHOR_VALUE_BYTES: u64 = 8;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorSealAnchor {
 	pub side: u8,
 	pub row_number: RowNumber,
 	pub expiry: DateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperatorSealAnchorCensus {
+	pub operator: OperatorId,
+	pub group: GroupId,
+	pub keys: u64,
+}
+
+#[derive(Debug, Clone)]
+pub enum OperatorWrite {
+	Set {
+		operator: OperatorId,
+		key: EncodedKey,
+		row: EncodedOperatorRow,
+	},
+	Remove {
+		operator: OperatorId,
+		key: EncodedKey,
+	},
+	AnchorSet {
+		operator: OperatorId,
+		group: GroupId,
+		side: u8,
+		row_number: RowNumber,
+		expiry: DateTime,
+	},
+	AnchorRemove {
+		operator: OperatorId,
+		group: GroupId,
+		side: u8,
+		row_number: RowNumber,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +95,8 @@ impl OperatorStore {
 
 	pub fn remove(&self, _operator: OperatorId, _key: &EncodedKey) {}
 
+	pub fn apply_batch(&self, _writes: &[OperatorWrite]) {}
+
 	pub fn get(&self, _operator: OperatorId, _key: &EncodedKey) -> Option<EncodedOperatorRow> {
 		None
 	}
@@ -79,6 +118,10 @@ impl OperatorStore {
 	}
 
 	pub fn census(&self, _prefix_len: u32) -> Vec<OperatorStateCensus> {
+		Vec::new()
+	}
+
+	pub fn anchor_census(&self) -> Vec<OperatorSealAnchorCensus> {
 		Vec::new()
 	}
 

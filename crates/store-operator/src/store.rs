@@ -47,11 +47,61 @@ const ANCHORS_DUE_SQL: &str = r#"SELECT "side", "row_number", "expiry" FROM "ope
 	   WHERE "operator" = ?1 AND "group" = ?2 AND "expiry" <= ?3
 	   ORDER BY "expiry" ASC LIMIT ?4"#;
 
+const ANCHOR_SET_SQL: &str = r#"INSERT INTO "operator_seal_anchor" ("operator", "group", "side", "row_number", "expiry")
+	   VALUES (?1, ?2, ?3, ?4, ?5)
+	   ON CONFLICT ("operator", "group", "side", "row_number")
+	   DO UPDATE SET "expiry" = excluded."expiry""#;
+
+const ANCHOR_REMOVE_SQL: &str = r#"DELETE FROM "operator_seal_anchor"
+	   WHERE "operator" = ?1 AND "group" = ?2 AND "side" = ?3 AND "row_number" = ?4"#;
+
+const STATE_SET_SQL: &str = r#"INSERT INTO "operator_state" ("operator", "key", "bytes") VALUES (?1, ?2, ?3)
+	   ON CONFLICT ("operator", "key") DO UPDATE SET "bytes" = excluded."bytes""#;
+
+const STATE_REMOVE_SQL: &str = r#"DELETE FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2"#;
+
+pub const ANCHOR_KEY_BYTES: u64 = 25;
+
+pub const ANCHOR_VALUE_BYTES: u64 = 8;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorSealAnchor {
 	pub side: u8,
 	pub row_number: RowNumber,
 	pub expiry: DateTime,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperatorSealAnchorCensus {
+	pub operator: OperatorId,
+	pub group: GroupId,
+	pub keys: u64,
+}
+
+#[derive(Debug, Clone)]
+pub enum OperatorWrite {
+	Set {
+		operator: OperatorId,
+		key: EncodedKey,
+		row: EncodedOperatorRow,
+	},
+	Remove {
+		operator: OperatorId,
+		key: EncodedKey,
+	},
+	AnchorSet {
+		operator: OperatorId,
+		group: GroupId,
+		side: u8,
+		row_number: RowNumber,
+		expiry: DateTime,
+	},
+	AnchorRemove {
+		operator: OperatorId,
+		group: GroupId,
+		side: u8,
+		row_number: RowNumber,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,12 +158,8 @@ impl OperatorStore {
 		let Some(conn) = guard.as_ref() else {
 			return;
 		};
-		conn.execute(
-			r#"INSERT INTO "operator_state" ("operator", "key", "bytes") VALUES (?1, ?2, ?3)
-			   ON CONFLICT ("operator", "key") DO UPDATE SET "bytes" = excluded."bytes""#,
-			params![operator.0 as i64, key.as_slice(), &row.bytes()[..]],
-		)
-		.expect("operator state write failed");
+		conn.execute(STATE_SET_SQL, params![operator.0 as i64, key.as_slice(), &row.bytes()[..]])
+			.expect("operator state write failed");
 	}
 
 	pub fn remove(&self, operator: OperatorId, key: &EncodedKey) {
@@ -121,11 +167,73 @@ impl OperatorStore {
 		let Some(conn) = guard.as_ref() else {
 			return;
 		};
-		conn.execute(
-			r#"DELETE FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2"#,
-			params![operator.0 as i64, key.as_slice()],
-		)
-		.expect("operator state delete failed");
+		conn.execute(STATE_REMOVE_SQL, params![operator.0 as i64, key.as_slice()])
+			.expect("operator state delete failed");
+	}
+
+	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
+		if writes.is_empty() {
+			return;
+		}
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return;
+		};
+		let transaction = conn.unchecked_transaction().expect("operator state batch could not begin");
+		for write in writes {
+			match write {
+				OperatorWrite::Set {
+					operator,
+					key,
+					row,
+				} => transaction
+					.prepare_cached(STATE_SET_SQL)
+					.expect("operator state write could not be prepared")
+					.execute(params![operator.0 as i64, key.as_slice(), &row.bytes()[..]])
+					.expect("operator state write failed"),
+				OperatorWrite::Remove {
+					operator,
+					key,
+				} => transaction
+					.prepare_cached(STATE_REMOVE_SQL)
+					.expect("operator state delete could not be prepared")
+					.execute(params![operator.0 as i64, key.as_slice()])
+					.expect("operator state delete failed"),
+				OperatorWrite::AnchorSet {
+					operator,
+					group,
+					side,
+					row_number,
+					expiry,
+				} => transaction
+					.prepare_cached(ANCHOR_SET_SQL)
+					.expect("seal anchor write could not be prepared")
+					.execute(params![
+						operator.0 as i64,
+						group.0 as i64,
+						*side as i64,
+						row_number.0 as i64,
+						expiry.to_millis() as i64
+					])
+					.expect("seal anchor write failed"),
+				OperatorWrite::AnchorRemove {
+					operator,
+					group,
+					side,
+					row_number,
+				} => transaction
+					.prepare_cached(ANCHOR_REMOVE_SQL)
+					.expect("seal anchor delete could not be prepared")
+					.execute(params![
+						operator.0 as i64,
+						group.0 as i64,
+						*side as i64,
+						row_number.0 as i64
+					])
+					.expect("seal anchor delete failed"),
+			};
+		}
+		transaction.commit().expect("operator state batch could not commit");
 	}
 
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedOperatorRow> {
@@ -200,13 +308,22 @@ impl OperatorStore {
 		let Some(conn) = guard.as_ref() else {
 			return 0;
 		};
-		conn.query_row(
-			r#"SELECT COALESCE(SUM(LENGTH("key") + LENGTH("bytes")), 0) FROM "operator_state"
-			   WHERE "operator" = ?1"#,
-			params![operator.0 as i64],
-			|row| row.get::<_, i64>(0),
-		)
-		.expect("operator state size query failed") as u64
+		let state = conn
+			.query_row(
+				r#"SELECT COALESCE(SUM(LENGTH("key") + LENGTH("bytes")), 0) FROM "operator_state"
+				   WHERE "operator" = ?1"#,
+				params![operator.0 as i64],
+				|row| row.get::<_, i64>(0),
+			)
+			.expect("operator state size query failed") as u64;
+		let anchors = conn
+			.query_row(
+				r#"SELECT COUNT(*) FROM "operator_seal_anchor" WHERE "operator" = ?1"#,
+				params![operator.0 as i64],
+				|row| row.get::<_, i64>(0),
+			)
+			.expect("seal anchor size query failed") as u64;
+		state + anchors * (ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES)
 	}
 
 	pub fn total_bytes(&self) -> u64 {
@@ -214,12 +331,17 @@ impl OperatorStore {
 		let Some(conn) = guard.as_ref() else {
 			return 0;
 		};
-		conn.query_row(
-			r#"SELECT COALESCE(SUM(LENGTH("key") + LENGTH("bytes")), 0) FROM "operator_state""#,
-			[],
-			|row| row.get::<_, i64>(0),
-		)
-		.expect("operator state size query failed") as u64
+		let state = conn
+			.query_row(
+				r#"SELECT COALESCE(SUM(LENGTH("key") + LENGTH("bytes")), 0) FROM "operator_state""#,
+				[],
+				|row| row.get::<_, i64>(0),
+			)
+			.expect("operator state size query failed") as u64;
+		let anchors = conn
+			.query_row(r#"SELECT COUNT(*) FROM "operator_seal_anchor""#, [], |row| row.get::<_, i64>(0))
+			.expect("seal anchor size query failed") as u64;
+		state + anchors * (ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES)
 	}
 
 	pub fn census(&self, prefix_len: u32) -> Vec<OperatorStateCensus> {
@@ -307,6 +429,32 @@ impl OperatorStore {
 		collect_anchors(rows)
 	}
 
+	pub fn anchor_census(&self) -> Vec<OperatorSealAnchorCensus> {
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Vec::new();
+		};
+		let mut stmt = conn
+			.prepare_cached(
+				r#"SELECT "operator", "group", COUNT(*) FROM "operator_seal_anchor"
+				   GROUP BY "operator", "group" ORDER BY "operator", "group""#,
+			)
+			.expect("seal anchor census could not be prepared");
+		let mut rows = stmt.query([]).expect("seal anchor census failed");
+
+		let mut out = Vec::new();
+		while let Some(row) = rows.next().expect("seal anchor census failed") {
+			out.push(OperatorSealAnchorCensus {
+				operator: OperatorId(
+					row.get::<_, i64>(0).expect("census rows carry an operator") as u64
+				),
+				group: GroupId(row.get::<_, i64>(1).expect("census rows carry a group") as u64),
+				keys: row.get::<_, i64>(2).expect("census rows carry a key count") as u64,
+			});
+		}
+		out
+	}
+
 	pub fn anchor_set(
 		&self,
 		operator: OperatorId,
@@ -319,21 +467,16 @@ impl OperatorStore {
 		let Some(conn) = guard.as_ref() else {
 			return;
 		};
-		conn.prepare_cached(
-			r#"INSERT INTO "operator_seal_anchor" ("operator", "group", "side", "row_number", "expiry")
-			   VALUES (?1, ?2, ?3, ?4, ?5)
-			   ON CONFLICT ("operator", "group", "side", "row_number")
-			   DO UPDATE SET "expiry" = excluded."expiry""#,
-		)
-		.expect("seal anchor write could not be prepared")
-		.execute(params![
-			operator.0 as i64,
-			group.0 as i64,
-			side as i64,
-			row_number.0 as i64,
-			expiry.to_millis() as i64
-		])
-		.expect("seal anchor write failed");
+		conn.prepare_cached(ANCHOR_SET_SQL)
+			.expect("seal anchor write could not be prepared")
+			.execute(params![
+				operator.0 as i64,
+				group.0 as i64,
+				side as i64,
+				row_number.0 as i64,
+				expiry.to_millis() as i64
+			])
+			.expect("seal anchor write failed");
 	}
 
 	pub fn anchor_remove(&self, operator: OperatorId, group: GroupId, side: u8, row_number: RowNumber) {
@@ -341,13 +484,10 @@ impl OperatorStore {
 		let Some(conn) = guard.as_ref() else {
 			return;
 		};
-		conn.prepare_cached(
-			r#"DELETE FROM "operator_seal_anchor"
-			   WHERE "operator" = ?1 AND "group" = ?2 AND "side" = ?3 AND "row_number" = ?4"#,
-		)
-		.expect("seal anchor delete could not be prepared")
-		.execute(params![operator.0 as i64, group.0 as i64, side as i64, row_number.0 as i64])
-		.expect("seal anchor delete failed");
+		conn.prepare_cached(ANCHOR_REMOVE_SQL)
+			.expect("seal anchor delete could not be prepared")
+			.execute(params![operator.0 as i64, group.0 as i64, side as i64, row_number.0 as i64])
+			.expect("seal anchor delete failed");
 	}
 
 	pub fn anchors_remove_group(&self, operator: OperatorId, group: GroupId) {
@@ -373,16 +513,21 @@ impl OperatorStore {
 	}
 
 	pub fn drop_operator_state(&self, operator: OperatorId) {
-		{
-			let guard = self.inner.conn.lock();
-			if let Some(conn) = guard.as_ref() {
-				conn.execute(
-					r#"DELETE FROM "operator_state" WHERE "operator" = ?1"#,
-					params![operator.0 as i64],
-				)
-				.expect("operator state drop failed");
-			}
-		}
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return;
+		};
+		let transaction = conn.unchecked_transaction().expect("operator state drop could not begin");
+		transaction
+			.execute(r#"DELETE FROM "operator_state" WHERE "operator" = ?1"#, params![operator.0 as i64])
+			.expect("operator state drop failed");
+		transaction
+			.execute(
+				r#"DELETE FROM "operator_seal_anchor" WHERE "operator" = ?1"#,
+				params![operator.0 as i64],
+			)
+			.expect("seal anchor drop failed");
+		transaction.commit().expect("operator state drop could not commit");
 	}
 }
 

@@ -207,12 +207,14 @@ mod tests {
 			WithEventBus,
 			catalog::{flow::FlowId, id::SeriesId},
 		},
+		key::operator_state::GroupId,
 	};
 	use reifydb_rql::flow::{
 		flow::FlowDag,
 		operator::{FlowNode, OperatorDef},
 	};
 	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 	use super::*;
 	use crate::operator::{provider::EmptyOperatorProvider, scan::series::SourceSeriesOperator};
@@ -257,5 +259,47 @@ mod tests {
 
 		assert_eq!(store.bytes(operator), 0, "the retired operator's state must be dropped");
 		assert_eq!(store.total_bytes(), 0, "and its bytes must leave the process-wide accounting");
+	}
+
+	#[test]
+	fn removing_a_flow_drops_its_operators_seal_anchors() {
+		// Anchors live outside the key-value rows now, so a drop that spares them leaks a row per sealed group.
+		let engine = TestEngine::new();
+		let mut inner = FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor().routines.clone(),
+			engine.event_bus().clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			Arc::new(EmptyOperatorProvider),
+			FlowSubstrate {
+				operators: engine.inner().operator_state(),
+				..FlowSubstrate::default()
+			},
+			OperatorSampleRegistry::new(),
+		);
+
+		let operator = OperatorId(7);
+		let mut builder = FlowDag::builder(FlowId(1));
+		builder.add_node(FlowNode::new(
+			operator,
+			OperatorDef::SourceSeries {
+				series: SeriesId(1),
+				time_domain: TimeDomain::None,
+			},
+		));
+		inner.register_flow_dag(builder.build());
+		inner.insert_operator(operator, Box::new(SourceSeriesOperator::new(operator)));
+
+		let store = inner.substrate.operators.clone();
+		store.anchor_set(operator, GroupId(3), 0, RowNumber(1), DateTime::from_millis(5_000));
+		store.anchor_set(operator, GroupId(4), 0, RowNumber(1), DateTime::from_millis(6_000));
+		assert!(store.bytes(operator) > 0, "precondition: the operator's anchors are resident");
+
+		inner.remove_flow(FlowId(1));
+
+		assert_eq!(store.anchors_by_expiry(operator, GroupId(3), 16), Vec::new());
+		assert_eq!(store.anchors_by_expiry(operator, GroupId(4), 16), Vec::new());
+		assert_eq!(store.bytes(operator), 0, "the retired operator's anchors must be dropped");
+		assert_eq!(store.total_bytes(), 0, "and their bytes must leave the process-wide accounting");
 	}
 }

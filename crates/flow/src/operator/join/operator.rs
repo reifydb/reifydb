@@ -8,12 +8,8 @@ use std::{
 
 use postcard::to_extend;
 use reifydb_codec::{
-	key::{
-		decode_u64, decode_u64_asc, encode_u64, encode_u64_asc,
-		encoded::{EncodedKey, EncodedKeyRange},
-		serializer::KeySerializer,
-	},
-	row::operator::{OperatorState, decode},
+	key::{decode_u64, encode_u64, encoded::EncodedKey, serializer::KeySerializer},
+	row::operator::OperatorState,
 };
 use reifydb_core::{
 	common::JoinType,
@@ -22,7 +18,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
+	key::operator_state::{GroupId, GroupStateKey},
 	metrics::heap::OperatorSample,
 	state::store::TimerKind,
 	value::column::{ColumnWithName, columns::Columns},
@@ -31,7 +27,6 @@ use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::{CompileContext, EvalContext},
 };
-use reifydb_macro::operator_state;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -63,23 +58,12 @@ use crate::{
 		seal::{ledger::FiredAt, policy::SealPolicy},
 	},
 	timer::Timer,
+	transaction::anchor::{SealAnchor, anchor_key as seal_anchor_key},
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
 const SEAL_BATCH: usize = 256;
-
-const ANCHOR_SUFFIX_LEN: usize = 9;
-
-#[operator_state]
-#[derive(Clone)]
-pub struct SealAnchor {
-	expiry: DateTime,
-}
-
-struct GroupAnchors {
-	live: HashMap<(u8, u64), DateTime>,
-}
 
 fn group_by_key(keys: &[Option<Hash128>]) -> (Vec<Hash128>, HashMap<Hash128, Vec<usize>>, Vec<usize>) {
 	let mut order: Vec<Hash128> = Vec::new();
@@ -250,14 +234,7 @@ impl JoinOperator {
 	}
 
 	fn anchor_key(group: GroupId, side: JoinSide, row_number: RowNumber) -> GroupStateKey {
-		let mut suffix = Vec::with_capacity(ANCHOR_SUFFIX_LEN);
-		suffix.push(side.tag());
-		suffix.extend_from_slice(&encode_u64_asc(row_number.0));
-		OperatorStateKey::inner_encoded(group, Keyspace::CUSTOM, suffix)
-	}
-
-	fn anchor_range(group: GroupId) -> EncodedKeyRange {
-		keyspace_inner_range(group, Keyspace::CUSTOM)
+		seal_anchor_key(group, side.tag(), row_number)
 	}
 
 	fn timer_key(group: GroupId) -> EncodedKey {
@@ -274,31 +251,13 @@ impl JoinOperator {
 		Ok(GroupId(decode_u64(bytes)))
 	}
 
-	fn anchors_in(host: &mut dyn HostContext, group: GroupId) -> Result<Vec<(JoinSide, RowNumber, DateTime)>> {
-		let mut out = Vec::new();
-		for (key, row) in host.state_range(Self::anchor_range(group))? {
-			let suffix = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
-				.map(|(_, _, suffix)| suffix)
-				.filter(|suffix| suffix.len() == ANCHOR_SUFFIX_LEN)
-				.ok_or_else(|| {
-					Error::from(FlowStateError::Decode {
-						state: "join seal anchor key",
-						cause: "a join seal anchor carries a side tag and a row number"
-							.to_string(),
-					})
-				})?;
-			let side = JoinSide::from_tag(suffix[0]).ok_or_else(|| {
-				Error::from(FlowStateError::Decode {
-					state: "join seal anchor key",
-					cause: format!("unknown join side tag {}", suffix[0]),
-				})
-			})?;
-			let row_number = RowNumber(decode_u64_asc(
-				<[u8; 8]>::try_from(&suffix[1..]).expect("the suffix length was checked"),
-			));
-			out.push((side, row_number, decode::<SealAnchor>(&row)?.expiry));
-		}
-		Ok(out)
+	fn side_of(tag: u8) -> Result<JoinSide> {
+		JoinSide::from_tag(tag).ok_or_else(|| {
+			Error::from(FlowStateError::Decode {
+				state: "join seal anchor key",
+				cause: format!("unknown join side tag {tag}"),
+			})
+		})
 	}
 
 	fn resolve_groups(
@@ -323,37 +282,9 @@ impl JoinOperator {
 		Ok(resolved)
 	}
 
-	fn load_anchors(
-		host: &mut dyn HostContext,
-		order: &mut Vec<GroupId>,
-		loaded: &mut HashMap<GroupId, GroupAnchors>,
-		group: GroupId,
-	) -> Result<()> {
-		if loaded.contains_key(&group) {
-			return Ok(());
-		}
-		let mut live: HashMap<(u8, u64), DateTime> = HashMap::new();
-		for (side, row_number, expiry) in Self::anchors_in(host, group)? {
-			live.insert((side.tag(), row_number.0), expiry);
-		}
-		order.push(group);
-		loaded.insert(
-			group,
-			GroupAnchors {
-				live,
-			},
-		);
-		Ok(())
-	}
-
-	fn resync_timers(
-		host: &mut dyn HostContext,
-		order: &[GroupId],
-		loaded: &HashMap<GroupId, GroupAnchors>,
-	) -> Result<()> {
+	fn resync_timers(host: &mut dyn HostContext, order: &[GroupId]) -> Result<()> {
 		for group in order {
-			let anchors = loaded.get(group).expect("every ordered group was loaded");
-			match anchors.live.values().copied().min() {
+			match host.anchor_min(*group)? {
 				Some(earliest) => {
 					host.arm_timer(earliest, TimerKind::Maintenance, &Self::timer_key(*group))?
 				}
@@ -380,17 +311,15 @@ impl JoinOperator {
 		let now = host.written_at();
 		let resolved = Self::resolve_groups(host, cleared, armed)?;
 		let mut order: Vec<GroupId> = Vec::new();
-		let mut loaded: HashMap<GroupId, GroupAnchors> = HashMap::new();
+		let mut touched: HashSet<GroupId> = HashSet::new();
 
 		for (hash, row_number) in cleared {
 			let Some(group) = resolved.get(hash).copied() else {
 				continue;
 			};
-			Self::load_anchors(host, &mut order, &mut loaded, group)?;
-			loaded.get_mut(&group)
-				.expect("the group was just loaded")
-				.live
-				.remove(&(side.tag(), row_number.0));
+			if touched.insert(group) {
+				order.push(group);
+			}
 			host.state_remove(&Self::anchor_key(group, side, *row_number))?;
 		}
 
@@ -398,23 +327,20 @@ impl JoinOperator {
 			let Some(group) = resolved.get(hash).copied() else {
 				continue;
 			};
-			Self::load_anchors(host, &mut order, &mut loaded, group)?;
+			if touched.insert(group) {
+				order.push(group);
+			}
 			host.state_remove(&queue_key(group))?;
-			let expiry = policy.seal_instant(*at).at();
-			loaded.get_mut(&group)
-				.expect("the group was just loaded")
-				.live
-				.insert((side.tag(), row_number.0), expiry);
 			host.state_set(
 				&Self::anchor_key(group, side, *row_number),
 				SealAnchor {
-					expiry,
+					expiry: policy.seal_instant(*at).at(),
 				}
 				.encode_state(now)?,
 			)?;
 		}
 
-		Self::resync_timers(host, &order, &loaded)
+		Self::resync_timers(host, &order)
 	}
 
 	fn arm_batch(
@@ -525,27 +451,30 @@ impl JoinOperator {
 			return Ok(());
 		};
 
-		let mut pending: Option<DateTime> = None;
-		let mut due: Vec<(JoinSide, RowNumber)> = Vec::new();
-		for (side, row_number, expiry) in Self::anchors_in(host, group)? {
-			if expiry > fired.at() {
-				pending = Some(pending.map_or(expiry, |earliest: DateTime| earliest.min(expiry)));
-			} else {
-				due.push((side, row_number));
+		let state = JoinState::new();
+		let mut next_arm: Option<DateTime>;
+		loop {
+			let page = host.anchor_seal_page(group, fired.at(), SEAL_BATCH)?;
+			let mut due: Vec<(JoinSide, RowNumber)> = Vec::with_capacity(page.due.len());
+			for (tag, row_number) in &page.due {
+				due.push((Self::side_of(*tag)?, *row_number));
+			}
+			for (side, row_number) in due.iter().filter(|(side, _)| *side == JoinSide::Left) {
+				self.free_sealed_row(host, &state, group, *side, *row_number)?;
+			}
+			for (side, row_number) in due.iter().filter(|(side, _)| *side == JoinSide::Right) {
+				self.free_sealed_row(host, &state, group, *side, *row_number)?;
+			}
+			next_arm = page.next;
+			if !page.more || page.due.is_empty() {
+				break;
 			}
 		}
 
-		let state = JoinState::new();
-		for (side, row_number) in due.iter().filter(|(side, _)| *side == JoinSide::Left) {
-			self.free_sealed_row(host, &state, group, *side, *row_number)?;
-		}
-		for (side, row_number) in due.iter().filter(|(side, _)| *side == JoinSide::Right) {
-			self.free_sealed_row(host, &state, group, *side, *row_number)?;
-		}
-
-		if let Some(at) = pending {
+		if let Some(at) = next_arm {
 			host.arm_timer(at, TimerKind::Maintenance, &Self::timer_key(group))?;
 		} else if !state.left.holds_rows(host, group)? && !state.right.holds_rows(host, group)? {
+			host.clear_anchors(group, SEAL_BATCH)?;
 			enqueue(host, group)?;
 		}
 
@@ -1133,9 +1062,10 @@ impl JoinOperator {
 
 #[cfg(test)]
 mod seal_tests {
+	use reifydb_codec::row::operator::decode;
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator_state::{group_inner_range, keyspace_inner_range},
+		key::operator_state::{Keyspace, group_inner_range, keyspace_inner_range},
 		value::column::buffer::ColumnBuffer,
 	};
 	use reifydb_rql::expression::parse_expression;
@@ -1147,7 +1077,8 @@ mod seal_tests {
 		operator::host::TxnHostContext,
 		transaction::{
 			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupExtension,
-			mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension, timer::TimerExtension,
+			mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension,
+			substrate::apply_operator_state, timer::TimerExtension,
 		},
 	};
 
@@ -1325,6 +1256,11 @@ mod seal_tests {
 		};
 		txn.disarm_timer(operator, &timer).unwrap();
 		op.on_timer(&mut TxnHostContext::new(txn, operator), timer).unwrap()
+	}
+
+	fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
+		// Anchors only reach the typed table through the batch, and the seal path reads them differently there.
+		apply_operator_state(&engine.inner().operator_state(), &txn.take_pending());
 	}
 
 	#[test]
@@ -1680,6 +1616,35 @@ mod seal_tests {
 			ledger_rows(&op, &mut txn, group, Keyspace::JOIN_PIN),
 			1,
 			"and the pin the sibling still references must stay"
+		);
+	}
+
+	#[test]
+	fn a_committed_anchor_leaves_no_row_behind_once_its_group_seals() {
+		// The reaper sweeps the key-value rows only, so an anchor in the typed table outlives every group it
+		// seals.
+		let engine = TestEngine::new();
+		let store = engine.inner().operator_state();
+		let mut op = join(16, Some(seconds(10)), None);
+		let mut txn = txn_at(&engine, 100);
+		let left = rows(&[7], &[42], at_millis(5_000));
+		insert(&op, &mut txn, JoinSide::Left, &left);
+		let group =
+			group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &left, 0)).expect("the key is interned");
+		commit(&engine, &mut txn);
+		assert_eq!(
+			store.anchors_by_expiry(op.operator, group, 16).len(),
+			1,
+			"precondition: the anchor is in the table, not merely in the batch"
+		);
+
+		fire(&mut op, &mut txn, at_millis(15_001), group);
+		commit(&engine, &mut txn);
+
+		assert_eq!(
+			store.anchors_by_expiry(op.operator, group, 16),
+			Vec::new(),
+			"a group driven through seal, enqueue and drain must leave no anchor row"
 		);
 	}
 }

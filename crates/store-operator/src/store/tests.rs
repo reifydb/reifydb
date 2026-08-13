@@ -9,7 +9,10 @@ use reifydb_core::{
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use rusqlite::params;
 
-use super::{ANCHORS_BY_EXPIRY_SQL, OperatorSealAnchor, OperatorStateCensus, OperatorStore};
+use super::{
+	ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, ANCHORS_BY_EXPIRY_SQL, OperatorSealAnchor, OperatorSealAnchorCensus,
+	OperatorStateCensus, OperatorStore, OperatorWrite,
+};
 
 const PREFIX: u32 = 9;
 
@@ -182,7 +185,6 @@ fn an_anchor_round_trips_through_a_point_read() {
 
 #[test]
 fn an_expiry_beyond_the_signed_boundary_of_a_millisecond_still_orders_after_an_earlier_one() {
-	// Expiries are written as signed millis, so a value that wrapped would sort before every live anchor and seal it.
 	let store = OperatorStore::memory();
 	let far = 1_000_000_000_000u64;
 
@@ -197,7 +199,6 @@ fn an_expiry_beyond_the_signed_boundary_of_a_millisecond_still_orders_after_an_e
 
 #[test]
 fn re_arming_an_anchor_moves_its_expiry_instead_of_minting_a_second_row() {
-	// The expiry is deliberately out of the key so a move is one upsert; in the key it would leave the stale row sealing early.
 	let store = OperatorStore::memory();
 
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(42), DateTime::from_millis(5_000));
@@ -212,7 +213,6 @@ fn re_arming_an_anchor_moves_its_expiry_instead_of_minting_a_second_row() {
 
 #[test]
 fn an_append_tuple_never_collides_with_either_join_side() {
-	// Append writes side 0xFF under row number 0, which must stay a distinct row from a join anchor on the same group.
 	let store = OperatorStore::memory();
 
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(0), DateTime::from_millis(5_000));
@@ -232,7 +232,6 @@ fn an_append_tuple_never_collides_with_either_join_side() {
 
 #[test]
 fn anchors_come_back_earliest_first_and_the_limit_cuts_the_tail() {
-	// The seal path pages by earliest expiry, so a limit that cut an arbitrary subset would seal a later anchor before an earlier one.
 	let store = OperatorStore::memory();
 	for (row_number, millis) in [(1u64, 9_000u64), (2, 5_000), (3, 7_000)] {
 		store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(row_number), DateTime::from_millis(millis));
@@ -266,7 +265,6 @@ fn only_the_addressed_group_answers_a_scan() {
 
 #[test]
 fn the_due_scan_takes_the_boundary_instant_and_stops_there() {
-	// Seal fires at the watermark, not past it, so an exclusive bound leaves a due anchor armed forever.
 	let store = OperatorStore::memory();
 	for (row_number, millis) in [(1u64, 5_000u64), (2, 6_000), (3, 7_000)] {
 		store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(row_number), DateTime::from_millis(millis));
@@ -286,7 +284,6 @@ fn the_due_scan_takes_the_boundary_instant_and_stops_there() {
 
 #[test]
 fn the_due_scan_pages_from_the_earliest_end() {
-	// The seal path pages until a query returns fewer than the limit, which only terminates if each page starts where the last ended.
 	let store = OperatorStore::memory();
 	for row_number in 1u64..=5 {
 		store.anchor_set(
@@ -313,7 +310,6 @@ fn the_due_scan_pages_from_the_earliest_end() {
 
 #[test]
 fn removing_one_anchor_leaves_its_siblings_standing() {
-	// A cleared row takes exactly its own anchor; taking a sibling leaves a live row that never seals.
 	let store = OperatorStore::memory();
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(2), DateTime::from_millis(6_000));
@@ -329,7 +325,6 @@ fn removing_one_anchor_leaves_its_siblings_standing() {
 
 #[test]
 fn removing_a_group_leaves_its_neighbours_intact() {
-	// Reaping a group erases its anchors wholesale, and reaching into the next group's would drop live seals.
 	let store = OperatorStore::memory();
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
 	store.anchor_set(OperatorId(1), GroupId(7), RIGHT, RowNumber(2), DateTime::from_millis(6_000));
@@ -349,7 +344,6 @@ fn removing_a_group_leaves_its_neighbours_intact() {
 
 #[test]
 fn dropping_an_operator_takes_every_group_it_owns_and_no_other() {
-	// A dropped flow leaves anchors that no row backs, and every later scan of a reused operator id would read them.
 	let store = OperatorStore::memory();
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
 	store.anchor_set(OperatorId(1), GroupId(8), LEFT, RowNumber(1), DateTime::from_millis(6_000));
@@ -364,7 +358,6 @@ fn dropping_an_operator_takes_every_group_it_owns_and_no_other() {
 
 #[test]
 fn the_by_expiry_scan_is_answered_by_a_covering_index() {
-	// The whole point of the table is an index seek; a plan that falls back to the primary key btree is the O(A) scan again.
 	let store = OperatorStore::memory();
 	for row_number in 1u64..=8 {
 		store.anchor_set(
@@ -409,4 +402,124 @@ fn a_long_suffix_never_lengthens_the_census_prefix() {
 	assert_eq!(census.len(), 1);
 	assert_eq!(census[0].keys, 3);
 	assert_eq!(census[0].prefix.len(), OperatorStateKey::GROUP_KEYSPACE_PREFIX_LEN as usize);
+}
+
+#[test]
+fn a_batch_lands_operator_state_and_its_anchors_together() {
+	let store = OperatorStore::memory();
+
+	store.apply_batch(&[
+		OperatorWrite::Set {
+			operator: OperatorId(1),
+			key: real_key(GroupId(7), Keyspace(0x1D), &[1]),
+			row: row(4),
+		},
+		OperatorWrite::AnchorSet {
+			operator: OperatorId(1),
+			group: GroupId(7),
+			side: LEFT,
+			row_number: RowNumber(1),
+			expiry: DateTime::from_millis(5_000),
+		},
+	]);
+
+	assert!(store.contains(OperatorId(1), &real_key(GroupId(7), Keyspace(0x1D), &[1])));
+	assert_eq!(store.anchors_by_expiry(OperatorId(1), GroupId(7), PAGE), vec![anchor(LEFT, 1, 5_000)]);
+}
+
+#[test]
+fn a_batch_applies_a_set_and_a_later_remove_of_the_same_row_in_order() {
+	let store = OperatorStore::memory();
+	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(1_000));
+
+	store.apply_batch(&[
+		OperatorWrite::AnchorSet {
+			operator: OperatorId(1),
+			group: GroupId(7),
+			side: LEFT,
+			row_number: RowNumber(1),
+			expiry: DateTime::from_millis(9_000),
+		},
+		OperatorWrite::AnchorRemove {
+			operator: OperatorId(1),
+			group: GroupId(7),
+			side: LEFT,
+			row_number: RowNumber(1),
+		},
+	]);
+
+	assert_eq!(store.anchors_by_expiry(OperatorId(1), GroupId(7), PAGE), Vec::new());
+}
+
+#[test]
+fn an_empty_batch_touches_nothing() {
+	let store = OperatorStore::memory();
+	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(1_000));
+
+	store.apply_batch(&[]);
+
+	assert_eq!(store.anchors_by_expiry(OperatorId(1), GroupId(7), PAGE), vec![anchor(LEFT, 1, 1_000)]);
+}
+
+#[test]
+fn anchors_are_counted_in_the_byte_accounting_of_their_operator() {
+	let store = OperatorStore::memory();
+	let empty = store.total_bytes();
+
+	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
+
+	let one = ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES;
+	assert_eq!(store.total_bytes(), empty + one, "one anchor must add its own fixed width");
+	assert_eq!(store.bytes(OperatorId(1)), one);
+	assert_eq!(store.bytes(OperatorId(2)), 0, "and it must be charged to its own operator only");
+}
+
+#[test]
+fn dropping_an_operators_state_takes_its_anchors_with_it() {
+	let store = OperatorStore::memory();
+	store.set(OperatorId(1), real_key(GroupId(7), Keyspace(0x1D), &[1]), row(4));
+	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
+	store.anchor_set(OperatorId(2), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(6_000));
+
+	store.drop_operator_state(OperatorId(1));
+
+	assert_eq!(store.anchors_by_expiry(OperatorId(1), GroupId(7), PAGE), Vec::new());
+	assert_eq!(store.bytes(OperatorId(1)), 0, "a dropped operator must leave no bytes behind");
+	assert_eq!(
+		store.anchors_by_expiry(OperatorId(2), GroupId(7), PAGE),
+		vec![anchor(LEFT, 1, 6_000)],
+		"and it must not reach into a neighbour's anchors"
+	);
+}
+
+#[test]
+fn the_anchor_census_reports_one_bucket_per_operator_and_group() {
+	let store = OperatorStore::memory();
+	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
+	store.anchor_set(OperatorId(1), GroupId(7), RIGHT, RowNumber(1), DateTime::from_millis(6_000));
+	store.anchor_set(OperatorId(1), GroupId(8), LEFT, RowNumber(1), DateTime::from_millis(7_000));
+	store.anchor_set(OperatorId(2), GroupId(7), APPEND, RowNumber(0), DateTime::from_millis(8_000));
+
+	let census = store.anchor_census();
+
+	assert_eq!(
+		census,
+		vec![
+			OperatorSealAnchorCensus {
+				operator: OperatorId(1),
+				group: GroupId(7),
+				keys: 2,
+			},
+			OperatorSealAnchorCensus {
+				operator: OperatorId(1),
+				group: GroupId(8),
+				keys: 1,
+			},
+			OperatorSealAnchorCensus {
+				operator: OperatorId(2),
+				group: GroupId(7),
+				keys: 1,
+			},
+		]
+	);
 }

@@ -11,7 +11,7 @@ const TIMEOUT: Duration = Duration::from_secs(15);
 const JOIN_NODE_TYPE: u8 = 7;
 
 const ANCHORED_KEYS: &str = "from system::metrics::flow::state::current
-	filter { keyspace == 'CUSTOM' }";
+	filter { keyspace == 'SEAL_ANCHOR' }";
 
 const LEFT_ROWS: &str = "from system::metrics::flow::state::current
 	filter { keyspace == 'JOIN_LEFT' }";

@@ -28,6 +28,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{Result, value::datetime::DateTime};
 
+pub mod anchor;
 pub mod deferred;
 pub mod dictionary;
 pub mod frontier;

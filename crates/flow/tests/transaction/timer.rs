@@ -276,7 +276,8 @@ fn disarming_by_key_cancels_the_instant_the_index_names_and_spares_every_other_k
 
 #[test]
 fn a_key_disarmed_by_key_can_be_armed_again_at_the_very_instant_it_held() {
-	// An index left behind still names 5_000, so the next arm there is skipped as a duplicate and the group never seals.
+	// An index left behind still names 5_000, so the next arm there is skipped as a duplicate and the group never
+	// seals.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let wheel = TimerWheel::default();

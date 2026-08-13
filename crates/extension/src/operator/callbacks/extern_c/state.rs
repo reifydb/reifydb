@@ -8,7 +8,7 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	state::store::TimerKind,
 };
 use reifydb_sdk::{
@@ -43,6 +43,10 @@ struct StateIteratorInternal {
 
 fn iterator_entries(entries: Vec<(GroupStateKey, EncodedOperatorRow)>) -> Vec<(GroupStateKey, EncodedBytes)> {
 	entries.into_iter().map(|(key, row)| (key, row.bytes().clone())).collect()
+}
+
+fn is_seal_anchor(key: &GroupStateKey) -> bool {
+	OperatorStateKey::decode_inner(key.as_slice()).is_some_and(|(_, keyspace, _)| keyspace == Keyspace::SEAL_ANCHOR)
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
@@ -102,6 +106,10 @@ pub(super) extern "C" fn host_state_set(
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 
+		if is_seal_anchor(&key) {
+			return EXTERN_C_ERROR_INTERNAL;
+		}
+
 		let Ok(row) = EncodedOperatorRow::try_from(encoded_bytes(value_ptr, value_len)) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
@@ -134,6 +142,10 @@ pub(super) extern "C" fn host_state_remove(
 		let Some(key) = state_key(key_ptr, key_len) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
+
+		if is_seal_anchor(&key) {
+			return EXTERN_C_ERROR_INTERNAL;
+		}
 
 		match host.state_remove(&key) {
 			Ok(_) => EXTERN_C_OK,
@@ -743,5 +755,297 @@ pub(super) extern "C" fn host_lookup_groups(
 			}
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
+	}
+}
+
+#[cfg(test)]
+mod seal_anchor_guard_tests {
+	use std::{cell::Cell, rc::Rc};
+
+	use reifydb_codec::key::encoded::EncodedKeyRange;
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::{
+			catalog::{config::ConfigKey, flow::OperatorId},
+			store::MultiVersionRow,
+		},
+		key::operator_state::{Keyspace, OperatorStateKey},
+		state::store::{StateStore, TimerStore},
+	};
+	use reifydb_flow::{
+		operator::{host::HostContext, stateful::StateIterator},
+		state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
+		transaction::anchor::SealPage,
+	};
+	use reifydb_value::{
+		Result,
+		value::{
+			Value,
+			dictionary::{DictionaryEntryId, DictionaryId},
+			row_number::RowNumber,
+			value_type::ValueType,
+		},
+	};
+
+	use super::*;
+	use crate::operator::callbacks::extern_c::{
+		context::{ExternCHostContext, new_extern_c_context},
+		create_host_callbacks,
+	};
+
+	/// Records whether a write reached the host at all; the guard has to reject before that, not after.
+	struct RecordingHost {
+		reached: Rc<Cell<bool>>,
+	}
+
+	impl TimerStore for RecordingHost {
+		fn arm_timer(&mut self, _at: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+			Ok(())
+		}
+
+		fn disarm_timer(&mut self, _at: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+			Ok(())
+		}
+
+		fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
+			Ok(None)
+		}
+	}
+
+	impl StateStore for RecordingHost {
+		fn state_get(&mut self, _key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+			Ok(None)
+		}
+
+		fn state_get_many_visit(
+			&mut self,
+			_keys: &[GroupStateKey],
+			_visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		) -> Result<()> {
+			Ok(())
+		}
+
+		fn state_set(&mut self, _key: &GroupStateKey, _payload: EncodedOperatorRow) -> Result<()> {
+			self.reached.set(true);
+			Ok(())
+		}
+
+		fn state_remove(&mut self, _key: &GroupStateKey) -> Result<()> {
+			self.reached.set(true);
+			Ok(())
+		}
+
+		fn state_range_visit(
+			&mut self,
+			_range: EncodedKeyRange,
+			_limit: Option<usize>,
+			_visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		) -> Result<()> {
+			Ok(())
+		}
+
+		fn state_last(
+			&mut self,
+			_range: EncodedKeyRange,
+		) -> Result<Option<(GroupStateKey, EncodedOperatorRow)>> {
+			Ok(None)
+		}
+
+		fn intern_group(&mut self, _group: &EncodedKey) -> Result<GroupId> {
+			Ok(GroupId::ROOT)
+		}
+
+		fn lookup_group(&mut self, _group: &EncodedKey) -> Result<Option<GroupId>> {
+			Ok(None)
+		}
+
+		fn get_or_create_row_number(
+			&mut self,
+			_group: GroupId,
+			_key: &EncodedKey,
+		) -> Result<(RowNumber, bool)> {
+			Ok((RowNumber(0), false))
+		}
+
+		fn get_or_create_row_numbers(
+			&mut self,
+			_group: GroupId,
+			_keys: &[EncodedKey],
+		) -> Result<Vec<(RowNumber, bool)>> {
+			Ok(Vec::new())
+		}
+
+		fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
+			Ok(())
+		}
+
+		fn written_at(&self) -> DateTime {
+			DateTime::EPOCH
+		}
+	}
+
+	impl IdentityReclaim for RecordingHost {
+		fn reclaim_identity(&mut self, _group: GroupId, _limit: usize) -> Result<ReclaimOutcome> {
+			Ok(ReclaimOutcome::NOTHING)
+		}
+	}
+
+	impl HostContext for RecordingHost {
+		fn version(&self) -> CommitVersion {
+			CommitVersion(0)
+		}
+
+		fn disarm_timer_by_key(&mut self, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+			Ok(())
+		}
+
+		fn anchor_at(
+			&mut self,
+			_group: GroupId,
+			_side: u8,
+			_row_number: RowNumber,
+		) -> Result<Option<DateTime>> {
+			Ok(None)
+		}
+
+		fn anchor_min(&mut self, _group: GroupId) -> Result<Option<DateTime>> {
+			Ok(None)
+		}
+
+		fn anchor_seal_page(&mut self, _group: GroupId, _at: DateTime, _budget: usize) -> Result<SealPage> {
+			Ok(SealPage {
+				due: Vec::new(),
+				next: None,
+				more: false,
+			})
+		}
+
+		fn config_uint8(&self, _key: ConfigKey) -> u64 {
+			0
+		}
+
+		fn state_get_many(
+			&mut self,
+			_keys: &[GroupStateKey],
+		) -> Result<Vec<(GroupStateKey, EncodedOperatorRow)>> {
+			Ok(Vec::new())
+		}
+
+		fn state_range(&mut self, _range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedOperatorRow)>> {
+			Ok(Vec::new())
+		}
+
+		fn state_range_iter(&mut self, _range: EncodedKeyRange) -> StateIterator<'_> {
+			StateIterator::new(Box::new(std::iter::empty::<Result<MultiVersionRow>>()))
+		}
+
+		fn state_clear(&mut self) -> Result<()> {
+			Ok(())
+		}
+
+		fn intern_groups(&mut self, _groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
+			Ok(Vec::new())
+		}
+
+		fn lookup_groups(&mut self, _groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+			Ok(Vec::new())
+		}
+
+		fn reclaim_group_identity(&mut self, _group: GroupId, _limit: usize) -> Result<ReclaimOutcome> {
+			Ok(ReclaimOutcome::NOTHING)
+		}
+
+		fn get_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<Option<RowNumber>> {
+			Ok(None)
+		}
+
+		fn get_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+			Ok(Vec::new())
+		}
+
+		fn remove_row_numbers_below(&mut self, _group: GroupId, _upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+			Ok(Vec::new())
+		}
+
+		fn remove_row_numbers_by_prefix(&mut self, _group: GroupId, _key_prefix: &[u8]) -> Result<()> {
+			Ok(())
+		}
+
+		fn dictionary_id_by_name(&mut self, _name: &str) -> Result<Option<DictionaryId>> {
+			Ok(None)
+		}
+
+		fn dictionary_value_type(&mut self, _dictionary: DictionaryId) -> Option<ValueType> {
+			None
+		}
+
+		fn dictionary_id_type(&mut self, _dictionary: DictionaryId) -> Option<ValueType> {
+			None
+		}
+
+		fn dictionary_find(
+			&mut self,
+			_dictionary: DictionaryId,
+			_value: &Value,
+		) -> Result<Option<DictionaryEntryId>> {
+			Ok(None)
+		}
+
+		fn dictionary_get(
+			&mut self,
+			_dictionary: DictionaryId,
+			_id: DictionaryEntryId,
+		) -> Result<Option<Value>> {
+			Ok(None)
+		}
+	}
+
+	fn framed(keyspace: Keyspace) -> Vec<u8> {
+		OperatorStateKey::inner_encoded(GroupId(7), keyspace, [0u8; 9]).as_slice().to_vec()
+	}
+
+	fn with_context(call: impl FnOnce(*mut ExternCContextRaw) -> i32) -> (i32, bool) {
+		let reached = Rc::new(Cell::new(false));
+		let mut recording = RecordingHost {
+			reached: Rc::clone(&reached),
+		};
+		let mut host = ExternCHostContext::new(&mut recording);
+		let mut ctx = new_extern_c_context(&mut host, OperatorId(1), create_host_callbacks());
+		let status = call(&mut ctx as *mut ExternCContextRaw);
+		(status, reached.get())
+	}
+
+	#[test]
+	fn a_guest_write_to_the_seal_anchor_keyspace_is_refused() {
+		// A guest anchor reaches the commit path, where routing decodes its body and panics the committer.
+		let key = framed(Keyspace::SEAL_ANCHOR);
+		let value = EncodedOperatorRow::new(&[0u8; 4], DateTime::EPOCH);
+
+		let (set, set_reached) = with_context(|ctx| {
+			host_state_set(1, ctx, key.as_ptr(), key.len(), value.bytes().as_ptr(), value.bytes().len())
+		});
+		let (removed, remove_reached) = with_context(|ctx| host_state_remove(1, ctx, key.as_ptr(), key.len()));
+
+		assert_eq!(set, EXTERN_C_ERROR_INTERNAL, "a guest must not be able to write a seal anchor");
+		assert_eq!(removed, EXTERN_C_ERROR_INTERNAL, "nor remove one");
+		assert!(!set_reached, "and the refusal must land before the host is touched");
+		assert!(!remove_reached);
+	}
+
+	#[test]
+	fn a_guest_write_to_its_own_keyspace_still_reaches_the_host() {
+		// A guard keyed on anything wider than the one keyspace would silently break every guest operator.
+		let key = framed(Keyspace::CUSTOM);
+		let value = EncodedOperatorRow::new(&[0u8; 4], DateTime::EPOCH);
+
+		let (set, set_reached) = with_context(|ctx| {
+			host_state_set(1, ctx, key.as_ptr(), key.len(), value.bytes().as_ptr(), value.bytes().len())
+		});
+		let (removed, remove_reached) = with_context(|ctx| host_state_remove(1, ctx, key.as_ptr(), key.len()));
+
+		assert_eq!(set, EXTERN_C_OK);
+		assert_eq!(removed, EXTERN_C_OK);
+		assert!(set_reached, "a guest keyspace must still reach the host");
+		assert!(remove_reached);
 	}
 }

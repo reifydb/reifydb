@@ -13,7 +13,7 @@ const TIMEOUT: Duration = Duration::from_secs(15);
 
 const JOIN_NODE_TYPE: u8 = 7;
 
-const ANCHOR: &str = "CUSTOM";
+const ANCHOR: &str = "SEAL_ANCHOR";
 
 const LEFT: &str = "JOIN_LEFT";
 

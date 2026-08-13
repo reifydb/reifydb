@@ -11,7 +11,7 @@ const TIMEOUT: Duration = Duration::from_secs(15);
 const APPEND_NODE_TYPE: u8 = 9;
 
 const ANCHORS: &str = "from system::metrics::flow::state::current
-	filter { keyspace == 'CUSTOM' }";
+	filter { keyspace == 'SEAL_ANCHOR' }";
 
 const SURFACE: &str = "from system::metrics::flow::state::current";
 

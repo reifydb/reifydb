@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::{decode_u64, encode_u64, encoded::EncodedKey, serializer::KeySerializer},
-	row::operator::{OperatorState, decode},
+	row::operator::OperatorState,
 };
 use reifydb_core::{
 	interface::{
@@ -11,12 +11,11 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey},
 	metrics::heap::OperatorSample,
 	state::store::TimerKind,
 	value::column::columns::Columns,
 };
-use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -33,6 +32,7 @@ use crate::{
 		seal::{ledger::FiredAt, policy::SealPolicy},
 	},
 	timer::Timer,
+	transaction::anchor::{SealAnchor, UNGROUPED_SIDE, anchor_key as seal_anchor_key},
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -42,12 +42,6 @@ const REMOVE_RECLAIM_LIMIT: usize = 8;
 const SEAL_BATCH: usize = 256;
 
 const DROP_REASON: &str = "mutations whose source row mapping was reclaimed";
-
-#[operator_state]
-#[derive(Clone)]
-pub struct SealAnchor {
-	expiry: DateTime,
-}
 
 pub struct AppendOperator {
 	operator: OperatorId,
@@ -129,7 +123,7 @@ impl AppendOperator {
 	}
 
 	fn anchor_key(group: GroupId) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(group, Keyspace::CUSTOM, Vec::new())
+		seal_anchor_key(group, UNGROUPED_SIDE, RowNumber(0))
 	}
 
 	fn timer_key(group: GroupId) -> EncodedKey {
@@ -147,10 +141,7 @@ impl AppendOperator {
 	}
 
 	fn read_anchor(host: &mut dyn HostContext, group: GroupId) -> Result<Option<DateTime>> {
-		let Some(bytes) = host.state_get(&Self::anchor_key(group))? else {
-			return Ok(None);
-		};
-		Ok(Some(decode::<SealAnchor>(&bytes)?.expiry))
+		host.anchor_at(group, UNGROUPED_SIDE, RowNumber(0))
 	}
 
 	fn arm_seal(&mut self, host: &mut dyn HostContext, groups: &[EncodedKey], columns: &Columns) -> Result<()> {
@@ -210,6 +201,7 @@ impl AppendOperator {
 				host.arm_timer(expiry, TimerKind::Maintenance, &Self::timer_key(group))?;
 				return Ok(0);
 			}
+			host.state_remove(&Self::anchor_key(group))?;
 			enqueue(host, group)?;
 		}
 		let freed = drain(host, &mut StoreReaper, SEAL_BATCH)?;
@@ -400,7 +392,7 @@ impl AppendOperator {
 mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator_state::{group_inner_range, keyspace_inner_range},
+		key::operator_state::{Keyspace, group_inner_range, keyspace_inner_range},
 		value::column::columns::Columns,
 	};
 	use reifydb_test_harness::engine::TestEngine;
@@ -411,7 +403,8 @@ mod tests {
 		operator::host::TxnHostContext,
 		transaction::{
 			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupExtension,
-			mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension, timer::TimerExtension,
+			mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension,
+			substrate::apply_operator_state, timer::TimerExtension,
 		},
 	};
 
@@ -468,6 +461,11 @@ mod tests {
 
 	fn anchor_of(txn: &mut DeferredTransaction, op: &AppendOperator, group: GroupId) -> Option<DateTime> {
 		AppendOperator::read_anchor(&mut host(txn, op), group).unwrap()
+	}
+
+	fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
+		// Anchors only reach the typed table through the batch, and the seal path reads them differently there.
+		apply_operator_state(&engine.inner().operator_state(), &txn.take_pending());
 	}
 
 	fn group_of(
@@ -737,6 +735,35 @@ mod tests {
 		assert_eq!(group_of(&mut txn, &op, 0, 42), None, "the dictionary entry must go");
 		assert_eq!(group_rows(&mut txn, &op, group), 0, "the group's range must be left empty");
 		assert_eq!(armed_timers(&mut txn, &op), 0, "and the timer that drove the seal must not re-arm");
+	}
+
+	#[test]
+	fn a_committed_anchor_leaves_no_row_behind_once_its_group_seals() {
+		// The reaper sweeps the key-value rows only, so an anchor in the typed table outlives every group it
+		// seals.
+		let engine = TestEngine::new();
+		let store = engine.inner().operator_state();
+		let mut op = sealing(28);
+		let mut txn = txn_at(&engine, op.operator, 100);
+		op.translate_append_insert(&mut host(&mut txn, &op), 0, timed(&[42], at_millis(5_000)))
+			.unwrap()
+			.expect("an insert must translate");
+		let group = group_of(&mut txn, &op, 0, 42).expect("precondition: the row is interned");
+		commit(&engine, &mut txn);
+		assert_eq!(
+			store.anchors_by_expiry(op.operator, group, 16).len(),
+			1,
+			"precondition: the anchor is in the table, not merely in the batch"
+		);
+
+		fire(&mut op, &mut txn, at_millis(15_001), group);
+		commit(&engine, &mut txn);
+
+		assert_eq!(
+			store.anchors_by_expiry(op.operator, group, 16),
+			Vec::new(),
+			"a group driven through seal, enqueue and drain must leave no anchor row"
+		);
 	}
 
 	#[test]
