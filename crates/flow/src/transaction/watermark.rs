@@ -11,7 +11,7 @@ use tracing::{info, warn};
 use crate::transaction::{
 	FlowTransaction,
 	group::{decode_payload, encode_payload},
-	state::StateTxn,
+	state::StateExtension,
 };
 
 const IMPLAUSIBLE_JUMP_MS: u64 = 3_600_000;

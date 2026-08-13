@@ -13,8 +13,8 @@ use reifydb_core::{
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, group_inner_range},
 };
 use reifydb_flow::transaction::{
-	ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction, group::GroupTxn,
-	reclaim::ReclaimTxn, state::StateTxn, substrate::FlowSubstrate,
+	ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction, group::GroupExtension,
+	reclaim::ReclaimExtension, state::StateExtension, substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;

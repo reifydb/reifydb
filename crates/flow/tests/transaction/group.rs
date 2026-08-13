@@ -15,7 +15,7 @@ use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	group::*,
-	state::StateTxn,
+	state::StateExtension,
 	substrate::{FlowSubstrate, apply_operator_state},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};

@@ -14,7 +14,7 @@ use tracing::instrument;
 
 use crate::transaction::FlowTransaction;
 
-pub trait DictionaryTxn: FlowTransaction {
+pub trait DictionaryExtension: FlowTransaction {
 	fn find_dictionary(&self, id: DictionaryId) -> Option<Dictionary> {
 		self.catalog().cache().find_dictionary(id)
 	}
@@ -40,4 +40,4 @@ pub trait DictionaryTxn: FlowTransaction {
 	}
 }
 
-impl<T: FlowTransaction> DictionaryTxn for T {}
+impl<T: FlowTransaction> DictionaryExtension for T {}

@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
-use crate::transaction::{FlowTransaction, state::StateTxn};
+use crate::transaction::{FlowTransaction, state::StateExtension};
 
 fn dictionary_key(group: &EncodedKey) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::GROUP_DICTIONARY, group)
@@ -74,7 +74,7 @@ fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Res
 	Ok(seed)
 }
 
-pub trait GroupTxn: FlowTransaction {
+pub trait GroupExtension: FlowTransaction {
 	fn intern_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<(GroupId, bool)> {
 		Ok(self.intern_groups(operator, from_ref(group))?.into_iter().next().unwrap())
 	}
@@ -163,4 +163,4 @@ pub trait GroupTxn: FlowTransaction {
 	}
 }
 
-impl<T: FlowTransaction> GroupTxn for T {}
+impl<T: FlowTransaction> GroupExtension for T {}

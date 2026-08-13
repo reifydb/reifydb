@@ -13,10 +13,10 @@ use reifydb_value::{Result, count::Count, reifydb_assertions};
 
 use crate::{
 	state::reclaim::ReclaimOutcome,
-	transaction::{group::GroupTxn, state::StateTxn},
+	transaction::{group::GroupExtension, state::StateExtension},
 };
 
-pub trait ReclaimTxn: StateTxn + GroupTxn {
+pub trait ReclaimExtension: StateExtension + GroupExtension {
 	fn reclaim_group_identity(
 		&mut self,
 		operator: OperatorId,
@@ -73,4 +73,4 @@ pub trait ReclaimTxn: StateTxn + GroupTxn {
 	}
 }
 
-impl<T: StateTxn + GroupTxn> ReclaimTxn for T {}
+impl<T: StateExtension + GroupExtension> ReclaimExtension for T {}

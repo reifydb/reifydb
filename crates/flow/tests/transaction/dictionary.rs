@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 };
 use reifydb_flow::transaction::{
-	DeferredParams, FlowTransaction, deferred::DeferredTransaction, dictionary::DictionaryTxn,
+	DeferredParams, FlowTransaction, deferred::DeferredTransaction, dictionary::DictionaryExtension,
 	substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};

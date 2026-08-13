@@ -34,8 +34,9 @@ use crate::{
 	state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 	timer::Timer,
 	transaction::{
-		FlowTransaction, dictionary::DictionaryTxn, group::GroupTxn, reclaim::ReclaimTxn,
-		row_number::RowNumberTxn, state::StateTxn, timer::TimerTxn,
+		FlowTransaction, dictionary::DictionaryExtension, group::GroupExtension,
+		reclaim::ReclaimExtension, row_number::RowNumberExtension, state::StateExtension,
+		timer::TimerExtension,
 	},
 };
 

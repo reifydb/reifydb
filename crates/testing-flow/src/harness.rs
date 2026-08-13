@@ -25,7 +25,7 @@ use reifydb_flow::{
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
-		state::StateTxn,
+		state::StateExtension,
 		substrate::{FlowSubstrate, apply_operator_state},
 	},
 };

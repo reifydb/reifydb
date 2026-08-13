@@ -19,7 +19,7 @@ use reifydb_core::{
 };
 use reifydb_value::{Result, value::row_number::RowNumber};
 
-use crate::transaction::{FlowTransaction, state::StateTxn};
+use crate::transaction::{FlowTransaction, state::StateExtension};
 
 const ROW_NUMBER_COUNTER_SUFFIX: &[u8] = b"rn";
 
@@ -49,7 +49,7 @@ fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Res
 	Ok(seed)
 }
 
-pub trait RowNumberTxn: FlowTransaction {
+pub trait RowNumberExtension: FlowTransaction {
 	fn get_or_create_row_number(
 		&mut self,
 		operator: OperatorId,
@@ -204,4 +204,4 @@ pub trait RowNumberTxn: FlowTransaction {
 	}
 }
 
-impl<T: FlowTransaction> RowNumberTxn for T {}
+impl<T: FlowTransaction> RowNumberExtension for T {}

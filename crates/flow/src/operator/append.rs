@@ -412,8 +412,8 @@ mod tests {
 		operator::host::TxnHostContext,
 		state::expiry::expiry_range,
 		transaction::{
-			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupTxn,
-			mock::FlowTxn, row_number::RowNumberTxn, state::StateTxn,
+			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupExtension,
+			mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension,
 		},
 	};
 

@@ -19,7 +19,7 @@ use tracing::{Span, field, instrument};
 
 use crate::transaction::{FlowTransaction, scope::scoped_key};
 
-pub trait StateTxn: FlowTransaction {
+pub trait StateExtension: FlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		operator_id = id.0,
 		key_len = key.as_slice().len(),
@@ -218,4 +218,4 @@ pub trait StateTxn: FlowTransaction {
 	}
 }
 
-impl<T: FlowTransaction> StateTxn for T {}
+impl<T: FlowTransaction> StateExtension for T {}

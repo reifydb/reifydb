@@ -17,7 +17,7 @@ use crate::{
 	transaction::{
 		FlowTransaction,
 		group::{decode_payload, encode_payload},
-		state::StateTxn,
+		state::StateExtension,
 	},
 };
 
@@ -149,7 +149,7 @@ impl TimerWheel {
 	}
 }
 
-pub trait TimerTxn: FlowTransaction {
+pub trait TimerExtension: FlowTransaction {
 	fn arm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<()> {
 		self.timer_wheel().arm(operator, self, timer)
 	}
@@ -159,4 +159,4 @@ pub trait TimerTxn: FlowTransaction {
 	}
 }
 
-impl<T: FlowTransaction> TimerTxn for T {}
+impl<T: FlowTransaction> TimerExtension for T {}

@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction, deferred::DeferredTransaction, ephemeral::EphemeralTransaction,
-	state::StateTxn, substrate::FlowSubstrate,
+	state::StateExtension, substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
