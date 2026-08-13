@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	key::{encoded::EncodedKey, serializer::KeySerializer},
+	key::{decode_u64, encode_u64, encoded::EncodedKey, serializer::KeySerializer},
 	row::operator::{OperatorState, decode},
 };
 use reifydb_core::{
@@ -26,12 +26,11 @@ use reifydb_value::{
 use tracing::instrument;
 
 use crate::{
-	error::FlowGraphError,
+	error::{FlowGraphError, FlowStateError},
 	operator::{HostOperator, drops::SealedDrops, host::HostContext},
 	state::{
-		expiry::{expiry_drop, expiry_due, expiry_earliest, expiry_key, expiry_set},
 		reaper::{StoreReaper, drain, enqueue, queue_key, queued},
-		seal::{coord::Coord, ledger::FiredAt, policy::SealPolicy},
+		seal::{ledger::FiredAt, policy::SealPolicy},
 	},
 	timer::Timer,
 };
@@ -43,12 +42,6 @@ const REMOVE_RECLAIM_LIMIT: usize = 8;
 const SEAL_BATCH: usize = 256;
 
 const DROP_REASON: &str = "mutations whose source row mapping was reclaimed";
-
-#[operator_state]
-#[derive(Clone)]
-pub struct SealEntry {
-	group_id: u64,
-}
 
 #[operator_state]
 #[derive(Clone)]
@@ -139,6 +132,20 @@ impl AppendOperator {
 		OperatorStateKey::inner_encoded(group, Keyspace::CUSTOM, Vec::new())
 	}
 
+	fn timer_key(group: GroupId) -> EncodedKey {
+		EncodedKey::new(encode_u64(group.0))
+	}
+
+	fn timer_group(key: &EncodedKey) -> Result<GroupId> {
+		let bytes = <[u8; 8]>::try_from(key.as_slice()).map_err(|_| {
+			Error::from(FlowStateError::Decode {
+				state: "append seal timer key",
+				cause: format!("expected eight group bytes, found {}", key.as_slice().len()),
+			})
+		})?;
+		Ok(GroupId(decode_u64(bytes)))
+	}
+
 	fn read_anchor(host: &mut dyn HostContext, group: GroupId) -> Result<Option<DateTime>> {
 		let Some(bytes) = host.state_get(&Self::anchor_key(group))? else {
 			return Ok(None);
@@ -158,7 +165,7 @@ impl AppendOperator {
 			};
 			self.move_anchor(host, group, policy.seal_instant(*at).at())?;
 		}
-		self.arm_maintenance(host, None)
+		Ok(())
 	}
 
 	fn move_anchor(&mut self, host: &mut dyn HostContext, group: GroupId, expiry: DateTime) -> Result<()> {
@@ -166,17 +173,9 @@ impl AppendOperator {
 		if prior == Some(expiry) {
 			return Ok(());
 		}
-		if let Some(prior) = prior {
-			expiry_drop(host, &expiry_key(prior.to_order(), &group.0, &[]))?;
+		if prior.is_some() {
 			host.state_remove(&queue_key(group))?;
 		}
-		expiry_set(
-			host,
-			expiry_key(expiry.to_order(), &group.0, &[]),
-			SealEntry {
-				group_id: group.0,
-			},
-		)?;
 		let written_at = host.written_at();
 		host.state_set(
 			&Self::anchor_key(group),
@@ -184,7 +183,8 @@ impl AppendOperator {
 				expiry,
 			}
 			.encode_state(written_at)?,
-		)
+		)?;
+		host.arm_timer(expiry, TimerKind::Maintenance, &Self::timer_key(group))
 	}
 
 	fn clear_seal(&mut self, host: &mut dyn HostContext, groups: &[GroupId]) -> Result<()> {
@@ -195,31 +195,28 @@ impl AppendOperator {
 			let Some(expiry) = Self::read_anchor(host, *group)? else {
 				continue;
 			};
-			expiry_drop(host, &expiry_key(expiry.to_order(), &group.0, &[]))?;
 			host.state_remove(&Self::anchor_key(*group))?;
+			host.disarm_timer(expiry, TimerKind::Maintenance, &Self::timer_key(*group))?;
 		}
 		Ok(())
 	}
 
-	fn arm_maintenance(&mut self, host: &mut dyn HostContext, retry: Option<DateTime>) -> Result<()> {
-		let earliest = expiry_earliest(host)?.map(<DateTime as Coord>::from_order);
-		let Some(at) = earliest.into_iter().chain(retry).min() else {
-			return Ok(());
-		};
-		host.arm_timer(at, TimerKind::Maintenance, &EncodedKey::new(Vec::new()))
-	}
-
-	fn seal_due_rows(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<usize> {
+	fn seal_group(&mut self, host: &mut dyn HostContext, fired: FiredAt, group: GroupId) -> Result<usize> {
 		let Some(seal) = self.seal else {
 			return Ok(0);
 		};
-		for (key, entry) in expiry_due::<SealEntry>(host, fired.at().to_order(), SEAL_BATCH)? {
-			enqueue(host, GroupId(entry.group_id))?;
-			expiry_drop(host, &key)?;
+		if let Some(expiry) = Self::read_anchor(host, group)? {
+			if expiry > fired.at() {
+				host.arm_timer(expiry, TimerKind::Maintenance, &Self::timer_key(group))?;
+				return Ok(0);
+			}
+			enqueue(host, group)?;
 		}
 		let freed = drain(host, &mut StoreReaper, SEAL_BATCH)?;
-		let retry = (!queued(host, 1)?.is_empty()).then(|| fired.at().saturating_add(seal));
-		self.arm_maintenance(host, retry)?;
+		let retry = fired.at().saturating_add(seal);
+		for pending in queued(host, SEAL_BATCH)? {
+			host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(pending))?;
+		}
 		Ok(freed)
 	}
 }
@@ -283,7 +280,7 @@ impl HostOperator for AppendOperator {
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
 		if timer.kind == TimerKind::Maintenance {
-			self.seal_due_rows(host, FiredAt::of(&timer))?;
+			self.seal_group(host, FiredAt::of(&timer), Self::timer_group(&timer.key)?)?;
 		}
 		Ok(None)
 	}
@@ -402,7 +399,9 @@ impl AppendOperator {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::CommitVersion, key::operator_state::group_inner_range, value::column::columns::Columns,
+		common::CommitVersion,
+		key::operator_state::{group_inner_range, keyspace_inner_range},
+		value::column::columns::Columns,
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
@@ -410,10 +409,9 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::host::TxnHostContext,
-		state::expiry::expiry_range,
 		transaction::{
 			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupExtension,
-			mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension,
+			mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension, timer::TimerExtension,
 		},
 	};
 
@@ -448,21 +446,26 @@ mod tests {
 		AppendOperator::sealing_for_state_tests(OperatorId(operator), Duration::from_seconds(10).unwrap())
 	}
 
-	fn fire(op: &mut AppendOperator, txn: &mut DeferredTransaction, at: DateTime) {
+	fn fire(op: &mut AppendOperator, txn: &mut DeferredTransaction, at: DateTime, group: GroupId) {
+		// The engine lifts a due timer off the wheel before dispatching, so without the disarm every fired
+		// timer reads as a leak.
 		let operator = op.operator;
-		op.on_timer(
-			&mut TxnHostContext::new(txn, operator),
-			Timer {
-				at,
-				kind: TimerKind::Maintenance,
-				key: EncodedKey::new(Vec::new()),
-			},
-		)
-		.unwrap();
+		let timer = Timer {
+			at,
+			kind: TimerKind::Maintenance,
+			key: AppendOperator::timer_key(group),
+		};
+		txn.disarm_timer(operator, &timer).unwrap();
+		op.on_timer(&mut TxnHostContext::new(txn, operator), timer).unwrap();
 	}
 
-	fn index_entries(txn: &mut DeferredTransaction, op: &AppendOperator) -> usize {
-		txn.state_range(op.operator, expiry_range(), None, "test").unwrap().items.len()
+	fn armed_timers(txn: &mut DeferredTransaction, op: &AppendOperator) -> usize {
+		// The wheel is now the only due-ordered schedule, so a stale or duplicated arming shows up exactly
+		// here.
+		txn.state_range(op.operator, keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL), None, "test")
+			.unwrap()
+			.items
+			.len()
 	}
 
 	fn anchor_of(txn: &mut DeferredTransaction, op: &AppendOperator, group: GroupId) -> Option<DateTime> {
@@ -673,7 +676,7 @@ mod tests {
 	}
 
 	#[test]
-	fn an_inserted_row_is_indexed_one_seal_past_its_own_event_time() {
+	fn an_inserted_row_is_armed_one_seal_past_its_own_event_time() {
 		// The anchor must be the row's own event time; a wall-clock seal evicts a backfilled row on arrival.
 		let engine = TestEngine::new();
 		let mut op = sealing(20);
@@ -689,12 +692,13 @@ mod tests {
 			Some(at_millis(15_001)),
 			"the due time is event time + seal + the strict gate step"
 		);
-		assert_eq!(index_entries(&mut txn, &op), 1, "and exactly one index entry addresses that row");
+		assert_eq!(armed_timers(&mut txn, &op), 1, "and exactly one timer addresses that row");
 	}
 
 	#[test]
-	fn an_update_moves_the_rows_index_entry_rather_than_adding_a_second() {
-		// Without dropping the old entry the row is addressed twice and the stale one comes due while it lives.
+	fn an_update_moves_the_rows_timer_rather_than_adding_a_second() {
+		// Without cancelling the old arming the row is addressed twice and the stale one comes due while it
+		// lives.
 		let engine = TestEngine::new();
 		let mut op = sealing(21);
 		let mut txn = txn_at(&engine, op.operator, 100);
@@ -712,7 +716,7 @@ mod tests {
 		.expect("a known row must translate");
 
 		let group = group_of(&mut txn, &op, 0, 7).expect("the row is interned");
-		assert_eq!(index_entries(&mut txn, &op), 1, "an update re-arms one entry, it does not add one");
+		assert_eq!(armed_timers(&mut txn, &op), 1, "an update re-arms one timer, it does not add one");
 		assert_eq!(
 			anchor_of(&mut txn, &op, group),
 			Some(at_millis(30_001)),
@@ -731,11 +735,11 @@ mod tests {
 			.expect("an insert must translate");
 		let group = group_of(&mut txn, &op, 0, 42).expect("precondition: the row is interned");
 
-		fire(&mut op, &mut txn, at_millis(15_001));
+		fire(&mut op, &mut txn, at_millis(15_001), group);
 
 		assert_eq!(group_of(&mut txn, &op, 0, 42), None, "the dictionary entry must go");
 		assert_eq!(group_rows(&mut txn, &op, group), 0, "the group's range must be left empty");
-		assert_eq!(index_entries(&mut txn, &op), 0, "and the index entry that drove the seal must drain");
+		assert_eq!(armed_timers(&mut txn, &op), 0, "and the timer that drove the seal must not re-arm");
 	}
 
 	#[test]
@@ -747,12 +751,13 @@ mod tests {
 		op.translate_append_insert(&mut host(&mut txn, &op), 0, timed(&[42], at_millis(5_000)))
 			.unwrap()
 			.expect("an insert must translate");
+		let group = group_of(&mut txn, &op, 0, 42).expect("precondition: the row is interned");
 
-		fire(&mut op, &mut txn, at_millis(15_000));
+		fire(&mut op, &mut txn, at_millis(15_000), group);
 
 		let group = group_of(&mut txn, &op, 0, 42).expect("a row one millisecond short of its seal must live");
 		assert!(group_rows(&mut txn, &op, group) > 0, "and must keep the state that resolves it");
-		assert_eq!(index_entries(&mut txn, &op), 1, "its index entry is not due and must not have drained");
+		assert_eq!(armed_timers(&mut txn, &op), 1, "its timer is not due and must stay armed");
 	}
 
 	#[test]
@@ -765,7 +770,8 @@ mod tests {
 		op.translate_append_insert(&mut host(&mut txn, &op), 0, timed(&[42], at_millis(5_000)))
 			.unwrap()
 			.expect("an insert must translate");
-		fire(&mut op, &mut txn, at_millis(15_001));
+		let group = group_of(&mut txn, &op, 0, 42).expect("precondition: the row is interned");
+		fire(&mut op, &mut txn, at_millis(15_001), group);
 
 		let translated = op
 			.translate_append_update(
@@ -781,7 +787,7 @@ mod tests {
 	}
 
 	#[test]
-	fn removing_a_row_takes_its_index_entry_and_its_anchor_with_it() {
+	fn removing_a_row_takes_its_timer_and_its_anchor_with_it() {
 		// The anchor sits in the group's data range, which the inline identity reclaim never touches.
 		let engine = TestEngine::new();
 		let mut op = sealing(25);
@@ -795,7 +801,7 @@ mod tests {
 			.unwrap()
 			.expect("a known row must translate");
 
-		assert_eq!(index_entries(&mut txn, &op), 0, "the index entry must go with the row");
+		assert_eq!(armed_timers(&mut txn, &op), 0, "the timer must go with the row");
 		assert_eq!(anchor_of(&mut txn, &op, group), None, "and so must the anchor behind it");
 	}
 
@@ -827,8 +833,8 @@ mod tests {
 	}
 
 	#[test]
-	fn an_operator_without_a_seal_indexes_nothing_at_all() {
-		// Indexing without a seal leaves one entry and one anchor per row that nothing ever collects.
+	fn an_operator_without_a_seal_arms_nothing_at_all() {
+		// Arming without a seal leaves one timer and one anchor per row that nothing ever collects.
 		let engine = TestEngine::new();
 		let mut op = op(27);
 		let mut txn = txn_at(&engine, op.operator, 100);
@@ -838,7 +844,7 @@ mod tests {
 			.expect("an insert must translate");
 
 		let group = group_of(&mut txn, &op, 0, 42).expect("the row must still intern a group");
-		assert_eq!(index_entries(&mut txn, &op), 0, "no seal means no index entry");
+		assert_eq!(armed_timers(&mut txn, &op), 0, "no seal means no timer");
 		assert_eq!(anchor_of(&mut txn, &op, group), None, "and no anchor");
 	}
 
