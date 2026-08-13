@@ -190,6 +190,5 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext
 		Duration::default(),
 		ExpiryAnchor::Unindexed,
 	)?;
-	core.engine_meta_flush(host)?;
 	Ok(Change::from_flow(core.operator, change.version, diffs, change.changed_at))
 }

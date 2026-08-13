@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, mem::size_of};
+use std::collections::BTreeMap;
 
 use reifydb_codec::{
 	key::{
@@ -42,14 +42,12 @@ fn due_start(threshold: u64) -> GroupStateKey {
 
 pub struct ExpiryIndex<E> {
 	entries: Option<BTreeMap<GroupStateKey, E>>,
-	bytes: u64,
 }
 
 impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	pub(crate) fn new() -> Self {
 		Self {
 			entries: None,
-			bytes: 0,
 		}
 	}
 
@@ -57,14 +55,11 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	fn hydrate(&mut self, store: &mut dyn StateStore) -> Result<&mut BTreeMap<GroupStateKey, E>> {
 		if self.entries.is_none() {
 			let mut map = BTreeMap::new();
-			let mut bytes = 0u64;
 			store.state_range_visit(expiry_range(), None, &mut |key, payload| {
-				bytes += entry_bytes::<E>(&key);
 				map.insert(key, decode::<E>(&payload)?);
 				Ok(())
 			})?;
 			self.entries = Some(map);
-			self.bytes = bytes;
 		}
 		Ok(self.entries.as_mut().expect("hydrated above"))
 	}
@@ -72,20 +67,15 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	pub(crate) fn set(&mut self, store: &mut dyn StateStore, key: GroupStateKey, entry: E) -> Result<()> {
 		store.state_set(&key, entry.encode_state(store.written_at())?)?;
 		if let Some(map) = self.entries.as_mut() {
-			let added = entry_bytes::<E>(&key);
-			if map.insert(key, entry).is_none() {
-				self.bytes += added;
-			}
+			map.insert(key, entry);
 		}
 		Ok(())
 	}
 
 	pub(crate) fn drop_key(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
 		store.state_remove(key)?;
-		if let Some(map) = self.entries.as_mut()
-			&& map.remove(key).is_some()
-		{
-			self.bytes = self.bytes.saturating_sub(entry_bytes::<E>(key));
+		if let Some(map) = self.entries.as_mut() {
+			map.remove(key);
 		}
 		Ok(())
 	}
@@ -107,10 +97,6 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 			suffix.get(..8).map(|bytes| decode_u64(bytes.try_into().expect("eight expiry bytes")))
 		}))
 	}
-}
-
-fn entry_bytes<E>(key: &GroupStateKey) -> u64 {
-	(key.as_slice().len() + size_of::<E>()) as u64
 }
 
 #[cfg(test)]

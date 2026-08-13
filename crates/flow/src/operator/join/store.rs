@@ -11,9 +11,7 @@ use reifydb_codec::{
 	row::{
 		bytes::EncodedBytes,
 		operator::{EncodedOperatorRow, decode_body, encode},
-		shape::{
-			RowFamily, RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint,
-		},
+		shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	},
 };
 #[cfg(test)]
@@ -44,7 +42,6 @@ use crate::{
 };
 
 const ROW_NUMBER_BYTES: usize = 8;
-const SHAPE_CACHE_CAPACITY: usize = 8;
 const SLOT: RowNumber = RowNumber::MAX;
 
 pub(crate) fn group_bytes(hash: &Hash128) -> EncodedKey {
@@ -57,14 +54,12 @@ pub(crate) fn body_bytes(row: &EncodedOperatorRow) -> EncodedBytes {
 
 pub(crate) struct Store {
 	side: JoinSide,
-	shape_cache: RowShapeCacheCell,
 }
 
 impl Store {
 	pub(crate) fn new(side: JoinSide) -> Self {
 		Self {
 			side,
-			shape_cache: RowShapeCacheCell::new(SHAPE_CACHE_CAPACITY),
 		}
 	}
 
@@ -242,9 +237,6 @@ impl Store {
 		host: &mut dyn HostContext,
 		fingerprint: RowShapeFingerprint,
 	) -> Result<Option<RowShape>> {
-		if let Some(shape) = self.shape_cache.get(&fingerprint) {
-			return Ok(Some(shape));
-		}
 		let key = self.schema_key(fingerprint);
 		match state_get(host, &key)? {
 			Some(row) => {
@@ -258,22 +250,15 @@ impl Store {
 							cause: e.to_string(),
 						})
 					})?;
-				let shape = RowShape::new(RowFamily::Pod, fields);
-				self.shape_cache.insert(shape.clone());
-				Ok(Some(shape))
+				Ok(Some(RowShape::new(RowFamily::Pod, fields)))
 			}
 			None => Ok(None),
 		}
 	}
 
 	pub(crate) fn set_row_shape(&self, host: &mut dyn HostContext, shape: &RowShape) -> Result<()> {
-		let fingerprint = shape.fingerprint();
-		if self.shape_cache.contains_key(&fingerprint) {
-			return Ok(());
-		}
-		let key = self.schema_key(fingerprint);
+		let key = self.schema_key(shape.fingerprint());
 		if state_get(host, &key)?.is_some() {
-			self.shape_cache.insert(shape.clone());
 			return Ok(());
 		}
 		let row = encode(&shape.fields().to_vec(), DateTime::MAX).map_err(|e| {
@@ -282,9 +267,7 @@ impl Store {
 				cause: e.to_string(),
 			})
 		})?;
-		state_set(host, &key, row)?;
-		self.shape_cache.insert(shape.clone());
-		Ok(())
+		state_set(host, &key, row)
 	}
 }
 

@@ -5,7 +5,6 @@
 //! `EncodedBytes`'s fields without consulting the catalog. `SHAPE_HEADER_SIZE` and the packed-mode bit
 //! layout are part of the wire format; resizing either breaks every row written under the old one.
 
-pub mod cache;
 pub mod fingerprint;
 pub mod values;
 

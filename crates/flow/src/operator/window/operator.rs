@@ -104,10 +104,6 @@ impl WindowOperator {
 		Ok(())
 	}
 
-	fn close_meta(&mut self, host: &mut dyn HostContext) -> Result<()> {
-		self.core.engine_meta_flush(host)
-	}
-
 	pub(crate) fn rolling_engine_slot(&mut self) -> &mut Option<RollingEngineSlot> {
 		&mut self.rolling_engine
 	}
@@ -212,7 +208,6 @@ impl HostOperator for WindowOperator {
 				..
 			} => apply_session_engine(self, host, change),
 		}?;
-		self.close_meta(host)?;
 		Ok(out)
 	}
 
@@ -220,7 +215,6 @@ impl HostOperator for WindowOperator {
 		if timer.kind == TimerKind::Maintenance {
 			self.open_meta(host)?;
 			reap_sealed_groups(self, host)?;
-			self.close_meta(host)?;
 			return Ok(None);
 		}
 		let fired = FiredAt::of(&timer);
@@ -241,7 +235,6 @@ impl HostOperator for WindowOperator {
 			} => seal_session_engine(self, host, fired)?,
 			_ => vec![],
 		};
-		self.close_meta(host)?;
 
 		if diffs.is_empty() {
 			Ok(None)

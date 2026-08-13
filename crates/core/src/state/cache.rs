@@ -3,10 +3,7 @@
 
 use std::{hash::Hash, marker::PhantomData};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::{OperatorState, decode},
-};
+use reifydb_codec::row::operator::{OperatorState, decode};
 use reifydb_value::Result;
 
 use crate::{key::operator_state::IntoGroupStateKey, metrics::heap::HeapSize, state::store::StateStore};
@@ -43,23 +40,6 @@ where
 		}
 	}
 
-	pub fn take(&mut self, store: &mut dyn StateStore, key: &K) -> Result<Option<V>> {
-		self.get(store, key)
-	}
-
-	pub fn warm(&mut self, _store: &mut dyn StateStore, _keys: &[K]) -> Result<()> {
-		Ok(())
-	}
-
-	pub fn hydrate(
-		&mut self,
-		_store: &mut dyn StateStore,
-		_range: EncodedKeyRange,
-		_decode_key: impl Fn(&EncodedKey) -> Option<K>,
-	) -> Result<()> {
-		Ok(())
-	}
-
 	pub fn set(&mut self, store: &mut dyn StateStore, key: &K, value: &V) -> Result<()> {
 		let encoded_key = key.into_group_state_key();
 		let payload = value.encode_state(store.written_at())?;
@@ -88,10 +68,6 @@ where
 	pub fn remove(&mut self, store: &mut dyn StateStore, key: &K) -> Result<()> {
 		let encoded_key = key.into_group_state_key();
 		store.state_remove(&encoded_key)
-	}
-
-	pub fn flush(&mut self, _store: &mut dyn StateStore) -> Result<()> {
-		Ok(())
 	}
 }
 
@@ -123,7 +99,10 @@ where
 mod tests {
 	use std::{collections::HashMap, ops::Bound};
 
-	use reifydb_codec::row::operator::EncodedOperatorRow;
+	use reifydb_codec::{
+		key::encoded::{EncodedKey, EncodedKeyRange},
+		row::operator::EncodedOperatorRow,
+	};
 	use reifydb_macro::operator_state;
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
@@ -312,19 +291,6 @@ mod tests {
 	}
 
 	#[test]
-	fn flush_is_inert_and_writes_nothing() {
-		// Operators still call flush; it must never re-issue a write or every key is written twice.
-		let mut store = MockStore::default();
-		let mut cache: StateCache<Key, Cell> = StateCache::new();
-
-		cache.set(&mut store, &Key::new("a"), &cell(7)).unwrap();
-		let sets_after_write = store.sets;
-		cache.flush(&mut store).unwrap();
-
-		assert_eq!(store.sets, sets_after_write, "flush must not re-issue the write");
-	}
-
-	#[test]
 	fn get_reads_through_to_the_store_every_time() {
 		// A cached second read would let another writer's value go unseen.
 		let mut store = MockStore::default();
@@ -348,33 +314,25 @@ mod tests {
 	}
 
 	#[test]
-	fn take_returns_the_stored_value_and_leaves_it_in_the_store() {
-		// take is the load half of load-mutate-persist; deleting the row would lose the base value.
+	fn a_read_leaves_the_row_in_the_store_for_the_next_reader() {
+		// The read half of load-mutate-persist must not consume the row, or the base value is lost.
 		let mut store = MockStore::default();
 		let mut cache: StateCache<Key, Cell> = StateCache::new();
 		cache.set(&mut store, &Key::new("a"), &cell(3)).unwrap();
 
-		assert_eq!(cache.take(&mut store, &Key::new("a")).unwrap(), Some(cell(3)));
-		assert_eq!(store.removes, 0, "take must not issue a state_remove");
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(3)));
+		assert_eq!(store.removes, 0, "a read must not issue a state_remove");
 		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(3)));
 	}
 
 	#[test]
-	fn take_of_absent_key_is_none() {
-		let mut store = MockStore::default();
-		let mut cache: StateCache<Key, Cell> = StateCache::new();
-
-		assert_eq!(cache.take(&mut store, &Key::new("nope")).unwrap(), None);
-	}
-
-	#[test]
-	fn take_then_persist_round_trips_a_mutation() {
+	fn read_then_persist_round_trips_a_mutation() {
 		// Without an in-place overwrite on the persist half the mutation is silently dropped.
 		let mut store = MockStore::default();
 		let mut cache: StateCache<Key, Cell> = StateCache::new();
 		cache.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
 
-		let mut value = cache.take(&mut store, &Key::new("a")).unwrap().unwrap();
+		let mut value = cache.get(&mut store, &Key::new("a")).unwrap().unwrap();
 		value.value += 41;
 		cache.set(&mut store, &Key::new("a"), &value).unwrap();
 
@@ -391,19 +349,6 @@ mod tests {
 
 		assert_eq!(store.removes, 1);
 		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), None);
-	}
-
-	#[test]
-	fn warm_and_hydrate_are_inert_and_touch_no_storage() {
-		// Both were prefetch for a residency tier that is gone; reading here would rescan every pass.
-		let mut store = MockStore::default();
-		let mut cache: StateCache<Key, Cell> = StateCache::new();
-
-		cache.warm(&mut store, &[Key::new("a"), Key::new("b")]).unwrap();
-		cache.hydrate(&mut store, EncodedKeyRange::all(), |_| Some(Key::new("a"))).unwrap();
-
-		assert_eq!(store.gets, 0, "prefetch must not read");
-		assert_eq!(store.sets, 0, "prefetch must not write");
 	}
 
 	#[test]

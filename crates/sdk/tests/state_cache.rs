@@ -133,7 +133,7 @@ fn test_cache_set_and_get() {
 }
 
 #[test]
-fn test_cache_set_persists_to_extern_c_and_flush_is_inert() {
+fn test_cache_set_persists_to_extern_c_on_the_set_itself() {
 	let mut harness =
 		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
@@ -143,16 +143,20 @@ fn test_cache_set_persists_to_extern_c_and_flush_is_inert() {
 		count: 100,
 	};
 
-	// Set is the sole point at which state reaches host storage; nothing is left pending for flush.
+	// Set is the sole point at which state crosses the ABI; a guest that never sets writes nothing.
 	let mut ctx = harness.create_operator_context();
 	cache.set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 	let persisted = harness.snapshot_state();
 	assert_eq!(persisted.len(), 1, "Set must write through to host storage");
 
-	// Operators still call flush; re-issuing the write here would stamp every key a second time.
+	// A later context must observe the same bytes, or the write only reached the guest side.
 	let mut ctx = harness.create_operator_context();
-	cache.flush(&mut GuestAsHost(&mut ctx)).expect("Flush failed");
-	assert_eq!(harness.snapshot_state(), persisted, "Flush must leave host storage byte-identical");
+	assert_eq!(
+		cache.get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed"),
+		Some(value),
+		"the persisted row must read back across a fresh context"
+	);
+	assert_eq!(harness.snapshot_state(), persisted, "a read must leave host storage byte-identical");
 }
 
 #[test]

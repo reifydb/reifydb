@@ -11,7 +11,7 @@ use reifydb_codec::row::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	row::Row,
-	state::{cache::StateCache, store::StateStore},
+	state::cache::StateCache,
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_evaluate::expression::{
@@ -178,13 +178,6 @@ impl Aggregation {
 
 	pub(crate) fn engine_meta(&mut self) -> &mut StateCache<EngineMetaKey, EngineMeta> {
 		self.engine_meta.as_mut().expect("engine_meta opened at apply/tick entry")
-	}
-
-	pub(crate) fn engine_meta_flush(&mut self, store: &mut dyn StateStore) -> Result<()> {
-		if let Some(cache) = self.engine_meta.as_mut() {
-			cache.flush(store)?;
-		}
-		Ok(())
 	}
 
 	pub fn compute_groups(&self, columns: &Columns) -> Result<Vec<(Hash128, Vec<Value>)>> {
