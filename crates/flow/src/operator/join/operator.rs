@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+};
 
 use postcard::to_extend;
 use reifydb_codec::{
@@ -72,6 +75,11 @@ const ANCHOR_SUFFIX_LEN: usize = 9;
 #[derive(Clone)]
 pub struct SealAnchor {
 	expiry: DateTime,
+}
+
+struct GroupAnchors {
+	before: Option<DateTime>,
+	live: HashMap<(u8, u64), DateTime>,
 }
 
 fn group_by_key(keys: &[Option<Hash128>]) -> (Vec<Hash128>, HashMap<Hash128, Vec<usize>>, Vec<usize>) {
@@ -294,33 +302,67 @@ impl JoinOperator {
 		Ok(out)
 	}
 
-	fn earliest_anchor(host: &mut dyn HostContext, group: GroupId) -> Result<Option<DateTime>> {
-		Ok(Self::anchors_in(host, group)?.into_iter().map(|(_, _, expiry)| expiry).min())
+	fn resolve_groups(
+		host: &mut dyn HostContext,
+		cleared: &[(Hash128, RowNumber)],
+		armed: &[(Hash128, RowNumber, DateTime)],
+	) -> Result<HashMap<Hash128, GroupId>> {
+		let mut distinct: Vec<Hash128> = Vec::new();
+		let mut seen: HashSet<Hash128> = HashSet::new();
+		for hash in cleared.iter().map(|(hash, _)| hash).chain(armed.iter().map(|(hash, _, _)| hash)) {
+			if seen.insert(*hash) {
+				distinct.push(*hash);
+			}
+		}
+		let keys: Vec<EncodedKey> = distinct.iter().map(group_bytes).collect();
+		let mut resolved: HashMap<Hash128, GroupId> = HashMap::new();
+		for (hash, group) in distinct.into_iter().zip(host.lookup_groups(&keys)?) {
+			if let Some(group) = group {
+				resolved.insert(hash, group);
+			}
+		}
+		Ok(resolved)
 	}
 
-	fn note_group(
+	fn load_anchors(
 		host: &mut dyn HostContext,
-		touched: &mut Vec<(GroupId, Option<DateTime>)>,
+		order: &mut Vec<GroupId>,
+		loaded: &mut HashMap<GroupId, GroupAnchors>,
 		group: GroupId,
 	) -> Result<()> {
-		if touched.iter().any(|(seen, _)| *seen == group) {
+		if loaded.contains_key(&group) {
 			return Ok(());
 		}
-		let armed = Self::earliest_anchor(host, group)?;
-		touched.push((group, armed));
+		let mut live: HashMap<(u8, u64), DateTime> = HashMap::new();
+		for (side, row_number, expiry) in Self::anchors_in(host, group)? {
+			live.insert((side.tag(), row_number.0), expiry);
+		}
+		order.push(group);
+		loaded.insert(
+			group,
+			GroupAnchors {
+				before: live.values().copied().min(),
+				live,
+			},
+		);
 		Ok(())
 	}
 
-	fn resync_timers(host: &mut dyn HostContext, touched: &[(GroupId, Option<DateTime>)]) -> Result<()> {
-		for (group, armed) in touched {
-			match Self::earliest_anchor(host, *group)? {
+	fn resync_timers(
+		host: &mut dyn HostContext,
+		order: &[GroupId],
+		loaded: &HashMap<GroupId, GroupAnchors>,
+	) -> Result<()> {
+		for group in order {
+			let anchors = loaded.get(group).expect("every ordered group was loaded");
+			match anchors.live.values().copied().min() {
 				Some(earliest) => {
 					host.arm_timer(earliest, TimerKind::Maintenance, &Self::timer_key(*group))?
 				}
 				None => {
-					if let Some(at) = armed {
+					if let Some(at) = anchors.before {
 						host.disarm_timer(
-							*at,
+							at,
 							TimerKind::Maintenance,
 							&Self::timer_key(*group),
 						)?;
@@ -346,23 +388,33 @@ impl JoinOperator {
 		}
 		let policy = SealPolicy::of(seal);
 		let now = host.written_at();
-		let mut touched: Vec<(GroupId, Option<DateTime>)> = Vec::new();
+		let resolved = Self::resolve_groups(host, cleared, armed)?;
+		let mut order: Vec<GroupId> = Vec::new();
+		let mut loaded: HashMap<GroupId, GroupAnchors> = HashMap::new();
 
 		for (hash, row_number) in cleared {
-			let Some(group) = host.lookup_group(&group_bytes(hash))? else {
+			let Some(group) = resolved.get(hash).copied() else {
 				continue;
 			};
-			Self::note_group(host, &mut touched, group)?;
+			Self::load_anchors(host, &mut order, &mut loaded, group)?;
+			loaded.get_mut(&group)
+				.expect("the group was just loaded")
+				.live
+				.remove(&(side.tag(), row_number.0));
 			host.state_remove(&Self::anchor_key(group, side, *row_number))?;
 		}
 
 		for (hash, row_number, at) in armed {
-			let Some(group) = host.lookup_group(&group_bytes(hash))? else {
+			let Some(group) = resolved.get(hash).copied() else {
 				continue;
 			};
-			Self::note_group(host, &mut touched, group)?;
+			Self::load_anchors(host, &mut order, &mut loaded, group)?;
 			host.state_remove(&queue_key(group))?;
 			let expiry = policy.seal_instant(*at).at();
+			loaded.get_mut(&group)
+				.expect("the group was just loaded")
+				.live
+				.insert((side.tag(), row_number.0), expiry);
 			host.state_set(
 				&Self::anchor_key(group, side, *row_number),
 				SealAnchor {
@@ -372,7 +424,7 @@ impl JoinOperator {
 			)?;
 		}
 
-		Self::resync_timers(host, &touched)
+		Self::resync_timers(host, &order, &loaded)
 	}
 
 	fn arm_batch(
