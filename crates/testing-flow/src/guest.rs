@@ -111,7 +111,6 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		Ok(output)
 	}
 
-
 	pub fn state_value<V: OperatorState>(&mut self, key: &GroupStateKey) -> Option<V> {
 		let operator = self.operator_id;
 		if let Some(txn) = self.current.as_mut() {

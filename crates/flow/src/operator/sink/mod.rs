@@ -28,7 +28,6 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
-use smallvec::smallvec;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{
@@ -44,6 +43,7 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
+use smallvec::smallvec;
 
 use crate::{
 	error::FlowSinkError,

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
-
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::operator::EncodedOperatorRow;
 use reifydb_core::{
@@ -18,7 +16,6 @@ use reifydb_core::{
 use reifydb_flow::transaction::{
 	ChangeCoordinate, DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
-	ephemeral::EphemeralTransaction,
 	substrate::{FlowSubstrate, apply_operator_state},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -79,14 +76,6 @@ impl<'a> FlowTxnBuilder<'a> {
 				..FlowSubstrate::default()
 			},
 		});
-		txn.set_change_coordinate(default_coordinate(version));
-		txn
-	}
-
-	pub fn ephemeral(self) -> EphemeralTransaction {
-		let query = self.engine.multi().begin_query().unwrap();
-		let version = self.version;
-		let mut txn = EphemeralTransaction::new(version, query, self.catalog, HashMap::new(), self.clock);
 		txn.set_change_coordinate(default_coordinate(version));
 		txn
 	}

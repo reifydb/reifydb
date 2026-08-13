@@ -52,6 +52,7 @@ use reifydb_value::{
 		system_columns::SystemColumns, value_type::ValueType,
 	},
 };
+
 use super::{
 	DurableSink, coerce_columns, decode_dictionary_columns, emit_view_change, encode_row_at_index,
 	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},

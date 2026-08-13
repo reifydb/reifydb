@@ -21,14 +21,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{change::Change, store::MultiVersionRow},
 };
-use reifydb_runtime::context::clock::Clock;
-use reifydb_transaction::{
-	change_accumulator::ChangeAccumulator,
-	multi::{RangeScope, transaction::read::MultiReadTransaction},
-};
-use reifydb_value::{Result, error::Error, value::datetime::DateTime};
-
-use crate::{
+use reifydb_flow::{
 	error::FlowGraphError,
 	operator::sink::DurableSink,
 	timer::Timer,
@@ -38,6 +31,12 @@ use crate::{
 		substrate::FlowSubstrate,
 	},
 };
+use reifydb_runtime::context::clock::Clock;
+use reifydb_transaction::{
+	change_accumulator::ChangeAccumulator,
+	multi::{RangeScope, transaction::read::MultiReadTransaction},
+};
+use reifydb_value::{Result, error::Error, value::datetime::DateTime};
 
 pub struct EphemeralTransaction {
 	pub version: CommitVersion,
@@ -104,7 +103,7 @@ impl EphemeralTransaction {
 	}
 }
 
-pub(crate) fn is_state_range(range: &EncodedKeyRange) -> bool {
+fn is_state_range(range: &EncodedKeyRange) -> bool {
 	match range.start.as_ref() {
 		Included(start) | Excluded(start) => {
 			matches!(read_from(start), ReadFrom::OperatorState | ReadFrom::StateQuery)
@@ -113,7 +112,7 @@ pub(crate) fn is_state_range(range: &EncodedKeyRange) -> bool {
 	}
 }
 
-pub(crate) fn state_items(
+fn state_items(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	range: &EncodedKeyRange,
 	version: CommitVersion,
@@ -130,7 +129,7 @@ pub(crate) fn state_items(
 		.collect()
 }
 
-pub(crate) fn ephemeral_storage_get(
+fn ephemeral_storage_get(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	query: &MultiReadTransaction,
 	key: &EncodedKey,
@@ -144,7 +143,7 @@ pub(crate) fn ephemeral_storage_get(
 	}
 }
 
-pub(crate) fn ephemeral_storage_contains(
+fn ephemeral_storage_contains(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	query: &MultiReadTransaction,
 	key: &EncodedKey,
@@ -155,7 +154,7 @@ pub(crate) fn ephemeral_storage_contains(
 	}
 }
 
-pub(crate) fn ephemeral_storage_range<'a>(
+fn ephemeral_storage_range<'a>(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	query: &'a MultiReadTransaction,
 	version: CommitVersion,
@@ -174,7 +173,7 @@ pub(crate) fn ephemeral_storage_range<'a>(
 	Box::new(query.range(range, scope, batch_size))
 }
 
-pub(crate) fn ephemeral_storage_range_rev<'a>(
+fn ephemeral_storage_range_rev<'a>(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	query: &'a MultiReadTransaction,
 	version: CommitVersion,
@@ -193,7 +192,7 @@ pub(crate) fn ephemeral_storage_range_rev<'a>(
 	Box::new(query.range_rev(range, scope, batch_size))
 }
 
-pub(crate) fn ephemeral_fetch_state_external(
+fn ephemeral_fetch_state_external(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	version: CommitVersion,
 	keys: &[EncodedKey],

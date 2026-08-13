@@ -388,25 +388,23 @@ fn apply_rolling<C: RollingDomain>(
 	let groups = intern_partitions(host, &touched)?;
 	let results = if runnable {
 		let engine = C::engine(operator, true, lag);
-		let res = engine.apply_running(
+		engine.apply_running(
 			host,
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
 			|| RowAccumulator::new(&kinds, seal),
-		)?;
-		res
+		)?
 	} else {
 		let engine = C::engine(operator, false, lag);
-		let res = engine.apply_evicting(
+		engine.apply_evicting(
 			host,
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
 			|| RowAccumulator::new(&kinds, seal),
 			|_g, buffer| combine_rolling::<C>(buffer, &kinds, lag, seal),
-		)?;
-		res
+		)?
 	};
 
 	rearm_rolling_seal::<C>(operator, host, armed_before, runnable, lag)?;

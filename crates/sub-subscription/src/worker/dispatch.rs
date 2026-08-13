@@ -10,12 +10,13 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
-use reifydb_flow::{engine::FlowEngineInner, transaction::ephemeral::EphemeralTransaction};
+use reifydb_flow::engine::FlowEngineInner;
 use reifydb_transaction::{error::TransactionError, multi::transaction::read::MultiReadTransaction};
 use reifydb_value::Result;
 use tracing::warn;
 
 use super::{SubscriptionFlowState, SubscriptionWorkerActor, SubscriptionWorkerState};
+use crate::transaction::EphemeralTransaction;
 
 impl SubscriptionWorkerActor {
 	pub(super) fn process_dispatch(

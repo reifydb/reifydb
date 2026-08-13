@@ -142,16 +142,13 @@ pub(crate) fn finish_tumbling_engine(
 		.tumbling_engine_slot()
 		.take()
 		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(engine_config)));
-	let results = {
-		let res = engine.apply(
-			host,
-			buckets,
-			&arrival,
-			|hash, window_start| (group_of(groups, *hash, window_start.to_order()), utils::empty_key()),
-			|| RowAccumulator::new(kinds, seal),
-		)?;
-		res
-	};
+	let results = engine.apply(
+		host,
+		buckets,
+		&arrival,
+		|hash, window_start| (group_of(groups, *hash, window_start.to_order()), utils::empty_key()),
+		|| RowAccumulator::new(kinds, seal),
+	)?;
 
 	for r in &results {
 		let group = group_of(groups, r.group, r.span.start.to_order());

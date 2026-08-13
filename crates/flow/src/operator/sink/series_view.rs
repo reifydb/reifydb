@@ -12,9 +12,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::{
-			flow::OperatorId, id::SeriesId, series::SeriesKey, storage::StorageId, view::View,
-		},
+		catalog::{flow::OperatorId, id::SeriesId, series::SeriesKey, storage::StorageId, view::View},
 		change::{Change, Diff},
 		flow::OperatorCapability,
 		resolved::ResolvedView,

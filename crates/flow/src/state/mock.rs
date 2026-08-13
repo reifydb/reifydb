@@ -120,7 +120,8 @@ impl MockStore {
 			.data
 			.keys()
 			.filter(|k| {
-				OperatorStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == Keyspace::ACCUMULATOR)
+				OperatorStateKey::decode_inner(k)
+					.is_some_and(|(_, found, _)| found == Keyspace::ACCUMULATOR)
 			})
 			.cloned()
 			.collect();

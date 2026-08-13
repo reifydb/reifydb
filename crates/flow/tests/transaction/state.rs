@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{Bound, HashMap};
+use std::collections::Bound;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
@@ -19,8 +19,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow::transaction::{
-	DeferredParams, FlowTransaction, deferred::DeferredTransaction, ephemeral::EphemeralTransaction,
-	state::StateExtension, substrate::FlowSubstrate,
+	DeferredParams, FlowTransaction, deferred::DeferredTransaction, state::StateExtension, substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
@@ -522,9 +521,8 @@ fn deferred_read_sees_base_pending_overlay() {
 
 #[test]
 fn deferred_reads_owned_rows_at_state_version() {
-	// After a restart a flow's own materialized rows sit above the version its next slice pins
-	// `query` to, with an empty overlay, so owned-row keys must route through state_query at
-	// the lease. Ephemeral stays pinned because subscription hydration reads as-of a version.
+	// A restart puts a flow's own rows above the version its next slice pins, so owned-row keys must route through
+	// state_query.
 	let engine = TestEngine::new();
 	let row_key = RowKey::encoded(StorageId::table(TableId(7)), RowNumber(1));
 	let row_value = make_value("own_row").into_bytes();
@@ -556,49 +554,4 @@ fn deferred_reads_owned_rows_at_state_version() {
 		"a deferred txn pinned below the flow's own commit must read its rows at the state version"
 	);
 	assert!(txn.contains_key(&row_key).unwrap());
-
-	let mut ephemeral = EphemeralTransaction::new(
-		low_version,
-		engine.multi().begin_query().unwrap(),
-		Catalog::testing(),
-		HashMap::new(),
-		engine.clock().clone(),
-	);
-	assert_eq!(
-		ephemeral.get(&row_key).unwrap(),
-		None,
-		"ephemeral (subscription) row reads must stay pinned to the requested version"
-	);
-}
-
-#[test]
-fn ephemeral_read_sees_state_map_and_pending() {
-	// The ephemeral variant has no state_query, so it serves operator-state reads from an
-	// in-memory state map with the pending overlay on top.
-	let engine = TestEngine::new();
-	let operator_id = OperatorId(1);
-	let seeded_key = make_key("seeded");
-	let seeded_value = make_value("seeded_value");
-
-	let mut state = HashMap::new();
-	state.insert(full_key(operator_id, &seeded_key), seeded_value.clone().into_bytes());
-
-	let mut txn = EphemeralTransaction::new(
-		CommitVersion(1),
-		engine.multi().begin_query().unwrap(),
-		Catalog::testing(),
-		state,
-		engine.clock().clone(),
-	);
-
-	let seeded = txn.state_get_many(operator_id, &[seeded_key]).unwrap();
-	assert_eq!(seeded.items.len(), 1, "seeded ephemeral state must be readable");
-	assert_eq!(seeded.items[0].bytes, seeded_value.into_bytes());
-
-	let live_key = make_key("live");
-	let live_value = make_value("live_value");
-	txn.state_set(operator_id, &live_key, live_value.clone()).unwrap();
-	let live = txn.state_get_many(operator_id, &[live_key]).unwrap();
-	assert_eq!(live.items.len(), 1);
-	assert_eq!(live.items[0].bytes, live_value.into_bytes());
 }

@@ -25,10 +25,3 @@ fn deferred() {
 	let mut txn = e.flow_txn().deferred();
 	assert_update_uses_caller_time(&mut txn);
 }
-
-#[test]
-fn ephemeral() {
-	let e = engine();
-	let mut txn = e.flow_txn().ephemeral();
-	assert_update_uses_caller_time(&mut txn);
-}

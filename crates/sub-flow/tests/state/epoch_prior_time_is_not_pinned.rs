@@ -22,10 +22,3 @@ fn deferred() {
 	let mut txn = e.flow_txn().deferred();
 	assert_epoch_prior_time_is_not_pinned(&mut txn);
 }
-
-#[test]
-fn ephemeral() {
-	let e = engine();
-	let mut txn = e.flow_txn().ephemeral();
-	assert_epoch_prior_time_is_not_pinned(&mut txn);
-}

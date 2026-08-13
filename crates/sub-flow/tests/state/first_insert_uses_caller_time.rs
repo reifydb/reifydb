@@ -21,10 +21,3 @@ fn deferred() {
 	let mut txn = e.flow_txn().deferred();
 	assert_first_insert_uses_caller_time(&mut txn);
 }
-
-#[test]
-fn ephemeral() {
-	let e = engine();
-	let mut txn = e.flow_txn().ephemeral();
-	assert_first_insert_uses_caller_time(&mut txn);
-}

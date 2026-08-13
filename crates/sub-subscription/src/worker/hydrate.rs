@@ -13,7 +13,6 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::subscription::{HydrateError, HydrateOutcome};
-use reifydb_flow::transaction::ephemeral::EphemeralTransaction;
 use reifydb_rql::fingerprint::request::fingerprint_request;
 use reifydb_runtime::context::clock::Instant;
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
@@ -23,7 +22,10 @@ use reifydb_value::{
 };
 
 use super::{SubscriptionWorkerActor, SubscriptionWorkerState};
-use crate::subsystem::hydration::{collect_source_descriptors, run_source_queries};
+use crate::{
+	subsystem::hydration::{collect_source_descriptors, run_source_queries},
+	transaction::EphemeralTransaction,
+};
 
 impl SubscriptionWorkerActor {
 	pub(super) fn run_hydrate(

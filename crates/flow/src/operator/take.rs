@@ -30,11 +30,7 @@ use tracing::instrument;
 
 use crate::{
 	error::FlowStateError,
-	operator::{
-		HostOperator,
-		host::HostContext,
-		stateful::utils,
-	},
+	operator::{HostOperator, host::HostContext, stateful::utils},
 };
 
 #[operator_state]

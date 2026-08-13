@@ -125,30 +125,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
-name = "bytecheck"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0caa33a2c0edca0419d15ac723dff03f1956f7978329b1e3b5fdaaaed9d3ca8b"
-dependencies = [
- "bytecheck_derive",
- "ptr_meta",
- "rancor",
- "simdutf8",
- "uuid",
-]
-
-[[package]]
-name = "bytecheck_derive"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89385e82b5d1821d2219e0b095efa2cc1f246cbf99080f3be46a1a85c0d392d9"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -759,26 +735,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "munge"
-version = "0.4.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e17401f259eba956ca16491461b6e8f72913a0a114e39736ce404410f915a0c"
-dependencies = [
- "munge_macro",
-]
-
-[[package]]
-name = "munge_macro"
-version = "0.4.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4568f25ccbd45ab5d5603dc34318c1ec56b117531781260002151b8530a9f931"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "num-bigint"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -942,26 +898,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ptr_meta"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b9a0cf95a1196af61d4f1cbdab967179516d9a4a4312af1f31948f8f6224a79"
-dependencies = [
- "ptr_meta_derive",
-]
-
-[[package]]
-name = "ptr_meta_derive"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7347867d0a7e1208d93b46767be83e2b8f978c3dad35f775ac8d8847551d6fe1"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -981,15 +917,6 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
-
-[[package]]
-name = "rancor"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "daff8b7b3ccf5f7ba270b3e7a0a4d4c701c5797e38dec27c7e2c3dbb830fed1c"
-dependencies = [
- "ptr_meta",
-]
 
 [[package]]
 name = "rand"
@@ -1038,10 +965,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-abi"
-version = "0.8.1"
-
-[[package]]
 name = "reifydb-build"
 version = "0.8.1"
 
@@ -1051,10 +974,10 @@ version = "0.8.1"
 dependencies = [
  "crossbeam-skiplist",
  "once_cell",
- "reifydb-abi",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
+ "reifydb-macro",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
@@ -1073,10 +996,9 @@ dependencies = [
  "bigdecimal",
  "num-bigint",
  "num-traits",
- "reifydb-abi",
+ "postcard",
  "reifydb-build",
  "reifydb-value",
- "rkyv",
  "serde",
  "serde_json",
  "thiserror",
@@ -1095,17 +1017,16 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "paste",
- "reifydb-abi",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-macro",
  "reifydb-runtime",
  "reifydb-value",
- "rkyv",
  "serde",
  "serde_bytes",
  "smallvec",
  "thiserror",
+ "tracing",
  "uuid",
 ]
 
@@ -1116,7 +1037,6 @@ dependencies = [
  "arbitrary",
  "bumpalo",
  "libfuzzer-sys",
- "reifydb-abi",
  "reifydb-codec",
  "reifydb-rql",
  "reifydb-value",
@@ -1141,6 +1061,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-routine-abi"
+version = "0.8.1"
+dependencies = [
+ "indexmap",
+ "reifydb-build",
+ "reifydb-catalog",
+ "reifydb-core",
+ "reifydb-runtime",
+ "reifydb-transaction",
+ "reifydb-value",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "reifydb-rql"
 version = "0.8.1"
 dependencies = [
@@ -1149,6 +1084,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-core",
+ "reifydb-routine-abi",
  "reifydb-runtime",
  "reifydb-transaction",
  "reifydb-value",
@@ -1281,52 +1217,12 @@ dependencies = [
  "num-traits",
  "postcard",
  "reifydb-build",
- "rkyv",
  "serde",
  "serde_bytes",
  "serde_json",
  "thiserror",
  "uuid",
  "xxhash-rust",
-]
-
-[[package]]
-name = "rend"
-version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "663ba70707f96e871406fe10d68128412e619b06d1d47cb91c3a4c6501176240"
-dependencies = [
- "bytecheck",
-]
-
-[[package]]
-name = "rkyv"
-version = "0.8.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "815cc8a37159a463064825246cadb07961e25cd9885908606f6d08a98d8f8874"
-dependencies = [
- "bytecheck",
- "bytes",
- "hashbrown 0.17.1",
- "indexmap",
- "munge",
- "ptr_meta",
- "rancor",
- "rend",
- "rkyv_derive",
- "tinyvec",
- "uuid",
-]
-
-[[package]]
-name = "rkyv_derive"
-version = "0.8.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0ed1a78a1b19d184b0daa629dd9a024573173ec7d485b287cb369fb3607cc1c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -1447,12 +1343,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
-name = "simdutf8"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
-
-[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1552,21 +1442,6 @@ dependencies = [
  "quote",
  "syn",
 ]
-
-[[package]]
-name = "tinyvec"
-version = "1.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb4ebadaa0af04fab11ae01eb5f9fdb5f9c5b875506e210e71c07873528baa7f"
-dependencies = [
- "tinyvec_macros",
-]
-
-[[package]]
-name = "tinyvec_macros"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
