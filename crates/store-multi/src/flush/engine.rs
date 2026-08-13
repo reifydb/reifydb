@@ -41,7 +41,10 @@ use crate::{
 pub const FLUSH_KEY_BUDGET: usize = 2048;
 
 #[derive(Default)]
-pub struct FlushEngineState {}
+pub struct FlushEngineState {
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	resume_from: Option<EntryKind>,
+}
 
 #[allow(dead_code)]
 pub struct FlushEngine {
@@ -97,9 +100,9 @@ impl FlushEngine {
 	}
 
 	pub fn sweep_slice(&self, budget: usize) -> SweepOutcome {
-		let _state = self.sweep_lock.lock();
+		let mut state = self.sweep_lock.lock();
 		let (progress, reclaimed) = match self.eviction_cutoff() {
-			Some(cutoff) => self.sweep_once(cutoff, budget),
+			Some(cutoff) => self.sweep_once(&mut state, cutoff, budget),
 			None => (Progress::Exhausted, 0),
 		};
 		SweepOutcome {
@@ -117,15 +120,15 @@ impl FlushEngine {
 	}
 
 	pub fn flush_pending(&self) {
-		let _guard = self.sweep_lock.lock();
+		let mut guard = self.sweep_lock.lock();
 		if let Some(cutoff) = self.eviction_cutoff() {
-			while self.sweep_once(cutoff, FLUSH_KEY_BUDGET).0.is_yielded() {}
+			while self.sweep_once(&mut guard, cutoff, FLUSH_KEY_BUDGET).0.is_yielded() {}
 		}
 	}
 
 	pub fn flush_all(&self) {
-		let _guard = self.sweep_lock.lock();
-		while self.sweep_once(CommitVersion(u64::MAX), FLUSH_KEY_BUDGET).0.is_yielded() {}
+		let mut guard = self.sweep_lock.lock();
+		while self.sweep_once(&mut guard, CommitVersion(u64::MAX), FLUSH_KEY_BUDGET).0.is_yielded() {}
 	}
 
 	fn eviction_cutoff(&self) -> Option<CommitVersion> {
@@ -153,14 +156,20 @@ impl FlushEngine {
 
 	#[cfg(test)]
 	fn sweep(&self, cutoff: CommitVersion) {
-		let _guard = self.sweep_lock.lock();
-		while self.sweep_once(cutoff, FLUSH_KEY_BUDGET).0.is_yielded() {}
+		let mut guard = self.sweep_lock.lock();
+		while self.sweep_once(&mut guard, cutoff, FLUSH_KEY_BUDGET).0.is_yielded() {}
 	}
 
-	fn sweep_once(&self, cutoff: CommitVersion, budget: usize) -> (Progress, u64) {
-		let Some(entry_kinds) = self.list_evictable_kinds() else {
+	fn sweep_once(&self, state: &mut FlushEngineState, cutoff: CommitVersion, budget: usize) -> (Progress, u64) {
+		let Some(mut entry_kinds) = self.list_evictable_kinds() else {
 			return (Progress::Exhausted, 0);
 		};
+		if let Some(resume) = state.resume_from
+			&& let Some(position) = entry_kinds.iter().position(|kind| *kind == resume)
+		{
+			entry_kinds.rotate_left(position);
+		}
+		state.resume_from = None;
 
 		let mut remaining = budget;
 		let mut more = false;
@@ -169,6 +178,7 @@ impl FlushEngine {
 		for kind in entry_kinds {
 			if remaining == 0 {
 				more = true;
+				state.resume_from = Some(kind);
 				break;
 			}
 			let (to_persist, to_drop, kind_more) = self.collect_evictable(kind, cutoff, remaining);
@@ -1100,6 +1110,43 @@ mod tests {
 			 write, which clamps the tombstone reap cutoff to zero and leaves every tombstone in the \
 			 persistent tier undeletable",
 			oldest.0
+		);
+	}
+
+	#[test]
+	fn a_kind_that_sorts_behind_a_deeper_backlog_is_still_reached_by_the_sweep() {
+		const HOT_KINDS: u64 = 3;
+		const KEYS_PER_ROUND: u64 = 40;
+		const BUDGET: usize = 30;
+		const ROUNDS: u64 = 80;
+		const COLD_FIRST_VERSION: u64 = 50;
+
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1_000_000)));
+		let hot: Vec<EntryKind> =
+			(0..HOT_KINDS).map(|i| EntryKind::Source(StorageId::Table(TableId(i + 1)))).collect();
+		let cold = EntryKind::Source(StorageId::Table(TableId(HOT_KINDS + 1)));
+
+		for round in 1..=ROUNDS {
+			for kind in &hot {
+				for key in 0..KEYS_PER_ROUND {
+					write(&actor.commit, *kind, &ek(&format!("v{round}-k{key}")), round, "x");
+				}
+			}
+			if round == COLD_FIRST_VERSION {
+				write(&actor.commit, cold, &ek("cold-key"), round, "x");
+			}
+			actor.sweep_slice(BUDGET);
+		}
+
+		assert!(
+			actor.commit.oldest_pending_for(hot[0]).is_some(),
+			"the hot kinds must stay backlogged, otherwise the budget never ran out and this exercises nothing"
+		);
+		assert_eq!(
+			actor.commit.oldest_pending_for(cold),
+			None,
+			"the single write to the cold kind is still pending after {} slices, so the sweep never reached past the hot kinds sorted ahead of it",
+			ROUNDS - COLD_FIRST_VERSION
 		);
 	}
 }
