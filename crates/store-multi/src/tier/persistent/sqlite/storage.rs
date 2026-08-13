@@ -85,7 +85,7 @@ struct SqlitePersistentStorageInner {
 	table_sql: Map<EntryKind, Arc<TableSql>>,
 	cache_hits: AtomicU64,
 	cache_misses: AtomicU64,
-	reaped_high_water: AtomicU64,
+	reaped_high_water: Map<EntryKind, Arc<AtomicU64>>,
 	resurrections: AtomicU64,
 }
 
@@ -178,7 +178,7 @@ impl SqlitePersistentStorage {
 				table_sql: Map::new(),
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
-				reaped_high_water: AtomicU64::new(0),
+				reaped_high_water: Map::new(),
 				resurrections: AtomicU64::new(0),
 			}),
 		}
@@ -393,7 +393,6 @@ impl SqlitePersistentStorage {
 		let Some(conn) = guard.as_ref() else {
 			return Ok((0, false));
 		};
-		self.inner.reaped_high_water.fetch_max(cutoff_version.0, Ordering::Relaxed);
 		let reaped = match conn.execute(&sql, params![cutoff.as_slice()]) {
 			Ok(n) => n as u64,
 			Err(e) if e.to_string().contains("no such table") => return Ok((0, false)),
@@ -404,6 +403,10 @@ impl SqlitePersistentStorage {
 				))));
 			}
 		};
+		self.inner
+			.reaped_high_water
+			.get_or_insert_with(kind, || Arc::new(AtomicU64::new(0)))
+			.fetch_max(cutoff_version.0, Ordering::Relaxed);
 
 		Ok((reaped, reaped == limit as u64))
 	}
@@ -416,11 +419,15 @@ impl SqlitePersistentStorage {
 	fn assert_no_resurrection(
 		&self,
 		tx: &Transaction,
+		kind: EntryKind,
 		table_sql: &TableSql,
 		key: &EncodedKey,
 		version: CommitVersion,
 	) {
-		let high_water = self.inner.reaped_high_water.load(Ordering::Relaxed);
+		let Some(high_water) = self.inner.reaped_high_water.get(&kind) else {
+			return;
+		};
+		let high_water = high_water.load(Ordering::Relaxed);
 		if version.0 > high_water {
 			return;
 		}
@@ -433,10 +440,11 @@ impl SqlitePersistentStorage {
 		}
 		assert!(
 			exists,
-			"resurrection: flush inserted an absent key into {} at version {} at or below the \
-			 reaped-tombstone high-water {}; every version <= a reap cutoff was already durable when the \
-			 reap ran (TombstoneReap floors on the flush watermark), so this write can only rematerialize \
-			 a reaped removal - the floor contract or flush monotonicity is broken (key={:?})",
+			"resurrection: flush inserted an absent key into {} at version {} at or below that entry's own \
+			 reaped-tombstone high-water {}; every version <= a reap cutoff was already durable for that \
+			 entry when the reap ran (TombstoneReap floors on the per-kind flush watermark), so this write \
+			 can only rematerialize a reaped removal - the floor contract or flush monotonicity is broken \
+			 (key={:?})",
 			table_sql.table_name,
 			version.0,
 			high_water,
@@ -471,7 +479,7 @@ impl SqlitePersistentStorage {
 
 			for (key, value) in entries {
 				reifydb_assertions! {
-					self.assert_no_resurrection(&tx, &table_sql, &key, version);
+					self.assert_no_resurrection(&tx, table, &table_sql, &key, version);
 				}
 				let value_slice = value.as_ref().map(|v| v.as_slice());
 				let affected = stmt
@@ -521,7 +529,7 @@ impl SqlitePersistentStorage {
 
 				for (key, value) in entries {
 					reifydb_assertions! {
-						self.assert_no_resurrection(&tx, &table_sql, &key, version);
+						self.assert_no_resurrection(&tx, table, &table_sql, &key, version);
 					}
 					let value_slice = value.as_ref().map(|v| v.as_slice());
 					let affected = stmt
@@ -1405,6 +1413,26 @@ mod tests {
 			 fire on every healthy re-insert"
 		);
 		assert!(visible(&s, &key(1)), "a fresh write after a reaped removal must land");
+	}
+
+	#[test]
+	fn a_reap_high_water_does_not_carry_across_entry_kinds() {
+		// An entry with nothing pending reaps ahead of one still buffering, so a cutoff must never be charged
+		// to another entry's first-time insert.
+		let other = EntryKind::Source(StorageId::Table(TableId(2)));
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(5), HashMap::from([(other, vec![(key(1), None)])])).unwrap();
+		s.reap_tombstones(other, CommitVersion(5), 100).unwrap();
+
+		s.set(CommitVersion(4), HashMap::from([(table(), vec![(key(9), Some(row(b"fresh")))])])).unwrap();
+
+		assert_eq!(
+			s.resurrections(),
+			0,
+			"a first-ever insert into an unreaped entry is absent by definition; charging it against \
+			 another entry's cutoff makes the tripwire fire on healthy writes"
+		);
+		assert!(visible(&s, &key(9)), "the fresh row must land");
 	}
 
 	#[cfg(reifydb_assertions)]

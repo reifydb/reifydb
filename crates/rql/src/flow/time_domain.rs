@@ -25,10 +25,7 @@ fn declared_source_domain(
 	path: &mut HashSet<FlowId>,
 ) -> Result<TimeDomain> {
 	if !path.insert(flow.id) {
-		return Err(Error(Box::new(internal!(
-			"flow {} reaches itself through its own sources",
-			flow.id.0
-		))));
+		return Err(Error(Box::new(internal!("flow {} reaches itself through its own sources", flow.id.0))));
 	}
 
 	let mut resolved: Option<TimeDomain> = None;
@@ -83,10 +80,7 @@ fn upstream_view_domain(
 	};
 
 	let Some(flow) = catalog.find_flow_by_name(&mut txn.reborrow(), def.namespace(), def.name())? else {
-		return Err(Error(Box::new(internal!(
-			"view {} has no flow to supply its time domain",
-			def.name()
-		))));
+		return Err(Error(Box::new(internal!("view {} has no flow to supply its time domain", def.name()))));
 	};
 
 	let dag = load_flow_dag(&mut txn.reborrow(), flow.id)?;
@@ -279,7 +273,8 @@ mod tests {
 
 	#[test]
 	fn every_source_must_be_event_for_the_flow_to_be_event() {
-		// A processing-time source must drag the verdict down, otherwise the lag bound is applied to rows timed by the ingest clock.
+		// A processing-time source must drag the verdict down, otherwise the lag bound is applied to rows timed
+		// by the ingest clock.
 		let mut txn = create_test_admin_transaction();
 
 		let domain = Harness::new()
@@ -343,7 +338,8 @@ mod tests {
 
 	#[test]
 	fn a_view_source_over_a_time_less_flow_supplies_no_time_either() {
-		// A view must pass on exactly what its own sources supply, or a seal is admitted on a chain that stamps no event time at all.
+		// A view must pass on exactly what its own sources supply, or a seal is admitted on a chain that stamps
+		// no event time at all.
 		let mut txn = create_test_admin_transaction();
 		create_namespace(&mut txn, "test");
 		let quiet = upstream(&mut txn, "quiet", vec![source_table(TimeDomain::None)]);
@@ -355,7 +351,8 @@ mod tests {
 
 	#[test]
 	fn a_view_source_supplies_the_event_time_of_the_flow_that_fills_it() {
-		// #time is stamped at the source table and rides into the view's stored rows, so reading a view as time-less rejects every sealed join between two views.
+		// #time is stamped at the source table and rides into the view's stored rows, so reading a view as
+		// time-less rejects every sealed join between two views.
 		let mut txn = create_test_admin_transaction();
 		create_namespace(&mut txn, "test");
 		let trades = upstream(&mut txn, "trades", vec![source_table(TimeDomain::Event)]);
@@ -367,7 +364,8 @@ mod tests {
 
 	#[test]
 	fn a_view_source_resolves_through_a_chain_of_views() {
-		// Without recursing past the first hop the top of every multi-view chain resolves to None while the one-hop case still passes.
+		// Without recursing past the first hop the top of every multi-view chain resolves to None while the
+		// one-hop case still passes.
 		let mut txn = create_test_admin_transaction();
 		create_namespace(&mut txn, "test");
 		let trades = upstream(&mut txn, "trades", vec![source_table(TimeDomain::Event)]);
@@ -386,7 +384,8 @@ mod tests {
 
 	#[test]
 	fn a_processing_time_source_two_views_up_still_drags_the_chain_down() {
-		// The weakest source anywhere upstream must decide, otherwise a seal is admitted against rows timed by the ingest clock.
+		// The weakest source anywhere upstream must decide, otherwise a seal is admitted against rows timed by
+		// the ingest clock.
 		let mut txn = create_test_admin_transaction();
 		create_namespace(&mut txn, "test");
 		let mixed = upstream(
@@ -409,7 +408,8 @@ mod tests {
 
 	#[test]
 	fn the_same_view_read_twice_in_one_flow_is_not_mistaken_for_a_cycle() {
-		// The guard must catch an ancestor and never a repeat visit, or a union appending one view twice is rejected as self-referential.
+		// The guard must catch an ancestor and never a repeat visit, or a union appending one view twice is
+		// rejected as self-referential.
 		let mut txn = create_test_admin_transaction();
 		create_namespace(&mut txn, "test");
 		let trades = upstream(&mut txn, "trades", vec![source_table(TimeDomain::Event)]);
@@ -427,7 +427,8 @@ mod tests {
 
 	#[test]
 	fn a_view_source_with_no_flow_behind_it_is_an_error_not_a_silent_none() {
-		// A missing upstream must never read as "declares no time", or catalog corruption surfaces as a diagnostic blaming the author's DDL.
+		// A missing upstream must never read as "declares no time", or catalog corruption surfaces as a
+		// diagnostic blaming the author's DDL.
 		let mut txn = create_test_admin_transaction();
 		create_namespace(&mut txn, "test");
 		let orphan = create_view(&mut txn, "test", "orphan", &[]).id();
