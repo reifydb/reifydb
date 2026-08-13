@@ -13,14 +13,13 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupSet, GroupStateKey, OperatorStateKey, node_prefix},
+		operator_state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
 	},
 	state::store::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
-	count::Count,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -70,8 +69,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 
 	fn remove_row_numbers_by_prefix(&mut self, group: GroupId, key_prefix: &[u8]) -> Result<()>;
-
-	fn invalidate_row_number_groups(&mut self, groups: &GroupSet);
 
 	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
 
@@ -204,11 +201,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 
 impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
 	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
-		let outcome = self.txn.reclaim_group_identity(self.operator, group, limit)?;
-		if outcome.removed > Count::ZERO {
-			self.txn.invalidate_row_number_groups(self.operator, &GroupSet::new([group]));
-		}
-		Ok(outcome)
+		self.txn.reclaim_group_identity(self.operator, group, limit)
 	}
 }
 
@@ -280,10 +273,6 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 
 	fn remove_row_numbers_by_prefix(&mut self, group: GroupId, key_prefix: &[u8]) -> Result<()> {
 		self.txn.remove_row_numbers_by_prefix(self.operator, group, key_prefix)
-	}
-
-	fn invalidate_row_number_groups(&mut self, groups: &GroupSet) {
-		self.txn.invalidate_row_number_groups(self.operator, groups)
 	}
 
 	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {

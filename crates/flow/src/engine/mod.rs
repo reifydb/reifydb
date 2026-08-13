@@ -160,7 +160,6 @@ impl FlowEngineInner {
 		for operator_id in node_ids {
 			self.operators.remove(&operator_id);
 			self.durable_sinks.remove(&operator_id);
-			self.substrate.row.evict(operator_id);
 			self.substrate.operators.drop_operator_state(operator_id);
 		}
 

@@ -14,8 +14,6 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 
-use crate::transaction::row_number::RowNumberProvider;
-
 #[derive(Clone)]
 pub struct OperatorSampleRegistry {
 	inner: Arc<Mutex<HashMap<OperatorId, OperatorSample>>>,
@@ -241,55 +239,5 @@ mod tests {
 		assert_eq!(out[0].reading.as_f64(), 2.0);
 		assert_eq!(out[1].metric, "row_number_cache_bytes");
 		assert_eq!(out[1].reading.heap_bytes(), Some(64));
-	}
-}
-
-pub struct RowNumberMetricsCollector {
-	provider: RowNumberProvider,
-}
-
-impl RowNumberMetricsCollector {
-	pub fn new(provider: RowNumberProvider) -> Self {
-		Self {
-			provider,
-		}
-	}
-}
-
-impl MetricsCollector for RowNumberMetricsCollector {
-	fn collect(&self, out: &mut Vec<MetricsSample>) {
-		for (operator, sample) in self.provider.samples() {
-			let scope = format!("flow_node::{operator}");
-			if sample.cache.entries.as_u64() > 0 || sample.cache.bytes.as_bytes() > 0 {
-				out.push(MetricsSample::count(
-					scope.clone(),
-					"row_number_cache_entries",
-					sample.cache.entries.as_u64(),
-				));
-				out.push(MetricsSample::heap(
-					scope.clone(),
-					ROW_NUMBER_CACHE_BYTES,
-					sample.cache.bytes,
-				));
-			}
-			out.push(MetricsSample::count(
-				scope.clone(),
-				"row_number_values_complete",
-				sample.completeness.values_complete as u64,
-			));
-			out.push(MetricsSample::count(
-				scope.clone(),
-				"row_number_membership_complete",
-				sample.completeness.membership_complete as u64,
-			));
-			for (metric, count) in [
-				("row_number_absences_served", sample.completeness.absences_served),
-				("row_number_revocations", sample.completeness.revocations),
-			] {
-				if count.as_u64() > 0 {
-					out.push(MetricsSample::counter(scope.clone(), metric, count.as_u64()));
-				}
-			}
-		}
 	}
 }

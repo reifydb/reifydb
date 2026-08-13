@@ -47,7 +47,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
 use reifydb_flow::{
-	operator::metrics::{OperatorSampleCollector, OperatorSampleRegistry, RowNumberMetricsCollector},
+	operator::metrics::{OperatorSampleCollector, OperatorSampleRegistry},
 	transaction::substrate::FlowSubstrate,
 };
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, shutdown::Shutdown, sync::mutex::Mutex};
@@ -137,8 +137,6 @@ impl FlowSubsystem {
 		let metrics_registry = ioc.resolve::<MetricsRegistry>().expect("MetricsRegistry must be registered");
 		metrics_registry
 			.register_operator_collector(Arc::new(OperatorSampleCollector::new(operator_samples.clone())));
-		metrics_registry
-			.register_operator_collector(Arc::new(RowNumberMetricsCollector::new(substrate.row.clone())));
 		let view_lineage = engine.view_lineage();
 
 		let backlog = ioc.resolve::<FlowBacklog>().expect("FlowBacklog must be registered");

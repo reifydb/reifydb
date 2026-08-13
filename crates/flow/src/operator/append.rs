@@ -11,7 +11,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupSet, GroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	metrics::heap::OperatorSample,
 	state::store::TimerKind,
 	value::column::columns::Columns,
@@ -398,7 +398,6 @@ impl AppendOperator {
 		for group in &ids {
 			host.reclaim_group_identity(*group, REMOVE_RECLAIM_LIMIT)?;
 		}
-		host.invalidate_row_number_groups(&GroupSet::new(ids));
 		let output = pre.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::remove(output)))
 	}
@@ -410,7 +409,7 @@ mod tests {
 		common::CommitVersion, key::operator_state::group_inner_range, value::column::columns::Columns,
 	};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::{count::Count, factory::time::at_millis, value::datetime::DateTime};
+	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
 
 	use super::*;
 	use crate::{
@@ -676,37 +675,6 @@ mod tests {
 
 		assert_eq!(group_of(&mut txn, &op, 0, 5), None, "the dictionary entry must go");
 		assert_eq!(group_rows(&mut txn, &op, group), 0, "and the group's range must be left empty");
-	}
-
-	#[test]
-	fn removing_a_source_row_also_takes_its_mapping_out_of_the_row_number_cache() {
-		// Append reclaims identity itself rather than waiting for the sweep that would tell the
-		// provider, so erasing the rows under a live cache leaves one unreachable entry per
-		// removed source row: the group id is never reissued, and nothing reads or evicts it.
-		let engine = TestEngine::new();
-		let mut op = op(14);
-		let mut txn = txn_at(&engine, op.operator, 100);
-		op.translate_create_row_numbers(
-			&mut host(&mut txn, &op),
-			&AppendOperator::group_keys(0, &rows(&[1, 2])),
-		)
-		.unwrap();
-		let provider = txn.row_numbers();
-		assert_eq!(
-			provider.memory(op.operator).entries,
-			Count::new(2),
-			"precondition: both mappings are cached"
-		);
-
-		op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[1]))
-			.unwrap()
-			.expect("a known row must translate");
-
-		assert_eq!(
-			provider.memory(op.operator).entries,
-			Count::new(1),
-			"the removed row's mapping must leave the cache with the rows it named"
-		);
 	}
 
 	#[test]

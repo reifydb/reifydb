@@ -18,13 +18,10 @@ use reifydb_flow::transaction::{
 	state::StateTxn,
 	substrate::{FlowSubstrate, apply_operator_state},
 };
-use reifydb_runtime::{
-	cache::slab::SlabLru,
-	context::clock::{Clock, MockClock},
-};
+use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
-use reifydb_value::{Result, byte_size::ByteSize, value::identity::IdentityId};
+use reifydb_value::value::identity::IdentityId;
 
 const NODE: OperatorId = OperatorId(1);
 
@@ -55,68 +52,12 @@ fn commit_pending(engine: &TestEngine, txn: &mut DeferredTransaction) {
 	apply_operator_state(&engine.inner().operator_state(), &pending);
 }
 
-fn intern_at(
-	interner: &GroupInterner,
-	operator: OperatorId,
-	txn: &mut impl FlowTransaction,
-	group: &EncodedKey,
-) -> Result<(GroupId, bool)> {
-	interner.intern(operator, txn, group)
-}
-
-fn intern_many_at(
-	interner: &GroupInterner,
-	operator: OperatorId,
-	txn: &mut impl FlowTransaction,
-	groups: &[EncodedKey],
-) -> Result<Vec<(GroupId, bool)>> {
-	interner.intern_many(operator, txn, groups)
-}
-
-#[test]
-fn eviction_charge_covers_what_an_entry_actually_retains() {
-	let mut state = NodeState::default();
-	for i in 0..256u64 {
-		state.remember(&group(&format!("g{i}")), GroupId(i + 1));
-	}
-
-	let retained = state.cache.len() as u64 * SlabLru::<EncodedKey, GroupId>::entry_struct_bytes() as u64;
-	assert!(
-		state.cache_size.as_bytes() >= retained,
-		"charged {} for {} entries that retain {}",
-		state.cache_size.as_bytes(),
-		state.cache.len(),
-		retained
-	);
-}
-
-#[test]
-fn a_budget_bounds_the_memory_its_surviving_entries_retain() {
-	let budget = ByteSize::from_bytes(64 * 1024);
-	let mut state = NodeState::default();
-	for i in 0..4096u64 {
-		state.remember(&group(&format!("g{i}")), GroupId(i + 1));
-	}
-
-	state.evict_to_budget(budget);
-
-	let retained = state.cache.len() as u64 * SlabLru::<EncodedKey, GroupId>::entry_struct_bytes() as u64;
-	assert!(
-		retained <= budget.as_bytes(),
-		"{} entries survived a {} byte budget and retain {}",
-		state.cache.len(),
-		budget.as_bytes(),
-		retained
-	);
-}
-
 #[test]
 fn the_first_group_interns_to_the_first_usable_id() {
 	let engine = TestEngine::new();
-	let interner = GroupInterner::default();
 	let mut txn = deferred(&engine);
 
-	let (id, is_new) = intern_at(&interner, NODE, &mut txn, &group("first")).unwrap();
+	let (id, is_new) = txn.intern_group(NODE, &group("first")).unwrap();
 
 	assert_eq!(id, GroupId::FIRST, "the first group must not take the operator-scope id");
 	assert!(!id.is_root());
@@ -126,11 +67,10 @@ fn the_first_group_interns_to_the_first_usable_id() {
 #[test]
 fn a_repeated_group_resolves_to_the_same_id() {
 	let engine = TestEngine::new();
-	let interner = GroupInterner::default();
 	let mut txn = deferred(&engine);
 
-	let (first, new_first) = intern_at(&interner, NODE, &mut txn, &group("mint")).unwrap();
-	let (second, new_second) = intern_at(&interner, NODE, &mut txn, &group("mint")).unwrap();
+	let (first, new_first) = txn.intern_group(NODE, &group("mint")).unwrap();
+	let (second, new_second) = txn.intern_group(NODE, &group("mint")).unwrap();
 
 	assert_eq!(first, second, "the same group bytes must always resolve to the same id");
 	assert!(new_first);
@@ -140,11 +80,9 @@ fn a_repeated_group_resolves_to_the_same_id() {
 #[test]
 fn distinct_groups_get_distinct_ids() {
 	let engine = TestEngine::new();
-	let interner = GroupInterner::default();
 	let mut txn = deferred(&engine);
 
-	let ids: Vec<GroupId> =
-		(0..5).map(|i| intern_at(&interner, NODE, &mut txn, &group(&format!("g{i}"))).unwrap().0).collect();
+	let ids: Vec<GroupId> = (0..5).map(|i| txn.intern_group(NODE, &group(&format!("g{i}"))).unwrap().0).collect();
 
 	let mut unique = ids.clone();
 	unique.sort_unstable();
@@ -155,11 +93,10 @@ fn distinct_groups_get_distinct_ids() {
 #[test]
 fn a_batch_dedupes_repeated_groups_and_reports_one_mint() {
 	let engine = TestEngine::new();
-	let interner = GroupInterner::default();
 	let mut txn = deferred(&engine);
 
 	let batch = vec![group("a"), group("b"), group("a"), group("b"), group("a")];
-	let resolved = intern_many_at(&interner, NODE, &mut txn, &batch).unwrap();
+	let resolved = txn.intern_groups(NODE, &batch).unwrap();
 
 	assert_eq!(resolved[0].0, resolved[2].0);
 	assert_eq!(resolved[0].0, resolved[4].0);
@@ -176,34 +113,31 @@ fn a_batch_dedupes_repeated_groups_and_reports_one_mint() {
 fn ids_survive_a_restart() {
 	let engine = TestEngine::new();
 	let before = {
-		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
-		let id = intern_at(&interner, NODE, &mut txn, &group("survivor")).unwrap().0;
-		intern_at(&interner, NODE, &mut txn, &group("other")).unwrap();
+		let id = txn.intern_group(NODE, &group("survivor")).unwrap().0;
+		txn.intern_group(NODE, &group("other")).unwrap();
 		commit_pending(&engine, &mut txn);
 		id
 	};
 
-	let cold = GroupInterner::default();
 	let mut txn = deferred(&engine);
-	let (after, is_new) = intern_at(&cold, NODE, &mut txn, &group("survivor")).unwrap();
+	let (after, is_new) = txn.intern_group(NODE, &group("survivor")).unwrap();
 
-	assert_eq!(after, before, "a restarted interner must resolve an existing group to its stored id");
+	assert_eq!(after, before, "a later transaction must resolve an existing group to its stored id");
 	assert!(!is_new, "an existing group must not be reported as newly interned after a restart");
 }
 
 #[test]
 fn a_reborn_group_never_reuses_the_id_of_the_generation_before_it() {
 	let engine = TestEngine::new();
-	let interner = GroupInterner::default();
 	let mut txn = deferred(&engine);
 
-	let original = intern_at(&interner, NODE, &mut txn, &group("reborn")).unwrap().0;
-	interner.forget(NODE, &mut txn, &group("reborn")).unwrap();
+	let original = txn.intern_group(NODE, &group("reborn")).unwrap().0;
+	txn.forget_group(NODE, &group("reborn")).unwrap();
 	commit_pending(&engine, &mut txn);
 
 	let mut txn = deferred(&engine);
-	let (reborn, is_new) = intern_at(&interner, NODE, &mut txn, &group("reborn")).unwrap();
+	let (reborn, is_new) = txn.intern_group(NODE, &group("reborn")).unwrap();
 
 	assert!(is_new, "a forgotten group is unknown again and must mint afresh");
 	assert_ne!(reborn, original, "a reclaimed id must never be handed back out");
@@ -212,35 +146,40 @@ fn a_reborn_group_never_reuses_the_id_of_the_generation_before_it() {
 #[test]
 fn a_forgotten_group_stops_resolving() {
 	let engine = TestEngine::new();
-	let interner = GroupInterner::default();
 	let mut txn = deferred(&engine);
-	intern_at(&interner, NODE, &mut txn, &group("gone")).unwrap();
+	txn.intern_group(NODE, &group("gone")).unwrap();
 	commit_pending(&engine, &mut txn);
 
 	let mut txn = deferred(&engine);
-	interner.forget(NODE, &mut txn, &group("gone")).unwrap();
+	txn.forget_group(NODE, &group("gone")).unwrap();
 	commit_pending(&engine, &mut txn);
 
-	let cold = GroupInterner::default();
 	let mut txn = deferred(&engine);
 	assert_eq!(
-		cold.lookup(NODE, &mut txn, &group("gone")).unwrap(),
+		txn.lookup_group(NODE, &group("gone")).unwrap(),
 		None,
-		"a forgotten group must not resurrect through hydration"
+		"a forgotten group must not resurrect from the store"
 	);
+}
+
+#[test]
+fn forgetting_an_absent_group_reports_that_nothing_was_there() {
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+
+	assert!(!txn.forget_group(NODE, &group("never-interned")).unwrap());
 }
 
 #[test]
 fn an_id_resolves_back_to_the_bytes_it_was_interned_from() {
 	let engine = TestEngine::new();
-	let interner = GroupInterner::default();
 	let mut txn = deferred(&engine);
 	let bytes = group("two-address-key");
 
-	let (id, _) = intern_at(&interner, NODE, &mut txn, &bytes).unwrap();
+	let (id, _) = txn.intern_group(NODE, &bytes).unwrap();
 
 	assert_eq!(
-		interner.group_bytes(NODE, &mut txn, id).unwrap(),
+		txn.group_bytes(NODE, id).unwrap(),
 		Some(bytes),
 		"an interned group must be resolvable from its id alone"
 	);
@@ -248,13 +187,11 @@ fn an_id_resolves_back_to_the_bytes_it_was_interned_from() {
 
 #[test]
 fn the_reverse_record_lives_outside_the_group_data_range() {
-	// Floor compaction cancels rows in the group's data keyspaces only, so the reverse record
-	// must sit outside that range or a floored group could no longer resolve its own bytes.
+	// Floor compaction cancels the group's data keyspaces, so the record must sit outside them.
 	let engine = TestEngine::new();
-	let interner = GroupInterner::default();
 	let mut txn = deferred(&engine);
 	let bytes = group("outlives-its-data");
-	let (id, _) = intern_at(&interner, NODE, &mut txn, &bytes).unwrap();
+	let (id, _) = txn.intern_group(NODE, &bytes).unwrap();
 
 	let batch = txn
 		.state_range(NODE, group_data_inner_range(id), None, "test")
@@ -267,7 +204,7 @@ fn the_reverse_record_lives_outside_the_group_data_range() {
 	}
 
 	assert_eq!(
-		interner.group_bytes(NODE, &mut txn, id).unwrap(),
+		txn.group_bytes(NODE, id).unwrap(),
 		Some(bytes),
 		"erasing every data row must not take the record identity depends on"
 	);
@@ -276,12 +213,11 @@ fn the_reverse_record_lives_outside_the_group_data_range() {
 #[test]
 fn lookup_does_not_intern() {
 	let engine = TestEngine::new();
-	let interner = GroupInterner::default();
 	let mut txn = deferred(&engine);
 
-	assert_eq!(interner.lookup(NODE, &mut txn, &group("absent")).unwrap(), None);
+	assert_eq!(txn.lookup_group(NODE, &group("absent")).unwrap(), None);
 
-	let (id, is_new) = intern_at(&interner, NODE, &mut txn, &group("absent")).unwrap();
+	let (id, is_new) = txn.intern_group(NODE, &group("absent")).unwrap();
 	assert!(is_new, "the earlier lookup must not have interned the group");
 	assert_eq!(id, GroupId::FIRST, "a lookup must not consume an id from the counter");
 }
@@ -289,18 +225,17 @@ fn lookup_does_not_intern() {
 #[test]
 fn nodes_intern_independently() {
 	let engine = TestEngine::new();
-	let interner = GroupInterner::default();
 	let mut txn = deferred(&engine);
 
-	let first = intern_at(&interner, OperatorId(1), &mut txn, &group("shared")).unwrap().0;
-	let second = intern_at(&interner, OperatorId(2), &mut txn, &group("shared")).unwrap().0;
+	let first = txn.intern_group(OperatorId(1), &group("shared")).unwrap().0;
+	let second = txn.intern_group(OperatorId(2), &group("shared")).unwrap().0;
 
 	assert_eq!(first, second, "each operator numbers its own groups from the same starting point");
 
-	let other = intern_at(&interner, OperatorId(2), &mut txn, &group("only-on-two")).unwrap().0;
+	let other = txn.intern_group(OperatorId(2), &group("only-on-two")).unwrap().0;
 	let mut txn = deferred(&engine);
 	assert_eq!(
-		interner.lookup(OperatorId(1), &mut txn, &group("only-on-two")).unwrap(),
+		txn.lookup_group(OperatorId(1), &group("only-on-two")).unwrap(),
 		None,
 		"a group interned on one operator must not resolve on another"
 	);

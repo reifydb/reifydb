@@ -8,8 +8,6 @@ use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 
 use crate::transaction::{
 	frontier::OutputFrontiers,
-	group::GroupInterner,
-	row_number::RowNumberProvider,
 	scope::{OperatorScope, operator_state_coordinates},
 	timer::TimerWheel,
 	watermark::SourceWatermarks,
@@ -17,8 +15,6 @@ use crate::transaction::{
 
 #[derive(Clone, Default)]
 pub struct FlowSubstrate {
-	pub row: RowNumberProvider,
-	pub group: GroupInterner,
 	pub dictionary: DictionaryAllocatorRegistry,
 	pub watermarks: SourceWatermarks,
 	pub frontiers: OutputFrontiers,

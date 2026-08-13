@@ -45,9 +45,7 @@ use crate::{
 	operator::sink::DurableSink,
 	timer::Timer,
 	transaction::{
-		group::GroupInterner,
 		read::{flow_merge_pending_iterator, flow_merge_pending_iterator_rev},
-		row_number::RowNumberProvider,
 		substrate::FlowSubstrate,
 		timer::TimerWheel,
 		watermark::SourceWatermarks,
@@ -222,14 +220,6 @@ pub trait FlowTransaction: Sized + Send + 'static {
 			return Some(None);
 		}
 		pending.get(key).map(|row| Some(row.clone()))
-	}
-
-	fn row_numbers(&self) -> RowNumberProvider {
-		self.substrate().row.clone()
-	}
-
-	fn group_interner(&self) -> GroupInterner {
-		self.substrate().group.clone()
 	}
 
 	fn dictionary_allocators(&self) -> DictionaryAllocatorRegistry {
