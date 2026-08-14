@@ -224,7 +224,6 @@ impl SliceComputer {
 		&self,
 		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
-		timestamp: DateTime,
 		checkpoint: CommitVersion,
 	) -> Result<(Pending, Vec<Change>)> {
 		let (state_version, lease) = self.engine.acquire_current_snapshot_lease()?;
@@ -242,7 +241,7 @@ impl SliceComputer {
 			substrate: flow_engine.substrate().clone(),
 		});
 
-		flow_engine.process_tick(&mut txn, flow_id, timestamp, checkpoint)?;
+		flow_engine.process_tick(&mut txn, flow_id, checkpoint)?;
 
 		let view_changes = self.consolidated_view_changes(&mut txn, state_version)?;
 		Ok((txn.take_pending(), view_changes))

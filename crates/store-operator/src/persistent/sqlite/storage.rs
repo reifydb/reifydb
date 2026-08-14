@@ -16,7 +16,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::GroupId,
-	metrics::{collect::MetricsCollector, sample::MetricsSample},
+	metrics::{collect::MetricsCollector, sample::MetricsSample, scan::record_page},
 };
 use reifydb_runtime::{
 	shutdown::Shutdown,
@@ -328,11 +328,14 @@ impl SqliteOperatorStorage {
 
 	#[instrument(name = "store::operator::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
 	pub fn range_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
-		let mut sql = String::from(r#"SELECT "key", "bytes" FROM "operator_state" WHERE "operator" = ?1"#);
-		let mut blobs: Vec<Vec<u8>> = Vec::new();
-		push_bound(&mut sql, &mut blobs, range.start.as_ref(), true);
-		push_bound(&mut sql, &mut blobs, range.end.as_ref(), false);
-		sql.push_str(&format!(r#" ORDER BY "key" ASC LIMIT ?{}"#, blobs.len() + 2));
+		let sql = range_sql(range.start.as_ref(), range.end.as_ref());
+		let mut blobs: Vec<&[u8]> = Vec::with_capacity(2);
+		if let Bound::Included(key) | Bound::Excluded(key) = range.start.as_ref() {
+			blobs.push(key.as_slice());
+		}
+		if let Bound::Included(key) | Bound::Excluded(key) = range.end.as_ref() {
+			blobs.push(key.as_slice());
+		}
 
 		let limit = batch_size.max(1);
 		let operator_param = operator.0 as i64;
@@ -348,7 +351,7 @@ impl SqliteOperatorStorage {
 		let Some(conn) = guard.as_ref() else {
 			return OperatorBatch::empty();
 		};
-		let mut stmt = conn.prepare_cached(&sql).expect("operator state scan could not be prepared");
+		let mut stmt = conn.prepare_cached(sql).expect("operator state scan could not be prepared");
 		let mut rows = stmt.query(bound_params.as_slice()).expect("operator state scan failed");
 
 		let mut items = Vec::new();
@@ -357,6 +360,7 @@ impl SqliteOperatorStorage {
 			let bytes: Vec<u8> = row.get(1).expect("operator state rows carry a blob payload");
 			items.push((EncodedKey::new(key), decode_row(bytes)));
 		}
+		record_page(items.len() as u64, 0);
 
 		let has_more = items.len() as u64 > limit;
 		items.truncate(limit as usize);
@@ -634,28 +638,59 @@ impl MetricsCollector for OperatorPageCacheCollector {
 	}
 }
 
-fn push_bound(sql: &mut String, blobs: &mut Vec<Vec<u8>>, bound: Bound<&EncodedKey>, lower: bool) {
-	let (key, operator) = match bound {
-		Bound::Included(key) => (
-			key,
-			if lower {
-				">="
-			} else {
-				"<="
-			},
-		),
-		Bound::Excluded(key) => (
-			key,
-			if lower {
-				">"
-			} else {
-				"<"
-			},
-		),
-		Bound::Unbounded => return,
+macro_rules! range_sql_variant {
+	($($clause:expr),*) => {
+		concat!(
+			r#"SELECT "key", "bytes" FROM "operator_state" WHERE "operator" = ?1"#,
+			$($clause,)*
+		)
 	};
-	blobs.push(key.as_slice().to_vec());
-	sql.push_str(&format!(r#" AND "key" {} ?{}"#, operator, blobs.len() + 1));
+}
+
+fn range_sql(start: Bound<&EncodedKey>, end: Bound<&EncodedKey>) -> &'static str {
+	match (start, end) {
+		(Bound::Unbounded, Bound::Unbounded) => range_sql_variant!(r#" ORDER BY "key" ASC LIMIT ?2"#),
+		(Bound::Unbounded, Bound::Included(_)) => {
+			range_sql_variant!(r#" AND "key" <= ?2"#, r#" ORDER BY "key" ASC LIMIT ?3"#)
+		}
+		(Bound::Unbounded, Bound::Excluded(_)) => {
+			range_sql_variant!(r#" AND "key" < ?2"#, r#" ORDER BY "key" ASC LIMIT ?3"#)
+		}
+		(Bound::Included(_), Bound::Unbounded) => {
+			range_sql_variant!(r#" AND "key" >= ?2"#, r#" ORDER BY "key" ASC LIMIT ?3"#)
+		}
+		(Bound::Excluded(_), Bound::Unbounded) => {
+			range_sql_variant!(r#" AND "key" > ?2"#, r#" ORDER BY "key" ASC LIMIT ?3"#)
+		}
+		(Bound::Included(_), Bound::Included(_)) => {
+			range_sql_variant!(
+				r#" AND "key" >= ?2"#,
+				r#" AND "key" <= ?3"#,
+				r#" ORDER BY "key" ASC LIMIT ?4"#
+			)
+		}
+		(Bound::Included(_), Bound::Excluded(_)) => {
+			range_sql_variant!(
+				r#" AND "key" >= ?2"#,
+				r#" AND "key" < ?3"#,
+				r#" ORDER BY "key" ASC LIMIT ?4"#
+			)
+		}
+		(Bound::Excluded(_), Bound::Included(_)) => {
+			range_sql_variant!(
+				r#" AND "key" > ?2"#,
+				r#" AND "key" <= ?3"#,
+				r#" ORDER BY "key" ASC LIMIT ?4"#
+			)
+		}
+		(Bound::Excluded(_), Bound::Excluded(_)) => {
+			range_sql_variant!(
+				r#" AND "key" > ?2"#,
+				r#" AND "key" < ?3"#,
+				r#" ORDER BY "key" ASC LIMIT ?4"#
+			)
+		}
+	}
 }
 
 fn decode_expiry(millis: i64) -> DateTime {

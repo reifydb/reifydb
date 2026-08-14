@@ -7,7 +7,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::operator::EncodedOperatorRow,
 };
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId, metrics::scan::record_page};
 use reifydb_runtime::{shutdown::Shutdown, sync::rwlock::RwLock};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
@@ -112,6 +112,8 @@ impl MemoryOperatorStorage {
 			.take(limit as usize + 1)
 			.map(|((_, key), row)| (key.clone(), row.clone()))
 			.collect();
+
+		record_page(items.len() as u64, 0);
 
 		let has_more = items.len() as u64 > limit;
 		items.truncate(limit as usize);

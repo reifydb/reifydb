@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKey};
+use std::ops::Bound;
+
+use reifydb_codec::key::{
+	decode_u64_asc, encode_u64_asc,
+	encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
@@ -31,6 +36,15 @@ fn timer_suffix(at: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
 
 fn timer_key(at: DateTime, kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_WHEEL, timer_suffix(at, kind, key))
+}
+
+fn due_range(ceiling: u64) -> EncodedKeyRange {
+	let wheel = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
+	let Some(exclusive) = ceiling.checked_add(1) else {
+		return wheel;
+	};
+	let end = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_WHEEL, encode_u64_asc(exclusive));
+	EncodedKeyRange::new(wheel.start, Bound::Excluded(end.into_encoded()))
 }
 
 fn index_key(kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
@@ -147,9 +161,8 @@ impl TimerWheel {
 		if limit == 0 {
 			return Ok(Vec::new());
 		}
-		let range = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
-		let batch = txn.state_range(operator, range, Some(limit), "timer::take_due")?;
 		let ceiling = watermark.to_millis();
+		let batch = txn.state_range(operator, due_range(ceiling), Some(limit), "timer::take_due")?;
 		let mut due = Vec::new();
 		for item in &batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)

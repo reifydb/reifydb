@@ -493,9 +493,7 @@ impl FlowActor {
 
 	fn on_tick(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		if self.ticks_enabled && !state.poisoned && !state.committing {
-			let timestamp = DateTime::from_millis(self.clock.now().to_millis());
-			match self.computer.tick(&mut state.flow_engine, self.flow_id, timestamp, state.durable_cursor)
-			{
+			match self.computer.tick(&mut state.flow_engine, self.flow_id, state.durable_cursor) {
 				Ok((pending, view_changes)) => {
 					let has_output =
 						pending.iter_sorted().next().is_some() || !view_changes.is_empty();
