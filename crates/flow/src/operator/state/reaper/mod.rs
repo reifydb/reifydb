@@ -81,6 +81,42 @@ pub fn queued(store: &mut dyn StateStore, limit: usize) -> Result<Queued> {
 	})
 }
 
+pub struct GroupDrain {
+	pub freed: usize,
+	pub still_queued: bool,
+}
+
+pub fn drain_group<R>(
+	store: &mut dyn IdentityReclaim,
+	group: GroupId,
+	reaper: &mut R,
+	budget: usize,
+) -> Result<GroupDrain>
+where
+	R: Reaper,
+{
+	let freed = reap_group(store, group, reaper, budget)?;
+	if freed >= budget {
+		return Ok(GroupDrain {
+			freed,
+			still_queued: true,
+		});
+	}
+	let outcome = store.reclaim_identity(group, budget - freed)?;
+	let freed = freed + outcome.removed.as_u64() as usize;
+	if outcome.more {
+		return Ok(GroupDrain {
+			freed,
+			still_queued: true,
+		});
+	}
+	store.state_remove(&queue_key(group))?;
+	Ok(GroupDrain {
+		freed,
+		still_queued: false,
+	})
+}
+
 pub fn drain<R>(store: &mut dyn IdentityReclaim, reaper: &mut R, budget: usize) -> Result<DrainOutcome>
 where
 	R: Reaper,
@@ -96,17 +132,9 @@ where
 			still_queued.extend(pending);
 			break;
 		}
-		let freed = reap_group(store, group, reaper, allowance)?;
-		spent += freed;
-		if freed < allowance {
-			let outcome = store.reclaim_identity(group, allowance - freed)?;
-			spent += outcome.removed.as_u64() as usize;
-			if outcome.more {
-				still_queued.push(group);
-			} else {
-				store.state_remove(&queue_key(group))?;
-			}
-		} else {
+		let outcome = drain_group(store, group, reaper, allowance)?;
+		spent += outcome.freed;
+		if outcome.still_queued {
 			still_queued.push(group);
 		}
 	}

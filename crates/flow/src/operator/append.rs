@@ -12,7 +12,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 	},
 	key::operator_state::{GroupId, GroupStateKey},
-	metrics::heap::OperatorSample,
+	metrics::{heap::OperatorSample, instruments::counter::Counter},
 	state::store::TimerKind,
 	value::column::columns::Columns,
 };
@@ -31,7 +31,7 @@ use crate::{
 		drops::SealedDrops,
 		host::HostContext,
 		state::{
-			reaper::{StoreReaper, drain, enqueue, queue_key, queued},
+			reaper::{StoreReaper, drain, drain_group, enqueue, queue_key, queued},
 			seal::{ledger::FiredAt, policy::SealPolicy},
 		},
 	},
@@ -45,6 +45,8 @@ const REMOVE_RECLAIM_LIMIT: usize = 8;
 
 const SEAL_BATCH: usize = 256;
 
+const QUEUE_SWEEP_EVERY: u64 = 1024;
+
 const DROP_REASON: &str = "mutations whose source row mapping was reclaimed";
 
 pub struct AppendOperator {
@@ -57,6 +59,8 @@ pub struct AppendOperator {
 	dropped: SealedDrops,
 
 	seal: Option<Duration>,
+
+	seal_fires: Counter,
 }
 
 impl AppendOperator {
@@ -76,6 +80,7 @@ impl AppendOperator {
 			input_nodes,
 			dropped: SealedDrops::new(operator, DROP_REASON),
 			seal: seal.filter(|span| !span.is_zero()),
+			seal_fires: Counter::new("flow.operator.append.seal_fires_total", "Append seal timer fires"),
 		}
 	}
 
@@ -87,6 +92,7 @@ impl AppendOperator {
 			input_nodes: Vec::new(),
 			dropped: SealedDrops::new(operator, DROP_REASON),
 			seal: None,
+			seal_fires: Counter::new("flow.operator.append.seal_fires_total", "Append seal timer fires"),
 		}
 	}
 
@@ -200,22 +206,33 @@ impl AppendOperator {
 		let Some(seal) = self.seal else {
 			return Ok(0);
 		};
-		if let Some(expiry) = Self::read_anchor(host, group)? {
-			if expiry > fired.at() {
-				host.arm_timer(expiry, TimerKind::Maintenance, &Self::timer_key(group))?;
-				return Ok(0);
-			}
-			host.state_remove(&Self::anchor_key(group))?;
-			enqueue(host, group)?;
-		}
-		let drained = drain(host, &mut StoreReaper, SEAL_BATCH)?;
 		let retry = fired.at().saturating_add(seal);
-		let pending = if drained.more {
-			queued(host, SEAL_BATCH)?.groups
-		} else {
-			drained.still_queued
+
+		self.seal_fires.inc();
+		if self.seal_fires.get() as u64 % QUEUE_SWEEP_EVERY == 0 {
+			let drained = drain(host, &mut StoreReaper, SEAL_BATCH)?;
+			let pending = if drained.more {
+				queued(host, SEAL_BATCH)?.groups
+			} else {
+				drained.still_queued
+			};
+			for stalled in pending {
+				host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(stalled))?;
+			}
+		}
+
+		let Some(expiry) = Self::read_anchor(host, group)? else {
+			return Ok(0);
 		};
-		for group in pending {
+		if expiry > fired.at() {
+			host.arm_timer(expiry, TimerKind::Maintenance, &Self::timer_key(group))?;
+			return Ok(0);
+		}
+		host.state_remove(&Self::anchor_key(group))?;
+		enqueue(host, group)?;
+
+		let drained = drain_group(host, group, &mut StoreReaper, SEAL_BATCH)?;
+		if drained.still_queued {
 			host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(group))?;
 		}
 		Ok(drained.freed)

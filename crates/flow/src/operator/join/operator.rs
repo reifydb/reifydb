@@ -19,7 +19,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 	},
 	key::operator_state::{GroupId, GroupStateKey},
-	metrics::heap::OperatorSample,
+	metrics::{heap::OperatorSample, instruments::counter::Counter},
 	state::store::TimerKind,
 	value::column::{ColumnWithName, columns::Columns},
 };
@@ -53,7 +53,7 @@ use crate::{
 		host::HostContext,
 		join::{Emitted, Identity},
 		state::{
-			reaper::{StoreReaper, drain, enqueue, queue_key, queued},
+			reaper::{StoreReaper, drain, drain_group, enqueue, queue_key, queued},
 			seal::{ledger::FiredAt, policy::SealPolicy},
 		},
 	},
@@ -64,6 +64,8 @@ use crate::{
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
 const SEAL_BATCH: usize = 256;
+
+const QUEUE_SWEEP_EVERY: u64 = 1024;
 
 fn group_by_key(keys: &[Option<Hash128>]) -> (Vec<Hash128>, HashMap<Hash128, Vec<usize>>, Vec<usize>) {
 	let mut order: Vec<Hash128> = Vec::new();
@@ -154,6 +156,7 @@ pub struct JoinOperator {
 	left_seal: Option<Duration>,
 	right_seal: Option<Duration>,
 	ctx: Arc<FlowContext>,
+	seal_fires: Counter,
 }
 
 impl JoinOperator {
@@ -213,6 +216,7 @@ impl JoinOperator {
 			left_seal: left_seal.filter(|span| !span.is_zero()),
 			right_seal: right_seal.filter(|span| !span.is_zero()),
 			ctx,
+			seal_fires: Counter::new("flow.operator.join.seal_fires_total", "Join seal timer fires"),
 		}
 	}
 
@@ -446,10 +450,24 @@ impl JoinOperator {
 		host.state_remove(&Self::anchor_key(group, side, row_number))
 	}
 
-	fn seal_group(&self, host: &mut dyn HostContext, fired: FiredAt, group: GroupId) -> Result<()> {
+	fn seal_group(&mut self, host: &mut dyn HostContext, fired: FiredAt, group: GroupId) -> Result<()> {
 		let Some(span) = self.widest_seal() else {
 			return Ok(());
 		};
+		let retry = fired.at().saturating_add(span);
+
+		self.seal_fires.inc();
+		if self.seal_fires.get() as u64 % QUEUE_SWEEP_EVERY == 0 {
+			let drained = drain(host, &mut StoreReaper, SEAL_BATCH)?;
+			let pending = if drained.more {
+				queued(host, SEAL_BATCH)?.groups
+			} else {
+				drained.still_queued
+			};
+			for stalled in pending {
+				host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(stalled))?;
+			}
+		}
 
 		let state = JoinState::new();
 		let mut next_arm: Option<DateTime>;
@@ -473,20 +491,15 @@ impl JoinOperator {
 
 		if let Some(at) = next_arm {
 			host.arm_timer(at, TimerKind::Maintenance, &Self::timer_key(group))?;
-		} else if !state.left.holds_rows(host, group)? && !state.right.holds_rows(host, group)? {
+			return Ok(());
+		}
+		if !state.left.holds_rows(host, group)? && !state.right.holds_rows(host, group)? {
 			host.clear_anchors(group, SEAL_BATCH)?;
 			enqueue(host, group)?;
-		}
-
-		let drained = drain(host, &mut StoreReaper, SEAL_BATCH)?;
-		let retry = fired.at().saturating_add(span);
-		let pending = if drained.more {
-			queued(host, SEAL_BATCH)?.groups
-		} else {
-			drained.still_queued
-		};
-		for group in pending {
-			host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(group))?;
+			let drained = drain_group(host, group, &mut StoreReaper, SEAL_BATCH)?;
+			if drained.still_queued {
+				host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(group))?;
+			}
 		}
 		Ok(())
 	}
