@@ -13,7 +13,7 @@ use reifydb_value::Result;
 use crate::{
 	engine::{FlowEngineInner, execution::dispatch::Node},
 	operator::host::TxnHostContext,
-	timer::Timer,
+	timer::{Timer, TimerDue},
 	transaction::{ChangeCoordinate, FlowTransaction},
 };
 
@@ -48,20 +48,24 @@ impl FlowEngineInner {
 			txn.set_flow_watermark(watermark);
 			let armed = txn.take_armed();
 			let mut due: Vec<(OperatorId, Timer)> = Vec::new();
-			let mut scanned: Vec<OperatorId> = Vec::new();
 			for candidate in self.timers.due_before(armed, flow.id, watermark) {
 				if budget == 0 {
 					break;
 				}
-				scanned.push(candidate.operator_id);
-				for timer in wheel.take_due(candidate.operator_id, txn, watermark, budget)? {
+				let operator_id = candidate.operator_id;
+				let (timers, next) = wheel.take_due(operator_id, txn, watermark, budget)?;
+				for timer in timers {
 					budget -= 1;
-					due.push((candidate.operator_id, timer));
+					due.push((operator_id, timer));
 				}
-			}
-			for operator_id in scanned {
-				let next = wheel.next_due(operator_id, txn)?;
-				self.timers.refresh(flow.id, operator_id, next);
+				self.timers.refresh(
+					flow.id,
+					operator_id,
+					next.map(|due| TimerDue {
+						operator_id,
+						due,
+					}),
+				);
 			}
 			if due.is_empty() {
 				return Ok(fired_total);

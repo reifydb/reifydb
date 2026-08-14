@@ -1,18 +1,12 @@
 //  SPDX-License-Identifier: AGPL-3.0-or-later
 //  Copyright (c) 2025 ReifyDB
 
-use reifydb_codec::key::{
-	decode_datetime_asc, encode_datetime_asc,
-	encoded::{EncodedKey, EncodedKeyRange},
-};
+use reifydb_codec::key::{decode_datetime_asc, encode_datetime_asc, encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::{
-			GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
-			keyspace_inner_range_upto,
-		},
+		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
 	},
 	state::store::TimerKind,
 };
@@ -126,40 +120,26 @@ impl TimerWheel {
 		})
 	}
 
-	pub fn next_due(
-		&self,
-		operator: OperatorId,
-		txn: &mut impl FlowTransaction,
-	) -> reifydb_value::Result<Option<TimerDue>> {
-		let wheel = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
-		let batch = txn.state_range(operator, wheel, Some(1), "timer::next_due")?;
-		let Some(item) = batch.items.first() else {
-			return Ok(None);
-		};
-		let decoded = OperatorStateKey::decode(&item.key).expect("state_range must return OperatorState keys");
-		Ok(Some(TimerDue {
-			operator_id: operator,
-			due: decode_timer(&decoded.suffix).due,
-		}))
-	}
-
 	pub fn take_due(
 		&self,
 		operator: OperatorId,
 		txn: &mut impl FlowTransaction,
 		watermark: DateTime,
 		limit: usize,
-	) -> reifydb_value::Result<Vec<Timer>> {
+	) -> reifydb_value::Result<(Vec<Timer>, Option<DateTime>)> {
 		if limit == 0 {
-			return Ok(Vec::new());
+			return Ok((Vec::new(), None));
 		}
-		let batch = txn.state_range(operator, due_range(watermark), Some(limit), "timer::take_due")?;
+		let wheel = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
+		let batch = txn.state_range(operator, wheel, Some(limit.saturating_add(1)), "timer::take_due")?;
 		let mut due = Vec::new();
+		let mut next = None;
 		for item in &batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_range must return OperatorState keys");
 			let timer = decode_timer(&decoded.suffix);
-			if timer.due > watermark {
+			if timer.due > watermark || due.len() == limit {
+				next = Some(timer.due);
 				break;
 			}
 			due.push(timer);
@@ -175,7 +155,7 @@ impl TimerWheel {
 			}
 		}
 
-		Ok(due)
+		Ok((due, next))
 	}
 }
 
@@ -189,10 +169,6 @@ fn timer_suffix(due: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
 
 fn timer_key(due: DateTime, kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_WHEEL, timer_suffix(due, kind, key))
-}
-
-fn due_range(ceiling: DateTime) -> EncodedKeyRange {
-	keyspace_inner_range_upto(GroupId::ROOT, Keyspace::TIMER_WHEEL, &encode_datetime_asc(ceiling))
 }
 
 fn index_key(kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
