@@ -253,7 +253,7 @@ impl<O: HostOperator> Harness<O> {
 		let mut rounds = 0u32;
 		loop {
 			let mut txn = self.begin(watermark);
-			let due = wheel.take_due(operator, &mut txn, watermark, usize::MAX)?;
+			let (due, _next) = wheel.take_due(operator, &mut txn, watermark, usize::MAX)?;
 			if due.is_empty() {
 				self.end(txn);
 				return Ok(emitted);

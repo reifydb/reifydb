@@ -42,8 +42,8 @@
   --rdb-space-3: 0.75rem;
   --rdb-space-4: 1rem;
 
-  /* Border radius — brutalist square geometry */
-  --rdb-radius: 0px;
+  /* Border radius */
+  --rdb-radius: 6px;
 
   /* Borders */
   --rdb-border: none;

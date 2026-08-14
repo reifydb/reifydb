@@ -7,9 +7,9 @@
 
 .rdb-snippet {
   background: var(--rdb-color-bg-secondary);
-  border: 2px solid var(--rdb-color-border);
+  border: 1px solid var(--rdb-color-border);
   border-radius: var(--rdb-radius);
-  box-shadow: 4px 4px 0 var(--rdb-color-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   font-family: var(--rdb-font-mono);
 }
@@ -97,7 +97,7 @@
   display: flex;
   flex-direction: column;
   background: var(--rdb-color-bg-tertiary);
-  border-top: 2px solid var(--rdb-color-border);
+  border-top: 1px solid var(--rdb-color-border);
 }
 
 .rdb-snippet__results-header-right {
@@ -241,7 +241,7 @@
   color: var(--rdb-color-secondary);
   font-weight: 600;
   white-space: nowrap;
-  border-bottom: 2px solid var(--rdb-color-border);
+  border-bottom: 1px solid var(--rdb-color-border);
 }
 
 .rdb-snippet__table td {
@@ -278,7 +278,7 @@
 .rdb-snippet__record-table {
   width: 100%;
   border-collapse: collapse;
-  border: 2px solid var(--rdb-color-border);
+  border: 1px solid var(--rdb-color-border);
   font-size: var(--rdb-font-size-sm);
 }
 
@@ -669,7 +669,7 @@
 .rdb-history__entry-indicator {
   width: 6px;
   height: 6px;
-  border-radius: 0;
+  border-radius: 50%;
   flex-shrink: 0;
 }
 

@@ -10,7 +10,7 @@ export interface TableProps {
 
 export function Table({ children, className = "" }: TableProps) {
   return (
-    <div className="w-full overflow-x-auto rounded-none">
+    <div className="w-full overflow-x-auto rounded-md">
       <table className={`w-full text-sm ${className}`}>{children}</table>
     </div>
   );
@@ -18,7 +18,7 @@ export function Table({ children, className = "" }: TableProps) {
 
 export function TableHead({ children }: { children: ReactNode }) {
   return (
-    <thead className="border-b-2 border-border-light">
+    <thead className="border-b border-border-light">
       <tr>{children}</tr>
     </thead>
   );

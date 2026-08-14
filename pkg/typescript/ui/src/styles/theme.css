@@ -57,11 +57,11 @@
   --shadow-hard-muted: 4px 4px 0 var(--color-border-subtle);
   --shadow-hard-primary: 4px 4px 0 var(--color-primary-dark);
 
-  /* Rounded Corners - Brutalist square geometry */
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --radius-xl: 0px;
+  /* Rounded Corners */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
   --radius-pill: 9999px;
 
   /* Fonts - mono-first, Archivo Black display, Plex Sans body */

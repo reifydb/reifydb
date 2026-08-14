@@ -15,12 +15,12 @@ export interface TabsProps {
 
 export function Tabs({ tabs, value, onChange, className = "" }: TabsProps) {
   return (
-    <div className={`flex gap-1 rounded-none border-2 border-border-default bg-bg-secondary p-1 ${className}`}>
+    <div className={`flex gap-1 rounded-md border border-border-light bg-bg-secondary p-1 ${className}`}>
       {tabs.map((tab) => (
         <button
           key={tab.value}
           onClick={() => onChange(tab.value)}
-          className={`px-3 py-1.5 text-sm font-medium transition-all rounded-none
+          className={`px-3 py-1.5 text-sm font-medium transition-all rounded-sm
             ${
               value === tab.value
                 ? "bg-bg-tertiary text-text-primary"

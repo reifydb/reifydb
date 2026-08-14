@@ -6,7 +6,7 @@
     background: var(--color-bg-primary);
     color: var(--color-text-primary);
     color-scheme: light;
-    font-family: var(--font-mono);
+    font-family: var(--font-body);
     font-size: 16px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -43,9 +43,9 @@
 /* ── Card ─────────────────────────────────────────────────── */
 .card-modern {
   background: var(--color-bg-secondary);
-  border: 2px solid var(--color-border-default);
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-hard);
+  box-shadow: var(--shadow-soft);
 }
 
 /* ── Section alternation ────────────────────────────────── */
@@ -62,16 +62,16 @@
 /* ── Card utilities ─────────────────────────────────────── */
 .glass-card {
   background: var(--color-bg-secondary);
-  border: 2px solid var(--color-border-default);
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-hard);
+  box-shadow: var(--shadow-soft);
 }
 
 .glass-card-strong {
   background: var(--color-bg-secondary);
-  border: 2px solid var(--color-primary);
+  border: 1px solid var(--color-primary);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-hard-primary);
+  box-shadow: var(--shadow-soft);
 }
 
 .glass {
@@ -81,21 +81,20 @@
 /* ── Card nested inner ───────────────────────────────────── */
 .card-nested-inner {
   background: var(--color-input-bg);
-  border: 2px solid var(--color-border-default);
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-sm);
 }
 
-/* ── Brutalist featured card ─────────────────────────────── */
+/* ── Featured card ────────────────────────────────────────── */
 .card-brutal {
   background: var(--color-bg-secondary);
-  border: 2px solid var(--color-border-default);
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-hard);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: var(--shadow-soft);
+  transition: box-shadow 0.15s ease;
 }
 .card-brutal:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 6px 6px 0 var(--color-border-default);
+  box-shadow: var(--shadow-medium);
 }
 
 /* ── Brutalist tab underline ─────────────────────────────── */
