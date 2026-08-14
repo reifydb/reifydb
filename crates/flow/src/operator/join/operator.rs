@@ -52,10 +52,10 @@ use crate::{
 		HostOperator,
 		host::HostContext,
 		join::{Emitted, Identity},
-	},
-	state::{
-		reaper::{StoreReaper, drain, enqueue, queue_key, queued},
-		seal::{ledger::FiredAt, policy::SealPolicy},
+		state::{
+			reaper::{StoreReaper, drain, enqueue, queue_key, queued},
+			seal::{ledger::FiredAt, policy::SealPolicy},
+		},
 	},
 	timer::Timer,
 	transaction::anchor::{SealAnchor, anchor_key as seal_anchor_key},

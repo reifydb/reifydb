@@ -4,7 +4,7 @@
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 use crate::{
-	state::seal::{
+	operator::state::seal::{
 		coord::Coord,
 		policy::{EvictionPolicy, SealPolicy},
 	},

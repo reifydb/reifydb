@@ -8,7 +8,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::state::seal::policy::{EvictionPolicy, SealPolicy, SealedThrough};
+use crate::operator::state::seal::policy::{EvictionPolicy, SealPolicy, SealedThrough};
 
 pub struct SealGate {
 	policy: SealPolicy,
@@ -94,7 +94,7 @@ mod tests {
 	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
-	use crate::state::{
+	use crate::operator::state::{
 		mock::{MockStore, RecordedTimer},
 		seal::coord::Coord,
 	};

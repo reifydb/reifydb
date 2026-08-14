@@ -37,7 +37,7 @@ use crate::{
 				hash::{columns_from_block, stream_join_blocks_encoded},
 			},
 		},
-		stateful::utils::{state_get, state_range, state_remove, state_set},
+		state::store::{state_get, state_range, state_remove, state_set},
 	},
 };
 

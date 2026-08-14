@@ -23,7 +23,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
-	state::{
+	operator::state::{
 		expiry::{expiry_drop, expiry_due, expiry_key, expiry_set},
 		reaper::Reaper,
 	},
@@ -350,7 +350,7 @@ mod tests {
 	use reifydb_value::{Result, factory::time::at_millis, value::datetime::DateTime};
 
 	use crate::{
-		state::{mock::MockStore, seal::coord::Coord},
+		operator::state::{mock::MockStore, seal::coord::Coord},
 		window::{
 			accumulator::{WindowAccumulator, mock::SumAccumulator},
 			engine::{

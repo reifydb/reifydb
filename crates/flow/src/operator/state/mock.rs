@@ -21,7 +21,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
+	operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 	timer::Timer,
 	window::accumulator::WindowAccumulator,
 };

@@ -22,7 +22,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	state::{
+	operator::state::{
 		expiry::{expiry_drop, expiry_due, expiry_earliest, expiry_key, expiry_set},
 		seal::coord::{Coord, IsZero},
 	},
@@ -928,7 +928,7 @@ mod tests {
 	};
 
 	use crate::{
-		state::mock::MockStore,
+		operator::state::mock::MockStore,
 		window::{
 			accumulator::mock::SumAccumulator,
 			engine::{
@@ -947,7 +947,7 @@ mod tests {
 	}
 
 	fn order(millis: u64) -> u64 {
-		<DateTime as crate::state::seal::coord::Coord>::to_order(at_millis(millis))
+		<DateTime as crate::operator::state::seal::coord::Coord>::to_order(at_millis(millis))
 	}
 
 	fn row_key(group: &u32) -> (GroupId, EncodedKey) {

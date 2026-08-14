@@ -43,7 +43,7 @@ use crate::{
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
 		drops::SealedDrops,
 		host::HostContext,
-		stateful::utils,
+		state::store,
 	},
 };
 
@@ -127,7 +127,7 @@ impl DistinctPlan {
 
 	#[instrument(name = "flow::operator::distinct::load_entry", level = "trace", skip_all)]
 	fn load_entry(&self, host: &mut dyn HostContext, group: GroupId) -> Result<LoadedEntry> {
-		match utils::state_get(host, &Self::entry_key(group))? {
+		match store::state_get(host, &Self::entry_key(group))? {
 			Some(row) => {
 				if row.is_empty() {
 					return Ok(LoadedEntry::Empty);
@@ -146,7 +146,7 @@ impl DistinctPlan {
 
 	#[instrument(name = "flow::operator::distinct::load_layout", level = "trace", skip_all)]
 	fn load_layout(&self, host: &mut dyn HostContext) -> Result<DistinctLayout> {
-		match utils::state_get(host, &Self::layout_storage_key())? {
+		match store::state_get(host, &Self::layout_storage_key())? {
 			Some(row) => {
 				if row.is_empty() {
 					return Ok(DistinctLayout::new());
@@ -179,9 +179,9 @@ impl DistinctPlan {
 							cause: e.to_string(),
 						})
 					})?;
-					utils::state_set(host, &key, row)?;
+					store::state_set(host, &key, row)?;
 				}
-				None => utils::state_remove(host, &key)?,
+				None => store::state_remove(host, &key)?,
 			}
 		}
 		if let Some(at) = state.layout_changed_at.take() {
@@ -191,7 +191,7 @@ impl DistinctPlan {
 					cause: e.to_string(),
 				})
 			})?;
-			utils::state_set(host, &Self::layout_storage_key(), layout_row)?;
+			store::state_set(host, &Self::layout_storage_key(), layout_row)?;
 		}
 		Ok(())
 	}

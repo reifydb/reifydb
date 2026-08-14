@@ -15,7 +15,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 #[cfg(feature = "runtime")]
 use crate::transaction::{FlowTransaction, state::StateExtension};
 use crate::{
-	state::seal::{coord::Coord, policy::SealedThrough},
+	operator::state::seal::{coord::Coord, policy::SealedThrough},
 	timer::Timer,
 };
 
@@ -93,7 +93,7 @@ mod tests {
 	use reifydb_core::state::store::TimerKind;
 
 	use super::*;
-	use crate::state::mock::MockStore;
+	use crate::operator::state::mock::MockStore;
 
 	fn timer(millis: u64) -> Timer {
 		Timer {

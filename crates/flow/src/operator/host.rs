@@ -30,8 +30,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	operator::stateful::StateIterator,
-	state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
+	operator::state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 	timer::{Timer, extension::TimerExtension},
 	transaction::{
 		FlowTransaction,

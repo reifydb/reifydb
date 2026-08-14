@@ -15,7 +15,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	state::seal::{
+	operator::state::seal::{
 		coord::Coord,
 		ledger::{SealLedgerState, seal_ledger_key},
 	},
@@ -322,7 +322,7 @@ mod tests {
 	use reifydb_value::{factory::time::at_millis, value::row_number::RowNumber};
 
 	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta};
-	use crate::{state::mock::MockStore, window::kind::session::SessionTracker};
+	use crate::{operator::state::mock::MockStore, window::kind::session::SessionTracker};
 
 	const GROUP: GroupId = GroupId(42);
 

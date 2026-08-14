@@ -32,7 +32,7 @@ use crate::{
 		HostOperator,
 		distinct::operator::{DistinctOperator, DistinctPlan},
 		host::TxnHostContext,
-		stateful::utils,
+		state::store,
 	},
 	transaction::{
 		deferred::DeferredTransaction, mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension,
@@ -103,7 +103,7 @@ fn persisted_rows(op: &DistinctOperator, txn: &mut DeferredTransaction) -> BTree
 }
 
 fn layout_row(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Option<Vec<u8>> {
-	utils::state_get(&mut host(txn, op.plan.operator), &DistinctPlan::layout_storage_key())
+	store::state_get(&mut host(txn, op.plan.operator), &DistinctPlan::layout_storage_key())
 		.unwrap()
 		.map(|row| row.body().to_vec())
 }
@@ -182,7 +182,7 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 	let erased = erase_group_data(&op, &mut txn, groups[0]);
 	assert!(erased > 0, "precondition: compaction must have erased the entry");
 	assert!(
-		txn.get_row_number(op.plan.operator, groups[0], &utils::empty_key()).unwrap().is_some(),
+		txn.get_row_number(op.plan.operator, groups[0], &store::empty_key()).unwrap().is_some(),
 		"precondition: the floor must leave the mapping behind, or there is nothing to collide with"
 	);
 

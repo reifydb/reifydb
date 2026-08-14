@@ -30,7 +30,7 @@ use tracing::instrument;
 
 use crate::{
 	error::FlowStateError,
-	operator::{HostOperator, host::HostContext, stateful::utils},
+	operator::{HostOperator, host::HostContext, state::store},
 };
 
 #[operator_state]
@@ -100,8 +100,8 @@ impl TakeOperator {
 
 impl TakePlan {
 	fn load_take_state(&self, host: &mut dyn HostContext) -> Result<TakeState> {
-		let key = utils::empty_state_key();
-		let Some(row) = utils::state_get(host, &key)? else {
+		let key = store::empty_state_key();
+		let Some(row) = store::state_get(host, &key)? else {
 			return Ok(TakeState::default());
 		};
 		if row.is_empty() {
@@ -122,7 +122,7 @@ impl TakePlan {
 				cause: e.to_string(),
 			})
 		})?;
-		utils::state_set(host, &utils::empty_state_key(), row)
+		store::state_set(host, &store::empty_state_key(), row)
 	}
 
 	#[inline]

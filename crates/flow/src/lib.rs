@@ -11,7 +11,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod factory;
-pub mod state;
+pub mod operator;
 pub mod timer;
 pub mod window;
 
@@ -21,7 +21,5 @@ pub mod context;
 pub mod engine;
 #[cfg(feature = "runtime")]
 pub mod error;
-#[cfg(feature = "runtime")]
-pub mod operator;
 #[cfg(feature = "runtime")]
 pub mod transaction;

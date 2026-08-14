@@ -33,8 +33,8 @@ use crate::{
 		aggregation::{accumulator::RowAccumulator, core::Aggregation},
 		drops::SealedDrops,
 		host::HostContext,
+		state::seal::ledger::FiredAt,
 	},
-	state::seal::ledger::FiredAt,
 	timer::Timer,
 	window::{
 		coord::OrdinalCoord,

@@ -31,8 +31,7 @@ use super::{
 };
 use crate::{
 	context::FlowContext,
-	operator::{HostOperator, host::HostContext},
-	state::seal::coord::Coord,
+	operator::{HostOperator, host::HostContext, state::seal::coord::Coord},
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
 		span::WindowSpan,

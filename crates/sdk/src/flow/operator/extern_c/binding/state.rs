@@ -5,7 +5,7 @@ use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{key::operator_state::GroupId, state::store::TimerKind};
-use reifydb_flow::state::reclaim::ReclaimOutcome;
+use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
 use reifydb_value::{
 	count::Count,
 	util::cowvec::CowVec,

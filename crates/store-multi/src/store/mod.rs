@@ -19,8 +19,6 @@ use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::util::cowvec::CowVec;
 use tracing::instrument;
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::{config::PersistentConfig, tier::read::ReadBufferConfig};
 use crate::{
 	CommitBufferConfig,
 	config::MultiStoreConfig,
@@ -31,6 +29,8 @@ use crate::{
 		read::{MultiReadBufferTier, ReadBufferShardMetrics},
 	},
 };
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::{config::PersistentConfig, tier::read::ReadBufferConfig};
 
 pub mod multi;
 pub mod router;

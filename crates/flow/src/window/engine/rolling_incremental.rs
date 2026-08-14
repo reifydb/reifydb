@@ -305,7 +305,7 @@ mod tests {
 	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
 
 	use crate::{
-		state::mock::MockStore,
+		operator::state::mock::MockStore,
 		window::{
 			accumulator::{WindowAccumulator, mock::SumAccumulator},
 			engine::{

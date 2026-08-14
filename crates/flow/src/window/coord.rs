@@ -8,7 +8,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
-	state::seal::coord::{Coord, IsZero},
+	operator::state::seal::coord::{Coord, IsZero},
 	window::span::Slot,
 };
 

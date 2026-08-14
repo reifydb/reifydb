@@ -22,8 +22,10 @@ use super::{
 	core::Aggregation,
 };
 use crate::{
-	operator::{host::HostContext, stateful::utils},
-	state::seal::coord::Coord,
+	operator::{
+		host::HostContext,
+		state::{seal::coord::Coord, store},
+	},
 	window::{
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor,
@@ -146,7 +148,7 @@ pub(crate) fn finish_tumbling_engine(
 		host,
 		buckets,
 		&arrival,
-		|hash, window_start| (group_of(groups, *hash, window_start.to_order()), utils::empty_key()),
+		|hash, window_start| (group_of(groups, *hash, window_start.to_order()), store::empty_key()),
 		|| RowAccumulator::new(kinds, seal),
 	)?;
 
@@ -163,7 +165,7 @@ pub(crate) fn finish_tumbling_engine(
 					&r.group,
 					r.span.start,
 					group,
-					&utils::empty_key(),
+					&store::empty_key(),
 					prior_index,
 					None,
 				)?;
@@ -178,7 +180,7 @@ pub(crate) fn finish_tumbling_engine(
 					&r.group,
 					r.span.start,
 					group,
-					&utils::empty_key(),
+					&store::empty_key(),
 					prior_index,
 					new_index,
 				)?;

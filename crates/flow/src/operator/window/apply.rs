@@ -27,11 +27,13 @@ use crate::{
 			},
 		},
 		host::HostContext,
-		stateful::utils,
-	},
-	state::{
-		reaper::{drain, enqueue},
-		seal::{coord::Coord, gate::disarm_seal, ledger::FiredAt, policy::SealPolicy, sweep::SealSweep},
+		state::{
+			reaper::{drain, enqueue},
+			seal::{
+				coord::Coord, gate::disarm_seal, ledger::FiredAt, policy::SealPolicy, sweep::SealSweep,
+			},
+			store,
+		},
 	},
 	window::{
 		coord::{EventCoord, RowSpan},
@@ -881,7 +883,7 @@ pub fn apply_session_engine(
 				Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config))
 			});
 		for (hash, session_id, group) in &closing {
-			let accumulator_key = WindowStateKey::new(*group, utils::empty_key()).into_group_state_key();
+			let accumulator_key = WindowStateKey::new(*group, store::empty_key()).into_group_state_key();
 			let meta = operator.core.engine_meta().get(host, &EngineMetaKey(*group))?;
 			let prior_last = meta.as_ref().map(|m| m.last_event_time).unwrap_or(0);
 			if prior_last > 0 {
@@ -892,7 +894,7 @@ pub fn apply_session_engine(
 				hash,
 				<DateTime as Coord>::from_order(*session_id),
 				*group,
-				&utils::empty_key(),
+				&store::empty_key(),
 				(prior_last > 0).then_some(prior_last),
 				None,
 			)?;
@@ -1050,7 +1052,7 @@ mod tests {
 	use reifydb_value::{factory::time::at_millis, value::duration::Duration};
 
 	use super::SealPolicy;
-	use crate::state::seal::{
+	use crate::operator::state::seal::{
 		coord::Coord,
 		policy::{is_sealed, seal_horizon},
 	};

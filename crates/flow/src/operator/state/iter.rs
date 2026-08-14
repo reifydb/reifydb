@@ -2,14 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::interface::store::MultiVersionRow;
+use reifydb_core::{
+	interface::store::MultiVersionRow,
+	key::{EncodableKey, operator_state::OperatorStateKey},
+};
 use reifydb_value::Result;
-
-#[cfg(test)]
-pub mod test_utils;
-pub mod utils;
-
-use reifydb_core::key::{EncodableKey, operator_state::OperatorStateKey};
 
 pub struct StateIterator<'a> {
 	inner: Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>,

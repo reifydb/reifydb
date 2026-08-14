@@ -28,9 +28,11 @@ use crate::{
 			engine::{WindowGroups, group_of, intern_window_groups},
 		},
 		host::HostContext,
-		stateful::utils,
+		state::{
+			seal::{gate::EvictionGate, ledger::FiredAt, policy::is_sealed},
+			store,
+		},
 	},
-	state::seal::{gate::EvictionGate, ledger::FiredAt, policy::is_sealed},
 	window::{
 		accumulator::WindowAccumulator,
 		coord::{OrdinalCoord, RowSpan},
@@ -392,7 +394,7 @@ fn apply_rolling<C: RollingDomain>(
 			host,
 			buckets,
 			eviction,
-			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
+			|hash| (group_of(&groups, *hash, 0), store::empty_key()),
 			|| RowAccumulator::new(&kinds, seal),
 		)?
 	} else {
@@ -401,7 +403,7 @@ fn apply_rolling<C: RollingDomain>(
 			host,
 			buckets,
 			eviction,
-			|hash| (group_of(&groups, *hash, 0), utils::empty_key()),
+			|hash| (group_of(&groups, *hash, 0), store::empty_key()),
 			|| RowAccumulator::new(&kinds, seal),
 			|_g, buffer| combine_rolling::<C>(buffer, &kinds, lag, seal),
 		)?
@@ -617,7 +619,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		state::seal::{coord::Coord, policy::EvictionPolicy},
+		operator::state::seal::{coord::Coord, policy::EvictionPolicy},
 		window::engine::config::WindowEngineConfig,
 	};
 

@@ -4,7 +4,7 @@
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 use crate::{
-	state::seal::coord::Coord,
+	operator::state::seal::coord::Coord,
 	window::{
 		coord::{EventCoord, OrdinalCoord, RowSpan},
 		kind::ordinal_window_span,

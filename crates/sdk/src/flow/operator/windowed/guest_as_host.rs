@@ -11,7 +11,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
 	state::store::{StateStore, TimerKind, TimerStore},
 };
-use reifydb_flow::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
+use reifydb_flow::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, row_number::RowNumber},

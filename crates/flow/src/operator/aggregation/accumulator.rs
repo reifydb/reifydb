@@ -689,7 +689,7 @@ mod tests {
 	use reifydb_codec::row::operator::{OperatorState, decode};
 
 	use super::*;
-	use crate::{state::seal::coord::Coord, window::span::WindowSpan};
+	use crate::{operator::state::seal::coord::Coord, window::span::WindowSpan};
 
 	fn i4(v: i32) -> Option<Value> {
 		Some(Value::Int4(v))

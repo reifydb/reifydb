@@ -12,7 +12,10 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
 	state::store::TimerKind,
 };
-use reifydb_flow::{operator::host::HostContext, state::reclaim::ReclaimOutcome, window::event::Polarity};
+use reifydb_flow::{
+	operator::{host::HostContext, state::reclaim::ReclaimOutcome},
+	window::event::Polarity,
+};
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{

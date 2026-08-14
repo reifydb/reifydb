@@ -13,7 +13,7 @@ use reifydb_core::{
 };
 use reifydb_value::Result;
 
-use crate::state::reclaim::ReclaimOutcome;
+use crate::operator::state::reclaim::ReclaimOutcome;
 
 #[cfg(test)]
 mod tests;

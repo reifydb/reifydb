@@ -8,7 +8,7 @@ use reifydb_codec::{
 use reifydb_core::key::operator_state::GroupStateKey;
 use reifydb_value::Result;
 
-use super::StateIterator;
+use super::iter::StateIterator;
 use crate::operator::host::HostContext;
 
 pub fn state_get(host: &mut dyn HostContext, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
@@ -56,7 +56,7 @@ pub mod tests {
 
 	use super::*;
 	use crate::{
-		operator::{host::TxnHostContext, stateful::test_utils::test::*},
+		operator::{host::TxnHostContext, state::test_utils::test::*},
 		transaction::{FlowTransaction, deferred::DeferredTransaction, mock::FlowTxn},
 	};
 

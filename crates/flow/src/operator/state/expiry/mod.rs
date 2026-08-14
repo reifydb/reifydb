@@ -77,7 +77,7 @@ mod tests {
 	use reifydb_macro::operator_state;
 
 	use super::{expiry_drop, expiry_due, expiry_earliest, expiry_key, expiry_set};
-	use crate::state::mock::MockStore;
+	use crate::operator::state::mock::MockStore;
 
 	#[operator_state]
 	#[derive(Clone, Debug, PartialEq)]

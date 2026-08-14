@@ -37,7 +37,7 @@ use crate::{
 	operator::{
 		host::HostContext,
 		join::strategy::hash::columns_from_block,
-		stateful::utils::{state_get, state_range, state_remove, state_set},
+		state::store::{state_get, state_range, state_remove, state_set},
 	},
 };
 

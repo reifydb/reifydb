@@ -11,6 +11,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
+#[cfg(feature = "runtime")]
 use crate::{operator::host::HostContext, timer::Timer};
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
@@ -20,27 +21,47 @@ pub fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
 		.and_then(|millis| Duration::from_milliseconds(millis).ok())
 }
 
+#[cfg(feature = "runtime")]
 pub mod aggregation;
+#[cfg(feature = "runtime")]
 pub mod append;
+#[cfg(feature = "runtime")]
 pub mod apply;
+#[cfg(feature = "runtime")]
 pub mod distinct;
+#[cfg(feature = "runtime")]
 pub mod drops;
+#[cfg(feature = "runtime")]
 pub mod extend;
+#[cfg(feature = "runtime")]
 pub mod filter;
+#[cfg(feature = "runtime")]
 pub mod gate;
+#[cfg(feature = "runtime")]
 pub mod guard;
+#[cfg(feature = "runtime")]
 pub mod host;
+#[cfg(feature = "runtime")]
 pub mod join;
+#[cfg(feature = "runtime")]
 pub mod map;
+#[cfg(feature = "runtime")]
 pub mod metrics;
+#[cfg(feature = "runtime")]
 pub mod provider;
+#[cfg(feature = "runtime")]
 pub mod scan;
+#[cfg(feature = "runtime")]
 pub mod sink;
+#[cfg(feature = "runtime")]
 pub mod sort;
-pub mod stateful;
+pub mod state;
+#[cfg(feature = "runtime")]
 pub mod take;
+#[cfg(feature = "runtime")]
 pub mod window;
 
+#[cfg(feature = "runtime")]
 pub trait HostOperator: Send {
 	fn id(&self) -> OperatorId;
 
@@ -65,6 +86,7 @@ pub trait HostOperator: Send {
 	}
 }
 
+#[cfg(feature = "runtime")]
 pub type BoxedHostOperator = Box<dyn HostOperator>;
 
 pub fn max_input_time(change: &Change) -> Option<DateTime> {

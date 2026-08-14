@@ -61,7 +61,7 @@ use super::{
 };
 use crate::{
 	error::FlowStateError,
-	operator::{host::TxnHostContext, join::column::JoinedColumnsBuilder, stateful::StateIterator},
+	operator::{host::TxnHostContext, join::column::JoinedColumnsBuilder, state::iter::StateIterator},
 	timer::{Timer, extension::TimerExtension},
 	transaction::{FlowTransaction, deferred::DeferredTransaction, state::StateExtension},
 };

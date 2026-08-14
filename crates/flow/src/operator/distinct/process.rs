@@ -21,7 +21,7 @@ use crate::operator::{
 		state::{DistinctEntry, DistinctState, SerializedRow},
 	},
 	host::HostContext,
-	stateful::utils,
+	state::store,
 };
 
 fn row_time(host: &dyn HostContext, columns: &Columns, row_idx: usize) -> DateTime {
@@ -177,7 +177,7 @@ impl DistinctPlan {
 		let mut minted: Vec<(usize, RowNumber)> = Vec::with_capacity(new_entries.len());
 		let mut republished: Vec<(usize, RowNumber)> = Vec::new();
 		for &(row_idx, hash) in &new_entries {
-			let (stable_rn, is_new) = host.get_or_create_row_number(groups[&hash], &utils::empty_key())?;
+			let (stable_rn, is_new) = host.get_or_create_row_number(groups[&hash], &store::empty_key())?;
 			if is_new {
 				minted.push((row_idx, stable_rn));
 			} else {
@@ -193,7 +193,7 @@ impl DistinctPlan {
 		}
 
 		for (old_serialized, new_idx, hash) in swap_pairs {
-			let (stable_rn, _) = host.get_or_create_row_number(groups[&hash], &utils::empty_key())?;
+			let (stable_rn, _) = host.get_or_create_row_number(groups[&hash], &store::empty_key())?;
 			let pre_cols = Self::with_stable_rn(old_serialized.to_columns(&state.layout), stable_rn);
 			let post_cols = Self::with_stable_rn(columns.extract_by_indices(&[new_idx]), stable_rn);
 			result.push(Diff::update(pre_cols, post_cols));
@@ -242,7 +242,7 @@ impl DistinctPlan {
 				};
 				if visible {
 					let (stable_rn, _) =
-						host.get_or_create_row_number(groups[&pre_hash], &utils::empty_key())?;
+						host.get_or_create_row_number(groups[&pre_hash], &store::empty_key())?;
 					let pre_out = Self::with_stable_rn(
 						pre_columns.extract_by_indices(&[row_idx]),
 						stable_rn,
@@ -313,9 +313,9 @@ impl DistinctPlan {
 
 			if let Some((pre_is_empty, pre_new_visible_opt)) = pre_mutation {
 				let (stable_rn, _) =
-					host.get_or_create_row_number(groups[&pre_hash], &utils::empty_key())?;
+					host.get_or_create_row_number(groups[&pre_hash], &store::empty_key())?;
 				if pre_is_empty {
-					host.remove_row_number(groups[&pre_hash], &utils::empty_key())?;
+					host.remove_row_number(groups[&pre_hash], &store::empty_key())?;
 					result.push(Diff::remove(Self::with_stable_rn(
 						pre_columns.extract_by_indices(&[row_idx]),
 						stable_rn,
@@ -334,7 +334,7 @@ impl DistinctPlan {
 			let (post_is_new, post_displaced_opt) = post_mutation;
 			if post_is_new || post_displaced_opt.is_some() {
 				let (stable_rn, minted) =
-					host.get_or_create_row_number(groups[&post_hash], &utils::empty_key())?;
+					host.get_or_create_row_number(groups[&post_hash], &store::empty_key())?;
 				let post_out =
 					Self::with_stable_rn(post_columns.extract_by_indices(&[row_idx]), stable_rn);
 				match post_displaced_opt {
@@ -409,10 +409,10 @@ impl DistinctPlan {
 			let Some(new_visible_opt) = mutation else {
 				continue;
 			};
-			let (stable_rn, _) = host.get_or_create_row_number(groups[&hash], &utils::empty_key())?;
+			let (stable_rn, _) = host.get_or_create_row_number(groups[&hash], &store::empty_key())?;
 			match new_visible_opt {
 				None => {
-					host.remove_row_number(groups[&hash], &utils::empty_key())?;
+					host.remove_row_number(groups[&hash], &store::empty_key())?;
 					result.push(Diff::remove(Self::with_stable_rn(
 						columns.extract_by_indices(&[row_idx]),
 						stable_rn,

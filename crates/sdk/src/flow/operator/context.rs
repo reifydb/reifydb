@@ -12,7 +12,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
 	state::store::TimerKind,
 };
-use reifydb_flow::state::reclaim::ReclaimOutcome;
+use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
 use reifydb_value::value::{
 	Value,
 	datetime::DateTime,

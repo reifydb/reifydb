@@ -12,7 +12,7 @@ use reifydb_core::{
 use reifydb_value::{Result, count::Count, reifydb_assertions};
 
 use crate::{
-	state::reclaim::ReclaimOutcome,
+	operator::state::reclaim::ReclaimOutcome,
 	transaction::{group::GroupExtension, state::StateExtension},
 };
 

@@ -26,10 +26,14 @@ use tracing::instrument;
 
 use crate::{
 	error::{FlowGraphError, FlowStateError},
-	operator::{HostOperator, drops::SealedDrops, host::HostContext},
-	state::{
-		reaper::{StoreReaper, drain, enqueue, queue_key, queued},
-		seal::{ledger::FiredAt, policy::SealPolicy},
+	operator::{
+		HostOperator,
+		drops::SealedDrops,
+		host::HostContext,
+		state::{
+			reaper::{StoreReaper, drain, enqueue, queue_key, queued},
+			seal::{ledger::FiredAt, policy::SealPolicy},
+		},
 	},
 	timer::Timer,
 	transaction::anchor::{SealAnchor, UNGROUPED_SIDE, anchor_key as seal_anchor_key},

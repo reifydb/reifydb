@@ -13,12 +13,15 @@ use reifydb_value::{
 
 use super::operator::WindowOperator;
 use crate::{
-	operator::{aggregation::engine::partition_group_key, host::HostContext},
-	state::seal::{
-		coord::Coord,
-		gate::SealGate,
-		ledger::FiredAt,
-		policy::{SealPolicy, SealedThrough},
+	operator::{
+		aggregation::engine::partition_group_key,
+		host::HostContext,
+		state::seal::{
+			coord::Coord,
+			gate::SealGate,
+			ledger::FiredAt,
+			policy::{SealPolicy, SealedThrough},
+		},
 	},
 	window::{
 		coord::{EventCoord, OrdinalCoord, RowSpan},

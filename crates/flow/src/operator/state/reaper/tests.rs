@@ -6,7 +6,7 @@ use reifydb_core::key::operator_state::Keyspace;
 use reifydb_value::value::datetime::DateTime;
 
 use super::*;
-use crate::state::mock::MockStore;
+use crate::operator::state::mock::MockStore;
 
 const DOOMED: GroupId = GroupId(7);
 const BYSTANDER: GroupId = GroupId(8);
