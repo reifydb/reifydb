@@ -34,7 +34,6 @@ fn test_password_login_success() {
 }
 
 #[test]
-#[should_panic]
 fn test_password_login_unknown_user() {
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
@@ -44,7 +43,8 @@ fn test_password_login_unknown_user() {
 	runtime.block_on(async {
 		let mut client =
 			HttpClient::connect(&format!("http://[::1]:{}", http_port), WireFormat::Frames).await.unwrap();
-		let _ = client.login_with_password("nonexistent", "password").await;
+		let result = client.login_with_password("nonexistent", "password").await;
+		assert!(result.is_err(), "Should fail with unknown user");
 	});
 
 	cleanup_server(Some(server));

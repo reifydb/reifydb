@@ -154,7 +154,7 @@ impl HttpClient {
 			})
 		} else {
 			let reason = auth.reason.unwrap_or_else(|| "Authentication failed".to_string());
-			panic!("Authentication failed: {}", reason) // FIXME better error handling
+			Err(ClientError::NotAuthenticated(reason).into())
 		}
 	}
 

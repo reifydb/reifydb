@@ -12,6 +12,7 @@ use std::{
 };
 
 use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_test_harness::engine::AsEngine;
 use reifydb_value::value::duration::Duration as ValueDuration;
@@ -25,7 +26,13 @@ pub struct TestDb {
 
 impl TestDb {
 	pub fn memory() -> Self {
-		Self::wrap(embedded::memory().build().unwrap(), None)
+		Self::wrap(
+			embedded::memory()
+				.with_runtime_config(RuntimeConfig::default().fatal(FatalConfig::disarmed()))
+				.build()
+				.unwrap(),
+			None,
+		)
 	}
 
 	pub fn sqlite(config: SqliteConfig) -> Self {
