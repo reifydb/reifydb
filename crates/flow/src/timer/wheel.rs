@@ -1,5 +1,5 @@
-//  SPDX-License-Identifier: AGPL-3.0-or-later
-//  Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::{decode_datetime_asc, encode_datetime_asc, encoded::EncodedKey};
 use reifydb_core::{
@@ -11,7 +11,7 @@ use reifydb_core::{
 	state::store::TimerKind,
 };
 use reifydb_store_operator::store::OperatorStore;
-use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
+use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
 	timer::{Timer, TimerDue},
@@ -26,12 +26,7 @@ use crate::{
 pub struct TimerWheel;
 
 impl TimerWheel {
-	pub fn arm(
-		&self,
-		operator: OperatorId,
-		txn: &mut impl FlowTransaction,
-		timer: &Timer,
-	) -> reifydb_value::Result<()> {
+	pub fn arm(&self, operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
 		let now = txn.written_at();
 		if !timer.kind.is_unique() {
 			txn.state_set(
@@ -67,12 +62,7 @@ impl TimerWheel {
 		Ok(())
 	}
 
-	pub fn disarm(
-		&self,
-		operator: OperatorId,
-		txn: &mut impl FlowTransaction,
-		timer: &Timer,
-	) -> reifydb_value::Result<()> {
+	pub fn disarm(&self, operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
 		if timer.kind.is_unique() {
 			let index = index_key(timer.kind, &timer.key);
 			if armed_at(operator, txn, &index)? == Some(timer.due) {
@@ -89,7 +79,7 @@ impl TimerWheel {
 		txn: &mut impl FlowTransaction,
 		kind: TimerKind,
 		key: &EncodedKey,
-	) -> reifydb_value::Result<()> {
+	) -> Result<()> {
 		reifydb_assertions! {
 			assert!(
 				kind.is_unique(),
@@ -126,7 +116,7 @@ impl TimerWheel {
 		txn: &mut impl FlowTransaction,
 		watermark: DateTime,
 		limit: usize,
-	) -> reifydb_value::Result<(Vec<Timer>, Option<DateTime>)> {
+	) -> Result<(Vec<Timer>, Option<DateTime>)> {
 		if limit == 0 {
 			return Ok((Vec::new(), None));
 		}
@@ -178,11 +168,7 @@ fn index_key(kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_INDEX, suffix)
 }
 
-fn armed_at(
-	operator: OperatorId,
-	txn: &mut impl FlowTransaction,
-	index: &GroupStateKey,
-) -> reifydb_value::Result<Option<DateTime>> {
+fn armed_at(operator: OperatorId, txn: &mut impl FlowTransaction, index: &GroupStateKey) -> Result<Option<DateTime>> {
 	match txn.state_get(operator, index)? {
 		Some(row) => Ok(Some(decode_payload::<DateTime>(&row)?)),
 		None => Ok(None),

@@ -381,7 +381,6 @@ impl MetricsDomain {
 				shape: DomainShape::Wide,
 				dimensions: vec![
 					dim("operator", ValueType::Uint8),
-					dim("group", ValueType::Uint8),
 					dim("keyspace", ValueType::Utf8),
 					dim("phase", ValueType::Utf8),
 				],

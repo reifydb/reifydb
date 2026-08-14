@@ -16,7 +16,9 @@
 pub mod report;
 
 use std::{
+	any::Any,
 	backtrace::Backtrace,
+	env,
 	io::{self, Write},
 	panic::{self, PanicHookInfo},
 	process,
@@ -28,7 +30,7 @@ use std::{
 
 use tracing::error;
 
-pub use crate::fatal::report::{FatalKind, FatalReport, Origin};
+use crate::fatal::report::{FatalKind, FatalReport, Origin};
 
 static ARMED: AtomicBool = AtomicBool::new(true);
 static INSTALLED: Once = Once::new();
@@ -59,7 +61,7 @@ impl FatalConfig {
 }
 
 fn env_armed() -> Option<bool> {
-	match std::env::var("REIFYDB_FATAL").ok()?.as_str() {
+	match env::var("REIFYDB_FATAL").ok()?.as_str() {
 		"0" | "off" | "false" => Some(false),
 		"1" | "on" | "true" => Some(true),
 		_ => None,
@@ -128,7 +130,7 @@ pub fn panic_message(info: &PanicHookInfo<'_>) -> String {
 	}
 }
 
-pub fn describe_payload(payload: &Box<dyn std::any::Any + Send>) -> String {
+pub fn describe_payload(payload: &Box<dyn Any + Send>) -> String {
 	if let Some(message) = payload.downcast_ref::<&'static str>() {
 		(*message).to_string()
 	} else if let Some(message) = payload.downcast_ref::<String>() {
@@ -142,15 +144,15 @@ pub fn describe_payload(payload: &Box<dyn std::any::Any + Send>) -> String {
 macro_rules! fatal {
 	($reason:expr) => {
 		$crate::fatal::fatal(
-			$crate::fatal::FatalReport::new($crate::fatal::FatalKind::Invariant, $reason)
-				.origin($crate::fatal::Origin::new(file!(), line!(), column!()))
+			$crate::fatal::report::FatalReport::new($crate::fatal::report::FatalKind::Invariant, $reason)
+				.origin($crate::fatal::report::Origin::new(file!(), line!(), column!()))
 				.backtrace(std::backtrace::Backtrace::force_capture().to_string()),
 		)
 	};
 	($fmt:expr, $($arg:tt)*) => {
 		$crate::fatal::fatal(
-			$crate::fatal::FatalReport::new($crate::fatal::FatalKind::Invariant, format!($fmt, $($arg)*))
-				.origin($crate::fatal::Origin::new(file!(), line!(), column!()))
+			$crate::fatal::report::FatalReport::new($crate::fatal::report::FatalKind::Invariant, format!($fmt, $($arg)*))
+				.origin($crate::fatal::report::Origin::new(file!(), line!(), column!()))
 				.backtrace(std::backtrace::Backtrace::force_capture().to_string()),
 		)
 	};
@@ -162,9 +164,12 @@ macro_rules! fatal_on_err {
 		match $expr {
 			Ok(value) => value,
 			Err(err) => $crate::fatal::fatal(
-				$crate::fatal::FatalReport::new($crate::fatal::FatalKind::Error, format!("{:?}", err))
-					.origin($crate::fatal::Origin::new(file!(), line!(), column!()))
-					.backtrace(std::backtrace::Backtrace::force_capture().to_string()),
+				$crate::fatal::report::FatalReport::new(
+					$crate::fatal::report::FatalKind::Error,
+					format!("{:?}", err),
+				)
+				.origin($crate::fatal::report::Origin::new(file!(), line!(), column!()))
+				.backtrace(std::backtrace::Backtrace::force_capture().to_string()),
 			),
 		}
 	};
@@ -172,10 +177,13 @@ macro_rules! fatal_on_err {
 		match $expr {
 			Ok(value) => value,
 			Err(err) => $crate::fatal::fatal(
-				$crate::fatal::FatalReport::new($crate::fatal::FatalKind::Error, format!("{:?}", err))
-					.component($component)
-					.origin($crate::fatal::Origin::new(file!(), line!(), column!()))
-					.backtrace(std::backtrace::Backtrace::force_capture().to_string()),
+				$crate::fatal::report::FatalReport::new(
+					$crate::fatal::report::FatalKind::Error,
+					format!("{:?}", err),
+				)
+				.component($component)
+				.origin($crate::fatal::report::Origin::new(file!(), line!(), column!()))
+				.backtrace(std::backtrace::Backtrace::force_capture().to_string()),
 			),
 		}
 	};
@@ -201,7 +209,7 @@ mod tests {
 	#[test]
 	fn a_string_panic_payload_survives_into_the_reason() {
 		// Most sites today drop the payload with `|_|`, which is what makes their logs useless.
-		let payload: Box<dyn std::any::Any + Send> = Box::new("boom".to_string());
+		let payload: Box<dyn Any + Send> = Box::new("boom".to_string());
 
 		assert_eq!(describe_payload(&payload), "boom");
 	}
@@ -210,7 +218,7 @@ mod tests {
 	fn a_static_str_panic_payload_survives_into_the_reason() {
 		// `panic!("literal")` produces &'static str, not String, and downcasting only one of the two loses half
 		// the panics.
-		let payload: Box<dyn std::any::Any + Send> = Box::new("boom");
+		let payload: Box<dyn Any + Send> = Box::new("boom");
 
 		assert_eq!(describe_payload(&payload), "boom");
 	}
@@ -219,7 +227,7 @@ mod tests {
 	fn an_opaque_panic_payload_is_named_rather_than_rendered_empty() {
 		// panic_any with a custom type lands here, and an empty reason reads as "no reason" instead of
 		// "unprintable".
-		let payload: Box<dyn std::any::Any + Send> = Box::new(42u32);
+		let payload: Box<dyn Any + Send> = Box::new(42u32);
 
 		assert_eq!(describe_payload(&payload), "<non-string panic payload>");
 	}

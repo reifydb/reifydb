@@ -28,10 +28,10 @@ use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_value::value::Value;
 
-fn pool_config_from_sources(
-	factory: &StorageFactory,
-	overrides: &[(ConfigKey, Value)],
-) -> Result<(MultiCommitBufferTier, Option<MultiPersistentTier>, PoolConfig, Option<ReadBufferConfig>, u32)> {
+type PoolConfigSources =
+	(MultiCommitBufferTier, Option<MultiPersistentTier>, PoolConfig, Option<ReadBufferConfig>, u32);
+
+fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, Value)]) -> Result<PoolConfigSources> {
 	let multi_commit_buffer = factory.open_multi_commit_buffer();
 	let multi_persistent = factory.open_multi_persistent();
 	let resolved = resolve_startup_configs(&multi_commit_buffer, multi_persistent.as_ref(), overrides)?;

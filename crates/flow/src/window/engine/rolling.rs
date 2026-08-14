@@ -928,7 +928,7 @@ mod tests {
 	};
 
 	use crate::{
-		operator::state::mock::MockStore,
+		operator::state::{mock::MockStore, seal::coord::Coord},
 		window::{
 			accumulator::mock::SumAccumulator,
 			engine::{
@@ -947,7 +947,7 @@ mod tests {
 	}
 
 	fn order(millis: u64) -> u64 {
-		<DateTime as crate::operator::state::seal::coord::Coord>::to_order(at_millis(millis))
+		<DateTime as Coord>::to_order(at_millis(millis))
 	}
 
 	fn row_key(group: &u32) -> (GroupId, EncodedKey) {

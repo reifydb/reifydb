@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt;
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(clippy::disallowed_types)]
 use std::time::Duration;
+use std::{fmt, sync::Arc};
 
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reifydb_value::{Result, error::Error};
@@ -167,13 +167,13 @@ fn unsupported() -> Error {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn default_api() -> std::sync::Arc<dyn GithubApi> {
-	std::sync::Arc::new(HttpGithubApi)
+pub(crate) fn default_api() -> Arc<dyn GithubApi> {
+	Arc::new(HttpGithubApi)
 }
 
 #[cfg(target_arch = "wasm32")]
-pub(crate) fn default_api() -> std::sync::Arc<dyn GithubApi> {
-	std::sync::Arc::new(UnsupportedGithubApi)
+pub(crate) fn default_api() -> Arc<dyn GithubApi> {
+	Arc::new(UnsupportedGithubApi)
 }
 
 #[cfg(test)]

@@ -89,11 +89,6 @@ while IFS= read -r file; do
             in_block_comment = 1
         }
 
-        # Remove line comments
-        if (match(line, /\/\//)) {
-            line = substr(line, 1, RSTART - 1)
-        }
-
         # Handle multi-line string literals (e.g. format!("...\n..."))
         if (in_string_literal) {
             tmp = line
@@ -119,6 +114,10 @@ while IFS= read -r file; do
         if (index(line, "\"") > 0) {
             sub(/".*$/, "", line)
             in_string_literal = 1
+        }
+
+        if (match(line, /\/\//)) {
+            line = substr(line, 1, RSTART - 1)
         }
 
         # Skip lines inside macro_rules! blocks (body lines need qualified paths for hygiene)

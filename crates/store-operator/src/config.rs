@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+
 use crate::buffer::tier::OperatorBufferTier;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::persistent::OperatorPersistentTier;
@@ -24,13 +27,13 @@ impl OperatorPersistentConfig {
 		}
 	}
 
-	pub fn sqlite(config: reifydb_sqlite::SqliteConfig) -> Self {
+	pub fn sqlite(config: SqliteConfig) -> Self {
 		Self {
 			storage: OperatorPersistentTier::sqlite(config),
 		}
 	}
 
-	pub fn sqlite_in_memory() -> (Self, reifydb_sqlite::SqliteTempPathGuard) {
+	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
 		let (storage, guard) = OperatorPersistentTier::sqlite_in_memory();
 		(
 			Self {

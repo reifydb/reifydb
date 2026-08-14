@@ -760,7 +760,7 @@ pub(super) extern "C" fn host_lookup_groups(
 
 #[cfg(test)]
 mod seal_anchor_guard_tests {
-	use std::{cell::Cell, rc::Rc};
+	use std::{cell::Cell, iter::empty, rc::Rc};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
@@ -938,7 +938,7 @@ mod seal_anchor_guard_tests {
 		}
 
 		fn state_range_iter(&mut self, _range: EncodedKeyRange) -> StateIterator<'_> {
-			StateIterator::new(Box::new(std::iter::empty::<Result<MultiVersionRow>>()))
+			StateIterator::new(Box::new(empty::<Result<MultiVersionRow>>()))
 		}
 
 		fn state_clear(&mut self) -> Result<()> {

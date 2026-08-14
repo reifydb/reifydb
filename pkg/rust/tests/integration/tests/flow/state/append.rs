@@ -6,6 +6,8 @@ use std::time::Duration;
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_test_harness::assert::column_values;
 
+use crate::flow::state::{await_state_keys, state_keys};
+
 const TIMEOUT: Duration = Duration::from_secs(15);
 
 const APPEND_NODE_TYPE: u8 = 9;
@@ -40,7 +42,7 @@ fn fill_both_inputs(db: &TestDb) {
 	db.command(r#"INSERT app::a [{ id: 1, v: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);
 	db.command(r#"INSERT app::b [{ id: 2, v: 7, ts: "2026-01-01T00:00:00.500Z" }]"#);
 	db.await_row_count("FROM app::u", 2, TIMEOUT);
-	db.await_row_count(ANCHORS, 2, TIMEOUT);
+	await_state_keys(db, ANCHORS, 2, TIMEOUT);
 }
 
 fn advance_past_the_seal(db: &TestDb) {
@@ -64,8 +66,8 @@ fn state_of(operator: u64) -> String {
 }
 
 fn per_row_state_of(operator: u64) -> String {
-	// Group zero is the operator's own root scope, so only the other groups hold per-source-row state.
-	format!("{} filter {{ group != 0 }}", state_of(operator))
+	// The row-number counter is the operator's own bookkeeping, so every other keyspace here is per source row.
+	format!("{} filter {{ keyspace != 'NODE_COUNTER' }}", state_of(operator))
 }
 
 fn assert_only_the_row_number_counter_survives(db: &TestDb, operator: u64) {
@@ -104,7 +106,7 @@ fn a_live_row_reports_the_state_that_maps_it_to_its_output_row() {
 	sealing_append(&db);
 	fill_both_inputs(&db);
 
-	let live = db.row_count(ANCHORS);
+	let live = state_keys(&db, ANCHORS);
 
 	assert_eq!(
 		live,
@@ -123,14 +125,14 @@ fn a_sealed_row_leaves_the_append_operator_holding_nothing_at_all() {
 	let operator = append_operator(&db);
 	let per_row = per_row_state_of(operator);
 	assert!(
-		db.row_count(&per_row) > 0,
+		state_keys(&db, &per_row) > 0,
 		"precondition: live rows must report state; surface now: {:?}",
 		db.query(SURFACE)
 	);
 
 	advance_past_the_seal(&db);
 
-	let remaining = db.await_exact_row_count(&per_row, 0, TIMEOUT);
+	let remaining = await_state_keys(&db, &per_row, 0, TIMEOUT);
 	assert_eq!(
 		remaining,
 		0,
@@ -148,14 +150,14 @@ fn a_sealed_row_has_its_mapping_reaped_and_the_operators_own_keyspaces_emptied()
 	fill_both_inputs(&db);
 	let operator = append_operator(&db);
 	let mappings = format!("{} filter {{ keyspace == 'ROW_NUMBER_MAPPING' }}", state_of(operator));
-	assert_eq!(db.row_count(&mappings), 2, "precondition: both source rows own a mapping");
+	assert_eq!(state_keys(&db, &mappings), 2, "precondition: both source rows own a mapping");
 
 	advance_past_the_seal(&db);
 
-	let anchors = db.await_exact_row_count(ANCHORS, 0, TIMEOUT);
+	let anchors = await_state_keys(&db, ANCHORS, 0, TIMEOUT);
 	assert_eq!(anchors, 0, "a sealed row's anchor must not outlive the reap; surface now: {:?}", db.query(SURFACE));
 	assert_eq!(
-		db.await_exact_row_count(&mappings, 0, TIMEOUT),
+		await_state_keys(&db, &mappings, 0, TIMEOUT),
 		0,
 		"and neither may the mapping it addressed; surface now: {:?}",
 		db.query(&state_of(operator))
@@ -170,7 +172,7 @@ fn the_sealed_rows_published_rows_survive_the_reap() {
 	fill_both_inputs(&db);
 
 	advance_past_the_seal(&db);
-	db.await_exact_row_count(ANCHORS, 0, TIMEOUT);
+	await_state_keys(&db, ANCHORS, 0, TIMEOUT);
 
 	assert_eq!(
 		db.row_count("FROM app::u FILTER { v == 5 }"),
@@ -190,7 +192,7 @@ fn a_row_still_inside_its_seal_keeps_its_state_through_a_reap() {
 	db.command(r#"INSERT app::a [{ id: 3, v: 1, ts: "2026-01-01T00:01:00Z" }]"#);
 	advance_past_the_seal(&db);
 
-	let survivors = db.await_exact_row_count(ANCHORS, 1, TIMEOUT);
+	let survivors = await_state_keys(&db, ANCHORS, 1, TIMEOUT);
 	assert_eq!(
 		survivors,
 		1,
@@ -209,7 +211,7 @@ fn an_updated_row_pushes_its_seal_out_and_outlives_the_tick_that_would_have_seal
 	db.command(r#"UPDATE app::a { v: 50, ts: "2026-01-01T00:02:00Z" } FILTER { id == 1 }"#);
 	advance_past_the_seal(&db);
 
-	let survivors = db.await_exact_row_count(ANCHORS, 1, TIMEOUT);
+	let survivors = await_state_keys(&db, ANCHORS, 1, TIMEOUT);
 	assert_eq!(
 		survivors,
 		1,
@@ -226,7 +228,7 @@ fn a_mutation_after_the_seal_leaves_the_published_row_where_the_seal_found_it() 
 	sealing_append(&db);
 	fill_both_inputs(&db);
 	advance_past_the_seal(&db);
-	db.await_exact_row_count(ANCHORS, 0, TIMEOUT);
+	await_state_keys(&db, ANCHORS, 0, TIMEOUT);
 
 	db.command(r#"UPDATE app::a { v: 99, ts: "2026-01-01T00:03:00Z" } FILTER { id == 1 }"#);
 	db.await_all_flows(TIMEOUT);
@@ -243,7 +245,7 @@ fn a_delete_after_the_seal_cannot_withdraw_the_published_row() {
 	sealing_append(&db);
 	fill_both_inputs(&db);
 	advance_past_the_seal(&db);
-	db.await_exact_row_count(ANCHORS, 0, TIMEOUT);
+	await_state_keys(&db, ANCHORS, 0, TIMEOUT);
 
 	db.command("DELETE app::a FILTER { id == 1 }");
 	db.await_all_flows(TIMEOUT);
@@ -266,13 +268,13 @@ fn a_delete_after_the_seal_frees_no_further_state() {
 	let operator = append_operator(&db);
 	let per_row = per_row_state_of(operator);
 	advance_past_the_seal(&db);
-	db.await_exact_row_count(&per_row, 0, TIMEOUT);
+	await_state_keys(&db, &per_row, 0, TIMEOUT);
 
 	db.command("DELETE app::a FILTER { id == 1 }");
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(
-		db.row_count(&per_row),
+		state_keys(&db, &per_row),
 		0,
 		"a sealed operator must stay empty through a delete it cannot translate; surface now: {:?}",
 		db.query(SURFACE)
@@ -287,12 +289,12 @@ fn a_row_inserted_after_the_seal_arms_its_own_state_and_publishes_its_own_row() 
 	sealing_append(&db);
 	fill_both_inputs(&db);
 	advance_past_the_seal(&db);
-	db.await_exact_row_count(ANCHORS, 0, TIMEOUT);
+	await_state_keys(&db, ANCHORS, 0, TIMEOUT);
 
 	db.command(r#"INSERT app::a [{ id: 9, v: 11, ts: "2026-01-01T00:02:00Z" }]"#);
 	db.await_row_count("FROM app::u", 3, TIMEOUT);
 
-	assert_eq!(db.await_exact_row_count(ANCHORS, 1, TIMEOUT), 1, "the new row arms a seal of its own");
+	assert_eq!(await_state_keys(&db, ANCHORS, 1, TIMEOUT), 1, "the new row arms a seal of its own");
 	assert_eq!(db.row_count("FROM app::u FILTER { v == 11 }"), 1, "and publishes its own row");
 	assert_eq!(db.row_count("FROM app::u FILTER { v == 5 }"), 1, "without disturbing what the seal froze");
 	assert_eq!(db.row_count("FROM app::u FILTER { v == 7 }"), 1);
@@ -308,7 +310,7 @@ fn removing_a_source_row_before_its_seal_takes_its_state_and_its_published_row()
 	db.command("DELETE app::a FILTER { id == 1 }");
 	db.await_all_flows(TIMEOUT);
 
-	let survivors = db.await_exact_row_count(ANCHORS, 1, TIMEOUT);
+	let survivors = await_state_keys(&db, ANCHORS, 1, TIMEOUT);
 	assert_eq!(
 		survivors,
 		1,
@@ -333,6 +335,18 @@ fn an_append_without_a_seal_keeps_every_row_addressable_forever() {
 	db.command(r#"UPDATE keep::a { v: 50, ts: "2026-01-01T00:02:00Z" } FILTER { id == 1 }"#);
 	db.await_all_flows(TIMEOUT);
 
-	assert_eq!(db.row_count(ANCHORS), 0, "an unsealed append arms nothing; surface now: {:?}", db.query(SURFACE));
+	let mappings = format!("{} filter {{ keyspace == 'ROW_NUMBER_MAPPING' }}", state_of(append_operator(&db)));
+	assert_eq!(
+		await_state_keys(&db, &mappings, 2, TIMEOUT),
+		2,
+		"an unsealed append must keep every row addressable; surface now: {:?}",
+		db.query(SURFACE)
+	);
+	assert_eq!(
+		state_keys(&db, ANCHORS),
+		0,
+		"an unsealed append arms nothing; surface now: {:?}",
+		db.query(SURFACE)
+	);
 	assert_eq!(db.row_count("FROM keep::u FILTER { v == 50 }"), 1, "and its rows stay updatable indefinitely");
 }

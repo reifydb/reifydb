@@ -3,21 +3,23 @@
 
 use std::time::Duration;
 
-use reifydb::{
-	ConfigKey, Value, WithSubsystem, embedded,
-	testing::db::{TestDb, await_value},
-};
+use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_test_harness::assert::column_values;
+
+use crate::flow::state::{await_state_keys, state_keys};
 
 const TIMEOUT: Duration = Duration::from_secs(15);
 
 const JOIN_NODE_TYPE: u8 = 7;
 
-const ANCHOR: &str = "SEAL_ANCHOR";
+const ANCHOR: &str = "from system::metrics::flow::state::current
+	filter { keyspace == 'SEAL_ANCHOR' }";
 
-const LEFT: &str = "JOIN_LEFT";
+const LEFT: &str = "from system::metrics::flow::state::current
+	filter { keyspace == 'JOIN_LEFT' }";
 
-const RIGHT: &str = "JOIN_RIGHT";
+const RIGHT: &str = "from system::metrics::flow::state::current
+	filter { keyspace == 'JOIN_RIGHT' }";
 
 const SURFACE: &str = "from system::metrics::flow::state::current";
 
@@ -62,26 +64,6 @@ fn advance_past_the_seal(db: &TestDb) {
 	db.await_all_flows(TIMEOUT);
 }
 
-fn keys_in(db: &TestDb, keyspace: &str) -> u64 {
-	// The surface reports one row per group, so the count that must stay bounded is the keys column, not the rows.
-	let rql = format!("{SURFACE} filter {{ keyspace == '{keyspace}' }} map {{ keys }}");
-	let frames = db.query(&rql);
-	let Some(frame) = frames.first() else {
-		return 0;
-	};
-	column_values(frame, "keys")
-		.iter()
-		.map(|value| match value {
-			Value::Uint8(keys) => *keys,
-			other => panic!("the keys column must be a uint8, found {other:?}"),
-		})
-		.sum()
-}
-
-fn await_keys_in(db: &TestDb, keyspace: &str, want: u64) -> u64 {
-	await_value(want, TIMEOUT, || keys_in(db, keyspace))
-}
-
 fn join_operator(db: &TestDb) -> u64 {
 	let rql = format!("FROM system::operators FILTER {{ node_type == {JOIN_NODE_TYPE} }} MAP {{ id }}");
 	let frames = db.query(&rql);
@@ -97,8 +79,8 @@ fn state_of(operator: u64) -> String {
 }
 
 fn per_key_state_of(operator: u64) -> String {
-	// Group zero is the operator's own root scope, so only the other groups hold per-join-key state.
-	format!("{} filter {{ group != 0 }}", state_of(operator))
+	// The schema and the counters are the operator's own bookkeeping, so every other keyspace is per join key.
+	format!("{} filter {{ keyspace != 'JOIN_SCHEMA' and keyspace != 'NODE_COUNTER' }}", state_of(operator))
 }
 
 fn view_rv(db: &TestDb) -> Vec<Value> {
@@ -120,7 +102,7 @@ fn two_right_rows_under_one_key_collapse_into_a_single_slot() {
 	db.await_row_count("FROM app::j FILTER { rv == 8 }", 1, TIMEOUT);
 
 	assert_eq!(
-		await_keys_in(&db, RIGHT, 1),
+		await_state_keys(&db, RIGHT, 1, TIMEOUT),
 		1,
 		"the right side must hold one slot, not one key per arrival; surface now: {:?}",
 		db.query(SURFACE)
@@ -158,7 +140,7 @@ fn a_left_row_with_no_slot_publishes_nothing_until_one_arrives() {
 	db.await_all_flows(TIMEOUT);
 	assert_eq!(db.row_count("FROM app::j"), 0, "an unmatched left row must publish nothing on an inner join");
 	assert_eq!(
-		await_keys_in(&db, LEFT, 1),
+		await_state_keys(&db, LEFT, 1, TIMEOUT),
 		1,
 		"but it must be held so the first slot can find it; surface now: {:?}",
 		db.query(SURFACE)
@@ -179,18 +161,19 @@ fn emptying_the_slot_withdraws_the_joined_row() {
 	insert_left(&db);
 	insert_right_a(&db);
 	db.await_row_count("FROM app::j FILTER { rv == 7 }", 1, TIMEOUT);
+	await_state_keys(&db, RIGHT, 1, TIMEOUT);
 
 	db.command("DELETE app::rhs FILTER { id == 2 }");
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(db.row_count("FROM app::j"), 0, "an inner join must withdraw its row when the slot empties");
 	assert_eq!(
-		await_keys_in(&db, RIGHT, 0),
+		await_state_keys(&db, RIGHT, 0, TIMEOUT),
 		0,
 		"while the emptied slot frees its state; surface now: {:?}",
 		db.query(SURFACE)
 	);
-	assert_eq!(await_keys_in(&db, LEFT, 1), 1, "and the left row stays, ready for the next slot");
+	assert_eq!(await_state_keys(&db, LEFT, 1, TIMEOUT), 1, "and the left row stays, ready for the next slot");
 }
 
 #[test]
@@ -221,25 +204,25 @@ fn a_sealed_left_row_frees_its_own_state_and_spares_the_unsealed_slot() {
 	insert_right_a(&db);
 	db.await_row_count("FROM app::j FILTER { rv == 7 }", 1, TIMEOUT);
 	let operator = join_operator(&db);
-	assert_eq!(await_keys_in(&db, LEFT, 1), 1, "precondition: the left row must be held");
+	assert_eq!(await_state_keys(&db, LEFT, 1, TIMEOUT), 1, "precondition: the left row must be held");
 
 	advance_past_the_seal(&db);
 
 	assert_eq!(
-		await_keys_in(&db, LEFT, 0),
+		await_state_keys(&db, LEFT, 0, TIMEOUT),
 		0,
 		"the sealed left row must be freed; surface now: {:?}",
 		db.query(SURFACE)
 	);
-	assert_eq!(keys_in(&db, ANCHOR), 0, "leaving no anchor to fire again");
+	assert_eq!(state_keys(&db, ANCHOR), 0, "leaving no anchor to fire again");
 	assert_eq!(
-		await_keys_in(&db, RIGHT, 1),
+		await_state_keys(&db, RIGHT, 1, TIMEOUT),
 		1,
 		"while the slot, which latest forbids sealing, stays addressable; surface now: {:?}",
 		db.query(SURFACE)
 	);
 	assert!(
-		db.row_count(&per_key_state_of(operator)) > 0,
+		state_keys(&db, &per_key_state_of(operator)) > 0,
 		"so the key's group must outlive the left side that armed it; surface now: {:?}",
 		db.query(&state_of(operator))
 	);

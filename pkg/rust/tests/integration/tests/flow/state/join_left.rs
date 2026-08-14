@@ -6,6 +6,8 @@ use std::time::Duration;
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_test_harness::assert::column_values;
 
+use crate::flow::state::{await_state_keys, state_keys};
+
 const TIMEOUT: Duration = Duration::from_secs(15);
 
 const JOIN_NODE_TYPE: u8 = 7;
@@ -56,13 +58,13 @@ fn unsealed_left_join(db: &TestDb) {
 }
 
 fn fill_one_pair(db: &TestDb) {
-	// The surface reports one row per join key, never one per anchor, so a live pair shows a single anchored key.
+	// Each side must hold exactly the one row it was given, so the key count is what a live pair is measured by.
 	db.command(r#"INSERT app::lhs [{ id: 1, k: 1, lv: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);
 	db.command(r#"INSERT app::rhs [{ id: 2, k: 1, rv: 7, ts: "2026-01-01T00:00:00.500Z" }]"#);
 	db.await_row_count("FROM app::j FILTER { rv == 7 }", 1, TIMEOUT);
-	db.await_row_count(LEFT_ROWS, 1, TIMEOUT);
-	db.await_row_count(RIGHT_ROWS, 1, TIMEOUT);
-	db.await_row_count(ANCHORED_KEYS, 1, TIMEOUT);
+	await_state_keys(db, LEFT_ROWS, 1, TIMEOUT);
+	await_state_keys(db, RIGHT_ROWS, 1, TIMEOUT);
+	await_state_keys(db, ANCHORED_KEYS, 2, TIMEOUT);
 }
 
 fn advance_to(db: &TestDb, at: &str) {
@@ -90,8 +92,8 @@ fn state_of(operator: u64) -> String {
 }
 
 fn per_key_state_of(operator: u64) -> String {
-	// Group zero is the operator's own root scope, so only the other groups hold per-join-key state.
-	format!("{} filter {{ group != 0 }}", state_of(operator))
+	// The schema and the counters are the operator's own bookkeeping, so every other keyspace is per join key.
+	format!("{} filter {{ keyspace != 'JOIN_SCHEMA' and keyspace != 'NODE_COUNTER' }}", state_of(operator))
 }
 
 fn assert_only_bounded_bookkeeping_survives(db: &TestDb, operator: u64, schemas: u64) {
@@ -122,18 +124,18 @@ fn view_rv(db: &TestDb, filter: &str) -> Vec<Value> {
 }
 
 #[test]
-fn a_live_pair_reports_both_sides_and_the_key_arming_their_seal() {
-	// Without a surface that sees live state, no later assertion about reaping can mean anything.
+fn a_live_pair_reports_both_sides_and_an_anchor_arming_each_of_them() {
+	// An anchor is keyed by side and row, so a shared count would hide one side's row never arming at all.
 	let db = setup();
 	sealing_left_join(&db);
 	fill_one_pair(&db);
 
-	assert_eq!(db.row_count(LEFT_ROWS), 1, "the left row must be held; surface now: {:?}", db.query(SURFACE));
-	assert_eq!(db.row_count(RIGHT_ROWS), 1, "the right row must be held; surface now: {:?}", db.query(SURFACE));
+	assert_eq!(state_keys(&db, LEFT_ROWS), 1, "the left row must be held; surface now: {:?}", db.query(SURFACE));
+	assert_eq!(state_keys(&db, RIGHT_ROWS), 1, "the right row must be held; surface now: {:?}", db.query(SURFACE));
 	assert_eq!(
-		db.row_count(ANCHORED_KEYS),
-		1,
-		"and the join key must carry an anchor arming the seal; surface now: {:?}",
+		state_keys(&db, ANCHORED_KEYS),
+		2,
+		"and each side's row must arm an anchor of its own; surface now: {:?}",
 		db.query(SURFACE)
 	);
 }
@@ -147,14 +149,14 @@ fn a_sealed_pair_leaves_the_join_operator_holding_nothing_per_key() {
 	let operator = join_operator(&db);
 	let per_key = per_key_state_of(operator);
 	assert!(
-		db.row_count(&per_key) > 0,
+		state_keys(&db, &per_key) > 0,
 		"precondition: live rows must report state; surface now: {:?}",
 		db.query(SURFACE)
 	);
 
 	advance_past_the_seal(&db);
 
-	let remaining = db.await_exact_row_count(&per_key, 0, TIMEOUT);
+	let remaining = await_state_keys(&db, &per_key, 0, TIMEOUT);
 	assert_eq!(
 		remaining,
 		0,
@@ -172,7 +174,7 @@ fn the_sealed_pairs_published_row_survives_the_reap() {
 	fill_one_pair(&db);
 
 	advance_past_the_seal(&db);
-	db.await_exact_row_count(ANCHORED_KEYS, 0, TIMEOUT);
+	await_state_keys(&db, ANCHORED_KEYS, 0, TIMEOUT);
 
 	assert_eq!(
 		db.row_count("FROM app::j FILTER { rv == 7 }"),
@@ -192,7 +194,7 @@ fn a_row_still_inside_its_seal_keeps_its_state_through_a_reap() {
 	db.command(r#"INSERT app::lhs [{ id: 3, k: 9, lv: 1, ts: "2026-01-01T00:01:00Z" }]"#);
 	advance_past_the_seal(&db);
 
-	let survivors = db.await_exact_row_count(ANCHORED_KEYS, 1, TIMEOUT);
+	let survivors = await_state_keys(&db, ANCHORED_KEYS, 1, TIMEOUT);
 	assert_eq!(
 		survivors,
 		1,
@@ -212,19 +214,19 @@ fn an_updated_left_row_pushes_its_seal_out_and_outlives_the_tick_that_sealed_its
 	advance_past_the_seal(&db);
 
 	assert_eq!(
-		db.await_exact_row_count(RIGHT_ROWS, 0, TIMEOUT),
+		await_state_keys(&db, RIGHT_ROWS, 0, TIMEOUT),
 		0,
 		"precondition: the right row's own seal fell due on this tick; surface now: {:?}",
 		db.query(SURFACE)
 	);
 	assert_eq!(
-		db.row_count(LEFT_ROWS),
+		state_keys(&db, LEFT_ROWS),
 		1,
 		"the re-armed left row must outlive the tick that sealed the right row; surface now: {:?}",
 		db.query(SURFACE)
 	);
 	assert_eq!(
-		db.row_count(ANCHORED_KEYS),
+		state_keys(&db, ANCHORED_KEYS),
 		1,
 		"and the key must keep the anchor the update pushed out; surface now: {:?}",
 		db.query(SURFACE)
@@ -239,7 +241,7 @@ fn a_mutation_after_the_seal_leaves_the_published_row_where_the_seal_found_it() 
 	sealing_left_join(&db);
 	fill_one_pair(&db);
 	advance_past_the_seal(&db);
-	db.await_exact_row_count(ANCHORED_KEYS, 0, TIMEOUT);
+	await_state_keys(&db, ANCHORED_KEYS, 0, TIMEOUT);
 
 	db.command(r#"UPDATE app::lhs { lv: 99, ts: "2026-01-01T00:03:00Z" } FILTER { id == 1 }"#);
 	db.await_all_flows(TIMEOUT);
@@ -256,7 +258,7 @@ fn a_delete_after_the_seal_cannot_withdraw_the_published_row() {
 	sealing_left_join(&db);
 	fill_one_pair(&db);
 	advance_past_the_seal(&db);
-	db.await_exact_row_count(ANCHORED_KEYS, 0, TIMEOUT);
+	await_state_keys(&db, ANCHORED_KEYS, 0, TIMEOUT);
 
 	db.command("DELETE app::lhs FILTER { id == 1 }");
 	db.await_all_flows(TIMEOUT);
@@ -279,13 +281,13 @@ fn a_delete_after_the_seal_frees_no_further_state() {
 	let operator = join_operator(&db);
 	let per_key = per_key_state_of(operator);
 	advance_past_the_seal(&db);
-	db.await_exact_row_count(&per_key, 0, TIMEOUT);
+	await_state_keys(&db, &per_key, 0, TIMEOUT);
 
 	db.command("DELETE app::lhs FILTER { id == 1 }");
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(
-		db.row_count(&per_key),
+		state_keys(&db, &per_key),
 		0,
 		"a sealed join must stay empty through a delete it cannot translate; surface now: {:?}",
 		db.query(SURFACE)
@@ -300,12 +302,12 @@ fn a_row_inserted_after_the_seal_arms_its_own_state_and_publishes_its_own_row() 
 	sealing_left_join(&db);
 	fill_one_pair(&db);
 	advance_past_the_seal(&db);
-	db.await_exact_row_count(ANCHORED_KEYS, 0, TIMEOUT);
+	await_state_keys(&db, ANCHORED_KEYS, 0, TIMEOUT);
 
 	db.command(r#"INSERT app::lhs [{ id: 9, k: 4, lv: 11, ts: "2026-01-01T00:02:00Z" }]"#);
 	db.await_row_count("FROM app::j", 2, TIMEOUT);
 
-	assert_eq!(db.await_exact_row_count(ANCHORED_KEYS, 1, TIMEOUT), 1, "the new row arms a seal of its own");
+	assert_eq!(await_state_keys(&db, ANCHORED_KEYS, 1, TIMEOUT), 1, "the new row arms a seal of its own");
 	assert_eq!(db.row_count("FROM app::j FILTER { lv == 11 }"), 1, "and publishes its own row");
 	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "without disturbing what the seal froze");
 }
@@ -321,13 +323,13 @@ fn removing_a_source_row_before_its_seal_takes_its_state_and_its_published_row()
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(
-		db.await_exact_row_count(LEFT_ROWS, 0, TIMEOUT),
+		await_state_keys(&db, LEFT_ROWS, 0, TIMEOUT),
 		0,
 		"the removed left row must take its own state with it; surface now: {:?}",
 		db.query(SURFACE)
 	);
 	assert_eq!(
-		db.row_count(RIGHT_ROWS),
+		state_keys(&db, RIGHT_ROWS),
 		1,
 		"only the surviving right row may still be held; surface now: {:?}",
 		db.query(SURFACE)
@@ -343,19 +345,19 @@ fn a_right_side_match_never_extends_the_left_rows_anchor() {
 	db.command(r#"INSERT app::lhs [{ id: 1, k: 1, lv: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);
 	db.command(r#"INSERT app::rhs [{ id: 2, k: 1, rv: 7, ts: "2026-01-01T00:00:10.000Z" }]"#);
 	db.await_row_count("FROM app::j FILTER { rv == 7 }", 1, TIMEOUT);
-	db.await_row_count(LEFT_ROWS, 1, TIMEOUT);
-	db.await_row_count(RIGHT_ROWS, 1, TIMEOUT);
+	await_state_keys(&db, LEFT_ROWS, 1, TIMEOUT);
+	await_state_keys(&db, RIGHT_ROWS, 1, TIMEOUT);
 
 	advance_to(&db, "2026-01-01T00:00:05Z");
 
 	assert_eq!(
-		db.await_exact_row_count(LEFT_ROWS, 0, TIMEOUT),
+		await_state_keys(&db, LEFT_ROWS, 0, TIMEOUT),
 		0,
 		"the left anchor must still name the left row's own write one second in; surface now: {:?}",
 		db.query(SURFACE)
 	);
 	assert_eq!(
-		db.row_count(RIGHT_ROWS),
+		state_keys(&db, RIGHT_ROWS),
 		1,
 		"and the right row, armed ten seconds in, must be untouched; surface now: {:?}",
 		db.query(SURFACE)
@@ -370,6 +372,8 @@ fn an_unmatched_left_row_publishes_none_on_the_right_and_seals_like_any_other() 
 	sealing_left_join(&db);
 	db.command(r#"INSERT app::lhs [{ id: 1, k: 1, lv: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);
 	db.await_row_count("FROM app::j", 1, TIMEOUT);
+	await_state_keys(&db, LEFT_ROWS, 1, TIMEOUT);
+	await_state_keys(&db, ANCHORED_KEYS, 1, TIMEOUT);
 	let operator = join_operator(&db);
 	assert!(
 		matches!(view_rv(&db, "lv == 5").as_slice(), [Value::None { .. }]),
@@ -380,7 +384,7 @@ fn an_unmatched_left_row_publishes_none_on_the_right_and_seals_like_any_other() 
 	advance_past_the_seal(&db);
 
 	assert_eq!(
-		db.await_exact_row_count(&per_key_state_of(operator), 0, TIMEOUT),
+		await_state_keys(&db, &per_key_state_of(operator), 0, TIMEOUT),
 		0,
 		"an unmatched left row must reap exactly like a matched one; surface now: {:?}",
 		db.query(&state_of(operator))
@@ -396,8 +400,9 @@ fn a_right_row_arriving_after_the_left_seal_cannot_fill_in_the_published_none() 
 	sealing_left_join(&db);
 	db.command(r#"INSERT app::lhs [{ id: 1, k: 1, lv: 5, ts: "2026-01-01T00:00:00.000Z" }]"#);
 	db.await_row_count("FROM app::j", 1, TIMEOUT);
+	await_state_keys(&db, ANCHORED_KEYS, 1, TIMEOUT);
 	advance_past_the_seal(&db);
-	db.await_exact_row_count(ANCHORED_KEYS, 0, TIMEOUT);
+	await_state_keys(&db, ANCHORED_KEYS, 0, TIMEOUT);
 
 	db.command(r#"INSERT app::rhs [{ id: 2, k: 1, rv: 7, ts: "2026-01-01T00:02:00Z" }]"#);
 	db.await_all_flows(TIMEOUT);
@@ -426,7 +431,13 @@ fn a_left_join_without_a_seal_keeps_every_row_addressable_forever() {
 	db.await_all_flows(TIMEOUT);
 
 	assert_eq!(
-		db.row_count(ANCHORED_KEYS),
+		await_state_keys(&db, LEFT_ROWS, 1, TIMEOUT),
+		1,
+		"an unsealed join must keep its left row addressable; surface now: {:?}",
+		db.query(SURFACE)
+	);
+	assert_eq!(
+		state_keys(&db, ANCHORED_KEYS),
 		0,
 		"an unsealed join arms nothing; surface now: {:?}",
 		db.query(SURFACE)

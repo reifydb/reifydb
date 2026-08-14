@@ -718,8 +718,7 @@ fn decode_row(bytes: Vec<u8>) -> EncodedOperatorRow {
 
 fn ensure_schema(conn: &Connection) {
 	let keyspace = OperatorStateKey::KEYSPACE_INNER_OFFSET + 1;
-	conn.execute_batch(&format!(
-		r#"CREATE TABLE IF NOT EXISTS "operator_state" (
+	conn.execute_batch(&format!(r#"CREATE TABLE IF NOT EXISTS "operator_state" (
 			"operator" INTEGER NOT NULL,
 			"key" BLOB NOT NULL,
 			"bytes" BLOB NOT NULL,
@@ -775,9 +774,8 @@ fn ensure_schema(conn: &Connection) {
 			    "value_bytes" = "value_bytes" - LENGTH(OLD."bytes")
 			WHERE "operator" = OLD."operator"
 			  AND "keyspace" = substr(OLD."key", {keyspace}, 1);
-		END;"#
-	))
-	.expect("operator state schema could not be created");
+		END;"#))
+		.expect("operator state schema could not be created");
 
 	seed_census(conn);
 }
@@ -791,14 +789,12 @@ fn seed_census(conn: &Connection) {
 	}
 	let keyspace = OperatorStateKey::KEYSPACE_INNER_OFFSET + 1;
 	conn.execute(
-		&format!(
-			r#"INSERT INTO "operator_state_census"
+		&format!(r#"INSERT INTO "operator_state_census"
 				("operator", "keyspace", "keys", "key_bytes", "value_bytes")
 			   SELECT "operator", substr("key", {keyspace}, 1), COUNT(*),
 			          SUM(LENGTH("key")), SUM(LENGTH("bytes"))
 			   FROM "operator_state"
-			   GROUP BY "operator", substr("key", {keyspace}, 1)"#
-		),
+			   GROUP BY "operator", substr("key", {keyspace}, 1)"#),
 		[],
 	)
 	.expect("operator state census could not be seeded");

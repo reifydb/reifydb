@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// Copyright (c) 2026 ReifyDB
 
 use std::sync::{Arc, OnceLock};
 

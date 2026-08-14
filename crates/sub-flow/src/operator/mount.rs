@@ -14,7 +14,10 @@ use reifydb_flow::{
 	operator::{BoxedHostOperator, HostOperator, host::HostContext},
 	timer::Timer,
 };
-use reifydb_runtime::fatal::{FatalKind, FatalReport, describe_payload, fatal};
+use reifydb_runtime::fatal::{
+	describe_payload, fatal,
+	report::{FatalKind, FatalReport},
+};
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	flow::operator::{GuestOperator, timer::Timer as SdkTimer, view::in_process::InProcessChangeView},

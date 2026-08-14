@@ -26,7 +26,10 @@ use reifydb_runtime::{
 		system::ActorConfig,
 		traits::{Actor, Directive},
 	},
-	fatal::{FatalKind, FatalReport, fatal},
+	fatal::{
+		fatal,
+		report::{FatalKind, FatalReport},
+	},
 };
 use reifydb_transaction::{error::TransactionError, transaction::Transaction};
 use reifydb_value::{Result, error::Error, reifydb_assertions, value::duration::Duration};

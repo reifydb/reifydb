@@ -209,7 +209,7 @@ impl AppendOperator {
 		let retry = fired.at().saturating_add(seal);
 
 		self.seal_fires.inc();
-		if self.seal_fires.get() as u64 % QUEUE_SWEEP_EVERY == 0 {
+		if (self.seal_fires.get() as u64).is_multiple_of(QUEUE_SWEEP_EVERY) {
 			let drained = drain(host, &mut StoreReaper, SEAL_BATCH)?;
 			let pending = if drained.more {
 				queued(host, SEAL_BATCH)?.groups

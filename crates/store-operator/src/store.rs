@@ -11,6 +11,8 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId, key::operator_state::GroupId, metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::shutdown::Shutdown;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
@@ -58,7 +60,7 @@ impl OperatorStore {
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_persistent_sqlite() -> (Self, reifydb_sqlite::SqliteTempPathGuard) {
+	pub fn testing_memory_with_persistent_sqlite() -> (Self, SqliteTempPathGuard) {
 		let (persistent, guard) = OperatorPersistentConfig::sqlite_in_memory();
 		(
 			Self::standard(OperatorStoreConfig {
@@ -70,7 +72,7 @@ impl OperatorStore {
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite(config: reifydb_sqlite::SqliteConfig) -> Self {
+	pub fn sqlite(config: SqliteConfig) -> Self {
 		Self::standard(OperatorStoreConfig {
 			buffer: None,
 			persistent: Some(OperatorPersistentConfig::sqlite(config)),

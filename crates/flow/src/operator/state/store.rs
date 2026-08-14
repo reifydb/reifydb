@@ -35,10 +35,6 @@ pub fn state_clear(host: &mut dyn HostContext) -> Result<()> {
 	host.state_clear()
 }
 
-pub fn empty_state_key() -> GroupStateKey {
-	GroupStateKey::from_framed(empty_key()).expect("the empty key is framing-valid")
-}
-
 pub fn empty_key() -> EncodedKey {
 	EncodedKey::new(Vec::new())
 }

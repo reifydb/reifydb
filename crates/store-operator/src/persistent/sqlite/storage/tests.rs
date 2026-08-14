@@ -382,7 +382,11 @@ fn overwriting_a_key_moves_its_bytes_without_counting_it_twice() {
 	assert_eq!(census.len(), 1);
 	assert_eq!(census[0].keys, 1, "an overwrite must not mint a second key");
 	assert_eq!(census[0].key_bytes, overwritten.len() as u64, "an overwrite must not re-add the key bytes");
-	assert_eq!(census[0].value_bytes, row(9).len() as u64, "the bucket must hold the new payload size, not the old");
+	assert_eq!(
+		census[0].value_bytes,
+		row(9).len() as u64,
+		"the bucket must hold the new payload size, not the old"
+	);
 }
 
 #[test]

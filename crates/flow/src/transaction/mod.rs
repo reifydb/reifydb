@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, mem::take};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
@@ -164,7 +164,7 @@ pub trait FlowTransaction: Sized + Send + 'static {
 	}
 
 	fn take_armed(&mut self) -> Vec<TimerDue> {
-		std::mem::take(self.armed_mut())
+		take(self.armed_mut())
 	}
 
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {

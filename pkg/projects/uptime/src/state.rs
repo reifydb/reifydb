@@ -7,7 +7,7 @@ use reifydb::{
 	Clock, Database, auth::service::AuthService, catalog::catalog::Catalog, engine::engine::StandardEngine,
 	runtime::context::rng::Rng,
 };
-use reqwest::Client;
+use reqwest::{Client, redirect::Policy};
 use tokio::runtime::Handle;
 
 use crate::cli::RunArgs;
@@ -38,8 +38,8 @@ impl AppState {
 			rng,
 			engine,
 			cfg: Arc::new(cfg),
-			http: reqwest::Client::builder()
-				.redirect(reqwest::redirect::Policy::limited(5))
+			http: Client::builder()
+				.redirect(Policy::limited(5))
 				.build()
 				.expect("failed to build http client"),
 			db_auth_base,
