@@ -202,9 +202,9 @@ impl AppendOperator {
 		Ok(())
 	}
 
-	fn seal_group(&mut self, host: &mut dyn HostContext, fired: FiredAt, group: GroupId) -> Result<usize> {
+	fn seal_group(&mut self, host: &mut dyn HostContext, fired: FiredAt, group: GroupId) -> Result<()> {
 		let Some(seal) = self.seal else {
-			return Ok(0);
+			return Ok(());
 		};
 		let retry = fired.at().saturating_add(seal);
 
@@ -222,11 +222,11 @@ impl AppendOperator {
 		}
 
 		let Some(expiry) = Self::read_anchor(host, group)? else {
-			return Ok(0);
+			return Ok(());
 		};
 		if expiry > fired.at() {
 			host.arm_timer(expiry, TimerKind::Maintenance, &Self::timer_key(group))?;
-			return Ok(0);
+			return Ok(());
 		}
 		host.state_remove(&Self::anchor_key(group))?;
 		enqueue(host, group)?;
@@ -235,7 +235,7 @@ impl AppendOperator {
 		if drained.still_queued {
 			host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(group))?;
 		}
-		Ok(drained.freed)
+		Ok(())
 	}
 }
 

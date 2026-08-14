@@ -535,7 +535,11 @@ pub(crate) fn publish_joined(
 	if left_indices.is_empty() {
 		return Ok(Vec::new());
 	}
-	let group = ctx.right_store.group_for(host, key_hash)?;
+	let group = match ctx.right_store.group_of(host, key_hash)? {
+		Some(group) => group,
+		None if outer => ctx.right_store.group_for(host, key_hash)?,
+		None => return Ok(Vec::new()),
+	};
 	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 
 	let mut diffs =
@@ -640,7 +644,11 @@ pub(crate) fn publish_slot(
 	if left_indices.is_empty() {
 		return Ok(None);
 	}
-	let group = ctx.right_store.group_for(host, key_hash)?;
+	let group = match ctx.right_store.group_of(host, key_hash)? {
+		Some(group) => group,
+		None if outer => ctx.right_store.group_for(host, key_hash)?,
+		None => return Ok(None),
+	};
 	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 
 	let Some((content, slot)) = ctx.right_store.slot(host, group)? else {
