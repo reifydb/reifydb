@@ -15,7 +15,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, OperatorStateKey},
 	metrics::{collect::MetricsCollector, sample::MetricsSample, scan::record_page},
 };
 use reifydb_runtime::{
@@ -413,30 +413,32 @@ impl SqliteOperatorStorage {
 		state + anchors * (ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES)
 	}
 
-	#[instrument(name = "store::operator::census", level = "debug", skip(self), fields(prefix_len = prefix_len))]
-	pub fn census(&self, prefix_len: u32) -> Vec<OperatorStateCensus> {
+	#[instrument(name = "store::operator::census", level = "debug", skip(self))]
+	pub fn census(&self) -> Vec<OperatorStateCensus> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Vec::new();
 		};
 		let mut stmt = conn
 			.prepare_cached(
-				r#"SELECT "operator", substr("key", 1, ?1) AS "prefix", COUNT(*),
-				          SUM(LENGTH("key")), SUM(LENGTH("bytes"))
-				   FROM "operator_state"
-				   GROUP BY "operator", "prefix"
-				   ORDER BY "operator", "prefix""#,
+				r#"SELECT "operator", "keyspace", "keys", "key_bytes", "value_bytes"
+				   FROM "operator_state_census"
+				   WHERE "keys" > 0
+				   ORDER BY "operator", "keyspace""#,
 			)
 			.expect("operator state census could not be prepared");
-		let mut rows = stmt.query(params![prefix_len as i64]).expect("operator state census failed");
+		let mut rows = stmt.query([]).expect("operator state census failed");
 
 		let mut out = Vec::new();
 		while let Some(row) = rows.next().expect("operator state census failed") {
+			let stored: Vec<u8> = row.get(1).expect("census rows carry a keyspace byte");
 			out.push(OperatorStateCensus {
 				operator: OperatorId(
 					row.get::<_, i64>(0).expect("census rows carry an operator") as u64
 				),
-				prefix: row.get(1).expect("census rows carry a blob prefix"),
+				keyspace: OperatorStateKey::decode_keyspace(
+					*stored.first().expect("state keys carry a keyspace byte"),
+				),
 				keys: row.get::<_, i64>(2).expect("census rows carry a key count") as u64,
 				key_bytes: row.get::<_, i64>(3).expect("census rows carry a key byte sum") as u64,
 				value_bytes: row.get::<_, i64>(4).expect("census rows carry a value byte sum") as u64,
@@ -510,8 +512,8 @@ impl SqliteOperatorStorage {
 		};
 		let mut stmt = conn
 			.prepare_cached(
-				r#"SELECT "operator", "group", COUNT(*) FROM "operator_seal_anchor"
-				   GROUP BY "operator", "group" ORDER BY "operator", "group""#,
+				r#"SELECT "operator", COUNT(*) FROM "operator_seal_anchor"
+				   GROUP BY "operator" ORDER BY "operator""#,
 			)
 			.expect("seal anchor census could not be prepared");
 		let mut rows = stmt.query([]).expect("seal anchor census failed");
@@ -522,8 +524,7 @@ impl SqliteOperatorStorage {
 				operator: OperatorId(
 					row.get::<_, i64>(0).expect("census rows carry an operator") as u64
 				),
-				group: GroupId(row.get::<_, i64>(1).expect("census rows carry a group") as u64),
-				keys: row.get::<_, i64>(2).expect("census rows carry a key count") as u64,
+				keys: row.get::<_, i64>(1).expect("census rows carry a key count") as u64,
 			});
 		}
 		out
@@ -716,7 +717,8 @@ fn decode_row(bytes: Vec<u8>) -> EncodedOperatorRow {
 }
 
 fn ensure_schema(conn: &Connection) {
-	conn.execute_batch(
+	let keyspace = OperatorStateKey::KEYSPACE_INNER_OFFSET + 1;
+	conn.execute_batch(&format!(
 		r#"CREATE TABLE IF NOT EXISTS "operator_state" (
 			"operator" INTEGER NOT NULL,
 			"key" BLOB NOT NULL,
@@ -734,7 +736,70 @@ fn ensure_schema(conn: &Connection) {
 		) WITHOUT ROWID;
 
 		CREATE INDEX IF NOT EXISTS "operator_seal_anchor_due"
-			ON "operator_seal_anchor" ("operator", "group", "expiry");"#,
-	)
+			ON "operator_seal_anchor" ("operator", "group", "expiry");
+
+		CREATE TABLE IF NOT EXISTS "operator_state_census" (
+			"operator" INTEGER NOT NULL,
+			"keyspace" BLOB NOT NULL,
+			"keys" INTEGER NOT NULL,
+			"key_bytes" INTEGER NOT NULL,
+			"value_bytes" INTEGER NOT NULL,
+			PRIMARY KEY ("operator", "keyspace")
+		) WITHOUT ROWID;
+
+		CREATE TRIGGER IF NOT EXISTS "operator_state_census_insert"
+		AFTER INSERT ON "operator_state" BEGIN
+			INSERT INTO "operator_state_census"
+				("operator", "keyspace", "keys", "key_bytes", "value_bytes")
+			VALUES (NEW."operator", substr(NEW."key", {keyspace}, 1), 1,
+				LENGTH(NEW."key"), LENGTH(NEW."bytes"))
+			ON CONFLICT ("operator", "keyspace") DO UPDATE SET
+				"keys" = "keys" + 1,
+				"key_bytes" = "key_bytes" + LENGTH(NEW."key"),
+				"value_bytes" = "value_bytes" + LENGTH(NEW."bytes");
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS "operator_state_census_update"
+		AFTER UPDATE ON "operator_state" BEGIN
+			UPDATE "operator_state_census"
+			SET "value_bytes" = "value_bytes" - LENGTH(OLD."bytes") + LENGTH(NEW."bytes")
+			WHERE "operator" = NEW."operator"
+			  AND "keyspace" = substr(NEW."key", {keyspace}, 1);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS "operator_state_census_delete"
+		AFTER DELETE ON "operator_state" BEGIN
+			UPDATE "operator_state_census"
+			SET "keys" = "keys" - 1,
+			    "key_bytes" = "key_bytes" - LENGTH(OLD."key"),
+			    "value_bytes" = "value_bytes" - LENGTH(OLD."bytes")
+			WHERE "operator" = OLD."operator"
+			  AND "keyspace" = substr(OLD."key", {keyspace}, 1);
+		END;"#
+	))
 	.expect("operator state schema could not be created");
+
+	seed_census(conn);
+}
+
+fn seed_census(conn: &Connection) {
+	let seeded: i64 = conn
+		.query_row(r#"SELECT COUNT(*) FROM "operator_state_census""#, [], |row| row.get(0))
+		.expect("operator state census count failed");
+	if seeded > 0 {
+		return;
+	}
+	let keyspace = OperatorStateKey::KEYSPACE_INNER_OFFSET + 1;
+	conn.execute(
+		&format!(
+			r#"INSERT INTO "operator_state_census"
+				("operator", "keyspace", "keys", "key_bytes", "value_bytes")
+			   SELECT "operator", substr("key", {keyspace}, 1), COUNT(*),
+			          SUM(LENGTH("key")), SUM(LENGTH("bytes"))
+			   FROM "operator_state"
+			   GROUP BY "operator", substr("key", {keyspace}, 1)"#
+		),
+		[],
+	)
+	.expect("operator state census could not be seeded");
 }

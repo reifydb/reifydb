@@ -28,7 +28,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::Tier,
 	},
-	key::operator_state::{Keyspace, OperatorStateKey},
+	key::operator_state::Keyspace,
 	metrics::{
 		execution::StatementMetrics,
 		sample::{MetricKind, Reading},
@@ -500,30 +500,25 @@ fn level_count(metric: &'static str, count: u64) -> Measure {
 
 fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 	let mut rows: Vec<MetricsRow> = store
-		.census(OperatorStateKey::GROUP_KEYSPACE_PREFIX_LEN)
+		.census()
 		.into_iter()
-		.filter_map(|entry| {
-			let (group, keyspace, _) = OperatorStateKey::decode_inner(&entry.prefix)?;
-			Some(MetricsRow {
-				dimensions: vec![
-					Value::Uint8(entry.operator.0),
-					Value::Uint8(group.0),
-					Value::Utf8(keyspace.name().to_string()),
-					Value::Utf8(phase_name(keyspace).to_string()),
-				],
-				measures: vec![
-					level_count("keys", entry.keys),
-					level_bytes("key_bytes", entry.key_bytes),
-					level_bytes("value_bytes", entry.value_bytes),
-					level_bytes("total_bytes", entry.key_bytes + entry.value_bytes),
-				],
-			})
+		.map(|entry| MetricsRow {
+			dimensions: vec![
+				Value::Uint8(entry.operator.0),
+				Value::Utf8(entry.keyspace.name().to_string()),
+				Value::Utf8(phase_name(entry.keyspace).to_string()),
+			],
+			measures: vec![
+				level_count("keys", entry.keys),
+				level_bytes("key_bytes", entry.key_bytes),
+				level_bytes("value_bytes", entry.value_bytes),
+				level_bytes("total_bytes", entry.key_bytes + entry.value_bytes),
+			],
 		})
 		.collect();
 	rows.extend(store.anchor_census().into_iter().map(|entry| MetricsRow {
 		dimensions: vec![
 			Value::Uint8(entry.operator.0),
-			Value::Uint8(entry.group.0),
 			Value::Utf8(Keyspace::SEAL_ANCHOR.name().to_string()),
 			Value::Utf8(phase_name(Keyspace::SEAL_ANCHOR).to_string()),
 		],

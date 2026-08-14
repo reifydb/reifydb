@@ -69,7 +69,6 @@ fn flow_state_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
 		series_col("ts", ValueType::DateTime),
 		series_col("operator", ValueType::Uint8),
-		series_col("group", ValueType::Uint8),
 		series_col("keyspace", ValueType::Utf8),
 		series_col("phase", ValueType::Utf8),
 		series_col("keys", ValueType::Uint8),

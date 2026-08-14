@@ -7,7 +7,11 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::operator::EncodedOperatorRow,
 };
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId, metrics::scan::record_page};
+use reifydb_core::{
+	interface::catalog::flow::OperatorId,
+	key::operator_state::{GroupId, OperatorStateKey},
+	metrics::scan::record_page,
+};
 use reifydb_runtime::{shutdown::Shutdown, sync::rwlock::RwLock};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
@@ -131,30 +135,24 @@ impl MemoryOperatorStorage {
 		0
 	}
 
-	pub fn census(&self, prefix_len: u32) -> Vec<OperatorStateCensus> {
+	pub fn census(&self) -> Vec<OperatorStateCensus> {
 		let maps = self.maps.read();
-		let mut out: Vec<OperatorStateCensus> = Vec::new();
+		let offset = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize;
+		let mut buckets: BTreeMap<(OperatorId, u8), OperatorStateCensus> = BTreeMap::new();
 		for ((operator, key), row) in maps.state.iter() {
-			let take = (prefix_len as usize).min(key.len());
-			let prefix = key.as_slice()[..take].to_vec();
-			let key_bytes = key.len() as u64;
-			let value_bytes = row.bytes().len() as u64;
-			match out.last_mut() {
-				Some(last) if last.operator == *operator && last.prefix == prefix => {
-					last.keys += 1;
-					last.key_bytes += key_bytes;
-					last.value_bytes += value_bytes;
-				}
-				_ => out.push(OperatorStateCensus {
-					operator: *operator,
-					prefix,
-					keys: 1,
-					key_bytes,
-					value_bytes,
-				}),
-			}
+			let stored = *key.as_slice().get(offset).expect("state keys carry a keyspace byte");
+			let bucket = buckets.entry((*operator, stored)).or_insert(OperatorStateCensus {
+				operator: *operator,
+				keyspace: OperatorStateKey::decode_keyspace(stored),
+				keys: 0,
+				key_bytes: 0,
+				value_bytes: 0,
+			});
+			bucket.keys += 1;
+			bucket.key_bytes += key.len() as u64;
+			bucket.value_bytes += row.bytes().len() as u64;
 		}
-		out
+		buckets.into_values().collect()
 	}
 
 	pub fn anchor_get(
@@ -215,12 +213,11 @@ impl MemoryOperatorStorage {
 	pub fn anchor_census(&self) -> Vec<OperatorSealAnchorCensus> {
 		let maps = self.maps.read();
 		let mut out: Vec<OperatorSealAnchorCensus> = Vec::new();
-		for (operator, group, _, _) in maps.anchors.keys() {
+		for (operator, _, _, _) in maps.anchors.keys() {
 			match out.last_mut() {
-				Some(last) if last.operator == *operator && last.group == *group => last.keys += 1,
+				Some(last) if last.operator == *operator => last.keys += 1,
 				_ => out.push(OperatorSealAnchorCensus {
 					operator: *operator,
-					group: *group,
 					keys: 1,
 				}),
 			}

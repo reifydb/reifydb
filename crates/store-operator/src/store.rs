@@ -149,11 +149,11 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn census(&self, prefix_len: u32) -> Vec<OperatorStateCensus> {
+	pub fn census(&self) -> Vec<OperatorStateCensus> {
 		match self.tier.as_ref() {
-			OperatorTier::Memory(storage) => storage.census(prefix_len),
+			OperatorTier::Memory(storage) => storage.census(),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			OperatorTier::Sqlite(storage) => storage.census(prefix_len),
+			OperatorTier::Sqlite(storage) => storage.census(),
 		}
 	}
 

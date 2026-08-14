@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
+use reifydb_core::{
+	interface::catalog::flow::OperatorId,
+	key::operator_state::{GroupId, Keyspace},
+};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 pub const ANCHOR_KEY_BYTES: u64 = 25;
@@ -34,14 +37,13 @@ pub struct OperatorSealAnchor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorSealAnchorCensus {
 	pub operator: OperatorId,
-	pub group: GroupId,
 	pub keys: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorStateCensus {
 	pub operator: OperatorId,
-	pub prefix: Vec<u8>,
+	pub keyspace: Keyspace,
 	pub keys: u64,
 	pub key_bytes: u64,
 	pub value_bytes: u64,
