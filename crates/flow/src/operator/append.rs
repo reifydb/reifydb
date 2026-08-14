@@ -401,10 +401,11 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::host::TxnHostContext,
+		timer::extension::TimerExtension,
 		transaction::{
 			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupExtension,
 			mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension,
-			substrate::apply_operator_state, timer::TimerExtension,
+			substrate::apply_operator_state,
 		},
 	};
 
@@ -439,11 +440,11 @@ mod tests {
 		AppendOperator::sealing_for_state_tests(OperatorId(operator), Duration::from_seconds(10).unwrap())
 	}
 
-	fn fire(op: &mut AppendOperator, txn: &mut DeferredTransaction, at: DateTime, group: GroupId) {
+	fn fire(op: &mut AppendOperator, txn: &mut DeferredTransaction, due: DateTime, group: GroupId) {
 		// The engine lifts a due timer off the wheel before dispatch, so skipping the disarm reads as a leak.
 		let operator = op.operator;
 		let timer = Timer {
-			at,
+			due,
 			kind: TimerKind::Maintenance,
 			key: AppendOperator::timer_key(group),
 		};

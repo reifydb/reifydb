@@ -391,7 +391,7 @@ pub(crate) fn intern_groups(ctx: &mut ExternCContext, groups: &[EncodedKey]) -> 
 	Ok(ids.into_iter().map(GroupId).collect())
 }
 
-pub(crate) fn arm_timer(ctx: &mut ExternCContext, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+pub(crate) fn arm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 	let bytes = key.as_bytes();
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
@@ -400,7 +400,7 @@ pub(crate) fn arm_timer(ctx: &mut ExternCContext, at: DateTime, kind: TimerKind,
 		let result = ((*ctx.ctx).callbacks.state.arm_timer)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			at.to_millis(),
+			due.to_millis(),
 			kind as u8,
 			bytes.as_ptr(),
 			bytes.len(),
@@ -463,7 +463,7 @@ pub(crate) fn flow_watermark(ctx: &mut ExternCContext) -> Result<Option<DateTime
 	Ok((present != 0).then(|| DateTime::from_millis(millis)))
 }
 
-pub(crate) fn disarm_timer(ctx: &mut ExternCContext, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+pub(crate) fn disarm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 	let bytes = key.as_bytes();
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
@@ -472,7 +472,7 @@ pub(crate) fn disarm_timer(ctx: &mut ExternCContext, at: DateTime, kind: TimerKi
 		let result = ((*ctx.ctx).callbacks.state.disarm_timer)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			at.to_millis(),
+			due.to_millis(),
 			kind as u8,
 			bytes.as_ptr(),
 			bytes.len(),

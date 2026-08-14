@@ -5,12 +5,11 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{actors::pending::PendingLayers, interface::catalog::flow::OperatorId, state::store::TimerKind};
 use reifydb_flow::{
-	timer::Timer,
+	timer::{Timer, TimerDue, wheel::TimerWheel},
 	transaction::{
 		DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
 		substrate::{FlowSubstrate, apply_operator_state},
-		timer::*,
 	},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -51,7 +50,7 @@ fn commit_pending(engine: &TestEngine, txn: &mut impl FlowTransaction) {
 
 fn timer(millis: u64, kind: TimerKind, key: &str) -> Timer {
 	Timer {
-		at: at_millis(millis),
+		due: at_millis(millis),
 		kind,
 		key: EncodedKey::new(key.as_bytes()),
 	}
@@ -382,4 +381,98 @@ fn a_restart_still_fires_persisted_timers() {
 		cold.take_due(NODE, &mut cold_txn, at_millis(5_000), NO_LIMIT).unwrap(),
 		vec![timer(5_000, TimerKind::Seal, "bucket")]
 	);
+}
+
+fn due(millis: u64) -> TimerDue {
+	TimerDue {
+		operator_id: NODE,
+		due: at_millis(millis),
+	}
+}
+
+#[test]
+fn next_due_reports_the_earliest_armed_instant_not_the_latest() {
+	// the peek must scan forward, otherwise the registry entry names the far end of the wheel and skips every real timer
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let wheel = TimerWheel::default();
+
+	for at_ms in [9_000u64, 5_000, 7_000] {
+		wheel.arm(NODE, &mut txn, &timer(at_ms, TimerKind::Seal, "b")).unwrap();
+	}
+
+	assert_eq!(wheel.next_due(NODE, &mut txn).unwrap(), Some(due(5_000)));
+}
+
+#[test]
+fn next_due_is_none_when_nothing_is_armed() {
+	// none is what authorises dropping the registry entry, so an operator holding nothing must never report an instant
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let wheel = TimerWheel::default();
+
+	assert_eq!(wheel.next_due(NODE, &mut txn).unwrap(), None);
+
+	wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "b")).unwrap();
+	assert_eq!(wheel.take_due(NODE, &mut txn, at_millis(5_000), NO_LIMIT).unwrap().len(), 1);
+
+	assert_eq!(wheel.next_due(NODE, &mut txn).unwrap(), None, "a drained wheel must report nothing armed");
+}
+
+#[test]
+fn next_due_reports_an_instant_no_watermark_has_reached() {
+	// the peek must be unbounded, otherwise a far-future timer reads as nothing armed and its entry is dropped for good
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let wheel = TimerWheel::default();
+
+	wheel.arm(NODE, &mut txn, &timer(10_000_000_000, TimerKind::Seal, "distant")).unwrap();
+
+	assert_eq!(wheel.next_due(NODE, &mut txn).unwrap(), Some(due(10_000_000_000)));
+}
+
+#[test]
+fn next_due_reports_what_a_capped_take_left_behind() {
+	// the peek must see the post-take wheel, otherwise the entry keeps naming a fired instant and the operator rescans forever
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let wheel = TimerWheel::default();
+
+	for at_ms in [9_000u64, 5_000, 7_000] {
+		wheel.arm(NODE, &mut txn, &timer(at_ms, TimerKind::Seal, "b")).unwrap();
+	}
+
+	assert_eq!(wheel.take_due(NODE, &mut txn, at_millis(10_000), 2).unwrap().len(), 2);
+
+	assert_eq!(wheel.next_due(NODE, &mut txn).unwrap(), Some(due(9_000)));
+}
+
+#[test]
+fn next_due_stored_ignores_an_arm_that_has_not_been_committed() {
+	// the load-time peek must read the store alone, otherwise a rebuild would credit arms that no restart can see
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let wheel = TimerWheel::default();
+
+	wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "b")).unwrap();
+	assert_eq!(wheel.next_due_stored(NODE, &engine.inner().operator_state()), None);
+
+	commit_pending(&engine, &mut txn);
+
+	assert_eq!(wheel.next_due_stored(NODE, &engine.inner().operator_state()), Some(due(5_000)));
+}
+
+#[test]
+fn next_due_stored_reports_the_earliest_committed_instant() {
+	// a rebuilt entry must name the earliest persisted instant, otherwise a reloaded flow skips timers it already owed
+	let engine = TestEngine::new();
+	let wheel = TimerWheel::default();
+
+	let mut txn = deferred(&engine);
+	wheel.arm(NODE, &mut txn, &timer(9_000, TimerKind::Seal, "b")).unwrap();
+	wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "b")).unwrap();
+	wheel.arm(NODE, &mut txn, &timer(7_000, TimerKind::Seal, "b")).unwrap();
+	commit_pending(&engine, &mut txn);
+
+	assert_eq!(wheel.next_due_stored(NODE, &engine.inner().operator_state()), Some(due(5_000)));
 }

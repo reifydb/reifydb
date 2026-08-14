@@ -81,7 +81,7 @@ impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
 	}
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
-		let at = timer.at;
+		let due = timer.due;
 		let version = host.version();
 		let mut ctx = InProcessContext::new(host, self.operator);
 		{
@@ -90,7 +90,7 @@ impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
 				logic.on_timer(
 					&mut ctx,
 					SdkTimer {
-						at,
+						due,
 						kind: timer.kind,
 						key: timer.key.as_ref(),
 					},
@@ -101,7 +101,7 @@ impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
 		if diffs.is_empty() {
 			return Ok(None);
 		}
-		Ok(Some(Change::from_flow(self.operator, version, diffs, at)))
+		Ok(Some(Change::from_flow(self.operator, version, diffs, due)))
 	}
 
 	fn seal_span(&self) -> Option<Duration> {

@@ -22,10 +22,7 @@ use reifydb_flow::{
 	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction},
 };
 use reifydb_transaction::change_accumulator::ChangeAccumulator;
-use reifydb_value::{
-	Result,
-	value::{Value, datetime::DateTime},
-};
+use reifydb_value::{Result, value::Value};
 
 use crate::commit::{committer::FlowSlice, overlay::FlowWriteOverlay};
 

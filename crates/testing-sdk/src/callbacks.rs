@@ -522,7 +522,7 @@ extern "C" fn test_arm_timer(
 			from_raw_parts(key, key_len).to_vec()
 		};
 		test_ctx.arm_timer(ArmedTimer {
-			at: DateTime::from_millis(at_millis),
+			due: DateTime::from_millis(at_millis),
 			kind,
 			key,
 		});
@@ -558,7 +558,7 @@ extern "C" fn test_disarm_timer(
 			from_raw_parts(key, key_len).to_vec()
 		};
 		test_ctx.disarm_timer(&ArmedTimer {
-			at: DateTime::from_millis(at_millis),
+			due: DateTime::from_millis(at_millis),
 			kind,
 			key,
 		});

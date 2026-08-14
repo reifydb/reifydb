@@ -36,6 +36,7 @@ use crate::{
 		BoxedHostOperator, HostOperator, metrics::OperatorSampleRegistry, provider::OperatorProvider,
 		sink::BoxedDurableSink,
 	},
+	timer::registry::TimerRegistry,
 	transaction::substrate::FlowSubstrate,
 };
 
@@ -55,6 +56,7 @@ pub struct FlowEngineInner {
 	pub(crate) operator_provider: Arc<dyn OperatorProvider>,
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
+	pub(crate) timers: TimerRegistry,
 }
 
 impl FlowEngineInner {
@@ -88,6 +90,7 @@ impl FlowEngineInner {
 			operator_provider,
 			substrate,
 			operator_samples,
+			timers: TimerRegistry::default(),
 		}
 	}
 
@@ -144,6 +147,7 @@ impl FlowEngineInner {
 	}
 
 	pub fn clear(&mut self) {
+		self.timers.clear();
 		self.operators.clear();
 		self.durable_sinks.clear();
 		self.flows.clear();
@@ -156,6 +160,8 @@ impl FlowEngineInner {
 	pub fn remove_flow(&mut self, flow_id: FlowId) {
 		let node_ids: Vec<OperatorId> =
 			self.flows.get(&flow_id).map(|flow| flow.get_operator_ids().collect()).unwrap_or_default();
+
+		self.timers.remove_flow(flow_id);
 
 		for operator_id in node_ids {
 			self.operators.remove(&operator_id);

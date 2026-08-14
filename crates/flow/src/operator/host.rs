@@ -32,7 +32,7 @@ use reifydb_value::{
 use crate::{
 	operator::stateful::StateIterator,
 	state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
-	timer::Timer,
+	timer::{Timer, extension::TimerExtension},
 	transaction::{
 		FlowTransaction,
 		anchor::{SealAnchorExtension, SealPage, anchor_key},
@@ -41,7 +41,6 @@ use crate::{
 		reclaim::ReclaimExtension,
 		row_number::RowNumberExtension,
 		state::StateExtension,
-		timer::TimerExtension,
 	},
 };
 
@@ -128,22 +127,22 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 }
 
 impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {
-	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.txn.arm_timer(
 			self.operator,
 			&Timer {
-				at,
+				due,
 				kind,
 				key: key.clone(),
 			},
 		)
 	}
 
-	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.txn.disarm_timer(
 			self.operator,
 			&Timer {
-				at,
+				due,
 				kind,
 				key: key.clone(),
 			},

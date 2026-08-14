@@ -297,7 +297,7 @@ where
 		};
 		let mut store = GuestAsHost(ctx);
 		let fired = FiredAt::of(&FlowTimer {
-			at: timer.at,
+			due: timer.due,
 			kind: timer.kind,
 			key: EncodedKey::new(timer.key),
 		});

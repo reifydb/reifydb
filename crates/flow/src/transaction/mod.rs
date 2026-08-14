@@ -41,16 +41,14 @@ pub mod row_number;
 pub mod scope;
 pub mod state;
 pub mod substrate;
-pub mod timer;
 pub mod watermark;
 
 use crate::{
 	operator::sink::DurableSink,
-	timer::Timer,
+	timer::{Timer, TimerDue, wheel::TimerWheel},
 	transaction::{
 		read::{flow_merge_pending_iterator, flow_merge_pending_iterator_rev},
 		substrate::FlowSubstrate,
-		timer::TimerWheel,
 		watermark::SourceWatermarks,
 	},
 };
@@ -111,6 +109,8 @@ pub trait FlowTransaction: Sized + Send + 'static {
 
 	fn accumulator_mut(&mut self) -> &mut ChangeAccumulator;
 
+	fn armed_mut(&mut self) -> &mut Vec<TimerDue>;
+
 	fn change_coordinate(&self) -> Option<ChangeCoordinate>;
 
 	fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate);
@@ -153,6 +153,14 @@ pub trait FlowTransaction: Sized + Send + 'static {
 
 	fn take_pending(&mut self) -> Pending {
 		self.pending_layers_mut().take_top()
+	}
+
+	fn push_armed(&mut self, armed: TimerDue) {
+		self.armed_mut().push(armed);
+	}
+
+	fn take_armed(&mut self) -> Vec<TimerDue> {
+		std::mem::take(self.armed_mut())
 	}
 
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {

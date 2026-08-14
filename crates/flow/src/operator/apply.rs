@@ -61,10 +61,10 @@ impl HostOperator for ApplyOperator {
 	}
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
-		let at = timer.at;
+		let due = timer.due;
 		let mut out = self.inner.on_timer(host, timer)?;
 		if let Some(change) = out.as_mut() {
-			stamp_output_time(change, Some(at));
+			stamp_output_time(change, Some(due));
 		}
 		Ok(out)
 	}

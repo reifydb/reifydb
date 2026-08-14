@@ -135,7 +135,7 @@ fn drive_sealing(clock_ms: u64) -> (Vec<String>, Snapshot) {
 	emitted.push(format!(
 		"{:?}",
 		h.on_timer(Timer {
-			at: at_millis(10_000),
+			due: at_millis(10_000),
 			kind: TimerKind::Seal,
 			key: EncodedKey::new(Vec::new()),
 		})

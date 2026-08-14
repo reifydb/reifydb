@@ -799,11 +799,11 @@ mod seal_anchor_guard_tests {
 	}
 
 	impl TimerStore for RecordingHost {
-		fn arm_timer(&mut self, _at: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+		fn arm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
 			Ok(())
 		}
 
-		fn disarm_timer(&mut self, _at: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+		fn disarm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
 			Ok(())
 		}
 

@@ -5,7 +5,7 @@ use reifydb_core::state::store::TimerKind;
 use reifydb_value::value::datetime::DateTime;
 
 pub struct Timer<'a> {
-	pub at: DateTime,
+	pub due: DateTime,
 	pub kind: TimerKind,
 	pub key: &'a [u8],
 }

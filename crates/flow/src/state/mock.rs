@@ -33,17 +33,17 @@ pub(crate) enum RecordedTimer {
 }
 
 impl RecordedTimer {
-	pub(crate) fn armed(at: DateTime, kind: TimerKind, key: EncodedKey) -> Self {
+	pub(crate) fn armed(due: DateTime, kind: TimerKind, key: EncodedKey) -> Self {
 		Self::Armed(Timer {
-			at,
+			due,
 			kind,
 			key,
 		})
 	}
 
-	pub(crate) fn disarmed(at: DateTime, kind: TimerKind, key: EncodedKey) -> Self {
+	pub(crate) fn disarmed(due: DateTime, kind: TimerKind, key: EncodedKey) -> Self {
 		Self::Disarmed(Timer {
-			at,
+			due,
 			kind,
 			key,
 		})
@@ -200,12 +200,12 @@ impl IdentityReclaim for MockStore {
 }
 
 impl TimerStore for MockStore {
-	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
-		self.record_timer(RecordedTimer::armed(at, kind, key.clone()))
+	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		self.record_timer(RecordedTimer::armed(due, kind, key.clone()))
 	}
 
-	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
-		self.record_timer(RecordedTimer::disarmed(at, kind, key.clone()))
+	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		self.record_timer(RecordedTimer::disarmed(due, kind, key.clone()))
 	}
 
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {

@@ -29,6 +29,7 @@ impl FlowEngineInner {
 		topo: &[OperatorId],
 	) -> Result<u32> {
 		let wheel = txn.timer_wheel();
+
 		let watermarks = txn.source_watermarks();
 		let sources: Vec<OperatorId> = topo
 			.iter()
@@ -45,22 +46,29 @@ impl FlowEngineInner {
 		loop {
 			let watermark = watermarks.flow_watermark(&sources, txn)?;
 			txn.set_flow_watermark(watermark);
+			let armed = txn.take_armed();
 			let mut due: Vec<(OperatorId, Timer)> = Vec::new();
-			for operator_id in topo {
+			let mut scanned: Vec<OperatorId> = Vec::new();
+			for candidate in self.timers.due_before(armed, flow.id, watermark) {
 				if budget == 0 {
 					break;
 				}
-				for timer in wheel.take_due(*operator_id, txn, watermark, budget)? {
+				scanned.push(candidate.operator_id);
+				for timer in wheel.take_due(candidate.operator_id, txn, watermark, budget)? {
 					budget -= 1;
-					due.push((*operator_id, timer));
+					due.push((candidate.operator_id, timer));
 				}
+			}
+			for operator_id in scanned {
+				let next = wheel.next_due(operator_id, txn)?;
+				self.timers.refresh(flow.id, operator_id, next);
 			}
 			if due.is_empty() {
 				return Ok(fired_total);
 			}
 			rounds += 1;
 			if rounds > MAX_TIMER_ROUNDS {
-				let oldest = due.iter().map(|(_, timer)| timer.at).min().map(|at| at.to_millis());
+				let oldest = due.iter().map(|(_, timer)| timer.due).min().map(|at| at.to_millis());
 				panic!(
 					"timer dispatch did not reach quiescence within {MAX_TIMER_ROUNDS} rounds at \
 					 version {}: watermark {} ms, {} timers still due, oldest armed at {:?} ms, \
@@ -75,8 +83,8 @@ impl FlowEngineInner {
 			}
 
 			due.sort_by(|(left_node, left), (right_node, right)| {
-				(left.at, left_node.0, left.kind as u8, left.key.as_ref()).cmp(&(
-					right.at,
+				(left.due, left_node.0, left.kind as u8, left.key.as_ref()).cmp(&(
+					right.due,
 					right_node.0,
 					right.kind as u8,
 					right.key.as_ref(),
@@ -97,7 +105,7 @@ impl FlowEngineInner {
 					},
 				};
 				txn.set_change_coordinate(ChangeCoordinate {
-					at: Some(timer.at),
+					at: Some(timer.due),
 					version,
 				});
 				let fired = match node {

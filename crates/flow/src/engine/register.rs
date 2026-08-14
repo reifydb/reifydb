@@ -67,6 +67,7 @@ use crate::{
 		take::TakeOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
+	timer::TimerDue,
 };
 
 impl FlowEngineInner {
@@ -113,6 +114,14 @@ impl FlowEngineInner {
 			}
 			added.push(operator_id);
 		}
+
+		let wheel = self.substrate.timers.clone();
+		let store = self.substrate.operators.as_ref().expect("flow engine was built without an operator store");
+		let armed: Vec<TimerDue> = flow
+			.get_operator_ids()
+			.filter_map(|operator_id| wheel.next_due_stored(operator_id, store))
+			.collect();
+		self.timers.rebuild(flow.id, armed);
 
 		self.analyzer.add(flow.clone());
 		self.flows.insert(flow.id, flow.clone());

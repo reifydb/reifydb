@@ -62,8 +62,8 @@ use super::{
 use crate::{
 	error::FlowStateError,
 	operator::{host::TxnHostContext, join::column::JoinedColumnsBuilder, stateful::StateIterator},
-	timer::Timer,
-	transaction::{FlowTransaction, deferred::DeferredTransaction, state::StateExtension, timer::TimerExtension},
+	timer::{Timer, extension::TimerExtension},
+	transaction::{FlowTransaction, deferred::DeferredTransaction, state::StateExtension},
 };
 
 fn partition_suffix(partition: Option<Partition>) -> Vec<u8> {
@@ -560,7 +560,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 			txn,
 			object_id,
 			&partition_values,
-			timer.at.to_millis(),
+			timer.due.to_millis(),
 			&mut evicted_rns,
 			&mut evicted,
 		)?;
@@ -569,7 +569,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 		if let Some(diff) = self.build_evicted_diff(txn, &view, &shape, evicted_rns, evicted)? {
 			emit_view_change(txn, &view, diff);
 			let version = txn.version();
-			return Ok(Some(Change::from_flow(self.operator, version, Vec::new(), timer.at)));
+			return Ok(Some(Change::from_flow(self.operator, version, Vec::new(), timer.due)));
 		}
 		Ok(None)
 	}
@@ -670,7 +670,7 @@ impl SinkRingBufferViewOperator {
 			txn.disarm_timer(
 				self.operator,
 				&Timer {
-					at: DateTime::from_millis(at),
+					due: DateTime::from_millis(at),
 					kind: TimerKind::RowTtl,
 					key: key.clone(),
 				},
@@ -682,7 +682,7 @@ impl SinkRingBufferViewOperator {
 				txn.arm_timer(
 					self.operator,
 					&Timer {
-						at: DateTime::from_millis(at),
+						due: DateTime::from_millis(at),
 						kind: TimerKind::RowTtl,
 						key,
 					},
@@ -1262,7 +1262,7 @@ mod tests {
 			.on_timer(
 				&mut txn,
 				Timer {
-					at: DateTime::from_nanos(at),
+					due: DateTime::from_nanos(at),
 					kind: TimerKind::RowTtl,
 					key,
 				},

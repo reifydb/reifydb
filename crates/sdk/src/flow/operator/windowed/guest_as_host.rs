@@ -22,13 +22,13 @@ use crate::flow::operator::context::{GuestContext, GuestState};
 pub struct GuestAsHost<'a, C: GuestContext>(pub &'a mut C);
 
 impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
-	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
-		self.0.arm_timer(at, kind, key)?;
+	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		self.0.arm_timer(due, kind, key)?;
 		Ok(())
 	}
 
-	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
-		self.0.disarm_timer(at, kind, key)?;
+	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		self.0.disarm_timer(due, kind, key)?;
 		Ok(())
 	}
 

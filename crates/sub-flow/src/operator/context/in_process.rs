@@ -293,15 +293,15 @@ impl GuestContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).lookup_groups(groups) }.map_err(to_sdk_err)
 	}
-	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
+	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).arm_timer(at, kind, key) }.map_err(to_sdk_err)
+		unsafe { (*self.host).arm_timer(due, kind, key) }.map_err(to_sdk_err)
 	}
-	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
+	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).disarm_timer(at, kind, key) }.map_err(to_sdk_err)
+		unsafe { (*self.host).disarm_timer(due, kind, key) }.map_err(to_sdk_err)
 	}
 
 	fn flow_watermark(&mut self) -> SdkResult<Option<DateTime>> {

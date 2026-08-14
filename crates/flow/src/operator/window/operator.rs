@@ -228,7 +228,7 @@ impl HostOperator for WindowOperator {
 		if diffs.is_empty() {
 			Ok(None)
 		} else {
-			Ok(Some(Change::from_flow(self.core.operator, CommitVersion(0), diffs, timer.at)))
+			Ok(Some(Change::from_flow(self.core.operator, CommitVersion(0), diffs, timer.due)))
 		}
 	}
 

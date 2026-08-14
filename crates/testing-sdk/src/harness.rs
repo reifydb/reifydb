@@ -127,7 +127,7 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 		Ok(output)
 	}
 
-	pub fn fire_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<()> {
+	pub fn fire_timer(&mut self, due: DateTime, kind: TimerKind, key: &[u8]) -> Result<()> {
 		self.refresh_written_at();
 		let extern_c_ctx_ptr = &mut *self.extern_c_context as *mut ExternCContextRaw;
 		with_registry(&self.builder_registry, || {
@@ -135,7 +135,7 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 			self.operator.on_timer(
 				&mut op_ctx,
 				Timer {
-					at,
+					due,
 					kind,
 					key,
 				},
@@ -170,7 +170,7 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 				return Ok(fired);
 			}
 			for timer in due {
-				self.fire_timer(timer.at, timer.kind, &timer.key)?;
+				self.fire_timer(timer.due, timer.kind, &timer.key)?;
 				fired += 1;
 			}
 		}
@@ -836,7 +836,7 @@ pub mod tests {
 		fn on_timer(&mut self, ctx: &mut ExternCContext, timer: Timer<'_>) -> Result<()> {
 			// State is what proves on_timer reached the operator; a fired count alone would
 			// still pass if the harness popped the wheel and dropped the callback.
-			ctx.state().set::<i64>(&probe_row_key(timer.at.to_nanos()), &1i64)
+			ctx.state().set::<i64>(&probe_row_key(timer.due.to_nanos()), &1i64)
 		}
 	}
 
@@ -873,7 +873,7 @@ pub mod tests {
 		fn on_timer(&mut self, ctx: &mut ExternCContext, timer: Timer<'_>) -> Result<()> {
 			ctx.emit_insert(
 				&[SealRow {
-					total: timer.at.to_millis() as i64,
+					total: timer.due.to_millis() as i64,
 				}],
 				&[RowNumber(1)],
 			)
@@ -953,10 +953,10 @@ pub mod tests {
 			// Re-arms one millisecond out, still at or below the watermark the test advances
 			// to; the limit is what keeps this off advance_watermark's runaway panic.
 			self.fires += 1;
-			ctx.state().set::<i64>(&probe_row_key(timer.at.to_nanos()), &self.fires)?;
+			ctx.state().set::<i64>(&probe_row_key(timer.due.to_nanos()), &self.fires)?;
 			if self.fires < REARM_LIMIT {
 				ctx.arm_timer(
-					DateTime::from_nanos(timer.at.to_nanos() + MILLI),
+					DateTime::from_nanos(timer.due.to_nanos() + MILLI),
 					TimerKind::Seal,
 					&encode_key("rearm"),
 				)?;
@@ -986,7 +986,7 @@ pub mod tests {
 		assert_eq!(fired, 1, "only the timer at or below the watermark fires");
 		let still_armed = harness.armed_timers();
 		assert_eq!(still_armed.len(), 1, "the 3ms timer is untouched");
-		assert_eq!(still_armed[0].at, DateTime::from_nanos(3 * MILLI));
+		assert_eq!(still_armed[0].due, DateTime::from_nanos(3 * MILLI));
 
 		let state = harness.state();
 		state.assert_typed_value::<i64>(probe_row_key(MILLI).as_encoded(), &1i64);

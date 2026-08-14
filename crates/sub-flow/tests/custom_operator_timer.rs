@@ -132,7 +132,7 @@ impl GuestOperator for Alarm {
 
 		// Per-group state, so the group has something for the retention pass to erase once it ages
 		// past its horizon. Without it a group is nothing but an identity and reclaim has no work.
-		let fired_at = timer.at.to_millis() as i64;
+		let fired_at = timer.due.to_millis() as i64;
 		self.state_set(ctx, &OperatorStateKey::inner_encoded(group, ALARM_STATE, []), &fired_at)?;
 
 		let (row_number, _is_new) = ctx.get_or_create_row_number(group, &key)?;
@@ -343,11 +343,11 @@ impl GuestOperator for Snooze {
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> SdkResult<()> {
 		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
 		let group = ctx.intern_group(&group_key(g))?;
-		let fired_at = timer.at.to_millis() as i64;
+		let fired_at = timer.due.to_millis() as i64;
 
 		// Keyed by the firing instant, not the group, so a timer that should have been cancelled
 		// surfaces as an extra row instead of overwriting the surviving timer's.
-		let row_key = EncodedKey::new(timer.at.to_millis().to_be_bytes());
+		let row_key = EncodedKey::new(timer.due.to_millis().to_be_bytes());
 		let (row_number, _is_new) = ctx.get_or_create_row_number(group, &row_key)?;
 		ctx.emit_insert(
 			&[AlarmRow {

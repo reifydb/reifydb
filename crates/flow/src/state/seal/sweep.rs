@@ -36,7 +36,7 @@ mod tests {
 
 	fn fired(millis: u64) -> FiredAt {
 		FiredAt::of(&Timer {
-			at: DateTime::from_millis(millis),
+			due: DateTime::from_millis(millis),
 			kind: TimerKind::Seal,
 			key: EncodedKey::new(Vec::new()),
 		})

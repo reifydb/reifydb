@@ -700,11 +700,11 @@ mod tests {
 	}
 
 	impl TimerStore for MockStore {
-		fn arm_timer(&mut self, _at: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+		fn arm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
 			unreachable!("the window engine never arms timers; only the shell above it does")
 		}
 
-		fn disarm_timer(&mut self, _at: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+		fn disarm_timer(&mut self, _due: DateTime, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
 			unreachable!("the window engine never disarms timers; only the shell above it does")
 		}
 

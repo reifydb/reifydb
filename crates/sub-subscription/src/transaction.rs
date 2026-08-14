@@ -24,7 +24,7 @@ use reifydb_core::{
 use reifydb_flow::{
 	error::FlowGraphError,
 	operator::sink::DurableSink,
-	timer::Timer,
+	timer::{Timer, TimerDue},
 	transaction::{
 		ChangeCoordinate, FlowTransaction,
 		read::{ReadFrom, read_from},
@@ -44,6 +44,7 @@ pub struct EphemeralTransaction {
 	pub query: MultiReadTransaction,
 	pub catalog: Catalog,
 	pub accumulator: ChangeAccumulator,
+	pub armed: Vec<TimerDue>,
 	pub clock: Clock,
 
 	pub change_coordinate: Option<ChangeCoordinate>,
@@ -72,6 +73,7 @@ impl EphemeralTransaction {
 			query,
 			catalog,
 			accumulator: ChangeAccumulator::new(),
+			armed: Vec::new(),
 			clock,
 			change_coordinate: None,
 			flow_watermark: None,
@@ -240,6 +242,10 @@ impl FlowTransaction for EphemeralTransaction {
 
 	fn accumulator_mut(&mut self) -> &mut ChangeAccumulator {
 		&mut self.accumulator
+	}
+
+	fn armed_mut(&mut self) -> &mut Vec<TimerDue> {
+		&mut self.armed
 	}
 
 	fn change_coordinate(&self) -> Option<ChangeCoordinate> {

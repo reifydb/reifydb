@@ -40,7 +40,7 @@ pub struct FiredAt(DateTime);
 
 impl FiredAt {
 	pub fn of(timer: &Timer) -> Self {
-		Self(timer.at)
+		Self(timer.due)
 	}
 
 	pub fn at(self) -> DateTime {
@@ -97,7 +97,7 @@ mod tests {
 
 	fn timer(millis: u64) -> Timer {
 		Timer {
-			at: DateTime::from_millis(millis),
+			due: DateTime::from_millis(millis),
 			kind: TimerKind::Seal,
 			key: EncodedKey::new(b"bucket".as_slice()),
 		}
@@ -120,12 +120,12 @@ mod tests {
 		// sealing decision. Both chaos and rolling arm seals with an empty key, so a sweep that
 		// consulted timer.key would seal nothing for either.
 		let keyed = Timer {
-			at: DateTime::from_millis(5_000),
+			due: DateTime::from_millis(5_000),
 			kind: TimerKind::Seal,
 			key: EncodedKey::new(b"some-window".as_slice()),
 		};
 		let keyless = Timer {
-			at: DateTime::from_millis(5_000),
+			due: DateTime::from_millis(5_000),
 			kind: TimerKind::Seal,
 			key: EncodedKey::new(Vec::new()),
 		};

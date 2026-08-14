@@ -9,12 +9,14 @@ use reifydb_core::{
 use reifydb_store_operator::{store::OperatorStore, types::OperatorWrite};
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 
-use crate::transaction::{
-	anchor::{decode_anchor_expiry, decode_anchor_suffix},
-	frontier::OutputFrontiers,
-	scope::{OperatorScope, operator_state_coordinates},
-	timer::TimerWheel,
-	watermark::SourceWatermarks,
+use crate::{
+	timer::wheel::TimerWheel,
+	transaction::{
+		anchor::{decode_anchor_expiry, decode_anchor_suffix},
+		frontier::OutputFrontiers,
+		scope::{OperatorScope, operator_state_coordinates},
+		watermark::SourceWatermarks,
+	},
 };
 
 #[derive(Clone, Default)]

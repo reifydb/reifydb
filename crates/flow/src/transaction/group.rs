@@ -34,11 +34,11 @@ fn counter_key() -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, vec![])
 }
 
-pub(super) fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedOperatorRow> {
+pub(crate) fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedOperatorRow> {
 	Ok(value.encode_state(now)?)
 }
 
-pub(super) fn decode_payload<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T> {
+pub(crate) fn decode_payload<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T> {
 	Ok(decode(row)?)
 }
 

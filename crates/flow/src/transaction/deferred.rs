@@ -80,7 +80,7 @@ use tracing::instrument;
 
 use crate::{
 	operator::sink::DurableSink,
-	timer::Timer,
+	timer::{Timer, TimerDue},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		read::{OperatorStateRangeIter, ReadFrom, read_from},
@@ -97,6 +97,7 @@ pub struct DeferredTransaction {
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
+	pub armed: Vec<TimerDue>,
 	pub clock: Clock,
 
 	pub change_coordinate: Option<ChangeCoordinate>,
@@ -124,6 +125,7 @@ impl DeferredTransaction {
 			catalog: params.catalog,
 			interceptors: params.interceptors,
 			accumulator: ChangeAccumulator::new(),
+			armed: Vec::new(),
 			clock: params.clock,
 			change_coordinate: None,
 			flow_watermark: None,
@@ -287,6 +289,10 @@ impl FlowTransaction for DeferredTransaction {
 
 	fn accumulator_mut(&mut self) -> &mut ChangeAccumulator {
 		&mut self.accumulator
+	}
+
+	fn armed_mut(&mut self) -> &mut Vec<TimerDue> {
+		&mut self.armed
 	}
 
 	fn change_coordinate(&self) -> Option<ChangeCoordinate> {

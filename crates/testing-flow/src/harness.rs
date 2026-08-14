@@ -235,7 +235,7 @@ impl<O: HostOperator> Harness<O> {
 
 	pub fn on_timer(&mut self, timer: Timer) -> Result<Option<Change>> {
 		let operator = self.operator.id();
-		let mut txn = self.begin(timer.at);
+		let mut txn = self.begin(timer.due);
 		let out = {
 			let mut host = TxnHostContext::new(&mut txn, operator);
 			self.operator.on_timer(&mut host, timer)?
@@ -266,7 +266,7 @@ impl<O: HostOperator> Harness<O> {
 			);
 			for timer in due {
 				txn.set_change_coordinate(ChangeCoordinate {
-					at: Some(timer.at),
+					at: Some(timer.due),
 					version: CommitVersion(self.version),
 				});
 				let mut host = TxnHostContext::new(&mut txn, operator);
@@ -350,7 +350,7 @@ impl<O: HostOperator> Subject for Harness<O> {
 		Harness::on_timer(
 			self,
 			Timer {
-				at: DateTime::from_epoch_millis(at_ms).unwrap(),
+				due: DateTime::from_epoch_millis(at_ms).unwrap(),
 				kind: TimerKind::Seal,
 				key: EncodedKey::new(Vec::new()),
 			},

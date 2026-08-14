@@ -1075,10 +1075,11 @@ mod seal_tests {
 	use super::*;
 	use crate::{
 		operator::host::TxnHostContext,
+		timer::extension::TimerExtension,
 		transaction::{
 			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupExtension,
 			mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension,
-			substrate::apply_operator_state, timer::TimerExtension,
+			substrate::apply_operator_state,
 		},
 	};
 
@@ -1246,11 +1247,11 @@ mod seal_tests {
 		txn.get_row_number(op.operator, GroupId::ROOT, &serializer.finish()).unwrap()
 	}
 
-	fn fire(op: &mut JoinOperator, txn: &mut DeferredTransaction, at: DateTime, group: GroupId) -> Option<Change> {
+	fn fire(op: &mut JoinOperator, txn: &mut DeferredTransaction, due: DateTime, group: GroupId) -> Option<Change> {
 		// The engine lifts a due timer off the wheel before dispatch, so skipping the disarm reads as a leak.
 		let operator = op.operator;
 		let timer = Timer {
-			at,
+			due,
 			kind: TimerKind::Maintenance,
 			key: JoinOperator::timer_key(group),
 		};

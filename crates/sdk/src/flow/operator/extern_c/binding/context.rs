@@ -132,12 +132,12 @@ impl ExternCContext {
 		lookup_groups(self, groups)
 	}
 
-	pub fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
-		arm_timer(self, at, kind, key)
+	pub fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		arm_timer(self, due, kind, key)
 	}
 
-	pub fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
-		disarm_timer(self, at, kind, key)
+	pub fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		disarm_timer(self, due, kind, key)
 	}
 
 	pub fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
@@ -275,11 +275,11 @@ impl GuestContext for ExternCContext {
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
 		ExternCContext::lookup_groups(self, groups)
 	}
-	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
-		ExternCContext::arm_timer(self, at, kind, key)
+	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		ExternCContext::arm_timer(self, due, kind, key)
 	}
-	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
-		ExternCContext::disarm_timer(self, at, kind, key)
+	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
+		ExternCContext::disarm_timer(self, due, kind, key)
 	}
 
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {

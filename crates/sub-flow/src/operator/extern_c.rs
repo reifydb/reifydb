@@ -207,7 +207,7 @@ impl HostOperator for ExternCOperatorHandle {
 			(self.vtable.on_timer)(
 				self.instance,
 				extern_c_ctx_ptr,
-				timer.at.to_millis(),
+				timer.due.to_millis(),
 				timer.kind as u8,
 				key.as_ptr(),
 				key.len(),
@@ -223,7 +223,7 @@ impl HostOperator for ExternCOperatorHandle {
 			.into());
 		}
 
-		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, timer.at);
+		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, timer.due);
 		Span::current().record("output_diff_count", output_change.diffs.len());
 		if output_change.diffs.is_empty() {
 			return Ok(None);
