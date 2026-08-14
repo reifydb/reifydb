@@ -20,7 +20,7 @@ use reifydb_value::util::cowvec::CowVec;
 use tracing::instrument;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::config::PersistentConfig;
+use crate::{config::PersistentConfig, tier::read::ReadBufferConfig};
 use crate::{
 	CommitBufferConfig,
 	config::MultiStoreConfig,
@@ -28,7 +28,7 @@ use crate::{
 	tier::{
 		commit::buffer::MultiCommitBufferTier,
 		persistent::MultiPersistentTier,
-		read::{MultiReadBufferTier, ReadBufferConfig, ReadBufferShardMetrics},
+		read::{MultiReadBufferTier, ReadBufferShardMetrics},
 	},
 };
 

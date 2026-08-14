@@ -334,7 +334,6 @@ impl MetricsFlushActor {
 			surface: Surface::Current,
 			rows: cdc,
 		});
-		#[cfg(any())]
 		let _ = sampler.send(SamplerMessage::Push {
 			domain: MetricsDomain::FlowState,
 			surface: Surface::Current,
@@ -499,7 +498,6 @@ fn level_count(metric: &'static str, count: u64) -> Measure {
 	}
 }
 
-#[allow(dead_code)]
 fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 	let mut rows: Vec<MetricsRow> = store
 		.census(OperatorStateKey::GROUP_KEYSPACE_PREFIX_LEN)

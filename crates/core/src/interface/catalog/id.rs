@@ -2217,7 +2217,7 @@ mod reserved_id_tests {
 			}
 		}
 
-		assert_eq!(count, 4 * 6 + 18 + 24 + 7 + 12 + 14 + 8, "expected exactly 107 reserved system column ids");
+		assert_eq!(count, 4 * 6 + 18 + 24 + 7 + 10 + 14 + 8, "expected exactly 105 reserved system column ids");
 	}
 
 	#[test]
@@ -2231,7 +2231,7 @@ mod reserved_id_tests {
 		assert_eq!(arrays[4].len(), 18, "spans snapshot series must declare 18 column ids");
 		assert_eq!(arrays[5].len(), 24, "read_buffer snapshot series must declare 24 column ids");
 		assert_eq!(arrays[6].len(), 7, "epoch snapshot series must declare 7 column ids");
-		assert_eq!(arrays[7].len(), 12, "lifecycle snapshot series must declare 12 column ids");
+		assert_eq!(arrays[7].len(), 10, "lifecycle snapshot series must declare 10 column ids");
 		assert_eq!(arrays[8].len(), 14, "storage snapshot series must declare 14 column ids");
 		assert_eq!(arrays[9].len(), 8, "cdc snapshot series must declare 8 column ids");
 	}
