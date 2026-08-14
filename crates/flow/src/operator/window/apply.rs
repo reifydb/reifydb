@@ -1021,9 +1021,9 @@ pub fn reap_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostCont
 		.tumbling_engine_slot()
 		.take()
 		.unwrap_or_else(|| Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config)));
-	let freed = drain(host, &mut *engine, budget)?;
+	let drained = drain(host, &mut *engine, budget)?;
 	*operator.core.tumbling_engine_slot() = Some(engine);
-	Ok(freed)
+	Ok(drained.freed)
 }
 
 pub fn seal_session_engine(

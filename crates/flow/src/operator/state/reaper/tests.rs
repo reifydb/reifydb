@@ -72,7 +72,7 @@ fn a_queued_group_round_trips_through_its_key() {
 	enqueue(&mut store, DOOMED).unwrap();
 	enqueue(&mut store, BYSTANDER).unwrap();
 
-	let mut got = queued(&mut store, 256).unwrap();
+	let mut got = queued(&mut store, 256).unwrap().groups;
 	got.sort_by_key(|g| g.0);
 
 	assert_eq!(got, vec![DOOMED, BYSTANDER], "both queued groups must decode back to the ids that were enqueued");
@@ -85,11 +85,11 @@ fn draining_frees_a_queued_group_and_clears_its_queue_entry() {
 	seed(&mut store, &accumulator);
 	enqueue(&mut store, DOOMED).unwrap();
 
-	let freed = drain(&mut store, &mut StoreReaper, 256).unwrap();
+	let freed = drain(&mut store, &mut StoreReaper, 256).unwrap().freed;
 
 	assert_eq!(freed, 1);
 	assert!(!present(&mut store, &accumulator), "the queued group's data must be gone");
-	assert!(queued(&mut store, 256).unwrap().is_empty(), "a fully drained group must leave the queue");
+	assert!(queued(&mut store, 256).unwrap().groups.is_empty(), "a fully drained group must leave the queue");
 }
 
 #[test]
@@ -100,15 +100,15 @@ fn a_group_that_hits_the_budget_stays_queued_for_the_next_tick() {
 	}
 	enqueue(&mut store, DOOMED).unwrap();
 
-	let freed = drain(&mut store, &mut StoreReaper, 2).unwrap();
+	let freed = drain(&mut store, &mut StoreReaper, 2).unwrap().freed;
 
 	assert_eq!(freed, 2, "the drain stops at the budget");
-	assert_eq!(queued(&mut store, 256).unwrap(), vec![DOOMED], "a partly reaped group must stay queued");
+	assert_eq!(queued(&mut store, 256).unwrap().groups, vec![DOOMED], "a partly reaped group must stay queued");
 
-	let rest = drain(&mut store, &mut StoreReaper, 256).unwrap();
+	let rest = drain(&mut store, &mut StoreReaper, 256).unwrap().freed;
 
 	assert_eq!(rest, 3, "the next tick takes what the budget deferred");
-	assert!(queued(&mut store, 256).unwrap().is_empty(), "the group leaves the queue once it is drained");
+	assert!(queued(&mut store, 256).unwrap().groups.is_empty(), "the group leaves the queue once it is drained");
 }
 
 #[test]
@@ -120,12 +120,12 @@ fn draining_frees_the_identity_phase_once_the_data_phase_is_gone() {
 	seed(&mut store, &mapping);
 	enqueue(&mut store, DOOMED).unwrap();
 
-	let freed = drain(&mut store, &mut StoreReaper, 256).unwrap();
+	let freed = drain(&mut store, &mut StoreReaper, 256).unwrap().freed;
 
 	assert_eq!(freed, 2, "both phases spend from the same budget");
 	assert!(!present(&mut store, &accumulator), "the data phase goes first");
 	assert!(!present(&mut store, &mapping), "and the identity phase must follow it in the same drain");
-	assert!(queued(&mut store, 256).unwrap().is_empty(), "a group drained of both phases leaves the queue");
+	assert!(queued(&mut store, 256).unwrap().groups.is_empty(), "a group drained of both phases leaves the queue");
 }
 
 #[test]
@@ -138,11 +138,11 @@ fn a_budget_spent_on_the_data_phase_defers_identity_to_the_next_tick() {
 	seed(&mut store, &mapping);
 	enqueue(&mut store, DOOMED).unwrap();
 
-	let freed = drain(&mut store, &mut StoreReaper, 2).unwrap();
+	let freed = drain(&mut store, &mut StoreReaper, 2).unwrap().freed;
 
 	assert_eq!(freed, 2, "the budget is spent entirely on data");
 	assert!(present(&mut store, &mapping), "identity must survive a tick that could not finish the data");
-	assert_eq!(queued(&mut store, 256).unwrap(), vec![DOOMED], "so the group stays queued");
+	assert_eq!(queued(&mut store, 256).unwrap().groups, vec![DOOMED], "so the group stays queued");
 
 	drain(&mut store, &mut StoreReaper, 256).unwrap();
 

@@ -43,28 +43,57 @@ pub fn enqueue(store: &mut dyn StateStore, group: GroupId) -> Result<()> {
 	store.state_set(&queue_key(group), EncodedOperatorRow::new(&[], now))
 }
 
-pub fn queued(store: &mut dyn StateStore, limit: usize) -> Result<Vec<GroupId>> {
+pub struct Queued {
+	pub groups: Vec<GroupId>,
+	pub more: bool,
+}
+
+pub struct DrainOutcome {
+	pub freed: usize,
+	pub still_queued: Vec<GroupId>,
+	pub more: bool,
+}
+
+impl DrainOutcome {
+	pub fn queue_is_empty(&self) -> bool {
+		self.still_queued.is_empty() && !self.more
+	}
+}
+
+pub fn queued(store: &mut dyn StateStore, limit: usize) -> Result<Queued> {
 	let mut groups: Vec<GroupId> = Vec::new();
+	let mut more = false;
 	store.state_range_visit(keyspace_inner_range(GroupId::ROOT, Keyspace::REAP_QUEUE), None, &mut |key, _| {
-		if groups.len() < limit
-			&& let Some((_, _, suffix)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
+		if let Some((_, _, suffix)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
 			&& let Ok(bytes) = <[u8; 8]>::try_from(suffix.as_slice())
 		{
-			groups.push(GroupId(decode_u64(bytes)));
+			if groups.len() < limit {
+				groups.push(GroupId(decode_u64(bytes)));
+			} else {
+				more = true;
+			}
 		}
 		Ok(())
 	})?;
-	Ok(groups)
+	Ok(Queued {
+		groups,
+		more,
+	})
 }
 
-pub fn drain<R>(store: &mut dyn IdentityReclaim, reaper: &mut R, budget: usize) -> Result<usize>
+pub fn drain<R>(store: &mut dyn IdentityReclaim, reaper: &mut R, budget: usize) -> Result<DrainOutcome>
 where
 	R: Reaper,
 {
+	let scan = queued(store, budget)?;
 	let mut spent = 0usize;
-	for group in queued(store, budget)? {
+	let mut still_queued: Vec<GroupId> = Vec::new();
+	let mut pending = scan.groups.into_iter();
+	while let Some(group) = pending.next() {
 		let allowance = budget - spent;
 		if allowance == 0 {
+			still_queued.push(group);
+			still_queued.extend(pending);
 			break;
 		}
 		let freed = reap_group(store, group, reaper, allowance)?;
@@ -72,12 +101,20 @@ where
 		if freed < allowance {
 			let outcome = store.reclaim_identity(group, allowance - freed)?;
 			spent += outcome.removed.as_u64() as usize;
-			if !outcome.more {
+			if outcome.more {
+				still_queued.push(group);
+			} else {
 				store.state_remove(&queue_key(group))?;
 			}
+		} else {
+			still_queued.push(group);
 		}
 	}
-	Ok(spent)
+	Ok(DrainOutcome {
+		freed: spent,
+		still_queued,
+		more: scan.more,
+	})
 }
 
 pub fn reap_group<R>(store: &mut dyn StateStore, group: GroupId, reaper: &mut R, budget: usize) -> Result<usize>

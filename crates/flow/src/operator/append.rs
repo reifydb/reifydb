@@ -208,12 +208,17 @@ impl AppendOperator {
 			host.state_remove(&Self::anchor_key(group))?;
 			enqueue(host, group)?;
 		}
-		let freed = drain(host, &mut StoreReaper, SEAL_BATCH)?;
+		let drained = drain(host, &mut StoreReaper, SEAL_BATCH)?;
 		let retry = fired.at().saturating_add(seal);
-		for pending in queued(host, SEAL_BATCH)? {
-			host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(pending))?;
+		let pending = if drained.more {
+			queued(host, SEAL_BATCH)?.groups
+		} else {
+			drained.still_queued
+		};
+		for group in pending {
+			host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(group))?;
 		}
-		Ok(freed)
+		Ok(drained.freed)
 	}
 }
 
@@ -856,7 +861,7 @@ mod tests {
 		.expect("a known row must translate");
 
 		assert!(
-			queued(&mut host(&mut txn, &op), 16).unwrap().is_empty(),
+			queued(&mut host(&mut txn, &op), 16).unwrap().groups.is_empty(),
 			"a re-armed row must not be left waiting in the reap queue"
 		);
 	}

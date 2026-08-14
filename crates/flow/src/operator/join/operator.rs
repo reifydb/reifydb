@@ -478,10 +478,15 @@ impl JoinOperator {
 			enqueue(host, group)?;
 		}
 
-		drain(host, &mut StoreReaper, SEAL_BATCH)?;
+		let drained = drain(host, &mut StoreReaper, SEAL_BATCH)?;
 		let retry = fired.at().saturating_add(span);
-		for still_queued in queued(host, SEAL_BATCH)? {
-			host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(still_queued))?;
+		let pending = if drained.more {
+			queued(host, SEAL_BATCH)?.groups
+		} else {
+			drained.still_queued
+		};
+		for group in pending {
+			host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(group))?;
 		}
 		Ok(())
 	}

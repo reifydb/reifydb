@@ -13,7 +13,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	operator::state::{
-		reaper::{drain, enqueue, queued},
+		reaper::{drain, enqueue},
 		seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
 	},
 	timer::Timer as FlowTimer,
@@ -202,8 +202,8 @@ where
 			enqueue(store, window.group_id)?;
 		}
 		engine.expire_meta(store, horizon.to_order())?;
-		drain(store, engine, SEAL_REAP_BATCH)?;
-		if !queued(store, 1)?.is_empty() {
+		let drained = drain(store, engine, SEAL_REAP_BATCH)?;
+		if !drained.queue_is_empty() {
 			arm_seal_timer(store, frontier, seal_after)?;
 		}
 		Ok(())
