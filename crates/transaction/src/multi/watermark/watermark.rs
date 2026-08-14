@@ -644,8 +644,8 @@ pub mod tests {
 			Box::new(move || {
 				let _ = wm.done_until();
 				wm.register_in_flight(CommitVersion(301));
-				wm.mark_finished(CommitVersion(301));
 				flag.fetch_add(1, Ordering::SeqCst);
+				wm.mark_finished(CommitVersion(301));
 			}),
 		);
 
