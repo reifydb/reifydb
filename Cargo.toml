@@ -195,7 +195,7 @@ overflow-checks = true
 
 [profile.release]
 codegen-units = 256
-strip = true
+strip = "debuginfo"
 
 [workspace.dependencies]
 reifydb = { version = "0.8.1", path = "pkg/rust/reifydb", features = [

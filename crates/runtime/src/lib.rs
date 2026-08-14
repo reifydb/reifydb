@@ -15,6 +15,8 @@ pub mod cache;
 
 pub mod context;
 
+pub mod fatal;
+
 pub mod pool;
 
 pub mod shutdown;
@@ -42,6 +44,7 @@ use crate::{
 pub struct RuntimeConfig {
 	pub clock: Clock,
 	pub rng: context::rng::Rng,
+	pub fatal: fatal::FatalConfig,
 }
 
 impl Default for RuntimeConfig {
@@ -49,6 +52,7 @@ impl Default for RuntimeConfig {
 		Self {
 			clock: Clock::Real,
 			rng: context::rng::Rng::default(),
+			fatal: fatal::FatalConfig::default(),
 		}
 	}
 }
@@ -57,6 +61,11 @@ impl RuntimeConfig {
 	pub fn seeded(mut self, seed: u64) -> Self {
 		self.clock = Clock::Mock(MockClock::from_millis(seed));
 		self.rng = context::rng::Rng::seeded(seed);
+		self
+	}
+
+	pub fn fatal(mut self, config: fatal::FatalConfig) -> Self {
+		self.fatal = config;
 		self
 	}
 }

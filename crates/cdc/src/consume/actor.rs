@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	backtrace::Backtrace,
 	ops::Bound,
-	process,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -20,10 +20,13 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, cdc_consumer::CdcConsumerKey},
 };
-use reifydb_runtime::actor::{
-	context::Context,
-	system::ActorConfig,
-	traits::{Actor, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		system::ActorConfig,
+		traits::{Actor, Directive},
+	},
+	fatal::{FatalKind, FatalReport, fatal},
 };
 use reifydb_transaction::{error::TransactionError, transaction::Transaction};
 use reifydb_value::{Result, error::Error, reifydb_assertions, value::duration::Duration};
@@ -565,11 +568,10 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 
 	#[inline]
 	fn abort_on_error(&self, err: Error) -> ! {
-		error!(
-			"[Consumer {:?}] fatal error consuming events, aborting application: {}",
-			self.config.consumer_id, err
-		);
-		process::abort();
+		fatal(FatalReport::new(FatalKind::Error, format!("{}", err))
+			.component("cdc consumer")
+			.with("consumer", format!("{:?}", self.config.consumer_id))
+			.backtrace(Backtrace::force_capture().to_string()))
 	}
 
 	fn fetch_cdcs_until(&self, since_version: CommitVersion, until_version: CommitVersion) -> Result<Vec<Cdc>> {

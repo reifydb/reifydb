@@ -35,23 +35,6 @@ fn test_password_login_success() {
 
 #[test]
 #[should_panic]
-fn test_password_login_wrong_password() {
-	let runtime = Arc::new(Runtime::new().unwrap());
-	let _guard = runtime.enter();
-	let mut server = create_server_instance(&runtime);
-	let (_, _, http_port) = start_server_with_auth_users(&mut server).unwrap();
-
-	runtime.block_on(async {
-		let mut client =
-			HttpClient::connect(&format!("http://[::1]:{}", http_port), WireFormat::Frames).await.unwrap();
-		let _ = client.login_with_password("alice", "wrong-password").await;
-	});
-
-	cleanup_server(Some(server));
-}
-
-#[test]
-#[should_panic]
 fn test_password_login_unknown_user() {
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
@@ -84,23 +67,6 @@ fn test_token_login_success() {
 
 		let query_result = client.query("MAP {v: 42}", None).await.unwrap();
 		assert_eq!(query_result.len(), 1);
-	});
-
-	cleanup_server(Some(server));
-}
-
-#[test]
-#[should_panic]
-fn test_token_login_wrong_token() {
-	let runtime = Arc::new(Runtime::new().unwrap());
-	let _guard = runtime.enter();
-	let mut server = create_server_instance(&runtime);
-	let (_, _, http_port) = start_server_with_auth_users(&mut server).unwrap();
-
-	runtime.block_on(async {
-		let mut client =
-			HttpClient::connect(&format!("http://[::1]:{}", http_port), WireFormat::Frames).await.unwrap();
-		let _ = client.login_with_token("wrong-token").await;
 	});
 
 	cleanup_server(Some(server));

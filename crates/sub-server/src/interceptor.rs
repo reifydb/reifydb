@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, future::Future, panic::AssertUnwindSafe, pin::Pin, sync::Arc};
+use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
-use futures_util::FutureExt;
 use reifydb_core::{actors::server::Operation, metrics::execution::ExecutionMetrics};
 use reifydb_value::{params::Params, value::identity::IdentityId};
-use tracing::error;
 
 use crate::execute::ExecuteError;
 
@@ -117,14 +115,7 @@ impl RequestInterceptorChain {
 
 	pub async fn post_execute(&self, ctx: &ResponseContext) {
 		for interceptor in self.interceptors.iter().rev() {
-			if let Err(panic) = AssertUnwindSafe(interceptor.post_execute(ctx)).catch_unwind().await {
-				let msg = panic
-					.downcast_ref::<&str>()
-					.copied()
-					.or_else(|| panic.downcast_ref::<String>().map(|s| s.as_str()))
-					.unwrap_or("unknown panic");
-				error!("post_execute interceptor panicked: {}", msg);
-			}
+			interceptor.post_execute(ctx).await;
 		}
 	}
 }

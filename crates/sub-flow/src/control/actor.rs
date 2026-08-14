@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::BTreeSet,
-	mem::take,
-	panic::{AssertUnwindSafe, catch_unwind},
-	process,
-	sync::Arc,
-};
+use std::{collections::BTreeSet, mem::take, sync::Arc};
 
 use reifydb_cdc::consume::backlog::{BacklogPull, FlowBacklog};
 use reifydb_core::{
@@ -614,7 +608,7 @@ impl Actor for FlowActor {
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
-		let directive = catch_unwind(AssertUnwindSafe(|| match msg {
+		match msg {
 			FlowActorMessage::Drain => {
 				self.on_drain(state, ctx);
 				Directive::Continue
@@ -682,12 +676,7 @@ impl Actor for FlowActor {
 				(reply)();
 				Directive::Stop
 			}
-		}));
-
-		directive.unwrap_or_else(|_| {
-			error!(flow_id = self.flow_id.0, "panic in flow actor, aborting");
-			process::abort()
-		})
+		}
 	}
 
 	fn config(&self) -> ActorConfig {

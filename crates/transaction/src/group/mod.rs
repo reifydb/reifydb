@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	mem,
-	panic::{AssertUnwindSafe, catch_unwind},
-	process,
-	sync::Arc,
-};
+use std::{mem, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, internal_error};
 use reifydb_runtime::{
@@ -19,7 +14,7 @@ use reifydb_runtime::{
 	sync::waiter::WaiterHandle,
 };
 use reifydb_value::{Result, error::Error, value::duration::Duration};
-use tracing::{error, instrument};
+use tracing::instrument;
 
 use crate::transaction::command::CommandTransaction;
 
@@ -193,10 +188,7 @@ impl GroupCommitHandle {
 }
 
 fn commit_group(begin: &GroupCommitBegin, submissions: Vec<GroupCommitSubmission>) {
-	catch_unwind(AssertUnwindSafe(|| run_group(begin, submissions))).unwrap_or_else(|_| {
-		error!("panic in group commit, aborting");
-		process::abort()
-	});
+	run_group(begin, submissions);
 }
 
 #[instrument(name = "transaction::group::flush", level = "debug", skip_all)]

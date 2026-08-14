@@ -3,8 +3,6 @@
 
 use std::{
 	collections::{BTreeMap, BTreeSet},
-	panic::{AssertUnwindSafe, catch_unwind},
-	process,
 	sync::Arc,
 };
 
@@ -556,18 +554,14 @@ impl Actor for FlowSupervisor {
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
-		catch_unwind(AssertUnwindSafe(|| match msg {
+		match msg {
 			FlowSupervisorMessage::Bootstrap {
 				flows,
 				scan_from,
 			} => self.handle_bootstrap(state, flows, scan_from),
 			FlowSupervisorMessage::Wake => self.handle_wake(state, ctx),
 			FlowSupervisorMessage::PersistFrontiers => self.handle_persist_frontiers(ctx),
-		}))
-		.unwrap_or_else(|_| {
-			error!("panic in flow supervisor, aborting");
-			process::abort()
-		});
+		}
 		Directive::Continue
 	}
 

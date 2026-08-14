@@ -4,7 +4,6 @@
 use std::{
 	collections::VecDeque,
 	mem,
-	panic::{AssertUnwindSafe, catch_unwind},
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -13,7 +12,6 @@ use std::{
 };
 
 use crossbeam_channel::Sender;
-use tracing::error;
 
 use crate::{
 	pool::task::TaskItem,
@@ -219,8 +217,5 @@ fn steal(siblings: &[Arc<Worker>]) -> Option<Arc<dyn Runnable>> {
 }
 
 fn run_guarded(item: Arc<dyn Runnable>) {
-	let result = catch_unwind(AssertUnwindSafe(|| item.run()));
-	if result.is_err() {
-		error!("actor pool worker caught a panicked actor batch");
-	}
+	item.run()
 }

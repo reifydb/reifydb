@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	panic::{AssertUnwindSafe, catch_unwind},
-	sync::{
-		Arc,
-		atomic::{AtomicU8, Ordering, fence},
-	},
+use std::sync::{
+	Arc,
+	atomic::{AtomicU8, Ordering, fence},
 };
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError as CcTryRecvError, bounded};
 use reifydb_value::reifydb_assertions;
-use tracing::{debug, error};
+use tracing::debug;
 
 use super::{ActorSystem, JoinError};
 use crate::{
@@ -53,14 +50,7 @@ where
 	A::State: Send,
 {
 	fn run(self: Arc<Self>) {
-		let result = catch_unwind(AssertUnwindSafe(|| run_batch(Arc::clone(&self))));
-		if result.is_err() {
-			error!(actor = %self.name, "actor batch panicked; stopping actor");
-			*self.state.lock() = CellState::Stopped;
-			self.schedule_state.store(IDLE, Ordering::Release);
-			let _ = self.completion_tx.send(());
-			let _ = self.done_tx.send(());
-		}
+		run_batch(self)
 	}
 }
 

@@ -8,7 +8,9 @@ use reifydb_catalog::cache::CatalogCache;
 use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_extension::transform::registry::TransformsConfigurator;
 use reifydb_routine_abi::registry::RoutinesConfigurator;
-use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig, version_epoch::VersionEpoch};
+use reifydb_runtime::{
+	Runtime, RuntimeConfig, fatal::install as install_fatal, pool::PoolConfig, version_epoch::VersionEpoch,
+};
 use reifydb_store_multi::tier::{
 	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig,
 };
@@ -179,7 +181,9 @@ impl EmbeddedBuilder {
 	pub fn build(self) -> Result<Database> {
 		let (multi_commit_buffer, multi_persistent, pool_config, read_buffer, cdc_wal_autocheckpoint) =
 			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
-		let runtime = Runtime::from_config(self.runtime_config.unwrap_or_default(), pool_config);
+		let runtime_config = self.runtime_config.unwrap_or_default();
+		install_fatal(runtime_config.fatal);
+		let runtime = Runtime::from_config(runtime_config, pool_config);
 
 		let spawner = runtime.spawner();
 		let clock = runtime.clock().clone();

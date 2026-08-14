@@ -20,7 +20,9 @@ use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_runtime::context::clock::Clock;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig, version_epoch::VersionEpoch};
+use reifydb_runtime::{
+	Runtime, RuntimeConfig, fatal::install as install_fatal, pool::PoolConfig, version_epoch::VersionEpoch,
+};
 use reifydb_store_multi::tier::{
 	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig,
 };
@@ -308,6 +310,7 @@ impl ServerBuilder {
 			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 
 		let runtime_config = self.runtime_config.unwrap_or_default();
+		install_fatal(runtime_config.fatal);
 		let runtime = Runtime::from_config(runtime_config, pool_config);
 
 		let spawner = runtime.spawner();

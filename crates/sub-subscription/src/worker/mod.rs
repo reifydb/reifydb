@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::HashMap,
-	panic::{AssertUnwindSafe, catch_unwind},
-	process,
-	result::Result as StdResult,
-	sync::Arc,
-};
+use std::{collections::HashMap, result::Result as StdResult, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
@@ -141,7 +135,7 @@ impl Actor for SubscriptionWorkerActor {
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
-		catch_unwind(AssertUnwindSafe(|| {
+		{
 			match msg {
 				SubscriptionWorkerMessage::Dispatch {
 					to_version,
@@ -182,11 +176,7 @@ impl Actor for SubscriptionWorkerActor {
 				}
 			}
 			Directive::Continue
-		}))
-		.unwrap_or_else(|_| {
-			error!("panic in subscription worker actor, aborting");
-			process::abort()
-		})
+		}
 	}
 
 	fn config(&self) -> ActorConfig {

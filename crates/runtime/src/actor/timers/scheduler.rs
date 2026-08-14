@@ -8,7 +8,6 @@ use std::{
 	cmp::Ordering as CmpOrdering,
 	collections::BinaryHeap,
 	ops::ControlFlow,
-	panic::{AssertUnwindSafe, catch_unwind},
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -19,7 +18,6 @@ use std::{
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 use reifydb_value::reifydb_assertions;
-use tracing::error;
 
 use super::{Repeat, TimerHandle, next_timer_id};
 
@@ -324,20 +322,12 @@ fn drain_due_timers(heap: &mut BinaryHeap<TimerEntry>) {
 
 #[inline]
 fn run_once_guarded(callback: Box<dyn FnOnce() + Send>) {
-	if catch_unwind(AssertUnwindSafe(callback)).is_err() {
-		error!("timer callback panicked");
-	}
+	callback()
 }
 
 #[inline]
 fn run_repeat_guarded(callback: &Arc<dyn Fn() -> Repeat + Send + Sync>) -> Repeat {
-	match catch_unwind(AssertUnwindSafe(|| callback())) {
-		Ok(outcome) => outcome,
-		Err(_) => {
-			error!("repeating timer callback panicked; cancelling timer");
-			Repeat::Cancel
-		}
-	}
+	callback()
 }
 
 #[cfg(test)]
@@ -476,23 +466,6 @@ mod tests {
 
 		let name = rx.recv_timeout(Duration::from_secs(1)).unwrap();
 		assert_eq!(name.as_deref(), Some("timer-scheduler"));
-		scheduler.shutdown();
-	}
-
-	#[test]
-	fn test_panicking_callback_does_not_kill_scheduler() {
-		let mut scheduler = SchedulerHandle::new();
-
-		scheduler.schedule_once(Duration::from_millis(5), || {
-			panic!("timer callback panic");
-		});
-
-		let (tx, rx) = mpsc::channel();
-		scheduler.schedule_once(Duration::from_millis(20), move || {
-			tx.send(()).unwrap();
-		});
-
-		rx.recv_timeout(Duration::from_secs(1)).unwrap();
 		scheduler.shutdown();
 	}
 

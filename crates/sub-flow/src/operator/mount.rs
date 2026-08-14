@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	backtrace::Backtrace,
 	panic::{AssertUnwindSafe, catch_unwind},
-	process::abort,
 };
 
 use reifydb_core::{
@@ -14,12 +14,12 @@ use reifydb_flow::{
 	operator::{BoxedHostOperator, HostOperator, host::HostContext},
 	timer::Timer,
 };
+use reifydb_runtime::fatal::{FatalKind, FatalReport, describe_payload, fatal};
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	flow::operator::{GuestOperator, timer::Timer as SdkTimer, view::in_process::InProcessChangeView},
 };
 use reifydb_value::{Result, value::duration::Duration};
-use tracing::error;
 
 use crate::operator::context::in_process::InProcessContext;
 
@@ -27,16 +27,17 @@ fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -
 	match catch_unwind(AssertUnwindSafe(f)) {
 		Ok(Ok(value)) => value,
 		Ok(Err(e)) => {
-			error!(
-				operator_id = operator.0,
-				stage, "guest operator returned an error; operators must not fail - aborting: {:?}", e
-			);
-			abort();
+			fatal(FatalReport::new(FatalKind::Error, format!("guest operator returned an error: {:?}", e))
+				.component("flow operator")
+				.with("operator", operator.0.to_string())
+				.with("stage", stage)
+				.backtrace(Backtrace::force_capture().to_string()))
 		}
-		Err(_) => {
-			error!(operator_id = operator.0, stage, "guest operator panicked - aborting");
-			abort();
-		}
+		Err(payload) => fatal(FatalReport::new(FatalKind::Panic, describe_payload(&payload))
+			.component("flow operator")
+			.with("operator", operator.0.to_string())
+			.with("stage", stage)
+			.backtrace(Backtrace::force_capture().to_string())),
 	}
 }
 

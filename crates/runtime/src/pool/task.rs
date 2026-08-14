@@ -5,7 +5,6 @@
 
 use std::{
 	mem,
-	panic::{AssertUnwindSafe, catch_unwind},
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -14,7 +13,6 @@ use std::{
 };
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError, select, unbounded};
-use tracing::error;
 
 use crate::{pool::actor_pool::Runnable, sync::mutex::Mutex};
 
@@ -107,11 +105,8 @@ fn task_loop(rx: Receiver<TaskItem>, shutdown_rx: Receiver<()>, shutdown: Arc<At
 }
 
 fn run_guarded(item: TaskItem) {
-	let result = catch_unwind(AssertUnwindSafe(|| match item {
+	match item {
 		TaskItem::Job(job) => job(),
 		TaskItem::Actor(actor) => actor.run(),
-	}));
-	if result.is_err() {
-		error!("task pool worker caught a panicked job");
 	}
 }

@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	panic::{AssertUnwindSafe, catch_unwind},
-	sync::Arc,
-};
+use std::sync::Arc;
 
 use reifydb_runtime::{
 	actor::{
@@ -14,7 +11,6 @@ use reifydb_runtime::{
 	},
 	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
-use tracing::error;
 
 use super::{
 	ADVANCER_CHUNK,
@@ -74,7 +70,5 @@ impl Actor for WatermarkAdvancer {
 }
 
 fn notify_guarded(waiter: &Arc<WaiterHandle>) {
-	if catch_unwind(AssertUnwindSafe(|| waiter.notify())).is_err() {
-		error!("watermark waiter callback panicked; the advancer continues draining");
-	}
+	waiter.notify()
 }
