@@ -16,7 +16,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
-	state::seal::coord::Coord,
+	operator::state::seal::coord::Coord,
 	window::{accumulator::WindowAccumulator, span::WindowSpan},
 };
 use reifydb_sdk::flow::operator::{

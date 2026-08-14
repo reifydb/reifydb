@@ -12,7 +12,7 @@ use reifydb_core::{
 	row::Row as CoreRow,
 };
 use reifydb_flow::{
-	state::seal::coord::Coord,
+	operator::state::seal::coord::Coord,
 	window::{
 		accumulator::{
 			WindowAccumulator,

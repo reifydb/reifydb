@@ -12,7 +12,7 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, OperatorSample},
 };
 use reifydb_flow::{
-	state::seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
+	operator::state::seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
 	timer::Timer as FlowTimer,
 	window::{
 		accumulator::WindowAccumulator,

@@ -12,7 +12,7 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, OperatorSample},
 };
 use reifydb_flow::{
-	state::{
+	operator::state::{
 		reaper::{drain, enqueue, queued},
 		seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
 	},

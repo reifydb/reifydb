@@ -769,12 +769,14 @@ mod seal_anchor_guard_tests {
 			catalog::{config::ConfigKey, flow::OperatorId},
 			store::MultiVersionRow,
 		},
-		key::operator_state::{Keyspace, OperatorStateKey},
+		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 		state::store::{StateStore, TimerStore},
 	};
 	use reifydb_flow::{
-		operator::{host::HostContext, stateful::StateIterator},
-		state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
+		operator::{
+			host::HostContext,
+			state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
+		},
 		transaction::anchor::SealPage,
 	};
 	use reifydb_value::{

@@ -23,6 +23,25 @@ use crate::transaction::{FlowTransaction, state::StateExtension};
 
 const ROW_NUMBER_COUNTER_SUFFIX: &[u8] = b"rn";
 
+fn prefix_sweep_probe(operator: OperatorId, found: usize) {
+	use std::sync::{Mutex, OnceLock};
+	static SEEN: OnceLock<Mutex<(u64, HashMap<u64, (u64, u64)>)>> = OnceLock::new();
+	let mut guard = SEEN.get_or_init(|| Mutex::new((0, HashMap::new()))).lock().unwrap();
+	guard.0 += 1;
+	let entry = guard.1.entry(operator.0).or_insert((0, 0));
+	entry.0 += 1;
+	entry.1 += found as u64;
+	if guard.0 % 20000 == 0 {
+		let mut rows: Vec<_> = guard.1.iter().map(|(op, (c, f))| (*op, *c, *f)).collect();
+		rows.sort_by_key(|r| std::cmp::Reverse(r.1));
+		let total = guard.0;
+		println!("PROBE prefix_sweep total_calls={total}");
+		for (op, calls, found) in rows.iter().take(20) {
+			println!("PROBE   op{op:<5} calls={calls:<8} found={found}");
+		}
+	}
+}
+
 pub fn mapping_key(group: GroupId, key: &EncodedKey) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key)
 }
@@ -193,6 +212,8 @@ pub trait RowNumberExtension: FlowTransaction {
 		let inner_prefix = OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
 		let range = EncodedKeyRange::prefix(inner_prefix.as_ref());
 		let batch = self.state_range(operator, range, None, "rownum::remove_by_prefix")?;
+
+		prefix_sweep_probe(operator, batch.items.len());
 
 		for item in batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)

@@ -85,6 +85,10 @@ impl DateTime {
 		self.bits
 	}
 
+	pub fn to_order(&self) -> u64 {
+		self.bits
+	}
+
 	pub fn from_nanos(nanos: u64) -> Self {
 		Self {
 			bits: nanos,

@@ -24,8 +24,10 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	context::FlowContext,
-	operator::window::operator::{WindowConfig, WindowOperator},
-	state::seal::coord::Coord,
+	operator::{
+		state::seal::coord::Coord,
+		window::operator::{WindowConfig, WindowOperator},
+	},
 	timer::Timer,
 	window::meta::EngineMeta,
 };
