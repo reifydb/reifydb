@@ -434,21 +434,22 @@ mod archived_projection_tests {
 	#[test]
 	fn stored_high_water_yields_the_slot_order_key() {
 		// A wrong order key silently drops a live group's meta or keeps dead meta forever.
-		let millis = 1_700_000_000_123u64;
+		let instant = DateTime::from_epoch_millis(1_700_000_000_123).unwrap();
 		let datetime_meta = GroupMeta {
-			high_water: Some(DateTime::from_epoch_millis(millis).unwrap()),
+			high_water: Some(instant),
 		};
 		assert_eq!(
 			via_storage(&datetime_meta),
-			Some(millis),
-			"DateTime orders by milliseconds, not by stored layout"
+			Some(instant.to_order()),
+			"the order key is the stored layout, so the projection must round-trip exactly"
 		);
 
-		// Nanoseconds surviving into the order key would sweep every live group on the first tick.
-		let sub_milli = GroupMeta {
-			high_water: Some(DateTime::from_nanos(millis * 1_000_000 + 999_999)),
+		// Adjacent representable instants must keep distinct order keys, or a live group is swept with a dead
+		// one.
+		let next_instant = GroupMeta {
+			high_water: Some(DateTime::from_bits(instant.to_bits() + 1)),
 		};
-		assert_eq!(via_storage(&sub_milli), Some(millis));
+		assert!(via_storage(&next_instant) > via_storage(&datetime_meta));
 	}
 
 	#[test]

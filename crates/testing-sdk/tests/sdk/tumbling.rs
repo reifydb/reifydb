@@ -285,6 +285,10 @@ fn input_fields() -> Vec<RowShapeField> {
 	]
 }
 
+fn window_order(millis: u64) -> u64 {
+	DateTime::from_millis(millis).to_order()
+}
+
 fn input_row(rn: u64, group: &str, slot: u64, size: f64) -> CoreRow {
 	// #time is stamped from the same coordinate the fixture buckets on, so these tests assert
 	// the same thing before and after the window coordinate moves onto #time. Leaving it
@@ -307,7 +311,7 @@ fn single_insert_emits_insert() {
 	assert_eq!(diff.kind(), DiffType::Insert);
 	let r = diff.post().expect("post").row_ref(0).expect("r0");
 	assert_eq!(r.utf8("group").as_deref(), Some("BTC"));
-	assert_eq!(r.u64("window_start"), Some(0));
+	assert_eq!(r.u64("window_start"), Some(window_order(0)));
 	assert_eq!(r.f64("volume"), Some(10.0));
 }
 
@@ -380,8 +384,8 @@ fn boundary_slot_belongs_to_next_window() {
 	assert_eq!(out.diffs.len(), 1);
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 2);
-	assert_eq!(post.row_ref(0).expect("r0").u64("window_start"), Some(0));
-	assert_eq!(post.row_ref(1).expect("r1").u64("window_start"), Some(60));
+	assert_eq!(post.row_ref(0).expect("r0").u64("window_start"), Some(window_order(0)));
+	assert_eq!(post.row_ref(1).expect("r1").u64("window_start"), Some(window_order(60)));
 }
 
 #[test]
@@ -426,7 +430,7 @@ fn a_gated_driver_admits_a_late_event_while_the_watermark_has_not_moved() {
 
 	assert_eq!(out.diffs.len(), 1, "with no watermark reported, an arbitrarily old window is still open");
 	let post = out.diffs[0].post().expect("post");
-	assert_eq!(post.row_ref(0).expect("r0").u64("window_start"), Some(0));
+	assert_eq!(post.row_ref(0).expect("r0").u64("window_start"), Some(window_order(0)));
 }
 
 #[test]

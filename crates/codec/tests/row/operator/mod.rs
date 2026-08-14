@@ -176,3 +176,30 @@ fn test_an_empty_map_round_trips() {
 
 	assert!(restored.is_empty());
 }
+
+#[test]
+fn test_a_datetime_round_trips_as_operator_state() {
+	// the timer index stores an instant as its own state row, so a lossy leg would name a wheel row that is not
+	// there
+	for instant in [DateTime::EPOCH, at_nanos(1), at_nanos(1_700_000_000_123_456_789), DateTime::MAX] {
+		let row = instant.encode_state(DateTime::EPOCH).expect("encode");
+		let restored: DateTime = decode(&row).expect("decode");
+
+		assert_eq!(restored, instant);
+	}
+}
+
+#[test]
+fn test_two_instants_inside_one_millisecond_stay_distinct_as_operator_state() {
+	// a millisecond-resolution payload collapses these, so a re-arm reads as already armed and the timer never
+	// fires
+	let earlier = at_nanos(1_700_000_000_000_000_000);
+	let later = at_nanos(1_700_000_000_000_500_000);
+	assert_eq!(earlier.to_epoch_millis(), later.to_epoch_millis(), "fixture must share a millisecond");
+
+	let restored_earlier: DateTime = decode(&earlier.encode_state(DateTime::EPOCH).unwrap()).unwrap();
+	let restored_later: DateTime = decode(&later.encode_state(DateTime::EPOCH).unwrap()).unwrap();
+
+	assert_ne!(restored_earlier, restored_later);
+	assert_eq!(restored_later, later);
+}

@@ -1064,7 +1064,8 @@ mod tests {
 		let cutoff = Duration::from_milliseconds(cutoff_ms as i64).expect("representable span");
 		let policy = SealPolicy::tumbling(cutoff, Duration::from_milliseconds_const(0));
 		let last = 10u64;
-		let sealed = |wm: u64| policy.seal_instant_from_order(last).at().to_order() <= wm;
+		let order = |millis: u64| at_millis(millis).to_order();
+		let sealed = |wm: u64| policy.seal_instant_from_order(order(last)).at().to_order() <= order(wm);
 		let pre_timer_gate = |wm: u64| wm.saturating_sub(last) > cutoff_ms;
 
 		for wm in 0..100u64 {

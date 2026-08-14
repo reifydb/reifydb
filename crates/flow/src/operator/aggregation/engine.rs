@@ -246,13 +246,20 @@ mod tests {
 mod bucket_start_tests {
 	use super::*;
 
+	fn order(millis: u64) -> u64 {
+		DateTime::from_epoch_millis(millis).unwrap().to_order()
+	}
+
 	#[test]
 	fn a_bucket_stamps_the_same_time_regardless_of_what_arrived_in_it() {
 		// The stamp is a pure function of the bucket, so two replays of one corpus agree. A
 		// max-contributor stamp would vary with arrival and change retention decisions.
-		let bucket = 1_700_000_000_000u64;
+		let bucket = order(1_700_000_000_000);
 
-		assert_eq!(<DateTime as Coord>::from_order(bucket), DateTime::from_epoch_millis(bucket).unwrap());
+		assert_eq!(
+			<DateTime as Coord>::from_order(bucket),
+			DateTime::from_epoch_millis(1_700_000_000_000).unwrap()
+		);
 		assert_eq!(
 			<DateTime as Coord>::from_order(bucket),
 			<DateTime as Coord>::from_order(bucket),
@@ -264,8 +271,8 @@ mod bucket_start_tests {
 	fn adjacent_buckets_get_distinct_stamps_in_bucket_order() {
 		// A chained rollup (1s -> 1m) collapses onto one instant unless distinct buckets get
 		// distinct stamps.
-		let first = <DateTime as Coord>::from_order(1_700_000_000_000);
-		let second = <DateTime as Coord>::from_order(1_700_000_001_000);
+		let first = <DateTime as Coord>::from_order(order(1_700_000_000_000));
+		let second = <DateTime as Coord>::from_order(order(1_700_000_001_000));
 
 		assert!(first < second, "bucket order must survive into #time");
 		assert_eq!(second - first, Duration::from_seconds(1).unwrap(), "a 1s bucket step is 1s in #time");

@@ -498,7 +498,7 @@ extern "C" fn test_intern_groups(
 extern "C" fn test_arm_timer(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	at_millis: u64,
+	due_bits: u64,
 	kind: u8,
 	key: *const u8,
 	key_len: usize,
@@ -522,7 +522,7 @@ extern "C" fn test_arm_timer(
 			from_raw_parts(key, key_len).to_vec()
 		};
 		test_ctx.arm_timer(ArmedTimer {
-			due: DateTime::from_millis(at_millis),
+			due: DateTime::from_bits(due_bits),
 			kind,
 			key,
 		});
@@ -534,7 +534,7 @@ extern "C" fn test_arm_timer(
 extern "C" fn test_disarm_timer(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	at_millis: u64,
+	due_bits: u64,
 	kind: u8,
 	key: *const u8,
 	key_len: usize,
@@ -558,7 +558,7 @@ extern "C" fn test_disarm_timer(
 			from_raw_parts(key, key_len).to_vec()
 		};
 		test_ctx.disarm_timer(&ArmedTimer {
-			due: DateTime::from_millis(at_millis),
+			due: DateTime::from_bits(due_bits),
 			kind,
 			key,
 		});
@@ -622,10 +622,10 @@ extern "C" fn test_reclaim_group_identity(
 extern "C" fn test_flow_watermark(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	millis_out: *mut u64,
+	bits_out: *mut u64,
 	present_out: *mut u8,
 ) -> i32 {
-	if ctx.is_null() || millis_out.is_null() || present_out.is_null() {
+	if ctx.is_null() || bits_out.is_null() || present_out.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
@@ -634,11 +634,11 @@ extern "C" fn test_flow_watermark(
 		let test_ctx = get_test_context(ctx);
 		match test_ctx.flow_watermark() {
 			Some(watermark) => {
-				*millis_out = watermark.to_millis();
+				*bits_out = watermark.to_bits();
 				*present_out = 1;
 			}
 			None => {
-				*millis_out = 0;
+				*bits_out = 0;
 				*present_out = 0;
 			}
 		}

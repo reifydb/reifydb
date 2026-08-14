@@ -99,6 +99,10 @@ mod tests {
 		Duration::from_milliseconds_const(millis as i64)
 	}
 
+	fn order(millis: u64) -> u64 {
+		DateTime::from_millis(millis).to_order()
+	}
+
 	fn timed() -> SlidingOverTime {
 		SlidingOverTime::by_duration(ms(1_000), ms(250)).expect("a 250ms slide fits inside a 1000ms window")
 	}
@@ -130,7 +134,10 @@ mod tests {
 	fn a_time_coordinate_lands_in_every_window_whose_span_still_covers_it() {
 		// One row contributes to several overlapping windows, and missing one under-counts that
 		// window forever. Size 1000 with slide 250 covers an instant with exactly four windows.
-		assert_eq!(timed().anchors(event_coord_at_millis(5_000)), vec![4_250, 4_500, 4_750, 5_000]);
+		assert_eq!(
+			timed().anchors(event_coord_at_millis(5_000)),
+			vec![order(4_250), order(4_500), order(4_750), order(5_000)]
+		);
 	}
 
 	#[test]
@@ -138,8 +145,8 @@ mod tests {
 		// The low bound saturates because an instant inside the first window would otherwise
 		// underflow to near u64::MAX and iterate a range the size of the address space. The epoch is
 		// a real coordinate here: unstamped rows sit at exactly DateTime::default().
-		assert_eq!(timed().anchors(event_coord_at_millis(0)), vec![0]);
-		assert_eq!(timed().anchors(event_coord_at_millis(250)), vec![0, 250]);
+		assert_eq!(timed().anchors(event_coord_at_millis(0)), vec![order(0)]);
+		assert_eq!(timed().anchors(event_coord_at_millis(250)), vec![order(0), order(250)]);
 	}
 
 	#[test]
@@ -175,7 +182,7 @@ mod tests {
 		// The span the engine keys by must agree with the anchors() filter that decided membership
 		// (`instant < start + size`). A span one unit off keys the window under a boundary no row
 		// was admitted against, and the seal timer armed from it closes a different window.
-		let span = timed().span(4_250);
+		let span = timed().span(order(4_250));
 
 		assert_eq!(span.start, DateTime::from_millis(4_250));
 		assert_eq!(span.end, DateTime::from_millis(5_250));

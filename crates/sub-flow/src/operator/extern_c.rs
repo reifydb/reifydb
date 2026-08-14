@@ -207,7 +207,7 @@ impl HostOperator for ExternCOperatorHandle {
 			(self.vtable.on_timer)(
 				self.instance,
 				extern_c_ctx_ptr,
-				timer.due.to_millis(),
+				timer.due.to_bits(),
 				timer.kind as u8,
 				key.as_ptr(),
 				key.len(),

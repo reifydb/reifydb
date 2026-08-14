@@ -392,7 +392,8 @@ fn due(millis: u64) -> TimerDue {
 
 #[test]
 fn next_due_reports_the_earliest_armed_instant_not_the_latest() {
-	// the peek must scan forward, otherwise the registry entry names the far end of the wheel and skips every real timer
+	// the peek must scan forward, otherwise the registry entry names the far end of the wheel and skips every real
+	// timer
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let wheel = TimerWheel::default();
@@ -406,7 +407,8 @@ fn next_due_reports_the_earliest_armed_instant_not_the_latest() {
 
 #[test]
 fn next_due_is_none_when_nothing_is_armed() {
-	// none is what authorises dropping the registry entry, so an operator holding nothing must never report an instant
+	// none is what authorises dropping the registry entry, so an operator holding nothing must never report an
+	// instant
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let wheel = TimerWheel::default();
@@ -421,7 +423,8 @@ fn next_due_is_none_when_nothing_is_armed() {
 
 #[test]
 fn next_due_reports_an_instant_no_watermark_has_reached() {
-	// the peek must be unbounded, otherwise a far-future timer reads as nothing armed and its entry is dropped for good
+	// the peek must be unbounded, otherwise a far-future timer reads as nothing armed and its entry is dropped for
+	// good
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let wheel = TimerWheel::default();
@@ -433,7 +436,8 @@ fn next_due_reports_an_instant_no_watermark_has_reached() {
 
 #[test]
 fn next_due_reports_what_a_capped_take_left_behind() {
-	// the peek must see the post-take wheel, otherwise the entry keeps naming a fired instant and the operator rescans forever
+	// the peek must see the post-take wheel, otherwise the entry keeps naming a fired instant and the operator
+	// rescans forever
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let wheel = TimerWheel::default();
@@ -464,7 +468,8 @@ fn next_due_stored_ignores_an_arm_that_has_not_been_committed() {
 
 #[test]
 fn next_due_stored_reports_the_earliest_committed_instant() {
-	// a rebuilt entry must name the earliest persisted instant, otherwise a reloaded flow skips timers it already owed
+	// a rebuilt entry must name the earliest persisted instant, otherwise a reloaded flow skips timers it already
+	// owed
 	let engine = TestEngine::new();
 	let wheel = TimerWheel::default();
 

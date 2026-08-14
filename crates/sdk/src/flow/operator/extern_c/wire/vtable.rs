@@ -20,7 +20,7 @@ pub struct ExternCOperatorVTable {
 	pub on_timer: unsafe extern "C" fn(
 		instance: *mut c_void,
 		ctx: *mut ExternCContextRaw,
-		at_millis: u64,
+		due_bits: u64,
 		kind: u8,
 		key: *const u8,
 		key_len: usize,

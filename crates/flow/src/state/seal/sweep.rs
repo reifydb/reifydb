@@ -34,9 +34,13 @@ mod tests {
 		Duration::from_milliseconds_const(millis as i64)
 	}
 
-	fn fired(millis: u64) -> FiredAt {
+	fn order(millis: u64) -> u64 {
+		DateTime::from_millis(millis).to_order()
+	}
+
+	fn fired(order: u64) -> FiredAt {
 		FiredAt::of(&Timer {
-			due: DateTime::from_millis(millis),
+			due: <DateTime as Coord>::from_order(order),
 			kind: TimerKind::Seal,
 			key: EncodedKey::new(Vec::new()),
 		})
@@ -50,10 +54,10 @@ mod tests {
 		let policy = SealPolicy::tumbling(ms(1_000), ms(200));
 		let sweep = SealSweep::new(policy);
 
-		let anchor = 5_000u64;
+		let anchor = order(5_000);
 		let instant = policy.seal_instant_from_order(anchor).at();
 
-		assert_eq!(sweep.horizon(fired(instant.to_order())), Some(DateTime::from_millis(anchor)));
+		assert_eq!(sweep.horizon(fired(instant.to_order())), Some(DateTime::from_millis(5_000)));
 	}
 
 	#[test]
@@ -63,9 +67,9 @@ mod tests {
 		// one tick.
 		let sweep = SealSweep::new(SealPolicy::tumbling(ms(1_000), ms(200)));
 
-		assert!(sweep.horizon(fired(0)).is_none());
-		assert!(sweep.horizon(fired(1_200)).is_none(), "the anchor would be 0 - 1, not 0");
-		assert_eq!(sweep.horizon(fired(1_201)), Some(DateTime::from_millis(0)));
+		assert!(sweep.horizon(fired(order(0))).is_none());
+		assert!(sweep.horizon(fired(order(1_200))).is_none(), "the anchor would be 0 - 1, not 0");
+		assert_eq!(sweep.horizon(fired(order(1_201))), Some(DateTime::from_millis(0)));
 	}
 
 	#[test]
@@ -74,6 +78,6 @@ mod tests {
 		// not, so the horizon lands one millisecond behind the fired instant rather than wrapping.
 		let sweep = SealSweep::new(SealPolicy::tumbling(ms(0), ms(0)));
 
-		assert_eq!(sweep.horizon(fired(5_000)), Some(DateTime::from_millis(4_999)));
+		assert_eq!(sweep.horizon(fired(order(5_000))), Some(DateTime::from_millis(4_999)));
 	}
 }

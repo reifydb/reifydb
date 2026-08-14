@@ -30,7 +30,7 @@ impl Slot for DateTime {
 	type Coord = DateTime;
 
 	fn order_key(&self) -> DateTime {
-		<DateTime as Coord>::from_order(self.to_epoch_millis() as u64)
+		*self
 	}
 
 	fn from_order_key(coord: DateTime) -> Self {

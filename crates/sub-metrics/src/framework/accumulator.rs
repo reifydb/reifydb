@@ -455,7 +455,7 @@ mod tests {
 	use reifydb_value::{
 		byte_size::ByteSize,
 		count::Count,
-		value::{Value, datetime::DateTime, value_type::ValueType},
+		value::{Value, datetime::DateTime},
 	};
 
 	use super::{Measure, MetricsAccumulator, MetricsRow, PublishedSurface};

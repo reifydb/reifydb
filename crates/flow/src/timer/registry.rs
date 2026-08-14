@@ -125,7 +125,8 @@ mod tests {
 
 	#[test]
 	fn folding_an_arm_keeps_the_earliest_instant_for_an_operator() {
-		// an entry must name the operator's earliest instant, otherwise the whole-flow skip hides a timer already due
+		// an entry must name the operator's earliest instant, otherwise the whole-flow skip hides a timer
+		// already due
 		let mut registry = TimerRegistry::default();
 
 		due_before(&mut registry, vec![armed(1, 9_000), armed(1, 5_000)], flow(1), 0);
@@ -136,7 +137,8 @@ mod tests {
 
 	#[test]
 	fn a_folded_arm_stays_armed_until_it_is_due() {
-		// arms must fold on every call, otherwise a timer armed ahead of the watermark dies with its transaction
+		// arms must fold on every call, otherwise a timer armed ahead of the watermark dies with its
+		// transaction
 		let mut registry = TimerRegistry::default();
 
 		assert!(due_before(&mut registry, vec![armed(1, 5_000)], flow(1), 0).is_empty());
@@ -164,7 +166,8 @@ mod tests {
 
 	#[test]
 	fn an_operator_past_the_watermark_is_withheld_while_a_sibling_fires() {
-		// an open flow gate must never promote every operator in it, otherwise the fan-out scan returns silently
+		// an open flow gate must never promote every operator in it, otherwise the fan-out scan returns
+		// silently
 		let mut registry = TimerRegistry::default();
 
 		let found = due_before(&mut registry, vec![armed(1, 5_000), armed(2, 9_000)], flow(1), 5_000);
@@ -175,7 +178,8 @@ mod tests {
 
 	#[test]
 	fn one_flow_never_surfaces_another_flows_operators() {
-		// candidates must be keyed by flow, otherwise an operator is scanned against a watermark that is not its own
+		// candidates must be keyed by flow, otherwise an operator is scanned against a watermark that is not
+		// its own
 		let mut registry = TimerRegistry::default();
 
 		due_before(&mut registry, vec![armed(1, 5_000)], flow(1), 0);
@@ -208,7 +212,8 @@ mod tests {
 
 	#[test]
 	fn refresh_with_no_next_timer_drops_the_entry() {
-		// none is the one report that authorises removal, otherwise a timerless operator stays a candidate for good
+		// none is the one report that authorises removal, otherwise a timerless operator stays a candidate for
+		// good
 		let mut registry = TimerRegistry::default();
 		due_before(&mut registry, vec![armed(1, 5_000)], flow(1), 0);
 
@@ -219,7 +224,8 @@ mod tests {
 
 	#[test]
 	fn rebuild_replaces_a_flows_entries_rather_than_merging_them() {
-		// the rebuild input is the whole truth for that flow, otherwise a stale operator is scanned holding nothing
+		// the rebuild input is the whole truth for that flow, otherwise a stale operator is scanned holding
+		// nothing
 		let mut registry = TimerRegistry::default();
 		due_before(&mut registry, vec![armed(1, 5_000)], flow(1), 0);
 
@@ -241,7 +247,8 @@ mod tests {
 
 	#[test]
 	fn removing_an_operator_leaves_its_siblings_armed() {
-		// removal must reach exactly the named operator, otherwise sibling timers die with nothing to re-arm them
+		// removal must reach exactly the named operator, otherwise sibling timers die with nothing to re-arm
+		// them
 		let mut registry = TimerRegistry::default();
 		due_before(&mut registry, vec![armed(1, 5_000), armed(2, 5_000)], flow(1), 0);
 

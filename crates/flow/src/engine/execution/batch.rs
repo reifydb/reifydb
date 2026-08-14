@@ -373,6 +373,7 @@ mod tests {
 		let version = parent.version();
 		DeferredTransaction::new(DeferredParams::from_parent(
 			&parent,
+			engine.inner().operator_state(),
 			version,
 			Catalog::testing(),
 			Interceptors::new(),
@@ -575,7 +576,10 @@ mod tests {
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
-			FlowSubstrate::default(),
+			FlowSubstrate {
+				operators: Some(engine.inner().operator_state()),
+				..FlowSubstrate::default()
+			},
 			OperatorSampleRegistry::new(),
 		);
 		let object = ObjectId::View(ViewId(9));
@@ -615,7 +619,10 @@ mod tests {
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
-			FlowSubstrate::default(),
+			FlowSubstrate {
+				operators: Some(engine.inner().operator_state()),
+				..FlowSubstrate::default()
+			},
 			OperatorSampleRegistry::new(),
 		);
 		let mut builder = FlowDag::builder(FlowId(1));

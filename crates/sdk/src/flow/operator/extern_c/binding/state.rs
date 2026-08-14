@@ -400,7 +400,7 @@ pub(crate) fn arm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerKind
 		let result = ((*ctx.ctx).callbacks.state.arm_timer)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			due.to_millis(),
+			due.to_bits(),
 			kind as u8,
 			bytes.as_ptr(),
 			bytes.len(),
@@ -443,16 +443,16 @@ pub(crate) fn reclaim_group_identity(ctx: &mut ExternCContext, group: GroupId, l
 }
 
 pub(crate) fn flow_watermark(ctx: &mut ExternCContext) -> Result<Option<DateTime>> {
-	let mut millis = 0u64;
+	let mut bits = 0u64;
 	let mut present = 0u8;
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null, and the host keeps the ExternCContextRaw alive
-	// and aligned for the whole guest call; millis and present are local stack slots.
+	// and aligned for the whole guest call; bits and present are local stack slots.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.flow_watermark)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			&mut millis,
+			&mut bits,
 			&mut present,
 		);
 		if result != EXTERN_C_OK {
@@ -460,7 +460,7 @@ pub(crate) fn flow_watermark(ctx: &mut ExternCContext) -> Result<Option<DateTime
 		}
 	}
 
-	Ok((present != 0).then(|| DateTime::from_millis(millis)))
+	Ok((present != 0).then(|| DateTime::from_bits(bits)))
 }
 
 pub(crate) fn disarm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
@@ -472,7 +472,7 @@ pub(crate) fn disarm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerK
 		let result = ((*ctx.ctx).callbacks.state.disarm_timer)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			due.to_millis(),
+			due.to_bits(),
 			kind as u8,
 			bytes.as_ptr(),
 			bytes.len(),

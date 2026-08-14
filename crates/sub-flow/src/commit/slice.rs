@@ -295,6 +295,7 @@ mod tests {
 		},
 		value::column::columns::Columns,
 	};
+	use reifydb_value::value::datetime::DateTime;
 	use smallvec::smallvec;
 
 	use super::*;

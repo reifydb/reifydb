@@ -108,10 +108,6 @@ pub struct DeferredTransaction {
 }
 
 impl DeferredTransaction {
-	fn operators(&self) -> &OperatorStore {
-		self.substrate.operators.as_ref().expect("flow transaction was built without an operator store")
-	}
-
 	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(params), fields(version = params.version.0))]
 	pub fn new(params: DeferredParams) -> Self {
 		let mut query = params.query;
@@ -134,8 +130,10 @@ impl DeferredTransaction {
 	}
 }
 
+const NO_OPERATOR_STORE: &str = "flow transaction was built without an operator store";
+
 pub(crate) fn deferred_storage_get(
-	operators: &OperatorStore,
+	operators: Option<&OperatorStore>,
 	query: &MultiReadTransaction,
 	state_query: &MultiReadTransaction,
 	key: &EncodedKey,
@@ -146,7 +144,10 @@ pub(crate) fn deferred_storage_get(
 			operator,
 			inner,
 		} = operator_state_coordinates(key).expect("an OperatorState-routed key must carry an operator id");
-		return Ok(operators.get(operator, &inner).map(EncodedOperatorRow::into_bytes));
+		return Ok(operators
+			.expect(NO_OPERATOR_STORE)
+			.get(operator, &inner)
+			.map(EncodedOperatorRow::into_bytes));
 	}
 	let query = match route {
 		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
@@ -157,7 +158,7 @@ pub(crate) fn deferred_storage_get(
 }
 
 pub(crate) fn deferred_storage_contains(
-	operators: &OperatorStore,
+	operators: Option<&OperatorStore>,
 	query: &MultiReadTransaction,
 	state_query: &MultiReadTransaction,
 	key: &EncodedKey,
@@ -169,7 +170,7 @@ pub(crate) fn deferred_storage_contains(
 				inner,
 			} = operator_state_coordinates(key)
 				.expect("an OperatorState-routed key must carry an operator id");
-			return Ok(operators.contains(operator, &inner));
+			return Ok(operators.expect(NO_OPERATOR_STORE).contains(operator, &inner));
 		}
 		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
 		ReadFrom::Query => query,
@@ -178,7 +179,7 @@ pub(crate) fn deferred_storage_contains(
 }
 
 pub(crate) fn deferred_storage_range<'a>(
-	operators: &OperatorStore,
+	operators: Option<&OperatorStore>,
 	query: &'a MultiReadTransaction,
 	state_query: &'a MultiReadTransaction,
 	version: CommitVersion,
@@ -191,14 +192,20 @@ pub(crate) fn deferred_storage_range<'a>(
 		inner,
 	}) = operator_state_scope(&range)
 	{
-		return Box::new(OperatorStateRangeIter::new(operators.clone(), operator, inner, batch_size, version));
+		return Box::new(OperatorStateRangeIter::new(
+			operators.expect(NO_OPERATOR_STORE).clone(),
+			operator,
+			inner,
+			batch_size,
+			version,
+		));
 	}
 	let query = deferred_range_target(query, state_query, &range);
 	Box::new(query.range(range, scope, batch_size))
 }
 
 pub(crate) fn deferred_storage_range_rev<'a>(
-	operators: &OperatorStore,
+	operators: Option<&OperatorStore>,
 	query: &'a MultiReadTransaction,
 	state_query: &'a MultiReadTransaction,
 	version: CommitVersion,
@@ -211,8 +218,14 @@ pub(crate) fn deferred_storage_range_rev<'a>(
 		inner,
 	}) = operator_state_scope(&range)
 	{
-		let mut items = OperatorStateRangeIter::new(operators.clone(), operator, inner, batch_size, version)
-			.collect::<Vec<_>>();
+		let mut items = OperatorStateRangeIter::new(
+			operators.expect(NO_OPERATOR_STORE).clone(),
+			operator,
+			inner,
+			batch_size,
+			version,
+		)
+		.collect::<Vec<_>>();
 		items.reverse();
 		return Box::new(items.into_iter());
 	}
@@ -238,7 +251,7 @@ fn deferred_range_target<'a>(
 }
 
 pub(crate) fn deferred_fetch_state_external(
-	operators: &OperatorStore,
+	operators: Option<&OperatorStore>,
 	version: CommitVersion,
 	keys: &[EncodedKey],
 	items: &mut Vec<MultiVersionRow>,
@@ -248,7 +261,7 @@ pub(crate) fn deferred_fetch_state_external(
 			operator,
 			inner,
 		} = operator_state_coordinates(encoded_key).expect("state_get_many keys must carry an operator id");
-		if let Some(row) = operators.get(operator, &inner) {
+		if let Some(row) = operators.expect(NO_OPERATOR_STORE).get(operator, &inner) {
 			items.push(MultiVersionRow {
 				key: encoded_key.clone(),
 				bytes: row.into_bytes(),
@@ -320,11 +333,11 @@ impl FlowTransaction for DeferredTransaction {
 	}
 
 	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		deferred_storage_get(self.operators(), &self.query, &self.state_query, key)
+		deferred_storage_get(self.substrate.operators.as_ref(), &self.query, &self.state_query, key)
 	}
 
 	fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool> {
-		deferred_storage_contains(self.operators(), &self.query, &self.state_query, key)
+		deferred_storage_contains(self.substrate.operators.as_ref(), &self.query, &self.state_query, key)
 	}
 
 	fn storage_range(
@@ -334,7 +347,7 @@ impl FlowTransaction for DeferredTransaction {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		deferred_storage_range(
-			self.operators(),
+			self.substrate.operators.as_ref(),
 			&self.query,
 			&self.state_query,
 			self.version,
@@ -351,7 +364,7 @@ impl FlowTransaction for DeferredTransaction {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		deferred_storage_range_rev(
-			self.operators(),
+			self.substrate.operators.as_ref(),
 			&self.query,
 			&self.state_query,
 			self.version,
@@ -362,7 +375,7 @@ impl FlowTransaction for DeferredTransaction {
 	}
 
 	fn fetch_state_external(&mut self, keys: &[EncodedKey], items: &mut Vec<MultiVersionRow>) -> Result<()> {
-		deferred_fetch_state_external(self.operators(), self.version, keys, items);
+		deferred_fetch_state_external(self.substrate.operators.as_ref(), self.version, keys, items);
 		Ok(())
 	}
 }

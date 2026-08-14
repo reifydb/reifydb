@@ -11,7 +11,7 @@ use std::{borrow::Cow, f32, f64};
 use reifydb_codec::key::{serializer::KeySerializer, *};
 use reifydb_value::{
 	util::hex::encode,
-	value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64},
+	value::{Value, datetime::DateTime, ordered_f32::OrderedF32, ordered_f64::OrderedF64},
 };
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
@@ -368,4 +368,45 @@ fn every_fixed_width_key_encoding_round_trips() {
 	for value in [0u128, 1, u128::from(u64::MAX), u128::MAX] {
 		assert_eq!(decode_u128_asc(encode_u128_asc(value)), value, "ascending u128 round trip");
 	}
+}
+
+#[test]
+fn a_datetime_key_round_trips_through_its_encoding() {
+	// the encoding is the only path an instant takes into a key, so a lossy leg silently moves every timer armed at
+	// it
+	for bits in [0u64, 1, 999_999, 1_000_000, 1_700_000_000_123_456_789, u64::MAX - 1, u64::MAX] {
+		let instant = DateTime::from_bits(bits);
+		assert_eq!(decode_datetime_asc(encode_datetime_asc(instant)), instant, "datetime key round trip");
+	}
+}
+
+#[test]
+fn datetime_keys_sort_in_instant_order() {
+	// a range scan reads firing order straight off these bytes, so an encoding that reorders fires timers out of
+	// order
+	let ordered = [
+		DateTime::from_bits(0),
+		DateTime::from_bits(1),
+		DateTime::from_bits(999_999),
+		DateTime::from_bits(1_000_000),
+		DateTime::from_bits(1_000_001),
+		DateTime::from_bits(u64::MAX),
+	];
+
+	for pair in ordered.windows(2) {
+		let (lo, hi) = (pair[0], pair[1]);
+		assert!(lo < hi, "fixture must be ordered");
+		assert!(encode_datetime_asc(lo) < encode_datetime_asc(hi), "encoding must keep {lo:?} below {hi:?}");
+	}
+}
+
+#[test]
+fn two_instants_inside_one_millisecond_encode_to_distinct_keys() {
+	// a millisecond-resolution key collapses these to one row, so the second arm silently overwrites the first
+	let earlier = DateTime::from_bits(1_700_000_000_000_000_000);
+	let later = DateTime::from_bits(1_700_000_000_000_500_000);
+
+	assert_eq!(earlier.to_epoch_millis(), later.to_epoch_millis(), "fixture must share a millisecond");
+	assert_ne!(encode_datetime_asc(earlier), encode_datetime_asc(later));
+	assert_eq!(decode_datetime_asc(encode_datetime_asc(later)), later);
 }

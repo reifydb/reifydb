@@ -564,7 +564,7 @@ pub(super) extern "C" fn host_remove_row_numbers_below(
 pub(super) extern "C" fn host_arm_timer(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	at_millis: u64,
+	due_bits: u64,
 	kind: u8,
 	key: *const u8,
 	key_len: usize,
@@ -589,7 +589,7 @@ pub(super) extern "C" fn host_arm_timer(
 		} else {
 			EncodedKey::new(from_raw_parts(key, key_len))
 		};
-		match host.arm_timer(DateTime::from_millis(at_millis), kind, &key) {
+		match host.arm_timer(DateTime::from_bits(due_bits), kind, &key) {
 			Ok(()) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
@@ -626,10 +626,10 @@ pub(super) extern "C" fn host_reclaim_group_identity(
 pub(super) extern "C" fn host_flow_watermark(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	millis_out: *mut u64,
+	bits_out: *mut u64,
 	present_out: *mut u8,
 ) -> i32 {
-	if ctx.is_null() || millis_out.is_null() || present_out.is_null() {
+	if ctx.is_null() || bits_out.is_null() || present_out.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
@@ -639,12 +639,12 @@ pub(super) extern "C" fn host_flow_watermark(
 		let host = get_host_mut(&mut *ctx);
 		match host.flow_watermark() {
 			Ok(Some(watermark)) => {
-				*millis_out = watermark.to_millis();
+				*bits_out = watermark.to_bits();
 				*present_out = 1;
 				EXTERN_C_OK
 			}
 			Ok(None) => {
-				*millis_out = 0;
+				*bits_out = 0;
 				*present_out = 0;
 				EXTERN_C_OK
 			}
@@ -656,7 +656,7 @@ pub(super) extern "C" fn host_flow_watermark(
 pub(super) extern "C" fn host_disarm_timer(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	at_millis: u64,
+	due_bits: u64,
 	kind: u8,
 	key: *const u8,
 	key_len: usize,
@@ -681,7 +681,7 @@ pub(super) extern "C" fn host_disarm_timer(
 		} else {
 			EncodedKey::new(from_raw_parts(key, key_len))
 		};
-		match host.disarm_timer(DateTime::from_millis(at_millis), kind, &key) {
+		match host.disarm_timer(DateTime::from_bits(due_bits), kind, &key) {
 			Ok(()) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}

@@ -625,6 +625,10 @@ mod tests {
 		OrdinalCoord::from_arrival_counter(value)
 	}
 
+	fn order(millis: u64) -> u64 {
+		DateTime::from_millis(millis).to_order()
+	}
+
 	fn evict_instant(oldest: u64, span: Duration) -> DateTime {
 		EvictionPolicy::rolling(span).eviction_instant_from_order(oldest).at()
 	}
@@ -652,20 +656,20 @@ mod tests {
 		// end, so the coordinate exactly one span behind must arm at coord + span. Tumbling's
 		// strict +1 gate arms one tick late and the boundary entry then never expires.
 		let span = Duration::from_seconds(5).expect("representable span");
-		let watermark = 10_000u64;
+		let watermark = order(10_000);
 
-		let armed = evict_instant(5_000, span);
+		let armed = evict_instant(order(5_000), span);
 		assert!(
 			armed.to_order() <= watermark,
 			"a coordinate exactly one span behind the watermark must already be due"
 		);
 		assert_eq!(
 			armed.saturating_sub_span(span).to_order(),
-			5_000,
+			order(5_000),
 			"and the cutoff that firing derives must land on that coordinate, not past it"
 		);
 		assert!(
-			evict_instant(5_001, span).to_order() > watermark,
+			evict_instant(order(5_001), span).to_order() > watermark,
 			"one millisecond newer is still inside the window and must not be armed yet"
 		);
 	}

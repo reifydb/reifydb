@@ -201,7 +201,10 @@ mod tests {
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
-			FlowSubstrate::default(),
+			FlowSubstrate {
+				operators: Some(engine.inner().operator_state()),
+				..FlowSubstrate::default()
+			},
 			OperatorSampleRegistry::new(),
 		)
 	}
@@ -211,6 +214,7 @@ mod tests {
 		let version = parent.version();
 		DeferredTransaction::new(DeferredParams::from_parent(
 			&parent,
+			engine.inner().operator_state(),
 			version,
 			Catalog::testing(),
 			Interceptors::new(),

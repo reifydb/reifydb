@@ -560,6 +560,10 @@ mod tests {
 
 	const WINDOW: u64 = 60;
 
+	fn order(millis: u64) -> u64 {
+		at_millis(millis).to_order()
+	}
+
 	fn carry_config(retention: Option<Duration>) -> TumblingCarryConfig<DateTime> {
 		TumblingCarryConfig::builder(WindowEngineConfig::builder().build()).retention(retention).build()
 	}
@@ -713,7 +717,7 @@ mod tests {
 		}
 		assert_eq!(store.meta_entry_count(), 1);
 
-		let dropped = engine.expire_meta(&mut store, 100 * WINDOW).unwrap();
+		let dropped = engine.expire_meta(&mut store, order(100 * WINDOW)).unwrap();
 		assert_eq!(dropped, 1, "the quiet group's high water is far below the threshold");
 		assert_eq!(store.meta_entry_count(), 0, "a dead carry group must not leak its meta");
 	}
@@ -847,6 +851,6 @@ mod tests {
 		);
 		let bytes = meta.encode_state(DateTime::EPOCH).unwrap();
 		let projected = decode::<CarryMeta<DateTime, i64, i64>>(&bytes).unwrap().high_water_order();
-		assert_eq!(projected, Some(99), "the populated window map must not disturb the high water");
+		assert_eq!(projected, Some(order(99)), "the populated window map must not disturb the high water");
 	}
 }

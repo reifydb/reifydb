@@ -16,16 +16,13 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	state::seal::coord::Coord,
-	window::{
-		accumulator::{
-			WindowAccumulator,
-			invertible::Multiset,
-			sealing::{SealingEndpoint, SealingMax, SealingMin},
-		},
-		span::Slot,
+use crate::window::{
+	accumulator::{
+		WindowAccumulator,
+		invertible::Multiset,
+		sealing::{SealingEndpoint, SealingMax, SealingMin},
 	},
+	span::Slot,
 };
 
 #[operator_state]
@@ -54,7 +51,7 @@ impl Slot for WindowSlotKey {
 	type Coord = DateTime;
 
 	fn order_key(&self) -> DateTime {
-		<DateTime as Coord>::from_order(self.timestamp.to_epoch_millis() as u64)
+		self.timestamp
 	}
 
 	fn from_order_key(coord: DateTime) -> Self {
@@ -692,7 +689,7 @@ mod tests {
 	use reifydb_codec::row::operator::{OperatorState, decode};
 
 	use super::*;
-	use crate::window::span::WindowSpan;
+	use crate::{state::seal::coord::Coord, window::span::WindowSpan};
 
 	fn i4(v: i32) -> Option<Value> {
 		Some(Value::Int4(v))
@@ -711,8 +708,8 @@ mod tests {
 		assert_eq!(restored.order_key(), key.order_key());
 		assert_eq!(
 			restored.order_key().to_order(),
-			1_700_000_000_123,
-			"the order key is milliseconds; sub-millisecond detail must not reach it"
+			key.timestamp.to_order(),
+			"the order key is the stored layout, so sub-millisecond detail must survive it"
 		);
 
 		let same_millis_other_seq = WindowSlotKey {

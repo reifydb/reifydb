@@ -14,6 +14,7 @@
 //! bit-inverted and so sort descending; utf8, blobs and uuids are stored plain and sort ascending.
 //! `encode_*_asc` are the uninverted integer forms for keyspaces that need a forward scan.
 
+use reifydb_value::value::datetime::DateTime;
 use serde::{Deserialize, Serialize};
 
 pub mod buf;
@@ -140,6 +141,14 @@ pub fn encode_u64_asc(value: u64) -> [u8; 8] {
 
 pub fn decode_u64_asc(bytes: [u8; 8]) -> u64 {
 	u64::from_be_bytes(bytes)
+}
+
+pub fn encode_datetime_asc(value: DateTime) -> [u8; 8] {
+	encode_u64_asc(value.to_bits())
+}
+
+pub fn decode_datetime_asc(bytes: [u8; 8]) -> DateTime {
+	DateTime::from_bits(decode_u64_asc(bytes))
 }
 
 pub fn encode_u128_asc(value: u128) -> [u8; 16] {

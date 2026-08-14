@@ -239,7 +239,7 @@ pub unsafe extern "C" fn extern_c_apply<O: ExternCOperator>(
 pub unsafe extern "C" fn extern_c_on_timer<O: ExternCOperator>(
 	instance: *mut c_void,
 	ctx: *mut ExternCContextRaw,
-	at_millis: u64,
+	due_bits: u64,
 	kind: u8,
 	key: *const u8,
 	key_len: usize,
@@ -252,7 +252,7 @@ pub unsafe extern "C" fn extern_c_on_timer<O: ExternCOperator>(
 			return -2;
 		};
 		let timer = Timer {
-			due: DateTime::from_millis(at_millis),
+			due: DateTime::from_bits(due_bits),
 			kind,
 			key: if key.is_null() || key_len == 0 {
 				&[]
@@ -286,7 +286,7 @@ pub unsafe extern "C" fn extern_c_on_timer<O: ExternCOperator>(
 
 	if code < 0 {
 		let detail = take_fatal_detail().unwrap_or_default();
-		let input_desc = format!("at_millis={} kind={} key_len={}", at_millis, kind, key_len);
+		let input_desc = format!("due_bits={} kind={} key_len={}", due_bits, kind, key_len);
 		print_extern_c_fatal(
 			"extern_c_on_timer",
 			any::type_name::<O>(),

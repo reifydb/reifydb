@@ -74,6 +74,7 @@ pub struct DeferredParams {
 impl DeferredParams {
 	pub fn from_parent(
 		parent: &AdminTransaction,
+		operators: OperatorStore,
 		version: CommitVersion,
 		catalog: Catalog,
 		interceptors: Interceptors,
@@ -87,7 +88,10 @@ impl DeferredParams {
 			catalog,
 			interceptors,
 			clock,
-			substrate: FlowSubstrate::new(),
+			substrate: FlowSubstrate {
+				operators: Some(operators),
+				..FlowSubstrate::default()
+			},
 		}
 	}
 }

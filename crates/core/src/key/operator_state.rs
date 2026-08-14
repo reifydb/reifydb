@@ -407,6 +407,12 @@ pub fn keyspace_inner_range(group: GroupId, keyspace: Keyspace) -> EncodedKeyRan
 	EncodedKeyRange::prefix(&keyspace_inner_prefix(group, keyspace))
 }
 
+pub fn keyspace_inner_range_upto(group: GroupId, keyspace: Keyspace, suffix: &[u8]) -> EncodedKeyRange {
+	let mut bound = keyspace_inner_prefix(group, keyspace);
+	bound.extend_from_slice(suffix);
+	EncodedKeyRange::new(keyspace_inner_range(group, keyspace).start, EncodedKeyRange::prefix(&bound).end)
+}
+
 pub fn group_data_inner_range(group: GroupId) -> EncodedKeyRange {
 	let prefix = group_inner_prefix(group);
 	let mut start = prefix.clone();

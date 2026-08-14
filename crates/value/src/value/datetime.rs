@@ -30,7 +30,7 @@ pub static TIME_COLUMN_NAME: &str = "time";
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct DateTime {
-	nanos: u64,
+	bits: u64,
 }
 
 impl DateTime {
@@ -45,7 +45,7 @@ impl DateTime {
 
 		let nanos = (days as u64).checked_mul(NANOS_PER_DAY)?.checked_add(time.to_nanos_since_midnight())?;
 		Some(Self {
-			nanos,
+			bits: nanos,
 		})
 	}
 
@@ -75,14 +75,24 @@ impl DateTime {
 		}
 	}
 
+	pub fn from_bits(bits: u64) -> Self {
+		Self {
+			bits,
+		}
+	}
+
+	pub fn to_bits(&self) -> u64 {
+		self.bits
+	}
+
 	pub fn from_nanos(nanos: u64) -> Self {
 		Self {
-			nanos,
+			bits: nanos,
 		}
 	}
 
 	pub fn to_nanos(&self) -> u64 {
-		self.nanos
+		self.bits
 	}
 
 	pub fn from_epoch_secs(secs: i64) -> Result<Self, Box<TypeError>> {
@@ -96,7 +106,7 @@ impl DateTime {
 			Box::new(Self::overflow_err(format!("{} seconds overflows DateTime range", secs)))
 		})?;
 		Ok(Self {
-			nanos,
+			bits: nanos,
 		})
 	}
 
@@ -105,7 +115,7 @@ impl DateTime {
 			Box::new(Self::overflow_err(format!("{} milliseconds overflows DateTime range", millis)))
 		})?;
 		Ok(Self {
-			nanos,
+			bits: nanos,
 		})
 	}
 
@@ -114,25 +124,25 @@ impl DateTime {
 			Box::new(Self::overflow_err(format!("{} nanoseconds overflows DateTime range", nanos)))
 		})?;
 		Ok(Self {
-			nanos,
+			bits: nanos,
 		})
 	}
 
 	pub fn to_epoch_secs(&self) -> i64 {
-		(self.nanos / NANOS_PER_SECOND) as i64
+		(self.bits / NANOS_PER_SECOND) as i64
 	}
 
 	pub fn to_epoch_millis(&self) -> i64 {
-		(self.nanos / NANOS_PER_MILLI) as i64
+		(self.bits / NANOS_PER_MILLI) as i64
 	}
 
 	pub fn to_epoch_nanos(&self) -> Result<i64, Box<TypeError>> {
-		i64::try_from(self.nanos)
+		i64::try_from(self.bits)
 			.map_err(|_| Box::new(Self::overflow_err("DateTime overflows nanosecond range")))
 	}
 
 	pub fn try_date(&self) -> Result<Date, Box<TypeError>> {
-		let days_u64 = self.nanos / NANOS_PER_DAY;
+		let days_u64 = self.bits / NANOS_PER_DAY;
 		let days = i32::try_from(days_u64)
 			.map_err(|_| Box::new(Self::overflow_err("DateTime overflows Date range")))?;
 		Date::from_days_since_epoch(days)
@@ -144,12 +154,12 @@ impl DateTime {
 	}
 
 	pub fn time(&self) -> Time {
-		let nanos_in_day = self.nanos % NANOS_PER_DAY;
+		let nanos_in_day = self.bits % NANOS_PER_DAY;
 		Time::from_nanos_since_midnight(nanos_in_day).unwrap()
 	}
 
 	pub fn to_nanos_since_epoch_u128(&self) -> u128 {
-		self.nanos as u128
+		self.bits as u128
 	}
 
 	pub fn year(&self) -> i32 {
@@ -216,7 +226,7 @@ impl DateTime {
 		let nanos = u64::try_from(total_nanos)
 			.map_err(|_| Box::new(Self::overflow_err("the result overflows DateTime range")))?;
 		Ok(Self {
-			nanos,
+			bits: nanos,
 		})
 	}
 }
@@ -273,41 +283,41 @@ impl DateTime {
 	pub const ALIGNMENT: usize = 8;
 
 	pub const EPOCH: DateTime = DateTime {
-		nanos: 0,
+		bits: 0,
 	};
 
 	pub const MAX: DateTime = DateTime {
-		nanos: u64::MAX,
+		bits: u64::MAX,
 	};
 
 	pub fn is_epoch(&self) -> bool {
-		self.nanos == 0
+		self.bits == 0
 	}
 
 	pub fn from_millis(millis: u64) -> Self {
 		Self {
-			nanos: millis.saturating_mul(NANOS_PER_MILLI),
+			bits: millis.saturating_mul(NANOS_PER_MILLI),
 		}
 	}
 
 	pub fn to_millis(&self) -> u64 {
-		self.nanos / NANOS_PER_MILLI
+		self.bits / NANOS_PER_MILLI
 	}
 
 	pub fn to_micros(&self) -> u64 {
-		self.nanos / NANOS_PER_MICRO
+		self.bits / NANOS_PER_MICRO
 	}
 
 	pub fn to_secs(&self) -> u64 {
-		self.nanos / NANOS_PER_SECOND
+		self.bits / NANOS_PER_SECOND
 	}
 
 	pub fn saturating_add_millis(self, millis: u64) -> DateTime {
-		DateTime::from_nanos(self.nanos.saturating_add(millis.saturating_mul(NANOS_PER_MILLI)))
+		DateTime::from_nanos(self.bits.saturating_add(millis.saturating_mul(NANOS_PER_MILLI)))
 	}
 
 	pub fn saturating_sub_millis(self, millis: u64) -> DateTime {
-		DateTime::from_nanos(self.nanos.saturating_sub(millis.saturating_mul(NANOS_PER_MILLI)))
+		DateTime::from_nanos(self.bits.saturating_sub(millis.saturating_mul(NANOS_PER_MILLI)))
 	}
 
 	pub fn floor_to_millis(self, millis: u64) -> DateTime {
@@ -315,7 +325,7 @@ impl DateTime {
 		if width == 0 {
 			return self;
 		}
-		DateTime::from_nanos(self.nanos - self.nanos % width)
+		DateTime::from_nanos(self.bits - self.bits % width)
 	}
 }
 
@@ -378,7 +388,7 @@ impl Serialize for DateTime {
 	where
 		S: Serializer,
 	{
-		serializer.serialize_u64(self.nanos)
+		serializer.serialize_u64(self.to_bits())
 	}
 }
 
@@ -388,14 +398,14 @@ impl<'de> Visitor<'de> for DateTimeVisitor {
 	type Value = DateTime;
 
 	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		formatter.write_str("a datetime as nanoseconds since the Unix epoch (u64)")
+		formatter.write_str("a datetime as its bit representation since the Unix epoch (u64)")
 	}
 
 	fn visit_u64<E>(self, value: u64) -> Result<DateTime, E>
 	where
 		E: de::Error,
 	{
-		Ok(DateTime::from_nanos(value))
+		Ok(DateTime::from_bits(value))
 	}
 }
 
@@ -591,6 +601,42 @@ pub mod tests {
 
 		let datetime = DateTime::from_epoch_millis(0).unwrap();
 		assert_eq!(format!("{}", datetime), "1970-01-01T00:00:00.000000000Z");
+	}
+
+	#[test]
+	fn test_datetime_bits_roundtrip_preserves_every_component() {
+		// every key encoding and the serde impl go through to_bits, so a lossy leg moves stored instants unseen
+		let cases = [
+			DateTime::new(1970, 1, 1, 0, 0, 0, 0).unwrap(),
+			DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap(),
+			DateTime::new(2000, 2, 29, 23, 59, 59, 999999999).unwrap(),
+			DateTime::MAX,
+		];
+
+		for datetime in cases {
+			let recovered = DateTime::from_bits(datetime.to_bits());
+
+			assert_eq!(datetime, recovered);
+			assert_eq!(datetime.nanosecond(), recovered.nanosecond(), "sub-second precision must survive");
+		}
+	}
+
+	#[test]
+	fn test_datetime_bits_are_monotonic_in_instant_order() {
+		// key encodings sort on the raw bits, so a disagreeing order would fire timers out of sequence
+		let ordered = [
+			DateTime::new(1970, 1, 1, 0, 0, 0, 0).unwrap(),
+			DateTime::new(1970, 1, 1, 0, 0, 0, 1).unwrap(),
+			DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap(),
+			DateTime::new(2024, 3, 15, 14, 30, 45, 123456790).unwrap(),
+			DateTime::MAX,
+		];
+
+		for pair in ordered.windows(2) {
+			let (lo, hi) = (pair[0], pair[1]);
+			assert!(lo < hi, "fixture must be ordered");
+			assert!(lo.to_bits() < hi.to_bits(), "bit order must follow instant order");
+		}
 	}
 
 	#[test]

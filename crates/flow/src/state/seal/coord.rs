@@ -53,11 +53,11 @@ impl Coord for DateTime {
 	}
 
 	fn to_order(self) -> u64 {
-		self.to_epoch_millis() as u64
+		self.to_bits()
 	}
 
 	fn from_order(order: u64) -> Self {
-		DateTime::from_epoch_millis(order).unwrap_or(DateTime::MAX)
+		DateTime::from_bits(order)
 	}
 
 	fn span_millis(span: Duration) -> Option<u64> {

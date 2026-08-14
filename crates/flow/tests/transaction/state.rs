@@ -74,9 +74,10 @@ fn stamped_row(payload: &[u8], time: u64) -> EncodedOperatorRow {
 
 #[test]
 fn test_state_get_set() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
@@ -95,9 +96,10 @@ fn test_state_get_set() {
 
 #[test]
 fn test_state_get_many() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
@@ -130,9 +132,10 @@ fn test_state_get_many() {
 
 #[test]
 fn test_state_get_nonexistent() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
@@ -148,9 +151,10 @@ fn test_state_get_nonexistent() {
 
 #[test]
 fn test_state_remove() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
@@ -170,9 +174,10 @@ fn test_state_remove() {
 
 #[test]
 fn test_state_isolation_between_nodes() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
@@ -192,9 +197,10 @@ fn test_state_isolation_between_nodes() {
 
 #[test]
 fn test_state_scan_all() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
@@ -215,9 +221,10 @@ fn test_state_scan_all() {
 
 #[test]
 fn test_state_scan_only_own_node() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
@@ -240,9 +247,10 @@ fn test_state_scan_only_own_node() {
 
 #[test]
 fn test_state_scan_empty() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
@@ -257,9 +265,10 @@ fn test_state_scan_empty() {
 
 #[test]
 fn test_state_range_all() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
@@ -285,9 +294,10 @@ fn test_state_range_all() {
 
 #[test]
 fn test_state_clear() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
@@ -309,9 +319,10 @@ fn test_state_clear() {
 
 #[test]
 fn test_state_clear_only_own_node() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
@@ -333,9 +344,10 @@ fn test_state_clear_only_own_node() {
 
 #[test]
 fn test_state_clear_empty_node() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),
@@ -349,9 +361,10 @@ fn test_state_clear_empty_node() {
 
 #[test]
 fn test_state_multiple_nodes() {
-	let parent = create_test_transaction();
+	let (parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
+		operators,
 		CommitVersion(1),
 		Catalog::testing(),
 		Interceptors::new(),

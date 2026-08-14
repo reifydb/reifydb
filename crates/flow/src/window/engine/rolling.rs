@@ -946,6 +946,10 @@ mod tests {
 		WindowEngineConfig::builder().build()
 	}
 
+	fn order(millis: u64) -> u64 {
+		<DateTime as crate::state::seal::coord::Coord>::to_order(at_millis(millis))
+	}
+
 	fn row_key(group: &u32) -> (GroupId, EncodedKey) {
 		(GroupId::ROOT, node_row_key(group))
 	}
@@ -990,7 +994,7 @@ mod tests {
 		.unwrap();
 		assert_eq!(store.meta_entry_count(), 1, "the group's meta is persisted on apply");
 
-		let dropped = engine.expire_meta(&mut store, 100).unwrap();
+		let dropped = engine.expire_meta(&mut store, order(100)).unwrap();
 		assert_eq!(dropped, 1, "the group's high water (20) is below the threshold (100)");
 		assert_eq!(store.meta_entry_count(), 0, "a stale group must not leak its GroupMeta");
 	}

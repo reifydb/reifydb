@@ -418,6 +418,10 @@ mod tests {
 		)
 	}
 
+	fn order(millis: u64) -> u64 {
+		at_millis(millis).to_order()
+	}
+
 	fn seed_window(
 		store: &mut MockStore,
 		window_start: u64,
@@ -694,13 +698,13 @@ mod tests {
 
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		// Below the group's high water: nothing stale; the sweep records the low-water bound (100).
-		assert_eq!(engine.expire_meta(&mut store, 50).unwrap(), 0);
+		assert_eq!(engine.expire_meta(&mut store, order(50)).unwrap(), 0);
 		assert_eq!(store.meta_entry_count(), 1);
 		// Threshold equals the bound: still nothing strictly below it, a no-op skip.
-		assert_eq!(engine.expire_meta(&mut store, 100).unwrap(), 0);
+		assert_eq!(engine.expire_meta(&mut store, order(100)).unwrap(), 0);
 		assert_eq!(store.meta_entry_count(), 1);
 		// Threshold crosses the group's high water: it is now stale and reclaimed.
-		assert_eq!(engine.expire_meta(&mut store, 101).unwrap(), 1);
+		assert_eq!(engine.expire_meta(&mut store, order(101)).unwrap(), 1);
 		assert_eq!(store.meta_entry_count(), 0, "the guard must not permanently skip a group that goes stale");
 	}
 
@@ -962,14 +966,14 @@ mod tests {
 
 		assert_eq!(
 			read_high_water(&mut fresh, &mut store, 1),
-			Some(200),
+			Some(order(200)),
 			"the bump must be durable the moment it is applied"
 		);
 
 		let mut third = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		assert_eq!(
 			read_high_water(&mut third, &mut store, 1),
-			Some(200),
+			Some(order(200)),
 			"the write round-trips through the store"
 		);
 	}
@@ -997,7 +1001,7 @@ mod tests {
 		let mut third = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		assert_eq!(
 			read_high_water(&mut third, &mut store, 1),
-			Some(100),
+			Some(order(100)),
 			"a none high water must advance to the first observed coordinate"
 		);
 	}

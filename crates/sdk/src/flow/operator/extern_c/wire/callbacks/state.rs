@@ -117,7 +117,7 @@ pub struct StateCallbacks {
 	pub arm_timer: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		at_millis: u64,
+		due_bits: u64,
 		kind: u8,
 		key: *const u8,
 		key_len: usize,
@@ -126,7 +126,7 @@ pub struct StateCallbacks {
 	pub disarm_timer: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		at_millis: u64,
+		due_bits: u64,
 		kind: u8,
 		key: *const u8,
 		key_len: usize,
@@ -135,7 +135,7 @@ pub struct StateCallbacks {
 	pub flow_watermark: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		millis_out: *mut u64,
+		bits_out: *mut u64,
 		present_out: *mut u8,
 	) -> i32,
 

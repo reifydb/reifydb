@@ -34,7 +34,7 @@ use crate::{
 		drops::SealedDrops,
 		host::HostContext,
 	},
-	state::seal::{coord::Coord, ledger::FiredAt},
+	state::seal::ledger::FiredAt,
 	timer::Timer,
 	window::{
 		coord::OrdinalCoord,
@@ -161,13 +161,7 @@ impl WindowOperator {
 				columns.time().len()
 			);
 		}
-		Ok((0..row_count)
-			.map(|i| {
-				columns.time().get(i).map_or(DateTime::default(), |dt| {
-					<DateTime as Coord>::from_order(dt.to_epoch_millis() as u64)
-				})
-			})
-			.collect())
+		Ok((0..row_count).map(|i| columns.time().get(i).copied().unwrap_or_default()).collect())
 	}
 }
 

@@ -25,6 +25,7 @@ use reifydb_core::{
 use reifydb_flow::{
 	context::FlowContext,
 	operator::window::operator::{WindowConfig, WindowOperator},
+	state::seal::coord::Coord,
 	timer::Timer,
 	window::meta::EngineMeta,
 };
@@ -203,7 +204,7 @@ fn count_window_meta_takes_the_max_row_time_never_the_clock() {
 	metas.sort_unstable();
 	assert_eq!(
 		metas,
-		vec![39_000, 41_000],
+		vec![at_millis(39_000).to_order(), at_millis(41_000).to_order()],
 		"last_event_time must be each bucket's max row time, never the clock ({CLOCK_LIVE_MS}) and \
 		 never the batch max (41_000 everywhere)"
 	);

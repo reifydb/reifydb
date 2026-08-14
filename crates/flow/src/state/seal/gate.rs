@@ -94,7 +94,10 @@ mod tests {
 	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
-	use crate::state::mock::{MockStore, RecordedTimer};
+	use crate::state::{
+		mock::{MockStore, RecordedTimer},
+		seal::coord::Coord,
+	};
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
@@ -108,8 +111,12 @@ mod tests {
 		SealPolicy::tumbling(ms(1_000), ms(200))
 	}
 
+	fn order(millis: u64) -> u64 {
+		at_millis(millis).to_order()
+	}
+
 	fn sealed_through(millis: u64) -> SealedThrough {
-		SealedThrough::from_order(millis)
+		SealedThrough::from_order(order(millis))
 	}
 
 	#[test]
@@ -132,7 +139,7 @@ mod tests {
 		let gate = SealGate::new(policy(), None, None);
 
 		assert_eq!(gate.frontier(), DateTime::default());
-		assert!(gate.admits(0));
+		assert!(gate.admits(order(0)));
 	}
 
 	#[test]
@@ -147,7 +154,7 @@ mod tests {
 		let guest_side = SealGate::new(policy(), Some(ledger), Some(watermark));
 
 		assert_eq!(host_side.frontier(), guest_side.frontier());
-		assert_eq!(host_side.admits(5_000), guest_side.admits(5_000));
+		assert_eq!(host_side.admits(order(5_000)), guest_side.admits(order(5_000)));
 	}
 
 	#[test]
@@ -157,8 +164,8 @@ mod tests {
 		// one millisecond early drops rows that were still legitimately late.
 		let gate = SealGate::new(policy(), Some(sealed_through(6_201)), None);
 
-		assert!(!gate.admits(5_000), "5_000 + 1_200 + 1 == the frontier, so it is sealed");
-		assert!(gate.admits(5_001), "one millisecond later the seal instant is past the frontier");
+		assert!(!gate.admits(order(5_000)), "5_000 + 1_200 + 1 == the frontier, so it is sealed");
+		assert!(gate.admits(order(5_001)), "one millisecond later the seal instant is past the frontier");
 	}
 
 	#[test]
@@ -169,7 +176,7 @@ mod tests {
 		let mut store = MockStore::recording_timers();
 		let gate = SealGate::new(policy(), None, None);
 
-		gate.arm(&mut store, &key(), Some(4_000), 5_000).unwrap();
+		gate.arm(&mut store, &key(), Some(order(4_000)), order(5_000)).unwrap();
 
 		assert_eq!(
 			store.timers(),
@@ -188,7 +195,7 @@ mod tests {
 		let mut store = MockStore::recording_timers();
 		let gate = SealGate::new(policy(), None, None);
 
-		gate.arm(&mut store, &key(), Some(5_000), 5_000).unwrap();
+		gate.arm(&mut store, &key(), Some(order(5_000)), order(5_000)).unwrap();
 
 		assert_eq!(store.timers(), &[RecordedTimer::armed(at_millis(6_201), TimerKind::Seal, key())]);
 	}
@@ -200,7 +207,7 @@ mod tests {
 		let mut store = MockStore::recording_timers();
 		let gate = SealGate::new(policy(), None, None);
 
-		gate.arm(&mut store, &key(), None, 5_000).unwrap();
+		gate.arm(&mut store, &key(), None, order(5_000)).unwrap();
 
 		assert_eq!(store.timers(), &[RecordedTimer::armed(at_millis(6_201), TimerKind::Seal, key())]);
 	}
@@ -212,7 +219,7 @@ mod tests {
 		let mut store = MockStore::recording_timers();
 		let gate = EvictionGate::new(ms(1_000));
 
-		gate.rearm(&mut store, &key(), Some(4_000), Some(5_000)).unwrap();
+		gate.rearm(&mut store, &key(), Some(order(4_000)), Some(order(5_000))).unwrap();
 
 		assert_eq!(
 			store.timers(),
@@ -231,7 +238,7 @@ mod tests {
 		let mut store = MockStore::recording_timers();
 		let gate = EvictionGate::new(ms(1_000));
 
-		gate.rearm(&mut store, &key(), Some(4_000), Some(4_000)).unwrap();
+		gate.rearm(&mut store, &key(), Some(order(4_000)), Some(order(4_000))).unwrap();
 		gate.rearm(&mut store, &key(), None, None).unwrap();
 
 		assert!(store.timers().is_empty());
@@ -245,7 +252,7 @@ mod tests {
 		let mut store = MockStore::recording_timers();
 		let gate = EvictionGate::new(ms(1_000));
 
-		gate.rearm(&mut store, &key(), Some(4_000), None).unwrap();
+		gate.rearm(&mut store, &key(), Some(order(4_000)), None).unwrap();
 
 		assert_eq!(store.timers(), &[RecordedTimer::disarmed(at_millis(5_000), TimerKind::Seal, key())]);
 	}
@@ -258,8 +265,8 @@ mod tests {
 		let mut store = MockStore::recording_timers();
 		let gate = SealGate::new(policy(), None, None);
 
-		gate.arm(&mut store, &key(), None, 5_000).unwrap();
-		disarm_seal(&mut store, policy(), &key(), 5_000).unwrap();
+		gate.arm(&mut store, &key(), None, order(5_000)).unwrap();
+		disarm_seal(&mut store, policy(), &key(), order(5_000)).unwrap();
 
 		assert_eq!(
 			store.timers(),

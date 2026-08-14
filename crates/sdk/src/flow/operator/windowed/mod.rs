@@ -37,7 +37,7 @@ use crate::flow::operator::context::GuestContext;
 
 pub(crate) fn seal_frontier(store: &mut (impl StateStore + TimerStore)) -> Result<DateTime> {
 	let ledger = SealLedger::read_order(store)?.unwrap_or(0);
-	let watermark = store.flow_watermark()?.map_or(0, |at| at.to_millis());
+	let watermark = store.flow_watermark()?.map_or(0, |at| at.to_order());
 	Ok(<DateTime as Coord>::from_order(ledger.max(watermark)))
 }
 

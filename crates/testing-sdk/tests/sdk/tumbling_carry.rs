@@ -118,6 +118,10 @@ fn input_fields() -> Vec<RowShapeField> {
 	]
 }
 
+fn window_order(millis: u64) -> u64 {
+	DateTime::from_millis(millis).to_order()
+}
+
 fn input_row(rn: u64, group: &str, ts: u64, price: f64) -> CoreRow {
 	// The window coordinate IS #time now - the operator no longer returns one - so `ts` is
 	// stamped as the row's time and kept as a column only because the accumulator keys its
@@ -142,7 +146,7 @@ fn first_window_has_no_carry() {
 			.build())
 		.expect("apply");
 	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.u64("window_start"), Some(0));
+	assert_eq!(r.u64("window_start"), Some(window_order(0)));
 	assert_eq!(r.f64("sum"), Some(30.0));
 	assert_eq!(r.bool("has_carry"), Some(false), "first window has no prior close to carry in");
 	assert_eq!(r.f64("carry_in"), Some(0.0));
@@ -160,7 +164,7 @@ fn remove_empties_window_emits_remove() {
 	assert_eq!(out.diffs.len(), 1);
 	assert_eq!(out.diffs[0].kind(), DiffType::Remove);
 	let r = out.diffs[0].pre().expect("remove pre").row_ref(0).expect("r0");
-	assert_eq!(r.u64("window_start"), Some(0));
+	assert_eq!(r.u64("window_start"), Some(window_order(0)));
 	assert_eq!(r.f64("sum"), Some(10.0));
 }
 
@@ -178,7 +182,7 @@ fn second_window_carries_in_prior_window_close() {
 		.expect("apply");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 70, 5.0)).build()).expect("apply");
 	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.u64("window_start"), Some(60));
+	assert_eq!(r.u64("window_start"), Some(window_order(60)));
 	assert_eq!(r.f64("sum"), Some(5.0));
 	assert_eq!(r.bool("has_carry"), Some(true));
 	assert_eq!(r.f64("carry_in"), Some(20.0), "carry rotated from the closed window's last observation");
@@ -200,13 +204,13 @@ fn carry_rotates_across_three_windows_in_one_batch() {
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_count(), 3);
 	let w0 = post.row_ref(0).expect("r0");
-	assert_eq!(w0.u64("window_start"), Some(0));
+	assert_eq!(w0.u64("window_start"), Some(window_order(0)));
 	assert_eq!(w0.bool("has_carry"), Some(false));
 	let w60 = post.row_ref(1).expect("r1");
-	assert_eq!(w60.u64("window_start"), Some(60));
+	assert_eq!(w60.u64("window_start"), Some(window_order(60)));
 	assert_eq!(w60.f64("carry_in"), Some(10.0));
 	let w120 = post.row_ref(2).expect("r2");
-	assert_eq!(w120.u64("window_start"), Some(120));
+	assert_eq!(w120.u64("window_start"), Some(window_order(120)));
 	assert_eq!(w120.f64("carry_in"), Some(20.0));
 }
 
@@ -225,7 +229,7 @@ fn update_in_current_window_recomputes_carry() {
 		.expect("apply");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 60, 1.0)).build()).expect("apply");
 	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
-	assert_eq!(r.u64("window_start"), Some(60));
+	assert_eq!(r.u64("window_start"), Some(window_order(60)));
 	assert_eq!(r.f64("carry_in"), Some(50.0), "carry reflects the post-update close");
 }
 

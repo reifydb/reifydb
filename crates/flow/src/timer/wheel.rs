@@ -1,17 +1,18 @@
 //  SPDX-License-Identifier: AGPL-3.0-or-later
 //  Copyright (c) 2025 ReifyDB
 
-use std::collections::Bound;
-
 use reifydb_codec::key::{
-	decode_u64_asc, encode_u64_asc,
+	decode_datetime_asc, encode_datetime_asc,
 	encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
+		operator_state::{
+			GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
+			keyspace_inner_range_upto,
+		},
 	},
 	state::store::TimerKind,
 };
@@ -38,7 +39,6 @@ impl TimerWheel {
 		timer: &Timer,
 	) -> reifydb_value::Result<()> {
 		let now = txn.written_at();
-		let at = timer.due.to_millis();
 		if !timer.kind.is_unique() {
 			txn.state_set(
 				operator,
@@ -49,27 +49,27 @@ impl TimerWheel {
 		}
 		let index = index_key(timer.kind, &timer.key);
 		let previous = armed_at(operator, txn, &index)?;
-		if previous == Some(at) {
+		if previous == Some(timer.due) {
 			return Ok(());
 		}
 		if let Some(previous) = previous {
-			let stale = timer_key(DateTime::from_millis(previous), timer.kind, &timer.key);
+			let stale = timer_key(previous, timer.kind, &timer.key);
 			reifydb_assertions! {
 				assert!(
 					txn.state_get(operator, &stale)?.is_some(),
 					"the timer index names an instant the wheel does not hold, so the two have \
 					 diverged and the stale wheel row can never be cancelled again; every arm would \
 					 then leave a permanent entry and the due probe degrades with it \
-					 (operator={}, previous={}, requested={})",
+					 (operator={}, previous={:?}, requested={:?})",
 					operator.0,
 					previous,
-					at
+					timer.due
 				);
 			}
 			txn.state_remove(operator, &stale)?;
 		}
 		txn.state_set(operator, &timer_key(timer.due, timer.kind, &timer.key), encode_payload(&1u64, now)?)?;
-		txn.state_set(operator, &index, encode_payload(&at, now)?)?;
+		txn.state_set(operator, &index, encode_payload(&timer.due, now)?)?;
 		Ok(())
 	}
 
@@ -79,10 +79,9 @@ impl TimerWheel {
 		txn: &mut impl FlowTransaction,
 		timer: &Timer,
 	) -> reifydb_value::Result<()> {
-		let at = timer.due.to_millis();
 		if timer.kind.is_unique() {
 			let index = index_key(timer.kind, &timer.key);
-			if armed_at(operator, txn, &index)? == Some(at) {
+			if armed_at(operator, txn, &index)? == Some(timer.due) {
 				txn.state_remove(operator, &index)?;
 			}
 		}
@@ -108,10 +107,10 @@ impl TimerWheel {
 			);
 		}
 		let index = index_key(kind, key);
-		let Some(at) = armed_at(operator, txn, &index)? else {
+		let Some(due) = armed_at(operator, txn, &index)? else {
 			return Ok(());
 		};
-		txn.state_remove(operator, &timer_key(DateTime::from_millis(at), kind, key))?;
+		txn.state_remove(operator, &timer_key(due, kind, key))?;
 		txn.state_remove(operator, &index)?;
 		Ok(())
 	}
@@ -154,14 +153,13 @@ impl TimerWheel {
 		if limit == 0 {
 			return Ok(Vec::new());
 		}
-		let ceiling = watermark.to_millis();
-		let batch = txn.state_range(operator, due_range(ceiling), Some(limit), "timer::take_due")?;
+		let batch = txn.state_range(operator, due_range(watermark), Some(limit), "timer::take_due")?;
 		let mut due = Vec::new();
 		for item in &batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_range must return OperatorState keys");
 			let timer = decode_timer(&decoded.suffix);
-			if timer.due.to_millis() > ceiling {
+			if timer.due > watermark {
 				break;
 			}
 			due.push(timer);
@@ -171,7 +169,7 @@ impl TimerWheel {
 			txn.state_remove(operator, &timer_key(timer.due, timer.kind, &timer.key))?;
 			if timer.kind.is_unique() {
 				let index = index_key(timer.kind, &timer.key);
-				if armed_at(operator, txn, &index)? == Some(timer.due.to_millis()) {
+				if armed_at(operator, txn, &index)? == Some(timer.due) {
 					txn.state_remove(operator, &index)?;
 				}
 			}
@@ -181,25 +179,20 @@ impl TimerWheel {
 	}
 }
 
-fn timer_suffix(at: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
+fn timer_suffix(due: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
 	let mut suffix = Vec::with_capacity(9 + key.len());
-	suffix.extend_from_slice(&encode_u64_asc(at.to_millis()));
+	suffix.extend_from_slice(&encode_datetime_asc(due));
 	suffix.push(kind as u8);
 	suffix.extend_from_slice(key.as_ref());
 	suffix
 }
 
-fn timer_key(at: DateTime, kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_WHEEL, timer_suffix(at, kind, key))
+fn timer_key(due: DateTime, kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_WHEEL, timer_suffix(due, kind, key))
 }
 
-fn due_range(ceiling: u64) -> EncodedKeyRange {
-	let wheel = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
-	let Some(exclusive) = ceiling.checked_add(1) else {
-		return wheel;
-	};
-	let end = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_WHEEL, encode_u64_asc(exclusive));
-	EncodedKeyRange::new(wheel.start, Bound::Excluded(end.into_encoded()))
+fn due_range(ceiling: DateTime) -> EncodedKeyRange {
+	keyspace_inner_range_upto(GroupId::ROOT, Keyspace::TIMER_WHEEL, &encode_datetime_asc(ceiling))
 }
 
 fn index_key(kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
@@ -213,19 +206,19 @@ fn armed_at(
 	operator: OperatorId,
 	txn: &mut impl FlowTransaction,
 	index: &GroupStateKey,
-) -> reifydb_value::Result<Option<u64>> {
+) -> reifydb_value::Result<Option<DateTime>> {
 	match txn.state_get(operator, index)? {
-		Some(row) => Ok(Some(decode_payload::<u64>(&row)?)),
+		Some(row) => Ok(Some(decode_payload::<DateTime>(&row)?)),
 		None => Ok(None),
 	}
 }
 
 fn decode_timer(suffix: &[u8]) -> Timer {
 	assert!(suffix.len() >= 9, "a timer wheel suffix must carry at least the instant and the kind");
-	let at = decode_u64_asc(suffix[..8].try_into().expect("eight instant bytes"));
+	let due = decode_datetime_asc(suffix[..8].try_into().expect("eight instant bytes"));
 	let kind = TimerKind::from_u8(suffix[8]).expect("a timer wheel suffix must carry a known kind");
 	Timer {
-		due: DateTime::from_millis(at),
+		due,
 		kind,
 		key: EncodedKey::new(&suffix[9..]),
 	}
