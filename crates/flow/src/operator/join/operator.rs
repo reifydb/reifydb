@@ -655,6 +655,11 @@ impl JoinOperator {
 	}
 
 	pub(crate) fn cleanup_left_row_joins(&self, host: &mut dyn HostContext, left_number: u64) -> Result<()> {
+		match self.strategy {
+			JoinStrategy::LatestLeft(_) | JoinStrategy::LatestInner(_) => return Ok(()),
+			JoinStrategy::Left(_) | JoinStrategy::Inner(_) => {}
+		}
+
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_number);
