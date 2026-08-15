@@ -5,9 +5,10 @@ use std::sync::LazyLock;
 
 use reifydb_codec::row::{
 	pod::EncodedPodRowBuilder,
+	queue_deduplication::EncodedQueueDeduplicationRow,
 	shape::{RowFamily, RowShape, RowShapeField},
 };
-use reifydb_value::value::{datetime::DateTime, duration::Duration, value_type::ValueType};
+use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber, value_type::ValueType};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -324,6 +325,27 @@ pub fn decode_queue_attempt(row: &[u8]) -> Option<QueueAttemptRecord> {
 	})
 }
 
+mod deduplication_shape {
+	use super::*;
+
+	pub(super) static SHAPE: LazyLock<RowShape> =
+		LazyLock::new(|| RowShape::new(RowFamily::QueueDeduplication, vec![]));
+}
+
+pub fn encode_queue_deduplication(row_number: RowNumber, expires_at: DateTime) -> EncodedQueueDeduplicationRow {
+	let mut row = deduplication_shape::SHAPE.allocate_queue_deduplication();
+	row.set_row_number(row_number);
+	row.set_expires_at(expires_at);
+	row.freeze()
+}
+
+pub fn decode_queue_deduplication(row: &EncodedQueueDeduplicationRow) -> Option<(RowNumber, DateTime)> {
+	if row.as_slice().len() < deduplication_shape::SHAPE.header_size() {
+		return None;
+	}
+	Some((row.row_number(), row.expires_at()))
+}
+
 mod item_state_shape {
 	use super::*;
 
@@ -422,6 +444,9 @@ pub fn decode_queue_partition_counters(row: &[u8]) -> QueuePartitionCounters {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_codec::row::bytes::EncodedBytes;
+	use reifydb_value::util::cowvec::CowVec;
+
 	use super::*;
 
 	#[test]
@@ -568,6 +593,52 @@ mod tests {
 		attempt_shape::SHAPE.set::<u8>(&mut row, attempt_shape::OUTCOME, 99);
 
 		assert_eq!(decode_queue_attempt(&row), None);
+	}
+
+	#[test]
+	fn test_a_deduplication_record_roundtrips_its_row_number_and_expiry() {
+		// This record is the only link from a suppressed key back to its claimant, so a lossy codec points the duplicate at someone else's row.
+		let row_number = RowNumber(9_007_199_254_740_993);
+		let expires_at = DateTime::from_nanos(1_700_000_000_000_000_000);
+
+		let decoded = decode_queue_deduplication(&encode_queue_deduplication(row_number, expires_at)).unwrap();
+
+		assert_eq!(decoded, (row_number, expires_at));
+	}
+
+	#[test]
+	fn test_a_deduplication_record_survives_boundary_row_numbers_and_instants() {
+		// Both facts are fixed-width header slots, so a sign or width bug surfaces only at the extremes and would expire every live claim at once.
+		for row_number in [RowNumber(0), RowNumber(1), RowNumber(u64::MAX)] {
+			for expires_at in [DateTime::from_nanos(0), DateTime::from_nanos(i64::MAX as u64)] {
+				let encoded = encode_queue_deduplication(row_number, expires_at);
+
+				assert_eq!(decode_queue_deduplication(&encoded).unwrap(), (row_number, expires_at));
+			}
+		}
+	}
+
+	#[test]
+	fn test_a_truncated_deduplication_record_does_not_decode() {
+		// The insert path turns a none here into an internal error, so without the guard a short record reads trailing memory as a live suppression.
+		let full = encode_queue_deduplication(RowNumber(7), DateTime::from_nanos(11)).into_bytes();
+
+		for length in 0..full.len() {
+			let truncated = EncodedQueueDeduplicationRow::from(EncodedBytes(CowVec::new(
+				full.as_slice()[..length].to_vec(),
+			)));
+
+			assert_eq!(
+				decode_queue_deduplication(&truncated),
+				None,
+				"a {length}-byte record must not decode"
+			);
+		}
+
+		assert!(
+			decode_queue_deduplication(&EncodedQueueDeduplicationRow::from(full)).is_some(),
+			"the full-width record must still decode, otherwise the guard rejects everything"
+		);
 	}
 
 	#[test]

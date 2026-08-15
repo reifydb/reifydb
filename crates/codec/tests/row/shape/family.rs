@@ -2,10 +2,24 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::{
-	bytes::{CATALOG_HEADER_SIZE, SHAPE_HEADER_SIZE},
+	bytes::{
+		CATALOG_HEADER_SIZE, QUEUE_ATTEMPT_HEADER_SIZE, QUEUE_DEDUPLICATION_HEADER_SIZE, QUEUE_HEADER_SIZE,
+		SHAPE_HEADER_SIZE, write_timestamps,
+	},
+	operator::OPERATOR_HEADER_SIZE,
+	pod::POD_HEADER_SIZE,
 	shape::{RowFamily, RowShape, RowShapeField},
 };
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
+
+const SOURCE_FAMILIES: [RowFamily; 6] = [
+	RowFamily::Table,
+	RowFamily::Series,
+	RowFamily::RingBuffer,
+	RowFamily::Queue,
+	RowFamily::QueueAttempt,
+	RowFamily::QueueDeduplication,
+];
 
 fn fields() -> Vec<RowShapeField> {
 	vec![
@@ -59,12 +73,10 @@ fn the_family_participates_in_the_fingerprint_so_two_layouts_cannot_collide() {
 }
 
 #[test]
-fn the_four_source_families_never_share_a_fingerprint_for_the_same_columns() {
+fn the_source_families_never_share_a_fingerprint_for_the_same_columns() {
 	// The fingerprint is the registry's only key, so a shared one lets a series row resolve to a table's shape.
-	let families = [RowFamily::Table, RowFamily::Series, RowFamily::RingBuffer, RowFamily::Queue];
-
-	for (i, left) in families.iter().enumerate() {
-		for right in families.iter().skip(i + 1) {
+	for (i, left) in SOURCE_FAMILIES.iter().enumerate() {
+		for right in SOURCE_FAMILIES.iter().skip(i + 1) {
 			assert_ne!(
 				RowShape::new(*left, fields()).fingerprint(),
 				RowShape::new(*right, fields()).fingerprint(),
@@ -129,4 +141,68 @@ fn a_catalog_row_reads_back_the_values_it_wrote() {
 	shape.set_none(&mut row, 1);
 	assert!(!shape.is_defined(&row, 1));
 	assert!(shape.is_defined(&row, 0), "clearing one field must not disturb another's validity bit");
+}
+
+#[test]
+fn every_family_declares_the_header_width_its_own_accessors_read() {
+	// header_size feeds compute_layout, so a family wired to the wrong constant shifts every field it owns.
+	assert_eq!(RowFamily::Catalog.header_size(), CATALOG_HEADER_SIZE);
+	assert_eq!(RowFamily::Operator.header_size(), OPERATOR_HEADER_SIZE);
+	assert_eq!(RowFamily::Pod.header_size(), POD_HEADER_SIZE);
+	assert_eq!(RowFamily::Table.header_size(), SHAPE_HEADER_SIZE);
+	assert_eq!(RowFamily::Series.header_size(), SHAPE_HEADER_SIZE);
+	assert_eq!(RowFamily::RingBuffer.header_size(), SHAPE_HEADER_SIZE);
+	assert_eq!(RowFamily::Queue.header_size(), QUEUE_HEADER_SIZE);
+	assert_eq!(RowFamily::QueueAttempt.header_size(), QUEUE_ATTEMPT_HEADER_SIZE);
+	assert_eq!(RowFamily::QueueDeduplication.header_size(), QUEUE_DEDUPLICATION_HEADER_SIZE);
+}
+
+#[test]
+fn the_nine_header_widths_are_the_widths_every_stored_row_was_written_under() {
+	// Checking only against the constants is circular, so these literals are the on-disk contract itself.
+	assert_eq!(RowFamily::Pod.header_size(), 0, "a pod row is payload from offset zero");
+	assert_eq!(RowFamily::Catalog.header_size(), 8, "a catalog header is the fingerprint and nothing else");
+	assert_eq!(RowFamily::Operator.header_size(), 24, "created_at, updated_at and time, with no fingerprint");
+	assert_eq!(RowFamily::Table.header_size(), 33);
+	assert_eq!(RowFamily::Series.header_size(), 33);
+	assert_eq!(RowFamily::RingBuffer.header_size(), 33);
+	assert_eq!(RowFamily::Queue.header_size(), 41, "the source header plus not_before");
+	assert_eq!(RowFamily::QueueAttempt.header_size(), 43, "the source header plus outcome, lost and finished_at");
+	assert_eq!(
+		RowFamily::QueueDeduplication.header_size(),
+		49,
+		"the source header plus row_number and expires_at"
+	);
+}
+
+#[test]
+fn the_stamped_families_read_updated_at_from_one_shared_offset() {
+	// Queue, attempt and deduplication widen the header after the stamps, so their reads must not shift with it.
+	let mut row = vec![0u8; QUEUE_DEDUPLICATION_HEADER_SIZE];
+	write_timestamps(&mut row, DateTime::from_millis(11), DateTime::from_millis(22));
+
+	for family in SOURCE_FAMILIES {
+		assert_eq!(family.updated_at(&row), DateTime::from_millis(22), "{family:?} misreads updated_at");
+	}
+}
+
+#[test]
+#[should_panic(expected = "Catalog rows carry no updated_at")]
+fn a_catalog_row_has_no_updated_at_to_read() {
+	// A catalog header is eight fingerprint bytes, so a stamp read there would hand back field data as an instant.
+	RowFamily::Catalog.updated_at(&[0u8; QUEUE_DEDUPLICATION_HEADER_SIZE]);
+}
+
+#[test]
+#[should_panic(expected = "Operator rows carry no updated_at")]
+fn an_operator_row_keeps_its_stamps_outside_the_shared_window() {
+	// Operator packs created_at at offset zero, so the shared reader must refuse rather than read the wrong slot.
+	RowFamily::Operator.updated_at(&[0u8; QUEUE_DEDUPLICATION_HEADER_SIZE]);
+}
+
+#[test]
+#[should_panic(expected = "Pod rows carry no updated_at")]
+fn a_pod_row_has_no_updated_at_to_read() {
+	// A pod row is payload from offset zero, so a stamp read would return interned entry bytes as a time.
+	RowFamily::Pod.updated_at(&[0u8; QUEUE_DEDUPLICATION_HEADER_SIZE]);
 }

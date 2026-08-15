@@ -86,3 +86,35 @@ fn the_body_begins_where_the_bitvec_begins() {
 	assert_eq!(typed.body().len(), frozen.len() - SHAPE_HEADER_SIZE);
 	assert_eq!(typed.body(), &frozen.as_slice()[shape.header_size()..]);
 }
+
+#[test]
+fn thawing_a_row_refreshes_updated_at_without_re_stamping_the_event_instant() {
+	// The event time is the series key, so an update that re-stamped or unflagged it would relocate the row.
+	let shape = shape();
+	let mut row = shape.allocate_series();
+	row.set_timestamps(DateTime::from_millis(1), DateTime::from_millis(1));
+	row.set_time(DateTime::from_millis(1_700_000_000_000));
+	shape.set::<i64>(&mut row, 0, 1_700_000_000_000);
+	shape.set::<i32>(&mut row, 1, 42);
+	let frozen = row.freeze();
+
+	let mut thawed = frozen.thaw();
+	assert_eq!(thawed.time(), Some(DateTime::from_millis(1_700_000_000_000)), "the flag bit must survive a thaw");
+	thawed.set_timestamps(DateTime::from_millis(1), DateTime::from_millis(2));
+	shape.set::<i32>(&mut thawed, 1, 43);
+	let refrozen = thawed.freeze();
+
+	assert_eq!(refrozen.time(), Some(DateTime::from_millis(1_700_000_000_000)));
+	assert_eq!(refrozen.created_at(), DateTime::from_millis(1));
+	assert_eq!(refrozen.updated_at(), DateTime::from_millis(2));
+	assert_eq!(shape.get::<i64>(refrozen.as_slice(), 0), 1_700_000_000_000, "the key column must not move");
+	assert_eq!(shape.get::<i32>(refrozen.as_slice(), 1), 43);
+}
+
+#[test]
+#[should_panic(expected = "allocate_series on a shape of another family")]
+fn a_shape_of_another_family_cannot_allocate_a_series_row() {
+	// A ring buffer shape is the same width and the same layout, so no size check could ever catch this.
+	RowShape::new(RowFamily::RingBuffer, vec![RowShapeField::unconstrained("key", ValueType::Int8)])
+		.allocate_series();
+}
