@@ -16,6 +16,7 @@ use crate::{
 pub struct SealingBase<C: Slot, V> {
 	amendable: Option<SlotSpan<C>>,
 	high_water: Option<C>,
+	sealed_count: u64,
 	tail: BTreeMap<C, V>,
 }
 
@@ -24,6 +25,7 @@ impl<C: Slot, V> Default for SealingBase<C, V> {
 		Self {
 			amendable: None,
 			high_water: None,
+			sealed_count: 0,
 			tail: BTreeMap::new(),
 		}
 	}
@@ -34,6 +36,7 @@ impl<C: Slot, V> SealingBase<C, V> {
 		Self {
 			amendable: Some(amendable),
 			high_water: None,
+			sealed_count: 0,
 			tail: BTreeMap::new(),
 		}
 	}
@@ -51,6 +54,7 @@ impl<C: Slot, V> SealingBase<C, V> {
 		while let Some((&c, _)) = self.tail.iter().next() {
 			if hw.order_key().span_since(c.order_key()) > l {
 				aged.push(self.tail.pop_first().expect("non-empty"));
+				self.sealed_count += 1;
 			} else {
 				break;
 			}
@@ -64,6 +68,14 @@ impl<C: Slot, V> SealingBase<C, V> {
 
 	pub fn tail(&self) -> &BTreeMap<C, V> {
 		&self.tail
+	}
+
+	pub fn len(&self) -> u64 {
+		self.sealed_count + self.tail.len() as u64
+	}
+
+	pub fn sealed_count(&self) -> u64 {
+		self.sealed_count
 	}
 
 	pub fn is_tail_empty(&self) -> bool {

@@ -41,10 +41,8 @@ mod tests {
 
 	#[test]
 	fn declared_amendable_below_lateness_is_kept_verbatim() {
-		let cfg = config(vec![
-			("lateness", Value::Duration(secs(20))),
-			("amendable", Value::Duration(secs(15))),
-		]);
+		let cfg =
+			config(vec![("lateness", Value::Duration(secs(20))), ("amendable", Value::Duration(secs(15)))]);
 		assert_eq!(cfg.lateness_and_amendable(), Some((secs(20), secs(15))));
 	}
 
@@ -57,7 +55,8 @@ mod tests {
 
 	#[test]
 	fn a_defaulted_pair_does_not_trip_the_strict_guard() {
-		// The guard must read the declared amendable, otherwise the fallback rejects every window that omits it.
+		// The guard must read the declared amendable, otherwise the fallback rejects every window that omits
+		// it.
 		let cfg = config(vec![("lateness", Value::Duration(secs(1)))]);
 		assert_eq!(cfg.lateness_and_amendable(), Some((secs(1), secs(1))));
 	}
@@ -65,19 +64,15 @@ mod tests {
 	#[test]
 	fn declared_amendable_equal_to_lateness_is_rejected() {
 		// The bound is strict; an amendable equal to the lateness would never seal before the window closes.
-		let cfg = config(vec![
-			("lateness", Value::Duration(secs(20))),
-			("amendable", Value::Duration(secs(20))),
-		]);
+		let cfg =
+			config(vec![("lateness", Value::Duration(secs(20))), ("amendable", Value::Duration(secs(20)))]);
 		assert_eq!(cfg.lateness_and_amendable(), None);
 	}
 
 	#[test]
 	fn declared_amendable_above_lateness_is_rejected() {
-		let cfg = config(vec![
-			("lateness", Value::Duration(secs(20))),
-			("amendable", Value::Duration(secs(30))),
-		]);
+		let cfg =
+			config(vec![("lateness", Value::Duration(secs(20))), ("amendable", Value::Duration(secs(30)))]);
 		assert_eq!(cfg.lateness_and_amendable(), None);
 	}
 
@@ -111,10 +106,8 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "must be strictly less than lateness")]
 	fn require_names_the_ordering_violation() {
-		let cfg = config(vec![
-			("lateness", Value::Duration(secs(20))),
-			("amendable", Value::Duration(secs(20))),
-		]);
+		let cfg =
+			config(vec![("lateness", Value::Duration(secs(20))), ("amendable", Value::Duration(secs(20)))]);
 		cfg.require_lateness_and_amendable();
 	}
 
