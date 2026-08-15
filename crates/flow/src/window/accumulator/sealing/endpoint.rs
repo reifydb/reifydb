@@ -17,6 +17,7 @@ use crate::window::{
 pub struct SealingEndpoint<C: Slot, V> {
 	base: SealingBase<C, V>,
 	sealed_open: Option<(C, V)>,
+	sealed_close: Option<(C, V)>,
 }
 
 impl<C: Slot, V> Default for SealingEndpoint<C, V> {
@@ -24,6 +25,7 @@ impl<C: Slot, V> Default for SealingEndpoint<C, V> {
 		Self {
 			base: SealingBase::default(),
 			sealed_open: None,
+			sealed_close: None,
 		}
 	}
 }
@@ -33,6 +35,7 @@ impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
 		Self {
 			base: SealingBase::amendable(amendable),
 			sealed_open: None,
+			sealed_close: None,
 		}
 	}
 
@@ -46,24 +49,29 @@ impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
 	pub fn close(&self) -> Option<&V> {
 		match self.base.tail().values().next_back() {
 			Some(v) => Some(v),
-			None => self.sealed_open.as_ref().map(|(_, v)| v),
+			None => self.sealed_close.as_ref().map(|(_, v)| v),
 		}
 	}
 
 	pub fn absorb(&mut self, other: &Self) {
 		if let Some((c, v)) = other.sealed_open.clone() {
-			self.seal_open(c, v);
+			self.seal(c, v);
 		}
-		for (coord, value) in other.base.tail() {
-			for (c, v) in self.base.push(*coord, value.clone()) {
-				self.seal_open(c, v);
-			}
+		if let Some((c, v)) = other.sealed_close.clone() {
+			self.seal(c, v);
+		}
+		for (c, v) in self.base.absorb(&other.base, |_mine, theirs| theirs.clone()) {
+			self.seal(c, v);
 		}
 	}
 
-	fn seal_open(&mut self, c: C, v: V) {
+	fn seal(&mut self, c: C, v: V) {
 		self.sealed_open = Some(match self.sealed_open.take() {
 			Some((sc, sv)) if sc <= c => (sc, sv),
+			_ => (c, v.clone()),
+		});
+		self.sealed_close = Some(match self.sealed_close.take() {
+			Some((sc, sv)) if sc >= c => (sc, sv),
 			_ => (c, v),
 		});
 	}
@@ -80,10 +88,7 @@ where
 
 	fn add(&mut self, contribution: &(C, V)) {
 		for (c, v) in self.base.push(contribution.0, contribution.1.clone()) {
-			self.sealed_open = Some(match self.sealed_open.take() {
-				Some((sc, sv)) if sc <= c => (sc, sv),
-				_ => (c, v),
-			});
+			self.seal(c, v);
 		}
 	}
 
@@ -105,7 +110,7 @@ where
 
 impl<C: Slot + HeapSize, V: HeapSize> HeapSize for SealingEndpoint<C, V> {
 	fn heap_size(&self) -> usize {
-		self.base.heap_size() + self.sealed_open.heap_size()
+		self.base.heap_size() + self.sealed_open.heap_size() + self.sealed_close.heap_size()
 	}
 }
 
@@ -118,7 +123,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::window::accumulator::testkit::assert_add_remove_is_inverse;
+	use crate::window::accumulator::testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree};
 
 	#[test]
 	fn sealing_endpoint_freezes_open_and_tracks_live_close() {
@@ -146,6 +151,49 @@ mod tests {
 			&[(at_millis(1), 10i64), (at_millis(3), 30)],
 			(at_millis(2), 20i64),
 		);
+	}
+
+	#[test]
+	fn sealing_endpoint_close_is_the_latest_surviving_row_not_the_open() {
+		// Only the earliest sealed coordinate is kept, so retracting the live tail must never make close report the window's first value as its last.
+		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
+		accumulator.add(&(at_millis(0), 1));
+		accumulator.add(&(at_millis(5), 2));
+		accumulator.add(&(at_millis(20), 3));
+
+		accumulator.remove(&(at_millis(20), 3));
+		assert_eq!(accumulator.close(), Some(&2), "close is the latest surviving observation");
+		assert_eq!(accumulator.finalize(), Some((1, 2)));
+	}
+
+	#[test]
+	fn sealing_endpoint_matches_the_unsealed_arm_for_in_order_adds() {
+		// Freezing the open and replaying the tail must reproduce exactly what retaining everything gives.
+		assert_arms_agree(
+			SealingEndpoint::<DateTime, i64>::amendable(millis(5)),
+			SealingEndpoint::<DateTime, i64>::default(),
+			&[Op::Add((at_millis(0), 1)), Op::Add((at_millis(10), 2)), Op::Add((at_millis(20), 3))],
+			"an amendable span must not change the endpoints when every row arrives in order",
+		);
+	}
+
+	#[test]
+	fn sealing_endpoint_absorb_keeps_a_branch_open_that_predates_the_seal_line() {
+		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not swallow the other branch.
+		let mut left: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
+		left.add(&(at_millis(0), 1));
+
+		let mut right: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
+		right.add(&(at_millis(50), 5));
+		right.add(&(at_millis(70), 7));
+
+		let mut left_first = left.clone();
+		left_first.absorb(&right);
+		let mut right_first = right.clone();
+		right_first.absorb(&left);
+
+		assert_eq!(left_first.open(), Some(&1));
+		assert_eq!(right_first.open(), left_first.open(), "absorb must not depend on which branch receives");
 	}
 
 	#[test]

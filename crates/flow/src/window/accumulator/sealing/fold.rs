@@ -160,7 +160,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::window::accumulator::testkit::assert_add_remove_is_inverse;
+	use crate::window::accumulator::testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree, drive};
 
 	struct AbsPathFold;
 
@@ -266,6 +266,53 @@ mod tests {
 		assert_eq!(reversed.len(), forward.len());
 		assert_eq!(reversed.finalize(), forward.finalize());
 		assert_eq!(forward.finalize(), Some(25.0), "the late row contributes exactly once");
+	}
+
+	#[test]
+	fn sealing_fold_does_not_fold_a_corrected_coordinate_twice() {
+		// A repeat of an already sealed coordinate is a correction to that row, never a second contribution.
+		let mut accumulator: SealingFold<DateTime, SumFold> = SealingFold::new(millis(1), ());
+		accumulator.add(&(at_millis(0), 10.0));
+		accumulator.add(&(at_millis(2), 20.0));
+		assert_eq!(accumulator.finalize(), Some(30.0));
+
+		accumulator.add(&(at_millis(0), 10.0));
+		assert_eq!(accumulator.finalize(), Some(30.0), "re-sealing a corrected coordinate must not add it twice");
+	}
+
+	#[test]
+	fn sealing_fold_matches_the_unsealed_arm_for_in_order_adds() {
+		// The sealed prefix folds once at add and the tail replays at finalize; together they must be the whole path.
+		assert_arms_agree(
+			SealingFold::<DateTime, AbsPathFold>::new(millis(1), ()),
+			SealingFold::<DateTime, AbsPathFold>::unsealed(()),
+			&[
+				Op::Add((at_millis(0), 10.0)),
+				Op::Add((at_millis(1), 20.0)),
+				Op::Add((at_millis(2), 15.0)),
+				Op::Add((at_millis(3), 40.0)),
+			],
+			"an amendable span must not change the folded path when every row arrives in order",
+		);
+	}
+
+	#[test]
+	fn sealing_fold_drops_a_new_row_that_lands_below_the_seal_line() {
+		// This is the price of the fast path: the unsealed arm is what the dropped row was worth.
+		let ops = [
+			Op::Add((at_millis(0), 10.0)),
+			Op::Add((at_millis(2), 20.0)),
+			Op::Add((at_millis(4), 30.0)),
+			Op::Add((at_millis(1), 7.0)),
+		];
+		let mut sealed: SealingFold<DateTime, SumFold> = SealingFold::new(millis(1), ());
+		drive(&mut sealed, &ops);
+		let mut unsealed: SealingFold<DateTime, SumFold> = SealingFold::unsealed(());
+		drive(&mut unsealed, &ops);
+
+		assert_eq!(unsealed.finalize(), Some(67.0), "retaining everything folds all four rows");
+		assert_eq!(sealed.finalize(), Some(60.0), "a row older than the seal line never reaches the fold");
+		assert_eq!(sealed.len(), 3, "and it is never counted either");
 	}
 
 	#[test]

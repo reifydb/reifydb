@@ -119,7 +119,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::window::accumulator::testkit::assert_add_remove_is_inverse;
+	use crate::window::accumulator::testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree, drive};
 
 	#[test]
 	fn sealing_tail_drops_aged_keeps_recent() {
@@ -182,6 +182,44 @@ mod tests {
 			map.keys().copied().collect::<Vec<_>>(),
 			vec![at_millis(5), at_millis(12)],
 			"aged prefix dropped from the emitted map"
+		);
+	}
+
+	#[test]
+	fn tail_acc_emits_a_suffix_of_what_the_unsealed_arm_holds() {
+		// The sealed arm may drop an aged prefix but must never rewrite or reorder a surviving value.
+		let ops = [
+			Op::Add((at_millis(0), 10i64)),
+			Op::Add((at_millis(5), 20)),
+			Op::Add((at_millis(12), 30)),
+			Op::Add((at_millis(14), 40)),
+		];
+		let mut sealed: TailAccumulator<DateTime, i64> = TailAccumulator::amendable(millis(10));
+		drive(&mut sealed, &ops);
+		let mut unsealed: TailAccumulator<DateTime, i64> = TailAccumulator::default();
+		drive(&mut unsealed, &ops);
+
+		let sealed_map = sealed.finalize().expect("non-empty");
+		let unsealed_map = unsealed.finalize().expect("non-empty");
+		assert_eq!(unsealed_map.len(), 4);
+		let surviving: BTreeMap<DateTime, i64> =
+			unsealed_map.iter().filter(|(k, _)| **k >= at_millis(5)).map(|(k, v)| (*k, *v)).collect();
+		assert_eq!(sealed_map, surviving);
+	}
+
+	#[test]
+	fn tail_acc_with_an_amendable_span_beyond_the_data_matches_the_unsealed_arm() {
+		// Nothing ages in either arm, so any divergence is an aging rule that fired when it must not.
+		assert_arms_agree(
+			TailAccumulator::<DateTime, i64>::amendable(millis(1_000)),
+			TailAccumulator::<DateTime, i64>::default(),
+			&[
+				Op::Add((at_millis(0), 10)),
+				Op::Add((at_millis(5), 20)),
+				Op::Remove((at_millis(5), 20)),
+				Op::Add((at_millis(9), 30)),
+			],
+			"with nothing sealed the two arms must hold the same map",
 		);
 	}
 

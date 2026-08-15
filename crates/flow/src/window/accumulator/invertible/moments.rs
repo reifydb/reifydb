@@ -175,6 +175,21 @@ mod tests {
 	}
 
 	#[test]
+	fn moments_variance_is_zero_for_a_lone_survivor_of_large_values() {
+		// sum_sq carries the rounding error of every value ever added, and one observation has no spread.
+		let mut m = Moments::default();
+		m.add(1.0e8);
+		m.add(1.0e8 + 1.0);
+		m.add(1.0e8 + 2.0);
+		m.remove(1.0e8 + 1.0);
+		m.remove(1.0e8 + 2.0);
+
+		assert_eq!(m.count(), 1);
+		assert_eq!(m.variance_pop(), Some(0.0));
+		assert_eq!(m.stddev_pop(), Some(0.0));
+	}
+
+	#[test]
 	fn moments_roundtrip() {
 		let mut m = Moments::default();
 		m.add(1.5);

@@ -32,3 +32,28 @@ where
 pub(crate) fn of64(v: f64) -> OrdF64 {
 	OrdF64::new(v).expect("not nan")
 }
+
+pub(crate) enum Op<C> {
+	Add(C),
+	Remove(C),
+}
+
+pub(crate) fn drive<A: WindowAccumulator>(accumulator: &mut A, ops: &[Op<A::Contribution>]) {
+	for op in ops {
+		match op {
+			Op::Add(c) => accumulator.add(c),
+			Op::Remove(c) => accumulator.remove(c),
+		}
+	}
+}
+
+pub(crate) fn assert_arms_agree<A: WindowAccumulator>(
+	mut sealed: A,
+	mut unsealed: A,
+	ops: &[Op<A::Contribution>],
+	why: &str,
+) {
+	drive(&mut sealed, ops);
+	drive(&mut unsealed, ops);
+	assert_eq!(sealed.finalize(), unsealed.finalize(), "{why}");
+}

@@ -16,6 +16,7 @@ use crate::{
 pub struct SealingBase<C: Slot, V> {
 	amendable: Option<SlotSpan<C>>,
 	high_water: Option<C>,
+	sealed_high: Option<C>,
 	sealed_count: u64,
 	tail: BTreeMap<C, V>,
 }
@@ -25,6 +26,7 @@ impl<C: Slot, V> Default for SealingBase<C, V> {
 		Self {
 			amendable: None,
 			high_water: None,
+			sealed_high: None,
 			sealed_count: 0,
 			tail: BTreeMap::new(),
 		}
@@ -36,12 +38,16 @@ impl<C: Slot, V> SealingBase<C, V> {
 		Self {
 			amendable: Some(amendable),
 			high_water: None,
+			sealed_high: None,
 			sealed_count: 0,
 			tail: BTreeMap::new(),
 		}
 	}
 
 	pub fn push(&mut self, coord: C, value: V) -> Vec<(C, V)> {
+		if matches!(self.sealed_high, Some(sealed) if coord <= sealed) {
+			return Vec::new();
+		}
 		self.high_water = Some(match self.high_water {
 			Some(hw) if hw >= coord => hw,
 			_ => coord,
@@ -53,13 +59,39 @@ impl<C: Slot, V> SealingBase<C, V> {
 		};
 		while let Some((&c, _)) = self.tail.iter().next() {
 			if hw.order_key().span_since(c.order_key()) > l {
-				aged.push(self.tail.pop_first().expect("non-empty"));
+				self.sealed_high = Some(c);
 				self.sealed_count += 1;
+				aged.push(self.tail.pop_first().expect("non-empty"));
 			} else {
 				break;
 			}
 		}
 		aged
+	}
+
+	pub fn absorb<F>(&mut self, other: &Self, combine: F) -> Vec<(C, V)>
+	where
+		V: Clone,
+		F: Fn(&V, &V) -> V,
+	{
+		self.sealed_count += other.sealed_count;
+		let mut aged = Vec::new();
+		for (coord, value) in &other.tail {
+			let merged = match self.tail.get(coord) {
+				Some(mine) => combine(mine, value),
+				None => value.clone(),
+			};
+			aged.extend(self.absorb_push(*coord, merged));
+		}
+		aged
+	}
+
+	fn absorb_push(&mut self, coord: C, value: V) -> Vec<(C, V)> {
+		if matches!(self.sealed_high, Some(sealed) if coord <= sealed) {
+			self.sealed_count += 1;
+			return vec![(coord, value)];
+		}
+		self.push(coord, value)
 	}
 
 	pub fn remove(&mut self, coord: &C) {
@@ -85,6 +117,126 @@ impl<C: Slot, V> SealingBase<C, V> {
 
 impl<C: Slot + HeapSize, V: HeapSize> HeapSize for SealingBase<C, V> {
 	fn heap_size(&self) -> usize {
-		self.high_water.heap_size() + self.tail.heap_size()
+		self.high_water.heap_size() + self.sealed_high.heap_size() + self.tail.heap_size()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_value::{
+		factory::time::{at_millis, millis},
+		value::datetime::DateTime,
+	};
+
+	use super::*;
+
+	#[test]
+	fn a_coordinate_exactly_one_amendable_span_behind_the_high_water_stays_live() {
+		// The boundary is load-bearing: sealing it would discard a retraction that is still admissible.
+		let mut base: SealingBase<DateTime, i64> = SealingBase::amendable(millis(10));
+		base.push(at_millis(0), 1);
+		base.push(at_millis(10), 2);
+		assert_eq!(base.sealed_count(), 0, "a coordinate exactly at the bound is still amendable");
+		assert!(base.tail().contains_key(&at_millis(0)));
+
+		base.push(at_millis(11), 3);
+		assert_eq!(base.sealed_count(), 1, "one millisecond past the bound seals");
+		assert!(!base.tail().contains_key(&at_millis(0)));
+	}
+
+	#[test]
+	fn a_corrected_coordinate_that_seals_twice_is_still_one_observation() {
+		// A repeat of an already sealed coordinate is that row arriving again, never a second one.
+		let mut base: SealingBase<DateTime, i64> = SealingBase::amendable(millis(1));
+		base.push(at_millis(0), 10);
+		base.push(at_millis(2), 20);
+		assert_eq!(base.len(), 2);
+
+		base.push(at_millis(0), 99);
+		assert_eq!(base.len(), 2, "re-sealing a corrected coordinate must not count it twice");
+	}
+
+	#[test]
+	fn a_row_below_the_seal_line_is_dropped_while_one_just_above_it_still_counts() {
+		// The fast path assumes ordered arrival, so a row at or under the highest sealed coordinate is lost.
+		let mut base: SealingBase<DateTime, i64> = SealingBase::amendable(millis(1));
+		base.push(at_millis(0), 1);
+		base.push(at_millis(10), 2);
+		assert_eq!(base.sealed_count(), 1);
+		assert_eq!(base.len(), 2);
+
+		base.push(at_millis(0), 99);
+		assert_eq!(base.len(), 2, "a row at the seal line never reaches the tail");
+
+		base.push(at_millis(1), 3);
+		assert_eq!(base.sealed_count(), 2, "a row one tick above the seal line is admitted and then sealed");
+		assert_eq!(base.len(), 3);
+	}
+
+	#[test]
+	fn removing_the_row_that_set_the_high_water_does_not_lower_the_seal_line() {
+		// The seal line is monotonic: a retraction of the newest row must never un-seal what it aged out.
+		let mut base: SealingBase<DateTime, i64> = SealingBase::amendable(millis(10));
+		base.push(at_millis(0), 1);
+		base.push(at_millis(50), 2);
+		assert_eq!(base.sealed_count(), 1);
+
+		base.remove(&at_millis(50));
+		assert!(base.tail().is_empty());
+
+		base.push(at_millis(30), 3);
+		assert_eq!(base.sealed_count(), 2, "the retracted high water still holds the seal line");
+		assert!(base.tail().is_empty());
+	}
+
+	#[test]
+	fn absorbing_a_disjoint_branch_keeps_every_observation_from_both_sides() {
+		// absorb takes coordinate-disjoint branches, so dropping the other side's sealed total undercounts it.
+		let mut left: SealingBase<DateTime, i64> = SealingBase::amendable(millis(10));
+		left.push(at_millis(0), 1);
+		left.push(at_millis(50), 2);
+		assert_eq!(left.sealed_count(), 1);
+		assert_eq!(left.len(), 2);
+
+		let mut right: SealingBase<DateTime, i64> = SealingBase::amendable(millis(10));
+		right.push(at_millis(100), 3);
+		right.push(at_millis(200), 4);
+		assert_eq!(right.sealed_count(), 1);
+		assert_eq!(right.len(), 2);
+
+		let mut left_first = left.clone();
+		left_first.absorb(&right, |mine, _| *mine);
+		let mut right_first = right.clone();
+		right_first.absorb(&left, |mine, _| *mine);
+
+		assert_eq!(left_first.len(), 4);
+		assert_eq!(right_first.len(), 4, "the merged total must not depend on which branch receives");
+	}
+
+	#[test]
+	fn absorb_resolves_a_shared_live_coordinate_through_the_combine_rule() {
+		// A coordinate both branches hold live is one row, so it must collapse to a single counted entry.
+		let mut left: SealingBase<DateTime, i64> = SealingBase::default();
+		left.push(at_millis(0), 1);
+		let mut right: SealingBase<DateTime, i64> = SealingBase::default();
+		right.push(at_millis(0), 9);
+
+		left.absorb(&right, |mine, theirs| *mine.max(theirs));
+
+		assert_eq!(left.len(), 1, "a shared coordinate must never count twice");
+		assert_eq!(left.tail().get(&at_millis(0)), Some(&9));
+	}
+
+	#[test]
+	fn without_an_amendable_span_no_distance_is_far_enough_to_seal() {
+		// Every differential test compares against this arm, so it must retain every coordinate it is given.
+		let mut base: SealingBase<DateTime, i64> = SealingBase::default();
+		base.push(at_millis(0), 1);
+		base.push(at_millis(1_000_000), 2);
+		base.push(at_millis(0), 3);
+
+		assert_eq!(base.sealed_count(), 0);
+		assert_eq!(base.tail().len(), 2, "a repeat of a live coordinate corrects it in place");
+		assert_eq!(base.tail().get(&at_millis(0)), Some(&3));
 	}
 }

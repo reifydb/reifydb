@@ -79,7 +79,9 @@ where
 	}
 
 	fn remove(&mut self, contribution: &(K, V)) {
-		self.map.remove(&contribution.0);
+		if self.map.entries().get(&contribution.0) == Some(&contribution.1) {
+			self.map.remove(&contribution.0);
+		}
 	}
 
 	fn finalize(&self) -> Option<BTreeMap<K, V>> {
@@ -201,6 +203,17 @@ mod tests {
 		accumulator.remove(&(1, 99));
 		assert!(accumulator.is_empty());
 		assert_eq!(accumulator.finalize(), None);
+	}
+
+	#[test]
+	fn retained_acc_remove_of_a_superseded_value_keeps_the_current_one() {
+		// An update fans out as remove(pre) then add(post); a reordered pair must not delete the live value.
+		let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
+		accumulator.add(&(1, 10));
+		accumulator.add(&(1, 99));
+		accumulator.remove(&(1, 10));
+		let map = accumulator.finalize().expect("key 1 survives");
+		assert_eq!(map.get(&1), Some(&99), "removing a superseded value must not delete the key");
 	}
 
 	#[test]

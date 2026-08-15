@@ -42,17 +42,6 @@ impl<V: Ord + Clone> Multiset<V> {
 		}
 	}
 
-	pub fn remove_if_present(&mut self, value: &V) {
-		let Some(count) = self.counts.get_mut(value) else {
-			return;
-		};
-		*count -= 1;
-		self.total -= 1;
-		if *count == 0 {
-			self.counts.remove(value);
-		}
-	}
-
 	pub fn merge(&mut self, other: &Self) {
 		for (value, count) in &other.counts {
 			*self.counts.entry(value.clone()).or_insert(0) += count;
@@ -235,6 +224,44 @@ mod tests {
 			ms.add(v);
 		}
 		assert_eq!(ms.mode(), Some(&3), "3 and 7 tie at count 2; smallest wins deterministically");
+	}
+
+	#[test]
+	fn multiset_merge_then_unmerge_restores_the_original() {
+		// merge/unmerge is the branch-combine path; any drift between counts and total corrupts every quantile after it.
+		let mut base: Multiset<u64> = Multiset::default();
+		for v in [1u64, 2, 2, 5] {
+			base.add(v);
+		}
+		let before = base.clone();
+		let mut other: Multiset<u64> = Multiset::default();
+		for v in [2u64, 7] {
+			other.add(v);
+		}
+
+		base.merge(&other);
+		assert_eq!(base.total(), 6);
+		assert_eq!(base.max(), Some(&7));
+
+		base.unmerge(&other);
+		assert_eq!(base, before, "unmerge must undo merge exactly");
+	}
+
+	#[test]
+	fn multiset_unmerge_of_more_than_was_merged_clamps_without_desyncing_the_total() {
+		// A count that went negative would wrap, so unmerge clamps; total must still match the counts it kept.
+		let mut base: Multiset<u64> = Multiset::default();
+		base.add(1);
+		base.add(1);
+		let mut other: Multiset<u64> = Multiset::default();
+		for _ in 0..3 {
+			other.add(1);
+		}
+
+		base.unmerge(&other);
+		assert_eq!(base.total(), 0);
+		assert_eq!(base.distinct(), 0, "total and counts must never disagree");
+		assert!(base.is_empty());
 	}
 
 	#[test]

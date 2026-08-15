@@ -53,8 +53,10 @@ where
 		self.value = Some(contribution.clone());
 	}
 
-	fn remove(&mut self, _contribution: &V) {
-		self.value = None;
+	fn remove(&mut self, contribution: &V) {
+		if self.value.as_ref() == Some(contribution) {
+			self.value = None;
+		}
 	}
 
 	fn finalize(&self) -> Option<V> {
@@ -86,5 +88,15 @@ mod tests {
 		lv.remove(&20);
 		assert!(lv.is_empty());
 		assert_eq!(lv.finalize(), None);
+	}
+
+	#[test]
+	fn last_value_remove_of_a_superseded_value_keeps_the_current_one() {
+		// An update fans out as remove(pre) then add(post); a reordered pair must not clear the live value.
+		let mut lv: LastValue<i64> = LastValue::default();
+		lv.add(&10);
+		lv.add(&20);
+		lv.remove(&10);
+		assert_eq!(lv.finalize(), Some(20), "removing a superseded value must not clear the current one");
 	}
 }

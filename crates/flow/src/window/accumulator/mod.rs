@@ -23,12 +23,6 @@ pub trait WindowAccumulator: Clone + Debug + Default + OperatorState + StateCode
 
 	fn remove(&mut self, contribution: &Self::Contribution);
 
-	/// Opt-in hook for a Remove whose matching Add was dropped as late. The default is the strict
-	/// `remove`; an accumulator that must tolerate the absence overrides this.
-	fn remove_if_present(&mut self, contribution: &Self::Contribution) {
-		self.remove(contribution);
-	}
-
 	fn finalize(&self) -> Option<Self::Output>;
 
 	fn is_empty(&self) -> bool;

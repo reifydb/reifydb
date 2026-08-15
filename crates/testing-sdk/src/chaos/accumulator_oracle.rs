@@ -126,11 +126,10 @@ fn apply_leg<A>(
 		&& !accumulator.is_empty()
 	{
 		let survives = snapshot.get(&key.0).is_none_or(|hw| span.start >= *hw);
-		if survives {
-			accumulator.remove(&contribution);
-		} else {
-			accumulator.remove_if_present(&contribution);
+		if !survives {
+			return;
 		}
+		accumulator.remove(&contribution);
 		spans.insert(key.clone(), span);
 		touched.insert(key);
 	}

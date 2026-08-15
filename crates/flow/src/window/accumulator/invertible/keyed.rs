@@ -108,6 +108,19 @@ mod tests {
 	}
 
 	#[test]
+	fn keyed_invertible_remove_of_an_unknown_key_is_a_silent_no_op() {
+		// Routing swallows what the leaf accumulator would have caught, so a mis-keyed retraction leaves no trace.
+		let mut accumulator: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
+		accumulator.add(&(1, 10.0));
+
+		accumulator.remove(&(2, 10.0));
+
+		assert_eq!(accumulator.entries().len(), 1, "the unknown key must never materialise");
+		let out = accumulator.finalize().expect("non-empty");
+		assert_eq!(out.get(&1).map(|m| m.sum()), Some(10.0), "the live key must be untouched");
+	}
+
+	#[test]
 	fn keyed_invertible_roundtrip() {
 		let mut accumulator: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
 		accumulator.add(&(1, 10.0));

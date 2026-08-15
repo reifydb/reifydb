@@ -230,10 +230,6 @@ impl WindowAccumulator for MinAccumulator {
 		self.values.remove(contribution);
 	}
 
-	fn remove_if_present(&mut self, contribution: &OrdF64) {
-		self.values.remove_if_present(contribution);
-	}
-
 	fn finalize(&self) -> Option<OrdF64> {
 		self.values.min().copied()
 	}
