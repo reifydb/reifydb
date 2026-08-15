@@ -25,13 +25,13 @@ use crate::{
 	},
 	window::{
 		coord::{EventCoord, OrdinalCoord, RowSpan},
-		driver::mint::Mint,
 		kind::{
 			ordinal_window_span,
 			session::{SessionKind, SessionTracker},
 			sliding::{SlidingOverRows, SlidingOverTime},
 			tumbling::TumblingOverRows,
 		},
+		mint::Mint,
 		span::WindowSpan,
 	},
 };
