@@ -185,7 +185,7 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext
 		&groups,
 		&kinds,
 		engine_config,
-		Duration::default(),
+		None,
 		ExpiryAnchor::Unindexed,
 	)?;
 	Ok(Change::from_flow(core.operator, change.version, diffs, change.changed_at))

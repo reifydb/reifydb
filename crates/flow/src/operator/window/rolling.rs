@@ -219,7 +219,7 @@ fn combine_rolling<C: RollingDomain>(
 	buffer: &RollingBuffer<C, RowAccumulator>,
 	kinds: &[SlotKind],
 	lag: C::Span,
-	amendable: Duration,
+	amendable: Option<Duration>,
 ) -> Option<Vec<Value>> {
 	let (&newest, _) = buffer.iter().next_back()?;
 	let aggregate_cutoff = newest.saturating_sub_span(lag);
@@ -910,8 +910,8 @@ mod tests {
 					build(&plan),
 					RollingEviction::Before(ordinal(cutoff)),
 					group_key,
-					|| RowAccumulator::new(&sk, Duration::default()),
-					|_g, buffer| combine_rolling(buffer, &sk, RowSpan::ZERO, Duration::default()),
+					|| RowAccumulator::new(&sk, None),
+					|_g, buffer| combine_rolling(buffer, &sk, RowSpan::ZERO, None),
 				)
 				.unwrap();
 			let sk = slot_kinds.clone();
@@ -921,7 +921,7 @@ mod tests {
 					build(&plan),
 					RollingEviction::Before(ordinal(cutoff)),
 					group_key,
-					|| RowAccumulator::new(&sk, Duration::default()),
+					|| RowAccumulator::new(&sk, None),
 				)
 				.unwrap();
 			assert_eq!(legacy_out.len(), runnable_out.len(), "apply cardinality diverged at round {round}");
@@ -936,7 +936,7 @@ mod tests {
 				let sk = slot_kinds.clone();
 				let legacy_exp = legacy
 					.expire_before(&mut legacy_store, ordinal(cutoff), |_g, buffer| {
-						combine_rolling(buffer, &sk, RowSpan::ZERO, Duration::default())
+						combine_rolling(buffer, &sk, RowSpan::ZERO, None)
 					})
 					.unwrap();
 				let runnable_exp =
@@ -988,7 +988,7 @@ mod tests {
 		let sk = slot_kinds.clone();
 		let legacy_final = legacy
 			.expire_before(&mut legacy_store, ordinal(u64::MAX - 1), |_g, buffer| {
-				combine_rolling(buffer, &sk, RowSpan::ZERO, Duration::default())
+				combine_rolling(buffer, &sk, RowSpan::ZERO, None)
 			})
 			.unwrap();
 		let runnable_final =

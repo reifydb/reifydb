@@ -68,7 +68,7 @@ pub struct WindowOperator {
 	pub kind: WindowKind,
 
 	pub lateness: Duration,
-	pub amendable: Duration,
+	pub amendable: Option<Duration>,
 	sealed_drops: SealedDrops,
 	rolling_engine: Option<RollingEngineSlot>,
 	meta: WindowMeta,
@@ -90,7 +90,7 @@ impl WindowOperator {
 			core,
 			kind: config.kind,
 			lateness: config.lateness,
-			amendable: config.amendable.unwrap_or(config.lateness),
+			amendable: config.amendable,
 			sealed_drops: SealedDrops::new(config.operator, "mutations targeting sealed windows"),
 			rolling_engine: None,
 			meta: WindowMeta::new(),
@@ -125,9 +125,9 @@ impl WindowOperator {
 		self.lateness().milliseconds().unwrap_or(0) as u64
 	}
 
-	pub fn amendable(&self) -> Duration {
+	pub fn amendable(&self) -> Option<Duration> {
 		if self.is_count_based() {
-			Duration::default()
+			None
 		} else {
 			self.amendable
 		}

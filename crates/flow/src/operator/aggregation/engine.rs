@@ -137,7 +137,7 @@ pub(crate) fn finish_tumbling_engine(
 	groups: &WindowGroups,
 	kinds: &[SlotKind],
 	engine_config: WindowEngineConfig,
-	amendable: Duration,
+	amendable: Option<Duration>,
 	anchor: ExpiryAnchor,
 ) -> Result<Vec<Diff>> {
 	let mut engine = core
