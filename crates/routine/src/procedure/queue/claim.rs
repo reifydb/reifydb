@@ -3,6 +3,7 @@
 
 use std::sync::LazyLock;
 
+use reifydb_codec::row::{pod::EncodedPodRow, queue::EncodedQueueRow};
 use reifydb_core::{
 	interface::{
 		catalog::queue::{
@@ -18,7 +19,6 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_codec::row::{bytes::RowBuilder, queue::EncodedQueueRow};
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::{
@@ -266,7 +266,7 @@ fn lease_candidates(
 		let Some(stored) = tx.get(&state_key)? else {
 			continue;
 		};
-		let Some(mut state) = decode_queue_item_state(&stored.bytes) else {
+		let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
 			continue;
 		};
 		if state.status != QueueItemStatus::Ready || state.due() > now {
@@ -280,7 +280,7 @@ fn lease_candidates(
 		state.attempt += 1;
 		state.lease_deadline = Some(deadline);
 
-		tx.set(&state_key, encode_queue_item_state(&state).freeze_bytes())?;
+		tx.set(&state_key, encode_queue_item_state(&state))?;
 		tx.remove(&QueueDueKey::encoded(queue.id, partition, due, *row))?;
 
 		leases.push(Lease {
@@ -294,11 +294,11 @@ fn lease_candidates(
 	if !leases.is_empty() {
 		let mut counters = tx
 			.get(&lock_key)?
-			.map(|stored| decode_queue_partition_counters(&stored.bytes))
+			.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 			.unwrap_or_default();
 		counters.depth = counters.depth.saturating_sub(leases.len() as u64);
 		counters.in_flight += leases.len() as u64;
-		tx.set(&lock_key, encode_queue_partition_counters(&counters).freeze_bytes())?;
+		tx.set(&lock_key, encode_queue_partition_counters(&counters))?;
 	}
 
 	tx.commit()?;
@@ -386,7 +386,8 @@ fn push_payload(
 		return Ok(());
 	};
 
-	let fingerprint = EncodedQueueRow::view(&stored.bytes).fingerprint();
+	let row = EncodedQueueRow::view(&stored.bytes);
+	let fingerprint = row.fingerprint();
 	let Some(shape) = ctx.catalog.get_or_load_row_shape(fingerprint, &mut *ctx.tx)? else {
 		return Err(RoutineError::ProcedureExecutionFailed {
 			procedure: Fragment::internal(PROCEDURE),
@@ -395,7 +396,7 @@ fn push_payload(
 	};
 
 	for (index, buffer) in payloads.iter_mut().enumerate() {
-		buffer.push_value(shape.get_value(&stored.bytes, index));
+		buffer.push_value(shape.get_value(row.as_slice(), index));
 	}
 
 	Ok(())

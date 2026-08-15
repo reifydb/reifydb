@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::{pod::EncodedPodRow, queue_attempt::EncodedQueueAttemptRow};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -49,7 +50,10 @@ fn states(t: &TestEngine, queue: QueueId) -> Vec<(QueueItemStateKey, QueueItemSt
 		.items
 		.iter()
 		.map(|item| {
-			(QueueItemStateKey::decode(&item.key).unwrap(), decode_queue_item_state(&item.bytes).unwrap())
+			(
+				QueueItemStateKey::decode(&item.key).unwrap(),
+				decode_queue_item_state(EncodedPodRow::view(&item.bytes)).unwrap(),
+			)
 		})
 		.collect()
 }
@@ -72,7 +76,7 @@ fn counters(t: &TestEngine, queue: QueueId, partition: u16) -> QueuePartitionCou
 	let store = t.inner().single().read_store();
 	SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue, partition))
 		.unwrap()
-		.map(|stored| decode_queue_partition_counters(&stored.bytes))
+		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 		.unwrap_or_default()
 }
 
@@ -86,7 +90,10 @@ fn attempts(t: &TestEngine, queue: QueueId) -> Vec<(QueueAttemptKey, QueueAttemp
 	let mut out = Vec::new();
 	while let Some(item) = stream.next() {
 		let item = item.unwrap();
-		out.push((QueueAttemptKey::decode(&item.key).unwrap(), decode_queue_attempt(&item.bytes).unwrap()));
+		out.push((
+			QueueAttemptKey::decode(&item.key).unwrap(),
+			decode_queue_attempt(EncodedQueueAttemptRow::view(&item.bytes)).unwrap(),
+		));
 	}
 	out
 }

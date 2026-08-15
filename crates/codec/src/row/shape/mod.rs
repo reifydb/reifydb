@@ -505,11 +505,7 @@ impl RowShape {
 	}
 
 	pub fn allocate_queue_attempt(&self) -> EncodedQueueAttemptRowBuilder {
-		assert_eq!(
-			self.family,
-			RowFamily::QueueAttempt,
-			"allocate_queue_attempt on a shape of another family"
-		);
+		assert_eq!(self.family, RowFamily::QueueAttempt, "allocate_queue_attempt on a shape of another family");
 		EncodedQueueAttemptRowBuilder::wrap(self.allocate())
 	}
 

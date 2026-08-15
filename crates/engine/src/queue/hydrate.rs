@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, queue::EncodedQueueRow, shape::RowShape},
+	row::{queue::EncodedQueueRow, shape::RowShape},
 };
 use reifydb_core::{
 	interface::{
@@ -70,7 +70,7 @@ fn hydrate_queue(
 	let mut admitted = 0u64;
 
 	loop {
-		let mut batch: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(HYDRATE_BATCH);
+		let mut batch: Vec<(RowNumber, EncodedQueueRow)> = Vec::with_capacity(HYDRATE_BATCH);
 		let mut fetched = 0usize;
 
 		{
@@ -82,7 +82,7 @@ fn hydrate_queue(
 					Some(Ok(item)) => {
 						fetched += 1;
 						if let Some(key) = RowKey::decode(&item.key) {
-							batch.push((key.row, item.bytes));
+							batch.push((key.row, EncodedQueueRow::from(item.bytes)));
 						}
 						last_key = Some(item.key);
 					}
@@ -107,7 +107,7 @@ fn hydrate_queue(
 				items.push(QueueAdmission {
 					row: *row_number,
 					key_hash: placement.key_hash,
-					not_before: EncodedQueueRow::view(encoded).not_before(),
+					not_before: encoded.not_before(),
 				});
 
 				if items.len() >= HYDRATE_BATCH {
@@ -134,8 +134,8 @@ fn flush(single: &SingleTransaction, queue: QueueId, partition: u16, items: &mut
 	Ok(admitted)
 }
 
-fn load_shape(catalog: &Catalog, txn: &mut Transaction<'_>, queue: &Queue, row: &EncodedBytes) -> Result<RowShape> {
-	let fingerprint = EncodedQueueRow::view(row).fingerprint();
+fn load_shape(catalog: &Catalog, txn: &mut Transaction<'_>, queue: &Queue, row: &EncodedQueueRow) -> Result<RowShape> {
+	let fingerprint = row.fingerprint();
 	catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
 		internal_error!("RowShape with fingerprint {:?} not found for queue {}", fingerprint, queue.name)
 	})

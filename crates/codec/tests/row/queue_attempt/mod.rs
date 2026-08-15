@@ -102,7 +102,8 @@ fn the_header_facts_are_always_present_and_never_absent() {
 
 #[test]
 fn a_freshly_allocated_row_already_carries_the_shape_it_was_allocated_from() {
-	// allocate reaches this family only through its catch-all arm, so narrowing that arm would leave the row unresolvable.
+	// allocate reaches this family only through its catch-all arm, so narrowing that arm would leave the row
+	// unresolvable.
 	let shape = shape();
 
 	let row = shape.allocate_queue_attempt().freeze();
@@ -113,7 +114,8 @@ fn a_freshly_allocated_row_already_carries_the_shape_it_was_allocated_from() {
 
 #[test]
 fn the_wall_clock_stamps_survive_a_freeze_and_stay_disjoint() {
-	// Retention sweeps on updated_at, so one shared stamp slot makes every attempt look either immortal or already expired.
+	// Retention sweeps on updated_at, so one shared stamp slot makes every attempt look either immortal or already
+	// expired.
 	let mut row = shape().allocate_queue_attempt();
 	row.set_timestamps(DateTime::from_nanos(11), DateTime::from_nanos(22));
 
@@ -125,7 +127,8 @@ fn the_wall_clock_stamps_survive_a_freeze_and_stay_disjoint() {
 
 #[test]
 fn a_row_handed_to_storage_and_read_back_is_the_same_row() {
-	// Every write leaves through into_bytes and every read arrives through From, so an asymmetry there loses the header.
+	// Every write leaves through into_bytes and every read arrives through From, so an asymmetry there loses the
+	// header.
 	let mut row = shape().allocate_queue_attempt();
 	row.set_outcome(2);
 	row.set_finished_at(DateTime::from_nanos(7));
@@ -140,7 +143,8 @@ fn a_row_handed_to_storage_and_read_back_is_the_same_row() {
 
 #[test]
 fn an_optional_body_field_that_was_never_set_reads_back_as_none() {
-	// A live ack carries no response, and an empty string there would read as a response that was actually recorded.
+	// A live ack carries no response, and an empty string there would read as a response that was actually
+	// recorded.
 	let shape = shape();
 	let mut row = shape.allocate_queue_attempt();
 	shape.set_utf8(&mut row, 0, "worker-1");

@@ -18,7 +18,10 @@ fn shape() -> RowShape {
 #[test]
 fn the_deduplication_header_is_the_source_header_plus_row_number_and_expires_at() {
 	// Any other width silently reinterprets both facts in every stored deduplication record.
-	assert_eq!(QUEUE_DEDUPLICATION_HEADER_SIZE, SHAPE_HEADER_SIZE + RowNumber::ENCODED_SIZE + DateTime::ENCODED_SIZE);
+	assert_eq!(
+		QUEUE_DEDUPLICATION_HEADER_SIZE,
+		SHAPE_HEADER_SIZE + RowNumber::ENCODED_SIZE + DateTime::ENCODED_SIZE
+	);
 	assert_eq!(QUEUE_DEDUPLICATION_HEADER_SIZE, 49);
 	assert_eq!(shape().header_size(), QUEUE_DEDUPLICATION_HEADER_SIZE);
 }
@@ -88,7 +91,8 @@ fn the_header_facts_are_always_present_and_never_absent() {
 
 #[test]
 fn a_freshly_allocated_row_already_carries_the_shape_it_was_allocated_from() {
-	// allocate reaches this family only through its catch-all arm, so narrowing that arm would leave the row unresolvable.
+	// allocate reaches this family only through its catch-all arm, so narrowing that arm would leave the row
+	// unresolvable.
 	let shape = shape();
 
 	let row = shape.allocate_queue_deduplication().freeze();
@@ -99,7 +103,8 @@ fn a_freshly_allocated_row_already_carries_the_shape_it_was_allocated_from() {
 
 #[test]
 fn the_wall_clock_stamps_survive_a_freeze_and_stay_disjoint() {
-	// Retention sweeps on updated_at, so one shared stamp slot makes every record look either immortal or already expired.
+	// Retention sweeps on updated_at, so one shared stamp slot makes every record look either immortal or already
+	// expired.
 	let mut row = shape().allocate_queue_deduplication();
 	row.set_timestamps(DateTime::from_nanos(11), DateTime::from_nanos(22));
 
@@ -111,7 +116,8 @@ fn the_wall_clock_stamps_survive_a_freeze_and_stay_disjoint() {
 
 #[test]
 fn a_row_handed_to_storage_and_read_back_is_the_same_row() {
-	// Every write leaves through into_bytes and every read arrives through From, so an asymmetry there loses the claim.
+	// Every write leaves through into_bytes and every read arrives through From, so an asymmetry there loses the
+	// claim.
 	let mut row = shape().allocate_queue_deduplication();
 	row.set_row_number(RowNumber(31));
 	row.set_expires_at(DateTime::from_nanos(7));

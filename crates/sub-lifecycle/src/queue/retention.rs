@@ -5,14 +5,20 @@ use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::shape::{RowFamily, RowShape},
+	row::{
+		pod::EncodedPodRow, queue_attempt::EncodedQueueAttemptRow,
+		queue_deduplication::EncodedQueueDeduplicationRow,
+	},
 };
 use reifydb_core::{
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			id::QueueId,
-			queue::{Queue, QueueItemStatus, decode_queue_attempt, decode_queue_item_state},
+			queue::{
+				Queue, QueueItemStatus, decode_queue_attempt, decode_queue_deduplication,
+				decode_queue_item_state,
+			},
 		},
 		store::SingleVersionRange,
 	},
@@ -31,10 +37,7 @@ use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{multi::RangeScope, queue::scheduling::remove_item_states, transaction::Transaction};
 use reifydb_value::{
 	Result,
-	value::{
-		Value, datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber,
-		value_type::ValueType,
-	},
+	value::{datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::{Span, debug, field::Empty, instrument, warn};
 
@@ -99,7 +102,7 @@ impl QueueRetentionTask {
 			.iter()
 			.filter_map(|item| {
 				let key = QueueItemStateKey::decode(&item.key)?;
-				let state = decode_queue_item_state(&item.bytes)?;
+				let state = decode_queue_item_state(EncodedPodRow::view(&item.bytes))?;
 				Some((item.key.clone(), key.row, state.status, state.attempt))
 			})
 			.collect())
@@ -109,7 +112,7 @@ impl QueueRetentionTask {
 		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
 		let record = query_txn
 			.get(&QueueAttemptKey::encoded(queue, row, attempt))?
-			.and_then(|stored| decode_queue_attempt(&stored.bytes));
+			.and_then(|stored| decode_queue_attempt(EncodedQueueAttemptRow::view(&stored.bytes)));
 
 		if let Some(record) = record {
 			if record.finished_at > cutoff {
@@ -198,7 +201,6 @@ impl QueueRetentionTask {
 		now: DateTime,
 		limit: usize,
 	) -> Result<ExpiredDeduplication> {
-		let shape = deduplication_record_shape();
 		let query_txn = self.engine.begin_query(IdentityId::system())?;
 		let mut stream = query_txn.range(range, RangeScope::All, limit);
 
@@ -211,7 +213,8 @@ impl QueueRetentionTask {
 			out.scanned += 1;
 			out.last = Some(entry.key.clone());
 
-			if let Value::DateTime(expires_at) = shape.get_value(&entry.bytes, 1)
+			if let Some((_, expires_at)) =
+				decode_queue_deduplication(EncodedQueueDeduplicationRow::view(&entry.bytes))
 				&& expires_at <= now
 			{
 				out.keys.push(entry.key.clone());
@@ -236,10 +239,6 @@ struct ExpiredDeduplication {
 	keys: Vec<EncodedKey>,
 	last: Option<EncodedKey>,
 	scanned: usize,
-}
-
-fn deduplication_record_shape() -> RowShape {
-	RowShape::testing(RowFamily::Pod, &[ValueType::Uint8, ValueType::DateTime])
 }
 
 impl LifecycleTask for QueueRetentionTask {

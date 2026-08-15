@@ -84,6 +84,8 @@ help:
 	@printf "  %-25s %s\n" "bench-txn-help" "Document every bench-txn variable, with examples"
 	@printf "  %-25s %s\n" "bench-watermark" "Watermark phases (pipeline, burst, wait, mixed poll)"
 	@printf "  %-25s %s\n" "bench-watermark-help" "Document every bench-watermark variable, with examples"
+	@printf "  %-25s %s\n" "bench-queue" "Queue enqueue/claim/ack loop (mode x transport x workers x partitions)"
+	@printf "  %-25s %s\n" "bench-queue-help" "Document every bench-queue variable, with examples"
 	@printf "  %-25s %s\n" "bench-report" "List the most recent benchmark result files"
 	@echo ""
 	@echo "  🔬 Fuzz Testing"

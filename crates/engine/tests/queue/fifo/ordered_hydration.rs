@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::RowBuilder,
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	interface::{
@@ -57,7 +57,7 @@ fn states(t: &TestEngine, queue: &Queue) -> BTreeMap<RowNumber, QueueItemState> 
 		.iter()
 		.map(|item| {
 			let key = QueueItemStateKey::decode(&item.key).unwrap();
-			(key.row, decode_queue_item_state(&item.bytes).unwrap())
+			(key.row, decode_queue_item_state(EncodedPodRow::view(&item.bytes)).unwrap())
 		})
 		.collect()
 }
@@ -88,7 +88,7 @@ fn counters(t: &TestEngine, queue: &Queue, partition: u16) -> QueuePartitionCoun
 	let store = t.inner().single().read_store();
 	SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue.id, partition))
 		.unwrap()
-		.map(|stored| decode_queue_partition_counters(&stored.bytes))
+		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 		.unwrap_or_default()
 }
 
@@ -156,8 +156,7 @@ fn forget_items(t: &TestEngine, queue: &Queue, rows: &[u64], blocked_delta: u64)
 		for key in &doomed {
 			tx.remove(key).unwrap();
 		}
-		tx.set(&QueuePartitionKey::encoded(queue.id, 0), encode_queue_partition_counters(&counters).freeze_bytes())
-			.unwrap();
+		tx.set(&QueuePartitionKey::encoded(queue.id, 0), encode_queue_partition_counters(&counters)).unwrap();
 	});
 }
 

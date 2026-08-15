@@ -3,6 +3,7 @@
 
 use std::sync::LazyLock;
 
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::{
 		catalog::queue::{Queue, decode_queue_item_state},
@@ -163,7 +164,7 @@ fn locate(
 		else {
 			continue;
 		};
-		let key_hash = decode_queue_item_state(&stored.bytes)
+		let key_hash = decode_queue_item_state(EncodedPodRow::view(&stored.bytes))
 			.and_then(|state| queue.ordered_by().is_some().then_some(state.key_hash));
 		return Ok(Some((partition, key_hash)));
 	}

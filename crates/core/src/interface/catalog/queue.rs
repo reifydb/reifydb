@@ -4,7 +4,8 @@
 use std::sync::LazyLock;
 
 use reifydb_codec::row::{
-	pod::EncodedPodRowBuilder,
+	pod::EncodedPodRow,
+	queue_attempt::EncodedQueueAttemptRow,
 	queue_deduplication::EncodedQueueDeduplicationRow,
 	shape::{RowFamily, RowShape, RowShapeField},
 };
@@ -279,49 +280,50 @@ mod attempt_shape {
 	use super::*;
 
 	pub(super) const WORKER: usize = 0;
-	pub(super) const OUTCOME: usize = 1;
-	pub(super) const RESPONSE: usize = 2;
-	pub(super) const FINISHED_AT: usize = 3;
-	pub(super) const LOST: usize = 4;
-	pub(super) const ANOMALY: usize = 5;
+	pub(super) const RESPONSE: usize = 1;
+	pub(super) const ANOMALY: usize = 2;
 
 	pub(super) static SHAPE: LazyLock<RowShape> = LazyLock::new(|| {
-		RowShape::new(RowFamily::Pod, vec![
-			RowShapeField::unconstrained("worker", ValueType::Utf8),
-			RowShapeField::unconstrained("outcome", ValueType::Uint1),
-			RowShapeField::unconstrained("response", ValueType::Utf8),
-			RowShapeField::unconstrained("finished_at", ValueType::DateTime),
-			RowShapeField::unconstrained("lost", ValueType::Boolean),
-			RowShapeField::unconstrained("anomaly", ValueType::Utf8),
-		])
+		RowShape::new(
+			RowFamily::QueueAttempt,
+			vec![
+				RowShapeField::unconstrained("worker", ValueType::Utf8),
+				RowShapeField::unconstrained("response", ValueType::Utf8),
+				RowShapeField::unconstrained("anomaly", ValueType::Utf8),
+			],
+		)
 	});
 }
 
-pub fn encode_queue_attempt(record: &QueueAttemptRecord) -> EncodedPodRowBuilder {
+pub fn encode_queue_attempt(record: &QueueAttemptRecord) -> EncodedQueueAttemptRow {
 	let shape = &attempt_shape::SHAPE;
-	let mut row = shape.allocate_pod();
+	let mut row = shape.allocate_queue_attempt();
+	row.set_outcome(record.outcome.tag());
+	row.set_lost(record.lost);
+	row.set_finished_at(record.finished_at);
 	shape.set_utf8(&mut row, attempt_shape::WORKER, &record.worker);
-	shape.set::<u8>(&mut row, attempt_shape::OUTCOME, record.outcome.tag());
 	if let Some(response) = &record.response {
 		shape.set_utf8(&mut row, attempt_shape::RESPONSE, response);
 	}
-	shape.set::<DateTime>(&mut row, attempt_shape::FINISHED_AT, record.finished_at);
-	shape.set::<bool>(&mut row, attempt_shape::LOST, record.lost);
 	if let Some(anomaly) = &record.anomaly {
 		shape.set_utf8(&mut row, attempt_shape::ANOMALY, anomaly);
 	}
-	row
+	row.freeze()
 }
 
-pub fn decode_queue_attempt(row: &[u8]) -> Option<QueueAttemptRecord> {
+pub fn decode_queue_attempt(row: &EncodedQueueAttemptRow) -> Option<QueueAttemptRecord> {
 	let shape = &attempt_shape::SHAPE;
+	let outcome = row.outcome().try_into().ok()?;
+	let lost = row.lost();
+	let finished_at = row.finished_at();
+	let bytes = row.as_slice();
 	Some(QueueAttemptRecord {
-		worker: shape.get_utf8(row, attempt_shape::WORKER).to_string(),
-		outcome: shape.get::<u8>(row, attempt_shape::OUTCOME).try_into().ok()?,
-		response: shape.try_get_utf8(row, attempt_shape::RESPONSE).map(str::to_string),
-		finished_at: shape.get::<DateTime>(row, attempt_shape::FINISHED_AT),
-		lost: shape.get::<bool>(row, attempt_shape::LOST),
-		anomaly: shape.try_get_utf8(row, attempt_shape::ANOMALY).map(str::to_string),
+		worker: shape.get_utf8(bytes, attempt_shape::WORKER).to_string(),
+		outcome,
+		response: shape.try_get_utf8(bytes, attempt_shape::RESPONSE).map(str::to_string),
+		finished_at,
+		lost,
+		anomaly: shape.try_get_utf8(bytes, attempt_shape::ANOMALY).map(str::to_string),
 	})
 }
 
@@ -392,7 +394,7 @@ mod partition_counters_shape {
 	});
 }
 
-pub fn encode_queue_item_state(state: &QueueItemState) -> EncodedPodRowBuilder {
+pub fn encode_queue_item_state(state: &QueueItemState) -> EncodedPodRow {
 	let shape = &item_state_shape::SHAPE;
 	let mut row = shape.allocate_pod();
 	shape.set::<u8>(&mut row, item_state_shape::STATUS, state.status.tag());
@@ -408,11 +410,12 @@ pub fn encode_queue_item_state(state: &QueueItemState) -> EncodedPodRowBuilder {
 	if let Some(backoff_until) = state.backoff_until {
 		shape.set::<DateTime>(&mut row, item_state_shape::BACKOFF_UNTIL, backoff_until);
 	}
-	row
+	row.freeze()
 }
 
-pub fn decode_queue_item_state(row: &[u8]) -> Option<QueueItemState> {
+pub fn decode_queue_item_state(row: &EncodedPodRow) -> Option<QueueItemState> {
 	let shape = &item_state_shape::SHAPE;
+	let row = row.as_slice();
 	Some(QueueItemState {
 		status: shape.get::<u8>(row, item_state_shape::STATUS).try_into().ok()?,
 		attempt: shape.get::<u32>(row, item_state_shape::ATTEMPT),
@@ -424,17 +427,18 @@ pub fn decode_queue_item_state(row: &[u8]) -> Option<QueueItemState> {
 	})
 }
 
-pub fn encode_queue_partition_counters(counters: &QueuePartitionCounters) -> EncodedPodRowBuilder {
+pub fn encode_queue_partition_counters(counters: &QueuePartitionCounters) -> EncodedPodRow {
 	let shape = &partition_counters_shape::SHAPE;
 	let mut row = shape.allocate_pod();
 	shape.set::<u64>(&mut row, partition_counters_shape::DEPTH, counters.depth);
 	shape.set::<u64>(&mut row, partition_counters_shape::IN_FLIGHT, counters.in_flight);
 	shape.set::<u64>(&mut row, partition_counters_shape::BLOCKED_KEYS, counters.blocked_keys);
-	row
+	row.freeze()
 }
 
-pub fn decode_queue_partition_counters(row: &[u8]) -> QueuePartitionCounters {
+pub fn decode_queue_partition_counters(row: &EncodedPodRow) -> QueuePartitionCounters {
 	let shape = &partition_counters_shape::SHAPE;
+	let row = row.as_slice();
 	QueuePartitionCounters {
 		depth: shape.get::<u64>(row, partition_counters_shape::DEPTH),
 		in_flight: shape.get::<u64>(row, partition_counters_shape::IN_FLIGHT),
@@ -504,10 +508,10 @@ mod tests {
 	fn test_an_unknown_status_tag_does_not_decode() {
 		// A record written by a newer version must fail loudly rather than being read as
 		// Ready, which would re-deliver work that is already finished.
-		let mut row = encode_queue_item_state(&QueueItemState::ready(None));
+		let mut row = encode_queue_item_state(&QueueItemState::ready(None)).thaw();
 		item_state_shape::SHAPE.set::<u8>(&mut row, item_state_shape::STATUS, 99);
 
-		assert_eq!(decode_queue_item_state(&row), None);
+		assert_eq!(decode_queue_item_state(&row.freeze()), None);
 	}
 
 	#[test]
@@ -527,7 +531,7 @@ mod tests {
 	fn test_an_absent_counter_row_reads_as_zero() {
 		// Counter rows are created lazily on first admit, so every reader has to treat an
 		// unset row as zeros rather than as garbage depth.
-		let row = partition_counters_shape::SHAPE.allocate_pod();
+		let row = partition_counters_shape::SHAPE.allocate_pod().freeze();
 
 		assert_eq!(decode_queue_partition_counters(&row), QueuePartitionCounters::default());
 	}
@@ -589,15 +593,17 @@ mod tests {
 			finished_at: DateTime::from_nanos(1),
 			lost: false,
 			anomaly: None,
-		});
-		attempt_shape::SHAPE.set::<u8>(&mut row, attempt_shape::OUTCOME, 99);
+		})
+		.thaw();
+		row.set_outcome(99);
 
-		assert_eq!(decode_queue_attempt(&row), None);
+		assert_eq!(decode_queue_attempt(&row.freeze()), None);
 	}
 
 	#[test]
 	fn test_a_deduplication_record_roundtrips_its_row_number_and_expiry() {
-		// This record is the only link from a suppressed key back to its claimant, so a lossy codec points the duplicate at someone else's row.
+		// This record is the only link from a suppressed key back to its claimant, so a lossy codec points the
+		// duplicate at someone else's row.
 		let row_number = RowNumber(9_007_199_254_740_993);
 		let expires_at = DateTime::from_nanos(1_700_000_000_000_000_000);
 
@@ -608,7 +614,8 @@ mod tests {
 
 	#[test]
 	fn test_a_deduplication_record_survives_boundary_row_numbers_and_instants() {
-		// Both facts are fixed-width header slots, so a sign or width bug surfaces only at the extremes and would expire every live claim at once.
+		// Both facts are fixed-width header slots, so a sign or width bug surfaces only at the extremes and
+		// would expire every live claim at once.
 		for row_number in [RowNumber(0), RowNumber(1), RowNumber(u64::MAX)] {
 			for expires_at in [DateTime::from_nanos(0), DateTime::from_nanos(i64::MAX as u64)] {
 				let encoded = encode_queue_deduplication(row_number, expires_at);
@@ -620,7 +627,8 @@ mod tests {
 
 	#[test]
 	fn test_a_truncated_deduplication_record_does_not_decode() {
-		// The insert path turns a none here into an internal error, so without the guard a short record reads trailing memory as a live suppression.
+		// The insert path turns a none here into an internal error, so without the guard a short record reads
+		// trailing memory as a live suppression.
 		let full = encode_queue_deduplication(RowNumber(7), DateTime::from_nanos(11)).into_bytes();
 
 		for length in 0..full.len() {

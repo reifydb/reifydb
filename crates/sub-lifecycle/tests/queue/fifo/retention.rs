@@ -10,6 +10,7 @@
 
 use std::sync::Arc;
 
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -67,7 +68,7 @@ fn states(t: &TestEngine, queue: QueueId) -> Vec<QueueItemState> {
 		.unwrap()
 		.items
 		.iter()
-		.map(|item| decode_queue_item_state(&item.bytes).unwrap())
+		.map(|item| decode_queue_item_state(EncodedPodRow::view(&item.bytes)).unwrap())
 		.collect()
 }
 

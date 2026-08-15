@@ -168,11 +168,7 @@ fn the_nine_header_widths_are_the_widths_every_stored_row_was_written_under() {
 	assert_eq!(RowFamily::RingBuffer.header_size(), 33);
 	assert_eq!(RowFamily::Queue.header_size(), 41, "the source header plus not_before");
 	assert_eq!(RowFamily::QueueAttempt.header_size(), 43, "the source header plus outcome, lost and finished_at");
-	assert_eq!(
-		RowFamily::QueueDeduplication.header_size(),
-		49,
-		"the source header plus row_number and expires_at"
-	);
+	assert_eq!(RowFamily::QueueDeduplication.header_size(), 49, "the source header plus row_number and expires_at");
 }
 
 #[test]

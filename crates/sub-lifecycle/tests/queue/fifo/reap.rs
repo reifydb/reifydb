@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::row::bytes::RowBuilder;
+use reifydb_codec::row::{pod::EncodedPodRow, queue_attempt::EncodedQueueAttemptRow};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -69,7 +69,7 @@ fn states(t: &TestEngine, queue: QueueId) -> Vec<QueueItemState> {
 		.unwrap()
 		.items
 		.iter()
-		.map(|item| decode_queue_item_state(&item.bytes).unwrap())
+		.map(|item| decode_queue_item_state(EncodedPodRow::view(&item.bytes)).unwrap())
 		.collect()
 }
 
@@ -81,7 +81,7 @@ fn counters(t: &TestEngine, queue: QueueId) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
 	SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue, 0))
 		.unwrap()
-		.map(|stored| decode_queue_partition_counters(&stored.bytes))
+		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 		.unwrap_or_default()
 }
 
@@ -93,7 +93,10 @@ fn attempts(t: &TestEngine, queue: QueueId) -> Vec<(QueueAttemptKey, QueueAttemp
 	let mut out = Vec::new();
 	while let Some(item) = stream.next() {
 		let item = item.unwrap();
-		out.push((QueueAttemptKey::decode(&item.key).unwrap(), decode_queue_attempt(&item.bytes).unwrap()));
+		out.push((
+			QueueAttemptKey::decode(&item.key).unwrap(),
+			decode_queue_attempt(EncodedQueueAttemptRow::view(&item.bytes)).unwrap(),
+		));
 	}
 	out
 }
@@ -119,8 +122,7 @@ fn claimable(t: &TestEngine) -> usize {
 
 fn plant_attempt(t: &TestEngine, queue: QueueId, row: u64, attempt: u32, record: QueueAttemptRecord) {
 	let mut txn = t.inner().begin_command(IdentityId::system()).unwrap();
-	txn.set(&QueueAttemptKey::encoded(queue, RowNumber(row), attempt), encode_queue_attempt(&record).freeze_bytes())
-		.unwrap();
+	txn.set(&QueueAttemptKey::encoded(queue, RowNumber(row), attempt), encode_queue_attempt(&record)).unwrap();
 	txn.commit().unwrap();
 }
 

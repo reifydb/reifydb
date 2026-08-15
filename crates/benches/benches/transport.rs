@@ -6,7 +6,10 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use reifydb::engine::engine::StandardEngine;
 use reifydb_client::{GrpcClient, HttpClient, WireFormat, WsClient};
 use reifydb_testing_scenario::query::OperationKind;
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	params::Params,
+	value::{frame::frame::Frame, identity::IdentityId},
+};
 use tokio::runtime::{Builder, Runtime};
 
 pub const DEFAULT_HTTP_PORT: u16 = 18190;
@@ -179,6 +182,37 @@ impl Driver {
 		Driver::Wire {
 			runtime,
 			client,
+		}
+	}
+
+	#[allow(dead_code)]
+	pub fn command_frames(&self, rql: &str) -> Vec<Frame> {
+		match self {
+			Driver::Embedded {
+				engine,
+				identity,
+			} => {
+				let result = engine.command_as(*identity, rql, Params::None);
+				if let Some(error) = result.error {
+					panic!("command `{}` failed: {}", rql, error);
+				}
+				result.frames
+			}
+			Driver::Wire {
+				runtime,
+				client,
+			} => runtime.block_on(async {
+				let outcome = match client {
+					WireClient::Http(client) => client.command(rql, None).await,
+					WireClient::Ws(client) => client.command(rql, None).await,
+					WireClient::Grpc(client) => client.command(rql, None).await,
+				};
+
+				match outcome {
+					Ok(frames) => frames,
+					Err(error) => panic!("command `{}` failed: {}", rql, error),
+				}
+			}),
 		}
 	}
 

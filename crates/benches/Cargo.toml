@@ -56,3 +56,7 @@ harness = false
 [[bench]]
 name = "txn"
 harness = false
+
+[[bench]]
+name = "queue"
+harness = false

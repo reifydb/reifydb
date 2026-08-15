@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::{EncodedBytes, RowBuilder},
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	interface::catalog::{
@@ -17,7 +17,6 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	Result,
-	util::cowvec::CowVec,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 use tracing::debug;
@@ -84,7 +83,7 @@ pub fn admit_ready_items(
 			chain_add(&mut tx, &mut overlay, queue, partition, key_hash, item.row)?;
 		}
 
-		tx.set(&state_key, encode_queue_item_state(&state).freeze_bytes())?;
+		tx.set(&state_key, encode_queue_item_state(&state))?;
 		if state.status == QueueItemStatus::Ready {
 			expose_due(&mut tx, queue, partition, item.row, &state)?;
 		}
@@ -95,7 +94,7 @@ pub fn admit_ready_items(
 		let mut counters = read_counters(&mut tx, &lock_key)?;
 		counters.depth += admitted;
 		counters.blocked_keys = counters.blocked_keys.saturating_add_signed(blocked_delta);
-		tx.set(&lock_key, encode_queue_partition_counters(&counters).freeze_bytes())?;
+		tx.set(&lock_key, encode_queue_partition_counters(&counters))?;
 	}
 
 	tx.commit()?;
@@ -126,7 +125,7 @@ pub fn apply_ack_transitions(
 			debug!(queue = queue.0, partition, item = ack.row_number.0, "ack has no item state");
 			continue;
 		};
-		let Some(mut state) = decode_queue_item_state(&stored.bytes) else {
+		let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
 			continue;
 		};
 
@@ -190,7 +189,7 @@ pub fn apply_reap_transition(
 	let Some(stored) = tx.get(&state_key)? else {
 		return Ok(false);
 	};
-	let Some(mut state) = decode_queue_item_state(&stored.bytes) else {
+	let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
 		return Ok(false);
 	};
 
@@ -249,7 +248,7 @@ pub fn apply_replay_transition(
 	let Some(stored) = tx.get(&state_key)? else {
 		return Ok(ReplayOutcome::Unknown);
 	};
-	let Some(mut state) = decode_queue_item_state(&stored.bytes) else {
+	let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
 		return Ok(ReplayOutcome::Unreadable);
 	};
 
@@ -276,7 +275,7 @@ pub fn apply_replay_transition(
 		chain_add(&mut tx, &mut overlay, queue, partition, key_hash, row)?;
 	}
 
-	tx.set(&state_key, encode_queue_item_state(&state).freeze_bytes())?;
+	tx.set(&state_key, encode_queue_item_state(&state))?;
 	if state.status == QueueItemStatus::Ready {
 		expose_due(&mut tx, queue, partition, row, &state)?;
 	}
@@ -284,7 +283,7 @@ pub fn apply_replay_transition(
 	let mut counters = read_counters(&mut tx, &lock_key)?;
 	counters.depth += 1;
 	counters.blocked_keys = counters.blocked_keys.saturating_add_signed(blocked_delta);
-	tx.set(&lock_key, encode_queue_partition_counters(&counters).freeze_bytes())?;
+	tx.set(&lock_key, encode_queue_partition_counters(&counters))?;
 
 	tx.commit()?;
 
@@ -314,7 +313,7 @@ pub fn remove_item_states(
 		let Some(stored) = tx.get(&state_key)? else {
 			continue;
 		};
-		let Some(state) = decode_queue_item_state(&stored.bytes) else {
+		let Some(state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
 			tx.remove(&state_key)?;
 			removed += 1;
 			continue;
@@ -371,7 +370,7 @@ fn apply_state_transition(
 		}
 	};
 
-	tx.set(&QueueItemStateKey::encoded(queue, partition, row), encode_queue_item_state(state).freeze_bytes())?;
+	tx.set(&QueueItemStateKey::encoded(queue, partition, row), encode_queue_item_state(state))?;
 
 	let blocked_delta = match (terminal, key_hash) {
 		(true, Some(key_hash)) => {
@@ -406,7 +405,7 @@ fn promote_next(
 		debug!(queue = queue.0, partition, item = successor.0, "the successor of a key has no item state");
 		return Ok(blocked_delta);
 	};
-	let Some(mut state) = decode_queue_item_state(&stored.bytes) else {
+	let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
 		return Ok(blocked_delta);
 	};
 
@@ -421,7 +420,7 @@ fn promote_next(
 	}
 
 	state.status = QueueItemStatus::Ready;
-	tx.set(&state_key, encode_queue_item_state(&state).freeze_bytes())?;
+	tx.set(&state_key, encode_queue_item_state(&state))?;
 	expose_due(tx, queue, partition, successor, &state)?;
 
 	Ok(blocked_delta)
@@ -434,11 +433,13 @@ fn expose_due(
 	row: RowNumber,
 	state: &QueueItemState,
 ) -> Result<()> {
-	tx.set(&QueueDueKey::encoded(queue, partition, state.due(), row), EncodedBytes(CowVec::new(vec![])))
+	tx.set(&QueueDueKey::encoded(queue, partition, state.due(), row), EncodedPodRow::new(&[]).into_bytes())
 }
 
 fn read_counters(tx: &mut SingleWriteTransaction<'_>, lock_key: &EncodedKey) -> Result<QueuePartitionCounters> {
-	Ok(tx.get(lock_key)?.map(|stored| decode_queue_partition_counters(&stored.bytes)).unwrap_or_default())
+	Ok(tx.get(lock_key)?
+		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
+		.unwrap_or_default())
 }
 
 fn adjust_counters(
@@ -452,7 +453,7 @@ fn adjust_counters(
 	counters.in_flight = counters.in_flight.saturating_sub(applied);
 	counters.depth += requeued;
 	counters.blocked_keys = counters.blocked_keys.saturating_add_signed(blocked_delta);
-	tx.set(lock_key, encode_queue_partition_counters(&counters).freeze_bytes())?;
+	tx.set(lock_key, encode_queue_partition_counters(&counters))?;
 
 	Ok(())
 }

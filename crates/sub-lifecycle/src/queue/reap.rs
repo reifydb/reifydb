@@ -3,7 +3,10 @@
 
 use std::{ops::Bound, sync::Arc};
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::RowBuilder};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{pod::EncodedPodRow, queue_attempt::EncodedQueueAttemptRow},
+};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -102,7 +105,7 @@ impl QueueLeaseReapTask {
 			.iter()
 			.filter_map(|item| {
 				let key = QueueItemStateKey::decode(&item.key)?;
-				let state = decode_queue_item_state(&item.bytes)?;
+				let state = decode_queue_item_state(EncodedPodRow::view(&item.bytes))?;
 				Some(Candidate {
 					key: item.key.clone(),
 					row: key.row,
@@ -116,7 +119,7 @@ impl QueueLeaseReapTask {
 		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
 		Ok(query_txn
 			.get(&QueueAttemptKey::encoded(queue, row, attempt))?
-			.and_then(|stored| decode_queue_attempt(&stored.bytes)))
+			.and_then(|stored| decode_queue_attempt(EncodedQueueAttemptRow::view(&stored.bytes))))
 	}
 
 	fn write_lost_attempt(&self, queue: QueueId, row: RowNumber, attempt: u32, now: DateTime) -> Result<()> {
@@ -135,8 +138,7 @@ impl QueueLeaseReapTask {
 				finished_at: now,
 				lost: true,
 				anomaly: None,
-			})
-			.freeze_bytes(),
+			}),
 		)?;
 		txn.commit()?;
 

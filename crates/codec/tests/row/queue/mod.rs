@@ -121,7 +121,11 @@ fn thawing_a_frozen_row_reschedules_it_without_disturbing_the_rest_of_the_header
 	assert_eq!(refrozen.not_before(), Some(DateTime::from_millis(2_000)));
 	assert_eq!(refrozen.created_at(), DateTime::from_millis(1));
 	assert_eq!(refrozen.updated_at(), DateTime::from_millis(1));
-	assert_eq!(shape.time(refrozen.as_slice()), Some(DateTime::from_millis(500)), "the event time must stay flagged");
+	assert_eq!(
+		shape.time(refrozen.as_slice()),
+		Some(DateTime::from_millis(500)),
+		"the event time must stay flagged"
+	);
 	assert_eq!(shape.get::<i32>(refrozen.as_slice(), 0), 7);
 	assert_eq!(shape.get::<i32>(refrozen.as_slice(), 1), 9);
 }

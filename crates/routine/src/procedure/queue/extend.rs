@@ -3,12 +3,12 @@
 
 use std::sync::LazyLock;
 
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::queue::{QueueItemStatus, decode_queue_item_state, encode_queue_item_state},
 	key::queue_schedule::{QueueItemStateKey, QueuePartitionKey},
 	value::column::columns::Columns,
 };
-use reifydb_codec::row::bytes::RowBuilder;
 use reifydb_routine_abi::{
 	Routine, RoutineInfo,
 	context::ProcedureContext,
@@ -92,7 +92,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueExtend {
 		let Some(stored) = tx.get(&state_key)? else {
 			return Err(stale("the item has no scheduling state"));
 		};
-		let Some(mut state) = decode_queue_item_state(&stored.bytes) else {
+		let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
 			return Err(stale("the item's scheduling state is unreadable"));
 		};
 
@@ -110,7 +110,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueExtend {
 		};
 		state.lease_deadline = Some(deadline);
 
-		tx.set(&state_key, encode_queue_item_state(&state).freeze_bytes())?;
+		tx.set(&state_key, encode_queue_item_state(&state))?;
 		tx.commit()?;
 
 		Ok(Columns::single_row([

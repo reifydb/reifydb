@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -22,10 +22,7 @@ use reifydb_core::{
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{single::write::SingleWriteTransaction, transaction::Transaction};
-use reifydb_value::{
-	util::cowvec::CowVec,
-	value::{Value, datetime::DateTime, frame::frame::Frame, row_number::RowNumber},
-};
+use reifydb_value::value::{Value, datetime::DateTime, frame::frame::Frame, row_number::RowNumber};
 
 fn engine_with_queue(declaration: &str) -> TestEngine {
 	let t = TestEngine::new();
@@ -49,7 +46,10 @@ fn states(t: &TestEngine, queue: QueueId) -> Vec<(QueueItemStateKey, QueueItemSt
 		.items
 		.iter()
 		.map(|item| {
-			(QueueItemStateKey::decode(&item.key).unwrap(), decode_queue_item_state(&item.bytes).unwrap())
+			(
+				QueueItemStateKey::decode(&item.key).unwrap(),
+				decode_queue_item_state(EncodedPodRow::view(&item.bytes)).unwrap(),
+			)
 		})
 		.collect()
 }
@@ -68,7 +68,7 @@ fn counters(t: &TestEngine, queue: QueueId, partition: u16) -> QueuePartitionCou
 	let store = t.inner().single().read_store();
 	SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue, partition))
 		.unwrap()
-		.map(|stored| decode_queue_partition_counters(&stored.bytes))
+		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 		.unwrap_or_default()
 }
 
@@ -78,7 +78,7 @@ fn totals(t: &TestEngine, queue: QueueId) -> QueuePartitionCounters {
 		.unwrap()
 		.items
 		.iter()
-		.map(|item| decode_queue_partition_counters(&item.bytes))
+		.map(|item| decode_queue_partition_counters(EncodedPodRow::view(&item.bytes)))
 		.fold(QueuePartitionCounters::default(), |mut acc, c| {
 			acc.depth += c.depth;
 			acc.in_flight += c.in_flight;
@@ -112,7 +112,8 @@ where
 /// single-threaded test otherwise cannot.
 fn plant_stale_due_entry(t: &TestEngine, queue: QueueId, partition: u16, row: RowNumber, due: DateTime) {
 	with_partition(t, queue, partition, |tx| {
-		tx.set(&QueueDueKey::encoded(queue, partition, due, row), EncodedBytes(CowVec::new(vec![]))).unwrap();
+		tx.set(&QueueDueKey::encoded(queue, partition, due, row), EncodedPodRow::new(&[]).into_bytes())
+			.unwrap();
 	});
 }
 

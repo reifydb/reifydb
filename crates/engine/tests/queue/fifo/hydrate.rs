@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::RowBuilder,
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	interface::{
@@ -54,7 +54,7 @@ fn states(t: &TestEngine, queue: &Queue) -> BTreeMap<RowNumber, (u16, QueueItemS
 		.iter()
 		.map(|item| {
 			let key = QueueItemStateKey::decode(&item.key).unwrap();
-			(key.row, (key.partition, decode_queue_item_state(&item.bytes).unwrap()))
+			(key.row, (key.partition, decode_queue_item_state(EncodedPodRow::view(&item.bytes)).unwrap()))
 		})
 		.collect()
 }
@@ -73,7 +73,7 @@ fn counters(t: &TestEngine, queue: &Queue, partition: u16) -> QueuePartitionCoun
 	let store = t.inner().single().read_store();
 	SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue.id, partition))
 		.unwrap()
-		.map(|stored| decode_queue_partition_counters(&stored.bytes))
+		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 		.unwrap_or_default()
 }
 
@@ -132,11 +132,8 @@ fn forget_item(t: &TestEngine, queue: &Queue, row: RowNumber) {
 	with_partition(t, queue, partition, |tx| {
 		tx.remove(&QueueItemStateKey::encoded(queue.id, partition, row)).unwrap();
 		tx.remove(&due.encode()).unwrap();
-		tx.set(
-			&QueuePartitionKey::encoded(queue.id, partition),
-			encode_queue_partition_counters(&counters).freeze_bytes(),
-		)
-		.unwrap();
+		tx.set(&QueuePartitionKey::encoded(queue.id, partition), encode_queue_partition_counters(&counters))
+			.unwrap();
 	});
 }
 
@@ -242,14 +239,9 @@ fn test_hydration_does_not_re_admit_an_item_that_reached_a_terminal_status() {
 	with_partition(&t, &queue, 0, |tx| {
 		let mut state = QueueItemState::ready(None);
 		state.status = QueueItemStatus::Done;
-		tx.set(&QueueItemStateKey::encoded(queue.id, 0, done), encode_queue_item_state(&state).freeze_bytes())
-			.unwrap();
+		tx.set(&QueueItemStateKey::encoded(queue.id, 0, done), encode_queue_item_state(&state)).unwrap();
 		tx.remove(&due.encode()).unwrap();
-		tx.set(
-			&QueuePartitionKey::encoded(queue.id, 0),
-			encode_queue_partition_counters(&counters).freeze_bytes(),
-		)
-		.unwrap();
+		tx.set(&QueuePartitionKey::encoded(queue.id, 0), encode_queue_partition_counters(&counters)).unwrap();
 	});
 
 	assert_eq!(hydrate_queues(t.inner()).unwrap(), 0, "a terminal item must not be re-admitted");

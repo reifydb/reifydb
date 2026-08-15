@@ -3,6 +3,7 @@
 
 use std::sync::LazyLock;
 
+use reifydb_codec::row::{pod::EncodedPodRow, queue_attempt::EncodedQueueAttemptRow};
 use reifydb_core::{
 	interface::{
 		catalog::queue::{
@@ -14,7 +15,6 @@ use reifydb_core::{
 	key::{queue_attempt::QueueAttemptKey, queue_schedule::QueueItemStateKey},
 	value::column::columns::Columns,
 };
-use reifydb_codec::row::bytes::RowBuilder;
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::change::{QueueAckTransition, QueueRowAck, RowChange};
 use reifydb_value::{
@@ -178,7 +178,7 @@ fn live_state(ctx: &ProcedureContext<'_, '_>, token: &ClaimToken) -> Result<Opti
 	let Some(stored) = SingleVersionGet::get(&store, &key)? else {
 		return Ok(None);
 	};
-	let Some(state) = decode_queue_item_state(&stored.bytes) else {
+	let Some(state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
 		return Ok(None);
 	};
 
@@ -194,7 +194,7 @@ fn existing_attempt(
 	token: &ClaimToken,
 ) -> Result<Option<QueueAttemptRecord>, RoutineError> {
 	let key = QueueAttemptKey::encoded(token.queue, token.row, token.attempt);
-	Ok(ctx.tx.get(&key)?.and_then(|stored| decode_queue_attempt(&stored.bytes)))
+	Ok(ctx.tx.get(&key)?.and_then(|stored| decode_queue_attempt(EncodedQueueAttemptRow::view(&stored.bytes))))
 }
 
 fn write_attempt(
@@ -203,7 +203,7 @@ fn write_attempt(
 	record: QueueAttemptRecord,
 ) -> Result<(), RoutineError> {
 	let key = QueueAttemptKey::encoded(token.queue, token.row, token.attempt);
-	ctx.tx.set(&key, encode_queue_attempt(&record).freeze_bytes())?;
+	ctx.tx.set(&key, encode_queue_attempt(&record))?;
 	Ok(())
 }
 

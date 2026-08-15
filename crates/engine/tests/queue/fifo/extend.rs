@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -38,7 +39,7 @@ fn state_of(t: &TestEngine, queue: QueueId) -> QueueItemState {
 		.unwrap()
 		.items
 		.iter()
-		.map(|item| decode_queue_item_state(&item.bytes).unwrap())
+		.map(|item| decode_queue_item_state(EncodedPodRow::view(&item.bytes)).unwrap())
 		.next()
 		.expect("the queue must hold exactly one item")
 }

@@ -12,8 +12,10 @@ use reifydb::{
 	testing::db::{TempDbPath, TestDb},
 	transaction::transaction::Transaction,
 };
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
-use reifydb_test_harness::engine::AsEngine;
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::pod::EncodedPodRow,
+};
 use reifydb_value::value::identity::IdentityId;
 
 fn queue_id(db: &TestDb, name: &str) -> QueueId {
@@ -39,7 +41,7 @@ fn depth(db: &TestDb, queue: QueueId, partition: u16) -> u64 {
 	let store = db.engine().single().read_store();
 	SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue, partition))
 		.unwrap()
-		.map(|stored| decode_queue_partition_counters(&stored.bytes).depth)
+		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)).depth)
 		.unwrap_or_default()
 }
 

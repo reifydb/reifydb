@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::{
 		catalog::queue::{Queue, QueuePartitionCounters, decode_queue_partition_counters},
@@ -32,7 +33,7 @@ pub(crate) fn partition_stats(txn: &mut Transaction<'_>, queue: &Queue) -> Resul
 
 	for partition in 0..queue.partitions() {
 		let counters = SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue.id, partition))?
-			.map(|stored| decode_queue_partition_counters(&stored.bytes))
+			.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 			.unwrap_or_default();
 
 		let batch = SingleVersionRangeRev::range_rev_batch(

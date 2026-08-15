@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -45,7 +46,10 @@ fn states(t: &TestEngine, queue: QueueId) -> Vec<(QueueItemStateKey, QueueItemSt
 		.items
 		.iter()
 		.map(|item| {
-			(QueueItemStateKey::decode(&item.key).unwrap(), decode_queue_item_state(&item.bytes).unwrap())
+			(
+				QueueItemStateKey::decode(&item.key).unwrap(),
+				decode_queue_item_state(EncodedPodRow::view(&item.bytes)).unwrap(),
+			)
 		})
 		.collect()
 }
@@ -64,7 +68,7 @@ fn counters(t: &TestEngine, queue: QueueId, partition: u16) -> QueuePartitionCou
 	let store = t.inner().single().read_store();
 	SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue, partition))
 		.unwrap()
-		.map(|stored| decode_queue_partition_counters(&stored.bytes))
+		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 		.unwrap_or_default()
 }
 
@@ -74,7 +78,12 @@ fn counter_rows(t: &TestEngine, queue: QueueId) -> Vec<(QueuePartitionKey, Queue
 		.unwrap()
 		.items
 		.iter()
-		.map(|item| (QueuePartitionKey::decode(&item.key).unwrap(), decode_queue_partition_counters(&item.bytes)))
+		.map(|item| {
+			(
+				QueuePartitionKey::decode(&item.key).unwrap(),
+				decode_queue_partition_counters(EncodedPodRow::view(&item.bytes)),
+			)
+		})
 		.collect()
 }
 

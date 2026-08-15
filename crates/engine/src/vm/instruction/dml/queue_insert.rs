@@ -6,7 +6,8 @@ use std::{collections::HashMap, sync::Arc};
 use postcard::to_stdvec;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
-	pod::EncodedPodRow,
+	queue::EncodedQueueRow,
+	queue_deduplication::EncodedQueueDeduplicationRow,
 	shape::RowShape,
 };
 use reifydb_core::{
@@ -18,7 +19,7 @@ use reifydb_core::{
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
-			queue::Queue,
+			queue::{Queue, decode_queue_deduplication, encode_queue_deduplication},
 		},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedQueue},
 	},
@@ -134,8 +135,13 @@ pub(crate) fn insert_queue(
 				if let Some(key) = &item.deduplication_key {
 					write_deduplication_record(txn, &queue, key, row_number, now)?;
 				}
-				let placement =
-					placement_of(&queue, &shape, &item.encoded, ordered_by_index, row_number);
+				let placement = placement_of(
+					&queue,
+					&shape,
+					EncodedQueueRow::view(&item.encoded),
+					ordered_by_index,
+					row_number,
+				);
 				rows.push(QueueInsertRow {
 					row_number,
 					partition: placement.partition,
@@ -203,26 +209,6 @@ struct ReturnedRow {
 	encoded: EncodedBytes,
 }
 
-const DEDUPLICATION_RECORD_WIDTH: usize = 16;
-
-fn encode_deduplication_record(row_number: RowNumber, expires_at: DateTime) -> EncodedPodRow {
-	let mut bytes = Vec::with_capacity(DEDUPLICATION_RECORD_WIDTH);
-	bytes.extend_from_slice(&row_number.0.to_be_bytes());
-	bytes.extend_from_slice(&expires_at.to_millis().to_be_bytes());
-	EncodedPodRow::new(&bytes)
-}
-
-fn decode_deduplication_record(row: &EncodedPodRow) -> Option<(RowNumber, DateTime)> {
-	let bytes = row.body();
-	if bytes.len() != DEDUPLICATION_RECORD_WIDTH {
-		return None;
-	}
-	Some((
-		RowNumber(u64::from_be_bytes(bytes[..8].try_into().ok()?)),
-		DateTime::from_millis(u64::from_be_bytes(bytes[8..].try_into().ok()?)),
-	))
-}
-
 fn write_deduplication_record(
 	txn: &mut Transaction<'_>,
 	queue: &Queue,
@@ -231,7 +217,7 @@ fn write_deduplication_record(
 	now: DateTime,
 ) -> Result<()> {
 	let ttl = queue.deduplicate.as_ref().map(|d| d.ttl).unwrap_or(Duration::MAX);
-	let record = encode_deduplication_record(row_number, now.saturating_add(ttl));
+	let record = encode_queue_deduplication(row_number, now.saturating_add(ttl));
 	txn.set(&QueueDeduplicationKey::encoded(queue.id, key.to_vec()), record.into_bytes())?;
 	Ok(())
 }
@@ -262,13 +248,12 @@ fn resolve_duplicates(
 		let stored = txn.get(&QueueDeduplicationKey::encoded(queue.id, key.clone()))?;
 		if let Some(stored) = stored {
 			let Some((row_number, expires_at)) =
-				decode_deduplication_record(EncodedPodRow::view(&stored.bytes))
+				decode_queue_deduplication(EncodedQueueDeduplicationRow::view(&stored.bytes))
 			else {
 				return_internal_error!(
-					"Queue {} deduplication record is {} bytes wide, expected {}. This indicates a corrupt record.",
+					"Queue {} deduplication record is {} bytes wide, too short for its header. This indicates a corrupt record.",
 					queue.name,
-					stored.bytes.len(),
-					DEDUPLICATION_RECORD_WIDTH
+					stored.bytes.len()
 				)
 			};
 			if expires_at > now {
