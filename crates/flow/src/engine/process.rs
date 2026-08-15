@@ -21,7 +21,7 @@ use reifydb_value::{
 use tracing::{Span, field, info, instrument};
 
 use crate::{
-	engine::{FlowEngineInner, execution::COMPLETENESS_OBJECT},
+	engine::{COMPLETENESS_OBJECT, FlowEngineInner},
 	operator::max_input_time,
 	transaction::{
 		ChangeCoordinate, FlowTransaction,

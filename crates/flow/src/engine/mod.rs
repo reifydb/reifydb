@@ -4,9 +4,13 @@
 //! Flow execution engine: registers compiled flow definitions and evaluates each flow's operator
 //! graph against incoming change deltas, writing the outputs back through the catalog.
 
-pub mod eval;
-pub mod execution;
+mod dispatch;
+pub mod frontier;
+mod lifecycle;
+mod process;
 pub mod register;
+mod tick;
+mod timers;
 
 use std::{
 	collections::{BTreeMap, BTreeSet},
@@ -15,7 +19,6 @@ use std::{
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	common::CommitVersion,
 	event::EventBus,
 	interface::catalog::{
 		flow::{FlowId, OperatorId},
@@ -40,6 +43,8 @@ use crate::{
 	transaction::substrate::FlowSubstrate,
 };
 
+pub const COMPLETENESS_OBJECT: ObjectId = ObjectId::Table(TableId::SOURCE_COMPLETENESS);
+
 pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,
 	pub(crate) routines: Routines,
@@ -51,7 +56,6 @@ pub struct FlowEngineInner {
 	pub(crate) analyzer: FlowGraphAnalyzer,
 	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,
-	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
 	pub(crate) runtime_context: RuntimeContext,
 	pub(crate) operator_provider: Arc<dyn OperatorProvider>,
 	pub(crate) substrate: FlowSubstrate,
@@ -85,7 +89,6 @@ impl FlowEngineInner {
 			sinks: BTreeMap::new(),
 			analyzer: FlowGraphAnalyzer::new(),
 			event_bus,
-			flow_creation_versions: BTreeMap::new(),
 			runtime_context,
 			operator_provider,
 			substrate,
@@ -125,11 +128,6 @@ impl FlowEngineInner {
 		self.operators.insert(operator_id, operator);
 	}
 
-	pub fn register_flow_dag(&mut self, flow: FlowDag) {
-		self.analyzer.add(flow.clone());
-		self.flows.insert(flow.id, flow);
-	}
-
 	pub fn flow_by_id(&self, flow_id: FlowId) -> Option<FlowDag> {
 		self.flows.get(&flow_id).cloned()
 	}
@@ -144,48 +142,6 @@ impl FlowEngineInner {
 
 	pub fn flow_ids(&self) -> BTreeSet<FlowId> {
 		self.flows.keys().copied().collect()
-	}
-
-	pub fn clear(&mut self) {
-		self.timers.clear();
-		self.operators.clear();
-		self.durable_sinks.clear();
-		self.flows.clear();
-		self.sources.clear();
-		self.sinks.clear();
-		self.analyzer.clear();
-		self.flow_creation_versions.clear();
-	}
-
-	pub fn remove_flow(&mut self, flow_id: FlowId) {
-		let node_ids: Vec<OperatorId> =
-			self.flows.get(&flow_id).map(|flow| flow.get_operator_ids().collect()).unwrap_or_default();
-
-		self.timers.remove_flow(flow_id);
-
-		for operator_id in node_ids {
-			self.operators.remove(&operator_id);
-			self.durable_sinks.remove(&operator_id);
-			self.substrate
-				.operators
-				.as_ref()
-				.expect("flow engine was built without an operator store")
-				.drop_operator_state(operator_id);
-		}
-
-		for entries in self.sources.values_mut() {
-			entries.retain(|(fid, _)| *fid != flow_id);
-		}
-		self.sources.retain(|_, v| !v.is_empty());
-
-		for entries in self.sinks.values_mut() {
-			entries.retain(|(fid, _)| *fid != flow_id);
-		}
-		self.sinks.retain(|_, v| !v.is_empty());
-
-		self.flows.remove(&flow_id);
-
-		self.analyzer.remove(flow_id);
 	}
 
 	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {
@@ -205,118 +161,5 @@ impl FlowEngineInner {
 	pub fn get_flow_producing_view(&self, view_id: ViewId) -> Option<FlowId> {
 		let dependency_graph = self.analyzer.get_dependency_graph();
 		self.analyzer.get_flow_producing_view(dependency_graph, view_id)
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
-	use reifydb_core::{
-		common::TimeDomain,
-		interface::{
-			WithEventBus,
-			catalog::{flow::FlowId, id::SeriesId},
-		},
-		key::operator_state::GroupId,
-	};
-	use reifydb_rql::flow::{
-		flow::FlowDag,
-		operator::{FlowNode, OperatorDef},
-	};
-	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::{
-		byte_size::ByteSize,
-		value::{datetime::DateTime, row_number::RowNumber},
-	};
-
-	use super::*;
-	use crate::operator::{provider::EmptyOperatorProvider, scan::series::SourceSeriesOperator};
-
-	#[test]
-	fn removing_a_flow_drops_its_operators_state() {
-		// remove_flow is the only operator state teardown a retired flow gets: without drop_operator_state its
-		// operators' state stays resident (and counted in total_bytes) until the process restarts.
-		// Mutation falsified against: removing the drop_operator_state call from remove_flow (per-operator
-		// bytes and the process-wide total both stay non-zero).
-		let engine = TestEngine::new();
-		let mut inner = FlowEngineInner::new(
-			engine.catalog(),
-			engine.executor().routines.clone(),
-			engine.event_bus().clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
-			Arc::new(EmptyOperatorProvider),
-			FlowSubstrate {
-				operators: Some(engine.inner().operator_state()),
-				..FlowSubstrate::default()
-			},
-			OperatorSampleRegistry::new(),
-		);
-
-		let operator = OperatorId(7);
-		let mut builder = FlowDag::builder(FlowId(1));
-		builder.add_node(FlowNode::new(
-			operator,
-			OperatorDef::SourceSeries {
-				series: SeriesId(1),
-				time_domain: TimeDomain::None,
-			},
-		));
-		inner.register_flow_dag(builder.build());
-		inner.insert_operator(operator, Box::new(SourceSeriesOperator::new(operator)));
-
-		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
-		store.set(operator, EncodedKey::new(b"k"), EncodedOperatorRow::timeless(&[1u8; 64]));
-		assert!(store.bytes(operator) > ByteSize::ZERO, "precondition: the operator's state is resident");
-
-		inner.remove_flow(FlowId(1));
-
-		assert_eq!(store.bytes(operator), ByteSize::ZERO, "the retired operator's state must be dropped");
-		assert_eq!(store.total_bytes(), ByteSize::ZERO, "and its bytes must leave the process-wide accounting");
-	}
-
-	#[test]
-	fn removing_a_flow_drops_its_operators_seal_anchors() {
-		// Anchors live outside the key-value rows now, so a drop that spares them leaks a row per sealed group.
-		let engine = TestEngine::new();
-		let mut inner = FlowEngineInner::new(
-			engine.catalog(),
-			engine.executor().routines.clone(),
-			engine.event_bus().clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
-			Arc::new(EmptyOperatorProvider),
-			FlowSubstrate {
-				operators: Some(engine.inner().operator_state()),
-				..FlowSubstrate::default()
-			},
-			OperatorSampleRegistry::new(),
-		);
-
-		let operator = OperatorId(7);
-		let mut builder = FlowDag::builder(FlowId(1));
-		builder.add_node(FlowNode::new(
-			operator,
-			OperatorDef::SourceSeries {
-				series: SeriesId(1),
-				time_domain: TimeDomain::None,
-			},
-		));
-		inner.register_flow_dag(builder.build());
-		inner.insert_operator(operator, Box::new(SourceSeriesOperator::new(operator)));
-
-		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
-		store.anchor_set(operator, GroupId(3), 0, RowNumber(1), DateTime::from_millis(5_000));
-		store.anchor_set(operator, GroupId(4), 0, RowNumber(1), DateTime::from_millis(6_000));
-		assert!(store.bytes(operator) > ByteSize::ZERO, "precondition: the operator's anchors are resident");
-
-		inner.remove_flow(FlowId(1));
-
-		assert_eq!(store.anchors_by_expiry(operator, GroupId(3), 16), Vec::new());
-		assert_eq!(store.anchors_by_expiry(operator, GroupId(4), 16), Vec::new());
-		assert_eq!(store.bytes(operator), ByteSize::ZERO, "the retired operator's anchors must be dropped");
-		assert_eq!(
-			store.total_bytes(),
-			ByteSize::ZERO,
-			"and their bytes must leave the process-wide accounting"
-		);
 	}
 }

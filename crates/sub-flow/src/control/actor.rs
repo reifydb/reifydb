@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow::{
-	engine::{FlowEngineInner, execution::frontier::WatermarkHolds},
+	engine::{FlowEngineInner, frontier::WatermarkHolds},
 	operator::metrics::OperatorSampleRegistry,
 	transaction::substrate::FlowSubstrate,
 };

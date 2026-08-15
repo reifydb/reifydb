@@ -11,7 +11,7 @@ use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
 
 use crate::{
-	engine::{FlowEngineInner, execution::dispatch::Node},
+	engine::{FlowEngineInner, dispatch::Node},
 	operator::host::TxnHostContext,
 	timer::{Timer, TimerDue},
 	transaction::{ChangeCoordinate, FlowTransaction},

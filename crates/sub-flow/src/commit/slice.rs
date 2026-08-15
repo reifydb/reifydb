@@ -15,10 +15,7 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow::{
-	engine::{
-		FlowEngineInner,
-		execution::{COMPLETENESS_OBJECT, frontier::WatermarkHolds},
-	},
+	engine::{COMPLETENESS_OBJECT, FlowEngineInner, frontier::WatermarkHolds},
 	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction},
 };
 use reifydb_transaction::change_accumulator::ChangeAccumulator;
@@ -510,7 +507,7 @@ mod integration {
 		key::{Key, kind::KeyKind},
 	};
 	use reifydb_flow::{
-		engine::execution::frontier::WatermarkHold,
+		engine::frontier::WatermarkHold,
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{
 			read::{ReadFrom, read_from},
