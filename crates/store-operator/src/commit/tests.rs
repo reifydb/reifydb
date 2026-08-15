@@ -225,6 +225,53 @@ fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 }
 
 #[test]
+fn a_window_that_spans_nothing_reads_empty_instead_of_panicking() {
+	let buffer = seeded_two_layer_buffer();
+
+	for (label, start, end) in [
+		("both bounds excluded on the same key", Bound::Excluded(key("b")), Bound::Excluded(key("b"))),
+		("an excluded end on the included start", Bound::Included(key("b")), Bound::Excluded(key("b"))),
+		("an excluded start under the included end", Bound::Excluded(key("b")), Bound::Included(key("b"))),
+		("a start past its end", Bound::Included(key("d")), Bound::Included(key("b"))),
+	] {
+		let window = buffer.state_range(OP_A, start.as_ref(), end.as_ref()).items;
+		assert!(window.is_empty(), "{label} spans no key, so the range must report no rows");
+	}
+}
+
+#[test]
+fn a_window_closed_on_one_key_still_returns_that_key() {
+	let buffer = seeded_two_layer_buffer();
+
+	let window = buffer.state_range(OP_A, Bound::Included(&key("b")), Bound::Included(&key("b"))).items;
+	let keys: Vec<Vec<u8>> = window.iter().map(|(k, _)| k.to_vec()).collect();
+	assert_eq!(keys, vec![b"b".to_vec()], "an inclusive pair on one key must still read that key");
+	assert_eq!(body(&window[0].1), "live-b", "the overlay must still apply inside a one-key window");
+}
+
+#[test]
+fn a_window_that_spans_nothing_still_reports_a_pending_drop() {
+	let buffer = seeded_two_layer_buffer();
+	buffer.record_drop(DropMarker::OperatorState(OP_A));
+
+	let window = buffer.state_range(OP_A, Bound::Excluded(&key("b")), Bound::Excluded(&key("b")));
+	assert!(window.items.is_empty(), "an empty span carries no rows");
+	assert!(window.dropped, "a pending drop must be reported even when the span is empty");
+}
+
+fn seeded_two_layer_buffer() -> OperatorCommitBuffer {
+	let buffer = OperatorCommitBuffer::new();
+	buffer.record_state_set(OP_A, key("a"), row("flushing-a"));
+	buffer.record_state_set(OP_A, key("b"), row("flushing-b"));
+	buffer.record_state_set(OP_A, key("c"), row("flushing-c"));
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+
+	buffer.record_state_set(OP_A, key("b"), row("live-b"));
+	buffer.record_state_set(OP_A, key("d"), row("live-d"));
+	buffer
+}
+
+#[test]
 fn anchors_for_group_overlays_the_in_flight_batch_and_keeps_tombstones() {
 	let buffer = OperatorCommitBuffer::new();
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
