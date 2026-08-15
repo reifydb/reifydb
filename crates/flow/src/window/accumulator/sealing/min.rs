@@ -130,7 +130,11 @@ mod tests {
 		other.add(&(at_millis(0), 9));
 
 		accumulator.absorb(&other);
-		assert_eq!(accumulator.min(), Some(1), "absorbing a larger value at the same coordinate must not raise the min");
+		assert_eq!(
+			accumulator.min(),
+			Some(1),
+			"absorbing a larger value at the same coordinate must not raise the min"
+		);
 	}
 
 	#[test]
@@ -186,7 +190,8 @@ mod tests {
 
 	#[test]
 	fn sealing_min_absorb_keeps_a_branch_minimum_that_predates_the_seal_line() {
-		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not swallow the other branch.
+		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not
+		// swallow the other branch.
 		let mut left: SealingMin<DateTime, i64> = SealingMin::amendable(millis(10));
 		left.add(&(at_millis(0), 5));
 

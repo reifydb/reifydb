@@ -155,7 +155,8 @@ mod tests {
 
 	#[test]
 	fn sealing_endpoint_close_is_the_latest_surviving_row_not_the_open() {
-		// Only the earliest sealed coordinate is kept, so retracting the live tail must never make close report the window's first value as its last.
+		// Only the earliest sealed coordinate is kept, so retracting the live tail must never make close report
+		// the window's first value as its last.
 		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
 		accumulator.add(&(at_millis(0), 1));
 		accumulator.add(&(at_millis(5), 2));
@@ -179,7 +180,8 @@ mod tests {
 
 	#[test]
 	fn sealing_endpoint_absorb_keeps_a_branch_open_that_predates_the_seal_line() {
-		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not swallow the other branch.
+		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not
+		// swallow the other branch.
 		let mut left: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
 		left.add(&(at_millis(0), 1));
 

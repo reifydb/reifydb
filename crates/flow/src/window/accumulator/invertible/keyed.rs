@@ -109,7 +109,8 @@ mod tests {
 
 	#[test]
 	fn keyed_invertible_remove_of_an_unknown_key_is_a_silent_no_op() {
-		// Routing swallows what the leaf accumulator would have caught, so a mis-keyed retraction leaves no trace.
+		// Routing swallows what the leaf accumulator would have caught, so a mis-keyed retraction leaves no
+		// trace.
 		let mut accumulator: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
 		accumulator.add(&(1, 10.0));
 

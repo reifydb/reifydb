@@ -343,7 +343,6 @@ fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
 		let out = h
 			.apply(TestChangeBuilder::new().insert(input_row(rn, "BTC", ts, 10.0 + ts as f64)).build())
 			.expect("apply");
-		println!("[win-probe] event_ts={ts} diffs={}", out.diffs.len());
 		assert!(
 			!out.diffs.is_empty(),
 			"the window at event_ts={ts} published nothing; a ladder whose watermark tracks its \
@@ -373,8 +372,6 @@ fn a_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
 	h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
 
 	let late = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
-	println!("[win-probe] late row into sealed window diffs={}", late.diffs.len());
-
 	assert!(
 		late.diffs.is_empty(),
 		"a row landing in a window the watermark has already sealed must be dropped, not merged; \

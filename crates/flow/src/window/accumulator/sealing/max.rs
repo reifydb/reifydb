@@ -148,7 +148,11 @@ mod tests {
 		other.add(&(at_millis(0), 1));
 
 		accumulator.absorb(&other);
-		assert_eq!(accumulator.max(), Some(9), "absorbing a smaller value at the same coordinate must not lower the max");
+		assert_eq!(
+			accumulator.max(),
+			Some(9),
+			"absorbing a smaller value at the same coordinate must not lower the max"
+		);
 	}
 
 	#[test]
@@ -185,7 +189,8 @@ mod tests {
 
 	#[test]
 	fn sealing_max_absorb_keeps_a_branch_maximum_that_predates_the_seal_line() {
-		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not swallow the other branch.
+		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not
+		// swallow the other branch.
 		let mut left: SealingMax<DateTime, i64> = SealingMax::amendable(millis(10));
 		left.add(&(at_millis(0), 9));
 

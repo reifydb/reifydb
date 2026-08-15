@@ -277,12 +277,17 @@ mod tests {
 		assert_eq!(accumulator.finalize(), Some(30.0));
 
 		accumulator.add(&(at_millis(0), 10.0));
-		assert_eq!(accumulator.finalize(), Some(30.0), "re-sealing a corrected coordinate must not add it twice");
+		assert_eq!(
+			accumulator.finalize(),
+			Some(30.0),
+			"re-sealing a corrected coordinate must not add it twice"
+		);
 	}
 
 	#[test]
 	fn sealing_fold_matches_the_unsealed_arm_for_in_order_adds() {
-		// The sealed prefix folds once at add and the tail replays at finalize; together they must be the whole path.
+		// The sealed prefix folds once at add and the tail replays at finalize; together they must be the whole
+		// path.
 		assert_arms_agree(
 			SealingFold::<DateTime, AbsPathFold>::new(millis(1), ()),
 			SealingFold::<DateTime, AbsPathFold>::unsealed(()),

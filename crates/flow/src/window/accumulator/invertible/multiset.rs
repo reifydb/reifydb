@@ -228,7 +228,8 @@ mod tests {
 
 	#[test]
 	fn multiset_merge_then_unmerge_restores_the_original() {
-		// merge/unmerge is the branch-combine path; any drift between counts and total corrupts every quantile after it.
+		// merge/unmerge is the branch-combine path; any drift between counts and total corrupts every quantile
+		// after it.
 		let mut base: Multiset<u64> = Multiset::default();
 		for v in [1u64, 2, 2, 5] {
 			base.add(v);
