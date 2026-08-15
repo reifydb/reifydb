@@ -93,7 +93,7 @@ fn endpoint(amendable: Duration) -> SealingEndpoint<WindowSlotKey, Value> {
 	if amendable.is_zero() {
 		SealingEndpoint::default()
 	} else {
-		SealingEndpoint::with_amendable(amendable)
+		SealingEndpoint::amendable(amendable)
 	}
 }
 
@@ -122,14 +122,14 @@ impl AggregateSlot {
 				if amendable.is_zero() {
 					AggregateSlot::Min(Multiset::default())
 				} else {
-					AggregateSlot::MinSealed(SealingMin::with_amendable(amendable))
+					AggregateSlot::MinSealed(SealingMin::amendable(amendable))
 				}
 			}
 			SlotKind::Max => {
 				if amendable.is_zero() {
 					AggregateSlot::Max(Multiset::default())
 				} else {
-					AggregateSlot::MaxSealed(SealingMax::with_amendable(amendable))
+					AggregateSlot::MaxSealed(SealingMax::amendable(amendable))
 				}
 			}
 			SlotKind::First => AggregateSlot::First(endpoint(amendable)),

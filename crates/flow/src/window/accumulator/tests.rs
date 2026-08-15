@@ -394,7 +394,7 @@ fn keyed_invertible_roundtrip() {
 
 #[test]
 fn sealing_max_seals_aged_and_keeps_recent_tail_removal_safe() {
-	let mut accumulator: SealingMax<DateTime, i64> = SealingMax::with_amendable(millis(10));
+	let mut accumulator: SealingMax<DateTime, i64> = SealingMax::amendable(millis(10));
 	accumulator.add(&(at_millis(0), 5));
 	accumulator.add(&(at_millis(5), 8));
 	accumulator.add(&(at_millis(12), 3));
@@ -409,7 +409,7 @@ fn sealing_max_seals_aged_and_keeps_recent_tail_removal_safe() {
 
 #[test]
 fn sealing_min_seals_aged_extreme() {
-	let mut accumulator: SealingMin<DateTime, i64> = SealingMin::with_amendable(millis(10));
+	let mut accumulator: SealingMin<DateTime, i64> = SealingMin::amendable(millis(10));
 	accumulator.add(&(at_millis(0), 2));
 	accumulator.add(&(at_millis(5), 9));
 	accumulator.add(&(at_millis(12), 7));
@@ -433,7 +433,7 @@ fn sealing_max_default_never_seals_and_is_fully_invertible() {
 
 #[test]
 fn sealing_endpoint_freezes_open_and_tracks_live_close() {
-	let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::with_amendable(millis(10));
+	let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
 	accumulator.add(&(at_millis(0), 100));
 	accumulator.add(&(at_millis(5), 200));
 	accumulator.add(&(at_millis(12), 300));
@@ -461,14 +461,14 @@ fn sealing_endpoint_default_is_fully_invertible() {
 
 #[test]
 fn sealing_primitives_roundtrip() {
-	let mut mx: SealingMax<DateTime, i64> = SealingMax::with_amendable(millis(10));
+	let mut mx: SealingMax<DateTime, i64> = SealingMax::amendable(millis(10));
 	mx.add(&(at_millis(0), 5));
 	mx.add(&(at_millis(12), 8));
 	let bytes = mx.encode_state(DateTime::EPOCH).expect("encode");
 	let restored: SealingMax<DateTime, i64> = decode(&bytes).expect("decode");
 	assert_eq!(restored, mx);
 
-	let mut ep: SealingEndpoint<DateTime, i64> = SealingEndpoint::with_amendable(millis(10));
+	let mut ep: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
 	ep.add(&(at_millis(0), 100));
 	ep.add(&(at_millis(12), 300));
 	let bytes = ep.encode_state(DateTime::EPOCH).expect("encode");
@@ -506,7 +506,7 @@ fn sealing_fold_no_seal_sums_all_adjacent_steps() {
 
 #[test]
 fn sealing_fold_seals_aged_prefix_exactly_for_forward_data() {
-	let mut accumulator: SealingFold<DateTime, AbsPathFold> = SealingFold::with_amendable(millis(1));
+	let mut accumulator: SealingFold<DateTime, AbsPathFold> = SealingFold::amendable(millis(1));
 	accumulator.add(&(at_millis(0), 10.0));
 	accumulator.add(&(at_millis(1), 20.0));
 	accumulator.add(&(at_millis(2), 15.0));
@@ -515,7 +515,7 @@ fn sealing_fold_seals_aged_prefix_exactly_for_forward_data() {
 
 #[test]
 fn sealing_fold_aged_removal_is_dropped_no_op_but_live_removal_is_safe() {
-	let mut accumulator: SealingFold<DateTime, AbsPathFold> = SealingFold::with_amendable(millis(1));
+	let mut accumulator: SealingFold<DateTime, AbsPathFold> = SealingFold::amendable(millis(1));
 	accumulator.add(&(at_millis(0), 10.0));
 	accumulator.add(&(at_millis(1), 20.0));
 	accumulator.add(&(at_millis(2), 15.0));
@@ -537,7 +537,7 @@ fn sealing_fold_default_add_remove_is_inverse() {
 
 #[test]
 fn sealing_fold_roundtrip() {
-	let mut accumulator: SealingFold<DateTime, AbsPathFold> = SealingFold::with_amendable(millis(1));
+	let mut accumulator: SealingFold<DateTime, AbsPathFold> = SealingFold::amendable(millis(1));
 	accumulator.add(&(at_millis(0), 10.0));
 	accumulator.add(&(at_millis(1), 20.0));
 	accumulator.add(&(at_millis(2), 15.0));
@@ -548,7 +548,7 @@ fn sealing_fold_roundtrip() {
 
 #[test]
 fn sealing_tail_drops_aged_keeps_recent() {
-	let mut tail: SealingTail<DateTime, i64> = SealingTail::with_amendable(millis(10));
+	let mut tail: SealingTail<DateTime, i64> = SealingTail::amendable(millis(10));
 	tail.add(at_millis(0), 1);
 	tail.add(at_millis(5), 2);
 	tail.add(at_millis(12), 3);
@@ -569,7 +569,7 @@ fn sealing_tail_default_never_drops() {
 
 #[test]
 fn sealing_tail_roundtrip() {
-	let mut tail: SealingTail<DateTime, i64> = SealingTail::with_amendable(millis(10));
+	let mut tail: SealingTail<DateTime, i64> = SealingTail::amendable(millis(10));
 	tail.add(at_millis(0), 1);
 	tail.add(at_millis(12), 3);
 	let bytes = tail.encode_state(DateTime::EPOCH).expect("encode");
@@ -598,7 +598,7 @@ fn tail_acc_default_add_remove_is_inverse() {
 
 #[test]
 fn tail_acc_with_amendable_drops_aged_from_finalize() {
-	let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::with_amendable(millis(10));
+	let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::amendable(millis(10));
 	accumulator.add(&(at_millis(0), 10));
 	accumulator.add(&(at_millis(5), 20));
 	accumulator.add(&(at_millis(12), 30));
@@ -612,7 +612,7 @@ fn tail_acc_with_amendable_drops_aged_from_finalize() {
 
 #[test]
 fn tail_acc_roundtrip() {
-	let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::with_amendable(millis(10));
+	let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::amendable(millis(10));
 	accumulator.add(&(at_millis(0), 1));
 	accumulator.add(&(at_millis(12), 3));
 	let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");

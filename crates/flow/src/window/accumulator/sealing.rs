@@ -37,7 +37,7 @@ impl<C: Slot, V> Default for SealingBase<C, V> {
 }
 
 impl<C: Slot, V> SealingBase<C, V> {
-	fn with_amendable(amendable: SlotSpan<C>) -> Self {
+	fn amendable(amendable: SlotSpan<C>) -> Self {
 		Self {
 			amendable: Some(amendable),
 			high_water: None,
@@ -95,9 +95,9 @@ impl<C: Slot, V: Ord> Default for SealingMax<C, V> {
 }
 
 impl<C: Slot, V: Ord + Clone> SealingMax<C, V> {
-	pub fn with_amendable(amendable: SlotSpan<C>) -> Self {
+	pub fn amendable(amendable: SlotSpan<C>) -> Self {
 		Self {
-			base: SealingBase::with_amendable(amendable),
+			base: SealingBase::amendable(amendable),
 			sealed: None,
 		}
 	}
@@ -179,9 +179,9 @@ impl<C: Slot, V: Ord> Default for SealingMin<C, V> {
 }
 
 impl<C: Slot, V: Ord + Clone> SealingMin<C, V> {
-	pub fn with_amendable(amendable: SlotSpan<C>) -> Self {
+	pub fn amendable(amendable: SlotSpan<C>) -> Self {
 		Self {
-			base: SealingBase::with_amendable(amendable),
+			base: SealingBase::amendable(amendable),
 			sealed: None,
 		}
 	}
@@ -263,9 +263,9 @@ impl<C: Slot, V> Default for SealingEndpoint<C, V> {
 }
 
 impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
-	pub fn with_amendable(amendable: SlotSpan<C>) -> Self {
+	pub fn amendable(amendable: SlotSpan<C>) -> Self {
 		Self {
-			base: SealingBase::with_amendable(amendable),
+			base: SealingBase::amendable(amendable),
 			sealed_open: None,
 		}
 	}
@@ -388,9 +388,9 @@ impl<C: Slot, F: SealFold> Default for SealingFold<C, F> {
 }
 
 impl<C: Slot, F: SealFold> SealingFold<C, F> {
-	pub fn with_amendable(amendable: SlotSpan<C>) -> Self {
+	pub fn amendable(amendable: SlotSpan<C>) -> Self {
 		Self {
-			base: SealingBase::with_amendable(amendable),
+			base: SealingBase::amendable(amendable),
 			sealed: F::State::default(),
 			last_sealed: None,
 			marker: PhantomData,
@@ -448,9 +448,9 @@ impl<C: Slot, V> Default for SealingTail<C, V> {
 }
 
 impl<C: Slot, V: Clone> SealingTail<C, V> {
-	pub fn with_amendable(amendable: SlotSpan<C>) -> Self {
+	pub fn amendable(amendable: SlotSpan<C>) -> Self {
 		Self {
-			base: SealingBase::with_amendable(amendable),
+			base: SealingBase::amendable(amendable),
 		}
 	}
 
@@ -486,9 +486,9 @@ impl<C: Slot, V> Default for TailAccumulator<C, V> {
 }
 
 impl<C: Slot, V: Clone> TailAccumulator<C, V> {
-	pub fn with_amendable(amendable: SlotSpan<C>) -> Self {
+	pub fn amendable(amendable: SlotSpan<C>) -> Self {
 		Self {
-			events: SealingTail::with_amendable(amendable),
+			events: SealingTail::amendable(amendable),
 		}
 	}
 }

@@ -311,9 +311,9 @@ pub struct OhlcvAcc {
 impl Default for OhlcvAcc {
 	fn default() -> Self {
 		Self {
-			high: SealingMax::with_amendable(millis(OHLCV_AMENDABLE)),
-			low: SealingMin::with_amendable(millis(OHLCV_AMENDABLE)),
-			ends: SealingEndpoint::with_amendable(millis(OHLCV_AMENDABLE)),
+			high: SealingMax::amendable(millis(OHLCV_AMENDABLE)),
+			low: SealingMin::amendable(millis(OHLCV_AMENDABLE)),
+			ends: SealingEndpoint::amendable(millis(OHLCV_AMENDABLE)),
 		}
 	}
 }
