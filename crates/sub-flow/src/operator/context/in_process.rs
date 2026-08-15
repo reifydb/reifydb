@@ -12,10 +12,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
 	state::store::TimerKind,
 };
-use reifydb_flow::{
-	operator::{host::HostContext, state::reclaim::ReclaimOutcome},
-	window::event::Polarity,
-};
+use reifydb_flow::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
@@ -68,24 +65,38 @@ impl<'a> InProcessContext<'a> {
 	}
 }
 
-pub struct InProcessEmit<'a> {
+pub struct InProcessInsertEmit<'a> {
 	sink: InProcessRowSink,
 	diffs: &'a mut Vec<Diff>,
-	kind: Polarity,
 	now: DateTime,
 }
 
-impl GuestEmit for InProcessEmit<'_> {
+impl GuestEmit for InProcessInsertEmit<'_> {
 	type Sink = InProcessRowSink;
 	fn sink(&mut self) -> &mut InProcessRowSink {
 		&mut self.sink
 	}
 	fn finish(self, row_numbers: &[RowNumber]) -> SdkResult<()> {
 		let columns = self.sink.finish(row_numbers.to_vec(), self.now)?;
-		match self.kind {
-			Polarity::Insert => self.diffs.push(Diff::insert(columns)),
-			Polarity::Remove => self.diffs.push(Diff::remove(columns)),
-		}
+		self.diffs.push(Diff::insert(columns));
+		Ok(())
+	}
+}
+
+pub struct InProcessRemoveEmit<'a> {
+	sink: InProcessRowSink,
+	diffs: &'a mut Vec<Diff>,
+	now: DateTime,
+}
+
+impl GuestEmit for InProcessRemoveEmit<'_> {
+	type Sink = InProcessRowSink;
+	fn sink(&mut self) -> &mut InProcessRowSink {
+		&mut self.sink
+	}
+	fn finish(self, row_numbers: &[RowNumber]) -> SdkResult<()> {
+		let columns = self.sink.finish(row_numbers.to_vec(), self.now)?;
+		self.diffs.push(Diff::remove(columns));
 		Ok(())
 	}
 }
@@ -251,7 +262,7 @@ impl GuestDictionary for InProcessDictionary<'_> {
 
 impl GuestContext for InProcessContext<'_> {
 	type InsertEmit<'a>
-		= InProcessEmit<'a>
+		= InProcessInsertEmit<'a>
 	where
 		Self: 'a;
 	type UpdateEmit<'a>
@@ -259,7 +270,7 @@ impl GuestContext for InProcessContext<'_> {
 	where
 		Self: 'a;
 	type RemoveEmit<'a>
-		= InProcessEmit<'a>
+		= InProcessRemoveEmit<'a>
 	where
 		Self: 'a;
 
@@ -341,12 +352,11 @@ impl GuestContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).reclaim_group_identity(group, limit) }.map_err(to_sdk_err)
 	}
-	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<InProcessEmit<'_>> {
+	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<InProcessInsertEmit<'_>> {
 		let now = self.now;
-		Ok(InProcessEmit {
+		Ok(InProcessInsertEmit {
 			sink: InProcessRowSink::new(R::COLUMNS)?,
 			diffs: &mut self.diffs,
-			kind: Polarity::Insert,
 			now,
 		})
 	}
@@ -359,12 +369,11 @@ impl GuestContext for InProcessContext<'_> {
 			now,
 		})
 	}
-	fn remove_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<InProcessEmit<'_>> {
+	fn remove_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<InProcessRemoveEmit<'_>> {
 		let now = self.now;
-		Ok(InProcessEmit {
+		Ok(InProcessRemoveEmit {
 			sink: InProcessRowSink::new(R::COLUMNS)?,
 			diffs: &mut self.diffs,
-			kind: Polarity::Remove,
 			now,
 		})
 	}

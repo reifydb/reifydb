@@ -13,7 +13,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
 	state::store::TimerKind,
 };
-use reifydb_flow::{operator::state::reclaim::ReclaimOutcome, window::event::Polarity};
+use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
 use reifydb_value::value::{
 	Value,
 	datetime::DateTime,
@@ -44,14 +44,13 @@ use crate::{
 	},
 };
 
-pub struct ExternCRowEmit<'a> {
+pub struct ExternCInsertEmit<'a> {
 	builder: ColumnsBuilder<'a>,
 	sink: ExternCRowSink<'a>,
 	names: Vec<&'static str>,
-	kind: Polarity,
 }
 
-impl<'a> GuestEmit for ExternCRowEmit<'a> {
+impl<'a> GuestEmit for ExternCInsertEmit<'a> {
 	type Sink = ExternCRowSink<'a>;
 	fn sink(&mut self) -> &mut ExternCRowSink<'a> {
 		&mut self.sink
@@ -59,10 +58,25 @@ impl<'a> GuestEmit for ExternCRowEmit<'a> {
 	fn finish(self, row_numbers: &[RowNumber]) -> Result<()> {
 		let mut builder = self.builder;
 		let columns = self.sink.finish_all()?;
-		match self.kind {
-			Polarity::Insert => builder.emit_insert(&columns, &self.names, row_numbers),
-			Polarity::Remove => builder.emit_remove(&columns, &self.names, row_numbers),
-		}
+		builder.emit_insert(&columns, &self.names, row_numbers)
+	}
+}
+
+pub struct ExternCRemoveEmit<'a> {
+	builder: ColumnsBuilder<'a>,
+	sink: ExternCRowSink<'a>,
+	names: Vec<&'static str>,
+}
+
+impl<'a> GuestEmit for ExternCRemoveEmit<'a> {
+	type Sink = ExternCRowSink<'a>;
+	fn sink(&mut self) -> &mut ExternCRowSink<'a> {
+		&mut self.sink
+	}
+	fn finish(self, row_numbers: &[RowNumber]) -> Result<()> {
+		let mut builder = self.builder;
+		let columns = self.sink.finish_all()?;
+		builder.emit_remove(&columns, &self.names, row_numbers)
 	}
 }
 
@@ -251,9 +265,9 @@ impl GuestDictionary for Dictionary<'_> {
 }
 
 impl GuestContext for ExternCContext {
-	type InsertEmit<'a> = ExternCRowEmit<'a>;
+	type InsertEmit<'a> = ExternCInsertEmit<'a>;
 	type UpdateEmit<'a> = ExternCUpdateEmit<'a>;
-	type RemoveEmit<'a> = ExternCRowEmit<'a>;
+	type RemoveEmit<'a> = ExternCRemoveEmit<'a>;
 
 	fn operator_id(&self) -> OperatorId {
 		ExternCContext::operator_id(self)
@@ -300,15 +314,14 @@ impl GuestContext for ExternCContext {
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		ExternCContext::reclaim_group_identity(self, group, limit)
 	}
-	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCRowEmit<'_>> {
+	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCInsertEmit<'_>> {
 		let mut builder = self.builder();
 		let sink = ExternCRowSink::new::<R>(&mut builder, row_capacity)?;
 		let names = R::COLUMNS.iter().map(|(n, _)| *n).collect();
-		Ok(ExternCRowEmit {
+		Ok(ExternCInsertEmit {
 			builder,
 			sink,
 			names,
-			kind: Polarity::Insert,
 		})
 	}
 	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCUpdateEmit<'_>> {
@@ -323,15 +336,14 @@ impl GuestContext for ExternCContext {
 			names,
 		})
 	}
-	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCRowEmit<'_>> {
+	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCRemoveEmit<'_>> {
 		let mut builder = self.builder();
 		let sink = ExternCRowSink::new::<R>(&mut builder, row_capacity)?;
 		let names = R::COLUMNS.iter().map(|(n, _)| *n).collect();
-		Ok(ExternCRowEmit {
+		Ok(ExternCRemoveEmit {
 			builder,
 			sink,
 			names,
-			kind: Polarity::Remove,
 		})
 	}
 }
