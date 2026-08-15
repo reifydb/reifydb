@@ -32,6 +32,18 @@ help:
 	@echo "  make export-selective         - Narrow by namespace / shape / kind (+ dependency closure)"
 	@echo "  make export-tuning            - batch_size and if_not_exists idempotency"
 	@echo ""
+	@echo "Queue Examples:"
+	@echo "  make queue-enqueue-claim - Declare a queue, enqueue with INSERT, claim and ack a job"
+	@echo "  make queue-extend-lease  - A long job extends its lease before the deadline passes"
+	@echo "  make queue-retry         - retry attempts and backoff: err puts a job back, then buries it"
+	@echo "  make queue-dead-replay   - dead buries a job, queue::replay puts it back"
+	@echo "  make queue-ordered       - ordered_by: one job in flight per key, siblings park"
+	@echo "  make queue-partitions    - partitions: two workers claiming side by side"
+	@echo "  make queue-deduplication - deduplicate: a retrying producer enqueues once"
+	@echo "  make queue-delayed       - not_before: a job invisible to claim until it comes due"
+	@echo "  make queue-introspection - system::queues and system::queue_partitions for operators"
+	@echo "  make queue-long-poll     - claim_wait: a worker parks until a producer inserts"
+	@echo ""
 	@echo "Interceptor Examples:"
 	@echo "  make intercept-table-view    - Table and view interceptors (pre/post hooks)"
 	@echo ""
@@ -123,6 +135,46 @@ export-tuning:
 	RUST_LOG=info cargo run --release --bin export-tuning
 
 # Interceptor Examples
+.PHONY: queue-enqueue-claim
+queue-enqueue-claim:
+	cargo run --release --bin queue-enqueue-claim
+
+.PHONY: queue-extend-lease
+queue-extend-lease:
+	cargo run --release --bin queue-extend-lease
+
+.PHONY: queue-retry
+queue-retry:
+	cargo run --release --bin queue-retry
+
+.PHONY: queue-dead-replay
+queue-dead-replay:
+	cargo run --release --bin queue-dead-replay
+
+.PHONY: queue-ordered
+queue-ordered:
+	cargo run --release --bin queue-ordered
+
+.PHONY: queue-partitions
+queue-partitions:
+	cargo run --release --bin queue-partitions
+
+.PHONY: queue-deduplication
+queue-deduplication:
+	cargo run --release --bin queue-deduplication
+
+.PHONY: queue-delayed
+queue-delayed:
+	cargo run --release --bin queue-delayed
+
+.PHONY: queue-introspection
+queue-introspection:
+	cargo run --release --bin queue-introspection
+
+.PHONY: queue-long-poll
+queue-long-poll:
+	cargo run --release --bin queue-long-poll
+
 .PHONY: intercept-table-view
 intercept-table-view:
 	RUST_LOG=info cargo run --release --bin intercept-table-view
@@ -135,6 +187,7 @@ replication-basic:
 # Define example groups
 BASIC_EXAMPLES := basic-hello-world basic-tables basic-enums basic-events-and-handlers
 RQL_EXAMPLES := rql-from rql-map rql-filter rql-sort rql-take rql-aggregate rql-join rql-arithmetic rql-comparison rql-logical
+QUEUE_EXAMPLES := queue-enqueue-claim queue-extend-lease queue-retry queue-dead-replay queue-ordered queue-partitions queue-deduplication queue-delayed queue-introspection queue-long-poll
 INTERCEPT_EXAMPLES := intercept-table-view
 EXPORT_EXAMPLES := export-roundtrip export-schema-data-split export-selective export-tuning
 # Run all examples in order (by directory, then by filename)
@@ -170,6 +223,22 @@ run-all:
 		else \
 			exit_code=$$?; \
 			output=$$(cargo run --release --bin $$example 2>&1); \
+			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
+			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
+			failed_examples="$$failed_examples $$example"; \
+			panic_messages="$$panic_messages\n$$example:\n$$panic\n"; \
+		fi; \
+		echo ""; \
+	done; \
+	echo "=== Queue Examples ==="; \
+	echo ""; \
+	for example in $(QUEUE_EXAMPLES); do \
+		echo "--- Running $$example ---"; \
+		if RUST_LOG=info cargo run --release --bin $$example; then \
+			true; \
+		else \
+			exit_code=$$?; \
+			output=$$(RUST_LOG=info cargo run --release --bin $$example 2>&1); \
 			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
 			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
 			failed_examples="$$failed_examples $$example"; \

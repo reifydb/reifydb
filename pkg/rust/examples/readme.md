@@ -47,6 +47,23 @@ cargo run --bin basic-hello-world
 | `make export-selective` | Narrow exports by namespace / shape / kind, with dependency closure | None |
 | `make export-tuning` | `batch_size` chunking and `if_not_exists` idempotent re-apply | None |
 
+### Queue Examples
+
+Each example demonstrates exactly one use case.
+
+| Make Command | Description | Required Features |
+|--------------|-------------|-------------------|
+| `make queue-enqueue-claim` | Declare a queue, enqueue with `INSERT`, `queue::claim` a job and `queue::ack` it | None |
+| `make queue-extend-lease` | A job outruns its lease and calls `queue::extend` before the deadline passes | None |
+| `make queue-retry` | `retry: { attempts, backoff }`: `ack "err"` puts a job back, an exhausted budget buries it | None |
+| `make queue-dead-replay` | `ack "dead"` buries a job, `queue::replay` puts it back once the cause is fixed | None |
+| `make queue-ordered` | `ordered_by`: one job in flight per key, siblings park, `blocked_keys` counts them | None |
+| `make queue-partitions` | `partitions`: two workers claim side by side and never receive the same item | None |
+| `make queue-deduplication` | `deduplicate` and `deduplication_key`: a retrying producer enqueues the work once | None |
+| `make queue-delayed` | `not_before`: a job stays invisible to `queue::claim` until it comes due | None |
+| `make queue-introspection` | `system::queues` and `system::queue_partitions`: the operator's view of a queue | None |
+| `make queue-long-poll` | `claim_wait`: a worker parks until a producer inserts, instead of polling | None |
+
 ### Interceptor Examples
 
 | Make Command | Description | Required Features |
@@ -79,6 +96,17 @@ bin/examples/
         ├── 08_arithmetic_expressions.rs # Arithmetic operations
         ├── 09_comparison_operators.rs  # Comparison operators
         └── 10_logical_operators.rs     # Logical operators
+    └── queue/          # Queue examples, one use case each
+        ├── 01_enqueue_and_claim.rs      # Declare, enqueue, claim, ack
+        ├── 02_extend_lease.rs           # queue::extend
+        ├── 03_retry_on_failure.rs       # retry attempts + backoff
+        ├── 04_dead_and_replay.rs        # ack "dead" + queue::replay
+        ├── 05_ordered_by_key.rs         # ordered_by, per-key exclusivity
+        ├── 06_partitions.rs             # partitions, parallel workers
+        ├── 07_deduplication.rs          # deduplicate / deduplication_key
+        ├── 08_delayed_jobs.rs           # not_before
+        ├── 09_introspection.rs          # system::queues, system::queue_partitions
+        └── 10_long_poll.rs              # claim_wait
     └── intercept/      # Interceptor examples
         └── 01_table_view_interceptors.rs # Table and view hooks
     └── export/         # Export / import examples
