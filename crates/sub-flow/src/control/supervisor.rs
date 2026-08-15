@@ -32,6 +32,7 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
+use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	Result,
@@ -152,6 +153,7 @@ impl FlowSupervisor {
 
 	fn handle_bootstrap(&self, state: &mut SupervisorState, flows: Vec<FlowId>, scan_from: Option<CommitVersion>) {
 		let migration_base = self.fetch_ddl_cursor().unwrap_or(CommitVersion(0));
+		let mut known: BTreeSet<FlowId> = flows.iter().copied().collect();
 
 		let mut query = match self.engine.begin_query(IdentityId::system()) {
 			Ok(q) => q,
@@ -161,6 +163,7 @@ impl FlowSupervisor {
 			}
 		};
 
+		let operators = self.engine.operator_state();
 		let mut to_spawn: Vec<(FlowDag, CommitVersion)> = Vec::new();
 		let mut seeds: Vec<(FlowId, CommitVersion)> = Vec::new();
 		for flow_id in flows {
@@ -176,12 +179,24 @@ impl FlowSupervisor {
 			};
 			self.reject_transactional_flow(&flow);
 			state.analyzer.add(flow.clone());
-			let seed = CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &flow_id)
-				.unwrap_or(None)
-				.unwrap_or(migration_base);
+			let seed = operators.checkpoint_get(flow_id).unwrap_or(migration_base);
 			seeds.push((flow_id, seed));
 			to_spawn.push((flow, seed));
 		}
+
+		match self.engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)) {
+			Ok(listed) => {
+				known.extend(listed.into_iter().map(|flow| flow.id));
+				let reaped = reap_orphan_checkpoints(&operators, &known);
+				if reaped > 0 {
+					debug!(count = reaped, "reaped orphan flow checkpoints");
+				}
+			}
+			Err(e) => {
+				warn!(error = %e, "failed to list flows during bootstrap; orphan flow checkpoints stay and keep pinning cdc retention")
+			}
+		}
+
 		drop(query);
 		self.publish_lineage(state);
 
@@ -297,14 +312,11 @@ impl FlowSupervisor {
 		bound: CommitVersion,
 	) -> Vec<(FlowId, CommitVersion)> {
 		let deleted = extract_deleted_flow_ids(items);
+		let operators = self.engine.operator_state();
 		let mut changed = false;
 		let mut lineage_dirty = false;
 		for flow_id in &deleted {
-			if let Some(handle) = state.flows.remove(flow_id) {
-				let _ = handle.actor_ref().send(FlowActorMessage::Stop {
-					delete_checkpoint: true,
-					reply: Box::new(|| {}),
-				});
+			if retire_flow(&operators, &mut state.flows, *flow_id) {
 				changed = true;
 			}
 			state.sources.remove(flow_id);
@@ -538,6 +550,36 @@ impl FlowSupervisor {
 	}
 }
 
+fn retire_flow(operators: &OperatorStore, flows: &mut BTreeMap<FlowId, FlowActorHandle>, flow_id: FlowId) -> bool {
+	let Some(handle) = flows.remove(&flow_id) else {
+		operators.checkpoint_delete(flow_id);
+		return false;
+	};
+	if handle
+		.actor_ref()
+		.send(FlowActorMessage::Stop {
+			delete_checkpoint: true,
+			reply: Box::new(|| {}),
+		})
+		.is_err()
+	{
+		operators.checkpoint_delete(flow_id);
+	}
+	true
+}
+
+fn reap_orphan_checkpoints(operators: &OperatorStore, known: &BTreeSet<FlowId>) -> usize {
+	let mut reaped = 0;
+	for flow_id in operators.checkpoint_list() {
+		if known.contains(&flow_id) {
+			continue;
+		}
+		operators.checkpoint_delete(flow_id);
+		reaped += 1;
+	}
+	reaped
+}
+
 impl Actor for FlowSupervisor {
 	type State = SupervisorState;
 	type Message = FlowSupervisorMessage;
@@ -567,5 +609,135 @@ impl Actor for FlowSupervisor {
 
 	fn config(&self) -> ActorConfig {
 		ActorConfig::new()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{
+		collections::{BTreeMap, BTreeSet},
+		sync::{
+			Arc,
+			atomic::{AtomicBool, Ordering},
+		},
+	};
+
+	use reifydb_core::{actors::flow::FlowActorMessage, common::CommitVersion, interface::catalog::flow::FlowId};
+	use reifydb_runtime::{
+		actor::{
+			context::Context,
+			system::{ActorConfig, ActorSystem},
+			traits::{Actor, Directive},
+		},
+		context::clock::Clock,
+		sync::waiter::WaiterHandle,
+	};
+	use reifydb_store_operator::store::OperatorStore;
+	use reifydb_value::value::duration::Duration;
+
+	use super::{reap_orphan_checkpoints, retire_flow};
+
+	struct StopRecorder {
+		deleted: Arc<AtomicBool>,
+		waiter: Arc<WaiterHandle>,
+	}
+
+	impl Actor for StopRecorder {
+		type State = ();
+		type Message = FlowActorMessage;
+
+		fn init(&self, _ctx: &Context<Self::Message>) {}
+
+		fn handle(&self, _state: &mut (), msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
+			if let FlowActorMessage::Stop {
+				delete_checkpoint,
+				..
+			} = msg
+			{
+				self.deleted.store(delete_checkpoint, Ordering::Release);
+				self.waiter.notify();
+			}
+			Directive::Continue
+		}
+
+		fn config(&self) -> ActorConfig {
+			ActorConfig::new()
+		}
+	}
+
+	#[test]
+	fn bootstrap_reaps_a_checkpoint_whose_flow_the_catalog_no_longer_lists() {
+		// the retention floor is the minimum over these rows, so one orphan pins cdc truncation forever
+		let store = OperatorStore::testing_memory();
+		store.checkpoint_set(FlowId(1), CommitVersion(10));
+		store.checkpoint_set(FlowId(2), CommitVersion(20));
+
+		let reaped = reap_orphan_checkpoints(&store, &BTreeSet::from([FlowId(1)]));
+
+		assert_eq!(reaped, 1, "exactly the row with no flow behind it is the one that must go");
+		assert_eq!(
+			store.checkpoint_get(FlowId(1)),
+			Some(CommitVersion(10)),
+			"a live flow's checkpoint is its resume point; reaping it in the same pass replays every \
+			 slice the flow ever consumed and double-counts every aggregate"
+		);
+		assert!(
+			store.checkpoint_get(FlowId(2)).is_none(),
+			"the orphan must be deleted, otherwise its version stays the floor and no cdc entry in the \
+			 database is ever reaped again"
+		);
+	}
+
+	#[test]
+	fn retiring_a_live_flow_leaves_the_delete_to_the_stop_message() {
+		// an out-of-band delete loses to the completion of a slice already in flight, stranding the row
+		let store = OperatorStore::testing_memory();
+		store.checkpoint_set(FlowId(1), CommitVersion(10));
+
+		let actor_system = ActorSystem::testing(Clock::testing());
+		let deleted = Arc::new(AtomicBool::new(false));
+		let waiter = Arc::new(WaiterHandle::new());
+		let handle = actor_system.spawner().spawn_flow(
+			"retire-test",
+			StopRecorder {
+				deleted: Arc::clone(&deleted),
+				waiter: Arc::clone(&waiter),
+			},
+		);
+
+		let mut flows = BTreeMap::new();
+		flows.insert(FlowId(1), handle);
+
+		let stopped = retire_flow(&store, &mut flows, FlowId(1));
+
+		assert!(stopped, "a live handle must be stopped");
+		assert_eq!(
+			store.checkpoint_get(FlowId(1)),
+			Some(CommitVersion(10)),
+			"the supervisor must not delete out of band; only the stop slice may, because it is ordered \
+			 behind every slice the flow already has in flight"
+		);
+		assert!(waiter.wait_timeout(Duration::from_seconds(5).unwrap()), "the stop message must arrive");
+		assert!(
+			deleted.load(Ordering::Acquire),
+			"the stop must carry the delete, or nothing ever removes the row"
+		);
+	}
+
+	#[test]
+	fn a_dropped_flow_loses_its_checkpoint_even_when_this_process_holds_no_actor_for_it() {
+		// the stop message carries the delete, but a flow dropped before its actor spawned never gets one
+		let store = OperatorStore::testing_memory();
+		store.checkpoint_set(FlowId(1), CommitVersion(10));
+		let mut flows = BTreeMap::new();
+
+		let stopped = retire_flow(&store, &mut flows, FlowId(1));
+
+		assert!(!stopped, "there is no live handle to stop, which is the case the stop path cannot cover");
+		assert!(
+			store.checkpoint_get(FlowId(1)).is_none(),
+			"the delete must not be conditional on the handle; leaving the row behind turns every such \
+			 drop into a permanent pin on cdc retention"
+		);
 	}
 }

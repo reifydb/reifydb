@@ -1,0 +1,58 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A write lives only in the commit buffer until the flush; a synchronous sqlite write on the commit path is
+# exactly what the buffer exists to remove.
+
+set a=1
+commit_get a
+persistent_get a
+get a
+---
+"a" => "1"
+"a" => None
+"a" => "1"
+
+# The flush moves the row into sqlite and the buffer stops answering for it, so the layered read has to fall
+# through to a row that is already there.
+
+flush
+commit_get a
+persistent_get a
+get a
+---
+ok
+"a" => unknown
+"a" => "1"
+"a" => "1"
+
+# A key no layer has seen is unknown to the buffer, not a tombstone; a tombstone would stop the read.
+
+commit_get zz
+persistent_get zz
+get zz
+---
+"zz" => unknown
+"zz" => None
+"zz" => None
+
+# The second write of the same key sits in the buffer over the flushed one.
+
+set a=2
+commit_get a
+persistent_get a
+get a
+---
+"a" => "2"
+"a" => "1"
+"a" => "2"
+
+flush
+commit_get a
+persistent_get a
+get a
+---
+ok
+"a" => unknown
+"a" => "2"
+"a" => "2"

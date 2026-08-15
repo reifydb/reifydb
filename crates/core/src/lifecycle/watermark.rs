@@ -14,3 +14,7 @@ pub trait QueryWatermark: Send + Sync + 'static {
 pub trait ConsumerPositions: Send + Sync + 'static {
 	fn min_position(&self) -> Option<CommitVersion>;
 }
+
+pub trait CheckpointFloor: Send + Sync + 'static {
+	fn floor(&self) -> Option<CommitVersion>;
+}

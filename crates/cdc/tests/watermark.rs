@@ -8,10 +8,7 @@ use reifydb_cdc::{
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{
-		catalog::flow::FlowId,
-		cdc::{Cdc, CdcConsumerId, ConsumerClass, SystemChange},
-	},
+	interface::cdc::{Cdc, CdcConsumerId, ConsumerClass, SystemChange},
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
@@ -41,7 +38,7 @@ fn persist(t: &TestEngine, consumer: &str, version: u64, class: ConsumerClass) {
 
 fn pinning_watermark(t: &TestEngine) -> Option<CommitVersion> {
 	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
-	compute_pinning_watermark(&mut Transaction::Query(&mut query_txn)).unwrap()
+	compute_pinning_watermark(&mut Transaction::Query(&mut query_txn), None).unwrap()
 }
 
 #[test]
@@ -95,26 +92,6 @@ fn only_ephemeral_consumers_present_means_no_floor() {
 	persist(&t, "sub_b", 9000, ConsumerClass::Ephemeral);
 
 	assert_eq!(pinning_watermark(&t), None);
-}
-
-#[test]
-fn a_per_flow_checkpoint_row_pins_the_floor() {
-	// Per-flow checkpoints persist under their own id, not the coordinator's. Deriving the class by
-	// matching consumer ids would miss them and truncate under a lagging flow, losing view data;
-	// storing the class on the row makes per-flow rows pin by construction.
-	let t = TestEngine::new();
-
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	CdcCheckpoint::persist(&mut txn, &FlowId(42), CommitVersion(11), ConsumerClass::Pinning).unwrap();
-	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::flow_consumer(), CommitVersion(500), ConsumerClass::Pinning)
-		.unwrap();
-	txn.commit().unwrap();
-
-	assert_eq!(
-		pinning_watermark(&t),
-		Some(CommitVersion(11)),
-		"a lagging per-flow checkpoint must hold the floor even though it is not the coordinator row"
-	);
 }
 
 #[test]

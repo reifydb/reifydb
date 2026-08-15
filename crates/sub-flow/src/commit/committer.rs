@@ -16,7 +16,7 @@ use reifydb_core::{
 };
 #[cfg(test)]
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::transaction::substrate::apply_operator_state;
+use reifydb_flow::transaction::substrate::{apply_operator_state, apply_operator_state_with_checkpoints};
 use reifydb_runtime::actor::{
 	context::Context,
 	system::{ActorConfig, ActorHandle},
@@ -78,23 +78,19 @@ impl CommitterActor {
 
 		let apply_committer = self.committer.clone();
 		let apply_combined = Arc::clone(&combined);
-		let apply_checkpoints = checkpoints.clone();
-		let apply_deletes = checkpoint_deletes.clone();
 		let apply: GroupCommitApply = Box::new(move |transaction| {
-			apply_committer.apply_slice(
-				transaction,
-				&apply_combined,
-				&apply_checkpoints,
-				&apply_deletes,
-				view_changes,
-				&control_cursor,
-			)
+			apply_committer.apply_slice(transaction, &apply_combined, view_changes, &control_cursor)
 		});
 
 		let completion_committer = self.committer.clone();
 		let completion: GroupCommitCompletion = Box::new(move |result| match result {
 			Ok(version) => {
-				apply_operator_state(&completion_committer.operators, &combined);
+				apply_operator_state_with_checkpoints(
+					&completion_committer.operators,
+					&combined,
+					&checkpoints,
+					&checkpoint_deletes,
+				);
 				if produced_output {
 					completion_committer.materialization.record_output(version);
 				}
@@ -212,13 +208,10 @@ impl Committer {
 	}
 
 	#[instrument(name = "flow::committer::apply_slice", level = "debug", skip_all)]
-	#[allow(clippy::too_many_arguments)]
 	fn apply_slice(
 		&self,
 		transaction: &mut CommandTransaction,
 		combined: &Pending,
-		checkpoints: &[(FlowId, CommitVersion)],
-		checkpoint_deletes: &[FlowId],
 		view_changes: Vec<Change>,
 		control_cursor: &Option<(CdcConsumerId, CommitVersion)>,
 	) -> Result<()> {
@@ -226,14 +219,6 @@ impl Committer {
 
 		for change in view_changes {
 			transaction.track_flow_change(change);
-		}
-
-		for (flow_id, version) in checkpoints {
-			CdcCheckpoint::persist(transaction, flow_id, *version, ConsumerClass::Pinning)?;
-		}
-
-		for flow_id in checkpoint_deletes {
-			CdcCheckpoint::delete(transaction, flow_id)?;
 		}
 
 		if let Some((consumer_id, version)) = control_cursor {
@@ -285,18 +270,11 @@ impl Committer {
 		let mut transaction = engine.begin_command(IdentityId::system())?;
 		transaction.disable_conflict_tracking()?;
 
-		self.apply_slice(
-			&mut transaction,
-			&combined,
-			&checkpoints,
-			&checkpoint_deletes,
-			view_changes,
-			&control_cursor,
-		)?;
+		self.apply_slice(&mut transaction, &combined, view_changes, &control_cursor)?;
 
 		let commit_version = transaction.commit_unchecked()?;
 
-		apply_operator_state(&self.operators, &combined);
+		apply_operator_state_with_checkpoints(&self.operators, &combined, &checkpoints, &checkpoint_deletes);
 		self.post_commit_slice(&checkpoints, &checkpoint_deletes);
 		Ok((commit_version, combined))
 	}
@@ -346,12 +324,16 @@ mod group_commit_integration {
 	use reifydb_core::{
 		interface::{catalog::flow::OperatorId, cdc::SystemChange},
 		internal_error,
-		key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+		key::{
+			EncodableKey,
+			cdc_consumer::{CdcConsumerKey, CdcConsumerKeyRange},
+			operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+		},
 	};
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::group::GroupCommitBegin;
-	use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
+	use reifydb_transaction::{group::GroupCommitBegin, multi::RangeScope, transaction::Transaction};
+	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::duration::Duration};
 
 	use super::*;
 
@@ -527,6 +509,50 @@ mod group_commit_integration {
 		}
 	}
 
+	#[test]
+	fn a_committed_slice_writes_its_checkpoint_to_the_operator_store_and_no_consumer_row_to_the_multi_store() {
+		// the checkpoint has one home now, and a second copy in the multi store would drift from the state it
+		// is supposed to pair with
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let begin_engine = engine.clone();
+		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let group = GroupCommitHandle::inline(begin);
+		let (handle, committer) = build_committer_actor(&engine, group);
+
+		let replies = SliceReplies::new(2);
+		send_slices(&handle, &replies, 2);
+		replies.wait();
+
+		let mut query = engine.begin_query(IdentityId::system()).expect("begin query");
+		let mut consumers: Vec<String> = Vec::new();
+		for multi in Transaction::Query(&mut query)
+			.range(CdcConsumerKeyRange::full_scan(), RangeScope::All, 1024)
+			.expect("scan consumer checkpoints")
+		{
+			let multi = multi.expect("consumer checkpoint row");
+			if let Some(key) = CdcConsumerKey::decode(&multi.key) {
+				consumers.push(key.consumer.as_ref().to_string());
+			}
+		}
+
+		assert!(
+			!consumers.iter().any(|consumer| consumer.starts_with("flow:")),
+			"a committed slice must leave no per-flow consumer checkpoint in the multi store; a row here \
+			 is a second copy of the checkpoint that no longer moves with the operator state, so a crash \
+			 can leave it ahead of that state: {consumers:?}"
+		);
+
+		for flow in 1..=2u64 {
+			assert_eq!(
+				committer.operators.checkpoint_get(FlowId(flow)),
+				Some(CommitVersion(100 + flow)),
+				"the checkpoint must instead land in the operator store, where the flush writes it in \
+				 the same transaction as the state it belongs to"
+			);
+		}
+	}
+
 	fn state_inner(suffix: &[u8]) -> GroupStateKey {
 		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM, suffix)
 	}
@@ -591,7 +617,11 @@ mod group_commit_integration {
 			None,
 			"a failed commit must not leak its operator-state writes into the store"
 		);
-		assert_eq!(store.total_bytes(), 0, "the operator state store must be byte-for-byte untouched");
+		assert_eq!(
+			store.total_bytes(),
+			ByteSize::ZERO,
+			"the operator state store must be byte-for-byte untouched"
+		);
 	}
 
 	#[test]
@@ -628,14 +658,19 @@ mod group_commit_integration {
 		sleep(StdDuration::from_millis(300));
 		assert_eq!(
 			store.total_bytes(),
-			0,
+			ByteSize::ZERO,
 			"operator state must not become visible in the store before the group flushes and \
 			 the commit completes"
 		);
 
 		replies.wait();
-		let version = replies.versions()[0].1;
-		assert!(version > CommitVersion(0));
+		assert_eq!(
+			replies.versions()[0].1,
+			CommitVersion(0),
+			"operator state is skipped on the way into the transaction, so a slice carrying nothing \
+			 else commits empty and returns the discarded-commit sentinel; a real version here would \
+			 mean the state also leaked into the multi store"
+		);
 
 		assert_eq!(
 			store.get(op_a, &EncodedKey::new(inner_a.as_slice())),

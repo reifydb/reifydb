@@ -1,0 +1,55 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+contains a
+---
+"a" => false
+
+# contains must agree with get at every point, otherwise an operator branches on a key it cannot read.
+
+set a=1
+contains a
+get a
+---
+"a" => true
+"a" => "1"
+
+flush
+contains a
+---
+ok
+"a" => true
+
+# A removal must be honoured by contains too, before and after the flush.
+
+remove a
+contains a
+get a
+---
+"a" => false
+"a" => None
+
+flush
+contains a
+get a
+---
+ok
+"a" => false
+"a" => None
+
+# An empty value is still a present key.
+
+set a=
+contains a
+get a
+---
+"a" => true
+"a" => ""
+
+flush
+contains a
+get a
+---
+ok
+"a" => true
+"a" => ""

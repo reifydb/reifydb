@@ -1,0 +1,56 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+set a=1
+set b=2
+flush
+---
+ok
+
+# A removed key reads as missing; reading through to the durable row would resurrect it.
+
+remove a
+get a
+get b
+---
+"a" => None
+"b" => "2"
+
+# removes are idempotent.
+
+remove a
+get a
+---
+"a" => None
+
+# The removal must survive the flush as a delete, not be skipped as an absent write.
+
+flush
+get a
+get b
+---
+ok
+"a" => None
+"b" => "2"
+
+# A removed key can be written again.
+
+set a=3
+get a
+---
+"a" => "3"
+
+flush
+get a
+---
+ok
+"a" => "3"
+
+# Removing a key that was never written must not disturb anything.
+
+remove zz
+get zz
+get a
+---
+"zz" => None
+"a" => "3"

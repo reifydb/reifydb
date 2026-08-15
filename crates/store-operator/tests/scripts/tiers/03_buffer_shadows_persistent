@@ -1,0 +1,81 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+persistent_set a=durable
+set a=buffered
+---
+ok
+
+# The buffer holds the newer value; falling through to sqlite serves the pre-flush row and silently loses the
+# write. The merge must also collapse the two layers onto one key rather than emitting it twice.
+
+commit_get a
+persistent_get a
+get a
+contains a
+range
+---
+"a" => "buffered"
+"a" => "durable"
+"a" => "buffered"
+"a" => true
+"a" => "buffered"
+has_more=false
+
+flush
+commit_get a
+persistent_get a
+get a
+range
+---
+ok
+"a" => unknown
+"a" => "buffered"
+"a" => "buffered"
+"a" => "buffered"
+has_more=false
+
+# Interleaving the layers must yield every key exactly once and in key order.
+
+persistent_set b=durable-b
+persistent_set d=durable-d
+set c=buffered-c
+set e=buffered-e
+range
+---
+"a" => "buffered"
+"b" => "durable-b"
+"c" => "buffered-c"
+"d" => "durable-d"
+"e" => "buffered-e"
+has_more=false
+
+# A mis-advanced page boundary shows up here as a duplicate or a hole.
+
+range batch=2
+---
+"a" => "buffered"
+"b" => "durable-b"
+has_more=true
+
+range c.. batch=2
+---
+"c" => "buffered-c"
+"d" => "durable-d"
+has_more=true
+
+range e.. batch=2
+---
+"e" => "buffered-e"
+has_more=false
+
+flush
+range
+---
+ok
+"a" => "buffered"
+"b" => "durable-b"
+"c" => "buffered-c"
+"d" => "durable-d"
+"e" => "buffered-e"
+has_more=false

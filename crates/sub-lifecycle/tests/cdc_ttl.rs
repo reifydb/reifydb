@@ -52,7 +52,7 @@ impl TtlFixture {
 		let mock = host.mock.clone();
 		let clock = host.clock.clone();
 
-		let task = CdcTtlTask::new(storage.clone(), host, event_bus.clone(), clock);
+		let task = CdcTtlTask::new(storage.clone(), host, event_bus.clone(), clock, None);
 
 		Self {
 			task,

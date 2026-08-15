@@ -1,64 +1,74 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+use reifydb_value::value::duration::Duration;
 
-use crate::buffer::tier::OperatorBufferTier;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::persistent::OperatorPersistentTier;
+use crate::{commit::OperatorCommitBuffer, persistent::OperatorPersistentTier};
 
-#[derive(Clone)]
-pub struct OperatorBufferConfig {
-	pub storage: OperatorBufferTier,
+#[derive(Debug, Clone, Default)]
+pub struct OperatorCommitConfig {
+	pub storage: OperatorCommitBuffer,
 }
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 #[derive(Clone)]
 pub struct OperatorPersistentConfig {
 	pub storage: OperatorPersistentTier,
+	pub flush_interval: Duration,
 }
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl OperatorPersistentConfig {
 	pub fn opened(storage: OperatorPersistentTier) -> Self {
 		Self {
 			storage,
+			flush_interval: Duration::from_seconds(5).unwrap(),
 		}
 	}
 
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(config: SqliteConfig) -> Self {
-		Self {
-			storage: OperatorPersistentTier::sqlite(config),
-		}
+		Self::opened(OperatorPersistentTier::sqlite(config))
 	}
 
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
 		let (storage, guard) = OperatorPersistentTier::sqlite_in_memory();
-		(
-			Self {
-				storage,
-			},
-			guard,
-		)
+		(Self::opened(storage), guard)
+	}
+
+	pub fn flush_interval(mut self, interval: Duration) -> Self {
+		self.flush_interval = interval;
+		self
 	}
 }
 
 #[derive(Clone)]
 pub struct OperatorStoreConfig {
-	pub buffer: Option<OperatorBufferConfig>,
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub commit: OperatorCommitConfig,
 	pub persistent: Option<OperatorPersistentConfig>,
+	pub spawner: ActorSpawner,
+	pub clock: Clock,
 }
 
 impl OperatorStoreConfig {
-	pub fn memory() -> Self {
+	pub fn memory(spawner: ActorSpawner, clock: Clock) -> Self {
 		Self {
-			buffer: Some(OperatorBufferConfig {
-				storage: OperatorBufferTier::memory(),
-			}),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			commit: OperatorCommitConfig::default(),
 			persistent: None,
+			spawner,
+			clock,
+		}
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn sqlite(persistent: OperatorPersistentConfig, spawner: ActorSpawner, clock: Clock) -> Self {
+		Self {
+			commit: OperatorCommitConfig::default(),
+			persistent: Some(persistent),
+			spawner,
+			clock,
 		}
 	}
 }

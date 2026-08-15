@@ -11,7 +11,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::{EventBus, metric::CdcEvictedEvent},
 	interface::catalog::config::{ConfigKey, GetConfig},
-	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
+	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask, watermark::CheckpointFloor},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::transaction::Transaction;
@@ -23,6 +23,7 @@ pub struct CdcTtlTask<S, H> {
 	host: H,
 	event_bus: EventBus,
 	clock: Clock,
+	checkpoint_floor: Option<Arc<dyn CheckpointFloor>>,
 }
 
 impl<S, H> CdcTtlTask<S, H>
@@ -30,12 +31,19 @@ where
 	S: CdcStorage + Send + Sync + 'static,
 	H: CdcHost,
 {
-	pub fn new(storage: S, host: H, event_bus: EventBus, clock: Clock) -> Self {
+	pub fn new(
+		storage: S,
+		host: H,
+		event_bus: EventBus,
+		clock: Clock,
+		checkpoint_floor: Option<Arc<dyn CheckpointFloor>>,
+	) -> Self {
 		Self {
 			storage: Arc::new(storage),
 			host,
 			event_bus,
 			clock,
+			checkpoint_floor,
 		}
 	}
 
@@ -85,7 +93,7 @@ where
 	#[instrument(name = "lifecycle::cdc::ttl::consumer_watermark", level = "trace", skip_all)]
 	fn consumer_watermark(&self) -> Result<Option<CommitVersion>> {
 		let mut query = self.host.begin_query()?;
-		compute_pinning_watermark(&mut Transaction::Query(&mut query))
+		compute_pinning_watermark(&mut Transaction::Query(&mut query), self.checkpoint_floor.as_deref())
 	}
 }
 
@@ -186,7 +194,7 @@ mod tests {
 		.unwrap();
 		cmd.commit().unwrap();
 
-		let task = CdcTtlTask::new(storage.clone(), host, event_bus, clock);
+		let task = CdcTtlTask::new(storage.clone(), host, event_bus, clock, None);
 
 		// The ttl alone would evict everything (cutoff = 11); the Pinning watermark caps it at 5 so
 		// versions no flow has processed survive. Folding in the Ephemeral checkpoint would give 3,
@@ -195,6 +203,73 @@ mod tests {
 			task.find_eviction_target().unwrap(),
 			Some(CommitVersion(5)),
 			"eviction cutoff must be bounded by Pinning checkpoints only"
+		);
+	}
+
+	struct FixedFloor(Option<CommitVersion>);
+
+	impl CheckpointFloor for FixedFloor {
+		fn floor(&self) -> Option<CommitVersion> {
+			self.0
+		}
+	}
+
+	#[test]
+	fn the_pinning_watermark_is_the_lower_of_the_consumer_scan_and_the_durable_flow_floor() {
+		// the two pins guard different resumes, so retention has to respect whichever is further behind
+		let host = TestCdcHost::new();
+		let mut cmd = host.begin_command().unwrap();
+		CdcCheckpoint::persist(&mut cmd, &CdcConsumerId::new("ddl"), CommitVersion(40), ConsumerClass::Pinning)
+			.unwrap();
+		cmd.commit().unwrap();
+
+		let mut query = host.begin_query().unwrap();
+		let mut txn = Transaction::Query(&mut query);
+
+		assert_eq!(
+			compute_pinning_watermark(&mut txn, None).unwrap(),
+			Some(CommitVersion(40)),
+			"with no floor supplied the pin must still be the consumer scan; regressing here would let a \
+			 memory-only or floor-less deployment reap everything the ddl consumer has not read"
+		);
+		assert_eq!(
+			compute_pinning_watermark(&mut txn, Some(&FixedFloor(Some(CommitVersion(12))))).unwrap(),
+			Some(CommitVersion(12)),
+			"a flow checkpoint behind the consumer scan must win; taking the scan alone reaps versions \
+			 12..40 that the flow still has to replay after a crash"
+		);
+		assert_eq!(
+			compute_pinning_watermark(&mut txn, Some(&FixedFloor(Some(CommitVersion(90))))).unwrap(),
+			Some(CommitVersion(40)),
+			"a flow ahead of the consumer scan must not raise the pin, otherwise the ddl consumer loses \
+			 the entries it has not scanned"
+		);
+		assert_eq!(
+			compute_pinning_watermark(&mut txn, Some(&FixedFloor(None))).unwrap(),
+			Some(CommitVersion(40)),
+			"a store with no checkpoint rows contributes no pin at all, matching a database whose flows \
+			 have never committed"
+		);
+	}
+
+	#[test]
+	fn a_flow_floor_alone_pins_retention_when_no_consumer_checkpoint_exists() {
+		// flow checkpoints left the consumer keyspace, so without the floor this scan returns nothing to pin on
+		let host = TestCdcHost::new();
+		let mut query = host.begin_query().unwrap();
+		let mut txn = Transaction::Query(&mut query);
+
+		assert_eq!(
+			compute_pinning_watermark(&mut txn, None).unwrap(),
+			None,
+			"the multi-store scan alone sees no flow progress at all now that checkpoints live in the \
+			 operator store"
+		);
+		assert_eq!(
+			compute_pinning_watermark(&mut txn, Some(&FixedFloor(Some(CommitVersion(5))))).unwrap(),
+			Some(CommitVersion(5)),
+			"the operator store floor has to be the whole pin in that case; dropping it truncates cdc up \
+			 to the ttl cutoff and the flow can never resume"
 		);
 	}
 }

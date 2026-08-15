@@ -3320,13 +3320,18 @@ dependencies = [
 name = "reifydb-store-operator"
 version = "0.8.1"
 dependencies = [
+ "rand 0.10.1",
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sqlite",
+ "reifydb-testing",
+ "reifydb-testing-chaos",
+ "reifydb-testing-macro",
  "reifydb-value",
  "rusqlite",
+ "test_each_file",
  "tracing",
 ]
 

@@ -255,6 +255,12 @@ impl Database {
 		{
 			warn!("single store flush did not complete during shutdown");
 		}
+
+		if let Some(operator_store) = self.engine.ioc().try_resolve::<OperatorStore>()
+			&& !operator_store.flush_pending_blocking()
+		{
+			warn!("operator store flush did not complete during shutdown");
+		}
 	}
 
 	#[inline]

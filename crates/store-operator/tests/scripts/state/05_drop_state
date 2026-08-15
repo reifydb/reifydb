@@ -1,0 +1,79 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Operator 1 owns state and an anchor; operator 2 is the neighbour that must be left alone.
+
+set a=1
+set b=2
+set c=9 op=2
+anchor_set row=1 at=100
+flush
+---
+ok
+
+# The drop must hide every key the operator owns, its anchors included, or a recreated operator reads the
+# dead operator's state.
+
+drop_state
+get a
+get b
+contains a
+range
+anchor_get row=1
+anchors_by_expiry
+---
+"a" => None
+"b" => None
+"a" => false
+has_more=false
+anchor 0/1 => None
+count=0
+
+# The drop is scoped to one operator; anything wider blinds the whole store.
+
+get c op=2
+range op=2
+---
+"c" => "9"
+"c" => "9"
+has_more=false
+
+# A write recorded after the drop must survive it.
+
+set d=4
+get d
+range
+---
+"d" => "4"
+"d" => "4"
+has_more=false
+
+# ... and must still be there once the drop has been executed.
+
+flush
+get a
+get b
+get d
+range
+anchors_by_expiry
+get c op=2
+---
+ok
+"a" => None
+"b" => None
+"d" => "4"
+"d" => "4"
+has_more=false
+count=0
+"c" => "9"
+
+# Dropping an operator that owns nothing is a no-op.
+
+drop_state op=3
+flush
+range op=3
+get d
+---
+ok
+has_more=false
+"d" => "4"

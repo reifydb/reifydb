@@ -1,0 +1,65 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+persistent_set a=1
+persistent_set b=2
+---
+ok
+
+# Nothing is buffered, so every read has to reach sqlite to answer at all.
+
+commit_get a
+get a
+get b
+range
+---
+"a" => unknown
+"a" => "1"
+"b" => "2"
+"a" => "1"
+"b" => "2"
+has_more=false
+
+# A row deleted straight out of sqlite disappears at once: no buffer entry is masking it.
+
+persistent_delete a
+persistent_get a
+commit_get a
+get a
+contains a
+range
+---
+"a" => None
+"a" => unknown
+"a" => None
+"a" => false
+"b" => "2"
+has_more=false
+
+# Deleting a row that is not there is a no-op.
+
+persistent_delete zz
+get b
+---
+"b" => "2"
+
+# A buffered write over a row deleted underneath it must still win.
+
+set a=rewritten
+persistent_get a
+get a
+---
+"a" => None
+"a" => "rewritten"
+
+flush
+persistent_get a
+get a
+range
+---
+ok
+"a" => "rewritten"
+"a" => "rewritten"
+"a" => "rewritten"
+"b" => "2"
+has_more=false

@@ -59,61 +59,62 @@ while IFS= read -r file; do
     }
 
     {
-        line = $0
         orig_line = $0
         lineno = NR
 
-        # Handle block comments
+        raw = $0
+        gsub(/\047"\047/, "XXX", raw)
+
+        line = ""
+        i = 1
+        n = length(raw)
+
         if (in_block_comment) {
-            if (match(line, /\*\//)) {
-                line = substr(line, RSTART + RLENGTH)
-                in_block_comment = 0
-            } else {
-                next
-            }
+            close_at = index(raw, "*/")
+            if (close_at == 0) { next }
+            i = close_at + 2
+            in_block_comment = 0
         }
 
-        # Remove block comments that start and end on same line
-        while (1) {
-            cs = index(line, "/*")
-            if (cs == 0) break
-            rest = substr(line, cs + 2)
-            ce = index(rest, "*/")
-            if (ce == 0) break
-            line = substr(line, 1, cs - 1) substr(rest, ce + 2)
-        }
-
-        # Check if a block comment starts but does not end on this line
-        if (match(line, /\/\*/)) {
-            line = substr(line, 1, RSTART - 1)
-            in_block_comment = 1
-        }
-
-        # Handle multi-line string literals (e.g. format!("...\n..."))
         if (in_string_literal) {
-            tmp = line
-            gsub(/\\\\/, "XX", tmp)
-            gsub(/\\"/, "XX", tmp)
-            if (match(tmp, /"/)) {
-                line = substr(line, RSTART + 1)
-                in_string_literal = 0
-            } else {
-                next
+            found_close = 0
+            while (i <= n) {
+                c = substr(raw, i, 1)
+                if (c == "\\") { i += 2; continue }
+                if (c == "\"") { i += 1; found_close = 1; break }
+                i += 1
             }
+            if (!found_close) { next }
+            in_string_literal = 0
         }
 
-        # Remove char literals containing quotes (e.g. SINGLE"SINGLE) before string detection
-        # \047 is octal for single-quote since the awk code is in a single-quoted bash string
-        gsub(/\047"\047/, "XXX", line)
-        # Neutralize escape sequences so \" does not break string stripping
-        gsub(/\\\\/, "XX", line)
-        gsub(/\\"/, "XX", line)
-        # Remove string literals
-        gsub(/"[^"]*"/, "", line)
-        # Detect start of multi-line string (unmatched opening quote)
-        if (index(line, "\"") > 0) {
-            sub(/".*$/, "", line)
-            in_string_literal = 1
+        while (i <= n) {
+            c2 = substr(raw, i, 2)
+            if (c2 == "//") {
+                break
+            } else if (c2 == "/*") {
+                close_rel = index(substr(raw, i + 2), "*/")
+                if (close_rel == 0) {
+                    in_block_comment = 1
+                    break
+                }
+                i = i + close_rel + 3
+                continue
+            } else if (substr(raw, i, 1) == "\"") {
+                i += 1
+                found_close = 0
+                while (i <= n) {
+                    cc = substr(raw, i, 1)
+                    if (cc == "\\") { i += 2; continue }
+                    if (cc == "\"") { i += 1; found_close = 1; break }
+                    i += 1
+                }
+                if (!found_close) { in_string_literal = 1; break }
+                continue
+            } else {
+                line = line substr(raw, i, 1)
+                i += 1
+            }
         }
 
         if (match(line, /\/\//)) {

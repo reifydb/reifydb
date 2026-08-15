@@ -1,0 +1,60 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+ckpt_get 7
+---
+flow 7 => None
+
+# A checkpoint must be readable straight away; serving the older durable version replays work already committed.
+
+ckpt_set 7 41
+ckpt_get 7
+---
+flow 7 => 41
+
+# A later checkpoint supersedes the earlier one rather than queueing behind it.
+
+ckpt_set 7 42
+ckpt_get 7
+---
+flow 7 => 42
+
+flush
+ckpt_get 7
+---
+ok
+flow 7 => 42
+
+# Flows are independent: one flow's checkpoint must never answer for another.
+
+ckpt_set 8 5
+ckpt_get 7
+ckpt_get 8
+ckpt_get 9
+---
+flow 7 => 42
+flow 8 => 5
+flow 9 => None
+
+flush
+ckpt_get 7
+ckpt_get 8
+ckpt_get 9
+---
+ok
+flow 7 => 42
+flow 8 => 5
+flow 9 => None
+
+# A checkpoint may move backwards if the caller says so; the store stores what it is given.
+
+ckpt_set 7 20
+ckpt_get 7
+---
+flow 7 => 20
+
+flush
+ckpt_get 7
+---
+ok
+flow 7 => 20

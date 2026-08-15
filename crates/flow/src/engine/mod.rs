@@ -224,7 +224,10 @@ mod tests {
 		operator::{FlowNode, OperatorDef},
 	};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+	use reifydb_value::{
+		byte_size::ByteSize,
+		value::{datetime::DateTime, row_number::RowNumber},
+	};
 
 	use super::*;
 	use crate::operator::{provider::EmptyOperatorProvider, scan::series::SourceSeriesOperator};
@@ -263,12 +266,12 @@ mod tests {
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		store.set(operator, EncodedKey::new(b"k"), EncodedOperatorRow::timeless(&[1u8; 64]));
-		assert!(store.bytes(operator) > 0, "precondition: the operator's state is resident");
+		assert!(store.bytes(operator) > ByteSize::ZERO, "precondition: the operator's state is resident");
 
 		inner.remove_flow(FlowId(1));
 
-		assert_eq!(store.bytes(operator), 0, "the retired operator's state must be dropped");
-		assert_eq!(store.total_bytes(), 0, "and its bytes must leave the process-wide accounting");
+		assert_eq!(store.bytes(operator), ByteSize::ZERO, "the retired operator's state must be dropped");
+		assert_eq!(store.total_bytes(), ByteSize::ZERO, "and its bytes must leave the process-wide accounting");
 	}
 
 	#[test]
@@ -303,13 +306,17 @@ mod tests {
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		store.anchor_set(operator, GroupId(3), 0, RowNumber(1), DateTime::from_millis(5_000));
 		store.anchor_set(operator, GroupId(4), 0, RowNumber(1), DateTime::from_millis(6_000));
-		assert!(store.bytes(operator) > 0, "precondition: the operator's anchors are resident");
+		assert!(store.bytes(operator) > ByteSize::ZERO, "precondition: the operator's anchors are resident");
 
 		inner.remove_flow(FlowId(1));
 
 		assert_eq!(store.anchors_by_expiry(operator, GroupId(3), 16), Vec::new());
 		assert_eq!(store.anchors_by_expiry(operator, GroupId(4), 16), Vec::new());
-		assert_eq!(store.bytes(operator), 0, "the retired operator's anchors must be dropped");
-		assert_eq!(store.total_bytes(), 0, "and their bytes must leave the process-wide accounting");
+		assert_eq!(store.bytes(operator), ByteSize::ZERO, "the retired operator's anchors must be dropped");
+		assert_eq!(
+			store.total_bytes(),
+			ByteSize::ZERO,
+			"and their bytes must leave the process-wide accounting"
+		);
 	}
 }

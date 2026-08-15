@@ -1,0 +1,60 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+ckpt_set 7 42
+flush
+---
+ok
+
+# The delete must hide the durable row at once, otherwise a dropped flow resumes from the version it died at.
+
+ckpt_delete 7
+ckpt_get 7
+---
+flow 7 => None
+
+flush
+ckpt_get 7
+---
+ok
+flow 7 => None
+
+# Deleting a flow that has no checkpoint is a no-op.
+
+ckpt_delete 9
+ckpt_get 9
+---
+flow 9 => None
+
+# The same flow id can be checkpointed again after the delete.
+
+ckpt_set 7 50
+ckpt_get 7
+---
+flow 7 => 50
+
+flush
+ckpt_get 7
+---
+ok
+flow 7 => 50
+
+# A delete is scoped to its flow.
+
+ckpt_set 8 60
+flush
+ckpt_delete 7
+ckpt_get 7
+ckpt_get 8
+---
+ok
+flow 7 => None
+flow 8 => 60
+
+flush
+ckpt_get 7
+ckpt_get 8
+---
+ok
+flow 7 => None
+flow 8 => 60

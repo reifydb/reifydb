@@ -13,6 +13,7 @@ use reifydb_core::{
 		EncodableKey,
 		cdc_consumer::{CdcConsumerKey, CdcConsumerKeyRange},
 	},
+	lifecycle::watermark::CheckpointFloor,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::Result;
@@ -60,7 +61,10 @@ impl FlowCaughtUpWatermark {
 	}
 }
 
-pub fn compute_pinning_watermark(txn: &mut Transaction<'_>) -> Result<Option<CommitVersion>> {
+pub fn compute_pinning_watermark(
+	txn: &mut Transaction<'_>,
+	floor: Option<&dyn CheckpointFloor>,
+) -> Result<Option<CommitVersion>> {
 	let mut min_version: Option<CommitVersion> = None;
 	for multi in txn.range(CdcConsumerKeyRange::full_scan(), RangeScope::All, 1024)? {
 		let multi = multi?;
@@ -74,6 +78,10 @@ pub fn compute_pinning_watermark(txn: &mut Transaction<'_>) -> Result<Option<Com
 			continue;
 		}
 		min_version = Some(min_version.map_or(bytes.version, |m| m.min(bytes.version)));
+	}
+
+	if let Some(durable) = floor.and_then(|floor| floor.floor()) {
+		min_version = Some(min_version.map_or(durable, |m| m.min(durable)));
 	}
 
 	Ok(min_version)

@@ -1,0 +1,81 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+census
+---
+count=0
+
+# One bucket per operator and keyspace; a key costs 9 framing bytes plus its suffix and a row 24 bytes plus
+# its body.
+
+set a=1
+flush
+census
+---
+ok
+operator 1 keyspace 0x10 keys=1 key_bytes=10 value_bytes=25
+count=1
+
+set bb=22
+flush
+census
+---
+ok
+operator 1 keyspace 0x10 keys=2 key_bytes=21 value_bytes=51
+count=1
+
+# A second keyspace is a separate bucket. Keyspace bytes are stored inverted, so 0x11 sorts ahead of 0x10.
+
+set c=3 ks=0x11
+flush
+census
+---
+ok
+operator 1 keyspace 0x11 keys=1 key_bytes=10 value_bytes=25
+operator 1 keyspace 0x10 keys=2 key_bytes=21 value_bytes=51
+count=2
+
+# An overwrite moves value bytes without changing the key count; counting it as a new key would inflate the
+# bucket forever.
+
+set a=111
+flush
+census
+---
+ok
+operator 1 keyspace 0x11 keys=1 key_bytes=10 value_bytes=25
+operator 1 keyspace 0x10 keys=2 key_bytes=21 value_bytes=53
+count=2
+
+# A neighbouring operator gets its own buckets.
+
+set z=9 op=2
+flush
+census
+---
+ok
+operator 1 keyspace 0x11 keys=1 key_bytes=10 value_bytes=25
+operator 1 keyspace 0x10 keys=2 key_bytes=21 value_bytes=53
+operator 2 keyspace 0x10 keys=1 key_bytes=10 value_bytes=25
+count=3
+
+# A delete removes the key from its bucket, and a bucket that empties drops out of the census entirely.
+
+remove c ks=0x11
+flush
+census
+---
+ok
+operator 1 keyspace 0x10 keys=2 key_bytes=21 value_bytes=53
+operator 2 keyspace 0x10 keys=1 key_bytes=10 value_bytes=25
+count=2
+
+# Dropping an operator empties every bucket it owns.
+
+drop_state
+flush
+census
+---
+ok
+operator 2 keyspace 0x10 keys=1 key_bytes=10 value_bytes=25
+count=1

@@ -1,0 +1,61 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Seed sqlite directly so the row is cold: nothing in the buffer knows about it.
+
+persistent_set a=durable
+persistent_get a
+get a
+---
+"a" => "durable"
+"a" => "durable"
+
+# The tombstone must mask the durable row for every read shape while sqlite still holds it.
+
+remove a
+commit_get a
+persistent_get a
+get a
+contains a
+range
+---
+"a" => tombstone
+"a" => "durable"
+"a" => None
+"a" => false
+has_more=false
+
+# The flush must execute the tombstone as a delete, otherwise the row resurrects the moment the buffer drains.
+
+flush
+commit_get a
+persistent_get a
+get a
+contains a
+range
+---
+ok
+"a" => unknown
+"a" => None
+"a" => None
+"a" => false
+has_more=false
+
+# Writing the key again after the delete works and shadows nothing.
+
+set a=fresh
+commit_get a
+persistent_get a
+get a
+---
+"a" => "fresh"
+"a" => None
+"a" => "fresh"
+
+flush
+persistent_get a
+get a
+---
+ok
+"a" => "fresh"
+"a" => "fresh"

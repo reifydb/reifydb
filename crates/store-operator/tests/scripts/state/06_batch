@@ -1,0 +1,80 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Every write variant must land through the batch entry point exactly as it would one at a time.
+
+set c=old
+batch set=a/1 set=b/2 remove=c
+get a
+get b
+get c
+---
+"a" => "1"
+"b" => "2"
+"c" => None
+
+flush
+get a
+get b
+get c
+---
+ok
+"a" => "1"
+"b" => "2"
+"c" => None
+
+# Later writes in one batch win over earlier ones for the same key.
+
+batch set=a/first set=a/second
+get a
+---
+"a" => "second"
+
+# The operator applies to the writes that follow it, so one batch can span operators.
+
+batch op=2 set=a/9
+get a
+get a op=2
+---
+"a" => "second"
+"a" => "9"
+
+# Anchors ride the same batch as state.
+
+batch anchor_set=1/0/7/500 anchor_set=1/0/8/300
+anchors_by_expiry
+---
+0/8 => 300
+0/7 => 500
+count=2
+
+batch anchor_remove=1/0/8
+anchors_by_expiry
+anchor_get row=8
+---
+0/7 => 500
+count=1
+anchor 0/8 => None
+
+flush
+anchors_by_expiry
+anchor_get row=7
+get a
+get a op=2
+---
+ok
+0/7 => 500
+count=1
+anchor 0/7 => 500
+"a" => "second"
+"a" => "9"
+
+# A batch that carries nothing must change nothing.
+
+batch
+get a
+anchors_by_expiry
+---
+"a" => "second"
+0/7 => 500
+count=1

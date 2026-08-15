@@ -1,0 +1,75 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Two operators holding the same key names: a scan that leaks feeds one operator's state into another's compute.
+
+set a=1
+set b=2
+set a=9 op=2
+set c=8 op=2
+---
+ok
+
+range
+---
+"a" => "1"
+"b" => "2"
+has_more=false
+
+range op=2
+---
+"a" => "9"
+"c" => "8"
+has_more=false
+
+get a
+get a op=2
+contains b
+contains b op=2
+contains c
+contains c op=2
+---
+"a" => "1"
+"a" => "9"
+"b" => true
+"b" => false
+"c" => false
+"c" => true
+
+flush
+range
+range op=2
+---
+ok
+"a" => "1"
+"b" => "2"
+has_more=false
+"a" => "9"
+"c" => "8"
+has_more=false
+
+# A removal is scoped to its operator too.
+
+remove a
+get a
+get a op=2
+---
+"a" => None
+"a" => "9"
+
+flush
+range
+range op=2
+---
+ok
+"b" => "2"
+has_more=false
+"a" => "9"
+"c" => "8"
+has_more=false
+
+# An operator that owns nothing scans empty rather than seeing its neighbours.
+
+range op=3
+---
+has_more=false

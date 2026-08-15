@@ -151,7 +151,13 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 			let event_bus = ioc.resolve::<EventBus>()?;
 			registry.register(Box::new(Measured::new(
 				Gated::new(
-					CdcTtlTask::new(cdc_store, engine.clone(), event_bus, engine.clock().clone()),
+					CdcTtlTask::new(
+						cdc_store,
+						engine.clone(),
+						event_bus,
+						engine.clock().clone(),
+						Some(engine.checkpoint_floor()),
+					),
 					gate.clone(),
 				),
 				plane.clone(),

@@ -1,0 +1,81 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Nothing is durable until the script asks for it.
+
+set a=1
+set b=2
+ckpt_set 7 42
+persistent_get a
+persistent_get b
+---
+"a" => None
+"b" => None
+
+# The floor may lag a flow's progress but must never sit ahead of it. Flow 7 has no durable row to fall back
+# on, so a floor of None would pin nothing and let retention reap the versions a crash sends it back to.
+
+ckpt_get 7
+ckpt_floor
+---
+flow 7 => 42
+floor => 42
+
+# One flush makes the whole slice durable at once.
+
+flush
+persistent_get a
+persistent_get b
+ckpt_get 7
+ckpt_floor
+---
+ok
+"a" => "1"
+"b" => "2"
+flow 7 => 42
+floor => 42
+
+# A newer checkpoint is served by the read path while the floor stays behind at the durable one.
+
+ckpt_set 7 80
+ckpt_get 7
+ckpt_floor
+---
+flow 7 => 80
+floor => 42
+
+flush
+ckpt_get 7
+ckpt_floor
+---
+ok
+flow 7 => 80
+floor => 80
+
+# An empty flush is a no-op, and a flusher that leaves its reentrancy flag set would turn every later flush
+# into a refused drain.
+
+flush
+flush
+set c=3
+flush
+persistent_get c
+---
+ok
+ok
+ok
+"c" => "3"
+
+# Anchors and their state ride the same flush.
+
+anchor_set row=1 at=100
+set d=4
+persistent_get d
+flush
+persistent_get d
+anchor_get row=1
+---
+"d" => None
+ok
+"d" => "4"
+anchor 0/1 => 100

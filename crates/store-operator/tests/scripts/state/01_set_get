@@ -1,0 +1,51 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A key no layer has seen must read as missing rather than as an empty row.
+
+get a
+---
+"a" => None
+
+# The write is visible to the very next read, before anything is made durable.
+
+set a=1
+get a
+---
+"a" => "1"
+
+# A second write to the same key replaces it instead of queueing behind it.
+
+set a=2
+get a
+---
+"a" => "2"
+
+# Reading across the flush boundary must return the same value it did before it.
+
+flush
+get a
+---
+ok
+"a" => "2"
+
+# Writes are scoped to their key: neither neighbour is disturbed.
+
+set b=3
+get a
+get b
+get c
+---
+"a" => "2"
+"b" => "3"
+"c" => None
+
+flush
+get a
+get b
+get c
+---
+ok
+"a" => "2"
+"b" => "3"
+"c" => None

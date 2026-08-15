@@ -43,6 +43,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	Result,
+	byte_size::ByteSize,
 	config::Config,
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
 };
@@ -278,7 +279,7 @@ impl<O: HostOperator> Harness<O> {
 		}
 	}
 
-	pub fn state_bytes(&self) -> u64 {
+	pub fn state_bytes(&self) -> ByteSize {
 		self.substrate
 			.operators
 			.as_ref()

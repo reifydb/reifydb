@@ -1,0 +1,76 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# The state of a slice and the checkpoint it earned must travel together; a checkpoint that lands without its
+# state lets the flow resume past state it never wrote.
+
+batch_ckpt set=a/1 ckpt=7/77
+get a
+ckpt_get 7
+---
+"a" => "1"
+flow 7 => 77
+
+flush
+get a
+ckpt_get 7
+ckpt_floor
+---
+ok
+"a" => "1"
+flow 7 => 77
+floor => 77
+
+# A checkpoint delete rides the same slice, otherwise a dropped flow keeps a durable version after its state
+# is gone.
+
+batch_ckpt set=b/2 ckpt=8/88 ckpt_del=7
+get b
+ckpt_get 7
+ckpt_get 8
+---
+"b" => "2"
+flow 7 => None
+flow 8 => 88
+
+flush
+get a
+get b
+ckpt_list
+ckpt_floor
+---
+ok
+"a" => "1"
+"b" => "2"
+flows: [8]
+floor => 88
+
+# Anchors belong to the slice too.
+
+batch_ckpt anchor_set=1/0/5/400 ckpt=8/99
+anchors_by_expiry
+ckpt_get 8
+---
+0/5 => 400
+count=1
+flow 8 => 99
+
+flush
+anchors_by_expiry
+ckpt_get 8
+ckpt_floor
+---
+ok
+0/5 => 400
+count=1
+flow 8 => 99
+floor => 99
+
+# A slice that changed nothing must leave every checkpoint alone.
+
+batch_ckpt
+ckpt_list
+ckpt_floor
+---
+flows: [8]
+floor => 99

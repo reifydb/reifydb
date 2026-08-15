@@ -1,0 +1,87 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Sizes are the footprint of sqlite plus the commit buffer, so an unflushed write is visible at once; reading
+# sqlite alone would report zero here and hide unbounded buffer growth from every size gauge.
+
+set a=1
+bytes
+total_bytes
+census
+---
+bytes 1 => 35
+total_bytes => 35
+operator 1 keyspace 0x10 keys=1 key_bytes=10 value_bytes=25
+count=1
+
+# Flushing moves the same key from buffer to sqlite, so the numbers must not move with it.
+
+flush
+bytes
+total_bytes
+census
+---
+ok
+bytes 1 => 35
+total_bytes => 35
+operator 1 keyspace 0x10 keys=1 key_bytes=10 value_bytes=25
+count=1
+
+# An unflushed anchor is charged its flat 25 + 8 immediately.
+
+anchor_set row=1 at=100
+bytes
+total_bytes
+anchor_census
+---
+bytes 1 => 68
+total_bytes => 68
+operator 1 => 1
+count=1
+
+flush
+bytes
+anchor_census
+---
+ok
+bytes 1 => 68
+operator 1 => 1
+count=1
+
+# An unflushed overwrite is charged twice on purpose: the old value still occupies sqlite and the new one
+# occupies RAM. The key count over-reports for exactly as long as both copies exist.
+
+set a=111
+bytes
+census
+---
+bytes 1 => 105
+operator 1 keyspace 0x10 keys=2 key_bytes=20 value_bytes=52
+count=1
+
+flush
+bytes
+census
+---
+ok
+bytes 1 => 70
+operator 1 keyspace 0x10 keys=1 key_bytes=10 value_bytes=27
+count=1
+
+# A removal frees nothing until it lands, because the durable copy is what is being measured.
+
+remove a
+bytes
+census
+---
+bytes 1 => 70
+operator 1 keyspace 0x10 keys=1 key_bytes=10 value_bytes=27
+count=1
+
+flush
+bytes
+census
+---
+ok
+bytes 1 => 33
+count=0

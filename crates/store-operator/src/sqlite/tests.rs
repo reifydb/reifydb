@@ -9,11 +9,14 @@ use reifydb_core::{
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 };
 use reifydb_sqlite::SqliteConfig;
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 use rusqlite::params;
 
 use crate::{
-	persistent::sqlite::storage::{ANCHORS_BY_EXPIRY_SQL, SqliteOperatorStorage as OperatorStore, ensure_schema},
+	sqlite::{SqliteOperatorStorage as OperatorStore, schema::ensure_schema, sql::ANCHORS_BY_EXPIRY_SQL},
 	types::{
 		ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, OperatorSealAnchor, OperatorSealAnchorCensus,
 		OperatorStateCensus, OperatorWrite,
@@ -66,8 +69,16 @@ fn keys_and_bytes_accumulate_over_a_bucket() {
 
 	assert_eq!(census.len(), 1, "one keyspace of one group is one bucket");
 	assert_eq!(census[0].keys, 2);
-	assert_eq!(census[0].key_bytes, expected_keys as u64, "key bytes must sum, not count rows");
-	assert_eq!(census[0].value_bytes, expected_values as u64, "payload bytes must stay separate from key bytes");
+	assert_eq!(
+		census[0].key_bytes,
+		ByteSize::from_bytes(expected_keys as u64),
+		"key bytes must sum, not count rows"
+	);
+	assert_eq!(
+		census[0].value_bytes,
+		ByteSize::from_bytes(expected_values as u64),
+		"payload bytes must stay separate from key bytes"
+	);
 }
 
 #[test]
@@ -381,10 +392,14 @@ fn overwriting_a_key_moves_its_bytes_without_counting_it_twice() {
 
 	assert_eq!(census.len(), 1);
 	assert_eq!(census[0].keys, 1, "an overwrite must not mint a second key");
-	assert_eq!(census[0].key_bytes, overwritten.len() as u64, "an overwrite must not re-add the key bytes");
+	assert_eq!(
+		census[0].key_bytes,
+		ByteSize::from_bytes(overwritten.len() as u64),
+		"an overwrite must not re-add the key bytes"
+	);
 	assert_eq!(
 		census[0].value_bytes,
-		row(9).len() as u64,
+		ByteSize::from_bytes(row(9).len() as u64),
 		"the bucket must hold the new payload size, not the old"
 	);
 }
@@ -415,7 +430,7 @@ fn a_bucket_emptied_to_zero_comes_back_counting_from_zero() {
 
 	assert_eq!(census.len(), 1, "a zeroed bucket must reappear once it refills");
 	assert_eq!(census[0].keys, 1, "the refill must resume from zero, not from a stale total");
-	assert_eq!(census[0].value_bytes, row(3).len() as u64);
+	assert_eq!(census[0].value_bytes, ByteSize::from_bytes(row(3).len() as u64));
 }
 
 #[test]
@@ -478,7 +493,7 @@ fn a_batch_lands_operator_state_and_its_anchors_together() {
 			operator: OperatorId(1),
 			group: GroupId(7),
 			side: LEFT,
-			row_number: RowNumber(1),
+			row_num: RowNumber(1),
 			expiry: DateTime::from_millis(5_000),
 		},
 	]);
@@ -497,14 +512,14 @@ fn a_batch_applies_a_set_and_a_later_remove_of_the_same_row_in_order() {
 			operator: OperatorId(1),
 			group: GroupId(7),
 			side: LEFT,
-			row_number: RowNumber(1),
+			row_num: RowNumber(1),
 			expiry: DateTime::from_millis(9_000),
 		},
 		OperatorWrite::AnchorRemove {
 			operator: OperatorId(1),
 			group: GroupId(7),
 			side: LEFT,
-			row_number: RowNumber(1),
+			run_num: RowNumber(1),
 		},
 	]);
 
@@ -531,7 +546,7 @@ fn anchors_are_counted_in_the_byte_accounting_of_their_operator() {
 	let one = ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES;
 	assert_eq!(store.total_bytes(), empty + one, "one anchor must add its own fixed width");
 	assert_eq!(store.bytes(OperatorId(1)), one);
-	assert_eq!(store.bytes(OperatorId(2)), 0, "and it must be charged to its own operator only");
+	assert_eq!(store.bytes(OperatorId(2)), ByteSize::ZERO, "and it must be charged to its own operator only");
 }
 
 #[test]
@@ -544,7 +559,7 @@ fn dropping_an_operators_state_takes_its_anchors_with_it() {
 	store.drop_operator_state(OperatorId(1));
 
 	assert_eq!(store.anchors_by_expiry(OperatorId(1), GroupId(7), PAGE), Vec::new());
-	assert_eq!(store.bytes(OperatorId(1)), 0, "a dropped operator must leave no bytes behind");
+	assert_eq!(store.bytes(OperatorId(1)), ByteSize::ZERO, "a dropped operator must leave no bytes behind");
 	assert_eq!(
 		store.anchors_by_expiry(OperatorId(2), GroupId(7), PAGE),
 		vec![anchor(LEFT, 1, 6_000)],

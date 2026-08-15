@@ -510,9 +510,9 @@ fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 			],
 			measures: vec![
 				level_count("keys", entry.keys),
-				level_bytes("key_bytes", entry.key_bytes),
-				level_bytes("value_bytes", entry.value_bytes),
-				level_bytes("total_bytes", entry.key_bytes + entry.value_bytes),
+				level_bytes("key_bytes", entry.key_bytes.as_bytes()),
+				level_bytes("value_bytes", entry.value_bytes.as_bytes()),
+				level_bytes("total_bytes", (entry.key_bytes + entry.value_bytes).as_bytes()),
 			],
 		})
 		.collect();
@@ -524,9 +524,9 @@ fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 		],
 		measures: vec![
 			level_count("keys", entry.keys),
-			level_bytes("key_bytes", entry.keys * ANCHOR_KEY_BYTES),
-			level_bytes("value_bytes", entry.keys * ANCHOR_VALUE_BYTES),
-			level_bytes("total_bytes", entry.keys * (ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES)),
+			level_bytes("key_bytes", (ANCHOR_KEY_BYTES * entry.keys).as_bytes()),
+			level_bytes("value_bytes", (ANCHOR_VALUE_BYTES * entry.keys).as_bytes()),
+			level_bytes("total_bytes", ((ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES) * entry.keys).as_bytes()),
 		],
 	}));
 	rows

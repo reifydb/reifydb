@@ -4,6 +4,8 @@
 use reifydb_codec::row::operator::EncodedOperatorRow;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
+	common::CommitVersion,
+	interface::catalog::flow::FlowId,
 	key::operator_state::{Keyspace, OperatorStateKey},
 };
 use reifydb_store_operator::{store::OperatorStore, types::OperatorWrite};
@@ -43,6 +45,19 @@ impl FlowSubstrate {
 }
 
 pub fn apply_operator_state(store: &OperatorStore, pending: &Pending) {
+	store.apply_batch(&operator_writes(pending));
+}
+
+pub fn apply_operator_state_with_checkpoints(
+	store: &OperatorStore,
+	pending: &Pending,
+	checkpoints: &[(FlowId, CommitVersion)],
+	checkpoint_deletes: &[FlowId],
+) {
+	store.apply_batch_with_checkpoints(&operator_writes(pending), checkpoints, checkpoint_deletes);
+}
+
+fn operator_writes(pending: &Pending) -> Vec<OperatorWrite> {
 	let mut writes = Vec::with_capacity(pending.len());
 	for (key, write) in pending.iter_sorted() {
 		let Some(OperatorScope {
@@ -66,7 +81,7 @@ pub fn apply_operator_state(store: &OperatorStore, pending: &Pending) {
 				operator,
 				group,
 				side,
-				row_number,
+				row_num: row_number,
 				expiry: decode_anchor_expiry(row)
 					.expect("seal anchor rows are written only through SealAnchor"),
 			},
@@ -79,7 +94,7 @@ pub fn apply_operator_state(store: &OperatorStore, pending: &Pending) {
 				operator,
 				group,
 				side,
-				row_number,
+				run_num: row_number,
 			},
 			(None, PendingWrite::Set(row)) => OperatorWrite::Set {
 				operator,
@@ -98,5 +113,5 @@ pub fn apply_operator_state(store: &OperatorStore, pending: &Pending) {
 			},
 		});
 	}
-	store.apply_batch(&writes);
+	writes
 }

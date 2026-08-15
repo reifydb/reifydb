@@ -1,0 +1,76 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+persistent_set a=1
+persistent_set b=2
+set c=3
+---
+ok
+
+# The marker clears what the buffer already held and masks what sqlite still holds; a write the drop erased
+# must never be replayed into sqlite behind the drop.
+
+drop_state
+commit_get c
+persistent_get a
+persistent_get b
+get a
+get c
+range
+---
+"c" => unknown
+"a" => "1"
+"b" => "2"
+"a" => None
+"c" => None
+has_more=false
+
+# A write recorded after the marker survives both the mask and the flush, otherwise a recreated operator
+# silently starts from empty state.
+
+set d=4
+commit_get d
+get d
+range
+---
+"d" => "4"
+"d" => "4"
+"d" => "4"
+has_more=false
+
+flush
+persistent_get a
+persistent_get b
+persistent_get c
+persistent_get d
+get d
+range
+---
+ok
+"a" => None
+"b" => None
+"c" => None
+"d" => "4"
+"d" => "4"
+"d" => "4"
+has_more=false
+
+# The mask is scoped to one operator: the neighbour's rows are still there to read.
+
+persistent_set z=9 op=2
+drop_state
+get z op=2
+persistent_get z op=2
+---
+"z" => "9"
+"z" => "9"
+
+flush
+get z op=2
+persistent_get z op=2
+range
+---
+ok
+"z" => "9"
+"z" => "9"
+has_more=false

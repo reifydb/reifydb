@@ -1,0 +1,114 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+set a=1
+set b=2
+set c=3
+set d=4
+---
+ok
+
+# The scan is ordered by key and reports honestly that it reached the end.
+
+range
+---
+"a" => "1"
+"b" => "2"
+"c" => "3"
+"d" => "4"
+has_more=false
+
+# An inclusive lower bound with an exclusive upper bound.
+
+range b..d
+---
+"b" => "2"
+"c" => "3"
+has_more=false
+
+range "b..=d"
+---
+"b" => "2"
+"c" => "3"
+"d" => "4"
+has_more=false
+
+range "..c"
+---
+"a" => "1"
+"b" => "2"
+has_more=false
+
+range c..
+---
+"c" => "3"
+"d" => "4"
+has_more=false
+
+# A short page must set has_more, otherwise the caller stops early and loses the tail.
+
+range batch=2
+---
+"a" => "1"
+"b" => "2"
+has_more=true
+
+# A page that ends exactly with the data must clear it, otherwise the caller loops for a page that does not exist.
+
+range batch=4
+---
+"a" => "1"
+"b" => "2"
+"c" => "3"
+"d" => "4"
+has_more=false
+
+# Resuming from the last key seen is how the cursor pages.
+
+range c.. batch=2
+---
+"c" => "3"
+"d" => "4"
+has_more=false
+
+# The same paging must hold once the rows are durable.
+
+flush
+range batch=3
+---
+ok
+"a" => "1"
+"b" => "2"
+"c" => "3"
+has_more=true
+
+range c.. batch=3
+---
+"c" => "3"
+"d" => "4"
+has_more=false
+
+# A removed key drops out of the scan rather than being emitted twice or resurrected.
+
+remove b
+range
+---
+"a" => "1"
+"c" => "3"
+"d" => "4"
+has_more=false
+
+flush
+range
+---
+ok
+"a" => "1"
+"c" => "3"
+"d" => "4"
+has_more=false
+
+# An empty window is empty, not the whole scan.
+
+range x..z
+---
+has_more=false

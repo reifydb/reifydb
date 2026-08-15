@@ -1,0 +1,47 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+total_bytes
+---
+total_bytes => 0
+
+# The total spans every operator, unlike bytes, which is billed per operator.
+
+set a=1
+set z=9 op=2
+flush
+total_bytes
+bytes
+bytes op=2
+---
+ok
+total_bytes => 70
+bytes 1 => 35
+bytes 2 => 35
+
+# Anchors count towards the total at the same flat rate they do per operator.
+
+anchor_set row=1 at=100
+anchor_set row=2 at=200 op=2
+flush
+total_bytes
+bytes
+bytes op=2
+---
+ok
+total_bytes => 136
+bytes 1 => 68
+bytes 2 => 68
+
+# Dropping one operator's state takes its anchors with it and leaves the neighbour's share standing.
+
+drop_state
+flush
+total_bytes
+bytes
+bytes op=2
+---
+ok
+total_bytes => 68
+bytes 1 => 0
+bytes 2 => 68

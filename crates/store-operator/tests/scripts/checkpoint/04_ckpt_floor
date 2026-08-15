@@ -1,0 +1,61 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# No rows means no pin; a zero floor here would stop cdc truncation forever on a database that runs no flows.
+
+ckpt_floor
+---
+floor => None
+
+ckpt_set 1 90
+ckpt_set 2 10
+ckpt_set 3 50
+flush
+---
+ok
+
+# The floor is the minimum across every flow; the newest or the first-seen row would let retention delete
+# entries flow 2 has not consumed yet.
+
+ckpt_floor
+---
+floor => 10
+
+# A deleted flow stops contributing, otherwise a dropped flow pins retention for the life of the process.
+
+ckpt_delete 2
+flush
+ckpt_floor
+---
+ok
+floor => 50
+
+# Advancing the smallest checkpoint advances the floor.
+
+ckpt_set 3 99
+flush
+ckpt_floor
+---
+ok
+floor => 90
+
+# The floor tracks whichever flow is now furthest behind.
+
+ckpt_set 1 120
+flush
+ckpt_floor
+---
+ok
+floor => 99
+
+# Emptying the table releases the pin entirely.
+
+ckpt_delete 1
+ckpt_delete 3
+flush
+ckpt_floor
+ckpt_list
+---
+ok
+floor => None
+flows: []

@@ -18,11 +18,7 @@ use reifydb_store_multi::{
 	},
 	tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig},
 };
-use reifydb_store_operator::{
-	buffer::tier::OperatorBufferTier,
-	config::{OperatorBufferConfig, OperatorStoreConfig},
-	store::OperatorStore,
-};
+use reifydb_store_operator::{config::OperatorStoreConfig, store::OperatorStore};
 use reifydb_store_single::{
 	SingleStore,
 	buffer::tier::SingleBufferTier,
@@ -117,12 +113,7 @@ fn create_memory_store_with(
 		clock: Clock::Real,
 	});
 
-	let operator_store = OperatorStore::standard(OperatorStoreConfig {
-		buffer: Some(OperatorBufferConfig {
-			storage: OperatorBufferTier::memory(),
-		}),
-		persistent: None,
-	});
+	let operator_store = OperatorStore::standard(OperatorStoreConfig::memory(spawner.clone(), Clock::Real));
 
 	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 	(multi_store, single_store, operator_store, transaction_single, eventbus)
@@ -173,10 +164,14 @@ fn create_sqlite_store_with(
 		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("operator.db")),
 		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("operator.db")),
 	};
-	let operator_store = OperatorStore::sqlite(SqliteConfig {
-		path: operator_path,
-		..config.clone()
-	});
+	let operator_store = OperatorStore::sqlite(
+		SqliteConfig {
+			path: operator_path,
+			..config.clone()
+		},
+		spawner.clone(),
+		Clock::Real,
+	);
 
 	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 	(multi_store, single_store, operator_store, transaction_single, eventbus)

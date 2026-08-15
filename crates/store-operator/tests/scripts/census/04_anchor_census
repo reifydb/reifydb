@@ -1,0 +1,57 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+anchor_census
+---
+count=0
+
+# The anchor census counts per operator, folding every group together.
+
+anchor_set row=1 at=100
+anchor_set row=2 at=200
+anchor_set row=3 at=300 group=2
+flush
+anchor_census
+---
+ok
+operator 1 => 3
+count=1
+
+anchor_set row=9 at=900 op=2
+flush
+anchor_census
+---
+ok
+operator 1 => 3
+operator 2 => 1
+count=2
+
+anchor_remove row=1
+flush
+anchor_census
+---
+ok
+operator 1 => 2
+operator 2 => 1
+count=2
+
+# Removing a group takes its anchors out of the count.
+
+anchors_group_remove group=2
+flush
+anchor_census
+---
+ok
+operator 1 => 1
+operator 2 => 1
+count=2
+
+# An operator with no anchors left drops out rather than reporting zero.
+
+anchors_drop
+flush
+anchor_census
+---
+ok
+operator 2 => 1
+count=1

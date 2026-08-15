@@ -1,0 +1,61 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+ckpt_list
+---
+flows: []
+
+ckpt_set 1 1
+ckpt_set 2 2
+flush
+---
+ok
+
+ckpt_list
+---
+flows: [1, 2]
+
+# Dropping a live flow from the list leaves an orphan the bootstrap reap can never see, and keeping a deleted
+# one makes the reap delete a row that is already gone.
+
+ckpt_delete 1
+ckpt_set 3 3
+ckpt_list
+---
+flows: [2, 3]
+
+flush
+ckpt_list
+---
+ok
+flows: [2, 3]
+
+# The list is ordered by flow id no matter what order the flows arrived in.
+
+ckpt_set 9 9
+ckpt_set 4 4
+ckpt_list
+---
+flows: [2, 3, 4, 9]
+
+flush
+ckpt_list
+---
+ok
+flows: [2, 3, 4, 9]
+
+# Deleting every flow empties the list rather than leaving a stale entry behind.
+
+ckpt_delete 2
+ckpt_delete 3
+ckpt_delete 4
+ckpt_delete 9
+ckpt_list
+---
+flows: []
+
+flush
+ckpt_list
+---
+ok
+flows: []

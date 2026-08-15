@@ -1,0 +1,72 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+anchor_set row=1 at=100
+anchor_set row=2 at=200 group=2
+anchor_set row=3 at=300 op=2
+set a=1
+flush
+---
+ok
+
+# The operator-wide drop covers every group the operator owns.
+
+anchors_drop
+anchors_by_expiry
+anchors_by_expiry group=2
+anchor_get row=1
+anchor_get row=2 group=2
+---
+count=0
+count=0
+anchor 0/1 => None
+anchor 0/2 => None
+
+# It never touches operator state, and it never reaches a neighbouring operator.
+
+get a
+range
+anchors_by_expiry op=2
+---
+"a" => "1"
+"a" => "1"
+has_more=false
+0/3 => 300
+count=1
+
+# An anchor armed after the drop must survive it.
+
+anchor_set row=4 at=400
+anchors_by_expiry
+---
+0/4 => 400
+count=1
+
+flush
+anchors_by_expiry
+anchors_by_expiry group=2
+anchors_by_expiry op=2
+anchor_get row=1
+get a
+---
+ok
+0/4 => 400
+count=1
+count=0
+0/3 => 300
+count=1
+anchor 0/1 => None
+"a" => "1"
+
+# Dropping the anchors of an operator that has none is a no-op.
+
+anchors_drop op=3
+flush
+anchors_by_expiry
+anchors_by_expiry op=2
+---
+ok
+0/4 => 400
+count=1
+0/3 => 300
+count=1

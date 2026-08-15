@@ -3,7 +3,7 @@
 
 use std::{
 	fmt::{self, Display, Formatter},
-	ops::Add,
+	ops::{Add, Mul},
 };
 
 use serde::{Deserialize, Serialize};
@@ -57,6 +57,14 @@ impl Add for ByteSize {
 
 	fn add(self, rhs: Self) -> Self {
 		Self(self.0 + rhs.0)
+	}
+}
+
+impl Mul<u64> for ByteSize {
+	type Output = Self;
+
+	fn mul(self, rhs: u64) -> Self {
+		Self(self.0 * rhs)
 	}
 }
 
@@ -119,6 +127,15 @@ mod tests {
 	fn test_zero() {
 		assert_eq!(ByteSize::ZERO.as_bytes(), 0);
 		assert_eq!(ByteSize::ZERO, ByteSize::from_bytes(0));
+	}
+
+	#[test]
+	fn test_mul_scales_a_fixed_record_width_by_a_count() {
+		// A fixed-width record times a row count is the whole reason Mul exists; scaling must stay in bytes.
+		assert_eq!(ByteSize::from_bytes(33) * 4, ByteSize::from_bytes(132));
+		assert_eq!(ByteSize::from_kib(1) * 1024, ByteSize::from_mib(1));
+		assert_eq!(ByteSize::from_bytes(33) * 0, ByteSize::ZERO);
+		assert_eq!(ByteSize::ZERO * 99, ByteSize::ZERO);
 	}
 
 	#[test]

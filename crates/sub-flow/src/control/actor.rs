@@ -693,10 +693,7 @@ mod pull_protocol {
 		time::{Duration as StdDuration, Instant},
 	};
 
-	use reifydb_cdc::{
-		consume::{checkpoint::CdcCheckpoint, watermark::CdcConsumerWatermark},
-		produce::watermark::CdcProducerWatermark,
-	};
+	use reifydb_cdc::{consume::watermark::CdcConsumerWatermark, produce::watermark::CdcProducerWatermark};
 	use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		actors::{flow::FlowActorHandle, pending::PendingLayers},
@@ -728,7 +725,7 @@ mod pull_protocol {
 		multi::RangeScope,
 		transaction::Transaction,
 	};
-	use reifydb_value::value::Value;
+	use reifydb_value::{byte_size::ByteSize, value::Value};
 
 	use super::*;
 	use crate::{
@@ -994,9 +991,7 @@ mod pull_protocol {
 		}
 
 		fn persisted_checkpoint(&self) -> Option<CommitVersion> {
-			let mut txn = self.engine.begin_query(IdentityId::system()).expect("query");
-			CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut txn), &self.flow_id)
-				.expect("fetch checkpoint")
+			self.engine.operator_state().checkpoint_get(self.flow_id)
 		}
 
 		fn await_checkpoint_beyond(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
@@ -1330,11 +1325,12 @@ mod pull_protocol {
 		let pre_tick = h.engine.current_version().expect("current version");
 		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
 
-		assert!(
-			h.await_version_beyond(pre_tick, seconds(10)).is_some(),
-			"precondition: the tick must actually reach a commit. A tick that produces no \
-			 output never touches the checkpoint bookkeeping at all, which would satisfy the \
-			 assertion below for the wrong reason"
+		assert_eq!(
+			h.await_version_beyond(pre_tick, seconds(2)),
+			None,
+			"the flow has no output left, so nothing may reach the multi store here; a version \
+			 moving means some other commit, not the stale-checkpoint slice, advanced the \
+			 checkpoint below"
 		);
 
 		assert!(
@@ -1501,7 +1497,7 @@ mod pull_protocol {
 				.operators
 				.as_ref()
 				.expect("the harness substrate carries an operator store")
-				.total_bytes() > 0,
+				.total_bytes() > ByteSize::ZERO,
 			"the aggregate's operator state must land in the shared operator store"
 		);
 
@@ -1542,7 +1538,7 @@ mod pull_protocol {
 		let (restarted_store, _restarted_guard) = OperatorStore::testing_memory_with_persistent_sqlite();
 		let substrate2 = FlowSubstrate::with_dictionary(h.engine.dictionary_allocators(), restarted_store);
 		let operators2 = substrate2.operators.clone().expect("the test substrate carries an operator store");
-		assert_eq!(operators2.total_bytes(), 0, "the restarted operator store starts empty");
+		assert_eq!(operators2.total_bytes(), ByteSize::ZERO, "the restarted operator store starts empty");
 		let committer2 = Committer::new(
 			h.tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
@@ -1599,7 +1595,7 @@ mod pull_protocol {
 			health2.poisoned()
 		);
 		assert!(
-			operators2.total_bytes() > 0,
+			operators2.total_bytes() > ByteSize::ZERO,
 			"the restarted flow must rebuild its state in its own operator store"
 		);
 		drop(actor2);

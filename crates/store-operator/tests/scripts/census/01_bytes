@@ -1,0 +1,72 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Sizes are read from sqlite alone and therefore lag the commit buffer by up to one flush; every assertion
+# below flushes first so what is measured is what is durable.
+
+bytes
+---
+bytes 1 => 0
+
+# A framed key is 8 group bytes plus 1 keyspace byte plus its suffix, and a row is a 24 byte time header plus
+# its body: "a" costs 10 + 25.
+
+set a=1
+flush
+bytes
+---
+ok
+bytes 1 => 35
+
+# "bb" costs 11 + 26.
+
+set bb=22
+flush
+bytes
+---
+ok
+bytes 1 => 72
+
+# An anchor is charged a flat 25 key bytes plus 8 value bytes.
+
+anchor_set row=1 at=100
+flush
+bytes
+---
+ok
+bytes 1 => 105
+
+# A neighbouring operator is billed separately.
+
+set z=9 op=2
+flush
+bytes
+bytes op=2
+---
+ok
+bytes 1 => 105
+bytes 2 => 35
+
+# A removed key stops being counted.
+
+remove a
+flush
+bytes
+---
+ok
+bytes 1 => 70
+
+# A removed anchor stops being counted too.
+
+anchor_remove row=1
+flush
+bytes
+---
+ok
+bytes 1 => 37
+
+# An operator that owns nothing costs nothing.
+
+bytes op=3
+---
+bytes 3 => 0

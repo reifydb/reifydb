@@ -6,11 +6,14 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, Keyspace},
 };
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
-pub const ANCHOR_KEY_BYTES: u64 = 25;
+pub const ANCHOR_KEY_BYTES: ByteSize = ByteSize::from_bytes(25);
 
-pub const ANCHOR_VALUE_BYTES: u64 = 8;
+pub const ANCHOR_VALUE_BYTES: ByteSize = ByteSize::from_bytes(8);
 
 #[derive(Debug, Clone)]
 pub struct OperatorBatch {
@@ -45,8 +48,8 @@ pub struct OperatorStateCensus {
 	pub operator: OperatorId,
 	pub keyspace: Keyspace,
 	pub keys: u64,
-	pub key_bytes: u64,
-	pub value_bytes: u64,
+	pub key_bytes: ByteSize,
+	pub value_bytes: ByteSize,
 }
 
 #[derive(Debug, Clone)]
@@ -64,13 +67,13 @@ pub enum OperatorWrite {
 		operator: OperatorId,
 		group: GroupId,
 		side: u8,
-		row_number: RowNumber,
+		row_num: RowNumber,
 		expiry: DateTime,
 	},
 	AnchorRemove {
 		operator: OperatorId,
 		group: GroupId,
 		side: u8,
-		row_number: RowNumber,
+		run_num: RowNumber,
 	},
 }

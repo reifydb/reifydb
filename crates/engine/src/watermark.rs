@@ -31,7 +31,7 @@ impl StandardEngine {
 			Ok(txn) => txn,
 			Err(_) => return CommitVersion(0),
 		};
-		match compute_pinning_watermark(&mut Transaction::Query(&mut txn)) {
+		match compute_pinning_watermark(&mut Transaction::Query(&mut txn), Some(&*self.checkpoint_floor())) {
 			Ok(Some(v)) => v,
 			Ok(None) => CommitVersion(u64::MAX),
 			Err(_) => CommitVersion(0),
