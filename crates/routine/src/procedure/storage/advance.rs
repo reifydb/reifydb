@@ -18,6 +18,7 @@ use reifydb_value::{
 	params::Params,
 	value::{Value, datetime::DateTime, frame::frame::Frame, value_type::ValueType},
 };
+use tracing::warn;
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("storage::advance"));
 
@@ -263,10 +264,14 @@ fn assert_one(ctx: &mut ProcedureContext<'_, '_>, object: ObjectId, at: DateTime
 			.map_err(RoutineError::from)?;
 
 	if let Some(previous) = single_complete_through(&current.frames, key) {
-		return Err(failed(&format!(
-			"object {key} is already asserted complete through {previous}; {at} is a \
-			 regression and a monotone watermark would swallow it without a signal"
-		)));
+		warn!(
+			object = key,
+			previous = %previous,
+			at = %at,
+			"a completeness assertion went backwards; the recorded instant stands and rows \
+			 landing before it fall behind an already sealed window"
+		);
+		return Ok(());
 	}
 
 	ctx.tx.rql(

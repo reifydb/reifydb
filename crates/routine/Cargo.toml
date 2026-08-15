@@ -24,6 +24,7 @@ reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 uuid = { workspace = true }
 indexmap = { workspace = true }

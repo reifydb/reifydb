@@ -168,21 +168,20 @@ fn an_unknown_identifier_fails_the_whole_call() {
 }
 
 #[test]
-fn a_backwards_assertion_is_rejected() {
-	// A monotone watermark swallows a regression, so a stale T would never be reported to its writer.
+fn a_backwards_assertion_leaves_the_recorded_instant() {
+	// A stale instant is accepted, but must never walk the record back below an already sealed window.
 	let t = bootstrapped();
 	t.admin("CREATE NAMESPACE app");
 	t.admin("CREATE TABLE app::trades { id: int4 }");
 	let trades = object_id(&t, "trades");
 
 	assert_through(&t, "app::trades", "2026-08-07T10:00:00");
-	let err = assert_through_err(&t, "app::trades", "2026-08-07T09:00:00");
+	assert_through(&t, "app::trades", "2026-08-07T09:00:00");
 
-	assert!(err.contains("regression"), "a backwards assertion must be reported as a regression: {err}");
 	assert_eq!(
 		asserted(&t),
 		vec![(trades, at("2026-08-07T10:00:00"))],
-		"the rejected assertion must not overwrite the recorded instant"
+		"a backwards assertion must not overwrite the recorded instant"
 	);
 }
 
