@@ -420,8 +420,13 @@ impl FlowActor {
 		if result.is_ok()
 			&& let Some(version) = commit_version
 		{
+			let at = if version > CommitVersion(0) {
+				version
+			} else {
+				advance_to
+			};
 			for hold in holds {
-				self.substrate.frontiers.publish(hold.object, hold.frontier, version);
+				self.substrate.frontiers.publish(hold.object, hold.frontier, at);
 			}
 		}
 		match result {
