@@ -14,11 +14,8 @@ fn main() {
 		.unwrap();
 
 	db.admin_as_root("CREATE NAMESPACE jobs", Params::None).unwrap();
-	db.admin_as_root(
-		"CREATE QUEUE jobs::reminders { note: utf8 } WITH { fifo: { partitions: 1 } }",
-		Params::None,
-	)
-	.unwrap();
+	db.admin_as_root("CREATE QUEUE jobs::reminders { note: utf8 } WITH { fifo: { partitions: 1 } }", Params::None)
+		.unwrap();
 
 	info!("An ordinary insert is due immediately...");
 	command(&db, r#"INSERT jobs::reminders [{ note: "send now" }]"#);

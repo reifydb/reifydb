@@ -14,11 +14,8 @@ fn main() {
 	db.admin_as_root("CREATE NAMESPACE jobs", Params::None).unwrap();
 
 	info!("partitions is how many workers can claim at once without contending on the same lock...");
-	db.admin_as_root(
-		"CREATE QUEUE jobs::thumbs { image: utf8 } WITH { fifo: { partitions: 4 } }",
-		Params::None,
-	)
-	.unwrap();
+	db.admin_as_root("CREATE QUEUE jobs::thumbs { image: utf8 } WITH { fifo: { partitions: 4 } }", Params::None)
+		.unwrap();
 
 	let rows: Vec<String> = (1..=12).map(|i| format!(r#"{{ image: "photo-{i}.jpg" }}"#)).collect();
 	command(&db, &format!("INSERT jobs::thumbs [{}]", rows.join(", ")));

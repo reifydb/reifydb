@@ -39,7 +39,10 @@ pub fn column(frames: &[Frame], name: &str) -> Vec<Value> {
 		return Vec::new();
 	};
 	let column = frame.columns.iter().find(|c| c.name == name).unwrap_or_else(|| {
-		panic!("result has no column {name}, got {:?}", frame.columns.iter().map(|c| &c.name).collect::<Vec<_>>())
+		panic!(
+			"result has no column {name}, got {:?}",
+			frame.columns.iter().map(|c| &c.name).collect::<Vec<_>>()
+		)
 	});
 	(0..frame.row_count()).map(|i| column.data.get_value(i)).collect()
 }

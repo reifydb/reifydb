@@ -12,11 +12,8 @@ fn main() {
 		.unwrap();
 
 	db.admin_as_root("CREATE NAMESPACE jobs", Params::None).unwrap();
-	db.admin_as_root(
-		"CREATE QUEUE jobs::renders { clip: utf8 } WITH { fifo: { partitions: 1 } }",
-		Params::None,
-	)
-	.unwrap();
+	db.admin_as_root("CREATE QUEUE jobs::renders { clip: utf8 } WITH { fifo: { partitions: 1 } }", Params::None)
+		.unwrap();
 
 	command(&db, r#"INSERT jobs::renders [{ clip: "intro.mov" }]"#);
 

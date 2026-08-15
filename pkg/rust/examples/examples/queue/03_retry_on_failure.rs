@@ -30,10 +30,7 @@ fn main() {
 
 	info!("First try - the payment gateway is down, so the worker reports err rather than ok...");
 	let first = command(&db, r#"CALL queue::claim("biller-1", "jobs::charges", 1, duration::seconds(30))"#);
-	command(
-		&db,
-		&format!(r#"CALL queue::ack("{}", "err", "gateway timeout")"#, utf8_column(&first, "token")[0]),
-	);
+	command(&db, &format!(r#"CALL queue::ack("{}", "err", "gateway timeout")"#, utf8_column(&first, "token")[0]));
 
 	info!("The job is neither lost nor ready - it is serving its backoff, so a claim finds nothing...");
 	command(&db, r#"CALL queue::claim("biller-1", "jobs::charges", 1, duration::seconds(30))"#);
@@ -45,10 +42,7 @@ fn main() {
 	let second = command(&db, r#"CALL queue::claim("biller-1", "jobs::charges", 1, duration::seconds(30))"#);
 
 	info!("It fails again, and attempt 2 of 2 spends the last of the retry budget...");
-	command(
-		&db,
-		&format!(r#"CALL queue::ack("{}", "err", "gateway timeout")"#, utf8_column(&second, "token")[0]),
-	);
+	command(&db, &format!(r#"CALL queue::ack("{}", "err", "gateway timeout")"#, utf8_column(&second, "token")[0]));
 
 	info!("With the budget gone the job is dead, not retried - it will never be claimed again...");
 	sleep(Duration::from_millis(1_200));

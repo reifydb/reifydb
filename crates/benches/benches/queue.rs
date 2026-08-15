@@ -138,6 +138,7 @@ struct Outcome {
 	acked: u64,
 	claim_calls: u64,
 	empty_claims: u64,
+	last_ack: Option<Instant>,
 }
 
 impl Outcome {
@@ -150,6 +151,7 @@ impl Outcome {
 			acked: 0,
 			claim_calls: 0,
 			empty_claims: 0,
+			last_ack: None,
 		}
 	}
 }
@@ -172,6 +174,8 @@ struct Shared<'a> {
 	origin: Instant,
 	enqueued_at: &'a [AtomicU64],
 	producing: &'a AtomicBool,
+	produced: &'a AtomicU64,
+	acked: &'a AtomicU64,
 }
 
 fn transports() -> Vec<Transport> {
@@ -312,6 +316,10 @@ fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: Duration) -> O
 		}
 
 		let stopped = !shared.producing.load(Ordering::Acquire);
+		if stopped && shared.acked.load(Ordering::Acquire) >= shared.produced.load(Ordering::Acquire) {
+			break;
+		}
+
 		let wait_for = match stopped {
 			true => ValueDuration::zero(),
 			false => wait_within(parked, deadline.saturating_duration_since(Instant::now())),
@@ -325,9 +333,6 @@ fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: Duration) -> O
 		let rows = parse_claim(&frames, keyed);
 		if rows.is_empty() {
 			outcome.empty_claims += 1;
-			if stopped {
-				break;
-			}
 			thread::yield_now();
 			continue;
 		}
@@ -351,6 +356,8 @@ fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: Duration) -> O
 		for row in &rows {
 			driver.command_frames(&format!(r#"CALL queue::ack("{}", "ok", none)"#, row.token));
 			outcome.acked += 1;
+			outcome.last_ack = Some(Instant::now());
+			shared.acked.fetch_add(1, Ordering::Release);
 
 			let enqueued = shared.enqueued_at[row.seq as usize].load(Ordering::Acquire);
 			if enqueued > 0 {
@@ -363,7 +370,7 @@ fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: Duration) -> O
 	outcome
 }
 
-fn produce(driver: &Driver, shared: &Shared<'_>, produced: &AtomicU64) {
+fn produce(driver: &Driver, shared: &Shared<'_>) {
 	let capacity = shared.enqueued_at.len() as u64;
 	let paced_from = Instant::now();
 	let stop = paced_from + Duration::from_secs(shared.knobs.seconds);
@@ -390,7 +397,7 @@ fn produce(driver: &Driver, shared: &Shared<'_>, produced: &AtomicU64) {
 		seq += count;
 	}
 
-	produced.store(seq, Ordering::Release);
+	shared.produced.store(seq, Ordering::Release);
 	shared.producing.store(false, Ordering::Release);
 }
 
@@ -474,6 +481,7 @@ fn run_once(engine: &StandardEngine, cell: Cell, knobs: &Knobs, token: Option<&s
 	let steady = cell.mode == Mode::Steady;
 	let producing = AtomicBool::new(steady);
 	let produced = AtomicU64::new(knobs.depth);
+	let acked_total = AtomicU64::new(0);
 	let budget = match cell.mode {
 		Mode::Drain => knobs.budget,
 		Mode::Steady => Duration::from_secs(knobs.seconds) + knobs.budget,
@@ -486,6 +494,8 @@ fn run_once(engine: &StandardEngine, cell: Cell, knobs: &Knobs, token: Option<&s
 		origin: Instant::now(),
 		enqueued_at: &enqueued_at,
 		producing: &producing,
+		produced: &produced,
+		acked: &acked_total,
 	};
 
 	let ready = Arc::new(Barrier::new(cell.workers + usize::from(steady) + 1));
@@ -493,7 +503,6 @@ fn run_once(engine: &StandardEngine, cell: Cell, knobs: &Knobs, token: Option<&s
 
 	let outcomes: Vec<Outcome> = thread::scope(|scope| {
 		let shared = &shared;
-		let produced = &produced;
 
 		if steady {
 			let ready = Arc::clone(&ready);
@@ -501,7 +510,7 @@ fn run_once(engine: &StandardEngine, cell: Cell, knobs: &Knobs, token: Option<&s
 				let driver =
 					Driver::connect(cell.transport, engine, knobs.format, Identity::Root, token);
 				ready.wait();
-				produce(&driver, shared, produced);
+				produce(&driver, shared);
 			});
 		}
 
@@ -529,7 +538,12 @@ fn run_once(engine: &StandardEngine, cell: Cell, knobs: &Knobs, token: Option<&s
 		handles.into_iter().map(|handle| handle.join().expect("worker thread does not panic")).collect()
 	});
 
-	let elapsed = started.elapsed();
+	let elapsed = outcomes
+		.iter()
+		.filter_map(|outcome| outcome.last_ack)
+		.max()
+		.map(|at| at.saturating_duration_since(started))
+		.unwrap_or_else(|| started.elapsed());
 	let enqueued = produced.load(Ordering::Acquire);
 	let acked = outcomes.iter().map(|outcome| outcome.acked).sum();
 

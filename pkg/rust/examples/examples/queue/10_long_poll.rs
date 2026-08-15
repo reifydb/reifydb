@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{thread, thread::sleep, time::Duration as StdDuration, time::Instant};
+use std::{
+	thread,
+	thread::sleep,
+	time::{Duration as StdDuration, Instant},
+};
 
 use reifydb::{IdentityId, Params, WithSubsystem, embedded};
 use reifydb_examples::{command, log_query};
