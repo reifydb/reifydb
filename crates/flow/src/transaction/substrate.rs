@@ -16,6 +16,7 @@ use crate::{
 	transaction::{
 		anchor::{decode_anchor_expiry, decode_anchor_suffix},
 		frontier::OutputFrontiers,
+		memo::StateMemo,
 		scope::{OperatorScope, operator_state_coordinates},
 		watermark::SourceWatermarks,
 	},
@@ -28,6 +29,7 @@ pub struct FlowSubstrate {
 	pub frontiers: OutputFrontiers,
 	pub timers: TimerWheel,
 	pub operators: Option<OperatorStore>,
+	pub memo: StateMemo,
 }
 
 impl FlowSubstrate {

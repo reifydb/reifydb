@@ -48,7 +48,7 @@ static SPECS: &[SpanSpec] = &[
 				prefix: "op",
 			},
 		],
-		extras: &["input_rows", "output_rows", "lock_wait_us"],
+		extras: &["input_rows", "output_rows", "lock_wait_us", "state_gets"],
 		render: Some(render_apply),
 	},
 	SpanSpec {

@@ -10,6 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
+	metrics::point::{census_get, record_get},
 };
 
 use tracing::instrument;
@@ -53,11 +54,14 @@ impl StandardOperatorStore {
 
 	#[instrument(name = "store::operator::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedOperatorRow> {
-		match self.commit.lookup_state(operator, key) {
-			BufferedState::Row(row) => Some(row),
-			BufferedState::Tombstone | BufferedState::Dropped => None,
-			BufferedState::Absent => self.persistent.as_ref()?.get(operator, key),
-		}
+		record_get();
+		let (persistent, row) = match self.commit.lookup_state(operator, key) {
+			BufferedState::Row(row) => (false, Some(row)),
+			BufferedState::Tombstone | BufferedState::Dropped => (false, None),
+			BufferedState::Absent => (true, self.persistent.as_ref().and_then(|p| p.get(operator, key))),
+		};
+		census_get(operator.0, key.as_slice(), persistent, row.is_some());
+		row
 	}
 
 	#[instrument(name = "store::operator::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]

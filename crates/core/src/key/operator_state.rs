@@ -367,6 +367,12 @@ impl GroupStateKey {
 	pub fn group(&self) -> Option<GroupId> {
 		OperatorStateKey::decode_inner(self.0.as_slice()).map(|(group, _, _)| group)
 	}
+
+	pub fn keyspace(&self) -> Option<Keyspace> {
+		let bytes = self.0.as_slice();
+		let offset = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize;
+		(bytes.len() > offset).then(|| Keyspace(encode_u8(bytes[offset])))
+	}
 }
 
 impl AsRef<[u8]> for GroupStateKey {

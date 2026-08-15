@@ -6,6 +6,7 @@ pub mod execution;
 pub mod heap;
 pub mod instruments;
 pub mod operator;
+pub mod point;
 pub mod registry;
 pub mod report;
 pub mod sample;

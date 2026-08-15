@@ -17,7 +17,7 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, error::Error as ValueError};
 use tracing::{Span, field, instrument};
 
-use crate::transaction::{FlowTransaction, scope::scoped_key};
+use crate::transaction::{FlowTransaction, memo::StateMemo, scope::scoped_key};
 
 pub trait StateExtension: FlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
@@ -26,10 +26,21 @@ pub trait StateExtension: FlowTransaction {
 		found = field::Empty
 	))]
 	fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
-		let result = match self.get(&scoped_key(id, key))? {
+		let scoped = scoped_key(id, key);
+		let memoized = key.keyspace().is_some_and(StateMemo::cacheable);
+		if memoized
+			&& let Some(cached) = self.substrate().memo.lookup(&scoped)
+		{
+			Span::current().record("found", cached.is_some());
+			return Ok(cached);
+		}
+		let result = match self.get(&scoped)? {
 			Some(bytes) => Some(EncodedOperatorRow::try_from(bytes).map_err(ValueError::from)?),
 			None => None,
 		};
+		if memoized {
+			self.substrate().memo.remember(&scoped, result.clone());
+		}
 		Span::current().record("found", result.is_some());
 		Ok(result)
 	}
@@ -42,11 +53,25 @@ pub trait StateExtension: FlowTransaction {
 	fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
 		let version = self.version();
 		let encoded: Vec<EncodedKey> = keys.iter().map(|key| scoped_key(id, key)).collect();
+		let memoized: Vec<bool> = keys.iter().map(|key| key.keyspace().is_some_and(StateMemo::cacheable)).collect();
 
 		let mut items: Vec<MultiVersionRow> = Vec::new();
 		let mut to_batch: Vec<EncodedKey> = Vec::new();
+		let mut to_memoize: Vec<EncodedKey> = Vec::new();
 
-		for encoded_key in &encoded {
+		for (slot, encoded_key) in encoded.iter().enumerate() {
+			if memoized[slot]
+				&& let Some(cached) = self.substrate().memo.lookup(encoded_key)
+			{
+				if let Some(row) = cached {
+					items.push(MultiVersionRow {
+						key: encoded_key.clone(),
+						bytes: row.into_bytes(),
+						version,
+					});
+				}
+				continue;
+			}
 			match self.lookup_overlays(encoded_key) {
 				Some(None) => continue,
 				Some(Some(bytes)) => items.push(MultiVersionRow {
@@ -54,11 +79,31 @@ pub trait StateExtension: FlowTransaction {
 					bytes,
 					version,
 				}),
-				None => to_batch.push(encoded_key.clone()),
+				None => {
+					to_batch.push(encoded_key.clone());
+					if memoized[slot] {
+						to_memoize.push(encoded_key.clone());
+					}
+				}
 			}
 		}
 
+		let fetched_from = items.len();
 		self.fetch_state_external(&to_batch, &mut items)?;
+
+		if !to_memoize.is_empty() {
+			let memo = self.substrate().memo.clone();
+			for fetched in &items[fetched_from..] {
+				if let Some(position) = to_memoize.iter().position(|key| key == &fetched.key) {
+					let row = EncodedOperatorRow::try_from(fetched.bytes.clone())
+						.map_err(ValueError::from)?;
+					memo.remember(&to_memoize.swap_remove(position), Some(row));
+				}
+			}
+			for absent in &to_memoize {
+				memo.remember(absent, None);
+			}
+		}
 
 		Span::current().record("found_count", items.len());
 		Ok(MultiVersionBatch {
@@ -73,7 +118,11 @@ pub trait StateExtension: FlowTransaction {
 		value_len = row.len()
 	))]
 	fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
-		self.set(&scoped_key(id, key), row.into_bytes())
+		let scoped = scoped_key(id, key);
+		if key.keyspace().is_some_and(StateMemo::cacheable) {
+			self.substrate().memo.invalidate(&scoped);
+		}
+		self.set(&scoped, row.into_bytes())
 	}
 
 	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
@@ -81,7 +130,11 @@ pub trait StateExtension: FlowTransaction {
 		key_len = key.as_slice().len()
 	))]
 	fn state_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
-		self.remove_silent(&scoped_key(id, key))
+		let scoped = scoped_key(id, key);
+		if key.keyspace().is_some_and(StateMemo::cacheable) {
+			self.substrate().memo.invalidate(&scoped);
+		}
+		self.remove_silent(&scoped)
 	}
 
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
@@ -186,6 +239,7 @@ pub trait StateExtension: FlowTransaction {
 		keys_removed = field::Empty
 	))]
 	fn state_clear(&mut self, id: OperatorId) -> Result<()> {
+		self.substrate().memo.clear();
 		let keys_to_remove = self.scan_keys_for_clear(id)?;
 
 		let count = keys_to_remove.len();

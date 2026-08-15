@@ -3,9 +3,12 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::{
-	catalog::flow::{FlowId, OperatorId},
-	change::{Change, ChangeOrigin},
+use reifydb_core::{
+	interface::{
+		catalog::flow::{FlowId, OperatorId},
+		change::{Change, ChangeOrigin},
+	},
+	metrics::point::{PointCounters, census_begin_apply, census_end_apply},
 };
 use reifydb_rql::flow::{flow::FlowDag, operator::FlowNode};
 use reifydb_value::Result;
@@ -83,7 +86,8 @@ impl FlowEngineInner {
 		output_diffs = field::Empty,
 		output_rows = field::Empty,
 		lock_wait_us = field::Empty,
-		apply_time_us = field::Empty
+		apply_time_us = field::Empty,
+		state_gets = field::Empty
 	))]
 	fn apply<T: FlowTransaction>(&mut self, txn: &mut T, operator: &FlowNode, change: Change) -> Result<Change> {
 		let FlowEngineInner {
@@ -103,6 +107,8 @@ impl FlowEngineInner {
 		Span::current().record("input_rows", change.row_count());
 
 		let apply_start = runtime_context.clock.instant();
+		let gets_before = PointCounters::sample();
+		census_begin_apply();
 		let result = match node {
 			Node::Operator(operator) => {
 				enforce_apply_capabilities(operator.id(), operator.capabilities(), &change);
@@ -115,8 +121,10 @@ impl FlowEngineInner {
 			}
 		};
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
+		Span::current().record("state_gets", gets_before.since().gets);
 		Span::current().record("output_diffs", result.diffs.len());
 		Span::current().record("output_rows", result.row_count());
+		census_end_apply(operator.id.0);
 		Ok(result)
 	}
 }
