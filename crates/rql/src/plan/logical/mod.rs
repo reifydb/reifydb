@@ -38,7 +38,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedObject},
 	},
-	row::{JoinSeal, OperatorSeal, Ttl},
+	row::{JoinLateness, OperatorLateness, Ttl},
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
@@ -786,14 +786,14 @@ pub struct UpdateSeriesNode<'bump> {
 pub struct AggregateNode {
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
-	pub ttl: Option<OperatorSeal>,
+	pub ttl: Option<OperatorLateness>,
 	pub rql: String,
 }
 
 #[derive(Debug)]
 pub struct DistinctNode<'bump> {
 	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
-	pub ttl: Option<OperatorSeal>,
+	pub ttl: Option<OperatorLateness>,
 	pub rql: String,
 }
 
@@ -828,7 +828,7 @@ pub struct JoinInnerNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<BumpFragment<'bump>>,
-	pub ttl: Option<JoinSeal>,
+	pub ttl: Option<JoinLateness>,
 	pub snapshot: bool,
 	pub latest: bool,
 	pub rql: String,
@@ -839,7 +839,7 @@ pub struct JoinLeftNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<BumpFragment<'bump>>,
-	pub ttl: Option<JoinSeal>,
+	pub ttl: Option<JoinLateness>,
 	pub snapshot: bool,
 	pub latest: bool,
 	pub rql: String,
@@ -850,7 +850,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub with: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub join_type: JoinType,
 	pub alias: Option<BumpFragment<'bump>>,
-	pub ttl: Option<JoinSeal>,
+	pub ttl: Option<JoinLateness>,
 	pub snapshot: bool,
 	pub latest: bool,
 	pub rql: String,
@@ -889,7 +889,7 @@ pub struct PatchNode {
 pub struct ApplyNode<'bump> {
 	pub operator: BumpFragment<'bump>,
 	pub arguments: Vec<Expression>,
-	pub ttl: Option<OperatorSeal>,
+	pub ttl: Option<OperatorLateness>,
 	pub rql: String,
 }
 
@@ -935,7 +935,7 @@ pub enum AppendNode<'bump> {
 	},
 	Query {
 		with: BumpVec<'bump, LogicalPlan<'bump>>,
-		ttl: Option<OperatorSeal>,
+		ttl: Option<OperatorLateness>,
 	},
 }
 

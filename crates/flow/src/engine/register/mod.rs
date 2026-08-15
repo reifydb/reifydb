@@ -8,10 +8,7 @@ mod transform;
 
 use std::{mem, sync::Arc};
 
-use reifydb_core::{
-	interface::catalog::flow::OperatorId,
-	value::column::columns::Columns,
-};
+use reifydb_core::{interface::catalog::flow::OperatorId, value::column::columns::Columns};
 use reifydb_rql::flow::{
 	flow::FlowDag,
 	operator::{
@@ -22,17 +19,14 @@ use reifydb_rql::flow::{
 			SourceSeries, SourceTable, SourceView, Take, Window,
 		},
 	},
-	time_domain::{check_join_seal_requirements, check_window_time_requirements},
+	time_domain::{check_join_lateness_requirements, check_window_time_requirements},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{Result, error::Error, reifydb_assertions, value::duration::Duration};
 use tracing::{info, instrument};
 
 use crate::{
-	context::FlowContext,
-	engine::FlowEngineInner,
-	error::FlowGraphError,
-	operator::BoxedHostOperator,
+	context::FlowContext, engine::FlowEngineInner, error::FlowGraphError, operator::BoxedHostOperator,
 	timer::TimerDue,
 };
 
@@ -49,7 +43,7 @@ impl FlowEngineInner {
 		}
 
 		check_window_time_requirements(&self.catalog, txn, &flow)?;
-		check_join_seal_requirements(&self.catalog, txn, &flow)?;
+		check_join_lateness_requirements(&self.catalog, txn, &flow)?;
 
 		if !flow.has_timed_source() {
 			info!(
@@ -265,18 +259,28 @@ impl FlowEngineInner {
 				kind,
 				group_by,
 				aggregations,
-				seal,
-			} => self.add_window(operator_id, &inputs, kind, group_by, aggregations, seal, ctx)?,
+				lateness,
+				amendable,
+			} => self.add_window(
+				operator_id,
+				&inputs,
+				kind,
+				group_by,
+				aggregations,
+				lateness,
+				amendable,
+				ctx,
+			)?,
 		}
 
 		Ok(())
 	}
 
-	fn operator_seal(&self, txn: &mut Transaction<'_>, operator_id: OperatorId) -> Result<Option<Duration>> {
+	fn operator_lateness(&self, txn: &mut Transaction<'_>, operator_id: OperatorId) -> Result<Option<Duration>> {
 		Ok(self.catalog
 			.find_operator_settings(txn, operator_id)?
-			.and_then(|s| s.seal)
-			.map(|seal| seal.duration))
+			.and_then(|s| s.lateness)
+			.map(|lateness| lateness.duration))
 	}
 
 	fn require_parent(&self, input: OperatorId) -> Result<&BoxedHostOperator> {

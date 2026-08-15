@@ -42,6 +42,9 @@ pub enum JsonExpression {
 	Temporal {
 		value: String,
 	},
+	Duration {
+		value: String,
+	},
 
 	Column {
 		namespace: String,
@@ -229,6 +232,11 @@ impl From<&Expression> for JsonExpression {
 				ConstantExpression::Temporal {
 					fragment,
 				} => JsonExpression::Temporal {
+					value: fragment.text().to_string(),
+				},
+				ConstantExpression::Duration {
+					fragment,
+				} => JsonExpression::Duration {
 					value: fragment.text().to_string(),
 				},
 			},
@@ -431,6 +439,11 @@ impl TryFrom<JsonExpression> for Expression {
 			JsonExpression::Temporal {
 				value,
 			} => Expression::Constant(ConstantExpression::Temporal {
+				fragment: internal_fragment(&value),
+			}),
+			JsonExpression::Duration {
+				value,
+			} => Expression::Constant(ConstantExpression::Duration {
 				fragment: internal_fragment(&value),
 			}),
 

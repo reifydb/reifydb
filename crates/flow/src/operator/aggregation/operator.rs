@@ -42,7 +42,7 @@ type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Opti
 
 pub struct AggregateOperator {
 	core: Aggregation,
-	_seal: Option<Duration>,
+	_lateness: Option<Duration>,
 }
 
 impl AggregateOperator {
@@ -53,7 +53,7 @@ impl AggregateOperator {
 		map: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
-		seal: Option<Duration>,
+		lateness: Option<Duration>,
 	) -> Self {
 		Self {
 			core: Aggregation::new(
@@ -66,7 +66,7 @@ impl AggregateOperator {
 				AggregateContext::Grouped,
 				Arc::new(FlowContext::default()),
 			),
-			_seal: seal,
+			_lateness: lateness,
 		}
 	}
 

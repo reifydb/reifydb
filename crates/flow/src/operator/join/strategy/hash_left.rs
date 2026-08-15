@@ -360,7 +360,7 @@ impl LeftHashJoin {
 			let resynced = resync_joined(host, &snapshot_ctx, keys, pre, post, row_idx, true)?;
 			if !update_single_row_in_entry(host, &ctx.state.left, keys.pre, pre_row_number, post, row_idx)?
 			{
-				if ctx.operator.seal_of(JoinSide::Left).is_some() {
+				if ctx.operator.lateness_of(JoinSide::Left).is_some() {
 					return Ok(Vec::new());
 				}
 				return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
@@ -369,7 +369,7 @@ impl LeftHashJoin {
 		}
 
 		if !update_single_row_in_entry(host, &ctx.state.left, keys.pre, pre_row_number, post, row_idx)? {
-			if ctx.operator.seal_of(JoinSide::Left).is_some() {
+			if ctx.operator.lateness_of(JoinSide::Left).is_some() {
 				return Ok(Vec::new());
 			}
 			return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
@@ -416,7 +416,7 @@ impl LeftHashJoin {
 		}
 
 		if !update_single_row_in_entry(host, &ctx.state.right, keys.pre, pre_row_number, post, row_idx)? {
-			if ctx.operator.seal_of(JoinSide::Right).is_some() {
+			if ctx.operator.lateness_of(JoinSide::Right).is_some() {
 				return Ok(Vec::new());
 			}
 			return self.handle_insert(host, post, &[row_idx], keys.post, ctx);

@@ -34,7 +34,7 @@ fn sealing_append(db: &TestDb) {
 	db.admin("CREATE TABLE app::b { id: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::u { id: int4, v: int4 } AS {
 			FROM app::a
-				| append { from app::b } with { seal: { duration: '1s' } }
+				| append { from app::b } with { lateness: 1s }
 		}"#);
 }
 

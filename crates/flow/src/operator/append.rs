@@ -58,7 +58,7 @@ pub struct AppendOperator {
 
 	dropped: SealedDrops,
 
-	seal: Option<Duration>,
+	lateness: Option<Duration>,
 
 	seal_fires: Counter,
 }
@@ -68,7 +68,7 @@ impl AppendOperator {
 		operator: OperatorId,
 		parent_schema: Option<Columns>,
 		input_nodes: Vec<OperatorId>,
-		seal: Option<Duration>,
+		lateness: Option<Duration>,
 	) -> Self {
 		reifydb_assertions! {
 			assert!(input_nodes.len() >= 2, "Append requires at least 2 inputs");
@@ -79,7 +79,7 @@ impl AppendOperator {
 			parent_schema,
 			input_nodes,
 			dropped: SealedDrops::new(operator, DROP_REASON),
-			seal: seal.filter(|span| !span.is_zero()),
+			lateness: lateness.filter(|span| !span.is_zero()),
 			seal_fires: Counter::new("flow.operator.append.seal_fires_total", "Append seal timer fires"),
 		}
 	}
@@ -91,15 +91,15 @@ impl AppendOperator {
 			parent_schema: None,
 			input_nodes: Vec::new(),
 			dropped: SealedDrops::new(operator, DROP_REASON),
-			seal: None,
+			lateness: None,
 			seal_fires: Counter::new("flow.operator.append.seal_fires_total", "Append seal timer fires"),
 		}
 	}
 
 	#[cfg(test)]
-	pub(crate) fn sealing_for_state_tests(operator: OperatorId, seal: Duration) -> Self {
+	pub(crate) fn sealing_for_state_tests(operator: OperatorId, lateness: Duration) -> Self {
 		Self {
-			seal: Some(seal),
+			lateness: Some(lateness),
 			..Self::new_for_state_tests(operator)
 		}
 	}
@@ -155,10 +155,10 @@ impl AppendOperator {
 	}
 
 	fn arm_seal(&mut self, host: &mut dyn HostContext, groups: &[EncodedKey], columns: &Columns) -> Result<()> {
-		let Some(seal) = self.seal else {
+		let Some(lateness) = self.lateness else {
 			return Ok(());
 		};
-		let policy = SealPolicy::of(seal);
+		let policy = SealPolicy::of(lateness);
 		let times = columns.time().to_vec();
 		for (index, resolved) in host.lookup_groups(groups)?.into_iter().enumerate() {
 			let (Some(group), Some(at)) = (resolved, times.get(index)) else {
@@ -189,7 +189,7 @@ impl AppendOperator {
 	}
 
 	fn clear_seal(&mut self, host: &mut dyn HostContext, groups: &[GroupId]) -> Result<()> {
-		if self.seal.is_none() {
+		if self.lateness.is_none() {
 			return Ok(());
 		}
 		for group in groups {
@@ -203,10 +203,10 @@ impl AppendOperator {
 	}
 
 	fn seal_group(&mut self, host: &mut dyn HostContext, fired: FiredAt, group: GroupId) -> Result<()> {
-		let Some(seal) = self.seal else {
+		let Some(lateness) = self.lateness else {
 			return Ok(());
 		};
-		let retry = fired.at().saturating_add(seal);
+		let retry = fired.at().saturating_add(lateness);
 
 		self.seal_fires.inc();
 		if (self.seal_fires.get() as u64).is_multiple_of(QUEUE_SWEEP_EVERY) {
@@ -783,8 +783,9 @@ mod tests {
 	}
 
 	#[test]
-	fn an_inserted_row_is_armed_one_seal_past_its_own_event_time() {
-		// The anchor must be the row's own event time; a wall-clock seal evicts a backfilled row on arrival.
+	fn an_inserted_row_is_armed_one_lateness_past_its_own_event_time() {
+		// The anchor must be the row's own event time; a wall-clock lateness evicts a backfilled row on
+		// arrival.
 		let engine = TestEngine::new();
 		let mut op = sealing(20);
 		let mut txn = txn_at(&engine, op.operator, 100);
@@ -797,7 +798,7 @@ mod tests {
 		assert_eq!(
 			anchor_of(&mut txn, &op, group),
 			Some(at_millis(15_001)),
-			"the due time is event time + seal + the strict gate step"
+			"the due time is event time + lateness + the strict gate step"
 		);
 		assert_eq!(armed_timers(&mut txn, &op), 1, "and exactly one timer addresses that row");
 	}
@@ -878,7 +879,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_row_still_inside_its_seal_survives_a_maintenance_tick() {
+	fn a_row_still_inside_its_lateness_survives_a_maintenance_tick() {
 		// The gate is strict: a row whose due time lands exactly on the tick must not seal yet.
 		let engine = TestEngine::new();
 		let mut op = sealing(23);
@@ -890,13 +891,14 @@ mod tests {
 
 		fire(&mut op, &mut txn, at_millis(15_000), group);
 
-		let group = group_of(&mut txn, &op, 0, 42).expect("a row one millisecond short of its seal must live");
+		let group =
+			group_of(&mut txn, &op, 0, 42).expect("a row one millisecond short of its lateness must live");
 		assert!(group_rows(&mut txn, &op, group) > 0, "and must keep the state that resolves it");
 		assert_eq!(armed_timers(&mut txn, &op), 1, "its timer is not due and must stay armed");
 	}
 
 	#[test]
-	fn a_mutation_arriving_after_the_seal_is_counted_rather_than_translated() {
+	fn a_mutation_arriving_after_the_lateness_is_counted_rather_than_translated() {
 		// A sealed row's published row is frozen, so the discarded mutation must be counted or it vanishes
 		// silently.
 		let engine = TestEngine::new();
@@ -968,8 +970,8 @@ mod tests {
 	}
 
 	#[test]
-	fn an_operator_without_a_seal_arms_nothing_at_all() {
-		// Arming without a seal leaves one timer and one anchor per row that nothing ever collects.
+	fn an_operator_without_a_lateness_arms_nothing_at_all() {
+		// Arming without a lateness leaves one timer and one anchor per row that nothing ever collects.
 		let engine = TestEngine::new();
 		let mut op = op(27);
 		let mut txn = txn_at(&engine, op.operator, 100);
@@ -979,7 +981,7 @@ mod tests {
 			.expect("an insert must translate");
 
 		let group = group_of(&mut txn, &op, 0, 42).expect("the row must still intern a group");
-		assert_eq!(armed_timers(&mut txn, &op), 0, "no seal means no timer");
+		assert_eq!(armed_timers(&mut txn, &op), 0, "no lateness means no timer");
 		assert_eq!(anchor_of(&mut txn, &op, group), None, "and no anchor");
 	}
 

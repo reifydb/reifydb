@@ -139,12 +139,7 @@ impl FlowEngineInner {
 	}
 
 	#[inline]
-	pub(super) fn add_take(
-		&mut self,
-		operator_id: OperatorId,
-		inputs: &[OperatorId],
-		limit: usize,
-	) -> Result<()> {
+	pub(super) fn add_take(&mut self, operator_id: OperatorId, inputs: &[OperatorId], limit: usize) -> Result<()> {
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 		self.operators.insert(operator_id, Box::new(TakeOperator::new(parent_schema, operator_id, limit)));
 		Ok(())
@@ -207,11 +202,11 @@ impl FlowEngineInner {
 			(left, right)
 		};
 
-		let join_seal = self.catalog.find_operator_settings(txn, operator_id)?.and_then(|s| s.join);
-		let left = join_seal.as_ref().and_then(|j| j.left.as_ref());
-		let left_seal = left.map(|t| t.duration);
-		let right = join_seal.as_ref().and_then(|j| j.right.as_ref());
-		let right_seal = right.map(|t| t.duration);
+		let join_lateness = self.catalog.find_operator_settings(txn, operator_id)?.and_then(|s| s.join);
+		let left = join_lateness.as_ref().and_then(|j| j.left.as_ref());
+		let left_lateness = left.map(|t| t.duration);
+		let right = join_lateness.as_ref().and_then(|j| j.right.as_ref());
+		let right_lateness = right.map(|t| t.duration);
 
 		self.operators.insert(
 			operator_id,
@@ -234,8 +229,8 @@ impl FlowEngineInner {
 				snapshot,
 				natural,
 				latest,
-				left_seal,
-				right_seal,
+				left_lateness,
+				right_lateness,
 				Arc::clone(ctx),
 			)),
 		);
@@ -252,7 +247,7 @@ impl FlowEngineInner {
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
-		let seal = self.operator_seal(txn, operator_id)?;
+		let lateness = self.operator_lateness(txn, operator_id)?;
 		self.operators.insert(
 			operator_id,
 			Box::new(DistinctOperator::new(
@@ -262,7 +257,7 @@ impl FlowEngineInner {
 				self.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
-				seal,
+				lateness,
 			)),
 		);
 		Ok(())
@@ -299,10 +294,10 @@ impl FlowEngineInner {
 		}
 
 		let parent_schema = parent_schemas.swap_remove(0);
-		let seal = self.operator_seal(txn, operator_id)?;
+		let lateness = self.operator_lateness(txn, operator_id)?;
 		self.operators.insert(
 			operator_id,
-			Box::new(AppendOperator::new(operator_id, parent_schema, inputs.to_vec(), seal)),
+			Box::new(AppendOperator::new(operator_id, parent_schema, inputs.to_vec(), lateness)),
 		);
 		Ok(())
 	}
@@ -318,14 +313,14 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let config = evaluate_operator_config(expressions.as_slice(), &self.routines, &self.runtime_context)?;
 		let cfg = Config::new(operator.as_str(), config);
-		let seal = self.operator_seal(txn, operator_id)?;
+		let lateness = self.operator_lateness(txn, operator_id)?;
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
 
 		let provider = self.operator_provider.clone();
 		let inner = provider.provide(operator_id, &cfg)?;
 
 		self.operators
-			.insert(operator_id, Box::new(ApplyOperator::new(parent_schema, operator_id, inner, seal)));
+			.insert(operator_id, Box::new(ApplyOperator::new(parent_schema, operator_id, inner, lateness)));
 		Ok(())
 	}
 
@@ -338,7 +333,8 @@ impl FlowEngineInner {
 		kind: WindowKind,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
-		seal: Duration,
+		lateness: Duration,
+		amendable: Option<Duration>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
@@ -350,7 +346,8 @@ impl FlowEngineInner {
 			aggregations: aggregations.clone(),
 			runtime_context: self.runtime_context.clone(),
 			routines: self.routines.clone(),
-			seal,
+			lateness,
+			amendable,
 			ctx: Arc::clone(ctx),
 		});
 		self.operators.insert(operator_id, Box::new(operator));
@@ -374,7 +371,7 @@ impl FlowEngineInner {
 			map,
 			self.routines.clone(),
 			self.runtime_context.clone(),
-			self.operator_seal(txn, operator_id)?,
+			self.operator_lateness(txn, operator_id)?,
 		);
 		self.operators.insert(operator_id, Box::new(operator));
 		Ok(())

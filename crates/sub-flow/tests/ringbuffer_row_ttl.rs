@@ -21,7 +21,7 @@ fn event_ring(db: &TestDb, ttl: &str) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::events { id: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(&format!("CREATE DEFERRED RINGBUFFER VIEW app::rb {{ id: int4, v: int4 }} \
-		 WITH {{ capacity: 1000, row: {{ ttl: {{ duration: '{ttl}', announce: true }} }} }} \
+		 WITH {{ capacity: 1000, row: {{ ttl: {ttl}, announce: true }} }} \
 		 AS {{ FROM app::events map {{ id, v }} }}"));
 }
 
@@ -88,10 +88,10 @@ fn an_idle_ring_buffer_holds_and_drains_on_the_next_arrival() {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::events { id: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW app::held { id: int4, v: int4 } \
-		 WITH { capacity: 1000, row: { ttl: { duration: '1h', announce: true } } } \
+		 WITH { capacity: 1000, row: { ttl: 1h, announce: true } } \
 		 AS { FROM app::events map { id, v } }");
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW app::drained { id: int4, v: int4 } \
-		 WITH { capacity: 1000, row: { ttl: { duration: '1s', announce: true } } } \
+		 WITH { capacity: 1000, row: { ttl: 1s, announce: true } } \
 		 AS { FROM app::events map { id, v } }");
 
 	insert(&db, 1, 10, "2026-01-01T00:00:00Z");

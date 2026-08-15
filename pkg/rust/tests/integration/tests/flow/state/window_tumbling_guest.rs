@@ -66,7 +66,7 @@ impl TumblingOperator for GuestTumbling {
 		WindowSpan::for_coord(coord, secs(1))
 	}
 
-	fn seal_after(&self) -> Option<Duration> {
+	fn lateness(&self) -> Option<Duration> {
 		Some(secs(1))
 	}
 

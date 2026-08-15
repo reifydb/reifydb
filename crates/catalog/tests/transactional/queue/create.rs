@@ -98,7 +98,7 @@ fn committed_create_preserves_every_option() {
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql(
-		r#"CREATE QUEUE qns_create_e::jobs { msg: utf8 } WITH { fifo: { partitions: 64, ordered_by: msg }, retention: { done: "3d" }, retry: { attempts: 2, backoff: "5s" } }"#,
+		r#"CREATE QUEUE qns_create_e::jobs { msg: utf8 } WITH { fifo: { partitions: 64, ordered_by: msg }, retention: { done: 3d }, retry: { attempts: 2, backoff: 5s } }"#,
 		Params::None,
 	);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);

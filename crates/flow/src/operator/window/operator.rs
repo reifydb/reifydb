@@ -53,7 +53,8 @@ pub struct WindowConfig {
 	pub aggregations: Vec<Expression>,
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
-	pub seal: Duration,
+	pub lateness: Duration,
+	pub amendable: Option<Duration>,
 	pub ctx: Arc<FlowContext>,
 }
 
@@ -66,7 +67,8 @@ pub struct WindowOperator {
 	pub core: Aggregation,
 	pub kind: WindowKind,
 
-	pub seal: Duration,
+	pub lateness: Duration,
+	pub amendable: Duration,
 	sealed_drops: SealedDrops,
 	rolling_engine: Option<RollingEngineSlot>,
 	meta: WindowMeta,
@@ -87,7 +89,8 @@ impl WindowOperator {
 		Self {
 			core,
 			kind: config.kind,
-			seal: config.seal,
+			lateness: config.lateness,
+			amendable: config.amendable.unwrap_or(config.lateness),
 			sealed_drops: SealedDrops::new(config.operator, "mutations targeting sealed windows"),
 			rolling_engine: None,
 			meta: WindowMeta::new(),
@@ -110,16 +113,24 @@ impl WindowOperator {
 		self.kind.size().is_some_and(|m| m.is_count())
 	}
 
-	pub fn seal(&self) -> Duration {
+	pub fn lateness(&self) -> Duration {
 		if self.is_count_based() {
 			Duration::default()
 		} else {
-			self.seal
+			self.lateness
 		}
 	}
 
-	pub fn seal_ms(&self) -> u64 {
-		self.seal().milliseconds().unwrap_or(0) as u64
+	pub fn lateness_ms(&self) -> u64 {
+		self.lateness().milliseconds().unwrap_or(0) as u64
+	}
+
+	pub fn amendable(&self) -> Duration {
+		if self.is_count_based() {
+			Duration::default()
+		} else {
+			self.amendable
+		}
 	}
 
 	pub(crate) fn note_sealed_drops(&self, dropped: u64) {

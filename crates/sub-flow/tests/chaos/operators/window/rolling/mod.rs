@@ -23,7 +23,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct Params {
 	pub size_secs: u64,
-	pub seal_secs: u64,
+	pub lateness_secs: u64,
 	pub groups: i32,
 	pub steps: u32,
 	pub max_batch: u32,
@@ -37,12 +37,12 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 	drive_folded(seed, params, Fold::Sum)
 }
 
-/// The rolling family under a different fold. Min and max are non-invertible whenever seal is
+/// The rolling family under a different fold. Min and max are non-invertible whenever the lateness is
 /// non-zero, and rolling is the only kind whose seal driver ages entries out of the seal tail, so
 /// this is the one path that populates the sealing accumulator's sealed half.
 pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
-	let seal_ms = params.seal_secs * 1_000;
+	let lateness_ms = params.lateness_secs * 1_000;
 
 	let spec = WindowSpec {
 		kind: WindowKind::Rolling {
@@ -51,7 +51,7 @@ pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: fold.rql(),
-		seal: Duration::from_seconds(params.seal_secs as i64).unwrap(),
+		lateness: Duration::from_seconds(params.lateness_secs as i64).unwrap(),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
@@ -59,7 +59,7 @@ pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 		groups: params.groups,
 		coord_span_ms: params.coord_span_ms,
 	};
-	let mut model = Oracle::new(size_ms, seal_ms).with_fold(fold);
+	let mut model = Oracle::new(size_ms, lateness_ms).with_fold(fold);
 
 	driver::drive(
 		seed,
@@ -67,7 +67,7 @@ pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 			params.steps,
 			params.max_batch,
 			params.coord_span_ms,
-			params.coord_span_ms + size_ms + seal_ms + 10_000,
+			params.coord_span_ms + size_ms + lateness_ms + 10_000,
 		)
 		.with_mix(params.remove_pct, params.update_pct, params.seal_pct),
 		&mut harness,
@@ -83,12 +83,12 @@ const SIZE_SECS: [u64; 6] = [1, 5, 15, 30, 60, 120];
 pub fn random_params(seed: u64) -> (u64, Params) {
 	let (mut rng, sequence_seed) = split(seed);
 	let size_secs = pick(&mut rng, &SIZE_SECS);
-	let seal_secs = fuzz::seal_secs(&mut rng, size_secs);
+	let lateness_secs = fuzz::lateness_secs(&mut rng, size_secs);
 	let coord_span_ms = fuzz::coord_span_ms(&mut rng, size_secs);
 	let mix = fuzz::mix(&mut rng);
 	let params = Params {
 		size_secs,
-		seal_secs,
+		lateness_secs,
 		groups: mix.groups,
 		steps: mix.steps,
 		max_batch: mix.max_batch,
@@ -127,7 +127,7 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		seal: Duration::default(),
+		lateness: Duration::default(),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));

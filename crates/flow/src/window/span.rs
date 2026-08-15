@@ -157,7 +157,7 @@ mod tests {
 
 	#[test]
 	fn a_time_coordinate_can_only_have_a_duration_subtracted_from_it() {
-		// A seal horizon is watermark - seal_after; with both sides a bare u64 nothing stopped a
+		// A seal horizon is watermark - lateness; with both sides a bare u64 nothing stopped a
 		// millisecond span reaching a nanosecond coordinate, yielding a horizon a million times too
 		// small. Pairing a coordinate with its own Span makes the wrong subtraction fail to compile.
 		let watermark = DateTime::from_epoch_millis(6_060_000).expect("representable instant");
@@ -181,7 +181,7 @@ mod tests {
 
 	#[test]
 	fn a_seal_horizon_leaves_the_window_exactly_at_the_boundary_admissible() {
-		// The boundary is load-bearing in both directions. A window whose start sits exactly one seal
+		// The boundary is load-bearing in both directions. A window whose start sits exactly one lateness
 		// span behind the watermark is still reachable by a late event, so sealing it would discard a
 		// legitimate retraction; sealing nothing would let state grow without bound.
 		let watermark = DateTime::from_epoch_millis(6_060_000).expect("representable");

@@ -28,14 +28,14 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (seal, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (lateness, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
 			with,
 			using_clause,
 			alias,
-			seal,
+			lateness,
 			snapshot,
 			latest,
 			rql: self.source_since(start),
@@ -62,14 +62,14 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(As)?;
 		let alias = self.consume_identifier()?.fragment;
-		let (seal, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (lateness, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::NaturalJoin {
 			token,
 			with,
 			join_type,
 			alias,
-			seal,
+			lateness,
 			snapshot,
 			latest,
 			rql: self.source_since(start),
@@ -87,14 +87,14 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (seal, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (lateness, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
 			with,
 			using_clause,
 			alias,
-			seal,
+			lateness,
 			snapshot,
 			latest,
 			rql: self.source_since(start),
@@ -112,14 +112,14 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (seal, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (lateness, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::LeftJoin {
 			token,
 			with,
 			using_clause,
 			alias,
-			seal,
+			lateness,
 			snapshot,
 			latest,
 			rql: self.source_since(start),
@@ -625,13 +625,13 @@ pub mod tests {
 	fn test_inner_join_with_ttl_both_sides() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { seal: { left: { duration: '1h' }, right: { duration: '2d' } } }";
+			with { lateness: { left: 1h, right: 2d } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::InnerJoin {
-			seal: ttl,
+			lateness: ttl,
 			..
 		} = result.first_unchecked().as_join()
 		else {
@@ -639,22 +639,22 @@ pub mod tests {
 		};
 		let ttl = ttl.as_ref().expect("expected ttl block");
 		let left = ttl.left.as_ref().expect("left side present");
-		assert_eq!(left.duration.fragment.text(), "1h");
+		assert_eq!(left.fragment.text(), "1h");
 		let right = ttl.right.as_ref().expect("right side present");
-		assert_eq!(right.duration.fragment.text(), "2d");
+		assert_eq!(right.fragment.text(), "2d");
 	}
 
 	#[test]
 	fn test_inner_join_with_ttl_only_left() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { seal: { left: { duration: '10m', on: updated } } }";
+			with { lateness: { left: 10m } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::InnerJoin {
-			seal: ttl,
+			lateness: ttl,
 			..
 		} = result.first_unchecked().as_join()
 		else {
@@ -662,8 +662,7 @@ pub mod tests {
 		};
 		let ttl = ttl.as_ref().expect("expected ttl block");
 		let left = ttl.left.as_ref().expect("left present");
-		assert_eq!(left.duration.fragment.text(), "10m");
-		assert_eq!(left.anchor.as_ref().unwrap().fragment.text(), "updated");
+		assert_eq!(left.fragment.text(), "10m");
 		assert!(ttl.right.is_none(), "right side must be absent when only left is given");
 	}
 
@@ -671,13 +670,13 @@ pub mod tests {
 	fn test_left_join_with_ttl_only_right() {
 		let bump = Bump::new();
 		let source = "left join { from orders } as o using (id, o.user_id) \
-			with { seal: { right: { duration: '1d' } } }";
+			with { lateness: { right: 1d } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::LeftJoin {
-			seal: ttl,
+			lateness: ttl,
 			..
 		} = result.first_unchecked().as_join()
 		else {
@@ -685,13 +684,13 @@ pub mod tests {
 		};
 		let ttl = ttl.as_ref().expect("expected ttl block");
 		assert!(ttl.left.is_none());
-		assert_eq!(ttl.right.as_ref().unwrap().duration.fragment.text(), "1d");
+		assert_eq!(ttl.right.as_ref().unwrap().fragment.text(), "1d");
 	}
 
 	#[test]
 	fn test_join_with_ttl_empty_body_rejected() {
 		let bump = Bump::new();
-		let source = "inner join { from orders } as o using (id, o.user_id) with { seal: { } }";
+		let source = "inner join { from orders } as o using (id, o.user_id) with { lateness: { } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
@@ -702,7 +701,7 @@ pub mod tests {
 	fn test_join_with_old_single_ttl_shorthand_rejected() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { seal: { duration: '1h' } }";
+			with { lateness: 1h }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
@@ -716,7 +715,7 @@ pub mod tests {
 	fn test_join_with_unknown_side_key_rejected() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { seal: { middle: { duration: '1h' } } }";
+			with { lateness: { middle: 1h } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
@@ -727,13 +726,13 @@ pub mod tests {
 	fn test_join_with_ttl_and_snapshot() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { seal: { left: { duration: '5m' } }, snapshot: true }";
+			with { lateness: { left: 5m }, snapshot: true }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::InnerJoin {
-			seal: ttl,
+			lateness: ttl,
 			snapshot,
 			..
 		} = result.first_unchecked().as_join()
@@ -750,7 +749,7 @@ pub mod tests {
 	fn test_join_with_latest_flag() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { snapshot: true, latest: true, seal: { left: { duration: '10s', on: created, announce: false } } }";
+			with { snapshot: true, latest: true, lateness: { left: 10s } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();

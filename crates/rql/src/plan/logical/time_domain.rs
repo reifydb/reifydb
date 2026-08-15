@@ -177,12 +177,12 @@ mod tests {
 		// An object worth a retention policy is worth an explicit clock. Both silence and an explicit
 		// `time: none` are rejected, because under the new default they mean the same thing and
 		// letting silence through would leave exactly the hole the default was changed to close.
-		let ttl = || Some(Fragment::statement("'1m'", 2, 20));
+		let ttl = || Some(Fragment::statement("1m", 2, 20));
 
 		for declaration in [TimeDeclaration::Undeclared, TimeDeclaration::None] {
 			let err = resolve_declared_source_time(&declaration, columns(), ttl()).unwrap_err();
 
-			assert_eq!(err.fragment.text(), "'1m'", "the span must land on the ttl to remove");
+			assert_eq!(err.fragment.text(), "1m", "the span must land on the ttl to remove");
 			assert_eq!(err.fragment.line().0, 2);
 		}
 	}
@@ -191,7 +191,7 @@ mod tests {
 	fn an_object_that_carries_time_may_declare_a_row_ttl() {
 		// The rejection above must be scoped to time-less objects only. Rejecting every row ttl would
 		// break every declaration that pairs retention with a real clock.
-		let ttl = || Some(Fragment::statement("'1m'", 2, 20));
+		let ttl = || Some(Fragment::statement("1m", 2, 20));
 
 		assert_eq!(
 			resolve_declared_source_time(&TimeDeclaration::Processing, columns(), ttl()).unwrap(),

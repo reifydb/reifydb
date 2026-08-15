@@ -17,7 +17,7 @@ pub struct ApplyOperator {
 	parent_schema: Option<Columns>,
 	operator: OperatorId,
 	inner: BoxedHostOperator,
-	_seal: Option<Duration>,
+	_lateness: Option<Duration>,
 }
 
 impl ApplyOperator {
@@ -25,13 +25,13 @@ impl ApplyOperator {
 		parent_schema: Option<Columns>,
 		operator: OperatorId,
 		inner: BoxedHostOperator,
-		seal: Option<Duration>,
+		lateness: Option<Duration>,
 	) -> Self {
 		Self {
 			parent_schema,
 			operator,
 			inner,
-			_seal: seal,
+			_lateness: lateness,
 		}
 	}
 
@@ -49,8 +49,8 @@ impl HostOperator for ApplyOperator {
 		self.inner.capabilities()
 	}
 
-	fn seal_span(&self) -> Option<Duration> {
-		self.inner.seal_span()
+	fn lateness_span(&self) -> Option<Duration> {
+		self.inner.lateness_span()
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
@@ -91,10 +91,10 @@ mod tests {
 	}
 
 	#[test]
-	fn an_unusable_guest_span_is_refused_rather_than_becoming_a_seal_span() {
-		// A guest answering 0 or an out-of-range span must yield no seal span; a wrapped value would hold the
-		// frontier back on a schedule nobody chose.
-		assert_eq!(scale_from_millis(Some(0)), None, "zero is not a seal span");
+	fn an_unusable_guest_span_is_refused_rather_than_becoming_a_lateness_span() {
+		// A guest answering 0 or an out-of-range span must yield no lateness span; a wrapped value would hold
+		// the frontier back on a schedule nobody chose.
+		assert_eq!(scale_from_millis(Some(0)), None, "zero is not a lateness span");
 		assert_eq!(scale_from_millis(None), None);
 		assert_eq!(
 			scale_from_millis(Some(u64::MAX)),
@@ -105,7 +105,7 @@ mod tests {
 	}
 
 	struct SealingInner {
-		seal: Option<Duration>,
+		lateness: Option<Duration>,
 	}
 
 	impl HostOperator for SealingInner {
@@ -121,33 +121,33 @@ mod tests {
 			Ok(change)
 		}
 
-		fn seal_span(&self) -> Option<Duration> {
-			self.seal
+		fn lateness_span(&self) -> Option<Duration> {
+			self.lateness
 		}
 	}
 
 	#[test]
-	fn a_declared_row_ttl_never_becomes_a_seal_span() {
+	fn a_declared_row_ttl_never_becomes_a_lateness_span() {
 		// A ttl says how long rows are kept, not how long a window stays amendable, so folding it in here would
 		// hold every published frontier back by the whole retention window.
 		let ttl_only = ApplyOperator::new(
 			None,
 			OperatorId(7),
 			Box::new(SealingInner {
-				seal: None,
+				lateness: None,
 			}),
 			Some(ms(3_600_000)),
 		);
-		assert_eq!(ttl_only.seal_span(), None);
+		assert_eq!(ttl_only.lateness_span(), None);
 
 		let sealing = ApplyOperator::new(
 			None,
 			OperatorId(7),
 			Box::new(SealingInner {
-				seal: Some(ms(65_000)),
+				lateness: Some(ms(65_000)),
 			}),
 			Some(ms(3_600_000)),
 		);
-		assert_eq!(sealing.seal_span(), Some(ms(65_000)));
+		assert_eq!(sealing.lateness_span(), Some(ms(65_000)));
 	}
 }

@@ -175,6 +175,10 @@ pub enum ConstantExpression {
 	Temporal {
 		fragment: Fragment,
 	},
+
+	Duration {
+		fragment: Fragment,
+	},
 }
 
 impl Display for ConstantExpression {
@@ -193,6 +197,9 @@ impl Display for ConstantExpression {
 				fragment,
 			} => write!(f, "\"{}\"", fragment.text()),
 			ConstantExpression::Temporal {
+				fragment,
+			} => write!(f, "{}", fragment.text()),
+			ConstantExpression::Duration {
 				fragment,
 			} => write!(f, "{}", fragment.text()),
 		}
@@ -217,6 +224,9 @@ impl ConstantExpression {
 			ConstantExpression::Temporal {
 				..
 			} => ValueType::DateTime,
+			ConstantExpression::Duration {
+				..
+			} => ValueType::Duration,
 		}
 	}
 }
@@ -955,6 +965,9 @@ impl ExpressionCompiler {
 					fragment: literal.fragment().to_owned(),
 				})),
 				AstLiteral::Temporal(_) => Ok(Expression::Constant(ConstantExpression::Temporal {
+					fragment: literal.fragment().to_owned(),
+				})),
+				AstLiteral::Duration(_) => Ok(Expression::Constant(ConstantExpression::Duration {
 					fragment: literal.fragment().to_owned(),
 				})),
 				AstLiteral::Text(_) => Ok(Expression::Constant(ConstantExpression::Text {

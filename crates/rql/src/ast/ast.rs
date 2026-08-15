@@ -183,6 +183,7 @@ impl<'bump> Ast<'bump> {
 				AstLiteral::Boolean(node) => &node.0,
 				AstLiteral::Number(node) => &node.0,
 				AstLiteral::Temporal(node) => &node.0,
+				AstLiteral::Duration(node) => &node.0,
 				AstLiteral::Text(node) => &node.0,
 				AstLiteral::None(node) => &node.0,
 			},
@@ -379,6 +380,13 @@ impl<'bump> Ast<'bump> {
 		is_literal_temporal,
 		as_literal_temporal,
 		"temporal"
+	);
+	ast_literal_accessor!(
+		Duration,
+		AstLiteralDuration<'bump>,
+		is_literal_duration,
+		as_literal_duration,
+		"duration"
 	);
 	ast_literal_accessor!(Text, AstLiteralText<'bump>, is_literal_text, as_literal_text, "text");
 	ast_literal_accessor!(None, AstLiteralNone<'bump>, is_literal_none, as_literal_none, "none");
@@ -866,9 +874,9 @@ pub struct AstTtl<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstJoinSeal<'bump> {
-	pub left: Option<AstTtl<'bump>>,
-	pub right: Option<AstTtl<'bump>>,
+pub struct AstJoinLateness<'bump> {
+	pub left: Option<Token<'bump>>,
+	pub right: Option<Token<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1373,6 +1381,7 @@ pub enum AstLiteral<'bump> {
 	Number(AstLiteralNumber<'bump>),
 	Text(AstLiteralText<'bump>),
 	Temporal(AstLiteralTemporal<'bump>),
+	Duration(AstLiteralDuration<'bump>),
 	None(AstLiteralNone<'bump>),
 }
 
@@ -1383,6 +1392,7 @@ impl<'bump> AstLiteral<'bump> {
 			AstLiteral::Number(literal) => literal.0.fragment,
 			AstLiteral::Text(literal) => literal.0.fragment,
 			AstLiteral::Temporal(literal) => literal.0.fragment,
+			AstLiteral::Duration(literal) => literal.0.fragment,
 			AstLiteral::None(literal) => literal.0.fragment,
 		}
 	}
@@ -1505,7 +1515,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
-		seal: Option<AstJoinSeal<'bump>>,
+		lateness: Option<AstJoinLateness<'bump>>,
 		snapshot: bool,
 		latest: bool,
 		rql: &'bump str,
@@ -1515,7 +1525,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
-		seal: Option<AstJoinSeal<'bump>>,
+		lateness: Option<AstJoinLateness<'bump>>,
 		snapshot: bool,
 		latest: bool,
 		rql: &'bump str,
@@ -1525,7 +1535,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		join_type: Option<JoinType>,
 		alias: BumpFragment<'bump>,
-		seal: Option<AstJoinSeal<'bump>>,
+		lateness: Option<AstJoinLateness<'bump>>,
 		snapshot: bool,
 		latest: bool,
 		rql: &'bump str,
@@ -1545,6 +1555,15 @@ impl<'bump> AstLiteralNumber<'bump> {
 pub struct AstLiteralTemporal<'bump>(pub Token<'bump>);
 
 impl<'bump> AstLiteralTemporal<'bump> {
+	pub fn value(&self) -> &str {
+		self.0.fragment.text()
+	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstLiteralDuration<'bump>(pub Token<'bump>);
+
+impl<'bump> AstLiteralDuration<'bump> {
 	pub fn value(&self) -> &str {
 		self.0.fragment.text()
 	}

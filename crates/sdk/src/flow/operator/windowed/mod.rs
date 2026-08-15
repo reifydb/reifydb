@@ -50,12 +50,12 @@ pub(crate) fn bucket_of(coord: DateTime, size: Duration) -> DateTime {
 	WindowSpan::for_coord(coord, size).start
 }
 
-pub(crate) fn seal_horizon_of(frontier: DateTime, seal_after: Duration) -> DateTime {
-	frontier.saturating_sub(seal_after)
+pub(crate) fn seal_horizon_of(frontier: DateTime, lateness: Duration) -> DateTime {
+	frontier.saturating_sub(lateness)
 }
 
-pub(crate) fn arm_seal_timer(store: &mut impl TimerStore, newest_window: DateTime, seal_after: Duration) -> Result<()> {
-	let at = newest_window.saturating_add(seal_after).saturating_add(SEAL_GATE_STEP);
+pub(crate) fn arm_seal_timer(store: &mut impl TimerStore, newest_window: DateTime, lateness: Duration) -> Result<()> {
+	let at = newest_window.saturating_add(lateness).saturating_add(SEAL_GATE_STEP);
 	store.arm_timer(at, TimerKind::Seal, &EncodedKey::new(Vec::new()))
 }
 

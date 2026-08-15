@@ -47,7 +47,7 @@ pub trait GuestOperator: Send + Sync {
 		Ok(())
 	}
 
-	fn seal_after(&self) -> Option<Duration> {
+	fn lateness(&self) -> Option<Duration> {
 		None
 	}
 

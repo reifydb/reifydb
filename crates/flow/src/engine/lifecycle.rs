@@ -96,14 +96,16 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::{
-			metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider, scan::series::SourceSeriesOperator,
+			metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider,
+			scan::series::SourceSeriesOperator,
 		},
 		transaction::substrate::FlowSubstrate,
 	};
 
 	#[test]
 	fn removing_a_flow_drops_its_operators_state() {
-		// A retired flow gets no other state teardown, so without this drop its bytes stay resident and counted until restart.
+		// A retired flow gets no other state teardown, so without this drop its bytes stay resident and counted
+		// until restart.
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),

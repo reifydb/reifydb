@@ -65,7 +65,7 @@ pub trait RollingOperator {
 
 	fn bucket_size(&self) -> Duration;
 
-	fn seal_after(&self) -> Option<Duration> {
+	fn lateness(&self) -> Option<Duration> {
 		None
 	}
 
@@ -292,7 +292,7 @@ where
 	}
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
-		let Some(seal_after) = self.aggregator.seal_after() else {
+		let Some(lateness) = self.aggregator.lateness() else {
 			return Ok(());
 		};
 		let mut store = GuestAsHost(ctx);
@@ -302,11 +302,11 @@ where
 			key: EncodedKey::new(timer.key),
 		});
 		let frontier: DateTime = advance_seal_frontier(&mut store, fired)?;
-		Self::expire_through(&mut self.engine, &mut store, seal_horizon_of(frontier, seal_after))
+		Self::expire_through(&mut self.engine, &mut store, seal_horizon_of(frontier, lateness))
 	}
 
-	fn seal_after(&self) -> Option<Duration> {
-		self.aggregator.seal_after()
+	fn lateness(&self) -> Option<Duration> {
+		self.aggregator.lateness()
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
@@ -315,15 +315,15 @@ where
 			return Ok(());
 		}
 
-		let seal_after = self.aggregator.seal_after();
-		if let Some(seal_after) = seal_after {
+		let lateness = self.aggregator.lateness();
+		if let Some(lateness) = lateness {
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, coord)| *coord).max();
 			if let Some(newest) = newest {
-				arm_seal_timer(&mut store, newest, seal_after)?;
+				arm_seal_timer(&mut store, newest, lateness)?;
 			}
 			let watermark: DateTime = seal_frontier(&mut store)?;
-			let horizon = seal_horizon_of(watermark, seal_after);
+			let horizon = seal_horizon_of(watermark, lateness);
 			Self::expire_through(&mut self.engine, &mut store, horizon)?;
 			let mut dropped = 0u64;
 			buckets.retain(|(_, coord), events| {

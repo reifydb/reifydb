@@ -113,6 +113,9 @@ fn render_constant_rql(c: &ConstantExpression) -> String {
 		ConstantExpression::Temporal {
 			fragment,
 		} => fragment.text().to_string(),
+		ConstantExpression::Duration {
+			fragment,
+		} => fragment.text().to_string(),
 	}
 }
 

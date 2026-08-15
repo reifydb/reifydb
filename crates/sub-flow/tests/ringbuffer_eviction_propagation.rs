@@ -122,7 +122,7 @@ fn global_ttl_drop_keeps_the_stale_downstream_aggregate() {
 	let db = setup();
 	create_events_table(&db);
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, row: { ttl: { duration: '1h', announce: false } } } AS { FROM test::events }");
+		 WITH { capacity: 2, row: { ttl: 1h, announce: false } } AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
 	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
@@ -147,7 +147,7 @@ fn partitioned_ttl_drop_keeps_the_stale_downstream_aggregate() {
 	let db = setup();
 	create_events_table(&db);
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, row: { ttl: { duration: '1h', announce: false } }, partition: { by: { region } } } \
+		 WITH { capacity: 2, row: { ttl: 1h, announce: false }, partition: { by: { region } } } \
 		 AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
@@ -169,7 +169,7 @@ fn global_ttl_delete_mode_still_propagates() {
 	let db = setup();
 	create_events_table(&db);
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, row: { ttl: { duration: '1h', announce: true } } } AS { FROM test::events }");
+		 WITH { capacity: 2, row: { ttl: 1h, announce: true } } AS { FROM test::events }");
 	create_agg_over_rb(&db);
 
 	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");

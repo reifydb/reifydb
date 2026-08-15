@@ -263,7 +263,7 @@ pub mod tests {
 		// The clause is the only bound on an aggregate's groups, and it has to parse after `by` rather than
 		// after the projection, or the group key would terminate the aggregate instead of belonging to it.
 		let bump = Bump::new();
-		let source = "AGGREGATE { count(value) } BY { slot } WITH { seal: { duration: '1m' } }";
+		let source = "AGGREGATE { count(value) } BY { slot } WITH { lateness: 1m }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();

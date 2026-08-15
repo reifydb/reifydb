@@ -170,7 +170,7 @@ pub mod tests {
 	#[test]
 	fn test_distinct_with_ttl_duration_only() {
 		let bump = Bump::new();
-		let source = "DISTINCT { x } WITH { seal: { duration: '1h' } }";
+		let source = "DISTINCT { x } WITH { lateness: 1h }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -188,7 +188,7 @@ pub mod tests {
 	#[test]
 	fn test_distinct_with_ttl_full_config() {
 		let bump = Bump::new();
-		let source = "DISTINCT { x } WITH { seal: { duration: '5m', on: updated, announce: false } }";
+		let source = "DISTINCT { x } WITH { lateness: 5m, on: updated, announce: false }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();

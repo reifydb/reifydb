@@ -7,7 +7,7 @@ use reifydb_core::{
 		identifier::{ColumnIdentifier, ColumnObject},
 		resolved::{ResolvedColumn, ResolvedObject},
 	},
-	row::OperatorSeal,
+	row::OperatorLateness,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, fragment::Fragment};
@@ -25,7 +25,7 @@ use crate::{
 pub(crate) struct DistinctCompiler {
 	pub input: Box<QueryPlan>,
 	pub columns: Vec<ResolvedColumn>,
-	pub ttl: Option<OperatorSeal>,
+	pub ttl: Option<OperatorLateness>,
 }
 
 impl From<DistinctNode> for DistinctCompiler {

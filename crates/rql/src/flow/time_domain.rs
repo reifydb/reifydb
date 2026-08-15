@@ -7,7 +7,7 @@ use reifydb_catalog::{CatalogStore, catalog::Catalog};
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
 	error::diagnostic::flow::{
-		flow_join_right_seal_conflicts_with_flag, flow_join_seal_requires_event_time,
+		flow_join_lateness_requires_event_time, flow_join_right_lateness_conflicts_with_flag,
 		flow_rolling_lag_requires_event_time,
 	},
 	interface::catalog::{flow::FlowId, id::ViewId},
@@ -120,9 +120,9 @@ pub fn check_window_time_requirements(catalog: &Catalog, txn: &mut Transaction<'
 	Ok(())
 }
 
-pub fn check_join_seal_requirements(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
+pub fn check_join_lateness_requirements(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
 	let flow_name = format!("flow {}", flow.id.0);
-	let mut sealed = false;
+	let mut declared = false;
 
 	for operator_id in flow.topological_order()? {
 		let Some(operator) = flow.get_operator(&operator_id) else {
@@ -136,31 +136,32 @@ pub fn check_join_seal_requirements(catalog: &Catalog, txn: &mut Transaction<'_>
 		else {
 			continue;
 		};
-		let Some(seal) = CatalogStore::find_operator_settings(txn, operator_id)?.and_then(|s| s.join) else {
+		let Some(lateness) = CatalogStore::find_operator_settings(txn, operator_id)?.and_then(|s| s.join)
+		else {
 			continue;
 		};
-		if seal.left.is_none() && seal.right.is_none() {
+		if lateness.left.is_none() && lateness.right.is_none() {
 			continue;
 		}
 
-		if seal.right.is_some() {
+		if lateness.right.is_some() {
 			if *snapshot {
-				return Err(Error(Box::new(flow_join_right_seal_conflicts_with_flag(
+				return Err(Error(Box::new(flow_join_right_lateness_conflicts_with_flag(
 					&flow_name, "snapshot",
 				))));
 			}
 			if *latest {
-				return Err(Error(Box::new(flow_join_right_seal_conflicts_with_flag(
+				return Err(Error(Box::new(flow_join_right_lateness_conflicts_with_flag(
 					&flow_name, "latest",
 				))));
 			}
 		}
 
-		sealed = true;
+		declared = true;
 	}
 
-	if sealed && source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
-		return Err(Error(Box::new(flow_join_seal_requires_event_time(&flow_name))));
+	if declared && source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
+		return Err(Error(Box::new(flow_join_lateness_requires_event_time(&flow_name))));
 	}
 
 	Ok(())

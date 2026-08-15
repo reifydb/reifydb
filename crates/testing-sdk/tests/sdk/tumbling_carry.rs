@@ -235,7 +235,7 @@ fn update_in_current_window_recomputes_carry() {
 
 #[test]
 fn late_event_accepted_without_sealing() {
-	// Without a seal envelope there is no gate, so a late event reopens its earlier window;
+	// Without a lateness envelope there is no gate, so a late event reopens its earlier window;
 	// bounding mutability is the opt-in seal gate's job, not an implicit high-water drop.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
@@ -275,7 +275,7 @@ impl TumblingCarryOperator for SealedCarry {
 		TestCarry.carry_forward(value, prev_carry)
 	}
 
-	fn seal_after(&self) -> Option<Duration> {
+	fn lateness(&self) -> Option<Duration> {
 		Some(millis(120))
 	}
 }
@@ -359,7 +359,7 @@ fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
 #[test]
 fn a_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
 	// The mirror of the freeze above, and the reason that one cannot simply be "never seal".
-	// Sealing is what bounds operator state: once the watermark is truly past window + seal_after,
+	// Sealing is what bounds operator state: once the watermark is truly past window + lateness,
 	// late mutations for that window have to be refused, or a stalled group's buckets accumulate
 	// without limit. SealedCarry seals 120ms after a 60ms window, so a watermark at 10_000ms is
 	// far outside the envelope of the window starting at 0.
@@ -390,5 +390,5 @@ fn an_ungated_carry_operator_arms_no_seal_timer() {
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 
-	assert!(h.armed_timers().is_empty(), "an operator with seal_after = None must arm no timer");
+	assert!(h.armed_timers().is_empty(), "an operator with lateness = None must arm no timer");
 }

@@ -13,7 +13,6 @@ use reifydb_value::{
 	value::{
 		constraint::{Constraint, TypeConstraint},
 		duration::Duration,
-		temporal::parse::duration::parse_duration,
 	},
 };
 
@@ -24,11 +23,12 @@ use crate::{
 		AstQueueRetry,
 	},
 	convert_data_type_with_constraints,
+	duration::{DurationBound, FOREVER, compile_duration},
 	plan::logical::{
 		Compiler, CreateQueueNode, LogicalPlan,
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
-	token::token::{Token, TokenKind},
+	token::token::Token,
 };
 
 impl<'bump> Compiler<'bump> {
@@ -224,11 +224,8 @@ fn compile_deduplicate(
 	}
 
 	let ttl = match &ast.ttl {
-		Some(token) if token.fragment.text() == "forever" => Duration::MAX,
-		Some(token) if token.kind == TokenKind::Identifier => {
-			return Err(invalid_option(token, "a duration literal or 'forever'"));
-		}
-		Some(token) => compile_positive_duration(token)?,
+		Some(token) if token.fragment.text() == FOREVER => Duration::MAX,
+		Some(token) => compile_duration(token, DurationBound::Positive, "'ttl'")?,
 		None => Duration::MAX,
 	};
 
@@ -244,7 +241,7 @@ fn compile_retention(ast: Option<&AstQueueRetention<'_>>) -> Result<QueueRetenti
 	};
 
 	let done = match &ast.done {
-		Some(token) => Some(compile_positive_duration(token)?),
+		Some(token) => Some(compile_duration(token, DurationBound::Positive, "'done'")?),
 		None => None,
 	};
 
@@ -267,7 +264,7 @@ fn compile_retry(ast: Option<&AstQueueRetry<'_>>) -> Result<QueueRetry> {
 	};
 
 	let backoff = match &ast.backoff {
-		Some(token) => compile_positive_duration(token)?,
+		Some(token) => compile_duration(token, DurationBound::Positive, "'backoff'")?,
 		None => Queue::DEFAULT_RETRY_BACKOFF,
 	};
 
@@ -275,14 +272,6 @@ fn compile_retry(ast: Option<&AstQueueRetry<'_>>) -> Result<QueueRetry> {
 		attempts,
 		backoff,
 	})
-}
-
-fn compile_positive_duration(token: &Token<'_>) -> Result<Duration> {
-	let duration = parse_duration(token.fragment.to_owned())?;
-	if duration.is_zero() || duration.is_negative() {
-		return Err(invalid_option(token, "a positive duration"));
-	}
-	Ok(duration)
 }
 
 fn invalid_option(token: &Token<'_>, expected: &str) -> Error {

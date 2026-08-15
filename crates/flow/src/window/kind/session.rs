@@ -86,8 +86,8 @@ impl SessionKind {
 		}
 	}
 
-	pub fn seal_policy(&self, seal: Duration) -> SealPolicy {
-		SealPolicy::session(self.gap, seal)
+	pub fn seal_policy(&self, lateness: Duration) -> SealPolicy {
+		SealPolicy::session(self.gap, lateness)
 	}
 
 	pub fn assign(&self, tracker: &mut SessionTracker, coord: EventCoord) -> SessionAssignment {

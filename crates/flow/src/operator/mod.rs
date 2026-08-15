@@ -73,7 +73,7 @@ pub trait HostOperator: Send {
 		Ok(None)
 	}
 
-	fn seal_span(&self) -> Option<Duration> {
+	fn lateness_span(&self) -> Option<Duration> {
 		None
 	}
 

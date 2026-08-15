@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the Apache-2.0, see license.md file
 
-query 'CALL rql::tokenize("window { count(*) } with { interval: \'5s\' }")'
+query 'CALL rql::tokenize("window { count(*) } with { duration: 5s }")'
 ---
 > +-------+--------+----------+--------------+--------------+
 > |  idx  |  line  |  column  |     kind     |    value     |
@@ -15,9 +15,9 @@ query 'CALL rql::tokenize("window { count(*) } with { interval: \'5s\' }")'
 > |   6   |   1    |    19    |   Operator   |  CloseCurly  |
 > |   7   |   1    |    21    |   Keyword    |     With     |
 > |   8   |   1    |    26    |   Operator   |  OpenCurly   |
-> |   9   |   1    |    28    |  Identifier  |   interval   |
+> |   9   |   1    |    28    |  Identifier  |   duration   |
 > |  10   |   1    |    36    |   Operator   |    Colon     |
-> |  11   |   1    |    39    |   Literal    |     Text     |
-> |  12   |   1    |    43    |   Operator   |  CloseCurly  |
+> |  11   |   1    |    38    |   Literal    |   Duration   |
+> |  12   |   1    |    41    |   Operator   |  CloseCurly  |
 > +-------+--------+----------+--------------+--------------+
 >

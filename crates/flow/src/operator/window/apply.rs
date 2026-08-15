@@ -348,14 +348,14 @@ pub fn apply_tumbling_engine(
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		SealPolicy::tumbling(window_size, operator.seal()),
+		SealPolicy::tumbling(window_size, operator.lateness()),
 		ExpiryAnchor::WindowStart,
 	)?;
 
 	let groups = intern_batch(host, &arrival)?;
 
 	let engine_config = operator.engine_config();
-	let engine_seal = operator.seal();
+	let engine_amendable = operator.amendable();
 	let expiry_anchor = if operator.is_count_based() {
 		ExpiryAnchor::Unindexed
 	} else {
@@ -372,7 +372,7 @@ pub fn apply_tumbling_engine(
 		&groups,
 		&kinds,
 		engine_config,
-		engine_seal,
+		engine_amendable,
 		expiry_anchor,
 	)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
@@ -596,14 +596,14 @@ pub fn apply_sliding_engine(
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		SealPolicy::tumbling(window_size, operator.seal()),
+		SealPolicy::tumbling(window_size, operator.lateness()),
 		ExpiryAnchor::WindowStart,
 	)?;
 
 	let groups = intern_batch(host, &arrival)?;
 
 	let engine_config = operator.engine_config();
-	let engine_seal = operator.seal();
+	let engine_amendable = operator.amendable();
 	let expiry_anchor = if operator.is_count_based() {
 		ExpiryAnchor::Unindexed
 	} else {
@@ -620,7 +620,7 @@ pub fn apply_sliding_engine(
 		&groups,
 		&kinds,
 		engine_config,
-		engine_seal,
+		engine_amendable,
 		expiry_anchor,
 	)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
@@ -853,7 +853,7 @@ pub fn apply_session_engine(
 	let groups = intern_batch(host, &arrival)?;
 
 	let engine_config = operator.engine_config();
-	let engine_seal = operator.seal();
+	let engine_amendable = operator.amendable();
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
 		host,
@@ -865,7 +865,7 @@ pub fn apply_session_engine(
 		&groups,
 		&kinds,
 		engine_config,
-		engine_seal,
+		engine_amendable,
 		ExpiryAnchor::LastEvent,
 	)?;
 
@@ -1043,7 +1043,7 @@ pub fn seal_engine_windows(
 	let Some(window_size) = operator.size_duration() else {
 		return Ok(Vec::new());
 	};
-	let policy = SealPolicy::tumbling(window_size, operator.seal());
+	let policy = SealPolicy::tumbling(window_size, operator.lateness());
 	seal_due_windows(operator, host, fired, policy)
 }
 
@@ -1084,20 +1084,20 @@ mod tests {
 	#[test]
 	fn seal_horizon_saturates_for_young_watermarks() {
 		// The epoch is the domain floor; wrapping past it declares every window sealed.
-		let seal_after = Duration::from_milliseconds_const(10);
+		let lateness = Duration::from_milliseconds_const(10);
 
 		assert_eq!(
-			seal_horizon(at_millis(3), seal_after),
+			seal_horizon(at_millis(3), lateness),
 			at_millis(0),
 			"young watermark saturates to the epoch"
 		);
 		assert!(
-			!is_sealed(at_millis(0), seal_horizon(at_millis(3), seal_after)),
+			!is_sealed(at_millis(0), seal_horizon(at_millis(3), lateness)),
 			"the epoch is not below itself"
 		);
 		assert!(
-			is_sealed(at_millis(4), seal_horizon(at_millis(20), seal_after)),
-			"anchor below watermark - seal_after is sealed"
+			is_sealed(at_millis(4), seal_horizon(at_millis(20), lateness)),
+			"anchor below watermark - lateness is sealed"
 		);
 	}
 }

@@ -12,6 +12,7 @@ use reifydb_value::{
 		decimal::parse::parse_decimal,
 		int::Int,
 		number::parse::{parse_primitive_int, parse_primitive_uint},
+		temporal::parse::duration::parse_duration,
 		value_type::ValueType,
 	},
 };
@@ -83,6 +84,9 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 		ConstantExpression::Temporal {
 			fragment,
 		} => TemporalParser::parse_temporal(fragment.clone(), row_count)?,
+		ConstantExpression::Duration {
+			fragment,
+		} => ColumnBuffer::duration(vec![parse_duration(fragment.clone())?; row_count]),
 		ConstantExpression::None {
 			..
 		} => ColumnBuffer::none_typed(ValueType::Any, row_count),

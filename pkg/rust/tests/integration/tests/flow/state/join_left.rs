@@ -41,7 +41,7 @@ fn sealing_left_join(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW app::j { k: int4, lv: int4, rv: Option(int4) } AS {
 			FROM app::lhs
 				| left join { from app::rhs } as r using (k, r.k)
-					with { seal: { left: { duration: '1s' }, right: { duration: '1s' } } }
+					with { lateness: { left: 1s, right: 1s } }
 				| map { k: k, lv: lv, rv: r_rv }
 		}"#);
 }

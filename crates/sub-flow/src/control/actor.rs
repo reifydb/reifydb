@@ -1225,7 +1225,7 @@ mod pull_protocol {
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
 				FROM app::t
 					| window tumbling { total: math::sum(v) }
-						with { interval: "1s", seal: "0s" }
+						with { duration: 1s, lateness: 0s }
 						by { g }
 			}"#,
 		);
@@ -1286,7 +1286,7 @@ mod pull_protocol {
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
 				FROM app::t
 					| window tumbling { total: math::sum(v) }
-						with { interval: "1s", seal: "0s" }
+						with { duration: 1s, lateness: 0s }
 						by { g }
 			}"#,
 		);
@@ -1354,7 +1354,7 @@ mod pull_protocol {
 		harness_with(
 			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { time: event(ts) }",
 			&format!("CREATE DEFERRED RINGBUFFER VIEW app::v {{ id: int4, v: int4 }} \
-				 WITH {{ capacity: 1000, row: {{ ttl: {{ duration: '1s', announce: {announce} }} }} }} \
+				 WITH {{ capacity: 1000, row: {{ ttl: 1s, announce: {announce} }} }} \
 				 AS {{ FROM app::t map {{ id, v }} }}"),
 		)
 	}

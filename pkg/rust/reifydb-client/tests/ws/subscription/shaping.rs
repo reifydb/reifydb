@@ -4,7 +4,7 @@
 use std::error::Error;
 
 use reifydb::runtime::context::clock::MockClock;
-use reifydb_client::{ChangeKind, ChangePayload, HydrationConfig, SubscriptionConfig};
+use reifydb_client::{ChangeKind, ChangePayload, HydrationConfig, Linger, SubscriptionConfig, Throttle};
 use reifydb_value::value::duration::Duration;
 
 use super::{SubscriptionTestHarness, TestContext, recv_with_timeout};
@@ -19,8 +19,8 @@ fn config(hydration: bool, throttle: Option<u64>, linger: Option<u64>) -> Subscr
 			enabled: hydration,
 			max_rows: None,
 		},
-		throttle: throttle.map(ms),
-		linger: linger.map(ms),
+		throttle: throttle.map(|m| Throttle::new(ms(m))),
+		linger: linger.map(|m| Linger::new(ms(m))),
 	}
 }
 

@@ -53,20 +53,20 @@ pub struct SealPolicy {
 }
 
 impl SealPolicy {
-	pub fn tumbling(size: Duration, seal: Duration) -> Self {
-		Self::extended_by_seal(size, seal)
+	pub fn tumbling(size: Duration, lateness: Duration) -> Self {
+		Self::extended_by_seal(size, lateness)
 	}
 
-	pub fn sliding(size: Duration, seal: Duration) -> Self {
-		Self::extended_by_seal(size, seal)
+	pub fn sliding(size: Duration, lateness: Duration) -> Self {
+		Self::extended_by_seal(size, lateness)
 	}
 
-	pub fn session(gap: Duration, seal: Duration) -> Self {
-		Self::extended_by_seal(gap, seal)
+	pub fn session(gap: Duration, lateness: Duration) -> Self {
+		Self::extended_by_seal(gap, lateness)
 	}
 
-	pub fn rolling(span: Duration, seal: Duration) -> Self {
-		Self::extended_by_seal(span, seal)
+	pub fn rolling(span: Duration, lateness: Duration) -> Self {
+		Self::extended_by_seal(span, lateness)
 	}
 
 	pub fn of(admissible: Duration) -> Self {
@@ -75,9 +75,9 @@ impl SealPolicy {
 		}
 	}
 
-	fn extended_by_seal(base: Duration, seal: Duration) -> Self {
+	fn extended_by_seal(base: Duration, lateness: Duration) -> Self {
 		Self {
-			admissible: AdmissibleSpan(base.try_add(seal).unwrap_or(base)),
+			admissible: AdmissibleSpan(base.try_add(lateness).unwrap_or(base)),
 		}
 	}
 
@@ -102,8 +102,8 @@ impl SealPolicy {
 	}
 }
 
-pub fn seal_horizon<C: Coord>(watermark: C, seal_after: C::Span) -> C {
-	watermark.saturating_sub_span(seal_after)
+pub fn seal_horizon<C: Coord>(watermark: C, lateness: C::Span) -> C {
+	watermark.saturating_sub_span(lateness)
 }
 
 pub fn is_sealed<C: Coord>(anchor: C, horizon: C) -> bool {
@@ -162,7 +162,7 @@ mod tests {
 
 		let anchor = policy.sealed_anchor(ledger).expect("the ledger is past one admissible span");
 
-		assert_eq!(anchor, at_millis(283_261), "ledger - (size + seal) - 1");
+		assert_eq!(anchor, at_millis(283_261), "ledger - (size + lateness) - 1");
 		assert!(anchor < ledger, "a frontier at or past the ledger reclaims windows that have not sealed");
 		assert_eq!(
 			policy.seal_instant(anchor).at(),
@@ -184,10 +184,10 @@ mod tests {
 	}
 
 	#[test]
-	fn rolling_admission_carries_seal_and_rolling_eviction_does_not() {
-		// Rolling admits a late event inside the seal but evicts on the bare span, which is why
+	fn rolling_admission_carries_lateness_and_rolling_eviction_does_not() {
+		// Rolling admits a late event inside the lateness but evicts on the bare span, which is why
 		// SealInstant and EvictionInstant are separate types. An eviction that also waited out the
-		// seal keeps every rolling window one seal-period too wide, inflating every aggregate.
+		// lateness keeps every rolling window one lateness-period too wide, inflating every aggregate.
 		let admission = SealPolicy::rolling(ms(1_000), ms(200));
 		let eviction = EvictionPolicy::rolling(ms(1_000));
 
@@ -205,9 +205,9 @@ mod tests {
 	}
 
 	#[test]
-	fn every_kind_admits_its_own_base_span_plus_seal() {
-		// Tumbling and sliding admit size + seal, session admits gap + seal, rolling
-		// admits span + seal. A divergence here is a behaviour change, not a refactor.
+	fn every_kind_admits_its_own_base_span_plus_lateness() {
+		// Tumbling and sliding admit size + lateness, session admits gap + lateness, rolling
+		// admits span + lateness. A divergence here is a behaviour change, not a refactor.
 		assert_eq!(SealPolicy::tumbling(ms(1_000), ms(50)).admissible().duration(), ms(1_050));
 		assert_eq!(SealPolicy::sliding(ms(1_000), ms(50)).admissible().duration(), ms(1_050));
 		assert_eq!(SealPolicy::session(ms(300), ms(50)).admissible().duration(), ms(350));
@@ -215,17 +215,17 @@ mod tests {
 	}
 
 	#[test]
-	fn no_seal_can_make_the_admissible_span_shorter_than_the_window() {
+	fn no_lateness_can_make_the_admissible_span_shorter_than_the_window() {
 		// An admissible span below the window size seals live windows on arrival - silent data loss.
 		// Two ways to break it: the sum failing back to something smaller than the base, and
 		// span_millis answering none for a months/days Duration, which i64::MAX nanoseconds becomes.
 		let enormous = Duration::from_nanoseconds_const(i64::MAX);
 
-		for seal in [ms(0), ms(1), enormous] {
-			let policy = SealPolicy::tumbling(ms(1_000), seal);
+		for lateness in [ms(0), ms(1), enormous] {
+			let policy = SealPolicy::tumbling(ms(1_000), lateness);
 			assert!(
 				policy.admissible().duration() >= ms(1_000),
-				"admissible {:?} fell below the 1000ms window for seal {seal:?}",
+				"admissible {:?} fell below the 1000ms window for lateness {lateness:?}",
 				policy.admissible().duration()
 			);
 		}

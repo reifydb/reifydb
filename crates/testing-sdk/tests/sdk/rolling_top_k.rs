@@ -278,7 +278,7 @@ fn capacity_eviction_drops_oldest_window() {
 
 #[test]
 fn buried_window_insert_accepted_without_sealing() {
-	// Without a seal envelope there is no implicit high-water drop, so an insert into an older
+	// Without a lateness envelope there is no implicit high-water drop, so an insert into an older
 	// coordinate merges rather than being discarded.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
 		.build()
@@ -304,7 +304,7 @@ impl RollingTopKOperator for SealedTopVolume {
 		TestTopVolume.bucket_size()
 	}
 
-	fn seal_after(&self) -> Option<Duration> {
+	fn lateness(&self) -> Option<Duration> {
 		Some(millis(120))
 	}
 
@@ -376,5 +376,5 @@ fn an_ungated_rolling_top_k_operator_arms_no_seal_timer() {
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 7, 10.0)).build()).expect("apply");
 
-	assert!(h.armed_timers().is_empty(), "an operator with seal_after = None must arm no timer");
+	assert!(h.armed_timers().is_empty(), "an operator with lateness = None must arm no timer");
 }

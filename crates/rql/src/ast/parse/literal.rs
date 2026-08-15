@@ -5,8 +5,8 @@ use crate::{
 	Result,
 	ast::{
 		ast::{
-			AstLiteral, AstLiteralBoolean, AstLiteralNone, AstLiteralNumber, AstLiteralTemporal,
-			AstLiteralText,
+			AstLiteral, AstLiteralBoolean, AstLiteralDuration, AstLiteralNone, AstLiteralNumber,
+			AstLiteralTemporal, AstLiteralText,
 		},
 		parse::Parser,
 	},
@@ -22,6 +22,7 @@ impl<'bump> Parser<'bump> {
 			Literal::True | Literal::False => AstLiteral::Boolean(AstLiteralBoolean(token)),
 			Literal::None => AstLiteral::None(AstLiteralNone(token)),
 			Literal::Temporal => AstLiteral::Temporal(AstLiteralTemporal(token)),
+			Literal::Duration => AstLiteral::Duration(AstLiteralDuration(token)),
 		})
 	}
 

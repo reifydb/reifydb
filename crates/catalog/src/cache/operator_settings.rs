@@ -43,14 +43,14 @@ impl CatalogCache {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::row::OperatorSeal;
+	use reifydb_core::row::OperatorLateness;
 	use reifydb_value::value::duration::Duration;
 
 	use super::*;
 
 	fn settings(duration: Duration) -> OperatorSettings {
 		OperatorSettings {
-			seal: Some(OperatorSeal {
+			lateness: Some(OperatorLateness {
 				duration,
 			}),
 			join: None,

@@ -52,7 +52,7 @@ use crate::{
 	},
 };
 
-// Not free to pick: an operator's own seal span overrides whatever the harness declares.
+// Not free to pick: an operator's own lateness span overrides whatever the harness declares.
 const WINDOW_SECS: i64 = 60;
 
 fn tumbling_sum() -> WindowSpec {
@@ -62,7 +62,7 @@ fn tumbling_sum() -> WindowSpec {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		seal: Duration::default(),
+		lateness: Duration::default(),
 	}
 }
 
@@ -91,7 +91,7 @@ chaos_test!(window_tumbling_sum_chaos, |seed| {
 		seed,
 		operators::window::tumbling::Params {
 			size_secs: 60,
-			seal_secs: 0,
+			lateness_secs: 0,
 			groups: 4,
 			steps: 40,
 			max_batch: 5,
@@ -108,7 +108,7 @@ chaos_test!(window_tumbling_seal_chaos, |seed| {
 		seed,
 		operators::window::tumbling::Params {
 			size_secs: 30,
-			seal_secs: 45,
+			lateness_secs: 45,
 			groups: 3,
 			steps: 60,
 			max_batch: 4,
@@ -126,7 +126,7 @@ chaos_test!(window_sliding_sum_chaos, |seed| {
 		operators::window::sliding::Params {
 			size_secs: 60,
 			slide_secs: 15,
-			seal_secs: 0,
+			lateness_secs: 0,
 			groups: 4,
 			steps: 40,
 			max_batch: 5,
@@ -143,7 +143,7 @@ chaos_test!(window_rolling_sum_chaos, |seed| {
 		seed,
 		operators::window::rolling::Params {
 			size_secs: 60,
-			seal_secs: 0,
+			lateness_secs: 0,
 			groups: 4,
 			steps: 40,
 			max_batch: 5,
@@ -160,7 +160,7 @@ chaos_test!(window_rolling_seal_chaos, |seed| {
 		seed,
 		operators::window::rolling::Params {
 			size_secs: 30,
-			seal_secs: 45,
+			lateness_secs: 45,
 			groups: 3,
 			steps: 60,
 			max_batch: 4,
@@ -178,7 +178,7 @@ chaos_test!(window_sliding_seal_chaos, |seed| {
 		operators::window::sliding::Params {
 			size_secs: 30,
 			slide_secs: 10,
-			seal_secs: 45,
+			lateness_secs: 45,
 			groups: 3,
 			steps: 60,
 			max_batch: 4,
@@ -197,7 +197,7 @@ chaos_test!(window_tumbling_flow_shaped_chaos, |seed| {
 		seed,
 		operators::window::tumbling::Params {
 			size_secs: 30,
-			seal_secs: 15,
+			lateness_secs: 15,
 			groups: 3,
 			steps: 60,
 			max_batch: 5,
@@ -209,10 +209,10 @@ chaos_test!(window_tumbling_flow_shaped_chaos, |seed| {
 	);
 });
 
-fn window_fold_params(seal_secs: u64) -> operators::window::tumbling::Params {
+fn window_fold_params(lateness_secs: u64) -> operators::window::tumbling::Params {
 	operators::window::tumbling::Params {
 		size_secs: 30,
-		seal_secs,
+		lateness_secs,
 		groups: 3,
 		steps: 60,
 		max_batch: 4,
@@ -223,19 +223,19 @@ fn window_fold_params(seal_secs: u64) -> operators::window::tumbling::Params {
 	}
 }
 
-chaos_test!(window_tumbling_min_zero_seal_chaos, |seed| {
-	// Zero seal keeps min invertible, so it runs on the multiset and a retraction of the current
+chaos_test!(window_tumbling_min_zero_lateness_chaos, |seed| {
+	// Zero lateness keeps min invertible, so it runs on the multiset and a retraction of the current
 	// minimum is what forces the full recompute.
 	operators::window::tumbling::drive_folded(seed, window_fold_params(0), Fold::Min);
 });
 
-chaos_test!(window_tumbling_max_zero_seal_chaos, |seed| {
+chaos_test!(window_tumbling_max_zero_lateness_chaos, |seed| {
 	operators::window::tumbling::drive_folded(seed, window_fold_params(0), Fold::Max);
 });
 
 chaos_test!(window_tumbling_min_sealed_chaos, |seed| {
 	// Seal makes min non-invertible, so the operator switches to the sealing accumulator. No sweep
-	// reached that path while sum was the only fold: sum is invertible at every seal setting.
+	// reached that path while sum was the only fold: sum is invertible at every lateness setting.
 	operators::window::tumbling::drive_folded(seed, window_fold_params(45), Fold::Min);
 });
 
@@ -253,10 +253,10 @@ fn the_window_folds_are_stated_independently_of_the_slots_they_check() {
 	assert_eq!(Fold::Max.apply(&[3, 1, 2]), Value::Int8(3));
 }
 
-fn rolling_fold_params(seal_secs: u64) -> operators::window::rolling::Params {
+fn rolling_fold_params(lateness_secs: u64) -> operators::window::rolling::Params {
 	operators::window::rolling::Params {
 		size_secs: 30,
-		seal_secs,
+		lateness_secs,
 		groups: 3,
 		steps: 60,
 		max_batch: 4,
@@ -269,7 +269,7 @@ fn rolling_fold_params(seal_secs: u64) -> operators::window::rolling::Params {
 
 chaos_test!(window_rolling_min_sealed_chaos, |seed| {
 	// The only path that reaches the sealing accumulator's SEALED half. Min is non-invertible under
-	// seal, so the slot is a SealingMin; rolling is the kind whose seal driver ages entries out of
+	// lateness, so the slot is a SealingMin; rolling is the kind whose seal driver ages entries out of
 	// the seal tail, which is what fills `sealed`. Tumbling reaches the container and its tail only.
 	operators::window::rolling::drive_folded(seed, rolling_fold_params(45), Fold::Min);
 });
@@ -278,8 +278,8 @@ chaos_test!(window_rolling_max_sealed_chaos, |seed| {
 	operators::window::rolling::drive_folded(seed, rolling_fold_params(45), Fold::Max);
 });
 
-chaos_test!(window_rolling_min_zero_seal_chaos, |seed| {
-	// Zero seal keeps min invertible, so this drives the multiset instead and is the control that
+chaos_test!(window_rolling_min_zero_lateness_chaos, |seed| {
+	// Zero lateness keeps min invertible, so this drives the multiset instead and is the control that
 	// says the sealed sweeps above are testing something different.
 	operators::window::rolling::drive_folded(seed, rolling_fold_params(0), Fold::Min);
 });
@@ -303,17 +303,17 @@ fn the_random_sweeps_reach_the_configurations_that_found_defects() {
 	// shrinking one fail here rather than go quiet.
 	const SEEDS: u64 = 512;
 
-	let mut zero_seal = 0;
-	let mut seal_over_size = 0;
+	let mut zero_lateness = 0;
+	let mut lateness_over_size = 0;
 	let mut tumbling_sizes = std::collections::BTreeSet::new();
 	for seed in 0..SEEDS {
 		let (_, params) = operators::window::tumbling::random_params(seed);
 		tumbling_sizes.insert(params.size_secs);
-		if params.seal_secs == 0 {
-			zero_seal += 1;
+		if params.lateness_secs == 0 {
+			zero_lateness += 1;
 		}
-		if params.seal_secs > params.size_secs {
-			seal_over_size += 1;
+		if params.lateness_secs > params.size_secs {
+			lateness_over_size += 1;
 		}
 		assert!(
 			params.seal_pct + params.remove_pct + params.update_pct <= 85,
@@ -321,10 +321,13 @@ fn the_random_sweeps_reach_the_configurations_that_found_defects() {
 		);
 		assert!(params.steps > 0 && params.max_batch > 0 && params.groups > 0, "degenerate draw: {params:?}");
 	}
-	assert!(zero_seal > 0, "no zero-seal draw in {SEEDS} seeds; the closes-immediately boundary is uncovered");
 	assert!(
-		seal_over_size > 0,
-		"no seal-wider-than-size draw in {SEEDS} seeds; that band is where the rolling operator was \
+		zero_lateness > 0,
+		"no zero-lateness draw in {SEEDS} seeds; the closes-immediately boundary is uncovered"
+	);
+	assert!(
+		lateness_over_size > 0,
+		"no lateness-wider-than-size draw in {SEEDS} seeds; that band is where the rolling operator was \
 		 withdrawing live groups"
 	);
 	assert!(tumbling_sizes.len() >= 5, "sizes collapsed to {tumbling_sizes:?}; the sweep stopped spanning scales");
@@ -1929,7 +1932,7 @@ chaos_test!(window_session_zero_gap_chaos, |seed| {
 });
 
 chaos_test!(window_session_min_chaos, |seed| {
-	// Min is not merely different arithmetic: it is non-invertible once seal is non-zero and takes
+	// Min is not merely different arithmetic: it is non-invertible once the lateness is non-zero and takes
 	// the full-recompute path, so a retraction inside a session is recomputed rather than subtracted.
 	operators::window::session::drive(seed, operators::window::session::params(2_000, 6_000, Fold::Min));
 });

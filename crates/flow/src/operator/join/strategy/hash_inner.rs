@@ -281,7 +281,7 @@ impl InnerHashJoin {
 		};
 
 		if !updated {
-			if ctx.operator.seal_of(ctx.side).is_some() {
+			if ctx.operator.lateness_of(ctx.side).is_some() {
 				return Ok(Vec::new());
 			}
 			return self.handle_insert(host, post, &[row_idx], keys.post, ctx);

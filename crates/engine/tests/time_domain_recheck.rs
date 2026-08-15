@@ -22,7 +22,7 @@ fn a_lagged_rolling_window_over_a_processing_time_source_is_rejected() {
 	// ingest clock.
 	let engine = engine_with_source("processing");
 
-	let err = engine.admin_err(&rolling_view("interval: \"1m\", lag: \"1m\""));
+	let err = engine.admin_err(&rolling_view("duration: 1m, lag: 1m"));
 
 	assert!(err.contains("FLOW_043"), "expected FLOW_043, got: {err}");
 }
@@ -32,7 +32,7 @@ fn a_lagged_rolling_window_over_an_event_time_source_is_accepted() {
 	// Without this the validation could reject everything and the test above would still pass.
 	let engine = engine_with_source("event(at)");
 
-	engine.admin(&rolling_view("interval: \"1m\", lag: \"1m\""));
+	engine.admin(&rolling_view("duration: 1m, lag: 1m"));
 }
 
 #[test]
@@ -40,5 +40,5 @@ fn a_rolling_window_without_lag_over_a_processing_time_source_is_accepted() {
 	// The rule must key off `lag`, never off rolling windows as a whole.
 	let engine = engine_with_source("processing");
 
-	engine.admin(&rolling_view("interval: \"1m\""));
+	engine.admin(&rolling_view("duration: 1m"));
 }

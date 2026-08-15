@@ -142,7 +142,7 @@ impl TumblingRegistration for TestVolume {
 	}
 }
 
-// Sealing variant: 60ms windows plus 60ms seal. Identical to TestVolume except for the seal
+// Sealing variant: 60ms windows plus 60ms lateness. Identical to TestVolume except for the seal
 // envelope, so any difference in what these tests observe comes from sealing alone.
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default)]
@@ -169,7 +169,7 @@ impl TumblingOperator for SealedVolume {
 		})
 	}
 
-	fn seal_after(&self) -> Option<Duration> {
+	fn lateness(&self) -> Option<Duration> {
 		Some(millis(120))
 	}
 }
@@ -390,7 +390,7 @@ fn boundary_slot_belongs_to_next_window() {
 
 #[test]
 fn late_event_for_sealed_window_dropped() {
-	// A window seals once the watermark passes start + seal_after, and a sealed window must
+	// A window seals once the watermark passes start + lateness, and a sealed window must
 	// refuse further inserts rather than reopen.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
 		.build()
@@ -403,7 +403,7 @@ fn late_event_for_sealed_window_dropped() {
 
 #[test]
 fn late_event_within_seal_is_accepted() {
-	// The boundary is inclusive on the mutable side: at watermark == start + seal_after the
+	// The boundary is inclusive on the mutable side: at watermark == start + lateness the
 	// window is still open. The watermark must be advanced explicitly, or the gate never
 	// closes and the assertion would hold under any boundary rule.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
@@ -412,7 +412,7 @@ fn late_event_within_seal_is_accepted() {
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 120, 5.0)).build()).expect("apply");
 	h.advance_watermark(DateTime::from_millis(120)).expect("advance watermark");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
-	assert_eq!(out.diffs.len(), 1, "window 0 is still within seal at watermark 120");
+	assert_eq!(out.diffs.len(), 1, "window 0 is still within its lateness at watermark 120");
 	let post = out.diffs[0].post().expect("post");
 	assert_eq!(post.row_ref(0).expect("r0").f64("volume"), Some(99.0));
 }
@@ -461,7 +461,7 @@ fn remove_within_seal_is_applied_and_sealed_remove_is_dropped() {
 		.expect("apply");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 60, 1.0)).build()).expect("apply");
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(2, "BTC", 30, 5.0)).build()).expect("apply");
-	assert_eq!(out.diffs.len(), 1, "retraction within seal must be honored");
+	assert_eq!(out.diffs.len(), 1, "retraction within the lateness must be honored");
 	let diff = &out.diffs[0];
 	assert_eq!(diff.kind(), DiffType::Update);
 	let r = diff.post().expect("post").row_ref(0).expect("r0");

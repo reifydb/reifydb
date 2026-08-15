@@ -3,7 +3,10 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_client::{HydrationConfig as ClientHydrationConfig, SubscriptionConfig as ClientSubscriptionConfig};
+use reifydb_client::{
+	HydrationConfig as ClientHydrationConfig, Linger as ClientLinger,
+	SubscriptionConfig as ClientSubscriptionConfig, Throttle as ClientThrottle,
+};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{id::SubscriptionId, subscription::HydrationConfig},
@@ -320,8 +323,8 @@ async fn handle_subscribe_remote<S: WireSink>(
 			enabled: hydration.enabled,
 			max_rows: hydration.max_rows,
 		},
-		throttle,
-		linger,
+		throttle: throttle.map(ClientThrottle::new),
+		linger: linger.map(ClientLinger::new),
 	};
 	let remote_sub = connect_remote(&address, &body, config, ns_token.as_deref(), client_format)
 		.await
@@ -464,8 +467,8 @@ async fn resolve_batch_members<S: WireSink>(
 						enabled: hydration.enabled,
 						max_rows: hydration.max_rows,
 					},
-					throttle,
-					linger,
+					throttle: throttle.map(ClientThrottle::new),
+					linger: linger.map(ClientLinger::new),
 				};
 				let remote_sub = match connect_remote(
 					&address,

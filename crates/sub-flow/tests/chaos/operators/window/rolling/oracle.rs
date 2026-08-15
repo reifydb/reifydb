@@ -12,11 +12,11 @@ use crate::{
 };
 
 /// A rolling window keeps one row per group, aggregating whatever still trails the seal ledger. The
-/// boundaries are asymmetric: admission drops strictly below `ledger - size - seal`, eviction pops at
+/// boundaries are asymmetric: admission drops strictly below `ledger - size - lateness`, eviction pops at
 /// or below `ledger - size`, and a ledger younger than the span evicts nothing rather than clamping.
 pub struct Oracle {
 	size_ms: u64,
-	seal_ms: u64,
+	lateness_ms: u64,
 	ledger: u64,
 	contributions: Vec<Contribution>,
 	fold: Fold,
@@ -31,10 +31,10 @@ struct Contribution {
 }
 
 impl Oracle {
-	pub fn new(size_ms: u64, seal_ms: u64) -> Self {
+	pub fn new(size_ms: u64, lateness_ms: u64) -> Self {
 		Self {
 			size_ms,
-			seal_ms,
+			lateness_ms,
 			ledger: 0,
 			contributions: Vec::new(),
 			fold: Fold::Sum,
@@ -50,7 +50,7 @@ impl Oracle {
 	}
 
 	fn admission_horizon(&self) -> u64 {
-		self.ledger.saturating_sub(self.size_ms.saturating_add(self.seal_ms))
+		self.ledger.saturating_sub(self.size_ms.saturating_add(self.lateness_ms))
 	}
 
 	fn eviction_cutoff(&self) -> Option<u64> {

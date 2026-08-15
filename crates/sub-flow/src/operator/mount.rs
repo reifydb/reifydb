@@ -108,8 +108,8 @@ impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
 		Ok(Some(Change::from_flow(self.operator, version, diffs, due)))
 	}
 
-	fn seal_span(&self) -> Option<Duration> {
-		self.logic.seal_after().filter(|span| !span.is_zero())
+	fn lateness_span(&self) -> Option<Duration> {
+		self.logic.lateness().filter(|span| !span.is_zero())
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -221,24 +221,24 @@ mod tests {
 			Ok(())
 		}
 
-		fn seal_after(&self) -> Option<Duration> {
+		fn lateness(&self) -> Option<Duration> {
 			self.0.map(Duration::from_milliseconds_const)
 		}
 	}
 
 	#[test]
-	fn a_mounted_guest_forwards_its_seal_span() {
-		// A mount that swallows the seal span claims a frontier covering buckets still amendable.
+	fn a_mounted_guest_forwards_its_lateness_span() {
+		// A mount that swallows the lateness span claims a frontier covering buckets still amendable.
 		let mounted = mount(SealProbe(Some(65_000)), NODE, &[]);
 
-		assert_eq!(HostOperator::seal_span(&*mounted), Some(Duration::from_milliseconds(65_000).unwrap()));
+		assert_eq!(HostOperator::lateness_span(&*mounted), Some(Duration::from_milliseconds(65_000).unwrap()));
 	}
 
 	#[test]
-	fn a_mounted_guest_reports_no_seal_span_for_a_zero_span() {
+	fn a_mounted_guest_reports_no_lateness_span_for_a_zero_span() {
 		// A zero span seals instantly, claiming a frontier over buckets that are still amendable.
 		let mounted = mount(SealProbe(Some(0)), NODE, &[]);
 
-		assert_eq!(HostOperator::seal_span(&*mounted), None);
+		assert_eq!(HostOperator::lateness_span(&*mounted), None);
 	}
 }

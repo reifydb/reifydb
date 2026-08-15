@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 use reifydb_value::{
+	Result,
 	fragment::Fragment,
 	value::{
 		Value,
 		boolean::parse::parse_bool,
 		decimal::parse::parse_decimal,
 		number::parse::{parse_primitive_int, parse_primitive_uint},
+		temporal::parse::duration::parse_duration,
 	},
 };
 
@@ -35,6 +37,9 @@ impl Expression {
 					fragment,
 				}
 				| ConstantExpression::Temporal {
+					fragment,
+				}
+				| ConstantExpression::Duration {
 					fragment,
 				}
 				| ConstantExpression::Text {
@@ -122,36 +127,42 @@ impl ConstantExpression {
 			ConstantExpression::Temporal {
 				fragment,
 			} => fragment.clone(),
+			ConstantExpression::Duration {
+				fragment,
+			} => fragment.clone(),
 			ConstantExpression::Text {
 				fragment,
 			} => fragment.clone(),
 		}
 	}
 
-	pub fn to_value(&self) -> Value {
-		match self {
+	pub fn to_value(&self) -> Result<Value> {
+		Ok(match self {
 			Self::None {
 				..
 			} => Value::none(),
 			Self::Bool {
 				fragment,
-			} => parse_bool(fragment.clone()).map(Value::Boolean).unwrap_or(Value::none()),
+			} => Value::Boolean(parse_bool(fragment.clone())?),
 			Self::Number {
 				fragment,
-			} => Self::parse_number(fragment),
+			} => Self::parse_number(fragment)?,
 			Self::Text {
 				fragment,
 			} => Value::Utf8(fragment.text().to_string()),
 			Self::Temporal {
 				fragment,
 			} => Value::Utf8(fragment.text().to_string()),
-		}
+			Self::Duration {
+				fragment,
+			} => Value::Duration(parse_duration(fragment.clone())?),
+		})
 	}
 
-	fn parse_number(fragment: &Fragment) -> Value {
+	fn parse_number(fragment: &Fragment) -> Result<Value> {
 		let text = fragment.text();
 		if text.contains('.') || text.contains('e') || text.contains('E') {
-			return parse_decimal(fragment.clone()).map(Value::Decimal).unwrap_or(Value::none());
+			return Ok(Value::Decimal(parse_decimal(fragment.clone())?));
 		}
 		parse_primitive_int::<i8>(fragment.clone())
 			.map(Value::Int1)
@@ -160,7 +171,6 @@ impl ConstantExpression {
 			.or_else(|_| parse_primitive_int::<i64>(fragment.clone()).map(Value::Int8))
 			.or_else(|_| parse_primitive_int::<i128>(fragment.clone()).map(Value::Int16))
 			.or_else(|_| parse_primitive_uint::<u128>(fragment.clone()).map(Value::Uint16))
-			.unwrap_or(Value::none())
 	}
 }
 

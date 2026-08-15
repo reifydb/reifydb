@@ -153,8 +153,8 @@ pub struct JoinOperator {
 	pub(crate) snapshot: bool,
 	natural: bool,
 	pub(crate) latest: bool,
-	left_seal: Option<Duration>,
-	right_seal: Option<Duration>,
+	left_lateness: Option<Duration>,
+	right_lateness: Option<Duration>,
 	ctx: Arc<FlowContext>,
 	seal_fires: Counter,
 }
@@ -172,8 +172,8 @@ impl JoinOperator {
 		snapshot: bool,
 		natural: bool,
 		latest: bool,
-		left_seal: Option<Duration>,
-		right_seal: Option<Duration>,
+		left_lateness: Option<Duration>,
+		right_lateness: Option<Duration>,
 		ctx: Arc<FlowContext>,
 	) -> Self {
 		let left_node = left.operator;
@@ -213,25 +213,25 @@ impl JoinOperator {
 			snapshot,
 			natural,
 			latest,
-			left_seal: left_seal.filter(|span| !span.is_zero()),
-			right_seal: right_seal.filter(|span| !span.is_zero()),
+			left_lateness: left_lateness.filter(|span| !span.is_zero()),
+			right_lateness: right_lateness.filter(|span| !span.is_zero()),
 			ctx,
 			seal_fires: Counter::new("flow.operator.join.seal_fires_total", "Join seal timer fires"),
 		}
 	}
 
-	pub(crate) fn seal_of(&self, side: JoinSide) -> Option<Duration> {
+	pub(crate) fn lateness_of(&self, side: JoinSide) -> Option<Duration> {
 		match side {
-			JoinSide::Left => self.left_seal,
+			JoinSide::Left => self.left_lateness,
 			JoinSide::Right => match self.snapshot || self.latest {
 				true => None,
-				false => self.right_seal,
+				false => self.right_lateness,
 			},
 		}
 	}
 
-	fn widest_seal(&self) -> Option<Duration> {
-		match (self.seal_of(JoinSide::Left), self.seal_of(JoinSide::Right)) {
+	fn widest_lateness(&self) -> Option<Duration> {
+		match (self.lateness_of(JoinSide::Left), self.lateness_of(JoinSide::Right)) {
 			(Some(left), Some(right)) => Some(left.max(right)),
 			(left, right) => left.or(right),
 		}
@@ -305,13 +305,13 @@ impl JoinOperator {
 		cleared: &[(Hash128, RowNumber)],
 		armed: &[(Hash128, RowNumber, DateTime)],
 	) -> Result<()> {
-		let Some(seal) = self.seal_of(side) else {
+		let Some(lateness) = self.lateness_of(side) else {
 			return Ok(());
 		};
 		if cleared.is_empty() && armed.is_empty() {
 			return Ok(());
 		}
-		let policy = SealPolicy::of(seal);
+		let policy = SealPolicy::of(lateness);
 		let now = host.written_at();
 		let resolved = Self::resolve_groups(host, cleared, armed)?;
 		let mut order: Vec<GroupId> = Vec::new();
@@ -354,7 +354,7 @@ impl JoinOperator {
 		columns: &Columns,
 		keys: &[Option<Hash128>],
 	) -> Result<()> {
-		if self.seal_of(side).is_none() {
+		if self.lateness_of(side).is_none() {
 			return Ok(());
 		}
 		let times = columns.time();
@@ -375,7 +375,7 @@ impl JoinOperator {
 		columns: &Columns,
 		keys: &[Option<Hash128>],
 	) -> Result<()> {
-		if self.seal_of(side).is_none() {
+		if self.lateness_of(side).is_none() {
 			return Ok(());
 		}
 		let mut cleared = Vec::with_capacity(keys.len());
@@ -397,7 +397,7 @@ impl JoinOperator {
 		row_idx: usize,
 		keys: (Option<Hash128>, Option<Hash128>),
 	) -> Result<()> {
-		if self.seal_of(side).is_none() {
+		if self.lateness_of(side).is_none() {
 			return Ok(());
 		}
 		let mut cleared: Vec<(Hash128, RowNumber)> = Vec::new();
@@ -451,7 +451,7 @@ impl JoinOperator {
 	}
 
 	fn seal_group(&mut self, host: &mut dyn HostContext, fired: FiredAt, group: GroupId) -> Result<()> {
-		let Some(span) = self.widest_seal() else {
+		let Some(span) = self.widest_lateness() else {
 			return Ok(());
 		};
 		let retry = fired.at().saturating_add(span);
@@ -889,8 +889,8 @@ impl HostOperator for JoinOperator {
 		Ok(None)
 	}
 
-	fn seal_span(&self) -> Option<Duration> {
-		self.widest_seal()
+	fn lateness_span(&self) -> Option<Duration> {
+		self.widest_lateness()
 	}
 }
 
@@ -1106,16 +1106,16 @@ mod seal_tests {
 		},
 	};
 
-	fn join(operator: u64, left_seal: Option<Duration>, right_seal: Option<Duration>) -> JoinOperator {
-		join_with(operator, false, false, left_seal, right_seal)
+	fn join(operator: u64, left_lateness: Option<Duration>, right_lateness: Option<Duration>) -> JoinOperator {
+		join_with(operator, false, false, left_lateness, right_lateness)
 	}
 
 	fn join_with(
 		operator: u64,
 		snapshot: bool,
 		latest: bool,
-		left_seal: Option<Duration>,
-		right_seal: Option<Duration>,
+		left_lateness: Option<Duration>,
+		right_lateness: Option<Duration>,
 	) -> JoinOperator {
 		JoinOperator::new(
 			JoinSideConfig {
@@ -1136,8 +1136,8 @@ mod seal_tests {
 			snapshot,
 			false,
 			latest,
-			left_seal,
-			right_seal,
+			left_lateness,
+			right_lateness,
 			Arc::new(FlowContext::default()),
 		)
 	}
@@ -1288,8 +1288,9 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn an_inserted_row_is_armed_one_seal_past_its_own_event_time() {
-		// The anchor must be the row's own event time; a wall-clock seal evicts a backfilled row on arrival.
+	fn an_inserted_row_is_armed_one_lateness_past_its_own_event_time() {
+		// The anchor must be the row's own event time; a wall-clock lateness evicts a backfilled row on
+		// arrival.
 		let engine = TestEngine::new();
 		let op = join(1, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1302,7 +1303,7 @@ mod seal_tests {
 		assert_eq!(
 			anchor_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
-			"the due time is event time + seal + the strict gate step"
+			"the due time is event time + lateness + the strict gate step"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 1, "and exactly one timer addresses that key's group");
 	}
@@ -1330,7 +1331,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_row_still_inside_its_seal_survives_a_maintenance_tick() {
+	fn a_row_still_inside_its_lateness_survives_a_maintenance_tick() {
 		// The gate is strict: a row whose due time lands one tick past the fire must not seal yet.
 		let engine = TestEngine::new();
 		let mut op = join(3, Some(seconds(10)), None);
@@ -1415,12 +1416,12 @@ mod seal_tests {
 			Some(at_millis(15_001)),
 			"the left anchor must still name the left row's own last write"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "and a side with no seal must arm nothing of its own");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "and a side with no lateness must arm nothing of its own");
 	}
 
 	#[test]
-	fn a_join_without_a_seal_arms_nothing_at_all() {
-		// Arming without a seal leaves one timer and one anchor per row that nothing ever collects.
+	fn a_join_without_a_lateness_arms_nothing_at_all() {
+		// Arming without a lateness leaves one timer and one anchor per row that nothing ever collects.
 		let engine = TestEngine::new();
 		let op = join(7, None, None);
 		let mut txn = txn_at(&engine, 100);
@@ -1430,7 +1431,7 @@ mod seal_tests {
 
 		let group = group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &left, 0))
 			.expect("the row must still intern its key");
-		assert_eq!(anchor_of(&op, &mut txn, group, JoinSide::Left, 42), None, "no seal means no anchor");
+		assert_eq!(anchor_of(&op, &mut txn, group, JoinSide::Left, 42), None, "no lateness means no anchor");
 		assert_eq!(armed_timers(&op, &mut txn), 0, "and no timer");
 	}
 
@@ -1489,7 +1490,7 @@ mod seal_tests {
 
 		fire(&mut op, &mut txn, at_millis(15_001), group);
 
-		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 0, "the left row is past its own seal");
+		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 0, "the left row is past its own lateness");
 		assert_eq!(
 			side_rows(&op, &mut txn, group, JoinSide::Right),
 			1,
@@ -1499,7 +1500,7 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_row_short_of_its_own_seal_holds_the_groups_timer_open() {
+	fn a_row_short_of_its_own_lateness_holds_the_groups_timer_open() {
 		// The two sides seal on independent spans, so the group re-arms on whichever anchor is next due.
 		let engine = TestEngine::new();
 		let mut op = join(11, Some(seconds(10)), Some(seconds(3_600)));
@@ -1512,11 +1513,11 @@ mod seal_tests {
 
 		fire(&mut op, &mut txn, at_millis(15_001), group);
 
-		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 0, "the left row is past its own seal");
+		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 0, "the left row is past its own lateness");
 		assert_eq!(
 			anchor_of(&op, &mut txn, group, JoinSide::Right, 99),
 			Some(at_millis(3_609_001)),
-			"the right row keeps the anchor its own longer seal gave it"
+			"the right row keeps the anchor its own longer lateness gave it"
 		);
 		assert_eq!(
 			armed_timers(&op, &mut txn),
@@ -1527,7 +1528,7 @@ mod seal_tests {
 
 	#[test]
 	fn a_latest_join_seals_its_left_side_and_arms_nothing_on_the_right() {
-		// A slot overwritten in place carries no per-row anchor, so a right seal there could never fire.
+		// A slot overwritten in place carries no per-row anchor, so a right lateness there could never fire.
 		let engine = TestEngine::new();
 		let op = join_with(12, false, true, Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);

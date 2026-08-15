@@ -51,7 +51,7 @@ fn sealing_min_default_is_fully_invertible() {
 fn sealing_endpoint_late_earlier_arrival_updates_open() {
 	// open is the earliest observation overall, not the first one to seal, so a late but
 	// earlier arrival has to reclaim it.
-	let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::with_seal(millis(10));
+	let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::with_amendable(millis(10));
 	accumulator.add(&(at_millis(5), 50));
 	accumulator.add(&(at_millis(20), 200)); // hw=20; coord 5 ages (20-5=15>10) -> sealed_open=(5,50)
 	assert_eq!(accumulator.open(), Some(&50), "open frozen to the earliest seen so far");
@@ -64,7 +64,7 @@ fn sealing_endpoint_late_earlier_arrival_updates_open() {
 #[test]
 fn sealing_endpoint_late_middle_arrival_keeps_open() {
 	// A late arrival later than the sealed open must not move it.
-	let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::with_seal(millis(10));
+	let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::with_amendable(millis(10));
 	accumulator.add(&(at_millis(2), 999));
 	accumulator.add(&(at_millis(20), 200)); // hw=20; coord 2 ages -> sealed_open=(2,999)
 	assert_eq!(accumulator.open(), Some(&999));

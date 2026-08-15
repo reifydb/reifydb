@@ -46,7 +46,7 @@ fn snapshot_latest_left_join(db: &TestDb, tail: &str) {
 	db.admin(&format!(r#"CREATE DEFERRED VIEW app::j {{ k: int4, lv: int4, rv: Option(int4) }} AS {{
 			FROM app::lhs
 				| left join {{ from app::rhs }} as r using (k, r.k)
-					with {{ seal: {{ left: {{ duration: '1s' }} }}, snapshot: true, latest: true }}
+					with {{ lateness: {{ left: 1s }}, snapshot: true, latest: true }}
 				| map {{ k: k, lv: lv, rv: r_rv }}
 				{tail}
 		}}"#));

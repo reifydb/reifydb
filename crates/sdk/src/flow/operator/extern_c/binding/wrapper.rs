@@ -303,10 +303,10 @@ pub unsafe extern "C" fn extern_c_on_timer<O: ExternCOperator>(
 /// # Safety
 ///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>` originally created by `Box::new`.
-pub unsafe extern "C" fn extern_c_seal_after_ms<O: ExternCOperator>(instance: *mut c_void) -> u64 {
+pub unsafe extern "C" fn extern_c_lateness_ms<O: ExternCOperator>(instance: *mut c_void) -> u64 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
-		wrapper.operator.seal_after().and_then(<DateTime as Coord>::span_millis).unwrap_or(0)
+		wrapper.operator.lateness().and_then(<DateTime as Coord>::span_millis).unwrap_or(0)
 	}));
 
 	match result {
@@ -314,9 +314,9 @@ pub unsafe extern "C" fn extern_c_seal_after_ms<O: ExternCOperator>(instance: *m
 		Err(payload) => {
 			let bt = Backtrace::force_capture();
 			let detail = describe_panic_payload(&payload);
-			error!("Panic in extern_c_seal_after_ms - aborting");
+			error!("Panic in extern_c_lateness_ms - aborting");
 			print_extern_c_fatal(
-				"extern_c_seal_after_ms",
+				"extern_c_lateness_ms",
 				any::type_name::<O>(),
 				-99,
 				&detail,
@@ -412,7 +412,7 @@ pub fn create_vtable<O: ExternCOperator>() -> ExternCOperatorVTable {
 		on_timer: extern_c_on_timer::<O>,
 		destroy: extern_c_destroy::<O>,
 		sample: extern_c_sample::<O>,
-		seal_after_ms: extern_c_seal_after_ms::<O>,
+		lateness_ms: extern_c_lateness_ms::<O>,
 	}
 }
 

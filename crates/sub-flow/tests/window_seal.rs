@@ -23,7 +23,7 @@ fn two_source_window(db: &TestDb) {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 			FROM app::fast APPEND { FROM app::slow }
 				| window tumbling { total: math::sum(v) }
-					with { interval: "1s", seal: "0s" }
+					with { duration: 1s, lateness: 0s }
 					by { g }
 		}"#);
 }
@@ -96,9 +96,9 @@ fn a_source_that_never_reports_holds_every_window_open() {
 	);
 }
 
-/// One table feeding a tumbling window, with the seal left to the caller so a corpus can be run
+/// One table feeding a tumbling window, with the lateness left to the caller so a corpus can be run
 /// either entirely inside the windows' horizons or past them.
-fn ordering_pair(seal: &str) -> (TestDb, TestDb) {
+fn ordering_pair(lateness: &str) -> (TestDb, TestDb) {
 	let pair = (setup(), setup());
 	for db in [&pair.0, &pair.1] {
 		db.admin("CREATE NAMESPACE app");
@@ -106,7 +106,7 @@ fn ordering_pair(seal: &str) -> (TestDb, TestDb) {
 		db.admin(&format!(r#"CREATE DEFERRED VIEW app::w {{ g: int4, total: int8 }} AS {{
 				FROM app::t
 					| window tumbling {{ total: math::sum(v) }}
-						with {{ interval: "1s", seal: "{seal}" }}
+						with {{ duration: 1s, lateness: {lateness} }}
 						by {{ g }}
 			}}"#));
 	}
@@ -131,7 +131,7 @@ fn view_rows(db: &TestDb) -> Vec<reifydb::Frame> {
 #[test]
 fn two_arrival_orders_of_the_same_corpus_produce_the_same_open_windows() {
 	// Bucketing, grouping, aggregation and the #time stamp must be pure functions of the data, so
-	// a different arrival order lands the same windows with the same stamps. The 10s seal holds
+	// a different arrival order lands the same windows with the same stamps. The 10s lateness holds
 	// every horizon open, so admission cannot depend on order either.
 	let (forward, reverse) = ordering_pair("10s");
 
@@ -260,7 +260,7 @@ fn a_window_stays_open_while_the_wall_clock_runs_past_it() {
 	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: int8 } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
-					with { interval: "2s", seal: "0s" }
+					with { duration: 2s, lateness: 0s }
 					by { g }
 		}"#);
 
@@ -306,7 +306,7 @@ fn a_session_that_keeps_extending_seals_only_after_its_final_gap() {
 	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } AS {
 			FROM app::t
 				| window session { total: math::sum(v) }
-					with { gap: "2s", seal: "0s" }
+					with { gap: 2s, lateness: 0s }
 					by { g }
 		}"#);
 
@@ -336,7 +336,7 @@ fn a_row_at_the_epoch_is_refused_once_its_window_has_sealed() {
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
-					with { interval: "1s", seal: "3s" }
+					with { duration: 1s, lateness: 3s }
 					by { g }
 		}"#);
 

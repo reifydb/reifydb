@@ -68,6 +68,7 @@ pub enum Literal {
 	False,
 	Number,
 	Temporal,
+	Duration,
 	Text,
 	True,
 	None,

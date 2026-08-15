@@ -23,7 +23,7 @@ pub struct WindowSpec {
 	pub kind: WindowKind,
 	pub group_by: &'static str,
 	pub aggregations: &'static str,
-	pub seal: Duration,
+	pub lateness: Duration,
 }
 
 use crate::operators::routines;
@@ -39,7 +39,8 @@ pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
 		aggregations: parse_expression(spec.aggregations).expect("aggregations parse"),
 		runtime_context: runtime,
 		routines: routines(),
-		seal: spec.seal,
+		lateness: spec.lateness,
+		amendable: None,
 		ctx: Arc::new(FlowContext::default()),
 	})
 }

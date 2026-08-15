@@ -30,5 +30,5 @@ pub struct ExternCOperatorVTable {
 
 	pub sample: unsafe extern "C" fn(instance: *mut c_void, out: *mut ExternCStateUsage) -> i32,
 
-	pub seal_after_ms: unsafe extern "C" fn(instance: *mut c_void) -> u64,
+	pub lateness_ms: unsafe extern "C" fn(instance: *mut c_void) -> u64,
 }

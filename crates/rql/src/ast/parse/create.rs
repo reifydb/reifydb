@@ -5,7 +5,7 @@ use reifydb_core::sort::SortDirection;
 use reifydb_value::{
 	error::{AstErrorKind, Error, TypeError},
 	fragment::Fragment,
-	value::{duration::Duration, temporal::parse::duration::parse_duration},
+	value::duration::Duration,
 };
 
 use crate::{
@@ -18,7 +18,7 @@ use crate::{
 			AstCreatePrimaryKey, AstCreateProcedure, AstCreateQueue, AstCreateRelationship,
 			AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
 			AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest, AstCreateTransactionalView,
-			AstHydrationConfig, AstIndexColumn, AstJoinSeal, AstPersistent, AstPolicyTargetType,
+			AstHydrationConfig, AstIndexColumn, AstJoinLateness, AstPersistent, AstPolicyTargetType,
 			AstPrimaryKey, AstProcedureParam, AstQueueDeduplicate, AstQueueDispatch, AstQueueFifo,
 			AstQueueRetention, AstQueueRetry, AstRelationshipCardinality, AstRelationshipJunction,
 			AstRowSettings, AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType,
@@ -34,6 +34,7 @@ use crate::{
 		parse::{Parser, Precedence},
 	},
 	bump::{BumpBox, BumpFragment},
+	duration::{DurationBound, FOREVER, compile_duration},
 	token::{
 		keyword::{
 			Keyword,
@@ -57,6 +58,9 @@ const QUEUE_FIFO_KEYS: &str = "'partitions' or 'ordered_by'";
 const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
 const QUEUE_RETENTION_KEYS: &str = "'done'";
 const QUEUE_RETRY_KEYS: &str = "'attempts' or 'backoff'";
+const ROW_CONFIG_KEYS: &str = "'ttl', 'persistent', 'on', or 'announce'";
+const OPERATOR_WITH_KEYS: &str = "'lateness', 'on', or 'announce'";
+const JOIN_WITH_KEYS: &str = "'lateness', 'snapshot', or 'latest'";
 
 fn unexpected_queue_option(token: &Token<'_>, expected: &str) -> Error {
 	Error::from(TypeError::Ast {
@@ -1525,11 +1529,7 @@ impl<'bump> Parser<'bump> {
 					self.consume_operator(Operator::CloseCurly)?;
 				}
 				"ttl" => {
-					let current = self.current()?;
-					ttl = Some(match current.kind {
-						TokenKind::Identifier => self.consume_identifier()?,
-						_ => self.consume(TokenKind::Literal(Literal::Text))?,
-					});
+					ttl = Some(self.consume_duration_or_forever()?);
 				}
 				_other => return Err(unexpected_queue_option(&key, QUEUE_DEDUPLICATE_KEYS)),
 			}
@@ -1571,7 +1571,7 @@ impl<'bump> Parser<'bump> {
 
 			match key.fragment.text() {
 				"done" => {
-					done = Some(self.consume(TokenKind::Literal(Literal::Text))?);
+					done = Some(self.consume_duration("'done'")?);
 				}
 				_other => return Err(unexpected_queue_option(&key, QUEUE_RETENTION_KEYS)),
 			}
@@ -1615,7 +1615,7 @@ impl<'bump> Parser<'bump> {
 					attempts = Some(self.consume(TokenKind::Literal(Literal::Number))?);
 				}
 				"backoff" => {
-					backoff = Some(self.consume(TokenKind::Literal(Literal::Text))?);
+					backoff = Some(self.consume_duration("'backoff'")?);
 				}
 				_other => return Err(unexpected_queue_option(&key, QUEUE_RETRY_KEYS)),
 			}
@@ -2706,15 +2706,13 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_throttle_duration(&mut self) -> Result<Duration> {
-		let token = self.consume(TokenKind::Literal(Literal::Text))?;
-		let parsed = parse_duration(token.fragment.to_owned())?;
-		Ok(Duration::from_nanoseconds(parsed.to_std().as_nanos() as i64).unwrap())
+		let token = self.consume_duration("'throttle'")?;
+		compile_duration(&token, DurationBound::AllowZero, "'throttle'")
 	}
 
 	fn parse_linger_duration(&mut self) -> Result<Duration> {
-		let token = self.consume(TokenKind::Literal(Literal::Text))?;
-		let parsed = parse_duration(token.fragment.to_owned())?;
-		Ok(Duration::from_nanoseconds(parsed.to_std().as_nanos() as i64).unwrap())
+		let token = self.consume_duration("'linger'")?;
+		compile_duration(&token, DurationBound::AllowZero, "'linger'")
 	}
 
 	fn parse_hydration_with_value(&mut self) -> Result<AstHydrationConfig> {
@@ -2839,7 +2837,9 @@ impl<'bump> Parser<'bump> {
 	fn parse_row_config(&mut self) -> Result<AstRowSettings<'bump>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut ttl: Option<AstTtl<'bump>> = None;
+		let mut duration: Option<Token<'bump>> = None;
+		let mut anchor: Option<Token<'bump>> = None;
+		let mut announce: Option<Token<'bump>> = None;
 		let mut persistent: Option<AstPersistent<'bump>> = None;
 
 		loop {
@@ -2853,30 +2853,18 @@ impl<'bump> Parser<'bump> {
 
 			match key.fragment.text() {
 				"ttl" => {
-					ttl = Some(self.parse_ttl()?);
+					duration = Some(self.consume_duration(ROW_CONFIG_KEYS)?);
+				}
+				"on" => {
+					anchor = Some(self.consume_identifier()?);
+				}
+				"announce" => {
+					announce = Some(self.consume_boolean("announce")?);
 				}
 				"persistent" => {
-					let current = self.current()?;
-					let value = match current.kind {
-						TokenKind::Literal(Literal::True) => true,
-						TokenKind::Literal(Literal::False) => false,
-						_ => {
-							let fragment = current.fragment.to_owned();
-							return Err(Error::from(TypeError::Ast {
-								kind: AstErrorKind::UnexpectedToken {
-									expected: "boolean literal".to_string(),
-								},
-								message: format!(
-									"expected boolean literal for 'persistent', found `{}`",
-									fragment.text()
-								),
-								fragment,
-							}));
-						}
-					};
-					let token = self.advance()?;
+					let token = self.consume_boolean("persistent")?;
 					persistent = Some(AstPersistent {
-						value,
+						value: token.kind == TokenKind::Literal(Literal::True),
 						token,
 					});
 				}
@@ -2884,10 +2872,11 @@ impl<'bump> Parser<'bump> {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'ttl' or 'persistent'".to_string(),
+							expected: ROW_CONFIG_KEYS.to_string(),
 						},
 						message: format!(
-							"expected 'ttl' or 'persistent' in row config, found `{}`",
+							"expected {} in row config, found `{}`",
+							ROW_CONFIG_KEYS,
 							fragment.text()
 						),
 						fragment,
@@ -2907,7 +2896,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::CloseCurly)?;
 
-		if ttl.is_none() && persistent.is_none() {
+		if duration.is_none() && persistent.is_none() {
 			let fragment = self
 				.current()
 				.ok()
@@ -2922,8 +2911,21 @@ impl<'bump> Parser<'bump> {
 			}));
 		}
 
+		if duration.is_none()
+			&& let Some(orphan) = anchor.or(announce)
+		{
+			let fragment = orphan.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "a 'ttl' alongside it".to_string(),
+				},
+				message: "'on' and 'announce' qualify a 'ttl'; add 'ttl' to the row config".to_string(),
+				fragment,
+			}));
+		}
+
 		if let Some(p) = &persistent
-			&& !p.value && ttl.is_none()
+			&& !p.value && duration.is_none()
 		{
 			let fragment = p.token.fragment.to_owned();
 			return Err(Error::from(TypeError::Ast {
@@ -2937,136 +2939,68 @@ impl<'bump> Parser<'bump> {
 		}
 
 		Ok(AstRowSettings {
-			ttl,
+			ttl: duration.map(|duration| AstTtl {
+				duration,
+				anchor,
+				announce,
+			}),
 			persistent,
 		})
 	}
 
-	fn parse_ttl(&mut self) -> Result<AstTtl<'bump>> {
-		self.consume_operator(Operator::OpenCurly)?;
-
-		let mut duration = None;
-		let mut anchor = None;
-		let mut announce = None;
-
-		loop {
-			self.skip_new_line()?;
-
-			if self.current()?.is_operator(Operator::CloseCurly) {
-				break;
-			}
-
-			let key = {
-				let current = self.current()?;
-				match current.kind {
-					TokenKind::Identifier => self.consume_identifier()?,
-					TokenKind::Keyword(Keyword::On) => {
-						let token = self.advance()?;
-						Token {
-							kind: TokenKind::Identifier,
-							..token
-						}
-					}
-					_ => {
-						return Err(Error::from(TypeError::Ast {
-							kind: AstErrorKind::UnexpectedToken {
-								expected: "'duration', 'on', or 'announce'".to_string(),
-							},
-							message: format!(
-								"expected 'duration', 'on', or 'announce', found `{}`",
-								current.fragment.text()
-							),
-							fragment: current.fragment.to_owned(),
-						}));
-					}
-				}
-			};
-			self.consume_operator(Operator::Colon)?;
-
-			match key.fragment.text() {
-				"duration" => {
-					let token = self.consume(TokenKind::Literal(Literal::Text))?;
-					duration = Some(token);
-				}
-				"on" => {
-					let token = self.consume_identifier()?;
-					anchor = Some(token);
-				}
-				"announce" => {
-					let current = self.current()?;
-					let token = match current.kind {
-						TokenKind::Literal(Literal::True)
-						| TokenKind::Literal(Literal::False) => self.advance()?,
-						_ => {
-							return Err(Error::from(TypeError::Ast {
-								kind: AstErrorKind::UnexpectedToken {
-									expected: "'true' or 'false'".to_string(),
-								},
-								message: format!(
-									"expected 'true' or 'false', found `{}`",
-									current.fragment.text()
-								),
-								fragment: current.fragment.to_owned(),
-							}));
-						}
-					};
-					announce = Some(token);
-				}
-				_other => {
-					let fragment = key.fragment.to_owned();
-					return Err(Error::from(TypeError::Ast {
-						kind: AstErrorKind::UnexpectedToken {
-							expected: "'duration', 'on', or 'announce'".to_string(),
-						},
-						message: format!(
-							"expected 'duration', 'on', or 'announce', found `{}`",
-							fragment.text()
-						),
-						fragment,
-					}));
-				}
-			}
-
-			self.skip_new_line()?;
-
-			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
-				continue;
-			}
-
-			if self.current()?.is_operator(Operator::CloseCurly) {
-				break;
-			}
+	fn consume_duration(&mut self, context: &str) -> Result<Token<'bump>> {
+		let current = self.current()?;
+		if current.kind == TokenKind::Literal(Literal::Duration) {
+			return self.advance();
 		}
-
-		self.consume_operator(Operator::CloseCurly)?;
-
-		let duration = duration.ok_or_else(|| {
-			let fragment = self
-				.current()
-				.ok()
-				.map(|t| t.fragment.to_owned())
-				.unwrap_or_else(|| Fragment::internal("end of input"));
-			Error::from(TypeError::Ast {
-				kind: AstErrorKind::UnexpectedToken {
-					expected: "'duration' is required in row config".to_string(),
-				},
-				message: "'duration' is required in row config".to_string(),
-				fragment,
-			})
-		})?;
-
-		Ok(AstTtl {
-			duration,
-			anchor,
-			announce,
-		})
+		let fragment = current.fragment.to_owned();
+		Err(Error::from(TypeError::Ast {
+			kind: AstErrorKind::UnexpectedToken {
+				expected: "duration literal".to_string(),
+			},
+			message: format!(
+				"expected a bare duration literal such as `2h` for {}, found `{}`",
+				context,
+				fragment.text()
+			),
+			fragment,
+		}))
 	}
 
-	fn parse_join_seal(&mut self) -> Result<AstJoinSeal<'bump>> {
+	fn consume_duration_or_forever(&mut self) -> Result<Token<'bump>> {
+		let current = self.current()?;
+		if current.kind == TokenKind::Identifier && current.fragment.text() == FOREVER {
+			return self.advance();
+		}
+		self.consume_duration("'ttl', or the keyword `forever`,")
+	}
+
+	fn consume_boolean(&mut self, key: &str) -> Result<Token<'bump>> {
+		let current = self.current()?;
+		match current.kind {
+			TokenKind::Literal(Literal::True) | TokenKind::Literal(Literal::False) => self.advance(),
+			_ => {
+				let fragment = current.fragment.to_owned();
+				Err(Error::from(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: "'true' or 'false'".to_string(),
+					},
+					message: format!(
+						"expected boolean literal for '{}', found `{}`",
+						key,
+						fragment.text()
+					),
+					fragment,
+				}))
+			}
+		}
+	}
+
+	fn parse_join_lateness(&mut self) -> Result<AstJoinLateness<'bump>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut left: Option<AstTtl<'bump>> = None;
-		let mut right: Option<AstTtl<'bump>> = None;
+		let mut left: Option<Token<'bump>> = None;
+		let mut right: Option<Token<'bump>> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -3086,12 +3020,12 @@ impl<'bump> Parser<'bump> {
 							kind: AstErrorKind::UnexpectedToken {
 								expected: "single 'left' entry".to_string(),
 							},
-							message: "'left' specified more than once in join seal"
+							message: "'left' specified more than once in join lateness"
 								.to_string(),
 							fragment,
 						}));
 					}
-					left = Some(self.parse_ttl()?);
+					left = Some(self.consume_duration("the 'left' side")?);
 				}
 				"right" => {
 					if right.is_some() {
@@ -3100,12 +3034,12 @@ impl<'bump> Parser<'bump> {
 							kind: AstErrorKind::UnexpectedToken {
 								expected: "single 'right' entry".to_string(),
 							},
-							message: "'right' specified more than once in join seal"
+							message: "'right' specified more than once in join lateness"
 								.to_string(),
 							fragment,
 						}));
 					}
-					right = Some(self.parse_ttl()?);
+					right = Some(self.consume_duration("the 'right' side")?);
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
@@ -3114,7 +3048,7 @@ impl<'bump> Parser<'bump> {
 							expected: "'left' or 'right'".to_string(),
 						},
 						message: format!(
-							"unexpected key '{}' in join seal; expected 'left' or 'right'",
+							"unexpected key '{}' in join lateness; expected 'left' or 'right'",
 							other
 						),
 						fragment,
@@ -3145,12 +3079,12 @@ impl<'bump> Parser<'bump> {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "at least one of 'left' or 'right'".to_string(),
 				},
-				message: "join seal must specify at least one side ('left' or 'right')".to_string(),
+				message: "join lateness must specify at least one side ('left' or 'right')".to_string(),
 				fragment,
 			}));
 		}
 
-		Ok(AstJoinSeal {
+		Ok(AstJoinLateness {
 			left,
 			right,
 		})
@@ -3163,7 +3097,9 @@ impl<'bump> Parser<'bump> {
 		self.advance()?;
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut seal: Option<AstTtl<'bump>> = None;
+		let mut duration: Option<Token<'bump>> = None;
+		let mut anchor: Option<Token<'bump>> = None;
+		let mut announce: Option<Token<'bump>> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -3175,14 +3111,20 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
-				"seal" => {
-					seal = Some(self.parse_ttl()?);
+				"lateness" => {
+					duration = Some(self.consume_duration(OPERATOR_WITH_KEYS)?);
+				}
+				"on" => {
+					anchor = Some(self.consume_identifier()?);
+				}
+				"announce" => {
+					announce = Some(self.consume_boolean("announce")?);
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'seal'".to_string(),
+							expected: OPERATOR_WITH_KEYS.to_string(),
 						},
 						message: format!("unexpected key '{}' in operator WITH clause", other),
 						fragment,
@@ -3194,17 +3136,36 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
-		Ok(seal)
+
+		if duration.is_none()
+			&& let Some(orphan) = anchor.or(announce)
+		{
+			let fragment = orphan.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "a 'lateness' alongside it".to_string(),
+				},
+				message: "'on' and 'announce' qualify a 'lateness'; add 'lateness' to the WITH clause"
+					.to_string(),
+				fragment,
+			}));
+		}
+
+		Ok(duration.map(|duration| AstTtl {
+			duration,
+			anchor,
+			announce,
+		}))
 	}
 
-	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinSeal<'bump>>, bool, bool)> {
+	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinLateness<'bump>>, bool, bool)> {
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
 			return Ok((None, false, false));
 		}
 		self.advance()?;
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut seal: Option<AstJoinSeal<'bump>> = None;
+		let mut lateness: Option<AstJoinLateness<'bump>> = None;
 		let mut snapshot: bool = false;
 		let mut latest: bool = false;
 
@@ -3218,8 +3179,8 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
-				"seal" => {
-					seal = Some(self.parse_join_seal()?);
+				"lateness" => {
+					lateness = Some(self.parse_join_lateness()?);
 				}
 				"snapshot" => {
 					let value = self.advance()?;
@@ -3267,7 +3228,7 @@ impl<'bump> Parser<'bump> {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'seal', 'snapshot', or 'latest'".to_string(),
+							expected: JOIN_WITH_KEYS.to_string(),
 						},
 						message: format!("unexpected key '{}' in join WITH clause", other),
 						fragment,
@@ -3279,7 +3240,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
-		Ok((seal, snapshot, latest))
+		Ok((lateness, snapshot, latest))
 	}
 
 	fn parse_create_relationship(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
@@ -4757,7 +4718,7 @@ pub mod tests {
 	#[test]
 	fn test_subscription_linger_parsed() {
 		let linger = parse_subscription_linger(
-			"CREATE SUBSCRIPTION WITH { linger: \"250ms\" } AS { FROM demo::events }",
+			"CREATE SUBSCRIPTION WITH { linger: 250ms } AS { FROM demo::events }",
 		);
 		assert_eq!(
 			linger,
@@ -4778,7 +4739,7 @@ pub mod tests {
 	#[test]
 	fn test_subscription_throttle_and_linger_coexist() {
 		let bump = Bump::new();
-		let source = "CREATE SUBSCRIPTION WITH { throttle: \"1s\", linger: \"5ms\" } AS { FROM demo::events }";
+		let source = "CREATE SUBSCRIPTION WITH { throttle: 1s, linger: 5ms } AS { FROM demo::events }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -4900,8 +4861,8 @@ pub mod tests {
 		let rendered = parse_queue_ast(
 			r#"CREATE QUEUE ns::jobs { order_id: uuid7, kind: utf8 } WITH {
 				fifo: { partitions: 32, ordered_by: order_id },
-				retention: { done: "7d" },
-				retry: { attempts: 5, backoff: "10s" }
+				retention: { done: 7d },
+				retry: { attempts: 5, backoff: 10s }
 			}"#,
 		);
 
@@ -4930,9 +4891,8 @@ pub mod tests {
 		let bare = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 }");
 		assert!(bare.contains("dispatch block"), "got: {}", bare);
 
-		let other_options = parse_queue_must_fail(
-			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { retention: { done: "7d" } }"#,
-		);
+		let other_options =
+			parse_queue_must_fail(r#"CREATE QUEUE ns::jobs { id: int4 } WITH { retention: { done: 7d } }"#);
 		assert!(other_options.contains("dispatch block"), "got: {}", other_options);
 	}
 
@@ -4971,7 +4931,7 @@ pub mod tests {
 	#[test]
 	fn test_create_queue_with_retention_only() {
 		let rendered = parse_queue_ast(
-			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retention: { done: "1h" } }"#,
+			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#,
 		);
 
 		assert!(rendered.contains(r#"retention=Some(Some("1h"))"#), "got: {}", rendered);
@@ -4998,7 +4958,7 @@ pub mod tests {
 	#[test]
 	fn test_create_queue_unknown_retention_key_rejected() {
 		let msg = parse_queue_must_fail(
-			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retention: { dead: "7d" } }"#,
+			r#"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retention: { dead: 7d } }"#,
 		);
 
 		assert!(msg.contains("done"), "error should name the valid retention key, got: {}", msg);

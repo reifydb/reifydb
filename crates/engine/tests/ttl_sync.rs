@@ -22,7 +22,7 @@ fn test_row_settings_sync_to_catalog_cache() {
 	engine.admin(r#"
 		CREATE TABLE test::users { id: int4 } WITH {
 			time: processing,
-			row: { ttl: { duration: '1h', announce: false } }
+			row: { ttl: 1h, announce: false }
 		};
 	"#);
 
@@ -55,7 +55,7 @@ fn test_row_settings_replication_sync() {
 		panic!("{e:?}");
 	}
 	let r = txn.rql(
-		"CREATE TABLE test::users { id: int4 } WITH { time: processing, row: { ttl: { duration: '1m', announce: false } } }",
+		"CREATE TABLE test::users { id: int4 } WITH { time: processing, row: { ttl: 1m, announce: false } }",
 		Default::default(),
 	);
 	if let Some(e) = r.error {
@@ -94,7 +94,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		lifecycle::operator::ListOperatorSettings,
-		row::{OperatorSeal, OperatorSettings},
+		row::{OperatorLateness, OperatorSettings},
 	};
 
 	let engine = TestEngine::new();
@@ -105,7 +105,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	// every stateful operator.
 	let operator_id = OperatorId(42);
 	let settings = OperatorSettings {
-		seal: Some(OperatorSeal {
+		lateness: Some(OperatorLateness {
 			duration: Duration::from_hours(1).unwrap(),
 		}),
 		join: None,
@@ -118,7 +118,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	let listed = catalog.list_operator_settings();
 	assert_eq!(listed.len(), 1, "operator settings did not sync to the catalog cache");
 	assert_eq!(listed[0].0, operator_id);
-	assert_eq!(listed[0].1.seal.as_ref().expect("ttl not set").duration, Duration::from_hours(1).unwrap());
+	assert_eq!(listed[0].1.lateness.as_ref().expect("ttl not set").duration, Duration::from_hours(1).unwrap());
 }
 
 fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {

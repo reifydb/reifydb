@@ -269,7 +269,7 @@ impl RollingOperator for SealedVelocity {
 		millis(1)
 	}
 
-	fn seal_after(&self) -> Option<Duration> {
+	fn lateness(&self) -> Option<Duration> {
 		Some(millis(120))
 	}
 
@@ -380,5 +380,5 @@ fn an_ungated_incremental_operator_arms_no_seal_timer() {
 			.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 
-	assert!(h.armed_timers().is_empty(), "an operator with seal_after = None must arm no timer");
+	assert!(h.armed_timers().is_empty(), "an operator with lateness = None must arm no timer");
 }

@@ -11,7 +11,7 @@ use crate::{
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_apply(&self, ast: AstApply<'bump>) -> Result<LogicalPlan<'bump>> {
 		let ttl = match ast.ttl {
-			Some(ast_ttl) => Some(Self::compile_operator_seal(ast_ttl)?),
+			Some(ast_ttl) => Some(Self::compile_operator_lateness(ast_ttl)?),
 			None => None,
 		};
 		Ok(LogicalPlan::Apply(ApplyNode {

@@ -76,7 +76,7 @@ pub enum RqlError {
 		fragment: Fragment,
 	},
 
-	#[error("Slide interval must be smaller than window interval")]
+	#[error("Slide must be smaller than window duration")]
 	WindowSlideTooLarge {
 		fragment: Fragment,
 		slide_value: String,
@@ -111,6 +111,13 @@ pub enum RqlError {
 	#[error("Window type and size must be specified")]
 	WindowMissingTypeOrSize {
 		fragment: Fragment,
+	},
+
+	#[error("Amendable must be smaller than lateness")]
+	WindowAmendableNotSmallerThanLateness {
+		fragment: Fragment,
+		amendable_value: String,
+		lateness_value: String,
 	},
 
 	#[error("UPDATE requires an assignments block")]
@@ -503,11 +510,11 @@ impl IntoDiagnostic for RqlError {
 				column: None,
 				fragment,
 				label: Some("missing slide parameter".to_string()),
-				help: Some("Add a slide parameter to the WINDOW configuration, e.g., 'WINDOW WITH { interval: \"5m\", slide: \"1m\" }'".to_string()),
+				help: Some("Add a slide parameter to the WINDOW configuration, e.g., 'WINDOW WITH { duration: 5m, slide: 1m }'".to_string()),
 				notes: vec![
 					"Sliding windows create overlapping windows by advancing in smaller steps".to_string(),
 					"The slide parameter determines how far each window advances".to_string(),
-					"Example: WINDOW WITH { interval: \"10m\", slide: \"2m\" } creates 10-minute windows that advance every 2 minutes".to_string(),
+					"Example: WINDOW WITH { duration: 10m, slide: 2m } creates 10-minute windows that advance every 2 minutes".to_string(),
 				],
 				cause: None,
 				operator_chain: None,
@@ -517,7 +524,7 @@ impl IntoDiagnostic for RqlError {
 				code: "WINDOW_003".to_string(),
 				rql: None,
 				message: format!(
-					"Slide interval ({}) must be smaller than window interval ({}) for overlapping sliding windows",
+					"Slide ({}) must be smaller than window duration ({}) for overlapping sliding windows",
 					slide_value, window_value
 				),
 				column: None,
@@ -539,14 +546,14 @@ impl IntoDiagnostic for RqlError {
 				code: "WINDOW_008".to_string(),
 				rql: None,
 				message: format!(
-					"Slide must be greater than zero for window interval ({})",
+					"Slide must be greater than zero for window duration ({})",
 					window_value
 				),
 				column: None,
 				fragment,
 				label: Some("slide is zero".to_string()),
 				help: Some(
-					"Give the slide a positive value smaller than the window size, e.g. slide: \"1m\" for a 5m window"
+					"Give the slide a positive value smaller than the window size, e.g. slide: 1m for a 5m window"
 						.to_string(),
 				),
 				notes: vec![
@@ -569,9 +576,9 @@ impl IntoDiagnostic for RqlError {
 					"Use duration-based slide for time windows, or count-based slide for count windows".to_string(),
 				),
 				notes: vec![
-					"Time-based windows (interval) require duration-based slide parameters (e.g., \"1m\", \"30s\")".to_string(),
+					"Time-based windows (duration) require duration-based slide parameters (e.g., 1m, 30s)".to_string(),
 					"Count-based windows (count) require numeric slide parameters (e.g., 10, 50)".to_string(),
-					"Example time window: WINDOW WITH { interval: \"5m\", slide: \"1m\" }".to_string(),
+					"Example time window: WINDOW WITH { duration: 5m, slide: 1m }".to_string(),
 					"Example count window: WINDOW WITH { count: 100, slide: 20 }".to_string(),
 				],
 				cause: None,
@@ -591,7 +598,7 @@ impl IntoDiagnostic for RqlError {
 				),
 				notes: vec![
 					"Tumbling windows are non-overlapping and advance by their full size".to_string(),
-					"For tumbling windows, use only: WINDOW WITH { interval: \"5m\" } or WINDOW WITH { count: 100 }".to_string(),
+					"For tumbling windows, use only: WINDOW WITH { duration: 5m } or WINDOW WITH { count: 100 }".to_string(),
 					"For overlapping windows, use sliding windows with both size and slide parameters".to_string(),
 				],
 				cause: None,
@@ -608,12 +615,34 @@ impl IntoDiagnostic for RqlError {
 				column: None,
 				fragment,
 				label: Some("mismatched window configuration".to_string()),
-				help: Some("Use 'interval' with time-based windows or 'count' with count-based windows".to_string()),
+				help: Some("Use 'duration' with time-based windows or 'count' with count-based windows".to_string()),
 				notes: vec![
-					"Time-based windows use 'interval' parameter with duration values (e.g., \"5m\", \"1h\")".to_string(),
+					"Time-based windows use the 'duration' parameter with duration literals (e.g., 5m, 1h)".to_string(),
 					"Count-based windows use 'count' parameter with numeric values (e.g., 100, 500)".to_string(),
-					"Example time window: WINDOW WITH { interval: \"10m\" }".to_string(),
+					"Example time window: WINDOW WITH { duration: 10m }".to_string(),
 					"Example count window: WINDOW WITH { count: 1000 }".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowAmendableNotSmallerThanLateness { fragment, amendable_value, lateness_value } => Diagnostic {
+				code: "WINDOW_009".to_string(),
+				rql: None,
+				message: format!(
+					"Amendable ({}) must be smaller than lateness ({})",
+					amendable_value, lateness_value
+				),
+				column: None,
+				fragment,
+				label: Some("amendable too large".to_string()),
+				help: Some(
+					"Reduce amendable below lateness, or drop it to keep every row for the life of the window".to_string(),
+				),
+				notes: vec![
+					"Lateness already bounds the window, so an amendable at or beyond it promises nothing".to_string(),
+					"Amendable is how long a row may still be updated or deleted, lateness is how long a late insert is still accepted".to_string(),
+					"Example: WINDOW TUMBLING { count(*) } WITH { duration: 1h, lateness: 20s, amendable: 15s }".to_string(),
 				],
 				cause: None,
 				operator_chain: None,
@@ -627,12 +656,12 @@ impl IntoDiagnostic for RqlError {
 				fragment,
 				label: Some("incomplete window configuration".to_string()),
 				help: Some(
-					"Specify either 'interval' for time-based windows or 'count' for count-based windows"
+					"Specify either 'duration' for time-based windows or 'count' for count-based windows"
 						.to_string(),
 				),
 				notes: vec![
 					"Windows require a size specification to determine their boundaries".to_string(),
-					"Use 'interval' with duration for time-based windows: WINDOW WITH { interval: \"5m\" }".to_string(),
+					"Use 'duration' with a duration literal for time-based windows: WINDOW WITH { duration: 5m }".to_string(),
 					"Use 'count' with number for count-based windows: WINDOW WITH { count: 100 }".to_string(),
 					"Additional parameters like 'slide' can be added for sliding windows".to_string(),
 				],

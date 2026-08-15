@@ -137,7 +137,7 @@ pub(crate) fn finish_tumbling_engine(
 	groups: &WindowGroups,
 	kinds: &[SlotKind],
 	engine_config: WindowEngineConfig,
-	seal: Duration,
+	amendable: Duration,
 	anchor: ExpiryAnchor,
 ) -> Result<Vec<Diff>> {
 	let mut engine = core
@@ -149,7 +149,7 @@ pub(crate) fn finish_tumbling_engine(
 		buckets,
 		&arrival,
 		|hash, window_start| (group_of(groups, *hash, window_start.to_order()), store::empty_key()),
-		|| RowAccumulator::new(kinds, seal),
+		|| RowAccumulator::new(kinds, amendable),
 	)?;
 
 	for r in &results {

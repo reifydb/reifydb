@@ -170,16 +170,16 @@ pub fn render_queue(queue: &Queue, resolver: &NameResolver) -> Result<String, Ex
 		if deduplicate.is_forever() {
 			options.push(format!("deduplicate: {{ by: {{{}}} }}", by));
 		} else {
-			options.push(format!("deduplicate: {{ by: {{{}}}, ttl: \"{}\" }}", by, deduplicate.ttl));
+			options.push(format!("deduplicate: {{ by: {{{}}}, ttl: {} }}", by, deduplicate.ttl));
 		}
 	}
 	if let Some(done) = &queue.retention.done {
-		options.push(format!("retention: {{ done: \"{}\" }}", done));
+		options.push(format!("retention: {{ done: {} }}", done));
 	}
 	if queue.retry.attempts != Queue::DEFAULT_RETRY_ATTEMPTS || queue.retry.backoff != Queue::DEFAULT_RETRY_BACKOFF
 	{
 		options.push(format!(
-			"retry: {{ attempts: {}, backoff: \"{}\" }}",
+			"retry: {{ attempts: {}, backoff: {} }}",
 			queue.retry.attempts, queue.retry.backoff
 		));
 	}

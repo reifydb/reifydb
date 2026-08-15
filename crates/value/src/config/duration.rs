@@ -6,15 +6,15 @@ use crate::value::duration::Duration;
 
 impl Config {
 	pub fn duration(&self, key: &str) -> Option<Duration> {
-		self.opt_coerce(key)
+		self.opt(key)
 	}
 
 	pub fn require_duration(&self, key: &str) -> Duration {
-		self.opt_coerce(key).unwrap_or_else(|| self.missing(key, "a duration"))
+		self.opt(key).unwrap_or_else(|| self.missing(key, "a duration"))
 	}
 
 	pub fn duration_or(&self, key: &str, default: Duration) -> Duration {
-		self.opt_coerce(key).unwrap_or(default)
+		self.opt(key).unwrap_or(default)
 	}
 }
 
@@ -38,17 +38,32 @@ mod tests {
 	}
 
 	#[test]
-	fn parses_duration_literal_string() {
+	fn rejects_duration_literal_string() {
 		let cfg = config(vec![("d", Value::utf8("1m")), ("sub", Value::utf8("1s"))]);
+		assert_eq!(cfg.duration("d"), None, "a duration literal string is not a duration");
+		assert_eq!(cfg.duration("sub"), None, "a sub-minute duration literal string is not a duration either");
 		assert_eq!(
-			cfg.duration("d"),
-			Some(Duration::from_minutes(1).unwrap()),
-			"a duration literal string coerces to a Duration"
+			cfg.duration_or("sub", Duration::from_seconds(1).unwrap()),
+			Duration::from_seconds(1).unwrap(),
+			"a string falls through to the default rather than parsing sub-minute"
 		);
+	}
+
+	#[test]
+	#[should_panic(expected = "is missing or not a duration")]
+	fn require_panics_on_duration_literal_string() {
+		let cfg = config(vec![("d", Value::utf8("1m"))]);
+		cfg.require_duration("d");
+	}
+
+	#[test]
+	fn accepts_sub_minute_duration_value() {
+		let sub = Duration::from_seconds(1).unwrap();
+		let cfg = config(vec![("sub", Value::Duration(sub))]);
 		assert_eq!(
 			cfg.require_duration("sub"),
-			Duration::from_seconds(1).unwrap(),
-			"a sub-minute duration literal must stay sub-minute, not round up"
+			sub,
+			"a sub-minute duration must stay sub-minute, not round up"
 		);
 	}
 

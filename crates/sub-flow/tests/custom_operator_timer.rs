@@ -38,7 +38,7 @@ const DELAY_MS: u64 = 1_000;
 
 // Far beyond anything these event times reach, so retention never reclaims a group underneath an
 // assertion. It is declared only because declaring it is what puts the node in the event domain.
-const SEAL_AFTER_MS: u64 = 3_600_000;
+const LATENESS_MS: u64 = 3_600_000;
 
 const ALARM_STATE: Keyspace = Keyspace::CUSTOM;
 
@@ -66,7 +66,7 @@ const ALARM_COLUMNS: &[OperatorColumn] = &[
 ];
 
 struct Alarm {
-	seal_after_ms: u64,
+	lateness_ms: u64,
 }
 
 impl GuestRawOperator for Alarm {}
@@ -87,12 +87,12 @@ fn group_key(g: i32) -> EncodedKey {
 impl GuestOperator for Alarm {
 	fn create(_operator_id: OperatorId, config: &Config) -> SdkResult<Self> {
 		Ok(Alarm {
-			seal_after_ms: config.u64_or("seal", SEAL_AFTER_MS),
+			lateness_ms: config.u64_or("lateness", LATENESS_MS),
 		})
 	}
 
-	fn seal_after(&self) -> Option<Duration> {
-		Some(Duration::from_milliseconds_const(self.seal_after_ms as i64))
+	fn lateness(&self) -> Option<Duration> {
+		Some(Duration::from_milliseconds_const(self.lateness_ms as i64))
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {
@@ -257,7 +257,7 @@ fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_wok
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(
-		"CREATE DEFERRED VIEW app::v { g: int4, fired_at: int8 } AS { FROM app::t APPLY alarm{ seal: 1000 } }",
+		"CREATE DEFERRED VIEW app::v { g: int4, fired_at: int8 } AS { FROM app::t APPLY alarm{ lateness: 1000 } }",
 	);
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
@@ -297,8 +297,8 @@ impl GuestOperator for Snooze {
 		})
 	}
 
-	fn seal_after(&self) -> Option<Duration> {
-		Some(Duration::from_milliseconds_const(SEAL_AFTER_MS as i64))
+	fn lateness(&self) -> Option<Duration> {
+		Some(Duration::from_milliseconds_const(LATENESS_MS as i64))
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> SdkResult<()> {

@@ -30,7 +30,7 @@ use reifydb_core::{
 			ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedView,
 		},
 	},
-	row::{JoinSeal, OperatorSeal, Ttl},
+	row::{JoinLateness, OperatorLateness, Ttl},
 	sort::SortKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -392,7 +392,7 @@ pub enum AppendPhysicalNode<'bump> {
 	Query {
 		left: BumpBox<'bump, PhysicalPlan<'bump>>,
 		right: BumpBox<'bump, PhysicalPlan<'bump>>,
-		ttl: Option<OperatorSeal>,
+		ttl: Option<OperatorLateness>,
 	},
 }
 
@@ -480,14 +480,14 @@ pub struct AggregateNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
-	pub ttl: Option<OperatorSeal>,
+	pub ttl: Option<OperatorLateness>,
 }
 
 #[derive(Debug)]
 pub struct DistinctNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub columns: Vec<ResolvedColumn>,
-	pub ttl: Option<OperatorSeal>,
+	pub ttl: Option<OperatorLateness>,
 }
 
 #[derive(Debug)]
@@ -522,7 +522,7 @@ pub struct JoinInnerNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<JoinSeal>,
+	pub ttl: Option<JoinLateness>,
 	pub snapshot: bool,
 	pub latest: bool,
 }
@@ -533,7 +533,7 @@ pub struct JoinLeftNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<JoinSeal>,
+	pub ttl: Option<JoinLateness>,
 	pub snapshot: bool,
 	pub latest: bool,
 }
@@ -544,7 +544,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<JoinSeal>,
+	pub ttl: Option<JoinLateness>,
 	pub snapshot: bool,
 	pub latest: bool,
 }
@@ -584,7 +584,7 @@ pub struct ApplyNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub operator: Fragment,
 	pub expressions: Vec<Expression>,
-	pub ttl: Option<OperatorSeal>,
+	pub ttl: Option<OperatorLateness>,
 }
 
 #[derive(Debug)]
@@ -593,7 +593,8 @@ pub struct WindowNode<'bump> {
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub seal: Duration,
+	pub lateness: Duration,
+	pub amendable: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -2345,7 +2346,8 @@ impl<'bump> Compiler<'bump> {
 						kind: window.kind,
 						group_by: window.group_by,
 						aggregations: window.aggregations,
-						seal: window.seal,
+						lateness: window.lateness,
+						amendable: window.amendable,
 						input,
 					}));
 				}

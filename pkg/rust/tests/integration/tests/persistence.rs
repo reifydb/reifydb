@@ -14,7 +14,7 @@ fn persistent_false_rows_are_not_durable_after_reopen() {
 		db.admin("create namespace demo");
 		db.admin("create table demo::keep { id: uint8 }");
 		db.admin(
-			"create table demo::transient { id: uint8 } with { time: processing, row: { ttl: { duration: '1h', announce: false }, persistent: false } }",
+			"create table demo::transient { id: uint8 } with { time: processing, row: { ttl: 1h, announce: false, persistent: false } }",
 		);
 
 		db.command("insert demo::keep [{ id: 1 }, { id: 2 }]");

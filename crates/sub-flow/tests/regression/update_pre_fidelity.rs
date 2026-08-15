@@ -272,7 +272,8 @@ fn a_window_update_retracts_the_total_it_previously_published() {
 			aggregations: parse_expression("total: math::sum(v)").expect("aggregation parses"),
 			runtime_context: runtime,
 			routines: routines(),
-			seal: Duration::default(),
+			lateness: Duration::default(),
+			amendable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})
 	});

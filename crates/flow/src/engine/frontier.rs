@@ -97,7 +97,7 @@ fn output_frontiers<T: FlowTransaction>(
 
 		let frontier = operators
 			.get(operator_id)
-			.and_then(|operator| operator.seal_span())
+			.and_then(|operator| operator.lateness_span())
 			.map_or(input, |span| seal_horizon(input, span));
 
 		computed.insert(*operator_id, frontier);
@@ -186,7 +186,7 @@ mod tests {
 			Ok(change)
 		}
 
-		fn seal_span(&self) -> Option<Duration> {
+		fn lateness_span(&self) -> Option<Duration> {
 			self.horizon
 		}
 	}

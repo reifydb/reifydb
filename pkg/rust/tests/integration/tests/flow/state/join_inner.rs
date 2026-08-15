@@ -23,13 +23,13 @@ const RIGHT_ROWS: &str = "from system::metrics::flow::state::current
 
 const SURFACE: &str = "from system::metrics::flow::state::current";
 
-const BOTH_SIDES: &str = "with { seal: { left: { duration: '1s' }, right: { duration: '1s' } } }";
+const BOTH_SIDES: &str = "with { lateness: { left: 1s, right: 1s } }";
 
-const LEFT_ONLY: &str = "with { seal: { left: { duration: '1s' } } }";
+const LEFT_ONLY: &str = "with { lateness: { left: 1s } }";
 
-const RIGHT_ONLY: &str = "with { seal: { right: { duration: '1s' } } }";
+const RIGHT_ONLY: &str = "with { lateness: { right: 1s } }";
 
-const LEFT_SHORT_RIGHT_LONG: &str = "with { seal: { left: { duration: '1s' }, right: { duration: '30s' } } }";
+const LEFT_SHORT_RIGHT_LONG: &str = "with { lateness: { left: 1s, right: 30s } }";
 
 fn setup() -> TestDb {
 	TestDb::from(

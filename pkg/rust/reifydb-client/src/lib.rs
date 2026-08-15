@@ -79,7 +79,7 @@ pub use reifydb_value::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 #[cfg(any(feature = "ws", feature = "grpc", all(feature = "dst", reifydb_single_threaded)))]
-pub use subscription::{BatchItem, HydrationConfig, SubscriptionConfig, build_subscription_rql};
+pub use subscription::{BatchItem, HydrationConfig, Linger, SubscriptionConfig, Throttle, build_subscription_rql};
 #[cfg(feature = "ws")]
 pub use ws::{WsBatchSubscription, WsClient, WsClientOptions};
 

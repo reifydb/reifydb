@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { Client, WsClient } from '../../../src';
-import { Shape } from '@reifydb/core';
+import { DurationValue, Shape } from '@reifydb/core';
 import { wait_for_database } from '../setup';
 import {
     create_test_table_name,
@@ -454,7 +454,7 @@ describe('WebSocket Batch Subscriptions', () => {
                     rql: `from test::${table}`,
                     shape,
                     callbacks: { on_insert: tracker.callback },
-                    config: { linger: LINGER_MS }
+                    config: { linger: DurationValue.fromMilliseconds(LINGER_MS) }
                 }
             ]);
 

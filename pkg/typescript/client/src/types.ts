@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-import type { Params, Frame, Column, ErrorResponse, ShapeNode } from "@reifydb/core";
+import type { Params, Frame, Column, ErrorResponse, ShapeNode, DurationValue } from "@reifydb/core";
 import { ReifyError } from "@reifydb/core";
 
 // Re-export types that are actually available in flow
@@ -154,13 +154,8 @@ export interface HydrationConfig {
 
 export interface SubscriptionConfig {
     hydration?: HydrationConfig;
-    // Minimum interval in milliseconds between updates pushed to this subscription.
-    // Omitted or undefined means no throttling (every change is delivered immediately).
-    throttle?: number;
-    // Linger window in milliseconds: hold changes for up to this long and concatenate
-    // everything that lands in the window into a single push, so related events arrive
-    // together. Omitted or undefined means no linger (changes are pushed immediately).
-    linger?: number;
+    throttle?: DurationValue;
+    linger?: DurationValue;
 }
 
 export function default_hydration_config(): HydrationConfig {
@@ -171,6 +166,17 @@ export function default_subscription_config(): SubscriptionConfig {
     return { hydration: default_hydration_config() };
 }
 
+function duration_literal(knob: string, value: DurationValue): string {
+    if (value.isNegative()) {
+        throw new Error(`${knob} must not be negative`);
+    }
+    const literal = value.toString();
+    if (literal === 'none') {
+        throw new Error(`${knob} must be a duration`);
+    }
+    return literal;
+}
+
 export function build_subscription_rql(body: string, config?: SubscriptionConfig): string {
     const h = config?.hydration ?? default_hydration_config();
     const enabled = h.enabled;
@@ -178,10 +184,10 @@ export function build_subscription_rql(body: string, config?: SubscriptionConfig
         ? `hydration: { enabled: ${enabled}, max_rows: ${h.max_rows} }`
         : `hydration: { enabled: ${enabled} }`;
     if (config?.throttle !== undefined) {
-        opts += `, throttle: "${config.throttle}ms"`;
+        opts += `, throttle: ${duration_literal('throttle', config.throttle)}`;
     }
     if (config?.linger !== undefined) {
-        opts += `, linger: "${config.linger}ms"`;
+        opts += `, linger: ${duration_literal('linger', config.linger)}`;
     }
     return `CREATE SUBSCRIPTION WITH { ${opts} } AS { ${body} }`;
 }

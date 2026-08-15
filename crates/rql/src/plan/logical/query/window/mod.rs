@@ -4,7 +4,7 @@
 use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_value::{
 	fragment::Fragment,
-	value::{duration::Duration, number::parse::parse_primitive_int, temporal::parse::duration::parse_duration},
+	value::{duration::Duration, number::parse::parse_primitive_int},
 };
 
 use crate::{
@@ -12,15 +12,17 @@ use crate::{
 	ast::ast::{
 		Ast,
 		Ast::Literal,
-		AstLiteral::{Number, Text},
+		AstLiteral::{Duration as DurationLiteral, Number},
 		AstWindow, AstWindowConfig, AstWindowKind,
 	},
-	bump::BumpFragment,
 	diagnostic::AstError,
+	duration::{DurationBound, compile_duration},
 	error::RqlError,
 	expression::{Expression, ExpressionCompiler},
 	plan::logical::{Compiler, LogicalPlan},
 };
+
+const WINDOW_CONFIG_KEYS: &str = "duration, count, slide, gap, lag, lateness, or amendable";
 
 #[derive(Debug, Clone)]
 struct Declared<T> {
@@ -36,13 +38,14 @@ impl<T: Copy> Declared<T> {
 
 #[derive(Debug, Default)]
 struct ParsedConfig {
-	pub interval: Option<Declared<Duration>>,
+	pub duration: Option<Declared<Duration>>,
 	pub count: Option<Declared<u64>>,
 	pub slide_duration: Option<Declared<Duration>>,
 	pub slide_count: Option<Declared<u64>>,
 	pub gap: Option<Declared<Duration>>,
 	pub lag: Option<Declared<Duration>>,
-	pub seal: Option<Declared<Duration>>,
+	pub lateness: Option<Declared<Duration>>,
+	pub amendable: Option<Declared<Duration>>,
 	pub window: Fragment,
 }
 
@@ -51,7 +54,8 @@ pub struct WindowNode {
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub seal: Duration,
+	pub lateness: Duration,
+	pub amendable: Option<Duration>,
 	pub rql: String,
 }
 
@@ -64,12 +68,14 @@ impl<'bump> Compiler<'bump> {
 		let aggregations = Self::compile_expressions(ast.aggregations)?;
 		let kind = Self::build_window_kind(ast.kind, &parsed)?;
 		Self::reject_time_only_config(&parsed, &kind)?;
+		Self::reject_amendable_not_smaller_than_lateness(&parsed)?;
 
 		Ok(LogicalPlan::Window(WindowNode {
 			kind,
 			group_by,
 			aggregations,
-			seal: Declared::value_of(&parsed.seal).unwrap_or_default(),
+			lateness: Declared::value_of(&parsed.lateness).unwrap_or_default(),
+			amendable: Declared::value_of(&parsed.amendable),
 			rql,
 		}))
 	}
@@ -78,14 +84,41 @@ impl<'bump> Compiler<'bump> {
 		if !kind.size().is_some_and(|size| size.is_count()) {
 			return Ok(());
 		}
-		if let Some(declared) = &parsed.seal {
+		if let Some(declared) = &parsed.lateness {
 			return Err(AstError::UnexpectedToken {
-				expected: "no seal on count-based windows (seal needs a time domain)".to_string(),
+				expected: "no lateness on count-based windows (lateness needs a time domain)"
+					.to_string(),
+				fragment: declared.fragment.clone(),
+			}
+			.into());
+		}
+		if let Some(declared) = &parsed.amendable {
+			return Err(AstError::UnexpectedToken {
+				expected: "no amendable on count-based windows (amendable needs a time domain)"
+					.to_string(),
 				fragment: declared.fragment.clone(),
 			}
 			.into());
 		}
 		Ok(())
+	}
+
+	fn reject_amendable_not_smaller_than_lateness(parsed: &ParsedConfig) -> Result<()> {
+		let Some(amendable) = parsed.amendable.as_ref() else {
+			return Ok(());
+		};
+		let lateness = Declared::value_of(&parsed.lateness).unwrap_or_default();
+		if amendable.value < lateness {
+			return Ok(());
+		}
+		Err(RqlError::WindowAmendableNotSmallerThanLateness {
+			amendable_value: amendable.fragment.text().to_string(),
+			lateness_value: Self::declared_text(
+				parsed.lateness.as_ref().map(|declared| &declared.fragment),
+			),
+			fragment: amendable.fragment.clone(),
+		}
+		.into())
 	}
 
 	fn declared_slide(parsed: &ParsedConfig) -> Option<Fragment> {
@@ -96,7 +129,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	fn declared_size(parsed: &ParsedConfig) -> Option<Fragment> {
-		parsed.interval
+		parsed.duration
 			.as_ref()
 			.map(|declared| declared.fragment.clone())
 			.or_else(|| parsed.count.as_ref().map(|declared| declared.fragment.clone()))
@@ -112,7 +145,7 @@ impl<'bump> Compiler<'bump> {
 		slide: &WindowSize,
 	) -> Result<()> {
 		let domain = |measure: &WindowSize| match measure {
-			WindowSize::Duration(_) => "interval",
+			WindowSize::Duration(_) => "duration",
 			WindowSize::Count(_) => "count",
 		};
 		if domain(size) == domain(slide) {
@@ -231,7 +264,7 @@ impl<'bump> Compiler<'bump> {
 					&& !matches!(size, WindowSize::Duration(_))
 				{
 					return Err(AstError::UnexpectedToken {
-						expected: "lag is only supported with a duration interval".to_string(),
+						expected: "lag is only supported with a duration size".to_string(),
 						fragment: lag.fragment.clone(),
 					}
 					.into());
@@ -254,13 +287,13 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	fn build_measure(parsed: &ParsedConfig) -> Result<WindowSize> {
-		if let Some(d) = parsed.interval.as_ref() {
+		if let Some(d) = parsed.duration.as_ref() {
 			Ok(WindowSize::Duration(d.value))
 		} else if let Some(c) = parsed.count.as_ref() {
 			Ok(WindowSize::Count(c.value))
 		} else {
 			Err(AstError::UnexpectedToken {
-				expected: "interval or count must be specified".to_string(),
+				expected: "duration or count must be specified".to_string(),
 				fragment: parsed.window.clone(),
 			}
 			.into())
@@ -269,19 +302,12 @@ impl<'bump> Compiler<'bump> {
 
 	fn parse_config_item(config_item: &AstWindowConfig<'bump>, config: &mut ParsedConfig) -> Result<()> {
 		match config_item.key.text() {
-			"interval" | "duration" => {
-				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.interval = Some(Declared {
-						value: parse_duration(frag.to_owned())?,
-						fragment: frag.to_owned(),
-					});
-				} else {
-					return Err(AstError::UnexpectedToken {
-						expected: "duration string".to_string(),
-						fragment: config_item.value.token().fragment.to_owned(),
-					}
-					.into());
-				}
+			"duration" => {
+				config.duration = Some(Self::declared_duration(
+					&config_item.value,
+					"'duration'",
+					DurationBound::Positive,
+				)?);
 			}
 			"count" => {
 				if let Some(count_val) = Self::extract_literal_number(&config_item.value) {
@@ -298,11 +324,12 @@ impl<'bump> Compiler<'bump> {
 				}
 			}
 			"slide" => {
-				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.slide_duration = Some(Declared {
-						value: parse_duration(frag.to_owned())?,
-						fragment: frag.to_owned(),
-					});
+				if Self::is_duration_literal(&config_item.value) {
+					config.slide_duration = Some(Self::declared_duration(
+						&config_item.value,
+						"'slide'",
+						DurationBound::Positive,
+					)?);
 				} else if let Some(count_val) = Self::extract_literal_number(&config_item.value) {
 					config.slide_count = Some(Declared {
 						value: count_val as u64,
@@ -310,57 +337,43 @@ impl<'bump> Compiler<'bump> {
 					});
 				} else {
 					return Err(AstError::UnexpectedToken {
-						expected: "duration string or number".to_string(),
+						expected: "duration literal or number".to_string(),
 						fragment: config_item.value.token().fragment.to_owned(),
 					}
 					.into());
 				}
 			}
 			"gap" => {
-				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.gap = Some(Declared {
-						value: parse_duration(frag.to_owned())?,
-						fragment: frag.to_owned(),
-					});
-				} else {
-					return Err(AstError::UnexpectedToken {
-						expected: "duration string".to_string(),
-						fragment: config_item.value.token().fragment.to_owned(),
-					}
-					.into());
-				}
+				config.gap = Some(Self::declared_duration(
+					&config_item.value,
+					"'gap'",
+					DurationBound::AllowZero,
+				)?);
 			}
 			"lag" => {
-				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.lag = Some(Declared {
-						value: parse_duration(frag.to_owned())?,
-						fragment: frag.to_owned(),
-					});
-				} else {
-					return Err(AstError::UnexpectedToken {
-						expected: "duration string".to_string(),
-						fragment: config_item.value.token().fragment.to_owned(),
-					}
-					.into());
-				}
+				config.lag = Some(Self::declared_duration(
+					&config_item.value,
+					"'lag'",
+					DurationBound::AllowZero,
+				)?);
 			}
-			"seal" => {
-				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.seal = Some(Declared {
-						value: parse_duration(frag.to_owned())?,
-						fragment: frag.to_owned(),
-					});
-				} else {
-					return Err(AstError::UnexpectedToken {
-						expected: "duration string".to_string(),
-						fragment: config_item.value.token().fragment.to_owned(),
-					}
-					.into());
-				}
+			"lateness" => {
+				config.lateness = Some(Self::declared_duration(
+					&config_item.value,
+					"'lateness'",
+					DurationBound::AllowZero,
+				)?);
+			}
+			"amendable" => {
+				config.amendable = Some(Self::declared_duration(
+					&config_item.value,
+					"'amendable'",
+					DurationBound::AllowZero,
+				)?);
 			}
 			_ => {
 				return Err(AstError::UnexpectedToken {
-					expected: "interval, count, slide, gap, lag, or seal".to_string(),
+					expected: WINDOW_CONFIG_KEYS.to_string(),
 					fragment: config_item.key.token.fragment.to_owned(),
 				}
 				.into());
@@ -369,14 +382,16 @@ impl<'bump> Compiler<'bump> {
 		Ok(())
 	}
 
-	pub fn extract_text_fragment(ast: &Ast<'bump>) -> Option<BumpFragment<'bump>> {
-		if let Literal(literal) = ast
-			&& let Text(text) = literal
-		{
-			Some(text.0.fragment)
-		} else {
-			None
-		}
+	fn declared_duration(ast: &Ast<'bump>, key: &str, bound: DurationBound) -> Result<Declared<Duration>> {
+		let token = ast.token();
+		Ok(Declared {
+			value: compile_duration(token, bound, key)?,
+			fragment: token.fragment.to_owned(),
+		})
+	}
+
+	pub fn is_duration_literal(ast: &Ast<'bump>) -> bool {
+		matches!(ast, Literal(DurationLiteral(_)))
 	}
 
 	pub fn extract_literal_number(ast: &Ast) -> Option<i64> {
@@ -406,8 +421,8 @@ mod tests {
 	fn a_rejected_key_points_at_that_key() {
 		// A `with { }` block may hold a dozen keys, so a failure without a span leaves the author nothing to
 		// act on. This asserts the span, not just the rejection.
-		let parsed = parse_window_config(r#"window tumbling { count(*) } with { interval: "5m", lag: "30s" }"#)
-			.unwrap();
+		let parsed =
+			parse_window_config(r#"window tumbling { count(*) } with { duration: 5m, lag: 30s }"#).unwrap();
 
 		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
 		assert_eq!(err.fragment.text(), "30s", "the offending lag value is what the author must remove");
@@ -417,7 +432,7 @@ mod tests {
 	fn a_missing_measure_points_at_the_window() {
 		// An error about something absent has no key to point at, so it has to fall back to the window token;
 		// otherwise the author cannot tell which window in the statement lacks the measure.
-		let parsed = parse_window_config(r#"window tumbling { count(*) } with { seal: "1s" }"#).unwrap();
+		let parsed = parse_window_config(r#"window tumbling { count(*) } with { lateness: 1s }"#).unwrap();
 
 		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
 		assert_eq!(err.fragment.text(), "window", "the window token is the fallback span");
@@ -429,8 +444,8 @@ mod tests {
 		// window at all - the operator has no defined answer for a row in one of those gaps and silently
 		// assigns it to the preceding window.
 		for source in [
-			r#"window sliding { count(*) } with { interval: "1m", slide: "5m" }"#,
-			r#"window sliding { count(*) } with { interval: "1m", slide: "1m" }"#,
+			r#"window sliding { count(*) } with { duration: 1m, slide: 5m }"#,
+			r#"window sliding { count(*) } with { duration: 1m, slide: 1m }"#,
 			r#"window sliding { count(*) } with { count: 10, slide: 10 }"#,
 			r#"window sliding { count(*) } with { count: 10, slide: 25 }"#,
 		] {
@@ -446,37 +461,51 @@ mod tests {
 		// Every sliding anchor computation divides by the slide, so a zero slide panics inside the operator
 		// and takes the flow down. The `slide >= size` guard does not catch it, since `0 >= size` is false for
 		// every real size, and both domains divide.
-		for source in [
-			r#"window sliding { count(*) } with { interval: "5m", slide: "0s" }"#,
-			r#"window sliding { count(*) } with { count: 10, slide: 0 }"#,
+		for (source, code) in [
+			(r#"window sliding { count(*) } with { duration: 5m, slide: 0s }"#, "AST_005"),
+			(r#"window sliding { count(*) } with { count: 10, slide: 0 }"#, "WINDOW_008"),
 		] {
-			let parsed = parse_window_config(source).unwrap();
-			let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
-				.expect_err(&format!("a zero slide divides by zero and must be refused: {source}"));
-			assert_eq!(err.diagnostic().code, "WINDOW_008", "wrong diagnostic for: {source}");
+			let err = match parse_window_config(source) {
+				Err(err) => err,
+				Ok(parsed) => Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
+					.expect_err(&format!(
+						"a zero slide divides by zero and must be refused: {source}"
+					)),
+			};
+			assert_eq!(err.diagnostic().code, code, "wrong diagnostic for: {source}");
 		}
 	}
 
 	#[test]
 	fn a_zero_slide_is_not_reported_as_a_slide_that_is_too_large() {
-		// "must be smaller than the window interval" is true of a zero slide, so it tells the author to do
+		// "must be smaller than the window duration" is true of a zero slide, so it tells the author to do
 		// what they already did. Shrink-the-slide and make-it-positive are different fixes and need different
 		// diagnostics.
-		let parsed = parse_window_config(r#"window sliding { count(*) } with { interval: "5m", slide: "0s" }"#)
-			.unwrap();
-
-		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed).unwrap_err();
-		assert_ne!(err.diagnostic().code, "WINDOW_003", "a zero slide is not a slide that is too large");
+		for source in [
+			r#"window sliding { count(*) } with { duration: 5m, slide: 0s }"#,
+			r#"window sliding { count(*) } with { count: 10, slide: 0 }"#,
+		] {
+			let err = match parse_window_config(source) {
+				Err(err) => err,
+				Ok(parsed) => Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
+					.unwrap_err(),
+			};
+			assert_ne!(
+				err.diagnostic().code,
+				"WINDOW_003",
+				"a zero slide is not a slide that is too large: {source}"
+			);
+		}
 	}
 
 	#[test]
 	fn a_slide_measured_in_a_different_unit_than_the_window_is_rejected() {
-		// `interval` buckets by event time and `count` by arrival ordinal, so a window cannot be sized in one
+		// `duration` buckets by event time and `count` by arrival ordinal, so a window cannot be sized in one
 		// and advanced in the other. A mixed pair misses both arms of the anchor mapping and puts every row
 		// of the flow in window 0 - one window, never sealed, unbounded, with no error anywhere.
 		for source in [
-			r#"window sliding { count(*) } with { interval: "5m", slide: 3 }"#,
-			r#"window sliding { count(*) } with { count: 100, slide: "1m" }"#,
+			r#"window sliding { count(*) } with { duration: 5m, slide: 3 }"#,
+			r#"window sliding { count(*) } with { count: 100, slide: 1m }"#,
 		] {
 			let parsed = parse_window_config(source).unwrap();
 			let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
@@ -489,8 +518,8 @@ mod tests {
 	fn a_mismatched_slide_points_at_the_slide_the_author_declared() {
 		// The author has to change the slide to match the window's unit, so the span must land on the slide
 		// value rather than the window token.
-		let parsed = parse_window_config(r#"window sliding { count(*) } with { interval: "5m", slide: 3 }"#)
-			.unwrap();
+		let parsed =
+			parse_window_config(r#"window sliding { count(*) } with { duration: 5m, slide: 3 }"#).unwrap();
 
 		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed).unwrap_err();
 		assert_eq!(err.fragment.text(), "3", "the offending slide value is what the author must change");
@@ -500,8 +529,8 @@ mod tests {
 	fn a_rejected_slide_points_at_the_slide_value() {
 		// Two durations sit in the block and only the slide is at fault, so pointing anywhere else leaves the
 		// author guessing which one to change.
-		let parsed = parse_window_config(r#"window sliding { count(*) } with { interval: "1m", slide: "5m" }"#)
-			.unwrap();
+		let parsed =
+			parse_window_config(r#"window sliding { count(*) } with { duration: 1m, slide: 5m }"#).unwrap();
 
 		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed).unwrap_err();
 		assert_eq!(err.fragment.text(), "5m", "the offending slide value is what the author must reduce");
@@ -511,8 +540,8 @@ mod tests {
 	fn an_overlapping_slide_is_still_accepted() {
 		// The control for the rejection tests above: a validation that refused everything would look correct
 		// without it, and a slide smaller than the size is what sliding exists for.
-		let parsed = parse_window_config(r#"window sliding { count(*) } with { interval: "5m", slide: "1m" }"#)
-			.unwrap();
+		let parsed =
+			parse_window_config(r#"window sliding { count(*) } with { duration: 5m, slide: 1m }"#).unwrap();
 
 		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
 			.expect("a slide smaller than the size is the overlapping case sliding exists for");
@@ -526,24 +555,27 @@ mod tests {
 		assert!(parse_window_config(r#"window tumbling { count(*) } with { bogus: 1 }"#).is_err());
 		assert!(
 			parse_window_config(
-				r#"window tumbling { count(*) } with { interval: "5m", state_cache_size: 4096 }"#
+				r#"window tumbling { count(*) } with { duration: 5m, state_cache_size: 4096 }"#
 			)
 			.is_err(),
 			"state_cache_size was removed and must not be silently accepted"
 		);
 		assert!(
 			parse_window_config(
-				r#"window tumbling { count(*) } with { interval: "5m", internal_state_cache_size: 512 }"#
+				r#"window tumbling { count(*) } with { duration: 5m, internal_state_cache_size: 512 }"#
 			)
 			.is_err(),
 			"internal_state_cache_size was removed and must not be silently accepted"
 		);
-		// One admissible span cannot be two numbers: seal is the whole allowance, so accepting lateness
-		// again lets a user widen a horizon the seal gate does not honour.
+		// `seal` names the state a window enters and never the span granted, so it must not still declare one.
 		assert!(
-			parse_window_config(r#"window tumbling { count(*) } with { interval: "5m", lateness: "30s" }"#)
+			parse_window_config(r#"window tumbling { count(*) } with { duration: 5m, seal: 30s }"#)
 				.is_err(),
-			"lateness was removed and must not be silently accepted"
+			"seal was renamed to lateness and must not be silently accepted"
+		);
+		assert!(
+			parse_window_config(r#"window tumbling { count(*) } with { interval: 5m }"#).is_err(),
+			"interval was renamed to duration and must not be silently accepted"
 		);
 	}
 }

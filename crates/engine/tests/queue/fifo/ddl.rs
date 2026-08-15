@@ -39,8 +39,8 @@ fn test_create_queue_with_all_options_round_trips() {
 	t.admin("CREATE NAMESPACE test");
 	t.admin(r#"CREATE QUEUE test::jobs { order_id: uuid7, kind: utf8 } WITH {
 			fifo: { partitions: 32, ordered_by: order_id },
-			retention: { done: "7d" },
-			retry: { attempts: 9, backoff: "30s" }
+			retention: { done: 7d },
+			retry: { attempts: 9, backoff: 30s }
 		}"#);
 
 	let queue = find_queue(&t, "test", "jobs").expect("queue should exist");
@@ -100,7 +100,7 @@ fn test_create_queue_rejects_degenerate_retry() {
 	let attempts = t.admin_err("CREATE QUEUE test::a { id: int4 } WITH { fifo: {}, retry: { attempts: 0 } }");
 	assert!(attempts.contains("attempts"), "error should name the option, got: {attempts}");
 
-	let backoff = t.admin_err(r#"CREATE QUEUE test::b { id: int4 } WITH { fifo: {}, retry: { backoff: "0s" } }"#);
+	let backoff = t.admin_err(r#"CREATE QUEUE test::b { id: int4 } WITH { fifo: {}, retry: { backoff: 0s } }"#);
 	assert!(backoff.contains("positive"), "error should explain the positivity rule, got: {backoff}");
 }
 
@@ -228,7 +228,7 @@ fn test_retention_only_queue_keeps_its_duration() {
 	// Covers the codec path for an optional Duration that only the WITH block supplies.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
-	t.admin(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: "1h" } }"#);
+	t.admin(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: 1h } }"#);
 
 	let queue = find_queue(&t, "test", "jobs").unwrap();
 
@@ -244,7 +244,7 @@ fn test_create_queue_with_deduplicate_round_trips() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin(
-		r#"CREATE QUEUE test::jobs { order_id: int4, kind: utf8, payload: utf8 } WITH { fifo: {}, deduplicate: { by: {order_id, kind}, ttl: "30d" } }"#,
+		r#"CREATE QUEUE test::jobs { order_id: int4, kind: utf8, payload: utf8 } WITH { fifo: {}, deduplicate: { by: {order_id, kind}, ttl: 30d } }"#,
 	);
 
 	let queue = find_queue(&t, "test", "jobs").unwrap();
@@ -317,7 +317,7 @@ fn test_deduplicate_requires_by() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 
-	let err = t.admin_err(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, deduplicate: { ttl: "1d" } }"#);
+	let err = t.admin_err(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, deduplicate: { ttl: 1d } }"#);
 	assert!(!err.is_empty(), "deduplicate without by must fault");
 	assert!(find_queue(&t, "test", "jobs").is_none());
 }
@@ -351,7 +351,7 @@ fn test_system_queues_exposes_the_deduplicate_declaration() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin(
-		r#"CREATE QUEUE test::bounded { a: int4, b: int4 } WITH { fifo: {}, deduplicate: { by: {a, b}, ttl: "1d" } }"#,
+		r#"CREATE QUEUE test::bounded { a: int4, b: int4 } WITH { fifo: {}, deduplicate: { by: {a, b}, ttl: 1d } }"#,
 	);
 	t.admin("CREATE QUEUE test::unbounded { a: int4 } WITH { fifo: {}, deduplicate: { by: {a} } }");
 	t.admin("CREATE QUEUE test::plain { a: int4 } WITH { fifo: {} }");

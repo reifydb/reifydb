@@ -229,7 +229,7 @@ fn buffer_fills_then_evicts_oldest_window() {
 
 #[test]
 fn late_window_event_accepted_without_sealing() {
-	// Without a seal envelope there is no implicit high-water gate, so a late event merges
+	// Without a lateness envelope there is no implicit high-water gate, so a late event merges
 	// into its older coordinate; capacity eviction is what bounds this driver.
 	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
@@ -289,7 +289,7 @@ impl RollingOperator for SealedRollingSum {
 		millis(1)
 	}
 
-	fn seal_after(&self) -> Option<Duration> {
+	fn lateness(&self) -> Option<Duration> {
 		Some(millis(120))
 	}
 
@@ -363,5 +363,5 @@ fn an_ungated_rolling_operator_arms_no_seal_timer() {
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 
-	assert!(h.armed_timers().is_empty(), "an operator with seal_after = None must arm no timer");
+	assert!(h.armed_timers().is_empty(), "an operator with lateness = None must arm no timer");
 }

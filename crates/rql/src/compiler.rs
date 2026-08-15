@@ -437,7 +437,8 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 			kind: node.kind,
 			group_by: node.group_by,
 			aggregations: node.aggregations,
-			seal: node.seal,
+			lateness: node.lateness,
+			amendable: node.amendable,
 		}),
 		PhysicalPlan::Scalarize(node) => QueryPlan::Scalarize(nodes::ScalarizeNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
@@ -656,15 +657,15 @@ impl InstructionCompiler {
 		self.instructions.len()
 	}
 
-	fn emit_conditional_jump(&mut self, condition: Expression) -> usize {
-		self.compile_expression(&condition);
-		self.emit(Instruction::JumpIfFalsePop(0))
+	fn emit_conditional_jump(&mut self, condition: Expression) -> Result<usize> {
+		self.compile_expression(&condition)?;
+		Ok(self.emit(Instruction::JumpIfFalsePop(0)))
 	}
 
-	fn compile_expression(&mut self, expr: &Expression) {
+	fn compile_expression(&mut self, expr: &Expression) -> Result<()> {
 		match expr {
 			Expression::Constant(c) => {
-				let value = c.to_value();
+				let value = c.to_value()?;
 				if matches!(value, Value::None { .. }) {
 					self.emit(Instruction::PushNone);
 				} else {
@@ -675,92 +676,92 @@ impl InstructionCompiler {
 				self.emit(Instruction::LoadVar(v.fragment.clone()));
 			}
 			Expression::Add(a) => {
-				self.compile_expression(&a.left);
-				self.compile_expression(&a.right);
+				self.compile_expression(&a.left)?;
+				self.compile_expression(&a.right)?;
 				self.emit(Instruction::Add);
 			}
 			Expression::Sub(s) => {
-				self.compile_expression(&s.left);
-				self.compile_expression(&s.right);
+				self.compile_expression(&s.left)?;
+				self.compile_expression(&s.right)?;
 				self.emit(Instruction::Sub);
 			}
 			Expression::Mul(m) => {
-				self.compile_expression(&m.left);
-				self.compile_expression(&m.right);
+				self.compile_expression(&m.left)?;
+				self.compile_expression(&m.right)?;
 				self.emit(Instruction::Mul);
 			}
 			Expression::Div(d) => {
-				self.compile_expression(&d.left);
-				self.compile_expression(&d.right);
+				self.compile_expression(&d.left)?;
+				self.compile_expression(&d.right)?;
 				self.emit(Instruction::Div);
 			}
 			Expression::Rem(r) => {
-				self.compile_expression(&r.left);
-				self.compile_expression(&r.right);
+				self.compile_expression(&r.left)?;
+				self.compile_expression(&r.right)?;
 				self.emit(Instruction::Rem);
 			}
 			Expression::Equal(e) => {
-				self.compile_expression(&e.left);
-				self.compile_expression(&e.right);
+				self.compile_expression(&e.left)?;
+				self.compile_expression(&e.right)?;
 				self.emit(Instruction::CmpEq);
 			}
 			Expression::NotEqual(e) => {
-				self.compile_expression(&e.left);
-				self.compile_expression(&e.right);
+				self.compile_expression(&e.left)?;
+				self.compile_expression(&e.right)?;
 				self.emit(Instruction::CmpNe);
 			}
 			Expression::GreaterThan(e) => {
-				self.compile_expression(&e.left);
-				self.compile_expression(&e.right);
+				self.compile_expression(&e.left)?;
+				self.compile_expression(&e.right)?;
 				self.emit(Instruction::CmpGt);
 			}
 			Expression::GreaterThanEqual(e) => {
-				self.compile_expression(&e.left);
-				self.compile_expression(&e.right);
+				self.compile_expression(&e.left)?;
+				self.compile_expression(&e.right)?;
 				self.emit(Instruction::CmpGe);
 			}
 			Expression::LessThan(e) => {
-				self.compile_expression(&e.left);
-				self.compile_expression(&e.right);
+				self.compile_expression(&e.left)?;
+				self.compile_expression(&e.right)?;
 				self.emit(Instruction::CmpLt);
 			}
 			Expression::LessThanEqual(e) => {
-				self.compile_expression(&e.left);
-				self.compile_expression(&e.right);
+				self.compile_expression(&e.left)?;
+				self.compile_expression(&e.right)?;
 				self.emit(Instruction::CmpLe);
 			}
 			Expression::And(a) => {
-				self.compile_expression(&a.left);
-				self.compile_expression(&a.right);
+				self.compile_expression(&a.left)?;
+				self.compile_expression(&a.right)?;
 				self.emit(Instruction::LogicAnd);
 			}
 			Expression::Or(o) => {
-				self.compile_expression(&o.left);
-				self.compile_expression(&o.right);
+				self.compile_expression(&o.left)?;
+				self.compile_expression(&o.right)?;
 				self.emit(Instruction::LogicOr);
 			}
 			Expression::Xor(x) => {
-				self.compile_expression(&x.left);
-				self.compile_expression(&x.right);
+				self.compile_expression(&x.left)?;
+				self.compile_expression(&x.right)?;
 				self.emit(Instruction::LogicXor);
 			}
 			Expression::Prefix(p) => match &p.operator {
 				PrefixOperator::Minus(_) => {
-					self.compile_expression(&p.expression);
+					self.compile_expression(&p.expression)?;
 					self.emit(Instruction::Negate);
 				}
 				PrefixOperator::Not(_) => {
-					self.compile_expression(&p.expression);
+					self.compile_expression(&p.expression)?;
 					self.emit(Instruction::LogicNot);
 				}
 				PrefixOperator::Plus(_) => {
-					self.compile_expression(&p.expression);
+					self.compile_expression(&p.expression)?;
 				}
 			},
 			Expression::Call(c) => {
 				let arity = c.args.len();
 				for arg in &c.args {
-					self.compile_expression(arg);
+					self.compile_expression(arg)?;
 				}
 				self.emit(Instruction::Call {
 					name: c.func.0.clone(),
@@ -769,33 +770,33 @@ impl InstructionCompiler {
 				});
 			}
 			Expression::Cast(c) => {
-				self.compile_expression(&c.expression);
+				self.compile_expression(&c.expression)?;
 				self.emit(Instruction::Cast(c.to.ty.clone()));
 			}
 			Expression::Between(b) => {
-				self.compile_expression(&b.value);
-				self.compile_expression(&b.lower);
-				self.compile_expression(&b.upper);
+				self.compile_expression(&b.value)?;
+				self.compile_expression(&b.lower)?;
+				self.compile_expression(&b.upper)?;
 				self.emit(Instruction::Between);
 			}
 			Expression::In(i) => {
-				self.compile_expression(&i.value);
+				self.compile_expression(&i.value)?;
 
 				let items = match i.list.as_ref() {
 					Expression::Tuple(t) => &t.expressions,
 					Expression::List(l) => &l.expressions,
 					_ => {
-						self.compile_expression(&i.list);
+						self.compile_expression(&i.list)?;
 						self.emit(Instruction::InList {
 							count: 1,
 							negated: i.negated,
 						});
-						return;
+						return Ok(());
 					}
 				};
 				let count = items.len();
 				for item in items {
-					self.compile_expression(item);
+					self.compile_expression(item)?;
 				}
 				self.emit(Instruction::InList {
 					count: count as u16,
@@ -803,10 +804,10 @@ impl InstructionCompiler {
 				});
 			}
 			Expression::If(i) => {
-				self.compile_expression(&i.condition);
+				self.compile_expression(&i.condition)?;
 				let false_jump = self.emit(Instruction::JumpIfFalsePop(0));
 
-				self.compile_expression(&i.then_expr);
+				self.compile_expression(&i.then_expr)?;
 				let end_jump = self.emit(Instruction::Jump(0));
 
 				let else_start = self.current_addr();
@@ -814,9 +815,9 @@ impl InstructionCompiler {
 
 				let mut end_patches = vec![end_jump];
 				for else_if in &i.else_ifs {
-					self.compile_expression(&else_if.condition);
+					self.compile_expression(&else_if.condition)?;
 					let false_jump = self.emit(Instruction::JumpIfFalsePop(0));
-					self.compile_expression(&else_if.then_expr);
+					self.compile_expression(&else_if.then_expr)?;
 					let end_jump = self.emit(Instruction::Jump(0));
 					end_patches.push(end_jump);
 					let next_start = self.current_addr();
@@ -824,7 +825,7 @@ impl InstructionCompiler {
 				}
 
 				if let Some(else_expr) = &i.else_expr {
-					self.compile_expression(else_expr);
+					self.compile_expression(else_expr)?;
 				} else {
 					self.emit(Instruction::PushNone);
 				}
@@ -849,34 +850,34 @@ impl InstructionCompiler {
 
 			Expression::Tuple(t) => {
 				if t.expressions.len() == 1 {
-					self.compile_expression(&t.expressions[0]);
+					self.compile_expression(&t.expressions[0])?;
 				} else {
 					self.emit(Instruction::PushNone);
 				}
 			}
 
 			Expression::List(l) => {
-				let constants: Option<Vec<Value>> = l
-					.expressions
-					.iter()
-					.map(|expression| match expression {
-						Expression::Constant(c) => Some(c.to_value()),
-						_ => None,
-					})
-					.collect();
-				match constants {
-					Some(values) => self.emit(Instruction::PushConst(Value::List(values))),
-					None => self.emit(Instruction::PushNone),
+				let mut values = Vec::with_capacity(l.expressions.len());
+				let mut all_constant = true;
+				for expression in &l.expressions {
+					match expression {
+						Expression::Constant(c) if all_constant => values.push(c.to_value()?),
+						_ => all_constant = false,
+					}
+				}
+				match all_constant {
+					true => self.emit(Instruction::PushConst(Value::List(values))),
+					false => self.emit(Instruction::PushNone),
 				};
 			}
 			Expression::Map(m) => {
 				if m.expressions.len() == 1 {
 					match &m.expressions[0] {
 						Expression::Alias(a) => {
-							self.compile_expression(&a.expression);
+							self.compile_expression(&a.expression)?;
 						}
 						other => {
-							self.compile_expression(other);
+							self.compile_expression(other)?;
 						}
 					}
 				} else {
@@ -894,7 +895,7 @@ impl InstructionCompiler {
 					});
 				}
 				_ => {
-					self.compile_expression(&fa.object);
+					self.compile_expression(&fa.object)?;
 					self.emit(Instruction::PushNone);
 				}
 			},
@@ -910,6 +911,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::PushNone);
 			}
 		}
+		Ok(())
 	}
 
 	fn compile_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
@@ -1342,7 +1344,7 @@ impl InstructionCompiler {
 			PhysicalPlan::Declare(node) => {
 				match node.value {
 					physical::LetValue::Expression(expr) => {
-						self.compile_expression(&expr);
+						self.compile_expression(&expr)?;
 					}
 					physical::LetValue::Statement(plan) => {
 						let inner = BumpBox::into_inner(plan);
@@ -1367,7 +1369,7 @@ impl InstructionCompiler {
 			PhysicalPlan::Assign(node) => {
 				match node.value {
 					physical::AssignValue::Expression(expr) => {
-						self.compile_expression(&expr);
+						self.compile_expression(&expr)?;
 					}
 					physical::AssignValue::Statement(plan) => {
 						self.compile_value_plan(BumpBox::into_inner(plan))?;
@@ -1433,7 +1435,7 @@ impl InstructionCompiler {
 			PhysicalPlan::CallFunction(node) => {
 				let arity = node.arguments.len();
 				for arg in &node.arguments {
-					self.compile_expression(arg);
+					self.compile_expression(arg)?;
 				}
 				self.emit(Instruction::Call {
 					name: node.name,
@@ -1444,7 +1446,7 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::Return(node) => match node.value {
 				Some(physical::ReturnValue::Expression(expr)) => {
-					self.compile_expression(&expr);
+					self.compile_expression(&expr)?;
 					self.emit(Instruction::ReturnValue);
 				}
 				Some(physical::ReturnValue::Statement(plan)) => {
@@ -1617,7 +1619,7 @@ impl InstructionCompiler {
 	fn compile_conditional(&mut self, node: physical::ConditionalNode<'_>) -> Result<()> {
 		let mut end_patches: Vec<usize> = Vec::new();
 
-		let false_jump = self.emit_conditional_jump(node.condition);
+		let false_jump = self.emit_conditional_jump(node.condition)?;
 		self.emit(Instruction::EnterScope(ScopeType::Conditional));
 		self.scope_depth += 1;
 		self.compile_plan(BumpBox::into_inner(node.then_branch))?;
@@ -1630,7 +1632,7 @@ impl InstructionCompiler {
 		self.patch_jump_if_false_pop(false_jump, else_if_start);
 
 		for else_if in node.else_ifs {
-			let false_jump = self.emit_conditional_jump(else_if.condition);
+			let false_jump = self.emit_conditional_jump(else_if.condition)?;
 			self.emit(Instruction::EnterScope(ScopeType::Conditional));
 			self.scope_depth += 1;
 			self.compile_plan(BumpBox::into_inner(else_if.then_branch))?;
@@ -1674,7 +1676,7 @@ impl InstructionCompiler {
 	fn compile_conditional_value(&mut self, node: physical::ConditionalNode<'_>) -> Result<()> {
 		let mut end_patches: Vec<usize> = Vec::new();
 
-		let false_jump = self.emit_conditional_jump(node.condition);
+		let false_jump = self.emit_conditional_jump(node.condition)?;
 		self.emit(Instruction::EnterScope(ScopeType::Conditional));
 		self.scope_depth += 1;
 		self.compile_value_plan(BumpBox::into_inner(node.then_branch))?;
@@ -1687,7 +1689,7 @@ impl InstructionCompiler {
 		self.patch_jump_if_false_pop(false_jump, else_if_start);
 
 		for else_if in node.else_ifs {
-			let false_jump = self.emit_conditional_jump(else_if.condition);
+			let false_jump = self.emit_conditional_jump(else_if.condition)?;
 			self.emit(Instruction::EnterScope(ScopeType::Conditional));
 			self.scope_depth += 1;
 			self.compile_value_plan(BumpBox::into_inner(else_if.then_branch))?;
@@ -1750,7 +1752,7 @@ impl InstructionCompiler {
 
 	fn compile_while(&mut self, node: physical::WhileNode<'_>) -> Result<()> {
 		let condition_addr = self.current_addr();
-		let false_jump = self.emit_conditional_jump(node.condition);
+		let false_jump = self.emit_conditional_jump(node.condition)?;
 
 		self.emit(Instruction::EnterScope(ScopeType::Loop));
 		self.scope_depth += 1;

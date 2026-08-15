@@ -379,7 +379,7 @@ fn queue_with_all_options() {
 
 	assert_eq!(
 		render_queue(&q, &resolver()).unwrap(),
-		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { fifo: { partitions: 32, ordered_by: id }, retention: { done: \"7d\" }, retry: { attempts: 9, backoff: \"30s\" } };"
+		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { fifo: { partitions: 32, ordered_by: id }, retention: { done: 7d }, retry: { attempts: 9, backoff: 30s } };"
 	);
 }
 

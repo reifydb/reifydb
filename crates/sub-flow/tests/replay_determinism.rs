@@ -605,7 +605,7 @@ mod join {
 	}
 }
 
-fn window_harness(kind: WindowKind, seal: Duration, clock_ms: u64) -> Harness<WindowOperator> {
+fn window_harness(kind: WindowKind, lateness: Duration, clock_ms: u64) -> Harness<WindowOperator> {
 	Harness::with_engine(move |engine, runtime| {
 		engine.mock_clock().set_millis(clock_ms);
 		WindowOperator::new(WindowConfig {
@@ -616,7 +616,8 @@ fn window_harness(kind: WindowKind, seal: Duration, clock_ms: u64) -> Harness<Wi
 			aggregations: parse_expression("total: math::sum(v)").expect("aggregation parses"),
 			runtime_context: runtime,
 			routines: routines(),
-			seal,
+			lateness,
+			amendable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})
 	})

@@ -170,11 +170,11 @@ pub fn window_missing_slide_parameter(fragment: Fragment) -> Diagnostic {
 		column: None,
 		fragment,
 		label: Some("missing slide parameter".to_string()),
-		help: Some("Add a slide parameter to the WINDOW configuration, e.g., 'WINDOW WITH { interval: \"5m\", slide: \"1m\" }'".to_string()),
+		help: Some("Add a slide parameter to the WINDOW configuration, e.g., 'WINDOW SLIDING { count(*) } WITH { duration: 5m, slide: 1m }'".to_string()),
 		notes: vec![
 			"Sliding windows create overlapping windows by advancing in smaller steps".to_string(),
 			"The slide parameter determines how far each window advances".to_string(),
-			"Example: WINDOW WITH { interval: \"10m\", slide: \"2m\" } creates 10-minute windows that advance every 2 minutes".to_string(),
+			"Example: WINDOW SLIDING { count(*) } WITH { duration: 10m, slide: 2m } creates 10-minute windows that advance every 2 minutes".to_string(),
 		],
 		cause: None,
 		operator_chain: None,
@@ -186,7 +186,7 @@ pub fn window_slide_too_large(fragment: Fragment, slide_value: String, window_va
 		code: "WINDOW_003".to_string(),
 		rql: None,
 		message: format!(
-			"Slide interval ({}) must be smaller than window interval ({}) for overlapping sliding windows",
+			"Slide ({}) must be smaller than window duration ({}) for overlapping sliding windows",
 			slide_value, window_value
 		),
 		column: None,
@@ -198,7 +198,7 @@ pub fn window_slide_too_large(fragment: Fragment, slide_value: String, window_va
 		notes: vec![
 			"Sliding windows create overlapping segments when slide < window size".to_string(),
 			"If slide >= window size, consider using tumbling windows instead".to_string(),
-			"Example: For 10-minute windows, use slide values like \"2m\", \"5m\", or \"1m\"".to_string(),
+			"Example: For 10-minute windows, use slide values like 2m, 5m, or 1m".to_string(),
 		],
 		cause: None,
 		operator_chain: None,
@@ -217,11 +217,11 @@ pub fn window_incompatible_slide_type(fragment: Fragment, window_type: String, s
 			"Use duration-based slide for time windows, or count-based slide for count windows".to_string()
 		),
 		notes: vec![
-			"Time-based windows (interval) require duration-based slide parameters (e.g., \"1m\", \"30s\")"
+			"Time-based windows (duration) require duration-based slide parameters (e.g., 1m, 30s)"
 				.to_string(),
 			"Count-based windows (count) require numeric slide parameters (e.g., 10, 50)".to_string(),
-			"Example time window: WINDOW WITH { interval: \"5m\", slide: \"1m\" }".to_string(),
-			"Example count window: WINDOW WITH { count: 100, slide: 20 }".to_string(),
+			"Example time window: WINDOW SLIDING { count(*) } WITH { duration: 5m, slide: 1m }".to_string(),
+			"Example count window: WINDOW SLIDING { count(*) } WITH { count: 100, slide: 20 }".to_string(),
 		],
 		cause: None,
 		operator_chain: None,
@@ -242,7 +242,7 @@ pub fn window_tumbling_with_slide(fragment: Fragment) -> Diagnostic {
 		),
 		notes: vec![
 			"Tumbling windows are non-overlapping and advance by their full size".to_string(),
-			"For tumbling windows, use only: WINDOW WITH { interval: \"5m\" } or WINDOW WITH { count: 100 }".to_string(),
+			"For tumbling windows, use only: WINDOW TUMBLING { count(*) } WITH { duration: 5m } or WINDOW TUMBLING { count(*) } WITH { count: 100 }".to_string(),
 			"For overlapping windows, use sliding windows with both size and slide parameters".to_string(),
 		],
 		cause: None,
@@ -258,13 +258,12 @@ pub fn window_incompatible_type_size(fragment: Fragment, window_type: String, si
 		column: None,
 		fragment,
 		label: Some("mismatched window configuration".to_string()),
-		help: Some("Use 'interval' with time-based windows or 'count' with count-based windows".to_string()),
+		help: Some("Use 'duration' with time-based windows or 'count' with count-based windows".to_string()),
 		notes: vec![
-			"Time-based windows use 'interval' parameter with duration values (e.g., \"5m\", \"1h\")"
-				.to_string(),
+			"Time-based windows use 'duration' parameter with duration values (e.g., 5m, 1h)".to_string(),
 			"Count-based windows use 'count' parameter with numeric values (e.g., 100, 500)".to_string(),
-			"Example time window: WINDOW WITH { interval: \"10m\" }".to_string(),
-			"Example count window: WINDOW WITH { count: 1000 }".to_string(),
+			"Example time window: WINDOW TUMBLING { count(*) } WITH { duration: 10m }".to_string(),
+			"Example count window: WINDOW TUMBLING { count(*) } WITH { count: 1000 }".to_string(),
 		],
 		cause: None,
 		operator_chain: None,
@@ -279,13 +278,13 @@ pub fn window_missing_type_or_size(fragment: Fragment) -> Diagnostic {
 		column: None,
 		fragment,
 		label: Some("incomplete window configuration".to_string()),
-		help: Some("Specify either 'interval' for time-based windows or 'count' for count-based windows"
+		help: Some("Specify either 'duration' for time-based windows or 'count' for count-based windows"
 			.to_string()),
 		notes: vec![
 			"Windows require a size specification to determine their boundaries".to_string(),
-			"Use 'interval' with duration for time-based windows: WINDOW WITH { interval: \"5m\" }"
+			"Use 'duration' with a bare duration literal for time-based windows: WINDOW TUMBLING { count(*) } WITH { duration: 5m }"
 				.to_string(),
-			"Use 'count' with number for count-based windows: WINDOW WITH { count: 100 }".to_string(),
+			"Use 'count' with number for count-based windows: WINDOW TUMBLING { count(*) } WITH { count: 100 }".to_string(),
 			"Additional parameters like 'slide' can be added for sliding windows".to_string(),
 		],
 		cause: None,

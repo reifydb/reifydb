@@ -251,8 +251,7 @@ fn a_window_closed_on_one_key_still_returns_that_key() {
 
 #[test]
 fn a_window_that_spans_nothing_still_reports_a_pending_drop() {
-	let buffer = seeded_two_layer_buffer();
-	buffer.record_drop(DropMarker::OperatorState(OP_A));
+	let buffer = seeded_two_layer_buffer_with_dropped_operator();
 
 	let window = buffer.state_range(OP_A, Bound::Excluded(&key("b")), Bound::Excluded(&key("b")));
 	assert!(window.items.is_empty(), "an empty span carries no rows");
@@ -261,6 +260,19 @@ fn a_window_that_spans_nothing_still_reports_a_pending_drop() {
 
 fn seeded_two_layer_buffer() -> OperatorCommitBuffer {
 	let buffer = OperatorCommitBuffer::new();
+	buffer.record_state_set(OP_A, key("a"), row("flushing-a"));
+	buffer.record_state_set(OP_A, key("b"), row("flushing-b"));
+	buffer.record_state_set(OP_A, key("c"), row("flushing-c"));
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+
+	buffer.record_state_set(OP_A, key("b"), row("live-b"));
+	buffer.record_state_set(OP_A, key("d"), row("live-d"));
+	buffer
+}
+
+fn seeded_two_layer_buffer_with_dropped_operator() -> OperatorCommitBuffer {
+	let buffer = OperatorCommitBuffer::new();
+	buffer.record_drop(DropMarker::OperatorState(OP_A));
 	buffer.record_state_set(OP_A, key("a"), row("flushing-a"));
 	buffer.record_state_set(OP_A, key("b"), row("flushing-b"));
 	buffer.record_state_set(OP_A, key("c"), row("flushing-c"));

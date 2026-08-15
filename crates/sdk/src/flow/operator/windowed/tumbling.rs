@@ -73,7 +73,7 @@ pub trait TumblingOperator {
 
 	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime>;
 
-	fn seal_after(&self) -> Option<Duration> {
+	fn lateness(&self) -> Option<Duration> {
 		None
 	}
 
@@ -192,9 +192,9 @@ where
 		engine: &mut TumblingEngine<A::GroupKey, DateTime, A::Accumulator>,
 		store: &mut GuestAsHost<'_, C>,
 		frontier: DateTime,
-		seal_after: Duration,
+		lateness: Duration,
 	) -> Result<()> {
-		let horizon = seal_horizon_of(frontier, seal_after);
+		let horizon = seal_horizon_of(frontier, lateness);
 		if horizon <= <DateTime as Coord>::from_order(0) {
 			return Ok(());
 		}
@@ -204,7 +204,7 @@ where
 		engine.expire_meta(store, horizon.to_order())?;
 		let drained = drain(store, engine, SEAL_REAP_BATCH)?;
 		if !drained.queue_is_empty() {
-			arm_seal_timer(store, frontier, seal_after)?;
+			arm_seal_timer(store, frontier, lateness)?;
 		}
 		Ok(())
 	}
@@ -279,7 +279,7 @@ where
 	}
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> Result<()> {
-		let Some(seal_after) = self.aggregator.seal_after() else {
+		let Some(lateness) = self.aggregator.lateness() else {
 			return Ok(());
 		};
 		let Self {
@@ -293,11 +293,11 @@ where
 			key: EncodedKey::new(timer.key),
 		});
 		let frontier = advance_seal_frontier(&mut store, fired)?;
-		Self::expire_through(engine, &mut store, frontier, seal_after)
+		Self::expire_through(engine, &mut store, frontier, lateness)
 	}
 
-	fn seal_after(&self) -> Option<Duration> {
-		self.aggregator.seal_after()
+	fn lateness(&self) -> Option<Duration> {
+		self.aggregator.lateness()
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
@@ -306,8 +306,8 @@ where
 			return Ok(());
 		}
 
-		let seal_after = self.aggregator.seal_after();
-		if let Some(seal_after) = seal_after {
+		let lateness = self.aggregator.lateness();
+		if let Some(lateness) = lateness {
 			let Self {
 				engine,
 				..
@@ -315,10 +315,10 @@ where
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, span)| span.start).max();
 			if let Some(newest) = newest {
-				arm_seal_timer(&mut store, newest, seal_after)?;
+				arm_seal_timer(&mut store, newest, lateness)?;
 			}
 			let watermark = seal_frontier(&mut store)?;
-			let horizon = seal_horizon_of(watermark, seal_after);
+			let horizon = seal_horizon_of(watermark, lateness);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
 				if is_sealed(span.start, horizon) {
@@ -331,7 +331,7 @@ where
 			if dropped > 0 {
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
-			Self::expire_through(engine, &mut store, watermark, seal_after)?;
+			Self::expire_through(engine, &mut store, watermark, lateness)?;
 			if buckets.is_empty() {
 				return Ok(());
 			}
@@ -366,7 +366,7 @@ where
 			)?
 		};
 
-		if seal_after.is_some() {
+		if lateness.is_some() {
 			let mut store = GuestAsHost(ctx);
 			for r in &results {
 				if r.kind == EmitKind::Insert {

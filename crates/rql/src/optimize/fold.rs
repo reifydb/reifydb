@@ -214,8 +214,8 @@ enum LogicOp {
 }
 
 fn fold_arith(left: &Expression, right: &Expression, op: ArithOp) -> Option<Expression> {
-	let lv = as_constant(left)?.to_value();
-	let rv = as_constant(right)?.to_value();
+	let lv = as_constant(left)?.to_value().ok()?;
+	let rv = as_constant(right)?.to_value().ok()?;
 	let li = value_as_i128(&lv)?;
 	let ri = value_as_i128(&rv)?;
 	let result = match op {
@@ -241,11 +241,13 @@ fn fold_arith(left: &Expression, right: &Expression, op: ArithOp) -> Option<Expr
 fn fold_compare(left: &Expression, right: &Expression, op: CmpOp) -> Option<Expression> {
 	let lc = as_constant(left)?;
 	let rc = as_constant(right)?;
-	if matches!(lc, ConstantExpression::Temporal { .. }) || matches!(rc, ConstantExpression::Temporal { .. }) {
+	if matches!(lc, ConstantExpression::Temporal { .. } | ConstantExpression::Duration { .. })
+		|| matches!(rc, ConstantExpression::Temporal { .. } | ConstantExpression::Duration { .. })
+	{
 		return None;
 	}
-	let lv = lc.to_value();
-	let rv = rc.to_value();
+	let lv = lc.to_value().ok()?;
+	let rv = rc.to_value().ok()?;
 	let ord = match (&lv, &rv) {
 		(Value::Boolean(a), Value::Boolean(b)) => (*a as u8).cmp(&(*b as u8)),
 		(Value::Utf8(a), Value::Utf8(b)) => a.cmp(b),
@@ -288,7 +290,7 @@ fn fold_logic(left: &Expression, right: &Expression, op: LogicOp) -> Option<Expr
 }
 
 fn fold_prefix(e: &PrefixExpression) -> Option<Expression> {
-	let v = as_constant(&e.expression)?.to_value();
+	let v = as_constant(&e.expression)?.to_value().ok()?;
 	match (&e.operator, v) {
 		(PrefixOperator::Not(_), Value::Boolean(b)) => Some(bool_constant(!b)),
 		(PrefixOperator::Minus(_), val) => {
@@ -334,7 +336,7 @@ fn as_constant(expr: &Expression) -> Option<&ConstantExpression> {
 }
 
 fn as_bool_constant(expr: &Expression) -> Option<bool> {
-	match as_constant(expr)?.to_value() {
+	match as_constant(expr)?.to_value().ok()? {
 		Value::Boolean(b) => Some(b),
 		_ => None,
 	}

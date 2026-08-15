@@ -28,8 +28,8 @@ impl RollingOverTime {
 		self.size.try_add(self.lag).unwrap_or(self.lag)
 	}
 
-	pub fn seal_policy(&self, seal: Duration) -> SealPolicy {
-		SealPolicy::rolling(self.span(), seal)
+	pub fn seal_policy(&self, lateness: Duration) -> SealPolicy {
+		SealPolicy::rolling(self.span(), lateness)
 	}
 
 	pub fn eviction_policy(&self) -> EvictionPolicy {
@@ -40,8 +40,8 @@ impl RollingOverTime {
 		ledger.checked_sub_span(self.span())
 	}
 
-	pub fn seal_horizon(&self, ledger: DateTime, seal: Duration) -> DateTime {
-		ledger.saturating_sub_span(self.seal_policy(seal).admissible().duration())
+	pub fn seal_horizon(&self, ledger: DateTime, lateness: Duration) -> DateTime {
+		ledger.saturating_sub_span(self.seal_policy(lateness).admissible().duration())
 	}
 }
 
@@ -72,9 +72,9 @@ mod tests {
 	}
 
 	#[test]
-	fn a_row_capacity_has_no_lag_no_seal_and_no_horizon_to_ask_for() {
-		// A rolling window over ROWS always has a current value, so there is no lag, seal or seal
-		// instant to ask for. Lag and seal are milliseconds, and subtracting them from a row number
+	fn a_row_capacity_has_no_lag_no_lateness_and_no_horizon_to_ask_for() {
+		// A rolling window over ROWS always has a current value, so there is no lag, lateness or seal
+		// instant to ask for. Lag and lateness are milliseconds, and subtracting them from a row number
 		// would drop rows in proportion to the lag; the type carries no such method to answer wrongly.
 		let rows = RollingOverRows::new(RowSpan::of(64));
 
@@ -91,9 +91,9 @@ mod tests {
 	}
 
 	#[test]
-	fn eviction_uses_the_bare_span_and_sealing_adds_the_seal() {
-		// Rolling admits a late row inside the seal but evicts on the bare span. An eviction that
-		// also waited out the seal keeps every window one seal-period too wide, inflating every
+	fn eviction_uses_the_bare_span_and_sealing_adds_the_lateness() {
+		// Rolling admits a late row inside the lateness but evicts on the bare span. An eviction that
+		// also waited out the lateness keeps every window one lateness-period too wide, inflating every
 		// aggregate it publishes.
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
@@ -124,14 +124,14 @@ mod tests {
 		// than the cutoff declares a window sealed while its rows are still retained, refusing a late
 		// row the window could have accepted.
 		for lag in [ms(0), ms(1), ms(9_000)] {
-			for seal in [ms(0), ms(1), ms(9_000)] {
+			for lateness in [ms(0), ms(1), ms(9_000)] {
 				let rolling = RollingOverTime::new(ms(5_000), lag);
 				let cutoff = rolling
 					.eviction_cutoff(at_millis(60_000))
 					.expect("a ledger well past the span must yield a cutoff");
 				assert!(
-					rolling.seal_horizon(at_millis(60_000), seal) <= cutoff,
-					"horizon passed the cutoff at lag {lag:?} seal {seal:?}"
+					rolling.seal_horizon(at_millis(60_000), lateness) <= cutoff,
+					"horizon passed the cutoff at lag {lag:?} lateness {lateness:?}"
 				);
 			}
 		}

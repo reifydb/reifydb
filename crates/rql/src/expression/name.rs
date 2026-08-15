@@ -253,6 +253,9 @@ fn constant_canonical(c: &ConstantExpression) -> String {
 		}
 		| ConstantExpression::Temporal {
 			fragment,
+		}
+		| ConstantExpression::Duration {
+			fragment,
 		} => fragment.text().to_string(),
 		ConstantExpression::Text {
 			fragment,
@@ -272,6 +275,9 @@ fn constant_label(c: &ConstantExpression) -> Fragment {
 			fragment,
 		}
 		| ConstantExpression::Temporal {
+			fragment,
+		}
+		| ConstantExpression::Duration {
 			fragment,
 		} => fragment.clone(),
 		ConstantExpression::Text {

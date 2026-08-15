@@ -41,6 +41,7 @@ mod tag {
 	pub const LIT_BOOLEAN: u8 = 0x03;
 	pub const LIT_TEMPORAL: u8 = 0x04;
 	pub const LIT_NONE: u8 = 0x05;
+	pub const LIT_DURATION: u8 = 0x06;
 
 	pub const IDENTIFIER: u8 = 0x10;
 	pub const VARIABLE: u8 = 0x11;
@@ -165,6 +166,7 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 			AstLiteral::Text(_) => buf.write_u8(tag::LIT_TEXT),
 			AstLiteral::Boolean(_) => buf.write_u8(tag::LIT_BOOLEAN),
 			AstLiteral::Temporal(_) => buf.write_u8(tag::LIT_TEMPORAL),
+			AstLiteral::Duration(_) => buf.write_u8(tag::LIT_DURATION),
 			AstLiteral::None(_) => buf.write_u8(tag::LIT_NONE),
 		},
 

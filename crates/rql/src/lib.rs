@@ -31,6 +31,7 @@ pub mod ast;
 pub mod bump;
 pub mod compiler;
 pub mod diagnostic;
+pub(crate) mod duration;
 pub mod error;
 pub mod expression;
 pub mod fingerprint;
