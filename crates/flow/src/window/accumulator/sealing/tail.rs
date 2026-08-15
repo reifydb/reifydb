@@ -172,6 +172,20 @@ mod tests {
 	}
 
 	#[test]
+	fn tail_acc_default_drains_to_empty_and_finalizes_to_none() {
+		// The sealed arm can never drain once a row ages out; with no span the window must be reclaimable again.
+		let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::default();
+		accumulator.add(&(at_millis(0), 10));
+		accumulator.add(&(at_millis(1_000_000), 20));
+		assert_eq!(accumulator.finalize().expect("non-empty").len(), 2);
+
+		accumulator.remove(&(at_millis(0), 10));
+		accumulator.remove(&(at_millis(1_000_000), 20));
+		assert!(accumulator.is_empty(), "every row stays retractable while nothing seals");
+		assert_eq!(accumulator.finalize(), None);
+	}
+
+	#[test]
 	fn tail_acc_with_amendable_drops_aged_from_finalize() {
 		let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::amendable(millis(10));
 		accumulator.add(&(at_millis(0), 10));

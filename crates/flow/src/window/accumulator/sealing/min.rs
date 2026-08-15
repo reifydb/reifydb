@@ -30,8 +30,12 @@ impl<C: Slot, V: Ord> Default for SealingMin<C, V> {
 
 impl<C: Slot, V: Ord + Clone> SealingMin<C, V> {
 	pub fn amendable(amendable: SlotSpan<C>) -> Self {
+		Self::maybe_amendable(Some(amendable))
+	}
+
+	pub fn maybe_amendable(amendable: Option<SlotSpan<C>>) -> Self {
 		Self {
-			base: SealingBase::amendable(amendable),
+			base: SealingBase::maybe_amendable(amendable),
 			sealed: None,
 		}
 	}
@@ -108,7 +112,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::window::accumulator::testkit::{Op, assert_arms_agree, drive};
+	use crate::window::accumulator::testkit::{Op, assert_add_remove_is_inverse, assert_arms_agree, drive};
 
 	#[test]
 	fn sealing_min_seals_aged_extreme() {
@@ -119,6 +123,20 @@ mod tests {
 		assert_eq!(accumulator.min(), Some(2));
 		accumulator.remove(&(at_millis(5), 9));
 		assert_eq!(accumulator.min(), Some(2), "sealed min 2 survives removal of a live event");
+	}
+
+	#[test]
+	fn sealing_min_default_never_seals_and_is_fully_invertible() {
+		// Without an amendable span the minimum is never frozen, so retracting it must reveal the next one.
+		assert_add_remove_is_inverse::<SealingMin<DateTime, i64>>(
+			&[(at_millis(1), 10i64), (at_millis(2), 20)],
+			(at_millis(3), 30i64),
+		);
+		let mut accumulator: SealingMin<DateTime, i64> = SealingMin::default();
+		accumulator.add(&(at_millis(0), 5));
+		accumulator.add(&(at_millis(1_000_000), 8));
+		accumulator.remove(&(at_millis(0), 5));
+		assert_eq!(accumulator.min(), Some(8), "removing the min reveals the next min (no sealing)");
 	}
 
 	#[test]
@@ -135,6 +153,23 @@ mod tests {
 			Some(1),
 			"absorbing a larger value at the same coordinate must not raise the min"
 		);
+	}
+
+	#[test]
+	fn sealing_min_default_absorb_leaves_nothing_sealed() {
+		// absorb is the only path that can seal without an amendable span, and a sealed minimum never retracts.
+		let mut left: SealingMin<DateTime, i64> = SealingMin::default();
+		left.add(&(at_millis(0), 5));
+		let mut right: SealingMin<DateTime, i64> = SealingMin::default();
+		right.add(&(at_millis(1_000_000), 8));
+
+		left.absorb(&right);
+		assert_eq!(left.min(), Some(5));
+
+		left.remove(&(at_millis(0), 5));
+		left.remove(&(at_millis(1_000_000), 8));
+		assert!(left.is_empty(), "every absorbed row stays retractable while nothing seals");
+		assert_eq!(left.finalize(), None);
 	}
 
 	#[test]

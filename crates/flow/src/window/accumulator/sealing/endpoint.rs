@@ -32,8 +32,12 @@ impl<C: Slot, V> Default for SealingEndpoint<C, V> {
 
 impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
 	pub fn amendable(amendable: SlotSpan<C>) -> Self {
+		Self::maybe_amendable(Some(amendable))
+	}
+
+	pub fn maybe_amendable(amendable: Option<SlotSpan<C>>) -> Self {
 		Self {
-			base: SealingBase::amendable(amendable),
+			base: SealingBase::maybe_amendable(amendable),
 			sealed_open: None,
 			sealed_close: None,
 		}
@@ -151,6 +155,25 @@ mod tests {
 			&[(at_millis(1), 10i64), (at_millis(3), 30)],
 			(at_millis(2), 20i64),
 		);
+	}
+
+	#[test]
+	fn sealing_endpoint_default_open_moves_when_the_earliest_row_is_retracted() {
+		// Without an amendable span the open is never frozen, so retracting the earliest row must promote the next.
+		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::default();
+		accumulator.add(&(at_millis(0), 100));
+		accumulator.add(&(at_millis(5), 200));
+		accumulator.add(&(at_millis(1_000_000), 300));
+		assert_eq!(accumulator.finalize(), Some((100, 300)));
+
+		accumulator.remove(&(at_millis(0), 100));
+		assert_eq!(accumulator.open(), Some(&200), "the open is retractable while nothing is sealed");
+		assert_eq!(accumulator.finalize(), Some((200, 300)));
+
+		accumulator.remove(&(at_millis(5), 200));
+		accumulator.remove(&(at_millis(1_000_000), 300));
+		assert!(accumulator.is_empty());
+		assert_eq!(accumulator.finalize(), None);
 	}
 
 	#[test]

@@ -5,11 +5,11 @@ use super::Config;
 use crate::value::duration::Duration;
 
 impl Config {
-	pub fn lateness_and_amendable(&self) -> Option<(Duration, Duration)> {
+	pub fn lateness_and_amendable(&self) -> Option<(Duration, Option<Duration>)> {
 		self.resolve_lateness_and_amendable().ok().flatten()
 	}
 
-	pub fn require_lateness_and_amendable(&self) -> (Duration, Duration) {
+	pub fn require_lateness_and_amendable(&self) -> (Duration, Option<Duration>) {
 		match self.resolve_lateness_and_amendable() {
 			Ok(Some(pair)) => pair,
 			Ok(None) => self.missing("lateness", "a duration"),
@@ -17,13 +17,15 @@ impl Config {
 		}
 	}
 
-	fn resolve_lateness_and_amendable(&self) -> Result<Option<(Duration, Duration)>, String> {
+	fn resolve_lateness_and_amendable(&self) -> Result<Option<(Duration, Option<Duration>)>, String> {
 		match (self.duration("lateness"), self.duration("amendable")) {
-			(Some(lateness), Some(amendable)) if amendable < lateness => Ok(Some((lateness, amendable))),
+			(Some(lateness), Some(amendable)) if amendable < lateness => {
+				Ok(Some((lateness, Some(amendable))))
+			}
 			(Some(lateness), Some(amendable)) => {
 				Err(format!("amendable {amendable} must be strictly less than lateness {lateness}"))
 			}
-			(Some(lateness), None) => Err(format!("lateness {lateness} requires amendable to be set")),
+			(Some(lateness), None) => Ok(Some((lateness, None))),
 			(None, Some(amendable)) => Err(format!("amendable {amendable} requires lateness to be set")),
 			(None, None) => Ok(None),
 		}
@@ -43,14 +45,14 @@ mod tests {
 	fn declared_amendable_below_lateness_is_kept_verbatim() {
 		let cfg =
 			config(vec![("lateness", Value::Duration(secs(20))), ("amendable", Value::Duration(secs(15)))]);
-		assert_eq!(cfg.lateness_and_amendable(), Some((secs(20), secs(15))));
+		assert_eq!(cfg.lateness_and_amendable(), Some((secs(20), Some(secs(15)))));
 	}
 
 	#[test]
-	fn lateness_without_amendable_is_rejected() {
+	fn lateness_without_amendable_resolves_with_no_amendable() {
 		// Substituting the lateness would arm the sealing slots on a window that never asked to seal.
 		let cfg = config(vec![("lateness", Value::Duration(secs(20)))]);
-		assert_eq!(cfg.lateness_and_amendable(), None);
+		assert_eq!(cfg.lateness_and_amendable(), Some((secs(20), None)));
 	}
 
 	#[test]
@@ -87,21 +89,21 @@ mod tests {
 			config(vec![("lateness", Value::Duration(secs(20))), ("amendable", Value::Duration(secs(15)))]);
 		let (lateness, amendable) = cfg.lateness_and_amendable().unzip();
 		assert_eq!(lateness, Some(secs(20)));
-		assert_eq!(amendable, Some(secs(15)));
+		assert_eq!(amendable, Some(Some(secs(15))));
 	}
 
 	#[test]
 	fn require_returns_the_pair_when_both_are_declared() {
 		let cfg =
 			config(vec![("lateness", Value::Duration(secs(20))), ("amendable", Value::Duration(secs(15)))]);
-		assert_eq!(cfg.require_lateness_and_amendable(), (secs(20), secs(15)));
+		assert_eq!(cfg.require_lateness_and_amendable(), (secs(20), Some(secs(15))));
 	}
 
 	#[test]
-	#[should_panic(expected = "requires amendable to be set")]
-	fn require_names_the_missing_amendable_behind_a_lateness() {
+	fn require_returns_no_amendable_when_only_the_lateness_is_declared() {
+		// A window under the amendable floor declares a lateness alone and must still resolve.
 		let cfg = config(vec![("lateness", Value::Duration(secs(20)))]);
-		cfg.require_lateness_and_amendable();
+		assert_eq!(cfg.require_lateness_and_amendable(), (secs(20), None));
 	}
 
 	#[test]

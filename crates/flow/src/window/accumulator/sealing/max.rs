@@ -30,8 +30,12 @@ impl<C: Slot, V: Ord> Default for SealingMax<C, V> {
 
 impl<C: Slot, V: Ord + Clone> SealingMax<C, V> {
 	pub fn amendable(amendable: SlotSpan<C>) -> Self {
+		Self::maybe_amendable(Some(amendable))
+	}
+
+	pub fn maybe_amendable(amendable: Option<SlotSpan<C>>) -> Self {
 		Self {
-			base: SealingBase::amendable(amendable),
+			base: SealingBase::maybe_amendable(amendable),
 			sealed: None,
 		}
 	}
@@ -153,6 +157,23 @@ mod tests {
 			Some(9),
 			"absorbing a smaller value at the same coordinate must not lower the max"
 		);
+	}
+
+	#[test]
+	fn sealing_max_default_absorb_leaves_nothing_sealed() {
+		// absorb is the only path that can seal without an amendable span, and a sealed maximum never retracts.
+		let mut left: SealingMax<DateTime, i64> = SealingMax::default();
+		left.add(&(at_millis(0), 9));
+		let mut right: SealingMax<DateTime, i64> = SealingMax::default();
+		right.add(&(at_millis(1_000_000), 3));
+
+		left.absorb(&right);
+		assert_eq!(left.max(), Some(9));
+
+		left.remove(&(at_millis(0), 9));
+		left.remove(&(at_millis(1_000_000), 3));
+		assert!(left.is_empty(), "every absorbed row stays retractable while nothing seals");
+		assert_eq!(left.finalize(), None);
 	}
 
 	#[test]

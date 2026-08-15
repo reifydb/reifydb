@@ -35,8 +35,12 @@ impl<C: Slot, V> Default for SealingBase<C, V> {
 
 impl<C: Slot, V> SealingBase<C, V> {
 	pub fn amendable(amendable: SlotSpan<C>) -> Self {
+		Self::maybe_amendable(Some(amendable))
+	}
+
+	pub fn maybe_amendable(amendable: Option<SlotSpan<C>>) -> Self {
 		Self {
-			amendable: Some(amendable),
+			amendable,
 			high_water: None,
 			sealed_high: None,
 			sealed_count: 0,
