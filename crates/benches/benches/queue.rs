@@ -21,7 +21,7 @@ use reifydb_allocator::set_global_allocator;
 use reifydb_benches::{BenchReport, env_list_usize, env_opt, env_u64, latency_histogram, median_by_throughput, merge};
 use reifydb_client::WireFormat;
 use reifydb_testing_scenario::query::OperationKind;
-use reifydb_value::value::{Value, frame::frame::Frame};
+use reifydb_value::value::{Value, duration::Duration as ValueDuration, frame::frame::Frame};
 use rustls::crypto::ring::default_provider;
 
 use crate::transport::{
@@ -40,6 +40,7 @@ const DEFAULT_KEYS: u64 = 0;
 const DEFAULT_LEASE_SECONDS: u64 = 30;
 const DEFAULT_REPEATS: u64 = 5;
 const DEFAULT_BUDGET_SECONDS: u64 = 30;
+const DEFAULT_WAIT_MILLIS: u64 = 1_000;
 const INSERT_BATCH: u64 = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +50,33 @@ enum Mode {
 }
 
 const ALL_MODES: [Mode; 2] = [Mode::Drain, Mode::Steady];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Claim {
+	Poll,
+	LongPoll,
+}
+
+const ALL_CLAIMS: [Claim; 2] = [Claim::Poll, Claim::LongPoll];
+
+impl Claim {
+	fn label(self) -> &'static str {
+		match self {
+			Claim::Poll => "poll",
+			Claim::LongPoll => "longpoll",
+		}
+	}
+
+	fn parse(raw: &str) -> Option<Self> {
+		ALL_CLAIMS.into_iter().find(|claim| claim.label() == raw.trim())
+	}
+}
+
+impl Display for Claim {
+	fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+		f.write_str(self.label())
+	}
+}
 
 impl Mode {
 	fn label(self) -> &'static str {
@@ -73,6 +101,7 @@ impl Display for Mode {
 struct Cell {
 	mode: Mode,
 	transport: Transport,
+	claim: Claim,
 	workers: usize,
 	partitions: usize,
 }
@@ -84,6 +113,7 @@ struct Knobs {
 	seconds: u64,
 	keys: u64,
 	lease_seconds: u64,
+	wait_millis: u64,
 	budget: Duration,
 	format: WireFormat,
 }
@@ -138,6 +168,7 @@ struct Sample {
 struct Shared<'a> {
 	queue: &'a str,
 	knobs: &'a Knobs,
+	claim: Claim,
 	origin: Instant,
 	enqueued_at: &'a [AtomicU64],
 	producing: &'a AtomicBool,
@@ -154,6 +185,13 @@ fn modes() -> Vec<Mode> {
 	match env_opt("MODES") {
 		Some(raw) => raw.split(',').filter_map(Mode::parse).collect(),
 		None => ALL_MODES.to_vec(),
+	}
+}
+
+fn claims() -> Vec<Claim> {
+	match env_opt("CLAIM") {
+		Some(raw) => raw.split(',').filter_map(Claim::parse).collect(),
+		None => ALL_CLAIMS.to_vec(),
 	}
 }
 
@@ -248,13 +286,24 @@ fn parse_claim(frames: &[Frame], keyed: bool) -> Vec<ClaimedRow> {
 	rows
 }
 
+fn wait_within(wait: ValueDuration, remaining: Duration) -> ValueDuration {
+	match wait.to_std() <= remaining {
+		true => wait,
+		false => ValueDuration::from_milliseconds(remaining.as_millis() as i64)
+			.expect("a clamped wait is a representable duration"),
+	}
+}
+
 fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: Duration) -> Outcome {
 	let mut outcome = Outcome::new();
 	let keyed = shared.knobs.keys > 0;
-	let claim = format!(
-		r#"CALL queue::claim("{}", "{}", {}, duration::seconds({}))"#,
-		name, shared.queue, shared.knobs.batch, shared.knobs.lease_seconds
-	);
+	let lease_ttl = ValueDuration::from_seconds(shared.knobs.lease_seconds as i64)
+		.expect("LEASE_SECONDS is a representable duration");
+	let parked = match shared.claim {
+		Claim::Poll => ValueDuration::zero(),
+		Claim::LongPoll => ValueDuration::from_milliseconds(shared.knobs.wait_millis as i64)
+			.expect("WAIT_MILLIS is a representable duration"),
+	};
 	let deadline = Instant::now() + budget;
 
 	loop {
@@ -263,9 +312,13 @@ fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: Duration) -> O
 		}
 
 		let stopped = !shared.producing.load(Ordering::Acquire);
+		let wait_for = match stopped {
+			true => ValueDuration::zero(),
+			false => wait_within(parked, deadline.saturating_duration_since(Instant::now())),
+		};
 
 		let call = Instant::now();
-		let frames = driver.command_frames(&claim);
+		let frames = driver.claim_frames(shared.queue, name, shared.knobs.batch as u32, lease_ttl, wait_for);
 		let latency = call.elapsed();
 		outcome.claim_calls += 1;
 
@@ -343,8 +396,8 @@ fn produce(driver: &Driver, shared: &Shared<'_>, produced: &AtomicU64) {
 
 fn verify(cell: Cell, knobs: &Knobs, outcomes: &[Outcome], acked: u64, enqueued: u64) {
 	let cell_label = format!(
-		"mode={} transport={} workers={} partitions={} keys={}",
-		cell.mode, cell.transport, cell.workers, cell.partitions, knobs.keys
+		"mode={} transport={} claim={} workers={} partitions={} keys={}",
+		cell.mode, cell.transport, cell.claim, cell.workers, cell.partitions, knobs.keys
 	);
 
 	let mut seen = HashSet::new();
@@ -429,6 +482,7 @@ fn run_once(engine: &StandardEngine, cell: Cell, knobs: &Knobs, token: Option<&s
 	let shared = Shared {
 		queue: &queue,
 		knobs,
+		claim: cell.claim,
 		origin: Instant::now(),
 		enqueued_at: &enqueued_at,
 		producing: &producing,
@@ -521,8 +575,8 @@ fn record(report: &mut BenchReport, label: &str, sample: &Sample, mode: Mode) {
 
 fn print_repro(cell: Cell, knobs: &Knobs) {
 	println!(
-		"repro= make bench-queue MODES={} TRANSPORTS={} WORKERS={} PARTITIONS={} KEYS={}",
-		cell.mode, cell.transport, cell.workers, cell.partitions, knobs.keys
+		"repro= make bench-queue MODES={} TRANSPORTS={} CLAIM={} WORKERS={} PARTITIONS={} KEYS={}",
+		cell.mode, cell.transport, cell.claim, cell.workers, cell.partitions, knobs.keys
 	);
 }
 
@@ -531,6 +585,7 @@ fn main() {
 
 	let transports = transports();
 	let modes = modes();
+	let claims = claims();
 	let workers = env_list_usize("WORKERS", &DEFAULT_WORKERS);
 	let partitions = env_list_usize("PARTITIONS", &DEFAULT_PARTITIONS);
 	let repeats = env_u64("REPEATS", DEFAULT_REPEATS);
@@ -542,12 +597,14 @@ fn main() {
 		seconds: env_u64("SECONDS", DEFAULT_SECONDS),
 		keys: env_u64("KEYS", DEFAULT_KEYS),
 		lease_seconds: env_u64("LEASE_SECONDS", DEFAULT_LEASE_SECONDS),
+		wait_millis: env_u64("WAIT_MILLIS", DEFAULT_WAIT_MILLIS),
 		budget: Duration::from_secs(env_u64("BUDGET_SECONDS", DEFAULT_BUDGET_SECONDS)),
 		format: wire_format(),
 	};
 
 	assert!(!transports.is_empty(), "TRANSPORTS matched no known transport");
 	assert!(!modes.is_empty(), "MODES matched no known mode");
+	assert!(!claims.is_empty(), "CLAIM matched no known claim strategy");
 	assert!(!workers.is_empty(), "WORKERS matched no worker count");
 	assert!(!partitions.is_empty(), "PARTITIONS matched no partition count");
 	assert!(repeats > 0, "REPEATS must be at least one");
@@ -556,6 +613,7 @@ fn main() {
 	assert!(knobs.rate > 0, "RATE must be at least one");
 	assert!(knobs.seconds > 0, "SECONDS must be at least one");
 	assert!(knobs.lease_seconds > 0, "LEASE_SECONDS must be at least one");
+	assert!(knobs.wait_millis > 0, "WAIT_MILLIS must be at least one");
 
 	let serve = transports.iter().any(|transport| transport.is_wire());
 	let db = build_database(serve);
@@ -563,29 +621,45 @@ fn main() {
 	let token = mint_token(&db, serve);
 	let engine = db.engine();
 
-	let cells = modes.len() * transports.len() * workers.len() * partitions.len();
+	let measured: Vec<(Mode, Claim)> = modes
+		.iter()
+		.flat_map(|mode| claims.iter().map(move |claim| (*mode, *claim)))
+		.filter(|(mode, claim)| *mode != Mode::Drain || *claim != Claim::LongPoll)
+		.collect();
+
+	if modes.contains(&Mode::Drain) && claims.contains(&Claim::LongPoll) {
+		println!(
+			"skipping mode=drain claim=longpoll: drain starts with no producer, so wait_for is zero on \
+			 every call and the cell would repeat mode=drain claim=poll exactly"
+		);
+	}
+
+	let cells = measured.len() * transports.len() * workers.len() * partitions.len();
 	println!(
-		"matrix cells={} modes={} transports={} workers={} partitions={} repeats={} keys={} batch={}",
+		"matrix cells={} modes={} claims={} transports={} workers={} partitions={} repeats={} keys={} batch={} wait_millis={}",
 		cells,
 		modes.len(),
+		claims.len(),
 		transports.len(),
 		workers.len(),
 		partitions.len(),
 		repeats,
 		knobs.keys,
-		knobs.batch
+		knobs.batch,
+		knobs.wait_millis
 	);
 
 	let mut report = BenchReport::new("queue");
 	let mut index = 0u64;
 
-	for mode in &modes {
+	for (mode, claim) in &measured {
 		for transport in &transports {
 			for count in &workers {
 				for partition in &partitions {
 					let cell = Cell {
 						mode: *mode,
 						transport: *transport,
+						claim: *claim,
 						workers: *count,
 						partitions: *partition,
 					};
@@ -599,9 +673,10 @@ fn main() {
 					let median =
 						median_by_throughput(&samples, |sample| (sample.acked, sample.elapsed));
 					let label = format!(
-						"mode={} transport={} workers={} partitions={} keys={} batch={}",
+						"mode={} transport={} claim={} workers={} partitions={} keys={} batch={}",
 						cell.mode,
 						cell.transport,
+						cell.claim,
 						cell.workers,
 						cell.partitions,
 						knobs.keys,

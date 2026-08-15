@@ -39,6 +39,8 @@ static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("queue::c
 
 const PROCEDURE: &str = "queue::claim";
 
+const CONTENTION_RETRIES: usize = 3;
+
 pub struct QueueClaim;
 
 impl Default for QueueClaim {
@@ -183,20 +185,40 @@ fn lease_due_items(
 		}
 
 		let partition = ((u32::from(start) + u32::from(offset)) % u32::from(partitions)) as u16;
-		let candidates = due_candidates(single, queue, partition, now, max_n - leases.len())?;
+		let need = max_n - leases.len();
+		leases.extend(lease_from_partition(ctx, single, queue, partition, need, lease_ttl, now)?);
+	}
+
+	Ok(leases)
+}
+
+fn lease_from_partition(
+	ctx: &mut ProcedureContext<'_, '_>,
+	single: &SingleTransaction,
+	queue: &Queue,
+	partition: u16,
+	need: usize,
+	lease_ttl: Duration,
+	now: DateTime,
+) -> Result<Vec<Lease>, RoutineError> {
+	for _ in 0..=CONTENTION_RETRIES {
+		let candidates = due_candidates(single, queue, partition, now, need)?;
 		if candidates.is_empty() {
-			continue;
+			return Ok(Vec::new());
 		}
 
 		let readable = readable_candidates(ctx, queue, &candidates)?;
 		if readable.is_empty() {
-			continue;
+			return Ok(Vec::new());
 		}
 
-		leases.extend(lease_candidates(single, queue, partition, &readable, lease_ttl, now)?);
+		let leases = lease_candidates(single, queue, partition, &readable, lease_ttl, now)?;
+		if !leases.is_empty() {
+			return Ok(leases);
+		}
 	}
 
-	Ok(leases)
+	Ok(Vec::new())
 }
 
 fn readable_candidates(
