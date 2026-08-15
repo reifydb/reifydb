@@ -20,7 +20,7 @@ use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::R
 
 use crate::{
 	commit::{OperatorCommitBuffer, batch::DropMarker},
-	types::OperatorWrite,
+	types::{BufferedAnchor, BufferedState, OperatorWrite},
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -37,27 +37,33 @@ fn row(body: &str) -> EncodedOperatorRow {
 }
 
 fn body(entry: &Option<EncodedOperatorRow>) -> String {
-	String::from_utf8(entry.as_ref().expect("entry must carry a row").body().to_vec())
-		.expect("test bodies are utf8")
+	row_body(entry.as_ref().expect("entry must carry a row"))
+}
+
+fn row_body(row: &EncodedOperatorRow) -> String {
+	String::from_utf8(row.body().to_vec()).expect("test bodies are utf8")
 }
 
 #[test]
 fn a_removed_key_reads_back_as_a_tombstone_not_as_absent() {
 	let buffer = OperatorCommitBuffer::new();
 
-	assert!(
-		buffer.lookup_state(OP_A, &key("k")).is_none(),
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("k")),
+		BufferedState::Absent,
 		"a key no layer has seen must report as unknown so the read continues to sqlite"
 	);
 
 	buffer.record_state_set(OP_A, key("k"), row("v"));
-	let found = buffer.lookup_state(OP_A, &key("k")).expect("the live layer knows the key it just wrote");
-	assert_eq!(body(&found), "v", "the buffer must hand back the row that was written, not a stale one");
+	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k")) else {
+		panic!("the live layer knows the key it just wrote")
+	};
+	assert_eq!(row_body(&found), "v", "the buffer must hand back the row that was written, not a stale one");
 
 	buffer.record_state_remove(OP_A, key("k"));
-	let removed = buffer.lookup_state(OP_A, &key("k")).expect("a remove must still be a known key");
-	assert!(
-		removed.is_none(),
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("k")),
+		BufferedState::Tombstone,
 		"a removed key must read as a tombstone; reporting it unknown would send the read to sqlite \
 		 and resurrect the deleted row"
 	);
@@ -99,21 +105,23 @@ fn taken_entries_stay_readable_until_the_flush_completes() {
 	let batch = buffer.take_for_flush().expect("a non-empty live batch must be handed to the flusher");
 	assert_eq!(batch.state.len(), 2, "both the write and the tombstone belong to the taken batch");
 
-	let found = buffer.lookup_state(OP_A, &key("k")).expect("the taken row must stay readable");
+	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k")) else {
+		panic!("the taken row must stay readable")
+	};
 	assert_eq!(
-		body(&found),
+		row_body(&found),
 		"v",
 		"dropping the taken row would let a concurrent read fall through to sqlite and observe the \
 		 pre-flush value"
 	);
 	assert_eq!(
 		buffer.lookup_state(OP_A, &key("gone")),
-		Some(None),
+		BufferedState::Tombstone,
 		"a taken tombstone must stay a tombstone until the delete is durable"
 	);
 	assert_eq!(
 		buffer.lookup_anchor(OP_A, GROUP_A, 0, RowNumber(1)),
-		Some(Some(500)),
+		BufferedAnchor::Expiry(500),
 		"anchors ride the same in-flight layer as state"
 	);
 	assert_eq!(
@@ -124,15 +132,17 @@ fn taken_entries_stay_readable_until_the_flush_completes() {
 
 	buffer.complete_flush();
 
-	assert!(
-		buffer.lookup_state(OP_A, &key("k")).is_none(),
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("k")),
+		BufferedState::Absent,
 		"once flushed the row lives in sqlite, so the buffer must stop answering for it"
 	);
-	assert!(
-		buffer.lookup_state(OP_A, &key("gone")).is_none(),
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("gone")),
+		BufferedState::Absent,
 		"a flushed tombstone must stop shadowing sqlite, otherwise the key is hidden forever"
 	);
-	assert!(buffer.lookup_anchor(OP_A, GROUP_A, 0, RowNumber(1)).is_none());
+	assert_eq!(buffer.lookup_anchor(OP_A, GROUP_A, 0, RowNumber(1)), BufferedAnchor::Absent);
 	assert!(buffer.lookup_checkpoint(FlowId(3)).is_none());
 }
 
@@ -148,16 +158,18 @@ fn a_live_write_shadows_the_same_key_in_the_in_flight_batch() {
 	buffer.record_state_remove(OP_A, key("doomed"));
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(900));
 
-	let found = buffer.lookup_state(OP_A, &key("k")).expect("the live write must be visible");
-	assert_eq!(body(&found), "new", "the live layer must win over the older in-flight value");
+	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k")) else {
+		panic!("the live write must be visible")
+	};
+	assert_eq!(row_body(&found), "new", "the live layer must win over the older in-flight value");
 	assert_eq!(
 		buffer.lookup_state(OP_A, &key("doomed")),
-		Some(None),
+		BufferedState::Tombstone,
 		"a live tombstone must hide the in-flight value, otherwise a delete is silently undone"
 	);
 	assert_eq!(
 		buffer.lookup_anchor(OP_A, GROUP_A, 0, RowNumber(1)),
-		Some(Some(900)),
+		BufferedAnchor::Expiry(900),
 		"the newer expiry must win, otherwise the seal fires against a superseded deadline"
 	);
 }
@@ -175,7 +187,7 @@ fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 	buffer.record_state_remove(OP_A, key("c"));
 	buffer.record_state_set(OP_A, key("d"), row("live-d"));
 
-	let all = buffer.state_range(OP_A, Bound::Unbounded, Bound::Unbounded);
+	let all = buffer.state_range(OP_A, Bound::Unbounded, Bound::Unbounded).items;
 	let keys: Vec<Vec<u8>> = all.iter().map(|(k, _)| k.to_vec()).collect();
 	assert_eq!(
 		keys,
@@ -191,11 +203,11 @@ fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 	);
 	assert_eq!(body(&all[3].1), "live-d");
 
-	let other = buffer.state_range(OP_B, Bound::Unbounded, Bound::Unbounded);
+	let other = buffer.state_range(OP_B, Bound::Unbounded, Bound::Unbounded).items;
 	assert_eq!(other.len(), 1, "a range must stay inside its operator, otherwise operators read each other");
 	assert_eq!(body(&other[0].1), "other-operator");
 
-	let window = buffer.state_range(OP_A, Bound::Included(&key("b")), Bound::Excluded(&key("d")));
+	let window = buffer.state_range(OP_A, Bound::Included(&key("b")), Bound::Excluded(&key("d"))).items;
 	let window_keys: Vec<Vec<u8>> = window.iter().map(|(k, _)| k.to_vec()).collect();
 	assert_eq!(
 		window_keys,
@@ -203,7 +215,7 @@ fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 		"both layers must honour the bounds, otherwise the page over-reads past its end"
 	);
 
-	let resumed = buffer.state_range(OP_A, Bound::Excluded(&key("a")), Bound::Included(&key("b")));
+	let resumed = buffer.state_range(OP_A, Bound::Excluded(&key("a")), Bound::Included(&key("b"))).items;
 	let resumed_keys: Vec<Vec<u8>> = resumed.iter().map(|(k, _)| k.to_vec()).collect();
 	assert_eq!(
 		resumed_keys,
@@ -224,7 +236,7 @@ fn anchors_for_group_overlays_the_in_flight_batch_and_keeps_tombstones() {
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(2), DateTime::from_millis(250));
 	buffer.record_anchor_remove(OP_A, GROUP_A, 1, RowNumber(5));
 
-	let anchors = buffer.anchors_for_group(OP_A, GROUP_A);
+	let anchors = buffer.anchors_for_group(OP_A, GROUP_A).anchors;
 	assert_eq!(
 		anchors,
 		vec![((0u8, RowNumber(1)), Some(100)), ((0u8, RowNumber(2)), Some(250)), ((1u8, RowNumber(5)), None),],
@@ -245,20 +257,25 @@ fn a_drop_clears_what_came_before_it_and_keeps_what_came_after() {
 
 	buffer.record_state_set(OP_A, key("after"), row("v"));
 
-	assert!(
-		buffer.lookup_state(OP_A, &key("before")).is_none(),
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("before")),
+		BufferedState::Dropped,
 		"a write the drop erased must never be replayed into sqlite behind the drop"
 	);
-	assert!(
-		buffer.lookup_anchor(OP_A, GROUP_A, 0, RowNumber(1)).is_none(),
+	assert_eq!(
+		buffer.lookup_anchor(OP_A, GROUP_A, 0, RowNumber(1)),
+		BufferedAnchor::Dropped,
 		"dropping operator state takes that operator's anchors with it"
 	);
 	assert!(
-		buffer.lookup_state(OP_A, &key("after")).is_some(),
+		matches!(buffer.lookup_state(OP_A, &key("after")), BufferedState::Row(_)),
 		"a write recorded after the drop must survive it, otherwise a recreated operator loses state"
 	);
-	assert!(buffer.lookup_state(OP_B, &key("untouched")).is_some(), "the drop is scoped to one operator");
-	assert!(buffer.lookup_anchor(OP_B, GROUP_A, 0, RowNumber(2)).is_some());
+	assert!(
+		matches!(buffer.lookup_state(OP_B, &key("untouched")), BufferedState::Row(_)),
+		"the drop is scoped to one operator"
+	);
+	assert!(matches!(buffer.lookup_anchor(OP_B, GROUP_A, 0, RowNumber(2)), BufferedAnchor::Expiry(_)));
 
 	let batch = buffer.take_for_flush().expect("the batch carries the marker and the later write");
 	assert_eq!(
@@ -278,24 +295,29 @@ fn an_anchor_drop_clears_only_the_anchors_it_names() {
 
 	buffer.record_drop(DropMarker::AnchorsGroup(OP_A, GROUP_A));
 
-	assert!(
-		buffer.lookup_anchor(OP_A, GROUP_A, 0, RowNumber(1)).is_none(),
+	assert_eq!(
+		buffer.lookup_anchor(OP_A, GROUP_A, 0, RowNumber(1)),
+		BufferedAnchor::Dropped,
 		"the named group's anchors must be gone"
 	);
 	assert!(
-		buffer.lookup_anchor(OP_A, GROUP_B, 0, RowNumber(2)).is_some(),
+		matches!(buffer.lookup_anchor(OP_A, GROUP_B, 0, RowNumber(2)), BufferedAnchor::Expiry(_)),
 		"a sibling group keeps its anchors, otherwise one group's seal wipes another's timers"
 	);
-	assert!(buffer.lookup_state(OP_A, &key("k")).is_some(), "an anchor drop must never touch operator state");
+	assert!(
+		matches!(buffer.lookup_state(OP_A, &key("k")), BufferedState::Row(_)),
+		"an anchor drop must never touch operator state"
+	);
 
 	buffer.record_drop(DropMarker::AnchorsOperator(OP_A));
 
-	assert!(
-		buffer.lookup_anchor(OP_A, GROUP_B, 0, RowNumber(2)).is_none(),
+	assert_eq!(
+		buffer.lookup_anchor(OP_A, GROUP_B, 0, RowNumber(2)),
+		BufferedAnchor::Dropped,
 		"an operator-wide anchor drop covers every group"
 	);
 	assert!(
-		buffer.lookup_state(OP_A, &key("k")).is_some(),
+		matches!(buffer.lookup_state(OP_A, &key("k")), BufferedState::Row(_)),
 		"an operator-wide anchor drop still leaves the state alone"
 	);
 }
@@ -368,7 +390,7 @@ fn a_drop_waits_out_an_in_flight_flush_before_clearing() {
 		 still writing"
 	);
 	assert!(
-		buffer.lookup_state(OP_A, &key("k")).is_some(),
+		matches!(buffer.lookup_state(OP_A, &key("k")), BufferedState::Row(_)),
 		"the in-flight row stays readable while the drop waits"
 	);
 
@@ -386,8 +408,9 @@ fn a_drop_waits_out_an_in_flight_flush_before_clearing() {
 	);
 
 	dropper.join().expect("the dropping thread must finish");
-	assert!(
-		buffer.lookup_state(OP_A, &key("k")).is_none(),
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("k")),
+		BufferedState::Dropped,
 		"once the flush is done the drop clears the operator and the marker deletes the flushed rows"
 	);
 }
@@ -420,21 +443,23 @@ fn apply_batch_maps_every_write_variant_onto_its_entry() {
 		},
 	]);
 
-	let set = buffer.lookup_state(OP_A, &key("set")).expect("a Set must land in the state map");
-	assert_eq!(body(&set), "v");
+	let BufferedState::Row(set) = buffer.lookup_state(OP_A, &key("set")) else {
+		panic!("a Set must land in the state map")
+	};
+	assert_eq!(row_body(&set), "v");
 	assert_eq!(
 		buffer.lookup_state(OP_A, &key("removed")),
-		Some(None),
+		BufferedState::Tombstone,
 		"a Remove must land as a tombstone, not as a missing entry"
 	);
 	assert_eq!(
 		buffer.lookup_anchor(OP_A, GROUP_A, 1, RowNumber(7)),
-		Some(Some(1_234)),
+		BufferedAnchor::Expiry(1_234),
 		"an AnchorSet is stored as millis, matching the memory tier and the sqlite column"
 	);
 	assert_eq!(
 		buffer.lookup_anchor(OP_A, GROUP_A, 1, RowNumber(8)),
-		Some(None),
+		BufferedAnchor::Tombstone,
 		"an AnchorRemove must tombstone the slot so the sqlite anchor is not read back as live"
 	);
 }

@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl SqliteOperatorStorage {
-	#[instrument(name = "store::operator::apply_batch", level = "debug", skip(self, writes), fields(write_count = writes.len()))]
+	#[instrument(name = "store::operator::persistent::sqlite::apply_batch", level = "debug", skip(self, writes), fields(write_count = writes.len()))]
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
 		if writes.is_empty() {
 			return;
@@ -83,7 +83,7 @@ impl SqliteOperatorStorage {
 		transaction.commit().expect("operator state batch could not commit");
 	}
 
-	#[instrument(name = "store::operator::flush_batch", level = "debug", skip(self, batch), fields(
+	#[instrument(name = "store::operator::persistent::sqlite::flush_batch", level = "debug", skip(self, batch), fields(
 		drop_count = batch.drops.len(),
 		state_count = batch.state.len(),
 		anchor_count = batch.anchors.len(),

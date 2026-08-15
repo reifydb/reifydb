@@ -24,7 +24,7 @@ use crate::{
 };
 
 impl SqliteOperatorStorage {
-	#[instrument(name = "store::operator::set", level = "debug", skip(self, key, row), fields(operator = operator.0, key_len = key.len()))]
+	#[instrument(name = "store::operator::persistent::sqlite::set", level = "debug", skip(self, key, row), fields(operator = operator.0, key_len = key.len()))]
 	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedOperatorRow) {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
@@ -34,7 +34,7 @@ impl SqliteOperatorStorage {
 			.expect("operator state write failed");
 	}
 
-	#[instrument(name = "store::operator::remove", level = "debug", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
+	#[instrument(name = "store::operator::persistent::sqlite::remove", level = "debug", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
 	pub fn remove(&self, operator: OperatorId, key: &EncodedKey) {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
@@ -44,7 +44,7 @@ impl SqliteOperatorStorage {
 			.expect("operator state delete failed");
 	}
 
-	#[instrument(name = "store::operator::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
+	#[instrument(name = "store::operator::persistent::sqlite::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedOperatorRow> {
 		let guard = self.read_conn();
 		let conn = guard.as_ref()?;
@@ -56,7 +56,7 @@ impl SqliteOperatorStorage {
 		Some(decode_row(bytes))
 	}
 
-	#[instrument(name = "store::operator::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
+	#[instrument(name = "store::operator::persistent::sqlite::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
@@ -69,7 +69,7 @@ impl SqliteOperatorStorage {
 		rows.next().expect("operator state probe failed").is_some()
 	}
 
-	#[instrument(name = "store::operator::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
+	#[instrument(name = "store::operator::persistent::sqlite::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
 	pub fn range_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
 		let sql = range_sql(range.start.as_ref(), range.end.as_ref());
 		let mut blobs: Vec<&[u8]> = Vec::with_capacity(2);
@@ -113,7 +113,7 @@ impl SqliteOperatorStorage {
 		}
 	}
 
-	#[instrument(name = "store::operator::drop_operator_state", level = "debug", skip(self), fields(operator = operator.0))]
+	#[instrument(name = "store::operator::persistent::sqlite::drop_operator_state", level = "debug", skip(self), fields(operator = operator.0))]
 	pub fn drop_operator_state(&self, operator: OperatorId) {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {

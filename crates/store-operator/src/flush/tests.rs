@@ -26,6 +26,7 @@ use crate::{
 	persistent::OperatorPersistentTier,
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
+	types::BufferedState,
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -323,9 +324,12 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 		"the second flush must wait; taking a batch beside a running flush replaces the in-flight \
 		 layer, and the first batch's rows are then invisible to every reader while also not durable"
 	);
+	let BufferedState::Row(readable) = buffer.lookup_state(OP_A, &key(1)) else {
+		panic!("the running flusher's rows stay readable until it says they are durable")
+	};
 	assert_eq!(
-		buffer.lookup_state(OP_A, &key(1)).map(|entry| entry.map(|row| body(&row))),
-		Some(Some("first".to_string())),
+		body(&readable),
+		"first",
 		"the running flusher's rows stay readable until it says they are durable"
 	);
 

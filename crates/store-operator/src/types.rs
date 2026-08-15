@@ -11,6 +11,8 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
+use crate::commit::batch::AnchorSlot;
+
 pub const ANCHOR_KEY_BYTES: ByteSize = ByteSize::from_bytes(25);
 
 pub const ANCHOR_VALUE_BYTES: ByteSize = ByteSize::from_bytes(8);
@@ -28,6 +30,34 @@ impl OperatorBatch {
 			has_more: false,
 		}
 	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BufferedState {
+	Row(EncodedOperatorRow),
+	Tombstone,
+	Dropped,
+	Absent,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BufferedStateRange {
+	pub items: Vec<(EncodedKey, Option<EncodedOperatorRow>)>,
+	pub dropped: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BufferedAnchor {
+	Expiry(u64),
+	Tombstone,
+	Dropped,
+	Absent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BufferedAnchorGroup {
+	pub anchors: Vec<(AnchorSlot, Option<u64>)>,
+	pub dropped: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

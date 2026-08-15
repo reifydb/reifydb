@@ -16,7 +16,10 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_store_operator::{store::OperatorStore, types::OperatorWrite};
+use reifydb_store_operator::{
+	store::OperatorStore,
+	types::{BufferedState, OperatorWrite},
+};
 use reifydb_testing::testscript;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use testscript::command::{ArgumentConsumer, Command};
@@ -398,9 +401,13 @@ impl testscript::runner::Runner for Runner {
 				let buffer = self.store.commit();
 				let name = key_name(&key);
 				match buffer.lookup_state(operator, &key) {
-					Some(Some(row)) => writeln!(output, "{}", Raw::key_value(&name, row.body()))?,
-					Some(None) => writeln!(output, "{} => tombstone", Raw::key(&name))?,
-					None => writeln!(output, "{} => unknown", Raw::key(&name))?,
+					BufferedState::Row(row) => {
+						writeln!(output, "{}", Raw::key_value(&name, row.body()))?
+					}
+					BufferedState::Tombstone => writeln!(output, "{} => tombstone", Raw::key(&name))?,
+					BufferedState::Dropped | BufferedState::Absent => {
+						writeln!(output, "{} => unknown", Raw::key(&name))?
+					}
 				}
 			}
 

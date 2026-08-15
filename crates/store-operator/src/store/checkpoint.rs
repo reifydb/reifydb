@@ -5,17 +5,22 @@ use std::collections::BTreeSet;
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
 
+use tracing::instrument;
+
 use crate::store::{OperatorStore, StandardOperatorStore};
 
 impl StandardOperatorStore {
+	#[instrument(name = "store::operator::checkpoint_set", level = "debug", skip(self), fields(flow = flow.0))]
 	pub fn checkpoint_set(&self, flow: FlowId, version: CommitVersion) {
 		self.commit.record_checkpoint_set(flow, version);
 	}
 
+	#[instrument(name = "store::operator::checkpoint_delete", level = "debug", skip(self), fields(flow = flow.0))]
 	pub fn checkpoint_delete(&self, flow: FlowId) {
 		self.commit.record_checkpoint_delete(flow);
 	}
 
+	#[instrument(name = "store::operator::checkpoint_get", level = "trace", skip(self), fields(flow = flow.0))]
 	pub fn checkpoint_get(&self, flow: FlowId) -> Option<CommitVersion> {
 		if let Some(entry) = self.commit.lookup_checkpoint(flow) {
 			return entry;
@@ -23,6 +28,7 @@ impl StandardOperatorStore {
 		self.persistent.as_ref()?.checkpoint_get(flow)
 	}
 
+	#[instrument(name = "store::operator::checkpoint_floor", level = "trace", skip(self))]
 	pub fn checkpoint_floor(&self) -> Option<CommitVersion> {
 		let durable = self.persistent.as_ref().and_then(|persistent| persistent.checkpoint_floor());
 		match (durable, self.commit.checkpoint_floor()) {
@@ -31,6 +37,7 @@ impl StandardOperatorStore {
 		}
 	}
 
+	#[instrument(name = "store::operator::checkpoint_list", level = "trace", skip(self))]
 	pub fn checkpoint_list(&self) -> Vec<FlowId> {
 		let mut merged: BTreeSet<FlowId> = self
 			.persistent

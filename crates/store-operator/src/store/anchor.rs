@@ -4,13 +4,16 @@
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
+use tracing::instrument;
+
 use crate::{
 	commit::batch::DropMarker,
 	store::{OperatorStore, StandardOperatorStore},
-	types::OperatorSealAnchor,
+	types::{BufferedAnchor, OperatorSealAnchor},
 };
 
 impl StandardOperatorStore {
+	#[instrument(name = "store::operator::anchor_set", level = "debug", skip(self, expiry), fields(operator = operator.0, group = group.0))]
 	pub fn anchor_set(
 		&self,
 		operator: OperatorId,
@@ -22,18 +25,22 @@ impl StandardOperatorStore {
 		self.commit.record_anchor_set(operator, group, side, row_number, expiry);
 	}
 
+	#[instrument(name = "store::operator::anchor_remove", level = "debug", skip(self), fields(operator = operator.0, group = group.0))]
 	pub fn anchor_remove(&self, operator: OperatorId, group: GroupId, side: u8, row_number: RowNumber) {
 		self.commit.record_anchor_remove(operator, group, side, row_number);
 	}
 
+	#[instrument(name = "store::operator::anchors_remove_group", level = "debug", skip(self), fields(operator = operator.0, group = group.0))]
 	pub fn anchors_remove_group(&self, operator: OperatorId, group: GroupId) {
 		self.commit.record_drop(DropMarker::AnchorsGroup(operator, group));
 	}
 
+	#[instrument(name = "store::operator::anchors_drop_operator", level = "debug", skip(self), fields(operator = operator.0))]
 	pub fn anchors_drop_operator(&self, operator: OperatorId) {
 		self.commit.record_drop(DropMarker::AnchorsOperator(operator));
 	}
 
+	#[instrument(name = "store::operator::anchor_get", level = "trace", skip(self), fields(operator = operator.0, group = group.0))]
 	pub fn anchor_get(
 		&self,
 		operator: OperatorId,
@@ -41,19 +48,21 @@ impl StandardOperatorStore {
 		side: u8,
 		row_number: RowNumber,
 	) -> Option<DateTime> {
-		if let Some(entry) = self.commit.lookup_anchor(operator, group, side, row_number) {
-			return entry.map(DateTime::from_millis);
+		match self.commit.lookup_anchor(operator, group, side, row_number) {
+			BufferedAnchor::Expiry(millis) => Some(DateTime::from_millis(millis)),
+			BufferedAnchor::Tombstone | BufferedAnchor::Dropped => None,
+			BufferedAnchor::Absent => {
+				self.persistent.as_ref()?.anchor_get(operator, group, side, row_number)
+			}
 		}
-		if self.commit.has_pending_anchor_drop(operator, group) {
-			return None;
-		}
-		self.persistent.as_ref()?.anchor_get(operator, group, side, row_number)
 	}
 
+	#[instrument(name = "store::operator::anchors_by_expiry", level = "trace", skip(self), fields(operator = operator.0, group = group.0, limit = limit))]
 	pub fn anchors_by_expiry(&self, operator: OperatorId, group: GroupId, limit: u64) -> Vec<OperatorSealAnchor> {
 		self.anchors_scan(operator, group, None, limit)
 	}
 
+	#[instrument(name = "store::operator::anchors_due", level = "trace", skip(self, at), fields(operator = operator.0, group = group.0, limit = limit))]
 	pub fn anchors_due(
 		&self,
 		operator: OperatorId,
@@ -71,10 +80,11 @@ impl StandardOperatorStore {
 		due: Option<DateTime>,
 		limit: u64,
 	) -> Vec<OperatorSealAnchor> {
-		let buffered = self.commit.anchors_for_group(operator, group);
+		let snapshot = self.commit.anchors_for_group(operator, group);
+		let buffered = snapshot.anchors;
 		let mut merged: Vec<OperatorSealAnchor> = Vec::new();
 
-		if !self.commit.has_pending_anchor_drop(operator, group)
+		if !snapshot.dropped
 			&& let Some(persistent) = self.persistent.as_ref()
 		{
 			let fetch = limit.saturating_add(buffered.len() as u64);

@@ -6,9 +6,12 @@ use std::{collections::BTreeMap, ops::Bound};
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
-use crate::commit::{
-	OperatorCommitBuffer,
-	batch::{AnchorKey, AnchorSlot, DropMarker},
+use crate::{
+	commit::{
+		OperatorCommitBuffer,
+		batch::{AnchorKey, AnchorSlot, DropMarker},
+	},
+	types::{BufferedAnchor, BufferedAnchorGroup},
 };
 
 impl OperatorCommitBuffer {
@@ -32,33 +35,28 @@ impl OperatorCommitBuffer {
 		self.shared.inner.lock().live.anchors.insert((operator, group, side, row_number), None);
 	}
 
-	pub fn has_pending_anchor_drop(&self, operator: OperatorId, group: GroupId) -> bool {
-		self.shared.inner.lock().any_drop(|marker| match marker {
-			DropMarker::OperatorState(candidate) | DropMarker::AnchorsOperator(candidate) => {
-				*candidate == operator
-			}
-			DropMarker::AnchorsGroup(candidate, candidate_group) => {
-				*candidate == operator && *candidate_group == group
-			}
-		})
-	}
-
 	pub fn lookup_anchor(
 		&self,
 		operator: OperatorId,
 		group: GroupId,
 		side: u8,
 		row_number: RowNumber,
-	) -> Option<Option<u64>> {
+	) -> BufferedAnchor {
 		let composite = (operator, group, side, row_number);
 		let inner = self.shared.inner.lock();
 		if let Some(entry) = inner.live.anchors.get(&composite) {
-			return Some(*entry);
+			return buffered_anchor(*entry);
 		}
-		inner.in_flight.as_ref().and_then(|batch| batch.anchors.get(&composite).copied())
+		if let Some(entry) = inner.in_flight.as_ref().and_then(|batch| batch.anchors.get(&composite)) {
+			return buffered_anchor(*entry);
+		}
+		if inner.any_drop(|marker| is_anchor_drop(marker, operator, group)) {
+			return BufferedAnchor::Dropped;
+		}
+		BufferedAnchor::Absent
 	}
 
-	pub fn anchors_for_group(&self, operator: OperatorId, group: GroupId) -> Vec<(AnchorSlot, Option<u64>)> {
+	pub fn anchors_for_group(&self, operator: OperatorId, group: GroupId) -> BufferedAnchorGroup {
 		let range = (
 			Bound::Included((operator, group, u8::MIN, RowNumber(u64::MIN))),
 			Bound::Included((operator, group, u8::MAX, RowNumber(u64::MAX))),
@@ -70,7 +68,26 @@ impl OperatorCommitBuffer {
 			collect_anchors(&batch.anchors, range, &mut merged);
 		}
 		collect_anchors(&inner.live.anchors, range, &mut merged);
-		merged.into_iter().collect()
+		BufferedAnchorGroup {
+			anchors: merged.into_iter().collect(),
+			dropped: inner.any_drop(|marker| is_anchor_drop(marker, operator, group)),
+		}
+	}
+}
+
+fn buffered_anchor(entry: Option<u64>) -> BufferedAnchor {
+	match entry {
+		Some(millis) => BufferedAnchor::Expiry(millis),
+		None => BufferedAnchor::Tombstone,
+	}
+}
+
+fn is_anchor_drop(marker: &DropMarker, operator: OperatorId, group: GroupId) -> bool {
+	match marker {
+		DropMarker::OperatorState(candidate) | DropMarker::AnchorsOperator(candidate) => *candidate == operator,
+		DropMarker::AnchorsGroup(candidate, candidate_group) => {
+			*candidate == operator && *candidate_group == group
+		}
 	}
 }
 

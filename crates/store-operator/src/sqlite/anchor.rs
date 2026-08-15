@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl SqliteOperatorStorage {
-	#[instrument(name = "store::operator::anchor_get", level = "trace", skip(self), fields(operator = operator.0, group = group.0, side = side))]
+	#[instrument(name = "store::operator::persistent::sqlite::anchor_get", level = "trace", skip(self), fields(operator = operator.0, group = group.0, side = side))]
 	pub fn anchor_get(
 		&self,
 		operator: OperatorId,
@@ -36,7 +36,7 @@ impl SqliteOperatorStorage {
 		Some(decode_expiry(row.get(0).expect("seal anchors carry an expiry")))
 	}
 
-	#[instrument(name = "store::operator::anchors_by_expiry", level = "trace", skip(self), fields(operator = operator.0, group = group.0, limit = limit))]
+	#[instrument(name = "store::operator::persistent::sqlite::anchors_by_expiry", level = "trace", skip(self), fields(operator = operator.0, group = group.0, limit = limit))]
 	pub fn anchors_by_expiry(&self, operator: OperatorId, group: GroupId, limit: u64) -> Vec<OperatorSealAnchor> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
@@ -50,7 +50,7 @@ impl SqliteOperatorStorage {
 		collect_anchors(rows)
 	}
 
-	#[instrument(name = "store::operator::anchors_due", level = "trace", skip(self, at), fields(operator = operator.0, group = group.0, limit = limit))]
+	#[instrument(name = "store::operator::persistent::sqlite::anchors_due", level = "trace", skip(self, at), fields(operator = operator.0, group = group.0, limit = limit))]
 	pub fn anchors_due(
 		&self,
 		operator: OperatorId,
@@ -70,7 +70,7 @@ impl SqliteOperatorStorage {
 		collect_anchors(rows)
 	}
 
-	#[instrument(name = "store::operator::anchor_set", level = "debug", skip(self, expiry), fields(operator = operator.0, group = group.0, side = side))]
+	#[instrument(name = "store::operator::persistent::sqlite::anchor_set", level = "debug", skip(self, expiry), fields(operator = operator.0, group = group.0, side = side))]
 	pub fn anchor_set(
 		&self,
 		operator: OperatorId,
@@ -95,7 +95,7 @@ impl SqliteOperatorStorage {
 			.expect("seal anchor write failed");
 	}
 
-	#[instrument(name = "store::operator::anchor_remove", level = "debug", skip(self), fields(operator = operator.0, group = group.0, side = side))]
+	#[instrument(name = "store::operator::persistent::sqlite::anchor_remove", level = "debug", skip(self), fields(operator = operator.0, group = group.0, side = side))]
 	pub fn anchor_remove(&self, operator: OperatorId, group: GroupId, side: u8, row_number: RowNumber) {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
@@ -107,7 +107,7 @@ impl SqliteOperatorStorage {
 			.expect("seal anchor delete failed");
 	}
 
-	#[instrument(name = "store::operator::anchors_remove_group", level = "debug", skip(self), fields(operator = operator.0, group = group.0))]
+	#[instrument(name = "store::operator::persistent::sqlite::anchors_remove_group", level = "debug", skip(self), fields(operator = operator.0, group = group.0))]
 	pub fn anchors_remove_group(&self, operator: OperatorId, group: GroupId) {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
@@ -119,7 +119,7 @@ impl SqliteOperatorStorage {
 			.expect("seal anchor group delete failed");
 	}
 
-	#[instrument(name = "store::operator::anchors_drop_operator", level = "debug", skip(self), fields(operator = operator.0))]
+	#[instrument(name = "store::operator::persistent::sqlite::anchors_drop_operator", level = "debug", skip(self), fields(operator = operator.0))]
 	pub fn anchors_drop_operator(&self, operator: OperatorId) {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {

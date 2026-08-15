@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use reifydb_codec::key::encode_u8;
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_value::byte_size::ByteSize;
+use tracing::instrument;
 
 use crate::{
 	store::{OperatorStore, StandardOperatorStore},
@@ -13,18 +14,21 @@ use crate::{
 };
 
 impl StandardOperatorStore {
+	#[instrument(name = "store::operator::bytes", level = "trace", skip(self), fields(operator = operator.0), ret)]
 	pub fn bytes(&self, operator: OperatorId) -> ByteSize {
 		let durable =
 			self.persistent.as_ref().map(|persistent| persistent.bytes(operator)).unwrap_or(ByteSize::ZERO);
 		durable + self.commit.bytes(operator)
 	}
 
+	#[instrument(name = "store::operator::total_bytes", level = "trace", skip(self), ret)]
 	pub fn total_bytes(&self) -> ByteSize {
 		let durable =
 			self.persistent.as_ref().map(|persistent| persistent.total_bytes()).unwrap_or(ByteSize::ZERO);
 		durable + self.commit.total_bytes()
 	}
 
+	#[instrument(name = "store::operator::census", level = "debug", skip(self))]
 	pub fn census(&self) -> Vec<OperatorStateCensus> {
 		let durable = self.persistent.as_ref().map(|persistent| persistent.census()).unwrap_or_default();
 		let mut merged: BTreeMap<(OperatorId, u8), OperatorStateCensus> = BTreeMap::new();
@@ -44,6 +48,7 @@ impl StandardOperatorStore {
 		merged.into_values().collect()
 	}
 
+	#[instrument(name = "store::operator::anchor_census", level = "debug", skip(self))]
 	pub fn anchor_census(&self) -> Vec<OperatorSealAnchorCensus> {
 		let durable = self.persistent.as_ref().map(|persistent| persistent.anchor_census()).unwrap_or_default();
 		let mut merged: BTreeMap<OperatorId, u64> = BTreeMap::new();

@@ -12,25 +12,31 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 };
 
+use tracing::instrument;
+
 use crate::{
 	commit::batch::DropMarker,
 	store::{OperatorStore, StandardOperatorStore},
-	types::{OperatorBatch, OperatorWrite},
+	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
 
 impl StandardOperatorStore {
+	#[instrument(name = "store::operator::set", level = "debug", skip(self, key, row), fields(operator = operator.0, key_len = key.len()))]
 	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedOperatorRow) {
 		self.commit.record_state_set(operator, key, row);
 	}
 
+	#[instrument(name = "store::operator::remove", level = "debug", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
 	pub fn remove(&self, operator: OperatorId, key: &EncodedKey) {
 		self.commit.record_state_remove(operator, key.clone());
 	}
 
+	#[instrument(name = "store::operator::apply_batch", level = "debug", skip(self, writes), fields(write_count = writes.len()))]
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
 		self.commit.apply_batch(writes);
 	}
 
+	#[instrument(name = "store::operator::apply_batch_with_checkpoints", level = "debug", skip(self, writes, checkpoints, checkpoint_deletes), fields(write_count = writes.len(), checkpoint_count = checkpoints.len()))]
 	pub fn apply_batch_with_checkpoints(
 		&self,
 		writes: &[OperatorWrite],
@@ -40,35 +46,38 @@ impl StandardOperatorStore {
 		self.commit.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
 	}
 
+	#[instrument(name = "store::operator::drop_operator_state", level = "debug", skip(self), fields(operator = operator.0))]
 	pub fn drop_operator_state(&self, operator: OperatorId) {
 		self.commit.record_drop(DropMarker::OperatorState(operator));
 	}
 
+	#[instrument(name = "store::operator::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedOperatorRow> {
-		if let Some(entry) = self.commit.lookup_state(operator, key) {
-			return entry;
+		match self.commit.lookup_state(operator, key) {
+			BufferedState::Row(row) => Some(row),
+			BufferedState::Tombstone | BufferedState::Dropped => None,
+			BufferedState::Absent => self.persistent.as_ref()?.get(operator, key),
 		}
-		if self.commit.has_pending_state_drop(operator) {
-			return None;
-		}
-		self.persistent.as_ref()?.get(operator, key)
 	}
 
+	#[instrument(name = "store::operator::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
-		if let Some(entry) = self.commit.lookup_state(operator, key) {
-			return entry.is_some();
+		match self.commit.lookup_state(operator, key) {
+			BufferedState::Row(_) => true,
+			BufferedState::Tombstone | BufferedState::Dropped => false,
+			BufferedState::Absent => {
+				self.persistent.as_ref().is_some_and(|persistent| persistent.contains(operator, key))
+			}
 		}
-		if self.commit.has_pending_state_drop(operator) {
-			return false;
-		}
-		self.persistent.as_ref().is_some_and(|persistent| persistent.contains(operator, key))
 	}
 
+	#[instrument(name = "store::operator::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
 	pub fn range_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
 		let limit = batch_size.max(1);
 		let target = (limit as usize).saturating_add(1);
-		let buffered = self.commit.state_range(operator, range.start.as_ref(), range.end.as_ref());
-		let mut exhausted = self.commit.has_pending_state_drop(operator);
+		let snapshot = self.commit.state_range(operator, range.start.as_ref(), range.end.as_ref());
+		let buffered = snapshot.items;
+		let mut exhausted = snapshot.dropped;
 		let mut lower = range.start.clone();
 		let mut page: Vec<(EncodedKey, EncodedOperatorRow)> = Vec::new();
 		let mut page_index = 0usize;

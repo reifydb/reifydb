@@ -6,9 +6,12 @@ use std::{collections::BTreeMap, ops::Bound};
 use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
 
-use crate::commit::{
-	OperatorCommitBuffer,
-	batch::{DropMarker, StateKey},
+use crate::{
+	commit::{
+		OperatorCommitBuffer,
+		batch::{DropMarker, StateKey},
+	},
+	types::{BufferedState, BufferedStateRange},
 };
 
 impl OperatorCommitBuffer {
@@ -20,20 +23,19 @@ impl OperatorCommitBuffer {
 		self.shared.inner.lock().live.state.insert((operator, key), None);
 	}
 
-	pub fn has_pending_state_drop(&self, operator: OperatorId) -> bool {
-		self.shared.inner.lock().any_drop(|marker| match marker {
-			DropMarker::OperatorState(candidate) => *candidate == operator,
-			DropMarker::AnchorsOperator(_) | DropMarker::AnchorsGroup(_, _) => false,
-		})
-	}
-
-	pub fn lookup_state(&self, operator: OperatorId, key: &EncodedKey) -> Option<Option<EncodedOperatorRow>> {
+	pub fn lookup_state(&self, operator: OperatorId, key: &EncodedKey) -> BufferedState {
 		let composite = (operator, key.clone());
 		let inner = self.shared.inner.lock();
 		if let Some(entry) = inner.live.state.get(&composite) {
-			return Some(entry.clone());
+			return buffered_state(entry);
 		}
-		inner.in_flight.as_ref().and_then(|batch| batch.state.get(&composite).cloned())
+		if let Some(entry) = inner.in_flight.as_ref().and_then(|batch| batch.state.get(&composite)) {
+			return buffered_state(entry);
+		}
+		if inner.any_drop(|marker| is_state_drop(marker, operator)) {
+			return BufferedState::Dropped;
+		}
+		BufferedState::Absent
 	}
 
 	pub fn state_range(
@@ -41,7 +43,7 @@ impl OperatorCommitBuffer {
 		operator: OperatorId,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
-	) -> Vec<(EncodedKey, Option<EncodedOperatorRow>)> {
+	) -> BufferedStateRange {
 		let lower = match start {
 			Bound::Included(key) => Bound::Included((operator, key.clone())),
 			Bound::Excluded(key) => Bound::Excluded((operator, key.clone())),
@@ -59,7 +61,24 @@ impl OperatorCommitBuffer {
 			collect_state(&batch.state, operator, (lower.clone(), upper.clone()), &mut merged);
 		}
 		collect_state(&inner.live.state, operator, (lower, upper), &mut merged);
-		merged.into_iter().collect()
+		BufferedStateRange {
+			items: merged.into_iter().collect(),
+			dropped: inner.any_drop(|marker| is_state_drop(marker, operator)),
+		}
+	}
+}
+
+fn buffered_state(entry: &Option<EncodedOperatorRow>) -> BufferedState {
+	match entry {
+		Some(row) => BufferedState::Row(row.clone()),
+		None => BufferedState::Tombstone,
+	}
+}
+
+fn is_state_drop(marker: &DropMarker, operator: OperatorId) -> bool {
+	match marker {
+		DropMarker::OperatorState(candidate) => *candidate == operator,
+		DropMarker::AnchorsOperator(_) | DropMarker::AnchorsGroup(_, _) => false,
 	}
 }
 

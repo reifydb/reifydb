@@ -79,7 +79,7 @@ impl SqliteOperatorStorage {
 	}
 
 	#[cfg(not(target_arch = "wasm32"))]
-	#[instrument(name = "store::operator::new", level = "debug", skip(config), fields(
+	#[instrument(name = "store::operator::persistent::sqlite::new", level = "debug", skip(config), fields(
 		db_path = ?config.path,
 		page_size = config.page_size.as_ref().map(|size| size.as_bytes()),
 		read_pool_size = config.read_pool_size,

@@ -11,7 +11,7 @@ use crate::sqlite::{
 };
 
 impl SqliteOperatorStorage {
-	#[instrument(name = "store::operator::checkpoint_get", level = "trace", skip(self), fields(flow = flow.0))]
+	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_get", level = "trace", skip(self), fields(flow = flow.0))]
 	pub fn checkpoint_get(&self, flow: FlowId) -> Option<CommitVersion> {
 		let guard = self.read_conn();
 		let conn = guard.as_ref()?;
@@ -22,7 +22,7 @@ impl SqliteOperatorStorage {
 		Some(CommitVersion(row.get::<_, i64>(0).expect("flow checkpoints carry a version") as u64))
 	}
 
-	#[instrument(name = "store::operator::checkpoint_floor", level = "trace", skip(self))]
+	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_floor", level = "trace", skip(self))]
 	pub fn checkpoint_floor(&self) -> Option<CommitVersion> {
 		let guard = self.read_conn();
 		let conn = guard.as_ref()?;
@@ -34,7 +34,7 @@ impl SqliteOperatorStorage {
 		version.map(|version| CommitVersion(version as u64))
 	}
 
-	#[instrument(name = "store::operator::checkpoint_list", level = "trace", skip(self))]
+	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_list", level = "trace", skip(self))]
 	pub fn checkpoint_list(&self) -> Vec<FlowId> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {

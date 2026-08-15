@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl SqliteOperatorStorage {
-	#[instrument(name = "store::operator::bytes", level = "trace", skip(self), fields(operator = operator.0), ret)]
+	#[instrument(name = "store::operator::persistent::sqlite::bytes", level = "trace", skip(self), fields(operator = operator.0), ret)]
 	pub fn bytes(&self, operator: OperatorId) -> ByteSize {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
@@ -33,7 +33,7 @@ impl SqliteOperatorStorage {
 		ByteSize::from_bytes(state) + (ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES) * anchors
 	}
 
-	#[instrument(name = "store::operator::total_bytes", level = "trace", skip(self), ret)]
+	#[instrument(name = "store::operator::persistent::sqlite::total_bytes", level = "trace", skip(self), ret)]
 	pub fn total_bytes(&self) -> ByteSize {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
@@ -48,7 +48,7 @@ impl SqliteOperatorStorage {
 		ByteSize::from_bytes(state) + (ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES) * anchors
 	}
 
-	#[instrument(name = "store::operator::census", level = "debug", skip(self))]
+	#[instrument(name = "store::operator::persistent::sqlite::census", level = "debug", skip(self))]
 	pub fn census(&self) -> Vec<OperatorStateCensus> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
@@ -80,7 +80,7 @@ impl SqliteOperatorStorage {
 		out
 	}
 
-	#[instrument(name = "store::operator::anchor_census", level = "debug", skip(self))]
+	#[instrument(name = "store::operator::persistent::sqlite::anchor_census", level = "debug", skip(self))]
 	pub fn anchor_census(&self) -> Vec<OperatorSealAnchorCensus> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
