@@ -327,11 +327,7 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 	let BufferedState::Row(readable) = buffer.lookup_state(OP_A, &key(1)) else {
 		panic!("the running flusher's rows stay readable until it says they are durable")
 	};
-	assert_eq!(
-		body(&readable),
-		"first",
-		"the running flusher's rows stay readable until it says they are durable"
-	);
+	assert_eq!(body(&readable), "first", "the running flusher's rows stay readable until it says they are durable");
 
 	storage.flush_batch(&batch);
 	buffer.complete_flush();

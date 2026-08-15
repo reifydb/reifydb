@@ -4,7 +4,6 @@
 use std::collections::BTreeSet;
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
-
 use tracing::instrument;
 
 use crate::store::{OperatorStore, StandardOperatorStore};

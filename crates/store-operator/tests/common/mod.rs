@@ -404,7 +404,9 @@ impl testscript::runner::Runner for Runner {
 					BufferedState::Row(row) => {
 						writeln!(output, "{}", Raw::key_value(&name, row.body()))?
 					}
-					BufferedState::Tombstone => writeln!(output, "{} => tombstone", Raw::key(&name))?,
+					BufferedState::Tombstone => {
+						writeln!(output, "{} => tombstone", Raw::key(&name))?
+					}
 					BufferedState::Dropped | BufferedState::Absent => {
 						writeln!(output, "{} => unknown", Raw::key(&name))?
 					}

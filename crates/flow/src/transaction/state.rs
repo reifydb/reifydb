@@ -28,9 +28,7 @@ pub trait StateExtension: FlowTransaction {
 	fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
 		let scoped = scoped_key(id, key);
 		let memoized = key.keyspace().is_some_and(StateMemo::cacheable);
-		if memoized
-			&& let Some(cached) = self.substrate().memo.lookup(&scoped)
-		{
+		if memoized && let Some(cached) = self.substrate().memo.lookup(&scoped) {
 			Span::current().record("found", cached.is_some());
 			return Ok(cached);
 		}
@@ -53,7 +51,8 @@ pub trait StateExtension: FlowTransaction {
 	fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
 		let version = self.version();
 		let encoded: Vec<EncodedKey> = keys.iter().map(|key| scoped_key(id, key)).collect();
-		let memoized: Vec<bool> = keys.iter().map(|key| key.keyspace().is_some_and(StateMemo::cacheable)).collect();
+		let memoized: Vec<bool> =
+			keys.iter().map(|key| key.keyspace().is_some_and(StateMemo::cacheable)).collect();
 
 		let mut items: Vec<MultiVersionRow> = Vec::new();
 		let mut to_batch: Vec<EncodedKey> = Vec::new();

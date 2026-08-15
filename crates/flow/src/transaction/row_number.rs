@@ -17,7 +17,7 @@ use reifydb_core::{
 		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
 	},
 };
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::transaction::{FlowTransaction, state::StateExtension};
 
@@ -115,6 +115,34 @@ pub trait RowNumberExtension: FlowTransaction {
 		}
 
 		Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
+	}
+
+	fn create_row_numbers(
+		&mut self,
+		operator: OperatorId,
+		groups: &[GroupId],
+		key: &EncodedKey,
+	) -> Result<Vec<RowNumber>> {
+		if groups.is_empty() {
+			return Ok(Vec::new());
+		}
+		let now = self.written_at();
+		let start = mint(self, operator, groups.len() as u64)?;
+		let mut assigned = Vec::with_capacity(groups.len());
+		for (offset, group) in groups.iter().enumerate() {
+			let map_key = mapping_key(*group, key);
+			reifydb_assertions! {
+				assert!(
+					self.state_get(operator, &map_key)?.is_none(),
+					"create_row_numbers mints without probing, so a group that already \
+					 carries a mapping would have that mapping silently overwritten"
+				);
+			}
+			let row_number = RowNumber(start + offset as u64);
+			self.state_set(operator, &map_key, row_number.0.encode_state(now)?)?;
+			assigned.push(row_number);
+		}
+		Ok(assigned)
 	}
 
 	fn get_row_number(

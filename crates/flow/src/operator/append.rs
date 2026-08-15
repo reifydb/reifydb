@@ -317,9 +317,17 @@ impl AppendOperator {
 		groups: &[EncodedKey],
 	) -> Result<Vec<RowNumber>> {
 		let interned = host.intern_groups(groups)?;
+		let mapping = Self::mapping_key();
+		let fresh: Vec<GroupId> =
+			interned.iter().filter(|(_, is_new)| *is_new).map(|(group, _)| *group).collect();
+		let mut minted = host.create_row_numbers(&fresh, &mapping)?.into_iter();
+
 		let mut output_row_numbers = Vec::with_capacity(interned.len());
-		for (group, _) in interned {
-			let (output_row_number, _) = host.get_or_create_row_number(group, &Self::mapping_key())?;
+		for (group, is_new) in interned {
+			let output_row_number = match is_new {
+				true => minted.next().expect("one row number is minted per freshly interned group"),
+				false => host.get_or_create_row_number(group, &mapping)?.0,
+			};
 			output_row_numbers.push(output_row_number);
 		}
 		Ok(output_row_numbers)
@@ -586,6 +594,82 @@ mod tests {
 			"the same source row number on two inputs must not share a group"
 		);
 		assert_ne!(left, right, "and must not share an output row number");
+	}
+
+	#[test]
+	fn a_source_row_repeated_inside_one_batch_lands_on_one_output_row() {
+		// Only the first occurrence interns a group, so the repeat must resolve to the number just minted.
+		let engine = TestEngine::new();
+		let op = op(4);
+		let mut txn = txn_at(&engine, op.operator, 100);
+
+		let assigned = op
+			.translate_create_row_numbers(
+				&mut host(&mut txn, &op),
+				&AppendOperator::group_keys(0, &rows(&[7, 9, 7])),
+			)
+			.unwrap();
+
+		assert_eq!(assigned[0], assigned[2], "both slots of source row 7 must carry one output row number");
+		assert_ne!(assigned[0], assigned[1], "a distinct source row keeps a distinct output row number");
+	}
+
+	#[test]
+	fn a_batch_mixing_a_known_source_row_with_fresh_ones_keeps_every_slot_aligned() {
+		// Minted and looked-up numbers must re-interleave in input order, or a row takes its neighbour's.
+		let engine = TestEngine::new();
+		let op = op(5);
+		let mut txn = txn_at(&engine, op.operator, 100);
+
+		let known = op
+			.translate_create_row_numbers(
+				&mut host(&mut txn, &op),
+				&AppendOperator::group_keys(0, &rows(&[7])),
+			)
+			.unwrap();
+		let assigned = op
+			.translate_create_row_numbers(
+				&mut host(&mut txn, &op),
+				&AppendOperator::group_keys(0, &rows(&[5, 7, 9])),
+			)
+			.unwrap();
+
+		assert_eq!(assigned[1], known[0], "the known source row keeps its number in the slot it arrived in");
+		assert_ne!(assigned[0], assigned[2], "the two fresh rows take numbers of their own");
+		for (slot, source) in [(0usize, 5u64), (2, 9)] {
+			let group = group_of(&mut txn, &op, 0, source).expect("a fresh source row interns a group");
+			assert_eq!(
+				txn.get_row_number(op.operator, group, &AppendOperator::mapping_key()).unwrap(),
+				Some(assigned[slot]),
+				"each fresh row's number must be stored under its own group"
+			);
+		}
+	}
+
+	#[test]
+	fn a_known_source_row_keeps_its_number_when_it_returns_beside_fresh_rows() {
+		// The mapping is read back from the store here, so re-minting would duplicate the sink row.
+		let engine = TestEngine::new();
+		let op = op(6);
+		let mut txn = txn_at(&engine, op.operator, 100);
+		let known = op
+			.translate_create_row_numbers(
+				&mut host(&mut txn, &op),
+				&AppendOperator::group_keys(0, &rows(&[7])),
+			)
+			.unwrap();
+		commit(&engine, &mut txn);
+
+		let mut later = txn_at(&engine, op.operator, 200);
+		let assigned = op
+			.translate_create_row_numbers(
+				&mut host(&mut later, &op),
+				&AppendOperator::group_keys(0, &rows(&[3, 7])),
+			)
+			.unwrap();
+
+		assert_eq!(assigned[1], known[0], "a persisted source row must not be re-numbered");
+		assert_ne!(assigned[0], known[0], "the fresh row beside it takes a number of its own");
 	}
 
 	#[test]

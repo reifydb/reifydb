@@ -304,3 +304,76 @@ fn the_row_number_counter_never_collides_with_the_interners_group_counter() {
 	assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");
 	assert_ne!(mapping_key(GROUP, &key("x")), counter_key(), "a mapping key must never equal the counter key");
 }
+
+#[test]
+fn create_row_numbers_gives_every_group_its_own_contiguous_number() {
+	// One mint covers the whole slice, so a shared start offset must still fan out one number per group.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let groups = [GroupId(11), GroupId(12), GroupId(13)];
+
+	let minted = txn.create_row_numbers(NODE, &groups, &key("m")).unwrap();
+
+	assert_eq!(minted.iter().map(|rn| rn.0).collect::<Vec<_>>(), vec![1, 2, 3]);
+}
+
+#[test]
+fn create_row_numbers_returns_numbers_in_the_order_the_groups_were_given() {
+	// The caller zips these back onto its rows positionally, so a reordered result mislabels every row.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let groups = [GroupId(31), GroupId(17), GroupId(23)];
+
+	let minted = txn.create_row_numbers(NODE, &groups, &key("m")).unwrap();
+
+	for (group, expected) in groups.iter().zip(minted) {
+		assert_eq!(
+			txn.get_row_number(NODE, *group, &key("m")).unwrap(),
+			Some(expected),
+			"each group must own the number handed back in its own slot"
+		);
+	}
+}
+
+#[test]
+fn create_row_numbers_continues_the_operators_shared_counter() {
+	// Minting off a private sequence would hand two live rows the same number.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+
+	let (probed, _) = txn.get_or_create_row_number(NODE, GROUP, &key("m")).unwrap();
+	let minted = txn.create_row_numbers(NODE, &[GroupId(11), GroupId(12)], &key("m")).unwrap();
+	let (after, _) = txn.get_or_create_row_number(NODE, NEIGHBOUR, &key("m")).unwrap();
+
+	assert_eq!(probed.0, 1);
+	assert_eq!(minted.iter().map(|rn| rn.0).collect::<Vec<_>>(), vec![2, 3], "the mint starts above the counter");
+	assert_eq!(after.0, 4, "the probing path resumes above every number the mint handed out");
+}
+
+#[test]
+fn create_row_numbers_for_no_groups_leaves_the_counter_untouched() {
+	// An empty input batch must not burn a number, or the sequence drifts on every idle tick.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+
+	assert!(txn.create_row_numbers(NODE, &[], &key("m")).unwrap().is_empty());
+
+	let (rn, _) = txn.get_or_create_row_number(NODE, GROUP, &key("m")).unwrap();
+	assert_eq!(rn.0, 1, "no group was minted for, so the first real key still takes number one");
+}
+
+#[test]
+fn created_mappings_resolve_the_same_way_a_probed_one_does() {
+	// A number minted without a probe still has to be found by the probing path after a commit.
+	let engine = TestEngine::new();
+
+	let mut first = deferred(&engine);
+	let minted = first.create_row_numbers(NODE, &[GroupId(11)], &key("m")).unwrap();
+	commit_pending(&engine, &mut first);
+
+	let mut second = deferred(&engine);
+	let (resolved, is_new) = second.get_or_create_row_number(NODE, GroupId(11), &key("m")).unwrap();
+
+	assert_eq!(resolved, minted[0], "the persisted mapping must resolve to the number that was minted");
+	assert!(!is_new, "a created mapping is a real mapping, not an absence");
+}

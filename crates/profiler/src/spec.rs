@@ -48,7 +48,7 @@ static SPECS: &[SpanSpec] = &[
 				prefix: "op",
 			},
 		],
-		extras: &["input_rows", "output_rows", "lock_wait_us", "state_gets"],
+		extras: &["input_rows", "output_rows", "lock_wait_us"],
 		render: Some(render_apply),
 	},
 	SpanSpec {
@@ -85,7 +85,7 @@ pub fn spec_for(name: &str) -> Option<&'static SpanSpec> {
 
 fn render_apply(record: &AggregateRecord, out: &mut String) {
 	let e = record.extras();
-	let _ = write!(out, " lock={} io={}->{} gets={}", fmt_us(e[2]), e[0], e[1], e[3]);
+	let _ = write!(out, " lock={} io={}->{}", fmt_us(e[2]), e[0], e[1]);
 }
 
 fn render_state_range(record: &AggregateRecord, out: &mut String) {

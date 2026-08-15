@@ -3,7 +3,6 @@
 
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
-
 use tracing::instrument;
 
 use crate::{

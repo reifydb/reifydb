@@ -7,7 +7,6 @@ use reifydb_core::{
 	actors::pending::PendingLayers,
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, GroupStateKey, Keyspace},
-	metrics::point::PointCounters,
 };
 use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
@@ -53,10 +52,8 @@ fn row(body: &str) -> EncodedOperatorRow {
 	EncodedOperatorRow::timeless(body.as_bytes())
 }
 
-fn store_gets(f: impl FnOnce()) -> u64 {
-	let before = PointCounters::sample();
-	f();
-	before.since().gets
+fn served(txn: &DeferredTransaction) -> (u64, u64) {
+	txn.substrate().memo.counters()
 }
 
 #[test]
@@ -69,17 +66,24 @@ fn a_repeated_read_of_a_memoized_keyspace_reaches_the_store_once() {
 	commit_pending(&engine, &mut txn);
 
 	let mut second = deferred(&engine);
-	let first = store_gets(|| {
+	let start = served(&second);
+	second.state_get(NODE, &k).unwrap();
+	let after_first = served(&second);
+	for _ in 0..20 {
 		second.state_get(NODE, &k).unwrap();
-	});
-	let repeats = store_gets(|| {
-		for _ in 0..20 {
-			second.state_get(NODE, &k).unwrap();
-		}
-	});
+	}
+	let after_repeats = served(&second);
 
-	assert_eq!(first, 1, "the first read must reach the store");
-	assert_eq!(repeats, 0, "every later read must be served from the memo");
+	assert_eq!(
+		(after_first.0 - start.0, after_first.1 - start.1),
+		(0, 1),
+		"the first read must miss the memo and reach the store"
+	);
+	assert_eq!(
+		(after_repeats.0 - after_first.0, after_repeats.1 - after_first.1),
+		(20, 0),
+		"every later read must be served from the memo"
+	);
 }
 
 #[test]
@@ -92,13 +96,13 @@ fn a_repeated_read_of_an_unlisted_keyspace_always_reaches_the_store() {
 	commit_pending(&engine, &mut txn);
 
 	let mut second = deferred(&engine);
-	let gets = store_gets(|| {
-		for _ in 0..5 {
-			second.state_get(NODE, &k).unwrap();
-		}
-	});
+	let start = served(&second);
+	for _ in 0..5 {
+		second.state_get(NODE, &k).unwrap();
+	}
 
-	assert_eq!(gets, 5, "an unlisted keyspace must never be memoized");
+	assert_eq!(served(&second), start, "an unlisted keyspace must never reach the memo at all");
+	assert!(second.substrate().memo.is_empty(), "and must never be remembered");
 }
 
 #[test]
@@ -140,10 +144,10 @@ fn a_cached_absence_is_corrected_by_the_write_that_follows_it() {
 	let k = key(Keyspace::JOIN_SCHEMA, "unseen");
 
 	assert_eq!(txn.state_get(NODE, &k).unwrap(), None);
-	let probe = store_gets(|| {
-		txn.state_get(NODE, &k).unwrap();
-	});
-	assert_eq!(probe, 0, "a known-absent key must not be probed again");
+	let start = served(&txn);
+	txn.state_get(NODE, &k).unwrap();
+	let after = served(&txn);
+	assert_eq!((after.0 - start.0, after.1 - start.1), (1, 0), "a known-absent key must not be probed again");
 
 	txn.state_set(NODE, &k, row("fields")).unwrap();
 	assert_eq!(txn.state_get(NODE, &k).unwrap(), Some(row("fields")), "the write must clear the cached absence");
@@ -163,11 +167,15 @@ fn get_many_serves_memoized_keys_without_touching_the_store() {
 	let mut reader = deferred(&engine);
 	let keys = vec![first.clone(), second_key.clone()];
 	reader.state_get_many(NODE, &keys).unwrap();
-	let repeats = store_gets(|| {
-		reader.state_get_many(NODE, &keys).unwrap();
-	});
+	let start = served(&reader);
+	reader.state_get_many(NODE, &keys).unwrap();
+	let after = served(&reader);
 
-	assert_eq!(repeats, 0, "a second get_many over the same keys must be served entirely from the memo");
+	assert_eq!(
+		(after.0 - start.0, after.1 - start.1),
+		(2, 0),
+		"a second get_many over the same keys must be served entirely from the memo"
+	);
 	let batch = reader.state_get_many(NODE, &keys).unwrap();
 	assert_eq!(batch.items.len(), 2, "memoized rows must still be returned, not silently dropped");
 }
@@ -180,11 +188,15 @@ fn get_many_remembers_absence_so_the_next_pass_skips_the_store() {
 	let keys = vec![missing.clone()];
 
 	txn.state_get_many(NODE, &keys).unwrap();
-	let repeats = store_gets(|| {
-		txn.state_get_many(NODE, &keys).unwrap();
-	});
+	let start = served(&txn);
+	txn.state_get_many(NODE, &keys).unwrap();
+	let after = served(&txn);
 
-	assert_eq!(repeats, 0, "an absence learned by get_many must be remembered like a value");
+	assert_eq!(
+		(after.0 - start.0, after.1 - start.1),
+		(1, 0),
+		"an absence learned by get_many must be remembered like a value"
+	);
 	assert!(txn.state_get_many(NODE, &keys).unwrap().items.is_empty(), "an absent key must stay absent");
 }
 
@@ -200,11 +212,15 @@ fn clearing_the_memo_sends_the_next_read_back_to_the_store() {
 	let mut second = deferred(&engine);
 	second.state_get(NODE, &k).unwrap();
 	second.substrate().memo.clear();
-	let after_clear = store_gets(|| {
-		second.state_get(NODE, &k).unwrap();
-	});
+	let start = served(&second);
+	second.state_get(NODE, &k).unwrap();
+	let after = served(&second);
 
-	assert_eq!(after_clear, 1, "a cleared memo must fall through to the store");
+	assert_eq!(
+		(after.0 - start.0, after.1 - start.1),
+		(0, 1),
+		"a cleared memo must miss and fall through to the store"
+	);
 }
 
 #[test]
