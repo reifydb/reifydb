@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	operator::state::seal::coord::Coord,
-	window::{accumulator::invertible::RetainedAccumulator, span::WindowSpan},
+	window::{accumulator::invertible::retained_map::RetainedAccumulator, span::WindowSpan},
 };
 use reifydb_sdk::{
 	error::Result,

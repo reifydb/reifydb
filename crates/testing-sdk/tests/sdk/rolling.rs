@@ -9,7 +9,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	row::Row as CoreRow,
 };
-use reifydb_flow::window::accumulator::{WindowAccumulator, invertible::Moments};
+use reifydb_flow::window::accumulator::{WindowAccumulator, invertible::moments::Moments};
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{

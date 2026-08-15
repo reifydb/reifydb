@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_flow::window::accumulator::{
 	WindowAccumulator,
-	invertible::{KeyedInvertibleAccumulator, Moments},
+	invertible::{keyed::KeyedInvertibleAccumulator, moments::Moments},
 };
 use reifydb_sdk::{
 	error::Result,

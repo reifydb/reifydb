@@ -26,7 +26,12 @@ use reifydb_flow::{
 		accumulator::{
 			WindowAccumulator,
 			invertible::{
-				KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64, RetainedAccumulator,
+				keyed::KeyedInvertibleAccumulator,
+				last_value::LastValue,
+				moments::Moments,
+				multiset::Multiset,
+				ordf64::OrdF64,
+				retained_map::RetainedAccumulator,
 			},
 			sealing::{SealingEndpoint, SealingMax, SealingMin},
 		},

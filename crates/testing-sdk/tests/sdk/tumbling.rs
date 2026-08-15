@@ -16,7 +16,7 @@ use reifydb_flow::{
 	window::{
 		accumulator::{
 			WindowAccumulator,
-			invertible::{Moments, Multiset, OrdF64},
+			invertible::{moments::Moments, multiset::Multiset, ordf64::OrdF64},
 		},
 		span::WindowSpan,
 	},

@@ -20,7 +20,7 @@ use reifydb::{
 	},
 	seal::coord::Coord,
 	testing::db::TestDb,
-	window::{accumulator::invertible::Moments, span::WindowSpan},
+	window::{accumulator::invertible::moments::Moments, span::WindowSpan},
 };
 use reifydb_test_harness::assert::column_values;
 use reifydb_value::{

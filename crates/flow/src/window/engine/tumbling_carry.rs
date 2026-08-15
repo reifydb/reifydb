@@ -393,7 +393,9 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::state::seal::coord::Coord,
-		window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig},
+		window::{
+			accumulator::invertible::retained_map::RetainedAccumulator, engine::config::WindowEngineConfig,
+		},
 	};
 
 	// Allocates a distinct row number per key; the state.rs mock collapses every key onto row 1,

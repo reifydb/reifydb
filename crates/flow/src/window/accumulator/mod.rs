@@ -12,6 +12,9 @@ pub mod sealing;
 #[cfg(test)]
 pub(crate) mod mock;
 
+#[cfg(test)]
+pub(crate) mod testkit;
+
 pub trait WindowAccumulator: Clone + Debug + Default + OperatorState + StateCodec + HeapSize {
 	type Contribution: Clone + Debug;
 	type Output: Clone + Debug + PartialEq;
@@ -38,6 +41,3 @@ pub trait WindowAccumulator: Clone + Debug + Default + OperatorState + StateCode
 		unimplemented!("this accumulator does not support unmerge")
 	}
 }
-
-#[cfg(test)]
-mod tests;

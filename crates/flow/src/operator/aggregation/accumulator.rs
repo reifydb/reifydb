@@ -19,8 +19,8 @@ use reifydb_value::{
 use crate::window::{
 	accumulator::{
 		WindowAccumulator,
-		invertible::Multiset,
-		sealing::{SealingEndpoint, SealingMax, SealingMin},
+		invertible::multiset::Multiset,
+		sealing::{endpoint::SealingEndpoint, max::SealingMax, min::SealingMin},
 	},
 	span::Slot,
 };

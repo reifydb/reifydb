@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
 	row::Row as CoreRow,
 };
-use reifydb_flow::window::accumulator::invertible::{LastValue, Moments};
+use reifydb_flow::window::accumulator::invertible::{last_value::LastValue, moments::Moments};
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{

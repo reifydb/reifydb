@@ -7,8 +7,11 @@
 use reifydb_codec::row::operator::{OperatorState, decode};
 use reifydb_flow::window::accumulator::{
 	WindowAccumulator,
-	invertible::{KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64},
-	sealing::{SealingEndpoint, SealingMin},
+	invertible::{
+		keyed::KeyedInvertibleAccumulator, last_value::LastValue, moments::Moments, multiset::Multiset,
+		ordf64::OrdF64,
+	},
+	sealing::{endpoint::SealingEndpoint, min::SealingMin},
 };
 use reifydb_value::{
 	factory::time::{at_millis, millis},
