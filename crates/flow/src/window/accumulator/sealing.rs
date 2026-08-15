@@ -448,12 +448,6 @@ impl<C: Slot, V> Default for SealingTail<C, V> {
 }
 
 impl<C: Slot, V: Clone> SealingTail<C, V> {
-	pub fn amendable(amendable: SlotSpan<C>) -> Self {
-		Self {
-			base: SealingBase::amendable(amendable),
-		}
-	}
-
 	pub fn add(&mut self, coord: C, value: V) {
 		self.base.push(coord, value);
 	}
@@ -485,13 +479,6 @@ impl<C: Slot, V> Default for TailAccumulator<C, V> {
 	}
 }
 
-impl<C: Slot, V: Clone> TailAccumulator<C, V> {
-	pub fn amendable(amendable: SlotSpan<C>) -> Self {
-		Self {
-			events: SealingTail::amendable(amendable),
-		}
-	}
-}
 
 impl<C, V> WindowAccumulator for TailAccumulator<C, V>
 where

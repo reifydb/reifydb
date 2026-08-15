@@ -547,19 +547,6 @@ fn sealing_fold_roundtrip() {
 }
 
 #[test]
-fn sealing_tail_drops_aged_keeps_recent() {
-	let mut tail: SealingTail<DateTime, i64> = SealingTail::amendable(millis(10));
-	tail.add(at_millis(0), 1);
-	tail.add(at_millis(5), 2);
-	tail.add(at_millis(12), 3);
-	let keys: Vec<DateTime> = tail.tail().keys().copied().collect();
-	assert_eq!(keys, vec![at_millis(5), at_millis(12)], "aged prefix dropped, recent tail kept in order");
-	tail.remove(&at_millis(5));
-	let keys: Vec<DateTime> = tail.tail().keys().copied().collect();
-	assert_eq!(keys, vec![at_millis(12)], "live tail entry removable");
-}
-
-#[test]
 fn sealing_tail_default_never_drops() {
 	let mut tail: SealingTail<DateTime, i64> = SealingTail::default();
 	tail.add(at_millis(0), 1);
@@ -569,7 +556,7 @@ fn sealing_tail_default_never_drops() {
 
 #[test]
 fn sealing_tail_roundtrip() {
-	let mut tail: SealingTail<DateTime, i64> = SealingTail::amendable(millis(10));
+	let mut tail: SealingTail<DateTime, i64> = SealingTail::default();
 	tail.add(at_millis(0), 1);
 	tail.add(at_millis(12), 3);
 	let bytes = tail.encode_state(DateTime::EPOCH).expect("encode");
@@ -597,22 +584,8 @@ fn tail_acc_default_add_remove_is_inverse() {
 }
 
 #[test]
-fn tail_acc_with_amendable_drops_aged_from_finalize() {
-	let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::amendable(millis(10));
-	accumulator.add(&(at_millis(0), 10));
-	accumulator.add(&(at_millis(5), 20));
-	accumulator.add(&(at_millis(12), 30));
-	let map = accumulator.finalize().expect("non-empty");
-	assert_eq!(
-		map.keys().copied().collect::<Vec<_>>(),
-		vec![at_millis(5), at_millis(12)],
-		"aged prefix dropped from the emitted map"
-	);
-}
-
-#[test]
 fn tail_acc_roundtrip() {
-	let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::amendable(millis(10));
+	let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::default();
 	accumulator.add(&(at_millis(0), 1));
 	accumulator.add(&(at_millis(12), 3));
 	let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
