@@ -18,11 +18,14 @@ use tracing::{instrument, warn};
 
 use crate::plane::RetentionPlane;
 
+const LIST_CONSECUTIVE_FAILURE_LIMIT: u32 = 300;
+
 pub struct TombstoneReapTask {
 	store: StandardMultiStore,
 	plane: RetentionPlane,
 	clock: Clock,
 	config: Arc<dyn GetConfig>,
+	list_failures: u32,
 }
 
 impl TombstoneReapTask {
@@ -32,6 +35,7 @@ impl TombstoneReapTask {
 			plane,
 			clock,
 			config,
+			list_failures: 0,
 		}
 	}
 }
@@ -58,9 +62,19 @@ impl LifecycleTask for TombstoneReapTask {
 		let batch_size = (self.config.get_config_uint8(ConfigKey::TombstoneReapBatchSize) as usize).max(1);
 
 		let kinds = match persistent.list_current_entries() {
-			Ok(kinds) => kinds,
+			Ok(kinds) => {
+				self.list_failures = 0;
+				kinds
+			}
 			Err(e) => {
-				warn!(error = %e, "tombstone reaper failed to list persistent entries");
+				self.list_failures += 1;
+				if self.list_failures >= LIST_CONSECUTIVE_FAILURE_LIMIT {
+					panic!(
+						"tombstone reaper failed to list persistent entries {} consecutive times: {e}",
+						self.list_failures
+					);
+				}
+				warn!(failures = self.list_failures, error = %e, "tombstone reaper failed to list persistent entries");
 				self.plane.record_reclamation(RetentionClass::TombstoneReap, None, 0, 0);
 				return Progress::Exhausted;
 			}

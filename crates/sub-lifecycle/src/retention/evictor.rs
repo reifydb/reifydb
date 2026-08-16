@@ -55,12 +55,15 @@ use crate::{
 
 type CursorKey = (StorageId, EncodedKey);
 
+const EVICT_CONSECUTIVE_FAILURE_LIMIT: u32 = 5;
+
 #[derive(Default)]
 pub struct EvictorState {
 	running: bool,
 	cursors: HashMap<CursorKey, EncodedKey>,
 	expiry_cursors: HashMap<CursorKey, ExpiryCursor>,
 	resume: Option<StorageId>,
+	failures: HashMap<StorageId, u32>,
 }
 
 impl EvictorState {
@@ -158,11 +161,22 @@ impl Evictor {
 
 			stats.objects_scanned += 1;
 			let expired_before = stats.rows_expired;
-			if let Err(e) = self.evict_storage(state, storage, cutoff, batch_size, &mut budget, &mut stats)
-			{
-				warn!(?storage, error = %e, "retention eviction failed; resetting cursors, retrying next tick");
-				state.forget(storage);
-				budget = budget.saturating_sub(1);
+			match self.evict_storage(state, storage, cutoff, batch_size, &mut budget, &mut stats) {
+				Ok(()) => {
+					state.failures.remove(&storage);
+				}
+				Err(e) => {
+					let failures = state.failures.entry(storage).or_default();
+					*failures += 1;
+					if *failures >= EVICT_CONSECUTIVE_FAILURE_LIMIT {
+						panic!(
+							"retention eviction failed {failures} consecutive times for storage {storage:?}: {e}"
+						);
+					}
+					warn!(?storage, failures = *failures, error = %e, "retention eviction failed; resetting cursors, retrying next tick");
+					state.forget(storage);
+					budget = budget.saturating_sub(1);
+				}
 			}
 
 			tally.rows += stats.rows_expired - expired_before;
