@@ -25,6 +25,7 @@ use reifydb_value::{
 use crate::sqlite::SqliteOperatorStorage;
 use crate::{
 	commit::batch::FlushBatch,
+	filter::OperatorKeyFilter,
 	types::{OperatorBatch, OperatorSealAnchor, OperatorSealAnchorCensus, OperatorStateCensus},
 };
 
@@ -61,6 +62,12 @@ impl OperatorPersistentTier {
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
 		match self {
 			Self::Sqlite(storage) => storage.contains(operator, key),
+		}
+	}
+
+	pub fn filter(&self) -> &OperatorKeyFilter {
+		match self {
+			Self::Sqlite(storage) => storage.filter(),
 		}
 	}
 
@@ -162,6 +169,10 @@ impl OperatorPersistentTier {
 	}
 
 	pub fn contains(&self, _operator: OperatorId, _key: &EncodedKey) -> bool {
+		match *self {}
+	}
+
+	pub fn filter(&self) -> &OperatorKeyFilter {
 		match *self {}
 	}
 

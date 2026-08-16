@@ -27,6 +27,7 @@ impl SqliteOperatorStorage {
 	#[instrument(name = "store::operator::persistent::sqlite::set", level = "debug", skip(self, key, row), fields(operator = operator.0, key_len = key.len()))]
 	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedOperatorRow) {
 		self.mark_state_written();
+		self.filter().add(operator, &key);
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
 			return;

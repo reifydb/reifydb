@@ -6,7 +6,7 @@ use std::ops::Bound;
 use reifydb_codec::key::encoded::EncodedKey;
 
 pub(super) const STATE_GET_SQL: &str = r#"SELECT "bytes" FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2"#;
-pub(super) const STATE_ANY_SQL: &str = r#"SELECT EXISTS(SELECT 1 FROM "operator_state")"#;
+pub(super) const STATE_ALL_KEYS_SQL: &str = r#"SELECT "operator", "key" FROM "operator_state""#;
 
 pub(super) const STATE_CONTAINS_SQL: &str =
 	r#"SELECT 1 FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2 LIMIT 1"#;

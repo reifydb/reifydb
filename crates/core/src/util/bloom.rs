@@ -5,6 +5,7 @@ use std::{
 	collections::hash_map::DefaultHasher,
 	f64::consts::LN_2,
 	hash::{Hash, Hasher},
+	sync::atomic::{AtomicU64, Ordering},
 };
 
 #[inline]
@@ -14,84 +15,69 @@ pub fn hash_item<T: Hash>(item: &T) -> u64 {
 	hasher.finish()
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct BloomFilter {
-	bits: Vec<u64>,
+	bits: Vec<AtomicU64>,
 	size: usize,
 	hash_count: usize,
 }
 
 impl BloomFilter {
 	pub fn new(expected_items: usize) -> Self {
-		let size = (expected_items as f64 * 10.0) as usize;
-		let word_count = size.div_ceil(64);
-		Self {
-			bits: vec![0; word_count],
-			size: word_count * 64,
-			hash_count: 7,
-		}
+		Self::with_params(expected_items * 10, 7)
 	}
 
 	pub fn with_params(size_bits: usize, hash_count: usize) -> Self {
-		let word_count = size_bits.div_ceil(64);
+		let word_count = size_bits.div_ceil(64).max(1);
 		Self {
-			bits: vec![0; word_count],
+			bits: (0..word_count).map(|_| AtomicU64::new(0)).collect(),
 			size: word_count * 64,
 			hash_count,
 		}
 	}
 
-	pub fn add<T: Hash>(&mut self, item: &T) {
-		let hash = self.hash(item);
+	pub fn add<T: Hash>(&self, item: &T) {
+		let hash = hash_item(item);
 		for i in 0..self.hash_count {
 			let bit_pos = self.get_bit_pos(hash, i);
-			let word_idx = bit_pos / 64;
-			let bit_idx = bit_pos % 64;
-			self.bits[word_idx] |= 1u64 << bit_idx;
+			self.bits[bit_pos / 64].fetch_or(1u64 << (bit_pos % 64), Ordering::Release);
 		}
 	}
 
 	pub fn might_contain<T: Hash>(&self, item: &T) -> bool {
-		let hash = self.hash(item);
+		let hash = hash_item(item);
 		for i in 0..self.hash_count {
 			let bit_pos = self.get_bit_pos(hash, i);
-			let word_idx = bit_pos / 64;
-			let bit_idx = bit_pos % 64;
-			if (self.bits[word_idx] & (1u64 << bit_idx)) == 0 {
+			if self.bits[bit_pos / 64].load(Ordering::Acquire) & (1u64 << (bit_pos % 64)) == 0 {
 				return false;
 			}
 		}
 		true
 	}
 
-	pub fn clear(&mut self) {
-		self.bits.fill(0);
+	pub fn clear(&self) {
+		for word in &self.bits {
+			word.store(0, Ordering::Release);
+		}
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.bits.iter().all(|&word| word == 0)
+		self.bits.iter().all(|word| word.load(Ordering::Acquire) == 0)
 	}
 
 	pub fn estimated_items(&self) -> usize {
-		let set_bits = self.bits.iter().map(|&word| word.count_ones() as usize).sum::<usize>();
-
-		let fill_ratio = set_bits as f64 / self.size as f64;
+		let fill_ratio = self.fill_ratio();
 		if fill_ratio >= 1.0 {
 			return usize::MAX;
 		}
-
 		let estimated = -(self.size as f64 / self.hash_count as f64) * (1.0 - fill_ratio).ln();
 		estimated as usize
 	}
 
 	pub fn fill_ratio(&self) -> f64 {
-		let set_bits = self.bits.iter().map(|&word| word.count_ones() as usize).sum::<usize>();
+		let set_bits: usize =
+			self.bits.iter().map(|word| word.load(Ordering::Relaxed).count_ones() as usize).sum();
 		set_bits as f64 / self.size as f64
-	}
-
-	#[inline]
-	fn hash<T: Hash>(&self, item: &T) -> u64 {
-		hash_item(item)
 	}
 
 	#[inline]
@@ -137,7 +123,7 @@ pub mod tests {
 
 	#[test]
 	fn test_bloom_filter_basic() {
-		let mut bloom = BloomFilter::new(100);
+		let bloom = BloomFilter::new(100);
 
 		assert!(bloom.is_empty());
 
@@ -159,7 +145,7 @@ pub mod tests {
 
 	#[test]
 	fn test_bloom_filter_false_positive_rate() {
-		let mut bloom = BloomFilterBuilder::new(1000)
+		let bloom = BloomFilterBuilder::new(1000)
 			.false_positive_rate(0.001) // 0.1%
 			.build();
 
@@ -184,7 +170,7 @@ pub mod tests {
 
 	#[test]
 	fn test_bloom_filter_fill_ratio() {
-		let mut bloom = BloomFilter::new(10);
+		let bloom = BloomFilter::new(10);
 
 		assert_eq!(bloom.fill_ratio(), 0.0);
 

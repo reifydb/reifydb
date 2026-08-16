@@ -23,6 +23,16 @@ impl SqliteOperatorStorage {
 			return;
 		}
 		self.mark_state_written();
+		for write in writes {
+			if let OperatorWrite::Set {
+				operator,
+				key,
+				..
+			} = write
+			{
+				self.filter().add(*operator, key);
+			}
+		}
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
 			return;
@@ -93,6 +103,11 @@ impl SqliteOperatorStorage {
 	pub fn flush_batch(&self, batch: &FlushBatch) {
 		if !batch.state.is_empty() {
 			self.mark_state_written();
+		}
+		for ((operator, key), entry) in &batch.state {
+			if entry.is_some() {
+				self.filter().add(*operator, key);
+			}
 		}
 		let guard = self.inner.conn.lock();
 		let conn = guard.as_ref().expect("operator state flush ran without an open connection");

@@ -55,7 +55,12 @@ impl StandardOperatorStore {
 		match self.commit.lookup_state(operator, key) {
 			BufferedState::Row(row) => Some(row),
 			BufferedState::Tombstone | BufferedState::Dropped => None,
-			BufferedState::Absent => self.persistent.as_ref().and_then(|p| p.get(operator, key)),
+			BufferedState::Absent => self.persistent.as_ref().and_then(|persistent| {
+				if !persistent.filter().may_contain(operator, key) {
+					return None;
+				}
+				persistent.get(operator, key)
+			}),
 		}
 	}
 
@@ -64,9 +69,9 @@ impl StandardOperatorStore {
 		match self.commit.lookup_state(operator, key) {
 			BufferedState::Row(_) => true,
 			BufferedState::Tombstone | BufferedState::Dropped => false,
-			BufferedState::Absent => {
-				self.persistent.as_ref().is_some_and(|persistent| persistent.contains(operator, key))
-			}
+			BufferedState::Absent => self.persistent.as_ref().is_some_and(|persistent| {
+				persistent.filter().may_contain(operator, key) && persistent.contains(operator, key)
+			}),
 		}
 	}
 

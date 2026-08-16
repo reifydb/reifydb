@@ -10,6 +10,7 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 
 pub mod commit;
 pub mod config;
+pub mod filter;
 pub mod flush;
 pub mod persistent;
 pub mod store;
