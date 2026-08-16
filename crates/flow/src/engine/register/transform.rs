@@ -334,7 +334,7 @@ impl FlowEngineInner {
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
 		lateness: Duration,
-		amendable: Option<Duration>,
+		immutable: Option<Duration>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent_schema = self.parent_schema(first_input(inputs)?)?;
@@ -347,7 +347,7 @@ impl FlowEngineInner {
 			runtime_context: self.runtime_context.clone(),
 			routines: self.routines.clone(),
 			lateness,
-			amendable,
+			immutable,
 			ctx: Arc::clone(ctx),
 		});
 		self.operators.insert(operator_id, Box::new(operator));

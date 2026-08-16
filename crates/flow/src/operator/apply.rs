@@ -128,7 +128,7 @@ mod tests {
 
 	#[test]
 	fn a_declared_row_ttl_never_becomes_a_lateness_span() {
-		// A ttl says how long rows are kept, not how long a window stays amendable, so folding it in here would
+		// A ttl says how long rows are kept, not how long a window stays immutable, so folding it in here would
 		// hold every published frontier back by the whole retention window.
 		let ttl_only = ApplyOperator::new(
 			None,

@@ -22,7 +22,7 @@ pub(crate) struct WindowCompiler {
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
 	pub lateness: Duration,
-	pub amendable: Option<Duration>,
+	pub immutable: Option<Duration>,
 }
 
 impl From<WindowNode> for WindowCompiler {
@@ -33,7 +33,7 @@ impl From<WindowNode> for WindowCompiler {
 			group_by: node.group_by,
 			aggregations: node.aggregations,
 			lateness: node.lateness,
-			amendable: node.amendable,
+			immutable: node.immutable,
 		}
 	}
 }
@@ -55,7 +55,7 @@ impl CompileOperator for WindowCompiler {
 				group_by: self.group_by,
 				aggregations: self.aggregations,
 				lateness: self.lateness,
-				amendable: self.amendable,
+				immutable: self.immutable,
 			},
 		)?;
 

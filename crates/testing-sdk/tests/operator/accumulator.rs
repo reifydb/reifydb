@@ -53,7 +53,7 @@ fn sealing_min_default_is_fully_invertible() {
 #[test]
 fn sealing_endpoint_late_middle_arrival_keeps_open() {
 	// A late arrival later than the sealed open must not move it.
-	let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
+	let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
 	accumulator.add(&(at_millis(2), 999));
 	accumulator.add(&(at_millis(20), 200)); // hw=20; coord 2 ages -> sealed_open=(2,999)
 	assert_eq!(accumulator.open(), Some(&999));

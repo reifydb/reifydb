@@ -60,7 +60,7 @@ use reifydb_value::{
 
 pub const WINDOW: u64 = 60;
 /// Held below WINDOW so aging is reachable inside a single window.
-pub const OHLCV_AMENDABLE: u64 = 20;
+pub const OHLCV_IMMUTABLE: u64 = 20;
 pub const ROLLING_CAPACITY: usize = 3;
 
 /// Event times are sampled far finer than this, so flooring genuinely collapses rows into buckets.
@@ -296,7 +296,7 @@ impl TumblingRegistration for MinTumbling {
 }
 
 /// Open/high/low/close over a bounded-lateness window. The slot drives aging, so events more
-/// than `OHLCV_AMENDABLE` behind the window high-water mark into the O(1) scalar.
+/// than `OHLCV_IMMUTABLE` behind the window high-water mark into the O(1) scalar.
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, HeapSize)]
 pub struct OhlcvAcc {
@@ -308,9 +308,9 @@ pub struct OhlcvAcc {
 impl Default for OhlcvAcc {
 	fn default() -> Self {
 		Self {
-			high: SealingMax::amendable(millis(OHLCV_AMENDABLE)),
-			low: SealingMin::amendable(millis(OHLCV_AMENDABLE)),
-			ends: SealingEndpoint::amendable(millis(OHLCV_AMENDABLE)),
+			high: SealingMax::immutable(millis(OHLCV_IMMUTABLE)),
+			low: SealingMin::immutable(millis(OHLCV_IMMUTABLE)),
+			ends: SealingEndpoint::immutable(millis(OHLCV_IMMUTABLE)),
 		}
 	}
 }

@@ -31,13 +31,13 @@ impl<C: Slot, V> Default for SealingEndpoint<C, V> {
 }
 
 impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
-	pub fn amendable(amendable: SlotSpan<C>) -> Self {
-		Self::maybe_amendable(Some(amendable))
+	pub fn immutable(immutable: SlotSpan<C>) -> Self {
+		Self::maybe_immutable(Some(immutable))
 	}
 
-	pub fn maybe_amendable(amendable: Option<SlotSpan<C>>) -> Self {
+	pub fn maybe_immutable(immutable: Option<SlotSpan<C>>) -> Self {
 		Self {
-			base: SealingBase::maybe_amendable(amendable),
+			base: SealingBase::maybe_immutable(immutable),
 			sealed_open: None,
 			sealed_close: None,
 		}
@@ -131,7 +131,7 @@ mod tests {
 
 	#[test]
 	fn sealing_endpoint_freezes_open_and_tracks_live_close() {
-		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
+		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
 		accumulator.add(&(at_millis(0), 100));
 		accumulator.add(&(at_millis(5), 200));
 		accumulator.add(&(at_millis(12), 300));
@@ -159,7 +159,7 @@ mod tests {
 
 	#[test]
 	fn sealing_endpoint_default_open_moves_when_the_earliest_row_is_retracted() {
-		// Without an amendable span the open is never frozen, so retracting the earliest row must promote the next.
+		// Without an immutable span the open is never frozen, so retracting the earliest row must promote the next.
 		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::default();
 		accumulator.add(&(at_millis(0), 100));
 		accumulator.add(&(at_millis(5), 200));
@@ -180,7 +180,7 @@ mod tests {
 	fn sealing_endpoint_close_is_the_latest_surviving_row_not_the_open() {
 		// Only the earliest sealed coordinate is kept, so retracting the live tail must never make close report
 		// the window's first value as its last.
-		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
+		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
 		accumulator.add(&(at_millis(0), 1));
 		accumulator.add(&(at_millis(5), 2));
 		accumulator.add(&(at_millis(20), 3));
@@ -194,10 +194,10 @@ mod tests {
 	fn sealing_endpoint_matches_the_unsealed_arm_for_in_order_adds() {
 		// Freezing the open and replaying the tail must reproduce exactly what retaining everything gives.
 		assert_arms_agree(
-			SealingEndpoint::<DateTime, i64>::amendable(millis(5)),
+			SealingEndpoint::<DateTime, i64>::immutable(millis(5)),
 			SealingEndpoint::<DateTime, i64>::default(),
 			&[Op::Add((at_millis(0), 1)), Op::Add((at_millis(10), 2)), Op::Add((at_millis(20), 3))],
-			"an amendable span must not change the endpoints when every row arrives in order",
+			"an immutable span must not change the endpoints when every row arrives in order",
 		);
 	}
 
@@ -205,10 +205,10 @@ mod tests {
 	fn sealing_endpoint_absorb_keeps_a_branch_open_that_predates_the_seal_line() {
 		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not
 		// swallow the other branch.
-		let mut left: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
+		let mut left: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
 		left.add(&(at_millis(0), 1));
 
-		let mut right: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
+		let mut right: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
 		right.add(&(at_millis(50), 5));
 		right.add(&(at_millis(70), 7));
 
@@ -223,7 +223,7 @@ mod tests {
 
 	#[test]
 	fn sealing_endpoint_roundtrip() {
-		let mut ep: SealingEndpoint<DateTime, i64> = SealingEndpoint::amendable(millis(10));
+		let mut ep: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
 		ep.add(&(at_millis(0), 100));
 		ep.add(&(at_millis(12), 300));
 		let bytes = ep.encode_state(DateTime::EPOCH).expect("encode");

@@ -355,7 +355,7 @@ pub fn apply_tumbling_engine(
 	let groups = intern_batch(host, &arrival)?;
 
 	let engine_config = operator.engine_config();
-	let engine_amendable = operator.amendable();
+	let engine_immutable = operator.immutable();
 	let expiry_anchor = if operator.is_count_based() {
 		ExpiryAnchor::Unindexed
 	} else {
@@ -372,7 +372,7 @@ pub fn apply_tumbling_engine(
 		&groups,
 		&kinds,
 		engine_config,
-		engine_amendable,
+		engine_immutable,
 		expiry_anchor,
 	)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
@@ -603,7 +603,7 @@ pub fn apply_sliding_engine(
 	let groups = intern_batch(host, &arrival)?;
 
 	let engine_config = operator.engine_config();
-	let engine_amendable = operator.amendable();
+	let engine_immutable = operator.immutable();
 	let expiry_anchor = if operator.is_count_based() {
 		ExpiryAnchor::Unindexed
 	} else {
@@ -620,7 +620,7 @@ pub fn apply_sliding_engine(
 		&groups,
 		&kinds,
 		engine_config,
-		engine_amendable,
+		engine_immutable,
 		expiry_anchor,
 	)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
@@ -853,7 +853,7 @@ pub fn apply_session_engine(
 	let groups = intern_batch(host, &arrival)?;
 
 	let engine_config = operator.engine_config();
-	let engine_amendable = operator.amendable();
+	let engine_immutable = operator.immutable();
 	let diffs = finish_tumbling_engine(
 		&mut operator.core,
 		host,
@@ -865,7 +865,7 @@ pub fn apply_session_engine(
 		&groups,
 		&kinds,
 		engine_config,
-		engine_amendable,
+		engine_immutable,
 		ExpiryAnchor::LastEvent,
 	)?;
 

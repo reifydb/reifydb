@@ -40,7 +40,7 @@ pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
 		runtime_context: runtime,
 		routines: routines(),
 		lateness: spec.lateness,
-		amendable: None,
+		immutable: None,
 		ctx: Arc::new(FlowContext::default()),
 	})
 }

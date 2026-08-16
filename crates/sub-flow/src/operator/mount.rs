@@ -228,7 +228,7 @@ mod tests {
 
 	#[test]
 	fn a_mounted_guest_forwards_its_lateness_span() {
-		// A mount that swallows the lateness span claims a frontier covering buckets still amendable.
+		// A mount that swallows the lateness span claims a frontier covering buckets still immutable.
 		let mounted = mount(SealProbe(Some(65_000)), NODE, &[]);
 
 		assert_eq!(HostOperator::lateness_span(&*mounted), Some(Duration::from_milliseconds(65_000).unwrap()));
@@ -236,7 +236,7 @@ mod tests {
 
 	#[test]
 	fn a_mounted_guest_reports_no_lateness_span_for_a_zero_span() {
-		// A zero span seals instantly, claiming a frontier over buckets that are still amendable.
+		// A zero span seals instantly, claiming a frontier over buckets that are still immutable.
 		let mounted = mount(SealProbe(Some(0)), NODE, &[]);
 
 		assert_eq!(HostOperator::lateness_span(&*mounted), None);

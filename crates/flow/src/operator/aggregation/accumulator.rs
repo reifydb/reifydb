@@ -89,15 +89,15 @@ pub enum AggregateSlot {
 	Last(SealingEndpoint<WindowSlotKey, Value>),
 }
 
-fn endpoint(amendable: Option<Duration>) -> SealingEndpoint<WindowSlotKey, Value> {
-	match amendable {
-		Some(amendable) => SealingEndpoint::amendable(amendable),
+fn endpoint(immutable: Option<Duration>) -> SealingEndpoint<WindowSlotKey, Value> {
+	match immutable {
+		Some(immutable) => SealingEndpoint::immutable(immutable),
 		None => SealingEndpoint::default(),
 	}
 }
 
 impl AggregateSlot {
-	fn empty(kind: SlotKind, amendable: Option<Duration>) -> Self {
+	fn empty(kind: SlotKind, immutable: Option<Duration>) -> Self {
 		match kind {
 			SlotKind::Count {
 				count_star,
@@ -117,16 +117,16 @@ impl AggregateSlot {
 				compensation: 0.0,
 				seen_negative: false,
 			},
-			SlotKind::Min => match amendable {
-				Some(amendable) => AggregateSlot::MinSealed(SealingMin::amendable(amendable)),
+			SlotKind::Min => match immutable {
+				Some(immutable) => AggregateSlot::MinSealed(SealingMin::immutable(immutable)),
 				None => AggregateSlot::Min(Multiset::default()),
 			},
-			SlotKind::Max => match amendable {
-				Some(amendable) => AggregateSlot::MaxSealed(SealingMax::amendable(amendable)),
+			SlotKind::Max => match immutable {
+				Some(immutable) => AggregateSlot::MaxSealed(SealingMax::immutable(immutable)),
 				None => AggregateSlot::Max(Multiset::default()),
 			},
-			SlotKind::First => AggregateSlot::First(endpoint(amendable)),
-			SlotKind::Last => AggregateSlot::Last(endpoint(amendable)),
+			SlotKind::First => AggregateSlot::First(endpoint(immutable)),
+			SlotKind::Last => AggregateSlot::Last(endpoint(immutable)),
 		}
 	}
 
@@ -503,9 +503,9 @@ impl HeapSize for RowAccumulator {
 }
 
 impl RowAccumulator {
-	pub fn new(kinds: &[SlotKind], amendable: Option<Duration>) -> Self {
+	pub fn new(kinds: &[SlotKind], immutable: Option<Duration>) -> Self {
 		Self {
-			slots: kinds.iter().map(|k| AggregateSlot::empty(*k, amendable)).collect(),
+			slots: kinds.iter().map(|k| AggregateSlot::empty(*k, immutable)).collect(),
 		}
 	}
 
@@ -521,14 +521,14 @@ impl RowAccumulator {
 		}
 	}
 
-	pub fn invertible(kinds: &[SlotKind], amendable: Option<Duration>) -> bool {
+	pub fn invertible(kinds: &[SlotKind], immutable: Option<Duration>) -> bool {
 		kinds.iter().all(|kind| match kind {
 			SlotKind::Count {
 				..
 			}
 			| SlotKind::Sum
 			| SlotKind::Avg => true,
-			SlotKind::Min | SlotKind::Max => amendable.is_none(),
+			SlotKind::Min | SlotKind::Max => immutable.is_none(),
 			SlotKind::First | SlotKind::Last => false,
 		})
 	}
@@ -951,11 +951,11 @@ mod tests {
 	}
 
 	#[test]
-	fn an_amendable_span_seals_aged_min_max_and_drops_late_retraction() {
-		// An entry more than one amendable span behind the high-water mark is folded into the sealed
+	fn an_immutable_span_seals_aged_min_max_and_drops_late_retraction() {
+		// An entry more than one immutable span behind the high-water mark is folded into the sealed
 		// scalar, so retracting it is a no-op: the deliberate memory-vs-exactness trade.
-		let amendable = Duration::from_seconds(5).unwrap();
-		let mut a = RowAccumulator::new(&[SlotKind::Max], Some(amendable));
+		let immutable = Duration::from_seconds(5).unwrap();
+		let mut a = RowAccumulator::new(&[SlotKind::Max], Some(immutable));
 		a.add(&(coord(0), vec![i4(100)])); // becomes sealed once high-water passes 5s
 		a.add(&(coord(10), vec![i4(50)]));
 		assert_eq!(a.finalize(), Some(vec![Value::Int4(100)]), "sealed max still dominates");
@@ -964,17 +964,17 @@ mod tests {
 		assert_eq!(
 			a.finalize(),
 			Some(vec![Value::Int4(100)]),
-			"retraction older than the amendable span is a no-op, so the sealed max survives"
+			"retraction older than the immutable span is a no-op, so the sealed max survives"
 		);
-		// A retraction still inside the amendable window does take effect.
+		// A retraction still inside the immutable window does take effect.
 		a.add(&(coord(12), vec![i4(70)]));
 		a.remove(&(coord(12), vec![i4(70)]));
 		assert_eq!(a.finalize(), Some(vec![Value::Int4(100)]));
 	}
 
 	#[test]
-	fn a_zero_amendable_span_keeps_min_max_exact_under_retraction() {
-		// Without an amendable span, Min/Max use the exact Multiset and a retraction of any prior
+	fn a_zero_immutable_span_keeps_min_max_exact_under_retraction() {
+		// Without an immutable span, Min/Max use the exact Multiset and a retraction of any prior
 		// value is honored regardless of age.
 		let mut a = accumulator(&[SlotKind::Max]);
 		add(&mut a, 0, vec![i4(100)]);
@@ -987,18 +987,18 @@ mod tests {
 	fn sealed_merge_matches_one_combined_accumulator() {
 		// Rolling merges sub-accumulators; a sealed Min/Max/endpoint merge must equal one
 		// accumulator that saw all contributions.
-		let amendable = Duration::from_seconds(60).unwrap();
+		let immutable = Duration::from_seconds(60).unwrap();
 		let kinds = [SlotKind::Min, SlotKind::Max, SlotKind::First, SlotKind::Last];
 		let rows = [(5, 30), (8, 10), (3, 50), (12, 20)];
-		let mut whole = RowAccumulator::new(&kinds, Some(amendable));
+		let mut whole = RowAccumulator::new(&kinds, Some(immutable));
 		for (i, (v, _)) in rows.iter().enumerate() {
 			whole.add(&(coord((i as u64) * 10), vec![i4(*v), i4(*v), i4(*v), i4(*v)]));
 		}
-		let mut left = RowAccumulator::new(&kinds, Some(amendable));
+		let mut left = RowAccumulator::new(&kinds, Some(immutable));
 		for (i, (v, _)) in rows[..2].iter().enumerate() {
 			left.add(&(coord((i as u64) * 10), vec![i4(*v), i4(*v), i4(*v), i4(*v)]));
 		}
-		let mut right = RowAccumulator::new(&kinds, Some(amendable));
+		let mut right = RowAccumulator::new(&kinds, Some(immutable));
 		for (i, (v, _)) in rows[2..].iter().enumerate() {
 			right.add(&(coord(((i + 2) as u64) * 10), vec![i4(*v), i4(*v), i4(*v), i4(*v)]));
 		}
@@ -1196,7 +1196,7 @@ mod tests {
 		assert!(RowAccumulator::invertible(&[SlotKind::Min, SlotKind::Max], None));
 		assert!(
 			!RowAccumulator::invertible(&[SlotKind::Min], Some(Duration::from_seconds(60).unwrap())),
-			"an amendable span turns Min/Max into sealed slots, which cannot unmerge"
+			"an immutable span turns Min/Max into sealed slots, which cannot unmerge"
 		);
 		assert!(!RowAccumulator::invertible(&[SlotKind::Sum, SlotKind::First], None));
 		assert!(!RowAccumulator::invertible(&[SlotKind::Last], None));

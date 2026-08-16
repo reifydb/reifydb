@@ -61,7 +61,7 @@ fn harness(kind: WindowKind) -> Harness<WindowOperator> {
 			runtime_context: runtime,
 			routines: routines(),
 			lateness: Duration::default(),
-			amendable: None,
+			immutable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})
 	})

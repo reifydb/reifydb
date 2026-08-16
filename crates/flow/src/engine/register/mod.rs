@@ -260,7 +260,7 @@ impl FlowEngineInner {
 				group_by,
 				aggregations,
 				lateness,
-				amendable,
+				immutable,
 			} => self.add_window(
 				operator_id,
 				&inputs,
@@ -268,7 +268,7 @@ impl FlowEngineInner {
 				group_by,
 				aggregations,
 				lateness,
-				amendable,
+				immutable,
 				ctx,
 			)?,
 		}

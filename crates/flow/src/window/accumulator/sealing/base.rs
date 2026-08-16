@@ -14,7 +14,7 @@ use crate::{
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SealingBase<C: Slot, V> {
-	amendable: Option<SlotSpan<C>>,
+	immutable: Option<SlotSpan<C>>,
 	high_water: Option<C>,
 	sealed_high: Option<C>,
 	sealed_count: u64,
@@ -24,7 +24,7 @@ pub struct SealingBase<C: Slot, V> {
 impl<C: Slot, V> Default for SealingBase<C, V> {
 	fn default() -> Self {
 		Self {
-			amendable: None,
+			immutable: None,
 			high_water: None,
 			sealed_high: None,
 			sealed_count: 0,
@@ -34,13 +34,13 @@ impl<C: Slot, V> Default for SealingBase<C, V> {
 }
 
 impl<C: Slot, V> SealingBase<C, V> {
-	pub fn amendable(amendable: SlotSpan<C>) -> Self {
-		Self::maybe_amendable(Some(amendable))
+	pub fn immutable(immutable: SlotSpan<C>) -> Self {
+		Self::maybe_immutable(Some(immutable))
 	}
 
-	pub fn maybe_amendable(amendable: Option<SlotSpan<C>>) -> Self {
+	pub fn maybe_immutable(immutable: Option<SlotSpan<C>>) -> Self {
 		Self {
-			amendable,
+			immutable,
 			high_water: None,
 			sealed_high: None,
 			sealed_count: 0,
@@ -58,7 +58,7 @@ impl<C: Slot, V> SealingBase<C, V> {
 		});
 		self.tail.insert(coord, value);
 		let mut aged = Vec::new();
-		let (Some(hw), Some(l)) = (self.high_water, self.amendable) else {
+		let (Some(hw), Some(l)) = (self.high_water, self.immutable) else {
 			return aged;
 		};
 		while let Some((&c, _)) = self.tail.iter().next() {
@@ -135,12 +135,12 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn a_coordinate_exactly_one_amendable_span_behind_the_high_water_stays_live() {
+	fn a_coordinate_exactly_one_immutable_span_behind_the_high_water_stays_live() {
 		// The boundary is load-bearing: sealing it would discard a retraction that is still admissible.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::amendable(millis(10));
+		let mut base: SealingBase<DateTime, i64> = SealingBase::immutable(millis(10));
 		base.push(at_millis(0), 1);
 		base.push(at_millis(10), 2);
-		assert_eq!(base.sealed_count(), 0, "a coordinate exactly at the bound is still amendable");
+		assert_eq!(base.sealed_count(), 0, "a coordinate exactly at the bound is still immutable");
 		assert!(base.tail().contains_key(&at_millis(0)));
 
 		base.push(at_millis(11), 3);
@@ -151,7 +151,7 @@ mod tests {
 	#[test]
 	fn a_corrected_coordinate_that_seals_twice_is_still_one_observation() {
 		// A repeat of an already sealed coordinate is that row arriving again, never a second one.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::amendable(millis(1));
+		let mut base: SealingBase<DateTime, i64> = SealingBase::immutable(millis(1));
 		base.push(at_millis(0), 10);
 		base.push(at_millis(2), 20);
 		assert_eq!(base.len(), 2);
@@ -163,7 +163,7 @@ mod tests {
 	#[test]
 	fn a_row_below_the_seal_line_is_dropped_while_one_just_above_it_still_counts() {
 		// The fast path assumes ordered arrival, so a row at or under the highest sealed coordinate is lost.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::amendable(millis(1));
+		let mut base: SealingBase<DateTime, i64> = SealingBase::immutable(millis(1));
 		base.push(at_millis(0), 1);
 		base.push(at_millis(10), 2);
 		assert_eq!(base.sealed_count(), 1);
@@ -180,7 +180,7 @@ mod tests {
 	#[test]
 	fn removing_the_row_that_set_the_high_water_does_not_lower_the_seal_line() {
 		// The seal line is monotonic: a retraction of the newest row must never un-seal what it aged out.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::amendable(millis(10));
+		let mut base: SealingBase<DateTime, i64> = SealingBase::immutable(millis(10));
 		base.push(at_millis(0), 1);
 		base.push(at_millis(50), 2);
 		assert_eq!(base.sealed_count(), 1);
@@ -196,13 +196,13 @@ mod tests {
 	#[test]
 	fn absorbing_a_disjoint_branch_keeps_every_observation_from_both_sides() {
 		// absorb takes coordinate-disjoint branches, so dropping the other side's sealed total undercounts it.
-		let mut left: SealingBase<DateTime, i64> = SealingBase::amendable(millis(10));
+		let mut left: SealingBase<DateTime, i64> = SealingBase::immutable(millis(10));
 		left.push(at_millis(0), 1);
 		left.push(at_millis(50), 2);
 		assert_eq!(left.sealed_count(), 1);
 		assert_eq!(left.len(), 2);
 
-		let mut right: SealingBase<DateTime, i64> = SealingBase::amendable(millis(10));
+		let mut right: SealingBase<DateTime, i64> = SealingBase::immutable(millis(10));
 		right.push(at_millis(100), 3);
 		right.push(at_millis(200), 4);
 		assert_eq!(right.sealed_count(), 1);
@@ -232,7 +232,7 @@ mod tests {
 	}
 
 	#[test]
-	fn without_an_amendable_span_no_distance_is_far_enough_to_seal() {
+	fn without_an_immutable_span_no_distance_is_far_enough_to_seal() {
 		// Every differential test compares against this arm, so it must retain every coordinate it is given.
 		let mut base: SealingBase<DateTime, i64> = SealingBase::default();
 		base.push(at_millis(0), 1);

@@ -85,8 +85,7 @@ fn run_ohlcv(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_output_key(["group", "window_start"])
 		.with_time_column("slot")
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH"]))
-		// Slots span more than WINDOW so some events age past OHLCV_AMENDABLE and reach the
-		// sealing path.
+		// Slots span more than WINDOW so some events age past OHLCV_IMMUTABLE and reach the sealing path.
 		.with_column("slot", samplers::u64_range(0..180))
 		.with_column("price", price)
 		.with_scenario(scenario)

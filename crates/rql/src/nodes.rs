@@ -909,7 +909,7 @@ pub struct WindowNode {
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
 	pub lateness: Duration,
-	pub amendable: Option<Duration>,
+	pub immutable: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]

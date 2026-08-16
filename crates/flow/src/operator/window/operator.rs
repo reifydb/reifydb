@@ -54,7 +54,7 @@ pub struct WindowConfig {
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
 	pub lateness: Duration,
-	pub amendable: Option<Duration>,
+	pub immutable: Option<Duration>,
 	pub ctx: Arc<FlowContext>,
 }
 
@@ -68,7 +68,7 @@ pub struct WindowOperator {
 	pub kind: WindowKind,
 
 	pub lateness: Duration,
-	pub amendable: Option<Duration>,
+	pub immutable: Option<Duration>,
 	sealed_drops: SealedDrops,
 	rolling_engine: Option<RollingEngineSlot>,
 	meta: WindowMeta,
@@ -90,7 +90,7 @@ impl WindowOperator {
 			core,
 			kind: config.kind,
 			lateness: config.lateness,
-			amendable: config.amendable,
+			immutable: config.immutable,
 			sealed_drops: SealedDrops::new(config.operator, "mutations targeting sealed windows"),
 			rolling_engine: None,
 			meta: WindowMeta::new(),
@@ -125,11 +125,11 @@ impl WindowOperator {
 		self.lateness().milliseconds().unwrap_or(0) as u64
 	}
 
-	pub fn amendable(&self) -> Option<Duration> {
+	pub fn immutable(&self) -> Option<Duration> {
 		if self.is_count_based() {
 			None
 		} else {
-			self.amendable
+			self.immutable
 		}
 	}
 

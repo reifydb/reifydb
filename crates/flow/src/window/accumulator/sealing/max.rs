@@ -29,13 +29,13 @@ impl<C: Slot, V: Ord> Default for SealingMax<C, V> {
 }
 
 impl<C: Slot, V: Ord + Clone> SealingMax<C, V> {
-	pub fn amendable(amendable: SlotSpan<C>) -> Self {
-		Self::maybe_amendable(Some(amendable))
+	pub fn immutable(immutable: SlotSpan<C>) -> Self {
+		Self::maybe_immutable(Some(immutable))
 	}
 
-	pub fn maybe_amendable(amendable: Option<SlotSpan<C>>) -> Self {
+	pub fn maybe_immutable(immutable: Option<SlotSpan<C>>) -> Self {
 		Self {
-			base: SealingBase::maybe_amendable(amendable),
+			base: SealingBase::maybe_immutable(immutable),
 			sealed: None,
 		}
 	}
@@ -117,7 +117,7 @@ mod tests {
 
 	#[test]
 	fn sealing_max_seals_aged_and_keeps_recent_tail_removal_safe() {
-		let mut accumulator: SealingMax<DateTime, i64> = SealingMax::amendable(millis(10));
+		let mut accumulator: SealingMax<DateTime, i64> = SealingMax::immutable(millis(10));
 		accumulator.add(&(at_millis(0), 5));
 		accumulator.add(&(at_millis(5), 8));
 		accumulator.add(&(at_millis(12), 3));
@@ -161,7 +161,7 @@ mod tests {
 
 	#[test]
 	fn sealing_max_default_absorb_leaves_nothing_sealed() {
-		// absorb is the only path that can seal without an amendable span, and a sealed maximum never retracts.
+		// absorb is the only path that can seal without an immutable span, and a sealed maximum never retracts.
 		let mut left: SealingMax<DateTime, i64> = SealingMax::default();
 		left.add(&(at_millis(0), 9));
 		let mut right: SealingMax<DateTime, i64> = SealingMax::default();
@@ -177,9 +177,9 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_max_with_an_amendable_span_beyond_the_data_matches_the_unsealed_arm() {
+	fn sealing_max_with_an_immutable_span_beyond_the_data_matches_the_unsealed_arm() {
 		// Nothing ages in either arm, so any divergence is an aging rule that fired when it must not.
-		let mut sealed: SealingMax<DateTime, i64> = SealingMax::amendable(millis(1_000));
+		let mut sealed: SealingMax<DateTime, i64> = SealingMax::immutable(millis(1_000));
 		let mut unsealed: SealingMax<DateTime, i64> = SealingMax::default();
 		for (coord, value) in [(0, 5i64), (10, 9), (20, 7)] {
 			sealed.add(&(at_millis(coord), value));
@@ -196,7 +196,7 @@ mod tests {
 	fn sealing_max_matches_the_unsealed_arm_for_in_order_adds() {
 		// Sealing is a memory optimisation over adds; without a retraction it must not move the answer.
 		assert_arms_agree(
-			SealingMax::<DateTime, i64>::amendable(millis(5)),
+			SealingMax::<DateTime, i64>::immutable(millis(5)),
 			SealingMax::<DateTime, i64>::default(),
 			&[
 				Op::Add((at_millis(0), 9)),
@@ -204,7 +204,7 @@ mod tests {
 				Op::Add((at_millis(20), 7)),
 				Op::Add((at_millis(30), 4)),
 			],
-			"an amendable span must not change the maximum when every row arrives in order",
+			"an immutable span must not change the maximum when every row arrives in order",
 		);
 	}
 
@@ -212,10 +212,10 @@ mod tests {
 	fn sealing_max_absorb_keeps_a_branch_maximum_that_predates_the_seal_line() {
 		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not
 		// swallow the other branch.
-		let mut left: SealingMax<DateTime, i64> = SealingMax::amendable(millis(10));
+		let mut left: SealingMax<DateTime, i64> = SealingMax::immutable(millis(10));
 		left.add(&(at_millis(0), 9));
 
-		let mut right: SealingMax<DateTime, i64> = SealingMax::amendable(millis(10));
+		let mut right: SealingMax<DateTime, i64> = SealingMax::immutable(millis(10));
 		right.add(&(at_millis(50), 1));
 		right.add(&(at_millis(70), 3));
 
@@ -230,7 +230,7 @@ mod tests {
 
 	#[test]
 	fn sealing_max_roundtrip() {
-		let mut mx: SealingMax<DateTime, i64> = SealingMax::amendable(millis(10));
+		let mut mx: SealingMax<DateTime, i64> = SealingMax::immutable(millis(10));
 		mx.add(&(at_millis(0), 5));
 		mx.add(&(at_millis(12), 8));
 		let bytes = mx.encode_state(DateTime::EPOCH).expect("encode");

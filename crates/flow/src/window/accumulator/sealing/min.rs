@@ -29,13 +29,13 @@ impl<C: Slot, V: Ord> Default for SealingMin<C, V> {
 }
 
 impl<C: Slot, V: Ord + Clone> SealingMin<C, V> {
-	pub fn amendable(amendable: SlotSpan<C>) -> Self {
-		Self::maybe_amendable(Some(amendable))
+	pub fn immutable(immutable: SlotSpan<C>) -> Self {
+		Self::maybe_immutable(Some(immutable))
 	}
 
-	pub fn maybe_amendable(amendable: Option<SlotSpan<C>>) -> Self {
+	pub fn maybe_immutable(immutable: Option<SlotSpan<C>>) -> Self {
 		Self {
-			base: SealingBase::maybe_amendable(amendable),
+			base: SealingBase::maybe_immutable(immutable),
 			sealed: None,
 		}
 	}
@@ -116,7 +116,7 @@ mod tests {
 
 	#[test]
 	fn sealing_min_seals_aged_extreme() {
-		let mut accumulator: SealingMin<DateTime, i64> = SealingMin::amendable(millis(10));
+		let mut accumulator: SealingMin<DateTime, i64> = SealingMin::immutable(millis(10));
 		accumulator.add(&(at_millis(0), 2));
 		accumulator.add(&(at_millis(5), 9));
 		accumulator.add(&(at_millis(12), 7));
@@ -127,7 +127,7 @@ mod tests {
 
 	#[test]
 	fn sealing_min_default_never_seals_and_is_fully_invertible() {
-		// Without an amendable span the minimum is never frozen, so retracting it must reveal the next one.
+		// Without an immutable span the minimum is never frozen, so retracting it must reveal the next one.
 		assert_add_remove_is_inverse::<SealingMin<DateTime, i64>>(
 			&[(at_millis(1), 10i64), (at_millis(2), 20)],
 			(at_millis(3), 30i64),
@@ -157,7 +157,7 @@ mod tests {
 
 	#[test]
 	fn sealing_min_default_absorb_leaves_nothing_sealed() {
-		// absorb is the only path that can seal without an amendable span, and a sealed minimum never retracts.
+		// absorb is the only path that can seal without an immutable span, and a sealed minimum never retracts.
 		let mut left: SealingMin<DateTime, i64> = SealingMin::default();
 		left.add(&(at_millis(0), 5));
 		let mut right: SealingMin<DateTime, i64> = SealingMin::default();
@@ -173,9 +173,9 @@ mod tests {
 	}
 
 	#[test]
-	fn sealing_min_with_an_amendable_span_beyond_the_data_matches_the_unsealed_arm() {
+	fn sealing_min_with_an_immutable_span_beyond_the_data_matches_the_unsealed_arm() {
 		// Nothing ages in either arm, so any divergence is an aging rule that fired when it must not.
-		let mut sealed: SealingMin<DateTime, i64> = SealingMin::amendable(millis(1_000));
+		let mut sealed: SealingMin<DateTime, i64> = SealingMin::immutable(millis(1_000));
 		let mut unsealed: SealingMin<DateTime, i64> = SealingMin::default();
 		for (coord, value) in [(0, 5i64), (10, 2), (20, 7)] {
 			sealed.add(&(at_millis(coord), value));
@@ -192,7 +192,7 @@ mod tests {
 	fn sealing_min_matches_the_unsealed_arm_for_in_order_adds() {
 		// Sealing is a memory optimisation over adds; without a retraction it must not move the answer.
 		assert_arms_agree(
-			SealingMin::<DateTime, i64>::amendable(millis(5)),
+			SealingMin::<DateTime, i64>::immutable(millis(5)),
 			SealingMin::<DateTime, i64>::default(),
 			&[
 				Op::Add((at_millis(0), 9)),
@@ -200,7 +200,7 @@ mod tests {
 				Op::Add((at_millis(20), 7)),
 				Op::Add((at_millis(30), 4)),
 			],
-			"an amendable span must not change the minimum when every row arrives in order",
+			"an immutable span must not change the minimum when every row arrives in order",
 		);
 	}
 
@@ -213,7 +213,7 @@ mod tests {
 			Op::Remove((at_millis(0), 5)),
 			Op::Remove((at_millis(50), 8)),
 		];
-		let mut sealed: SealingMin<DateTime, i64> = SealingMin::amendable(millis(10));
+		let mut sealed: SealingMin<DateTime, i64> = SealingMin::immutable(millis(10));
 		drive(&mut sealed, &ops);
 		let mut unsealed: SealingMin<DateTime, i64> = SealingMin::default();
 		drive(&mut unsealed, &ops);
@@ -227,10 +227,10 @@ mod tests {
 	fn sealing_min_absorb_keeps_a_branch_minimum_that_predates_the_seal_line() {
 		// absorb combines two parallel histories, never late arrivals, so the receiver's seal line must not
 		// swallow the other branch.
-		let mut left: SealingMin<DateTime, i64> = SealingMin::amendable(millis(10));
+		let mut left: SealingMin<DateTime, i64> = SealingMin::immutable(millis(10));
 		left.add(&(at_millis(0), 5));
 
-		let mut right: SealingMin<DateTime, i64> = SealingMin::amendable(millis(10));
+		let mut right: SealingMin<DateTime, i64> = SealingMin::immutable(millis(10));
 		right.add(&(at_millis(50), 7));
 		right.add(&(at_millis(70), 9));
 

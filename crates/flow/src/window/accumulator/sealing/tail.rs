@@ -27,9 +27,9 @@ impl<C: Slot, V> Default for SealingTail<C, V> {
 }
 
 impl<C: Slot, V: Clone> SealingTail<C, V> {
-	pub fn amendable(amendable: SlotSpan<C>) -> Self {
+	pub fn immutable(immutable: SlotSpan<C>) -> Self {
 		Self {
-			base: SealingBase::amendable(amendable),
+			base: SealingBase::immutable(immutable),
 		}
 	}
 
@@ -71,9 +71,9 @@ impl<C: Slot, V> Default for TailAccumulator<C, V> {
 }
 
 impl<C: Slot, V: Clone> TailAccumulator<C, V> {
-	pub fn amendable(amendable: SlotSpan<C>) -> Self {
+	pub fn immutable(immutable: SlotSpan<C>) -> Self {
 		Self {
-			events: SealingTail::amendable(amendable),
+			events: SealingTail::immutable(immutable),
 		}
 	}
 }
@@ -123,7 +123,7 @@ mod tests {
 
 	#[test]
 	fn sealing_tail_drops_aged_keeps_recent() {
-		let mut tail: SealingTail<DateTime, i64> = SealingTail::amendable(millis(10));
+		let mut tail: SealingTail<DateTime, i64> = SealingTail::immutable(millis(10));
 		tail.add(at_millis(0), 1);
 		tail.add(at_millis(5), 2);
 		tail.add(at_millis(12), 3);
@@ -139,12 +139,12 @@ mod tests {
 		let mut tail: SealingTail<DateTime, i64> = SealingTail::default();
 		tail.add(at_millis(0), 1);
 		tail.add(at_millis(100), 2);
-		assert_eq!(tail.tail().len(), 2, "with no amendable bound nothing is dropped");
+		assert_eq!(tail.tail().len(), 2, "with no immutable bound nothing is dropped");
 	}
 
 	#[test]
 	fn sealing_tail_roundtrip() {
-		let mut tail: SealingTail<DateTime, i64> = SealingTail::amendable(millis(10));
+		let mut tail: SealingTail<DateTime, i64> = SealingTail::immutable(millis(10));
 		tail.add(at_millis(0), 1);
 		tail.add(at_millis(12), 3);
 		let bytes = tail.encode_state(DateTime::EPOCH).expect("encode");
@@ -186,8 +186,8 @@ mod tests {
 	}
 
 	#[test]
-	fn tail_acc_with_amendable_drops_aged_from_finalize() {
-		let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::amendable(millis(10));
+	fn tail_acc_with_immutable_drops_aged_from_finalize() {
+		let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::immutable(millis(10));
 		accumulator.add(&(at_millis(0), 10));
 		accumulator.add(&(at_millis(5), 20));
 		accumulator.add(&(at_millis(12), 30));
@@ -208,7 +208,7 @@ mod tests {
 			Op::Add((at_millis(12), 30)),
 			Op::Add((at_millis(14), 40)),
 		];
-		let mut sealed: TailAccumulator<DateTime, i64> = TailAccumulator::amendable(millis(10));
+		let mut sealed: TailAccumulator<DateTime, i64> = TailAccumulator::immutable(millis(10));
 		drive(&mut sealed, &ops);
 		let mut unsealed: TailAccumulator<DateTime, i64> = TailAccumulator::default();
 		drive(&mut unsealed, &ops);
@@ -222,10 +222,10 @@ mod tests {
 	}
 
 	#[test]
-	fn tail_acc_with_an_amendable_span_beyond_the_data_matches_the_unsealed_arm() {
+	fn tail_acc_with_an_immutable_span_beyond_the_data_matches_the_unsealed_arm() {
 		// Nothing ages in either arm, so any divergence is an aging rule that fired when it must not.
 		assert_arms_agree(
-			TailAccumulator::<DateTime, i64>::amendable(millis(1_000)),
+			TailAccumulator::<DateTime, i64>::immutable(millis(1_000)),
 			TailAccumulator::<DateTime, i64>::default(),
 			&[
 				Op::Add((at_millis(0), 10)),
@@ -239,7 +239,7 @@ mod tests {
 
 	#[test]
 	fn tail_acc_roundtrip() {
-		let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::amendable(millis(10));
+		let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::immutable(millis(10));
 		accumulator.add(&(at_millis(0), 1));
 		accumulator.add(&(at_millis(12), 3));
 		let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");

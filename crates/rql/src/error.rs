@@ -113,10 +113,10 @@ pub enum RqlError {
 		fragment: Fragment,
 	},
 
-	#[error("Amendable must be smaller than lateness")]
-	WindowAmendableNotSmallerThanLateness {
+	#[error("Immutable must be smaller than lateness")]
+	WindowImmutableNotSmallerThanLateness {
 		fragment: Fragment,
-		amendable_value: String,
+		immutable_value: String,
 		lateness_value: String,
 	},
 
@@ -626,23 +626,23 @@ impl IntoDiagnostic for RqlError {
 				operator_chain: None,
 			},
 
-			RqlError::WindowAmendableNotSmallerThanLateness { fragment, amendable_value, lateness_value } => Diagnostic {
+			RqlError::WindowImmutableNotSmallerThanLateness { fragment, immutable_value, lateness_value } => Diagnostic {
 				code: "WINDOW_009".to_string(),
 				rql: None,
 				message: format!(
-					"Amendable ({}) must be smaller than lateness ({})",
-					amendable_value, lateness_value
+					"Immutable ({}) must be smaller than lateness ({})",
+					immutable_value, lateness_value
 				),
 				column: None,
 				fragment,
-				label: Some("amendable too large".to_string()),
+				label: Some("immutable too large".to_string()),
 				help: Some(
-					"Reduce amendable below lateness, or drop it to keep every row for the life of the window".to_string(),
+					"Reduce immutable below lateness, or drop it to keep every row for the life of the window".to_string(),
 				),
 				notes: vec![
-					"Lateness already bounds the window, so an amendable at or beyond it promises nothing".to_string(),
-					"Amendable is how long a row may still be updated or deleted, lateness is how long a late insert is still accepted".to_string(),
-					"Example: WINDOW TUMBLING { count(*) } WITH { duration: 1h, lateness: 20s, amendable: 15s }".to_string(),
+					"Lateness already bounds the window, so an immutable at or beyond it promises nothing".to_string(),
+					"Immutable is how long a row may still be updated or deleted, lateness is how long a late insert is still accepted".to_string(),
+					"Example: WINDOW TUMBLING { count(*) } WITH { duration: 1h, lateness: 20s, immutable: 15s }".to_string(),
 				],
 				cause: None,
 				operator_chain: None,

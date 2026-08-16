@@ -617,7 +617,7 @@ fn window_harness(kind: WindowKind, lateness: Duration, clock_ms: u64) -> Harnes
 			runtime_context: runtime,
 			routines: routines(),
 			lateness,
-			amendable: None,
+			immutable: None,
 			ctx: Arc::new(FlowContext::default()),
 		})
 	})

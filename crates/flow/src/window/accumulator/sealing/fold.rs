@@ -72,17 +72,17 @@ impl<C: Slot, F: SealFold> Default for SealingFold<C, F> {
 }
 
 impl<C: Slot, F: SealFold> SealingFold<C, F> {
-	pub fn new(amendable: SlotSpan<C>, params: F::Params) -> Self {
-		Self::maybe_amendable(Some(amendable), params)
+	pub fn new(immutable: SlotSpan<C>, params: F::Params) -> Self {
+		Self::maybe_immutable(Some(immutable), params)
 	}
 
-	pub fn not_amendable(params: F::Params) -> Self {
-		Self::maybe_amendable(None, params)
+	pub fn not_immutable(params: F::Params) -> Self {
+		Self::maybe_immutable(None, params)
 	}
 
-	pub fn maybe_amendable(amendable: Option<SlotSpan<C>>, params: F::Params) -> Self {
+	pub fn maybe_immutable(immutable: Option<SlotSpan<C>>, params: F::Params) -> Self {
 		Self {
-			base: SealingBase::maybe_amendable(amendable),
+			base: SealingBase::maybe_immutable(immutable),
 			params,
 			sealed: F::State::default(),
 			last_sealed: None,
@@ -269,15 +269,15 @@ mod tests {
 	#[test]
 	fn sealing_fold_unsealed_is_independent_of_arrival_order() {
 		// Nothing seals, so no distance behind the high water may keep a row out of the fold.
-		let mut forward: SealingFold<DateTime, SumFold> = SealingFold::not_amendable(());
+		let mut forward: SealingFold<DateTime, SumFold> = SealingFold::not_immutable(());
 		forward.add(&(at_millis(0), 10.0));
 		forward.add(&(at_millis(1_000_000), 15.0));
 
-		let mut reversed: SealingFold<DateTime, SumFold> = SealingFold::not_amendable(());
+		let mut reversed: SealingFold<DateTime, SumFold> = SealingFold::not_immutable(());
 		reversed.add(&(at_millis(1_000_000), 15.0));
 		reversed.add(&(at_millis(0), 10.0));
 
-		assert_eq!(forward.sealed_count(), 0, "an amendable span here would make this a sealing test");
+		assert_eq!(forward.sealed_count(), 0, "an immutable span here would make this a sealing test");
 		assert_eq!(reversed.sealed_count(), 0);
 		assert_eq!(reversed.len(), forward.len());
 		assert_eq!(reversed.finalize(), forward.finalize());
@@ -306,14 +306,14 @@ mod tests {
 		// path.
 		assert_arms_agree(
 			SealingFold::<DateTime, AbsPathFold>::new(millis(1), ()),
-			SealingFold::<DateTime, AbsPathFold>::not_amendable(()),
+			SealingFold::<DateTime, AbsPathFold>::not_immutable(()),
 			&[
 				Op::Add((at_millis(0), 10.0)),
 				Op::Add((at_millis(1), 20.0)),
 				Op::Add((at_millis(2), 15.0)),
 				Op::Add((at_millis(3), 40.0)),
 			],
-			"an amendable span must not change the folded path when every row arrives in order",
+			"an immutable span must not change the folded path when every row arrives in order",
 		);
 	}
 
@@ -328,7 +328,7 @@ mod tests {
 		];
 		let mut sealed: SealingFold<DateTime, SumFold> = SealingFold::new(millis(1), ());
 		drive(&mut sealed, &ops);
-		let mut unsealed: SealingFold<DateTime, SumFold> = SealingFold::not_amendable(());
+		let mut unsealed: SealingFold<DateTime, SumFold> = SealingFold::not_immutable(());
 		drive(&mut unsealed, &ops);
 
 		assert_eq!(unsealed.finalize(), Some(67.0), "retaining everything folds all four rows");
@@ -407,8 +407,8 @@ mod tests {
 
 	#[test]
 	fn sealing_fold_unsealed_carries_params_and_never_ages() {
-		// Without an amendable bound nothing seals, so a live removal must still be exact.
-		let mut accumulator: SealingFold<DateTime, ScaledPathFold> = SealingFold::not_amendable(3.0);
+		// Without an immutable bound nothing seals, so a live removal must still be exact.
+		let mut accumulator: SealingFold<DateTime, ScaledPathFold> = SealingFold::not_immutable(3.0);
 		accumulator.add(&(at_millis(0), 10.0));
 		accumulator.add(&(at_millis(100), 20.0));
 		assert_eq!(accumulator.finalize(), Some(30.0));

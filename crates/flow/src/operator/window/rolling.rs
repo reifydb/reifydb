@@ -170,7 +170,7 @@ fn intern_partitions(host: &mut dyn HostContext, touched: &[Hash128]) -> Result<
 }
 
 fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
-	!operator.is_count_based() && RowAccumulator::invertible(kinds, operator.amendable())
+	!operator.is_count_based() && RowAccumulator::invertible(kinds, operator.immutable())
 }
 
 fn counted_row_engine(
@@ -219,11 +219,11 @@ fn combine_rolling<C: RollingDomain>(
 	buffer: &RollingBuffer<C, RowAccumulator>,
 	kinds: &[SlotKind],
 	lag: C::Span,
-	amendable: Option<Duration>,
+	immutable: Option<Duration>,
 ) -> Option<Vec<Value>> {
 	let (&newest, _) = buffer.iter().next_back()?;
 	let aggregate_cutoff = newest.saturating_sub_span(lag);
-	let mut merged = RowAccumulator::new(kinds, amendable);
+	let mut merged = RowAccumulator::new(kinds, immutable);
 	let mut any = false;
 	for (_coord, accumulator) in buffer.range(..=aggregate_cutoff) {
 		merged.merge(accumulator);
@@ -294,7 +294,7 @@ fn apply_rolling<C: RollingDomain>(
 	change: Change,
 ) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let amendable = operator.amendable();
+	let immutable = operator.immutable();
 	let lag = C::lag(operator.rolling_lag());
 
 	let mut buckets: RollingEngineBuckets<C> = BTreeMap::new();
@@ -395,7 +395,7 @@ fn apply_rolling<C: RollingDomain>(
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), store::empty_key()),
-			|| RowAccumulator::new(&kinds, amendable),
+			|| RowAccumulator::new(&kinds, immutable),
 		)?
 	} else {
 		let engine = C::engine(operator, false, lag);
@@ -404,8 +404,8 @@ fn apply_rolling<C: RollingDomain>(
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), store::empty_key()),
-			|| RowAccumulator::new(&kinds, amendable),
-			|_g, buffer| combine_rolling::<C>(buffer, &kinds, lag, amendable),
+			|| RowAccumulator::new(&kinds, immutable),
+			|_g, buffer| combine_rolling::<C>(buffer, &kinds, lag, immutable),
 		)?
 	};
 
@@ -513,7 +513,7 @@ pub fn seal_rolling_engine(
 		return Ok(Vec::new());
 	}
 	let lag = <DateTime as RollingDomain>::lag(operator.rolling_lag());
-	let amendable = operator.amendable();
+	let immutable = operator.immutable();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let ts = fired.at();
 	operator.advance_seal_ledger(host, fired)?;
@@ -530,7 +530,7 @@ pub fn seal_rolling_engine(
 			} else {
 				let engine = <DateTime as RollingDomain>::engine(operator, false, lag);
 				engine.expire_before(host, cutoff, |_g, buffer| {
-					combine_rolling::<DateTime>(buffer, &kinds, lag, amendable)
+					combine_rolling::<DateTime>(buffer, &kinds, lag, immutable)
 				})?
 			}
 		}

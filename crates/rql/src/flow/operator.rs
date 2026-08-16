@@ -98,7 +98,7 @@ pub enum OperatorDef {
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
 		lateness: Duration,
-		amendable: Option<Duration>,
+		immutable: Option<Duration>,
 	},
 }
 

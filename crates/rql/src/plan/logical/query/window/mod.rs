@@ -12,7 +12,7 @@ use crate::{
 	ast::ast::{
 		Ast,
 		Ast::Literal,
-		AstLiteral::{Duration as DurationLiteral, Number},
+		AstLiteral::{Boolean, Duration as DurationLiteral, Number},
 		AstWindow, AstWindowConfig, AstWindowKind,
 	},
 	diagnostic::AstError,
@@ -22,7 +22,7 @@ use crate::{
 	plan::logical::{Compiler, LogicalPlan},
 };
 
-const WINDOW_CONFIG_KEYS: &str = "duration, count, slide, gap, lag, lateness, or amendable";
+const WINDOW_CONFIG_KEYS: &str = "duration, count, slide, gap, lag, lateness, or immutable";
 
 #[derive(Debug, Clone)]
 struct Declared<T> {
@@ -45,7 +45,7 @@ struct ParsedConfig {
 	pub gap: Option<Declared<Duration>>,
 	pub lag: Option<Declared<Duration>>,
 	pub lateness: Option<Declared<Duration>>,
-	pub amendable: Option<Declared<Duration>>,
+	pub immutable: Option<Declared<Duration>>,
 	pub window: Fragment,
 }
 
@@ -55,7 +55,7 @@ pub struct WindowNode {
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
 	pub lateness: Duration,
-	pub amendable: Option<Duration>,
+	pub immutable: Option<Duration>,
 	pub rql: String,
 }
 
@@ -68,14 +68,14 @@ impl<'bump> Compiler<'bump> {
 		let aggregations = Self::compile_expressions(ast.aggregations)?;
 		let kind = Self::build_window_kind(ast.kind, &parsed)?;
 		Self::reject_time_only_config(&parsed, &kind)?;
-		Self::reject_amendable_not_smaller_than_lateness(&parsed)?;
+		Self::reject_immutable_not_smaller_than_lateness(&parsed)?;
 
 		Ok(LogicalPlan::Window(WindowNode {
 			kind,
 			group_by,
 			aggregations,
 			lateness: Declared::value_of(&parsed.lateness).unwrap_or_default(),
-			amendable: Declared::value_of(&parsed.amendable),
+			immutable: Declared::value_of(&parsed.immutable),
 			rql,
 		}))
 	}
@@ -92,9 +92,9 @@ impl<'bump> Compiler<'bump> {
 			}
 			.into());
 		}
-		if let Some(declared) = &parsed.amendable {
+		if let Some(declared) = &parsed.immutable {
 			return Err(AstError::UnexpectedToken {
-				expected: "no amendable on count-based windows (amendable needs a time domain)"
+				expected: "no immutable on count-based windows (immutable needs a time domain)"
 					.to_string(),
 				fragment: declared.fragment.clone(),
 			}
@@ -103,20 +103,20 @@ impl<'bump> Compiler<'bump> {
 		Ok(())
 	}
 
-	fn reject_amendable_not_smaller_than_lateness(parsed: &ParsedConfig) -> Result<()> {
-		let Some(amendable) = parsed.amendable.as_ref() else {
+	fn reject_immutable_not_smaller_than_lateness(parsed: &ParsedConfig) -> Result<()> {
+		let Some(immutable) = parsed.immutable.as_ref() else {
 			return Ok(());
 		};
 		let lateness = Declared::value_of(&parsed.lateness).unwrap_or_default();
-		if amendable.value < lateness {
+		if immutable.value < lateness {
 			return Ok(());
 		}
-		Err(RqlError::WindowAmendableNotSmallerThanLateness {
-			amendable_value: amendable.fragment.text().to_string(),
+		Err(RqlError::WindowImmutableNotSmallerThanLateness {
+			immutable_value: immutable.fragment.text().to_string(),
 			lateness_value: Self::declared_text(
 				parsed.lateness.as_ref().map(|declared| &declared.fragment),
 			),
-			fragment: amendable.fragment.clone(),
+			fragment: immutable.fragment.clone(),
 		}
 		.into())
 	}
@@ -364,12 +364,21 @@ impl<'bump> Compiler<'bump> {
 					DurationBound::AllowZero,
 				)?);
 			}
-			"amendable" => {
-				config.amendable = Some(Self::declared_duration(
-					&config_item.value,
-					"'amendable'",
-					DurationBound::AllowZero,
-				)?);
+			"immutable" => {
+				if let Some(value) = Self::extract_literal_boolean(&config_item.value) {
+					if value {
+						config.immutable = Some(Declared {
+							value: Duration::zero(),
+							fragment: config_item.value.token().fragment.to_owned(),
+						});
+					}
+				} else {
+					config.immutable = Some(Self::declared_duration(
+						&config_item.value,
+						"'immutable'",
+						DurationBound::AllowZero,
+					)?);
+				}
 			}
 			_ => {
 				return Err(AstError::UnexpectedToken {
@@ -399,6 +408,16 @@ impl<'bump> Compiler<'bump> {
 			&& let Number(number) = literal
 		{
 			parse_primitive_int::<i64>(number.0.fragment.to_owned()).ok()
+		} else {
+			None
+		}
+	}
+
+	pub fn extract_literal_boolean(ast: &Ast) -> Option<bool> {
+		if let Literal(literal) = ast
+			&& let Boolean(boolean) = literal
+		{
+			Some(boolean.value())
 		} else {
 			None
 		}
@@ -546,6 +565,47 @@ mod tests {
 		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Sliding, &parsed)
 			.expect("a slide smaller than the size is the overlapping case sliding exists for");
 		assert!(matches!(kind, WindowKind::Sliding { .. }));
+	}
+
+	#[test]
+	fn immutable_true_resolves_to_zero_duration() {
+		// `true` must compile to a zero-length grace window, never be left unset.
+		let parsed = parse_window_config(
+			r#"window tumbling { count(*) } with { duration: 5m, lateness: 20s, immutable: true }"#,
+		)
+		.unwrap();
+		assert_eq!(Declared::value_of(&parsed.immutable), Some(Duration::zero()));
+	}
+
+	#[test]
+	fn immutable_false_resolves_to_absent() {
+		// `false` must fall back to lateness alone, exactly as if the key were never written.
+		let parsed = parse_window_config(
+			r#"window tumbling { count(*) } with { duration: 5m, lateness: 20s, immutable: false }"#,
+		)
+		.unwrap();
+		assert!(Declared::value_of(&parsed.immutable).is_none());
+	}
+
+	#[test]
+	fn immutable_duration_literal_is_still_accepted() {
+		// The pre-existing grace-period form must keep working now that `immutable` also accepts a boolean.
+		let parsed = parse_window_config(
+			r#"window tumbling { count(*) } with { duration: 5m, lateness: 20s, immutable: 15s }"#,
+		)
+		.unwrap();
+		assert_eq!(Declared::value_of(&parsed.immutable), Some(Duration::from_seconds(15).unwrap()));
+	}
+
+	#[test]
+	fn immutable_true_is_always_smaller_than_a_positive_lateness() {
+		// Zero must never be rejected by the immutable-vs-lateness guard against a positive lateness.
+		let parsed = parse_window_config(
+			r#"window tumbling { count(*) } with { duration: 5m, lateness: 20s, immutable: true }"#,
+		)
+		.unwrap();
+		Compiler::<'static>::reject_immutable_not_smaller_than_lateness(&parsed)
+			.expect("zero immutable is always smaller than a positive lateness");
 	}
 
 	#[test]
