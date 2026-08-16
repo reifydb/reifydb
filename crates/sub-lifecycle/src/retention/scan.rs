@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{collections::BTreeSet, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -59,6 +59,33 @@ pub fn scan_expired_indexed(
 		expired,
 		next_cursor,
 	})
+}
+
+pub fn min_survivor_row(
+	txn: &mut CommandTransaction,
+	keyspace: EncodedKeyRange,
+	deleted: &[EncodedKey],
+	row_number_of: &dyn Fn(&EncodedKey) -> Option<u64>,
+) -> Result<Option<u64>> {
+	let skip: BTreeSet<&[u8]> = deleted.iter().map(|key| key.as_slice()).collect();
+	let mut seen: Option<EncodedKey> = None;
+
+	let mut stream = txn.range_rev_persistence(keyspace, RangeScope::All, 1024)?;
+	for entry in stream.by_ref() {
+		let entry = entry?;
+		if seen.as_ref() == Some(&entry.key) {
+			continue;
+		}
+		seen = Some(entry.key.clone());
+		if skip.contains(entry.key.as_slice()) {
+			continue;
+		}
+		if let Some(row_number) = row_number_of(&entry.key) {
+			return Ok(Some(row_number));
+		}
+	}
+
+	Ok(None)
 }
 
 pub fn keyspace_start(range: &EncodedKeyRange) -> EncodedKey {

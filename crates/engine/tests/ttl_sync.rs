@@ -22,7 +22,7 @@ fn test_row_settings_sync_to_catalog_cache() {
 	engine.admin(r#"
 		CREATE TABLE test::users { id: int4 } WITH {
 			time: processing,
-			row: { ttl: 1h, announce: false }
+			row: { ttl: 1h }
 		};
 	"#);
 
@@ -55,7 +55,7 @@ fn test_row_settings_replication_sync() {
 		panic!("{e:?}");
 	}
 	let r = txn.rql(
-		"CREATE TABLE test::users { id: int4 } WITH { time: processing, row: { ttl: 1m, announce: false } }",
+		"CREATE TABLE test::users { id: int4 } WITH { time: processing, row: { ttl: 1m } }",
 		Default::default(),
 	);
 	if let Some(e) = r.error {

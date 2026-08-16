@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// A ring buffer announces capacity evictions downstream as remove diffs. A keyed aggregate has no
-// state eviction of its own and TTL GC purges below the flow's CDC, so this propagation is the only
-// mechanism that bounds such a chain; only an explicit `announce: false` silences it.
-
 use std::time::Duration as StdDuration;
 
 use reifydb::{
@@ -112,81 +108,6 @@ fn partitioned_eviction_retracts_only_that_partitions_contribution() {
 		await_agg_group(&db, "eu", Some((1, 3))),
 		Some((1, 3)),
 		"eu never evicted, so its aggregate must be untouched by us's evictions"
-	);
-}
-
-#[test]
-fn global_ttl_drop_keeps_the_stale_downstream_aggregate() {
-	// With `announce: false` eviction still removes its stored rows but announces nothing, so the
-	// aggregate keeps the evicted contribution: stale by design.
-	let db = setup();
-	create_events_table(&db);
-	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, row: { ttl: 1h, announce: false } } AS { FROM test::events }");
-	create_agg_over_rb(&db);
-
-	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
-	db.command("INSERT test::events [{ region: \"us\", n: 2 }]");
-	assert_eq!(await_agg_group(&db, "us", Some((2, 3))), Some((2, 3)), "us starts with both rows");
-
-	db.command("INSERT test::events [{ region: \"eu\", n: 3 }]");
-	db.command("INSERT test::events [{ region: \"eu\", n: 4 }]");
-	assert_eq!(await_agg_group(&db, "eu", Some((2, 7))), Some((2, 7)), "eu inserts still flow downstream");
-
-	assert_eq!(
-		agg_group(&db, "us"),
-		Some((2, 3)),
-		"with cleanup_announce: false the evicted us rows must remain in the aggregate, stale by design"
-	);
-}
-
-#[test]
-fn partitioned_ttl_drop_keeps_the_stale_downstream_aggregate() {
-	// The same silencing on the per-partition path: a busy partition's evictions accumulate
-	// downstream instead of retracting.
-	let db = setup();
-	create_events_table(&db);
-	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, row: { ttl: 1h, announce: false }, partition: { by: { region } } } \
-		 AS { FROM test::events }");
-	create_agg_over_rb(&db);
-
-	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
-	db.command("INSERT test::events [{ region: \"us\", n: 2 }]");
-	db.command("INSERT test::events [{ region: \"us\", n: 4 }]");
-	db.command("INSERT test::events [{ region: \"us\", n: 5 }]");
-
-	assert_eq!(
-		await_agg_group(&db, "us", Some((4, 12))),
-		Some((4, 12)),
-		"with cleanup_announce: false every insert accumulates; evictions of n=1 and n=2 are never retracted"
-	);
-}
-
-#[test]
-fn global_ttl_delete_mode_still_propagates() {
-	// Silencing requires `announce: false` specifically, not merely the presence of a TTL.
-	let db = setup();
-	create_events_table(&db);
-	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
-		 WITH { capacity: 2, row: { ttl: 1h, announce: true } } AS { FROM test::events }");
-	create_agg_over_rb(&db);
-
-	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
-	db.command("INSERT test::events [{ region: \"us\", n: 2 }]");
-	assert_eq!(
-		await_agg_group(&db, "us", Some((2, 3))),
-		Some((2, 3)),
-		"both us rows fit the buffer, so the aggregate sees both"
-	);
-
-	db.command("INSERT test::events [{ region: \"eu\", n: 3 }]");
-	db.command("INSERT test::events [{ region: \"eu\", n: 4 }]");
-
-	assert_eq!(
-		await_agg_group(&db, "us", None),
-		None,
-		"cleanup_announce: true is not drop, so every evicted us row must still be retracted"
 	);
 }
 

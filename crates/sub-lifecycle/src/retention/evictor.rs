@@ -375,18 +375,14 @@ impl Evictor {
 		budget: &mut u64,
 		stats: &mut TickStats,
 	) -> Result<()> {
-		for partition_values in self.list_ringbuffer_partitions(id)? {
+		let storage = StorageId::RingBuffer(id);
+		for keyspace in [RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)] {
 			loop {
 				if *budget == 0 {
 					return Ok(());
 				}
-				let (rows, drained) = self.evict_ringbuffer_partition_batch(
-					state,
-					id,
-					cutoff,
-					batch_size,
-					&partition_values,
-				)?;
+				let (rows, drained) =
+					self.evict_ringbuffer_batch(state, id, cutoff, batch_size, &keyspace)?;
 				stats.rows_expired += rows;
 				if rows > 0 || !drained {
 					*budget -= 1;
@@ -399,39 +395,17 @@ impl Evictor {
 		Ok(())
 	}
 
-	fn list_ringbuffer_partitions(&self, id: RingBufferId) -> Result<Vec<Vec<Value>>> {
-		let catalog = self.engine.catalog();
-		let mut txn = self.engine.begin_command(IdentityId::system())?;
-		let result = (|| {
-			let Some(ringbuffer) = catalog.find_ringbuffer(&mut Transaction::Command(&mut txn), id)? else {
-				return Ok(Vec::new());
-			};
-			if ringbuffer.underlying {
-				return Ok(Vec::new());
-			}
-			let partitions =
-				catalog.list_ringbuffer_partitions(&mut Transaction::Command(&mut txn), &ringbuffer)?;
-			Ok(partitions.into_iter().map(|p| p.partition_values).collect())
-		})();
-		match &result {
-			Ok(_) => txn.rollback()?,
-			Err(_) => {
-				let _ = txn.rollback();
-			}
-		}
-		result
-	}
-
 	#[instrument(name = "lifecycle::retention::evict::ringbuffer_batch", level = "trace", skip_all)]
-	fn evict_ringbuffer_partition_batch(
+	fn evict_ringbuffer_batch(
 		&self,
 		state: &mut EvictorState,
 		id: RingBufferId,
 		cutoff: Cutoff,
 		batch_size: usize,
-		partition_values: &[Value],
+		keyspace: &EncodedKeyRange,
 	) -> Result<(u64, bool)> {
 		let storage = StorageId::RingBuffer(id);
+		let cursor_key = (storage, scan::keyspace_start(keyspace));
 		let catalog = self.engine.catalog();
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 
@@ -440,54 +414,97 @@ impl Evictor {
 			state.forget(storage);
 			return Ok((0, true));
 		};
-
-		let partition = if ringbuffer.partition_by.is_empty() {
-			None
-		} else {
-			Some(Partition::of(partition_values))
-		};
-		let keyspace = match partition {
-			Some(partition) => PartitionedRowKey::partition_range(storage, partition),
-			None => RowKey::full_scan(storage),
-		};
-		let cursor_key = (storage, scan::keyspace_start(&keyspace));
-
-		let Some(metadata) = catalog.find_partition_metadata(
-			&mut Transaction::Command(&mut txn),
-			&ringbuffer,
-			partition_values,
-		)?
-		else {
+		if ringbuffer.underlying {
 			txn.rollback()?;
-			state.cursors.remove(&cursor_key);
+			state.forget(storage);
 			return Ok((0, true));
+		}
+
+		let (expired, drained) = self.expired_batch(
+			state,
+			&mut txn,
+			&cursor_key,
+			keyspace,
+			RowFamily::RingBuffer,
+			cutoff,
+			batch_size,
+		)?;
+		if expired.is_empty() {
+			txn.rollback()?;
+			return Ok((0, drained));
+		}
+
+		let partitioned = !ringbuffer.partition_by.is_empty();
+		let mut groups: HashMap<Partition, Vec<EncodedKey>> = HashMap::new();
+		for row in &expired {
+			let partition = if partitioned {
+				let Some(key) = PartitionedRowKey::decode(&row.key) else {
+					continue;
+				};
+				key.partition
+			} else {
+				Partition::default()
+			};
+			groups.entry(partition).or_default().push(row.key.clone());
+		}
+
+		let values_by_partition: HashMap<Partition, Vec<Value>> = if partitioned {
+			catalog.list_ringbuffer_partitions(&mut Transaction::Command(&mut txn), &ringbuffer)?
+				.into_iter()
+				.map(|entry| (Partition::of(&entry.partition_values), entry.partition_values))
+				.collect()
+		} else {
+			HashMap::new()
 		};
 
-		let partitioned = partition.is_some();
-		let range = scan::resume_range(&keyspace, state.cursors.get(&cursor_key));
-		let result = scan::scan_expired(&mut txn, range, RowFamily::RingBuffer, cutoff, batch_size, &|key| {
-			decode_ringbuffer_row_number(key, partitioned)
-		})?;
-		if result.expired.is_empty() {
-			txn.rollback()?;
-			return Ok((0, advance_cursor(state, cursor_key, result.next_cursor)));
+		let mut evicted = 0u64;
+		for (partition, keys) in groups {
+			let partition_values: &[Value] = if partitioned {
+				let Some(values) = values_by_partition.get(&partition) else {
+					continue;
+				};
+				values
+			} else {
+				&[]
+			};
+
+			let Some(metadata) = catalog.find_partition_metadata(
+				&mut Transaction::Command(&mut txn),
+				&ringbuffer,
+				partition_values,
+			)?
+			else {
+				continue;
+			};
+
+			let partition_keyspace = if partitioned {
+				PartitionedRowKey::partition_range(storage, partition)
+			} else {
+				RowKey::full_scan(storage)
+			};
+			let survivor = scan::min_survivor_row(&mut txn, partition_keyspace, &keys, &|key| {
+				decode_ringbuffer_row_number(key, partitioned)
+			})?;
+
+			for key in &keys {
+				txn.remove_silent(key)?;
+			}
+
+			let deleted = keys.len() as u64;
+			apply_ringbuffer_partition_metadata_after_delete(
+				&catalog,
+				&mut Transaction::Command(&mut txn),
+				&ringbuffer,
+				partition_values,
+				metadata,
+				deleted,
+				survivor,
+			)?;
+			evicted += deleted;
 		}
 
-		let deleted = result.expired.len() as u64;
-		for row in &result.expired {
-			txn.remove_silent(&row.key)?;
-		}
-		apply_ringbuffer_partition_metadata_after_delete(
-			&catalog,
-			&mut Transaction::Command(&mut txn),
-			&ringbuffer,
-			partition_values,
-			metadata,
-			deleted,
-			result.min_survivor_row,
-		)?;
 		txn.commit()?;
-		Ok((deleted, advance_cursor(state, cursor_key, result.next_cursor)))
+		Ok((evicted, drained))
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -653,9 +670,11 @@ mod tests {
 
 	use reifydb_catalog::cache::{CatalogCache, load::CatalogCacheLoader};
 	use reifydb_cdc::{produce::watermark::CdcProducerWatermark, storage::CdcStore};
+	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::catalog::{
+			object::ObjectId,
 			ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata},
 			series::SeriesMetadata,
 		},
@@ -663,6 +682,8 @@ mod tests {
 	};
 	use reifydb_runtime::version_epoch::EpochSpan;
 	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_transaction::multi::RangeScope;
+	use reifydb_value::value::row_number::RowNumber;
 
 	use super::*;
 
@@ -763,8 +784,38 @@ mod tests {
 		partitions.into_iter().map(|p| p.partition_values).collect()
 	}
 
-	fn evictor_partition_values(engine: &StandardEngine, id: RingBufferId) -> Vec<Vec<Value>> {
-		Evictor::new(engine.clone()).list_ringbuffer_partitions(id).unwrap()
+	fn ringbuffer_rows(engine: &StandardEngine, ringbuffer: &RingBuffer) -> Vec<MultiVersionRow> {
+		let storage = StorageId::RingBuffer(ringbuffer.id);
+		let keyspace = if ringbuffer.partition_by.is_empty() {
+			RowKey::full_scan(storage)
+		} else {
+			PartitionedRowKey::full_scan(storage)
+		};
+		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let rows: Vec<MultiVersionRow> =
+			txn.range(keyspace, RangeScope::All, 1024).unwrap().map(|row| row.unwrap()).collect();
+		txn.rollback().unwrap();
+		rows
+	}
+
+	fn put_ringbuffer_row(
+		engine: &StandardEngine,
+		id: RingBufferId,
+		partition_values: &[Value],
+		row_number: RowNumber,
+		bytes: EncodedBytes,
+	) {
+		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		txn.set(
+			&PartitionedRowKey::encoded(
+				ObjectId::ringbuffer(id),
+				Partition::of(partition_values),
+				RowLocator::Row(row_number),
+			),
+			bytes,
+		)
+		.unwrap();
+		txn.commit().unwrap();
 	}
 
 	fn wait_cdc_watermark(engine: &StandardEngine, version: CommitVersion) {
@@ -1064,9 +1115,12 @@ mod tests {
 
 		let underlying = underlying_ringbuffer(&test);
 		let standalone = ringbuffer_by_name(&test, "standalone");
-
-		// Seed a partition by hand; without it the skip below would hold vacuously.
 		let us = vec![Value::Utf8("us".to_string())];
+
+		// Without a real stamped row the skip assertion below passes on an empty keyspace.
+		let seeded = ringbuffer_rows(&test, &standalone);
+		assert_eq!(seeded.len(), 1, "precondition: the standalone insert must have produced exactly one row");
+		put_ringbuffer_row(&test, underlying.id, &us, RowNumber(1), seeded[0].bytes.clone());
 		seed_partition(&test, underlying.id, us.clone());
 
 		assert_eq!(
@@ -1075,15 +1129,23 @@ mod tests {
 			"the catalog must hold the seeded partition metadata (guards against a vacuous skip test)"
 		);
 
+		age_past_ttl(&test);
+		let mut state = EvictorState::default();
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
+
 		assert!(
-			evictor_partition_values(&test, underlying.id).is_empty(),
+			ringbuffer_rows(&test, &standalone).is_empty(),
+			"a standalone ring buffer must remain owned by the retention evictor"
+		);
+		assert_eq!(
+			ringbuffer_rows(&test, &underlying).len(),
+			1,
 			"the retention evictor must skip underlying (view-backed) ring buffers"
 		);
-
 		assert_eq!(
-			evictor_partition_values(&test, standalone.id),
+			catalog_partition_values(&test, &underlying),
 			vec![us],
-			"a standalone ring buffer must remain owned by the retention evictor"
+			"skipping must leave the underlying buffer's partition metadata untouched"
 		);
 	}
 

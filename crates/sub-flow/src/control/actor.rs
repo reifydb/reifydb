@@ -1350,12 +1350,12 @@ mod pull_protocol {
 		drop(actor);
 	}
 
-	fn ring_harness(announce: bool) -> Harness {
+	fn ring_harness() -> Harness {
 		harness_with(
 			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { time: event(ts) }",
-			&format!("CREATE DEFERRED RINGBUFFER VIEW app::v {{ id: int4, v: int4 }} \
-				 WITH {{ capacity: 1000, row: {{ ttl: 1s, announce: {announce} }} }} \
-				 AS {{ FROM app::t map {{ id, v }} }}"),
+			"CREATE DEFERRED RINGBUFFER VIEW app::v { id: int4, v: int4 } \
+			 WITH { capacity: 1000, row: { ttl: 1s } } \
+			 AS { FROM app::t map { id, v } }",
 		)
 	}
 
@@ -1395,7 +1395,7 @@ mod pull_protocol {
 
 	#[test]
 	fn a_tick_fired_eviction_lands_in_the_commits_change_stream() {
-		let h = ring_harness(true);
+		let h = ring_harness();
 		let (_actor, pre_tick) = drive_ring_ttl_tick(&h);
 
 		let change = h
@@ -1414,25 +1414,8 @@ mod pull_protocol {
 	}
 
 	#[test]
-	fn an_unannounced_tick_eviction_stays_out_of_the_change_stream() {
-		let h = ring_harness(false);
-		let (_actor, pre_tick) = drive_ring_ttl_tick(&h);
-
-		assert_eq!(
-			h.poll_until(seconds(10), || (h.view_rows() == 0).then_some(())),
-			Some(()),
-			"precondition: the unannounced eviction must still remove the expired row from \
-			 storage, otherwise there is no eviction whose silence could be asserted"
-		);
-		assert!(
-			h.view_change_beyond(pre_tick).is_none(),
-			"an announce: false eviction must leave no view change record on the tick commit"
-		);
-	}
-
-	#[test]
 	fn a_tick_evictions_storage_delete_carries_the_slice_paths_pre_image() {
-		let h = ring_harness(true);
+		let h = ring_harness();
 		let (_actor, pre_tick) = drive_ring_ttl_tick(&h);
 
 		let (evicted_key, evicted_pre) = h
