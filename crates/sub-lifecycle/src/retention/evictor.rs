@@ -16,7 +16,7 @@ use reifydb_core::{
 			id::{RingBufferId, SeriesId, TableId},
 			storage::StorageId,
 		},
-		store::{MultiVersionRow, classify_range},
+		store::classify_range,
 	},
 	key::{
 		EncodableKey,
@@ -292,7 +292,7 @@ impl Evictor {
 		family: RowFamily,
 		cutoff: Cutoff,
 		batch_size: usize,
-	) -> Result<(Vec<MultiVersionRow>, bool)> {
+	) -> Result<(Vec<EncodedKey>, bool)> {
 		if let (Some(persistent), Some(kind)) = (self.store.persistent(), classify_range(keyspace)) {
 			let scan = scan::scan_expired_indexed(
 				txn,
@@ -308,10 +308,7 @@ impl Evictor {
 					state.expiry_cursors.insert(cursor_key.clone(), cursor);
 					false
 				}
-				None => {
-					state.expiry_cursors.remove(cursor_key);
-					true
-				}
+				None => true,
 			};
 			return Ok((scan.expired, drained));
 		}
@@ -319,7 +316,7 @@ impl Evictor {
 		let range = scan::resume_range(keyspace, state.cursors.get(cursor_key));
 		let result = scan::scan_expired(txn, range, family, cutoff, batch_size, &|_| None)?;
 		let drained = advance_cursor(state, cursor_key.clone(), result.next_cursor);
-		Ok((result.expired, drained))
+		Ok((result.expired.into_iter().map(|row| row.key).collect(), drained))
 	}
 
 	#[instrument(name = "lifecycle::retention::evict::table_batch", level = "trace", skip_all)]
@@ -357,8 +354,8 @@ impl Evictor {
 		}
 
 		let rows = expired.len() as u64;
-		for row in &expired {
-			txn.remove_silent(&row.key)?;
+		for key in &expired {
+			txn.remove_silent(key)?;
 		}
 		txn.commit()?;
 		Ok((rows, drained))
@@ -436,16 +433,16 @@ impl Evictor {
 
 		let partitioned = !ringbuffer.partition_by.is_empty();
 		let mut groups: HashMap<Partition, Vec<EncodedKey>> = HashMap::new();
-		for row in &expired {
+		for key in &expired {
 			let partition = if partitioned {
-				let Some(key) = PartitionedRowKey::decode(&row.key) else {
+				let Some(decoded) = PartitionedRowKey::decode(key) else {
 					continue;
 				};
-				key.partition
+				decoded.partition
 			} else {
 				Partition::default()
 			};
-			groups.entry(partition).or_default().push(row.key.clone());
+			groups.entry(partition).or_default().push(key.clone());
 		}
 
 		let values_by_partition: HashMap<Partition, Vec<Value>> = if partitioned {
@@ -581,8 +578,8 @@ impl Evictor {
 		}
 
 		let deleted = expired.len() as u64;
-		for row in &expired {
-			txn.remove_silent(&row.key)?;
+		for key in &expired {
+			txn.remove_silent(key)?;
 		}
 		apply_series_metadata_after_delete(&mut metadata, deleted);
 		catalog.update_series_metadata_txn(&mut Transaction::Command(&mut txn), series.id, metadata)?;
@@ -673,10 +670,15 @@ mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		common::CommitVersion,
-		interface::catalog::{
-			object::ObjectId,
-			ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata},
-			series::SeriesMetadata,
+		interface::{
+			catalog::{
+				object::ObjectId,
+				ringbuffer::{
+					PartitionedMetadata, RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata,
+				},
+				series::SeriesMetadata,
+			},
+			store::MultiVersionRow,
 		},
 		key::ringbuffer::RingBufferMetadataKey,
 	};

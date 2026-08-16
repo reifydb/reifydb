@@ -24,7 +24,7 @@ pub struct ExpiredScan {
 pub type ExpiryCursor = (DateTime, EncodedKey);
 
 pub struct ExpiredIndexScan {
-	pub expired: Vec<MultiVersionRow>,
+	pub expired: Vec<EncodedKey>,
 	pub next_cursor: Option<ExpiryCursor>,
 }
 
@@ -51,7 +51,7 @@ pub fn scan_expired_indexed(
 			continue;
 		};
 		if family.updated_at(&row.bytes) <= cutoff.instant() {
-			expired.push(row);
+			expired.push(key.clone());
 		}
 	}
 
