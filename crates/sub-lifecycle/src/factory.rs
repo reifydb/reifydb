@@ -107,10 +107,6 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 			Gated::new(RetentionEvictTask::silent(engine.clone(), plane.clone()), gate.clone()),
 			plane.clone(),
 		)));
-		registry.register(Box::new(Measured::new(
-			Gated::new(RetentionEvictTask::announced(engine.clone(), plane.clone()), gate.clone()),
-			plane.clone(),
-		)));
 		let config: Arc<dyn GetConfig> = Arc::new(catalog.clone());
 
 		if let Some(flush_engine) = store.flush_engine() {

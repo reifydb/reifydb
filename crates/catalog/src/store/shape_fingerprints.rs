@@ -288,12 +288,7 @@ fn pinned() -> Vec<Pin> {
 		),
 		("ringbuffer::ringbuffer_namespace", &*RINGBUFFER_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
 		("role::role", &*ROLE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
-		(
-			"row_settings::row_settings",
-			&*ROW_SETTINGS_SHAPE,
-			0x4892c58d9699ca01,
-			&["announce", "duration", "persistent"],
-		),
+		("row_settings::row_settings", &*ROW_SETTINGS_SHAPE, 0x7a5ec2164996219f, &["duration", "persistent"]),
 		(
 			"row_shape::shape_field",
 			&*SHAPE_FIELD_SHAPE,

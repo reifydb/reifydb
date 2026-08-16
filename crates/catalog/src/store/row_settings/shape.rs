@@ -6,7 +6,6 @@ use reifydb_value::value::duration::Duration;
 
 catalog_shape! {
 	pub(crate) row_settings {
-		announce: bool,
 		duration: Duration,
 		persistent: u8,
 	}

@@ -62,7 +62,6 @@ impl FlowEngineInner {
 			.catalog
 			.find_row_settings(&mut txn.reborrow(), StorageId::ringbuffer(ringbuffer))?
 			.and_then(|settings| settings.ttl);
-		let announce_evictions = ttl.as_ref().map(|ttl| ttl.announce).unwrap_or(true);
 		let row_ttl = ttl.as_ref().map(|t| t.duration);
 		self.durable_sinks.insert(
 			operator_id,
@@ -71,7 +70,6 @@ impl FlowEngineInner {
 				resolved,
 				ringbuffer,
 				capacity,
-				announce_evictions,
 				row_ttl,
 				partition_by,
 			)),

@@ -41,7 +41,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(5).unwrap(),
-				announce: false,
 			}),
 			persistent: true,
 		};
@@ -61,7 +60,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(1).unwrap(),
-				announce: false,
 			}),
 			persistent: false,
 		};
@@ -82,7 +80,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_hours(1).unwrap(),
-				announce: true,
 			}),
 			persistent: true,
 		};
@@ -102,7 +99,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_days(1).unwrap(),
-				announce: false,
 			}),
 			persistent: true,
 		};
@@ -122,14 +118,12 @@ pub mod tests {
 		let settings_v1 = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(5).unwrap(),
-				announce: false,
 			}),
 			persistent: true,
 		};
 		let settings_v2 = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(10).unwrap(),
-				announce: true,
 			}),
 			persistent: false,
 		};

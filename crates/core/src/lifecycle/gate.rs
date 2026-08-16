@@ -179,7 +179,7 @@ mod tests {
 		}
 
 		fn classes(&self) -> &'static [RetentionClass] {
-			&[RetentionClass::RowTtlSilent]
+			&[RetentionClass::RowTtl]
 		}
 
 		fn run_slice(&mut self) -> Progress {

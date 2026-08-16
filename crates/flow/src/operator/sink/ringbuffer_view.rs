@@ -115,7 +115,6 @@ pub struct SinkRingBufferViewOperator {
 	view: ResolvedView,
 	ringbuffer_id: RingBufferId,
 	capacity: u64,
-	announce_evictions: bool,
 	ttl: Option<Duration>,
 	partition_indices: Vec<usize>,
 	verified_partitions: HashMap<Partition, Vec<Value>>,
@@ -128,7 +127,6 @@ impl SinkRingBufferViewOperator {
 		view: ResolvedView,
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
-		announce_evictions: bool,
 		ttl: Option<Duration>,
 		partition_by: Vec<String>,
 	) -> Self {
@@ -138,7 +136,6 @@ impl SinkRingBufferViewOperator {
 			view,
 			ringbuffer_id,
 			capacity,
-			announce_evictions,
 			ttl,
 			partition_indices,
 			verified_partitions: HashMap::new(),
@@ -715,15 +712,11 @@ impl SinkRingBufferViewOperator {
 			let pre_key = self.rb_key(object_id, rn, partition);
 			let row = txn.get(&pre_key)?;
 			let source_rn = self.take_row_entry(txn, partition, rn)?;
-			if self.announce_evictions {
-				if let Some(row) = row {
-					evicted_rns.push(source_rn.unwrap_or(rn));
-					evicted.push(row);
-				}
-				txn.remove(&pre_key)?;
-			} else {
-				txn.remove_silent(&pre_key)?;
+			if let Some(row) = row {
+				evicted_rns.push(source_rn.unwrap_or(rn));
+				evicted.push(row);
 			}
+			txn.remove(&pre_key)?;
 		}
 
 		let new_head = self.lowest_storage_row(txn, partition)?;
@@ -876,13 +869,9 @@ impl SinkRingBufferViewOperator {
 			let Some(row) = txn.get(&pre_key)? else {
 				continue;
 			};
-			if self.announce_evictions {
-				evicted_rns.push(source_rn.unwrap_or(oldest_rn));
-				evicted.push(row);
-				txn.remove(&pre_key)?;
-			} else {
-				txn.remove_silent(&pre_key)?;
-			}
+			evicted_rns.push(source_rn.unwrap_or(oldest_rn));
+			evicted.push(row);
+			txn.remove(&pre_key)?;
 			meta.count = meta.count.saturating_sub(1);
 			evict_needed -= 1;
 		}
@@ -890,13 +879,10 @@ impl SinkRingBufferViewOperator {
 		let skip = evict_needed.min(incoming) as usize;
 		for &row_idx in &rows[..skip] {
 			meta.tail += 1;
-			if self.announce_evictions {
-				let source_rn = source.row_numbers()[row_idx];
-				let (_, encoded) =
-					encode_row_at_index(source, row_idx, shape, source_rn, field_columns)?;
-				evicted_rns.push(source_rn);
-				evicted.push(encoded);
-			}
+			let source_rn = source.row_numbers()[row_idx];
+			let (_, encoded) = encode_row_at_index(source, row_idx, shape, source_rn, field_columns)?;
+			evicted_rns.push(source_rn);
+			evicted.push(encoded);
 		}
 
 		for &row_idx in &rows[skip..] {
@@ -930,7 +916,7 @@ impl SinkRingBufferViewOperator {
 		evicted_rns: Vec<RowNumber>,
 		evicted_bytes_vec: Vec<EncodedBytes>,
 	) -> Result<Option<Diff>> {
-		if !self.announce_evictions || evicted_bytes_vec.is_empty() {
+		if evicted_bytes_vec.is_empty() {
 			return Ok(None);
 		}
 		let storage_columns: Vec<ColumnWithName> = view
@@ -1161,7 +1147,7 @@ mod tests {
 		})
 	}
 
-	fn build_op(partitioned: bool, propagate: bool, ttl: Option<Duration>) -> SinkRingBufferViewOperator {
+	fn build_op(partitioned: bool, ttl: Option<Duration>) -> SinkRingBufferViewOperator {
 		let view = view_def(partitioned);
 		let resolved = ResolvedView::new(
 			Fragment::internal("rb"),
@@ -1173,7 +1159,7 @@ mod tests {
 		} else {
 			Vec::new()
 		};
-		SinkRingBufferViewOperator::new(OperatorId(1), resolved, RB, 100, propagate, ttl, partition_by)
+		SinkRingBufferViewOperator::new(OperatorId(1), resolved, RB, 100, ttl, partition_by)
 	}
 
 	fn deferred_txn(engine: &TestEngine) -> DeferredTransaction {
@@ -1280,7 +1266,7 @@ mod tests {
 	fn every_ringbuffer_state_key_lives_in_the_root_group_in_its_own_keyspace() {
 		// A hand-rolled leading byte aliases a group-id varint, so only the root group is exempt from both
 		// reclaim phases' range deletes.
-		let op = build_op(true, false, None);
+		let op = build_op(true, None);
 		let partition = Partition::of(&[Value::Utf8("sol".to_string())]);
 
 		for (key, expected) in [
@@ -1329,7 +1315,7 @@ mod tests {
 		// A ttl-less ring arms no RowTtl timer, so this firing can only arrive by mistake:
 		// capacity is its only bound, and evicting here truncates a buffer meant to stay whole.
 		let engine = TestEngine::new();
-		let mut op = build_op(true, true, None);
+		let mut op = build_op(true, None);
 		insert(&engine, &mut op, true, &[("us", 1), ("us", 2)], 1);
 
 		let out = fire(&engine, &mut op, &base("us"), AFTER);
@@ -1343,7 +1329,7 @@ mod tests {
 		// The direction a cold start lands in: a watermark short of row_time + ttl must find
 		// nothing due and never fall back to "evict what looks old".
 		let engine = TestEngine::new();
-		let mut op = build_op(true, true, Some(hour_ttl()));
+		let mut op = build_op(true, Some(hour_ttl()));
 		insert(&engine, &mut op, true, &[("us", 1), ("us", 2)], 1);
 
 		let out = fire(&engine, &mut op, &base("us"), T0);
@@ -1361,7 +1347,7 @@ mod tests {
 		// A quiet partition's whole per-partition state must be reclaimed rather than stranded,
 		// while a partition that received fresher rows is left untouched.
 		let engine = TestEngine::new();
-		let mut op = build_op(true, true, Some(hour_ttl()));
+		let mut op = build_op(true, Some(hour_ttl()));
 
 		insert_at(&engine, &mut op, true, &[("us", 1), ("us", 2)], 1, T0);
 		insert_at(&engine, &mut op, true, &[("eu", 3), ("eu", 4)], 3, AFTER);
@@ -1384,7 +1370,7 @@ mod tests {
 	#[test]
 	fn partial_expiry_decrements_count_and_advances_head_to_the_survivor() {
 		let engine = TestEngine::new();
-		let mut op = build_op(true, true, Some(hour_ttl()));
+		let mut op = build_op(true, Some(hour_ttl()));
 
 		insert_at(&engine, &mut op, true, &[("us", 1), ("us", 2)], 1, T0);
 		insert_at(&engine, &mut op, true, &[("us", 3), ("us", 4)], 3, AFTER);
@@ -1403,25 +1389,9 @@ mod tests {
 	}
 
 	#[test]
-	fn drop_mode_reclaims_state_but_is_silent() {
-		// Suppressing the announcement must not suppress the reclamation: state still goes, only
-		// the downstream change is withheld.
-		let engine = TestEngine::new();
-		let mut op = build_op(true, false, Some(hour_ttl()));
-
-		insert_at(&engine, &mut op, true, &[("us", 1), ("us", 2)], 1, T0);
-
-		let out = fire(&engine, &mut op, &base("us"), AFTER);
-		assert!(out.is_none(), "drop mode must not announce evictions downstream");
-		assert!(metadata(&engine, &base("us")).is_none(), "drop mode must still reclaim operator state");
-		assert_eq!(row_entry_count(&engine, &op, &base("us")), 0);
-		assert_eq!(forward_count(&engine, &op), 0);
-	}
-
-	#[test]
 	fn non_partitioned_eviction_reclaims_state() {
 		let engine = TestEngine::new();
-		let mut op = build_op(false, true, Some(hour_ttl()));
+		let mut op = build_op(false, Some(hour_ttl()));
 
 		insert_at(&engine, &mut op, false, &[("", 1), ("", 2)], 1, T0);
 		insert_at(&engine, &mut op, false, &[("", 3)], 3, AFTER);
@@ -1440,7 +1410,7 @@ mod tests {
 		// can put the first row to expire physically after a survivor, so the head has to be
 		// recomputed from what is left rather than advanced by the evicted count.
 		let engine = TestEngine::new();
-		let mut op = build_op(true, true, Some(hour_ttl()));
+		let mut op = build_op(true, Some(hour_ttl()));
 
 		insert_at(&engine, &mut op, true, &[("us", 1)], 1, AFTER);
 		let head_before = metadata(&engine, &base("us")).unwrap().head;

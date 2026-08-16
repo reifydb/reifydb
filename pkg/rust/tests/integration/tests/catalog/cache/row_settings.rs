@@ -10,7 +10,7 @@ fn create_table_with_row_settings_propagates_to_materialized_cache() {
 	let db = TestDb::memory();
 
 	db.admin("create namespace demo");
-	db.admin("create table demo::t { id: uint8 } with { time: processing, row: { ttl: 1m, announce: false } }");
+	db.admin("create table demo::t { id: uint8 } with { time: processing, row: { ttl: 1m } }");
 
 	let cat = db.catalog();
 	let mat = cat.cache();
@@ -19,7 +19,6 @@ fn create_table_with_row_settings_propagates_to_materialized_cache() {
 	let settings = mat.find_row_settings(StorageId::Table(table.id)).unwrap();
 	let ttl = settings.ttl.expect("ttl should be set");
 	assert_eq!(ttl.duration, Duration::from_minutes(1).unwrap());
-	assert!(!ttl.announce, "an undeclared announce must default to silent");
 	assert!(settings.persistent, "persistent defaults to true when omitted");
 }
 
@@ -28,9 +27,7 @@ fn create_table_persistent_false_propagates_to_materialized_cache() {
 	let db = TestDb::memory();
 
 	db.admin("create namespace demo");
-	db.admin(
-		"create table demo::t { id: uint8 } with { time: processing, row: { ttl: 1m, announce: false, persistent: false } }",
-	);
+	db.admin("create table demo::t { id: uint8 } with { time: processing, row: { ttl: 1m, persistent: false } }");
 
 	let cat = db.catalog();
 	let mat = cat.cache();

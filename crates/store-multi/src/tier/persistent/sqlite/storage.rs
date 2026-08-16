@@ -1115,6 +1115,25 @@ mod tests {
 			.collect()
 	}
 
+	fn reap(s: &SqlitePersistentStorage, keys: &[u64]) -> u64 {
+		let keys: Vec<EncodedKey> = keys.iter().map(|n| key(*n)).collect();
+		s.delete_keys(table(), &keys).unwrap()
+	}
+
+	fn stored_keys(s: &SqlitePersistentStorage) -> Vec<u64> {
+		// Reads the raw table so a physical delete is distinguishable from a tombstone.
+		let table_name = s.table_sql(table()).table_name.clone();
+		let guard = s.inner.conn.lock();
+		let conn = guard.as_ref().expect("write connection is present");
+		let mut stmt = conn.prepare(&format!("SELECT key FROM \"{}\" ORDER BY key", table_name)).unwrap();
+		let keys: Vec<u64> = stmt
+			.query_map([], |row| row.get::<_, Vec<u8>>(0))
+			.unwrap()
+			.map(|key| u64::from_be_bytes(key.unwrap().as_slice().try_into().unwrap()))
+			.collect();
+		keys
+	}
+
 	fn visible(s: &SqlitePersistentStorage, k: &EncodedKey) -> bool {
 		s.get(table(), k.as_slice(), CommitVersion(u64::MAX)).unwrap().value().is_some()
 	}
@@ -1671,6 +1690,32 @@ mod tests {
 			seen,
 			vec![1, 2, 3],
 			"threading the cursor must walk every candidate exactly once, in order"
+		);
+	}
+
+	#[test]
+	fn delete_keys_removes_the_row_outright_leaving_no_tombstone() {
+		// A reaped row must vanish, not become a tombstone the reaper would then have to clear again.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(
+			CommitVersion(1),
+			HashMap::from([(
+				table(),
+				vec![
+					(key(1), Some(stamped(100))),
+					(key(2), Some(stamped(200))),
+					(key(3), Some(stamped(500))),
+				],
+			)]),
+		)
+		.unwrap();
+
+		assert_eq!(reap(&s, &[1, 2]), 2, "every named key must be removed");
+		assert_eq!(stored_keys(&s), vec![3], "a reaped key must leave no row behind, not even a tombstone");
+		assert_eq!(
+			expired_at(&s, table(), 1_000),
+			vec![3],
+			"a reaped key must not resurface as an expiry candidate"
 		);
 	}
 

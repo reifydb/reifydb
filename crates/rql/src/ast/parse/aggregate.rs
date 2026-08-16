@@ -275,7 +275,6 @@ pub mod tests {
 
 		let ttl = aggregate.ttl.as_ref().expect("the with clause must reach the aggregate node");
 		assert_eq!(ttl.duration.fragment.text(), "1m");
-		assert!(ttl.announce.is_none(), "an operator ttl has no announce channel to declare");
 	}
 
 	#[test]

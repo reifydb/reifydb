@@ -19,7 +19,6 @@ pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedCatalogRow {
 
 	match &settings.ttl {
 		Some(ttl) => {
-			row_settings::set_announce(&mut row, ttl.announce);
 			row_settings::set_duration(&mut row, ttl.duration);
 		}
 		None => {
@@ -40,7 +39,6 @@ pub(crate) fn decode_row_settings(bytes: &EncodedCatalogRow) -> Option<RowSettin
 	} else {
 		Some(Ttl {
 			duration,
-			announce: row_settings::get_announce(bytes),
 		})
 	};
 
@@ -61,7 +59,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(5).unwrap(),
-				announce: false,
 			}),
 			persistent: true,
 		};
@@ -75,7 +72,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_hours(1).unwrap(),
-				announce: true,
 			}),
 			persistent: true,
 		};
@@ -89,7 +85,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(1).unwrap(),
-				announce: false,
 			}),
 			persistent: false,
 		};

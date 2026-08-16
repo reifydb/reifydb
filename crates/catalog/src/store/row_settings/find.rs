@@ -35,7 +35,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(5).unwrap(),
-				announce: false,
 			}),
 			persistent: true,
 		};

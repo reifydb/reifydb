@@ -227,8 +227,6 @@ pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
 				resolved(def),
 				RingBufferId(11),
 				capacity,
-				// The only mode whose emissions can be compared at all.
-				true,
 				None,
 				partition_by,
 			))

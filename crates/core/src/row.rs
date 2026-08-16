@@ -24,8 +24,6 @@ pub struct Row {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ttl {
 	pub duration: Duration,
-
-	pub announce: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

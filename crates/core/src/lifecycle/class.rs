@@ -128,9 +128,7 @@ impl fmt::Display for FloorTerm {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RetentionClass {
-	RowTtlSilent,
-
-	RowTtlAnnounced,
+	RowTtl,
 
 	BufferHistoricalGc,
 
@@ -146,8 +144,7 @@ pub enum RetentionClass {
 impl RetentionClass {
 	pub fn all() -> &'static [Self] {
 		&[
-			Self::RowTtlSilent,
-			Self::RowTtlAnnounced,
+			Self::RowTtl,
 			Self::BufferHistoricalGc,
 			Self::PersistentFlush,
 			Self::TombstoneReap,
@@ -158,8 +155,7 @@ impl RetentionClass {
 
 	pub fn name(&self) -> &'static str {
 		match self {
-			Self::RowTtlSilent => "row-ttl-silent",
-			Self::RowTtlAnnounced => "row-ttl-announced",
+			Self::RowTtl => "row-ttl-silent",
 			Self::BufferHistoricalGc => "buffer-historical-gc",
 			Self::PersistentFlush => "persistent-flush",
 			Self::TombstoneReap => "tombstone-reap",
@@ -170,8 +166,7 @@ impl RetentionClass {
 
 	pub fn reclaims_versioned_data(&self) -> bool {
 		match self {
-			Self::RowTtlSilent
-			| Self::RowTtlAnnounced
+			Self::RowTtl
 			| Self::BufferHistoricalGc
 			| Self::PersistentFlush
 			| Self::TombstoneReap
@@ -182,8 +177,7 @@ impl RetentionClass {
 
 	pub fn floor_terms(&self) -> &'static [FloorTerm] {
 		match self {
-			Self::RowTtlSilent => &[FloorTerm::RowExpiry],
-			Self::RowTtlAnnounced => &[FloorTerm::RowExpiry],
+			Self::RowTtl => &[FloorTerm::RowExpiry],
 			Self::BufferHistoricalGc => &[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin],
 			Self::PersistentFlush => {
 				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::ConsumerPosition]
@@ -243,7 +237,7 @@ mod tests {
 	fn row_expiry_classes_are_not_hostage_to_readers_of_other_data() {
 		// Row expiry is protected by MVCC-transactional discovery, not by these readers. Sharing one
 		// watermark with them lets a wedged CDC consumer or a leaked query lease freeze it.
-		for class in [RetentionClass::RowTtlSilent, RetentionClass::RowTtlAnnounced] {
+		for class in [RetentionClass::RowTtl] {
 			assert!(
 				!class.constrained_by(FloorTerm::ConsumerCheckpoint),
 				"{class} must not be pinned by a CDC consumer; it reclaims rows no consumer reads"

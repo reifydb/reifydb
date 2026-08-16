@@ -253,7 +253,7 @@ mod tests {
 		// swinging between a short-lived and a long-lived object - which the pinned predicate reads as
 		// a floor moving backwards and alarms on.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlSilent;
+		let class = RetentionClass::RowTtl;
 
 		for step in 0..20u64 {
 			let floor = match step % 2 {
@@ -276,7 +276,7 @@ mod tests {
 		// catch-up, not starvation, and alarming on it buries the real signal under dozens of lines a
 		// second.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlSilent;
+		let class = RetentionClass::RowTtl;
 		let step = STARVATION_WINDOW_NANOS / 100;
 
 		for slice in 0..50u64 {
@@ -292,7 +292,7 @@ mod tests {
 		// nothing for long enough that it cannot be a sweep in progress. It must still speak once per
 		// window rather than once per slice, because the lane re-slices at its catch-up cadence.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlSilent;
+		let class = RetentionClass::RowTtl;
 
 		assert_eq!(metrics.record_reclamation(class, expiry_floor(BASE), 0, 7), StuckOnset::Quiet);
 		assert_eq!(
@@ -316,7 +316,7 @@ mod tests {
 		// against keeps running. Without restarting the window, the accumulated age of an old stall
 		// would alarm on a class that has since recovered.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlSilent;
+		let class = RetentionClass::RowTtl;
 
 		metrics.record_reclamation(class, expiry_floor(BASE), 0, 4);
 		metrics.record_reclamation(class, expiry_floor(BASE + STARVATION_WINDOW_NANOS), 12, 4);
@@ -369,14 +369,14 @@ mod tests {
 		// cutoff with rows waiting behind it means the class can reclaim nothing and must be heard.
 		let idle = RetentionMetrics::new();
 		assert_eq!(
-			idle.record_reclamation(RetentionClass::RowTtlSilent, None, 0, 0),
+			idle.record_reclamation(RetentionClass::RowTtl, None, 0, 0),
 			StuckOnset::Quiet,
 			"an unresolvable floor with nothing eligible is not a fault to alarm on"
 		);
 
 		let waiting = RetentionMetrics::new();
 		assert_eq!(
-			waiting.record_reclamation(RetentionClass::RowTtlSilent, None, 0, 3),
+			waiting.record_reclamation(RetentionClass::RowTtl, None, 0, 3),
 			StuckOnset::FloorUnresolvable,
 			"the same missing cutoff with work waiting behind it must still be reported"
 		);
@@ -400,7 +400,7 @@ mod tests {
 		// A class that keeps ticking and reports success while its floor never moves reclaims nothing;
 		// it has to be counted, or it reads as idle.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlSilent;
+		let class = RetentionClass::RowTtl;
 
 		metrics.record_reclamation(
 			class,
@@ -428,7 +428,7 @@ mod tests {
 		// firing. It must surface, because the executor's own behaviour (delete nothing) is indistinguishable
 		// from having nothing to do.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlSilent;
+		let class = RetentionClass::RowTtl;
 
 		metrics.record_reclamation(class, None, 0, 0);
 
@@ -438,7 +438,7 @@ mod tests {
 	#[test]
 	fn an_advancing_floor_with_work_is_never_stuck() {
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlSilent;
+		let class = RetentionClass::RowTtl;
 
 		metrics.record_reclamation(
 			class,
@@ -480,7 +480,7 @@ mod tests {
 		// No cutoff means no term bound it. Reporting a stale binding would send an operator after a reader
 		// that is not the problem.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlSilent;
+		let class = RetentionClass::RowTtl;
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 1, 0);
 
 		metrics.record_reclamation(class, None, 0, 0);
@@ -493,7 +493,7 @@ mod tests {
 		// The alarm fires on the transition into stuck. Without clearing on progress a class that recovers and
 		// wedges a second time would stay silent for the rest of the process lifetime.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlSilent;
+		let class = RetentionClass::RowTtl;
 
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
@@ -513,7 +513,7 @@ mod tests {
 		// human reading the report should see it, but it must not be an alarm or the alarm becomes noise on
 		// every quiet system.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlSilent;
+		let class = RetentionClass::RowTtl;
 
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
@@ -527,7 +527,7 @@ mod tests {
 		// The alarm condition: rows are eligible, the floor will not move, nothing is being reclaimed. Only
 		// the backlog distinguishes this from the idle case above.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlSilent;
+		let class = RetentionClass::RowTtl;
 
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 3);
 		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 3);
@@ -546,16 +546,16 @@ mod tests {
 
 		metrics.record_reclamation(RetentionClass::CdcTruncate, None, 0, 0);
 		metrics.record_reclamation(
-			RetentionClass::RowTtlSilent,
+			RetentionClass::RowTtl,
 			Some((Floor::Version(CommitVersion(5)), FloorTerm::QueryDoneUntil)),
 			3,
 			0,
 		);
 
 		assert_eq!(metrics.snapshot(RetentionClass::CdcTruncate).stuck_slices, 1);
-		assert_eq!(metrics.snapshot(RetentionClass::RowTtlSilent).stuck_slices, 0);
+		assert_eq!(metrics.snapshot(RetentionClass::RowTtl).stuck_slices, 0);
 		assert_eq!(metrics.snapshot(RetentionClass::CdcTruncate).work_done, 0);
-		assert_eq!(metrics.snapshot(RetentionClass::RowTtlSilent).work_done, 3);
+		assert_eq!(metrics.snapshot(RetentionClass::RowTtl).work_done, 3);
 	}
 
 	#[test]
@@ -563,7 +563,7 @@ mod tests {
 		// Draining under budget is healthy; draining under budget while the backlog stays high is losing
 		// ground. Only both counters together distinguish them.
 		let metrics = RetentionMetrics::new();
-		let class = RetentionClass::RowTtlSilent;
+		let class = RetentionClass::RowTtl;
 
 		metrics.record_reclamation(
 			class,

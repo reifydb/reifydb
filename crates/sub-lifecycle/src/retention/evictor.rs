@@ -36,23 +36,15 @@ use reifydb_core::{
 use reifydb_engine::{
 	engine::StandardEngine,
 	transaction::operation::{
-		ringbuffer::{RingBufferOperations, apply_ringbuffer_partition_metadata_after_delete},
-		series::{
-			apply_series_metadata_after_delete, build_series_delete_pre_columns_from_storage,
-			decode_series_storage_key, remove_series_row,
-		},
-		table::TableOperations,
+		ringbuffer::apply_ringbuffer_partition_metadata_after_delete,
+		series::apply_series_metadata_after_delete,
 	},
-	vm::instruction::dml::shape::get_or_create_series_shape,
 };
 use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{
 	Result,
-	value::{
-		Value, datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
-		row_number::RowNumber,
-	},
+	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition},
 };
 use tracing::{debug, instrument, warn};
 
@@ -139,7 +131,7 @@ impl Evictor {
 			.into_iter()
 			.filter_map(|(storage, settings)| {
 				let ttl = settings.ttl?;
-				(Self::class_of(ttl.announce) == target).then_some((storage, ttl))
+				(RetentionClass::RowTtl == target).then_some((storage, ttl))
 			})
 			.collect();
 
@@ -166,8 +158,7 @@ impl Evictor {
 
 			stats.objects_scanned += 1;
 			let expired_before = stats.rows_expired;
-			if let Err(e) =
-				self.evict_storage(state, storage, ttl, cutoff, batch_size, &mut budget, &mut stats)
+			if let Err(e) = self.evict_storage(state, storage, cutoff, batch_size, &mut budget, &mut stats)
 			{
 				warn!(?storage, error = %e, "retention eviction failed; resetting cursors, retrying next tick");
 				state.forget(storage);
@@ -235,16 +226,8 @@ impl Evictor {
 
 	fn expiry_cutoff(&self, now: DateTime, ttl: &Ttl) -> Option<(Cutoff, FloorTerm)> {
 		let (floor, binding) =
-			self.plane.cutoff_with_binding(Self::class_of(ttl.announce), now, Some(ttl.duration))?;
+			self.plane.cutoff_with_binding(RetentionClass::RowTtl, now, Some(ttl.duration))?;
 		Some((Cutoff(floor.instant()?), binding))
-	}
-
-	fn class_of(announce: bool) -> RetentionClass {
-		if announce {
-			RetentionClass::RowTtlAnnounced
-		} else {
-			RetentionClass::RowTtlSilent
-		}
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -253,22 +236,17 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		storage: StorageId,
-		ttl: &Ttl,
 		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
 	) -> Result<()> {
 		match storage {
-			StorageId::Table(id) => {
-				self.evict_table(state, id, ttl.announce, cutoff, batch_size, budget, stats)
-			}
+			StorageId::Table(id) => self.evict_table(state, id, cutoff, batch_size, budget, stats),
 			StorageId::RingBuffer(id) => {
-				self.evict_ringbuffer(state, id, ttl.announce, cutoff, batch_size, budget, stats)
+				self.evict_ringbuffer(state, id, cutoff, batch_size, budget, stats)
 			}
-			StorageId::Series(id) => {
-				self.evict_series(state, id, ttl.announce, cutoff, batch_size, budget, stats)
-			}
+			StorageId::Series(id) => self.evict_series(state, id, cutoff, batch_size, budget, stats),
 			StorageId::Queue(_) => Ok(()),
 		}
 	}
@@ -279,7 +257,6 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		id: TableId,
-		announce: bool,
 		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
@@ -292,7 +269,7 @@ impl Evictor {
 					return Ok(());
 				}
 				let (rows, drained) =
-					self.evict_table_batch(state, id, announce, cutoff, batch_size, &keyspace)?;
+					self.evict_table_batch(state, id, cutoff, batch_size, &keyspace)?;
 				stats.rows_expired += rows;
 				if rows > 0 || !drained {
 					*budget -= 1;
@@ -350,7 +327,6 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		id: TableId,
-		announce: bool,
 		cutoff: Cutoff,
 		batch_size: usize,
 		keyspace: &EncodedKeyRange,
@@ -360,11 +336,11 @@ impl Evictor {
 		let catalog = self.engine.catalog();
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 
-		let Some(table) = catalog.find_table(&mut Transaction::Command(&mut txn), id)? else {
+		if catalog.find_table(&mut Transaction::Command(&mut txn), id)?.is_none() {
 			txn.rollback()?;
 			state.forget(storage);
 			return Ok((0, true));
-		};
+		}
 
 		let (expired, drained) = self.expired_batch(
 			state,
@@ -381,30 +357,8 @@ impl Evictor {
 		}
 
 		let rows = expired.len() as u64;
-		match announce {
-			true => {
-				let mut ids: Vec<RowNumber> = Vec::with_capacity(expired.len());
-				let mut partitions: Vec<Partition> = Vec::new();
-				for row in &expired {
-					let Some((row_number, partition)) = decode_table_locator(&row.key) else {
-						continue;
-					};
-					ids.push(row_number);
-					if let Some(partition) = partition {
-						partitions.push(partition);
-					}
-				}
-				assert!(
-					partitions.is_empty() || partitions.len() == ids.len(),
-					"table eviction batch mixed partitioned and plain row keys"
-				);
-				txn.remove_from_table(&table, &ids, &partitions)?;
-			}
-			false => {
-				for row in &expired {
-					txn.remove_silent(&row.key)?;
-				}
-			}
+		for row in &expired {
+			txn.remove_silent(&row.key)?;
 		}
 		txn.commit()?;
 		Ok((rows, drained))
@@ -416,7 +370,6 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		id: RingBufferId,
-		announce: bool,
 		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
@@ -430,7 +383,6 @@ impl Evictor {
 				let (rows, drained) = self.evict_ringbuffer_partition_batch(
 					state,
 					id,
-					announce,
 					cutoff,
 					batch_size,
 					&partition_values,
@@ -475,7 +427,6 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		id: RingBufferId,
-		announce: bool,
 		cutoff: Cutoff,
 		batch_size: usize,
 		partition_values: &[Value],
@@ -523,21 +474,8 @@ impl Evictor {
 		}
 
 		let deleted = result.expired.len() as u64;
-		match announce {
-			true => {
-				for row in &result.expired {
-					let Some(row_number) = decode_ringbuffer_row_number(&row.key, partitioned)
-					else {
-						continue;
-					};
-					txn.remove_from_ringbuffer(&ringbuffer, partition, RowNumber(row_number))?;
-				}
-			}
-			false => {
-				for row in &result.expired {
-					txn.remove_silent(&row.key)?;
-				}
-			}
+		for row in &result.expired {
+			txn.remove_silent(&row.key)?;
 		}
 		apply_ringbuffer_partition_metadata_after_delete(
 			&catalog,
@@ -558,7 +496,6 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		id: SeriesId,
-		announce: bool,
 		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
@@ -568,7 +505,7 @@ impl Evictor {
 			if *budget == 0 {
 				return Ok(());
 			}
-			let (rows, drained) = self.evict_series_batch(state, id, announce, cutoff, batch_size)?;
+			let (rows, drained) = self.evict_series_batch(state, id, cutoff, batch_size)?;
 			stats.rows_expired += rows;
 			if rows > 0 || !drained {
 				*budget -= 1;
@@ -584,7 +521,6 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		id: SeriesId,
-		announce: bool,
 		cutoff: Cutoff,
 		batch_size: usize,
 	) -> Result<(u64, bool)> {
@@ -628,41 +564,8 @@ impl Evictor {
 		}
 
 		let deleted = expired.len() as u64;
-		match announce {
-			true => {
-				let row_shape = get_or_create_series_shape(
-					&catalog,
-					&series,
-					&mut Transaction::Command(&mut txn),
-				)?;
-				for row in &expired {
-					let committed = txn.get_committed(&row.key)?.map(|v| v.bytes);
-					let pre_for_cdc = committed.clone().unwrap_or_else(|| row.bytes.clone());
-					let pre = decode_series_storage_key(&series, &row.key, partitioned).map(
-						|decoded| {
-							build_series_delete_pre_columns_from_storage(
-								&series,
-								&row_shape,
-								&pre_for_cdc,
-								&decoded,
-							)
-						},
-					);
-					remove_series_row(
-						&mut Transaction::Command(&mut txn),
-						&series,
-						&row.key,
-						pre_for_cdc,
-						committed.is_some(),
-						pre,
-					)?;
-				}
-			}
-			false => {
-				for row in &expired {
-					txn.remove_silent(&row.key)?;
-				}
-			}
+		for row in &expired {
+			txn.remove_silent(&row.key)?;
 		}
 		apply_series_metadata_after_delete(&mut metadata, deleted);
 		catalog.update_series_metadata_txn(&mut Transaction::Command(&mut txn), series.id, metadata)?;
@@ -681,17 +584,6 @@ fn advance_cursor(state: &mut EvictorState, cursor_key: CursorKey, next: Option<
 			state.cursors.remove(&cursor_key);
 			true
 		}
-	}
-}
-
-fn decode_table_locator(key: &EncodedKey) -> Option<(RowNumber, Option<Partition>)> {
-	if let Some(row_key) = RowKey::decode(key) {
-		return Some((row_key.row, None));
-	}
-	let partitioned = PartitionedRowKey::decode(key)?;
-	match partitioned.locator {
-		RowLocator::Row(row_number) => Some((row_number, Some(partitioned.partition))),
-		_ => None,
 	}
 }
 
@@ -714,11 +606,7 @@ pub struct RetentionEvictTask {
 
 impl RetentionEvictTask {
 	pub fn silent(engine: StandardEngine, plane: RetentionPlane) -> Self {
-		Self::for_class(engine, plane, RetentionClass::RowTtlSilent)
-	}
-
-	pub fn announced(engine: StandardEngine, plane: RetentionPlane) -> Self {
-		Self::for_class(engine, plane, RetentionClass::RowTtlAnnounced)
+		Self::for_class(engine, plane, RetentionClass::RowTtl)
 	}
 
 	fn for_class(engine: StandardEngine, plane: RetentionPlane, class: RetentionClass) -> Self {
@@ -733,8 +621,7 @@ impl RetentionEvictTask {
 impl LifecycleTask for RetentionEvictTask {
 	fn name(&self) -> &'static str {
 		match self.class {
-			RetentionClass::RowTtlSilent => "retention-evict-silent",
-			RetentionClass::RowTtlAnnounced => "retention-evict-announced",
+			RetentionClass::RowTtl => "retention-evict-silent",
 			_ => "retention-evict",
 		}
 	}
@@ -745,8 +632,7 @@ impl LifecycleTask for RetentionEvictTask {
 
 	fn classes(&self) -> &'static [RetentionClass] {
 		match self.class {
-			RetentionClass::RowTtlSilent => &[RetentionClass::RowTtlSilent],
-			RetentionClass::RowTtlAnnounced => &[RetentionClass::RowTtlAnnounced],
+			RetentionClass::RowTtl => &[RetentionClass::RowTtl],
 			_ => &[],
 		}
 	}
@@ -899,9 +785,7 @@ mod tests {
 		// falling between two writes 1ms apart must kill exactly one of them.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin(
-			"create table test::t { v: int4 } with { time: processing, row: { ttl: 1h, announce: true } }",
-		);
+		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
 
 		test.command("INSERT test::t [{ v: 1 }]");
 		let first_write = test.mock_clock().now();
@@ -913,7 +797,7 @@ mod tests {
 		let mut state = EvictorState::default();
 		Evictor::new((*test).clone()).run_tick(
 			&mut state,
-			RetentionClass::RowTtlAnnounced,
+			RetentionClass::RowTtl,
 			first_write.checked_add(HOUR.to_duration()).unwrap(),
 		);
 
@@ -930,48 +814,17 @@ mod tests {
 	}
 
 	#[test]
-	fn table_delete_mode_evicts_expired_rows_transactionally() {
-		// An announced ttl evicts through a real commit, so the removed rows must also surface
-		// downstream as CDC changes.
-		let test = TestEngine::new();
-		test.admin("create namespace test;");
-		test.admin(
-			"create table test::t { v: int4 } with { time: processing, row: { ttl: 1h, announce: true } }",
-		);
-		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }]");
-		age_past_ttl(&test);
-		test.command("INSERT test::t [{ v: 4 }]");
-
-		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
-
-		assert_eq!(row_count(&test, "from test::t"), 1, "only the row committed after the epoch survives");
-
-		let eviction_version = test.current_version().unwrap();
-		wait_cdc_watermark(&test, eviction_version);
-		let cdc = test.ioc().try_resolve::<CdcStore>().unwrap();
-		let record = cdc.read(eviction_version).unwrap();
-		assert!(
-			record.is_some_and(|r| !r.changes.is_empty()),
-			"announced eviction must emit CDC changes for the removed rows"
-		);
-	}
-
-	#[test]
 	fn table_drop_mode_evicts_rows_silently_without_cdc() {
-		// A silent ttl must commit without emitting CDC; the announce flag exists to draw exactly
-		// this line, and failing it leaks deletes downstream.
+		// Row eviction must commit without emitting CDC, otherwise every expiry leaks downstream as a delete.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin(
-			"create table test::t { v: int4 } with { time: processing, row: { ttl: 1h, announce: false } }",
-		);
+		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 		age_past_ttl(&test);
 
 		let before = test.current_version().unwrap();
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtlSilent);
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
 		let after = test.current_version().unwrap();
 
 		assert_eq!(row_count(&test, "from test::t"), 0);
@@ -994,7 +847,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"CREATE RINGBUFFER test::rb { a: utf8, v: int4 } WITH { time: processing, capacity: 100, row: { ttl: 1h, announce: true }, partition: { by: { a } } }",
+			"CREATE RINGBUFFER test::rb { a: utf8, v: int4 } WITH { time: processing, capacity: 100, row: { ttl: 1h }, partition: { by: { a } } }",
 		);
 		test.command("INSERT test::rb [{ a: \"us\", v: 1 }, { a: \"us\", v: 2 }, { a: \"us\", v: 3 }]");
 		test.command("INSERT test::rb [{ a: \"eu\", v: 10 }, { a: \"eu\", v: 20 }]");
@@ -1002,7 +855,7 @@ mod tests {
 		test.command("INSERT test::rb [{ a: \"eu\", v: 30 }]");
 
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::rb"), 1, "only the eu row inserted after the epoch survives");
 
@@ -1028,14 +881,14 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"CREATE RINGBUFFER test::rb { v: int4 } WITH { time: processing, capacity: 100, row: { ttl: 1h, announce: true } }",
+			"CREATE RINGBUFFER test::rb { v: int4 } WITH { time: processing, capacity: 100, row: { ttl: 1h } }",
 		);
 		test.command("INSERT test::rb [{ v: 1 }, { v: 2 }]");
 		age_past_ttl(&test);
 		test.command("INSERT test::rb [{ v: 3 }]");
 
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::rb"), 1);
 		let partitions = ringbuffer_partitions(&test, "rb");
@@ -1043,7 +896,7 @@ mod tests {
 		assert_eq!(partitions[0].metadata.count, 1);
 
 		age_past_ttl(&test);
-		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::rb"), 0);
 		assert!(
@@ -1059,14 +912,14 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"CREATE RINGBUFFER test::rb { v: int4 } WITH { time: processing, capacity: 100, row: { ttl: 1h, announce: false } }",
+			"CREATE RINGBUFFER test::rb { v: int4 } WITH { time: processing, capacity: 100, row: { ttl: 1h } }",
 		);
 		test.command("INSERT test::rb [{ v: 1 }, { v: 2 }]");
 		age_past_ttl(&test);
 		test.command("INSERT test::rb [{ v: 3 }]");
 
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtlSilent);
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::rb"), 1);
 		let partitions = ringbuffer_partitions(&test, "rb");
@@ -1081,23 +934,21 @@ mod tests {
 		// cursor rather than be lost or drained in one unbounded tick.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin(
-			"create table test::t { v: int4 } with { time: processing, row: { ttl: 1h, announce: true } }",
-		);
+		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }, { v: 4 }, { v: 5 }]");
 		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
 		assert_eq!(
 			row_count(&test, "from test::t"),
 			1,
 			"tick one is capped at 2 batches x 2 rows; one expired row must be left over"
 		);
 
-		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
 		assert_eq!(row_count(&test, "from test::t"), 0, "the cursor must resume and drain the leftover");
 	}
 
@@ -1107,9 +958,7 @@ mod tests {
 		// nothing: a permissive fallback would expire every row whose age it cannot establish.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin(
-			"create table test::t { v: int4 } with { time: processing, row: { ttl: 1h, announce: true } }",
-		);
+		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 
 		let now = DateTime::from_nanos(HOUR.seconds() * 1_000_000_000 / 2);
@@ -1119,7 +968,7 @@ mod tests {
 		);
 
 		let mut state = EvictorState::default();
-		Evictor::new((*test).clone()).run_tick(&mut state, RetentionClass::RowTtlAnnounced, now);
+		Evictor::new((*test).clone()).run_tick(&mut state, RetentionClass::RowTtl, now);
 
 		assert_eq!(row_count(&test, "from test::t"), 2, "nothing may be evicted on a guess about age");
 	}
@@ -1131,7 +980,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create series test::s { ts: datetime, v: int4 } WITH { time: processing, key: ts, row: { ttl: 1h, announce: true } }",
+			"create series test::s { ts: datetime, v: int4 } WITH { time: processing, key: ts, row: { ttl: 1h } }",
 		);
 		test.command(
 			"INSERT test::s [{ ts: datetime::from_epoch_millis(1000), v: 1 }, { ts: datetime::from_epoch_millis(2000), v: 2 }]",
@@ -1141,7 +990,7 @@ mod tests {
 		assert_eq!(series_metadata(&test, "s").row_count, 3);
 
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::s"), 1);
 		assert_eq!(
@@ -1161,7 +1010,7 @@ mod tests {
 			"CREATE RINGBUFFER test::dml { a: utf8, v: int4 } WITH { capacity: 100, partition: { by: { a } } }",
 		);
 		test.admin(
-			"CREATE RINGBUFFER test::evicted { a: utf8, v: int4 } WITH { time: processing, capacity: 100, row: { ttl: 1h, announce: true }, partition: { by: { a } } }",
+			"CREATE RINGBUFFER test::evicted { a: utf8, v: int4 } WITH { time: processing, capacity: 100, row: { ttl: 1h }, partition: { by: { a } } }",
 		);
 		for rql in [
 			"INSERT test::dml [{ a: \"us\", v: 0 }, { a: \"us\", v: 1 }, { a: \"us\", v: 2 }]",
@@ -1179,7 +1028,7 @@ mod tests {
 
 		test.command("DELETE test::dml FILTER v < 3");
 		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
 
 		assert_eq!(row_count(&test, "from test::dml"), 2);
 		assert_eq!(row_count(&test, "from test::evicted"), 2);
@@ -1206,10 +1055,10 @@ mod tests {
 		// No flow subsystem runs here, but the DDL still creates the backing ring buffer and
 		// registers its row ttl.
 		test.admin(
-			"create deferred ringbuffer view test::rb { base: utf8, n: int4 } WITH { capacity: 100, row: { ttl: 1h, announce: false }, partition: { by: { base } } } as { from test::src }",
+			"create deferred ringbuffer view test::rb { base: utf8, n: int4 } WITH { capacity: 100, row: { ttl: 1h }, partition: { by: { base } } } as { from test::src }",
 		);
 		test.admin(
-			"CREATE RINGBUFFER test::standalone { base: utf8, n: int4 } WITH { time: processing, capacity: 100, row: { ttl: 1h, announce: true }, partition: { by: { base } } }",
+			"CREATE RINGBUFFER test::standalone { base: utf8, n: int4 } WITH { time: processing, capacity: 100, row: { ttl: 1h }, partition: { by: { base } } }",
 		);
 		test.command("INSERT test::standalone [{ base: \"us\", n: 1 }]");
 
@@ -1244,16 +1093,14 @@ mod tests {
 		// waits a full eviction interval instead of the lane's catch-up tick.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin(
-			"create table test::t { v: int4 } with { time: processing, row: { ttl: 1h, announce: true } }",
-		);
+		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }, { v: 4 }, { v: 5 }, { v: 6 }]");
 		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		let progress = tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
+		let progress = tick_now(&test, &mut state, RetentionClass::RowTtl);
 
 		assert_eq!(
 			progress,
@@ -1262,7 +1109,7 @@ mod tests {
 		);
 		assert_eq!(row_count(&test, "from test::t"), 2, "the tick is capped at 2 batches x 2 rows");
 
-		let drained = tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
+		let drained = tick_now(&test, &mut state, RetentionClass::RowTtl);
 		assert_eq!(
 			drained,
 			Progress::Exhausted,
@@ -1277,12 +1124,8 @@ mod tests {
 		// first table drains its cursor cleanly and the second is never visited at all.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin(
-			"create table test::t1 { v: int4 } with { time: processing, row: { ttl: 1h, announce: true } }",
-		);
-		test.admin(
-			"create table test::t2 { v: int4 } with { time: processing, row: { ttl: 1h, announce: true } }",
-		);
+		test.admin("create table test::t1 { v: int4 } with { time: processing, row: { ttl: 1h } }");
+		test.admin("create table test::t2 { v: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
 		test.command("INSERT test::t1 [{ v: 1 }, { v: 2 }]");
@@ -1290,7 +1133,7 @@ mod tests {
 		age_past_ttl(&test);
 
 		let mut state = EvictorState::default();
-		let progress = tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
+		let progress = tick_now(&test, &mut state, RetentionClass::RowTtl);
 
 		assert_eq!(
 			progress,
@@ -1313,7 +1156,7 @@ mod tests {
 		test.admin("create namespace test;");
 		for name in ["t1", "t2", "t3", "t4"] {
 			test.admin(&format!(
-				"create table test::{name} {{ v: int4 }} with {{ time: processing, row: {{ ttl: 1h, announce: true }} }}"
+				"create table test::{name} {{ v: int4 }} with {{ time: processing, row: {{ ttl: 1h }} }}"
 			));
 		}
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
@@ -1324,7 +1167,7 @@ mod tests {
 		}
 
 		let mut state = EvictorState::default();
-		let progress = tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
+		let progress = tick_now(&test, &mut state, RetentionClass::RowTtl);
 
 		assert_eq!(
 			progress,
@@ -1350,7 +1193,7 @@ mod tests {
 		test.admin("create namespace test;");
 		for name in ["t1", "t2", "t3", "t4"] {
 			test.admin(&format!(
-				"create table test::{name} {{ v: int4 }} with {{ time: processing, row: {{ ttl: 1h, announce: true }} }}"
+				"create table test::{name} {{ v: int4 }} with {{ time: processing, row: {{ ttl: 1h }} }}"
 			));
 			test.command(&format!(
 				"INSERT test::{name} [{{ v: 1 }}, {{ v: 2 }}, {{ v: 3 }}, {{ v: 4 }}, {{ v: 5 }}, {{ v: 6 }}]"
@@ -1362,7 +1205,7 @@ mod tests {
 
 		let mut state = EvictorState::default();
 		for _ in 0..4 {
-			tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
+			tick_now(&test, &mut state, RetentionClass::RowTtl);
 		}
 
 		for name in ["t1", "t2", "t3", "t4"] {
@@ -1383,12 +1226,8 @@ mod tests {
 		// floor that swings is read downstream as a floor that will not advance.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin(
-			"create table test::short { v: int4 } with { time: processing, row: { ttl: 1h, announce: false } }",
-		);
-		test.admin(
-			"create table test::long { v: int4 } with { time: processing, row: { ttl: 4h, announce: false } }",
-		);
+		test.admin("create table test::short { v: int4 } with { time: processing, row: { ttl: 1h } }");
+		test.admin("create table test::long { v: int4 } with { time: processing, row: { ttl: 4h } }");
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
 		// The clock starts at the epoch, where `now - 4h` underflows and the 4h object would resolve no
@@ -1401,7 +1240,7 @@ mod tests {
 		let evictor = Evictor::new(test.inner().clone());
 		let now = test.mock_clock().now();
 		let mut state = EvictorState::default();
-		let progress = evictor.run_tick(&mut state, RetentionClass::RowTtlSilent, now);
+		let progress = evictor.run_tick(&mut state, RetentionClass::RowTtl, now);
 
 		assert_eq!(
 			progress,
@@ -1409,7 +1248,7 @@ mod tests {
 			"precondition: the budget must run out before the tick ever reaches test::long"
 		);
 		assert_eq!(
-			evictor.plane().snapshot(RetentionClass::RowTtlSilent).floor_version,
+			evictor.plane().snapshot(RetentionClass::RowTtl).floor_version,
 			now.checked_sub(FOUR_HOURS.to_duration()).unwrap().to_nanos(),
 			"the floor must come from the 4h object this tick never visited, because that is the \
 			 oldest cutoff the class is still bound by"
@@ -1425,12 +1264,8 @@ mod tests {
 		// advance.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin(
-			"create table test::short { v: int4 } with { time: processing, row: { ttl: 1h, announce: false } }",
-		);
-		test.admin(
-			"create table test::long { v: int4 } with { time: processing, row: { ttl: 4h, announce: false } }",
-		);
+		test.admin("create table test::short { v: int4 } with { time: processing, row: { ttl: 1h } }");
+		test.admin("create table test::long { v: int4 } with { time: processing, row: { ttl: 4h } }");
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
 		// The clock starts at the epoch, where `now - 4h` underflows and the 4h object would resolve no
@@ -1442,20 +1277,20 @@ mod tests {
 
 		let evictor = Evictor::new(test.inner().clone());
 		let mut state = EvictorState::default();
-		evictor.run_tick(&mut state, RetentionClass::RowTtlSilent, test.mock_clock().now());
+		evictor.run_tick(&mut state, RetentionClass::RowTtl, test.mock_clock().now());
 
 		assert_eq!(
 			row_count(&test, "from test::short"),
 			0,
 			"precondition: the first tick must spend its whole budget on the 1h object"
 		);
-		let first = evictor.plane().snapshot(RetentionClass::RowTtlSilent).floor_version;
+		let first = evictor.plane().snapshot(RetentionClass::RowTtl).floor_version;
 
 		test.mock_clock().advance_secs(600);
 		let second = test.mock_clock().now();
-		evictor.run_tick(&mut state, RetentionClass::RowTtlSilent, second);
+		evictor.run_tick(&mut state, RetentionClass::RowTtl, second);
 
-		let snapshot = evictor.plane().snapshot(RetentionClass::RowTtlSilent);
+		let snapshot = evictor.plane().snapshot(RetentionClass::RowTtl);
 
 		assert_eq!(
 			snapshot.floor_version,
@@ -1479,9 +1314,7 @@ mod tests {
 		// lane at the catch-up cadence and starve the other classes.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
-		test.admin(
-			"create table test::t { v: int4 } with { time: processing, row: { ttl: 1h, announce: true } }",
-		);
+		test.admin("create table test::t { v: int4 } with { time: processing, row: { ttl: 1h } }");
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 
 		let now = DateTime::from_nanos(HOUR.seconds() * 1_000_000_000 / 2);
@@ -1491,43 +1324,10 @@ mod tests {
 		);
 
 		let mut state = EvictorState::default();
-		let progress = Evictor::new((*test).clone()).run_tick(&mut state, RetentionClass::RowTtlAnnounced, now);
+		let progress = Evictor::new((*test).clone()).run_tick(&mut state, RetentionClass::RowTtl, now);
 
 		assert_eq!(progress, Progress::Exhausted, "an unresolvable floor must not spin the lane");
 		assert_eq!(row_count(&test, "from test::t"), 2, "and nothing may be evicted on a guess about age");
-	}
-
-	#[test]
-	fn a_slice_evicts_only_its_target_class() {
-		// Each row-ttl class owns its own slice and budget, so a hot silent class can never drag
-		// the announced class into re-ticking (and flooding the flow graph) with it.
-		let test = TestEngine::new();
-		test.admin("create namespace test;");
-		test.admin(
-			"create table test::silent { v: int4 } with { time: processing, row: { ttl: 1h, announce: false } }",
-		);
-		test.admin(
-			"create table test::announced { v: int4 } with { time: processing, row: { ttl: 1h, announce: true } }",
-		);
-		test.command("INSERT test::silent [{ v: 1 }, { v: 2 }]");
-		test.command("INSERT test::announced [{ v: 1 }, { v: 2 }]");
-		age_past_ttl(&test);
-
-		let mut state = EvictorState::default();
-		tick_now(&test, &mut state, RetentionClass::RowTtlSilent);
-		assert_eq!(row_count(&test, "from test::silent"), 0, "the silent slice must clear its own table");
-		assert_eq!(
-			row_count(&test, "from test::announced"),
-			2,
-			"the silent slice must not touch a announced table"
-		);
-
-		tick_now(&test, &mut state, RetentionClass::RowTtlAnnounced);
-		assert_eq!(
-			row_count(&test, "from test::announced"),
-			0,
-			"the announced slice clears the table its class owns"
-		);
 	}
 
 	fn registered_row_ttls(engine: &StandardEngine) -> Vec<(i64, bool)> {

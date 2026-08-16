@@ -58,8 +58,8 @@ const QUEUE_FIFO_KEYS: &str = "'partitions' or 'ordered_by'";
 const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
 const QUEUE_RETENTION_KEYS: &str = "'done'";
 const QUEUE_RETRY_KEYS: &str = "'attempts' or 'backoff'";
-const ROW_CONFIG_KEYS: &str = "'ttl', 'persistent', 'on', or 'announce'";
-const OPERATOR_WITH_KEYS: &str = "'lateness', 'on', or 'announce'";
+const ROW_CONFIG_KEYS: &str = "'ttl', 'persistent', or 'on'";
+const OPERATOR_WITH_KEYS: &str = "'lateness' or 'on'";
 const JOIN_WITH_KEYS: &str = "'lateness', 'snapshot', or 'latest'";
 
 fn unexpected_queue_option(token: &Token<'_>, expected: &str) -> Error {
@@ -2839,7 +2839,6 @@ impl<'bump> Parser<'bump> {
 
 		let mut duration: Option<Token<'bump>> = None;
 		let mut anchor: Option<Token<'bump>> = None;
-		let mut announce: Option<Token<'bump>> = None;
 		let mut persistent: Option<AstPersistent<'bump>> = None;
 
 		loop {
@@ -2857,9 +2856,6 @@ impl<'bump> Parser<'bump> {
 				}
 				"on" => {
 					anchor = Some(self.consume_identifier()?);
-				}
-				"announce" => {
-					announce = Some(self.consume_boolean("announce")?);
 				}
 				"persistent" => {
 					let token = self.consume_boolean("persistent")?;
@@ -2912,14 +2908,14 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if duration.is_none()
-			&& let Some(orphan) = anchor.or(announce)
+			&& let Some(orphan) = anchor
 		{
 			let fragment = orphan.fragment.to_owned();
 			return Err(Error::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "a 'ttl' alongside it".to_string(),
 				},
-				message: "'on' and 'announce' qualify a 'ttl'; add 'ttl' to the row config".to_string(),
+				message: "'on' qualifies a 'ttl'; add 'ttl' to the row config".to_string(),
 				fragment,
 			}));
 		}
@@ -2942,7 +2938,6 @@ impl<'bump> Parser<'bump> {
 			ttl: duration.map(|duration| AstTtl {
 				duration,
 				anchor,
-				announce,
 			}),
 			persistent,
 		})
@@ -3099,7 +3094,6 @@ impl<'bump> Parser<'bump> {
 
 		let mut duration: Option<Token<'bump>> = None;
 		let mut anchor: Option<Token<'bump>> = None;
-		let mut announce: Option<Token<'bump>> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -3116,9 +3110,6 @@ impl<'bump> Parser<'bump> {
 				}
 				"on" => {
 					anchor = Some(self.consume_identifier()?);
-				}
-				"announce" => {
-					announce = Some(self.consume_boolean("announce")?);
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
@@ -3138,15 +3129,14 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::CloseCurly)?;
 
 		if duration.is_none()
-			&& let Some(orphan) = anchor.or(announce)
+			&& let Some(orphan) = anchor
 		{
 			let fragment = orphan.fragment.to_owned();
 			return Err(Error::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "a 'lateness' alongside it".to_string(),
 				},
-				message: "'on' and 'announce' qualify a 'lateness'; add 'lateness' to the WITH clause"
-					.to_string(),
+				message: "'on' qualifies a 'lateness'; add 'lateness' to the WITH clause".to_string(),
 				fragment,
 			}));
 		}
@@ -3154,7 +3144,6 @@ impl<'bump> Parser<'bump> {
 		Ok(duration.map(|duration| AstTtl {
 			duration,
 			anchor,
-			announce,
 		}))
 	}
 

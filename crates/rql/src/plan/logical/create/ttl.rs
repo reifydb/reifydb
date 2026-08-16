@@ -14,13 +14,6 @@ use crate::{
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_operator_lateness(ast: AstTtl<'bump>) -> Result<OperatorLateness> {
-		if let Some(token) = &ast.announce {
-			return Err(AstError::UnexpectedToken {
-				expected: "no 'announce' clause: operator state is excluded from CDC".to_string(),
-				fragment: token.fragment.to_owned(),
-			}
-			.into());
-		}
 		Ok(OperatorLateness {
 			duration: Self::compile_ttl(ast)?.duration,
 		})
@@ -45,7 +38,6 @@ impl<'bump> Compiler<'bump> {
 		Self::compile_operator_lateness(AstTtl {
 			duration: token,
 			anchor: None,
-			announce: None,
 		})
 	}
 
@@ -60,24 +52,8 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		}
 
-		let announce = match &ast.announce {
-			None => false,
-			Some(token) => match token.fragment.text().to_lowercase().as_str() {
-				"true" => true,
-				"false" => false,
-				_ => {
-					return Err(AstError::UnexpectedToken {
-						expected: "'true' or 'false'".to_string(),
-						fragment: token.fragment.to_owned(),
-					}
-					.into());
-				}
-			},
-		};
-
 		Ok(Ttl {
 			duration,
-			announce,
 		})
 	}
 }
@@ -99,7 +75,6 @@ mod tests {
 		let ttl = Compiler::<'_>::compile_ttl(AstTtl {
 			duration,
 			anchor: None,
-			announce: None,
 		})
 		.unwrap();
 		assert_eq!(ttl.duration.as_nanos().unwrap(), 50i64 * 3600 * 1_000_000_000);
@@ -112,7 +87,6 @@ mod tests {
 		Compiler::<'_>::compile_ttl(AstTtl {
 			duration,
 			anchor: None,
-			announce: None,
 		})
 	}
 

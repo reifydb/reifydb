@@ -39,11 +39,10 @@ pub mod tests {
 
 	use super::*;
 
-	fn settings(duration: Duration, announce: bool, persistent: bool) -> RowSettings {
+	fn settings(duration: Duration, persistent: bool) -> RowSettings {
 		RowSettings {
 			ttl: Some(Ttl {
 				duration,
-				announce,
 			}),
 			persistent,
 		}
@@ -53,7 +52,7 @@ pub mod tests {
 	fn test_set_and_find_row_settings() {
 		let catalog = CatalogCache::new();
 		let storage = StorageId::Table(TableId(1));
-		let config = settings(Duration::from_minutes(5).unwrap(), false, false);
+		let config = settings(Duration::from_minutes(5).unwrap(), false);
 
 		catalog.set_row_settings(storage, CommitVersion(1), Some(config.clone()));
 
@@ -67,8 +66,8 @@ pub mod tests {
 		let catalog = CatalogCache::new();
 		let storage = StorageId::Table(TableId(42));
 
-		let config_v1 = settings(Duration::from_minutes(5).unwrap(), false, true);
-		let config_v2 = settings(Duration::from_minutes(10).unwrap(), true, false);
+		let config_v1 = settings(Duration::from_minutes(5).unwrap(), true);
+		let config_v2 = settings(Duration::from_minutes(10).unwrap(), false);
 
 		catalog.set_row_settings(storage, CommitVersion(1), Some(config_v1.clone()));
 		catalog.set_row_settings(storage, CommitVersion(2), Some(config_v2.clone()));
@@ -82,7 +81,7 @@ pub mod tests {
 	fn test_row_settings_deletion() {
 		let catalog = CatalogCache::new();
 		let storage = StorageId::Table(TableId(99));
-		let config = settings(Duration::from_minutes(5).unwrap(), false, true);
+		let config = settings(Duration::from_minutes(5).unwrap(), true);
 
 		catalog.set_row_settings(storage, CommitVersion(1), Some(config.clone()));
 		assert_eq!(catalog.find_row_settings_at(storage, CommitVersion(1)), Some(config.clone()));
@@ -97,9 +96,9 @@ pub mod tests {
 		let catalog = CatalogCache::new();
 		let storage = StorageId::Table(TableId(100));
 
-		let config_v1 = settings(Duration::from_minutes(1).unwrap(), false, true);
-		let config_v2 = settings(Duration::from_minutes(5).unwrap(), true, false);
-		let config_v3 = settings(Duration::from_days(1).unwrap(), false, true);
+		let config_v1 = settings(Duration::from_minutes(1).unwrap(), true);
+		let config_v2 = settings(Duration::from_minutes(5).unwrap(), false);
+		let config_v3 = settings(Duration::from_days(1).unwrap(), true);
 
 		catalog.set_row_settings(storage, CommitVersion(10), Some(config_v1.clone()));
 		catalog.set_row_settings(storage, CommitVersion(20), Some(config_v2.clone()));

@@ -79,21 +79,18 @@ pub mod tests {
 		let settings_table = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(5).unwrap(),
-				announce: false,
 			}),
 			persistent: true,
 		};
 		let settings_rb = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_minutes(10).unwrap(),
-				announce: true,
 			}),
 			persistent: false,
 		};
 		let settings_series = RowSettings {
 			ttl: Some(Ttl {
 				duration: Duration::from_days(1).unwrap(),
-				announce: false,
 			}),
 			persistent: true,
 		};

@@ -9,15 +9,19 @@ use std::collections::HashMap;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
+	row::bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 };
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
+	interface::{
+		catalog::{id::TableId, storage::StorageId},
+		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
+	},
+	key::{EncodableKey, row::RowKey},
 };
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore, tier::read::ReadBufferConfig};
-use reifydb_value::{cow_vec, util::cowvec::CowVec};
+use reifydb_value::{cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
 
 fn key(s: &str) -> EncodedKey {
 	EncodedKey::new(s.as_bytes())
@@ -152,6 +156,51 @@ fn range_scan_does_not_consult_the_read_tier() {
 		!scanned_after.iter().any(|(kk, _)| kk == k.as_ref()),
 		"a value present only in the read cache must never appear in a range scan"
 	);
+}
+
+fn row_key(n: u64) -> EncodedKey {
+	// classify_key must resolve to the same source the expiry delete is issued against.
+	RowKey {
+		storage: StorageId::Table(TableId(1)),
+		row: RowNumber(n),
+	}
+	.encode()
+}
+
+fn stamped(nanos: u64) -> Vec<u8> {
+	// The persistent tier only records an expiry stamp for a body long enough to carry a shape header.
+	let mut bytes = vec![0u8; SHAPE_HEADER_SIZE];
+	bytes[16..24].copy_from_slice(&nanos.to_le_bytes());
+	bytes
+}
+
+fn persistent_only_set_bytes(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: Vec<u8>) {
+	let persistent = store.persistent().expect("persistent tier configured");
+	let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> = HashMap::new();
+	batches.entry(classify_key(k)).or_default().push((k.clone(), Some(CowVec::new(value))));
+	use reifydb_store_multi::tier::TierStorage;
+	persistent.set(CommitVersion(version), batches).unwrap();
+}
+
+#[test]
+fn reaping_a_key_invalidates_the_cached_row_it_removed() {
+	// A physical delete bypasses the commit path, so without invalidation the cache resurrects the row.
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let expired = row_key(1);
+	let fresh = row_key(2);
+
+	persistent_only_set_bytes(&store, &expired, 5, stamped(100));
+	persistent_only_set_bytes(&store, &fresh, 5, stamped(900));
+	assert!(get(&store, &expired, 5).is_some(), "the point read must populate the cache from persistent");
+	assert!(get(&store, &fresh, 5).is_some(), "the point read must populate the cache from persistent");
+
+	let persistent = store.persistent().expect("persistent tier configured");
+	let removed = persistent.delete_keys(classify_key(&expired), std::slice::from_ref(&expired)).unwrap();
+	store.invalidate_read_key(&expired);
+	assert_eq!(removed, 1, "only the named key may be deleted");
+
+	assert_eq!(get(&store, &expired, 5), None, "a deleted row must never be served again from the cache");
+	assert!(get(&store, &fresh, 5).is_some(), "a surviving row's cache entry must be left alone");
 }
 
 #[test]
