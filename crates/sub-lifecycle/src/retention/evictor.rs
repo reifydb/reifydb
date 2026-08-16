@@ -16,6 +16,7 @@ use reifydb_core::{
 			id::{RingBufferId, SeriesId, TableId},
 			storage::StorageId,
 		},
+		store::{MultiVersionRow, classify_range},
 	},
 	key::{
 		EncodableKey,
@@ -44,7 +45,8 @@ use reifydb_engine::{
 	},
 	vm::instruction::dml::shape::get_or_create_series_shape,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{
 	Result,
 	value::{
@@ -54,7 +56,10 @@ use reifydb_value::{
 };
 use tracing::{debug, instrument, warn};
 
-use crate::{plane::RetentionPlane, retention::scan};
+use crate::{
+	plane::RetentionPlane,
+	retention::{scan, scan::ExpiryCursor},
+};
 
 type CursorKey = (StorageId, EncodedKey);
 
@@ -62,7 +67,15 @@ type CursorKey = (StorageId, EncodedKey);
 pub struct EvictorState {
 	running: bool,
 	cursors: HashMap<CursorKey, EncodedKey>,
+	expiry_cursors: HashMap<CursorKey, ExpiryCursor>,
 	resume: Option<StorageId>,
+}
+
+impl EvictorState {
+	fn forget(&mut self, storage: StorageId) {
+		self.cursors.retain(|key, _| key.0 != storage);
+		self.expiry_cursors.retain(|key, _| key.0 != storage);
+	}
 }
 
 #[derive(Default)]
@@ -81,6 +94,7 @@ struct TickStats {
 pub struct Evictor {
 	engine: StandardEngine,
 	plane: RetentionPlane,
+	store: StandardMultiStore,
 }
 
 impl Evictor {
@@ -90,9 +104,13 @@ impl Evictor {
 	}
 
 	pub fn with_plane(engine: StandardEngine, plane: RetentionPlane) -> Self {
+		let store = match engine.multi_owned().store() {
+			MultiStore::Standard(store) => store.clone(),
+		};
 		Self {
 			engine,
 			plane,
+			store,
 		}
 	}
 
@@ -124,6 +142,7 @@ impl Evictor {
 				(Self::class_of(ttl.announce) == target).then_some((storage, ttl))
 			})
 			.collect();
+
 		eligible.sort_unstable_by_key(|(storage, _)| *storage);
 
 		let start = state
@@ -151,7 +170,7 @@ impl Evictor {
 				self.evict_storage(state, storage, ttl, cutoff, batch_size, &mut budget, &mut stats)
 			{
 				warn!(?storage, error = %e, "retention eviction failed; resetting cursors, retrying next tick");
-				state.cursors.retain(|key, _| key.0 != storage);
+				state.forget(storage);
 				budget = budget.saturating_sub(1);
 			}
 
@@ -286,6 +305,46 @@ impl Evictor {
 		Ok(())
 	}
 
+	#[allow(clippy::too_many_arguments)]
+	fn expired_batch(
+		&self,
+		state: &mut EvictorState,
+		txn: &mut CommandTransaction,
+		cursor_key: &CursorKey,
+		keyspace: &EncodedKeyRange,
+		family: RowFamily,
+		cutoff: Cutoff,
+		batch_size: usize,
+	) -> Result<(Vec<MultiVersionRow>, bool)> {
+		if let (Some(persistent), Some(kind)) = (self.store.persistent(), classify_range(keyspace)) {
+			let scan = scan::scan_expired_indexed(
+				txn,
+				persistent,
+				kind,
+				family,
+				cutoff,
+				state.expiry_cursors.get(cursor_key),
+				batch_size,
+			)?;
+			let drained = match scan.next_cursor {
+				Some(cursor) => {
+					state.expiry_cursors.insert(cursor_key.clone(), cursor);
+					false
+				}
+				None => {
+					state.expiry_cursors.remove(cursor_key);
+					true
+				}
+			};
+			return Ok((scan.expired, drained));
+		}
+
+		let range = scan::resume_range(keyspace, state.cursors.get(cursor_key));
+		let result = scan::scan_expired(txn, range, family, cutoff, batch_size, &|_| None)?;
+		let drained = advance_cursor(state, cursor_key.clone(), result.next_cursor);
+		Ok((result.expired, drained))
+	}
+
 	#[instrument(name = "lifecycle::retention::evict::table_batch", level = "trace", skip_all)]
 	fn evict_table_batch(
 		&self,
@@ -303,23 +362,30 @@ impl Evictor {
 
 		let Some(table) = catalog.find_table(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
-			state.cursors.retain(|key, _| key.0 != storage);
+			state.forget(storage);
 			return Ok((0, true));
 		};
 
-		let range = scan::resume_range(keyspace, state.cursors.get(&cursor_key));
-		let result = scan::scan_expired(&mut txn, range, RowFamily::Table, cutoff, batch_size, &|_| None)?;
-		if result.expired.is_empty() {
+		let (expired, drained) = self.expired_batch(
+			state,
+			&mut txn,
+			&cursor_key,
+			keyspace,
+			RowFamily::Table,
+			cutoff,
+			batch_size,
+		)?;
+		if expired.is_empty() {
 			txn.rollback()?;
-			return Ok((0, advance_cursor(state, cursor_key, result.next_cursor)));
+			return Ok((0, drained));
 		}
 
-		let rows = result.expired.len() as u64;
+		let rows = expired.len() as u64;
 		match announce {
 			true => {
-				let mut ids: Vec<RowNumber> = Vec::with_capacity(result.expired.len());
+				let mut ids: Vec<RowNumber> = Vec::with_capacity(expired.len());
 				let mut partitions: Vec<Partition> = Vec::new();
-				for row in &result.expired {
+				for row in &expired {
 					let Some((row_number, partition)) = decode_table_locator(&row.key) else {
 						continue;
 					};
@@ -335,13 +401,13 @@ impl Evictor {
 				txn.remove_from_table(&table, &ids, &partitions)?;
 			}
 			false => {
-				for row in &result.expired {
+				for row in &expired {
 					txn.remove_silent(&row.key)?;
 				}
 			}
 		}
 		txn.commit()?;
-		Ok((rows, advance_cursor(state, cursor_key, result.next_cursor)))
+		Ok((rows, drained))
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -420,7 +486,7 @@ impl Evictor {
 
 		let Some(ringbuffer) = catalog.find_ringbuffer(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
-			state.cursors.retain(|key, _| key.0 != storage);
+			state.forget(storage);
 			return Ok((0, true));
 		};
 
@@ -528,14 +594,14 @@ impl Evictor {
 
 		let Some(series) = catalog.find_series(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
-			state.cursors.retain(|key, _| key.0 != storage);
+			state.forget(storage);
 			return Ok((0, true));
 		};
 		let Some(mut metadata) =
 			catalog.find_series_metadata(&mut Transaction::Command(&mut txn), series.id)?
 		else {
 			txn.rollback()?;
-			state.cursors.retain(|key, _| key.0 != storage);
+			state.forget(storage);
 			return Ok((0, true));
 		};
 
@@ -547,14 +613,21 @@ impl Evictor {
 		};
 		let cursor_key = (storage, scan::keyspace_start(&keyspace));
 
-		let range = scan::resume_range(&keyspace, state.cursors.get(&cursor_key));
-		let result = scan::scan_expired(&mut txn, range, RowFamily::Series, cutoff, batch_size, &|_| None)?;
-		if result.expired.is_empty() {
+		let (expired, drained) = self.expired_batch(
+			state,
+			&mut txn,
+			&cursor_key,
+			&keyspace,
+			RowFamily::Series,
+			cutoff,
+			batch_size,
+		)?;
+		if expired.is_empty() {
 			txn.rollback()?;
-			return Ok((0, advance_cursor(state, cursor_key, result.next_cursor)));
+			return Ok((0, drained));
 		}
 
-		let deleted = result.expired.len() as u64;
+		let deleted = expired.len() as u64;
 		match announce {
 			true => {
 				let row_shape = get_or_create_series_shape(
@@ -562,7 +635,7 @@ impl Evictor {
 					&series,
 					&mut Transaction::Command(&mut txn),
 				)?;
-				for row in &result.expired {
+				for row in &expired {
 					let committed = txn.get_committed(&row.key)?.map(|v| v.bytes);
 					let pre_for_cdc = committed.clone().unwrap_or_else(|| row.bytes.clone());
 					let pre = decode_series_storage_key(&series, &row.key, partitioned).map(
@@ -586,7 +659,7 @@ impl Evictor {
 				}
 			}
 			false => {
-				for row in &result.expired {
+				for row in &expired {
 					txn.remove_silent(&row.key)?;
 				}
 			}
@@ -594,7 +667,7 @@ impl Evictor {
 		apply_series_metadata_after_delete(&mut metadata, deleted);
 		catalog.update_series_metadata_txn(&mut Transaction::Command(&mut txn), series.id, metadata)?;
 		txn.commit()?;
-		Ok((deleted, advance_cursor(state, cursor_key, result.next_cursor)))
+		Ok((deleted, drained))
 	}
 }
 

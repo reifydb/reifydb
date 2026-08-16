@@ -86,6 +86,40 @@ impl MultiCommitBufferTier {
 			Self::Memory(s) => s.historical_resident_bytes(),
 		}
 	}
+
+	#[inline]
+	pub fn compact(
+		&self,
+		batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>,
+	) -> Result<Vec<EvictedVersion>> {
+		match self {
+			Self::Memory(s) => s.compact(batches),
+		}
+	}
+
+	#[inline]
+	pub fn get_all_versions(
+		&self,
+		table: EntryKind,
+		key: &[u8],
+	) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
+		match self {
+			Self::Memory(s) => s.get_all_versions(table, key),
+		}
+	}
+
+	#[inline]
+	pub fn scan_historical_below(
+		&self,
+		table: EntryKind,
+		cutoff: CommitVersion,
+		cursor: &mut HistoricalCursor,
+		batch_size: usize,
+	) -> Result<Vec<(EncodedKey, CommitVersion)>> {
+		match self {
+			Self::Memory(s) => s.scan_historical_below(table, cutoff, cursor, batch_size),
+		}
+	}
 }
 
 impl MetricsCollector for MultiCommitBufferTier {
@@ -162,36 +196,6 @@ impl TierStorage for MultiCommitBufferTier {
 	fn clear_table(&self, table: EntryKind) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.clear_table(table),
-		}
-	}
-
-	#[inline]
-	fn compact(
-		&self,
-		batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>,
-	) -> Result<Vec<EvictedVersion>> {
-		match self {
-			Self::Memory(s) => s.compact(batches),
-		}
-	}
-
-	#[inline]
-	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
-		match self {
-			Self::Memory(s) => s.get_all_versions(table, key),
-		}
-	}
-
-	#[inline]
-	fn scan_historical_below(
-		&self,
-		table: EntryKind,
-		cutoff: CommitVersion,
-		cursor: &mut HistoricalCursor,
-		batch_size: usize,
-	) -> Result<Vec<(EncodedKey, CommitVersion)>> {
-		match self {
-			Self::Memory(s) => s.scan_historical_below(table, cutoff, cursor, batch_size),
 		}
 	}
 }

@@ -11,7 +11,10 @@ use std::{
 	},
 };
 
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::bytes::{SHAPE_HEADER_SIZE, read_updated_at},
+};
 #[cfg(test)]
 use reifydb_core::metrics::scan::ScanCounters;
 use reifydb_core::{
@@ -32,8 +35,12 @@ use reifydb_sqlite::{
 	pragma,
 };
 use reifydb_value::{
-	Result, byte_size::ByteSize, count::Count, error, reifydb_assertions, util::cowvec::CowVec,
-	value::duration::Duration,
+	Result,
+	byte_size::ByteSize,
+	count::Count,
+	error, reifydb_assertions,
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, duration::Duration},
 };
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior,
@@ -44,16 +51,15 @@ use tracing::{instrument, warn};
 use crate::{
 	MultiVersionScope,
 	tier::{
-		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch,
-		TierStorage, VersionedGetResult,
-		commit::memory::storage::EvictedVersion,
+		DisplacedValues, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
+		VersionedGetResult,
 		persistent::sqlite::{
 			entry::{current_table_name, current_table_name_to_entry},
 			query::{
 				build_create_current_sql, build_delete_below_version_sql, build_delete_keys_sql,
-				build_get_current_sql, build_get_many_current_sql, build_range_consistent_sql,
-				build_range_current_sql, build_reap_tombstones_sql, build_upsert_current_sql,
-				prefix_upper_bound, version_from_bytes, version_to_bytes,
+				build_expired_keys_sql, build_get_current_sql, build_get_many_current_sql,
+				build_range_consistent_sql, build_range_current_sql, build_reap_tombstones_sql,
+				build_upsert_current_sql, prefix_upper_bound, version_from_bytes, version_to_bytes,
 			},
 		},
 	},
@@ -412,6 +418,63 @@ impl SqlitePersistentStorage {
 		Ok((reaped, reaped == limit as u64))
 	}
 
+	pub fn expired_keys(
+		&self,
+		table: EntryKind,
+		cutoff: DateTime,
+		cursor: Option<(DateTime, &[u8])>,
+		limit: usize,
+	) -> Result<Vec<(EncodedKey, DateTime)>> {
+		if limit == 0 {
+			return Ok(Vec::new());
+		}
+		let table_sql = self.table_sql(table);
+		let sql = build_expired_keys_sql(&table_sql.table_name, cursor.is_some(), limit.min(i64::MAX as usize));
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(Vec::new());
+		};
+		let mut stmt = match conn.prepare_cached(&sql) {
+			Ok(stmt) => stmt,
+			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
+			Err(e) => {
+				return Err(error!(internal(format!(
+					"Failed to prepare expired keys for {}: {}",
+					table_sql.table_name, e
+				))));
+			}
+		};
+		let mut params: Vec<Box<dyn ToSql>> = vec![Box::new(cutoff.to_nanos() as i64)];
+		if let Some((at, key)) = cursor {
+			params.push(Box::new(at.to_nanos() as i64));
+			params.push(Box::new(key.to_vec()));
+		}
+		let rows = match stmt.query_map(params_from_iter(params), |row| {
+			let key: Vec<u8> = row.get(0)?;
+			let nanos: i64 = row.get(1)?;
+			Ok((EncodedKey::new(key), DateTime::from_nanos(nanos as u64)))
+		}) {
+			Ok(rows) => rows,
+			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
+			Err(e) => {
+				return Err(error!(internal(format!(
+					"Failed to scan expired keys from {}: {}",
+					table_sql.table_name, e
+				))));
+			}
+		};
+		let mut out = Vec::new();
+		for row in rows {
+			out.push(row.map_err(|e| {
+				error!(internal(format!(
+					"Failed to read expired key from {}: {}",
+					table_sql.table_name, e
+				)))
+			})?);
+		}
+		Ok(out)
+	}
+
 	pub fn resurrections(&self) -> u64 {
 		self.inner.resurrections.load(Ordering::Relaxed)
 	}
@@ -484,7 +547,12 @@ impl SqlitePersistentStorage {
 				}
 				let value_slice = value.as_ref().map(|v| v.as_slice());
 				let affected = stmt
-					.execute(params![key.as_slice(), new_version_bytes.as_slice(), value_slice])
+					.execute(params![
+						key.as_slice(),
+						new_version_bytes.as_slice(),
+						value_slice,
+						expiry_stamp(table, value.as_ref()).map(|at| at.to_nanos() as i64)
+					])
 					.map_err(|e| {
 						error!(internal(format!("Failed to upsert persistent row: {}", e)))
 					})?;
@@ -537,7 +605,9 @@ impl SqlitePersistentStorage {
 						.execute(params![
 							key.as_slice(),
 							new_version_bytes.as_slice(),
-							value_slice
+							value_slice,
+							expiry_stamp(table, value.as_ref())
+								.map(|at| at.to_nanos() as i64)
 						])
 						.map_err(|e| {
 							error!(internal(format!(
@@ -721,6 +791,17 @@ impl SqlitePersistentStorage {
 		};
 
 		Ok(raw)
+	}
+}
+
+fn expiry_stamp(table: EntryKind, value: Option<&CowVec<u8>>) -> Option<DateTime> {
+	match (table, value) {
+		(EntryKind::Source(_) | EntryKind::PartitionedSource(_), Some(row))
+			if row.len() >= SHAPE_HEADER_SIZE =>
+		{
+			Some(read_updated_at(row))
+		}
+		_ => None,
 	}
 }
 
@@ -979,60 +1060,6 @@ impl TierStorage for SqlitePersistentStorage {
 		}
 		Ok(())
 	}
-
-	fn compact(
-		&self,
-		_batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>,
-	) -> Result<Vec<EvictedVersion>> {
-		// TODO: change the TierStorage interface so persistent doesn't have to expose
-
-		panic!("SqlitePersistentStorage::drop: persistent tier has no historical chain to drop versions from");
-	}
-
-	#[instrument(name = "store::multi::persistent::sqlite::get_all_versions", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
-	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
-		// TODO: change the TierStorage interface to remove the
-
-		let table_sql = self.table_sql(table);
-		let guard = self.inner.readers.acquire();
-		let Some(conn) = guard.as_ref() else {
-			return Ok(Vec::new());
-		};
-
-		let result = match conn.prepare_cached(&table_sql.get_sql) {
-			Ok(mut stmt) => stmt.query_row(params![key], |row| {
-				let version_bytes: Vec<u8> = row.get(0)?;
-				let value: Option<Vec<u8>> = row.get(1)?;
-				Ok((version_from_bytes(&version_bytes), value.map(CowVec::new)))
-			}),
-			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
-			Err(e) => {
-				return Err(error!(internal(format!(
-					"Failed to prepare persistent get_all_versions: {}",
-					e
-				))));
-			}
-		};
-
-		match result {
-			Ok(row) => Ok(vec![row]),
-			Err(QueryReturnedNoRows) => Ok(Vec::new()),
-			Err(e) if e.to_string().contains("no such table") => Ok(Vec::new()),
-			Err(e) => Err(error!(internal(format!("Failed to read persistent versions: {}", e)))),
-		}
-	}
-
-	fn scan_historical_below(
-		&self,
-		_table: EntryKind,
-		_cutoff: CommitVersion,
-		_cursor: &mut HistoricalCursor,
-		_batch_size: usize,
-	) -> Result<Vec<(EncodedKey, CommitVersion)>> {
-		// TODO: change the TierStorage interface so persistent doesn't have to expose
-
-		panic!("SqlitePersistentStorage::scan_historical_below: persistent tier has no historical chain");
-	}
 }
 
 impl TierBackend for SqlitePersistentStorage {}
@@ -1067,6 +1094,25 @@ mod tests {
 
 	fn row(payload: &[u8]) -> CowVec<u8> {
 		CowVec::new(payload.to_vec())
+	}
+
+	fn stamped(nanos: u64) -> CowVec<u8> {
+		// A body shorter than a full shape header must never be read as carrying an expiry stamp.
+		let mut bytes = vec![0u8; SHAPE_HEADER_SIZE];
+		bytes[16..24].copy_from_slice(&nanos.to_le_bytes());
+		CowVec::new(bytes)
+	}
+
+	fn at(nanos: u64) -> DateTime {
+		DateTime::from_nanos(nanos)
+	}
+
+	fn expired_at(s: &SqlitePersistentStorage, kind: EntryKind, cutoff: u64) -> Vec<u64> {
+		s.expired_keys(kind, at(cutoff), None, 100)
+			.unwrap()
+			.into_iter()
+			.map(|(key, _)| u64::from_be_bytes(key.as_slice().try_into().unwrap()))
+			.collect()
 	}
 
 	fn visible(s: &SqlitePersistentStorage, k: &EncodedKey) -> bool {
@@ -1518,6 +1564,141 @@ mod tests {
 		assert_eq!(second, 1, "the third tombstone drains on the next call");
 		assert!(!more_second, "a sub-limit batch reports no further backlog");
 		assert_eq!(s.count_current(table()).unwrap(), 0);
+	}
+
+	#[test]
+	fn expired_keys_returns_rows_at_or_below_the_cutoff_oldest_first() {
+		// Eviction drains from the head, so youngest-first would strand the oldest rows forever.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(
+			CommitVersion(1),
+			HashMap::from([(
+				table(),
+				vec![
+					(key(1), Some(stamped(300))),
+					(key(2), Some(stamped(100))),
+					(key(3), Some(stamped(200))),
+					(key(4), Some(stamped(500))),
+				],
+			)]),
+		)
+		.unwrap();
+
+		assert_eq!(
+			expired_at(&s, table(), 300),
+			vec![2, 3, 1],
+			"candidates must come back ordered by their own stamp, oldest first, cutoff inclusive"
+		);
+		assert_eq!(expired_at(&s, table(), 99), Vec::<u64>::new(), "a cutoff below every stamp yields nothing");
+	}
+
+	#[test]
+	fn expired_keys_never_returns_a_tombstone() {
+		// Otherwise the evictor re-deletes a dead key forever and never advances past it.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(stamped(100)))])])).unwrap();
+		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
+
+		assert_eq!(
+			expired_at(&s, table(), 1_000),
+			Vec::<u64>::new(),
+			"a valueless row must not surface as an expiry candidate"
+		);
+	}
+
+	#[test]
+	fn a_fresh_write_clears_an_earlier_expiry_stamp() {
+		// Without this the index is unsound under UPDATE: a row rewritten inside its ttl still dies.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(stamped(100)))])])).unwrap();
+		assert_eq!(expired_at(&s, table(), 150), vec![1], "precondition: the row starts out expired");
+
+		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(1), Some(stamped(900)))])])).unwrap();
+
+		assert_eq!(
+			expired_at(&s, table(), 150),
+			Vec::<u64>::new(),
+			"rewriting the row must carry its new stamp into the index, not leave the stale one"
+		);
+		assert_eq!(expired_at(&s, table(), 900), vec![1], "and the row expires again against the new stamp");
+	}
+
+	#[test]
+	fn expired_keys_ignores_entries_whose_rows_carry_no_stamp() {
+		// Otherwise catalog bytes read as a timestamp hand the evictor arbitrary rows to delete.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(1), HashMap::from([(EntryKind::Multi, vec![(key(1), Some(stamped(100)))])]))
+			.unwrap();
+
+		assert_eq!(
+			expired_at(&s, EntryKind::Multi, 1_000),
+			Vec::<u64>::new(),
+			"a non-row entry must never produce expiry candidates, whatever its bytes look like"
+		);
+	}
+
+	#[test]
+	fn expired_keys_resumes_from_the_cursor_without_gaps_or_repeats() {
+		// A candidate the evictor cannot remove must never stall every older row behind it.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(
+			CommitVersion(1),
+			HashMap::from([(
+				table(),
+				vec![
+					(key(1), Some(stamped(100))),
+					(key(2), Some(stamped(100))),
+					(key(3), Some(stamped(200))),
+				],
+			)]),
+		)
+		.unwrap();
+
+		let mut seen = Vec::new();
+		let mut cursor: Option<(DateTime, EncodedKey)> = None;
+		loop {
+			let batch = s
+				.expired_keys(table(), at(1_000), cursor.as_ref().map(|(a, k)| (*a, k.as_slice())), 1)
+				.unwrap();
+			let Some((k, a)) = batch.last().cloned() else {
+				break;
+			};
+			seen.push(u64::from_be_bytes(k.as_slice().try_into().unwrap()));
+			cursor = Some((a, k));
+		}
+
+		assert_eq!(
+			seen,
+			vec![1, 2, 3],
+			"threading the cursor must walk every candidate exactly once, in order"
+		);
+	}
+
+	#[test]
+	fn expiry_discovery_uses_the_partial_index() {
+		// Without the index this full-scans the live set on every batch, the exact cost it removes.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		for n in 1..=200u64 {
+			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(stamped(n)))])])).unwrap();
+		}
+		let table_name = s.table_sql(table()).table_name.clone();
+
+		let guard = s.inner.conn.lock();
+		let conn = guard.as_ref().expect("write connection is present");
+		conn.execute_batch("ANALYZE").unwrap();
+		let sql = format!("EXPLAIN QUERY PLAN {}", build_expired_keys_sql(&table_name, false, 100));
+		let details: Vec<String> = conn
+			.prepare(&sql)
+			.unwrap()
+			.query_map([0i64], |r| r.get::<_, String>(3))
+			.unwrap()
+			.map(|r| r.unwrap())
+			.collect();
+
+		assert!(
+			details.iter().any(|d| d.contains(&format!("{table_name}__expiry"))),
+			"expiry discovery must use the partial expiry index; query plan was {details:?}"
+		);
 	}
 
 	#[test]

@@ -159,7 +159,8 @@ mod tests {
 
 	#[test]
 	fn sealing_endpoint_default_open_moves_when_the_earliest_row_is_retracted() {
-		// Without an immutable span the open is never frozen, so retracting the earliest row must promote the next.
+		// Without an immutable span the open is never frozen, so retracting the earliest row must promote the
+		// next.
 		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::default();
 		accumulator.add(&(at_millis(0), 100));
 		accumulator.add(&(at_millis(5), 200));

@@ -21,7 +21,7 @@ use reifydb_core::{
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_multi::{
 	store::StandardMultiStore,
-	tier::{HistoricalCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
+	tier::{HistoricalCursor, commit::buffer::MultiCommitBufferTier},
 };
 use reifydb_value::{Result, value::duration::Duration};
 use tracing::{debug, instrument, trace, warn};

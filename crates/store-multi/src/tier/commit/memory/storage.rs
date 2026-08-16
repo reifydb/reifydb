@@ -637,12 +637,14 @@ impl TierStorage for MemoryRowStorage {
 		}
 		Ok(())
 	}
+}
 
+impl MemoryRowStorage {
 	#[instrument(name = "store::multi::memory::drop", level = "debug", skip(self, batches), fields(
 		table_count = batches.len(),
 		total_entry_count = field::Empty
 	))]
-	fn compact(
+	pub fn compact(
 		&self,
 		batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>,
 	) -> Result<Vec<EvictedVersion>> {
@@ -740,7 +742,11 @@ impl TierStorage for MemoryRowStorage {
 	}
 
 	#[instrument(name = "store::multi::memory::get_all_versions", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
-	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
+	pub fn get_all_versions(
+		&self,
+		table: EntryKind,
+		key: &[u8],
+	) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
 		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
 			None => return Ok(Vec::new()),
@@ -770,7 +776,7 @@ impl TierStorage for MemoryRowStorage {
 	}
 
 	#[instrument(name = "store::multi::memory::scan_historical_below", level = "trace", skip(self, cursor), fields(table = ?table, cutoff = cutoff.0, batch_size = batch_size))]
-	fn scan_historical_below(
+	pub fn scan_historical_below(
 		&self,
 		table: EntryKind,
 		cutoff: CommitVersion,

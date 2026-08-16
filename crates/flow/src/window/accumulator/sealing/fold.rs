@@ -98,6 +98,10 @@ impl<C: Slot, F: SealFold> SealingFold<C, F> {
 		self.base.len()
 	}
 
+	pub fn is_empty(&self) -> bool {
+		self.base.len() == 0
+	}
+
 	pub fn sealed_count(&self) -> u64 {
 		self.base.sealed_count()
 	}

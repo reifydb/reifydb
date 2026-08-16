@@ -173,7 +173,8 @@ mod tests {
 
 	#[test]
 	fn tail_acc_default_drains_to_empty_and_finalizes_to_none() {
-		// The sealed arm can never drain once a row ages out; with no span the window must be reclaimable again.
+		// The sealed arm can never drain once a row ages out; with no span the window must be reclaimable
+		// again.
 		let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::default();
 		accumulator.add(&(at_millis(0), 10));
 		accumulator.add(&(at_millis(1_000_000), 20));

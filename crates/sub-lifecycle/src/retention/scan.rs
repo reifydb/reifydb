@@ -7,14 +7,58 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::shape::RowFamily,
 };
-use reifydb_core::{interface::store::MultiVersionRow, state::horizon::Cutoff};
+use reifydb_core::{
+	interface::store::{EntryKind, MultiVersionRow},
+	state::horizon::Cutoff,
+};
+use reifydb_store_multi::tier::persistent::MultiPersistentTier;
 use reifydb_transaction::{multi::RangeScope, transaction::command::CommandTransaction};
-use reifydb_value::Result;
+use reifydb_value::{Result, value::datetime::DateTime};
 
 pub struct ExpiredScan {
 	pub expired: Vec<MultiVersionRow>,
 	pub min_survivor_row: Option<u64>,
 	pub next_cursor: Option<EncodedKey>,
+}
+
+pub type ExpiryCursor = (DateTime, EncodedKey);
+
+pub struct ExpiredIndexScan {
+	pub expired: Vec<MultiVersionRow>,
+	pub next_cursor: Option<ExpiryCursor>,
+}
+
+pub fn scan_expired_indexed(
+	txn: &mut CommandTransaction,
+	persistent: &MultiPersistentTier,
+	kind: EntryKind,
+	family: RowFamily,
+	cutoff: Cutoff,
+	cursor: Option<&ExpiryCursor>,
+	limit: usize,
+) -> Result<ExpiredIndexScan> {
+	let candidates = persistent.expired_keys(
+		kind,
+		cutoff.instant(),
+		cursor.map(|(at, key)| (*at, key.as_slice())),
+		limit,
+	)?;
+	let next_cursor = candidates.last().map(|(key, at)| (*at, key.clone()));
+
+	let mut expired = Vec::with_capacity(candidates.len());
+	for (key, _) in &candidates {
+		let Some(row) = txn.get(key)? else {
+			continue;
+		};
+		if family.updated_at(&row.bytes) <= cutoff.instant() {
+			expired.push(row);
+		}
+	}
+
+	Ok(ExpiredIndexScan {
+		expired,
+		next_cursor,
+	})
 }
 
 pub fn keyspace_start(range: &EncodedKeyRange) -> EncodedKey {
@@ -26,7 +70,7 @@ pub fn keyspace_start(range: &EncodedKeyRange) -> EncodedKey {
 
 pub fn resume_range(base: &EncodedKeyRange, cursor: Option<&EncodedKey>) -> EncodedKeyRange {
 	match cursor {
-		Some(key) => EncodedKeyRange::new(Bound::Excluded(key.clone()), base.end.clone()),
+		Some(key) => EncodedKeyRange::new(base.start.clone(), Bound::Excluded(key.clone())),
 		None => base.clone(),
 	}
 }
@@ -54,7 +98,7 @@ pub fn scan_expired(
 	let mut examined = 0usize;
 	let mut current: Option<MultiVersionRow> = None;
 
-	let mut stream = txn.range_persistence(range, RangeScope::All, 1024)?;
+	let mut stream = txn.range_rev_persistence(range, RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
 		let entry = entry?;
 		if let Some(cur) = &mut current {

@@ -20,12 +20,28 @@ pub(super) fn build_create_current_sql(table_name: &str) -> String {
 		"CREATE TABLE IF NOT EXISTS \"{0}\" (\
 			key BLOB PRIMARY KEY,\
 			version BLOB NOT NULL,\
-			value BLOB\
+			value BLOB,\
+			updated_at INTEGER\
 		) WITHOUT ROWID;\
 		CREATE INDEX IF NOT EXISTS \"{0}__version\" ON \"{0}\" (version);\
-		CREATE INDEX IF NOT EXISTS \"{0}__tombstone\" ON \"{0}\" (version) WHERE value IS NULL;",
+		CREATE INDEX IF NOT EXISTS \"{0}__tombstone\" ON \"{0}\" (version) WHERE value IS NULL;\
+		CREATE INDEX IF NOT EXISTS \"{0}__expiry\" ON \"{0}\" (updated_at) \
+			WHERE value IS NOT NULL AND updated_at IS NOT NULL;",
 		table_name
 	)
+}
+
+pub(super) fn build_expired_keys_sql(table_name: &str, has_cursor: bool, limit: usize) -> String {
+	let mut sql = format!(
+		"SELECT key, updated_at FROM \"{0}\" \
+		 WHERE value IS NOT NULL AND updated_at IS NOT NULL AND updated_at <= ?1",
+		table_name
+	);
+	if has_cursor {
+		sql.push_str(" AND (updated_at > ?2 OR (updated_at = ?2 AND key > ?3))");
+	}
+	sql.push_str(&format!(" ORDER BY updated_at, key LIMIT {}", limit));
+	sql
 }
 
 pub(super) fn build_reap_tombstones_sql(table_name: &str, limit: usize) -> String {
@@ -59,10 +75,11 @@ fn build_placeholders(key_count: usize) -> String {
 
 pub(super) fn build_upsert_current_sql(table_name: &str) -> String {
 	format!(
-		"INSERT INTO \"{0}\" (key, version, value) VALUES (?1, ?2, ?3) \
+		"INSERT INTO \"{0}\" (key, version, value, updated_at) VALUES (?1, ?2, ?3, ?4) \
 		 ON CONFLICT(key) DO UPDATE SET \
 		     version = excluded.version, \
-		     value = excluded.value \
+		     value = excluded.value, \
+		     updated_at = excluded.updated_at \
 		 WHERE excluded.version >= \"{0}\".version",
 		table_name
 	)

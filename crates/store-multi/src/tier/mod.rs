@@ -11,7 +11,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
-use crate::{MultiVersionScope, tier::commit::memory::storage::EvictedVersion};
+use crate::MultiVersionScope;
 
 pub type DisplacedValues = Vec<(EncodedKey, u64)>;
 
@@ -156,19 +156,6 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	fn ensure_table(&self, table: EntryKind) -> Result<()>;
 
 	fn clear_table(&self, table: EntryKind) -> Result<()>;
-
-	fn compact(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>)
-	-> Result<Vec<EvictedVersion>>;
-
-	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>>;
-
-	fn scan_historical_below(
-		&self,
-		table: EntryKind,
-		cutoff: CommitVersion,
-		cursor: &mut HistoricalCursor,
-		batch_size: usize,
-	) -> Result<Vec<(EncodedKey, CommitVersion)>>;
 }
 
 pub trait TierBackend: TierStorage {}

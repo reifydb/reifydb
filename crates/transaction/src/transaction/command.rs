@@ -495,6 +495,17 @@ impl CommandTransaction {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev(range, scope, batch_size))
 	}
+
+	#[inline]
+	pub fn range_rev_persistence(
+		&mut self,
+		range: EncodedKeyRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
+		self.check_active()?;
+		Ok(self.cmd.as_mut().unwrap().range_rev_persistence(range, scope, batch_size))
+	}
 }
 
 impl WithEventBus for CommandTransaction {

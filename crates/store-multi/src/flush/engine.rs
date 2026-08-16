@@ -28,9 +28,11 @@ use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 use tracing::{debug, error, warn};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::tier::commit::memory::storage::EvictedVersion;
+use crate::tier::TierBatch;
+#[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::tier::TierStorage;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::tier::{TierBatch, TierStorage};
+use crate::tier::commit::memory::storage::EvictedVersion;
 use crate::{
 	flush::ObjectPersistence,
 	tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::MultiReadBufferTier},

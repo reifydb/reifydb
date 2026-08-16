@@ -5,20 +5,20 @@
 //! flushed, not a version chain. The default backend is SQLite; the trait surface is generic so another
 //! backend can be plugged in without touching the buffer or transaction layer.
 
-use std::{collections::HashMap, ops::Bound};
+use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
 	MultiVersionScope,
 	tier::{
-		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch,
-		TierStorage, VersionedGetResult, commit::memory::storage::EvictedVersion,
+		DisplacedValues, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
+		VersionedGetResult,
 	},
 };
 
@@ -88,6 +88,18 @@ impl MultiPersistentTier {
 		}
 	}
 
+	pub fn expired_keys(
+		&self,
+		table: EntryKind,
+		cutoff: DateTime,
+		cursor: Option<(DateTime, &[u8])>,
+		limit: usize,
+	) -> Result<Vec<(EncodedKey, DateTime)>> {
+		match self {
+			Self::Sqlite(s) => s.expired_keys(table, cutoff, cursor, limit),
+		}
+	}
+
 	pub fn list_current_entries(&self) -> Result<Vec<EntryKind>> {
 		match self {
 			Self::Sqlite(s) => s.list_current_entries(),
@@ -149,6 +161,16 @@ impl MultiPersistentTier {
 	}
 
 	pub fn delete_keys(&self, _table: EntryKind, _keys: &[EncodedKey]) -> Result<u64> {
+		match *self {}
+	}
+
+	pub fn expired_keys(
+		&self,
+		_table: EntryKind,
+		_cutoff: DateTime,
+		_cursor: Option<(DateTime, &[u8])>,
+		_limit: usize,
+	) -> Result<Vec<(EncodedKey, DateTime)>> {
 		match *self {}
 	}
 
@@ -245,33 +267,6 @@ impl TierStorage for MultiPersistentTier {
 			Self::Sqlite(s) => s.clear_table(table),
 		}
 	}
-
-	fn compact(
-		&self,
-		batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>,
-	) -> Result<Vec<EvictedVersion>> {
-		match self {
-			Self::Sqlite(s) => s.compact(batches),
-		}
-	}
-
-	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
-		match self {
-			Self::Sqlite(s) => s.get_all_versions(table, key),
-		}
-	}
-
-	fn scan_historical_below(
-		&self,
-		table: EntryKind,
-		cutoff: CommitVersion,
-		cursor: &mut HistoricalCursor,
-		batch_size: usize,
-	) -> Result<Vec<(EncodedKey, CommitVersion)>> {
-		match self {
-			Self::Sqlite(s) => s.scan_historical_below(table, cutoff, cursor, batch_size),
-		}
-	}
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
@@ -313,27 +308,6 @@ impl TierStorage for MultiPersistentTier {
 	}
 
 	fn clear_table(&self, _table: EntryKind) -> Result<()> {
-		match *self {}
-	}
-
-	fn compact(
-		&self,
-		_batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>,
-	) -> Result<Vec<EvictedVersion>> {
-		match *self {}
-	}
-
-	fn get_all_versions(&self, _table: EntryKind, _key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
-		match *self {}
-	}
-
-	fn scan_historical_below(
-		&self,
-		_table: EntryKind,
-		_cutoff: CommitVersion,
-		_cursor: &mut HistoricalCursor,
-		_batch_size: usize,
-	) -> Result<Vec<(EncodedKey, CommitVersion)>> {
 		match *self {}
 	}
 }

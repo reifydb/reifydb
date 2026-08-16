@@ -738,6 +738,22 @@ impl StandardMultiStore {
 		}
 	}
 
+	pub fn range_rev_persistence(
+		&self,
+		range: EncodedKeyRange,
+		scope: MultiVersionScope,
+		batch_size: usize,
+	) -> MultiVersionRangeRevIter {
+		MultiVersionRangeRevIter {
+			store: self.clone(),
+			cursor: MultiVersionRangeCursor::cold(),
+			range,
+			scope,
+			batch_size,
+			current_batch: Vec::new().into_iter(),
+		}
+	}
+
 	fn range_rev_next(
 		&self,
 		cursor: &mut MultiVersionRangeCursor,
