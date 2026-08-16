@@ -26,6 +26,7 @@ use crate::{
 impl SqliteOperatorStorage {
 	#[instrument(name = "store::operator::persistent::sqlite::set", level = "debug", skip(self, key, row), fields(operator = operator.0, key_len = key.len()))]
 	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedOperatorRow) {
+		self.mark_state_written();
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
 			return;
@@ -46,6 +47,9 @@ impl SqliteOperatorStorage {
 
 	#[instrument(name = "store::operator::persistent::sqlite::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedOperatorRow> {
+		if !self.state_written() {
+			return None;
+		}
 		let guard = self.read_conn();
 		let conn = guard.as_ref()?;
 		let mut stmt = conn.prepare_cached(STATE_GET_SQL).expect("operator state read could not be prepared");
@@ -58,6 +62,9 @@ impl SqliteOperatorStorage {
 
 	#[instrument(name = "store::operator::persistent::sqlite::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
+		if !self.state_written() {
+			return false;
+		}
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return false;
@@ -71,6 +78,9 @@ impl SqliteOperatorStorage {
 
 	#[instrument(name = "store::operator::persistent::sqlite::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
 	pub fn range_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
+		if !self.state_written() {
+			return OperatorBatch::empty();
+		}
 		let sql = range_sql(range.start.as_ref(), range.end.as_ref());
 		let mut blobs: Vec<&[u8]> = Vec::with_capacity(2);
 		if let Bound::Included(key) | Bound::Excluded(key) = range.start.as_ref() {

@@ -15,7 +15,7 @@ mod tests;
 
 use std::sync::{
 	Arc,
-	atomic::{AtomicU64, AtomicUsize, Ordering},
+	atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 
 use reifydb_runtime::{
@@ -32,7 +32,7 @@ use reifydb_value::value::duration::Duration;
 use rusqlite::Connection;
 use tracing::instrument;
 
-use crate::sqlite::schema::ensure_schema;
+use crate::sqlite::{schema::ensure_schema, sql::STATE_ANY_SQL};
 
 const BUSY_TIMEOUT: Duration = Duration::from_milliseconds_const(200);
 
@@ -46,6 +46,7 @@ struct StoreInner {
 	readers: ReadPool,
 	cache_hits: AtomicU64,
 	cache_misses: AtomicU64,
+	state_written: AtomicBool,
 }
 
 struct ReadPool {
@@ -109,6 +110,9 @@ impl SqliteOperatorStorage {
 
 	fn with_connections(conn: Connection, readers: Vec<Connection>) -> Self {
 		ensure_schema(&conn);
+		let state_written: bool = conn
+			.query_row(STATE_ANY_SQL, [], |row| row.get(0))
+			.expect("operator state presence could not be determined");
 		Self {
 			inner: Arc::new(StoreInner {
 				conn: Mutex::new(Some(conn)),
@@ -118,6 +122,7 @@ impl SqliteOperatorStorage {
 				},
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
+				state_written: AtomicBool::new(state_written),
 			}),
 		}
 	}
@@ -127,6 +132,14 @@ impl SqliteOperatorStorage {
 			return self.inner.conn.lock();
 		}
 		self.inner.readers.acquire()
+	}
+
+	pub(super) fn state_written(&self) -> bool {
+		self.inner.state_written.load(Ordering::Acquire)
+	}
+
+	pub(super) fn mark_state_written(&self) {
+		self.inner.state_written.store(true, Ordering::Release);
 	}
 }
 

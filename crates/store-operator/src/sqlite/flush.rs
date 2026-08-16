@@ -22,6 +22,7 @@ impl SqliteOperatorStorage {
 		if writes.is_empty() {
 			return;
 		}
+		self.mark_state_written();
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
 			return;
@@ -90,6 +91,9 @@ impl SqliteOperatorStorage {
 		checkpoint_count = batch.checkpoints.len()
 	))]
 	pub fn flush_batch(&self, batch: &FlushBatch) {
+		if !batch.state.is_empty() {
+			self.mark_state_written();
+		}
 		let guard = self.inner.conn.lock();
 		let conn = guard.as_ref().expect("operator state flush ran without an open connection");
 		let transaction = conn.unchecked_transaction().expect("operator state flush could not begin");
