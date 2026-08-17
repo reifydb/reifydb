@@ -88,8 +88,8 @@ impl SubscriptionWorkerActor {
 		);
 
 		for (shape, shape_columns) in source_frames {
-			for columns in shape_columns.into_iter().rev() {
-				for row_idx in (0..columns.row_count()).rev() {
+			for columns in shape_columns {
+				for row_idx in 0..columns.row_count() {
 					let row = columns.extract_row(row_idx);
 					let diff = Diff::insert(row);
 					let change = Change::from_object(shape, version, vec![diff], now);

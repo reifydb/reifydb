@@ -66,10 +66,13 @@ pub fn insert_all_at_once(db: &TestDb, rows: &[Row]) {
 	db.command(&stmt);
 }
 
+pub fn insert_stmt(r: &Row) -> String {
+	format!("INSERT app::t [{{id: {}, qty: {}, ts_ms: {}}}]", r.id, r.qty, r.ts_ms)
+}
+
 pub fn insert_one_at_a_time(db: &TestDb, rows: &[Row]) {
 	for r in rows {
-		let stmt = format!("INSERT app::t [{{id: {}, qty: {}, ts_ms: {}}}]", r.id, r.qty, r.ts_ms);
-		db.command(&stmt);
+		db.command(&insert_stmt(r));
 	}
 }
 
@@ -190,6 +193,11 @@ pub fn run_path_snapshot(rql: &str, rows: &[Row]) -> Vec<Columns> {
 }
 
 pub fn run_path_hydrate_then_live(rql: &str, hydrated: &[Row], live: &[Row]) -> Vec<Columns> {
+	let commands: Vec<String> = live.iter().map(insert_stmt).collect();
+	run_path_hydrate_then_commands(rql, hydrated, &commands)
+}
+
+pub fn run_path_hydrate_then_commands(rql: &str, hydrated: &[Row], commands: &[String]) -> Vec<Columns> {
 	// Operator state seeded from the hydration snapshot must stay correct against the live changes after it.
 	let db = make_db();
 	insert_all_at_once(&db, hydrated);
@@ -208,13 +216,24 @@ pub fn run_path_hydrate_then_live(rql: &str, hydrated: &[Row], live: &[Row]) -> 
 	let mut all = outcome.batches;
 	all.extend(drain_after_consumer_caught_up(&db, sub_id));
 
-	insert_one_at_a_time(&db, live);
+	for command in commands {
+		db.command(command);
+	}
 	all.extend(drain_after_consumer_caught_up(&db, sub_id));
 	all
 }
 
 pub fn announced_removes(batches: &[Columns]) -> Vec<i32> {
 	// Final state cannot tell an eviction cursor running forwards from one running backwards, only this order can.
+	announced_ids(batches, 3)
+}
+
+pub fn announced_inserts(batches: &[Columns]) -> Vec<i32> {
+	// The order rows reach a subscriber is part of the contract, so it must be asserted, not inferred from state.
+	announced_ids(batches, 1)
+}
+
+fn announced_ids(batches: &[Columns], want_op: u8) -> Vec<i32> {
 	let mut out: Vec<i32> = Vec::new();
 	for cols in batches {
 		let Some(op_col) = cols.iter().find(|c| c.name().text() == "_op") else {
@@ -226,7 +245,7 @@ pub fn announced_removes(batches: &[Columns]) -> Vec<i32> {
 				Value::Uint1(v) => v,
 				other => panic!("expected Uint1 _op, got {:?}", other),
 			};
-			if op != 3 {
+			if op != want_op {
 				continue;
 			}
 			match id_col.data().get_value(i) {

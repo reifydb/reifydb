@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use crate::common::{
-	Row, announced_removes, normalize, random_rows, run_path_hydrate_then_live, run_path_incremental,
-	run_path_snapshot,
+	Row, announced_inserts, announced_removes, normalize, random_rows, run_path_hydrate_then_commands,
+	run_path_hydrate_then_live, run_path_incremental, run_path_snapshot,
 };
 
 // `take N` keeps the most recent N rows by arrival, evicting the oldest in-window arrival once full. The
@@ -107,6 +107,46 @@ fn take_after_hydration_evicts_oldest_first_not_newest_first() {
 		normalize(batches),
 		vec![(5, 50, 5), (6, 60, 6), (7, 70, 7), (8, 80, 8), (9, 90, 9)],
 		"the window must end on the five newest rows"
+	);
+}
+
+#[test]
+fn hydration_delivers_the_snapshot_newest_first() {
+	// Descending is the query default, so a snapshot delivered ascending renders every client's tape backwards.
+	let batches = run_path_hydrate_then_live("from app::t | take 5", &seq_rows(1..=6), &[]);
+
+	assert_eq!(
+		announced_inserts(&batches),
+		vec![6, 5, 4, 3, 2],
+		"a hydrated snapshot must reach the subscriber newest first"
+	);
+}
+
+#[test]
+fn take_converges_whatever_order_the_rows_are_fed_in() {
+	// The window must be a property of the rows, never of the order the operator happened to be fed them.
+	let rql = "from app::t | take 5";
+	let rows = seq_rows(1..=6);
+	let expected = vec![(2, 20, 2), (3, 30, 3), (4, 40, 4), (5, 50, 5), (6, 60, 6)];
+
+	assert_eq!(normalize(run_path_snapshot(rql, &rows)), expected, "bulk insert then hydrate");
+	assert_eq!(normalize(run_path_incremental(rql, &rows)), expected, "live only");
+	assert_eq!(normalize(run_path_hydrate_then_live(rql, &rows, &[])), expected, "hydrate then idle");
+}
+
+#[test]
+fn an_update_does_not_refresh_a_rows_place_in_the_window() {
+	// Age is birth, not last touch, otherwise a late amendment drags a sealed window back to the front.
+	let commands = vec![
+		"UPDATE app::t { qty: 999 } FILTER {id == 2}".to_string(),
+		"INSERT app::t [{id: 7, qty: 70, ts_ms: 7}]".to_string(),
+	];
+	let batches = run_path_hydrate_then_commands("from app::t | take 5", &seq_rows(1..=6), &commands);
+
+	assert_eq!(
+		announced_removes(&batches),
+		vec![2],
+		"the touched row is still the oldest by birth and must still be the one evicted"
 	);
 }
 

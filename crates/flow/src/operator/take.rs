@@ -25,6 +25,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	error::Error,
+	reifydb_assertions,
 	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 use tracing::instrument;
@@ -35,13 +36,37 @@ use crate::{
 };
 
 #[operator_state]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, HeapSize)]
+struct RowAge {
+	created_at: DateTime,
+	row: RowNumber,
+}
+
+impl RowAge {
+	fn of(columns: &Columns, row_idx: usize, row: RowNumber) -> Self {
+		let created_at = columns.created_at().get(row_idx).copied();
+		reifydb_assertions! {
+			assert!(
+				created_at.is_some(),
+				"row {:?} reached take without a created_at, so it ties with every other stampless row at \
+				 the epoch and the window silently orders by row number alone",
+				row
+			);
+		}
+		Self {
+			created_at: created_at.unwrap_or_default(),
+			row,
+		}
+	}
+}
+
+#[operator_state]
 #[derive(Debug, Clone, Default, HeapSize)]
 struct TakeState {
-	by_seq: BTreeMap<u64, RowNumber>,
-	by_row: HashMap<RowNumber, (u64, usize)>,
-	candidates_by_seq: BTreeMap<u64, RowNumber>,
-	candidates_by_row: HashMap<RowNumber, (u64, usize)>,
-	next_seq: u64,
+	by_age: BTreeMap<RowAge, RowNumber>,
+	by_row: HashMap<RowNumber, (RowAge, usize)>,
+	candidates_by_age: BTreeMap<RowAge, RowNumber>,
+	candidates_by_row: HashMap<RowNumber, (RowAge, usize)>,
 	row_data: HashMap<RowNumber, EncodedBytes>,
 }
 
@@ -133,26 +158,44 @@ impl TakePlan {
 	#[inline]
 	fn prune_candidates(&self, state: &mut TakeState) {
 		let cap = self.limit.saturating_mul(4);
-		while state.candidates_by_seq.len() > cap {
-			let Some((&oldest_seq, &oldest_row)) = state.candidates_by_seq.iter().next() else {
+		while state.candidates_by_age.len() > cap {
+			let Some((&oldest_age, &oldest_row)) = state.candidates_by_age.iter().next() else {
 				break;
 			};
-			state.candidates_by_seq.remove(&oldest_seq);
+			state.candidates_by_age.remove(&oldest_age);
 			state.candidates_by_row.remove(&oldest_row);
 			state.row_data.remove(&oldest_row);
 		}
 	}
 
+	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
+	fn assert_candidates_stay_older_than_live(&self, state: &TakeState) {
+		reifydb_assertions! {
+			if let (Some(newest_candidate), Some(oldest_live)) =
+				(state.candidates_by_age.keys().next_back(), state.by_age.keys().next())
+			{
+				assert!(
+					newest_candidate < oldest_live,
+					"a demoted candidate is at least as new as the oldest live row, so the next removal \
+					 promotes a row the subscriber should already hold and skips the one that should \
+					 enter (candidate={:?}, live={:?})",
+					newest_candidate,
+					oldest_live
+				);
+			}
+		}
+	}
+
 	#[inline]
 	fn promote_one_candidate(&self, state: &mut TakeState, schema: &RowShape, output_diffs: &mut Vec<Diff>) {
-		let Some((&seq, &row_number)) = state.candidates_by_seq.iter().next_back() else {
+		let Some((&age, &row_number)) = state.candidates_by_age.iter().next_back() else {
 			return;
 		};
 		let count = state.candidates_by_row.get(&row_number).map(|(_, c)| *c).unwrap_or(1);
-		state.candidates_by_seq.remove(&seq);
+		state.candidates_by_age.remove(&age);
 		state.candidates_by_row.remove(&row_number);
-		state.by_seq.insert(seq, row_number);
-		state.by_row.insert(row_number, (seq, count));
+		state.by_age.insert(age, row_number);
+		state.by_row.insert(row_number, (age, count));
 
 		if let Some(encoded) = state.row_data.get(&row_number) {
 			let cols = decode_take_bytes(schema, row_number, encoded);
@@ -175,21 +218,30 @@ impl TakePlan {
 			return;
 		}
 
-		let seq = state.next_seq;
-		state.next_seq += 1;
+		let age = RowAge::of(&single_row, 0, row_number);
 		state.row_data.insert(row_number, encode_take_bytes(schema, &single_row, 0));
-		state.by_seq.insert(seq, row_number);
-		state.by_row.insert(row_number, (seq, 1));
+
+		if state.by_age.len() >= self.limit
+			&& state.by_age.keys().next().is_some_and(|oldest_live| age <= *oldest_live)
+		{
+			state.candidates_by_age.insert(age, row_number);
+			state.candidates_by_row.insert(row_number, (age, 1));
+			self.prune_candidates(state);
+			return;
+		}
+
+		state.by_age.insert(age, row_number);
+		state.by_row.insert(row_number, (age, 1));
 		output_diffs.push(Diff::insert(single_row));
 
-		if state.by_seq.len() > self.limit {
-			let oldest = state.by_seq.iter().next().map(|(s, r)| (*s, *r));
-			if let Some((oldest_seq, oldest_row)) = oldest {
+		if state.by_age.len() > self.limit {
+			let oldest = state.by_age.iter().next().map(|(a, r)| (*a, *r));
+			if let Some((oldest_age, oldest_row)) = oldest {
 				let count = state.by_row.get(&oldest_row).map(|(_, c)| *c).unwrap_or(1);
-				state.by_seq.remove(&oldest_seq);
+				state.by_age.remove(&oldest_age);
 				state.by_row.remove(&oldest_row);
-				state.candidates_by_seq.insert(oldest_seq, oldest_row);
-				state.candidates_by_row.insert(oldest_row, (oldest_seq, count));
+				state.candidates_by_age.insert(oldest_age, oldest_row);
+				state.candidates_by_row.insert(oldest_row, (oldest_age, count));
 				if let Some(encoded) = state.row_data.get(&oldest_row) {
 					let cols = decode_take_bytes(schema, oldest_row, encoded);
 					if !cols.is_empty() {
@@ -271,13 +323,13 @@ impl TakePlan {
 					slot.1 -= 1;
 					continue;
 				}
-				let seq = slot.0;
+				let age = slot.0;
 				state.by_row.remove(&row_number);
-				state.by_seq.remove(&seq);
+				state.by_age.remove(&age);
 				state.row_data.remove(&row_number);
 				output_diffs.push(Diff::remove(pre.extract_by_indices(&[row_idx])));
 
-				if state.by_seq.len() < self.limit && !state.candidates_by_seq.is_empty() {
+				if state.by_age.len() < self.limit && !state.candidates_by_age.is_empty() {
 					self.promote_one_candidate(state, &schema, output_diffs);
 				}
 				continue;
@@ -287,9 +339,9 @@ impl TakePlan {
 				if slot.1 > 1 {
 					slot.1 -= 1;
 				} else {
-					let seq = slot.0;
+					let age = slot.0;
 					state.candidates_by_row.remove(&row_number);
-					state.candidates_by_seq.remove(&seq);
+					state.candidates_by_age.remove(&age);
 					state.row_data.remove(&row_number);
 				}
 			}
@@ -330,6 +382,7 @@ impl HostOperator for TakeOperator {
 			}
 		}
 
+		self.plan.assert_candidates_stay_older_than_live(&state);
 		self.plan.store_take_state(host, &state)?;
 
 		Ok(Change::from_flow(self.plan.operator, version, output_diffs, change.changed_at))
@@ -337,5 +390,103 @@ impl HostOperator for TakeOperator {
 
 	fn output_schema(&self) -> Option<Columns> {
 		self.output_schema()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		common::CommitVersion,
+		value::column::{ColumnWithName, buffer::ColumnBuffer},
+	};
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_value::{fragment::Fragment, value::system_columns::SystemColumns};
+
+	use super::*;
+	use crate::{
+		operator::host::TxnHostContext,
+		transaction::{deferred::DeferredTransaction, mock::FlowTxn},
+	};
+
+	fn row(n: i32, rn: u64, born_nanos: u64) -> Columns {
+		// created_at is the age the operator must sort on, so every fixture sets it apart from arrival order.
+		let at = DateTime::from_nanos(born_nanos);
+		Columns::with_system(
+			vec![ColumnWithName::new(Fragment::internal("n"), ColumnBuffer::int4(vec![n]))],
+			SystemColumns::new(vec![RowNumber(rn)], Vec::new(), vec![at], vec![at], vec![at]),
+		)
+	}
+
+	fn feed(op: &mut TakeOperator, txn: &mut DeferredTransaction, cols: Columns) -> Vec<Diff> {
+		let operator = op.plan.operator;
+		let change = Change::from_flow(
+			operator,
+			CommitVersion(1),
+			vec![Diff::insert(cols)],
+			DateTime::from_nanos(0),
+		);
+		op.apply(&mut TxnHostContext::new(txn, operator), change).unwrap().diffs.to_vec()
+	}
+
+	fn removed(diffs: &[Diff]) -> Vec<u64> {
+		diffs.iter()
+			.filter_map(|d| match d {
+				Diff::Remove {
+					pre,
+					..
+				} => Some(pre.row_numbers().iter().map(|r| r.0).collect::<Vec<_>>()),
+				_ => None,
+			})
+			.flatten()
+			.collect()
+	}
+
+	fn inserted(diffs: &[Diff]) -> Vec<u64> {
+		diffs.iter()
+			.filter_map(|d| match d {
+				Diff::Insert {
+					post,
+					..
+				} => Some(post.row_numbers().iter().map(|r| r.0).collect::<Vec<_>>()),
+				_ => None,
+			})
+			.flatten()
+			.collect()
+	}
+
+	#[test]
+	fn a_row_older_than_the_whole_window_is_never_announced() {
+		// Admitting a doomed late arrival and evicting it in the same change hands the subscriber an insert it
+		// has to undo one diff later, so it must produce no diff at all.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let mut op = TakeOperator::new(None, OperatorId(1), 2);
+
+		feed(&mut op, &mut txn, row(10, 10, 1_000));
+		feed(&mut op, &mut txn, row(11, 11, 2_000));
+		let diffs = feed(&mut op, &mut txn, row(7, 7, 500));
+
+		assert!(diffs.is_empty(), "a row older than every live row must produce no diff, got {:?}", diffs);
+	}
+
+	#[test]
+	fn a_newest_first_feed_never_evicts_a_row_it_just_admitted() {
+		// This is the hydration order: rows arrive youngest first. Keying the window on arrival makes the
+		// first row look oldest, so the third feed evicts the newest row instead of ignoring the oldest.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let mut op = TakeOperator::new(None, OperatorId(1), 2);
+
+		let first = feed(&mut op, &mut txn, row(3, 3, 3_000));
+		let second = feed(&mut op, &mut txn, row(2, 2, 2_000));
+		let third = feed(&mut op, &mut txn, row(1, 1, 1_000));
+
+		assert_eq!(inserted(&first), vec![3]);
+		assert_eq!(inserted(&second), vec![2]);
+		assert!(third.is_empty(), "the oldest row cannot enter a full window, got {:?}", third);
+		assert!(
+			removed(&first).is_empty() && removed(&second).is_empty() && removed(&third).is_empty(),
+			"nothing may be evicted while the window is filling from newest to oldest"
+		);
 	}
 }
