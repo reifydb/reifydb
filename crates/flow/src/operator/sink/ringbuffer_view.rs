@@ -547,24 +547,11 @@ impl DurableSink for SinkRingBufferViewOperator {
 		}
 		let partition_values = self.timer_partition_values(&timer.key)?;
 
-		let view = self.view.def().clone();
-		let shape = row_shape_from_columns(RowFamily::RingBuffer, view.columns());
 		let object_id = StorageId::ringbuffer(self.ringbuffer_id);
-		let mut evicted_rns: Vec<RowNumber> = Vec::new();
-		let mut evicted: Vec<EncodedBytes> = Vec::new();
-
-		self.evict_due(
-			txn,
-			object_id,
-			&partition_values,
-			timer.due.to_millis(),
-			&mut evicted_rns,
-			&mut evicted,
-		)?;
+		let evicted_any = self.evict_due(txn, object_id, &partition_values, timer.due.to_millis())?;
 		self.sync_row_ttl_timer(txn, &partition_values)?;
 
-		if let Some(diff) = self.build_evicted_diff(txn, &view, &shape, evicted_rns, evicted)? {
-			emit_view_change(txn, &view, diff);
+		if evicted_any {
 			let version = txn.version();
 			return Ok(Some(Change::from_flow(self.operator, version, Vec::new(), timer.due)));
 		}
@@ -696,26 +683,19 @@ impl SinkRingBufferViewOperator {
 		object_id: StorageId,
 		partition_values: &[Value],
 		at: u64,
-		evicted_rns: &mut Vec<RowNumber>,
-		evicted: &mut Vec<EncodedBytes>,
-	) -> Result<()> {
+	) -> Result<bool> {
 		let partition = partition_of_values(partition_values);
 
 		let to_evict = self.due_storage_rows(txn, partition, at)?;
 		if to_evict.is_empty() {
-			return Ok(());
+			return Ok(false);
 		}
 
 		let evicted_count = to_evict.len() as u64;
 		for storage_rn in to_evict {
 			let rn = RowNumber(storage_rn);
 			let pre_key = self.rb_key(object_id, rn, partition);
-			let row = txn.get(&pre_key)?;
-			let source_rn = self.take_row_entry(txn, partition, rn)?;
-			if let Some(row) = row {
-				evicted_rns.push(source_rn.unwrap_or(rn));
-				evicted.push(row);
-			}
+			self.take_row_entry(txn, partition, rn)?;
 			txn.remove(&pre_key)?;
 		}
 
@@ -743,7 +723,7 @@ impl SinkRingBufferViewOperator {
 				}
 			}
 		}
-		Ok(())
+		Ok(true)
 	}
 
 	#[inline]
@@ -1353,7 +1333,7 @@ mod tests {
 		insert_at(&engine, &mut op, true, &[("eu", 3), ("eu", 4)], 3, AFTER);
 
 		let out = fire(&engine, &mut op, &base("us"), AFTER);
-		assert!(out.is_some(), "delete-mode eviction of real rows must announce a downstream change");
+		assert!(out.is_some(), "an eviction that reclaims real rows must still advance the operator's watermark");
 
 		assert!(
 			metadata(&engine, &base("us")).is_none(),
@@ -1365,6 +1345,28 @@ mod tests {
 		assert_eq!(eu.count, 2, "the fresh partition must be untouched");
 		assert_eq!(row_entry_count(&engine, &op, &base("eu")), 2);
 		assert_eq!(forward_count(&engine, &op), 2, "only the two surviving eu forward mappings remain");
+	}
+
+	#[test]
+	fn ttl_expiry_reclaims_state_but_never_announces_downstream() {
+		// Unlike capacity eviction, ttl expiry must never be visible to downstream views.
+		let engine = TestEngine::new();
+		let mut op = build_op(true, Some(hour_ttl()));
+
+		insert_at(&engine, &mut op, true, &[("us", 1), ("us", 2)], 1, T0);
+		insert_at(&engine, &mut op, true, &[("eu", 3), ("eu", 4)], 3, AFTER);
+
+		let mut txn = deferred_txn(&engine);
+		let key = op.timer_key(&base("us"));
+		let out = op
+			.on_timer(&mut txn, Timer { due: DateTime::from_nanos(AFTER), kind: TimerKind::RowTtl, key })
+			.unwrap();
+		let tracked = txn.take_accumulator_entries();
+		commit_flow_pending(&engine, &mut txn);
+
+		assert!(out.is_some(), "reclaiming real rows must still advance the operator's watermark");
+		assert!(tracked.is_empty(), "ttl expiry must never track a diff for downstream views");
+		assert!(metadata(&engine, &base("us")).is_none(), "the expired partition's state is still reclaimed");
 	}
 
 	#[test]
