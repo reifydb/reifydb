@@ -189,6 +189,55 @@ pub fn run_path_snapshot(rql: &str, rows: &[Row]) -> Vec<Columns> {
 	all
 }
 
+pub fn run_path_hydrate_then_live(rql: &str, hydrated: &[Row], live: &[Row]) -> Vec<Columns> {
+	// Operator state seeded from the hydration snapshot must stay correct against the live changes after it.
+	let db = make_db();
+	insert_all_at_once(&db, hydrated);
+
+	let create_stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
+	let frames = db.admin(&create_stmt);
+	let sub_id = extract_sub_id(&frames);
+
+	let engine = db.engine().clone();
+	let (_, lease) = engine.acquire_current_snapshot_lease().expect("acquire lease");
+	let services = engine.services();
+	let sub_service = services.ioc.resolve::<SubscriptionServiceRef>().expect("resolve service");
+
+	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 100_000).expect("hydrate");
+
+	let mut all = outcome.batches;
+	all.extend(drain_after_consumer_caught_up(&db, sub_id));
+
+	insert_one_at_a_time(&db, live);
+	all.extend(drain_after_consumer_caught_up(&db, sub_id));
+	all
+}
+
+pub fn announced_removes(batches: &[Columns]) -> Vec<i32> {
+	// Final state cannot tell an eviction cursor running forwards from one running backwards, only this order can.
+	let mut out: Vec<i32> = Vec::new();
+	for cols in batches {
+		let Some(op_col) = cols.iter().find(|c| c.name().text() == "_op") else {
+			continue;
+		};
+		let id_col = cols.iter().find(|c| c.name().text() == "id").expect("id column");
+		for i in 0..cols.row_count() {
+			let op = match op_col.data().get_value(i) {
+				Value::Uint1(v) => v,
+				other => panic!("expected Uint1 _op, got {:?}", other),
+			};
+			if op != 3 {
+				continue;
+			}
+			match id_col.data().get_value(i) {
+				Value::Int4(v) => out.push(v),
+				other => panic!("expected Int4 id, got {:?}", other),
+			}
+		}
+	}
+	out
+}
+
 pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<Columns> {
 	// Path B: subscribe on an empty table, insert one row at a time, let CDC catch up.
 	let db = make_db();
