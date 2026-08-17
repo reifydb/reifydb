@@ -10,10 +10,10 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::OperatorState,
+	row::operator::{OperatorState, decode},
 };
 use reifydb_core::{
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	metrics::heap::HeapSize,
 	state::{cache::StateCache, store::StateStore},
 };
@@ -149,7 +149,10 @@ where
 				continue;
 			}
 			let slot_key = row_key(&group, span.start);
-			let group_id = store.intern_group(&slot_key)?;
+			let group_id = match &slot_pre {
+				Some((gid, _)) => *gid,
+				None => store.intern_group(&slot_key)?,
+			};
 			if !entry.windows.contains_key(&span.start) && slot_pre.is_none() {
 				continue;
 			}
@@ -302,12 +305,21 @@ where
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C, Carry, Output>> {
 		let mut meta_loaded: MetaLoaded<G, C, Carry, Output> = HashMap::new();
+		let mut by_key: HashMap<GroupStateKey, G> = HashMap::new();
 		for (group, _) in buckets.keys() {
-			if !meta_loaded.contains_key(group) {
-				let m = self.meta.get(store, &meta_key_for(group))?.unwrap_or_default();
-				meta_loaded.insert(group.clone(), m);
+			if meta_loaded.contains_key(group) {
+				continue;
 			}
+			meta_loaded.insert(group.clone(), CarryMeta::default());
+			by_key.insert((&meta_key_for(group)).into_group_state_key(), group.clone());
 		}
+		let keys: Vec<GroupStateKey> = by_key.keys().cloned().collect();
+		store.state_get_many_visit(&keys, &mut |key, bytes| {
+			if let Some(group) = by_key.get(&key) {
+				meta_loaded.insert(group.clone(), decode::<CarryMeta<C, Carry, Output>>(&bytes)?);
+			}
+			Ok(())
+		})?;
 		Ok(meta_loaded)
 	}
 
