@@ -909,28 +909,6 @@ impl JoinOperator {
 	) -> Result<()> {
 		let keys = self.compute_join_keys(post, compiled_exprs)?;
 
-		if !self.latest {
-			for (row_idx, key) in keys.iter().enumerate() {
-				let mut ctx = JoinContext {
-					side,
-					state,
-					operator: self,
-				};
-				let diffs = match key {
-					Some(key_hash) => self.strategy.handle_insert(
-						host,
-						post,
-						&[row_idx],
-						key_hash,
-						&mut ctx,
-					)?,
-					None => self.strategy.handle_insert_undefined(host, post, row_idx, &mut ctx)?,
-				};
-				result.extend(diffs);
-			}
-			return self.arm_batch(host, side, post, &keys);
-		}
-
 		let (order, groups, undefined) = group_by_key(&keys);
 
 		for key_hash in &order {
@@ -968,28 +946,6 @@ impl JoinOperator {
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
 		let keys = self.compute_join_keys(pre, compiled_exprs)?;
-
-		if !self.latest {
-			for (row_idx, key) in keys.iter().enumerate() {
-				let mut ctx = JoinContext {
-					side,
-					state,
-					operator: self,
-				};
-				let diffs = match key {
-					Some(key_hash) => self.strategy.handle_remove(
-						host,
-						pre,
-						&[row_idx],
-						key_hash,
-						&mut ctx,
-					)?,
-					None => self.strategy.handle_remove_undefined(host, pre, row_idx, &mut ctx)?,
-				};
-				result.extend(diffs);
-			}
-			return self.clear_batch(host, side, pre, &keys);
-		}
 
 		let (order, groups, undefined) = group_by_key(&keys);
 
