@@ -96,7 +96,7 @@ impl Shutdown for ProfilerSubsystem {
 
 impl Subsystem for ProfilerSubsystem {
 	fn name(&self) -> &'static str {
-		"sub-profiler"
+		"profiler"
 	}
 
 	fn is_running(&self) -> bool {

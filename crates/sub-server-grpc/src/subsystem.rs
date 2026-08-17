@@ -301,7 +301,7 @@ impl GrpcSubsystem {
 
 impl Subsystem for GrpcSubsystem {
 	fn name(&self) -> &'static str {
-		"Grpc"
+		"grpc"
 	}
 
 	fn is_running(&self) -> bool {

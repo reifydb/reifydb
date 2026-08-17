@@ -48,7 +48,7 @@ impl Shutdown for TracingSubsystem {
 
 impl Subsystem for TracingSubsystem {
 	fn name(&self) -> &'static str {
-		"sub-tracing"
+		"tracing"
 	}
 
 	#[instrument(name = "tracing::subsystem::is_running", level = "trace", skip(self))]

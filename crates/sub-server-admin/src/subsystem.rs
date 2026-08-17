@@ -204,7 +204,7 @@ impl Shutdown for AdminSubsystem {
 
 impl Subsystem for AdminSubsystem {
 	fn name(&self) -> &'static str {
-		"Admin"
+		"admin"
 	}
 
 	fn is_running(&self) -> bool {

@@ -261,7 +261,7 @@ impl Shutdown for WsSubsystem {
 
 impl Subsystem for WsSubsystem {
 	fn name(&self) -> &'static str {
-		"WebSocket"
+		"websocket"
 	}
 
 	fn is_running(&self) -> bool {

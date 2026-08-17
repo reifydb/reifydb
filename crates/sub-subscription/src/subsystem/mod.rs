@@ -213,7 +213,7 @@ impl Shutdown for SubscriptionSubsystem {
 
 impl Subsystem for SubscriptionSubsystem {
 	fn name(&self) -> &'static str {
-		"sub-subscription"
+		"subscription"
 	}
 
 	fn is_running(&self) -> bool {

@@ -271,7 +271,7 @@ impl Shutdown for HttpSubsystem {
 
 impl Subsystem for HttpSubsystem {
 	fn name(&self) -> &'static str {
-		"Http"
+		"http"
 	}
 
 	fn is_running(&self) -> bool {

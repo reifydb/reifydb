@@ -353,7 +353,7 @@ impl Shutdown for ReplicationSubsystem {
 
 impl Subsystem for ReplicationSubsystem {
 	fn name(&self) -> &'static str {
-		"Replication"
+		"replication"
 	}
 
 	fn is_running(&self) -> bool {

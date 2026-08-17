@@ -237,7 +237,7 @@ impl Shutdown for RaftSubsystem {
 
 impl Subsystem for RaftSubsystem {
 	fn name(&self) -> &'static str {
-		"Raft"
+		"raft"
 	}
 
 	fn is_running(&self) -> bool {

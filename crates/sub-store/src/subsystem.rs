@@ -121,7 +121,7 @@ impl Shutdown for StorageSubsystem {
 
 impl Subsystem for StorageSubsystem {
 	fn name(&self) -> &'static str {
-		"Storage"
+		"storage"
 	}
 
 	fn is_running(&self) -> bool {

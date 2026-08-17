@@ -167,7 +167,7 @@ impl Shutdown for TaskSubsystem {
 
 impl Subsystem for TaskSubsystem {
 	fn name(&self) -> &'static str {
-		"sub-task"
+		"task"
 	}
 
 	#[instrument(name = "task::subsystem::is_running", level = "trace", skip(self))]

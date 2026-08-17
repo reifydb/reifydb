@@ -107,7 +107,7 @@ impl Shutdown for LifecycleSubsystem {
 
 impl Subsystem for LifecycleSubsystem {
 	fn name(&self) -> &'static str {
-		"Lifecycle"
+		"lifecycle"
 	}
 
 	fn is_running(&self) -> bool {

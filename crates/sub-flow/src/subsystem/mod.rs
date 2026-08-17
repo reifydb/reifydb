@@ -330,7 +330,7 @@ impl Shutdown for FlowSubsystem {
 
 impl Subsystem for FlowSubsystem {
 	fn name(&self) -> &'static str {
-		"sub-flow"
+		"flow"
 	}
 
 	fn is_running(&self) -> bool {

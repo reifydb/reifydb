@@ -168,7 +168,7 @@ impl Shutdown for OtelSubsystem {
 
 impl Subsystem for OtelSubsystem {
 	fn name(&self) -> &'static str {
-		"OpenTelemetry"
+		"open-telemetry"
 	}
 
 	fn is_running(&self) -> bool {
