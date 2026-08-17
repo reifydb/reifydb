@@ -603,6 +603,7 @@ impl DatabaseBuilder {
 		// Metrics and tracing are added first so they are stopped last and can still record the
 		// shutdown of every other subsystem.
 		let health_monitor = Arc::new(HealthMonitor::new(clock.clone()));
+		self.ioc = self.ioc.register(Arc::clone(&health_monitor));
 		let mut subsystems = Subsystems::new(Arc::clone(&health_monitor));
 
 		{
