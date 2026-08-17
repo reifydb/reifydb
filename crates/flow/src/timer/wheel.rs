@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{decode_datetime_asc, encode_datetime_asc, encoded::EncodedKey};
+use std::collections::HashMap;
+
+use reifydb_codec::{
+	key::{decode_datetime_asc, encode_datetime_asc, encoded::EncodedKey},
+	row::operator::EncodedOperatorRow,
+};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
@@ -11,13 +16,14 @@ use reifydb_core::{
 	state::store::TimerKind,
 };
 use reifydb_store_operator::store::OperatorStore;
-use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
+use reifydb_value::{Result, error::Error as ValueError, reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
 	timer::{Timer, TimerDue},
 	transaction::{
 		FlowTransaction,
 		group::{decode_payload, encode_payload},
+		scope::scoped_key,
 		state::StateExtension,
 	},
 };
@@ -135,11 +141,26 @@ impl TimerWheel {
 			due.push(timer);
 		}
 
+		let unique_indices: Vec<GroupStateKey> = due
+			.iter()
+			.filter(|timer| timer.kind.is_unique())
+			.map(|timer| index_key(timer.kind, &timer.key))
+			.collect();
+		let mut armed: HashMap<EncodedKey, DateTime> = HashMap::with_capacity(unique_indices.len());
+		if !unique_indices.is_empty() {
+			for row in txn.state_get_many(operator, &unique_indices)?.items {
+				let payload = decode_payload::<DateTime>(
+					&EncodedOperatorRow::try_from(row.bytes).map_err(ValueError::from)?,
+				)?;
+				armed.insert(row.key, payload);
+			}
+		}
+
 		for timer in &due {
 			txn.state_remove(operator, &timer_key(timer.due, timer.kind, &timer.key))?;
 			if timer.kind.is_unique() {
 				let index = index_key(timer.kind, &timer.key);
-				if armed_at(operator, txn, &index)? == Some(timer.due) {
+				if armed.get(&scoped_key(operator, &index)) == Some(&timer.due) {
 					txn.state_remove(operator, &index)?;
 				}
 			}
