@@ -8,7 +8,7 @@ use reifydb_runtime::shutdown::Shutdown;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_value::Result;
 
-pub trait Subsystem: Any + HasVersion + Shutdown {
+pub trait Subsystem: Any + HasVersion + Shutdown + Send + Sync {
 	fn name(&self) -> &'static str;
 
 	fn is_running(&self) -> bool;

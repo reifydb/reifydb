@@ -16,7 +16,7 @@ use tracing::info;
 use crate::health::HealthMonitor;
 
 pub struct Subsystems {
-	subsystems: Vec<Box<dyn Subsystem>>,
+	subsystems: Vec<Arc<dyn Subsystem>>,
 	index: HashMap<TypeId, usize>,
 	running: Arc<AtomicBool>,
 	health_monitor: Arc<HealthMonitor>,
@@ -34,11 +34,9 @@ impl Subsystems {
 
 	/// Subsystems are shut down in reverse insertion order, so add order controls teardown order.
 	pub fn add_subsystem(&mut self, subsystem: Box<dyn Subsystem>) {
-		self.health_monitor.update_component_health(
-			subsystem.name().to_string(),
-			subsystem.health_status(),
-			subsystem.is_running(),
-		);
+		let subsystem: Arc<dyn Subsystem> = Arc::from(subsystem);
+
+		self.health_monitor.register_subsystem(subsystem.name().to_string(), Arc::clone(&subsystem));
 
 		let type_id = (*subsystem).as_any().type_id();
 
@@ -63,25 +61,10 @@ impl Subsystems {
 			let name = subsystem.name();
 			info!("Shutting down subsystem: {}", name);
 			subsystem.shutdown();
-			self.health_monitor.update_component_health(
-				name.to_string(),
-				subsystem.health_status(),
-				subsystem.is_running(),
-			);
 			info!("Successfully shut down: {}", name);
 		}
 
 		info!("All subsystems shut down");
-	}
-
-	pub fn update_health_monitoring(&mut self) {
-		for subsystem in &self.subsystems {
-			self.health_monitor.update_component_health(
-				subsystem.name().to_string(),
-				subsystem.health_status(),
-				subsystem.is_running(),
-			);
-		}
 	}
 
 	pub fn get_subsystem_names(&self) -> Vec<String> {

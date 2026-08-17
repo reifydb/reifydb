@@ -357,18 +357,6 @@ impl Database {
 		self.health_monitor.get_all_health()
 	}
 
-	pub fn update_health_monitoring(&mut self) {
-		self.subsystems.update_health_monitoring();
-
-		let system_health = if self.running {
-			self.health_monitor.get_system_health()
-		} else {
-			HealthStatus::Healthy
-		};
-
-		self.health_monitor.update_component_health("system".to_string(), system_health, self.running);
-	}
-
 	pub fn get_subsystem_names(&self) -> Vec<String> {
 		self.subsystems.get_subsystem_names()
 	}
