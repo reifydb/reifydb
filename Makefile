@@ -142,7 +142,7 @@ check-code-quality:
 	@./scripts/check-license-headers.sh
 	@./scripts/check-section-comments.sh
 	@./scripts/check-em-dashes.sh
-	@cargo clippy --release --workspace -- -D warnings
+	@MAKEFLAGS= cargo clippy --release --workspace -- -D warnings
 
 .PHONY: check
 check:
