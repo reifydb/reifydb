@@ -77,7 +77,7 @@ fn route_engine_columns(
 }
 
 fn intern_window_group(host: &mut dyn HostContext, hash: Hash128, span: WindowSpan<DateTime>) -> Result<()> {
-	host.intern_group(&window_group_key(hash, span.start.to_order()))?;
+	host.intern_groups(&[window_group_key(hash, span.start.to_order())])?;
 	Ok(())
 }
 
@@ -871,9 +871,12 @@ pub fn apply_session_engine(
 
 	let mut disarm: Vec<(Hash128, u64, u64)> = Vec::new();
 	{
+		let close_keys: Vec<EncodedKey> =
+			closes.iter().map(|(hash, session_id)| window_group_key(*hash, *session_id)).collect();
+		let close_groups = host.lookup_groups(&close_keys)?;
 		let mut closing: Vec<(Hash128, u64, GroupId)> = Vec::with_capacity(closes.len());
-		for (hash, session_id) in &closes {
-			if let Some(group) = host.lookup_group(&window_group_key(*hash, *session_id))? {
+		for ((hash, session_id), group) in closes.iter().zip(close_groups) {
+			if let Some(group) = group {
 				closing.push((*hash, *session_id, group));
 			}
 		}
@@ -928,10 +931,9 @@ fn gate_and_arm_seals(
 		return Ok(());
 	}
 	let gate = operator.seal_gate(host, policy)?;
-	let mut known: Vec<Option<GroupId>> = Vec::with_capacity(buckets.len());
-	for (hash, span) in buckets.keys() {
-		known.push(host.lookup_group(&window_group_key(*hash, span.start.to_order()))?);
-	}
+	let lookup_keys: Vec<EncodedKey> =
+		buckets.keys().map(|(hash, span)| window_group_key(*hash, span.start.to_order())).collect();
+	let known = host.lookup_groups(&lookup_keys)?;
 	let mut sealed: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut rearm: Vec<(Hash128, u64, Option<u64>, u64)> = Vec::new();
 	let mut dropped = 0u64;

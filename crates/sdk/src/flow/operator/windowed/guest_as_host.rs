@@ -92,20 +92,23 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(())
 	}
 
-	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
-		Ok(self.0.intern_group(group)?)
+	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
+		Ok(self.0.intern_groups(groups)?)
 	}
 
-	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
-		Ok(self.0.lookup_group(group)?)
-	}
-
-	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		Ok(self.0.get_or_create_row_number(group, key)?)
+	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+		Ok(self.0.lookup_groups(groups)?)
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		Ok(self.0.get_or_create_row_numbers(group, keys)?)
+	}
+
+	fn get_or_create_row_numbers_for_pairs(
+		&mut self,
+		pairs: &[(GroupId, EncodedKey)],
+	) -> Result<Vec<(RowNumber, bool)>> {
+		Ok(self.0.get_or_create_row_numbers_for_pairs(pairs)?)
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {

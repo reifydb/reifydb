@@ -76,7 +76,7 @@ fn the_identity_reclaim_erases_the_range_and_stops_the_group_resolving() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let group_bytes = EncodedKey::new(b"a-group");
-	let (id, _) = txn.intern_group(NODE, &group_bytes).unwrap();
+	let (id, _) = txn.intern_groups(NODE, &[group_bytes.clone()]).unwrap().remove(0);
 	seed_identity(&mut txn, id);
 
 	let outcome = txn.reclaim_group_identity(NODE, id, 100).unwrap();
@@ -85,7 +85,7 @@ fn the_identity_reclaim_erases_the_range_and_stops_the_group_resolving() {
 	assert!(!outcome.more);
 	assert_eq!(count(&mut txn, group_inner_range(id)), 0, "the group's range must be empty");
 	assert_eq!(
-		txn.lookup_group(NODE, &group_bytes).unwrap(),
+		txn.lookup_groups(NODE, &[group_bytes]).unwrap().remove(0),
 		None,
 		"the dictionary entry must go with the identity"
 	);
@@ -99,7 +99,7 @@ fn a_bounded_identity_reclaim_keeps_the_dictionary_until_the_range_is_drained() 
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let group_bytes = EncodedKey::new(b"chunky");
-	let (id, _) = txn.intern_group(NODE, &group_bytes).unwrap();
+	let (id, _) = txn.intern_groups(NODE, &[group_bytes.clone()]).unwrap().remove(0);
 	for suffix in 0..4u8 {
 		write(&mut txn, id, Keyspace::ROW_NUMBER_MAPPING, suffix);
 	}
@@ -108,14 +108,14 @@ fn a_bounded_identity_reclaim_keeps_the_dictionary_until_the_range_is_drained() 
 	assert_eq!(partial.removed, Count::new(2));
 	assert!(partial.more, "the caller must learn the group is not drained");
 	assert_eq!(
-		txn.lookup_group(NODE, &group_bytes).unwrap(),
+		txn.lookup_groups(NODE, &[group_bytes.clone()]).unwrap().remove(0),
 		Some(id),
 		"a half-drained group must still resolve so a later pass can finish it"
 	);
 
 	let rest = txn.reclaim_group_identity(NODE, id, 100).unwrap();
 	assert!(!rest.more);
-	assert_eq!(txn.lookup_group(NODE, &group_bytes).unwrap(), None);
+	assert_eq!(txn.lookup_groups(NODE, &[group_bytes]).unwrap().remove(0), None);
 }
 
 #[test]
@@ -124,8 +124,8 @@ fn reclaiming_one_groups_identity_leaves_its_neighbour_untouched() {
 	// neighbour is the adjacent id precisely because that is where a bad upper bound would bleed.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	let (id, _) = txn.intern_group(NODE, &EncodedKey::new(b"doomed")).unwrap();
-	let (neighbour, _) = txn.intern_group(NODE, &EncodedKey::new(b"alive")).unwrap();
+	let (id, _) = txn.intern_groups(NODE, &[EncodedKey::new(b"doomed")]).unwrap().remove(0);
+	let (neighbour, _) = txn.intern_groups(NODE, &[EncodedKey::new(b"alive")]).unwrap().remove(0);
 	seed_identity(&mut txn, id);
 	seed_identity(&mut txn, neighbour);
 
@@ -133,7 +133,7 @@ fn reclaiming_one_groups_identity_leaves_its_neighbour_untouched() {
 
 	assert_eq!(count(&mut txn, group_inner_range(id)), 0);
 	assert_eq!(count(&mut txn, group_inner_range(neighbour)), 3, "the neighbour must be whole");
-	assert_eq!(txn.lookup_group(NODE, &EncodedKey::new(b"alive")).unwrap(), Some(neighbour));
+	assert_eq!(txn.lookup_groups(NODE, &[EncodedKey::new(b"alive")]).unwrap().remove(0), Some(neighbour));
 }
 
 #[test]
@@ -143,11 +143,11 @@ fn a_reclaimed_group_reborn_mints_a_fresh_id() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let bytes = EncodedKey::new(b"reborn");
-	let (id, _) = txn.intern_group(NODE, &bytes).unwrap();
+	let (id, _) = txn.intern_groups(NODE, &[bytes.clone()]).unwrap().remove(0);
 	seed_identity(&mut txn, id);
 	txn.reclaim_group_identity(NODE, id, 100).unwrap();
 
-	let (reborn, is_new) = txn.intern_group(NODE, &bytes).unwrap();
+	let (reborn, is_new) = txn.intern_groups(NODE, &[bytes]).unwrap().remove(0);
 
 	assert!(is_new, "the key is unknown again, so it must mint afresh");
 	assert_ne!(reborn, id, "a reclaimed id must never be handed back out");

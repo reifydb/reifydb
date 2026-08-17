@@ -365,16 +365,17 @@ fn key_refs(keys: &[EncodedKey]) -> Vec<ExternCKeyRef> {
 		.collect()
 }
 
-pub(crate) fn intern_groups(ctx: &mut ExternCContext, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
+pub(crate) fn intern_groups(ctx: &mut ExternCContext, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
 	if groups.is_empty() {
 		return Ok(Vec::new());
 	}
 	let refs = key_refs(groups);
 	let mut ids = vec![0u64; groups.len()];
+	let mut is_new = vec![0u8; groups.len()];
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; refs borrows groups for the duration of the call, and ids is a live, initialised
-	// array of exactly groups.len() u64 slots for the host to fill.
+	// for the whole guest call; refs borrows groups for the duration of the call, and ids and is_new are live,
+	// initialised arrays of exactly groups.len() slots each for the host to fill.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.intern_groups)(
 			(*ctx.ctx).operator_id,
@@ -382,13 +383,59 @@ pub(crate) fn intern_groups(ctx: &mut ExternCContext, groups: &[EncodedKey]) -> 
 			refs.as_ptr(),
 			refs.len(),
 			ids.as_mut_ptr(),
+			is_new.as_mut_ptr(),
 		);
 		if result != EXTERN_C_OK {
 			return Err(SdkError::Other(format!("host_intern_groups failed with code {}", result)));
 		}
 	}
 
-	Ok(ids.into_iter().map(GroupId).collect())
+	Ok(ids.into_iter().zip(is_new).map(|(id, new)| (GroupId(id), new != 0)).collect())
+}
+
+pub(crate) fn get_or_create_row_numbers_for_pairs(
+	ctx: &mut ExternCContext,
+	pairs: &[(GroupId, EncodedKey)],
+) -> Result<Vec<(RowNumber, bool)>> {
+	if pairs.is_empty() {
+		return Ok(Vec::new());
+	}
+	let group_ids: Vec<u64> = pairs.iter().map(|(group, _)| group.0).collect();
+	let refs: Vec<ExternCKeyRef> = pairs
+		.iter()
+		.map(|(_, key)| {
+			let bytes = key.as_bytes();
+			ExternCKeyRef {
+				ptr: bytes.as_ptr(),
+				len: bytes.len(),
+			}
+		})
+		.collect();
+	let mut row_numbers = vec![0u64; pairs.len()];
+	let mut is_new = vec![0u8; pairs.len()];
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; group_ids and refs borrow pairs for the duration of the call, and row_numbers
+	// and is_new are live, initialised arrays of exactly pairs.len() slots each for the host to fill.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.get_or_create_row_numbers_for_pairs)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			group_ids.as_ptr(),
+			refs.as_ptr(),
+			refs.len(),
+			row_numbers.as_mut_ptr(),
+			is_new.as_mut_ptr(),
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!(
+				"host_get_or_create_row_numbers_for_pairs failed with code {}",
+				result
+			)));
+		}
+	}
+
+	Ok(row_numbers.into_iter().zip(is_new).map(|(rn, new)| (RowNumber(rn), new != 0)).collect())
 }
 
 pub(crate) fn arm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {

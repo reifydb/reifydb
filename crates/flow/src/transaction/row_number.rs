@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ops::Bound, slice::from_ref};
+use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -49,72 +49,86 @@ fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Res
 	Ok(seed)
 }
 
-pub trait RowNumberExtension: FlowTransaction {
-	fn get_or_create_row_number(
-		&mut self,
-		operator: OperatorId,
-		group: GroupId,
-		key: &EncodedKey,
-	) -> Result<(RowNumber, bool)> {
-		Ok(self.get_or_create_row_numbers(operator, group, from_ref(key))?.into_iter().next().unwrap())
+fn resolve_or_mint(
+	txn: &mut impl FlowTransaction,
+	operator: OperatorId,
+	map_keys: Vec<GroupStateKey>,
+) -> Result<Vec<(RowNumber, bool)>> {
+	let now = txn.written_at();
+
+	let batch = txn.state_get_many(operator, &map_keys)?;
+	let mut found: HashMap<EncodedKey, EncodedBytes> = HashMap::with_capacity(batch.items.len());
+	for item in batch.items {
+		let decoded =
+			OperatorStateKey::decode(&item.key).expect("state_get_many must return OperatorState keys");
+		found.insert(decoded.inner(), item.bytes);
 	}
 
+	let mut results: Vec<Option<(RowNumber, bool)>> = vec![None; map_keys.len()];
+	let mut new_slots: Vec<bool> = vec![false; map_keys.len()];
+	let mut distinct_new: Vec<usize> = Vec::new();
+	let mut first_new_slot: HashMap<GroupStateKey, usize> = HashMap::new();
+	for (slot, map_key) in map_keys.iter().enumerate() {
+		match found.get(map_key.as_slice()) {
+			Some(existing_row) => {
+				results[slot] = Some((RowNumber(decode_bytes::<u64>(existing_row)?), false));
+			}
+			None => {
+				new_slots[slot] = true;
+				if !first_new_slot.contains_key(map_key) {
+					first_new_slot.insert(map_key.clone(), slot);
+					distinct_new.push(slot);
+				}
+			}
+		}
+	}
+
+	if !distinct_new.is_empty() {
+		let start = mint(txn, operator, distinct_new.len() as u64)?;
+		let mut assigned: HashMap<GroupStateKey, RowNumber> = HashMap::with_capacity(distinct_new.len());
+		for (offset, &slot) in distinct_new.iter().enumerate() {
+			let map_key = &map_keys[slot];
+			let row_number = RowNumber(start + offset as u64);
+			txn.state_set(operator, map_key, row_number.0.encode_state(now)?)?;
+			assigned.insert(map_key.clone(), row_number);
+		}
+		for (slot, map_key) in map_keys.iter().enumerate() {
+			if new_slots[slot] {
+				let row_number = assigned[map_key];
+				let is_new = first_new_slot.get(map_key) == Some(&slot);
+				results[slot] = Some((row_number, is_new));
+			}
+		}
+	}
+
+	Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
+}
+
+pub trait RowNumberExtension: FlowTransaction {
 	fn get_or_create_row_numbers(
 		&mut self,
 		operator: OperatorId,
 		group: GroupId,
 		keys: &[EncodedKey],
 	) -> Result<Vec<(RowNumber, bool)>> {
-		let now = self.written_at();
-		let map_keys: Vec<GroupStateKey> = keys.iter().map(|key| mapping_key(group, key)).collect();
+		resolve_or_mint(self, operator, keys.iter().map(|key| mapping_key(group, key)).collect())
+	}
 
-		let batch = self.state_get_many(operator, &map_keys)?;
-		let mut found: HashMap<EncodedKey, EncodedBytes> = HashMap::with_capacity(batch.items.len());
-		for item in batch.items {
-			let decoded = OperatorStateKey::decode(&item.key)
-				.expect("state_get_many must return OperatorState keys");
-			found.insert(decoded.inner(), item.bytes);
-		}
+	fn get_or_create_row_numbers_for_groups(
+		&mut self,
+		operator: OperatorId,
+		groups: &[GroupId],
+		key: &EncodedKey,
+	) -> Result<Vec<(RowNumber, bool)>> {
+		resolve_or_mint(self, operator, groups.iter().map(|group| mapping_key(*group, key)).collect())
+	}
 
-		let mut results: Vec<Option<(RowNumber, bool)>> = vec![None; keys.len()];
-		let mut new_slots: Vec<bool> = vec![false; map_keys.len()];
-		let mut distinct_new: Vec<usize> = Vec::new();
-		let mut first_new_slot: HashMap<GroupStateKey, usize> = HashMap::new();
-		for (slot, map_key) in map_keys.iter().enumerate() {
-			match found.get(map_key.as_slice()) {
-				Some(existing_row) => {
-					results[slot] = Some((RowNumber(decode_bytes::<u64>(existing_row)?), false));
-				}
-				None => {
-					new_slots[slot] = true;
-					if !first_new_slot.contains_key(map_key) {
-						first_new_slot.insert(map_key.clone(), slot);
-						distinct_new.push(slot);
-					}
-				}
-			}
-		}
-
-		if !distinct_new.is_empty() {
-			let start = mint(self, operator, distinct_new.len() as u64)?;
-			let mut assigned: HashMap<GroupStateKey, RowNumber> =
-				HashMap::with_capacity(distinct_new.len());
-			for (offset, &slot) in distinct_new.iter().enumerate() {
-				let map_key = &map_keys[slot];
-				let row_number = RowNumber(start + offset as u64);
-				self.state_set(operator, map_key, row_number.0.encode_state(now)?)?;
-				assigned.insert(map_key.clone(), row_number);
-			}
-			for (slot, map_key) in map_keys.iter().enumerate() {
-				if new_slots[slot] {
-					let row_number = assigned[map_key];
-					let is_new = first_new_slot.get(map_key) == Some(&slot);
-					results[slot] = Some((row_number, is_new));
-				}
-			}
-		}
-
-		Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
+	fn get_or_create_row_numbers_for_pairs(
+		&mut self,
+		operator: OperatorId,
+		pairs: &[(GroupId, EncodedKey)],
+	) -> Result<Vec<(RowNumber, bool)>> {
+		resolve_or_mint(self, operator, pairs.iter().map(|(group, key)| mapping_key(*group, key)).collect())
 	}
 
 	fn create_row_numbers(
@@ -145,16 +159,28 @@ pub trait RowNumberExtension: FlowTransaction {
 		Ok(assigned)
 	}
 
-	fn get_row_number(
+	fn get_row_numbers_for_groups(
 		&mut self,
 		operator: OperatorId,
-		group: GroupId,
+		groups: &[GroupId],
 		key: &EncodedKey,
-	) -> Result<Option<RowNumber>> {
-		match self.state_get(operator, &mapping_key(group, key))? {
-			Some(existing_row) => Ok(Some(RowNumber(decode::<u64>(&existing_row)?))),
-			None => Ok(None),
+	) -> Result<Vec<Option<RowNumber>>> {
+		let map_keys: Vec<GroupStateKey> = groups.iter().map(|group| mapping_key(*group, key)).collect();
+		let batch = self.state_get_many(operator, &map_keys)?;
+		let mut found: HashMap<EncodedKey, EncodedBytes> = HashMap::with_capacity(batch.items.len());
+		for item in batch.items {
+			let decoded = OperatorStateKey::decode(&item.key)
+				.expect("state_get_many must return OperatorState keys");
+			found.insert(decoded.inner(), item.bytes);
 		}
+
+		let mut results: Vec<Option<RowNumber>> = vec![None; groups.len()];
+		for (slot, map_key) in map_keys.iter().enumerate() {
+			if let Some(existing_row) = found.get(map_key.as_slice()) {
+				results[slot] = Some(RowNumber(decode_bytes::<u64>(existing_row)?));
+			}
+		}
+		Ok(results)
 	}
 
 	fn get_row_numbers(

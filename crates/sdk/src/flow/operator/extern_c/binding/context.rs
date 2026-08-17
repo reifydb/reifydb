@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use core::ffi::c_void;
-use std::{ops::Bound, slice::from_ref};
+use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -34,8 +34,8 @@ use crate::{
 				sink::ExternCRowSink,
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
-					intern_groups, lookup_groups, reclaim_group_identity, remove_row_number,
-					remove_row_numbers_below,
+					get_or_create_row_numbers_for_pairs, intern_groups, lookup_groups,
+					reclaim_group_identity, remove_row_number, remove_row_numbers_below,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -138,7 +138,7 @@ impl ExternCContext {
 		Dictionary::new(self)
 	}
 
-	pub fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
+	pub fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
 		intern_groups(self, groups)
 	}
 
@@ -158,16 +158,19 @@ impl ExternCContext {
 		flow_watermark(self)
 	}
 
-	pub fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		Ok(get_or_create_row_numbers(self, group, from_ref(key))?.into_iter().next().unwrap())
-	}
-
 	pub fn get_or_create_row_numbers(
 		&mut self,
 		group: GroupId,
 		keys: &[EncodedKey],
 	) -> Result<Vec<(RowNumber, bool)>> {
 		get_or_create_row_numbers(self, group, keys)
+	}
+
+	pub fn get_or_create_row_numbers_for_pairs(
+		&mut self,
+		pairs: &[(GroupId, EncodedKey)],
+	) -> Result<Vec<(RowNumber, bool)>> {
+		get_or_create_row_numbers_for_pairs(self, pairs)
 	}
 
 	pub fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
@@ -283,7 +286,7 @@ impl GuestContext for ExternCContext {
 	fn dictionary(&mut self) -> impl GuestDictionary + '_ {
 		ExternCContext::dictionary(self)
 	}
-	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
+	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
 		ExternCContext::intern_groups(self, groups)
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
@@ -299,11 +302,14 @@ impl GuestContext for ExternCContext {
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
 		ExternCContext::flow_watermark(self)
 	}
-	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		ExternCContext::get_or_create_row_number(self, group, key)
-	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		ExternCContext::get_or_create_row_numbers(self, group, keys)
+	}
+	fn get_or_create_row_numbers_for_pairs(
+		&mut self,
+		pairs: &[(GroupId, EncodedKey)],
+	) -> Result<Vec<(RowNumber, bool)>> {
+		ExternCContext::get_or_create_row_numbers_for_pairs(self, pairs)
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		ExternCContext::remove_row_number(self, group, key)

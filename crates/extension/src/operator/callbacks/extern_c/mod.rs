@@ -33,6 +33,7 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			iterator_free: state::host_state_iterator_free,
 			get_many: state::host_state_get_many,
 			get_or_create_row_numbers: state::host_get_or_create_row_numbers,
+			get_or_create_row_numbers_for_pairs: state::host_get_or_create_row_numbers_for_pairs,
 			remove_row_number: state::host_remove_row_number,
 			remove_row_numbers_below: state::host_remove_row_numbers_below,
 			intern_groups: state::host_intern_groups,

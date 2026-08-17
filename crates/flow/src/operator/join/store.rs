@@ -78,11 +78,11 @@ impl Store {
 	}
 
 	fn resolve(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<Option<GroupId>> {
-		host.lookup_group(&group_bytes(hash))
+		Ok(host.lookup_groups(&[group_bytes(hash)])?.into_iter().next().unwrap())
 	}
 
 	fn intern(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<GroupId> {
-		host.intern_group(&group_bytes(hash))
+		Ok(host.intern_groups(&[group_bytes(hash)])?.into_iter().next().unwrap().0)
 	}
 
 	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> GroupStateKey {
@@ -378,12 +378,12 @@ mod tests {
 		assert_eq!(right_row.as_slice(), &[0x20u8][..]);
 
 		assert_eq!(
-			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap(),
-			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap(),
+			txn.lookup_groups(operator, &[group_bytes(&h(0xAAA))]).unwrap().remove(0),
+			txn.lookup_groups(operator, &[group_bytes(&h(0xAAA))]).unwrap().remove(0),
 			"both sides must intern the same key to one group id"
 		);
 		assert!(
-			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().is_some(),
+			txn.lookup_groups(operator, &[group_bytes(&h(0xAAA))]).unwrap().remove(0).is_some(),
 			"storing a row must intern its join key"
 		);
 	}
@@ -407,7 +407,7 @@ mod tests {
 		assert!(!store.update_row(&mut b(&mut txn, operator), &h(0xCCC), rn(1), &row(0x20)).unwrap());
 
 		assert!(
-			txn.lookup_group(operator, &group_bytes(&h(0xCCC))).unwrap().is_none(),
+			txn.lookup_groups(operator, &[group_bytes(&h(0xCCC))]).unwrap().remove(0).is_none(),
 			"a read probe must resolve the key, never intern it"
 		);
 	}
@@ -495,8 +495,11 @@ mod tests {
 		let store = Store::new(JoinSide::Left);
 		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
 		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(3), &row(0x30)).unwrap();
-		let group =
-			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
+		let group = txn
+			.lookup_groups(operator, &[group_bytes(&h(0xAAA))])
+			.unwrap()
+			.remove(0)
+			.expect("the write interned it");
 
 		store.remove_row_in(&mut b(&mut txn, operator), group, rn(2)).unwrap();
 		store.remove_row_in(&mut b(&mut txn, operator), group, rn(2)).unwrap();

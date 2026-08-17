@@ -81,6 +81,16 @@ pub struct StateCallbacks {
 		is_new_out: *mut u8,
 	) -> i32,
 
+	pub get_or_create_row_numbers_for_pairs: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ExternCContextRaw,
+		groups: *const u64,
+		keys: *const ExternCKeyRef,
+		pairs_len: usize,
+		row_numbers_out: *mut u64,
+		is_new_out: *mut u8,
+	) -> i32,
+
 	pub remove_row_number: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
@@ -104,6 +114,7 @@ pub struct StateCallbacks {
 		groups: *const ExternCKeyRef,
 		groups_len: usize,
 		ids_out: *mut u64,
+		is_new_out: *mut u8,
 	) -> i32,
 
 	pub lookup_groups: extern "C" fn(

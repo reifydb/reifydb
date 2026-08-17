@@ -57,7 +57,7 @@ fn the_first_group_interns_to_the_first_usable_id() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	let (id, is_new) = txn.intern_group(NODE, &group("first")).unwrap();
+	let (id, is_new) = txn.intern_groups(NODE, &[group("first")]).unwrap().remove(0);
 
 	assert_eq!(id, GroupId::FIRST, "the first group must not take the operator-scope id");
 	assert!(!id.is_root());
@@ -69,8 +69,8 @@ fn a_repeated_group_resolves_to_the_same_id() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	let (first, new_first) = txn.intern_group(NODE, &group("mint")).unwrap();
-	let (second, new_second) = txn.intern_group(NODE, &group("mint")).unwrap();
+	let (first, new_first) = txn.intern_groups(NODE, &[group("mint")]).unwrap().remove(0);
+	let (second, new_second) = txn.intern_groups(NODE, &[group("mint")]).unwrap().remove(0);
 
 	assert_eq!(first, second, "the same group bytes must always resolve to the same id");
 	assert!(new_first);
@@ -82,7 +82,8 @@ fn distinct_groups_get_distinct_ids() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	let ids: Vec<GroupId> = (0..5).map(|i| txn.intern_group(NODE, &group(&format!("g{i}"))).unwrap().0).collect();
+	let ids: Vec<GroupId> =
+		(0..5).map(|i| txn.intern_groups(NODE, &[group(&format!("g{i}"))]).unwrap().remove(0).0).collect();
 
 	let mut unique = ids.clone();
 	unique.sort_unstable();
@@ -114,14 +115,14 @@ fn ids_survive_a_restart() {
 	let engine = TestEngine::new();
 	let before = {
 		let mut txn = deferred(&engine);
-		let id = txn.intern_group(NODE, &group("survivor")).unwrap().0;
-		txn.intern_group(NODE, &group("other")).unwrap();
+		let id = txn.intern_groups(NODE, &[group("survivor")]).unwrap().remove(0).0;
+		txn.intern_groups(NODE, &[group("other")]).unwrap().remove(0);
 		commit_pending(&engine, &mut txn);
 		id
 	};
 
 	let mut txn = deferred(&engine);
-	let (after, is_new) = txn.intern_group(NODE, &group("survivor")).unwrap();
+	let (after, is_new) = txn.intern_groups(NODE, &[group("survivor")]).unwrap().remove(0);
 
 	assert_eq!(after, before, "a later transaction must resolve an existing group to its stored id");
 	assert!(!is_new, "an existing group must not be reported as newly interned after a restart");
@@ -132,12 +133,12 @@ fn a_reborn_group_never_reuses_the_id_of_the_generation_before_it() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	let original = txn.intern_group(NODE, &group("reborn")).unwrap().0;
+	let original = txn.intern_groups(NODE, &[group("reborn")]).unwrap().remove(0).0;
 	txn.forget_group(NODE, &group("reborn")).unwrap();
 	commit_pending(&engine, &mut txn);
 
 	let mut txn = deferred(&engine);
-	let (reborn, is_new) = txn.intern_group(NODE, &group("reborn")).unwrap();
+	let (reborn, is_new) = txn.intern_groups(NODE, &[group("reborn")]).unwrap().remove(0);
 
 	assert!(is_new, "a forgotten group is unknown again and must mint afresh");
 	assert_ne!(reborn, original, "a reclaimed id must never be handed back out");
@@ -147,7 +148,7 @@ fn a_reborn_group_never_reuses_the_id_of_the_generation_before_it() {
 fn a_forgotten_group_stops_resolving() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	txn.intern_group(NODE, &group("gone")).unwrap();
+	txn.intern_groups(NODE, &[group("gone")]).unwrap().remove(0);
 	commit_pending(&engine, &mut txn);
 
 	let mut txn = deferred(&engine);
@@ -156,7 +157,7 @@ fn a_forgotten_group_stops_resolving() {
 
 	let mut txn = deferred(&engine);
 	assert_eq!(
-		txn.lookup_group(NODE, &group("gone")).unwrap(),
+		txn.lookup_groups(NODE, &[group("gone")]).unwrap().remove(0),
 		None,
 		"a forgotten group must not resurrect from the store"
 	);
@@ -176,7 +177,7 @@ fn an_id_resolves_back_to_the_bytes_it_was_interned_from() {
 	let mut txn = deferred(&engine);
 	let bytes = group("two-address-key");
 
-	let (id, _) = txn.intern_group(NODE, &bytes).unwrap();
+	let (id, _) = txn.intern_groups(NODE, &[bytes.clone()]).unwrap().remove(0);
 
 	assert_eq!(
 		txn.group_bytes(NODE, id).unwrap(),
@@ -191,7 +192,7 @@ fn the_reverse_record_lives_outside_the_group_data_range() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let bytes = group("outlives-its-data");
-	let (id, _) = txn.intern_group(NODE, &bytes).unwrap();
+	let (id, _) = txn.intern_groups(NODE, &[bytes.clone()]).unwrap().remove(0);
 
 	let batch = txn
 		.state_range(NODE, group_data_inner_range(id), None, "test")
@@ -215,9 +216,9 @@ fn lookup_does_not_intern() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	assert_eq!(txn.lookup_group(NODE, &group("absent")).unwrap(), None);
+	assert_eq!(txn.lookup_groups(NODE, &[group("absent")]).unwrap().remove(0), None);
 
-	let (id, is_new) = txn.intern_group(NODE, &group("absent")).unwrap();
+	let (id, is_new) = txn.intern_groups(NODE, &[group("absent")]).unwrap().remove(0);
 	assert!(is_new, "the earlier lookup must not have interned the group");
 	assert_eq!(id, GroupId::FIRST, "a lookup must not consume an id from the counter");
 }
@@ -227,15 +228,15 @@ fn nodes_intern_independently() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	let first = txn.intern_group(OperatorId(1), &group("shared")).unwrap().0;
-	let second = txn.intern_group(OperatorId(2), &group("shared")).unwrap().0;
+	let first = txn.intern_groups(OperatorId(1), &[group("shared")]).unwrap().remove(0).0;
+	let second = txn.intern_groups(OperatorId(2), &[group("shared")]).unwrap().remove(0).0;
 
 	assert_eq!(first, second, "each operator numbers its own groups from the same starting point");
 
-	let other = txn.intern_group(OperatorId(2), &group("only-on-two")).unwrap().0;
+	let other = txn.intern_groups(OperatorId(2), &[group("only-on-two")]).unwrap().remove(0).0;
 	let mut txn = deferred(&engine);
 	assert_eq!(
-		txn.lookup_group(OperatorId(1), &group("only-on-two")).unwrap(),
+		txn.lookup_groups(OperatorId(1), &[group("only-on-two")]).unwrap().remove(0),
 		None,
 		"a group interned on one operator must not resolve on another"
 	);

@@ -60,7 +60,7 @@ fn commit_pending(engine: &TestEngine, txn: &mut DeferredTransaction) {
 fn first_key_mints_one_and_is_new() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	let (rn, is_new) = txn.get_or_create_row_number(NODE, GROUP, &key("first")).unwrap();
+	let (rn, is_new) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("first")]).unwrap().remove(0);
 	assert_eq!(rn.0, 1);
 	assert!(is_new, "a never-seen key must report as newly minted");
 }
@@ -70,7 +70,8 @@ fn distinct_keys_mint_sequential_numbers() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	for i in 1..=5u64 {
-		let (rn, is_new) = txn.get_or_create_row_number(NODE, GROUP, &key(&format!("k{i}"))).unwrap();
+		let (rn, is_new) =
+			txn.get_or_create_row_numbers(NODE, GROUP, &[key(&format!("k{i}"))]).unwrap().remove(0);
 		assert_eq!(rn.0, i, "distinct keys mint a contiguous ascending sequence");
 		assert!(is_new);
 	}
@@ -80,8 +81,8 @@ fn distinct_keys_mint_sequential_numbers() {
 fn a_repeated_key_returns_the_same_number() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	let (first, new1) = txn.get_or_create_row_number(NODE, GROUP, &key("dup")).unwrap();
-	let (second, new2) = txn.get_or_create_row_number(NODE, GROUP, &key("dup")).unwrap();
+	let (first, new1) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("dup")]).unwrap().remove(0);
+	let (second, new2) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("dup")]).unwrap().remove(0);
 	assert_eq!(first, second, "the same key must always resolve to the same row number");
 	assert!(new1);
 	assert!(!new2, "a re-seen key must not report as new");
@@ -110,8 +111,8 @@ fn duplicate_keys_in_one_batch_share_a_single_row_number() {
 fn a_batch_mixes_existing_and_new_keys() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	let (a, _) = txn.get_or_create_row_number(NODE, GROUP, &key("a")).unwrap();
-	let (b, _) = txn.get_or_create_row_number(NODE, GROUP, &key("b")).unwrap();
+	let (a, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("a")]).unwrap().remove(0);
+	let (b, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("b")]).unwrap().remove(0);
 
 	let batch = [key("b"), key("c"), key("a")];
 	let results = txn.get_or_create_row_numbers(NODE, GROUP, &batch).unwrap();
@@ -126,12 +127,12 @@ fn a_known_mapping_resolves_across_transactions() {
 	let engine = TestEngine::new();
 
 	let mut first = deferred(&engine);
-	let (minted, new1) = first.get_or_create_row_number(NODE, GROUP, &key("k")).unwrap();
+	let (minted, new1) = first.get_or_create_row_numbers(NODE, GROUP, &[key("k")]).unwrap().remove(0);
 	assert!(new1);
 	commit_pending(&engine, &mut first);
 
 	let mut second = deferred(&engine);
-	let (resolved, new2) = second.get_or_create_row_number(NODE, GROUP, &key("k")).unwrap();
+	let (resolved, new2) = second.get_or_create_row_numbers(NODE, GROUP, &[key("k")]).unwrap().remove(0);
 	assert_eq!(resolved, minted, "a persisted mapping must resolve to the original number");
 	assert!(!new2, "an existing mapping must not be re-minted");
 }
@@ -142,13 +143,13 @@ fn persisted_mappings_resolve_after_a_restart() {
 	let engine = TestEngine::new();
 	let minted = {
 		let mut txn = deferred(&engine);
-		let (rn, _) = txn.get_or_create_row_number(NODE, GROUP, &key("survivor")).unwrap();
+		let (rn, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("survivor")]).unwrap().remove(0);
 		commit_pending(&engine, &mut txn);
 		rn
 	};
 
 	let mut txn = deferred(&engine);
-	let (resolved, is_new) = txn.get_or_create_row_number(NODE, GROUP, &key("survivor")).unwrap();
+	let (resolved, is_new) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("survivor")]).unwrap().remove(0);
 	assert_eq!(resolved, minted, "a later transaction must reuse the persisted number");
 	assert!(!is_new, "resolving a persisted mapping is not a mint");
 }
@@ -160,13 +161,13 @@ fn the_counter_high_water_survives_a_restart() {
 	{
 		let mut txn = deferred(&engine);
 		for name in ["k1", "k2", "k3"] {
-			txn.get_or_create_row_number(NODE, GROUP, &key(name)).unwrap();
+			txn.get_or_create_row_numbers(NODE, GROUP, &[key(name)]).unwrap().remove(0);
 		}
 		commit_pending(&engine, &mut txn);
 	}
 
 	let mut txn = deferred(&engine);
-	let (rn, is_new) = txn.get_or_create_row_number(NODE, GROUP, &key("k4")).unwrap();
+	let (rn, is_new) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("k4")]).unwrap().remove(0);
 	assert!(is_new);
 	assert_eq!(rn.0, 4, "a fresh key after a restart continues the sequence, never reusing 1..=3");
 }
@@ -177,14 +178,14 @@ fn the_counter_is_shared_across_a_nodes_groups() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	let (a, _) = txn.get_or_create_row_number(NODE, GROUP, &key("shared")).unwrap();
-	let (b, _) = txn.get_or_create_row_number(NODE, NEIGHBOUR, &key("shared")).unwrap();
+	let (a, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("shared")]).unwrap().remove(0);
+	let (b, _) = txn.get_or_create_row_numbers(NODE, NEIGHBOUR, &[key("shared")]).unwrap().remove(0);
 
 	assert_ne!(a, b, "the same key in two groups must not collide on one row number");
 	assert_eq!(a.0, 1);
 	assert_eq!(b.0, 2, "the second group's mint continues the operator's sequence");
 
-	let (a_again, is_new) = txn.get_or_create_row_number(NODE, GROUP, &key("shared")).unwrap();
+	let (a_again, is_new) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("shared")]).unwrap().remove(0);
 	assert_eq!(a_again, a, "each group's mapping is stable and independent");
 	assert!(!is_new);
 }
@@ -193,8 +194,8 @@ fn the_counter_is_shared_across_a_nodes_groups() {
 fn get_row_number_returns_none_for_unknown_and_never_mints() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	assert_eq!(txn.get_row_number(NODE, GROUP, &key("ghost")).unwrap(), None);
-	let (rn, is_new) = txn.get_or_create_row_number(NODE, GROUP, &key("real")).unwrap();
+	assert_eq!(txn.get_row_numbers(NODE, GROUP, &[key("ghost")]).unwrap().remove(0), None);
+	let (rn, is_new) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("real")]).unwrap().remove(0);
 	assert_eq!(rn.0, 1, "a failed lookup must not advance the counter");
 	assert!(is_new);
 }
@@ -203,8 +204,8 @@ fn get_row_number_returns_none_for_unknown_and_never_mints() {
 fn get_row_number_returns_an_existing_mapping_without_minting() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	let (minted, _) = txn.get_or_create_row_number(NODE, GROUP, &key("here")).unwrap();
-	assert_eq!(txn.get_row_number(NODE, GROUP, &key("here")).unwrap(), Some(minted));
+	let (minted, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("here")]).unwrap().remove(0);
+	assert_eq!(txn.get_row_numbers(NODE, GROUP, &[key("here")]).unwrap().remove(0), Some(minted));
 }
 
 #[test]
@@ -212,7 +213,7 @@ fn get_row_numbers_reports_a_hole_for_every_unmapped_key() {
 	// The batch form must stay positional, or a caller zips numbers onto the wrong rows.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	let (mapped, _) = txn.get_or_create_row_number(NODE, GROUP, &key("mapped")).unwrap();
+	let (mapped, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("mapped")]).unwrap().remove(0);
 
 	let results = txn.get_row_numbers(NODE, GROUP, &[key("ghost"), key("mapped"), key("other")]).unwrap();
 
@@ -224,13 +225,17 @@ fn dropping_a_mapping_removes_it_and_a_re_lookup_mints_a_fresh_number() {
 	let engine = TestEngine::new();
 
 	let mut first = deferred(&engine);
-	let (minted, _) = first.get_or_create_row_number(NODE, GROUP, &key("victim")).unwrap();
+	let (minted, _) = first.get_or_create_row_numbers(NODE, GROUP, &[key("victim")]).unwrap().remove(0);
 	assert!(first.remove_row_number(NODE, GROUP, &key("victim")).unwrap(), "dropping a present key returns true");
-	assert_eq!(first.get_row_number(NODE, GROUP, &key("victim")).unwrap(), None, "the dropped mapping is gone");
+	assert_eq!(
+		first.get_row_numbers(NODE, GROUP, &[key("victim")]).unwrap().remove(0),
+		None,
+		"the dropped mapping is gone"
+	);
 	commit_pending(&engine, &mut first);
 
 	let mut second = deferred(&engine);
-	let (reminted, is_new) = second.get_or_create_row_number(NODE, GROUP, &key("victim")).unwrap();
+	let (reminted, is_new) = second.get_or_create_row_numbers(NODE, GROUP, &[key("victim")]).unwrap().remove(0);
 	assert!(is_new, "a dropped key mints fresh on re-lookup");
 	assert_ne!(reminted, minted, "a dropped row number is never reused");
 }
@@ -249,8 +254,8 @@ fn dropping_an_absent_mapping_is_idempotent() {
 fn nodes_are_isolated() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	let (a, _) = txn.get_or_create_row_number(OperatorId(1), GROUP, &key("shared")).unwrap();
-	let (b, _) = txn.get_or_create_row_number(OperatorId(2), GROUP, &key("shared")).unwrap();
+	let (a, _) = txn.get_or_create_row_numbers(OperatorId(1), GROUP, &[key("shared")]).unwrap().remove(0);
+	let (b, _) = txn.get_or_create_row_numbers(OperatorId(2), GROUP, &[key("shared")]).unwrap().remove(0);
 	assert_eq!(a.0, 1, "each operator mints from its own sequence");
 	assert_eq!(b.0, 1, "the same key under a different operator is an independent mapping");
 }
@@ -261,20 +266,20 @@ fn drop_below_reclaims_only_mappings_under_the_bound() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	let (rn10, _) = txn.get_or_create_row_number(NODE, GROUP, &slot_key(10)).unwrap();
-	let (rn20, _) = txn.get_or_create_row_number(NODE, GROUP, &slot_key(20)).unwrap();
-	let (rn30, _) = txn.get_or_create_row_number(NODE, GROUP, &slot_key(30)).unwrap();
+	let (rn10, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(10)]).unwrap().remove(0);
+	let (rn20, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(20)]).unwrap().remove(0);
+	let (rn30, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(30)]).unwrap().remove(0);
 
 	let upper = EncodedKey::builder().u64(25u64).u32(0u32).u32(0u32).build();
 	let mut dropped = txn.remove_row_numbers_below(NODE, GROUP, &upper).unwrap();
 	dropped.sort_by_key(|rn| rn.0);
 	assert_eq!(dropped, vec![rn10, rn20], "exactly the below-bound mappings are reclaimed");
 
-	let (rn30_again, is_new30) = txn.get_or_create_row_number(NODE, GROUP, &slot_key(30)).unwrap();
+	let (rn30_again, is_new30) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(30)]).unwrap().remove(0);
 	assert!(!is_new30, "slot 30 sat above the bound and must remain mapped");
 	assert_eq!(rn30, rn30_again);
 
-	let (rn10_again, is_new10) = txn.get_or_create_row_number(NODE, GROUP, &slot_key(10)).unwrap();
+	let (rn10_again, is_new10) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(10)]).unwrap().remove(0);
 	assert!(is_new10, "reclaimed slot 10 mints fresh");
 	assert_ne!(rn10, rn10_again, "a reclaimed row number is never reused");
 }
@@ -287,14 +292,22 @@ fn remove_by_prefix_reclaims_every_mapping_under_the_prefix() {
 
 	let doomed = EncodedKey::builder().u64(1u64).u32(7u32).build();
 	let kept = EncodedKey::builder().u64(2u64).u32(7u32).build();
-	txn.get_or_create_row_number(NODE, GROUP, &doomed).unwrap();
-	let (kept_rn, _) = txn.get_or_create_row_number(NODE, GROUP, &kept).unwrap();
+	txn.get_or_create_row_numbers(NODE, GROUP, &[doomed.clone()]).unwrap().remove(0);
+	let (kept_rn, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[kept.clone()]).unwrap().remove(0);
 
 	let prefix = EncodedKey::builder().u64(1u64).build();
 	txn.remove_row_numbers_by_prefix(NODE, GROUP, prefix.as_slice()).unwrap();
 
-	assert_eq!(txn.get_row_number(NODE, GROUP, &doomed).unwrap(), None, "the prefixed mapping is reclaimed");
-	assert_eq!(txn.get_row_number(NODE, GROUP, &kept).unwrap(), Some(kept_rn), "a sibling prefix survives");
+	assert_eq!(
+		txn.get_row_numbers(NODE, GROUP, &[doomed]).unwrap().remove(0),
+		None,
+		"the prefixed mapping is reclaimed"
+	);
+	assert_eq!(
+		txn.get_row_numbers(NODE, GROUP, &[kept]).unwrap().remove(0),
+		Some(kept_rn),
+		"a sibling prefix survives"
+	);
 }
 
 #[test]
@@ -328,7 +341,7 @@ fn create_row_numbers_returns_numbers_in_the_order_the_groups_were_given() {
 
 	for (group, expected) in groups.iter().zip(minted) {
 		assert_eq!(
-			txn.get_row_number(NODE, *group, &key("m")).unwrap(),
+			txn.get_row_numbers(NODE, *group, &[key("m")]).unwrap().remove(0),
 			Some(expected),
 			"each group must own the number handed back in its own slot"
 		);
@@ -341,9 +354,9 @@ fn create_row_numbers_continues_the_operators_shared_counter() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
-	let (probed, _) = txn.get_or_create_row_number(NODE, GROUP, &key("m")).unwrap();
+	let (probed, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("m")]).unwrap().remove(0);
 	let minted = txn.create_row_numbers(NODE, &[GroupId(11), GroupId(12)], &key("m")).unwrap();
-	let (after, _) = txn.get_or_create_row_number(NODE, NEIGHBOUR, &key("m")).unwrap();
+	let (after, _) = txn.get_or_create_row_numbers(NODE, NEIGHBOUR, &[key("m")]).unwrap().remove(0);
 
 	assert_eq!(probed.0, 1);
 	assert_eq!(minted.iter().map(|rn| rn.0).collect::<Vec<_>>(), vec![2, 3], "the mint starts above the counter");
@@ -358,7 +371,7 @@ fn create_row_numbers_for_no_groups_leaves_the_counter_untouched() {
 
 	assert!(txn.create_row_numbers(NODE, &[], &key("m")).unwrap().is_empty());
 
-	let (rn, _) = txn.get_or_create_row_number(NODE, GROUP, &key("m")).unwrap();
+	let (rn, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("m")]).unwrap().remove(0);
 	assert_eq!(rn.0, 1, "no group was minted for, so the first real key still takes number one");
 }
 
@@ -372,7 +385,7 @@ fn created_mappings_resolve_the_same_way_a_probed_one_does() {
 	commit_pending(&engine, &mut first);
 
 	let mut second = deferred(&engine);
-	let (resolved, is_new) = second.get_or_create_row_number(NODE, GroupId(11), &key("m")).unwrap();
+	let (resolved, is_new) = second.get_or_create_row_numbers(NODE, GroupId(11), &[key("m")]).unwrap().remove(0);
 
 	assert_eq!(resolved, minted[0], "the persisted mapping must resolve to the number that was minted");
 	assert!(!is_new, "a created mapping is a real mapping, not an absence");

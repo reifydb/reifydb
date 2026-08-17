@@ -117,7 +117,7 @@ impl GuestOperator for Alarm {
 					.expect("the substrate must populate #time on an event-time source");
 				let key = group_key(g);
 				// Interning carries the node's retention position forward at this row's event time.
-				ctx.intern_group(&key)?;
+				ctx.intern_groups(&[key.clone()])?;
 				let wake = DateTime::from_millis(at.to_millis() + DELAY_MS);
 				ctx.arm_timer(wake, TimerKind::Seal, &key)?;
 			}
@@ -128,14 +128,14 @@ impl GuestOperator for Alarm {
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> SdkResult<()> {
 		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
 		let key = group_key(g);
-		let group = ctx.intern_group(&key)?;
+		let group = ctx.intern_groups(&[key.clone()])?.remove(0).0;
 
 		// Per-group state, so the group has something for the retention pass to erase once it ages
 		// past its horizon. Without it a group is nothing but an identity and reclaim has no work.
 		let fired_at = timer.due.to_millis() as i64;
 		self.state_set(ctx, &OperatorStateKey::inner_encoded(group, ALARM_STATE, []), &fired_at)?;
 
-		let (row_number, _is_new) = ctx.get_or_create_row_number(group, &key)?;
+		let (row_number, _is_new) = ctx.get_or_create_row_numbers(group, &[key])?.remove(0);
 		ctx.emit_insert(
 			&[AlarmRow {
 				g,
@@ -321,7 +321,7 @@ impl GuestOperator for Snooze {
 					.row_time()
 					.expect("the substrate must populate #time on an event-time source");
 				let key = group_key(g);
-				let group = ctx.intern_group(&key)?;
+				let group = ctx.intern_groups(&[key.clone()])?.remove(0).0;
 				let armed_key = OperatorStateKey::inner_encoded(group, SNOOZE_ARMED, []);
 
 				if let Some(prior) = self.state_get::<i64>(ctx, &armed_key)? {
@@ -342,13 +342,13 @@ impl GuestOperator for Snooze {
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> SdkResult<()> {
 		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
-		let group = ctx.intern_group(&group_key(g))?;
+		let group = ctx.intern_groups(&[group_key(g)])?.remove(0).0;
 		let fired_at = timer.due.to_millis() as i64;
 
 		// Keyed by the firing instant, not the group, so a timer that should have been cancelled
 		// surfaces as an extra row instead of overwriting the surviving timer's.
 		let row_key = EncodedKey::new(timer.due.to_millis().to_be_bytes());
-		let (row_number, _is_new) = ctx.get_or_create_row_number(group, &row_key)?;
+		let (row_number, _is_new) = ctx.get_or_create_row_numbers(group, &[row_key])?.remove(0);
 		ctx.emit_insert(
 			&[AlarmRow {
 				g,

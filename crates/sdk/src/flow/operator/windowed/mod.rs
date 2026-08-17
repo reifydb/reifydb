@@ -73,7 +73,7 @@ where
 	if windows.is_empty() {
 		return Ok(WindowGroups::new());
 	}
-	Ok(windows.into_iter().zip(ctx.intern_groups(&keys)?).collect())
+	Ok(windows.into_iter().zip(ctx.intern_groups(&keys)?).map(|(window, (group, _))| (window, group)).collect())
 }
 
 pub(crate) fn group_of<G, C>(groups: &WindowGroups<G, C>, group: &G, coord: C) -> GroupId

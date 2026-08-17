@@ -694,17 +694,18 @@ pub(super) extern "C" fn host_intern_groups(
 	groups: *const ExternCKeyRef,
 	groups_len: usize,
 	ids_out: *mut u64,
+	is_new_out: *mut u8,
 ) -> i32 {
 	if ctx.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
-	if groups_len > 0 && (groups.is_null() || ids_out.is_null()) {
+	if groups_len > 0 && (groups.is_null() || ids_out.is_null() || is_new_out.is_null()) {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: `ctx` is null-checked above, and for a non-zero `groups_len` so are `groups` and
-	// `ids_out`; the guest must pass back the ExternCContextRaw the host handed it for this call, `groups`
-	// satisfying encoded_keys, and an `ids_out` valid and aligned for `groups_len` u64 writes -
+	// SAFETY: `ctx` is null-checked above, and for a non-zero `groups_len` so are `groups`, `ids_out` and
+	// `is_new_out`; the guest must pass back the ExternCContextRaw the host handed it for this call, `groups`
+	// satisfying encoded_keys, and both out arrays valid and aligned for `groups_len` writes -
 	// intern_groups returns exactly one id per group.
 	unsafe {
 		let host = get_host_mut(&mut *ctx);
@@ -713,8 +714,53 @@ pub(super) extern "C" fn host_intern_groups(
 		};
 		match host.intern_groups(&keys) {
 			Ok(interned) => {
-				for (index, (group, _)) in interned.iter().enumerate() {
+				for (index, (group, is_new)) in interned.iter().enumerate() {
 					*ids_out.add(index) = group.0;
+					*is_new_out.add(index) = *is_new as u8;
+				}
+				EXTERN_C_OK
+			}
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
+		}
+	}
+}
+
+pub(super) extern "C" fn host_get_or_create_row_numbers_for_pairs(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	groups: *const u64,
+	keys: *const ExternCKeyRef,
+	pairs_len: usize,
+	row_numbers_out: *mut u64,
+	is_new_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if pairs_len > 0 && (groups.is_null() || keys.is_null() || row_numbers_out.is_null() || is_new_out.is_null()) {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: `ctx` is null-checked above, and for a non-zero `pairs_len` so are `groups`, `keys`,
+	// `row_numbers_out` and `is_new_out`; the guest must pass back the ExternCContextRaw the host handed it
+	// for this call, `groups` valid and aligned for `pairs_len` u64 reads, `keys` satisfying encoded_keys for
+	// the same length, and both out arrays valid and aligned for `pairs_len` writes -
+	// get_or_create_row_numbers_for_pairs returns exactly one result per pair.
+	unsafe {
+		let host = get_host_mut(&mut *ctx);
+		let Some(encoded) = encoded_keys(keys, pairs_len) else {
+			return EXTERN_C_ERROR_NULL_PTR;
+		};
+		let pairs: Vec<(GroupId, EncodedKey)> = encoded
+			.into_iter()
+			.enumerate()
+			.map(|(index, key)| (GroupId(*groups.add(index)), key))
+			.collect();
+		match host.get_or_create_row_numbers_for_pairs(&pairs) {
+			Ok(results) => {
+				for (index, (row_number, is_new)) in results.iter().enumerate() {
+					*row_numbers_out.add(index) = row_number.0;
+					*is_new_out.add(index) = *is_new as u8;
 				}
 				EXTERN_C_OK
 			}
@@ -853,26 +899,25 @@ mod seal_anchor_guard_tests {
 			Ok(None)
 		}
 
-		fn intern_group(&mut self, _group: &EncodedKey) -> Result<GroupId> {
-			Ok(GroupId::ROOT)
+		fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
+			Ok(groups.iter().map(|_| (GroupId::ROOT, false)).collect())
 		}
 
-		fn lookup_group(&mut self, _group: &EncodedKey) -> Result<Option<GroupId>> {
-			Ok(None)
-		}
-
-		fn get_or_create_row_number(
-			&mut self,
-			_group: GroupId,
-			_key: &EncodedKey,
-		) -> Result<(RowNumber, bool)> {
-			Ok((RowNumber(0), false))
+		fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+			Ok(groups.iter().map(|_| None).collect())
 		}
 
 		fn get_or_create_row_numbers(
 			&mut self,
 			_group: GroupId,
 			_keys: &[EncodedKey],
+		) -> Result<Vec<(RowNumber, bool)>> {
+			Ok(Vec::new())
+		}
+
+		fn get_or_create_row_numbers_for_pairs(
+			&mut self,
+			_pairs: &[(GroupId, EncodedKey)],
 		) -> Result<Vec<(RowNumber, bool)>> {
 			Ok(Vec::new())
 		}
@@ -945,23 +990,27 @@ mod seal_anchor_guard_tests {
 			Ok(())
 		}
 
-		fn intern_groups(&mut self, _groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
-			Ok(Vec::new())
-		}
-
-		fn lookup_groups(&mut self, _groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
-			Ok(Vec::new())
-		}
-
 		fn reclaim_group_identity(&mut self, _group: GroupId, _limit: usize) -> Result<ReclaimOutcome> {
 			Ok(ReclaimOutcome::NOTHING)
 		}
 
-		fn get_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<Option<RowNumber>> {
-			Ok(None)
+		fn get_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+			Ok(Vec::new())
 		}
 
-		fn get_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+		fn get_row_numbers_for_groups(
+			&mut self,
+			_groups: &[GroupId],
+			_key: &EncodedKey,
+		) -> Result<Vec<Option<RowNumber>>> {
+			Ok(Vec::new())
+		}
+
+		fn get_or_create_row_numbers_for_groups(
+			&mut self,
+			_groups: &[GroupId],
+			_key: &EncodedKey,
+		) -> Result<Vec<(RowNumber, bool)>> {
 			Ok(Vec::new())
 		}
 

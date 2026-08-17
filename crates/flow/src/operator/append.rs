@@ -322,11 +322,20 @@ impl AppendOperator {
 			interned.iter().filter(|(_, is_new)| *is_new).map(|(group, _)| *group).collect();
 		let mut minted = host.create_row_numbers(&fresh, &mapping)?.into_iter();
 
+		let known: Vec<GroupId> =
+			interned.iter().filter(|(_, is_new)| !*is_new).map(|(group, _)| *group).collect();
+		let mut looked_up = host.get_or_create_row_numbers_for_groups(&known, &mapping)?.into_iter();
+
 		let mut output_row_numbers = Vec::with_capacity(interned.len());
-		for (group, is_new) in interned {
+		for (_, is_new) in interned {
 			let output_row_number = match is_new {
 				true => minted.next().expect("one row number is minted per freshly interned group"),
-				false => host.get_or_create_row_number(group, &mapping)?.0,
+				false => {
+					looked_up
+						.next()
+						.expect("one row number is resolved per already-interned group")
+						.0
+				}
 			};
 			output_row_numbers.push(output_row_number);
 		}
@@ -340,17 +349,20 @@ impl AppendOperator {
 		host: &mut dyn HostContext,
 		groups: &[EncodedKey],
 	) -> Result<Option<(Vec<RowNumber>, Vec<GroupId>)>> {
-		let mut output_row_numbers = Vec::with_capacity(groups.len());
 		let mut ids = Vec::with_capacity(groups.len());
-		for group_bytes in groups {
-			let Some(group) = host.lookup_group(group_bytes)? else {
+		for resolved in host.lookup_groups(groups)? {
+			let Some(group) = resolved else {
 				return Ok(None);
 			};
-			let Some(row_number) = host.get_row_number(group, &Self::mapping_key())? else {
+			ids.push(group);
+		}
+
+		let mut output_row_numbers = Vec::with_capacity(ids.len());
+		for row_number in host.get_row_numbers_for_groups(&ids, &Self::mapping_key())? {
+			let Some(row_number) = row_number else {
 				return Ok(None);
 			};
 			output_row_numbers.push(row_number);
-			ids.push(group);
 		}
 		Ok(Some((output_row_numbers, ids)))
 	}
@@ -509,7 +521,9 @@ mod tests {
 		parent: u8,
 		source_row: u64,
 	) -> Option<GroupId> {
-		txn.lookup_group(op.operator, &AppendOperator::group_bytes(parent, RowNumber(source_row))).unwrap()
+		txn.lookup_groups(op.operator, &[AppendOperator::group_bytes(parent, RowNumber(source_row))])
+			.unwrap()
+			.remove(0)
 	}
 
 	fn group_rows(txn: &mut DeferredTransaction, op: &AppendOperator, group: GroupId) -> usize {
@@ -536,7 +550,7 @@ mod tests {
 
 		let group = group_of(&mut txn, &op, 0, 42).expect("the source row must have interned a group");
 		assert_eq!(
-			txn.get_row_number(op.operator, group, &AppendOperator::mapping_key()).unwrap(),
+			txn.get_row_numbers(op.operator, group, &[AppendOperator::mapping_key()]).unwrap().remove(0),
 			Some(post.row_numbers()[0]),
 			"the output row number must be readable from inside the group that owns it"
 		);
@@ -639,7 +653,9 @@ mod tests {
 		for (slot, source) in [(0usize, 5u64), (2, 9)] {
 			let group = group_of(&mut txn, &op, 0, source).expect("a fresh source row interns a group");
 			assert_eq!(
-				txn.get_row_number(op.operator, group, &AppendOperator::mapping_key()).unwrap(),
+				txn.get_row_numbers(op.operator, group, &[AppendOperator::mapping_key()])
+					.unwrap()
+					.remove(0),
 				Some(assigned[slot]),
 				"each fresh row's number must be stored under its own group"
 			);

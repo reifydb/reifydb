@@ -109,7 +109,12 @@ where
 						Some(resolved) => resolved.clone(),
 						None => {
 							let key = row_key(&group);
-							let group_id = store.intern_group(&key)?;
+							let group_id = store
+								.intern_groups(&[key.clone()])?
+								.into_iter()
+								.next()
+								.expect("intern_groups answers every requested key")
+								.0;
 							(group_id, key)
 						}
 					};
@@ -189,7 +194,8 @@ where
 			meta.observe(coord);
 		}
 
-		let mut results: Vec<RollingResult<G, Output>> = Vec::new();
+		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
+		let mut pending: Vec<(G, Output, bool)> = Vec::new();
 		for (group, slot) in group_slots {
 			if !slot.buffer_changed {
 				continue;
@@ -204,29 +210,43 @@ where
 			self.running.put(store, &RunningKey::new(slot.group_id, slot.key.clone()), slot.running)?;
 
 			if let Some(out) = output {
-				let (row_number, is_new) = store.get_or_create_row_number(slot.group_id, &slot.key)?;
-				let kind = if is_new {
-					EmitKind::Insert
-				} else {
-					EmitKind::Update
-				};
-				results.push(RollingResult {
-					row_number,
-					group,
-					value: out,
-					prior: None,
-					kind,
-				});
+				pairs.push((slot.group_id, slot.key));
+				pending.push((group, out, false));
 			} else if let Some(prior) = slot.prior_output {
-				let (row_number, _is_new) = store.get_or_create_row_number(slot.group_id, &slot.key)?;
-				store.remove_row_number(slot.group_id, &slot.key)?;
-				results.push(RollingResult {
-					row_number,
-					group,
-					value: prior,
-					prior: None,
-					kind: EmitKind::Remove,
-				});
+				pairs.push((slot.group_id, slot.key));
+				pending.push((group, prior, true));
+			}
+		}
+
+		let mut results: Vec<RollingResult<G, Output>> = Vec::with_capacity(pending.len());
+		if !pairs.is_empty() {
+			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+			for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
+				pending.into_iter().zip(pairs).zip(rows)
+			{
+				if withdrawn {
+					store.remove_row_number(group_id, &key)?;
+					results.push(RollingResult {
+						row_number,
+						group,
+						value,
+						prior: None,
+						kind: EmitKind::Remove,
+					});
+				} else {
+					let kind = if is_new {
+						EmitKind::Insert
+					} else {
+						EmitKind::Update
+					};
+					results.push(RollingResult {
+						row_number,
+						group,
+						value,
+						prior: None,
+						kind,
+					});
+				}
 			}
 		}
 		self.persist_meta(store, meta_loaded)?;
@@ -269,24 +289,23 @@ where
 				group_keys.push(row_key(group));
 			}
 		}
-		let mut resolved_rows: Vec<(GroupId, EncodedKey)> = Vec::with_capacity(group_keys.len());
-		for key in &group_keys {
-			let group = store.intern_group(key)?;
-			resolved_rows.push((group, key.clone()));
+		if group_keys.is_empty() {
+			return Ok(buffer_rows);
 		}
+		let interned = store.intern_groups(&group_keys)?;
 		reifydb_assertions! {
-			let resolved = resolved_rows.len();
+			let resolved = interned.len();
 			let requested = group_keys.len();
 			assert!(
 				resolved == requested,
-				"intern_group returned {resolved} groups for {requested} group keys; \
-				 the zip below pairs resolve_order with resolved_rows by position, so a length \
+				"intern_groups returned {resolved} groups for {requested} group keys; \
+				 the zip below pairs resolve_order with the interned ids by position, so a length \
 				 mismatch would silently leave some groups without a buffer_rows entry and route \
-				 them through the per-bucket intern_group fallback, diverging behaviour"
+				 them through the per-bucket intern fallback, diverging behaviour"
 			);
 		}
-		for (group, resolved) in resolve_order.into_iter().zip(resolved_rows) {
-			buffer_rows.insert(group, resolved);
+		for ((group, key), (group_id, _)) in resolve_order.into_iter().zip(group_keys).zip(interned) {
+			buffer_rows.insert(group, (group_id, key));
 		}
 		Ok(buffer_rows)
 	}
@@ -386,7 +405,13 @@ mod tests {
 		assert_eq!(published.len(), 1);
 		assert!(matches!(published[0].kind, EmitKind::Insert), "precondition: the group publishes once");
 
-		let group_id = store.lookup_group(&row_key(&1)).unwrap().expect("precondition: the group is interned");
+		let group_id = store
+			.lookup_groups(&[row_key(&1)])
+			.unwrap()
+			.into_iter()
+			.next()
+			.unwrap()
+			.expect("precondition: the group is interned");
 		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
 		assert!(
 			store.contains_row_mapping(group_id, &row_key(&1)),

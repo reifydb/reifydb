@@ -176,12 +176,15 @@ impl DistinctPlan {
 
 		let mut minted: Vec<(usize, RowNumber)> = Vec::with_capacity(new_entries.len());
 		let mut republished: Vec<(usize, RowNumber)> = Vec::new();
-		for &(row_idx, hash) in &new_entries {
-			let (stable_rn, is_new) = host.get_or_create_row_number(groups[&hash], &store::empty_key())?;
-			if is_new {
-				minted.push((row_idx, stable_rn));
-			} else {
-				republished.push((row_idx, stable_rn));
+		if !new_entries.is_empty() {
+			let group_ids: Vec<GroupId> = new_entries.iter().map(|&(_, hash)| groups[&hash]).collect();
+			let stable_rns = host.get_or_create_row_numbers_for_groups(&group_ids, &store::empty_key())?;
+			for (&(row_idx, _), (stable_rn, is_new)) in new_entries.iter().zip(stable_rns) {
+				if is_new {
+					minted.push((row_idx, stable_rn));
+				} else {
+					republished.push((row_idx, stable_rn));
+				}
 			}
 		}
 		if !minted.is_empty() {
@@ -192,11 +195,15 @@ impl DistinctPlan {
 			result.push(Diff::update(output.clone(), output));
 		}
 
-		for (old_serialized, new_idx, hash) in swap_pairs {
-			let (stable_rn, _) = host.get_or_create_row_number(groups[&hash], &store::empty_key())?;
-			let pre_cols = Self::with_stable_rn(old_serialized.to_columns(&state.layout), stable_rn);
-			let post_cols = Self::with_stable_rn(columns.extract_by_indices(&[new_idx]), stable_rn);
-			result.push(Diff::update(pre_cols, post_cols));
+		if !swap_pairs.is_empty() {
+			let group_ids: Vec<GroupId> = swap_pairs.iter().map(|&(_, _, hash)| groups[&hash]).collect();
+			let stable_rns = host.get_or_create_row_numbers_for_groups(&group_ids, &store::empty_key())?;
+			for ((old_serialized, new_idx, _), (stable_rn, _)) in swap_pairs.into_iter().zip(stable_rns) {
+				let pre_cols =
+					Self::with_stable_rn(old_serialized.to_columns(&state.layout), stable_rn);
+				let post_cols = Self::with_stable_rn(columns.extract_by_indices(&[new_idx]), stable_rn);
+				result.push(Diff::update(pre_cols, post_cols));
+			}
 		}
 
 		Ok(result)
@@ -241,8 +248,14 @@ impl DistinctPlan {
 					false
 				};
 				if visible {
-					let (stable_rn, _) =
-						host.get_or_create_row_number(groups[&pre_hash], &store::empty_key())?;
+					let (stable_rn, _) = host
+						.get_or_create_row_numbers_for_groups(
+							&[groups[&pre_hash]],
+							&store::empty_key(),
+						)?
+						.into_iter()
+						.next()
+						.unwrap();
 					let pre_out = Self::with_stable_rn(
 						pre_columns.extract_by_indices(&[row_idx]),
 						stable_rn,
@@ -312,8 +325,14 @@ impl DistinctPlan {
 			state.dirty.insert(post_hash, row_time(host, post_columns, row_idx));
 
 			if let Some((pre_is_empty, pre_new_visible_opt)) = pre_mutation {
-				let (stable_rn, _) =
-					host.get_or_create_row_number(groups[&pre_hash], &store::empty_key())?;
+				let (stable_rn, _) = host
+					.get_or_create_row_numbers_for_groups(
+						&[groups[&pre_hash]],
+						&store::empty_key(),
+					)?
+					.into_iter()
+					.next()
+					.unwrap();
 				if pre_is_empty {
 					host.remove_row_number(groups[&pre_hash], &store::empty_key())?;
 					result.push(Diff::remove(Self::with_stable_rn(
@@ -333,8 +352,14 @@ impl DistinctPlan {
 
 			let (post_is_new, post_displaced_opt) = post_mutation;
 			if post_is_new || post_displaced_opt.is_some() {
-				let (stable_rn, minted) =
-					host.get_or_create_row_number(groups[&post_hash], &store::empty_key())?;
+				let (stable_rn, minted) = host
+					.get_or_create_row_numbers_for_groups(
+						&[groups[&post_hash]],
+						&store::empty_key(),
+					)?
+					.into_iter()
+					.next()
+					.unwrap();
 				let post_out =
 					Self::with_stable_rn(post_columns.extract_by_indices(&[row_idx]), stable_rn);
 				match post_displaced_opt {
@@ -405,24 +430,36 @@ impl DistinctPlan {
 			state.entries.shift_remove(&hash);
 		}
 
-		for (row_idx, hash, mutation) in mutations {
-			let Some(new_visible_opt) = mutation else {
-				continue;
-			};
-			let (stable_rn, _) = host.get_or_create_row_number(groups[&hash], &store::empty_key())?;
-			match new_visible_opt {
-				None => {
-					host.remove_row_number(groups[&hash], &store::empty_key())?;
-					result.push(Diff::remove(Self::with_stable_rn(
-						columns.extract_by_indices(&[row_idx]),
-						stable_rn,
-					)));
-				}
-				Some(new_visible) => {
-					result.push(Diff::update(
-						Self::with_stable_rn(columns.extract_by_indices(&[row_idx]), stable_rn),
-						Self::with_stable_rn(new_visible.to_columns(&state.layout), stable_rn),
-					));
+		let active: Vec<(usize, Hash128, Option<SerializedRow>)> = mutations
+			.into_iter()
+			.filter_map(|(row_idx, hash, mutation)| {
+				mutation.map(|new_visible_opt| (row_idx, hash, new_visible_opt))
+			})
+			.collect();
+		if !active.is_empty() {
+			let group_ids: Vec<GroupId> = active.iter().map(|&(_, hash, _)| groups[&hash]).collect();
+			let stable_rns = host.get_or_create_row_numbers_for_groups(&group_ids, &store::empty_key())?;
+			for ((row_idx, hash, new_visible_opt), (stable_rn, _)) in active.into_iter().zip(stable_rns) {
+				match new_visible_opt {
+					None => {
+						host.remove_row_number(groups[&hash], &store::empty_key())?;
+						result.push(Diff::remove(Self::with_stable_rn(
+							columns.extract_by_indices(&[row_idx]),
+							stable_rn,
+						)));
+					}
+					Some(new_visible) => {
+						result.push(Diff::update(
+							Self::with_stable_rn(
+								columns.extract_by_indices(&[row_idx]),
+								stable_rn,
+							),
+							Self::with_stable_rn(
+								new_visible.to_columns(&state.layout),
+								stable_rn,
+							),
+						));
+					}
 				}
 			}
 		}

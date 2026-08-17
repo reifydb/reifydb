@@ -719,14 +719,37 @@ mod tests {
 		}
 	}
 
+	impl MockStore {
+		fn row_number_for(&mut self, group: GroupId, key: &EncodedKey) -> (RowNumber, bool) {
+			let slot = (group, key.as_bytes().to_vec());
+			if let Some(&row) = self.rows.get(&slot) {
+				return (RowNumber(row), false);
+			}
+			self.next_row += 1;
+			self.rows.insert(slot, self.next_row);
+			(RowNumber(self.next_row), true)
+		}
+	}
+
 	impl StateStore for MockStore {
-		fn intern_group(&mut self, group: &EncodedKey) -> ValueResult<GroupId> {
-			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
-			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))
+		fn intern_groups(&mut self, groups: &[EncodedKey]) -> ValueResult<Vec<(GroupId, bool)>> {
+			let mut interned = Vec::with_capacity(groups.len());
+			for group in groups {
+				let bytes = group.as_bytes().to_vec();
+				match self.groups.get(&bytes) {
+					Some(id) => interned.push((*id, false)),
+					None => {
+						let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
+						self.groups.insert(bytes, next);
+						interned.push((next, true));
+					}
+				}
+			}
+			Ok(interned)
 		}
 
-		fn lookup_group(&mut self, group: &EncodedKey) -> ValueResult<Option<GroupId>> {
-			Ok(self.groups.get(group.as_bytes()).copied())
+		fn lookup_groups(&mut self, groups: &[EncodedKey]) -> ValueResult<Vec<Option<GroupId>>> {
+			Ok(groups.iter().map(|group| self.groups.get(group.as_bytes()).copied()).collect())
 		}
 
 		fn state_get(&mut self, key: &GroupStateKey) -> ValueResult<Option<EncodedOperatorRow>> {
@@ -794,25 +817,18 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn get_or_create_row_number(
-			&mut self,
-			group: GroupId,
-			key: &EncodedKey,
-		) -> ValueResult<(RowNumber, bool)> {
-			let slot = (group, key.as_bytes().to_vec());
-			if let Some(&row) = self.rows.get(&slot) {
-				return Ok((RowNumber(row), false));
-			}
-			self.next_row += 1;
-			self.rows.insert(slot, self.next_row);
-			Ok((RowNumber(self.next_row), true))
-		}
 		fn get_or_create_row_numbers(
 			&mut self,
 			group: GroupId,
 			keys: &[EncodedKey],
 		) -> ValueResult<Vec<(RowNumber, bool)>> {
-			keys.iter().map(|k| self.get_or_create_row_number(group, k)).collect()
+			Ok(keys.iter().map(|key| self.row_number_for(group, key)).collect())
+		}
+		fn get_or_create_row_numbers_for_pairs(
+			&mut self,
+			pairs: &[(GroupId, EncodedKey)],
+		) -> ValueResult<Vec<(RowNumber, bool)>> {
+			Ok(pairs.iter().map(|(group, key)| self.row_number_for(*group, key)).collect())
 		}
 		fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> ValueResult<()> {
 			self.rows.remove(&(group, key.as_bytes().to_vec()));

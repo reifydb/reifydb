@@ -293,14 +293,10 @@ impl GuestContext for InProcessContext<'_> {
 			_marker: PhantomData,
 		}
 	}
-	fn intern_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<GroupId>> {
+	fn intern_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<(GroupId, bool)>> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		Ok(unsafe { (*self.host).intern_groups(groups) }
-			.map_err(to_sdk_err)?
-			.into_iter()
-			.map(|(group, _)| group)
-			.collect())
+		unsafe { (*self.host).intern_groups(groups) }.map_err(to_sdk_err)
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<Option<GroupId>>> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
@@ -323,11 +319,6 @@ impl GuestContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).flow_watermark() }.map_err(to_sdk_err)
 	}
-	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<(RowNumber, bool)> {
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).get_or_create_row_number(group, key) }.map_err(to_sdk_err)
-	}
 	fn get_or_create_row_numbers(
 		&mut self,
 		group: GroupId,
@@ -336,6 +327,14 @@ impl GuestContext for InProcessContext<'_> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).get_or_create_row_numbers(group, keys) }.map_err(to_sdk_err)
+	}
+	fn get_or_create_row_numbers_for_pairs(
+		&mut self,
+		pairs: &[(GroupId, EncodedKey)],
+	) -> SdkResult<Vec<(RowNumber, bool)>> {
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).get_or_create_row_numbers_for_pairs(pairs) }.map_err(to_sdk_err)
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps

@@ -83,23 +83,25 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 		self.state_range_iter(EncodedKeyRange::all()).collect()
 	}
 
-	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>>;
-
-	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
-
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
 
 	fn create_row_numbers(&mut self, groups: &[GroupId], key: &EncodedKey) -> Result<Vec<RowNumber>> {
-		let mut minted = Vec::with_capacity(groups.len());
-		for group in groups {
-			minted.push(self.get_or_create_row_number(*group, key)?.0);
-		}
-		Ok(minted)
+		Ok(self.get_or_create_row_numbers_for_groups(groups, key)?.into_iter().map(|(row, _)| row).collect())
 	}
 
-	fn get_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<Option<RowNumber>>;
-
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;
+
+	fn get_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+		key: &EncodedKey,
+	) -> Result<Vec<Option<RowNumber>>>;
+
+	fn get_or_create_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+		key: &EncodedKey,
+	) -> Result<Vec<(RowNumber, bool)>>;
 
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 
@@ -221,20 +223,23 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		Ok(None)
 	}
 
-	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
-		Ok(self.txn.intern_group(self.operator, group)?.0)
+	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
+		self.txn.intern_groups(self.operator, groups)
 	}
 
-	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
-		self.txn.lookup_group(self.operator, group)
-	}
-
-	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		self.txn.get_or_create_row_number(self.operator, group, key)
+	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+		self.txn.lookup_groups(self.operator, groups)
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		self.txn.get_or_create_row_numbers(self.operator, group, keys)
+	}
+
+	fn get_or_create_row_numbers_for_pairs(
+		&mut self,
+		pairs: &[(GroupId, EncodedKey)],
+	) -> Result<Vec<(RowNumber, bool)>> {
+		self.txn.get_or_create_row_numbers_for_pairs(self.operator, pairs)
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
@@ -310,14 +315,6 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.state_clear(self.operator)
 	}
 
-	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
-		self.txn.intern_groups(self.operator, groups)
-	}
-
-	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
-		groups.iter().map(|group| self.txn.lookup_group(self.operator, group)).collect()
-	}
-
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		self.txn.reclaim_group_identity(self.operator, group, limit)
 	}
@@ -326,12 +323,24 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.create_row_numbers(self.operator, groups, key)
 	}
 
-	fn get_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<Option<RowNumber>> {
-		self.txn.get_row_number(self.operator, group, key)
-	}
-
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
 		self.txn.get_row_numbers(self.operator, group, keys)
+	}
+
+	fn get_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+		key: &EncodedKey,
+	) -> Result<Vec<Option<RowNumber>>> {
+		self.txn.get_row_numbers_for_groups(self.operator, groups, key)
+	}
+
+	fn get_or_create_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+		key: &EncodedKey,
+	) -> Result<Vec<(RowNumber, bool)>> {
+		self.txn.get_or_create_row_numbers_for_groups(self.operator, groups, key)
 	}
 
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {

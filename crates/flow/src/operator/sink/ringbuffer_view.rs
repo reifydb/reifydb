@@ -1333,7 +1333,10 @@ mod tests {
 		insert_at(&engine, &mut op, true, &[("eu", 3), ("eu", 4)], 3, AFTER);
 
 		let out = fire(&engine, &mut op, &base("us"), AFTER);
-		assert!(out.is_some(), "an eviction that reclaims real rows must still advance the operator's watermark");
+		assert!(
+			out.is_some(),
+			"an eviction that reclaims real rows must still advance the operator's watermark"
+		);
 
 		assert!(
 			metadata(&engine, &base("us")).is_none(),
@@ -1359,7 +1362,14 @@ mod tests {
 		let mut txn = deferred_txn(&engine);
 		let key = op.timer_key(&base("us"));
 		let out = op
-			.on_timer(&mut txn, Timer { due: DateTime::from_nanos(AFTER), kind: TimerKind::RowTtl, key })
+			.on_timer(
+				&mut txn,
+				Timer {
+					due: DateTime::from_nanos(AFTER),
+					kind: TimerKind::RowTtl,
+					key,
+				},
+			)
 			.unwrap();
 		let tracked = txn.take_accumulator_entries();
 		commit_flow_pending(&engine, &mut txn);

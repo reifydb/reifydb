@@ -1183,7 +1183,7 @@ mod seal_tests {
 	}
 
 	fn group_of(op: &JoinOperator, txn: &mut DeferredTransaction, hash: &Hash128) -> Option<GroupId> {
-		txn.lookup_group(op.operator, &group_bytes(hash)).unwrap()
+		txn.lookup_groups(op.operator, &[group_bytes(hash)]).unwrap().remove(0)
 	}
 
 	fn anchor_of(
@@ -1223,7 +1223,7 @@ mod seal_tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left);
-		txn.get_row_number(op.operator, GroupId::ROOT, &serializer.finish()).unwrap()
+		txn.get_row_numbers(op.operator, GroupId::ROOT, &[serializer.finish()]).unwrap().remove(0)
 	}
 
 	fn fire(op: &mut JoinOperator, txn: &mut DeferredTransaction, due: DateTime, group: GroupId) -> Option<Change> {

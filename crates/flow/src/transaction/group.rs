@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, slice::from_ref};
+use std::collections::HashMap;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -75,10 +75,6 @@ fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Res
 }
 
 pub trait GroupExtension: FlowTransaction {
-	fn intern_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<(GroupId, bool)> {
-		Ok(self.intern_groups(operator, from_ref(group))?.into_iter().next().unwrap())
-	}
-
 	fn intern_groups(&mut self, operator: OperatorId, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
 		let now = self.written_at();
 		let dictionary_keys: Vec<GroupStateKey> = groups.iter().map(dictionary_key).collect();
@@ -139,11 +135,24 @@ pub trait GroupExtension: FlowTransaction {
 		Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
 	}
 
-	fn lookup_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<Option<GroupId>> {
-		let Some(row) = self.state_get(operator, &dictionary_key(group))? else {
-			return Ok(None);
-		};
-		Ok(Some(GroupId(decode_payload::<u64>(&row)?)))
+	fn lookup_groups(&mut self, operator: OperatorId, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+		let dictionary_keys: Vec<GroupStateKey> = groups.iter().map(dictionary_key).collect();
+
+		let batch = self.state_get_many(operator, &dictionary_keys)?;
+		let mut found: HashMap<Vec<u8>, EncodedBytes> = HashMap::with_capacity(batch.items.len());
+		for item in batch.items {
+			let decoded = OperatorStateKey::decode(&item.key)
+				.expect("state_get_many must return OperatorState keys");
+			found.insert(decoded.inner().as_slice().to_vec(), item.bytes);
+		}
+
+		dictionary_keys
+			.iter()
+			.map(|dictionary| match found.get(dictionary.as_slice()) {
+				Some(existing) => Ok(Some(GroupId(decode_bytes::<u64>(existing)?))),
+				None => Ok(None),
+			})
+			.collect()
 	}
 
 	fn forget_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<bool> {

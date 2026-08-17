@@ -50,6 +50,16 @@ struct ResolvedSlot {
 
 type SlotResolved<G, C> = HashMap<(G, WindowSpan<C>), ResolvedSlot>;
 
+struct PendingEmit<G, C, Output> {
+	group_id: GroupId,
+	key: EncodedKey,
+	group: G,
+	span: WindowSpan<C>,
+	value: Output,
+	prior: Option<Output>,
+	withdraw: bool,
+}
+
 pub struct ExpiredWindow<G, C> {
 	pub group: G,
 	pub group_id: GroupId,
@@ -214,7 +224,7 @@ where
 	where
 		NA: Fn() -> Accumulator,
 	{
-		let mut results: Vec<WindowResult<G, C, Accumulator::Output>> = Vec::new();
+		let mut pending: Vec<PendingEmit<G, C, Accumulator::Output>> = Vec::new();
 
 		for ordered in order {
 			let Some(events) = buckets.remove(ordered) else {
@@ -259,42 +269,25 @@ where
 			self.accumulators.put(store, &state_key, accumulator)?;
 
 			match value {
-				Some(value) => {
-					let (row_number, is_new) = store.get_or_create_row_number(id, &key)?;
-					let kind = if is_new {
-						EmitKind::Insert
-					} else {
-						EmitKind::Update
-					};
-					results.push(WindowResult {
-						row_number,
-						group,
-						span,
-						value,
-						prior,
-						kind,
-					});
-				}
+				Some(value) => pending.push(PendingEmit {
+					group_id: id,
+					key,
+					group,
+					span,
+					value,
+					prior,
+					withdraw: false,
+				}),
 				None => {
 					if let Some(p) = prior.clone() {
-						let (row_number, _is_new) = store.get_or_create_row_number(id, &key)?;
-						reifydb_assertions! {
-							assert!(
-								!_is_new,
-								"a window holding a prior output must already own its mapping; minting \
-								 one here means the identity was released while the row it addresses \
-								 was still live, and this withdrawal names a row no sink can find \
-								 (group={id:?}, row={row_number:?})"
-							);
-						}
-						store.remove_row_number(id, &key)?;
-						results.push(WindowResult {
-							row_number,
+						pending.push(PendingEmit {
+							group_id: id,
+							key,
 							group,
 							span,
 							value: p,
 							prior,
-							kind: EmitKind::Remove,
+							withdraw: true,
 						});
 					}
 				}
@@ -307,6 +300,49 @@ where
 				 silently dropped and its window never gets a row number (leftovers={})",
 				buckets.len()
 			);
+		}
+
+		let pairs: Vec<(GroupId, EncodedKey)> = pending.iter().map(|p| (p.group_id, p.key.clone())).collect();
+		let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+		reifydb_assertions! {
+			let requested = pairs.len();
+			let returned = rows.len();
+			assert!(
+				returned == requested,
+				"the identity batch must return one row per publishing window; a short batch makes the \
+				 zip below drop the tail, so those windows publish nothing while their accumulators \
+				 already advanced (requested={requested}, returned={returned})"
+			);
+		}
+
+		let mut results: Vec<WindowResult<G, C, Accumulator::Output>> = Vec::with_capacity(pending.len());
+		for (emit, (row_number, is_new)) in pending.into_iter().zip(rows) {
+			let kind = if emit.withdraw {
+				reifydb_assertions! {
+					let group_id = emit.group_id;
+					assert!(
+						!is_new,
+						"a window holding a prior output must already own its mapping; minting \
+						 one here means the identity was released while the row it addresses \
+						 was still live, and this withdrawal names a row no sink can find \
+						 (group={group_id:?}, row={row_number:?})"
+					);
+				}
+				store.remove_row_number(emit.group_id, &emit.key)?;
+				EmitKind::Remove
+			} else if is_new {
+				EmitKind::Insert
+			} else {
+				EmitKind::Update
+			};
+			results.push(WindowResult {
+				row_number,
+				group: emit.group,
+				span: emit.span,
+				value: emit.value,
+				prior: emit.prior,
+				kind,
+			});
 		}
 		Ok(results)
 	}

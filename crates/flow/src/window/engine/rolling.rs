@@ -395,7 +395,8 @@ where
 	where
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
-		let mut results: Vec<RollingResult<G, Output>> = Vec::new();
+		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
+		let mut pending: Vec<(G, Output, bool)> = Vec::new();
 		for (group, slot) in group_slots {
 			if !slot.buffer_changed {
 				continue;
@@ -431,7 +432,32 @@ where
 			}
 
 			if let Some(out) = output {
-				let (row_number, is_new) = store.get_or_create_row_number(slot.group_id, &slot.key)?;
+				pairs.push((slot.group_id, slot.key));
+				pending.push((group, out, false));
+			} else if let Some(prior) = slot.prior_output {
+				pairs.push((slot.group_id, slot.key));
+				pending.push((group, prior, true));
+			}
+		}
+
+		if pairs.is_empty() {
+			return Ok(Vec::new());
+		}
+		let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+		let mut results: Vec<RollingResult<G, Output>> = Vec::with_capacity(pending.len());
+		for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
+			pending.into_iter().zip(pairs).zip(rows)
+		{
+			if withdrawn {
+				store.remove_row_number(group_id, &key)?;
+				results.push(RollingResult {
+					row_number,
+					group,
+					value,
+					prior: None,
+					kind: EmitKind::Remove,
+				});
+			} else {
 				let kind = if is_new {
 					EmitKind::Insert
 				} else {
@@ -440,19 +466,9 @@ where
 				results.push(RollingResult {
 					row_number,
 					group,
-					value: out,
+					value,
 					prior: None,
 					kind,
-				});
-			} else if let Some(prior) = slot.prior_output {
-				let (row_number, _is_new) = store.get_or_create_row_number(slot.group_id, &slot.key)?;
-				store.remove_row_number(slot.group_id, &slot.key)?;
-				results.push(RollingResult {
-					row_number,
-					group,
-					value: prior,
-					prior: None,
-					kind: EmitKind::Remove,
 				});
 			}
 		}
@@ -591,7 +607,8 @@ where
 			meta.observe(coord);
 		}
 
-		let mut results: Vec<RollingResult<G, Accumulator::Output>> = Vec::new();
+		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
+		let mut pending: Vec<(G, Accumulator::Output, bool)> = Vec::new();
 		for (group, mut slot) in group_slots {
 			if !slot.buffer_changed {
 				continue;
@@ -668,29 +685,43 @@ where
 			}
 
 			if let Some(out) = output {
-				let (row_number, is_new) = store.get_or_create_row_number(slot.group_id, &slot.key)?;
-				let kind = if is_new {
-					EmitKind::Insert
-				} else {
-					EmitKind::Update
-				};
-				results.push(RollingResult {
-					row_number,
-					group,
-					value: out,
-					prior: None,
-					kind,
-				});
+				pairs.push((slot.group_id, slot.key));
+				pending.push((group, out, false));
 			} else if let Some(prior) = slot.prior_output {
-				let (row_number, _is_new) = store.get_or_create_row_number(slot.group_id, &slot.key)?;
-				store.remove_row_number(slot.group_id, &slot.key)?;
-				results.push(RollingResult {
-					row_number,
-					group,
-					value: prior,
-					prior: None,
-					kind: EmitKind::Remove,
-				});
+				pairs.push((slot.group_id, slot.key));
+				pending.push((group, prior, true));
+			}
+		}
+
+		let mut results: Vec<RollingResult<G, Accumulator::Output>> = Vec::with_capacity(pending.len());
+		if !pairs.is_empty() {
+			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+			for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
+				pending.into_iter().zip(pairs).zip(rows)
+			{
+				if withdrawn {
+					store.remove_row_number(group_id, &key)?;
+					results.push(RollingResult {
+						row_number,
+						group,
+						value,
+						prior: None,
+						kind: EmitKind::Remove,
+					});
+				} else {
+					let kind = if is_new {
+						EmitKind::Insert
+					} else {
+						EmitKind::Update
+					};
+					results.push(RollingResult {
+						row_number,
+						group,
+						value,
+						prior: None,
+						kind,
+					});
+				}
 			}
 		}
 		self.persist_meta(store, meta_loaded)?;
@@ -711,7 +742,8 @@ where
 		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
 			expiry_due(store, cutoff.order_key().to_order(), self.expire_batch)?;
 
-		let mut out: Vec<RollingExpiry<G, Accumulator::Output>> = Vec::new();
+		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
+		let mut pending: Vec<(G, Option<Accumulator::Output>)> = Vec::new();
 		for (index_key, entry) in due {
 			let slot = EncodedKey::new(&entry.slot_key);
 			let group_id = GroupId(entry.group_id);
@@ -775,13 +807,8 @@ where
 					let running_cache =
 						self.running.as_mut().expect("runnable engine has a running cache");
 					running_cache.put(store, &RunningKey::new(group_id, slot.clone()), running)?;
-					let (row_number, _) = store.get_or_create_row_number(group_id, &slot)?;
-					out.push(RollingExpiry::Update {
-						row_number,
-						group: entry.group,
-						group_id,
-						value,
-					});
+					pairs.push((group_id, slot));
+					pending.push((entry.group, Some(value)));
 				}
 				(Some(new), false, _) => {
 					expiry_set(
@@ -798,14 +825,8 @@ where
 						self.running.as_mut().expect("runnable engine has a running cache");
 					running_cache.remove(store, &RunningKey::new(group_id, slot.clone()))?;
 					if unmerged_any {
-						let (row_number, _) =
-							store.get_or_create_row_number(group_id, &slot)?;
-						store.remove_row_number(group_id, &slot)?;
-						out.push(RollingExpiry::Remove {
-							row_number,
-							group: entry.group,
-							group_id,
-						});
+						pairs.push((group_id, slot));
+						pending.push((entry.group, None));
 					}
 				}
 				_ => {
@@ -813,13 +834,33 @@ where
 					let running_cache =
 						self.running.as_mut().expect("runnable engine has a running cache");
 					running_cache.remove(store, &RunningKey::new(group_id, slot.clone()))?;
-					let (row_number, _) = store.get_or_create_row_number(group_id, &slot)?;
-					store.remove_row_number(group_id, &slot)?;
-					out.push(RollingExpiry::Remove {
+					pairs.push((group_id, slot));
+					pending.push((entry.group, None));
+				}
+			}
+		}
+
+		let mut out: Vec<RollingExpiry<G, Accumulator::Output>> = Vec::with_capacity(pending.len());
+		if !pairs.is_empty() {
+			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+			for (((group, value), (group_id, key)), (row_number, _)) in
+				pending.into_iter().zip(pairs).zip(rows)
+			{
+				match value {
+					Some(value) => out.push(RollingExpiry::Update {
 						row_number,
-						group: entry.group,
+						group,
 						group_id,
-					});
+						value,
+					}),
+					None => {
+						store.remove_row_number(group_id, &key)?;
+						out.push(RollingExpiry::Remove {
+							row_number,
+							group,
+							group_id,
+						});
+					}
 				}
 			}
 		}
@@ -847,7 +888,8 @@ where
 		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
 			expiry_due(store, cutoff.order_key().to_order(), self.expire_batch)?;
 
-		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
+		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
+		let mut pending: Vec<(G, Option<Output>)> = Vec::new();
 		for (index_key, entry) in due {
 			let slot = EncodedKey::new(&entry.slot_key);
 			let group_id = GroupId(entry.group_id);
@@ -887,23 +929,38 @@ where
 						)?;
 					}
 					self.buffers.put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
-					let (row_number, _) = store.get_or_create_row_number(group_id, &slot)?;
-					out.push(RollingExpiry::Update {
-						row_number,
-						group: entry.group,
-						group_id,
-						value,
-					});
+					pairs.push((group_id, slot));
+					pending.push((entry.group, Some(value)));
 				}
 				_ => {
 					self.buffers.remove(store, &BufferKey::new(group_id, slot.clone()))?;
-					let (row_number, _) = store.get_or_create_row_number(group_id, &slot)?;
-					store.remove_row_number(group_id, &slot)?;
-					out.push(RollingExpiry::Remove {
+					pairs.push((group_id, slot));
+					pending.push((entry.group, None));
+				}
+			}
+		}
+
+		let mut out: Vec<RollingExpiry<G, Output>> = Vec::with_capacity(pending.len());
+		if !pairs.is_empty() {
+			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+			for (((group, value), (group_id, key)), (row_number, _)) in
+				pending.into_iter().zip(pairs).zip(rows)
+			{
+				match value {
+					Some(value) => out.push(RollingExpiry::Update {
 						row_number,
-						group: entry.group,
+						group,
 						group_id,
-					});
+						value,
+					}),
+					None => {
+						store.remove_row_number(group_id, &key)?;
+						out.push(RollingExpiry::Remove {
+							row_number,
+							group,
+							group_id,
+						});
+					}
 				}
 			}
 		}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, slice::from_ref};
+use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -91,16 +91,13 @@ pub trait GuestContext {
 	fn written_at(&self) -> DateTime;
 	fn state(&mut self) -> impl GuestState + '_;
 	fn dictionary(&mut self) -> impl GuestDictionary + '_;
-	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>>;
-	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
-		Ok(self.intern_groups(from_ref(group))?.remove(0))
-	}
+	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>>;
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
-	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
-		Ok(self.lookup_groups(from_ref(group))?.remove(0))
-	}
-	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)>;
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
+	fn get_or_create_row_numbers_for_pairs(
+		&mut self,
+		pairs: &[(GroupId, EncodedKey)],
+	) -> Result<Vec<(RowNumber, bool)>>;
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;

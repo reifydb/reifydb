@@ -67,14 +67,16 @@ pub trait StateStore {
 		Ok(last)
 	}
 
-	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId>;
+	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>>;
 
-	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>>;
-
-	// FIXME remove
-	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)>;
+	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
+
+	fn get_or_create_row_numbers_for_pairs(
+		&mut self,
+		pairs: &[(GroupId, EncodedKey)],
+	) -> Result<Vec<(RowNumber, bool)>>;
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 

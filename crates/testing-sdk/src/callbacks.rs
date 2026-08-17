@@ -441,15 +441,16 @@ extern "C" fn test_intern_groups(
 	groups: *const ExternCKeyRef,
 	groups_len: usize,
 	ids_out: *mut u64,
+	is_new_out: *mut u8,
 ) -> i32 {
 	if ctx.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
-	if groups_len > 0 && (groups.is_null() || ids_out.is_null()) {
+	if groups_len > 0 && (groups.is_null() || ids_out.is_null() || is_new_out.is_null()) {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: ctx checked; groups and ids_out checked when groups_len > 0; writes stay under groups_len.
+	// SAFETY: ctx checked; groups and both out arrays checked when groups_len > 0; writes stay under groups_len.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let counter_key = test_state_envelope(
@@ -478,6 +479,7 @@ extern "C" fn test_intern_groups(
 			match test_ctx.get_state(&dictionary_key) {
 				Some(bytes) if bytes.len() >= 8 => {
 					*ids_out.add(i) = u64::from_le_bytes(bytes[..8].try_into().unwrap());
+					*is_new_out.add(i) = 0;
 				}
 				_ => {
 					let current = test_ctx
@@ -488,6 +490,7 @@ extern "C" fn test_intern_groups(
 					test_ctx.set_state(counter_key.clone(), (current + 1).to_le_bytes().to_vec());
 					test_ctx.set_state(dictionary_key, current.to_le_bytes().to_vec());
 					*ids_out.add(i) = current;
+					*is_new_out.add(i) = 1;
 				}
 			}
 		}
@@ -754,6 +757,71 @@ extern "C" fn test_get_or_create_row_numbers(
 	}
 }
 
+extern "C" fn test_get_or_create_row_numbers_for_pairs(
+	operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	groups: *const u64,
+	keys: *const ExternCKeyRef,
+	pairs_len: usize,
+	row_numbers_out: *mut u64,
+	is_new_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if pairs_len > 0 && (groups.is_null() || keys.is_null() || row_numbers_out.is_null() || is_new_out.is_null()) {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: ctx checked; groups, keys and both out arrays checked when pairs_len > 0; reads and writes
+	// stay under pairs_len.
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let counter_key = test_state_envelope(
+			operator_id,
+			GroupId::ROOT,
+			Keyspace::NODE_COUNTER,
+			b"__row_number_alloc__".to_vec(),
+		);
+		let key_refs = if pairs_len == 0 {
+			&[]
+		} else {
+			from_raw_parts(keys, pairs_len)
+		};
+		for (i, key_ref) in key_refs.iter().enumerate() {
+			let key_bytes = if key_ref.len == 0 {
+				&[][..]
+			} else {
+				from_raw_parts(key_ref.ptr, key_ref.len)
+			};
+			let map_key = test_state_envelope(
+				operator_id,
+				GroupId(*groups.add(i)),
+				Keyspace::ROW_NUMBER_MAPPING,
+				key_bytes.to_vec(),
+			);
+			match test_ctx.get_state(&map_key) {
+				Some(bytes) if bytes.len() >= 8 => {
+					*row_numbers_out.add(i) = u64::from_le_bytes(bytes[..8].try_into().unwrap());
+					*is_new_out.add(i) = 0;
+				}
+				_ => {
+					let current = test_ctx
+						.get_state(&counter_key)
+						.and_then(|b| <[u8; 8]>::try_from(b.as_slice()).ok())
+						.map(u64::from_le_bytes)
+						.unwrap_or(1);
+					test_ctx.set_state(counter_key.clone(), (current + 1).to_le_bytes().to_vec());
+					test_ctx.set_state(map_key, current.to_le_bytes().to_vec());
+					*row_numbers_out.add(i) = current;
+					*is_new_out.add(i) = 1;
+				}
+			}
+		}
+		EXTERN_C_OK
+	}
+}
+
 extern "C" fn test_remove_row_number(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
@@ -969,6 +1037,7 @@ pub fn create_test_callbacks() -> OperatorCallbacks {
 			iterator_free: test_state_iterator_free,
 			get_many: test_state_get_many,
 			get_or_create_row_numbers: test_get_or_create_row_numbers,
+			get_or_create_row_numbers_for_pairs: test_get_or_create_row_numbers_for_pairs,
 			remove_row_number: test_remove_row_number,
 			remove_row_numbers_below: test_remove_row_numbers_below,
 			intern_groups: test_intern_groups,

@@ -84,6 +84,14 @@ where
 type MetaLoaded<G, C, Carry, Output> = HashMap<G, CarryMeta<C, Carry, Output>>;
 type SlotResolved = Vec<Option<(GroupId, EncodedKey)>>;
 
+struct PendingCarry<C, Output> {
+	group_id: GroupId,
+	key: EncodedKey,
+	span: WindowSpan<C>,
+	value: Output,
+	withdraw: bool,
+}
+
 pub struct TumblingCarryEngine<G, C: WindowAnchor, Accumulator, Carry, Output> {
 	accumulators: StateCache<WindowStateKey, Accumulator>,
 	meta: StateCache<MetaKey, CarryMeta<C, Carry, Output>>,
@@ -151,7 +159,7 @@ where
 			let slot_key = row_key(&group, span.start);
 			let group_id = match &slot_pre {
 				Some((gid, _)) => *gid,
-				None => store.intern_group(&slot_key)?,
+				None => store.intern_groups(&[slot_key.clone()])?.into_iter().next().unwrap().0,
 			};
 			if !entry.windows.contains_key(&span.start) && slot_pre.is_none() {
 				continue;
@@ -207,84 +215,119 @@ where
 			};
 
 			let coords: Vec<C> = meta.windows.range(start..).map(|(c, _)| *c).collect();
+			let coord_keys: Vec<EncodedKey> = coords.iter().map(|coord| row_key(&group, *coord)).collect();
+			let coord_groups = store.lookup_groups(&coord_keys)?;
+
 			let mut emptied: Vec<C> = Vec::new();
-			for coord in coords {
+			let mut pending: Vec<PendingCarry<C, Output>> = Vec::new();
+			for ((coord, slot_key), coord_group) in coords.into_iter().zip(coord_keys).zip(coord_groups) {
 				let span = meta.windows.get(&coord).expect("window entry present").span;
-				let slot_key = row_key(&group, coord);
-				let value = match store.lookup_group(&slot_key)? {
+				let finalized = match coord_group {
 					Some(coord_group) => self
 						.accumulators
 						.get(store, &WindowStateKey::new(coord_group, slot_key.clone()))?
-						.and_then(|a| a.finalize()),
+						.and_then(|a| a.finalize())
+						.map(|value| (coord_group, value)),
 					None => None,
 				};
-				match value.as_ref().and_then(|v| build_output(&group, span, v, prev_carry.as_ref())) {
-					Some(out) => {
-						let new_carry = value
-							.as_ref()
-							.and_then(|v| carry_forward(v, prev_carry.as_ref()));
-						let coord_group = store.intern_group(&slot_key)?;
-						let (row_number, is_new) =
-							store.get_or_create_row_number(coord_group, &slot_key)?;
-						let kind = if is_new {
-							EmitKind::Insert
-						} else {
-							EmitKind::Update
-						};
+				let emitted = finalized.as_ref().and_then(|(coord_group, value)| {
+					build_output(&group, span, value, prev_carry.as_ref())
+						.map(|out| (*coord_group, value, out))
+				});
+				match emitted {
+					Some((coord_group, value, out)) => {
+						let new_carry = carry_forward(value, prev_carry.as_ref());
 						let w = meta.windows.get_mut(&coord).expect("window entry present");
 						w.carry_out = new_carry.clone();
 						w.last_output = Some(out.clone());
 						if new_carry.is_some() {
 							prev_carry = new_carry;
 						}
-						results.push(WindowResult {
-							row_number,
-							group: group.clone(),
+						pending.push(PendingCarry {
+							group_id: coord_group,
+							key: slot_key,
 							span,
 							value: out,
-							prior: None,
-							kind,
+							withdraw: false,
 						});
 					}
 					None => {
 						if let Some(prev) =
 							meta.windows.get(&coord).and_then(|w| w.last_output.clone())
-							&& let Some(coord_group) = store.lookup_group(&slot_key)?
+							&& let Some(coord_group) = coord_group
 						{
-							let (row_number, _is_new) =
-								store.get_or_create_row_number(coord_group, &slot_key)?;
-							store.remove_row_number(coord_group, &slot_key)?;
-							results.push(WindowResult {
-								row_number,
-								group: group.clone(),
+							pending.push(PendingCarry {
+								group_id: coord_group,
+								key: slot_key,
 								span,
 								value: prev,
-								prior: None,
-								kind: EmitKind::Remove,
+								withdraw: true,
 							});
 						}
 						emptied.push(coord);
 					}
 				}
 			}
+
+			let pairs: Vec<(GroupId, EncodedKey)> =
+				pending.iter().map(|p| (p.group_id, p.key.clone())).collect();
+			let rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+			reifydb_assertions! {
+				let requested = pairs.len();
+				let returned = rows.len();
+				assert!(
+					returned == requested,
+					"the identity batch must return one row per publishing window; a short batch makes \
+					 the zip below drop the tail, so those windows publish nothing while their carry \
+					 meta already advanced (requested={requested}, returned={returned})"
+				);
+			}
+			for (emit, (row_number, is_new)) in pending.into_iter().zip(rows) {
+				let kind = if emit.withdraw {
+					store.remove_row_number(emit.group_id, &emit.key)?;
+					EmitKind::Remove
+				} else if is_new {
+					EmitKind::Insert
+				} else {
+					EmitKind::Update
+				};
+				results.push(WindowResult {
+					row_number,
+					group: group.clone(),
+					span: emit.span,
+					value: emit.value,
+					prior: None,
+					kind,
+				});
+			}
+
 			for coord in emptied {
 				meta.windows.remove(&coord);
 			}
 
 			if let (Some(retention), Some(hw)) = (retention, meta.high_water) {
-				loop {
-					let Some((&first, w)) = meta.windows.iter().next() else {
-						break;
-					};
-					if hw.span_since(first) <= retention {
-						break;
-					}
-					let carry_out = w.carry_out.clone();
+				let to_seal: Vec<C> = meta
+					.windows
+					.keys()
+					.copied()
+					.take_while(|first| hw.span_since(*first) > retention)
+					.collect();
+				let sealed_keys: Vec<EncodedKey> =
+					to_seal.iter().map(|first| row_key(&group, *first)).collect();
+				let sealed_groups = store.lookup_groups(&sealed_keys)?;
+				for ((first, sealed_key), sealed_group) in
+					to_seal.into_iter().zip(sealed_keys).zip(sealed_groups)
+				{
+					let carry_out = meta
+						.windows
+						.get(&first)
+						.expect("sealed window entry present")
+						.carry_out
+						.clone();
 					meta.windows.remove(&first);
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
-					let sealed_key = row_key(&group, first);
-					if let Some(sealed_group) = store.lookup_group(&sealed_key)? {
+					if let Some(sealed_group) = sealed_group {
 						self.accumulators.remove(
 							store,
 							&WindowStateKey::new(sealed_group, sealed_key.clone()),
@@ -344,11 +387,9 @@ where
 				survivor_keys.push(row_key(group, span.start));
 			}
 		}
-		let mut resolved_rows: Vec<(GroupId, EncodedKey)> = Vec::with_capacity(survivor_keys.len());
-		for key in &survivor_keys {
-			let group = store.intern_group(key)?;
-			resolved_rows.push((group, key.clone()));
-		}
+		let interned = store.intern_groups(&survivor_keys)?;
+		let resolved_rows: Vec<(GroupId, EncodedKey)> =
+			survivor_keys.iter().cloned().zip(interned).map(|(key, (group, _))| (group, key)).collect();
 		reifydb_assertions! {
 			let survivors = survivor_keys.len();
 			let resolved = resolved_rows.len();
@@ -478,14 +519,38 @@ mod tests {
 		}
 	}
 
+	impl CountingStore {
+		fn row_number_for(&mut self, group: GroupId, key: &EncodedKey) -> (RowNumber, bool) {
+			let slot = (group, key.as_bytes().to_vec());
+			if let Some(rn) = self.rows.get(&slot) {
+				return (*rn, false);
+			}
+			self.next_row += 1;
+			let rn = RowNumber(self.next_row);
+			self.rows.insert(slot, rn);
+			(rn, true)
+		}
+	}
+
 	impl StateStore for CountingStore {
-		fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
-			let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
-			Ok(*self.groups.entry(group.as_bytes().to_vec()).or_insert(next))
+		fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
+			let mut interned = Vec::with_capacity(groups.len());
+			for group in groups {
+				let bytes = group.as_bytes().to_vec();
+				match self.groups.get(&bytes) {
+					Some(id) => interned.push((*id, false)),
+					None => {
+						let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
+						self.groups.insert(bytes, next);
+						interned.push((next, true));
+					}
+				}
+			}
+			Ok(interned)
 		}
 
-		fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
-			Ok(self.groups.get(group.as_bytes()).copied())
+		fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+			Ok(groups.iter().map(|group| self.groups.get(group.as_bytes()).copied()).collect())
 		}
 
 		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
@@ -544,22 +609,18 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-			let slot = (group, key.as_bytes().to_vec());
-			if let Some(rn) = self.rows.get(&slot) {
-				return Ok((*rn, false));
-			}
-			self.next_row += 1;
-			let rn = RowNumber(self.next_row);
-			self.rows.insert(slot, rn);
-			Ok((rn, true))
-		}
 		fn get_or_create_row_numbers(
 			&mut self,
 			group: GroupId,
 			keys: &[EncodedKey],
 		) -> Result<Vec<(RowNumber, bool)>> {
-			keys.iter().map(|k| self.get_or_create_row_number(group, k)).collect()
+			Ok(keys.iter().map(|key| self.row_number_for(group, key)).collect())
+		}
+		fn get_or_create_row_numbers_for_pairs(
+			&mut self,
+			pairs: &[(GroupId, EncodedKey)],
+		) -> Result<Vec<(RowNumber, bool)>> {
+			Ok(pairs.iter().map(|(group, key)| self.row_number_for(*group, key)).collect())
 		}
 		fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 			self.rows.remove(&(group, key.as_bytes().to_vec()));

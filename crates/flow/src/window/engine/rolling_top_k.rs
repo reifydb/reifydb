@@ -165,12 +165,17 @@ where
 				state_lookup_keys.push(state_key(group));
 			}
 		}
-		let mut resolved_rows: Vec<(GroupId, RowNumber)> = Vec::with_capacity(state_lookup_keys.len());
-		for key in &state_lookup_keys {
-			let group = store.intern_group(key)?;
-			let (row_number, _is_new) = store.get_or_create_row_number(group, key)?;
-			resolved_rows.push((group, row_number));
-		}
+		let interned = store.intern_groups(&state_lookup_keys)?;
+		let state_pairs: Vec<(GroupId, EncodedKey)> = interned
+			.iter()
+			.zip(&state_lookup_keys)
+			.map(|((group_id, _), key)| (*group_id, key.clone()))
+			.collect();
+		let resolved_rows: Vec<(GroupId, RowNumber)> = interned
+			.into_iter()
+			.zip(store.get_or_create_row_numbers_for_pairs(&state_pairs)?)
+			.map(|((group_id, _), (row_number, _is_new))| (group_id, row_number))
+			.collect();
 		reifydb_assertions! {
 			let resolved = resolved_rows.len();
 			let requested = state_lookup_keys.len();
@@ -188,6 +193,54 @@ where
 		Ok(state_rows)
 	}
 
+	fn resolve_fallback_rows<SKF>(
+		&mut self,
+		store: &mut dyn StateStore,
+		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
+		state_rows: &StateRows<G>,
+		state_key: &SKF,
+	) -> Result<StateRows<G>>
+	where
+		SKF: Fn(&G) -> EncodedKey,
+	{
+		let mut resolve_order: Vec<G> = Vec::new();
+		let mut lookup_keys: Vec<EncodedKey> = Vec::new();
+		let mut seen: BTreeSet<G> = BTreeSet::new();
+		for (group, _) in buckets.keys() {
+			if !state_rows.contains_key(group) && seen.insert(group.clone()) {
+				resolve_order.push(group.clone());
+				lookup_keys.push(state_key(group));
+			}
+		}
+		if lookup_keys.is_empty() {
+			return Ok(StateRows::new());
+		}
+		let interned = store.intern_groups(&lookup_keys)?;
+		let pairs: Vec<(GroupId, EncodedKey)> = interned
+			.iter()
+			.zip(&lookup_keys)
+			.map(|((group_id, _), key)| (*group_id, key.clone()))
+			.collect();
+		let resolved_rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
+		reifydb_assertions! {
+			let resolved = resolved_rows.len();
+			let requested = lookup_keys.len();
+			assert!(
+				resolved == requested,
+				"get_or_create_row_numbers_for_pairs returned {resolved} rows for {requested} group \
+				 keys; the zip below pairs resolve_order with the resolved rows by position, so a \
+				 length mismatch would leave a group that only carries late buckets without any \
+				 resolved state row and panic the slot lookup instead of ranking it"
+			);
+		}
+		Ok(resolve_order
+			.into_iter()
+			.zip(interned)
+			.zip(resolved_rows)
+			.map(|((group, (group_id, _)), (row_number, _is_new))| (group, (group_id, row_number)))
+			.collect())
+	}
+
 	#[allow(clippy::too_many_arguments)]
 	fn apply_events_into_buffers<SKF>(
 		&mut self,
@@ -202,6 +255,7 @@ where
 		SKF: Fn(&G) -> EncodedKey,
 	{
 		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>> = BTreeMap::new();
+		let fallback_rows = self.resolve_fallback_rows(store, &buckets, state_rows, state_key)?;
 
 		for ((group, coord), events) in buckets {
 			let meta = meta_loaded.entry(group.clone()).or_default();
@@ -211,13 +265,9 @@ where
 				None => {
 					let (group_id, state_row_number) = match state_rows.get(&group) {
 						Some(&resolved) => resolved,
-						None => {
-							let key = state_key(&group);
-							let group_id = store.intern_group(&key)?;
-							let (rn, _is_new) =
-								store.get_or_create_row_number(group_id, &key)?;
-							(group_id, rn)
-						}
+						None => *fallback_rows
+							.get(&group)
+							.expect("every group outside state_rows was resolved upfront"),
 					};
 					let buffer: RollingTopKBuffer<C, Accumulator> = self
 						.buffers
@@ -315,9 +365,9 @@ where
 			}
 			let new_emit = combine(&group, &slot.buffer);
 
-			for (sk, new_out) in &new_emit {
-				let key = row_key(&group, sk);
-				let (rn, is_new) = store.get_or_create_row_number(slot.group_id, &key)?;
+			let new_keys: Vec<EncodedKey> = new_emit.keys().map(|sk| row_key(&group, sk)).collect();
+			let new_rows = store.get_or_create_row_numbers(slot.group_id, &new_keys)?;
+			for ((sk, new_out), (rn, is_new)) in new_emit.iter().zip(new_rows) {
 				match (is_new, slot.prior_emit.get(sk)) {
 					(true, _) => {
 						emits.push(TopKEmit::Insert {
@@ -343,17 +393,18 @@ where
 					}
 				}
 			}
-			for (sk, prior_out) in &slot.prior_emit {
-				if !new_emit.contains_key(sk) {
-					let key = row_key(&group, sk);
-					let (rn, _is_new_alloc) =
-						store.get_or_create_row_number(slot.group_id, &key)?;
-					emits.push(TopKEmit::Remove {
-						row_number: rn,
-						value: prior_out.clone(),
-					});
-					store.remove_row_number(slot.group_id, &key)?;
-				}
+			let removed: Vec<(&SK, &Output)> =
+				slot.prior_emit.iter().filter(|(sk, _)| !new_emit.contains_key(sk)).collect();
+			let removed_keys: Vec<EncodedKey> = removed.iter().map(|(sk, _)| row_key(&group, sk)).collect();
+			let removed_rows = store.get_or_create_row_numbers(slot.group_id, &removed_keys)?;
+			for ((_, prior_out), (rn, _is_new_alloc)) in removed.iter().zip(removed_rows) {
+				emits.push(TopKEmit::Remove {
+					row_number: rn,
+					value: (*prior_out).clone(),
+				});
+			}
+			for key in &removed_keys {
+				store.remove_row_number(slot.group_id, key)?;
 			}
 
 			if slot.buffer.is_empty() {
@@ -489,7 +540,13 @@ mod tests {
 			_ => panic!("precondition: the first ranking is an insert"),
 		};
 
-		let group = store.lookup_group(&state_key(&1)).unwrap().expect("applying the group interns it");
+		let group = store
+			.lookup_groups(&[state_key(&1)])
+			.unwrap()
+			.into_iter()
+			.next()
+			.unwrap()
+			.expect("applying the group interns it");
 		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
 		assert!(
 			store.contains_row_mapping(group, &ranked_key),
@@ -531,7 +588,13 @@ mod tests {
 		// The mapping is scoped to the interned group, not ROOT, and reclamation deletes by group prefix - a
 		// lookup under the wrong group would report absence and pass while the mapping leaked, so the group is
 		// read back rather than assumed from the allocator.
-		let group = store.lookup_group(&state_key(&1)).unwrap().expect("applying the group interns it");
+		let group = store
+			.lookup_groups(&[state_key(&1)])
+			.unwrap()
+			.into_iter()
+			.next()
+			.unwrap()
+			.expect("applying the group interns it");
 		assert!(store.contains_row_mapping(group, &ranked_key), "publishing the ranking mints its mapping");
 
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
