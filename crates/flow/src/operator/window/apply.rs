@@ -5,7 +5,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::change::{Change, Diff},
-	key::operator_state::{GroupId, IntoGroupStateKey},
 	state::store::TimerKind,
 	value::column::columns::Columns,
 };
@@ -29,15 +28,12 @@ use crate::{
 		host::HostContext,
 		state::{
 			reaper::{drain, enqueue},
-			seal::{
-				coord::Coord, gate::disarm_seal, ledger::FiredAt, policy::SealPolicy, sweep::SealSweep,
-			},
-			store,
+			seal::{coord::Coord, ledger::FiredAt, policy::SealPolicy, sweep::SealSweep},
 		},
 	},
 	window::{
 		coord::{EventCoord, RowSpan},
-		engine::{AccumulatorEvent, ExpiryAnchor, WindowStateKey, tumbling::TumblingEngine},
+		engine::{AccumulatorEvent, ExpiryAnchor, tumbling::TumblingEngine},
 		kind::{
 			ordinal_window_span,
 			session::{SessionKind, SessionTracker},
@@ -356,7 +352,8 @@ pub fn apply_tumbling_engine(
 
 	let engine_config = operator.engine_config();
 	let engine_immutable = operator.immutable();
-	let expiry_anchor = if operator.is_count_based() {
+	let count_based = operator.is_count_based();
+	let expiry_anchor = if count_based {
 		ExpiryAnchor::Unindexed
 	} else {
 		ExpiryAnchor::WindowStart
@@ -374,6 +371,7 @@ pub fn apply_tumbling_engine(
 		engine_config,
 		engine_immutable,
 		expiry_anchor,
+		count_based,
 	)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
@@ -604,7 +602,8 @@ pub fn apply_sliding_engine(
 
 	let engine_config = operator.engine_config();
 	let engine_immutable = operator.immutable();
-	let expiry_anchor = if operator.is_count_based() {
+	let count_based = operator.is_count_based();
+	let expiry_anchor = if count_based {
 		ExpiryAnchor::Unindexed
 	} else {
 		ExpiryAnchor::WindowStart
@@ -622,6 +621,7 @@ pub fn apply_sliding_engine(
 		engine_config,
 		engine_immutable,
 		expiry_anchor,
+		true,
 	)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
@@ -633,16 +633,12 @@ fn session_assign(
 	event_ts: DateTime,
 	kind: &SessionKind,
 	trackers: &mut HashMap<Hash128, SessionTracker>,
-	closes: &mut Vec<(Hash128, u64)>,
 ) -> Result<Option<u64>> {
 	let mut tracker = match trackers.get(&hash) {
 		Some(&tracker) => tracker,
 		None => operator.load_session_tracker(host, hash)?,
 	};
 	let assignment = kind.assign(&mut tracker, EventCoord::of(&event_ts));
-	if let Some(closed) = assignment.closed() {
-		closes.push((hash, closed));
-	}
 	if assignment.session_id().is_some() {
 		trackers.insert(hash, tracker);
 	}
@@ -662,7 +658,6 @@ pub fn apply_session_engine(
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
 	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
-	let mut closes: Vec<(Hash128, u64)> = Vec::new();
 	let mut trackers: HashMap<Hash128, SessionTracker> = HashMap::new();
 
 	for diff in change.diffs.iter() {
@@ -677,15 +672,9 @@ pub fn apply_session_engine(
 				for row_idx in 0..post.row_count() {
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = timestamps[row_idx];
-					if let Some(session_id) = session_assign(
-						operator,
-						host,
-						*hash,
-						event_ts,
-						&kind,
-						&mut trackers,
-						&mut closes,
-					)? {
+					if let Some(session_id) =
+						session_assign(operator, host, *hash, event_ts, &kind, &mut trackers)?
+					{
 						operator.store_row_index(
 							host,
 							*hash,
@@ -764,7 +753,6 @@ pub fn apply_session_engine(
 							event_ts,
 							&kind,
 							&mut trackers,
-							&mut closes,
 						)? {
 							operator.store_row_index(
 								host,
@@ -867,53 +855,8 @@ pub fn apply_session_engine(
 		engine_config,
 		engine_immutable,
 		ExpiryAnchor::LastEvent,
+		true,
 	)?;
-
-	let mut disarm: Vec<(Hash128, u64, u64)> = Vec::new();
-	{
-		let close_keys: Vec<EncodedKey> =
-			closes.iter().map(|(hash, session_id)| window_group_key(*hash, *session_id)).collect();
-		let close_groups = host.lookup_groups(&close_keys)?;
-		let mut closing: Vec<(Hash128, u64, GroupId)> = Vec::with_capacity(closes.len());
-		for ((hash, session_id), group) in closes.iter().zip(close_groups) {
-			if let Some(group) = group {
-				closing.push((*hash, *session_id, group));
-			}
-		}
-		let config = operator.engine_config();
-		let mut engine =
-			operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
-				Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config))
-			});
-		for (hash, session_id, group) in &closing {
-			let accumulator_key = WindowStateKey::new(*group, store::empty_key()).into_group_state_key();
-			let meta = operator.core.engine_meta().get(host, &EngineMetaKey(*group))?;
-			let prior_last = meta.as_ref().map(|m| m.last_event_time).unwrap_or(0);
-			if prior_last > 0 {
-				disarm.push((*hash, *session_id, prior_last));
-			}
-			engine.reindex_window(
-				host,
-				hash,
-				<DateTime as Coord>::from_order(*session_id),
-				*group,
-				&store::empty_key(),
-				(prior_last > 0).then_some(prior_last),
-				None,
-			)?;
-			host.state_remove(&accumulator_key)?;
-			operator.core.engine_meta().remove(host, &EngineMetaKey(*group))?;
-		}
-		*operator.core.tumbling_engine_slot() = Some(engine);
-	}
-
-	if !operator.is_count_based() {
-		let policy = operator.session_policy();
-		for (hash, session_id, prior_last) in disarm {
-			disarm_seal(host, policy, &window_group_key(hash, session_id), prior_last)?;
-		}
-	}
-
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 

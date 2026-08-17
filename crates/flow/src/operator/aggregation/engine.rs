@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_rql::flow::aggregate::SlotKind;
 use reifydb_value::{
-	Result,
+	Result, reifydb_assertions,
 	util::hash::Hash128,
 	value::{Value, datetime::DateTime, duration::Duration},
 };
@@ -139,6 +139,7 @@ pub(crate) fn finish_tumbling_engine(
 	engine_config: WindowEngineConfig,
 	immutable: Option<Duration>,
 	anchor: ExpiryAnchor,
+	indexed_retractions: bool,
 ) -> Result<Vec<Diff>> {
 	let mut engine = core
 		.tumbling_engine_slot()
@@ -151,6 +152,17 @@ pub(crate) fn finish_tumbling_engine(
 		|hash, window_start| (group_of(groups, *hash, window_start.to_order()), store::empty_key()),
 		|| RowAccumulator::new(kinds, immutable),
 	)?;
+	let _ = indexed_retractions;
+	reifydb_assertions! {
+		let dropped = engine.dropped_retractions();
+		assert!(
+			!indexed_retractions || dropped == 0,
+			"a retraction resolved through the row index must find the state it addresses; dropping \
+			 it against an empty accumulator means the row index outlived the window it points at, \
+			 so the withdrawal is lost and the window publishes its pre-retraction value forever \
+			 (dropped={dropped})"
+		);
+	}
 
 	for r in &results {
 		let group = group_of(groups, r.group, r.span.start.to_order());

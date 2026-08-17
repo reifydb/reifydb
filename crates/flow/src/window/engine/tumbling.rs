@@ -93,6 +93,7 @@ pub struct TumblingEngine<G, C, Accumulator> {
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	meta_low_water: Option<u64>,
 	expire_batch: usize,
+	dropped_retractions: u64,
 	_pd: PhantomData<G>,
 }
 
@@ -111,8 +112,13 @@ where
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
+			dropped_retractions: 0,
 			_pd: PhantomData,
 		}
+	}
+
+	pub fn dropped_retractions(&self) -> u64 {
+		self.dropped_retractions
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -157,6 +163,7 @@ where
 		K: Fn(&G, C) -> (GroupId, EncodedKey),
 		NA: Fn() -> Accumulator,
 	{
+		self.dropped_retractions = 0;
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -258,6 +265,7 @@ where
 					}
 					AccumulatorEvent::Remove(c) => {
 						if accumulator.is_empty() {
+							self.dropped_retractions += 1;
 							continue;
 						}
 						accumulator.remove(&c);
