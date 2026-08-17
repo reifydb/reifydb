@@ -16,6 +16,7 @@ use std::{
 use reifydb_value::byte_size::ByteSize;
 use uuid::Uuid;
 
+pub mod batch;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod connection;
 #[cfg(not(target_arch = "wasm32"))]

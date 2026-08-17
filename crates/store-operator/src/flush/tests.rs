@@ -400,6 +400,45 @@ fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 }
 
 #[test]
+fn a_batch_spanning_more_than_one_chunk_writes_and_removes_every_row() {
+	let (store, storage, _guard) = store_fixture();
+	let suffixes: Vec<u8> = (0..150).collect();
+
+	for &suffix in &suffixes {
+		store.set(OP_A, key(suffix), row("chunked"));
+	}
+	assert!(
+		store.flush_pending_blocking(),
+		"a set batch spanning a full 100-row chunk plus a 50-row remainder must still flush in one call"
+	);
+	for &suffix in &suffixes {
+		let durable = storage
+			.get(OP_A, &key(suffix))
+			.unwrap_or_else(|| panic!("key {suffix} must be durable once the chunked insert commits"));
+		assert_eq!(
+			body(&durable),
+			"chunked",
+			"every row must land regardless of which chunk it was batched into, or a stale VM-compiled plan \
+			 silently drops rows past the first chunk"
+		);
+	}
+
+	for &suffix in &suffixes {
+		store.remove(OP_A, &key(suffix));
+	}
+	assert!(
+		store.flush_pending_blocking(),
+		"a remove batch spanning a full chunk plus a remainder must also flush in one call"
+	);
+	for &suffix in &suffixes {
+		assert!(
+			storage.get(OP_A, &key(suffix)).is_none(),
+			"every row must be deleted regardless of which chunk it was batched into"
+		);
+	}
+}
+
+#[test]
 fn the_memory_tier_reports_a_flush_as_complete_without_a_flusher() {
 	let store = OperatorStore::testing_memory();
 

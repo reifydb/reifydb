@@ -4,6 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_core::common::CommitVersion;
+use reifydb_sqlite::batch::values_placeholders;
 
 #[inline]
 pub(super) fn version_to_bytes(version: CommitVersion) -> [u8; 8] {
@@ -82,6 +83,20 @@ pub(super) fn build_upsert_current_sql(table_name: &str) -> String {
 		     updated_at = excluded.updated_at \
 		 WHERE excluded.version >= \"{0}\".version",
 		table_name
+	)
+}
+
+pub(super) fn build_chunked_upsert_sql(table_name: &str, chunk: usize) -> String {
+	format!(
+		"INSERT INTO \"{0}\" (key, version, value, updated_at) VALUES {1} \
+		 ON CONFLICT(key) DO UPDATE SET \
+		     version = excluded.version, \
+		     value = excluded.value, \
+		     updated_at = excluded.updated_at \
+		 WHERE excluded.version >= \"{0}\".version \
+		 RETURNING key",
+		table_name,
+		values_placeholders(chunk, 4)
 	)
 }
 

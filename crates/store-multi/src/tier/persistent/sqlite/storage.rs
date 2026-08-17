@@ -56,16 +56,19 @@ use crate::{
 		persistent::sqlite::{
 			entry::{current_table_name, current_table_name_to_entry},
 			query::{
-				build_create_current_sql, build_delete_below_version_sql, build_delete_keys_sql,
-				build_expired_keys_sql, build_get_current_sql, build_get_many_current_sql,
-				build_range_consistent_sql, build_range_current_sql, build_reap_tombstones_sql,
-				build_upsert_current_sql, prefix_upper_bound, version_from_bytes, version_to_bytes,
+				build_chunked_upsert_sql, build_create_current_sql, build_delete_below_version_sql,
+				build_delete_keys_sql, build_expired_keys_sql, build_get_current_sql,
+				build_get_many_current_sql, build_range_consistent_sql, build_range_current_sql,
+				build_reap_tombstones_sql, build_upsert_current_sql, prefix_upper_bound,
+				version_from_bytes, version_to_bytes,
 			},
 		},
 	},
 };
 
 const GET_MANY_CHUNK: usize = 900;
+
+const UPSERT_CHUNK: usize = 100;
 
 const GET_MANY_BUCKETS: [usize; 5] = [1, 8, 64, 512, GET_MANY_CHUNK];
 
@@ -108,6 +111,7 @@ struct TableSql {
 	table_name: String,
 	get_sql: String,
 	upsert_sql: String,
+	chunked_upsert_sql: String,
 	create_sql: String,
 }
 
@@ -116,11 +120,13 @@ impl TableSql {
 		let table_name = current_table_name(table);
 		let get_sql = build_get_current_sql(&table_name);
 		let upsert_sql = build_upsert_current_sql(&table_name);
+		let chunked_upsert_sql = build_chunked_upsert_sql(&table_name, UPSERT_CHUNK);
 		let create_sql = build_create_current_sql(&table_name);
 		Self {
 			table_name,
 			get_sql,
 			upsert_sql,
+			chunked_upsert_sql,
 			create_sql,
 		}
 	}
@@ -516,6 +522,70 @@ impl SqlitePersistentStorage {
 		);
 	}
 
+	fn upsert_entries_collecting_accepted(
+		&self,
+		tx: &Transaction,
+		table: EntryKind,
+		table_sql: &TableSql,
+		version: CommitVersion,
+		entries: &[(EncodedKey, Option<CowVec<u8>>)],
+		accepted: &mut Vec<EncodedKey>,
+	) -> Result<()> {
+		let new_version_bytes = version_to_bytes(version);
+		let mut chunk_stmt = tx
+			.prepare_cached(&table_sql.chunked_upsert_sql)
+			.map_err(|e| error!(internal(format!("Failed to prepare chunked persistent upsert: {}", e))))?;
+		let mut single_stmt = tx
+			.prepare_cached(&table_sql.upsert_sql)
+			.map_err(|e| error!(internal(format!("Failed to prepare persistent upsert: {}", e))))?;
+
+		let mut chunks = entries.chunks_exact(UPSERT_CHUNK);
+		for chunk in chunks.by_ref() {
+			let mut boxed: Vec<Box<dyn ToSql>> = Vec::with_capacity(chunk.len() * 4);
+			for (key, value) in chunk {
+				reifydb_assertions! {
+					self.assert_no_resurrection(tx, table, table_sql, key, version);
+				}
+				boxed.push(Box::new(key.as_slice().to_vec()));
+				boxed.push(Box::new(new_version_bytes.to_vec()));
+				boxed.push(Box::new(value.as_ref().map(|v| v.as_slice().to_vec())));
+				boxed.push(Box::new(
+					expiry_stamp(table, value.as_ref()).map(|at| at.to_nanos() as i64),
+				));
+			}
+			let flat: Vec<&dyn ToSql> = boxed.iter().map(|p| p.as_ref()).collect();
+			let returned = chunk_stmt
+				.query_map(params_from_iter(flat), |row| row.get::<_, Vec<u8>>(0))
+				.map_err(|e| error!(internal(format!("Failed to upsert persistent rows: {}", e))))?;
+			for key_bytes in returned {
+				let key_bytes = key_bytes.map_err(|e| {
+					error!(internal(format!("Failed to read accepted persistent key: {}", e)))
+				})?;
+				accepted.push(EncodedKey::new(key_bytes));
+			}
+		}
+
+		for (key, value) in chunks.remainder() {
+			reifydb_assertions! {
+				self.assert_no_resurrection(tx, table, table_sql, key, version);
+			}
+			let value_slice = value.as_ref().map(|v| v.as_slice());
+			let affected = single_stmt
+				.execute(params![
+					key.as_slice(),
+					new_version_bytes.as_slice(),
+					value_slice,
+					expiry_stamp(table, value.as_ref()).map(|at| at.to_nanos() as i64)
+				])
+				.map_err(|e| error!(internal(format!("Failed to upsert persistent row: {}", e))))?;
+			if affected > 0 {
+				accepted.push(key.clone());
+			}
+		}
+
+		Ok(())
+	}
+
 	#[instrument(name = "store::multi::persistent::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len(), version = version.0))]
 	pub fn set_collecting_accepted(&self, version: CommitVersion, batches: TierBatch) -> Result<Vec<EncodedKey>> {
 		let mut accepted = Vec::new();
@@ -530,36 +600,19 @@ impl SqlitePersistentStorage {
 		let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
 			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
 
-		let new_version_bytes = version_to_bytes(version);
-
 		for (table, entries) in batches {
 			let table_sql = self.table_sql(table);
 			Self::create_table_if_needed(&tx, &table_sql.create_sql)
 				.map_err(|e| error!(internal(format!("Failed to ensure persistent table: {}", e))))?;
 
-			let mut stmt = tx
-				.prepare_cached(&table_sql.upsert_sql)
-				.map_err(|e| error!(internal(format!("Failed to prepare persistent upsert: {}", e))))?;
-
-			for (key, value) in entries {
-				reifydb_assertions! {
-					self.assert_no_resurrection(&tx, table, &table_sql, &key, version);
-				}
-				let value_slice = value.as_ref().map(|v| v.as_slice());
-				let affected = stmt
-					.execute(params![
-						key.as_slice(),
-						new_version_bytes.as_slice(),
-						value_slice,
-						expiry_stamp(table, value.as_ref()).map(|at| at.to_nanos() as i64)
-					])
-					.map_err(|e| {
-						error!(internal(format!("Failed to upsert persistent row: {}", e)))
-					})?;
-				if affected > 0 {
-					accepted.push(key);
-				}
-			}
+			self.upsert_entries_collecting_accepted(
+				&tx,
+				table,
+				&table_sql,
+				version,
+				&entries,
+				&mut accepted,
+			)?;
 		}
 
 		tx.commit().map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))))?;
@@ -585,40 +638,20 @@ impl SqlitePersistentStorage {
 			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
 
 		for (version, batch) in batches {
-			let new_version_bytes = version_to_bytes(version);
 			for (table, entries) in batch {
 				let table_sql = self.table_sql(table);
 				Self::create_table_if_needed(&tx, &table_sql.create_sql).map_err(|e| {
 					error!(internal(format!("Failed to ensure persistent table: {}", e)))
 				})?;
 
-				let mut stmt = tx.prepare_cached(&table_sql.upsert_sql).map_err(|e| {
-					error!(internal(format!("Failed to prepare persistent upsert: {}", e)))
-				})?;
-
-				for (key, value) in entries {
-					reifydb_assertions! {
-						self.assert_no_resurrection(&tx, table, &table_sql, &key, version);
-					}
-					let value_slice = value.as_ref().map(|v| v.as_slice());
-					let affected = stmt
-						.execute(params![
-							key.as_slice(),
-							new_version_bytes.as_slice(),
-							value_slice,
-							expiry_stamp(table, value.as_ref())
-								.map(|at| at.to_nanos() as i64)
-						])
-						.map_err(|e| {
-							error!(internal(format!(
-								"Failed to upsert persistent row: {}",
-								e
-							)))
-						})?;
-					if affected > 0 {
-						accepted.push(key);
-					}
-				}
+				self.upsert_entries_collecting_accepted(
+					&tx,
+					table,
+					&table_sql,
+					version,
+					&entries,
+					&mut accepted,
+				)?;
 			}
 		}
 
@@ -1499,6 +1532,49 @@ mod tests {
 			 another entry's cutoff makes the tripwire fire on healthy writes"
 		);
 		assert!(visible(&s, &key(9)), "the fresh row must land");
+	}
+
+	#[test]
+	fn a_chunked_upsert_batch_reports_exactly_the_keys_that_won_their_cas() {
+		// a key marked accepted despite losing its CAS is evicted from memory while never persisted
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+
+		let evens: Vec<_> = (0..170u64).step_by(2).map(|i| (key(i), Some(row(b"seed-even")))).collect();
+		let odds: Vec<_> = (1..170u64).step_by(2).map(|i| (key(i), Some(row(b"seed-odd")))).collect();
+		s.set_collecting_accepted(CommitVersion(200), HashMap::from([(table(), evens)])).unwrap();
+		s.set_collecting_accepted(CommitVersion(50), HashMap::from([(table(), odds)])).unwrap();
+
+		let attempt: Vec<_> = (0..170u64).map(|i| (key(i), Some(row(b"attempt")))).collect();
+		let accepted =
+			s.set_collecting_accepted(CommitVersion(150), HashMap::from([(table(), attempt)])).unwrap();
+
+		let mut accepted_ids: Vec<u64> =
+			accepted.iter().map(|k| u64::from_be_bytes(k.as_slice().try_into().unwrap())).collect();
+		accepted_ids.sort();
+		let expected_odds: Vec<u64> = (1..170u64).step_by(2).collect();
+		assert_eq!(
+			accepted_ids, expected_odds,
+			"only the keys whose stored version (50) lost to this batch's version (150) may be reported \
+			 accepted"
+		);
+
+		for i in (0..170u64).step_by(2) {
+			let value = s.get(table(), key(i).as_slice(), CommitVersion(u64::MAX)).unwrap().value();
+			assert_eq!(
+				value.as_ref().map(|v| v.as_slice()),
+				Some(&b"seed-even"[..]),
+				"key {i} lost its CAS (stored version 200 >= batch version 150) and must be untouched"
+			);
+		}
+		for i in (1..170u64).step_by(2) {
+			let value = s.get(table(), key(i).as_slice(), CommitVersion(u64::MAX)).unwrap().value();
+			assert_eq!(
+				value.as_ref().map(|v| v.as_slice()),
+				Some(&b"attempt"[..]),
+				"key {i} won its CAS (stored version 50 < batch version 150) and must carry this batch's \
+				 value"
+			);
+		}
 	}
 
 	#[cfg(reifydb_assertions)]

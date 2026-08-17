@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use rusqlite::params;
+use std::sync::LazyLock;
+
+use reifydb_sqlite::batch::values_placeholders;
+use rusqlite::{Transaction, params};
 use tracing::instrument;
 
 use crate::{
@@ -15,6 +18,58 @@ use crate::{
 	},
 	types::OperatorWrite,
 };
+
+const FLUSH_CHUNK: usize = 100;
+
+static STATE_SET_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
+	format!(
+		r#"INSERT INTO "operator_state" ("operator", "key", "bytes") VALUES {}
+		   ON CONFLICT ("operator", "key") DO UPDATE SET "bytes" = excluded."bytes""#,
+		values_placeholders(FLUSH_CHUNK, 3)
+	)
+});
+
+static STATE_REMOVE_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
+	format!(
+		r#"DELETE FROM "operator_state" WHERE ("operator", "key") IN (VALUES {})"#,
+		values_placeholders(FLUSH_CHUNK, 2)
+	)
+});
+
+static ANCHOR_SET_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
+	format!(
+		r#"INSERT INTO "operator_seal_anchor" ("operator", "group", "side", "row_number", "expiry") VALUES {}
+		   ON CONFLICT ("operator", "group", "side", "row_number") DO UPDATE SET "expiry" = excluded."expiry""#,
+		values_placeholders(FLUSH_CHUNK, 5)
+	)
+});
+
+static ANCHOR_REMOVE_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
+	format!(
+		r#"DELETE FROM "operator_seal_anchor" WHERE ("operator", "group", "side", "row_number") IN (VALUES {})"#,
+		values_placeholders(FLUSH_CHUNK, 4)
+	)
+});
+
+fn execute_chunked(txn: &Transaction, chunk_sql: &str, single_sql: &str, rows: &[Vec<Box<dyn rusqlite::ToSql>>]) {
+	if rows.is_empty() {
+		return;
+	}
+	let mut chunk_stmt =
+		txn.prepare_cached(chunk_sql).expect("chunked operator state statement could not be prepared");
+	let mut single_stmt = txn.prepare_cached(single_sql).expect("operator state statement could not be prepared");
+	let mut chunks = rows.chunks_exact(FLUSH_CHUNK);
+	for full in chunks.by_ref() {
+		let flat: Vec<&dyn rusqlite::ToSql> =
+			full.iter().flat_map(|row| row.iter().map(|p| p.as_ref())).collect();
+		chunk_stmt.execute(rusqlite::params_from_iter(flat)).expect("chunked operator state write failed");
+	}
+	for row in chunks.remainder() {
+		single_stmt
+			.execute(rusqlite::params_from_iter(row.iter().map(|p| p.as_ref())))
+			.expect("operator state write failed");
+	}
+}
 
 impl SqliteOperatorStorage {
 	#[instrument(name = "store::operator::persistent::sqlite::apply_batch", level = "debug", skip(self, writes), fields(write_count = writes.len()))]
@@ -144,46 +199,43 @@ impl SqliteOperatorStorage {
 			}
 		}
 
+		let mut state_sets: Vec<Vec<Box<dyn rusqlite::ToSql>>> = Vec::new();
+		let mut state_removes: Vec<Vec<Box<dyn rusqlite::ToSql>>> = Vec::new();
 		for ((operator, key), entry) in &batch.state {
 			match entry {
-				Some(row) => transaction
-					.prepare_cached(STATE_SET_SQL)
-					.expect("operator state write could not be prepared")
-					.execute(params![operator.0 as i64, key.as_slice(), &row.bytes()[..]])
-					.expect("operator state write failed"),
-				None => transaction
-					.prepare_cached(STATE_REMOVE_SQL)
-					.expect("operator state delete could not be prepared")
-					.execute(params![operator.0 as i64, key.as_slice()])
-					.expect("operator state delete failed"),
-			};
+				Some(row) => state_sets.push(vec![
+					Box::new(operator.0 as i64),
+					Box::new(key.as_slice().to_vec()),
+					Box::new(row.bytes()[..].to_vec()),
+				]),
+				None => state_removes
+					.push(vec![Box::new(operator.0 as i64), Box::new(key.as_slice().to_vec())]),
+			}
 		}
+		execute_chunked(&transaction, &STATE_SET_CHUNK_SQL, STATE_SET_SQL, &state_sets);
+		execute_chunked(&transaction, &STATE_REMOVE_CHUNK_SQL, STATE_REMOVE_SQL, &state_removes);
 
+		let mut anchor_sets: Vec<Vec<Box<dyn rusqlite::ToSql>>> = Vec::new();
+		let mut anchor_removes: Vec<Vec<Box<dyn rusqlite::ToSql>>> = Vec::new();
 		for ((operator, group, side, row_number), entry) in &batch.anchors {
 			match entry {
-				Some(millis) => transaction
-					.prepare_cached(ANCHOR_SET_SQL)
-					.expect("seal anchor write could not be prepared")
-					.execute(params![
-						operator.0 as i64,
-						group.0 as i64,
-						*side as i64,
-						row_number.0 as i64,
-						*millis as i64
-					])
-					.expect("seal anchor write failed"),
-				None => transaction
-					.prepare_cached(ANCHOR_REMOVE_SQL)
-					.expect("seal anchor delete could not be prepared")
-					.execute(params![
-						operator.0 as i64,
-						group.0 as i64,
-						*side as i64,
-						row_number.0 as i64
-					])
-					.expect("seal anchor delete failed"),
-			};
+				Some(millis) => anchor_sets.push(vec![
+					Box::new(operator.0 as i64),
+					Box::new(group.0 as i64),
+					Box::new(*side as i64),
+					Box::new(row_number.0 as i64),
+					Box::new(*millis as i64),
+				]),
+				None => anchor_removes.push(vec![
+					Box::new(operator.0 as i64),
+					Box::new(group.0 as i64),
+					Box::new(*side as i64),
+					Box::new(row_number.0 as i64),
+				]),
+			}
 		}
+		execute_chunked(&transaction, &ANCHOR_SET_CHUNK_SQL, ANCHOR_SET_SQL, &anchor_sets);
+		execute_chunked(&transaction, &ANCHOR_REMOVE_CHUNK_SQL, ANCHOR_REMOVE_SQL, &anchor_removes);
 
 		for (flow, entry) in &batch.checkpoints {
 			match entry {
