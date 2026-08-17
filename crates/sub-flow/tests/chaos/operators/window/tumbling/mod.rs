@@ -63,7 +63,7 @@ pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: fold.rql(),
-		lateness: Duration::from_seconds(params.lateness_secs as i64).unwrap(),
+		lateness: Some(Duration::from_seconds(params.lateness_secs as i64).unwrap()),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
@@ -158,9 +158,8 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		// A count window forces the lateness to zero through its own accessor, so the sweep declares it
-		// zero rather than pretending it is a knob.
-		lateness: Duration::default(),
+		// A count window forces the lateness absent through its own accessor, so it is never a knob here.
+		lateness: None,
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
@@ -227,7 +226,7 @@ pub fn drive_flow_shaped(seed: u64, params: Params) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		lateness: Duration::from_seconds(params.lateness_secs as i64).unwrap(),
+		lateness: Some(Duration::from_seconds(params.lateness_secs as i64).unwrap()),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));

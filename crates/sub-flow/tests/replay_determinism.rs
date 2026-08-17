@@ -269,7 +269,7 @@ mod count_window {
 			WindowKind::Tumbling {
 				size: WindowSize::Count(2),
 			},
-			Duration::default(),
+			None,
 			clock_ms,
 		);
 		let events = events();
@@ -344,7 +344,7 @@ mod time_window {
 			WindowKind::Tumbling {
 				size: WindowSize::Duration(Duration::from_seconds(2).expect("representable")),
 			},
-			Duration::from_seconds(1).expect("representable"),
+			Some(Duration::from_seconds(1).expect("representable")),
 			clock_ms,
 		);
 		let events = events();
@@ -605,7 +605,7 @@ mod join {
 	}
 }
 
-fn window_harness(kind: WindowKind, lateness: Duration, clock_ms: u64) -> Harness<WindowOperator> {
+fn window_harness(kind: WindowKind, lateness: Option<Duration>, clock_ms: u64) -> Harness<WindowOperator> {
 	Harness::with_engine(move |engine, runtime| {
 		engine.mock_clock().set_millis(clock_ms);
 		WindowOperator::new(WindowConfig {

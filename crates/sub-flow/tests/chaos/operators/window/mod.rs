@@ -23,7 +23,7 @@ pub struct WindowSpec {
 	pub kind: WindowKind,
 	pub group_by: &'static str,
 	pub aggregations: &'static str,
-	pub lateness: Duration,
+	pub lateness: Option<Duration>,
 }
 
 use crate::operators::routines;

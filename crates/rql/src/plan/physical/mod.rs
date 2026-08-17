@@ -593,7 +593,7 @@ pub struct WindowNode<'bump> {
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub lateness: Duration,
+	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
 }
 

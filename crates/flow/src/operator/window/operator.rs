@@ -53,7 +53,7 @@ pub struct WindowConfig {
 	pub aggregations: Vec<Expression>,
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
-	pub lateness: Duration,
+	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
 	pub ctx: Arc<FlowContext>,
 }
@@ -67,7 +67,7 @@ pub struct WindowOperator {
 	pub core: Aggregation,
 	pub kind: WindowKind,
 
-	pub lateness: Duration,
+	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
 	sealed_drops: SealedDrops,
 	rolling_engine: Option<RollingEngineSlot>,
@@ -113,16 +113,12 @@ impl WindowOperator {
 		self.kind.size().is_some_and(|m| m.is_count())
 	}
 
-	pub fn lateness(&self) -> Duration {
+	pub fn lateness(&self) -> Option<Duration> {
 		if self.is_count_based() {
-			Duration::default()
+			None
 		} else {
 			self.lateness
 		}
-	}
-
-	pub fn lateness_ms(&self) -> u64 {
-		self.lateness().milliseconds().unwrap_or(0) as u64
 	}
 
 	pub fn immutable(&self) -> Option<Duration> {

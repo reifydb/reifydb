@@ -32,6 +32,7 @@ pub mod u64;
 pub mod u8;
 pub mod uint;
 pub mod usize;
+pub mod window;
 
 #[derive(Debug, Clone)]
 pub struct Config {

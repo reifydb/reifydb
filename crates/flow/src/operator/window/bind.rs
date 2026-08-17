@@ -52,7 +52,7 @@ impl WindowOperator {
 	}
 
 	pub(super) fn session_policy(&self) -> SealPolicy {
-		self.session_kind().seal_policy(self.lateness())
+		self.session_kind().seal_policy(self.lateness().unwrap_or_else(Duration::zero))
 	}
 
 	pub(super) fn load_session_tracker(

@@ -333,7 +333,7 @@ impl FlowEngineInner {
 		kind: WindowKind,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
-		lateness: Duration,
+		lateness: Option<Duration>,
 		immutable: Option<Duration>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {

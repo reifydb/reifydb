@@ -54,7 +54,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: params.fold.rql(),
-		lateness: Duration::default(),
+		lateness: None,
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));

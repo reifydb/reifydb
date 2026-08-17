@@ -344,7 +344,7 @@ pub fn apply_tumbling_engine(
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		SealPolicy::tumbling(window_size, operator.lateness()),
+		SealPolicy::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero)),
 		ExpiryAnchor::WindowStart,
 	)?;
 
@@ -594,7 +594,7 @@ pub fn apply_sliding_engine(
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		SealPolicy::tumbling(window_size, operator.lateness()),
+		SealPolicy::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero)),
 		ExpiryAnchor::WindowStart,
 	)?;
 
@@ -988,7 +988,7 @@ pub fn seal_engine_windows(
 	let Some(window_size) = operator.size_duration() else {
 		return Ok(Vec::new());
 	};
-	let policy = SealPolicy::tumbling(window_size, operator.lateness());
+	let policy = SealPolicy::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
 	seal_due_windows(operator, host, fired, policy)
 }
 

@@ -64,7 +64,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		lateness: Duration::from_seconds(params.lateness_secs as i64).unwrap(),
+		lateness: Some(Duration::from_seconds(params.lateness_secs as i64).unwrap()),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
@@ -180,7 +180,7 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		lateness: Duration::default(),
+		lateness: None,
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));

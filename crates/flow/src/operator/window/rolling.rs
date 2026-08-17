@@ -141,7 +141,7 @@ impl RollingDomain for DateTime {
 
 	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<DateTime> {
 		Some(rolling_over_time(operator, Self::lag(operator.rolling_lag()))
-			.seal_horizon(ledger, operator.lateness()))
+			.seal_horizon(ledger, operator.lateness().unwrap_or_else(Duration::zero)))
 	}
 
 	fn needs_event_timestamps() -> bool {

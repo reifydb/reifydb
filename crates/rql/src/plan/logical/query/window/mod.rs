@@ -54,7 +54,7 @@ pub struct WindowNode {
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub lateness: Duration,
+	pub lateness: Option<Duration>,
 	pub immutable: Option<Duration>,
 	pub rql: String,
 }
@@ -75,7 +75,7 @@ impl<'bump> Compiler<'bump> {
 			kind,
 			group_by,
 			aggregations,
-			lateness: Declared::value_of(&parsed.lateness).unwrap_or_default(),
+			lateness: Declared::value_of(&parsed.lateness),
 			immutable: Declared::value_of(&parsed.immutable),
 			rql,
 		}))
