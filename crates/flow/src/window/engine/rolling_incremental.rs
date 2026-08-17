@@ -6,6 +6,7 @@ use std::{
 	fmt::Debug,
 	hash::Hash,
 	marker::PhantomData,
+	slice::from_ref,
 };
 
 use reifydb_codec::{
@@ -110,7 +111,7 @@ where
 						None => {
 							let key = row_key(&group);
 							let group_id = store
-								.intern_groups(&[key.clone()])?
+								.intern_groups(from_ref(&key))?
 								.into_iter()
 								.next()
 								.expect("intern_groups answers every requested key")

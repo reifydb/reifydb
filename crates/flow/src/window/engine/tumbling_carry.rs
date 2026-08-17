@@ -6,6 +6,7 @@ use std::{
 	fmt::Debug,
 	hash::Hash,
 	marker::PhantomData,
+	slice::from_ref,
 };
 
 use reifydb_codec::{
@@ -159,7 +160,7 @@ where
 			let slot_key = row_key(&group, span.start);
 			let group_id = match &slot_pre {
 				Some((gid, _)) => *gid,
-				None => store.intern_groups(&[slot_key.clone()])?.into_iter().next().unwrap().0,
+				None => store.intern_groups(from_ref(&slot_key))?.into_iter().next().unwrap().0,
 			};
 			if !entry.windows.contains_key(&span.start) && slot_pre.is_none() {
 				continue;

@@ -4,7 +4,7 @@
 use std::sync::LazyLock;
 
 use reifydb_sqlite::batch::values_placeholders;
-use rusqlite::{Transaction, params};
+use rusqlite::{ToSql, Transaction, params, params_from_iter};
 use tracing::instrument;
 
 use crate::{
@@ -51,7 +51,7 @@ static ANCHOR_REMOVE_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
 	)
 });
 
-fn execute_chunked(txn: &Transaction, chunk_sql: &str, single_sql: &str, rows: &[Vec<Box<dyn rusqlite::ToSql>>]) {
+fn execute_chunked(txn: &Transaction, chunk_sql: &str, single_sql: &str, rows: &[Vec<Box<dyn ToSql>>]) {
 	if rows.is_empty() {
 		return;
 	}
@@ -60,13 +60,12 @@ fn execute_chunked(txn: &Transaction, chunk_sql: &str, single_sql: &str, rows: &
 	let mut single_stmt = txn.prepare_cached(single_sql).expect("operator state statement could not be prepared");
 	let mut chunks = rows.chunks_exact(FLUSH_CHUNK);
 	for full in chunks.by_ref() {
-		let flat: Vec<&dyn rusqlite::ToSql> =
-			full.iter().flat_map(|row| row.iter().map(|p| p.as_ref())).collect();
-		chunk_stmt.execute(rusqlite::params_from_iter(flat)).expect("chunked operator state write failed");
+		let flat: Vec<&dyn ToSql> = full.iter().flat_map(|row| row.iter().map(|p| p.as_ref())).collect();
+		chunk_stmt.execute(params_from_iter(flat)).expect("chunked operator state write failed");
 	}
 	for row in chunks.remainder() {
 		single_stmt
-			.execute(rusqlite::params_from_iter(row.iter().map(|p| p.as_ref())))
+			.execute(params_from_iter(row.iter().map(|p| p.as_ref())))
 			.expect("operator state write failed");
 	}
 }
@@ -199,8 +198,8 @@ impl SqliteOperatorStorage {
 			}
 		}
 
-		let mut state_sets: Vec<Vec<Box<dyn rusqlite::ToSql>>> = Vec::new();
-		let mut state_removes: Vec<Vec<Box<dyn rusqlite::ToSql>>> = Vec::new();
+		let mut state_sets: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
+		let mut state_removes: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
 		for ((operator, key), entry) in &batch.state {
 			match entry {
 				Some(row) => state_sets.push(vec![
@@ -215,8 +214,8 @@ impl SqliteOperatorStorage {
 		execute_chunked(&transaction, &STATE_SET_CHUNK_SQL, STATE_SET_SQL, &state_sets);
 		execute_chunked(&transaction, &STATE_REMOVE_CHUNK_SQL, STATE_REMOVE_SQL, &state_removes);
 
-		let mut anchor_sets: Vec<Vec<Box<dyn rusqlite::ToSql>>> = Vec::new();
-		let mut anchor_removes: Vec<Vec<Box<dyn rusqlite::ToSql>>> = Vec::new();
+		let mut anchor_sets: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
+		let mut anchor_removes: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
 		for ((operator, group, side, row_number), entry) in &batch.anchors {
 			match entry {
 				Some(millis) => anchor_sets.push(vec![

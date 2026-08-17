@@ -69,6 +69,7 @@ impl<'bump> Compiler<'bump> {
 		let kind = Self::build_window_kind(ast.kind, &parsed)?;
 		Self::reject_time_only_config(&parsed, &kind)?;
 		Self::reject_immutable_not_smaller_than_lateness(&parsed)?;
+		Self::reject_immutable_not_smaller_than_window(&parsed, &kind)?;
 
 		Ok(LogicalPlan::Window(WindowNode {
 			kind,
@@ -104,18 +105,61 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	fn reject_immutable_not_smaller_than_lateness(parsed: &ParsedConfig) -> Result<()> {
-		let Some(immutable) = parsed.immutable.as_ref() else {
+		let (Some(immutable), Some(lateness)) = (parsed.immutable.as_ref(), parsed.lateness.as_ref()) else {
 			return Ok(());
 		};
-		let lateness = Declared::value_of(&parsed.lateness).unwrap_or_default();
-		if immutable.value < lateness {
+		if immutable.value < lateness.value {
 			return Ok(());
 		}
 		Err(RqlError::WindowImmutableNotSmallerThanLateness {
 			immutable_value: immutable.fragment.text().to_string(),
-			lateness_value: Self::declared_text(
-				parsed.lateness.as_ref().map(|declared| &declared.fragment),
-			),
+			lateness_value: lateness.fragment.text().to_string(),
+			fragment: immutable.fragment.clone(),
+		}
+		.into())
+	}
+
+	fn window_base_span(kind: &WindowKind) -> Option<Duration> {
+		match kind {
+			WindowKind::Session {
+				gap,
+			} => Some(*gap),
+			WindowKind::Tumbling {
+				size,
+			}
+			| WindowKind::Sliding {
+				size,
+				..
+			}
+			| WindowKind::Rolling {
+				size,
+				..
+			} => match size {
+				WindowSize::Duration(duration) => Some(*duration),
+				WindowSize::Count(_) => None,
+			},
+		}
+	}
+
+	fn reject_immutable_not_smaller_than_window(parsed: &ParsedConfig, kind: &WindowKind) -> Result<()> {
+		let Some(immutable) = parsed.immutable.as_ref() else {
+			return Ok(());
+		};
+		let Some(window_span) = Self::window_base_span(kind) else {
+			return Ok(());
+		};
+		if immutable.value < window_span {
+			return Ok(());
+		}
+		let window_value = match kind {
+			WindowKind::Session {
+				..
+			} => Self::declared_text(parsed.gap.as_ref().map(|declared| &declared.fragment)),
+			_ => Self::declared_text(parsed.duration.as_ref().map(|declared| &declared.fragment)),
+		};
+		Err(RqlError::WindowImmutableNotSmallerThanWindow {
+			immutable_value: immutable.fragment.text().to_string(),
+			window_value,
 			fragment: immutable.fragment.clone(),
 		}
 		.into())
@@ -606,6 +650,67 @@ mod tests {
 		.unwrap();
 		Compiler::<'static>::reject_immutable_not_smaller_than_lateness(&parsed)
 			.expect("zero immutable is always smaller than a positive lateness");
+	}
+
+	#[test]
+	fn immutable_without_lateness_is_accepted() {
+		// The lateness guard only fires once both knobs are declared; immutable alone has nothing to violate.
+		let parsed =
+			parse_window_config(r#"window tumbling { count(*) } with { duration: 5m, immutable: 15s }"#)
+				.unwrap();
+		Compiler::<'static>::reject_immutable_not_smaller_than_lateness(&parsed)
+			.expect("no declared lateness means no lateness bound to violate");
+	}
+
+	#[test]
+	fn immutable_below_window_duration_is_accepted() {
+		let parsed =
+			parse_window_config(r#"window tumbling { count(*) } with { duration: 5m, immutable: 4m }"#)
+				.unwrap();
+		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap();
+		Compiler::<'static>::reject_immutable_not_smaller_than_window(&parsed, &kind)
+			.expect("an immutable short of the window duration can still seal something before it closes");
+	}
+
+	#[test]
+	fn immutable_at_window_duration_is_rejected() {
+		// At the window's own span, high-water can never get far enough ahead to trigger a seal.
+		let parsed =
+			parse_window_config(r#"window tumbling { count(*) } with { duration: 5m, immutable: 5m }"#)
+				.unwrap();
+		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap();
+		let err = Compiler::<'static>::reject_immutable_not_smaller_than_window(&parsed, &kind).unwrap_err();
+		assert_eq!(err.fragment.text(), "5m", "the offending immutable value is what the author must lower");
+	}
+
+	#[test]
+	fn immutable_above_window_duration_is_rejected() {
+		let parsed =
+			parse_window_config(r#"window tumbling { count(*) } with { duration: 5m, immutable: 6m }"#)
+				.unwrap();
+		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap();
+		Compiler::<'static>::reject_immutable_not_smaller_than_window(&parsed, &kind).expect_err(
+			"an immutable wider than the window duration can never fire, so it must be rejected",
+		);
+	}
+
+	#[test]
+	fn immutable_below_session_gap_is_accepted() {
+		// Session windows have no `size`; the base span the immutable guard must use is the gap.
+		let parsed =
+			parse_window_config(r#"window session { count(*) } with { gap: 5m, immutable: 4m }"#).unwrap();
+		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Session, &parsed).unwrap();
+		Compiler::<'static>::reject_immutable_not_smaller_than_window(&parsed, &kind)
+			.expect("session windows must bound immutable against the gap, not a nonexistent duration");
+	}
+
+	#[test]
+	fn immutable_at_session_gap_is_rejected() {
+		let parsed =
+			parse_window_config(r#"window session { count(*) } with { gap: 5m, immutable: 5m }"#).unwrap();
+		let kind = Compiler::<'static>::build_window_kind(AstWindowKind::Session, &parsed).unwrap();
+		Compiler::<'static>::reject_immutable_not_smaller_than_window(&parsed, &kind)
+			.expect_err("an immutable at the session gap can never fire either");
 	}
 
 	#[test]

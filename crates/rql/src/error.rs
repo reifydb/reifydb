@@ -120,6 +120,13 @@ pub enum RqlError {
 		lateness_value: String,
 	},
 
+	#[error("Immutable must be smaller than the window")]
+	WindowImmutableNotSmallerThanWindow {
+		fragment: Fragment,
+		immutable_value: String,
+		window_value: String,
+	},
+
 	#[error("UPDATE requires an assignments block")]
 	UpdateMissingAssignmentsBlock {
 		fragment: Fragment,
@@ -643,6 +650,28 @@ impl IntoDiagnostic for RqlError {
 					"Lateness already bounds the window, so an immutable at or beyond it promises nothing".to_string(),
 					"Immutable is how long a row may still be updated or deleted, lateness is how long a late insert is still accepted".to_string(),
 					"Example: WINDOW TUMBLING { count(*) } WITH { duration: 1h, lateness: 20s, immutable: 15s }".to_string(),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+
+			RqlError::WindowImmutableNotSmallerThanWindow { fragment, immutable_value, window_value } => Diagnostic {
+				code: "WINDOW_010".to_string(),
+				rql: None,
+				message: format!(
+					"Immutable ({}) must be smaller than the window ({})",
+					immutable_value, window_value
+				),
+				column: None,
+				fragment,
+				label: Some("immutable too large".to_string()),
+				help: Some(
+					"Reduce immutable below the window duration (or gap), or drop it to keep every row for the life of the window".to_string(),
+				),
+				notes: vec![
+					"An immutable at or beyond the window's own span can never seal anything before the window closes".to_string(),
+					"Immutable is how long a row may still be updated or deleted before the accumulator folds it away".to_string(),
+					"Example: WINDOW TUMBLING { count(*) } WITH { duration: 1h, immutable: 15s }".to_string(),
 				],
 				cause: None,
 				operator_chain: None,
