@@ -34,12 +34,12 @@ fn main() {
 
 	info!("A worker asking for both gets only the one that is due...");
 	let now = command(&db, r#"CALL queue::claim("worker-1", "jobs::reminders", 10, duration::seconds(30))"#);
-	command(&db, &format!(r#"CALL queue::ack("{}", "ok", none)"#, utf8_column(&now, "token")[0]));
+	command(&db, &format!(r#"CALL queue::ack("{}")"#, utf8_column(&now, "token")[0]));
 
 	info!("Waiting for the delayed job to come due...");
 	sleep(Duration::from_millis(2_200));
 
 	info!("The same claim now finds it - nothing woke it, the claim simply reads the due index...");
 	let later = command(&db, r#"CALL queue::claim("worker-1", "jobs::reminders", 10, duration::seconds(30))"#);
-	command(&db, &format!(r#"CALL queue::ack("{}", "ok", none)"#, utf8_column(&later, "token")[0]));
+	command(&db, &format!(r#"CALL queue::ack("{}")"#, utf8_column(&later, "token")[0]));
 }

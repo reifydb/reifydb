@@ -34,6 +34,8 @@ pub fn default_in_process_procedures(builder: RoutinesConfigurator) -> RoutinesC
 		.register_builtin_procedure(Arc::new(subscription::inspect::InspectSubscription::new()))
 		.register_builtin_procedure(Arc::new(queue::claim::QueueClaim::new()))
 		.register_builtin_procedure(Arc::new(queue::ack::QueueAck::new()))
+		.register_builtin_procedure(Arc::new(queue::fail::QueueFail::new()))
+		.register_builtin_procedure(Arc::new(queue::kill::QueueKill::new()))
 		.register_builtin_procedure(Arc::new(queue::extend::QueueExtend::new()))
 		.register_builtin_procedure(Arc::new(queue::replay::QueueReplay::new()))
 		.register_builtin_procedure(Arc::new(rql::tokenize::RqlTokenize::new()))

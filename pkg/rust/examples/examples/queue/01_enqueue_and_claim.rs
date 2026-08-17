@@ -46,7 +46,7 @@ fn main() {
 
 	info!("The token is what proves the worker still holds the lease when it reports back...");
 	for token in utf8_column(&claimed, "token") {
-		command(&db, &format!(r#"CALL queue::ack("{token}", "ok", none)"#));
+		command(&db, &format!(r#"CALL queue::ack("{token}")"#));
 	}
 
 	info!("Both jobs are done - nothing waiting, nothing in flight...");

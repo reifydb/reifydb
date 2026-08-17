@@ -45,7 +45,7 @@ pub fn hydrate_queues(engine: &StandardEngine) -> Result<u64> {
 	let mut query = engine.begin_query(IdentityId::system())?;
 	let mut txn = Transaction::Query(&mut query);
 
-	let queues = catalog.list_queues_all(&mut txn)?;
+	let queues = catalog.list_queues(&mut txn)?;
 
 	let mut admitted = 0u64;
 	for queue in &queues {

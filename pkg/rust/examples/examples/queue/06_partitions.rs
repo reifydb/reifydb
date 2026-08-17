@@ -40,7 +40,7 @@ fn main() {
 	partitions(&db, queue_id);
 
 	for token in utf8_column(&first, "token").into_iter().chain(utf8_column(&second, "token")) {
-		command(&db, &format!(r#"CALL queue::ack("{token}", "ok", none)"#));
+		command(&db, &format!(r#"CALL queue::ack("{token}")"#));
 	}
 }
 

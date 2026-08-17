@@ -5,12 +5,12 @@ use reifydb_codec::row::shape::RowFamily;
 
 const DISCRIMINANTS: [(u8, RowFamily); 9] = [
 	(0x01, RowFamily::Catalog),
-	(0x02, RowFamily::Operator),
-	(0x03, RowFamily::Pod),
-	(0x04, RowFamily::Table),
-	(0x05, RowFamily::Series),
-	(0x06, RowFamily::RingBuffer),
-	(0x07, RowFamily::Queue),
+	(0x02, RowFamily::Pod),
+	(0x03, RowFamily::Table),
+	(0x04, RowFamily::Series),
+	(0x05, RowFamily::RingBuffer),
+	(0x06, RowFamily::Queue),
+	(0x07, RowFamily::Operator),
 	(0x08, RowFamily::QueueAttempt),
 	(0x09, RowFamily::QueueDeduplication),
 ];

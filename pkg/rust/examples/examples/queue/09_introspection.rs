@@ -19,8 +19,8 @@ fn main() {
 			body: utf8
 		} WITH {
 			fifo: { partitions: 2, ordered_by: endpoint },
-			retry: { attempts: 5, backoff: "10s" },
-			deduplicate: { by: {endpoint, body}, ttl: "1d" }
+			retry: { attempts: 5, backoff: 10s },
+			deduplicate: { by: {endpoint, body}, ttl: 1d }
 		};
 		"#,
 		Params::None,

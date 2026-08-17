@@ -17,10 +17,7 @@ use reifydb_core::{
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::change::{QueueAckTransition, QueueRowAck, RowChange};
-use reifydb_value::{
-	fragment::Fragment,
-	value::{Value, datetime::DateTime, value_type::ValueType},
-};
+use reifydb_value::value::{Value, datetime::DateTime, value_type::ValueType};
 use tracing::{Span, field::Empty, instrument};
 
 use crate::procedure::{
@@ -32,9 +29,9 @@ static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("queue::a
 
 const PROCEDURE: &str = "queue::ack";
 
-const STATUS_OK: &str = "ok";
-const STATUS_REPEAT: &str = "repeat";
-const STATUS_STALE: &str = "stale";
+pub(crate) const STATUS_OK: &str = "ok";
+pub(crate) const STATUS_REPEAT: &str = "repeat";
+pub(crate) const STATUS_STALE: &str = "stale";
 
 pub struct QueueAck;
 
@@ -59,86 +56,31 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueAck {
 		ValueType::Any
 	}
 
-	#[instrument(name = "queue::ack", level = "debug", skip_all, fields(outcome = Empty, status = Empty))]
+	#[instrument(name = "queue::ack", level = "debug", skip_all, fields(status = Empty))]
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		require_command_transaction(PROCEDURE, ctx.tx)?;
 
-		let args = extract_args(PROCEDURE, ctx.params, 3)?;
+		let args = extract_args(PROCEDURE, ctx.params, 1)?;
 		let raw_token = utf8_arg(PROCEDURE, &args[0], 0)?;
-		let outcome = outcome_arg(&args[1], 1)?;
-		Span::current().record("outcome", outcome_name(outcome));
-		let response = optional_utf8_arg(&args[2], 2)?;
 
-		let token = ClaimToken::parse(PROCEDURE, &ctx.fragment, &raw_token)?;
-		let now = ctx.runtime_context.clock.now();
-		let queue = resolve_queue_by_id(ctx.catalog, &mut *ctx.tx, token.queue, &ctx.fragment)?;
-
-		let state = live_state(ctx, &token)?;
-		let existing = existing_attempt(ctx, &token)?;
-
-		let status = match (existing, state.as_ref()) {
-			(Some(record), Some(state)) if record.outcome == outcome => {
-				track(ctx, &queue, &token, state, outcome, now);
-				STATUS_OK
-			}
-			(Some(record), None) if record.outcome == outcome => STATUS_REPEAT,
-			(Some(record), _) => {
-				let anomaly = format!("conflicting late ack: {}", outcome_name(outcome));
-				write_attempt(
-					ctx,
-					&token,
-					QueueAttemptRecord {
-						anomaly: Some(anomaly),
-						..record
-					},
-				)?;
-				STATUS_STALE
-			}
-			(None, Some(state)) => {
-				write_attempt(
-					ctx,
-					&token,
-					QueueAttemptRecord {
-						worker: token.worker.clone(),
-						outcome,
-						response,
-						finished_at: now,
-						lost: false,
-						anomaly: None,
-					},
-				)?;
-				track(ctx, &queue, &token, state, outcome, now);
-				STATUS_OK
-			}
-			(None, None) => {
-				write_attempt(
-					ctx,
-					&token,
-					QueueAttemptRecord {
-						worker: token.worker.clone(),
-						outcome,
-						response,
-						finished_at: now,
-						lost: false,
-						anomaly: Some("stale: the lease this token names is no longer live"
-							.to_string()),
-					},
-				)?;
-				STATUS_STALE
-			}
-		};
-
-		Span::current().record("status", status);
-
-		Ok(Columns::single_row([
-			("status", Value::Utf8(status.to_string())),
-			("item", Value::Uint8(token.row.0)),
-			("attempt", Value::Uint4(token.attempt)),
-		]))
+		record_outcome(PROCEDURE, AttemptOutcome::Ok, ctx, &raw_token, None)
 	}
 }
 
-fn outcome_name(outcome: AttemptOutcome) -> &'static str {
+pub(crate) fn optional_utf8_arg(
+	procedure: &'static str,
+	value: &Value,
+	argument_index: usize,
+) -> Result<Option<String>, RoutineError> {
+	match value {
+		Value::None {
+			..
+		} => Ok(None),
+		other => utf8_arg(procedure, other, argument_index).map(Some),
+	}
+}
+
+pub(crate) fn outcome_name(outcome: AttemptOutcome) -> &'static str {
 	match outcome {
 		AttemptOutcome::Ok => "ok",
 		AttemptOutcome::Err => "err",
@@ -146,26 +88,78 @@ fn outcome_name(outcome: AttemptOutcome) -> &'static str {
 	}
 }
 
-fn outcome_arg(value: &Value, argument_index: usize) -> Result<AttemptOutcome, RoutineError> {
-	let text = utf8_arg(PROCEDURE, value, argument_index)?;
-	match text.as_str() {
-		"ok" => Ok(AttemptOutcome::Ok),
-		"err" => Ok(AttemptOutcome::Err),
-		"dead" => Ok(AttemptOutcome::Dead),
-		other => Err(RoutineError::ProcedureExecutionFailed {
-			procedure: Fragment::internal(PROCEDURE),
-			reason: format!("outcome must be one of ok, err, dead; got {other}"),
-		}),
-	}
-}
+pub(crate) fn record_outcome(
+	procedure: &'static str,
+	outcome: AttemptOutcome,
+	ctx: &mut ProcedureContext<'_, '_>,
+	raw_token: &str,
+	response: Option<String>,
+) -> Result<Columns, RoutineError> {
+	let token = ClaimToken::parse(procedure, &ctx.fragment, raw_token)?;
+	let now = ctx.runtime_context.clock.now();
+	let queue = resolve_queue_by_id(ctx.catalog, &mut *ctx.tx, token.queue, &ctx.fragment)?;
 
-fn optional_utf8_arg(value: &Value, argument_index: usize) -> Result<Option<String>, RoutineError> {
-	match value {
-		Value::None {
-			..
-		} => Ok(None),
-		other => utf8_arg(PROCEDURE, other, argument_index).map(Some),
-	}
+	let state = live_state(ctx, &token)?;
+	let existing = existing_attempt(ctx, &token)?;
+
+	let status = match (existing, state.as_ref()) {
+		(Some(record), Some(state)) if record.outcome == outcome => {
+			track(ctx, &queue, &token, state, outcome, now);
+			STATUS_OK
+		}
+		(Some(record), None) if record.outcome == outcome => STATUS_REPEAT,
+		(Some(record), _) => {
+			let anomaly = format!("conflicting late ack: {}", outcome_name(outcome));
+			write_attempt(
+				ctx,
+				&token,
+				QueueAttemptRecord {
+					anomaly: Some(anomaly),
+					..record
+				},
+			)?;
+			STATUS_STALE
+		}
+		(None, Some(state)) => {
+			write_attempt(
+				ctx,
+				&token,
+				QueueAttemptRecord {
+					worker: token.worker.clone(),
+					outcome,
+					response,
+					finished_at: now,
+					lost: false,
+					anomaly: None,
+				},
+			)?;
+			track(ctx, &queue, &token, state, outcome, now);
+			STATUS_OK
+		}
+		(None, None) => {
+			write_attempt(
+				ctx,
+				&token,
+				QueueAttemptRecord {
+					worker: token.worker.clone(),
+					outcome,
+					response,
+					finished_at: now,
+					lost: false,
+					anomaly: Some("stale: the lease this token names is no longer live".to_string()),
+				},
+			)?;
+			STATUS_STALE
+		}
+	};
+
+	Span::current().record("status", status);
+
+	Ok(Columns::single_row([
+		("status", Value::Utf8(status.to_string())),
+		("item", Value::Uint8(token.row.0)),
+		("attempt", Value::Uint4(token.attempt)),
+	]))
 }
 
 fn live_state(ctx: &ProcedureContext<'_, '_>, token: &ClaimToken) -> Result<Option<QueueItemState>, RoutineError> {

@@ -105,7 +105,7 @@ fn test_extend_fails_hard_once_the_item_has_been_acked() {
 	let t = engine_with_queue(ONE_PARTITION);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let token = claim_one(&t, "w1");
-	t.command(&format!(r#"CALL queue::ack("{token}", "ok", none)"#));
+	t.command(&format!(r#"CALL queue::ack("{token}")"#));
 
 	let err = t.command_err(&format!(r#"CALL queue::extend("{token}", duration::seconds(60))"#));
 

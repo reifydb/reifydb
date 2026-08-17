@@ -103,12 +103,19 @@ fn claim_one(t: &TestEngine, worker: &str) -> String {
 	}
 }
 
-fn ack(t: &TestEngine, token: &str, outcome: &str) -> String {
-	let frames = t.command(&format!(r#"CALL queue::ack("{token}", "{outcome}", none)"#));
+fn status_of(frames: &[Frame]) -> String {
 	match frames[0].columns.iter().find(|c| c.name == "status").unwrap().data.get_value(0) {
 		Value::Utf8(s) => s,
 		other => panic!("status must be Utf8, got {other:?}"),
 	}
+}
+
+fn ack(t: &TestEngine, token: &str) -> String {
+	status_of(&t.command(&format!(r#"CALL queue::ack("{token}")"#)))
+}
+
+fn fail(t: &TestEngine, token: &str) -> String {
+	status_of(&t.command(&format!(r#"CALL queue::fail("{token}", none)"#)))
 }
 
 fn claimable(t: &TestEngine) -> usize {
@@ -127,7 +134,7 @@ fn utf8_of(frames: &[Frame], column: &str) -> String {
 }
 
 fn kill(t: &TestEngine) {
-	ack(t, &claim_one(t, "w1"), "dead");
+	t.command(&format!(r#"CALL queue::kill("{}", none)"#, claim_one(t, "w1")));
 }
 
 const ONE_PARTITION: &str = "CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 1 } }";
@@ -210,15 +217,15 @@ fn test_a_replayed_item_gets_its_whole_budget_back_and_not_one_attempt() {
 	let queue = queue_id(&t, "jobs");
 	t.mock_clock().set_millis(0);
 
-	ack(&t, &claim_one(&t, "w1"), "err");
+	fail(&t, &claim_one(&t, "w1"));
 	t.mock_clock().advance_millis(10_000);
-	ack(&t, &claim_one(&t, "w1"), "err");
+	fail(&t, &claim_one(&t, "w1"));
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Dead, "the first life spends both attempts");
 	let item = states(&t, queue)[0].0.row;
 
 	replay(&t, item.0);
 
-	ack(&t, &claim_one(&t, "w1"), "err");
+	fail(&t, &claim_one(&t, "w1"));
 	assert_eq!(
 		state_of(&t, queue).status,
 		QueueItemStatus::Ready,
@@ -226,7 +233,7 @@ fn test_a_replayed_item_gets_its_whole_budget_back_and_not_one_attempt() {
 	);
 
 	t.mock_clock().advance_millis(60_000);
-	ack(&t, &claim_one(&t, "w1"), "err");
+	fail(&t, &claim_one(&t, "w1"));
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Dead, "the new budget is finite too");
 	assert_eq!(state_of(&t, queue).attempt, 4);
 }
@@ -239,11 +246,11 @@ fn test_replay_keeps_every_attempt_record_of_the_previous_life() {
 	let t = engine_with_queue(TWO_ATTEMPTS);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	t.command(&format!(r#"CALL queue::ack("{}", "dead", "gave up")"#, claim_one(&t, "worker-a")));
+	t.command(&format!(r#"CALL queue::kill("{}", "gave up")"#, claim_one(&t, "worker-a")));
 	let item = states(&t, queue)[0].0.row;
 
 	replay(&t, item.0);
-	ack(&t, &claim_one(&t, "worker-b"), "ok");
+	ack(&t, &claim_one(&t, "worker-b"));
 
 	// Key components are stored bitwise-inverted, so a forward scan of the attempt keyspace returns
 	// the newest attempt first. Sort by attempt so this test pins the history rather than the scan
@@ -270,9 +277,9 @@ fn test_replay_leaves_no_trace_of_the_previous_life_in_the_scheduling_state() {
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
 	t.mock_clock().set_millis(0);
-	ack(&t, &claim_one(&t, "w1"), "err");
+	fail(&t, &claim_one(&t, "w1"));
 	t.mock_clock().advance_millis(10_000);
-	ack(&t, &claim_one(&t, "w1"), "err");
+	fail(&t, &claim_one(&t, "w1"));
 	let dead = state_of(&t, queue);
 	assert!(dead.backoff_until.is_some(), "the fixture must actually leave a backoff behind");
 	let item = states(&t, queue)[0].0.row;
@@ -362,7 +369,7 @@ fn test_replay_finds_an_item_in_any_partition() {
 			}
 		})
 		.unwrap();
-	ack(&t, &token, "dead");
+	t.command(&format!(r#"CALL queue::kill("{token}", none)"#));
 
 	replay(&t, item.0);
 
@@ -403,7 +410,7 @@ fn test_replay_of_a_finished_item_is_refused() {
 	let t = engine_with_queue(ONE_PARTITION);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
-	ack(&t, &claim_one(&t, "w1"), "ok");
+	ack(&t, &claim_one(&t, "w1"));
 	let item = states(&t, queue)[0].0.row;
 
 	let err = t.command_err(&format!(r#"CALL queue::replay("test::jobs", {})"#, item.0));

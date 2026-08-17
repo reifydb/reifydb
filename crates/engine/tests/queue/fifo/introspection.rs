@@ -88,7 +88,7 @@ fn test_depth_and_in_flight_follow_every_transition() {
 	assert_eq!(only_uint8(&row, "depth"), 1, "a claim must move items out of the waiting count");
 	assert_eq!(only_uint8(&row, "in_flight"), 2, "a claim must move them into the in-flight count");
 
-	t.command(&format!(r#"CALL queue::ack("{}", "ok", none)"#, tokens[0]));
+	t.command(&format!(r#"CALL queue::ack("{}")"#, tokens[0]));
 
 	let row = queue_row(&t, "jobs");
 	assert_eq!(only_uint8(&row, "depth"), 1, "an ack must not touch the waiting count");

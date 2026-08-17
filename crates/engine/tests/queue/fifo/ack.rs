@@ -112,12 +112,23 @@ fn token_of(frames: &[Frame]) -> String {
 	}
 }
 
-fn ack(t: &TestEngine, token: &str, outcome: &str) -> String {
-	let frames = t.command(&format!(r#"CALL queue::ack("{token}", "{outcome}", none)"#));
+fn status_of(frames: &[Frame]) -> String {
 	match frames[0].columns.iter().find(|c| c.name == "status").unwrap().data.get_value(0) {
 		Value::Utf8(s) => s,
 		other => panic!("status must be Utf8, got {other:?}"),
 	}
+}
+
+fn ack(t: &TestEngine, token: &str) -> String {
+	status_of(&t.command(&format!(r#"CALL queue::ack("{token}")"#)))
+}
+
+fn fail(t: &TestEngine, token: &str) -> String {
+	status_of(&t.command(&format!(r#"CALL queue::fail("{token}", none)"#)))
+}
+
+fn kill(t: &TestEngine, token: &str) -> String {
+	status_of(&t.command(&format!(r#"CALL queue::kill("{token}", none)"#)))
 }
 
 fn claimable(t: &TestEngine) -> usize {
@@ -137,7 +148,7 @@ fn test_an_ok_ack_finishes_the_item_for_good() {
 	let queue = queue_id(&t, "jobs");
 	let token = claim_one(&t, "w1");
 
-	assert_eq!(ack(&t, &token, "ok"), "ok");
+	assert_eq!(ack(&t, &token), "ok");
 
 	let state = state_of(&t, queue);
 	assert_eq!(state.status, QueueItemStatus::Done);
@@ -148,24 +159,23 @@ fn test_an_ok_ack_finishes_the_item_for_good() {
 }
 
 #[test]
-fn test_an_ok_ack_records_what_the_worker_reported() {
-	// The attempt record is the durable audit trail and the only thing repeat detection reads.
-	// Without it a redelivered ack after a crash cannot be told apart from a first ack.
+fn test_a_fail_ack_records_what_the_worker_reported() {
+	// Without the attempt record, a redelivered ack after a crash cannot be told apart from a first ack.
 	let t = engine_with_queue(ONE_PARTITION);
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
 	t.mock_clock().set_nanos(4_200);
 	let token = claim_one(&t, "worker-a");
 
-	t.command(&format!(r#"CALL queue::ack("{token}", "ok", "delivered")"#));
+	t.command(&format!(r#"CALL queue::fail("{token}", "gateway timeout")"#));
 
 	let recorded = attempts(&t, queue);
 	assert_eq!(recorded.len(), 1);
 	let (key, record) = &recorded[0];
 	assert_eq!(key.attempt, 1);
 	assert_eq!(record.worker, "worker-a");
-	assert_eq!(record.outcome, AttemptOutcome::Ok);
-	assert_eq!(record.response.as_deref(), Some("delivered"));
+	assert_eq!(record.outcome, AttemptOutcome::Err);
+	assert_eq!(record.response.as_deref(), Some("gateway timeout"));
 	assert_eq!(record.lost, false, "only the step-5 reaper writes lost attempts");
 	assert_eq!(record.anomaly, None);
 }
@@ -181,7 +191,7 @@ fn test_an_err_ack_requeues_the_item_until_the_retry_budget_is_spent() {
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
 
-	assert_eq!(ack(&t, &claim_one(&t, "w1"), "err"), "ok");
+	assert_eq!(fail(&t, &claim_one(&t, "w1")), "ok");
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Ready, "attempt 1 of 2 must be retried");
 	assert_eq!(dues(&t, queue).len(), 1, "a retried item needs a due entry or no scan will find it");
 	assert_eq!(counters(&t, queue, 0).depth, 1);
@@ -193,7 +203,7 @@ fn test_an_err_ack_requeues_the_item_until_the_retry_budget_is_spent() {
 	t.mock_clock().advance_millis(10_000);
 
 	let second = claim_one(&t, "w1");
-	assert_eq!(ack(&t, &second, "err"), "ok");
+	assert_eq!(fail(&t, &second), "ok");
 
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Dead, "the budget is spent at attempt 2");
 	assert_eq!(claimable(&t), 0);
@@ -212,7 +222,7 @@ fn test_an_err_ack_places_the_due_entry_at_the_backoff_instant() {
 	let queue = queue_id(&t, "jobs");
 	t.mock_clock().set_millis(50_000);
 
-	assert_eq!(ack(&t, &claim_one(&t, "w1"), "err"), "ok");
+	assert_eq!(fail(&t, &claim_one(&t, "w1")), "ok");
 
 	let state = state_of(&t, queue);
 	assert_eq!(
@@ -240,11 +250,11 @@ fn test_consecutive_failures_double_the_wait() {
 	let queue = queue_id(&t, "jobs");
 	t.mock_clock().set_millis(0);
 
-	assert_eq!(ack(&t, &claim_one(&t, "w1"), "err"), "ok");
+	assert_eq!(fail(&t, &claim_one(&t, "w1")), "ok");
 	assert_eq!(dues(&t, queue)[0].due.to_nanos(), 10_000_000_000, "first failure waits one base interval");
 
 	t.mock_clock().set_millis(10_000);
-	assert_eq!(ack(&t, &claim_one(&t, "w1"), "err"), "ok");
+	assert_eq!(fail(&t, &claim_one(&t, "w1")), "ok");
 	assert_eq!(dues(&t, queue)[0].due.to_nanos(), 30_000_000_000, "the second failure waits 20s, not another 10s");
 }
 
@@ -260,7 +270,7 @@ fn test_a_retry_does_not_overwrite_the_user_declared_not_before() {
 	let queue = queue_id(&t, "jobs");
 	t.mock_clock().set_millis(10_000);
 
-	assert_eq!(ack(&t, &claim_one(&t, "w1"), "err"), "ok");
+	assert_eq!(fail(&t, &claim_one(&t, "w1")), "ok");
 
 	let state = state_of(&t, queue);
 	assert_eq!(
@@ -281,7 +291,7 @@ fn test_a_dead_ack_buries_the_item_immediately() {
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
 
-	assert_eq!(ack(&t, &claim_one(&t, "w1"), "dead"), "ok");
+	assert_eq!(kill(&t, &claim_one(&t, "w1")), "ok");
 
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Dead);
 	assert_eq!(claimable(&t), 0, "a dead item must not be retried despite an unspent budget");
@@ -296,10 +306,10 @@ fn test_a_repeated_ack_is_a_no_op() {
 	let queue = queue_id(&t, "jobs");
 	let token = claim_one(&t, "w1");
 
-	assert_eq!(ack(&t, &token, "ok"), "ok");
+	assert_eq!(ack(&t, &token), "ok");
 	let after_first = counters(&t, queue, 0);
 
-	assert_eq!(ack(&t, &token, "ok"), "repeat");
+	assert_eq!(ack(&t, &token), "repeat");
 
 	assert_eq!(attempts(&t, queue).len(), 1, "a repeat must not write a second attempt record");
 	assert_eq!(counters(&t, queue, 0), after_first, "a repeat must not move the counters");
@@ -315,9 +325,9 @@ fn test_the_first_outcome_wins_and_the_conflicting_one_is_recorded() {
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
 	let token = claim_one(&t, "w1");
-	ack(&t, &token, "ok");
+	ack(&t, &token);
 
-	assert_eq!(ack(&t, &token, "err"), "stale");
+	assert_eq!(fail(&t, &token), "stale");
 
 	let (_, record) = attempts(&t, queue).into_iter().next().unwrap();
 	assert_eq!(record.outcome, AttemptOutcome::Ok, "the first outcome must stand");
@@ -336,7 +346,7 @@ fn test_an_ack_for_an_attempt_that_is_not_live_is_recorded_but_never_transitions
 	let live = claim_one(&t, "w1");
 	let forged = live.replace(":1:w1", ":7:w1");
 
-	assert_eq!(ack(&t, &forged, "ok"), "stale");
+	assert_eq!(ack(&t, &forged), "stale");
 
 	let (key, record) = attempts(&t, queue).into_iter().next().unwrap();
 	assert_eq!(key.attempt, 7);
@@ -353,11 +363,11 @@ fn test_an_ack_after_the_item_was_already_finished_does_not_resurrect_it() {
 	t.command("INSERT test::jobs [{ id: 1 }]");
 	let queue = queue_id(&t, "jobs");
 	let token = claim_one(&t, "w1");
-	ack(&t, &token, "ok");
+	ack(&t, &token);
 	let before = counters(&t, queue, 0);
 
 	let other_attempt = token.replace(":1:w1", ":2:w1");
-	assert_eq!(ack(&t, &other_attempt, "err"), "stale");
+	assert_eq!(fail(&t, &other_attempt), "stale");
 
 	assert_eq!(state_of(&t, queue).status, QueueItemStatus::Done);
 	assert_eq!(counters(&t, queue, 0), before);
@@ -412,7 +422,7 @@ fn test_the_interceptor_refuses_an_ack_against_an_item_that_is_no_longer_leased(
 	let queue = queue_id(&t, "jobs");
 	let token = claim_one(&t, "w1");
 	let row = states(&t, queue)[0].0.row;
-	ack(&t, &token, "ok");
+	ack(&t, &token);
 	let before = counters(&t, queue, 0);
 
 	let applied = apply_ack(&t, queue, row, 1, QueueAckTransition::Done);
@@ -428,30 +438,18 @@ fn test_a_malformed_token_is_rejected_with_queue_003() {
 	// asserting the wrong one here would pass against an unrelated diagnostic.
 	let t = engine_with_queue(ONE_PARTITION);
 
-	let err = t.command_err(r#"CALL queue::ack("not-a-token", "ok", none)"#);
+	let err = t.command_err(r#"CALL queue::ack("not-a-token")"#);
 
 	assert!(err.contains("QUEUE_003"), "{err}");
 }
 
 #[test]
-fn test_an_unknown_outcome_is_rejected() {
-	// Silently coercing an unrecognised outcome to ok would mark failed work as complete.
-	let t = engine_with_queue(ONE_PARTITION);
-	t.command("INSERT test::jobs [{ id: 1 }]");
-	let token = claim_one(&t, "w1");
-
-	let err = t.command_err(&format!(r#"CALL queue::ack("{token}", "maybe", none)"#));
-
-	assert!(err.contains("ok, err, dead"), "{err}");
-}
-
-#[test]
 fn test_an_ack_is_rejected_outside_a_command_transaction() {
-	// The transition rides on a row change that only a committing transaction produces; a
-	// query-lane ack would report success while changing nothing.
+	// A query-lane ack would report success while changing nothing, since the transition rides on a row change only
+	// a committing transaction produces.
 	let t = engine_with_queue(ONE_PARTITION);
 
-	let err = t.query_err(r#"CALL queue::ack("qt1:1:0:1:1:w1", "ok", none)"#);
+	let err = t.query_err(r#"CALL queue::ack("qt1:1:0:1:1:w1")"#);
 
 	assert!(err.contains("must run in a command transaction"), "{err}");
 }

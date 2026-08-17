@@ -30,5 +30,5 @@ fn main() {
 	command(&db, &format!(r#"CALL queue::extend("{token}", duration::seconds(5))"#));
 
 	info!("The render finishes inside the extended lease...");
-	command(&db, &format!(r#"CALL queue::ack("{token}", "ok", none)"#));
+	command(&db, &format!(r#"CALL queue::ack("{token}")"#));
 }

@@ -4,6 +4,8 @@
 pub mod ack;
 pub mod claim;
 pub mod extend;
+pub mod fail;
+pub mod kill;
 pub mod replay;
 pub mod token;
 

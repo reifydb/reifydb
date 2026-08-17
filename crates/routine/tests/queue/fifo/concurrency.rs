@@ -88,8 +88,12 @@ fn claim(t: &TestEngine, worker: &str, max_n: usize) -> Vec<Delivery> {
 		.collect()
 }
 
-fn ack(t: &TestEngine, token: &str, outcome: &str) {
-	t.command(&format!(r#"CALL queue::ack("{token}", "{outcome}", none)"#));
+fn ack(t: &TestEngine, token: &str) {
+	t.command(&format!(r#"CALL queue::ack("{token}")"#));
+}
+
+fn fail(t: &TestEngine, token: &str) {
+	t.command(&format!(r#"CALL queue::fail("{token}", none)"#));
 }
 
 fn take_key(observed: &Mutex<Observed>, delivery: &Delivery) {
@@ -156,7 +160,7 @@ fn test_concurrent_claim_and_ack_preserve_per_key_order() {
 					for delivery in &batch {
 						take_key(observed, delivery);
 						release_key(observed, delivery, true);
-						ack(t, &delivery.token, "ok");
+						ack(t, &delivery.token);
 					}
 				}
 			});
@@ -199,11 +203,6 @@ fn test_per_key_order_survives_failed_attempts_and_redelivery() {
 
 					for delivery in &batch {
 						let first_failure = failed.lock().unwrap().insert(delivery.item);
-						let outcome = if first_failure {
-							"err"
-						} else {
-							"ok"
-						};
 
 						if !first_failure {
 							assert!(
@@ -213,7 +212,11 @@ fn test_per_key_order_survives_failed_attempts_and_redelivery() {
 							take_key(observed, delivery);
 						}
 						release_key(observed, delivery, !first_failure);
-						ack(t, &delivery.token, outcome);
+						if first_failure {
+							fail(t, &delivery.token);
+						} else {
+							ack(t, &delivery.token);
+						}
 					}
 				}
 			});
@@ -265,7 +268,7 @@ fn test_items_enqueued_during_a_drain_keep_their_key_order() {
 					for delivery in &batch {
 						take_key(observed, delivery);
 						release_key(observed, delivery, true);
-						ack(t, &delivery.token, "ok");
+						ack(t, &delivery.token);
 					}
 				}
 			});

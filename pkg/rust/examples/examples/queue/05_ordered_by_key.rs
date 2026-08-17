@@ -49,7 +49,7 @@ fn main() {
 	let accounts = utf8_column(&claimed, "account");
 	let tokens = utf8_column(&claimed, "token");
 	let for_a = accounts.iter().position(|account| account == "a").expect("account a must be claimable");
-	command(&db, &format!(r#"CALL queue::ack("{}", "ok", none)"#, tokens[for_a]));
+	command(&db, &format!(r#"CALL queue::ack("{}")"#, tokens[for_a]));
 
 	info!("The second change for a is now claimable, the third still is not...");
 	command(&db, r#"CALL queue::claim("worker-1", "jobs::updates", 4, duration::seconds(30))"#);

@@ -78,7 +78,7 @@ impl QueueRetentionTask {
 	fn queues(&self) -> Result<Vec<Queue>> {
 		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
 		let mut txn = Transaction::Query(&mut query_txn);
-		let mut queues = self.engine.catalog().list_queues_all(&mut txn)?;
+		let mut queues = self.engine.catalog().list_queues(&mut txn)?;
 		queues.sort_unstable_by_key(|queue| queue.id.0);
 		Ok(queues)
 	}

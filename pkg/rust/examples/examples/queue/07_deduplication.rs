@@ -20,7 +20,7 @@ fn main() {
 		CREATE QUEUE jobs::receipts {
 			order_id: int4,
 			amount: int4
-		} WITH { fifo: { partitions: 1 }, deduplicate: { by: {order_id}, ttl: "30d" } };
+		} WITH { fifo: { partitions: 1 }, deduplicate: { by: {order_id}, ttl: 30d } };
 		"#,
 		Params::None,
 	)

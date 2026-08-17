@@ -50,8 +50,7 @@ impl BaseVTable for SystemQueuePartitions {
 			return Ok(None);
 		}
 
-		let queues: Vec<_> =
-			CatalogStore::list_queues_all(txn)?.into_iter().filter(|queue| !queue.underlying).collect();
+		let queues = CatalogStore::list_queues(txn)?;
 
 		let mut queue_ids = ColumnBuffer::uint8_with_capacity(queues.len());
 		let mut partitions = ColumnBuffer::uint2_with_capacity(queues.len());

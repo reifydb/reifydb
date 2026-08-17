@@ -16,7 +16,7 @@ use reifydb_test_harness::engine::AsEngine;
 
 const ORDERED: &str = r#"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH {
 	fifo: { partitions: 1, ordered_by: tenant },
-	retry: { attempts: 5, backoff: "50ms" }
+	retry: { attempts: 5, backoff: 50ms }
 }"#;
 
 fn built_db() -> TestDb {
@@ -34,7 +34,7 @@ fn seeded_db(attempts: u32) -> TestDb {
 	db.admin("CREATE NAMESPACE test");
 	db.admin(&format!(r#"CREATE QUEUE test::jobs {{ id: int4 }} WITH {{
 			fifo: {{ partitions: 1 }},
-			retry: {{ attempts: {attempts}, backoff: "50ms" }}
+			retry: {{ attempts: {attempts}, backoff: 50ms }}
 		}}"#));
 	db.command("INSERT test::jobs [{ id: 1 }]");
 	db
@@ -97,8 +97,8 @@ fn try_claim(db: &TestDb, worker: &str, lease_ms: u64) -> Option<Vec<Frame>> {
 	}
 }
 
-fn ack(db: &TestDb, token: &str, outcome: &str) -> String {
-	utf8(&db.command(&format!(r#"CALL queue::ack("{token}", "{outcome}", none)"#)), "status")
+fn ack(db: &TestDb, token: &str) -> String {
+	utf8(&db.command(&format!(r#"CALL queue::ack("{token}")"#)), "status")
 }
 
 fn extend(db: &TestDb, token: &str, ttl_ms: u64) {
@@ -126,14 +126,14 @@ fn a_late_ack_after_lease_expiry_and_reassignment_is_rejected_as_stale() {
 
 	// worker-a's ack finally arrives, addressed to the attempt it no longer holds.
 	assert_eq!(
-		ack(&db, &stale_token, "ok"),
+		ack(&db, &stale_token),
 		"stale",
 		"a late ack naming a superseded attempt must be rejected, not applied"
 	);
 
 	// the current holder must be unaffected by the superseded worker's stale ack.
 	let live_token = utf8(&second, "token");
-	assert_eq!(ack(&db, &live_token, "ok"), "ok", "the current holder's ack must still succeed");
+	assert_eq!(ack(&db, &live_token), "ok", "the current holder's ack must still succeed");
 
 	// exactly one completion, never a resurrected or double-processed item.
 	assert_eq!(depth_and_in_flight(&db), (0, 0));
@@ -165,7 +165,7 @@ fn repeated_crashes_exhaust_the_retry_budget_and_an_operator_replays_the_dead_it
 	// a third worker now completes it normally, proving the replay is a real second chance.
 	let third = poll_until(|| try_claim(&db, "worker-final", 30_000), Duration::from_secs(5))
 		.expect("the replayed item must be claimable again");
-	assert_eq!(ack(&db, &utf8(&third, "token"), "ok"), "ok");
+	assert_eq!(ack(&db, &utf8(&third, "token")), "ok");
 	assert_eq!(depth_and_in_flight(&db), (0, 0));
 }
 
@@ -183,7 +183,7 @@ fn a_worker_that_extends_before_the_deadline_survives_the_reaper_sweep() {
 	assert!(try_claim(&db, "worker-b", 30_000).is_none(), "an extended lease must never be reclaimed early");
 
 	// worker-a finishes normally, proving the lease and its attempt count survived untouched.
-	assert_eq!(ack(&db, &token, "ok"), "ok", "the original attempt must still be live after the extension");
+	assert_eq!(ack(&db, &token), "ok", "the original attempt must still be live after the extension");
 	assert_eq!(depth_and_in_flight(&db), (0, 0));
 }
 
@@ -255,7 +255,7 @@ fn a_crashed_worker_holding_the_head_of_a_key_keeps_its_sibling_parked_until_rea
 	assert_eq!(int4(&redelivered, "id"), 1, "the redelivered item must be the original head, never its sibling");
 
 	// only a terminal transition on the head may promote the parked sibling.
-	assert_eq!(ack(&db, &utf8(&redelivered, "token"), "ok"), "ok");
+	assert_eq!(ack(&db, &utf8(&redelivered, "token")), "ok");
 	let sibling = poll_until(|| try_claim(&db, "worker-d", 30_000), Duration::from_secs(5))
 		.expect("the sibling must be promoted once the head is done");
 	assert_eq!(int4(&sibling, "id"), 2, "the promoted item must be the previously parked sibling");

@@ -113,6 +113,8 @@ fn every_family_tag_keeps_the_byte_it_was_assigned_and_round_trips_through_from_
 		(RowFamily::RingBuffer, 0x05),
 		(RowFamily::Queue, 0x06),
 		(RowFamily::Operator, 0x07),
+		(RowFamily::QueueAttempt, 0x08),
+		(RowFamily::QueueDeduplication, 0x09),
 	];
 
 	for (family, tag) in expected {
@@ -121,7 +123,7 @@ fn every_family_tag_keeps_the_byte_it_was_assigned_and_round_trips_through_from_
 	}
 
 	assert_eq!(RowFamily::from_u8(0x00), None, "zero is not a family and must never decode");
-	assert_eq!(RowFamily::from_u8(0x08), None, "the range is dense, so the byte past the last tag is unknown");
+	assert_eq!(RowFamily::from_u8(0x0A), None, "the range is dense, so the byte past the last tag is unknown");
 }
 
 #[test]
@@ -162,7 +164,7 @@ fn the_nine_header_widths_are_the_widths_every_stored_row_was_written_under() {
 	// Checking only against the constants is circular, so these literals are the on-disk contract itself.
 	assert_eq!(RowFamily::Pod.header_size(), 0, "a pod row is payload from offset zero");
 	assert_eq!(RowFamily::Catalog.header_size(), 8, "a catalog header is the fingerprint and nothing else");
-	assert_eq!(RowFamily::Operator.header_size(), 24, "created_at, updated_at and time, with no fingerprint");
+	assert_eq!(RowFamily::Operator.header_size(), 8, "the operator row is nothing but the instant it belongs to");
 	assert_eq!(RowFamily::Table.header_size(), 33);
 	assert_eq!(RowFamily::Series.header_size(), 33);
 	assert_eq!(RowFamily::RingBuffer.header_size(), 33);

@@ -138,8 +138,12 @@ fn claim_row(t: &TestEngine, worker: &str, row: u64) -> String {
 	claimed[0].1.clone()
 }
 
-fn ack(t: &TestEngine, token: &str, outcome: &str) {
-	t.command(&format!(r#"CALL queue::ack("{token}", "{outcome}", none)"#));
+fn ack(t: &TestEngine, token: &str) {
+	t.command(&format!(r#"CALL queue::ack("{token}")"#));
+}
+
+fn fail(t: &TestEngine, token: &str) {
+	t.command(&format!(r#"CALL queue::fail("{token}", none)"#));
 }
 
 fn replay(t: &TestEngine, row: u64) -> String {
@@ -186,7 +190,7 @@ fn test_a_younger_sibling_is_never_claimable_while_its_head_is_pending() {
 	assert_eq!(rows, vec![1, 3], "a claim asking for everything must still not see the parked sibling");
 
 	let head = claimed.iter().find(|(item, _)| *item == 1).unwrap().1.clone();
-	ack(&t, &head, "ok");
+	ack(&t, &head);
 
 	assert_eq!(claimed_rows(&t, "w1", 10), vec![2], "acking the head must release its successor");
 }
@@ -199,7 +203,7 @@ fn test_a_retrying_head_keeps_blocking_across_its_backoff() {
 	t.command(r#"INSERT test::jobs [{ id: 1, tenant: "a" }, { id: 2, tenant: "a" }]"#);
 	let queue = queue_id(&t, "jobs");
 
-	ack(&t, &claim_row(&t, "w1", 1), "err");
+	fail(&t, &claim_row(&t, "w1", 1));
 
 	assert_eq!(status_of(&t, queue, 1), QueueItemStatus::Ready, "the head is retried, not finished");
 	assert_eq!(status_of(&t, queue, 2), QueueItemStatus::Parked, "its sibling must not be promoted");
@@ -250,7 +254,7 @@ fn test_a_head_delayed_by_not_before_blocks_its_younger_sibling() {
 
 	t.mock_clock().set_millis(60_000);
 
-	ack(&t, &claim_row(&t, "w1", 1), "ok");
+	ack(&t, &claim_row(&t, "w1", 1));
 
 	assert_eq!(claimed_rows(&t, "w1", 10), vec![2], "and only then does the sibling follow");
 }
@@ -263,7 +267,7 @@ fn test_a_dead_head_releases_the_key_to_its_successor() {
 	t.command(r#"INSERT test::jobs [{ id: 1, tenant: "a" }, { id: 2, tenant: "a" }]"#);
 	let queue = queue_id(&t, "jobs");
 
-	ack(&t, &claim_row(&t, "w1", 1), "err");
+	fail(&t, &claim_row(&t, "w1", 1));
 
 	assert_eq!(status_of(&t, queue, 1), QueueItemStatus::Dead, "the budget of one attempt is spent");
 	assert_eq!(status_of(&t, queue, 2), QueueItemStatus::Ready, "its successor must take over the key");
@@ -280,10 +284,10 @@ fn test_a_dead_head_leaves_no_chain_entry_behind() {
 	let queue = queue_id(&t, "jobs");
 	assert_eq!(chains(&t, queue).len(), 2, "both pending items belong to the key's chain");
 
-	ack(&t, &claim_row(&t, "w1", 1), "err");
+	fail(&t, &claim_row(&t, "w1", 1));
 	assert_eq!(chains(&t, queue).iter().map(|entry| entry.row.0).collect::<Vec<_>>(), vec![2]);
 
-	ack(&t, &claim_row(&t, "w2", 2), "ok");
+	ack(&t, &claim_row(&t, "w2", 2));
 	assert!(chains(&t, queue).is_empty(), "a drained key must leave no chain entries");
 }
 
@@ -295,7 +299,7 @@ fn test_a_replayed_item_parks_behind_the_sibling_that_took_its_key() {
 	t.command(r#"INSERT test::jobs [{ id: 1, tenant: "a" }, { id: 2, tenant: "a" }]"#);
 	let queue = queue_id(&t, "jobs");
 
-	ack(&t, &claim_row(&t, "w1", 1), "err");
+	fail(&t, &claim_row(&t, "w1", 1));
 	assert_eq!(status_of(&t, queue, 1), QueueItemStatus::Dead);
 
 	assert_eq!(replay(&t, 1), "parked", "the key is occupied, so replay must report a parked item");
@@ -303,7 +307,7 @@ fn test_a_replayed_item_parks_behind_the_sibling_that_took_its_key() {
 	assert_eq!(due_rows(&t, queue), vec![2], "a replayed item must not add a second due entry for its key");
 	assert_eq!(counters(&t, queue, 0).blocked_keys, 1, "the key is blocked again");
 
-	ack(&t, &claim_row(&t, "w2", 2), "ok");
+	ack(&t, &claim_row(&t, "w2", 2));
 
 	assert_eq!(claimed_rows(&t, "w2", 10), vec![1], "the replayed item runs after the sibling that overtook it");
 }
@@ -316,7 +320,7 @@ fn test_a_replayed_item_takes_an_empty_key_immediately() {
 	t.command(r#"INSERT test::jobs [{ id: 1, tenant: "a" }]"#);
 	let queue = queue_id(&t, "jobs");
 
-	ack(&t, &claim_row(&t, "w1", 1), "err");
+	fail(&t, &claim_row(&t, "w1", 1));
 	assert_eq!(status_of(&t, queue, 1), QueueItemStatus::Dead);
 
 	assert_eq!(replay(&t, 1), "ready");
@@ -349,7 +353,7 @@ fn test_an_unkeyed_queue_writes_no_chain_entries_and_never_parks() {
 	));
 
 	for (_, token) in claim(&t, "w2", 10) {
-		ack(&t, &token, "ok");
+		ack(&t, &token);
 	}
 
 	assert!(chains(&t, queue).is_empty(), "an unkeyed queue must never write a chain entry");
@@ -381,10 +385,10 @@ fn test_blocked_keys_counts_keys_that_hold_a_waiting_sibling() {
 	assert_eq!(claimed.len(), 2, "exactly one head per key is exposed at a time");
 	let head_of = |item: u64| claimed.iter().find(|(row, _)| *row == item).expect("head must be claimed").1.clone();
 
-	ack(&t, &head_of(1), "ok");
+	ack(&t, &head_of(1));
 	assert_eq!(counters(&t, queue, 0).blocked_keys, 2, "tenant a still has two items behind its new head");
 
-	ack(&t, &head_of(4), "ok");
+	ack(&t, &head_of(4));
 	assert_eq!(
 		counters(&t, queue, 0).blocked_keys,
 		1,
@@ -397,7 +401,7 @@ fn test_blocked_keys_counts_keys_that_hold_a_waiting_sibling() {
 			break;
 		}
 		for (_, token) in batch {
-			ack(&t, &token, "ok");
+			ack(&t, &token);
 		}
 	}
 	assert_eq!(counters(&t, queue, 0).blocked_keys, 0, "draining both keys must return the counter to zero");

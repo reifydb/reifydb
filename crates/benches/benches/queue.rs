@@ -354,7 +354,7 @@ fn work(driver: &Driver, name: &str, shared: &Shared<'_>, budget: Duration) -> O
 		}
 
 		for row in &rows {
-			driver.command_frames(&format!(r#"CALL queue::ack("{}", "ok", none)"#, row.token));
+			driver.command_frames(&format!(r#"CALL queue::ack("{}")"#, row.token));
 			outcome.acked += 1;
 			outcome.last_ack = Some(Instant::now());
 			shared.acked.fetch_add(1, Ordering::Release);

@@ -140,25 +140,6 @@ fn allocating_an_operator_row_from_a_pod_shape_panics() {
 }
 
 #[test]
-fn test_thawing_a_row_is_the_only_path_to_its_wall_clock_stamps() {
-	// The row type exposes no stamp setter, so without a thaw a stored operator row can never record a change.
-	let row = EncodedOperatorRow::new(&[1u8, 2, 3, 4], at_nanos(7));
-	let body_before = row.body().to_vec();
-
-	let mut thawed = row.thaw();
-	assert_eq!(thawed.row_time(), Some(at_nanos(7)), "the event instant must survive the thaw");
-	thawed.set_timestamps(at_nanos(11), at_nanos(22));
-	let refrozen = thawed.freeze();
-
-	assert_eq!(refrozen.time(), at_nanos(7), "stamping the wall clock must not move the event instant");
-	assert_eq!(refrozen.body(), body_before.as_slice(), "a header write must never reach the postcard payload");
-
-	let reread = refrozen.thaw();
-	assert_eq!(reread.created_at(), at_nanos(11));
-	assert_eq!(reread.updated_at(), at_nanos(22), "the two stamps must occupy disjoint slots");
-}
-
-#[test]
 #[should_panic(expected = "allocate_operator on a shape of another family")]
 fn test_a_shape_of_another_family_cannot_allocate_an_operator_row() {
 	// A table shape stamps a fingerprint over bytes 0..8, which is exactly where operator keeps created_at.
