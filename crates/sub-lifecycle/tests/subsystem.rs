@@ -39,7 +39,7 @@ fn reports_running_and_healthy_from_the_moment_it_is_created() {
 		matches!(subsystem.health_status(), HealthStatus::Healthy),
 		"a freshly created lifecycle subsystem must report Healthy"
 	);
-	assert_eq!(subsystem.name(), "Lifecycle");
+	assert_eq!(subsystem.name(), "lifecycle");
 }
 
 #[test]
