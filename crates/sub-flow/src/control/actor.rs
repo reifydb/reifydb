@@ -708,7 +708,7 @@ mod pull_protocol {
 				ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata},
 			},
 			cdc::SystemChange,
-			change::{ChangeOrigin, Diff},
+			change::ChangeOrigin,
 		},
 		key::{
 			Key,
@@ -1394,23 +1394,20 @@ mod pull_protocol {
 	}
 
 	#[test]
-	fn a_tick_fired_eviction_lands_in_the_commits_change_stream() {
+	fn a_tick_fired_ttl_eviction_never_lands_in_the_commits_change_stream() {
 		let h = ring_harness();
 		let (_actor, pre_tick) = drive_ring_ttl_tick(&h);
 
-		let change = h
-			.poll_until(seconds(10), || h.view_change_beyond(pre_tick))
-			.expect("the tick commit must carry a view change record for the announced eviction");
-		let removes: Vec<&Diff> =
-			change.diffs.iter().filter(|diff| matches!(diff, Diff::Remove { .. })).collect();
-		assert_eq!(removes.len(), 1, "the eviction must surface as one Remove diff, got {:?}", change.diffs);
-		if let Diff::Remove {
-			pre,
-			..
-		} = removes[0]
-		{
-			assert_eq!(pre.row_count(), 1, "the retraction must carry the evicted row as its pre-image");
-		}
+		assert_eq!(
+			h.poll_until(seconds(10), || (h.view_rows() == 0).then_some(())),
+			Some(()),
+			"precondition: the ttl eviction must still remove the expired row from storage, \
+			 otherwise there is no eviction whose silence could be asserted"
+		);
+		assert!(
+			h.view_change_beyond(pre_tick).is_none(),
+			"a ttl eviction must leave no view change record on the tick commit"
+		);
 	}
 
 	#[test]
