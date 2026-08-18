@@ -14,7 +14,6 @@ use reifydb_core::{
 	},
 	interface::{
 		cdc::{Cdc, SystemChange},
-		change::Change,
 		store::MultiVersionGetPrevious,
 	},
 	key::{Key, cdc_exclude::should_exclude_from_cdc},
@@ -70,7 +69,7 @@ where
 		}
 	}
 
-	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>, flow_changes: Vec<Change>) {
+	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
 		let mut system_changes: Vec<SystemChange> = Vec::new();
 
 		debug!(version = version.0, delta_count = deltas.len(), "Processing CDC");
@@ -84,15 +83,7 @@ where
 			}
 		}
 
-		let changes: Vec<Change> = flow_changes
-			.into_iter()
-			.map(|mut change| {
-				change.version = version;
-				change.changed_at = changed_at;
-				change
-			})
-			.collect();
-		self.write_and_emit(version, changed_at, changes, system_changes);
+		self.write_and_emit(version, changed_at, system_changes);
 	}
 
 	#[inline]
@@ -106,18 +97,12 @@ where
 	}
 
 	#[inline]
-	fn write_and_emit(
-		&self,
-		version: CommitVersion,
-		changed_at: DateTime,
-		changes: Vec<Change>,
-		system_changes: Vec<SystemChange>,
-	) {
-		if changes.is_empty() && system_changes.is_empty() {
+	fn write_and_emit(&self, version: CommitVersion, changed_at: DateTime, system_changes: Vec<SystemChange>) {
+		if system_changes.is_empty() {
 			self.backlog.publish(version, None);
 			return;
 		}
-		let cdc = Arc::new(Cdc::new(version, changed_at, changes, system_changes.clone()));
+		let cdc = Arc::new(Cdc::new(version, changed_at, system_changes.clone()));
 		match self.storage.write(&cdc) {
 			Ok(_) => {
 				debug!(version = version.0, "CDC written successfully");
@@ -142,14 +127,8 @@ where
 	}
 
 	#[inline]
-	fn on_produce(
-		&self,
-		version: CommitVersion,
-		changed_at: DateTime,
-		deltas: Vec<Delta>,
-		flow_changes: Vec<Change>,
-	) {
-		self.process(version, changed_at, deltas, flow_changes);
+	fn on_produce(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
+		self.process(version, changed_at, deltas);
 
 		self.watermark.advance(version);
 		self.wake_registry.notify_all();
@@ -190,6 +169,17 @@ fn delta_to_raw_system_change(
 		} => Some(SystemChange::Delete {
 			key: key.clone(),
 			pre: Some(pre.clone()),
+			visible: true,
+		}),
+		Delta::Remove {
+			key,
+			announce: RemoveAnnounce::Unobserved {
+				pre,
+			},
+		} => Some(SystemChange::Delete {
+			key: key.clone(),
+			pre: Some(pre.clone()),
+			visible: false,
 		}),
 		Delta::Remove {
 			announce: RemoveAnnounce::Silent,
@@ -223,8 +213,7 @@ where
 				version,
 				changed_at,
 				deltas,
-				flow_changes,
-			} => self.on_produce(version, changed_at, deltas, flow_changes),
+			} => self.on_produce(version, changed_at, deltas),
 		}
 		Directive::Continue
 	}
@@ -258,7 +247,6 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 			version: *event.version(),
 			changed_at: self.clock.now(),
 			deltas: event.deltas().iter().cloned().collect(),
-			flow_changes: event.flow_changes().clone(),
 		};
 
 		if let Err(e) = self.actor_ref.send(msg) {
@@ -292,18 +280,12 @@ pub mod tests {
 		time::{Duration as StdDuration, Instant},
 	};
 
-	use reifydb_core::{
-		interface::{
-			catalog::flow::OperatorId,
-			change::{ChangeOrigin, Diff},
-		},
-		value::column::columns::Columns,
-	};
+	use reifydb_core::{interface::catalog::storage::StorageId, key::row::RowKey};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_value::{
 		byte_size::ByteSize,
-		value::{datetime::DateTime, duration::Duration},
+		value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 	};
 
 	use super::*;
@@ -345,7 +327,6 @@ pub mod tests {
 				version: CommitVersion(1),
 				changed_at: DateTime::from_nanos(12345000),
 				deltas,
-				flow_changes: vec![],
 			})
 			.unwrap();
 
@@ -400,7 +381,6 @@ pub mod tests {
 				version: CommitVersion(2),
 				changed_at: DateTime::from_nanos(12345000),
 				deltas,
-				flow_changes: vec![],
 			})
 			.unwrap();
 
@@ -437,23 +417,14 @@ pub mod tests {
 			backlog.clone(),
 		);
 
-		let relevant_change = Change {
-			origin: ChangeOrigin::Flow(OperatorId(1)),
-			version: CommitVersion(1),
-			diffs: [Diff::Insert {
-				post: Columns::empty(),
-				origin: None,
-			}]
-			.into_iter()
-			.collect(),
-			changed_at: DateTime::from_nanos(1),
-		};
 		handle.actor_ref()
 			.send(CdcProduceMessage::Produce {
 				version: CommitVersion(1),
 				changed_at: DateTime::from_nanos(1),
-				deltas: vec![],
-				flow_changes: vec![relevant_change],
+				deltas: vec![Delta::Set {
+					key: RowKey::encoded(StorageId::table(1), RowNumber(1)),
+					bytes: make_bytes("row"),
+				}],
 			})
 			.unwrap();
 		handle.actor_ref()
@@ -464,7 +435,6 @@ pub mod tests {
 					key: make_key("unknown_kind_key"),
 					bytes: make_bytes("value"),
 				}],
-				flow_changes: vec![],
 			})
 			.unwrap();
 

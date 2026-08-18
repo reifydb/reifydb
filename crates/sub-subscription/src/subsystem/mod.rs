@@ -108,8 +108,13 @@ impl SubscriptionSubsystem {
 			position_tracker: position_tracker.clone(),
 		});
 
-		let cdc_consumer =
-			SubscriptionCdcConsumer::new(workers, source_tracker, position_tracker, store.clone());
+		let cdc_consumer = SubscriptionCdcConsumer::new(
+			engine.clone(),
+			workers,
+			source_tracker,
+			position_tracker,
+			store.clone(),
+		);
 
 		let cdc_wake_registry =
 			engine.ioc().resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");

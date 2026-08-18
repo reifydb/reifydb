@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, Bound};
+use std::{
+	collections::{BTreeMap, Bound},
+	sync::{Arc, Mutex},
+};
 
 use reifydb_cdc::rebuild::rebuild_changes;
 use reifydb_core::{
+	common::CommitVersion,
+	event::{EventListener, transaction::PostCommitEvent},
 	interface::{
+		WithEventBus,
 		catalog::storage::StorageId,
 		cdc::{Cdc, SystemChange},
 		change::{Change, ChangeOrigin, Diff},
@@ -24,6 +30,31 @@ impl Lcg {
 		self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
 		(self.0 >> 33) % bound
 	}
+}
+
+#[derive(Clone, Default)]
+struct TrackedChanges(Arc<Mutex<BTreeMap<CommitVersion, Vec<Change>>>>);
+
+impl TrackedChanges {
+	fn settled(&self, t: &TestEngine) -> BTreeMap<CommitVersion, Vec<Change>> {
+		t.await_cdc();
+		t.event_bus().wait_for_completion();
+		self.0.lock().expect("tracked changes lock").clone()
+	}
+}
+
+impl EventListener<PostCommitEvent> for TrackedChanges {
+	fn on(&self, event: &PostCommitEvent) {
+		self.0.lock().expect("tracked changes lock").insert(*event.version(), event.flow_changes().clone());
+	}
+}
+
+fn tracked_engine() -> (TestEngine, TrackedChanges) {
+	// track_flow_change is the oracle the deleted field was built from, never a second copy of the rebuild.
+	let t = TestEngine::new();
+	let tracked = TrackedChanges::default();
+	t.event_bus().register::<PostCommitEvent, _>(tracked.clone());
+	(t, tracked)
 }
 
 fn read_all(t: &TestEngine) -> Vec<Cdc> {
@@ -95,13 +126,22 @@ fn canonical(changes: &[Change]) -> BTreeMap<String, Vec<String>> {
 		.collect()
 }
 
-fn assert_round_trip(t: &TestEngine, label: &str) -> usize {
-	t.await_cdc();
+fn assert_round_trip(t: &TestEngine, tracked: &TrackedChanges, label: &str) -> usize {
+	let tracked = tracked.settled(t);
+	let records: BTreeMap<CommitVersion, Cdc> = read_all(t).into_iter().map(|cdc| (cdc.version, cdc)).collect();
 	let mut compared = 0;
-	for cdc in read_all(t) {
-		let original = canonical(&cdc.changes);
-		let rebuilt = canonical(&rebuilt(t, &cdc));
-		assert_eq!(rebuilt, original, "{label}: rebuild diverged at commit version {}", cdc.version.0);
+	for (version, changes) in &tracked {
+		let original = canonical(changes);
+		let Some(cdc) = records.get(version) else {
+			assert!(
+				original.is_empty(),
+				"{label}: commit version {} tracked changes but wrote no cdc record",
+				version.0
+			);
+			continue;
+		};
+		let rebuilt = canonical(&rebuilt(t, cdc));
+		assert_eq!(rebuilt, original, "{label}: rebuild diverged at commit version {}", version.0);
 		compared += original.values().map(Vec::len).sum::<usize>();
 	}
 	assert!(compared > 0, "{label}: nothing was compared, the workload produced no row changes");
@@ -111,7 +151,7 @@ fn assert_round_trip(t: &TestEngine, label: &str) -> usize {
 #[test]
 fn rebuild_round_trips_table_inserts_updates_and_deletes() {
 	// Covers all three diff kinds, a multi-column shape and none values on a non-partitioned table.
-	let t = TestEngine::new();
+	let (t, tracked) = tracked_engine();
 	t.admin("create namespace test");
 	t.admin("create table test::items { id: int4, label: Option(utf8), score: Option(float8) }");
 
@@ -121,25 +161,25 @@ fn rebuild_round_trips_table_inserts_updates_and_deletes() {
 	t.command("update test::items { label: 'z' } filter { id == 1 }");
 	t.command("delete test::items filter { id == 2 }");
 
-	assert_round_trip(&t, "table inserts, updates and deletes");
+	assert_round_trip(&t, &tracked, "table inserts, updates and deletes");
 }
 
 #[test]
 fn rebuild_round_trips_insert_then_update_in_one_commit() {
 	// A same-commit insert+update reaches the delta log as one insert, so only the consolidated original matches.
-	let t = TestEngine::new();
+	let (t, tracked) = tracked_engine();
 	t.admin("create namespace test");
 	t.admin("create table test::items { id: int4, label: Option(utf8) }");
 
 	t.command("insert test::items [{ id: 1, label: 'a' }]; update test::items { label: 'b' } filter { id == 1 }");
 
-	assert_round_trip(&t, "insert then update in one commit");
+	assert_round_trip(&t, &tracked, "insert then update in one commit");
 }
 
 #[test]
 fn rebuild_round_trips_update_then_delete_in_one_commit() {
 	// The surviving delete must carry the committed pre-image, never the mid-transaction one.
-	let t = TestEngine::new();
+	let (t, tracked) = tracked_engine();
 	t.admin("create namespace test");
 	t.admin("create table test::items { id: int4, label: Option(utf8) }");
 	t.command("insert test::items [{ id: 1, label: 'a' }]");
@@ -147,13 +187,13 @@ fn rebuild_round_trips_update_then_delete_in_one_commit() {
 
 	t.command("update test::items { label: 'b' } filter { id == 1 }; delete test::items filter { id == 1 }");
 
-	assert_round_trip(&t, "update then delete in one commit");
+	assert_round_trip(&t, &tracked, "update then delete in one commit");
 }
 
 #[test]
 fn rebuild_round_trips_partitioned_table() {
 	// A partitioned table writes PartitionedRowKey instead of RowKey; both must name the same object.
-	let t = TestEngine::new();
+	let (t, tracked) = tracked_engine();
 	t.admin("create namespace test");
 	t.admin(
 		"create table test::events { id: int4, region: utf8, amount: int8 } with { partition: { by: { region } } }",
@@ -166,13 +206,13 @@ fn rebuild_round_trips_partitioned_table() {
 	t.command("update test::events { amount: 99 } filter { id == 1 }");
 	t.command("delete test::events filter { id == 3 }");
 
-	assert_round_trip(&t, "partitioned table");
+	assert_round_trip(&t, &tracked, "partitioned table");
 }
 
 #[test]
 fn rebuild_round_trips_ringbuffer_including_capacity_eviction() {
 	// Overrunning the capacity emits a remove alongside the inserts, so one commit carries two diff kinds.
-	let t = TestEngine::new();
+	let (t, tracked) = tracked_engine();
 	t.admin("create namespace test");
 	t.admin("create ringbuffer test::rb { id: int4, data: utf8 } with { capacity: 3 }");
 
@@ -180,27 +220,27 @@ fn rebuild_round_trips_ringbuffer_including_capacity_eviction() {
 	t.mock_clock().advance_millis(100);
 	t.command("insert test::rb [{ id: 3, data: 'c' }, { id: 4, data: 'd' }]");
 
-	assert_round_trip(&t, "ringbuffer with eviction");
+	assert_round_trip(&t, &tracked, "ringbuffer with eviction");
 }
 
 #[test]
 fn rebuild_round_trips_multiple_objects_in_one_commit() {
 	// Two objects written under one commit must come back as two separate per-origin changes.
-	let t = TestEngine::new();
+	let (t, tracked) = tracked_engine();
 	t.admin("create namespace test");
 	t.admin("create table test::alpha { id: int4, label: utf8 }");
 	t.admin("create table test::beta { id: int4, amount: int8 }");
 
 	t.command("insert test::alpha [{ id: 1, label: 'a' }]; insert test::beta [{ id: 1, amount: 7 }]");
 
-	let compared = assert_round_trip(&t, "multiple objects in one commit");
+	let compared = assert_round_trip(&t, &tracked, "multiple objects in one commit");
 	assert!(compared >= 2, "the two-object commit must contribute at least two rows");
 }
 
 #[test]
 fn rebuild_round_trips_randomised_workload_seeded_1234() {
 	// A fixed seed keeps the operation mix deterministic; a real RNG would make a failure unreproducible.
-	let t = TestEngine::new();
+	let (t, tracked) = tracked_engine();
 	t.admin("create namespace test");
 	t.admin("create table test::plain { id: int4, label: Option(utf8), score: Option(float8) }");
 	t.admin(
@@ -258,21 +298,29 @@ fn rebuild_round_trips_randomised_workload_seeded_1234() {
 		}
 	}
 
-	let compared = assert_round_trip(&t, "randomised workload");
+	let compared = assert_round_trip(&t, &tracked, "randomised workload");
 	assert!(compared >= 40, "the randomised workload must exercise at least 40 rows, got {compared}");
 }
 
 #[test]
 fn rebuild_maps_a_view_row_key_to_the_view_object() {
 	// A view row key that decoded to a table would resurrect the identity gap this rebuild depends on being closed.
-	let t = TestEngine::new();
+	let (t, tracked) = tracked_engine();
 	t.admin("create namespace test");
 	t.admin("create table test::items { id: int4, label: utf8 }");
 	t.command("insert test::items [{ id: 1, label: 'a' }]");
-	t.await_cdc();
 
-	let table_commit =
-		read_all(&t).into_iter().find(|cdc| !cdc.changes.is_empty()).expect("the insert must produce a change");
+	let tracked = tracked.settled(&t);
+	let insert_version = *tracked
+		.iter()
+		.rev()
+		.find(|(_, changes)| !changes.is_empty())
+		.expect("the insert must produce a tracked change")
+		.0;
+	let table_commit = read_all(&t)
+		.into_iter()
+		.find(|cdc| cdc.version == insert_version)
+		.expect("the insert must produce a cdc record");
 	let post = match table_commit.system_changes.iter().find(|change| {
 		matches!(change, SystemChange::Insert { .. }) && matches!(Key::decode(change.key()), Some(Key::Row(_)))
 	}) {
@@ -286,7 +334,6 @@ fn rebuild_maps_a_view_row_key_to_the_view_object() {
 	let view_commit = Cdc::new(
 		table_commit.version,
 		table_commit.timestamp,
-		Vec::new(),
 		vec![SystemChange::Insert {
 			key: RowKey::encoded(StorageId::view(7), RowNumber(1)),
 			post,
@@ -298,7 +345,7 @@ fn rebuild_maps_a_view_row_key_to_the_view_object() {
 	assert_eq!(format!("{:?}", changes[0].origin), "Object(View(ViewId(7)))");
 	assert_eq!(
 		canonical(&changes).into_values().flatten().collect::<Vec<_>>(),
-		canonical(&table_commit.changes).into_values().flatten().collect::<Vec<_>>(),
+		canonical(&tracked[&insert_version]).into_values().flatten().collect::<Vec<_>>(),
 		"the same row bytes must decode to the same columns whichever object owns them"
 	);
 }
@@ -306,12 +353,12 @@ fn rebuild_maps_a_view_row_key_to_the_view_object() {
 #[test]
 fn rebuild_emits_no_change_for_queue_rows() {
 	// Queue writes never call track_flow_change, so surfacing them would feed consumers traffic they never saw.
-	let t = TestEngine::new();
+	let (t, tracked) = tracked_engine();
 	t.admin("create namespace test");
 	t.admin("create queue test::jobs { id: int4, payload: utf8 } with { fifo: {} }");
 	t.command("insert test::jobs [{ id: 1, payload: 'a' }]");
-	t.await_cdc();
 
+	let tracked = tracked.settled(&t);
 	let mut queue_row_keys = 0;
 	for cdc in read_all(&t) {
 		queue_row_keys += cdc
@@ -322,7 +369,8 @@ fn rebuild_emits_no_change_for_queue_rows() {
 				_ => false,
 			})
 			.count();
-		assert!(canonical(&cdc.changes).is_empty(), "a queue write must emit no change");
+		let original = tracked.get(&cdc.version).cloned().unwrap_or_default();
+		assert!(canonical(&original).is_empty(), "a queue write must emit no change");
 		assert!(canonical(&rebuilt(&t, &cdc)).is_empty(), "the rebuild must not invent a queue change either");
 	}
 	assert_eq!(queue_row_keys, 1, "the queue row must be present in system_changes for the filter to matter");
@@ -331,7 +379,7 @@ fn rebuild_emits_no_change_for_queue_rows() {
 #[test]
 fn rebuild_round_trips_partitioned_series() {
 	// A partitioned series lands under PartitionedRowKey, so its sequence must become the row number.
-	let t = TestEngine::new();
+	let (t, tracked) = tracked_engine();
 	t.admin("create namespace test");
 	t.admin(
 		"create series test::metrics { ts: datetime, region: utf8, value: int2 } with { key: ts, partition: { by: { region } } }",
@@ -341,13 +389,13 @@ fn rebuild_round_trips_partitioned_series() {
 	t.mock_clock().advance_millis(50);
 	t.command("insert test::metrics [{ ts: '2026-01-01T00:01:00Z', region: 'us', value: 9 }]");
 
-	assert_round_trip(&t, "partitioned series");
+	assert_round_trip(&t, &tracked, "partitioned series");
 }
 
 #[test]
 fn rebuild_round_trips_unpartitioned_series() {
 	// SeriesRowKey now owns KeyKind::SeriesRow; decoding it as a RowKey would read the timestamp as a row number.
-	let t = TestEngine::new();
+	let (t, tracked) = tracked_engine();
 	t.admin("create namespace test");
 	t.admin("create series test::metrics { ts: datetime, value: int2 } with { key: ts }");
 
@@ -358,7 +406,7 @@ fn rebuild_round_trips_unpartitioned_series() {
 	t.command("update test::metrics { value: 11 } filter { value == 7 }");
 	t.command("delete test::metrics filter { value == 9 }");
 
-	let compared = assert_round_trip(&t, "unpartitioned series");
+	let compared = assert_round_trip(&t, &tracked, "unpartitioned series");
 	assert!(compared >= 4, "the series workload must cover insert, update and delete, got {compared} rows");
 }
 

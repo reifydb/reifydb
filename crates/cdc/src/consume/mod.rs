@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 
 pub fn is_relevant_cdc(cdc: &Cdc) -> bool {
-	!cdc.changes.is_empty() || cdc.system_changes.iter().any(is_relevant_system_change)
+	cdc.system_changes.iter().any(is_relevant_system_change)
 }
 
 fn is_relevant_system_change(change: &SystemChange) -> bool {

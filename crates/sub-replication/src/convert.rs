@@ -42,6 +42,7 @@ pub fn system_change_to_proto(sc: &SystemChange) -> SystemChangeProto {
 		SystemChange::Delete {
 			key,
 			pre,
+			visible,
 		} => {
 			let (pre_bytes, has_pre) = match pre {
 				Some(p) => (p.as_slice().to_vec(), true),
@@ -51,6 +52,7 @@ pub fn system_change_to_proto(sc: &SystemChange) -> SystemChangeProto {
 				key: key.as_ref().to_vec(),
 				pre: pre_bytes,
 				has_pre,
+				visible: *visible,
 			})
 		}
 	};
@@ -79,6 +81,7 @@ pub fn proto_to_system_change(proto: &SystemChangeProto) -> Option<SystemChange>
 			Some(SystemChange::Delete {
 				key: EncodedKey::new(dc.key.clone()),
 				pre,
+				visible: dc.visible,
 			})
 		}
 	}
@@ -104,9 +107,11 @@ pub fn system_change_to_delta(sc: &SystemChange) -> Delta {
 		SystemChange::Delete {
 			key,
 			pre,
-		} => match pre {
-			Some(pre) => Delta::remove_announced(key.clone(), pre.clone()),
-			None => Delta::remove_silent(key.clone()),
+			visible,
+		} => match (pre, visible) {
+			(Some(pre), true) => Delta::remove_announced(key.clone(), pre.clone()),
+			(Some(pre), false) => Delta::remove_unobserved(key.clone(), pre.clone()),
+			(None, _) => Delta::remove_silent(key.clone()),
 		},
 	}
 }
@@ -164,6 +169,7 @@ mod tests {
 		let sc = SystemChange::Delete {
 			key: EncodedKey::new(vec![6]),
 			pre: Some(EncodedBytes(CowVec::new(vec![99]))),
+			visible: true,
 		};
 		let proto = system_change_to_proto(&sc);
 		let back = proto_to_system_change(&proto).unwrap();
@@ -175,10 +181,36 @@ mod tests {
 		let sc = SystemChange::Delete {
 			key: EncodedKey::new(vec![7]),
 			pre: None,
+			visible: true,
 		};
 		let proto = system_change_to_proto(&sc);
 		let back = proto_to_system_change(&proto).unwrap();
 		assert_eq!(sc, back);
+	}
+
+	#[test]
+	fn test_delete_hidden_from_the_change_stream_stays_hidden_across_the_wire() {
+		// Without the proto carrying visibility, a replica republishes a ttl removal the primary withheld.
+		let sc = SystemChange::Delete {
+			key: EncodedKey::new(vec![8]),
+			pre: Some(EncodedBytes(CowVec::new(vec![42]))),
+			visible: false,
+		};
+		let proto = system_change_to_proto(&sc);
+		let back = proto_to_system_change(&proto).unwrap();
+		assert_eq!(sc, back);
+
+		match back {
+			SystemChange::Delete {
+				pre,
+				visible,
+				..
+			} => {
+				assert!(!visible, "a hidden delete must not become visible on the replica");
+				assert!(pre.is_some(), "and it must keep its pre-image, otherwise replication cannot apply it");
+			}
+			_ => panic!("expected a delete"),
+		}
 	}
 
 	#[test]
@@ -227,6 +259,7 @@ mod tests {
 		let sc = SystemChange::Delete {
 			key: EncodedKey::new(vec![1]),
 			pre: Some(EncodedBytes(CowVec::new(vec![2]))),
+			visible: true,
 		};
 		match system_change_to_delta(&sc) {
 			Delta::Remove {
@@ -249,6 +282,7 @@ mod tests {
 		let sc = SystemChange::Delete {
 			key: EncodedKey::new(vec![1]),
 			pre: None,
+			visible: true,
 		};
 		match system_change_to_delta(&sc) {
 			Delta::Remove {

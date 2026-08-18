@@ -7,6 +7,7 @@ use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
+	delta::RemoveVisibility,
 	interface::{
 		catalog::flow::FlowId,
 		cdc::{CdcConsumerId, ConsumerClass},
@@ -289,7 +290,7 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 		match pw {
 			PendingWrite::Set(value) => transaction.set(key, value.clone())?,
 			PendingWrite::Remove {
-				announce: true,
+				announce: RemoveVisibility::Announced,
 			} => {
 				if matches!(Key::kind(key), Some(KeyKind::Row | KeyKind::SeriesRow)) {
 					match transaction.get(key)? {
@@ -301,7 +302,21 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 				}
 			}
 			PendingWrite::Remove {
-				announce: false,
+				announce: RemoveVisibility::Unobserved,
+			} => {
+				if matches!(Key::kind(key), Some(KeyKind::Row | KeyKind::SeriesRow)) {
+					match transaction.get(key)? {
+						Some(existing) => {
+							transaction.remove_unobserved_with_pre(key, existing.bytes)?
+						}
+						None => transaction.remove_unobserved(key)?,
+					}
+				} else {
+					transaction.remove_unobserved(key)?;
+				}
+			}
+			PendingWrite::Remove {
+				announce: RemoveVisibility::Silent,
 			} => transaction.remove_silent(key)?,
 		}
 	}

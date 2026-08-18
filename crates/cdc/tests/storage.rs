@@ -16,7 +16,6 @@ fn cdc_minimal(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
 		DateTime::from_nanos(1_700_000_000_000_000_000),
-		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
 			post: EncodedBytes(CowVec::new(vec![10, 20, 30])),
@@ -78,7 +77,6 @@ fn assert_count<S: CdcStorage>(storage: S) {
 	let cdc = Cdc::new(
 		CommitVersion(1),
 		DateTime::from_nanos(1),
-		Vec::new(),
 		(0..5).map(|i| SystemChange::Insert {
 			key: EncodedKey::new(vec![i as u8]),
 			post: EncodedBytes(CowVec::new(vec![])),
@@ -106,7 +104,6 @@ fn assert_overwrite<S: CdcStorage>(storage: S) {
 	let cdc1 = Cdc::new(
 		CommitVersion(1),
 		DateTime::from_nanos(100),
-		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![1]),
 			post: EncodedBytes(CowVec::new(vec![])),
@@ -115,7 +112,6 @@ fn assert_overwrite<S: CdcStorage>(storage: S) {
 	let cdc2 = Cdc::new(
 		CommitVersion(1),
 		DateTime::from_nanos(200),
-		Vec::new(),
 		vec![
 			SystemChange::Insert {
 				key: EncodedKey::new(vec![2]),
@@ -190,7 +186,6 @@ fn assert_drop_before_entry_stats<S: CdcStorage>(storage: S) {
 	let cdc = Cdc::new(
 		CommitVersion(1),
 		DateTime::from_nanos(12345),
-		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
 			post: EncodedBytes(CowVec::new(vec![10, 20, 30, 40, 50])),

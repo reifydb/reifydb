@@ -27,7 +27,7 @@ message SystemChangeProto {
 
 message InsertChange  { bytes key = 1; bytes post = 2; }
 message UpdateChange  { bytes key = 1; bytes pre = 2; bytes post = 3; }
-message DeleteChange  { bytes key = 1; bytes pre = 2; bool has_pre = 3; }
+message DeleteChange  { bytes key = 1; bytes pre = 2; bool has_pre = 3; bool visible = 4; }
 
 message GetVersionRequest {}
 message GetVersionResponse {

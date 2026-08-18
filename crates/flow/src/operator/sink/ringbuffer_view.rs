@@ -693,7 +693,7 @@ impl SinkRingBufferViewOperator {
 			let rn = RowNumber(storage_rn);
 			let pre_key = self.rb_key(object_id, rn, partition);
 			self.take_row_entry(txn, partition, rn)?;
-			txn.remove(&pre_key)?;
+			txn.remove_unobserved(&pre_key)?;
 		}
 
 		let new_head = self.lowest_storage_row(txn, partition)?;
@@ -1060,6 +1060,7 @@ mod tests {
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::CommitVersion,
+		delta::RemoveVisibility,
 		interface::{
 			catalog::{
 				column::{Column as CatalogColumn, ColumnIndex},
@@ -1159,10 +1160,13 @@ mod tests {
 			match pw {
 				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
 				PendingWrite::Remove {
-					announce: true,
+					announce: RemoveVisibility::Announced,
 				} => cmd.remove(key).unwrap(),
 				PendingWrite::Remove {
-					announce: false,
+					announce: RemoveVisibility::Unobserved,
+				} => cmd.remove_unobserved(key).unwrap(),
+				PendingWrite::Remove {
+					announce: RemoveVisibility::Silent,
 				} => cmd.remove_silent(key).unwrap(),
 			};
 		}

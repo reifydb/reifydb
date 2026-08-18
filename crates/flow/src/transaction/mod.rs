@@ -235,6 +235,11 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		Ok(())
 	}
 
+	fn remove_unobserved(&mut self, key: &EncodedKey) -> Result<()> {
+		self.pending_layers_mut().remove_unobserved(key.clone());
+		Ok(())
+	}
+
 	fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
 		self.pending_layers_mut().remove_silent(key.clone());
 		Ok(())

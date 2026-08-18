@@ -141,6 +141,17 @@ fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 			} => Some(SystemChange::Delete {
 				key,
 				pre: Some(pre),
+				visible: true,
+			}),
+			Delta::Remove {
+				key,
+				announce: RemoveAnnounce::Unobserved {
+					pre,
+				},
+			} => Some(SystemChange::Delete {
+				key,
+				pre: Some(pre),
+				visible: false,
 			}),
 			Delta::Remove {
 				announce: RemoveAnnounce::Silent,

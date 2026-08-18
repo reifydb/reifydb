@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
@@ -74,14 +74,35 @@ pub fn row_target(key: &EncodedKey) -> Option<RowTarget> {
 	}
 }
 
+fn tracked_target(key: &EncodedKey) -> Option<RowTarget> {
+	let target = row_target(key)?;
+	if matches!(target.object, ObjectId::Queue(_)) {
+		return None;
+	}
+	Some(target)
+}
+
+pub fn changed_objects(cdc: &Cdc) -> BTreeSet<ObjectId> {
+	cdc.system_changes.iter().filter_map(|change| tracked_target(change.key())).map(|t| t.object).collect()
+}
+
 pub fn rebuild_changes(cdc: &Cdc, catalog: &Catalog, txn: &mut Transaction<'_>) -> Result<Vec<Change>> {
+	rebuild_selected_changes(cdc, catalog, txn, |_| true)
+}
+
+pub fn rebuild_selected_changes(
+	cdc: &Cdc,
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	accept: impl Fn(ObjectId) -> bool,
+) -> Result<Vec<Change>> {
 	let mut grouped: BTreeMap<ObjectId, BTreeMap<BucketKey, Bucket>> = BTreeMap::new();
 
 	for system_change in &cdc.system_changes {
-		let Some(target) = row_target(system_change.key()) else {
+		let Some(target) = tracked_target(system_change.key()) else {
 			continue;
 		};
-		if matches!(target.object, ObjectId::Queue(_)) {
+		if !accept(target.object) {
 			continue;
 		}
 		let (key, pre, post) = match system_change {
@@ -114,8 +135,13 @@ pub fn rebuild_changes(cdc: &Cdc, catalog: &Catalog, txn: &mut Transaction<'_>) 
 				Some(post.clone()),
 			),
 			SystemChange::Delete {
+				visible: false,
+				..
+			} => continue,
+			SystemChange::Delete {
 				key,
 				pre,
+				visible: true,
 			} => {
 				let pre = pre.as_ref().ok_or_else(|| {
 					Error(Box::new(internal(format!(

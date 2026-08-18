@@ -19,6 +19,15 @@ pub enum Delta {
 	},
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RemoveVisibility {
+	Silent,
+
+	Announced,
+
+	Unobserved,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RemoveAnnounce {
 	Silent,
@@ -26,10 +35,18 @@ pub enum RemoveAnnounce {
 	Announced {
 		pre: EncodedBytes,
 	},
+
+	Unobserved {
+		pre: EncodedBytes,
+	},
 }
 
 impl RemoveAnnounce {
 	pub fn announces(&self) -> bool {
+		!matches!(self, Self::Silent)
+	}
+
+	pub fn visible(&self) -> bool {
 		matches!(self, Self::Announced { .. })
 	}
 
@@ -37,6 +54,9 @@ impl RemoveAnnounce {
 		match self {
 			Self::Silent => None,
 			Self::Announced {
+				pre,
+			}
+			| Self::Unobserved {
 				pre,
 			} => Some(pre),
 		}
@@ -67,6 +87,15 @@ impl Delta {
 		Self::Remove {
 			key,
 			announce: RemoveAnnounce::Announced {
+				pre,
+			},
+		}
+	}
+
+	pub fn remove_unobserved(key: EncodedKey, pre: EncodedBytes) -> Self {
+		Self::Remove {
+			key,
+			announce: RemoveAnnounce::Unobserved {
 				pre,
 			},
 		}

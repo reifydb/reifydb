@@ -79,7 +79,6 @@ fn write_cdc(storage: &MemoryCdcStorage, version: u64, timestamp_nanos: u64) {
 	let cdc = Cdc::new(
 		CommitVersion(version),
 		DateTime::from_nanos(timestamp_nanos),
-		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![version as u8]),
 			post: EncodedBytes(CowVec::new(vec![version as u8])),

@@ -451,6 +451,18 @@ impl CommandTransaction {
 	}
 
 	#[inline]
+	pub fn remove_unobserved(&mut self, key: &EncodedKey) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().remove_unobserved(key)
+	}
+
+	#[inline]
+	pub fn remove_unobserved_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().remove_unobserved_with_pre(key, pre)
+	}
+
+	#[inline]
 	pub fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_silent(key)

@@ -7,11 +7,7 @@ use postcard::{from_bytes, to_stdvec};
 use reifydb_codec::cdc;
 use reifydb_core::{
 	event::metric::CdcEviction,
-	interface::{
-		catalog::object::ObjectId,
-		cdc::{Cdc, SystemChange},
-		change::{Change, ChangeOrigin, Diff},
-	},
+	interface::cdc::{Cdc, SystemChange},
 	key::{EncodableKey, Key, kind::KeyKind, row::RowKey, series_row::SeriesRowKey},
 };
 use rusqlite::{Connection, OpenFlags};
@@ -152,28 +148,12 @@ fn absorb(cdc: &Cdc, stats: &mut Stats) {
 	stats.max_version = stats.max_version.max(cdc.version.0);
 	stats.payload_raw += encoded_len(cdc);
 
-	if cdc.changes.is_empty() && cdc.system_changes.is_empty() {
+	if cdc.system_changes.is_empty() {
 		stats.empty_commits += 1;
 	}
 
-	for change in &cdc.changes {
-		absorb_change(change, stats);
-	}
 	for change in &cdc.system_changes {
 		absorb_system_change(change, stats);
-	}
-}
-
-fn absorb_change(change: &Change, stats: &mut Stats) {
-	let bytes = encoded_len(change);
-	let rows = change.row_count() as u64;
-
-	stats.changes += 1;
-	stats.change_bytes += bytes;
-	stats.origins.entry(origin_of(&change.origin)).or_default().add(rows, bytes);
-
-	for diff in change.diffs.iter() {
-		stats.diff_kinds.entry(diff_kind(diff)).or_default().add(diff.row_count() as u64, encoded_len(diff));
 	}
 }
 
@@ -198,45 +178,6 @@ fn absorb_system_change(change: &SystemChange, stats: &mut Stats) {
 
 fn encoded_len<T: serde::Serialize>(value: &T) -> u64 {
 	to_stdvec(value).map(|v| v.len() as u64).unwrap_or(0)
-}
-
-fn origin_of(origin: &ChangeOrigin) -> Origin {
-	match origin {
-		ChangeOrigin::Object(id) => Origin {
-			kind: object_kind(id),
-			id: id.to_u64(),
-		},
-		ChangeOrigin::Flow(id) => Origin {
-			kind: "operator",
-			id: id.0,
-		},
-	}
-}
-
-fn object_kind(id: &ObjectId) -> &'static str {
-	match id {
-		ObjectId::Table(_) => "table",
-		ObjectId::View(_) => "view",
-		ObjectId::TableVirtual(_) => "vtable",
-		ObjectId::RingBuffer(_) => "ringbuffer",
-		ObjectId::Dictionary(_) => "dictionary",
-		ObjectId::Series(_) => "series",
-		ObjectId::Queue(_) => "queue",
-	}
-}
-
-fn diff_kind(diff: &Diff) -> &'static str {
-	match diff {
-		Diff::Insert {
-			..
-		} => "insert",
-		Diff::Update {
-			..
-		} => "update",
-		Diff::Remove {
-			..
-		} => "remove",
-	}
 }
 
 fn system_kind(change: &SystemChange) -> String {

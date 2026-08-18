@@ -296,6 +296,44 @@ impl MultiWriteTransaction {
 		})
 	}
 
+	#[instrument(name = "transaction::command::remove_unobserved", level = "trace", skip(self), fields(
+		txn_id = %self.id,
+		key_len = key.len()
+	))]
+	pub fn remove_unobserved(&mut self, key: &EncodedKey) -> Result<()> {
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		let announce = match self.get(key)? {
+			Some(found) => RemoveAnnounce::Unobserved {
+				pre: found.bytes().clone(),
+			},
+			None => RemoveAnnounce::Silent,
+		};
+		self.modify(DeltaEntry {
+			delta: Delta::Remove {
+				key: key.clone(),
+				announce,
+			},
+			version: self.base_version(),
+		})
+	}
+
+	#[instrument(name = "transaction::command::remove_unobserved_with_pre", level = "trace", skip(self, pre), fields(
+		txn_id = %self.id,
+		key_hex = %hex_display(key.as_ref()),
+		value_len = pre.len()
+	))]
+	pub fn remove_unobserved_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		self.modify(DeltaEntry {
+			delta: Delta::remove_unobserved(key.clone(), pre),
+			version: self.base_version(),
+		})
+	}
+
 	#[instrument(name = "transaction::command::remove_silent", level = "trace", skip(self), fields(
 		txn_id = %self.id,
 		key_len = key.len()

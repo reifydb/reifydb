@@ -8,6 +8,7 @@ use reifydb_codec::row::operator::OperatorState;
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
+	delta::RemoveVisibility,
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, DiffType},
@@ -91,10 +92,13 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 			match write {
 				PendingWrite::Set(row) => rest.insert(key.clone(), row.clone()),
 				PendingWrite::Remove {
-					announce: true,
+					announce: RemoveVisibility::Announced,
 				} => rest.remove(key.clone()),
 				PendingWrite::Remove {
-					announce: false,
+					announce: RemoveVisibility::Unobserved,
+				} => rest.remove_unobserved(key.clone()),
+				PendingWrite::Remove {
+					announce: RemoveVisibility::Silent,
 				} => rest.remove_silent(key.clone()),
 			}
 		}

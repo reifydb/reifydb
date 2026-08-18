@@ -6,10 +6,13 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_cdc::consume::{
-	backlog::{BacklogPull, FlowBacklog},
-	checkpoint::CdcCheckpoint,
-	watermark::CdcConsumerWatermark,
+use reifydb_cdc::{
+	consume::{
+		backlog::{BacklogPull, FlowBacklog},
+		checkpoint::CdcCheckpoint,
+		watermark::CdcConsumerWatermark,
+	},
+	rebuild::changed_objects,
 };
 use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
@@ -17,7 +20,6 @@ use reifydb_core::{
 	interface::{
 		catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind},
 		cdc::{Cdc, CdcConsumerId},
-		change::ChangeOrigin,
 	},
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
@@ -529,11 +531,8 @@ impl FlowSupervisor {
 
 	fn update_tracker(&self, cdcs: &[Arc<Cdc>]) {
 		for cdc in cdcs {
-			let version = cdc.version;
-			for change in &cdc.changes {
-				if let ChangeOrigin::Object(source) = &change.origin {
-					self.tracker.update(*source, version);
-				}
+			for object in changed_objects(cdc) {
+				self.tracker.update(object, cdc.version);
 			}
 		}
 	}

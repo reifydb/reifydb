@@ -6,6 +6,7 @@ use reifydb_codec::row::operator::EncodedOperatorRow;
 use reifydb_core::{
 	actors::pending::{PendingLayers, PendingWrite},
 	common::CommitVersion,
+	delta::RemoveVisibility,
 	interface::catalog::flow::OperatorId,
 	key::{
 		Key,
@@ -115,10 +116,13 @@ impl FlowTxn for TestEngine {
 			match pw {
 				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
 				PendingWrite::Remove {
-					announce: true,
+					announce: RemoveVisibility::Announced,
 				} => cmd.remove(key).unwrap(),
 				PendingWrite::Remove {
-					announce: false,
+					announce: RemoveVisibility::Unobserved,
+				} => cmd.remove_unobserved(key).unwrap(),
+				PendingWrite::Remove {
+					announce: RemoveVisibility::Silent,
 				} => cmd.remove_silent(key).unwrap(),
 			};
 		}

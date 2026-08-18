@@ -12,10 +12,7 @@ use std::{
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{
-		cdc::{Cdc, SystemChange},
-		change::{Change, Diff},
-	},
+	interface::cdc::{Cdc, SystemChange},
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
@@ -254,36 +251,12 @@ impl MetricsCollector for FlowBacklog {
 }
 
 pub fn cdc_bytes(cdc: &Cdc) -> u64 {
-	let changes: usize = cdc.changes.iter().map(change_bytes).sum();
 	let system: usize = cdc
 		.system_changes
 		.iter()
 		.map(|change| size_of::<SystemChange>() + change.key().len() + change.value_bytes())
 		.sum();
-	(size_of::<Cdc>() + changes + system) as u64
-}
-
-fn change_bytes(change: &Change) -> usize {
-	size_of::<Change>() + change.diffs.iter().map(diff_bytes).sum::<usize>()
-}
-
-fn diff_bytes(diff: &Diff) -> usize {
-	size_of::<Diff>()
-		+ match diff {
-			Diff::Insert {
-				post,
-				..
-			} => post.heap_size(),
-			Diff::Update {
-				pre,
-				post,
-				..
-			} => pre.heap_size() + post.heap_size(),
-			Diff::Remove {
-				pre,
-				..
-			} => pre.heap_size(),
-		}
+	(size_of::<Cdc>() + system) as u64
 }
 
 #[cfg(test)]
@@ -303,7 +276,6 @@ mod tests {
 		Arc::new(Cdc::new(
 			cv(version),
 			DateTime::default(),
-			Vec::new(),
 			vec![SystemChange::Insert {
 				key: EncodedKey::new(vec![0xAB; 4]),
 				post: EncodedBytes(CowVec::new(vec![0u8; payload])),

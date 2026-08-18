@@ -22,7 +22,6 @@ fn make_cdc(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
 		DateTime::from_nanos(12345 + version),
-		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![version as u8]),
 			post: EncodedBytes(CowVec::new(vec![version as u8])),

@@ -170,7 +170,6 @@ mod tests {
 			let cdc = Cdc::new(
 				CommitVersion(v),
 				DateTime::from_nanos(1000),
-				vec![],
 				vec![SystemChange::Insert {
 					key: make_key(&format!("k{v}")),
 					post: make_bytes("v"),

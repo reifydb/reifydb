@@ -5,7 +5,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_value::value::datetime::DateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::{common::CommitVersion, interface::change::Change};
+use crate::common::CommitVersion;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -97,6 +97,7 @@ pub enum SystemChange {
 	Delete {
 		key: EncodedKey,
 		pre: Option<EncodedBytes>,
+		visible: bool,
 	},
 }
 
@@ -142,22 +143,14 @@ pub struct Cdc {
 	pub version: CommitVersion,
 	pub timestamp: DateTime,
 
-	pub changes: Vec<Change>,
-
 	pub system_changes: Vec<SystemChange>,
 }
 
 impl Cdc {
-	pub fn new(
-		version: CommitVersion,
-		timestamp: DateTime,
-		changes: Vec<Change>,
-		system_changes: Vec<SystemChange>,
-	) -> Self {
+	pub fn new(version: CommitVersion, timestamp: DateTime, system_changes: Vec<SystemChange>) -> Self {
 		Self {
 			version,
 			timestamp,
-			changes,
 			system_changes,
 		}
 	}

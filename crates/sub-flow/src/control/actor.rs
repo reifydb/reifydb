@@ -698,8 +698,15 @@ mod pull_protocol {
 		time::{Duration as StdDuration, Instant},
 	};
 
-	use reifydb_cdc::{consume::watermark::CdcConsumerWatermark, produce::watermark::CdcProducerWatermark};
-	use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
+	use reifydb_cdc::{
+		consume::watermark::CdcConsumerWatermark,
+		produce::watermark::CdcProducerWatermark,
+		rebuild::{changed_objects, rebuild_changes, row_target},
+	};
+	use reifydb_codec::{
+		key::encoded::{EncodedKey, EncodedKeyRange},
+		row::{bytes::EncodedBytes, pod::EncodedPodRow},
+	};
 	use reifydb_core::{
 		actors::{flow::FlowActorHandle, pending::PendingLayers},
 		interface::{
@@ -708,7 +715,7 @@ mod pull_protocol {
 				ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata},
 			},
 			cdc::SystemChange,
-			change::ChangeOrigin,
+			change::{ChangeOrigin, Diff},
 		},
 		key::{
 			Key,
@@ -730,7 +737,10 @@ mod pull_protocol {
 		multi::RangeScope,
 		transaction::Transaction,
 	};
-	use reifydb_value::{byte_size::ByteSize, value::Value};
+	use reifydb_value::{
+		byte_size::ByteSize,
+		value::{Value, row_number::RowNumber},
+	};
 
 	use super::*;
 	use crate::{
@@ -924,11 +934,7 @@ mod pull_protocol {
 				.items
 				.iter()
 				.filter(|cdc| cdc.version > up_to)
-				.filter(|cdc| {
-					cdc.changes.iter().any(|change| {
-						matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_)))
-					})
-				})
+				.filter(|cdc| changed_objects(cdc).iter().any(|object| matches!(object, ObjectId::View(_))))
 				.count()
 		}
 
@@ -1035,10 +1041,13 @@ mod pull_protocol {
 		}
 
 		fn view_change_beyond(&self, floor: CommitVersion) -> Option<Change> {
+			let catalog = self.engine.catalog();
+			let mut query = self.engine.begin_query(IdentityId::system()).expect("query transaction");
+			let mut txn = Transaction::Query(&mut query);
 			self.cdc_records()
 				.into_iter()
 				.filter(|cdc| cdc.version > floor)
-				.flat_map(|cdc| cdc.changes)
+				.flat_map(|cdc| rebuild_changes(&cdc, &catalog, &mut txn).expect("rebuild changes"))
 				.find(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 		}
 	}
@@ -1420,6 +1429,7 @@ mod pull_protocol {
 						SystemChange::Delete {
 							key,
 							pre,
+							..
 						} if matches!(Key::kind(&key), Some(KeyKind::Row)) => Some((key, pre)),
 						_ => None,
 					})
@@ -1445,6 +1455,121 @@ mod pull_protocol {
 			Some(inserted_post),
 			"a tick-path Row remove must announce the same pre-image the slice path stored"
 		);
+	}
+
+	fn capacity_ring_harness() -> Harness {
+		harness_with(
+			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { time: event(ts) }",
+			"CREATE DEFERRED RINGBUFFER VIEW app::v { id: int4, v: int4 } \
+			 WITH { capacity: 2, row: { ttl: 1h } } \
+			 AS { FROM app::t map { id, v } }",
+		)
+	}
+
+	#[test]
+	fn only_the_capacity_eviction_of_the_two_survives_the_rebuild() {
+		// Both paths delete a real row and must keep a pre-image; only ttl expiry is withheld from the rebuild.
+		let h = capacity_ring_harness();
+		let substrate = h.substrate.clone();
+		let v0 = h.engine.current_version().expect("current version");
+		h.control.store(CommitVersion(u64::MAX));
+		let actor = h.spawn_actor_with_substrate(v0, substrate.clone());
+
+		h.te.command(
+			r#"INSERT app::t [{ id: 1, v: 10, ts: "1970-01-01T00:01:00Z" },
+			                  { id: 2, v: 20, ts: "1970-01-01T00:01:01Z" }]"#,
+		);
+		let filled = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(filled);
+		h.wake(&actor);
+		assert_eq!(
+			h.await_view_rows(2, StdDuration::from_secs(10)),
+			2,
+			"the ring must be filled to capacity before an overflow can evict anything"
+		);
+		assert_eq!(
+			h.await_position(filled, StdDuration::from_secs(5)),
+			Some(filled),
+			"the fill must settle first, so every delete counted below is an eviction"
+		);
+		let stable = h.engine.current_version().expect("current version");
+
+		h.te.command(r#"INSERT app::t [{ id: 3, v: 30, ts: "1970-01-01T00:01:02Z" }]"#);
+		let overflow = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(overflow);
+		h.wake(&actor);
+		assert_eq!(
+			h.await_position(overflow, StdDuration::from_secs(10)),
+			Some(overflow),
+			"the overflow row must be applied, or capacity never evicts the oldest row"
+		);
+
+		h.advance_source_watermarks(&substrate, DateTime::from_millis(7_200_000));
+		let pre_tick = h.engine.current_version().expect("current version");
+		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
+		let tick_version =
+			h.await_version_beyond(pre_tick, seconds(10)).expect("the tick must commit the ttl eviction");
+		h.await_safe_watermark(tick_version);
+
+		let deletes = h
+			.poll_until(seconds(10), || {
+				let found: Vec<(EncodedKey, Option<EncodedBytes>, bool)> = h
+					.cdc_records()
+					.into_iter()
+					.filter(|cdc| cdc.version > stable)
+					.flat_map(|cdc| cdc.system_changes)
+					.filter_map(|sc| match sc {
+						SystemChange::Delete {
+							key,
+							pre,
+							visible,
+						} if matches!(Key::kind(&key), Some(KeyKind::Row)) => Some((key, pre, visible)),
+						_ => None,
+					})
+					.collect();
+				(found.len() == 3).then_some(found)
+			})
+			.expect("one capacity evict plus the two ttl expiries must all reach the change stream");
+
+		assert!(
+			deletes.iter().all(|(_, pre, _)| pre.is_some()),
+			"every eviction stays replication-complete: hiding a delete must not drop its pre-image"
+		);
+
+		let (visible, hidden): (Vec<_>, Vec<_>) = deletes.into_iter().partition(|(_, _, visible)| *visible);
+		assert_eq!(visible.len(), 1, "the capacity evict of the oldest row is the only visible delete");
+		assert_eq!(hidden.len(), 2, "both rows left in the ring expire by ttl and must be hidden");
+
+		let mut expected: Vec<RowNumber> =
+			visible.iter().map(|(key, _, _)| row_target(key).expect("row target").row).collect();
+		expected.sort();
+
+		let catalog = h.engine.catalog();
+		let mut query = h.engine.begin_query(IdentityId::system()).expect("query transaction");
+		let mut txn = Transaction::Query(&mut query);
+		let mut rebuilt: Vec<RowNumber> = h
+			.cdc_records()
+			.into_iter()
+			.filter(|cdc| cdc.version > stable)
+			.flat_map(|cdc| rebuild_changes(&cdc, &catalog, &mut txn).expect("rebuild changes"))
+			.filter(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
+			.flat_map(|change| change.diffs)
+			.filter_map(|diff| match diff {
+				Diff::Remove {
+					pre,
+					..
+				} => Some(pre.row_numbers().to_vec()),
+				_ => None,
+			})
+			.flatten()
+			.collect();
+		rebuilt.sort();
+
+		assert_eq!(
+			rebuilt, expected,
+			"the rebuild must carry exactly the capacity evict through and drop both ttl expiries"
+		);
+		drop(actor);
 	}
 
 	#[test]

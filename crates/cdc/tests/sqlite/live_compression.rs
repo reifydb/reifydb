@@ -23,7 +23,7 @@ fn compressible_cdc(version: u64) -> Cdc {
 			post: EncodedBytes(CowVec::new(vec![b'a'; 512])),
 		})
 		.collect();
-	Cdc::new(CommitVersion(version), DateTime::from_nanos(1_700_000_000_000_000_000), Vec::new(), changes)
+	Cdc::new(CommitVersion(version), DateTime::from_nanos(1_700_000_000_000_000_000), changes)
 }
 
 fn stored_payload(db: &std::path::Path, version: u64) -> Vec<u8> {

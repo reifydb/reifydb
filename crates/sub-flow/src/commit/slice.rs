@@ -4,6 +4,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
+use reifydb_cdc::rebuild::{changed_objects, rebuild_selected_changes};
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
@@ -18,8 +19,11 @@ use reifydb_flow::{
 	engine::{COMPLETENESS_OBJECT, FlowEngineInner, frontier::WatermarkHolds},
 	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction},
 };
-use reifydb_transaction::change_accumulator::ChangeAccumulator;
-use reifydb_value::{Result, value::Value};
+use reifydb_transaction::{change_accumulator::ChangeAccumulator, transaction::Transaction};
+use reifydb_value::{
+	Result,
+	value::{Value, identity::IdentityId},
+};
 
 use crate::commit::{committer::FlowSlice, overlay::FlowWriteOverlay};
 
@@ -76,7 +80,8 @@ impl SliceComputer {
 
 		let start = items.partition_point(|c| c.version <= cursor.cursor);
 		let refs: Vec<&Cdc> = items[start..].iter().map(Arc::as_ref).collect();
-		let changes = collect_flow_changes(&refs, cursor.source_objects, cursor.completeness_objects);
+		let changes =
+			collect_flow_changes(&self.engine, &refs, cursor.source_objects, cursor.completeness_objects)?;
 		if changes.is_empty() {
 			return self.skip_or_checkpoint(
 				flow_engine,
@@ -243,26 +248,44 @@ impl SliceComputer {
 }
 
 pub(crate) fn collect_flow_changes(
+	engine: &StandardEngine,
 	cdcs: &[&Cdc],
 	source_objects: &BTreeSet<ObjectId>,
 	completeness_objects: Option<&BTreeSet<u64>>,
-) -> Vec<Change> {
-	let mut out = Vec::new();
-	for cdc in cdcs {
-		for change in &cdc.changes {
-			let relevant = match change.origin {
-				ChangeOrigin::Object(object) if object == COMPLETENESS_OBJECT => {
-					completeness_wakes(change, completeness_objects)
-				}
-				ChangeOrigin::Object(object) => source_objects.contains(&object),
-				ChangeOrigin::Flow(_) => true,
-			};
-			if relevant {
-				out.push(change.clone());
-			}
-		}
+) -> Result<Vec<Change>> {
+	let accept = |object: ObjectId| object == COMPLETENESS_OBJECT || source_objects.contains(&object);
+	let relevant: Vec<&&Cdc> =
+		cdcs.iter().filter(|cdc| changed_objects(cdc).into_iter().any(accept)).collect();
+	if relevant.is_empty() {
+		return Ok(Vec::new());
 	}
-	out
+
+	let catalog = engine.catalog();
+	let mut query = engine.begin_query(IdentityId::system())?;
+	let mut txn = Transaction::Query(&mut query);
+
+	let mut out = Vec::new();
+	for cdc in relevant {
+		let rebuilt = rebuild_selected_changes(cdc, &catalog, &mut txn, accept)?;
+		out.extend(retain_relevant(rebuilt, source_objects, completeness_objects));
+	}
+	Ok(out)
+}
+
+pub(crate) fn retain_relevant(
+	changes: Vec<Change>,
+	source_objects: &BTreeSet<ObjectId>,
+	completeness_objects: Option<&BTreeSet<u64>>,
+) -> Vec<Change> {
+	changes.into_iter()
+		.filter(|change| match change.origin {
+			ChangeOrigin::Object(object) if object == COMPLETENESS_OBJECT => {
+				completeness_wakes(change, completeness_objects)
+			}
+			ChangeOrigin::Object(object) => source_objects.contains(&object),
+			ChangeOrigin::Flow(_) => true,
+		})
+		.collect()
 }
 
 fn completeness_wakes(change: &Change, completeness_objects: Option<&BTreeSet<u64>>) -> bool {
@@ -309,28 +332,16 @@ mod tests {
 		}
 	}
 
-	fn cdc(version: u64, changes: Vec<Change>) -> Cdc {
-		Cdc {
-			version: CommitVersion(version),
-			timestamp: DateTime::default(),
-			changes,
-			system_changes: Vec::new(),
-		}
-	}
-
 	#[test]
 	fn object_changes_match_source_objects() {
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
-		let cdcs = vec![cdc(
-			5,
-			vec![
-				change(ChangeOrigin::Object(ObjectId::Table(TableId(1))), 5),
-				change(ChangeOrigin::Object(ObjectId::Table(TableId(2))), 5),
-				change(ChangeOrigin::Object(ObjectId::View(ViewId(9))), 5),
-			],
-		)];
+		let rebuilt = vec![
+			change(ChangeOrigin::Object(ObjectId::Table(TableId(1))), 5),
+			change(ChangeOrigin::Object(ObjectId::Table(TableId(2))), 5),
+			change(ChangeOrigin::Object(ObjectId::View(ViewId(9))), 5),
+		];
 
-		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources, None);
+		let out = retain_relevant(rebuilt, &sources, None);
 
 		assert_eq!(out.len(), 1);
 		assert!(matches!(out[0].origin, ChangeOrigin::Object(ObjectId::Table(TableId(1)))));
@@ -338,10 +349,10 @@ mod tests {
 
 	#[test]
 	fn flow_origin_changes_always_included() {
+		// The rebuild emits object origins only, so a flow origin must never be dropped by the filter.
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
-		let cdcs = vec![cdc(5, vec![change(ChangeOrigin::Flow(OperatorId(42)), 5)])];
 
-		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources, None);
+		let out = retain_relevant(vec![change(ChangeOrigin::Flow(OperatorId(42)), 5)], &sources, None);
 
 		assert_eq!(out.len(), 1);
 		assert!(matches!(out[0].origin, ChangeOrigin::Flow(OperatorId(42))));
@@ -350,12 +361,12 @@ mod tests {
 	#[test]
 	fn unrelated_object_changes_excluded() {
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
-		let cdcs = vec![
-			cdc(5, vec![change(ChangeOrigin::Object(ObjectId::Table(TableId(2))), 5)]),
-			cdc(6, vec![change(ChangeOrigin::Object(ObjectId::View(ViewId(3))), 6)]),
+		let rebuilt = vec![
+			change(ChangeOrigin::Object(ObjectId::Table(TableId(2))), 5),
+			change(ChangeOrigin::Object(ObjectId::View(ViewId(3))), 6),
 		];
 
-		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources, None);
+		let out = retain_relevant(rebuilt, &sources, None);
 
 		assert!(out.is_empty());
 	}
@@ -368,15 +379,12 @@ mod tests {
 			!sources.contains(&COMPLETENESS_OBJECT),
 			"the fixture must exclude the completeness table or nothing is proven"
 		);
-		let cdcs = vec![cdc(
-			5,
-			vec![
-				change(ChangeOrigin::Object(COMPLETENESS_OBJECT), 5),
-				change(ChangeOrigin::Object(ObjectId::Table(TableId(2))), 5),
-			],
-		)];
+		let rebuilt = vec![
+			change(ChangeOrigin::Object(COMPLETENESS_OBJECT), 5),
+			change(ChangeOrigin::Object(ObjectId::Table(TableId(2))), 5),
+		];
 
-		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources, None);
+		let out = retain_relevant(rebuilt, &sources, None);
 
 		assert!(
 			out.iter().any(|c| matches!(c.origin, ChangeOrigin::Object(o) if o == COMPLETENESS_OBJECT)),
@@ -387,13 +395,14 @@ mod tests {
 
 	#[test]
 	fn changes_gathered_across_multiple_cdc_entries_in_order() {
+		// collect_flow_changes concatenates per-record output, so the filter must preserve order.
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
-		let cdcs = vec![
-			cdc(5, vec![change(ChangeOrigin::Object(ObjectId::Table(TableId(1))), 5)]),
-			cdc(7, vec![change(ChangeOrigin::Object(ObjectId::Table(TableId(1))), 7)]),
+		let rebuilt = vec![
+			change(ChangeOrigin::Object(ObjectId::Table(TableId(1))), 5),
+			change(ChangeOrigin::Object(ObjectId::Table(TableId(1))), 7),
 		];
 
-		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources, None);
+		let out = retain_relevant(rebuilt, &sources, None);
 
 		assert_eq!(out.len(), 2);
 		assert_eq!(out[0].version, CommitVersion(5));
@@ -419,9 +428,8 @@ mod tests {
 		// Nothing upstream of the flow moved, so waking it commits a slice that can fold nothing.
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
 		let admitted: BTreeSet<u64> = [1].into_iter().collect();
-		let cdcs = vec![cdc(5, vec![completeness_change(&[77])])];
 
-		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources, Some(&admitted));
+		let out = retain_relevant(vec![completeness_change(&[77])], &sources, Some(&admitted));
 
 		assert!(out.is_empty(), "an assertion by an unrelated object must leave the slice empty");
 	}
@@ -431,9 +439,8 @@ mod tests {
 		// The change is the wake signal, so dropping this one strands the flow with no way to recompute.
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
 		let admitted: BTreeSet<u64> = [1].into_iter().collect();
-		let cdcs = vec![cdc(5, vec![completeness_change(&[1])])];
 
-		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources, Some(&admitted));
+		let out = retain_relevant(vec![completeness_change(&[1])], &sources, Some(&admitted));
 
 		assert_eq!(out.len(), 1, "an ancestor's assertion must survive the filter");
 	}
@@ -443,9 +450,8 @@ mod tests {
 		// Assertions batch several objects into one row set; requiring all of them would drop the wake.
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
 		let admitted: BTreeSet<u64> = [3].into_iter().collect();
-		let cdcs = vec![cdc(5, vec![completeness_change(&[77, 88, 3, 99])])];
 
-		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources, Some(&admitted));
+		let out = retain_relevant(vec![completeness_change(&[77, 88, 3, 99])], &sources, Some(&admitted));
 
 		assert_eq!(out.len(), 1, "a single ancestor among unrelated assertions must still wake the flow");
 	}
@@ -455,9 +461,8 @@ mod tests {
 		// A flow whose closure could not be resolved must degrade to waking on every assertion, never to
 		// silence.
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
-		let cdcs = vec![cdc(5, vec![completeness_change(&[77])])];
 
-		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources, None);
+		let out = retain_relevant(vec![completeness_change(&[77])], &sources, None);
 
 		assert_eq!(out.len(), 1, "no admission set must mean admit, not reject");
 	}
@@ -472,17 +477,14 @@ mod tests {
 			&["object_id", "complete_through"],
 			&[vec![Value::Uint8(1), Value::DateTime(DateTime::default())]],
 		);
-		let cdcs = vec![cdc(
-			5,
-			vec![Change {
-				origin: ChangeOrigin::Object(COMPLETENESS_OBJECT),
-				version: CommitVersion(5),
-				diffs: smallvec![Diff::remove(pre)],
-				changed_at: DateTime::default(),
-			}],
-		)];
+		let retraction = Change {
+			origin: ChangeOrigin::Object(COMPLETENESS_OBJECT),
+			version: CommitVersion(5),
+			diffs: smallvec![Diff::remove(pre)],
+			changed_at: DateTime::default(),
+		};
 
-		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources, Some(&admitted));
+		let out = retain_relevant(vec![retraction], &sources, Some(&admitted));
 
 		assert!(out.is_empty(), "a retraction asserts nothing and must not wake the flow");
 	}

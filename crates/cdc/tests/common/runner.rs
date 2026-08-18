@@ -332,6 +332,7 @@ pub fn format_change(seq: usize, sc: &SystemChange) -> String {
 		SystemChange::Delete {
 			key,
 			pre,
+			..
 		} => match pre {
 			Some(pre) => format!(
 				"Change {{ seq: {}, change: Delete {{ key: {:?}, pre: {:?} }} }}",
@@ -384,6 +385,7 @@ pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
 			SystemChange::Delete {
 				key,
 				pre,
+				..
 			} => match pre {
 				Some(pre) => write!(
 					s,

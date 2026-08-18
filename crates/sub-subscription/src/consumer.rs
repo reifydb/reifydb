@@ -6,7 +6,7 @@ use std::sync::{
 	atomic::{AtomicUsize, Ordering},
 };
 
-use reifydb_cdc::consume::consumer::CdcConsume;
+use reifydb_cdc::{consume::consumer::CdcConsume, rebuild::rebuild_changes};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -14,8 +14,10 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
+use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{actor::mailbox::ActorRef, sync::mutex::Mutex};
-use reifydb_value::{Result, error::Error};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{Result, error::Error, value::identity::IdentityId};
 use tracing::{instrument, warn};
 
 use crate::{
@@ -27,6 +29,7 @@ use crate::{
 type Reply = Box<dyn FnOnce(Result<()>) + Send>;
 
 pub struct SubscriptionCdcConsumer {
+	engine: StandardEngine,
 	workers: Vec<ActorRef<SubscriptionWorkerMessage>>,
 	source_tracker: SubscriptionSourceTracker,
 	position_tracker: SubscriptionPositionTracker,
@@ -35,17 +38,36 @@ pub struct SubscriptionCdcConsumer {
 
 impl SubscriptionCdcConsumer {
 	pub fn new(
+		engine: StandardEngine,
 		workers: Vec<ActorRef<SubscriptionWorkerMessage>>,
 		source_tracker: SubscriptionSourceTracker,
 		position_tracker: SubscriptionPositionTracker,
 		store: Arc<SubscriptionStore>,
 	) -> Self {
 		Self {
+			engine,
 			workers,
 			source_tracker,
 			position_tracker,
 			store,
 		}
+	}
+
+	fn rebuild_batch(&self, cdcs: &[Cdc]) -> Result<Vec<Change>> {
+		let catalog = self.engine.catalog();
+		let mut query = self.engine.begin_query(IdentityId::system())?;
+		let mut txn = Transaction::Query(&mut query);
+
+		let mut out: Vec<Change> = Vec::new();
+		for cdc in cdcs {
+			for change in rebuild_changes(cdc, &catalog, &mut txn)? {
+				if let ChangeOrigin::Object(object_id) = &change.origin {
+					self.source_tracker.update(*object_id, cdc.version);
+				}
+				out.push(change);
+			}
+		}
+		Ok(out)
 	}
 }
 
@@ -124,18 +146,19 @@ impl CdcConsume for SubscriptionCdcConsumer {
 		}
 
 		let mut max_version = CommitVersion(0);
-		let mut all_changes: Vec<Change> = Vec::new();
-		for cdc in cdcs {
+		for cdc in &cdcs {
 			if cdc.version > max_version {
 				max_version = cdc.version;
 			}
-			for change in &cdc.changes {
-				if let ChangeOrigin::Object(object_id) = &change.origin {
-					self.source_tracker.update(*object_id, cdc.version);
-				}
-			}
-			all_changes.extend(cdc.changes);
 		}
+
+		let all_changes = match self.rebuild_batch(&cdcs) {
+			Ok(changes) => changes,
+			Err(e) => {
+				reply(Err(e));
+				return;
+			}
+		};
 
 		if all_changes.is_empty() {
 			reply(Ok(()));

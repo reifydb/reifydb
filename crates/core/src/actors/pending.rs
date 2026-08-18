@@ -13,11 +13,13 @@ use std::{
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 
+use crate::delta::RemoveVisibility;
+
 #[derive(Debug, Clone)]
 pub enum PendingWrite {
 	Set(EncodedBytes),
 	Remove {
-		announce: bool,
+		announce: RemoveVisibility,
 	},
 }
 
@@ -41,7 +43,7 @@ impl Pending {
 		self.writes.insert(
 			key,
 			PendingWrite::Remove {
-				announce: true,
+				announce: RemoveVisibility::Announced,
 			},
 		);
 	}
@@ -57,7 +59,7 @@ impl Pending {
 			(
 				k.clone(),
 				PendingWrite::Remove {
-					announce: true,
+					announce: RemoveVisibility::Announced,
 				},
 			)
 		}));
@@ -67,7 +69,16 @@ impl Pending {
 		self.writes.insert(
 			key,
 			PendingWrite::Remove {
-				announce: false,
+				announce: RemoveVisibility::Silent,
+			},
+		);
+	}
+
+	pub fn remove_unobserved(&mut self, key: EncodedKey) {
+		self.writes.insert(
+			key,
+			PendingWrite::Remove {
+				announce: RemoveVisibility::Unobserved,
 			},
 		);
 	}
@@ -169,6 +180,10 @@ impl PendingLayers {
 
 	pub fn remove_silent(&mut self, key: EncodedKey) {
 		self.top.remove_silent(key);
+	}
+
+	pub fn remove_unobserved(&mut self, key: EncodedKey) {
+		self.top.remove_unobserved(key);
 	}
 
 	pub fn insert_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) {

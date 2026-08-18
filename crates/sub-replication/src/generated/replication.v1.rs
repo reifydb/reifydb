@@ -59,6 +59,8 @@ pub struct DeleteChange {
     pub pre: ::prost::alloc::vec::Vec<u8>,
     #[prost(bool, tag = "3")]
     pub has_pre: bool,
+    #[prost(bool, tag = "4")]
+    pub visible: bool,
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetVersionRequest {}

@@ -13,7 +13,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, RemoveVisibility},
 	execution::ExecutionResult,
 	interface::{
 		catalog::{object::ObjectId, policy::SessionOp},
@@ -126,10 +126,13 @@ pub(super) fn apply_pre_commit_writes(
 		match write {
 			PendingWrite::Set(v) => multi.set(key, v.clone())?,
 			PendingWrite::Remove {
-				announce: true,
+				announce: RemoveVisibility::Announced,
 			} => multi.remove(key)?,
 			PendingWrite::Remove {
-				announce: false,
+				announce: RemoveVisibility::Unobserved,
+			} => multi.remove_unobserved(key)?,
+			PendingWrite::Remove {
+				announce: RemoveVisibility::Silent,
 			} => multi.remove_silent(key)?,
 		}
 	}
@@ -264,10 +267,13 @@ impl<'a> TestTransaction<'a> {
 			match write {
 				PendingWrite::Set(v) => self.inner.cmd.as_mut().unwrap().set(key, v.clone())?,
 				PendingWrite::Remove {
-					announce: true,
+					announce: RemoveVisibility::Announced,
 				} => self.inner.cmd.as_mut().unwrap().remove(key)?,
 				PendingWrite::Remove {
-					announce: false,
+					announce: RemoveVisibility::Unobserved,
+				} => self.inner.cmd.as_mut().unwrap().remove_unobserved(key)?,
+				PendingWrite::Remove {
+					announce: RemoveVisibility::Silent,
 				} => self.inner.cmd.as_mut().unwrap().remove_silent(key)?,
 			}
 		}

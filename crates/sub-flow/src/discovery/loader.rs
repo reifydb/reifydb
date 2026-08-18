@@ -219,7 +219,6 @@ mod tests {
 		Cdc::new(
 			cv(version),
 			DateTime::default(),
-			Vec::new(),
 			vec![SystemChange::Insert {
 				key: EncodedKey::new(vec![0xAB; 4]),
 				post: EncodedBytes(CowVec::new(vec![0u8; payload])),
