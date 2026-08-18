@@ -91,7 +91,8 @@ fn the_three_thirty_three_byte_source_families_lay_their_fields_out_identically(
 
 #[test]
 fn every_family_tag_keeps_the_byte_it_was_assigned_and_round_trips_through_from_u8() {
-	// The tag seeds the fingerprint and is a stored shape header's only content, so a silent renumber reinterprets every persisted row under the wrong family.
+	// The tag seeds the fingerprint and is a stored shape header's only content, so a silent renumber reinterprets
+	// every persisted row under the wrong family.
 	let expected = [
 		(RowFamily::Catalog, 0x01u8),
 		(RowFamily::Pod, 0x02),
