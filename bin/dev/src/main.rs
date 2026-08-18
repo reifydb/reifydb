@@ -4,7 +4,6 @@
 mod catalog;
 mod cdc;
 mod context;
-mod dbstat;
 mod report;
 
 use std::{path::Path, process::exit};
@@ -12,7 +11,6 @@ use std::{path::Path, process::exit};
 use clap::{Parser, Subcommand};
 use context::Context;
 use reifydb::allocator;
-use report::GroupBy;
 
 allocator::set_global_allocator!();
 
@@ -27,28 +25,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-	Storage(StorageArgs),
 	Catalog(CatalogArgs),
 	Cdc(CdcArgs),
-}
-
-#[derive(Parser)]
-struct StorageArgs {
-	dir: String,
-	#[arg(long, value_enum)]
-	group_by: Option<GroupBy>,
-	#[arg(long)]
-	all: bool,
-	#[arg(long, default_value_t = 40)]
-	top: usize,
-	#[arg(long)]
-	filter: Option<String>,
-	#[arg(long)]
-	exact_rows: bool,
-	#[arg(long)]
-	no_rows: bool,
-	#[arg(long)]
-	json: bool,
 }
 
 #[derive(Parser)]
@@ -78,7 +56,6 @@ fn main() {
 	let cli = Cli::parse();
 	let ctx = Context::new();
 	let result = match cli.command {
-		Command::Storage(args) => storage(&ctx, args),
 		Command::Catalog(args) => catalog_dump(args),
 		Command::Cdc(args) => cdc_report(&ctx, args),
 	};
@@ -90,31 +67,6 @@ fn main() {
 		);
 		exit(1);
 	}
-}
-
-fn storage(ctx: &Context, args: StorageArgs) -> Result<()> {
-	let multi_db = require_multi_db(&args.dir)?;
-	let started = ctx.clock.instant();
-
-	let phys = dbstat::read(&multi_db, args.exact_rows && !args.no_rows)?;
-
-	eprintln!("opening {} via the embedded engine (this writes to the directory - use a copy)", args.dir);
-	let cat = catalog::with_open(&args.dir, catalog::load)?;
-
-	report::render(
-		&cat,
-		&phys,
-		report::Options {
-			group_by: args.group_by,
-			all: args.all,
-			top: args.top,
-			filter: args.filter,
-			json: args.json,
-			show_rows: !args.no_rows,
-		},
-	);
-	eprintln!("done in {:.1}s", started.elapsed().as_secs_f64());
-	Ok(())
 }
 
 fn cdc_report(ctx: &Context, args: CdcArgs) -> Result<()> {
@@ -148,12 +100,4 @@ fn catalog_dump(args: CatalogArgs) -> Result<()> {
 	let cat = catalog::with_open(&args.dir, catalog::load)?;
 	report::dump_catalog(&cat, args.json);
 	Ok(())
-}
-
-fn require_multi_db(dir: &str) -> Result<String> {
-	let path = Path::new(dir).join("multi.db");
-	if !path.exists() {
-		return Err(format!("no multi.db in '{dir}' (expected a sqlite database directory)"));
-	}
-	Ok(path.to_string_lossy().into_owned())
 }

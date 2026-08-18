@@ -877,6 +877,7 @@ fn apply_drop_before(
 }
 
 #[inline]
+#[cfg_attr(not(debug_assertions), allow(unused_variables))]
 fn assert_block_ordered(entries: &[Cdc]) {
 	reifydb_assertions! {
 		assert!(!entries.is_empty(), "cannot encode an empty block");

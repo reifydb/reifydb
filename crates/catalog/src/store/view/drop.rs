@@ -34,11 +34,7 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn drop_view_family_metadata(
-		txn: &mut AdminTransaction,
-		view: ViewId,
-		kind: ViewStorageKind,
-	) -> Result<()> {
+	fn drop_view_family_metadata(txn: &mut AdminTransaction, view: ViewId, kind: ViewStorageKind) -> Result<()> {
 		match kind {
 			ViewStorageKind::Table => Ok(()),
 			ViewStorageKind::RingBuffer => {

@@ -11,11 +11,7 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
-	interface::{
-		catalog::dictionary::Dictionary,
-		resolved::ResolvedView,
-		store::MultiVersionRow,
-	},
+	interface::{catalog::dictionary::Dictionary, resolved::ResolvedView, store::MultiVersionRow},
 	internal_error,
 	key::{
 		EncodableKey,

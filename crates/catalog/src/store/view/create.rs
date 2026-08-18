@@ -14,9 +14,7 @@ use reifydb_core::{
 			ViewSortKey, ViewStorageKind,
 		},
 	},
-	key::{
-		namespace_view::NamespaceViewKey, ringbuffer::RingBufferMetadataKey, view::ViewKey,
-	},
+	key::{namespace_view::NamespaceViewKey, ringbuffer::RingBufferMetadataKey, view::ViewKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -220,7 +218,10 @@ impl CatalogStore {
 			} => {
 				if partition_by.is_empty() {
 					let row = encode_ringbuffer_metadata(&RingBufferMetadata::new());
-					txn.set(&RingBufferMetadataKey::encoded(StorageId::View(view)), row.into_bytes())?;
+					txn.set(
+						&RingBufferMetadataKey::encoded(StorageId::View(view)),
+						row.into_bytes(),
+					)?;
 				}
 				Ok(())
 			}

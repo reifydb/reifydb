@@ -1,18 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use postcard::{from_bytes, to_stdvec};
+use reifydb_cdc::rebuild::{changed_objects, row_target};
 use reifydb_codec::cdc;
 use reifydb_core::{
 	event::metric::CdcEviction,
-	interface::cdc::{Cdc, SystemChange},
-	key::{EncodableKey, Key, kind::KeyKind, row::RowKey, series_row::SeriesRowKey},
+	interface::{
+		catalog::object::ObjectId,
+		cdc::{Cdc, SystemChange},
+	},
+	key::{Key, kind::KeyKind},
 };
 use rusqlite::{Connection, OpenFlags};
 
 use crate::Result;
+
+pub const INSERT: &str = "insert";
+pub const UPDATE: &str = "update";
+pub const REMOVE: &str = "remove";
 
 #[derive(Default, Clone)]
 pub struct Slice {
@@ -35,6 +43,12 @@ pub struct Origin {
 	pub id: u64,
 }
 
+#[derive(Default, Clone)]
+pub struct ObjectRows {
+	pub changes: u64,
+	pub rows: Slice,
+}
+
 #[derive(Default)]
 pub struct Stats {
 	pub live_rows: u64,
@@ -48,14 +62,16 @@ pub struct Stats {
 	pub min_version: u64,
 	pub max_version: u64,
 	pub changes: u64,
-	pub change_bytes: u64,
+	pub touched_objects: u64,
 	pub system_changes: u64,
 	pub system_bytes: u64,
+	pub row_changes: u64,
+	pub row_bytes: u64,
+	pub attributed_rows: u64,
 	pub empty_commits: u64,
-	pub origins: BTreeMap<Origin, Slice>,
-	pub diff_kinds: BTreeMap<&'static str, Slice>,
+	pub objects: BTreeMap<Origin, ObjectRows>,
+	pub row_kinds: BTreeMap<&'static str, Slice>,
 	pub system_kinds: BTreeMap<String, Slice>,
-	pub storage_rows: BTreeMap<u64, Slice>,
 	pub undecodable_row_keys: u64,
 	pub decode_failures: u64,
 }
@@ -97,7 +113,7 @@ fn scan_live(conn: &Connection, stats: &mut Stats) -> Result<()> {
 		absorb_rollup(&rollup, stats);
 
 		match cdc::decode::<Cdc>(&payload) {
-			Ok(entry) => absorb(&entry, stats),
+			Ok(entry) => absorb(&entry, stats)?,
 			Err(_) => stats.decode_failures += 1,
 		}
 	}
@@ -127,7 +143,7 @@ fn scan_blocks(conn: &Connection, stats: &mut Stats) -> Result<()> {
 		match cdc::decode::<Vec<Cdc>>(&payload) {
 			Ok(items) => {
 				for entry in &items {
-					absorb(entry, stats);
+					absorb(entry, stats)?;
 				}
 			}
 			Err(_) => stats.decode_failures += 1,
@@ -143,41 +159,96 @@ fn absorb_rollup(bytes: &[u8], stats: &mut Stats) {
 	}
 }
 
-fn absorb(cdc: &Cdc, stats: &mut Stats) {
+fn absorb(cdc: &Cdc, stats: &mut Stats) -> Result<()> {
 	stats.min_version = stats.min_version.min(cdc.version.0);
 	stats.max_version = stats.max_version.max(cdc.version.0);
-	stats.payload_raw += encoded_len(cdc);
+	stats.payload_raw += encoded_len(cdc)?;
 
 	if cdc.system_changes.is_empty() {
 		stats.empty_commits += 1;
 	}
+	stats.touched_objects += changed_objects(cdc).len() as u64;
 
+	let mut rebuilt: BTreeSet<Origin> = BTreeSet::new();
 	for change in &cdc.system_changes {
-		absorb_system_change(change, stats);
+		absorb_system_change(change, stats, &mut rebuilt)?;
 	}
+
+	stats.changes += rebuilt.len() as u64;
+	for origin in rebuilt {
+		stats.objects.entry(origin).or_default().changes += 1;
+	}
+	Ok(())
 }
 
-fn absorb_system_change(change: &SystemChange, stats: &mut Stats) {
-	let bytes = encoded_len(change);
+fn absorb_system_change(change: &SystemChange, stats: &mut Stats, rebuilt: &mut BTreeSet<Origin>) -> Result<()> {
+	let bytes = encoded_len(change)?;
 	stats.system_changes += 1;
 	stats.system_bytes += bytes;
 	stats.system_kinds.entry(system_kind(change)).or_default().add(1, bytes);
 
-	match Key::kind(change.key().as_slice()) {
-		Some(KeyKind::Row) => match RowKey::decode(change.key()) {
-			Some(key) => stats.storage_rows.entry(key.storage.as_u64()).or_default().add(1, bytes),
-			None => stats.undecodable_row_keys += 1,
-		},
-		Some(KeyKind::SeriesRow) => match SeriesRowKey::decode(change.key()) {
-			Some(key) => stats.storage_rows.entry(key.series.0).or_default().add(1, bytes),
-			None => stats.undecodable_row_keys += 1,
-		},
-		_ => {}
+	if !matches!(
+		Key::kind(change.key().as_slice()),
+		Some(KeyKind::Row | KeyKind::SeriesRow | KeyKind::PartitionedRow)
+	) {
+		return Ok(());
+	}
+	let Some(kind) = row_kind(change) else {
+		return Ok(());
+	};
+	stats.row_changes += 1;
+	stats.row_bytes += bytes;
+
+	let Some(target) = row_target(change.key()) else {
+		stats.undecodable_row_keys += 1;
+		return Ok(());
+	};
+
+	let origin = origin_of(target.object);
+	stats.objects.entry(origin.clone()).or_default().rows.add(1, bytes);
+	stats.attributed_rows += 1;
+	stats.row_kinds.entry(kind).or_default().add(1, bytes);
+	rebuilt.insert(origin);
+	Ok(())
+}
+
+fn row_kind(change: &SystemChange) -> Option<&'static str> {
+	match change {
+		SystemChange::Insert {
+			..
+		} => Some(INSERT),
+		SystemChange::Update {
+			..
+		} => Some(UPDATE),
+		SystemChange::Delete {
+			visible: true,
+			..
+		} => Some(REMOVE),
+		SystemChange::Delete {
+			visible: false,
+			..
+		} => None,
 	}
 }
 
-fn encoded_len<T: serde::Serialize>(value: &T) -> u64 {
-	to_stdvec(value).map(|v| v.len() as u64).unwrap_or(0)
+fn origin_of(object: ObjectId) -> Origin {
+	let kind = match object {
+		ObjectId::Table(_) => "table",
+		ObjectId::View(_) => "view",
+		ObjectId::TableVirtual(_) => "vtable",
+		ObjectId::RingBuffer(_) => "ringbuffer",
+		ObjectId::Dictionary(_) => "dictionary",
+		ObjectId::Series(_) => "series",
+		ObjectId::Queue(_) => "queue",
+	};
+	Origin {
+		kind,
+		id: object.as_u64(),
+	}
+}
+
+fn encoded_len<T: serde::Serialize>(value: &T) -> Result<u64> {
+	to_stdvec(value).map(|v| v.len() as u64).map_err(|e| format!("encode for byte accounting: {e}"))
 }
 
 fn system_kind(change: &SystemChange) -> String {
@@ -189,11 +260,150 @@ fn system_kind(change: &SystemChange) -> String {
 			..
 		} => "update",
 		SystemChange::Delete {
+			visible: true,
 			..
 		} => "delete",
+		SystemChange::Delete {
+			visible: false,
+			..
+		} => "delete(hidden)",
 	};
 	match Key::kind(change.key().as_slice()) {
 		Some(kind) => format!("{kind:?}/{op}"),
 		None => format!("(undecodable)/{op}"),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_codec::row::bytes::EncodedBytes;
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::catalog::{id::NamespaceId, storage::StorageId},
+		key::{namespace::NamespaceKey, row::RowKey},
+	};
+	use reifydb_value::{
+		util::cowvec::CowVec,
+		value::{datetime::DateTime, row_number::RowNumber},
+	};
+
+	use super::*;
+
+	fn commit(changes: Vec<SystemChange>) -> Cdc {
+		Cdc::new(CommitVersion(1), DateTime::from_nanos(0), changes)
+	}
+
+	fn row() -> EncodedBytes {
+		EncodedBytes(CowVec::new(vec![0u8; 16]))
+	}
+
+	fn insert(storage: StorageId, id: u64) -> SystemChange {
+		SystemChange::Insert {
+			key: RowKey::encoded(storage, RowNumber(id)),
+			post: row(),
+		}
+	}
+
+	fn delete(storage: StorageId, id: u64, visible: bool) -> SystemChange {
+		SystemChange::Delete {
+			key: RowKey::encoded(storage, RowNumber(id)),
+			pre: Some(row()),
+			visible,
+		}
+	}
+
+	fn namespace_insert() -> SystemChange {
+		SystemChange::Insert {
+			key: NamespaceKey::encoded(NamespaceId(1)),
+			post: row(),
+		}
+	}
+
+	fn stats_of(records: &[Cdc]) -> Stats {
+		// A failed encode here would silently zero the byte columns, so the fixture must panic, not absorb it.
+		let mut stats = Stats::default();
+		for record in records {
+			absorb(record, &mut stats).expect("fixture records must encode");
+		}
+		stats
+	}
+
+	fn object<'a>(stats: &'a Stats, kind: &'static str, id: u64) -> &'a ObjectRows {
+		stats.objects
+			.get(&Origin {
+				kind,
+				id,
+			})
+			.unwrap_or_else(|| panic!("no {kind}_{id} in the report"))
+	}
+
+	#[test]
+	fn an_invisible_delete_is_absent_from_the_report_exactly_as_it_is_from_the_rebuild() {
+		// The report must not invent a row the rebuild skipped, or the two disagree on what happened.
+		let stats = stats_of(&[commit(vec![delete(StorageId::table(7), 1, false)])]);
+
+		assert_eq!(stats.row_changes, 0, "an invisible delete must not be counted as a row key");
+		assert_eq!(stats.attributed_rows, 0);
+		assert_eq!(stats.changes, 0, "the rebuild must emit no change for an invisible delete");
+		assert!(stats.objects.is_empty(), "and it must open no object slot of its own");
+	}
+
+	#[test]
+	fn only_the_visible_of_two_byte_identical_deletes_reaches_the_report() {
+		// Both keys decode to the same object, so only the visibility flag can tell them apart.
+		let stats = stats_of(&[commit(vec![
+			delete(StorageId::view(4), 1, true),
+			delete(StorageId::view(4), 2, false),
+		])]);
+
+		assert_eq!(stats.row_changes, 1, "byte-identical keys must be split by the visibility flag alone");
+		assert_eq!(stats.attributed_rows, 1);
+		assert_eq!(stats.changes, 1, "the visible delete alone must rebuild one change for the view");
+		assert_eq!(object(&stats, "view", 4).rows.rows, 1);
+	}
+
+	#[test]
+	fn a_view_row_is_attributed_to_the_view_and_never_to_the_table_sharing_its_id() {
+		let stats = stats_of(&[commit(vec![insert(StorageId::view(42), 1), insert(StorageId::table(42), 1)])]);
+
+		assert_eq!(object(&stats, "view", 42).rows.rows, 1, "a view must never report under a table id");
+		assert_eq!(object(&stats, "table", 42).rows.rows, 1);
+		assert_eq!(stats.changes, 2, "two objects touched in one commit must rebuild two changes");
+	}
+
+	#[test]
+	fn every_counted_row_key_is_attributed_to_an_object() {
+		// A row key counted but attributed nowhere is a row no line of the report accounts for.
+		let stats = stats_of(&[commit(vec![
+			insert(StorageId::table(7), 1),
+			delete(StorageId::table(7), 2, false),
+			insert(StorageId::series(9), 1),
+			namespace_insert(),
+		])]);
+
+		assert_eq!(stats.system_changes, 4);
+		assert_eq!(stats.row_changes, 2, "a namespace key and an invisible delete are both not row keys");
+		assert_eq!(stats.attributed_rows, stats.row_changes);
+		assert_eq!(stats.undecodable_row_keys, 0);
+		assert_eq!(
+			stats.system_bytes,
+			stats.row_bytes
+				+ encoded_len(&namespace_insert()).unwrap()
+				+ encoded_len(&delete(StorageId::table(7), 2, false)).unwrap(),
+			"bytes skipped by the rebuild still have to show up in the system total"
+		);
+	}
+
+	#[test]
+	fn a_commit_counts_one_rebuilt_change_per_object_however_many_rows_it_touched() {
+		let stats = stats_of(&[commit(vec![
+			insert(StorageId::table(7), 1),
+			insert(StorageId::table(7), 2),
+			insert(StorageId::table(7), 3),
+		])]);
+
+		assert_eq!(stats.changes, 1, "the stored stream is consolidated per object per commit");
+		assert_eq!(object(&stats, "table", 7).changes, 1);
+		assert_eq!(object(&stats, "table", 7).rows.rows, 3);
 	}
 }

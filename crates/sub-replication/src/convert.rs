@@ -207,7 +207,10 @@ mod tests {
 				..
 			} => {
 				assert!(!visible, "a hidden delete must not become visible on the replica");
-				assert!(pre.is_some(), "and it must keep its pre-image, otherwise replication cannot apply it");
+				assert!(
+					pre.is_some(),
+					"and it must keep its pre-image, otherwise replication cannot apply it"
+				);
 			}
 			_ => panic!("expected a delete"),
 		}

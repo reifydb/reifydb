@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Storage-layer coverage for the PartitionedSource keyspace: a partitioned row must route to its owner's own partsource table, never to the multi table.
+// Storage-layer coverage for the PartitionedSource keyspace: a partitioned row must route to its owner's own partsource
+// table, never to the multi table.
 
 use std::sync::Arc;
 

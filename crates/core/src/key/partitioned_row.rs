@@ -226,9 +226,8 @@ impl EncodableKeyRange for PartitionedRowKeyRange {
 mod tests {
 	use std::ops::RangeBounds;
 
-	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
-
 	use reifydb_codec::key::serializer::KeySerializer;
+	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
 	use super::{EncodableKey, PartitionedRowKey, RowLocator};
 	use crate::{

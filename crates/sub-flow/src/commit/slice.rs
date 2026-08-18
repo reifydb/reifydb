@@ -254,8 +254,7 @@ pub(crate) fn collect_flow_changes(
 	completeness_objects: Option<&BTreeSet<u64>>,
 ) -> Result<Vec<Change>> {
 	let accept = |object: ObjectId| object == COMPLETENESS_OBJECT || source_objects.contains(&object);
-	let relevant: Vec<&&Cdc> =
-		cdcs.iter().filter(|cdc| changed_objects(cdc).into_iter().any(accept)).collect();
+	let relevant: Vec<&&Cdc> = cdcs.iter().filter(|cdc| changed_objects(cdc).into_iter().any(accept)).collect();
 	if relevant.is_empty() {
 		return Ok(Vec::new());
 	}

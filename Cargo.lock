@@ -872,9 +872,11 @@ dependencies = [
  "clap",
  "postcard",
  "reifydb",
+ "reifydb-cdc",
  "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-value",
  "rusqlite",
  "serde",
 ]

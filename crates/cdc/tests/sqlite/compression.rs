@@ -23,11 +23,7 @@ fn cdc_diverse(version: u64) -> Cdc {
 			)),
 		})
 		.collect();
-	Cdc::new(
-		CommitVersion(version),
-		DateTime::from_nanos(1_700_000_000_000_000_000 + version * 1_000_000),
-		changes,
-	)
+	Cdc::new(CommitVersion(version), DateTime::from_nanos(1_700_000_000_000_000_000 + version * 1_000_000), changes)
 }
 
 fn cdc_bytes(cdc: &Cdc) -> Vec<u8> {

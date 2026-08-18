@@ -390,10 +390,7 @@ impl FlowEdge {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		common::JoinType,
-		interface::catalog::id::ViewId,
-	};
+	use reifydb_core::{common::JoinType, interface::catalog::id::ViewId};
 
 	use super::OperatorDef;
 

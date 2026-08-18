@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 reifydb = { workspace = true, features = ["alloc-jemalloc"] }
+reifydb-cdc = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
@@ -20,3 +21,6 @@ clap = { version = "4.6", features = ["derive", "env"] }
 postcard = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
+
+[dev-dependencies]
+reifydb-value = { workspace = true }

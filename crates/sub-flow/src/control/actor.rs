@@ -934,7 +934,9 @@ mod pull_protocol {
 				.items
 				.iter()
 				.filter(|cdc| cdc.version > up_to)
-				.filter(|cdc| changed_objects(cdc).iter().any(|object| matches!(object, ObjectId::View(_))))
+				.filter(|cdc| {
+					changed_objects(cdc).iter().any(|object| matches!(object, ObjectId::View(_)))
+				})
 				.count()
 		}
 
@@ -1468,7 +1470,6 @@ mod pull_protocol {
 
 	#[test]
 	fn only_the_capacity_eviction_of_the_two_survives_the_rebuild() {
-		// Both paths delete a real row and must keep a pre-image; only ttl expiry is withheld from the rebuild.
 		let h = capacity_ring_harness();
 		let substrate = h.substrate.clone();
 		let v0 = h.engine.current_version().expect("current version");

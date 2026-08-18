@@ -34,10 +34,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_queues_in_namespace(
-		rx: &mut Transaction<'_>,
-		namespace: NamespaceId,
-	) -> Result<Vec<Queue>> {
+	pub(crate) fn list_queues_in_namespace(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Queue>> {
 		Ok(Self::list_queues(rx)?.into_iter().filter(|queue| queue.namespace == namespace).collect())
 	}
 }
