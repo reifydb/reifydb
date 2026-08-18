@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod test {
+	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{
 		key::encoded::EncodedKey,
 		row::{
@@ -10,14 +11,21 @@ pub mod test {
 		},
 	};
 	use reifydb_core::interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability};
+	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::transaction::admin::AdminTransaction;
+	use reifydb_transaction::{
+		interceptor::interceptors::Interceptors,
+		transaction::{Transaction, admin::AdminTransaction},
+	};
 	use reifydb_value::{
 		Result,
 		value::{identity::IdentityId, value_type::ValueType},
 	};
 
-	use crate::flow::{operator::Operator, transaction::FlowTransaction};
+	use crate::flow::{
+		operator::Operator,
+		transaction::{FlowTransaction, allocators::FlowAllocators},
+	};
 
 	pub struct TestOperator {
 		pub id: OperatorId,
@@ -108,5 +116,15 @@ pub mod test {
 	pub fn create_test_transaction() -> AdminTransaction {
 		let t = TestEngine::new();
 		t.begin_admin(IdentityId::system()).unwrap()
+	}
+
+	pub fn flow_transaction<'a, 'b>(parent: &'a mut Transaction<'b>) -> FlowTransaction<'a, 'b> {
+		FlowTransaction::new(
+			parent,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+			FlowAllocators::new(),
+		)
 	}
 }

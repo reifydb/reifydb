@@ -171,26 +171,18 @@ pub fn empty_key() -> EncodedKey {
 pub mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
-	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::common::CommitVersion;
-	use reifydb_runtime::context::clock::{Clock, MockClock};
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_codec::row::shape::RowFamily;
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
-	use crate::flow::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
+	use crate::flow::operator::stateful::test_utils::test::*;
 
 	#[test]
 	fn test_state_get_existing() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node_id = OperatorId(1);
 		let key = test_key("get");
 		let value = test_row();
@@ -206,14 +198,9 @@ pub mod tests {
 
 	#[test]
 	fn test_state_get_non_existing() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node_id = OperatorId(1);
 		let key = test_key("nonexistent");
 
@@ -223,14 +210,9 @@ pub mod tests {
 
 	#[test]
 	fn test_state_set_and_update() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node_id = OperatorId(1);
 		let key = test_key("set");
 		let value1 = EncodedOperatorRow::timeless(&[1, 2, 3]);
@@ -249,14 +231,9 @@ pub mod tests {
 
 	#[test]
 	fn test_state_remove() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node_id = OperatorId(1);
 		let key = test_key("remove");
 		let value = test_row();
@@ -272,14 +249,9 @@ pub mod tests {
 
 	#[test]
 	fn test_state_scan_all() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node_id = OperatorId(1);
 
 		// Add multiple entries
@@ -301,14 +273,9 @@ pub mod tests {
 
 	#[test]
 	fn test_state_range() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node_id = OperatorId(1);
 
 		// Add entries with different keys
@@ -329,14 +296,9 @@ pub mod tests {
 
 	#[test]
 	fn test_state_range_open_ended() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node_id = OperatorId(1);
 
 		// Add some entries
@@ -374,14 +336,9 @@ pub mod tests {
 
 	#[test]
 	fn test_state_clear() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node_id = OperatorId(1);
 
 		// Add multiple entries
@@ -423,14 +380,9 @@ pub mod tests {
 
 	#[test]
 	fn test_load_or_create_row_existing() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node_id = OperatorId(1);
 		let key = test_key("load_existing");
 		let value = test_row();
@@ -446,14 +398,9 @@ pub mod tests {
 
 	#[test]
 	fn test_load_or_create_row_new() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node_id = OperatorId(1);
 		let key = test_key("load_new");
 		let shape = RowShape::testing(RowFamily::Operator, &[ValueType::Int4]);
@@ -466,14 +413,9 @@ pub mod tests {
 
 	#[test]
 	fn test_save_row() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node_id = OperatorId(1);
 		let key = test_key("save");
 		let value = test_row();
@@ -496,14 +438,9 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_nodes_isolation() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node1 = OperatorId(1);
 		let node2 = OperatorId(2);
 		let key = test_key("shared");
@@ -529,14 +466,9 @@ pub mod tests {
 
 	#[test]
 	fn test_large_values() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let node_id = OperatorId(1);
 		let key = test_key("large");
 

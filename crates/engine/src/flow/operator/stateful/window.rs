@@ -65,14 +65,12 @@ pub trait WindowStateful: RawStatefulOperator {
 pub mod tests {
 	use std::ops::Bound::{Excluded, Unbounded};
 
-	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::key::serializer::KeySerializer;
-	use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
-	use reifydb_runtime::context::clock::{Clock, MockClock};
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_core::interface::catalog::flow::OperatorId;
+	use reifydb_transaction::transaction::Transaction;
 
 	use super::*;
-	use crate::flow::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
+	use crate::flow::operator::stateful::test_utils::test::*;
 
 	/// Helper to create window keys from u64 for testing
 	/// Uses inverted encoding for proper ordering (smaller IDs produce larger keys)
@@ -117,14 +115,9 @@ pub mod tests {
 
 	#[test]
 	fn test_load_save_window_state() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(1));
 		let window_key = test_window_key(42);
 
@@ -144,14 +137,9 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_windows() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(1));
 
 		// Create states for multiple windows
@@ -172,14 +160,9 @@ pub mod tests {
 
 	#[test]
 	fn test_expire_before() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(1));
 
 		// Create windows 0 through 9
@@ -214,14 +197,9 @@ pub mod tests {
 
 	#[test]
 	fn test_expire_empty_range() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(1));
 
 		// Create windows 5 through 9
@@ -248,14 +226,9 @@ pub mod tests {
 
 	#[test]
 	fn test_expire_all() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(1));
 
 		// Create windows 0 through 4
@@ -282,14 +255,9 @@ pub mod tests {
 
 	#[test]
 	fn test_sliding_window_simulation() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::new(OperatorId(1));
 
 		// Simulate a sliding window maintaining last 3 windows

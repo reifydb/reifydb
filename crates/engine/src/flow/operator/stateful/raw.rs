@@ -60,27 +60,20 @@ pub trait RawStatefulOperator: Operator {
 pub mod tests {
 	use std::ops::Bound::{Excluded, Included};
 
-	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
-	use reifydb_runtime::context::clock::{Clock, MockClock};
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_core::interface::catalog::flow::OperatorId;
+	use reifydb_transaction::transaction::Transaction;
 	
 
 	use super::*;
-	use crate::flow::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
+	use crate::flow::operator::stateful::test_utils::test::*;
 
 	impl RawStatefulOperator for TestOperator {}
 
 	#[test]
 	fn test_simple_state_get_set() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(1));
 		let key = test_key("simple_test");
 		let value = test_row();
@@ -97,14 +90,9 @@ pub mod tests {
 
 	#[test]
 	fn test_simple_state_remove() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(1));
 		let key = test_key("remove_test");
 		let value = test_row();
@@ -119,14 +107,9 @@ pub mod tests {
 
 	#[test]
 	fn test_simple_state_scan_all() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(1));
 
 		// Add multiple entries
@@ -144,14 +127,9 @@ pub mod tests {
 
 	#[test]
 	fn test_simple_state_range() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(2));
 
 		// Add ordered entries
@@ -173,14 +151,9 @@ pub mod tests {
 
 	#[test]
 	fn test_simple_state_clear() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(3));
 
 		// Add multiple entries
@@ -204,14 +177,9 @@ pub mod tests {
 
 	#[test]
 	fn test_operator_isolation() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator1 = TestOperator::simple(OperatorId(10));
 		let operator2 = TestOperator::simple(OperatorId(20));
 		let shared_key = test_key("shared");
@@ -233,14 +201,9 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_range() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(4));
 
 		// Add some entries
@@ -259,14 +222,9 @@ pub mod tests {
 
 	#[test]
 	fn test_overwrite_existing_key() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(5));
 		let key = test_key("overwrite");
 
@@ -286,14 +244,9 @@ pub mod tests {
 
 	#[test]
 	fn test_remove_non_existent_key() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(6));
 		let key = test_key("non_existent");
 
@@ -306,14 +259,9 @@ pub mod tests {
 
 	#[test]
 	fn test_scan_after_partial_removal() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::simple(OperatorId(7));
 
 		// Add 5 entries

@@ -81,24 +81,11 @@ pub(crate) fn resolve_partition_flow(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::{common::CommitVersion, interface::catalog::id::TableId};
-	use reifydb_runtime::context::clock::{Clock, MockClock};
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_core::interface::catalog::id::TableId;
+	use reifydb_transaction::transaction::Transaction;
 
 	use super::*;
-	use crate::flow::operator::stateful::test_utils::test::create_test_transaction;
-
-	fn txn() -> FlowTransaction {
-		let parent = create_test_transaction();
-		FlowTransaction::deferred(
-			&parent,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(0)),
-		)
-	}
+	use crate::flow::operator::stateful::test_utils::test::{create_test_transaction, flow_transaction};
 
 	// The verified map now lives on the sink operator, so the same partition arriving in every
 	// apply (the steady state for a partitioned ring buffer: one registry point get per apply,
@@ -106,7 +93,9 @@ mod tests {
 	// reads; the repeat must not touch the store at all.
 	#[test]
 	fn a_verified_partition_never_rereads_the_store() {
-		let mut txn = txn();
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let mut verified: HashMap<Partition, Vec<Value>> = HashMap::new();
 		let shape = ObjectId::table(TableId(1));
 		let values = vec![Value::Utf8("sol".to_string())];
@@ -131,7 +120,9 @@ mod tests {
 	// arrive from partition_of.)
 	#[test]
 	fn a_verified_partition_still_detects_hash_collisions() {
-		let mut txn = txn();
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let mut verified: HashMap<Partition, Vec<Value>> = HashMap::new();
 		let shape = ObjectId::table(TableId(1));
 		let values = vec![Value::Utf8("sol".to_string())];

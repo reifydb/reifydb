@@ -62,16 +62,13 @@ pub trait KeyedStateful: RawStatefulOperator {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
-	use reifydb_runtime::context::clock::{Clock, MockClock};
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_core::interface::catalog::flow::OperatorId;
+	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::*;
 	#[cfg(test)]
 	use crate::flow::operator::stateful::test_utils::test::*;
-	use crate::flow::transaction::FlowTransaction;
 
 	// Extend TestOperator to implement KeyedStateful
 	impl KeyedStateful for TestOperator {
@@ -114,14 +111,9 @@ pub mod tests {
 
 	#[test]
 	fn test_load_save_state() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::with_key_types(OperatorId(1), vec![ValueType::Int4, ValueType::Utf8]);
 		let key = vec![Value::Int4(100), Value::Utf8("key1".to_string())];
 
@@ -141,14 +133,9 @@ pub mod tests {
 
 	#[test]
 	fn test_update_state() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::with_key_types(OperatorId(1), vec![ValueType::Int4, ValueType::Utf8]);
 		let key = vec![Value::Int4(200), Value::Utf8("update_key".to_string())];
 
@@ -171,14 +158,9 @@ pub mod tests {
 
 	#[test]
 	fn test_remove_state() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::with_key_types(OperatorId(1), vec![ValueType::Int4, ValueType::Utf8]);
 		let key = vec![Value::Int4(300), Value::Utf8("remove_key".to_string())];
 
@@ -197,14 +179,9 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_keys() {
-		let mut txn = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&mut txn,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut admin = create_test_transaction();
+		let mut parent = Transaction::Admin(&mut admin);
+		let mut txn = flow_transaction(&mut parent);
 		let operator = TestOperator::with_key_types(OperatorId(1), vec![ValueType::Int4, ValueType::Utf8]);
 
 		// Create multiple keys with different states
