@@ -23,6 +23,8 @@ use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_runtime::{
 	Runtime, RuntimeConfig, fatal::install as install_fatal, pool::PoolConfig, version_epoch::VersionEpoch,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_sqlite::JournalMode;
 use reifydb_store_multi::tier::{
 	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig,
 };
@@ -73,8 +75,7 @@ use tracing_subscriber::filter::LevelFilter;
 use crate::raft::RaftSubsystemFactory;
 use crate::system::raise_fd_limit;
 
-type PoolConfigSources =
-	(MultiCommitBufferTier, Option<MultiPersistentTier>, PoolConfig, Option<ReadBufferConfig>, u32);
+type PoolConfigSources = (MultiCommitBufferTier, Option<MultiPersistentTier>, PoolConfig, Option<ReadBufferConfig>);
 
 fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, Value)]) -> Result<PoolConfigSources> {
 	let multi_commit_buffer = factory.open_multi_commit_buffer();
@@ -83,7 +84,7 @@ fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, V
 	if let Some(persistent) = multi_persistent.as_ref() {
 		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);
 	}
-	Ok((multi_commit_buffer, multi_persistent, resolved.pools, resolved.read, resolved.cdc_wal_autocheckpoint))
+	Ok((multi_commit_buffer, multi_persistent, resolved.pools, resolved.read))
 }
 
 use super::{
@@ -306,7 +307,7 @@ impl ServerBuilder {
 		// does not exhaust it (`accept error: Too many open files`).
 		raise_fd_limit();
 
-		let (multi_commit_buffer, multi_persistent, pool_config, read_buffer, cdc_wal_autocheckpoint) =
+		let (multi_commit_buffer, multi_persistent, pool_config, read_buffer) =
 			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 
 		let runtime_config = self.runtime_config.unwrap_or_default();
@@ -334,7 +335,9 @@ impl ServerBuilder {
 		let cdc_backend = match &self.storage_factory {
 			StorageFactory::Memory => CdcBackend::Memory,
 			#[cfg(not(target_arch = "wasm32"))]
-			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone().wal_autocheckpoint(cdc_wal_autocheckpoint)),
+			StorageFactory::Sqlite(config) => {
+				CdcBackend::Sqlite(config.clone().journal_mode(JournalMode::Memory))
+			}
 		};
 
 		let mut database_builder =

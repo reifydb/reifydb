@@ -36,7 +36,7 @@ use crate::{
 	error::CdcError,
 	storage::{
 		CdcStorage, CdcStorageResult, DropBeforeResult, aggregate_evictions, merge_evictions,
-		normalize_range_inclusive, total_evicted_count,
+		normalize_range_inclusive, sqlite::codec, total_evicted_count,
 	},
 };
 
@@ -617,10 +617,8 @@ fn query_oldest_candidates(
 			break;
 		}
 		let (vb, pb) = row.map_err(|e| CdcError::Internal(format!("compact row: {e}")))?;
-		let cdc: Cdc =
-			from_bytes(&pb).map_err(|e| CdcError::Codec(format!("postcard decode in compact: {e}")))?;
 		version_blobs.push(vb);
-		entries.push(cdc);
+		entries.push(codec::decode(&pb)?);
 	}
 	Ok((entries, version_blobs))
 }
@@ -767,9 +765,7 @@ fn read_live_payloads(conn: &Connection, lo_b: &[u8; 8], hi_b: &[u8; 8], limit: 
 fn decode_live_payloads(payloads: Vec<Vec<u8>>) -> CdcStorageResult<Vec<Cdc>> {
 	let mut live_items = Vec::with_capacity(payloads.len());
 	for payload in payloads {
-		let cdc: Cdc = from_bytes(&payload)
-			.map_err(|e| CdcError::Codec(format!("postcard decode range live: {e}")))?;
-		live_items.push(cdc);
+		live_items.push(codec::decode(&payload)?);
 	}
 	Ok(live_items)
 }
@@ -968,7 +964,7 @@ fn insert_compacted_block(
 impl CdcStorage for SqliteCdcStorage {
 	#[instrument(name = "store::cdc::sqlite::write", level = "debug", skip_all)]
 	fn write(&self, cdc: &Cdc) -> CdcStorageResult<()> {
-		let bytes = to_stdvec(cdc).map_err(|e| CdcError::Codec(format!("postcard encode: {e}")))?;
+		let bytes = codec::encode(cdc)?;
 		let rollup = aggregate_evictions(&cdc.system_changes);
 		let rollup_bytes =
 			to_stdvec(&rollup).map_err(|e| CdcError::Codec(format!("postcard encode rollup: {e}")))?;
@@ -1186,11 +1182,7 @@ impl SqliteCdcStorage {
 			.map_err(|e| CdcError::Internal(format!("read cdc prepare: {e}")))?
 			.query_row(params![version_to_bytes(version).as_slice()], |row| row.get::<_, Vec<u8>>(0));
 		match result {
-			Ok(bytes) => {
-				let cdc: Cdc = from_bytes(&bytes)
-					.map_err(|e| CdcError::Codec(format!("postcard decode: {e}")))?;
-				Ok(Some(cdc))
-			}
+			Ok(bytes) => Ok(Some(codec::decode(&bytes)?)),
 			Err(QueryReturnedNoRows) => Ok(None),
 			Err(e) => Err(CdcError::Internal(format!("read cdc: {e}"))),
 		}

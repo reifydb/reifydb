@@ -11,6 +11,8 @@ use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_runtime::{
 	Runtime, RuntimeConfig, fatal::install as install_fatal, pool::PoolConfig, version_epoch::VersionEpoch,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_sqlite::JournalMode;
 use reifydb_store_multi::tier::{
 	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig,
 };
@@ -28,8 +30,7 @@ use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_value::value::Value;
 
-type PoolConfigSources =
-	(MultiCommitBufferTier, Option<MultiPersistentTier>, PoolConfig, Option<ReadBufferConfig>, u32);
+type PoolConfigSources = (MultiCommitBufferTier, Option<MultiPersistentTier>, PoolConfig, Option<ReadBufferConfig>);
 
 fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, Value)]) -> Result<PoolConfigSources> {
 	let multi_commit_buffer = factory.open_multi_commit_buffer();
@@ -38,7 +39,7 @@ fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, V
 	if let Some(persistent) = multi_persistent.as_ref() {
 		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);
 	}
-	Ok((multi_commit_buffer, multi_persistent, resolved.pools, resolved.read, resolved.cdc_wal_autocheckpoint))
+	Ok((multi_commit_buffer, multi_persistent, resolved.pools, resolved.read))
 }
 
 use super::{
@@ -179,7 +180,7 @@ impl EmbeddedBuilder {
 	}
 
 	pub fn build(self) -> Result<Database> {
-		let (multi_commit_buffer, multi_persistent, pool_config, read_buffer, cdc_wal_autocheckpoint) =
+		let (multi_commit_buffer, multi_persistent, pool_config, read_buffer) =
 			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		install_fatal(runtime_config.fatal);
@@ -206,7 +207,9 @@ impl EmbeddedBuilder {
 		let cdc_backend = match &self.storage_factory {
 			StorageFactory::Memory => CdcBackend::Memory,
 			#[cfg(not(target_arch = "wasm32"))]
-			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone().wal_autocheckpoint(cdc_wal_autocheckpoint)),
+			StorageFactory::Sqlite(config) => {
+				CdcBackend::Sqlite(config.clone().journal_mode(JournalMode::Memory))
+			}
 		};
 
 		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus, version_epoch)
