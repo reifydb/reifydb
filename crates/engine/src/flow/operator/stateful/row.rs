@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use std::{cell::UnsafeCell, collections::HashMap, iter::once, ops::Bound};
+use std::{collections::HashMap, iter::once, ops::Bound};
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_codec::{
@@ -52,35 +52,47 @@ fn counter_key() -> EncodedKey {
 
 const CACHE_CAPACITY: usize = 65_536;
 
+#[derive(Default)]
+pub struct RowNumberCache(HashMap<EncodedKey, RowNumber>);
+
+impl RowNumberCache {
+	fn remember(&mut self, key: &EncodedKey, row_number: RowNumber) {
+		if self.0.len() >= CACHE_CAPACITY {
+			self.0.clear();
+		}
+		self.0.insert(key.clone(), row_number);
+	}
+}
+
 pub struct RowNumberProvider {
 	node: OperatorId,
-	cache: UnsafeCell<HashMap<EncodedKey, RowNumber>>,
 }
 
 impl RowNumberProvider {
 	pub fn new(node: OperatorId) -> Self {
 		Self {
 			node,
-			cache: UnsafeCell::new(HashMap::new()),
 		}
-	}
-
-	#[allow(clippy::mut_from_ref)]
-	fn cache(&self) -> &mut HashMap<EncodedKey, RowNumber> {
-		unsafe { &mut *self.cache.get() }
-	}
-
-	fn remember(&self, key: &EncodedKey, row_number: RowNumber) {
-		let cache = self.cache();
-		if cache.len() >= CACHE_CAPACITY {
-			cache.clear();
-		}
-		cache.insert(key.clone(), row_number);
 	}
 
 	pub fn get_or_create_row_numbers<'a, I>(
 		&self,
 		txn: &mut FlowTransaction,
+		keys: I,
+	) -> Result<Vec<(RowNumber, bool)>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
+		let mut cache = txn.take_cache::<RowNumberCache>(self.node);
+		let result = self.get_or_create_row_numbers_with(txn, &mut cache, keys);
+		txn.put_cache(self.node, cache);
+		result
+	}
+
+	fn get_or_create_row_numbers_with<'a, I>(
+		&self,
+		txn: &mut FlowTransaction,
+		cache: &mut RowNumberCache,
 		keys: I,
 	) -> Result<Vec<(RowNumber, bool)>>
 	where
@@ -92,7 +104,7 @@ impl RowNumberProvider {
 		let mut results: Vec<Option<(RowNumber, bool)>> = (0..keys.len()).map(|_| None).collect();
 		let mut to_resolve: Vec<usize> = Vec::new();
 		for (i, key) in keys.iter().enumerate() {
-			match self.cache().get(*key) {
+			match cache.0.get(*key) {
 				Some(row_number) => results[i] = Some((*row_number, false)),
 				None => to_resolve.push(i),
 			}
@@ -119,7 +131,7 @@ impl RowNumberProvider {
 				Some(existing_row) => {
 					let existing_row = EncodedOperatorRow::view(existing_row);
 					let row_number = RowNumber(decode_payload::<u64>(existing_row)?);
-					self.remember(keys[i], row_number);
+					cache.remember(keys[i], row_number);
 					results[i] = Some((row_number, false));
 				}
 				None => new_positions.push((i, map_key)),
@@ -131,7 +143,7 @@ impl RowNumberProvider {
 			for (offset, (i, map_key)) in new_positions.iter().enumerate() {
 				let row_number = RowNumber(start + offset as u64);
 				internal_state_set(self.node, txn, map_key, encode_payload(&row_number.0, now)?)?;
-				self.remember(keys[*i], row_number);
+				cache.remember(keys[*i], row_number);
 				results[*i] = Some((row_number, true));
 			}
 		}
@@ -152,14 +164,26 @@ impl RowNumberProvider {
 	}
 
 	pub fn get_row_number(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<RowNumber>> {
-		if let Some(row_number) = self.cache().get(key) {
+		let mut cache = txn.take_cache::<RowNumberCache>(self.node);
+		let result = self.get_row_number_with(txn, &mut cache, key);
+		txn.put_cache(self.node, cache);
+		result
+	}
+
+	fn get_row_number_with(
+		&self,
+		txn: &mut FlowTransaction,
+		cache: &mut RowNumberCache,
+		key: &EncodedKey,
+	) -> Result<Option<RowNumber>> {
+		if let Some(row_number) = cache.0.get(key) {
 			return Ok(Some(*row_number));
 		}
 		let map_key = self.make_map_key(key);
 		match internal_state_get(self.node, txn, &map_key)? {
 			Some(existing_row) => {
 				let row_number = RowNumber(decode_payload::<u64>(&existing_row)?);
-				self.remember(key, row_number);
+				cache.remember(key, row_number);
 				Ok(Some(row_number))
 			}
 			None => Ok(None),
@@ -167,7 +191,9 @@ impl RowNumberProvider {
 	}
 
 	pub fn remove_for_key(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<bool> {
-		let cached = self.cache().remove(key).is_some();
+		let mut cache = txn.take_cache::<RowNumberCache>(self.node);
+		let cached = cache.0.remove(key).is_some();
+		txn.put_cache(self.node, cache);
 		let map_key = self.make_map_key(key);
 		if !cached && internal_state_get(self.node, txn, &map_key)?.is_none() {
 			return Ok(false);
@@ -184,7 +210,9 @@ impl RowNumberProvider {
 	}
 
 	pub fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> Result<()> {
-		self.cache().retain(|key, _| !key.as_ref().starts_with(key_prefix));
+		let mut cache = txn.take_cache::<RowNumberCache>(self.node);
+		cache.0.retain(|key, _| !key.as_ref().starts_with(key_prefix));
+		txn.put_cache(self.node, cache);
 
 		let mut prefix = Vec::new();
 		let mut serializer = KeySerializer::new();
@@ -245,7 +273,9 @@ impl RowNumberProvider {
 			dropped = true;
 		}
 		if dropped {
-			self.cache().clear();
+			let mut cache = txn.take_cache::<RowNumberCache>(self.node);
+			cache.0.clear();
+			txn.put_cache(self.node, cache);
 		}
 
 		*cursor = if reached_end {

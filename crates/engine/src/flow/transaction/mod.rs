@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{any::Any, collections::HashMap, mem, sync::Arc};
+#[cfg(reifydb_assertions)]
+use std::{any::type_name, collections::HashSet};
+use std::{
+	any::{Any, TypeId},
+	collections::HashMap,
+	mem,
+	sync::Arc,
+};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
@@ -77,7 +84,7 @@ use reifydb_transaction::{
 	},
 	transaction::Transaction,
 };
-use reifydb_value::Result;
+use reifydb_value::{Result, reifydb_assertions};
 use tracing::instrument;
 
 pub mod allocators;
@@ -102,6 +109,11 @@ pub struct FlowTransactionInner {
 	pub clock: Clock,
 
 	pub operator_states: HashMap<OperatorId, OperatorStateSlot>,
+
+	pub operator_caches: HashMap<(OperatorId, TypeId), Box<dyn Any + Send>>,
+
+	#[cfg(reifydb_assertions)]
+	pub checked_out_caches: HashSet<(OperatorId, TypeId)>,
 
 	pub store_reads: u64,
 
@@ -130,6 +142,9 @@ impl<'a, 'b> FlowTransaction<'a, 'b> {
 				accumulator: ChangeAccumulator::new(),
 				clock,
 				operator_states: HashMap::new(),
+				operator_caches: HashMap::new(),
+				#[cfg(reifydb_assertions)]
+				checked_out_caches: HashSet::new(),
 				store_reads: 0,
 				allocators,
 			},
@@ -243,6 +258,43 @@ impl<'a, 'b> FlowTransaction<'a, 'b> {
 			}
 		}
 		Ok(())
+	}
+
+	pub fn take_cache<C>(&mut self, node: OperatorId) -> C
+	where
+		C: 'static + Send + Default,
+	{
+		let key = (node, TypeId::of::<C>());
+		reifydb_assertions! {
+			assert!(
+				self.inner.checked_out_caches.insert(key),
+				"operator {} took its {} cache twice without putting it back, so the inner copy would \
+				 be discarded by the outer put and its memo entries lost",
+				node.0,
+				type_name::<C>()
+			);
+		}
+		match self.inner.operator_caches.remove(&key) {
+			Some(cache) => *cache.downcast::<C>().expect("operator cache keyed by its type id"),
+			None => C::default(),
+		}
+	}
+
+	pub fn put_cache<C>(&mut self, node: OperatorId, cache: C)
+	where
+		C: 'static + Send,
+	{
+		let key = (node, TypeId::of::<C>());
+		reifydb_assertions! {
+			assert!(
+				self.inner.checked_out_caches.remove(&key),
+				"operator {} put back a {} cache it never took, so it would silently overwrite the copy \
+				 another caller still holds",
+				node.0,
+				type_name::<C>()
+			);
+		}
+		self.inner.operator_caches.insert(key, Box::new(cache));
 	}
 
 	pub fn install_operator_states(&mut self, states: HashMap<OperatorId, Box<dyn Any + Send>>) {

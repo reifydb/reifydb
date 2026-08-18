@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, collections::HashMap, sync::LazyLock};
+use std::{collections::HashMap, sync::LazyLock};
 
 use postcard::to_extend;
 use reifydb_core::interface::flow::OperatorCapability;
@@ -126,6 +126,13 @@ mod group_by_key_tests {
 	}
 }
 
+#[derive(Default)]
+struct EvictCursors {
+	left: Option<EncodedKey>,
+	right: Option<EncodedKey>,
+	rownumber: Option<EncodedKey>,
+}
+
 pub struct JoinSideConfig {
 	pub node: OperatorId,
 	pub exprs: Vec<Expression>,
@@ -150,9 +157,6 @@ pub struct JoinOperator {
 	pub(crate) latest: bool,
 	left_ttl: Option<Duration>,
 	right_ttl: Option<Duration>,
-	left_evict_cursor: RefCell<Option<EncodedKey>>,
-	right_evict_cursor: RefCell<Option<EncodedKey>>,
-	rownumber_evict_cursor: RefCell<Option<EncodedKey>>,
 }
 
 impl JoinOperator {
@@ -216,9 +220,6 @@ impl JoinOperator {
 			latest,
 			left_ttl,
 			right_ttl,
-			left_evict_cursor: RefCell::new(None),
-			right_evict_cursor: RefCell::new(None),
-			rownumber_evict_cursor: RefCell::new(None),
 		}
 	}
 
@@ -239,10 +240,10 @@ impl JoinOperator {
 			return Ok(());
 		};
 		let left = Store::new(self.node, JoinSide::Left);
-		let mut cursor = self.left_evict_cursor.borrow_mut().take();
-		left.evict_expired(txn, cutoff_version, &mut cursor, EVICT_BATCH)?;
-		*self.left_evict_cursor.borrow_mut() = cursor;
-		Ok(())
+		let mut cursors = txn.take_cache::<EvictCursors>(self.node);
+		let result = left.evict_expired(txn, cutoff_version, &mut cursors.left, EVICT_BATCH);
+		txn.put_cache(self.node, cursors);
+		result
 	}
 
 	fn evict_right(&self, txn: &mut FlowTransaction, now: DateTime) -> Result<()> {
@@ -258,10 +259,10 @@ impl JoinOperator {
 			return Ok(());
 		};
 		let right = Store::new(self.node, JoinSide::Right);
-		let mut cursor = self.right_evict_cursor.borrow_mut().take();
-		right.evict_expired(txn, cutoff_version, &mut cursor, EVICT_BATCH)?;
-		*self.right_evict_cursor.borrow_mut() = cursor;
-		Ok(())
+		let mut cursors = txn.take_cache::<EvictCursors>(self.node);
+		let result = right.evict_expired(txn, cutoff_version, &mut cursors.right, EVICT_BATCH);
+		txn.put_cache(self.node, cursors);
+		result
 	}
 
 	fn evict_rownumbers(&self, txn: &mut FlowTransaction, now: DateTime) -> Result<()> {
@@ -276,10 +277,11 @@ impl JoinOperator {
 		else {
 			return Ok(());
 		};
-		let mut cursor = self.rownumber_evict_cursor.borrow_mut().take();
-		self.row_number_provider.evict_expired(txn, cutoff_version, &mut cursor, EVICT_BATCH)?;
-		*self.rownumber_evict_cursor.borrow_mut() = cursor;
-		Ok(())
+		let mut cursors = txn.take_cache::<EvictCursors>(self.node);
+		let result =
+			self.row_number_provider.evict_expired(txn, cutoff_version, &mut cursors.rownumber, EVICT_BATCH);
+		txn.put_cache(self.node, cursors);
+		result
 	}
 
 	pub(crate) fn compute_join_keys(

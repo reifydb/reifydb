@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, ops::Bound};
+use std::ops::Bound;
 
 use reifydb_core::interface::flow::OperatorCapability;
 use reifydb_codec::{
@@ -44,6 +44,9 @@ use crate::flow::{
 
 const TIMESTAMP_PREFIX: u8 = b'T';
 
+#[derive(Default)]
+struct EvictCursor(Option<EncodedKey>);
+
 pub struct AppendOperator {
 	node: OperatorId,
 
@@ -56,8 +59,6 @@ pub struct AppendOperator {
 	ttl_nanos: Option<u64>,
 
 	version_epoch: VersionEpoch,
-
-	evict_cursor: RefCell<Option<EncodedKey>>,
 }
 
 impl AppendOperator {
@@ -80,7 +81,6 @@ impl AppendOperator {
 			row_number_provider: RowNumberProvider::new(node),
 			ttl_nanos,
 			version_epoch,
-			evict_cursor: RefCell::new(None),
 		}
 	}
 
@@ -202,7 +202,8 @@ impl Operator for AppendOperator {
 		const EVICT_BATCH: usize = 4096;
 		let prefix = [TIMESTAMP_PREFIX];
 		let base = EncodedKeyRange::prefix(&prefix);
-		let start = match self.evict_cursor.borrow().clone() {
+		let cursor = txn.take_cache::<EvictCursor>(self.node);
+		let start = match cursor.0 {
 			Some(cursor) => Bound::Excluded(cursor),
 			None => base.start.clone(),
 		};
@@ -226,11 +227,14 @@ impl Operator for AppendOperator {
 			self.forget_mapping(txn, &composite_key)?;
 		}
 
-		*self.evict_cursor.borrow_mut() = if reached_end {
-			None
-		} else {
-			last_key
-		};
+		txn.put_cache(
+			self.node,
+			EvictCursor(if reached_end {
+				None
+			} else {
+				last_key
+			}),
+		);
 		Ok(None)
 	}
 }

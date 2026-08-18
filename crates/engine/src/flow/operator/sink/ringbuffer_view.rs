@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::UnsafeCell, collections::HashMap};
+use std::collections::HashMap;
 
 use reifydb_core::interface::flow::OperatorCapability;
 use reifydb_codec::row::pod::EncodedPodRow;
@@ -45,7 +45,7 @@ use smallvec::smallvec;
 
 use super::{
 	coerce_columns, decode_dictionary_columns, encode_row_at_index,
-	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
+	partition::{VerifiedPartitions, ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 	view::dictionary_encode_view_columns,
 };
@@ -69,7 +69,6 @@ pub struct SinkRingBufferViewOperator {
 	propagate_evictions: bool,
 	state_shape: RowShape,
 	partition_indices: Vec<usize>,
-	verified_partitions: UnsafeCell<HashMap<Partition, Vec<Value>>>,
 }
 
 impl SinkRingBufferViewOperator {
@@ -92,18 +91,12 @@ impl SinkRingBufferViewOperator {
 			propagate_evictions,
 			state_shape: RowShape::new(RowFamily::Operator, vec![RowShapeField::unconstrained("state", ValueType::Blob)]),
 			partition_indices,
-			verified_partitions: UnsafeCell::new(HashMap::new()),
 		}
 	}
 
 	#[inline]
 	fn is_partitioned(&self) -> bool {
 		!self.partition_indices.is_empty()
-	}
-
-	#[allow(clippy::mut_from_ref)]
-	fn verified_partitions(&self) -> &mut HashMap<Partition, Vec<Value>> {
-		unsafe { &mut *self.verified_partitions.get() }
 	}
 
 	#[inline]
@@ -258,6 +251,22 @@ impl Operator for SinkRingBufferViewOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+		let mut verified = txn.take_cache::<VerifiedPartitions>(self.node);
+		let result = self.apply_diffs(txn, &change, &mut verified.0);
+		txn.put_cache(self.node, verified);
+		result?;
+
+		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+	}
+}
+
+impl SinkRingBufferViewOperator {
+	fn apply_diffs(
+		&self,
+		txn: &mut FlowTransaction,
+		change: &Change,
+		verified: &mut HashMap<Partition, Vec<Value>>,
+	) -> Result<()> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, view.columns());
 		let object_id = StorageId::ringbuffer(self.ringbuffer_id);
@@ -281,12 +290,13 @@ impl Operator for SinkRingBufferViewOperator {
 					&mut metadata,
 					&mut partition_metadata,
 					post,
+					verified,
 				)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_ringbuffer_update(txn, &view, &shape, object_id, pre, post)?,
+				} => self.apply_ringbuffer_update(txn, &view, &shape, object_id, pre, post, verified)?,
 				Diff::Remove {
 					pre,
 					..
@@ -304,12 +314,9 @@ impl Operator for SinkRingBufferViewOperator {
 				self.write_partition_metadata(txn, partition_values, partition_meta)?;
 			}
 		}
-
-		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+		Ok(())
 	}
-}
 
-impl SinkRingBufferViewOperator {
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
 	fn apply_ringbuffer_insert(
@@ -321,6 +328,7 @@ impl SinkRingBufferViewOperator {
 		metadata: &mut Option<RingBufferMetadata>,
 		partition_metadata: &mut HashMap<Vec<Value>, RingBufferMetadata>,
 		post: &Columns,
+		verified: &mut HashMap<Partition, Vec<Value>>,
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns())?;
 		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
@@ -333,7 +341,6 @@ impl SinkRingBufferViewOperator {
 		let mut row_values: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 
 		if self.is_partitioned() {
-			let verified = self.verified_partitions();
 			let mut groups: Vec<(Partition, Vec<Value>, Vec<usize>)> = Vec::new();
 			let mut group_index: HashMap<Partition, usize> = HashMap::new();
 			for row_idx in 0..row_count {
@@ -499,6 +506,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	#[inline]
+	#[allow(clippy::too_many_arguments)]
 	fn apply_ringbuffer_update(
 		&self,
 		txn: &mut FlowTransaction,
@@ -507,6 +515,7 @@ impl SinkRingBufferViewOperator {
 		object_id: StorageId,
 		pre: &Columns,
 		post: &Columns,
+		verified: &mut HashMap<Partition, Vec<Value>>,
 	) -> Result<()> {
 		let coerced_pre = coerce_columns(pre, view.columns())?;
 		let coerced_post = coerce_columns(post, view.columns())?;
@@ -516,7 +525,6 @@ impl SinkRingBufferViewOperator {
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
 		let row_count = source_post.row_count();
 		let field_columns = shape_field_columns(source_post, shape);
-		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
 			let pre_source_rn = source_pre.row_numbers()[row_idx];
 			let post_source_rn = source_post.row_numbers()[row_idx];

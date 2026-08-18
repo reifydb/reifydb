@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::UnsafeCell, collections::HashMap};
+use std::collections::HashMap;
 
 use reifydb_core::interface::flow::OperatorCapability;
 use reifydb_codec::row::shape::RowFamily;
@@ -31,7 +31,7 @@ use smallvec::smallvec;
 
 use super::{
 	coerce_columns, encode_row_at_index,
-	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
+	partition::{VerifiedPartitions, ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 	view::dictionary_encode_view_columns,
 };
@@ -46,7 +46,6 @@ pub struct SinkSeriesViewOperator {
 	#[allow(dead_code)]
 	key: SeriesKey,
 	partition_indices: Vec<usize>,
-	verified_partitions: UnsafeCell<HashMap<Partition, Vec<Value>>>,
 }
 
 impl SinkSeriesViewOperator {
@@ -66,7 +65,6 @@ impl SinkSeriesViewOperator {
 			series_id,
 			key,
 			partition_indices,
-			verified_partitions: UnsafeCell::new(HashMap::new()),
 		}
 	}
 
@@ -75,10 +73,6 @@ impl SinkSeriesViewOperator {
 		!self.partition_indices.is_empty()
 	}
 
-	#[allow(clippy::mut_from_ref)]
-	fn verified_partitions(&self) -> &mut HashMap<Partition, Vec<Value>> {
-		unsafe { &mut *self.verified_partitions.get() }
-	}
 }
 
 impl Operator for SinkSeriesViewOperator {
@@ -91,6 +85,22 @@ impl Operator for SinkSeriesViewOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+		let mut verified = txn.take_cache::<VerifiedPartitions>(self.node);
+		let result = self.apply_diffs(txn, &change, &mut verified.0);
+		txn.put_cache(self.node, verified);
+		result?;
+
+		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+	}
+}
+
+impl SinkSeriesViewOperator {
+	fn apply_diffs(
+		&self,
+		txn: &mut FlowTransaction,
+		change: &Change,
+		verified: &mut HashMap<Partition, Vec<Value>>,
+	) -> Result<()> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(RowFamily::Series, view.columns());
 		let object_id = StorageId::series(self.series_id);
@@ -100,24 +110,21 @@ impl Operator for SinkSeriesViewOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_series_view_insert(txn, &view, &shape, object_id, post)?,
+				} => self.apply_series_view_insert(txn, &view, &shape, object_id, post, verified)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_series_view_update(txn, &view, &shape, object_id, pre, post)?,
+				} => self.apply_series_view_update(txn, &view, &shape, object_id, pre, post, verified)?,
 				Diff::Remove {
 					pre,
 					..
 				} => self.apply_series_view_remove(txn, &view, object_id, pre)?,
 			}
 		}
-
-		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+		Ok(())
 	}
-}
 
-impl SinkSeriesViewOperator {
 	#[inline]
 	fn apply_series_view_insert(
 		&self,
@@ -126,6 +133,7 @@ impl SinkSeriesViewOperator {
 		shape: &RowShape,
 		object_id: StorageId,
 		post: &Columns,
+		verified: &mut HashMap<Partition, Vec<Value>>,
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns())?;
 		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
@@ -134,7 +142,6 @@ impl SinkSeriesViewOperator {
 		let field_columns = shape_field_columns(source, shape);
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers()[row_idx];
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
@@ -164,6 +171,7 @@ impl SinkSeriesViewOperator {
 	}
 
 	#[inline]
+	#[allow(clippy::too_many_arguments)]
 	fn apply_series_view_update(
 		&self,
 		txn: &mut FlowTransaction,
@@ -172,6 +180,7 @@ impl SinkSeriesViewOperator {
 		object_id: StorageId,
 		pre: &Columns,
 		post: &Columns,
+		verified: &mut HashMap<Partition, Vec<Value>>,
 	) -> Result<()> {
 		let coerced_pre = coerce_columns(pre, view.columns())?;
 		let coerced_post = coerce_columns(post, view.columns())?;
@@ -184,7 +193,6 @@ impl SinkSeriesViewOperator {
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
 			let pre_row_number = source_pre.row_numbers()[row_idx];
 			let post_row_number = source_post.row_numbers()[row_idx];

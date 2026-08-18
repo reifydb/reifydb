@@ -45,7 +45,7 @@ use sink::{
 use sort::SortOperator;
 use take::TakeOperator;
 
-pub trait Operator: Send {
+pub trait Operator: Send + Sync {
 	fn id(&self) -> OperatorId;
 
 	fn capabilities(&self) -> &[OperatorCapability];
@@ -61,13 +61,12 @@ pub trait Operator: Send {
 	}
 }
 
-pub type BoxedOperator = Box<dyn Operator + Send>;
+pub type BoxedOperator = Box<dyn Operator + Send + Sync>;
 
 #[derive(Clone)]
 pub struct OperatorCell(Arc<Operators>);
 
 impl OperatorCell {
-	#[allow(clippy::arc_with_non_send_sync)]
 	pub fn new(operators: Operators) -> Self {
 		Self(Arc::new(operators))
 	}
@@ -80,14 +79,6 @@ impl Deref for OperatorCell {
 		&self.0
 	}
 }
-
-// SAFETY: a flow and all of its operators are only ever accessed by a single thread at any one
-// time. Inline flow execution walks the whole schedule sequentially on the committing thread, and
-// operators are keyed by OperatorId and never shared between flows, so no Operators value is ever
-// reachable from two threads simultaneously. The inner Arc is only cloned and dereferenced from the
-// owning thread, so asserting Send and Sync over the !Sync Operators it holds is sound.
-unsafe impl Send for OperatorCell {}
-unsafe impl Sync for OperatorCell {}
 
 pub enum Operators {
 	SourceTable(PrimitiveTableOperator),

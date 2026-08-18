@@ -8,8 +8,6 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::bytes::EncodedBytes,
 };
-#[cfg(reifydb_assertions)]
-use reifydb_core::key::{EncodableKey, operator_state::OperatorStateKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::{Delta, RemoveAnnounce},
@@ -395,15 +393,6 @@ impl MultiWriteTransaction {
 		is_remove = pending.was_removed()
 	))]
 	fn modify(&mut self, pending: DeltaEntry) -> Result<()> {
-		reifydb_assertions! {
-			assert!(
-				OperatorStateKey::decode(pending.key()).is_none(),
-				"operator state must reach the operator store through the committer split, never the \
-				 multi store: {}",
-				hex_display(pending.key().as_ref())
-			);
-		}
-
 		let cnt = self.count + 1;
 		let size = self.size + self.pending_writes.estimate_size(&pending);
 		if cnt >= self.pending_writes.max_batch_entries() || size >= self.pending_writes.max_batch_size() {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::UnsafeCell, collections::HashMap};
+use std::collections::HashMap;
 
 use reifydb_core::interface::flow::OperatorCapability;
 use reifydb_codec::row::shape::RowFamily;
@@ -46,12 +46,15 @@ use smallvec::smallvec;
 
 use super::{
 	coerce_columns, encode_row_at_index,
-	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
+	partition::{VerifiedPartitions, ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 };
 use crate::flow::{Operator, error::FlowSinkError, operator::OperatorCell, transaction::FlowTransaction};
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
+
+#[derive(Default)]
+struct CreatedAtCache(HashMap<RowNumber, DateTime>);
 
 pub struct SinkTableViewOperator {
 	#[allow(dead_code)]
@@ -65,8 +68,6 @@ pub struct SinkTableViewOperator {
 	shape: RowShape,
 	sort: Vec<ViewSortKey>,
 	partition_indices: Vec<usize>,
-	verified_partitions: UnsafeCell<HashMap<Partition, Vec<Value>>>,
-	created_at: UnsafeCell<HashMap<RowNumber, DateTime>>,
 }
 
 impl SinkTableViewOperator {
@@ -96,24 +97,12 @@ impl SinkTableViewOperator {
 			shape,
 			sort,
 			partition_indices,
-			verified_partitions: UnsafeCell::new(HashMap::new()),
-			created_at: UnsafeCell::new(HashMap::new()),
 		}
 	}
 
 	#[inline]
 	fn is_partitioned(&self) -> bool {
 		!self.partition_indices.is_empty()
-	}
-
-	#[allow(clippy::mut_from_ref)]
-	fn verified_partitions(&self) -> &mut HashMap<Partition, Vec<Value>> {
-		unsafe { &mut *self.verified_partitions.get() }
-	}
-
-	#[allow(clippy::mut_from_ref)]
-	fn created_at_cache(&self) -> &mut HashMap<RowNumber, DateTime> {
-		unsafe { &mut *self.created_at.get() }
 	}
 
 	#[inline]
@@ -170,6 +159,25 @@ impl Operator for SinkTableViewOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+		let mut verified = txn.take_cache::<VerifiedPartitions>(self.node);
+		let mut created_at = txn.take_cache::<CreatedAtCache>(self.node);
+		let result = self.apply_diffs(txn, &change, &mut verified.0, &mut created_at.0);
+		txn.put_cache(self.node, verified);
+		txn.put_cache(self.node, created_at);
+		result?;
+
+		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+	}
+}
+
+impl SinkTableViewOperator {
+	fn apply_diffs(
+		&self,
+		txn: &mut FlowTransaction,
+		change: &Change,
+		verified: &mut HashMap<Partition, Vec<Value>>,
+		cache: &mut HashMap<RowNumber, DateTime>,
+	) -> Result<()> {
 		let view = self.view.def();
 		let shape = &self.shape;
 
@@ -178,24 +186,21 @@ impl Operator for SinkTableViewOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_table_view_insert(txn, view, shape, post)?,
+				} => self.apply_table_view_insert(txn, view, shape, post, verified, cache)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_table_view_update(txn, view, shape, pre, post)?,
+				} => self.apply_table_view_update(txn, view, shape, pre, post, verified, cache)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_table_view_remove(txn, view, pre)?,
+				} => self.apply_table_view_remove(txn, view, pre, cache)?,
 			}
 		}
-
-		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+		Ok(())
 	}
-}
 
-impl SinkTableViewOperator {
 	#[inline]
 	fn apply_table_view_insert(
 		&self,
@@ -203,6 +208,8 @@ impl SinkTableViewOperator {
 		view: &View,
 		shape: &RowShape,
 		post: &Columns,
+		verified: &mut HashMap<Partition, Vec<Value>>,
+		cache: &mut HashMap<RowNumber, DateTime>,
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns())?;
 		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
@@ -212,8 +219,6 @@ impl SinkTableViewOperator {
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 
-		let verified = self.verified_partitions();
-		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers()[row_idx];
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
@@ -242,6 +247,7 @@ impl SinkTableViewOperator {
 	}
 
 	#[inline]
+	#[allow(clippy::too_many_arguments)]
 	fn apply_table_view_update(
 		&self,
 		txn: &mut FlowTransaction,
@@ -249,6 +255,8 @@ impl SinkTableViewOperator {
 		shape: &RowShape,
 		pre: &Columns,
 		post: &Columns,
+		verified: &mut HashMap<Partition, Vec<Value>>,
+		cache: &mut HashMap<RowNumber, DateTime>,
 	) -> Result<()> {
 		let coerced_pre = coerce_columns(pre, view.columns())?;
 		let coerced_post = coerce_columns(post, view.columns())?;
@@ -261,8 +269,6 @@ impl SinkTableViewOperator {
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		let verified = self.verified_partitions();
-		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
 			let pre_row_number = source_pre.row_numbers()[row_idx];
 			let post_row_number = source_post.row_numbers()[row_idx];
@@ -354,13 +360,18 @@ impl SinkTableViewOperator {
 	}
 
 	#[inline]
-	fn apply_table_view_remove(&self, txn: &mut FlowTransaction, view: &View, pre: &Columns) -> Result<()> {
+	fn apply_table_view_remove(
+		&self,
+		txn: &mut FlowTransaction,
+		view: &View,
+		pre: &Columns,
+		cache: &mut HashMap<RowNumber, DateTime>,
+	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.row_count();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers()[row_idx];
 			cache.remove(&row_number);

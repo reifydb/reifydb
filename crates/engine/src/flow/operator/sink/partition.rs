@@ -36,6 +36,9 @@ pub(crate) fn ensure_partition_unchanged(shape: ObjectId, pre: Partition, post: 
 
 const VERIFIED_PARTITIONS_CAPACITY: usize = 65_536;
 
+#[derive(Default)]
+pub(crate) struct VerifiedPartitions(pub(crate) HashMap<Partition, Vec<Value>>);
+
 pub(crate) fn resolve_partition_flow(
 	txn: &mut FlowTransaction,
 	shape: ObjectId,
