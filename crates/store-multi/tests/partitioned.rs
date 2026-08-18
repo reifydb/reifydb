@@ -12,7 +12,7 @@ use reifydb_core::{
 	delta::Delta,
 	event::EventBus,
 	interface::{
-		catalog::{id::TableId, object::ObjectId},
+		catalog::{id::TableId, object::ObjectId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 	},
 	key::partitioned_row::{PartitionedRowKey, RowLocator},
@@ -71,12 +71,12 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	})
 	.unwrap();
 
-	let object = ObjectId::Table(TableId(1));
+	let storage = StorageId::Table(TableId(1));
 	let us = Partition::of(&[Value::Utf8("us".to_string())]);
 	let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
-	let k_us1 = PartitionedRowKey::encoded(object, us, RowLocator::Row(RowNumber(1)));
-	let k_eu2 = PartitionedRowKey::encoded(object, eu, RowLocator::Row(RowNumber(2)));
-	let k_us3 = PartitionedRowKey::encoded(object, us, RowLocator::Row(RowNumber(3)));
+	let k_us1 = PartitionedRowKey::encoded(storage, us, RowLocator::Row(RowNumber(1)));
+	let k_eu2 = PartitionedRowKey::encoded(storage, eu, RowLocator::Row(RowNumber(2)));
+	let k_us3 = PartitionedRowKey::encoded(storage, us, RowLocator::Row(RowNumber(3)));
 
 	MultiVersionCommit::commit(
 		&store,
@@ -113,11 +113,11 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	};
 
 	let all: Vec<_> =
-		store.range(PartitionedRowKey::full_scan(object), scope, 1024).collect::<Result<Vec<_>, _>>().unwrap();
+		store.range(PartitionedRowKey::full_scan(storage), scope, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	assert_eq!(all.len(), 3, "full-object range must return flushed + buffered partitioned rows across tiers");
 
 	let us_rows: Vec<_> = store
-		.range(PartitionedRowKey::partition_range(object, us), scope, 1024)
+		.range(PartitionedRowKey::partition_range(storage, us), scope, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap();
 	assert_eq!(us_rows.len(), 2, "us partition range must return only us rows across tiers");
@@ -134,7 +134,7 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	let persistent = store.persistent().expect("persistent tier configured");
 	assert!(
 		persistent
-			.get(EntryKind::PartitionedSource(object), k_us1.as_ref(), CommitVersion(2))
+			.get(EntryKind::PartitionedSource(ObjectId::from(storage)), k_us1.as_ref(), CommitVersion(2))
 			.unwrap()
 			.value()
 			.is_some(),

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::TableId, object::ObjectId},
+	interface::catalog::{id::TableId, storage::StorageId},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -16,7 +16,7 @@ impl CatalogStore {
 		}
 
 		let pk_id = Self::get_table_pk_id(&mut Transaction::Admin(&mut *txn), table)?;
-		drop_object_metadata(txn, ObjectId::Table(table), pk_id)?;
+		drop_object_metadata(txn, StorageId::Table(table), pk_id)?;
 
 		txn.remove(&TableKey::encoded(table))?;
 

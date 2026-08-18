@@ -123,11 +123,7 @@ impl SinkTableViewOperator {
 	#[inline]
 	fn partitioned_key(&self, cols: &Columns, row_idx: usize, partition: Partition, row: RowNumber) -> EncodedKey {
 		if self.sort.is_empty() {
-			return PartitionedRowKey::encoded(
-				ObjectId::table(self.storage),
-				partition,
-				RowLocator::Row(row),
-			);
+			return PartitionedRowKey::encoded(self.storage, partition, RowLocator::Row(row));
 		}
 		let mut serializer = KeySerializer::new();
 		serializer.extend_raw(&self.partitioned_prefix);

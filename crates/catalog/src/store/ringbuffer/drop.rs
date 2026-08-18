@@ -175,7 +175,7 @@ pub mod tests {
 
 		// The ringbuffer definition is gone, so scan the raw metadata keyspace for this id directly
 		// rather than going through list_ringbuffer_partition_metadata (which needs a RingBuffer).
-		let range = RingBufferMetadataKey::full_scan_for_ringbuffer(rb.id);
+		let range = RingBufferMetadataKey::full_scan_for_storage(rb.id);
 		let remaining: Vec<_> =
 			Transaction::Admin(&mut txn).range(range, RangeScope::All, 4096).unwrap().collect();
 		assert!(remaining.is_empty(), "expected no orphaned RingBufferMetadataKey entries after drop");

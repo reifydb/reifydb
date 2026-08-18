@@ -208,7 +208,7 @@ fn insert_series_row(
 		let partition = Partition::of(&part_values);
 		resolve_partition(txn, ObjectId::Series(series.id), partition, &part_values, verified)?;
 		PartitionedRowKey::encoded(
-			ObjectId::Series(series.id),
+			series.id,
 			partition,
 			RowLocator::Series {
 				variant_tag,

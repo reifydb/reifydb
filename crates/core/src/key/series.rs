@@ -8,7 +8,10 @@ use reifydb_codec::key::{
 };
 
 use super::{EncodableKey, KeyKind};
-use crate::interface::catalog::id::SeriesId;
+use crate::{
+	interface::catalog::{id::SeriesId, storage::StorageId},
+	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeriesKey {
@@ -70,18 +73,18 @@ impl EncodableKey for SeriesKey {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeriesMetadataKey {
-	pub series: SeriesId,
+	pub storage: StorageId,
 }
 
 impl SeriesMetadataKey {
-	pub fn new(series: SeriesId) -> Self {
+	pub fn new(storage: impl Into<StorageId>) -> Self {
 		Self {
-			series,
+			storage: storage.into(),
 		}
 	}
 
-	pub fn encoded(series: impl Into<SeriesId>) -> EncodedKey {
-		Self::new(series.into()).encode()
+	pub fn encoded(storage: impl Into<StorageId>) -> EncodedKey {
+		Self::new(storage).encode()
 	}
 }
 
@@ -89,8 +92,8 @@ impl EncodableKey for SeriesMetadataKey {
 	const KIND: KeyKind = KeyKind::SeriesMetadata;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.series);
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.storage);
 		serializer.to_encoded_key()
 	}
 
@@ -102,10 +105,43 @@ impl EncodableKey for SeriesMetadataKey {
 			return None;
 		}
 
-		let series = de.read_u64().ok()?;
+		let storage = StorageId::from_object(de.read_object_id().ok()?)?;
 
 		Some(Self {
-			series: SeriesId(series),
+			storage,
 		})
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{EncodableKey, SeriesMetadataKey};
+	use crate::interface::catalog::{
+		id::{SeriesId, ViewId},
+		storage::StorageId,
+	};
+
+	#[test]
+	fn test_metadata_key_roundtrip_series() {
+		// The tag byte is what keeps a series' metadata out of a view's; a bare id would collide.
+		let key = SeriesMetadataKey {
+			storage: StorageId::Series(SeriesId(7)),
+		};
+		assert_eq!(SeriesMetadataKey::decode(&key.encode()).unwrap(), key);
+	}
+
+	#[test]
+	fn test_metadata_key_roundtrip_view() {
+		// A series-backed view must keep its metadata under its own id, never a backing object's.
+		let key = SeriesMetadataKey {
+			storage: StorageId::View(ViewId(7)),
+		};
+		assert_eq!(SeriesMetadataKey::decode(&key.encode()).unwrap(), key);
+	}
+
+	#[test]
+	fn test_metadata_key_separates_a_series_from_a_view_with_the_same_id() {
+		// Both narrow from the same numeric id, so identical bytes would silently share one row.
+		assert_ne!(SeriesMetadataKey::encoded(SeriesId(7)), SeriesMetadataKey::encoded(ViewId(7)));
 	}
 }

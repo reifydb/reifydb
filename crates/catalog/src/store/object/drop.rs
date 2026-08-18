@@ -8,6 +8,7 @@ use reifydb_core::{
 		id::{ColumnId, PrimaryKeyId},
 		key::PrimaryKey,
 		object::ObjectId,
+		storage::StorageId,
 	},
 	key::{
 		column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey, primary_key::PrimaryKeyKey,
@@ -20,10 +21,10 @@ use crate::{Result, store::column::shape::object_column};
 
 pub(crate) fn drop_object_metadata(
 	txn: &mut AdminTransaction,
-	object: ObjectId,
+	storage: StorageId,
 	pk_id: Option<PrimaryKeyId>,
 ) -> Result<()> {
-	let range = ColumnKey::full_scan(object);
+	let range = ColumnKey::full_scan(storage);
 	let mut stream = txn.range(range, RangeScope::All, 1024)?;
 	let mut col_entries = Vec::new();
 	for entry in stream.by_ref() {
@@ -45,7 +46,7 @@ pub(crate) fn drop_object_metadata(
 			txn.remove(&pk)?;
 		}
 
-		txn.remove(&ColumnSequenceKey::encoded(object, *col_id))?;
+		txn.remove(&ColumnSequenceKey::encoded(storage, *col_id))?;
 
 		txn.remove(&ColumnsKey::encoded(*col_id))?;
 
@@ -54,7 +55,7 @@ pub(crate) fn drop_object_metadata(
 
 	if let Some(pk_id) = pk_id {
 		txn.track_primary_key_deleted(
-			object,
+			ObjectId::from(storage),
 			PrimaryKey {
 				id: pk_id,
 				columns: Vec::new(),
@@ -63,7 +64,7 @@ pub(crate) fn drop_object_metadata(
 		txn.remove(&PrimaryKeyKey::encoded(pk_id))?;
 	}
 
-	txn.remove(&RowSequenceKey::encoded(object))?;
+	txn.remove(&RowSequenceKey::encoded(storage))?;
 
 	Ok(())
 }

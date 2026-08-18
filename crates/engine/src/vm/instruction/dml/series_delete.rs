@@ -225,7 +225,7 @@ fn drive_series_delete_input(
 			let variant_tag = extract_series_delete_variant_tag(&columns, has_tag, row_idx);
 			let encoded_key = if partitioned {
 				PartitionedRowKey::encoded(
-					ObjectId::series(series.id),
+					series.id,
 					columns.partitions()[row_idx],
 					RowLocator::Series {
 						variant_tag,
@@ -290,7 +290,7 @@ fn run_series_delete_all(
 	let series = target.series;
 	let partitioned = !series.partition_by.is_empty();
 	let range = if partitioned {
-		PartitionedRowKey::full_scan(ObjectId::series(series.id))
+		PartitionedRowKey::full_scan(series.id)
 	} else {
 		SeriesRowKeyRange::full_scan(series.id, None)
 	};

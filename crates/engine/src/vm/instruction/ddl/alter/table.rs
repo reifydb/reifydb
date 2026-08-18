@@ -101,7 +101,7 @@ pub(crate) fn execute_alter_table(
 				let batch: Vec<_> = txn
 					.range(
 						PartitionedRowKey::partition_scan_range(
-							object,
+							table.id,
 							partition,
 							last_key.as_ref(),
 						),

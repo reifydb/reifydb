@@ -4,10 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	interface::catalog::{
-		object::ObjectId,
-		ringbuffer::{RingBuffer, RingBufferMetadata},
-	},
+	interface::catalog::ringbuffer::{RingBuffer, RingBufferMetadata},
 	key::{
 		EncodableKey,
 		partitioned_row::{PartitionedRowKey, RowLocator},
@@ -54,8 +51,7 @@ pub(super) fn evict_oldest_for_partition(
 	let ringbuffer = target.ringbuffer;
 
 	if let Some(partition) = partition {
-		let range =
-			PartitionedRowKey::partition_scan_range(ObjectId::ringbuffer(ringbuffer.id), partition, None);
+		let range = PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, None);
 		let oldest = txn.range_rev(range, RangeScope::All, 1)?.next().transpose()?;
 		if let Some(entry) = oldest
 			&& let Some(RowLocator::Row(rn)) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator)

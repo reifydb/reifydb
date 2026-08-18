@@ -42,11 +42,7 @@ use crate::{Result, partition::partition_values};
 fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> EncodedKey {
 	match partition {
 		None => RowKey::encoded(ringbuffer.id, row_number),
-		Some(partition) => PartitionedRowKey::encoded(
-			ObjectId::ringbuffer(ringbuffer.id),
-			partition,
-			RowLocator::Row(row_number),
-		),
+		Some(partition) => PartitionedRowKey::encoded(ringbuffer.id, partition, RowLocator::Row(row_number)),
 	}
 }
 

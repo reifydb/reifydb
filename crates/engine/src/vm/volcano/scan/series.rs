@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{catalog::object::ObjectId, resolved::ResolvedSeries, store::MultiVersionRow},
+	interface::{resolved::ResolvedSeries, store::MultiVersionRow},
 	key::{
 		EncodableKey,
 		partitioned_row::{PartitionedRowKey, RowLocator},
@@ -295,14 +295,11 @@ impl QueryNode for SeriesScanNode {
 		let range = if partitioned {
 			match self.partition {
 				Some(partition) => PartitionedRowKey::partition_scan_range(
-					ObjectId::Series(series.id),
+					series.id,
 					partition,
 					self.last_key.as_ref(),
 				),
-				None => PartitionedRowKey::scan_range(
-					ObjectId::Series(series.id),
-					self.last_key.as_ref(),
-				),
+				None => PartitionedRowKey::scan_range(series.id, self.last_key.as_ref()),
 			}
 		} else {
 			SeriesRowKeyRange::scan_range(

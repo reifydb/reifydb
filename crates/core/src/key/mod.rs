@@ -607,7 +607,7 @@ pub mod tests {
 	#[test]
 	fn test_row_sequence() {
 		let key = Key::RowSequence(RowSequenceKey {
-			object: ObjectId::table(42),
+			storage: StorageId::table(42),
 		});
 
 		let encoded = key.encode();
@@ -615,7 +615,25 @@ pub mod tests {
 
 		match decoded {
 			Key::RowSequence(decoded_inner) => {
-				assert_eq!(decoded_inner.object, ObjectId::table(42));
+				assert_eq!(decoded_inner.storage, StorageId::table(42));
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_row_sequence_view() {
+		// A view owns its row numbering, so the dispatching decode must keep the view tag intact.
+		let key = Key::RowSequence(RowSequenceKey {
+			storage: StorageId::view(42),
+		});
+
+		let encoded = key.encode();
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+		match decoded {
+			Key::RowSequence(decoded_inner) => {
+				assert_eq!(decoded_inner.storage, StorageId::view(42));
 			}
 			_ => unreachable!(),
 		}

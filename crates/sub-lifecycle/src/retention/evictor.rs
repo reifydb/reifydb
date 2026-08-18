@@ -689,7 +689,6 @@ mod tests {
 		common::CommitVersion,
 		interface::{
 			catalog::{
-				object::ObjectId,
 				ringbuffer::{
 					PartitionedMetadata, RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata,
 				},
@@ -826,11 +825,7 @@ mod tests {
 	) {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		txn.set(
-			&PartitionedRowKey::encoded(
-				ObjectId::ringbuffer(id),
-				Partition::of(partition_values),
-				RowLocator::Row(row_number),
-			),
+			&PartitionedRowKey::encoded(id, Partition::of(partition_values), RowLocator::Row(row_number)),
 			bytes,
 		)
 		.unwrap();

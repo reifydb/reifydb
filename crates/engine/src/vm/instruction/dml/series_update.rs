@@ -266,7 +266,7 @@ fn build_series_updates_to_apply(
 				.into());
 			}
 			PartitionedRowKey::encoded(
-				ObjectId::series(series.id),
+				series.id,
 				old_partition,
 				RowLocator::Series {
 					variant_tag,

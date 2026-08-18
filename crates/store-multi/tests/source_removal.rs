@@ -15,7 +15,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::{id::TableId, object::ObjectId, storage::StorageId},
+		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::{
@@ -35,7 +35,7 @@ fn table_row_key(table: u64, row: u64) -> EncodedKey {
 }
 
 fn partitioned_row_key(table: u64, partition: Partition, row: u64) -> EncodedKey {
-	PartitionedRowKey::encoded(ObjectId::Table(TableId(table)), partition, RowLocator::Row(RowNumber(row)))
+	PartitionedRowKey::encoded(StorageId::Table(TableId(table)), partition, RowLocator::Row(RowNumber(row)))
 }
 
 fn persistent_only_set(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {
@@ -149,7 +149,7 @@ fn partitioned_source_removal_hides_only_the_removed_partition_row() {
 	// The same contract on the PartitionedSource keyspace, which reaches readers through partition
 	// range scans; the sibling partition is the control that a removal never widens past its own key.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-	let object = ObjectId::Table(TableId(2));
+	let storage = StorageId::Table(TableId(2));
 	let us = Partition::of(&[Value::Utf8("us".to_string())]);
 	let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
 	let k_us = partitioned_row_key(2, us, 1);
@@ -161,15 +161,15 @@ fn partitioned_source_removal_hides_only_the_removed_partition_row() {
 
 	assert_eq!(get(&store, &k_us, 9), None);
 	assert!(
-		range_keys(&store, PartitionedRowKey::partition_range(object, us), 9).is_empty(),
+		range_keys(&store, PartitionedRowKey::partition_range(storage, us), 9).is_empty(),
 		"the removed partition row must not surface above the tombstone"
 	);
 	assert!(
-		range_keys(&store, PartitionedRowKey::partition_range(object, eu), 9).contains(&k_eu),
+		range_keys(&store, PartitionedRowKey::partition_range(storage, eu), 9).contains(&k_eu),
 		"the sibling partition must be unaffected"
 	);
 	assert!(
-		range_keys(&store, PartitionedRowKey::partition_range(object, us), 5).contains(&k_us),
+		range_keys(&store, PartitionedRowKey::partition_range(storage, us), 5).contains(&k_us),
 		"and below the tombstone the removed partition row is still there"
 	);
 }

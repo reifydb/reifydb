@@ -32,7 +32,9 @@ pub enum EntryKind {
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	match Key::decode(key) {
 		Some(Key::Row(row_key)) => EntryKind::Source(row_key.storage),
-		Some(Key::PartitionedRow(partitioned_key)) => EntryKind::PartitionedSource(partitioned_key.object),
+		Some(Key::PartitionedRow(partitioned_key)) => {
+			EntryKind::PartitionedSource(ObjectId::from(partitioned_key.storage))
+		}
 		_ => EntryKind::Multi,
 	}
 }
@@ -43,7 +45,7 @@ pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 	}
 
 	if let (Some(start), Some(_end)) = PartitionedRowKeyRange::decode(range) {
-		return Some(EntryKind::PartitionedSource(start.object));
+		return Some(EntryKind::PartitionedSource(ObjectId::from(start.storage)));
 	}
 
 	None
@@ -215,9 +217,17 @@ mod tests {
 
 	#[test]
 	fn classify_key_partitioned_row_is_partitioned_source() {
-		let object = ObjectId::Table(TableId(7));
-		let key = PartitionedRowKey::encoded(object, part("us"), RowLocator::Row(RowNumber(1)));
-		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(object));
+		let storage = StorageId::Table(TableId(7));
+		let key = PartitionedRowKey::encoded(storage, part("us"), RowLocator::Row(RowNumber(1)));
+		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(ObjectId::from(storage)));
+	}
+
+	#[test]
+	fn classify_key_partitioned_view_row_is_partitioned_source() {
+		// A view that owns its rows must classify to its own id, not fall through to EntryKind::Multi.
+		let storage = StorageId::view(7);
+		let key = PartitionedRowKey::encoded(storage, part("us"), RowLocator::Row(RowNumber(1)));
+		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(ObjectId::from(storage)));
 	}
 
 	#[test]
@@ -229,23 +239,24 @@ mod tests {
 
 	#[test]
 	fn classify_range_all_partition_forms_are_partitioned_source() {
-		let object = ObjectId::Table(TableId(9));
+		let storage = StorageId::Table(TableId(9));
+		let object = ObjectId::from(storage);
 		let p = part("us");
-		let last = PartitionedRowKey::encoded(object, p, RowLocator::Row(RowNumber(5)));
+		let last = PartitionedRowKey::encoded(storage, p, RowLocator::Row(RowNumber(5)));
 		assert_eq!(
-			classify_range(&PartitionedRowKey::partition_range(object, p)),
+			classify_range(&PartitionedRowKey::partition_range(storage, p)),
 			Some(EntryKind::PartitionedSource(object))
 		);
 		assert_eq!(
-			classify_range(&PartitionedRowKey::partition_scan_range(object, p, Some(&last))),
+			classify_range(&PartitionedRowKey::partition_scan_range(storage, p, Some(&last))),
 			Some(EntryKind::PartitionedSource(object))
 		);
 		assert_eq!(
-			classify_range(&PartitionedRowKey::scan_range(object, None)),
+			classify_range(&PartitionedRowKey::scan_range(storage, None)),
 			Some(EntryKind::PartitionedSource(object))
 		);
 		assert_eq!(
-			classify_range(&PartitionedRowKey::full_scan(object)),
+			classify_range(&PartitionedRowKey::full_scan(storage)),
 			Some(EntryKind::PartitionedSource(object))
 		);
 	}

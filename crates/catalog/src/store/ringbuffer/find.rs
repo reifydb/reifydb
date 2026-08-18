@@ -11,6 +11,7 @@ use reifydb_core::{
 		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata, decode_ringbuffer_metadata},
 	},
 	key::{
+		catalog::KeyDeserializerCatalogExt,
 		namespace_ringbuffer::NamespaceRingBufferKey,
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
@@ -90,7 +91,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
 	) -> Result<Vec<PartitionedMetadata>> {
-		let range = RingBufferMetadataKey::full_scan_for_ringbuffer(ringbuffer.id);
+		let range = RingBufferMetadataKey::full_scan_for_storage(ringbuffer.id);
 		let stream = rx.range(range, RangeScope::All, 4096)?;
 		let mut results = Vec::new();
 
@@ -99,7 +100,7 @@ impl CatalogStore {
 			let metadata = decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?;
 			let mut de = KeyDeserializer::from_bytes(multi.key.as_slice());
 
-			let _ = (de.read_u8(), de.read_u64());
+			let _ = (de.read_u8(), de.read_object_id());
 			let mut partition_values = vec![];
 			while !de.is_empty() {
 				if let Ok(value) = de.read_value() {
