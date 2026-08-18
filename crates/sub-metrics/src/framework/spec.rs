@@ -108,7 +108,13 @@ impl DomainSpec {
 	}
 
 	pub fn surface_measures(&self, surface: Surface) -> Vec<&MeasureSpec> {
-		self.measures.iter().filter(|m| surface == Surface::Current || m.kind != MetricKind::Level).collect()
+		self.measures
+			.iter()
+			.filter(|m| {
+				surface == Surface::Current
+					|| !matches!(m.kind, MetricKind::Level | MetricKind::Cumulative)
+			})
+			.collect()
 	}
 
 	fn wide_columns(&self, surface: Surface) -> Vec<UserVTableColumn> {
@@ -187,11 +193,20 @@ fn level_optional(name: &'static str, data_type: ValueType) -> MeasureSpec {
 	}
 }
 
-fn counter_optional(name: &'static str, data_type: ValueType) -> MeasureSpec {
+fn cumulative(name: &'static str, data_type: ValueType) -> MeasureSpec {
 	MeasureSpec {
 		name,
 		data_type,
-		kind: MetricKind::Counter,
+		kind: MetricKind::Cumulative,
+		optional: false,
+	}
+}
+
+fn cumulative_optional(name: &'static str, data_type: ValueType) -> MeasureSpec {
+	MeasureSpec {
+		name,
+		data_type,
+		kind: MetricKind::Cumulative,
 		optional: true,
 	}
 }
@@ -341,13 +356,13 @@ impl MetricsDomain {
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
-					counter("rchar", ValueType::Uint8),
-					counter("wchar", ValueType::Uint8),
-					counter("read_bytes", ValueType::Uint8),
-					counter("write_bytes", ValueType::Uint8),
-					counter("cancelled_write_bytes", ValueType::Uint8),
-					counter("read_syscalls", ValueType::Uint8),
-					counter("write_syscalls", ValueType::Uint8),
+					cumulative("rchar", ValueType::Uint8),
+					cumulative("wchar", ValueType::Uint8),
+					cumulative("read_bytes", ValueType::Uint8),
+					cumulative("write_bytes", ValueType::Uint8),
+					cumulative("cancelled_write_bytes", ValueType::Uint8),
+					cumulative("read_syscalls", ValueType::Uint8),
+					cumulative("write_syscalls", ValueType::Uint8),
 				],
 				has_total: false,
 			},
@@ -379,13 +394,13 @@ impl MetricsDomain {
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
-					counter("minor_faults", ValueType::Uint8),
-					counter("major_faults", ValueType::Uint8),
-					counter("user_time", ValueType::Duration),
-					counter("system_time", ValueType::Duration),
-					counter("run_queue_wait", ValueType::Duration),
-					counter("voluntary_context_switches", ValueType::Uint8),
-					counter("involuntary_context_switches", ValueType::Uint8),
+					cumulative("minor_faults", ValueType::Uint8),
+					cumulative("major_faults", ValueType::Uint8),
+					cumulative("user_time", ValueType::Duration),
+					cumulative("system_time", ValueType::Duration),
+					cumulative("run_queue_wait", ValueType::Duration),
+					cumulative("voluntary_context_switches", ValueType::Uint8),
+					cumulative("involuntary_context_switches", ValueType::Uint8),
 					level("open_files", ValueType::Uint8),
 					level("max_open_files", ValueType::Uint8),
 				],
@@ -397,12 +412,12 @@ impl MetricsDomain {
 				shape: DomainShape::Wide,
 				dimensions: vec![dim("device", ValueType::Utf8)],
 				measures: vec![
-					counter("read_bytes", ValueType::Uint8),
-					counter("write_bytes", ValueType::Uint8),
-					counter("read_ios", ValueType::Uint8),
-					counter("write_ios", ValueType::Uint8),
-					counter("discard_bytes", ValueType::Uint8),
-					counter("discard_ios", ValueType::Uint8),
+					cumulative("read_bytes", ValueType::Uint8),
+					cumulative("write_bytes", ValueType::Uint8),
+					cumulative("read_ios", ValueType::Uint8),
+					cumulative("write_ios", ValueType::Uint8),
+					cumulative("discard_bytes", ValueType::Uint8),
+					cumulative("discard_ios", ValueType::Uint8),
 				],
 				has_total: false,
 			},
@@ -422,8 +437,8 @@ impl MetricsDomain {
 					level("sock", ValueType::Uint8),
 					level("swap_current", ValueType::Uint8),
 					level_optional("swap_max", ValueType::Uint8),
-					counter("page_faults", ValueType::Uint8),
-					counter("major_page_faults", ValueType::Uint8),
+					cumulative("page_faults", ValueType::Uint8),
+					cumulative("major_page_faults", ValueType::Uint8),
 				],
 				has_total: false,
 			},
@@ -433,12 +448,12 @@ impl MetricsDomain {
 				shape: DomainShape::Wide,
 				dimensions: Vec::new(),
 				measures: vec![
-					counter("usage", ValueType::Duration),
-					counter("user", ValueType::Duration),
-					counter("system", ValueType::Duration),
-					counter_optional("periods", ValueType::Uint8),
-					counter_optional("throttled_periods", ValueType::Uint8),
-					counter_optional("throttled", ValueType::Duration),
+					cumulative("usage", ValueType::Duration),
+					cumulative("user", ValueType::Duration),
+					cumulative("system", ValueType::Duration),
+					cumulative_optional("periods", ValueType::Uint8),
+					cumulative_optional("throttled_periods", ValueType::Uint8),
+					cumulative_optional("throttled", ValueType::Duration),
 				],
 				has_total: false,
 			},
@@ -448,8 +463,8 @@ impl MetricsDomain {
 				shape: DomainShape::Wide,
 				dimensions: vec![dim("resource", ValueType::Utf8)],
 				measures: vec![
-					counter("some_stalled", ValueType::Duration),
-					counter_optional("full_stalled", ValueType::Duration),
+					cumulative("some_stalled", ValueType::Duration),
+					cumulative_optional("full_stalled", ValueType::Duration),
 					level("some_avg10", ValueType::Float8),
 					level("some_avg60", ValueType::Float8),
 					level("some_avg300", ValueType::Float8),

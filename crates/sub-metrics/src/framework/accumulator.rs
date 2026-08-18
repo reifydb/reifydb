@@ -58,6 +58,9 @@ enum MeasureState {
 		total: Reading,
 		baseline: Option<f64>,
 	},
+	Cumulative {
+		latest: Reading,
+	},
 	Distribution {
 		current: Option<Reading>,
 		total: Option<Reading>,
@@ -140,7 +143,7 @@ impl RowState {
 		reifydb_assertions! {
 			assert!(
 				!matches!(measure.kind, MetricKind::Delta | MetricKind::Dimension),
-				"producers push Level, Counter or Distribution; got {:?} for metric {}",
+				"producers push Level, Counter, Cumulative or Distribution; got {:?} for metric {}",
 				measure.kind,
 				measure.metric
 			);
@@ -170,6 +173,14 @@ impl RowState {
 						}
 					}
 				}
+			}
+			MetricKind::Cumulative => {
+				self.measures.insert(
+					measure.metric,
+					MeasureState::Cumulative {
+						latest: measure.reading,
+					},
+				);
 			}
 			MetricKind::Distribution => {
 				let slot = match self.measures.entry(measure.metric).or_insert_with(|| {
@@ -225,6 +236,9 @@ fn advance_window(state: &mut DomainState) {
 				MeasureState::Level {
 					..
 				} => {}
+				MeasureState::Cumulative {
+					..
+				} => {}
 			}
 		}
 	}
@@ -271,6 +285,18 @@ fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Columns {
 					},
 					Surface::Total,
 				) => Some((*total, MetricKind::Counter)),
+				(
+					MeasureState::Cumulative {
+						latest,
+					},
+					Surface::Current,
+				) => Some((*latest, MetricKind::Cumulative)),
+				(
+					MeasureState::Cumulative {
+						..
+					},
+					Surface::Total,
+				) => None,
 				(
 					MeasureState::Distribution {
 						current,
@@ -378,6 +404,12 @@ fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface
 			}),
 			Surface::Total,
 		) => Some(*total),
+		(
+			Some(MeasureState::Cumulative {
+				latest,
+			}),
+			Surface::Current,
+		) => Some(*latest),
 		(
 			Some(MeasureState::Distribution {
 				current,

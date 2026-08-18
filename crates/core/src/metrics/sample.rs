@@ -19,6 +19,7 @@ pub enum MetricKind {
 	Level,
 	Delta,
 	Counter,
+	Cumulative,
 	Distribution,
 }
 
@@ -29,6 +30,7 @@ impl MetricKind {
 			MetricKind::Level => "level",
 			MetricKind::Delta => "delta",
 			MetricKind::Counter => "counter",
+			MetricKind::Cumulative => "cumulative",
 			MetricKind::Distribution => "distribution",
 		}
 	}

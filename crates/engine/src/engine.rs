@@ -326,7 +326,7 @@ impl StandardEngine {
 			&& let Some(column) = table_columns.iter().find(|column| column.kind == MetricKind::Counter)
 		{
 			return Err(error!(internal!(
-				"virtual table '{}' in namespace {:?} declares column '{}' with kind Counter; a table named 'current' may only publish levels, deltas and distributions",
+				"virtual table '{}' in namespace {:?} declares column '{}' with kind Counter; a table named 'current' may only publish levels, deltas, cumulatives and distributions",
 				name,
 				namespace_id,
 				column.name

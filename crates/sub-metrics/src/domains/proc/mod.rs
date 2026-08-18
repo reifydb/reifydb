@@ -42,13 +42,13 @@ pub fn process_io_rows() -> Vec<MetricsRow> {
 	vec![MetricsRow {
 		dimensions: Vec::new(),
 		measures: vec![
-			counter_bytes("rchar", io.rchar),
-			counter_bytes("wchar", io.wchar),
-			counter_bytes("read_bytes", io.read_bytes),
-			counter_bytes("write_bytes", io.write_bytes),
-			counter_bytes("cancelled_write_bytes", io.cancelled_write_bytes),
-			counter_count("read_syscalls", io.read_syscalls),
-			counter_count("write_syscalls", io.write_syscalls),
+			cumulative_bytes("rchar", io.rchar),
+			cumulative_bytes("wchar", io.wchar),
+			cumulative_bytes("read_bytes", io.read_bytes),
+			cumulative_bytes("write_bytes", io.write_bytes),
+			cumulative_bytes("cancelled_write_bytes", io.cancelled_write_bytes),
+			cumulative_count("read_syscalls", io.read_syscalls),
+			cumulative_count("write_syscalls", io.write_syscalls),
 		],
 	}]
 }
@@ -99,17 +99,17 @@ pub fn process_sched_rows() -> Vec<MetricsRow> {
 	};
 	let hertz = clock_ticks_per_second();
 	let mut measures = vec![
-		counter_count("minor_faults", stat.minor_faults),
-		counter_count("major_faults", stat.major_faults),
-		counter_micros("user_time", ticks_to_micros(stat.user_ticks, hertz)),
-		counter_micros("system_time", ticks_to_micros(stat.system_ticks, hertz)),
-		counter_count("voluntary_context_switches", status.voluntary_context_switches),
-		counter_count("involuntary_context_switches", status.involuntary_context_switches),
+		cumulative_count("minor_faults", stat.minor_faults),
+		cumulative_count("major_faults", stat.major_faults),
+		cumulative_micros("user_time", ticks_to_micros(stat.user_ticks, hertz)),
+		cumulative_micros("system_time", ticks_to_micros(stat.system_ticks, hertz)),
+		cumulative_count("voluntary_context_switches", status.voluntary_context_switches),
+		cumulative_count("involuntary_context_switches", status.involuntary_context_switches),
 	];
 	if let Some(nanos) =
 		read_to_string("/proc/self/schedstat").ok().and_then(|content| parse_schedstat_run_queue_nanos(&content))
 	{
-		measures.push(counter_nanos("run_queue_wait", nanos));
+		measures.push(cumulative_nanos("run_queue_wait", nanos));
 	}
 	if let Ok(entries) = read_dir("/proc/self/fd") {
 		measures.push(level_count("open_files", entries.count() as u64));
@@ -136,12 +136,12 @@ pub fn cgroup_io_rows() -> Vec<MetricsRow> {
 		.map(|device| MetricsRow {
 			dimensions: vec![Value::Utf8(device.device)],
 			measures: vec![
-				counter_bytes("read_bytes", device.read_bytes),
-				counter_bytes("write_bytes", device.write_bytes),
-				counter_count("read_ios", device.read_ios),
-				counter_count("write_ios", device.write_ios),
-				counter_bytes("discard_bytes", device.discard_bytes),
-				counter_count("discard_ios", device.discard_ios),
+				cumulative_bytes("read_bytes", device.read_bytes),
+				cumulative_bytes("write_bytes", device.write_bytes),
+				cumulative_count("read_ios", device.read_ios),
+				cumulative_count("write_ios", device.write_ios),
+				cumulative_bytes("discard_bytes", device.discard_bytes),
+				cumulative_count("discard_ios", device.discard_ios),
 			],
 		})
 		.collect()
@@ -171,8 +171,8 @@ pub fn cgroup_memory_rows() -> Vec<MetricsRow> {
 		level_bytes("slab", memory.slab),
 		level_bytes("sock", memory.sock),
 		level_bytes("swap_current", memory.swap_current),
-		counter_count("page_faults", memory.page_faults),
-		counter_count("major_page_faults", memory.major_page_faults),
+		cumulative_count("page_faults", memory.page_faults),
+		cumulative_count("major_page_faults", memory.major_page_faults),
 	];
 	if let Some(max) = memory.max {
 		measures.push(level_bytes("max", max));
@@ -196,18 +196,18 @@ pub fn cgroup_cpu_rows() -> Vec<MetricsRow> {
 	};
 	let cpu = parse_cgroup_cpu(&content);
 	let mut measures = vec![
-		counter_micros("usage", cpu.usage_micros),
-		counter_micros("user", cpu.user_micros),
-		counter_micros("system", cpu.system_micros),
+		cumulative_micros("usage", cpu.usage_micros),
+		cumulative_micros("user", cpu.user_micros),
+		cumulative_micros("system", cpu.system_micros),
 	];
 	if let Some(periods) = cpu.periods {
-		measures.push(counter_count("periods", periods));
+		measures.push(cumulative_count("periods", periods));
 	}
 	if let Some(throttled) = cpu.throttled_periods {
-		measures.push(counter_count("throttled_periods", throttled));
+		measures.push(cumulative_count("throttled_periods", throttled));
 	}
 	if let Some(micros) = cpu.throttled_micros {
-		measures.push(counter_micros("throttled", micros));
+		measures.push(cumulative_micros("throttled", micros));
 	}
 	vec![MetricsRow {
 		dimensions: Vec::new(),
@@ -225,13 +225,13 @@ pub fn cgroup_pressure_rows() -> Vec<MetricsRow> {
 		.filter_map(|(resource, file)| {
 			let pressure = read_to_string(root.join(file)).ok().and_then(|c| parse_pressure(&c))?;
 			let mut measures = vec![
-				counter_micros("some_stalled", pressure.some.stalled_micros),
+				cumulative_micros("some_stalled", pressure.some.stalled_micros),
 				level_ratio("some_avg10", pressure.some.avg10),
 				level_ratio("some_avg60", pressure.some.avg60),
 				level_ratio("some_avg300", pressure.some.avg300),
 			];
 			if let Some(full) = pressure.full {
-				measures.push(counter_micros("full_stalled", full.stalled_micros));
+				measures.push(cumulative_micros("full_stalled", full.stalled_micros));
 				measures.push(level_ratio("full_avg10", full.avg10));
 				measures.push(level_ratio("full_avg60", full.avg60));
 				measures.push(level_ratio("full_avg300", full.avg300));
@@ -310,36 +310,36 @@ pub fn cgroup_pressure_rows() -> Vec<MetricsRow> {
 	Vec::new()
 }
 
-fn counter_bytes(metric: &'static str, bytes: u64) -> Measure {
+fn cumulative_bytes(metric: &'static str, bytes: u64) -> Measure {
 	Measure {
 		metric,
 		reading: Reading::Bytes(ByteSize::from_bytes(bytes)),
-		kind: MetricKind::Counter,
+		kind: MetricKind::Cumulative,
 	}
 }
 
-fn counter_count(metric: &'static str, value: u64) -> Measure {
+fn cumulative_count(metric: &'static str, value: u64) -> Measure {
 	Measure {
 		metric,
 		reading: Reading::Count(Count::new(value)),
-		kind: MetricKind::Counter,
+		kind: MetricKind::Cumulative,
 	}
 }
 
-fn counter_micros(metric: &'static str, micros: u64) -> Measure {
+fn cumulative_micros(metric: &'static str, micros: u64) -> Measure {
 	Measure {
 		metric,
 		reading: Reading::Duration(Duration::from_micros_infallible(micros)),
-		kind: MetricKind::Counter,
+		kind: MetricKind::Cumulative,
 	}
 }
 
 #[cfg(target_os = "linux")]
-fn counter_nanos(metric: &'static str, nanos: u64) -> Measure {
+fn cumulative_nanos(metric: &'static str, nanos: u64) -> Measure {
 	Measure {
 		metric,
 		reading: Reading::Duration(Duration::from_nanos_infallible(nanos)),
-		kind: MetricKind::Counter,
+		kind: MetricKind::Cumulative,
 	}
 }
 
