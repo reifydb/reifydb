@@ -242,21 +242,14 @@ impl Columns {
 
 	pub fn with_row_numbers(mut self, row_numbers: Vec<RowNumber>) -> Self {
 		let n = row_numbers.len();
-		let now = DateTime::default();
-		let keep = |existing: &[DateTime]| {
-			if existing.len() == n {
-				existing.to_vec()
-			} else {
-				vec![now; n]
-			}
-		};
 		self.system = SystemColumns::new(
 			row_numbers,
 			self.system.partitions().to_vec(),
-			keep(self.system.created_at()),
-			keep(self.system.updated_at()),
-			keep(self.system.time()),
+			self.system.created_at().to_vec(),
+			self.system.updated_at().to_vec(),
+			self.system.time().to_vec(),
 		);
+		self.system.assert_invariants(n, "Columns::with_row_numbers");
 		self
 	}
 
@@ -1299,5 +1292,54 @@ pub mod tests {
 		let columns = Columns::single_row([("normal_column", Value::Int4(42))]);
 		assert_eq!(columns.len(), 1);
 		assert_eq!(columns.column("normal_column").unwrap().data().get_value(0), Value::Int4(42));
+	}
+
+	#[test]
+	fn with_row_numbers_leaves_an_absent_sidecar_absent() {
+		// A timeless batch must stay timeless; a filled #time reads downstream as a real time zero.
+		let columns = Columns::new(vec![ColumnWithName::new("v", ColumnBuffer::int4([1, 2, 3]))])
+			.with_row_numbers(vec![RowNumber(1), RowNumber(2), RowNumber(3)]);
+
+		assert_eq!(columns.system.row_numbers().len(), 3);
+		assert!(columns.system.time().is_empty(), "#time must stay absent");
+		assert!(columns.system.created_at().is_empty(), "created_at must stay absent");
+		assert!(columns.system.updated_at().is_empty(), "updated_at must stay absent");
+	}
+
+	#[test]
+	fn with_row_numbers_keeps_a_populated_sidecar() {
+		let stamps = vec![DateTime::from_nanos(10), DateTime::from_nanos(20)];
+		let columns = Columns::with_system(
+			vec![ColumnWithName::new("v", ColumnBuffer::int4([1, 2]))],
+			SystemColumns::new(
+				vec![RowNumber(7), RowNumber(8)],
+				Vec::new(),
+				Vec::new(),
+				Vec::new(),
+				stamps.clone(),
+			),
+		)
+		.with_row_numbers(vec![RowNumber(1), RowNumber(2)]);
+
+		assert_eq!(columns.system.time(), stamps.as_slice());
+		assert_eq!(columns.system.row_numbers(), &[RowNumber(1), RowNumber(2)]);
+	}
+
+	#[test]
+	#[should_panic(expected = "Columns::with_row_numbers")]
+	fn with_row_numbers_panics_on_a_partial_sidecar() {
+		// A sidecar that covers only some rows must stop the write, never be padded to fit.
+		let columns = Columns::with_system(
+			vec![ColumnWithName::new("v", ColumnBuffer::int4([1, 2, 3]))],
+			SystemColumns::new(
+				vec![RowNumber(1), RowNumber(2), RowNumber(3)],
+				Vec::new(),
+				Vec::new(),
+				Vec::new(),
+				vec![DateTime::from_nanos(10), DateTime::from_nanos(20), DateTime::from_nanos(30)],
+			),
+		);
+
+		let _ = columns.with_row_numbers(vec![RowNumber(1), RowNumber(2)]);
 	}
 }
