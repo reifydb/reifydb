@@ -77,12 +77,24 @@ impl RowSettingsKeyRange {
 #[cfg(test)]
 pub mod tests {
 	use super::*;
-	use crate::interface::catalog::id::{RingBufferId, SeriesId, TableId};
+	use crate::interface::catalog::id::{RingBufferId, SeriesId, TableId, ViewId};
 
 	#[test]
 	fn test_row_settings_key_encoding() {
 		let key = RowSettingsKey {
 			storage: StorageId::Table(TableId(42)),
+		};
+
+		let encoded = key.encode();
+		let decoded = RowSettingsKey::decode(&encoded).unwrap();
+		assert_eq!(key, decoded);
+	}
+
+	#[test]
+	fn test_row_settings_key_roundtrip_view() {
+		// A view owns its rows, so its settings key must survive the tag round trip like any other storage.
+		let key = RowSettingsKey {
+			storage: StorageId::View(ViewId(13)),
 		};
 
 		let encoded = key.encode();

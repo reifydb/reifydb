@@ -174,6 +174,27 @@ pub mod tests {
 	}
 
 	#[test]
+	fn test_encode_decode_view() {
+		// Without the view tag narrowing back through `from_object`, a view's row key decodes to `None`.
+		let key = RowKey {
+			storage: StorageId::view(0xABCD),
+			row: RowNumber(0x123456789ABCDEF0),
+		};
+		let encoded = key.encode();
+
+		let expected: Vec<u8> = vec![
+			0xFC, 0x02, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43,
+			0x21, 0x0F,
+		];
+
+		assert_eq!(encoded.as_slice(), expected);
+
+		let key = RowKey::decode(&encoded).unwrap();
+		assert_eq!(key.storage, StorageId::view(0xABCD));
+		assert_eq!(key.row, 0x123456789ABCDEF0);
+	}
+
+	#[test]
 	fn test_order_preserving() {
 		let key1 = RowKey {
 			storage: StorageId::table(1),

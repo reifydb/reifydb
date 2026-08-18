@@ -257,6 +257,9 @@ impl Evictor {
 	) -> Result<()> {
 		match storage {
 			StorageId::Table(id) => self.evict_table(state, id, cutoff, batch_size, budget, stats),
+			StorageId::View(_) => {
+				unreachable!("a view's rows carry its backing object's storage id")
+			}
 			StorageId::RingBuffer(id) => {
 				self.evict_ringbuffer(state, id, cutoff, batch_size, budget, stats)
 			}

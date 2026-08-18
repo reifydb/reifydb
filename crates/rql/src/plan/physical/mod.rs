@@ -1279,6 +1279,9 @@ impl<'bump> Compiler<'bump> {
 								let rb = self.catalog.get_ringbuffer(rx, id)?;
 								(rb.columns, rb.partition_by)
 							}
+							StorageId::View(_) => unreachable!(
+								"a view materializes under its backing object's storage id"
+							),
 							StorageId::Queue(_) => unreachable!(
 								"a view materializes into a table, ringbuffer or series"
 							),
