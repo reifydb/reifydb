@@ -3,7 +3,7 @@
 
 use std::{fmt::Debug, hash::Hash};
 
-use reifydb_codec::row::operator::{OperatorState, StateCodec};
+use reifydb_codec::row::pod::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 

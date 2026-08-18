@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::EncodedOperatorRow,
+	row::pod::EncodedPodRow,
 };
 use reifydb_value::{
 	Result,
@@ -38,15 +38,15 @@ impl TimerKind {
 }
 
 pub trait StateStore {
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>>;
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
 
 	fn state_get_many_visit(
 		&mut self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
 
-	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()>;
+	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()>;
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
 
@@ -55,10 +55,10 @@ pub trait StateStore {
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
 
-	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedOperatorRow)>> {
+	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 		let mut last = None;
 		self.state_range_visit(range, None, &mut |key, payload| {
 			last = Some((key, payload));

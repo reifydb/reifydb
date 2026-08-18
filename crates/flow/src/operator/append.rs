@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::{decode_u64, encode_u64, encoded::EncodedKey, serializer::KeySerializer},
-	row::operator::OperatorState,
+	row::pod::state::OperatorState,
 };
 use reifydb_core::{
 	interface::{
@@ -177,13 +177,12 @@ impl AppendOperator {
 		if prior.is_some() {
 			host.state_remove(&queue_key(group))?;
 		}
-		let written_at = host.written_at();
 		host.state_set(
 			&Self::anchor_key(group),
 			SealAnchor {
 				expiry,
 			}
-			.encode_state(written_at)?,
+			.encode_state()?,
 		)?;
 		host.arm_timer(expiry, TimerKind::Maintenance, &Self::timer_key(group))
 	}

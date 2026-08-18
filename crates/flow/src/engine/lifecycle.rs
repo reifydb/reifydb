@@ -79,7 +79,7 @@ impl FlowEngineInner {
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
+	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		common::TimeDomain,
 		interface::{
@@ -157,7 +157,7 @@ mod tests {
 		inner.insert_operator(operator, Box::new(SourceSeriesOperator::new(operator)));
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
-		store.set(operator, EncodedKey::new(b"k"), EncodedOperatorRow::timeless(&[1u8; 64]));
+		store.set(operator, EncodedKey::new(b"k"), EncodedPodRow::new(&[1u8; 64]));
 		assert!(store.bytes(operator) > ByteSize::ZERO, "precondition: the operator's state is resident");
 
 		inner.remove_flow(FlowId(1));

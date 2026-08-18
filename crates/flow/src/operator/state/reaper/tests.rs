@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::operator::EncodedOperatorRow;
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::key::operator_state::Keyspace;
-use reifydb_value::value::datetime::DateTime;
 
 use super::*;
 use crate::operator::state::mock::MockStore;
@@ -16,7 +15,7 @@ fn key(group: GroupId, keyspace: Keyspace, suffix: u8) -> GroupStateKey {
 }
 
 fn seed(store: &mut MockStore, key: &GroupStateKey) {
-	store.state_set(key, EncodedOperatorRow::new(&[0u8], DateTime::EPOCH)).unwrap();
+	store.state_set(key, EncodedPodRow::new(&[0u8])).unwrap();
 }
 
 fn present(store: &mut MockStore, key: &GroupStateKey) -> bool {

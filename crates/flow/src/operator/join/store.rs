@@ -10,7 +10,10 @@ use reifydb_codec::{
 	},
 	row::{
 		bytes::EncodedBytes,
-		operator::{EncodedOperatorRow, decode_body, encode},
+		pod::{
+			EncodedPodRow,
+			state::{decode_body, encode},
+		},
 		shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	},
 };
@@ -27,7 +30,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	util::{cowvec::CowVec, hash::Hash128},
-	value::{datetime::DateTime, row_number::RowNumber},
+	value::row_number::RowNumber,
 };
 use tracing::instrument;
 
@@ -48,7 +51,7 @@ pub(crate) fn group_bytes(hash: &Hash128) -> EncodedKey {
 	EncodedKey::new(encode_u128_asc(hash.0))
 }
 
-pub(crate) fn body_bytes(row: &EncodedOperatorRow) -> EncodedBytes {
+pub(crate) fn body_bytes(row: &EncodedPodRow) -> EncodedBytes {
 	EncodedBytes(CowVec::new(row.body().to_vec()))
 }
 
@@ -106,7 +109,7 @@ impl Store {
 		host: &mut dyn HostContext,
 		hash: &Hash128,
 		row_number: RowNumber,
-		row: &EncodedOperatorRow,
+		row: &EncodedPodRow,
 	) -> Result<()> {
 		let group = self.intern(host, hash)?;
 		self.write_row(host, group, row_number, row)
@@ -117,7 +120,7 @@ impl Store {
 		host: &mut dyn HostContext,
 		group: GroupId,
 		row_number: RowNumber,
-		row: &EncodedOperatorRow,
+		row: &EncodedPodRow,
 	) -> Result<()> {
 		let key = self.row_key(group, row_number);
 		state_set(host, &key, row.clone())
@@ -146,7 +149,7 @@ impl Store {
 		host: &mut dyn HostContext,
 		hash: &Hash128,
 		row_number: RowNumber,
-		row: &EncodedOperatorRow,
+		row: &EncodedPodRow,
 	) -> Result<bool> {
 		let Some(group) = self.resolve(host, hash)? else {
 			return Ok(false);
@@ -159,7 +162,7 @@ impl Store {
 		host: &mut dyn HostContext,
 		group: GroupId,
 		row_number: RowNumber,
-		row: &EncodedOperatorRow,
+		row: &EncodedPodRow,
 	) -> Result<bool> {
 		let key = self.row_key(group, row_number);
 		if state_get(host, &key)?.is_none() {
@@ -214,7 +217,7 @@ impl Store {
 		for entry in state_range(host, range) {
 			let (full_key, bytes) = entry?;
 			if let Some(rn) = row_number_from_key(full_key.as_slice()) {
-				out.push((rn, body_bytes(&EncodedOperatorRow::try_from(bytes)?)));
+				out.push((rn, body_bytes(&EncodedPodRow::from(bytes))));
 				if out.len() >= limit {
 					break;
 				}
@@ -276,7 +279,7 @@ impl Store {
 		if state_get(host, &key)?.is_some() {
 			return Ok(());
 		}
-		let row = encode(&shape.fields().to_vec(), DateTime::MAX).map_err(|e| {
+		let row = encode(&shape.fields().to_vec()).map_err(|e| {
 			Error::from(FlowStateError::Encode {
 				state: "row shape",
 				cause: e.to_string(),
@@ -314,8 +317,8 @@ mod tests {
 		RowNumber(v)
 	}
 
-	fn row(payload: u8) -> EncodedOperatorRow {
-		EncodedOperatorRow::timeless(&[payload])
+	fn row(payload: u8) -> EncodedPodRow {
+		EncodedPodRow::new(&[payload])
 	}
 
 	fn b<'a>(txn: &'a mut DeferredTransaction, operator: OperatorId) -> TxnHostContext<'a, DeferredTransaction> {

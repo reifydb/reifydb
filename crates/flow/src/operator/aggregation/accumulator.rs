@@ -679,7 +679,7 @@ fn finalize_compensated(accumulator: &Value, compensation: f64, seen_negative: b
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::operator::{OperatorState, decode};
+	use reifydb_codec::row::pod::state::{OperatorState, decode};
 
 	use super::*;
 	use crate::{operator::state::seal::coord::Coord, window::span::WindowSpan};
@@ -695,7 +695,7 @@ mod tests {
 			timestamp: DateTime::from_nanos(1_700_000_000_123_456_789),
 			seq: 7,
 		};
-		let bytes = key.encode_state(DateTime::EPOCH).unwrap();
+		let bytes = key.encode_state().unwrap();
 		let restored = decode::<WindowSlotKey>(&bytes).unwrap();
 
 		assert_eq!(restored.order_key(), key.order_key());
@@ -709,7 +709,7 @@ mod tests {
 			timestamp: key.timestamp,
 			seq: 99,
 		};
-		let other_bytes = same_millis_other_seq.encode_state(DateTime::EPOCH).unwrap();
+		let other_bytes = same_millis_other_seq.encode_state().unwrap();
 		assert_eq!(
 			decode::<WindowSlotKey>(&other_bytes).unwrap().order_key(),
 			restored.order_key(),
@@ -768,7 +768,7 @@ mod tests {
 		add(&mut acc, 2, vec![i4(3), i4(3), i4(3), i4(3)]);
 		add(&mut acc, 3, vec![i4(9), i4(9), i4(9), i4(9)]);
 
-		let bytes = acc.encode_state(DateTime::from_nanos(42)).unwrap();
+		let bytes = acc.encode_state().unwrap();
 		let restored = decode::<RowAccumulator>(&bytes).unwrap();
 
 		assert_eq!(restored.finalize(), acc.finalize());

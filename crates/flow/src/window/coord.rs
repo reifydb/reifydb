@@ -159,7 +159,7 @@ impl Slot for OrdinalCoord {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::operator::encode;
+	use reifydb_codec::row::pod::state::encode;
 
 	use super::*;
 
@@ -203,8 +203,8 @@ mod tests {
 		// A changed persisted layout is silent: stored buffer keys get reinterpreted, not rejected.
 		let value = 0x0123_4567_89AB_CDEFu64;
 
-		let wrapped = encode(&OrdinalCoord::from_arrival_counter(value), DateTime::EPOCH).expect("encode");
-		let bare = encode(&value, DateTime::EPOCH).expect("encode");
+		let wrapped = encode(&OrdinalCoord::from_arrival_counter(value)).expect("encode");
+		let bare = encode(&value).expect("encode");
 
 		assert_eq!(wrapped.body(), bare.body(), "the newtype changed the persisted layout");
 	}

@@ -2,21 +2,21 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod test {
-	use reifydb_codec::row::operator::EncodedOperatorRow;
+	use reifydb_codec::row::pod::EncodedPodRow;
 	use reifydb_core::key::operator_state::{GroupStateKey, Keyspace};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_value::value::identity::IdentityId;
 
-	pub fn test_row() -> EncodedOperatorRow {
-		EncodedOperatorRow::timeless(&[1, 2, 3, 4, 5])
+	pub fn test_row() -> EncodedPodRow {
+		EncodedPodRow::new(&[1, 2, 3, 4, 5])
 	}
 
 	pub fn test_key(suffix: &str) -> GroupStateKey {
 		GroupStateKey::root(Keyspace::CUSTOM, format!("test_{}", suffix).into_bytes())
 	}
 
-	pub fn assert_row_eq(actual: &EncodedOperatorRow, expected: &EncodedOperatorRow) {
+	pub fn assert_row_eq(actual: &EncodedPodRow, expected: &EncodedPodRow) {
 		assert_eq!(actual, expected, "Rows do not match");
 	}
 

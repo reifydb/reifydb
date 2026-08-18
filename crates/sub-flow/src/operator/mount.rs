@@ -121,7 +121,7 @@ impl<C: GuestOperator + 'static> HostOperator for GuestAdapter<C> {
 mod tests {
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
-		row::operator::EncodedOperatorRow,
+		row::pod::EncodedPodRow,
 	};
 	use reifydb_core::{
 		common::CommitVersion,
@@ -191,7 +191,7 @@ mod tests {
 		let mut host = TxnHostContext::new(&mut txn, NODE);
 
 		let written = stored_key("entry");
-		host.state_set(&written, EncodedOperatorRow::timeless(&[7])).unwrap();
+		host.state_set(&written, EncodedPodRow::new(&[7])).unwrap();
 
 		let from_get_many: Vec<GroupStateKey> =
 			host.state_get_many(&[written.clone()]).unwrap().into_iter().map(|(key, _)| key).collect();

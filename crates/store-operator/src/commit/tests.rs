@@ -10,7 +10,7 @@ use std::{
 	thread,
 };
 
-use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
@@ -32,15 +32,15 @@ fn key(bytes: &str) -> EncodedKey {
 	EncodedKey::new(bytes.as_bytes())
 }
 
-fn row(body: &str) -> EncodedOperatorRow {
-	EncodedOperatorRow::timeless(body.as_bytes())
+fn row(body: &str) -> EncodedPodRow {
+	EncodedPodRow::new(body.as_bytes())
 }
 
-fn body(entry: &Option<EncodedOperatorRow>) -> String {
+fn body(entry: &Option<EncodedPodRow>) -> String {
 	row_body(entry.as_ref().expect("entry must carry a row"))
 }
 
-fn row_body(row: &EncodedOperatorRow) -> String {
+fn row_body(row: &EncodedPodRow) -> String {
 	String::from_utf8(row.body().to_vec()).expect("test bodies are utf8")
 }
 

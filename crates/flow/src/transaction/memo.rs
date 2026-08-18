@@ -7,12 +7,12 @@ use std::sync::{
 };
 
 use dashmap::DashMap;
-use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::key::operator_state::Keyspace;
 
 #[derive(Clone, Default)]
 pub struct StateMemo {
-	entries: Arc<DashMap<EncodedKey, Option<EncodedOperatorRow>>>,
+	entries: Arc<DashMap<EncodedKey, Option<EncodedPodRow>>>,
 	hits: Arc<AtomicU64>,
 	misses: Arc<AtomicU64>,
 }
@@ -22,7 +22,7 @@ impl StateMemo {
 		keyspace == Keyspace::JOIN_SCHEMA || keyspace == Keyspace::GROUP_DICTIONARY
 	}
 
-	pub fn lookup(&self, key: &EncodedKey) -> Option<Option<EncodedOperatorRow>> {
+	pub fn lookup(&self, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
 		match self.entries.get(key) {
 			Some(entry) => {
 				self.hits.fetch_add(1, Ordering::Relaxed);
@@ -35,7 +35,7 @@ impl StateMemo {
 		}
 	}
 
-	pub fn remember(&self, key: &EncodedKey, row: Option<EncodedOperatorRow>) {
+	pub fn remember(&self, key: &EncodedKey, row: Option<EncodedPodRow>) {
 		self.entries.insert(key.clone(), row);
 	}
 
@@ -66,8 +66,8 @@ mod tests {
 
 	use super::*;
 
-	fn row(body: &str) -> EncodedOperatorRow {
-		EncodedOperatorRow::timeless(body.as_bytes())
+	fn row(body: &str) -> EncodedPodRow {
+		EncodedPodRow::new(body.as_bytes())
 	}
 
 	fn key(keyspace: Keyspace) -> EncodedKey {

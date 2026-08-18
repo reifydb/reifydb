@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, Keyspace},
@@ -19,7 +19,7 @@ pub const ANCHOR_VALUE_BYTES: ByteSize = ByteSize::from_bytes(8);
 
 #[derive(Debug, Clone)]
 pub struct OperatorBatch {
-	pub items: Vec<(EncodedKey, EncodedOperatorRow)>,
+	pub items: Vec<(EncodedKey, EncodedPodRow)>,
 	pub has_more: bool,
 }
 
@@ -34,7 +34,7 @@ impl OperatorBatch {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BufferedState {
-	Row(EncodedOperatorRow),
+	Row(EncodedPodRow),
 	Tombstone,
 	Dropped,
 	Absent,
@@ -42,7 +42,7 @@ pub enum BufferedState {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BufferedStateRange {
-	pub items: Vec<(EncodedKey, Option<EncodedOperatorRow>)>,
+	pub items: Vec<(EncodedKey, Option<EncodedPodRow>)>,
 	pub dropped: bool,
 }
 
@@ -87,7 +87,7 @@ pub enum OperatorWrite {
 	Set {
 		operator: OperatorId,
 		key: EncodedKey,
-		row: EncodedOperatorRow,
+		row: EncodedPodRow,
 	},
 	Remove {
 		operator: OperatorId,

@@ -11,7 +11,7 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::{OperatorState, decode},
+	row::pod::state::{OperatorState, decode},
 };
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey},
@@ -433,7 +433,7 @@ mod tests {
 
 	use reifydb_codec::{
 		key::encoded::EncodedKeyRange,
-		row::operator::{EncodedOperatorRow, decode},
+		row::pod::{EncodedPodRow, state::decode},
 	};
 	use reifydb_core::{
 		key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey},
@@ -456,7 +456,7 @@ mod tests {
 	// which would alias all window accumulators and defeat a storage-bound test.
 	#[derive(Default)]
 	struct CountingStore {
-		data: HashMap<Vec<u8>, EncodedOperatorRow>,
+		data: HashMap<Vec<u8>, EncodedPodRow>,
 		groups: HashMap<Vec<u8>, GroupId>,
 		rows: HashMap<(GroupId, Vec<u8>), RowNumber>,
 		next_row: u64,
@@ -554,13 +554,13 @@ mod tests {
 			Ok(groups.iter().map(|group| self.groups.get(group.as_bytes()).copied()).collect())
 		}
 
-		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 			Ok(self.data.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
 			keys: &[GroupStateKey],
-			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 		) -> Result<()> {
 			for key in keys {
 				if let Some(b) = self.data.get(key.as_slice()) {
@@ -569,7 +569,7 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
+		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
 			self.data.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
@@ -581,7 +581,7 @@ mod tests {
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -593,7 +593,7 @@ mod tests {
 				Bound::Excluded(e) => k < e.as_bytes(),
 				Bound::Unbounded => true,
 			};
-			let mut matched: Vec<(Vec<u8>, EncodedOperatorRow)> = self
+			let mut matched: Vec<(Vec<u8>, EncodedPodRow)> = self
 				.data
 				.iter()
 				.filter(|(k, _)| after_start(k) && before_end(k))
@@ -909,7 +909,7 @@ mod tests {
 	fn carry_meta_projects_its_high_water_independently_of_its_window_map() {
 		// The meta sweep reclaims on this projection alone, so window entries must never skew it.
 		let mut meta: CarryMeta<DateTime, i64, i64> = CarryMeta::default();
-		let empty_bytes = meta.encode_state(DateTime::EPOCH).unwrap();
+		let empty_bytes = meta.encode_state().unwrap();
 		assert_eq!(
 			decode::<CarryMeta<DateTime, i64, i64>>(&empty_bytes).unwrap().high_water_order(),
 			None,
@@ -925,7 +925,7 @@ mod tests {
 				last_output: Some(3i64),
 			},
 		);
-		let bytes = meta.encode_state(DateTime::EPOCH).unwrap();
+		let bytes = meta.encode_state().unwrap();
 		let projected = decode::<CarryMeta<DateTime, i64, i64>>(&bytes).unwrap().high_water_order();
 		assert_eq!(projected, Some(order(99)), "the populated window map must not disturb the high water");
 	}

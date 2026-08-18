@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::EncodedOperatorRow,
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -53,7 +53,7 @@ impl OperatorPersistentTier {
 		}
 	}
 
-	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedOperatorRow> {
+	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		match self {
 			Self::Sqlite(storage) => storage.get(operator, key),
 		}
@@ -164,7 +164,7 @@ impl OperatorPersistentTier {
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl OperatorPersistentTier {
-	pub fn get(&self, _operator: OperatorId, _key: &EncodedKey) -> Option<EncodedOperatorRow> {
+	pub fn get(&self, _operator: OperatorId, _key: &EncodedKey) -> Option<EncodedPodRow> {
 		match *self {}
 	}
 

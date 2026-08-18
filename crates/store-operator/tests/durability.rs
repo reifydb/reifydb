@@ -8,7 +8,7 @@
 
 use std::path::Path;
 
-use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
@@ -57,8 +57,8 @@ fn key(suffix: u8) -> EncodedKey {
 	OperatorStateKey::inner_encoded(GROUP, Keyspace::ACCUMULATOR, [suffix]).as_encoded().clone()
 }
 
-fn row(body: &str) -> EncodedOperatorRow {
-	EncodedOperatorRow::timeless(body.as_bytes())
+fn row(body: &str) -> EncodedPodRow {
+	EncodedPodRow::new(body.as_bytes())
 }
 
 fn body(store: &OperatorStore, operator: OperatorId, suffix: u8) -> Option<String> {

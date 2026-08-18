@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::operator::EncodedOperatorRow;
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
@@ -101,8 +101,7 @@ fn operator_writes(pending: &Pending) -> Vec<OperatorWrite> {
 			(None, PendingWrite::Set(row)) => OperatorWrite::Set {
 				operator,
 				key: inner,
-				row: EncodedOperatorRow::try_from(row.clone())
-					.expect("operator state is written only through state_set, which types it"),
+				row: EncodedPodRow::from(row.clone()),
 			},
 			(
 				None,

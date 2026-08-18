@@ -334,7 +334,7 @@ mod group_commit_integration {
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_codec::{
 		key::encoded::EncodedKey,
-		row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
+		row::{bytes::EncodedBytes, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
 		interface::{catalog::flow::OperatorId, cdc::CdcChange},
@@ -579,7 +579,7 @@ mod group_commit_integration {
 				.expect("test fixture group-state key must decode");
 			combined.insert(
 				OperatorStateKey::encoded(*operator, group, keyspace, suffix),
-				EncodedOperatorRow::timeless(&[*tag; 4]).into_bytes(),
+				EncodedPodRow::new(&[*tag; 4]).into_bytes(),
 			);
 		}
 		let mut slice = FlowSlice::empty();
@@ -689,12 +689,9 @@ mod group_commit_integration {
 
 		assert_eq!(
 			store.get(op_a, &EncodedKey::new(inner_a.as_slice())),
-			Some(EncodedOperatorRow::timeless(&[1; 4])),
+			Some(EncodedPodRow::new(&[1; 4])),
 			"the committed slice's state must be readable from the store"
 		);
-		assert_eq!(
-			store.get(op_b, &EncodedKey::new(inner_b.as_slice())),
-			Some(EncodedOperatorRow::timeless(&[2; 4]))
-		);
+		assert_eq!(store.get(op_b, &EncodedKey::new(inner_b.as_slice())), Some(EncodedPodRow::new(&[2; 4])));
 	}
 }

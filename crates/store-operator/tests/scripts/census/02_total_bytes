@@ -15,9 +15,9 @@ bytes
 bytes op=2
 ---
 ok
-total_bytes => 70
-bytes 1 => 35
-bytes 2 => 35
+total_bytes => 22
+bytes 1 => 11
+bytes 2 => 11
 
 # Anchors count towards the total at the same flat rate they do per operator.
 
@@ -29,9 +29,9 @@ bytes
 bytes op=2
 ---
 ok
-total_bytes => 136
-bytes 1 => 68
-bytes 2 => 68
+total_bytes => 88
+bytes 1 => 44
+bytes 2 => 44
 
 # Dropping one operator's state takes its anchors with it and leaves the neighbour's share standing.
 
@@ -42,6 +42,6 @@ bytes
 bytes op=2
 ---
 ok
-total_bytes => 68
+total_bytes => 44
 bytes 1 => 0
-bytes 2 => 68
+bytes 2 => 44

@@ -7,7 +7,7 @@
 
 use std::{collections::BTreeMap, ops::Bound};
 
-use reifydb_codec::row::operator::EncodedOperatorRow;
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::key::operator_state::OperatorStateKey;
 use reifydb_store_operator::types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES};
 
@@ -33,13 +33,13 @@ pub struct AnchorRow {
 
 #[derive(Clone, Default)]
 pub struct Oracle {
-	state: BTreeMap<StateKey, EncodedOperatorRow>,
+	state: BTreeMap<StateKey, EncodedPodRow>,
 	anchors: BTreeMap<AnchorKey, u64>,
 	checkpoints: BTreeMap<u64, u64>,
 }
 
 impl Oracle {
-	pub fn set(&mut self, operator: u64, key: &[u8], row: EncodedOperatorRow) {
+	pub fn set(&mut self, operator: u64, key: &[u8], row: EncodedPodRow) {
 		self.state.insert((operator, key.to_vec()), row);
 	}
 

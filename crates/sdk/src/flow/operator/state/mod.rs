@@ -7,10 +7,13 @@ use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::operator::{EncodedOperatorRow, OperatorState, decode},
+	row::pod::{
+		EncodedPodRow,
+		state::{OperatorState, decode},
+	},
 };
 use reifydb_core::key::operator_state::GroupStateKey;
-use reifydb_value::{error::Error as ValueError, value::datetime::DateTime};
+use reifydb_value::error::Error as ValueError;
 
 use crate::{
 	error::{Result, SdkError},
@@ -39,7 +42,7 @@ impl<'a> State<'a> {
 	}
 
 	pub fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()> {
-		let row = encode_payload(value, self.written_at())?;
+		let row = encode_payload(value)?;
 		extern_c::set(self.ctx, key.as_encoded(), &row.into_bytes())
 	}
 
@@ -58,12 +61,7 @@ impl<'a> State<'a> {
 	pub fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> Result<Vec<(GroupStateKey, T)>> {
 		extern_c::prefix(self.ctx, prefix.as_encoded())?
 			.into_iter()
-			.map(|(k, row)| {
-				Ok((
-					framed(k)?,
-					decode_payload(&EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?,
-				))
-			})
+			.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
 			.collect()
 	}
 
@@ -71,12 +69,7 @@ impl<'a> State<'a> {
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
 		extern_c::get_many(self.ctx, &raw)?
 			.into_iter()
-			.map(|(k, row)| {
-				Ok((
-					framed(k)?,
-					decode_payload(&EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?,
-				))
-			})
+			.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
 			.collect()
 	}
 
@@ -91,34 +84,29 @@ impl<'a> State<'a> {
 	) -> Result<Vec<(GroupStateKey, T)>> {
 		extern_c::range(self.ctx, start.map(GroupStateKey::as_encoded), end.map(GroupStateKey::as_encoded))?
 			.into_iter()
-			.map(|(k, row)| {
-				Ok((
-					framed(k)?,
-					decode_payload(&EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?,
-				))
-			})
+			.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
 			.collect()
 	}
 
-	pub fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+	pub fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		match extern_c::get(self.ctx, key.as_encoded())? {
-			Some(row) => Ok(Some(EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)),
+			Some(row) => Ok(Some(EncodedPodRow::from(row))),
 			None => Ok(None),
 		}
 	}
 
-	pub fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
+	pub fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
 		extern_c::set(self.ctx, key.as_encoded(), &payload.into_bytes())
 	}
 
 	pub fn get_many_bytes_visit(
 		&self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
 		for (k, row) in extern_c::get_many(self.ctx, &raw)? {
-			visit(framed(k)?, EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?;
+			visit(framed(k)?, EncodedPodRow::from(row))?;
 		}
 		Ok(())
 	}
@@ -127,24 +115,16 @@ impl<'a> State<'a> {
 		&self,
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		for (k, row) in extern_c::range(
 			self.ctx,
 			start.map(GroupStateKey::as_encoded),
 			end.map(GroupStateKey::as_encoded),
 		)? {
-			visit(framed(k)?, EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?;
+			visit(framed(k)?, EncodedPodRow::from(row))?;
 		}
 		Ok(())
-	}
-
-	#[inline]
-	fn written_at(&self) -> DateTime {
-		// SAFETY: ExternCContext::new asserts ctx.ctx is non-null, and the host keeps the
-		// ExternCContextRaw alive and aligned for at least the lifetime of the borrow this State was created
-		// from.
-		DateTime::from_nanos(unsafe { (*self.ctx.ctx).written_at_nanos })
 	}
 }
 
@@ -157,12 +137,12 @@ fn framed(key: EncodedKey) -> Result<GroupStateKey> {
 }
 
 #[inline]
-pub fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedOperatorRow> {
-	Ok(value.encode_state(now).map_err(ValueError::from)?)
+pub fn encode_payload<T: OperatorState>(value: &T) -> Result<EncodedPodRow> {
+	Ok(value.encode_state().map_err(ValueError::from)?)
 }
 
 #[inline]
-pub fn decode_payload<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T> {
+pub fn decode_payload<T: OperatorState>(row: &EncodedPodRow) -> Result<T> {
 	Ok(decode(row).map_err(ValueError::from)?)
 }
 

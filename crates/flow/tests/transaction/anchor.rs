@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::row::operator::OperatorState;
+use reifydb_codec::row::pod::state::OperatorState;
 use reifydb_core::{
 	actors::pending::PendingLayers, interface::catalog::flow::OperatorId, key::operator_state::GroupId,
 };
@@ -18,7 +18,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	factory::time::at_millis,
-	value::{datetime::DateTime, identity::IdentityId, row_number::RowNumber},
+	value::{identity::IdentityId, row_number::RowNumber},
 };
 
 const NODE: OperatorId = OperatorId(1);
@@ -49,7 +49,7 @@ fn arm(txn: &mut DeferredTransaction, side: u8, row_number: u64, millis: u64) {
 	let row = SealAnchor {
 		expiry: at_millis(millis),
 	}
-	.encode_state(DateTime::EPOCH)
+	.encode_state()
 	.unwrap();
 	txn.state_set(NODE, &anchor_key(GROUP, side, RowNumber(row_number)), row).unwrap();
 }
@@ -277,7 +277,7 @@ fn one_groups_anchors_never_answer_for_another() {
 	let row = SealAnchor {
 		expiry: at_millis(1_000),
 	}
-	.encode_state(DateTime::EPOCH)
+	.encode_state()
 	.unwrap();
 	txn.state_set(NODE, &other, row).unwrap();
 	commit(&engine, &mut txn);

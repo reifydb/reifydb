@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{flow::OperatorId, id::TableId, storage::StorageId},
@@ -38,8 +38,8 @@ fn ephemeral(engine: &TestEngine) -> EphemeralTransaction {
 	txn
 }
 
-fn make_value(s: &str) -> EncodedOperatorRow {
-	EncodedOperatorRow::timeless(s.as_bytes())
+fn make_value(s: &str) -> EncodedPodRow {
+	EncodedPodRow::new(s.as_bytes())
 }
 
 fn full_key(operator: OperatorId, key: &GroupStateKey) -> EncodedKey {
@@ -49,44 +49,18 @@ fn full_key(operator: OperatorId, key: &GroupStateKey) -> EncodedKey {
 }
 
 #[test]
-fn first_insert_uses_caller_time() {
-	// With no prior row the caller's time must round-trip unchanged, never a zeroed stamp.
-	let e = engine();
-	let mut txn = ephemeral(&e);
-	let k = key("fresh-key");
-	txn.state_set(OPERATOR_ID, &k, make_row("v1", 4_242)).unwrap();
-
-	let stored = txn.state_get(OPERATOR_ID, &k).unwrap().unwrap();
-	assert_eq!(stored.time(), DateTime::from_nanos(4_242));
-}
-
-#[test]
 fn update_uses_caller_time() {
-	// A write must never read the prior row back to carry its stamp forward - that costs a roundtrip per key.
+	// A repeat state_set must replace the stored row wholesale, or a merging write would leave the earlier body
+	// readable.
 	let e = engine();
 	let mut txn = ephemeral(&e);
 	let k = key("update-key");
 
-	txn.state_set(OPERATOR_ID, &k, make_row("v1", 1_000)).unwrap();
-	txn.state_set(OPERATOR_ID, &k, make_row("v2", 5_000)).unwrap();
+	txn.state_set(OPERATOR_ID, &k, make_row("v1")).unwrap();
+	txn.state_set(OPERATOR_ID, &k, make_row("v2")).unwrap();
 
 	let stored = txn.state_get(OPERATOR_ID, &k).unwrap().unwrap();
-	assert_eq!(stored.time(), DateTime::from_nanos(5_000), "the write's own time stands, unread and unmodified");
-	// The second write must replace the row wholesale, body included.
 	assert_eq!(stored.body(), b"v2");
-}
-
-#[test]
-fn epoch_prior_time_is_not_pinned() {
-	// A write must carry its caller's time, never inherit from the row it replaces, so an epoch stamp heals.
-	let e = engine();
-	let mut txn = ephemeral(&e);
-	let k = key("legacy-key");
-	txn.state_set(OPERATOR_ID, &k, make_row("v0", 0)).unwrap();
-	txn.state_set(OPERATOR_ID, &k, make_row("v1", 7_000)).unwrap();
-
-	let stored = txn.state_get(OPERATOR_ID, &k).unwrap().unwrap();
-	assert_eq!(stored.time(), DateTime::from_nanos(7_000), "an epoch prior stamp must not pin future writes");
 }
 
 #[test]

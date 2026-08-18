@@ -10,8 +10,10 @@ use reifydb_codec::{
 	},
 	row::{
 		bytes::EncodedBytes,
-		operator::{EncodedOperatorRow, decode, encode},
-		pod::EncodedPodRow,
+		pod::{
+			EncodedPodRow,
+			state::{decode, encode},
+		},
 		shape::{RowFamily, RowShape},
 	},
 };
@@ -177,7 +179,7 @@ impl SinkRingBufferViewOperator {
 		metadata: &RingBufferMetadata,
 	) -> Result<()> {
 		let key = self.meta_key(partition);
-		let row = EncodedOperatorRow::timeless(encode_ringbuffer_metadata(metadata).as_slice());
+		let row = EncodedPodRow::new(encode_ringbuffer_metadata(metadata).as_slice());
 		self.state_set(txn, &key, row)
 	}
 
@@ -337,7 +339,7 @@ impl SinkRingBufferViewOperator {
 			source_rn,
 			time,
 		};
-		let row = encode(&entry, DateTime::MAX).map_err(|e| {
+		let row = encode(&entry).map_err(|e| {
 			Error::from(FlowStateError::Encode {
 				state: "RingBufferRowEntry",
 				cause: e.to_string(),
@@ -346,7 +348,7 @@ impl SinkRingBufferViewOperator {
 		self.state_set(txn, &key, row)?;
 		if let Some(expires_at) = self.expires_at(time) {
 			let key = self.expiry_key(partition, expires_at, storage_rn);
-			self.state_set(txn, &key, EncodedOperatorRow::timeless(&[]))?;
+			self.state_set(txn, &key, EncodedPodRow::new(&[]))?;
 		}
 		Ok(())
 	}
@@ -404,7 +406,7 @@ impl SinkRingBufferViewOperator {
 		}
 	}
 
-	fn decode_row_entry(&self, row: &EncodedOperatorRow) -> Result<(Option<DateTime>, RowNumber)> {
+	fn decode_row_entry(&self, row: &EncodedPodRow) -> Result<(Option<DateTime>, RowNumber)> {
 		let entry: RowEntry = decode(row).map_err(|e| {
 			Error::from(FlowStateError::Decode {
 				state: "RingBufferRowEntry",
@@ -421,8 +423,8 @@ struct RowEntry {
 	time: Option<DateTime>,
 }
 
-fn encode_u64(value: u64, state: &'static str) -> Result<EncodedOperatorRow> {
-	encode(&value, DateTime::MAX).map_err(|e| {
+fn encode_u64(value: u64, state: &'static str) -> Result<EncodedPodRow> {
+	encode(&value).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state,
 			cause: e.to_string(),
@@ -430,7 +432,7 @@ fn encode_u64(value: u64, state: &'static str) -> Result<EncodedOperatorRow> {
 	})
 }
 
-fn decode_u64(row: &EncodedOperatorRow, state: &'static str) -> Result<u64> {
+fn decode_u64(row: &EncodedPodRow, state: &'static str) -> Result<u64> {
 	decode(row).map_err(|e| {
 		Error::from(FlowStateError::Decode {
 			state,
@@ -440,11 +442,11 @@ fn decode_u64(row: &EncodedOperatorRow, state: &'static str) -> Result<u64> {
 }
 
 impl SinkRingBufferViewOperator {
-	fn state_get(&self, txn: &mut DeferredTransaction, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+	fn state_get(&self, txn: &mut DeferredTransaction, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		txn.state_get(self.operator, key)
 	}
 
-	fn state_set(&self, txn: &mut DeferredTransaction, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
+	fn state_set(&self, txn: &mut DeferredTransaction, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
 		txn.state_set(self.operator, key, row)
 	}
 

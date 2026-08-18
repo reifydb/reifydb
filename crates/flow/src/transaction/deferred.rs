@@ -6,7 +6,7 @@ use std::ops::Bound::{Excluded, Included, Unbounded};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
+	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	actors::pending::PendingLayers,
@@ -144,10 +144,7 @@ pub(crate) fn deferred_storage_get(
 			operator,
 			inner,
 		} = operator_state_coordinates(key).expect("an OperatorState-routed key must carry an operator id");
-		return Ok(operators
-			.expect(NO_OPERATOR_STORE)
-			.get(operator, &inner)
-			.map(EncodedOperatorRow::into_bytes));
+		return Ok(operators.expect(NO_OPERATOR_STORE).get(operator, &inner).map(EncodedPodRow::into_bytes));
 	}
 	let query = match route {
 		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,

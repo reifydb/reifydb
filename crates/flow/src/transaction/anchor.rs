@@ -10,7 +10,7 @@ use reifydb_codec::{
 	},
 	row::{
 		bytes::EncodedBytes,
-		operator::{EncodedOperatorRow, OperatorState},
+		pod::{EncodedPodRow, state::OperatorState},
 	},
 };
 use reifydb_core::{
@@ -67,7 +67,7 @@ pub fn decode_anchor_suffix(suffix: &[u8]) -> Option<(u8, RowNumber)> {
 }
 
 pub fn decode_anchor_expiry(bytes: &EncodedBytes) -> Result<DateTime> {
-	let row = EncodedOperatorRow::try_from(bytes.clone()).map_err(ValueError::from)?;
+	let row = EncodedPodRow::from(bytes.clone());
 	Ok(SealAnchor::decode_state(&row).map_err(ValueError::from)?.expiry)
 }
 

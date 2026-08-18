@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::EncodedOperatorRow,
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -64,11 +64,11 @@ fn key(suffix: u8) -> EncodedKey {
 	EncodedKey::new(bytes)
 }
 
-fn row(body: &str) -> EncodedOperatorRow {
-	EncodedOperatorRow::timeless(body.as_bytes())
+fn row(body: &str) -> EncodedPodRow {
+	EncodedPodRow::new(body.as_bytes())
 }
 
-fn body(row: &EncodedOperatorRow) -> String {
+fn body(row: &EncodedPodRow) -> String {
 	String::from_utf8(row.body().to_vec()).expect("test bodies are utf8")
 }
 
@@ -610,4 +610,40 @@ fn a_group_anchor_drop_does_not_mask_a_sibling_group() {
 		 operator owns"
 	);
 	assert!(store.get(OP_A, &key(1)).is_some(), "an anchor drop must never mask operator state");
+}
+
+#[test]
+fn a_zero_length_row_stays_present_in_the_buffer_and_never_reads_as_absent() {
+	// A pod row with no body is zero bytes end to end, and marker keyspaces store exactly that; if the
+	// buffer collapsed BufferedState::Row(empty) onto Absent, every marker would vanish on the write path.
+	let (store, _storage, _guard) = flushed_store();
+
+	store.set(OP_A, key(1), EncodedPodRow::new(&[]));
+
+	let found = store.get(OP_A, &key(1)).expect("a zero-length row is present, not absent");
+	assert_eq!(found.len(), 0, "the row must round-trip at its written width");
+	assert!(store.contains(OP_A, &key(1)));
+	assert!(store.get(OP_A, &key(2)).is_none(), "an unwritten key stays absent, which is the other case");
+
+	store.remove(OP_A, &key(1));
+	assert!(store.get(OP_A, &key(1)).is_none(), "and a tombstone still reads absent");
+	assert!(!store.contains(OP_A, &key(1)));
+}
+
+#[test]
+fn a_zero_length_row_survives_the_sqlite_blob_column_distinctly_from_absence() {
+	// sqlite3_bind_zeroblob stores a zero-length BLOB rather than NULL, and a zero-length blob reads back
+	// as an empty slice; a driver that mapped it to NULL would turn every flushed marker into a missing key.
+	let (_store, storage, _guard) = flushed_store();
+
+	storage.set(OP_A, key(1), EncodedPodRow::new(&[]));
+
+	let found = storage.get(OP_A, &key(1)).expect("a flushed zero-length row is present, not absent");
+	assert_eq!(found.len(), 0);
+	assert!(storage.contains(OP_A, &key(1)));
+	assert!(storage.get(OP_A, &key(2)).is_none());
+
+	let scanned = storage.range_batch(OP_A, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded), 64);
+	assert_eq!(scanned.items.len(), 1, "the range scan must yield the empty row, not skip it");
+	assert_eq!(scanned.items[0].1.len(), 0);
 }

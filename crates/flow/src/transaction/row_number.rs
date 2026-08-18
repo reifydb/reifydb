@@ -7,7 +7,10 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{
 		bytes::EncodedBytes,
-		operator::{EncodedOperatorRow, OperatorState, decode},
+		pod::{
+			EncodedPodRow,
+			state::{OperatorState, decode},
+		},
 	},
 };
 use reifydb_core::{
@@ -36,7 +39,7 @@ pub fn counter_key() -> GroupStateKey {
 }
 
 fn decode_bytes<T: OperatorState>(bytes: &EncodedBytes) -> Result<T> {
-	Ok(decode(&EncodedOperatorRow::try_from(bytes.clone())?)?)
+	Ok(decode(&EncodedPodRow::from(bytes.clone()))?)
 }
 
 fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Result<u64> {
@@ -44,8 +47,7 @@ fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Res
 		Some(row) => decode::<u64>(&row)?,
 		None => 1,
 	};
-	let now = txn.written_at();
-	txn.state_set(operator, &counter_key(), (seed + count).encode_state(now)?)?;
+	txn.state_set(operator, &counter_key(), (seed + count).encode_state()?)?;
 	Ok(seed)
 }
 
@@ -54,8 +56,6 @@ fn resolve_or_mint(
 	operator: OperatorId,
 	map_keys: Vec<GroupStateKey>,
 ) -> Result<Vec<(RowNumber, bool)>> {
-	let now = txn.written_at();
-
 	let batch = txn.state_get_many(operator, &map_keys)?;
 	let mut found: HashMap<EncodedKey, EncodedBytes> = HashMap::with_capacity(batch.items.len());
 	for item in batch.items {
@@ -89,7 +89,7 @@ fn resolve_or_mint(
 		for (offset, &slot) in distinct_new.iter().enumerate() {
 			let map_key = &map_keys[slot];
 			let row_number = RowNumber(start + offset as u64);
-			txn.state_set(operator, map_key, row_number.0.encode_state(now)?)?;
+			txn.state_set(operator, map_key, row_number.0.encode_state()?)?;
 			assigned.insert(map_key.clone(), row_number);
 		}
 		for (slot, map_key) in map_keys.iter().enumerate() {
@@ -140,7 +140,6 @@ pub trait RowNumberExtension: FlowTransaction {
 		if groups.is_empty() {
 			return Ok(Vec::new());
 		}
-		let now = self.written_at();
 		let start = mint(self, operator, groups.len() as u64)?;
 		let mut assigned = Vec::with_capacity(groups.len());
 		for (offset, group) in groups.iter().enumerate() {
@@ -153,7 +152,7 @@ pub trait RowNumberExtension: FlowTransaction {
 				);
 			}
 			let row_number = RowNumber(start + offset as u64);
-			self.state_set(operator, &map_key, row_number.0.encode_state(now)?)?;
+			self.state_set(operator, &map_key, row_number.0.encode_state()?)?;
 			assigned.push(row_number);
 		}
 		Ok(assigned)

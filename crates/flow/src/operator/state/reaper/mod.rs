@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::{decode_u64, encode_u64},
-	row::operator::EncodedOperatorRow,
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	key::operator_state::{
@@ -39,8 +39,7 @@ pub fn queue_key(group: GroupId) -> GroupStateKey {
 }
 
 pub fn enqueue(store: &mut dyn StateStore, group: GroupId) -> Result<()> {
-	let now = store.written_at();
-	store.state_set(&queue_key(group), EncodedOperatorRow::new(&[], now))
+	store.state_set(&queue_key(group), EncodedPodRow::new(&[]))
 }
 
 pub struct Queued {

@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
+	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::scan::record_page};
 use reifydb_value::util::cowvec::CowVec;
@@ -25,7 +25,7 @@ use crate::{
 
 impl SqliteOperatorStorage {
 	#[instrument(name = "store::operator::persistent::sqlite::set", level = "debug", skip(self, key, row), fields(operator = operator.0, key_len = key.len()))]
-	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedOperatorRow) {
+	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
 		self.mark_state_written();
 		self.filter().add(operator, &key);
 		let guard = self.inner.conn.lock();
@@ -47,7 +47,7 @@ impl SqliteOperatorStorage {
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
-	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedOperatorRow> {
+	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		if !self.state_written() {
 			return None;
 		}
@@ -139,7 +139,6 @@ impl SqliteOperatorStorage {
 	}
 }
 
-pub(super) fn decode_row(bytes: Vec<u8>) -> EncodedOperatorRow {
-	EncodedOperatorRow::try_from(EncodedBytes(CowVec::new(bytes)))
-		.expect("operator state is written only through set, which types it")
+pub(super) fn decode_row(bytes: Vec<u8>) -> EncodedPodRow {
+	EncodedPodRow::from(EncodedBytes(CowVec::new(bytes)))
 }

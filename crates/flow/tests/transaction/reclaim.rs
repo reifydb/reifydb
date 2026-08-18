@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::{EncodedOperatorRow, OperatorState},
+	row::pod::{EncodedPodRow, state::OperatorState},
 };
 use reifydb_core::{
 	actors::pending::PendingLayers,
@@ -26,8 +26,8 @@ use reifydb_value::{
 
 const NODE: OperatorId = OperatorId(1);
 
-fn payload() -> EncodedOperatorRow {
-	1u64.encode_state(DateTime::EPOCH).unwrap()
+fn payload() -> EncodedPodRow {
+	1u64.encode_state().unwrap()
 }
 
 fn deferred(engine: &TestEngine) -> DeferredTransaction {

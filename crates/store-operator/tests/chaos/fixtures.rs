@@ -5,7 +5,7 @@
 
 use std::{cell::Cell, path::Path};
 
-use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::key::operator_state::{GroupId, Keyspace, OperatorStateKey};
 use reifydb_runtime::{
 	actor::system::{ActorSpawner, ActorSystem},
@@ -153,6 +153,6 @@ pub fn key(group: u64, keyspace: u8, suffix: u64) -> EncodedKey {
 		.clone()
 }
 
-pub fn row(operator: u64, suffix: u64, step: u32) -> EncodedOperatorRow {
-	EncodedOperatorRow::timeless(format!("o{operator}/k{suffix}@{step}").as_bytes())
+pub fn row(operator: u64, suffix: u64, step: u32) -> EncodedPodRow {
+	EncodedPodRow::new(format!("o{operator}/k{suffix}@{step}").as_bytes())
 }

@@ -5,7 +5,10 @@ use reifydb_codec::{
 	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKeyRange},
 	row::{
 		bytes::EncodedBytes,
-		operator::{EncodedOperatorRow, decode, encode},
+		pod::{
+			EncodedPodRow,
+			state::{decode, encode},
+		},
 	},
 };
 use reifydb_core::{
@@ -121,7 +124,7 @@ impl SnapshotLedger {
 			}
 			self.unpin(host, group, right, previous)?;
 		}
-		let row = encode_version(host, version)?;
+		let row = encode_version(version)?;
 		state_set(host, &key, row)?;
 		self.pin(host, group, right, version)
 	}
@@ -138,7 +141,7 @@ impl SnapshotLedger {
 			let Some(right) = decode_published(key.as_slice()) else {
 				continue;
 			};
-			out.push((right, decode_version(&EncodedOperatorRow::try_from(row)?)?));
+			out.push((right, decode_version(&EncodedPodRow::from(row))?));
 		}
 		Ok(out)
 	}
@@ -153,7 +156,7 @@ impl SnapshotLedger {
 		if state_get(host, &key)?.is_some() {
 			return Ok(());
 		}
-		let row = encode_version(host, ContentVersion(0))?;
+		let row = encode_version(ContentVersion(0))?;
 		state_set(host, &key, row)
 	}
 
@@ -199,7 +202,7 @@ impl SnapshotLedger {
 			return Ok(());
 		}
 		pin.retired = Some(content.0.to_vec());
-		let row = encode_pin(host, &pin)?;
+		let row = encode_pin(&pin)?;
 		state_set(host, &key, row)
 	}
 
@@ -219,7 +222,7 @@ impl SnapshotLedger {
 			},
 		};
 		pin.refs += 1;
-		let row = encode_pin(host, &pin)?;
+		let row = encode_pin(&pin)?;
 		state_set(host, &key, row)
 	}
 
@@ -240,7 +243,7 @@ impl SnapshotLedger {
 		match pin.refs {
 			0 => state_remove(host, &key)?,
 			_ => {
-				let row = encode_pin(host, &pin)?;
+				let row = encode_pin(&pin)?;
 				state_set(host, &key, row)?
 			}
 		}
@@ -262,8 +265,8 @@ fn decode_published(bytes: &[u8]) -> Option<PublishedRight> {
 	}
 }
 
-fn encode_version(host: &dyn HostContext, version: ContentVersion) -> Result<EncodedOperatorRow> {
-	encode(&version.0, host.written_at()).map_err(|e| {
+fn encode_version(version: ContentVersion) -> Result<EncodedPodRow> {
+	encode(&version.0).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state: "snapshot published version",
 			cause: e.to_string(),
@@ -271,7 +274,7 @@ fn encode_version(host: &dyn HostContext, version: ContentVersion) -> Result<Enc
 	})
 }
 
-fn decode_version(row: &EncodedOperatorRow) -> Result<ContentVersion> {
+fn decode_version(row: &EncodedPodRow) -> Result<ContentVersion> {
 	decode::<u64>(row).map(ContentVersion).map_err(|e| {
 		Error::from(FlowStateError::Decode {
 			state: "snapshot published version",
@@ -280,8 +283,8 @@ fn decode_version(row: &EncodedOperatorRow) -> Result<ContentVersion> {
 	})
 }
 
-fn encode_pin(host: &dyn HostContext, pin: &Pin) -> Result<EncodedOperatorRow> {
-	encode(pin, host.written_at()).map_err(|e| {
+fn encode_pin(pin: &Pin) -> Result<EncodedPodRow> {
+	encode(pin).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state: "snapshot pin",
 			cause: e.to_string(),
@@ -289,7 +292,7 @@ fn encode_pin(host: &dyn HostContext, pin: &Pin) -> Result<EncodedOperatorRow> {
 	})
 }
 
-fn decode_pin(row: &EncodedOperatorRow) -> Result<Pin> {
+fn decode_pin(row: &EncodedPodRow) -> Result<Pin> {
 	decode::<Pin>(row).map_err(|e| {
 		Error::from(FlowStateError::Decode {
 			state: "snapshot pin",

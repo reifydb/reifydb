@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
-	operator::{decode, encode},
+	pod::state::{decode, encode},
 	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_core::{
@@ -146,7 +146,7 @@ impl TakePlan {
 	}
 
 	fn store_take_state(&self, host: &mut dyn HostContext, state: &TakeState) -> Result<()> {
-		let row = encode(state, DateTime::MAX).map_err(|e| {
+		let row = encode(state).map_err(|e| {
 			Error::from(FlowStateError::Encode {
 				state: "TakeState",
 				cause: e.to_string(),

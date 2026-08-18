@@ -5,7 +5,7 @@ use std::{mem, ops::Bound, ptr, slice::from_raw_parts};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
+	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
@@ -41,7 +41,7 @@ struct StateIteratorInternal {
 	handle: StateIteratorHandle,
 }
 
-fn iterator_entries(entries: Vec<(GroupStateKey, EncodedOperatorRow)>) -> Vec<(GroupStateKey, EncodedBytes)> {
+fn iterator_entries(entries: Vec<(GroupStateKey, EncodedPodRow)>) -> Vec<(GroupStateKey, EncodedBytes)> {
 	entries.into_iter().map(|(key, row)| (key, row.bytes().clone())).collect()
 }
 
@@ -110,11 +110,7 @@ pub(super) extern "C" fn host_state_set(
 			return EXTERN_C_ERROR_INTERNAL;
 		}
 
-		let Ok(row) = EncodedOperatorRow::try_from(encoded_bytes(value_ptr, value_len)) else {
-			return EXTERN_C_ERROR_INTERNAL;
-		};
-
-		match host.state_set(&key, row) {
+		match host.state_set(&key, EncodedPodRow::from(encoded_bytes(value_ptr, value_len))) {
 			Ok(_) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
@@ -861,19 +857,19 @@ mod seal_anchor_guard_tests {
 	}
 
 	impl StateStore for RecordingHost {
-		fn state_get(&mut self, _key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+		fn state_get(&mut self, _key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 			Ok(None)
 		}
 
 		fn state_get_many_visit(
 			&mut self,
 			_keys: &[GroupStateKey],
-			_visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+			_visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 		) -> Result<()> {
 			Ok(())
 		}
 
-		fn state_set(&mut self, _key: &GroupStateKey, _payload: EncodedOperatorRow) -> Result<()> {
+		fn state_set(&mut self, _key: &GroupStateKey, _payload: EncodedPodRow) -> Result<()> {
 			self.reached.set(true);
 			Ok(())
 		}
@@ -887,15 +883,12 @@ mod seal_anchor_guard_tests {
 			&mut self,
 			_range: EncodedKeyRange,
 			_limit: Option<usize>,
-			_visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+			_visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 		) -> Result<()> {
 			Ok(())
 		}
 
-		fn state_last(
-			&mut self,
-			_range: EncodedKeyRange,
-		) -> Result<Option<(GroupStateKey, EncodedOperatorRow)>> {
+		fn state_last(&mut self, _range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 			Ok(None)
 		}
 
@@ -971,14 +964,11 @@ mod seal_anchor_guard_tests {
 			0
 		}
 
-		fn state_get_many(
-			&mut self,
-			_keys: &[GroupStateKey],
-		) -> Result<Vec<(GroupStateKey, EncodedOperatorRow)>> {
+		fn state_get_many(&mut self, _keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 			Ok(Vec::new())
 		}
 
-		fn state_range(&mut self, _range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedOperatorRow)>> {
+		fn state_range(&mut self, _range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 			Ok(Vec::new())
 		}
 
@@ -1070,7 +1060,7 @@ mod seal_anchor_guard_tests {
 	fn a_guest_write_to_the_seal_anchor_keyspace_is_refused() {
 		// A guest anchor reaches the commit path, where routing decodes its body and panics the committer.
 		let key = framed(Keyspace::SEAL_ANCHOR);
-		let value = EncodedOperatorRow::new(&[0u8; 4], DateTime::EPOCH);
+		let value = EncodedPodRow::new(&[0u8; 4]);
 
 		let (set, set_reached) = with_context(|ctx| {
 			host_state_set(1, ctx, key.as_ptr(), key.len(), value.bytes().as_ptr(), value.bytes().len())
@@ -1087,7 +1077,7 @@ mod seal_anchor_guard_tests {
 	fn a_guest_write_to_its_own_keyspace_still_reaches_the_host() {
 		// A guard keyed on anything wider than the one keyspace would silently break every guest operator.
 		let key = framed(Keyspace::CUSTOM);
-		let value = EncodedOperatorRow::new(&[0u8; 4], DateTime::EPOCH);
+		let value = EncodedPodRow::new(&[0u8; 4]);
 
 		let (set, set_reached) = with_context(|ctx| {
 			host_state_set(1, ctx, key.as_ptr(), key.len(), value.bytes().as_ptr(), value.bytes().len())
@@ -1098,5 +1088,60 @@ mod seal_anchor_guard_tests {
 		assert_eq!(removed, EXTERN_C_OK);
 		assert!(set_reached, "a guest keyspace must still reach the host");
 		assert!(remove_reached);
+	}
+}
+
+#[cfg(test)]
+mod empty_value_boundary_tests {
+	use reifydb_sdk::common::extern_c::wire::{
+		buffer::ExternCBuffer,
+		status::{EXTERN_C_ERROR_ALLOC, EXTERN_C_OK},
+	};
+
+	use crate::{
+		operator::callbacks::extern_c::marshal::write_buffer, procedure::callbacks::extern_c::memory::host_free,
+	};
+
+	fn empty_buffer() -> ExternCBuffer {
+		ExternCBuffer {
+			ptr: std::ptr::null_mut(),
+			len: 0,
+			cap: 0,
+		}
+	}
+
+	#[test]
+	fn a_zero_length_row_cannot_cross_the_guest_boundary_as_a_present_value() {
+		// host_alloc(0) returns null, so the only status a present-but-empty row can produce here is an
+		// allocation failure; and even on OK the guest binding reads len == 0 as absent. A zero-length
+		// value is therefore not representable across this boundary, so no state a guest operator reads
+		// may rely on one.
+		let mut output = empty_buffer();
+
+		// SAFETY: output is a live, aligned ExternCBuffer this test owns for the whole call.
+		let status = unsafe { write_buffer(&mut output as *mut ExternCBuffer, &[]) };
+
+		assert_eq!(status, EXTERN_C_ERROR_ALLOC, "an empty payload has no allocation to hand over");
+		assert!(output.ptr.is_null(), "and nothing may be written into the guest buffer");
+		assert_eq!(output.len, 0);
+	}
+
+	#[test]
+	fn a_one_byte_row_does_cross_the_guest_boundary() {
+		// The companion case: one byte is the smallest payload that survives, which is why a marker that
+		// must reach a guest carries a flags byte instead of an empty body.
+		let mut output = empty_buffer();
+
+		// SAFETY: output is a live, aligned ExternCBuffer this test owns for the whole call.
+		let status = unsafe { write_buffer(&mut output as *mut ExternCBuffer, &[0u8]) };
+
+		assert_eq!(status, EXTERN_C_OK);
+		assert!(!output.ptr.is_null());
+		assert_eq!(output.len, 1);
+
+		// SAFETY: write_buffer returned OK, so ptr owns exactly output.len host-allocated bytes.
+		unsafe {
+			host_free(output.ptr as *mut u8, output.len);
+		}
 	}
 }

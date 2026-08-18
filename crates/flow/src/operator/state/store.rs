@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
+	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::key::operator_state::GroupStateKey;
 use reifydb_value::Result;
@@ -11,11 +11,11 @@ use reifydb_value::Result;
 use super::iter::StateIterator;
 use crate::operator::host::HostContext;
 
-pub fn state_get(host: &mut dyn HostContext, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+pub fn state_get(host: &mut dyn HostContext, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 	host.state_get(key)
 }
 
-pub fn state_set(host: &mut dyn HostContext, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
+pub fn state_set(host: &mut dyn HostContext, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
 	host.state_set(key, row)
 }
 
@@ -92,8 +92,8 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("set");
-		let row1 = EncodedOperatorRow::timeless(&[1, 2, 3]);
-		let row2 = EncodedOperatorRow::timeless(&[4, 5, 6]);
+		let row1 = EncodedPodRow::new(&[1, 2, 3]);
+		let row2 = EncodedPodRow::new(&[4, 5, 6]);
 
 		state_set(&mut host(&mut txn, operator_id), &key, row1.clone()).unwrap();
 		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap().unwrap();
@@ -125,8 +125,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("scan_{:02}", i)); // padded so the keys sort numerically
-			state_set(&mut host(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(&[i as u8]))
-				.unwrap();
+			state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(&[i as u8])).unwrap();
 		}
 
 		let entries: Vec<_> = state_scan_all(&mut host(&mut txn, operator_id)).unwrap();
@@ -134,7 +133,7 @@ pub mod tests {
 
 		// The scan path is untyped, so the payload only surfaces once the row header is stripped.
 		for i in 0..5 {
-			let row = EncodedOperatorRow::try_from(entries[i].1.clone()).unwrap();
+			let row = EncodedPodRow::from(entries[i].1.clone());
 			assert_eq!(row.body()[0], i as u8);
 		}
 	}
@@ -250,8 +249,8 @@ pub mod tests {
 		let node1 = OperatorId(1);
 		let node2 = OperatorId(2);
 		let key = test_key("shared");
-		let row1 = EncodedOperatorRow::timeless(&[1]);
-		let row2 = EncodedOperatorRow::timeless(&[2]);
+		let row1 = EncodedPodRow::new(&[1]);
+		let row2 = EncodedPodRow::new(&[2]);
 
 		state_set(&mut host(&mut txn, node1), &key, row1.clone()).unwrap();
 		state_set(&mut host(&mut txn, node2), &key, row2.clone()).unwrap();
@@ -274,7 +273,7 @@ pub mod tests {
 		let operator_id = OperatorId(1);
 		let key = test_key("large");
 
-		let large_row = EncodedOperatorRow::timeless(&[0xAB; 10240]);
+		let large_row = EncodedPodRow::new(&[0xAB; 10240]);
 
 		state_set(&mut host(&mut txn, operator_id), &key, large_row.clone()).unwrap();
 		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap().unwrap();
@@ -320,7 +319,7 @@ pub mod tests {
 		let entries = vec![("key_a", vec![1, 2]), ("key_b", vec![3, 4]), ("key_c", vec![5, 6])];
 		for (key_suffix, data) in &entries {
 			let key = test_key(key_suffix);
-			state_set(&mut host(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(data)).unwrap();
+			state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(data)).unwrap();
 		}
 
 		let scanned: Vec<_> = state_scan_all(&mut host(&mut txn, operator_id)).unwrap();
@@ -335,8 +334,7 @@ pub mod tests {
 
 		for i in 0..10 {
 			let key = test_key(&format!("{:02}", i)); // padded so the keys sort numerically
-			state_set(&mut host(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(&[i as u8]))
-				.unwrap();
+			state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(&[i as u8])).unwrap();
 		}
 
 		let range = EncodedKeyRange::new(
@@ -350,7 +348,7 @@ pub mod tests {
 		assert_eq!(range_result.len(), 3);
 		// The range path is untyped, so the payload only surfaces once the row header is stripped.
 		for (offset, expected) in [(0usize, 2u8), (1, 3), (2, 4)] {
-			let row = EncodedOperatorRow::try_from(range_result[offset].1.clone()).unwrap();
+			let row = EncodedPodRow::from(range_result[offset].1.clone());
 			assert_eq!(row.body()[0], expected);
 		}
 	}
@@ -363,8 +361,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("clear_{}", i));
-			state_set(&mut host(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(&[i as u8]))
-				.unwrap();
+			state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(&[i as u8])).unwrap();
 		}
 
 		let count = state_scan_all(&mut host(&mut txn, operator_id)).unwrap().len();
@@ -384,8 +381,8 @@ pub mod tests {
 		let operator2 = OperatorId(20);
 		let shared_key = test_key("shared");
 
-		let row1 = EncodedOperatorRow::timeless(&[1]);
-		let row2 = EncodedOperatorRow::timeless(&[2]);
+		let row1 = EncodedPodRow::new(&[1]);
+		let row2 = EncodedPodRow::new(&[2]);
 
 		state_set(&mut host(&mut txn, operator1), &shared_key, row1.clone()).unwrap();
 		state_set(&mut host(&mut txn, operator2), &shared_key, row2.clone()).unwrap();
@@ -426,9 +423,9 @@ pub mod tests {
 		let operator_id = OperatorId(5);
 		let key = test_key("overwrite");
 
-		let row2 = EncodedOperatorRow::timeless(&[2, 2, 2]);
+		let row2 = EncodedPodRow::new(&[2, 2, 2]);
 
-		state_set(&mut host(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(&[1, 1, 1])).unwrap();
+		state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(&[1, 1, 1])).unwrap();
 		state_set(&mut host(&mut txn, operator_id), &key, row2.clone()).unwrap();
 
 		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap().unwrap();
@@ -455,8 +452,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("partial_{}", i));
-			state_set(&mut host(&mut txn, operator_id), &key, EncodedOperatorRow::timeless(&[i as u8]))
-				.unwrap();
+			state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(&[i as u8])).unwrap();
 		}
 
 		state_remove(&mut host(&mut txn, operator_id), &test_key("partial_1")).unwrap();

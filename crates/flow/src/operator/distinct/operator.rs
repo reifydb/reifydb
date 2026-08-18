@@ -9,7 +9,7 @@ use std::{
 use indexmap::IndexMap;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::operator::{OperatorState, decode},
+	row::pod::state::{OperatorState, decode},
 };
 use reifydb_core::{
 	interface::{
@@ -169,11 +169,11 @@ impl DistinctPlan {
 		groups: &HashMap<Hash128, GroupId>,
 	) -> Result<()> {
 		let dirty: Vec<(Hash128, DateTime)> = state.dirty.drain().collect();
-		for (hash, at) in dirty {
+		for (hash, _) in dirty {
 			let key = Self::entry_key(groups[&hash]);
 			match state.entries.get(&hash) {
 				Some(entry) => {
-					let row = entry.encode_state(at).map_err(|e| {
+					let row = entry.encode_state().map_err(|e| {
 						Error::from(FlowStateError::Encode {
 							state: "DistinctEntry",
 							cause: e.to_string(),
@@ -184,8 +184,8 @@ impl DistinctPlan {
 				None => store::state_remove(host, &key)?,
 			}
 		}
-		if let Some(at) = state.layout_changed_at.take() {
-			let layout_row = state.layout.encode_state(at).map_err(|e| {
+		if state.layout_changed_at.take().is_some() {
+			let layout_row = state.layout.encode_state().map_err(|e| {
 				Error::from(FlowStateError::Encode {
 					state: "DistinctLayout",
 					cause: e.to_string(),

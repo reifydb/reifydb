@@ -98,9 +98,8 @@ impl HeapSize for Moments {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::operator::{OperatorState, decode};
+	use reifydb_codec::row::pod::state::{OperatorState, decode};
 	use reifydb_macro::operator_state;
-	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
 	use crate::window::accumulator::testkit::{assert_add_remove_is_inverse, assert_order_independent};
@@ -194,7 +193,7 @@ mod tests {
 		let mut m = Moments::default();
 		m.add(1.5);
 		m.add(2.5);
-		let bytes = m.encode_state(DateTime::EPOCH).expect("encode");
+		let bytes = m.encode_state().expect("encode");
 		let restored: Moments = decode(&bytes).expect("decode");
 		assert_eq!(restored, m);
 	}

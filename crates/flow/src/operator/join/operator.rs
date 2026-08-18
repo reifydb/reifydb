@@ -9,7 +9,7 @@ use std::{
 use postcard::to_extend;
 use reifydb_codec::{
 	key::{decode_u64, encode_u64, encoded::EncodedKey, serializer::KeySerializer},
-	row::operator::OperatorState,
+	row::pod::state::OperatorState,
 };
 use reifydb_core::{
 	common::JoinType,
@@ -312,7 +312,6 @@ impl JoinOperator {
 			return Ok(());
 		}
 		let policy = SealPolicy::of(lateness);
-		let now = host.written_at();
 		let resolved = Self::resolve_groups(host, cleared, armed)?;
 		let mut order: Vec<GroupId> = Vec::new();
 		let mut touched: HashSet<GroupId> = HashSet::new();
@@ -340,7 +339,7 @@ impl JoinOperator {
 				SealAnchor {
 					expiry: policy.seal_instant(*at).at(),
 				}
-				.encode_state(now)?,
+				.encode_state()?,
 			)?;
 		}
 
@@ -1041,7 +1040,7 @@ impl JoinOperator {
 
 #[cfg(test)]
 mod seal_tests {
-	use reifydb_codec::row::operator::decode;
+	use reifydb_codec::row::pod::state::decode;
 	use reifydb_core::{
 		common::CommitVersion,
 		key::operator_state::{Keyspace, group_inner_range, keyspace_inner_range},

@@ -155,11 +155,7 @@ pub fn apply_cdc_change(catalog: &Catalog, txn: &mut Transaction<'_>, change: &C
 	}
 }
 
-fn dispatch<T: CatalogChangeApplier>(
-	catalog: &Catalog,
-	txn: &mut Transaction<'_>,
-	change: &CdcChange,
-) -> Result<()> {
+fn dispatch<T: CatalogChangeApplier>(catalog: &Catalog, txn: &mut Transaction<'_>, change: &CdcChange) -> Result<()> {
 	match change {
 		CdcChange::Insert {
 			key,

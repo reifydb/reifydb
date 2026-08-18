@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::row::operator::EncodedOperatorRow;
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	actors::pending::{PendingLayers, PendingWrite},
 	common::CommitVersion,
@@ -27,8 +27,8 @@ use crate::engine::TestEngine;
 
 pub const OPERATOR_ID: OperatorId = OperatorId(1);
 
-pub fn make_row(body: &str, time: u64) -> EncodedOperatorRow {
-	EncodedOperatorRow::new(body.as_bytes(), DateTime::from_nanos(time))
+pub fn make_row(body: &str) -> EncodedPodRow {
+	EncodedPodRow::new(body.as_bytes())
 }
 
 pub fn key(s: &str) -> GroupStateKey {

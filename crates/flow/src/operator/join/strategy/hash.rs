@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
-	operator::EncodedOperatorRow,
+	pod::EncodedPodRow,
 	shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
@@ -132,14 +132,14 @@ pub(crate) fn build_shape(columns: &Columns) -> RowShape {
 	RowShape::new(RowFamily::Pod, fields)
 }
 
-pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize, now: DateTime) -> EncodedOperatorRow {
+pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize, now: DateTime) -> EncodedPodRow {
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
 	let mut encoded = shape.allocate_pod();
 	shape.set_values(&mut encoded, &values);
 	let at = columns.time().get(row_idx).copied();
 	let stamp = at.unwrap_or(now);
 	let body = JoinStateRow::new(encoded.freeze().as_slice(), shape.fingerprint(), stamp, at);
-	EncodedOperatorRow::new(body.as_slice(), stamp)
+	EncodedPodRow::new(body.as_slice())
 }
 
 #[instrument(name = "flow::operator::join::add_state_entry", level = "trace", skip_all)]

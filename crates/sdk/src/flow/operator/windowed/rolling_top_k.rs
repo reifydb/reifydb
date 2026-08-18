@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::StateCodec,
+	row::pod::state::StateCodec,
 };
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},

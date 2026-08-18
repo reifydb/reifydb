@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_codec::{
 	key::{decode_datetime_asc, encode_datetime_asc, encoded::EncodedKey},
-	row::operator::EncodedOperatorRow,
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -16,7 +16,7 @@ use reifydb_core::{
 	state::store::TimerKind,
 };
 use reifydb_store_operator::store::OperatorStore;
-use reifydb_value::{Result, error::Error as ValueError, reifydb_assertions, value::datetime::DateTime};
+use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
 	timer::{Timer, TimerDue},
@@ -33,13 +33,8 @@ pub struct TimerWheel;
 
 impl TimerWheel {
 	pub fn arm(&self, operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
-		let now = txn.written_at();
 		if !timer.kind.is_unique() {
-			txn.state_set(
-				operator,
-				&timer_key(timer.due, timer.kind, &timer.key),
-				encode_payload(&1u64, now)?,
-			)?;
+			txn.state_set(operator, &timer_key(timer.due, timer.kind, &timer.key), encode_payload(&1u64)?)?;
 			return Ok(());
 		}
 		let index = index_key(timer.kind, &timer.key);
@@ -63,8 +58,8 @@ impl TimerWheel {
 			}
 			txn.state_remove(operator, &stale)?;
 		}
-		txn.state_set(operator, &timer_key(timer.due, timer.kind, &timer.key), encode_payload(&1u64, now)?)?;
-		txn.state_set(operator, &index, encode_payload(&timer.due, now)?)?;
+		txn.state_set(operator, &timer_key(timer.due, timer.kind, &timer.key), encode_payload(&1u64)?)?;
+		txn.state_set(operator, &index, encode_payload(&timer.due)?)?;
 		Ok(())
 	}
 
@@ -149,9 +144,7 @@ impl TimerWheel {
 		let mut armed: HashMap<EncodedKey, DateTime> = HashMap::with_capacity(unique_indices.len());
 		if !unique_indices.is_empty() {
 			for row in txn.state_get_many(operator, &unique_indices)?.items {
-				let payload = decode_payload::<DateTime>(
-					&EncodedOperatorRow::try_from(row.bytes).map_err(ValueError::from)?,
-				)?;
+				let payload = decode_payload::<DateTime>(&EncodedPodRow::from(row.bytes))?;
 				armed.insert(row.key, payload);
 			}
 		}

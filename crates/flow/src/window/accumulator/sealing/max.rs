@@ -3,7 +3,7 @@
 
 use std::{fmt::Debug, hash::Hash};
 
-use reifydb_codec::row::operator::{OperatorState, StateCodec};
+use reifydb_codec::row::pod::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
@@ -106,7 +106,7 @@ impl<C: Slot + HeapSize, V: Ord + HeapSize> HeapSize for SealingMax<C, V> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::operator::decode;
+	use reifydb_codec::row::pod::state::decode;
 	use reifydb_value::{
 		factory::time::{at_millis, millis},
 		value::datetime::DateTime,
@@ -233,7 +233,7 @@ mod tests {
 		let mut mx: SealingMax<DateTime, i64> = SealingMax::immutable(millis(10));
 		mx.add(&(at_millis(0), 5));
 		mx.add(&(at_millis(12), 8));
-		let bytes = mx.encode_state(DateTime::EPOCH).expect("encode");
+		let bytes = mx.encode_state().expect("encode");
 		let restored: SealingMax<DateTime, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, mx);
 	}

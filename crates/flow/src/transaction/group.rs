@@ -7,7 +7,10 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
 		bytes::EncodedBytes,
-		operator::{EncodedOperatorRow, OperatorState, decode},
+		pod::{
+			EncodedPodRow,
+			state::{OperatorState, decode},
+		},
 	},
 };
 use reifydb_core::{
@@ -18,7 +21,7 @@ use reifydb_core::{
 	},
 	state::group::GroupRecord,
 };
-use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
+use reifydb_value::{Result, reifydb_assertions};
 
 use crate::transaction::{FlowTransaction, state::StateExtension};
 
@@ -34,26 +37,20 @@ fn counter_key() -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, vec![])
 }
 
-pub(crate) fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedOperatorRow> {
-	Ok(value.encode_state(now)?)
+pub(crate) fn encode_payload<T: OperatorState>(value: &T) -> Result<EncodedPodRow> {
+	Ok(value.encode_state()?)
 }
 
-pub(crate) fn decode_payload<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T> {
+pub(crate) fn decode_payload<T: OperatorState>(row: &EncodedPodRow) -> Result<T> {
 	Ok(decode(row)?)
 }
 
 pub(super) fn decode_bytes<T: OperatorState>(bytes: &EncodedBytes) -> Result<T> {
-	decode_payload(&EncodedOperatorRow::try_from(bytes.clone())?)
+	decode_payload(&EncodedPodRow::from(bytes.clone()))
 }
 
-fn stamp(
-	txn: &mut impl FlowTransaction,
-	operator: OperatorId,
-	id: GroupId,
-	group: &EncodedKey,
-	now: DateTime,
-) -> Result<()> {
-	txn.state_set(operator, &record_key(id), encode_payload(&GroupRecord::new(group.as_ref().to_vec()), now)?)
+fn stamp(txn: &mut impl FlowTransaction, operator: OperatorId, id: GroupId, group: &EncodedKey) -> Result<()> {
+	txn.state_set(operator, &record_key(id), encode_payload(&GroupRecord::new(group.as_ref().to_vec()))?)
 }
 
 fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Result<u64> {
@@ -69,14 +66,12 @@ fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Res
 			 resolves every group (seed={seed})"
 		);
 	}
-	let now = txn.written_at();
-	txn.state_set(operator, &counter_key(), encode_payload(&(seed + count), now)?)?;
+	txn.state_set(operator, &counter_key(), encode_payload(&(seed + count))?)?;
 	Ok(seed)
 }
 
 pub trait GroupExtension: FlowTransaction {
 	fn intern_groups(&mut self, operator: OperatorId, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
-		let now = self.written_at();
 		let dictionary_keys: Vec<GroupStateKey> = groups.iter().map(dictionary_key).collect();
 
 		let batch = self.state_get_many(operator, &dictionary_keys)?;
@@ -115,8 +110,8 @@ pub trait GroupExtension: FlowTransaction {
 			for (offset, &slot) in distinct_new.iter().enumerate() {
 				let dictionary = &dictionary_keys[slot];
 				let id = GroupId(start + offset as u64);
-				self.state_set(operator, dictionary, encode_payload(&id.0, now)?)?;
-				stamp(self, operator, id, &groups[slot], now)?;
+				self.state_set(operator, dictionary, encode_payload(&id.0)?)?;
+				stamp(self, operator, id, &groups[slot])?;
 				assigned.insert(dictionary.as_slice().to_vec(), id);
 			}
 			for (slot, dictionary) in dictionary_keys.iter().enumerate() {
@@ -129,7 +124,7 @@ pub trait GroupExtension: FlowTransaction {
 		}
 
 		for (slot, id) in resolved_from_store {
-			stamp(self, operator, id, &groups[slot], now)?;
+			stamp(self, operator, id, &groups[slot])?;
 		}
 
 		Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())

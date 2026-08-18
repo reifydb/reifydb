@@ -6,7 +6,7 @@ use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::operator::{EncodedOperatorRow, OperatorState},
+	row::pod::{EncodedPodRow, state::OperatorState},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -229,18 +229,18 @@ impl GuestState for State<'_> {
 		State::range(self, start, end)
 	}
 
-	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		State::get_bytes(self, key)
 	}
 
-	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
+	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
 		State::set_bytes(self, key, payload)
 	}
 
 	fn get_many_bytes_visit(
 		&self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		State::get_many_bytes_visit(self, keys, visit)
 	}
@@ -249,7 +249,7 @@ impl GuestState for State<'_> {
 		&self,
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		State::range_bytes_visit(self, start, end, visit)
 	}

@@ -13,7 +13,7 @@ use std::{
 	thread,
 };
 
-use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
@@ -58,8 +58,8 @@ fn key(suffix: u64) -> EncodedKey {
 	OperatorStateKey::inner_encoded(GROUP, Keyspace::ACCUMULATOR, suffix.to_be_bytes()).as_encoded().clone()
 }
 
-fn row(body: &str) -> EncodedOperatorRow {
-	EncodedOperatorRow::timeless(body.as_bytes())
+fn row(body: &str) -> EncodedPodRow {
+	EncodedPodRow::new(body.as_bytes())
 }
 
 fn body(store: &OperatorStore, operator: OperatorId, suffix: u64) -> Option<String> {

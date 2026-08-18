@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::operator::{OperatorState, decode};
+use reifydb_codec::row::pod::state::{OperatorState, decode};
 #[cfg(feature = "runtime")]
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_core::{
@@ -64,8 +64,7 @@ impl SealLedger {
 		let state = SealLedgerState {
 			sealed_through: fired_order,
 		};
-		let now = store.written_at();
-		store.state_set(&seal_ledger_key(), state.encode_state(now)?)?;
+		store.state_set(&seal_ledger_key(), state.encode_state()?)?;
 		Ok(SealedThrough::from_order(fired_order))
 	}
 

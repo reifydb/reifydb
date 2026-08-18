@@ -5,7 +5,7 @@ use std::{cmp::Ordering, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::EncodedOperatorRow,
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -21,7 +21,7 @@ use crate::{
 
 impl StandardOperatorStore {
 	#[instrument(name = "store::operator::set", level = "debug", skip(self, key, row), fields(operator = operator.0, key_len = key.len()))]
-	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedOperatorRow) {
+	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
 		self.commit.record_state_set(operator, key, row);
 	}
 
@@ -51,7 +51,7 @@ impl StandardOperatorStore {
 	}
 
 	#[instrument(name = "store::operator::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
-	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedOperatorRow> {
+	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		match self.commit.lookup_state(operator, key) {
 			BufferedState::Row(row) => Some(row),
 			BufferedState::Tombstone | BufferedState::Dropped => None,
@@ -83,10 +83,10 @@ impl StandardOperatorStore {
 		let buffered = snapshot.items;
 		let mut exhausted = snapshot.dropped;
 		let mut lower = range.start.clone();
-		let mut page: Vec<(EncodedKey, EncodedOperatorRow)> = Vec::new();
+		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut page_index = 0usize;
 		let mut buffer_index = 0usize;
-		let mut items: Vec<(EncodedKey, EncodedOperatorRow)> = Vec::new();
+		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 
 		while items.len() < target {
 			if page_index == page.len() && !exhausted {
@@ -155,7 +155,7 @@ impl StandardOperatorStore {
 }
 
 impl OperatorStore {
-	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedOperatorRow) {
+	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
 		match self {
 			Self::Standard(store) => store.set(operator, key, row),
 		}
@@ -192,7 +192,7 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedOperatorRow> {
+	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		match self {
 			Self::Standard(store) => store.get(operator, key),
 		}

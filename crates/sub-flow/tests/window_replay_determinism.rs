@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::operator::{EncodedOperatorRow, decode},
+	row::pod::{EncodedPodRow, state::decode},
 };
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
@@ -100,9 +100,7 @@ fn snapshot(h: &mut Harness<WindowOperator>) -> Snapshot {
 			armed_timers += 1;
 		}
 		if keyspace == Keyspace::ENGINE_META {
-			let meta: EngineMeta =
-				decode(&EncodedOperatorRow::try_from(row.clone()).expect("engine meta state bytes"))
-					.expect("engine meta decodes");
+			let meta: EngineMeta = decode(&EncodedPodRow::from(row.clone())).expect("engine meta decodes");
 			metas.push(meta.last_event_time);
 		}
 		if keyspace.is_data() {

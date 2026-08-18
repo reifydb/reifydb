@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, fmt::Debug};
 
-use reifydb_codec::row::operator::{OperatorState, StateCodec};
+use reifydb_codec::row::pod::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
@@ -112,7 +112,7 @@ impl<C: Slot + HeapSize, V: HeapSize> HeapSize for TailAccumulator<C, V> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::operator::decode;
+	use reifydb_codec::row::pod::state::decode;
 	use reifydb_value::{
 		factory::time::{at_millis, millis},
 		value::datetime::DateTime,
@@ -147,7 +147,7 @@ mod tests {
 		let mut tail: SealingTail<DateTime, i64> = SealingTail::immutable(millis(10));
 		tail.add(at_millis(0), 1);
 		tail.add(at_millis(12), 3);
-		let bytes = tail.encode_state(DateTime::EPOCH).expect("encode");
+		let bytes = tail.encode_state().expect("encode");
 		let restored: SealingTail<DateTime, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, tail);
 	}
@@ -243,7 +243,7 @@ mod tests {
 		let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::immutable(millis(10));
 		accumulator.add(&(at_millis(0), 1));
 		accumulator.add(&(at_millis(12), 3));
-		let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
+		let bytes = accumulator.encode_state().expect("encode");
 		let restored: TailAccumulator<DateTime, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, accumulator);
 	}

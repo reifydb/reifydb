@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::row::operator::EncodedOperatorRow;
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	actors::pending::PendingLayers,
 	interface::catalog::flow::OperatorId,
@@ -48,8 +48,8 @@ fn key(keyspace: Keyspace, suffix: &str) -> GroupStateKey {
 	GroupStateKey::new(GroupId::ROOT, keyspace, suffix.as_bytes())
 }
 
-fn row(body: &str) -> EncodedOperatorRow {
-	EncodedOperatorRow::timeless(body.as_bytes())
+fn row(body: &str) -> EncodedPodRow {
+	EncodedPodRow::new(body.as_bytes())
 }
 
 fn served(txn: &DeferredTransaction) -> (u64, u64) {

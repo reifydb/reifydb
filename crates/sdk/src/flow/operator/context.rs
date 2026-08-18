@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::operator::{EncodedOperatorRow, OperatorState},
+	row::pod::{EncodedPodRow, state::OperatorState},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -52,21 +52,21 @@ pub trait GuestState {
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
 	) -> Result<Vec<(GroupStateKey, T)>>;
-	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>>;
+	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
 
-	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()>;
+	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()>;
 
 	fn get_many_bytes_visit(
 		&self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
 
 	fn range_bytes_visit(
 		&self,
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
 }
 

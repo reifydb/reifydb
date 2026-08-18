@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::operator::EncodedOperatorRow;
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
 use tracing::instrument;
@@ -25,7 +25,7 @@ pub(crate) fn overwrite_right_slot(
 	}
 	let shape = build_shape(columns);
 	right.set_row_shape(host, &shape)?;
-	let mut stored: Option<EncodedOperatorRow> = None;
+	let mut stored: Option<EncodedPodRow> = None;
 	for &idx in indices {
 		let row = encode_row(&shape, columns, idx, host.written_at());
 		right.put_row(host, key_hash, RowNumber::MAX, &row)?;

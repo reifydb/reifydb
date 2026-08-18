@@ -41,7 +41,7 @@ impl SourceWatermarks {
 				 every open window at once"
 			);
 		}
-		txn.state_set(source, &source_watermark_key(), encode_payload(&coordinate, at)?)
+		txn.state_set(source, &source_watermark_key(), encode_payload(&coordinate)?)
 	}
 
 	pub fn source_watermark(&self, source: OperatorId, txn: &mut impl FlowTransaction) -> Result<DateTime> {

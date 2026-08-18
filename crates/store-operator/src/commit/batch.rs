@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
@@ -26,7 +26,7 @@ pub enum DropMarker {
 
 #[derive(Debug, Default)]
 pub struct FlushBatch {
-	pub state: BTreeMap<StateKey, Option<EncodedOperatorRow>>,
+	pub state: BTreeMap<StateKey, Option<EncodedPodRow>>,
 	pub anchors: BTreeMap<AnchorKey, Option<u64>>,
 	pub checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
 	pub drops: Vec<DropMarker>,

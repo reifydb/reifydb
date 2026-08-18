@@ -3,9 +3,8 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::row::operator::OperatorState;
+use reifydb_codec::row::pod::state::OperatorState;
 use reifydb_macro::operator_state;
-use reifydb_value::value::datetime::DateTime;
 
 #[operator_state]
 #[derive(Debug, PartialEq)]
@@ -34,7 +33,7 @@ fn test_flat_state_round_trips_through_trait() {
 		count: 9,
 		sum: 2.5,
 	};
-	let bytes = state.encode_state(DateTime::from_nanos(11)).unwrap();
+	let bytes = state.encode_state().unwrap();
 	let restored = FlatState::decode_state(&bytes).unwrap();
 	assert_eq!(restored, state);
 }
@@ -50,7 +49,7 @@ fn test_map_state_round_trips_every_entry() {
 		names: vec!["w".to_string()],
 	};
 
-	let bytes = state.encode_state(DateTime::EPOCH).unwrap();
+	let bytes = state.encode_state().unwrap();
 	let restored = MapState::decode_state(&bytes).unwrap();
 
 	assert_eq!(restored, state);
@@ -66,7 +65,7 @@ fn test_generic_state_round_trips() {
 	let state = GenericState {
 		slots: vec![1u32, 2, 3],
 	};
-	let bytes = state.encode_state(DateTime::EPOCH).unwrap();
+	let bytes = state.encode_state().unwrap();
 	let restored = GenericState::<u32>::decode_state(&bytes).unwrap();
 	assert_eq!(restored, state);
 }
@@ -78,7 +77,7 @@ fn test_decode_rejects_a_corrupted_body() {
 		count: 1,
 		sum: 0.5,
 	};
-	let mut bytes = state.encode_state(DateTime::EPOCH).unwrap();
+	let mut bytes = state.encode_state().unwrap();
 	bytes.body_mut().fill(0xFF);
 
 	assert!(FlatState::decode_state(&bytes).is_err());

@@ -19,7 +19,7 @@ use reifydb_codec::{
 		encode_u64_asc,
 		encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 	},
-	row::operator::{OperatorState, decode},
+	row::pod::state::{OperatorState, decode},
 };
 use reifydb_core::{
 	key::operator_state::{
@@ -427,7 +427,7 @@ mod archived_projection_tests {
 
 	/// Projects the high water the way `sweep_stale_meta` does: encode, decode, then read it.
 	fn via_storage<M: MetaHighWater>(meta: &M) -> Option<u64> {
-		let bytes = meta.encode_state(DateTime::EPOCH).unwrap();
+		let bytes = meta.encode_state().unwrap();
 		decode::<M>(&bytes).unwrap().high_water_order()
 	}
 

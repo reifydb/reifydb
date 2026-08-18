@@ -184,12 +184,7 @@ pub fn render_cdc(cat: Option<&Catalog>, s: &cdc::Stats, file_bytes: u64, opts: 
 		&sys[..sys_shown]
 			.iter()
 			.map(|(k, v)| {
-				vec![
-					fmt_bytes(v.bytes),
-					pct(v.bytes, s.cdc_bytes),
-					group_int(v.count),
-					k.to_string(),
-				]
+				vec![fmt_bytes(v.bytes), pct(v.bytes, s.cdc_bytes), group_int(v.count), k.to_string()]
 			})
 			.collect::<Vec<_>>(),
 	);

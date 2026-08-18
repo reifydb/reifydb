@@ -16,7 +16,7 @@ flush
 bytes
 ---
 ok
-bytes 1 => 35
+bytes 1 => 11
 
 # "bb" costs 11 + 26.
 
@@ -25,7 +25,7 @@ flush
 bytes
 ---
 ok
-bytes 1 => 72
+bytes 1 => 24
 
 # An anchor is charged a flat 25 key bytes plus 8 value bytes.
 
@@ -34,7 +34,7 @@ flush
 bytes
 ---
 ok
-bytes 1 => 105
+bytes 1 => 57
 
 # A neighbouring operator is billed separately.
 
@@ -44,8 +44,8 @@ bytes
 bytes op=2
 ---
 ok
-bytes 1 => 105
-bytes 2 => 35
+bytes 1 => 57
+bytes 2 => 11
 
 # A removed key stops being counted.
 
@@ -54,7 +54,7 @@ flush
 bytes
 ---
 ok
-bytes 1 => 70
+bytes 1 => 46
 
 # A removed anchor stops being counted too.
 
@@ -63,7 +63,7 @@ flush
 bytes
 ---
 ok
-bytes 1 => 37
+bytes 1 => 13
 
 # An operator that owns nothing costs nothing.
 

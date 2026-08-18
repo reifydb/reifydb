@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
+	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -71,9 +71,9 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn config_uint8(&self, key: ConfigKey) -> u64;
 
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedOperatorRow)>>;
+	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
-	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedOperatorRow)>>;
+	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
 	fn state_range_iter(&mut self, range: EncodedKeyRange) -> StateIterator<'_>;
 
@@ -164,14 +164,14 @@ impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {
 }
 
 impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		self.txn.state_get(self.operator, key)
 	}
 
 	fn state_get_many_visit(
 		&mut self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		let batch = self.txn.state_get_many(self.operator, keys)?;
 		for r in batch.items {
@@ -181,12 +181,12 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 			let Some(inner) = GroupStateKey::from_framed(decoded.inner()) else {
 				continue;
 			};
-			visit(inner, EncodedOperatorRow::try_from(r.bytes)?)?;
+			visit(inner, EncodedPodRow::from(r.bytes))?;
 		}
 		Ok(())
 	}
 
-	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
+	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
 		self.txn.state_set(self.operator, key, payload)
 	}
 
@@ -198,26 +198,26 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		let batch = self.txn.state_range(self.operator, range, limit, "operator::host_visit")?;
 		for r in batch.items {
 			if let Some(decoded) = OperatorStateKey::decode(&r.key)
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 			{
-				visit(inner, EncodedOperatorRow::try_from(r.bytes)?)?;
+				visit(inner, EncodedPodRow::from(r.bytes))?;
 			}
 		}
 		Ok(())
 	}
 
-	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedOperatorRow)>> {
+	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 		let batch = self.txn.state_range_rev(self.operator, range, Some(1), "operator::host_last")?;
 		for r in batch.items {
 			if let Some(decoded) = OperatorStateKey::decode(&r.key)
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 			{
-				return Ok(Some((inner, EncodedOperatorRow::try_from(r.bytes)?)));
+				return Ok(Some((inner, EncodedPodRow::from(r.bytes))));
 			}
 		}
 		Ok(None)
@@ -282,26 +282,26 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.catalog().get_config_uint8(key)
 	}
 
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedOperatorRow)>> {
+	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let batch = self.txn.state_get_many(self.operator, keys)?;
 		let mut out = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
 			let Some(key) = unscope(&r.key) else {
 				continue;
 			};
-			out.push((key, EncodedOperatorRow::try_from(r.bytes)?));
+			out.push((key, EncodedPodRow::from(r.bytes)));
 		}
 		Ok(out)
 	}
 
-	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedOperatorRow)>> {
+	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let batch = self.txn.state_range_all(self.operator, range)?;
 		let mut out = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
 			let Some(key) = unscope(&r.key) else {
 				continue;
 			};
-			out.push((key, EncodedOperatorRow::try_from(r.bytes)?));
+			out.push((key, EncodedPodRow::from(r.bytes)));
 		}
 		Ok(out)
 	}

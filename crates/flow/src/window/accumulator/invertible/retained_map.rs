@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, fmt::Debug};
 
-use reifydb_codec::row::operator::{OperatorState, StateCodec};
+use reifydb_codec::row::pod::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
@@ -101,9 +101,8 @@ impl<K: Ord + HeapSize, V: HeapSize> HeapSize for RetainedAccumulator<K, V> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::operator::decode;
+	use reifydb_codec::row::pod::state::decode;
 	use reifydb_macro::operator_state;
-	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
 	use crate::window::accumulator::testkit::{assert_add_remove_is_inverse, assert_order_independent};
@@ -166,7 +165,7 @@ mod tests {
 		let mut rm: RetainedMap<u64, i64> = RetainedMap::default();
 		rm.insert(1, 10);
 		rm.insert(2, 20);
-		let bytes = rm.encode_state(DateTime::EPOCH).expect("encode");
+		let bytes = rm.encode_state().expect("encode");
 		let restored: RetainedMap<u64, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, rm);
 		assert_eq!(restored.len(), 2);
@@ -221,7 +220,7 @@ mod tests {
 		let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
 		accumulator.add(&(1, 10));
 		accumulator.add(&(2, 20));
-		let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
+		let bytes = accumulator.encode_state().expect("encode");
 		let restored: RetainedAccumulator<u64, i64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, accumulator);
 	}

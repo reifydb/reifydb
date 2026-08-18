@@ -3,7 +3,7 @@
 
 use std::{cmp::Ordering, collections::BTreeMap, ops::Bound};
 
-use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
 
 use crate::{
@@ -15,7 +15,7 @@ use crate::{
 };
 
 impl OperatorCommitBuffer {
-	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedOperatorRow) {
+	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
 		self.shared.inner.lock().live.state.insert((operator, key), Some(row));
 	}
 
@@ -56,7 +56,7 @@ impl OperatorCommitBuffer {
 		};
 
 		let inner = self.shared.inner.lock();
-		let mut merged: BTreeMap<EncodedKey, Option<EncodedOperatorRow>> = BTreeMap::new();
+		let mut merged: BTreeMap<EncodedKey, Option<EncodedPodRow>> = BTreeMap::new();
 		if !is_empty_range(&lower, &upper) {
 			if let Some(batch) = inner.in_flight.as_ref() {
 				collect_state(&batch.state, operator, (lower.clone(), upper.clone()), &mut merged);
@@ -70,7 +70,7 @@ impl OperatorCommitBuffer {
 	}
 }
 
-fn buffered_state(entry: &Option<EncodedOperatorRow>) -> BufferedState {
+fn buffered_state(entry: &Option<EncodedPodRow>) -> BufferedState {
 	match entry {
 		Some(row) => BufferedState::Row(row.clone()),
 		None => BufferedState::Tombstone,
@@ -99,10 +99,10 @@ fn is_empty_range(lower: &Bound<StateKey>, upper: &Bound<StateKey>) -> bool {
 }
 
 fn collect_state(
-	source: &BTreeMap<StateKey, Option<EncodedOperatorRow>>,
+	source: &BTreeMap<StateKey, Option<EncodedPodRow>>,
 	operator: OperatorId,
 	range: (Bound<StateKey>, Bound<StateKey>),
-	out: &mut BTreeMap<EncodedKey, Option<EncodedOperatorRow>>,
+	out: &mut BTreeMap<EncodedKey, Option<EncodedPodRow>>,
 ) {
 	for ((candidate, key), entry) in source.range(range) {
 		if *candidate != operator {

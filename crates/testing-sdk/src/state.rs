@@ -7,7 +7,10 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
 		bytes::EncodedBytes,
-		operator::{EncodedOperatorRow, OperatorState, decode},
+		pod::{
+			EncodedPodRow,
+			state::{OperatorState, decode},
+		},
 		shape::RowShape,
 	},
 };
@@ -89,7 +92,7 @@ impl TestStateStore {
 
 	pub fn decode_typed<T: OperatorState>(&self, key: &EncodedKey) -> Option<T> {
 		let row = self.get(key)?;
-		let bytes = EncodedOperatorRow::try_from(row.clone()).ok()?;
+		let bytes = EncodedPodRow::from(row.clone());
 		decode(&bytes).ok()
 	}
 

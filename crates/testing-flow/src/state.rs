@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
+	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::key::{
 	EncodableKey,
@@ -21,10 +21,7 @@ pub fn keyspace_of(key: &EncodedKey) -> Option<Keyspace> {
 }
 
 pub fn body_of(row: &EncodedBytes) -> Vec<u8> {
-	match EncodedOperatorRow::try_from(row.clone()) {
-		Ok(bytes) => bytes.body().to_vec(),
-		Err(_) => row.to_vec(),
-	}
+	EncodedPodRow::from(row.clone()).body().to_vec()
 }
 
 pub fn assert_identical_bytes(label: &str, a: &State, b: &State) {

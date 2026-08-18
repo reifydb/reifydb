@@ -128,8 +128,7 @@ impl<V: Ord + HeapSize> HeapSize for Multiset<V> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::operator::{OperatorState, decode};
-	use reifydb_value::value::datetime::DateTime;
+	use reifydb_codec::row::pod::state::{OperatorState, decode};
 
 	use super::*;
 	use crate::window::accumulator::{
@@ -271,7 +270,7 @@ mod tests {
 		ms.add(of64(1.0));
 		ms.add(of64(1.0));
 		ms.add(of64(2.0));
-		let bytes = ms.encode_state(DateTime::EPOCH).expect("encode");
+		let bytes = ms.encode_state().expect("encode");
 		let restored: Multiset<OrdF64> = decode(&bytes).expect("decode");
 		assert_eq!(restored, ms);
 		assert_eq!(restored.min(), Some(&of64(1.0)));

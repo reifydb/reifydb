@@ -5,7 +5,7 @@ use std::{marker::PhantomData, mem, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::{EncodedOperatorRow, OperatorState},
+	row::pod::{EncodedPodRow, state::OperatorState},
 };
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Diff},
@@ -32,12 +32,12 @@ fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
 }
 
-fn decode<T: OperatorState>(row: &EncodedOperatorRow) -> SdkResult<T> {
+fn decode<T: OperatorState>(row: &EncodedPodRow) -> SdkResult<T> {
 	decode_payload(row)
 }
 
-fn encode<T: OperatorState>(value: &T, now: DateTime) -> SdkResult<EncodedOperatorRow> {
-	encode_payload(value, now)
+fn encode<T: OperatorState>(value: &T) -> SdkResult<EncodedPodRow> {
+	encode_payload(value)
 }
 
 pub struct InProcessContext<'a> {
@@ -126,7 +126,6 @@ impl GuestUpdateEmit for InProcessUpdateEmit<'_> {
 
 pub struct InProcessState<'a> {
 	host: *mut (dyn HostContext + 'a),
-	now: DateTime,
 	_marker: PhantomData<&'a mut (dyn HostContext + 'a)>,
 }
 
@@ -140,10 +139,9 @@ impl GuestState for InProcessState<'_> {
 		}
 	}
 	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> SdkResult<()> {
-		let now = self.now;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.host).state_set(key, encode(value, now)?) }.map_err(to_sdk_err)
+		unsafe { (*self.host).state_set(key, encode(value)?) }.map_err(to_sdk_err)
 	}
 	fn remove(&mut self, key: &GroupStateKey) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
@@ -194,13 +192,13 @@ impl GuestState for InProcessState<'_> {
 		let rows = unsafe { (*self.host).state_range(range) }.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
 	}
-	fn get_bytes(&self, key: &GroupStateKey) -> SdkResult<Option<EncodedOperatorRow>> {
+	fn get_bytes(&self, key: &GroupStateKey) -> SdkResult<Option<EncodedPodRow>> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)
 	}
 
-	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> SdkResult<()> {
+	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_set(key, payload) }.map_err(to_sdk_err)
@@ -209,7 +207,7 @@ impl GuestState for InProcessState<'_> {
 	fn get_many_bytes_visit(
 		&self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> SdkResult<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
@@ -221,7 +219,7 @@ impl GuestState for InProcessState<'_> {
 		&self,
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> SdkResult<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let range = EncodedKeyRange::new(
 			start.map(|k| k.as_encoded().clone()),
@@ -283,7 +281,6 @@ impl GuestContext for InProcessContext<'_> {
 	fn state(&mut self) -> impl GuestState + '_ {
 		InProcessState {
 			host: self.host,
-			now: self.now,
 			_marker: PhantomData,
 		}
 	}

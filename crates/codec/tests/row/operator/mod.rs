@@ -5,12 +5,24 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
-	operator::{
-		EncodedOperatorRow, OPERATOR_HEADER_SIZE, OperatorError, OperatorState, decode, decode_body, encode,
+	operator::{EncodedOperatorRow, OPERATOR_HEADER_SIZE, OperatorError},
+	pod::{
+		EncodedPodRow,
+		state::{OperatorState, StateError, decode, decode_body as decode_pod_body, encode as encode_pod},
 	},
 };
 use reifydb_value::{factory::time::at_nanos, util::cowvec::CowVec, value::datetime::DateTime};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+
+fn encode<T: Serialize>(value: &T, now: DateTime) -> Result<EncodedOperatorRow, StateError> {
+	// The codec writes pod rows now, so the header cases below re-wrap one to keep exercising the
+	// operator header they are about.
+	Ok(EncodedOperatorRow::new(encode_pod(value)?.body(), now))
+}
+
+fn decode_body<T: DeserializeOwned>(row: &EncodedOperatorRow) -> Result<T, StateError> {
+	decode_pod_body(&EncodedPodRow::new(row.body()))
+}
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 struct Probe {
@@ -92,14 +104,14 @@ fn test_try_from_rejects_a_row_too_short_to_hold_the_header() {
 fn test_a_body_of_set_bits_fails_to_decode() {
 	// Every 0xFF byte sets the varint continuation bit, so the leading field must overrun.
 	let corrupt = EncodedOperatorRow::new(&[0xFFu8; 16], DateTime::EPOCH);
-	assert!(matches!(decode_body::<Probe>(&corrupt), Err(OperatorError::Deserialization(_))));
+	assert!(matches!(decode_body::<Probe>(&corrupt), Err(StateError::Deserialization(_))));
 }
 
 #[test]
 fn test_a_length_prefix_past_the_end_of_the_body_fails_to_decode() {
 	// A collection length larger than the remaining bytes must error, never read past the body.
 	let overlong = EncodedOperatorRow::new(&[0x00, 0x01, 0x7F], DateTime::EPOCH);
-	assert!(matches!(decode_body::<Probe>(&overlong), Err(OperatorError::Deserialization(_))));
+	assert!(matches!(decode_body::<Probe>(&overlong), Err(StateError::Deserialization(_))));
 }
 
 #[test]
@@ -108,7 +120,7 @@ fn test_truncated_body_fails_to_decode() {
 	let row = encode(&probe(), DateTime::EPOCH).unwrap();
 	let body = row.body();
 	let truncated = EncodedOperatorRow::new(&body[..body.len() / 2], DateTime::EPOCH);
-	assert!(matches!(decode_body::<Probe>(&truncated), Err(OperatorError::Deserialization(_))));
+	assert!(matches!(decode_body::<Probe>(&truncated), Err(StateError::Deserialization(_))));
 }
 
 #[test]
@@ -159,7 +171,7 @@ fn test_a_map_round_trips_in_key_order() {
 	// Operators keep their buffers in a map, so insertion order must never leak into the decode.
 	let map: BTreeMap<u64, i64> = [(3u64, 30i64), (1, 10), (2, 20)].into_iter().collect();
 
-	let row = map.encode_state(DateTime::EPOCH).expect("encode");
+	let row = map.encode_state().expect("encode");
 	let restored: BTreeMap<u64, i64> = decode(&row).expect("decode");
 
 	assert_eq!(restored, map);
@@ -171,7 +183,7 @@ fn test_an_empty_map_round_trips() {
 	// Empty is the state every group starts in; a decode failure would break every first write.
 	let map: BTreeMap<u64, i64> = BTreeMap::new();
 
-	let row = map.encode_state(DateTime::EPOCH).expect("encode");
+	let row = map.encode_state().expect("encode");
 	let restored: BTreeMap<u64, i64> = decode(&row).expect("decode");
 
 	assert!(restored.is_empty());
@@ -182,7 +194,7 @@ fn test_a_datetime_round_trips_as_operator_state() {
 	// the timer index stores an instant as its own state row, so a lossy leg would name a wheel row that is not
 	// there
 	for instant in [DateTime::EPOCH, at_nanos(1), at_nanos(1_700_000_000_123_456_789), DateTime::MAX] {
-		let row = instant.encode_state(DateTime::EPOCH).expect("encode");
+		let row = instant.encode_state().expect("encode");
 		let restored: DateTime = decode(&row).expect("decode");
 
 		assert_eq!(restored, instant);
@@ -197,8 +209,8 @@ fn test_two_instants_inside_one_millisecond_stay_distinct_as_operator_state() {
 	let later = at_nanos(1_700_000_000_000_500_000);
 	assert_eq!(earlier.to_epoch_millis(), later.to_epoch_millis(), "fixture must share a millisecond");
 
-	let restored_earlier: DateTime = decode(&earlier.encode_state(DateTime::EPOCH).unwrap()).unwrap();
-	let restored_later: DateTime = decode(&later.encode_state(DateTime::EPOCH).unwrap()).unwrap();
+	let restored_earlier: DateTime = decode(&earlier.encode_state().unwrap()).unwrap();
+	let restored_later: DateTime = decode(&later.encode_state().unwrap()).unwrap();
 
 	assert_ne!(restored_earlier, restored_later);
 	assert_eq!(restored_later, later);

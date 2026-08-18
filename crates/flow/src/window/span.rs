@@ -3,7 +3,7 @@
 
 use std::fmt::Debug;
 
-use reifydb_codec::row::operator::StateCodec;
+use reifydb_codec::row::pod::state::StateCodec;
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::value::datetime::DateTime;

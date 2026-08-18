@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::EncodedOperatorRow,
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
@@ -44,20 +44,20 @@ impl<C: GuestContext> IdentityReclaim for GuestAsHost<'_, C> {
 }
 
 impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		Ok(self.0.state().get_bytes(key)?)
 	}
 
 	fn state_get_many_visit(
 		&mut self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		self.0.state().get_many_bytes_visit(keys, &mut |k, v| visit(k, v).map_err(Into::into))?;
 		Ok(())
 	}
 
-	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
+	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
 		self.0.state().set_bytes(key, payload)?;
 		Ok(())
 	}
@@ -71,7 +71,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		let bound = |b: &Bound<EncodedKey>| match b {
 			Bound::Included(k) => Bound::Included(GroupStateKey::bound_unchecked(k.clone())),

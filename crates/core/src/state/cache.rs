@@ -3,7 +3,7 @@
 
 use std::{hash::Hash, marker::PhantomData};
 
-use reifydb_codec::row::operator::{OperatorState, decode};
+use reifydb_codec::row::pod::state::{OperatorState, decode};
 use reifydb_value::Result;
 
 use crate::{key::operator_state::IntoGroupStateKey, metrics::heap::HeapSize, state::store::StateStore};
@@ -42,7 +42,7 @@ where
 
 	pub fn set(&mut self, store: &mut dyn StateStore, key: &K, value: &V) -> Result<()> {
 		let encoded_key = key.into_group_state_key();
-		let payload = value.encode_state(store.written_at())?;
+		let payload = value.encode_state()?;
 		store.state_set(&encoded_key, payload)
 	}
 
@@ -55,13 +55,12 @@ where
 		V: Default,
 	{
 		let encoded_key = key.into_group_state_key();
-		let now = store.written_at();
 		let mut value = match store.state_get(&encoded_key)? {
 			Some(bytes) => decode::<V>(&bytes)?,
 			None => V::default(),
 		};
 		let result = f(&mut value);
-		store.state_set(&encoded_key, value.encode_state(now)?)?;
+		store.state_set(&encoded_key, value.encode_state()?)?;
 		Ok(result)
 	}
 
@@ -101,7 +100,7 @@ mod tests {
 
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
-		row::operator::EncodedOperatorRow,
+		row::pod::EncodedPodRow,
 	};
 	use reifydb_macro::operator_state;
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
@@ -155,7 +154,7 @@ mod tests {
 
 	#[derive(Default)]
 	struct MockStore {
-		data: HashMap<Vec<u8>, EncodedOperatorRow>,
+		data: HashMap<Vec<u8>, EncodedPodRow>,
 		groups: HashMap<Vec<u8>, GroupId>,
 		removes: usize,
 		sets: usize,
@@ -199,7 +198,7 @@ mod tests {
 			Ok(groups.iter().map(|group| self.groups.get(group.as_bytes()).copied()).collect())
 		}
 
-		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 			self.gets += 1;
 			Ok(self.data.get(key.as_slice()).cloned())
 		}
@@ -207,7 +206,7 @@ mod tests {
 		fn state_get_many_visit(
 			&mut self,
 			keys: &[GroupStateKey],
-			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 		) -> Result<()> {
 			for key in keys {
 				if let Some(b) = self.data.get(key.as_slice()) {
@@ -217,7 +216,7 @@ mod tests {
 			Ok(())
 		}
 
-		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
+		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
 			self.sets += 1;
 			self.data.insert(key.as_slice().to_vec(), payload);
 			Ok(())
@@ -233,7 +232,7 @@ mod tests {
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -245,7 +244,7 @@ mod tests {
 				Bound::Excluded(e) => k < e.as_bytes(),
 				Bound::Unbounded => true,
 			};
-			let mut matched: Vec<(Vec<u8>, EncodedOperatorRow)> = self
+			let mut matched: Vec<(Vec<u8>, EncodedPodRow)> = self
 				.data
 				.iter()
 				.filter(|(k, _)| after_start(k) && before_end(k))
@@ -377,24 +376,6 @@ mod tests {
 
 		assert_eq!(returned, 7);
 		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(7)));
-	}
-
-	#[test]
-	fn modify_persists_the_row_with_a_refreshed_time() {
-		// The rewritten row must carry the store's current clock, or floor expiry reads a stale stamp.
-		let mut store = MockStore::default();
-		let mut cache: StateCache<Key, Cell> = StateCache::new();
-		cache.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
-		store.now = DateTime::from_nanos(4_000);
-
-		cache.modify(&mut store, &Key::new("a"), |value| {
-			value.value = 3;
-		})
-		.unwrap();
-
-		let key = (&Key::new("a")).into_group_state_key();
-		let stored = store.data.get(key.as_slice()).expect("the row was written");
-		assert_eq!(stored.time(), DateTime::from_nanos(4_000));
 	}
 
 	#[test]

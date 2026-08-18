@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::{EncodedOperatorRow, decode},
+	row::pod::{EncodedPodRow, state::decode},
 };
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
@@ -52,7 +52,7 @@ impl RecordedTimer {
 
 #[derive(Default)]
 pub(crate) struct MockStore {
-	data: HashMap<Vec<u8>, EncodedOperatorRow>,
+	data: HashMap<Vec<u8>, EncodedPodRow>,
 	groups: HashMap<Vec<u8>, GroupId>,
 	rows: HashMap<(GroupId, Vec<u8>), u64>,
 	next_row: u64,
@@ -156,7 +156,7 @@ impl MockStore {
 			OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::ROW_NUMBER_MAPPING, vec![suffix])
 				.as_slice()
 				.to_vec(),
-			EncodedOperatorRow::new(&[0u8], DateTime::EPOCH),
+			EncodedPodRow::new(&[0u8]),
 		);
 	}
 
@@ -246,13 +246,13 @@ impl StateStore for MockStore {
 		Ok(groups.iter().map(|group| self.groups.get(group.as_bytes()).copied()).collect())
 	}
 
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		Ok(self.data.get(key.as_slice()).cloned())
 	}
 	fn state_get_many_visit(
 		&mut self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		for key in keys {
 			if let Some(b) = self.data.get(key.as_slice()) {
@@ -261,7 +261,7 @@ impl StateStore for MockStore {
 		}
 		Ok(())
 	}
-	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
+	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
 		self.data.insert(key.as_slice().to_vec(), payload);
 		Ok(())
 	}
@@ -273,7 +273,7 @@ impl StateStore for MockStore {
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		let after_start = |k: &[u8]| match &range.start {
 			Bound::Included(s) => k >= s.as_bytes(),
@@ -285,7 +285,7 @@ impl StateStore for MockStore {
 			Bound::Excluded(e) => k < e.as_bytes(),
 			Bound::Unbounded => true,
 		};
-		let mut matched: Vec<(Vec<u8>, EncodedOperatorRow)> = self
+		let mut matched: Vec<(Vec<u8>, EncodedPodRow)> = self
 			.data
 			.iter()
 			.filter(|(k, _)| after_start(k) && before_end(k))

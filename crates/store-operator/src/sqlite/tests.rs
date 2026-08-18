@@ -3,7 +3,7 @@
 
 use std::thread::spawn;
 
-use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
@@ -39,8 +39,8 @@ fn real_key(group: GroupId, keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
 	OperatorStateKey::inner_encoded(group, keyspace, suffix).into_encoded()
 }
 
-fn row(len: usize) -> EncodedOperatorRow {
-	EncodedOperatorRow::new(&vec![0u8; len], DateTime::EPOCH)
+fn row(len: usize) -> EncodedPodRow {
+	EncodedPodRow::new(&vec![0u8; len])
 }
 
 #[test]

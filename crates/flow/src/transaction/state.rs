@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::EncodedOperatorRow,
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	interface::{
@@ -14,7 +14,7 @@ use reifydb_core::{
 	metrics::scan::ScanCounters,
 };
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::{Result, error::Error as ValueError};
+use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
 use crate::transaction::{FlowTransaction, memo::StateMemo, scope::scoped_key};
@@ -25,7 +25,7 @@ pub trait StateExtension: FlowTransaction {
 		key_len = key.as_slice().len(),
 		found = field::Empty
 	))]
-	fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+	fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		let scoped = scoped_key(id, key);
 		let memoized = key.keyspace().is_some_and(StateMemo::cacheable);
 		if memoized && let Some(cached) = self.substrate().memo.lookup(&scoped) {
@@ -33,7 +33,7 @@ pub trait StateExtension: FlowTransaction {
 			return Ok(cached);
 		}
 		let result = match self.get(&scoped)? {
-			Some(bytes) => Some(EncodedOperatorRow::try_from(bytes).map_err(ValueError::from)?),
+			Some(bytes) => Some(EncodedPodRow::from(bytes)),
 			None => None,
 		};
 		if memoized {
@@ -94,8 +94,7 @@ pub trait StateExtension: FlowTransaction {
 			let memo = self.substrate().memo.clone();
 			for fetched in &items[fetched_from..] {
 				if let Some(position) = to_memoize.iter().position(|key| key == &fetched.key) {
-					let row = EncodedOperatorRow::try_from(fetched.bytes.clone())
-						.map_err(ValueError::from)?;
+					let row = EncodedPodRow::from(fetched.bytes.clone());
 					memo.remember(&to_memoize.swap_remove(position), Some(row));
 				}
 			}
@@ -116,7 +115,7 @@ pub trait StateExtension: FlowTransaction {
 		key_len = key.as_slice().len(),
 		value_len = row.len()
 	))]
-	fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
+	fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
 		let scoped = scoped_key(id, key);
 		if key.keyspace().is_some_and(StateMemo::cacheable) {
 			self.substrate().memo.invalidate(&scoped);

@@ -5,7 +5,7 @@ use std::{error::Error as StdError, fmt::Write, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::EncodedOperatorRow,
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -85,7 +85,7 @@ impl testscript::runner::Runner for Runner {
 					&decode_binary(&kv.key.expect("next_key yields a keyed argument")),
 					keyspace,
 				);
-				let row = EncodedOperatorRow::timeless(&decode_binary(&kv.value));
+				let row = EncodedPodRow::new(&decode_binary(&kv.value));
 				args.reject_rest()?;
 
 				self.store.set(operator, key, row);
@@ -437,7 +437,7 @@ impl testscript::runner::Runner for Runner {
 					&decode_binary(&kv.key.expect("next_key yields a keyed argument")),
 					keyspace,
 				);
-				let row = EncodedOperatorRow::timeless(&decode_binary(&kv.value));
+				let row = EncodedPodRow::new(&decode_binary(&kv.value));
 				args.reject_rest()?;
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
@@ -527,7 +527,7 @@ fn parse_batch(command: &Command) -> Result<BatchArgs, Box<dyn StdError>> {
 				writes.push(OperatorWrite::Set {
 					operator,
 					key: encode_key(&decode_binary(key), keyspace),
-					row: EncodedOperatorRow::timeless(&decode_binary(body)),
+					row: EncodedPodRow::new(&decode_binary(body)),
 				});
 			}
 			"remove" => writes.push(OperatorWrite::Remove {

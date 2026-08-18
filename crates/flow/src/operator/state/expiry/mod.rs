@@ -8,7 +8,7 @@ use reifydb_codec::{
 		decode_u64, encode_u64,
 		encoded::{EncodedKeyRange, IntoEncodedKey},
 	},
-	row::operator::{OperatorState, decode},
+	row::pod::state::{OperatorState, decode},
 };
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
@@ -42,7 +42,7 @@ fn due_range(threshold: u64) -> EncodedKeyRange {
 }
 
 pub(crate) fn expiry_set<E: OperatorState>(store: &mut dyn StateStore, key: GroupStateKey, entry: E) -> Result<()> {
-	store.state_set(&key, entry.encode_state(store.written_at())?)
+	store.state_set(&key, entry.encode_state()?)
 }
 
 pub(crate) fn expiry_drop(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {

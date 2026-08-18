@@ -6,7 +6,7 @@ use std::collections::Bound;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
+	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
@@ -24,11 +24,11 @@ use reifydb_flow::transaction::{
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
-use reifydb_value::value::{datetime::DateTime, identity::IdentityId, row_number::RowNumber};
+use reifydb_value::value::{identity::IdentityId, row_number::RowNumber};
 
 use crate::common::create_test_transaction;
 
-fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedOperatorRow) {
+fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedPodRow) {
 	// Stands in for a prior slice's success-side operator state apply.
 	engine.inner().operator_state().set(operator, EncodedKey::new(key.as_slice()), row);
 }
@@ -58,8 +58,8 @@ fn make_key(s: &str) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM, s.as_bytes())
 }
 
-fn make_value(s: &str) -> EncodedOperatorRow {
-	EncodedOperatorRow::timeless(s.as_bytes())
+fn make_value(s: &str) -> EncodedPodRow {
+	EncodedPodRow::new(s.as_bytes())
 }
 
 fn full_key(operator: OperatorId, key: &GroupStateKey) -> EncodedKey {
@@ -68,8 +68,8 @@ fn full_key(operator: OperatorId, key: &GroupStateKey) -> EncodedKey {
 	OperatorStateKey::encoded(operator, group, keyspace, suffix)
 }
 
-fn stamped_row(payload: &[u8], time: u64) -> EncodedOperatorRow {
-	EncodedOperatorRow::new(payload, DateTime::from_nanos(time))
+fn stamped_row(payload: &[u8]) -> EncodedPodRow {
+	EncodedPodRow::new(payload)
 }
 
 #[test]
@@ -419,23 +419,19 @@ fn cached_state_reads_never_mask_writes_or_removes() {
 
 #[test]
 fn a_state_write_keeps_the_callers_time_without_reading_the_prior_row() {
-	// A row carries the time its writer stamped, so a save must never read the prior row back.
+	// A state_set over a seeded row must replace it wholesale, or a merging write would leave the seeded body
+	// readable.
 	let engine = TestEngine::new();
 	let operator_id = OperatorId(1);
 	let key = make_key("acc");
-	seed_state_row(&engine, operator_id, &key, stamped_row(b"v0", 1_000));
+	seed_state_row(&engine, operator_id, &key, stamped_row(b"v0"));
 
 	let mut txn = deferred_shared(&engine);
 
 	assert!(txn.state_get(operator_id, &key).unwrap().is_some());
-	txn.state_set(operator_id, &key, stamped_row(b"v1", 5_000)).unwrap();
+	txn.state_set(operator_id, &key, stamped_row(b"v1")).unwrap();
 
 	let stored = txn.state_get(operator_id, &key).unwrap().unwrap();
-	assert_eq!(
-		stored.time(),
-		DateTime::from_nanos(5_000),
-		"the write's own time stands: nothing is carried over from the prior row"
-	);
 	assert_eq!(stored.body(), b"v1");
 }
 

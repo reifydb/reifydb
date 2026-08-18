@@ -609,7 +609,7 @@ mod tests {
 
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
-		row::operator::EncodedOperatorRow,
+		row::pod::EncodedPodRow,
 	};
 	use reifydb_core::{
 		key::operator_state::{GroupId, GroupStateKey},
@@ -699,7 +699,7 @@ mod tests {
 	/// FlowTransaction.
 	#[derive(Default)]
 	struct MockStore {
-		state: TestHashMap<Vec<u8>, EncodedOperatorRow>,
+		state: TestHashMap<Vec<u8>, EncodedPodRow>,
 		groups: TestHashMap<Vec<u8>, GroupId>,
 		rows: TestHashMap<(GroupId, Vec<u8>), u64>,
 		next_row: u64,
@@ -752,13 +752,13 @@ mod tests {
 			Ok(groups.iter().map(|group| self.groups.get(group.as_bytes()).copied()).collect())
 		}
 
-		fn state_get(&mut self, key: &GroupStateKey) -> ValueResult<Option<EncodedOperatorRow>> {
+		fn state_get(&mut self, key: &GroupStateKey) -> ValueResult<Option<EncodedPodRow>> {
 			Ok(self.state.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
 			keys: &[GroupStateKey],
-			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> ValueResult<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> ValueResult<()>,
 		) -> ValueResult<()> {
 			for key in keys {
 				if let Some(b) = self.state.get(key.as_slice()) {
@@ -767,7 +767,7 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> ValueResult<()> {
+		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> ValueResult<()> {
 			self.state.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
@@ -779,12 +779,12 @@ mod tests {
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> ValueResult<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> ValueResult<()>,
 		) -> ValueResult<()> {
 			// The backing map is a HashMap, so without this sort the visit order is arbitrary and the real
 			// store's key order is not reproduced.
 			let mut seen = 0usize;
-			let mut entries: Vec<(Vec<u8>, EncodedOperatorRow)> = self
+			let mut entries: Vec<(Vec<u8>, EncodedPodRow)> = self
 				.state
 				.iter()
 				.filter(|(k, _)| {
