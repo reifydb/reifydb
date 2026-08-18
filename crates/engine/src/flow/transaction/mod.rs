@@ -82,7 +82,7 @@ use reifydb_transaction::{
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::SingleTransaction,
-	transaction::{admin::AdminTransaction, command::CommandTransaction},
+	transaction::admin::AdminTransaction,
 };
 use reifydb_value::Result;
 use tracing::instrument;
@@ -131,15 +131,6 @@ pub struct DeferredParams {
 	pub allocators: FlowAllocators,
 }
 
-pub struct CommittingParams {
-	pub cmd: CommandTransaction,
-	pub catalog: Catalog,
-	pub interceptors: Interceptors,
-	pub clock: Clock,
-
-	pub allocators: FlowAllocators,
-}
-
 pub struct FlowTransactionInner {
 	pub version: CommitVersion,
 	pub pending: Pending,
@@ -173,18 +164,6 @@ pub enum FlowTransaction {
 
 		view_overlay: Arc<Vec<Change>>,
 	},
-
-	Ephemeral {
-		inner: FlowTransactionInner,
-
-		state: HashMap<EncodedKey, EncodedOperatorRow>,
-	},
-
-	Committing {
-		inner: FlowTransactionInner,
-
-		cmd: Box<CommandTransaction>,
-	},
 }
 
 impl FlowTransaction {
@@ -195,14 +174,6 @@ impl FlowTransaction {
 				..
 			}
 			| Self::Transactional {
-				inner,
-				..
-			}
-			| Self::Ephemeral {
-				inner,
-				..
-			}
-			| Self::Committing {
 				inner,
 				..
 			} => inner,
@@ -216,14 +187,6 @@ impl FlowTransaction {
 				..
 			}
 			| Self::Transactional {
-				inner,
-				..
-			}
-			| Self::Ephemeral {
-				inner,
-				..
-			}
-			| Self::Committing {
 				inner,
 				..
 			} => inner,
@@ -291,48 +254,6 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn committing(mut params: CommittingParams) -> Result<Self> {
-		params.cmd.disable_conflict_tracking()?;
-		let version = params.cmd.version();
-		let mut query = params.cmd.multi.begin_query()?;
-		query.read_as_of_version_inclusive(version);
-		let mut state_query = params.cmd.multi.begin_query()?;
-		state_query.read_as_of_version_inclusive(version);
-		let single = params.cmd.single.clone();
-
-		Ok(Self::Committing {
-			inner: FlowTransactionInner {
-				version,
-				pending: Pending::new(),
-				base_pending: Arc::new(Pending::new()),
-				pending_shapes: Vec::new(),
-				query,
-				state_query: Some(state_query),
-				single,
-				catalog: params.catalog.clone(),
-				host_catalog: Arc::new(StandardHostCatalog::new(params.catalog)),
-				interceptors: params.interceptors,
-				accumulator: ChangeAccumulator::new(),
-				clock: params.clock,
-				operator_states: HashMap::new(),
-				prefetch: HashMap::new(),
-				store_reads: 0,
-				allocators: params.allocators,
-			},
-			cmd: Box::new(params.cmd),
-		})
-	}
-
-	pub fn commit(self) -> Result<CommitVersion> {
-		match self {
-			Self::Committing {
-				mut cmd,
-				..
-			} => cmd.commit_unchecked(),
-			_ => panic!("FlowTransaction::commit only valid on Committing variant"),
-		}
-	}
-
 	pub fn transactional(params: TransactionalParams) -> Self {
 		Self::Transactional {
 			inner: FlowTransactionInner {
@@ -372,58 +293,6 @@ impl FlowTransaction {
 				..
 			} => Some(Arc::clone(view_overlay)),
 			_ => None,
-		}
-	}
-
-	pub fn ephemeral(
-		version: CommitVersion,
-		query: MultiReadTransaction,
-		single: SingleTransaction,
-		catalog: Catalog,
-		state: HashMap<EncodedKey, EncodedOperatorRow>,
-		clock: Clock,
-	) -> Self {
-		let mut pq = query;
-		pq.read_as_of_version_inclusive(version);
-
-		Self::Ephemeral {
-			inner: FlowTransactionInner {
-				version,
-				pending: Pending::new(),
-				base_pending: Arc::new(Pending::new()),
-				pending_shapes: Vec::new(),
-				query: pq,
-				state_query: None,
-				single,
-				catalog: catalog.clone(),
-				host_catalog: Arc::new(StandardHostCatalog::new(catalog)),
-				interceptors: Interceptors::new(),
-				accumulator: ChangeAccumulator::new(),
-				clock,
-				operator_states: HashMap::new(),
-				prefetch: HashMap::new(),
-				store_reads: 0,
-				allocators: FlowAllocators::new(),
-			},
-			state,
-		}
-	}
-
-	pub fn merge_state(&mut self) {
-		if matches!(self, Self::Ephemeral { .. }) {
-			unimplemented!("ephemeral flow transaction")
-		}
-	}
-
-	pub fn take_state(&mut self) -> HashMap<EncodedKey, EncodedOperatorRow> {
-		if let Self::Ephemeral {
-			state,
-			..
-		} = self
-		{
-			mem::take(state)
-		} else {
-			HashMap::new()
 		}
 	}
 

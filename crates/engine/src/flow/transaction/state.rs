@@ -318,26 +318,21 @@ impl FlowTransaction {
 			return Ok(());
 		}
 
-		if matches!(self, Self::Ephemeral { .. }) {
-			unimplemented!("ephemeral flow transaction")
-		}
- else {
-			let inner = self.inner_mut();
-			inner.store_reads += to_batch.len() as u64;
-			let found = inner.state_query.as_ref().unwrap().get_many(to_batch)?;
-			for encoded_key in to_batch {
-				match found.get(encoded_key) {
-					Some(multi) => {
-						inner.prefetch.insert(
-							encoded_key.clone(),
-							Some(EncodedOperatorRow::try_from(multi.bytes.clone())
-								.map_err(ValueError::from)?),
-						);
-						items.push(multi.clone());
-					}
-					None => {
-						inner.prefetch.insert(encoded_key.clone(), None);
-					}
+		let inner = self.inner_mut();
+		inner.store_reads += to_batch.len() as u64;
+		let found = inner.state_query.as_ref().unwrap().get_many(to_batch)?;
+		for encoded_key in to_batch {
+			match found.get(encoded_key) {
+				Some(multi) => {
+					inner.prefetch.insert(
+						encoded_key.clone(),
+						Some(EncodedOperatorRow::try_from(multi.bytes.clone())
+							.map_err(ValueError::from)?),
+					);
+					items.push(multi.clone());
+				}
+				None => {
+					inner.prefetch.insert(encoded_key.clone(), None);
 				}
 			}
 		}

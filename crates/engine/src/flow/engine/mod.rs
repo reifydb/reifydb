@@ -28,7 +28,6 @@ use reifydb_core::{
 	},
 };
 use crate::vm::executor::Executor;
-#[cfg(reifydb_target = "host")]
 use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,
@@ -40,8 +39,6 @@ use reifydb_runtime::{
 use reifydb_value::value::duration::Duration;
 use tracing::instrument;
 
-#[cfg(reifydb_target = "host")]
-#[cfg(reifydb_target = "host")]
 use crate::flow::{
 	builder::CustomOperators,
 	engine::{cache::ScheduleCache, schedule::{FlowSchedule, calculate_schedule}},

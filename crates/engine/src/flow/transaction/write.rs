@@ -8,98 +8,35 @@ use super::FlowTransaction;
 
 impl FlowTransaction {
 	pub fn set(&mut self, key: &EncodedKey, value: impl Into<EncodedBytes>) -> Result<()> {
-		match self {
-			Self::Committing {
-				cmd,
-				..
-			} => cmd.set(key, value.into()),
-			_ => {
-				self.inner_mut().pending.insert(key.clone(), value.into());
-				Ok(())
-			}
-		}
+		self.inner_mut().pending.insert(key.clone(), value.into());
+		Ok(())
 	}
 
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		match self {
-			Self::Committing {
-				cmd,
-				..
-			} => cmd.remove(key),
-			_ => {
-				self.inner_mut().pending.remove(key.clone());
-				Ok(())
-			}
-		}
+		self.inner_mut().pending.remove(key.clone());
+		Ok(())
 	}
 
 	pub fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
-		match self {
-			Self::Committing {
-				cmd,
-				..
-			} => cmd.remove_silent(key),
-			_ => {
-				self.inner_mut().pending.remove_silent(key.clone());
-				Ok(())
-			}
-		}
+		self.inner_mut().pending.remove_silent(key.clone());
+		Ok(())
 	}
 
 	pub fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) -> Result<()> {
-		match self {
-			Self::Committing {
-				cmd,
-				..
-			} => {
-				for (key, value) in keys.iter().zip(values.iter()) {
-					cmd.set(key, value.clone())?;
-				}
-				Ok(())
-			}
-			_ => {
-				self.inner_mut().pending.insert_batch(keys, values);
-				Ok(())
-			}
-		}
+		self.inner_mut().pending.insert_batch(keys, values);
+		Ok(())
 	}
 
 	pub fn remove_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
-		match self {
-			Self::Committing {
-				cmd,
-				..
-			} => {
-				for key in keys {
-					cmd.remove(key)?;
-				}
-				Ok(())
-			}
-			_ => {
-				self.inner_mut().pending.remove_batch(keys);
-				Ok(())
-			}
-		}
+		self.inner_mut().pending.remove_batch(keys);
+		Ok(())
 	}
 
 	pub fn remove_silent_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
-		match self {
-			Self::Committing {
-				cmd,
-				..
-			} => {
-				for key in keys {
-					cmd.remove_silent(key)?;
-				}
-				Ok(())
-			}
-			_ => {
-				for key in keys {
-					self.inner_mut().pending.remove_silent(key.clone());
-				}
-				Ok(())
-			}
+		for key in keys {
+			self.inner_mut().pending.remove_silent(key.clone());
 		}
+		Ok(())
 	}
 }
 

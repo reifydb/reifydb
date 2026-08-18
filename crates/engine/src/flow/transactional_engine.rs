@@ -15,10 +15,9 @@ use reifydb_core::interface::{
 };
 use reifydb_rql::flow::loader::load_flow_dag;
 use reifydb_runtime::{
-	actor::system::{ActorHandle, ActorSpawner},
+	actor::system::ActorSpawner,
 	context::RuntimeContext,
 	shutdown::Shutdown,
-	sync::mutex::Mutex,
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::Transaction};
@@ -34,7 +33,6 @@ use crate::{
 		transactional::{
 			interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
 			registry::TransactionalFlowRegistry,
-			tick::{TransactionalTickActor, TransactionalTickMessage},
 		},
 	},
 };
@@ -43,7 +41,6 @@ pub struct TransactionalFlowEngine {
 	flow_engine: FlowEngine,
 	lineage: FlowLineageTracker,
 	scope: ActorSpawner,
-	tick: Mutex<Option<ActorHandle<TransactionalTickMessage>>>,
 	running: AtomicBool,
 }
 
@@ -60,7 +57,7 @@ impl TransactionalFlowEngine {
 			catalog.clone(),
 			engine.executor(),
 			engine.event_bus().clone(),
-			RuntimeContext::with_clock(clock.clone()),
+			RuntimeContext::with_clock(clock),
 			CustomOperators::new(config.custom_operators),
 			FlowAllocators::with_dictionary(engine.dictionary_allocators()),
 		);
@@ -78,16 +75,11 @@ impl TransactionalFlowEngine {
 		bootstrap_flows(&engine, &registry)?;
 
 		let scope = engine.spawner().scope();
-		let tick = scope.spawn_flow(
-			"transactional-flow-tick",
-			TransactionalTickActor::new(flow_engine.clone(), engine, catalog, clock),
-		);
 
 		Ok(Self {
 			flow_engine,
 			lineage,
 			scope,
-			tick: Mutex::new(Some(tick)),
 			running: AtomicBool::new(true),
 		})
 	}
@@ -135,10 +127,6 @@ impl Shutdown for TransactionalFlowEngine {
 		}
 
 		self.scope.shutdown();
-
-		if let Some(handle) = self.tick.lock().take() {
-			let _ = handle.join();
-		}
 
 		self.flow_engine.write().clear();
 		self.lineage.clear();

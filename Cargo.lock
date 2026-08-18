@@ -2990,7 +2990,6 @@ dependencies = [
  "indexmap",
  "libloading",
  "postcard",
- "rayon",
  "reifydb-auth",
  "reifydb-build",
  "reifydb-catalog",

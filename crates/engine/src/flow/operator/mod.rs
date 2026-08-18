@@ -82,8 +82,8 @@ impl Deref for OperatorCell {
 }
 
 // SAFETY: a flow and all of its operators are only ever accessed by a single thread at any one
-// time. Flows that execute in parallel on the rayon commit pool own disjoint operator sets
-// (operators are keyed by OperatorId and never shared between flows), so no Operators value is ever
+// time. Inline flow execution walks the whole schedule sequentially on the committing thread, and
+// operators are keyed by OperatorId and never shared between flows, so no Operators value is ever
 // reachable from two threads simultaneously. The inner Arc is only cloned and dereferenced from the
 // owning thread, so asserting Send and Sync over the !Sync Operators it holds is sound.
 unsafe impl Send for OperatorCell {}

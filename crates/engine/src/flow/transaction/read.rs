@@ -50,10 +50,6 @@ impl FlowTransaction {
 			return Ok(Some(EncodedOperatorRow::try_from(value.clone()).map_err(ValueError::from)?));
 		}
 
-		if matches!(self, Self::Ephemeral { .. }) {
-			unimplemented!("ephemeral flow transaction")
-		}
-
 		if let Some(cached) = self.inner().prefetch.get(key) {
 			return Ok(cached.clone());
 		}
@@ -91,10 +87,6 @@ impl FlowTransaction {
 		}
 		if inner.base_pending.get(key).is_some() {
 			return Ok(true);
-		}
-
-		if matches!(self, Self::Ephemeral { .. }) {
-			unimplemented!("ephemeral flow transaction")
 		}
 
 		let inner = self.inner_mut();
@@ -218,10 +210,6 @@ impl FlowTransaction {
 				inner,
 				..
 			}
-			| Self::Committing {
-				inner,
-				..
-			}
 			| Self::Transactional {
 				inner,
 				..
@@ -251,7 +239,6 @@ impl FlowTransaction {
 				let v = inner.version;
 				Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
 			}
-			Self::Ephemeral { .. } => unimplemented!("ephemeral flow transaction"),
 		}
 	}
 
@@ -263,10 +250,6 @@ impl FlowTransaction {
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		match self {
 			Self::Deferred {
-				inner,
-				..
-			}
-			| Self::Committing {
 				inner,
 				..
 			}
@@ -299,7 +282,6 @@ impl FlowTransaction {
 				let v = inner.version;
 				Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
 			}
-			Self::Ephemeral { .. } => unimplemented!("ephemeral flow transaction"),
 		}
 	}
 }

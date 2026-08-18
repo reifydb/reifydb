@@ -31,7 +31,6 @@ reifydb-sub-api = { workspace = true }
 reifydb-routine = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
-rayon = { workspace = true }
 dashmap = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-sqlite = { workspace = true }
