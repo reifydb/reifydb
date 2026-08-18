@@ -7,8 +7,12 @@ use std::{
 };
 
 use reifydb_codec::row::{
-	bytes::{EncodedBytes, RowBuilder},
-	pod::state::{decode, encode},
+	bytes::EncodedBytes,
+	envelope::{Envelope, EnvelopeBuilder},
+	pod::{
+		EncodedPodRow,
+		state::{decode, encode},
+	},
 	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_core::{
@@ -26,7 +30,8 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	reifydb_assertions,
-	value::{Value, datetime::DateTime, row_number::RowNumber},
+	util::cowvec::CowVec,
+	value::{Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };
 use tracing::instrument;
 
@@ -87,25 +92,37 @@ fn row_shape_from_columns(cols: &Columns) -> RowShape {
 		.zip(cols.columns.iter())
 		.map(|(name, buf)| RowShapeField::unconstrained(name.text().to_string(), buf.get_type()))
 		.collect();
-	RowShape::new(RowFamily::Operator, fields)
+	RowShape::new(RowFamily::Pod, fields)
 }
 
 fn encode_take_bytes(shape: &RowShape, columns: &Columns, row_idx: usize) -> EncodedBytes {
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
-	let mut encoded = shape.allocate_operator();
+	let mut encoded = shape.allocate_pod();
 	shape.set_values(&mut encoded, &values);
-	encoded.set_timestamps(
-		columns.created_at().get(row_idx).copied().unwrap_or_default(),
-		columns.updated_at().get(row_idx).copied().unwrap_or_default(),
-	);
+	let body = encoded.freeze();
+
+	let mut envelope = EnvelopeBuilder::new()
+		.created_at(columns.created_at().get(row_idx).copied().unwrap_or_default())
+		.updated_at(columns.updated_at().get(row_idx).copied().unwrap_or_default());
 	if let Some(time) = columns.time().get(row_idx).copied() {
-		encoded.set_time(time);
+		envelope = envelope.time(time);
 	}
-	encoded.freeze_bytes()
+	envelope.build(body.as_slice()).into_bytes()
 }
 
-fn decode_take_bytes(shape: &RowShape, row_number: RowNumber, encoded: &EncodedBytes) -> Columns {
-	Columns::from_encoded_bytes(shape, &[row_number], from_ref(encoded))
+fn decode_take_bytes(shape: &RowShape, row_number: RowNumber, encoded: &EncodedBytes) -> Result<Columns> {
+	let envelope = Envelope::try_view(EncodedPodRow::view(encoded))?;
+	let body = EncodedBytes(CowVec::new(envelope.body().to_vec()));
+
+	let mut decoded = Columns::from_encoded_bytes(shape, &[row_number], from_ref(&body));
+	decoded.system = SystemColumns::new(
+		vec![row_number],
+		Vec::new(),
+		vec![envelope.created_at().unwrap_or_default()],
+		vec![envelope.updated_at().unwrap_or_default()],
+		envelope.time().into_iter().collect(),
+	);
+	Ok(decoded)
 }
 
 impl TakeOperator {
@@ -187,9 +204,14 @@ impl TakePlan {
 	}
 
 	#[inline]
-	fn promote_one_candidate(&self, state: &mut TakeState, schema: &RowShape, output_diffs: &mut Vec<Diff>) {
+	fn promote_one_candidate(
+		&self,
+		state: &mut TakeState,
+		schema: &RowShape,
+		output_diffs: &mut Vec<Diff>,
+	) -> Result<()> {
 		let Some((&age, &row_number)) = state.candidates_by_age.iter().next_back() else {
-			return;
+			return Ok(());
 		};
 		let count = state.candidates_by_row.get(&row_number).map(|(_, c)| *c).unwrap_or(1);
 		state.candidates_by_age.remove(&age);
@@ -198,11 +220,12 @@ impl TakePlan {
 		state.by_row.insert(row_number, (age, count));
 
 		if let Some(encoded) = state.row_data.get(&row_number) {
-			let cols = decode_take_bytes(schema, row_number, encoded);
+			let cols = decode_take_bytes(schema, row_number, encoded)?;
 			if !cols.is_empty() {
 				output_diffs.push(Diff::insert(cols));
 			}
 		}
+		Ok(())
 	}
 
 	#[inline]
@@ -213,9 +236,9 @@ impl TakePlan {
 		single_row: Columns,
 		schema: &RowShape,
 		output_diffs: &mut Vec<Diff>,
-	) {
+	) -> Result<()> {
 		if self.limit == 0 {
-			return;
+			return Ok(());
 		}
 
 		let age = RowAge::of(&single_row, 0, row_number);
@@ -227,7 +250,7 @@ impl TakePlan {
 			state.candidates_by_age.insert(age, row_number);
 			state.candidates_by_row.insert(row_number, (age, 1));
 			self.prune_candidates(state);
-			return;
+			return Ok(());
 		}
 
 		state.by_age.insert(age, row_number);
@@ -243,7 +266,7 @@ impl TakePlan {
 				state.candidates_by_age.insert(oldest_age, oldest_row);
 				state.candidates_by_row.insert(oldest_row, (oldest_age, count));
 				if let Some(encoded) = state.row_data.get(&oldest_row) {
-					let cols = decode_take_bytes(schema, oldest_row, encoded);
+					let cols = decode_take_bytes(schema, oldest_row, encoded)?;
 					if !cols.is_empty() {
 						output_diffs.push(Diff::remove(cols));
 					}
@@ -252,11 +275,12 @@ impl TakePlan {
 		}
 
 		self.prune_candidates(state);
+		Ok(())
 	}
 
 	#[inline]
 	#[instrument(name = "flow::operator::take::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_insert_diff(&self, state: &mut TakeState, post: Columns, output_diffs: &mut Vec<Diff>) {
+	fn apply_insert_diff(&self, state: &mut TakeState, post: Columns, output_diffs: &mut Vec<Diff>) -> Result<()> {
 		let schema = row_shape_from_columns(&post);
 		let row_count = post.row_count();
 		for row_idx in 0..row_count {
@@ -273,13 +297,20 @@ impl TakePlan {
 			}
 
 			let single = post.extract_by_indices(&[row_idx]);
-			self.admit_new_row(state, row_number, single, &schema, output_diffs);
+			self.admit_new_row(state, row_number, single, &schema, output_diffs)?;
 		}
+		Ok(())
 	}
 
 	#[inline]
 	#[instrument(name = "flow::operator::take::update", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_update_diff(&self, state: &mut TakeState, pre: Columns, post: Columns, output_diffs: &mut Vec<Diff>) {
+	fn apply_update_diff(
+		&self,
+		state: &mut TakeState,
+		pre: Columns,
+		post: Columns,
+		output_diffs: &mut Vec<Diff>,
+	) -> Result<()> {
 		let schema = row_shape_from_columns(&post);
 		let row_count = post.row_count();
 		let mut update_indices: Vec<usize> = Vec::new();
@@ -299,7 +330,7 @@ impl TakePlan {
 			}
 
 			let single = post.extract_by_indices(&[row_idx]);
-			self.admit_new_row(state, row_number, single, &schema, output_diffs);
+			self.admit_new_row(state, row_number, single, &schema, output_diffs)?;
 		}
 
 		if !update_indices.is_empty() {
@@ -308,11 +339,12 @@ impl TakePlan {
 				post.extract_by_indices(&update_indices),
 			));
 		}
+		Ok(())
 	}
 
 	#[inline]
 	#[instrument(name = "flow::operator::take::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn apply_remove_diff(&self, state: &mut TakeState, pre: Columns, output_diffs: &mut Vec<Diff>) {
+	fn apply_remove_diff(&self, state: &mut TakeState, pre: Columns, output_diffs: &mut Vec<Diff>) -> Result<()> {
 		let schema = row_shape_from_columns(&pre);
 		let row_count = pre.row_count();
 		for row_idx in 0..row_count {
@@ -330,7 +362,7 @@ impl TakePlan {
 				output_diffs.push(Diff::remove(pre.extract_by_indices(&[row_idx])));
 
 				if state.by_age.len() < self.limit && !state.candidates_by_age.is_empty() {
-					self.promote_one_candidate(state, &schema, output_diffs);
+					self.promote_one_candidate(state, &schema, output_diffs)?;
 				}
 				continue;
 			}
@@ -346,6 +378,7 @@ impl TakePlan {
 				}
 			}
 		}
+		Ok(())
 	}
 }
 
@@ -369,16 +402,16 @@ impl HostOperator for TakeOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.plan.apply_insert_diff(&mut state, post, &mut output_diffs),
+				} => self.plan.apply_insert_diff(&mut state, post, &mut output_diffs)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.plan.apply_update_diff(&mut state, pre, post, &mut output_diffs),
+				} => self.plan.apply_update_diff(&mut state, pre, post, &mut output_diffs)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.plan.apply_remove_diff(&mut state, pre, &mut output_diffs),
+				} => self.plan.apply_remove_diff(&mut state, pre, &mut output_diffs)?,
 			}
 		}
 
@@ -414,6 +447,20 @@ mod tests {
 		Columns::with_system(
 			vec![ColumnWithName::new(Fragment::internal("n"), ColumnBuffer::int4(vec![n]))],
 			SystemColumns::new(vec![RowNumber(rn)], Vec::new(), vec![at], vec![at], vec![at]),
+		)
+	}
+
+	fn stamped_row(rn: u64, created: u64, updated: u64, time: Option<u64>) -> Columns {
+		// the round trip is only lossless if each stamp lands in its own slot, so every fixture value differs.
+		Columns::with_system(
+			vec![ColumnWithName::new(Fragment::internal("n"), ColumnBuffer::int4(vec![rn as i32]))],
+			SystemColumns::new(
+				vec![RowNumber(rn)],
+				Vec::new(),
+				vec![DateTime::from_nanos(created)],
+				vec![DateTime::from_nanos(updated)],
+				time.map(DateTime::from_nanos).into_iter().collect(),
+			),
 		)
 	}
 
@@ -488,5 +535,73 @@ mod tests {
 			removed(&first).is_empty() && removed(&second).is_empty() && removed(&third).is_empty(),
 			"nothing may be evicted while the window is filling from newest to oldest"
 		);
+	}
+
+	#[test]
+	fn every_stamp_survives_the_take_row_round_trip_unchanged() {
+		// The pod body carries no header, so every stamp must survive in the envelope or it is lost.
+		let cols = stamped_row(7, 1_000, 2_000, Some(3_000));
+		let shape = row_shape_from_columns(&cols);
+		let encoded = encode_take_bytes(&shape, &cols, 0);
+		let decoded = decode_take_bytes(&shape, RowNumber(7), &encoded).unwrap();
+
+		assert_eq!(decoded.created_at(), &[DateTime::from_nanos(1_000)]);
+		assert_eq!(decoded.updated_at(), &[DateTime::from_nanos(2_000)]);
+		assert_eq!(decoded.time(), &[DateTime::from_nanos(3_000)]);
+		assert_eq!(decoded.row_numbers(), &[RowNumber(7)]);
+		assert_eq!(decoded[0].get_value(0), Value::Int4(7));
+	}
+
+	#[test]
+	fn a_row_without_a_time_round_trips_with_time_absent_and_both_stamps_present() {
+		// A timeless source must never gain a fabricated #time, and must still hand the sink a created_at.
+		let cols = stamped_row(9, 4_000, 5_000, None);
+		let shape = row_shape_from_columns(&cols);
+		let encoded = encode_take_bytes(&shape, &cols, 0);
+		let decoded = decode_take_bytes(&shape, RowNumber(9), &encoded).unwrap();
+
+		assert!(
+			decoded.time().is_empty(),
+			"a source row with no #time must not gain one, got {:?}",
+			decoded.time()
+		);
+		assert_eq!(decoded.created_at(), &[DateTime::from_nanos(4_000)]);
+		assert_eq!(decoded.updated_at(), &[DateTime::from_nanos(5_000)]);
+	}
+
+	#[test]
+	fn the_take_envelope_header_is_twenty_five_bytes_with_a_time_and_seventeen_without() {
+		// The envelope must charge only for the fields set, otherwise a timeless row pays for a slot.
+		let timed = stamped_row(1, 1_000, 2_000, Some(3_000));
+		let timeless = stamped_row(2, 1_000, 2_000, None);
+		let timed_bytes = encode_take_bytes(&row_shape_from_columns(&timed), &timed, 0);
+		let timeless_bytes = encode_take_bytes(&row_shape_from_columns(&timeless), &timeless, 0);
+
+		assert_eq!(Envelope::try_view(EncodedPodRow::view(&timed_bytes)).unwrap().header_size(), 25);
+		assert_eq!(Envelope::try_view(EncodedPodRow::view(&timeless_bytes)).unwrap().header_size(), 17);
+	}
+
+	#[test]
+	fn an_evicted_row_reaches_the_subscriber_with_its_stamps_intact() {
+		// The remove diff is rebuilt from stored bytes, so only here does a lossy round trip surface.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let mut op = TakeOperator::new(None, OperatorId(1), 2);
+
+		feed(&mut op, &mut txn, row(1, 1, 1_000));
+		feed(&mut op, &mut txn, row(2, 2, 2_000));
+		let diffs = feed(&mut op, &mut txn, row(3, 3, 3_000));
+
+		assert_eq!(removed(&diffs), vec![1]);
+		let Some(Diff::Remove {
+			pre,
+			..
+		}) = diffs.iter().find(|d| matches!(d, Diff::Remove { .. }))
+		else {
+			panic!("admitting a newer row into a full window must evict the oldest one");
+		};
+		assert_eq!(pre.created_at(), &[DateTime::from_nanos(1_000)]);
+		assert_eq!(pre.updated_at(), &[DateTime::from_nanos(1_000)]);
+		assert_eq!(pre.time(), &[DateTime::from_nanos(1_000)]);
 	}
 }

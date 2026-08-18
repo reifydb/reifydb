@@ -418,7 +418,7 @@ fn cached_state_reads_never_mask_writes_or_removes() {
 }
 
 #[test]
-fn a_state_write_keeps_the_callers_time_without_reading_the_prior_row() {
+fn a_state_write_replaces_the_seeded_row_wholesale() {
 	// A state_set over a seeded row must replace it wholesale, or a merging write would leave the seeded body
 	// readable.
 	let engine = TestEngine::new();
