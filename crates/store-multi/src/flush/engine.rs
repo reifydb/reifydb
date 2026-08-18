@@ -10,8 +10,6 @@ use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::event::metric::{MultiEviction, MultiPersist, MultiSweptEvent};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_core::interface::catalog::storage::StorageId;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::lifecycle::progress::Progress;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
@@ -139,16 +137,10 @@ impl FlushEngine {
 
 	fn is_persistent_object(&self, kind: EntryKind) -> bool {
 		match kind {
-			EntryKind::Source(storage) => {
+			EntryKind::Source(storage) | EntryKind::PartitionedSource(storage) => {
 				self.persistence.get().map(|provider| provider.is_persistent(storage)).unwrap_or(true)
 			}
-			EntryKind::PartitionedSource(object) => {
-				let Some(storage) = StorageId::from_object(object) else {
-					return true;
-				};
-				self.persistence.get().map(|provider| provider.is_persistent(storage)).unwrap_or(true)
-			}
-			_ => true,
+			EntryKind::Multi => true,
 		}
 	}
 

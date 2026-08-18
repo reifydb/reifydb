@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::{
-	catalog::{object::ObjectId, storage::StorageId},
-	store::EntryKind,
-};
+use reifydb_core::interface::{catalog::storage::StorageId, store::EntryKind};
 
 const CURRENT_SUFFIX: &str = "__current";
 
@@ -26,7 +23,7 @@ pub(super) fn name_to_entry_id(name: &str) -> Option<EntryKind> {
 	}
 	if let Some(rest) = name.strip_prefix("partsource_") {
 		let (tag, id) = split_tag_and_id(rest)?;
-		return ObjectId::from_type_tag(tag, id).map(EntryKind::PartitionedSource);
+		return StorageId::from_type_tag(tag, id).map(EntryKind::PartitionedSource);
 	}
 	None
 }
@@ -46,7 +43,7 @@ pub(super) fn current_table_name_to_entry(name: &str) -> Option<EntryKind> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::catalog::id::{RingBufferId, TableId};
+	use reifydb_core::interface::catalog::id::{RingBufferId, TableId, ViewId};
 
 	use super::*;
 
@@ -57,21 +54,14 @@ mod tests {
 		let mut covered = 0;
 		for tag in 0..=u8::MAX {
 			for id in [0u64, 1, 16_391, u64::MAX] {
-				if let Some(storage) = StorageId::from_type_tag(tag, id) {
-					let kind = EntryKind::Source(storage);
+				let Some(storage) = StorageId::from_type_tag(tag, id) else {
+					continue;
+				};
+				for kind in [EntryKind::Source(storage), EntryKind::PartitionedSource(storage)] {
 					assert_eq!(
 						current_table_name_to_entry(&current_table_name(kind)),
 						Some(kind),
-						"source kind at type tag {tag} did not survive the round trip"
-					);
-					covered += 1;
-				}
-				if let Some(object) = ObjectId::from_type_tag(tag, id) {
-					let kind = EntryKind::PartitionedSource(object);
-					assert_eq!(
-						current_table_name_to_entry(&current_table_name(kind)),
-						Some(kind),
-						"partitioned kind at type tag {tag} did not survive the round trip"
+						"{kind:?} at type tag {tag} did not survive the round trip"
 					);
 					covered += 1;
 				}
@@ -80,6 +70,35 @@ mod tests {
 
 		assert_eq!(current_table_name_to_entry(&current_table_name(EntryKind::Multi)), Some(EntryKind::Multi));
 		assert!(covered > 0, "the sweep constructed no kinds at all, so it proved nothing about any of them");
+	}
+
+	#[test]
+	fn a_view_entry_round_trips_on_both_the_source_and_the_partitioned_branch() {
+		// A view owns its rows, so it must name its own physical tables under tag 0x02 on both branches.
+		let storage = StorageId::view(ViewId(42));
+
+		assert_eq!(current_table_name(EntryKind::Source(storage)), "source_2_42__current");
+		assert_eq!(current_table_name(EntryKind::PartitionedSource(storage)), "partsource_2_42__current");
+
+		assert_eq!(
+			current_table_name_to_entry("source_2_42__current"),
+			Some(EntryKind::Source(storage)),
+			"a view's row table must parse back to the view, not to the table of the same id"
+		);
+		assert_eq!(
+			current_table_name_to_entry("partsource_2_42__current"),
+			Some(EntryKind::PartitionedSource(storage)),
+			"a view's partitioned row table must parse back to the view, not to the table of the same id"
+		);
+	}
+
+	#[test]
+	fn a_table_and_a_view_at_the_same_id_get_distinct_partitioned_table_names() {
+		// Collapsing the two onto one physical table would mix a view's rows with its old backing table's.
+		let table = EntryKind::PartitionedSource(StorageId::table(TableId(42)));
+		let view = EntryKind::PartitionedSource(StorageId::view(ViewId(42)));
+
+		assert_ne!(current_table_name(table), current_table_name(view));
 	}
 
 	#[test]
@@ -105,5 +124,16 @@ mod tests {
 		assert_eq!(current_table_name_to_entry("source_1__current"), None);
 		assert_eq!(current_table_name_to_entry("source_0_5__current"), None);
 		assert_eq!(current_table_name_to_entry("source_notatag_5__current"), None);
+		assert_eq!(current_table_name_to_entry("partsource_0_5__current"), None);
+		assert_eq!(
+			current_table_name_to_entry("partsource_3_5__current"),
+			None,
+			"a virtual table holds no rows, so its tag must never name a partitioned entry"
+		);
+		assert_eq!(
+			current_table_name_to_entry("partsource_5_5__current"),
+			None,
+			"a dictionary holds no rows, so its tag must never name a partitioned entry"
+		);
 	}
 }

@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	interface::{catalog::object::ObjectId, store::EntryKind},
+	interface::store::EntryKind,
 	key::{EncodableKey, Key, row::RowKey},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -25,7 +25,7 @@ pub fn page_of(key: &EncodedKey, bucket_shift: u8) -> PageId {
 			bucket: row_key.row.0 >> bucket_shift,
 		},
 		Some(Key::PartitionedRow(partitioned_key)) => PageId {
-			kind: EntryKind::PartitionedSource(ObjectId::from(partitioned_key.storage)),
+			kind: EntryKind::PartitionedSource(partitioned_key.storage),
 			bucket: 0,
 		},
 		_ => PageId {
@@ -63,10 +63,7 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
-		interface::{
-			catalog::{object::ObjectId, storage::StorageId},
-			store::EntryKind,
-		},
+		interface::{catalog::storage::StorageId, store::EntryKind},
 		key::{
 			EncodableKey,
 			partitioned_row::{PartitionedRowKey, RowLocator},
@@ -94,7 +91,7 @@ mod tests {
 			RowLocator::Row(RowNumber(100)),
 		);
 		let page = page_of(&key, 16);
-		assert_eq!(page.kind, EntryKind::PartitionedSource(ObjectId::from(storage)));
+		assert_eq!(page.kind, EntryKind::PartitionedSource(storage));
 		assert_eq!(page.bucket, 0, "partitioned pages use bucket 0 (key_range_of returns None)");
 		assert!(
 			key_range_of(page, 16).is_none(),
@@ -107,7 +104,7 @@ mod tests {
 		let storage = StorageId::table(7);
 		let a = page_of(&row(storage, 100), 16);
 		assert_eq!(a, page_of(&row(storage, 100), 16), "page_of must be a pure function of the key");
-		assert_eq!(a.kind, EntryKind::Source(storage.into()));
+		assert_eq!(a.kind, EntryKind::Source(storage));
 		assert_eq!(a.bucket, 0);
 
 		// 200 is in the same bucket as 100 at shift 16; 1<<16 starts the next bucket.

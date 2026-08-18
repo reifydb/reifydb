@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Storage-layer coverage for the PartitionedSource keyspace: partitioned rows route to
-// EntryKind::PartitionedSource(object) and a dedicated partsource_<object> persistent table.
+// Storage-layer coverage for the PartitionedSource keyspace: a partitioned row must route to its owner's own partsource table, never to the multi table.
 
 use std::sync::Arc;
 
@@ -12,7 +11,7 @@ use reifydb_core::{
 	delta::Delta,
 	event::EventBus,
 	interface::{
-		catalog::{id::TableId, object::ObjectId, storage::StorageId},
+		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 	},
 	key::partitioned_row::{PartitionedRowKey, RowLocator},
@@ -134,11 +133,11 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	let persistent = store.persistent().expect("persistent tier configured");
 	assert!(
 		persistent
-			.get(EntryKind::PartitionedSource(ObjectId::from(storage)), k_us1.as_ref(), CommitVersion(2))
+			.get(EntryKind::PartitionedSource(storage), k_us1.as_ref(), CommitVersion(2))
 			.unwrap()
 			.value()
 			.is_some(),
-		"flushed partitioned row must live in the partsource_<object> table"
+		"flushed partitioned row must live in the partsource_<storage> table"
 	);
 	assert!(
 		persistent.get(EntryKind::Multi, k_us1.as_ref(), CommitVersion(2)).unwrap().value().is_none(),

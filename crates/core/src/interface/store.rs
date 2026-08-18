@@ -10,7 +10,7 @@ use reifydb_value::{Result, util::cowvec::CowVec};
 use crate::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::catalog::{object::ObjectId, storage::StorageId},
+	interface::catalog::storage::StorageId,
 	key::{EncodableKeyRange, Key, partitioned_row::PartitionedRowKeyRange, row::RowKeyRange},
 };
 
@@ -26,15 +26,13 @@ pub enum EntryKind {
 
 	Source(StorageId),
 
-	PartitionedSource(ObjectId),
+	PartitionedSource(StorageId),
 }
 
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	match Key::decode(key) {
 		Some(Key::Row(row_key)) => EntryKind::Source(row_key.storage),
-		Some(Key::PartitionedRow(partitioned_key)) => {
-			EntryKind::PartitionedSource(ObjectId::from(partitioned_key.storage))
-		}
+		Some(Key::PartitionedRow(partitioned_key)) => EntryKind::PartitionedSource(partitioned_key.storage),
 		_ => EntryKind::Multi,
 	}
 }
@@ -45,7 +43,7 @@ pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 	}
 
 	if let (Some(start), Some(_end)) = PartitionedRowKeyRange::decode(range) {
-		return Some(EntryKind::PartitionedSource(ObjectId::from(start.storage)));
+		return Some(EntryKind::PartitionedSource(start.storage));
 	}
 
 	None
@@ -204,7 +202,7 @@ mod tests {
 
 	use super::{EntryKind, classify_key, classify_range};
 	use crate::{
-		interface::catalog::{id::TableId, object::ObjectId, storage::StorageId},
+		interface::catalog::{id::TableId, storage::StorageId},
 		key::{
 			partitioned_row::{PartitionedRowKey, RowLocator},
 			row::RowKey,
@@ -219,7 +217,7 @@ mod tests {
 	fn classify_key_partitioned_row_is_partitioned_source() {
 		let storage = StorageId::Table(TableId(7));
 		let key = PartitionedRowKey::encoded(storage, part("us"), RowLocator::Row(RowNumber(1)));
-		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(ObjectId::from(storage)));
+		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(storage));
 	}
 
 	#[test]
@@ -227,7 +225,12 @@ mod tests {
 		// A view that owns its rows must classify to its own id, not fall through to EntryKind::Multi.
 		let storage = StorageId::view(7);
 		let key = PartitionedRowKey::encoded(storage, part("us"), RowLocator::Row(RowNumber(1)));
-		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(ObjectId::from(storage)));
+		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(storage));
+		assert_ne!(
+			classify_key(&key),
+			EntryKind::PartitionedSource(StorageId::table(7)),
+			"a view and a table sharing id 7 must not classify to the same entry"
+		);
 	}
 
 	#[test]
@@ -238,27 +241,28 @@ mod tests {
 	}
 
 	#[test]
-	fn classify_range_all_partition_forms_are_partitioned_source() {
-		let storage = StorageId::Table(TableId(9));
-		let object = ObjectId::from(storage);
-		let p = part("us");
-		let last = PartitionedRowKey::encoded(storage, p, RowLocator::Row(RowNumber(5)));
-		assert_eq!(
-			classify_range(&PartitionedRowKey::partition_range(storage, p)),
-			Some(EntryKind::PartitionedSource(object))
-		);
-		assert_eq!(
-			classify_range(&PartitionedRowKey::partition_scan_range(storage, p, Some(&last))),
-			Some(EntryKind::PartitionedSource(object))
-		);
-		assert_eq!(
-			classify_range(&PartitionedRowKey::scan_range(storage, None)),
-			Some(EntryKind::PartitionedSource(object))
-		);
-		assert_eq!(
-			classify_range(&PartitionedRowKey::full_scan(storage)),
-			Some(EntryKind::PartitionedSource(object))
-		);
+	fn classify_range_all_partition_forms_are_partitioned_source_for_table_and_view() {
+		// Every range form must carry the owning variant, or a view's sweep hits the table of the same id.
+		for storage in [StorageId::Table(TableId(9)), StorageId::view(9)] {
+			let p = part("us");
+			let last = PartitionedRowKey::encoded(storage, p, RowLocator::Row(RowNumber(5)));
+			assert_eq!(
+				classify_range(&PartitionedRowKey::partition_range(storage, p)),
+				Some(EntryKind::PartitionedSource(storage))
+			);
+			assert_eq!(
+				classify_range(&PartitionedRowKey::partition_scan_range(storage, p, Some(&last))),
+				Some(EntryKind::PartitionedSource(storage))
+			);
+			assert_eq!(
+				classify_range(&PartitionedRowKey::scan_range(storage, None)),
+				Some(EntryKind::PartitionedSource(storage))
+			);
+			assert_eq!(
+				classify_range(&PartitionedRowKey::full_scan(storage)),
+				Some(EntryKind::PartitionedSource(storage))
+			);
+		}
 	}
 
 	#[test]
