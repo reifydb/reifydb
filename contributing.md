@@ -1,88 +1,46 @@
 # Contributing to ReifyDB
 
-Thank you for your interest in ReifyDB! Thank you for taking the time to learn how you can participate in the project.
+ReifyDB is the database that runs your backend logic. It is in development, and it is not accepting code contributions yet.
 
-ReifyDB is an application state database. It stores, mutates, and derives live application state under a single transactional model. The project is still in early development.
+The architecture is still moving. Core APIs and internals change often. A pull request written against this week's tree would be broken by next week's, and reviewing it would cost more than it gives, for you and for us. Code contributions open up when the project stabilizes.
 
----
+Until then, there are real ways to help.
 
-## Current Contribution Policy
+## Report a bug
 
-ReifyDB is **not currently accepting code contributions** (pull requests).
+Open an issue on [GitHub Issues](https://github.com/reifydb/reifydb/issues). Include:
 
-The architecture is still evolving rapidly, and core APIs and internal structures change frequently. Accepting external code at this stage would create friction for both contributors and maintainers.
+- The version or commit hash
+- Steps to reproduce
+- What you expected
+- What happened
+- Logs or error messages, if any
 
-Code contributions will open up as the project stabilizes. In the meantime, there are several meaningful ways to get involved.
+A bug we can reproduce is a bug we can fix.
 
----
+## Suggest a feature
 
-## How You Can Contribute
+Open an issue or start a thread on [GitHub Discussions](https://github.com/orgs/reifydb/discussions).
 
-### Bug Reports
+Lead with the problem, not the solution. Say what you are trying to do, why the current features do not cover it, and, if you have one, what you would like to see. The use case is what lets us design the right thing.
 
-If you find a bug, please open an issue on [GitHub Issues](https://github.com/reifydb/reifydb/issues).
+## Fix the docs
 
-A good bug report includes:
+If a page in the [docs](https://reifydb.com/docs) is wrong, unclear, or missing, open an issue and say what tripped you up. If an example helped or fell short, say that too. We cannot see the docs the way a first-time reader does; you can.
 
-- The version of ReifyDB you're using (or the commit hash)
-- Steps to reproduce the issue
-- What you expected to happen
-- What actually happened
-- Any relevant logs or error messages
+## Talk
 
-Clear, reproducible bug reports help fix problems faster.
+[GitHub Discussions](https://github.com/orgs/reifydb/discussions) is the place to:
 
-### Feature Requests
+- Say how you plan to use ReifyDB
+- Ask about the design and what it can do
+- Answer other people's questions
+- Argue about how application state should work
 
-Have an idea for something ReifyDB should do? Open an issue or start a thread on [GitHub Discussions](https://github.com/orgs/reifydb/discussions).
+## Before you file
 
-When suggesting a feature:
-
-- Describe the **use case**: what problem are you trying to solve?
-- Explain why existing functionality doesn't cover it
-- If possible, describe the behavior you'd like to see
-
-Focus on the problem, not just the solution. Understanding the use case helps the maintainers design the right approach.
-
-### Documentation Feedback
-
-If you find documentation that is unclear, incorrect, or missing:
-
-- Open an issue on [GitHub Issues](https://github.com/reifydb/reifydb/issues) describing what's confusing or wrong
-- Suggest improvements if you have them
-- Note whether examples or explanations helped you or fell short
-
-Good documentation matters, and outside perspectives are invaluable for improving it.
-
-### Community Discussion
-
-Join the conversation on [GitHub Discussions](https://github.com/orgs/reifydb/discussions):
-
-- Share how you're thinking about using ReifyDB
-- Ask questions about the design or capabilities
-- Help answer questions from other community members
-- Discuss application state patterns and ideas
-
----
-
-## Before You File an Issue
-
-Before opening a new issue or discussion:
-
-- **Search existing issues** to check if someone has already reported the same problem or requested the same feature
-- **Search GitHub Discussions** for related conversations
-- If you find an existing thread, add your input there instead of creating a duplicate
-
-This helps keep the project organized and makes it easier for maintainers to prioritize.
-
----
+Search [issues](https://github.com/reifydb/reifydb/issues) and [discussions](https://github.com/orgs/reifydb/discussions) first. If the thread already exists, add to it instead of opening a new one.
 
 ## License
 
-ReifyDB is licensed under [Apache-2.0](license.md). By participating in this project (filing issues, joining discussions, or contributing in the future), you agree that any contributions will be under the same license.
-
----
-
-## Thank You
-
-Every bug report, feature idea, documentation suggestion, and discussion thread helps shape ReifyDB into a better project. Your involvement is genuinely appreciated. Thank you for being part of the community.
+ReifyDB is [Apache-2.0](license.md). Anything you contribute, now or when code opens up, is under the same license.
