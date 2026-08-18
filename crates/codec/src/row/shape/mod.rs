@@ -29,11 +29,6 @@ use super::bytes::{
 };
 use crate::row::{
 	catalog::EncodedCatalogRowBuilder,
-	operator::{
-		EncodedOperatorRowBuilder, OPERATOR_HEADER_SIZE, read_created_at as read_operator_created_at,
-		read_time as read_operator_time, read_updated_at as read_operator_updated_at,
-		write_time as write_operator_time,
-	},
 	pod::{EncodedPodRowBuilder, POD_HEADER_SIZE},
 	queue::EncodedQueueRowBuilder,
 	ringbuffer::EncodedRingBufferRowBuilder,
@@ -51,19 +46,17 @@ const PACKED_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RowFamily {
 	Catalog = 0x01,
-	Operator = 0x02,
-	Pod = 0x03,
-	Table = 0x04,
-	Series = 0x05,
-	RingBuffer = 0x06,
-	Queue = 0x07,
+	Pod = 0x02,
+	Table = 0x03,
+	Series = 0x04,
+	RingBuffer = 0x05,
+	Queue = 0x06,
 }
 
 impl RowFamily {
 	pub const fn header_size(self) -> usize {
 		match self {
 			Self::Catalog => CATALOG_HEADER_SIZE,
-			Self::Operator => OPERATOR_HEADER_SIZE,
 			Self::Pod => POD_HEADER_SIZE,
 			Self::Table => SHAPE_HEADER_SIZE,
 			Self::Series => SHAPE_HEADER_SIZE,
@@ -83,12 +76,11 @@ impl RowFamily {
 	pub const fn from_u8(value: u8) -> Option<Self> {
 		match value {
 			0x01 => Some(Self::Catalog),
-			0x02 => Some(Self::Operator),
-			0x03 => Some(Self::Pod),
-			0x04 => Some(Self::Table),
-			0x05 => Some(Self::Series),
-			0x06 => Some(Self::RingBuffer),
-			0x07 => Some(Self::Queue),
+			0x02 => Some(Self::Pod),
+			0x03 => Some(Self::Table),
+			0x04 => Some(Self::Series),
+			0x05 => Some(Self::RingBuffer),
+			0x06 => Some(Self::Queue),
 			_ => None,
 		}
 	}
@@ -268,7 +260,6 @@ impl RowShape {
 	pub fn time(&self, row: &[u8]) -> Option<DateTime> {
 		match self.family {
 			RowFamily::Pod => None,
-			RowFamily::Operator => read_operator_time(row),
 			_ => read_storage_time(row),
 		}
 	}
@@ -277,7 +268,6 @@ impl RowShape {
 	pub fn created_at(&self, row: &[u8]) -> DateTime {
 		match self.family {
 			RowFamily::Pod => panic!("pod rows carry no created_at"),
-			RowFamily::Operator => read_operator_created_at(row),
 			_ => read_created_at(row),
 		}
 	}
@@ -286,7 +276,6 @@ impl RowShape {
 	pub fn updated_at(&self, row: &[u8]) -> DateTime {
 		match self.family {
 			RowFamily::Pod => panic!("pod rows carry no updated_at"),
-			RowFamily::Operator => read_operator_updated_at(row),
 			_ => read_updated_at(row),
 		}
 	}
@@ -442,7 +431,6 @@ impl RowShape {
 		let mut row = EncodedRowBuilder::zeroed(total_size);
 		match self.family {
 			RowFamily::Pod => {}
-			RowFamily::Operator => write_operator_time(row.as_mut_slice(), DateTime::MAX),
 			_ => write_fingerprint(row.as_mut_slice(), self.fingerprint),
 		}
 		reifydb_assertions! {
@@ -459,11 +447,6 @@ impl RowShape {
 	pub fn allocate_catalog(&self) -> EncodedCatalogRowBuilder {
 		assert_eq!(self.family, RowFamily::Catalog, "allocate_catalog on a shape of another family");
 		EncodedCatalogRowBuilder::wrap(self.allocate())
-	}
-
-	pub fn allocate_operator(&self) -> EncodedOperatorRowBuilder {
-		assert_eq!(self.family, RowFamily::Operator, "allocate_operator on a shape of another family");
-		EncodedOperatorRowBuilder::wrap(self.allocate())
 	}
 
 	pub fn allocate_pod(&self) -> EncodedPodRowBuilder {

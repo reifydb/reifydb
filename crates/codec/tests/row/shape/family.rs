@@ -90,6 +90,27 @@ fn the_three_thirty_three_byte_source_families_lay_their_fields_out_identically(
 }
 
 #[test]
+fn every_family_tag_keeps_the_byte_it_was_assigned_and_round_trips_through_from_u8() {
+	// The tag seeds the fingerprint and is a stored shape header's only content, so a silent renumber reinterprets every persisted row under the wrong family.
+	let expected = [
+		(RowFamily::Catalog, 0x01u8),
+		(RowFamily::Pod, 0x02),
+		(RowFamily::Table, 0x03),
+		(RowFamily::Series, 0x04),
+		(RowFamily::RingBuffer, 0x05),
+		(RowFamily::Queue, 0x06),
+	];
+
+	for (family, tag) in expected {
+		assert_eq!(family as u8, tag, "{family:?} must keep tag {tag:#04x}");
+		assert_eq!(RowFamily::from_u8(tag), Some(family), "tag {tag:#04x} must decode back to {family:?}");
+	}
+
+	assert_eq!(RowFamily::from_u8(0x00), None, "zero is not a family and must never decode");
+	assert_eq!(RowFamily::from_u8(0x07), None, "the range is dense, so the byte past the last tag is unknown");
+}
+
+#[test]
 fn a_catalog_row_reads_back_the_values_it_wrote() {
 	// A shape allocating an 8-byte header but probing the bitvec at 33 would read a field byte as a validity bit.
 	let shape = RowShape::new(RowFamily::Catalog, fields());

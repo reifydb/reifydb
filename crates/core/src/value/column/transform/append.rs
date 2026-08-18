@@ -125,7 +125,7 @@ impl Columns {
 	fn push_system_columns(&mut self, shape: &RowShape, bytes_slice: &[EncodedBytes], row_numbers: &[RowNumber]) {
 		for (index, row) in bytes_slice.iter().enumerate() {
 			let (created_at, updated_at) = match shape.family() {
-				RowFamily::Pod | RowFamily::Operator => (None, None),
+				RowFamily::Pod => (None, None),
 				_ => (Some(shape.created_at(row)), Some(shape.updated_at(row))),
 			};
 
