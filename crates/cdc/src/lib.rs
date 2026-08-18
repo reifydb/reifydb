@@ -19,6 +19,7 @@ pub mod compact;
 pub mod consume;
 pub mod error;
 pub mod produce;
+pub mod rebuild;
 pub mod storage;
 pub mod testing;
 
