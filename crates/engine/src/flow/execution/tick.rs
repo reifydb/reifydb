@@ -4,14 +4,9 @@
 use std::collections::HashMap;
 
 use reifydb_core::state::store::TimerKind;
-use reifydb_core::{
-	actors::pending::PendingWrite,
-	event::row::RowsExpiredEvent,
-	interface::{
-		catalog::flow::{FlowId, OperatorId},
-		change::Change,
-	},
-	key::{EncodableKey, operator_state::OperatorStateKey},
+use reifydb_core::interface::{
+	catalog::flow::{FlowId, OperatorId},
+	change::Change,
 };
 use reifydb_rql::flow::operator::FlowNode;
 use reifydb_sdk::flow::operator::timer::Timer as Tick;
@@ -42,7 +37,6 @@ impl FlowEngineInner {
 			self.fire_operator_tick(txn, &node, node_id, timestamp, &mut pending)?;
 		}
 
-		self.emit_operator_drop_metrics(txn);
 		Ok(())
 	}
 
@@ -102,34 +96,5 @@ impl FlowEngineInner {
 			}
 		}
 		Ok(())
-	}
-
-	fn emit_operator_drop_metrics(&self, txn: &FlowTransaction) {
-		let mut per_node: HashMap<OperatorId, u64> = HashMap::new();
-		for (key, write) in txn.pending().iter_sorted() {
-			if !matches!(write, PendingWrite::Remove { announce: false }) {
-				continue;
-			}
-			let node = OperatorStateKey::decode(key)
-				.map(|k| k.operator)
-				;
-			if let Some(node) = node {
-				*per_node.entry(node).or_default() += 1;
-			}
-		}
-
-		if per_node.is_empty() {
-			return;
-		}
-
-		let rows: u64 = per_node.values().copied().sum();
-		self.event_bus.emit(RowsExpiredEvent::new(
-			per_node.len() as u64,
-			0,
-			rows,
-			rows,
-			HashMap::new(),
-			HashMap::new(),
-		));
 	}
 }

@@ -11,9 +11,7 @@ use reifydb_codec::{
 	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
-	actors::pending::PendingWrite,
 	common::CommitVersion,
-	delta::Delta,
 	execution::ExecutionResult,
 	interface::{
 		catalog::{object::ObjectId, policy::SessionOp},
@@ -101,40 +99,6 @@ pub mod command;
 pub mod query;
 pub mod replica;
 pub mod write;
-
-use crate::multi::{pending::PendingWrites, transaction::write::MultiWriteTransaction};
-
-#[inline]
-pub(super) fn collect_transaction_writes(pending: &PendingWrites) -> Vec<(EncodedKey, Option<EncodedBytes>)> {
-	pending.iter()
-		.map(|(key, p)| match &p.delta {
-			Delta::Set {
-				bytes,
-				..
-			} => (key.clone(), Some(bytes.clone())),
-			_ => (key.clone(), None),
-		})
-		.collect()
-}
-
-#[inline]
-pub(super) fn apply_pre_commit_writes(
-	multi: &mut MultiWriteTransaction,
-	pending_writes: &[(EncodedKey, PendingWrite)],
-) -> Result<()> {
-	for (key, write) in pending_writes {
-		match write {
-			PendingWrite::Set(v) => multi.set(key, v.clone())?,
-			PendingWrite::Remove {
-				announce: true,
-			} => multi.remove(key)?,
-			PendingWrite::Remove {
-				announce: false,
-			} => multi.remove_silent(key)?,
-		}
-	}
-	Ok(())
-}
 
 pub struct Savepoint {
 	write: WriteSavepoint,
@@ -226,24 +190,6 @@ impl<'a> TestTransaction<'a> {
 		}
 
 		let offset = self.baseline;
-		let transaction_writes: Vec<(EncodedKey, Option<EncodedBytes>)> = self
-			.inner
-			.pending_writes()
-			.iter()
-			.map(|(key, pending)| match &pending.delta {
-				Delta::Set {
-					bytes,
-					..
-				} => (key.clone(), Some(bytes.clone())),
-				_ => (key.clone(), None),
-			})
-			.collect();
-
-		// View entries re-tracked by earlier captures are commit bookkeeping, not
-		// scheduler input: their downstream effects were already applied in-step by
-		// the inline scheduler when they were produced. Re-seeding them here would
-		// apply every view-over-view hop a second time, one capture later. Carry
-		// them straight back into the accumulator instead.
 		let (carried, flow_changes): (Vec<Change>, Vec<Change>) = self
 			.inner
 			.accumulator
@@ -253,24 +199,11 @@ impl<'a> TestTransaction<'a> {
 
 		let mut ctx = PreCommitContext {
 			flow_changes,
-			pending_writes: Vec::new(),
-			transaction_writes,
 			view_entries: Vec::new(),
 		};
 
-		self.inner.interceptors.pre_commit.execute(&mut ctx)?;
-
-		for (key, write) in &ctx.pending_writes {
-			match write {
-				PendingWrite::Set(v) => self.inner.cmd.as_mut().unwrap().set(key, v.clone())?,
-				PendingWrite::Remove {
-					announce: true,
-				} => self.inner.cmd.as_mut().unwrap().remove(key)?,
-				PendingWrite::Remove {
-					announce: false,
-				} => self.inner.cmd.as_mut().unwrap().remove_silent(key)?,
-			}
-		}
+		let chain = self.inner.interceptors.pre_commit.clone();
+		chain.execute(&mut Transaction::Admin(&mut *self.inner), &mut ctx)?;
 
 		for change in carried {
 			if let ChangeOrigin::Object(id) = change.origin {
@@ -426,6 +359,16 @@ impl<'a> Transaction<'a> {
 			Transaction::Query(txn) => Ok(txn.range_rev(range, scope, batch_size)),
 			Transaction::Test(t) => t.inner.range_rev(range, scope, batch_size),
 			Transaction::Replica(txn) => txn.range_rev(range, scope, batch_size),
+		}
+	}
+
+	pub fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
+		match self {
+			Transaction::Command(txn) => txn.remove_silent(key),
+			Transaction::Admin(txn) => txn.remove_silent(key),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Test(t) => t.inner.remove_silent(key),
+			Transaction::Replica(_) => panic!("Silent removes not supported on Replica transaction"),
 		}
 	}
 }

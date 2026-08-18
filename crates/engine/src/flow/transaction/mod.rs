@@ -4,12 +4,7 @@
 use std::{any::Any, collections::HashMap, mem, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	row::{operator::EncodedOperatorRow, shape::RowShape},
-	key::encoded::EncodedKey,
-};
 use reifydb_core::{
-	actors::pending::Pending,
 	common::CommitVersion,
 	interface::{
 		catalog::{flow::OperatorId, object::ObjectId},
@@ -80,9 +75,7 @@ use reifydb_transaction::{
 			ViewPreUpdateInterceptor,
 		},
 	},
-	multi::transaction::read::MultiReadTransaction,
-	single::SingleTransaction,
-	transaction::admin::AdminTransaction,
+	transaction::Transaction,
 };
 use reifydb_value::Result;
 use tracing::instrument;
@@ -101,44 +94,7 @@ use slot::{OperatorStateSlot, PersistFn};
 
 use crate::flow::host::{HostCatalog, StandardHostCatalog};
 
-pub struct TransactionalParams {
-	pub version: CommitVersion,
-	pub pending: Pending,
-	pub base_pending: Pending,
-	pub query: MultiReadTransaction,
-	pub state_query: MultiReadTransaction,
-	pub single: SingleTransaction,
-	pub catalog: Catalog,
-	pub interceptors: Interceptors,
-	pub clock: Clock,
-
-	pub view_overlay: Arc<Vec<Change>>,
-
-	pub allocators: FlowAllocators,
-}
-
-pub struct DeferredParams {
-	pub version: CommitVersion,
-	pub pending: Pending,
-	pub base_pending: Arc<Pending>,
-	pub query: MultiReadTransaction,
-	pub state_query: MultiReadTransaction,
-	pub single: SingleTransaction,
-	pub catalog: Catalog,
-	pub interceptors: Interceptors,
-	pub clock: Clock,
-
-	pub allocators: FlowAllocators,
-}
-
 pub struct FlowTransactionInner {
-	pub version: CommitVersion,
-	pub pending: Pending,
-	pub base_pending: Arc<Pending>,
-	pub pending_shapes: Vec<RowShape>,
-	pub query: MultiReadTransaction,
-	pub state_query: Option<MultiReadTransaction>,
-	pub single: SingleTransaction,
 	pub catalog: Catalog,
 	pub host_catalog: Arc<dyn HostCatalog>,
 	pub interceptors: Interceptors,
@@ -147,206 +103,84 @@ pub struct FlowTransactionInner {
 
 	pub operator_states: HashMap<OperatorId, OperatorStateSlot>,
 
-	pub prefetch: HashMap<EncodedKey, Option<EncodedOperatorRow>>,
-
 	pub store_reads: u64,
 
 	pub allocators: FlowAllocators,
 }
 
-pub enum FlowTransaction {
-	Deferred {
-		inner: FlowTransactionInner,
-	},
-
-	Transactional {
-		inner: FlowTransactionInner,
-
-		view_overlay: Arc<Vec<Change>>,
-	},
+pub struct FlowTransaction<'a, 'b> {
+	pub(crate) txn: &'a mut Transaction<'b>,
+	inner: FlowTransactionInner,
 }
 
-impl FlowTransaction {
-	fn inner(&self) -> &FlowTransactionInner {
-		match self {
-			Self::Deferred {
-				inner,
-				..
-			}
-			| Self::Transactional {
-				inner,
-				..
-			} => inner,
-		}
-	}
-
-	pub(crate) fn inner_mut(&mut self) -> &mut FlowTransactionInner {
-		match self {
-			Self::Deferred {
-				inner,
-				..
-			}
-			| Self::Transactional {
-				inner,
-				..
-			} => inner,
-		}
-	}
-
-	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(parent, catalog, interceptors, clock), fields(version = version.0))]
-	pub fn deferred(
-		parent: &AdminTransaction,
-		version: CommitVersion,
+impl<'a, 'b> FlowTransaction<'a, 'b> {
+	pub fn new(
+		txn: &'a mut Transaction<'b>,
 		catalog: Catalog,
 		interceptors: Interceptors,
 		clock: Clock,
+		allocators: FlowAllocators,
 	) -> Self {
-		let mut query = parent.multi.begin_query().unwrap();
-		query.read_as_of_version_inclusive(version);
-
-		let state_query = parent.multi.begin_query().unwrap();
-		Self::Deferred {
+		Self {
+			txn,
 			inner: FlowTransactionInner {
-				version,
-				pending: Pending::new(),
-				base_pending: Arc::new(Pending::new()),
-				pending_shapes: Vec::new(),
-				query,
-				state_query: Some(state_query),
-				single: parent.single.clone(),
 				catalog: catalog.clone(),
 				host_catalog: Arc::new(StandardHostCatalog::new(catalog)),
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock,
 				operator_states: HashMap::new(),
-				prefetch: HashMap::new(),
 				store_reads: 0,
-				allocators: FlowAllocators::new(),
+				allocators,
 			},
 		}
 	}
 
-	pub fn deferred_from_parts(params: DeferredParams) -> Self {
-		let mut query = params.query;
-		query.read_as_of_version_inclusive(params.version);
-		let state_query = params.state_query;
-
-		Self::Deferred {
-			inner: FlowTransactionInner {
-				version: params.version,
-				pending: params.pending,
-				base_pending: params.base_pending,
-				pending_shapes: Vec::new(),
-				query,
-				state_query: Some(state_query),
-				single: params.single,
-				catalog: params.catalog.clone(),
-				host_catalog: Arc::new(StandardHostCatalog::new(params.catalog)),
-				interceptors: params.interceptors,
-				accumulator: ChangeAccumulator::new(),
-				clock: params.clock,
-				operator_states: HashMap::new(),
-				prefetch: HashMap::new(),
-				store_reads: 0,
-				allocators: params.allocators,
-			},
-		}
-	}
-
-	pub fn transactional(params: TransactionalParams) -> Self {
-		Self::Transactional {
-			inner: FlowTransactionInner {
-				version: params.version,
-				pending: params.pending,
-				base_pending: Arc::new(params.base_pending),
-				pending_shapes: Vec::new(),
-				query: params.query,
-				state_query: Some(params.state_query),
-				single: params.single,
-				catalog: params.catalog.clone(),
-				host_catalog: Arc::new(StandardHostCatalog::new(params.catalog)),
-				interceptors: params.interceptors,
-				accumulator: ChangeAccumulator::new(),
-				clock: params.clock,
-				operator_states: HashMap::new(),
-				prefetch: HashMap::new(),
-				store_reads: 0,
-				allocators: params.allocators,
-			},
-			view_overlay: params.view_overlay,
-		}
+	pub(crate) fn inner_mut(&mut self) -> &mut FlowTransactionInner {
+		&mut self.inner
 	}
 
 	pub fn row_allocators(&self) -> RowAllocatorRegistry {
-		self.inner().allocators.row.clone()
+		self.inner.allocators.row.clone()
 	}
 
 	pub fn dictionary_allocators(&self) -> DictionaryAllocatorRegistry {
-		self.inner().allocators.dictionary.clone()
-	}
-
-	pub fn view_overlay(&self) -> Option<Arc<Vec<Change>>> {
-		match self {
-			Self::Transactional {
-				view_overlay,
-				..
-			} => Some(Arc::clone(view_overlay)),
-			_ => None,
-		}
+		self.inner.allocators.dictionary.clone()
 	}
 
 	pub fn version(&self) -> CommitVersion {
-		self.inner().version
+		self.txn.version()
 	}
 
 	pub fn store_reads(&self) -> u64 {
-		self.inner().store_reads
-	}
-
-	pub fn take_pending(&mut self) -> Pending {
-		mem::take(&mut self.inner_mut().pending)
-	}
-
-	pub fn take_pending_shapes(&mut self) -> Vec<RowShape> {
-		mem::take(&mut self.inner_mut().pending_shapes)
+		self.inner.store_reads
 	}
 
 	pub fn track_flow_change(&mut self, change: Change) {
 		if let ChangeOrigin::Object(id) = change.origin {
 			for diff in change.diffs {
-				self.inner_mut().accumulator.track(id, diff);
+				self.inner.accumulator.track(id, diff);
 			}
 		}
 	}
 
 	pub fn take_accumulator_entries(&mut self) -> Vec<(ObjectId, Diff)> {
-		let acc = &mut self.inner_mut().accumulator;
+		let acc = &mut self.inner.accumulator;
 		let entries: Vec<_> = acc.entries_from(0).to_vec();
 		acc.clear();
 		entries
 	}
 
-	pub(crate) fn pending(&self) -> &Pending {
-		&self.inner().pending
-	}
-
-	pub fn update_version(&mut self, new_version: CommitVersion) {
-		let inner = self.inner_mut();
-		inner.version = new_version;
-		inner.query.read_as_of_version_inclusive(new_version);
-	}
-
 	pub fn catalog(&self) -> &Catalog {
-		&self.inner().catalog
+		&self.inner.catalog
 	}
 
 	pub fn host_catalog(&self) -> &dyn HostCatalog {
-		&*self.inner().host_catalog
+		&*self.inner.host_catalog
 	}
 
 	pub fn clock(&self) -> &Clock {
-		&self.inner().clock
+		&self.inner.clock
 	}
 
 	pub fn operator_state<S, F>(&mut self, node: OperatorId, load: F) -> Result<&mut S>
@@ -354,21 +188,21 @@ impl FlowTransaction {
 		S: 'static + Send,
 		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
 	{
-		if !self.inner().operator_states.contains_key(&node) {
+		if !self.inner.operator_states.contains_key(&node) {
 			let (state, persist) = load(self)?;
 			let slot = OperatorStateSlot {
 				value: Box::new(state),
 				dirty: false,
 				persist,
 			};
-			self.inner_mut().operator_states.insert(node, slot);
+			self.inner.operator_states.insert(node, slot);
 		}
-		let slot = self.inner_mut().operator_states.get_mut(&node).expect("just inserted");
+		let slot = self.inner.operator_states.get_mut(&node).expect("just inserted");
 		Ok(slot.value.downcast_mut::<S>().expect("operator state type mismatch"))
 	}
 
 	pub fn mark_state_dirty(&mut self, node: OperatorId) {
-		if let Some(slot) = self.inner_mut().operator_states.get_mut(&node) {
+		if let Some(slot) = self.inner.operator_states.get_mut(&node) {
 			slot.dirty = true;
 		}
 	}
@@ -378,7 +212,7 @@ impl FlowTransaction {
 		S: 'static + Send,
 		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
 	{
-		if let Some(slot) = self.inner_mut().operator_states.remove(&node) {
+		if let Some(slot) = self.inner.operator_states.remove(&node) {
 			let value = slot.value.downcast::<S>().map_err(|_| ()).expect("operator state type mismatch");
 			Ok((*value, slot.persist))
 		} else {
@@ -390,7 +224,7 @@ impl FlowTransaction {
 	where
 		S: 'static + Send,
 	{
-		self.inner_mut().operator_states.insert(
+		self.inner.operator_states.insert(
 			node,
 			OperatorStateSlot {
 				value: Box::new(state),
@@ -402,7 +236,7 @@ impl FlowTransaction {
 
 	#[instrument(name = "flow::actor::flush_state", level = "debug", skip_all)]
 	pub fn flush_operator_states(&mut self) -> Result<()> {
-		let states = mem::take(&mut self.inner_mut().operator_states);
+		let states = mem::take(&mut self.inner.operator_states);
 		for (_, slot) in states {
 			if slot.dirty {
 				(slot.persist)(self, slot.value)?;
@@ -412,9 +246,8 @@ impl FlowTransaction {
 	}
 
 	pub fn install_operator_states(&mut self, states: HashMap<OperatorId, Box<dyn Any + Send>>) {
-		let inner = self.inner_mut();
 		for (node, value) in states {
-			inner.operator_states.entry(node).or_insert_with(|| OperatorStateSlot {
+			self.inner.operator_states.entry(node).or_insert_with(|| OperatorStateSlot {
 				value,
 				dirty: false,
 				persist: Box::new(|_, _| Ok(())),
@@ -423,7 +256,7 @@ impl FlowTransaction {
 	}
 
 	pub fn drain_operator_states(&mut self) -> HashMap<OperatorId, Box<dyn Any + Send>> {
-		mem::take(&mut self.inner_mut().operator_states)
+		mem::take(&mut self.inner.operator_states)
 			.into_iter()
 			.map(|(node, slot)| (node, slot.value))
 			.collect()
@@ -438,7 +271,7 @@ macro_rules! interceptor_method {
 	};
 }
 
-impl WithInterceptors for FlowTransaction {
+impl WithInterceptors for FlowTransaction<'_, '_> {
 	interceptor_method!(table_row_pre_insert_interceptors, table_row_pre_insert, TableRowPreInsertInterceptor);
 	interceptor_method!(table_row_post_insert_interceptors, table_row_post_insert, TableRowPostInsertInterceptor);
 	interceptor_method!(table_row_pre_update_interceptors, table_row_pre_update, TableRowPreUpdateInterceptor);

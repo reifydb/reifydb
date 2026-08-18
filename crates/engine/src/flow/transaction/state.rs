@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	row::{bytes::EncodedBytes, operator::EncodedOperatorRow, shape::RowShape},
+	row::{operator::EncodedOperatorRow, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -13,7 +13,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 };
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::{Result, error::Error as ValueError};
+use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
 use super::FlowTransaction;
@@ -35,7 +35,7 @@ impl StateScope {
 	}
 }
 
-impl FlowTransaction {
+impl FlowTransaction<'_, '_> {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
@@ -265,79 +265,23 @@ impl FlowTransaction {
 		keys: &[EncodedKey],
 	) -> Result<MultiVersionBatch> {
 		let version = self.version();
-		let encoded: Vec<EncodedKey> = keys.iter().map(|key| scope.encode(id, key)).collect();
-
 		let mut items: Vec<MultiVersionRow> = Vec::new();
-		let mut to_batch: Vec<EncodedKey> = Vec::new();
 
-		for encoded_key in &encoded {
-			match self.lookup_overlays(encoded_key) {
-				Some(None) => continue,
-				Some(Some(row)) => items.push(MultiVersionRow {
-					key: encoded_key.clone(),
-					bytes: row,
+		for key in keys {
+			let encoded_key = scope.encode(id, key);
+			if let Some(row) = self.get(&encoded_key)? {
+				items.push(MultiVersionRow {
+					key: encoded_key,
+					bytes: row.into_bytes(),
 					version,
-				}),
-				None => to_batch.push(encoded_key.clone()),
+				});
 			}
 		}
-
-		self.fetch_external(&to_batch, &mut items)?;
 
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
 		})
-	}
-
-	#[inline]
-	fn lookup_overlays(&self, encoded_key: &EncodedKey) -> Option<Option<EncodedBytes>> {
-		let inner = self.inner();
-		let pending = if inner.pending.is_removed(encoded_key) {
-			Some(None)
-		} else {
-			inner.pending.get(encoded_key).map(|row| Some(row.clone()))
-		};
-		if pending.is_some() {
-			return pending;
-		}
-
-		if inner.base_pending.is_removed(encoded_key) {
-			return Some(None);
-		}
-		if let Some(row) = inner.base_pending.get(encoded_key) {
-			return Some(Some(row.clone()));
-		}
-
-		inner.prefetch.get(encoded_key).map(|row| row.clone().map(EncodedOperatorRow::into_bytes))
-	}
-
-	#[inline]
-	fn fetch_external(&mut self, to_batch: &[EncodedKey], items: &mut Vec<MultiVersionRow>) -> Result<()> {
-		if to_batch.is_empty() {
-			return Ok(());
-		}
-
-		let inner = self.inner_mut();
-		inner.store_reads += to_batch.len() as u64;
-		let found = inner.state_query.as_ref().unwrap().get_many(to_batch)?;
-		for encoded_key in to_batch {
-			match found.get(encoded_key) {
-				Some(multi) => {
-					inner.prefetch.insert(
-						encoded_key.clone(),
-						Some(EncodedOperatorRow::try_from(multi.bytes.clone())
-							.map_err(ValueError::from)?),
-					);
-					items.push(multi.clone());
-				}
-				None => {
-					inner.prefetch.insert(encoded_key.clone(), None);
-				}
-			}
-		}
-
-		Ok(())
 	}
 
 	fn scoped_set(&mut self, scope: StateScope, id: OperatorId, key: &EncodedKey, value: EncodedOperatorRow) -> Result<()> {

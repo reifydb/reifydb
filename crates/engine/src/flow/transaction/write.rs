@@ -6,35 +6,36 @@ use reifydb_value::Result;
 
 use super::FlowTransaction;
 
-impl FlowTransaction {
+impl FlowTransaction<'_, '_> {
 	pub fn set(&mut self, key: &EncodedKey, value: impl Into<EncodedBytes>) -> Result<()> {
-		self.inner_mut().pending.insert(key.clone(), value.into());
-		Ok(())
+		self.txn.set(key, value.into())
 	}
 
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.inner_mut().pending.remove(key.clone());
-		Ok(())
+		self.txn.remove(key)
 	}
 
 	pub fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
-		self.inner_mut().pending.remove_silent(key.clone());
-		Ok(())
+		self.txn.remove_silent(key)
 	}
 
 	pub fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) -> Result<()> {
-		self.inner_mut().pending.insert_batch(keys, values);
+		for (key, value) in keys.iter().zip(values.iter()) {
+			self.txn.set(key, value.clone())?;
+		}
 		Ok(())
 	}
 
 	pub fn remove_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
-		self.inner_mut().pending.remove_batch(keys);
+		for key in keys {
+			self.txn.remove(key)?;
+		}
 		Ok(())
 	}
 
 	pub fn remove_silent_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
 		for key in keys {
-			self.inner_mut().pending.remove_silent(key.clone());
+			self.txn.remove_silent(key)?;
 		}
 		Ok(())
 	}

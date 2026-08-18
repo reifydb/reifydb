@@ -14,7 +14,7 @@ use tracing::instrument;
 
 use super::FlowTransaction;
 
-impl FlowTransaction {
+impl FlowTransaction<'_, '_> {
 	pub fn find_dictionary(&self, id: DictionaryId) -> Option<Dictionary> {
 		self.catalog().cache().find_dictionary_at(id, self.version())
 	}

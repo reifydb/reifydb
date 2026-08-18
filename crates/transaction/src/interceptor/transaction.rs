@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	actors::pending::PendingWrite,
 	common::CommitVersion,
 	interface::{
 		catalog::object::ObjectId,
@@ -16,14 +14,11 @@ use crate::{
 	TransactionId,
 	change::{RowChange, TransactionalCatalogChanges},
 	interceptor::chain::InterceptorChain,
+	transaction::Transaction,
 };
 
 pub struct PreCommitContext {
 	pub flow_changes: Vec<Change>,
-
-	pub pending_writes: Vec<(EncodedKey, PendingWrite)>,
-
-	pub transaction_writes: Vec<(EncodedKey, Option<EncodedBytes>)>,
 
 	pub view_entries: Vec<(ObjectId, Diff)>,
 }
@@ -32,8 +27,6 @@ impl PreCommitContext {
 	pub fn new() -> Self {
 		Self {
 			flow_changes: Vec::new(),
-			pending_writes: Vec::new(),
-			transaction_writes: Vec::new(),
 			view_entries: Vec::new(),
 		}
 	}
@@ -46,13 +39,13 @@ impl Default for PreCommitContext {
 }
 
 pub trait PreCommitInterceptor: Send + Sync {
-	fn intercept(&self, ctx: &mut PreCommitContext) -> Result<()>;
+	fn intercept(&self, txn: &mut Transaction<'_>, ctx: &mut PreCommitContext) -> Result<()>;
 }
 
 impl InterceptorChain<dyn PreCommitInterceptor + Send + Sync> {
-	pub fn execute(&self, ctx: &mut PreCommitContext) -> Result<()> {
+	pub fn execute(&self, txn: &mut Transaction<'_>, ctx: &mut PreCommitContext) -> Result<()> {
 		for interceptor in &self.interceptors {
-			interceptor.intercept(ctx)?;
+			interceptor.intercept(txn, ctx)?;
 		}
 		Ok(())
 	}
@@ -60,14 +53,14 @@ impl InterceptorChain<dyn PreCommitInterceptor + Send + Sync> {
 
 pub struct ClosurePreCommitInterceptor<F>
 where
-	F: Fn(&mut PreCommitContext) -> Result<()> + Send + Sync,
+	F: Fn(&mut Transaction<'_>, &mut PreCommitContext) -> Result<()> + Send + Sync,
 {
 	closure: F,
 }
 
 impl<F> ClosurePreCommitInterceptor<F>
 where
-	F: Fn(&mut PreCommitContext) -> Result<()> + Send + Sync,
+	F: Fn(&mut Transaction<'_>, &mut PreCommitContext) -> Result<()> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -78,7 +71,7 @@ where
 
 impl<F> Clone for ClosurePreCommitInterceptor<F>
 where
-	F: Fn(&mut PreCommitContext) -> Result<()> + Send + Sync + Clone,
+	F: Fn(&mut Transaction<'_>, &mut PreCommitContext) -> Result<()> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -89,16 +82,16 @@ where
 
 impl<F> PreCommitInterceptor for ClosurePreCommitInterceptor<F>
 where
-	F: Fn(&mut PreCommitContext) -> Result<()> + Send + Sync,
+	F: Fn(&mut Transaction<'_>, &mut PreCommitContext) -> Result<()> + Send + Sync,
 {
-	fn intercept(&self, ctx: &mut PreCommitContext) -> Result<()> {
-		(self.closure)(ctx)
+	fn intercept(&self, txn: &mut Transaction<'_>, ctx: &mut PreCommitContext) -> Result<()> {
+		(self.closure)(txn, ctx)
 	}
 }
 
 pub fn pre_commit<F>(f: F) -> ClosurePreCommitInterceptor<F>
 where
-	F: Fn(&mut PreCommitContext) -> Result<()> + Send + Sync + Clone + 'static,
+	F: Fn(&mut Transaction<'_>, &mut PreCommitContext) -> Result<()> + Send + Sync + Clone + 'static,
 {
 	ClosurePreCommitInterceptor::new(f)
 }

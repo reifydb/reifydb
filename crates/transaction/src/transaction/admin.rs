@@ -8,7 +8,6 @@ use reifydb_codec::{
 	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
-	actors::pending::PendingWrite,
 	common::CommitVersion,
 	event::EventBus,
 	execution::ExecutionResult,
@@ -91,7 +90,7 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{RqlExecutor, Transaction, apply_pre_commit_writes, collect_transaction_writes, write::Write},
+	transaction::{RqlExecutor, Transaction, write::Write},
 };
 
 pub struct AdminTransaction {
@@ -216,17 +215,15 @@ impl AdminTransaction {
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
 		let mut ctx = self.build_pre_commit_context()?;
-		self.interceptors.pre_commit.execute(&mut ctx)?;
+		let chain = self.interceptors.pre_commit.clone();
+		chain.execute(&mut Transaction::Admin(&mut *self), &mut ctx)?;
 		self.finalize_commit(ctx)
 	}
 
 	#[inline]
 	fn build_pre_commit_context(&mut self) -> Result<PreCommitContext> {
-		let transaction_writes = collect_transaction_writes(self.pending_writes());
 		Ok(PreCommitContext {
 			flow_changes: self.accumulator.take_changes(CommitVersion(0), self.clock.now())?,
-			pending_writes: Vec::new(),
-			transaction_writes,
 			view_entries: Vec::new(),
 		})
 	}
@@ -247,7 +244,7 @@ impl AdminTransaction {
 				}
 			);
 		}
-		let mut multi = self.apply_writes_and_take_command(&ctx.pending_writes)?;
+		let mut multi = self.take_command()?;
 		let (changes, row_changes) = self.take_catalog_and_row_changes();
 		let flow_changes = self.merge_view_entries(ctx.flow_changes, ctx.view_entries)?;
 		let version = self.commit_and_run_post_commit(&mut multi, flow_changes, changes, row_changes)?;
@@ -255,14 +252,10 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	fn apply_writes_and_take_command(
-		&mut self,
-		pending_writes: &[(EncodedKey, PendingWrite)],
-	) -> Result<MultiWriteTransaction> {
-		let Some(mut multi) = self.cmd.take() else {
+	fn take_command(&mut self) -> Result<MultiWriteTransaction> {
+		let Some(multi) = self.cmd.take() else {
 			unreachable!("Transaction state inconsistency")
 		};
-		apply_pre_commit_writes(&mut multi, pending_writes)?;
 		self.state = TransactionState::Committed;
 		Ok(multi)
 	}
@@ -425,6 +418,12 @@ impl AdminTransaction {
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove(key)
+	}
+
+	#[inline]
+	pub fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().remove_silent(key)
 	}
 
 	#[inline]

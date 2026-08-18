@@ -90,7 +90,7 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{RqlExecutor, Transaction, apply_pre_commit_writes, collect_transaction_writes, write::Write},
+	transaction::{RqlExecutor, Transaction, write::Write},
 };
 
 pub struct CommandTransaction {
@@ -207,23 +207,21 @@ impl CommandTransaction {
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
 		let mut ctx = self.build_pre_commit_context()?;
-		self.interceptors.pre_commit.execute(&mut ctx)?;
+		let chain = self.interceptors.pre_commit.clone();
+		chain.execute(&mut Transaction::Command(&mut *self), &mut ctx)?;
 		self.finalize_commit(ctx, false)
 	}
 
 	#[inline]
 	fn build_pre_commit_context(&mut self) -> Result<PreCommitContext> {
-		let transaction_writes = collect_transaction_writes(self.pending_writes());
 		Ok(PreCommitContext {
 			flow_changes: self.accumulator.take_changes(CommitVersion(0), self.clock.now())?,
-			pending_writes: Vec::new(),
-			transaction_writes,
 			view_entries: Vec::new(),
 		})
 	}
 
 	fn finalize_commit(&mut self, ctx: PreCommitContext, unchecked: bool) -> Result<CommitVersion> {
-		let Some(mut multi) = self.cmd.take() else {
+		let Some(multi) = self.cmd.take() else {
 			unreachable!("Transaction state inconsistency")
 		};
 		reifydb_assertions! {
@@ -234,23 +232,12 @@ impl CommandTransaction {
 				 rolled-back/poisoned transaction"
 			);
 		}
-		let id = self.apply_writes_and_mark_committed(&mut multi, &ctx)?;
+		let id = multi.id();
+		self.state = TransactionState::Committed;
 		let row_changes = take(&mut self.row_changes);
 		let flow_changes = self.merge_view_entries(ctx.flow_changes, ctx.view_entries)?;
 		let version = self.commit_and_post(multi, id, flow_changes, row_changes, unchecked)?;
 		Ok(version)
-	}
-
-	#[inline]
-	fn apply_writes_and_mark_committed(
-		&mut self,
-		multi: &mut MultiWriteTransaction,
-		ctx: &PreCommitContext,
-	) -> Result<TransactionId> {
-		apply_pre_commit_writes(multi, &ctx.pending_writes)?;
-		let id = multi.id();
-		self.state = TransactionState::Committed;
-		Ok(id)
 	}
 
 	#[inline]
@@ -310,7 +297,8 @@ impl CommandTransaction {
 	pub fn commit_unchecked(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
 		let mut ctx = self.build_pre_commit_context()?;
-		self.interceptors.pre_commit.execute(&mut ctx)?;
+		let chain = self.interceptors.pre_commit.clone();
+		chain.execute(&mut Transaction::Command(&mut *self), &mut ctx)?;
 		self.finalize_commit(ctx, true)
 	}
 
