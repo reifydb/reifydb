@@ -23,6 +23,7 @@ pub(crate) trait DictionaryOperations {
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>>;
 
+	#[allow(dead_code)]
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>>;
 }
 
