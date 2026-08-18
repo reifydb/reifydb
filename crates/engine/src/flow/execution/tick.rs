@@ -11,7 +11,7 @@ use reifydb_core::{
 		catalog::flow::{FlowId, OperatorId},
 		change::Change,
 	},
-	key::{EncodableKey, operator_state::{GroupId, Keyspace, OperatorStateKey}},
+	key::{EncodableKey, operator_state::OperatorStateKey},
 };
 use reifydb_rql::flow::operator::FlowNode;
 use reifydb_sdk::flow::operator::timer::Timer as Tick;

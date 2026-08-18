@@ -17,8 +17,6 @@ use reifydb_evaluate::expression::{
 		context::{CompileContext, EvalContext},
 	};
 use reifydb_evaluate::stack::SymbolTable;
-use crate::{
-};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;

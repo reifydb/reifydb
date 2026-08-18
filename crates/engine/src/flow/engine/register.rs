@@ -4,7 +4,7 @@
 use std::mem;
 
 use reifydb_core::{
-	common::{JoinType, WindowKind},
+	common::JoinType,
 	interface::{
 		catalog::{
 			flow::{FlowId, OperatorId},
@@ -33,12 +33,10 @@ use reifydb_rql::{
 };
 use reifydb_value::config::Config;
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_value::{Result, error::Error, fragment::Fragment, reifydb_assertions, value::duration::Duration};
+use reifydb_value::{Result, error::Error, fragment::Fragment, reifydb_assertions};
 use tracing::instrument;
 
 use super::eval::evaluate_operator_config;
-#[cfg(reifydb_target = "host")]
-use crate::flow::operator::apply::ApplyOperator;
 use crate::flow::{
 	engine::FlowEngineInner,
 	error::FlowGraphError,

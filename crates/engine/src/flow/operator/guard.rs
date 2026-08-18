@@ -53,24 +53,20 @@ pub fn check_apply(caps: &[OperatorCapability], change: &Change) -> Result<(), C
 }
 
 pub fn enforce_apply_capabilities(operator_id: OperatorId, caps: &[OperatorCapability], change: &Change) {
-	if let Err(v) = check_apply(caps, change) {
-		match v {
-			CapabilityViolation::Apply {
-				kind,
-				missing,
-			} => {
-				error!(
-					operator_id = operator_id.0,
-					kind = kind,
-					missing_capability = ?missing,
-					"operator received {} diff but does not declare the corresponding capability ({:?}); the operator's author did not opt into this change kind. Aborting to prevent undefined behavior.",
-					kind,
-					missing,
-				);
-				abort();
-			}
-			_ => unreachable!(),
-		}
+	if let Err(CapabilityViolation::Apply {
+		kind,
+		missing,
+	}) = check_apply(caps, change)
+	{
+		error!(
+			operator_id = operator_id.0,
+			kind = kind,
+			missing_capability = ?missing,
+			"operator received {} diff but does not declare the corresponding capability ({:?}); the operator's author did not opt into this change kind. Aborting to prevent undefined behavior.",
+			kind,
+			missing,
+		);
+		abort();
 	}
 }
 

@@ -4,10 +4,7 @@
 use std::{
 	cmp::Ordering,
 	collections, iter,
-	ops::{
-		Bound::{Excluded, Included, Unbounded},
-		RangeBounds,
-	},
+	ops::Bound::{Excluded, Included, Unbounded},
 	vec,
 };
 

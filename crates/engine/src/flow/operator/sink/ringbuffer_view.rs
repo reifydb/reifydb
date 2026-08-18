@@ -6,7 +6,7 @@ use std::{cell::UnsafeCell, collections::HashMap};
 use reifydb_core::interface::flow::OperatorCapability;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_codec::{
-	row::{operator::EncodedOperatorRow, shape::{RowFamily, RowShape, RowShapeField}},
+	row::{bytes::EncodedBytes, operator::EncodedOperatorRow, shape::{RowFamily, RowShape, RowShapeField}},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
@@ -328,9 +328,9 @@ impl SinkRingBufferViewOperator {
 		let row_count = source.row_count();
 		let field_columns = shape_field_columns(source, shape);
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
-		let mut evicted_rows: Vec<EncodedOperatorRow> = Vec::new();
+		let mut evicted_rows: Vec<EncodedBytes> = Vec::new();
 		let mut row_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut row_values: Vec<EncodedOperatorRow> = Vec::with_capacity(row_count);
+		let mut row_values: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 
 		if self.is_partitioned() {
 			let verified = self.verified_partitions();
@@ -410,9 +410,9 @@ impl SinkRingBufferViewOperator {
 		field_columns: &[usize],
 		rows: &[usize],
 		evicted_rns: &mut Vec<RowNumber>,
-		evicted_rows: &mut Vec<EncodedOperatorRow>,
+		evicted_rows: &mut Vec<EncodedBytes>,
 		row_keys: &mut Vec<EncodedKey>,
-		row_values: &mut Vec<EncodedOperatorRow>,
+		row_values: &mut Vec<EncodedBytes>,
 	) -> Result<()> {
 		let incoming = rows.len() as u64;
 		let mut evict_needed = (meta.count + incoming).saturating_sub(self.capacity);
@@ -427,7 +427,7 @@ impl SinkRingBufferViewOperator {
 			};
 			if self.propagate_evictions {
 				evicted_rns.push(source_rn.unwrap_or(oldest_rn));
-				evicted_rows.push(row);
+				evicted_rows.push(row.into_bytes());
 			}
 			txn.remove_silent(&pre_key)?;
 			meta.count = meta.count.saturating_sub(1);
@@ -469,7 +469,7 @@ impl SinkRingBufferViewOperator {
 		view: &View,
 		shape: &RowShape,
 		evicted_rns: Vec<RowNumber>,
-		evicted_rows: Vec<EncodedOperatorRow>,
+		evicted_rows: Vec<EncodedBytes>,
 	) -> Result<Option<Diff>> {
 		if !self.propagate_evictions || evicted_rows.is_empty() {
 			return Ok(None);

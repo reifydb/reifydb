@@ -7,7 +7,7 @@ use rayon::Scope;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_codec::{
-	row::{operator::EncodedOperatorRow, shape::RowShape},
+	row::shape::RowShape,
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{

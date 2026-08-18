@@ -45,6 +45,7 @@ impl FlowLineageTracker {
 mod tests {
 	use std::collections::BTreeSet;
 
+	use reifydb_core::common::TimeDomain;
 	use reifydb_core::interface::catalog::{
 		flow::{FlowId, OperatorId},
 		id::{TableId, ViewId},
@@ -75,6 +76,7 @@ mod tests {
 			vec![
 				OperatorDef::SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				OperatorDef::SinkTableView {
 					view: ViewId(200),
@@ -112,6 +114,7 @@ mod tests {
 			vec![
 				OperatorDef::SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				OperatorDef::SinkTableView {
 					view: ViewId(200),
@@ -135,6 +138,7 @@ mod tests {
 			vec![
 				OperatorDef::SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				OperatorDef::SinkTableView {
 					view: ViewId(200),
@@ -150,6 +154,7 @@ mod tests {
 			vec![
 				OperatorDef::SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				OperatorDef::SinkTableView {
 					view: ViewId(201),

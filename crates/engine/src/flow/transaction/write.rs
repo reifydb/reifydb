@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::{bytes::EncodedBytes, operator::EncodedOperatorRow}};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_value::Result;
 
 use super::FlowTransaction;
@@ -46,21 +46,19 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedOperatorRow]) -> Result<()> {
+	pub fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) -> Result<()> {
 		match self {
 			Self::Committing {
 				cmd,
 				..
 			} => {
 				for (key, value) in keys.iter().zip(values.iter()) {
-					cmd.set(key, value.clone().into_bytes())?;
+					cmd.set(key, value.clone())?;
 				}
 				Ok(())
 			}
 			_ => {
-				let bytes: Vec<EncodedBytes> =
-					values.iter().map(|value| value.clone().into_bytes()).collect();
-				self.inner_mut().pending.insert_batch(keys, &bytes);
+				self.inner_mut().pending.insert_batch(keys, values);
 				Ok(())
 			}
 		}
@@ -108,7 +106,7 @@ impl FlowTransaction {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_codec::{row::operator::EncodedOperatorRow, key::encoded::EncodedKey};
+	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::common::CommitVersion;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::admin::AdminTransaction};
@@ -121,12 +119,12 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
-	fn make_value(s: &str) -> EncodedOperatorRow {
-		EncodedOperatorRow(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedBytes {
+		EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn get_row(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedOperatorRow> {
-		parent.get(key).unwrap().map(|m| m.row.clone())
+	fn get_row(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedBytes> {
+		parent.get(key).unwrap().map(|m| m.bytes.clone())
 	}
 
 	#[test]

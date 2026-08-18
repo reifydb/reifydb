@@ -8,10 +8,12 @@ use reifydb_codec::row::shape::RowFamily;
 use reifydb_codec::{
 	row::{
 		bytes::SHAPE_HEADER_SIZE,
-		operator::{EncodedOperatorRow, read_created_at, read_updated_at},
+		bytes::{EncodedBytes, RowBuilder},
+		table::EncodedTableRow,
+		operator::{read_created_at, read_updated_at},
 		shape::RowShape,
 	},
-	key::{encode_u8, encode_u64_varint, encoded::EncodedKey, serializer::KeySerializer},
+	key::{encode_u8, encode_u64, encoded::EncodedKey, serializer::KeySerializer},
 };
 use reifydb_core::{
 	interface::{
@@ -118,7 +120,7 @@ impl SinkTableViewOperator {
 	fn row_key(&self, row: RowNumber) -> EncodedKey {
 		let mut buf = Vec::with_capacity(self.key_prefix.len() + 9);
 		buf.extend_from_slice(&self.key_prefix);
-		encode_u64_varint(row.0, &mut buf);
+		buf.extend_from_slice(&encode_u64(row.0));
 		EncodedKey::new(buf)
 	}
 
@@ -208,7 +210,7 @@ impl SinkTableViewOperator {
 		let row_count = source.row_count();
 		let field_columns = shape_field_columns(source, shape);
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut encoded_rows: Vec<EncodedOperatorRow> = Vec::with_capacity(row_count);
+		let mut encoded_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 
 		let verified = self.verified_partitions();
 		let cache = self.created_at_cache();
@@ -228,7 +230,7 @@ impl SinkTableViewOperator {
 			} else {
 				self.clustered_key(source, row_idx, row_number)
 			};
-			remember_created_at(cache, row_number, read_created_at(encoded.bytes()));
+			remember_created_at(cache, row_number, read_created_at(&encoded));
 			keys.push(key);
 			encoded_rows.push(encoded);
 		}
@@ -258,7 +260,7 @@ impl SinkTableViewOperator {
 		let field_columns = shape_field_columns(source_post, shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_encoded_rows: Vec<EncodedOperatorRow> = Vec::with_capacity(row_count);
+		let mut post_encoded_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 		let verified = self.verified_partitions();
 		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
@@ -328,16 +330,16 @@ impl SinkTableViewOperator {
 			if let Some(c) = prior_created
 				&& post_encoded.len() >= SHAPE_HEADER_SIZE
 			{
-				let updated = read_updated_at(post_encoded.bytes());
-				let mut builder = post_encoded.thaw();
+				let updated = read_updated_at(&post_encoded);
+				let mut builder = EncodedTableRow::from(post_encoded).thaw();
 				builder.set_timestamps(c, updated);
-				post_encoded = builder.freeze();
+				post_encoded = builder.freeze_bytes();
 			}
 
 			if pre_row_number != post_row_number {
 				cache.remove(&pre_row_number);
 			}
-			remember_created_at(cache, post_row_number, read_created_at(post_encoded.bytes()));
+			remember_created_at(cache, post_row_number, read_created_at(&post_encoded));
 
 			pre_keys.push(pre_key);
 			post_keys.push(post_key);

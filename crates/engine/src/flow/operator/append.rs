@@ -84,19 +84,6 @@ impl AppendOperator {
 		}
 	}
 
-	#[cfg(test)]
-	pub(crate) fn new_for_state_tests(node: OperatorId, ttl_nanos: Option<u64>) -> Self {
-		Self {
-			node,
-			parents: Vec::new(),
-			input_nodes: Vec::new(),
-			row_number_provider: RowNumberProvider::new(node),
-			ttl_nanos,
-			version_epoch: VersionEpoch::new(),
-			evict_cursor: RefCell::new(None),
-		}
-	}
-
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
 		self.parents[0].output_schema()
 	}

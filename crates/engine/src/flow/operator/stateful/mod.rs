@@ -10,6 +10,7 @@ pub mod keyed;
 pub mod raw;
 pub mod row;
 pub mod single;
+#[cfg(test)]
 pub mod test_utils;
 pub mod utils;
 pub mod window;

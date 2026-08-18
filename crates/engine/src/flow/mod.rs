@@ -14,14 +14,15 @@
 //! (a clock, a random number, an external read that may differ between runs) break this guarantee and break replay.
 
 pub mod builder;
-pub(crate) mod catalog;
 pub mod engine;
 pub mod error;
 pub(crate) mod execution;
 pub mod host;
 pub(crate) mod lineage;
 pub mod operator;
+pub mod subsystem;
 pub mod transaction;
 pub(crate) mod transactional;
+pub mod transactional_engine;
 
 pub(crate) use operator::Operator;

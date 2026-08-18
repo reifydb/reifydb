@@ -61,7 +61,7 @@ impl FlowConfigurator {
 		self
 	}
 
-	pub(crate) fn configure(self) -> FlowConfig {
+	pub fn configure(self) -> FlowConfig {
 		FlowConfig {
 			operators_dir: self.operators_dir,
 			custom_operators: self.custom_operators,

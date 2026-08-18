@@ -2,26 +2,20 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::{
-	catalog::{
-		ringbuffer::{RingBufferColumnToCreate, RingBufferToCreate},
-		series::{SeriesColumnToCreate, SeriesToCreate},
-		table::{TableColumnToCreate, TableToCreate},
-		view::ViewToCreate,
-	},
+	catalog::view::ViewToCreate,
 	store::{row_settings::create::create_row_settings, view::create::ViewStorageConfig},
 };
 use reifydb_core::{
-	common::TimeSource,
 	error::diagnostic::catalog::view_already_exists,
 	interface::catalog::{change::CatalogTrackViewChangeOperations, storage::StorageId},
 	row::RowSettings,
 	value::column::columns::Columns,
 };
-use reifydb_rql::nodes::{CompiledViewStorageKind, CreateDeferredViewNode};
+use reifydb_rql::nodes::CreateDeferredViewNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{fragment::Fragment, return_error, value::Value};
+use reifydb_value::{return_error, value::Value};
 
-use super::{create_deferred_view_flow, extract_view_sort};
+use super::{create_view_flow, create_view_storage, extract_view_sort};
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_deferred_view(
@@ -46,7 +40,14 @@ pub(crate) fn create_deferred_view(
 		return_error!(view_already_exists(plan.view.clone(), plan.namespace.name(), view.name(),));
 	}
 
-	let storage = create_underlying_storage(services, txn, &plan)?;
+	let storage = create_view_storage(
+		services,
+		txn,
+		&plan.view,
+		plan.namespace.id(),
+		&plan.storage_kind,
+		&plan.columns,
+	)?;
 
 	if let Some(ttl) = &plan.ttl {
 		let object_id = match &storage {
@@ -86,7 +87,7 @@ pub(crate) fn create_deferred_view(
 	)?;
 	txn.track_view_created(result.clone())?;
 
-	create_deferred_view_flow(&services.catalog, &services.routines, txn, &result, *plan.as_clause)?;
+	create_view_flow(&services.catalog, &services.routines, txn, &result, *plan.as_clause)?;
 
 	Ok(Columns::single_row([
 		("id", Value::Uint8(result.id().0)),
@@ -94,123 +95,6 @@ pub(crate) fn create_deferred_view(
 		("view", Value::Utf8(plan.view.text().to_string())),
 		("created", Value::Boolean(true)),
 	]))
-}
-
-fn create_underlying_storage(
-	services: &Services,
-	txn: &mut AdminTransaction,
-	plan: &CreateDeferredViewNode,
-) -> Result<ViewStorageConfig> {
-	let storage_name = Fragment::internal(format!("__view_{}", plan.view.text()));
-	let namespace = plan.namespace.id();
-
-	match &plan.storage_kind {
-		CompiledViewStorageKind::Table {
-			partition_by,
-		} => {
-			let columns: Vec<TableColumnToCreate> = plan
-				.columns
-				.iter()
-				.map(|c| TableColumnToCreate {
-					name: c.name.clone(),
-					fragment: c.fragment.clone(),
-					constraint: c.constraint.clone(),
-					properties: vec![],
-					auto_increment: false,
-					dictionary_id: None,
-				})
-				.collect();
-
-			let table = services.catalog.create_table(
-				txn,
-				TableToCreate {
-					name: storage_name,
-					namespace,
-					columns,
-					primary_key_columns: None,
-					partition_by: partition_by.clone(),
-					underlying: true,
-					time: TimeSource::Processing,
-				},
-			)?;
-
-			Ok(ViewStorageConfig::Table {
-				storage: table.id,
-			})
-		}
-		CompiledViewStorageKind::RingBuffer {
-			capacity,
-			partition_by,
-		} => {
-			let columns: Vec<RingBufferColumnToCreate> = plan
-				.columns
-				.iter()
-				.map(|c| RingBufferColumnToCreate {
-					name: c.name.clone(),
-					fragment: c.fragment.clone(),
-					constraint: c.constraint.clone(),
-					properties: vec![],
-					auto_increment: false,
-					dictionary_id: None,
-				})
-				.collect();
-
-			let ringbuffer = services.catalog.create_ringbuffer(
-				txn,
-				RingBufferToCreate {
-					name: storage_name,
-					namespace,
-					columns,
-					capacity: *capacity,
-					partition_by: partition_by.clone(),
-					underlying: true,
-					time: TimeSource::Processing,
-				},
-			)?;
-
-			Ok(ViewStorageConfig::RingBuffer {
-				storage: ringbuffer.id,
-				capacity: *capacity,
-			})
-		}
-		CompiledViewStorageKind::Series {
-			key,
-			partition_by,
-		} => {
-			let columns: Vec<SeriesColumnToCreate> = plan
-				.columns
-				.iter()
-				.map(|c| SeriesColumnToCreate {
-					name: c.name.clone(),
-					fragment: c.fragment.clone(),
-					constraint: c.constraint.clone(),
-					properties: vec![],
-					auto_increment: false,
-					dictionary_id: None,
-				})
-				.collect();
-
-			let series = services.catalog.create_series(
-				txn,
-				SeriesToCreate {
-					name: storage_name,
-					namespace,
-					columns,
-					tag: None,
-					key: key.clone(),
-					partition_by: partition_by.clone(),
-					underlying: true,
-					time: TimeSource::Processing,
-				},
-			)?;
-
-			Ok(ViewStorageConfig::Series {
-				storage: series.id,
-				key: key.clone(),
-				tag: None,
-			})
-		}
-	}
 }
 
 #[cfg(test)]

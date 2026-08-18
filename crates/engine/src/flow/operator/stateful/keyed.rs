@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	row::{operator::EncodedOperatorRow, shape::{RowFamily, RowShape, RowShapeField}},
+	row::{operator::EncodedOperatorRow, shape::RowShape},
 	key::{encoded::EncodedKey, serializer::KeySerializer},
 };
 use reifydb_value::{
@@ -131,12 +131,12 @@ pub mod tests {
 		// Modify and save - with_key_types uses [ValueType::Blob, ValueType::Int4]
 		let mut modified = state1.clone();
 		let layout = operator.layout();
-		layout.set_i32(&mut modified, 1, 0x42); // Modify second field (Int4)
+		set_i32(&layout, &mut modified, 1, 0x42); // Modify second field (Int4)
 		operator.save_state(&mut txn, &key, modified.clone()).unwrap();
 
 		// Load should return modified state
 		let state2 = operator.load_state(&mut txn, &key).unwrap();
-		assert_eq!(layout.get_i32(&state2, 1), 0x42);
+		assert_eq!(get_i32(&layout, &state2, 1), 0x42);
 	}
 
 	#[test]
@@ -154,19 +154,19 @@ pub mod tests {
 
 		// Update with a function
 		let result = operator
-			.update_state(&mut txn, &key, |shape, row| {
+			.update_state(&mut txn, &key, |shape: &RowShape, row: &mut EncodedOperatorRow| {
 				// Set second field (Int4) to a specific value
-				shape.set_i32(row, 1, 0x55);
+				set_i32(shape, row, 1, 0x55);
 				Ok(())
 			})
 			.unwrap();
 
 		let layout = operator.layout();
-		assert_eq!(layout.get_i32(&result, 1), 0x55);
+		assert_eq!(get_i32(&layout, &result, 1), 0x55);
 
 		// Verify it was persisted
 		let loaded = operator.load_state(&mut txn, &key).unwrap();
-		assert_eq!(layout.get_i32(&loaded, 1), 0x55);
+		assert_eq!(get_i32(&layout, &loaded, 1), 0x55);
 	}
 
 	#[test]
@@ -192,7 +192,7 @@ pub mod tests {
 		// Loading should create new state (not find existing)
 		let new_state = operator.load_state(&mut txn, &key).unwrap();
 		let layout = operator.layout();
-		assert_eq!(layout.get_i32(&new_state, 1), 0); // Should be default initialized
+		assert_eq!(get_i32(&layout, &new_state, 1), 0); // Should be default initialized
 	}
 
 	#[test]
@@ -210,8 +210,8 @@ pub mod tests {
 		// Create multiple keys with different states
 		for i in 0..5 {
 			let key = vec![Value::Int4(i), Value::Utf8(format!("key_{}", i))];
-			operator.update_state(&mut txn, &key, |shape, row| {
-				shape.set_i32(row, 1, i);
+			operator.update_state(&mut txn, &key, |shape: &RowShape, row: &mut EncodedOperatorRow| {
+				set_i32(shape, row, 1, i);
 				Ok(())
 			})
 			.unwrap();
@@ -222,7 +222,7 @@ pub mod tests {
 		for i in 0..5 {
 			let key = vec![Value::Int4(i), Value::Utf8(format!("key_{}", i))];
 			let state = operator.load_state(&mut txn, &key).unwrap();
-			assert_eq!(layout.get_i32(&state, 1), i);
+			assert_eq!(get_i32(&layout, &state, 1), i);
 		}
 	}
 

@@ -15,9 +15,8 @@ use reifydb_transaction::{
 	change::OperationType,
 	interceptor::transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
 	multi::transaction::read::MultiReadTransaction,
-	transaction::Transaction,
 };
-use reifydb_value::{Result, reifydb_assertions, value::identity::IdentityId};
+use reifydb_value::{Result, reifydb_assertions};
 
 use crate::flow::{
 	engine::{FlowEngine, FlowEngineInner},

@@ -11,8 +11,6 @@ use reifydb_codec::{
 	},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
-#[cfg(test)]
-use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
 use reifydb_value::value::value_type::ValueType;
 use reifydb_value::{
@@ -179,31 +177,6 @@ impl Store {
 					break;
 				}
 			}
-		}
-		Ok(out)
-	}
-
-	#[cfg(test)]
-	pub(crate) fn rows_for_key(
-		&self,
-		txn: &mut FlowTransaction,
-		hash: &Hash128,
-	) -> Result<Vec<(RowNumber, EncodedOperatorRow)>> {
-		let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
-		let mut out = Vec::new();
-		let mut after: Option<RowNumber> = None;
-		loop {
-			let block = self.rows_for_key_block(txn, hash, after.as_ref(), limit)?;
-			if block.is_empty() {
-				break;
-			}
-			let last = block.last().unwrap().0;
-			let exhausted = block.len() < limit;
-			out.extend(block);
-			if exhausted {
-				break;
-			}
-			after = Some(last);
 		}
 		Ok(out)
 	}

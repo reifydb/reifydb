@@ -226,39 +226,6 @@ impl JoinOperator {
 		RowShape::new(RowFamily::Operator, vec![RowShapeField::unconstrained("state", ValueType::Blob)])
 	}
 
-	#[cfg(test)]
-	#[allow(clippy::too_many_arguments)]
-	pub(crate) fn new_for_state_tests(
-		node: OperatorId,
-		left_ttl: Option<Duration>,
-		right_ttl: Option<Duration>,
-		routines: Routines,
-		runtime_context: RuntimeContext,
-	) -> Self {
-		Self {
-			node,
-			strategy: JoinStrategy::from(JoinType::Inner, false),
-			left_node: OperatorId(0),
-			right_node: OperatorId(0),
-			compiled_left_exprs: Vec::new(),
-			compiled_right_exprs: Vec::new(),
-			alias: None,
-			shape: Self::state_shape(),
-			right_schema: Columns::empty(),
-			row_number_provider: RowNumberProvider::new(node),
-			routines,
-			runtime_context,
-			snapshot: true,
-			natural: false,
-			latest: false,
-			left_ttl,
-			right_ttl,
-			left_evict_cursor: RefCell::new(None),
-			right_evict_cursor: RefCell::new(None),
-			rownumber_evict_cursor: RefCell::new(None),
-		}
-	}
-
 	fn evict_left(&self, txn: &mut FlowTransaction, now: DateTime) -> Result<()> {
 		let Some(ttl) = self.left_ttl else {
 			return Ok(());

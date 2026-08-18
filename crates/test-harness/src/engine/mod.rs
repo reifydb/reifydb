@@ -28,7 +28,9 @@ use reifydb_core::{
 	interface::catalog::{config::ConfigKey, id::NamespaceId},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{engine::StandardEngine, vm::services::EngineConfig};
+use reifydb_engine::{
+	engine::StandardEngine, flow::transactional_engine::TransactionalFlowEngine, vm::services::EngineConfig,
+};
 use reifydb_extension::transform::registry::Transforms;
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,
@@ -70,6 +72,7 @@ pub struct TestEngine {
 	mock_clock: MockClock,
 	_runtime: Runtime,
 	_operator_guard: SqliteTempPathGuard,
+	_transactional_flow: TransactionalFlowEngine,
 }
 
 impl Default for TestEngine {
@@ -310,11 +313,15 @@ impl TestEngineBuilder {
 			);
 		}
 
+		let transactional_flow = TransactionalFlowEngine::with_defaults(engine.clone())
+			.expect("transactional flow engine must start for the test engine");
+
 		TestEngine {
 			engine,
 			mock_clock,
 			_runtime: runtime,
 			_operator_guard: operator_guard,
+			_transactional_flow: transactional_flow,
 		}
 	}
 }

@@ -177,7 +177,9 @@ impl FlowSupervisor {
 					continue;
 				}
 			};
-			self.reject_transactional_flow(&flow);
+			if self.is_transactional_flow(&flow) {
+				continue;
+			}
 			state.analyzer.add(flow.clone());
 			let seed = operators.checkpoint_get(flow_id).unwrap_or(migration_base);
 			seeds.push((flow_id, seed));
@@ -339,7 +341,9 @@ impl FlowSupervisor {
 			let Some((flow, is_new)) = self.load_flow_at(flow_id, version) else {
 				continue;
 			};
-			self.reject_transactional_flow(&flow);
+			if self.is_transactional_flow(&flow) {
+				continue;
+			}
 			if !is_new {
 				state.analyzer.add(flow);
 				self.flow_catalog.remove(flow_id);
@@ -425,7 +429,7 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn reject_transactional_flow(&self, flow: &FlowDag) {
+	fn is_transactional_flow(&self, flow: &FlowDag) -> bool {
 		for operator_id in flow.get_operator_ids() {
 			let Some(operator) = flow.get_operator(&operator_id) else {
 				continue;
@@ -446,9 +450,11 @@ impl FlowSupervisor {
 				_ => continue,
 			};
 			if self.flow_catalog.find_view(*view).is_some_and(|def| def.kind() == ViewKind::Transactional) {
-				unimplemented!("transactional view execution; see plan-operator.md follow-up");
+				return true;
 			}
 		}
+
+		false
 	}
 
 	fn publish_lineage(&self, state: &SupervisorState) {

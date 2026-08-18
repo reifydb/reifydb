@@ -64,7 +64,7 @@ pub mod tests {
 	use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::util::cowvec::CowVec;
+	
 
 	use super::*;
 	use crate::flow::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
@@ -133,7 +133,7 @@ pub mod tests {
 		let entries = vec![("key_a", vec![1, 2]), ("key_b", vec![3, 4]), ("key_c", vec![5, 6])];
 		for (key_suffix, data) in &entries {
 			let key = test_key(key_suffix);
-			let value = EncodedOperatorRow(CowVec::new(data.clone()));
+			let value = EncodedOperatorRow::timeless(&data);
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
@@ -157,7 +157,7 @@ pub mod tests {
 		// Add ordered entries
 		for i in 0..10 {
 			let key = test_key(&format!("{:02}", i)); // Ensures lexical ordering
-			let value = EncodedOperatorRow(CowVec::new(vec![i as u8]));
+			let value = EncodedOperatorRow::timeless(&[i as u8]);
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
@@ -166,9 +166,9 @@ pub mod tests {
 
 		// Should get keys 02, 03, 04 (not 05 as end is exclusive)
 		assert_eq!(range_result.len(), 3);
-		assert_eq!(range_result[0].1.as_slice()[0], 2);
-		assert_eq!(range_result[1].1.as_slice()[0], 3);
-		assert_eq!(range_result[2].1.as_slice()[0], 4);
+		assert_eq!(range_result[0].1.body()[0], 2);
+		assert_eq!(range_result[1].1.body()[0], 3);
+		assert_eq!(range_result[2].1.body()[0], 4);
 	}
 
 	#[test]
@@ -186,7 +186,7 @@ pub mod tests {
 		// Add multiple entries
 		for i in 0..5 {
 			let key = test_key(&format!("clear_{}", i));
-			let value = EncodedOperatorRow(CowVec::new(vec![i as u8]));
+			let value = EncodedOperatorRow::timeless(&[i as u8]);
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
@@ -217,7 +217,7 @@ pub mod tests {
 		let shared_key = test_key("shared");
 
 		let value1 = EncodedOperatorRow::timeless(&[1]);
-		let value2 = EncodedOperatorRow(CowVec::new(vec![2]));
+		let value2 = EncodedOperatorRow::timeless(&[2]);
 
 		// Set different values for same key in different operators
 		operator1.state_set(&mut txn, &shared_key, value1.clone()).unwrap();
@@ -270,8 +270,8 @@ pub mod tests {
 		let operator = TestOperator::simple(OperatorId(5));
 		let key = test_key("overwrite");
 
-		let value1 = EncodedOperatorRow(CowVec::new(vec![1, 1, 1]));
-		let value2 = EncodedOperatorRow(CowVec::new(vec![2, 2, 2]));
+		let value1 = EncodedOperatorRow::timeless(&[1, 1, 1]);
+		let value2 = EncodedOperatorRow::timeless(&[2, 2, 2]);
 
 		// Set initial value
 		operator.state_set(&mut txn, &key, value1).unwrap();
@@ -319,7 +319,7 @@ pub mod tests {
 		// Add 5 entries
 		for i in 0..5 {
 			let key = test_key(&format!("partial_{}", i));
-			let value = EncodedOperatorRow(CowVec::new(vec![i as u8]));
+			let value = EncodedOperatorRow::timeless(&[i as u8]);
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 

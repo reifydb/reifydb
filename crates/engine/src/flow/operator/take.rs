@@ -9,10 +9,7 @@ use std::{
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::interface::flow::OperatorCapability;
 use reifydb_codec::row::bytes::EncodedBytes;
-use reifydb_codec::row::{
-	operator::EncodedOperatorRow,
-	shape::{RowFamily, RowShape, RowShapeField},
-};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
 	interface::{
 		catalog::flow::OperatorId,

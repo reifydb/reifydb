@@ -19,8 +19,6 @@ use reifydb_evaluate::expression::{
 		context::CompileContext,
 	};
 use reifydb_evaluate::stack::SymbolTable;
-use crate::{
-};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -156,15 +154,6 @@ impl DistinctOperator {
 			}
 			None => Ok(DistinctLayout::new()),
 		}
-	}
-
-	#[cfg(test)]
-	pub(super) fn count_entries(&self, txn: &mut FlowTransaction) -> usize {
-		utils::state_scan_all(self.node, txn)
-			.unwrap()
-			.iter()
-			.filter(|(k, _)| Self::hash_from_entry_key(k.as_ref()).is_some())
-			.count()
 	}
 
 	fn batch_hashes(&self, diffs: &[Diff]) -> Result<HashSet<Hash128>> {

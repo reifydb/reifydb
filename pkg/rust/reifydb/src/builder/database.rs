@@ -40,7 +40,10 @@ use reifydb_core::{
 };
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_engine::remote::RemoteRegistry;
-use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
+use reifydb_engine::{
+	EngineVersion, engine::StandardEngine, flow::subsystem::TransactionalFlowSubsystemFactory,
+	vm::services::EngineConfig,
+};
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_extension::procedure::extern_c::loader::register_procedures_from_dir;
 use reifydb_extension::{
@@ -623,6 +626,14 @@ impl DatabaseBuilder {
 
 		#[cfg(feature = "sub_flow")]
 		if let Some(factory) = self.flow_factory {
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
+
+		{
+			let factory: Box<dyn SubsystemFactory> =
+				Box::new(TransactionalFlowSubsystemFactory::default());
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);

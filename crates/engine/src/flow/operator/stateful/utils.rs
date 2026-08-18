@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	row::{operator::EncodedOperatorRow, shape::{RowFamily, RowShape, RowShapeField}},
+	row::{operator::EncodedOperatorRow, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -175,7 +175,8 @@ pub mod tests {
 	use reifydb_core::common::CommitVersion;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::{util::cowvec::CowVec, value::value_type::ValueType};
+	use reifydb_codec::row::shape::RowFamily;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 	use crate::flow::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
@@ -232,8 +233,8 @@ pub mod tests {
 		);
 		let node_id = OperatorId(1);
 		let key = test_key("set");
-		let value1 = EncodedOperatorRow(CowVec::new(vec![1, 2, 3]));
-		let value2 = EncodedOperatorRow(CowVec::new(vec![4, 5, 6]));
+		let value1 = EncodedOperatorRow::timeless(&[1, 2, 3]);
+		let value2 = EncodedOperatorRow::timeless(&[4, 5, 6]);
 
 		// Set initial value
 		state_set(node_id, &mut txn, &key, value1.clone()).unwrap();
@@ -284,7 +285,7 @@ pub mod tests {
 		// Add multiple entries
 		for i in 0..5 {
 			let key = test_key(&format!("scan_{:02}", i)); // Use padding for proper ordering
-			let value = EncodedOperatorRow(CowVec::new(vec![i as u8]));
+			let value = EncodedOperatorRow::timeless(&[i as u8]);
 			state_set(node_id, &mut txn, &key, value).unwrap();
 		}
 
@@ -294,7 +295,7 @@ pub mod tests {
 
 		// Verify we got all the expected values
 		for i in 0..5 {
-			assert_eq!(entries[i].1.as_slice()[0], i as u8);
+			assert_eq!(entries[i].1.body()[0], i as u8);
 		}
 	}
 
@@ -455,7 +456,7 @@ pub mod tests {
 		);
 		let node_id = OperatorId(1);
 		let key = test_key("load_new");
-		let shape = RowShape::testing(&[ValueType::Int4]);
+		let shape = RowShape::testing(RowFamily::Operator, &[ValueType::Int4]);
 
 		// Load non-existing should create new
 		let result = load_or_create_row(node_id, &mut txn, &key, &shape).unwrap();
@@ -507,7 +508,7 @@ pub mod tests {
 		let node2 = OperatorId(2);
 		let key = test_key("shared");
 		let value1 = EncodedOperatorRow::timeless(&[1]);
-		let value2 = EncodedOperatorRow(CowVec::new(vec![2]));
+		let value2 = EncodedOperatorRow::timeless(&[2]);
 
 		// Set different values for same key in different nodes
 		state_set(node1, &mut txn, &key, value1.clone()).unwrap();
@@ -540,7 +541,7 @@ pub mod tests {
 		let key = test_key("large");
 
 		// Create a large value (10KB)
-		let large_value = EncodedOperatorRow(CowVec::new(vec![0xAB; 10240]));
+		let large_value = EncodedOperatorRow::timeless(&[0xAB; 10240]);
 
 		// Store and retrieve
 		state_set(node_id, &mut txn, &key, large_value.clone()).unwrap();

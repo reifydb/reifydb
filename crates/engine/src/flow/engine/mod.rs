@@ -18,8 +18,6 @@ use std::{
 
 use dashmap::DashMap;
 use reifydb_catalog::catalog::Catalog;
-#[cfg(reifydb_target = "host")]
-use reifydb_codec::value::encode_params;
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -39,17 +37,9 @@ use reifydb_runtime::{
 	context::{RuntimeContext, clock::Clock},
 	sync::rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-#[cfg(reifydb_target = "host")]
-use reifydb_value::config::Config;
 use reifydb_value::value::duration::Duration;
-#[cfg(reifydb_target = "host")]
-use reifydb_value::{Result, error::Error, params::Params, value::Value};
 use tracing::instrument;
 
-#[cfg(reifydb_target = "host")]
-use crate::flow::error::{FlowStateError, NativeOperatorError};
-#[cfg(reifydb_target = "host")]
-use crate::flow::operator::BoxedOperator;
 #[cfg(reifydb_target = "host")]
 #[cfg(reifydb_target = "host")]
 use crate::flow::{

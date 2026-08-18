@@ -3,14 +3,13 @@
 
 use std::{any::Any, collections::HashMap, mem, sync::Arc};
 
-use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	row::{operator::EncodedOperatorRow, shape::RowShape},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
-	actors::pending::{Pending, PendingWrite},
+	actors::pending::Pending,
 	common::CommitVersion,
 	interface::{
 		catalog::{flow::OperatorId, object::ObjectId},

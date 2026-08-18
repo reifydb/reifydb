@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 use reifydb_codec::{
-	row::{operator::EncodedOperatorRow, shape::{RowFamily, RowShape, RowShapeField}},
+	row::{operator::EncodedOperatorRow, shape::RowShape},
 	key::encoded::EncodedKey,
 };
 use reifydb_value::Result;
@@ -101,12 +101,12 @@ pub mod tests {
 		// Modify and save
 		let mut modified = state1.clone();
 		let layout = operator.layout();
-		layout.set_i64(&mut modified, 0, 0x33);
+		set_i64(&layout, &mut modified, 0, 0x33);
 		operator.save_state(&mut txn, modified.clone()).unwrap();
 
 		// Load should return modified state
 		let state2 = operator.load_state(&mut txn).unwrap();
-		assert_eq!(layout.get_i64(&state2, 0), 0x33);
+		assert_eq!(get_i64(&layout, &state2, 0), 0x33);
 	}
 
 	#[test]
@@ -123,18 +123,18 @@ pub mod tests {
 
 		// Update state with a function
 		let result = operator
-			.update_state(&mut txn, |shape, row| {
-				shape.set_i64(row, 0, 0x77);
+			.update_state(&mut txn, |shape: &RowShape, row: &mut EncodedOperatorRow| {
+				set_i64(shape, row, 0, 0x77);
 				Ok(())
 			})
 			.unwrap();
 
 		let layout = operator.layout();
-		assert_eq!(layout.get_i64(&result, 0), 0x77);
+		assert_eq!(get_i64(&layout, &result, 0), 0x77);
 
 		// Verify persistence
 		let loaded = operator.load_state(&mut txn).unwrap();
-		assert_eq!(layout.get_i64(&loaded, 0), 0x77);
+		assert_eq!(get_i64(&layout, &loaded, 0), 0x77);
 	}
 
 	#[test]
@@ -150,8 +150,8 @@ pub mod tests {
 		let operator = TestOperator::simple(OperatorId(1));
 
 		// Create and modify state
-		operator.update_state(&mut txn, |shape, row| {
-			shape.set_i64(row, 0, 0x99);
+		operator.update_state(&mut txn, |shape: &RowShape, row: &mut EncodedOperatorRow| {
+			set_i64(shape, row, 0, 0x99);
 			Ok(())
 		})
 		.unwrap();
@@ -162,7 +162,7 @@ pub mod tests {
 		// Loading should create new default state
 		let new_state = operator.load_state(&mut txn).unwrap();
 		let layout = operator.layout();
-		assert_eq!(layout.get_i64(&new_state, 0), 0); // Should be default initialized
+		assert_eq!(get_i64(&layout, &new_state, 0), 0); // Should be default initialized
 	}
 
 	#[test]
@@ -180,15 +180,15 @@ pub mod tests {
 
 		// Set different states for each operator
 		operator1
-			.update_state(&mut txn, |shape, row| {
-				shape.set_i64(row, 0, 0x11);
+			.update_state(&mut txn, |shape: &RowShape, row: &mut EncodedOperatorRow| {
+				set_i64(shape, row, 0, 0x11);
 				Ok(())
 			})
 			.unwrap();
 
 		operator2
-			.update_state(&mut txn, |shape, row| {
-				shape.set_i64(row, 0, 0x22);
+			.update_state(&mut txn, |shape: &RowShape, row: &mut EncodedOperatorRow| {
+				set_i64(shape, row, 0, 0x22);
 				Ok(())
 			})
 			.unwrap();
@@ -199,8 +199,8 @@ pub mod tests {
 
 		let layout1 = operator1.layout();
 		let layout2 = operator2.layout();
-		assert_eq!(layout1.get_i64(&state1, 0), 0x11);
-		assert_eq!(layout2.get_i64(&state2, 0), 0x22);
+		assert_eq!(get_i64(&layout1, &state1, 0), 0x11);
+		assert_eq!(get_i64(&layout2, &state2, 0), 0x22);
 	}
 
 	#[test]
@@ -217,17 +217,17 @@ pub mod tests {
 
 		// Simulate a counter incrementing
 		for i in 1..=5 {
-			operator.update_state(&mut txn, |shape, row| {
+			operator.update_state(&mut txn, |shape: &RowShape, row: &mut EncodedOperatorRow| {
 				// Assuming first field is an int8 counter
-				let current = shape.get_i64(row, 0);
-				shape.set_i64(row, 0, current + 1);
+				let current = get_i64(shape, row, 0);
+				set_i64(shape, row, 0, current + 1);
 				Ok(())
 			})
 			.unwrap();
 
 			let state = operator.load_state(&mut txn).unwrap();
 			let layout = operator.layout();
-			assert_eq!(layout.get_i64(&state, 0), i);
+			assert_eq!(get_i64(&layout, &state, 0), i);
 		}
 	}
 }

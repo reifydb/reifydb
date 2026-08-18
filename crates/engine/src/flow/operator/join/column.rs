@@ -6,7 +6,6 @@ use reifydb_value::value::system_columns::SystemColumns;
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
-	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 

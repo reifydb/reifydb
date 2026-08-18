@@ -6,7 +6,7 @@ use std::{cell::UnsafeCell, collections::HashMap};
 use reifydb_core::interface::flow::OperatorCapability;
 use reifydb_codec::row::shape::RowFamily;
 use reifydb_codec::{
-	row::{operator::EncodedOperatorRow, shape::RowShape},
+	row::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
@@ -133,7 +133,7 @@ impl SinkSeriesViewOperator {
 		let row_count = source.row_count();
 		let field_columns = shape_field_columns(source, shape);
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut encoded_rows: Vec<EncodedOperatorRow> = Vec::with_capacity(row_count);
+		let mut encoded_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers()[row_idx];
@@ -183,7 +183,7 @@ impl SinkSeriesViewOperator {
 		let field_columns = shape_field_columns(source_post, shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_encoded_rows: Vec<EncodedOperatorRow> = Vec::with_capacity(row_count);
+		let mut post_encoded_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
 			let pre_row_number = source_pre.row_numbers()[row_idx];

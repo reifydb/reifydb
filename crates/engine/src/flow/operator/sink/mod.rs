@@ -9,7 +9,10 @@ pub mod view;
 use std::sync::LazyLock;
 
 use postcard::from_bytes;
-use reifydb_codec::row::{operator::EncodedOperatorRow, shape::{RowFamily, RowShape, RowShapeField}};
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, SourceRowBuilder},
+	shape::{RowFamily, RowShape},
+};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -30,7 +33,6 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	util::cowvec::CowVec,
 	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, row_number::RowNumber},
 };
 
@@ -131,34 +133,59 @@ pub(crate) fn encode_row_at_index(
 	shape: &RowShape,
 	row_number: RowNumber,
 	field_columns: &[usize],
-) -> Result<(RowNumber, EncodedOperatorRow)> {
+) -> Result<(RowNumber, EncodedBytes)> {
+	match shape.family() {
+		RowFamily::Table => {
+			stamp_source_row(shape.allocate_table(), columns, row_idx, shape, row_number, field_columns)
+		}
+		RowFamily::Series => {
+			stamp_source_row(shape.allocate_series(), columns, row_idx, shape, row_number, field_columns)
+		}
+		RowFamily::RingBuffer => stamp_source_row(
+			shape.allocate_ringbuffer(),
+			columns,
+			row_idx,
+			shape,
+			row_number,
+			field_columns,
+		),
+		other => Err(Error::from(FlowSinkError::NotASourceFamily {
+			family: format!("{:?}", other),
+		})),
+	}
+}
+
+fn stamp_source_row<B: SourceRowBuilder>(
+	mut encoded: B,
+	columns: &Columns,
+	row_idx: usize,
+	shape: &RowShape,
+	row_number: RowNumber,
+	field_columns: &[usize],
+) -> Result<(RowNumber, EncodedBytes)> {
 	let values: Vec<Value> =
 		field_columns.iter().map(|&col_idx| columns.data_at(col_idx).get_value(row_idx)).collect();
 
-	let mut encoded = shape.allocate_operator();
 	shape.set_values(&mut encoded, &values);
 
-	let created_at_nanos = columns
-		.created_at()
-		.get(row_idx)
-		.ok_or_else(|| {
-			Error::from(FlowSinkError::MissingSystemColumn {
-				column: "created_at",
-				row_idx,
-			})
-		})?;
-	let updated_at_nanos = columns
-		.updated_at()
-		.get(row_idx)
-		.ok_or_else(|| {
-			Error::from(FlowSinkError::MissingSystemColumn {
-				column: "updated_at",
-				row_idx,
-			})
-		})?;
-	encoded.set_timestamps(*created_at_nanos, *updated_at_nanos);
+	let created_at = columns.created_at().get(row_idx).copied().ok_or_else(|| {
+		Error::from(FlowSinkError::MissingSystemColumn {
+			column: "created_at",
+			row_idx,
+		})
+	})?;
+	let updated_at = columns.updated_at().get(row_idx).copied().ok_or_else(|| {
+		Error::from(FlowSinkError::MissingSystemColumn {
+			column: "updated_at",
+			row_idx,
+		})
+	})?;
+	encoded.set_timestamps(created_at, updated_at);
+	if let Some(time) = columns.time().get(row_idx).copied() {
+		encoded.set_time(time);
+	}
 
-	Ok((row_number, encoded.freeze()))
+	Ok((row_number, encoded.freeze_bytes()))
 }
 
 pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTransaction) -> Result<()> {
