@@ -49,8 +49,6 @@ impl CatalogStore {
 		} else {
 			partition_by_str.split(',').map(|s| s.to_string()).collect()
 		};
-		let underlying = series::get_underlying(&bytes) != 0;
-
 		Ok(Some(Series {
 			id,
 			namespace,
@@ -60,7 +58,6 @@ impl CatalogStore {
 			key,
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
-			underlying,
 			time: decode_series_time(&bytes),
 		}))
 	}

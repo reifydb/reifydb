@@ -2059,7 +2059,6 @@ impl<'bump> Compiler<'bump> {
 							columns: vec![],
 							primary_key: None,
 							partition_by: vec![],
-							underlying: false,
 							time: TimeSource::Processing,
 						};
 

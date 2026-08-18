@@ -64,7 +64,6 @@ fn decode_queue(bytes: &EncodedCatalogRow) -> Queue {
 			attempts: queue::get_retry_attempts(bytes),
 			backoff: queue::get_retry_backoff(bytes),
 		},
-		underlying: queue::get_underlying(bytes) != 0,
 		deduplicate: decode_deduplicate(bytes),
 		time: decode_queue_time(bytes),
 	}
@@ -74,7 +73,10 @@ fn decode_queue(bytes: &EncodedCatalogRow) -> Queue {
 mod tests {
 	use reifydb_core::{
 		common::TimeSource,
-		interface::catalog::{id::NamespaceId, queue::QueueDispatch},
+		interface::catalog::{
+			id::NamespaceId,
+			queue::{QueueDeduplicate, QueueDispatch},
+		},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -127,8 +129,10 @@ mod tests {
 					attempts: 11,
 					backoff: Duration::from_seconds_const(45),
 				},
-				underlying: true,
-				deduplicate: None,
+				deduplicate: Some(QueueDeduplicate {
+					by: vec!["payload".to_string()],
+					ttl: Duration::from_seconds_const(90),
+				}),
 				time: TimeSource::Processing,
 			},
 		);
@@ -142,7 +146,14 @@ mod tests {
 		assert_eq!(decoded.retention.done, Some(Duration::from_seconds_const(604800)));
 		assert_eq!(decoded.retry.attempts, 11);
 		assert_eq!(decoded.retry.backoff, Duration::from_seconds_const(45));
-		assert!(decoded.underlying);
+		// deduplicate is stored as two columns, so a decoder reading only one half still looks correct here.
+		assert_eq!(
+			decoded.deduplicate,
+			Some(QueueDeduplicate {
+				by: vec!["payload".to_string()],
+				ttl: Duration::from_seconds_const(90),
+			})
+		);
 	}
 
 	#[test]
@@ -165,7 +176,6 @@ mod tests {
 				},
 				retention: QueueRetention::default(),
 				retry: QueueRetry::default(),
-				underlying: false,
 				deduplicate: None,
 				time: TimeSource::Processing,
 			},
@@ -175,7 +185,8 @@ mod tests {
 
 		assert_eq!(decoded.ordered_by(), None);
 		assert_eq!(decoded.retention.done, None);
-		assert!(!decoded.underlying);
+		// an empty deduplicate_by must decode to none, never to a dedup on a zero-length column name.
+		assert_eq!(decoded.deduplicate, None);
 	}
 
 	#[test]
@@ -196,7 +207,6 @@ mod tests {
 				},
 				retention: QueueRetention::default(),
 				retry: QueueRetry::default(),
-				underlying: false,
 				deduplicate: None,
 				time: TimeSource::Processing,
 			},

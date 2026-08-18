@@ -74,8 +74,6 @@ fn decode_series(bytes: &EncodedCatalogRow, materialized: &CatalogCache, version
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
-	let underlying = series::get_underlying(bytes) != 0;
-
 	Series {
 		id,
 		namespace,
@@ -85,7 +83,6 @@ fn decode_series(bytes: &EncodedCatalogRow, materialized: &CatalogCache, version
 		key,
 		primary_key,
 		partition_by,
-		underlying,
 		time: decode_series_time(bytes),
 	}
 }

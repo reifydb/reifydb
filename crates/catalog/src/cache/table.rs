@@ -107,7 +107,6 @@ pub mod tests {
 			],
 			primary_key: None,
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		}
 	}

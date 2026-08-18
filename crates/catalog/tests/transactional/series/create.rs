@@ -34,7 +34,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	let found = catalog.find_series_by_name(&mut Transaction::Admin(&mut txn), ns_id, "s").unwrap();
 	assert!(found.is_some());
 
-	let all = catalog.list_series_all(&mut Transaction::Admin(&mut txn)).unwrap();
+	let all = catalog.list_series(&mut Transaction::Admin(&mut txn)).unwrap();
 	assert!(all.iter().any(|x| x.namespace == ns_id && x.name() == "s"));
 }
 

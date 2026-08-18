@@ -50,7 +50,6 @@ pub struct SeriesToCreate {
 	pub tag: Option<SumTypeId>,
 	pub key: SeriesKey,
 	pub partition_by: Vec<String>,
-	pub underlying: bool,
 	pub time: TimeSource,
 }
 
@@ -76,7 +75,6 @@ impl From<SeriesToCreate> for StoreSeriesToCreate {
 			tag: to_create.tag,
 			key: to_create.key,
 			partition_by: to_create.partition_by,
-			underlying: to_create.underlying,
 			time: to_create.time,
 		}
 	}
@@ -318,9 +316,9 @@ impl Catalog {
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::series::list_all", level = "trace", skip(self, txn))]
-	pub fn list_series_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Series>> {
-		CatalogStore::list_series_all(txn)
+	#[instrument(name = "catalog::series::list", level = "trace", skip(self, txn))]
+	pub fn list_series(&self, txn: &mut Transaction<'_>) -> Result<Vec<Series>> {
+		CatalogStore::list_series(txn)
 	}
 
 	#[instrument(name = "catalog::series::find_metadata", level = "trace", skip(self, txn))]

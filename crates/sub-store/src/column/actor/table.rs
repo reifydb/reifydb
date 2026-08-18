@@ -98,10 +98,10 @@ impl TableMaterializationActor {
 
 	#[inline]
 	fn list_tables_or_warn(&self, query_txn: &mut QueryTransaction) -> Option<Vec<Table>> {
-		match self.engine.catalog().list_tables_all(&mut Transaction::Query(query_txn)) {
+		match self.engine.catalog().list_tables(&mut Transaction::Query(query_txn)) {
 			Ok(t) => Some(t),
 			Err(e) => {
-				warn!("table materialization: list_tables_all failed: {e}");
+				warn!("table materialization: list_tables failed: {e}");
 				None
 			}
 		}

@@ -108,7 +108,6 @@ fn system_series_use_reserved_ids_and_first_user_source_starts_at_16385() {
 				}],
 				primary_key_columns: None,
 				partition_by: vec![],
-				underlying: false,
 				time: TimeSource::Processing,
 			},
 		)

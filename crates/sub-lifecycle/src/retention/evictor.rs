@@ -474,11 +474,6 @@ impl Evictor {
 			state.forget(storage);
 			return Ok((0, true));
 		};
-		if ringbuffer.underlying {
-			txn.rollback()?;
-			state.forget(storage);
-			return Ok((0, true));
-		}
 
 		let (expired, drained) = self.expired_batch(
 			state,

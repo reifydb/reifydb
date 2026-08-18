@@ -68,7 +68,6 @@ fn decode_ringbuffer(bytes: &EncodedCatalogRow, materialized: &CatalogCache, ver
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 
-	let underlying = ringbuffer::get_underlying(bytes) != 0;
 	RingBuffer {
 		id,
 		name,
@@ -77,7 +76,6 @@ fn decode_ringbuffer(bytes: &EncodedCatalogRow, materialized: &CatalogCache, ver
 		capacity,
 		primary_key,
 		partition_by,
-		underlying,
 		time: decode_ringbuffer_time(bytes),
 	}
 }

@@ -47,7 +47,6 @@ pub struct RingBufferToCreate {
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
-	pub underlying: bool,
 	pub time: TimeSource,
 }
 
@@ -111,14 +110,6 @@ impl CatalogStore {
 
 		ringbuffer::set_primary_key(&mut row, 0u64);
 		ringbuffer::set_partition_by(&mut row, to_create.partition_by.join(","));
-		ringbuffer::set_underlying(
-			&mut row,
-			if to_create.underlying {
-				1
-			} else {
-				0
-			},
-		);
 
 		write_time_source(
 			&ringbuffer::SHAPE,
@@ -274,7 +265,6 @@ pub mod tests {
 				},
 			],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 
@@ -301,7 +291,6 @@ pub mod tests {
 			capacity: 100,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 
@@ -325,7 +314,6 @@ pub mod tests {
 			capacity: 50,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 
@@ -349,7 +337,6 @@ pub mod tests {
 			capacity: 10,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 
@@ -361,7 +348,6 @@ pub mod tests {
 			capacity: 20,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 
@@ -399,7 +385,6 @@ pub mod tests {
 			capacity: 500,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 
@@ -425,7 +410,6 @@ pub mod tests {
 			capacity: 10,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 		let small_result = CatalogStore::create_ringbuffer(&mut txn, small).unwrap();
@@ -437,7 +421,6 @@ pub mod tests {
 			capacity: 1000,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 		let medium_result = CatalogStore::create_ringbuffer(&mut txn, medium).unwrap();
@@ -449,7 +432,6 @@ pub mod tests {
 			capacity: 1000000,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 		let large_result = CatalogStore::create_ringbuffer(&mut txn, large).unwrap();
@@ -498,7 +480,6 @@ pub mod tests {
 			capacity: 100,
 			columns: columns.clone(),
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 
@@ -539,7 +520,6 @@ mod time_declaration_tests {
 				capacity: 100,
 				columns: vec![],
 				partition_by: vec![],
-				underlying: false,
 				time: TimeSource::Event {
 					ts: "at".to_string(),
 				},
@@ -574,7 +554,6 @@ mod time_declaration_tests {
 				capacity: 10,
 				columns: vec![],
 				partition_by: vec![],
-				underlying: false,
 				time: TimeSource::Processing,
 			},
 		)

@@ -48,8 +48,6 @@ impl CatalogStore {
 		} else {
 			partition_by_str.split(',').map(|s| s.to_string()).collect()
 		};
-		let underlying = ringbuffer::get_underlying(&bytes) != 0;
-
 		Ok(Some(RingBuffer {
 			id,
 			namespace,
@@ -58,7 +56,6 @@ impl CatalogStore {
 			columns: Self::list_columns(rx, id)?,
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
-			underlying,
 			time: decode_ringbuffer_time(&bytes),
 		}))
 	}
@@ -267,7 +264,6 @@ pub mod tests {
 				dictionary_id: None,
 			}],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 
@@ -326,7 +322,6 @@ pub mod tests {
 			capacity: 50,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 
@@ -379,7 +374,6 @@ pub mod tests {
 				},
 			],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 

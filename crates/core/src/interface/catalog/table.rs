@@ -20,7 +20,6 @@ pub struct Table {
 	pub columns: Vec<Column>,
 	pub primary_key: Option<PrimaryKey>,
 	pub partition_by: Vec<String>,
-	pub underlying: bool,
 	pub time: TimeSource,
 }
 

@@ -233,7 +233,7 @@ fn pinned() -> Vec<Pin> {
 		(
 			"queue::queue",
 			&*QUEUE_SHAPE,
-			0xe841f66c7b2d9a43,
+			0x74ea460e829c6fd5,
 			&[
 				"id",
 				"namespace",
@@ -243,7 +243,6 @@ fn pinned() -> Vec<Pin> {
 				"retention_done",
 				"retry_attempts",
 				"retry_backoff",
-				"underlying",
 				"deduplicate_by",
 				"deduplicate_ttl",
 				"dispatch",
@@ -273,18 +272,8 @@ fn pinned() -> Vec<Pin> {
 		(
 			"ringbuffer::ringbuffer",
 			&*RINGBUFFER_SHAPE,
-			0x3092993e516b3072,
-			&[
-				"id",
-				"namespace",
-				"name",
-				"capacity",
-				"primary_key",
-				"partition_by",
-				"underlying",
-				"ts",
-				"time_domain",
-			],
+			0x214a1dd4472ba5ee,
+			&["id", "namespace", "name", "capacity", "primary_key", "partition_by", "ts", "time_domain"],
 		),
 		("ringbuffer::ringbuffer_namespace", &*RINGBUFFER_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
 		("role::role", &*ROLE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
@@ -298,7 +287,7 @@ fn pinned() -> Vec<Pin> {
 		(
 			"series::series",
 			&*SERIES_SHAPE,
-			0x2b3867e449ca3245,
+			0x8564f5eb5ab70958,
 			&[
 				"id",
 				"namespace",
@@ -309,7 +298,6 @@ fn pinned() -> Vec<Pin> {
 				"precision",
 				"primary_key",
 				"partition_by",
-				"underlying",
 				"ts",
 				"time_domain",
 			],
@@ -357,8 +345,8 @@ fn pinned() -> Vec<Pin> {
 		(
 			"table::table",
 			&*TABLE_SHAPE,
-			0x15de9ff7b8439d89,
-			&["id", "namespace", "name", "primary_key", "partition_by", "underlying", "ts", "time_domain"],
+			0x944ecbd87b2290c7,
+			&["id", "namespace", "name", "primary_key", "partition_by", "ts", "time_domain"],
 		),
 		("table::table_namespace", &*TABLE_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),
 		(

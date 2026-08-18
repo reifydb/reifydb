@@ -40,7 +40,6 @@ pub(crate) fn create_ringbuffer(
 			columns: plan.columns,
 			capacity: plan.capacity,
 			partition_by: plan.partition_by,
-			underlying: false,
 			time: plan.time.clone(),
 		},
 	)?;

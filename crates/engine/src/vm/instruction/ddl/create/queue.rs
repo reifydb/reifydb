@@ -34,7 +34,6 @@ pub(crate) fn create_queue(services: &Services, txn: &mut AdminTransaction, plan
 			deduplicate: plan.deduplicate,
 			retention: plan.retention,
 			retry: plan.retry,
-			underlying: false,
 			time: plan.time.clone(),
 		},
 	)?;

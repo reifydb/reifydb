@@ -46,7 +46,6 @@ pub struct QueueToCreate {
 	pub deduplicate: Option<QueueDeduplicate>,
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
-	pub underlying: bool,
 	pub time: TimeSource,
 }
 
@@ -119,14 +118,6 @@ impl CatalogStore {
 		}
 		queue::set_retry_attempts(&mut row, to_create.retry.attempts);
 		queue::set_retry_backoff(&mut row, to_create.retry.backoff);
-		queue::set_underlying(
-			&mut row,
-			if to_create.underlying {
-				1
-			} else {
-				0
-			},
-		);
 		encode_deduplicate(&mut row, to_create.deduplicate.as_ref());
 
 		write_time_source(&queue::SHAPE, &mut row, queue::TIME_DOMAIN, queue::TS, &to_create.time);
@@ -247,7 +238,6 @@ pub mod tests {
 				attempts: 9,
 				backoff: Duration::from_seconds_const(30),
 			},
-			underlying: false,
 			deduplicate: None,
 			time: TimeSource::Processing,
 		}
@@ -272,7 +262,6 @@ pub mod tests {
 		assert_eq!(created.retention.done, Some(Duration::from_seconds_const(604800)));
 		assert_eq!(created.retry.attempts, 9);
 		assert_eq!(created.retry.backoff, Duration::from_seconds_const(30));
-		assert!(!created.underlying);
 		assert_eq!(created.columns.len(), 1);
 		assert_eq!(created.columns[0].name, "payload");
 	}
@@ -296,7 +285,6 @@ pub mod tests {
 				},
 				retention: QueueRetention::default(),
 				retry: QueueRetry::default(),
-				underlying: false,
 				deduplicate: None,
 				time: TimeSource::Processing,
 			},
@@ -375,7 +363,6 @@ mod time_declaration_tests {
 			deduplicate: None,
 			retention: QueueRetention::default(),
 			retry: QueueRetry::default(),
-			underlying: false,
 			time,
 		}
 	}

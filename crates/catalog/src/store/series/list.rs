@@ -10,7 +10,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn list_series_all(rx: &mut Transaction<'_>) -> Result<Vec<Series>> {
+	pub(crate) fn list_series(rx: &mut Transaction<'_>) -> Result<Vec<Series>> {
 		let mut result = Vec::new();
 
 		let mut series_data: Vec<SeriesId> = Vec::new();

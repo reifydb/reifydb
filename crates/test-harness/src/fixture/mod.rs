@@ -102,7 +102,6 @@ impl TableBuilder {
 					columns: self.columns,
 					primary_key_columns: None,
 					partition_by: vec![],
-					underlying: false,
 					time: TimeSource::Processing,
 				},
 			)

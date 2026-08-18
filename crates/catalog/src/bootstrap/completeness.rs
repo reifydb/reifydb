@@ -64,7 +64,6 @@ pub fn bootstrap_completeness(
 				],
 				primary_key_columns: None,
 				partition_by: vec![],
-				underlying: false,
 				time: TimeSource::None,
 			},
 			&ColumnId::SOURCE_COMPLETENESS_COLUMNS,

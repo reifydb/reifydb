@@ -48,7 +48,6 @@ pub struct SeriesToCreate {
 	pub tag: Option<SumTypeId>,
 	pub key: SeriesKey,
 	pub partition_by: Vec<String>,
-	pub underlying: bool,
 	pub time: TimeSource,
 }
 
@@ -126,14 +125,6 @@ impl CatalogStore {
 		series::set_precision(&mut row, precision_u8);
 		series::set_primary_key(&mut row, 0u64);
 		series::set_partition_by(&mut row, to_create.partition_by.join(","));
-		series::set_underlying(
-			&mut row,
-			if to_create.underlying {
-				1
-			} else {
-				0
-			},
-		);
 
 		write_time_source(&series::SHAPE, &mut row, series::TIME_DOMAIN, series::TS, &to_create.time);
 
@@ -267,7 +258,6 @@ mod time_declaration_tests {
 				tag: None,
 				key: key(),
 				partition_by: vec![],
-				underlying: false,
 				time: TimeSource::Event {
 					ts: "recorded_at".to_string(),
 				},
@@ -304,7 +294,6 @@ mod time_declaration_tests {
 				tag: None,
 				key: key(),
 				partition_by: vec![],
-				underlying: false,
 				time: TimeSource::Processing,
 			},
 		)

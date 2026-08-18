@@ -62,7 +62,6 @@ fn convert_queue(multi: MultiVersionRow) -> Result<Queue> {
 			attempts: queue::get_retry_attempts(&bytes),
 			backoff: queue::get_retry_backoff(&bytes),
 		},
-		underlying: queue::get_underlying(&bytes) != 0,
 		deduplicate: decode_deduplicate(&bytes),
 		time: decode_queue_time(&bytes),
 	})

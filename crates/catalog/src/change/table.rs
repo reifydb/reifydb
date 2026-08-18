@@ -63,7 +63,6 @@ fn decode_table(bytes: &EncodedCatalogRow, materialized: &CatalogCache, version:
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
-	let underlying = table::get_underlying(bytes) != 0;
 	let time = decode_table_time(bytes);
 	Table {
 		id,
@@ -72,7 +71,6 @@ fn decode_table(bytes: &EncodedCatalogRow, materialized: &CatalogCache, version:
 		columns: vec![],
 		primary_key,
 		partition_by,
-		underlying,
 		time,
 	}
 }

@@ -213,7 +213,7 @@ fn expand_namespace(
 ) -> Result<Vec<(String, ObjectId)>, RoutineError> {
 	let mut objects = Vec::new();
 
-	for table in catalog.list_tables_all(&mut tx.reborrow())? {
+	for table in catalog.list_tables(&mut tx.reborrow())? {
 		if table.namespace == namespace {
 			objects.push((format!("{path}::{}", table.name), ObjectId::Table(table.id)));
 		}
@@ -223,12 +223,12 @@ fn expand_namespace(
 			objects.push((format!("{path}::{}", view.name()), ObjectId::View(view.id())));
 		}
 	}
-	for ringbuffer in catalog.list_ringbuffers_all(&mut tx.reborrow())? {
+	for ringbuffer in catalog.list_ringbuffers(&mut tx.reborrow())? {
 		if ringbuffer.namespace == namespace {
 			objects.push((format!("{path}::{}", ringbuffer.name), ObjectId::RingBuffer(ringbuffer.id)));
 		}
 	}
-	for series in catalog.list_series_all(&mut tx.reborrow())? {
+	for series in catalog.list_series(&mut tx.reborrow())? {
 		if series.namespace == namespace {
 			objects.push((format!("{path}::{}", series.name), ObjectId::Series(series.id)));
 		}

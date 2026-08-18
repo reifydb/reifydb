@@ -146,7 +146,6 @@ fn table() -> Table {
 		columns: vec![],
 		primary_key: None,
 		partition_by: vec![],
-		underlying: false,
 		time: TimeSource::Processing,
 	}
 }
@@ -160,7 +159,6 @@ fn ringbuffer() -> RingBuffer {
 		primary_key: None,
 		capacity: 64,
 		partition_by: vec![],
-		underlying: false,
 		time: TimeSource::Processing,
 	}
 }

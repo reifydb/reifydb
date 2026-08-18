@@ -37,8 +37,6 @@ impl CatalogStore {
 			attempts: queue::get_retry_attempts(&bytes),
 			backoff: queue::get_retry_backoff(&bytes),
 		};
-		let underlying = queue::get_underlying(&bytes) != 0;
-
 		Ok(Some(Queue {
 			id,
 			namespace,
@@ -47,7 +45,6 @@ impl CatalogStore {
 			dispatch: decode_dispatch(&bytes),
 			retention,
 			retry,
-			underlying,
 			deduplicate: decode_deduplicate(&bytes),
 			time: decode_queue_time(&bytes),
 		}))
@@ -111,7 +108,6 @@ pub mod tests {
 				},
 				retention: QueueRetention::default(),
 				retry: QueueRetry::default(),
-				underlying: false,
 				deduplicate: None,
 				time: TimeSource::Processing,
 			},

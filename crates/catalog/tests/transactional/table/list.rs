@@ -27,7 +27,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	txn.rql("CREATE TABLE tabns_list_a::new { id: int4 }", Params::None);
 	txn.rql("DROP TABLE tabns_list_a::keep", Params::None);
 
-	let all = catalog.list_tables_all(&mut Transaction::Admin(&mut txn)).unwrap();
+	let all = catalog.list_tables(&mut Transaction::Admin(&mut txn)).unwrap();
 	assert!(all.iter().any(|x| x.namespace == ns_id && x.name() == "new"));
 	assert!(!all.iter().any(|x| x.namespace == ns_id && x.name() == "keep"));
 }
@@ -56,7 +56,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let all = catalog.list_tables_all(&mut Transaction::Admin(&mut txn2)).unwrap();
+	let all = catalog.list_tables(&mut Transaction::Admin(&mut txn2)).unwrap();
 	assert!(!all.iter().any(|x| x.namespace == ns_id && x.name() == "new"));
 	assert!(all.iter().any(|x| x.namespace == ns_id && x.name() == "keep"));
 }
@@ -85,7 +85,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let all = catalog.list_tables_all(&mut Transaction::Admin(&mut txn2)).unwrap();
+	let all = catalog.list_tables(&mut Transaction::Admin(&mut txn2)).unwrap();
 	assert!(all.iter().any(|x| x.namespace == ns_id && x.name() == "new"));
 	assert!(!all.iter().any(|x| x.namespace == ns_id && x.name() == "keep"));
 }
@@ -113,7 +113,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	txn1.rql("DROP TABLE tabns_list_d::keep", Params::None);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let in_txn2 = catalog.list_tables_all(&mut Transaction::Admin(&mut txn2)).unwrap();
+	let in_txn2 = catalog.list_tables(&mut Transaction::Admin(&mut txn2)).unwrap();
 	assert!(!in_txn2.iter().any(|x| x.namespace == ns_id && x.name() == "new"));
 	assert!(in_txn2.iter().any(|x| x.namespace == ns_id && x.name() == "keep"));
 
@@ -121,7 +121,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	drop(txn2);
 
 	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
-	let in_txn3 = catalog.list_tables_all(&mut Transaction::Admin(&mut txn3)).unwrap();
+	let in_txn3 = catalog.list_tables(&mut Transaction::Admin(&mut txn3)).unwrap();
 	assert!(in_txn3.iter().any(|x| x.namespace == ns_id && x.name() == "new"));
 	assert!(!in_txn3.iter().any(|x| x.namespace == ns_id && x.name() == "keep"));
 }

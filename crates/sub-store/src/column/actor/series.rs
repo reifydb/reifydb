@@ -116,10 +116,10 @@ impl SeriesMaterializationActor {
 
 	#[inline]
 	fn list_series_or_warn(&self, query_txn: &mut QueryTransaction, catalog: &Catalog) -> Option<Vec<Series>> {
-		match catalog.list_series_all(&mut Transaction::Query(query_txn)) {
+		match catalog.list_series(&mut Transaction::Query(query_txn)) {
 			Ok(s) => Some(s),
 			Err(e) => {
-				warn!("series materialization: list_series_all failed: {e}");
+				warn!("series materialization: list_series failed: {e}");
 				None
 			}
 		}

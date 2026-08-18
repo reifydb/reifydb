@@ -145,7 +145,6 @@ pub mod tests {
 				}],
 				capacity: 10,
 				partition_by: vec!["region".to_string()],
-				underlying: false,
 				time: TimeSource::Processing,
 			},
 		)

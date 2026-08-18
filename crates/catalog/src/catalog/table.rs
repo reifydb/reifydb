@@ -55,7 +55,6 @@ pub struct TableToCreate {
 
 	pub primary_key_columns: Option<Vec<String>>,
 	pub partition_by: Vec<String>,
-	pub underlying: bool,
 	pub time: TimeSource,
 }
 
@@ -79,7 +78,6 @@ impl From<TableToCreate> for StoreTableToCreate {
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			partition_by: to_create.partition_by,
-			underlying: to_create.underlying,
 			time: to_create.time,
 		}
 	}
@@ -371,9 +369,9 @@ impl Catalog {
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::table::list_all", level = "trace", skip(self, txn))]
-	pub fn list_tables_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Table>> {
-		CatalogStore::list_tables_all(txn)
+	#[instrument(name = "catalog::table::list", level = "trace", skip(self, txn))]
+	pub fn list_tables(&self, txn: &mut Transaction<'_>) -> Result<Vec<Table>> {
+		CatalogStore::list_tables(txn)
 	}
 
 	#[instrument(name = "catalog::table::list_columns", level = "trace", skip(self, txn))]

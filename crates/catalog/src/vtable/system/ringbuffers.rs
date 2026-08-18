@@ -50,8 +50,7 @@ impl BaseVTable for SystemRingBuffers {
 			return Ok(None);
 		}
 
-		let ringbuffers: Vec<_> =
-			CatalogStore::list_ringbuffers_all(txn)?.into_iter().filter(|rb| !rb.underlying).collect();
+		let ringbuffers = CatalogStore::list_ringbuffers(txn)?;
 
 		let mut ids = ColumnBuffer::uint8_with_capacity(ringbuffers.len());
 		let mut namespaces = ColumnBuffer::uint8_with_capacity(ringbuffers.len());

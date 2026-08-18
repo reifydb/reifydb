@@ -71,7 +71,6 @@ pub fn bootstrap_read_buffer(
 					precision: TimestampPrecision::Millisecond,
 				},
 				partition_by: vec![],
-				underlying: false,
 				time: TimeSource::Processing,
 			},
 			&ColumnId::READ_BUFFER_SNAPSHOTS_COLUMNS,

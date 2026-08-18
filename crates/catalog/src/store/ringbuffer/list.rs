@@ -17,10 +17,10 @@ use crate::{
 	store::ringbuffer::{decode_ringbuffer_time, shape::ringbuffer},
 };
 
-type RingBufferRow = (RingBufferId, NamespaceId, String, u64, Vec<String>, bool, TimeSource);
+type RingBufferRow = (RingBufferId, NamespaceId, String, u64, Vec<String>, TimeSource);
 
 impl CatalogStore {
-	pub(crate) fn list_ringbuffers_all(rx: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
+	pub(crate) fn list_ringbuffers(rx: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
 		let mut result = Vec::new();
 
 		let mut ringbuffer_data: Vec<RingBufferRow> = Vec::new();
@@ -51,9 +51,6 @@ impl CatalogStore {
 						partition_by_str.split(',').map(|s| s.to_string()).collect()
 					};
 
-					let underlying =
-						ringbuffer::get_underlying(EncodedCatalogRow::view(&entry.bytes)) != 0;
-
 					let time = decode_ringbuffer_time(EncodedCatalogRow::view(&entry.bytes));
 
 					ringbuffer_data.push((
@@ -62,14 +59,13 @@ impl CatalogStore {
 						name,
 						capacity,
 						partition_by,
-						underlying,
 						time,
 					));
 				}
 			}
 		}
 
-		for (ringbuffer_id, namespace_id, name, capacity, partition_by, underlying, time) in ringbuffer_data {
+		for (ringbuffer_id, namespace_id, name, capacity, partition_by, time) in ringbuffer_data {
 			let primary_key = Self::find_primary_key(rx, ringbuffer_id)?;
 			let columns = Self::list_columns(rx, ringbuffer_id)?;
 
@@ -81,7 +77,6 @@ impl CatalogStore {
 				columns,
 				primary_key,
 				partition_by,
-				underlying,
 				time,
 			};
 
@@ -110,7 +105,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		ensure_test_namespace(&mut txn);
 
-		let buffers = CatalogStore::list_ringbuffers_all(&mut Transaction::Admin(&mut txn)).unwrap();
+		let buffers = CatalogStore::list_ringbuffers(&mut Transaction::Admin(&mut txn)).unwrap();
 
 		assert_eq!(buffers.len(), 0);
 	}
@@ -126,7 +121,6 @@ pub mod tests {
 			capacity: 100,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
@@ -137,12 +131,11 @@ pub mod tests {
 			capacity: 200,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 
-		let buffers = CatalogStore::list_ringbuffers_all(&mut Transaction::Admin(&mut txn)).unwrap();
+		let buffers = CatalogStore::list_ringbuffers(&mut Transaction::Admin(&mut txn)).unwrap();
 
 		assert_eq!(buffers.len(), 2);
 		assert!(buffers.iter().any(|b| b.name == "buffer1"));
@@ -173,7 +166,6 @@ pub mod tests {
 			capacity: 100,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
@@ -184,12 +176,11 @@ pub mod tests {
 			capacity: 200,
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 
-		let all_buffers = CatalogStore::list_ringbuffers_all(&mut Transaction::Admin(&mut txn)).unwrap();
+		let all_buffers = CatalogStore::list_ringbuffers(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(all_buffers.len(), 2);
 
 		let buffer1_entry = all_buffers.iter().find(|b| b.name == "buffer1").expect("buffer1 should exist");

@@ -64,7 +64,6 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 
-	let underlying = ringbuffer::get_underlying(&bytes) != 0;
 	Ok(RingBuffer {
 		id,
 		name,
@@ -73,7 +72,6 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -
 		capacity,
 		primary_key,
 		partition_by,
-		underlying,
 		time: decode_ringbuffer_time(&bytes),
 	})
 }

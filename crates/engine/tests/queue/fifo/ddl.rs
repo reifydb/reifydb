@@ -29,7 +29,6 @@ fn test_create_queue_with_bare_dispatch_applies_defaults() {
 	assert_eq!(queue.retry.attempts, Queue::DEFAULT_RETRY_ATTEMPTS);
 	assert_eq!(queue.retry.backoff, Queue::DEFAULT_RETRY_BACKOFF);
 	assert_eq!(queue.columns.len(), 2);
-	assert!(!queue.underlying);
 }
 
 #[test]

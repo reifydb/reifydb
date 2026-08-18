@@ -16,7 +16,6 @@ catalog_shape! {
 		retention_done: Duration?,
 		retry_attempts: u32,
 		retry_backoff: Duration,
-		underlying: u8,
 		deduplicate_by: utf8,
 		deduplicate_ttl: Duration,
 		dispatch: u8,

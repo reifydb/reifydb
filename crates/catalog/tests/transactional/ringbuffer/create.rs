@@ -32,7 +32,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
 	assert!(catalog.find_ringbuffer_by_name(&mut Transaction::Admin(&mut txn), ns_id, "rb").unwrap().is_some());
-	let all = catalog.list_ringbuffers_all(&mut Transaction::Admin(&mut txn)).unwrap();
+	let all = catalog.list_ringbuffers(&mut Transaction::Admin(&mut txn)).unwrap();
 	assert!(all.iter().any(|x| x.namespace == ns_id && x.name() == "rb"));
 }
 

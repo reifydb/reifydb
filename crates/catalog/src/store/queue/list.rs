@@ -69,7 +69,6 @@ pub mod tests {
 			},
 			retention: QueueRetention::default(),
 			retry: QueueRetry::default(),
-			underlying: false,
 			deduplicate: None,
 			time: TimeSource::Processing,
 		}

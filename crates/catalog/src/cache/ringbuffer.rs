@@ -104,7 +104,6 @@ pub mod tests {
 			capacity: 1000,
 			primary_key: None,
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		}
 	}

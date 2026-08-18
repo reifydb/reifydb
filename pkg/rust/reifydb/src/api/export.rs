@@ -87,24 +87,24 @@ impl Database {
 			}
 
 			let all_tables: Vec<Table> = catalog
-				.list_tables_all(&mut txn)?
+				.list_tables(&mut txn)?
 				.into_iter()
-				.filter(|t| !t.underlying && user_ids.contains(&t.namespace.0))
+				.filter(|t| user_ids.contains(&t.namespace.0))
 				.collect();
 			let all_ringbuffers: Vec<RingBuffer> = catalog
-				.list_ringbuffers_all(&mut txn)?
+				.list_ringbuffers(&mut txn)?
 				.into_iter()
-				.filter(|r| !r.underlying && user_ids.contains(&r.namespace.0))
+				.filter(|r| user_ids.contains(&r.namespace.0))
 				.collect();
 			let all_queues: Vec<Queue> = catalog
 				.list_queues_all(&mut txn)?
 				.into_iter()
-				.filter(|q| !q.underlying && user_ids.contains(&q.namespace.0))
+				.filter(|q| user_ids.contains(&q.namespace.0))
 				.collect();
 			let all_series: Vec<Series> = catalog
-				.list_series_all(&mut txn)?
+				.list_series(&mut txn)?
 				.into_iter()
-				.filter(|s| !s.underlying && user_ids.contains(&s.namespace.0))
+				.filter(|s| user_ids.contains(&s.namespace.0))
 				.collect();
 
 			(

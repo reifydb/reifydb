@@ -80,7 +80,6 @@ pub fn bootstrap_profiler(
 					precision: TimestampPrecision::Millisecond,
 				},
 				partition_by: vec![],
-				underlying: false,
 				time: TimeSource::Processing,
 			},
 			&ColumnId::PROFILER_SPANS_SNAPSHOTS_COLUMNS,

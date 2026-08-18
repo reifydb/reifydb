@@ -49,7 +49,6 @@ pub struct QueueToCreate {
 	pub deduplicate: Option<QueueDeduplicate>,
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
-	pub underlying: bool,
 	pub time: TimeSource,
 }
 
@@ -76,7 +75,6 @@ impl From<QueueToCreate> for StoreQueueToCreate {
 			deduplicate: to_create.deduplicate,
 			retention: to_create.retention,
 			retry: to_create.retry,
-			underlying: to_create.underlying,
 			time: to_create.time,
 		}
 	}

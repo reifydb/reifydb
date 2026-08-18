@@ -43,7 +43,6 @@ pub struct TableToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
 	pub partition_by: Vec<String>,
-	pub underlying: bool,
 	pub time: TimeSource,
 }
 
@@ -96,14 +95,6 @@ impl CatalogStore {
 
 		table::set_primary_key(&mut row, 0u64);
 		table::set_partition_by(&mut row, to_create.partition_by.join(","));
-		table::set_underlying(
-			&mut row,
-			if to_create.underlying {
-				1
-			} else {
-				0
-			},
-		);
 		write_time_source(&table::SHAPE, &mut row, table::TIME_DOMAIN, table::TS, &to_create.time);
 
 		txn.set(&TableKey::encoded(table), row.freeze())?;
@@ -226,7 +217,6 @@ pub mod tests {
 			name: Fragment::internal("test_table"),
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 
@@ -249,7 +239,6 @@ pub mod tests {
 			name: Fragment::internal("test_table"),
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 
@@ -260,7 +249,6 @@ pub mod tests {
 			name: Fragment::internal("another_table"),
 			columns: vec![],
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		};
 
@@ -309,7 +297,6 @@ mod time_declaration_tests {
 				name: Fragment::internal("trades"),
 				columns: vec![],
 				partition_by: vec![],
-				underlying: false,
 				time: TimeSource::Event {
 					ts: "block_time".to_string(),
 				},
@@ -344,7 +331,6 @@ mod time_declaration_tests {
 				name: Fragment::internal("audit"),
 				columns: vec![],
 				partition_by: vec![],
-				underlying: false,
 				time: TimeSource::Processing,
 			},
 		)

@@ -22,7 +22,6 @@ pub struct Queue {
 	pub deduplicate: Option<QueueDeduplicate>,
 	pub retention: QueueRetention,
 	pub retry: QueueRetry,
-	pub underlying: bool,
 	pub time: TimeSource,
 }
 

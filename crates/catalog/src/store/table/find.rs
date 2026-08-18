@@ -35,8 +35,6 @@ impl CatalogStore {
 		} else {
 			partition_by_str.split(',').map(|s| s.to_string()).collect()
 		};
-		let underlying = table::get_underlying(&bytes) != 0;
-
 		Ok(Some(Table {
 			id,
 			name,
@@ -44,7 +42,6 @@ impl CatalogStore {
 			columns: Self::list_columns(rx, id)?,
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
-			underlying,
 			time: decode_table_time(&bytes),
 		}))
 	}

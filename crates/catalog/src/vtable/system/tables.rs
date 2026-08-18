@@ -50,8 +50,7 @@ impl BaseVTable for SystemTables {
 			return Ok(None);
 		}
 
-		let tables: Vec<_> =
-			CatalogStore::list_tables_all(txn)?.into_iter().filter(|t| !t.underlying).collect();
+		let tables = CatalogStore::list_tables(txn)?;
 
 		let mut ids = ColumnBuffer::uint8_with_capacity(tables.len());
 		let mut namespaces = ColumnBuffer::uint8_with_capacity(tables.len());

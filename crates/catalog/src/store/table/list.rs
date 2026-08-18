@@ -14,7 +14,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn list_tables_all(rx: &mut Transaction<'_>) -> Result<Vec<Table>> {
+	pub(crate) fn list_tables(rx: &mut Transaction<'_>) -> Result<Vec<Table>> {
 		let mut result = Vec::new();
 
 		let mut table_ids = Vec::new();
@@ -37,15 +37,13 @@ impl CatalogStore {
 					} else {
 						partition_by_str.split(',').map(|s| s.to_string()).collect()
 					};
-					let underlying =
-						table::get_underlying(EncodedCatalogRow::view(&entry.bytes)) != 0;
 					let time = decode_table_time(EncodedCatalogRow::view(&entry.bytes));
-					table_ids.push((table_id, namespace_id, name, partition_by, underlying, time));
+					table_ids.push((table_id, namespace_id, name, partition_by, time));
 				}
 			}
 		}
 
-		for (table_id, namespace_id, name, partition_by, underlying, time) in table_ids {
+		for (table_id, namespace_id, name, partition_by, time) in table_ids {
 			let primary_key = Self::find_primary_key(rx, table_id)?;
 			let columns = Self::list_columns(rx, table_id)?;
 
@@ -56,7 +54,6 @@ impl CatalogStore {
 				columns,
 				primary_key,
 				partition_by,
-				underlying,
 				time,
 			};
 

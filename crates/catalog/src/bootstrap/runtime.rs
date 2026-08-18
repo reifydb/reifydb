@@ -81,7 +81,6 @@ pub fn bootstrap_runtime(
 						precision: TimestampPrecision::Millisecond,
 					},
 					partition_by: vec![],
-					underlying: false,
 					time: TimeSource::Processing,
 				},
 				column_ids,

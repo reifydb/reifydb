@@ -14,7 +14,6 @@ catalog_shape! {
 		precision: u8,
 		primary_key: u64,
 		partition_by: utf8,
-		underlying: u8,
 		ts: utf8,
 		time_domain: u8,
 	}

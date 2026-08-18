@@ -50,7 +50,7 @@ impl CatalogStore {
 	pub(crate) fn list_columns_all(rx: &mut Transaction<'_>) -> Result<Vec<ColumnInfo>> {
 		let mut result = Vec::new();
 
-		let tables = CatalogStore::list_tables_all(rx)?;
+		let tables = CatalogStore::list_tables(rx)?;
 		for table in tables {
 			let columns = CatalogStore::list_columns(rx, table.id)?;
 			for column in columns {
@@ -80,7 +80,7 @@ impl CatalogStore {
 			}
 		}
 
-		let ringbuffers = CatalogStore::list_ringbuffers_all(rx)?;
+		let ringbuffers = CatalogStore::list_ringbuffers(rx)?;
 		for ringbuffer in ringbuffers {
 			let columns = CatalogStore::list_columns(rx, ringbuffer.id)?;
 			for column in columns {

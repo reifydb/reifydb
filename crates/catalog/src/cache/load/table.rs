@@ -61,7 +61,6 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Res
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
-	let underlying = table::get_underlying(&bytes) != 0;
 	let time = decode_table_time(&bytes);
 	Ok(Table {
 		id,
@@ -70,7 +69,6 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Res
 		columns: vec![],
 		primary_key,
 		partition_by,
-		underlying,
 		time,
 	})
 }

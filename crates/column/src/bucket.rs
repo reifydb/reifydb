@@ -97,7 +97,6 @@ mod tests {
 			key,
 			primary_key: None,
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		}
 	}

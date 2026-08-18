@@ -76,8 +76,6 @@ fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Re
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 
-	let underlying = series::get_underlying(&bytes) != 0;
-
 	Ok(Series {
 		id,
 		namespace,
@@ -87,7 +85,6 @@ fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Re
 		key,
 		primary_key,
 		partition_by,
-		underlying,
 		time: decode_series_time(&bytes),
 	})
 }

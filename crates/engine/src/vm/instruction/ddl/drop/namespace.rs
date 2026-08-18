@@ -88,9 +88,9 @@ pub(crate) fn drop_namespace(
 		})?);
 	}
 
-	let all_tables = services.catalog.list_tables_all(&mut Transaction::Admin(txn))?;
+	let all_tables = services.catalog.list_tables(&mut Transaction::Admin(txn))?;
 	let all_views = services.catalog.list_views_all(&mut Transaction::Admin(txn))?;
-	let all_ringbuffers = services.catalog.list_ringbuffers_all(&mut Transaction::Admin(txn))?;
+	let all_ringbuffers = services.catalog.list_ringbuffers(&mut Transaction::Admin(txn))?;
 	let table_ids: HashSet<_> =
 		all_tables.iter().filter(|t| descendant_ids.contains(&t.namespace)).map(|t| t.id).collect();
 	let view_ids: HashSet<_> =

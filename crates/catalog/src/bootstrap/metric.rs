@@ -169,7 +169,6 @@ fn request_history_schema(namespace: NamespaceId) -> RingBufferToCreate {
 		],
 		capacity: REQUEST_HISTORY_CAPACITY,
 		partition_by: vec![],
-		underlying: false,
 		time: TimeSource::Processing,
 	}
 }
@@ -192,7 +191,6 @@ fn statement_stats_schema(namespace: NamespaceId) -> RingBufferToCreate {
 		],
 		capacity: STATEMENT_STATS_CAPACITY,
 		partition_by: vec![],
-		underlying: false,
 		time: TimeSource::Processing,
 	}
 }
@@ -220,7 +218,6 @@ pub(super) fn ensure_snapshot_series(
 					precision: TimestampPrecision::Millisecond,
 				},
 				partition_by: vec![],
-				underlying: false,
 				time: TimeSource::Processing,
 			},
 			column_ids,

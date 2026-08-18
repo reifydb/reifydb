@@ -225,18 +225,18 @@ impl QueryNode for ViewScanNode {
 		}
 
 		let batch_size = stored_ctx.batch_size;
-		let underlying = self.view.def().storage_id();
+		let storage = self.view.def().storage_id();
 		let range = if self.partitioned {
 			match self.partition {
 				Some(partition) => PartitionedRowKey::partition_scan_range(
-					underlying,
+					storage,
 					partition,
 					self.last_key.as_ref(),
 				),
-				None => PartitionedRowKey::scan_range(underlying, self.last_key.as_ref()),
+				None => PartitionedRowKey::scan_range(storage, self.last_key.as_ref()),
 			}
 		} else {
-			RowKeyRange::scan_range(underlying, self.last_key.as_ref())
+			RowKeyRange::scan_range(storage, self.last_key.as_ref())
 		};
 
 		let (batch, row_numbers, new_last_key, drained) = {

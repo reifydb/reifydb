@@ -98,7 +98,6 @@ pub fn create_table(
 			columns: columns.to_vec(),
 			time: TimeSource::Processing,
 			partition_by: vec![],
-			underlying: false,
 		},
 	)
 	.unwrap()
@@ -184,7 +183,6 @@ pub fn create_ringbuffer(
 			capacity,
 			columns: columns.to_vec(),
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		},
 	)

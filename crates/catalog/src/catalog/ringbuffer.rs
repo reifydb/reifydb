@@ -50,7 +50,6 @@ pub struct RingBufferToCreate {
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
-	pub underlying: bool,
 	pub time: TimeSource,
 }
 
@@ -75,7 +74,6 @@ impl From<RingBufferToCreate> for StoreRingBufferToCreate {
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			capacity: to_create.capacity,
 			partition_by: to_create.partition_by,
-			underlying: to_create.underlying,
 			time: to_create.time,
 		}
 	}
@@ -329,9 +327,9 @@ impl Catalog {
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::ringbuffer::list_all", level = "trace", skip(self, txn))]
-	pub fn list_ringbuffers_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
-		CatalogStore::list_ringbuffers_all(txn)
+	#[instrument(name = "catalog::ringbuffer::list", level = "trace", skip(self, txn))]
+	pub fn list_ringbuffers(&self, txn: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
+		CatalogStore::list_ringbuffers(txn)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::find_metadata", level = "trace", skip(self, txn))]

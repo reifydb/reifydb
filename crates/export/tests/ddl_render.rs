@@ -103,7 +103,6 @@ fn table(name: &str, columns: Vec<Column>) -> Table {
 		columns,
 		primary_key: None,
 		partition_by: vec![],
-		underlying: false,
 		time: TimeSource::Processing,
 	}
 }
@@ -173,7 +172,6 @@ fn ring_buffer_with_partition_by() {
 		capacity: 1000,
 		primary_key: None,
 		partition_by: vec!["region".to_string()],
-		underlying: false,
 		time: TimeSource::Processing,
 	};
 	assert_eq!(
@@ -199,7 +197,6 @@ fn series_datetime_key_with_precision_and_tag() {
 		},
 		primary_key: None,
 		partition_by: vec![],
-		underlying: false,
 		time: TimeSource::Processing,
 	};
 	assert_eq!(
@@ -224,7 +221,6 @@ fn series_integer_key_has_no_precision() {
 		},
 		primary_key: None,
 		partition_by: vec![],
-		underlying: false,
 		time: TimeSource::Processing,
 	};
 	assert_eq!(
@@ -357,7 +353,6 @@ fn queue(retention: QueueRetention, retry: QueueRetry, partitions: u16, ordered_
 		deduplicate: None,
 		retention,
 		retry,
-		underlying: false,
 		time: TimeSource::Processing,
 	}
 }

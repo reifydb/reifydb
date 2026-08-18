@@ -476,7 +476,6 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 			],
 			primary_key_columns: None,
 			partition_by: vec![],
-			underlying: false,
 			time: TimeSource::Processing,
 		},
 	)

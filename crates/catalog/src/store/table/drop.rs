@@ -70,7 +70,6 @@ pub mod tests {
 				namespace: namespace.id(),
 				columns: vec![],
 				partition_by: vec![],
-				underlying: false,
 				time: TimeSource::Processing,
 			},
 		)
