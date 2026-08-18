@@ -7,6 +7,7 @@
 
 pub mod bytes;
 pub mod catalog;
+pub mod envelope;
 pub mod le;
 pub mod operator;
 pub mod pod;

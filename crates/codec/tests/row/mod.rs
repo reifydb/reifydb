@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 mod catalog;
+mod envelope;
 mod le;
 mod operator;
 mod pod;
