@@ -29,6 +29,10 @@ use tracing::error;
 use crate::{
 	domains::{
 		epoch::EpochGauge,
+		proc::{
+			cgroup_cpu_rows, cgroup_io_rows, cgroup_memory_rows, cgroup_pressure_rows, process_io_rows,
+			process_memory_rows, process_sched_rows,
+		},
 		runtime::collect::{Collectors, collect_memory, collect_operators, collect_watermarks},
 	},
 	framework::{
@@ -102,14 +106,17 @@ impl MetricsSamplerActor {
 	}
 
 	fn append_snapshot(&self, published: &PublishedSurface) {
+		let Some(path) = published.domain.snapshots_path() else {
+			return;
+		};
 		let rows = snapshot_rows(&published.columns);
 		if rows.is_empty() {
 			return;
 		}
 		let mut builder = self.collectors.engine.bulk_insert_unchecked(IdentityId::system());
-		builder.series(published.domain.snapshots_path()).rows(rows).done();
+		builder.series(path).rows(rows).done();
 		if let Err(e) = builder.execute() {
-			error!("Failed to append {} snapshot: {}", published.domain.snapshots_path(), e);
+			error!("Failed to append {} snapshot: {}", path, e);
 		}
 	}
 
@@ -130,6 +137,13 @@ impl MetricsSamplerActor {
 			Surface::Current,
 			long_rows(collect_operators(&self.collectors)),
 		);
+		accumulator.push(MetricsDomain::ProcProcessIo, Surface::Current, process_io_rows());
+		accumulator.push(MetricsDomain::ProcProcessMemory, Surface::Current, process_memory_rows());
+		accumulator.push(MetricsDomain::ProcProcessSched, Surface::Current, process_sched_rows());
+		accumulator.push(MetricsDomain::ProcCgroupIo, Surface::Current, cgroup_io_rows());
+		accumulator.push(MetricsDomain::ProcCgroupMemory, Surface::Current, cgroup_memory_rows());
+		accumulator.push(MetricsDomain::ProcCgroupCpu, Surface::Current, cgroup_cpu_rows());
+		accumulator.push(MetricsDomain::ProcCgroupPressure, Surface::Current, cgroup_pressure_rows());
 		accumulator.push(
 			MetricsDomain::Instruments,
 			Surface::Current,

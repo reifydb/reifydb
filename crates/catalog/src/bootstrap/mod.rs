@@ -49,6 +49,7 @@ pub mod identity;
 pub mod instruments;
 pub mod lifecycle;
 pub mod metric;
+pub mod proc;
 pub mod procedure;
 pub mod profiler;
 pub mod read_buffer;
@@ -67,6 +68,7 @@ pub fn bootstrap_system_objects(
 	profiler::bootstrap_profiler(multi, single, catalog, eventbus)?;
 	read_buffer::bootstrap_read_buffer(multi, single, catalog, eventbus)?;
 	runtime::bootstrap_runtime(multi, single, catalog, eventbus)?;
+	proc::bootstrap_proc(multi, single, catalog, eventbus)?;
 	instruments::bootstrap_instruments(multi, single, catalog, eventbus)?;
 	epoch::bootstrap_epoch(multi, single, catalog, eventbus)?;
 	lifecycle::bootstrap_lifecycle(multi, single, catalog, eventbus)?;

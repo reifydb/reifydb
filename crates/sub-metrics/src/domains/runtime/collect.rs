@@ -2,9 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
-use std::fs::read_to_string;
-
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
 use libc::mallinfo2;
 use reifydb_allocator::{JemallocStats, jemalloc_stats};
 use reifydb_cdc::storage::CdcStore;
@@ -13,6 +10,8 @@ use reifydb_engine::engine::StandardEngine;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::memory::global_memory_used;
 use reifydb_value::byte_size::ByteSize;
+
+use crate::domains::proc::{ProcessStatus, process_status};
 
 #[derive(Clone)]
 pub struct Collectors {
@@ -23,11 +22,10 @@ pub struct Collectors {
 pub fn collect_memory(c: &Collectors) -> Vec<MetricsSample> {
 	let mut out = Vec::with_capacity(32);
 
-	let proc_mem = collect_process();
+	let proc_mem = process_status();
 	let jemalloc = jemalloc_stats();
 	let alloc = collect_allocator();
 
-	push_process_samples(&mut out, &proc_mem);
 	push_allocator_samples(&mut out, &jemalloc, &alloc);
 	push_subsystem_samples(c, &mut out);
 	push_operator_rollup(c, &mut out);
@@ -45,27 +43,6 @@ fn push_sqlite_samples(out: &mut Vec<MetricsSample>) {
 
 #[cfg(target_arch = "wasm32")]
 fn push_sqlite_samples(_out: &mut Vec<MetricsSample>) {}
-
-#[inline]
-fn push_process_samples(out: &mut Vec<MetricsSample>, proc_mem: &Option<ProcMem>) {
-	if let Some(p) = proc_mem {
-		out.push(MetricsSample::bytes("process", "rss_total_bytes", ByteSize::from_bytes(p.rss_total)));
-		out.push(MetricsSample::bytes("process", "rss_anon_bytes", ByteSize::from_bytes(p.rss_anon)));
-		out.push(MetricsSample::bytes("process", "rss_file_bytes", ByteSize::from_bytes(p.rss_file)));
-		out.push(MetricsSample::bytes("process", "rss_shmem_bytes", ByteSize::from_bytes(p.rss_shmem)));
-		out.push(MetricsSample::bytes("process", "vm_size_bytes", ByteSize::from_bytes(p.vm_size)));
-		out.push(MetricsSample::bytes("process", "vm_data_bytes", ByteSize::from_bytes(p.vm_data)));
-		out.push(MetricsSample::bytes("process", "private_dirty_bytes", ByteSize::from_bytes(p.private_dirty)));
-		out.push(MetricsSample::bytes("process", "private_clean_bytes", ByteSize::from_bytes(p.private_clean)));
-		out.push(MetricsSample::bytes("process", "pss_bytes", ByteSize::from_bytes(p.pss)));
-		out.push(MetricsSample::bytes(
-			"process",
-			"uss_bytes",
-			ByteSize::from_bytes(p.private_dirty + p.private_clean),
-		));
-		out.push(MetricsSample::count("process", "thread_count", p.threads));
-	}
-}
 
 #[inline]
 fn push_allocator_samples(out: &mut Vec<MetricsSample>, jemalloc: &Option<JemallocStats>, alloc: &Option<AllocMem>) {
@@ -120,7 +97,7 @@ fn push_operator_rollup(c: &Collectors, out: &mut Vec<MetricsSample>) {
 fn push_derived_samples(
 	out: &mut Vec<MetricsSample>,
 	named_heap: u64,
-	proc_mem: &Option<ProcMem>,
+	proc_mem: &Option<ProcessStatus>,
 	jemalloc: &Option<JemallocStats>,
 	alloc: &Option<AllocMem>,
 ) {
@@ -210,55 +187,6 @@ fn collect_cdc(c: &Collectors, out: &mut Vec<MetricsSample>) {
 	{
 		out.push(MetricsSample::version("cdc", "cdc_truncated_before", truncated.0));
 	}
-}
-
-struct ProcMem {
-	rss_total: u64,
-	rss_anon: u64,
-	rss_file: u64,
-	rss_shmem: u64,
-	vm_size: u64,
-	vm_data: u64,
-	private_dirty: u64,
-	private_clean: u64,
-	pss: u64,
-	threads: u64,
-}
-
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
-fn collect_process() -> Option<ProcMem> {
-	let status = read_to_string("/proc/self/status").ok()?;
-	let rollup = read_to_string("/proc/self/smaps_rollup").unwrap_or_default();
-	Some(ProcMem {
-		rss_total: field_kb(&status, "VmRSS:").unwrap_or(0),
-		rss_anon: field_kb(&status, "RssAnon:").unwrap_or(0),
-		rss_file: field_kb(&status, "RssFile:").unwrap_or(0),
-		rss_shmem: field_kb(&status, "RssShmem:").unwrap_or(0),
-		vm_size: field_kb(&status, "VmSize:").unwrap_or(0),
-		vm_data: field_kb(&status, "VmData:").unwrap_or(0),
-		threads: field_raw(&status, "Threads:").unwrap_or(0),
-		private_dirty: field_kb(&rollup, "Private_Dirty:").unwrap_or(0),
-		private_clean: field_kb(&rollup, "Private_Clean:").unwrap_or(0),
-		pss: field_kb(&rollup, "Pss:").unwrap_or(0),
-	})
-}
-
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
-fn field_raw(content: &str, key: &str) -> Option<u64> {
-	content.lines().find_map(|line| {
-		let rest = line.strip_prefix(key)?;
-		rest.split_whitespace().next()?.parse::<u64>().ok()
-	})
-}
-
-#[cfg(all(target_os = "linux", target_env = "gnu"))]
-fn field_kb(content: &str, key: &str) -> Option<u64> {
-	field_raw(content, key).map(|kb| kb * 1024)
-}
-
-#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
-fn collect_process() -> Option<ProcMem> {
-	None
 }
 
 struct AllocMem {

@@ -2,4 +2,5 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod epoch;
+pub mod proc;
 pub mod runtime;

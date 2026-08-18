@@ -10,6 +10,13 @@ pub enum MetricsDomain {
 	RuntimeMemory,
 	RuntimeWatermarks,
 	RuntimeOperators,
+	ProcProcessIo,
+	ProcProcessMemory,
+	ProcProcessSched,
+	ProcCgroupIo,
+	ProcCgroupMemory,
+	ProcCgroupCpu,
+	ProcCgroupPressure,
 	ReadBuffer,
 	Instruments,
 	Epoch,
@@ -171,6 +178,24 @@ fn counter(name: &'static str, data_type: ValueType) -> MeasureSpec {
 	}
 }
 
+fn level_optional(name: &'static str, data_type: ValueType) -> MeasureSpec {
+	MeasureSpec {
+		name,
+		data_type,
+		kind: MetricKind::Level,
+		optional: true,
+	}
+}
+
+fn counter_optional(name: &'static str, data_type: ValueType) -> MeasureSpec {
+	MeasureSpec {
+		name,
+		data_type,
+		kind: MetricKind::Counter,
+		optional: true,
+	}
+}
+
 fn distribution(name: &'static str, data_type: ValueType) -> MeasureSpec {
 	MeasureSpec {
 		name,
@@ -231,10 +256,17 @@ mod tests {
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 11] = [
+	pub const ALL: [MetricsDomain; 18] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
+		MetricsDomain::ProcProcessIo,
+		MetricsDomain::ProcProcessMemory,
+		MetricsDomain::ProcProcessSched,
+		MetricsDomain::ProcCgroupIo,
+		MetricsDomain::ProcCgroupMemory,
+		MetricsDomain::ProcCgroupCpu,
+		MetricsDomain::ProcCgroupPressure,
 		MetricsDomain::ReadBuffer,
 		MetricsDomain::Instruments,
 		MetricsDomain::Epoch,
@@ -247,7 +279,16 @@ impl MetricsDomain {
 
 	pub fn push_kind(self) -> PushKind {
 		match self {
-			MetricsDomain::Storage | MetricsDomain::Cdc | MetricsDomain::FlowState => PushKind::Census,
+			MetricsDomain::Storage
+			| MetricsDomain::Cdc
+			| MetricsDomain::FlowState
+			| MetricsDomain::ProcProcessIo
+			| MetricsDomain::ProcProcessMemory
+			| MetricsDomain::ProcProcessSched
+			| MetricsDomain::ProcCgroupIo
+			| MetricsDomain::ProcCgroupMemory
+			| MetricsDomain::ProcCgroupCpu
+			| MetricsDomain::ProcCgroupPressure => PushKind::Census,
 			MetricsDomain::RuntimeMemory
 			| MetricsDomain::RuntimeWatermarks
 			| MetricsDomain::RuntimeOperators
@@ -259,19 +300,26 @@ impl MetricsDomain {
 		}
 	}
 
-	pub fn snapshots_path(self) -> &'static str {
+	pub fn snapshots_path(self) -> Option<&'static str> {
 		match self {
-			MetricsDomain::RuntimeMemory => "system::metrics::runtime::memory::snapshots",
-			MetricsDomain::RuntimeWatermarks => "system::metrics::runtime::watermarks::snapshots",
-			MetricsDomain::RuntimeOperators => "system::metrics::runtime::operators::snapshots",
-			MetricsDomain::ReadBuffer => "system::metrics::read_buffer::snapshots",
-			MetricsDomain::Instruments => "system::metrics::instruments::snapshots",
-			MetricsDomain::Epoch => "system::metrics::epoch::snapshots",
-			MetricsDomain::Lifecycle => "system::metrics::lifecycle::snapshots",
-			MetricsDomain::Storage => "system::metrics::storage::snapshots",
-			MetricsDomain::Cdc => "system::metrics::cdc::snapshots",
-			MetricsDomain::ProfilerSpans => "system::metrics::profiler::spans::snapshots",
-			MetricsDomain::FlowState => "system::metrics::flow::state::snapshots",
+			MetricsDomain::RuntimeMemory => Some("system::metrics::runtime::memory::snapshots"),
+			MetricsDomain::RuntimeWatermarks => Some("system::metrics::runtime::watermarks::snapshots"),
+			MetricsDomain::RuntimeOperators => Some("system::metrics::runtime::operators::snapshots"),
+			MetricsDomain::ReadBuffer => Some("system::metrics::read_buffer::snapshots"),
+			MetricsDomain::Instruments => Some("system::metrics::instruments::snapshots"),
+			MetricsDomain::Epoch => Some("system::metrics::epoch::snapshots"),
+			MetricsDomain::Lifecycle => Some("system::metrics::lifecycle::snapshots"),
+			MetricsDomain::Storage => Some("system::metrics::storage::snapshots"),
+			MetricsDomain::Cdc => Some("system::metrics::cdc::snapshots"),
+			MetricsDomain::ProfilerSpans => Some("system::metrics::profiler::spans::snapshots"),
+			MetricsDomain::FlowState => Some("system::metrics::flow::state::snapshots"),
+			MetricsDomain::ProcProcessIo
+			| MetricsDomain::ProcProcessMemory
+			| MetricsDomain::ProcProcessSched
+			| MetricsDomain::ProcCgroupIo
+			| MetricsDomain::ProcCgroupMemory
+			| MetricsDomain::ProcCgroupCpu
+			| MetricsDomain::ProcCgroupPressure => None,
 		}
 	}
 
@@ -287,6 +335,130 @@ impl MetricsDomain {
 				long_spec(self, NamespaceId::SYSTEM_METRICS_RUNTIME_OPERATORS, true)
 			}
 			MetricsDomain::Instruments => long_spec(self, NamespaceId::SYSTEM_METRICS_INSTRUMENTS, true),
+			MetricsDomain::ProcProcessIo => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_PROC_PROCESS_IO,
+				shape: DomainShape::Wide,
+				dimensions: Vec::new(),
+				measures: vec![
+					counter("rchar", ValueType::Uint8),
+					counter("wchar", ValueType::Uint8),
+					counter("read_bytes", ValueType::Uint8),
+					counter("write_bytes", ValueType::Uint8),
+					counter("cancelled_write_bytes", ValueType::Uint8),
+					counter("read_syscalls", ValueType::Uint8),
+					counter("write_syscalls", ValueType::Uint8),
+				],
+				has_total: false,
+			},
+			MetricsDomain::ProcProcessMemory => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_PROC_PROCESS_MEMORY,
+				shape: DomainShape::Wide,
+				dimensions: Vec::new(),
+				measures: vec![
+					level("rss_total", ValueType::Uint8),
+					level("rss_anon", ValueType::Uint8),
+					level("rss_file", ValueType::Uint8),
+					level("rss_shmem", ValueType::Uint8),
+					level("vm_size", ValueType::Uint8),
+					level("vm_data", ValueType::Uint8),
+					level("vm_swap", ValueType::Uint8),
+					level("vm_high_water_mark", ValueType::Uint8),
+					level_optional("private_dirty", ValueType::Uint8),
+					level_optional("private_clean", ValueType::Uint8),
+					level_optional("pss", ValueType::Uint8),
+					level_optional("uss", ValueType::Uint8),
+					level("threads", ValueType::Uint8),
+				],
+				has_total: false,
+			},
+			MetricsDomain::ProcProcessSched => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_PROC_PROCESS_SCHED,
+				shape: DomainShape::Wide,
+				dimensions: Vec::new(),
+				measures: vec![
+					counter("minor_faults", ValueType::Uint8),
+					counter("major_faults", ValueType::Uint8),
+					counter("user_time", ValueType::Duration),
+					counter("system_time", ValueType::Duration),
+					counter("run_queue_wait", ValueType::Duration),
+					counter("voluntary_context_switches", ValueType::Uint8),
+					counter("involuntary_context_switches", ValueType::Uint8),
+					level("open_files", ValueType::Uint8),
+					level("max_open_files", ValueType::Uint8),
+				],
+				has_total: false,
+			},
+			MetricsDomain::ProcCgroupIo => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_PROC_CGROUP_IO,
+				shape: DomainShape::Wide,
+				dimensions: vec![dim("device", ValueType::Utf8)],
+				measures: vec![
+					counter("read_bytes", ValueType::Uint8),
+					counter("write_bytes", ValueType::Uint8),
+					counter("read_ios", ValueType::Uint8),
+					counter("write_ios", ValueType::Uint8),
+					counter("discard_bytes", ValueType::Uint8),
+					counter("discard_ios", ValueType::Uint8),
+				],
+				has_total: false,
+			},
+			MetricsDomain::ProcCgroupMemory => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_PROC_CGROUP_MEMORY,
+				shape: DomainShape::Wide,
+				dimensions: Vec::new(),
+				measures: vec![
+					level("current", ValueType::Uint8),
+					level_optional("max", ValueType::Uint8),
+					level("anon", ValueType::Uint8),
+					level("file", ValueType::Uint8),
+					level("file_dirty", ValueType::Uint8),
+					level("file_writeback", ValueType::Uint8),
+					level("slab", ValueType::Uint8),
+					level("sock", ValueType::Uint8),
+					level("swap_current", ValueType::Uint8),
+					level_optional("swap_max", ValueType::Uint8),
+					counter("page_faults", ValueType::Uint8),
+					counter("major_page_faults", ValueType::Uint8),
+				],
+				has_total: false,
+			},
+			MetricsDomain::ProcCgroupCpu => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_PROC_CGROUP_CPU,
+				shape: DomainShape::Wide,
+				dimensions: Vec::new(),
+				measures: vec![
+					counter("usage", ValueType::Duration),
+					counter("user", ValueType::Duration),
+					counter("system", ValueType::Duration),
+					counter_optional("periods", ValueType::Uint8),
+					counter_optional("throttled_periods", ValueType::Uint8),
+					counter_optional("throttled", ValueType::Duration),
+				],
+				has_total: false,
+			},
+			MetricsDomain::ProcCgroupPressure => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_PROC_CGROUP_PRESSURE,
+				shape: DomainShape::Wide,
+				dimensions: vec![dim("resource", ValueType::Utf8)],
+				measures: vec![
+					counter("some_stalled", ValueType::Duration),
+					counter_optional("full_stalled", ValueType::Duration),
+					level("some_avg10", ValueType::Float8),
+					level("some_avg60", ValueType::Float8),
+					level("some_avg300", ValueType::Float8),
+					level_optional("full_avg10", ValueType::Float8),
+					level_optional("full_avg60", ValueType::Float8),
+					level_optional("full_avg300", ValueType::Float8),
+				],
+				has_total: false,
+			},
 			MetricsDomain::ReadBuffer => DomainSpec {
 				domain: self,
 				namespace: NamespaceId::SYSTEM_METRICS_READ_BUFFER,

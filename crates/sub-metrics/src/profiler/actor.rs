@@ -145,6 +145,9 @@ fn append_spans_snapshot(engine: &StandardEngine, columns: &Columns) {
 	if row_count == 0 {
 		return;
 	}
+	let Some(path) = MetricsDomain::ProfilerSpans.snapshots_path() else {
+		return;
+	};
 	let rows: Vec<Params> = (0..row_count)
 		.map(|index| {
 			let mut row = HashMap::new();
@@ -158,7 +161,7 @@ fn append_spans_snapshot(engine: &StandardEngine, columns: &Columns) {
 		})
 		.collect();
 	let mut builder = engine.bulk_insert_unchecked(IdentityId::system());
-	builder.series(MetricsDomain::ProfilerSpans.snapshots_path()).rows(rows).done();
+	builder.series(path).rows(rows).done();
 	if let Err(e) = builder.execute() {
 		error!("Failed to append profiler spans snapshot: {}", e);
 	}

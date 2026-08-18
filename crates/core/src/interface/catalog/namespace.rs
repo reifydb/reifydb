@@ -24,6 +24,16 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_RUNTIME_MEMORY: NamespaceId = NamespaceId(13);
 	pub const SYSTEM_METRICS_RUNTIME_WATERMARKS: NamespaceId = NamespaceId(14);
 	pub const SYSTEM_METRICS_RUNTIME_OPERATORS: NamespaceId = NamespaceId(15);
+	pub const SYSTEM_METRICS_PROC: NamespaceId = NamespaceId(16);
+	pub const SYSTEM_METRICS_PROC_PROCESS: NamespaceId = NamespaceId(17);
+	pub const SYSTEM_METRICS_PROC_PROCESS_IO: NamespaceId = NamespaceId(18);
+	pub const SYSTEM_METRICS_PROC_PROCESS_MEMORY: NamespaceId = NamespaceId(19);
+	pub const SYSTEM_METRICS_PROC_PROCESS_SCHED: NamespaceId = NamespaceId(20);
+	pub const SYSTEM_METRICS_PROC_CGROUP: NamespaceId = NamespaceId(21);
+	pub const SYSTEM_METRICS_PROC_CGROUP_IO: NamespaceId = NamespaceId(22);
+	pub const SYSTEM_METRICS_PROC_CGROUP_MEMORY: NamespaceId = NamespaceId(23);
+	pub const SYSTEM_METRICS_PROC_CGROUP_CPU: NamespaceId = NamespaceId(24);
+	pub const SYSTEM_METRICS_PROC_CGROUP_PRESSURE: NamespaceId = NamespaceId(25);
 	pub const SYSTEM_METRICS_READ_BUFFER: NamespaceId = NamespaceId(34);
 	pub const SYSTEM_METRICS_INSTRUMENTS: NamespaceId = NamespaceId(38);
 	pub const SYSTEM_METRICS_EPOCH: NamespaceId = NamespaceId(39);
