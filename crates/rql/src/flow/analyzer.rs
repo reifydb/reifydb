@@ -298,22 +298,6 @@ impl FlowGraphAnalyzer {
 		dependencies
 	}
 
-	pub fn get_flows_depending_on_table(
-		&self,
-		dependency_graph: &FlowDependencyGraph,
-		table_id: TableId,
-	) -> Vec<FlowId> {
-		dependency_graph.source_tables.get(&table_id).cloned().unwrap_or_default()
-	}
-
-	pub fn get_flows_depending_on_view(
-		&self,
-		dependency_graph: &FlowDependencyGraph,
-		view_id: ViewId,
-	) -> Vec<FlowId> {
-		dependency_graph.source_views.get(&view_id).cloned().unwrap_or_default()
-	}
-
 	pub fn get_flow_producing_view(
 		&self,
 		dependency_graph: &FlowDependencyGraph,
@@ -661,7 +645,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_get_flows_depending_on_table() {
+	fn a_source_table_indexes_every_flow_that_reads_it() {
+		// Dispatch routes a change by this map, so a missed flow never runs on writes to its own source.
 		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow1 = create_test_flow_with_nodes(
@@ -708,14 +693,16 @@ pub mod tests {
 		analyzer.add(flow3);
 		let dependency_graph = analyzer.get_dependency_graph();
 
-		let flows_using_table_100 = analyzer.get_flows_depending_on_table(dependency_graph, TableId(100));
+		let flows_using_table_100 = &dependency_graph.source_tables[&TableId(100)];
 		assert_eq!(flows_using_table_100.len(), 2);
 		assert!(flows_using_table_100.contains(&FlowId(1)));
 		assert!(flows_using_table_100.contains(&FlowId(2)));
 
-		let flows_using_table_101 = analyzer.get_flows_depending_on_table(dependency_graph, TableId(101));
+		let flows_using_table_101 = &dependency_graph.source_tables[&TableId(101)];
 		assert_eq!(flows_using_table_101.len(), 1);
 		assert!(flows_using_table_101.contains(&FlowId(3)));
+
+		assert!(!dependency_graph.source_tables.contains_key(&TableId(999)));
 	}
 
 	#[test]

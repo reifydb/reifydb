@@ -148,16 +148,6 @@ impl FlowEngineInner {
 		self.analyzer.get_dependency_graph().clone()
 	}
 
-	pub fn get_flows_depending_on_table(&self, table_id: TableId) -> Vec<FlowId> {
-		let dependency_graph = self.analyzer.get_dependency_graph();
-		self.analyzer.get_flows_depending_on_table(dependency_graph, table_id)
-	}
-
-	pub fn get_flows_depending_on_view(&self, view_id: ViewId) -> Vec<FlowId> {
-		let dependency_graph = self.analyzer.get_dependency_graph();
-		self.analyzer.get_flows_depending_on_view(dependency_graph, view_id)
-	}
-
 	pub fn get_flow_producing_view(&self, view_id: ViewId) -> Option<FlowId> {
 		let dependency_graph = self.analyzer.get_dependency_graph();
 		self.analyzer.get_flow_producing_view(dependency_graph, view_id)

@@ -4,5 +4,4 @@
 //! Wraps the typed catalog and storage operations the VM performs inside a transaction, so dispatch handlers
 //! call them by name instead of each wiring up the encoded-key plumbing itself.
 
-#[allow(dead_code)]
 pub mod operation;

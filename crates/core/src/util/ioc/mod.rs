@@ -11,9 +11,6 @@
 //! Invariant: only one value per `TypeId` is registered. Registering twice silently overwrites the previous value;
 //! consumers should treat the container as immutable after startup wiring is complete.
 
-pub mod resolve_arc;
-pub mod resolve_rc;
-
 use std::{
 	any::{Any, TypeId, type_name},
 	collections::HashMap,
