@@ -49,7 +49,7 @@ fn full_key(operator: OperatorId, key: &GroupStateKey) -> EncodedKey {
 }
 
 #[test]
-fn update_uses_caller_time() {
+fn update_replaces_the_row_wholesale() {
 	// A repeat state_set must replace the stored row wholesale, or a merging write would leave the earlier body
 	// readable.
 	let e = engine();

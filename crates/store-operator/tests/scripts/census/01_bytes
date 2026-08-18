@@ -8,8 +8,8 @@ bytes
 ---
 bytes 1 => 0
 
-# A framed key is 8 group bytes plus 1 keyspace byte plus its suffix, and a row is a 24 byte time header plus
-# its body: "a" costs 10 + 25.
+# A framed key is 8 group bytes plus 1 keyspace byte plus its suffix, and a row is its body alone: "a" costs
+# 10 + 1.
 
 set a=1
 flush
@@ -18,7 +18,7 @@ bytes
 ok
 bytes 1 => 11
 
-# "bb" costs 11 + 26.
+# "bb" costs 11 + 2.
 
 set bb=22
 flush

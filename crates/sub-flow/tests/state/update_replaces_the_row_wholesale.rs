@@ -4,7 +4,7 @@
 use reifydb_flow::transaction::{FlowTransaction, state::StateExtension};
 use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine, key, make_row};
 
-fn assert_update_uses_caller_time<T: FlowTransaction>(txn: &mut T) {
+fn assert_update_replaces_the_row_wholesale<T: FlowTransaction>(txn: &mut T) {
 	// A repeat state_set must replace the stored row wholesale, or a merging write would leave the earlier body
 	// readable.
 	let k = key("update-key");
@@ -20,5 +20,5 @@ fn assert_update_uses_caller_time<T: FlowTransaction>(txn: &mut T) {
 fn deferred() {
 	let e = engine();
 	let mut txn = e.flow_txn().deferred();
-	assert_update_uses_caller_time(&mut txn);
+	assert_update_replaces_the_row_wholesale(&mut txn);
 }

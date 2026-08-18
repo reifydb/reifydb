@@ -5,8 +5,8 @@ census
 ---
 count=0
 
-# One bucket per operator and keyspace; a key costs 9 framing bytes plus its suffix and a row 24 bytes plus
-# its body.
+# One bucket per operator and keyspace; a key costs 9 framing bytes plus its suffix and a row its body
+# alone.
 
 set a=1
 flush
