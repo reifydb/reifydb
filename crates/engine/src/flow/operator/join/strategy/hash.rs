@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::bytes::read_fingerprint;
 use reifydb_codec::row::{
-	operator::EncodedOperatorRow,
+	bytes::EncodedBytes,
+	operator::{EncodedOperatorRow, read_created_at, read_time, read_updated_at},
 	shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
@@ -19,7 +19,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,
-	util::hash::Hash128,
+	util::{cowvec::CowVec, hash::Hash128},
 	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
 };
 
@@ -28,6 +28,8 @@ use crate::flow::{
 	transaction::FlowTransaction,
 };
 
+const FINGERPRINT_BYTES: usize = 8;
+
 pub(crate) fn build_shape(columns: &Columns) -> RowShape {
 	let fields: Vec<RowShapeField> = columns
 		.names
@@ -35,14 +37,28 @@ pub(crate) fn build_shape(columns: &Columns) -> RowShape {
 		.zip(columns.columns.iter())
 		.map(|(name, buf)| RowShapeField::unconstrained(name.text().to_string(), buf.get_type()))
 		.collect();
-	RowShape::new(RowFamily::Operator, fields)
+	RowShape::new(RowFamily::Pod, fields)
 }
 
 pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize) -> EncodedOperatorRow {
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
-	let mut encoded = shape.allocate_operator();
+	let mut encoded = shape.allocate_pod();
 	shape.set_values(&mut encoded, &values);
-	encoded.freeze()
+	let pod = encoded.freeze();
+	let mut body = Vec::with_capacity(FINGERPRINT_BYTES + pod.as_slice().len());
+	body.extend_from_slice(&shape.fingerprint().to_le_bytes());
+	body.extend_from_slice(pod.as_slice());
+	EncodedOperatorRow::timeless(&body)
+}
+
+fn row_fingerprint(row: &EncodedOperatorRow) -> RowShapeFingerprint {
+	RowShapeFingerprint::from_le_bytes(
+		row.body()[..FINGERPRINT_BYTES].try_into().expect("join state rows start with a shape fingerprint"),
+	)
+}
+
+fn row_pod_bytes(row: &EncodedOperatorRow) -> EncodedBytes {
+	EncodedBytes(CowVec::new(row.body()[FINGERPRINT_BYTES..].to_vec()))
 }
 
 pub(crate) fn add_to_state_entry_batch(
@@ -114,7 +130,13 @@ fn decode_run(
 	let shape = store
 		.get_row_shape(txn, fingerprint)?
 		.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
-	Ok(Columns::from_encoded_bytes(&shape, ids, &rows.iter().map(|r| r.bytes().clone()).collect::<Vec<_>>()))
+	let bodies: Vec<EncodedBytes> = rows.iter().map(row_pod_bytes).collect();
+	let mut decoded = Columns::from_encoded_bytes(&shape, ids, &bodies);
+	let created_at: Vec<DateTime> = rows.iter().map(|row| read_created_at(row.bytes())).collect();
+	let updated_at: Vec<DateTime> = rows.iter().map(|row| read_updated_at(row.bytes())).collect();
+	let time: Vec<DateTime> = rows.iter().filter_map(|row| read_time(row.bytes())).collect();
+	decoded.system = SystemColumns::new(ids.to_vec(), Vec::new(), created_at, updated_at, time);
+	Ok(decoded)
 }
 
 fn merge_runs(runs: Vec<Columns>) -> Columns {
@@ -174,7 +196,7 @@ pub(crate) fn columns_from_block(
 	let mut run_rows: Vec<EncodedOperatorRow> = Vec::new();
 
 	for (id, row) in block {
-		let fingerprint = read_fingerprint(row.bytes());
+		let fingerprint = row_fingerprint(&row);
 		if run_fingerprint.is_some_and(|current| current != fingerprint) {
 			runs.push(decode_run(txn, store, run_fingerprint.unwrap(), &run_ids, &run_rows)?);
 			run_ids.clear();

@@ -206,7 +206,7 @@ impl Store {
 						cause: e.to_string(),
 					})
 				})?;
-				let shape = RowShape::new(RowFamily::Operator, fields);
+				let shape = RowShape::new(RowFamily::Pod, fields);
 				Ok(Some(shape))
 			}
 			None => Ok(None),
