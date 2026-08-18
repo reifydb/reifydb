@@ -870,9 +870,13 @@ name = "dev"
 version = "0.9.0"
 dependencies = [
  "clap",
+ "postcard",
  "reifydb",
+ "reifydb-codec",
+ "reifydb-core",
  "reifydb-runtime",
  "rusqlite",
+ "serde",
 ]
 
 [[package]]
@@ -2934,6 +2938,7 @@ dependencies = [
  "tracing",
  "uuid",
  "xxhash-rust",
+ "zstd",
 ]
 
 [[package]]

@@ -5,6 +5,8 @@
 //! value codec, the RBCF columnar frame format, the row storage codec, the key codec and the extern-C
 //! cells. Both halves live here and share one tag scheme, so no consumer hand-rolls these bytes.
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod cdc;
 pub mod constraint;
 pub mod error;
 pub mod extern_c;

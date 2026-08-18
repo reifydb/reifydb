@@ -13,6 +13,7 @@ use std::{
 };
 
 use postcard::{from_bytes, to_stdvec};
+use reifydb_codec::cdc;
 use reifydb_core::{
 	common::CommitVersion,
 	event::metric::CdcEviction,
@@ -32,13 +33,15 @@ use rusqlite::{
 use tracing::instrument;
 
 use crate::{
-	compact::{block, block::CompactBlockSummary, cache::BlockCache},
+	compact::{CompactBlockSummary, cache::BlockCache},
 	error::CdcError,
 	storage::{
 		CdcStorage, CdcStorageResult, DropBeforeResult, aggregate_evictions, merge_evictions,
-		normalize_range_inclusive, sqlite::codec, total_evicted_count,
+		normalize_range_inclusive, total_evicted_count,
 	},
 };
+
+const ROW_ZSTD_LEVEL: i32 = 1;
 
 #[derive(Clone)]
 pub struct SqliteCdcStorage {
@@ -190,7 +193,7 @@ impl SqliteCdcStorage {
 		if let Some(hit) = self.inner.block_cache.get(block_max) {
 			return Ok(hit);
 		}
-		let entries = block::decode(payload)?;
+		let entries = cdc::decode::<Vec<Cdc>>(payload)?;
 		let arc = Arc::new(entries);
 		self.inner.block_cache.put(block_max, arc.clone());
 		Ok(arc)
@@ -241,7 +244,8 @@ impl SqliteCdcStorage {
 			return Ok(None);
 		};
 
-		let payload = block::encode(&entries, zstd_level)?;
+		assert_block_ordered(&entries);
+		let payload = cdc::encode(&entries, zstd_level as i32)?;
 		let compressed_bytes = payload.len();
 		let rollup = aggregate_evictions(entries.iter().flat_map(|c| c.system_changes.iter()));
 		let rollup_bytes = to_stdvec(&rollup)
@@ -434,7 +438,7 @@ impl SqliteCdcStorage {
 			let (max_bytes, payload) =
 				row.map_err(|e| CdcError::Internal(format!("drop straddle row: {e}")))?;
 			let block_max = bytes_to_version(&max_bytes)?;
-			let decoded = block::decode(&payload)?;
+			let decoded = cdc::decode::<Vec<Cdc>>(&payload)?;
 			let mut survivors: Vec<Cdc> = Vec::with_capacity(decoded.len());
 			let mut evicted: Vec<Cdc> = Vec::new();
 			for cdc in decoded {
@@ -618,7 +622,7 @@ fn query_oldest_candidates(
 		}
 		let (vb, pb) = row.map_err(|e| CdcError::Internal(format!("compact row: {e}")))?;
 		version_blobs.push(vb);
-		entries.push(codec::decode(&pb)?);
+		entries.push(cdc::decode::<Cdc>(&pb)?);
 	}
 	Ok((entries, version_blobs))
 }
@@ -765,7 +769,7 @@ fn read_live_payloads(conn: &Connection, lo_b: &[u8; 8], hi_b: &[u8; 8], limit: 
 fn decode_live_payloads(payloads: Vec<Vec<u8>>) -> CdcStorageResult<Vec<Cdc>> {
 	let mut live_items = Vec::with_capacity(payloads.len());
 	for payload in payloads {
-		live_items.push(codec::decode(&payload)?);
+		live_items.push(cdc::decode::<Cdc>(&payload)?);
 	}
 	Ok(live_items)
 }
@@ -873,6 +877,16 @@ fn apply_drop_before(
 }
 
 #[inline]
+fn assert_block_ordered(entries: &[Cdc]) {
+	reifydb_assertions! {
+		assert!(!entries.is_empty(), "cannot encode an empty block");
+		assert!(
+			entries.windows(2).all(|w| w[0].version < w[1].version),
+			"block entries must be strictly ascending by version"
+		);
+	}
+}
+
 fn rewrite_straddle_block(
 	tx: &Transaction<'_>,
 	max_bytes: &[u8],
@@ -885,7 +899,8 @@ fn rewrite_straddle_block(
 		assert_eq!(new_max, bytes_to_version(max_bytes)?, "max_version is the block PK and must be preserved");
 	}
 	let (min_ts_nanos, max_ts_nanos) = summarize_timestamps(survivors);
-	let payload = block::encode(survivors, zstd_level)?;
+	assert_block_ordered(survivors);
+	let payload = cdc::encode(survivors, zstd_level as i32)?;
 	let rollup = aggregate_evictions(survivors.iter().flat_map(|c| c.system_changes.iter()));
 	let rollup_bytes =
 		to_stdvec(&rollup).map_err(|e| CdcError::Codec(format!("postcard encode straddle rollup: {e}")))?;
@@ -964,7 +979,7 @@ fn insert_compacted_block(
 impl CdcStorage for SqliteCdcStorage {
 	#[instrument(name = "store::cdc::sqlite::write", level = "debug", skip_all)]
 	fn write(&self, cdc: &Cdc) -> CdcStorageResult<()> {
-		let bytes = codec::encode(cdc)?;
+		let bytes = cdc::encode(cdc, ROW_ZSTD_LEVEL)?;
 		let rollup = aggregate_evictions(&cdc.system_changes);
 		let rollup_bytes =
 			to_stdvec(&rollup).map_err(|e| CdcError::Codec(format!("postcard encode rollup: {e}")))?;
@@ -1182,7 +1197,7 @@ impl SqliteCdcStorage {
 			.map_err(|e| CdcError::Internal(format!("read cdc prepare: {e}")))?
 			.query_row(params![version_to_bytes(version).as_slice()], |row| row.get::<_, Vec<u8>>(0));
 		match result {
-			Ok(bytes) => Ok(Some(codec::decode(&bytes)?)),
+			Ok(bytes) => Ok(Some(cdc::decode::<Cdc>(&bytes)?)),
 			Err(QueryReturnedNoRows) => Ok(None),
 			Err(e) => Err(CdcError::Internal(format!("read cdc: {e}"))),
 		}

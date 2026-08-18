@@ -3,6 +3,7 @@
 
 use std::{error::Error as StdError, fmt, fmt::Display};
 
+use reifydb_codec::error::{DecodeError, EncodeError};
 use reifydb_core::common::CommitVersion;
 use reifydb_value::{error, error::Error};
 
@@ -26,6 +27,18 @@ impl Display for CdcError {
 }
 
 impl StdError for CdcError {}
+
+impl From<EncodeError> for CdcError {
+	fn from(err: EncodeError) -> Self {
+		CdcError::Codec(err.to_string())
+	}
+}
+
+impl From<DecodeError> for CdcError {
+	fn from(err: DecodeError) -> Self {
+		CdcError::Codec(err.to_string())
+	}
+}
 
 impl From<CdcError> for Error {
 	fn from(err: CdcError) -> Self {

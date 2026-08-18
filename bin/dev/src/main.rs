@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 mod catalog;
+mod cdc;
 mod context;
 mod dbstat;
 mod report;
@@ -28,6 +29,7 @@ struct Cli {
 enum Command {
 	Storage(StorageArgs),
 	Catalog(CatalogArgs),
+	Cdc(CdcArgs),
 }
 
 #[derive(Parser)]
@@ -56,6 +58,21 @@ struct CatalogArgs {
 	json: bool,
 }
 
+#[derive(Parser)]
+struct CdcArgs {
+	dir: String,
+	#[arg(long)]
+	all: bool,
+	#[arg(long, default_value_t = 40)]
+	top: usize,
+	#[arg(long)]
+	no_names: bool,
+	#[arg(long)]
+	no_blocks: bool,
+	#[arg(long)]
+	json: bool,
+}
+
 fn main() {
 	allocator::verify();
 	let cli = Cli::parse();
@@ -63,6 +80,7 @@ fn main() {
 	let result = match cli.command {
 		Command::Storage(args) => storage(&ctx, args),
 		Command::Catalog(args) => catalog_dump(args),
+		Command::Cdc(args) => cdc_report(&ctx, args),
 	};
 	if let Err(e) = result {
 		eprintln!("error: {e}");
@@ -93,6 +111,32 @@ fn storage(ctx: &Context, args: StorageArgs) -> Result<()> {
 			filter: args.filter,
 			json: args.json,
 			show_rows: !args.no_rows,
+		},
+	);
+	eprintln!("done in {:.1}s", started.elapsed().as_secs_f64());
+	Ok(())
+}
+
+fn cdc_report(ctx: &Context, args: CdcArgs) -> Result<()> {
+	let started = ctx.clock.instant();
+	let stats = cdc::scan(&args.dir, !args.no_blocks)?;
+	let file_bytes = std::fs::metadata(Path::new(&args.dir).join("cdc.db")).map(|m| m.len()).unwrap_or(0);
+
+	let cat = if args.no_names {
+		None
+	} else {
+		eprintln!("opening {} via the embedded engine (this writes to the directory - use a copy)", args.dir);
+		Some(catalog::with_open(&args.dir, catalog::load)?)
+	};
+
+	report::render_cdc(
+		cat.as_ref(),
+		&stats,
+		file_bytes,
+		report::CdcOptions {
+			all: args.all,
+			top: args.top,
+			json: args.json,
 		},
 	);
 	eprintln!("done in {:.1}s", started.elapsed().as_secs_f64());

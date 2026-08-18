@@ -338,11 +338,14 @@ mod tests {
 	#[test]
 	fn smaps_rollup_absence_is_none_not_zero() {
 		// A kernel without smaps_rollup must publish none, never a zero that reads as a measurement.
-		assert_eq!(parse_smaps_rollup(""), SmapsRollup {
-			pss: None,
-			private_dirty: None,
-			private_clean: None
-		});
+		assert_eq!(
+			parse_smaps_rollup(""),
+			SmapsRollup {
+				pss: None,
+				private_dirty: None,
+				private_clean: None
+			}
+		);
 		let rollup = parse_smaps_rollup("Pss:  100 kB\nPrivate_Dirty:  40 kB\nPrivate_Clean:  8 kB\n");
 		assert_eq!(rollup.pss, Some(100 * 1024));
 	}
@@ -417,7 +420,9 @@ mod tests {
 		assert_eq!(cpu.usage_micros, 1494667605);
 		assert_eq!(cpu.throttled_periods, None);
 
-		let throttled = parse_cgroup_cpu("usage_usec 1\nuser_usec 1\nsystem_usec 0\nnr_periods 10\nnr_throttled 3\nthrottled_usec 900\n");
+		let throttled = parse_cgroup_cpu(
+			"usage_usec 1\nuser_usec 1\nsystem_usec 0\nnr_periods 10\nnr_throttled 3\nthrottled_usec 900\n",
+		);
 		assert_eq!(throttled.throttled_periods, Some(3));
 		assert_eq!(throttled.throttled_micros, Some(900));
 	}

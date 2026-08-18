@@ -44,7 +44,8 @@ fn every_proc_current_table_is_queryable() {
 #[cfg(target_os = "linux")]
 #[test]
 fn process_io_publishes_one_row_carrying_the_write_amplification_inputs() {
-	// wchar and write_bytes are the two halves of the amplification ratio, so either one missing makes it uncomputable.
+	// wchar and write_bytes are the two halves of the amplification ratio, so either one missing makes it
+	// uncomputable.
 	let db = db_with_fast_sampler();
 
 	assert_eq!(

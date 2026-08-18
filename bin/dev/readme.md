@@ -24,6 +24,8 @@ expected to be added over time; `storage` is just the first.
 - `catalog <dir>` - dump the id -> name map for every object kind (no sizing).
 - `operator snapshot <dir>` - attribute `operator.db` checkpoint bytes to (operator, generation,
   keyspace), by decoding the `SnapshotStore` chunk payloads.
+- `cdc <dir>` - decode every row in `cdc.db` and attribute its bytes to source objects, change
+  kinds, and system key kinds.
 
 `<dir>` is the path to the already-copied, stopped sqlite database directory (the one
 containing `multi.db` / `operator.db`).
@@ -56,6 +58,15 @@ cargo run -p dev -- operator snapshot /path/to/db-copy
 
 # Only operator 14, with logical operator labels resolved, JSON output
 cargo run -p dev -- operator snapshot /path/to/db-copy --operator 14 --names --json
+
+# What is actually inside cdc.db
+cargo run -p dev -- cdc /path/to/db-copy
+
+# Every origin and key kind, no truncation
+cargo run -p dev -- cdc /path/to/db-copy --all
+
+# Decode-only: never boots the engine, so it is safe on any snapshot (ids stay numeric)
+cargo run -p dev -- cdc /path/to/db-copy --no-names
 ```
 
 Or run the built binary directly:
@@ -97,6 +108,17 @@ cargo build -p dev --release
 | `--names` | Resolve operator ids to logical `view  [stage]{operator}` labels (boots the engine). |
 | `--json` | Emit JSON lines instead of a table. |
 
+### `cdc`
+
+| Flag | Description |
+| --- | --- |
+| `<dir>` | Path to the already-copied, stopped sqlite database directory. |
+| `--all` | Show every origin and key kind (default: only the top `--top` rows). |
+| `--top <N>` | Show at most N rows per table (default: 40). |
+| `--no-names` | Skip the catalog boot; ids stay numeric but nothing is written to the directory. |
+| `--no-blocks` | Only scan the live `cdc` table, ignore `cdc_block`. |
+| `--json` | Emit JSON lines instead of tables. |
+
 ## How it works
 
 The tool joins two independent data sources: sizing from SQLite, names from ReifyDB's catalog.
@@ -113,7 +135,7 @@ The tool joins two independent data sources: sizing from SQLite, names from Reif
   and queries `system::namespaces`, `system::tables`, `system::series`, `system::ringbuffers`,
   `system::views`, `system::flows`, and `system::operators` as root (bypassing the `system::*`
   policy gate), then always stops the engine. It builds two maps: physical source id -> logical
-  name (a deferred view maps via its `underlying_id`, since its materialized rows live in the
+  name (a deferred view maps via its `storage_id`, since its materialized rows live in the
   underlying storage shape), and operator flow-node id -> a `view  [stage]{operator}` label. The
   operator label is decoded from the flow node `data` blob: the first byte is a `FlowNodeType`
   discriminant (indexed into the local `NODE_TYPE` table) and `Apply` nodes carry their operator
@@ -123,6 +145,19 @@ The tool joins two independent data sources: sizing from SQLite, names from Reif
   per-object (default, sorted by total bytes with a `--top`/`--all` cutoff), `--group-by
   namespace`, or `--group-by tier`. Every mode also has a `--json` variant emitting one JSON
   object per line. Objects with no catalog match render as `(unmapped)`.
+
+- **`cdc.rs` (`cdc.db` content breakdown).** `cdc.db` is the CDC log, not `multi.db`: one row per
+  commit, holding two blobs. `payload` is `zstd-1(postcard(Cdc))` and is decoded with
+  `reifydb-codec`'s `cdc` module, the same codec the write path uses, so the tool cannot drift;
+  `cdc_block` rows (present only if compaction ran) decode as a `Vec<Cdc>` through it. `stats_rollup`
+  is a second, uncompressed postcard blob per row carrying `Vec<CdcEviction>`, and is sized
+  separately because nothing else attributes it. Byte attribution re-encodes each `Change`,
+  `Diff`, and `SystemChange` with postcard and measures the result, so per-origin bytes sum to
+  the uncompressed payload rather than to compressed on-disk bytes: the compression ratio is
+  reported once, globally, since zstd is applied per commit and cannot be split per origin.
+  `Change.origin` gives `Object(ObjectId)` or `Flow(OperatorId)` directly; system changes are
+  bucketed by `Key::kind` on the encoded key, which must go through that helper because keys are
+  keycode-inverted and the raw first byte is not the tag.
 
 - **`context.rs` (shared handles).** `Context` holds handles shared across subcommands -
   currently just the `Clock` used for timing. It is the seam future inspectors share.

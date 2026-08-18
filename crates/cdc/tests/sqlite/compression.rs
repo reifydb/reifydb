@@ -3,11 +3,8 @@
 
 use std::collections::Bound;
 
-use reifydb_cdc::{
-	compact::block,
-	storage::{CdcStorage, sqlite::storage::SqliteCdcStorage},
-};
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_cdc::storage::{CdcStorage, sqlite::storage::SqliteCdcStorage};
+use reifydb_codec::{cdc, key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, SystemChange},
@@ -49,8 +46,8 @@ fn block_encode_decode_roundtrip_across_all_levels() {
 
 	let mut payload_sizes: Vec<usize> = Vec::new();
 	for &level in TEST_LEVELS {
-		let payload = block::encode(&entries, level).unwrap();
-		let decoded = block::decode(&payload).unwrap();
+		let payload = cdc::encode(&entries, level as i32).unwrap();
+		let decoded = cdc::decode::<Vec<Cdc>>(&payload).unwrap();
 		assert_eq!(cdcs_bytes(&decoded), original, "level {level} decode diverged");
 		payload_sizes.push(payload.len());
 	}

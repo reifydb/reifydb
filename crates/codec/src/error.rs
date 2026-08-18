@@ -13,6 +13,12 @@ pub enum EncodeError {
 		depth: u32,
 		max: u8,
 	},
+
+	#[error("serialization failed: {0}")]
+	Serialization(String),
+
+	#[error("compression failed: {0}")]
+	Compression(String),
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -53,4 +59,10 @@ pub enum DecodeError {
 		row_index: Option<usize>,
 		source: Box<DecodeError>,
 	},
+
+	#[error("deserialization failed: {0}")]
+	Deserialization(String),
+
+	#[error("decompression failed: {0}")]
+	Decompression(String),
 }

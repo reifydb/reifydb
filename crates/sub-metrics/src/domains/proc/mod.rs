@@ -14,14 +14,14 @@ use reifydb_core::metrics::sample::{MetricKind, Reading};
 use reifydb_value::value::Value;
 use reifydb_value::{byte_size::ByteSize, count::Count, value::duration::Duration};
 
-use crate::framework::accumulator::{Measure, MetricsRow};
+pub use crate::domains::proc::read::ProcessStatus;
 #[cfg(target_os = "linux")]
 use crate::domains::proc::read::{
 	parse_cgroup_cpu, parse_cgroup_io, parse_cgroup_memory, parse_cgroup_relative_path, parse_max_open_files,
 	parse_pressure, parse_process_io, parse_process_stat, parse_process_status, parse_schedstat_run_queue_nanos,
 	parse_smaps_rollup,
 };
-pub use crate::domains::proc::read::ProcessStatus;
+use crate::framework::accumulator::{Measure, MetricsRow};
 
 #[cfg(target_os = "linux")]
 pub fn process_status() -> Option<ProcessStatus> {
@@ -93,8 +93,7 @@ pub fn process_sched_rows() -> Vec<MetricsRow> {
 	let Some(status) = process_status() else {
 		return Vec::new();
 	};
-	let Some(stat) = read_to_string("/proc/self/stat").ok().and_then(|content| parse_process_stat(&content))
-	else {
+	let Some(stat) = read_to_string("/proc/self/stat").ok().and_then(|content| parse_process_stat(&content)) else {
 		return Vec::new();
 	};
 	let hertz = clock_ticks_per_second();
@@ -106,8 +105,9 @@ pub fn process_sched_rows() -> Vec<MetricsRow> {
 		cumulative_count("voluntary_context_switches", status.voluntary_context_switches),
 		cumulative_count("involuntary_context_switches", status.involuntary_context_switches),
 	];
-	if let Some(nanos) =
-		read_to_string("/proc/self/schedstat").ok().and_then(|content| parse_schedstat_run_queue_nanos(&content))
+	if let Some(nanos) = read_to_string("/proc/self/schedstat")
+		.ok()
+		.and_then(|content| parse_schedstat_run_queue_nanos(&content))
 	{
 		measures.push(cumulative_nanos("run_queue_wait", nanos));
 	}
