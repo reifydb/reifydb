@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, VecDeque},
+	collections::{BTreeMap, BTreeSet, VecDeque},
 	mem,
 };
 
@@ -92,7 +92,7 @@ pub(crate) fn execute_inline_flow_changes(
 		);
 	}
 
-	ctx.view_entries.append(&mut execution.view_entries);
+	ctx.published_entries.append(&mut execution.view_entries);
 
 	Ok(())
 }
@@ -110,6 +110,24 @@ struct InlineExecution<'a> {
 
 impl InlineExecution<'_> {
 	fn run(&mut self, txn: &mut Transaction<'_>, roots: &[FlowId]) -> Result<()> {
+		reifydb_assertions! {
+			let mut seen: BTreeSet<FlowId> = BTreeSet::new();
+			for root in roots {
+				assert!(
+					seen.insert(*root),
+					"dataflow scheduler was handed flow {} twice as a root, so it would be dispatched \
+					 twice for the same set of changes and its operator state applied twice",
+					root.0
+				);
+				assert!(
+					self.in_degree.get(root).copied().unwrap_or(0) == 0,
+					"dataflow scheduler was handed flow {} as a root while it still has upstream \
+					 producers, so settling those producers dispatches it a second time for the same \
+					 set of changes",
+					root.0
+				);
+			}
+		}
 		let mut ready: VecDeque<FlowId> = roots.iter().copied().collect();
 
 		while let Some(flow_id) = ready.pop_front() {

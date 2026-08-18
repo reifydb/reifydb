@@ -90,7 +90,7 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{RqlExecutor, Transaction, write::Write},
+	transaction::{RqlExecutor, Transaction, flow::InlineFlowState, write::Write},
 };
 
 pub struct AdminTransaction {
@@ -106,6 +106,8 @@ pub struct AdminTransaction {
 	pub interceptors: Interceptors,
 
 	pub(crate) accumulator: ChangeAccumulator,
+
+	pub(crate) inline_flow: InlineFlowState,
 
 	pub identity: IdentityId,
 
@@ -148,6 +150,7 @@ impl AdminTransaction {
 			changes: TransactionalCatalogChanges::new(txn_id),
 			row_changes: Vec::new(),
 			accumulator: ChangeAccumulator::new(),
+			inline_flow: InlineFlowState::new(),
 			identity,
 			executor: None,
 			dictionary_allocators: None,
@@ -224,7 +227,7 @@ impl AdminTransaction {
 	fn build_pre_commit_context(&mut self) -> Result<PreCommitContext> {
 		Ok(PreCommitContext {
 			flow_changes: self.accumulator.take_changes(CommitVersion(0), self.clock.now())?,
-			view_entries: Vec::new(),
+			published_entries: self.inline_flow.take_published(),
 		})
 	}
 
@@ -246,7 +249,7 @@ impl AdminTransaction {
 		}
 		let mut multi = self.take_command()?;
 		let (changes, row_changes) = self.take_catalog_and_row_changes();
-		let flow_changes = self.merge_view_entries(ctx.flow_changes, ctx.view_entries)?;
+		let flow_changes = self.merge_published_entries(ctx.flow_changes, ctx.published_entries)?;
 		let version = self.commit_and_run_post_commit(&mut multi, flow_changes, changes, row_changes)?;
 		Ok(version)
 	}
@@ -266,16 +269,16 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	fn merge_view_entries(
+	fn merge_published_entries(
 		&self,
 		mut flow_changes: Vec<Change>,
-		view_entries: Vec<(ObjectId, Diff)>,
+		published_entries: Vec<(ObjectId, Diff)>,
 	) -> Result<Vec<Change>> {
-		if view_entries.is_empty() {
+		if published_entries.is_empty() {
 			return Ok(flow_changes);
 		}
 		let mut accumulator = ChangeAccumulator::new();
-		for (object, diff) in view_entries {
+		for (object, diff) in published_entries {
 			accumulator.track(object, diff);
 		}
 		let changed_at = self.clock.now();

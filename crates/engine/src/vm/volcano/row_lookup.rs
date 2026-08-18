@@ -25,7 +25,7 @@ use crate::{
 	Result,
 	vm::volcano::{
 		query::{QueryContext, QueryNode},
-		scan::guard_view_read,
+		scan::materialize_view_read,
 	},
 };
 
@@ -33,11 +33,11 @@ fn guard_source_read(source: &ResolvedObject, rx: &mut Transaction<'_>, ctx: &Qu
 	reifydb_assertions! {
 		assert!(
 			!matches!(source, ResolvedObject::DeferredView(_) | ResolvedObject::TransactionalView(_)),
-			"physical planning must fold view kinds into ResolvedObject::View before row lookup, otherwise guard_view_read silently no-ops here"
+			"physical planning must fold view kinds into ResolvedObject::View before row lookup, otherwise materialize_view_read silently no-ops here"
 		);
 	}
 	if let ResolvedObject::View(view) = source {
-		guard_view_read(view, rx, &ctx.services)?;
+		materialize_view_read(view, rx, &ctx.services)?;
 	}
 	Ok(())
 }

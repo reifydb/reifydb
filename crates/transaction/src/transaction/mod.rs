@@ -4,7 +4,7 @@
 //! Public `Transaction` handle: wraps a single-version or multi-version transaction body in one shape so the
 //! engine, planner, and policy layers never branch on backend.
 
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -21,11 +21,15 @@ use reifydb_core::{
 	testing::{CapturedEvent, CapturedInvocation},
 	value::column::columns::Columns,
 };
-use reifydb_value::{Result, error::Diagnostic, params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	Result, error::Diagnostic, params::Params, reifydb_assertions, value::datetime::DateTime,
+	value::identity::IdentityId,
+};
 
 use crate::{
 	TransactionId,
 	change::{CatalogChangesSavepoint, RowChange},
+	change_accumulator::ChangeAccumulator,
 	interceptor::{
 		WithInterceptors,
 		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
@@ -84,7 +88,7 @@ use crate::{
 	multi::{RangeScope, transaction::write::WriteSavepoint},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::{
-		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
+		admin::AdminTransaction, command::CommandTransaction, flow::InlineFlowState, query::QueryTransaction,
 		replica::ReplicaTransaction, write::Write,
 	},
 };
@@ -96,6 +100,7 @@ pub trait RqlExecutor: Send + Sync {
 pub mod admin;
 pub mod catalog;
 pub mod command;
+pub mod flow;
 pub mod query;
 pub mod replica;
 pub mod write;
@@ -104,12 +109,14 @@ pub struct Savepoint {
 	write: WriteSavepoint,
 	row_changes_len: usize,
 	accumulator_len: usize,
+	published_len: usize,
 	changes: CatalogChangesSavepoint,
 }
 
 pub struct TestTransaction<'a> {
 	pub inner: &'a mut AdminTransaction,
 	pub baseline: usize,
+	pub published_baseline: usize,
 	pub events: &'a mut Vec<CapturedEvent>,
 	pub invocations: &'a mut Vec<CapturedInvocation>,
 	pub event_seq: &'a mut u64,
@@ -130,15 +137,18 @@ impl<'a> TestTransaction<'a> {
 		session_default_deny: bool,
 	) -> Self {
 		let baseline = inner.accumulator.len();
+		let published_baseline = inner.inline_flow.published_len();
 		let savepoint = Savepoint {
 			write: inner.cmd.as_ref().unwrap().savepoint(),
 			row_changes_len: inner.row_changes.len(),
 			accumulator_len: inner.accumulator.len(),
+			published_len: inner.inline_flow.published_len(),
 			changes: inner.changes.savepoint(),
 		};
 		Self {
 			inner,
 			baseline,
+			published_baseline,
 			events,
 			invocations,
 			event_seq,
@@ -154,6 +164,7 @@ impl<'a> TestTransaction<'a> {
 			self.inner.cmd.as_mut().unwrap().restore_savepoint(sp.write);
 			self.inner.row_changes.truncate(sp.row_changes_len);
 			self.inner.accumulator.truncate(sp.accumulator_len);
+			self.inner.inline_flow.truncate_published(sp.published_len);
 			self.inner.changes.restore_savepoint(sp.changes);
 			self.inner.unpoison();
 		}
@@ -163,6 +174,7 @@ impl<'a> TestTransaction<'a> {
 		TestTransaction {
 			inner: &mut *self.inner,
 			baseline: self.baseline,
+			published_baseline: self.published_baseline,
 			events: &mut *self.events,
 			invocations: &mut *self.invocations,
 			event_seq: &mut *self.event_seq,
@@ -173,50 +185,14 @@ impl<'a> TestTransaction<'a> {
 		}
 	}
 
-	pub fn accumulator_entries_from(&self) -> &[(ObjectId, Diff)] {
-		self.inner.accumulator.entries_from(self.baseline)
+	pub fn accumulator_entries_from(&self) -> Vec<(ObjectId, Diff)> {
+		let mut entries = self.inner.accumulator.entries_from(self.baseline).to_vec();
+		entries.extend_from_slice(self.inner.inline_flow.published_from(self.published_baseline));
+		entries
 	}
 
 	pub fn capture_testing_pre_commit(&mut self) -> Result<()> {
-		let has_source_changes = self
-			.inner
-			.accumulator
-			.entries_from(self.baseline)
-			.iter()
-			.any(|(id, _)| !matches!(id, ObjectId::View(_)));
-
-		if !has_source_changes {
-			return Ok(());
-		}
-
-		let offset = self.baseline;
-		let (carried, flow_changes): (Vec<Change>, Vec<Change>) = self
-			.inner
-			.accumulator
-			.take_changes_from(offset, CommitVersion(0), self.inner.clock.now())?
-			.into_iter()
-			.partition(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))));
-
-		let mut ctx = PreCommitContext {
-			flow_changes,
-			view_entries: Vec::new(),
-		};
-
-		let chain = self.inner.interceptors.pre_commit.clone();
-		chain.execute(&mut Transaction::Admin(&mut *self.inner), &mut ctx)?;
-
-		for change in carried {
-			if let ChangeOrigin::Object(id) = change.origin {
-				for diff in change.diffs {
-					self.inner.accumulator.track(id, diff);
-				}
-			}
-		}
-		for (id, diff) in ctx.view_entries {
-			self.inner.accumulator.track(id, diff);
-		}
-
-		Ok(())
+		Transaction::Test(Box::new(self.reborrow())).flush_flow_changes(None)
 	}
 }
 
@@ -249,14 +225,15 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// True when accumulated object changes have not yet been folded into the commit's change
-	/// stream. Query and Replica never accumulate; Test is exempt because the shared admin
-	/// accumulator legitimately holds entries mid-test.
+	/// True when accumulated object changes have not yet been fed through the flow engine. Query
+	/// and Replica never accumulate; Test counts only what the current test block accumulated on
+	/// top of the shared admin transaction.
 	pub fn has_unprocessed_flow_changes(&self) -> bool {
 		match self {
 			Self::Command(txn) => !txn.accumulator.is_empty(),
 			Self::Admin(txn) => !txn.accumulator.is_empty(),
-			Self::Query(_) | Self::Test(_) | Self::Replica(_) => false,
+			Self::Test(t) => !t.inner.accumulator.entries_from(t.baseline).is_empty(),
+			Self::Query(_) | Self::Replica(_) => false,
 		}
 	}
 
@@ -266,7 +243,122 @@ impl<'a> Transaction<'a> {
 		match self {
 			Self::Command(txn) => txn.accumulator.pending_objects(),
 			Self::Admin(txn) => txn.accumulator.pending_objects(),
-			Self::Query(_) | Self::Test(_) | Self::Replica(_) => Vec::new(),
+			Self::Test(t) => t.inner.accumulator.pending_objects_from(t.baseline),
+			Self::Query(_) | Self::Replica(_) => Vec::new(),
+		}
+	}
+
+	/// True while a flush is already running against this transaction; a read barrier that fires
+	/// underneath one must not start a nested flush.
+	pub fn is_flushing_flow_changes(&self) -> bool {
+		match self {
+			Self::Command(txn) => txn.inline_flow.is_running(),
+			Self::Admin(txn) => txn.inline_flow.is_running(),
+			Self::Test(t) => t.inner.inline_flow.is_running(),
+			Self::Query(_) | Self::Replica(_) => false,
+		}
+	}
+
+	/// Runs the pre-commit chain against this live transaction, consuming the unprocessed changes
+	/// it feeds in. Consumed input and produced view entries move to the published buffer, which
+	/// reaches the committed change stream but is never fed to the flow engine a second time.
+	pub fn flush_flow_changes(&mut self, objects: Option<&BTreeSet<ObjectId>>) -> Result<()> {
+		let Some((offset, changed_at)) = self.flush_start() else {
+			return Ok(());
+		};
+		let Some(accumulator) = self.accumulator_mut() else {
+			return Ok(());
+		};
+		let flow_changes = match objects {
+			Some(objects) => {
+				accumulator.take_changes_matching(offset, objects, CommitVersion(0), changed_at)?
+			}
+			None => accumulator.take_changes_from(offset, CommitVersion(0), changed_at)?,
+		};
+		if flow_changes.is_empty() {
+			return Ok(());
+		}
+
+		let mut ctx = PreCommitContext {
+			flow_changes,
+			published_entries: Vec::new(),
+		};
+		let chain = self.pre_commit_interceptors().clone();
+		self.set_flushing_flow_changes(true);
+		let outcome = chain.execute(self, &mut ctx);
+		self.set_flushing_flow_changes(false);
+		outcome?;
+
+		reifydb_assertions! {
+			let fed: BTreeSet<ObjectId> = ctx
+				.flow_changes
+				.iter()
+				.filter_map(|change| match change.origin {
+					ChangeOrigin::Object(object) => Some(object),
+					_ => None,
+				})
+				.collect();
+			let still_pending: Vec<ObjectId> = self
+				.unprocessed_flow_change_objects()
+				.into_iter()
+				.filter(|object| fed.contains(object))
+				.collect();
+			assert!(
+				still_pending.is_empty(),
+				"flush fed {} object(s) to the flow engine but {:?} are still marked unprocessed, so the \
+				 next read barrier would replay the same changes and apply operator state twice",
+				fed.len(),
+				still_pending
+			);
+		}
+
+		let mut published: Vec<(ObjectId, Diff)> = Vec::new();
+		for change in ctx.flow_changes {
+			if let ChangeOrigin::Object(object) = change.origin {
+				for diff in change.diffs {
+					published.push((object, diff));
+				}
+			}
+		}
+		published.extend(ctx.published_entries);
+
+		let Some(state) = self.inline_flow_mut() else {
+			return Ok(());
+		};
+		state.publish(published);
+		Ok(())
+	}
+
+	fn flush_start(&self) -> Option<(usize, DateTime)> {
+		match self {
+			Self::Command(txn) => (!txn.inline_flow.is_running()).then(|| (0, txn.clock.now())),
+			Self::Admin(txn) => (!txn.inline_flow.is_running()).then(|| (0, txn.clock.now())),
+			Self::Test(t) => (!t.inner.inline_flow.is_running()).then(|| (t.baseline, t.inner.clock.now())),
+			Self::Query(_) | Self::Replica(_) => None,
+		}
+	}
+
+	fn accumulator_mut(&mut self) -> Option<&mut ChangeAccumulator> {
+		match self {
+			Self::Command(txn) => Some(&mut txn.accumulator),
+			Self::Admin(txn) => Some(&mut txn.accumulator),
+			Self::Test(t) => Some(&mut t.inner.accumulator),
+			Self::Query(_) | Self::Replica(_) => None,
+		}
+	}
+
+	fn inline_flow_mut(&mut self) -> Option<&mut InlineFlowState> {
+		match self {
+			Self::Command(txn) => Some(&mut txn.inline_flow),
+			Self::Admin(txn) => Some(&mut txn.inline_flow),
+			Self::Test(t) => Some(&mut t.inner.inline_flow),
+			Self::Query(_) | Self::Replica(_) => None,
+		}
+	}
+
+	fn set_flushing_flow_changes(&mut self, running: bool) {
+		if let Some(state) = self.inline_flow_mut() {
+			state.set_running(running);
 		}
 	}
 
@@ -456,6 +548,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Test(t) => Transaction::Test(Box::new(TestTransaction {
 				inner: t.inner,
 				baseline: t.baseline,
+				published_baseline: t.published_baseline,
 				events: t.events,
 				invocations: t.invocations,
 				event_seq: t.event_seq,

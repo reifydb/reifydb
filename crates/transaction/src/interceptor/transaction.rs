@@ -20,14 +20,14 @@ use crate::{
 pub struct PreCommitContext {
 	pub flow_changes: Vec<Change>,
 
-	pub view_entries: Vec<(ObjectId, Diff)>,
+	pub published_entries: Vec<(ObjectId, Diff)>,
 }
 
 impl PreCommitContext {
 	pub fn new() -> Self {
 		Self {
 			flow_changes: Vec::new(),
-			view_entries: Vec::new(),
+			published_entries: Vec::new(),
 		}
 	}
 }

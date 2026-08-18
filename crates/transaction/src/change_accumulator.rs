@@ -66,6 +66,23 @@ impl ChangeAccumulator {
 		build_changes(tail, version, changed_at)
 	}
 
+	pub fn take_changes_matching(
+		&mut self,
+		offset: usize,
+		objects: &BTreeSet<ObjectId>,
+		version: CommitVersion,
+		changed_at: DateTime,
+	) -> Result<Vec<Change>> {
+		if offset >= self.entries.len() {
+			return Ok(Vec::new());
+		}
+		let tail = self.entries.split_off(offset);
+		let (matched, retained): (Vec<_>, Vec<_>) =
+			tail.into_iter().partition(|(object, _)| objects.contains(object));
+		self.entries.extend(retained);
+		build_changes(matched, version, changed_at)
+	}
+
 	pub fn entries_from(&self, offset: usize) -> &[(ObjectId, Diff)] {
 		if offset >= self.entries.len() {
 			&[]
@@ -75,8 +92,16 @@ impl ChangeAccumulator {
 	}
 
 	pub fn pending_objects(&self) -> Vec<ObjectId> {
+		self.pending_objects_from(0)
+	}
+
+	pub fn pending_objects_from(&self, offset: usize) -> Vec<ObjectId> {
 		let mut seen = BTreeSet::new();
-		self.entries.iter().map(|(object, _)| *object).filter(|object| seen.insert(*object)).collect()
+		self.entries_from(offset)
+			.iter()
+			.map(|(object, _)| *object)
+			.filter(|object| seen.insert(*object))
+			.collect()
 	}
 }
 
