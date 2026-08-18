@@ -3,6 +3,7 @@
 
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
+	envelope::{Envelope, EnvelopeBuilder},
 	pod::EncodedPodRow,
 	shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 };
@@ -16,7 +17,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,
-	util::hash::Hash128,
+	util::{cowvec::CowVec, hash::Hash128},
 	value::{
 		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
 	},
@@ -25,7 +26,7 @@ use tracing::{Span, instrument};
 
 use crate::operator::{
 	host::HostContext,
-	join::{Identity, operator::JoinOperator, row::JoinStateRow, state::JoinSide, store::Store},
+	join::{Identity, operator::JoinOperator, state::JoinSide, store::Store},
 };
 
 #[cfg(test)]
@@ -55,6 +56,130 @@ mod tests {
 			})
 			.collect();
 		Columns::new(cols).with_row_numbers(vec![RowNumber(row_number)])
+	}
+
+	fn columns_with_time(fields: &[(&str, i32)], row_number: u64, time: Option<DateTime>) -> Columns {
+		// with_row_numbers backfills a default #time, so a timeless row must bypass it or it arrives timed.
+		let cols: Vec<ColumnWithName> = fields
+			.iter()
+			.map(|(name, value)| {
+				ColumnWithName::new(Fragment::internal(*name), ColumnBuffer::int4(vec![*value]))
+			})
+			.collect();
+		Columns::with_system(
+			cols,
+			SystemColumns::new(
+				vec![RowNumber(row_number)],
+				Vec::new(),
+				Vec::new(),
+				Vec::new(),
+				time.into_iter().collect(),
+			),
+		)
+	}
+
+	#[test]
+	fn a_timeless_join_row_pays_for_one_instant_and_decodes_it_into_both_stamps() {
+		// Join stores exactly one instant per buffered row; a third envelope field would cost 25 B, not 17.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator = OperatorId(72);
+		let store = Store::new(JoinSide::Right);
+
+		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
+		let columns = columns_with_time(&[("mint", 7)], 1, None);
+		let shape = build_shape(&columns);
+		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
+
+		let row = encode_row(&shape, &columns, 0, now);
+		let envelope = Envelope::try_view(&row).unwrap();
+		assert_eq!(envelope.header_size(), 17, "flags byte plus a fingerprint plus exactly one instant");
+		assert_eq!(envelope.fingerprint(), Some(shape.fingerprint()));
+		assert_eq!(envelope.created_at(), Some(now));
+		assert_eq!(envelope.time(), None);
+		assert_eq!(envelope.updated_at(), None, "a second stamp would widen every buffered row by 8 bytes");
+
+		let decoded = decode_run(
+			&mut host(&mut txn, operator),
+			&store,
+			shape.fingerprint(),
+			&[RowNumber(1)],
+			&[row.into_bytes()],
+		)
+		.unwrap();
+		assert_eq!(decoded.created_at(), &[now][..]);
+		assert_eq!(decoded.updated_at(), &[now][..], "both stamps are synthesized from the one stored instant");
+		assert!(decoded.time().is_empty(), "a row that carried no #time must not gain one on the way back");
+		assert_eq!(decoded.column("mint").unwrap().data().get_value(0), Value::Int4(7));
+	}
+
+	#[test]
+	fn a_timed_join_row_stores_its_time_in_the_single_instant_slot_and_still_pays_seventeen_bytes() {
+		// The row's #time replaces the write stamp rather than joining it, so a timed row is never wider.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator = OperatorId(73);
+		let store = Store::new(JoinSide::Right);
+
+		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
+		let event = DateTime::from_nanos(1_600_000_000_000_000_000);
+		let columns = columns_with_time(&[("mint", 9)], 2, Some(event));
+		let shape = build_shape(&columns);
+		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
+
+		let row = encode_row(&shape, &columns, 0, now);
+		let envelope = Envelope::try_view(&row).unwrap();
+		assert_eq!(envelope.header_size(), 17, "a timed row must cost the same as a timeless one");
+		assert_eq!(envelope.fingerprint(), Some(shape.fingerprint()));
+		assert_eq!(envelope.time(), Some(event));
+		assert_eq!(envelope.created_at(), None, "the write stamp is dropped, never stored beside the time");
+		assert_eq!(envelope.updated_at(), None);
+
+		let decoded = decode_run(
+			&mut host(&mut txn, operator),
+			&store,
+			shape.fingerprint(),
+			&[RowNumber(2)],
+			&[row.into_bytes()],
+		)
+		.unwrap();
+		assert_eq!(decoded.created_at(), &[event][..]);
+		assert_eq!(decoded.updated_at(), &[event][..]);
+		assert_eq!(decoded.time(), &[event][..]);
+	}
+
+	#[test]
+	fn a_run_mixing_timed_and_timeless_rows_lists_only_the_timed_rows_in_the_time_column() {
+		// The time vector is a filter_map over the run, so it stays shorter than the two stamp vectors.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator = OperatorId(74);
+		let store = Store::new(JoinSide::Right);
+
+		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
+		let event = DateTime::from_nanos(1_600_000_000_000_000_000);
+		let first = columns_with_time(&[("mint", 1)], 1, None);
+		let second = columns_with_time(&[("mint", 2)], 2, Some(event));
+		let third = columns_with_time(&[("mint", 3)], 3, None);
+		let shape = build_shape(&first);
+		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
+
+		let rows: Vec<EncodedBytes> = [&first, &second, &third]
+			.into_iter()
+			.map(|columns| encode_row(&shape, columns, 0, now).into_bytes())
+			.collect();
+
+		let decoded = decode_run(
+			&mut host(&mut txn, operator),
+			&store,
+			shape.fingerprint(),
+			&[RowNumber(1), RowNumber(2), RowNumber(3)],
+			&rows,
+		)
+		.unwrap();
+		assert_eq!(decoded.created_at(), &[now, event, now][..]);
+		assert_eq!(decoded.updated_at(), &[now, event, now][..]);
+		assert_eq!(decoded.time(), &[event][..], "only the row that carried a #time may appear here");
 	}
 
 	#[test]
@@ -137,9 +262,12 @@ pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize, no
 	let mut encoded = shape.allocate_pod();
 	shape.set_values(&mut encoded, &values);
 	let at = columns.time().get(row_idx).copied();
-	let stamp = at.unwrap_or(now);
-	let body = JoinStateRow::new(encoded.freeze().as_slice(), shape.fingerprint(), stamp, at);
-	EncodedPodRow::new(body.as_slice())
+	let envelope = EnvelopeBuilder::new().fingerprint(shape.fingerprint());
+	let envelope = match at {
+		Some(time) => envelope.time(time),
+		None => envelope.created_at(now),
+	};
+	envelope.build(encoded.freeze().as_slice())
 }
 
 #[instrument(name = "flow::operator::join::add_state_entry", level = "trace", skip_all)]
@@ -245,13 +373,20 @@ fn decode_run(
 	let shape = store
 		.get_row_shape(host, fingerprint)?
 		.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
-	let rows: Vec<&JoinStateRow> = bytes_slice.iter().map(JoinStateRow::view).collect();
-	let bodies: Vec<EncodedBytes> = rows.iter().map(|row| row.body_bytes()).collect();
+	let mut envelopes: Vec<&Envelope> = Vec::with_capacity(bytes_slice.len());
+	for bytes in bytes_slice {
+		envelopes.push(Envelope::try_view(EncodedPodRow::view(bytes))?);
+	}
+	let bodies: Vec<EncodedBytes> =
+		envelopes.iter().map(|envelope| EncodedBytes(CowVec::new(envelope.body().to_vec()))).collect();
 
 	let mut decoded = Columns::from_encoded_bytes(&shape, ids, &bodies);
-	let stamps: Vec<DateTime> = rows.iter().map(|row| row.stamp()).collect();
-	let time: Vec<DateTime> = rows.iter().filter_map(|row| row.time()).collect();
-	decoded.system = SystemColumns::new(ids.to_vec(), Vec::new(), stamps.clone(), stamps, time);
+	let instants: Vec<DateTime> = envelopes
+		.iter()
+		.map(|envelope| envelope.time().or_else(|| envelope.created_at()).unwrap_or_default())
+		.collect();
+	let time: Vec<DateTime> = envelopes.iter().filter_map(|envelope| envelope.time()).collect();
+	decoded.system = SystemColumns::new(ids.to_vec(), Vec::new(), instants.clone(), instants, time);
 
 	Ok(decoded)
 }
@@ -313,7 +448,9 @@ pub(crate) fn columns_from_block(
 	let mut run: Vec<EncodedBytes> = Vec::new();
 
 	for (id, row) in block {
-		let fingerprint = JoinStateRow::view(&row).fingerprint();
+		let fingerprint = Envelope::try_view(EncodedPodRow::view(&row))?
+			.fingerprint()
+			.ok_or_else(|| Error(Box::new(internal!("Join state row carries no shape fingerprint"))))?;
 		if run_fingerprint.is_some_and(|current| current != fingerprint) {
 			runs.push(decode_run(host, store, run_fingerprint.unwrap(), &run_ids, &run)?);
 			run_ids.clear();

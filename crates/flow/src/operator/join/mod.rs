@@ -3,7 +3,6 @@
 
 pub mod column;
 pub mod operator;
-pub(crate) mod row;
 pub(crate) mod snapshot;
 pub mod state;
 pub mod store;
