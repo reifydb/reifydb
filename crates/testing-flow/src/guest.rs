@@ -4,7 +4,7 @@
 use std::{collections::HashMap, marker::PhantomData, mem, ops::Index};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::row::pod::state::OperatorState;
+use reifydb_codec::row::operator::state::OperatorState;
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::row::pod::state::OperatorState;
+use reifydb_codec::row::operator::state::OperatorState;
 use reifydb_core::{
 	actors::pending::PendingLayers, interface::catalog::flow::OperatorId, key::operator_state::GroupId,
 };

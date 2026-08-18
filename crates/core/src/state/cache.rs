@@ -3,7 +3,7 @@
 
 use std::{hash::Hash, marker::PhantomData};
 
-use reifydb_codec::row::pod::state::{OperatorState, decode};
+use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_value::Result;
 
 use crate::{key::operator_state::IntoGroupStateKey, metrics::heap::HeapSize, state::store::StateStore};

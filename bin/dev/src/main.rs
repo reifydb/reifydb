@@ -6,7 +6,7 @@ mod cdc;
 mod context;
 mod report;
 
-use std::{path::Path, process::exit};
+use std::{fs::metadata, path::Path, process::exit};
 
 use clap::{Parser, Subcommand};
 use context::Context;
@@ -72,7 +72,7 @@ fn main() {
 fn cdc_report(ctx: &Context, args: CdcArgs) -> Result<()> {
 	let started = ctx.clock.instant();
 	let stats = cdc::scan(&args.dir, !args.no_blocks)?;
-	let file_bytes = std::fs::metadata(Path::new(&args.dir).join("cdc.db")).map(|m| m.len()).unwrap_or(0);
+	let file_bytes = metadata(Path::new(&args.dir).join("cdc.db")).map(|m| m.len()).unwrap_or(0);
 
 	let cat = if args.no_names {
 		None

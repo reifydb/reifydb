@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::{EncodedPodRow, state::OperatorState},
+	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	actors::pending::PendingLayers,

@@ -249,10 +249,10 @@ fn object_label(cat: Option<&Catalog>, o: &cdc::Origin) -> String {
 	let Some(cat) = cat else {
 		return String::new();
 	};
-	if o.kind == "view" {
-		if let Some(name) = cat.views.get(&o.id) {
-			return format!("{name}  [view]");
-		}
+	if o.kind == "view"
+		&& let Some(name) = cat.views.get(&o.id)
+	{
+		return format!("{name}  [view]");
 	}
 	cat.sources.get(&o.id).map(|(name, k)| format!("{name}  [{k}]")).unwrap_or_else(|| "(unmapped)".to_string())
 }

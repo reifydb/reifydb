@@ -125,9 +125,9 @@ impl TestOperatorRowBuilder {
 				.map(|(i, v)| RowShapeField::unconstrained(format!("field{}", i), v.get_type()))
 				.collect()
 		});
-		let shape = RowShape::new(RowFamily::Table, fields);
+		let shape = RowShape::new(RowFamily::Operator, fields);
 
-		let mut encoded = shape.allocate_table();
+		let mut encoded = shape.allocate_operator();
 		shape.set_values(&mut encoded, &self.values);
 		if let Some(time) = self.time {
 			encoded.set_time(time);

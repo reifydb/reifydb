@@ -1,15 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{
-		BTreeMap,
-		btree_map::{Iter, Range},
-	},
-	iter::once,
-	mem::take,
-	ops::RangeBounds,
-};
+use std::{collections::BTreeMap, iter::once, mem::take, ops::RangeBounds};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 
@@ -25,22 +17,37 @@ pub enum PendingWrite {
 
 #[derive(Debug, Default, Clone)]
 pub struct Pending {
-	writes: BTreeMap<EncodedKey, PendingWrite>,
+	entries: Vec<(EncodedKey, PendingWrite)>,
+	index: BTreeMap<EncodedKey, usize>,
 }
 
 impl Pending {
 	pub fn new() -> Self {
 		Self {
-			writes: BTreeMap::new(),
+			entries: Vec::new(),
+			index: BTreeMap::new(),
 		}
 	}
 
+	fn put(&mut self, key: EncodedKey, write: PendingWrite) {
+		if let Some(&slot) = self.index.get(&key) {
+			self.entries[slot].1 = write;
+			return;
+		}
+		self.index.insert(key.clone(), self.entries.len());
+		self.entries.push((key, write));
+	}
+
+	fn write_at(&self, key: &EncodedKey) -> Option<&PendingWrite> {
+		self.index.get(key).map(|slot| &self.entries[*slot].1)
+	}
+
 	pub fn insert(&mut self, key: EncodedKey, value: EncodedBytes) {
-		self.writes.insert(key, PendingWrite::Set(value));
+		self.put(key, PendingWrite::Set(value));
 	}
 
 	pub fn remove(&mut self, key: EncodedKey) {
-		self.writes.insert(
+		self.put(
 			key,
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Announced,
@@ -50,23 +57,24 @@ impl Pending {
 
 	pub fn insert_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) {
 		assert_eq!(keys.len(), values.len(), "Pending::insert_batch keys/values length mismatch");
-		self.writes
-			.extend(keys.iter().zip(values.iter()).map(|(k, v)| (k.clone(), PendingWrite::Set(v.clone()))));
+		for (k, v) in keys.iter().zip(values.iter()) {
+			self.put(k.clone(), PendingWrite::Set(v.clone()));
+		}
 	}
 
 	pub fn remove_batch(&mut self, keys: &[EncodedKey]) {
-		self.writes.extend(keys.iter().map(|k| {
-			(
+		for k in keys {
+			self.put(
 				k.clone(),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Announced,
 				},
-			)
-		}));
+			);
+		}
 	}
 
 	pub fn remove_silent(&mut self, key: EncodedKey) {
-		self.writes.insert(
+		self.put(
 			key,
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Silent,
@@ -75,7 +83,7 @@ impl Pending {
 	}
 
 	pub fn remove_unobserved(&mut self, key: EncodedKey) {
-		self.writes.insert(
+		self.put(
 			key,
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Unobserved,
@@ -84,41 +92,47 @@ impl Pending {
 	}
 
 	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedBytes> {
-		match self.writes.get(key) {
+		match self.write_at(key) {
 			Some(PendingWrite::Set(value)) => Some(value),
 			_ => None,
 		}
 	}
 
 	pub fn is_removed(&self, key: &EncodedKey) -> bool {
-		matches!(self.writes.get(key), Some(PendingWrite::Remove { .. }))
+		matches!(self.write_at(key), Some(PendingWrite::Remove { .. }))
 	}
 
 	pub fn contains_key(&self, key: &EncodedKey) -> bool {
-		self.writes.contains_key(key)
+		self.index.contains_key(key)
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.writes.is_empty()
+		self.entries.is_empty()
 	}
 
 	pub fn len(&self) -> usize {
-		self.writes.len()
+		self.entries.len()
 	}
 
 	pub fn extend_from(&mut self, other: &Pending) {
-		self.writes.extend(other.writes.iter().map(|(k, w)| (k.clone(), w.clone())));
+		for (k, w) in other.iter_ordered() {
+			self.put(k.clone(), w.clone());
+		}
 	}
 
-	pub fn iter_sorted(&self) -> Iter<'_, EncodedKey, PendingWrite> {
-		self.writes.iter()
+	pub fn iter_ordered(&self) -> impl DoubleEndedIterator<Item = (&EncodedKey, &PendingWrite)> + '_ {
+		self.entries.iter().map(|(k, w)| (k, w))
 	}
 
-	pub fn range<R>(&self, range: R) -> Range<'_, EncodedKey, PendingWrite>
+	pub fn iter_sorted(&self) -> impl DoubleEndedIterator<Item = (&EncodedKey, &PendingWrite)> + '_ {
+		self.index.iter().map(|(k, slot)| (k, &self.entries[*slot].1))
+	}
+
+	pub fn range<R>(&self, range: R) -> impl DoubleEndedIterator<Item = (&EncodedKey, &PendingWrite)> + '_
 	where
 		R: RangeBounds<EncodedKey>,
 	{
-		self.writes.range(range)
+		self.index.range(range).map(|(k, slot)| (k, &self.entries[*slot].1))
 	}
 }
 
@@ -455,6 +469,30 @@ pub mod tests {
 
 		assert!(base.is_removed(&make_key("a")));
 		assert_eq!(base.get(&make_key("a")), None);
+	}
+
+	#[test]
+	fn test_iter_ordered_keeps_write_order_across_overwrite_and_extend() {
+		// A commit must replay writes in the order the operators issued them; sorting by key would
+		// let a later row with a lower key overtake an earlier one and mint its identity first.
+		let mut base = Pending::new();
+		base.insert(make_key("zebra"), make_value("z1"));
+		base.insert(make_key("apple"), make_value("a"));
+		base.insert(make_key("zebra"), make_value("z2"));
+
+		let mut newer = Pending::new();
+		newer.insert(make_key("mango"), make_value("m"));
+		newer.remove(make_key("apple"));
+
+		base.extend_from(&newer);
+
+		let ordered: Vec<_> = base.iter_ordered().map(|(k, _)| k.clone()).collect();
+		assert_eq!(ordered, vec![make_key("zebra"), make_key("apple"), make_key("mango")]);
+		assert_eq!(base.get(&make_key("zebra")), Some(&make_value("z2")));
+		assert!(base.is_removed(&make_key("apple")));
+
+		let sorted: Vec<_> = base.iter_sorted().map(|(k, _)| k.clone()).collect();
+		assert_eq!(sorted, vec![make_key("apple"), make_key("mango"), make_key("zebra")]);
 	}
 
 	#[test]

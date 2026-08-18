@@ -283,7 +283,7 @@ impl Committer {
 
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
-	for (key, pw) in combined.iter_sorted() {
+	for (key, pw) in combined.iter_ordered() {
 		if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
 			continue;
 		}

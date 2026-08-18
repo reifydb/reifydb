@@ -9,19 +9,23 @@ use std::{
 	path::{Path, PathBuf},
 };
 
+#[cfg(target_os = "linux")]
+use libc::{_SC_CLK_TCK, sysconf};
 use reifydb_core::metrics::sample::{MetricKind, Reading};
 #[cfg(target_os = "linux")]
 use reifydb_value::value::Value;
 use reifydb_value::{byte_size::ByteSize, count::Count, value::duration::Duration};
 
-pub use crate::domains::proc::read::ProcessStatus;
 #[cfg(target_os = "linux")]
 use crate::domains::proc::read::{
 	parse_cgroup_cpu, parse_cgroup_io, parse_cgroup_memory, parse_cgroup_relative_path, parse_max_open_files,
 	parse_pressure, parse_process_io, parse_process_stat, parse_process_status, parse_schedstat_run_queue_nanos,
 	parse_smaps_rollup,
 };
-use crate::framework::accumulator::{Measure, MetricsRow};
+use crate::{
+	domains::proc::read::ProcessStatus,
+	framework::accumulator::{Measure, MetricsRow},
+};
 
 #[cfg(target_os = "linux")]
 pub fn process_status() -> Option<ProcessStatus> {
@@ -262,7 +266,7 @@ fn cgroup_root() -> Option<PathBuf> {
 #[cfg(target_os = "linux")]
 fn clock_ticks_per_second() -> u64 {
 	// SAFETY: sysconf reads a static configuration value from a name constant and writes through no pointer.
-	let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
+	let ticks = unsafe { sysconf(_SC_CLK_TCK) };
 	if ticks > 0 {
 		ticks as u64
 	} else {

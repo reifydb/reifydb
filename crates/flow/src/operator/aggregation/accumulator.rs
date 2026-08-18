@@ -679,7 +679,7 @@ fn finalize_compensated(accumulator: &Value, compensation: f64, seen_negative: b
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::pod::state::{OperatorState, decode};
+	use reifydb_codec::row::operator::state::{OperatorState, decode};
 
 	use super::*;
 	use crate::{operator::state::seal::coord::Coord, window::span::WindowSpan};

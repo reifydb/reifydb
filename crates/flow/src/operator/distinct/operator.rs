@@ -9,7 +9,7 @@ use std::{
 use indexmap::IndexMap;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::pod::state::{OperatorState, decode},
+	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
 	interface::{

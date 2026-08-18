@@ -32,10 +32,7 @@ pub trait StateExtension: FlowTransaction {
 			Span::current().record("found", cached.is_some());
 			return Ok(cached);
 		}
-		let result = match self.get(&scoped)? {
-			Some(bytes) => Some(EncodedPodRow::from(bytes)),
-			None => None,
-		};
+		let result = self.get(&scoped)?.map(EncodedPodRow::from);
 		if memoized {
 			self.substrate().memo.remember(&scoped, result.clone());
 		}

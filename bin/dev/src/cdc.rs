@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	path::Path,
+};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_cdc::rebuild::{changed_objects, row_target};
@@ -15,6 +18,7 @@ use reifydb_core::{
 	key::{Key, kind::KeyKind},
 };
 use rusqlite::{Connection, OpenFlags};
+use serde::Serialize;
 
 use crate::Result;
 
@@ -77,15 +81,17 @@ pub struct Stats {
 }
 
 pub fn scan(dir: &str, include_blocks: bool) -> Result<Stats> {
-	let path = std::path::Path::new(dir).join("cdc.db");
+	let path = Path::new(dir).join("cdc.db");
 	if !path.exists() {
 		return Err(format!("no cdc.db in '{dir}'"));
 	}
 	let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)
 		.map_err(|e| format!("failed to open '{}' read-only: {e}", path.display()))?;
 
-	let mut stats = Stats::default();
-	stats.min_version = u64::MAX;
+	let mut stats = Stats {
+		min_version: u64::MAX,
+		..Default::default()
+	};
 
 	scan_live(&conn, &mut stats)?;
 	if include_blocks {
@@ -247,7 +253,7 @@ fn origin_of(object: ObjectId) -> Origin {
 	}
 }
 
-fn encoded_len<T: serde::Serialize>(value: &T) -> Result<u64> {
+fn encoded_len<T: Serialize>(value: &T) -> Result<u64> {
 	to_stdvec(value).map(|v| v.len() as u64).map_err(|e| format!("encode for byte accounting: {e}"))
 }
 

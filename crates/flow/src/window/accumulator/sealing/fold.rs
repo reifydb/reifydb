@@ -7,7 +7,7 @@ use std::{
 	marker::PhantomData,
 };
 
-use reifydb_codec::row::pod::state::{OperatorState, StateCodec};
+use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
@@ -155,7 +155,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::pod::state::decode;
+	use reifydb_codec::row::operator::state::decode;
 	use reifydb_value::{
 		factory::time::{at_millis, millis},
 		value::datetime::DateTime,

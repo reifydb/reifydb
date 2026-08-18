@@ -5,10 +5,8 @@ use reifydb_codec::{
 	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKeyRange},
 	row::{
 		bytes::EncodedBytes,
-		pod::{
-			EncodedPodRow,
-			state::{decode, encode},
-		},
+		operator::state::{decode, encode},
+		pod::EncodedPodRow,
 	},
 };
 use reifydb_core::{

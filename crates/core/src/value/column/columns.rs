@@ -621,7 +621,7 @@ impl Columns {
 		self.names.reserve(field_count);
 
 		let (created_at, updated_at) = match row.shape.family() {
-			RowFamily::Pod => (None, None),
+			RowFamily::Pod | RowFamily::Operator => (None, None),
 			_ => (Some(row.shape.created_at(&row.encoded)), Some(row.shape.updated_at(&row.encoded))),
 		};
 

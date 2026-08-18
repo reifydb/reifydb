@@ -29,6 +29,10 @@ use super::bytes::{
 };
 use crate::row::{
 	catalog::EncodedCatalogRowBuilder,
+	operator::{
+		EncodedOperatorRowBuilder, OPERATOR_HEADER_SIZE, read_time as read_operator_time,
+		write_time as write_operator_time,
+	},
 	pod::{EncodedPodRowBuilder, POD_HEADER_SIZE},
 	queue::EncodedQueueRowBuilder,
 	ringbuffer::EncodedRingBufferRowBuilder,
@@ -51,6 +55,7 @@ pub enum RowFamily {
 	Series = 0x04,
 	RingBuffer = 0x05,
 	Queue = 0x06,
+	Operator = 0x07,
 }
 
 impl RowFamily {
@@ -62,6 +67,7 @@ impl RowFamily {
 			Self::Series => SHAPE_HEADER_SIZE,
 			Self::RingBuffer => SHAPE_HEADER_SIZE,
 			Self::Queue => QUEUE_HEADER_SIZE,
+			Self::Operator => OPERATOR_HEADER_SIZE,
 		}
 	}
 
@@ -81,6 +87,7 @@ impl RowFamily {
 			0x04 => Some(Self::Series),
 			0x05 => Some(Self::RingBuffer),
 			0x06 => Some(Self::Queue),
+			0x07 => Some(Self::Operator),
 			_ => None,
 		}
 	}
@@ -260,6 +267,7 @@ impl RowShape {
 	pub fn time(&self, row: &[u8]) -> Option<DateTime> {
 		match self.family {
 			RowFamily::Pod => None,
+			RowFamily::Operator => read_operator_time(row),
 			_ => read_storage_time(row),
 		}
 	}
@@ -268,6 +276,7 @@ impl RowShape {
 	pub fn created_at(&self, row: &[u8]) -> DateTime {
 		match self.family {
 			RowFamily::Pod => panic!("pod rows carry no created_at"),
+			RowFamily::Operator => panic!("operator rows carry no created_at"),
 			_ => read_created_at(row),
 		}
 	}
@@ -276,6 +285,7 @@ impl RowShape {
 	pub fn updated_at(&self, row: &[u8]) -> DateTime {
 		match self.family {
 			RowFamily::Pod => panic!("pod rows carry no updated_at"),
+			RowFamily::Operator => panic!("operator rows carry no updated_at"),
 			_ => read_updated_at(row),
 		}
 	}
@@ -431,6 +441,7 @@ impl RowShape {
 		let mut row = EncodedRowBuilder::zeroed(total_size);
 		match self.family {
 			RowFamily::Pod => {}
+			RowFamily::Operator => write_operator_time(row.as_mut_slice(), DateTime::MAX),
 			_ => write_fingerprint(row.as_mut_slice(), self.fingerprint),
 		}
 		reifydb_assertions! {
@@ -452,6 +463,11 @@ impl RowShape {
 	pub fn allocate_pod(&self) -> EncodedPodRowBuilder {
 		assert_eq!(self.family, RowFamily::Pod, "allocate_pod on a shape of another family");
 		EncodedPodRowBuilder::wrap(self.allocate())
+	}
+
+	pub fn allocate_operator(&self) -> EncodedOperatorRowBuilder {
+		assert_eq!(self.family, RowFamily::Operator, "allocate_operator on a shape of another family");
+		EncodedOperatorRowBuilder::wrap(self.allocate())
 	}
 
 	pub fn allocate_table(&self) -> EncodedTableRowBuilder {

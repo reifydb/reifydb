@@ -159,7 +159,7 @@ impl Slot for OrdinalCoord {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::pod::state::encode;
+	use reifydb_codec::row::operator::state::encode;
 
 	use super::*;
 

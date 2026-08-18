@@ -45,11 +45,11 @@ pub fn operator_state_impl(attr: TokenStream, item: TokenStream, crate_path: &st
 	};
 	let name = &input.ident;
 	let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-	let serde_crate = format!("{crate_path}::row::pod::state::derive::serde");
+	let serde_crate = format!("{crate_path}::row::operator::state::derive::serde");
 	let serialize_bound = field_bounds(&input.data, &format!("{serde_crate}::Serialize"));
 	let deserialize_bound = field_bounds(&input.data, &format!("{serde_crate}::de::DeserializeOwned"));
 	let extra_bounds = quote! {
-		Self: #root::row::pod::state::StateCodec,
+		Self: #root::row::operator::state::StateCodec,
 	};
 	let merged_where = match where_clause {
 		Some(existing) => {
@@ -61,25 +61,25 @@ pub fn operator_state_impl(attr: TokenStream, item: TokenStream, crate_path: &st
 
 	quote! {
 		#[derive(
-			#root::row::pod::state::derive::Serialize,
-			#root::row::pod::state::derive::Deserialize,
+			#root::row::operator::state::derive::Serialize,
+			#root::row::operator::state::derive::Deserialize,
 		)]
 		#[serde(crate = #serde_crate)]
 		#[serde(bound(serialize = #serialize_bound, deserialize = #deserialize_bound))]
 		#item
 
 		#[automatically_derived]
-		impl #impl_generics #root::row::pod::state::OperatorState for #name #ty_generics #merged_where {
+		impl #impl_generics #root::row::operator::state::OperatorState for #name #ty_generics #merged_where {
 			fn encode_state(
 				&self,
-			) -> ::core::result::Result<#root::row::pod::EncodedPodRow, #root::row::pod::state::StateError> {
-				#root::row::pod::state::encode(self)
+			) -> ::core::result::Result<#root::row::pod::EncodedPodRow, #root::row::operator::state::StateError> {
+				#root::row::operator::state::encode(self)
 			}
 
 			fn decode_state(
 				bytes: &#root::row::pod::EncodedPodRow,
-			) -> ::core::result::Result<Self, #root::row::pod::state::StateError> {
-				#root::row::pod::state::decode_body::<Self>(bytes)
+			) -> ::core::result::Result<Self, #root::row::operator::state::StateError> {
+				#root::row::operator::state::decode_body::<Self>(bytes)
 			}
 		}
 	}

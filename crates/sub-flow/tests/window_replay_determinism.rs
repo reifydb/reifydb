@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::pod::{EncodedPodRow, state::decode},
+	row::{operator::state::decode, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	common::{WindowKind, WindowSize},

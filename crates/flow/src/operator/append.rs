@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::{decode_u64, encode_u64, encoded::EncodedKey, serializer::KeySerializer},
-	row::pod::state::OperatorState,
+	row::operator::state::OperatorState,
 };
 use reifydb_core::{
 	interface::{

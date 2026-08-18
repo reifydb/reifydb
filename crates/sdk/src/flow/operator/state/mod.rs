@@ -7,9 +7,9 @@ use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::pod::{
-		EncodedPodRow,
-		state::{OperatorState, decode},
+	row::{
+		operator::state::{OperatorState, decode},
+		pod::EncodedPodRow,
 	},
 };
 use reifydb_core::key::operator_state::GroupStateKey;

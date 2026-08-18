@@ -1093,6 +1093,8 @@ mod seal_anchor_guard_tests {
 
 #[cfg(test)]
 mod empty_value_boundary_tests {
+	use std::ptr::null_mut;
+
 	use reifydb_sdk::common::extern_c::wire::{
 		buffer::ExternCBuffer,
 		status::{EXTERN_C_ERROR_ALLOC, EXTERN_C_OK},
@@ -1104,7 +1106,7 @@ mod empty_value_boundary_tests {
 
 	fn empty_buffer() -> ExternCBuffer {
 		ExternCBuffer {
-			ptr: std::ptr::null_mut(),
+			ptr: null_mut(),
 			len: 0,
 			cap: 0,
 		}

@@ -98,7 +98,7 @@ impl HeapSize for Moments {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::pod::state::{OperatorState, decode};
+	use reifydb_codec::row::operator::state::{OperatorState, decode};
 	use reifydb_macro::operator_state;
 
 	use super::*;

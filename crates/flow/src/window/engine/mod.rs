@@ -19,7 +19,7 @@ use reifydb_codec::{
 		encode_u64_asc,
 		encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 	},
-	row::pod::state::{OperatorState, decode},
+	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
 	key::operator_state::{

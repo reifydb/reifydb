@@ -8,10 +8,7 @@ use reifydb_codec::{
 		decode_u64_asc, encode_u64_asc,
 		encoded::{EncodedKey, EncodedKeyRange},
 	},
-	row::{
-		bytes::EncodedBytes,
-		pod::{EncodedPodRow, state::OperatorState},
-	},
+	row::{bytes::EncodedBytes, operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	actors::pending::PendingWrite,

@@ -4,6 +4,7 @@
 mod catalog;
 mod envelope;
 mod le;
+mod operator;
 mod pod;
 mod queue;
 mod ringbuffer;

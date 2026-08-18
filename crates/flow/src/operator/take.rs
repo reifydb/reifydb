@@ -9,10 +9,8 @@ use std::{
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	envelope::{Envelope, EnvelopeBuilder},
-	pod::{
-		EncodedPodRow,
-		state::{decode, encode},
-	},
+	operator::state::{decode, encode},
+	pod::EncodedPodRow,
 	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_core::{

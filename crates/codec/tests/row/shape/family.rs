@@ -100,6 +100,7 @@ fn every_family_tag_keeps_the_byte_it_was_assigned_and_round_trips_through_from_
 		(RowFamily::Series, 0x04),
 		(RowFamily::RingBuffer, 0x05),
 		(RowFamily::Queue, 0x06),
+		(RowFamily::Operator, 0x07),
 	];
 
 	for (family, tag) in expected {
@@ -108,7 +109,7 @@ fn every_family_tag_keeps_the_byte_it_was_assigned_and_round_trips_through_from_
 	}
 
 	assert_eq!(RowFamily::from_u8(0x00), None, "zero is not a family and must never decode");
-	assert_eq!(RowFamily::from_u8(0x07), None, "the range is dense, so the byte past the last tag is unknown");
+	assert_eq!(RowFamily::from_u8(0x08), None, "the range is dense, so the byte past the last tag is unknown");
 }
 
 #[test]

@@ -10,8 +10,6 @@ use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 
 use crate::row::bytes::{EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Sealed};
 
-pub mod state;
-
 pub const POD_HEADER_SIZE: usize = 0;
 
 #[repr(transparent)]

@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::row::pod::state::OperatorState;
+use reifydb_codec::row::operator::state::OperatorState;
 use reifydb_macro::operator_state;
 
 #[operator_state]

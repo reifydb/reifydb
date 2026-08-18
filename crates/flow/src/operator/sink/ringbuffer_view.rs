@@ -10,10 +10,8 @@ use reifydb_codec::{
 	},
 	row::{
 		bytes::EncodedBytes,
-		pod::{
-			EncodedPodRow,
-			state::{decode, encode},
-		},
+		operator::state::{decode, encode},
+		pod::EncodedPodRow,
 		shape::{RowFamily, RowShape},
 	},
 };

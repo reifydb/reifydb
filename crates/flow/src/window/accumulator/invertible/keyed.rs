@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, fmt::Debug};
 
-use reifydb_codec::row::pod::state::{OperatorState, StateCodec};
+use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
@@ -73,7 +73,7 @@ impl<K: Ord + HeapSize, A: HeapSize> HeapSize for KeyedInvertibleAccumulator<K, 
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::pod::state::{OperatorState, decode};
+	use reifydb_codec::row::operator::state::{OperatorState, decode};
 
 	use super::*;
 	use crate::window::accumulator::{invertible::moments::Moments, testkit::assert_add_remove_is_inverse};

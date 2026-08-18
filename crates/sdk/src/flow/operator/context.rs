@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::pod::{EncodedPodRow, state::OperatorState},
+	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,

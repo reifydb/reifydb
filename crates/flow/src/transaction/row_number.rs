@@ -7,10 +7,8 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{
 		bytes::EncodedBytes,
-		pod::{
-			EncodedPodRow,
-			state::{OperatorState, decode},
-		},
+		operator::state::{OperatorState, decode},
+		pod::EncodedPodRow,
 	},
 };
 use reifydb_core::{

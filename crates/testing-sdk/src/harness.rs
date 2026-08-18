@@ -12,7 +12,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
 		bytes::EncodedBytes,
-		pod::state::OperatorState,
+		operator::state::OperatorState,
 		shape::{RowFamily, RowShape},
 	},
 };

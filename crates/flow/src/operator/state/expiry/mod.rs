@@ -8,7 +8,7 @@ use reifydb_codec::{
 		decode_u64, encode_u64,
 		encoded::{EncodedKeyRange, IntoEncodedKey},
 	},
-	row::pod::state::{OperatorState, decode},
+	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},

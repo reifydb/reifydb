@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, fmt::Debug};
 
-use reifydb_codec::row::pod::state::{OperatorState, StateCodec};
+use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 
@@ -101,7 +101,7 @@ impl<K: Ord + HeapSize, V: HeapSize> HeapSize for RetainedAccumulator<K, V> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::pod::state::decode;
+	use reifydb_codec::row::operator::state::decode;
 	use reifydb_macro::operator_state;
 
 	use super::*;

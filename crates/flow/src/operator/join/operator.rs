@@ -9,7 +9,7 @@ use std::{
 use postcard::to_extend;
 use reifydb_codec::{
 	key::{decode_u64, encode_u64, encoded::EncodedKey, serializer::KeySerializer},
-	row::pod::state::OperatorState,
+	row::operator::state::OperatorState,
 };
 use reifydb_core::{
 	common::JoinType,
@@ -1040,7 +1040,7 @@ impl JoinOperator {
 
 #[cfg(test)]
 mod seal_tests {
-	use reifydb_codec::row::pod::state::decode;
+	use reifydb_codec::row::operator::state::decode;
 	use reifydb_core::{
 		common::CommitVersion,
 		key::operator_state::{Keyspace, group_inner_range, keyspace_inner_range},

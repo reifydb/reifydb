@@ -11,7 +11,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_sqlite::memory::global_memory_used;
 use reifydb_value::byte_size::ByteSize;
 
-use crate::domains::proc::{ProcessStatus, process_status};
+use crate::domains::proc::{process_status, read::ProcessStatus};
 
 #[derive(Clone)]
 pub struct Collectors {
