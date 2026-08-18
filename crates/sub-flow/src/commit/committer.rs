@@ -291,7 +291,7 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 			PendingWrite::Remove {
 				announce: true,
 			} => {
-				if matches!(Key::kind(key), Some(KeyKind::Row)) {
+				if matches!(Key::kind(key), Some(KeyKind::Row | KeyKind::SeriesRow)) {
 					match transaction.get(key)? {
 						Some(existing) => transaction.remove_with_pre(key, existing.bytes)?,
 						None => transaction.remove(key)?,

@@ -18,6 +18,7 @@ pub fn parse_id(key: &[u8]) -> MetricsId {
 fn extract_metrics_id(key: &[u8], kind: KeyKind) -> MetricsId {
 	match kind {
 		KeyKind::Row
+		| KeyKind::SeriesRow
 		| KeyKind::RowSequence
 		| KeyKind::Column
 		| KeyKind::Columns

@@ -116,6 +116,7 @@ pub mod tests {
 			KeyKind::NamespaceQueue => {}
 			KeyKind::QueueDeduplication => {}
 			KeyKind::VersionEpoch => {}
+			KeyKind::SeriesRow => {}
 			KeyKind::Relationship => {} /* When adding a new variant, add it here.
 			                             * The compiler will error if you forget.
 			                             * Then add a test and update should_exclude_from_cdc() if
@@ -201,6 +202,12 @@ pub mod tests {
 	#[test]
 	fn test_include_row() {
 		assert!(!should_exclude_from_cdc(KeyKind::Row));
+	}
+
+	#[test]
+	fn test_include_series_row() {
+		// Series rows rode into the log under KeyKind::Row, so their own kind must keep them there.
+		assert!(!should_exclude_from_cdc(KeyKind::SeriesRow));
 	}
 
 	#[test]

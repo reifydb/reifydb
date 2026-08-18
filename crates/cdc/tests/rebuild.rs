@@ -155,7 +155,9 @@ fn rebuild_round_trips_partitioned_table() {
 	// A partitioned table writes PartitionedRowKey instead of RowKey; both must name the same object.
 	let t = TestEngine::new();
 	t.admin("create namespace test");
-	t.admin("create table test::events { id: int4, region: utf8, amount: int8 } with { partition: { by: { region } } }");
+	t.admin(
+		"create table test::events { id: int4, region: utf8, amount: int8 } with { partition: { by: { region } } }",
+	);
 
 	t.command(
 		"insert test::events [{ id: 1, region: 'eu', amount: 10 }, { id: 2, region: 'us', amount: 20 }, { id: 3, region: 'eu', amount: 30 }]",
@@ -201,7 +203,9 @@ fn rebuild_round_trips_randomised_workload_seeded_1234() {
 	let t = TestEngine::new();
 	t.admin("create namespace test");
 	t.admin("create table test::plain { id: int4, label: Option(utf8), score: Option(float8) }");
-	t.admin("create table test::split { id: int4, region: utf8, amount: int8 } with { partition: { by: { region } } }");
+	t.admin(
+		"create table test::split { id: int4, region: utf8, amount: int8 } with { partition: { by: { region } } }",
+	);
 
 	let mut rng = Lcg(1234);
 	let mut live_plain: Vec<u64> = Vec::new();
@@ -300,21 +304,28 @@ fn rebuild_maps_a_view_row_key_to_the_view_object() {
 }
 
 #[test]
-fn rebuild_invents_a_change_for_queue_rows() {
-	// Queue rows reach the delta log but never the change list, so the rebuild is a strict superset here.
+fn rebuild_emits_no_change_for_queue_rows() {
+	// Queue writes never call track_flow_change, so surfacing them would feed consumers traffic they never saw.
 	let t = TestEngine::new();
 	t.admin("create namespace test");
 	t.admin("create queue test::jobs { id: int4, payload: utf8 } with { fifo: {} }");
 	t.command("insert test::jobs [{ id: 1, payload: 'a' }]");
 	t.await_cdc();
 
-	let mut queue_rows = 0;
+	let mut queue_row_keys = 0;
 	for cdc in read_all(&t) {
-		assert!(canonical(&cdc.changes).is_empty(), "a queue write must emit no change today");
-		queue_rows +=
-			canonical(&rebuilt(&t, &cdc)).keys().filter(|origin| origin.starts_with("Queue")).count();
+		queue_row_keys += cdc
+			.system_changes
+			.iter()
+			.filter(|change| match Key::decode(change.key()) {
+				Some(Key::Row(row)) => matches!(row.storage, StorageId::Queue(_)),
+				_ => false,
+			})
+			.count();
+		assert!(canonical(&cdc.changes).is_empty(), "a queue write must emit no change");
+		assert!(canonical(&rebuilt(&t, &cdc)).is_empty(), "the rebuild must not invent a queue change either");
 	}
-	assert_eq!(queue_rows, 1, "the rebuild must surface the queue row that the change list omits");
+	assert_eq!(queue_row_keys, 1, "the queue row must be present in system_changes for the filter to matter");
 }
 
 #[test]
@@ -334,18 +345,39 @@ fn rebuild_round_trips_partitioned_series() {
 }
 
 #[test]
-fn rebuild_drops_series_rows_written_under_a_series_row_key() {
-	// SeriesRowKey shares KeyKind::Row with a different layout, so series rows stay outside this rebuild.
+fn rebuild_round_trips_unpartitioned_series() {
+	// SeriesRowKey now owns KeyKind::SeriesRow; decoding it as a RowKey would read the timestamp as a row number.
+	let t = TestEngine::new();
+	t.admin("create namespace test");
+	t.admin("create series test::metrics { ts: datetime, value: int2 } with { key: ts }");
+
+	t.command("insert test::metrics [{ ts: '2026-01-01T00:00:00Z', value: 7 }]");
+	t.mock_clock().advance_millis(100);
+	t.command("insert test::metrics [{ ts: '2026-01-01T00:01:00Z', value: 9 }]");
+	t.mock_clock().advance_millis(100);
+	t.command("update test::metrics { value: 11 } filter { value == 7 }");
+	t.command("delete test::metrics filter { value == 9 }");
+
+	let compared = assert_round_trip(&t, "unpartitioned series");
+	assert!(compared >= 4, "the series workload must cover insert, update and delete, got {compared} rows");
+}
+
+#[test]
+fn rebuild_reaches_a_series_row_under_its_series_object_not_the_row_kind() {
+	// A series row key must never surface under a table or view origin, which is what the shared kind produced.
 	let t = TestEngine::new();
 	t.admin("create namespace test");
 	t.admin("create series test::metrics { ts: datetime, value: int2 } with { key: ts }");
 	t.command("insert test::metrics [{ ts: '2026-01-01T00:00:00Z', value: 7 }]");
 	t.await_cdc();
 
-	let mut series_rows = 0;
+	let mut origins: Vec<String> = Vec::new();
 	for cdc in read_all(&t) {
-		series_rows += canonical(&cdc.changes).keys().filter(|origin| origin.starts_with("Series")).count();
-		assert!(canonical(&rebuilt(&t, &cdc)).is_empty(), "a series row key must not decode as a plain row");
+		origins.extend(canonical(&rebuilt(&t, &cdc)).into_keys());
 	}
-	assert_eq!(series_rows, 1, "the series insert must be present in the change list it is missing from");
+	assert_eq!(origins.iter().filter(|origin| origin.starts_with("Series")).count(), 1);
+	assert!(
+		origins.iter().all(|origin| origin.starts_with("Series")),
+		"only the series object may own these rows, got {origins:?}"
+	);
 }

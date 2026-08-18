@@ -18,7 +18,7 @@ use reifydb_core::{
 		cdc::{Cdc, SystemChange},
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
-	key::{EncodableKey, Key, partitioned_row::RowLocator},
+	key::{Key, partitioned_row::RowLocator},
 	value::column::columns::Columns,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -52,9 +52,13 @@ struct Bucket {
 
 pub fn row_target(key: &EncodedKey) -> Option<RowTarget> {
 	match Key::decode(key)? {
-		Key::Row(row_key) => (row_key.encode() == *key).then(|| RowTarget {
+		Key::Row(row_key) => Some(RowTarget {
 			object: ObjectId::from(row_key.storage),
 			row: row_key.row,
+		}),
+		Key::SeriesRow(series_key) => Some(RowTarget {
+			object: ObjectId::series(series_key.series),
+			row: RowNumber(series_key.sequence),
 		}),
 		Key::PartitionedRow(partitioned) => Some(RowTarget {
 			object: ObjectId::from(partitioned.storage),
@@ -77,6 +81,9 @@ pub fn rebuild_changes(cdc: &Cdc, catalog: &Catalog, txn: &mut Transaction<'_>) 
 		let Some(target) = row_target(system_change.key()) else {
 			continue;
 		};
+		if matches!(target.object, ObjectId::Queue(_)) {
+			continue;
+		}
 		let (key, pre, post) = match system_change {
 			SystemChange::Insert {
 				post,
@@ -204,7 +211,7 @@ mod tests {
 			id::{SeriesId, TableId, ViewId},
 			storage::StorageId,
 		},
-		key::{partitioned_row::PartitionedRowKey, row::RowKey, series_row::SeriesRowKey},
+		key::{EncodableKey, partitioned_row::PartitionedRowKey, row::RowKey, series_row::SeriesRowKey},
 	};
 	use reifydb_value::value::partition::Partition;
 
@@ -246,8 +253,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_series_row_key_is_rejected_despite_sharing_the_row_kind() {
-		// A plain RowKey decode of the longer series suffix invents a row number out of the key bytes.
+	fn test_series_row_key_uses_the_sequence_as_row_number_never_the_series_key() {
+		// A RowKey decode of the longer series suffix would invent RowNumber(1_000) out of the key bytes.
 		let key = SeriesRowKey {
 			series: SeriesId(4),
 			variant_tag: None,
@@ -255,8 +262,25 @@ mod tests {
 			sequence: 7,
 		}
 		.encode();
-		assert!(RowKey::decode(&key).is_some(), "the collision this guard exists for must still be real");
-		assert!(row_target(&key).is_none());
+		assert!(RowKey::decode(&key).is_none(), "a series row key must no longer decode as a plain row key");
+		let target = row_target(&key).expect("row target");
+		assert_eq!(target.object, ObjectId::Series(SeriesId(4)));
+		assert_eq!(target.row, RowNumber(7));
+	}
+
+	#[test]
+	fn test_tagged_series_row_key_maps_to_its_series() {
+		// The variant tag shifts the key and sequence by one byte, so the tagged layout needs its own cover.
+		let key = SeriesRowKey {
+			series: SeriesId(9),
+			variant_tag: Some(3),
+			key: 1_000,
+			sequence: 11,
+		}
+		.encode();
+		let target = row_target(&key).expect("row target");
+		assert_eq!(target.object, ObjectId::Series(SeriesId(9)));
+		assert_eq!(target.row, RowNumber(11));
 	}
 
 	#[test]

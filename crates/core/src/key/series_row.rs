@@ -24,7 +24,7 @@ pub struct SeriesRowKey {
 }
 
 impl EncodableKey for SeriesRowKey {
-	const KIND: KeyKind = KeyKind::Row;
+	const KIND: KeyKind = KeyKind::SeriesRow;
 
 	fn encode(&self) -> EncodedKey {
 		let object = ObjectId::Series(self.series);
@@ -132,10 +132,38 @@ impl SeriesRowKeyRange {
 		EncodedKeyRange::new(start, Bound::Included(range.end_key()))
 	}
 
+	pub fn decode_series(key: &EncodedKey) -> Option<SeriesId> {
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
+
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
+		if kind != SeriesRowKey::KIND {
+			return None;
+		}
+
+		match de.read_object_id().ok()? {
+			ObjectId::Series(id) => Some(id),
+			_ => None,
+		}
+	}
+
+	pub fn decode(range: &EncodedKeyRange) -> (Option<SeriesId>, Option<SeriesId>) {
+		let start = match &range.start {
+			Bound::Included(key) | Bound::Excluded(key) => Self::decode_series(key),
+			Bound::Unbounded => None,
+		};
+
+		let end = match &range.end {
+			Bound::Included(key) | Bound::Excluded(key) => Self::decode_series(key),
+			Bound::Unbounded => None,
+		};
+
+		(start, end)
+	}
+
 	fn start_key(&self) -> EncodedKey {
 		let object = ObjectId::Series(self.series);
 		let mut serializer = KeySerializer::with_capacity(27);
-		serializer.extend_u8(KeyKind::Row as u8).extend_object_id(object);
+		serializer.extend_u8(SeriesRowKey::KIND as u8).extend_object_id(object);
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
@@ -150,7 +178,7 @@ impl SeriesRowKeyRange {
 		if let Some(key_val) = self.key_start {
 			let object = ObjectId::Series(self.series);
 			let mut serializer = KeySerializer::with_capacity(27);
-			serializer.extend_u8(KeyKind::Row as u8).extend_object_id(object);
+			serializer.extend_u8(SeriesRowKey::KIND as u8).extend_object_id(object);
 			if let Some(tag) = self.variant_tag {
 				serializer.extend_u8(tag);
 			}
@@ -160,7 +188,7 @@ impl SeriesRowKeyRange {
 		} else {
 			let object = ObjectId::Series(self.series);
 			let mut serializer = KeySerializer::with_capacity(10);
-			serializer.extend_u8(KeyKind::Row as u8).extend_object_id(object.prev());
+			serializer.extend_u8(SeriesRowKey::KIND as u8).extend_object_id(object.prev());
 			serializer.to_encoded_key()
 		}
 	}
@@ -168,7 +196,10 @@ impl SeriesRowKeyRange {
 
 #[cfg(test)]
 mod tests {
+	use std::ops::RangeBounds;
+
 	use super::*;
+	use crate::key::{EncodableKeyRange, row::RowKeyRange};
 
 	#[test]
 	fn test_encode_decode_without_tag() {
@@ -200,6 +231,53 @@ mod tests {
 		assert_eq!(decoded.variant_tag, Some(3));
 		assert_eq!(decoded.key, 1706745600000);
 		assert_eq!(decoded.sequence, 5);
+	}
+
+	#[test]
+	fn test_full_scan_range_still_names_its_series() {
+		// classify_range routes a series scan to its own physical entry; an undecodable range falls to Multi.
+		let range = SeriesRowKeyRange::full_scan(SeriesId(42), None);
+		let (start, end) = SeriesRowKeyRange::decode(&range);
+		assert_eq!(start, Some(SeriesId(42)));
+		assert_eq!(end, Some(SeriesId(41)), "the exclusive end brackets the next series id down");
+	}
+
+	#[test]
+	fn test_scan_range_brackets_the_rows_it_selects() {
+		// The range must contain a key inside the window and exclude one outside, or eviction skips live rows.
+		let range = SeriesRowKeyRange::scan_range(SeriesId(1), None, Some(100), Some(200), None);
+		let inside = SeriesRowKey {
+			series: SeriesId(1),
+			variant_tag: None,
+			key: 150,
+			sequence: 1,
+		}
+		.encode();
+		let below = SeriesRowKey {
+			series: SeriesId(1),
+			variant_tag: None,
+			key: 99,
+			sequence: 1,
+		}
+		.encode();
+		let above = SeriesRowKey {
+			series: SeriesId(1),
+			variant_tag: None,
+			key: 201,
+			sequence: 1,
+		}
+		.encode();
+
+		assert!(range.contains(&inside));
+		assert!(!range.contains(&below));
+		assert!(!range.contains(&above));
+	}
+
+	#[test]
+	fn test_row_key_range_never_claims_a_series_range() {
+		// A shared kind byte made a series scan classify as a plain row scan of the same object id.
+		let range = SeriesRowKeyRange::full_scan(SeriesId(42), None);
+		assert_eq!(RowKeyRange::decode(&range), (None, None));
 	}
 
 	#[test]

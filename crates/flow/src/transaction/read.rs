@@ -38,6 +38,7 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyKind::SeriesMetadata => ReadFrom::StateQuery,
 
 			KeyKind::Row => ReadFrom::OwnedRow,
+			KeyKind::SeriesRow => ReadFrom::OwnedRow,
 			KeyKind::PartitionedRow => ReadFrom::OwnedRow,
 			KeyKind::Partition => ReadFrom::OwnedRow,
 

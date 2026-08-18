@@ -12,7 +12,7 @@ use reifydb_core::{
 		cdc::{Cdc, SystemChange},
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::{EncodableKey, Key, kind::KeyKind, row::RowKey},
+	key::{EncodableKey, Key, kind::KeyKind, row::RowKey, series_row::SeriesRowKey},
 };
 use rusqlite::{Connection, OpenFlags};
 
@@ -183,11 +183,16 @@ fn absorb_system_change(change: &SystemChange, stats: &mut Stats) {
 	stats.system_bytes += bytes;
 	stats.system_kinds.entry(system_kind(change)).or_default().add(1, bytes);
 
-	if Key::kind(change.key().as_slice()) == Some(KeyKind::Row) {
-		match RowKey::decode(change.key()) {
+	match Key::kind(change.key().as_slice()) {
+		Some(KeyKind::Row) => match RowKey::decode(change.key()) {
 			Some(key) => stats.storage_rows.entry(key.storage.as_u64()).or_default().add(1, bytes),
 			None => stats.undecodable_row_keys += 1,
-		}
+		},
+		Some(KeyKind::SeriesRow) => match SeriesRowKey::decode(change.key()) {
+			Some(key) => stats.storage_rows.entry(key.series.0).or_default().add(1, bytes),
+			None => stats.undecodable_row_keys += 1,
+		},
+		_ => {}
 	}
 }
 

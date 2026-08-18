@@ -338,9 +338,7 @@ impl Evictor {
 	fn row_owner_exists(&self, txn: &mut CommandTransaction, storage: StorageId) -> Result<bool> {
 		let catalog = self.engine.catalog();
 		Ok(match storage {
-			StorageId::Table(id) => {
-				catalog.find_table(&mut Transaction::Command(&mut *txn), id)?.is_some()
-			}
+			StorageId::Table(id) => catalog.find_table(&mut Transaction::Command(&mut *txn), id)?.is_some(),
 			StorageId::View(id) => catalog.find_view(&mut Transaction::Command(&mut *txn), id)?.is_some(),
 			StorageId::RingBuffer(id) => {
 				catalog.find_ringbuffer(&mut Transaction::Command(&mut *txn), id)?.is_some()
@@ -1178,7 +1176,8 @@ mod tests {
 
 	#[test]
 	fn ring_buffer_backed_views_are_skipped_they_are_owned_by_the_sink_operator() {
-		// The sink operator owns a ring-buffer-backed view's per-partition state, so a second reaper must never touch it, while a standalone ring buffer stays evictor-owned.
+		// The sink operator owns a ring-buffer-backed view's per-partition state, so a second reaper must never
+		// touch it, while a standalone ring buffer stays evictor-owned.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin("create table test::src { base: utf8, n: int4 }");
@@ -1229,16 +1228,13 @@ mod tests {
 
 	#[test]
 	fn table_backed_view_rows_are_evicted_under_the_views_own_storage_id() {
-		// Nothing else reaps a table-backed view's rows, so a skip here would leave the row ttl its own DDL advertises unenforced forever.
+		// Nothing else reaps a table-backed view's rows, so a skip here would leave the row ttl its own DDL
+		// advertises unenforced forever.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin("create table test::src { n: int4 }");
-		test.admin(
-			"create table test::stamped { n: int4 } with { time: processing, row: { ttl: 1h } }",
-		);
-		test.admin(
-			"create deferred view test::v { n: int4 } with { row: { ttl: 1h } } as { from test::src }",
-		);
+		test.admin("create table test::stamped { n: int4 } with { time: processing, row: { ttl: 1h } }");
+		test.admin("create deferred view test::v { n: int4 } with { row: { ttl: 1h } } as { from test::src }");
 		test.command("INSERT test::stamped [{ n: 1 }]");
 
 		let view = StorageId::View(view_by_name(&test, "v").id());

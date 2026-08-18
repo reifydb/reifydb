@@ -54,6 +54,7 @@ use role::RoleKey;
 use row::RowKey;
 use row_sequence::RowSequenceKey;
 use series::{SeriesKey, SeriesMetadataKey};
+use series_row::SeriesRowKey;
 use sink::SinkKey;
 use source::SourceKey;
 use sumtype::SumTypeKey;
@@ -155,6 +156,7 @@ pub enum Key {
 	OutputFrontier(OutputFrontierKey),
 	PrimaryKey(PrimaryKeyKey),
 	Row(RowKey),
+	SeriesRow(SeriesRowKey),
 	PartitionedRow(PartitionedRowKey),
 	Partition(PartitionKey),
 	RowSequence(RowSequenceKey),
@@ -224,6 +226,7 @@ impl Key {
 			Key::OutputFrontier(key) => key.encode(),
 			Key::PrimaryKey(key) => key.encode(),
 			Key::Row(key) => key.encode(),
+			Key::SeriesRow(key) => key.encode(),
 			Key::PartitionedRow(key) => key.encode(),
 			Key::Partition(key) => key.encode(),
 			Key::RowSequence(key) => key.encode(),
@@ -330,6 +333,7 @@ impl Key {
 			KeyKind::OperatorState => OperatorStateKey::decode(key).map(Self::OperatorState),
 			KeyKind::OutputFrontier => OutputFrontierKey::decode(key).map(Self::OutputFrontier),
 			KeyKind::Row => RowKey::decode(key).map(Self::Row),
+			KeyKind::SeriesRow => SeriesRowKey::decode(key).map(Self::SeriesRow),
 			KeyKind::PartitionedRow => PartitionedRowKey::decode(key).map(Self::PartitionedRow),
 			KeyKind::Partition => PartitionKey::decode(key).map(Self::Partition),
 			KeyKind::RowSequence => RowSequenceKey::decode(key).map(Self::RowSequence),
@@ -416,12 +420,15 @@ pub mod tests {
 	use crate::{
 		interface::catalog::{
 			flow::OperatorId,
-			id::{ColumnId, ColumnPropertyId, IndexId, NamespaceId, RelationshipId, SequenceId, TableId},
+			id::{
+				ColumnId, ColumnPropertyId, IndexId, NamespaceId, RelationshipId, SequenceId, SeriesId,
+				TableId,
+			},
 			object::ObjectId,
 			storage::StorageId,
 		},
 		key::{
-			Key,
+			EncodableKey, Key,
 			column::ColumnKey,
 			column_sequence::ColumnSequenceKey,
 			columns::ColumnsKey,
@@ -434,6 +441,7 @@ pub mod tests {
 			relationship::RelationshipKey,
 			row::RowKey,
 			row_sequence::RowSequenceKey,
+			series_row::SeriesRowKey,
 			sumtype::SumTypeKey,
 			system_sequence::SystemSequenceKey,
 			table::TableKey,
@@ -637,6 +645,52 @@ pub mod tests {
 			}
 			_ => unreachable!(),
 		}
+	}
+
+	#[test]
+	fn test_series_row_does_not_dispatch_to_the_row_decoder() {
+		// Under the shared kind this decoded as Key::Row with the series key masquerading as a row number.
+		let key = Key::SeriesRow(SeriesRowKey {
+			series: SeriesId(42),
+			variant_tag: None,
+			key: 1_706_745_600_000,
+			sequence: 3,
+		});
+
+		let encoded = key.encode();
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+		match decoded {
+			Key::SeriesRow(decoded_inner) => {
+				assert_eq!(decoded_inner.series, SeriesId(42));
+				assert_eq!(decoded_inner.variant_tag, None);
+				assert_eq!(decoded_inner.key, 1_706_745_600_000);
+				assert_eq!(decoded_inner.sequence, 3);
+			}
+			other => panic!("a series row key must decode as Key::SeriesRow, got {other:?}"),
+		}
+
+		assert!(RowKey::decode(&encoded).is_none(), "the row decoder must reject the series layout outright");
+	}
+
+	#[test]
+	fn test_series_row_and_row_keyspaces_do_not_overlap() {
+		// One kind byte for two layouts is what let a 27-byte series key answer to an 18-byte row read.
+		let series = Key::SeriesRow(SeriesRowKey {
+			series: SeriesId(1),
+			variant_tag: Some(2),
+			key: 7,
+			sequence: 9,
+		})
+		.encode();
+		let row = Key::Row(RowKey {
+			storage: StorageId::table(1),
+			row: RowNumber(7),
+		})
+		.encode();
+
+		assert_ne!(series.as_slice()[0], row.as_slice()[0]);
+		assert!(SeriesRowKey::decode(&row).is_none());
 	}
 
 	#[test]

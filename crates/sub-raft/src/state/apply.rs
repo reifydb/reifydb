@@ -61,7 +61,10 @@ impl<M: MultiVersionCommit, S: SingleVersionCommit> Apply<M, S> {
 }
 
 fn is_catalog_key(kind: KeyKind) -> bool {
-	!matches!(kind, KeyKind::Row | KeyKind::PartitionedRow | KeyKind::Partition | KeyKind::IndexEntry)
+	!matches!(
+		kind,
+		KeyKind::Row | KeyKind::SeriesRow | KeyKind::PartitionedRow | KeyKind::Partition | KeyKind::IndexEntry
+	)
 }
 
 impl<M: MultiVersionCommit + 'static, S: SingleVersionCommit + 'static> Apply<M, S> {

@@ -43,8 +43,8 @@ fn is_relevant_system_change(change: &SystemChange) -> bool {
 			matches!(
 				kind,
 				KeyKind::Row
-					| KeyKind::PartitionedRow | KeyKind::Flow
-					| KeyKind::Operator | KeyKind::OperatorByFlow
+					| KeyKind::SeriesRow | KeyKind::PartitionedRow
+					| KeyKind::Flow | KeyKind::Operator | KeyKind::OperatorByFlow
 					| KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow
 					| KeyKind::NamespaceFlow
 			)

@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	interface::store::EntryKind,
+	interface::{catalog::storage::StorageId, store::EntryKind},
 	key::{EncodableKey, Key, row::RowKey},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -24,6 +24,10 @@ pub fn page_of(key: &EncodedKey, bucket_shift: u8) -> PageId {
 			kind: EntryKind::Source(row_key.storage),
 			bucket: row_key.row.0 >> bucket_shift,
 		},
+		Some(Key::SeriesRow(series_key)) => PageId {
+			kind: EntryKind::Source(StorageId::series(series_key.series)),
+			bucket: 0,
+		},
 		Some(Key::PartitionedRow(partitioned_key)) => PageId {
 			kind: EntryKind::PartitionedSource(partitioned_key.storage),
 			bucket: 0,
@@ -37,6 +41,7 @@ pub fn page_of(key: &EncodedKey, bucket_shift: u8) -> PageId {
 
 pub fn key_range_of(page: PageId, bucket_shift: u8) -> Option<EncodedKeyRange> {
 	match page.kind {
+		EntryKind::Source(StorageId::Series(_)) => None,
 		EntryKind::Source(storage) => {
 			let low = page.bucket << bucket_shift;
 			let high = low | ((1u64 << bucket_shift) - 1);
@@ -63,11 +68,15 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
-		interface::{catalog::storage::StorageId, store::EntryKind},
+		interface::{
+			catalog::{id::SeriesId, storage::StorageId},
+			store::{EntryKind, classify_key},
+		},
 		key::{
 			EncodableKey,
 			partitioned_row::{PartitionedRowKey, RowLocator},
 			row::RowKey,
+			series_row::SeriesRowKey,
 		},
 	};
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
@@ -149,5 +158,56 @@ mod tests {
 	fn key_range_of_is_none_for_non_source() {
 		let unknown = page_of(&EncodedKey::new(vec![0u8; 8]), 16);
 		assert!(key_range_of(unknown, 16).is_none());
+	}
+
+	#[test]
+	fn page_of_series_row_buckets_by_series_never_by_the_series_key() {
+		// Bucketing a series row by its key would shard one series across pages by timestamp.
+		let early = SeriesRowKey {
+			series: SeriesId(7),
+			variant_tag: None,
+			key: 1,
+			sequence: 1,
+		}
+		.encode();
+		let late = SeriesRowKey {
+			series: SeriesId(7),
+			variant_tag: None,
+			key: 1 << 40,
+			sequence: 2,
+		}
+		.encode();
+
+		let page = page_of(&early, 16);
+		assert_eq!(page.kind, EntryKind::Source(StorageId::series(SeriesId(7))));
+		assert_eq!(page.bucket, 0);
+		assert_eq!(page, page_of(&late, 16), "two keys of one series must share a page whatever their key");
+	}
+
+	#[test]
+	fn page_of_series_row_agrees_with_classify_key() {
+		// The page cache and the physical tier must name the same entry, or a cached page shadows another
+		// table.
+		let key = SeriesRowKey {
+			series: SeriesId(7),
+			variant_tag: Some(2),
+			key: 99,
+			sequence: 3,
+		}
+		.encode();
+		assert_eq!(page_of(&key, 16).kind, classify_key(&key));
+	}
+
+	#[test]
+	fn key_range_of_is_none_for_a_series_page() {
+		// A series page carries neither its variant tag nor a key span, so no exact range is reconstructable.
+		let key = SeriesRowKey {
+			series: SeriesId(7),
+			variant_tag: None,
+			key: 500,
+			sequence: 1,
+		}
+		.encode();
+		assert!(key_range_of(page_of(&key, 16), 16).is_none());
 	}
 }
