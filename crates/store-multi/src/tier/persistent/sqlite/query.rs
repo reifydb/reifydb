@@ -24,7 +24,6 @@ pub(super) fn build_create_current_sql(table_name: &str) -> String {
 			value BLOB,\
 			updated_at INTEGER\
 		) WITHOUT ROWID;\
-		CREATE INDEX IF NOT EXISTS \"{0}__version\" ON \"{0}\" (version);\
 		CREATE INDEX IF NOT EXISTS \"{0}__tombstone\" ON \"{0}\" (version) WHERE value IS NULL;\
 		CREATE INDEX IF NOT EXISTS \"{0}__expiry\" ON \"{0}\" (updated_at) \
 			WHERE value IS NOT NULL AND updated_at IS NOT NULL;",

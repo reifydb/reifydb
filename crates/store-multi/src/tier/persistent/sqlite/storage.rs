@@ -1318,9 +1318,9 @@ mod tests {
 	}
 
 	#[test]
-	fn create_table_indexes_the_version_column() {
-		// The version-anchored TTL delete needs an index on `version` or GC full-scans the live set on
-		// every tick; the retired timestamp indices must stay gone.
+	fn create_table_leaves_the_version_column_unindexed() {
+		// No query plan selects a bare version index, so recreating it costs a b-tree write per row on every
+		// source table for nothing.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
 
@@ -1337,8 +1337,12 @@ mod tests {
 			.collect();
 
 		assert!(
-			indices.contains(&format!("{table_name}__version")),
-			"the version column must be indexed so the TTL delete seeks instead of scanning, got {indices:?}"
+			!indices.contains(&format!("{table_name}__version")),
+			"the bare version index must not be created; it is written on every row and read by no query plan, got {indices:?}"
+		);
+		assert!(
+			indices.contains(&format!("{table_name}__tombstone")),
+			"the tombstone index serves the reap sweep and must survive, got {indices:?}"
 		);
 		assert!(
 			!indices.iter().any(|n| n.ends_with("__created_nanos") || n.ends_with("__updated_nanos")),

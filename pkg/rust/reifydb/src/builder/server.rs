@@ -335,9 +335,7 @@ impl ServerBuilder {
 		let cdc_backend = match &self.storage_factory {
 			StorageFactory::Memory => CdcBackend::Memory,
 			#[cfg(not(target_arch = "wasm32"))]
-			StorageFactory::Sqlite(config) => {
-				CdcBackend::Sqlite(config.clone().journal_mode(JournalMode::Memory))
-			}
+			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone().journal_mode(JournalMode::Memory)),
 		};
 
 		let mut database_builder =
