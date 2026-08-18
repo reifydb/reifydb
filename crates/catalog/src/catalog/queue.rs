@@ -308,13 +308,17 @@ impl Catalog {
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::queue::list_all", level = "trace", skip(self, txn))]
-	pub fn list_queues_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Queue>> {
-		CatalogStore::list_queues_all(txn)
+	#[instrument(name = "catalog::queue::list", level = "trace", skip(self, txn))]
+	pub fn list_queues(&self, txn: &mut Transaction<'_>) -> Result<Vec<Queue>> {
+		CatalogStore::list_queues(txn)
 	}
 
-	#[instrument(name = "catalog::queue::list", level = "trace", skip(self, txn))]
-	pub fn list_queues(&self, txn: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Queue>> {
-		CatalogStore::list_queues(txn, namespace)
+	#[instrument(name = "catalog::queue::list_in_namespace", level = "trace", skip(self, txn))]
+	pub fn list_queues_in_namespace(
+		&self,
+		txn: &mut Transaction<'_>,
+		namespace: NamespaceId,
+	) -> Result<Vec<Queue>> {
+		CatalogStore::list_queues_in_namespace(txn, namespace)
 	}
 }

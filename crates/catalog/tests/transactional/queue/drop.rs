@@ -27,7 +27,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
 	assert!(catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn), ns_id, "jobs").unwrap().is_none());
-	let all = catalog.list_queues_all(&mut Transaction::Admin(&mut txn)).unwrap();
+	let all = catalog.list_queues(&mut Transaction::Admin(&mut txn)).unwrap();
 	assert!(!all.iter().any(|x| x.namespace == ns_id && x.name() == "jobs"));
 }
 

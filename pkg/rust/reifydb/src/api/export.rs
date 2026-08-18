@@ -97,7 +97,7 @@ impl Database {
 				.filter(|r| user_ids.contains(&r.namespace.0))
 				.collect();
 			let all_queues: Vec<Queue> = catalog
-				.list_queues_all(&mut txn)?
+				.list_queues(&mut txn)?
 				.into_iter()
 				.filter(|q| user_ids.contains(&q.namespace.0))
 				.collect();

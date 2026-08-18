@@ -26,7 +26,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	txn.rql("CREATE QUEUE qns_list_a::fresh { msg: utf8 } WITH { fifo: {} }", Params::None);
 	txn.rql("DROP QUEUE qns_list_a::keep", Params::None);
 
-	let all = catalog.list_queues_all(&mut Transaction::Admin(&mut txn)).unwrap();
+	let all = catalog.list_queues(&mut Transaction::Admin(&mut txn)).unwrap();
 	assert!(all.iter().any(|x| x.namespace == ns_id && x.name() == "fresh"));
 	assert!(!all.iter().any(|x| x.namespace == ns_id && x.name() == "keep"));
 }
@@ -45,7 +45,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	txn.rollback().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let all = catalog.list_queues_all(&mut Transaction::Admin(&mut txn2)).unwrap();
+	let all = catalog.list_queues(&mut Transaction::Admin(&mut txn2)).unwrap();
 	assert!(all.iter().any(|x| x.namespace == ns_id && x.name() == "keep"));
 	assert!(!all.iter().any(|x| x.namespace == ns_id && x.name() == "fresh"));
 }
@@ -67,11 +67,11 @@ fn list_by_namespace_excludes_other_namespaces() {
 	txn.commit().unwrap();
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
-	let scoped = catalog.list_queues(&mut Transaction::Admin(&mut txn2), ns_id).unwrap();
+	let scoped = catalog.list_queues_in_namespace(&mut Transaction::Admin(&mut txn2), ns_id).unwrap();
 	assert_eq!(scoped.len(), 1);
 	assert_eq!(scoped[0].name(), "here");
 
-	let other = catalog.list_queues(&mut Transaction::Admin(&mut txn2), other_id).unwrap();
+	let other = catalog.list_queues_in_namespace(&mut Transaction::Admin(&mut txn2), other_id).unwrap();
 	assert_eq!(other.len(), 1);
 	assert_eq!(other[0].name(), "there");
 }

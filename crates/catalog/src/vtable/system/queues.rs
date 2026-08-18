@@ -50,7 +50,7 @@ impl BaseVTable for SystemQueues {
 			return Ok(None);
 		}
 
-		let queues = CatalogStore::list_queues_all(txn)?;
+		let queues = CatalogStore::list_queues(txn)?;
 
 		let mut ids = ColumnBuffer::uint8_with_capacity(queues.len());
 		let mut namespaces = ColumnBuffer::uint8_with_capacity(queues.len());
