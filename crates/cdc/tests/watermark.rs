@@ -8,7 +8,7 @@ use reifydb_cdc::{
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::{Cdc, CdcConsumerId, ConsumerClass, SystemChange},
+	interface::cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
@@ -22,7 +22,7 @@ fn make_cdc(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
 		DateTime::from_nanos(12345 + version),
-		vec![SystemChange::Insert {
+		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![version as u8]),
 			post: EncodedBytes(CowVec::new(vec![version as u8])),
 		}],

@@ -6,7 +6,7 @@ use reifydb_value::error::Error;
 
 use crate::{
 	common::CommitVersion,
-	interface::cdc::{CdcBatch, SystemChange},
+	interface::cdc::{CdcBatch, CdcChange},
 };
 
 pub type ReplicationPrimaryHandle = ActorHandle<ReplicationPrimaryMessage>;
@@ -34,7 +34,7 @@ pub type ReplicationReplicaHandle = ActorHandle<ReplicationReplicaMessage>;
 pub enum ReplicationReplicaMessage {
 	ApplyEntry {
 		version: CommitVersion,
-		system_changes: Vec<SystemChange>,
+		changes: Vec<CdcChange>,
 		reply: Reply<Result<(), Error>>,
 	},
 

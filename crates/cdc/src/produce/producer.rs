@@ -13,7 +13,7 @@ use reifydb_core::{
 		transaction::PostCommitEvent,
 	},
 	interface::{
-		cdc::{Cdc, SystemChange},
+		cdc::{Cdc, CdcChange},
 		store::MultiVersionGetPrevious,
 	},
 	key::{Key, cdc_exclude::should_exclude_from_cdc},
@@ -70,7 +70,7 @@ where
 	}
 
 	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
-		let mut system_changes: Vec<SystemChange> = Vec::new();
+		let mut cdc_changes: Vec<CdcChange> = Vec::new();
 
 		debug!(version = version.0, delta_count = deltas.len(), "Processing CDC");
 
@@ -78,12 +78,12 @@ where
 			if Self::is_excluded_kind(&delta) {
 				continue;
 			}
-			if let Some(change) = self.delta_to_system_change(delta, version) {
-				system_changes.push(change);
+			if let Some(change) = self.delta_to_cdc_change(delta, version) {
+				cdc_changes.push(change);
 			}
 		}
 
-		self.write_and_emit(version, changed_at, system_changes);
+		self.write_and_emit(version, changed_at, cdc_changes);
 	}
 
 	#[inline]
@@ -92,21 +92,21 @@ where
 	}
 
 	#[inline]
-	fn delta_to_system_change(&self, delta: Delta, version: CommitVersion) -> Option<SystemChange> {
-		delta_to_raw_system_change(&delta, self.transaction_store.as_ref(), version)
+	fn delta_to_cdc_change(&self, delta: Delta, version: CommitVersion) -> Option<CdcChange> {
+		delta_to_raw_cdc_change(&delta, self.transaction_store.as_ref(), version)
 	}
 
 	#[inline]
-	fn write_and_emit(&self, version: CommitVersion, changed_at: DateTime, system_changes: Vec<SystemChange>) {
-		if system_changes.is_empty() {
+	fn write_and_emit(&self, version: CommitVersion, changed_at: DateTime, cdc_changes: Vec<CdcChange>) {
+		if cdc_changes.is_empty() {
 			self.backlog.publish(version, None);
 			return;
 		}
-		let cdc = Arc::new(Cdc::new(version, changed_at, system_changes.clone()));
+		let cdc = Arc::new(Cdc::new(version, changed_at, cdc_changes.clone()));
 		match self.storage.write(&cdc) {
 			Ok(_) => {
 				debug!(version = version.0, "CDC written successfully");
-				self.emit_written_event(version, &system_changes);
+				self.emit_written_event(version, &cdc_changes);
 			}
 			Err(e) => error!(version = version.0, "CDC write failed: {:?}", e),
 		}
@@ -115,8 +115,8 @@ where
 	}
 
 	#[inline]
-	fn emit_written_event(&self, version: CommitVersion, system_changes: &[SystemChange]) {
-		let entries: Vec<CdcWrite> = system_changes
+	fn emit_written_event(&self, version: CommitVersion, cdc_changes: &[CdcChange]) {
+		let entries: Vec<CdcWrite> = cdc_changes
 			.iter()
 			.map(|s| CdcWrite {
 				key: s.key().clone(),
@@ -137,11 +137,11 @@ where
 }
 
 #[inline]
-fn delta_to_raw_system_change(
+fn delta_to_raw_cdc_change(
 	delta: &Delta,
 	transaction_store: &dyn MultiVersionGetPrevious,
 	version: CommitVersion,
-) -> Option<SystemChange> {
+) -> Option<CdcChange> {
 	match delta {
 		Delta::Set {
 			key,
@@ -149,13 +149,13 @@ fn delta_to_raw_system_change(
 		} => {
 			let pre = transaction_store.get_previous_version(key, version).ok().flatten();
 			Some(if let Some(prev) = pre {
-				SystemChange::Update {
+				CdcChange::Update {
 					key: key.clone(),
 					pre: prev.bytes,
 					post: bytes.clone(),
 				}
 			} else {
-				SystemChange::Insert {
+				CdcChange::Insert {
 					key: key.clone(),
 					post: bytes.clone(),
 				}
@@ -166,7 +166,7 @@ fn delta_to_raw_system_change(
 			announce: RemoveAnnounce::Announced {
 				pre,
 			},
-		} => Some(SystemChange::Delete {
+		} => Some(CdcChange::Delete {
 			key: key.clone(),
 			pre: Some(pre.clone()),
 			visible: true,
@@ -176,7 +176,7 @@ fn delta_to_raw_system_change(
 			announce: RemoveAnnounce::Unobserved {
 				pre,
 			},
-		} => Some(SystemChange::Delete {
+		} => Some(CdcChange::Delete {
 			key: key.clone(),
 			pre: Some(pre.clone()),
 			visible: false,
@@ -336,10 +336,10 @@ pub mod tests {
 		assert!(cdc.is_some());
 		let cdc = cdc.unwrap();
 		assert_eq!(cdc.version, CommitVersion(1));
-		assert_eq!(cdc.system_changes.len(), 1);
+		assert_eq!(cdc.changes.len(), 1);
 
-		match &cdc.system_changes[0] {
-			SystemChange::Insert {
+		match &cdc.changes[0] {
+			CdcChange::Insert {
 				key,
 				post,
 			} => {
@@ -388,7 +388,7 @@ pub mod tests {
 
 		let cdc = storage.read(CommitVersion(2)).unwrap().unwrap();
 		// A silent removal must not reach CDC; only the Set does.
-		assert_eq!(cdc.system_changes.len(), 1);
+		assert_eq!(cdc.changes.len(), 1);
 	}
 
 	#[test]

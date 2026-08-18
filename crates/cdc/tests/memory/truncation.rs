@@ -5,7 +5,7 @@ use reifydb_cdc::storage::{CdcStorage, memory::MemoryCdcStorage};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::{Cdc, SystemChange},
+	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
@@ -13,7 +13,7 @@ fn cdc_at(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
 		DateTime::from_nanos(1_700_000_000_000_000_000),
-		vec![SystemChange::Insert {
+		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![1]),
 			post: EncodedBytes(CowVec::new(vec![2])),
 		}],

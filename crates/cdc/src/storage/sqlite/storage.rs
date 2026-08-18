@@ -247,7 +247,7 @@ impl SqliteCdcStorage {
 		assert_block_ordered(&entries);
 		let payload = cdc::encode(&entries, zstd_level as i32)?;
 		let compressed_bytes = payload.len();
-		let rollup = aggregate_evictions(entries.iter().flat_map(|c| c.system_changes.iter()));
+		let rollup = aggregate_evictions(entries.iter().flat_map(|c| c.changes.iter()));
 		let rollup_bytes = to_stdvec(&rollup)
 			.map_err(|e| CdcError::Codec(format!("postcard encode block rollup: {e}")))?;
 		let (min_ts_nanos, max_ts_nanos) = summarize_timestamps(&entries);
@@ -451,7 +451,7 @@ impl SqliteCdcStorage {
 			if let Some(max_evicted) = evicted.iter().map(|c| c.version.0).max() {
 				max_deleted = Some(max_deleted.map_or(max_evicted, |m: u64| m.max(max_evicted)));
 			}
-			entries.extend(aggregate_evictions(evicted.iter().flat_map(|c| c.system_changes.iter())));
+			entries.extend(aggregate_evictions(evicted.iter().flat_map(|c| c.changes.iter())));
 			self.inner.block_cache.remove(block_max);
 			let outcome = if survivors.is_empty() {
 				BlockOutcome::Delete
@@ -902,7 +902,7 @@ fn rewrite_straddle_block(
 	let (min_ts_nanos, max_ts_nanos) = summarize_timestamps(survivors);
 	assert_block_ordered(survivors);
 	let payload = cdc::encode(survivors, zstd_level as i32)?;
-	let rollup = aggregate_evictions(survivors.iter().flat_map(|c| c.system_changes.iter()));
+	let rollup = aggregate_evictions(survivors.iter().flat_map(|c| c.changes.iter()));
 	let rollup_bytes =
 		to_stdvec(&rollup).map_err(|e| CdcError::Codec(format!("postcard encode straddle rollup: {e}")))?;
 	tx.prepare_cached(
@@ -981,7 +981,7 @@ impl CdcStorage for SqliteCdcStorage {
 	#[instrument(name = "store::cdc::sqlite::write", level = "debug", skip_all)]
 	fn write(&self, cdc: &Cdc) -> CdcStorageResult<()> {
 		let bytes = cdc::encode(cdc, ROW_ZSTD_LEVEL)?;
-		let rollup = aggregate_evictions(&cdc.system_changes);
+		let rollup = aggregate_evictions(&cdc.changes);
 		let rollup_bytes =
 			to_stdvec(&rollup).map_err(|e| CdcError::Codec(format!("postcard encode rollup: {e}")))?;
 		let guard = self.inner.conn.lock();
@@ -1018,7 +1018,7 @@ impl CdcStorage for SqliteCdcStorage {
 	}
 
 	fn count(&self, version: CommitVersion) -> CdcStorageResult<usize> {
-		Ok(self.read(version)?.map(|c| c.system_changes.len()).unwrap_or(0))
+		Ok(self.read(version)?.map(|c| c.changes.len()).unwrap_or(0))
 	}
 
 	fn min_version(&self) -> CdcStorageResult<Option<CommitVersion>> {

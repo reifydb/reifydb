@@ -7,7 +7,7 @@
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	interface::cdc::SystemChange,
+	interface::cdc::CdcChange,
 	key::{Key, kind::KeyKind},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -87,7 +87,7 @@ pub trait CatalogChangeApplier {
 	fn remove(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()>;
 }
 
-pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change: &SystemChange) -> Result<()> {
+pub fn apply_cdc_change(catalog: &Catalog, txn: &mut Transaction<'_>, change: &CdcChange) -> Result<()> {
 	let kind = match Key::kind(change.key()) {
 		Some(k) => k,
 		None => {
@@ -158,19 +158,19 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 fn dispatch<T: CatalogChangeApplier>(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
-	change: &SystemChange,
+	change: &CdcChange,
 ) -> Result<()> {
 	match change {
-		SystemChange::Insert {
+		CdcChange::Insert {
 			key,
 			post,
 		} => T::set(catalog, txn, key, post),
-		SystemChange::Update {
+		CdcChange::Update {
 			key,
 			post,
 			..
 		} => T::set(catalog, txn, key, post),
-		SystemChange::Delete {
+		CdcChange::Delete {
 			key,
 			..
 		} => T::remove(catalog, txn, key),

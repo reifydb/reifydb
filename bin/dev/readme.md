@@ -88,10 +88,10 @@ cargo build -p dev --release
   `reifydb-codec`'s `cdc` module, the same codec the write path uses, so the tool cannot drift;
   `cdc_block` rows (present only if compaction ran) decode as a `Vec<Cdc>` through it. `stats_rollup`
   is a second, uncompressed postcard blob per row carrying `Vec<CdcEviction>`, and is sized
-  separately because nothing else attributes it. Byte attribution re-encodes each `SystemChange`
+  separately because nothing else attributes it. Byte attribution re-encodes each `CdcChange`
   with postcard and measures the result, so per-object bytes sum to the uncompressed payload
   rather than to compressed on-disk bytes: the compression ratio is reported once, globally,
-  since zstd is applied per commit and cannot be split per origin. `system_changes` is the only
+  since zstd is applied per commit and cannot be split per origin. `changes` is the only
   stored stream, so the per-object breakdown is derived the way `reifydb-cdc`'s rebuild derives
   it: `rebuild::row_target` maps an encoded row key to its owning `ObjectId`, and
   `rebuild::changed_objects` gives the touched set. The report counts exactly what the rebuild

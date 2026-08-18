@@ -130,9 +130,9 @@ impl Actor for ReplicationReplicaActor {
 		match msg {
 			ReplicationReplicaMessage::ApplyEntry {
 				version,
-				system_changes,
+				changes,
 				reply,
-			} => match self.applier.apply_changes(version, &system_changes) {
+			} => match self.applier.apply_changes(version, &changes) {
 				Ok(()) => {
 					state.entries_applied += 1;
 					reply.send(Ok(()));

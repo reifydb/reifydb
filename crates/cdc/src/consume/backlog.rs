@@ -12,7 +12,7 @@ use std::{
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::{Cdc, SystemChange},
+	interface::cdc::{Cdc, CdcChange},
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
@@ -252,9 +252,9 @@ impl MetricsCollector for FlowBacklog {
 
 pub fn cdc_bytes(cdc: &Cdc) -> u64 {
 	let system: usize = cdc
-		.system_changes
+		.changes
 		.iter()
-		.map(|change| size_of::<SystemChange>() + change.key().len() + change.value_bytes())
+		.map(|change| size_of::<CdcChange>() + change.key().len() + change.value_bytes())
 		.sum();
 	(size_of::<Cdc>() + system) as u64
 }
@@ -276,7 +276,7 @@ mod tests {
 		Arc::new(Cdc::new(
 			cv(version),
 			DateTime::default(),
-			vec![SystemChange::Insert {
+			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![0xAB; 4]),
 				post: EncodedBytes(CowVec::new(vec![0u8; payload])),
 			}],

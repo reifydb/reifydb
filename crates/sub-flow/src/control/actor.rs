@@ -714,7 +714,7 @@ mod pull_protocol {
 				flow::OperatorId,
 				ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata},
 			},
-			cdc::SystemChange,
+			cdc::CdcChange,
 			change::{ChangeOrigin, Diff},
 		},
 		key::{
@@ -1426,9 +1426,9 @@ mod pull_protocol {
 				h.cdc_records()
 					.into_iter()
 					.filter(|cdc| cdc.version > pre_tick)
-					.flat_map(|cdc| cdc.system_changes)
+					.flat_map(|cdc| cdc.changes)
 					.find_map(|sc| match sc {
-						SystemChange::Delete {
+						CdcChange::Delete {
 							key,
 							pre,
 							..
@@ -1442,9 +1442,9 @@ mod pull_protocol {
 			.cdc_records()
 			.into_iter()
 			.filter(|cdc| cdc.version <= pre_tick)
-			.flat_map(|cdc| cdc.system_changes)
+			.flat_map(|cdc| cdc.changes)
 			.find_map(|sc| match sc {
-				SystemChange::Insert {
+				CdcChange::Insert {
 					key,
 					post,
 				} if key == evicted_key => Some(post),
@@ -1518,9 +1518,9 @@ mod pull_protocol {
 					.cdc_records()
 					.into_iter()
 					.filter(|cdc| cdc.version > stable)
-					.flat_map(|cdc| cdc.system_changes)
+					.flat_map(|cdc| cdc.changes)
 					.filter_map(|sc| match sc {
-						SystemChange::Delete {
+						CdcChange::Delete {
 							key,
 							pre,
 							visible,
@@ -1625,7 +1625,7 @@ mod pull_protocol {
 		let cdc_state_keys = h
 			.cdc_records()
 			.into_iter()
-			.flat_map(|cdc| cdc.system_changes)
+			.flat_map(|cdc| cdc.changes)
 			.filter(|change| matches!(Key::kind(change.key()), Some(KeyKind::OperatorState)))
 			.count();
 		assert_eq!(cdc_state_keys, 0, "no CDC record may carry an OperatorState key either");

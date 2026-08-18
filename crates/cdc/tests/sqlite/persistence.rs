@@ -7,7 +7,7 @@ use reifydb_cdc::storage::{CdcStorage, sqlite::storage::SqliteCdcStorage};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::{Cdc, SystemChange},
+	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_sqlite::SqliteConfig;
 use reifydb_testing::tempdir::temp_dir;
@@ -17,7 +17,7 @@ fn cdc_at(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
 		DateTime::from_nanos(1_700_000_000_000_000_000),
-		vec![SystemChange::Insert {
+		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
 			post: EncodedBytes(CowVec::new(vec![10, 20, 30])),
 		}],

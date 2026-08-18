@@ -7,7 +7,7 @@ use reifydb_cdc::storage::{CdcStorage, sqlite::storage::SqliteCdcStorage};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::{Cdc, SystemChange},
+	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_sqlite::SqliteConfig;
 use reifydb_testing::tempdir::temp_dir;
@@ -17,8 +17,8 @@ use rusqlite::Connection;
 const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 
 fn compressible_cdc(version: u64) -> Cdc {
-	let changes: Vec<SystemChange> = (0..64)
-		.map(|i| SystemChange::Insert {
+	let changes: Vec<CdcChange> = (0..64)
+		.map(|i| CdcChange::Insert {
 			key: EncodedKey::new(format!("repeated-key-prefix-{version}-{i}").into_bytes()),
 			post: EncodedBytes(CowVec::new(vec![b'a'; 512])),
 		})

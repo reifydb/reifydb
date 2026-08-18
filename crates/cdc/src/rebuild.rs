@@ -15,7 +15,7 @@ use reifydb_core::{
 	error::diagnostic::internal::internal,
 	interface::{
 		catalog::object::ObjectId,
-		cdc::{Cdc, SystemChange},
+		cdc::{Cdc, CdcChange},
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 	key::{Key, partitioned_row::RowLocator},
@@ -83,7 +83,7 @@ fn tracked_target(key: &EncodedKey) -> Option<RowTarget> {
 }
 
 pub fn changed_objects(cdc: &Cdc) -> BTreeSet<ObjectId> {
-	cdc.system_changes.iter().filter_map(|change| tracked_target(change.key())).map(|t| t.object).collect()
+	cdc.changes.iter().filter_map(|change| tracked_target(change.key())).map(|t| t.object).collect()
 }
 
 pub fn rebuild_changes(cdc: &Cdc, catalog: &Catalog, txn: &mut Transaction<'_>) -> Result<Vec<Change>> {
@@ -98,15 +98,15 @@ pub fn rebuild_selected_changes(
 ) -> Result<Vec<Change>> {
 	let mut grouped: BTreeMap<ObjectId, BTreeMap<BucketKey, Bucket>> = BTreeMap::new();
 
-	for system_change in &cdc.system_changes {
-		let Some(target) = tracked_target(system_change.key()) else {
+	for cdc_change in &cdc.changes {
+		let Some(target) = tracked_target(cdc_change.key()) else {
 			continue;
 		};
 		if !accept(target.object) {
 			continue;
 		}
-		let (key, pre, post) = match system_change {
-			SystemChange::Insert {
+		let (key, pre, post) = match cdc_change {
+			CdcChange::Insert {
 				post,
 				..
 			} => {
@@ -121,7 +121,7 @@ pub fn rebuild_selected_changes(
 					Some(post.clone()),
 				)
 			}
-			SystemChange::Update {
+			CdcChange::Update {
 				pre,
 				post,
 				..
@@ -134,11 +134,11 @@ pub fn rebuild_selected_changes(
 				Some(pre.clone()),
 				Some(post.clone()),
 			),
-			SystemChange::Delete {
+			CdcChange::Delete {
 				visible: false,
 				..
 			} => continue,
-			SystemChange::Delete {
+			CdcChange::Delete {
 				key,
 				pre,
 				visible: true,

@@ -21,7 +21,7 @@ use reifydb_core::{
 	event::metric::CdcEviction,
 	interface::{
 		catalog::metrics::MetricsId,
-		cdc::{Cdc, CdcBatch, SystemChange},
+		cdc::{Cdc, CdcBatch, CdcChange},
 	},
 };
 use reifydb_runtime::shutdown::Shutdown;
@@ -88,12 +88,12 @@ pub struct DropBeforeResult {
 
 /// One entry per source, matching exactly what the metrics gauge subtracts on eviction; storing the
 /// aggregate lets eviction skip decoding payloads.
-pub(crate) fn aggregate_evictions<'a, I>(system_changes: I) -> Vec<CdcEviction>
+pub(crate) fn aggregate_evictions<'a, I>(cdc_changes: I) -> Vec<CdcEviction>
 where
-	I: IntoIterator<Item = &'a SystemChange>,
+	I: IntoIterator<Item = &'a CdcChange>,
 {
 	let mut by_source: HashMap<MetricsId, CdcEviction> = HashMap::new();
-	for change in system_changes {
+	for change in cdc_changes {
 		let key = change.key();
 		let id = parse_id(key.as_ref());
 		let entry = by_source.entry(id).or_insert_with(|| CdcEviction {

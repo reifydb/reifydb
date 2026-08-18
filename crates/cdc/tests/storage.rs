@@ -7,7 +7,7 @@ use reifydb_cdc::storage::{CdcStorage, DropBeforeResult, memory::MemoryCdcStorag
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::{Cdc, SystemChange},
+	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_sqlite::SqliteConfig;
 use reifydb_value::{byte_size::ByteSize, count::Count, util::cowvec::CowVec, value::datetime::DateTime};
@@ -16,7 +16,7 @@ fn cdc_minimal(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
 		DateTime::from_nanos(1_700_000_000_000_000_000),
-		vec![SystemChange::Insert {
+		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
 			post: EncodedBytes(CowVec::new(vec![10, 20, 30])),
 		}],
@@ -28,7 +28,7 @@ fn assert_write_read_round_trip<S: CdcStorage>(storage: S) {
 	storage.write(&cdc).unwrap();
 	let read = storage.read(CommitVersion(1)).unwrap().expect("entry should exist");
 	assert_eq!(read.version, CommitVersion(1));
-	assert_eq!(read.system_changes.len(), 1);
+	assert_eq!(read.changes.len(), 1);
 }
 
 fn assert_read_nonexistent<S: CdcStorage>(storage: S) {
@@ -77,7 +77,7 @@ fn assert_count<S: CdcStorage>(storage: S) {
 	let cdc = Cdc::new(
 		CommitVersion(1),
 		DateTime::from_nanos(1),
-		(0..5).map(|i| SystemChange::Insert {
+		(0..5).map(|i| CdcChange::Insert {
 			key: EncodedKey::new(vec![i as u8]),
 			post: EncodedBytes(CowVec::new(vec![])),
 		})
@@ -104,7 +104,7 @@ fn assert_overwrite<S: CdcStorage>(storage: S) {
 	let cdc1 = Cdc::new(
 		CommitVersion(1),
 		DateTime::from_nanos(100),
-		vec![SystemChange::Insert {
+		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![1]),
 			post: EncodedBytes(CowVec::new(vec![])),
 		}],
@@ -113,11 +113,11 @@ fn assert_overwrite<S: CdcStorage>(storage: S) {
 		CommitVersion(1),
 		DateTime::from_nanos(200),
 		vec![
-			SystemChange::Insert {
+			CdcChange::Insert {
 				key: EncodedKey::new(vec![2]),
 				post: EncodedBytes(CowVec::new(vec![])),
 			},
-			SystemChange::Insert {
+			CdcChange::Insert {
 				key: EncodedKey::new(vec![3]),
 				post: EncodedBytes(CowVec::new(vec![])),
 			},
@@ -186,7 +186,7 @@ fn assert_drop_before_entry_stats<S: CdcStorage>(storage: S) {
 	let cdc = Cdc::new(
 		CommitVersion(1),
 		DateTime::from_nanos(12345),
-		vec![SystemChange::Insert {
+		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
 			post: EncodedBytes(CowVec::new(vec![10, 20, 30, 40, 50])),
 		}],

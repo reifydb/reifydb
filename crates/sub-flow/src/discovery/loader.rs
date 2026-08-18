@@ -205,7 +205,7 @@ mod tests {
 
 	use reifydb_cdc::storage::{CdcStorage, CdcStore, memory::MemoryCdcStorage};
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-	use reifydb_core::interface::cdc::SystemChange;
+	use reifydb_core::interface::cdc::CdcChange;
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
@@ -219,7 +219,7 @@ mod tests {
 		Cdc::new(
 			cv(version),
 			DateTime::default(),
-			vec![SystemChange::Insert {
+			vec![CdcChange::Insert {
 				key: EncodedKey::new(vec![0xAB; 4]),
 				post: EncodedBytes(CowVec::new(vec![0u8; payload])),
 			}],

@@ -85,8 +85,8 @@ pub fn render_cdc(cat: Option<&Catalog>, s: &cdc::Stats, file_bytes: u64, opts: 
 		group_int(s.max_version)
 	);
 	println!(
-		"  {} system changes, {} empty commits, {} rollup entries",
-		group_int(s.system_changes),
+		"  {} cdc changes, {} empty commits, {} rollup entries",
+		group_int(s.cdc_changes),
 		group_int(s.empty_commits),
 		group_int(s.rollup_entries)
 	);
@@ -134,10 +134,10 @@ pub fn render_cdc(cat: Option<&Catalog>, s: &cdc::Stats, file_bytes: u64, opts: 
 			.collect::<Vec<_>>(),
 	);
 	println!(
-		"{} row keys = {} attributed to an object; {} system changes carry no row key",
+		"{} row keys = {} attributed to an object; {} cdc changes carry no row key",
 		group_int(s.row_changes),
 		group_int(s.attributed_rows),
-		group_int(s.system_changes - s.row_changes)
+		group_int(s.cdc_changes - s.row_changes)
 	);
 	if s.undecodable_row_keys > 0 {
 		println!("WARNING: {} row keys failed to decode", group_int(s.undecodable_row_keys));
@@ -171,8 +171,8 @@ pub fn render_cdc(cat: Option<&Catalog>, s: &cdc::Stats, file_bytes: u64, opts: 
 		println!("\n{} of {} objects shown (use --all)", shown, objects.len());
 	}
 
-	println!("\n## system changes by key kind");
-	let mut sys: Vec<(&String, &cdc::Slice)> = s.system_kinds.iter().collect();
+	println!("\n## cdc changes by key kind");
+	let mut sys: Vec<(&String, &cdc::Slice)> = s.cdc_kinds.iter().collect();
 	sys.sort_by(|a, b| b.1.bytes.cmp(&a.1.bytes));
 	let sys_shown = if opts.all {
 		sys.len()
@@ -186,7 +186,7 @@ pub fn render_cdc(cat: Option<&Catalog>, s: &cdc::Stats, file_bytes: u64, opts: 
 			.map(|(k, v)| {
 				vec![
 					fmt_bytes(v.bytes),
-					pct(v.bytes, s.system_bytes),
+					pct(v.bytes, s.cdc_bytes),
 					group_int(v.count),
 					k.to_string(),
 				]
@@ -213,8 +213,8 @@ fn render_cdc_json(cat: Option<&Catalog>, s: &cdc::Stats, file_bytes: u64) {
 		("rollup_entries", s.rollup_entries.to_string()),
 		("changes", s.changes.to_string()),
 		("touched_objects", s.touched_objects.to_string()),
-		("system_changes", s.system_changes.to_string()),
-		("system_bytes", s.system_bytes.to_string()),
+		("cdc_changes", s.cdc_changes.to_string()),
+		("cdc_bytes", s.cdc_bytes.to_string()),
 		("row_changes", s.row_changes.to_string()),
 		("row_bytes", s.row_bytes.to_string()),
 		("attributed_rows", s.attributed_rows.to_string()),
@@ -240,9 +240,9 @@ fn render_cdc_json(cat: Option<&Catalog>, s: &cdc::Stats, file_bytes: u64) {
 			("raw_bytes", v.rows.bytes.to_string()),
 		]);
 	}
-	for (kind, v) in &s.system_kinds {
+	for (kind, v) in &s.cdc_kinds {
 		print_json(&[
-			("record", json_str("system_kind")),
+			("record", json_str("cdc_kind")),
 			("kind", json_str(kind)),
 			("count", v.count.to_string()),
 			("raw_bytes", v.bytes.to_string()),

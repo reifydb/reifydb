@@ -9,7 +9,7 @@ use reifydb_cdc::storage::{CdcStorage as _, CdcStore};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::{Cdc, SystemChange},
+	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::MockClock;
@@ -101,7 +101,7 @@ impl Runner {
 		} else {
 			for cdc in &batch.items {
 				let script_v = self.to_script_version(cdc.version);
-				for (i, sc) in cdc.system_changes.iter().enumerate() {
+				for (i, sc) in cdc.changes.iter().enumerate() {
 					writeln!(out, "v{} {}", script_v, format_change(i + 1, sc))?;
 				}
 			}
@@ -209,7 +209,7 @@ impl TsRunner for Runner {
 				match (cdc, seq) {
 					(None, _) => writeln!(output, "None")?,
 					(Some(cdc), None) => writeln!(output, "{}", format_cdc(&cdc, script_v))?,
-					(Some(cdc), Some(s)) if s >= 1 => match cdc.system_changes.get(s - 1) {
+					(Some(cdc), Some(s)) if s >= 1 => match cdc.changes.get(s - 1) {
 						Some(sc) => writeln!(output, "{}", format_change(s, sc))?,
 						None => writeln!(output, "None")?,
 					},
@@ -307,9 +307,9 @@ fn render_bytes(b: &[u8]) -> String {
 	String::from_utf8_lossy(b).into_owned()
 }
 
-pub fn format_change(seq: usize, sc: &SystemChange) -> String {
+pub fn format_change(seq: usize, sc: &CdcChange) -> String {
 	match sc {
-		SystemChange::Insert {
+		CdcChange::Insert {
 			key,
 			post,
 		} => format!(
@@ -318,7 +318,7 @@ pub fn format_change(seq: usize, sc: &SystemChange) -> String {
 			render_bytes(key.as_slice()),
 			render_bytes(&post.0),
 		),
-		SystemChange::Update {
+		CdcChange::Update {
 			key,
 			pre,
 			post,
@@ -329,7 +329,7 @@ pub fn format_change(seq: usize, sc: &SystemChange) -> String {
 			render_bytes(&pre.0),
 			render_bytes(&post.0),
 		),
-		SystemChange::Delete {
+		CdcChange::Delete {
 			key,
 			pre,
 			..
@@ -352,13 +352,13 @@ pub fn format_change(seq: usize, sc: &SystemChange) -> String {
 pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
 	let ts_millis = cdc.timestamp.to_millis();
 	let mut s = format!("Cdc {{ version: {}, ts: {}, changes: [", script_version, ts_millis);
-	for (i, sc) in cdc.system_changes.iter().enumerate() {
+	for (i, sc) in cdc.changes.iter().enumerate() {
 		if i > 0 {
 			s.push_str(", ");
 		}
 		// Inner format: { seq: N, change: ... } (no outer "Change" wrapper)
 		match sc {
-			SystemChange::Insert {
+			CdcChange::Insert {
 				key,
 				post,
 			} => write!(
@@ -369,7 +369,7 @@ pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
 				render_bytes(&post.0),
 			)
 			.unwrap(),
-			SystemChange::Update {
+			CdcChange::Update {
 				key,
 				pre,
 				post,
@@ -382,7 +382,7 @@ pub fn format_cdc(cdc: &Cdc, script_version: u64) -> String {
 				render_bytes(&post.0),
 			)
 			.unwrap(),
-			SystemChange::Delete {
+			CdcChange::Delete {
 				key,
 				pre,
 				..

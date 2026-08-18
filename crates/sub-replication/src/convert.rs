@@ -5,32 +5,30 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::cdc::{Cdc, SystemChange},
+	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_value::util::cowvec::CowVec;
 
-use crate::generated::{
-	CdcEntry, DeleteChange, InsertChange, SystemChangeProto, UpdateChange, system_change_proto::Change,
-};
+use crate::generated::{CdcChangeProto, CdcEntry, DeleteChange, InsertChange, UpdateChange, cdc_change_proto::Change};
 
 pub fn cdc_to_proto(cdc: &Cdc) -> CdcEntry {
 	CdcEntry {
 		version: cdc.version.0,
 		timestamp: cdc.timestamp.to_nanos(),
-		system_changes: cdc.system_changes.iter().map(system_change_to_proto).collect(),
+		changes: cdc.changes.iter().map(cdc_change_to_proto).collect(),
 	}
 }
 
-pub fn system_change_to_proto(sc: &SystemChange) -> SystemChangeProto {
-	let change = match sc {
-		SystemChange::Insert {
+pub fn cdc_change_to_proto(cc: &CdcChange) -> CdcChangeProto {
+	let change = match cc {
+		CdcChange::Insert {
 			key,
 			post,
 		} => Change::Insert(InsertChange {
 			key: key.as_ref().to_vec(),
 			post: post.as_slice().to_vec(),
 		}),
-		SystemChange::Update {
+		CdcChange::Update {
 			key,
 			pre,
 			post,
@@ -39,7 +37,7 @@ pub fn system_change_to_proto(sc: &SystemChange) -> SystemChangeProto {
 			pre: pre.as_slice().to_vec(),
 			post: post.as_slice().to_vec(),
 		}),
-		SystemChange::Delete {
+		CdcChange::Delete {
 			key,
 			pre,
 			visible,
@@ -56,18 +54,18 @@ pub fn system_change_to_proto(sc: &SystemChange) -> SystemChangeProto {
 			})
 		}
 	};
-	SystemChangeProto {
+	CdcChangeProto {
 		change: Some(change),
 	}
 }
 
-pub fn proto_to_system_change(proto: &SystemChangeProto) -> Option<SystemChange> {
+pub fn proto_to_cdc_change(proto: &CdcChangeProto) -> Option<CdcChange> {
 	match proto.change.as_ref()? {
-		Change::Insert(ic) => Some(SystemChange::Insert {
+		Change::Insert(ic) => Some(CdcChange::Insert {
 			key: EncodedKey::new(ic.key.clone()),
 			post: EncodedBytes(CowVec::new(ic.post.clone())),
 		}),
-		Change::Update(uc) => Some(SystemChange::Update {
+		Change::Update(uc) => Some(CdcChange::Update {
 			key: EncodedKey::new(uc.key.clone()),
 			pre: EncodedBytes(CowVec::new(uc.pre.clone())),
 			post: EncodedBytes(CowVec::new(uc.post.clone())),
@@ -78,7 +76,7 @@ pub fn proto_to_system_change(proto: &SystemChangeProto) -> Option<SystemChange>
 			} else {
 				None
 			};
-			Some(SystemChange::Delete {
+			Some(CdcChange::Delete {
 				key: EncodedKey::new(dc.key.clone()),
 				pre,
 				visible: dc.visible,
@@ -87,16 +85,16 @@ pub fn proto_to_system_change(proto: &SystemChangeProto) -> Option<SystemChange>
 	}
 }
 
-pub fn system_change_to_delta(sc: &SystemChange) -> Delta {
-	match sc {
-		SystemChange::Insert {
+pub fn cdc_change_to_delta(cc: &CdcChange) -> Delta {
+	match cc {
+		CdcChange::Insert {
 			key,
 			post,
 		} => Delta::Set {
 			key: key.clone(),
 			bytes: post.clone(),
 		},
-		SystemChange::Update {
+		CdcChange::Update {
 			key,
 			post,
 			..
@@ -104,7 +102,7 @@ pub fn system_change_to_delta(sc: &SystemChange) -> Delta {
 			key: key.clone(),
 			bytes: post.clone(),
 		},
-		SystemChange::Delete {
+		CdcChange::Delete {
 			key,
 			pre,
 			visible,
@@ -119,19 +117,19 @@ pub fn system_change_to_delta(sc: &SystemChange) -> Delta {
 pub fn proto_entry_to_deltas(entry: &CdcEntry) -> (CommitVersion, Vec<Delta>) {
 	let version = CommitVersion(entry.version);
 	let deltas = entry
-		.system_changes
+		.changes
 		.iter()
-		.filter_map(|sc| {
-			let system_change = proto_to_system_change(sc)?;
-			Some(system_change_to_delta(&system_change))
+		.filter_map(|cc| {
+			let cdc_change = proto_to_cdc_change(cc)?;
+			Some(cdc_change_to_delta(&cdc_change))
 		})
 		.collect();
 	(version, deltas)
 }
 
-pub fn proto_entry_to_system_changes(entry: &CdcEntry) -> (CommitVersion, Vec<SystemChange>) {
+pub fn proto_entry_to_cdc_changes(entry: &CdcEntry) -> (CommitVersion, Vec<CdcChange>) {
 	let version = CommitVersion(entry.version);
-	let changes = entry.system_changes.iter().filter_map(proto_to_system_change).collect();
+	let changes = entry.changes.iter().filter_map(proto_to_cdc_change).collect();
 	(version, changes)
 }
 
@@ -143,65 +141,65 @@ mod tests {
 
 	#[test]
 	fn test_insert_roundtrip() {
-		let sc = SystemChange::Insert {
+		let cc = CdcChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
 			post: EncodedBytes(CowVec::new(vec![10, 20, 30])),
 		};
-		let proto = system_change_to_proto(&sc);
-		let back = proto_to_system_change(&proto).unwrap();
-		assert_eq!(sc, back);
+		let proto = cdc_change_to_proto(&cc);
+		let back = proto_to_cdc_change(&proto).unwrap();
+		assert_eq!(cc, back);
 	}
 
 	#[test]
 	fn test_update_roundtrip() {
-		let sc = SystemChange::Update {
+		let cc = CdcChange::Update {
 			key: EncodedKey::new(vec![4, 5]),
 			pre: EncodedBytes(CowVec::new(vec![10])),
 			post: EncodedBytes(CowVec::new(vec![20])),
 		};
-		let proto = system_change_to_proto(&sc);
-		let back = proto_to_system_change(&proto).unwrap();
-		assert_eq!(sc, back);
+		let proto = cdc_change_to_proto(&cc);
+		let back = proto_to_cdc_change(&proto).unwrap();
+		assert_eq!(cc, back);
 	}
 
 	#[test]
 	fn test_delete_with_pre_roundtrip() {
-		let sc = SystemChange::Delete {
+		let cc = CdcChange::Delete {
 			key: EncodedKey::new(vec![6]),
 			pre: Some(EncodedBytes(CowVec::new(vec![99]))),
 			visible: true,
 		};
-		let proto = system_change_to_proto(&sc);
-		let back = proto_to_system_change(&proto).unwrap();
-		assert_eq!(sc, back);
+		let proto = cdc_change_to_proto(&cc);
+		let back = proto_to_cdc_change(&proto).unwrap();
+		assert_eq!(cc, back);
 	}
 
 	#[test]
 	fn test_delete_without_pre_roundtrip() {
-		let sc = SystemChange::Delete {
+		let cc = CdcChange::Delete {
 			key: EncodedKey::new(vec![7]),
 			pre: None,
 			visible: true,
 		};
-		let proto = system_change_to_proto(&sc);
-		let back = proto_to_system_change(&proto).unwrap();
-		assert_eq!(sc, back);
+		let proto = cdc_change_to_proto(&cc);
+		let back = proto_to_cdc_change(&proto).unwrap();
+		assert_eq!(cc, back);
 	}
 
 	#[test]
 	fn test_delete_hidden_from_the_change_stream_stays_hidden_across_the_wire() {
 		// Without the proto carrying visibility, a replica republishes a ttl removal the primary withheld.
-		let sc = SystemChange::Delete {
+		let cc = CdcChange::Delete {
 			key: EncodedKey::new(vec![8]),
 			pre: Some(EncodedBytes(CowVec::new(vec![42]))),
 			visible: false,
 		};
-		let proto = system_change_to_proto(&sc);
-		let back = proto_to_system_change(&proto).unwrap();
-		assert_eq!(sc, back);
+		let proto = cdc_change_to_proto(&cc);
+		let back = proto_to_cdc_change(&proto).unwrap();
+		assert_eq!(cc, back);
 
 		match back {
-			SystemChange::Delete {
+			CdcChange::Delete {
 				pre,
 				visible,
 				..
@@ -218,11 +216,11 @@ mod tests {
 
 	#[test]
 	fn test_insert_to_delta() {
-		let sc = SystemChange::Insert {
+		let cc = CdcChange::Insert {
 			key: EncodedKey::new(vec![1]),
 			post: EncodedBytes(CowVec::new(vec![2])),
 		};
-		let delta = system_change_to_delta(&sc);
+		let delta = cdc_change_to_delta(&cc);
 		match delta {
 			Delta::Set {
 				key,
@@ -237,12 +235,12 @@ mod tests {
 
 	#[test]
 	fn test_update_to_delta() {
-		let sc = SystemChange::Update {
+		let cc = CdcChange::Update {
 			key: EncodedKey::new(vec![1]),
 			pre: EncodedBytes(CowVec::new(vec![2])),
 			post: EncodedBytes(CowVec::new(vec![3])),
 		};
-		let delta = system_change_to_delta(&sc);
+		let delta = cdc_change_to_delta(&cc);
 		match delta {
 			Delta::Set {
 				key,
@@ -257,14 +255,13 @@ mod tests {
 
 	#[test]
 	fn test_delete_to_delta_with_pre() {
-		// A replicated Delete must stay announced: re-silencing it would strand the replica's own
-		// subscribers, and the primary's pre-image rides along.
-		let sc = SystemChange::Delete {
+		// A replicated Delete must stay announced, otherwise it strands the replica's own subscribers.
+		let cc = CdcChange::Delete {
 			key: EncodedKey::new(vec![1]),
 			pre: Some(EncodedBytes(CowVec::new(vec![2]))),
 			visible: true,
 		};
-		match system_change_to_delta(&sc) {
+		match cdc_change_to_delta(&cc) {
 			Delta::Remove {
 				key,
 				announce: RemoveAnnounce::Announced {
@@ -280,14 +277,13 @@ mod tests {
 
 	#[test]
 	fn test_delete_without_pre_applies_silently() {
-		// Our own producer always attaches a pre-image, so a Delete arriving without one is not from a
-		// reifydb primary; inventing an empty before-image would hand subscribers a fabricated row.
-		let sc = SystemChange::Delete {
+		// A Delete without a pre-image never came from a reifydb primary; inventing one would fabricate a row.
+		let cc = CdcChange::Delete {
 			key: EncodedKey::new(vec![1]),
 			pre: None,
 			visible: true,
 		};
-		match system_change_to_delta(&sc) {
+		match cdc_change_to_delta(&cc) {
 			Delta::Remove {
 				key,
 				announce,

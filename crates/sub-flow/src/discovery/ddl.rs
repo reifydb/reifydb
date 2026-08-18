@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::flow::FlowId,
-		cdc::{Cdc, SystemChange},
+		cdc::{Cdc, CdcChange},
 	},
 	key::{Key, kind::KeyKind},
 };
@@ -15,9 +15,9 @@ use reifydb_core::{
 pub fn extract_new_flows(cdcs: &[Arc<Cdc>]) -> Vec<(FlowId, CommitVersion)> {
 	let mut flows = Vec::new();
 	for cdc in cdcs {
-		for change in &cdc.system_changes {
+		for change in &cdc.changes {
 			if let Some(kind) = Key::kind(change.key())
-				&& kind == KeyKind::Flow && let SystemChange::Insert {
+				&& kind == KeyKind::Flow && let CdcChange::Insert {
 				key,
 				..
 			} = change && let Some(Key::Flow(flow_key)) = Key::decode(key)
@@ -32,9 +32,9 @@ pub fn extract_new_flows(cdcs: &[Arc<Cdc>]) -> Vec<(FlowId, CommitVersion)> {
 pub fn extract_deleted_flow_ids(cdcs: &[Arc<Cdc>]) -> Vec<FlowId> {
 	let mut flow_ids = Vec::new();
 	for cdc in cdcs {
-		for change in &cdc.system_changes {
+		for change in &cdc.changes {
 			if let Some(kind) = Key::kind(change.key())
-				&& kind == KeyKind::Flow && let SystemChange::Delete {
+				&& kind == KeyKind::Flow && let CdcChange::Delete {
 				key,
 				..
 			} = change && let Some(Key::Flow(flow_key)) = Key::decode(key)

@@ -15,25 +15,25 @@ pub mod wake;
 pub mod watermark;
 
 use reifydb_core::{
-	interface::cdc::{Cdc, SystemChange},
+	interface::cdc::{Cdc, CdcChange},
 	key::{Key, kind::KeyKind},
 };
 
 pub fn is_relevant_cdc(cdc: &Cdc) -> bool {
-	cdc.system_changes.iter().any(is_relevant_system_change)
+	cdc.changes.iter().any(is_relevant_cdc_change)
 }
 
-fn is_relevant_system_change(change: &SystemChange) -> bool {
+fn is_relevant_cdc_change(change: &CdcChange) -> bool {
 	let key = match change {
-		SystemChange::Insert {
+		CdcChange::Insert {
 			key,
 			..
 		}
-		| SystemChange::Update {
+		| CdcChange::Update {
 			key,
 			..
 		}
-		| SystemChange::Delete {
+		| CdcChange::Delete {
 			key,
 			..
 		} => key,

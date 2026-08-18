@@ -84,7 +84,7 @@ impl AsRef<str> for CdcConsumerId {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum SystemChange {
+pub enum CdcChange {
 	Insert {
 		key: EncodedKey,
 		post: EncodedBytes,
@@ -101,18 +101,18 @@ pub enum SystemChange {
 	},
 }
 
-impl SystemChange {
+impl CdcChange {
 	pub fn key(&self) -> &EncodedKey {
 		match self {
-			SystemChange::Insert {
+			CdcChange::Insert {
 				key,
 				..
 			} => key,
-			SystemChange::Update {
+			CdcChange::Update {
 				key,
 				..
 			} => key,
-			SystemChange::Delete {
+			CdcChange::Delete {
 				key,
 				..
 			} => key,
@@ -121,16 +121,16 @@ impl SystemChange {
 
 	pub fn value_bytes(&self) -> usize {
 		match self {
-			SystemChange::Insert {
+			CdcChange::Insert {
 				post,
 				..
 			} => post.len(),
-			SystemChange::Update {
+			CdcChange::Update {
 				pre,
 				post,
 				..
 			} => pre.len() + post.len(),
-			SystemChange::Delete {
+			CdcChange::Delete {
 				pre,
 				..
 			} => pre.as_ref().map(|p| p.len()).unwrap_or(0),
@@ -143,15 +143,15 @@ pub struct Cdc {
 	pub version: CommitVersion,
 	pub timestamp: DateTime,
 
-	pub system_changes: Vec<SystemChange>,
+	pub changes: Vec<CdcChange>,
 }
 
 impl Cdc {
-	pub fn new(version: CommitVersion, timestamp: DateTime, system_changes: Vec<SystemChange>) -> Self {
+	pub fn new(version: CommitVersion, timestamp: DateTime, changes: Vec<CdcChange>) -> Self {
 		Self {
 			version,
 			timestamp,
-			system_changes,
+			changes,
 		}
 	}
 }

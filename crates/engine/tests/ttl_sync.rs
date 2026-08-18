@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::change::apply_system_change;
+use reifydb_catalog::change::apply_cdc_change;
 use reifydb_core::{
 	delta::{Delta, RemoveAnnounce},
 	interface::{
 		catalog::{id::NamespaceId, storage::StorageId},
-		cdc::SystemChange,
+		cdc::CdcChange,
 	},
 };
 use reifydb_test_harness::engine::TestEngine;
@@ -62,15 +62,14 @@ fn test_row_settings_replication_sync() {
 		panic!("{e:?}");
 	}
 
-	// The TTL must ride the replicated system changes; a replica that misses it never expires
-	// rows the primary does.
-	let changes = deltas_to_system_changes(&txn);
+	// The TTL must ride the replicated cdc changes, otherwise a replica never expires rows the primary does.
+	let changes = deltas_to_cdc_changes(&txn);
 
 	let version = txn.commit().unwrap();
 
 	let mut replica_txn = ReplicaTransaction::new(replica.multi_owned(), version).unwrap();
 	for change in &changes {
-		apply_system_change(&replica_catalog, &mut Transaction::Replica(&mut replica_txn), change).unwrap();
+		apply_cdc_change(&replica_catalog, &mut Transaction::Replica(&mut replica_txn), change).unwrap();
 	}
 	replica_txn.commit_at_version().unwrap();
 
@@ -121,7 +120,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	assert_eq!(listed[0].1.lateness.as_ref().expect("ttl not set").duration, Duration::from_hours(1).unwrap());
 }
 
-fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
+fn deltas_to_cdc_changes(txn: &AdminTransaction) -> Vec<CdcChange> {
 	txn.pending_writes()
 		.clone()
 		.into_iter_insertion_order()
@@ -129,7 +128,7 @@ fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 			Delta::Set {
 				key,
 				bytes,
-			} => Some(SystemChange::Insert {
+			} => Some(CdcChange::Insert {
 				key,
 				post: bytes,
 			}),
@@ -138,7 +137,7 @@ fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 				announce: RemoveAnnounce::Announced {
 					pre,
 				},
-			} => Some(SystemChange::Delete {
+			} => Some(CdcChange::Delete {
 				key,
 				pre: Some(pre),
 				visible: true,
@@ -148,7 +147,7 @@ fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 				announce: RemoveAnnounce::Unobserved {
 					pre,
 				},
-			} => Some(SystemChange::Delete {
+			} => Some(CdcChange::Delete {
 				key,
 				pre: Some(pre),
 				visible: false,

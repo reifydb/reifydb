@@ -337,7 +337,7 @@ mod group_commit_integration {
 		row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 	};
 	use reifydb_core::{
-		interface::{catalog::flow::OperatorId, cdc::SystemChange},
+		interface::{catalog::flow::OperatorId, cdc::CdcChange},
 		internal_error,
 		key::{
 			EncodableKey,
@@ -481,10 +481,10 @@ mod group_commit_integration {
 
 		let expected: Vec<EncodedKey> = (1..=3).map(synthetic_key).collect();
 		let written: Vec<EncodedKey> = record
-			.system_changes
+			.changes
 			.iter()
 			.filter_map(|change| match change {
-				SystemChange::Insert {
+				CdcChange::Insert {
 					key,
 					..
 				} => expected.contains(key).then(|| key.clone()),

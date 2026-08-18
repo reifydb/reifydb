@@ -16,15 +16,15 @@ pub struct CdcEntry {
     #[prost(uint64, tag = "2")]
     pub timestamp: u64,
     #[prost(message, repeated, tag = "3")]
-    pub system_changes: ::prost::alloc::vec::Vec<SystemChangeProto>,
+    pub changes: ::prost::alloc::vec::Vec<CdcChangeProto>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SystemChangeProto {
-    #[prost(oneof = "system_change_proto::Change", tags = "1, 2, 3")]
-    pub change: ::core::option::Option<system_change_proto::Change>,
+pub struct CdcChangeProto {
+    #[prost(oneof = "cdc_change_proto::Change", tags = "1, 2, 3")]
+    pub change: ::core::option::Option<cdc_change_proto::Change>,
 }
 
-pub mod system_change_proto {
+pub mod cdc_change_proto {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Change {
         #[prost(message, tag = "1")]

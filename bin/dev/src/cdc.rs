@@ -10,7 +10,7 @@ use reifydb_core::{
 	event::metric::CdcEviction,
 	interface::{
 		catalog::object::ObjectId,
-		cdc::{Cdc, SystemChange},
+		cdc::{Cdc, CdcChange},
 	},
 	key::{Key, kind::KeyKind},
 };
@@ -63,15 +63,15 @@ pub struct Stats {
 	pub max_version: u64,
 	pub changes: u64,
 	pub touched_objects: u64,
-	pub system_changes: u64,
-	pub system_bytes: u64,
+	pub cdc_changes: u64,
+	pub cdc_bytes: u64,
 	pub row_changes: u64,
 	pub row_bytes: u64,
 	pub attributed_rows: u64,
 	pub empty_commits: u64,
 	pub objects: BTreeMap<Origin, ObjectRows>,
 	pub row_kinds: BTreeMap<&'static str, Slice>,
-	pub system_kinds: BTreeMap<String, Slice>,
+	pub cdc_kinds: BTreeMap<String, Slice>,
 	pub undecodable_row_keys: u64,
 	pub decode_failures: u64,
 }
@@ -164,14 +164,14 @@ fn absorb(cdc: &Cdc, stats: &mut Stats) -> Result<()> {
 	stats.max_version = stats.max_version.max(cdc.version.0);
 	stats.payload_raw += encoded_len(cdc)?;
 
-	if cdc.system_changes.is_empty() {
+	if cdc.changes.is_empty() {
 		stats.empty_commits += 1;
 	}
 	stats.touched_objects += changed_objects(cdc).len() as u64;
 
 	let mut rebuilt: BTreeSet<Origin> = BTreeSet::new();
-	for change in &cdc.system_changes {
-		absorb_system_change(change, stats, &mut rebuilt)?;
+	for change in &cdc.changes {
+		absorb_cdc_change(change, stats, &mut rebuilt)?;
 	}
 
 	stats.changes += rebuilt.len() as u64;
@@ -181,11 +181,11 @@ fn absorb(cdc: &Cdc, stats: &mut Stats) -> Result<()> {
 	Ok(())
 }
 
-fn absorb_system_change(change: &SystemChange, stats: &mut Stats, rebuilt: &mut BTreeSet<Origin>) -> Result<()> {
+fn absorb_cdc_change(change: &CdcChange, stats: &mut Stats, rebuilt: &mut BTreeSet<Origin>) -> Result<()> {
 	let bytes = encoded_len(change)?;
-	stats.system_changes += 1;
-	stats.system_bytes += bytes;
-	stats.system_kinds.entry(system_kind(change)).or_default().add(1, bytes);
+	stats.cdc_changes += 1;
+	stats.cdc_bytes += bytes;
+	stats.cdc_kinds.entry(cdc_change_kind(change)).or_default().add(1, bytes);
 
 	if !matches!(
 		Key::kind(change.key().as_slice()),
@@ -212,19 +212,19 @@ fn absorb_system_change(change: &SystemChange, stats: &mut Stats, rebuilt: &mut 
 	Ok(())
 }
 
-fn row_kind(change: &SystemChange) -> Option<&'static str> {
+fn row_kind(change: &CdcChange) -> Option<&'static str> {
 	match change {
-		SystemChange::Insert {
+		CdcChange::Insert {
 			..
 		} => Some(INSERT),
-		SystemChange::Update {
+		CdcChange::Update {
 			..
 		} => Some(UPDATE),
-		SystemChange::Delete {
+		CdcChange::Delete {
 			visible: true,
 			..
 		} => Some(REMOVE),
-		SystemChange::Delete {
+		CdcChange::Delete {
 			visible: false,
 			..
 		} => None,
@@ -251,19 +251,19 @@ fn encoded_len<T: serde::Serialize>(value: &T) -> Result<u64> {
 	to_stdvec(value).map(|v| v.len() as u64).map_err(|e| format!("encode for byte accounting: {e}"))
 }
 
-fn system_kind(change: &SystemChange) -> String {
+fn cdc_change_kind(change: &CdcChange) -> String {
 	let op = match change {
-		SystemChange::Insert {
+		CdcChange::Insert {
 			..
 		} => "insert",
-		SystemChange::Update {
+		CdcChange::Update {
 			..
 		} => "update",
-		SystemChange::Delete {
+		CdcChange::Delete {
 			visible: true,
 			..
 		} => "delete",
-		SystemChange::Delete {
+		CdcChange::Delete {
 			visible: false,
 			..
 		} => "delete(hidden)",
@@ -289,7 +289,7 @@ mod tests {
 
 	use super::*;
 
-	fn commit(changes: Vec<SystemChange>) -> Cdc {
+	fn commit(changes: Vec<CdcChange>) -> Cdc {
 		Cdc::new(CommitVersion(1), DateTime::from_nanos(0), changes)
 	}
 
@@ -297,23 +297,23 @@ mod tests {
 		EncodedBytes(CowVec::new(vec![0u8; 16]))
 	}
 
-	fn insert(storage: StorageId, id: u64) -> SystemChange {
-		SystemChange::Insert {
+	fn insert(storage: StorageId, id: u64) -> CdcChange {
+		CdcChange::Insert {
 			key: RowKey::encoded(storage, RowNumber(id)),
 			post: row(),
 		}
 	}
 
-	fn delete(storage: StorageId, id: u64, visible: bool) -> SystemChange {
-		SystemChange::Delete {
+	fn delete(storage: StorageId, id: u64, visible: bool) -> CdcChange {
+		CdcChange::Delete {
 			key: RowKey::encoded(storage, RowNumber(id)),
 			pre: Some(row()),
 			visible,
 		}
 	}
 
-	fn namespace_insert() -> SystemChange {
-		SystemChange::Insert {
+	fn namespace_insert() -> CdcChange {
+		CdcChange::Insert {
 			key: NamespaceKey::encoded(NamespaceId(1)),
 			post: row(),
 		}
@@ -381,12 +381,12 @@ mod tests {
 			namespace_insert(),
 		])]);
 
-		assert_eq!(stats.system_changes, 4);
+		assert_eq!(stats.cdc_changes, 4);
 		assert_eq!(stats.row_changes, 2, "a namespace key and an invisible delete are both not row keys");
 		assert_eq!(stats.attributed_rows, stats.row_changes);
 		assert_eq!(stats.undecodable_row_keys, 0);
 		assert_eq!(
-			stats.system_bytes,
+			stats.cdc_bytes,
 			stats.row_bytes
 				+ encoded_len(&namespace_insert()).unwrap()
 				+ encoded_len(&delete(StorageId::table(7), 2, false)).unwrap(),

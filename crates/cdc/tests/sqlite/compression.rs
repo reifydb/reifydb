@@ -7,7 +7,7 @@ use reifydb_cdc::storage::{CdcStorage, sqlite::storage::SqliteCdcStorage};
 use reifydb_codec::{cdc, key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::{Cdc, SystemChange},
+	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
@@ -15,8 +15,8 @@ const TEST_LEVELS: &[u8] = &[1, 3, 7, 19, 22];
 
 fn cdc_diverse(version: u64) -> Cdc {
 	let n_changes = ((version % 3) + 1) as usize;
-	let changes: Vec<SystemChange> = (0..n_changes)
-		.map(|i| SystemChange::Insert {
+	let changes: Vec<CdcChange> = (0..n_changes)
+		.map(|i| CdcChange::Insert {
 			key: EncodedKey::new(format!("k-{}-{}", version, i).into_bytes()),
 			post: EncodedBytes(CowVec::new(
 				format!("v-{}-{}-{}", version, i, "x".repeat((version as usize) % 17)).into_bytes(),

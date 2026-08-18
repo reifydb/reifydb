@@ -14,10 +14,10 @@ message StreamCdcRequest {
 message CdcEntry {
   uint64 version = 1;
   uint64 timestamp = 2;
-  repeated SystemChangeProto system_changes = 3;
+  repeated CdcChangeProto changes = 3;
 }
 
-message SystemChangeProto {
+message CdcChangeProto {
   oneof change {
     InsertChange insert = 1;
     UpdateChange update = 2;

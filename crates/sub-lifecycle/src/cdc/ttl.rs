@@ -138,7 +138,7 @@ mod tests {
 		event::EventBus,
 		interface::{
 			catalog::config::ConfigKey,
-			cdc::{Cdc, CdcConsumerId, ConsumerClass, SystemChange},
+			cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
 		},
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, pool::Pools};
@@ -170,7 +170,7 @@ mod tests {
 			let cdc = Cdc::new(
 				CommitVersion(v),
 				DateTime::from_nanos(1000),
-				vec![SystemChange::Insert {
+				vec![CdcChange::Insert {
 					key: make_key(&format!("k{v}")),
 					post: make_bytes("v"),
 				}],

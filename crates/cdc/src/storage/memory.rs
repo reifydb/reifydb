@@ -92,7 +92,7 @@ impl CdcStorage for MemoryCdcStorage {
 	}
 
 	fn count(&self, version: CommitVersion) -> CdcStorageResult<usize> {
-		Ok(self.inner.read().get(&version).map(|cdc| cdc.system_changes.len()).unwrap_or(0))
+		Ok(self.inner.read().get(&version).map(|cdc| cdc.changes.len()).unwrap_or(0))
 	}
 
 	fn min_version(&self) -> CdcStorageResult<Option<CommitVersion>> {
@@ -108,7 +108,7 @@ impl CdcStorage for MemoryCdcStorage {
 		let keys_to_remove: Vec<_> = guard.range(..version).take(limit).map(|(k, _)| *k).collect();
 		let more_remaining = keys_to_remove.len() == limit && guard.range(..version).nth(limit).is_some();
 		let entries = aggregate_evictions(
-			keys_to_remove.iter().filter_map(|k| guard.get(k)).flat_map(|cdc| cdc.system_changes.iter()),
+			keys_to_remove.iter().filter_map(|k| guard.get(k)).flat_map(|cdc| cdc.changes.iter()),
 		);
 		let count = total_evicted_count(&entries);
 		for key in &keys_to_remove {

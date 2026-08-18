@@ -3,10 +3,10 @@
 
 use std::{error::Error as StdError, fmt::Write as _, path::Path};
 
-use reifydb_catalog::change::apply_system_change;
+use reifydb_catalog::change::apply_cdc_change;
 use reifydb_core::{
 	delta::{Delta, RemoveAnnounce},
-	interface::cdc::SystemChange,
+	interface::cdc::CdcChange,
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing::testscript::{
@@ -70,7 +70,7 @@ impl Runner for CatalogRunner {
 				command.consume_args().reject_rest()?;
 
 				// Deltas must be captured before the commit consumes the pending writes.
-				let changes = deltas_to_system_changes(self.primary_txn());
+				let changes = deltas_to_cdc_changes(self.primary_txn());
 
 				let mut txn = self.primary_txn.take().expect("no active primary transaction");
 				let version = txn.commit()?;
@@ -78,7 +78,7 @@ impl Runner for CatalogRunner {
 				let replica_catalog = self.replica.catalog();
 				let mut replica_txn = ReplicaTransaction::new(self.replica.multi_owned(), version)?;
 				for change in &changes {
-					apply_system_change(
+					apply_cdc_change(
 						&replica_catalog,
 						&mut Transaction::Replica(&mut replica_txn),
 						change,
@@ -109,9 +109,8 @@ impl Runner for CatalogRunner {
 	}
 }
 
-fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
-	// Insertion order is load-bearing: column entries must reach the replica before a table
-	// applier tries to list them.
+fn deltas_to_cdc_changes(txn: &AdminTransaction) -> Vec<CdcChange> {
+	// Insertion order is load-bearing: a table applier must see column entries before it lists them.
 	txn.pending_writes()
 		.clone()
 		.into_iter_insertion_order()
@@ -119,7 +118,7 @@ fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 			Delta::Set {
 				key,
 				bytes,
-			} => Some(SystemChange::Insert {
+			} => Some(CdcChange::Insert {
 				key,
 				post: bytes,
 			}),
@@ -128,7 +127,7 @@ fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 				announce: RemoveAnnounce::Announced {
 					pre,
 				},
-			} => Some(SystemChange::Delete {
+			} => Some(CdcChange::Delete {
 				key,
 				pre: Some(pre),
 				visible: true,
@@ -138,7 +137,7 @@ fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 				announce: RemoveAnnounce::Unobserved {
 					pre,
 				},
-			} => Some(SystemChange::Delete {
+			} => Some(CdcChange::Delete {
 				key,
 				pre: Some(pre),
 				visible: false,

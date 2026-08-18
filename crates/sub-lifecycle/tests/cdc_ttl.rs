@@ -14,7 +14,7 @@ use reifydb_core::{
 	event::{Event, EventBus, EventListener, metric::CdcEvictedEvent},
 	interface::{
 		catalog::config::ConfigKey,
-		cdc::{Cdc, SystemChange},
+		cdc::{Cdc, CdcChange},
 	},
 	lifecycle::task::LifecycleTask,
 };
@@ -79,7 +79,7 @@ fn write_cdc(storage: &MemoryCdcStorage, version: u64, timestamp_nanos: u64) {
 	let cdc = Cdc::new(
 		CommitVersion(version),
 		DateTime::from_nanos(timestamp_nanos),
-		vec![SystemChange::Insert {
+		vec![CdcChange::Insert {
 			key: EncodedKey::new(vec![version as u8]),
 			post: EncodedBytes(CowVec::new(vec![version as u8])),
 		}],

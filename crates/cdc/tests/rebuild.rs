@@ -13,7 +13,7 @@ use reifydb_core::{
 	interface::{
 		WithEventBus,
 		catalog::storage::StorageId,
-		cdc::{Cdc, SystemChange},
+		cdc::{Cdc, CdcChange},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::{Key, row::RowKey},
@@ -321,20 +321,20 @@ fn rebuild_maps_a_view_row_key_to_the_view_object() {
 		.into_iter()
 		.find(|cdc| cdc.version == insert_version)
 		.expect("the insert must produce a cdc record");
-	let post = match table_commit.system_changes.iter().find(|change| {
-		matches!(change, SystemChange::Insert { .. }) && matches!(Key::decode(change.key()), Some(Key::Row(_)))
+	let post = match table_commit.changes.iter().find(|change| {
+		matches!(change, CdcChange::Insert { .. }) && matches!(Key::decode(change.key()), Some(Key::Row(_)))
 	}) {
-		Some(SystemChange::Insert {
+		Some(CdcChange::Insert {
 			post,
 			..
 		}) => post.clone(),
-		other => panic!("expected a row insert system change, got {other:?}"),
+		other => panic!("expected a row insert cdc change, got {other:?}"),
 	};
 
 	let view_commit = Cdc::new(
 		table_commit.version,
 		table_commit.timestamp,
-		vec![SystemChange::Insert {
+		vec![CdcChange::Insert {
 			key: RowKey::encoded(StorageId::view(7), RowNumber(1)),
 			post,
 		}],
@@ -362,7 +362,7 @@ fn rebuild_emits_no_change_for_queue_rows() {
 	let mut queue_row_keys = 0;
 	for cdc in read_all(&t) {
 		queue_row_keys += cdc
-			.system_changes
+			.changes
 			.iter()
 			.filter(|change| match Key::decode(change.key()) {
 				Some(Key::Row(row)) => matches!(row.storage, StorageId::Queue(_)),
@@ -373,7 +373,7 @@ fn rebuild_emits_no_change_for_queue_rows() {
 		assert!(canonical(&original).is_empty(), "a queue write must emit no change");
 		assert!(canonical(&rebuilt(&t, &cdc)).is_empty(), "the rebuild must not invent a queue change either");
 	}
-	assert_eq!(queue_row_keys, 1, "the queue row must be present in system_changes for the filter to matter");
+	assert_eq!(queue_row_keys, 1, "the queue row must be present in changes for the filter to matter");
 }
 
 #[test]

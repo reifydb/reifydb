@@ -3,15 +3,15 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use reifydb_catalog::change::apply_system_change;
-use reifydb_core::{common::CommitVersion, interface::cdc::SystemChange};
+use reifydb_catalog::change::apply_cdc_change;
+use reifydb_core::{common::CommitVersion, interface::cdc::CdcChange};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::{Transaction, replica::ReplicaTransaction};
 use reifydb_value::{Result, reifydb_assertions};
 use tracing::trace;
 
 use crate::{
-	convert::proto_entry_to_system_changes, error::ReplicationError, generated::CdcEntry,
+	convert::proto_entry_to_cdc_changes, error::ReplicationError, generated::CdcEntry,
 	replica::watermark::ReplicaWatermark,
 };
 
@@ -33,13 +33,13 @@ impl ReplicaApplier {
 		}
 	}
 
-	pub fn apply_changes(&self, version: CommitVersion, system_changes: &[SystemChange]) -> Result<()> {
+	pub fn apply_changes(&self, version: CommitVersion, cdc_changes: &[CdcChange]) -> Result<()> {
 		self.validate_version_order(version)?;
-		if system_changes.is_empty() {
+		if cdc_changes.is_empty() {
 			self.advance_to(version);
 			return Ok(());
 		}
-		self.commit_replica_transaction(version, system_changes)?;
+		self.commit_replica_transaction(version, cdc_changes)?;
 		self.advance_to(version);
 		trace!(version = version.0, "Replica applied CDC entry");
 		Ok(())
@@ -59,11 +59,11 @@ impl ReplicaApplier {
 	}
 
 	#[inline]
-	fn commit_replica_transaction(&self, version: CommitVersion, system_changes: &[SystemChange]) -> Result<()> {
+	fn commit_replica_transaction(&self, version: CommitVersion, cdc_changes: &[CdcChange]) -> Result<()> {
 		let catalog = self.engine.catalog();
 		let mut replica_txn = ReplicaTransaction::new(self.engine.multi_owned(), version)?;
-		for change in system_changes {
-			apply_system_change(&catalog, &mut Transaction::Replica(&mut replica_txn), change)?;
+		for change in cdc_changes {
+			apply_cdc_change(&catalog, &mut Transaction::Replica(&mut replica_txn), change)?;
 		}
 		replica_txn.commit_at_version()?;
 		Ok(())
@@ -85,8 +85,8 @@ impl ReplicaApplier {
 	}
 
 	pub fn apply(&self, entry: &CdcEntry) -> Result<()> {
-		let (version, system_changes) = proto_entry_to_system_changes(entry);
-		self.apply_changes(version, &system_changes)
+		let (version, cdc_changes) = proto_entry_to_cdc_changes(entry);
+		self.apply_changes(version, &cdc_changes)
 	}
 
 	pub fn apply_batch(&self, entries: &[CdcEntry]) -> Result<()> {
