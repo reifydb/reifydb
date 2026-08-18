@@ -82,7 +82,10 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
 	use reifydb_core::{
 		common::TimeDomain,
-		interface::{WithEventBus, catalog::id::SeriesId},
+		interface::{
+			WithEventBus,
+			catalog::id::{SeriesId, ViewId},
+		},
 		key::operator_state::GroupId,
 	};
 	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
@@ -101,6 +104,27 @@ mod tests {
 		},
 		transaction::substrate::FlowSubstrate,
 	};
+
+	#[test]
+	fn a_repeated_source_registration_leaves_one_entry() {
+		// Dispatch fans out one change per registration, so a doubled entry runs the operator twice on it.
+		let engine = TestEngine::new();
+		let mut inner = FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor().routines.clone(),
+			engine.event_bus().clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			Arc::new(EmptyOperatorProvider),
+			FlowSubstrate::default(),
+			OperatorSampleRegistry::new(),
+		);
+
+		let object = ObjectId::View(ViewId(9));
+		inner.add_source(FlowId(1), OperatorId(7), object);
+		inner.add_source(FlowId(1), OperatorId(7), object);
+
+		assert_eq!(inner.sources[&object], vec![(FlowId(1), OperatorId(7))]);
+	}
 
 	#[test]
 	fn removing_a_flow_drops_its_operators_state() {

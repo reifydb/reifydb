@@ -823,13 +823,8 @@ mod integration {
 		let source_objects = {
 			let graph = flow_engine.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
-			let view_route = |vid| {
-				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
-					kind: v.kind(),
-					storage: v.storage_id(),
-				})
-			};
-			routing::flow_source_objects(&graph, flow_id, &registered, &view_route)
+			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			routing::flow_source_objects(&graph, flow_id, &registered, &view_kind)
 		};
 
 		let computer = SliceComputer::new(engine.clone());
@@ -931,13 +926,8 @@ mod integration {
 		let source_objects = {
 			let graph = flow_engine.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
-			let view_route = |vid| {
-				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
-					kind: v.kind(),
-					storage: v.storage_id(),
-				})
-			};
-			routing::flow_source_objects(&graph, flow_id, &registered, &view_route)
+			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			routing::flow_source_objects(&graph, flow_id, &registered, &view_kind)
 		};
 
 		let computer = SliceComputer::new(engine.clone());
@@ -1074,13 +1064,8 @@ mod integration {
 		let source_objects = {
 			let graph = flow_engine.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
-			let view_route = |vid| {
-				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
-					kind: v.kind(),
-					storage: v.storage_id(),
-				})
-			};
-			routing::flow_source_objects(&graph, flow_id, &registered, &view_route)
+			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			routing::flow_source_objects(&graph, flow_id, &registered, &view_kind)
 		};
 
 		let computer = SliceComputer::new(engine.clone());

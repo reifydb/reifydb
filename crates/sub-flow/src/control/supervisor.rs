@@ -52,7 +52,7 @@ use crate::{
 	discovery::{
 		ddl::{extract_deleted_flow_ids, extract_new_flows},
 		loader::LoaderMessage,
-		routing::{self, ViewRoute},
+		routing,
 	},
 	progress::{
 		frontier::ControlFrontier,
@@ -473,13 +473,8 @@ impl FlowSupervisor {
 	) -> Arc<BTreeSet<ObjectId>> {
 		let graph = state.analyzer.get_dependency_graph();
 		let is_registered = |f: FlowId| registered.contains(&f);
-		let view_route = |view_id| {
-			self.flow_catalog.find_view(view_id).map(|v| ViewRoute {
-				kind: v.kind(),
-				storage: v.storage_id(),
-			})
-		};
-		Arc::new(routing::flow_source_objects(graph, flow_id, &is_registered, &view_route))
+		let view_kind = |view_id| self.flow_catalog.find_view(view_id).map(|v| v.kind());
+		Arc::new(routing::flow_source_objects(graph, flow_id, &is_registered, &view_kind))
 	}
 
 	fn spawn_flow(

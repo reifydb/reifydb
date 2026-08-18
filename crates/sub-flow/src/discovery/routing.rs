@@ -3,9 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use reifydb_core::interface::catalog::{
-	flow::FlowId, id::ViewId, object::ObjectId, storage::StorageId, view::ViewKind,
-};
+use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind};
 use reifydb_rql::flow::analyzer::FlowDependencyGraph;
 
 pub fn flow_completeness_objects(
@@ -24,16 +22,11 @@ pub fn flow_completeness_objects(
 	admitted
 }
 
-pub struct ViewRoute {
-	pub kind: ViewKind,
-	pub storage: StorageId,
-}
-
 pub fn flow_source_objects(
 	graph: &FlowDependencyGraph,
 	flow: FlowId,
 	registered: &dyn Fn(FlowId) -> bool,
-	view_route: &dyn Fn(ViewId) -> Option<ViewRoute>,
+	view_kind: &dyn Fn(ViewId) -> Option<ViewKind>,
 ) -> BTreeSet<ObjectId> {
 	let mut objects = BTreeSet::new();
 
@@ -62,17 +55,13 @@ pub fn flow_source_objects(
 		if !consumer_flows.contains(&flow) {
 			continue;
 		}
-		let route = view_route(*view_id);
-		if matches!(&route, Some(r) if r.kind == ViewKind::Transactional) {
+		if view_kind(*view_id) == Some(ViewKind::Transactional) {
 			continue;
 		}
 		let Some(producer_flow_id) = graph.sink_views.get(view_id) else {
 			continue;
 		};
 		if registered(*producer_flow_id) {
-			if let Some(route) = route {
-				objects.insert(route.storage.into());
-			}
 			continue;
 		}
 		for (table_id, flow_ids) in &graph.source_tables {
@@ -115,7 +104,7 @@ mod tests {
 		}
 	}
 
-	fn no_views(_view_id: ViewId) -> Option<ViewRoute> {
+	fn no_views(_view_id: ViewId) -> Option<ViewKind> {
 		None
 	}
 
@@ -139,26 +128,22 @@ mod tests {
 	}
 
 	#[test]
-	fn registered_producer_routes_view_underlying() {
+	fn registered_producer_routes_the_view_and_nothing_else() {
+		// The reader wakes on the view id alone; a producer source would wake it before the view is written.
 		let mut graph = empty_graph();
 		graph.source_views.insert(ViewId(5), vec![FlowId(20)]);
 		graph.sink_views.insert(ViewId(5), FlowId(10));
+		graph.source_tables.insert(TableId(1), vec![FlowId(10)]);
 
 		let registered = |f: FlowId| f == FlowId(10);
-		let view_route = |view_id: ViewId| {
+		let view_kind = |view_id: ViewId| {
 			assert_eq!(view_id, ViewId(5));
-			Some(ViewRoute {
-				kind: ViewKind::Deferred,
-				storage: StorageId::Table(TableId(500)),
-			})
+			Some(ViewKind::Deferred)
 		};
 
-		let objects = flow_source_objects(&graph, FlowId(20), &registered, &view_route);
+		let objects = flow_source_objects(&graph, FlowId(20), &registered, &view_kind);
 
-		assert_eq!(
-			objects.into_iter().collect::<Vec<_>>(),
-			vec![ObjectId::Table(TableId(500)), ObjectId::View(ViewId(5))]
-		);
+		assert_eq!(objects.into_iter().collect::<Vec<_>>(), vec![ObjectId::View(ViewId(5))]);
 	}
 
 	#[test]
@@ -169,14 +154,9 @@ mod tests {
 		graph.source_tables.insert(TableId(1), vec![FlowId(10)]);
 
 		let registered = |f: FlowId| f == FlowId(10);
-		let view_route = |_view_id: ViewId| {
-			Some(ViewRoute {
-				kind: ViewKind::Transactional,
-				storage: StorageId::Table(TableId(500)),
-			})
-		};
+		let view_kind = |_view_id: ViewId| Some(ViewKind::Transactional);
 
-		let objects = flow_source_objects(&graph, FlowId(20), &registered, &view_route);
+		let objects = flow_source_objects(&graph, FlowId(20), &registered, &view_kind);
 
 		assert_eq!(objects.into_iter().collect::<Vec<_>>(), vec![ObjectId::View(ViewId(5))]);
 	}
@@ -190,14 +170,9 @@ mod tests {
 		graph.source_ringbuffers.insert(RingBufferId(2), vec![FlowId(10)]);
 		graph.source_tables.insert(TableId(7), vec![FlowId(99)]);
 
-		let view_route = |_view_id: ViewId| {
-			Some(ViewRoute {
-				kind: ViewKind::Deferred,
-				storage: StorageId::Table(TableId(500)),
-			})
-		};
+		let view_kind = |_view_id: ViewId| Some(ViewKind::Deferred);
 
-		let objects = flow_source_objects(&graph, FlowId(20), &none_registered, &view_route);
+		let objects = flow_source_objects(&graph, FlowId(20), &none_registered, &view_kind);
 
 		assert_eq!(
 			objects.into_iter().collect::<Vec<_>>(),
@@ -227,14 +202,9 @@ mod tests {
 		let mut graph = empty_graph();
 		graph.source_views.insert(ViewId(5), vec![FlowId(20)]);
 
-		let view_route = |_view_id: ViewId| {
-			Some(ViewRoute {
-				kind: ViewKind::Deferred,
-				storage: StorageId::Table(TableId(500)),
-			})
-		};
+		let view_kind = |_view_id: ViewId| Some(ViewKind::Deferred);
 
-		let objects = flow_source_objects(&graph, FlowId(20), &none_registered, &view_route);
+		let objects = flow_source_objects(&graph, FlowId(20), &none_registered, &view_kind);
 
 		assert_eq!(objects.into_iter().collect::<Vec<_>>(), vec![ObjectId::View(ViewId(5))]);
 	}

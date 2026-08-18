@@ -809,13 +809,8 @@ mod pull_protocol {
 		let source_objects = {
 			let graph = probe.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
-			let view_route = |vid| {
-				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
-					kind: v.kind(),
-					storage: v.storage_id(),
-				})
-			};
-			Arc::new(routing::flow_source_objects(&graph, flow_id, &registered, &view_route))
+			let view_kind = |vid| flow_catalog.find_view(vid).map(|v| v.kind());
+			Arc::new(routing::flow_source_objects(&graph, flow_id, &registered, &view_kind))
 		};
 
 		let tracker = FlowPositionTracker::new();

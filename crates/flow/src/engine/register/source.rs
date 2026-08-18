@@ -72,10 +72,74 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
 		self.add_source(flow.id, operator_id, ObjectId::view(view.id()));
-
-		self.add_source(flow.id, operator_id, view.storage_id().into());
-
 		self.operators.insert(operator_id, Box::new(SourceViewOperator::new(operator_id, view)));
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::sync::Arc;
+
+	use reifydb_core::interface::{WithEventBus, catalog::flow::FlowId};
+	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
+	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_value::value::identity::IdentityId;
+
+	use super::*;
+	use crate::{
+		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
+		transaction::substrate::FlowSubstrate,
+	};
+
+	#[test]
+	fn a_view_source_registers_only_under_its_own_view_object_id() {
+		// A second key never fires, and a repeat of the same key dispatches the change to the operator twice.
+		let engine = TestEngine::new();
+		engine.admin("CREATE NAMESPACE app");
+		engine.admin("CREATE TABLE app::t { id: int4 }");
+		engine.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
+
+		let mut inner = FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor().routines.clone(),
+			engine.event_bus().clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			Arc::new(EmptyOperatorProvider),
+			FlowSubstrate {
+				operators: Some(engine.inner().operator_state()),
+				..FlowSubstrate::default()
+			},
+			OperatorSampleRegistry::new(),
+		);
+
+		let mut admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = Transaction::Admin(&mut admin);
+		let namespace = engine.catalog().find_namespace_by_name(&mut txn, "app").unwrap().unwrap();
+		let view = engine.catalog().find_view_by_name(&mut txn, namespace.id(), "v").unwrap().unwrap();
+
+		let operator = OperatorId(7);
+		let mut builder = FlowDag::builder(FlowId(1));
+		builder.add_node(FlowNode::new(
+			operator,
+			OperatorDef::SourceView {
+				view: view.id(),
+			},
+		));
+		let flow = builder.build();
+
+		inner.add_source_view(&mut txn, &flow, operator, view.id()).unwrap();
+
+		assert_eq!(
+			inner.sources.keys().copied().collect::<Vec<_>>(),
+			vec![ObjectId::view(view.id())],
+			"a view source must occupy exactly one routing key"
+		);
+		assert_eq!(
+			inner.sources[&ObjectId::view(view.id())],
+			vec![(FlowId(1), operator)],
+			"and that key must carry exactly one registration for the operator"
+		);
 	}
 }
