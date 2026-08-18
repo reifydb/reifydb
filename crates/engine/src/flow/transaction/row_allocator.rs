@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::sync::{
+	Arc,
+	atomic::{AtomicU64, Ordering},
+};
+
+use dashmap::DashMap;
+use reifydb_core::interface::catalog::flow::OperatorId;
+
+#[derive(Clone, Debug, Default)]
+pub struct RowAllocatorRegistry {
+	inner: Arc<RowAllocatorRegistryInner>,
+}
+
+#[derive(Debug, Default)]
+struct RowAllocatorRegistryInner {
+	nodes: DashMap<OperatorId, AtomicU64>,
+}
+
+impl RowAllocatorRegistry {
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	pub fn is_seeded(&self, node: OperatorId) -> bool {
+		self.inner.nodes.contains_key(&node)
+	}
+
+	pub fn allocate(&self, node: OperatorId, count: u64, seed: u64) -> u64 {
+		self.inner.nodes.entry(node).or_insert_with(|| AtomicU64::new(seed)).fetch_add(count, Ordering::SeqCst)
+	}
+
+	pub fn high_water(&self, node: OperatorId) -> Option<u64> {
+		self.inner.nodes.get(&node).map(|c| c.load(Ordering::SeqCst))
+	}
+
+	pub fn evict(&self, node: OperatorId) {
+		self.inner.nodes.remove(&node);
+	}
+}

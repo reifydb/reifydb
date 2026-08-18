@@ -17,6 +17,7 @@ pub mod bulk_insert;
 pub mod engine;
 pub mod environment;
 pub mod error;
+pub mod flow;
 pub mod partition;
 pub mod policy;
 #[cfg(not(reifydb_single_threaded))]
