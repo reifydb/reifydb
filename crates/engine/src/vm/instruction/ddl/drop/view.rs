@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::{interface::catalog::view::View, value::column::columns::Columns};
+use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::{flow::operator::OperatorDef, nodes::DropViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
@@ -45,8 +45,6 @@ pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: D
 		.into());
 	}
 
-	drop_underlying_storage(services, txn, &def)?;
-
 	services.catalog.drop_view(txn, def)?;
 
 	if let Some(own_id) = own_flow_id
@@ -60,27 +58,4 @@ pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: D
 		("view", Value::Utf8(plan.view_name.text().to_string())),
 		("dropped", Value::Boolean(true)),
 	]))
-}
-
-fn drop_underlying_storage(services: &Services, txn: &mut AdminTransaction, view: &View) -> Result<()> {
-	match view {
-		View::Table(t) => {
-			if let Some(table) = services.catalog.find_table(&mut Transaction::Admin(txn), t.storage)? {
-				services.catalog.drop_table(txn, table)?;
-			}
-		}
-		View::RingBuffer(rb) => {
-			if let Some(ringbuffer) =
-				services.catalog.find_ringbuffer(&mut Transaction::Admin(txn), rb.storage)?
-			{
-				services.catalog.drop_ringbuffer(txn, ringbuffer)?;
-			}
-		}
-		View::Series(s) => {
-			if let Some(series) = services.catalog.find_series(&mut Transaction::Admin(txn), s.storage)? {
-				services.catalog.drop_series(txn, series)?;
-			}
-		}
-	}
-	Ok(())
 }

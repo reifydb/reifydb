@@ -501,7 +501,7 @@ mod integration {
 			WithEventBus,
 			catalog::{
 				flow::OperatorId,
-				id::{SeriesId, TableId, ViewId},
+				id::{SeriesId, ViewId},
 			},
 		},
 		key::{Key, kind::KeyKind},
@@ -621,7 +621,6 @@ mod integration {
 			OperatorId(3),
 			OperatorDef::SinkTableView {
 				view: ViewId(3),
-				table: TableId(3),
 			},
 		));
 		builder.add_edge(FlowEdge::new(1, OperatorId(1), OperatorId(3))).unwrap();

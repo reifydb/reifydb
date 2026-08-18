@@ -16,8 +16,8 @@ use reifydb_core::{
 		catalog::{
 			dictionary::Dictionary,
 			flow::OperatorId,
-			id::TableId,
 			object::ObjectId,
+			storage::StorageId,
 			view::{View, ViewSortKey},
 		},
 		change::{Change, Diff},
@@ -56,7 +56,7 @@ const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
 pub struct SinkTableViewOperator {
 	operator: OperatorId,
 	view: ResolvedView,
-	storage: TableId,
+	storage: StorageId,
 
 	key_prefix: Vec<u8>,
 	partitioned_prefix: Vec<u8>,
@@ -68,13 +68,14 @@ pub struct SinkTableViewOperator {
 }
 
 impl SinkTableViewOperator {
-	pub fn new(operator: OperatorId, view: ResolvedView, storage: TableId, partition_by: Vec<String>) -> Self {
+	pub fn new(operator: OperatorId, view: ResolvedView, partition_by: Vec<String>) -> Self {
+		let storage = view.def().storage_id();
 		let mut key_prefix: Vec<u8> = Vec::with_capacity(10);
 		key_prefix.push(encode_u8(KeyKind::Row as u8));
-		serialize_object_id(&ObjectId::table(storage), &mut key_prefix);
+		serialize_object_id(&ObjectId::from(storage), &mut key_prefix);
 		let mut partitioned_prefix: Vec<u8> = Vec::with_capacity(10);
 		partitioned_prefix.push(encode_u8(KeyKind::PartitionedRow as u8));
-		serialize_object_id(&ObjectId::table(storage), &mut partitioned_prefix);
+		serialize_object_id(&ObjectId::from(storage), &mut partitioned_prefix);
 		let shape = row_shape_from_columns(RowFamily::Table, view.def().columns());
 		let sort = view.def().sort().to_vec();
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
@@ -189,7 +190,7 @@ impl SinkTableViewOperator {
 				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
 				resolve_partition_flow(
 					txn,
-					ObjectId::table(self.storage),
+					ObjectId::from(self.storage),
 					partition,
 					&values,
 					&mut self.verified_partitions,
@@ -245,13 +246,13 @@ impl SinkTableViewOperator {
 				let (post_partition, post_values) =
 					partition_of(&self.partition_indices, &coerced_post, row_idx);
 				ensure_partition_unchanged(
-					ObjectId::table(self.storage),
+					ObjectId::from(self.storage),
 					pre_partition,
 					post_partition,
 				)?;
 				resolve_partition_flow(
 					txn,
-					ObjectId::table(self.storage),
+					ObjectId::from(self.storage),
 					post_partition,
 					&post_values,
 					&mut self.verified_partitions,
@@ -462,7 +463,7 @@ mod tests {
 				dictionary_id: None,
 			}],
 			primary_key: None,
-			storage: TableId(7),
+			partition_by: vec![],
 			sort: vec![],
 		})
 	}
@@ -473,7 +474,7 @@ mod tests {
 			ResolvedNamespace::new(Fragment::internal("system"), Namespace::system()),
 			test_view_def(),
 		);
-		SinkTableViewOperator::new(OperatorId(1), resolved, TableId(7), vec![])
+		SinkTableViewOperator::new(OperatorId(1), resolved, vec![])
 	}
 
 	fn one_row(v: f64, ts_nanos: u64) -> Columns {

@@ -2,10 +2,16 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::id::ViewId,
-	key::{namespace_view::NamespaceViewKey, view::ViewKey},
+	interface::catalog::{id::ViewId, storage::StorageId, view::ViewStorageKind},
+	key::{
+		namespace_view::NamespaceViewKey, ringbuffer::RingBufferMetadataKey, row_settings::RowSettingsKey,
+		view::ViewKey,
+	},
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::{
+	multi::RangeScope,
+	transaction::{Transaction, admin::AdminTransaction},
+};
 
 use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 
@@ -13,6 +19,7 @@ impl CatalogStore {
 	pub(crate) fn drop_view(txn: &mut AdminTransaction, view: ViewId) -> Result<()> {
 		let pk_id = if let Some(view_def) = Self::find_view(&mut Transaction::Admin(&mut *txn), view)? {
 			txn.remove(&NamespaceViewKey::encoded(view_def.namespace(), view))?;
+			Self::drop_view_family_metadata(txn, view, view_def.storage_kind())?;
 			view_def.primary_key().map(|pk| pk.id)
 		} else {
 			None
@@ -20,9 +27,35 @@ impl CatalogStore {
 
 		drop_object_metadata(txn, view.into(), pk_id)?;
 
+		txn.remove(&RowSettingsKey::encoded(StorageId::View(view)))?;
+
 		txn.remove(&ViewKey::encoded(view))?;
 
 		Ok(())
+	}
+
+	fn drop_view_family_metadata(
+		txn: &mut AdminTransaction,
+		view: ViewId,
+		kind: ViewStorageKind,
+	) -> Result<()> {
+		match kind {
+			ViewStorageKind::Table => Ok(()),
+			ViewStorageKind::RingBuffer => {
+				let range = RingBufferMetadataKey::full_scan_for_storage(StorageId::View(view));
+				let mut stream = txn.range(range, RangeScope::All, 1024)?;
+				let mut keys = Vec::new();
+				for entry in stream.by_ref() {
+					keys.push(entry?.key.clone());
+				}
+				drop(stream);
+				for key in keys {
+					txn.remove(&key)?;
+				}
+				Ok(())
+			}
+			ViewStorageKind::Series => Ok(()),
+		}
 	}
 }
 

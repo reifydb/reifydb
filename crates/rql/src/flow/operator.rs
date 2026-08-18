@@ -78,16 +78,13 @@ pub enum OperatorDef {
 	},
 	SinkTableView {
 		view: ViewId,
-		table: TableId,
 	},
 	SinkRingBufferView {
 		view: ViewId,
-		ringbuffer: RingBufferId,
 		capacity: u64,
 	},
 	SinkSeriesView {
 		view: ViewId,
-		series: SeriesId,
 		key: SeriesKey,
 	},
 	SinkSubscription {
@@ -395,7 +392,7 @@ impl FlowEdge {
 mod tests {
 	use reifydb_core::{
 		common::JoinType,
-		interface::catalog::id::{RingBufferId, ViewId},
+		interface::catalog::id::ViewId,
 	};
 
 	use super::OperatorDef;
@@ -447,7 +444,6 @@ mod tests {
 		// unconditional request the flow is never scheduled to tick and quiet partitions leak forever.
 		assert!(OperatorDef::SinkRingBufferView {
 			view: ViewId(1),
-			ringbuffer: RingBufferId(1),
 			capacity: 1,
 		}
 		.ticks());

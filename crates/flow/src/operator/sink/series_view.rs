@@ -12,7 +12,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::{flow::OperatorId, id::SeriesId, series::SeriesKey, storage::StorageId, view::View},
+		catalog::{flow::OperatorId, series::SeriesKey, storage::StorageId, view::View},
 		change::{Change, Diff},
 		flow::OperatorCapability,
 		resolved::ResolvedView,
@@ -42,7 +42,7 @@ use crate::transaction::{FlowTransaction, deferred::DeferredTransaction};
 pub struct SinkSeriesViewOperator {
 	operator: OperatorId,
 	view: ResolvedView,
-	series_id: SeriesId,
+	storage: StorageId,
 	#[allow(dead_code)]
 	key: SeriesKey,
 	partition_indices: Vec<usize>,
@@ -50,18 +50,13 @@ pub struct SinkSeriesViewOperator {
 }
 
 impl SinkSeriesViewOperator {
-	pub fn new(
-		operator: OperatorId,
-		view: ResolvedView,
-		series_id: SeriesId,
-		key: SeriesKey,
-		partition_by: Vec<String>,
-	) -> Self {
+	pub fn new(operator: OperatorId, view: ResolvedView, key: SeriesKey, partition_by: Vec<String>) -> Self {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
+		let storage = view.def().storage_id();
 		Self {
 			operator,
 			view,
-			series_id,
+			storage,
 			key,
 			partition_indices,
 			verified_partitions: HashMap::new(),
@@ -86,7 +81,7 @@ impl DurableSink for SinkSeriesViewOperator {
 	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(RowFamily::Series, view.columns());
-		let object_id = StorageId::series(self.series_id);
+		let object_id = self.storage;
 
 		for diff in change.diffs.iter() {
 			match diff {

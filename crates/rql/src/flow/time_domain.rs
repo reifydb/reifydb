@@ -224,7 +224,6 @@ mod tests {
 			OperatorId(id),
 			OperatorDef::SinkTableView {
 				view: ViewId(id),
-				table: TableId(id),
 			},
 		)
 	}

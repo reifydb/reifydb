@@ -539,7 +539,7 @@ mod source {
 		interface::{
 			catalog::{
 				flow::OperatorId,
-				id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+				id::{NamespaceId, RingBufferId, TableId, ViewId},
 				ringbuffer::RingBuffer,
 				series::SeriesKey,
 				table::Table,
@@ -615,7 +615,7 @@ mod source {
 			kind: ViewKind::Deferred,
 			columns: vec![],
 			primary_key: None,
-			storage: SeriesId(9),
+			partition_by: vec![],
 			key: SeriesKey::Integer {
 				column: "v".to_string(),
 			},

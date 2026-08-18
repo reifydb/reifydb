@@ -2,11 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::{
-	flow::OperatorId,
-	id::{RingBufferId, SeriesId, TableId, ViewId},
-	object::ObjectId,
-	series::SeriesKey,
-	storage::StorageId,
+	flow::OperatorId, id::ViewId, object::ObjectId, series::SeriesKey, storage::StorageId,
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_transaction::transaction::Transaction;
@@ -29,16 +25,13 @@ impl FlowEngineInner {
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		view: ViewId,
-		table: TableId,
 	) -> Result<()> {
 		self.require_parent(first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
-		let partition_by = self.catalog.get_table(&mut txn.reborrow(), table)?.partition_by;
-		self.durable_sinks.insert(
-			operator_id,
-			Box::new(SinkTableViewOperator::new(operator_id, resolved, table, partition_by)),
-		);
+		let partition_by = resolved.def().partition_by().to_vec();
+		self.durable_sinks
+			.insert(operator_id, Box::new(SinkTableViewOperator::new(operator_id, resolved, partition_by)));
 		Ok(())
 	}
 
@@ -51,16 +44,15 @@ impl FlowEngineInner {
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		view: ViewId,
-		ringbuffer: RingBufferId,
 		capacity: u64,
 	) -> Result<()> {
 		self.require_parent(first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
-		let partition_by = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?.partition_by;
+		let partition_by = resolved.def().partition_by().to_vec();
 		let ttl = self
 			.catalog
-			.find_row_settings(&mut txn.reborrow(), StorageId::ringbuffer(ringbuffer))?
+			.find_row_settings(&mut txn.reborrow(), StorageId::View(view))?
 			.and_then(|settings| settings.ttl);
 		let row_ttl = ttl.as_ref().map(|t| t.duration);
 		self.durable_sinks.insert(
@@ -68,7 +60,6 @@ impl FlowEngineInner {
 			Box::new(SinkRingBufferViewOperator::new(
 				operator_id,
 				resolved,
-				ringbuffer,
 				capacity,
 				row_ttl,
 				partition_by,
@@ -86,16 +77,15 @@ impl FlowEngineInner {
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		view: ViewId,
-		series: SeriesId,
 		key: SeriesKey,
 	) -> Result<()> {
 		self.require_parent(first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
-		let partition_by = self.catalog.get_series(&mut txn.reborrow(), series)?.partition_by;
+		let partition_by = resolved.def().partition_by().to_vec();
 		self.durable_sinks.insert(
 			operator_id,
-			Box::new(SinkSeriesViewOperator::new(operator_id, resolved, series, key.clone(), partition_by)),
+			Box::new(SinkSeriesViewOperator::new(operator_id, resolved, key.clone(), partition_by)),
 		);
 		Ok(())
 	}

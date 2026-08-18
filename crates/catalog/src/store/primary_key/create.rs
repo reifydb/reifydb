@@ -150,7 +150,7 @@ pub mod tests {
 		store::{
 			column::create::ColumnToCreate,
 			table::create::TableToCreate,
-			view::create::{ViewColumnToCreate, ViewStorageConfig, ViewToCreate},
+			view::create::{ViewColumnToCreate, ViewStorage, ViewToCreate},
 		},
 		test_utils::{ensure_test_namespace, ensure_test_table},
 	};
@@ -241,7 +241,7 @@ pub mod tests {
 						dictionary_id: None,
 					},
 				],
-				storage: ViewStorageConfig::default(),
+				storage: ViewStorage::default(),
 				sort: vec![],
 			},
 		)

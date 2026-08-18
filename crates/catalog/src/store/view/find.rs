@@ -4,7 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
-		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+		id::{NamespaceId, ViewId},
 		series::SeriesKey,
 		view::{RingBufferView, SeriesView, TableView, View, ViewKind, ViewStorageKind},
 	},
@@ -98,8 +98,13 @@ pub(crate) fn decode_view(
 	};
 
 	let storage_kind = view::get_storage_kind(bytes);
-	let storage_id = view::get_storage_id(bytes);
 	let sort = parse_view_sort(view::get_sort(bytes));
+	let partition_by_encoded = view::get_partition_by(bytes);
+	let partition_by: Vec<String> = if partition_by_encoded.is_empty() {
+		Vec::new()
+	} else {
+		partition_by_encoded.split(',').map(|s| s.to_string()).collect()
+	};
 
 	Ok(match storage_kind {
 		x if x == ViewStorageKind::Table as u8 => View::Table(TableView {
@@ -109,7 +114,7 @@ pub(crate) fn decode_view(
 			kind,
 			columns,
 			primary_key,
-			storage: TableId(storage_id),
+			partition_by,
 			sort,
 		}),
 		x if x == ViewStorageKind::RingBuffer as u8 => {
@@ -121,7 +126,7 @@ pub(crate) fn decode_view(
 				kind,
 				columns,
 				primary_key,
-				storage: RingBufferId(storage_id),
+				partition_by,
 				capacity,
 				sort,
 			})
@@ -144,7 +149,7 @@ pub(crate) fn decode_view(
 				kind,
 				columns,
 				primary_key,
-				storage: SeriesId(storage_id),
+				partition_by,
 				key,
 				tag,
 				sort,
@@ -158,7 +163,7 @@ pub(crate) fn decode_view(
 			kind,
 			columns,
 			primary_key,
-			storage: TableId(storage_id),
+			partition_by,
 			sort,
 		}),
 	})

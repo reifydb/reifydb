@@ -19,7 +19,6 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			flow::OperatorId,
-			id::RingBufferId,
 			ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata, encode_ringbuffer_metadata},
 			storage::StorageId,
 			view::View,
@@ -113,7 +112,7 @@ fn decode_expiry_key(bytes: &[u8]) -> Result<(u64, u64)> {
 pub struct SinkRingBufferViewOperator {
 	operator: OperatorId,
 	view: ResolvedView,
-	ringbuffer_id: RingBufferId,
+	storage: StorageId,
 	capacity: u64,
 	ttl: Option<Duration>,
 	partition_indices: Vec<usize>,
@@ -125,16 +124,16 @@ impl SinkRingBufferViewOperator {
 	pub fn new(
 		operator: OperatorId,
 		view: ResolvedView,
-		ringbuffer_id: RingBufferId,
 		capacity: u64,
 		ttl: Option<Duration>,
 		partition_by: Vec<String>,
 	) -> Self {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
+		let storage = view.def().storage_id();
 		Self {
 			operator,
 			view,
-			ringbuffer_id,
+			storage,
 			capacity,
 			ttl,
 			partition_indices,
@@ -206,7 +205,7 @@ impl SinkRingBufferViewOperator {
 		if let Some(metadata) = self.read_meta_mirror(txn, None)? {
 			return Ok(metadata);
 		}
-		let key = RingBufferMetadataKey::encoded(self.ringbuffer_id);
+		let key = RingBufferMetadataKey::encoded(self.storage);
 		let metadata = match txn.get(&key)? {
 			Some(row) => decode_ringbuffer_metadata(EncodedPodRow::view(&row))?,
 			None => RingBufferMetadata::new(),
@@ -216,7 +215,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn write_metadata(&self, txn: &mut DeferredTransaction, metadata: &RingBufferMetadata) -> Result<()> {
-		let key = RingBufferMetadataKey::encoded(self.ringbuffer_id);
+		let key = RingBufferMetadataKey::encoded(self.storage);
 		let row = encode_ringbuffer_metadata(metadata);
 		txn.set(&key, row.into_bytes())?;
 		self.write_meta_mirror(txn, None, metadata)?;
@@ -232,7 +231,7 @@ impl SinkRingBufferViewOperator {
 		if let Some(metadata) = self.read_meta_mirror(txn, partition)? {
 			return Ok(metadata);
 		}
-		let key = RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec());
+		let key = RingBufferMetadataKey::encoded_partition(self.storage, partition_values.to_vec());
 		let metadata = match txn.get(&key)? {
 			Some(row) => decode_ringbuffer_metadata(EncodedPodRow::view(&row))?,
 			None => RingBufferMetadata::new(),
@@ -247,7 +246,7 @@ impl SinkRingBufferViewOperator {
 		partition_values: &[Value],
 		metadata: &RingBufferMetadata,
 	) -> Result<()> {
-		let key = RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec());
+		let key = RingBufferMetadataKey::encoded_partition(self.storage, partition_values.to_vec());
 		let row = encode_ringbuffer_metadata(metadata);
 		txn.set(&key, row.into_bytes())?;
 		let partition = partition_of_values(partition_values);
@@ -256,7 +255,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn remove_partition_metadata(&self, txn: &mut DeferredTransaction, partition_values: &[Value]) -> Result<()> {
-		let key = RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec());
+		let key = RingBufferMetadataKey::encoded_partition(self.storage, partition_values.to_vec());
 		txn.remove(&key)?;
 		let partition = partition_of_values(partition_values);
 		self.state_remove(txn, &self.meta_key(partition))?;
@@ -471,7 +470,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, view.columns());
-		let object_id = StorageId::ringbuffer(self.ringbuffer_id);
+		let object_id = self.storage;
 		let mut metadata = if self.is_partitioned() {
 			None
 		} else {
@@ -547,7 +546,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 		}
 		let partition_values = self.timer_partition_values(&timer.key)?;
 
-		let object_id = StorageId::ringbuffer(self.ringbuffer_id);
+		let object_id = self.storage;
 		let evicted_any = self.evict_due(txn, object_id, &partition_values, timer.due.to_millis())?;
 		self.sync_row_ttl_timer(txn, &partition_values)?;
 
@@ -616,10 +615,8 @@ impl SinkRingBufferViewOperator {
 
 	fn timer_key(&self, partition_values: &[Value]) -> EncodedKey {
 		match partition_values.is_empty() {
-			true => RingBufferMetadataKey::encoded(self.ringbuffer_id),
-			false => {
-				RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec())
-			}
+			true => RingBufferMetadataKey::encoded(self.storage),
+			false => RingBufferMetadataKey::encoded_partition(self.storage, partition_values.to_vec()),
 		}
 	}
 
@@ -1066,9 +1063,9 @@ mod tests {
 		interface::{
 			catalog::{
 				column::{Column as CatalogColumn, ColumnIndex},
-				id::{ColumnId, NamespaceId, TableId, ViewId},
+				id::{ColumnId, NamespaceId, ViewId},
 				namespace::Namespace,
-				view::{TableView, ViewKind},
+				view::{RingBufferView, ViewKind},
 			},
 			resolved::ResolvedNamespace,
 		},
@@ -1080,7 +1077,7 @@ mod tests {
 	use super::*;
 	use crate::transaction::{mock::FlowTxn, substrate::apply_operator_state};
 
-	const RB: RingBufferId = RingBufferId(42);
+	const RB: StorageId = StorageId::View(ViewId(1));
 	const T0: u64 = 1_000_000_000_000;
 	const HOUR: u64 = 3_600 * 1_000_000_000;
 	const AFTER: u64 = T0 + HOUR + 1_000_000_000;
@@ -1115,14 +1112,19 @@ mod tests {
 			auto_increment: false,
 			dictionary_id: None,
 		});
-		View::Table(TableView {
+		View::RingBuffer(RingBufferView {
 			id: ViewId(1),
 			namespace: NamespaceId(1),
 			name: "rb".to_string(),
 			kind: ViewKind::Deferred,
 			columns,
 			primary_key: None,
-			storage: TableId(7),
+			partition_by: if partitioned {
+				vec!["base".to_string()]
+			} else {
+				Vec::new()
+			},
+			capacity: 100,
 			sort: vec![],
 		})
 	}
@@ -1139,7 +1141,7 @@ mod tests {
 		} else {
 			Vec::new()
 		};
-		SinkRingBufferViewOperator::new(OperatorId(1), resolved, RB, 100, ttl, partition_by)
+		SinkRingBufferViewOperator::new(OperatorId(1), resolved, 100, ttl, partition_by)
 	}
 
 	fn deferred_txn(engine: &TestEngine) -> DeferredTransaction {

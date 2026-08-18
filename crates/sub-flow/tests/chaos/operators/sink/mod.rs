@@ -19,7 +19,7 @@ use reifydb_core::interface::{
 	catalog::{
 		column::{Column, ColumnIndex},
 		flow::OperatorId,
-		id::{ColumnId, NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+		id::{ColumnId, NamespaceId, ViewId},
 		namespace::Namespace,
 		object::ObjectId,
 		series::SeriesKey,
@@ -185,10 +185,10 @@ pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
 				kind: ViewKind::Deferred,
 				columns: columns(),
 				primary_key: None,
-				storage: TableId(7),
+				partition_by: partition_by.clone(),
 				sort: vec![],
 			});
-			SinkOp::Table(SinkTableViewOperator::new(SINK, resolved(def), TableId(7), partition_by))
+			SinkOp::Table(SinkTableViewOperator::new(SINK, resolved(def), partition_by))
 		}
 		Kind::Series => {
 			let key = SeriesKey::Integer {
@@ -201,12 +201,12 @@ pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
 				kind: ViewKind::Deferred,
 				columns: columns(),
 				primary_key: None,
-				storage: SeriesId(9),
+				partition_by: partition_by.clone(),
 				key: key.clone(),
 				tag: None,
 				sort: vec![],
 			});
-			SinkOp::Series(SinkSeriesViewOperator::new(SINK, resolved(def), SeriesId(9), key, partition_by))
+			SinkOp::Series(SinkSeriesViewOperator::new(SINK, resolved(def), key, partition_by))
 		}
 		Kind::Ring {
 			capacity,
@@ -218,18 +218,11 @@ pub fn build(kind: Kind, layout: Layout, _runtime: RuntimeContext) -> SinkOp {
 				kind: ViewKind::Deferred,
 				columns: columns(),
 				primary_key: None,
-				storage: RingBufferId(11),
+				partition_by: partition_by.clone(),
 				capacity,
 				sort: vec![],
 			});
-			SinkOp::Ring(SinkRingBufferViewOperator::new(
-				SINK,
-				resolved(def),
-				RingBufferId(11),
-				capacity,
-				None,
-				partition_by,
-			))
+			SinkOp::Ring(SinkRingBufferViewOperator::new(SINK, resolved(def), capacity, None, partition_by))
 		}
 	}
 }

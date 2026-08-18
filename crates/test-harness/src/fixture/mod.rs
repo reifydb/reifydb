@@ -11,7 +11,7 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 		view::{ViewColumnToCreate, ViewToCreate},
 	},
-	store::view::create::ViewStorageConfig,
+	store::view::create::ViewStorage,
 };
 use reifydb_core::{
 	common::TimeSource,
@@ -141,7 +141,7 @@ impl ViewBuilder {
 					name: Fragment::internal(&self.name),
 					namespace: namespace.id(),
 					columns: self.columns,
-					storage: ViewStorageConfig::default(),
+					storage: ViewStorage::default(),
 					sort: vec![],
 				},
 			)

@@ -4,15 +4,19 @@
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+		id::{NamespaceId, ViewId},
+		ringbuffer::{RingBufferMetadata, encode_ringbuffer_metadata},
 		series::SeriesKey,
+		storage::StorageId,
 		view::{
 			View, ViewKind,
 			ViewKind::{Deferred, Transactional},
 			ViewSortKey, ViewStorageKind,
 		},
 	},
-	key::{namespace_view::NamespaceViewKey, view::ViewKey},
+	key::{
+		namespace_view::NamespaceViewKey, ringbuffer::RingBufferMetadataKey, view::ViewKey,
+	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -39,25 +43,43 @@ pub struct ViewColumnToCreate {
 }
 
 #[derive(Debug, Clone)]
-pub enum ViewStorageConfig {
+pub enum ViewStorage {
 	Table {
-		storage: TableId,
+		partition_by: Vec<String>,
 	},
 	RingBuffer {
-		storage: RingBufferId,
 		capacity: u64,
+		partition_by: Vec<String>,
 	},
 	Series {
-		storage: SeriesId,
 		key: SeriesKey,
 		tag: Option<SumTypeId>,
+		partition_by: Vec<String>,
 	},
 }
 
-impl Default for ViewStorageConfig {
+impl ViewStorage {
+	pub fn partition_by(&self) -> &[String] {
+		match self {
+			ViewStorage::Table {
+				partition_by,
+			} => partition_by,
+			ViewStorage::RingBuffer {
+				partition_by,
+				..
+			} => partition_by,
+			ViewStorage::Series {
+				partition_by,
+				..
+			} => partition_by,
+		}
+	}
+}
+
+impl Default for ViewStorage {
 	fn default() -> Self {
-		ViewStorageConfig::Table {
-			storage: TableId(0),
+		ViewStorage::Table {
+			partition_by: Vec::new(),
 		}
 	}
 }
@@ -67,7 +89,7 @@ pub struct ViewToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub storage: ViewStorageConfig,
+	pub storage: ViewStorage,
 	pub sort: Vec<ViewSortKey>,
 }
 
@@ -87,6 +109,7 @@ impl CatalogStore {
 		let view_id = SystemSequence::next_view_id(txn)?;
 		Self::store_view(txn, view_id, namespace_id, &to_create, kind)?;
 		Self::link_view_to_namespace(txn, namespace_id, view_id, to_create.name.text())?;
+		Self::initialize_view_family_metadata(txn, view_id, &to_create.storage)?;
 
 		Self::insert_columns_for_view(txn, view_id, to_create)?;
 
@@ -130,38 +153,36 @@ impl CatalogStore {
 		);
 		view::set_primary_key(&mut row, 0u64);
 		view::set_sort(&mut row, encode_view_sort(&to_create.sort));
+		view::set_partition_by(&mut row, to_create.storage.partition_by().join(","));
 
 		match &to_create.storage {
-			ViewStorageConfig::Table {
-				storage,
+			ViewStorage::Table {
+				..
 			} => {
 				view::set_storage_kind(&mut row, ViewStorageKind::Table as u8);
-				view::set_storage_id(&mut row, u64::from(*storage));
 				view::set_capacity(&mut row, 0u64);
 				view::set_key_column(&mut row, "");
 				view::set_key_kind(&mut row, 0u8);
 				view::set_precision(&mut row, 0u8);
 				view::set_tag_id(&mut row, 0u64);
 			}
-			ViewStorageConfig::RingBuffer {
-				storage,
+			ViewStorage::RingBuffer {
 				capacity,
+				..
 			} => {
 				view::set_storage_kind(&mut row, ViewStorageKind::RingBuffer as u8);
-				view::set_storage_id(&mut row, u64::from(*storage));
 				view::set_capacity(&mut row, *capacity);
 				view::set_key_column(&mut row, "");
 				view::set_key_kind(&mut row, 0u8);
 				view::set_precision(&mut row, 0u8);
 				view::set_tag_id(&mut row, 0u64);
 			}
-			ViewStorageConfig::Series {
-				storage,
+			ViewStorage::Series {
 				key,
 				tag,
+				..
 			} => {
 				view::set_storage_kind(&mut row, ViewStorageKind::Series as u8);
-				view::set_storage_id(&mut row, u64::from(*storage));
 				view::set_capacity(&mut row, 0u64);
 				view::set_key_column(&mut row, key.column());
 				let (key_kind_u8, precision_u8) = match key {
@@ -182,6 +203,31 @@ impl CatalogStore {
 		txn.set(&ViewKey::encoded(view), row.freeze())?;
 
 		Ok(())
+	}
+
+	fn initialize_view_family_metadata(
+		txn: &mut AdminTransaction,
+		view: ViewId,
+		storage: &ViewStorage,
+	) -> Result<()> {
+		match storage {
+			ViewStorage::Table {
+				..
+			} => Ok(()),
+			ViewStorage::RingBuffer {
+				partition_by,
+				..
+			} => {
+				if partition_by.is_empty() {
+					let row = encode_ringbuffer_metadata(&RingBufferMetadata::new());
+					txn.set(&RingBufferMetadataKey::encoded(StorageId::View(view)), row.into_bytes())?;
+				}
+				Ok(())
+			}
+			ViewStorage::Series {
+				..
+			} => Ok(()),
+		}
 	}
 
 	fn link_view_to_namespace(
@@ -232,7 +278,7 @@ pub mod tests {
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::fragment::Fragment;
 
-	use super::ViewStorageConfig;
+	use super::ViewStorage;
 	use crate::{
 		CatalogStore,
 		store::view::{create::ViewToCreate, shape::view_namespace},
@@ -249,7 +295,7 @@ pub mod tests {
 			namespace: namespace.id(),
 			name: Fragment::internal("test_view"),
 			columns: vec![],
-			storage: ViewStorageConfig::default(),
+			storage: ViewStorage::default(),
 			sort: vec![],
 		};
 
@@ -271,7 +317,7 @@ pub mod tests {
 			namespace: namespace.id(),
 			name: Fragment::internal("test_view"),
 			columns: vec![],
-			storage: ViewStorageConfig::default(),
+			storage: ViewStorage::default(),
 			sort: vec![],
 		};
 
@@ -281,7 +327,7 @@ pub mod tests {
 			namespace: namespace.id(),
 			name: Fragment::internal("another_view"),
 			columns: vec![],
-			storage: ViewStorageConfig::default(),
+			storage: ViewStorage::default(),
 			sort: vec![],
 		};
 
@@ -313,7 +359,7 @@ pub mod tests {
 			namespace: NamespaceId(999), // Non-existent namespace
 			name: Fragment::internal("my_view"),
 			columns: vec![],
-			storage: ViewStorageConfig::default(),
+			storage: ViewStorage::default(),
 			sort: vec![],
 		};
 

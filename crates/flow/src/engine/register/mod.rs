@@ -103,40 +103,29 @@ impl FlowEngineInner {
 		match operator.ty.clone() {
 			SinkTableView {
 				view,
-				table,
 			} => {
 				reifydb_assertions! {
 					assert!(!self.durable_sinks.contains_key(&operator_id), "Operator already registered");
 				}
-				self.add_sink_table_view(txn, flow, operator_id, &inputs, view, table)
+				self.add_sink_table_view(txn, flow, operator_id, &inputs, view)
 			}
 			SinkRingBufferView {
 				view,
-				ringbuffer,
 				capacity,
 			} => {
 				reifydb_assertions! {
 					assert!(!self.durable_sinks.contains_key(&operator_id), "Operator already registered");
 				}
-				self.add_sink_ringbuffer_view(
-					txn,
-					flow,
-					operator_id,
-					&inputs,
-					view,
-					ringbuffer,
-					capacity,
-				)
+				self.add_sink_ringbuffer_view(txn, flow, operator_id, &inputs, view, capacity)
 			}
 			SinkSeriesView {
 				view,
-				series,
 				key,
 			} => {
 				reifydb_assertions! {
 					assert!(!self.durable_sinks.contains_key(&operator_id), "Operator already registered");
 				}
-				self.add_sink_series_view(txn, flow, operator_id, &inputs, view, series, key)
+				self.add_sink_series_view(txn, flow, operator_id, &inputs, view, key)
 			}
 			_ => self.add_core(txn, flow, operator, ctx),
 		}

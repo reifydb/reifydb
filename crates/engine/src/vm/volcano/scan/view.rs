@@ -12,7 +12,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::{dictionary::Dictionary, storage::StorageId},
+		catalog::dictionary::Dictionary,
 		resolved::ResolvedView,
 		store::MultiVersionRow,
 	},
@@ -83,19 +83,7 @@ impl ViewScanNode {
 			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
 		let sorted = !view.def().sort().is_empty();
-		let partitioned = match view.def().storage_id() {
-			StorageId::Table(id) => !context.services.catalog.get_table(rx, id)?.partition_by.is_empty(),
-			StorageId::Series(id) => !context.services.catalog.get_series(rx, id)?.partition_by.is_empty(),
-			StorageId::RingBuffer(id) => {
-				!context.services.catalog.get_ringbuffer(rx, id)?.partition_by.is_empty()
-			}
-			StorageId::View(_) => {
-				unreachable!("a view materializes under its backing object's storage id")
-			}
-			StorageId::Queue(_) => {
-				unreachable!("a view materializes into a table, ringbuffer or series")
-			}
-		};
+		let partitioned = !view.def().partition_by().is_empty();
 
 		Ok(Self {
 			view,

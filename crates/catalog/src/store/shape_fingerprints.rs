@@ -370,7 +370,7 @@ fn pinned() -> Vec<Pin> {
 		(
 			"view::view",
 			&*VIEW_SHAPE,
-			0x1d3d198ba07ad900,
+			0x5133239a60bde4af,
 			&[
 				"id",
 				"namespace",
@@ -378,12 +378,12 @@ fn pinned() -> Vec<Pin> {
 				"kind",
 				"primary_key",
 				"storage_kind",
-				"storage_id",
 				"capacity",
 				"key_column",
 				"key_kind",
 				"precision",
 				"tag_id",
+				"partition_by",
 				"sort",
 			],
 		),

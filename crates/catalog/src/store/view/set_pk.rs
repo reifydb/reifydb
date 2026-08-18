@@ -45,7 +45,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::view::create::{ViewColumnToCreate, ViewStorageConfig, ViewToCreate},
+		store::view::create::{ViewColumnToCreate, ViewStorage, ViewToCreate},
 		test_utils::ensure_test_namespace,
 	};
 
@@ -65,7 +65,7 @@ pub mod tests {
 					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					dictionary_id: None,
 				}],
-				storage: ViewStorageConfig::default(),
+				storage: ViewStorage::default(),
 				sort: vec![],
 			},
 		)

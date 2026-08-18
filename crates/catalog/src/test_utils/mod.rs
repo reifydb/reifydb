@@ -39,7 +39,7 @@ use crate::{
 		sink::create::SinkToCreate,
 		source::create::SourceToCreate,
 		table::create::{TableColumnToCreate, TableToCreate},
-		view::create::{ViewColumnToCreate, ViewStorageConfig, ViewToCreate},
+		view::create::{ViewColumnToCreate, ViewStorage, ViewToCreate},
 	},
 };
 
@@ -143,7 +143,7 @@ pub fn create_view(txn: &mut AdminTransaction, namespace: &str, view: &str, colu
 			name: Fragment::internal(view),
 			namespace: namespace.id(),
 			columns: columns.to_vec(),
-			storage: ViewStorageConfig::default(),
+			storage: ViewStorage::default(),
 			sort: vec![],
 		},
 	)

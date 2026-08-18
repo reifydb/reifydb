@@ -62,7 +62,7 @@ impl CatalogCache {
 pub mod tests {
 	use reifydb_core::interface::catalog::{
 		column::{Column, ColumnIndex},
-		id::{ColumnId, TableId},
+		id::ColumnId,
 		view::{TableView, ViewKind},
 	};
 	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
@@ -96,7 +96,7 @@ pub mod tests {
 				},
 			],
 			primary_key: None,
-			storage: TableId(0),
+			partition_by: vec![],
 			sort: vec![],
 		})
 	}

@@ -15,12 +15,12 @@ catalog_shape! {
 		kind: u8,
 		primary_key: u64,
 		storage_kind: u8,
-		storage_id: u64,
 		capacity: u64,
 		key_column: utf8,
 		key_kind: u8,
 		precision: u8,
 		tag_id: u64,
+		partition_by: utf8,
 		sort: utf8,
 	}
 

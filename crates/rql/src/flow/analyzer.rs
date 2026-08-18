@@ -391,7 +391,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(200),
-					table: TableId(0),
 				},
 			],
 		);
@@ -420,7 +419,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(400),
-					table: TableId(0),
 				},
 			],
 		);
@@ -459,11 +457,9 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(700),
-					table: TableId(0),
 				},
 				SinkTableView {
 					view: ViewId(800),
-					table: TableId(0),
 				},
 			],
 		);
@@ -516,11 +512,9 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(200),
-					table: TableId(0),
 				},
 				SinkTableView {
 					view: ViewId(300),
-					table: TableId(0),
 				},
 			],
 		);
@@ -545,7 +539,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(200),
-					table: TableId(0),
 				},
 			],
 		);
@@ -558,7 +551,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(300),
-					table: TableId(0),
 				},
 			],
 		);
@@ -594,7 +586,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(200),
-					table: TableId(0),
 				},
 			],
 		);
@@ -608,7 +599,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(201),
-					table: TableId(0),
 				},
 			],
 		);
@@ -624,7 +614,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(300),
-					table: TableId(0),
 				},
 			],
 		);
@@ -660,7 +649,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(100),
-					table: TableId(0),
 				},
 			],
 		);
@@ -685,7 +673,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(200),
-					table: TableId(0),
 				},
 			],
 		);
@@ -699,7 +686,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(201),
-					table: TableId(0),
 				},
 			],
 		);
@@ -713,7 +699,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(202),
-					table: TableId(0),
 				},
 			],
 		);
@@ -745,7 +730,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(200),
-					table: TableId(0),
 				},
 			],
 		));
@@ -757,7 +741,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(300),
-					table: TableId(0),
 				},
 			],
 		));
@@ -789,7 +772,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(200),
-					table: TableId(0),
 				},
 			],
 		));
@@ -801,7 +783,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(201),
-					table: TableId(0),
 				},
 			],
 		));
@@ -813,7 +794,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(202),
-					table: TableId(0),
 				},
 			],
 		));
@@ -828,7 +808,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(203),
-					table: TableId(0),
 				},
 			],
 		));
@@ -860,7 +839,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(300),
-					table: TableId(0),
 				},
 			],
 		));
@@ -887,7 +865,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(200),
-					table: TableId(0),
 				},
 			],
 		));
@@ -899,7 +876,6 @@ pub mod tests {
 				},
 				SinkTableView {
 					view: ViewId(300),
-					table: TableId(0),
 				},
 			],
 		));

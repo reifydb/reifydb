@@ -13,8 +13,9 @@ use reifydb_core::{
 		WithEventBus,
 		catalog::{
 			config::{ConfigKey, GetConfig},
-			id::{RingBufferId, SeriesId, TableId},
+			id::{RingBufferId, SeriesId, ViewId},
 			storage::StorageId,
+			view::ViewStorageKind,
 		},
 		store::classify_range,
 	},
@@ -256,10 +257,10 @@ impl Evictor {
 		stats: &mut TickStats,
 	) -> Result<()> {
 		match storage {
-			StorageId::Table(id) => self.evict_table(state, id, cutoff, batch_size, budget, stats),
-			StorageId::View(_) => {
-				unreachable!("a view's rows carry its backing object's storage id")
+			StorageId::Table(_) => {
+				self.evict_rows(state, storage, RowFamily::Table, cutoff, batch_size, budget, stats)
 			}
+			StorageId::View(id) => self.evict_view(state, id, cutoff, batch_size, budget, stats),
 			StorageId::RingBuffer(id) => {
 				self.evict_ringbuffer(state, id, cutoff, batch_size, budget, stats)
 			}
@@ -269,24 +270,59 @@ impl Evictor {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	#[instrument(name = "lifecycle::retention::evict::table", level = "debug", skip_all)]
-	fn evict_table(
+	#[instrument(name = "lifecycle::retention::evict::view", level = "debug", skip_all)]
+	fn evict_view(
 		&self,
 		state: &mut EvictorState,
-		id: TableId,
+		id: ViewId,
 		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
 		stats: &mut TickStats,
 	) -> Result<()> {
-		let storage = StorageId::Table(id);
+		let storage = StorageId::View(id);
+		let mut txn = self.engine.begin_command(IdentityId::system())?;
+		let view = self.engine.catalog().find_view(&mut Transaction::Command(&mut txn), id)?;
+		txn.rollback()?;
+
+		let Some(view) = view else {
+			state.forget(storage);
+			return Ok(());
+		};
+
+		match view.storage_kind() {
+			ViewStorageKind::Table => {
+				self.evict_rows(state, storage, RowFamily::Table, cutoff, batch_size, budget, stats)
+			}
+			ViewStorageKind::Series => {
+				self.evict_rows(state, storage, RowFamily::Series, cutoff, batch_size, budget, stats)
+			}
+			ViewStorageKind::RingBuffer => {
+				state.forget(storage);
+				Ok(())
+			}
+		}
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "lifecycle::retention::evict::rows", level = "debug", skip_all)]
+	fn evict_rows(
+		&self,
+		state: &mut EvictorState,
+		storage: StorageId,
+		family: RowFamily,
+		cutoff: Cutoff,
+		batch_size: usize,
+		budget: &mut u64,
+		stats: &mut TickStats,
+	) -> Result<()> {
 		for keyspace in [RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)] {
 			loop {
 				if *budget == 0 {
 					return Ok(());
 				}
 				let (rows, drained) =
-					self.evict_table_batch(state, id, cutoff, batch_size, &keyspace)?;
+					self.evict_rows_batch(state, storage, family, cutoff, batch_size, &keyspace)?;
 				stats.rows_expired += rows;
 				if rows > 0 || !drained {
 					*budget -= 1;
@@ -297,6 +333,23 @@ impl Evictor {
 			}
 		}
 		Ok(())
+	}
+
+	fn row_owner_exists(&self, txn: &mut CommandTransaction, storage: StorageId) -> Result<bool> {
+		let catalog = self.engine.catalog();
+		Ok(match storage {
+			StorageId::Table(id) => {
+				catalog.find_table(&mut Transaction::Command(&mut *txn), id)?.is_some()
+			}
+			StorageId::View(id) => catalog.find_view(&mut Transaction::Command(&mut *txn), id)?.is_some(),
+			StorageId::RingBuffer(id) => {
+				catalog.find_ringbuffer(&mut Transaction::Command(&mut *txn), id)?.is_some()
+			}
+			StorageId::Series(id) => {
+				catalog.find_series(&mut Transaction::Command(&mut *txn), id)?.is_some()
+			}
+			StorageId::Queue(id) => catalog.find_queue(&mut Transaction::Command(&mut *txn), id)?.is_some(),
+		})
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -336,35 +389,28 @@ impl Evictor {
 		Ok((result.expired.into_iter().map(|row| row.key).collect(), drained))
 	}
 
-	#[instrument(name = "lifecycle::retention::evict::table_batch", level = "trace", skip_all)]
-	fn evict_table_batch(
+	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "lifecycle::retention::evict::rows_batch", level = "trace", skip_all)]
+	fn evict_rows_batch(
 		&self,
 		state: &mut EvictorState,
-		id: TableId,
+		storage: StorageId,
+		family: RowFamily,
 		cutoff: Cutoff,
 		batch_size: usize,
 		keyspace: &EncodedKeyRange,
 	) -> Result<(u64, bool)> {
-		let storage = StorageId::Table(id);
 		let cursor_key = (storage, scan::keyspace_start(keyspace));
-		let catalog = self.engine.catalog();
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 
-		if catalog.find_table(&mut Transaction::Command(&mut txn), id)?.is_none() {
+		if !self.row_owner_exists(&mut txn, storage)? {
 			txn.rollback()?;
 			state.forget(storage);
 			return Ok((0, true));
 		}
 
-		let (expired, drained) = self.expired_batch(
-			state,
-			&mut txn,
-			&cursor_key,
-			keyspace,
-			RowFamily::Table,
-			cutoff,
-			batch_size,
-		)?;
+		let (expired, drained) =
+			self.expired_batch(state, &mut txn, &cursor_key, keyspace, family, cutoff, batch_size)?;
 		if expired.is_empty() {
 			txn.rollback()?;
 			return Ok((0, drained));
@@ -693,6 +739,7 @@ mod tests {
 					PartitionedMetadata, RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata,
 				},
 				series::SeriesMetadata,
+				view::View,
 			},
 			store::MultiVersionRow,
 		},
@@ -768,46 +815,67 @@ mod tests {
 		ringbuffer
 	}
 
-	fn underlying_ringbuffer(engine: &StandardEngine) -> RingBuffer {
+	fn view_by_name(engine: &StandardEngine, name: &str) -> View {
 		let catalog = engine.catalog();
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let namespace =
 			catalog.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test").unwrap().unwrap();
-		let all = catalog.list_ringbuffers_all(&mut Transaction::Command(&mut txn)).unwrap();
+		let view = catalog
+			.find_view_by_name(&mut Transaction::Command(&mut txn), namespace.id(), name)
+			.unwrap()
+			.unwrap();
 		txn.rollback().unwrap();
-		all.into_iter()
-			.find(|rb| rb.underlying && rb.namespace == namespace.id())
-			.expect("the deferred ringbuffer view must create an underlying ring buffer")
+		view
 	}
 
-	fn seed_partition(engine: &StandardEngine, id: RingBufferId, values: Vec<Value>) {
+	fn table_storage_by_name(engine: &StandardEngine, name: &str) -> StorageId {
+		let catalog = engine.catalog();
+		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let namespace =
+			catalog.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test").unwrap().unwrap();
+		let table = catalog
+			.find_table_by_name(&mut Transaction::Command(&mut txn), namespace.id(), name)
+			.unwrap()
+			.unwrap();
+		txn.rollback().unwrap();
+		StorageId::Table(table.id)
+	}
+
+	fn put_row(engine: &StandardEngine, storage: StorageId, row_number: RowNumber, bytes: EncodedBytes) {
+		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		txn.set(&RowKey::encoded(storage, row_number), bytes).unwrap();
+		txn.commit().unwrap();
+	}
+
+	fn seed_partition(engine: &StandardEngine, storage: StorageId, values: Vec<Value>) {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let mut metadata = RingBufferMetadata::new();
 		metadata.count = 1;
 		metadata.tail = 2;
 		txn.set(
-			&RingBufferMetadataKey::encoded_partition(id, values),
+			&RingBufferMetadataKey::encoded_partition(storage, values),
 			encode_ringbuffer_metadata(&metadata).into_bytes(),
 		)
 		.unwrap();
 		txn.commit().unwrap();
 	}
 
-	fn catalog_partition_values(engine: &StandardEngine, ringbuffer: &RingBuffer) -> Vec<Vec<Value>> {
-		let catalog = engine.catalog();
+	fn partition_metadata_values(engine: &StandardEngine, storage: StorageId) -> Vec<Vec<Value>> {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		let partitions =
-			catalog.list_ringbuffer_partitions(&mut Transaction::Command(&mut txn), ringbuffer).unwrap();
+		let values: Vec<Vec<Value>> = txn
+			.range(RingBufferMetadataKey::full_scan_for_storage(storage), RangeScope::All, 1024)
+			.unwrap()
+			.map(|row| RingBufferMetadataKey::decode(&row.unwrap().key).unwrap().partition_values)
+			.collect();
 		txn.rollback().unwrap();
-		partitions.into_iter().map(|p| p.partition_values).collect()
+		values
 	}
 
-	fn ringbuffer_rows(engine: &StandardEngine, ringbuffer: &RingBuffer) -> Vec<MultiVersionRow> {
-		let storage = StorageId::RingBuffer(ringbuffer.id);
-		let keyspace = if ringbuffer.partition_by.is_empty() {
-			RowKey::full_scan(storage)
-		} else {
+	fn storage_rows(engine: &StandardEngine, storage: StorageId, partitioned: bool) -> Vec<MultiVersionRow> {
+		let keyspace = if partitioned {
 			PartitionedRowKey::full_scan(storage)
+		} else {
+			RowKey::full_scan(storage)
 		};
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let rows: Vec<MultiVersionRow> =
@@ -816,16 +884,20 @@ mod tests {
 		rows
 	}
 
-	fn put_ringbuffer_row(
+	fn put_partitioned_row(
 		engine: &StandardEngine,
-		id: RingBufferId,
+		storage: StorageId,
 		partition_values: &[Value],
 		row_number: RowNumber,
 		bytes: EncodedBytes,
 	) {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		txn.set(
-			&PartitionedRowKey::encoded(id, Partition::of(partition_values), RowLocator::Row(row_number)),
+			&PartitionedRowKey::encoded(
+				storage,
+				Partition::of(partition_values),
+				RowLocator::Row(row_number),
+			),
 			bytes,
 		)
 		.unwrap();
@@ -1110,15 +1182,12 @@ mod tests {
 	}
 
 	#[test]
-	fn underlying_ring_buffers_are_skipped_they_are_owned_by_the_sink_operator() {
-		// A view-backed ring buffer is evicted by its sink operator, which owns the per-partition
-		// state; a second reaper would strand that state and bypass the operator's downstream
-		// eviction propagation. A standalone ring buffer stays evictor-owned.
+	fn ring_buffer_backed_views_are_skipped_they_are_owned_by_the_sink_operator() {
+		// The sink operator owns a ring-buffer-backed view's per-partition state, so a second reaper must never touch it, while a standalone ring buffer stays evictor-owned.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin("create table test::src { base: utf8, n: int4 }");
-		// No flow subsystem runs here, but the DDL still creates the backing ring buffer and
-		// registers its row ttl.
+		// No flow subsystem runs here, but the DDL must still register the view's row ttl.
 		test.admin(
 			"create deferred ringbuffer view test::rb { base: utf8, n: int4 } WITH { capacity: 100, row: { ttl: 1h }, partition: { by: { base } } } as { from test::src }",
 		);
@@ -1127,20 +1196,20 @@ mod tests {
 		);
 		test.command("INSERT test::standalone [{ base: \"us\", n: 1 }]");
 
-		let underlying = underlying_ringbuffer(&test);
-		let standalone = ringbuffer_by_name(&test, "standalone");
+		let view = StorageId::View(view_by_name(&test, "rb").id());
+		let standalone = StorageId::RingBuffer(ringbuffer_by_name(&test, "standalone").id);
 		let us = vec![Value::Utf8("us".to_string())];
 
 		// Without a real stamped row the skip assertion below passes on an empty keyspace.
-		let seeded = ringbuffer_rows(&test, &standalone);
+		let seeded = storage_rows(&test, standalone, true);
 		assert_eq!(seeded.len(), 1, "precondition: the standalone insert must have produced exactly one row");
-		put_ringbuffer_row(&test, underlying.id, &us, RowNumber(1), seeded[0].bytes.clone());
-		seed_partition(&test, underlying.id, us.clone());
+		put_partitioned_row(&test, view, &us, RowNumber(1), seeded[0].bytes.clone());
+		seed_partition(&test, view, us.clone());
 
 		assert_eq!(
-			catalog_partition_values(&test, &underlying),
+			partition_metadata_values(&test, view),
 			vec![us.clone()],
-			"the catalog must hold the seeded partition metadata (guards against a vacuous skip test)"
+			"the view must hold the seeded partition metadata (guards against a vacuous skip test)"
 		);
 
 		age_past_ttl(&test);
@@ -1148,18 +1217,51 @@ mod tests {
 		tick_now(&test, &mut state, RetentionClass::RowTtl);
 
 		assert!(
-			ringbuffer_rows(&test, &standalone).is_empty(),
+			storage_rows(&test, standalone, true).is_empty(),
 			"a standalone ring buffer must remain owned by the retention evictor"
 		);
 		assert_eq!(
-			ringbuffer_rows(&test, &underlying).len(),
+			storage_rows(&test, view, true).len(),
 			1,
-			"the retention evictor must skip underlying (view-backed) ring buffers"
+			"the retention evictor must skip ring-buffer-backed views"
 		);
 		assert_eq!(
-			catalog_partition_values(&test, &underlying),
+			partition_metadata_values(&test, view),
 			vec![us],
-			"skipping must leave the underlying buffer's partition metadata untouched"
+			"skipping must leave the view's partition metadata untouched"
+		);
+	}
+
+	#[test]
+	fn table_backed_view_rows_are_evicted_under_the_views_own_storage_id() {
+		// Nothing else reaps a table-backed view's rows, so a skip here would leave the row ttl its own DDL advertises unenforced forever.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin("create table test::src { n: int4 }");
+		test.admin(
+			"create table test::stamped { n: int4 } with { time: processing, row: { ttl: 1h } }",
+		);
+		test.admin(
+			"create deferred view test::v { n: int4 } with { row: { ttl: 1h } } as { from test::src }",
+		);
+		test.command("INSERT test::stamped [{ n: 1 }]");
+
+		let view = StorageId::View(view_by_name(&test, "v").id());
+		let stamped = table_storage_by_name(&test, "stamped");
+
+		// Only a really stamped row carries the updated_at the cutoff compares against.
+		let seeded = storage_rows(&test, stamped, false);
+		assert_eq!(seeded.len(), 1, "precondition: the insert must have produced exactly one stamped row");
+		put_row(&test, view, RowNumber(1), seeded[0].bytes.clone());
+		assert_eq!(storage_rows(&test, view, false).len(), 1, "guards against a vacuous eviction assertion");
+
+		age_past_ttl(&test);
+		let mut state = EvictorState::default();
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
+
+		assert!(
+			storage_rows(&test, view, false).is_empty(),
+			"the retention evictor must reach a table-backed view's rows under its own storage id"
 		);
 	}
 

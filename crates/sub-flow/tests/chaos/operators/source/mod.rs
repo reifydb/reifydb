@@ -20,7 +20,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			flow::OperatorId,
-			id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+			id::{NamespaceId, RingBufferId, TableId, ViewId},
 			ringbuffer::RingBuffer,
 			series::SeriesKey,
 			table::Table,
@@ -129,7 +129,7 @@ fn series_view() -> View {
 		kind: ViewKind::Deferred,
 		columns: vec![],
 		primary_key: None,
-		storage: SeriesId(9),
+		partition_by: vec![],
 		key: SeriesKey::Integer {
 			column: VALUE_COLUMN.to_string(),
 		},

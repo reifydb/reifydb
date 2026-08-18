@@ -115,23 +115,21 @@ fn downstream_view_partition_columns(
 				if *node_flow != flow_id {
 					continue;
 				}
-				let (view, partition_by) = match ty {
+				let view = match ty {
 					OperatorDef::SinkTableView {
 						view,
-						table,
-					} => (*view, catalog.get_table(tx, *table)?.partition_by),
-					OperatorDef::SinkRingBufferView {
+					}
+					| OperatorDef::SinkRingBufferView {
 						view,
-						ringbuffer,
 						..
-					} => (*view, catalog.get_ringbuffer(tx, *ringbuffer)?.partition_by),
-					OperatorDef::SinkSeriesView {
+					}
+					| OperatorDef::SinkSeriesView {
 						view,
-						series,
 						..
-					} => (*view, catalog.get_series(tx, *series)?.partition_by),
+					} => *view,
 					_ => continue,
 				};
+				let partition_by = catalog.get_view(tx, view)?.partition_by().to_vec();
 				for column in partition_by {
 					forbidden.entry(column).or_insert(view);
 				}

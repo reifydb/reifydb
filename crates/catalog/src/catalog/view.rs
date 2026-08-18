@@ -25,7 +25,7 @@ use crate::{
 	CatalogStore, Result,
 	catalog::Catalog,
 	store::view::create::{
-		ViewColumnToCreate as StoreViewColumnToCreate, ViewStorageConfig, ViewToCreate as StoreViewToCreate,
+		ViewColumnToCreate as StoreViewColumnToCreate, ViewStorage, ViewToCreate as StoreViewToCreate,
 	},
 };
 
@@ -42,7 +42,7 @@ pub struct ViewToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub storage: ViewStorageConfig,
+	pub storage: ViewStorage,
 	pub sort: Vec<ViewSortKey>,
 }
 

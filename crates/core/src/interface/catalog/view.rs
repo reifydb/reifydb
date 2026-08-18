@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	interface::catalog::{
 		column::{Column, ColumnIndex},
-		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+		id::{NamespaceId, ViewId},
 		key::PrimaryKey,
 		series::SeriesKey,
 		storage::StorageId,
@@ -54,7 +54,7 @@ pub struct TableView {
 	pub kind: ViewKind,
 	pub columns: Vec<Column>,
 	pub primary_key: Option<PrimaryKey>,
-	pub storage: TableId,
+	pub partition_by: Vec<String>,
 	pub sort: Vec<ViewSortKey>,
 }
 
@@ -66,7 +66,7 @@ pub struct RingBufferView {
 	pub kind: ViewKind,
 	pub columns: Vec<Column>,
 	pub primary_key: Option<PrimaryKey>,
-	pub storage: RingBufferId,
+	pub partition_by: Vec<String>,
 	pub capacity: u64,
 	pub sort: Vec<ViewSortKey>,
 }
@@ -79,7 +79,7 @@ pub struct SeriesView {
 	pub kind: ViewKind,
 	pub columns: Vec<Column>,
 	pub primary_key: Option<PrimaryKey>,
-	pub storage: SeriesId,
+	pub partition_by: Vec<String>,
 	pub key: SeriesKey,
 	pub tag: Option<SumTypeId>,
 	pub sort: Vec<ViewSortKey>,
@@ -166,10 +166,14 @@ impl View {
 	}
 
 	pub fn storage_id(&self) -> StorageId {
+		StorageId::View(self.id())
+	}
+
+	pub fn partition_by(&self) -> &[String] {
 		match self {
-			View::Table(t) => StorageId::Table(t.storage),
-			View::RingBuffer(rb) => StorageId::RingBuffer(rb.storage),
-			View::Series(s) => StorageId::Series(s.storage),
+			View::Table(t) => &t.partition_by,
+			View::RingBuffer(rb) => &rb.partition_by,
+			View::Series(s) => &s.partition_by,
 		}
 	}
 
