@@ -17,17 +17,17 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
-    common::CommitVersion,
-    interface::{
+	common::CommitVersion,
+	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin},
 	},
-    key::{
+	key::{
 		EncodableKey,
 		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	},
-    row::Row,
-    state::timer::TimerKind,
+	row::Row,
+	state::timer::TimerKind,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{

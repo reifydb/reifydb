@@ -6,10 +6,10 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
-    key::operator_state::{
+	key::operator_state::{
 		GroupId, GroupStateKey, Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range,
 	},
-    state::timer::StateStore,
+	state::timer::StateStore,
 };
 use reifydb_value::Result;
 

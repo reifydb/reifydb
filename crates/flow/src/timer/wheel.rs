@@ -8,12 +8,12 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
-    interface::catalog::flow::OperatorId,
-    key::{
+	interface::catalog::flow::OperatorId,
+	key::{
 		EncodableKey,
 		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
 	},
-    state::timer::TimerKind,
+	state::timer::TimerKind,
 };
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};

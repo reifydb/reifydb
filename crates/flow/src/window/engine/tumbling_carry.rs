@@ -14,9 +14,9 @@ use reifydb_codec::{
 	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
-    key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey},
-    metrics::heap::HeapSize,
-    state::{cache::StateCache, timer::StateStore},
+	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey},
+	metrics::heap::HeapSize,
+	state::{cache::StateCache, timer::StateStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
@@ -436,8 +436,8 @@ mod tests {
 		row::{operator::state::decode, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
-        key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey},
-        state::timer::{TimerKind, TimerStore},
+		key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey},
+		state::timer::{TimerKind, TimerStore},
 	};
 	use reifydb_value::{
 		factory::time::{at_millis, millis},

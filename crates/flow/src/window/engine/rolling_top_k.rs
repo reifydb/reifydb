@@ -13,9 +13,9 @@ use reifydb_codec::{
 	row::operator::state::OperatorState,
 };
 use reifydb_core::{
-    key::operator_state::GroupId,
-    metrics::heap::HeapSize,
-    state::{cache::StateCache, timer::StateStore},
+	key::operator_state::GroupId,
+	metrics::heap::HeapSize,
+	state::{cache::StateCache, timer::StateStore},
 };
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 

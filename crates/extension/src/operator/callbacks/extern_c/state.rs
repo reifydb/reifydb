@@ -8,8 +8,8 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
-    key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
-    state::timer::TimerKind,
+	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+	state::timer::TimerKind,
 };
 use reifydb_sdk::{
 	common::extern_c::wire::{
@@ -806,13 +806,13 @@ mod seal_anchor_guard_tests {
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
-        common::CommitVersion,
-        interface::{
+		common::CommitVersion,
+		interface::{
 			catalog::{config::ConfigKey, flow::OperatorId},
 			store::MultiVersionRow,
 		},
-        key::operator_state::{GroupId, Keyspace, OperatorStateKey},
-        state::timer::{StateStore, TimerStore},
+		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+		state::timer::{StateStore, TimerStore},
 	};
 	use reifydb_flow::{
 		operator::{

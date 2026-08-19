@@ -9,7 +9,7 @@ use reifydb_runtime::{
 	context::{clock::Clock, rng::Rng},
 	version_epoch::VersionEpoch,
 };
-use reifydb_sqlite::{DbPath, SqliteConfig};
+use reifydb_sqlite::{DbPath, JournalMode, SqliteConfig};
 use reifydb_store_multi::{
 	MultiStore,
 	config::{
@@ -85,6 +85,22 @@ pub(crate) fn multi_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
 	}
 }
 
+/// One connection behind a mutex never contends with itself, so an inherited write-ahead log buys nothing
+/// and leaves a `-wal` companion no checkpointer here ever truncates.
+pub(crate) fn single_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
+	let path = match &config.path {
+		DbPath::File(p) => DbPath::File(p.with_extension("").join("single.db")),
+		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("single.db")),
+		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("single.db")),
+	};
+	SqliteConfig {
+		path,
+		journal_mode: Some(JournalMode::Persist),
+		wal_autocheckpoint: None,
+		..config.clone()
+	}
+}
+
 fn create_memory_store_with(
 	multi_commit_buffer: MultiCommitBufferTier,
 	spawner: &ActorSpawner,
@@ -141,15 +157,7 @@ fn create_sqlite_store_with(
 		clock: Clock::Real,
 	});
 
-	let single_path = match &config.path {
-		DbPath::File(p) => DbPath::File(p.with_extension("").join("single.db")),
-		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("single.db")),
-		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("single.db")),
-	};
-	let single_config = SqliteConfig {
-		path: single_path,
-		..config.clone()
-	};
+	let single_config = single_sqlite_config(&config);
 	let single_store = SingleStore::standard(SingleStoreConfig {
 		buffer: Some(SingleBufferConfig {
 			storage: SingleBufferTier::memory(),

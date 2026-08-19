@@ -7,7 +7,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::internal_error;
 use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sqlite::{
-	SqliteConfig, SqliteTempPathGuard,
+	JournalMode, SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
@@ -22,6 +22,8 @@ use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
 const TABLE_NAME: &str = "entries";
 
+const JOURNAL_MODE: JournalMode = JournalMode::Persist;
+
 #[derive(Clone)]
 pub struct SqlitePersistentStorage {
 	inner: Arc<SqlitePersistentStorageInner>,
@@ -35,9 +37,14 @@ impl SqlitePersistentStorage {
 	#[instrument(name = "store::single::persistent::new", level = "debug", skip(config), fields(
 		db_path = ?config.path,
 		page_size = config.page_size.as_ref().map(|size| size.as_bytes()),
-		journal_mode = config.journal_mode.as_ref().map(|mode| mode.as_str())
+		journal_mode = JOURNAL_MODE.as_str()
 	))]
 	pub fn new(config: SqliteConfig) -> Self {
+		let config = SqliteConfig {
+			journal_mode: Some(JOURNAL_MODE),
+			wal_autocheckpoint: None,
+			..config
+		};
 		let db_path = resolve_db_path(config.path.clone(), "persistent.db");
 		let flags = convert_flags(&config.flags);
 
@@ -474,4 +481,51 @@ fn insert_entries_in_tx(
 		stmt.execute(params![key.as_slice(), value.as_ref().map(|v| v.as_slice())])?;
 	}
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_testing::tempdir::temp_dir;
+
+	use super::*;
+
+	#[test]
+	fn an_explicit_wal_request_from_the_caller_never_reaches_the_connection() {
+		// One connection behind a mutex never contends with itself, so journal_mode is this store's call.
+		temp_dir(|dir| {
+			let storage = SqlitePersistentStorage::new(
+				SqliteConfig::new(dir.join("single.db")).journal_mode(JournalMode::Wal),
+			);
+
+			let guard = storage.inner.conn.lock();
+			let conn = guard.as_ref().expect("write connection is present");
+			let mode: String = conn.pragma_query_value(None, "journal_mode", |r| r.get(0)).unwrap();
+			assert_eq!(mode, "persist", "an inherited journal_mode must be overridden, not applied");
+
+			Ok(())
+		})
+		.unwrap();
+	}
+
+	#[test]
+	fn a_write_leaves_no_wal_companion_beside_a_fresh_database() {
+		// WAL lives in the database header, so a regression survives every existing file and only shows up
+		// here.
+		temp_dir(|dir| {
+			let storage = SqlitePersistentStorage::new(SqliteConfig::new(dir.join("single.db")));
+			storage.set(vec![(EncodedKey::new(vec![1]), Some(CowVec::new(vec![2])))]).unwrap();
+
+			assert!(
+				!dir.join("single.db-wal").exists(),
+				"a -wal companion means the write-ahead log is back"
+			);
+			assert!(
+				!dir.join("single.db-shm").exists(),
+				"a -shm companion means the write-ahead log is back"
+			);
+
+			Ok(())
+		})
+		.unwrap();
+	}
 }

@@ -13,14 +13,14 @@ use reifydb_codec::{
 	row::{operator::state::decode, pod::EncodedPodRow},
 };
 use reifydb_core::{
-    common::{WindowKind, WindowSize},
-    interface::catalog::flow::OperatorId,
-    key::{
+	common::{WindowKind, WindowSize},
+	interface::catalog::flow::OperatorId,
+	key::{
 		EncodableKey,
 		operator_state::{Keyspace, OperatorStateKey},
 	},
-    state::timer::TimerKind,
-    value::column::columns::Columns,
+	state::timer::TimerKind,
+	value::column::columns::Columns,
 };
 use reifydb_flow::{
 	context::FlowContext,

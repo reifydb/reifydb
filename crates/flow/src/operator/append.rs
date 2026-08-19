@@ -6,15 +6,15 @@ use reifydb_codec::{
 	row::operator::state::OperatorState,
 };
 use reifydb_core::{
-    interface::{
+	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 		flow::OperatorCapability,
 	},
-    key::operator_state::{GroupId, GroupStateKey},
-    metrics::{heap::OperatorSample, instruments::counter::Counter},
-    state::timer::TimerKind,
-    value::column::columns::Columns,
+	key::operator_state::{GroupId, GroupStateKey},
+	metrics::{heap::OperatorSample, instruments::counter::Counter},
+	state::timer::TimerKind,
+	value::column::columns::Columns,
 };
 use reifydb_value::{
 	Result,

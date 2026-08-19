@@ -4,9 +4,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-    interface::change::{Change, Diff},
-    state::timer::TimerKind,
-    value::column::columns::Columns,
+	interface::change::{Change, Diff},
+	state::timer::TimerKind,
+	value::column::columns::Columns,
 };
 use reifydb_value::{
 	Result,
