@@ -6,13 +6,13 @@ use reifydb_core::{interface::catalog::flow::OperatorId, state::store::TimerKind
 use reifydb_value::Result;
 
 use crate::{
-	timer::{Timer, TimerDue},
+	timer::{Timer, TimerDue, wheel::TimerWheel},
 	transaction::FlowTransaction,
 };
 
 pub trait TimerExtension: FlowTransaction {
 	fn arm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<()> {
-		self.timer_wheel().arm(operator, self, timer)?;
+		TimerWheel::arm(operator, self, timer)?;
 		self.push_armed(TimerDue {
 			operator_id: operator,
 			due: timer.due,
@@ -21,11 +21,11 @@ pub trait TimerExtension: FlowTransaction {
 	}
 
 	fn disarm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<()> {
-		self.timer_wheel().disarm(operator, self, timer)
+		TimerWheel::disarm(operator, self, timer)
 	}
 
 	fn disarm_timer_by_key(&mut self, operator: OperatorId, kind: TimerKind, key: &EncodedKey) -> Result<()> {
-		self.timer_wheel().disarm_by_key(operator, self, kind, key)
+		TimerWheel::disarm_by_key(operator, self, kind, key)
 	}
 }
 

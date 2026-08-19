@@ -20,11 +20,10 @@ pub fn source_watermark_key() -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::SOURCE_WATERMARK, vec![])
 }
 
-#[derive(Clone, Default)]
 pub struct SourceWatermarks;
 
 impl SourceWatermarks {
-	pub fn advance(&self, source: OperatorId, txn: &mut impl FlowTransaction, at: DateTime) -> Result<()> {
+	pub fn advance(source: OperatorId, txn: &mut impl FlowTransaction, at: DateTime) -> Result<()> {
 		let coordinate = at.to_millis();
 		let previous = raw(source, txn)?;
 		if coordinate <= previous {
@@ -44,11 +43,11 @@ impl SourceWatermarks {
 		txn.state_set(source, &source_watermark_key(), encode_payload(&coordinate)?)
 	}
 
-	pub fn source_watermark(&self, source: OperatorId, txn: &mut impl FlowTransaction) -> Result<DateTime> {
+	pub fn source_watermark(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<DateTime> {
 		Ok(DateTime::from_millis(raw(source, txn)?))
 	}
 
-	pub fn flow_watermark(&self, sources: &[OperatorId], txn: &mut impl FlowTransaction) -> Result<DateTime> {
+	pub fn flow_watermark(sources: &[OperatorId], txn: &mut impl FlowTransaction) -> Result<DateTime> {
 		reifydb_assertions! {
 			assert!(
 				!sources.is_empty(),

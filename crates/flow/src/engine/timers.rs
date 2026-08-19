@@ -13,8 +13,8 @@ use reifydb_value::Result;
 use crate::{
 	engine::{FlowEngineInner, dispatch::Node},
 	operator::host::TxnHostContext,
-	timer::{Timer, TimerDue},
-	transaction::{ChangeCoordinate, FlowTransaction},
+	timer::{Timer, TimerDue, wheel::TimerWheel},
+	transaction::{ChangeCoordinate, FlowTransaction, watermark::SourceWatermarks},
 };
 
 const MAX_TIMER_ROUNDS: u32 = 4_096;
@@ -28,9 +28,6 @@ impl FlowEngineInner {
 		version: CommitVersion,
 		topo: &[OperatorId],
 	) -> Result<u32> {
-		let wheel = txn.timer_wheel();
-
-		let watermarks = txn.source_watermarks();
 		let sources: Vec<OperatorId> = topo
 			.iter()
 			.copied()
@@ -44,7 +41,7 @@ impl FlowEngineInner {
 		let mut rounds = 0u32;
 		let mut budget = MAX_TIMERS_PER_DISPATCH;
 		loop {
-			let watermark = watermarks.flow_watermark(&sources, txn)?;
+			let watermark = SourceWatermarks::flow_watermark(&sources, txn)?;
 			txn.set_flow_watermark(watermark);
 			let armed = txn.take_armed();
 			let mut due: Vec<(OperatorId, Timer)> = Vec::new();
@@ -53,7 +50,7 @@ impl FlowEngineInner {
 					break;
 				}
 				let operator_id = candidate.operator_id;
-				let (timers, next) = wheel.take_due(operator_id, txn, watermark, budget)?;
+				let (timers, next) = TimerWheel::take_due(operator_id, txn, watermark, budget)?;
 				for timer in timers {
 					budget -= 1;
 					due.push((operator_id, timer));

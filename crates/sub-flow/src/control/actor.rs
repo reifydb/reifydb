@@ -726,7 +726,8 @@ mod pull_protocol {
 	use reifydb_flow::{
 		operator::provider::EmptyOperatorProvider,
 		transaction::{
-			DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::apply_operator_state,
+			DeferredParams, FlowTransaction, deferred::DeferredTransaction,
+			substrate::apply_operator_state, watermark::SourceWatermarks,
 		},
 	};
 	use reifydb_runtime::sync::waiter::WaiterHandle;
@@ -1024,7 +1025,7 @@ mod pull_protocol {
 				substrate: substrate.clone(),
 			});
 			for source in sources {
-				substrate.watermarks.advance(source, &mut txn, at).expect("advance watermark");
+				SourceWatermarks::advance(source, &mut txn, at).expect("advance watermark");
 			}
 
 			let advanced = txn.take_pending();

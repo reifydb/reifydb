@@ -26,6 +26,7 @@ use crate::{
 	transaction::{
 		ChangeCoordinate, FlowTransaction,
 		frontier::{Frontier, OutputFrontiers},
+		watermark::SourceWatermarks,
 	},
 };
 
@@ -313,13 +314,12 @@ fn freeze_arrival_frontier<T: FlowTransaction>(
 	sources: &[OperatorId],
 	arrivals: &[SourceArrival],
 ) -> Result<()> {
-	let watermarks = txn.source_watermarks();
 	if !sources.is_empty() {
-		let frontier = watermarks.flow_watermark(sources, txn)?;
+		let frontier = SourceWatermarks::flow_watermark(sources, txn)?;
 		txn.set_flow_watermark(frontier);
 	}
 	for arrival in arrivals {
-		watermarks.advance(arrival.source, txn, arrival.at)?;
+		SourceWatermarks::advance(arrival.source, txn, arrival.at)?;
 	}
 	Ok(())
 }
@@ -601,9 +601,8 @@ mod tests {
 		let topo = flow.topological_order().unwrap();
 		inner.process_version(&mut txn, &flow, FlowId(1), CommitVersion(5), vec![], &topo).unwrap();
 
-		let watermarks = txn.source_watermarks();
 		assert_eq!(
-			watermarks.source_watermark(SOURCE, &mut txn).unwrap(),
+			SourceWatermarks::source_watermark(SOURCE, &mut txn).unwrap(),
 			at_millis(30_000),
 			"the published frontier must reach the watermark through process_version, not only the \
 			 helper"
@@ -650,9 +649,8 @@ mod tests {
 		)
 		.unwrap();
 
-		let watermarks = txn.source_watermarks();
 		assert_eq!(
-			watermarks.source_watermark(SOURCE, &mut txn).unwrap(),
+			SourceWatermarks::source_watermark(SOURCE, &mut txn).unwrap(),
 			at_millis(30_000),
 			"the assertion must reach the frontier through process_version, not only the helper"
 		);
@@ -669,9 +667,8 @@ mod tests {
 		let arrivals = completeness_arrivals(&sources, FlowId(1), &asserted);
 		freeze_arrival_frontier(&mut txn, &[SOURCE], &arrivals).unwrap();
 
-		let watermarks = txn.source_watermarks();
 		assert_eq!(
-			watermarks.source_watermark(SOURCE, &mut txn).unwrap(),
+			SourceWatermarks::source_watermark(SOURCE, &mut txn).unwrap(),
 			at_millis(30_000),
 			"an assertion with no rows in the commit must still advance the source"
 		);
@@ -710,9 +707,8 @@ mod tests {
 			"the frontier must be the one that existed before this version's rows, not after them"
 		);
 
-		let watermarks = txn.source_watermarks();
 		assert_eq!(
-			watermarks.source_watermark(SOURCE, &mut txn).unwrap(),
+			SourceWatermarks::source_watermark(SOURCE, &mut txn).unwrap(),
 			at_millis(20_000),
 			"the version's rows must still have advanced the source, or the frontier is only stale \
 			 because nothing was folded in at all"

@@ -22,7 +22,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	operator::{HostOperator, apply::ApplyOperator, host::TxnHostContext, sink::DurableSink},
-	timer::Timer,
+	timer::{Timer, wheel::TimerWheel},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
@@ -253,12 +253,11 @@ impl<O: HostOperator> Harness<O> {
 		const MAX_ROUNDS: u32 = 4_096;
 		let watermark = DateTime::from_epoch_millis(watermark_ms).expect("a settle watermark is representable");
 		let operator = self.operator.id();
-		let wheel = self.substrate.timers.clone();
 		let mut emitted = Vec::new();
 		let mut rounds = 0u32;
 		loop {
 			let mut txn = self.begin(watermark);
-			let (due, _next) = wheel.take_due(operator, &mut txn, watermark, usize::MAX)?;
+			let (due, _next) = TimerWheel::take_due(operator, &mut txn, watermark, usize::MAX)?;
 			if due.is_empty() {
 				self.end(txn);
 				return Ok(emitted);

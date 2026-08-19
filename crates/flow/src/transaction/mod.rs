@@ -46,11 +46,10 @@ pub mod watermark;
 
 use crate::{
 	operator::sink::DurableSink,
-	timer::{Timer, TimerDue, wheel::TimerWheel},
+	timer::{Timer, TimerDue},
 	transaction::{
 		read::{flow_merge_pending_iterator, flow_merge_pending_iterator_rev},
 		substrate::FlowSubstrate,
-		watermark::SourceWatermarks,
 	},
 };
 
@@ -267,14 +266,6 @@ pub trait FlowTransaction: Sized + Send + 'static {
 
 	fn dictionary_allocators(&self) -> DictionaryAllocatorRegistry {
 		self.substrate().dictionary.clone()
-	}
-
-	fn source_watermarks(&self) -> SourceWatermarks {
-		self.substrate().watermarks.clone()
-	}
-
-	fn timer_wheel(&self) -> TimerWheel {
-		self.substrate().timers.clone()
 	}
 
 	fn operator_store(&self) -> OperatorStore {

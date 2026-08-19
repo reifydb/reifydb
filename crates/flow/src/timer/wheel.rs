@@ -28,11 +28,10 @@ use crate::{
 	},
 };
 
-#[derive(Clone, Default)]
 pub struct TimerWheel;
 
 impl TimerWheel {
-	pub fn arm(&self, operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
+	pub fn arm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
 		if !timer.kind.is_unique() {
 			txn.state_set(operator, &timer_key(timer.due, timer.kind, &timer.key), encode_payload(&1u64)?)?;
 			return Ok(());
@@ -63,7 +62,7 @@ impl TimerWheel {
 		Ok(())
 	}
 
-	pub fn disarm(&self, operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
+	pub fn disarm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
 		if timer.kind.is_unique() {
 			let index = index_key(timer.kind, &timer.key);
 			if armed_at(operator, txn, &index)? == Some(timer.due) {
@@ -75,7 +74,6 @@ impl TimerWheel {
 	}
 
 	pub fn disarm_by_key(
-		&self,
 		operator: OperatorId,
 		txn: &mut impl FlowTransaction,
 		kind: TimerKind,
@@ -100,7 +98,7 @@ impl TimerWheel {
 		Ok(())
 	}
 
-	pub fn next_due_stored(&self, operator: OperatorId, store: &OperatorStore) -> Option<TimerDue> {
+	pub fn next_due_stored(operator: OperatorId, store: &OperatorStore) -> Option<TimerDue> {
 		let wheel = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
 		let batch = store.range_batch(operator, wheel, 1);
 		let (key, _) = batch.items.first()?;
@@ -112,7 +110,6 @@ impl TimerWheel {
 	}
 
 	pub fn take_due(
-		&self,
 		operator: OperatorId,
 		txn: &mut impl FlowTransaction,
 		watermark: DateTime,

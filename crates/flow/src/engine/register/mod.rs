@@ -26,8 +26,11 @@ use reifydb_value::{Result, error::Error, reifydb_assertions, value::duration::D
 use tracing::{info, instrument};
 
 use crate::{
-	context::FlowContext, engine::FlowEngineInner, error::FlowGraphError, operator::BoxedHostOperator,
-	timer::TimerDue,
+	context::FlowContext,
+	engine::FlowEngineInner,
+	error::FlowGraphError,
+	operator::BoxedHostOperator,
+	timer::{TimerDue, wheel::TimerWheel},
 };
 
 impl FlowEngineInner {
@@ -75,11 +78,10 @@ impl FlowEngineInner {
 			added.push(operator_id);
 		}
 
-		let wheel = self.substrate.timers.clone();
 		let store = self.substrate.operators.as_ref().expect("flow engine was built without an operator store");
 		let armed: Vec<TimerDue> = flow
 			.get_operator_ids()
-			.filter_map(|operator_id| wheel.next_due_stored(operator_id, store))
+			.filter_map(|operator_id| TimerWheel::next_due_stored(operator_id, store))
 			.collect();
 		self.timers.rebuild(flow.id, armed);
 

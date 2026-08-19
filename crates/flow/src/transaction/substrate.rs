@@ -11,23 +11,17 @@ use reifydb_core::{
 use reifydb_store_operator::{store::OperatorStore, types::OperatorWrite};
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 
-use crate::{
-	timer::wheel::TimerWheel,
-	transaction::{
-		anchor::{decode_anchor_expiry, decode_anchor_suffix},
-		frontier::OutputFrontiers,
-		memo::StateMemo,
-		scope::{OperatorScope, operator_state_coordinates},
-		watermark::SourceWatermarks,
-	},
+use crate::transaction::{
+	anchor::{decode_anchor_expiry, decode_anchor_suffix},
+	frontier::OutputFrontiers,
+	memo::StateMemo,
+	scope::{OperatorScope, operator_state_coordinates},
 };
 
 #[derive(Clone)]
 pub struct FlowSubstrate {
 	pub dictionary: DictionaryAllocatorRegistry,
-	pub watermarks: SourceWatermarks,
 	pub frontiers: OutputFrontiers,
-	pub timers: TimerWheel,
 	pub operators: Option<OperatorStore>,
 	pub memo: StateMemo,
 }
@@ -36,9 +30,7 @@ impl FlowSubstrate {
 	pub fn new(dictionary: DictionaryAllocatorRegistry) -> Self {
 		Self {
 			dictionary,
-			watermarks: SourceWatermarks::default(),
 			frontiers: OutputFrontiers::default(),
-			timers: TimerWheel::default(),
 			operators: None,
 			memo: StateMemo::default(),
 		}

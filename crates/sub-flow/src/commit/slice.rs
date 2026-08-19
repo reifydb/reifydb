@@ -513,6 +513,7 @@ mod integration {
 		transaction::{
 			read::{ReadFrom, read_from},
 			substrate::{FlowSubstrate, apply_operator_state},
+			watermark::SourceWatermarks,
 		},
 	};
 	use reifydb_rql::flow::{
@@ -629,8 +630,7 @@ mod integration {
 		flow_engine.add_sink(flow, OperatorId(3), ObjectId::View(ViewId(3)));
 
 		let mut seed = seeding_txn(&engine, &flow_engine, version);
-		let watermarks = seed.source_watermarks();
-		watermarks.advance(OperatorId(1), &mut seed, at_millis(30_000)).unwrap();
+		SourceWatermarks::advance(OperatorId(1), &mut seed, at_millis(30_000)).unwrap();
 		// "Restored state" means the watermark row is in the store; an uncommitted advance is not restored
 		// state.
 		let seeded = seed.take_pending();

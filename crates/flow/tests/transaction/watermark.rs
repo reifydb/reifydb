@@ -52,12 +52,11 @@ fn the_source_watermark_never_moves_backwards() {
 	// that have already sealed.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine, MockClock::from_millis(0));
-	let watermarks = SourceWatermarks::default();
 
-	watermarks.advance(SOURCE_A, &mut txn, at_millis(5_000)).unwrap();
-	watermarks.advance(SOURCE_A, &mut txn, at_millis(3_000)).unwrap();
+	SourceWatermarks::advance(SOURCE_A, &mut txn, at_millis(5_000)).unwrap();
+	SourceWatermarks::advance(SOURCE_A, &mut txn, at_millis(3_000)).unwrap();
 
-	assert_eq!(watermarks.source_watermark(SOURCE_A, &mut txn).unwrap(), at_millis(5_000));
+	assert_eq!(SourceWatermarks::source_watermark(SOURCE_A, &mut txn).unwrap(), at_millis(5_000));
 }
 
 #[test]
@@ -66,39 +65,36 @@ fn the_flow_watermark_tracks_the_slowest_source() {
 	// source's state.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine, MockClock::from_millis(0));
-	let watermarks = SourceWatermarks::default();
 	let sources = [SOURCE_A, SOURCE_B];
 
-	watermarks.advance(SOURCE_A, &mut txn, at_millis(10_000)).unwrap();
-	watermarks.advance(SOURCE_B, &mut txn, at_millis(2_000)).unwrap();
-	assert_eq!(watermarks.flow_watermark(&sources, &mut txn).unwrap(), at_millis(2_000));
+	SourceWatermarks::advance(SOURCE_A, &mut txn, at_millis(10_000)).unwrap();
+	SourceWatermarks::advance(SOURCE_B, &mut txn, at_millis(2_000)).unwrap();
+	assert_eq!(SourceWatermarks::flow_watermark(&sources, &mut txn).unwrap(), at_millis(2_000));
 
-	watermarks.advance(SOURCE_A, &mut txn, at_millis(20_000)).unwrap();
+	SourceWatermarks::advance(SOURCE_A, &mut txn, at_millis(20_000)).unwrap();
 	assert_eq!(
-		watermarks.flow_watermark(&sources, &mut txn).unwrap(),
+		SourceWatermarks::flow_watermark(&sources, &mut txn).unwrap(),
 		at_millis(2_000),
 		"the fast source must not advance the flow watermark past the slow one"
 	);
 
-	watermarks.advance(SOURCE_B, &mut txn, at_millis(12_000)).unwrap();
-	assert_eq!(watermarks.flow_watermark(&sources, &mut txn).unwrap(), at_millis(12_000));
+	SourceWatermarks::advance(SOURCE_B, &mut txn, at_millis(12_000)).unwrap();
+	assert_eq!(SourceWatermarks::flow_watermark(&sources, &mut txn).unwrap(), at_millis(12_000));
 }
 
 #[test]
 fn a_restart_resumes_from_the_last_advance_not_from_an_earlier_one() {
 	// Every advance must reach the store; resuming behind the live value re-seals rows already sealed.
 	let engine = TestEngine::new();
-	let warm = SourceWatermarks::default();
 
 	let mut txn = deferred(&engine, MockClock::from_millis(0));
-	warm.advance(SOURCE_A, &mut txn, at_millis(5_400)).unwrap();
-	warm.advance(SOURCE_A, &mut txn, at_millis(5_900)).unwrap();
+	SourceWatermarks::advance(SOURCE_A, &mut txn, at_millis(5_400)).unwrap();
+	SourceWatermarks::advance(SOURCE_A, &mut txn, at_millis(5_900)).unwrap();
 	commit_pending(&engine, &mut txn);
 
 	let mut cold_txn = deferred(&engine, MockClock::from_millis(0));
-	let cold = SourceWatermarks::default();
 	assert_eq!(
-		cold.source_watermark(SOURCE_A, &mut cold_txn).unwrap(),
+		SourceWatermarks::source_watermark(SOURCE_A, &mut cold_txn).unwrap(),
 		at_millis(5_900),
 		"a second advance inside the same second must persist too"
 	);
@@ -111,10 +107,9 @@ fn an_empty_source_hydrates_to_zero_not_to_now() {
 	// first row is processed.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine, MockClock::from_millis(500_000));
-	let watermarks = SourceWatermarks::default();
 
-	assert_eq!(watermarks.source_watermark(SOURCE_A, &mut txn).unwrap(), at_millis(0));
-	assert_eq!(watermarks.flow_watermark(&[SOURCE_A], &mut txn).unwrap(), at_millis(0));
+	assert_eq!(SourceWatermarks::source_watermark(SOURCE_A, &mut txn).unwrap(), at_millis(0));
+	assert_eq!(SourceWatermarks::flow_watermark(&[SOURCE_A], &mut txn).unwrap(), at_millis(0));
 }
 
 #[test]
@@ -126,13 +121,12 @@ fn the_watermark_is_the_min_merge_of_stamped_arrivals_never_the_clock() {
 	let engine = TestEngine::new();
 	let clock = MockClock::from_millis(100_000);
 	let mut txn = deferred(&engine, clock.clone());
-	let watermarks = SourceWatermarks::default();
 	let sources = [SOURCE_A, SOURCE_B];
 
-	watermarks.advance(SOURCE_A, &mut txn, at_millis(10_000)).unwrap();
-	watermarks.advance(SOURCE_B, &mut txn, at_millis(5_000)).unwrap();
+	SourceWatermarks::advance(SOURCE_A, &mut txn, at_millis(10_000)).unwrap();
+	SourceWatermarks::advance(SOURCE_B, &mut txn, at_millis(5_000)).unwrap();
 	assert_eq!(
-		watermarks.flow_watermark(&sources, &mut txn).unwrap(),
+		SourceWatermarks::flow_watermark(&sources, &mut txn).unwrap(),
 		at_millis(5_000),
 		"the watermark must be the min-merge of the arrival-derived sources, not the clock"
 	);
@@ -140,7 +134,7 @@ fn the_watermark_is_the_min_merge_of_stamped_arrivals_never_the_clock() {
 	clock.advance_millis(50_000);
 
 	assert_eq!(
-		watermarks.flow_watermark(&sources, &mut txn).unwrap(),
+		SourceWatermarks::flow_watermark(&sources, &mut txn).unwrap(),
 		at_millis(5_000),
 		"with no new data the watermark must hold however far the clock runs"
 	);

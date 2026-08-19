@@ -13,7 +13,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 use crate::{
 	engine::FlowEngineInner,
 	operator::{BoxedHostOperator, state::seal::policy::seal_horizon},
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, watermark::SourceWatermarks},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,7 +70,6 @@ fn output_frontiers<T: FlowTransaction>(
 	operators: &BTreeMap<OperatorId, BoxedHostOperator>,
 	topo: &[OperatorId],
 ) -> Result<BTreeMap<OperatorId, DateTime>> {
-	let watermarks = txn.source_watermarks();
 	let mut computed: BTreeMap<OperatorId, DateTime> = BTreeMap::new();
 
 	for operator_id in topo {
@@ -79,7 +78,7 @@ fn output_frontiers<T: FlowTransaction>(
 		};
 
 		let input = if node.ty.declares_time() {
-			Some(watermarks.source_watermark(*operator_id, txn)?)
+			Some(SourceWatermarks::source_watermark(*operator_id, txn)?)
 		} else {
 			let mut merged: Option<DateTime> = None;
 			for source in &node.inputs {
@@ -316,9 +315,8 @@ mod tests {
 			} = self;
 			inner.register_flow_dag(builder.build());
 			let mut txn = deferred(&engine);
-			let watermarks = txn.source_watermarks();
 			for advance in advances {
-				watermarks.advance(advance.source, &mut txn, advance.at).unwrap();
+				SourceWatermarks::advance(advance.source, &mut txn, advance.at).unwrap();
 			}
 			let mut held = inner.holds(&mut txn, FLOW).unwrap();
 			held.sort_by_key(|hold| hold.object);
