@@ -3,12 +3,22 @@
 
 use std::fmt::Debug;
 
-use reifydb_core::metrics::heap::HeapSize;
+use reifydb_core::{
+	metrics::heap::HeapSize,
+	state::timer::{StateStore, TimerStore},
+};
 use reifydb_macro::operator_state;
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+};
 
 use crate::{
-	operator::state::seal::coord::{Coord, IsZero},
+	operator::state::seal::{
+		coord::{Coord, IsZero},
+		domain::SealDomain,
+		ledger::SealLedger,
+	},
 	window::span::Slot,
 };
 
@@ -145,6 +155,31 @@ impl Coord for OrdinalCoord {
 	}
 }
 
+impl SealDomain for OrdinalCoord {
+	type Lateness = RowSpan;
+
+	fn arms_timer() -> bool {
+		false
+	}
+
+	fn lateness_duration(_lateness: RowSpan) -> Option<Duration> {
+		None
+	}
+
+	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, _lateness: RowSpan) -> Result<()> {
+		SealLedger::observe(store, newest.to_order())?;
+		Ok(())
+	}
+
+	fn frontier(store: &mut (impl StateStore + TimerStore)) -> Result<Self> {
+		Ok(Self::from_order(SealLedger::read_order(store)?.unwrap_or(0)))
+	}
+
+	fn horizon(frontier: Self, lateness: RowSpan) -> Self {
+		frontier.saturating_sub_span(lateness)
+	}
+}
+
 impl Slot for OrdinalCoord {
 	type Coord = OrdinalCoord;
 
@@ -162,6 +197,7 @@ mod tests {
 	use reifydb_codec::row::operator::state::encode;
 
 	use super::*;
+	use crate::operator::state::mock::MockStore;
 
 	struct Row {
 		time: DateTime,
@@ -229,6 +265,30 @@ mod tests {
 		assert_eq!(coord.checked_sub_span(RowSpan::of(11)), None);
 		assert_eq!(coord.checked_sub_span(RowSpan::of(10)), Some(OrdinalCoord::from_arrival_counter(0)));
 		assert_eq!(coord.saturating_sub_span(RowSpan::of(11)), OrdinalCoord::from_arrival_counter(0));
+	}
+
+	#[test]
+	fn a_row_ordinal_seals_without_the_wheel_and_declares_no_wall_clock_lateness() {
+		// a row count fed to duration arithmetic lands just past the epoch, fires at once and rearms forever
+		assert!(!<OrdinalCoord as SealDomain>::arms_timer());
+		assert_eq!(<OrdinalCoord as SealDomain>::lateness_duration(RowSpan::of(64)), None);
+	}
+
+	#[test]
+	fn an_ordinal_frontier_moves_inline_from_the_batch_and_only_forward() {
+		// nothing arms a timer here, so the batch itself must advance the ledger or the horizon never moves
+		let mut store = MockStore::default();
+
+		assert_eq!(OrdinalCoord::frontier(&mut store).unwrap(), OrdinalCoord::from_arrival_counter(0));
+
+		OrdinalCoord::observe(&mut store, OrdinalCoord::from_arrival_counter(90), RowSpan::ZERO).unwrap();
+		OrdinalCoord::observe(&mut store, OrdinalCoord::from_arrival_counter(30), RowSpan::ZERO).unwrap();
+
+		assert_eq!(OrdinalCoord::frontier(&mut store).unwrap(), OrdinalCoord::from_arrival_counter(90));
+		assert_eq!(
+			OrdinalCoord::horizon(OrdinalCoord::from_arrival_counter(90), RowSpan::of(64)),
+			OrdinalCoord::from_arrival_counter(26)
+		);
 	}
 
 	#[test]

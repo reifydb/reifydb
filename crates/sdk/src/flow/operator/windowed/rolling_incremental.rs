@@ -3,25 +3,25 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
+use reifydb_codec::key::encoded::IntoEncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
 	metrics::heap::{HeapSize, OperatorSample},
 };
 use reifydb_flow::{
-	operator::state::seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
-	timer::Timer as FlowTimer,
+	operator::state::seal::{coord::Coord, domain::SealDomain, policy::is_sealed},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, rolling::RollingBuckets,
 			rolling_incremental::RollingIncrementalEngine,
 		},
+		span::{Slot, SlotCoord},
 	},
 };
 use reifydb_value::{
 	config::Config,
-	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{duration::Duration, row_number::RowNumber},
 };
 use tracing::debug;
 
@@ -36,12 +36,13 @@ use crate::{
 		},
 		context::GuestContext,
 		timer::Timer,
-		view::{ChangeView, ColumnsView, DiffView, RowView},
+		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
-			advance_seal_frontier, arm_seal_timer, bucket_of,
+			bucket_of,
 			guest_as_host::GuestAsHost,
-			rolling::{RollingOperator, RollingRegistration},
-			seal_frontier, seal_horizon_of, window_engine_config,
+			observe_batch,
+			rolling::{Anchor, RollingOperator, RollingRegistration},
+			seal_frontier, timer_frontier, window_engine_config,
 		},
 	},
 };
@@ -60,11 +61,11 @@ pub trait RollingIncrementalOperator: RollingOperator {
 		group: &Self::GroupKey,
 		running: &Self::Running,
 		newest_value: &WindowValue<Self>,
-		newest_coord: DateTime,
+		newest_coord: SlotCoord<Self::WindowSlot>,
 	) -> Option<Self::Output>;
 }
 
-pub type RollingBuffer<A> = BTreeMap<DateTime, <A as RollingOperator>::Accumulator>;
+pub type RollingBuffer<A> = BTreeMap<Anchor<A>, <A as RollingOperator>::Accumulator>;
 
 pub struct RollingIncrementalDriver<A>
 where
@@ -73,7 +74,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: RollingIncrementalEngine<A::GroupKey, DateTime, A::Accumulator, A::Running>,
+	engine: RollingIncrementalEngine<A::GroupKey, Anchor<A>, A::Accumulator, A::Running>,
 }
 
 impl<A> RollingIncrementalDriver<A>
@@ -81,17 +82,18 @@ where
 	A: RollingIncrementalOperator + RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	A::Running: Send + Sync + HeapSize,
 	WindowContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn expire_through<C: GuestContext>(
-		engine: &mut RollingIncrementalEngine<A::GroupKey, DateTime, A::Accumulator, A::Running>,
+		engine: &mut RollingIncrementalEngine<A::GroupKey, Anchor<A>, A::Accumulator, A::Running>,
 		store: &mut GuestAsHost<'_, C>,
-		horizon: DateTime,
+		horizon: Anchor<A>,
 	) -> Result<()> {
-		if horizon > <DateTime as Coord>::from_order(0) {
+		if horizon > <Anchor<A> as Coord>::from_order(0) {
 			engine.expire_meta(store, horizon.to_order())?;
 		}
 		Ok(())
@@ -117,6 +119,7 @@ where
 	A: RollingIncrementalOperator + RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	A::Running: Send + Sync + HeapSize,
 	WindowContribution<A>: Send + Sync,
@@ -140,17 +143,15 @@ where
 			return Ok(());
 		};
 		let mut store = GuestAsHost(ctx);
-		let fired = FiredAt::of(&FlowTimer {
-			due: timer.due,
-			kind: timer.kind,
-			key: EncodedKey::new(timer.key),
-		});
-		let frontier: DateTime = advance_seal_frontier(&mut store, fired)?;
-		Self::expire_through(&mut self.engine, &mut store, seal_horizon_of(frontier, lateness))
+		let Some(frontier) = timer_frontier::<Anchor<A>>(&mut store, timer)? else {
+			return Ok(());
+		};
+		let horizon = <Anchor<A> as SealDomain>::horizon(frontier, lateness);
+		Self::expire_through(&mut self.engine, &mut store, horizon)
 	}
 
 	fn lateness(&self) -> Option<Duration> {
-		self.aggregator.lateness()
+		self.aggregator.lateness().and_then(<Anchor<A> as SealDomain>::lateness_duration)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
@@ -163,10 +164,10 @@ where
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, coord)| *coord).max();
 			if let Some(newest) = newest {
-				arm_seal_timer(&mut store, newest, lateness)?;
+				observe_batch(&mut store, newest, lateness)?;
 			}
-			let watermark: DateTime = seal_frontier(&mut store)?;
-			let horizon = seal_horizon_of(watermark, lateness);
+			let watermark = seal_frontier::<Anchor<A>>(&mut store)?;
+			let horizon = <Anchor<A> as SealDomain>::horizon(watermark, lateness);
 			Self::expire_through(&mut self.engine, &mut store, horizon)?;
 			let mut dropped = 0u64;
 			buckets.retain(|(_, coord), events| {
@@ -221,13 +222,14 @@ where
 	}
 }
 
-type EventBuckets<A> = RollingBuckets<<A as RollingOperator>::GroupKey, DateTime, WindowContribution<A>>;
+type EventBuckets<A> = RollingBuckets<<A as RollingOperator>::GroupKey, Anchor<A>, WindowContribution<A>>;
 
 impl<A> RollingIncrementalDriver<A>
 where
 	A: RollingIncrementalOperator + RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync,
 	A::Running: Send + Sync,
 	WindowContribution<A>: Send + Sync,
@@ -248,7 +250,7 @@ where
 							let Some(row) = cols.row(i) else {
 								continue;
 							};
-							let Some(coord) = row.row_time() else {
+							let Some(slot) = self.aggregator.coord(&row) else {
 								continue;
 							};
 							let Some((group, contribution)) =
@@ -258,7 +260,10 @@ where
 							};
 							buckets.entry((
 								group,
-								bucket_of(coord, self.aggregator.bucket_size()),
+								bucket_of(
+									slot.order_key(),
+									self.aggregator.bucket_size(),
+								),
 							))
 							.or_default()
 							.push(AccumulatorEvent::Add(contribution));
@@ -270,29 +275,31 @@ where
 						let n = pre.row_count().min(post.row_count());
 						for i in 0..n {
 							if let Some(pre_row) = pre.row(i)
-								&& let Some(coord) = pre_row.row_time() && let Some((
-								group,
-								contribution,
-							)) =
-								self.aggregator.extract(ctx, &pre_row)
+								&& let Some(slot) = self.aggregator.coord(&pre_row)
+								&& let Some((group, contribution)) =
+									self.aggregator.extract(ctx, &pre_row)
 							{
 								buckets.entry((
 									group,
-									bucket_of(coord, self.aggregator.bucket_size()),
+									bucket_of(
+										slot.order_key(),
+										self.aggregator.bucket_size(),
+									),
 								))
 								.or_default()
 								.push(AccumulatorEvent::Remove(contribution));
 							}
 							if let Some(post_row) = post.row(i)
-								&& let Some(coord) = post_row.row_time() && let Some((
-								group,
-								contribution,
-							)) =
-								self.aggregator.extract(ctx, &post_row)
+								&& let Some(slot) = self.aggregator.coord(&post_row)
+								&& let Some((group, contribution)) =
+									self.aggregator.extract(ctx, &post_row)
 							{
 								buckets.entry((
 									group,
-									bucket_of(coord, self.aggregator.bucket_size()),
+									bucket_of(
+										slot.order_key(),
+										self.aggregator.bucket_size(),
+									),
 								))
 								.or_default()
 								.push(AccumulatorEvent::Add(contribution));
@@ -306,7 +313,7 @@ where
 							let Some(row) = cols.row(i) else {
 								continue;
 							};
-							let Some(coord) = row.row_time() else {
+							let Some(slot) = self.aggregator.coord(&row) else {
 								continue;
 							};
 							let Some((group, contribution)) =
@@ -316,7 +323,10 @@ where
 							};
 							buckets.entry((
 								group,
-								bucket_of(coord, self.aggregator.bucket_size()),
+								bucket_of(
+									slot.order_key(),
+									self.aggregator.bucket_size(),
+								),
 							))
 							.or_default()
 							.push(AccumulatorEvent::Remove(contribution));

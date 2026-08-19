@@ -14,21 +14,20 @@ use reifydb_core::{
 use reifydb_flow::{
 	operator::state::{
 		reaper::{drain, enqueue},
-		seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
+		seal::{coord::Coord, domain::SealDomain, policy::is_sealed},
 	},
-	timer::Timer as FlowTimer,
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
-		span::WindowSpan,
+		span::{Slot, SlotCoord, WindowAnchor, WindowSpan},
 	},
 };
 use reifydb_value::{
 	config::Config,
-	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{duration::Duration, row_number::RowNumber},
 };
 use tracing::debug;
 
@@ -45,8 +44,8 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			advance_seal_frontier, arm_seal_timer, group_of, guest_as_host::GuestAsHost,
-			intern_window_groups, seal_frontier, seal_horizon_of, window_engine_config,
+			group_of, guest_as_host::GuestAsHost, intern_window_groups, observe_batch, seal_frontier,
+			timer_frontier, window_engine_config,
 		},
 	},
 };
@@ -55,15 +54,24 @@ const SEAL_REAP_BATCH: usize = 256;
 
 type AccumulatorContribution<A> = <<A as TumblingOperator>::Accumulator as WindowAccumulator>::Contribution;
 type AccumulatorValue<A> = <<A as TumblingOperator>::Accumulator as WindowAccumulator>::Output;
-type Buckets<A> = TumblingBuckets<<A as TumblingOperator>::GroupKey, DateTime, AccumulatorContribution<A>>;
-type WindowOrder<A> = Vec<(<A as TumblingOperator>::GroupKey, WindowSpan<DateTime>)>;
+type Anchor<A> = SlotCoord<<A as TumblingOperator>::WindowSlot>;
+type Lateness<A> = <Anchor<A> as SealDomain>::Lateness;
+type Buckets<A> = TumblingBuckets<<A as TumblingOperator>::GroupKey, Anchor<A>, AccumulatorContribution<A>>;
+type WindowOrder<A> = Vec<(<A as TumblingOperator>::GroupKey, WindowSpan<Anchor<A>>)>;
 
 pub trait TumblingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + StateCodec;
 
+	type WindowSlot: Slot<Coord: WindowAnchor + SealDomain + Hash + StateCodec + HeapSize + Send + Sync>
+		+ Hash
+		+ StateCodec
+		+ HeapSize;
+
 	type Accumulator: WindowAccumulator;
 
 	type Output: Clone + Debug + PartialEq;
+
+	fn coord(&self, row: &impl RowView) -> Option<Self::WindowSlot>;
 
 	fn extract(
 		&self,
@@ -71,16 +79,16 @@ pub trait TumblingOperator {
 		row: &impl RowView,
 	) -> Option<(Self::GroupKey, AccumulatorContribution<Self>)>;
 
-	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime>;
+	fn window_for(&self, coord: SlotCoord<Self::WindowSlot>) -> WindowSpan<SlotCoord<Self::WindowSlot>>;
 
-	fn lateness(&self) -> Option<Duration> {
+	fn lateness(&self) -> Option<<SlotCoord<Self::WindowSlot> as SealDomain>::Lateness> {
 		None
 	}
 
 	fn build_output(
 		&self,
 		group: &Self::GroupKey,
-		span: WindowSpan<DateTime>,
+		span: WindowSpan<SlotCoord<Self::WindowSlot>>,
 		value: AccumulatorValue<Self>,
 	) -> Option<Self::Output>;
 
@@ -103,7 +111,7 @@ where
 
 	fn from_config(operator_id: OperatorId, config: &Config) -> Result<Self>;
 
-	fn encode_row_key(&self, group: &Self::GroupKey, window_start: DateTime) -> EncodedKey;
+	fn encode_row_key(&self, group: &Self::GroupKey, window_start: SlotCoord<Self::WindowSlot>) -> EncodedKey;
 }
 
 pub struct TumblingDriver<A>
@@ -113,7 +121,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: TumblingEngine<A::GroupKey, DateTime, A::Accumulator>,
+	engine: TumblingEngine<A::GroupKey, Anchor<A>, A::Accumulator>,
 }
 
 impl<A> TumblingDriver<A>
@@ -162,13 +170,13 @@ where
 			let Some(row) = cols.row(i) else {
 				continue;
 			};
-			let Some(coord) = row.row_time() else {
+			let Some(slot) = self.aggregator.coord(&row) else {
 				continue;
 			};
 			let Some((group, contribution)) = self.aggregator.extract(ctx, &row) else {
 				continue;
 			};
-			let span = self.aggregator.window_for(coord);
+			let span = self.aggregator.window_for(slot.order_key());
 			let event = if is_add {
 				AccumulatorEvent::Add(contribution)
 			} else {
@@ -184,18 +192,19 @@ where
 	A: TumblingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync,
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn expire_through<C: GuestContext>(
-		engine: &mut TumblingEngine<A::GroupKey, DateTime, A::Accumulator>,
+		engine: &mut TumblingEngine<A::GroupKey, Anchor<A>, A::Accumulator>,
 		store: &mut GuestAsHost<'_, C>,
-		frontier: DateTime,
-		lateness: Duration,
+		frontier: Anchor<A>,
+		lateness: Lateness<A>,
 	) -> Result<()> {
-		let horizon = seal_horizon_of(frontier, lateness);
-		if horizon <= <DateTime as Coord>::from_order(0) {
+		let horizon = <Anchor<A> as SealDomain>::horizon(frontier, lateness);
+		if horizon <= <Anchor<A> as Coord>::from_order(0) {
 			return Ok(());
 		}
 		for window in engine.expire(store, horizon.to_order().saturating_sub(1))? {
@@ -204,7 +213,7 @@ where
 		engine.expire_meta(store, horizon.to_order())?;
 		let drained = drain(store, engine, SEAL_REAP_BATCH)?;
 		if !drained.queue_is_empty() {
-			arm_seal_timer(store, frontier, lateness)?;
+			observe_batch(store, frontier, lateness)?;
 		}
 		Ok(())
 	}
@@ -261,6 +270,7 @@ where
 	A: TumblingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
@@ -287,17 +297,14 @@ where
 			..
 		} = &mut *self;
 		let mut store = GuestAsHost(ctx);
-		let fired = FiredAt::of(&FlowTimer {
-			due: timer.due,
-			kind: timer.kind,
-			key: EncodedKey::new(timer.key),
-		});
-		let frontier = advance_seal_frontier(&mut store, fired)?;
+		let Some(frontier) = timer_frontier::<Anchor<A>>(&mut store, timer)? else {
+			return Ok(());
+		};
 		Self::expire_through(engine, &mut store, frontier, lateness)
 	}
 
 	fn lateness(&self) -> Option<Duration> {
-		self.aggregator.lateness()
+		self.aggregator.lateness().and_then(<Anchor<A> as SealDomain>::lateness_duration)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
@@ -315,10 +322,10 @@ where
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, span)| span.start).max();
 			if let Some(newest) = newest {
-				arm_seal_timer(&mut store, newest, lateness)?;
+				observe_batch(&mut store, newest, lateness)?;
 			}
-			let watermark = seal_frontier(&mut store)?;
-			let horizon = seal_horizon_of(watermark, lateness);
+			let watermark = seal_frontier::<Anchor<A>>(&mut store)?;
+			let horizon = <Anchor<A> as SealDomain>::horizon(watermark, lateness);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
 				if is_sealed(span.start, horizon) {

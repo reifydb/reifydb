@@ -57,6 +57,9 @@ struct TestVelocity {
 
 impl RollingOperator for TestVelocity {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = LastValue<f64>;
 	type Output = TestOut;
 
@@ -66,6 +69,10 @@ impl RollingOperator for TestVelocity {
 
 	fn bucket_size(&self) -> Duration {
 		millis(1)
+	}
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
 	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
@@ -258,6 +265,9 @@ struct SealedVelocity;
 
 impl RollingOperator for SealedVelocity {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = LastValue<f64>;
 	type Output = TestOut;
 
@@ -271,6 +281,10 @@ impl RollingOperator for SealedVelocity {
 
 	fn lateness(&self) -> Option<Duration> {
 		Some(millis(120))
+	}
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
 	}
 
 	fn extract(&self, ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {

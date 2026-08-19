@@ -110,6 +110,10 @@ impl<C: Slot, V> SealingBase<C, V> {
 		self.sealed_count + self.tail.len() as u64
 	}
 
+	pub fn is_empty(&self) -> bool {
+		self.sealed_count == 0 && self.tail.is_empty()
+	}
+
 	pub fn sealed_count(&self) -> u64 {
 		self.sealed_count
 	}

@@ -57,9 +57,16 @@ struct TestCarry;
 
 impl TumblingCarryOperator for TestCarry {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
 	type Carry = f64;
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
@@ -249,9 +256,16 @@ struct SealedCarry;
 
 impl TumblingCarryOperator for SealedCarry {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
 	type Carry = f64;
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
 
 	fn extract(&self, ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		TestCarry.extract(ctx, row)

@@ -17,12 +17,15 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	operator::state::seal::coord::Coord,
-	window::{accumulator::WindowAccumulator, span::WindowSpan},
+	window::{
+		accumulator::WindowAccumulator,
+		span::{Slot, SlotCoord, SlotSpan, WindowSpan},
+	},
 };
 use reifydb_sdk::flow::operator::{
 	column::{row::Row, sink::in_process::InProcessRowSink},
 	extern_c::{binding::context::ExternCContext, wire::context::ExternCContextRaw},
-	view::{ColumnsView, RowView, in_process::InProcessColumnsView},
+	view::{ColumnsView, in_process::InProcessColumnsView},
 	windowed::{
 		rolling::RollingOperator, rolling_top_k::RollingTopKOperator, tumbling::TumblingOperator,
 		tumbling_carry::TumblingCarryOperator,
@@ -32,7 +35,7 @@ use reifydb_testing_chaos::operator::{
 	event::{ChaosBatch, ChaosEvent},
 	view::MaterializedView,
 };
-use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use super::{context::ChaosContext, materialize::materialize_history};
 use crate::{callbacks::create_test_callbacks, context::TestContext};
@@ -49,9 +52,9 @@ fn with_oracle_ctx<R>(f: impl FnOnce(&mut ExternCContext) -> R) -> R {
 	f(&mut op_ctx)
 }
 
-type TumblingCoord = DateTime;
+type TumblingCoord<A> = SlotCoord<<A as TumblingOperator>::WindowSlot>;
 type Group<A> = <A as TumblingOperator>::GroupKey;
-type WindowKey<A> = (Group<A>, TumblingCoord);
+type WindowKey<A> = (Group<A>, TumblingCoord<A>);
 
 pub fn tumbling_accumulator_oracle<A>(
 	aggregate: &A,
@@ -64,8 +67,8 @@ where
 	A::Output: Row,
 {
 	let mut accumulators: HashMap<WindowKey<A>, A::Accumulator> = HashMap::new();
-	let mut spans: HashMap<WindowKey<A>, WindowSpan<TumblingCoord>> = HashMap::new();
-	let mut high_water: HashMap<Group<A>, TumblingCoord> = HashMap::new();
+	let mut spans: HashMap<WindowKey<A>, WindowSpan<TumblingCoord<A>>> = HashMap::new();
+	let mut high_water: HashMap<Group<A>, TumblingCoord<A>> = HashMap::new();
 	let mut last_visible: HashMap<WindowKey<A>, A::Output> = HashMap::new();
 
 	for batch in batches {
@@ -101,9 +104,9 @@ fn apply_leg<A>(
 	aggregate: &A,
 	row: &CoreRow,
 	is_add: bool,
-	snapshot: &HashMap<Group<A>, TumblingCoord>,
+	snapshot: &HashMap<Group<A>, TumblingCoord<A>>,
 	accumulators: &mut HashMap<WindowKey<A>, A::Accumulator>,
-	spans: &mut HashMap<WindowKey<A>, WindowSpan<TumblingCoord>>,
+	spans: &mut HashMap<WindowKey<A>, WindowSpan<TumblingCoord<A>>>,
 	touched: &mut BTreeSet<WindowKey<A>>,
 ) where
 	A: TumblingOperator,
@@ -139,14 +142,14 @@ fn apply_leg<A>(
 fn extract_one<A>(
 	aggregate: &A,
 	row: &CoreRow,
-) -> Option<(Group<A>, TumblingCoord, <A::Accumulator as WindowAccumulator>::Contribution)>
+) -> Option<(Group<A>, TumblingCoord<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
 where
 	A: TumblingOperator,
 {
 	let columns = Columns::from_row(row);
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	let coord = row_view.row_time()?;
+	let coord = aggregate.coord(&row_view)?.order_key();
 	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
 	Some((group, coord, contribution))
 }
@@ -172,11 +175,11 @@ fn materialize_outputs<O: Row>(
 	materialize_history(&[change], output_key_columns)
 }
 
-type RollingCoord = DateTime;
+type RollingCoord<A> = SlotCoord<<A as RollingOperator>::WindowSlot>;
 type RollingGroup<A> = <A as RollingOperator>::GroupKey;
 
 type RollingContribution<A> = <<A as RollingOperator>::Accumulator as WindowAccumulator>::Contribution;
-type RollingBuckets<A> = BTreeMap<(RollingGroup<A>, RollingCoord), Vec<Leg<RollingContribution<A>>>>;
+type RollingBuckets<A> = BTreeMap<(RollingGroup<A>, RollingCoord<A>), Vec<Leg<RollingContribution<A>>>>;
 
 enum Leg<C> {
 	Add(C),
@@ -232,10 +235,10 @@ where
 #[allow(clippy::type_complexity)]
 fn apply_rolling_buckets<A>(
 	capacity: usize,
-	snapshot: &HashMap<RollingGroup<A>, RollingCoord>,
+	snapshot: &HashMap<RollingGroup<A>, RollingCoord<A>>,
 	buckets: RollingBuckets<A>,
-	buffers: &mut HashMap<RollingGroup<A>, BTreeMap<RollingCoord, A::Accumulator>>,
-	high_water: &mut HashMap<RollingGroup<A>, RollingCoord>,
+	buffers: &mut HashMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>>,
+	high_water: &mut HashMap<RollingGroup<A>, RollingCoord<A>>,
 ) -> BTreeSet<RollingGroup<A>>
 where
 	A: RollingOperator,
@@ -299,8 +302,8 @@ where
 	A::Output: Row,
 {
 	let capacity = aggregate.capacity();
-	let mut buffers: HashMap<RollingGroup<A>, BTreeMap<RollingCoord, A::Accumulator>> = HashMap::new();
-	let mut high_water: HashMap<RollingGroup<A>, RollingCoord> = HashMap::new();
+	let mut buffers: HashMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>> = HashMap::new();
+	let mut high_water: HashMap<RollingGroup<A>, RollingCoord<A>> = HashMap::new();
 	let mut last_visible: HashMap<RollingGroup<A>, A::Output> = HashMap::new();
 
 	for batch in batches {
@@ -326,24 +329,24 @@ where
 fn extract_rolling<A>(
 	aggregate: &A,
 	row: &CoreRow,
-) -> Option<(RollingGroup<A>, RollingCoord, <A::Accumulator as WindowAccumulator>::Contribution)>
+) -> Option<(RollingGroup<A>, RollingCoord<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
 where
 	A: RollingOperator,
 {
 	let columns = Columns::from_row(row);
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	let coord = row_view.row_time()?;
+	let coord = aggregate.coord(&row_view)?.order_key();
 	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
 	Some((group, coord.floor_to(aggregate.bucket_size()), contribution))
 }
 
-type CarryCoord = DateTime;
+type CarryCoord<A> = SlotCoord<<A as TumblingCarryOperator>::WindowSlot>;
 type CarryGroup<A> = <A as TumblingCarryOperator>::GroupKey;
-type CarryWindowKey<A> = (CarryGroup<A>, CarryCoord);
+type CarryWindowKey<A> = (CarryGroup<A>, CarryCoord<A>);
 
 type CarryContribution<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Contribution;
-type CarryBuckets<A> = BTreeMap<CarryWindowKey<A>, (WindowSpan<CarryCoord>, Vec<Leg<CarryContribution<A>>>)>;
+type CarryBuckets<A> = BTreeMap<CarryWindowKey<A>, (WindowSpan<CarryCoord<A>>, Vec<Leg<CarryContribution<A>>>)>;
 
 struct CarryGroupState<C, Carry> {
 	high_water: Option<C>,
@@ -392,22 +395,22 @@ pub fn tumbling_carry_accumulator_oracle<A>(
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
-	retention: Option<Duration>,
+	retention: Option<SlotSpan<A::WindowSlot>>,
 ) -> MaterializedView
 where
 	A: TumblingCarryOperator,
 	A::Output: Row,
 {
 	let mut accumulators: HashMap<CarryWindowKey<A>, A::Accumulator> = HashMap::new();
-	let mut spans: HashMap<CarryWindowKey<A>, WindowSpan<CarryCoord>> = HashMap::new();
-	let mut metas: HashMap<CarryGroup<A>, CarryGroupState<CarryCoord, A::Carry>> = HashMap::new();
+	let mut spans: HashMap<CarryWindowKey<A>, WindowSpan<CarryCoord<A>>> = HashMap::new();
+	let mut metas: HashMap<CarryGroup<A>, CarryGroupState<CarryCoord<A>, A::Carry>> = HashMap::new();
 	let mut last_visible: HashMap<CarryWindowKey<A>, A::Output> = HashMap::new();
 
 	for batch in batches {
-		let snapshot: HashMap<CarryGroup<A>, CarryCoord> = HashMap::new();
+		let snapshot: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
 		let buckets = bucket_carry(aggregate, batch);
 
-		let mut earliest_affected: HashMap<CarryGroup<A>, CarryCoord> = HashMap::new();
+		let mut earliest_affected: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
 		for ((group, start), (span, legs)) in buckets {
 			let meta = metas.entry(group.clone()).or_default();
 			if matches!(meta.sealed_up_to, Some(s) if start <= s) {
@@ -462,8 +465,8 @@ where
 				Some((_, c)) => c.clone(),
 				None => meta.sealed_carry.clone(),
 			};
-			let coords: Vec<CarryCoord> = meta.windows.range(start..).map(|(c, _)| *c).collect();
-			let mut emptied: Vec<CarryCoord> = Vec::new();
+			let coords: Vec<CarryCoord<A>> = meta.windows.range(start..).map(|(c, _)| *c).collect();
+			let mut emptied: Vec<CarryCoord<A>> = Vec::new();
 			for coord in coords {
 				let key = (group.clone(), coord);
 				let span = *spans.get(&key).expect("span recorded for tracked window");
@@ -515,10 +518,10 @@ where
 	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
 }
 
-type TopKCoord = DateTime;
+type TopKCoord<A> = SlotCoord<<A as RollingTopKOperator>::WindowSlot>;
 type TopKGroup<A> = <A as RollingTopKOperator>::GroupKey;
 type TopKContribution<A> = <<A as RollingTopKOperator>::Accumulator as WindowAccumulator>::Contribution;
-type TopKBuckets<A> = BTreeMap<(TopKGroup<A>, TopKCoord), Vec<Leg<TopKContribution<A>>>>;
+type TopKBuckets<A> = BTreeMap<(TopKGroup<A>, TopKCoord<A>), Vec<Leg<TopKContribution<A>>>>;
 
 fn bucket_top_k<A>(aggregate: &A, batch: &ChaosBatch) -> TopKBuckets<A>
 where
@@ -546,10 +549,10 @@ where
 #[allow(clippy::type_complexity)]
 fn apply_top_k_buckets<A>(
 	capacity: usize,
-	snapshot: &HashMap<TopKGroup<A>, TopKCoord>,
+	snapshot: &HashMap<TopKGroup<A>, TopKCoord<A>>,
 	buckets: TopKBuckets<A>,
-	buffers: &mut HashMap<TopKGroup<A>, BTreeMap<TopKCoord, A::Accumulator>>,
-	high_water: &mut HashMap<TopKGroup<A>, TopKCoord>,
+	buffers: &mut HashMap<TopKGroup<A>, BTreeMap<TopKCoord<A>, A::Accumulator>>,
+	high_water: &mut HashMap<TopKGroup<A>, TopKCoord<A>>,
 ) -> BTreeSet<TopKGroup<A>>
 where
 	A: RollingTopKOperator,
@@ -612,8 +615,8 @@ where
 	A::Output: Row,
 {
 	let capacity = aggregate.capacity();
-	let mut buffers: HashMap<TopKGroup<A>, BTreeMap<TopKCoord, A::Accumulator>> = HashMap::new();
-	let mut high_water: HashMap<TopKGroup<A>, TopKCoord> = HashMap::new();
+	let mut buffers: HashMap<TopKGroup<A>, BTreeMap<TopKCoord<A>, A::Accumulator>> = HashMap::new();
+	let mut high_water: HashMap<TopKGroup<A>, TopKCoord<A>> = HashMap::new();
 	let mut last_visible: HashMap<TopKGroup<A>, Vec<A::Output>> = HashMap::new();
 
 	for batch in batches {
@@ -636,14 +639,14 @@ where
 fn extract_top_k<A>(
 	aggregate: &A,
 	row: &CoreRow,
-) -> Option<(TopKGroup<A>, TopKCoord, <A::Accumulator as WindowAccumulator>::Contribution)>
+) -> Option<(TopKGroup<A>, TopKCoord<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
 where
 	A: RollingTopKOperator,
 {
 	let columns = Columns::from_row(row);
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	let coord = row_view.row_time()?;
+	let coord = aggregate.coord(&row_view)?.order_key();
 	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
 	Some((group, coord.floor_to(aggregate.bucket_size()), contribution))
 }
@@ -652,14 +655,14 @@ where
 fn extract_carry<A>(
 	aggregate: &A,
 	row: &CoreRow,
-) -> Option<(CarryGroup<A>, CarryCoord, <A::Accumulator as WindowAccumulator>::Contribution)>
+) -> Option<(CarryGroup<A>, CarryCoord<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
 where
 	A: TumblingCarryOperator,
 {
 	let columns = Columns::from_row(row);
 	let view = InProcessColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	let coord = row_view.row_time()?;
+	let coord = aggregate.coord(&row_view)?.order_key();
 	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
 	Some((group, coord, contribution))
 }

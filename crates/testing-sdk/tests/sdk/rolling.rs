@@ -77,6 +77,9 @@ struct TestRollingSum {
 
 impl RollingOperator for TestRollingSum {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = WindowSum;
 	type Output = TestOut;
 
@@ -86,6 +89,10 @@ impl RollingOperator for TestRollingSum {
 
 	fn bucket_size(&self) -> Duration {
 		millis(1)
+	}
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
 	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
@@ -278,6 +285,9 @@ struct SealedRollingSum;
 
 impl RollingOperator for SealedRollingSum {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = WindowSum;
 	type Output = TestOut;
 
@@ -291,6 +301,10 @@ impl RollingOperator for SealedRollingSum {
 
 	fn lateness(&self) -> Option<Duration> {
 		Some(millis(120))
+	}
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
 	}
 
 	fn extract(&self, ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {

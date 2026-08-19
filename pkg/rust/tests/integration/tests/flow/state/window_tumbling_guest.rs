@@ -55,8 +55,15 @@ struct GuestTumbling;
 
 impl TumblingOperator for GuestTumbling {
 	type GroupKey = i32;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = Moments;
 	type Output = GuestWindow;
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(i32, f64)> {
 		Some((row.i32("g")?, row.i32("v")? as f64))

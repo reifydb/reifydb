@@ -68,6 +68,11 @@ impl MockStore {
 		}
 	}
 
+	pub(crate) fn with_flow_watermark(mut self, watermark: DateTime) -> Self {
+		self.flow_watermark = Some(watermark);
+		self
+	}
+
 	pub(crate) fn timers(&self) -> &[RecordedTimer] {
 		self.timers.as_deref().unwrap_or_default()
 	}

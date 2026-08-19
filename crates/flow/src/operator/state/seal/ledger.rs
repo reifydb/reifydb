@@ -68,6 +68,18 @@ impl SealLedger {
 		Ok(SealedThrough::from_order(fired_order))
 	}
 
+	pub fn observe(store: &mut dyn StateStore, order: u64) -> Result<u64> {
+		let current = Self::read_order(store)?.unwrap_or(0);
+		if order <= current {
+			return Ok(current);
+		}
+		let state = SealLedgerState {
+			sealed_through: order,
+		};
+		store.state_set(&seal_ledger_key(), state.encode_state()?)?;
+		Ok(order)
+	}
+
 	pub fn read_order(store: &mut dyn StateStore) -> Result<Option<u64>> {
 		let Some(bytes) = store.state_get(&seal_ledger_key())? else {
 			return Ok(None);
@@ -103,9 +115,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_ledger_can_only_be_advanced_from_a_fired_timer() {
-		// `advance` takes a FiredAt, whose only constructor takes a &Timer, so sealing on arriving
-		// data is unrepresentable rather than merely avoided.
+	fn the_timer_seal_path_never_opens_to_arriving_data() {
+		// FiredAt's only constructor takes a &Timer, so this path never seals on arriving data; observe may.
 		let mut store = MockStore::default();
 
 		let sealed = SealLedger::advance(&mut store, FiredAt::of(&timer(5_000))).unwrap();

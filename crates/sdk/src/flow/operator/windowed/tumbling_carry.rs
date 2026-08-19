@@ -12,20 +12,19 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, OperatorSample},
 };
 use reifydb_flow::{
-	operator::state::seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
-	timer::Timer as FlowTimer,
+	operator::state::seal::{coord::Coord, domain::SealDomain, policy::is_sealed},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, WindowResult, config::TumblingCarryConfig,
 			tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
 		},
-		span::WindowSpan,
+		span::{Slot, SlotCoord, SlotSpan, WindowAnchor, WindowSpan},
 	},
 };
 use reifydb_value::{
 	config::Config,
-	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{duration::Duration, row_number::RowNumber},
 };
 use tracing::{debug, instrument};
 
@@ -42,27 +41,33 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			advance_seal_frontier, arm_seal_timer, guest_as_host::GuestAsHost, seal_frontier,
-			seal_horizon_of, window_engine_config,
+			guest_as_host::GuestAsHost, observe_batch, seal_frontier, timer_frontier, window_engine_config,
 		},
 	},
 };
 
 type AccumulatorContribution<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Contribution;
 type AccumulatorValue<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Output;
+type Anchor<A> = SlotCoord<<A as TumblingCarryOperator>::WindowSlot>;
+type Lateness<A> = <Anchor<A> as SealDomain>::Lateness;
 type CarryEngine<A> = TumblingCarryEngine<
 	<A as TumblingCarryOperator>::GroupKey,
-	DateTime,
+	Anchor<A>,
 	<A as TumblingCarryOperator>::Accumulator,
 	<A as TumblingCarryOperator>::Carry,
 	<A as TumblingCarryOperator>::Output,
 >;
-type Buckets<A> = TumblingBuckets<<A as TumblingCarryOperator>::GroupKey, DateTime, AccumulatorContribution<A>>;
+type Buckets<A> = TumblingBuckets<<A as TumblingCarryOperator>::GroupKey, Anchor<A>, AccumulatorContribution<A>>;
 type WindowResults<A> =
-	Vec<WindowResult<<A as TumblingCarryOperator>::GroupKey, DateTime, <A as TumblingCarryOperator>::Output>>;
+	Vec<WindowResult<<A as TumblingCarryOperator>::GroupKey, Anchor<A>, <A as TumblingCarryOperator>::Output>>;
 
 pub trait TumblingCarryOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + StateCodec;
+
+	type WindowSlot: Slot<Coord: WindowAnchor + SealDomain + Hash + StateCodec + HeapSize + Send + Sync>
+		+ Hash
+		+ StateCodec
+		+ HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
@@ -70,22 +75,24 @@ pub trait TumblingCarryOperator {
 
 	type Carry: Clone + Debug + StateCodec + HeapSize;
 
+	fn coord(&self, row: &impl RowView) -> Option<Self::WindowSlot>;
+
 	fn extract(
 		&self,
 		ctx: &mut impl GuestContext,
 		row: &impl RowView,
 	) -> Option<(Self::GroupKey, AccumulatorContribution<Self>)>;
 
-	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime>;
+	fn window_for(&self, coord: SlotCoord<Self::WindowSlot>) -> WindowSpan<SlotCoord<Self::WindowSlot>>;
 
-	fn lateness(&self) -> Option<Duration> {
+	fn lateness(&self) -> Option<<SlotCoord<Self::WindowSlot> as SealDomain>::Lateness> {
 		None
 	}
 
 	fn build_output(
 		&self,
 		group: &Self::GroupKey,
-		span: WindowSpan<DateTime>,
+		span: WindowSpan<SlotCoord<Self::WindowSlot>>,
 		value: &AccumulatorValue<Self>,
 		prev_carry: Option<&Self::Carry>,
 	) -> Option<Self::Output>;
@@ -100,7 +107,7 @@ pub trait TumblingCarryOperator {
 		Self::Accumulator::default()
 	}
 
-	fn retention(&self) -> Option<Duration> {
+	fn retention(&self) -> Option<SlotSpan<Self::WindowSlot>> {
 		None
 	}
 }
@@ -119,7 +126,7 @@ where
 
 	fn from_config(operator_id: OperatorId, config: &Config) -> Result<Self>;
 
-	fn encode_row_key(&self, group: &Self::GroupKey, window_start: DateTime) -> EncodedKey;
+	fn encode_row_key(&self, group: &Self::GroupKey, window_start: SlotCoord<Self::WindowSlot>) -> EncodedKey;
 }
 
 pub struct TumblingCarryDriver<A>
@@ -179,13 +186,13 @@ where
 			let Some(row) = cols.row(i) else {
 				continue;
 			};
-			let Some(coord) = row.row_time() else {
+			let Some(slot) = self.aggregator.coord(&row) else {
 				continue;
 			};
 			let Some((group, contribution)) = self.aggregator.extract(ctx, &row) else {
 				continue;
 			};
-			let span = self.aggregator.window_for(coord);
+			let span = self.aggregator.window_for(slot.order_key());
 			let event = if is_add {
 				AccumulatorEvent::Add(contribution)
 			} else {
@@ -234,6 +241,7 @@ where
 	A: TumblingCarryRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	A::Carry: Send + Sync + HeapSize,
 	A::Output: Send + Sync + HeapSize,
@@ -243,23 +251,23 @@ where
 	fn expire_through<C: GuestContext>(
 		engine: &mut CarryEngine<A>,
 		store: &mut GuestAsHost<'_, C>,
-		horizon: DateTime,
+		horizon: Anchor<A>,
 	) -> Result<()> {
-		if horizon > <DateTime as Coord>::from_order(0) {
+		if horizon > <Anchor<A> as Coord>::from_order(0) {
 			engine.expire_meta(store, horizon.to_order())?;
 		}
 		Ok(())
 	}
 
 	#[instrument(name = "flow::operator::tumbling::seal", level = "trace", skip_all, fields(operator = A::NAME))]
-	fn seal(&mut self, ctx: &mut impl GuestContext, buckets: &mut Buckets<A>, lateness: Duration) -> Result<()> {
+	fn seal(&mut self, ctx: &mut impl GuestContext, buckets: &mut Buckets<A>, lateness: Lateness<A>) -> Result<()> {
 		let mut store = GuestAsHost(ctx);
 		let newest = buckets.keys().map(|(_, span)| span.start).max();
 		if let Some(newest) = newest {
-			arm_seal_timer(&mut store, newest, lateness)?;
+			observe_batch(&mut store, newest, lateness)?;
 		}
-		let watermark: DateTime = seal_frontier(&mut store)?;
-		let horizon = seal_horizon_of(watermark, lateness);
+		let watermark = seal_frontier::<Anchor<A>>(&mut store)?;
+		let horizon = <Anchor<A> as SealDomain>::horizon(watermark, lateness);
 		Self::expire_through(&mut self.engine, &mut store, horizon)?;
 		let mut dropped = 0u64;
 		buckets.retain(|(_, span), events| {
@@ -314,6 +322,7 @@ where
 	A: TumblingCarryRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	A::Carry: Send + Sync + HeapSize,
 	A::Output: Send + Sync + HeapSize,
@@ -341,17 +350,15 @@ where
 			return Ok(());
 		};
 		let mut store = GuestAsHost(ctx);
-		let fired = FiredAt::of(&FlowTimer {
-			due: timer.due,
-			kind: timer.kind,
-			key: EncodedKey::new(timer.key),
-		});
-		let frontier: DateTime = advance_seal_frontier(&mut store, fired)?;
-		Self::expire_through(&mut self.engine, &mut store, seal_horizon_of(frontier, lateness))
+		let Some(frontier) = timer_frontier::<Anchor<A>>(&mut store, timer)? else {
+			return Ok(());
+		};
+		let horizon = <Anchor<A> as SealDomain>::horizon(frontier, lateness);
+		Self::expire_through(&mut self.engine, &mut store, horizon)
 	}
 
 	fn lateness(&self) -> Option<Duration> {
-		self.aggregator.lateness()
+		self.aggregator.lateness().and_then(<Anchor<A> as SealDomain>::lateness_duration)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {

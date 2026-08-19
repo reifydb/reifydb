@@ -54,6 +54,9 @@ struct TestTopVolume;
 
 impl RollingTopKOperator for TestTopVolume {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 	type SecondaryKey = u32;
 	type Output = TopOut;
@@ -64,6 +67,10 @@ impl RollingTopKOperator for TestTopVolume {
 
 	fn bucket_size(&self) -> Duration {
 		millis(1)
+	}
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
 	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
@@ -292,6 +299,9 @@ struct SealedTopVolume;
 
 impl RollingTopKOperator for SealedTopVolume {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 	type SecondaryKey = u32;
 	type Output = TopOut;
@@ -306,6 +316,10 @@ impl RollingTopKOperator for SealedTopVolume {
 
 	fn lateness(&self) -> Option<Duration> {
 		Some(millis(120))
+	}
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
 	}
 
 	fn extract(&self, ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {

@@ -103,8 +103,15 @@ struct TestVolume;
 
 impl TumblingOperator for TestVolume {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
 		let group = row.utf8("group")?.to_string();
@@ -150,8 +157,15 @@ struct SealedVolume;
 
 impl TumblingOperator for SealedVolume {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
 
 	fn extract(&self, ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
 		TestVolume.extract(ctx, row)
@@ -238,8 +252,15 @@ struct TestMin;
 
 impl TumblingOperator for TestMin {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = MinAccumulator;
 	type Output = MinOut;
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, OrdF64)> {
 		let group = row.utf8("group")?.to_string();

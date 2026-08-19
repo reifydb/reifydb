@@ -12,8 +12,7 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, OperatorSample},
 };
 use reifydb_flow::{
-	operator::state::seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},
-	timer::Timer as FlowTimer,
+	operator::state::seal::{coord::Coord, domain::SealDomain, policy::is_sealed},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -21,11 +20,12 @@ use reifydb_flow::{
 			rolling::RollingBuckets,
 			rolling_top_k::{RollingTopKEngine, TopKEmit},
 		},
+		span::{Slot, SlotCoord, SlotSpan, WindowAnchor},
 	},
 };
 use reifydb_value::{
 	config::Config,
-	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{duration::Duration, row_number::RowNumber},
 };
 use tracing::debug;
 
@@ -42,18 +42,24 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			advance_seal_frontier, arm_seal_timer, bucket_of, guest_as_host::GuestAsHost, seal_frontier,
-			seal_horizon_of, window_engine_config,
+			bucket_of, guest_as_host::GuestAsHost, observe_batch, seal_frontier, timer_frontier,
+			window_engine_config,
 		},
 	},
 };
 
 type AccumulatorContribution<A> = <<A as RollingTopKOperator>::Accumulator as WindowAccumulator>::Contribution;
 
-type Buckets<A> = RollingBuckets<<A as RollingTopKOperator>::GroupKey, DateTime, AccumulatorContribution<A>>;
+type Anchor<A> = SlotCoord<<A as RollingTopKOperator>::WindowSlot>;
+type Buckets<A> = RollingBuckets<<A as RollingTopKOperator>::GroupKey, Anchor<A>, AccumulatorContribution<A>>;
 
 pub trait RollingTopKOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + StateCodec;
+
+	type WindowSlot: Slot<Coord: WindowAnchor + SealDomain + Hash + StateCodec + HeapSize + Send + Sync>
+		+ Hash
+		+ StateCodec
+		+ HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
@@ -61,12 +67,14 @@ pub trait RollingTopKOperator {
 
 	type Output: Clone + Debug + PartialEq + StateCodec + HeapSize;
 
-	fn lateness(&self) -> Option<Duration> {
+	fn lateness(&self) -> Option<<SlotCoord<Self::WindowSlot> as SealDomain>::Lateness> {
 		None
 	}
 	fn capacity(&self) -> usize;
 
-	fn bucket_size(&self) -> Duration;
+	fn bucket_size(&self) -> SlotSpan<Self::WindowSlot>;
+
+	fn coord(&self, row: &impl RowView) -> Option<Self::WindowSlot>;
 
 	fn extract(
 		&self,
@@ -77,7 +85,7 @@ pub trait RollingTopKOperator {
 	fn combine(
 		&self,
 		group: &Self::GroupKey,
-		buffer: &BTreeMap<DateTime, Self::Accumulator>,
+		buffer: &BTreeMap<SlotCoord<Self::WindowSlot>, Self::Accumulator>,
 	) -> BTreeMap<Self::SecondaryKey, Self::Output>;
 }
 
@@ -100,7 +108,7 @@ where
 	fn encode_row_key(&self, group: &Self::GroupKey, secondary: &Self::SecondaryKey) -> EncodedKey;
 }
 
-pub type RollingTopKBuffer<A> = BTreeMap<DateTime, <A as RollingTopKOperator>::Accumulator>;
+pub type RollingTopKBuffer<A> = BTreeMap<Anchor<A>, <A as RollingTopKOperator>::Accumulator>;
 
 pub type RollingTopKEmit<A> = BTreeMap<<A as RollingTopKOperator>::SecondaryKey, <A as RollingTopKOperator>::Output>;
 
@@ -112,7 +120,7 @@ where
 {
 	aggregator: A,
 	#[allow(clippy::type_complexity)]
-	engine: RollingTopKEngine<A::GroupKey, DateTime, A::Accumulator, A::SecondaryKey, A::Output>,
+	engine: RollingTopKEngine<A::GroupKey, Anchor<A>, A::Accumulator, A::SecondaryKey, A::Output>,
 }
 
 impl<A> RollingTopKDriver<A>
@@ -120,6 +128,7 @@ where
 	A: RollingTopKRegistration + Send + Sync + 'static,
 	A::Output: Row + Send + Sync + HeapSize,
 	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync,
 	A::SecondaryKey: Send + Sync + HeapSize,
 	AccumulatorContribution<A>: Send + Sync,
@@ -127,11 +136,11 @@ where
 {
 	#[allow(clippy::type_complexity)]
 	fn expire_through<C: GuestContext>(
-		engine: &mut RollingTopKEngine<A::GroupKey, DateTime, A::Accumulator, A::SecondaryKey, A::Output>,
+		engine: &mut RollingTopKEngine<A::GroupKey, Anchor<A>, A::Accumulator, A::SecondaryKey, A::Output>,
 		store: &mut GuestAsHost<'_, C>,
-		horizon: DateTime,
+		horizon: Anchor<A>,
 	) -> Result<()> {
-		if horizon > <DateTime as Coord>::from_order(0) {
+		if horizon > <Anchor<A> as Coord>::from_order(0) {
 			engine.expire_meta(store, horizon.to_order())?;
 		}
 		Ok(())
@@ -157,6 +166,7 @@ where
 	A: RollingTopKRegistration + Send + Sync + 'static,
 	A::Output: Row + Send + Sync + HeapSize,
 	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync,
 	A::SecondaryKey: Send + Sync + HeapSize,
 	AccumulatorContribution<A>: Send + Sync,
@@ -180,17 +190,15 @@ where
 			return Ok(());
 		};
 		let mut store = GuestAsHost(ctx);
-		let fired = FiredAt::of(&FlowTimer {
-			due: timer.due,
-			kind: timer.kind,
-			key: EncodedKey::new(timer.key),
-		});
-		let frontier: DateTime = advance_seal_frontier(&mut store, fired)?;
-		Self::expire_through(&mut self.engine, &mut store, seal_horizon_of(frontier, lateness))
+		let Some(frontier) = timer_frontier::<Anchor<A>>(&mut store, timer)? else {
+			return Ok(());
+		};
+		let horizon = <Anchor<A> as SealDomain>::horizon(frontier, lateness);
+		Self::expire_through(&mut self.engine, &mut store, horizon)
 	}
 
 	fn lateness(&self) -> Option<Duration> {
-		self.aggregator.lateness()
+		self.aggregator.lateness().and_then(<Anchor<A> as SealDomain>::lateness_duration)
 	}
 
 	fn apply(&mut self, ctx: &mut impl GuestContext, change: impl ChangeView) -> Result<()> {
@@ -204,10 +212,10 @@ where
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, coord)| *coord).max();
 			if let Some(newest) = newest {
-				arm_seal_timer(&mut store, newest, lateness)?;
+				observe_batch(&mut store, newest, lateness)?;
 			}
-			let watermark: DateTime = seal_frontier(&mut store)?;
-			let horizon = seal_horizon_of(watermark, lateness);
+			let watermark = seal_frontier::<Anchor<A>>(&mut store)?;
+			let horizon = <Anchor<A> as SealDomain>::horizon(watermark, lateness);
 			Self::expire_through(&mut self.engine, &mut store, horizon)?;
 			let mut dropped = 0u64;
 			buckets.retain(|(_, coord), events| {
@@ -275,6 +283,7 @@ where
 	A: RollingTopKRegistration + Send + Sync + 'static,
 	A::Output: Row + Send + Sync,
 	A::GroupKey: Send + Sync,
+	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync,
 	A::SecondaryKey: Send + Sync,
 	AccumulatorContribution<A>: Send + Sync,
@@ -296,14 +305,16 @@ where
 							let Some(row) = cols.row(i) else {
 								continue;
 							};
-							let Some(coord) = row.row_time() else {
+							let Some(slot) = self.aggregator.coord(&row) else {
 								continue;
 							};
 							if let Some((group, contribution)) =
 								self.aggregator.extract(ctx, &row)
 							{
-								let bucket =
-									bucket_of(coord, self.aggregator.bucket_size());
+								let bucket = bucket_of(
+									slot.order_key(),
+									self.aggregator.bucket_size(),
+								);
 								buckets.entry((group, bucket))
 									.or_default()
 									.push(AccumulatorEvent::Add(contribution));
@@ -316,27 +327,27 @@ where
 						let n = pre.row_count().min(post.row_count());
 						for i in 0..n {
 							if let Some(pre_row) = pre.row(i)
-								&& let Some(coord) = pre_row.row_time() && let Some((
-								group,
-								contribution,
-							)) =
-								self.aggregator.extract(ctx, &pre_row)
+								&& let Some(slot) = self.aggregator.coord(&pre_row)
+								&& let Some((group, contribution)) =
+									self.aggregator.extract(ctx, &pre_row)
 							{
-								let bucket =
-									bucket_of(coord, self.aggregator.bucket_size());
+								let bucket = bucket_of(
+									slot.order_key(),
+									self.aggregator.bucket_size(),
+								);
 								buckets.entry((group, bucket))
 									.or_default()
 									.push(AccumulatorEvent::Remove(contribution));
 							}
 							if let Some(post_row) = post.row(i)
-								&& let Some(coord) = post_row.row_time() && let Some((
-								group,
-								contribution,
-							)) =
-								self.aggregator.extract(ctx, &post_row)
+								&& let Some(slot) = self.aggregator.coord(&post_row)
+								&& let Some((group, contribution)) =
+									self.aggregator.extract(ctx, &post_row)
 							{
-								let bucket =
-									bucket_of(coord, self.aggregator.bucket_size());
+								let bucket = bucket_of(
+									slot.order_key(),
+									self.aggregator.bucket_size(),
+								);
 								buckets.entry((group, bucket))
 									.or_default()
 									.push(AccumulatorEvent::Add(contribution));
@@ -350,14 +361,16 @@ where
 							let Some(row) = cols.row(i) else {
 								continue;
 							};
-							let Some(coord) = row.row_time() else {
+							let Some(slot) = self.aggregator.coord(&row) else {
 								continue;
 							};
 							if let Some((group, contribution)) =
 								self.aggregator.extract(ctx, &row)
 							{
-								let bucket =
-									bucket_of(coord, self.aggregator.bucket_size());
+								let bucket = bucket_of(
+									slot.order_key(),
+									self.aggregator.bucket_size(),
+								);
 								buckets.entry((group, bucket))
 									.or_default()
 									.push(AccumulatorEvent::Remove(contribution));

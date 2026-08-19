@@ -29,7 +29,7 @@ use crate::{
 		},
 		host::HostContext,
 		state::{
-			seal::{gate::EvictionGate, ledger::FiredAt, policy::is_sealed},
+			seal::{domain::SealDomain, gate::EvictionGate, ledger::FiredAt, policy::is_sealed},
 			store,
 		},
 	},
@@ -49,7 +49,7 @@ use crate::{
 	},
 };
 
-pub(crate) trait RollingDomain: WindowAnchor + Hash + HeapSize + Send + Sync {
+pub(crate) trait RollingDomain: WindowAnchor + SealDomain + Hash + HeapSize + Send + Sync {
 	fn engine(
 		operator: &mut WindowOperator,
 		runnable: bool,
@@ -65,10 +65,6 @@ pub(crate) trait RollingDomain: WindowAnchor + Hash + HeapSize + Send + Sync {
 	fn slot_key(coord: Self, row_number: u64) -> WindowSlotKey;
 
 	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<Self>;
-
-	fn needs_event_timestamps() -> bool;
-
-	fn seals_on_timer() -> bool;
 }
 
 impl RollingDomain for OrdinalCoord {
@@ -100,14 +96,6 @@ impl RollingDomain for OrdinalCoord {
 
 	fn seal_horizon(_operator: &WindowOperator, _ledger: DateTime) -> Option<OrdinalCoord> {
 		None
-	}
-
-	fn needs_event_timestamps() -> bool {
-		false
-	}
-
-	fn seals_on_timer() -> bool {
-		false
 	}
 }
 
@@ -142,14 +130,6 @@ impl RollingDomain for DateTime {
 	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<DateTime> {
 		Some(rolling_over_time(operator, Self::lag(operator.rolling_lag()))
 			.seal_horizon(ledger, operator.lateness().unwrap_or_else(Duration::zero)))
-	}
-
-	fn needs_event_timestamps() -> bool {
-		true
-	}
-
-	fn seals_on_timer() -> bool {
-		true
 	}
 }
 
@@ -251,7 +231,7 @@ fn route_rolling_columns<C: RollingDomain>(
 		return Ok(());
 	}
 	let groups = operator.core.compute_groups(columns)?;
-	let timestamps = if C::needs_event_timestamps() {
+	let timestamps = if C::arms_timer() {
 		operator.row_times(columns, row_count)?
 	} else {
 		Vec::new()
@@ -431,7 +411,7 @@ fn rearm_rolling_seal<C: RollingDomain>(
 	runnable: bool,
 	lag: C::Span,
 ) -> Result<()> {
-	if !C::seals_on_timer() {
+	if !C::arms_timer() {
 		return Ok(());
 	}
 	let after = rolling_earliest_expiry::<C>(operator, host, runnable, lag)?;
@@ -641,13 +621,13 @@ mod tests {
 		// is fed to duration arithmetic: the timer lands just past the epoch, fires at once and
 		// rearms forever. A count window evicts on capacity and has no notion of closed.
 		assert!(
-			!<OrdinalCoord as RollingDomain>::seals_on_timer(),
+			!<OrdinalCoord as SealDomain>::arms_timer(),
 			"a row number is not an instant to arm a timer at"
 		);
-		assert!(<DateTime as RollingDomain>::seals_on_timer(), "an event-time window does seal on the wheel");
+		assert!(<DateTime as SealDomain>::arms_timer(), "an event-time window does seal on the wheel");
 
 		assert!(
-			!<OrdinalCoord as RollingDomain>::needs_event_timestamps(),
+			!<OrdinalCoord as SealDomain>::arms_timer(),
 			"a count window buckets by arrival order, so event time must not reach its coordinate"
 		);
 	}

@@ -15,4 +15,4 @@ linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=mold", "-C", "link-arg=-Wl,--export-dynamic"]
 
 [target.wasm32-unknown-unknown]
-rustflags = ["-C", "link-arg=-zstack-size=8388608"]
+rustflags = ["-C", "link-arg=-zstack-size=8388608", "-C", "panic=abort"]

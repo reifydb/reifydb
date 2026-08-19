@@ -17,46 +17,51 @@ use std::{collections::HashMap, hash::Hash};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	key::operator_state::GroupId,
-	state::timer::{StateStore, TimerKind, TimerStore},
+	state::timer::{StateStore, TimerStore},
 };
 use reifydb_flow::{
 	operator::state::seal::{
 		coord::Coord,
+		domain::SealDomain,
 		ledger::{FiredAt, SealLedger},
-		policy::SEAL_GATE_STEP,
 	},
+	timer::Timer as FlowTimer,
 	window::{engine::config::WindowEngineConfig, span::WindowSpan},
 };
-use reifydb_value::{
-	Result,
-	config::Config,
-	value::{datetime::DateTime, duration::Duration},
-};
+use reifydb_value::{Result, config::Config};
 
-use crate::flow::operator::context::GuestContext;
+use crate::flow::operator::{context::GuestContext, timer::Timer};
 
-pub(crate) fn seal_frontier(store: &mut (impl StateStore + TimerStore)) -> Result<DateTime> {
-	let ledger = SealLedger::read_order(store)?.unwrap_or(0);
-	let watermark = store.flow_watermark()?.map_or(0, |at| at.to_order());
-	Ok(<DateTime as Coord>::from_order(ledger.max(watermark)))
+pub(crate) fn seal_frontier<C: SealDomain>(store: &mut (impl StateStore + TimerStore)) -> Result<C> {
+	C::frontier(store)
 }
 
-pub(crate) fn advance_seal_frontier(store: &mut (impl StateStore + TimerStore), fired: FiredAt) -> Result<DateTime> {
+pub(crate) fn observe_batch<C: SealDomain>(
+	store: &mut (impl StateStore + TimerStore),
+	newest: C,
+	lateness: C::Lateness,
+) -> Result<()> {
+	C::observe(store, newest, lateness)
+}
+
+pub(crate) fn timer_frontier<C: SealDomain>(
+	store: &mut (impl StateStore + TimerStore),
+	timer: Timer<'_>,
+) -> Result<Option<C>> {
+	if !C::arms_timer() {
+		return Ok(None);
+	}
+	let fired = FiredAt::of(&FlowTimer {
+		due: timer.due,
+		kind: timer.kind,
+		key: EncodedKey::new(timer.key),
+	});
 	SealLedger::advance(store, fired)?;
-	seal_frontier(store)
+	C::frontier(store).map(Some)
 }
 
-pub(crate) fn bucket_of(coord: DateTime, size: Duration) -> DateTime {
+pub(crate) fn bucket_of<C: Coord>(coord: C, size: C::Span) -> C {
 	WindowSpan::for_coord(coord, size).start
-}
-
-pub(crate) fn seal_horizon_of(frontier: DateTime, lateness: Duration) -> DateTime {
-	frontier.saturating_sub(lateness)
-}
-
-pub(crate) fn arm_seal_timer(store: &mut impl TimerStore, newest_window: DateTime, lateness: Duration) -> Result<()> {
-	let at = newest_window.saturating_add(lateness).saturating_add(SEAL_GATE_STEP);
-	store.arm_timer(at, TimerKind::Seal, &EncodedKey::new(Vec::new()))
 }
 
 pub(crate) type WindowGroups<G, C> = HashMap<(G, C), GroupId>;

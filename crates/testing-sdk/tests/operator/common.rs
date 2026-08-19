@@ -173,8 +173,15 @@ pub struct VolumeTumbling;
 
 impl TumblingOperator for VolumeTumbling {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
 		let group = row.utf8("group")?.to_string();
@@ -256,8 +263,15 @@ pub struct MinTumbling;
 
 impl TumblingOperator for MinTumbling {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = MinAccumulator;
 	type Output = MinOut;
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, OrdF64)> {
 		let group = row.utf8("group")?.to_string();
@@ -379,8 +393,15 @@ pub struct OhlcvSealingTumbling;
 
 impl TumblingOperator for OhlcvSealingTumbling {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = OhlcvAcc;
 	type Output = OhlcvOut;
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (DateTime, OrdF64))> {
 		let group = row.utf8("group")?.to_string();
@@ -474,6 +495,9 @@ pub fn rolling_sum() -> RollingSum {
 
 impl RollingOperator for RollingSum {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = WindowSum;
 	type Output = RollingOut;
 
@@ -483,6 +507,10 @@ impl RollingOperator for RollingSum {
 
 	fn bucket_size(&self) -> Duration {
 		millis(ROLLING_BUCKET)
+	}
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
 	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
@@ -541,6 +569,9 @@ pub struct TopVolumeRollingTopK;
 
 impl RollingTopKOperator for TopVolumeRollingTopK {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 	type SecondaryKey = u32;
 	type Output = TopOut;
@@ -551,6 +582,10 @@ impl RollingTopKOperator for TopVolumeRollingTopK {
 
 	fn bucket_size(&self) -> Duration {
 		millis(ROLLING_BUCKET)
+	}
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
 	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
@@ -645,9 +680,16 @@ pub fn twap_carry(retention: Option<u64>) -> TwapCarry {
 
 impl TumblingCarryOperator for TwapCarry {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
 	type Carry = f64;
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
+	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
@@ -731,6 +773,9 @@ pub fn velocity_incremental() -> VelocityIncremental {
 
 impl RollingOperator for VelocityIncremental {
 	type GroupKey = String;
+
+	type WindowSlot = DateTime;
+
 	type Accumulator = LastValue<f64>;
 	type Output = VelocityOut;
 
@@ -740,6 +785,10 @@ impl RollingOperator for VelocityIncremental {
 
 	fn bucket_size(&self) -> Duration {
 		millis(ROLLING_BUCKET)
+	}
+
+	fn coord(&self, row: &impl RowView) -> Option<DateTime> {
+		row.row_time()
 	}
 
 	fn extract(&self, _ctx: &mut impl GuestContext, row: &impl RowView) -> Option<(String, f64)> {
