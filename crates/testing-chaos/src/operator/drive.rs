@@ -89,6 +89,9 @@ where
 						< scenario.update_as_remove_insert;
 					if split {
 						fingerprint = mix(fingerprint, 5);
+						let post = workload.readmit(&mut rng, &post);
+						live[idx] = post.clone();
+						arrival = arrival.max(workload.lanes(&post).coord);
 						model.retract(&pre);
 						model.admit(&post);
 						ops.push(Op::Remove(pre));
@@ -166,6 +169,9 @@ where
 				< scenario.update_as_remove_insert;
 			if split {
 				fingerprint = mix(fingerprint, 5);
+				let post = workload.readmit(&mut rng, &post);
+				live[idx] = post.clone();
+				arrival = arrival.max(workload.lanes(&post).coord);
 				model.retract(&pre);
 				model.admit(&post);
 				session.apply(workload.remove(&pre)).expect("apply must succeed");

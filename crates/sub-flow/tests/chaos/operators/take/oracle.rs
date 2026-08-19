@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! What take owes its consumer: the `limit` live rows that arrived most recently, carrying their
+//! What take owes its consumer: the `limit` live rows with the newest creation stamp, carrying their
 //! current content.
 //!
-//! "Most recently" is an arrival order the operator assigns itself, not anything the row carries, and
-//! it is the part worth being careful about. A row keeps the sequence it was first admitted under, so
-//! an update does NOT make a row newer - which is why `Model::update` is overridden here rather than
-//! left to default to retract-then-admit. An update split into a remove and an insert, which the
-//! driver does deliberately, DOES make it newer, because the operator genuinely sees a fresh
-//! admission. Those two must not be conflated or the oracle stops describing the operator.
+//! "Newest" is the `created_at` the row carries, not an arrival order anyone assigns, and it is the
+//! part worth being careful about. An update rewrites content and leaves the stamp alone, so it does
+//! NOT make a row newer - which is why `Model::update` is overridden here rather than left to default
+//! to retract-then-admit. An update split into a remove and an insert, which the driver does
+//! deliberately, DOES make it newer, because the row number is inserted again and the corpus stamps
+//! that incarnation afresh. Those two must not be conflated or the oracle stops describing the
+//! operator.
 //!
-//! The oracle sorts a map and truncates. The operator maintains two indexes, evicts the lowest
-//! sequence when it overflows, parks the evicted row in a bounded candidate buffer, and promotes the
-//! highest-sequence candidate back when a slot frees. Neither derivation is the other.
+//! The oracle sorts a map and truncates. The operator maintains two indexes, evicts the oldest stamp
+//! when it overflows, parks the evicted row in a bounded candidate buffer, and promotes the newest
+//! candidate back when a slot frees. Neither derivation is the other.
 //!
 //! ## Why the corpus is bounded
 //!
@@ -33,24 +34,23 @@ use crate::operators::take::workload::{IDENTITY_COLUMN, TakeRow};
 
 pub struct TakeOracle {
 	limit: usize,
-	next_seq: u64,
-	live: BTreeMap<RowNumber, (u64, TakeRow)>,
+	live: BTreeMap<RowNumber, TakeRow>,
 }
 
 impl TakeOracle {
 	pub fn new(limit: usize) -> Self {
 		Self {
 			limit,
-			next_seq: 0,
 			live: BTreeMap::new(),
 		}
 	}
 
 	fn retained(&self) -> Vec<&TakeRow> {
-		let mut ordered: Vec<(u64, &TakeRow)> = self.live.values().map(|(seq, row)| (*seq, row)).collect();
-		ordered.sort_by_key(|(seq, _)| Reverse(*seq));
+		// The operator keys on (created_at, row), so a shared stamp must never be broken by map order.
+		let mut ordered: Vec<&TakeRow> = self.live.values().collect();
+		ordered.sort_by_key(|row| Reverse((row.tick, row.number)));
 		ordered.truncate(self.limit);
-		ordered.into_iter().map(|(_, row)| row).collect()
+		ordered
 	}
 
 	fn claim(&self) -> KeyedMultiset {
@@ -71,9 +71,7 @@ impl Model<TakeRow> for TakeOracle {
 	type Expectation = KeyedMultiset;
 
 	fn admit(&mut self, row: &TakeRow) -> bool {
-		let seq = self.next_seq;
-		self.next_seq += 1;
-		self.live.insert(row.number, (seq, row.clone()));
+		self.live.insert(row.number, row.clone());
 
 		if self.limit > 0 {
 			assert!(
@@ -92,7 +90,7 @@ impl Model<TakeRow> for TakeOracle {
 
 	fn retract(&mut self, row: &TakeRow) {
 		match self.live.remove(&row.number) {
-			Some((_, held)) => assert_eq!(
+			Some(held) => assert_eq!(
 				held.value, row.value,
 				"the driver retracts the value it last admitted for row {:?}; a mismatch means the \
 				 oracle and the corpus have diverged",
@@ -103,11 +101,9 @@ impl Model<TakeRow> for TakeOracle {
 	}
 
 	fn update(&mut self, pre: &TakeRow, post: &TakeRow) {
-		// Overridden precisely because the default is retract-then-admit, which would hand the row a
-		// fresh arrival sequence. The operator rewrites content in place and leaves the sequence alone,
-		// so an updated row does not jump the queue ahead of rows that arrived after it.
+		// The operator rewrites content in place and never re-reads the stamp, so an update must not reorder.
 		assert_eq!(pre.number, post.number, "an update must not change a row's number");
-		let (seq, held) = self.live.remove(&pre.number).unwrap_or_else(|| {
+		let held = self.live.remove(&pre.number).unwrap_or_else(|| {
 			panic!("the driver updated row {:?}, which the oracle never admitted", pre.number)
 		});
 		assert_eq!(
@@ -115,7 +111,13 @@ impl Model<TakeRow> for TakeOracle {
 			"the driver updates from the value it last admitted for row {:?}",
 			pre.number
 		);
-		self.live.insert(post.number, (seq, post.clone()));
+		assert_eq!(
+			held.tick, post.tick,
+			"an update must carry the stamp of the incarnation it rewrites for row {:?}; a fresh stamp is \
+			 a re-admission, which the operator only ever sees as a remove followed by an insert",
+			pre.number
+		);
+		self.live.insert(post.number, post.clone());
 	}
 
 	fn advance_ledger(&mut self, _at_ms: u64) {

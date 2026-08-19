@@ -1213,12 +1213,12 @@ fn a_take_operator_keeps_the_newest_rows_and_promotes_on_retraction() {
 	// third arrival must evict the first; retracting a survivor must bring the evicted row back
 	// rather than leaving the view short.
 	let mut harness = Harness::new(|_| operators::take::build(2));
-	let workload = TakeWorkload {
-		value_ceiling: 100,
-	};
+	let workload = TakeWorkload::new(100);
+	// The fixture pins the stamp, or a repeated row(1, ..) would be a second incarnation.
 	let row = |number: u64, value: i64| TakeRow {
 		number: RowNumber(number),
 		value,
+		tick: number,
 	};
 	let mut session = Session::new(&mut harness);
 
@@ -1246,12 +1246,12 @@ fn an_update_does_not_make_a_row_newer_than_rows_that_arrived_after_it() {
 	// update to it must not reorder it ahead of row 2, or the next arrival would evict the wrong row.
 	// Stated here so the override is pinned by an assertion rather than only by a comment.
 	let mut harness = Harness::new(|_| operators::take::build(2));
-	let workload = TakeWorkload {
-		value_ceiling: 100,
-	};
+	let workload = TakeWorkload::new(100);
+	// Both incarnations of row 1 share a stamp, which is exactly what an in-place update leaves behind.
 	let row = |number: u64, value: i64| TakeRow {
 		number: RowNumber(number),
 		value,
+		tick: number,
 	};
 	let mut session = Session::new(&mut harness);
 
@@ -1267,6 +1267,39 @@ fn an_update_does_not_make_a_row_newer_than_rows_that_arrived_after_it() {
 }
 
 #[test]
+fn a_row_removed_and_inserted_back_is_the_newest_row_take_holds() {
+	// A re-inserted row number is a new incarnation and must never fall back to the age it was evicted at.
+	let mut harness = Harness::new(|_| operators::take::build(2));
+	let workload = TakeWorkload::new(100);
+	let row = |number: u64, value: i64, tick: u64| TakeRow {
+		number: RowNumber(number),
+		value,
+		tick,
+	};
+	let mut session = Session::new(&mut harness);
+
+	session.apply(workload.insert(&[row(1, 10, 1), row(2, 20, 2)])).expect("apply must succeed");
+	session.apply(workload.insert(&[row(3, 30, 3)])).expect("apply must succeed");
+	assert_eq!(retained_identities(session.view()), vec![2, 3], "row 1 is the oldest, so it is the one evicted");
+
+	// The two legs of a split update, which is the only way a row number is ever inserted twice.
+	session.apply(workload.remove(&row(1, 10, 1))).expect("apply must succeed");
+	assert_eq!(
+		retained_identities(session.view()),
+		vec![2, 3],
+		"retracting an evicted row touches no published row, so the view must not move"
+	);
+
+	session.apply(workload.insert(&[row(1, 11, 4)])).expect("apply must succeed");
+	assert_eq!(
+		retained_identities(session.view()),
+		vec![1, 3],
+		"the re-admitted row carries the newest stamp, so it must enter and evict row 2"
+	);
+	assert!(session.incoherent().is_empty(), "the diff stream must stay foldable: {:?}", session.incoherent());
+}
+
+#[test]
 fn take_never_publishes_more_than_its_limit_or_a_row_that_is_not_live() {
 	// The lossy regime, which the exact oracle deliberately refuses to model: past `limit * 5` live
 	// rows the candidate buffer prunes, and a pruned row can never be promoted back, so the view
@@ -1275,9 +1308,7 @@ fn take_never_publishes_more_than_its_limit_or_a_row_that_is_not_live() {
 	// is not live. Falling short of the limit is permitted here - that is the documented loss.
 	const LIMIT: usize = 3;
 	let mut harness = Harness::new(|_| operators::take::build(LIMIT));
-	let workload = TakeWorkload {
-		value_ceiling: 100,
-	};
+	let workload = TakeWorkload::new(100);
 	let mut session = Session::new(&mut harness);
 
 	let mut live: Vec<TakeRow> = Vec::new();
@@ -1285,6 +1316,7 @@ fn take_never_publishes_more_than_its_limit_or_a_row_that_is_not_live() {
 		let row = TakeRow {
 			number: RowNumber(number),
 			value: number as i64,
+			tick: number,
 		};
 		session.apply(workload.insert(std::slice::from_ref(&row))).expect("apply must succeed");
 		live.push(row);

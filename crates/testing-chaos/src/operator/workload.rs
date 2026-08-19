@@ -21,6 +21,10 @@ pub trait Workload {
 
 	fn revalue(&self, rng: &mut StdRng, row: &Self::Row) -> Self::Row;
 
+	fn readmit(&self, _rng: &mut StdRng, row: &Self::Row) -> Self::Row {
+		row.clone()
+	}
+
 	fn lanes(&self, row: &Self::Row) -> Lanes;
 
 	fn insert(&self, rows: &[Self::Row]) -> Change;

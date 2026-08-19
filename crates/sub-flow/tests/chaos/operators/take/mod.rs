@@ -52,9 +52,7 @@ pub struct Params {
 
 pub fn drive(seed: u64, params: Params) -> Corpus {
 	let mut harness = Harness::new(|_| build(params.limit));
-	let workload = TakeWorkload {
-		value_ceiling: params.value_ceiling,
-	};
+	let workload = TakeWorkload::new(params.value_ceiling);
 	let mut model = TakeOracle::new(params.limit);
 
 	driver::drive(

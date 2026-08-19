@@ -7,6 +7,15 @@
 //! it on the source row number. That is what lets the claim name *which* rows were retained rather
 //! than only how many: take passes source row numbers through to its output, but the comparison
 //! framework keys a claim on output columns, and a row number is not one until a column carries it.
+//!
+//! ## Why the stamp is a clock and not the row number
+//!
+//! Take orders by `created_at`, so the corpus has to stamp its rows the way the engine does: minted
+//! at insert, untouched by an update, minted again when a row number is removed and inserted back.
+//! A stamp derived from the row number would replay the original one on that re-admission, which
+//! claims a fresh incarnation is as old as the one it replaced.
+
+use std::cell::Cell;
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::interface::{catalog::flow::OperatorId, change::Change};
@@ -27,11 +36,14 @@ const BASE_MS: u64 = 1_000_000;
 pub struct TakeRow {
 	pub number: RowNumber,
 	pub value: i64,
+
+	/// The creation stamp of this incarnation of the row, which is what take orders on.
+	pub tick: u64,
 }
 
 impl TakeRow {
 	fn at(&self) -> DateTime {
-		DateTime::from_epoch_millis(BASE_MS + self.number.0).expect("a row stamp is representable")
+		DateTime::from_epoch_millis(BASE_MS + self.tick).expect("a row stamp is representable")
 	}
 
 	/// The row number as it is carried in the identity column. i32 is wide enough: a sweep runs tens
@@ -42,7 +54,23 @@ impl TakeRow {
 }
 
 pub struct TakeWorkload {
-	pub value_ceiling: i64,
+	value_ceiling: i64,
+	clock: Cell<u64>,
+}
+
+impl TakeWorkload {
+	pub fn new(value_ceiling: i64) -> Self {
+		Self {
+			value_ceiling,
+			clock: Cell::new(0),
+		}
+	}
+
+	fn tick(&self) -> u64 {
+		let tick = self.clock.get();
+		self.clock.set(tick + 1);
+		tick
+	}
 }
 
 impl Workload for TakeWorkload {
@@ -52,13 +80,25 @@ impl Workload for TakeWorkload {
 		TakeRow {
 			number,
 			value: rng.random_range(1..=self.value_ceiling),
+			tick: self.tick(),
 		}
 	}
 
 	fn revalue(&self, rng: &mut StdRng, row: &TakeRow) -> TakeRow {
+		// An update rewrites content only; the stamp must survive it or the row jumps the queue.
 		TakeRow {
 			number: row.number,
 			value: rng.random_range(1..=self.value_ceiling),
+			tick: row.tick,
+		}
+	}
+
+	fn readmit(&self, _rng: &mut StdRng, row: &TakeRow) -> TakeRow {
+		// A re-inserted row number is a new incarnation and must take a new stamp, as the engine gives it.
+		TakeRow {
+			number: row.number,
+			value: row.value,
+			tick: self.tick(),
 		}
 	}
 
@@ -66,7 +106,7 @@ impl Workload for TakeWorkload {
 		Lanes {
 			number: row.number.0,
 			group: row.number.0,
-			coord: BASE_MS + row.number.0,
+			coord: BASE_MS + row.tick,
 			value: row.value as u64,
 		}
 	}
