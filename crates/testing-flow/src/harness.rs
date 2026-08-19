@@ -73,10 +73,10 @@ impl<O> Harness<O> {
 			engine.inner().version_epoch().clone(),
 		);
 		let operator = build(&engine, runtime);
-		let substrate = FlowSubstrate {
-			operators: Some(engine.inner().operator_state()),
-			..FlowSubstrate::default()
-		};
+		let substrate = FlowSubstrate::with_dictionary(
+			engine.inner().dictionary_allocators(),
+			engine.inner().operator_state(),
+		);
 		Self {
 			engine,
 			operator,

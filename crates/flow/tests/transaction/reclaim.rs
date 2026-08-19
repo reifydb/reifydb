@@ -41,10 +41,10 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		catalog: Catalog::testing(),
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(MockClock::from_millis(0)),
-		substrate: FlowSubstrate {
-			operators: Some(engine.inner().operator_state()),
-			..FlowSubstrate::default()
-		},
+		substrate: FlowSubstrate::with_dictionary(
+			engine.inner().dictionary_allocators(),
+			engine.inner().operator_state(),
+		),
 	});
 	// The substrate derives an intern's position from the change coordinate, so it is set here.
 	txn.set_change_coordinate(ChangeCoordinate {

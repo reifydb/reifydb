@@ -33,7 +33,7 @@ use reifydb_value::{
 
 use crate::dictionary::{
 	error::DictionaryError,
-	store::{DictEntryWrite, DictionaryStore, UnconfiguredDictionaryStore},
+	store::{DictEntryWrite, DictionaryStore},
 };
 
 const CACHE_CAPACITY: usize = 65_536;
@@ -47,12 +47,6 @@ pub struct InternOutcome {
 #[derive(Clone)]
 pub struct DictionaryAllocatorRegistry {
 	inner: Arc<Inner>,
-}
-
-impl Default for DictionaryAllocatorRegistry {
-	fn default() -> Self {
-		Self::new(Arc::new(UnconfiguredDictionaryStore))
-	}
 }
 
 struct Inner {

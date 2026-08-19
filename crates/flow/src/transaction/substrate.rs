@@ -22,7 +22,7 @@ use crate::{
 	},
 };
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct FlowSubstrate {
 	pub dictionary: DictionaryAllocatorRegistry,
 	pub watermarks: SourceWatermarks,
@@ -33,15 +33,21 @@ pub struct FlowSubstrate {
 }
 
 impl FlowSubstrate {
-	pub fn new() -> Self {
-		Self::default()
+	pub fn new(dictionary: DictionaryAllocatorRegistry) -> Self {
+		Self {
+			dictionary,
+			watermarks: SourceWatermarks::default(),
+			frontiers: OutputFrontiers::default(),
+			timers: TimerWheel::default(),
+			operators: None,
+			memo: StateMemo::default(),
+		}
 	}
 
 	pub fn with_dictionary(dictionary: DictionaryAllocatorRegistry, operators: OperatorStore) -> Self {
 		Self {
-			dictionary,
 			operators: Some(operators),
-			..Self::default()
+			..Self::new(dictionary)
 		}
 	}
 }

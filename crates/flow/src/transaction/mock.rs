@@ -45,10 +45,10 @@ impl<'a> FlowTxnBuilder<'a> {
 			catalog: self.catalog,
 			interceptors: Interceptors::new(),
 			clock: self.clock,
-			substrate: FlowSubstrate {
-				operators: Some(self.engine.inner().operator_state()),
-				..FlowSubstrate::default()
-			},
+			substrate: FlowSubstrate::with_dictionary(
+				self.engine.inner().dictionary_allocators(),
+				self.engine.inner().operator_state(),
+			),
 		});
 		txn.set_change_coordinate(default_coordinate(version));
 		txn

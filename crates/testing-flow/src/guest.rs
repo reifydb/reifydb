@@ -234,10 +234,10 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarnessBuilder<
 		let capabilities = <C as OperatorMetadata>::CAPABILITIES;
 		let operator = mount(core, self.operator_id, capabilities);
 
-		let substrate = FlowSubstrate {
-			operators: Some(engine.inner().operator_state()),
-			..FlowSubstrate::default()
-		};
+		let substrate = FlowSubstrate::with_dictionary(
+			engine.inner().dictionary_allocators(),
+			engine.inner().operator_state(),
+		);
 		Ok(GuestOperatorHarness {
 			engine,
 			operator,

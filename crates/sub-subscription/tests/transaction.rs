@@ -13,7 +13,7 @@ use reifydb_core::{
 		row::RowKey,
 	},
 };
-use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction, state::StateExtension};
+use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction, state::StateExtension, substrate::FlowSubstrate};
 use reifydb_sub_subscription::transaction::EphemeralTransaction;
 use reifydb_test_harness::{
 	engine::TestEngine,
@@ -30,6 +30,7 @@ fn ephemeral(engine: &TestEngine) -> EphemeralTransaction {
 		Catalog::testing(),
 		HashMap::new(),
 		engine.clock().clone(),
+		FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
 	);
 	txn.set_change_coordinate(ChangeCoordinate {
 		at: Some(DateTime::from_millis(0)),
@@ -87,6 +88,7 @@ fn row_reads_stay_pinned_to_requested_version() {
 		Catalog::testing(),
 		HashMap::new(),
 		engine.clock().clone(),
+		FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
 	);
 	assert_eq!(
 		txn.get(&row_key).unwrap(),
@@ -112,6 +114,7 @@ fn read_sees_state_map_and_pending() {
 		Catalog::testing(),
 		state,
 		engine.clock().clone(),
+		FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
 	);
 
 	let seeded = txn.state_get_many(operator_id, &[seeded_key]).unwrap();

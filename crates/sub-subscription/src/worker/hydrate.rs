@@ -85,6 +85,7 @@ impl SubscriptionWorkerActor {
 			self.catalog.clone(),
 			keyed,
 			flow_engine.clock().clone(),
+			flow_engine.substrate().clone(),
 		);
 
 		for (shape, shape_columns) in source_frames {

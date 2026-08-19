@@ -12,7 +12,6 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::store::{SingleVersionGet, SingleVersionRange},
-	internal_error,
 	key::{
 		EncodableKey,
 		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
@@ -70,22 +69,6 @@ fn bound_as_slice(bound: &Bound<EncodedKey>) -> Bound<&[u8]> {
 		Bound::Included(key) => Bound::Included(key.as_slice()),
 		Bound::Excluded(key) => Bound::Excluded(key.as_slice()),
 		Bound::Unbounded => Bound::Unbounded,
-	}
-}
-
-pub struct UnconfiguredDictionaryStore;
-
-impl DictionaryStore for UnconfiguredDictionaryStore {
-	fn read_committed(&self, _key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		Err(internal_error!("dictionary store is not configured"))
-	}
-
-	fn max_index_id(&self, _dictionary: DictionaryId) -> Result<Option<u128>> {
-		Err(internal_error!("dictionary store is not configured"))
-	}
-
-	fn commit_entries(&self, _dictionary: DictionaryId, _writes: &[DictEntryWrite]) -> Result<()> {
-		Err(internal_error!("dictionary store is not configured"))
 	}
 }
 

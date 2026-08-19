@@ -62,7 +62,7 @@ fn tumbling_sum() -> WindowSpec {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		lateness: Duration::default(),
+		lateness: Some(Duration::default()),
 	}
 }
 

@@ -202,10 +202,10 @@ mod tests {
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
-			FlowSubstrate {
-				operators: Some(engine.inner().operator_state()),
-				..FlowSubstrate::default()
-			},
+			FlowSubstrate::with_dictionary(
+				engine.inner().dictionary_allocators(),
+				engine.inner().operator_state(),
+			),
 			OperatorSampleRegistry::new(),
 		)
 	}

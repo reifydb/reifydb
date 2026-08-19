@@ -18,7 +18,7 @@ use reifydb_core::{
 	},
 	key::row::RowKey,
 };
-use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore, tier::TierStorage};
+use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
 use reifydb_testing_chaos::fuzz::pick;
 use reifydb_value::util::cowvec::CowVec;
 

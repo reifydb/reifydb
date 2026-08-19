@@ -89,10 +89,11 @@ impl DeferredParams {
 			catalog,
 			interceptors,
 			clock,
-			substrate: FlowSubstrate {
-				operators: Some(operators),
-				..FlowSubstrate::default()
-			},
+			substrate: FlowSubstrate::with_dictionary(
+				parent.dictionary_allocators()
+					.expect("admin transaction reached a flow without a dictionary registry"),
+				operators,
+			),
 		}
 	}
 }

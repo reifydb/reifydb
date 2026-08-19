@@ -45,10 +45,10 @@ fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 		catalog: Catalog::testing(),
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(MockClock::from_millis(1000)),
-		substrate: FlowSubstrate {
-			operators: Some(engine.inner().operator_state()),
-			..FlowSubstrate::default()
-		},
+		substrate: FlowSubstrate::with_dictionary(
+			engine.inner().dictionary_allocators(),
+			engine.inner().operator_state(),
+		),
 	})
 }
 
@@ -457,10 +457,10 @@ fn deferred_read_sees_state_committed_above_object_version() {
 		catalog: Catalog::testing(),
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),
-		substrate: FlowSubstrate {
-			operators: Some(engine.inner().operator_state()),
-			..FlowSubstrate::default()
-		},
+		substrate: FlowSubstrate::with_dictionary(
+			engine.inner().dictionary_allocators(),
+			engine.inner().operator_state(),
+		),
 	});
 
 	let batch = txn.state_get_many(operator_id, &[inner_key]).unwrap();
@@ -497,10 +497,10 @@ fn deferred_read_sees_base_pending_overlay() {
 		catalog: Catalog::testing(),
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),
-		substrate: FlowSubstrate {
-			operators: Some(engine.inner().operator_state()),
-			..FlowSubstrate::default()
-		},
+		substrate: FlowSubstrate::with_dictionary(
+			engine.inner().dictionary_allocators(),
+			engine.inner().operator_state(),
+		),
 	});
 
 	assert_eq!(
@@ -555,7 +555,7 @@ fn deferred_reads_owned_rows_at_state_version() {
 		catalog: Catalog::testing(),
 		interceptors: engine.create_interceptors(),
 		clock: engine.clock().clone(),
-		substrate: FlowSubstrate::new(),
+		substrate: FlowSubstrate::new(engine.inner().dictionary_allocators()),
 	});
 	assert_eq!(
 		txn.get(&row_key).unwrap(),

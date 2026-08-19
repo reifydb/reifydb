@@ -38,10 +38,10 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		catalog: Catalog::testing(),
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(MockClock::from_millis(0)),
-		substrate: FlowSubstrate {
-			operators: Some(engine.inner().operator_state()),
-			..FlowSubstrate::default()
-		},
+		substrate: FlowSubstrate::with_dictionary(
+			engine.inner().dictionary_allocators(),
+			engine.inner().operator_state(),
+		),
 	})
 }
 

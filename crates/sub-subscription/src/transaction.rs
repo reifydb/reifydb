@@ -63,6 +63,7 @@ impl EphemeralTransaction {
 		catalog: Catalog,
 		state: HashMap<EncodedKey, EncodedBytes>,
 		clock: Clock,
+		substrate: FlowSubstrate,
 	) -> Self {
 		let mut query = query;
 		query.read_as_of_version_inclusive(version);
@@ -77,7 +78,7 @@ impl EphemeralTransaction {
 			clock,
 			change_coordinate: None,
 			flow_watermark: None,
-			substrate: FlowSubstrate::new(),
+			substrate,
 			state,
 		}
 	}

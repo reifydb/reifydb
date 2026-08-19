@@ -15,10 +15,7 @@ use reifydb_core::{
 	interface::store::{EntryKind, MultiVersionCommit},
 	key::row::RowKey,
 };
-use reifydb_store_multi::{
-	store::StandardMultiStore,
-	tier::{HistoricalCursor, TierStorage},
-};
+use reifydb_store_multi::{store::StandardMultiStore, tier::HistoricalCursor};
 use reifydb_testing_chaos::fuzz::pick;
 use reifydb_value::util::cowvec::CowVec;
 

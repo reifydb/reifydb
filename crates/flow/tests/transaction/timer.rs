@@ -35,10 +35,10 @@ fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DeferredTransac
 		catalog: Catalog::testing(),
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(clock),
-		substrate: FlowSubstrate {
-			operators: Some(engine.inner().operator_state()),
-			..FlowSubstrate::default()
-		},
+		substrate: FlowSubstrate::with_dictionary(
+			engine.inner().dictionary_allocators(),
+			engine.inner().operator_state(),
+		),
 	})
 }
 
