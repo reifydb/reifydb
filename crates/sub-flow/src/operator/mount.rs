@@ -124,9 +124,9 @@ mod tests {
 		row::pod::EncodedPodRow,
 	};
 	use reifydb_core::{
-		common::CommitVersion,
-		key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
-		state::store::StateStore,
+        common::CommitVersion,
+        key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+        state::timer::StateStore,
 	};
 	use reifydb_flow::{
 		operator::{

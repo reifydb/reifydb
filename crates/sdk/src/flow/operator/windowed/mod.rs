@@ -16,8 +16,8 @@ use std::{collections::HashMap, hash::Hash};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	key::operator_state::GroupId,
-	state::store::{StateStore, TimerKind, TimerStore},
+    key::operator_state::GroupId,
+    state::timer::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_flow::{
 	operator::state::seal::{

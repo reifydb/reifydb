@@ -11,8 +11,8 @@ use reifydb_codec::{
 	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
-	state::store::StateStore,
+    key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
+    state::timer::StateStore,
 };
 use reifydb_value::Result;
 use tracing::instrument;

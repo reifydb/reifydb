@@ -6,16 +6,16 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	common::CommitVersion,
-	interface::catalog::{
+    common::CommitVersion,
+    interface::catalog::{
 		config::{ConfigKey, GetConfig},
 		flow::OperatorId,
 	},
-	key::{
+    key::{
 		EncodableKey,
 		operator_state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
 	},
-	state::store::{StateStore, TimerKind, TimerStore},
+    state::timer::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{

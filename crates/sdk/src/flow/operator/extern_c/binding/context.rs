@@ -9,9 +9,9 @@ use reifydb_codec::{
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, GroupStateKey},
-	state::store::TimerKind,
+    interface::catalog::flow::OperatorId,
+    key::operator_state::{GroupId, GroupStateKey},
+    state::timer::TimerKind,
 };
 use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
 use reifydb_value::value::{

@@ -13,9 +13,9 @@ use reifydb_codec::{
 	row::operator::state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_state::GroupId,
-	metrics::heap::HeapSize,
-	state::{cache::StateCache, store::StateStore},
+    key::operator_state::GroupId,
+    metrics::heap::HeapSize,
+    state::{cache::StateCache, timer::StateStore},
 };
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
@@ -440,7 +440,7 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::state::store::StateStore;
+	use reifydb_core::state::timer::StateStore;
 	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
 
 	use super::{RollingTopKBuffer, RollingTopKEmit, RollingTopKEngine, TopKEmit};

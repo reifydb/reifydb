@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{actors::pending::PendingLayers, interface::catalog::flow::OperatorId, state::store::TimerKind};
+use reifydb_core::{actors::pending::PendingLayers, interface::catalog::flow::OperatorId, state::timer::TimerKind};
 use reifydb_flow::{
 	timer::{Timer, TimerDue, wheel::TimerWheel},
 	transaction::{

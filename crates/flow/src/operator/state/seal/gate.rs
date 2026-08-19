@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::state::store::{TimerKind, TimerStore};
+use reifydb_core::state::timer::{TimerKind, TimerStore};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},

@@ -6,7 +6,7 @@ use std::{hash::Hash, marker::PhantomData};
 use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_value::Result;
 
-use crate::{key::operator_state::IntoGroupStateKey, metrics::heap::HeapSize, state::store::StateStore};
+use crate::{key::operator_state::IntoGroupStateKey, metrics::heap::HeapSize, state::timer::StateStore};
 
 pub struct StateCache<K, V> {
 	marker: PhantomData<fn(K) -> V>,
@@ -108,7 +108,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		key::operator_state::{GroupId, GroupStateKey, Keyspace},
-		state::store::{TimerKind, TimerStore},
+		state::timer::{TimerKind, TimerStore},
 	};
 
 	/// A bare `String` would read as some other group's prefix; this frames the tests' string keys

@@ -10,9 +10,9 @@ use std::time::Duration as StdDuration;
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
-	key::operator_state::{Keyspace, OperatorStateKey},
-	state::store::TimerKind,
+    interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
+    key::operator_state::{Keyspace, OperatorStateKey},
+    state::timer::TimerKind,
 };
 use reifydb_sdk::{
 	error::Result as SdkResult,

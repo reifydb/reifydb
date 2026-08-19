@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes, tag::type_tag_byte, value::encode_value};
-use reifydb_core::{common::CommitVersion, state::store::TimerKind};
+use reifydb_core::{common::CommitVersion, state::timer::TimerKind};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
 	util::cowvec::CowVec,

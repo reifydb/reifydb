@@ -16,7 +16,7 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
-	interface::{
+    interface::{
 		catalog::{
 			flow::OperatorId,
 			ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata, encode_ringbuffer_metadata},
@@ -27,17 +27,17 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
-	key::{
+    key::{
 		EncodableKey,
 		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, node_prefix},
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		ringbuffer::RingBufferMetadataKey,
 		row::RowKey,
 	},
-	partition::partition_col_indices,
-	row::row_shape_from_columns,
-	state::store::TimerKind,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+    partition::partition_col_indices,
+    row::row_shape_from_columns,
+    state::timer::TimerKind,
+    value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_macro::operator_state;
 use reifydb_transaction::multi::RangeScope;

@@ -4,11 +4,11 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	common::{CommitVersion, WindowKind, WindowSize},
-	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
-	metrics::heap::OperatorSample,
-	state::store::TimerKind,
-	value::column::columns::Columns,
+    common::{CommitVersion, WindowKind, WindowSize},
+    interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
+    metrics::heap::OperatorSample,
+    state::timer::TimerKind,
+    value::column::columns::Columns,
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::{expression::Expression, flow::aggregate::AggregateContext};

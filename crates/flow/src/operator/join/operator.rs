@@ -12,16 +12,16 @@ use reifydb_codec::{
 	row::operator::state::OperatorState,
 };
 use reifydb_core::{
-	common::JoinType,
-	interface::{
+    common::JoinType,
+    interface::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey},
-	metrics::{heap::OperatorSample, instruments::counter::Counter},
-	state::store::TimerKind,
-	value::column::{ColumnWithName, columns::Columns},
+    key::operator_state::{GroupId, GroupStateKey},
+    metrics::{heap::OperatorSample, instruments::counter::Counter},
+    state::timer::TimerKind,
+    value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},

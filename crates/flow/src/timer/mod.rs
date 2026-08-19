@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{interface::catalog::flow::OperatorId, state::store::TimerKind};
+use reifydb_core::{interface::catalog::flow::OperatorId, state::timer::TimerKind};
 use reifydb_value::value::datetime::DateTime;
 
 #[cfg(feature = "runtime")]

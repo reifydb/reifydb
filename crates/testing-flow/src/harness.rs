@@ -9,16 +9,16 @@ use reifydb_codec::{
 	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
-	actors::pending::{Pending, PendingLayers, PendingWrite},
-	common::CommitVersion,
-	delta::RemoveVisibility,
-	interface::{
+    actors::pending::{Pending, PendingLayers, PendingWrite},
+    common::CommitVersion,
+    delta::RemoveVisibility,
+    interface::{
 		catalog::{flow::OperatorId, object::ObjectId},
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::{EncodableKey, Key, kind::KeyKind, operator_state::OperatorStateKey},
-	state::store::TimerKind,
+    key::{EncodableKey, Key, kind::KeyKind, operator_state::OperatorStateKey},
+    state::timer::TimerKind,
 };
 use reifydb_flow::{
 	operator::{HostOperator, apply::ApplyOperator, host::TxnHostContext, sink::DurableSink},

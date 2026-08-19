@@ -4,9 +4,9 @@
 use std::mem::size_of;
 
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey},
-	metrics::heap::HeapSize,
-	state::{cache::StateCache, store::StateStore},
+    key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey},
+    metrics::heap::HeapSize,
+    state::{cache::StateCache, timer::StateStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{

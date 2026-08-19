@@ -8,8 +8,8 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey},
-	state::store::{StateStore, TimerKind, TimerStore},
+    key::operator_state::{GroupId, GroupStateKey},
+    state::timer::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_flow::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
 use reifydb_value::{

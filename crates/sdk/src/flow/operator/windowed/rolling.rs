@@ -12,9 +12,9 @@ use reifydb_codec::{
 	row::operator::state::StateCodec,
 };
 use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
-	metrics::heap::{HeapSize, OperatorSample},
-	state::store::StateStore,
+    interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
+    metrics::heap::{HeapSize, OperatorSample},
+    state::timer::StateStore,
 };
 use reifydb_flow::{
 	operator::state::seal::{coord::Coord, ledger::FiredAt, policy::is_sealed},

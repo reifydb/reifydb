@@ -5,9 +5,9 @@ use reifydb_codec::row::operator::state::{OperatorState, decode};
 #[cfg(feature = "runtime")]
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
-	metrics::heap::HeapSize,
-	state::store::StateStore,
+    key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+    metrics::heap::HeapSize,
+    state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::datetime::DateTime};
@@ -89,7 +89,7 @@ pub fn read_sealed_through<T: FlowTransaction>(txn: &mut T, operator: OperatorId
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::state::store::TimerKind;
+	use reifydb_core::state::timer::TimerKind;
 
 	use super::*;
 	use crate::operator::state::mock::MockStore;

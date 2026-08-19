@@ -5,15 +5,15 @@ use std::sync::Arc;
 
 use reifydb_codec::key::encode_u64_asc;
 use reifydb_core::{
-	interface::{
+    interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey},
-	metrics::heap::{HeapSize, OperatorSample},
-	state::{cache::StateCache, store::StateStore},
-	value::column::columns::Columns,
+    key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey},
+    metrics::heap::{HeapSize, OperatorSample},
+    state::{cache::StateCache, timer::StateStore},
+    value::column::columns::Columns,
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},

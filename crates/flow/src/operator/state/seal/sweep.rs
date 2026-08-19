@@ -24,7 +24,7 @@ impl SealSweep {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::state::store::TimerKind;
+	use reifydb_core::state::timer::TimerKind;
 	use reifydb_value::value::duration::Duration;
 
 	use super::*;

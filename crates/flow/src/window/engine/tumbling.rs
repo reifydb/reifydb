@@ -16,8 +16,8 @@ use reifydb_codec::{
 	row::operator::state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey},
-	state::{cache::StateCache, store::StateStore},
+    key::operator_state::{GroupId, GroupStateKey},
+    state::{cache::StateCache, timer::StateStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};

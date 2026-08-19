@@ -22,11 +22,11 @@ use reifydb_codec::{
 	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
-	key::operator_state::{
+    key::operator_state::{
 		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
 	},
-	metrics::heap::HeapSize,
-	state::{cache::StateCache, store::StateStore},
+    metrics::heap::HeapSize,
+    state::{cache::StateCache, timer::StateStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::row_number::RowNumber};
