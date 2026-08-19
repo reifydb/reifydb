@@ -6,6 +6,7 @@ use std::{collections::BTreeMap, ops::Bound};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::interface::store::EntryKind;
 use reifydb_store::row::page::{PageId, key_range_of, page_of};
+use reifydb_value::reifydb_assertions;
 use tracing::instrument;
 
 use crate::{
@@ -315,6 +316,12 @@ impl MultiReadBufferTier {
 }
 
 fn served_chunk(out: Vec<RawEntry>, cursor: &mut RangeCursor, exhausted: bool) -> ServedChunk {
+	reifydb_assertions! {
+		assert!(
+			exhausted || !out.is_empty(),
+			"a chunk that reports more must carry an entry, otherwise last_key never advances and the store's scan loop, which now ends only when every tier cursor is exhausted, spins forever"
+		);
+	}
 	if let Some(last) = out.last() {
 		cursor.last_key = Some(last.key.clone());
 	}

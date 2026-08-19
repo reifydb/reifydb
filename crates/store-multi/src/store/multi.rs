@@ -477,7 +477,7 @@ pub fn scan_tier_chunk<S: TierStorage>(
 	cursor: &mut RangeCursor,
 	scan: &TierScanQuery,
 	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
-) -> Result<bool> {
+) -> Result<()> {
 	let batch = storage.range_next(
 		scan.table,
 		cursor,
@@ -494,7 +494,7 @@ pub fn scan_tier_chunk_rev<S: TierStorage>(
 	cursor: &mut RangeCursor,
 	scan: &TierScanQuery,
 	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
-) -> Result<bool> {
+) -> Result<()> {
 	let batch = storage.range_rev_next(
 		scan.table,
 		cursor,
@@ -511,11 +511,7 @@ fn merge_tier_batch(
 	batch: RangeBatch,
 	range: &EncodedKeyRange,
 	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
-) -> Result<bool> {
-	if batch.entries.is_empty() {
-		return Ok(false);
-	}
-
+) -> Result<()> {
 	for entry in batch.entries {
 		if !range.contains(&entry.key) {
 			continue;
@@ -533,7 +529,7 @@ fn merge_tier_batch(
 		}
 	}
 
-	Ok(true)
+	Ok(())
 }
 
 #[inline]
@@ -566,19 +562,18 @@ fn step_all_tiers(
 	persistent_cursor: &mut RangeCursor,
 	scan: &TierScanQuery,
 	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
-) -> Result<bool> {
-	let mut any_progress = false;
+) -> Result<()> {
 	if let Some(s) = buffer
 		&& !buffer_cursor.exhausted
 	{
-		any_progress |= scan_tier_chunk(s, buffer_cursor, scan, collected)?;
+		scan_tier_chunk(s, buffer_cursor, scan, collected)?;
 	}
 	if let Some(s) = persistent
 		&& !persistent_cursor.exhausted
 	{
-		any_progress |= scan_tier_chunk(s, persistent_cursor, scan, collected)?;
+		scan_tier_chunk(s, persistent_cursor, scan, collected)?;
 	}
-	Ok(any_progress)
+	Ok(())
 }
 
 pub fn scan_tiers_latest(
@@ -599,20 +594,19 @@ pub fn scan_tiers_latest(
 	};
 
 	let mut collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
-	let mut buffer_cursor = RangeCursor::default();
-	let mut persistent_cursor = RangeCursor::default();
+	let mut buffer_cursor = RangeCursor {
+		exhausted: buffer.is_none(),
+		..Default::default()
+	};
+	let mut persistent_cursor = RangeCursor {
+		exhausted: persistent.is_none(),
+		..Default::default()
+	};
 	let mut exhausted = false;
 
 	while collected.len() < max_keys {
-		let progress = step_all_tiers(
-			buffer,
-			&mut buffer_cursor,
-			persistent,
-			&mut persistent_cursor,
-			&scan,
-			&mut collected,
-		)?;
-		if !progress {
+		step_all_tiers(buffer, &mut buffer_cursor, persistent, &mut persistent_cursor, &scan, &mut collected)?;
+		if buffer_cursor.exhausted && persistent_cursor.exhausted {
 			exhausted = true;
 			break;
 		}
@@ -652,18 +646,15 @@ impl StandardMultiStore {
 		let mut collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
 		while collected.len() < batch_size {
-			let mut any_progress = false;
-
 			if !cursor.commit.exhausted {
-				any_progress |=
-					scan_tier_chunk(&self.commit, &mut cursor.commit, &scan, &mut collected)?;
+				scan_tier_chunk(&self.commit, &mut cursor.commit, &scan, &mut collected)?;
 			}
 
 			if self.persistent.is_some() && !cursor.persistent.exhausted {
-				any_progress |= self.step_persistent_cached(&scan, cursor, &mut collected, false)?;
+				self.step_persistent_cached(&scan, cursor, &mut collected, false)?;
 			}
 
-			if !any_progress {
+			if cursor.commit.exhausted && cursor.persistent.exhausted {
 				cursor.exhausted = true;
 				break;
 			}
@@ -784,18 +775,15 @@ impl StandardMultiStore {
 		let mut collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
 		while collected.len() < batch_size {
-			let mut any_progress = false;
-
 			if !cursor.commit.exhausted {
-				any_progress |=
-					scan_tier_chunk_rev(&self.commit, &mut cursor.commit, &scan, &mut collected)?;
+				scan_tier_chunk_rev(&self.commit, &mut cursor.commit, &scan, &mut collected)?;
 			}
 
 			if self.persistent.is_some() && !cursor.persistent.exhausted {
-				any_progress |= self.step_persistent_cached(&scan, cursor, &mut collected, true)?;
+				self.step_persistent_cached(&scan, cursor, &mut collected, true)?;
 			}
 
-			if !any_progress {
+			if cursor.commit.exhausted && cursor.persistent.exhausted {
 				cursor.exhausted = true;
 				break;
 			}
@@ -829,20 +817,19 @@ impl StandardMultiStore {
 		cursor: &mut MultiVersionRangeCursor,
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
-	) -> Result<bool> {
+	) -> Result<()> {
 		let Some(persistent) = &self.persistent else {
-			return Ok(false);
+			return Ok(());
 		};
 
 		if let Some(served) = self.serve_from_read_cache(scan, cursor, collected, descending) {
 			return served;
 		}
 
-		let (consumed, progressed) =
-			self.scan_persistent_chunk(persistent, scan, cursor, collected, descending)?;
+		let consumed = self.scan_persistent_chunk(persistent, scan, cursor, collected, descending)?;
 		self.warm_read_bucket_after_scan(persistent, scan, cursor, consumed)?;
 
-		Ok(progressed)
+		Ok(())
 	}
 
 	#[inline]
@@ -852,7 +839,7 @@ impl StandardMultiStore {
 		cursor: &mut MultiVersionRangeCursor,
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
-	) -> Option<Result<bool>> {
+	) -> Option<Result<()>> {
 		let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) else {
 			return None;
 		};
@@ -878,7 +865,7 @@ impl StandardMultiStore {
 		cursor: &mut MultiVersionRangeCursor,
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
-	) -> Result<(usize, bool)> {
+	) -> Result<usize> {
 		let batch = if descending {
 			persistent.range_rev_next(
 				scan.table,
@@ -899,8 +886,8 @@ impl StandardMultiStore {
 			)?
 		};
 		let consumed = batch.entries.len();
-		let progressed = merge_tier_batch(batch, scan.range, collected)?;
-		Ok((consumed, progressed))
+		merge_tier_batch(batch, scan.range, collected)?;
+		Ok(consumed)
 	}
 
 	#[inline]
