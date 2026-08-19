@@ -10,9 +10,6 @@ description = "WebAssembly bindings for ReifyDB query engine"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = false
-
 [features]
 default = ["console_error_panic_hook"]
 
