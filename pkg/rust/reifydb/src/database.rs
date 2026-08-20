@@ -16,7 +16,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_cdc::storage::CdcStore;
 #[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 use reifydb_core::{
-	error::diagnostic::subsystem::feature_disabled,
+	error::diagnostic::{subscription::hydration_row_cap_exceeded, subsystem::feature_disabled},
 	interface::catalog::{id::SubscriptionId, subscription::HydrationConfig},
 	internal,
 };
@@ -79,7 +79,8 @@ fn hydrate_error_to_error(e: HydrateError) -> Error {
 		))),
 		HydrateError::RowCapExceeded {
 			cap,
-		} => Error(Box::new(internal!("subscription hydration exceeds max_rows={}", cap))),
+			bound,
+		} => Error(Box::new(hydration_row_cap_exceeded(cap, &bound.advice()))),
 		HydrateError::Internal(s) => Error(Box::new(internal!("subscription hydration failed: {}", s))),
 	}
 }

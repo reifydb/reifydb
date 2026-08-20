@@ -44,8 +44,8 @@ impl FlowEngineInner {
 			return Ok(Vec::new());
 		}
 
-		let topo = flow.topological_order()?;
-		let frontiers = output_frontiers(txn, flow, &self.operators, &topo)?;
+		let topo = flow.topological_order();
+		let frontiers = output_frontiers(txn, flow, &self.operators, topo)?;
 
 		let mut held: WatermarkHolds = Vec::with_capacity(sinks.len());
 		for (object, operator_id) in sinks {

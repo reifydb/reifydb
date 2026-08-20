@@ -68,6 +68,11 @@ impl RuntimeConfig {
 		self.fatal = config;
 		self
 	}
+
+	pub fn clock(mut self, clock: Clock) -> Self {
+		self.clock = clock;
+		self
+	}
 }
 
 use std::fmt;

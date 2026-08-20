@@ -30,7 +30,7 @@ use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transact
 use reifydb_value::{Result, value::identity::IdentityId};
 use tracing::error;
 
-use crate::{sink::DeliveryBuffer, store::SubscriptionStore, subsystem::registration::register_ephemeral_flow};
+use crate::{delivery::DeliveryBuffer, store::SubscriptionStore, subsystem::registration::register_ephemeral_flow};
 
 mod dispatch;
 mod hydrate;

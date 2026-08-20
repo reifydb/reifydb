@@ -30,8 +30,8 @@ fn declared_source_domain(
 
 	let mut resolved: Option<TimeDomain> = None;
 
-	for operator_id in flow.topological_order()? {
-		let Some(operator) = flow.get_operator(&operator_id) else {
+	for operator_id in flow.topological_order() {
+		let Some(operator) = flow.get_operator(operator_id) else {
 			continue;
 		};
 
@@ -97,8 +97,8 @@ pub fn check_window_time_requirements(catalog: &Catalog, txn: &mut Transaction<'
 
 	let mut lagged = false;
 
-	for operator_id in flow.topological_order()? {
-		let operator = flow.get_operator(&operator_id).unwrap();
+	for operator_id in flow.topological_order() {
+		let operator = flow.get_operator(operator_id).unwrap();
 
 		if let OperatorDef::Window {
 			kind: WindowKind::Rolling {
@@ -124,8 +124,8 @@ pub fn check_join_lateness_requirements(catalog: &Catalog, txn: &mut Transaction
 	let flow_name = format!("flow {}", flow.id.0);
 	let mut declared = false;
 
-	for operator_id in flow.topological_order()? {
-		let Some(operator) = flow.get_operator(&operator_id) else {
+	for operator_id in flow.topological_order() {
+		let Some(operator) = flow.get_operator(operator_id) else {
 			continue;
 		};
 		let OperatorDef::Join {
@@ -136,7 +136,7 @@ pub fn check_join_lateness_requirements(catalog: &Catalog, txn: &mut Transaction
 		else {
 			continue;
 		};
-		let Some(lateness) = CatalogStore::find_operator_settings(txn, operator_id)?.and_then(|s| s.join)
+		let Some(lateness) = CatalogStore::find_operator_settings(txn, *operator_id)?.and_then(|s| s.join)
 		else {
 			continue;
 		};

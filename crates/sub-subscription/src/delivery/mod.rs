@@ -8,7 +8,9 @@ use reifydb_runtime::sync::mutex::Mutex;
 
 use crate::store::SubscriptionStore;
 
-pub(crate) mod operator;
+pub(crate) mod hydration;
+mod pushdown;
+pub(crate) mod sink;
 
 pub struct DeliveryBuffer {
 	store: Arc<SubscriptionStore>,
@@ -25,6 +27,10 @@ impl DeliveryBuffer {
 
 	pub fn push(&self, subscription_id: SubscriptionId, columns: Columns) {
 		self.staging.lock().entry(subscription_id).or_default().push(columns);
+	}
+
+	pub fn take_staged(&self, subscription_id: SubscriptionId) -> Vec<Columns> {
+		self.staging.lock().remove(&subscription_id).unwrap_or_default()
 	}
 
 	pub fn commit_batch(&self) {

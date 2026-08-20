@@ -13,7 +13,7 @@ use reifydb_core::{
 	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{error, error::Error, reifydb_assertions, value::Value};
+use reifydb_value::{error, reifydb_assertions, value::Value};
 use tracing::instrument;
 
 use crate::{
@@ -118,15 +118,7 @@ impl QueryNode for TopKNode {
 		}
 
 		let key_cols: Vec<_> =
-			self.by.iter()
-				.map(|key| {
-					let col = columns
-						.iter()
-						.find(|c| c.name() == key.column.fragment())
-						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-					Ok::<_, Error>((col.data().clone(), key.direction.clone()))
-				})
-				.collect::<Result<Vec<_>>>()?;
+			self.by.iter().map(|key| Self::resolve_key(&columns, key)).collect::<Result<Vec<_>>>()?;
 
 		let directions: Vec<_> = self.by.iter().map(|k| k.direction.clone()).collect();
 
@@ -142,17 +134,21 @@ impl QueryNode for TopKNode {
 }
 
 impl TopKNode {
+	fn resolve_key(columns: &Columns, key: &SortKey) -> Result<(ColumnBuffer, SortDirection)> {
+		let name = key.column.fragment();
+		if let Some(data) = columns.system_column(name) {
+			return Ok((data, key.direction.clone()));
+		}
+		let col = columns
+			.iter()
+			.find(|c| c.name() == name)
+			.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
+		Ok((col.data().clone(), key.direction.clone()))
+	}
+
 	fn sort_all(&self, columns: &mut Columns) -> Result<Option<Columns>> {
 		let key_refs: Vec<_> =
-			self.by.iter()
-				.map(|key| {
-					let col = columns
-						.iter()
-						.find(|c| c.name() == key.column.fragment())
-						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-					Ok::<_, Error>((col.data().clone(), key.direction.clone()))
-				})
-				.collect::<Result<Vec<_>>>()?;
+			self.by.iter().map(|key| Self::resolve_key(columns, key)).collect::<Result<Vec<_>>>()?;
 
 		let row_count = columns.row_count();
 		let mut indices: Vec<usize> = (0..row_count).collect();

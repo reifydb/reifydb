@@ -3,7 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_core::{
+	error::diagnostic::subscription::subscription_lagged, interface::catalog::id::SubscriptionId,
+	value::column::columns::Columns,
+};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_value::{reifydb_assertions, value::duration::Duration};
@@ -51,6 +54,14 @@ impl StoreBackedPoller {
 		} = &mut *scratch;
 		for sub_id in active.iter() {
 			if self.store.is_hydrating(sub_id) {
+				continue;
+			}
+			if let Some(overrun) = self.store.overrun(sub_id) {
+				delivery.terminate(
+					sub_id,
+					subscription_lagged(sub_id.0, self.store.capacity(sub_id), overrun),
+				);
+				self.store.unregister(sub_id);
 				continue;
 			}
 			drained.clear();

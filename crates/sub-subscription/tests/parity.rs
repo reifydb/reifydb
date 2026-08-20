@@ -39,3 +39,6 @@ mod embedded_hydration;
 
 #[path = "parity/policy_scope.rs"]
 mod policy_scope;
+
+#[path = "parity/volume.rs"]
+mod volume;

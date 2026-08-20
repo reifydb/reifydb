@@ -23,6 +23,7 @@ pub struct FlowDag {
 pub struct Inner {
 	pub id: FlowId,
 	pub graph: DirectedGraph<FlowNode>,
+	pub order: Vec<OperatorId>,
 }
 
 impl Deref for FlowDag {
@@ -88,10 +89,12 @@ impl FlowBuilder {
 	}
 
 	pub fn build(self) -> FlowDag {
+		let order = self.graph.topological_sort();
 		FlowDag {
 			inner: Arc::new(Inner {
 				id: self.id,
 				graph: self.graph,
+				order,
 			}),
 		}
 	}
@@ -106,8 +109,8 @@ impl FlowDag {
 		self.inner.id
 	}
 
-	pub fn topological_order(&self) -> Result<Vec<OperatorId>> {
-		Ok(self.inner.graph.topological_sort())
+	pub fn topological_order(&self) -> &[OperatorId] {
+		&self.inner.order
 	}
 
 	pub fn get_operator(&self, node_id: &OperatorId) -> Option<&FlowNode> {

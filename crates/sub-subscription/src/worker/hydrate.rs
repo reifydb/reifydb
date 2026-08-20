@@ -23,7 +23,7 @@ use reifydb_value::{
 
 use super::{SubscriptionWorkerActor, SubscriptionWorkerState};
 use crate::{
-	subsystem::hydration::{collect_source_descriptors, run_source_queries},
+	delivery::hydration::{collect_source_descriptors, run_source_queries},
 	transaction::EphemeralTransaction,
 };
 
@@ -52,14 +52,16 @@ impl SubscriptionWorkerActor {
 		let sources = collect_source_descriptors(&flow, &self.catalog, &mut outer)?;
 		let (source_frames, statements) = run_source_queries(&self.engine, &mut outer, sources, max_rows)?;
 
+		self.store.begin_hydration(sub_id);
+
 		let now = self.engine.clock().now();
 		self.apply_source_frames(state, flow_id, version, source_frames, now)?;
 
-		self.store.begin_hydration(sub_id);
+		let batches = self.delivery.take_staged(sub_id);
 		self.delivery.commit_batch();
 		drop(outer);
 
-		Ok(self.build_outcome(sub_id, version, hydrate_start, statements))
+		Ok(self.build_outcome(sub_id, version, hydrate_start, statements, batches))
 	}
 
 	fn apply_source_frames(
@@ -88,15 +90,17 @@ impl SubscriptionWorkerActor {
 			flow_engine.substrate().clone(),
 		);
 
+		let mut changes = Vec::with_capacity(source_frames.len());
 		for (shape, shape_columns) in source_frames {
-			for columns in shape_columns {
-				for row_idx in 0..columns.row_count() {
-					let row = columns.extract_row(row_idx);
-					let diff = Diff::insert(row);
-					let change = Change::from_object(shape, version, vec![diff], now);
-					flow_engine.process(&mut txn, change, flow_id)?;
-				}
+			let diffs: Vec<Diff> =
+				shape_columns.into_iter().filter(|c| c.row_count() > 0).map(Diff::insert).collect();
+			if diffs.is_empty() {
+				continue;
 			}
+			changes.push(Change::from_object(shape, version, diffs, now));
+		}
+		if !changes.is_empty() {
+			flow_engine.process_batch(&mut txn, changes, flow_id)?;
 		}
 
 		txn.merge_state();
@@ -110,6 +114,7 @@ impl SubscriptionWorkerActor {
 		version: CommitVersion,
 		hydrate_start: Instant,
 		statements: Vec<StatementMetrics>,
+		batches: Vec<Columns>,
 	) -> HydrateOutcome {
 		let elapsed = hydrate_start.elapsed();
 		let elapsed_nanos = elapsed.as_nanos() as i64;
@@ -122,7 +127,6 @@ impl SubscriptionWorkerActor {
 			compute: total,
 		};
 
-		let batches = self.store.drain(&sub_id, usize::MAX);
 		self.store.end_hydration(&sub_id);
 		HydrateOutcome {
 			version,

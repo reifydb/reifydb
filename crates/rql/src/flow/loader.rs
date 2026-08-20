@@ -82,6 +82,6 @@ mod tests {
 		let dag = load_flow_dag(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 
 		assert_eq!(dag.get_operator_ids().count(), 0, "no operators persisted, so none restored");
-		assert!(dag.topological_order().unwrap().is_empty());
+		assert!(dag.topological_order().is_empty());
 	}
 }

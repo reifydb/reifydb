@@ -2,10 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 mod inspect;
-mod pushdown;
 mod service;
 
-pub(crate) mod hydration;
 pub(crate) mod registration;
 
 use std::{
@@ -65,7 +63,7 @@ use self::{
 };
 use crate::{
 	consumer::SubscriptionCdcConsumer,
-	sink::DeliveryBuffer,
+	delivery::DeliveryBuffer,
 	store::SubscriptionStore,
 	tracker::{SubscriptionPositionTracker, SubscriptionSourceTracker},
 	watermark::compute_subscription_watermarks,

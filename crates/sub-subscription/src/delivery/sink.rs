@@ -21,7 +21,7 @@ use reifydb_value::{
 	value::{row_number::RowNumber, system_columns::SystemColumns},
 };
 
-use crate::sink::DeliveryBuffer;
+use crate::delivery::DeliveryBuffer;
 
 #[operator_state]
 #[derive(Debug, Clone, Default, HeapSize)]

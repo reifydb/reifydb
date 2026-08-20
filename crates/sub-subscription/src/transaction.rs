@@ -46,13 +46,9 @@ pub struct EphemeralTransaction {
 	pub accumulator: ChangeAccumulator,
 	pub armed: Vec<TimerDue>,
 	pub clock: Clock,
-
 	pub change_coordinate: Option<ChangeCoordinate>,
-
 	pub flow_watermark: Option<DateTime>,
-
 	pub substrate: FlowSubstrate,
-
 	pub state: HashMap<EncodedKey, EncodedBytes>,
 }
 

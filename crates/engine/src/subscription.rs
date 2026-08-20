@@ -22,12 +22,37 @@ pub struct SubscriptionContext {
 	pub params: Params,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HydrationBound {
+	Pushed,
+	Absent,
+	Blocked {
+		operator: String,
+	},
+}
+
+impl HydrationBound {
+	pub fn advice(&self) -> String {
+		match self {
+			Self::Absent => "add `TAKE N` upstream, raise with WITH { hydration: { max_rows: ... } }, or disable with WITH { hydration: { enabled: false } }".to_string(),
+			Self::Blocked {
+				operator,
+			} => format!(
+				"the query's `TAKE` sits below `{}`, which the hydration pushdown cannot see through, so the source was read unbounded; move the `TAKE` above `{}`, raise with WITH {{ hydration: {{ max_rows: ... }} }}, or disable with WITH {{ hydration: {{ enabled: false }} }}",
+				operator, operator
+			),
+			Self::Pushed => "the query's `TAKE` was already applied at the source and it still returns more rows than the cap, so raise it with WITH { hydration: { max_rows: ... } } or disable with WITH { hydration: { enabled: false } }".to_string(),
+		}
+	}
+}
+
 #[derive(Debug)]
 pub enum HydrateError {
 	SubscriptionNotFound,
 	UnsupportedSourceType,
 	RowCapExceeded {
 		cap: u64,
+		bound: HydrationBound,
 	},
 	Engine(TypeError),
 	Internal(String),
@@ -66,9 +91,14 @@ impl HydrateError {
 		match self {
 			Self::SubscriptionNotFound => "Subscription not found at hydration time".to_string(),
 			Self::UnsupportedSourceType => "hydration is not supported for SourceSeries / SourceInlineData; use WITH { hydration: { enabled: false } } to subscribe without it".to_string(),
-			Self::RowCapExceeded { .. } => format!(
-				"Hydration exceeds subscribe.max_hydration_rows={}; add `TAKE N` upstream, lower with WITH {{ hydration: {{ max_rows: ... }} }}, or disable with WITH {{ hydration: {{ enabled: false }} }}. Query: {}",
-				cap, rql
+			Self::RowCapExceeded {
+				bound,
+				..
+			} => format!(
+				"Hydration exceeds subscribe.max_hydration_rows={}; {}. Query: {}",
+				cap,
+				bound.advice(),
+				rql
 			),
 			Self::Engine(e) => {
 				if self.is_version_evicted() {

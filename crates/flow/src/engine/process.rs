@@ -76,12 +76,11 @@ impl FlowEngineInner {
 		}
 		Span::current().record("version_count", by_version.len());
 
-		let topo = flow.topological_order()?;
+		let topo = flow.topological_order();
 		let mut nodes_processed = 0u32;
 
 		for (version, version_changes) in by_version {
-			nodes_processed +=
-				self.process_version(txn, &flow, flow_id, version, version_changes, &topo)?;
+			nodes_processed += self.process_version(txn, &flow, flow_id, version, version_changes, topo)?;
 		}
 
 		Span::current().record("nodes_processed", nodes_processed);
@@ -99,7 +98,7 @@ impl FlowEngineInner {
 			None => return Ok(()),
 		};
 
-		let topo = flow.topological_order()?;
+		let topo = flow.topological_order();
 		let sources: Vec<OperatorId> = topo
 			.iter()
 			.copied()
@@ -598,8 +597,8 @@ mod tests {
 		inner.substrate.frontiers.publish(object, at_millis(30_000), CommitVersion(1));
 
 		let mut txn = deferred(&engine);
-		let topo = flow.topological_order().unwrap();
-		inner.process_version(&mut txn, &flow, FlowId(1), CommitVersion(5), vec![], &topo).unwrap();
+		let topo = flow.topological_order();
+		inner.process_version(&mut txn, &flow, FlowId(1), CommitVersion(5), vec![], topo).unwrap();
 
 		assert_eq!(
 			SourceWatermarks::source_watermark(SOURCE, &mut txn).unwrap(),
@@ -638,7 +637,7 @@ mod tests {
 		inner.sources.insert(ObjectId::Series(SeriesId(9)), vec![(FlowId(1), SOURCE)]);
 
 		let mut txn = deferred(&engine);
-		let topo = flow.topological_order().unwrap();
+		let topo = flow.topological_order();
 		inner.process_version(
 			&mut txn,
 			&flow,

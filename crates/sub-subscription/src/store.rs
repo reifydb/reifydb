@@ -22,8 +22,13 @@ use tracing::instrument;
 struct SubscriptionBuffer {
 	queue: VecDeque<Columns>,
 	capacity: usize,
+	overrun: Option<u16>,
 
 	column_names: Vec<String>,
+}
+
+fn saturating_u16(value: usize) -> u16 {
+	value.min(u16::MAX as usize) as u16
 }
 
 pub struct SubscriptionStore {
@@ -68,11 +73,7 @@ impl SubscriptionStore {
 	pub fn next_id(&self) -> SubscriptionId {
 		let raw = self.next_id.fetch_add(1, Ordering::Relaxed);
 		reifydb_assertions! {
-			assert!(
-				raw != 0,
-				"the subscription id counter wrapped past u64::MAX and issued 0, so a new subscriber collides with the reserved initial id and would receive another subscriber's delivery stream (issued={})",
-				raw
-			);
+			assert_ne!(raw, 0,"the subscription id counter wrapped past u64::MAX and issued 0, so a new subscriber collides with the reserved initial id and would receive another subscriber's delivery stream (issued={})", raw);
 		}
 		SubscriptionId(raw)
 	}
@@ -83,6 +84,7 @@ impl SubscriptionStore {
 			SubscriptionBuffer {
 				queue: VecDeque::with_capacity(self.default_capacity),
 				capacity: self.default_capacity,
+				overrun: None,
 				column_names,
 			},
 		);
@@ -113,6 +115,14 @@ impl SubscriptionStore {
 		}
 	}
 
+	pub fn overrun(&self, id: &SubscriptionId) -> Option<u16> {
+		self.inner.get(id).and_then(|buf| buf.overrun)
+	}
+
+	pub fn capacity(&self, id: &SubscriptionId) -> usize {
+		self.inner.get(id).map(|buf| buf.capacity).unwrap_or(0)
+	}
+
 	pub fn active_subscriptions(&self) -> Vec<SubscriptionId> {
 		self.inner.iter().map(|entry| *entry.key()).collect()
 	}
@@ -133,17 +143,25 @@ impl SubscriptionStore {
 			let Some(mut buf) = self.inner.get_mut(&id) else {
 				continue;
 			};
-			for columns in columns_vec {
+			let staged_count = columns_vec.len();
+			if let Some(overran) = buf.overrun {
+				buf.overrun = Some(overran.saturating_add(saturating_u16(staged_count)));
+				continue;
+			}
+			for (idx, columns) in columns_vec.into_iter().enumerate() {
 				reifydb_assertions! {
 					let cap = buf.capacity;
 					assert!(
 						cap != 0,
-						"subscription {:?} ring buffer has zero capacity, so the eviction branch can never run and push_back grows the queue without bound, leaking memory per committed batch",
+						"subscription {:?} ring buffer has zero capacity, so the lag branch can never run and push_back grows the queue without bound, leaking memory per committed batch",
 						id
 					);
 				}
 				if buf.queue.len() >= buf.capacity {
-					buf.queue.pop_front();
+					let discarded = buf.queue.len() + (staged_count - idx);
+					buf.queue.clear();
+					buf.overrun = Some(saturating_u16(discarded));
+					break;
 				}
 				buf.queue.push_back(columns);
 			}
@@ -203,19 +221,104 @@ mod tests {
 	}
 
 	#[test]
-	fn test_ring_buffer_overwrites_oldest() {
+	fn commit_staged_past_capacity_marks_the_subscription_lagged() {
+		// Separate commits so each push evaluates capacity against the committed tail, as the CDC consumer
+		// drives it.
 		let store = SubscriptionStore::new(2);
 		let id = store.next_id();
 		store.register(id, vec!["test".to_string()]);
 
-		// Three separate commits so each push evaluates capacity against the already-committed tail, the
-		// way the CDC consumer drives the store one batch at a time.
+		store.commit_staged(stage(id, &[1]));
+		store.commit_staged(stage(id, &[2]));
+		assert_eq!(store.overrun(&id), None, "a buffer exactly at capacity has not lost anything yet");
+
+		store.commit_staged(stage(id, &[3]));
+
+		assert_eq!(
+			store.overrun(&id),
+			Some(3),
+			"overflowing must terminate the subscription and record how far past capacity it went"
+		);
+	}
+
+	#[test]
+	fn a_lagged_subscription_drops_its_queued_batches() {
+		// Delivering a partial prefix would leave the subscriber holding a state the server never had.
+		let store = SubscriptionStore::new(2);
+		let id = store.next_id();
+		store.register(id, vec!["test".to_string()]);
+
 		store.commit_staged(stage(id, &[1]));
 		store.commit_staged(stage(id, &[2]));
 		store.commit_staged(stage(id, &[3]));
 
-		let drained = store.drain(&id, 10);
-		assert_eq!(drained.len(), 2);
+		assert!(
+			store.drain(&id, 10).is_empty(),
+			"a lagged subscription must surrender its queue, not a prefix of it"
+		);
+	}
+
+	#[test]
+	fn a_lagged_subscription_accepts_no_further_batches() {
+		// The state is terminal, so a later commit must not refill a queue the subscriber will never read.
+		let store = SubscriptionStore::new(2);
+		let id = store.next_id();
+		store.register(id, vec!["test".to_string()]);
+
+		store.commit_staged(stage(id, &[1]));
+		store.commit_staged(stage(id, &[2]));
+		store.commit_staged(stage(id, &[3]));
+		store.commit_staged(stage(id, &[4]));
+
+		assert!(store.overrun(&id).is_some(), "the overrun must never clear back to none");
+		assert!(store.drain(&id, 10).is_empty(), "no batch may be queued after the subscription is lagged");
+	}
+
+	#[test]
+	fn a_subscription_under_capacity_is_never_lagged() {
+		// The common path must be untouched by the lag branch.
+		let store = SubscriptionStore::new(16);
+		let id = store.next_id();
+		store.register(id, vec!["test".to_string()]);
+
+		store.commit_staged(stage(id, &[1, 2, 3]));
+
+		assert_eq!(store.overrun(&id), None);
+		assert_eq!(store.drain(&id, 10).len(), 3);
+	}
+
+	#[test]
+	fn overrun_counts_every_batch_the_lag_discarded() {
+		// A count of one would read as a single hiccup rather than the whole queue being surrendered.
+		let store = SubscriptionStore::new(2);
+		let id = store.next_id();
+		store.register(id, vec!["test".to_string()]);
+
+		store.commit_staged(stage(id, &[1]));
+		store.commit_staged(stage(id, &[2]));
+		assert_eq!(store.overrun(&id), None, "a buffer at capacity has not discarded anything yet");
+
+		store.commit_staged(stage(id, &[3, 4, 5]));
+
+		assert_eq!(store.overrun(&id), Some(5), "two queued batches plus three refused must all be counted");
+	}
+
+	#[test]
+	fn overrun_keeps_accumulating_while_the_subscription_stays_lagged() {
+		// The count sizes a future mailbox, so it must reflect the whole shortfall, not just the first
+		// overflow.
+		let store = SubscriptionStore::new(2);
+		let id = store.next_id();
+		store.register(id, vec!["test".to_string()]);
+
+		store.commit_staged(stage(id, &[1]));
+		store.commit_staged(stage(id, &[2]));
+		store.commit_staged(stage(id, &[3]));
+		assert_eq!(store.overrun(&id), Some(3));
+
+		store.commit_staged(stage(id, &[4, 5]));
+
+		assert_eq!(store.overrun(&id), Some(5), "batches refused after the lag must be counted too");
 	}
 
 	#[test]

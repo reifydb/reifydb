@@ -61,6 +61,13 @@ impl Clock {
 	pub fn is_mock(&self) -> bool {
 		matches!(self, Clock::Mock(_))
 	}
+
+	pub fn as_mock(&self) -> Option<&MockClock> {
+		match self {
+			Clock::Mock(mock) => Some(mock),
+			Clock::Real => None,
+		}
+	}
 }
 
 #[derive(Clone)]

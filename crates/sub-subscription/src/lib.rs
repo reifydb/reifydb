@@ -6,8 +6,8 @@
 //! and durable subscriptions belong elsewhere.
 
 pub mod consumer;
+pub mod delivery;
 pub mod poller;
-pub mod sink;
 pub mod store;
 pub mod subsystem;
 pub mod tracker;

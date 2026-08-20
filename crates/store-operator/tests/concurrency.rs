@@ -7,7 +7,7 @@
 
 use std::{
 	sync::{
-		Arc,
+		Arc, Barrier,
 		atomic::{AtomicBool, Ordering},
 	},
 	thread,
@@ -38,6 +38,8 @@ const WRITERS: u64 = 8;
 
 const KEYS_PER_WRITER: u64 = 64;
 
+const FLUSH_ROUNDS: usize = 16;
+
 fn store() -> (OperatorStore, SqliteTempPathGuard) {
 	// a real actor system is what lets the flusher run on its own thread while the test writes
 	let pools = Pools::new(PoolConfig::default());
@@ -60,6 +62,14 @@ fn key(suffix: u64) -> EncodedKey {
 
 fn row(body: &str) -> EncodedPodRow {
 	EncodedPodRow::new(body.as_bytes())
+}
+
+fn version(round: usize) -> String {
+	format!("v{round}")
+}
+
+fn parse_version(body: &str) -> usize {
+	body.strip_prefix('v').and_then(|round| round.parse().ok()).expect("test bodies are versioned")
 }
 
 fn body(store: &OperatorStore, operator: OperatorId, suffix: u64) -> Option<String> {
@@ -116,42 +126,62 @@ fn a_read_racing_the_flush_never_sees_the_value_the_flush_is_replacing() {
 	// between take_for_flush and complete_flush the row is in neither the live batch nor sqlite yet
 	let (store, _guard) = store();
 	let persistent = store.persistent().expect("the sqlite tier is configured");
+	// only the flusher may advance sqlite past this seed, otherwise a torn two-tier read reports a false regression
 	for index in 0..KEYS_PER_WRITER {
-		persistent.set(OP, key(index), row("stale"));
+		persistent.set(OP, key(index), row(&version(0)));
 	}
 	for index in 0..KEYS_PER_WRITER {
-		store.set(OP, key(index), row("fresh"));
+		store.set(OP, key(index), row(&version(1)));
 	}
 
 	let stop = Arc::new(AtomicBool::new(false));
+	// the reader must already be spinning before the first flush, otherwise it wakes after stop and reads nothing
+	let barrier = Arc::new(Barrier::new(2));
 	let reader = {
 		let store = store.clone();
 		let stop = Arc::clone(&stop);
+		let barrier = Arc::clone(&barrier);
 		thread::spawn(move || {
-			let mut stale = 0usize;
+			let mut highest = vec![0usize; KEYS_PER_WRITER as usize];
+			let mut regressions = 0usize;
 			let mut missing = 0usize;
 			let mut reads = 0usize;
+			barrier.wait();
 			while !stop.load(Ordering::Acquire) {
 				for index in 0..KEYS_PER_WRITER {
 					reads += 1;
 					match body(&store, OP, index).as_deref() {
-						Some("fresh") => {}
-						Some(_) => stale += 1,
+						Some(observed) => {
+							let observed = parse_version(observed);
+							let seen = &mut highest[index as usize];
+							if observed < *seen {
+								regressions += 1;
+							} else {
+								*seen = observed;
+							}
+						}
 						None => missing += 1,
 					}
 				}
 			}
-			(reads, stale, missing)
+			(reads, regressions, missing)
 		})
 	};
 
-	assert!(store.flush_pending_blocking(), "the fresh values must reach the flusher");
+	barrier.wait();
+	for round in 2..=FLUSH_ROUNDS {
+		assert!(store.flush_pending_blocking(), "the buffered version must reach the flusher");
+		for index in 0..KEYS_PER_WRITER {
+			store.set(OP, key(index), row(&version(round)));
+		}
+	}
+	assert!(store.flush_pending_blocking(), "the last buffered version must reach the flusher");
 	stop.store(true, Ordering::Release);
-	let (reads, stale, missing) = reader.join().expect("the reading thread must not panic");
+	let (reads, regressions, missing) = reader.join().expect("the reading thread must not panic");
 
 	assert!(reads > 0, "the reader must have observed something, otherwise this test asserts nothing");
 	assert_eq!(
-		stale, 0,
+		regressions, 0,
 		"a read that falls through to sqlite while the flush is in flight serves the value the writer already \
 		 replaced, and the operator computes on state it has overwritten"
 	);

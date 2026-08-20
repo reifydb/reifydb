@@ -69,18 +69,19 @@ impl Columns {
 
 	pub fn system_column(&self, name: &str) -> Option<ColumnBuffer> {
 		let name = name.strip_prefix('#').unwrap_or(name);
+		let row_count = self.row_count();
 
-		if name == ROW_NUMBER_COLUMN_NAME && !self.row_numbers().is_empty() {
+		if name == ROW_NUMBER_COLUMN_NAME && self.row_numbers().len() == row_count {
 			let values: Vec<u64> = self.row_numbers().iter().map(|r| r.value()).collect();
 			return Some(ColumnBuffer::uint8(values));
 		}
-		if name == CREATED_AT_COLUMN_NAME && !self.created_at().is_empty() {
+		if name == CREATED_AT_COLUMN_NAME && self.created_at().len() == row_count {
 			return Some(ColumnBuffer::datetime(self.created_at().to_vec()));
 		}
-		if name == UPDATED_AT_COLUMN_NAME && !self.updated_at().is_empty() {
+		if name == UPDATED_AT_COLUMN_NAME && self.updated_at().len() == row_count {
 			return Some(ColumnBuffer::datetime(self.updated_at().to_vec()));
 		}
-		if name == TIME_COLUMN_NAME && !self.time().is_empty() {
+		if name == TIME_COLUMN_NAME && self.time().len() == row_count {
 			return Some(ColumnBuffer::datetime(self.time().to_vec()));
 		}
 		None

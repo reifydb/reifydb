@@ -58,8 +58,8 @@ impl FlowEngineInner {
 
 		let mut added: Vec<OperatorId> = Vec::new();
 		let ctx = Arc::new(FlowContext::default());
-		for operator_id in flow.topological_order()? {
-			let operator = flow.get_operator(&operator_id).unwrap();
+		for operator_id in flow.topological_order() {
+			let operator = flow.get_operator(operator_id).unwrap();
 			if let Err(err) = self.add(txn, &flow, operator, &ctx) {
 				for id in &added {
 					self.operators.remove(id);
@@ -75,7 +75,7 @@ impl FlowEngineInner {
 				self.sinks.retain(|_, v| !v.is_empty());
 				return Err(err);
 			}
-			added.push(operator_id);
+			added.push(*operator_id);
 		}
 
 		let store = self.substrate.operators.as_ref().expect("flow engine was built without an operator store");

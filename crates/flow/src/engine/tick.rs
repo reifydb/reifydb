@@ -23,9 +23,9 @@ impl FlowEngineInner {
 			None => return Ok(()),
 		};
 
-		let topo = flow.topological_order()?;
+		let topo = flow.topological_order();
 
-		self.dispatch_due_timers(txn, &flow, checkpoint, &topo)?;
+		self.dispatch_due_timers(txn, &flow, checkpoint, topo)?;
 		Ok(())
 	}
 }

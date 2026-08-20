@@ -9,7 +9,7 @@ use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
-use crate::sink::{DeliveryBuffer, operator::EphemeralSinkSubscriptionOperator};
+use crate::delivery::{DeliveryBuffer, sink::EphemeralSinkSubscriptionOperator};
 
 pub(crate) fn register_ephemeral_flow(
 	engine: &mut FlowEngineInner,
@@ -23,8 +23,8 @@ pub(crate) fn register_ephemeral_flow(
 		symbols: ctx.symbols.clone(),
 		params: ctx.params.clone(),
 	});
-	for operator_id in flow.topological_order()? {
-		let operator = flow.get_operator(&operator_id).unwrap();
+	for operator_id in flow.topological_order() {
+		let operator = flow.get_operator(operator_id).unwrap();
 		match &operator.ty {
 			OperatorDef::SinkSubscription {
 				..
@@ -33,10 +33,10 @@ pub(crate) fn register_ephemeral_flow(
 					.operator(operator.inputs[0])
 					.expect("Parent operator not found")
 					.output_schema();
-				let op = EphemeralSinkSubscriptionOperator::new(operator_id, ctx.id, delivery.clone());
+				let op = EphemeralSinkSubscriptionOperator::new(*operator_id, ctx.id, delivery.clone());
 				engine.insert_operator(
-					operator_id,
-					Box::new(ApplyOperator::new(parent_schema, operator_id, Box::new(op), None)),
+					*operator_id,
+					Box::new(ApplyOperator::new(parent_schema, *operator_id, Box::new(op), None)),
 				);
 			}
 			_ => {

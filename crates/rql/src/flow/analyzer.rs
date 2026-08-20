@@ -139,7 +139,7 @@ impl FlowGraphAnalyzer {
 	fn analyze_flow(flow: &FlowDag) -> FlowSummary {
 		let sources = Self::get_sources(flow);
 		let sinks = Self::get_sinks(flow);
-		let execution_order = flow.topological_order().unwrap_or_default();
+		let execution_order = flow.topological_order().to_vec();
 
 		FlowSummary {
 			id: flow.id(),

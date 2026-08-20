@@ -12,10 +12,14 @@ use std::{
 };
 
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{RuntimeConfig, fatal::FatalConfig};
+use reifydb_runtime::{
+	RuntimeConfig,
+	context::clock::{Clock, MockClock},
+	fatal::FatalConfig,
+};
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_test_harness::engine::AsEngine;
-use reifydb_value::value::duration::Duration as ValueDuration;
+use reifydb_value::value::{datetime::DateTime, duration::Duration as ValueDuration};
 
 use crate::{Database, Frame, Result, SqliteConfig, embedded};
 
@@ -25,27 +29,28 @@ pub struct TestDb {
 }
 
 impl TestDb {
+	pub fn builder() -> TestDbBuilder {
+		TestDbBuilder::new()
+	}
+
 	pub fn memory() -> Self {
-		Self::wrap(
-			embedded::memory()
-				.with_runtime_config(RuntimeConfig::default().fatal(FatalConfig::disarmed()))
-				.build()
-				.unwrap(),
-			None,
-		)
+		Self::builder().memory()
+	}
+
+	pub fn mock_clock(&self) -> &MockClock {
+		self.db.engine().clock().as_mock().expect("TestDb was not built with a mock clock")
 	}
 
 	pub fn sqlite(config: SqliteConfig) -> Self {
-		Self::wrap(embedded::sqlite(config).build().unwrap(), None)
+		Self::builder().sqlite(config)
 	}
 
 	pub fn sqlite_at(path: impl AsRef<Path>) -> Self {
-		Self::sqlite(SqliteConfig::new(path))
+		Self::builder().sqlite_at(path)
 	}
 
 	pub fn sqlite_memory() -> Self {
-		let (config, guard) = SqliteConfig::in_memory();
-		Self::wrap(embedded::sqlite(config).build().unwrap(), Some(guard))
+		Self::builder().sqlite_memory()
 	}
 
 	fn wrap(db: Database, guard: Option<SqliteTempPathGuard>) -> Self {
@@ -108,6 +113,56 @@ impl TestDb {
 
 	pub fn stop(&mut self) {
 		self.db.stop().unwrap()
+	}
+}
+
+pub struct TestDbBuilder {
+	mock_at: Option<DateTime>,
+}
+
+impl TestDbBuilder {
+	fn new() -> Self {
+		Self {
+			mock_at: None,
+		}
+	}
+
+	pub fn mock_time(mut self, at: DateTime) -> Self {
+		self.mock_at = Some(at);
+		self
+	}
+
+	pub fn memory(self) -> TestDb {
+		let mut config = RuntimeConfig::default().fatal(FatalConfig::disarmed());
+		if let Some(at) = self.mock_at {
+			config = config.clock(Clock::Mock(MockClock::new(at.to_nanos())));
+		}
+		TestDb::wrap(embedded::memory().with_runtime_config(config).build().unwrap(), None)
+	}
+
+	pub fn sqlite(self, config: SqliteConfig) -> TestDb {
+		let mut builder = embedded::sqlite(config);
+		if let Some(at) = self.mock_at {
+			builder = builder.with_runtime_config(
+				RuntimeConfig::default().clock(Clock::Mock(MockClock::new(at.to_nanos()))),
+			);
+		}
+		TestDb::wrap(builder.build().unwrap(), None)
+	}
+
+	pub fn sqlite_at(self, path: impl AsRef<Path>) -> TestDb {
+		self.sqlite(SqliteConfig::new(path))
+	}
+
+	pub fn sqlite_memory(self) -> TestDb {
+		let (config, guard) = SqliteConfig::in_memory();
+		let mut builder = embedded::sqlite(config);
+		if let Some(at) = self.mock_at {
+			builder = builder.with_runtime_config(
+				RuntimeConfig::default().clock(Clock::Mock(MockClock::new(at.to_nanos()))),
+			);
+		}
+		TestDb::wrap(builder.build().unwrap(), Some(guard))
 	}
 }
 

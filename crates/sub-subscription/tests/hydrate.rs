@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::thread;
+use std::{collections::HashSet, thread};
 
 use reifydb::testing::db::TestDb;
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::{
 	engine::StandardEngine,
-	subscription::{HydrateError, SubscriptionServiceRef},
+	subscription::{HydrateError, HydrationBound, SubscriptionServiceRef},
 };
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
-use reifydb_value::value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityId};
+use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, frame::frame::Frame, identity::IdentityId};
 
 fn extract_sub_id(frames: &[Frame]) -> SubscriptionId {
 	let frame = frames.first().expect("subscription frame");
@@ -37,6 +37,18 @@ fn engine_lease_service(db: &TestDb) -> (StandardEngine, VersionLeaseGuard, Subs
 	let (_, lease) = engine.acquire_current_snapshot_lease().expect("acquire lease");
 	let sub_service = engine.services().ioc.resolve::<SubscriptionServiceRef>().expect("resolve service");
 	(engine, lease, sub_service)
+}
+
+fn seed_id_qty(db: &TestDb, table: &str, rows: usize) {
+	let mut insert_stmt = format!("INSERT {} [", table);
+	for i in 0..rows {
+		if i > 0 {
+			insert_stmt.push(',');
+		}
+		insert_stmt.push_str(&format!("{{id: {}, qty: {}}}", i, i * 2));
+	}
+	insert_stmt.push(']');
+	db.command(&insert_stmt);
 }
 
 fn create_and_setup(
@@ -69,6 +81,190 @@ fn hydrate_returns_existing_rows_at_pinned_version() {
 }
 
 #[test]
+fn hydrate_500_rows_stages_scan_frame_batches_not_one_per_row() {
+	// Batch count must track scan frames, never row count: a Change per row re-pays the fixed process cost per row.
+	const ROWS: usize = 500;
+
+	let db = TestDb::memory();
+
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::wide { id: int4 }");
+
+	let mut insert_stmt = String::from("INSERT app::wide [");
+	for i in 0..ROWS {
+		if i > 0 {
+			insert_stmt.push(',');
+		}
+		insert_stmt.push_str(&format!("{{id: {}}}", i));
+	}
+	insert_stmt.push(']');
+	db.command(&insert_stmt);
+
+	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::wide");
+
+	let outcome =
+		sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, ROWS as u64).expect("hydrate succeeds");
+
+	let total_rows: usize = outcome.batches.iter().map(|c| c.row_count()).sum();
+	assert_eq!(total_rows, ROWS, "batching must not drop or duplicate snapshot rows");
+
+	assert!(
+		outcome.batches.len() <= 8,
+		"snapshot of {} rows staged {} batches; batch count must follow scan frames, not row count",
+		ROWS,
+		outcome.batches.len()
+	);
+}
+
+#[test]
+fn hydrate_delivers_every_row_of_a_snapshot_larger_than_the_delivery_ring() {
+	// Take stages one batch per admitted row, so 2000 rows overrun the 1024-batch ring and evict the oldest before
+	// drain.
+	const ROWS: usize = 2000;
+
+	let db = TestDb::memory();
+
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::deep { id: int4, qty: int4 }");
+	seed_id_qty(&db, "app::deep", ROWS);
+
+	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::deep | take 2000");
+
+	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 5000).expect("hydrate succeeds");
+
+	let total_rows: usize = outcome.batches.iter().map(|c| c.row_count()).sum();
+	assert_eq!(total_rows, ROWS, "snapshot must carry every row the query returned, not the ring's last 1024");
+}
+
+fn seed_backdated(db: &TestDb, table: &str, rows: &[(i32, u64)]) {
+	// Row numbers ascend with insertion order while created_at does not, which is what a backfill produces.
+	for (id, at_millis) in rows {
+		db.mock_clock().set_millis(*at_millis);
+		db.command(&format!("INSERT {} [{{id: {}, qty: {}}}]", table, id, id * 2));
+	}
+}
+
+fn announced_ids(batches: &[reifydb_core::value::column::columns::Columns]) -> Vec<i32> {
+	let mut out = Vec::new();
+	for batch in batches {
+		let id_col = batch.iter().find(|c| c.name().text() == "id").expect("id column");
+		for row_idx in 0..batch.row_count() {
+			match id_col.data().get_value(row_idx) {
+				Value::Int4(v) => out.push(v),
+				other => panic!("expected Int4 id, got {:?}", other),
+			}
+		}
+	}
+	out
+}
+
+#[test]
+fn hydrate_take_selects_the_newest_by_created_at_not_by_row_number() {
+	// A pushed take cuts by row number while the operator keeps the newest created_at, so a backfill disagrees.
+	let db = TestDb::builder().mock_time(DateTime::from_millis(1_000)).memory();
+
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::backfill { id: int4, qty: int4 }");
+
+	seed_backdated(&db, "app::backfill", &[(1, 5_000), (2, 4_000), (3, 3_000), (4, 2_000), (5, 1_000)]);
+
+	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::backfill | take 2");
+
+	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 50).expect("hydrate succeeds");
+
+	let mut got = announced_ids(&outcome.batches);
+	got.sort();
+	assert_eq!(got, vec![1, 2], "take 2 must announce the two newest rows by created_at, which are ids 1 and 2");
+}
+
+#[test]
+fn hydrate_take_breaks_created_at_ties_by_row_number() {
+	// One bulk insert stamps every row with the same created_at, so only the row-number tiebreak picks the window.
+	let db = TestDb::builder().mock_time(DateTime::from_millis(1_000)).memory();
+
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::tied { id: int4, qty: int4 }");
+	seed_id_qty(&db, "app::tied", 20);
+
+	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::tied | take 3");
+
+	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 50).expect("hydrate succeeds");
+
+	let mut got = announced_ids(&outcome.batches);
+	got.sort();
+	assert_eq!(got, vec![17, 18, 19], "tied created_at must fall back to the highest row numbers, ids 17..19");
+}
+
+#[test]
+fn hydrate_snapshot_announces_inserts_only() {
+	// A hydration starts from an empty subscriber, so any update or remove retracts a row the same snapshot just
+	// announced.
+	let db = TestDb::memory();
+
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::churn { id: int4, qty: int4 }");
+	seed_id_qty(&db, "app::churn", 50);
+
+	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::churn | take 5");
+
+	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 50).expect("hydrate succeeds");
+
+	for batch in &outcome.batches {
+		let op_col = batch.iter().find(|c| c.name().text() == "_op").expect("subscription output carries _op");
+		for row_idx in 0..batch.row_count() {
+			match op_col.data().get_value(row_idx) {
+				Value::Uint1(1) => {}
+				other => panic!("hydration snapshot must announce inserts only, saw _op={:?}", other),
+			}
+		}
+	}
+}
+
+#[test]
+fn hydrate_never_announces_a_remove_for_a_row_it_did_not_announce() {
+	// A retraction for a row the subscriber never received is a phantom it cannot apply, which desyncs the client
+	// forever.
+	let db = TestDb::memory();
+
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::phantom { id: int4, qty: int4 }");
+	seed_id_qty(&db, "app::phantom", 50);
+
+	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::phantom | take 5");
+
+	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 50).expect("hydrate succeeds");
+
+	let mut announced: HashSet<u64> = HashSet::new();
+	let mut seen = 0usize;
+	for batch in &outcome.batches {
+		let op_col = batch.iter().find(|c| c.name().text() == "_op").expect("subscription output carries _op");
+		let row_numbers = batch.row_numbers();
+		assert_eq!(
+			row_numbers.len(),
+			batch.row_count(),
+			"row numbers must cover the batch or this guard cannot identify the rows it checks"
+		);
+		for row_idx in 0..batch.row_count() {
+			let row = row_numbers[row_idx].value();
+			seen += 1;
+			match op_col.data().get_value(row_idx) {
+				Value::Uint1(1) => {
+					announced.insert(row);
+				}
+				Value::Uint1(2) | Value::Uint1(3) => assert!(
+					announced.contains(&row),
+					"_op targeting row {} arrived before any batch announced it",
+					row
+				),
+				other => panic!("unexpected _op={:?} in a hydration snapshot", other),
+			}
+		}
+	}
+
+	assert!(seen > 0, "the fixture must deliver rows or this guard passes vacuously");
+}
+
+#[test]
 fn hydrate_fails_when_row_cap_exceeded() {
 	let db = TestDb::memory();
 
@@ -94,7 +290,12 @@ fn hydrate_fails_when_row_cap_exceeded() {
 	match err {
 		HydrateError::RowCapExceeded {
 			cap,
-		} => assert_eq!(cap, 10),
+			bound,
+		} => {
+			assert_eq!(cap, 10);
+			// The query carries no bound at all, so telling the user to add one is the right advice.
+			assert_eq!(bound, HydrationBound::Absent);
+		}
 		other => panic!("unexpected error: {:?}", other),
 	}
 }
@@ -165,6 +366,90 @@ fn hydrate_pushes_filter_into_source_query() {
 				other => panic!("unexpected kind value: {:?}", other),
 			}
 		}
+	}
+}
+
+#[test]
+fn hydrate_keeps_the_take_earned_before_an_unrenderable_filter() {
+	// Mul cannot render, but the take sits above it and was already earned; dropping it pulls all 50 rows.
+	let db = TestDb::memory();
+
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::big { id: int4, qty: int4 }");
+	seed_id_qty(&db, "app::big", 50);
+
+	let (engine, sub_id, lease, sub_service) =
+		create_and_setup(&db, "from app::big | take 5 | filter { qty * 2 > 0 }");
+
+	sub_service
+		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
+		.expect("hydrate succeeds: take 5 survives the unrenderable filter below it");
+}
+
+#[test]
+fn hydrate_pushes_take_through_map() {
+	// Map is one row in, one row out, so the take below it selects the same rows at the source.
+	let db = TestDb::memory();
+
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::mapped { id: int4, qty: int4 }");
+	seed_id_qty(&db, "app::mapped", 50);
+
+	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::mapped | map { id, qty } | take 5");
+
+	sub_service
+		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
+		.expect("hydrate succeeds: take 5 should be pushed through map so cap=5 holds");
+}
+
+#[test]
+fn hydrate_pushes_take_through_extend() {
+	// Extend adds a column without changing cardinality or order, so a source take is exact.
+	let db = TestDb::memory();
+
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::extended { id: int4, qty: int4 }");
+	seed_id_qty(&db, "app::extended", 50);
+
+	let (engine, sub_id, lease, sub_service) =
+		create_and_setup(&db, "from app::extended | extend { qty_x2: qty * 2 } | take 5");
+
+	sub_service
+		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
+		.expect("hydrate succeeds: take 5 should be pushed through extend so cap=5 holds");
+}
+
+#[test]
+fn hydrate_does_not_push_take_below_distinct() {
+	// Distinct changes cardinality, so this bound is genuinely unpushable and the cap must still fire.
+	let db = TestDb::memory();
+
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE TABLE app::keyed { id: int4, qty: int4 }");
+	seed_id_qty(&db, "app::keyed", 50);
+
+	let (engine, sub_id, lease, sub_service) = create_and_setup(&db, "from app::keyed | distinct {id} | take 5");
+
+	let err = sub_service
+		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
+		.expect_err("expected RowCapExceeded: take must not be pushed below distinct");
+
+	match err {
+		HydrateError::RowCapExceeded {
+			cap,
+			bound,
+		} => {
+			assert_eq!(cap, 5);
+			// The user already wrote a take, so advice to add one is wrong; the error must name the
+			// blocker.
+			assert_eq!(
+				bound,
+				HydrationBound::Blocked {
+					operator: "Distinct".to_string(),
+				}
+			);
+		}
+		other => panic!("unexpected error: {:?}", other),
 	}
 }
 

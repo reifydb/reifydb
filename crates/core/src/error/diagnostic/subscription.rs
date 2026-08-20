@@ -65,3 +65,39 @@ pub fn subscription_missing_as_clause(fragment: Fragment) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+pub fn hydration_row_cap_exceeded(cap: u64, advice: &str) -> Diagnostic {
+	Diagnostic {
+		code: "SUBS_006".to_string(),
+		rql: None,
+		message: format!("subscription hydration exceeds max_rows={}", cap),
+		fragment: Fragment::None,
+		label: Some("hydration row cap exceeded".to_string()),
+		help: Some(advice.to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn subscription_lagged(id: u64, capacity: usize, overrun: u16) -> Diagnostic {
+	Diagnostic {
+		code: "SUBS_005".to_string(),
+		rql: None,
+		message: format!(
+			"subscription {} overran its {} batch capacity by {} batches and was closed",
+			id, capacity, overrun
+		),
+		fragment: Fragment::None,
+		label: Some("the subscriber did not consume changes fast enough".to_string()),
+		help: Some(format!(
+			"resubscribe to receive a fresh snapshot; the change stream cannot be resumed because the missed batches are gone, and a subscriber that overran by {} needs either a faster consumer or a capacity above {}",
+			overrun, capacity
+		)),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

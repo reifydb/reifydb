@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{error::Diagnostic, value::duration::Duration};
 use tokio::sync::Notify;
 
 #[derive(Debug)]
@@ -26,6 +26,8 @@ pub trait SubscriptionDelivery: Send + Sync {
 	fn flush(&self) -> Option<Duration> {
 		None
 	}
+
+	fn terminate(&self, _subscription: &SubscriptionId, _diagnostic: Diagnostic) {}
 
 	fn register_waker(&self, _waker: Arc<Notify>) {}
 
