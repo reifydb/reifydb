@@ -117,6 +117,20 @@ pub struct OperatorReadBufferShardMetrics {
 	pub counters: OperatorReadBufferMetrics,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct OperatorReadBufferKeyspaceMetrics {
+	pub keyspace: Keyspace,
+	pub used: ByteSize,
+	pub buckets: usize,
+	pub entries: usize,
+	pub complete_buckets: usize,
+	pub counters: OperatorReadBufferMetrics,
+}
+
+const KEYSPACE_SLOTS: usize = 256;
+
+type KeyspaceCounters = Box<[OperatorReadBufferMetrics; KEYSPACE_SLOTS]>;
+
 type FillId = (BucketId, EncodedKey);
 
 struct Shard {
@@ -125,6 +139,7 @@ struct Shard {
 	budget: MemoryBudget,
 	next_tick: u64,
 	metrics: OperatorReadBufferMetrics,
+	keyspace_metrics: KeyspaceCounters,
 }
 
 #[cfg(test)]

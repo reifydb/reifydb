@@ -14,7 +14,8 @@ use reifydb_core::{
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::read::{
-	BUCKET_OVERHEAD, BucketId, ENTRY_OVERHEAD, FillInterlock, OperatorReadBufferConfig, OperatorReadBufferTier,
+	BUCKET_OVERHEAD, BucketId, ENTRY_OVERHEAD, FillInterlock, OperatorReadBufferConfig,
+	OperatorReadBufferKeyspaceMetrics, OperatorReadBufferMetrics, OperatorReadBufferTier,
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -520,4 +521,192 @@ fn every_shard_is_reachable_and_reports_its_own_slice_of_the_budget() {
 		"64 buckets must reach all 4 shards, or the shard hash ignores part of the bucket id"
 	);
 	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
+}
+
+fn keyspace_row(tier: &OperatorReadBufferTier, keyspace: Keyspace) -> OperatorReadBufferKeyspaceMetrics {
+	tier.keyspace_metrics()
+		.into_iter()
+		.find(|row| row.keyspace == keyspace)
+		.unwrap_or_else(|| panic!("keyspace {} must be reported", keyspace.name()))
+}
+
+#[test]
+fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
+	let tier = roomy();
+	let accumulator = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let buffer = key(GROUP_A, Keyspace::BUFFER, b"a");
+
+	assert!(tier.get(OP_A, &accumulator).is_none());
+	tier.remember(OP_A, accumulator.clone(), Some(row("v")));
+	assert!(tier.get(OP_A, &accumulator).is_some());
+	assert!(tier.get(OP_A, &buffer).is_none());
+
+	let reported = tier.keyspace_metrics();
+	assert_eq!(
+		reported.len(),
+		2,
+		"only the two keyspaces that were touched may be reported; a fixed 256 slot table must never \
+		 surface as 256 rows of zeros"
+	);
+
+	let accumulator = keyspace_row(&tier, Keyspace::ACCUMULATOR);
+	assert_eq!(accumulator.counters.hits, 1);
+	assert_eq!(accumulator.counters.misses, 1);
+	assert_eq!(accumulator.buckets, 1);
+	assert_eq!(accumulator.entries, 1);
+
+	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
+	assert_eq!(buffer.counters.hits, 0, "a miss in one keyspace must not borrow the other keyspace's hit");
+	assert_eq!(buffer.counters.misses, 1);
+	assert_eq!(buffer.buckets, 0, "a keyspace with no resident bucket is still reported once a counter moved");
+
+	assert_eq!(tier.metrics().hits, 1, "the per shard aggregate must survive alongside the keyspace table");
+	assert_eq!(tier.metrics().misses, 2);
+}
+
+#[test]
+fn contains_charges_the_same_keyspace_slots_as_get() {
+	let tier = roomy();
+	let known = key(GROUP_A, Keyspace::EMIT, b"a");
+	let unknown = key(GROUP_A, Keyspace::EXPIRY, b"a");
+
+	tier.remember(OP_A, known.clone(), Some(row("v")));
+	assert_eq!(tier.contains(OP_A, &known), Some(true));
+	assert_eq!(tier.contains(OP_A, &unknown), None);
+
+	assert_eq!(keyspace_row(&tier, Keyspace::EMIT).counters.hits, 1);
+	assert_eq!(keyspace_row(&tier, Keyspace::EMIT).counters.misses, 0);
+	assert_eq!(keyspace_row(&tier, Keyspace::EXPIRY).counters.misses, 1);
+	assert_eq!(keyspace_row(&tier, Keyspace::EXPIRY).counters.hits, 0);
+}
+
+#[test]
+fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
+	let tier = roomy();
+	let sample_key = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let sample_row = Some(row("v"));
+	let per_bucket = (BUCKET_OVERHEAD + footprint(&sample_key, &sample_row)) as u64;
+
+	for group in [GROUP_A, GROUP_B] {
+		tier.remember(OP_A, key(group, Keyspace::ACCUMULATOR, b"a"), sample_row.clone());
+	}
+	let complete = key(GROUP_A, Keyspace::BUFFER, b"a");
+	tier.remember(OP_A, complete.clone(), sample_row.clone());
+	tier.mark_complete(BucketId::of(OP_A, &complete).expect("the fixture key must decode"));
+
+	let accumulator = keyspace_row(&tier, Keyspace::ACCUMULATOR);
+	assert_eq!(accumulator.buckets, 2);
+	assert_eq!(accumulator.entries, 2);
+	assert_eq!(accumulator.complete_buckets, 0);
+	assert_eq!(accumulator.used, ByteSize::from_bytes(per_bucket * 2));
+
+	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
+	assert_eq!(buffer.buckets, 1);
+	assert_eq!(buffer.entries, 1);
+	assert_eq!(buffer.complete_buckets, 1, "completeness must follow the bucket into its own keyspace row");
+	assert_eq!(buffer.used, ByteSize::from_bytes(per_bucket));
+
+	let total: u64 = tier.keyspace_metrics().iter().map(|row| row.used.as_bytes()).sum();
+	assert_eq!(
+		ByteSize::from_bytes(total),
+		tier.tallied_bytes(),
+		"every resident byte must be attributed to exactly one keyspace, or the table leaks or double counts"
+	);
+	assert_eq!(tier.keyspace_metrics().iter().map(|row| row.buckets).sum::<usize>(), tier.buckets());
+	assert_eq!(tier.keyspace_metrics().iter().map(|row| row.entries).sum::<usize>(), tier.entries());
+}
+
+#[test]
+fn keyspace_counters_are_summed_across_every_shard() {
+	let tier = OperatorReadBufferTier::new(OperatorReadBufferConfig {
+		resident_bytes: Some(ByteSize::from_mib(64)),
+		shards: 4,
+	})
+	.expect("a sharded tier must be constructed");
+
+	for group in 0..64u64 {
+		tier.remember(OP_A, key(GroupId(group), Keyspace::SOURCE_WATERMARK, b"a"), Some(row("v")));
+	}
+	for group in 0..64u64 {
+		assert!(tier.get(OP_A, &key(GroupId(group), Keyspace::SOURCE_WATERMARK, b"a")).is_some());
+	}
+
+	assert!(
+		tier.shard_metrics().iter().filter(|shard| shard.counters.hits > 0).count() > 1,
+		"the fixture must spread hits over more than one shard, or summation is not under test"
+	);
+
+	let reported = tier.keyspace_metrics();
+	assert_eq!(reported.len(), 1, "one keyspace spread over four shards must collapse to a single row");
+	assert_eq!(reported[0].keyspace, Keyspace::SOURCE_WATERMARK);
+	assert_eq!(reported[0].counters.hits, 64);
+	assert_eq!(reported[0].buckets, 64);
+	assert_eq!(reported[0].entries, 64);
+}
+
+#[test]
+fn an_eviction_is_charged_to_the_evicted_bucket_keyspace() {
+	let sample_key = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let sample_row = Some(row("v"));
+	let per_bucket = (BUCKET_OVERHEAD + footprint(&sample_key, &sample_row)) as u64;
+	let tier = tier(per_bucket);
+
+	tier.remember(OP_A, key(GROUP_A, Keyspace::ACCUMULATOR, b"a"), sample_row.clone());
+	tier.remember(OP_A, key(GROUP_A, Keyspace::BUFFER, b"a"), sample_row.clone());
+
+	assert_eq!(tier.evictions(), 1, "the fixture must actually evict, or the attribution below proves nothing");
+
+	let accumulator = keyspace_row(&tier, Keyspace::ACCUMULATOR);
+	assert_eq!(accumulator.counters.evictions, 1);
+	assert_eq!(accumulator.buckets, 0, "the evicted bucket must be gone from its keyspace's resident state");
+
+	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
+	assert_eq!(buffer.counters.evictions, 0, "the survivor must not be charged for the victim's eviction");
+	assert_eq!(buffer.buckets, 1);
+}
+
+#[test]
+fn fill_counters_are_charged_to_the_filled_keyspace() {
+	let tier = roomy();
+	let accumulator = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let buffer = key(GROUP_A, Keyspace::BUFFER, b"a");
+
+	assert!(tier.begin_fill(OP_A, &accumulator));
+	assert!(!tier.begin_fill(OP_A, &accumulator), "a second fill of the same key must be declined as duplicate");
+	assert!(tier.begin_fill(OP_A, &buffer));
+	tier.invalidate(OP_A, &accumulator);
+	assert!(!tier.finish_fill(OP_A, accumulator.clone(), Some(row("v"))), "a dirtied fill must not publish");
+
+	let accumulator = keyspace_row(&tier, Keyspace::ACCUMULATOR);
+	assert_eq!(accumulator.counters.fills_started, 1);
+	assert_eq!(accumulator.counters.fills_duplicate, 1);
+	assert_eq!(accumulator.counters.fills_dirty_aborted, 1);
+
+	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
+	assert_eq!(buffer.counters.fills_started, 1);
+	assert_eq!(buffer.counters.fills_duplicate, 0, "the duplicate belongs to the keyspace that was refilled");
+	assert_eq!(buffer.counters.fills_dirty_aborted, 0);
+
+	assert_eq!(tier.metrics().fills_started, 2, "the shard aggregate must still count every fill");
+}
+
+#[test]
+fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
+	let tier = roomy();
+	assert!(tier.keyspace_metrics().is_empty());
+
+	let resident = key(GROUP_A, Keyspace::JOIN_LEFT, b"a");
+	tier.remember(OP_A, resident.clone(), Some(row("v")));
+	assert_eq!(tier.keyspace_metrics().len(), 1, "resident state alone must be enough to report a keyspace");
+	assert_eq!(tier.keyspace_metrics()[0].keyspace, Keyspace::JOIN_LEFT);
+	assert_eq!(tier.keyspace_metrics()[0].counters, OperatorReadBufferMetrics::default());
+
+	assert!(tier.get(OP_A, &resident).is_some());
+	tier.clear();
+	assert_eq!(
+		tier.keyspace_metrics().len(),
+		1,
+		"clearing drops resident state but not the counters, so a keyspace with history stays reported"
+	);
+	assert_eq!(tier.keyspace_metrics()[0].buckets, 0);
 }

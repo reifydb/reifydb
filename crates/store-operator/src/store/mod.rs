@@ -28,7 +28,7 @@ use crate::{
 	tier::{
 		commit::OperatorCommitBuffer,
 		persistent::{OperatorPageCacheMetrics, OperatorPersistentTier},
-		read::{OperatorReadBufferShardMetrics, OperatorReadBufferTier},
+		read::{OperatorReadBufferKeyspaceMetrics, OperatorReadBufferShardMetrics, OperatorReadBufferTier},
 	},
 };
 
@@ -123,6 +123,10 @@ impl StandardOperatorStore {
 		self.read.as_ref().map(OperatorReadBufferTier::shard_metrics).unwrap_or_default()
 	}
 
+	pub fn read_buffer_keyspace_metrics(&self) -> Vec<OperatorReadBufferKeyspaceMetrics> {
+		self.read.as_ref().map(OperatorReadBufferTier::keyspace_metrics).unwrap_or_default()
+	}
+
 	pub fn persistent_page_cache_metrics(&self) -> Option<OperatorPageCacheMetrics> {
 		self.persistent.as_ref().map(OperatorPersistentTier::page_cache_metrics)
 	}
@@ -201,6 +205,12 @@ impl OperatorStore {
 	pub fn read_buffer_shard_metrics(&self) -> Vec<OperatorReadBufferShardMetrics> {
 		match self {
 			Self::Standard(store) => store.read_buffer_shard_metrics(),
+		}
+	}
+
+	pub fn read_buffer_keyspace_metrics(&self) -> Vec<OperatorReadBufferKeyspaceMetrics> {
+		match self {
+			Self::Standard(store) => store.read_buffer_keyspace_metrics(),
 		}
 	}
 

@@ -18,26 +18,32 @@ impl OperatorReadBufferTier {
 			let Shard {
 				buckets,
 				metrics,
+				keyspace_metrics,
 				..
 			} = &mut *shard;
+			let keyspace = &mut keyspace_metrics[id.keyspace.0 as usize];
 			let Some(bucket) = buckets.get_mut(&id) else {
 				metrics.misses += 1;
+				keyspace.misses += 1;
 				return None;
 			};
 			let cached = bucket.entries.get(key).cloned();
 			match cached {
 				Some(row) => {
 					metrics.hits += 1;
+					keyspace.hits += 1;
 					bucket.tick = next;
 					row
 				}
 				None if bucket.complete => {
 					metrics.hits += 1;
+					keyspace.hits += 1;
 					bucket.tick = next;
 					None
 				}
 				None => {
 					metrics.misses += 1;
+					keyspace.misses += 1;
 					return None;
 				}
 			}
@@ -54,26 +60,32 @@ impl OperatorReadBufferTier {
 			let Shard {
 				buckets,
 				metrics,
+				keyspace_metrics,
 				..
 			} = &mut *shard;
+			let keyspace = &mut keyspace_metrics[id.keyspace.0 as usize];
 			let Some(bucket) = buckets.get_mut(&id) else {
 				metrics.misses += 1;
+				keyspace.misses += 1;
 				return None;
 			};
 			let cached = bucket.entries.get(key).map(Option::is_some);
 			match cached {
 				Some(present) => {
 					metrics.hits += 1;
+					keyspace.hits += 1;
 					bucket.tick = next;
 					present
 				}
 				None if bucket.complete => {
 					metrics.hits += 1;
+					keyspace.hits += 1;
 					bucket.tick = next;
 					false
 				}
 				None => {
 					metrics.misses += 1;
+					keyspace.misses += 1;
 					return None;
 				}
 			}
@@ -124,12 +136,15 @@ impl OperatorReadBufferTier {
 			return false;
 		};
 		let mut shard = self.shard_for(&id).lock();
+		let slot = id.keyspace.0 as usize;
 		if shard.filling.contains_key(&(id, key.clone())) {
 			shard.metrics.fills_duplicate += 1;
+			shard.keyspace_metrics[slot].fills_duplicate += 1;
 			return false;
 		}
 		shard.filling.insert((id, key.clone()), false);
 		shard.metrics.fills_started += 1;
+		shard.keyspace_metrics[slot].fills_started += 1;
 		true
 	}
 
@@ -142,6 +157,7 @@ impl OperatorReadBufferTier {
 			Some(false) => {}
 			Some(true) | None => {
 				shard.metrics.fills_dirty_aborted += 1;
+				shard.keyspace_metrics[id.keyspace.0 as usize].fills_dirty_aborted += 1;
 				return false;
 			}
 		}

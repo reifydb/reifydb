@@ -8,6 +8,7 @@ use std::{
 };
 
 use reifydb_core::{
+	key::operator_state::Keyspace,
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	util::budget::MemoryBudget,
 };
@@ -17,8 +18,8 @@ use reifydb_value::byte_size::ByteSize;
 #[cfg(test)]
 use crate::tier::read::FillInterlock;
 use crate::tier::read::{
-	BucketId, OperatorReadBufferConfig, OperatorReadBufferMetrics, OperatorReadBufferShardMetrics,
-	OperatorReadBufferTier, PoolInner, Shard,
+	BucketId, KEYSPACE_SLOTS, OperatorReadBufferConfig, OperatorReadBufferKeyspaceMetrics,
+	OperatorReadBufferMetrics, OperatorReadBufferShardMetrics, OperatorReadBufferTier, PoolInner, Shard,
 };
 
 const READ_BUFFER_SCOPE: &str = "operator_read_buffer";
@@ -128,6 +129,41 @@ impl OperatorReadBufferTier {
 		out
 	}
 
+	pub fn keyspace_metrics(&self) -> Vec<OperatorReadBufferKeyspaceMetrics> {
+		let mut used = vec![0u64; KEYSPACE_SLOTS];
+		let mut buckets = vec![0usize; KEYSPACE_SLOTS];
+		let mut entries = vec![0usize; KEYSPACE_SLOTS];
+		let mut complete_buckets = vec![0usize; KEYSPACE_SLOTS];
+		let mut counters = vec![OperatorReadBufferMetrics::default(); KEYSPACE_SLOTS];
+
+		for shard in self.all_shards() {
+			let shard = shard.lock();
+			for (id, bucket) in &shard.buckets {
+				let slot = id.keyspace.0 as usize;
+				used[slot] += bucket.bytes as u64;
+				buckets[slot] += 1;
+				entries[slot] += bucket.entries.len();
+				complete_buckets[slot] += usize::from(bucket.complete);
+			}
+			for (slot, source) in shard.keyspace_metrics.iter().enumerate() {
+				accumulate(&mut counters[slot], source);
+			}
+		}
+
+		let empty = OperatorReadBufferMetrics::default();
+		(0..KEYSPACE_SLOTS)
+			.filter(|slot| buckets[*slot] > 0 || counters[*slot] != empty)
+			.map(|slot| OperatorReadBufferKeyspaceMetrics {
+				keyspace: Keyspace(slot as u8),
+				used: ByteSize::from_bytes(used[slot]),
+				buckets: buckets[slot],
+				entries: entries[slot],
+				complete_buckets: complete_buckets[slot],
+				counters: counters[slot],
+			})
+			.collect()
+	}
+
 	#[cfg(test)]
 	pub fn tallied_bytes(&self) -> ByteSize {
 		let total = self
@@ -166,6 +202,15 @@ impl MetricsCollector for OperatorReadBufferTier {
 	}
 }
 
+fn accumulate(target: &mut OperatorReadBufferMetrics, source: &OperatorReadBufferMetrics) {
+	target.hits += source.hits;
+	target.misses += source.misses;
+	target.evictions += source.evictions;
+	target.fills_started += source.fills_started;
+	target.fills_dirty_aborted += source.fills_dirty_aborted;
+	target.fills_duplicate += source.fills_duplicate;
+}
+
 fn build_shards(config: OperatorReadBufferConfig, resident_bytes: ByteSize) -> Box<[Mutex<Shard>]> {
 	let shard_count = config.shards.max(1);
 	let byte_cap = ByteSize::from_bytes((resident_bytes.as_bytes() / shard_count as u64).max(1));
@@ -177,6 +222,7 @@ fn build_shards(config: OperatorReadBufferConfig, resident_bytes: ByteSize) -> B
 				budget: MemoryBudget::new(byte_cap),
 				next_tick: 0,
 				metrics: OperatorReadBufferMetrics::default(),
+				keyspace_metrics: Box::new([OperatorReadBufferMetrics::default(); KEYSPACE_SLOTS]),
 			})
 		})
 		.collect::<Vec<_>>()
@@ -204,6 +250,7 @@ impl Shard {
 			};
 			self.budget.release(ByteSize::from_bytes(bucket.bytes as u64));
 			self.metrics.evictions += 1;
+			self.keyspace_metrics[victim.keyspace.0 as usize].evictions += 1;
 		}
 	}
 }
