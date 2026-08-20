@@ -7,7 +7,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
 
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
 
@@ -16,6 +16,15 @@ pub mod sqlite;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use sqlite::storage::SqlitePersistentStorage;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SinglePageCacheMetrics {
+	pub used: ByteSize,
+	pub hits: Count,
+	pub misses: Count,
+	pub connections_sampled: Count,
+	pub connections_total: Count,
+}
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
@@ -44,6 +53,19 @@ impl SinglePersistentTier {
 	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
 		let (storage, guard) = SqlitePersistentStorage::in_memory();
 		(Self::Sqlite(storage), guard)
+	}
+
+	pub fn page_cache_metrics(&self) -> SinglePageCacheMetrics {
+		match self {
+			Self::Sqlite(storage) => storage.page_cache_metrics(),
+		}
+	}
+}
+
+#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
+impl SinglePersistentTier {
+	pub fn page_cache_metrics(&self) -> SinglePageCacheMetrics {
+		match *self {}
 	}
 }
 

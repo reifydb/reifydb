@@ -5,10 +5,16 @@ use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::metrics::{collect::MetricsCollector, sample::MetricsSample};
-use reifydb_value::{Result, byte_size::ByteSize, util::cowvec::CowVec};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryRowStorage;
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SingleCommitMetrics {
+	pub resident_entries: Count,
+	pub resident_bytes: ByteSize,
+}
 
 #[derive(Clone)]
 #[repr(u8)]
@@ -24,6 +30,14 @@ impl SingleCommitBufferTier {
 	pub fn memory_usage(&self) -> (usize, usize) {
 		match self {
 			Self::Memory(s) => s.memory_usage(),
+		}
+	}
+
+	pub fn metrics(&self) -> SingleCommitMetrics {
+		let (entries, bytes) = self.memory_usage();
+		SingleCommitMetrics {
+			resident_entries: Count::new(entries as u64),
+			resident_bytes: ByteSize::from_bytes(bytes as u64),
 		}
 	}
 }

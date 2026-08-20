@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Read-buffer metrics: catalog surface and vtable registration, driven through the wired subsystem.
+//! Multi read-buffer metrics: catalog surface and vtable registration, driven through the wired subsystem.
 //!
-//! A bare in-memory database has no read tier, so the merged `read_buffer::current` and `read_buffer::total`
+//! A bare in-memory database has no read tier, so the merged `store::multi::read::current` and `::total`
 //! must be queryable by their RQL paths and empty rather than error. The column layout is pinned against the
 //! DomainSpec so the published surface cannot drift from the declared one silently.
 
@@ -17,9 +17,9 @@ fn read_buffer_current_and_total_are_queryable_after_bootstrap() {
 
 	for table in ["current", "total"] {
 		assert_eq!(
-			db.row_count(&format!("from system::metrics::read_buffer::{table}")),
+			db.row_count(&format!("from system::metrics::store::multi::read::{table}")),
 			0,
-			"read_buffer::{table} must be queryable and empty for a store without a read tier",
+			"store::multi::read::{table} must be queryable and empty for a store without a read tier",
 		);
 	}
 }
@@ -29,7 +29,7 @@ fn read_buffer_spec_pins_the_merged_layout() {
 	// One merged table replaced shards/warms/reads: the namespace was only serving as the
 	// kind marker, so the split line (levels vs counters) must now live in the kind, not in
 	// a table name, and no row may carry a domain discriminator column.
-	let spec = MetricsDomain::ReadBuffer.spec();
+	let spec = MetricsDomain::StoreMultiRead.spec();
 
 	let current = spec.columns(Surface::Current);
 	assert_eq!(current.len(), 24, "ts + shard + 10 levels + 12 counters");

@@ -18,6 +18,8 @@ use reifydb_runtime::{
 	context::clock::Clock,
 };
 use reifydb_store_multi::{MultiStore, tier::read::ReadBufferShardMetrics};
+use reifydb_store_operator::{store::OperatorStore, tier::read::OperatorReadBufferShardMetrics};
+use reifydb_store_single::SingleStore;
 use reifydb_value::{
 	byte_size::ByteSize,
 	count::Count,
@@ -56,6 +58,8 @@ pub enum SamplerMessage {
 pub struct MetricsSamplerActor {
 	collectors: Collectors,
 	multi_store: MultiStore,
+	single_store: SingleStore,
+	operator_store: OperatorStore,
 	retention_metrics: RetentionMetrics,
 	epoch_gauge: Arc<EpochGauge>,
 	surfaces: Arc<MetricsSurfaces>,
@@ -74,6 +78,8 @@ impl MetricsSamplerActor {
 	pub fn new(
 		collectors: Collectors,
 		multi_store: MultiStore,
+		single_store: SingleStore,
+		operator_store: OperatorStore,
 		retention_metrics: RetentionMetrics,
 		epoch_gauge: Arc<EpochGauge>,
 		surfaces: Arc<MetricsSurfaces>,
@@ -84,6 +90,8 @@ impl MetricsSamplerActor {
 		Self {
 			collectors,
 			multi_store,
+			single_store,
+			operator_store,
 			retention_metrics,
 			epoch_gauge,
 			surfaces,
@@ -154,7 +162,37 @@ impl MetricsSamplerActor {
 			Surface::Total,
 			long_rows(self.collectors.registry.read_reporters()),
 		);
-		accumulator.push(MetricsDomain::ReadBuffer, Surface::Current, read_buffer_rows(&self.multi_store));
+		accumulator.push(
+			MetricsDomain::StoreMultiCommit,
+			Surface::Current,
+			multi_commit_rows(&self.multi_store),
+		);
+		accumulator.push(MetricsDomain::StoreMultiRead, Surface::Current, multi_read_rows(&self.multi_store));
+		accumulator.push(
+			MetricsDomain::StoreMultiPersistent,
+			Surface::Current,
+			multi_persistent_rows(&self.multi_store),
+		);
+		accumulator.push(
+			MetricsDomain::StoreSingleCommit,
+			Surface::Current,
+			single_commit_rows(&self.single_store),
+		);
+		accumulator.push(
+			MetricsDomain::StoreSinglePersistent,
+			Surface::Current,
+			single_persistent_rows(&self.single_store),
+		);
+		accumulator.push(
+			MetricsDomain::StoreOperatorRead,
+			Surface::Current,
+			operator_read_rows(&self.operator_store),
+		);
+		accumulator.push(
+			MetricsDomain::StoreOperatorPersistent,
+			Surface::Current,
+			operator_persistent_rows(&self.operator_store),
+		);
 		accumulator.push(
 			MetricsDomain::Epoch,
 			Surface::Current,
@@ -268,11 +306,11 @@ fn level_bytes(metric: &'static str, bytes: ByteSize) -> Measure {
 	}
 }
 
-fn read_buffer_rows(store: &MultiStore) -> Vec<MetricsRow> {
-	store.read_buffer_shard_metrics().iter().map(read_buffer_row).collect()
+fn multi_read_rows(store: &MultiStore) -> Vec<MetricsRow> {
+	store.read_buffer_shard_metrics().iter().map(multi_read_row).collect()
 }
 
-fn read_buffer_row(metrics: &ReadBufferShardMetrics) -> MetricsRow {
+fn multi_read_row(metrics: &ReadBufferShardMetrics) -> MetricsRow {
 	MetricsRow {
 		dimensions: vec![Value::Uint2(metrics.shard as u16)],
 		measures: vec![
@@ -300,6 +338,103 @@ fn read_buffer_row(metrics: &ReadBufferShardMetrics) -> MetricsRow {
 			counter_count("range_gaps", metrics.reads.range_gaps),
 		],
 	}
+}
+
+fn multi_commit_rows(store: &MultiStore) -> Vec<MetricsRow> {
+	let metrics = store.commit_metrics();
+	vec![MetricsRow {
+		dimensions: Vec::new(),
+		measures: vec![
+			level_bytes("current_bytes", metrics.current_bytes),
+			level_bytes("historical_bytes", metrics.historical_bytes),
+			level_count("table_count", metrics.table_count.as_u64()),
+			level_count("current_entries", metrics.current_entries.as_u64()),
+		],
+	}]
+}
+
+fn single_commit_rows(store: &SingleStore) -> Vec<MetricsRow> {
+	let Some(metrics) = store.commit_metrics() else {
+		return Vec::new();
+	};
+	vec![MetricsRow {
+		dimensions: Vec::new(),
+		measures: vec![
+			level_count("resident_entries", metrics.resident_entries.as_u64()),
+			level_bytes("resident_bytes", metrics.resident_bytes),
+		],
+	}]
+}
+
+fn operator_read_rows(store: &OperatorStore) -> Vec<MetricsRow> {
+	store.read_buffer_shard_metrics().iter().map(operator_read_row).collect()
+}
+
+fn operator_read_row(metrics: &OperatorReadBufferShardMetrics) -> MetricsRow {
+	MetricsRow {
+		dimensions: vec![Value::Uint2(metrics.shard as u16)],
+		measures: vec![
+			level_bytes("used", metrics.used),
+			level_bytes("limit", metrics.limit),
+			level_count("buckets", metrics.buckets as u64),
+			level_count("entries", metrics.entries as u64),
+			level_count("complete_buckets", metrics.complete_buckets as u64),
+			counter_count("hits", metrics.counters.hits),
+			counter_count("misses", metrics.counters.misses),
+			counter_count("evictions", metrics.counters.evictions),
+			counter_count("fills_started", metrics.counters.fills_started),
+			counter_count("fills_dirty_aborted", metrics.counters.fills_dirty_aborted),
+			counter_count("fills_duplicate", metrics.counters.fills_duplicate),
+		],
+	}
+}
+
+fn multi_persistent_rows(store: &MultiStore) -> Vec<MetricsRow> {
+	let Some(metrics) = store.persistent_page_cache_metrics() else {
+		return Vec::new();
+	};
+	vec![MetricsRow {
+		dimensions: Vec::new(),
+		measures: vec![
+			level_bytes("used", metrics.used),
+			level_count("connections_sampled", metrics.connections_sampled.as_u64()),
+			level_count("connections_total", metrics.connections_total.as_u64()),
+			counter_count("hits", metrics.hits.as_u64()),
+			counter_count("misses", metrics.misses.as_u64()),
+		],
+	}]
+}
+
+fn single_persistent_rows(store: &SingleStore) -> Vec<MetricsRow> {
+	let Some(metrics) = store.persistent_page_cache_metrics() else {
+		return Vec::new();
+	};
+	vec![MetricsRow {
+		dimensions: Vec::new(),
+		measures: vec![
+			level_bytes("used", metrics.used),
+			level_count("connections_sampled", metrics.connections_sampled.as_u64()),
+			level_count("connections_total", metrics.connections_total.as_u64()),
+			counter_count("hits", metrics.hits.as_u64()),
+			counter_count("misses", metrics.misses.as_u64()),
+		],
+	}]
+}
+
+fn operator_persistent_rows(store: &OperatorStore) -> Vec<MetricsRow> {
+	let Some(metrics) = store.persistent_page_cache_metrics() else {
+		return Vec::new();
+	};
+	vec![MetricsRow {
+		dimensions: Vec::new(),
+		measures: vec![
+			level_bytes("used", metrics.used),
+			level_count("connections_sampled", metrics.connections_sampled.as_u64()),
+			level_count("connections_total", metrics.connections_total.as_u64()),
+			counter_count("hits", metrics.hits.as_u64()),
+			counter_count("misses", metrics.misses.as_u64()),
+		],
+	}]
 }
 
 fn epoch_rows(engine: &StandardEngine, gauge: &EpochGauge) -> Vec<MetricsRow> {

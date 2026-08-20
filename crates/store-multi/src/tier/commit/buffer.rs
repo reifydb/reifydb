@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::store::EntryKind,
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
-use reifydb_value::{Result, byte_size::ByteSize, util::cowvec::CowVec};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
 
 use crate::{
 	MultiVersionScope,
@@ -19,6 +19,14 @@ use crate::{
 		commit::memory::storage::{EvictedVersion, MemoryRowStorage},
 	},
 };
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MultiCommitMetrics {
+	pub current_bytes: ByteSize,
+	pub historical_bytes: ByteSize,
+	pub table_count: Count,
+	pub current_entries: Count,
+}
 
 #[derive(Clone)]
 #[repr(u8)]
@@ -84,6 +92,17 @@ impl MultiCommitBufferTier {
 	pub fn historical_resident_bytes(&self) -> ByteSize {
 		match self {
 			Self::Memory(s) => s.historical_resident_bytes(),
+		}
+	}
+
+	pub fn metrics(&self) -> MultiCommitMetrics {
+		let kinds = self.list_all_entry_kinds().unwrap_or_default();
+		let current_entries: u64 = kinds.iter().map(|kind| self.count_current(*kind).unwrap_or(0)).sum();
+		MultiCommitMetrics {
+			current_bytes: self.current_resident_bytes(),
+			historical_bytes: self.historical_resident_bytes(),
+			table_count: Count::new(kinds.len() as u64),
+			current_entries: Count::new(current_entries),
 		}
 	}
 

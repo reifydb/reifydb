@@ -24,8 +24,8 @@ use crate::{
 	config::MultiStoreConfig,
 	flush::{ObjectPersistence, engine::FlushEngine},
 	tier::{
-		commit::buffer::MultiCommitBufferTier,
-		persistent::MultiPersistentTier,
+		commit::buffer::{MultiCommitBufferTier, MultiCommitMetrics},
+		persistent::{MultiPersistentTier, SqlitePageCacheMetrics},
 		read::{MultiReadBufferTier, ReadBufferShardMetrics},
 	},
 };
@@ -190,6 +190,14 @@ impl StandardMultiStore {
 
 	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
 		self.read.as_ref().map(|read| read.shard_metrics()).unwrap_or_default()
+	}
+
+	pub fn commit_metrics(&self) -> MultiCommitMetrics {
+		self.commit.metrics()
+	}
+
+	pub fn persistent_page_cache_metrics(&self) -> Option<SqlitePageCacheMetrics> {
+		self.persistent.as_ref().map(MultiPersistentTier::page_cache_metrics)
 	}
 
 	pub fn flush_pending_blocking(&self) {

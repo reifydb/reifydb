@@ -12,7 +12,7 @@ use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, value::datetime::DateTime};
 
 use crate::{
 	MultiVersionScope,
@@ -26,7 +26,16 @@ use crate::{
 pub mod sqlite;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use sqlite::storage::{SqlitePageCacheMetrics, SqlitePersistentStorage};
+use sqlite::storage::SqlitePersistentStorage;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SqlitePageCacheMetrics {
+	pub used: ByteSize,
+	pub hits: Count,
+	pub misses: Count,
+	pub connections_sampled: Count,
+	pub connections_total: Count,
+}
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
@@ -52,15 +61,15 @@ impl MultiPersistentTier {
 		Self::Sqlite(SqlitePersistentStorage::new(config))
 	}
 
+	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
+		let (storage, guard) = SqlitePersistentStorage::in_memory();
+		(Self::Sqlite(storage), guard)
+	}
+
 	pub fn page_cache_metrics(&self) -> SqlitePageCacheMetrics {
 		match self {
 			Self::Sqlite(storage) => storage.page_cache_metrics(),
 		}
-	}
-
-	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
-		let (storage, guard) = SqlitePersistentStorage::in_memory();
-		(Self::Sqlite(storage), guard)
 	}
 
 	pub fn set_checkpoint_threshold(&self, frames: u32) {
@@ -145,6 +154,10 @@ impl MultiPersistentTier {
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl MultiPersistentTier {
+	pub fn page_cache_metrics(&self) -> SqlitePageCacheMetrics {
+		match *self {}
+	}
+
 	pub fn set_checkpoint_threshold(&self, _frames: u32) {
 		match *self {}
 	}

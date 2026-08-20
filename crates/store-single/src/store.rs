@@ -38,7 +38,11 @@ use crate::{
 	SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
 	config::{CommitBufferConfig, SingleStoreConfig},
 	flush::actor::FlushMessage,
-	tier::{RangeCursor, TierStorage, commit::buffer::SingleCommitBufferTier, persistent::SinglePersistentTier},
+	tier::{
+		RangeCursor, TierStorage,
+		commit::buffer::{SingleCommitBufferTier, SingleCommitMetrics},
+		persistent::{SinglePageCacheMetrics, SinglePersistentTier},
+	},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{config::PersistentConfig, flush::actor::FlushActor};
@@ -104,6 +108,14 @@ impl StandardSingleStore {
 
 	pub fn persistent(&self) -> Option<&SinglePersistentTier> {
 		self.persistent.as_ref()
+	}
+
+	pub fn commit_metrics(&self) -> Option<SingleCommitMetrics> {
+		self.commit.as_ref().map(SingleCommitBufferTier::metrics)
+	}
+
+	pub fn persistent_page_cache_metrics(&self) -> Option<SinglePageCacheMetrics> {
+		self.persistent.as_ref().map(SinglePersistentTier::page_cache_metrics)
 	}
 
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {

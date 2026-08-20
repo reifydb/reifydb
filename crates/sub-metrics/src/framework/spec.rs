@@ -17,7 +17,13 @@ pub enum MetricsDomain {
 	ProcCgroupMemory,
 	ProcCgroupCpu,
 	ProcCgroupPressure,
-	ReadBuffer,
+	StoreMultiCommit,
+	StoreMultiRead,
+	StoreMultiPersistent,
+	StoreSingleCommit,
+	StoreSinglePersistent,
+	StoreOperatorRead,
+	StoreOperatorPersistent,
 	Instruments,
 	Epoch,
 	Lifecycle,
@@ -258,7 +264,7 @@ mod tests {
 	fn counter_measures_publish_as_delta_in_current_and_counter_in_total() {
 		// The same measure name serves both surfaces; only the kind differs, which is what
 		// makes the boot-time column check enforceable.
-		let spec = MetricsDomain::ReadBuffer.spec();
+		let spec = MetricsDomain::StoreMultiRead.spec();
 		let current = spec.columns(Surface::Current);
 		let in_current = current.iter().find(|c| c.name == "warms_started").expect("column");
 		assert_eq!(in_current.kind, MetricKind::Delta);
@@ -271,7 +277,7 @@ mod tests {
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 18] = [
+	pub const ALL: [MetricsDomain; 24] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
@@ -282,7 +288,13 @@ impl MetricsDomain {
 		MetricsDomain::ProcCgroupMemory,
 		MetricsDomain::ProcCgroupCpu,
 		MetricsDomain::ProcCgroupPressure,
-		MetricsDomain::ReadBuffer,
+		MetricsDomain::StoreMultiCommit,
+		MetricsDomain::StoreMultiRead,
+		MetricsDomain::StoreMultiPersistent,
+		MetricsDomain::StoreSingleCommit,
+		MetricsDomain::StoreSinglePersistent,
+		MetricsDomain::StoreOperatorRead,
+		MetricsDomain::StoreOperatorPersistent,
 		MetricsDomain::Instruments,
 		MetricsDomain::Epoch,
 		MetricsDomain::Lifecycle,
@@ -307,7 +319,13 @@ impl MetricsDomain {
 			MetricsDomain::RuntimeMemory
 			| MetricsDomain::RuntimeWatermarks
 			| MetricsDomain::RuntimeOperators
-			| MetricsDomain::ReadBuffer
+			| MetricsDomain::StoreMultiCommit
+			| MetricsDomain::StoreMultiRead
+			| MetricsDomain::StoreMultiPersistent
+			| MetricsDomain::StoreSingleCommit
+			| MetricsDomain::StoreSinglePersistent
+			| MetricsDomain::StoreOperatorRead
+			| MetricsDomain::StoreOperatorPersistent
 			| MetricsDomain::Instruments
 			| MetricsDomain::Epoch
 			| MetricsDomain::Lifecycle
@@ -320,7 +338,6 @@ impl MetricsDomain {
 			MetricsDomain::RuntimeMemory => Some("system::metrics::runtime::memory::snapshots"),
 			MetricsDomain::RuntimeWatermarks => Some("system::metrics::runtime::watermarks::snapshots"),
 			MetricsDomain::RuntimeOperators => Some("system::metrics::runtime::operators::snapshots"),
-			MetricsDomain::ReadBuffer => Some("system::metrics::read_buffer::snapshots"),
 			MetricsDomain::Instruments => Some("system::metrics::instruments::snapshots"),
 			MetricsDomain::Epoch => Some("system::metrics::epoch::snapshots"),
 			MetricsDomain::Lifecycle => Some("system::metrics::lifecycle::snapshots"),
@@ -334,7 +351,14 @@ impl MetricsDomain {
 			| MetricsDomain::ProcCgroupIo
 			| MetricsDomain::ProcCgroupMemory
 			| MetricsDomain::ProcCgroupCpu
-			| MetricsDomain::ProcCgroupPressure => None,
+			| MetricsDomain::ProcCgroupPressure
+			| MetricsDomain::StoreMultiCommit
+			| MetricsDomain::StoreMultiRead
+			| MetricsDomain::StoreMultiPersistent
+			| MetricsDomain::StoreSingleCommit
+			| MetricsDomain::StoreSinglePersistent
+			| MetricsDomain::StoreOperatorRead
+			| MetricsDomain::StoreOperatorPersistent => None,
 		}
 	}
 
@@ -474,9 +498,22 @@ impl MetricsDomain {
 				],
 				has_total: false,
 			},
-			MetricsDomain::ReadBuffer => DomainSpec {
+			MetricsDomain::StoreMultiCommit => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_READ_BUFFER,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_MULTI_COMMIT,
+				shape: DomainShape::Wide,
+				dimensions: Vec::new(),
+				measures: vec![
+					level("current_bytes", ValueType::Uint8),
+					level("historical_bytes", ValueType::Uint8),
+					level("table_count", ValueType::Uint8),
+					level("current_entries", ValueType::Uint8),
+				],
+				has_total: false,
+			},
+			MetricsDomain::StoreMultiRead => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_MULTI_READ,
 				shape: DomainShape::Wide,
 				dimensions: vec![dim("shard", ValueType::Uint2)],
 				measures: vec![
@@ -502,6 +539,79 @@ impl MetricsDomain {
 					counter("point_misses", ValueType::Uint8),
 					counter("range_served", ValueType::Uint8),
 					counter("range_gaps", ValueType::Uint8),
+				],
+				has_total: true,
+			},
+			MetricsDomain::StoreMultiPersistent => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_MULTI_PERSISTENT,
+				shape: DomainShape::Wide,
+				dimensions: Vec::new(),
+				measures: vec![
+					level("used", ValueType::Uint8),
+					level("connections_sampled", ValueType::Uint8),
+					level("connections_total", ValueType::Uint8),
+					counter("hits", ValueType::Uint8),
+					counter("misses", ValueType::Uint8),
+				],
+				has_total: true,
+			},
+			MetricsDomain::StoreSingleCommit => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_SINGLE_COMMIT,
+				shape: DomainShape::Wide,
+				dimensions: Vec::new(),
+				measures: vec![
+					level("resident_entries", ValueType::Uint8),
+					level("resident_bytes", ValueType::Uint8),
+				],
+				has_total: false,
+			},
+			MetricsDomain::StoreSinglePersistent => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_SINGLE_PERSISTENT,
+				shape: DomainShape::Wide,
+				dimensions: Vec::new(),
+				measures: vec![
+					level("used", ValueType::Uint8),
+					level("connections_sampled", ValueType::Uint8),
+					level("connections_total", ValueType::Uint8),
+					counter("hits", ValueType::Uint8),
+					counter("misses", ValueType::Uint8),
+				],
+				has_total: true,
+			},
+			MetricsDomain::StoreOperatorRead => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_READ,
+				shape: DomainShape::Wide,
+				dimensions: vec![dim("shard", ValueType::Uint2)],
+				measures: vec![
+					level("used", ValueType::Uint8),
+					level("limit", ValueType::Uint8),
+					level("buckets", ValueType::Uint8),
+					level("entries", ValueType::Uint8),
+					level("complete_buckets", ValueType::Uint8),
+					counter("hits", ValueType::Uint8),
+					counter("misses", ValueType::Uint8),
+					counter("evictions", ValueType::Uint8),
+					counter("fills_started", ValueType::Uint8),
+					counter("fills_dirty_aborted", ValueType::Uint8),
+					counter("fills_duplicate", ValueType::Uint8),
+				],
+				has_total: true,
+			},
+			MetricsDomain::StoreOperatorPersistent => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_PERSISTENT,
+				shape: DomainShape::Wide,
+				dimensions: Vec::new(),
+				measures: vec![
+					level("used", ValueType::Uint8),
+					level("connections_sampled", ValueType::Uint8),
+					level("connections_total", ValueType::Uint8),
+					counter("hits", ValueType::Uint8),
+					counter("misses", ValueType::Uint8),
 				],
 				has_total: true,
 			},

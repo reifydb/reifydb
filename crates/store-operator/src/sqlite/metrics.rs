@@ -8,18 +8,9 @@ use reifydb_sqlite::memory::sweep_connection_cache;
 use reifydb_value::{byte_size::ByteSize, count::Count};
 use rusqlite::Connection;
 
-use crate::sqlite::SqliteOperatorStorage;
+use crate::{sqlite::SqliteOperatorStorage, tier::persistent::OperatorPageCacheMetrics};
 
 const SQLITE_SCOPE: &str = "sqlite::operator";
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct OperatorPageCacheMetrics {
-	pub used: ByteSize,
-	pub hits: Count,
-	pub misses: Count,
-	pub connections_sampled: Count,
-	pub connections_total: Count,
-}
 
 impl SqliteOperatorStorage {
 	pub fn page_cache_metrics(&self) -> OperatorPageCacheMetrics {

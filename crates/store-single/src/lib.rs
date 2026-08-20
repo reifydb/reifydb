@@ -37,6 +37,7 @@ use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::util::cowvec::CowVec;
 use store::StandardSingleStore;
+use tier::{commit::buffer::SingleCommitMetrics, persistent::SinglePageCacheMetrics};
 
 pub struct SingleStoreVersion;
 
@@ -80,6 +81,18 @@ impl SingleStore {
 	pub fn persistent(&self) -> Option<&tier::persistent::SinglePersistentTier> {
 		match self {
 			SingleStore::Standard(store) => store.persistent(),
+		}
+	}
+
+	pub fn commit_metrics(&self) -> Option<SingleCommitMetrics> {
+		match self {
+			SingleStore::Standard(store) => store.commit_metrics(),
+		}
+	}
+
+	pub fn persistent_page_cache_metrics(&self) -> Option<SinglePageCacheMetrics> {
+		match self {
+			SingleStore::Standard(store) => store.persistent_page_cache_metrics(),
 		}
 	}
 

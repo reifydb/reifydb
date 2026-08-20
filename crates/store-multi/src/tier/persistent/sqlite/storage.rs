@@ -53,14 +53,17 @@ use crate::{
 	tier::{
 		DisplacedValues, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
 		VersionedGetResult,
-		persistent::sqlite::{
-			entry::{current_table_name, current_table_name_to_entry},
-			query::{
-				build_chunked_upsert_sql, build_create_current_sql, build_delete_below_version_sql,
-				build_delete_keys_sql, build_expired_keys_sql, build_get_current_sql,
-				build_get_many_current_sql, build_range_consistent_sql, build_range_current_sql,
-				build_reap_tombstones_sql, build_upsert_current_sql, prefix_upper_bound,
-				version_from_bytes, version_to_bytes,
+		persistent::{
+			SqlitePageCacheMetrics,
+			sqlite::{
+				entry::{current_table_name, current_table_name_to_entry},
+				query::{
+					build_chunked_upsert_sql, build_create_current_sql,
+					build_delete_below_version_sql, build_delete_keys_sql, build_expired_keys_sql,
+					build_get_current_sql, build_get_many_current_sql, build_range_consistent_sql,
+					build_range_current_sql, build_reap_tombstones_sql, build_upsert_current_sql,
+					prefix_upper_bound, version_from_bytes, version_to_bytes,
+				},
 			},
 		},
 	},
@@ -96,15 +99,6 @@ struct SqlitePersistentStorageInner {
 	cache_misses: AtomicU64,
 	reaped_high_water: Map<EntryKind, Arc<AtomicU64>>,
 	resurrections: AtomicU64,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct SqlitePageCacheMetrics {
-	pub used: ByteSize,
-	pub hits: Count,
-	pub misses: Count,
-	pub connections_sampled: Count,
-	pub connections_total: Count,
 }
 
 struct TableSql {

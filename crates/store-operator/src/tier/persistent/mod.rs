@@ -18,6 +18,7 @@ use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::{
 	byte_size::ByteSize,
+	count::Count,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
@@ -28,6 +29,15 @@ use crate::{
 	tier::commit::batch::FlushBatch,
 	types::{OperatorBatch, OperatorSealAnchor, OperatorSealAnchorCensus, OperatorStateCensus},
 };
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OperatorPageCacheMetrics {
+	pub used: ByteSize,
+	pub hits: Count,
+	pub misses: Count,
+	pub connections_sampled: Count,
+	pub connections_total: Count,
+}
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
@@ -160,6 +170,12 @@ impl OperatorPersistentTier {
 			Self::Sqlite(storage) => storage.metrics_collectors(),
 		}
 	}
+
+	pub fn page_cache_metrics(&self) -> OperatorPageCacheMetrics {
+		match self {
+			Self::Sqlite(storage) => storage.page_cache_metrics(),
+		}
+	}
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
@@ -242,6 +258,10 @@ impl OperatorPersistentTier {
 	}
 
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
+		match *self {}
+	}
+
+	pub fn page_cache_metrics(&self) -> OperatorPageCacheMetrics {
 		match *self {}
 	}
 }

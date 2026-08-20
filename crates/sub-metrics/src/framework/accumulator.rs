@@ -652,7 +652,7 @@ mod tests {
 	fn wide_pivot_keeps_dimensions_aligned_with_measures() {
 		// Two shards with distinct values; a misaligned pivot would attribute shard 1's
 		// bytes to shard 0.
-		let mut acc = MetricsAccumulator::new([MetricsDomain::ReadBuffer.spec()]);
+		let mut acc = MetricsAccumulator::new([MetricsDomain::StoreMultiRead.spec()]);
 		let shard_row = |shard: u16, used: u64, warms: u64| MetricsRow {
 			dimensions: vec![Value::Uint2(shard)],
 			measures: vec![
@@ -668,15 +668,19 @@ mod tests {
 				},
 			],
 		};
-		acc.push(MetricsDomain::ReadBuffer, Surface::Current, vec![shard_row(0, 100, 3), shard_row(1, 200, 9)]);
+		acc.push(
+			MetricsDomain::StoreMultiRead,
+			Surface::Current,
+			vec![shard_row(0, 100, 3), shard_row(1, 200, 9)],
+		);
 		let published = acc.roll(now(1_000));
 
-		let current = surface(&published, MetricsDomain::ReadBuffer, Surface::Current);
+		let current = surface(&published, MetricsDomain::StoreMultiRead, Surface::Current);
 		assert_eq!(column_values(current, "shard"), vec![Value::Uint2(0), Value::Uint2(1)]);
 		assert_eq!(column_values(current, "used"), vec![Value::Uint8(100), Value::Uint8(200)]);
 		assert_eq!(column_values(current, "warms_started"), vec![Value::Uint8(3), Value::Uint8(9)]);
 
-		let total = surface(&published, MetricsDomain::ReadBuffer, Surface::Total);
+		let total = surface(&published, MetricsDomain::StoreMultiRead, Surface::Total);
 		assert_eq!(column_values(total, "warms_started"), vec![Value::Uint8(3), Value::Uint8(9)]);
 		assert!(
 			!total.iter().any(|c| c.name().text() == "used"),

@@ -24,6 +24,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 };
 use reifydb_store_multi::MultiStore;
+use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::{Result, error};
@@ -65,6 +66,8 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 		let clock = ioc.resolve::<Clock>()?;
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let multi_store = ioc.resolve::<MultiStore>()?;
+		let single_store = ioc.resolve::<SingleStore>()?;
+		let operator_store = ioc.resolve::<OperatorStore>()?;
 		let retention_metrics = ioc.resolve::<RetentionMetrics>()?;
 
 		let collectors = Collectors {
@@ -80,6 +83,8 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 			&clock,
 			&collectors,
 			&multi_store,
+			&single_store,
+			&operator_store,
 			&retention_metrics,
 			epoch_gauge.clone(),
 		)?;
@@ -98,6 +103,8 @@ impl MetricsSubsystemFactory {
 		clock: &Clock,
 		collectors: &Collectors,
 		multi_store: &MultiStore,
+		single_store: &SingleStore,
+		operator_store: &OperatorStore,
 		retention_metrics: &RetentionMetrics,
 		epoch_gauge: Arc<EpochGauge>,
 	) -> Result<ActorRef<SamplerMessage>> {
@@ -117,6 +124,8 @@ impl MetricsSubsystemFactory {
 		let actor = MetricsSamplerActor::new(
 			collectors.clone(),
 			multi_store.clone(),
+			single_store.clone(),
+			operator_store.clone(),
 			retention_metrics.clone(),
 			epoch_gauge,
 			surfaces,

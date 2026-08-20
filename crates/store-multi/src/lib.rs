@@ -40,7 +40,7 @@ use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::util::cowvec::CowVec;
 use store::StandardMultiStore;
-use tier::read::ReadBufferShardMetrics;
+use tier::{commit::buffer::MultiCommitMetrics, persistent::SqlitePageCacheMetrics, read::ReadBufferShardMetrics};
 
 pub mod memory {}
 pub mod sqlite {}
@@ -121,6 +121,18 @@ impl MultiStore {
 	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
 		match self {
 			MultiStore::Standard(store) => store.read_buffer_shard_metrics(),
+		}
+	}
+
+	pub fn commit_metrics(&self) -> MultiCommitMetrics {
+		match self {
+			MultiStore::Standard(store) => store.commit_metrics(),
+		}
+	}
+
+	pub fn persistent_page_cache_metrics(&self) -> Option<SqlitePageCacheMetrics> {
+		match self {
+			MultiStore::Standard(store) => store.persistent_page_cache_metrics(),
 		}
 	}
 

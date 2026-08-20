@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, sync::Arc};
+use std::{
+	ops::Bound,
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
+};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::internal_error;
@@ -9,16 +15,17 @@ use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sqlite::{
 	JournalMode, SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
+	memory::sweep_connection_cache,
 	pragma,
 };
-use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::cowvec::CowVec};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction, params,
 };
 use tracing::{instrument, warn};
 
 use super::query::build_range_query;
-use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
+use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage, persistent::SinglePageCacheMetrics};
 
 const TABLE_NAME: &str = "entries";
 
@@ -31,6 +38,8 @@ pub struct SqlitePersistentStorage {
 
 struct SqlitePersistentStorageInner {
 	conn: Mutex<Option<Connection>>,
+	cache_hits: AtomicU64,
+	cache_misses: AtomicU64,
 }
 
 impl SqlitePersistentStorage {
@@ -54,6 +63,8 @@ impl SqlitePersistentStorage {
 		Self {
 			inner: Arc::new(SqlitePersistentStorageInner {
 				conn: Mutex::new(Some(conn)),
+				cache_hits: AtomicU64::new(0),
+				cache_misses: AtomicU64::new(0),
 			}),
 		}
 	}
@@ -61,6 +72,27 @@ impl SqlitePersistentStorage {
 	pub fn in_memory() -> (Self, SqliteTempPathGuard) {
 		let (config, guard) = SqliteConfig::in_memory();
 		(Self::new(config), guard)
+	}
+
+	pub fn page_cache_metrics(&self) -> SinglePageCacheMetrics {
+		let mut used = 0u64;
+		let mut sampled = 0u64;
+		if let Some(guard) = self.inner.conn.try_lock()
+			&& let Some(conn) = guard.as_ref()
+		{
+			let swept = sweep_connection_cache(conn);
+			self.inner.cache_hits.fetch_add(swept.hits.as_u64(), Ordering::Relaxed);
+			self.inner.cache_misses.fetch_add(swept.misses.as_u64(), Ordering::Relaxed);
+			used += swept.used.as_bytes();
+			sampled += 1;
+		}
+		SinglePageCacheMetrics {
+			used: ByteSize::from_bytes(used),
+			hits: Count::new(self.inner.cache_hits.load(Ordering::Relaxed)),
+			misses: Count::new(self.inner.cache_misses.load(Ordering::Relaxed)),
+			connections_sampled: Count::new(sampled),
+			connections_total: Count::new(1),
+		}
 	}
 }
 

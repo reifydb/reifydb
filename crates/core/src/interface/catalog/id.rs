@@ -2116,14 +2116,13 @@ mod reserved_id_tests {
 
 	const USER_ID_START: u64 = 16385;
 
-	fn reserved_series_ids() -> [SeriesId; 10] {
+	fn reserved_series_ids() -> [SeriesId; 9] {
 		[
 			SeriesId::RUNTIME_MEMORY_SNAPSHOTS,
 			SeriesId::RUNTIME_WATERMARKS_SNAPSHOTS,
 			SeriesId::RUNTIME_OPERATORS_SNAPSHOTS,
 			SeriesId::INSTRUMENTS_SNAPSHOTS,
 			SeriesId::PROFILER_SPANS_SNAPSHOTS,
-			SeriesId::READ_BUFFER_SNAPSHOTS,
 			SeriesId::EPOCH_SNAPSHOTS,
 			SeriesId::LIFECYCLE_SNAPSHOTS,
 			SeriesId::STORAGE_SNAPSHOTS,
@@ -2131,14 +2130,13 @@ mod reserved_id_tests {
 		]
 	}
 
-	fn reserved_column_arrays() -> [&'static [ColumnId]; 10] {
+	fn reserved_column_arrays() -> [&'static [ColumnId]; 9] {
 		[
 			&ColumnId::RUNTIME_MEMORY_SNAPSHOTS_COLUMNS,
 			&ColumnId::RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS,
 			&ColumnId::RUNTIME_OPERATORS_SNAPSHOTS_COLUMNS,
 			&ColumnId::INSTRUMENTS_SNAPSHOTS_COLUMNS,
 			&ColumnId::PROFILER_SPANS_SNAPSHOTS_COLUMNS,
-			&ColumnId::READ_BUFFER_SNAPSHOTS_COLUMNS,
 			&ColumnId::EPOCH_SNAPSHOTS_COLUMNS,
 			&ColumnId::LIFECYCLE_SNAPSHOTS_COLUMNS,
 			&ColumnId::STORAGE_SNAPSHOTS_COLUMNS,
@@ -2182,7 +2180,7 @@ mod reserved_id_tests {
 			}
 		}
 
-		assert_eq!(count, 4 * 6 + 18 + 24 + 7 + 10 + 14 + 8, "expected exactly 105 reserved system column ids");
+		assert_eq!(count, 4 * 6 + 18 + 7 + 10 + 14 + 8, "expected exactly 81 reserved system column ids");
 	}
 
 	#[test]
@@ -2194,10 +2192,9 @@ mod reserved_id_tests {
 			assert_eq!(array.len(), 6, "long-format snapshot series must declare 6 column ids");
 		}
 		assert_eq!(arrays[4].len(), 18, "spans snapshot series must declare 18 column ids");
-		assert_eq!(arrays[5].len(), 24, "read_buffer snapshot series must declare 24 column ids");
-		assert_eq!(arrays[6].len(), 7, "epoch snapshot series must declare 7 column ids");
-		assert_eq!(arrays[7].len(), 10, "lifecycle snapshot series must declare 10 column ids");
-		assert_eq!(arrays[8].len(), 14, "storage snapshot series must declare 14 column ids");
-		assert_eq!(arrays[9].len(), 8, "cdc snapshot series must declare 8 column ids");
+		assert_eq!(arrays[5].len(), 7, "epoch snapshot series must declare 7 column ids");
+		assert_eq!(arrays[6].len(), 10, "lifecycle snapshot series must declare 10 column ids");
+		assert_eq!(arrays[7].len(), 14, "storage snapshot series must declare 14 column ids");
+		assert_eq!(arrays[8].len(), 8, "cdc snapshot series must declare 8 column ids");
 	}
 }

@@ -27,7 +27,7 @@ use crate::{
 	flush::{FlushMessage, flush_now, flush_pending},
 	tier::{
 		commit::OperatorCommitBuffer,
-		persistent::OperatorPersistentTier,
+		persistent::{OperatorPageCacheMetrics, OperatorPersistentTier},
 		read::{OperatorReadBufferShardMetrics, OperatorReadBufferTier},
 	},
 };
@@ -123,6 +123,10 @@ impl StandardOperatorStore {
 		self.read.as_ref().map(OperatorReadBufferTier::shard_metrics).unwrap_or_default()
 	}
 
+	pub fn persistent_page_cache_metrics(&self) -> Option<OperatorPageCacheMetrics> {
+		self.persistent.as_ref().map(OperatorPersistentTier::page_cache_metrics)
+	}
+
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		let mut collectors =
 			self.persistent.as_ref().map(OperatorPersistentTier::metrics_collectors).unwrap_or_default();
@@ -197,6 +201,12 @@ impl OperatorStore {
 	pub fn read_buffer_shard_metrics(&self) -> Vec<OperatorReadBufferShardMetrics> {
 		match self {
 			Self::Standard(store) => store.read_buffer_shard_metrics(),
+		}
+	}
+
+	pub fn persistent_page_cache_metrics(&self) -> Option<OperatorPageCacheMetrics> {
+		match self {
+			Self::Standard(store) => store.persistent_page_cache_metrics(),
 		}
 	}
 
