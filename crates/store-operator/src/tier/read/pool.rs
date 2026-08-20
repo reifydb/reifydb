@@ -7,7 +7,10 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::util::budget::MemoryBudget;
+use reifydb_core::{
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
+	util::budget::MemoryBudget,
+};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::byte_size::ByteSize;
 
@@ -15,6 +18,8 @@ use crate::tier::read::{
 	BucketId, OperatorReadBufferConfig, OperatorReadBufferMetrics, OperatorReadBufferShardMetrics,
 	OperatorReadBufferTier, PoolInner, Shard,
 };
+
+const READ_BUFFER_SCOPE: &str = "operator_read_buffer";
 
 impl OperatorReadBufferTier {
 	pub fn new(config: OperatorReadBufferConfig) -> Option<Self> {
@@ -78,6 +83,9 @@ impl OperatorReadBufferTier {
 			total.hits += shard.metrics.hits;
 			total.misses += shard.metrics.misses;
 			total.evictions += shard.metrics.evictions;
+			total.fills_started += shard.metrics.fills_started;
+			total.fills_dirty_aborted += shard.metrics.fills_dirty_aborted;
+			total.fills_duplicate += shard.metrics.fills_duplicate;
 		}
 		total
 	}
@@ -115,6 +123,34 @@ impl OperatorReadBufferTier {
 	}
 }
 
+impl MetricsCollector for OperatorReadBufferTier {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		let counters = self.metrics();
+		out.push(MetricsSample::heap(READ_BUFFER_SCOPE, "resident_bytes", self.resident_bytes()));
+		out.push(MetricsSample::count(READ_BUFFER_SCOPE, "resident_buckets", self.buckets() as u64));
+		out.push(MetricsSample::count(READ_BUFFER_SCOPE, "resident_entries", self.entries() as u64));
+		out.push(MetricsSample::counter(READ_BUFFER_SCOPE, "hits", counters.hits));
+		out.push(MetricsSample::counter(READ_BUFFER_SCOPE, "misses", counters.misses));
+		out.push(MetricsSample::counter(READ_BUFFER_SCOPE, "evictions", counters.evictions));
+		out.push(MetricsSample::counter(READ_BUFFER_SCOPE, "fills_started", counters.fills_started));
+		out.push(MetricsSample::counter(
+			READ_BUFFER_SCOPE,
+			"fills_dirty_aborted",
+			counters.fills_dirty_aborted,
+		));
+		out.push(MetricsSample::counter(READ_BUFFER_SCOPE, "fills_duplicate", counters.fills_duplicate));
+		let shards = &self.inner.shards;
+		out.push(MetricsSample::bytes(READ_BUFFER_SCOPE, "shard_limit_bytes", shards[0].lock().budget.limit()));
+		for (index, shard) in shards.iter().enumerate() {
+			out.push(MetricsSample::bytes(
+				format!("{READ_BUFFER_SCOPE}::shard::{index:02}"),
+				"used_bytes",
+				shard.lock().budget.used(),
+			));
+		}
+	}
+}
+
 fn build_shards(config: OperatorReadBufferConfig, resident_bytes: ByteSize) -> Box<[Mutex<Shard>]> {
 	let shard_count = config.shards.max(1);
 	let byte_cap = ByteSize::from_bytes((resident_bytes.as_bytes() / shard_count as u64).max(1));
@@ -122,6 +158,7 @@ fn build_shards(config: OperatorReadBufferConfig, resident_bytes: ByteSize) -> B
 		.map(|_| {
 			Mutex::new(Shard {
 				buckets: HashMap::new(),
+				filling: HashMap::new(),
 				budget: MemoryBudget::new(byte_cap),
 				next_tick: 0,
 				metrics: OperatorReadBufferMetrics::default(),

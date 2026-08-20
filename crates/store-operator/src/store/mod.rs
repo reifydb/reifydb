@@ -25,7 +25,11 @@ use crate::{config::OperatorPersistentConfig, flush::OperatorFlushActor, sqlite:
 use crate::{
 	config::OperatorStoreConfig,
 	flush::{FlushMessage, flush_now, flush_pending},
-	tier::{commit::OperatorCommitBuffer, persistent::OperatorPersistentTier},
+	tier::{
+		commit::OperatorCommitBuffer,
+		persistent::OperatorPersistentTier,
+		read::{OperatorReadBufferShardMetrics, OperatorReadBufferTier},
+	},
 };
 
 #[repr(u8)]
@@ -40,6 +44,7 @@ pub struct StandardOperatorStore(Arc<StandardOperatorStoreInner>);
 pub struct StandardOperatorStoreInner {
 	pub(crate) commit: OperatorCommitBuffer,
 	pub(crate) persistent: Option<OperatorPersistentTier>,
+	pub(crate) read: Option<OperatorReadBufferTier>,
 	pub(crate) flush: Option<ActorRef<FlushMessage>>,
 	#[allow(dead_code)]
 	pub(crate) spawner: ActorSpawner,
@@ -57,6 +62,11 @@ impl StandardOperatorStore {
 	pub fn new(config: OperatorStoreConfig) -> Self {
 		let commit = config.commit.storage;
 		let spawner = config.spawner;
+		let read = config
+			.persistent
+			.is_some()
+			.then(|| config.read.and_then(OperatorReadBufferTier::new))
+			.flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush) = {
@@ -65,6 +75,7 @@ impl StandardOperatorStore {
 					&spawner,
 					commit.clone(),
 					persistent.storage.clone(),
+					read.clone(),
 					persistent.flush_interval,
 				)
 			});
@@ -77,9 +88,12 @@ impl StandardOperatorStore {
 			None => (None, None),
 		};
 
+		let read = persistent.as_ref().and(read);
+
 		Self(Arc::new(StandardOperatorStoreInner {
 			commit,
 			persistent,
+			read,
 			flush,
 			spawner,
 		}))
@@ -101,8 +115,21 @@ impl StandardOperatorStore {
 		}
 	}
 
+	pub fn read(&self) -> Option<&OperatorReadBufferTier> {
+		self.read.as_ref()
+	}
+
+	pub fn read_buffer_shard_metrics(&self) -> Vec<OperatorReadBufferShardMetrics> {
+		self.read.as_ref().map(OperatorReadBufferTier::shard_metrics).unwrap_or_default()
+	}
+
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
-		self.persistent.as_ref().map(OperatorPersistentTier::metrics_collectors).unwrap_or_default()
+		let mut collectors =
+			self.persistent.as_ref().map(OperatorPersistentTier::metrics_collectors).unwrap_or_default();
+		if let Some(read) = &self.read {
+			collectors.push(Arc::new(read.clone()));
+		}
+		collectors
 	}
 }
 
@@ -111,7 +138,7 @@ impl Shutdown for StandardOperatorStore {
 		let Some(persistent) = self.persistent.as_ref() else {
 			return;
 		};
-		flush_now(&self.commit, persistent);
+		flush_now(&self.commit, persistent, self.read.as_ref());
 		persistent.shutdown();
 	}
 }
@@ -158,6 +185,18 @@ impl OperatorStore {
 	pub fn flush_pending_blocking(&self) -> bool {
 		match self {
 			Self::Standard(store) => store.flush_pending_blocking(),
+		}
+	}
+
+	pub fn read(&self) -> Option<&OperatorReadBufferTier> {
+		match self {
+			Self::Standard(store) => store.read(),
+		}
+	}
+
+	pub fn read_buffer_shard_metrics(&self) -> Vec<OperatorReadBufferShardMetrics> {
+		match self {
+			Self::Standard(store) => store.read_buffer_shard_metrics(),
 		}
 	}
 

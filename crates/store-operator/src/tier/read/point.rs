@@ -156,11 +156,57 @@ impl OperatorReadBufferTier {
 		self.shard_for(&bucket).lock().buckets.get(&bucket).is_some_and(|found| found.complete)
 	}
 
+	pub fn begin_fill(&self, operator: OperatorId, key: &EncodedKey) -> bool {
+		let Some(id) = BucketId::of(operator, key) else {
+			return false;
+		};
+		let mut shard = self.shard_for(&id).lock();
+		if shard.filling.contains_key(&(id, key.clone())) {
+			shard.metrics.fills_duplicate += 1;
+			return false;
+		}
+		shard.filling.insert((id, key.clone()), false);
+		shard.metrics.fills_started += 1;
+		true
+	}
+
+	pub fn finish_fill(&self, operator: OperatorId, key: EncodedKey, row: Option<EncodedPodRow>) -> bool {
+		let Some(id) = BucketId::of(operator, &key) else {
+			return false;
+		};
+		{
+			let mut shard = self.shard_for(&id).lock();
+			match shard.filling.remove(&(id, key.clone())) {
+				Some(false) => {}
+				Some(true) => {
+					shard.metrics.fills_dirty_aborted += 1;
+					return false;
+				}
+				None => {
+					shard.metrics.fills_dirty_aborted += 1;
+					return false;
+				}
+			}
+		}
+		self.remember(operator, key, row);
+		true
+	}
+
+	pub fn abort_fill(&self, operator: OperatorId, key: &EncodedKey) {
+		let Some(id) = BucketId::of(operator, key) else {
+			return;
+		};
+		self.shard_for(&id).lock().filling.remove(&(id, key.clone()));
+	}
+
 	pub fn invalidate(&self, operator: OperatorId, key: &EncodedKey) {
 		let Some(id) = BucketId::of(operator, key) else {
 			return;
 		};
 		let mut shard = self.shard_for(&id).lock();
+		if let Some(dirty) = shard.filling.get_mut(&(id, key.clone())) {
+			*dirty = true;
+		}
 		let Shard {
 			buckets,
 			budget,
@@ -184,6 +230,11 @@ impl OperatorReadBufferTier {
 	pub fn invalidate_operator(&self, operator: OperatorId) {
 		for shard in self.all_shards() {
 			let mut shard = shard.lock();
+			for ((bucket, _), dirty) in shard.filling.iter_mut() {
+				if bucket.operator == operator {
+					*dirty = true;
+				}
+			}
 			let Shard {
 				buckets,
 				budget,
@@ -211,6 +262,7 @@ impl OperatorReadBufferTier {
 				budget.release(ByteSize::from_bytes(bucket.bytes as u64));
 			}
 			buckets.clear();
+			shard.filling.clear();
 			shard.next_tick = 0;
 		}
 	}

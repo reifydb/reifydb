@@ -11,6 +11,7 @@ use reifydb_runtime::pool::PoolConfig;
 use reifydb_store_multi::tier::{
 	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig,
 };
+use reifydb_store_operator::tier::read::OperatorReadBufferConfig;
 use reifydb_value::{byte_size::ByteSize, value::Value};
 
 use crate::Result;
@@ -18,6 +19,7 @@ use crate::Result;
 pub(crate) struct StartupConfig {
 	pub pools: PoolConfig,
 	pub read: Option<ReadBufferConfig>,
+	pub operator_read: Option<OperatorReadBufferConfig>,
 	pub multi_wal_autocheckpoint: u32,
 }
 
@@ -30,6 +32,7 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::MultiReadBufferPages,
 	ConfigKey::MultiReadBufferPageSize,
 	ConfigKey::MultiReadBufferBytes,
+	ConfigKey::OperatorReadBufferBytes,
 	ConfigKey::MultiWalAutocheckpoint,
 ];
 
@@ -89,9 +92,16 @@ pub(crate) fn resolve_startup_configs(
 		bucket_shift: uint8(ConfigKey::MultiReadBufferPageSize).max(1).trailing_zeros() as u8,
 	});
 
+	let operator_read =
+		uint8_opt(ConfigKey::OperatorReadBufferBytes).map(|resident_bytes| OperatorReadBufferConfig {
+			resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
+			shards: OperatorReadBufferConfig::default().shards,
+		});
+
 	Ok(StartupConfig {
 		pools,
 		read,
+		operator_read,
 		multi_wal_autocheckpoint: uint8(ConfigKey::MultiWalAutocheckpoint) as u32,
 	})
 }

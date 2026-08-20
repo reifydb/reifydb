@@ -70,6 +70,13 @@ impl Runner {
 			self.store.flush_pending_blocking();
 		}
 	}
+
+	/// Every writer of the persistent tier must invalidate the read tier, or a cached row outlives the write.
+	fn invalidate_read(&self, operator: OperatorId, key: &EncodedKey) {
+		if let Some(read) = self.store.read() {
+			read.invalidate(operator, key);
+		}
+	}
 }
 
 impl testscript::runner::Runner for Runner {
@@ -441,7 +448,8 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
-				persistent.set(operator, key, row);
+				persistent.set(operator, key.clone(), row);
+				self.invalidate_read(operator, &key);
 			}
 
 			"persistent_delete" => {
@@ -456,6 +464,7 @@ impl testscript::runner::Runner for Runner {
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
 				persistent.remove(operator, &key);
+				self.invalidate_read(operator, &key);
 			}
 
 			name => {

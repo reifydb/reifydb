@@ -18,7 +18,11 @@ use reifydb_store_multi::{
 	},
 	tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig},
 };
-use reifydb_store_operator::{config::OperatorStoreConfig, store::OperatorStore};
+use reifydb_store_operator::{
+	config::{OperatorPersistentConfig, OperatorStoreConfig},
+	store::OperatorStore,
+	tier::read::OperatorReadBufferConfig,
+};
 use reifydb_store_single::{
 	SingleStore,
 	buffer::tier::SingleBufferTier,
@@ -56,6 +60,7 @@ impl StorageFactory {
 		multi_commit_buffer: MultiCommitBufferTier,
 		multi_persistent: Option<MultiPersistentTier>,
 		read: Option<ReadBufferConfig>,
+		operator_read: Option<OperatorReadBufferConfig>,
 		spawner: &ActorSpawner,
 	) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
 		match self {
@@ -64,6 +69,7 @@ impl StorageFactory {
 				multi_commit_buffer,
 				multi_persistent.expect("sqlite storage must supply an opened persistent tier"),
 				read,
+				operator_read,
 				config.clone(),
 				spawner,
 			),
@@ -139,6 +145,7 @@ fn create_sqlite_store_with(
 	multi_commit_buffer: MultiCommitBufferTier,
 	multi_persistent: MultiPersistentTier,
 	read: Option<ReadBufferConfig>,
+	operator_read: Option<OperatorReadBufferConfig>,
 	config: SqliteConfig,
 	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
@@ -172,14 +179,17 @@ fn create_sqlite_store_with(
 		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("operator.db")),
 		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("operator.db")),
 	};
-	let operator_store = OperatorStore::sqlite(
-		SqliteConfig {
-			path: operator_path,
-			..config.clone()
-		},
-		spawner.clone(),
-		Clock::Real,
-	);
+	let operator_store = OperatorStore::standard(OperatorStoreConfig {
+		read: operator_read,
+		..OperatorStoreConfig::sqlite(
+			OperatorPersistentConfig::sqlite(SqliteConfig {
+				path: operator_path,
+				..config.clone()
+			}),
+			spawner.clone(),
+			Clock::Real,
+		)
+	});
 
 	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 	(multi_store, single_store, operator_store, transaction_single, eventbus)

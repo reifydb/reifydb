@@ -23,6 +23,7 @@ use reifydb_sqlite::SqliteConfig;
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
+	tier::read::OperatorReadBufferConfig,
 	types::OperatorWrite,
 };
 use reifydb_testing::tempdir::temp_dir;
@@ -48,6 +49,7 @@ fn store_at(path: &Path) -> OperatorStore {
 		commit: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(SqliteConfig::new(path))
 			.flush_interval(Duration::from_hours_const(1))),
+		read: Some(OperatorReadBufferConfig::default()),
 		spawner,
 		clock: Clock::Real,
 	})

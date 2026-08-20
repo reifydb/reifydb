@@ -101,6 +101,9 @@ pub struct OperatorReadBufferMetrics {
 	pub hits: u64,
 	pub misses: u64,
 	pub evictions: u64,
+	pub fills_started: u64,
+	pub fills_dirty_aborted: u64,
+	pub fills_duplicate: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -114,8 +117,11 @@ pub struct OperatorReadBufferShardMetrics {
 	pub counters: OperatorReadBufferMetrics,
 }
 
+type FillId = (BucketId, EncodedKey);
+
 struct Shard {
 	buckets: HashMap<BucketId, Bucket>,
+	filling: HashMap<FillId, bool>,
 	budget: MemoryBudget,
 	next_tick: u64,
 	metrics: OperatorReadBufferMetrics,

@@ -19,7 +19,14 @@ use reifydb_runtime::{
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use tracing::debug;
 
-use crate::tier::{commit::OperatorCommitBuffer, persistent::OperatorPersistentTier};
+use crate::tier::{
+	commit::{
+		OperatorCommitBuffer,
+		batch::{DropMarker, FlushBatch},
+	},
+	persistent::OperatorPersistentTier,
+	read::OperatorReadBufferTier,
+};
 
 const FLUSH_PENDING_TIMEOUT: Duration = Duration::from_seconds_const(5);
 
@@ -40,14 +47,21 @@ pub struct OperatorFlushActorState {
 pub struct OperatorFlushActor {
 	buffer: OperatorCommitBuffer,
 	storage: OperatorPersistentTier,
+	read: Option<OperatorReadBufferTier>,
 	flush_interval: Duration,
 }
 
 impl OperatorFlushActor {
-	pub fn new(buffer: OperatorCommitBuffer, storage: OperatorPersistentTier, flush_interval: Duration) -> Self {
+	pub fn new(
+		buffer: OperatorCommitBuffer,
+		storage: OperatorPersistentTier,
+		read: Option<OperatorReadBufferTier>,
+		flush_interval: Duration,
+	) -> Self {
 		Self {
 			buffer,
 			storage,
+			read,
 			flush_interval,
 		}
 	}
@@ -57,9 +71,10 @@ impl OperatorFlushActor {
 		spawner: &ActorSpawner,
 		buffer: OperatorCommitBuffer,
 		storage: OperatorPersistentTier,
+		read: Option<OperatorReadBufferTier>,
 		flush_interval: Duration,
 	) -> ActorRef<FlushMessage> {
-		let actor = Self::new(buffer, storage, flush_interval);
+		let actor = Self::new(buffer, storage, read, flush_interval);
 		spawner.spawn_coordination("operator-persistent-flush", actor).actor_ref().clone()
 	}
 
@@ -68,23 +83,43 @@ impl OperatorFlushActor {
 		_spawner: &ActorSpawner,
 		_buffer: OperatorCommitBuffer,
 		storage: OperatorPersistentTier,
+		_read: Option<OperatorReadBufferTier>,
 		_flush_interval: Duration,
 	) -> ActorRef<FlushMessage> {
 		match storage {}
 	}
 
 	fn drain(&self) {
-		flush_now(&self.buffer, &self.storage);
+		flush_now(&self.buffer, &self.storage, self.read.as_ref());
 	}
 }
 
-pub fn flush_now(buffer: &OperatorCommitBuffer, storage: &OperatorPersistentTier) {
+pub fn flush_now(
+	buffer: &OperatorCommitBuffer,
+	storage: &OperatorPersistentTier,
+	read: Option<&OperatorReadBufferTier>,
+) {
 	let _flushing = buffer.flush_guard();
 	let Some(batch) = buffer.take_for_flush() else {
 		return;
 	};
 	storage.flush_batch(&batch);
+	if let Some(read) = read {
+		invalidate_flushed(read, &batch);
+	}
 	buffer.complete_flush();
+}
+
+fn invalidate_flushed(read: &OperatorReadBufferTier, batch: &FlushBatch) {
+	for marker in &batch.drops {
+		match marker {
+			DropMarker::OperatorState(operator) => read.invalidate_operator(*operator),
+			DropMarker::AnchorsOperator(_) | DropMarker::AnchorsGroup(_, _) => {}
+		}
+	}
+	for (operator, key) in batch.state.keys() {
+		read.invalidate(*operator, key);
+	}
 }
 
 pub fn flush_pending(actor_ref: &ActorRef<FlushMessage>) -> bool {

@@ -327,6 +327,88 @@ fn a_complete_bucket_answers_for_keys_it_never_saw() {
 }
 
 #[test]
+fn a_fill_invalidated_while_in_flight_is_discarded() {
+	// Without this the row read before the write lands after the invalidate and is served forever.
+	let tier = roomy();
+	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+
+	assert!(tier.begin_fill(OP_A, &k), "a first fill of an idle key must be admitted");
+	tier.invalidate(OP_A, &k);
+
+	assert!(!tier.finish_fill(OP_A, k.clone(), Some(row("stale"))), "a dirtied fill must report that it discarded");
+	assert_eq!(tier.get(OP_A, &k), None, "the discarded value must leave the key unknown, never cached");
+	assert_eq!(tier.entries(), 0);
+	assert_eq!(tier.metrics().fills_dirty_aborted, 1);
+}
+
+#[test]
+fn a_fill_dirtied_by_an_operator_drop_is_discarded() {
+	// invalidate_operator must reach in-flight fills too, or a dropped operator's state is cached back in.
+	let tier = roomy();
+	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let neighbour = key(GROUP_A, Keyspace::ACCUMULATOR, b"b");
+
+	assert!(tier.begin_fill(OP_A, &k));
+	assert!(tier.begin_fill(OP_B, &neighbour));
+	tier.invalidate_operator(OP_A);
+
+	assert!(!tier.finish_fill(OP_A, k.clone(), Some(row("stale"))));
+	assert_eq!(tier.get(OP_A, &k), None);
+	assert!(
+		tier.finish_fill(OP_B, neighbour.clone(), Some(row("fresh"))),
+		"marking dirty must be scoped to the dropped operator, otherwise one drop aborts every live fill"
+	);
+	assert!(tier.get(OP_B, &neighbour).is_some());
+}
+
+#[test]
+fn an_undisturbed_fill_populates_the_tier() {
+	let tier = roomy();
+	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+
+	assert!(tier.begin_fill(OP_A, &k));
+	assert!(tier.finish_fill(OP_A, k.clone(), Some(row("v"))), "a clean fill must report that it populated");
+
+	let served = tier.get(OP_A, &k).expect("a clean fill must be readable back");
+	assert_eq!(body(&served), "v");
+	assert_eq!(tier.metrics().fills_started, 1);
+	assert_eq!(tier.metrics().fills_dirty_aborted, 0);
+	assert!(tier.begin_fill(OP_A, &k), "finishing a fill must release the slot, or the key can never refill");
+	tier.abort_fill(OP_A, &k);
+	assert!(tier.begin_fill(OP_A, &k), "aborting must release the slot too");
+}
+
+#[test]
+fn a_second_fill_of_the_same_key_is_declined_while_one_is_in_flight() {
+	// The loser must read through without populating; two concurrent fills of one key would race each other.
+	let tier = roomy();
+	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let sibling = key(GROUP_A, Keyspace::ACCUMULATOR, b"b");
+
+	assert!(tier.begin_fill(OP_A, &k));
+	assert!(!tier.begin_fill(OP_A, &k), "a duplicate fill of the same key must be declined");
+	assert!(tier.begin_fill(OP_A, &sibling), "a different key in the same bucket must still be admitted");
+	assert!(tier.begin_fill(OP_B, &k), "the same inner key under another operator is a different fill");
+
+	assert_eq!(tier.metrics().fills_duplicate, 1);
+	assert_eq!(tier.metrics().fills_started, 3);
+}
+
+#[test]
+fn clearing_the_tier_discards_every_fill_in_flight() {
+	// A fill that outlives the clear would repopulate from a snapshot the clear was meant to throw away.
+	let tier = roomy();
+	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+
+	assert!(tier.begin_fill(OP_A, &k));
+	tier.clear();
+
+	assert!(!tier.finish_fill(OP_A, k.clone(), Some(row("stale"))), "a fill whose slot vanished must discard");
+	assert_eq!(tier.get(OP_A, &k), None);
+	assert_eq!(tier.entries(), 0);
+}
+
+#[test]
 fn a_tier_without_a_byte_budget_is_not_constructed() {
 	// resident_bytes: None must mean no tier at all, never a tier with a zero budget that thrashes
 	assert!(OperatorReadBufferTier::new(OperatorReadBufferConfig {

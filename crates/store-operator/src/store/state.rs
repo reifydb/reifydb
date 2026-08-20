@@ -22,17 +22,20 @@ use crate::{
 impl StandardOperatorStore {
 	#[instrument(name = "store::operator::set", level = "debug", skip(self, key, row), fields(operator = operator.0, key_len = key.len()))]
 	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-		self.commit.record_state_set(operator, key, row);
+		self.commit.record_state_set(operator, key.clone(), row);
+		self.invalidate_read(operator, &key);
 	}
 
 	#[instrument(name = "store::operator::remove", level = "debug", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
 	pub fn remove(&self, operator: OperatorId, key: &EncodedKey) {
 		self.commit.record_state_remove(operator, key.clone());
+		self.invalidate_read(operator, key);
 	}
 
 	#[instrument(name = "store::operator::apply_batch", level = "debug", skip(self, writes), fields(write_count = writes.len()))]
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
 		self.commit.apply_batch(writes);
+		self.invalidate_read_batch(writes);
 	}
 
 	#[instrument(name = "store::operator::apply_batch_with_checkpoints", level = "debug", skip(self, writes, checkpoints, checkpoint_deletes), fields(write_count = writes.len(), checkpoint_count = checkpoints.len()))]
@@ -43,11 +46,46 @@ impl StandardOperatorStore {
 		checkpoint_deletes: &[FlowId],
 	) {
 		self.commit.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
+		self.invalidate_read_batch(writes);
 	}
 
 	#[instrument(name = "store::operator::drop_operator_state", level = "debug", skip(self), fields(operator = operator.0))]
 	pub fn drop_operator_state(&self, operator: OperatorId) {
 		self.commit.record_drop(DropMarker::OperatorState(operator));
+		if let Some(read) = self.read.as_ref() {
+			read.invalidate_operator(operator);
+		}
+	}
+
+	fn invalidate_read(&self, operator: OperatorId, key: &EncodedKey) {
+		if let Some(read) = self.read.as_ref() {
+			read.invalidate(operator, key);
+		}
+	}
+
+	fn invalidate_read_batch(&self, writes: &[OperatorWrite]) {
+		let Some(read) = self.read.as_ref() else {
+			return;
+		};
+		for write in writes {
+			match write {
+				OperatorWrite::Set {
+					operator,
+					key,
+					..
+				}
+				| OperatorWrite::Remove {
+					operator,
+					key,
+				} => read.invalidate(*operator, key),
+				OperatorWrite::AnchorSet {
+					..
+				}
+				| OperatorWrite::AnchorRemove {
+					..
+				} => {}
+			}
+		}
 	}
 
 	#[instrument(name = "store::operator::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
@@ -55,12 +93,25 @@ impl StandardOperatorStore {
 		match self.commit.lookup_state(operator, key) {
 			BufferedState::Row(row) => Some(row),
 			BufferedState::Tombstone | BufferedState::Dropped => None,
-			BufferedState::Absent => self.persistent.as_ref().and_then(|persistent| {
-				if !persistent.filter().may_contain(operator, key) {
-					return None;
-				}
-				persistent.get(operator, key)
-			}),
+			BufferedState::Absent => self.persistent_get(operator, key),
+		}
+	}
+
+	fn persistent_get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
+		let persistent = self.persistent.as_ref()?;
+		if let Some(cached) = self.read.as_ref().and_then(|read| read.get(operator, key)) {
+			return cached;
+		}
+		if !persistent.filter().may_contain(operator, key) {
+			return None;
+		}
+		match self.read.as_ref() {
+			Some(read) if read.begin_fill(operator, key) => {
+				let row = persistent.get(operator, key);
+				read.finish_fill(operator, key.clone(), row.clone());
+				row
+			}
+			_ => persistent.get(operator, key),
 		}
 	}
 
@@ -69,9 +120,27 @@ impl StandardOperatorStore {
 		match self.commit.lookup_state(operator, key) {
 			BufferedState::Row(_) => true,
 			BufferedState::Tombstone | BufferedState::Dropped => false,
-			BufferedState::Absent => self.persistent.as_ref().is_some_and(|persistent| {
-				persistent.filter().may_contain(operator, key) && persistent.contains(operator, key)
-			}),
+			BufferedState::Absent => self.persistent_contains(operator, key),
+		}
+	}
+
+	fn persistent_contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
+		let Some(persistent) = self.persistent.as_ref() else {
+			return false;
+		};
+		if let Some(cached) = self.read.as_ref().and_then(|read| read.contains(operator, key)) {
+			return cached;
+		}
+		if !persistent.filter().may_contain(operator, key) {
+			return false;
+		}
+		match self.read.as_ref() {
+			Some(read) if read.begin_fill(operator, key) => {
+				let row = persistent.get(operator, key);
+				read.finish_fill(operator, key.clone(), row.clone());
+				row.is_some()
+			}
+			_ => persistent.contains(operator, key),
 		}
 	}
 
