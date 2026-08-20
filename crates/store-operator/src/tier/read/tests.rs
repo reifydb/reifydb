@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::{
+	Arc,
+	atomic::{AtomicBool, Ordering},
+};
+
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -8,7 +13,9 @@ use reifydb_core::{
 };
 use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::read::{BUCKET_OVERHEAD, BucketId, ENTRY_OVERHEAD, OperatorReadBufferConfig, OperatorReadBufferTier};
+use crate::tier::read::{
+	BUCKET_OVERHEAD, BucketId, ENTRY_OVERHEAD, FillInterlock, OperatorReadBufferConfig, OperatorReadBufferTier,
+};
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -16,7 +23,6 @@ const GROUP_A: GroupId = GroupId(10);
 const GROUP_B: GroupId = GroupId(11);
 
 fn tier(limit: u64) -> OperatorReadBufferTier {
-	// one shard, or the fixtures spread over independent budgets and no byte assertion is reproducible
 	OperatorReadBufferTier::new(OperatorReadBufferConfig {
 		resident_bytes: Some(ByteSize::from_bytes(limit)),
 		shards: 1,
@@ -278,7 +284,7 @@ fn repeated_reads_of_one_remembered_key_cost_one_miss() {
 #[test]
 fn a_key_too_short_to_carry_a_keyspace_is_declined_not_cached() {
 	let tier = roomy();
-	// a key carrying no group plus keyspace has no bucket, so it must be declined, never panic on the offset read
+
 	for bytes in [vec![], vec![0u8], vec![0u8; 8]] {
 		let short = EncodedKey::new(&bytes);
 		assert_eq!(BucketId::of(OP_A, &short), None, "a {} byte key cannot carry a bucket", bytes.len());
@@ -328,7 +334,6 @@ fn a_complete_bucket_answers_for_keys_it_never_saw() {
 
 #[test]
 fn a_fill_invalidated_while_in_flight_is_discarded() {
-	// Without this the row read before the write lands after the invalidate and is served forever.
 	let tier = roomy();
 	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 
@@ -343,7 +348,6 @@ fn a_fill_invalidated_while_in_flight_is_discarded() {
 
 #[test]
 fn a_fill_dirtied_by_an_operator_drop_is_discarded() {
-	// invalidate_operator must reach in-flight fills too, or a dropped operator's state is cached back in.
 	let tier = roomy();
 	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	let neighbour = key(GROUP_A, Keyspace::ACCUMULATOR, b"b");
@@ -379,8 +383,45 @@ fn an_undisturbed_fill_populates_the_tier() {
 }
 
 #[test]
+fn a_published_fill_is_accounted_exactly_like_a_remembered_row() {
+	let tier = roomy();
+	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+
+	tier.remember(OP_A, k.clone(), Some(row("v")));
+	let by_remember = tier.resident_bytes();
+	tier.clear();
+	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "the fixture must start the second half from empty");
+
+	assert!(tier.begin_fill(OP_A, &k));
+	assert!(tier.finish_fill(OP_A, k.clone(), Some(row("v"))));
+
+	assert_eq!(tier.resident_bytes(), by_remember, "publishing a fill must charge what remembering charges");
+	assert_eq!(tier.resident_bytes(), tier.tallied_bytes(), "the budget must match the per-bucket tally");
+	assert_eq!(tier.buckets(), 1);
+	assert_eq!(tier.entries(), 1);
+}
+
+#[test]
+fn a_published_fill_evicts_to_capacity() {
+	let sample_key = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let sample_row = Some(row("v"));
+	let per_bucket = (BUCKET_OVERHEAD + footprint(&sample_key, &sample_row)) as u64;
+	let tier = tier(per_bucket * 2);
+
+	for group in [GROUP_A, GROUP_B, GroupId(12)] {
+		let k = key(group, Keyspace::ACCUMULATOR, b"a");
+		assert!(tier.begin_fill(OP_A, &k));
+		assert!(tier.finish_fill(OP_A, k, sample_row.clone()));
+	}
+
+	assert_eq!(tier.evictions(), 1, "the third published fill must push exactly one victim out");
+	assert_eq!(tier.buckets(), 2);
+	assert!(tier.resident_bytes().as_bytes() <= per_bucket * 2, "eviction must bring used bytes back under");
+	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
+}
+
+#[test]
 fn a_second_fill_of_the_same_key_is_declined_while_one_is_in_flight() {
-	// The loser must read through without populating; two concurrent fills of one key would race each other.
 	let tier = roomy();
 	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	let sibling = key(GROUP_A, Keyspace::ACCUMULATOR, b"b");
@@ -396,7 +437,6 @@ fn a_second_fill_of_the_same_key_is_declined_while_one_is_in_flight() {
 
 #[test]
 fn clearing_the_tier_discards_every_fill_in_flight() {
-	// A fill that outlives the clear would repopulate from a snapshot the clear was meant to throw away.
 	let tier = roomy();
 	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 
@@ -409,8 +449,39 @@ fn clearing_the_tier_discards_every_fill_in_flight() {
 }
 
 #[test]
+fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
+	let acquired = Arc::new(AtomicBool::new(false));
+	let probed = Arc::new(AtomicBool::new(false));
+	let flag = acquired.clone();
+	let seen = probed.clone();
+	let hook: FillInterlock = Box::new(move |tier: &OperatorReadBufferTier, id: BucketId| {
+		seen.store(true, Ordering::Relaxed);
+		flag.store(tier.shard_for(&id).try_lock().is_some(), Ordering::Relaxed);
+	});
+
+	let tier = OperatorReadBufferTier::with_interlock(
+		OperatorReadBufferConfig {
+			resident_bytes: Some(ByteSize::from_mib(1)),
+			shards: 1,
+		},
+		hook,
+	)
+	.expect("a tier with a byte budget must be constructed");
+	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+
+	assert!(tier.begin_fill(OP_A, &k));
+	assert!(tier.finish_fill(OP_A, k.clone(), Some(row("v"))), "an undirtied fill must publish");
+
+	assert!(probed.load(Ordering::Relaxed), "the seam hook never fired, so the invariant went unchecked");
+	assert!(
+		!acquired.load(Ordering::Relaxed),
+		"the shard lock was acquirable between clearing the fill marker and publishing the row; a writer \
+		 invalidating in that window is silently dropped and the stale row is published over it"
+	);
+}
+
+#[test]
 fn a_tier_without_a_byte_budget_is_not_constructed() {
-	// resident_bytes: None must mean no tier at all, never a tier with a zero budget that thrashes
 	assert!(OperatorReadBufferTier::new(OperatorReadBufferConfig {
 		resident_bytes: None,
 		shards: 16,

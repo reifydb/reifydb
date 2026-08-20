@@ -35,7 +35,10 @@ use crate::{
 		state::store,
 	},
 	transaction::{
-		deferred::DeferredTransaction, mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension,
+		deferred::DeferredTransaction,
+		mock::FlowTxn,
+		row_number::RowNumberExtension,
+		state::{StateExtension, StateRange},
 	},
 };
 
@@ -89,7 +92,7 @@ fn build_remove(value: i64, row_num: u64) -> Change {
 
 fn persisted_rows(op: &DistinctOperator, txn: &mut DeferredTransaction) -> BTreeMap<Vec<u8>, Vec<u8>> {
 	let mut out = BTreeMap::new();
-	let batch = txn.state_range(op.plan.operator, EncodedKeyRange::all(), None, "test").unwrap();
+	let batch = txn.state_range(op.plan.operator, StateRange::forward(EncodedKeyRange::all(), "test")).unwrap();
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if decoded.keyspace == Keyspace::DISTINCT_ENTRY {
@@ -110,7 +113,7 @@ fn layout_row(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Option<Ve
 
 fn entry_groups(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Vec<GroupId> {
 	let mut out = Vec::new();
-	let batch = txn.state_range(op.plan.operator, EncodedKeyRange::all(), None, "test").unwrap();
+	let batch = txn.state_range(op.plan.operator, StateRange::forward(EncodedKeyRange::all(), "test")).unwrap();
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if decoded.keyspace == Keyspace::DISTINCT_ENTRY {
@@ -121,7 +124,7 @@ fn entry_groups(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Vec<Gro
 }
 
 fn erase_group_data(op: &DistinctOperator, txn: &mut DeferredTransaction, group: GroupId) -> usize {
-	let batch = txn.state_range(op.plan.operator, EncodedKeyRange::all(), None, "test").unwrap();
+	let batch = txn.state_range(op.plan.operator, StateRange::forward(EncodedKeyRange::all(), "test")).unwrap();
 	let mut erased = 0;
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");

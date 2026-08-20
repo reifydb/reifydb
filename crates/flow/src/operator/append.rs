@@ -448,8 +448,12 @@ mod tests {
 		operator::host::TxnHostContext,
 		timer::extension::TimerExtension,
 		transaction::{
-			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupExtension,
-			mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension,
+			ChangeCoordinate, FlowTransaction,
+			deferred::DeferredTransaction,
+			group::GroupExtension,
+			mock::FlowTxn,
+			row_number::RowNumberExtension,
+			state::{StateExtension, StateRange},
 			substrate::apply_operator_state,
 		},
 	};
@@ -499,10 +503,13 @@ mod tests {
 
 	fn armed_timers(txn: &mut DeferredTransaction, op: &AppendOperator) -> usize {
 		// The wheel is the only due-ordered schedule, so a stale or duplicated arming shows up exactly here.
-		txn.state_range(op.operator, keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL), None, "test")
-			.unwrap()
-			.items
-			.len()
+		txn.state_range(
+			op.operator,
+			StateRange::forward(keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL), "test"),
+		)
+		.unwrap()
+		.items
+		.len()
 	}
 
 	fn anchor_of(txn: &mut DeferredTransaction, op: &AppendOperator, group: GroupId) -> Option<DateTime> {
@@ -526,7 +533,7 @@ mod tests {
 	}
 
 	fn group_rows(txn: &mut DeferredTransaction, op: &AppendOperator, group: GroupId) -> usize {
-		txn.state_range(op.operator, group_inner_range(group), None, "test").unwrap().items.len()
+		txn.state_range(op.operator, StateRange::forward(group_inner_range(group), "test")).unwrap().items.len()
 	}
 
 	#[test]

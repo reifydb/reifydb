@@ -325,9 +325,8 @@ impl ServerBuilder {
 		let clock = runtime.clock().clone();
 		let rng = runtime.rng().clone();
 
-		let (multi_store, single_store, operator_store, transaction_single, eventbus) = self
-			.storage_factory
-			.create_with_multi_commit_buffer(
+		let (multi_store, single_store, operator_store, transaction_single, eventbus) =
+			self.storage_factory.create_with_multi_commit_buffer(
 				multi_commit_buffer,
 				multi_persistent,
 				read_buffer,

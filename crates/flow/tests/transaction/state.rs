@@ -19,7 +19,10 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow::transaction::{
-	DeferredParams, FlowTransaction, deferred::DeferredTransaction, state::StateExtension, substrate::FlowSubstrate,
+	DeferredParams, FlowTransaction,
+	deferred::DeferredTransaction,
+	state::{StateExtension, StateRange},
+	substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
@@ -286,7 +289,7 @@ fn test_state_range_all() {
 		Bound::Included(make_key("b").into_encoded()),
 		Bound::Excluded(make_key("d").into_encoded()),
 	);
-	let iter = txn.state_range_all(operator_id, range).unwrap();
+	let iter = txn.state_range(operator_id, StateRange::forward(range, "test")).unwrap();
 	let items: Vec<_> = iter.items.into_iter().collect();
 
 	assert_eq!(items.len(), 2);

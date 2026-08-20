@@ -19,6 +19,39 @@ use tracing::{Span, field, instrument};
 
 use crate::transaction::{FlowTransaction, scope::scoped_key};
 
+#[derive(Debug, Clone)]
+pub struct StateRange {
+	pub range: EncodedKeyRange,
+	pub limit: Option<usize>,
+	pub site: &'static str,
+	pub reverse: bool,
+}
+
+impl StateRange {
+	pub fn forward(range: EncodedKeyRange, site: &'static str) -> Self {
+		Self {
+			range,
+			limit: None,
+			site,
+			reverse: false,
+		}
+	}
+
+	pub fn reverse(range: EncodedKeyRange, site: &'static str) -> Self {
+		Self {
+			range,
+			limit: None,
+			site,
+			reverse: true,
+		}
+	}
+
+	pub fn limit(mut self, limit: usize) -> Self {
+		self.limit = Some(limit);
+		self
+	}
+}
+
 pub trait StateExtension: FlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		operator_id = id.0,
@@ -102,42 +135,25 @@ pub trait StateExtension: FlowTransaction {
 		})
 	}
 
-	#[instrument(name = "flow::state::range", level = "debug", skip(self, range), fields(
-		operator_id = id.0
-	))]
-	fn state_range_all(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
-		let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(id)));
-		let iter = self.range(prefixed_range, RangeScope::All, 1024);
-		let mut items = Vec::new();
-		for result in iter {
-			items.push(result?);
-		}
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	#[instrument(name = "flow::state::range_limited", level = "debug", skip(self, range), fields(
+	#[instrument(name = "flow::state::range", level = "debug", skip(self, query), fields(
 		operator_id = id.0,
-		site = site,
+		site = query.site,
+		reverse = query.reverse,
 		rows_fetched = field::Empty,
 		rows_tombstoned = field::Empty
 	))]
-	fn state_range(
-		&mut self,
-		id: OperatorId,
-		range: EncodedKeyRange,
-		limit: Option<usize>,
-		site: &'static str,
-	) -> Result<MultiVersionBatch> {
+	fn state_range(&mut self, id: OperatorId, query: StateRange) -> Result<MultiVersionBatch> {
 		let before = ScanCounters::sample();
-		let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(id)));
-		let iter = self.range(prefixed_range, RangeScope::All, 1024);
+		let prefixed_range = query.range.with_prefix(EncodedKey::new(node_prefix(id)));
+		let iter = if query.reverse {
+			self.range_rev(prefixed_range, RangeScope::All, 1024)
+		} else {
+			self.range(prefixed_range, RangeScope::All, 1024)
+		};
 		let mut items = Vec::new();
 		let mut has_more = false;
 		for result in iter {
-			if limit.is_some_and(|l| items.len() == l) {
+			if query.limit.is_some_and(|l| items.len() == l) {
 				has_more = true;
 				break;
 			}
@@ -153,69 +169,41 @@ pub trait StateExtension: FlowTransaction {
 		})
 	}
 
-	#[instrument(name = "flow::state::range_rev", level = "debug", skip(self, range), fields(
-		operator_id = id.0,
-		site = site
-	))]
-	fn state_range_rev(
-		&mut self,
-		id: OperatorId,
-		range: EncodedKeyRange,
-		limit: Option<usize>,
-		site: &'static str,
-	) -> Result<MultiVersionBatch> {
-		let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(id)));
-		let iter = self.range_rev(prefixed_range, RangeScope::All, 1024);
-		let mut items = Vec::new();
-		let mut has_more = false;
-		for result in iter {
-			if limit.is_some_and(|l| items.len() == l) {
-				has_more = true;
-				break;
-			}
-			items.push(result?);
-		}
-		Ok(MultiVersionBatch {
-			items,
-			has_more,
-		})
-	}
-
 	#[instrument(name = "flow::state::clear", level = "trace", skip(self), fields(
 		operator_id = id.0,
 		keys_removed = field::Empty
 	))]
 	fn state_clear(&mut self, id: OperatorId) -> Result<()> {
-		let keys_to_remove = self.scan_keys_for_clear(id)?;
+		let keys_to_remove = scan_keys_for_clear(self, id)?;
 
 		let count = keys_to_remove.len();
-		self.remove_keys(keys_to_remove)?;
+		remove_keys(self, keys_to_remove)?;
 
 		Span::current().record("keys_removed", count);
-		Ok(())
-	}
-
-	#[inline]
-	#[instrument(name = "flow::state::clear::scan", level = "trace", skip(self), fields(operator_id = id.0))]
-	fn scan_keys_for_clear(&mut self, id: OperatorId) -> Result<Vec<EncodedKey>> {
-		let range = OperatorStateKey::node_range(id);
-		let iter = self.range(range, RangeScope::All, 1024);
-		let mut keys = Vec::new();
-		for result in iter {
-			let multi = result?;
-			keys.push(multi.key);
-		}
-		Ok(keys)
-	}
-
-	#[inline]
-	#[instrument(name = "flow::state::clear::remove", level = "trace", skip(self, keys), fields(count = keys.len()))]
-	fn remove_keys(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
-		for key in keys {
-			self.remove(&key)?;
-		}
 		Ok(())
 	}
 }
 
 impl<T: FlowTransaction> StateExtension for T {}
+
+#[inline]
+#[instrument(name = "flow::state::clear::scan", level = "trace", skip(txn), fields(operator_id = id.0))]
+fn scan_keys_for_clear<T: FlowTransaction>(txn: &mut T, id: OperatorId) -> Result<Vec<EncodedKey>> {
+	let range = OperatorStateKey::node_range(id);
+	let iter = txn.range(range, RangeScope::All, 1024);
+	let mut keys = Vec::new();
+	for result in iter {
+		let multi = result?;
+		keys.push(multi.key);
+	}
+	Ok(keys)
+}
+
+#[inline]
+#[instrument(name = "flow::state::clear::remove", level = "trace", skip(txn, keys), fields(count = keys.len()))]
+fn remove_keys<T: FlowTransaction>(txn: &mut T, keys: Vec<EncodedKey>) -> Result<()> {
+	for key in keys {
+		txn.remove(&key)?;
+	}
+	Ok(())
+}

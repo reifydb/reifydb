@@ -26,7 +26,7 @@ use reifydb_flow::{
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
-		state::StateExtension,
+		state::{StateExtension, StateRange},
 		substrate::{FlowSubstrate, apply_operator_state},
 	},
 };
@@ -190,7 +190,7 @@ impl<O: HostOperator> Harness<O> {
 	pub fn footprint(&mut self) -> Result<StateFootprint> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(DateTime::default());
-		let batch = txn.state_range(operator, EncodedKeyRange::all(), None, "test::harness")?;
+		let batch = txn.state_range(operator, StateRange::forward(EncodedKeyRange::all(), "test::harness"))?;
 		let mut footprint = StateFootprint::default();
 		for item in &batch.items {
 			let decoded = OperatorStateKey::decode(&item.key);
@@ -207,7 +207,7 @@ impl<O: HostOperator> Harness<O> {
 	pub fn state_items(&mut self) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(DateTime::default());
-		let batch = txn.state_range(operator, EncodedKeyRange::all(), None, "test::harness")?;
+		let batch = txn.state_range(operator, StateRange::forward(EncodedKeyRange::all(), "test::harness"))?;
 		let items = batch.items.into_iter().map(|item| (item.key, item.bytes)).collect();
 		self.end(txn);
 		Ok(items)

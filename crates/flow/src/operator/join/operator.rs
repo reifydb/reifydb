@@ -1055,8 +1055,12 @@ mod seal_tests {
 		operator::host::TxnHostContext,
 		timer::extension::TimerExtension,
 		transaction::{
-			ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction, group::GroupExtension,
-			mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension,
+			ChangeCoordinate, FlowTransaction,
+			deferred::DeferredTransaction,
+			group::GroupExtension,
+			mock::FlowTxn,
+			row_number::RowNumberExtension,
+			state::{StateExtension, StateRange},
 			substrate::apply_operator_state,
 		},
 	};
@@ -1197,25 +1201,31 @@ mod seal_tests {
 	}
 
 	fn armed_timers(op: &JoinOperator, txn: &mut DeferredTransaction) -> usize {
-		txn.state_range(op.operator, keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL), None, "test")
-			.unwrap()
-			.items
-			.len()
+		txn.state_range(
+			op.operator,
+			StateRange::forward(keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL), "test"),
+		)
+		.unwrap()
+		.items
+		.len()
 	}
 
 	fn group_rows(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId) -> usize {
-		txn.state_range(op.operator, group_inner_range(group), None, "test").unwrap().items.len()
+		txn.state_range(op.operator, StateRange::forward(group_inner_range(group), "test")).unwrap().items.len()
 	}
 
 	fn side_rows(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId, side: JoinSide) -> usize {
-		txn.state_range(op.operator, keyspace_inner_range(group, side.keyspace()), None, "test")
+		txn.state_range(op.operator, StateRange::forward(keyspace_inner_range(group, side.keyspace()), "test"))
 			.unwrap()
 			.items
 			.len()
 	}
 
 	fn ledger_rows(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId, keyspace: Keyspace) -> usize {
-		txn.state_range(op.operator, keyspace_inner_range(group, keyspace), None, "test").unwrap().items.len()
+		txn.state_range(op.operator, StateRange::forward(keyspace_inner_range(group, keyspace), "test"))
+			.unwrap()
+			.items
+			.len()
 	}
 
 	fn unmatched_mapping(op: &JoinOperator, txn: &mut DeferredTransaction, left: u64) -> Option<RowNumber> {

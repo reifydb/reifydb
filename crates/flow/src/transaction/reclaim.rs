@@ -13,7 +13,10 @@ use reifydb_value::{Result, count::Count, reifydb_assertions};
 
 use crate::{
 	operator::state::reclaim::ReclaimOutcome,
-	transaction::{group::GroupExtension, state::StateExtension},
+	transaction::{
+		group::GroupExtension,
+		state::{StateExtension, StateRange},
+	},
 };
 
 pub trait ReclaimExtension: StateExtension + GroupExtension {
@@ -51,7 +54,7 @@ pub trait ReclaimExtension: StateExtension + GroupExtension {
 		if limit == 0 {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
-		let batch = self.state_range(operator, range, Some(limit), "reclaim::range")?;
+		let batch = self.state_range(operator, StateRange::forward(range, "reclaim::range").limit(limit))?;
 		let keys: Vec<GroupStateKey> = batch
 			.items
 			.iter()

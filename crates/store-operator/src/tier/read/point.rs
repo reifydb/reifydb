@@ -87,44 +87,7 @@ impl OperatorReadBufferTier {
 			return;
 		};
 		let mut shard = self.shard_for(&id).lock();
-		let next = shard.next_tick;
-		{
-			let Shard {
-				buckets,
-				budget,
-				..
-			} = &mut *shard;
-			match buckets.get_mut(&id) {
-				Some(bucket) => {
-					let old = bucket
-						.entries
-						.get(&key)
-						.map_or(0, |previous| entry_footprint(&key, previous));
-					let new = entry_footprint(&key, &row);
-					bucket.entries.insert(key, row);
-					account(&mut bucket.bytes, budget, old, new);
-					bucket.tick = next;
-				}
-				None => {
-					let footprint = entry_footprint(&key, &row);
-					let mut entries = BTreeMap::new();
-					entries.insert(key, row);
-					let bytes = BUCKET_OVERHEAD + footprint;
-					budget.charge(ByteSize::from_bytes(bytes as u64));
-					buckets.insert(
-						id,
-						Bucket {
-							entries,
-							bytes,
-							complete: false,
-							tick: next,
-						},
-					);
-				}
-			}
-		}
-		shard.next_tick = next + 1;
-		shard.evict_to_capacity();
+		insert_entry(&mut shard, id, key, row);
 	}
 
 	pub fn mark_complete(&self, bucket: BucketId) {
@@ -174,21 +137,19 @@ impl OperatorReadBufferTier {
 		let Some(id) = BucketId::of(operator, &key) else {
 			return false;
 		};
-		{
-			let mut shard = self.shard_for(&id).lock();
-			match shard.filling.remove(&(id, key.clone())) {
-				Some(false) => {}
-				Some(true) => {
-					shard.metrics.fills_dirty_aborted += 1;
-					return false;
-				}
-				None => {
-					shard.metrics.fills_dirty_aborted += 1;
-					return false;
-				}
+		let mut shard = self.shard_for(&id).lock();
+		match shard.filling.remove(&(id, key.clone())) {
+			Some(false) => {}
+			Some(true) | None => {
+				shard.metrics.fills_dirty_aborted += 1;
+				return false;
 			}
 		}
-		self.remember(operator, key, row);
+		#[cfg(test)]
+		if let Some(interlock) = self.inner.interlock.as_ref() {
+			interlock(self, id);
+		}
+		insert_entry(&mut shard, id, key, row);
 		true
 	}
 
@@ -266,4 +227,43 @@ impl OperatorReadBufferTier {
 			shard.next_tick = 0;
 		}
 	}
+}
+
+fn insert_entry(shard: &mut Shard, id: BucketId, key: EncodedKey, row: Option<EncodedPodRow>) {
+	let next = shard.next_tick;
+	{
+		let Shard {
+			buckets,
+			budget,
+			..
+		} = &mut *shard;
+		match buckets.get_mut(&id) {
+			Some(bucket) => {
+				let old =
+					bucket.entries.get(&key).map_or(0, |previous| entry_footprint(&key, previous));
+				let new = entry_footprint(&key, &row);
+				bucket.entries.insert(key, row);
+				account(&mut bucket.bytes, budget, old, new);
+				bucket.tick = next;
+			}
+			None => {
+				let footprint = entry_footprint(&key, &row);
+				let mut entries = BTreeMap::new();
+				entries.insert(key, row);
+				let bytes = BUCKET_OVERHEAD + footprint;
+				budget.charge(ByteSize::from_bytes(bytes as u64));
+				buckets.insert(
+					id,
+					Bucket {
+						entries,
+						bytes,
+						complete: false,
+						tick: next,
+					},
+				);
+			}
+		}
+	}
+	shard.next_tick = next + 1;
+	shard.evict_to_capacity();
 }

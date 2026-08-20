@@ -20,7 +20,10 @@ use reifydb_core::{
 };
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
-use crate::transaction::{FlowTransaction, state::StateExtension};
+use crate::transaction::{
+	FlowTransaction,
+	state::{StateExtension, StateRange},
+};
 
 const ROW_NUMBER_COUNTER_SUFFIX: &[u8] = b"rn";
 
@@ -222,7 +225,7 @@ pub trait RowNumberExtension: FlowTransaction {
 		let base = mapping_range(group);
 		let boundary = mapping_key(group, upper);
 		let range = EncodedKeyRange::new(Bound::Excluded(boundary.into_encoded()), base.end.clone());
-		let batch = self.state_range(operator, range, None, "rownum::drop_below")?;
+		let batch = self.state_range(operator, StateRange::forward(range, "rownum::drop_below"))?;
 
 		let mut dropped = Vec::with_capacity(batch.items.len());
 		for item in batch.items {
@@ -243,7 +246,7 @@ pub trait RowNumberExtension: FlowTransaction {
 	) -> Result<()> {
 		let inner_prefix = OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
 		let range = EncodedKeyRange::prefix(inner_prefix.as_ref());
-		let batch = self.state_range(operator, range, None, "rownum::remove_by_prefix")?;
+		let batch = self.state_range(operator, StateRange::forward(range, "rownum::remove_by_prefix"))?;
 
 		for item in batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)

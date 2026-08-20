@@ -127,8 +127,13 @@ struct Shard {
 	metrics: OperatorReadBufferMetrics,
 }
 
+#[cfg(test)]
+pub(crate) type FillInterlock = Box<dyn Fn(&OperatorReadBufferTier, BucketId) + Send + Sync>;
+
 struct PoolInner {
 	shards: Box<[Mutex<Shard>]>,
+	#[cfg(test)]
+	interlock: Option<FillInterlock>,
 }
 
 #[derive(Clone)]

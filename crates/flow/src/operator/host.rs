@@ -39,7 +39,7 @@ use crate::{
 		group::GroupExtension,
 		reclaim::ReclaimExtension,
 		row_number::RowNumberExtension,
-		state::StateExtension,
+		state::{StateExtension, StateRange},
 	},
 };
 
@@ -200,7 +200,15 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
-		let batch = self.txn.state_range(self.operator, range, limit, "operator::host_visit")?;
+		let batch = self.txn.state_range(
+			self.operator,
+			StateRange {
+				range,
+				limit,
+				site: "operator::host_visit",
+				reverse: false,
+			},
+		)?;
 		for r in batch.items {
 			if let Some(decoded) = OperatorStateKey::decode(&r.key)
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
@@ -212,7 +220,9 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
-		let batch = self.txn.state_range_rev(self.operator, range, Some(1), "operator::host_last")?;
+		let batch = self
+			.txn
+			.state_range(self.operator, StateRange::reverse(range, "operator::host_last").limit(1))?;
 		for r in batch.items {
 			if let Some(decoded) = OperatorStateKey::decode(&r.key)
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
@@ -295,7 +305,7 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	}
 
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		let batch = self.txn.state_range_all(self.operator, range)?;
+		let batch = self.txn.state_range(self.operator, StateRange::forward(range, "operator::host_range"))?;
 		let mut out = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
 			let Some(key) = unscope(&r.key) else {

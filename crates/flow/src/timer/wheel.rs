@@ -24,7 +24,7 @@ use crate::{
 		FlowTransaction,
 		group::{decode_payload, encode_payload},
 		scope::scoped_key,
-		state::StateExtension,
+		state::{StateExtension, StateRange},
 	},
 };
 
@@ -119,7 +119,10 @@ impl TimerWheel {
 			return Ok((Vec::new(), None));
 		}
 		let wheel = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
-		let batch = txn.state_range(operator, wheel, Some(limit.saturating_add(1)), "timer::take_due")?;
+		let batch = txn.state_range(
+			operator,
+			StateRange::forward(wheel, "timer::take_due").limit(limit.saturating_add(1)),
+		)?;
 		let mut due = Vec::new();
 		let mut next = None;
 		for item in &batch.items {

@@ -14,6 +14,8 @@ use reifydb_core::{
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::byte_size::ByteSize;
 
+#[cfg(test)]
+use crate::tier::read::FillInterlock;
 use crate::tier::read::{
 	BucketId, OperatorReadBufferConfig, OperatorReadBufferMetrics, OperatorReadBufferShardMetrics,
 	OperatorReadBufferTier, PoolInner, Shard,
@@ -27,6 +29,19 @@ impl OperatorReadBufferTier {
 		Some(Self {
 			inner: Arc::new(PoolInner {
 				shards: build_shards(config, resident_bytes),
+				#[cfg(test)]
+				interlock: None,
+			}),
+		})
+	}
+
+	#[cfg(test)]
+	pub(crate) fn with_interlock(config: OperatorReadBufferConfig, interlock: FillInterlock) -> Option<Self> {
+		let resident_bytes = config.resident_bytes?;
+		Some(Self {
+			inner: Arc::new(PoolInner {
+				shards: build_shards(config, resident_bytes),
+				interlock: Some(interlock),
 			}),
 		})
 	}

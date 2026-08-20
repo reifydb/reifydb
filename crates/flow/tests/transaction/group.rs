@@ -15,7 +15,7 @@ use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	group::*,
-	state::StateExtension,
+	state::{StateExtension, StateRange},
 	substrate::{FlowSubstrate, apply_operator_state},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -195,7 +195,7 @@ fn the_reverse_record_lives_outside_the_group_data_range() {
 	let (id, _) = txn.intern_groups(NODE, &[bytes.clone()]).unwrap().remove(0);
 
 	let batch = txn
-		.state_range(NODE, group_data_inner_range(id), None, "test")
+		.state_range(NODE, StateRange::forward(group_data_inner_range(id), "test"))
 		.expect("the group data range must scan");
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("state keys decode");

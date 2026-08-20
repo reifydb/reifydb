@@ -13,8 +13,12 @@ use reifydb_core::{
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, group_inner_range},
 };
 use reifydb_flow::transaction::{
-	ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction, group::GroupExtension,
-	reclaim::ReclaimExtension, state::StateExtension, substrate::FlowSubstrate,
+	ChangeCoordinate, DeferredParams, FlowTransaction,
+	deferred::DeferredTransaction,
+	group::GroupExtension,
+	reclaim::ReclaimExtension,
+	state::{StateExtension, StateRange},
+	substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
@@ -65,7 +69,7 @@ fn write(txn: &mut DeferredTransaction, group: GroupId, keyspace: Keyspace, suff
 }
 
 fn count(txn: &mut DeferredTransaction, range: EncodedKeyRange) -> usize {
-	txn.state_range(NODE, range, None, "test").unwrap().items.len()
+	txn.state_range(NODE, StateRange::forward(range, "test")).unwrap().items.len()
 }
 
 #[test]
