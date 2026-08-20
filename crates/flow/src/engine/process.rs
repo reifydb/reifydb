@@ -68,7 +68,6 @@ impl FlowEngineInner {
 			Some(f) => f.clone(),
 			None => return Ok(()),
 		};
-		txn.substrate().memo.clear();
 
 		let mut by_version: BTreeMap<CommitVersion, Vec<Change>> = BTreeMap::new();
 		for change in changes {

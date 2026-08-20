@@ -14,7 +14,6 @@ use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 use crate::transaction::{
 	anchor::{decode_anchor_expiry, decode_anchor_suffix},
 	frontier::OutputFrontiers,
-	memo::StateMemo,
 	scope::{OperatorScope, operator_state_coordinates},
 };
 
@@ -23,7 +22,6 @@ pub struct FlowSubstrate {
 	pub dictionary: DictionaryAllocatorRegistry,
 	pub frontiers: OutputFrontiers,
 	pub operators: Option<OperatorStore>,
-	pub memo: StateMemo,
 }
 
 impl FlowSubstrate {
@@ -32,7 +30,6 @@ impl FlowSubstrate {
 			dictionary,
 			frontiers: OutputFrontiers::default(),
 			operators: None,
-			memo: StateMemo::default(),
 		}
 	}
 

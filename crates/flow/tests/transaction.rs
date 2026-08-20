@@ -21,9 +21,6 @@ mod frontier;
 #[path = "transaction/group.rs"]
 mod group;
 
-#[path = "transaction/memo.rs"]
-mod memo;
-
 #[path = "transaction/reclaim.rs"]
 mod reclaim;
 

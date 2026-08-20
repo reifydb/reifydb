@@ -33,7 +33,6 @@ pub mod deferred;
 pub mod dictionary;
 pub mod frontier;
 pub mod group;
-pub mod memo;
 #[cfg(test)]
 pub(crate) mod mock;
 pub mod read;
