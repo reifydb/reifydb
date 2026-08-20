@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use reifydb_store_single::{buffer::tier::SingleBufferTier, config::PersistentConfig};
+use reifydb_store_single::{config::PersistentConfig, tier::commit::buffer::SingleCommitBufferTier};
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;
 
@@ -14,7 +14,7 @@ test_each_path! { in "crates/store-single/tests/scripts/single" as store_single_
 test_each_path! { in "crates/store-single/tests/scripts/single" as store_single_sqlite_unbuffered => test_sqlite_unbuffered }
 
 fn test_memory(path: &Path) {
-	let storage = SingleBufferTier::memory();
+	let storage = SingleCommitBufferTier::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 

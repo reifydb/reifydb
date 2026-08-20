@@ -25,8 +25,11 @@ use reifydb_store_operator::{
 };
 use reifydb_store_single::{
 	SingleStore,
-	buffer::tier::SingleBufferTier,
-	config::{BufferConfig as SingleBufferConfig, PersistentConfig as SinglePersistentConfig, SingleStoreConfig},
+	config::{
+		CommitBufferConfig as SingleCommitBufferConfig, PersistentConfig as SinglePersistentConfig,
+		SingleStoreConfig,
+	},
+	tier::commit::buffer::SingleCommitBufferTier,
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 
@@ -127,8 +130,8 @@ fn create_memory_store_with(
 	});
 
 	let single_store = SingleStore::standard(SingleStoreConfig {
-		buffer: Some(SingleBufferConfig {
-			storage: SingleBufferTier::memory(),
+		commit: Some(SingleCommitBufferConfig {
+			storage: SingleCommitBufferTier::memory(),
 		}),
 		persistent: None,
 		spawner: spawner.clone(),
@@ -166,8 +169,8 @@ fn create_sqlite_store_with(
 
 	let single_config = single_sqlite_config(&config);
 	let single_store = SingleStore::standard(SingleStoreConfig {
-		buffer: Some(SingleBufferConfig {
-			storage: SingleBufferTier::memory(),
+		commit: Some(SingleCommitBufferConfig {
+			storage: SingleCommitBufferTier::memory(),
 		}),
 		persistent: Some(SinglePersistentConfig::sqlite(single_config)),
 		spawner: spawner.clone(),

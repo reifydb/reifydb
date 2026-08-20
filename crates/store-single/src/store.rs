@@ -36,11 +36,9 @@ use tracing::instrument;
 use crate::{
 	Result, SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
 	SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
-	buffer::tier::SingleBufferTier,
-	config::{BufferConfig, SingleStoreConfig},
+	config::{CommitBufferConfig, SingleStoreConfig},
 	flush::actor::FlushMessage,
-	persistent::SinglePersistentTier,
-	tier::{RangeCursor, TierStorage},
+	tier::{RangeCursor, TierStorage, commit::buffer::SingleCommitBufferTier, persistent::SinglePersistentTier},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{config::PersistentConfig, flush::actor::FlushActor};
@@ -51,7 +49,7 @@ pub type DirtyMap = HashMap<EncodedKey, Option<CowVec<u8>>>;
 pub struct StandardSingleStore(Arc<StandardSingleStoreInner>);
 
 pub struct StandardSingleStoreInner {
-	pub(crate) buffer: Option<SingleBufferTier>,
+	pub(crate) commit: Option<SingleCommitBufferTier>,
 	pub(crate) persistent: Option<SinglePersistentTier>,
 	#[allow(dead_code)]
 	pub(crate) flush_actor: Option<ActorRef<FlushMessage>>,
@@ -61,11 +59,11 @@ pub struct StandardSingleStoreInner {
 
 impl StandardSingleStore {
 	#[instrument(name = "store::single::new", level = "debug", skip(config), fields(
-		has_buffer = config.buffer.is_some(),
+		has_buffer = config.commit.is_some(),
 		has_persistent = config.persistent.is_some(),
 	))]
 	pub fn new(config: SingleStoreConfig) -> Result<Self> {
-		let buffer = config.buffer.map(|c| c.storage);
+		let commit = config.commit.map(|c| c.storage);
 		let spawner = config.spawner.clone();
 		let dirty: Arc<Mutex<DirtyMap>> = Arc::new(Mutex::new(HashMap::new()));
 
@@ -92,7 +90,7 @@ impl StandardSingleStore {
 		};
 
 		Ok(Self(Arc::new(StandardSingleStoreInner {
-			buffer,
+			commit,
 			persistent,
 			flush_actor,
 			dirty,
@@ -100,8 +98,8 @@ impl StandardSingleStore {
 		})))
 	}
 
-	pub fn buffer(&self) -> Option<&SingleBufferTier> {
-		self.buffer.as_ref()
+	pub fn commit(&self) -> Option<&SingleCommitBufferTier> {
+		self.commit.as_ref()
 	}
 
 	pub fn persistent(&self) -> Option<&SinglePersistentTier> {
@@ -110,7 +108,7 @@ impl StandardSingleStore {
 
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		let mut reporters: Vec<Arc<dyn MetricsCollector>> = Vec::new();
-		if let Some(buffer) = self.buffer.as_ref() {
+		if let Some(buffer) = self.commit.as_ref() {
 			reporters.push(Arc::new(buffer.clone()));
 		}
 		reporters
@@ -162,8 +160,8 @@ impl StandardSingleStore {
 		let actor_system = ActorSystem::testing(clock.clone());
 		let spawner = actor_system.spawner();
 		Self::new(SingleStoreConfig {
-			buffer: Some(BufferConfig {
-				storage: SingleBufferTier::memory(),
+			commit: Some(CommitBufferConfig {
+				storage: SingleCommitBufferTier::memory(),
 			}),
 			persistent: None,
 			spawner,
@@ -179,8 +177,8 @@ impl StandardSingleStore {
 		let spawner = actor_system.spawner();
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(SingleStoreConfig {
-			buffer: Some(BufferConfig {
-				storage: SingleBufferTier::memory(),
+			commit: Some(CommitBufferConfig {
+				storage: SingleCommitBufferTier::memory(),
 			}),
 			persistent: Some(persistent),
 			spawner,
@@ -194,7 +192,7 @@ impl StandardSingleStore {
 impl SingleVersionGet for StandardSingleStore {
 	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
-		if let Some(buffer) = &self.buffer {
+		if let Some(buffer) = &self.commit {
 			match buffer.get_with_tombstone(key.as_ref())? {
 				Some(Some(value)) => {
 					return Ok(Some(SingleVersionRow {
@@ -223,7 +221,7 @@ impl SingleVersionGet for StandardSingleStore {
 impl SingleVersionContains for StandardSingleStore {
 	#[instrument(name = "store::single::contains", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())), ret)]
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		if let Some(buffer) = &self.buffer {
+		if let Some(buffer) = &self.commit {
 			match buffer.get_with_tombstone(key.as_ref())? {
 				Some(Some(_)) => return Ok(true),
 				Some(None) => return Ok(false),
@@ -268,7 +266,7 @@ impl StandardSingleStore {
 
 	#[inline]
 	fn apply_to_tiers(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
-		if let Some(buffer) = &self.buffer {
+		if let Some(buffer) = &self.commit {
 			let mut dirty = self.persistent.is_some().then(|| self.dirty.lock());
 			buffer.set(entries.clone())?;
 			if let Some(dirty) = dirty.as_mut() {
@@ -293,7 +291,7 @@ impl SingleVersionRange for StandardSingleStore {
 		let mut all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>> = BTreeMap::new();
 		let (start, end) = make_range_bounds(&range);
 
-		if let Some(buffer) = &self.buffer {
+		if let Some(buffer) = &self.commit {
 			Self::drain_buffer_range(buffer, &start, &end, &mut all_entries)?;
 		}
 		if let Some(persistent) = &self.persistent {
@@ -307,7 +305,7 @@ impl SingleVersionRange for StandardSingleStore {
 impl StandardSingleStore {
 	#[inline]
 	fn drain_buffer_range(
-		buffer: &SingleBufferTier,
+		buffer: &SingleCommitBufferTier,
 		start: &Bound<Vec<u8>>,
 		end: &Bound<Vec<u8>>,
 		all_entries: &mut BTreeMap<EncodedKey, Option<CowVec<u8>>>,
@@ -385,7 +383,7 @@ impl SingleVersionRangeRev for StandardSingleStore {
 		let mut all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>> = BTreeMap::new();
 		let (start, end) = make_range_bounds(&range);
 
-		if let Some(buffer) = &self.buffer {
+		if let Some(buffer) = &self.commit {
 			Self::drain_buffer_range_rev(buffer, &start, &end, &mut all_entries)?;
 		}
 		if let Some(persistent) = &self.persistent {
@@ -399,7 +397,7 @@ impl SingleVersionRangeRev for StandardSingleStore {
 impl StandardSingleStore {
 	#[inline]
 	fn drain_buffer_range_rev(
-		buffer: &SingleBufferTier,
+		buffer: &SingleCommitBufferTier,
 		start: &Bound<Vec<u8>>,
 		end: &Bound<Vec<u8>>,
 		all_entries: &mut BTreeMap<EncodedKey, Option<CowVec<u8>>>,

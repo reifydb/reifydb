@@ -6,11 +6,11 @@ use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::value::duration::Duration;
 
-use crate::{buffer::tier::SingleBufferTier, persistent::SinglePersistentTier};
+use crate::tier::{commit::buffer::SingleCommitBufferTier, persistent::SinglePersistentTier};
 
 #[derive(Clone)]
 pub struct SingleStoreConfig {
-	pub buffer: Option<BufferConfig>,
+	pub commit: Option<CommitBufferConfig>,
 	pub persistent: Option<PersistentConfig>,
 	pub spawner: ActorSpawner,
 	pub clock: Clock,
@@ -19,8 +19,8 @@ pub struct SingleStoreConfig {
 impl SingleStoreConfig {
 	pub fn memory(spawner: ActorSpawner, clock: Clock) -> Self {
 		Self {
-			buffer: Some(BufferConfig {
-				storage: SingleBufferTier::memory(),
+			commit: Some(CommitBufferConfig {
+				storage: SingleCommitBufferTier::memory(),
 			}),
 			persistent: None,
 			spawner,
@@ -31,8 +31,8 @@ impl SingleStoreConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(persistent: PersistentConfig, spawner: ActorSpawner, clock: Clock) -> Self {
 		Self {
-			buffer: Some(BufferConfig {
-				storage: SingleBufferTier::memory(),
+			commit: Some(CommitBufferConfig {
+				storage: SingleCommitBufferTier::memory(),
 			}),
 			persistent: Some(persistent),
 			spawner,
@@ -43,7 +43,7 @@ impl SingleStoreConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite_unbuffered(persistent: PersistentConfig, spawner: ActorSpawner, clock: Clock) -> Self {
 		Self {
-			buffer: None,
+			commit: None,
 			persistent: Some(persistent),
 			spawner,
 			clock,
@@ -52,8 +52,8 @@ impl SingleStoreConfig {
 }
 
 #[derive(Clone)]
-pub struct BufferConfig {
-	pub storage: SingleBufferTier,
+pub struct CommitBufferConfig {
+	pub storage: SingleCommitBufferTier,
 }
 
 #[derive(Clone)]

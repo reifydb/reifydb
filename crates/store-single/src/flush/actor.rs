@@ -28,7 +28,7 @@ use tracing::{debug, error};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::TierStorage;
-use crate::{persistent::SinglePersistentTier, store::DirtyMap};
+use crate::{store::DirtyMap, tier::persistent::SinglePersistentTier};
 
 #[derive(Clone)]
 pub enum FlushMessage {

@@ -52,8 +52,8 @@ pub mod metric;
 pub mod proc;
 pub mod procedure;
 pub mod profiler;
-pub mod read_buffer;
 pub mod runtime;
+pub mod store;
 
 pub fn bootstrap_system_objects(
 	multi: &MultiTransaction,
@@ -66,9 +66,9 @@ pub fn bootstrap_system_objects(
 	binding::bootstrap_system_bindings(multi, single, catalog, eventbus)?;
 	metric::bootstrap_metric_ringbuffers(multi, single, catalog, eventbus)?;
 	profiler::bootstrap_profiler(multi, single, catalog, eventbus)?;
-	read_buffer::bootstrap_read_buffer(multi, single, catalog, eventbus)?;
 	runtime::bootstrap_runtime(multi, single, catalog, eventbus)?;
 	proc::bootstrap_proc(multi, single, catalog, eventbus)?;
+	store::bootstrap_store(multi, single, catalog, eventbus)?;
 	instruments::bootstrap_instruments(multi, single, catalog, eventbus)?;
 	epoch::bootstrap_epoch(multi, single, catalog, eventbus)?;
 	lifecycle::bootstrap_lifecycle(multi, single, catalog, eventbus)?;

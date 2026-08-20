@@ -18,10 +18,8 @@ use reifydb_core::{
 };
 use reifydb_value::Result;
 
-pub mod buffer;
 pub mod config;
 pub mod flush;
-pub mod persistent;
 pub mod store;
 pub mod tier;
 
@@ -73,13 +71,13 @@ impl SingleStore {
 		SingleStore::Standard(StandardSingleStore::testing_memory())
 	}
 
-	pub fn buffer(&self) -> Option<&buffer::tier::SingleBufferTier> {
+	pub fn commit(&self) -> Option<&tier::commit::buffer::SingleCommitBufferTier> {
 		match self {
-			SingleStore::Standard(store) => store.buffer(),
+			SingleStore::Standard(store) => store.commit(),
 		}
 	}
 
-	pub fn persistent(&self) -> Option<&persistent::SinglePersistentTier> {
+	pub fn persistent(&self) -> Option<&tier::persistent::SinglePersistentTier> {
 		match self {
 			SingleStore::Standard(store) => store.persistent(),
 		}

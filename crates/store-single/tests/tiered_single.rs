@@ -9,9 +9,9 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_single::{
-	buffer::tier::SingleBufferTier,
-	config::{BufferConfig, PersistentConfig, SingleStoreConfig},
+	config::{CommitBufferConfig, PersistentConfig, SingleStoreConfig},
 	store::StandardSingleStore,
+	tier::commit::buffer::SingleCommitBufferTier,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;
@@ -29,8 +29,8 @@ fn test_tiered(path: &Path) {
 		std::mem::forget(actor_system);
 		let (persistent, _guard) = PersistentConfig::sqlite_in_memory();
 		let store = StandardSingleStore::new(SingleStoreConfig {
-			buffer: Some(BufferConfig {
-				storage: SingleBufferTier::memory(),
+			commit: Some(CommitBufferConfig {
+				storage: SingleCommitBufferTier::memory(),
 			}),
 			persistent: Some(persistent),
 			spawner,

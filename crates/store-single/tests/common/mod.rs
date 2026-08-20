@@ -32,10 +32,9 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_single::{
-	buffer::tier::SingleBufferTier,
-	config::{BufferConfig, PersistentConfig, SingleStoreConfig},
+	config::{CommitBufferConfig, PersistentConfig, SingleStoreConfig},
 	store::StandardSingleStore,
-	tier::TierStorage,
+	tier::{TierStorage, commit::buffer::SingleCommitBufferTier},
 };
 use reifydb_testing::testscript;
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
@@ -52,13 +51,13 @@ pub struct Runner {
 impl Runner {
 	/// Buffer-only constructor (memory or sqlite buffer, no persistent).
 	#[allow(dead_code)]
-	pub fn new(storage: SingleBufferTier) -> Self {
+	pub fn new(storage: SingleCommitBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let spawner = actor_system.spawner();
 		std::mem::forget(actor_system);
 		let store = StandardSingleStore::new(SingleStoreConfig {
-			buffer: Some(BufferConfig {
+			commit: Some(CommitBufferConfig {
 				storage,
 			}),
 			persistent: None,
@@ -196,12 +195,15 @@ impl testscript::runner::Runner for Runner {
 				let bytes = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 				args.reject_rest()?;
 
-				self.store.commit(cow_vec![
-					(Delta::Set {
-						key,
-						bytes
-					})
-				])?;
+				SingleVersionCommit::commit(
+					&mut self.store,
+					cow_vec![
+						(Delta::Set {
+							key,
+							bytes
+						})
+					],
+				)?;
 				self.maybe_flush();
 			}
 
@@ -211,7 +213,7 @@ impl testscript::runner::Runner for Runner {
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
-				self.store.commit(cow_vec![Delta::remove_silent(key)])?;
+				SingleVersionCommit::commit(&mut self.store, cow_vec![Delta::remove_silent(key)])?;
 				self.maybe_flush();
 			}
 
@@ -226,7 +228,7 @@ impl testscript::runner::Runner for Runner {
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
-				let buffer = self.store.buffer().ok_or("buffer tier not configured")?;
+				let buffer = self.store.commit().ok_or("buffer tier not configured")?;
 				let value = buffer.get_with_tombstone(key.as_ref())?;
 				let value = match value {
 					Some(Some(v)) => Some(v.to_vec()),

@@ -12,11 +12,11 @@ use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
 
 #[derive(Clone)]
 #[repr(u8)]
-pub enum SingleBufferTier {
+pub enum SingleCommitBufferTier {
 	Memory(MemoryRowStorage) = 0,
 }
 
-impl SingleBufferTier {
+impl SingleCommitBufferTier {
 	pub fn memory() -> Self {
 		Self::Memory(MemoryRowStorage::new())
 	}
@@ -28,7 +28,7 @@ impl SingleBufferTier {
 	}
 }
 
-impl MetricsCollector for SingleBufferTier {
+impl MetricsCollector for SingleCommitBufferTier {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
 		let (entries, bytes) = self.memory_usage();
 		out.push(MetricsSample::count("store_single::buffer", "resident_entries", entries as u64));
@@ -40,7 +40,7 @@ impl MetricsCollector for SingleBufferTier {
 	}
 }
 
-impl TierStorage for SingleBufferTier {
+impl TierStorage for SingleCommitBufferTier {
 	#[inline]
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
 		match self {
@@ -110,7 +110,7 @@ impl TierStorage for SingleBufferTier {
 	}
 }
 
-impl TierBackend for SingleBufferTier {}
+impl TierBackend for SingleCommitBufferTier {}
 
 #[cfg(test)]
 pub mod tests {
@@ -118,7 +118,7 @@ pub mod tests {
 
 	#[test]
 	fn test_memory_backend() {
-		let storage = SingleBufferTier::memory();
+		let storage = SingleCommitBufferTier::memory();
 
 		storage.set(vec![(EncodedKey::new(b"key"), Some(CowVec::new(b"value".to_vec())))]).unwrap();
 		assert_eq!(storage.get(b"key").unwrap().as_deref(), Some(b"value".as_slice()));
@@ -126,7 +126,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_next_memory() {
-		let storage = SingleBufferTier::memory();
+		let storage = SingleCommitBufferTier::memory();
 
 		storage.set(vec![
 			(EncodedKey::new(b"a"), Some(CowVec::new(b"1".to_vec()))),
