@@ -35,6 +35,7 @@ use crate::{
 	domains::{
 		epoch::EpochGauge,
 		runtime::{SampleReader, collect::Collectors},
+		store::StoreReader,
 	},
 	framework::{spec::MetricsDomain, surfaces::MetricsSurfaces},
 	listener::{
@@ -91,12 +92,15 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 		ioc.register_service(sampler.clone());
 		Self::wire_accounting(ioc, &engine, &spawner, epoch_gauge, sampler)?;
 
-		Ok(Box::new(MetricsSubsystem::new(SampleReader::new(collectors))))
+		let store_reader = StoreReader::new(multi_store, single_store, operator_store);
+
+		Ok(Box::new(MetricsSubsystem::new(SampleReader::new(collectors), store_reader)))
 	}
 }
 
 impl MetricsSubsystemFactory {
 	#[inline]
+	#[allow(clippy::too_many_arguments)]
 	fn wire_sampler(
 		engine: &StandardEngine,
 		spawner: &ActorSpawner,

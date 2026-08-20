@@ -4,3 +4,4 @@
 pub mod epoch;
 pub mod proc;
 pub mod runtime;
+pub mod store;

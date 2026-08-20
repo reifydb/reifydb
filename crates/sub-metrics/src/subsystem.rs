@@ -14,24 +14,30 @@ use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use tracing::info;
 
-use crate::domains::runtime::SampleReader;
+use crate::domains::{runtime::SampleReader, store::StoreReader};
 
 pub struct MetricsSubsystem {
 	running: Arc<AtomicBool>,
 	sample_reader: SampleReader,
+	store_reader: StoreReader,
 }
 
 impl MetricsSubsystem {
-	pub fn new(sample_reader: SampleReader) -> Self {
+	pub fn new(sample_reader: SampleReader, store_reader: StoreReader) -> Self {
 		info!("Metric subsystem started");
 		Self {
 			running: Arc::new(AtomicBool::new(true)),
 			sample_reader,
+			store_reader,
 		}
 	}
 
 	pub fn sample_reader(&self) -> SampleReader {
 		self.sample_reader.clone()
+	}
+
+	pub fn store_reader(&self) -> StoreReader {
+		self.store_reader.clone()
 	}
 }
 
