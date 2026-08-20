@@ -31,14 +31,14 @@ use reifydb_transaction::{
 use reifydb_value::Result;
 #[cfg(test)]
 use reifydb_value::value::identity::IdentityId;
-use tracing::{instrument, warn};
+use tracing::instrument;
 
 use crate::{commit::quiescence::FlowMaterialization, progress::tracker::FlowPositionTracker};
 
 pub type CommitterHandle = ActorHandle<CommitterMessage>;
 
 pub(crate) type SliceCommitReply = Box<dyn FnOnce(Result<(CommitVersion, Pending)>) + Send>;
-pub(crate) type TickCommitReply = Box<dyn FnOnce(Option<(CommitVersion, Pending)>) + Send>;
+pub(crate) type TickCommitReply = Box<dyn FnOnce(Result<(CommitVersion, Pending)>) + Send>;
 
 pub enum CommitterMessage {
 	Slice {
@@ -123,12 +123,9 @@ impl CommitterActor {
 				apply_operator_state(&completion_committer.operators, &pending);
 				completion_committer.materialization.record_output(version);
 				let pending = Arc::try_unwrap(pending).unwrap_or_else(|shared| (*shared).clone());
-				(reply)(Some((version, pending)));
+				(reply)(Ok((version, pending)));
 			}
-			Err(e) => {
-				warn!(error = %e, "failed to commit tick writes");
-				(reply)(None);
-			}
+			Err(e) => (reply)(Err(e)),
 		});
 
 		self.group.submit(GroupCommitSubmission {

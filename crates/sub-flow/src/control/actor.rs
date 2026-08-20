@@ -447,11 +447,19 @@ impl FlowActor {
 		&self,
 		state: &mut FlowActorState,
 		ctx: &Context<FlowActorMessage>,
+		result: Result<()>,
 		committed: Option<(CommitVersion, Pending)>,
 	) {
 		self.settle_commit(state, committed);
-		state.retry_count = 0;
-		self.resume_after_commit(state, ctx, false);
+		match result {
+			Ok(()) => {
+				state.retry_count = 0;
+				self.resume_after_commit(state, ctx, false);
+			}
+			Err(e) => {
+				self.retry_or_poison(state, ctx, format!("tick commit failed: {e}"));
+			}
+		}
 	}
 
 	fn settle_commit(&self, state: &mut FlowActorState, committed: Option<(CommitVersion, Pending)>) {
@@ -536,8 +544,13 @@ impl FlowActor {
 		state.committing = true;
 		state.drain_after_commit = true;
 		let self_ref = ctx.self_ref().clone();
-		let reply: TickCommitReply = Box::new(move |committed| {
+		let reply: TickCommitReply = Box::new(move |outcome| {
+			let (result, committed) = match outcome {
+				Ok(committed) => (Ok(()), Some(committed)),
+				Err(e) => (Err(e), None),
+			};
 			let _ = self_ref.send(FlowActorMessage::TickCommitted {
+				result,
 				committed,
 			});
 		});
@@ -670,9 +683,10 @@ impl Actor for FlowActor {
 				Directive::Continue
 			}
 			FlowActorMessage::TickCommitted {
+				result,
 				committed,
 			} => {
-				self.on_tick_committed(state, ctx, committed);
+				self.on_tick_committed(state, ctx, result, committed);
 				Directive::Continue
 			}
 			FlowActorMessage::Stop {
@@ -1801,6 +1815,7 @@ mod tick_failures {
 			change::Change,
 			flow::OperatorCapability,
 		},
+		internal_error,
 		state::timer::TimerKind,
 	};
 	use reifydb_engine::engine::StandardEngine;
@@ -2081,6 +2096,43 @@ mod tick_failures {
 			1,
 			"an idle drain advanced no cursor and committed nothing, so it is no evidence the flow recovered"
 		);
+	}
+
+	#[test]
+	fn a_failed_tick_commit_counts_a_retry_instead_of_being_cleared() {
+		let (_te, _health, actor) = quiet_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().committing = true;
+
+		harness.send(FlowActorMessage::TickCommitted {
+			result: Err(internal_error!("commit rejected")),
+			committed: None,
+		});
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the reply must be handled");
+
+		assert!(!harness.state().committing, "the latch must clear, otherwise the flow never drains again");
+		assert_eq!(
+			harness.state().retry_count,
+			1,
+			"a discarded tick commit must count a strike, or repeated ones never rebuild and never poison"
+		);
+	}
+
+	#[test]
+	fn a_tick_commit_that_lands_clears_the_strike() {
+		let (_te, _health, actor) = quiet_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().committing = true;
+		harness.state_mut().retry_count = RETRY_LIMIT;
+
+		harness.send(FlowActorMessage::TickCommitted {
+			result: Ok(()),
+			committed: None,
+		});
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the reply must be handled");
+
+		assert_eq!(harness.state().retry_count, 0, "a landed commit is progress");
+		assert!(!harness.state().poisoned, "a flow that just committed must not be one strike from poison");
 	}
 
 	#[test]

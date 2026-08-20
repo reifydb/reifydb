@@ -45,6 +45,7 @@ pub enum FlowActorMessage {
 	},
 
 	TickCommitted {
+		result: Result<()>,
 		committed: Option<(CommitVersion, Pending)>,
 	},
 
