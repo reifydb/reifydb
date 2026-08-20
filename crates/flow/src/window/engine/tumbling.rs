@@ -17,20 +17,23 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
-	state::{cache::StateCache, timer::StateStore},
+	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
-	operator::state::{
-		expiry::{expiry_drop, expiry_due, expiry_key, expiry_set},
-		reaper::Reaper,
+	operator::{
+		state::{
+			expiry::{expiry_drop, expiry_due, expiry_key, expiry_set},
+			reaper::Reaper,
+		},
+		state_access::{get, put, remove},
 	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
+			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, WindowResult, WindowStateKey,
 			config::WindowEngineConfig, decode_window_state_key, load_batch_meta, meta_key_for,
 			note_when_expiry_capped, persist_batch_meta, sweep_stale_meta,
 		},
@@ -82,19 +85,17 @@ where
 {
 	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
 		match decode_window_state_key(key.as_encoded()) {
-			Some(slot) => self.accumulators.remove(store, &slot),
+			Some(slot) => remove(store, &slot),
 			None => store.state_remove(key),
 		}
 	}
 }
 
 pub struct TumblingEngine<G, C, Accumulator> {
-	accumulators: StateCache<WindowStateKey, Accumulator>,
-	meta: StateCache<MetaKey, GroupMeta<C>>,
 	meta_low_water: Option<u64>,
 	expire_batch: usize,
 	dropped_retractions: u64,
-	_pd: PhantomData<G>,
+	_pd: PhantomData<(G, C, Accumulator)>,
 }
 
 impl<G, C, Accumulator> TumblingEngine<G, C, Accumulator>
@@ -108,8 +109,6 @@ where
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			accumulators: StateCache::<WindowStateKey, Accumulator>::new(),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
 			dropped_retractions: 0,
@@ -194,7 +193,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let batch = load_batch_meta(store, &mut self.meta, &meta_key_for(group))?;
+				let batch = load_batch_meta(store, &meta_key_for(group))?;
 				meta_loaded.insert(group.clone(), batch);
 			}
 		}
@@ -249,8 +248,7 @@ where
 			};
 			let state_key = WindowStateKey::new(id, key.clone());
 
-			let mut accumulator: Accumulator =
-				self.accumulators.get(store, &state_key)?.unwrap_or_else(new_accumulator);
+			let mut accumulator: Accumulator = get(store, &state_key)?.unwrap_or_else(new_accumulator);
 			let was_empty_before = accumulator.is_empty();
 			let prior = if was_empty_before {
 				None
@@ -274,7 +272,7 @@ where
 			}
 
 			let value = accumulator.finalize();
-			self.accumulators.put(store, &state_key, accumulator)?;
+			put(store, &state_key, accumulator)?;
 
 			match value {
 				Some(value) => pending.push(PendingEmit {
@@ -373,11 +371,11 @@ where
 	}
 
 	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
-		persist_batch_meta(store, &mut self.meta, meta_loaded)
+		persist_batch_meta(store, meta_loaded)
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
+		sweep_stale_meta::<GroupMeta<C>>(store, threshold, &mut self.meta_low_water)
 	}
 }
 
@@ -394,7 +392,10 @@ mod tests {
 	use reifydb_value::{Result, factory::time::at_millis, value::datetime::DateTime};
 
 	use crate::{
-		operator::state::{mock::MockStore, seal::coord::Coord},
+		operator::{
+			state::{mock::MockStore, seal::coord::Coord},
+			state_access::{get, put},
+		},
 		window::{
 			accumulator::{WindowAccumulator, mock::SumAccumulator},
 			engine::{
@@ -986,12 +987,10 @@ mod tests {
 		);
 	}
 
-	fn read_high_water(
-		engine: &mut TumblingEngine<u32, DateTime, SumAccumulator>,
-		store: &mut MockStore,
-		group: u32,
-	) -> Option<u64> {
-		engine.meta.get(store, &meta_key_for(&group)).unwrap().and_then(|meta| meta.high_water_order())
+	fn read_high_water(store: &mut MockStore, group: u32) -> Option<u64> {
+		get::<_, GroupMeta<DateTime>>(store, &meta_key_for(&group))
+			.unwrap()
+			.and_then(|meta| meta.high_water_order())
 	}
 
 	#[test]
@@ -1009,42 +1008,34 @@ mod tests {
 		apply_sums(&mut fresh, &mut store, buckets).unwrap();
 
 		assert_eq!(
-			read_high_water(&mut fresh, &mut store, 1),
+			read_high_water(&mut store, 1),
 			Some(order(200)),
 			"the bump must be durable the moment it is applied"
 		);
 
-		let mut third = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		assert_eq!(
-			read_high_water(&mut third, &mut store, 1),
-			Some(order(200)),
-			"the write round-trips through the store"
-		);
+		assert_eq!(read_high_water(&mut store, 1), Some(order(200)), "the write round-trips through the store");
 	}
 
 	#[test]
 	fn a_persisted_none_high_water_still_accepts_a_bump() {
 		// Retraction-only groups persist a none high water; refusing to advance it strands them.
 		let mut store = MockStore::default();
-		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		engine.meta
-			.put(
-				&mut store,
-				&meta_key_for(&1u32),
-				GroupMeta {
-					high_water: None,
-				},
-			)
-			.unwrap();
+		put(
+			&mut store,
+			&meta_key_for(&1u32),
+			GroupMeta::<DateTime> {
+				high_water: None,
+			},
+		)
+		.unwrap();
 
 		let mut fresh = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, WindowSpan::new(at_millis(100), at_millis(101))), vec![AccumulatorEvent::Add(7)]);
 		apply_sums(&mut fresh, &mut store, buckets).unwrap();
 
-		let mut third = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		assert_eq!(
-			read_high_water(&mut third, &mut store, 1),
+			read_high_water(&mut store, 1),
 			Some(order(100)),
 			"a none high water must advance to the first observed coordinate"
 		);

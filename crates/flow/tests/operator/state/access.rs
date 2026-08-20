@@ -5,8 +5,8 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator_state::{GroupStateKey, IntoGroupStateKey, Keyspace},
 	metrics::heap::HeapSize,
-	state::cache::StateCache,
 };
+use reifydb_flow::operator::state_access::{get, get_or_default, set, update};
 use reifydb_macro::operator_state;
 use reifydb_sdk::{
 	error::Result,
@@ -21,7 +21,7 @@ use reifydb_sdk::{
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
 use reifydb_value::{config::Config, value::Value};
 
-/// A bare `String` cannot be a cache key: `IntoGroupStateKey` exists to force every key through the operator-state
+/// A bare `String` cannot be a state key: `IntoGroupStateKey` exists to force every key through the operator-state
 /// framing, so this wrapper frames the test's keys exactly as an operator would.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct TestKey(String);
@@ -88,7 +88,8 @@ impl HeapSize for SumState {
 	}
 }
 
-/// Exists only so the harness can hand out a real `ExternCContext`; the cache, not the operator, is under test.
+/// Exists only so the harness can hand out a real `ExternCContext`; the state_access functions, not the operator, are
+/// under test.
 struct PassthroughOperator;
 
 impl OperatorMetadata for PassthroughOperator {
@@ -111,33 +112,31 @@ impl ExternCOperator for PassthroughOperator {
 }
 
 #[test]
-fn test_cache_set_and_get() {
+fn test_set_and_get() {
 	let mut harness =
 		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();
 	let key = TestKey::new("test_key");
 	let value = CounterState {
 		count: 42,
 	};
 
 	let mut ctx = harness.create_operator_context();
-	cache.set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
+	set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 
 	// Nothing buffers the write, so the value must be in host storage the moment set returns.
 	assert_eq!(harness.state().len(), 1);
 
 	let mut ctx = harness.create_operator_context();
-	let retrieved = cache.get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
+	let retrieved = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 	assert_eq!(retrieved, Some(value));
 }
 
 #[test]
-fn test_cache_set_persists_to_extern_c_on_the_set_itself() {
+fn test_set_persists_to_extern_c_on_the_set_itself() {
 	let mut harness =
 		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();
 	let key = TestKey::new("persist_key");
 	let value = CounterState {
 		count: 100,
@@ -145,14 +144,14 @@ fn test_cache_set_persists_to_extern_c_on_the_set_itself() {
 
 	// Set is the sole point at which state crosses the ABI; a guest that never sets writes nothing.
 	let mut ctx = harness.create_operator_context();
-	cache.set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
+	set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 	let persisted = harness.snapshot_state();
 	assert_eq!(persisted.len(), 1, "Set must write through to host storage");
 
 	// A later context must observe the same bytes, or the write only reached the guest side.
 	let mut ctx = harness.create_operator_context();
 	assert_eq!(
-		cache.get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed"),
+		get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed"),
 		Some(value),
 		"the persisted row must read back across a fresh context"
 	);
@@ -160,25 +159,23 @@ fn test_cache_set_persists_to_extern_c_on_the_set_itself() {
 }
 
 #[test]
-fn test_cache_get_or_default_creates_default() {
+fn test_get_or_default_creates_default() {
 	let mut harness =
 		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();
 	let key = TestKey::new("new_key");
 
 	let mut ctx = harness.create_operator_context();
-	let result = cache.get_or_default(&mut GuestAsHost(&mut ctx), &key).expect("get_or_default failed");
+	let result: CounterState = get_or_default(&mut GuestAsHost(&mut ctx), &key).expect("get_or_default failed");
 
 	assert_eq!(result.count, 0);
 }
 
 #[test]
-fn test_cache_get_or_default_returns_existing() {
+fn test_get_or_default_returns_existing() {
 	let mut harness =
 		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();
 	let key = TestKey::new("existing_key");
 	let value = CounterState {
 		count: 50,
@@ -186,45 +183,43 @@ fn test_cache_get_or_default_returns_existing() {
 
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
+		set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 	}
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get_or_default(&mut GuestAsHost(&mut ctx), &key).expect("get_or_default failed");
+		let result: CounterState =
+			get_or_default(&mut GuestAsHost(&mut ctx), &key).expect("get_or_default failed");
 
 		assert_eq!(result.count, 50, "Should return existing value, not default");
 	}
 }
 
 #[test]
-fn test_cache_update() {
+fn test_update() {
 	let mut harness =
 		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();
 	let key = TestKey::new("counter");
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache
-			.update(&mut GuestAsHost(&mut ctx), &key, |s| {
-				s.count += 10;
-				Ok(())
-			})
-			.expect("Update failed");
+		let result: CounterState = update(&mut GuestAsHost(&mut ctx), &key, |s: &mut CounterState| {
+			s.count += 10;
+			Ok(())
+		})
+		.expect("Update failed");
 
 		assert_eq!(result.count, 10);
 	}
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache
-			.update(&mut GuestAsHost(&mut ctx), &key, |s| {
-				s.count += 5;
-				Ok(())
-			})
-			.expect("Update failed");
+		let result: CounterState = update(&mut GuestAsHost(&mut ctx), &key, |s: &mut CounterState| {
+			s.count += 5;
+			Ok(())
+		})
+		.expect("Update failed");
 
 		assert_eq!(result.count, 15);
 	}
@@ -232,7 +227,7 @@ fn test_cache_update() {
 	// The returned value must agree with host storage, otherwise the second update read a stale base.
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
+		let result = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 		assert_eq!(
 			result,
 			Some(CounterState {
@@ -243,11 +238,9 @@ fn test_cache_update() {
 }
 
 #[test]
-fn test_cache_multiple_keys() {
+fn test_multiple_keys() {
 	let mut harness =
 		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
-
-	let mut cache: StateCache<TestKey, SumState> = StateCache::new();
 
 	{
 		let mut ctx = harness.create_operator_context();
@@ -256,7 +249,7 @@ fn test_cache_multiple_keys() {
 			let value = SumState {
 				total: i * 10,
 			};
-			cache.set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
+			set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 		}
 	}
 
@@ -267,7 +260,7 @@ fn test_cache_multiple_keys() {
 		let mut ctx = harness.create_operator_context();
 		for i in 0..5 {
 			let key = TestKey::new(&format!("sum_{}", i));
-			let result = cache.get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
+			let result: Option<SumState> = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 			assert_eq!(
 				result,
 				Some(SumState {
@@ -279,11 +272,9 @@ fn test_cache_multiple_keys() {
 }
 
 #[test]
-fn test_cache_tuple_keys() {
+fn test_tuple_keys() {
 	let mut harness =
 		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
-
-	let mut cache: StateCache<TestPair, SumState> = StateCache::new();
 
 	let key1 = TestPair(TestKey::new("base"), TestKey::new("quote"));
 	let key2 = TestPair(TestKey::new("foo"), TestKey::new("bar"));
@@ -296,8 +287,8 @@ fn test_cache_tuple_keys() {
 
 	{
 		let mut ctx = harness.create_operator_context();
-		cache.set(&mut GuestAsHost(&mut ctx), &key1, &value1).expect("Set failed");
-		cache.set(&mut GuestAsHost(&mut ctx), &key2, &value2).expect("Set failed");
+		set(&mut GuestAsHost(&mut ctx), &key1, &value1).expect("Set failed");
+		set(&mut GuestAsHost(&mut ctx), &key2, &value2).expect("Set failed");
 	}
 
 	// Two composite keys must never frame onto one row, otherwise the second set eats the first.
@@ -305,48 +296,45 @@ fn test_cache_tuple_keys() {
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let result1 = cache.get(&mut GuestAsHost(&mut ctx), &key1).expect("Get failed");
-		let result2 = cache.get(&mut GuestAsHost(&mut ctx), &key2).expect("Get failed");
+		let result1 = get(&mut GuestAsHost(&mut ctx), &key1).expect("Get failed");
+		let result2 = get(&mut GuestAsHost(&mut ctx), &key2).expect("Get failed");
 		assert_eq!(result1, Some(value1));
 		assert_eq!(result2, Some(value2));
 	}
 }
 
 #[test]
-fn test_cache_tuple_key_update() {
+fn test_tuple_key_update() {
 	let mut harness =
 		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	let mut cache: StateCache<TestPair, SumState> = StateCache::new();
 	let key = TestPair(TestKey::new("account"), TestKey::new("balance"));
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache
-			.update(&mut GuestAsHost(&mut ctx), &key, |s| {
-				s.total += 500;
-				Ok(())
-			})
-			.expect("Update failed");
+		let result: SumState = update(&mut GuestAsHost(&mut ctx), &key, |s: &mut SumState| {
+			s.total += 500;
+			Ok(())
+		})
+		.expect("Update failed");
 
 		assert_eq!(result.total, 500);
 	}
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache
-			.update(&mut GuestAsHost(&mut ctx), &key, |s| {
-				s.total += 250;
-				Ok(())
-			})
-			.expect("Update failed");
+		let result: SumState = update(&mut GuestAsHost(&mut ctx), &key, |s: &mut SumState| {
+			s.total += 250;
+			Ok(())
+		})
+		.expect("Update failed");
 
 		assert_eq!(result.total, 750);
 	}
 }
 
 #[test]
-fn test_cache_get_reloads_from_host_storage() {
+fn test_get_reloads_from_host_storage() {
 	let mut harness =
 		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
@@ -356,36 +344,31 @@ fn test_cache_get_reloads_from_host_storage() {
 	};
 
 	{
-		let mut writer: StateCache<TestKey, CounterState> = StateCache::new();
 		let mut ctx = harness.create_operator_context();
-		writer.set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
+		set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 	}
 
 	// A reader that never saw the write can only answer from host storage, never from an in-process copy.
-	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();
-
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
+		let result = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 		assert_eq!(result, Some(value.clone()));
 	}
 
 	// A get must never consume the row, otherwise the next read of the same key strands the operator.
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
+		let result = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 		assert_eq!(result, Some(value));
 	}
 }
 
 #[test]
-fn test_cache_with_operator_apply() {
+fn test_with_operator_apply() {
 	let mut harness =
 		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	// Every apply gets a fresh context, so the count must accumulate through host storage, never restart at zero.
-	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();
-
 	let input = TestChangeBuilder::new()
 		.insert_row(1, vec![Value::Int8(10i64)])
 		.insert_row(2, vec![Value::Int8(20i64)])
@@ -394,7 +377,7 @@ fn test_cache_with_operator_apply() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let diff_count = input.diffs.len() as i64;
-		cache.update(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter"), |s| {
+		update(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter"), |s: &mut CounterState| {
 			s.count += diff_count;
 			Ok(())
 		})
@@ -406,7 +389,7 @@ fn test_cache_with_operator_apply() {
 	{
 		let mut ctx = harness.create_operator_context();
 		let diff_count = input2.diffs.len() as i64;
-		cache.update(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter"), |s| {
+		update(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter"), |s: &mut CounterState| {
 			s.count += diff_count;
 			Ok(())
 		})
@@ -415,7 +398,7 @@ fn test_cache_with_operator_apply() {
 
 	{
 		let mut ctx = harness.create_operator_context();
-		let result = cache.get(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter")).expect("Get failed");
+		let result = get(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter")).expect("Get failed");
 		assert_eq!(
 			result,
 			Some(CounterState {

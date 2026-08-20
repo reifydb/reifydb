@@ -12,20 +12,19 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
 	row::operator::state::OperatorState,
 };
-use reifydb_core::{
-	key::operator_state::GroupId,
-	metrics::heap::HeapSize,
-	state::{cache::StateCache, timer::StateStore},
-};
+use reifydb_core::{key::operator_state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
-use crate::window::{
-	accumulator::WindowAccumulator,
-	engine::{
-		AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, MetaKey, config::WindowEngineConfig,
-		load_batch_meta, meta_key_for, persist_batch_meta, rolling::RollingBuckets, sweep_stale_meta,
+use crate::{
+	operator::state_access::{get, put, remove},
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, config::WindowEngineConfig,
+			load_batch_meta, meta_key_for, persist_batch_meta, rolling::RollingBuckets, sweep_stale_meta,
+		},
+		span::Slot,
 	},
-	span::Slot,
 };
 
 pub type RollingTopKBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
@@ -60,11 +59,8 @@ struct GroupSlot<C, Accumulator, SK, Output> {
 }
 
 pub struct RollingTopKEngine<G, C, Accumulator, SK, Output> {
-	buffers: StateCache<BufferKey, RollingTopKBuffer<C, Accumulator>>,
-	last_emit: StateCache<EmitKey, RollingTopKEmit<SK, Output>>,
-	meta: StateCache<MetaKey, GroupMeta<C>>,
 	meta_low_water: Option<u64>,
-	_pd: PhantomData<(G, C, Accumulator)>,
+	_pd: PhantomData<(G, C, Accumulator, SK, Output)>,
 }
 
 impl<G, C, Accumulator, SK, Output> RollingTopKEngine<G, C, Accumulator, SK, Output>
@@ -84,16 +80,13 @@ where
 {
 	pub fn new(_config: WindowEngineConfig) -> Self {
 		Self {
-			buffers: StateCache::<BufferKey, RollingTopKBuffer<C, Accumulator>>::new(),
-			last_emit: StateCache::<EmitKey, RollingTopKEmit<SK, Output>>::new(),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
 			meta_low_water: None,
 			_pd: PhantomData,
 		}
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
+		sweep_stale_meta::<GroupMeta<C>>(store, threshold, &mut self.meta_low_water)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -137,7 +130,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let batch = load_batch_meta(store, &mut self.meta, &meta_key_for(group))?;
+				let batch = load_batch_meta(store, &meta_key_for(group))?;
 				meta_loaded.insert(group.clone(), batch);
 			}
 		}
@@ -269,14 +262,12 @@ where
 							.get(&group)
 							.expect("every group outside state_rows was resolved upfront"),
 					};
-					let buffer: RollingTopKBuffer<C, Accumulator> = self
-						.buffers
-						.get(store, &BufferKey::of_row(group_id, state_row_number))?
-						.unwrap_or_default();
-					let prior_emit = self
-						.last_emit
-						.get(store, &EmitKey::new(group_id, state_row_number))?
-						.unwrap_or_default();
+					let buffer: RollingTopKBuffer<C, Accumulator> =
+						get(store, &BufferKey::of_row(group_id, state_row_number))?
+							.unwrap_or_default();
+					let prior_emit: RollingTopKEmit<SK, Output> =
+						get(store, &EmitKey::new(group_id, state_row_number))?
+							.unwrap_or_default();
 					group_slots.insert(
 						group.clone(),
 						GroupSlot {
@@ -408,22 +399,14 @@ where
 			}
 
 			if slot.buffer.is_empty() {
-				self.buffers.remove(store, &BufferKey::of_row(slot.group_id, slot.state_row_number))?;
+				remove(store, &BufferKey::of_row(slot.group_id, slot.state_row_number))?;
 			} else {
-				self.buffers.put(
-					store,
-					&BufferKey::of_row(slot.group_id, slot.state_row_number),
-					slot.buffer,
-				)?;
+				put(store, &BufferKey::of_row(slot.group_id, slot.state_row_number), slot.buffer)?;
 			}
 			if new_emit.is_empty() {
-				self.last_emit.remove(store, &EmitKey::new(slot.group_id, slot.state_row_number))?;
+				remove(store, &EmitKey::new(slot.group_id, slot.state_row_number))?;
 			} else {
-				self.last_emit.put(
-					store,
-					&EmitKey::new(slot.group_id, slot.state_row_number),
-					new_emit,
-				)?;
+				put(store, &EmitKey::new(slot.group_id, slot.state_row_number), new_emit)?;
 			}
 		}
 
@@ -431,7 +414,7 @@ where
 	}
 
 	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
-		persist_batch_meta(store, &mut self.meta, meta_loaded)
+		persist_batch_meta(store, meta_loaded)
 	}
 }
 

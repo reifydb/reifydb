@@ -51,3 +51,9 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 reifydb-test-harness = { workspace = true, features = ["operator"] }
+reifydb-sdk = { workspace = true }
+reifydb-testing-sdk = { workspace = true }
+
+[[test]]
+name = "operator"
+path = "tests/operator.rs"

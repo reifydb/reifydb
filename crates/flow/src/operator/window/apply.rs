@@ -30,6 +30,7 @@ use crate::{
 			reaper::{drain, enqueue},
 			seal::{coord::Coord, ledger::FiredAt, policy::SealPolicy, sweep::SealSweep},
 		},
+		state_access::get,
 	},
 	window::{
 		coord::{EventCoord, RowSpan},
@@ -39,7 +40,7 @@ use crate::{
 			session::{SessionKind, SessionTracker},
 			tumbling::TumblingOverRows,
 		},
-		meta::EngineMetaKey,
+		meta::{EngineMeta, EngineMetaKey},
 		span::WindowSpan,
 	},
 };
@@ -883,11 +884,9 @@ fn gate_and_arm_seals(
 	{
 		for ((key, events), group) in buckets.iter().zip(known) {
 			let prior_last = match group {
-				Some(group) => operator
-					.core
-					.engine_meta()
-					.get(host, &EngineMetaKey(group))?
-					.map(|m| m.last_event_time),
+				Some(group) => {
+					get::<_, EngineMeta>(host, &EngineMetaKey(group))?.map(|m| m.last_event_time)
+				}
 				None => None,
 			};
 			let batch_last = window_max_ts.get(key).map(|ts| ts.to_order());

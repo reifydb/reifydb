@@ -12,7 +12,6 @@ use reifydb_core::{
 	},
 	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey},
 	metrics::heap::{HeapSize, OperatorSample},
-	state::{cache::StateCache, timer::StateStore},
 	value::column::columns::Columns,
 };
 use reifydb_evaluate::expression::{
@@ -31,7 +30,11 @@ use tracing::instrument;
 
 use crate::{
 	context::FlowContext,
-	operator::{HostOperator, host::HostContext},
+	operator::{
+		HostOperator,
+		host::HostContext,
+		state_access::{get, put, remove},
+	},
 };
 
 #[operator_state]
@@ -61,40 +64,6 @@ impl IntoGroupStateKey for &VisibilityKey {
 	}
 }
 
-struct GateState {
-	visibility: StateCache<VisibilityKey, VisibilityMarker>,
-}
-
-impl GateState {
-	fn new() -> Self {
-		Self {
-			visibility: StateCache::new(),
-		}
-	}
-
-	fn is_visible(&mut self, store: &mut dyn StateStore, rn: RowNumber) -> Result<bool> {
-		Ok(self.visibility.get(store, &VisibilityKey(rn))?.is_some())
-	}
-
-	fn mark_visible(&mut self, store: &mut dyn StateStore, rn: RowNumber) -> Result<()> {
-		self.visibility.put(
-			store,
-			&VisibilityKey(rn),
-			VisibilityMarker {
-				visible: true,
-			},
-		)
-	}
-
-	fn mark_invisible(&mut self, store: &mut dyn StateStore, rn: RowNumber) -> Result<()> {
-		self.visibility.remove(store, &VisibilityKey(rn))
-	}
-
-	fn sample(&self) -> Option<OperatorSample> {
-		None
-	}
-}
-
 pub struct GateOperator {
 	parent_schema: Option<Columns>,
 	operator: OperatorId,
@@ -102,7 +71,6 @@ pub struct GateOperator {
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	ctx: Arc<FlowContext>,
-	state: GateState,
 }
 
 impl GateOperator {
@@ -129,7 +97,6 @@ impl GateOperator {
 			routines,
 			runtime_context,
 			ctx,
-			state: GateState::new(),
 		}
 	}
 
@@ -177,15 +144,21 @@ impl GateOperator {
 	}
 
 	fn is_visible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<bool> {
-		self.state.is_visible(host, rn)
+		Ok(get::<_, VisibilityMarker>(host, &VisibilityKey(rn))?.is_some())
 	}
 
 	fn mark_visible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<()> {
-		self.state.mark_visible(host, rn)
+		put(
+			host,
+			&VisibilityKey(rn),
+			VisibilityMarker {
+				visible: true,
+			},
+		)
 	}
 
 	fn mark_invisible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<()> {
-		self.state.mark_invisible(host, rn)
+		remove(host, &VisibilityKey(rn))
 	}
 }
 
@@ -199,7 +172,7 @@ impl HostOperator for GateOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		self.state.sample()
+		None
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {

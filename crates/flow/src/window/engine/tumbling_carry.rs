@@ -16,18 +16,21 @@ use reifydb_codec::{
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	metrics::heap::HeapSize,
-	state::{cache::StateCache, timer::StateStore},
+	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
-use crate::window::{
-	accumulator::WindowAccumulator,
-	engine::{
-		AccumulatorEvent, EmitKind, MetaHighWater, MetaKey, WindowResult, WindowStateKey,
-		config::TumblingCarryConfig, meta_key_for, sweep_stale_meta, tumbling::TumblingBuckets,
+use crate::{
+	operator::state_access::{get, put, remove},
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, EmitKind, MetaHighWater, WindowResult, WindowStateKey,
+			config::TumblingCarryConfig, meta_key_for, sweep_stale_meta, tumbling::TumblingBuckets,
+		},
+		span::{SlotSpan, WindowAnchor, WindowSpan},
 	},
-	span::{SlotSpan, WindowAnchor, WindowSpan},
 };
 
 #[operator_state]
@@ -94,11 +97,9 @@ struct PendingCarry<C, Output> {
 }
 
 pub struct TumblingCarryEngine<G, C: WindowAnchor, Accumulator, Carry, Output> {
-	accumulators: StateCache<WindowStateKey, Accumulator>,
-	meta: StateCache<MetaKey, CarryMeta<C, Carry, Output>>,
 	meta_low_water: Option<u64>,
 	retention: Option<SlotSpan<C>>,
-	_pd: PhantomData<G>,
+	_pd: PhantomData<(G, Accumulator, Carry, Output)>,
 }
 
 impl<G, C, Accumulator, Carry, Output> TumblingCarryEngine<G, C, Accumulator, Carry, Output>
@@ -116,8 +117,6 @@ where
 {
 	pub fn new(config: TumblingCarryConfig<C>) -> Self {
 		Self {
-			accumulators: StateCache::<WindowStateKey, Accumulator>::new(),
-			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new(),
 			meta_low_water: None,
 			retention: config.retention(),
 			_pd: PhantomData,
@@ -125,7 +124,7 @@ where
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
+		sweep_stale_meta::<CarryMeta<C, Carry, Output>>(store, threshold, &mut self.meta_low_water)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -166,10 +165,9 @@ where
 				continue;
 			}
 
-			let mut accumulator: Accumulator = self
-				.accumulators
-				.get(store, &WindowStateKey::new(group_id, slot_key.clone()))?
-				.unwrap_or_else(&new_accumulator);
+			let mut accumulator: Accumulator =
+				get(store, &WindowStateKey::new(group_id, slot_key.clone()))?
+					.unwrap_or_else(&new_accumulator);
 			let mut changed = false;
 			for event in events {
 				match event {
@@ -189,7 +187,7 @@ where
 			if !changed {
 				continue;
 			}
-			self.accumulators.put(store, &WindowStateKey::new(group_id, slot_key), accumulator)?;
+			put(store, &WindowStateKey::new(group_id, slot_key), accumulator)?;
 
 			entry.windows.entry(span.start).or_insert_with(|| WindowEntry {
 				span,
@@ -224,11 +222,12 @@ where
 			for ((coord, slot_key), coord_group) in coords.into_iter().zip(coord_keys).zip(coord_groups) {
 				let span = meta.windows.get(&coord).expect("window entry present").span;
 				let finalized = match coord_group {
-					Some(coord_group) => self
-						.accumulators
-						.get(store, &WindowStateKey::new(coord_group, slot_key.clone()))?
-						.and_then(|a| a.finalize())
-						.map(|value| (coord_group, value)),
+					Some(coord_group) => get::<_, Accumulator>(
+						store,
+						&WindowStateKey::new(coord_group, slot_key.clone()),
+					)?
+					.and_then(|a| a.finalize())
+					.map(|value| (coord_group, value)),
 					None => None,
 				};
 				let emitted = finalized.as_ref().and_then(|(coord_group, value)| {
@@ -329,10 +328,7 @@ where
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
 					if let Some(sealed_group) = sealed_group {
-						self.accumulators.remove(
-							store,
-							&WindowStateKey::new(sealed_group, sealed_key.clone()),
-						)?;
+						remove(store, &WindowStateKey::new(sealed_group, sealed_key.clone()))?;
 						store.remove_row_number(sealed_group, &sealed_key)?;
 					}
 				}
@@ -421,7 +417,7 @@ where
 		meta_loaded: MetaLoaded<G, C, Carry, Output>,
 	) -> Result<()> {
 		for (group, meta) in meta_loaded {
-			self.meta.put(store, &meta_key_for(&group), meta)?;
+			put(store, &meta_key_for(&group), meta)?;
 		}
 		Ok(())
 	}

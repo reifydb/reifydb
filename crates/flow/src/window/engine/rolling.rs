@@ -16,20 +16,23 @@ use reifydb_codec::{
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
 	metrics::heap::HeapSize,
-	state::{cache::StateCache, timer::StateStore},
+	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	operator::state::{
-		expiry::{expiry_drop, expiry_due, expiry_earliest, expiry_key, expiry_set},
-		seal::coord::{Coord, IsZero},
+	operator::{
+		state::{
+			expiry::{expiry_drop, expiry_due, expiry_earliest, expiry_key, expiry_set},
+			seal::coord::{Coord, IsZero},
+		},
+		state_access::{get, put, remove},
 	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaKey, RunningKey,
+			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, RunningKey,
 			config::WindowEngineConfig, load_batch_meta, meta_key_for, note_when_expiry_capped,
 			persist_batch_meta, sweep_stale_meta,
 		},
@@ -94,13 +97,11 @@ struct GroupSlot<C, Accumulator, Output> {
 }
 
 pub struct RollingEngine<G, C: Slot, Accumulator> {
-	buffers: StateCache<BufferKey, RollingBuffer<C, Accumulator>>,
-	running: Option<StateCache<RunningKey, Accumulator>>,
-	meta: StateCache<MetaKey, GroupMeta<C>>,
+	runnable: bool,
 	meta_low_water: Option<u64>,
 	expire_batch: usize,
 	lag: <C::Coord as Coord>::Span,
-	_pd: PhantomData<G>,
+	_pd: PhantomData<(G, C, Accumulator)>,
 }
 
 struct RunnableGroupSlot<C: Slot, Accumulator>
@@ -163,9 +164,7 @@ where
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			buffers: StateCache::<BufferKey, RollingBuffer<C, Accumulator>>::new(),
-			running: None,
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
+			runnable: false,
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
 			lag: Default::default(),
@@ -175,7 +174,7 @@ where
 
 	pub fn new_runnable(config: WindowEngineConfig) -> Self {
 		let mut engine = Self::new(config);
-		engine.running = Some(StateCache::<RunningKey, Accumulator>::new());
+		engine.runnable = true;
 		engine
 	}
 
@@ -250,7 +249,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let batch = load_batch_meta(store, &mut self.meta, &meta_key_for(group))?;
+				let batch = load_batch_meta(store, &meta_key_for(group))?;
 				meta_loaded.insert(group.clone(), batch);
 			}
 		}
@@ -308,10 +307,8 @@ where
 						Some(resolved) => resolved.clone(),
 						None => row_key(&group),
 					};
-					let buffer: RollingBuffer<C, Accumulator> = self
-						.buffers
-						.get(store, &BufferKey::new(group_id, key.clone()))?
-						.unwrap_or_default();
+					let buffer: RollingBuffer<C, Accumulator> =
+						get(store, &BufferKey::new(group_id, key.clone()))?.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
 					let prior_output = if was_empty_before {
 						None
@@ -422,13 +419,9 @@ where
 			}
 			let output = combine(&group, &slot.buffer);
 			if slot.buffer.is_empty() {
-				self.buffers.remove(store, &BufferKey::new(slot.group_id, slot.key.clone()))?;
+				remove(store, &BufferKey::new(slot.group_id, slot.key.clone()))?;
 			} else {
-				self.buffers.put(
-					store,
-					&BufferKey::new(slot.group_id, slot.key.clone()),
-					slot.buffer,
-				)?;
+				put(store, &BufferKey::new(slot.group_id, slot.key.clone()), slot.buffer)?;
 			}
 
 			if let Some(out) = output {
@@ -483,8 +476,7 @@ where
 		slot: &EncodedKey,
 		frontier: Option<C::Coord>,
 	) -> Result<Accumulator> {
-		let running_cache = self.running.as_mut().expect("runnable engine has a running cache");
-		if let Some(running) = running_cache.get(store, &RunningKey::new(group_id, slot.clone()))? {
+		if let Some(running) = get(store, &RunningKey::new(group_id, slot.clone()))? {
 			return Ok(running);
 		}
 		Ok(running_below(buffer, frontier))
@@ -507,7 +499,7 @@ where
 		}
 		reifydb_assertions! {
 			assert!(
-				self.running.is_some(),
+				self.runnable,
 				"apply_running requires an engine constructed with new_runnable"
 			);
 		}
@@ -532,10 +524,8 @@ where
 						Some(resolved) => resolved.clone(),
 						None => row_key(&group),
 					};
-					let buffer: RollingBuffer<C, Accumulator> = self
-						.buffers
-						.get(store, &BufferKey::new(group_id, key.clone()))?
-						.unwrap_or_default();
+					let buffer: RollingBuffer<C, Accumulator> =
+						get(store, &BufferKey::new(group_id, key.clone()))?.unwrap_or_default();
 					let old_frontier = frontier_for(self.lag, &meta.high_water());
 					let prior_min = coord_min_key(&buffer);
 					let merged_before = prior_min.is_some_and(|m| {
@@ -665,23 +655,14 @@ where
 				None
 			};
 			if slot.buffer.is_empty() {
-				self.buffers.remove(store, &BufferKey::new(slot.group_id, slot.key.clone()))?;
+				remove(store, &BufferKey::new(slot.group_id, slot.key.clone()))?;
 			} else {
-				self.buffers.put(
-					store,
-					&BufferKey::new(slot.group_id, slot.key.clone()),
-					slot.buffer,
-				)?;
+				put(store, &BufferKey::new(slot.group_id, slot.key.clone()), slot.buffer)?;
 			}
-			let running_cache = self.running.as_mut().expect("runnable engine has a running cache");
 			if merged_any {
-				running_cache.put(
-					store,
-					&RunningKey::new(slot.group_id, slot.key.clone()),
-					slot.running,
-				)?;
+				put(store, &RunningKey::new(slot.group_id, slot.key.clone()), slot.running)?;
 			} else {
-				running_cache.remove(store, &RunningKey::new(slot.group_id, slot.key.clone()))?;
+				remove(store, &RunningKey::new(slot.group_id, slot.key.clone()))?;
 			}
 
 			if let Some(out) = output {
@@ -735,7 +716,7 @@ where
 	) -> Result<Vec<RollingExpiry<G, Accumulator::Output>>> {
 		reifydb_assertions! {
 			assert!(
-				self.running.is_some(),
+				self.runnable,
 				"expire_before_running requires an engine constructed with new_runnable"
 			);
 		}
@@ -752,12 +733,11 @@ where
 				Some(<C::Coord as Coord>::MAX)
 			} else {
 				let lag = self.lag;
-				self.meta
-					.get(store, &meta_key_for(&entry.group))?
+				get::<_, GroupMeta<C>>(store, &meta_key_for(&entry.group))?
 					.and_then(|meta| frontier_for::<C>(lag, &meta.high_water))
 			};
 			let mut buffer: RollingBuffer<C, Accumulator> =
-				self.buffers.get(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
+				get(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
 			let expired: Vec<C> = buffer.range(..=cutoff).map(|(coord, _)| *coord).collect();
 			if expired.is_empty() {
 				if let Some(new) = coord_min_key(&buffer) {
@@ -803,10 +783,8 @@ where
 							group_id: entry.group_id,
 						},
 					)?;
-					self.buffers.put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
-					let running_cache =
-						self.running.as_mut().expect("runnable engine has a running cache");
-					running_cache.put(store, &RunningKey::new(group_id, slot.clone()), running)?;
+					put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
+					put(store, &RunningKey::new(group_id, slot.clone()), running)?;
 					pairs.push((group_id, slot));
 					pending.push((entry.group, Some(value)));
 				}
@@ -820,20 +798,16 @@ where
 							group_id: entry.group_id,
 						},
 					)?;
-					self.buffers.put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
-					let running_cache =
-						self.running.as_mut().expect("runnable engine has a running cache");
-					running_cache.remove(store, &RunningKey::new(group_id, slot.clone()))?;
+					put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
+					remove(store, &RunningKey::new(group_id, slot.clone()))?;
 					if unmerged_any {
 						pairs.push((group_id, slot));
 						pending.push((entry.group, None));
 					}
 				}
 				_ => {
-					self.buffers.remove(store, &BufferKey::new(group_id, slot.clone()))?;
-					let running_cache =
-						self.running.as_mut().expect("runnable engine has a running cache");
-					running_cache.remove(store, &RunningKey::new(group_id, slot.clone()))?;
+					remove(store, &BufferKey::new(group_id, slot.clone()))?;
+					remove(store, &RunningKey::new(group_id, slot.clone()))?;
 					pairs.push((group_id, slot));
 					pending.push((entry.group, None));
 				}
@@ -869,7 +843,7 @@ where
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
+		sweep_stale_meta::<GroupMeta<C>>(store, threshold, &mut self.meta_low_water)
 	}
 
 	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
@@ -895,7 +869,7 @@ where
 			let group_id = GroupId(entry.group_id);
 			expiry_drop(store, &index_key)?;
 			let mut buffer: RollingBuffer<C, Accumulator> =
-				self.buffers.get(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
+				get(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
 			if buffer.is_empty() {
 				continue;
 			}
@@ -928,12 +902,12 @@ where
 							},
 						)?;
 					}
-					self.buffers.put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
+					put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
 					pairs.push((group_id, slot));
 					pending.push((entry.group, Some(value)));
 				}
 				_ => {
-					self.buffers.remove(store, &BufferKey::new(group_id, slot.clone()))?;
+					remove(store, &BufferKey::new(group_id, slot.clone()))?;
 					pairs.push((group_id, slot));
 					pending.push((entry.group, None));
 				}
@@ -969,7 +943,7 @@ where
 	}
 
 	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
-		persist_batch_meta(store, &mut self.meta, meta_loaded)
+		persist_batch_meta(store, meta_loaded)
 	}
 }
 

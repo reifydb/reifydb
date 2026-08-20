@@ -11,7 +11,6 @@ use reifydb_codec::row::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	row::Row,
-	state::cache::StateCache,
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_evaluate::expression::{
@@ -32,13 +31,8 @@ use reifydb_value::{
 };
 
 use crate::{
-	context::FlowContext,
-	error::FlowStateError,
-	operator::aggregation::accumulator::RowAccumulator,
-	window::{
-		engine::tumbling::TumblingEngine,
-		meta::{EngineMeta, EngineMetaKey},
-	},
+	context::FlowContext, error::FlowStateError, operator::aggregation::accumulator::RowAccumulator,
+	window::engine::tumbling::TumblingEngine,
 };
 
 #[derive(Clone, Debug)]
@@ -76,7 +70,6 @@ pub struct Aggregation {
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
 	tumbling_engine: Option<Box<TumblingEngine<Hash128, DateTime, RowAccumulator>>>,
-	engine_meta: StateCache<EngineMetaKey, EngineMeta>,
 	pub ctx: Arc<FlowContext>,
 }
 
@@ -159,7 +152,6 @@ impl Aggregation {
 			routines,
 			runtime_context,
 			tumbling_engine: None,
-			engine_meta: StateCache::new(),
 			ctx,
 		}
 	}
@@ -168,10 +160,6 @@ impl Aggregation {
 		&mut self,
 	) -> &mut Option<Box<TumblingEngine<Hash128, DateTime, RowAccumulator>>> {
 		&mut self.tumbling_engine
-	}
-
-	pub(crate) fn engine_meta(&mut self) -> &mut StateCache<EngineMetaKey, EngineMeta> {
-		&mut self.engine_meta
 	}
 
 	pub fn compute_groups(&self, columns: &Columns) -> Result<Vec<(Hash128, Vec<Value>)>> {

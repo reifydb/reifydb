@@ -56,6 +56,7 @@ pub mod sink;
 #[cfg(feature = "runtime")]
 pub mod sort;
 pub mod state;
+pub mod state_access;
 #[cfg(feature = "runtime")]
 pub mod take;
 #[cfg(feature = "runtime")]

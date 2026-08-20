@@ -6,7 +6,7 @@ use std::mem::size_of;
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey},
 	metrics::heap::HeapSize,
-	state::{cache::StateCache, timer::StateStore},
+	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -15,9 +15,12 @@ use reifydb_value::{
 };
 
 use crate::{
-	operator::state::seal::{
-		coord::Coord,
-		ledger::{SealLedgerState, seal_ledger_key},
+	operator::{
+		state::seal::{
+			coord::Coord,
+			ledger::{SealLedgerState, seal_ledger_key},
+		},
+		state_access::{get, get_or_default, put, remove},
 	},
 	window::kind::session::SessionTracker,
 };
@@ -179,38 +182,21 @@ impl IntoGroupStateKey for &RollingMetaKey {
 	}
 }
 
-pub struct WindowMeta {
-	seal_ledger: StateCache<SealLedgerKey, SealLedgerState>,
-	count: StateCache<CountKey, CountState>,
-	row_index: StateCache<RowIndexKey, RowIndexState>,
-	session: StateCache<SessionKey, SessionState>,
-	rolling_meta: StateCache<RollingMetaKey, RollingMeta>,
-}
-
-impl Default for WindowMeta {
-	fn default() -> Self {
-		Self::new()
-	}
-}
+#[derive(Default)]
+pub struct WindowMeta;
 
 impl WindowMeta {
 	pub fn new() -> Self {
-		Self {
-			seal_ledger: StateCache::new(),
-			count: StateCache::new(),
-			row_index: StateCache::new(),
-			session: StateCache::new(),
-			rolling_meta: StateCache::new(),
-		}
+		Self
 	}
 
 	pub fn seal_ledger(&mut self, store: &mut dyn StateStore) -> Result<u64> {
-		Ok(self.seal_ledger.get_or_default(store, &SealLedgerKey)?.sealed_through)
+		Ok(get_or_default::<_, SealLedgerState>(store, &SealLedgerKey)?.sealed_through)
 	}
 
 	pub fn advance_seal_ledger(&mut self, store: &mut dyn StateStore, coord: u64) -> Result<()> {
 		if coord > self.seal_ledger(store)? {
-			self.seal_ledger.put(
+			put(
 				store,
 				&SealLedgerKey,
 				SealLedgerState {
@@ -223,8 +209,8 @@ impl WindowMeta {
 
 	pub fn get_and_increment_count(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<u64> {
 		let key = CountKey(group);
-		let current = self.count.get_or_default(store, &key)?.value;
-		self.count.put(
+		let current = get_or_default::<_, CountState>(store, &key)?.value;
+		put(
 			store,
 			&key,
 			CountState {
@@ -240,7 +226,7 @@ impl WindowMeta {
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<Vec<u64>> {
-		Ok(self.row_index.get_or_default(store, &RowIndexKey(group, row_number))?.window_ids)
+		Ok(get_or_default::<_, RowIndexState>(store, &RowIndexKey(group, row_number))?.window_ids)
 	}
 
 	pub fn store_row_index(
@@ -251,11 +237,11 @@ impl WindowMeta {
 		window_id: u64,
 	) -> Result<()> {
 		let key = RowIndexKey(group, row_number);
-		let mut state = self.row_index.get_or_default(store, &key)?;
+		let mut state: RowIndexState = get_or_default(store, &key)?;
 		if !state.window_ids.contains(&window_id) {
 			state.window_ids.push(window_id);
 		}
-		self.row_index.put(store, &key, state)
+		put(store, &key, state)
 	}
 
 	pub fn drop_row_index(
@@ -264,11 +250,11 @@ impl WindowMeta {
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<()> {
-		self.row_index.remove(store, &RowIndexKey(group, row_number))
+		remove(store, &RowIndexKey(group, row_number))
 	}
 
 	pub fn load_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<SessionTracker> {
-		let Some(state) = self.session.get(store, &SessionKey(group))? else {
+		let Some(state) = get::<_, SessionState>(store, &SessionKey(group))? else {
 			return Ok(SessionTracker::default());
 		};
 		Ok(SessionTracker::resumed(
@@ -284,7 +270,7 @@ impl WindowMeta {
 		group: GroupId,
 		tracker: &SessionTracker,
 	) -> Result<()> {
-		self.session.put(
+		put(
 			store,
 			&SessionKey(group),
 			SessionState {
@@ -296,7 +282,7 @@ impl WindowMeta {
 	}
 
 	pub fn rolling_meta(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<Option<RollingMeta>> {
-		self.rolling_meta.get(store, &RollingMetaKey(group))
+		get(store, &RollingMetaKey(group))
 	}
 
 	pub fn put_rolling_meta(
@@ -305,11 +291,11 @@ impl WindowMeta {
 		group: GroupId,
 		meta: RollingMeta,
 	) -> Result<()> {
-		self.rolling_meta.put(store, &RollingMetaKey(group), meta)
+		put(store, &RollingMetaKey(group), meta)
 	}
 
 	pub fn drop_rolling_meta(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<()> {
-		self.rolling_meta.remove(store, &RollingMetaKey(group))
+		remove(store, &RollingMetaKey(group))
 	}
 }
 

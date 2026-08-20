@@ -26,14 +26,17 @@ use reifydb_core::{
 		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
 	},
 	metrics::heap::HeapSize,
-	state::{cache::StateCache, timer::StateStore},
+	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::row_number::RowNumber};
 use tracing::{debug, instrument};
 
 use crate::{
-	operator::state::seal::coord::Coord,
+	operator::{
+		state::seal::coord::Coord,
+		state_access::{get, modify, remove},
+	},
 	window::span::{Slot, WindowSpan},
 };
 
@@ -133,26 +136,18 @@ impl<C: Slot> BatchMeta<C> {
 	}
 }
 
-pub(crate) fn load_batch_meta<C>(
-	store: &mut dyn StateStore,
-	meta: &mut StateCache<MetaKey, GroupMeta<C>>,
-	key: &MetaKey,
-) -> Result<BatchMeta<C>>
+pub(crate) fn load_batch_meta<C>(store: &mut dyn StateStore, key: &MetaKey) -> Result<BatchMeta<C>>
 where
 	C: Slot,
 {
-	let initial = meta.get(store, key)?.and_then(|meta| meta.high_water);
+	let initial = get::<_, GroupMeta<C>>(store, key)?.and_then(|meta| meta.high_water);
 	Ok(BatchMeta {
 		initial,
 		bumped: None,
 	})
 }
 
-pub(crate) fn persist_batch_meta<G, C>(
-	store: &mut dyn StateStore,
-	meta: &mut StateCache<MetaKey, GroupMeta<C>>,
-	loaded: HashMap<G, BatchMeta<C>>,
-) -> Result<()>
+pub(crate) fn persist_batch_meta<G, C>(store: &mut dyn StateStore, loaded: HashMap<G, BatchMeta<C>>) -> Result<()>
 where
 	for<'a> &'a G: IntoEncodedKey,
 	C: Slot,
@@ -161,7 +156,7 @@ where
 		let Some(bumped) = batch.bumped else {
 			continue;
 		};
-		meta.modify(store, &meta_key_for(&group), |native| {
+		modify(store, &meta_key_for(&group), |native: &mut GroupMeta<C>| {
 			if native.high_water.is_none_or(|hw| bumped > hw) {
 				native.high_water = Some(bumped);
 			}
@@ -184,7 +179,6 @@ pub(crate) fn meta_range() -> EncodedKeyRange {
 #[instrument(name = "flow::window::sweep_stale_meta", level = "debug", skip_all)]
 pub(crate) fn sweep_stale_meta<M>(
 	store: &mut dyn StateStore,
-	meta: &mut StateCache<MetaKey, M>,
 	threshold: u64,
 	low_water: &mut Option<u64>,
 ) -> Result<usize>
@@ -212,7 +206,7 @@ where
 	*low_water = min_surviving;
 	let count = stale.len();
 	for key in &stale {
-		meta.remove(store, key)?;
+		remove(store, key)?;
 	}
 	Ok(count)
 }

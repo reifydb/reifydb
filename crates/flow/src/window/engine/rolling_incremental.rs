@@ -13,23 +13,22 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
 	row::operator::state::OperatorState,
 };
-use reifydb_core::{
-	key::operator_state::GroupId,
-	metrics::heap::HeapSize,
-	state::{cache::StateCache, timer::StateStore},
-};
+use reifydb_core::{key::operator_state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
 use reifydb_value::{Result, reifydb_assertions};
 
-use crate::window::{
-	accumulator::WindowAccumulator,
-	engine::{
-		AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaKey, RunningKey, WindowStateKey,
-		config::WindowEngineConfig,
-		load_batch_meta, meta_key_for, persist_batch_meta,
-		rolling::{RollingBuckets, RollingBuffer, RollingResult},
-		sweep_stale_meta,
+use crate::{
+	operator::state_access::{get, put},
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, RunningKey, WindowStateKey,
+			config::WindowEngineConfig,
+			load_batch_meta, meta_key_for, persist_batch_meta,
+			rolling::{RollingBuckets, RollingBuffer, RollingResult},
+			sweep_stale_meta,
+		},
+		span::Slot,
 	},
-	span::Slot,
 };
 
 type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
@@ -45,11 +44,8 @@ struct GroupSlot<C, Accumulator, Running, Output> {
 }
 
 pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
-	buffers: StateCache<WindowStateKey, RollingBuffer<C, Accumulator>>,
-	running: StateCache<RunningKey, Running>,
-	meta: StateCache<MetaKey, GroupMeta<C>>,
 	meta_low_water: Option<u64>,
-	_pd: PhantomData<G>,
+	_pd: PhantomData<(G, C, Accumulator, Running)>,
 }
 
 impl<G, C, Accumulator, Running> RollingIncrementalEngine<G, C, Accumulator, Running>
@@ -65,16 +61,13 @@ where
 {
 	pub fn new(_config: WindowEngineConfig) -> Self {
 		Self {
-			buffers: StateCache::<WindowStateKey, RollingBuffer<C, Accumulator>>::new(),
-			running: StateCache::<RunningKey, Running>::new(),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
 			meta_low_water: None,
 			_pd: PhantomData,
 		}
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
+		sweep_stale_meta::<GroupMeta<C>>(store, threshold, &mut self.meta_low_water)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -119,13 +112,10 @@ where
 							(group_id, key)
 						}
 					};
-					let buffer: RollingBuffer<C, Accumulator> = self
-						.buffers
-						.get(store, &WindowStateKey::new(group_id, key.clone()))?
-						.unwrap_or_default();
-					let running: Running = self
-						.running
-						.get(store, &RunningKey::new(group_id, key.clone()))?
+					let buffer: RollingBuffer<C, Accumulator> =
+						get(store, &WindowStateKey::new(group_id, key.clone()))?
+							.unwrap_or_default();
+					let running: Running = get(store, &RunningKey::new(group_id, key.clone()))?
 						.unwrap_or_default();
 					let prior_output = match buffer.iter().next_back() {
 						Some((coord, accumulator)) => {
@@ -207,8 +197,8 @@ where
 					.and_then(|newest| combine_running(&group, &slot.running, &newest, *coord)),
 				None => None,
 			};
-			self.buffers.put(store, &WindowStateKey::new(slot.group_id, slot.key.clone()), slot.buffer)?;
-			self.running.put(store, &RunningKey::new(slot.group_id, slot.key.clone()), slot.running)?;
+			put(store, &WindowStateKey::new(slot.group_id, slot.key.clone()), slot.buffer)?;
+			put(store, &RunningKey::new(slot.group_id, slot.key.clone()), slot.running)?;
 
 			if let Some(out) = output {
 				pairs.push((slot.group_id, slot.key));
@@ -262,7 +252,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let batch = load_batch_meta(store, &mut self.meta, &meta_key_for(group))?;
+				let batch = load_batch_meta(store, &meta_key_for(group))?;
 				meta_loaded.insert(group.clone(), batch);
 			}
 		}
@@ -312,7 +302,7 @@ where
 	}
 
 	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
-		persist_batch_meta(store, &mut self.meta, meta_loaded)
+		persist_batch_meta(store, meta_loaded)
 	}
 }
 
