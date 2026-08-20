@@ -45,7 +45,7 @@ pub fn bootstrap_store(
 	Ok(())
 }
 
-const STORE_NAMESPACES: [(NamespaceId, &str, &str, NamespaceId); 10] = [
+const STORE_NAMESPACES: [(NamespaceId, &str, &str, NamespaceId); 11] = [
 	(
 		NamespaceId::SYSTEM_METRICS_STORE_MULTI,
 		"system::metrics::store::multi",
@@ -99,6 +99,12 @@ const STORE_NAMESPACES: [(NamespaceId, &str, &str, NamespaceId); 10] = [
 		"system::metrics::store::operator::read",
 		"read",
 		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_READ_KEYSPACE,
+		"system::metrics::store::operator::read::keyspace",
+		"keyspace",
+		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_READ,
 	),
 	(
 		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_PERSISTENT,

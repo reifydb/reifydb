@@ -7,7 +7,10 @@ use reifydb_store_multi::{
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
-	tier::{persistent::OperatorPageCacheMetrics, read::OperatorReadBufferShardMetrics},
+	tier::{
+		persistent::OperatorPageCacheMetrics,
+		read::{OperatorReadBufferKeyspaceMetrics, OperatorReadBufferShardMetrics},
+	},
 };
 use reifydb_store_single::{
 	SingleStore,
@@ -52,6 +55,10 @@ impl StoreReader {
 
 	pub fn operator_read(&self) -> Vec<OperatorReadBufferShardMetrics> {
 		self.operator.read_buffer_shard_metrics()
+	}
+
+	pub fn operator_read_by_keyspace(&self) -> Vec<OperatorReadBufferKeyspaceMetrics> {
+		self.operator.read_buffer_keyspace_metrics()
 	}
 
 	pub fn operator_persistent(&self) -> Option<OperatorPageCacheMetrics> {

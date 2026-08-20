@@ -53,6 +53,7 @@ impl NamespaceId {
 	pub const STORAGE: NamespaceId = NamespaceId(42);
 	pub const SYSTEM_METRICS_FLOW: NamespaceId = NamespaceId(43);
 	pub const SYSTEM_METRICS_FLOW_STATE: NamespaceId = NamespaceId(44);
+	pub const SYSTEM_METRICS_STORE_OPERATOR_READ_KEYSPACE: NamespaceId = NamespaceId(45);
 	pub const GRAPHQL: NamespaceId = NamespaceId(55);
 }
 

@@ -4,6 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
+	key::operator_state::Keyspace,
 	lifecycle::metrics::RetentionMetrics,
 	metrics::sample::{MetricKind, MetricsSample, Reading},
 	value::column::columns::Columns,
@@ -18,7 +19,10 @@ use reifydb_runtime::{
 	context::clock::Clock,
 };
 use reifydb_store_multi::{MultiStore, tier::read::ReadBufferShardMetrics};
-use reifydb_store_operator::{store::OperatorStore, tier::read::OperatorReadBufferShardMetrics};
+use reifydb_store_operator::{
+	store::OperatorStore,
+	tier::read::{OperatorReadBufferKeyspaceMetrics, OperatorReadBufferShardMetrics},
+};
 use reifydb_store_single::SingleStore;
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -187,6 +191,11 @@ impl MetricsSamplerActor {
 			MetricsDomain::StoreOperatorRead,
 			Surface::Current,
 			operator_read_rows(&self.operator_store),
+		);
+		accumulator.push(
+			MetricsDomain::StoreOperatorReadKeyspace,
+			Surface::Current,
+			operator_read_keyspace_rows(&self.operator_store),
 		);
 		accumulator.push(
 			MetricsDomain::StoreOperatorPersistent,
@@ -389,6 +398,37 @@ fn operator_read_row(metrics: &OperatorReadBufferShardMetrics) -> MetricsRow {
 	}
 }
 
+fn operator_read_keyspace_rows(store: &OperatorStore) -> Vec<MetricsRow> {
+	store.read_buffer_keyspace_metrics().iter().map(operator_read_keyspace_row).collect()
+}
+
+fn keyspace_label(keyspace: Keyspace) -> String {
+	let name = keyspace.name();
+	if name == "CUSTOM" && keyspace != Keyspace::CUSTOM {
+		format!("CUSTOM_0x{:02X}", keyspace.0)
+	} else {
+		name.to_string()
+	}
+}
+
+fn operator_read_keyspace_row(metrics: &OperatorReadBufferKeyspaceMetrics) -> MetricsRow {
+	MetricsRow {
+		dimensions: vec![Value::Utf8(keyspace_label(metrics.keyspace))],
+		measures: vec![
+			level_bytes("used", metrics.used),
+			level_count("buckets", metrics.buckets as u64),
+			level_count("entries", metrics.entries as u64),
+			level_count("complete_buckets", metrics.complete_buckets as u64),
+			counter_count("hits", metrics.counters.hits),
+			counter_count("misses", metrics.counters.misses),
+			counter_count("evictions", metrics.counters.evictions),
+			counter_count("fills_started", metrics.counters.fills_started),
+			counter_count("fills_dirty_aborted", metrics.counters.fills_dirty_aborted),
+			counter_count("fills_duplicate", metrics.counters.fills_duplicate),
+		],
+	}
+}
+
 fn multi_persistent_rows(store: &MultiStore) -> Vec<MetricsRow> {
 	let Some(metrics) = store.persistent_page_cache_metrics() else {
 		return Vec::new();
@@ -490,4 +530,117 @@ fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
 			}
 		})
 		.collect()
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_store_operator::tier::read::OperatorReadBufferMetrics;
+
+	use super::*;
+
+	fn sample() -> OperatorReadBufferKeyspaceMetrics {
+		OperatorReadBufferKeyspaceMetrics {
+			keyspace: Keyspace::SOURCE_WATERMARK,
+			used: ByteSize::from_bytes(12_401),
+			buckets: 115,
+			entries: 231,
+			complete_buckets: 97,
+			counters: OperatorReadBufferMetrics {
+				hits: 367_918,
+				misses: 2_944,
+				evictions: 51,
+				fills_started: 3_001,
+				fills_dirty_aborted: 7,
+				fills_duplicate: 13,
+			},
+		}
+	}
+
+	#[test]
+	fn keyspace_row_names_the_keyspace_rather_than_numbering_it() {
+		let row = operator_read_keyspace_row(&sample());
+		assert_eq!(
+			row.dimensions,
+			vec![Value::Utf8("SOURCE_WATERMARK".to_string())],
+			"the dimension must be the keyspace name; a raw u8 breaks the moment a constant is renumbered"
+		);
+	}
+
+	#[test]
+	fn two_unnamed_keyspaces_never_collapse_into_one_row() {
+		// name() answers "CUSTOM" for every value it has no constant for, so labelling rows with it alone
+		// merges distinct keyspaces into a single accumulator key and silently sums their counters.
+		let mut first = sample();
+		first.keyspace = Keyspace(0x50);
+		let mut second = sample();
+		second.keyspace = Keyspace(0x51);
+
+		let first = operator_read_keyspace_row(&first);
+		let second = operator_read_keyspace_row(&second);
+
+		assert_eq!(first.dimensions, vec![Value::Utf8("CUSTOM_0x50".to_string())]);
+		assert_eq!(second.dimensions, vec![Value::Utf8("CUSTOM_0x51".to_string())]);
+		assert_ne!(first.dimensions, second.dimensions);
+	}
+
+	#[test]
+	fn the_real_custom_keyspace_keeps_its_plain_name() {
+		// Keyspace::CUSTOM is a declared constant, not a gap: relabelling it CUSTOM_0x40 would rename a
+		// keyspace that every other surface still calls CUSTOM.
+		let mut metrics = sample();
+		metrics.keyspace = Keyspace::CUSTOM;
+		let row = operator_read_keyspace_row(&metrics);
+		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM".to_string())]);
+	}
+
+	#[test]
+	fn keyspace_row_carries_every_declared_measure_exactly_once() {
+		let row = operator_read_keyspace_row(&sample());
+		let declared: Vec<&str> =
+			MetricsDomain::StoreOperatorReadKeyspace.spec().measures.iter().map(|m| m.name).collect();
+		let built: Vec<&str> = row.measures.iter().map(|m| m.metric).collect();
+		assert_eq!(built, declared, "a declared measure the row omits publishes as none forever");
+	}
+
+	#[test]
+	fn keyspace_row_maps_each_field_to_its_own_measure() {
+		let metrics = sample();
+		let row = operator_read_keyspace_row(&metrics);
+		let find = |name: &str| {
+			row.measures.iter().find(|m| m.metric == name).unwrap_or_else(|| panic!("missing {name}"))
+		};
+
+		assert_eq!(find("used").reading, Reading::Bytes(ByteSize::from_bytes(12_401)));
+		assert_eq!(find("buckets").reading, Reading::Count(Count::new(115)));
+		assert_eq!(find("entries").reading, Reading::Count(Count::new(231)));
+		assert_eq!(find("complete_buckets").reading, Reading::Count(Count::new(97)));
+		assert_eq!(find("hits").reading, Reading::Count(Count::new(367_918)));
+		assert_eq!(find("misses").reading, Reading::Count(Count::new(2_944)));
+		assert_eq!(find("evictions").reading, Reading::Count(Count::new(51)));
+		assert_eq!(find("fills_started").reading, Reading::Count(Count::new(3_001)));
+		assert_eq!(find("fills_dirty_aborted").reading, Reading::Count(Count::new(7)));
+		assert_eq!(find("fills_duplicate").reading, Reading::Count(Count::new(13)));
+	}
+
+	#[test]
+	fn keyspace_row_kinds_match_the_declared_spec() {
+		let row = operator_read_keyspace_row(&sample());
+		let spec = MetricsDomain::StoreOperatorReadKeyspace.spec();
+		for measure in &row.measures {
+			let declared = spec.measures.iter().find(|m| m.name == measure.metric).expect("declared");
+			assert_eq!(
+				measure.kind, declared.kind,
+				"{} must be pushed with the kind the spec declares, otherwise a level accumulates as a counter",
+				measure.metric
+			);
+		}
+	}
+
+	#[test]
+	fn keyspace_rows_report_nothing_for_a_store_without_a_read_tier() {
+		assert!(
+			operator_read_keyspace_rows(&OperatorStore::testing_memory()).is_empty(),
+			"an absent read tier must publish no rows, never one row of zeros claiming a perfect cache"
+		);
+	}
 }

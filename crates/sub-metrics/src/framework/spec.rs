@@ -23,6 +23,7 @@ pub enum MetricsDomain {
 	StoreSingleCommit,
 	StoreSinglePersistent,
 	StoreOperatorRead,
+	StoreOperatorReadKeyspace,
 	StoreOperatorPersistent,
 	Instruments,
 	Epoch,
@@ -277,7 +278,7 @@ mod tests {
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 24] = [
+	pub const ALL: [MetricsDomain; 25] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
@@ -294,6 +295,7 @@ impl MetricsDomain {
 		MetricsDomain::StoreSingleCommit,
 		MetricsDomain::StoreSinglePersistent,
 		MetricsDomain::StoreOperatorRead,
+		MetricsDomain::StoreOperatorReadKeyspace,
 		MetricsDomain::StoreOperatorPersistent,
 		MetricsDomain::Instruments,
 		MetricsDomain::Epoch,
@@ -325,6 +327,7 @@ impl MetricsDomain {
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
 			| MetricsDomain::StoreOperatorRead
+			| MetricsDomain::StoreOperatorReadKeyspace
 			| MetricsDomain::StoreOperatorPersistent
 			| MetricsDomain::Instruments
 			| MetricsDomain::Epoch
@@ -358,6 +361,7 @@ impl MetricsDomain {
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
 			| MetricsDomain::StoreOperatorRead
+			| MetricsDomain::StoreOperatorReadKeyspace
 			| MetricsDomain::StoreOperatorPersistent => None,
 		}
 	}
@@ -589,6 +593,25 @@ impl MetricsDomain {
 				measures: vec![
 					level("used", ValueType::Uint8),
 					level("limit", ValueType::Uint8),
+					level("buckets", ValueType::Uint8),
+					level("entries", ValueType::Uint8),
+					level("complete_buckets", ValueType::Uint8),
+					counter("hits", ValueType::Uint8),
+					counter("misses", ValueType::Uint8),
+					counter("evictions", ValueType::Uint8),
+					counter("fills_started", ValueType::Uint8),
+					counter("fills_dirty_aborted", ValueType::Uint8),
+					counter("fills_duplicate", ValueType::Uint8),
+				],
+				has_total: true,
+			},
+			MetricsDomain::StoreOperatorReadKeyspace => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_READ_KEYSPACE,
+				shape: DomainShape::Wide,
+				dimensions: vec![dim("keyspace", ValueType::Utf8)],
+				measures: vec![
+					level("used", ValueType::Uint8),
 					level("buckets", ValueType::Uint8),
 					level("entries", ValueType::Uint8),
 					level("complete_buckets", ValueType::Uint8),
