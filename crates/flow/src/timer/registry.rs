@@ -13,7 +13,48 @@ pub struct TimerRegistry {
 	flows: HashMap<FlowId, HashMap<OperatorId, DateTime>>,
 }
 
+pub struct TimerStage {
+	flow: FlowId,
+	staged: TimerRegistry,
+}
+
+impl TimerStage {
+	pub fn due_before(&mut self, armed: Vec<TimerDue>, watermark: DateTime) -> Vec<TimerDue> {
+		self.staged.due_before(armed, self.flow, watermark)
+	}
+
+	pub fn refresh(&mut self, operator: OperatorId, next: Option<TimerDue>) {
+		self.staged.refresh(self.flow, operator, next);
+	}
+}
+
 impl TimerRegistry {
+	pub fn stage(&self, flow: FlowId) -> TimerStage {
+		let mut staged = TimerRegistry::default();
+		if let Some(operators) = self.flows.get(&flow) {
+			staged.flows.insert(flow, operators.clone());
+		}
+		TimerStage {
+			flow,
+			staged,
+		}
+	}
+
+	pub fn apply(&mut self, stage: TimerStage) {
+		let TimerStage {
+			flow,
+			mut staged,
+		} = stage;
+		match staged.flows.remove(&flow) {
+			Some(operators) => {
+				self.flows.insert(flow, operators);
+			}
+			None => {
+				self.flows.remove(&flow);
+			}
+		}
+	}
+
 	pub fn due_before(&mut self, armed: Vec<TimerDue>, flow: FlowId, watermark: DateTime) -> Vec<TimerDue> {
 		self.fold(flow, armed);
 		let Some(operators) = self.flows.get(&flow) else {
@@ -268,6 +309,66 @@ mod tests {
 
 		assert_eq!(entries(&registry, flow(1)), Vec::new());
 		assert_eq!(entries(&registry, flow(2)), vec![armed(3, 5_000)], "retiring one flow must spare the rest");
+	}
+
+	#[test]
+	fn a_stage_that_is_never_applied_leaves_the_registry_untouched() {
+		// the wheel removes die with the dropped transaction, so an index that advanced anyway hides a timer
+		// that is still armed
+		let mut registry = TimerRegistry::default();
+		due_before(&mut registry, vec![armed(1, 5_000)], flow(1), 0);
+
+		let mut stage = registry.stage(flow(1));
+		assert_eq!(
+			stage.due_before(Vec::new(), DateTime::from_millis(5_000)),
+			vec![armed(1, 5_000)],
+			"the stage must see what the registry held when it was taken"
+		);
+		stage.refresh(operator(1), None);
+
+		assert_eq!(entries(&registry, flow(1)), vec![armed(1, 5_000)]);
+	}
+
+	#[test]
+	fn a_stage_folds_arms_only_into_its_own_copy() {
+		// an arm is a transactional write too, so folding it straight in outlives the transaction that never
+		// committed it
+		let registry = TimerRegistry::default();
+
+		let mut stage = registry.stage(flow(1));
+		stage.due_before(vec![armed(1, 5_000)], DateTime::from_millis(0));
+
+		assert_eq!(entries(&registry, flow(1)), Vec::new());
+	}
+
+	#[test]
+	fn applying_a_stage_moves_every_mutation_it_holds_onto_the_registry() {
+		// the stage is the only record of what the dispatch drained, so a lost apply rescans and refires every
+		// one of them
+		let mut registry = TimerRegistry::default();
+		due_before(&mut registry, vec![armed(1, 5_000), armed(2, 5_000)], flow(1), 0);
+
+		let mut stage = registry.stage(flow(1));
+		stage.refresh(operator(1), Some(armed(1, 9_000)));
+		stage.refresh(operator(2), None);
+		registry.apply(stage);
+
+		assert_eq!(entries(&registry, flow(1)), vec![armed(1, 9_000)]);
+	}
+
+	#[test]
+	fn applying_a_stage_never_reaches_another_flow() {
+		// a stage is scoped to one flow, otherwise its apply erases entries a sibling flow is about to scan
+		let mut registry = TimerRegistry::default();
+		due_before(&mut registry, vec![armed(1, 5_000)], flow(1), 0);
+		due_before(&mut registry, vec![armed(2, 5_000)], flow(2), 0);
+
+		let mut stage = registry.stage(flow(1));
+		stage.refresh(operator(1), None);
+		registry.apply(stage);
+
+		assert_eq!(entries(&registry, flow(1)), Vec::new());
+		assert_eq!(entries(&registry, flow(2)), vec![armed(2, 5_000)]);
 	}
 
 	#[test]

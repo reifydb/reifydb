@@ -241,7 +241,6 @@ impl FlowActor {
 		}
 		let safe = self.safe_bound();
 		if safe <= state.cursor {
-			state.retry_count = 0;
 			state.overlay.prune_through(state.cursor);
 			self.checkpoint_if_stale(state, ctx);
 			return;
@@ -491,9 +490,12 @@ impl FlowActor {
 	}
 
 	fn on_tick(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+		let mut retrying = false;
 		if self.ticks_enabled && !state.poisoned && !state.committing {
-			match self.computer.tick(&mut state.flow_engine, self.flow_id, state.durable_cursor) {
+			let ticked = self.computer.tick(&mut state.flow_engine, self.flow_id, state.durable_cursor);
+			match ticked {
 				Ok((pending, view_changes)) => {
+					state.retry_count = 0;
 					let has_output =
 						pending.iter_sorted().next().is_some() || !view_changes.is_empty();
 					if has_output {
@@ -501,14 +503,15 @@ impl FlowActor {
 					}
 				}
 				Err(e) => {
-					warn!(flow_id = self.flow_id.0, error = %e, "flow tick failed");
+					self.retry_or_poison(state, ctx, format!("flow tick failed: {e}"));
+					retrying = true;
 				}
 			}
 		}
 
 		ctx.schedule_once(self.tick_interval(), || FlowActorMessage::Tick);
 
-		if !state.poisoned && !state.committing {
+		if !retrying && !state.poisoned && !state.committing {
 			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 		}
 	}
@@ -1783,5 +1786,312 @@ mod pull_protocol {
 		);
 		assert!(mirrored[0].head > 1, "precondition: evictions must have moved head off its initial value");
 		drop(actor);
+	}
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tick_failures {
+	use std::{collections::HashMap, marker::PhantomData};
+
+	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::{
+		actors::pending::PendingLayers,
+		interface::{
+			catalog::{flow::OperatorId, id::ViewId},
+			change::Change,
+			flow::OperatorCapability,
+		},
+		state::timer::TimerKind,
+	};
+	use reifydb_engine::engine::StandardEngine;
+	use reifydb_flow::{
+		operator::{BoxedHostOperator, HostOperator, host::HostContext},
+		timer::{Timer, wheel::TimerWheel},
+		transaction::{
+			DeferredParams, FlowTransaction, deferred::DeferredTransaction,
+			substrate::apply_operator_state, watermark::SourceWatermarks,
+		},
+	};
+	use reifydb_rql::flow::operator::{FlowEdge, FlowNode, OperatorDef};
+	use reifydb_runtime::actor::{
+		context::Context,
+		system::ActorConfig,
+		testing::TestHarness,
+		traits::{Actor, Directive},
+	};
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::{
+		Result as ValueResult,
+		error::{Diagnostic, Error},
+		factory::time::at_millis,
+	};
+
+	use super::*;
+	use crate::builder::{CustomOperatorEntry, CustomOperators};
+
+	const FLOW: FlowId = FlowId(9_000);
+	const SOURCE: OperatorId = OperatorId(9_001);
+	const TIMED: OperatorId = OperatorId(9_002);
+	const DUE_MS: u64 = 5_000;
+	const WATERMARK_MS: u64 = 10_000;
+	const RETRY_LIMIT: u32 = 3;
+
+	struct Boom {
+		id: OperatorId,
+	}
+
+	impl HostOperator for Boom {
+		fn id(&self) -> OperatorId {
+			self.id
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
+		}
+
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> ValueResult<Change> {
+			Ok(change)
+		}
+
+		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<Change>> {
+			Err(Error(Box::new(Diagnostic {
+				code: "TEST_TIMER_HANDLER_FAILED".to_string(),
+				message: "the timer handler failed".to_string(),
+				..Default::default()
+			})))
+		}
+	}
+
+	struct Idle<M> {
+		_marker: PhantomData<fn() -> M>,
+	}
+
+	impl<M: Send + 'static> Actor for Idle<M> {
+		type State = ();
+		type Message = M;
+
+		fn init(&self, _ctx: &Context<Self::Message>) {}
+
+		fn handle(&self, _state: &mut (), _msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
+			Directive::Continue
+		}
+
+		fn config(&self) -> ActorConfig {
+			ActorConfig::new()
+		}
+	}
+
+	fn idle<M: Send + 'static>(engine: &StandardEngine, name: &str) -> ActorRef<M> {
+		engine.spawner()
+			.spawn_ephemeral(
+				name,
+				Idle::<M> {
+					_marker: PhantomData,
+				},
+			)
+			.actor_ref()
+			.clone()
+	}
+
+	fn boom_operators() -> CustomOperators {
+		let mut map = HashMap::new();
+		map.insert(
+			"boom".to_string(),
+			CustomOperatorEntry {
+				factory: Arc::new(|id, _config| {
+					Ok(Box::new(Boom {
+						id,
+					}) as BoxedHostOperator)
+				}),
+				abi: None,
+				version: "0.0.1".to_string(),
+				description: "test-only operator whose timer handler always fails".to_string(),
+				capabilities: 0,
+				input: Vec::new(),
+				output: Vec::new(),
+			},
+		);
+		CustomOperators::new(map)
+	}
+
+	fn source_view(engine: &StandardEngine) -> ViewId {
+		let mut query = engine.begin_query(IdentityId::system()).expect("query");
+		let mut txn = Transaction::Query(&mut query);
+		let namespace = engine
+			.catalog()
+			.find_namespace_by_name(&mut txn, "app")
+			.expect("namespace")
+			.expect("the test declares namespace app");
+		engine.catalog()
+			.find_view_by_name(&mut txn, namespace.id(), "v")
+			.expect("view lookup")
+			.expect("the test declares view v")
+			.id()
+	}
+
+	fn arm_due_timer(engine: &StandardEngine, substrate: &FlowSubstrate) {
+		let (version, lease) = engine.acquire_current_snapshot_lease().expect("lease");
+		let query = engine.multi().begin_query_at_version(&lease).expect("query");
+		let state_query = engine.multi().begin_query_at_version(&lease).expect("state query");
+		let mut txn = DeferredTransaction::new(DeferredParams {
+			version,
+			pending: PendingLayers::empty(),
+			query,
+			state_query,
+			catalog: engine.catalog(),
+			interceptors: engine.create_interceptors(),
+			clock: engine.clock().clone(),
+			substrate: substrate.clone(),
+		});
+		SourceWatermarks::advance(SOURCE, &mut txn, at_millis(WATERMARK_MS)).expect("advance watermark");
+		TimerWheel::arm(
+			TIMED,
+			&mut txn,
+			&Timer {
+				due: at_millis(DUE_MS),
+				kind: TimerKind::Seal,
+				key: EncodedKey::new(b"bucket"),
+			},
+		)
+		.expect("arm timer");
+		let pending = txn.take_pending();
+		apply_operator_state(&engine.operator_state(), &pending);
+	}
+
+	fn ticking_actor() -> (TestEngine, FlowHealthRegistry, FlowActor) {
+		actor_with_due_timer(true)
+	}
+
+	fn quiet_actor() -> (TestEngine, FlowHealthRegistry, FlowActor) {
+		actor_with_due_timer(false)
+	}
+
+	fn actor_with_due_timer(armed: bool) -> (TestEngine, FlowHealthRegistry, FlowActor) {
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4 }");
+		te.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
+
+		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
+		if armed {
+			arm_due_timer(&engine, &substrate);
+		}
+
+		let mut builder = FlowDag::builder(FLOW);
+		builder.add_node(FlowNode::new(
+			SOURCE,
+			OperatorDef::SourceView {
+				view: source_view(&engine),
+			},
+		));
+		builder.add_node(FlowNode::new(
+			TIMED,
+			OperatorDef::Apply {
+				operator: "boom".to_string(),
+				expressions: Vec::new(),
+			},
+		));
+		builder.add_edge(FlowEdge::new(1, SOURCE, TIMED)).expect("edge");
+		let flow = builder.build();
+		assert!(flow.ticks(), "precondition: the flow must tick, otherwise on_tick returns without working");
+
+		let health = FlowHealthRegistry::new();
+		let actor = FlowActor::new(FlowActorParams {
+			engine: engine.clone(),
+			committer: idle(&engine, "tick-failures-committer"),
+			backlog: FlowBacklog::new(ByteSize::from_mib(8)),
+			loader: idle(&engine, "tick-failures-loader"),
+			control: ControlFrontier::new(),
+			custom_operators: boom_operators(),
+			substrate,
+			operator_samples: OperatorSampleRegistry::new(),
+			clock: engine.clock().clone(),
+			health: health.clone(),
+			flow_tracker: FlowPositionTracker::new(),
+			flow,
+			source_objects: Arc::new(BTreeSet::new()),
+			completeness_objects: None,
+			cursor: CommitVersion(0),
+			pull_batch_bytes: ByteSize::from_mib(8),
+			load_batch_bytes: ByteSize::from_mib(8),
+			checkpoint_lag: 10_000,
+			checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
+			retry_limit: RETRY_LIMIT,
+			retry_backoff: Duration::from_milliseconds(50).unwrap(),
+		});
+
+		(te, health, actor)
+	}
+
+	fn tick(harness: &mut TestHarness<FlowActor>) {
+		harness.send(FlowActorMessage::Tick);
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the tick must be handled");
+	}
+
+	#[test]
+	fn a_failed_tick_counts_a_retry_instead_of_being_logged_away() {
+		let (_te, _health, actor) = ticking_actor();
+		let mut harness = TestHarness::new(actor);
+		assert!(!harness.state().poisoned, "precondition: registration must succeed");
+
+		tick(&mut harness);
+
+		assert_eq!(harness.state().retry_count, 1);
+		assert!(!harness.state().poisoned, "one failure is under the limit");
+	}
+
+	#[test]
+	fn ticks_that_keep_failing_poison_the_flow_once_past_the_retry_limit() {
+		let (_te, health, actor) = ticking_actor();
+		let mut harness = TestHarness::new(actor);
+		assert!(!harness.state().poisoned, "precondition: registration must succeed");
+
+		for attempt in 1..=RETRY_LIMIT {
+			tick(&mut harness);
+			assert_eq!(harness.state().retry_count, attempt);
+			assert!(!harness.state().poisoned, "attempt {attempt} is still within the limit");
+		}
+
+		tick(&mut harness);
+
+		assert!(harness.state().poisoned);
+		assert_eq!(
+			health.poisoned().iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+			vec![FLOW],
+			"a poisoned flow must reach the health registry, otherwise the subsystem still reports healthy"
+		);
+	}
+
+	#[test]
+	fn an_idle_drain_does_not_clear_a_strike() {
+		let (_te, _health, actor) = ticking_actor();
+		let mut harness = TestHarness::new(actor);
+
+		tick(&mut harness);
+		assert_eq!(harness.state().retry_count, 1, "precondition: the failed tick must count a strike");
+
+		harness.send(FlowActorMessage::Drain);
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the drain must be handled");
+
+		assert_eq!(
+			harness.state().retry_count,
+			1,
+			"an idle drain advanced no cursor and committed nothing, so it is no evidence the flow recovered"
+		);
+	}
+
+	#[test]
+	fn a_tick_that_completes_clears_the_strike() {
+		let (_te, _health, actor) = quiet_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().retry_count = RETRY_LIMIT;
+
+		tick(&mut harness);
+
+		assert_eq!(harness.state().retry_count, 0, "a tick that dispatched its timers is evidence of recovery");
+		assert!(!harness.state().poisoned, "a recovered flow must not be one strike from poison");
 	}
 }
