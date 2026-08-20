@@ -20,14 +20,13 @@ use reifydb_runtime::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 
-use crate::{
-	commit::OperatorCommitBuffer,
-	config::OperatorStoreConfig,
-	flush::{FlushMessage, flush_now, flush_pending},
-	persistent::OperatorPersistentTier,
-};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{config::OperatorPersistentConfig, flush::OperatorFlushActor, sqlite::SqliteOperatorStorage};
+use crate::{
+	config::OperatorStoreConfig,
+	flush::{FlushMessage, flush_now, flush_pending},
+	tier::{commit::OperatorCommitBuffer, persistent::OperatorPersistentTier},
+};
 
 #[repr(u8)]
 #[derive(Clone)]

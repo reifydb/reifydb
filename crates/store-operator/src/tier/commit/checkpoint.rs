@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
 
-use crate::commit::OperatorCommitBuffer;
+use crate::tier::commit::OperatorCommitBuffer;
 
 impl OperatorCommitBuffer {
 	pub fn record_checkpoint_set(&self, flow: FlowId, version: CommitVersion) {

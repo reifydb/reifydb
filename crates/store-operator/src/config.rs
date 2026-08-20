@@ -6,7 +6,7 @@ use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::value::duration::Duration;
 
-use crate::{commit::OperatorCommitBuffer, persistent::OperatorPersistentTier};
+use crate::tier::{commit::OperatorCommitBuffer, persistent::OperatorPersistentTier};
 
 #[derive(Debug, Clone, Default)]
 pub struct OperatorCommitConfig {

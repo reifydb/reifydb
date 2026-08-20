@@ -7,7 +7,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
 
 use crate::{
-	commit::{
+	tier::commit::{
 		OperatorCommitBuffer,
 		batch::{DropMarker, StateKey},
 	},

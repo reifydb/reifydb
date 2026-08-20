@@ -7,7 +7,7 @@ use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::Op
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
-	commit::{OperatorCommitBuffer, resident},
+	tier::commit::{OperatorCommitBuffer, resident},
 	types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, OperatorSealAnchorCensus, OperatorStateCensus},
 };
 

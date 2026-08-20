@@ -14,8 +14,8 @@ use reifydb_core::{
 use tracing::instrument;
 
 use crate::{
-	commit::batch::DropMarker,
 	store::{OperatorStore, StandardOperatorStore},
+	tier::commit::batch::DropMarker,
 	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
 

@@ -20,7 +20,7 @@ use reifydb_runtime::sync::{
 };
 
 use crate::{
-	commit::batch::{DropMarker, FlushBatch},
+	tier::commit::batch::{DropMarker, FlushBatch},
 	types::OperatorWrite,
 };
 

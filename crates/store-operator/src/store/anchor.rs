@@ -6,8 +6,8 @@ use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use tracing::instrument;
 
 use crate::{
-	commit::batch::DropMarker,
 	store::{OperatorStore, StandardOperatorStore},
+	tier::commit::batch::DropMarker,
 	types::{BufferedAnchor, OperatorSealAnchor},
 };
 

@@ -7,7 +7,7 @@ use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::Gr
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
-	commit::{
+	tier::commit::{
 		OperatorCommitBuffer,
 		batch::{AnchorKey, AnchorSlot, DropMarker},
 	},

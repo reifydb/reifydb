@@ -19,7 +19,7 @@ use reifydb_runtime::{
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use tracing::debug;
 
-use crate::{commit::OperatorCommitBuffer, persistent::OperatorPersistentTier};
+use crate::tier::{commit::OperatorCommitBuffer, persistent::OperatorPersistentTier};
 
 const FLUSH_PENDING_TIMEOUT: Duration = Duration::from_seconds_const(5);
 

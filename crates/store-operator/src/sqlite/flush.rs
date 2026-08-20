@@ -8,7 +8,6 @@ use rusqlite::{ToSql, Transaction, params, params_from_iter};
 use tracing::instrument;
 
 use crate::{
-	commit::batch::{DropMarker, FlushBatch},
 	sqlite::{
 		SqliteOperatorStorage,
 		sql::{
@@ -16,6 +15,7 @@ use crate::{
 			CHECKPOINT_REMOVE_SQL, CHECKPOINT_SET_SQL, STATE_DROP_SQL, STATE_REMOVE_SQL, STATE_SET_SQL,
 		},
 	},
+	tier::commit::batch::{DropMarker, FlushBatch},
 	types::OperatorWrite,
 };
 

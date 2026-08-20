@@ -24,8 +24,8 @@ use reifydb_value::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::sqlite::SqliteOperatorStorage;
 use crate::{
-	commit::batch::FlushBatch,
 	filter::OperatorKeyFilter,
+	tier::commit::batch::FlushBatch,
 	types::{OperatorBatch, OperatorSealAnchor, OperatorSealAnchorCensus, OperatorStateCensus},
 };
 

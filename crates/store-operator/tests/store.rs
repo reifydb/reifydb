@@ -16,9 +16,9 @@ use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
-	persistent::OperatorPersistentTier,
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
+	tier::persistent::OperatorPersistentTier,
 	types::{OperatorBatch, OperatorSealAnchor, OperatorWrite},
 };
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};

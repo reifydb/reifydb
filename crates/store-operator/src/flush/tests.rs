@@ -23,9 +23,9 @@ use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use super::*;
 use crate::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
-	persistent::OperatorPersistentTier,
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
+	tier::persistent::OperatorPersistentTier,
 	types::BufferedState,
 };
 

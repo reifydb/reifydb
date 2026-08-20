@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 
 use crate::{
-	commit::{OperatorCommitBuffer, batch::DropMarker},
+	tier::commit::{OperatorCommitBuffer, batch::DropMarker},
 	types::{BufferedAnchor, BufferedState, OperatorWrite},
 };
 
