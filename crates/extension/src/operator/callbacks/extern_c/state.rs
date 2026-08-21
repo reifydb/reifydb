@@ -972,6 +972,14 @@ mod seal_anchor_guard_tests {
 			Ok(Vec::new())
 		}
 
+		fn state_range_limited(
+			&mut self,
+			_range: EncodedKeyRange,
+			_limit: Option<usize>,
+		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+			Ok(Vec::new())
+		}
+
 		fn state_range_iter(&mut self, _range: EncodedKeyRange) -> StateIterator<'_> {
 			StateIterator::new(Box::new(empty::<Result<MultiVersionRow>>()))
 		}

@@ -115,13 +115,19 @@ impl<'a> State<'a> {
 		&self,
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
+		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
+		let mut seen = 0usize;
 		for (k, row) in extern_c::range(
 			self.ctx,
 			start.map(GroupStateKey::as_encoded),
 			end.map(GroupStateKey::as_encoded),
 		)? {
+			if limit.is_some_and(|l| seen >= l) {
+				break;
+			}
+			seen += 1;
 			visit(framed(k)?, EncodedPodRow::from(row))?;
 		}
 		Ok(())

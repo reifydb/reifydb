@@ -58,6 +58,7 @@ pub(crate) struct MockStore {
 	next_row: u64,
 	timers: Option<Vec<RecordedTimer>>,
 	flow_watermark: Option<DateTime>,
+	rows_visited: usize,
 }
 
 impl MockStore {
@@ -167,6 +168,10 @@ impl MockStore {
 
 	pub(crate) fn contains_row_mapping(&self, group: GroupId, key: &EncodedKey) -> bool {
 		self.rows.contains_key(&(group, key.as_bytes().to_vec()))
+	}
+
+	pub(crate) fn rows_visited(&self) -> usize {
+		self.rows_visited
 	}
 }
 
@@ -303,6 +308,7 @@ impl StateStore for MockStore {
 		for (k, b) in matched {
 			let k = GroupStateKey::from_framed(EncodedKey::new(k))
 				.expect("fake store holds an unframed state key");
+			self.rows_visited += 1;
 			visit(k, b)?;
 		}
 		Ok(())

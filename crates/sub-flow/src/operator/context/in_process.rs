@@ -219,6 +219,7 @@ impl GuestState for InProcessState<'_> {
 		&self,
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
+		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let range = EncodedKeyRange::new(
@@ -227,7 +228,7 @@ impl GuestState for InProcessState<'_> {
 		);
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let rows = unsafe { (*self.host).state_range(range) }.map_err(to_sdk_err)?;
+		let rows = unsafe { (*self.host).state_range_limited(range, limit) }.map_err(to_sdk_err)?;
 		for (k, row) in rows {
 			visit(k, row)?;
 		}

@@ -75,6 +75,12 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
+	fn state_range_limited(
+		&mut self,
+		range: EncodedKeyRange,
+		limit: Option<usize>,
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
+
 	fn state_range_iter(&mut self, range: EncodedKeyRange) -> StateIterator<'_>;
 
 	fn state_clear(&mut self) -> Result<()>;
@@ -313,7 +319,17 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	}
 
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		let batch = self.txn.state_range(self.operator, StateRange::forward(range, "operator::host_range"))?;
+		self.state_range_limited(range, None)
+	}
+
+	fn state_range_limited(
+		&mut self,
+		range: EncodedKeyRange,
+		limit: Option<usize>,
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		let mut query = StateRange::forward(range, "operator::host_range");
+		query.limit = limit;
+		let batch = self.txn.state_range(self.operator, query)?;
 		let mut out = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
 			let Some(key) = unscope(&r.key) else {

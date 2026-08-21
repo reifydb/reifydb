@@ -7,7 +7,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::{
-		GroupId, GroupStateKey, Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range,
+		GroupId, GroupStateKey, Keyspace, OperatorStateKey, group_data_inner_range, keyspace_inner_range,
 	},
 	state::timer::StateStore,
 };
@@ -62,18 +62,22 @@ impl DrainOutcome {
 pub fn queued(store: &mut dyn StateStore, limit: usize) -> Result<Queued> {
 	let mut groups: Vec<GroupId> = Vec::new();
 	let mut more = false;
-	store.state_range_visit(keyspace_inner_range(GroupId::ROOT, Keyspace::REAP_QUEUE), None, &mut |key, _| {
-		if let Some((_, _, suffix)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
-			&& let Ok(bytes) = <[u8; 8]>::try_from(suffix.as_slice())
-		{
-			if groups.len() < limit {
-				groups.push(GroupId(decode_u64(bytes)));
-			} else {
-				more = true;
+	store.state_range_visit(
+		keyspace_inner_range(GroupId::ROOT, Keyspace::REAP_QUEUE),
+		Some(limit.saturating_add(1)),
+		&mut |key, _| {
+			if let Some((_, _, suffix)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
+				&& let Ok(bytes) = <[u8; 8]>::try_from(suffix.as_slice())
+			{
+				if groups.len() < limit {
+					groups.push(GroupId(decode_u64(bytes)));
+				} else {
+					more = true;
+				}
 			}
-		}
-		Ok(())
-	})?;
+			Ok(())
+		},
+	)?;
 	Ok(Queued {
 		groups,
 		more,
@@ -149,11 +153,8 @@ where
 	R: Reaper,
 {
 	let mut doomed: Vec<GroupStateKey> = Vec::new();
-	store.state_range_visit(group_inner_range(group), None, &mut |key, _payload| {
-		if doomed.len() < budget
-			&& OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
-				.is_some_and(|(_, keyspace, _)| keyspace.is_data())
-		{
+	store.state_range_visit(group_data_inner_range(group), Some(budget), &mut |key, _payload| {
+		if doomed.len() < budget {
 			doomed.push(key);
 		}
 		Ok(())

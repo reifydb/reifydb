@@ -80,15 +80,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		};
 		let (start, end) = (bound(&range.start), bound(&range.end));
 		let (start, end) = (start.as_ref(), end.as_ref());
-		let mut remaining = limit;
-		self.0.state().range_bytes_visit(start, end, &mut |k, v| match remaining.as_mut() {
-			Some(0) => Ok(()),
-			Some(r) => {
-				*r -= 1;
-				visit(k, v).map_err(Into::into)
-			}
-			None => visit(k, v).map_err(Into::into),
-		})?;
+		self.0.state().range_bytes_visit(start, end, limit, &mut |k, v| visit(k, v).map_err(Into::into))?;
 		Ok(())
 	}
 

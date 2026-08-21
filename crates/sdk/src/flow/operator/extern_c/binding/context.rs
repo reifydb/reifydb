@@ -249,9 +249,10 @@ impl GuestState for State<'_> {
 		&self,
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
+		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
-		State::range_bytes_visit(self, start, end, visit)
+		State::range_bytes_visit(self, start, end, limit, visit)
 	}
 }
 

@@ -162,3 +162,91 @@ fn stops_at_the_budget_and_reports_only_what_it_freed() {
 	let survivors = keys.iter().filter(|k| present(&mut store, k)).count();
 	assert_eq!(survivors, 3, "the keys past the budget are left for the next tick");
 }
+
+#[test]
+fn reaping_takes_both_ends_of_the_data_range_and_spares_both_ends_of_the_identity_range() {
+	// the phase split is a key bound now, so a keyspace on the wrong side of it leaks or dies early
+	let mut store = MockStore::default();
+	let lowest_data = key(DOOMED, Keyspace(0x00), 1);
+	let highest_data = key(DOOMED, Keyspace(Keyspace::HIGHEST_DATA), 1);
+	let lowest_identity = key(DOOMED, Keyspace::APPEND_DICTIONARY, 1);
+	let highest_identity = key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, 1);
+	for k in [&lowest_data, &highest_data, &lowest_identity, &highest_identity] {
+		seed(&mut store, k);
+	}
+
+	let freed = reap_group(&mut store, DOOMED, &mut StoreReaper, 256).unwrap();
+
+	assert_eq!(freed, 2, "exactly the two data-phase keys are freed");
+	assert!(!present(&mut store, &lowest_data), "keyspace 0x00 is data and must go");
+	assert!(!present(&mut store, &highest_data), "the highest data keyspace must go with it");
+	assert!(present(&mut store, &lowest_identity), "the identity keyspace nearest the boundary must survive");
+	assert!(present(&mut store, &highest_identity), "so must the one furthest from it");
+}
+
+#[test]
+fn a_group_larger_than_the_budget_still_drains_the_queue_to_empty() {
+	// a bounded reap must still shrink the group every round, or the queue never reaches empty
+	let mut store = MockStore::default();
+	let keys: Vec<GroupStateKey> = (0..9).map(|i| key(DOOMED, Keyspace::ACCUMULATOR, i)).collect();
+	for k in &keys {
+		seed(&mut store, k);
+	}
+	seed(&mut store, &key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, 1));
+	enqueue(&mut store, DOOMED).unwrap();
+
+	let mut rounds = 0;
+	loop {
+		let outcome = drain(&mut store, &mut StoreReaper, 2).unwrap();
+		rounds += 1;
+		assert!(rounds <= 32, "the drain must converge, not spin on a group it cannot shrink");
+		if outcome.queue_is_empty() {
+			break;
+		}
+	}
+
+	assert!(keys.iter().all(|k| !present(&mut store, k)), "every data key must be gone");
+	assert!(queued(&mut store, 256).unwrap().groups.is_empty(), "and the queue must be empty");
+}
+
+#[test]
+fn the_reap_scan_never_fetches_an_identity_key() {
+	// identity keys are outside the reap's business, so pulling them out of the store is pure waste
+	let mut store = MockStore::default();
+	for i in 0..3 {
+		seed(&mut store, &key(DOOMED, Keyspace::ACCUMULATOR, i));
+	}
+	for i in 0..2 {
+		seed(&mut store, &key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, i));
+		seed(&mut store, &key(DOOMED, Keyspace::APPEND_DICTIONARY, i));
+	}
+	let before = store.rows_visited();
+
+	let freed = reap_group(&mut store, DOOMED, &mut StoreReaper, 256).unwrap();
+
+	assert_eq!(freed, 3, "only the three data keys are reapable");
+	assert_eq!(
+		store.rows_visited() - before,
+		3,
+		"the scan must fetch the three data keys and none of the four identity keys"
+	);
+}
+
+#[test]
+fn the_reap_scan_stops_fetching_at_the_budget() {
+	// a budget that only bounds the removals still drags the whole group through the store on every tick
+	let mut store = MockStore::default();
+	for i in 0..12 {
+		seed(&mut store, &key(DOOMED, Keyspace::ACCUMULATOR, i));
+	}
+	let before = store.rows_visited();
+
+	let freed = reap_group(&mut store, DOOMED, &mut StoreReaper, 3).unwrap();
+
+	assert_eq!(freed, 3, "the reap stops at the budget");
+	assert_eq!(
+		store.rows_visited() - before,
+		3,
+		"and the scan behind it stops there too, rather than fetching all twelve"
+	);
+}
