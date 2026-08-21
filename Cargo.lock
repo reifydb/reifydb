@@ -3071,6 +3071,7 @@ version = "0.9.0"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
+ "reifydb-runtime",
 ]
 
 [[package]]

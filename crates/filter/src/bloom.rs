@@ -74,6 +74,10 @@ impl BloomFilter {
 		estimated as usize
 	}
 
+	pub fn size_bits(&self) -> usize {
+		self.size
+	}
+
 	pub fn fill_ratio(&self) -> f64 {
 		let set_bits: usize =
 			self.bits.iter().map(|word| word.load(Ordering::Relaxed).count_ones() as usize).sum();

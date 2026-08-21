@@ -12,3 +12,4 @@ reifydb-build = { workspace = true }
 
 [dependencies]
 reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
