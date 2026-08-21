@@ -165,7 +165,6 @@ fn stops_at_the_budget_and_reports_only_what_it_freed() {
 
 #[test]
 fn reaping_takes_both_ends_of_the_data_range_and_spares_both_ends_of_the_identity_range() {
-	// the phase split is a key bound now, so a keyspace on the wrong side of it leaks or dies early
 	let mut store = MockStore::default();
 	let lowest_data = key(DOOMED, Keyspace(0x00), 1);
 	let highest_data = key(DOOMED, Keyspace(Keyspace::HIGHEST_DATA), 1);
@@ -186,7 +185,6 @@ fn reaping_takes_both_ends_of_the_data_range_and_spares_both_ends_of_the_identit
 
 #[test]
 fn a_group_larger_than_the_budget_still_drains_the_queue_to_empty() {
-	// a bounded reap must still shrink the group every round, or the queue never reaches empty
 	let mut store = MockStore::default();
 	let keys: Vec<GroupStateKey> = (0..9).map(|i| key(DOOMED, Keyspace::ACCUMULATOR, i)).collect();
 	for k in &keys {
@@ -211,7 +209,6 @@ fn a_group_larger_than_the_budget_still_drains_the_queue_to_empty() {
 
 #[test]
 fn the_reap_scan_never_fetches_an_identity_key() {
-	// identity keys are outside the reap's business, so pulling them out of the store is pure waste
 	let mut store = MockStore::default();
 	for i in 0..3 {
 		seed(&mut store, &key(DOOMED, Keyspace::ACCUMULATOR, i));
@@ -234,7 +231,6 @@ fn the_reap_scan_never_fetches_an_identity_key() {
 
 #[test]
 fn the_reap_scan_stops_fetching_at_the_budget() {
-	// a budget that only bounds the removals still drags the whole group through the store on every tick
 	let mut store = MockStore::default();
 	for i in 0..12 {
 		seed(&mut store, &key(DOOMED, Keyspace::ACCUMULATOR, i));

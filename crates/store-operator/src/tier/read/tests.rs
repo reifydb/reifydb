@@ -1,21 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{
-	Arc,
-	atomic::{AtomicBool, Ordering},
+use std::{
+	ops::Bound,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
 };
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::pod::EncodedPodRow,
+};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{
+		GroupId, Keyspace, OperatorStateKey, group_data_inner_range, group_identity_inner_range,
+		group_inner_range, keyspace_inner_range, keyspace_inner_range_upto,
+	},
 };
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::read::{
 	BUCKET_OVERHEAD, BucketId, ENTRY_OVERHEAD, FillInterlock, OperatorReadBufferConfig,
-	OperatorReadBufferKeyspaceMetrics, OperatorReadBufferMetrics, OperatorReadBufferTier,
+	OperatorReadBufferKeyspaceMetrics, OperatorReadBufferMetrics, OperatorReadBufferTier, range::bucket_scope,
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -26,6 +35,7 @@ const GROUP_B: GroupId = GroupId(11);
 fn tier(limit: u64) -> OperatorReadBufferTier {
 	OperatorReadBufferTier::new(OperatorReadBufferConfig {
 		resident_bytes: Some(ByteSize::from_bytes(limit)),
+		range_resident_bytes: ByteSize::from_bytes(limit),
 		shards: 1,
 	})
 	.expect("a tier with a byte budget must be constructed")
@@ -447,6 +457,7 @@ fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
 	let tier = OperatorReadBufferTier::with_interlock(
 		OperatorReadBufferConfig {
 			resident_bytes: Some(ByteSize::from_mib(1)),
+			range_resident_bytes: ByteSize::from_mib(1),
 			shards: 1,
 		},
 		hook,
@@ -469,6 +480,7 @@ fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
 fn a_tier_without_a_byte_budget_is_not_constructed() {
 	assert!(OperatorReadBufferTier::new(OperatorReadBufferConfig {
 		resident_bytes: None,
+		range_resident_bytes: ByteSize::from_mib(32),
 		shards: 16,
 	})
 	.is_none());
@@ -481,6 +493,7 @@ fn a_tier_without_a_byte_budget_is_not_constructed() {
 fn every_shard_is_reachable_and_reports_its_own_slice_of_the_budget() {
 	let tier = OperatorReadBufferTier::new(OperatorReadBufferConfig {
 		resident_bytes: Some(ByteSize::from_mib(64)),
+		range_resident_bytes: ByteSize::from_mib(32),
 		shards: 4,
 	})
 	.expect("a sharded tier must be constructed");
@@ -601,6 +614,7 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 fn keyspace_counters_are_summed_across_every_shard() {
 	let tier = OperatorReadBufferTier::new(OperatorReadBufferConfig {
 		resident_bytes: Some(ByteSize::from_mib(64)),
+		range_resident_bytes: ByteSize::from_mib(32),
 		shards: 4,
 	})
 	.expect("a sharded tier must be constructed");
@@ -835,4 +849,102 @@ fn a_point_read_of_an_excluded_keyspace_still_charges_its_miss() {
 	assert_eq!(tier.hits(), 0);
 	assert_eq!(tier.entries(), 0, "reading an excluded keyspace must not be a back door into admitting it");
 	assert_eq!(tier.buckets(), 0);
+}
+
+#[test]
+fn only_a_range_that_stays_inside_one_keyspace_is_ever_scoped_to_a_bucket() {
+	let single = bucket_scope(OP_A, &keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR))
+		.expect("a whole-keyspace range lives in exactly one bucket");
+	assert_eq!(single.bucket.keyspace, Keyspace::ACCUMULATOR);
+	assert!(single.whole, "a whole-keyspace range covers its bucket end to end, so a finished scan may fill it");
+
+	let upto = bucket_scope(OP_A, &keyspace_inner_range_upto(GROUP_A, Keyspace::ACCUMULATOR, b"m"))
+		.expect("a bounded suffix stays inside the keyspace");
+	assert_eq!(upto.bucket.keyspace, Keyspace::ACCUMULATOR);
+	assert!(!upto.whole, "a range stopping short of the bucket end must never claim to have filled the bucket");
+
+	let continued = bucket_scope(
+		OP_A,
+		&EncodedKeyRange::new(
+			Bound::Excluded(key(GROUP_A, Keyspace::ACCUMULATOR, b"m")),
+			keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR).end,
+		),
+	)
+	.expect("a paged continuation stays inside the keyspace it started in");
+	assert!(!continued.whole, "a page that starts past the bucket start never saw the keys before its cursor");
+
+	assert!(
+		bucket_scope(OP_A, &group_inner_range(GROUP_A)).is_none(),
+		"a whole-group range crosses every keyspace of the group"
+	);
+	assert!(
+		bucket_scope(OP_A, &group_data_inner_range(GROUP_A)).is_none(),
+		"the data range crosses every keyspace at or below the data ceiling"
+	);
+	assert!(
+		bucket_scope(OP_A, &group_identity_inner_range(GROUP_A)).is_none(),
+		"the identity range crosses every keyspace above the data ceiling"
+	);
+	assert!(
+		bucket_scope(
+			OP_A,
+			&EncodedKeyRange::new(Bound::Included(EncodedKey::new(Vec::new())), Bound::Unbounded)
+		)
+		.is_none(),
+		"a whole-operator scan reaches the store as an unbounded inner range and can never be one bucket"
+	);
+	assert!(
+		bucket_scope(
+			OP_A,
+			&EncodedKeyRange::new(
+				keyspace_inner_range(GROUP_A, Keyspace::COUNT).start,
+				keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR).end,
+			)
+		)
+		.is_none(),
+		"a range opening in one keyspace and closing in another must be refused even though both ends parse"
+	);
+}
+
+#[test]
+fn a_carried_absence_is_charged_to_the_range_budget_the_fill_it_joined_pays_from() {
+	let tier = roomy();
+	let absent = key(GROUP_A, Keyspace::ACCUMULATOR, b"absent");
+	let scanned = key(GROUP_A, Keyspace::ACCUMULATOR, b"scanned");
+	let scanned_row = row("v");
+	fill(&tier, OP_A, absent.clone(), None);
+
+	let carried = footprint(&absent, &None);
+	assert_eq!(
+		tier.resident_bytes().as_bytes() as usize,
+		BUCKET_OVERHEAD + carried,
+		"the absence must start out charged to the point budget, or the move below is unobservable"
+	);
+	assert_eq!(tier.range_resident_bytes(), ByteSize::ZERO, "no range fill has run yet");
+
+	let range = keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR);
+	let bucket = tier.begin_range_fill(OP_A, &range).expect("a whole-keyspace range must be fillable");
+	assert!(tier.extend_range_fill(bucket, &[(scanned.clone(), scanned_row.clone())]));
+	assert!(tier.finish_range_fill(bucket), "the fill must be admitted, or no accounting moved at all");
+
+	assert_eq!(
+		tier.resident_bytes(),
+		ByteSize::ZERO,
+		"the point budget must shed every byte of the bucket the range fill took over, the carried absence included"
+	);
+	assert_eq!(
+		tier.range_resident_bytes().as_bytes() as usize,
+		BUCKET_OVERHEAD + footprint(&scanned, &Some(scanned_row)) + carried,
+		"the range budget must carry the scanned row and the absence it inherited, each charged exactly once"
+	);
+	assert_eq!(
+		tier.tallied_bytes(),
+		tier.range_resident_bytes(),
+		"the bucket's own tally must match what the budget was charged, or eviction releases the wrong amount"
+	);
+	assert_eq!(
+		tier.get(OP_A, &absent),
+		Some(None),
+		"and the absence must still be served rather than merely paid for"
+	);
 }

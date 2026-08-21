@@ -95,6 +95,7 @@ pub(crate) fn resolve_startup_configs(
 	let operator_read =
 		uint8_opt(ConfigKey::OperatorReadBufferBytes).map(|resident_bytes| OperatorReadBufferConfig {
 			resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
+			range_resident_bytes: OperatorReadBufferConfig::default().range_resident_bytes,
 			shards: OperatorReadBufferConfig::default().shards,
 		});
 

@@ -7,7 +7,10 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::read::{BUCKET_OVERHEAD, Bucket, BucketId, OperatorReadBufferTier, Shard, account, entry_footprint};
+use crate::tier::read::{
+	BUCKET_OVERHEAD, Bucket, BucketId, OperatorReadBufferTier, Shard, account, class_budget, entry_footprint,
+	reclassify,
+};
 
 impl OperatorReadBufferTier {
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
@@ -34,6 +37,12 @@ impl OperatorReadBufferTier {
 					keyspace.hits += 1;
 					bucket.tick = next;
 					row
+				}
+				None if bucket.complete => {
+					metrics.hits += 1;
+					keyspace.hits += 1;
+					bucket.tick = next;
+					None
 				}
 				None => {
 					metrics.misses += 1;
@@ -70,6 +79,12 @@ impl OperatorReadBufferTier {
 					keyspace.hits += 1;
 					bucket.tick = next;
 					present
+				}
+				None if bucket.complete => {
+					metrics.hits += 1;
+					keyspace.hits += 1;
+					bucket.tick = next;
+					false
 				}
 				None => {
 					metrics.misses += 1;
@@ -138,6 +153,9 @@ impl OperatorReadBufferTier {
 		if let Some(dirty) = shard.filling.get_mut(&(id, key.clone())) {
 			*dirty = true;
 		}
+		if let Some(fill) = shard.range_filling.get_mut(&id) {
+			fill.dirty = true;
+		}
 		insert_entry(&mut shard, id, key, Some(row));
 	}
 
@@ -149,23 +167,32 @@ impl OperatorReadBufferTier {
 		if let Some(dirty) = shard.filling.get_mut(&(id, key.clone())) {
 			*dirty = true;
 		}
-		let Shard {
-			buckets,
-			budget,
-			..
-		} = &mut *shard;
-		let Some(bucket) = buckets.get_mut(&id) else {
-			return;
-		};
-		if let Some(removed) = bucket.entries.remove(key) {
+		if let Some(fill) = shard.range_filling.get_mut(&id) {
+			fill.dirty = true;
+		}
+		{
+			let Shard {
+				buckets,
+				budget,
+				range_budget,
+				..
+			} = &mut *shard;
+			let Some(bucket) = buckets.get_mut(&id) else {
+				return;
+			};
+			let Some(removed) = bucket.entries.remove(key) else {
+				return;
+			};
+			reclassify(bucket, budget, range_budget, false);
 			let footprint = entry_footprint(key, &removed);
 			account(&mut bucket.bytes, budget, footprint, 0);
+			if bucket.entries.is_empty() {
+				let bytes = bucket.bytes;
+				buckets.remove(&id);
+				budget.release(ByteSize::from_bytes(bytes as u64));
+			}
 		}
-		if bucket.entries.is_empty() {
-			let bytes = bucket.bytes;
-			buckets.remove(&id);
-			budget.release(ByteSize::from_bytes(bytes as u64));
-		}
+		shard.evict_to_capacity();
 	}
 
 	pub fn invalidate_operator(&self, operator: OperatorId) {
@@ -176,16 +203,23 @@ impl OperatorReadBufferTier {
 					*dirty = true;
 				}
 			}
+			for (bucket, fill) in shard.range_filling.iter_mut() {
+				if bucket.operator == operator {
+					fill.dirty = true;
+				}
+			}
 			let Shard {
 				buckets,
 				budget,
+				range_budget,
 				..
 			} = &mut *shard;
 			let victims: Vec<BucketId> =
 				buckets.keys().filter(|id| id.operator == operator).copied().collect();
 			for victim in victims {
 				if let Some(bucket) = buckets.remove(&victim) {
-					budget.release(ByteSize::from_bytes(bucket.bytes as u64));
+					class_budget(budget, range_budget, bucket.complete)
+						.release(ByteSize::from_bytes(bucket.bytes as u64));
 				}
 			}
 		}
@@ -197,13 +231,16 @@ impl OperatorReadBufferTier {
 			let Shard {
 				buckets,
 				budget,
+				range_budget,
 				..
 			} = &mut *shard;
 			for bucket in buckets.values() {
-				budget.release(ByteSize::from_bytes(bucket.bytes as u64));
+				class_budget(budget, range_budget, bucket.complete)
+					.release(ByteSize::from_bytes(bucket.bytes as u64));
 			}
 			buckets.clear();
 			shard.filling.clear();
+			shard.range_filling.clear();
 			shard.next_tick = 0;
 		}
 	}
@@ -218,6 +255,7 @@ fn insert_entry(shard: &mut Shard, id: BucketId, key: EncodedKey, row: Option<En
 		let Shard {
 			buckets,
 			budget,
+			range_budget,
 			..
 		} = &mut *shard;
 		match buckets.get_mut(&id) {
@@ -226,7 +264,12 @@ fn insert_entry(shard: &mut Shard, id: BucketId, key: EncodedKey, row: Option<En
 					bucket.entries.get(&key).map_or(0, |previous| entry_footprint(&key, previous));
 				let new = entry_footprint(&key, &row);
 				bucket.entries.insert(key, row);
-				account(&mut bucket.bytes, budget, old, new);
+				account(
+					&mut bucket.bytes,
+					class_budget(budget, range_budget, bucket.complete),
+					old,
+					new,
+				);
 				bucket.tick = next;
 			}
 			None => {
@@ -240,6 +283,7 @@ fn insert_entry(shard: &mut Shard, id: BucketId, key: EncodedKey, row: Option<En
 					Bucket {
 						entries,
 						bytes,
+						complete: false,
 						tick: next,
 					},
 				);

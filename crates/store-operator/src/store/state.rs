@@ -15,7 +15,7 @@ use tracing::instrument;
 
 use crate::{
 	store::{OperatorStore, StandardOperatorStore},
-	tier::commit::batch::DropMarker,
+	tier::{commit::batch::DropMarker, read::BucketId},
 	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
 
@@ -157,6 +157,21 @@ impl StandardOperatorStore {
 		let mut buffer_index = 0usize;
 		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 
+		let read = self.read.as_ref();
+		let mut fill: Option<BucketId> = None;
+		let mut scanned_all = false;
+		if !exhausted {
+			let served = read
+				.and_then(|read| read.range(operator, &range, target.saturating_add(buffered.len())));
+			match served {
+				Some(rows) => {
+					page = rows;
+					exhausted = true;
+				}
+				None => fill = read.and_then(|read| read.begin_range_fill(operator, &range)),
+			}
+		}
+
 		while items.len() < target {
 			if page_index == page.len() && !exhausted {
 				let Some(persistent) = self.persistent.as_ref() else {
@@ -171,9 +186,18 @@ impl StandardOperatorStore {
 				exhausted = !batch.has_more;
 				page = batch.items;
 				page_index = 0;
+				if let (Some(read), Some(bucket)) = (read, fill) {
+					if !read.extend_range_fill(bucket, &page) {
+						fill = None;
+					}
+				}
+				scanned_all = exhausted;
 				match page.last() {
 					Some((key, _)) => lower = Bound::Excluded(key.clone()),
-					None => exhausted = true,
+					None => {
+						exhausted = true;
+						scanned_all = true;
+					}
 				}
 				continue;
 			}
@@ -211,6 +235,14 @@ impl StandardOperatorStore {
 						}
 					}
 				}
+			}
+		}
+
+		if let (Some(read), Some(bucket)) = (read, fill) {
+			if scanned_all {
+				read.finish_range_fill(bucket);
+			} else {
+				read.abort_range_fill(bucket);
 			}
 		}
 

@@ -7,10 +7,14 @@
 //! shadow and be served forever; the flush then writes the rows it just made durable back through, because
 //! dropping them would leave the tier empty at the exact moment reads start reaching it.
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::pod::EncodedPodRow,
+};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+	metrics::scan::ScanCounters,
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
@@ -18,10 +22,13 @@ use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
-	tier::{persistent::OperatorPersistentTier, read::OperatorReadBufferConfig},
-	types::OperatorWrite,
+	tier::{
+		persistent::OperatorPersistentTier,
+		read::{OperatorReadBufferConfig, OperatorReadBufferTier},
+	},
+	types::{OperatorBatch, OperatorWrite},
 };
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -528,4 +535,475 @@ fn a_row_number_mapping_write_still_occupies_the_read_buffer() {
 	assert!(store.flush_pending_blocking());
 
 	assert_eq!(entries(&store), 1, "a cached keyspace must still be admitted after the refusal list grew");
+}
+
+fn cached_store_with(read: OperatorReadBufferConfig) -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
+	// The same wiring as cached_store, but over a read config the caller sized itself, so a test can starve one
+	// budget without starving the other.
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock.clone());
+	let spawner = actor_system.spawner();
+	let (storage, guard) = SqliteOperatorStorage::in_memory();
+	let store = OperatorStore::standard(OperatorStoreConfig {
+		commit: Default::default(),
+		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
+			.flush_interval(Duration::from_hours_const(1))),
+		read: Some(read),
+		spawner,
+		clock,
+	});
+	(store, storage, guard)
+}
+
+fn accumulator_range() -> EncodedKeyRange {
+	keyspace_inner_range(GROUP, Keyspace::ACCUMULATOR)
+}
+
+fn seed_accumulator(storage: &SqliteOperatorStorage, count: u8) {
+	for suffix in 1..=count {
+		storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, suffix), row(&format!("v{suffix}")));
+	}
+}
+
+fn bodies(batch: &OperatorBatch) -> Vec<String> {
+	batch.items.iter().map(|(_, row)| body(row)).collect()
+}
+
+fn buffer(store: &OperatorStore) -> &OperatorReadBufferTier {
+	store.read().expect("the fixture configures a read tier")
+}
+
+#[test]
+fn a_range_over_a_complete_bucket_is_served_without_reaching_the_persistent_tier() {
+	// A whole-bucket scan that ran to the end has already paid for every row in the bucket's key range, so
+	// the bucket can answer that range from RAM. If the repeat still fetches from sqlite the buffer is
+	// holding the rows and charging for them while serving nothing, which is the state the measurement found.
+	let (store, storage, _guard) = cached_store();
+	seed_accumulator(&storage, 3);
+
+	let primed = store.range_batch(OP_A, accumulator_range(), 64);
+	assert_eq!(bodies(&primed), ["v1", "v2", "v3"], "the priming scan must read every durable row");
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		1,
+		"a whole-bucket scan that was not cut short must mark the bucket complete, or nothing below is tested"
+	);
+
+	let before = ScanCounters::sample();
+	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let scanned = before.since();
+
+	assert_eq!(bodies(&served), ["v1", "v2", "v3"], "a buffer-served range must return the same rows sqlite would");
+	assert_eq!(scanned.fetched, 0, "a complete bucket that still scans sqlite saves nothing");
+	let counters = buffer(&store).metrics();
+	assert_eq!(counters.range_hits, 1, "the second scan must be attributed as a range hit");
+	assert_eq!(counters.range_fills, 1, "only the first scan may fill");
+}
+
+#[test]
+fn a_range_over_an_incomplete_bucket_falls_through_and_still_answers_in_full() {
+	// A bucket warmed by point reads holds some of the keys, never provably all of them. Answering a range
+	// from it would silently drop every row the point reads never touched.
+	let (store, storage, _guard) = cached_store();
+	seed_accumulator(&storage, 3);
+
+	assert!(store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 2)).is_some(), "the point read warms one key");
+	assert_eq!(buffer(&store).complete_buckets(), 0, "a point fill must never claim the bucket holds every key");
+
+	let before = ScanCounters::sample();
+	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let scanned = before.since();
+
+	assert_eq!(
+		bodies(&served),
+		["v1", "v2", "v3"],
+		"an incomplete bucket must not shorten the answer to the one key it happened to cache"
+	);
+	assert!(scanned.fetched >= 3, "the answer must have come from sqlite, not from the partial bucket");
+	let counters = buffer(&store).metrics();
+	assert_eq!(counters.range_hits, 0, "an incomplete bucket may never be counted as a range hit");
+	assert_eq!(counters.range_misses, 1);
+}
+
+#[test]
+fn a_write_into_a_complete_bucket_stops_it_answering_the_next_range() {
+	// Completeness is a claim about the persistent tier, and a write invalidates the entry it names. A bucket
+	// that keeps the claim after losing an entry answers "that key does not exist" for a row sqlite still holds,
+	// and no point-read test can see it because the shortfall only shows up in a scan.
+	let (store, storage, _guard) = cached_store();
+	seed_accumulator(&storage, 3);
+
+	let primed = store.range_batch(OP_A, accumulator_range(), 64);
+	assert_eq!(bodies(&primed), ["v1", "v2", "v3"]);
+	assert_eq!(buffer(&store).complete_buckets(), 1, "the bucket must start complete or the write proves nothing");
+
+	storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, 4), row("v4"));
+	store.set(OP_A, key_in(Keyspace::ACCUMULATOR, 1), row("rewritten"));
+	assert!(store.flush_pending_blocking(), "the write must reach sqlite before the staleness is observable");
+
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		0,
+		"a write into the bucket must drop the completeness claim, not merely evict the one entry"
+	);
+
+	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	assert_eq!(
+		bodies(&served),
+		["rewritten", "v2", "v3", "v4"],
+		"a bucket that kept its claim serves the rows it remembers and silently loses the durable row it never saw"
+	);
+}
+
+#[test]
+fn a_range_fill_that_does_not_fit_its_own_budget_evicts_no_point_entry() {
+	// The range budget exists so a scan can never buy its rows with the point reads' rows. A shared budget would
+	// let one big bucket scan flush the point entries that serve 99% of their keyspaces, trading a measured win
+	// for a measured loss.
+	let (store, storage, _guard) = cached_store_with(OperatorReadBufferConfig {
+		resident_bytes: Some(ByteSize::from_bytes(1024)),
+		range_resident_bytes: ByteSize::from_bytes(256),
+		shards: 1,
+	});
+	seed_accumulator(&storage, 8);
+	storage.set(OP_A, key_in(Keyspace::COUNT, 1), row("pinned"));
+
+	assert!(store.get(OP_A, &key_in(Keyspace::COUNT, 1)).is_some(), "the point read warms a bucket of its own");
+	let point_used = buffer(&store).resident_bytes();
+	let point_entries = buffer(&store).entries();
+	assert!(point_used.as_bytes() > 0, "the point budget must be carrying something or eviction is unobservable");
+
+	let served = store.range_batch(OP_A, accumulator_range(), 64);
+
+	assert_eq!(
+		bodies(&served),
+		["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"],
+		"a declined fill must leave the answer exactly as the persistent tier gave it"
+	);
+	let counters = buffer(&store).metrics();
+	assert_eq!(counters.range_fills_declined, 1, "the fill must be declined, not silently admitted");
+	assert_eq!(counters.range_fills, 0);
+	assert_eq!(buffer(&store).complete_buckets(), 0, "a declined fill must leave no bucket claiming completeness");
+	assert_eq!(
+		buffer(&store).resident_bytes(),
+		point_used,
+		"a range fill must never be charged to the point budget"
+	);
+	assert_eq!(buffer(&store).entries(), point_entries, "a declined range fill must evict no point entry");
+	assert_eq!(counters.evictions, 0, "a declined fill must not start an eviction cascade");
+	assert_eq!(
+		body(&store
+			.get(OP_A, &key_in(Keyspace::COUNT, 1))
+			.expect("the point entry survives the declined fill")),
+		"pinned"
+	);
+}
+
+#[test]
+fn a_range_spanning_two_complete_buckets_is_never_served_from_the_buffer() {
+	// A bucket is one keyspace. The buffer cannot tell "that keyspace holds nothing" from "that keyspace was
+	// never cached", so a range reaching past one bucket must go to sqlite even when every bucket it crosses
+	// happens to be complete; serving it would return a short answer that reads as a correct one.
+	let (store, storage, _guard) = cached_store();
+	seed_accumulator(&storage, 3);
+	for suffix in 1..=2u8 {
+		storage.set(OP_A, key_in(Keyspace::COUNT, suffix), row(&format!("c{suffix}")));
+	}
+
+	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(bodies(&store.range_batch(OP_A, keyspace_inner_range(GROUP, Keyspace::COUNT), 64)), ["c1", "c2"]);
+	assert_eq!(buffer(&store).complete_buckets(), 2, "both buckets must be complete or the span proves nothing");
+
+	let spanning = EncodedKeyRange::new(
+		keyspace_inner_range(GROUP, Keyspace::COUNT).start,
+		keyspace_inner_range(GROUP, Keyspace::ACCUMULATOR).end,
+	);
+	let counters = buffer(&store).metrics();
+	let before = ScanCounters::sample();
+	let served = store.range_batch(OP_A, spanning, 64);
+	let scanned = before.since();
+
+	assert_eq!(
+		bodies(&served),
+		["c1", "c2", "v1", "v2", "v3"],
+		"a span must answer for every bucket it crosses; a buffer answer stops at the first one"
+	);
+	assert!(scanned.fetched >= 5, "the span must have been answered by sqlite");
+	let after = buffer(&store).metrics();
+	assert_eq!(after.range_hits, counters.range_hits, "a span must not be attributed to any single bucket");
+	assert_eq!(after.range_fills, counters.range_fills, "a span must never fill a bucket it only partly covers");
+}
+
+#[test]
+fn a_write_of_a_key_the_bucket_never_held_keeps_the_claim_and_the_flush_still_serves_it() {
+	// Completeness says the bucket holds every key the persistent tier holds in its range, and a write the
+	// bucket never cached leaves the persistent tier untouched, so the claim is still true. Clearing it anyway
+	// destroys completeness far faster than a scan can create it and the append-heavy keyspaces this buffer
+	// exists for never keep a claim long enough to answer anything. The second half is the load-bearing one:
+	// a surviving claim that then serves a range without the key the flush made durable is a silent short
+	// answer, which is worse than no claim at all.
+	let (store, storage, _guard) = cached_store();
+	seed_accumulator(&storage, 3);
+
+	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(buffer(&store).complete_buckets(), 1, "the bucket must start complete or the write proves nothing");
+
+	store.set(OP_A, key_in(Keyspace::ACCUMULATOR, 4), row("v4"));
+
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		1,
+		"a write of a key the bucket never cached leaves sqlite unchanged, so the claim is still true"
+	);
+	assert_eq!(
+		bodies(&store.range_batch(OP_A, accumulator_range(), 64)),
+		["v1", "v2", "v3", "v4"],
+		"the shadowed write must still reach the answer through the commit buffer merge"
+	);
+
+	assert!(store.flush_pending_blocking(), "the write must reach sqlite before the claim is put to the test");
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		1,
+		"the flush write-through adds the key to the bucket at the moment sqlite gains it, so the claim survives"
+	);
+
+	let before = ScanCounters::sample();
+	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let scanned = before.since();
+
+	assert_eq!(
+		bodies(&served),
+		["v1", "v2", "v3", "v4"],
+		"a claim kept across a write must still answer for the row the flush made durable, or it serves a \
+		 short answer that reads as a correct one"
+	);
+	assert_eq!(scanned.fetched, 0, "the answer must have come from the bucket, not from a fallback scan");
+}
+
+#[test]
+fn a_write_of_a_key_the_bucket_holds_drops_the_claim() {
+	// The other half of the rule: the write shadows the cached row, so the entry has to go, and a bucket that
+	// lost an entry no longer holds every key sqlite holds. Keeping the claim here would answer absent for a
+	// row sqlite still has.
+	let (store, storage, _guard) = cached_store();
+	seed_accumulator(&storage, 3);
+
+	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(buffer(&store).complete_buckets(), 1, "the bucket must start complete or the write proves nothing");
+
+	store.set(OP_A, key_in(Keyspace::ACCUMULATOR, 2), row("rewritten"));
+
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		0,
+		"a write that evicted a cached entry must drop the claim; the bucket is now short exactly that key"
+	);
+	assert_eq!(
+		bodies(&store.range_batch(OP_A, accumulator_range(), 64)),
+		["v1", "rewritten", "v3"],
+		"and the answer must stay right whichever tier serves it"
+	);
+}
+
+#[test]
+fn a_removal_of_a_key_the_bucket_holds_drops_the_claim() {
+	// A removal takes the entry out of the bucket while sqlite still holds the row until the flush drains the
+	// tombstone. In that window the bucket is short a key sqlite has, so the claim cannot stand.
+	let (store, storage, _guard) = cached_store();
+	seed_accumulator(&storage, 3);
+
+	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		1,
+		"the bucket must start complete or the removal proves nothing"
+	);
+
+	store.remove(OP_A, &key_in(Keyspace::ACCUMULATOR, 2));
+
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		0,
+		"a removal that evicted a cached entry must drop the claim just as a write does"
+	);
+	assert_eq!(
+		bodies(&store.range_batch(OP_A, accumulator_range(), 64)),
+		["v1", "v3"],
+		"and the removed row must not come back from either tier"
+	);
+}
+
+#[test]
+fn a_removal_of_a_key_the_bucket_never_held_keeps_the_claim() {
+	// If the bucket is complete and does not hold the key then sqlite does not hold it either, so the removal
+	// erases nothing and the claim is untouched. Retention erases keys by the million against buckets that
+	// never cached them; clearing the claim on each one is how the whole feature gets ground down to nothing.
+	let (store, storage, _guard) = cached_store();
+	seed_accumulator(&storage, 3);
+
+	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		1,
+		"the bucket must start complete or the removal proves nothing"
+	);
+
+	store.remove(OP_A, &key_in(Keyspace::ACCUMULATOR, 9));
+	assert!(store.flush_pending_blocking(), "the tombstone must reach sqlite through the same flush path");
+
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		1,
+		"erasing a key the complete bucket never held cannot make the bucket short of anything"
+	);
+
+	let before = ScanCounters::sample();
+	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let scanned = before.since();
+
+	assert_eq!(bodies(&served), ["v1", "v2", "v3"], "the surviving rows must still all be there");
+	assert_eq!(scanned.fetched, 0, "the answer must have come from the bucket that kept its claim");
+}
+
+#[test]
+fn a_flushed_row_too_big_for_the_range_budget_takes_the_whole_bucket_with_it() {
+	// The claim only survives a write because the flush write-through puts the key into the bucket at the same
+	// moment sqlite gains it. Any way a flushed key can fail to land in a complete bucket turns the claim into
+	// a lie with nothing to report it. Budget pressure is that way: the write-through charges the bucket and
+	// then evicts to capacity, so the row that does not fit must take the whole bucket and its claim, never
+	// leave a bucket standing that is short the key sqlite just gained.
+	let (store, storage, _guard) = cached_store_with(OperatorReadBufferConfig {
+		resident_bytes: Some(ByteSize::from_mib(1)),
+		range_resident_bytes: ByteSize::from_bytes(4096),
+		shards: 1,
+	});
+	seed_accumulator(&storage, 3);
+
+	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		1,
+		"the small fill must fit its budget or nothing below is tested"
+	);
+
+	let huge = "x".repeat(8192);
+	store.set(OP_A, key_in(Keyspace::ACCUMULATOR, 4), row(&huge));
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		1,
+		"the write alone leaves sqlite unchanged, so the eviction below is what has to clear the claim"
+	);
+
+	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
+
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		0,
+		"a row the range budget cannot hold must cost the bucket its claim, not be silently dropped from a \
+		 bucket that goes on claiming it holds everything"
+	);
+
+	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	assert_eq!(
+		bodies(&served),
+		["v1", "v2", "v3", huge.as_str()],
+		"and the answer must carry the durable row the bucket could not keep"
+	);
+}
+
+#[test]
+fn a_cached_absence_survives_the_range_fill_that_installs_over_it() {
+	// A range fill replaces the bucket, and the scan only ever yields rows that exist, so every absence the
+	// point reads paid sqlite to learn is destroyed by it. While the bucket stays complete nothing shows,
+	// because a complete bucket answers a point miss as a definitive absence; the moment a write drops the
+	// claim every destroyed absence has to be bought from sqlite again, which is the read amplification the
+	// measurement found.
+	let (store, storage, _guard) = cached_store();
+	seed_accumulator(&storage, 3);
+	storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, 9), row("gone"));
+	storage.remove(OP_A, &key_in(Keyspace::ACCUMULATOR, 9));
+
+	assert!(
+		store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 9)).is_none(),
+		"the key is gone but still passes the filter"
+	);
+	assert_eq!(entries(&store), 1, "the absence itself must be cached, otherwise this test proves nothing");
+
+	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		1,
+		"the whole-bucket scan must claim the bucket or nothing below is tested"
+	);
+	assert_eq!(entries(&store), 4, "the fill must keep the remembered absence beside the three rows it scanned");
+
+	store.set(OP_A, key_in(Keyspace::ACCUMULATOR, 1), row("rewritten"));
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		0,
+		"the write must drop the claim, or the absence is answered by completeness and the carry is untested"
+	);
+
+	let counters = buffer(&store).metrics();
+	let before = ScanCounters::sample();
+	assert!(store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 9)).is_none(), "the key is still absent from sqlite");
+	let scanned = before.since();
+	let after = buffer(&store).metrics();
+
+	assert_eq!(
+		after.fills_started, counters.fills_started,
+		"a re-read of an absence the buffer already owns must cost no persistent lookup; a second fill means \
+		 the range install threw the absence away and every such key is bought from sqlite twice"
+	);
+	assert_eq!(scanned.fetched, 0, "a point read served from the buffer must reach no persistent scan either");
+	assert_eq!(after.hits, counters.hits + 1, "the read must be attributed as a hit, not silently as a miss");
+}
+
+#[test]
+fn a_carried_absence_the_scan_contradicts_is_replaced_by_the_scanned_row() {
+	// The scan is authoritative for the keys it found. A stale absence carried over one of them sits inside a
+	// complete bucket, which serves it as a definitive absence, so the row sqlite holds vanishes from every
+	// answer with no error anywhere to report it.
+	let (store, storage, _guard) = cached_store();
+	seed_accumulator(&storage, 3);
+	storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, 4), row("later"));
+	storage.remove(OP_A, &key_in(Keyspace::ACCUMULATOR, 4));
+
+	assert!(
+		store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 4)).is_none(),
+		"the key starts absent and is remembered so"
+	);
+	assert_eq!(entries(&store), 1, "the absence must be cached, otherwise the contradiction below never arises");
+
+	storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, 4), row("v4"));
+
+	let primed = store.range_batch(OP_A, accumulator_range(), 64);
+	assert_eq!(bodies(&primed), ["v1", "v2", "v3", "v4"], "the scan must find the key the buffer thinks is absent");
+	assert_eq!(
+		buffer(&store).complete_buckets(),
+		1,
+		"the scan must claim the bucket or the claim is not put to the test"
+	);
+	assert_eq!(entries(&store), 4, "the contradicted absence must be replaced, not kept beside the row");
+
+	let before = ScanCounters::sample();
+	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let scanned = before.since();
+
+	assert_eq!(
+		scanned.fetched, 0,
+		"the repeat must be served by the complete bucket, or it is sqlite being asserted on"
+	);
+	assert_eq!(
+		bodies(&served),
+		["v1", "v2", "v3", "v4"],
+		"a carried absence that outlived the scan finding the key serves a short answer that reads as a correct one"
+	);
+	assert_eq!(
+		body(&store
+			.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 4))
+			.expect("the scanned row must answer the point read")),
+		"v4"
+	);
 }

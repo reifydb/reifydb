@@ -5,9 +5,14 @@
 //! absences, so a key read many times costs one persistent lookup rather than one per read. Operator state
 //! is not page addressable, so entries bucket by `(operator, group, keyspace)` read at a fixed offset out of
 //! the inner key; a key too short to carry both a group and a keyspace is declined rather than cached.
+//!
+//! A scan that read a whole bucket's key range to the end marks that bucket complete, which lets it answer a
+//! later range over its own key range and report a point miss as a definitive absence. Complete buckets are
+//! charged to a budget of their own, so a range fill can never buy its rows with the point reads' rows.
 
 mod point;
 mod pool;
+mod range;
 #[cfg(test)]
 mod tests;
 
@@ -32,6 +37,7 @@ use reifydb_value::byte_size::ByteSize;
 #[derive(Clone, Copy, Debug)]
 pub struct OperatorReadBufferConfig {
 	pub resident_bytes: Option<ByteSize>,
+	pub range_resident_bytes: ByteSize,
 	pub shards: usize,
 }
 
@@ -39,6 +45,7 @@ impl Default for OperatorReadBufferConfig {
 	fn default() -> Self {
 		Self {
 			resident_bytes: Some(ByteSize::from_mib(64)),
+			range_resident_bytes: ByteSize::from_mib(32),
 			shards: 16,
 		}
 	}
@@ -52,6 +59,8 @@ pub struct BucketId {
 }
 
 impl BucketId {
+	pub const PREFIX_LEN: usize = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize + 1;
+
 	pub fn of(operator: OperatorId, key: &EncodedKey) -> Option<Self> {
 		let bytes = key.as_slice();
 		let offset = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize;
@@ -70,6 +79,7 @@ impl BucketId {
 struct Bucket {
 	entries: BTreeMap<EncodedKey, Option<EncodedPodRow>>,
 	bytes: usize,
+	complete: bool,
 	tick: u64,
 }
 
@@ -81,6 +91,24 @@ const BUCKET_OVERHEAD: usize = size_of::<BucketId>() + size_of::<Bucket>();
 
 fn entry_footprint(key: &EncodedKey, row: &Option<EncodedPodRow>) -> usize {
 	ENTRY_OVERHEAD + key.heap_bytes() + row.as_ref().map_or(0, EncodedPodRow::len)
+}
+
+fn class_budget<'a>(point: &'a MemoryBudget, range: &'a MemoryBudget, complete: bool) -> &'a MemoryBudget {
+	if complete {
+		range
+	} else {
+		point
+	}
+}
+
+fn reclassify(bucket: &mut Bucket, point: &MemoryBudget, range: &MemoryBudget, complete: bool) {
+	if bucket.complete == complete {
+		return;
+	}
+	let bytes = ByteSize::from_bytes(bucket.bytes as u64);
+	class_budget(point, range, bucket.complete).release(bytes);
+	class_budget(point, range, complete).charge(bytes);
+	bucket.complete = complete;
 }
 
 fn account(bytes: &mut usize, budget: &MemoryBudget, old: usize, new: usize) {
@@ -103,6 +131,11 @@ pub struct OperatorReadBufferMetrics {
 	pub fills_started: u64,
 	pub fills_dirty_aborted: u64,
 	pub fills_duplicate: u64,
+	pub range_hits: u64,
+	pub range_misses: u64,
+	pub range_fills: u64,
+	pub range_fills_declined: u64,
+	pub range_fills_dirty_aborted: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -110,8 +143,11 @@ pub struct OperatorReadBufferShardMetrics {
 	pub shard: usize,
 	pub used: ByteSize,
 	pub limit: ByteSize,
+	pub range_used: ByteSize,
+	pub range_limit: ByteSize,
 	pub buckets: usize,
 	pub entries: usize,
+	pub complete_buckets: usize,
 	pub counters: OperatorReadBufferMetrics,
 }
 
@@ -121,6 +157,7 @@ pub struct OperatorReadBufferKeyspaceMetrics {
 	pub used: ByteSize,
 	pub buckets: usize,
 	pub entries: usize,
+	pub complete_buckets: usize,
 	pub counters: OperatorReadBufferMetrics,
 }
 
@@ -130,10 +167,18 @@ type KeyspaceCounters = Box<[OperatorReadBufferMetrics; KEYSPACE_SLOTS]>;
 
 type FillId = (BucketId, EncodedKey);
 
+struct RangeFill {
+	dirty: bool,
+	entries: BTreeMap<EncodedKey, Option<EncodedPodRow>>,
+	bytes: usize,
+}
+
 struct Shard {
 	buckets: HashMap<BucketId, Bucket>,
 	filling: HashMap<FillId, bool>,
+	range_filling: HashMap<BucketId, RangeFill>,
 	budget: MemoryBudget,
+	range_budget: MemoryBudget,
 	next_tick: u64,
 	metrics: OperatorReadBufferMetrics,
 	keyspace_metrics: KeyspaceCounters,

@@ -573,6 +573,7 @@ mod tests {
 			used: ByteSize::from_bytes(12_401),
 			buckets: 115,
 			entries: 231,
+			complete_buckets: 97,
 			counters: OperatorReadBufferMetrics {
 				hits: 367_918,
 				misses: 2_944,
@@ -580,6 +581,11 @@ mod tests {
 				fills_started: 3_001,
 				fills_dirty_aborted: 7,
 				fills_duplicate: 13,
+				range_hits: 1_207,
+				range_misses: 89,
+				range_fills: 41,
+				range_fills_declined: 5,
+				range_fills_dirty_aborted: 2,
 			},
 		}
 	}

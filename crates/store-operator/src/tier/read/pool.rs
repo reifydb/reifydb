@@ -74,6 +74,17 @@ impl OperatorReadBufferTier {
 			.sum()
 	}
 
+	pub fn range_resident_bytes(&self) -> ByteSize {
+		let total = self.all_shards().map(|shard| shard.lock().range_budget.used().as_bytes()).sum();
+		ByteSize::from_bytes(total)
+	}
+
+	pub fn complete_buckets(&self) -> usize {
+		self.all_shards()
+			.map(|shard| shard.lock().buckets.values().filter(|bucket| bucket.complete).count())
+			.sum()
+	}
+
 	pub fn hits(&self) -> u64 {
 		self.all_shards().map(|shard| shard.lock().metrics.hits).sum()
 	}
@@ -96,6 +107,11 @@ impl OperatorReadBufferTier {
 			total.fills_started += shard.metrics.fills_started;
 			total.fills_dirty_aborted += shard.metrics.fills_dirty_aborted;
 			total.fills_duplicate += shard.metrics.fills_duplicate;
+			total.range_hits += shard.metrics.range_hits;
+			total.range_misses += shard.metrics.range_misses;
+			total.range_fills += shard.metrics.range_fills;
+			total.range_fills_declined += shard.metrics.range_fills_declined;
+			total.range_fills_dirty_aborted += shard.metrics.range_fills_dirty_aborted;
 		}
 		total
 	}
@@ -105,15 +121,20 @@ impl OperatorReadBufferTier {
 		for (index, shard) in self.inner.shards.iter().enumerate() {
 			let shard = shard.lock();
 			let mut entries = 0usize;
+			let mut complete_buckets = 0usize;
 			for bucket in shard.buckets.values() {
 				entries += bucket.entries.len();
+				complete_buckets += usize::from(bucket.complete);
 			}
 			out.push(OperatorReadBufferShardMetrics {
 				shard: index,
 				used: shard.budget.used(),
 				limit: shard.budget.limit(),
+				range_used: shard.range_budget.used(),
+				range_limit: shard.range_budget.limit(),
 				buckets: shard.buckets.len(),
 				entries,
+				complete_buckets,
 				counters: shard.metrics,
 			});
 		}
@@ -124,6 +145,7 @@ impl OperatorReadBufferTier {
 		let mut used = vec![0u64; KEYSPACE_SLOTS];
 		let mut buckets = vec![0usize; KEYSPACE_SLOTS];
 		let mut entries = vec![0usize; KEYSPACE_SLOTS];
+		let mut complete_buckets = vec![0usize; KEYSPACE_SLOTS];
 		let mut counters = vec![OperatorReadBufferMetrics::default(); KEYSPACE_SLOTS];
 
 		for shard in self.all_shards() {
@@ -133,6 +155,7 @@ impl OperatorReadBufferTier {
 				used[slot] += bucket.bytes as u64;
 				buckets[slot] += 1;
 				entries[slot] += bucket.entries.len();
+				complete_buckets[slot] += usize::from(bucket.complete);
 			}
 			for (slot, source) in shard.keyspace_metrics.iter().enumerate() {
 				accumulate(&mut counters[slot], source);
@@ -147,6 +170,7 @@ impl OperatorReadBufferTier {
 				used: ByteSize::from_bytes(used[slot]),
 				buckets: buckets[slot],
 				entries: entries[slot],
+				complete_buckets: complete_buckets[slot],
 				counters: counters[slot],
 			})
 			.collect()
@@ -178,8 +202,28 @@ impl MetricsCollector for OperatorReadBufferTier {
 			counters.fills_dirty_aborted,
 		));
 		out.push(MetricsSample::counter(READ_BUFFER_SCOPE, "fills_duplicate", counters.fills_duplicate));
+		out.push(MetricsSample::heap(READ_BUFFER_SCOPE, "range_resident_bytes", self.range_resident_bytes()));
+		out.push(MetricsSample::count(READ_BUFFER_SCOPE, "complete_buckets", self.complete_buckets() as u64));
+		out.push(MetricsSample::counter(READ_BUFFER_SCOPE, "range_hits", counters.range_hits));
+		out.push(MetricsSample::counter(READ_BUFFER_SCOPE, "range_misses", counters.range_misses));
+		out.push(MetricsSample::counter(READ_BUFFER_SCOPE, "range_fills", counters.range_fills));
+		out.push(MetricsSample::counter(
+			READ_BUFFER_SCOPE,
+			"range_fills_declined",
+			counters.range_fills_declined,
+		));
+		out.push(MetricsSample::counter(
+			READ_BUFFER_SCOPE,
+			"range_fills_dirty_aborted",
+			counters.range_fills_dirty_aborted,
+		));
 		let shards = &self.inner.shards;
 		out.push(MetricsSample::bytes(READ_BUFFER_SCOPE, "shard_limit_bytes", shards[0].lock().budget.limit()));
+		out.push(MetricsSample::bytes(
+			READ_BUFFER_SCOPE,
+			"shard_range_limit_bytes",
+			shards[0].lock().range_budget.limit(),
+		));
 		for (index, shard) in shards.iter().enumerate() {
 			out.push(MetricsSample::bytes(
 				format!("{READ_BUFFER_SCOPE}::shard::{index:02}"),
@@ -197,17 +241,25 @@ fn accumulate(target: &mut OperatorReadBufferMetrics, source: &OperatorReadBuffe
 	target.fills_started += source.fills_started;
 	target.fills_dirty_aborted += source.fills_dirty_aborted;
 	target.fills_duplicate += source.fills_duplicate;
+	target.range_hits += source.range_hits;
+	target.range_misses += source.range_misses;
+	target.range_fills += source.range_fills;
+	target.range_fills_declined += source.range_fills_declined;
+	target.range_fills_dirty_aborted += source.range_fills_dirty_aborted;
 }
 
 fn build_shards(config: OperatorReadBufferConfig, resident_bytes: ByteSize) -> Box<[Mutex<Shard>]> {
 	let shard_count = config.shards.max(1);
 	let byte_cap = ByteSize::from_bytes((resident_bytes.as_bytes() / shard_count as u64).max(1));
+	let range_byte_cap = ByteSize::from_bytes((config.range_resident_bytes.as_bytes() / shard_count as u64).max(1));
 	(0..shard_count)
 		.map(|_| {
 			Mutex::new(Shard {
 				buckets: HashMap::new(),
 				filling: HashMap::new(),
+				range_filling: HashMap::new(),
 				budget: MemoryBudget::new(byte_cap),
+				range_budget: MemoryBudget::new(range_byte_cap),
 				next_tick: 0,
 				metrics: OperatorReadBufferMetrics::default(),
 				keyspace_metrics: Box::new([OperatorReadBufferMetrics::default(); KEYSPACE_SLOTS]),
@@ -218,9 +270,9 @@ fn build_shards(config: OperatorReadBufferConfig, resident_bytes: ByteSize) -> B
 }
 
 impl Shard {
-	fn pick_victim(&self) -> Option<BucketId> {
+	fn pick_victim(&self, complete: bool) -> Option<BucketId> {
 		let mut victim: Option<(u64, BucketId)> = None;
-		for (id, bucket) in &self.buckets {
+		for (id, bucket) in self.buckets.iter().filter(|(_, bucket)| bucket.complete == complete) {
 			if victim.map(|(tick, _)| bucket.tick < tick).unwrap_or(true) {
 				victim = Some((bucket.tick, *id));
 			}
@@ -228,17 +280,35 @@ impl Shard {
 		victim.map(|(_, id)| id)
 	}
 
-	pub(super) fn evict_to_capacity(&mut self) {
-		while self.budget.over_budget() {
-			let Some(victim) = self.pick_victim() else {
+	fn evict_class(&mut self, complete: bool) {
+		loop {
+			let over = if complete {
+				self.range_budget.over_budget()
+			} else {
+				self.budget.over_budget()
+			};
+			if !over {
+				break;
+			}
+			let Some(victim) = self.pick_victim(complete) else {
 				break;
 			};
 			let Some(bucket) = self.buckets.remove(&victim) else {
 				break;
 			};
-			self.budget.release(ByteSize::from_bytes(bucket.bytes as u64));
+			let released = ByteSize::from_bytes(bucket.bytes as u64);
+			if complete {
+				self.range_budget.release(released);
+			} else {
+				self.budget.release(released);
+			}
 			self.metrics.evictions += 1;
 			self.keyspace_metrics[victim.keyspace.0 as usize].evictions += 1;
 		}
+	}
+
+	pub(super) fn evict_to_capacity(&mut self) {
+		self.evict_class(false);
+		self.evict_class(true);
 	}
 }
