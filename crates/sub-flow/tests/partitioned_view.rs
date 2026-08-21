@@ -320,8 +320,7 @@ fn ringbuffer_backed_partitioned_view_resets_after_partition_empties() {
 
 #[test]
 fn series_backed_partitioned_view_stores_and_prunes() {
-	// A series stores under a Series locator, so this reaches the write path and the scan's
-	// Series-locator decode branch that neither the table nor the ring-buffer backend does.
+	// A partitioned series view must round-trip through the partitioned series keyspace, never the plain row one.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::ticks { ts: int8, region: utf8, n: int4 }");

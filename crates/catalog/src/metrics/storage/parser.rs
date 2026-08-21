@@ -19,6 +19,8 @@ fn extract_metrics_id(key: &[u8], kind: KeyKind) -> MetricsId {
 	match kind {
 		KeyKind::Row
 		| KeyKind::SeriesRow
+		| KeyKind::PartitionedRow
+		| KeyKind::PartitionedSeriesRow
 		| KeyKind::RowSequence
 		| KeyKind::Column
 		| KeyKind::Columns
