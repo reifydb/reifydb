@@ -6,6 +6,9 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
+pub mod actor;
 pub mod adaptive;
 pub mod bloom;
+pub mod config;
+pub mod driver;
 pub mod source;

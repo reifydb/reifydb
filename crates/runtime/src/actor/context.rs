@@ -154,7 +154,9 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 			msg,
 		)
 	}
+}
 
+impl<M: Send + 'static> Context<M> {
 	#[cfg(not(reifydb_single_threaded))]
 	pub fn schedule_repeat_fn<F: Fn() -> M + Send + Sync + 'static>(
 		&self,

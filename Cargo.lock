@@ -3072,6 +3072,8 @@ dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-value",
+ "tracing",
 ]
 
 [[package]]
