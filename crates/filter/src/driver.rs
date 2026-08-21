@@ -3,8 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_value::value::duration::Duration;
-
 use crate::{
 	adaptive::{AdaptiveKeyFilter, RebuildHandle},
 	config::FilterConfig,
@@ -38,10 +36,6 @@ impl RebuildDriver {
 
 	pub fn name(&self) -> &'static str {
 		self.source.name()
-	}
-
-	pub fn interval(&self) -> Duration {
-		self.config.interval
 	}
 
 	pub fn step(&mut self) -> DriverProgress {
