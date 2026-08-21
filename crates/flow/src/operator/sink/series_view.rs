@@ -17,16 +17,15 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
-	key::{
-		partitioned_row::{PartitionedRowKey, RowLocator},
-		row::RowKey,
-	},
+	key::{EncodableKey, partitioned_series_row::PartitionedSeriesRowKey, series_row::SeriesRowKey},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::column::columns::Columns,
 };
 use reifydb_value::{
 	Result,
+	error::Error,
+	reifydb_assertions,
 	value::{Value, partition::Partition},
 };
 use tracing::instrument;
@@ -37,13 +36,15 @@ use super::{
 	shape_field_columns,
 	view::dictionary_encode_view_columns,
 };
-use crate::transaction::{FlowTransaction, deferred::DeferredTransaction};
+use crate::{
+	error::FlowSinkError,
+	transaction::{FlowTransaction, deferred::DeferredTransaction},
+};
 
 pub struct SinkSeriesViewOperator {
 	operator: OperatorId,
 	view: ResolvedView,
 	storage: StorageId,
-	#[allow(dead_code)]
 	key: SeriesKey,
 	partition_indices: Vec<usize>,
 	verified_partitions: HashMap<Partition, Vec<Value>>,
@@ -66,6 +67,33 @@ impl SinkSeriesViewOperator {
 	#[inline]
 	fn is_partitioned(&self) -> bool {
 		!self.partition_indices.is_empty()
+	}
+
+	#[inline]
+	fn series_key_at(&self, columns: &Columns, row_idx: usize) -> Result<u64> {
+		let key_column = self.key.column();
+		let value = columns
+			.iter()
+			.find(|col| col.name().text() == key_column)
+			.map(|col| col.data().get_value(row_idx));
+
+		reifydb_assertions! {
+			assert!(
+				value.is_some(),
+				"the series key column '{key_column}' must reach the sink for every row of view \
+				 '{}'; without it every row collapses onto a single key and overwrites its \
+				 predecessor",
+				self.view.def().name()
+			);
+		}
+
+		value.and_then(|value| self.key.key_to_u64(value)).ok_or_else(|| {
+			Error::from(FlowSinkError::MissingSeriesKey {
+				view: self.view.def().name().to_string(),
+				column: key_column.to_string(),
+				row_idx,
+			})
+		})
 	}
 }
 
@@ -126,6 +154,7 @@ impl SinkSeriesViewOperator {
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers()[row_idx];
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
+			let series_key = self.series_key_at(&coerced, row_idx)?;
 			let key = if self.is_partitioned() {
 				let (partition, values) = partition_of(&self.partition_indices, &coerced, row_idx);
 				resolve_partition_flow(
@@ -135,17 +164,15 @@ impl SinkSeriesViewOperator {
 					&values,
 					&mut self.verified_partitions,
 				)?;
-				PartitionedRowKey::encoded(
-					object_id,
-					partition,
-					RowLocator::Series {
-						variant_tag: None,
-						key: 0,
-						sequence: row_number.0,
-					},
-				)
+				PartitionedSeriesRowKey::encoded(object_id, partition, None, series_key, row_number.0)
 			} else {
-				RowKey::encoded(object_id, row_number)
+				SeriesRowKey {
+					storage: object_id,
+					variant_tag: None,
+					key: series_key,
+					sequence: row_number.0,
+				}
+				.encode()
 			};
 			keys.push(key);
 			encoded_bytes_list.push(encoded);
@@ -185,6 +212,9 @@ impl SinkSeriesViewOperator {
 			let (_, post_encoded) =
 				encode_row_at_index(source_post, row_idx, shape, post_row_number, &field_columns)?;
 
+			let pre_series_key = self.series_key_at(&coerced_pre, row_idx)?;
+			let post_series_key = self.series_key_at(&coerced_post, row_idx)?;
+
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
 					partition_of(&self.partition_indices, &coerced_pre, row_idx);
@@ -199,29 +229,37 @@ impl SinkSeriesViewOperator {
 					&mut self.verified_partitions,
 				)?;
 				(
-					PartitionedRowKey::encoded(
+					PartitionedSeriesRowKey::encoded(
 						object_id,
 						pre_partition,
-						RowLocator::Series {
-							variant_tag: None,
-							key: 0,
-							sequence: pre_row_number.0,
-						},
+						None,
+						pre_series_key,
+						pre_row_number.0,
 					),
-					PartitionedRowKey::encoded(
+					PartitionedSeriesRowKey::encoded(
 						object_id,
 						post_partition,
-						RowLocator::Series {
-							variant_tag: None,
-							key: 0,
-							sequence: post_row_number.0,
-						},
+						None,
+						post_series_key,
+						post_row_number.0,
 					),
 				)
 			} else {
 				(
-					RowKey::encoded(object_id, pre_row_number),
-					RowKey::encoded(object_id, post_row_number),
+					SeriesRowKey {
+						storage: object_id,
+						variant_tag: None,
+						key: pre_series_key,
+						sequence: pre_row_number.0,
+					}
+					.encode(),
+					SeriesRowKey {
+						storage: object_id,
+						variant_tag: None,
+						key: post_series_key,
+						sequence: post_row_number.0,
+					}
+					.encode(),
 				)
 			};
 			pre_keys.push(pre_key);
@@ -252,19 +290,18 @@ impl SinkSeriesViewOperator {
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let row_number = coerced.row_numbers()[row_idx];
+			let series_key = self.series_key_at(&coerced, row_idx)?;
 			let key = if self.is_partitioned() {
 				let (partition, _values) = partition_of(&self.partition_indices, &coerced, row_idx);
-				PartitionedRowKey::encoded(
-					object_id,
-					partition,
-					RowLocator::Series {
-						variant_tag: None,
-						key: 0,
-						sequence: row_number.0,
-					},
-				)
+				PartitionedSeriesRowKey::encoded(object_id, partition, None, series_key, row_number.0)
 			} else {
-				RowKey::encoded(object_id, row_number)
+				SeriesRowKey {
+					storage: object_id,
+					variant_tag: None,
+					key: series_key,
+					sequence: row_number.0,
+				}
+				.encode()
 			};
 			keys.push(key);
 		}

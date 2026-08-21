@@ -419,6 +419,16 @@ pub fn flow_sink_not_a_source_family(family: &str) -> Diagnostic {
 	)
 }
 
+pub fn flow_sink_missing_series_key(view: &str, column: &str, row_idx: usize) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_050",
+		format!("row at index {} of view '{}' has no series key in column '{}'", row_idx, view, column),
+		"A series view row key is built from the view's own key column, so the column must be present \
+		 and hold a value convertible to an unsigned integer. A none value or an unsupported type here \
+		 would collapse every row of the view onto the same key.",
+	)
+}
+
 pub fn flow_dictionary_source_unsupported() -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_038",

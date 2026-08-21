@@ -21,16 +21,13 @@ use reifydb_core::{
 			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
 			series::Series,
+			storage::StorageId,
 		},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
 	internal_error,
-	key::{
-		EncodableKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
-		series_row::SeriesRowKey,
-	},
+	key::{EncodableKey, partitioned_series_row::PartitionedSeriesRowKey, series_row::SeriesRowKey},
 	partition::PartitionError,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -265,18 +262,16 @@ fn build_series_updates_to_apply(
 				}
 				.into());
 			}
-			PartitionedRowKey::encoded(
-				series.id,
+			PartitionedSeriesRowKey::encoded(
+				StorageId::series(series.id),
 				old_partition,
-				RowLocator::Series {
-					variant_tag,
-					key: key_value,
-					sequence,
-				},
+				variant_tag,
+				key_value,
+				sequence,
 			)
 		} else {
 			SeriesRowKey {
-				series: series.id,
+				storage: StorageId::series(series.id),
 				variant_tag,
 				key: key_value,
 				sequence,

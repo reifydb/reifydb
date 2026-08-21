@@ -18,6 +18,7 @@ use reifydb_core::{
 		key::PrimaryKey,
 		ringbuffer::{RingBuffer, RingBufferMetadata},
 		series::{Series, SeriesMetadata},
+		storage::StorageId,
 		table::Table,
 	},
 	internal_error,
@@ -770,7 +771,7 @@ fn insert_series_rows<V: ValidationMode>(
 		metadata.sequence_counter += 1;
 		let sequence = metadata.sequence_counter;
 		let row_key = SeriesRowKey {
-			series: series.id,
+			storage: StorageId::series(series.id),
 			variant_tag: None,
 			key: key_value,
 			sequence,

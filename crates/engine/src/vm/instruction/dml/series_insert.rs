@@ -19,16 +19,13 @@ use reifydb_core::{
 			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
 			series::{Series, SeriesKey, SeriesMetadata, TimestampPrecision},
+			storage::StorageId,
 		},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
 	internal_error,
-	key::{
-		EncodableKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
-		series_row::SeriesRowKey,
-	},
+	key::{EncodableKey, partitioned_series_row::PartitionedSeriesRowKey, series_row::SeriesRowKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -184,14 +181,15 @@ fn insert_series_row(
 	returned_rows: &mut Vec<(RowNumber, EncodedBytes)>,
 	verified: &mut HashSet<Partition>,
 ) -> Result<()> {
-	let key_value = extract_or_generate_series_key(services, columns, series, metadata, row_idx, key_column_name);
+	let key_value =
+		extract_or_generate_series_key(services, columns, &series.key, metadata, row_idx, key_column_name);
 	let variant_tag = extract_variant_tag(columns, has_tag, row_idx);
 
 	metadata.sequence_counter += 1;
 	let sequence = metadata.sequence_counter;
 	let encoded_key = if series.partition_by.is_empty() {
 		SeriesRowKey {
-			series: series.id,
+			storage: StorageId::series(series.id),
 			variant_tag,
 			key: key_value,
 			sequence,
@@ -207,14 +205,12 @@ fn insert_series_row(
 		}
 		let partition = Partition::of(&part_values);
 		resolve_partition(txn, ObjectId::Series(series.id), partition, &part_values, verified)?;
-		PartitionedRowKey::encoded(
-			series.id,
+		PartitionedSeriesRowKey::encoded(
+			StorageId::series(series.id),
 			partition,
-			RowLocator::Series {
-				variant_tag,
-				key: key_value,
-				sequence,
-			},
+			variant_tag,
+			key_value,
+			sequence,
 		)
 	};
 
@@ -342,21 +338,29 @@ fn build_insert_series_query_context(
 }
 
 #[inline]
+pub(crate) fn extract_series_key(
+	columns: &Columns,
+	key: &SeriesKey,
+	row_idx: usize,
+	key_column_name: &str,
+) -> Option<u64> {
+	columns.iter()
+		.find(|col| col.name().text() == key_column_name)
+		.and_then(|key_col| key.key_to_u64(key_col.data().get_value(row_idx)))
+}
+
+#[inline]
 fn extract_or_generate_series_key(
 	services: &Arc<Services>,
 	columns: &Columns,
-	series: &Series,
+	key: &SeriesKey,
 	metadata: &SeriesMetadata,
 	row_idx: usize,
 	key_column_name: &str,
 ) -> u64 {
-	let from_input = columns
-		.iter()
-		.find(|col| col.name().text() == key_column_name)
-		.and_then(|key_col| series.key_to_u64(key_col.data().get_value(row_idx)));
-	match from_input {
+	match extract_series_key(columns, key, row_idx, key_column_name) {
 		Some(v) => v,
-		None => match &series.key {
+		None => match key {
 			SeriesKey::DateTime {
 				precision,
 				..

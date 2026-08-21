@@ -16,12 +16,14 @@ use reifydb_core::{
 			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
 			series::{Series, SeriesMetadata},
+			storage::StorageId,
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
 	key::{
 		EncodableKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
+		partitioned_row::PartitionedRowKey,
+		partitioned_series_row::PartitionedSeriesRowKey,
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -224,18 +226,16 @@ fn drive_series_delete_input(
 			let key_value = extract_series_delete_key_value(&columns, series, row_idx);
 			let variant_tag = extract_series_delete_variant_tag(&columns, has_tag, row_idx);
 			let encoded_key = if partitioned {
-				PartitionedRowKey::encoded(
-					series.id,
+				PartitionedSeriesRowKey::encoded(
+					StorageId::series(series.id),
 					columns.partitions()[row_idx],
-					RowLocator::Series {
-						variant_tag,
-						key: key_value,
-						sequence,
-					},
+					variant_tag,
+					key_value,
+					sequence,
 				)
 			} else {
 				SeriesRowKey {
-					series: series.id,
+					storage: StorageId::series(series.id),
 					variant_tag,
 					key: key_value,
 					sequence,
@@ -292,7 +292,7 @@ fn run_series_delete_all(
 	let range = if partitioned {
 		PartitionedRowKey::full_scan(series.id)
 	} else {
-		SeriesRowKeyRange::full_scan(series.id, None)
+		SeriesRowKeyRange::full_scan(StorageId::series(series.id), None)
 	};
 	let mut entries_to_delete: Vec<(EncodedKey, EncodedBytes)> = Vec::new();
 
