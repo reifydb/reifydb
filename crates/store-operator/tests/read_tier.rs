@@ -442,3 +442,90 @@ fn a_refused_keyspace_reads_absent_without_remembering_the_absence() {
 	assert_eq!(store.get(OP_A, &key), None, "the key is gone from sqlite but still passes the filter");
 	assert_eq!(entries(&store), 0, "the absence must not be remembered for a refused keyspace");
 }
+
+#[test]
+fn an_expiry_write_never_occupies_the_read_buffer() {
+	// The expiry index is drained by due-ordered range scans and never point read, so every entry the flush
+	// write-through admits is budget a read-served keyspace loses to whole-bucket eviction and can never win
+	// back with a hit.
+	let (store, _storage, _guard) = cached_store();
+	let key = key_in(Keyspace::EXPIRY, 1);
+	store.set(OP_A, key.clone(), row("armed"));
+	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
+
+	for _ in 0..4 {
+		assert_eq!(
+			body(&store.get(OP_A, &key).expect("a refused keyspace must still read correctly")),
+			"armed",
+			"EXPIRY bypasses the tier, it does not lose its rows"
+		);
+	}
+
+	assert_eq!(
+		entries(&store),
+		0,
+		"EXPIRY must leave nothing behind: neither the flush write-through nor a read fill may admit it"
+	);
+	assert_eq!(
+		store.read().expect("the fixture configures a read tier").metrics().fills_started,
+		0,
+		"EXPIRY must be refused before the fill starts; a fill that can only be thrown away still takes the shard lock"
+	);
+}
+
+#[test]
+fn a_timer_wheel_write_never_occupies_the_read_buffer() {
+	// The timer wheel is read only by the due-ordered range scan that drains it, so admitting its rows buys
+	// no hit and spends budget the keyspaces that are point read need.
+	let (store, _storage, _guard) = cached_store();
+	let key = key_in(Keyspace::TIMER_WHEEL, 1);
+	store.set(OP_A, key.clone(), row("armed"));
+	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
+
+	for _ in 0..4 {
+		assert_eq!(
+			body(&store.get(OP_A, &key).expect("a refused keyspace must still read correctly")),
+			"armed",
+			"TIMER_WHEEL bypasses the tier, it does not lose its rows"
+		);
+	}
+
+	assert_eq!(
+		entries(&store),
+		0,
+		"TIMER_WHEEL must leave nothing behind: neither the flush write-through nor a read fill may admit it"
+	);
+	assert_eq!(
+		store.read().expect("the fixture configures a read tier").metrics().fills_started,
+		0,
+		"TIMER_WHEEL must be refused before the fill starts; a fill that can only be thrown away still takes the shard lock"
+	);
+}
+
+#[test]
+fn a_point_read_of_an_expiry_key_remembers_neither_the_row_nor_the_absence() {
+	// The absence path costs the same entry overhead as a row, so a refused keyspace that still caches "nothing
+	// here" gives back exactly the budget the refusal was meant to free.
+	let (store, storage, _guard) = cached_store();
+	let present = key_in(Keyspace::EXPIRY, 1);
+	let absent = key_in(Keyspace::EXPIRY, 2);
+	storage.set(OP_A, present.clone(), row("armed"));
+	storage.set(OP_A, absent.clone(), row("seed"));
+	storage.remove(OP_A, &absent);
+
+	assert_eq!(body(&store.get(OP_A, &present).expect("the seeded row is readable")), "armed");
+	assert_eq!(store.get(OP_A, &absent), None, "the key is gone from sqlite but still passes the filter");
+
+	assert_eq!(entries(&store), 0, "neither the row nor the absence may be remembered for EXPIRY");
+}
+
+#[test]
+fn a_row_number_mapping_write_still_occupies_the_read_buffer() {
+	// The control for the two refusals above: a refusal list that widened past the keyspaces the measurement
+	// shows serving hits would turn the tier into an off switch and only show up as a throughput loss in a replay.
+	let (store, _storage, _guard) = cached_store();
+	store.set(OP_A, key_in(Keyspace::ROW_NUMBER_MAPPING, 1), row("durable"));
+	assert!(store.flush_pending_blocking());
+
+	assert_eq!(entries(&store), 1, "a cached keyspace must still be admitted after the refusal list grew");
+}

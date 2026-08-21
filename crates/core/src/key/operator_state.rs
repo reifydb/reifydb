@@ -201,7 +201,10 @@ impl Keyspace {
 	}
 
 	pub fn is_cached(&self) -> bool {
-		!matches!(*self, Self::CUSTOM_NOT_CACHED | Self::JOIN_PIN | Self::ENGINE_META)
+		!matches!(
+			*self,
+			Self::CUSTOM_NOT_CACHED | Self::JOIN_PIN | Self::ENGINE_META | Self::EXPIRY | Self::TIMER_WHEEL
+		)
 	}
 
 	pub fn is_known(&self) -> bool {
