@@ -54,6 +54,68 @@ impl SeriesKey {
 		}
 	}
 
+	pub fn key_to_u64(&self, value: Value) -> Option<u64> {
+		match value {
+			Value::Int1(v) => u64::try_from(v).ok(),
+			Value::Int2(v) => u64::try_from(v).ok(),
+			Value::Int4(v) => u64::try_from(v).ok(),
+			Value::Int8(v) => u64::try_from(v).ok(),
+			Value::Int16(v) => u64::try_from(v).ok(),
+			Value::Uint1(v) => Some(v as u64),
+			Value::Uint2(v) => Some(v as u64),
+			Value::Uint4(v) => Some(v as u64),
+			Value::Uint8(v) => Some(v),
+			Value::Uint16(v) => u64::try_from(v).ok(),
+			Value::DateTime(dt) => {
+				let nanos = dt.to_nanos();
+				match self {
+					SeriesKey::DateTime {
+						precision,
+						..
+					} => Some(match precision {
+						TimestampPrecision::Second => nanos / 1_000_000_000,
+						TimestampPrecision::Millisecond => nanos / 1_000_000,
+						TimestampPrecision::Microsecond => nanos / 1_000,
+						TimestampPrecision::Nanosecond => nanos,
+					}),
+					_ => Some(nanos),
+				}
+			}
+			_ => None,
+		}
+	}
+
+	pub fn key_from_u64(&self, v: u64, key_type: Option<ValueType>) -> Value {
+		match key_type.as_ref() {
+			Some(ValueType::Int1) => Value::Int1(v as i8),
+			Some(ValueType::Int2) => Value::Int2(v as i16),
+			Some(ValueType::Int4) => Value::Int4(v as i32),
+			Some(ValueType::Int8) => Value::Int8(v as i64),
+			Some(ValueType::Uint1) => Value::Uint1(v as u8),
+			Some(ValueType::Uint2) => Value::Uint2(v as u16),
+			Some(ValueType::Uint4) => Value::Uint4(v as u32),
+			Some(ValueType::Uint8) => Value::Uint8(v),
+			Some(ValueType::Uint16) => Value::Uint16(v as u128),
+			Some(ValueType::Int16) => Value::Int16(v as i128),
+			Some(ValueType::DateTime) => {
+				let nanos: u64 = match self {
+					SeriesKey::DateTime {
+						precision,
+						..
+					} => match precision {
+						TimestampPrecision::Second => v * 1_000_000_000,
+						TimestampPrecision::Millisecond => v * 1_000_000,
+						TimestampPrecision::Microsecond => v * 1_000,
+						TimestampPrecision::Nanosecond => v,
+					},
+					_ => v,
+				};
+				Value::DateTime(DateTime::from_nanos(nanos))
+			}
+			_ => Value::Uint8(v),
+		}
+	}
+
 	pub fn decode(key_kind: u8, precision_raw: u8, column: String) -> Self {
 		match key_kind {
 			1 => SeriesKey::Integer {
@@ -99,66 +161,11 @@ impl Series {
 	}
 
 	pub fn key_to_u64(&self, value: Value) -> Option<u64> {
-		match value {
-			Value::Int1(v) => u64::try_from(v).ok(),
-			Value::Int2(v) => u64::try_from(v).ok(),
-			Value::Int4(v) => u64::try_from(v).ok(),
-			Value::Int8(v) => u64::try_from(v).ok(),
-			Value::Int16(v) => u64::try_from(v).ok(),
-			Value::Uint1(v) => Some(v as u64),
-			Value::Uint2(v) => Some(v as u64),
-			Value::Uint4(v) => Some(v as u64),
-			Value::Uint8(v) => Some(v),
-			Value::Uint16(v) => u64::try_from(v).ok(),
-			Value::DateTime(dt) => {
-				let nanos = dt.to_nanos();
-				match &self.key {
-					SeriesKey::DateTime {
-						precision,
-						..
-					} => Some(match precision {
-						TimestampPrecision::Second => nanos / 1_000_000_000,
-						TimestampPrecision::Millisecond => nanos / 1_000_000,
-						TimestampPrecision::Microsecond => nanos / 1_000,
-						TimestampPrecision::Nanosecond => nanos,
-					}),
-					_ => Some(nanos),
-				}
-			}
-			_ => None,
-		}
+		self.key.key_to_u64(value)
 	}
 
 	pub fn key_from_u64(&self, v: u64) -> Value {
-		let ty = self.key_column_type();
-		match ty.as_ref() {
-			Some(ValueType::Int1) => Value::Int1(v as i8),
-			Some(ValueType::Int2) => Value::Int2(v as i16),
-			Some(ValueType::Int4) => Value::Int4(v as i32),
-			Some(ValueType::Int8) => Value::Int8(v as i64),
-			Some(ValueType::Uint1) => Value::Uint1(v as u8),
-			Some(ValueType::Uint2) => Value::Uint2(v as u16),
-			Some(ValueType::Uint4) => Value::Uint4(v as u32),
-			Some(ValueType::Uint8) => Value::Uint8(v),
-			Some(ValueType::Uint16) => Value::Uint16(v as u128),
-			Some(ValueType::Int16) => Value::Int16(v as i128),
-			Some(ValueType::DateTime) => {
-				let nanos: u64 = match &self.key {
-					SeriesKey::DateTime {
-						precision,
-						..
-					} => match precision {
-						TimestampPrecision::Second => v * 1_000_000_000,
-						TimestampPrecision::Millisecond => v * 1_000_000,
-						TimestampPrecision::Microsecond => v * 1_000,
-						TimestampPrecision::Nanosecond => v,
-					},
-					_ => v,
-				};
-				Value::DateTime(DateTime::from_nanos(nanos))
-			}
-			_ => Value::Uint8(v),
-		}
+		self.key.key_from_u64(v, self.key_column_type())
 	}
 
 	pub fn key_column_data(&self, keys: Vec<u64>) -> ColumnBuffer {

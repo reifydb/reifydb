@@ -35,7 +35,7 @@ pub enum EntryKind {
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	match Key::decode(key) {
 		Some(Key::Row(row_key)) => EntryKind::Source(row_key.storage),
-		Some(Key::SeriesRow(series_key)) => EntryKind::Source(StorageId::series(series_key.series)),
+		Some(Key::SeriesRow(series_key)) => EntryKind::Source(series_key.storage),
 		Some(Key::PartitionedRow(partitioned_key)) => EntryKind::PartitionedSource(partitioned_key.storage),
 		_ => EntryKind::Multi,
 	}
@@ -47,7 +47,7 @@ pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 	}
 
 	if let (Some(start), Some(_end)) = SeriesRowKeyRange::decode(range) {
-		return Some(EntryKind::Source(StorageId::series(start)));
+		return Some(EntryKind::Source(start));
 	}
 
 	if let (Some(start), Some(_end)) = PartitionedRowKeyRange::decode(range) {

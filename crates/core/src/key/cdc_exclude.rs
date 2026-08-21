@@ -111,6 +111,7 @@ pub mod tests {
 			KeyKind::IdentityAttribute => {}
 			KeyKind::IdentityAttributeValue => {}
 			KeyKind::PartitionedRow => {}
+			KeyKind::PartitionedSeriesRow => {}
 			KeyKind::Partition => {}
 			KeyKind::Queue => {}
 			KeyKind::NamespaceQueue => {}
