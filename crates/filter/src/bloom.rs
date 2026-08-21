@@ -31,7 +31,10 @@ impl BloomFilter {
 	}
 
 	pub fn add<T: Hash>(&self, item: &T) {
-		let hash = hash_item(item);
+		self.add_hash(hash_item(item));
+	}
+
+	pub fn add_hash(&self, hash: u64) {
 		for i in 0..self.hash_count {
 			let bit_pos = self.get_bit_pos(hash, i);
 			self.bits[bit_pos / 64].fetch_or(1u64 << (bit_pos % 64), Ordering::Release);
@@ -39,7 +42,10 @@ impl BloomFilter {
 	}
 
 	pub fn might_contain<T: Hash>(&self, item: &T) -> bool {
-		let hash = hash_item(item);
+		self.might_contain_hash(hash_item(item))
+	}
+
+	pub fn might_contain_hash(&self, hash: u64) -> bool {
 		for i in 0..self.hash_count {
 			let bit_pos = self.get_bit_pos(hash, i);
 			if self.bits[bit_pos / 64].load(Ordering::Acquire) & (1u64 << (bit_pos % 64)) == 0 {

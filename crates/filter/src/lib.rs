@@ -7,3 +7,4 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod bloom;
+pub mod source;
