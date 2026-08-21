@@ -16,7 +16,7 @@ use crate::{
 		key::PrimaryKey,
 	},
 	return_internal_error,
-	value::column::buffer::ColumnBuffer,
+	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -52,6 +52,13 @@ impl SeriesKey {
 				column,
 			} => column,
 		}
+	}
+
+	pub fn extract_key(&self, columns: &Columns, row_idx: usize) -> Option<u64> {
+		let key_column = self.column();
+		columns.iter()
+			.find(|col| col.name().text() == key_column)
+			.and_then(|col| self.key_to_u64(col.data().get_value(row_idx)))
 	}
 
 	pub fn key_to_u64(&self, value: Value) -> Option<u64> {

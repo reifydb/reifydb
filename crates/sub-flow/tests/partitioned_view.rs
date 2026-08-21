@@ -344,6 +344,38 @@ fn series_backed_partitioned_view_stores_and_prunes() {
 }
 
 #[test]
+fn series_backed_partitioned_view_rows_keep_distinct_row_numbers() {
+	// The sink puts the flow row number in the key's sequence field, so the scan has to read it
+	// back from there. Decoding a partitioned series key as a plain partitioned row key yields
+	// RowNumber(0) for every row, and rows that share a row number collapse onto each other in
+	// every downstream consumer.
+	let db = setup();
+	db.admin("CREATE NAMESPACE test");
+	db.admin("CREATE TABLE test::ticks { ts: int8, region: utf8, n: int4 }");
+	db.command(
+		"INSERT test::ticks [{ ts: 1, region: \"us\", n: 1 }, { ts: 2, region: \"eu\", n: 2 }, \
+		 { ts: 3, region: \"us\", n: 3 }]",
+	);
+	db.admin("CREATE DEFERRED SERIES VIEW test::s { ts: int8, region: utf8, n: int4 } \
+		 WITH { key: ts, partition: { by: { region } } } AS { FROM test::ticks }");
+
+	assert_eq!(db.await_row_count("FROM test::s", 3, StdDuration::from_secs(5)), 3);
+
+	let mut seen: Vec<u64> = db
+		.query("FROM test::s")
+		.iter()
+		.flat_map(|frame| frame.row_numbers().iter().map(|rn| rn.0).collect::<Vec<_>>())
+		.collect();
+	seen.sort();
+	let mut distinct = seen.clone();
+	distinct.dedup();
+
+	assert_eq!(seen.len(), 3, "every materialized row must reach the reader");
+	assert_eq!(distinct, seen, "no two series view rows may share a row number: {seen:?}");
+	assert!(!seen.contains(&0), "a row number of zero means the sequence was never decoded: {seen:?}");
+}
+
+#[test]
 fn partition_column_must_exist() {
 	// Partition columns reference the view's declared output columns, so an unknown one is a
 	// planning error rather than a silent no-op.

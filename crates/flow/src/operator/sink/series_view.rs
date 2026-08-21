@@ -26,7 +26,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	reifydb_assertions,
-	value::{Value, partition::Partition},
+	value::{Value, partition::Partition, system_columns::SystemColumn},
 };
 use tracing::instrument;
 
@@ -72,25 +72,30 @@ impl SinkSeriesViewOperator {
 	#[inline]
 	fn series_key_at(&self, columns: &Columns, row_idx: usize) -> Result<u64> {
 		let key_column = self.key.column();
-		let value = columns
-			.iter()
-			.find(|col| col.name().text() == key_column)
-			.map(|col| col.data().get_value(row_idx));
 
-		reifydb_assertions! {
-			assert!(
-				value.is_some(),
-				"the series key column '{key_column}' must reach the sink for every row of view \
-				 '{}'; without it every row collapses onto a single key and overwrites its \
-				 predecessor",
-				self.view.def().name()
-			);
-		}
+		let key = if key_column.is_empty() {
+			columns.time().get(row_idx).and_then(|time| self.key.key_to_u64(Value::DateTime(*time)))
+		} else {
+			reifydb_assertions! {
+				assert!(
+					columns.iter().any(|col| col.name().text() == key_column),
+					"the series key column '{key_column}' must reach the sink for every row of \
+					 view '{}'; without it every row collapses onto a single key and overwrites \
+					 its predecessor",
+					self.view.def().name()
+				);
+			}
+			self.key.extract_key(columns, row_idx)
+		};
 
-		value.and_then(|value| self.key.key_to_u64(value)).ok_or_else(|| {
+		key.ok_or_else(|| {
 			Error::from(FlowSinkError::MissingSeriesKey {
 				view: self.view.def().name().to_string(),
-				column: key_column.to_string(),
+				column: if key_column.is_empty() {
+					SystemColumn::Time.name().to_string()
+				} else {
+					key_column.to_string()
+				},
 				row_idx,
 			})
 		})

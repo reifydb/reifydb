@@ -137,6 +137,14 @@ impl PartitionedSeriesRowKeyRange {
 		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
 	}
 
+	pub fn full_scan_range(storage: impl Into<StorageId>, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
+		let base = Self::full_scan(storage);
+		match last_key {
+			Some(last) => EncodedKeyRange::new(Bound::Excluded(last.clone()), base.end),
+			None => base,
+		}
+	}
+
 	pub fn partition_range(storage: impl Into<StorageId>, partition: Partition) -> EncodedKeyRange {
 		EncodedKeyRange::prefix(Self::partition_prefix(storage.into(), partition).as_slice())
 	}
@@ -386,6 +394,41 @@ mod tests {
 		assert!(range.contains(&untagged));
 		assert!(range.contains(&tagged));
 		assert!(!range.contains(&other));
+	}
+
+	#[test]
+	fn test_full_scan_range_resumes_across_partitions() {
+		// An object-wide read pages through every partition at once, so the cursor must only cut the
+		// rows already returned and never fence the scan into the cursor's own partition.
+		let storage = StorageId::Series(SeriesId(1));
+		let cursor = PartitionedSeriesRowKey::encoded(storage, part("us"), None, 200, 0);
+		let range = PartitionedSeriesRowKeyRange::full_scan_range(storage, Some(&cursor));
+
+		assert!(!range.contains(&cursor));
+		assert!(range.contains(&PartitionedSeriesRowKey::encoded(storage, part("us"), None, 100, 0)));
+		assert!(
+			range.contains(&PartitionedSeriesRowKey::encoded(storage, part("eu"), None, 100, 0))
+				|| range.contains(&PartitionedSeriesRowKey::encoded(storage, part("eu"), None, 300, 0)),
+			"a resumed object-wide scan must still be able to reach another partition"
+		);
+	}
+
+	#[test]
+	fn test_full_scan_range_without_a_cursor_covers_every_partition() {
+		// The unpaged form is the object-wide read the planner falls back to when no partition was
+		// pruned; missing a partition there silently halves the answer.
+		let storage = StorageId::Series(SeriesId(1));
+		let range = PartitionedSeriesRowKeyRange::full_scan_range(storage, None);
+
+		assert!(range.contains(&PartitionedSeriesRowKey::encoded(storage, part("us"), None, 1, 0)));
+		assert!(range.contains(&PartitionedSeriesRowKey::encoded(storage, part("eu"), Some(3), 9, 9)));
+		assert!(!range.contains(&PartitionedSeriesRowKey::encoded(
+			StorageId::Series(SeriesId(2)),
+			part("us"),
+			None,
+			1,
+			0
+		)));
 	}
 
 	#[test]

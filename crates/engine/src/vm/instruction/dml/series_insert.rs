@@ -181,8 +181,7 @@ fn insert_series_row(
 	returned_rows: &mut Vec<(RowNumber, EncodedBytes)>,
 	verified: &mut HashSet<Partition>,
 ) -> Result<()> {
-	let key_value =
-		extract_or_generate_series_key(services, columns, &series.key, metadata, row_idx, key_column_name);
+	let key_value = extract_or_generate_series_key(services, columns, &series.key, metadata, row_idx);
 	let variant_tag = extract_variant_tag(columns, has_tag, row_idx);
 
 	metadata.sequence_counter += 1;
@@ -338,27 +337,14 @@ fn build_insert_series_query_context(
 }
 
 #[inline]
-pub(crate) fn extract_series_key(
-	columns: &Columns,
-	key: &SeriesKey,
-	row_idx: usize,
-	key_column_name: &str,
-) -> Option<u64> {
-	columns.iter()
-		.find(|col| col.name().text() == key_column_name)
-		.and_then(|key_col| key.key_to_u64(key_col.data().get_value(row_idx)))
-}
-
-#[inline]
 fn extract_or_generate_series_key(
 	services: &Arc<Services>,
 	columns: &Columns,
 	key: &SeriesKey,
 	metadata: &SeriesMetadata,
 	row_idx: usize,
-	key_column_name: &str,
 ) -> u64 {
-	match extract_series_key(columns, key, row_idx, key_column_name) {
+	match key.extract_key(columns, row_idx) {
 		Some(v) => v,
 		None => match key {
 			SeriesKey::DateTime {

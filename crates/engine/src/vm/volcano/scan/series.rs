@@ -12,7 +12,7 @@ use reifydb_core::{
 	interface::{catalog::storage::StorageId, resolved::ResolvedSeries, store::MultiVersionRow},
 	key::{
 		EncodableKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
+		partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
@@ -116,17 +116,8 @@ impl SeriesScanNode {
 			let entry = entry?;
 
 			let decoded: Option<(u64, u64, Option<u8>, Option<Partition>)> = if partitioned {
-				match PartitionedRowKey::decode(&entry.key) {
-					Some(pk) => match pk.locator {
-						RowLocator::Series {
-							variant_tag,
-							key,
-							sequence,
-						} => Some((key, sequence, variant_tag, Some(pk.partition))),
-						_ => None,
-					},
-					None => None,
-				}
+				PartitionedSeriesRowKey::decode(&entry.key)
+					.map(|pk| (pk.key, pk.sequence, pk.variant_tag, Some(pk.partition)))
 			} else {
 				SeriesRowKey::decode(&entry.key).map(|k| (k.key, k.sequence, k.variant_tag, None))
 			};
@@ -292,18 +283,22 @@ impl QueryNode for SeriesScanNode {
 		let has_tag = series.tag.is_some();
 
 		let partitioned = !series.partition_by.is_empty();
+		let storage = StorageId::series(series.id);
 		let range = if partitioned {
 			match self.partition {
-				Some(partition) => PartitionedRowKey::partition_scan_range(
-					series.id,
+				Some(partition) => PartitionedSeriesRowKeyRange::scan_range(
+					storage,
 					partition,
+					self.variant_tag,
+					self.key_range_start,
+					self.key_range_end,
 					self.last_key.as_ref(),
 				),
-				None => PartitionedRowKey::scan_range(series.id, self.last_key.as_ref()),
+				None => PartitionedSeriesRowKeyRange::full_scan_range(storage, self.last_key.as_ref()),
 			}
 		} else {
 			SeriesRowKeyRange::scan_range(
-				StorageId::series(series.id),
+				storage,
 				self.variant_tag,
 				self.key_range_start,
 				self.key_range_end,

@@ -11,12 +11,18 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
-	interface::{catalog::dictionary::Dictionary, resolved::ResolvedView, store::MultiVersionRow},
+	interface::{
+		catalog::{dictionary::Dictionary, view::ViewStorageKind},
+		resolved::ResolvedView,
+		store::MultiVersionRow,
+	},
 	internal_error,
 	key::{
 		EncodableKey,
 		partitioned_row::{PartitionedRowKey, RowLocator},
+		partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
 		row::{RowKey, RowKeyRange},
+		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
@@ -47,6 +53,7 @@ pub(crate) struct ViewScanNode {
 	exhausted: bool,
 	sorted: bool,
 	partitioned: bool,
+	series: bool,
 	partition: Option<Partition>,
 }
 
@@ -78,6 +85,7 @@ impl ViewScanNode {
 		let headers = ColumnHeaders {
 			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
+		let series = view.def().storage_kind() == ViewStorageKind::Series;
 		let sorted = !view.def().sort().is_empty();
 		let partitioned = !view.def().partition_by().is_empty();
 
@@ -92,6 +100,7 @@ impl ViewScanNode {
 			exhausted: false,
 			sorted,
 			partitioned,
+			series,
 			partition,
 		})
 	}
@@ -140,7 +149,19 @@ impl ViewScanNode {
 		for _ in 0..batch_size {
 			match stream.next() {
 				Some(Ok(multi)) => {
-					let row = if self.sorted {
+					let row = if self.series {
+						if self.partitioned {
+							match PartitionedSeriesRowKey::decode(&multi.key) {
+								Some(key) => RowNumber(key.sequence),
+								None => continue,
+							}
+						} else {
+							match SeriesRowKey::decode(&multi.key) {
+								Some(key) => RowNumber(key.sequence),
+								None => continue,
+							}
+						}
+					} else if self.sorted {
 						let bytes = multi.key.as_slice();
 						RowNumber(u64::from_be_bytes(
 							bytes[bytes.len() - 8..].try_into().unwrap(),
@@ -222,17 +243,23 @@ impl QueryNode for ViewScanNode {
 
 		let batch_size = stored_ctx.batch_size;
 		let storage = self.view.def().storage_id();
-		let range = if self.partitioned {
-			match self.partition {
-				Some(partition) => PartitionedRowKey::partition_scan_range(
-					storage,
-					partition,
-					self.last_key.as_ref(),
-				),
-				None => PartitionedRowKey::scan_range(storage, self.last_key.as_ref()),
+		let range = match (self.series, self.partitioned, self.partition) {
+			(true, true, Some(partition)) => PartitionedSeriesRowKeyRange::partition_scan_range(
+				storage,
+				partition,
+				self.last_key.as_ref(),
+			),
+			(true, true, None) => {
+				PartitionedSeriesRowKeyRange::full_scan_range(storage, self.last_key.as_ref())
 			}
-		} else {
-			RowKeyRange::scan_range(storage, self.last_key.as_ref())
+			(true, false, _) => {
+				SeriesRowKeyRange::scan_range(storage, None, None, None, self.last_key.as_ref())
+			}
+			(false, true, Some(partition)) => {
+				PartitionedRowKey::partition_scan_range(storage, partition, self.last_key.as_ref())
+			}
+			(false, true, None) => PartitionedRowKey::scan_range(storage, self.last_key.as_ref()),
+			(false, false, _) => RowKeyRange::scan_range(storage, self.last_key.as_ref()),
 		};
 
 		let (batch, row_numbers, new_last_key, drained) = {

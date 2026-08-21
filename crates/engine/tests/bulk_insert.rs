@@ -9,6 +9,8 @@ mod coerce;
 mod errors;
 #[path = "bulk_insert/ringbuffer.rs"]
 mod ringbuffer;
+#[path = "bulk_insert/series.rs"]
+mod series;
 #[path = "bulk_insert/transaction.rs"]
 mod transaction;
 #[path = "bulk_insert/unchecked.rs"]

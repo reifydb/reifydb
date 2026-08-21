@@ -1193,51 +1193,63 @@ impl<'bump> Compiler<'bump> {
 						}
 					}
 
-					if let PhysicalPlan::SeriesScan(ref scan) = input
-						&& scan.source.def().partition_by.is_empty()
-					{
-						let key_col_name = scan.source.def().key.column();
-						if let Some(sp) =
-							extract_series_predicate(&filter.condition, key_col_name)
-						{
+					if let PhysicalPlan::SeriesScan(ref scan) = input {
+						let def = scan.source.def();
+						let partitioned = !def.partition_by.is_empty();
+						let partition = if partitioned {
+							extract_partition(
+								&filter.condition,
+								&def.columns,
+								&def.partition_by,
+							)
+						} else {
+							None
+						};
+
+						let pushable = if partitioned && partition.is_none() {
+							None
+						} else {
+							extract_series_predicate(&filter.condition, def.key.column())
+								.filter(|sp| {
+									def.tag.is_none()
+										|| sp.variant_tag.is_some() || (sp
+										.key_start
+										.is_none()
+										&& sp.key_end.is_none())
+								})
+						};
+
+						if pushable.is_some() || partition.is_some() {
 							let rewritten = PhysicalPlan::SeriesScan(SeriesScanNode {
 								source: scan.source.clone(),
-								key_range_start: sp.key_start.or(scan.key_range_start),
-								key_range_end: sp.key_end.or(scan.key_range_end),
-								variant_tag: sp.variant_tag.or(scan.variant_tag),
-								partition: None,
+								key_range_start: pushable
+									.as_ref()
+									.and_then(|sp| sp.key_start)
+									.or(scan.key_range_start),
+								key_range_end: pushable
+									.as_ref()
+									.and_then(|sp| sp.key_end)
+									.or(scan.key_range_end),
+								variant_tag: pushable
+									.as_ref()
+									.and_then(|sp| sp.variant_tag)
+									.or(scan.variant_tag),
+								partition: partition.or(scan.partition),
 							});
-							if sp.remaining.is_empty() {
+							let remaining = match pushable {
+								Some(sp) => sp.remaining,
+								None => vec![filter.condition],
+							};
+							if remaining.is_empty() {
 								stack.push(rewritten);
 							} else {
 								stack.push(PhysicalPlan::Filter(FilterNode {
-									conditions: sp.remaining,
+									conditions: remaining,
 									input: self.bump_box(rewritten),
 								}));
 							}
 							continue;
 						}
-					}
-
-					if let PhysicalPlan::SeriesScan(ref scan) = input
-						&& !scan.source.def().partition_by.is_empty()
-						&& let Some(partition) = extract_partition(
-							&filter.condition,
-							&scan.source.def().columns,
-							&scan.source.def().partition_by,
-						) {
-						let pruned = PhysicalPlan::SeriesScan(SeriesScanNode {
-							source: scan.source.clone(),
-							key_range_start: None,
-							key_range_end: None,
-							variant_tag: None,
-							partition: Some(partition),
-						});
-						stack.push(PhysicalPlan::Filter(FilterNode {
-							conditions: vec![filter.condition],
-							input: self.bump_box(pruned),
-						}));
-						continue;
 					}
 
 					if let PhysicalPlan::TableScan(ref scan) = input {

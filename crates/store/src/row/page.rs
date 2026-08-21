@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	interface::{catalog::storage::StorageId, store::EntryKind},
+	interface::store::EntryKind,
 	key::{EncodableKey, Key, row::RowKey},
 };
 use reifydb_value::value::row_number::RowNumber;

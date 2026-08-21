@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, marker::PhantomData};
+use std::{
+	collections::{HashMap, HashSet},
+	marker::PhantomData,
+};
 
 use reifydb_catalog::{
 	catalog::Catalog,
@@ -16,6 +19,7 @@ use reifydb_core::{
 	interface::catalog::{
 		id::IndexId,
 		key::PrimaryKey,
+		object::ObjectId,
 		ringbuffer::{RingBuffer, RingBufferMetadata},
 		series::{Series, SeriesMetadata},
 		storage::StorageId,
@@ -26,6 +30,7 @@ use reifydb_core::{
 		EncodableKey,
 		index_entry::IndexEntryKey,
 		partitioned_row::{PartitionedRowKey, RowLocator},
+		partitioned_series_row::PartitionedSeriesRowKey,
 		row::RowKey,
 		series_row::SeriesRowKey,
 	},
@@ -57,6 +62,7 @@ use crate::{
 		table::{PendingTableInsert, TableInsertBuilder},
 	},
 	engine::StandardEngine,
+	partition::resolve_partition,
 	transaction::operation::{
 		dictionary::DictionaryOperations, ringbuffer::RingBufferOperations, table::TableOperations,
 	},
@@ -755,6 +761,9 @@ fn insert_series_rows<V: ValidationMode>(
 		series.columns.iter().position(|c| c.name == key_col_name).ok_or_else(|| {
 			internal_error!("series {} key column {} not found", series.name, key_col_name)
 		})?;
+	let partition_col_indices = series_partition_col_indices(series)?;
+	let storage = StorageId::series(series.id);
+	let mut verified: HashSet<Partition> = HashSet::new();
 
 	let mut inserted_count = 0u64;
 	for mut values in coerced_rows {
@@ -770,13 +779,27 @@ fn insert_series_rows<V: ValidationMode>(
 
 		metadata.sequence_counter += 1;
 		let sequence = metadata.sequence_counter;
-		let row_key = SeriesRowKey {
-			storage: StorageId::series(series.id),
-			variant_tag: None,
-			key: key_value,
-			sequence,
+		let encoded_key = if partition_col_indices.is_empty() {
+			SeriesRowKey {
+				storage,
+				variant_tag: None,
+				key: key_value,
+				sequence,
+			}
+			.encode()
+		} else {
+			let partition_values: Vec<Value> =
+				partition_col_indices.iter().map(|&idx| values[idx].clone()).collect();
+			let partition = Partition::of(&partition_values);
+			resolve_partition(
+				&mut Transaction::Command(txn),
+				ObjectId::Series(series.id),
+				partition,
+				&partition_values,
+				&mut verified,
+			)?;
+			PartitionedSeriesRowKey::encoded(storage, partition, None, key_value, sequence)
 		};
-		let encoded_key = row_key.encode();
 
 		let row = encode_series_row(series, shape, key_value, &values, key_col_idx, clock)?;
 
@@ -792,6 +815,18 @@ fn insert_series_rows<V: ValidationMode>(
 		inserted_count += 1;
 	}
 	Ok(inserted_count)
+}
+
+#[inline]
+fn series_partition_col_indices(series: &Series) -> Result<Vec<usize>> {
+	series.partition_by
+		.iter()
+		.map(|name| {
+			series.columns.iter().position(|c| &c.name == name).ok_or_else(|| {
+				internal_error!("series {} partition column {} not found", series.name, name)
+			})
+		})
+		.collect()
 }
 
 #[inline]
