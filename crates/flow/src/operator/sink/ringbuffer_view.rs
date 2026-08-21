@@ -30,7 +30,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, node_prefix},
-		partitioned_row::{PartitionedRowKey, RowLocator},
+		partitioned_row::PartitionedRowKey,
 		ringbuffer::RingBufferMetadataKey,
 		row::RowKey,
 	},
@@ -149,7 +149,7 @@ impl SinkRingBufferViewOperator {
 	#[inline]
 	fn rb_key(&self, object_id: StorageId, rn: RowNumber, partition: Option<Partition>) -> EncodedKey {
 		match partition {
-			Some(partition) => PartitionedRowKey::encoded(object_id, partition, RowLocator::Row(rn)),
+			Some(partition) => PartitionedRowKey::encoded(object_id, partition, rn),
 			None => RowKey::encoded(object_id, rn),
 		}
 	}

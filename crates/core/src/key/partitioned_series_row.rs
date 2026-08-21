@@ -272,12 +272,12 @@ impl PartitionedSeriesRowKeyRange {
 mod tests {
 	use std::ops::RangeBounds;
 
-	use reifydb_value::value::{Value, partition::Partition};
+	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
 	use super::*;
 	use crate::{
 		interface::catalog::id::{SeriesId, TableId, ViewId},
-		key::partitioned_row::{PartitionedRowKey, RowLocator},
+		key::partitioned_row::PartitionedRowKey,
 	};
 
 	fn part(v: &str) -> Partition {
@@ -449,15 +449,7 @@ mod tests {
 		// One kind byte for two layouts is what let a series key answer to a plain partitioned row read.
 		let series =
 			PartitionedSeriesRowKey::encoded(StorageId::Series(SeriesId(1)), part("us"), Some(2), 7, 9);
-		let row = PartitionedRowKey::encoded(
-			StorageId::Table(TableId(1)),
-			part("us"),
-			RowLocator::Series {
-				variant_tag: Some(2),
-				key: 7,
-				sequence: 9,
-			},
-		);
+		let row = PartitionedRowKey::encoded(StorageId::Table(TableId(1)), part("us"), RowNumber(9));
 
 		assert_ne!(series.as_slice()[0], row.as_slice()[0]);
 		assert!(PartitionedRowKey::decode(&series).is_none());

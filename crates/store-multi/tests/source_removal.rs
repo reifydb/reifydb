@@ -18,10 +18,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
-	key::{
-		partitioned_row::{PartitionedRowKey, RowLocator},
-		row::RowKey,
-	},
+	key::{partitioned_row::PartitionedRowKey, row::RowKey},
 };
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore, tier::TierStorage};
 use reifydb_value::{
@@ -35,7 +32,7 @@ fn table_row_key(table: u64, row: u64) -> EncodedKey {
 }
 
 fn partitioned_row_key(table: u64, partition: Partition, row: u64) -> EncodedKey {
-	PartitionedRowKey::encoded(StorageId::Table(TableId(table)), partition, RowLocator::Row(RowNumber(row)))
+	PartitionedRowKey::encoded(StorageId::Table(TableId(table)), partition, RowNumber(row))
 }
 
 fn persistent_only_set(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {

@@ -17,34 +17,23 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum RowLocator {
-	Row(RowNumber),
-
-	Series {
-		variant_tag: Option<u8>,
-		key: u64,
-		sequence: u64,
-	},
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct PartitionedRowKey {
 	pub storage: StorageId,
 	pub partition: Partition,
-	pub locator: RowLocator,
+	pub row: RowNumber,
 }
 
 impl PartitionedRowKey {
-	pub fn new(storage: impl Into<StorageId>, partition: Partition, locator: RowLocator) -> Self {
+	pub fn new(storage: impl Into<StorageId>, partition: Partition, row: RowNumber) -> Self {
 		Self {
 			storage: storage.into(),
 			partition,
-			locator,
+			row,
 		}
 	}
 
-	pub fn encoded(storage: impl Into<StorageId>, partition: Partition, locator: RowLocator) -> EncodedKey {
-		Self::new(storage, partition, locator).encode()
+	pub fn encoded(storage: impl Into<StorageId>, partition: Partition, row: RowNumber) -> EncodedKey {
+		Self::new(storage, partition, row).encode()
 	}
 
 	pub fn storage_of(key: &EncodedKey) -> Option<StorageId> {
@@ -106,26 +95,7 @@ impl EncodableKey for PartitionedRowKey {
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(32);
 		serializer.extend_u8(Self::KIND as u8).extend_object_id(self.storage).extend_u128(self.partition.0);
-		match &self.locator {
-			RowLocator::Row(row) => {
-				serializer.extend_u64(row.0);
-			}
-			RowLocator::Series {
-				variant_tag,
-				key,
-				sequence,
-			} => {
-				match variant_tag {
-					Some(tag) => {
-						serializer.extend_u8(1u8).extend_u8(*tag);
-					}
-					None => {
-						serializer.extend_u8(0u8);
-					}
-				}
-				serializer.extend_u64(*key).extend_u64(*sequence);
-			}
-		}
+		serializer.extend_u64(self.row.0);
 		serializer.to_encoded_key()
 	}
 
@@ -139,30 +109,12 @@ impl EncodableKey for PartitionedRowKey {
 
 		let storage = StorageId::from_object(de.read_object_id().ok()?)?;
 		let partition = Partition(de.read_u128().ok()?);
-
-		let locator = match storage {
-			StorageId::Series(_) => {
-				let has_tag = de.read_u8().ok()?;
-				let variant_tag = if has_tag == 1 {
-					Some(de.read_u8().ok()?)
-				} else {
-					None
-				};
-				let key = de.read_u64().ok()?;
-				let sequence = de.read_u64().ok()?;
-				RowLocator::Series {
-					variant_tag,
-					key,
-					sequence,
-				}
-			}
-			_ => RowLocator::Row(RowNumber(de.read_u64().ok()?)),
-		};
+		let row = RowNumber(de.read_u64().ok()?);
 
 		Some(Self {
 			storage,
 			partition,
-			locator,
+			row,
 		})
 	}
 }
@@ -229,10 +181,10 @@ mod tests {
 	use reifydb_codec::key::serializer::KeySerializer;
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
 
-	use super::{EncodableKey, PartitionedRowKey, RowLocator};
+	use super::{EncodableKey, PartitionedRowKey};
 	use crate::{
 		interface::catalog::{
-			id::{SeriesId, TableId, ViewId},
+			id::{TableId, ViewId},
 			object::ObjectId,
 			storage::StorageId,
 		},
@@ -248,7 +200,7 @@ mod tests {
 		let key = PartitionedRowKey {
 			storage: StorageId::Table(TableId(7)),
 			partition: part("us"),
-			locator: RowLocator::Row(RowNumber(42)),
+			row: RowNumber(42),
 		};
 		let decoded = PartitionedRowKey::decode(&key.encode()).unwrap();
 		assert_eq!(decoded, key);
@@ -260,37 +212,7 @@ mod tests {
 		let key = PartitionedRowKey {
 			storage: StorageId::View(ViewId(11)),
 			partition: part("us"),
-			locator: RowLocator::Row(RowNumber(42)),
-		};
-		let decoded = PartitionedRowKey::decode(&key.encode()).unwrap();
-		assert_eq!(decoded, key);
-	}
-
-	#[test]
-	fn test_series_roundtrip_with_tag() {
-		let key = PartitionedRowKey {
-			storage: StorageId::Series(SeriesId(3)),
-			partition: part("btc"),
-			locator: RowLocator::Series {
-				variant_tag: Some(5),
-				key: 1_700_000_000,
-				sequence: 9,
-			},
-		};
-		let decoded = PartitionedRowKey::decode(&key.encode()).unwrap();
-		assert_eq!(decoded, key);
-	}
-
-	#[test]
-	fn test_series_roundtrip_without_tag() {
-		let key = PartitionedRowKey {
-			storage: StorageId::Series(SeriesId(3)),
-			partition: part("eth"),
-			locator: RowLocator::Series {
-				variant_tag: None,
-				key: 100,
-				sequence: 0,
-			},
+			row: RowNumber(42),
 		};
 		let decoded = PartitionedRowKey::decode(&key.encode()).unwrap();
 		assert_eq!(decoded, key);
@@ -298,11 +220,7 @@ mod tests {
 
 	#[test]
 	fn test_storage_of() {
-		let key = PartitionedRowKey::encoded(
-			StorageId::Table(TableId(42)),
-			part("us"),
-			RowLocator::Row(RowNumber(1)),
-		);
+		let key = PartitionedRowKey::encoded(StorageId::Table(TableId(42)), part("us"), RowNumber(1));
 		assert_eq!(PartitionedRowKey::storage_of(&key), Some(StorageId::Table(TableId(42))));
 	}
 
@@ -317,9 +235,9 @@ mod tests {
 	#[test]
 	fn test_partition_rows_cluster_together() {
 		let storage = StorageId::Table(TableId(1));
-		let us_a = PartitionedRowKey::encoded(storage, part("us"), RowLocator::Row(RowNumber(1)));
-		let us_b = PartitionedRowKey::encoded(storage, part("us"), RowLocator::Row(RowNumber(2)));
-		let eu = PartitionedRowKey::encoded(storage, part("eu"), RowLocator::Row(RowNumber(1)));
+		let us_a = PartitionedRowKey::encoded(storage, part("us"), RowNumber(1));
+		let us_b = PartitionedRowKey::encoded(storage, part("us"), RowNumber(2));
+		let eu = PartitionedRowKey::encoded(storage, part("eu"), RowNumber(1));
 
 		let mut keys = [us_a.clone(), us_b.clone(), eu.clone()];
 		keys.sort();
@@ -332,8 +250,8 @@ mod tests {
 	fn test_partition_range_contains_only_its_partition() {
 		let storage = StorageId::Table(TableId(1));
 		let range = PartitionedRowKey::partition_range(storage, part("us"));
-		let us = PartitionedRowKey::encoded(storage, part("us"), RowLocator::Row(RowNumber(500)));
-		let eu = PartitionedRowKey::encoded(storage, part("eu"), RowLocator::Row(RowNumber(1)));
+		let us = PartitionedRowKey::encoded(storage, part("us"), RowNumber(500));
+		let eu = PartitionedRowKey::encoded(storage, part("eu"), RowNumber(1));
 		assert!(range.contains(&us), "us row must be inside the us partition range");
 		assert!(!range.contains(&eu), "eu row must be outside the us partition range");
 	}

@@ -18,7 +18,7 @@ use reifydb_core::{
 		cdc::{Cdc, CdcChange},
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
-	key::{Key, partitioned_row::RowLocator},
+	key::Key,
 	value::column::columns::Columns,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -62,13 +62,7 @@ pub fn row_target(key: &EncodedKey) -> Option<RowTarget> {
 		}),
 		Key::PartitionedRow(partitioned) => Some(RowTarget {
 			object: ObjectId::from(partitioned.storage),
-			row: match partitioned.locator {
-				RowLocator::Row(row) => row,
-				RowLocator::Series {
-					sequence,
-					..
-				} => RowNumber(sequence),
-			},
+			row: partitioned.row,
 		}),
 		Key::PartitionedSeriesRow(partitioned) => Some(RowTarget {
 			object: ObjectId::from(partitioned.storage),
@@ -265,24 +259,10 @@ mod tests {
 
 	#[test]
 	fn test_partitioned_row_key_maps_to_its_storage_object() {
-		let key = PartitionedRowKey::encoded(StorageId::view(8), Partition(5), RowLocator::Row(RowNumber(2)));
+		let key = PartitionedRowKey::encoded(StorageId::view(8), Partition(5), RowNumber(2));
 		let target = row_target(&key).expect("row target");
 		assert_eq!(target.object, ObjectId::View(ViewId(8)));
 		assert_eq!(target.row, RowNumber(2));
-	}
-
-	#[test]
-	fn test_partitioned_series_locator_uses_the_sequence_as_row_number() {
-		let key = PartitionedRowKey::encoded(
-			StorageId::series(4),
-			Partition(1),
-			RowLocator::Series {
-				variant_tag: None,
-				key: 1_000,
-				sequence: 7,
-			},
-		);
-		assert_eq!(row_target(&key).expect("row target").row, RowNumber(7));
 	}
 
 	#[test]

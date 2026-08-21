@@ -10,11 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::{id::TableId, object::ObjectId, table::Table},
-	key::{
-		partition::PartitionKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
-		row::RowKey,
-	},
+	key::{partition::PartitionKey, partitioned_row::PartitionedRowKey, row::RowKey},
 	partition::{PartitionError, partition_col_indices},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -39,14 +35,14 @@ pub fn table_row_key(table: &Table, shape: &RowShape, row: &[u8], row_number: Ro
 		RowKey::encoded(table.id, row_number)
 	} else {
 		let partition = table_partition_of_row(table, shape, row);
-		PartitionedRowKey::encoded(table.id, partition, RowLocator::Row(row_number))
+		PartitionedRowKey::encoded(table.id, partition, row_number)
 	}
 }
 
 pub fn row_key_from_partition(table_id: TableId, partition: Option<Partition>, row_number: RowNumber) -> EncodedKey {
 	match partition {
 		None => RowKey::encoded(table_id, row_number),
-		Some(partition) => PartitionedRowKey::encoded(table_id, partition, RowLocator::Row(row_number)),
+		Some(partition) => PartitionedRowKey::encoded(table_id, partition, row_number),
 	}
 }
 

@@ -25,7 +25,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey, EncodableKeyRange,
 		index_entry::IndexEntryKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
+		partitioned_row::PartitionedRowKey,
 		row::{RowKey, RowKeyRange},
 	},
 	value::column::columns::Columns,
@@ -265,10 +265,8 @@ fn run_table_delete_all(
 		}
 		if partitioned {
 			let key = PartitionedRowKey::decode(&multi.key).expect("valid PartitionedRowKey encoding");
-			if let RowLocator::Row(rn) = key.locator {
-				filtered_ids.push(rn);
-				filtered_partitions.push(key.partition);
-			}
+			filtered_ids.push(key.row);
+			filtered_partitions.push(key.partition);
 		} else {
 			let row_key = RowKey::decode(&multi.key).expect("valid RowKey encoding");
 			filtered_ids.push(row_key.row);

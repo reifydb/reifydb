@@ -19,10 +19,7 @@ use reifydb_core::{
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::{
-		partitioned_row::{PartitionedRowKey, RowLocator},
-		row::RowKey,
-	},
+	key::{partitioned_row::PartitionedRowKey, row::RowKey},
 	partition::{PartitionError, partition_col_indices},
 	row::row_shape_from_columns,
 	value::column::columns::Columns,
@@ -42,7 +39,7 @@ use crate::{Result, partition::partition_values};
 fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> EncodedKey {
 	match partition {
 		None => RowKey::encoded(ringbuffer.id, row_number),
-		Some(partition) => PartitionedRowKey::encoded(ringbuffer.id, partition, RowLocator::Row(row_number)),
+		Some(partition) => PartitionedRowKey::encoded(ringbuffer.id, partition, row_number),
 	}
 }
 

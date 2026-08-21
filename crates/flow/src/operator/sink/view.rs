@@ -24,11 +24,7 @@ use reifydb_core::{
 		flow::OperatorCapability,
 		resolved::ResolvedView,
 	},
-	key::{
-		catalog::serialize_object_id,
-		kind::KeyKind,
-		partitioned_row::{PartitionedRowKey, RowLocator},
-	},
+	key::{catalog::serialize_object_id, kind::KeyKind, partitioned_row::PartitionedRowKey},
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
@@ -124,7 +120,7 @@ impl SinkTableViewOperator {
 	#[inline]
 	fn partitioned_key(&self, cols: &Columns, row_idx: usize, partition: Partition, row: RowNumber) -> EncodedKey {
 		if self.sort.is_empty() {
-			return PartitionedRowKey::encoded(self.storage, partition, RowLocator::Row(row));
+			return PartitionedRowKey::encoded(self.storage, partition, row);
 		}
 		let mut serializer = KeySerializer::new();
 		serializer.extend_raw(&self.partitioned_prefix);

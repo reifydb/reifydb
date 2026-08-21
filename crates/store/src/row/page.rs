@@ -90,7 +90,7 @@ mod tests {
 		},
 		key::{
 			EncodableKey,
-			partitioned_row::{PartitionedRowKey, RowLocator},
+			partitioned_row::PartitionedRowKey,
 			partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
 			row::RowKey,
 			series_row::{SeriesRowKey, SeriesRowKeyRange},
@@ -114,7 +114,7 @@ mod tests {
 		let key = PartitionedRowKey::encoded(
 			storage,
 			Partition::of(&[Value::Utf8("us".to_string())]),
-			RowLocator::Row(RowNumber(100)),
+			RowNumber(100),
 		);
 		let page = page_of(&key, 16);
 		assert_eq!(page.kind, EntryKind::PartitionedSource(storage));

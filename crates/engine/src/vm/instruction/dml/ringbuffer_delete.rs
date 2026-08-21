@@ -18,11 +18,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
-	key::{
-		EncodableKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
-		row::RowKey,
-	},
+	key::{EncodableKey, partitioned_row::PartitionedRowKey, row::RowKey},
 	value::column::columns::Columns,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -297,7 +293,7 @@ fn collect_partition_row_numbers(
 		}
 		let n = batch.len();
 		for entry in batch {
-			if let Some(RowLocator::Row(rn)) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator) {
+			if let Some(rn) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.row) {
 				out.push(rn);
 			}
 			last_key = Some(entry.key);

@@ -5,11 +5,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::object::ObjectId,
 	internal_error,
-	key::{
-		EncodableKey,
-		partition::PartitionKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
-	},
+	key::{EncodableKey, partition::PartitionKey, partitioned_row::PartitionedRowKey},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::{AlterTableAction, AlterTableNode};
@@ -114,9 +110,7 @@ pub(crate) fn execute_alter_table(
 				}
 				let n = batch.len();
 				for entry in batch {
-					if let Some(RowLocator::Row(rn)) =
-						PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator)
-					{
+					if let Some(rn) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.row) {
 						ids.push(rn);
 					}
 					last_key = Some(entry.key);

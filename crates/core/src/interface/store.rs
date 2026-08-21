@@ -218,10 +218,7 @@ mod tests {
 	use super::{EntryKind, classify_key, classify_range};
 	use crate::{
 		interface::catalog::{id::TableId, storage::StorageId},
-		key::{
-			partitioned_row::{PartitionedRowKey, RowLocator},
-			row::RowKey,
-		},
+		key::{partitioned_row::PartitionedRowKey, row::RowKey},
 	};
 
 	fn part(v: &str) -> Partition {
@@ -231,7 +228,7 @@ mod tests {
 	#[test]
 	fn classify_key_partitioned_row_is_partitioned_source() {
 		let storage = StorageId::Table(TableId(7));
-		let key = PartitionedRowKey::encoded(storage, part("us"), RowLocator::Row(RowNumber(1)));
+		let key = PartitionedRowKey::encoded(storage, part("us"), RowNumber(1));
 		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(storage));
 	}
 
@@ -239,7 +236,7 @@ mod tests {
 	fn classify_key_partitioned_view_row_is_partitioned_source() {
 		// A view that owns its rows must classify to its own id, not fall through to EntryKind::Multi.
 		let storage = StorageId::view(7);
-		let key = PartitionedRowKey::encoded(storage, part("us"), RowLocator::Row(RowNumber(1)));
+		let key = PartitionedRowKey::encoded(storage, part("us"), RowNumber(1));
 		assert_eq!(classify_key(&key), EntryKind::PartitionedSource(storage));
 		assert_ne!(
 			classify_key(&key),
@@ -260,7 +257,7 @@ mod tests {
 		// Every range form must carry the owning variant, or a view's sweep hits the table of the same id.
 		for storage in [StorageId::Table(TableId(9)), StorageId::view(9)] {
 			let p = part("us");
-			let last = PartitionedRowKey::encoded(storage, p, RowLocator::Row(RowNumber(5)));
+			let last = PartitionedRowKey::encoded(storage, p, RowNumber(5));
 			assert_eq!(
 				classify_range(&PartitionedRowKey::partition_range(storage, p)),
 				Some(EntryKind::PartitionedSource(storage))

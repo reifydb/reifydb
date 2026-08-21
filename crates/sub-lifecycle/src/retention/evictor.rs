@@ -20,11 +20,8 @@ use reifydb_core::{
 		store::classify_range,
 	},
 	key::{
-		EncodableKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
-		partitioned_series_row::PartitionedSeriesRowKeyRange,
-		row::RowKey,
-		series_row::SeriesRowKeyRange,
+		EncodableKey, partitioned_row::PartitionedRowKey, partitioned_series_row::PartitionedSeriesRowKeyRange,
+		row::RowKey, series_row::SeriesRowKeyRange,
 	},
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},
@@ -668,10 +665,7 @@ fn advance_cursor(state: &mut EvictorState, cursor_key: CursorKey, next: Option<
 
 fn decode_ringbuffer_row_number(key: &EncodedKey, partitioned: bool) -> Option<u64> {
 	if partitioned {
-		match PartitionedRowKey::decode(key).map(|k| k.locator) {
-			Some(RowLocator::Row(row_number)) => Some(row_number.0),
-			_ => None,
-		}
+		PartitionedRowKey::decode(key).map(|k| k.row.0)
 	} else {
 		RowKey::decode(key).map(|k| k.row.0)
 	}
@@ -894,15 +888,8 @@ mod tests {
 		bytes: EncodedBytes,
 	) {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		txn.set(
-			&PartitionedRowKey::encoded(
-				storage,
-				Partition::of(partition_values),
-				RowLocator::Row(row_number),
-			),
-			bytes,
-		)
-		.unwrap();
+		txn.set(&PartitionedRowKey::encoded(storage, Partition::of(partition_values), row_number), bytes)
+			.unwrap();
 		txn.commit().unwrap();
 	}
 

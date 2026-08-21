@@ -10,11 +10,7 @@ use reifydb_core::{
 		resolved::ResolvedRingBuffer,
 	},
 	internal_error,
-	key::{
-		EncodableKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
-		row::RowKey,
-	},
+	key::{EncodableKey, partitioned_row::PartitionedRowKey, row::RowKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -245,9 +241,7 @@ impl RingBufferScan {
 			}
 			let n = batch.len();
 			for entry in batch {
-				if let Some(RowLocator::Row(rn)) =
-					PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator)
-				{
+				if let Some(rn) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.row) {
 					out.push((rn, entry.bytes));
 				}
 				last_key = Some(entry.key);

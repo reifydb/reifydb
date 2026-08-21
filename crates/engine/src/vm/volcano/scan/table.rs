@@ -13,7 +13,7 @@ use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable, store::MultiVersionRow},
 	key::{
 		EncodableKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
+		partitioned_row::PartitionedRowKey,
 		row::{RowKey, RowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
@@ -142,10 +142,8 @@ impl TableScanNode {
 			match stream.next() {
 				Some(Ok(multi)) => {
 					let decoded = if partitioned {
-						PartitionedRowKey::decode(&multi.key).and_then(|k| match k.locator {
-							RowLocator::Row(rn) => Some((rn, Some(k.partition))),
-							_ => None,
-						})
+						PartitionedRowKey::decode(&multi.key)
+							.map(|k| (k.row, Some(k.partition)))
 					} else {
 						RowKey::decode(&multi.key).map(|k| (k.row, None))
 					};

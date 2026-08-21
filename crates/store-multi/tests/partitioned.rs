@@ -15,7 +15,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 	},
-	key::partitioned_row::{PartitionedRowKey, RowLocator},
+	key::partitioned_row::PartitionedRowKey,
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::{
@@ -74,9 +74,9 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	let storage = StorageId::Table(TableId(1));
 	let us = Partition::of(&[Value::Utf8("us".to_string())]);
 	let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
-	let k_us1 = PartitionedRowKey::encoded(storage, us, RowLocator::Row(RowNumber(1)));
-	let k_eu2 = PartitionedRowKey::encoded(storage, eu, RowLocator::Row(RowNumber(2)));
-	let k_us3 = PartitionedRowKey::encoded(storage, us, RowLocator::Row(RowNumber(3)));
+	let k_us1 = PartitionedRowKey::encoded(storage, us, RowNumber(1));
+	let k_eu2 = PartitionedRowKey::encoded(storage, eu, RowNumber(2));
+	let k_us3 = PartitionedRowKey::encoded(storage, us, RowNumber(3));
 
 	MultiVersionCommit::commit(
 		&store,

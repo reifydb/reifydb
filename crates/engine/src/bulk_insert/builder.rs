@@ -27,12 +27,8 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{
-		EncodableKey,
-		index_entry::IndexEntryKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
-		partitioned_series_row::PartitionedSeriesRowKey,
-		row::RowKey,
-		series_row::SeriesRowKey,
+		EncodableKey, index_entry::IndexEntryKey, partitioned_row::PartitionedRowKey,
+		partitioned_series_row::PartitionedSeriesRowKey, row::RowKey, series_row::SeriesRowKey,
 	},
 };
 use reifydb_runtime::context::clock::Clock;
@@ -599,7 +595,7 @@ fn evict_oldest_for_partition(
 		let range = PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, None);
 		let oldest = txn.range_rev(range, RangeScope::All, 1)?.next().transpose()?;
 		if let Some(entry) = oldest
-			&& let Some(RowLocator::Row(rn)) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator)
+			&& let Some(rn) = PartitionedRowKey::decode(&entry.key).map(|pk| pk.row)
 		{
 			txn.remove_from_ringbuffer(ringbuffer, Some(partition), rn)?;
 		}

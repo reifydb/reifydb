@@ -19,7 +19,7 @@ use reifydb_core::{
 	internal_error,
 	key::{
 		EncodableKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
+		partitioned_row::PartitionedRowKey,
 		partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
 		row::{RowKey, RowKeyRange},
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
@@ -168,13 +168,7 @@ impl ViewScanNode {
 						))
 					} else if self.partitioned {
 						match PartitionedRowKey::decode(&multi.key) {
-							Some(key) => match key.locator {
-								RowLocator::Row(rn) => rn,
-								RowLocator::Series {
-									sequence,
-									..
-								} => RowNumber(sequence),
-							},
+							Some(key) => key.row,
 							None => continue,
 						}
 					} else if let Some(key) = RowKey::decode(&multi.key) {
