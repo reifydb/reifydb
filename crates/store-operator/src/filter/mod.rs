@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{interface::catalog::flow::OperatorId, util::bloom::BloomFilter};
+use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_filter::bloom::BloomFilter;
 use reifydb_value::count::Count;
 
 const EXPECTED_KEYS: usize = 1_000_000;
