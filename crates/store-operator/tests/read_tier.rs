@@ -13,7 +13,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
-use reifydb_sqlite::SqliteTempPathGuard;
+use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	sqlite::SqliteOperatorStorage,
@@ -42,6 +42,22 @@ fn cached_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard)
 		clock,
 	});
 	(store, storage, guard)
+}
+
+fn cached_store_on(storage: SqliteOperatorStorage) -> OperatorStore {
+	// The same wiring as cached_store, but over a storage handle the caller already opened, so a test can seed
+	// sqlite first and then boot a store that finds those rows already durable.
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock.clone());
+	let spawner = actor_system.spawner();
+	OperatorStore::standard(OperatorStoreConfig {
+		commit: Default::default(),
+		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))
+			.flush_interval(Duration::from_hours_const(1))),
+		read: Some(OperatorReadBufferConfig::default()),
+		spawner,
+		clock,
+	})
 }
 
 fn key(suffix: u8) -> EncodedKey {
@@ -156,10 +172,19 @@ fn dropping_one_operators_state_clears_only_its_cached_entries() {
 
 #[test]
 fn a_lookup_under_a_disabled_filter_caches_the_absence() {
-	// A filter that has not been rebuilt yet is disabled and rules nothing out, so the absence must be
-	// bought from sqlite once and then remembered; a second miss here means every lookup for a key that
-	// does not exist pays a persistent read for as long as the rebuild has not run.
-	let (store, _storage, _guard) = cached_store();
+	// A store reopened on rows it already holds must start with a disabled filter, because an armed empty bloom
+	// would answer absent for every durable row. Nothing is ruled out until the background rebuild lands, so
+	// through that whole window the absence has to be bought from sqlite once and then remembered; a second miss
+	// here means every lookup for a key that does not exist pays a persistent read for as long as it lasts.
+	let (config, _guard) = SqliteConfig::in_memory();
+	{
+		let seed = SqliteOperatorStorage::new(config.clone());
+		seed.set(OP_B, key(9), row("seed"));
+	}
+
+	let store = cached_store_on(SqliteOperatorStorage::new(config));
+	let metrics = store.persistent().expect("the fixture configures a persistent tier").filter().metrics();
+	assert!(!metrics.enabled, "a reopen over durable rows must not arm the filter, or those rows read back absent");
 
 	assert!(store.get(OP_A, &key(1)).is_none());
 	assert!(!store.contains(OP_A, &key(1)));
@@ -310,8 +335,8 @@ fn a_read_modify_write_key_stays_cached_across_repeated_flush_cycles() {
 
 	let counters = store.read().expect("the fixture configures a read tier").metrics();
 	assert_eq!(
-		counters.fills_started, 1,
-		"only the pre-write read may reach sqlite; the flush feeds the tier every row it persists, so a fill per tick means each flush threw away the row it had just written"
+		counters.fills_started, 0,
+		"the armed filter rules out the pre-write read and the flush feeds the tier every row it persists, so any fill at all means a flush threw away the row it had just written"
 	);
 	assert_eq!(
 		counters.hits, 7,

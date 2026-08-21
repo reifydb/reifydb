@@ -21,7 +21,7 @@ use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
-	filter::{OperatorKeyFilter, source::OperatorStateKeySource},
+	filter::{ARMED_CAPACITY_KEYS, OperatorKeyFilter, source::OperatorStateKeySource},
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
 	tier::read::OperatorReadBufferConfig,
@@ -282,4 +282,164 @@ fn the_keyset_scan_yields_every_row_exactly_once_including_on_an_exact_budget_mu
 	let mut sorted_again = again;
 	sorted_again.sort_unstable();
 	assert_eq!(sorted_again, sorted_expected, "a restarted scan must replay every row from the beginning");
+}
+
+fn body_of(row: &EncodedPodRow) -> String {
+	String::from_utf8(row.body().to_vec()).expect("test bodies are utf8")
+}
+
+#[test]
+fn a_store_opened_on_an_empty_database_starts_armed_and_skips_sqlite_for_unwritten_keys() {
+	// An empty table is the one case where an active-but-empty filter is telling the truth: it answers
+	// "definitely absent" for every key, and every key really is absent. Arming there removes the warmup
+	// window in which the store falls through to sqlite for keys it has never written. The rejected counter
+	// is the proof that the read was short circuited rather than served by sqlite returning no row.
+	let (config, _guard) = SqliteConfig::in_memory();
+	let booted = store_at(config);
+	let storage = booted.persistent().expect("the test store is configured with a persistent tier").clone();
+
+	assert!(storage.filter().metrics().enabled, "an empty database at open must arm the filter");
+
+	storage.set(OP, key(1), row("durable"));
+
+	let before = storage.filter().metrics();
+	assert!(booted.get(OP, &key(200)).is_none(), "a key nothing ever wrote must read as absent");
+	let after = storage.filter().metrics();
+	assert_eq!(
+		after.rejected,
+		before.rejected + 1,
+		"the read reached sqlite instead of being ruled out by the armed filter"
+	);
+
+	let found = booted.get(OP, &key(1)).expect("a key written after an armed open must still be readable");
+	assert_eq!(body_of(&found), "durable");
+}
+
+#[test]
+fn a_store_opened_on_a_populated_database_starts_disabled_and_serves_every_existing_row() {
+	// The corruption case. A freshly built bloom holds none of the keys already on disk, so arming one over
+	// a populated table makes may_contain answer false for every durable row and the store reports an empty
+	// operator state until the first background rebuild lands. Rows that exist reading back as missing is
+	// silent data loss, which is why the gate is state_written and not "always arm".
+	let (config, _guard) = SqliteConfig::in_memory();
+	{
+		let storage = SqliteOperatorStorage::new(config.clone());
+		for suffix in 0..32u8 {
+			storage.set(OP, key(suffix), row(&format!("v{suffix}")));
+		}
+	}
+
+	let booted = store_at(config);
+	let storage = booted.persistent().expect("the test store is configured with a persistent tier").clone();
+
+	assert!(
+		!storage.filter().metrics().enabled,
+		"a database that already holds rows must open with a disabled, permissive filter"
+	);
+
+	for suffix in 0..32u8 {
+		let found = booted.get(OP, &key(suffix)).unwrap_or_else(|| {
+			panic!("row {suffix} exists in sqlite but the reopened store reported it absent")
+		});
+		assert_eq!(body_of(&found), format!("v{suffix}"));
+		assert!(booted.contains(OP, &key(suffix)), "contains disagreed with get on row {suffix}");
+	}
+
+	assert_eq!(
+		storage.filter().metrics().rejected,
+		0,
+		"a disabled filter ruled a key out, so it is no longer permissive"
+	);
+}
+
+#[test]
+fn a_key_written_after_an_armed_open_is_found_by_the_armed_filter() {
+	// Arming leans entirely on the write path feeding the filter: nothing else populates it until the first
+	// rebuild. A write that skipped add() would leave the row on disk and unreachable through the filter.
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+
+	assert!(storage.filter().metrics().enabled, "a fresh database must arm the filter");
+	assert!(!storage.filter().may_contain(OP, &key(7)), "an armed empty filter must rule out an unwritten key");
+
+	storage.set(OP, key(7), row("written after open"));
+
+	assert!(storage.filter().may_contain(OP, &key(7)), "the write path did not feed the armed filter");
+	let found = storage.get(OP, &key(7)).expect("the row written after an armed open is missing");
+	assert_eq!(body_of(&found), "written after open");
+	assert!(!storage.filter().may_contain(OP, &key(8)), "a neighbouring key nothing wrote answered present");
+}
+
+#[test]
+fn an_armed_store_filter_is_allocated_for_the_armed_capacity_and_starts_empty() {
+	// size_bits is what the rebuild driver's fill trigger divides into, so an armed filter has to report a
+	// real allocation rather than the zero a disabled filter reports; an empty fill pins that arming sets
+	// no bits and therefore rules out every key it was never told about.
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+
+	let metrics = storage.filter().metrics();
+	assert!(metrics.enabled);
+	assert_eq!(metrics.size_bits, ARMED_CAPACITY_KEYS * 10, "the armed filter was not sized for its capacity");
+	assert_eq!(metrics.fill_ratio, 0.0);
+	assert_eq!(metrics.estimated_keys, 0);
+	assert_eq!(metrics.rebuilds, 0, "arming must not be recorded as a rebuild");
+}
+
+#[test]
+fn an_armed_filter_is_left_alone_until_it_fills_and_is_then_resized_from_the_live_row_count() {
+	// Two claims about the unchanged driver. First, an armed filter is already enabled, so evaluate() skips
+	// the initial-build branch and stays Idle instead of rebuilding a filter that is answering correctly.
+	// Second, once load pushes it past fill_trigger (0.4 by default) the driver rebuilds and sizes the new
+	// bloom from the source's live row count. size_bits must therefore FALL: the armed allocation is a
+	// fixed capacity guess made before any row existed, while the rebuild sizes from what the table
+	// actually holds (floored at min_size_keys). A capacity smaller than the real ARMED_CAPACITY_KEYS is
+	// used here only so the fill trigger can be reached without writing 700k rows; the mechanism is the same.
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+	for suffix in 0..64u8 {
+		storage.set(OP, key(suffix), row("live"));
+	}
+
+	let filter = OperatorKeyFilter::armed(4096);
+	let armed_bits = filter.metrics().size_bits;
+	let mut driver = RebuildDriver::new(
+		filter.handle(),
+		Box::new(OperatorStateKeySource::new(storage.clone())),
+		FilterConfig::default(),
+	);
+
+	assert_eq!(
+		driver.step(),
+		DriverProgress::Idle,
+		"an armed filter is enabled, so the driver must not treat it as needing an initial build"
+	);
+
+	for i in 0..4000u64 {
+		filter.handle().add(i.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+	}
+	let filled = filter.metrics().fill_ratio;
+	assert!(filled > FilterConfig::default().fill_trigger, "setup left the filter below the trigger: {}", filled);
+
+	let mut committed = false;
+	for _ in 0..10_000 {
+		if driver.step() == DriverProgress::Committed {
+			committed = true;
+			break;
+		}
+	}
+	assert!(committed, "the driver never rebuilt a filter that had filled past its trigger");
+
+	let after = filter.metrics();
+	assert!(
+		after.size_bits < armed_bits,
+		"the rebuild kept the armed allocation instead of sizing from the source: {} -> {}",
+		armed_bits,
+		after.size_bits
+	);
+	assert_eq!(after.rebuilds, 1);
+	assert!(after.fill_ratio < filled, "the resized filter is no emptier than the saturated one it replaced");
+	for suffix in 0..64u8 {
+		assert!(
+			filter.may_contain(OP, &key(suffix)),
+			"live row {suffix} was lost by the rebuild that resized the armed filter"
+		);
+	}
 }

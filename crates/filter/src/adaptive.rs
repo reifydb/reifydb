@@ -71,6 +71,19 @@ impl AdaptiveKeyFilter {
 		}
 	}
 
+	pub fn armed(size_for_keys: u64) -> Self {
+		Self {
+			state: RwLock::new(FilterState {
+				active: Some(Arc::new(BloomFilter::new(size_for_keys as usize))),
+				building: None,
+			}),
+			queries: AtomicU64::new(0),
+			rejected: AtomicU64::new(0),
+			rebuilds: AtomicU64::new(0),
+			aborts: AtomicU64::new(0),
+		}
+	}
+
 	pub fn add(&self, hash: u64) {
 		let state = self.state.read();
 		if let Some(active) = &state.active {

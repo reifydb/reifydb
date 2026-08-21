@@ -33,7 +33,7 @@ use rusqlite::Connection;
 use tracing::instrument;
 
 use crate::{
-	filter::OperatorKeyFilter,
+	filter::{ARMED_CAPACITY_KEYS, OperatorKeyFilter},
 	sqlite::{schema::ensure_schema, state::state_exists},
 };
 
@@ -115,6 +115,11 @@ impl SqliteOperatorStorage {
 	fn with_connections(conn: Connection, readers: Vec<Connection>) -> Self {
 		ensure_schema(&conn);
 		let state_written = state_exists(&conn);
+		let filter = if state_written {
+			OperatorKeyFilter::new()
+		} else {
+			OperatorKeyFilter::armed(ARMED_CAPACITY_KEYS)
+		};
 		Self {
 			inner: Arc::new(StoreInner {
 				conn: Mutex::new(Some(conn)),
@@ -125,7 +130,7 @@ impl SqliteOperatorStorage {
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
 				state_written: AtomicBool::new(state_written),
-				filter: OperatorKeyFilter::new(),
+				filter,
 			}),
 		}
 	}

@@ -10,6 +10,8 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{interface::catalog::flow::OperatorId, util::bloom::hash_item};
 use reifydb_filter::adaptive::{AdaptiveKeyFilter, FilterMetrics};
 
+pub const ARMED_CAPACITY_KEYS: u64 = 1_000_000;
+
 pub(crate) fn hash_key(operator: OperatorId, key: &EncodedKey) -> u64 {
 	hash_item(&(operator.0, key.as_slice()))
 }
@@ -21,6 +23,10 @@ impl OperatorKeyFilter {
 	#[allow(clippy::new_without_default)]
 	pub fn new() -> Self {
 		Self(Arc::new(AdaptiveKeyFilter::new()))
+	}
+
+	pub fn armed(size_for_keys: u64) -> Self {
+		Self(Arc::new(AdaptiveKeyFilter::armed(size_for_keys)))
 	}
 
 	pub fn add(&self, operator: OperatorId, key: &EncodedKey) {

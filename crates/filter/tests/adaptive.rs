@@ -367,3 +367,89 @@ fn concurrent_writers_and_readers_never_lose_a_key() {
 		assert!(filter.may_contain(hash), "concurrent write {} was lost", hash);
 	}
 }
+
+#[test]
+fn an_armed_filter_is_active_before_any_rebuild_has_run() {
+	// Arming exists so a store that can prove it holds nothing pays no warmup: the filter must answer from
+	// a real bloom from the very first query, without a rebuild having run and without one in flight.
+	let filter = AdaptiveKeyFilter::armed(1024);
+
+	assert!(filter.is_enabled(), "an armed filter must be active immediately");
+
+	let metrics = filter.metrics();
+	assert!(metrics.enabled);
+	assert!(!metrics.rebuilding, "arming must not leave a rebuild in flight");
+	assert_eq!(metrics.rebuilds, 0, "arming is not a rebuild and must not be counted as one");
+	assert_eq!(metrics.aborts, 0);
+	assert_eq!(metrics.queries, 0, "arming must not consume the query counter");
+	assert_eq!(metrics.rejected, 0);
+}
+
+#[test]
+fn an_armed_filter_rules_out_keys_that_were_never_added() {
+	// The point of arming: an empty bloom answers "definitely absent" for everything, which is the correct
+	// answer only while the store is empty. If it answered may-contain instead, arming would save nothing.
+	let filter = AdaptiveKeyFilter::armed(64);
+
+	let rejected = find_rejected_hash(&filter, 10_000);
+	assert!(!filter.may_contain(rejected));
+
+	filter.add(1);
+	filter.add(2);
+	filter.add(3);
+
+	let still_absent = find_rejected_hash(&filter, 4_000_000);
+	assert!(!filter.may_contain(still_absent), "an armed filter stopped ruling out keys after a few writes");
+	assert!(filter.metrics().rejected > 0, "a definitely-absent answer must be counted as a skipped lookup");
+}
+
+#[test]
+fn every_key_added_to_an_armed_filter_answers_present() {
+	// An armed filter is fed only by the normal write path, so a write that failed to land would make the
+	// store report "no such row" for a row it just wrote: the false-negative direction, and unrecoverable
+	// until the next rebuild.
+	let filter = AdaptiveKeyFilter::armed(2048);
+
+	let hashes: Vec<u64> = (0..1500u64).map(|i| i.wrapping_mul(0x517C_C1B7_2722_0A95)).collect();
+	for hash in &hashes {
+		filter.add(*hash);
+	}
+
+	for hash in &hashes {
+		assert!(filter.may_contain(*hash), "key {} written into an armed filter answered absent", hash);
+	}
+}
+
+#[test]
+fn an_armed_filter_reports_a_real_allocation_and_an_empty_fill() {
+	// A zero size_bits would mean the metrics cannot tell an armed filter from a disabled one, and the
+	// rebuild driver's fill trigger reads exactly these numbers to decide when the armed capacity is spent.
+	let filter = AdaptiveKeyFilter::armed(64);
+
+	let metrics = filter.metrics();
+	assert!(metrics.size_bits >= 640, "size_bits {} is smaller than the requested 64 keys", metrics.size_bits);
+	assert_eq!(metrics.size_bits % 64, 0);
+	assert_eq!(metrics.fill_ratio, 0.0, "nothing has been added, so no bit may be set");
+	assert_eq!(metrics.estimated_keys, 0);
+
+	filter.add(0xC0FF_EE);
+	assert!(filter.metrics().fill_ratio > 0.0, "a write into an armed filter set no bits");
+}
+
+#[test]
+fn new_stays_disabled_while_armed_starts_active() {
+	// The two constructors must not converge. new() is the safe default for every caller that cannot prove
+	// its store is empty; if it ever started armed, an existing store would read as empty after a restart.
+	let disabled = AdaptiveKeyFilter::new();
+	let armed = AdaptiveKeyFilter::armed(64);
+
+	assert!(!disabled.is_enabled(), "new() must stay disabled");
+	assert!(armed.is_enabled());
+
+	let probe = find_rejected_hash(&armed, 7_000_000);
+	assert!(disabled.may_contain(probe), "new() ruled out a key, so it is no longer permissive");
+	assert!(!armed.may_contain(probe));
+
+	assert_eq!(disabled.metrics().size_bits, 0, "a disabled filter allocates nothing");
+	assert!(armed.metrics().size_bits > 0);
+}
