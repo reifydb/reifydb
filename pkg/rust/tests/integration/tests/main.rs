@@ -12,6 +12,7 @@ mod flow;
 mod metric;
 mod persistence;
 mod storage;
+mod store;
 mod system;
 mod virtual_table;
 mod wire_format;

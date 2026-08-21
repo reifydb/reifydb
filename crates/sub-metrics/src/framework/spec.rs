@@ -638,6 +638,8 @@ impl MetricsDomain {
 					level("filter_fill_ratio", ValueType::Float8),
 					level("filter_estimated_keys", ValueType::Uint8),
 					level("filter_rejected", ValueType::Uint8),
+					level("filter_enabled", ValueType::Uint8),
+					level("filter_rebuilds", ValueType::Uint8),
 				],
 				has_total: true,
 			},
