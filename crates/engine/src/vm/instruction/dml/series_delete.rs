@@ -22,8 +22,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		partitioned_row::PartitionedRowKey,
-		partitioned_series_row::PartitionedSeriesRowKey,
+		partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -290,7 +289,7 @@ fn run_series_delete_all(
 	let series = target.series;
 	let partitioned = !series.partition_by.is_empty();
 	let range = if partitioned {
-		PartitionedRowKey::full_scan(series.id)
+		PartitionedSeriesRowKeyRange::full_scan(StorageId::series(series.id))
 	} else {
 		SeriesRowKeyRange::full_scan(StorageId::series(series.id), None)
 	};
@@ -310,7 +309,7 @@ fn run_series_delete_all(
 		let committed = txn.get_committed(key)?.map(|v| v.bytes);
 		let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_bytes.clone());
 
-		let pre = decode_series_storage_key(series, key, partitioned).map(|decoded_key| {
+		let pre = decode_series_storage_key(key).map(|decoded_key| {
 			build_series_delete_pre_columns_from_storage(
 				series,
 				&delete_all_shape,
@@ -325,7 +324,7 @@ fn run_series_delete_all(
 	let returning_columns = if has_returning {
 		let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 		for (key, encoded) in entries_to_delete.iter() {
-			if let Some(decoded_key) = decode_series_storage_key(series, key, partitioned) {
+			if let Some(decoded_key) = decode_series_storage_key(key) {
 				returned_rows.push((RowNumber::from(decoded_key.sequence), encoded.clone()));
 			}
 		}

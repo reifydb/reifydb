@@ -14,11 +14,7 @@ use reifydb_core::{
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::{
-		EncodableKey,
-		partitioned_row::{PartitionedRowKey, RowLocator},
-		series_row::SeriesRowKey,
-	},
+	key::{Key, series_row::SeriesRowKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
@@ -30,23 +26,16 @@ use smallvec::smallvec;
 
 use crate::Result;
 
-pub fn decode_series_storage_key(series: &Series, key: &EncodedKey, partitioned: bool) -> Option<SeriesRowKey> {
-	if partitioned {
-		match PartitionedRowKey::decode(key).map(|pk| pk.locator) {
-			Some(RowLocator::Series {
-				variant_tag,
-				key,
-				sequence,
-			}) => Some(SeriesRowKey {
-				series: series.id,
-				variant_tag,
-				key,
-				sequence,
-			}),
-			_ => None,
-		}
-	} else {
-		SeriesRowKey::decode(key)
+pub fn decode_series_storage_key(key: &EncodedKey) -> Option<SeriesRowKey> {
+	match Key::decode(key)? {
+		Key::SeriesRow(decoded) => Some(decoded),
+		Key::PartitionedSeriesRow(decoded) => Some(SeriesRowKey {
+			storage: decoded.storage,
+			variant_tag: decoded.variant_tag,
+			key: decoded.key,
+			sequence: decoded.sequence,
+		}),
+		_ => None,
 	}
 }
 

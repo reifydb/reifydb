@@ -16,6 +16,7 @@ pub const DEFAULT_BUCKET_SHIFT: u8 = 16;
 pub struct PageId {
 	pub kind: EntryKind,
 	pub bucket: u64,
+	pub series: bool,
 }
 
 pub fn page_of(key: &EncodedKey, bucket_shift: u8) -> PageId {
@@ -23,25 +24,37 @@ pub fn page_of(key: &EncodedKey, bucket_shift: u8) -> PageId {
 		Some(Key::Row(row_key)) => PageId {
 			kind: EntryKind::Source(row_key.storage),
 			bucket: row_key.row.0 >> bucket_shift,
+			series: false,
 		},
 		Some(Key::SeriesRow(series_key)) => PageId {
-			kind: EntryKind::Source(StorageId::series(series_key.series)),
+			kind: EntryKind::Source(series_key.storage),
 			bucket: 0,
+			series: true,
 		},
 		Some(Key::PartitionedRow(partitioned_key)) => PageId {
 			kind: EntryKind::PartitionedSource(partitioned_key.storage),
 			bucket: 0,
+			series: false,
+		},
+		Some(Key::PartitionedSeriesRow(partitioned_key)) => PageId {
+			kind: EntryKind::PartitionedSource(partitioned_key.storage),
+			bucket: 0,
+			series: true,
 		},
 		_ => PageId {
 			kind: EntryKind::Multi,
 			bucket: 0,
+			series: false,
 		},
 	}
 }
 
 pub fn key_range_of(page: PageId, bucket_shift: u8) -> Option<EncodedKeyRange> {
+	if page.series {
+		return None;
+	}
+
 	match page.kind {
-		EntryKind::Source(StorageId::Series(_)) => None,
 		EntryKind::Source(storage) => {
 			let low = page.bucket << bucket_shift;
 			let high = low | ((1u64 << bucket_shift) - 1);
@@ -69,14 +82,18 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		interface::{
-			catalog::{id::SeriesId, storage::StorageId},
-			store::{EntryKind, classify_key},
+			catalog::{
+				id::{SeriesId, ViewId},
+				storage::StorageId,
+			},
+			store::{EntryKind, classify_key, classify_range},
 		},
 		key::{
 			EncodableKey,
 			partitioned_row::{PartitionedRowKey, RowLocator},
+			partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
 			row::RowKey,
-			series_row::SeriesRowKey,
+			series_row::{SeriesRowKey, SeriesRowKeyRange},
 		},
 	};
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
@@ -164,14 +181,14 @@ mod tests {
 	fn page_of_series_row_buckets_by_series_never_by_the_series_key() {
 		// Bucketing a series row by its key would shard one series across pages by timestamp.
 		let early = SeriesRowKey {
-			series: SeriesId(7),
+			storage: StorageId::series(SeriesId(7)),
 			variant_tag: None,
 			key: 1,
 			sequence: 1,
 		}
 		.encode();
 		let late = SeriesRowKey {
-			series: SeriesId(7),
+			storage: StorageId::series(SeriesId(7)),
 			variant_tag: None,
 			key: 1 << 40,
 			sequence: 2,
@@ -189,7 +206,7 @@ mod tests {
 		// The page cache and the physical tier must name the same entry, or a cached page shadows another
 		// table.
 		let key = SeriesRowKey {
-			series: SeriesId(7),
+			storage: StorageId::series(SeriesId(7)),
 			variant_tag: Some(2),
 			key: 99,
 			sequence: 3,
@@ -202,12 +219,100 @@ mod tests {
 	fn key_range_of_is_none_for_a_series_page() {
 		// A series page carries neither its variant tag nor a key span, so no exact range is reconstructable.
 		let key = SeriesRowKey {
-			series: SeriesId(7),
+			storage: StorageId::series(SeriesId(7)),
 			variant_tag: None,
 			key: 500,
 			sequence: 1,
 		}
 		.encode();
 		assert!(key_range_of(page_of(&key, 16), 16).is_none());
+	}
+
+	#[test]
+	fn key_range_of_is_none_for_a_series_keyed_view_page() {
+		// A series-backed view stores series keys under a View storage id, so its page reaches the generic
+		// Source arm; handing back a RowKey bucket range there would mark the page complete over a range no
+		// series key can ever fall in, and every read of that view would then be served an empty page.
+		let key = SeriesRowKey {
+			storage: StorageId::View(ViewId(7)),
+			variant_tag: None,
+			key: 500,
+			sequence: 1,
+		}
+		.encode();
+		let page = page_of(&key, 16);
+		assert_eq!(page.kind, EntryKind::Source(StorageId::View(ViewId(7))));
+		assert_eq!(page.kind, classify_key(&key));
+		assert!(key_range_of(page, 16).is_none(), "a series-keyed view page has no row-number range");
+	}
+
+	#[test]
+	fn page_of_partitioned_series_row_agrees_with_classify_key() {
+		// The page cache and the physical tier must name the same entry for the new partitioned series kind,
+		// or a cached page shadows a different object.
+		let storage = StorageId::series(SeriesId(4));
+		let key = PartitionedSeriesRowKey::encoded(
+			storage,
+			Partition::of(&[Value::Utf8("us".to_string())]),
+			Some(2),
+			99,
+			3,
+		);
+		let page = page_of(&key, 16);
+		assert_eq!(page.kind, EntryKind::PartitionedSource(storage));
+		assert_eq!(page.bucket, 0);
+		assert_eq!(page.kind, classify_key(&key));
+		assert!(key_range_of(page, 16).is_none());
+	}
+
+	#[test]
+	fn classify_key_and_classify_range_agree_for_the_series_kinds() {
+		// expired_batch picks its indexed scan by classify_range while the tier stores entries by classify_key;
+		// if the two disagree the evictor scans an entry that holds none of the rows it is trying to expire.
+		let series = StorageId::series(SeriesId(11));
+		let view = StorageId::View(ViewId(11));
+
+		for storage in [series, view] {
+			let key = SeriesRowKey {
+				storage,
+				variant_tag: None,
+				key: 5,
+				sequence: 1,
+			}
+			.encode();
+			assert_eq!(classify_key(&key), EntryKind::Source(storage));
+			assert_eq!(
+				classify_range(&SeriesRowKeyRange::full_scan(storage, None)),
+				Some(EntryKind::Source(storage))
+			);
+
+			let partitioned = PartitionedSeriesRowKey::encoded(
+				storage,
+				Partition::of(&[Value::Utf8("us".to_string())]),
+				None,
+				5,
+				1,
+			);
+			assert_eq!(classify_key(&partitioned), EntryKind::PartitionedSource(storage));
+			assert_eq!(
+				classify_range(&PartitionedSeriesRowKeyRange::full_scan(storage)),
+				Some(EntryKind::PartitionedSource(storage))
+			);
+		}
+	}
+
+	#[test]
+	fn key_range_of_survives_for_a_table_keyed_view_page() {
+		// A view page is only range-less because of series keys, not because it is a view: blanket-denying
+		// every view page would silently drop the range-cache hit for every table-backed view in the system.
+		let key = RowKey {
+			storage: StorageId::View(ViewId(7)),
+			row: RowNumber(40),
+		}
+		.encode();
+		let page = page_of(&key, 16);
+		assert!(!page.series, "a plain row key must never be marked as a series page");
+		let range = key_range_of(page, 16).expect("a table-keyed view page must keep its bucket range");
+		assert!(range.contains(&key), "the reconstructed range must contain the key it came from");
 	}
 }

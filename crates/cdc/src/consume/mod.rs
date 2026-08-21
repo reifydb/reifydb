@@ -44,7 +44,8 @@ fn is_relevant_cdc_change(change: &CdcChange) -> bool {
 				kind,
 				KeyKind::Row
 					| KeyKind::SeriesRow | KeyKind::PartitionedRow
-					| KeyKind::Flow | KeyKind::Operator | KeyKind::OperatorByFlow
+					| KeyKind::PartitionedSeriesRow | KeyKind::Flow
+					| KeyKind::Operator | KeyKind::OperatorByFlow
 					| KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow
 					| KeyKind::NamespaceFlow
 			)

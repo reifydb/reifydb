@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{resolved::ResolvedSeries, store::MultiVersionRow},
+	interface::{catalog::storage::StorageId, resolved::ResolvedSeries, store::MultiVersionRow},
 	key::{
 		EncodableKey,
 		partitioned_row::{PartitionedRowKey, RowLocator},
@@ -303,7 +303,7 @@ impl QueryNode for SeriesScanNode {
 			}
 		} else {
 			SeriesRowKeyRange::scan_range(
-				series.id,
+				StorageId::series(series.id),
 				self.variant_tag,
 				self.key_range_start,
 				self.key_range_end,

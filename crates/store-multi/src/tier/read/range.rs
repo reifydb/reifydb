@@ -292,6 +292,7 @@ impl MultiReadBufferTier {
 				page = PageId {
 					kind: page.kind,
 					bucket: page.bucket + 1,
+					series: page.series,
 				};
 			} else {
 				if page_end >= range_hi {
@@ -303,6 +304,7 @@ impl MultiReadBufferTier {
 				page = PageId {
 					kind: page.kind,
 					bucket: page.bucket - 1,
+					series: page.series,
 				};
 			}
 			first = false;

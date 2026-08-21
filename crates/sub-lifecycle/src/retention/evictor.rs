@@ -22,6 +22,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		partitioned_row::{PartitionedRowKey, RowLocator},
+		partitioned_series_row::PartitionedSeriesRowKeyRange,
 		row::RowKey,
 		series_row::SeriesRowKeyRange,
 	},
@@ -316,7 +317,15 @@ impl Evictor {
 		budget: &mut u64,
 		stats: &mut TickStats,
 	) -> Result<()> {
-		for keyspace in [RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)] {
+		let keyspaces = match family {
+			RowFamily::Series => [
+				SeriesRowKeyRange::full_scan(storage, None),
+				PartitionedSeriesRowKeyRange::full_scan(storage),
+			],
+			_ => [RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)],
+		};
+
+		for keyspace in keyspaces {
 			loop {
 				if *budget == 0 {
 					return Ok(());
@@ -613,9 +622,9 @@ impl Evictor {
 
 		let partitioned = !series.partition_by.is_empty();
 		let keyspace = if partitioned {
-			PartitionedRowKey::full_scan(storage)
+			PartitionedSeriesRowKeyRange::full_scan(storage)
 		} else {
-			SeriesRowKeyRange::full_scan(series.id, None)
+			SeriesRowKeyRange::full_scan(storage, None)
 		};
 		let cursor_key = (storage, scan::keyspace_start(&keyspace));
 

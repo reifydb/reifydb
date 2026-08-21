@@ -252,10 +252,10 @@ impl PartitionedSeriesRowKeyRange {
 				serializer.extend_u64(key_val).extend_u64(0u64);
 				Bound::Included(serializer.to_encoded_key())
 			}
-			None => EncodedKeyRange::prefix(
-				Self::partition_prefix(self.storage, self.partition).as_slice(),
-			)
-			.end,
+			None => {
+				EncodedKeyRange::prefix(Self::partition_prefix(self.storage, self.partition).as_slice())
+					.end
+			}
 		}
 	}
 }
@@ -352,14 +352,8 @@ mod tests {
 		// The range must contain a key inside the window and exclude ones outside, or eviction skips live rows.
 		let storage = StorageId::Series(SeriesId(1));
 		let partition = part("us");
-		let range = PartitionedSeriesRowKeyRange::scan_range(
-			storage,
-			partition,
-			None,
-			Some(100),
-			Some(200),
-			None,
-		);
+		let range =
+			PartitionedSeriesRowKeyRange::scan_range(storage, partition, None, Some(100), Some(200), None);
 		let inside = PartitionedSeriesRowKey::encoded(storage, partition, None, 150, 1);
 		let below = PartitionedSeriesRowKey::encoded(storage, partition, None, 99, 1);
 		let above = PartitionedSeriesRowKey::encoded(storage, partition, None, 201, 1);
@@ -410,7 +404,8 @@ mod tests {
 	#[test]
 	fn test_the_two_partitioned_kinds_do_not_share_a_keyspace() {
 		// One kind byte for two layouts is what let a series key answer to a plain partitioned row read.
-		let series = PartitionedSeriesRowKey::encoded(StorageId::Series(SeriesId(1)), part("us"), Some(2), 7, 9);
+		let series =
+			PartitionedSeriesRowKey::encoded(StorageId::Series(SeriesId(1)), part("us"), Some(2), 7, 9);
 		let row = PartitionedRowKey::encoded(
 			StorageId::Table(TableId(1)),
 			part("us"),

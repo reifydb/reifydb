@@ -57,7 +57,7 @@ pub fn row_target(key: &EncodedKey) -> Option<RowTarget> {
 			row: row_key.row,
 		}),
 		Key::SeriesRow(series_key) => Some(RowTarget {
-			object: ObjectId::series(series_key.series),
+			object: ObjectId::from(series_key.storage),
 			row: RowNumber(series_key.sequence),
 		}),
 		Key::PartitionedRow(partitioned) => Some(RowTarget {
@@ -69,6 +69,10 @@ pub fn row_target(key: &EncodedKey) -> Option<RowTarget> {
 					..
 				} => RowNumber(sequence),
 			},
+		}),
+		Key::PartitionedSeriesRow(partitioned) => Some(RowTarget {
+			object: ObjectId::from(partitioned.storage),
+			row: RowNumber(partitioned.sequence),
 		}),
 		_ => None,
 	}
@@ -237,7 +241,10 @@ mod tests {
 			id::{SeriesId, TableId, ViewId},
 			storage::StorageId,
 		},
-		key::{EncodableKey, partitioned_row::PartitionedRowKey, row::RowKey, series_row::SeriesRowKey},
+		key::{
+			EncodableKey, partitioned_row::PartitionedRowKey,
+			partitioned_series_row::PartitionedSeriesRowKey, row::RowKey, series_row::SeriesRowKey,
+		},
 	};
 	use reifydb_value::value::partition::Partition;
 
@@ -282,7 +289,7 @@ mod tests {
 	fn test_series_row_key_uses_the_sequence_as_row_number_never_the_series_key() {
 		// A RowKey decode of the longer series suffix would invent RowNumber(1_000) out of the key bytes.
 		let key = SeriesRowKey {
-			series: SeriesId(4),
+			storage: StorageId::series(4),
 			variant_tag: None,
 			key: 1_000,
 			sequence: 7,
@@ -298,7 +305,7 @@ mod tests {
 	fn test_tagged_series_row_key_maps_to_its_series() {
 		// The variant tag shifts the key and sequence by one byte, so the tagged layout needs its own cover.
 		let key = SeriesRowKey {
-			series: SeriesId(9),
+			storage: StorageId::series(9),
 			variant_tag: Some(3),
 			key: 1_000,
 			sequence: 11,
@@ -307,6 +314,41 @@ mod tests {
 		let target = row_target(&key).expect("row target");
 		assert_eq!(target.object, ObjectId::Series(SeriesId(9)));
 		assert_eq!(target.row, RowNumber(11));
+	}
+
+	#[test]
+	fn test_series_row_key_on_a_view_storage_maps_to_the_view_never_to_a_series() {
+		// A series-backed view writes series keys under a View storage id; reading the object id back as a
+		// series would attribute every rebuilt change of that view to a series that does not exist.
+		let key = SeriesRowKey {
+			storage: StorageId::view(8),
+			variant_tag: None,
+			key: 1_000,
+			sequence: 7,
+		}
+		.encode();
+		let target = row_target(&key).expect("row target");
+		assert_eq!(target.object, ObjectId::View(ViewId(8)));
+		assert_eq!(target.row, RowNumber(7));
+	}
+
+	#[test]
+	fn test_partitioned_series_row_key_uses_the_sequence_as_row_number() {
+		// The partitioned series kind carries its row identity in the sequence, exactly like the unpartitioned
+		// one; taking the series key instead would invent RowNumber(1_000) and misjoin every pre-image.
+		let key = PartitionedSeriesRowKey::encoded(StorageId::series(4), Partition(1), None, 1_000, 7);
+		let target = row_target(&key).expect("row target");
+		assert_eq!(target.object, ObjectId::Series(SeriesId(4)));
+		assert_eq!(target.row, RowNumber(7));
+	}
+
+	#[test]
+	fn test_partitioned_series_row_key_on_a_view_storage_maps_to_the_view() {
+		// Same widening as the unpartitioned case: the storage id decides the object, not the key kind.
+		let key = PartitionedSeriesRowKey::encoded(StorageId::view(8), Partition(1), Some(2), 5, 3);
+		let target = row_target(&key).expect("row target");
+		assert_eq!(target.object, ObjectId::View(ViewId(8)));
+		assert_eq!(target.row, RowNumber(3));
 	}
 
 	#[test]

@@ -454,6 +454,7 @@ fn populate_non_source_page_is_never_complete() {
 	let page = PageId {
 		kind: EntryKind::Multi,
 		bucket: 0,
+		series: false,
 	};
 	read.populate_page(
 		page,
