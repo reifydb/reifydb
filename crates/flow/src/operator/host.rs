@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
+		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, node_prefix},
 	},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
@@ -239,6 +239,14 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
 		self.txn.lookup_groups(self.operator, groups)
+	}
+
+	fn intern_groups_in(&mut self, keyspace: Keyspace, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
+		self.txn.intern_groups_in(self.operator, keyspace, groups)
+	}
+
+	fn lookup_groups_in(&mut self, keyspace: Keyspace, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+		self.txn.lookup_groups_in(self.operator, keyspace, groups)
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {

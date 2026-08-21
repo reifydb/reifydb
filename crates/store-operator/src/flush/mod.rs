@@ -118,7 +118,10 @@ fn invalidate_flushed(read: &OperatorReadBufferTier, batch: &FlushBatch) {
 		}
 	}
 	for ((operator, key), row) in &batch.state {
-		read.overwrite(*operator, key.clone(), row.clone());
+		match row {
+			Some(row) => read.overwrite(*operator, key.clone(), row.clone()),
+			None => read.invalidate(*operator, key),
+		}
 	}
 }
 

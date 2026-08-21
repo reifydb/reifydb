@@ -8,13 +8,14 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, OperatorStateKey, group_data_inner_range},
+		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, group_data_inner_range},
 	},
 };
 use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	group::*,
+	reclaim::ReclaimExtension,
 	state::{StateExtension, StateRange},
 	substrate::{FlowSubstrate, apply_operator_state},
 };
@@ -241,4 +242,86 @@ fn nodes_intern_independently() {
 		"a group interned on one operator must not resolve on another"
 	);
 	assert_ne!(other, first);
+}
+
+#[test]
+fn the_same_bytes_intern_to_separate_ids_in_separate_dictionaries() {
+	// Append owns a dictionary of its own so its interning traffic cannot evict every other
+	// operator's groups out of one shared bucket; separate dictionaries must therefore be separate
+	// namespaces, or a group interned by one operator would silently resolve for another.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let bytes = group("same-bytes");
+
+	let (shared, _) = txn.intern_groups_in(NODE, Keyspace::GROUP_DICTIONARY, &[bytes.clone()]).unwrap().remove(0);
+	let (append, is_new) =
+		txn.intern_groups_in(NODE, Keyspace::APPEND_DICTIONARY, &[bytes.clone()]).unwrap().remove(0);
+
+	assert!(is_new, "a dictionary must not see an entry another dictionary interned");
+	assert_ne!(shared, append, "two dictionaries must mint independent ids for the same bytes");
+}
+
+#[test]
+fn a_lookup_never_crosses_from_one_dictionary_into_another() {
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let bytes = group("append-only");
+	txn.intern_groups_in(NODE, Keyspace::APPEND_DICTIONARY, &[bytes.clone()]).unwrap();
+	commit_pending(&engine, &mut txn);
+
+	let mut txn = deferred(&engine);
+	assert_eq!(
+		txn.lookup_groups_in(NODE, Keyspace::GROUP_DICTIONARY, &[bytes.clone()]).unwrap().remove(0),
+		None,
+		"a group interned into the append dictionary must be invisible to the shared one"
+	);
+	assert!(
+		txn.lookup_groups_in(NODE, Keyspace::APPEND_DICTIONARY, &[bytes]).unwrap().remove(0).is_some(),
+		"the dictionary it was interned into must still resolve it"
+	);
+}
+
+#[test]
+fn reclaim_forgets_a_group_from_the_dictionary_it_was_interned_into() {
+	// Reclaim walks back from the id through the reverse record, so the record must name the
+	// dictionary; targeting the wrong one would keep the entry alive forever after the identity is
+	// gone, and the group would never be reclaimable again.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let bytes = group("reclaimed-from-append");
+	let (id, _) = txn.intern_groups_in(NODE, Keyspace::APPEND_DICTIONARY, &[bytes.clone()]).unwrap().remove(0);
+	commit_pending(&engine, &mut txn);
+
+	let mut txn = deferred(&engine);
+	let outcome = txn.reclaim_group_identity(NODE, id, 100).unwrap();
+	assert!(!outcome.more, "the group must drain in one pass");
+	commit_pending(&engine, &mut txn);
+
+	let mut txn = deferred(&engine);
+	assert_eq!(
+		txn.lookup_groups_in(NODE, Keyspace::APPEND_DICTIONARY, &[bytes]).unwrap().remove(0),
+		None,
+		"a reclaimed append group must not resurrect from the store"
+	);
+}
+
+#[test]
+fn the_reverse_record_names_the_dictionary_the_group_was_interned_into() {
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let shared = group("in-shared");
+	let appended = group("in-append");
+	let (shared_id, _) = txn.intern_groups_in(NODE, Keyspace::GROUP_DICTIONARY, &[shared]).unwrap().remove(0);
+	let (append_id, _) = txn.intern_groups_in(NODE, Keyspace::APPEND_DICTIONARY, &[appended]).unwrap().remove(0);
+
+	assert_eq!(
+		txn.group_record(NODE, shared_id).unwrap().map(|(_, keyspace)| keyspace),
+		Some(Keyspace::GROUP_DICTIONARY),
+		"the record must name the dictionary reclaim has to sweep"
+	);
+	assert_eq!(
+		txn.group_record(NODE, append_id).unwrap().map(|(_, keyspace)| keyspace),
+		Some(Keyspace::APPEND_DICTIONARY),
+		"the record must name the dictionary reclaim has to sweep"
+	);
 }

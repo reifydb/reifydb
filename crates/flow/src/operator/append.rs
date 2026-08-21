@@ -11,7 +11,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator_state::{GroupId, GroupStateKey, Keyspace},
 	metrics::{heap::OperatorSample, instruments::counter::Counter},
 	state::timer::TimerKind,
 	value::column::columns::Columns,
@@ -154,17 +154,17 @@ impl AppendOperator {
 		host.anchor_at(group, UNGROUPED_SIDE, RowNumber(0))
 	}
 
-	fn arm_seal(&mut self, host: &mut dyn HostContext, groups: &[EncodedKey], columns: &Columns) -> Result<()> {
+	fn arm_seal(&mut self, host: &mut dyn HostContext, ids: &[GroupId], columns: &Columns) -> Result<()> {
 		let Some(retention) = self.retention else {
 			return Ok(());
 		};
 		let policy = SealPolicy::of(retention);
 		let times = columns.time().to_vec();
-		for (index, resolved) in host.lookup_groups(groups)?.into_iter().enumerate() {
-			let (Some(group), Some(at)) = (resolved, times.get(index)) else {
+		for (index, group) in ids.iter().enumerate() {
+			let Some(at) = times.get(index) else {
 				continue;
 			};
-			self.move_anchor(host, group, policy.seal_instant(*at).at())?;
+			self.move_anchor(host, *group, policy.seal_instant(*at).at())?;
 		}
 		Ok(())
 	}
@@ -314,8 +314,8 @@ impl AppendOperator {
 		&self,
 		host: &mut dyn HostContext,
 		groups: &[EncodedKey],
-	) -> Result<Vec<RowNumber>> {
-		let interned = host.intern_groups(groups)?;
+	) -> Result<(Vec<RowNumber>, Vec<GroupId>)> {
+		let interned = host.intern_groups_in(Keyspace::APPEND_DICTIONARY, groups)?;
 		let mapping = Self::mapping_key();
 		let fresh: Vec<GroupId> =
 			interned.iter().filter(|(_, is_new)| *is_new).map(|(group, _)| *group).collect();
@@ -326,7 +326,8 @@ impl AppendOperator {
 		let mut looked_up = host.get_or_create_row_numbers_for_groups(&known, &mapping)?.into_iter();
 
 		let mut output_row_numbers = Vec::with_capacity(interned.len());
-		for (_, is_new) in interned {
+		let mut ids = Vec::with_capacity(interned.len());
+		for (group, is_new) in interned {
 			let output_row_number = match is_new {
 				true => minted.next().expect("one row number is minted per freshly interned group"),
 				false => {
@@ -337,8 +338,9 @@ impl AppendOperator {
 				}
 			};
 			output_row_numbers.push(output_row_number);
+			ids.push(group);
 		}
-		Ok(output_row_numbers)
+		Ok((output_row_numbers, ids))
 	}
 
 	#[inline]
@@ -349,7 +351,7 @@ impl AppendOperator {
 		groups: &[EncodedKey],
 	) -> Result<Option<(Vec<RowNumber>, Vec<GroupId>)>> {
 		let mut ids = Vec::with_capacity(groups.len());
-		for resolved in host.lookup_groups(groups)? {
+		for resolved in host.lookup_groups_in(Keyspace::APPEND_DICTIONARY, groups)? {
 			let Some(group) = resolved else {
 				return Ok(None);
 			};
@@ -378,8 +380,8 @@ impl AppendOperator {
 			return Ok(None);
 		}
 		let groups = Self::group_keys(parent_index, &post);
-		let output_row_numbers = self.translate_create_row_numbers(host, &groups)?;
-		self.arm_seal(host, &groups, &post)?;
+		let (output_row_numbers, ids) = self.translate_create_row_numbers(host, &groups)?;
+		self.arm_seal(host, &ids, &post)?;
 		let output = post.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::insert(output)))
 	}
@@ -397,12 +399,12 @@ impl AppendOperator {
 			return Ok(None);
 		}
 		let groups = Self::group_keys(parent_index, &pre);
-		let Some((output_row_numbers, _)) = self.lookup_row_numbers(host, &groups)? else {
+		let Some((output_row_numbers, ids)) = self.lookup_row_numbers(host, &groups)? else {
 			self.dropped.note(post.row_count() as u64);
 			return Ok(None);
 		};
-		host.intern_groups(&groups)?;
-		self.arm_seal(host, &groups, &post)?;
+		host.intern_groups_in(Keyspace::APPEND_DICTIONARY, &groups)?;
+		self.arm_seal(host, &ids, &post)?;
 		let pre_output = pre.with_row_numbers(output_row_numbers.clone());
 		let post_output = post.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::update(pre_output, post_output)))
@@ -527,9 +529,13 @@ mod tests {
 		parent: u8,
 		source_row: u64,
 	) -> Option<GroupId> {
-		txn.lookup_groups(op.operator, &[AppendOperator::group_bytes(parent, RowNumber(source_row))])
-			.unwrap()
-			.remove(0)
+		txn.lookup_groups_in(
+			op.operator,
+			Keyspace::APPEND_DICTIONARY,
+			&[AppendOperator::group_bytes(parent, RowNumber(source_row))],
+		)
+		.unwrap()
+		.remove(0)
 	}
 
 	fn group_rows(txn: &mut DeferredTransaction, op: &AppendOperator, group: GroupId) -> usize {
@@ -575,13 +581,15 @@ mod tests {
 				&mut host(&mut txn, &op),
 				&AppendOperator::group_keys(0, &rows(&[7])),
 			)
-			.unwrap();
+			.unwrap()
+			.0;
 		let second = op
 			.translate_create_row_numbers(
 				&mut host(&mut txn, &op),
 				&AppendOperator::group_keys(0, &rows(&[7])),
 			)
-			.unwrap();
+			.unwrap()
+			.0;
 
 		assert_eq!(first, second, "an already-interned source row must resolve to its existing output row");
 	}
@@ -600,13 +608,15 @@ mod tests {
 				&mut host(&mut txn, &op),
 				&AppendOperator::group_keys(0, &rows(&[7])),
 			)
-			.unwrap();
+			.unwrap()
+			.0;
 		let right = op
 			.translate_create_row_numbers(
 				&mut host(&mut txn, &op),
 				&AppendOperator::group_keys(1, &rows(&[7])),
 			)
-			.unwrap();
+			.unwrap()
+			.0;
 
 		assert_ne!(
 			group_of(&mut txn, &op, 0, 7),
@@ -628,7 +638,8 @@ mod tests {
 				&mut host(&mut txn, &op),
 				&AppendOperator::group_keys(0, &rows(&[7, 9, 7])),
 			)
-			.unwrap();
+			.unwrap()
+			.0;
 
 		assert_eq!(assigned[0], assigned[2], "both slots of source row 7 must carry one output row number");
 		assert_ne!(assigned[0], assigned[1], "a distinct source row keeps a distinct output row number");
@@ -646,13 +657,15 @@ mod tests {
 				&mut host(&mut txn, &op),
 				&AppendOperator::group_keys(0, &rows(&[7])),
 			)
-			.unwrap();
+			.unwrap()
+			.0;
 		let assigned = op
 			.translate_create_row_numbers(
 				&mut host(&mut txn, &op),
 				&AppendOperator::group_keys(0, &rows(&[5, 7, 9])),
 			)
-			.unwrap();
+			.unwrap()
+			.0;
 
 		assert_eq!(assigned[1], known[0], "the known source row keeps its number in the slot it arrived in");
 		assert_ne!(assigned[0], assigned[2], "the two fresh rows take numbers of their own");
@@ -679,7 +692,8 @@ mod tests {
 				&mut host(&mut txn, &op),
 				&AppendOperator::group_keys(0, &rows(&[7])),
 			)
-			.unwrap();
+			.unwrap()
+			.0;
 		commit(&engine, &mut txn);
 
 		let mut later = txn_at(&engine, op.operator, 200);
@@ -688,7 +702,8 @@ mod tests {
 				&mut host(&mut later, &op),
 				&AppendOperator::group_keys(0, &rows(&[3, 7])),
 			)
-			.unwrap();
+			.unwrap()
+			.0;
 
 		assert_eq!(assigned[1], known[0], "a persisted source row must not be re-numbered");
 		assert_ne!(assigned[0], known[0], "the fresh row beside it takes a number of its own");

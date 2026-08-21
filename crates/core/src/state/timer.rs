@@ -10,7 +10,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::key::operator_state::{GroupId, GroupStateKey};
+use crate::key::operator_state::{GroupId, GroupStateKey, Keyspace};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -70,6 +70,16 @@ pub trait StateStore {
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>>;
 
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
+
+	fn intern_groups_in(&mut self, keyspace: Keyspace, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
+		let _ = keyspace;
+		self.intern_groups(groups)
+	}
+
+	fn lookup_groups_in(&mut self, keyspace: Keyspace, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
+		let _ = keyspace;
+		self.lookup_groups(groups)
+	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 

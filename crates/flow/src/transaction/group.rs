@@ -23,8 +23,8 @@ use reifydb_value::{Result, reifydb_assertions};
 
 use crate::transaction::{FlowTransaction, state::StateExtension};
 
-fn dictionary_key(group: &EncodedKey) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::GROUP_DICTIONARY, group)
+fn dictionary_key(keyspace: Keyspace, group: &EncodedKey) -> GroupStateKey {
+	OperatorStateKey::inner_encoded(GroupId::ROOT, keyspace, group)
 }
 
 fn record_key(id: GroupId) -> GroupStateKey {
@@ -47,8 +47,18 @@ pub(super) fn decode_bytes<T: OperatorState>(bytes: &EncodedBytes) -> Result<T> 
 	decode_payload(&EncodedPodRow::from(bytes.clone()))
 }
 
-fn stamp(txn: &mut impl FlowTransaction, operator: OperatorId, id: GroupId, group: &EncodedKey) -> Result<()> {
-	txn.state_set(operator, &record_key(id), encode_payload(&GroupRecord::new(group.as_ref().to_vec()))?)
+fn stamp(
+	txn: &mut impl FlowTransaction,
+	operator: OperatorId,
+	keyspace: Keyspace,
+	id: GroupId,
+	group: &EncodedKey,
+) -> Result<()> {
+	txn.state_set(
+		operator,
+		&record_key(id),
+		encode_payload(&GroupRecord::new(group.as_ref().to_vec(), keyspace.0))?,
+	)
 }
 
 fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Result<u64> {
@@ -70,7 +80,17 @@ fn mint(txn: &mut impl FlowTransaction, operator: OperatorId, count: u64) -> Res
 
 pub trait GroupExtension: FlowTransaction {
 	fn intern_groups(&mut self, operator: OperatorId, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
-		let dictionary_keys: Vec<GroupStateKey> = groups.iter().map(dictionary_key).collect();
+		self.intern_groups_in(operator, Keyspace::GROUP_DICTIONARY, groups)
+	}
+
+	fn intern_groups_in(
+		&mut self,
+		operator: OperatorId,
+		keyspace: Keyspace,
+		groups: &[EncodedKey],
+	) -> Result<Vec<(GroupId, bool)>> {
+		let dictionary_keys: Vec<GroupStateKey> =
+			groups.iter().map(|group| dictionary_key(keyspace, group)).collect();
 
 		let batch = self.state_get_many(operator, &dictionary_keys)?;
 		let mut found: HashMap<Vec<u8>, EncodedBytes> = HashMap::with_capacity(batch.items.len());
@@ -109,7 +129,7 @@ pub trait GroupExtension: FlowTransaction {
 				let dictionary = &dictionary_keys[slot];
 				let id = GroupId(start + offset as u64);
 				self.state_set(operator, dictionary, encode_payload(&id.0)?)?;
-				stamp(self, operator, id, &groups[slot])?;
+				stamp(self, operator, keyspace, id, &groups[slot])?;
 				assigned.insert(dictionary.as_slice().to_vec(), id);
 			}
 			for (slot, dictionary) in dictionary_keys.iter().enumerate() {
@@ -122,14 +142,24 @@ pub trait GroupExtension: FlowTransaction {
 		}
 
 		for (slot, id) in resolved_from_store {
-			stamp(self, operator, id, &groups[slot])?;
+			stamp(self, operator, keyspace, id, &groups[slot])?;
 		}
 
 		Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
 	}
 
 	fn lookup_groups(&mut self, operator: OperatorId, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
-		let dictionary_keys: Vec<GroupStateKey> = groups.iter().map(dictionary_key).collect();
+		self.lookup_groups_in(operator, Keyspace::GROUP_DICTIONARY, groups)
+	}
+
+	fn lookup_groups_in(
+		&mut self,
+		operator: OperatorId,
+		keyspace: Keyspace,
+		groups: &[EncodedKey],
+	) -> Result<Vec<Option<GroupId>>> {
+		let dictionary_keys: Vec<GroupStateKey> =
+			groups.iter().map(|group| dictionary_key(keyspace, group)).collect();
 
 		let batch = self.state_get_many(operator, &dictionary_keys)?;
 		let mut found: HashMap<Vec<u8>, EncodedBytes> = HashMap::with_capacity(batch.items.len());
@@ -149,7 +179,11 @@ pub trait GroupExtension: FlowTransaction {
 	}
 
 	fn forget_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<bool> {
-		let dictionary = dictionary_key(group);
+		self.forget_group_in(operator, Keyspace::GROUP_DICTIONARY, group)
+	}
+
+	fn forget_group_in(&mut self, operator: OperatorId, keyspace: Keyspace, group: &EncodedKey) -> Result<bool> {
+		let dictionary = dictionary_key(keyspace, group);
 		if self.state_get(operator, &dictionary)?.is_none() {
 			return Ok(false);
 		}
@@ -158,10 +192,15 @@ pub trait GroupExtension: FlowTransaction {
 	}
 
 	fn group_bytes(&mut self, operator: OperatorId, id: GroupId) -> Result<Option<EncodedKey>> {
+		Ok(self.group_record(operator, id)?.map(|(bytes, _)| bytes))
+	}
+
+	fn group_record(&mut self, operator: OperatorId, id: GroupId) -> Result<Option<(EncodedKey, Keyspace)>> {
 		let Some(row) = self.state_get(operator, &record_key(id))? else {
 			return Ok(None);
 		};
-		Ok(Some(EncodedKey::new(decode_payload::<GroupRecord>(&row)?.group)))
+		let record = decode_payload::<GroupRecord>(&row)?;
+		Ok(Some((EncodedKey::new(record.group), Keyspace(record.keyspace))))
 	}
 }
 

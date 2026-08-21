@@ -16,12 +16,14 @@ pub mod group {
 	#[derive(Debug, Clone, Default, PartialEq, Eq)]
 	pub struct GroupRecord {
 		pub group: Vec<u8>,
+		pub keyspace: u8,
 	}
 
 	impl GroupRecord {
-		pub fn new(group: impl Into<Vec<u8>>) -> Self {
+		pub fn new(group: impl Into<Vec<u8>>, keyspace: u8) -> Self {
 			Self {
 				group: group.into(),
+				keyspace,
 			}
 		}
 	}

@@ -318,3 +318,37 @@ fn a_read_modify_write_key_stays_cached_across_repeated_flush_cycles() {
 	assert_eq!(counters.misses, 1, "the pre-write read is the only one the tier cannot answer");
 	assert_eq!(body(&store.get(OP_A, &key(1)).expect("the key survives every cycle")), "0-1-2-3-4-5-6-7");
 }
+
+#[test]
+fn a_flushed_removal_leaves_no_entry_behind_for_the_key_it_erased() {
+	// Retention erases rows by the million and never reads them again. Caching each erasure as an absence
+	// charges the tier per-entry overhead plus the whole key for a lookup that will never come, and only
+	// whole-bucket eviction ever takes it back, so the buffer fills with rows retention already deleted.
+	let (store, _storage, _guard) = cached_store();
+	store.set(OP_A, key(1), row("doomed"));
+	assert!(store.flush_pending_blocking(), "the row must be durable before the removal can erase it");
+	let seeded = entries(&store);
+	assert_eq!(seeded, 1, "precondition: the flush left exactly the one row it persisted");
+
+	store.remove(OP_A, &key(1));
+	assert!(store.flush_pending_blocking(), "the removal must reach the tier through the same flush path");
+
+	assert_eq!(
+		entries(&store),
+		0,
+		"a flushed removal must drop the entry, not replace the row with a tombstone that outlives it"
+	);
+}
+
+#[test]
+fn a_flushed_removal_still_reads_back_as_absent() {
+	// Dropping the entry must not make the key answer wrongly: the next read has to reach the persistent
+	// tier and find nothing there, or the erase would be invisible and the stale row served forever.
+	let (store, _storage, _guard) = cached_store();
+	store.set(OP_A, key(1), row("doomed"));
+	assert!(store.flush_pending_blocking());
+	store.remove(OP_A, &key(1));
+	assert!(store.flush_pending_blocking());
+
+	assert_eq!(store.get(OP_A, &key(1)), None, "the erased key must not resurrect from the tier");
+}

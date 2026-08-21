@@ -35,12 +35,12 @@ pub trait ReclaimExtension: StateExtension + GroupExtension {
 		if group.is_root() {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
-		let group_bytes = self.group_bytes(operator, group)?;
+		let record = self.group_record(operator, group)?;
 		let outcome = self.reclaim_range(operator, group_identity_inner_range(group), limit)?;
 		if !outcome.more
-			&& let Some(bytes) = group_bytes
+			&& let Some((bytes, keyspace)) = record
 		{
-			self.forget_group(operator, &bytes)?;
+			self.forget_group_in(operator, keyspace, &bytes)?;
 		}
 		Ok(outcome)
 	}
