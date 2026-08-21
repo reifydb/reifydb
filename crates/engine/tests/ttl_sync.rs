@@ -93,7 +93,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		lifecycle::operator::ListOperatorSettings,
-		row::{OperatorLateness, OperatorSettings},
+		row::{OperatorRetention, OperatorSettings},
 	};
 
 	let engine = TestEngine::new();
@@ -104,7 +104,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	// every stateful operator.
 	let operator_id = OperatorId(42);
 	let settings = OperatorSettings {
-		lateness: Some(OperatorLateness {
+		retention: Some(OperatorRetention {
 			duration: Duration::from_hours(1).unwrap(),
 		}),
 		join: None,
@@ -117,7 +117,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	let listed = catalog.list_operator_settings();
 	assert_eq!(listed.len(), 1, "operator settings did not sync to the catalog cache");
 	assert_eq!(listed[0].0, operator_id);
-	assert_eq!(listed[0].1.lateness.as_ref().expect("ttl not set").duration, Duration::from_hours(1).unwrap());
+	assert_eq!(listed[0].1.retention.as_ref().expect("ttl not set").duration, Duration::from_hours(1).unwrap());
 }
 
 fn deltas_to_cdc_changes(txn: &AdminTransaction) -> Vec<CdcChange> {

@@ -21,7 +21,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
-	value::{Value, datetime::DateTime, duration::Duration},
+	value::{Value, datetime::DateTime},
 };
 
 use super::{
@@ -42,7 +42,6 @@ type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Opti
 
 pub struct AggregateOperator {
 	core: Aggregation,
-	_lateness: Option<Duration>,
 }
 
 impl AggregateOperator {
@@ -53,7 +52,6 @@ impl AggregateOperator {
 		map: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
-		lateness: Option<Duration>,
 	) -> Self {
 		Self {
 			core: Aggregation::new(
@@ -66,7 +64,6 @@ impl AggregateOperator {
 				AggregateContext::Grouped,
 				Arc::new(FlowContext::default()),
 			),
-			_lateness: lateness,
 		}
 	}
 

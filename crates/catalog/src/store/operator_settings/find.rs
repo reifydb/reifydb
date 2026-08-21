@@ -24,7 +24,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		row::{OperatorLateness, OperatorSettings},
+		row::{OperatorRetention, OperatorSettings},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -38,7 +38,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let operator = OperatorId(42);
 		let settings = OperatorSettings {
-			lateness: Some(OperatorLateness {
+			retention: Some(OperatorRetention {
 				duration: Duration::from_minutes(5).unwrap(),
 			}),
 			join: None,

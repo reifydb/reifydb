@@ -42,13 +42,13 @@ impl<'bump> Parser<'bump> {
 			Vec::new()
 		};
 
-		let ttl = self.parse_with_clause_for_operator()?;
+		self.reject_with_clause(OperationKind::Aggregate)?;
 
 		Ok(AstAggregate {
 			token,
 			by,
 			map: projections,
-			ttl,
+			retention: None,
 			rql: self.source_since(start),
 		})
 	}
@@ -259,22 +259,14 @@ pub mod tests {
 	}
 
 	#[test]
-	fn an_aggregate_carries_a_ttl_declared_after_its_by_clause() {
-		// The clause is the only bound on an aggregate's groups, and it has to parse after `by` rather than
-		// after the projection, or the group key would terminate the aggregate instead of belonging to it.
+	fn an_aggregate_with_a_with_clause_after_its_by_clause_is_rejected() {
+		// AGGREGATE takes no WITH clause: the BY clause is the only bound on an aggregate's groups.
 		let bump = Bump::new();
 		let source = "AGGREGATE { count(value) } BY { slot } WITH { lateness: 1m }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-
-		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
-		assert_eq!(aggregate.by.len(), 1);
-		assert_eq!(aggregate.by[0].as_identifier().text(), "slot");
-
-		let ttl = aggregate.ttl.as_ref().expect("the with clause must reach the aggregate node");
-		assert_eq!(ttl.duration.fragment.text(), "1m");
+		let result = parser.parse();
+		assert!(result.is_err(), "expected error: AGGREGATE takes no WITH clause");
 	}
 
 	#[test]
@@ -288,7 +280,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		assert!(result.first_unchecked().as_aggregate().ttl.is_none());
+		assert!(result.first_unchecked().as_aggregate().retention.is_none());
 	}
 
 	#[test]

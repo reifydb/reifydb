@@ -233,7 +233,6 @@ pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
 			.expect("the aggregation parses"),
 		routines(),
 		runtime,
-		None,
 	);
 
 	Pipeline {

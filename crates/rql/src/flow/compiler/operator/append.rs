@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::OperatorId, row::OperatorLateness};
+use reifydb_core::{interface::catalog::flow::OperatorId, row::OperatorRetention};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -17,7 +17,7 @@ use crate::{
 pub(crate) struct AppendCompiler {
 	pub left: Box<QueryPlan>,
 	pub right: Box<QueryPlan>,
-	pub ttl: Option<OperatorLateness>,
+	pub retention: Option<OperatorRetention>,
 }
 
 impl From<AppendQueryNode> for AppendCompiler {
@@ -25,7 +25,7 @@ impl From<AppendQueryNode> for AppendCompiler {
 		Self {
 			left: node.left,
 			right: node.right,
-			ttl: node.ttl,
+			retention: node.retention,
 		}
 	}
 }
@@ -37,7 +37,7 @@ impl CompileOperator for AppendCompiler {
 
 		let node_id = compiler.add_node(txn, OperatorDef::Append {})?;
 
-		compiler.write_operator_settings(txn, node_id, self.ttl)?;
+		compiler.write_operator_settings(txn, node_id, self.retention)?;
 
 		compiler.add_edge(txn, &left_node, &node_id)?;
 		compiler.add_edge(txn, &right_node, &node_id)?;

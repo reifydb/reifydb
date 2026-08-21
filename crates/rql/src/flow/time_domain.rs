@@ -7,7 +7,7 @@ use reifydb_catalog::{CatalogStore, catalog::Catalog};
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
 	error::diagnostic::flow::{
-		flow_join_lateness_requires_event_time, flow_join_right_lateness_conflicts_with_flag,
+		flow_join_retention_requires_event_time, flow_join_right_retention_conflicts_with_flag,
 		flow_rolling_lag_requires_event_time,
 	},
 	interface::catalog::{flow::FlowId, id::ViewId},
@@ -120,7 +120,7 @@ pub fn check_window_time_requirements(catalog: &Catalog, txn: &mut Transaction<'
 	Ok(())
 }
 
-pub fn check_join_lateness_requirements(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
+pub fn check_join_retention_requirements(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
 	let flow_name = format!("flow {}", flow.id.0);
 	let mut declared = false;
 
@@ -136,22 +136,22 @@ pub fn check_join_lateness_requirements(catalog: &Catalog, txn: &mut Transaction
 		else {
 			continue;
 		};
-		let Some(lateness) = CatalogStore::find_operator_settings(txn, *operator_id)?.and_then(|s| s.join)
+		let Some(retention) = CatalogStore::find_operator_settings(txn, *operator_id)?.and_then(|s| s.join)
 		else {
 			continue;
 		};
-		if lateness.left.is_none() && lateness.right.is_none() {
+		if retention.left.is_none() && retention.right.is_none() {
 			continue;
 		}
 
-		if lateness.right.is_some() {
+		if retention.right.is_some() {
 			if *snapshot {
-				return Err(Error(Box::new(flow_join_right_lateness_conflicts_with_flag(
+				return Err(Error(Box::new(flow_join_right_retention_conflicts_with_flag(
 					&flow_name, "snapshot",
 				))));
 			}
 			if *latest {
-				return Err(Error(Box::new(flow_join_right_lateness_conflicts_with_flag(
+				return Err(Error(Box::new(flow_join_right_retention_conflicts_with_flag(
 					&flow_name, "latest",
 				))));
 			}
@@ -161,7 +161,7 @@ pub fn check_join_lateness_requirements(catalog: &Catalog, txn: &mut Transaction
 	}
 
 	if declared && source_time_domain(catalog, txn, flow)? != TimeDomain::Event {
-		return Err(Error(Box::new(flow_join_lateness_requires_event_time(&flow_name))));
+		return Err(Error(Box::new(flow_join_retention_requires_event_time(&flow_name))));
 	}
 
 	Ok(())

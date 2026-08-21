@@ -1000,7 +1000,7 @@ impl TransactionalCatalogChanges {
 			.expect("Change must have either pre or post state");
 		let op = change.op;
 		self.operator_settings.push(change);
-		self.log.push(Operation::OperatorLateness {
+		self.log.push(Operation::OperatorRetention {
 			operator,
 			op,
 		});
@@ -1147,7 +1147,7 @@ pub enum Operation {
 		object: ObjectId,
 		op: OperationType,
 	},
-	OperatorLateness {
+	OperatorRetention {
 		operator: OperatorId,
 		op: OperationType,
 	},

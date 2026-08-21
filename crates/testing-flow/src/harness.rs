@@ -46,7 +46,7 @@ use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
 	config::Config,
-	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
+	value::{Value, datetime::DateTime, identity::IdentityId},
 };
 
 pub struct Harness<O> {
@@ -153,19 +153,17 @@ impl Harness<ApplyOperator> {
 		logic: C,
 		operator: OperatorId,
 		capabilities: &'static [OperatorCapability],
-		ttl: Option<Duration>,
 	) -> Self {
-		Self::new(|_| ApplyOperator::new(None, operator, mount(logic, operator, capabilities), ttl))
+		Self::new(|_| ApplyOperator::new(None, operator, mount(logic, operator, capabilities)))
 	}
 
 	pub fn guest_from_config<C: GuestOperator + 'static>(
 		operator: OperatorId,
 		capabilities: &'static [OperatorCapability],
 		config: Vec<(&str, Value)>,
-		ttl: Option<Duration>,
 	) -> Result<Self> {
 		let config = Config::new("operator", config.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
-		Ok(Self::guest(C::create(operator, &config)?, operator, capabilities, ttl))
+		Ok(Self::guest(C::create(operator, &config)?, operator, capabilities))
 	}
 }
 

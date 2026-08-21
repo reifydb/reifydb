@@ -20,6 +20,7 @@ use crate::value::column::ColumnBuffer;
 pub mod decimal;
 pub mod int;
 pub mod none;
+pub mod typed;
 pub mod uint;
 pub mod uuid;
 pub mod value;

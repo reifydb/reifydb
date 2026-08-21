@@ -710,3 +710,57 @@ fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 	);
 	assert_eq!(tier.keyspace_metrics()[0].buckets, 0);
 }
+
+#[test]
+fn an_overwrite_publishes_the_row_instead_of_dropping_the_entry() {
+	let tier = roomy();
+	let k = key(GROUP_A, Keyspace::NODE_COUNTER, b"a");
+
+	tier.overwrite(OP_A, k.clone(), Some(row("v1")));
+	assert_eq!(body(&tier.get(OP_A, &k).expect("an overwritten key must be known")), "v1");
+
+	tier.overwrite(OP_A, k.clone(), Some(row("v2")));
+	assert_eq!(
+		body(&tier.get(OP_A, &k).expect("the key stays known across overwrites")),
+		"v2",
+		"an overwrite that kept the earlier row would serve a value the writer already replaced"
+	);
+	assert_eq!(tier.metrics().misses, 0, "every read here was answerable from the tier");
+}
+
+#[test]
+fn an_overwritten_removal_is_cached_as_an_absence_not_as_an_unknown_key() {
+	let tier = roomy();
+	let k = key(GROUP_A, Keyspace::NODE_COUNTER, b"a");
+
+	tier.overwrite(OP_A, k.clone(), Some(row("v")));
+	tier.overwrite(OP_A, k.clone(), None);
+
+	assert_eq!(
+		tier.get(OP_A, &k),
+		Some(None),
+		"the tier must answer the absence itself, not report the key unknown"
+	);
+	assert_eq!(tier.contains(OP_A, &k), Some(false));
+	assert_eq!(tier.metrics().misses, 0, "an answered absence is a hit; counting it a miss hides the saved lookup");
+}
+
+#[test]
+fn an_overwrite_dirties_an_in_flight_fill_so_the_stale_row_cannot_publish() {
+	let tier = roomy();
+	let k = key(GROUP_A, Keyspace::NODE_COUNTER, b"a");
+
+	assert!(tier.begin_fill(OP_A, &k), "the fill must start before the overwrite for this to prove anything");
+	tier.overwrite(OP_A, k.clone(), Some(row("flushed")));
+
+	assert!(
+		!tier.finish_fill(OP_A, k.clone(), Some(row("pre-flush"))),
+		"a fill racing an overwrite must be refused, not published"
+	);
+	assert_eq!(
+		body(&tier.get(OP_A, &k).expect("the overwritten row survives the refused fill")),
+		"flushed",
+		"the refused fill overwrote the newer row, so the tier now serves a value the flush already replaced"
+	);
+	assert_eq!(tier.metrics().fills_dirty_aborted, 1);
+}

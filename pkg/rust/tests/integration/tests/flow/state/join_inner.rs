@@ -23,13 +23,13 @@ const RIGHT_ROWS: &str = "from system::metrics::flow::state::current
 
 const SURFACE: &str = "from system::metrics::flow::state::current";
 
-const BOTH_SIDES: &str = "with { lateness: { left: 1s, right: 1s } }";
+const BOTH_SIDES: &str = "with { retention: { left: 1s, right: 1s } }";
 
-const LEFT_ONLY: &str = "with { lateness: { left: 1s } }";
+const LEFT_ONLY: &str = "with { retention: { left: 1s } }";
 
-const RIGHT_ONLY: &str = "with { lateness: { right: 1s } }";
+const RIGHT_ONLY: &str = "with { retention: { right: 1s } }";
 
-const LEFT_SHORT_RIGHT_LONG: &str = "with { lateness: { left: 1s, right: 30s } }";
+const LEFT_SHORT_RIGHT_LONG: &str = "with { retention: { left: 1s, right: 30s } }";
 
 fn setup() -> TestDb {
 	TestDb::from(

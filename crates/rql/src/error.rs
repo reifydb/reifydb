@@ -71,6 +71,12 @@ pub enum RqlError {
 		fragment: Fragment,
 	},
 
+	#[error("{kind} takes no WITH clause")]
+	OperatorNoWithClause {
+		kind: OperationKind,
+		fragment: Fragment,
+	},
+
 	#[error("Sliding windows must specify a slide parameter")]
 	WindowMissingSlideParameter {
 		fragment: Fragment,
@@ -505,6 +511,27 @@ impl IntoDiagnostic for RqlError {
 					label: Some("missing curly braces".to_string()),
 					help: Some(help.to_string()),
 					notes,
+					cause: None,
+					operator_chain: None,
+				}
+			}
+
+			RqlError::OperatorNoWithClause { kind, fragment } => {
+				let code = match kind {
+					OperationKind::Aggregate => "AGGREGATE_006",
+					OperationKind::Distinct => "DISTINCT_003",
+					OperationKind::Apply => "APPLY_003",
+					_ => "OP_002",
+				};
+				Diagnostic {
+					code: code.to_string(),
+					rql: None,
+					message: format!("{kind} takes no WITH clause"),
+					column: None,
+					fragment,
+					label: Some("unexpected WITH clause".to_string()),
+					help: Some(format!("Remove the WITH clause: {kind} does not accept one")),
+					notes: vec![],
 					cause: None,
 					operator_chain: None,
 				}

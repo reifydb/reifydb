@@ -39,7 +39,6 @@ pub fn build(runtime: RuntimeContext) -> DistinctOperator {
 		routines(),
 		runtime,
 		Arc::new(FlowContext::default()),
-		None,
 	)
 }
 

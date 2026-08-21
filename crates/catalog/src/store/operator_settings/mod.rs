@@ -6,7 +6,7 @@ mod find;
 pub(crate) mod shape;
 
 use reifydb_codec::row::catalog::{EncodedCatalogRow, EncodedCatalogRowBuilder};
-use reifydb_core::row::{JoinLateness, OperatorLateness, OperatorSettings};
+use reifydb_core::row::{JoinRetention, OperatorRetention, OperatorSettings};
 use reifydb_value::value::duration::Duration;
 
 use self::shape::operator_settings;
@@ -22,7 +22,7 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedCa
 		}
 		None => {
 			operator_settings::set_is_join(&mut row, false);
-			encode_side(&mut row, &settings.lateness, operator_settings::DURATION);
+			encode_side(&mut row, &settings.retention, operator_settings::DURATION);
 		}
 	}
 
@@ -34,31 +34,31 @@ pub(crate) fn decode_operator_settings(bytes: &EncodedCatalogRow) -> Option<Oper
 		let left = decode_side(bytes, operator_settings::LEFT_DURATION);
 		let right = decode_side(bytes, operator_settings::RIGHT_DURATION);
 		Some(OperatorSettings {
-			lateness: None,
-			join: Some(JoinLateness {
+			retention: None,
+			join: Some(JoinRetention {
 				left,
 				right,
 			}),
 		})
 	} else {
 		Some(OperatorSettings {
-			lateness: decode_side(bytes, operator_settings::DURATION),
+			retention: decode_side(bytes, operator_settings::DURATION),
 			join: None,
 		})
 	}
 }
 
-fn encode_side(row: &mut EncodedCatalogRowBuilder, lateness: &Option<OperatorLateness>, duration_idx: usize) {
-	let duration = lateness.as_ref().map(|lateness| lateness.duration).unwrap_or_else(Duration::zero);
+fn encode_side(row: &mut EncodedCatalogRowBuilder, retention: &Option<OperatorRetention>, duration_idx: usize) {
+	let duration = retention.as_ref().map(|retention| retention.duration).unwrap_or_else(Duration::zero);
 	operator_settings::SHAPE.set::<Duration>(row, duration_idx, duration);
 }
 
-fn decode_side(bytes: &EncodedCatalogRow, duration_idx: usize) -> Option<OperatorLateness> {
+fn decode_side(bytes: &EncodedCatalogRow, duration_idx: usize) -> Option<OperatorRetention> {
 	let duration = operator_settings::SHAPE.get::<Duration>(bytes.as_slice(), duration_idx);
 	if duration.is_zero() {
 		return None;
 	}
-	Some(OperatorLateness {
+	Some(OperatorRetention {
 		duration,
 	})
 }
@@ -67,8 +67,8 @@ fn decode_side(bytes: &EncodedCatalogRow, duration_idx: usize) -> Option<Operato
 pub mod tests {
 	use super::*;
 
-	fn ttl(duration: Duration) -> OperatorLateness {
-		OperatorLateness {
+	fn ttl(duration: Duration) -> OperatorRetention {
+		OperatorRetention {
 			duration,
 		}
 	}
@@ -81,15 +81,15 @@ pub mod tests {
 	#[test]
 	fn single_ttl_roundtrips() {
 		roundtrip(OperatorSettings {
-			lateness: Some(ttl(Duration::from_minutes(5).unwrap())),
+			retention: Some(ttl(Duration::from_minutes(5).unwrap())),
 			join: None,
 		});
 		roundtrip(OperatorSettings {
-			lateness: Some(ttl(Duration::from_hours(1).unwrap())),
+			retention: Some(ttl(Duration::from_hours(1).unwrap())),
 			join: None,
 		});
 		roundtrip(OperatorSettings {
-			lateness: None,
+			retention: None,
 			join: None,
 		});
 	}
@@ -100,29 +100,29 @@ pub mod tests {
 		let r = ttl(Duration::from_minutes(2).unwrap());
 
 		roundtrip(OperatorSettings {
-			lateness: None,
-			join: Some(JoinLateness {
+			retention: None,
+			join: Some(JoinRetention {
 				left: Some(l.clone()),
 				right: Some(r.clone()),
 			}),
 		});
 		roundtrip(OperatorSettings {
-			lateness: None,
-			join: Some(JoinLateness {
+			retention: None,
+			join: Some(JoinRetention {
 				left: Some(l),
 				right: None,
 			}),
 		});
 		roundtrip(OperatorSettings {
-			lateness: None,
-			join: Some(JoinLateness {
+			retention: None,
+			join: Some(JoinRetention {
 				left: None,
 				right: Some(r),
 			}),
 		});
 		roundtrip(OperatorSettings {
-			lateness: None,
-			join: Some(JoinLateness {
+			retention: None,
+			join: Some(JoinRetention {
 				left: None,
 				right: None,
 			}),

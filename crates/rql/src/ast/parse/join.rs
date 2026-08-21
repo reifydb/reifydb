@@ -28,14 +28,14 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (lateness, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (retention, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
 			with,
 			using_clause,
 			alias,
-			lateness,
+			retention,
 			snapshot,
 			latest,
 			rql: self.source_since(start),
@@ -62,14 +62,14 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(As)?;
 		let alias = self.consume_identifier()?.fragment;
-		let (lateness, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (retention, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::NaturalJoin {
 			token,
 			with,
 			join_type,
 			alias,
-			lateness,
+			retention,
 			snapshot,
 			latest,
 			rql: self.source_since(start),
@@ -87,14 +87,14 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (lateness, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (retention, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
 			with,
 			using_clause,
 			alias,
-			lateness,
+			retention,
 			snapshot,
 			latest,
 			rql: self.source_since(start),
@@ -112,14 +112,14 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (lateness, snapshot, latest) = self.parse_with_clause_for_join()?;
+		let (retention, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::LeftJoin {
 			token,
 			with,
 			using_clause,
 			alias,
-			lateness,
+			retention,
 			snapshot,
 			latest,
 			rql: self.source_since(start),
@@ -625,13 +625,13 @@ pub mod tests {
 	fn test_inner_join_with_ttl_both_sides() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { lateness: { left: 1h, right: 2d } }";
+			with { retention: { left: 1h, right: 2d } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::InnerJoin {
-			lateness: ttl,
+			retention: ttl,
 			..
 		} = result.first_unchecked().as_join()
 		else {
@@ -648,13 +648,13 @@ pub mod tests {
 	fn test_inner_join_with_ttl_only_left() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { lateness: { left: 10m } }";
+			with { retention: { left: 10m } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::InnerJoin {
-			lateness: ttl,
+			retention: ttl,
 			..
 		} = result.first_unchecked().as_join()
 		else {
@@ -670,13 +670,13 @@ pub mod tests {
 	fn test_left_join_with_ttl_only_right() {
 		let bump = Bump::new();
 		let source = "left join { from orders } as o using (id, o.user_id) \
-			with { lateness: { right: 1d } }";
+			with { retention: { right: 1d } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::LeftJoin {
-			lateness: ttl,
+			retention: ttl,
 			..
 		} = result.first_unchecked().as_join()
 		else {
@@ -690,24 +690,24 @@ pub mod tests {
 	#[test]
 	fn test_join_with_ttl_empty_body_rejected() {
 		let bump = Bump::new();
-		let source = "inner join { from orders } as o using (id, o.user_id) with { lateness: { } }";
+		let source = "inner join { from orders } as o using (id, o.user_id) with { retention: { } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
-		assert!(result.is_err(), "expected error for empty join ttl body");
+		assert!(result.is_err(), "expected error for empty join retention body");
 	}
 
 	#[test]
 	fn test_join_with_old_single_ttl_shorthand_rejected() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { lateness: 1h }";
+			with { retention: 1h }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
 		assert!(
 			result.is_err(),
-			"expected error for legacy shorthand: ttl on join now requires explicit 'left'/'right' keys"
+			"expected error for legacy shorthand: retention on join now requires explicit 'left'/'right' keys"
 		);
 	}
 
@@ -715,31 +715,31 @@ pub mod tests {
 	fn test_join_with_unknown_side_key_rejected() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { lateness: { middle: 1h } }";
+			with { retention: { middle: 1h } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
-		assert!(result.is_err(), "expected error for unknown side key in join ttl");
+		assert!(result.is_err(), "expected error for unknown side key in join retention");
 	}
 
 	#[test]
 	fn test_join_with_ttl_and_snapshot() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { lateness: { left: 5m }, snapshot: true }";
+			with { retention: { left: 5m }, snapshot: true }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
 		let result = result.pop().unwrap();
 		let AstJoin::InnerJoin {
-			lateness: ttl,
+			retention: ttl,
 			snapshot,
 			..
 		} = result.first_unchecked().as_join()
 		else {
 			panic!("Expected InnerJoin");
 		};
-		assert!(*snapshot, "snapshot flag should still parse alongside per-side ttl");
+		assert!(*snapshot, "snapshot flag should still parse alongside per-side retention");
 		let ttl = ttl.as_ref().expect("expected ttl");
 		assert!(ttl.left.is_some());
 		assert!(ttl.right.is_none());
@@ -749,7 +749,7 @@ pub mod tests {
 	fn test_join_with_latest_flag() {
 		let bump = Bump::new();
 		let source = "inner join { from orders } as o using (id, o.user_id) \
-			with { snapshot: true, latest: true, lateness: { left: 10s } }";
+			with { snapshot: true, latest: true, retention: { left: 10s } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();

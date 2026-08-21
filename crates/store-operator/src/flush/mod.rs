@@ -117,8 +117,8 @@ fn invalidate_flushed(read: &OperatorReadBufferTier, batch: &FlushBatch) {
 			DropMarker::AnchorsOperator(_) | DropMarker::AnchorsGroup(_, _) => {}
 		}
 	}
-	for (operator, key) in batch.state.keys() {
-		read.invalidate(*operator, key);
+	for ((operator, key), row) in &batch.state {
+		read.overwrite(*operator, key.clone(), row.clone());
 	}
 }
 

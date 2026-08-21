@@ -29,7 +29,7 @@ use reifydb_core::{
 			ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedView,
 		},
 	},
-	row::{JoinLateness, OperatorLateness, Ttl},
+	row::{JoinRetention, OperatorRetention, Ttl},
 	sort::SortKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -391,7 +391,7 @@ pub enum AppendPhysicalNode<'bump> {
 	Query {
 		left: BumpBox<'bump, PhysicalPlan<'bump>>,
 		right: BumpBox<'bump, PhysicalPlan<'bump>>,
-		ttl: Option<OperatorLateness>,
+		retention: Option<OperatorRetention>,
 	},
 }
 
@@ -479,14 +479,12 @@ pub struct AggregateNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
-	pub ttl: Option<OperatorLateness>,
 }
 
 #[derive(Debug)]
 pub struct DistinctNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub columns: Vec<ResolvedColumn>,
-	pub ttl: Option<OperatorLateness>,
 }
 
 #[derive(Debug)]
@@ -521,7 +519,7 @@ pub struct JoinInnerNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<JoinLateness>,
+	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
 	pub latest: bool,
 }
@@ -532,7 +530,7 @@ pub struct JoinLeftNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub on: Vec<Expression>,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<JoinLateness>,
+	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
 	pub latest: bool,
 }
@@ -543,7 +541,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub right: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment>,
-	pub ttl: Option<JoinLateness>,
+	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
 	pub latest: bool,
 }
@@ -583,7 +581,6 @@ pub struct ApplyNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub operator: Fragment,
 	pub expressions: Vec<Expression>,
-	pub ttl: Option<OperatorLateness>,
 }
 
 #[derive(Debug)]
@@ -656,7 +653,6 @@ impl<'bump> Compiler<'bump> {
 						by: aggregate.by,
 						map: aggregate.map,
 						input: self.bump_box(input),
-						ttl: aggregate.ttl,
 					}));
 				}
 
@@ -1958,7 +1954,7 @@ impl<'bump> Compiler<'bump> {
 						right: self.bump_box(right),
 						on: join.on,
 						alias,
-						ttl: join.ttl,
+						retention: join.retention,
 						snapshot: join.snapshot,
 						latest: join.latest,
 					}));
@@ -1984,7 +1980,7 @@ impl<'bump> Compiler<'bump> {
 						right: self.bump_box(right),
 						on: join.on,
 						alias,
-						ttl: join.ttl,
+						retention: join.retention,
 						snapshot: join.snapshot,
 						latest: join.latest,
 					}));
@@ -2010,7 +2006,7 @@ impl<'bump> Compiler<'bump> {
 						right: self.bump_box(right),
 						join_type: join.join_type,
 						alias,
-						ttl: join.ttl,
+						retention: join.retention,
 						snapshot: join.snapshot,
 						latest: join.latest,
 					}));
@@ -2090,7 +2086,6 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::Distinct(DistinctNode {
 						columns: resolved_columns,
 						input: self.bump_box(input),
-						ttl: distinct.ttl,
 					}));
 				}
 
@@ -2188,7 +2183,6 @@ impl<'bump> Compiler<'bump> {
 						operator: self.interner.intern_fragment(&apply.operator),
 						expressions: apply.arguments,
 						input,
-						ttl: apply.ttl,
 					}));
 				}
 
@@ -2414,14 +2408,14 @@ impl<'bump> Compiler<'bump> {
 					}
 					logical::AppendNode::Query {
 						with,
-						ttl,
+						retention,
 					} => {
 						let left = stack.pop().unwrap();
 						let right = self.compile(rx, with)?.unwrap();
 						stack.push(PhysicalPlan::Append(AppendPhysicalNode::Query {
 							left: self.bump_box(left),
 							right: self.bump_box(right),
-							ttl,
+							retention,
 						}));
 					}
 				},

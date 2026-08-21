@@ -403,7 +403,6 @@ pub struct AstApply<'bump> {
 	pub token: Token<'bump>,
 	pub operator: UnqualifiedIdentifier<'bump>,
 	pub expressions: Vec<Ast<'bump>>,
-	pub ttl: Option<AstTtl<'bump>>,
 	pub rql: &'bump str,
 }
 
@@ -873,7 +872,13 @@ pub struct AstTtl<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstJoinLateness<'bump> {
+pub struct AstOperatorRetention<'bump> {
+	pub duration: Token<'bump>,
+	pub anchor: Option<Token<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstJoinRetention<'bump> {
 	pub left: Option<Token<'bump>>,
 	pub right: Option<Token<'bump>>,
 }
@@ -1305,7 +1310,7 @@ pub struct AstAggregate<'bump> {
 	pub token: Token<'bump>,
 	pub by: Vec<Ast<'bump>>,
 	pub map: Vec<Ast<'bump>>,
-	pub ttl: Option<AstTtl<'bump>>,
+	pub retention: Option<AstOperatorRetention<'bump>>,
 	pub rql: &'bump str,
 }
 
@@ -1514,7 +1519,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
-		lateness: Option<AstJoinLateness<'bump>>,
+		retention: Option<AstJoinRetention<'bump>>,
 		snapshot: bool,
 		latest: bool,
 		rql: &'bump str,
@@ -1524,7 +1529,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
-		lateness: Option<AstJoinLateness<'bump>>,
+		retention: Option<AstJoinRetention<'bump>>,
 		snapshot: bool,
 		latest: bool,
 		rql: &'bump str,
@@ -1534,7 +1539,7 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		join_type: Option<JoinType>,
 		alias: BumpFragment<'bump>,
-		lateness: Option<AstJoinLateness<'bump>>,
+		retention: Option<AstJoinRetention<'bump>>,
 		snapshot: bool,
 		latest: bool,
 		rql: &'bump str,
@@ -1599,7 +1604,7 @@ impl<'bump> AstLiteralNone<'bump> {
 pub struct AstDistinct<'bump> {
 	pub token: Token<'bump>,
 	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
-	pub ttl: Option<AstTtl<'bump>>,
+	pub retention: Option<AstOperatorRetention<'bump>>,
 	pub rql: &'bump str,
 }
 
@@ -2113,7 +2118,7 @@ pub enum AstAppend<'bump> {
 	Query {
 		token: Token<'bump>,
 		with: AstSubQuery<'bump>,
-		ttl: Option<AstTtl<'bump>>,
+		retention: Option<AstOperatorRetention<'bump>>,
 	},
 }
 

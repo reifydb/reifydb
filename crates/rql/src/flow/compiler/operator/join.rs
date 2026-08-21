@@ -4,7 +4,7 @@
 use reifydb_core::{
 	common::JoinType::{self, Inner, Left},
 	interface::catalog::flow::OperatorId,
-	row::JoinLateness,
+	row::JoinRetention,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
@@ -25,7 +25,7 @@ pub(crate) struct JoinCompiler {
 	pub right: Box<QueryPlan>,
 	pub on: Vec<Expression>,
 	pub alias: Option<String>,
-	pub ttl: Option<JoinLateness>,
+	pub retention: Option<JoinRetention>,
 	pub snapshot: bool,
 	pub natural: bool,
 	pub latest: bool,
@@ -39,7 +39,7 @@ impl From<JoinInnerNode> for JoinCompiler {
 			right: node.right,
 			on: node.on,
 			alias: node.alias.map(|f| f.text().to_string()),
-			ttl: node.ttl,
+			retention: node.retention,
 			snapshot: node.snapshot,
 			natural: false,
 			latest: node.latest,
@@ -55,7 +55,7 @@ impl From<JoinLeftNode> for JoinCompiler {
 			right: node.right,
 			on: node.on,
 			alias: node.alias.map(|f| f.text().to_string()),
-			ttl: node.ttl,
+			retention: node.retention,
 			snapshot: node.snapshot,
 			natural: false,
 			latest: node.latest,
@@ -71,7 +71,7 @@ impl From<JoinNaturalNode> for JoinCompiler {
 			right: node.right,
 			on: Vec::new(),
 			alias: node.alias.map(|f| f.text().to_string()),
-			ttl: node.ttl,
+			retention: node.retention,
 			snapshot: node.snapshot,
 			natural: true,
 			latest: node.latest,
@@ -152,7 +152,7 @@ impl CompileOperator for JoinCompiler {
 			},
 		)?;
 
-		compiler.write_operator_settings_join(txn, node_id, self.ttl)?;
+		compiler.write_operator_settings_join(txn, node_id, self.retention)?;
 
 		compiler.add_edge(txn, &left_node, &node_id)?;
 		compiler.add_edge(txn, &right_node, &node_id)?;

@@ -4,12 +4,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_core::{
+	internal_error,
 	metrics::sample::{MetricKind, Reading},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_value::{
+	Result,
 	byte_size::ByteSize,
 	count::Count,
+	error::Error,
 	fragment::Fragment,
 	reifydb_assertions,
 	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
@@ -97,19 +100,17 @@ impl MetricsAccumulator {
 			state.rows.retain(|dimensions, _| present.contains(dimensions));
 		}
 		for row in rows {
-			reifydb_assertions! {
-				let expected_dimensions = match state.spec.shape {
-					DomainShape::Long => 1,
-					DomainShape::Wide => state.spec.dimensions.len(),
-				};
-				assert!(
-					row.dimensions.len() == expected_dimensions,
-					"row for domain {:?} carries {} dimensions, spec declares {}",
-					domain,
-					row.dimensions.len(),
-					expected_dimensions
-				);
-			}
+			let expected_dimensions = match state.spec.shape {
+				DomainShape::Long => 1,
+				DomainShape::Wide => state.spec.dimensions.len(),
+			};
+			assert!(
+				row.dimensions.len() == expected_dimensions,
+				"row for domain {:?} carries {} dimensions, spec declares {}",
+				domain,
+				row.dimensions.len(),
+				expected_dimensions
+			);
 			let row_state = state.rows.entry(row.dimensions).or_default();
 			for measure in row.measures {
 				row_state.apply(measure, surface);
@@ -117,24 +118,24 @@ impl MetricsAccumulator {
 		}
 	}
 
-	pub fn roll(&mut self, now: DateTime) -> Vec<PublishedSurface> {
+	pub fn roll(&mut self, now: DateTime) -> Result<Vec<PublishedSurface>> {
 		let mut published = Vec::new();
 		for state in self.domains.values_mut() {
 			published.push(PublishedSurface {
 				domain: state.spec.domain,
 				surface: Surface::Current,
-				columns: build_surface(state, now, Surface::Current),
+				columns: build_surface(state, now, Surface::Current)?,
 			});
 			if state.spec.has_total {
 				published.push(PublishedSurface {
 					domain: state.spec.domain,
 					surface: Surface::Total,
-					columns: build_surface(state, now, Surface::Total),
+					columns: build_surface(state, now, Surface::Total)?,
 				});
 			}
 			advance_window(state);
 		}
-		published
+		Ok(published)
 	}
 }
 
@@ -244,9 +245,9 @@ fn advance_window(state: &mut DomainState) {
 	}
 }
 
-fn build_surface(state: &DomainState, now: DateTime, surface: Surface) -> Columns {
+fn build_surface(state: &DomainState, now: DateTime, surface: Surface) -> Result<Columns> {
 	match state.spec.shape {
-		DomainShape::Long => build_long(state, now, surface),
+		DomainShape::Long => Ok(build_long(state, now, surface)),
 		DomainShape::Wide => build_wide(state, now, surface),
 	}
 }
@@ -348,7 +349,7 @@ fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Columns {
 	])
 }
 
-fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Columns {
+fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Result<Columns> {
 	let spec = &state.spec;
 	let measures = spec.surface_measures(surface);
 	let capacity = state.rows.len();
@@ -364,11 +365,17 @@ fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Columns {
 
 	for (dimensions, row) in &state.rows {
 		ts.push(now);
-		for (buffer, value) in dimension_buffers.iter_mut().zip(dimensions) {
-			buffer.push_value(value.clone());
+		for ((dimension, buffer), value) in
+			spec.dimensions.iter().zip(dimension_buffers.iter_mut()).zip(dimensions)
+		{
+			buffer.push_typed(value.clone(), &dimension.buffer_type()).map_err(|cause| {
+				column_error(spec.domain, surface, "dimension", dimension.name, cause)
+			})?;
 		}
 		for (buffer, measure) in measure_buffers.iter_mut().zip(&measures) {
-			buffer.push_value(wide_value(row.measures.get(measure.name), measure, surface));
+			let value = wide_value(row.measures.get(measure.name), measure, surface);
+			buffer.push_typed(value, &measure.buffer_type())
+				.map_err(|cause| column_error(spec.domain, surface, "measure", measure.name, cause))?;
 		}
 	}
 
@@ -379,7 +386,17 @@ fn build_wide(state: &DomainState, now: DateTime, surface: Surface) -> Columns {
 	for (measure, buffer) in measures.iter().zip(measure_buffers) {
 		out.push(ColumnWithName::new(Fragment::internal(measure.name), buffer));
 	}
-	Columns::new(out)
+	Ok(Columns::new(out))
+}
+
+fn column_error(
+	domain: MetricsDomain,
+	surface: Surface,
+	role: &'static str,
+	name: &'static str,
+	cause: Error,
+) -> Error {
+	internal_error!("metrics {:?} {:?} {} column {}: {}", domain, surface, role, name, cause)
 }
 
 fn wide_value(state: Option<&MeasureState>, spec: &MeasureSpec, surface: Surface) -> Value {
@@ -487,7 +504,7 @@ mod tests {
 	use reifydb_value::{
 		byte_size::ByteSize,
 		count::Count,
-		value::{Value, datetime::DateTime},
+		value::{Value, datetime::DateTime, value_type::ValueType},
 	};
 
 	use super::{Measure, MetricsAccumulator, MetricsRow, PublishedSurface};
@@ -559,7 +576,7 @@ mod tests {
 		// that happened between boot and the first tick.
 		let mut acc = operators_accumulator();
 		acc.push(MetricsDomain::RuntimeOperators, Surface::Current, vec![counter_row("n1", "evictions", 10)]);
-		let published = acc.roll(now(1_000));
+		let published = acc.roll(now(1_000)).unwrap();
 
 		let current = surface(&published, MetricsDomain::RuntimeOperators, Surface::Current);
 		assert_eq!(long_value(current, "n1", "evictions"), Some((10.0, "delta".to_string())));
@@ -573,9 +590,9 @@ mod tests {
 		// summed-up-in-current disease this redesign removes.
 		let mut acc = operators_accumulator();
 		acc.push(MetricsDomain::RuntimeOperators, Surface::Current, vec![counter_row("n1", "evictions", 10)]);
-		acc.roll(now(1_000));
+		acc.roll(now(1_000)).unwrap();
 		acc.push(MetricsDomain::RuntimeOperators, Surface::Current, vec![counter_row("n1", "evictions", 30)]);
-		let published = acc.roll(now(2_000));
+		let published = acc.roll(now(2_000)).unwrap();
 
 		let current = surface(&published, MetricsDomain::RuntimeOperators, Surface::Current);
 		assert_eq!(long_value(current, "n1", "evictions"), Some((20.0, "delta".to_string())));
@@ -589,14 +606,14 @@ mod tests {
 		// baseline would wrap into a huge delta.
 		let mut acc = operators_accumulator();
 		acc.push(MetricsDomain::RuntimeOperators, Surface::Current, vec![counter_row("n1", "evictions", 30)]);
-		acc.roll(now(1_000));
+		acc.roll(now(1_000)).unwrap();
 		acc.push(MetricsDomain::RuntimeOperators, Surface::Current, vec![counter_row("n1", "evictions", 5)]);
-		let published = acc.roll(now(2_000));
+		let published = acc.roll(now(2_000)).unwrap();
 		let current = surface(&published, MetricsDomain::RuntimeOperators, Surface::Current);
 		assert_eq!(long_value(current, "n1", "evictions"), Some((0.0, "delta".to_string())));
 
 		acc.push(MetricsDomain::RuntimeOperators, Surface::Current, vec![counter_row("n1", "evictions", 8)]);
-		let published = acc.roll(now(3_000));
+		let published = acc.roll(now(3_000)).unwrap();
 		let current = surface(&published, MetricsDomain::RuntimeOperators, Surface::Current);
 		assert_eq!(long_value(current, "n1", "evictions"), Some((3.0, "delta".to_string())));
 	}
@@ -606,7 +623,7 @@ mod tests {
 		// A level is the answer as-is; folding it into ::total would sum a gauge.
 		let mut acc = operators_accumulator();
 		acc.push(MetricsDomain::RuntimeOperators, Surface::Current, vec![level_row("n1", "state_bytes", 42)]);
-		let published = acc.roll(now(1_000));
+		let published = acc.roll(now(1_000)).unwrap();
 
 		let current = surface(&published, MetricsDomain::RuntimeOperators, Surface::Current);
 		assert_eq!(long_value(current, "n1", "state_bytes"), Some((42.0, "level".to_string())));
@@ -614,7 +631,7 @@ mod tests {
 		assert_eq!(long_value(total, "n1", "state_bytes"), None);
 
 		// Without a fresh push the level persists: the last reading stays the answer.
-		let published = acc.roll(now(2_000));
+		let published = acc.roll(now(2_000)).unwrap();
 		let current = surface(&published, MetricsDomain::RuntimeOperators, Surface::Current);
 		assert_eq!(long_value(current, "n1", "state_bytes"), Some((42.0, "level".to_string())));
 	}
@@ -634,18 +651,59 @@ mod tests {
 		};
 		acc.push(MetricsDomain::Instruments, Surface::Current, vec![dist(5)]);
 		acc.push(MetricsDomain::Instruments, Surface::Total, vec![dist(7)]);
-		let published = acc.roll(now(1_000));
+		let published = acc.roll(now(1_000)).unwrap();
 
 		let current = surface(&published, MetricsDomain::Instruments, Surface::Current);
 		assert_eq!(long_value(current, "h", "p50"), Some((5.0, "distribution".to_string())));
 		let total = surface(&published, MetricsDomain::Instruments, Surface::Total);
 		assert_eq!(long_value(total, "h", "p50"), Some((7.0, "distribution".to_string())));
 
-		let published = acc.roll(now(2_000));
+		let published = acc.roll(now(2_000)).unwrap();
 		let current = surface(&published, MetricsDomain::Instruments, Surface::Current);
 		assert_eq!(long_value(current, "h", "p50"), None, "window distribution must clear on roll");
 		let total = surface(&published, MetricsDomain::Instruments, Surface::Total);
 		assert_eq!(long_value(total, "h", "p50"), Some((7.0, "distribution".to_string())));
+	}
+
+	#[test]
+	fn an_optional_dimension_publishes_one_type_whatever_order_its_rows_arrive_in() {
+		// The lifecycle binding dimension is present for some classes and none for others; inference demoted
+		// the buffer to a bare Utf8 on a present-first roll, so the published column type swung with row order.
+		fn lifecycle_row(class: &str, binding: Option<&str>) -> MetricsRow {
+			MetricsRow {
+				dimensions: vec![
+					Value::Utf8(class.to_string()),
+					match binding {
+						Some(term) => Value::Utf8(term.to_string()),
+						None => Value::none_of(ValueType::Utf8),
+					},
+				],
+				measures: vec![Measure {
+					metric: "backlog_hint",
+					reading: Reading::Count(Count::new(1)),
+					kind: MetricKind::Level,
+				}],
+			}
+		}
+
+		let declared = ValueType::Option(Box::new(ValueType::Utf8));
+		for rows in [
+			vec![lifecycle_row("a", Some("x")), lifecycle_row("b", Some("y"))],
+			vec![lifecycle_row("a", Some("x")), lifecycle_row("b", None)],
+			vec![lifecycle_row("a", None), lifecycle_row("b", Some("x"))],
+		] {
+			let mut acc = MetricsAccumulator::new(MetricsDomain::ALL.map(MetricsDomain::spec));
+			acc.push(MetricsDomain::Lifecycle, Surface::Current, rows);
+			let published = acc.roll(now(1_000)).unwrap();
+			let columns = surface(&published, MetricsDomain::Lifecycle, Surface::Current);
+			let binding = columns.iter().find(|c| c.name().text() == "binding").unwrap();
+			assert_eq!(
+				binding.data().get_type(),
+				declared,
+				"binding must publish Option(Utf8) regardless of which row lands first"
+			);
+			assert_eq!(binding.data().len(), 2);
+		}
 	}
 
 	#[test]
@@ -673,7 +731,7 @@ mod tests {
 			Surface::Current,
 			vec![shard_row(0, 100, 3), shard_row(1, 200, 9)],
 		);
-		let published = acc.roll(now(1_000));
+		let published = acc.roll(now(1_000)).unwrap();
 
 		let current = surface(&published, MetricsDomain::StoreMultiRead, Surface::Current);
 		assert_eq!(column_values(current, "shard"), vec![Value::Uint2(0), Value::Uint2(1)]);
@@ -707,13 +765,13 @@ mod tests {
 		};
 
 		acc.push(MetricsDomain::Storage, Surface::Current, vec![storage_row(1, 100), storage_row(2, 200)]);
-		let published = acc.roll(now(1_000));
+		let published = acc.roll(now(1_000)).unwrap();
 		let current = surface(&published, MetricsDomain::Storage, Surface::Current);
 		assert_eq!(column_values(current, "id"), vec![Value::Uint8(1), Value::Uint8(2)]);
 		assert_eq!(column_values(current, "live_bytes"), vec![Value::Uint8(100), Value::Uint8(200)]);
 
 		acc.push(MetricsDomain::Storage, Surface::Current, vec![storage_row(2, 200)]);
-		let published = acc.roll(now(2_000));
+		let published = acc.roll(now(2_000)).unwrap();
 		let current = surface(&published, MetricsDomain::Storage, Surface::Current);
 		assert_eq!(
 			column_values(current, "id"),
@@ -746,7 +804,7 @@ mod tests {
 				measures: vec![measure("live_bytes", 100), measure("total_bytes", 300)],
 			}],
 		);
-		acc.roll(now(1_000));
+		acc.roll(now(1_000)).unwrap();
 
 		acc.push(
 			MetricsDomain::Storage,
@@ -756,7 +814,7 @@ mod tests {
 				measures: vec![measure("live_bytes", 150)],
 			}],
 		);
-		let published = acc.roll(now(2_000));
+		let published = acc.roll(now(2_000)).unwrap();
 		let current = surface(&published, MetricsDomain::Storage, Surface::Current);
 		assert_eq!(column_values(current, "live_bytes"), vec![Value::Uint8(150)]);
 		assert_eq!(
@@ -775,10 +833,10 @@ mod tests {
 			Surface::Current,
 			vec![level_row("n1", "state_bytes", 42), level_row("n2", "state_bytes", 7)],
 		);
-		acc.roll(now(1_000));
+		acc.roll(now(1_000)).unwrap();
 
 		acc.push(MetricsDomain::RuntimeOperators, Surface::Current, vec![level_row("n1", "state_bytes", 42)]);
-		let published = acc.roll(now(2_000));
+		let published = acc.roll(now(2_000)).unwrap();
 		let current = surface(&published, MetricsDomain::RuntimeOperators, Surface::Current);
 		assert_eq!(
 			long_value(current, "n2", "state_bytes"),
@@ -798,7 +856,7 @@ mod tests {
 			vec![counter_row("n1", "evictions", 10), level_row("n2", "state_bytes", 5)],
 		);
 		let stamp = now(123_000);
-		let published = acc.roll(stamp);
+		let published = acc.roll(stamp).unwrap();
 		for p in &published {
 			for value in column_values(&p.columns, "ts") {
 				assert_eq!(value, Value::DateTime(stamp));

@@ -176,6 +176,17 @@ impl OperatorReadBufferTier {
 		self.shard_for(&id).lock().filling.remove(&(id, key.clone()));
 	}
 
+	pub fn overwrite(&self, operator: OperatorId, key: EncodedKey, row: Option<EncodedPodRow>) {
+		let Some(id) = BucketId::of(operator, &key) else {
+			return;
+		};
+		let mut shard = self.shard_for(&id).lock();
+		if let Some(dirty) = shard.filling.get_mut(&(id, key.clone())) {
+			*dirty = true;
+		}
+		insert_entry(&mut shard, id, key, row);
+	}
+
 	pub fn invalidate(&self, operator: OperatorId, key: &EncodedKey) {
 		let Some(id) = BucketId::of(operator, key) else {
 			return;

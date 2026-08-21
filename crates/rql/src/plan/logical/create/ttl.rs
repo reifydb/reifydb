@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::row::{JoinLateness, OperatorLateness, Ttl};
+use reifydb_core::row::{JoinRetention, OperatorRetention, Ttl};
 
 use crate::{
 	Result,
-	ast::ast::{AstJoinLateness, AstTtl},
+	ast::ast::{AstJoinRetention, AstOperatorRetention, AstTtl},
 	diagnostic::AstError,
 	duration::{DurationBound, compile_duration},
 	plan::logical::Compiler,
@@ -13,29 +13,39 @@ use crate::{
 };
 
 impl<'bump> Compiler<'bump> {
-	pub(crate) fn compile_operator_lateness(ast: AstTtl<'bump>) -> Result<OperatorLateness> {
-		Ok(OperatorLateness {
-			duration: Self::compile_ttl(ast)?.duration,
+	pub(crate) fn compile_operator_retention(ast: AstOperatorRetention<'bump>) -> Result<OperatorRetention> {
+		let duration = compile_duration(&ast.duration, DurationBound::Positive, "a retention")?;
+
+		if let Some(token) = &ast.anchor {
+			return Err(AstError::UnexpectedToken {
+				expected: "no 'on' clause: a retention expires on the row's own last write".to_string(),
+				fragment: token.fragment.to_owned(),
+			}
+			.into());
+		}
+
+		Ok(OperatorRetention {
+			duration,
 		})
 	}
 
-	pub(crate) fn compile_join_lateness(ast: AstJoinLateness<'bump>) -> Result<JoinLateness> {
+	pub(crate) fn compile_join_retention(ast: AstJoinRetention<'bump>) -> Result<JoinRetention> {
 		let left = match ast.left {
-			Some(side) => Some(Self::compile_side_lateness(side)?),
+			Some(side) => Some(Self::compile_side_retention(side)?),
 			None => None,
 		};
 		let right = match ast.right {
-			Some(side) => Some(Self::compile_side_lateness(side)?),
+			Some(side) => Some(Self::compile_side_retention(side)?),
 			None => None,
 		};
-		Ok(JoinLateness {
+		Ok(JoinRetention {
 			left,
 			right,
 		})
 	}
 
-	fn compile_side_lateness(token: Token<'bump>) -> Result<OperatorLateness> {
-		Self::compile_operator_lateness(AstTtl {
+	fn compile_side_retention(token: Token<'bump>) -> Result<OperatorRetention> {
+		Self::compile_operator_retention(AstOperatorRetention {
 			duration: token,
 			anchor: None,
 		})

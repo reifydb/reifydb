@@ -25,6 +25,7 @@ use reifydb_store_operator::{
 };
 use reifydb_store_single::SingleStore;
 use reifydb_value::{
+	Result,
 	byte_size::ByteSize,
 	count::Count,
 	params::Params,
@@ -132,7 +133,7 @@ impl MetricsSamplerActor {
 		}
 	}
 
-	fn sample_and_publish(&self, state: &mut SamplerState) {
+	fn sample_and_publish(&self, state: &mut SamplerState) -> Result<()> {
 		let accumulator = &mut state.accumulator;
 		accumulator.push(
 			MetricsDomain::RuntimeMemory,
@@ -211,7 +212,8 @@ impl MetricsSamplerActor {
 
 		let now = self.clock.now();
 		let snapshot_due = self.snapshot_due(state, now);
-		for published in state.accumulator.roll(now) {
+		let rolled = state.accumulator.roll(now)?;
+		for published in rolled {
 			if snapshot_due && published.surface == Surface::Current {
 				self.append_snapshot(&published);
 			}
@@ -220,6 +222,7 @@ impl MetricsSamplerActor {
 		if snapshot_due {
 			state.last_snapshot = Some(now);
 		}
+		Ok(())
 	}
 }
 
@@ -258,7 +261,9 @@ impl Actor for MetricsSamplerActor {
 			SamplerMessage::Tick {
 				ack,
 			} => {
-				self.sample_and_publish(state);
+				self.sample_and_publish(state).expect(
+					"metrics sample must publish; a rejected column means a domain writes a type its spec does not declare",
+				);
 				ctx.schedule_once(self.interval, || SamplerMessage::Tick {
 					ack: None,
 				});

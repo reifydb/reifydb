@@ -14,7 +14,7 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::{
 	flow::{
 		compiler::compile_flow,
-		time_domain::{check_join_lateness_requirements, check_window_time_requirements},
+		time_domain::{check_join_retention_requirements, check_window_time_requirements},
 	},
 	query::QueryPlan,
 };
@@ -100,5 +100,5 @@ pub(crate) fn create_deferred_view_flow(
 
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id)?;
 	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
-	check_join_lateness_requirements(catalog, &mut Transaction::Admin(txn), &dag)
+	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), &dag)
 }

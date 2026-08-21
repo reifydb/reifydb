@@ -75,7 +75,7 @@ impl<'bump> Compiler<'bump> {
 				with,
 				using_clause,
 				alias,
-				lateness,
+				retention,
 				snapshot,
 				latest,
 				rql,
@@ -83,8 +83,8 @@ impl<'bump> Compiler<'bump> {
 			} => {
 				let with = self.compile_join_subquery(with, &alias, tx)?;
 				let on = build_join_expressions(using_clause, &alias)?;
-				let ttl = match lateness {
-					Some(ast_lateness) => Some(Self::compile_join_lateness(ast_lateness)?),
+				let retention = match retention {
+					Some(ast_retention) => Some(Self::compile_join_retention(ast_retention)?),
 					None => None,
 				};
 
@@ -92,7 +92,7 @@ impl<'bump> Compiler<'bump> {
 					with,
 					on,
 					alias: Some(alias),
-					ttl,
+					retention,
 					snapshot,
 					latest,
 					rql: rql.to_string(),
@@ -102,7 +102,7 @@ impl<'bump> Compiler<'bump> {
 				with,
 				using_clause,
 				alias,
-				lateness,
+				retention,
 				snapshot,
 				latest,
 				rql,
@@ -110,8 +110,8 @@ impl<'bump> Compiler<'bump> {
 			} => {
 				let with = self.compile_join_subquery(with, &alias, tx)?;
 				let on = build_join_expressions(using_clause, &alias)?;
-				let ttl = match lateness {
-					Some(ast_lateness) => Some(Self::compile_join_lateness(ast_lateness)?),
+				let retention = match retention {
+					Some(ast_retention) => Some(Self::compile_join_retention(ast_retention)?),
 					None => None,
 				};
 
@@ -119,7 +119,7 @@ impl<'bump> Compiler<'bump> {
 					with,
 					on,
 					alias: Some(alias),
-					ttl,
+					retention,
 					snapshot,
 					latest,
 					rql: rql.to_string(),
@@ -129,15 +129,15 @@ impl<'bump> Compiler<'bump> {
 				with,
 				join_type,
 				alias,
-				lateness,
+				retention,
 				snapshot,
 				latest,
 				rql,
 				..
 			} => {
 				let with = self.compile_natural_join_subquery(with, &alias, tx)?;
-				let ttl = match lateness {
-					Some(ast_lateness) => Some(Self::compile_join_lateness(ast_lateness)?),
+				let retention = match retention {
+					Some(ast_retention) => Some(Self::compile_join_retention(ast_retention)?),
 					None => None,
 				};
 
@@ -145,7 +145,7 @@ impl<'bump> Compiler<'bump> {
 					with,
 					join_type: join_type.unwrap_or(JoinType::Inner),
 					alias: Some(alias),
-					ttl,
+					retention,
 					snapshot,
 					latest,
 					rql: rql.to_string(),

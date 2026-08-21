@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	interface::{
-		catalog::flow::OperatorId,
-		identifier::{ColumnIdentifier, ColumnObject},
-		resolved::{ResolvedColumn, ResolvedObject},
-	},
-	row::OperatorLateness,
+use reifydb_core::interface::{
+	catalog::flow::OperatorId,
+	identifier::{ColumnIdentifier, ColumnObject},
+	resolved::{ResolvedColumn, ResolvedObject},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, fragment::Fragment};
@@ -25,7 +22,6 @@ use crate::{
 pub(crate) struct DistinctCompiler {
 	pub input: Box<QueryPlan>,
 	pub columns: Vec<ResolvedColumn>,
-	pub ttl: Option<OperatorLateness>,
 }
 
 impl From<DistinctNode> for DistinctCompiler {
@@ -33,7 +29,6 @@ impl From<DistinctNode> for DistinctCompiler {
 		Self {
 			input: node.input,
 			columns: node.columns.into_iter().collect(),
-			ttl: node.ttl,
 		}
 	}
 }
@@ -77,8 +72,6 @@ impl CompileOperator for DistinctCompiler {
 				expressions,
 			},
 		)?;
-
-		compiler.write_operator_settings(txn, node_id, self.ttl)?;
 
 		compiler.add_edge(txn, &input_node, &node_id)?;
 		Ok(node_id)

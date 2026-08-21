@@ -143,7 +143,7 @@ impl HostOperator for ExternCOperatorHandle {
 		&self.capabilities
 	}
 
-	fn lateness_span(&self) -> Option<Duration> {
+	fn seal_span(&self) -> Option<Duration> {
 		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
 		// Drop calls destroy; the call passes no host pointers.
 		scale_from_millis(Some(unsafe { (self.vtable.lateness_ms)(self.instance) }))

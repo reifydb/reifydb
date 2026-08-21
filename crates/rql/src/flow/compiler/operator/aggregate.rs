@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::OperatorId, row::OperatorLateness};
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -20,7 +20,6 @@ pub(crate) struct AggregateCompiler {
 	pub input: Box<QueryPlan>,
 	pub by: Vec<Expression>,
 	pub map: Vec<Expression>,
-	pub ttl: Option<OperatorLateness>,
 }
 
 impl From<AggregateNode> for AggregateCompiler {
@@ -29,7 +28,6 @@ impl From<AggregateNode> for AggregateCompiler {
 			input: node.input,
 			by: node.by,
 			map: node.map,
-			ttl: node.ttl,
 		}
 	}
 }
@@ -49,7 +47,6 @@ impl CompileOperator for AggregateCompiler {
 		)?;
 
 		compiler.add_edge(txn, &input_node, &node_id)?;
-		compiler.write_operator_settings(txn, node_id, self.ttl)?;
 		Ok(node_id)
 	}
 }

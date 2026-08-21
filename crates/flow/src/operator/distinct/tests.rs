@@ -45,15 +45,7 @@ use crate::{
 fn make_op(operator_id: u64, engine: &TestEngine) -> DistinctOperator {
 	let routines = engine.executor().routines.clone();
 	let rc = RuntimeContext::with_clock(engine.clock().clone());
-	DistinctOperator::new(
-		None,
-		OperatorId(operator_id),
-		Vec::new(),
-		routines,
-		rc,
-		Arc::new(FlowContext::default()),
-		None,
-	)
+	DistinctOperator::new(None, OperatorId(operator_id), Vec::new(), routines, rc, Arc::new(FlowContext::default()))
 }
 
 fn host(txn: &mut DeferredTransaction, operator: OperatorId) -> TxnHostContext<'_, DeferredTransaction> {

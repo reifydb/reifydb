@@ -165,7 +165,6 @@ mod distinct {
 				routines(),
 				runtime,
 				Arc::new(FlowContext::default()),
-				None,
 			)
 		});
 		let events = events();

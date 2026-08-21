@@ -2,8 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 //! Transparency of the operator read buffer tier. The tier caches point reads of the persistent tier,
-//! absences included, so every write has to invalidate it: the commit buffer only shadows a key until the
-//! flush drains it, and a stale entry would outlive that shadow and be served forever.
+//! absences included, and the commit buffer only shadows a key until the flush drains it. A write therefore
+//! invalidates the entry, because the row it recorded is not durable yet and a stale entry would outlive the
+//! shadow and be served forever; the flush then writes the rows it just made durable back through, because
+//! dropping them would leave the tier empty at the exact moment reads start reaching it.
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
@@ -264,4 +266,55 @@ fn a_write_in_flight_is_still_shadowed_and_never_lets_the_tier_cache_the_old_row
 
 	drop(batch);
 	store.commit().complete_flush();
+}
+
+#[test]
+fn a_flush_leaves_the_row_it_persisted_cached_instead_of_forcing_a_refill() {
+	// The commit buffer shadows a key only until the flush drains it, so a flush that drops the entry it just wrote
+	// leaves the tier empty at the exact moment reads start reaching it; a key rewritten every tick then costs a
+	// persistent lookup per tick and never hits.
+	let (store, _storage, _guard) = cached_store();
+	store.set(OP_A, key(1), row("written"));
+	assert!(store.flush_pending_blocking(), "the shadow must be drained before reads reach the tier");
+
+	let before = store.read().expect("the fixture configures a read tier").metrics();
+	let found = store.get(OP_A, &key(1)).expect("the flushed row is readable");
+	assert_eq!(body(&found), "written", "the tier must serve the row the flush made durable, not an older one");
+
+	let after = store.read().expect("the fixture configures a read tier").metrics();
+	assert_eq!(
+		after.fills_started, before.fills_started,
+		"the flush already held this row; refilling it from sqlite is the miss this path exists to avoid"
+	);
+	assert_eq!(after.hits, before.hits + 1, "the read must be answered by the tier, not merely skipped past it");
+	assert_eq!(after.misses, before.misses, "a counted miss means the entry did not survive its own flush");
+}
+
+#[test]
+fn a_read_modify_write_key_stays_cached_across_repeated_flush_cycles() {
+	// Counters and accumulators are read then written every tick; if each cycle costs a fresh fill the tier is
+	// permanently one step behind the writer and its hit rate for those keyspaces is pinned at zero.
+	let (store, _storage, _guard) = cached_store();
+
+	for tick in 0..8u8 {
+		let seen = store.get(OP_A, &key(1));
+		let next = match seen {
+			Some(found) => format!("{}-{tick}", body(&found)),
+			None => format!("{tick}"),
+		};
+		store.set(OP_A, key(1), row(&next));
+		assert!(store.flush_pending_blocking(), "each tick must reach sqlite before the next read");
+	}
+
+	let counters = store.read().expect("the fixture configures a read tier").metrics();
+	assert_eq!(
+		counters.fills_started, 0,
+		"the flush feeds the tier every row it persists, so eight ticks must need no persistent lookup at all; a fill per tick means each flush threw away the row it had just written"
+	);
+	assert_eq!(
+		counters.hits, 7,
+		"only the first read predates any write; the other seven must be answered by the tier, or the zero above is passing because nothing ever consulted it"
+	);
+	assert_eq!(counters.misses, 1, "the pre-write read is the only one the tier cannot answer");
+	assert_eq!(body(&store.get(OP_A, &key(1)).expect("the key survives every cycle")), "0-1-2-3-4-5-6-7");
 }

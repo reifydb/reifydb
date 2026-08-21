@@ -4,6 +4,7 @@
 use crate::{
 	Result,
 	ast::{ast::AstDistinct, identifier::MaybeQualifiedColumnIdentifier, parse::Parser},
+	error::OperationKind,
 	token::{keyword::Keyword, operator::Operator, separator::Separator},
 };
 
@@ -13,12 +14,12 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_keyword(Keyword::Distinct)?;
 
 		let (columns, _has_braces) = self.parse_identifiers()?;
-		let ttl = self.parse_with_clause_for_operator()?;
+		self.reject_with_clause(OperationKind::Distinct)?;
 
 		Ok(AstDistinct {
 			token,
 			columns,
-			ttl,
+			retention: None,
 			rql: self.source_since(start),
 		})
 	}
@@ -164,41 +165,27 @@ pub mod tests {
 		let Ast::Distinct(distinct) = result.first_unchecked() else {
 			panic!("Expected Distinct operator");
 		};
-		assert!(distinct.ttl.is_none());
+		assert!(distinct.retention.is_none());
 	}
 
 	#[test]
-	fn test_distinct_with_ttl_duration_only() {
+	fn test_distinct_with_retention_duration_only_is_rejected() {
 		let bump = Bump::new();
 		let source = "DISTINCT { x } WITH { lateness: 1h }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-
-		let result = result.pop().unwrap();
-		let Ast::Distinct(distinct) = result.first_unchecked() else {
-			panic!("Expected Distinct operator");
-		};
-		let ttl = distinct.ttl.as_ref().expect("expected row");
-		assert_eq!(ttl.duration.fragment.text(), "1h");
-		assert!(ttl.anchor.is_none());
+		let result = parser.parse();
+		assert!(result.is_err(), "expected error: DISTINCT takes no WITH clause");
 	}
 
 	#[test]
-	fn test_distinct_with_ttl_full_config() {
+	fn test_distinct_with_retention_full_config_is_rejected() {
 		let bump = Bump::new();
 		let source = "DISTINCT { x } WITH { lateness: 5m, on: updated }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
-
-		let result = result.pop().unwrap();
-		let Ast::Distinct(distinct) = result.first_unchecked() else {
-			panic!("Expected Distinct operator");
-		};
-		let ttl = distinct.ttl.as_ref().expect("expected row");
-		assert_eq!(ttl.duration.fragment.text(), "5m");
-		assert_eq!(ttl.anchor.as_ref().unwrap().fragment.text(), "updated");
+		let result = parser.parse();
+		assert!(result.is_err(), "expected error: DISTINCT takes no WITH clause");
 	}
 
 	#[test]

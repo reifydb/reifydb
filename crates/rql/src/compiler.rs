@@ -341,12 +341,10 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			by: node.by,
 			map: node.map,
-			ttl: node.ttl,
 		}),
 		PhysicalPlan::Distinct(node) => QueryPlan::Distinct(nodes::DistinctNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			columns: node.columns,
-			ttl: node.ttl,
 		}),
 		PhysicalPlan::Assert(node) => QueryPlan::Assert(nodes::AssertNode {
 			input: node
@@ -369,7 +367,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))?),
 			on: node.on,
 			alias: node.alias,
-			ttl: node.ttl,
+			retention: node.retention,
 			snapshot: node.snapshot,
 			latest: node.latest,
 		}),
@@ -378,7 +376,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))?),
 			on: node.on,
 			alias: node.alias,
-			ttl: node.ttl,
+			retention: node.retention,
 			snapshot: node.snapshot,
 			latest: node.latest,
 		}),
@@ -387,7 +385,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(node.right))?),
 			join_type: node.join_type,
 			alias: node.alias,
-			ttl: node.ttl,
+			retention: node.retention,
 			snapshot: node.snapshot,
 			latest: node.latest,
 		}),
@@ -427,7 +425,6 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 				.transpose()?,
 			operator: node.operator,
 			expressions: node.expressions,
-			ttl: node.ttl,
 		}),
 		PhysicalPlan::Window(node) => QueryPlan::Window(nodes::WindowNode {
 			input: node
@@ -448,11 +445,11 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 		PhysicalPlan::Append(physical::AppendPhysicalNode::Query {
 			left,
 			right,
-			ttl,
+			retention,
 		}) => QueryPlan::Append(nodes::AppendQueryNode {
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(left))?),
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(right))?),
-			ttl,
+			retention,
 		}),
 
 		PhysicalPlan::RunTests(node) => QueryPlan::RunTests(node),
@@ -1386,13 +1383,13 @@ impl InstructionCompiler {
 				physical::AppendPhysicalNode::Query {
 					left,
 					right,
-					ttl,
+					retention,
 				} => {
 					self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Append(
 						physical::AppendPhysicalNode::Query {
 							left,
 							right,
-							ttl,
+							retention,
 						},
 					))?));
 					self.emit(Instruction::Emit);
@@ -1962,13 +1959,13 @@ impl InstructionCompiler {
 			physical::AppendPhysicalNode::Query {
 				left,
 				right,
-				ttl,
+				retention,
 			} => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Append(
 					physical::AppendPhysicalNode::Query {
 						left,
 						right,
-						ttl,
+						retention,
 					},
 				))?));
 				self.emit(Instruction::Emit);

@@ -41,21 +41,21 @@ impl RowSettings {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorSettings {
-	pub lateness: Option<OperatorLateness>,
+	pub retention: Option<OperatorRetention>,
 
-	pub join: Option<JoinLateness>,
+	pub join: Option<JoinRetention>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OperatorLateness {
+pub struct OperatorRetention {
 	pub duration: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct JoinLateness {
-	pub left: Option<OperatorLateness>,
+pub struct JoinRetention {
+	pub left: Option<OperatorRetention>,
 
-	pub right: Option<OperatorLateness>,
+	pub right: Option<OperatorRetention>,
 }
 
 pub fn row_shape_from_columns(family: RowFamily, value: &[Column]) -> RowShape {

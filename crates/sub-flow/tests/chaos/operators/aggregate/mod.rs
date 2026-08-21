@@ -99,7 +99,6 @@ pub fn build(agg: Agg, runtime: RuntimeContext) -> AggregateOperator {
 		parse_expression(agg.expression()).expect("aggregation parses"),
 		routines(),
 		runtime,
-		None,
 	)
 }
 

@@ -18,11 +18,11 @@ impl<'bump> Parser<'bump> {
 
 		if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
 			let with = self.parse_sub_query()?;
-			let ttl = self.parse_with_clause_for_operator()?;
+			let retention = self.parse_with_clause_for_operator()?;
 			return Ok(AstAppend::Query {
 				token,
 				with,
-				ttl,
+				retention,
 			});
 		}
 
@@ -209,19 +209,19 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let node = result.first_unchecked();
 		let Ast::Append(AstAppend::Query {
-			ttl,
+			retention,
 			..
 		}) = node
 		else {
 			panic!("Expected Append::Query");
 		};
-		assert!(ttl.is_none(), "no ttl when with-clause is absent");
+		assert!(retention.is_none(), "no retention when with-clause is absent");
 	}
 
 	#[test]
 	fn test_append_query_with_ttl_duration_only() {
 		let bump = Bump::new();
-		let source = "append { from test::orders } with { lateness: 1h }";
+		let source = "append { from test::orders } with { retention: 1h }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -229,21 +229,21 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let node = result.first_unchecked();
 		let Ast::Append(AstAppend::Query {
-			ttl,
+			retention,
 			..
 		}) = node
 		else {
 			panic!("Expected Append::Query");
 		};
-		let ttl = ttl.as_ref().expect("expected ttl");
-		assert_eq!(ttl.duration.fragment.text(), "1h");
-		assert!(ttl.anchor.is_none());
+		let retention = retention.as_ref().expect("expected retention");
+		assert_eq!(retention.duration.fragment.text(), "1h");
+		assert!(retention.anchor.is_none());
 	}
 
 	#[test]
 	fn test_append_query_with_ttl_full_config() {
 		let bump = Bump::new();
-		let source = "append { from test::orders } with { lateness: 30m, on: updated }";
+		let source = "append { from test::orders } with { retention: 30m, on: updated }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -251,15 +251,15 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let node = result.first_unchecked();
 		let Ast::Append(AstAppend::Query {
-			ttl,
+			retention,
 			..
 		}) = node
 		else {
 			panic!("Expected Append::Query");
 		};
-		let ttl = ttl.as_ref().expect("expected ttl");
-		assert_eq!(ttl.duration.fragment.text(), "30m");
-		assert_eq!(ttl.anchor.as_ref().unwrap().fragment.text(), "updated");
+		let retention = retention.as_ref().expect("expected retention");
+		assert_eq!(retention.duration.fragment.text(), "30m");
+		assert_eq!(retention.anchor.as_ref().unwrap().fragment.text(), "updated");
 	}
 
 	#[test]

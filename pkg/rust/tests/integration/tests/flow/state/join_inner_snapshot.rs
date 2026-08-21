@@ -46,7 +46,7 @@ fn snapshot_inner_join(db: &TestDb, tail: &str) {
 	db.admin(&format!(r#"CREATE DEFERRED VIEW app::j {{ k: int4, lv: int4, rv: int4 }} AS {{
 			FROM app::lhs
 				| inner join {{ from app::rhs }} as r using (k, r.k)
-					with {{ lateness: {{ left: 1s }}, snapshot: true }}
+					with {{ retention: {{ left: 1s }}, snapshot: true }}
 				| map {{ k: k, lv: lv, rv: r_rv }}
 				{tail}
 		}}"#));

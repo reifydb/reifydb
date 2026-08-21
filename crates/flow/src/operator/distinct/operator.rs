@@ -27,12 +27,7 @@ use reifydb_evaluate::expression::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{
-	Result,
-	error::Error,
-	util::hash::Hash128,
-	value::{datetime::DateTime, duration::Duration},
-};
+use reifydb_value::{Result, error::Error, util::hash::Hash128, value::datetime::DateTime};
 use tracing::instrument;
 
 use crate::{
@@ -67,7 +62,6 @@ pub struct DistinctPlan {
 	pub(super) runtime_context: RuntimeContext,
 	pub(super) ctx: Arc<FlowContext>,
 	pub(super) dropped: SealedDrops,
-	pub(super) _lateness: Option<Duration>,
 }
 
 pub struct DistinctOperator {
@@ -82,7 +76,6 @@ impl DistinctOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
-		lateness: Option<Duration>,
 	) -> Self {
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
@@ -102,7 +95,6 @@ impl DistinctOperator {
 				runtime_context,
 				ctx,
 				dropped: SealedDrops::new(operator, DROP_REASON),
-				_lateness: lateness,
 			},
 		}
 	}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::OperatorId, row::OperatorLateness};
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, fragment::Fragment};
 
@@ -19,7 +19,6 @@ pub(crate) struct ApplyCompiler {
 	pub input: Option<Box<QueryPlan>>,
 	pub operator: Fragment,
 	pub arguments: Vec<Expression>,
-	pub ttl: Option<OperatorLateness>,
 }
 
 impl From<ApplyNode> for ApplyCompiler {
@@ -28,7 +27,6 @@ impl From<ApplyNode> for ApplyCompiler {
 			input: node.input,
 			operator: node.operator,
 			arguments: node.expressions,
-			ttl: node.ttl,
 		}
 	}
 }
@@ -48,8 +46,6 @@ impl CompileOperator for ApplyCompiler {
 				expressions: self.arguments,
 			},
 		)?;
-
-		compiler.write_operator_settings(txn, node_id, self.ttl)?;
 
 		if let Some(input) = input_node {
 			compiler.add_edge(txn, &input, &node_id)?;

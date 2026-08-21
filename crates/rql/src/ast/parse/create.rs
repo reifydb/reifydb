@@ -18,11 +18,11 @@ use crate::{
 			AstCreatePrimaryKey, AstCreateProcedure, AstCreateQueue, AstCreateRelationship,
 			AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
 			AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest, AstCreateTransactionalView,
-			AstHydrationConfig, AstIndexColumn, AstJoinLateness, AstPersistent, AstPolicyTargetType,
-			AstPrimaryKey, AstProcedureParam, AstQueueDeduplicate, AstQueueDispatch, AstQueueFifo,
-			AstQueueRetention, AstQueueRetry, AstRelationshipCardinality, AstRelationshipJunction,
-			AstRowSettings, AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType,
-			AstVariant, AstViewStorageKind, AstViewWithClause,
+			AstHydrationConfig, AstIndexColumn, AstJoinRetention, AstOperatorRetention, AstPersistent,
+			AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstQueueDeduplicate, AstQueueDispatch,
+			AstQueueFifo, AstQueueRetention, AstQueueRetry, AstRelationshipCardinality,
+			AstRelationshipJunction, AstRowSettings, AstStatement, AstTimeDeclaration,
+			AstTimestampPrecision, AstTtl, AstType, AstVariant, AstViewStorageKind, AstViewWithClause,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -35,6 +35,7 @@ use crate::{
 	},
 	bump::{BumpBox, BumpFragment},
 	duration::{DurationBound, FOREVER, compile_duration},
+	error::{OperationKind, RqlError},
 	token::{
 		keyword::{
 			Keyword,
@@ -59,8 +60,8 @@ const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
 const QUEUE_RETENTION_KEYS: &str = "'done'";
 const QUEUE_RETRY_KEYS: &str = "'attempts' or 'backoff'";
 const ROW_CONFIG_KEYS: &str = "'ttl', 'persistent', or 'on'";
-const OPERATOR_WITH_KEYS: &str = "'lateness' or 'on'";
-const JOIN_WITH_KEYS: &str = "'lateness', 'snapshot', or 'latest'";
+const OPERATOR_WITH_KEYS: &str = "'retention' or 'on'";
+const JOIN_WITH_KEYS: &str = "'retention', 'snapshot', or 'latest'";
 
 fn unexpected_queue_option(token: &Token<'_>, expected: &str) -> Error {
 	Error::from(TypeError::Ast {
@@ -2991,7 +2992,7 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_join_lateness(&mut self) -> Result<AstJoinLateness<'bump>> {
+	fn parse_join_retention(&mut self) -> Result<AstJoinRetention<'bump>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut left: Option<Token<'bump>> = None;
@@ -3015,7 +3016,7 @@ impl<'bump> Parser<'bump> {
 							kind: AstErrorKind::UnexpectedToken {
 								expected: "single 'left' entry".to_string(),
 							},
-							message: "'left' specified more than once in join lateness"
+							message: "'left' specified more than once in join retention"
 								.to_string(),
 							fragment,
 						}));
@@ -3029,7 +3030,7 @@ impl<'bump> Parser<'bump> {
 							kind: AstErrorKind::UnexpectedToken {
 								expected: "single 'right' entry".to_string(),
 							},
-							message: "'right' specified more than once in join lateness"
+							message: "'right' specified more than once in join retention"
 								.to_string(),
 							fragment,
 						}));
@@ -3043,7 +3044,7 @@ impl<'bump> Parser<'bump> {
 							expected: "'left' or 'right'".to_string(),
 						},
 						message: format!(
-							"unexpected key '{}' in join lateness; expected 'left' or 'right'",
+							"unexpected key '{}' in join retention; expected 'left' or 'right'",
 							other
 						),
 						fragment,
@@ -3074,18 +3075,30 @@ impl<'bump> Parser<'bump> {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "at least one of 'left' or 'right'".to_string(),
 				},
-				message: "join lateness must specify at least one side ('left' or 'right')".to_string(),
+				message: "join retention must specify at least one side ('left' or 'right')"
+					.to_string(),
 				fragment,
 			}));
 		}
 
-		Ok(AstJoinLateness {
+		Ok(AstJoinRetention {
 			left,
 			right,
 		})
 	}
 
-	pub(crate) fn parse_with_clause_for_operator(&mut self) -> Result<Option<AstTtl<'bump>>> {
+	pub(crate) fn reject_with_clause(&mut self, kind: OperationKind) -> Result<()> {
+		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
+			return Ok(());
+		}
+		Err(RqlError::OperatorNoWithClause {
+			kind,
+			fragment: self.current()?.fragment.to_owned(),
+		}
+		.into())
+	}
+
+	pub(crate) fn parse_with_clause_for_operator(&mut self) -> Result<Option<AstOperatorRetention<'bump>>> {
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
 			return Ok(None);
 		}
@@ -3105,7 +3118,7 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
-				"lateness" => {
+				"retention" => {
 					duration = Some(self.consume_duration(OPERATOR_WITH_KEYS)?);
 				}
 				"on" => {
@@ -3134,27 +3147,27 @@ impl<'bump> Parser<'bump> {
 			let fragment = orphan.fragment.to_owned();
 			return Err(Error::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
-					expected: "a 'lateness' alongside it".to_string(),
+					expected: "a 'retention' alongside it".to_string(),
 				},
-				message: "'on' qualifies a 'lateness'; add 'lateness' to the WITH clause".to_string(),
+				message: "'on' qualifies a 'retention'; add 'retention' to the WITH clause".to_string(),
 				fragment,
 			}));
 		}
 
-		Ok(duration.map(|duration| AstTtl {
+		Ok(duration.map(|duration| AstOperatorRetention {
 			duration,
 			anchor,
 		}))
 	}
 
-	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinLateness<'bump>>, bool, bool)> {
+	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinRetention<'bump>>, bool, bool)> {
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
 			return Ok((None, false, false));
 		}
 		self.advance()?;
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut lateness: Option<AstJoinLateness<'bump>> = None;
+		let mut retention: Option<AstJoinRetention<'bump>> = None;
 		let mut snapshot: bool = false;
 		let mut latest: bool = false;
 
@@ -3168,8 +3181,8 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
-				"lateness" => {
-					lateness = Some(self.parse_join_lateness()?);
+				"retention" => {
+					retention = Some(self.parse_join_retention()?);
 				}
 				"snapshot" => {
 					let value = self.advance()?;
@@ -3229,7 +3242,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
-		Ok((lateness, snapshot, latest))
+		Ok((retention, snapshot, latest))
 	}
 
 	fn parse_create_relationship(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {

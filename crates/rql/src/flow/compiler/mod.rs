@@ -17,7 +17,7 @@ use reifydb_core::{
 		view::View,
 	},
 	internal,
-	row::{JoinLateness, OperatorLateness, OperatorSettings},
+	row::{JoinRetention, OperatorRetention, OperatorSettings},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_value::{Result, error::Error, value::blob::Blob};
@@ -187,17 +187,17 @@ impl FlowCompiler {
 		&self,
 		txn: &mut Transaction<'_>,
 		operator_id: OperatorId,
-		lateness: Option<OperatorLateness>,
+		retention: Option<OperatorRetention>,
 	) -> Result<()> {
 		if self.ephemeral {
 			return Ok(());
 		}
-		if let Some(lateness) = lateness {
+		if let Some(retention) = retention {
 			create_operator_settings(
 				txn.admin_mut(),
 				operator_id,
 				&OperatorSettings {
-					lateness: Some(lateness),
+					retention: Some(retention),
 					join: None,
 				},
 			)?;
@@ -209,7 +209,7 @@ impl FlowCompiler {
 		&self,
 		txn: &mut Transaction<'_>,
 		operator_id: OperatorId,
-		join: Option<JoinLateness>,
+		join: Option<JoinRetention>,
 	) -> Result<()> {
 		if self.ephemeral {
 			return Ok(());
@@ -224,7 +224,7 @@ impl FlowCompiler {
 			txn.admin_mut(),
 			operator_id,
 			&OperatorSettings {
-				lateness: None,
+				retention: None,
 				join: Some(join),
 			},
 		)?;

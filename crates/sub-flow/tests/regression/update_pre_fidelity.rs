@@ -112,7 +112,6 @@ fn an_aggregate_update_retracts_the_total_it_previously_published() {
 			parse_expression("total: math::sum(v)").expect("aggregation parses"),
 			routines(),
 			runtime,
-			None,
 		)
 	});
 
@@ -138,7 +137,6 @@ fn a_distinct_update_retracts_the_row_it_previously_published() {
 			routines(),
 			runtime,
 			Arc::new(FlowContext::default()),
-			None,
 		)
 	});
 
