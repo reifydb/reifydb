@@ -488,7 +488,8 @@ fn operator_persistent_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 			counter_count("hits", metrics.hits.as_u64()),
 			counter_count("misses", metrics.misses.as_u64()),
 			level_ratio("filter_fill_ratio", filter.fill_ratio),
-			level_count("filter_estimated_keys", filter.estimated_keys.as_u64()),
+			level_count("filter_estimated_keys", filter.estimated_keys),
+			level_count("filter_rejected", filter.rejected),
 		],
 	}]
 }

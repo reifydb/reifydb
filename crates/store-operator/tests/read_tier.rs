@@ -155,16 +155,18 @@ fn dropping_one_operators_state_clears_only_its_cached_entries() {
 }
 
 #[test]
-fn a_filter_negative_lookup_leaves_the_tier_empty() {
-	// The filter answers these in memory with no i/o, so caching them must never spend the byte budget.
+fn a_lookup_under_a_disabled_filter_caches_the_absence() {
+	// A filter that has not been rebuilt yet is disabled and rules nothing out, so the absence must be
+	// bought from sqlite once and then remembered; a second miss here means every lookup for a key that
+	// does not exist pays a persistent read for as long as the rebuild has not run.
 	let (store, _storage, _guard) = cached_store();
 
 	assert!(store.get(OP_A, &key(1)).is_none());
 	assert!(!store.contains(OP_A, &key(1)));
 
-	assert_eq!(entries(&store), 0, "a filter negative must never populate the tier");
+	assert_eq!(entries(&store), 1, "the tier must remember the absence it paid sqlite to learn");
 	let tier = store.read().expect("the fixture configures a read tier");
-	assert_eq!(tier.hits(), 0, "a filter negative is not a cache hit either");
+	assert_eq!(tier.hits(), 1, "the repeat lookup must be served by the remembered absence, not by sqlite again");
 }
 
 #[test]
@@ -308,8 +310,8 @@ fn a_read_modify_write_key_stays_cached_across_repeated_flush_cycles() {
 
 	let counters = store.read().expect("the fixture configures a read tier").metrics();
 	assert_eq!(
-		counters.fills_started, 0,
-		"the flush feeds the tier every row it persists, so eight ticks must need no persistent lookup at all; a fill per tick means each flush threw away the row it had just written"
+		counters.fills_started, 1,
+		"only the pre-write read may reach sqlite; the flush feeds the tier every row it persists, so a fill per tick means each flush threw away the row it had just written"
 	);
 	assert_eq!(
 		counters.hits, 7,

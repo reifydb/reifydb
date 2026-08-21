@@ -23,11 +23,13 @@ pub struct FilterMetrics {
 	pub aborts: u64,
 }
 
+#[derive(Debug)]
 struct FilterState {
 	active: Option<Arc<BloomFilter>>,
 	building: Option<Arc<BloomFilter>>,
 }
 
+#[derive(Debug)]
 pub struct RebuildHandle {
 	filter: Arc<BloomFilter>,
 }
@@ -40,6 +42,7 @@ impl RebuildHandle {
 	}
 }
 
+#[derive(Debug)]
 pub struct AdaptiveKeyFilter {
 	state: RwLock<FilterState>,
 	queries: AtomicU64,

@@ -22,6 +22,7 @@ use crate::{
 
 const CATCHUP_DELAY: Duration = Duration::from_milliseconds_const(5);
 
+#[derive(Debug)]
 pub enum FilterMessage {
 	Register {
 		filter: Arc<AdaptiveKeyFilter>,

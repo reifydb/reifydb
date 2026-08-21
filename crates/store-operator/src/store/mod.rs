@@ -9,6 +9,9 @@ mod state;
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, lifecycle::watermark::CheckpointFloor, metrics::collect::MetricsCollector};
+use reifydb_filter::{actor::FilterMessage, adaptive::FilterMetrics};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_filter::{actor::FilterActor, config::FilterConfig};
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,
@@ -22,7 +25,7 @@ use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
-	config::OperatorPersistentConfig, filter::OperatorFilterMetrics, flush::OperatorFlushActor,
+	config::OperatorPersistentConfig, filter::source::OperatorStateKeySource, flush::OperatorFlushActor,
 	sqlite::SqliteOperatorStorage,
 };
 use crate::{
@@ -49,6 +52,7 @@ pub struct StandardOperatorStoreInner {
 	pub(crate) persistent: Option<OperatorPersistentTier>,
 	pub(crate) read: Option<OperatorReadBufferTier>,
 	pub(crate) flush: Option<ActorRef<FlushMessage>>,
+	pub(crate) filter: Option<ActorRef<FilterMessage>>,
 	#[allow(dead_code)]
 	pub(crate) spawner: ActorSpawner,
 }
@@ -72,7 +76,7 @@ impl StandardOperatorStore {
 			.flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		let (persistent, flush) = {
+		let (persistent, flush, filter) = {
 			let flush = config.persistent.as_ref().map(|persistent| {
 				OperatorFlushActor::spawn(
 					&spawner,
@@ -82,13 +86,28 @@ impl StandardOperatorStore {
 					persistent.flush_interval,
 				)
 			});
-			(config.persistent.map(|persistent| persistent.storage), flush)
+			let filter = config.persistent.as_ref().map(|persistent| {
+				let storage = persistent.storage.sqlite_storage().clone();
+				let actor = FilterActor::spawn(&spawner);
+				actor.send(FilterMessage::Register {
+					filter: storage.filter().handle(),
+					source: Box::new(OperatorStateKeySource::new(storage)),
+					config: FilterConfig::default(),
+				})
+				.expect("operator state filter source could not be registered");
+				actor
+			});
+			(config.persistent.map(|persistent| persistent.storage), flush, filter)
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, flush): (Option<OperatorPersistentTier>, Option<ActorRef<FlushMessage>>) = match config.persistent {
+		let (persistent, flush, filter): (
+			Option<OperatorPersistentTier>,
+			Option<ActorRef<FlushMessage>>,
+			Option<ActorRef<FilterMessage>>,
+		) = match config.persistent {
 			Some(persistent) => match persistent.storage {},
-			None => (None, None),
+			None => (None, None, None),
 		};
 
 		let read = persistent.as_ref().and(read);
@@ -98,6 +117,7 @@ impl StandardOperatorStore {
 			persistent,
 			read,
 			flush,
+			filter,
 			spawner,
 		}))
 	}
@@ -134,7 +154,7 @@ impl StandardOperatorStore {
 		self.persistent.as_ref().map(OperatorPersistentTier::page_cache_metrics)
 	}
 
-	pub fn persistent_filter_metrics(&self) -> Option<OperatorFilterMetrics> {
+	pub fn persistent_filter_metrics(&self) -> Option<FilterMetrics> {
 		self.persistent.as_ref().map(|tier| tier.filter().metrics())
 	}
 
@@ -150,6 +170,9 @@ impl StandardOperatorStore {
 
 impl Shutdown for StandardOperatorStore {
 	fn shutdown(&self) {
+		if let Some(filter) = self.filter.as_ref() {
+			let _ = filter.send(FilterMessage::Shutdown);
+		}
 		let Some(persistent) = self.persistent.as_ref() else {
 			return;
 		};
@@ -227,7 +250,7 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn persistent_filter_metrics(&self) -> Option<OperatorFilterMetrics> {
+	pub fn persistent_filter_metrics(&self) -> Option<FilterMetrics> {
 		match self {
 			Self::Standard(store) => store.persistent_filter_metrics(),
 		}

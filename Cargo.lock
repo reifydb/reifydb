@@ -3461,6 +3461,7 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-filter",
  "reifydb-profiler",
  "reifydb-runtime",
  "reifydb-sqlite",

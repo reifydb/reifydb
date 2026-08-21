@@ -1,55 +1,41 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+pub mod source;
+
 use std::sync::Arc;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_filter::bloom::BloomFilter;
-use reifydb_value::count::Count;
+use reifydb_core::{interface::catalog::flow::OperatorId, util::bloom::hash_item};
+use reifydb_filter::adaptive::{AdaptiveKeyFilter, FilterMetrics};
 
-const EXPECTED_KEYS: usize = 1_000_000;
-
-#[derive(Clone)]
-pub struct OperatorKeyFilter(Arc<BloomFilter>);
-
-impl Default for OperatorKeyFilter {
-	fn default() -> Self {
-		Self::new()
-	}
+pub(crate) fn hash_key(operator: OperatorId, key: &EncodedKey) -> u64 {
+	hash_item(&(operator.0, key.as_slice()))
 }
 
+#[derive(Clone)]
+pub struct OperatorKeyFilter(Arc<AdaptiveKeyFilter>);
+
 impl OperatorKeyFilter {
+	#[allow(clippy::new_without_default)]
 	pub fn new() -> Self {
-		Self(Arc::new(BloomFilter::new(EXPECTED_KEYS)))
+		Self(Arc::new(AdaptiveKeyFilter::new()))
 	}
 
 	pub fn add(&self, operator: OperatorId, key: &EncodedKey) {
-		self.0.add(&(operator.0, key.as_slice()));
+		self.0.add(hash_key(operator, key));
 	}
 
 	pub fn may_contain(&self, operator: OperatorId, key: &EncodedKey) -> bool {
-		self.0.might_contain(&(operator.0, key.as_slice()))
+		self.0.may_contain(hash_key(operator, key))
 	}
 
-	pub fn fill_ratio(&self) -> f64 {
-		self.0.fill_ratio()
+	pub fn metrics(&self) -> FilterMetrics {
+		self.0.metrics()
 	}
 
-	pub fn estimated_keys(&self) -> u64 {
-		self.0.estimated_items() as u64
+	pub fn handle(&self) -> Arc<AdaptiveKeyFilter> {
+		self.0.clone()
 	}
-
-	pub fn metrics(&self) -> OperatorFilterMetrics {
-		OperatorFilterMetrics {
-			fill_ratio: self.fill_ratio(),
-			estimated_keys: Count::new(self.estimated_keys()),
-		}
-	}
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct OperatorFilterMetrics {
-	pub fill_ratio: f64,
-	pub estimated_keys: Count,
 }

@@ -9,14 +9,15 @@ use reifydb_codec::{
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::scan::record_page};
 use reifydb_value::util::cowvec::CowVec;
-use rusqlite::{ToSql, params};
+use rusqlite::{Connection, Rows, ToSql, params};
 use tracing::instrument;
 
 use crate::{
 	sqlite::{
 		SqliteOperatorStorage,
 		sql::{
-			ANCHORS_DROP_OPERATOR_SQL, STATE_CONTAINS_SQL, STATE_DROP_SQL, STATE_GET_SQL, STATE_REMOVE_SQL,
+			ANCHORS_DROP_OPERATOR_SQL, STATE_CONTAINS_SQL, STATE_DROP_SQL, STATE_EXISTS_SQL, STATE_GET_SQL,
+			STATE_KEY_COUNT_SQL, STATE_KEYS_AFTER_SQL, STATE_KEYS_FIRST_SQL, STATE_REMOVE_SQL,
 			STATE_SET_SQL, range_sql,
 		},
 	},
@@ -136,6 +137,60 @@ impl SqliteOperatorStorage {
 			.execute(ANCHORS_DROP_OPERATOR_SQL, params![operator.0 as i64])
 			.expect("seal anchor drop failed");
 		transaction.commit().expect("operator state drop could not commit");
+	}
+
+	pub(crate) fn state_key_count(&self) -> u64 {
+		let guard = self.read_conn();
+		let conn = guard.as_ref().expect("operator state key count ran without an open connection");
+		let count: i64 = conn
+			.query_row(STATE_KEY_COUNT_SQL, [], |row| row.get(0))
+			.expect("operator state key count failed");
+		count.max(0) as u64
+	}
+
+	pub(crate) fn state_key_slice(
+		&self,
+		cursor: Option<&(OperatorId, EncodedKey)>,
+		budget: usize,
+	) -> Vec<(OperatorId, EncodedKey)> {
+		let limit = budget as i64;
+		let guard = self.read_conn();
+		let conn = guard.as_ref().expect("operator state key scan ran without an open connection");
+		let mut rows = Vec::new();
+		match cursor {
+			Some((operator, key)) => {
+				let mut stmt = conn
+					.prepare_cached(STATE_KEYS_AFTER_SQL)
+					.expect("operator state key scan could not be prepared");
+				let mut cursor_rows = stmt
+					.query(params![operator.0 as i64, key.as_slice(), limit])
+					.expect("operator state key scan failed");
+				collect_keys(&mut cursor_rows, &mut rows);
+			}
+			None => {
+				let mut stmt = conn
+					.prepare_cached(STATE_KEYS_FIRST_SQL)
+					.expect("operator state key scan could not be prepared");
+				let mut first_rows =
+					stmt.query(params![limit]).expect("operator state key scan failed");
+				collect_keys(&mut first_rows, &mut rows);
+			}
+		}
+		rows
+	}
+}
+
+pub(super) fn state_exists(conn: &Connection) -> bool {
+	let exists: i64 =
+		conn.query_row(STATE_EXISTS_SQL, [], |row| row.get(0)).expect("operator state existence probe failed");
+	exists != 0
+}
+
+fn collect_keys(rows: &mut Rows<'_>, out: &mut Vec<(OperatorId, EncodedKey)>) {
+	while let Some(row) = rows.next().expect("operator state key scan failed") {
+		let operator: i64 = row.get(0).expect("operator state rows carry an operator id");
+		let key: Vec<u8> = row.get(1).expect("operator state rows carry a blob key");
+		out.push((OperatorId(operator as u64), EncodedKey::new(key)));
 	}
 }
 

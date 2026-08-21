@@ -11,7 +11,7 @@ use reifydb_filter::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct SourceState {
 	hashes: Vec<u64>,
 	pos: usize,
@@ -19,7 +19,7 @@ struct SourceState {
 	slices: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct FakeSource {
 	state: Arc<Mutex<SourceState>>,
 }

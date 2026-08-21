@@ -7,6 +7,7 @@ use reifydb_filter::{
 	source::{FilterSlice, KeyFilterSource},
 };
 
+#[derive(Debug)]
 struct VecSource {
 	hashes: Vec<u64>,
 	pos: usize,

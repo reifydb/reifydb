@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_store_multi::{
 	MultiStore,
 	tier::{commit::buffer::MultiCommitMetrics, persistent::SqlitePageCacheMetrics, read::ReadBufferShardMetrics},
 };
 use reifydb_store_operator::{
-	filter::OperatorFilterMetrics,
 	store::OperatorStore,
 	tier::{
 		persistent::OperatorPageCacheMetrics,
@@ -66,7 +66,7 @@ impl StoreReader {
 		self.operator.persistent_page_cache_metrics()
 	}
 
-	pub fn operator_filter(&self) -> Option<OperatorFilterMetrics> {
+	pub fn operator_filter(&self) -> Option<FilterMetrics> {
 		self.operator.persistent_filter_metrics()
 	}
 }

@@ -657,3 +657,19 @@ fn concurrent_reads_during_writes_do_not_deadlock() {
 		reader.join().expect("reader thread panicked (deadlock or read error)");
 	}
 }
+
+#[test]
+fn state_written_is_false_until_a_row_exists_and_survives_a_reopen() {
+	let (config, _guard) = SqliteConfig::test();
+	let store = OperatorStore::new(config.clone());
+	assert!(!store.state_written(), "an empty database has never been written and must not claim it was");
+
+	store.set(OperatorId(1), key(7, 0x10, 1), row(4));
+	assert!(store.state_written(), "a write must mark the database as written or its own row reads back absent");
+
+	let reopened = OperatorStore::new(config);
+	assert!(
+		reopened.state_written(),
+		"a reopened database holding rows must report them as present without scanning every key first"
+	);
+}

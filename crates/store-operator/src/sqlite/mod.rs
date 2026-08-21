@@ -18,8 +18,6 @@ use std::sync::{
 	atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 };
 
-use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_runtime::{
 	shutdown::Shutdown,
 	sync::mutex::{Mutex, MutexGuard},
@@ -36,7 +34,7 @@ use tracing::instrument;
 
 use crate::{
 	filter::OperatorKeyFilter,
-	sqlite::{schema::ensure_schema, sql::STATE_ALL_KEYS_SQL},
+	sqlite::{schema::ensure_schema, state::state_exists},
 };
 
 const BUSY_TIMEOUT: Duration = Duration::from_milliseconds_const(200);
@@ -116,20 +114,7 @@ impl SqliteOperatorStorage {
 
 	fn with_connections(conn: Connection, readers: Vec<Connection>) -> Self {
 		ensure_schema(&conn);
-		let filter = OperatorKeyFilter::new();
-		let mut state_written = false;
-		{
-			let mut stmt = conn
-				.prepare(STATE_ALL_KEYS_SQL)
-				.expect("operator state key scan could not be prepared");
-			let mut rows = stmt.query([]).expect("operator state key scan failed");
-			while let Some(row) = rows.next().expect("operator state key scan failed") {
-				let operator: i64 = row.get(0).expect("operator state rows carry an operator id");
-				let key: Vec<u8> = row.get(1).expect("operator state rows carry a blob key");
-				filter.add(OperatorId(operator as u64), &EncodedKey::new(key));
-				state_written = true;
-			}
-		}
+		let state_written = state_exists(&conn);
 		Self {
 			inner: Arc::new(StoreInner {
 				conn: Mutex::new(Some(conn)),
@@ -140,7 +125,7 @@ impl SqliteOperatorStorage {
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
 				state_written: AtomicBool::new(state_written),
-				filter,
+				filter: OperatorKeyFilter::new(),
 			}),
 		}
 	}
