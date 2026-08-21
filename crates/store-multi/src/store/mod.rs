@@ -16,12 +16,22 @@ use reifydb_core::{
 	common::CommitVersion, event::EventBus, lifecycle::watermark::EvictionWatermark,
 	metrics::collect::MetricsCollector,
 };
-use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_filter::{actor::FilterActor, config::FilterConfig};
+use reifydb_filter::{actor::FilterMessage, adaptive::FilterMetrics};
+use reifydb_runtime::{
+	actor::{mailbox::ActorRef, system::ActorSystem},
+	context::clock::Clock,
+	shutdown::Shutdown,
+	sync::rwlock::RwLock,
+};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::{count::Count, util::cowvec::CowVec};
 use tracing::instrument;
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::filter::source::MultiCurrentKeySource;
 use crate::{
 	CommitBufferConfig,
 	config::MultiStoreConfig,
@@ -85,6 +95,8 @@ pub struct StandardMultiStoreInner {
 
 	pub(crate) persistent_probes: AtomicU64,
 	pub(crate) persistent_absent: AtomicU64,
+
+	pub(crate) filter: Option<ActorRef<FilterMessage>>,
 }
 
 impl StandardMultiStore {
@@ -102,9 +114,20 @@ impl StandardMultiStore {
 			config.persistent.is_some().then(|| config.read.and_then(MultiReadBufferTier::new)).flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		let (persistent, flush_engine) = {
+		let (persistent, flush_engine, filter) = {
 			let persistent_config = config.persistent.clone();
 			let persistent = persistent_config.as_ref().map(|c| c.storage.clone());
+			let filter = persistent.as_ref().map(|tier| {
+				let storage = tier.sqlite_storage().clone();
+				let actor = FilterActor::spawn(&config.spawner);
+				actor.send(FilterMessage::Register {
+					filter: storage.filter().handle(),
+					source: Box::new(MultiCurrentKeySource::new(storage)),
+					config: FilterConfig::default(),
+				})
+				.expect("multi current filter source could not be registered");
+				actor
+			});
 			let flush_engine = match (persistent.as_ref(), persistent_config.as_ref()) {
 				(Some(persistent_storage), Some(_)) => Some(Arc::new(FlushEngine::new(
 					commit.clone(),
@@ -117,13 +140,17 @@ impl StandardMultiStore {
 				))),
 				_ => None,
 			};
-			(persistent, flush_engine)
+			(persistent, flush_engine, filter)
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, flush_engine): (Option<MultiPersistentTier>, Option<Arc<FlushEngine>>) = {
+		let (persistent, flush_engine, filter): (
+			Option<MultiPersistentTier>,
+			Option<Arc<FlushEngine>>,
+			Option<ActorRef<FilterMessage>>,
+		) = {
 			let _ = config.persistent;
-			(None, None)
+			(None, None, None)
 		};
 
 		let read = persistent.as_ref().and(read);
@@ -138,6 +165,7 @@ impl StandardMultiStore {
 			event_bus: config.event_bus,
 			persistent_probes: AtomicU64::new(0),
 			persistent_absent: AtomicU64::new(0),
+			filter,
 		})))
 	}
 
@@ -214,6 +242,10 @@ impl StandardMultiStore {
 		self.persistent.as_ref().map(MultiPersistentTier::page_cache_metrics)
 	}
 
+	pub fn persistent_filter_metrics(&self) -> Option<FilterMetrics> {
+		self.persistent.as_ref().map(|tier| tier.filter().metrics())
+	}
+
 	pub fn persistent_probe_metrics(&self) -> Option<MultiPersistentProbeMetrics> {
 		self.persistent.as_ref().map(|_| MultiPersistentProbeMetrics {
 			persistent_probes: Count::new(self.persistent_probes.load(Ordering::Relaxed)),
@@ -248,6 +280,9 @@ impl Deref for StandardMultiStore {
 
 impl Shutdown for StandardMultiStore {
 	fn shutdown(&self) {
+		if let Some(filter) = self.filter.as_ref() {
+			let _ = filter.send(FilterMessage::Shutdown);
+		}
 		if let Some(persistent) = self.persistent.as_ref() {
 			persistent.shutdown();
 		}

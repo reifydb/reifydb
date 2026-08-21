@@ -447,6 +447,7 @@ fn multi_persistent_rows(store: &MultiStore) -> Vec<MetricsRow> {
 		return Vec::new();
 	};
 	let probe = store.persistent_probe_metrics().unwrap_or_default();
+	let filter = store.persistent_filter_metrics().unwrap_or_default();
 	vec![MetricsRow {
 		dimensions: Vec::new(),
 		measures: vec![
@@ -457,6 +458,11 @@ fn multi_persistent_rows(store: &MultiStore) -> Vec<MetricsRow> {
 			counter_count("misses", metrics.misses.as_u64()),
 			counter_count("persistent_probes", probe.persistent_probes.as_u64()),
 			counter_count("persistent_absent", probe.persistent_absent.as_u64()),
+			level_ratio("filter_fill_ratio", filter.fill_ratio),
+			level_count("filter_estimated_keys", filter.estimated_keys),
+			level_count("filter_rejected", filter.rejected),
+			level_count("filter_enabled", filter.enabled as u64),
+			level_count("filter_rebuilds", filter.rebuilds),
 		],
 	}]
 }

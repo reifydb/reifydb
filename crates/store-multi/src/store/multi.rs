@@ -130,6 +130,9 @@ impl StandardMultiStore {
 		let Some(persistent) = &self.persistent else {
 			return Ok(None);
 		};
+		if !persistent.filter().may_contain(table, key) {
+			return Ok(None);
+		}
 		self.persistent_probes.fetch_add(1, Ordering::Relaxed);
 		Ok(match persistent.get(table, key.as_ref(), version)? {
 			VersionedGetResult::Value {
@@ -322,8 +325,16 @@ impl StandardMultiStore {
 					read_aligned[i] = VersionedGetResult::Tombstone;
 				}
 				VersionedGetResult::NotFound => {
-					persistent_idx.push(i);
-					persistent_slices.push(key_slices[i]);
+					let maybe = match &self.persistent {
+						Some(persistent) => {
+							persistent.filter().may_contain(table, table_keys[i])
+						}
+						None => false,
+					};
+					if maybe {
+						persistent_idx.push(i);
+						persistent_slices.push(key_slices[i]);
+					}
 				}
 			}
 		}
@@ -1176,6 +1187,9 @@ impl StandardMultiStore {
 		let Some(persistent) = &self.persistent else {
 			return Ok(None);
 		};
+		if !persistent.filter().may_contain(table, key) {
+			return Ok(None);
+		}
 		self.persistent_probes.fetch_add(1, Ordering::Relaxed);
 		Ok(match persistent.get(table, key.as_ref(), prev_version)? {
 			VersionedGetResult::Value {
@@ -1568,15 +1582,25 @@ mod probe_tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		delta::Delta,
+		event::EventBus,
 		interface::{
 			catalog::{id::TableId, storage::StorageId},
 			store::{MultiVersionCommit, MultiVersionGet, MultiVersionGetPrevious, classify_key},
 		},
 		key::row::RowKey,
 	};
+	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown};
+	use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 	use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
-	use crate::{store::StandardMultiStore, tier::TierBatch};
+	use crate::{
+		config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
+		store::StandardMultiStore,
+		tier::{
+			TierBatch, commit::buffer::MultiCommitBufferTier,
+			persistent::sqlite::storage::SqlitePersistentStorage, read::ReadBufferConfig,
+		},
+	};
 
 	const STORAGE: StorageId = StorageId::Table(TableId(1));
 
@@ -1600,10 +1624,45 @@ mod probe_tests {
 		Some(CowVec::new(text.as_bytes().to_vec()))
 	}
 
+	fn store_over_populated_persistent() -> (StandardMultiStore, SqliteTempPathGuard) {
+		let (sqlite_config, guard) = SqliteConfig::in_memory();
+		{
+			let storage = SqlitePersistentStorage::new(sqlite_config.clone());
+			let seeded = RowKey::encoded(STORAGE, 999);
+			let mut batch: TierBatch = HashMap::new();
+			batch.insert(classify_key(&seeded), vec![(seeded, value("preexisting"))]);
+			storage.set_collecting_accepted(CommitVersion(1), batch).unwrap();
+			storage.shutdown();
+		}
+
+		let clock = Clock::testing();
+		let actor_system = ActorSystem::testing(clock.clone());
+		let spawner = actor_system.spawner();
+		let event_bus = EventBus::new(&spawner);
+		let store = StandardMultiStore::new(MultiStoreConfig {
+			commit: CommitBufferConfig {
+				storage: MultiCommitBufferTier::memory(),
+			},
+			persistent: Some(PersistentConfig::sqlite(sqlite_config)),
+			read: Some(ReadBufferConfig::default()),
+			retention: Default::default(),
+			merge_config: Default::default(),
+			event_bus,
+			spawner,
+			clock,
+		})
+		.unwrap();
+
+		assert!(
+			!store.persistent().expect("persistent tier configured").filter().metrics().enabled,
+			"the filter came up armed over a populated database, so every lookup below is ruled out \
+			 before it reaches sqlite and the probe counters measure nothing"
+		);
+		(store, guard)
+	}
+
 	#[test]
 	fn a_read_the_commit_buffer_answers_never_counts_a_persistent_probe() {
-		// The absent ratio is only meaningful over reads a filter could have skipped. A buffer-served
-		// read never touches sqlite, so counting it would dilute the ratio and understate the win.
 		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 
 		let present = RowKey::encoded(STORAGE, 1);
@@ -1635,7 +1694,6 @@ mod probe_tests {
 
 	#[test]
 	fn a_persistent_read_that_finds_a_row_counts_a_probe_but_no_absence() {
-		// A found row is the case a filter cannot save: the sqlite read had to happen.
 		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 
 		let k = RowKey::encoded(STORAGE, 1);
@@ -1653,8 +1711,7 @@ mod probe_tests {
 
 	#[test]
 	fn a_persistent_read_that_finds_nothing_counts_a_probe_and_an_absence() {
-		// This is the only case a filter can eliminate, so it is the whole numerator of the ratio.
-		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		let (store, _guard) = store_over_populated_persistent();
 
 		let k = RowKey::encoded(STORAGE, 77);
 
@@ -1670,9 +1727,6 @@ mod probe_tests {
 
 	#[test]
 	fn a_tombstoned_key_counts_a_probe_but_never_an_absence() {
-		// A tombstone means the key IS in the store, deleted at some version, and the read had to
-		// happen to learn that. A filter keyed on (table, key) must answer "maybe" for it, so it can
-		// skip nothing here. Counting it absent overstates the filter's ceiling.
 		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 
 		let k = RowKey::encoded(STORAGE, 5);
@@ -1690,9 +1744,7 @@ mod probe_tests {
 
 	#[test]
 	fn a_batched_read_counts_one_probe_per_key_that_reached_the_persistent_tier() {
-		// get_many reaches persistent through get_many, not get_probe_persistent, so it accounts
-		// separately. A per-call increment instead of a per-key one would undercount the denominator.
-		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		let (store, _guard) = store_over_populated_persistent();
 
 		let resident = RowKey::encoded(STORAGE, 1);
 		let tombstoned = RowKey::encoded(STORAGE, 2);
@@ -1735,9 +1787,7 @@ mod probe_tests {
 
 	#[test]
 	fn a_previous_version_read_that_reaches_persistent_is_counted() {
-		// get_previous_version has its own persistent probe. Leaving it uncounted hides point reads
-		// that a filter would serve, so the ratio is measured over less traffic than really exists.
-		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		let (store, _guard) = store_over_populated_persistent();
 
 		let k = RowKey::encoded(STORAGE, 42);
 
@@ -1752,7 +1802,6 @@ mod probe_tests {
 
 	#[test]
 	fn a_store_without_a_persistent_tier_reports_no_probe_metrics() {
-		// Zeroes would read as a perfectly cheap store rather than as a store with nothing to probe.
 		let store = StandardMultiStore::testing_memory();
 		assert!(store.get(&RowKey::encoded(STORAGE, 1), CommitVersion(9)).unwrap().is_none());
 		assert!(store.persistent_probe_metrics().is_none());

@@ -50,6 +50,7 @@ use tracing::{instrument, warn};
 
 use crate::{
 	MultiVersionScope,
+	filter::{ARMED_CAPACITY_KEYS, MultiKeyFilter},
 	tier::{
 		DisplacedValues, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
 		VersionedGetResult,
@@ -58,11 +59,12 @@ use crate::{
 			sqlite::{
 				entry::{current_table_name, current_table_name_to_entry},
 				query::{
-					build_chunked_upsert_sql, build_create_current_sql,
-					build_delete_below_version_sql, build_delete_keys_sql, build_expired_keys_sql,
-					build_get_current_sql, build_get_many_current_sql, build_range_consistent_sql,
-					build_range_current_sql, build_reap_tombstones_sql, build_upsert_current_sql,
-					prefix_upper_bound, version_from_bytes, version_to_bytes,
+					build_chunked_upsert_sql, build_create_current_sql, build_current_exists_sql,
+					build_current_keys_sql, build_delete_below_version_sql, build_delete_keys_sql,
+					build_expired_keys_sql, build_get_current_sql, build_get_many_current_sql,
+					build_range_consistent_sql, build_range_current_sql, build_reap_tombstones_sql,
+					build_upsert_current_sql, prefix_upper_bound, version_from_bytes,
+					version_to_bytes,
 				},
 			},
 		},
@@ -99,6 +101,7 @@ struct SqlitePersistentStorageInner {
 	cache_misses: AtomicU64,
 	reaped_high_water: Map<EntryKind, Arc<AtomicU64>>,
 	resurrections: AtomicU64,
+	filter: MultiKeyFilter,
 }
 
 struct TableSql {
@@ -175,6 +178,12 @@ impl SqlitePersistentStorage {
 			conns.push(Mutex::new(Some(reader)));
 		}
 
+		let filter = if any_current_row(&conn) {
+			MultiKeyFilter::new()
+		} else {
+			MultiKeyFilter::armed(ARMED_CAPACITY_KEYS)
+		};
+
 		Self {
 			inner: Arc::new(SqlitePersistentStorageInner {
 				conn: Mutex::new(Some(conn)),
@@ -187,8 +196,54 @@ impl SqlitePersistentStorage {
 				cache_misses: AtomicU64::new(0),
 				reaped_high_water: Map::new(),
 				resurrections: AtomicU64::new(0),
+				filter,
 			}),
 		}
+	}
+
+	pub fn filter(&self) -> &MultiKeyFilter {
+		&self.inner.filter
+	}
+
+	pub(crate) fn current_key_slice(
+		&self,
+		table: EntryKind,
+		cursor: Option<&EncodedKey>,
+		budget: usize,
+	) -> Result<Vec<EncodedKey>> {
+		if budget == 0 {
+			return Ok(Vec::new());
+		}
+		let table_sql = self.table_sql(table);
+		let sql = build_current_keys_sql(&table_sql.table_name, cursor.is_some());
+		let limit = budget.min(i64::MAX as usize) as i64;
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(Vec::new());
+		};
+		let mut stmt = match conn.prepare_cached(&sql) {
+			Ok(stmt) => stmt,
+			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
+			Err(e) => {
+				return Err(error!(internal(format!("Failed to prepare current key scan: {}", e))));
+			}
+		};
+		let mut rows = match cursor {
+			Some(key) => stmt.query(params![key.as_slice(), limit]),
+			None => stmt.query(params![limit]),
+		}
+		.map_err(|e| error!(internal(format!("Failed to scan current keys: {}", e))))?;
+
+		let mut out = Vec::with_capacity(budget);
+		while let Some(row) =
+			rows.next().map_err(|e| error!(internal(format!("Failed to read current key: {}", e))))?
+		{
+			let key: Vec<u8> = row
+				.get(0)
+				.map_err(|e| error!(internal(format!("Failed to decode current key: {}", e))))?;
+			out.push(EncodedKey::new(key));
+		}
+		Ok(out)
 	}
 
 	pub fn page_cache_metrics(&self) -> SqlitePageCacheMetrics {
@@ -540,6 +595,7 @@ impl SqlitePersistentStorage {
 				reifydb_assertions! {
 					self.assert_no_resurrection(tx, table, table_sql, key, version);
 				}
+				self.inner.filter.add(table, key);
 				boxed.push(Box::new(key.as_slice().to_vec()));
 				boxed.push(Box::new(new_version_bytes.to_vec()));
 				boxed.push(Box::new(value.as_ref().map(|v| v.as_slice().to_vec())));
@@ -563,6 +619,7 @@ impl SqlitePersistentStorage {
 			reifydb_assertions! {
 				self.assert_no_resurrection(tx, table, table_sql, key, version);
 			}
+			self.inner.filter.add(table, key);
 			let value_slice = value.as_ref().map(|v| v.as_slice());
 			let affected = single_stmt
 				.execute(params![
@@ -819,6 +876,31 @@ impl SqlitePersistentStorage {
 
 		Ok(raw)
 	}
+}
+
+fn any_current_row(conn: &Connection) -> bool {
+	let mut stmt = conn
+		.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+		.expect("persistent table listing could not be prepared");
+	let names: Vec<String> = stmt
+		.query_map([], |row| row.get::<_, String>(0))
+		.expect("persistent table listing failed")
+		.collect::<SqliteResult<Vec<String>>>()
+		.expect("persistent table name could not be read");
+	drop(stmt);
+
+	for name in names {
+		if current_table_name_to_entry(&name).is_none() {
+			continue;
+		}
+		let exists: i64 = conn
+			.query_row(&build_current_exists_sql(&name), [], |row| row.get(0))
+			.expect("persistent existence probe failed");
+		if exists != 0 {
+			return true;
+		}
+	}
+	false
 }
 
 fn expiry_stamp(table: EntryKind, value: Option<&CowVec<u8>>) -> Option<DateTime> {

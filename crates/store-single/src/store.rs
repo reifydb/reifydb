@@ -27,7 +27,8 @@ use reifydb_runtime::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::{
-	count::Count, reifydb_assertions,
+	count::Count,
+	reifydb_assertions,
 	util::{cowvec::CowVec, hex},
 	value::duration::Duration,
 };
@@ -615,8 +616,6 @@ mod tests {
 
 	#[test]
 	fn a_read_the_commit_buffer_answers_never_counts_a_persistent_probe() {
-		// The absent ratio is only meaningful over reads a filter could have skipped. A buffer-served
-		// read never touches sqlite, so counting it would dilute the ratio and understate the win.
 		let (mut store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite();
 
 		let present = key("buffered");
@@ -629,11 +628,8 @@ mod tests {
 		)
 		.unwrap();
 		let removed = key("buffered-tombstone");
-		SingleVersionCommit::commit(
-			&mut store,
-			CowVec::new(vec![Delta::remove_silent(removed.clone())]),
-		)
-		.unwrap();
+		SingleVersionCommit::commit(&mut store, CowVec::new(vec![Delta::remove_silent(removed.clone())]))
+			.unwrap();
 
 		let before = probes(&store);
 		assert!(SingleVersionGet::get(&store, &present).unwrap().is_some());
@@ -650,7 +646,6 @@ mod tests {
 
 	#[test]
 	fn a_persistent_read_that_finds_a_row_counts_a_probe_but_no_absence() {
-		// A found row is the case a filter cannot save: the sqlite read had to happen.
 		let (store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite();
 
 		let k = key("resident");
@@ -675,7 +670,6 @@ mod tests {
 
 	#[test]
 	fn a_persistent_read_that_finds_nothing_counts_a_probe_and_an_absence() {
-		// This is the only case a filter can eliminate, so it is the whole numerator of the ratio.
 		let (store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite();
 
 		let k = key("never-written");
@@ -699,7 +693,6 @@ mod tests {
 
 	#[test]
 	fn a_store_without_a_persistent_tier_reports_no_probe_metrics() {
-		// Zeroes would read as a perfectly cheap store rather than as a store with nothing to probe.
 		let store = StandardSingleStore::testing_memory();
 		assert!(SingleVersionGet::get(&store, &key("anything")).unwrap().is_none());
 		assert!(store.persistent_probe_metrics().is_none());

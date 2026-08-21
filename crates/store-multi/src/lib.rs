@@ -16,6 +16,7 @@ use reifydb_core::{
 };
 use reifydb_value::Result;
 
+pub mod filter;
 pub mod flush;
 pub mod tier;
 
@@ -35,6 +36,7 @@ use reifydb_core::{
 	},
 	metrics::collect::MetricsCollector,
 };
+use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
@@ -139,6 +141,12 @@ impl MultiStore {
 	pub fn persistent_probe_metrics(&self) -> Option<MultiPersistentProbeMetrics> {
 		match self {
 			MultiStore::Standard(store) => store.persistent_probe_metrics(),
+		}
+	}
+
+	pub fn persistent_filter_metrics(&self) -> Option<FilterMetrics> {
+		match self {
+			MultiStore::Standard(store) => store.persistent_filter_metrics(),
 		}
 	}
 

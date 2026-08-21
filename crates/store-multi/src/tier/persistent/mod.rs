@@ -16,6 +16,7 @@ use reifydb_value::{Result, byte_size::ByteSize, count::Count, value::datetime::
 
 use crate::{
 	MultiVersionScope,
+	filter::MultiKeyFilter,
 	tier::{
 		DisplacedValues, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
 		VersionedGetResult,
@@ -64,6 +65,18 @@ impl MultiPersistentTier {
 	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
 		let (storage, guard) = SqlitePersistentStorage::in_memory();
 		(Self::Sqlite(storage), guard)
+	}
+
+	pub fn sqlite_storage(&self) -> &SqlitePersistentStorage {
+		match self {
+			Self::Sqlite(storage) => storage,
+		}
+	}
+
+	pub fn filter(&self) -> &MultiKeyFilter {
+		match self {
+			Self::Sqlite(storage) => storage.filter(),
+		}
 	}
 
 	pub fn page_cache_metrics(&self) -> SqlitePageCacheMetrics {
@@ -154,6 +167,10 @@ impl MultiPersistentTier {
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl MultiPersistentTier {
+	pub fn filter(&self) -> &MultiKeyFilter {
+		match *self {}
+	}
+
 	pub fn page_cache_metrics(&self) -> SqlitePageCacheMetrics {
 		match *self {}
 	}

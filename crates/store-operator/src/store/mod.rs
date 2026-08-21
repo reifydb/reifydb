@@ -9,9 +9,9 @@ mod state;
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, lifecycle::watermark::CheckpointFloor, metrics::collect::MetricsCollector};
-use reifydb_filter::{actor::FilterMessage, adaptive::FilterMetrics};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_filter::{actor::FilterActor, config::FilterConfig};
+use reifydb_filter::{actor::FilterMessage, adaptive::FilterMetrics};
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,

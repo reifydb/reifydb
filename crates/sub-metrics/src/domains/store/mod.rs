@@ -52,6 +52,10 @@ impl StoreReader {
 		self.multi.persistent_probe_metrics()
 	}
 
+	pub fn multi_filter(&self) -> Option<FilterMetrics> {
+		self.multi.persistent_filter_metrics()
+	}
+
 	pub fn single_commit(&self) -> Option<SingleCommitMetrics> {
 		self.single.commit_metrics()
 	}
