@@ -23,6 +23,7 @@ use reifydb_core::{
 			namespace::Namespace,
 			subscription::HydrationConfig,
 			table::Table,
+			view::ViewStorageKind,
 		},
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedQueue,
@@ -1140,11 +1141,18 @@ impl<'bump> Compiler<'bump> {
 
 					if let Some(predicate) = extract_row_predicate(&filter.condition) {
 						let source = match &input {
-							PhysicalPlan::TableScan(scan) => {
+							PhysicalPlan::TableScan(scan)
+								if scan.source.def().partition_by.is_empty() =>
+							{
 								Some(ResolvedObject::Table(scan.source.clone()))
 							}
 							PhysicalPlan::ViewScan(scan)
-								if scan.source.def().sort().is_empty() =>
+								if scan.source.def().sort().is_empty()
+									&& scan.source
+										.def()
+										.partition_by()
+										.is_empty() && scan.source.def().storage_kind()
+									!= ViewStorageKind::Series =>
 							{
 								Some(ResolvedObject::View(scan.source.clone()))
 							}
