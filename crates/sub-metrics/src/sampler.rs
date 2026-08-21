@@ -400,7 +400,6 @@ fn operator_read_row(metrics: &OperatorReadBufferShardMetrics) -> MetricsRow {
 			level_bytes("limit", metrics.limit),
 			level_count("buckets", metrics.buckets as u64),
 			level_count("entries", metrics.entries as u64),
-			level_count("complete_buckets", metrics.complete_buckets as u64),
 			counter_count("hits", metrics.counters.hits),
 			counter_count("misses", metrics.counters.misses),
 			counter_count("evictions", metrics.counters.evictions),
@@ -431,7 +430,6 @@ fn operator_read_keyspace_row(metrics: &OperatorReadBufferKeyspaceMetrics) -> Me
 			level_bytes("used", metrics.used),
 			level_count("buckets", metrics.buckets as u64),
 			level_count("entries", metrics.entries as u64),
-			level_count("complete_buckets", metrics.complete_buckets as u64),
 			counter_count("hits", metrics.counters.hits),
 			counter_count("misses", metrics.counters.misses),
 			counter_count("evictions", metrics.counters.evictions),
@@ -575,7 +573,6 @@ mod tests {
 			used: ByteSize::from_bytes(12_401),
 			buckets: 115,
 			entries: 231,
-			complete_buckets: 97,
 			counters: OperatorReadBufferMetrics {
 				hits: 367_918,
 				misses: 2_944,
@@ -649,7 +646,6 @@ mod tests {
 		assert_eq!(find("used").reading, Reading::Bytes(ByteSize::from_bytes(12_401)));
 		assert_eq!(find("buckets").reading, Reading::Count(Count::new(115)));
 		assert_eq!(find("entries").reading, Reading::Count(Count::new(231)));
-		assert_eq!(find("complete_buckets").reading, Reading::Count(Count::new(97)));
 		assert_eq!(find("hits").reading, Reading::Count(Count::new(367_918)));
 		assert_eq!(find("misses").reading, Reading::Count(Count::new(2_944)));
 		assert_eq!(find("evictions").reading, Reading::Count(Count::new(51)));

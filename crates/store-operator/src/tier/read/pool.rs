@@ -74,12 +74,6 @@ impl OperatorReadBufferTier {
 			.sum()
 	}
 
-	pub fn complete_buckets(&self) -> usize {
-		self.all_shards()
-			.map(|shard| shard.lock().buckets.values().filter(|bucket| bucket.complete).count())
-			.sum()
-	}
-
 	pub fn hits(&self) -> u64 {
 		self.all_shards().map(|shard| shard.lock().metrics.hits).sum()
 	}
@@ -111,10 +105,8 @@ impl OperatorReadBufferTier {
 		for (index, shard) in self.inner.shards.iter().enumerate() {
 			let shard = shard.lock();
 			let mut entries = 0usize;
-			let mut complete_buckets = 0usize;
 			for bucket in shard.buckets.values() {
 				entries += bucket.entries.len();
-				complete_buckets += usize::from(bucket.complete);
 			}
 			out.push(OperatorReadBufferShardMetrics {
 				shard: index,
@@ -122,7 +114,6 @@ impl OperatorReadBufferTier {
 				limit: shard.budget.limit(),
 				buckets: shard.buckets.len(),
 				entries,
-				complete_buckets,
 				counters: shard.metrics,
 			});
 		}
@@ -133,7 +124,6 @@ impl OperatorReadBufferTier {
 		let mut used = vec![0u64; KEYSPACE_SLOTS];
 		let mut buckets = vec![0usize; KEYSPACE_SLOTS];
 		let mut entries = vec![0usize; KEYSPACE_SLOTS];
-		let mut complete_buckets = vec![0usize; KEYSPACE_SLOTS];
 		let mut counters = vec![OperatorReadBufferMetrics::default(); KEYSPACE_SLOTS];
 
 		for shard in self.all_shards() {
@@ -143,7 +133,6 @@ impl OperatorReadBufferTier {
 				used[slot] += bucket.bytes as u64;
 				buckets[slot] += 1;
 				entries[slot] += bucket.entries.len();
-				complete_buckets[slot] += usize::from(bucket.complete);
 			}
 			for (slot, source) in shard.keyspace_metrics.iter().enumerate() {
 				accumulate(&mut counters[slot], source);
@@ -158,7 +147,6 @@ impl OperatorReadBufferTier {
 				used: ByteSize::from_bytes(used[slot]),
 				buckets: buckets[slot],
 				entries: entries[slot],
-				complete_buckets: complete_buckets[slot],
 				counters: counters[slot],
 			})
 			.collect()

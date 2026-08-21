@@ -53,11 +53,11 @@ fn operator_read_keyspace_pins_the_published_layout() {
 
 	let levels = spec.measures.iter().filter(|m| m.kind == MetricKind::Level).count();
 	let counters = spec.measures.iter().filter(|m| m.kind == MetricKind::Counter).count();
-	assert_eq!((levels, counters), (4, 6), "used/buckets/entries/complete_buckets are levels, the rest counters");
-	assert_eq!(spec.measures.len(), 10, "no measure outside the level/counter split");
+	assert_eq!((levels, counters), (3, 6), "used/buckets/entries are levels, the rest counters");
+	assert_eq!(spec.measures.len(), 9, "no measure outside the level/counter split");
 
 	let current = spec.columns(Surface::Current);
-	assert_eq!(current.len(), 12, "ts + keyspace + 4 levels + 6 counters");
+	assert_eq!(current.len(), 11, "ts + keyspace + 3 levels + 6 counters");
 	assert_eq!(current[0].name, "ts");
 	assert_eq!(current[1].name, "keyspace");
 	assert!(

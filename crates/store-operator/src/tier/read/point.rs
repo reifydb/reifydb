@@ -35,12 +35,6 @@ impl OperatorReadBufferTier {
 					bucket.tick = next;
 					row
 				}
-				None if bucket.complete => {
-					metrics.hits += 1;
-					keyspace.hits += 1;
-					bucket.tick = next;
-					None
-				}
 				None => {
 					metrics.misses += 1;
 					keyspace.misses += 1;
@@ -77,12 +71,6 @@ impl OperatorReadBufferTier {
 					bucket.tick = next;
 					present
 				}
-				None if bucket.complete => {
-					metrics.hits += 1;
-					keyspace.hits += 1;
-					bucket.tick = next;
-					false
-				}
 				None => {
 					metrics.misses += 1;
 					keyspace.misses += 1;
@@ -92,43 +80,6 @@ impl OperatorReadBufferTier {
 		};
 		shard.next_tick = next + 1;
 		Some(result)
-	}
-
-	pub fn remember(&self, operator: OperatorId, key: EncodedKey, row: Option<EncodedPodRow>) {
-		let Some(id) = BucketId::of(operator, &key) else {
-			return;
-		};
-		let mut shard = self.shard_for(&id).lock();
-		insert_entry(&mut shard, id, key, row);
-	}
-
-	pub fn mark_complete(&self, bucket: BucketId) {
-		let mut shard = self.shard_for(&bucket).lock();
-		let next = shard.next_tick;
-		{
-			let Shard {
-				buckets,
-				budget,
-				..
-			} = &mut *shard;
-			let entry = buckets.entry(bucket).or_insert_with(|| {
-				budget.charge(ByteSize::from_bytes(BUCKET_OVERHEAD as u64));
-				Bucket {
-					entries: BTreeMap::new(),
-					bytes: BUCKET_OVERHEAD,
-					complete: false,
-					tick: next,
-				}
-			});
-			entry.complete = true;
-			entry.tick = next;
-		}
-		shard.next_tick = next + 1;
-		shard.evict_to_capacity();
-	}
-
-	pub fn is_complete(&self, bucket: BucketId) -> bool {
-		self.shard_for(&bucket).lock().buckets.get(&bucket).is_some_and(|found| found.complete)
 	}
 
 	pub fn begin_fill(&self, operator: OperatorId, key: &EncodedKey) -> bool {
@@ -210,7 +161,6 @@ impl OperatorReadBufferTier {
 			let footprint = entry_footprint(key, &removed);
 			account(&mut bucket.bytes, budget, footprint, 0);
 		}
-		bucket.complete = false;
 		if bucket.entries.is_empty() {
 			let bytes = bucket.bytes;
 			buckets.remove(&id);
@@ -290,7 +240,6 @@ fn insert_entry(shard: &mut Shard, id: BucketId, key: EncodedKey, row: Option<En
 					Bucket {
 						entries,
 						bytes,
-						complete: false,
 						tick: next,
 					},
 				);

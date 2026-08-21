@@ -70,7 +70,6 @@ impl BucketId {
 struct Bucket {
 	entries: BTreeMap<EncodedKey, Option<EncodedPodRow>>,
 	bytes: usize,
-	complete: bool,
 	tick: u64,
 }
 
@@ -113,7 +112,6 @@ pub struct OperatorReadBufferShardMetrics {
 	pub limit: ByteSize,
 	pub buckets: usize,
 	pub entries: usize,
-	pub complete_buckets: usize,
 	pub counters: OperatorReadBufferMetrics,
 }
 
@@ -123,7 +121,6 @@ pub struct OperatorReadBufferKeyspaceMetrics {
 	pub used: ByteSize,
 	pub buckets: usize,
 	pub entries: usize,
-	pub complete_buckets: usize,
 	pub counters: OperatorReadBufferMetrics,
 }
 
