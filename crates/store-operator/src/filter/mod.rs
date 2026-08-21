@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{interface::catalog::flow::OperatorId, util::bloom::BloomFilter};
+use reifydb_value::count::Count;
 
 const EXPECTED_KEYS: usize = 1_000_000;
 
@@ -33,4 +34,21 @@ impl OperatorKeyFilter {
 	pub fn fill_ratio(&self) -> f64 {
 		self.0.fill_ratio()
 	}
+
+	pub fn estimated_keys(&self) -> u64 {
+		self.0.estimated_items() as u64
+	}
+
+	pub fn metrics(&self) -> OperatorFilterMetrics {
+		OperatorFilterMetrics {
+			fill_ratio: self.fill_ratio(),
+			estimated_keys: Count::new(self.estimated_keys()),
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct OperatorFilterMetrics {
+	pub fill_ratio: f64,
+	pub estimated_keys: Count,
 }

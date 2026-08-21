@@ -141,7 +141,7 @@ impl TakeOperator {
 
 impl TakePlan {
 	fn state_key() -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM, b"")
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, b"")
 	}
 
 	fn load_take_state(&self, host: &mut dyn HostContext) -> Result<TakeState> {

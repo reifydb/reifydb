@@ -40,7 +40,7 @@ const DELAY_MS: u64 = 1_000;
 // assertion. It is declared only because declaring it is what puts the node in the event domain.
 const LATENESS_MS: u64 = 3_600_000;
 
-const ALARM_STATE: Keyspace = Keyspace::CUSTOM;
+const ALARM_STATE: Keyspace = Keyspace::CUSTOM_NOT_CACHED;
 
 struct AlarmRow {
 	g: i32,
@@ -272,7 +272,7 @@ fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_wok
 	);
 }
 
-const SNOOZE_ARMED: Keyspace = Keyspace::CUSTOM;
+const SNOOZE_ARMED: Keyspace = Keyspace::CUSTOM_NOT_CACHED;
 
 struct Snooze {
 	disarm_offset_ms: u64,

@@ -87,7 +87,7 @@ pub mod tests {
 	use super::*;
 
 	fn make_state_key(_operator_id: u64, key: &[u8]) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM, key.to_vec())
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, key.to_vec())
 	}
 
 	fn decoded_suffix(framed: &[u8]) -> Vec<u8> {

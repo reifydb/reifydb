@@ -135,6 +135,9 @@ impl OperatorReadBufferTier {
 		let Some(id) = BucketId::of(operator, key) else {
 			return false;
 		};
+		if !id.keyspace.is_cached() {
+			return false;
+		}
 		let mut shard = self.shard_for(&id).lock();
 		let slot = id.keyspace.0 as usize;
 		if shard.filling.contains_key(&(id, key.clone())) {
@@ -257,6 +260,9 @@ impl OperatorReadBufferTier {
 }
 
 fn insert_entry(shard: &mut Shard, id: BucketId, key: EncodedKey, row: Option<EncodedPodRow>) {
+	if !id.keyspace.is_cached() {
+		return;
+	}
 	let next = shard.next_tick;
 	{
 		let Shard {

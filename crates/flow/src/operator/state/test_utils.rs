@@ -13,7 +13,7 @@ pub mod test {
 	}
 
 	pub fn test_key(suffix: &str) -> GroupStateKey {
-		GroupStateKey::root(Keyspace::CUSTOM, format!("test_{}", suffix).into_bytes())
+		GroupStateKey::root(Keyspace::CUSTOM_NOT_CACHED, format!("test_{}", suffix).into_bytes())
 	}
 
 	pub fn assert_row_eq(actual: &EncodedPodRow, expected: &EncodedPodRow) {

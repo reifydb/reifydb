@@ -54,13 +54,13 @@ impl IntoGroupStateKey for &TestPair {
 		suffix.extend_from_slice(self.0.0.as_bytes());
 		suffix.push(0xFF);
 		suffix.extend_from_slice(self.1.0.as_bytes());
-		GroupStateKey::root(Keyspace::CUSTOM, suffix)
+		GroupStateKey::root(Keyspace::CUSTOM_NOT_CACHED, suffix)
 	}
 }
 
 impl IntoGroupStateKey for &TestKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		GroupStateKey::root(Keyspace::CUSTOM, self.0.as_bytes())
+		GroupStateKey::root(Keyspace::CUSTOM_NOT_CACHED, self.0.as_bytes())
 	}
 }
 

@@ -21,7 +21,10 @@ use reifydb_runtime::{
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::{config::OperatorPersistentConfig, flush::OperatorFlushActor, sqlite::SqliteOperatorStorage};
+use crate::{
+	config::OperatorPersistentConfig, filter::OperatorFilterMetrics, flush::OperatorFlushActor,
+	sqlite::SqliteOperatorStorage,
+};
 use crate::{
 	config::OperatorStoreConfig,
 	flush::{FlushMessage, flush_now, flush_pending},
@@ -131,6 +134,10 @@ impl StandardOperatorStore {
 		self.persistent.as_ref().map(OperatorPersistentTier::page_cache_metrics)
 	}
 
+	pub fn persistent_filter_metrics(&self) -> Option<OperatorFilterMetrics> {
+		self.persistent.as_ref().map(|tier| tier.filter().metrics())
+	}
+
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		let mut collectors =
 			self.persistent.as_ref().map(OperatorPersistentTier::metrics_collectors).unwrap_or_default();
@@ -217,6 +224,12 @@ impl OperatorStore {
 	pub fn persistent_page_cache_metrics(&self) -> Option<OperatorPageCacheMetrics> {
 		match self {
 			Self::Standard(store) => store.persistent_page_cache_metrics(),
+		}
+	}
+
+	pub fn persistent_filter_metrics(&self) -> Option<OperatorFilterMetrics> {
+		match self {
+			Self::Standard(store) => store.persistent_filter_metrics(),
 		}
 	}
 

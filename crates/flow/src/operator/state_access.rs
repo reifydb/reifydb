@@ -126,7 +126,7 @@ mod tests {
 
 	impl IntoGroupStateKey for &Key {
 		fn into_group_state_key(self) -> GroupStateKey {
-			GroupStateKey::root(Keyspace::CUSTOM, self.0.as_bytes())
+			GroupStateKey::root(Keyspace::CUSTOM_NOT_CACHED, self.0.as_bytes())
 		}
 	}
 

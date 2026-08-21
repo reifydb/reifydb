@@ -566,7 +566,7 @@ mod group_commit_integration {
 	}
 
 	fn state_inner(suffix: &[u8]) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM, suffix)
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, suffix)
 	}
 
 	fn state_slice(entries: &[(OperatorId, &GroupStateKey, u8)]) -> FlowSlice {

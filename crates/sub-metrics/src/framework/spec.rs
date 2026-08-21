@@ -635,6 +635,8 @@ impl MetricsDomain {
 					level("connections_total", ValueType::Uint8),
 					counter("hits", ValueType::Uint8),
 					counter("misses", ValueType::Uint8),
+					level("filter_fill_ratio", ValueType::Float8),
+					level("filter_estimated_keys", ValueType::Uint8),
 				],
 				has_total: true,
 			},

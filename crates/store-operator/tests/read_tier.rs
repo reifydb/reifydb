@@ -352,3 +352,66 @@ fn a_flushed_removal_still_reads_back_as_absent() {
 
 	assert_eq!(store.get(OP_A, &key(1)), None, "the erased key must not resurrect from the tier");
 }
+
+fn key_in(keyspace: Keyspace, suffix: u8) -> EncodedKey {
+	OperatorStateKey::inner_encoded(GROUP, keyspace, [suffix]).as_encoded().clone()
+}
+
+#[test]
+fn a_keyspace_declared_not_cached_never_occupies_the_read_buffer() {
+	// These three keyspaces were measured holding 11.67 MiB of a 64 MiB budget while answering 0.097% of
+	// hits. Every entry they take is an entry a hot keyspace loses to whole-bucket eviction, so admission
+	// must refuse them outright; caching them under a different name is the failure this pins.
+	for keyspace in [Keyspace::CUSTOM_NOT_CACHED, Keyspace::JOIN_PIN, Keyspace::ENGINE_META] {
+		let (store, _storage, _guard) = cached_store();
+		let key = key_in(keyspace, 1);
+		store.set(OP_A, key.clone(), row("durable"));
+		assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
+
+		for _ in 0..4 {
+			assert_eq!(
+				body(&store.get(OP_A, &key).expect("a refused keyspace must still read correctly")),
+				"durable",
+				"{} bypasses the tier, it does not lose its rows",
+				keyspace.name()
+			);
+		}
+
+		assert_eq!(
+			entries(&store),
+			0,
+			"{} must leave nothing behind: neither the flush write-through nor a read fill may admit it",
+			keyspace.name()
+		);
+		assert_eq!(
+			store.read().expect("the fixture configures a read tier").metrics().fills_started,
+			0,
+			"{} must be refused before the fill starts; a fill that can only be thrown away still takes the shard lock and inflates the counter",
+			keyspace.name()
+		);
+	}
+}
+
+#[test]
+fn a_keyspace_declared_cached_still_occupies_the_read_buffer() {
+	// The control for the refusal above: a gate that refuses everything would pass that test while turning
+	// the whole tier off, and the throughput loss would only show up in a replay.
+	let (store, _storage, _guard) = cached_store();
+	store.set(OP_A, key_in(Keyspace::CUSTOM_CACHED, 1), row("durable"));
+	assert!(store.flush_pending_blocking());
+
+	assert_eq!(entries(&store), 1, "a cached keyspace must be admitted, or the gate is a blanket off switch");
+}
+
+#[test]
+fn a_refused_keyspace_reads_absent_without_remembering_the_absence() {
+	// A refused keyspace must not be admitted through the absence path either: a miss that caches "nothing
+	// here" costs the same entry overhead as a row and is exactly what the read fill would have written.
+	let (store, storage, _guard) = cached_store();
+	let key = key_in(Keyspace::JOIN_PIN, 1);
+	storage.set(OP_A, key.clone(), row("seed"));
+	storage.remove(OP_A, &key);
+
+	assert_eq!(store.get(OP_A, &key), None, "the key is gone from sqlite but still passes the filter");
+	assert_eq!(entries(&store), 0, "the absence must not be remembered for a refused keyspace");
+}

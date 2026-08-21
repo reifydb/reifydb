@@ -32,7 +32,7 @@ pub fn make_row(body: &str) -> EncodedPodRow {
 }
 
 pub fn key(s: &str) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM, s.as_bytes())
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, s.as_bytes())
 }
 
 pub fn engine() -> TestEngine {

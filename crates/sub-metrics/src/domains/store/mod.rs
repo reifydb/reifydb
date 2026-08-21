@@ -6,6 +6,7 @@ use reifydb_store_multi::{
 	tier::{commit::buffer::MultiCommitMetrics, persistent::SqlitePageCacheMetrics, read::ReadBufferShardMetrics},
 };
 use reifydb_store_operator::{
+	filter::OperatorFilterMetrics,
 	store::OperatorStore,
 	tier::{
 		persistent::OperatorPageCacheMetrics,
@@ -63,5 +64,9 @@ impl StoreReader {
 
 	pub fn operator_persistent(&self) -> Option<OperatorPageCacheMetrics> {
 		self.operator.persistent_page_cache_metrics()
+	}
+
+	pub fn operator_filter(&self) -> Option<OperatorFilterMetrics> {
+		self.operator.persistent_filter_metrics()
 	}
 }

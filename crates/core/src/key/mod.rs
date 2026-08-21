@@ -724,7 +724,7 @@ pub mod tests {
 		let key = Key::OperatorState(OperatorStateKey {
 			operator: OperatorId(0xCAFEBABE),
 			group: GroupId::ROOT,
-			keyspace: Keyspace::CUSTOM,
+			keyspace: Keyspace::CUSTOM_NOT_CACHED,
 			suffix: vec![1, 2, 3],
 		});
 

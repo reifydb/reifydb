@@ -1411,7 +1411,8 @@ mod cache_tests {
 		let read = store.read.clone().expect("read tier configured");
 
 		let opkey =
-			OperatorStateKey::new(OperatorId(7), GroupId::ROOT, Keyspace::CUSTOM, vec![1, 2, 3]).encode();
+			OperatorStateKey::new(OperatorId(7), GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, vec![1, 2, 3])
+				.encode();
 		MultiVersionCommit::commit(
 			&store,
 			cow_vec![Delta::Set {

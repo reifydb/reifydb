@@ -1076,7 +1076,7 @@ mod seal_anchor_guard_tests {
 	#[test]
 	fn a_guest_write_to_its_own_keyspace_still_reaches_the_host() {
 		// A guard keyed on anything wider than the one keyspace would silently break every guest operator.
-		let key = framed(Keyspace::CUSTOM);
+		let key = framed(Keyspace::CUSTOM_NOT_CACHED);
 		let value = EncodedPodRow::new(&[0u8; 4]);
 
 		let (set, set_reached) = with_context(|ctx| {

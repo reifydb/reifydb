@@ -312,6 +312,14 @@ fn counter_count(metric: &'static str, value: u64) -> Measure {
 	}
 }
 
+fn level_ratio(metric: &'static str, ratio: f64) -> Measure {
+	Measure {
+		metric,
+		reading: Reading::Ratio(ratio),
+		kind: MetricKind::Level,
+	}
+}
+
 fn level_bytes(metric: &'static str, bytes: ByteSize) -> Measure {
 	Measure {
 		metric,
@@ -409,7 +417,7 @@ fn operator_read_keyspace_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 
 fn keyspace_label(keyspace: Keyspace) -> String {
 	let name = keyspace.name();
-	if name == "CUSTOM" && keyspace != Keyspace::CUSTOM {
+	if name == "CUSTOM" {
 		format!("CUSTOM_0x{:02X}", keyspace.0)
 	} else {
 		name.to_string()
@@ -470,6 +478,7 @@ fn operator_persistent_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 	let Some(metrics) = store.persistent_page_cache_metrics() else {
 		return Vec::new();
 	};
+	let filter = store.persistent_filter_metrics().unwrap_or_default();
 	vec![MetricsRow {
 		dimensions: Vec::new(),
 		measures: vec![
@@ -478,6 +487,8 @@ fn operator_persistent_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 			level_count("connections_total", metrics.connections_total.as_u64()),
 			counter_count("hits", metrics.hits.as_u64()),
 			counter_count("misses", metrics.misses.as_u64()),
+			level_ratio("filter_fill_ratio", filter.fill_ratio),
+			level_count("filter_estimated_keys", filter.estimated_keys.as_u64()),
 		],
 	}]
 }
@@ -590,12 +601,17 @@ mod tests {
 
 	#[test]
 	fn the_real_custom_keyspace_keeps_its_plain_name() {
-		// Keyspace::CUSTOM is a declared constant, not a gap: relabelling it CUSTOM_0x40 would rename a
-		// keyspace that every other surface still calls CUSTOM.
+		// CUSTOM_NOT_CACHED and CUSTOM_CACHED are declared constants, not gaps: relabelling either as
+		// CUSTOM_0x40 hides which admission side a keyspace sits on.
 		let mut metrics = sample();
-		metrics.keyspace = Keyspace::CUSTOM;
+		metrics.keyspace = Keyspace::CUSTOM_NOT_CACHED;
 		let row = operator_read_keyspace_row(&metrics);
-		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM".to_string())]);
+		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_NOT_CACHED".to_string())]);
+
+		let mut metrics = sample();
+		metrics.keyspace = Keyspace::CUSTOM_CACHED;
+		let row = operator_read_keyspace_row(&metrics);
+		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_CACHED".to_string())]);
 	}
 
 	#[test]

@@ -85,7 +85,7 @@ impl GetConfig for StubConfig {
 }
 
 fn opkey(n: u8) -> reifydb_codec::key::encoded::EncodedKey {
-	OperatorStateKey::encoded(NODE, GroupId::ROOT, Keyspace::CUSTOM, vec![n])
+	OperatorStateKey::encoded(NODE, GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, vec![n])
 }
 
 fn commit_set(store: &StandardMultiStore, n: u8, version: u64) {

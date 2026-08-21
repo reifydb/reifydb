@@ -145,7 +145,9 @@ impl Keyspace {
 
 	pub const SEAL_ANCHOR: Self = Self(0x2B);
 
-	pub const CUSTOM: Self = Self(0x40);
+	pub const CUSTOM_NOT_CACHED: Self = Self(0x40);
+
+	pub const CUSTOM_CACHED: Self = Self(0x42);
 
 	pub fn name(&self) -> &'static str {
 		match *self {
@@ -184,7 +186,8 @@ impl Keyspace {
 			Self::RINGBUFFER_META => "RINGBUFFER_META",
 			Self::REAP_QUEUE => "REAP_QUEUE",
 			Self::SEAL_ANCHOR => "SEAL_ANCHOR",
-			Self::CUSTOM => "CUSTOM",
+			Self::CUSTOM_NOT_CACHED => "CUSTOM_NOT_CACHED",
+			Self::CUSTOM_CACHED => "CUSTOM_CACHED",
 			_ => "CUSTOM",
 		}
 	}
@@ -195,6 +198,10 @@ impl Keyspace {
 
 	pub fn is_identity(&self) -> bool {
 		!self.is_data()
+	}
+
+	pub fn is_cached(&self) -> bool {
+		!matches!(*self, Self::CUSTOM_NOT_CACHED | Self::JOIN_PIN | Self::ENGINE_META)
 	}
 
 	pub fn is_known(&self) -> bool {
@@ -500,7 +507,7 @@ mod tests {
 	const NODES: [u64; 4] = [1, 17, 300, 70_000];
 	const GROUPS: [u64; 8] = [1, 2, 127, 128, 1000, 100_000, 1 << 30, u64::MAX];
 	const DATA_KEYSPACES: [Keyspace; 4] =
-		[Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::RUNNING, Keyspace::CUSTOM];
+		[Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::RUNNING, Keyspace::CUSTOM_NOT_CACHED];
 	const IDENTITY_KEYSPACES: [Keyspace; 2] = [Keyspace::GROUP_RECORD, Keyspace::ROW_NUMBER_MAPPING];
 
 	#[derive(Clone, Copy, PartialEq, Debug)]
@@ -511,7 +518,7 @@ mod tests {
 
 	/// Every keyspace the substrate declares, with the phase allowed to erase it. The phase is written
 	/// down rather than read back from `is_data`, or a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, Keyspace, Phase); 36] = [
+	const CENSUS: [(&str, Keyspace, Phase); 37] = [
 		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity),
 		("APPEND_DICTIONARY", Keyspace::APPEND_DICTIONARY, Phase::Identity),
 		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity),
@@ -547,7 +554,8 @@ mod tests {
 		("RINGBUFFER_META", Keyspace::RINGBUFFER_META, Phase::Data),
 		("REAP_QUEUE", Keyspace::REAP_QUEUE, Phase::Data),
 		("SEAL_ANCHOR", Keyspace::SEAL_ANCHOR, Phase::Data),
-		("CUSTOM", Keyspace::CUSTOM, Phase::Data),
+		("CUSTOM_NOT_CACHED", Keyspace::CUSTOM_NOT_CACHED, Phase::Data),
+		("CUSTOM_CACHED", Keyspace::CUSTOM_CACHED, Phase::Data),
 	];
 
 	/// Counts `Keyspace` constants from the source text. There is no reflection over associated
@@ -581,7 +589,8 @@ mod tests {
 		);
 		assert!(!is_framed_inner(&bare));
 
-		let framed = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM, 7u64.to_be_bytes());
+		let framed =
+			OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, 7u64.to_be_bytes());
 		assert!(is_framed_inner(framed.as_slice()));
 		assert!(
 			!contains(&group_identity_inner_range(GroupId(7)), framed.as_slice()),
@@ -877,7 +886,7 @@ mod tests {
 		let key = OperatorStateKey::new(
 			OperatorId(0xDEAD_BEEF),
 			GroupId(123_456),
-			Keyspace::CUSTOM,
+			Keyspace::CUSTOM_NOT_CACHED,
 			vec![1, 2, 3, 4],
 		);
 		assert_eq!(OperatorStateKey::decode(&key.encode()), Some(key));
