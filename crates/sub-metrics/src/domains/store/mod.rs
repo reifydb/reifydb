@@ -4,6 +4,7 @@
 use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_store_multi::{
 	MultiStore,
+	store::MultiPersistentProbeMetrics,
 	tier::{commit::buffer::MultiCommitMetrics, persistent::SqlitePageCacheMetrics, read::ReadBufferShardMetrics},
 };
 use reifydb_store_operator::{
@@ -15,6 +16,7 @@ use reifydb_store_operator::{
 };
 use reifydb_store_single::{
 	SingleStore,
+	store::SinglePersistentProbeMetrics,
 	tier::{commit::buffer::SingleCommitMetrics, persistent::SinglePageCacheMetrics},
 };
 
@@ -46,12 +48,20 @@ impl StoreReader {
 		self.multi.persistent_page_cache_metrics()
 	}
 
+	pub fn multi_persistent_probe(&self) -> Option<MultiPersistentProbeMetrics> {
+		self.multi.persistent_probe_metrics()
+	}
+
 	pub fn single_commit(&self) -> Option<SingleCommitMetrics> {
 		self.single.commit_metrics()
 	}
 
 	pub fn single_persistent(&self) -> Option<SinglePageCacheMetrics> {
 		self.single.persistent_page_cache_metrics()
+	}
+
+	pub fn single_persistent_probe(&self) -> Option<SinglePersistentProbeMetrics> {
+		self.single.persistent_probe_metrics()
 	}
 
 	pub fn operator_read(&self) -> Vec<OperatorReadBufferShardMetrics> {

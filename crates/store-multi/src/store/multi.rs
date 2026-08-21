@@ -4,6 +4,7 @@
 use std::{
 	collections::{BTreeMap, HashMap, btree_map::Entry},
 	ops::{Bound, RangeBounds},
+	sync::atomic::Ordering,
 	vec,
 };
 
@@ -129,6 +130,7 @@ impl StandardMultiStore {
 		let Some(persistent) = &self.persistent else {
 			return Ok(None);
 		};
+		self.persistent_probes.fetch_add(1, Ordering::Relaxed);
 		Ok(match persistent.get(table, key.as_ref(), version)? {
 			VersionedGetResult::Value {
 				value,
@@ -144,7 +146,10 @@ impl StandardMultiStore {
 				}))
 			}
 			VersionedGetResult::Tombstone => Some(None),
-			VersionedGetResult::NotFound => None,
+			VersionedGetResult::NotFound => {
+				self.persistent_absent.fetch_add(1, Ordering::Relaxed);
+				None
+			}
 		})
 	}
 }
@@ -327,8 +332,12 @@ impl StandardMultiStore {
 		if !persistent_slices.is_empty()
 			&& let Some(persistent) = &self.persistent
 		{
+			self.persistent_probes.fetch_add(persistent_slices.len() as u64, Ordering::Relaxed);
 			let persistent_results = persistent.get_many(table, &persistent_slices, version)?;
 			for (slot, result) in persistent_idx.into_iter().zip(persistent_results) {
+				if matches!(result, VersionedGetResult::NotFound) {
+					self.persistent_absent.fetch_add(1, Ordering::Relaxed);
+				}
 				if let (
 					Some(read),
 					VersionedGetResult::Value {
@@ -1167,6 +1176,7 @@ impl StandardMultiStore {
 		let Some(persistent) = &self.persistent else {
 			return Ok(None);
 		};
+		self.persistent_probes.fetch_add(1, Ordering::Relaxed);
 		Ok(match persistent.get(table, key.as_ref(), prev_version)? {
 			VersionedGetResult::Value {
 				value,
@@ -1182,7 +1192,10 @@ impl StandardMultiStore {
 				}))
 			}
 			VersionedGetResult::Tombstone => Some(None),
-			VersionedGetResult::NotFound => None,
+			VersionedGetResult::NotFound => {
+				self.persistent_absent.fetch_add(1, Ordering::Relaxed);
+				None
+			}
 		})
 	}
 }
@@ -1544,5 +1557,204 @@ mod cache_tests {
 			 later begin_warm on this page is refused - so once the page is invalidated it can never warm \
 			 again for the life of the process"
 		);
+	}
+}
+
+#[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
+mod probe_tests {
+	use std::collections::HashMap;
+
+	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+	use reifydb_core::{
+		common::CommitVersion,
+		delta::Delta,
+		interface::{
+			catalog::{id::TableId, storage::StorageId},
+			store::{MultiVersionCommit, MultiVersionGet, MultiVersionGetPrevious, classify_key},
+		},
+		key::row::RowKey,
+	};
+	use reifydb_value::{cow_vec, util::cowvec::CowVec};
+
+	use crate::{store::StandardMultiStore, tier::TierBatch};
+
+	const STORAGE: StorageId = StorageId::Table(TableId(1));
+
+	fn probes(store: &StandardMultiStore) -> (u64, u64) {
+		let m = store.persistent_probe_metrics().expect("persistent tier configured");
+		(m.persistent_probes.as_u64(), m.persistent_absent.as_u64())
+	}
+
+	fn seed_persistent(store: &StandardMultiStore, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) {
+		let mut batch: TierBatch = HashMap::new();
+		for (key, value) in entries {
+			batch.entry(classify_key(&key)).or_default().push((key, value));
+		}
+		store.persistent()
+			.expect("persistent tier configured")
+			.persist_sweep(vec![(CommitVersion(1), batch)])
+			.unwrap();
+	}
+
+	fn value(text: &str) -> Option<CowVec<u8>> {
+		Some(CowVec::new(text.as_bytes().to_vec()))
+	}
+
+	#[test]
+	fn a_read_the_commit_buffer_answers_never_counts_a_persistent_probe() {
+		// The absent ratio is only meaningful over reads a filter could have skipped. A buffer-served
+		// read never touches sqlite, so counting it would dilute the ratio and understate the win.
+		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+
+		let present = RowKey::encoded(STORAGE, 1);
+		MultiVersionCommit::commit(
+			&store,
+			cow_vec![Delta::Set {
+				key: present.clone(),
+				bytes: EncodedBytes(CowVec::new(b"v1".to_vec())),
+			}],
+			CommitVersion(2),
+		)
+		.unwrap();
+		let removed = RowKey::encoded(STORAGE, 2);
+		MultiVersionCommit::commit(&store, cow_vec![Delta::remove_silent(removed.clone())], CommitVersion(3))
+			.unwrap();
+
+		let before = probes(&store);
+		assert!(store.get(&present, CommitVersion(9)).unwrap().is_some());
+		assert!(store.get(&removed, CommitVersion(9)).unwrap().is_none());
+
+		assert_eq!(
+			probes(&store),
+			before,
+			"the commit buffer answered both reads, including the tombstoned one. Counting them as \
+			 persistent probes inflates the denominator with lookups no filter could ever have \
+			 skipped, so the measured absent rate reads lower than the real ceiling"
+		);
+	}
+
+	#[test]
+	fn a_persistent_read_that_finds_a_row_counts_a_probe_but_no_absence() {
+		// A found row is the case a filter cannot save: the sqlite read had to happen.
+		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+
+		let k = RowKey::encoded(STORAGE, 1);
+		seed_persistent(&store, vec![(k.clone(), value("resident"))]);
+
+		let before = probes(&store);
+		assert!(store.get(&k, CommitVersion(9)).unwrap().is_some());
+		assert_eq!(
+			probes(&store),
+			(before.0 + 1, before.1),
+			"a hit must raise the probe count and leave the absent count alone, otherwise the ratio \
+			 claims a filter could skip reads that genuinely returned data"
+		);
+	}
+
+	#[test]
+	fn a_persistent_read_that_finds_nothing_counts_a_probe_and_an_absence() {
+		// This is the only case a filter can eliminate, so it is the whole numerator of the ratio.
+		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+
+		let k = RowKey::encoded(STORAGE, 77);
+
+		let before = probes(&store);
+		assert!(store.get(&k, CommitVersion(9)).unwrap().is_none());
+		assert_eq!(
+			probes(&store),
+			(before.0 + 1, before.1 + 1),
+			"an absent point read must raise both counts, otherwise the ceiling on what a filter \
+			 could save measures as zero and the decision is made on a number that cannot move"
+		);
+	}
+
+	#[test]
+	fn a_tombstoned_key_counts_a_probe_but_never_an_absence() {
+		// A tombstone means the key IS in the store, deleted at some version, and the read had to
+		// happen to learn that. A filter keyed on (table, key) must answer "maybe" for it, so it can
+		// skip nothing here. Counting it absent overstates the filter's ceiling.
+		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+
+		let k = RowKey::encoded(STORAGE, 5);
+		seed_persistent(&store, vec![(k.clone(), None)]);
+
+		let before = probes(&store);
+		assert!(store.get(&k, CommitVersion(9)).unwrap().is_none(), "a tombstone reads as no row");
+		assert_eq!(
+			probes(&store),
+			(before.0 + 1, before.1),
+			"the tombstone was found in sqlite, so the read was not wasted. Counting it as absent \
+			 credits a filter with a saving it cannot make and inflates the measured ceiling"
+		);
+	}
+
+	#[test]
+	fn a_batched_read_counts_one_probe_per_key_that_reached_the_persistent_tier() {
+		// get_many reaches persistent through get_many, not get_probe_persistent, so it accounts
+		// separately. A per-call increment instead of a per-key one would undercount the denominator.
+		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+
+		let resident = RowKey::encoded(STORAGE, 1);
+		let tombstoned = RowKey::encoded(STORAGE, 2);
+		let missing_a = RowKey::encoded(STORAGE, 3);
+		let missing_b = RowKey::encoded(STORAGE, 4);
+		let buffered = RowKey::encoded(STORAGE, 5);
+		seed_persistent(&store, vec![(resident.clone(), value("resident")), (tombstoned.clone(), None)]);
+		MultiVersionCommit::commit(
+			&store,
+			cow_vec![Delta::Set {
+				key: buffered.clone(),
+				bytes: EncodedBytes(CowVec::new(b"buffered".to_vec())),
+			}],
+			CommitVersion(2),
+		)
+		.unwrap();
+
+		let before = probes(&store);
+		let found = store
+			.get_many(
+				&[
+					resident.clone(),
+					tombstoned.clone(),
+					missing_a.clone(),
+					missing_b.clone(),
+					buffered.clone(),
+				],
+				CommitVersion(9),
+			)
+			.unwrap();
+		assert_eq!(found.len(), 2, "only the resident and the buffered key carry a row");
+
+		assert_eq!(
+			probes(&store),
+			(before.0 + 4, before.1 + 2),
+			"four of the five keys fell through to sqlite and two of those came back with nothing. \
+			 The buffered key must not count at all, and the tombstone must count as a probe only"
+		);
+	}
+
+	#[test]
+	fn a_previous_version_read_that_reaches_persistent_is_counted() {
+		// get_previous_version has its own persistent probe. Leaving it uncounted hides point reads
+		// that a filter would serve, so the ratio is measured over less traffic than really exists.
+		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+
+		let k = RowKey::encoded(STORAGE, 42);
+
+		let before = probes(&store);
+		assert!(store.get_previous_version(&k, CommitVersion(9)).unwrap().is_none());
+		assert_eq!(
+			probes(&store),
+			(before.0 + 1, before.1 + 1),
+			"an absent previous-version probe is exactly the sqlite read a filter would skip"
+		);
+	}
+
+	#[test]
+	fn a_store_without_a_persistent_tier_reports_no_probe_metrics() {
+		// Zeroes would read as a perfectly cheap store rather than as a store with nothing to probe.
+		let store = StandardMultiStore::testing_memory();
+		assert!(store.get(&RowKey::encoded(STORAGE, 1), CommitVersion(9)).unwrap().is_none());
+		assert!(store.persistent_probe_metrics().is_none());
 	}
 }

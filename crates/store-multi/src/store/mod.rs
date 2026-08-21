@@ -3,7 +3,10 @@
 
 use std::{
 	ops::Deref,
-	sync::{Arc, OnceLock},
+	sync::{
+		Arc, OnceLock,
+		atomic::{AtomicU64, Ordering},
+	},
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
@@ -16,7 +19,7 @@ use reifydb_core::{
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{count::Count, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::{
@@ -57,6 +60,12 @@ impl MetricsCollector for SqlitePageCacheCollector {
 	}
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MultiPersistentProbeMetrics {
+	pub persistent_probes: Count,
+	pub persistent_absent: Count,
+}
+
 #[derive(Clone)]
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
 
@@ -73,6 +82,9 @@ pub struct StandardMultiStoreInner {
 	pub(crate) eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 
 	pub(crate) event_bus: EventBus,
+
+	pub(crate) persistent_probes: AtomicU64,
+	pub(crate) persistent_absent: AtomicU64,
 }
 
 impl StandardMultiStore {
@@ -124,6 +136,8 @@ impl StandardMultiStore {
 			row_settings_provider,
 			eviction_watermark,
 			event_bus: config.event_bus,
+			persistent_probes: AtomicU64::new(0),
+			persistent_absent: AtomicU64::new(0),
 		})))
 	}
 
@@ -198,6 +212,13 @@ impl StandardMultiStore {
 
 	pub fn persistent_page_cache_metrics(&self) -> Option<SqlitePageCacheMetrics> {
 		self.persistent.as_ref().map(MultiPersistentTier::page_cache_metrics)
+	}
+
+	pub fn persistent_probe_metrics(&self) -> Option<MultiPersistentProbeMetrics> {
+		self.persistent.as_ref().map(|_| MultiPersistentProbeMetrics {
+			persistent_probes: Count::new(self.persistent_probes.load(Ordering::Relaxed)),
+			persistent_absent: Count::new(self.persistent_absent.load(Ordering::Relaxed)),
+		})
 	}
 
 	pub fn flush_pending_blocking(&self) {

@@ -36,7 +36,7 @@ use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::util::cowvec::CowVec;
-use store::StandardSingleStore;
+use store::{SinglePersistentProbeMetrics, StandardSingleStore};
 use tier::{commit::buffer::SingleCommitMetrics, persistent::SinglePageCacheMetrics};
 
 pub struct SingleStoreVersion;
@@ -93,6 +93,12 @@ impl SingleStore {
 	pub fn persistent_page_cache_metrics(&self) -> Option<SinglePageCacheMetrics> {
 		match self {
 			SingleStore::Standard(store) => store.persistent_page_cache_metrics(),
+		}
+	}
+
+	pub fn persistent_probe_metrics(&self) -> Option<SinglePersistentProbeMetrics> {
+		match self {
+			SingleStore::Standard(store) => store.persistent_probe_metrics(),
 		}
 	}
 

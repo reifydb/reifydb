@@ -6,7 +6,7 @@ use std::{
 	ops::{Bound, Deref},
 	sync::{
 		Arc,
-		atomic::{AtomicBool, Ordering},
+		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
 };
 
@@ -27,7 +27,7 @@ use reifydb_runtime::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::{
-	reifydb_assertions,
+	count::Count, reifydb_assertions,
 	util::{cowvec::CowVec, hex},
 	value::duration::Duration,
 };
@@ -49,6 +49,12 @@ use crate::{config::PersistentConfig, flush::actor::FlushActor};
 
 pub type DirtyMap = HashMap<EncodedKey, Option<CowVec<u8>>>;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SinglePersistentProbeMetrics {
+	pub persistent_probes: Count,
+	pub persistent_absent: Count,
+}
+
 #[derive(Clone)]
 pub struct StandardSingleStore(Arc<StandardSingleStoreInner>);
 
@@ -58,6 +64,8 @@ pub struct StandardSingleStoreInner {
 	#[allow(dead_code)]
 	pub(crate) flush_actor: Option<ActorRef<FlushMessage>>,
 	pub(crate) dirty: Arc<Mutex<DirtyMap>>,
+	pub(crate) persistent_probes: AtomicU64,
+	pub(crate) persistent_absent: AtomicU64,
 	_spawner: ActorSpawner,
 }
 
@@ -98,6 +106,8 @@ impl StandardSingleStore {
 			persistent,
 			flush_actor,
 			dirty,
+			persistent_probes: AtomicU64::new(0),
+			persistent_absent: AtomicU64::new(0),
 			_spawner: spawner,
 		})))
 	}
@@ -116,6 +126,13 @@ impl StandardSingleStore {
 
 	pub fn persistent_page_cache_metrics(&self) -> Option<SinglePageCacheMetrics> {
 		self.persistent.as_ref().map(SinglePersistentTier::page_cache_metrics)
+	}
+
+	pub fn persistent_probe_metrics(&self) -> Option<SinglePersistentProbeMetrics> {
+		self.persistent.as_ref().map(|_| SinglePersistentProbeMetrics {
+			persistent_probes: Count::new(self.persistent_probes.load(Ordering::Relaxed)),
+			persistent_absent: Count::new(self.persistent_absent.load(Ordering::Relaxed)),
+		})
 	}
 
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
@@ -217,13 +234,15 @@ impl SingleVersionGet for StandardSingleStore {
 			}
 		}
 
-		if let Some(persistent) = &self.persistent
-			&& let Some(value) = persistent.get(key.as_ref())?
-		{
-			return Ok(Some(SingleVersionRow {
-				key: key.clone(),
-				bytes: EncodedBytes(value),
-			}));
+		if let Some(persistent) = &self.persistent {
+			self.persistent_probes.fetch_add(1, Ordering::Relaxed);
+			if let Some(value) = persistent.get(key.as_ref())? {
+				return Ok(Some(SingleVersionRow {
+					key: key.clone(),
+					bytes: EncodedBytes(value),
+				}));
+			}
+			self.persistent_absent.fetch_add(1, Ordering::Relaxed);
 		}
 
 		Ok(None)
@@ -241,10 +260,12 @@ impl SingleVersionContains for StandardSingleStore {
 			}
 		}
 
-		if let Some(persistent) = &self.persistent
-			&& persistent.contains(key.as_ref())?
-		{
-			return Ok(true);
+		if let Some(persistent) = &self.persistent {
+			self.persistent_probes.fetch_add(1, Ordering::Relaxed);
+			if persistent.contains(key.as_ref())? {
+				return Ok(true);
+			}
+			self.persistent_absent.fetch_add(1, Ordering::Relaxed);
 		}
 
 		Ok(false)
@@ -578,5 +599,109 @@ mod tests {
 			!store.flush_pending_blocking(),
 			"a flush that cannot persist must report failure so the snapshot barrier aborts"
 		);
+	}
+
+	fn probes(store: &StandardSingleStore) -> (u64, u64) {
+		let m = store.persistent_probe_metrics().expect("persistent tier configured");
+		(m.persistent_probes.as_u64(), m.persistent_absent.as_u64())
+	}
+
+	fn seed_persistent(store: &StandardSingleStore, k: &EncodedKey, value: &str) {
+		store.persistent()
+			.expect("persistent tier configured")
+			.set(vec![(k.clone(), Some(CowVec::new(value.as_bytes().to_vec())))])
+			.unwrap();
+	}
+
+	#[test]
+	fn a_read_the_commit_buffer_answers_never_counts_a_persistent_probe() {
+		// The absent ratio is only meaningful over reads a filter could have skipped. A buffer-served
+		// read never touches sqlite, so counting it would dilute the ratio and understate the win.
+		let (mut store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite();
+
+		let present = key("buffered");
+		SingleVersionCommit::commit(
+			&mut store,
+			CowVec::new(vec![Delta::Set {
+				key: present.clone(),
+				bytes: EncodedBytes(CowVec::new(b"7".to_vec())),
+			}]),
+		)
+		.unwrap();
+		let removed = key("buffered-tombstone");
+		SingleVersionCommit::commit(
+			&mut store,
+			CowVec::new(vec![Delta::remove_silent(removed.clone())]),
+		)
+		.unwrap();
+
+		let before = probes(&store);
+		assert!(SingleVersionGet::get(&store, &present).unwrap().is_some());
+		assert!(SingleVersionContains::contains(&store, &present).unwrap());
+		assert!(SingleVersionGet::get(&store, &removed).unwrap().is_none());
+		assert!(!SingleVersionContains::contains(&store, &removed).unwrap());
+
+		assert_eq!(
+			probes(&store),
+			before,
+			"the commit buffer answered every one of these reads, including the tombstone. Counting 			 them as persistent probes inflates the denominator with lookups no filter could ever 			 have skipped, so the measured absent rate reads lower than the real ceiling"
+		);
+	}
+
+	#[test]
+	fn a_persistent_read_that_finds_a_row_counts_a_probe_but_no_absence() {
+		// A found row is the case a filter cannot save: the sqlite read had to happen.
+		let (store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite();
+
+		let k = key("resident");
+		seed_persistent(&store, &k, "9");
+
+		let before = probes(&store);
+		assert!(SingleVersionGet::get(&store, &k).unwrap().is_some());
+		assert_eq!(
+			probes(&store),
+			(before.0 + 1, before.1),
+			"a hit must raise the probe count and leave the absent count alone, otherwise the ratio 			 claims a filter could skip reads that genuinely returned data"
+		);
+
+		let before = probes(&store);
+		assert!(SingleVersionContains::contains(&store, &k).unwrap());
+		assert_eq!(
+			probes(&store),
+			(before.0 + 1, before.1),
+			"contains reaches the same tier as get and must account for it the same way"
+		);
+	}
+
+	#[test]
+	fn a_persistent_read_that_finds_nothing_counts_a_probe_and_an_absence() {
+		// This is the only case a filter can eliminate, so it is the whole numerator of the ratio.
+		let (store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite();
+
+		let k = key("never-written");
+
+		let before = probes(&store);
+		assert!(SingleVersionGet::get(&store, &k).unwrap().is_none());
+		assert_eq!(
+			probes(&store),
+			(before.0 + 1, before.1 + 1),
+			"an absent point read must raise both counts, otherwise the ceiling on what a filter 			 could save measures as zero and the decision is made on a number that cannot move"
+		);
+
+		let before = probes(&store);
+		assert!(!SingleVersionContains::contains(&store, &k).unwrap());
+		assert_eq!(
+			probes(&store),
+			(before.0 + 1, before.1 + 1),
+			"an absent contains is exactly the lookup a filter turns into a skipped sqlite read"
+		);
+	}
+
+	#[test]
+	fn a_store_without_a_persistent_tier_reports_no_probe_metrics() {
+		// Zeroes would read as a perfectly cheap store rather than as a store with nothing to probe.
+		let store = StandardSingleStore::testing_memory();
+		assert!(SingleVersionGet::get(&store, &key("anything")).unwrap().is_none());
+		assert!(store.persistent_probe_metrics().is_none());
 	}
 }

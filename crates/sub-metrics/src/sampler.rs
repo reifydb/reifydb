@@ -446,6 +446,7 @@ fn multi_persistent_rows(store: &MultiStore) -> Vec<MetricsRow> {
 	let Some(metrics) = store.persistent_page_cache_metrics() else {
 		return Vec::new();
 	};
+	let probe = store.persistent_probe_metrics().unwrap_or_default();
 	vec![MetricsRow {
 		dimensions: Vec::new(),
 		measures: vec![
@@ -454,6 +455,8 @@ fn multi_persistent_rows(store: &MultiStore) -> Vec<MetricsRow> {
 			level_count("connections_total", metrics.connections_total.as_u64()),
 			counter_count("hits", metrics.hits.as_u64()),
 			counter_count("misses", metrics.misses.as_u64()),
+			counter_count("persistent_probes", probe.persistent_probes.as_u64()),
+			counter_count("persistent_absent", probe.persistent_absent.as_u64()),
 		],
 	}]
 }
@@ -462,6 +465,7 @@ fn single_persistent_rows(store: &SingleStore) -> Vec<MetricsRow> {
 	let Some(metrics) = store.persistent_page_cache_metrics() else {
 		return Vec::new();
 	};
+	let probe = store.persistent_probe_metrics().unwrap_or_default();
 	vec![MetricsRow {
 		dimensions: Vec::new(),
 		measures: vec![
@@ -470,6 +474,8 @@ fn single_persistent_rows(store: &SingleStore) -> Vec<MetricsRow> {
 			level_count("connections_total", metrics.connections_total.as_u64()),
 			counter_count("hits", metrics.hits.as_u64()),
 			counter_count("misses", metrics.misses.as_u64()),
+			counter_count("persistent_probes", probe.persistent_probes.as_u64()),
+			counter_count("persistent_absent", probe.persistent_absent.as_u64()),
 		],
 	}]
 }
