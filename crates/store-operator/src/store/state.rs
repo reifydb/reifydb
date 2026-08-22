@@ -15,7 +15,7 @@ use tracing::instrument;
 
 use crate::{
 	store::{OperatorStore, StandardOperatorStore},
-	tier::{commit::batch::DropMarker, dictionary::owns, persistent::OperatorPersistentTier, read::BucketId},
+	tier::{commit::batch::DropMarker, range::BucketId},
 	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
 
@@ -52,28 +52,31 @@ impl StandardOperatorStore {
 	#[instrument(name = "store::operator::drop_operator_state", level = "debug", skip(self), fields(operator = operator.0))]
 	pub fn drop_operator_state(&self, operator: OperatorId) {
 		self.commit.record_drop(DropMarker::OperatorState(operator));
-		if let Some(read) = self.read.as_ref() {
-			read.invalidate_operator(operator);
+		if let Some(range) = self.range.as_ref() {
+			range.invalidate_operator(operator);
 		}
-		if let Some(dictionary) = self.dictionary.as_ref() {
-			dictionary.invalidate_operator(operator);
+		if let Some(point) = self.point.as_ref() {
+			point.invalidate_operator(operator);
 		}
 	}
 
 	fn invalidate_read(&self, operator: OperatorId, key: &EncodedKey) {
-		if owns(key) {
-			if let Some(dictionary) = self.dictionary.as_ref() {
-				dictionary.invalidate(operator, key);
-			}
-			return;
+		if let Some(range) = self.range.as_ref() {
+			range.invalidate(operator, key);
 		}
-		if let Some(read) = self.read.as_ref() {
-			read.invalidate(operator, key);
+		if let Some(point) = self.point.as_ref() {
+			point.invalidate(operator, key);
+		}
+	}
+
+	fn repair_absence(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
+		if let Some(point) = self.point.as_ref() {
+			point.overwrite(operator, key.clone(), row.clone());
 		}
 	}
 
 	fn invalidate_read_batch(&self, writes: &[OperatorWrite]) {
-		if self.read.is_none() && self.dictionary.is_none() {
+		if self.point.is_none() && self.range.is_none() {
 			return;
 		}
 		for write in writes {
@@ -106,47 +109,28 @@ impl StandardOperatorStore {
 		}
 	}
 
-	fn dictionary_get(
-		&self,
-		persistent: &OperatorPersistentTier,
-		operator: OperatorId,
-		key: &EncodedKey,
-	) -> Option<EncodedPodRow> {
-		let Some(dictionary) = self.dictionary.as_ref() else {
-			if !persistent.filter().may_contain(operator, key) {
-				return None;
-			}
-			return persistent.get(operator, key);
-		};
-		if let Some(cached) = dictionary.get(operator, key) {
-			return Some(cached);
-		}
-		if !persistent.filter().may_contain(operator, key) {
-			return None;
-		}
-		if !dictionary.begin_fill(operator, key) {
-			return persistent.get(operator, key);
-		}
-		let row = persistent.get(operator, key);
-		dictionary.finish_fill(operator, key, row.clone());
-		row
-	}
-
 	fn persistent_get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		let persistent = self.persistent.as_ref()?;
-		if owns(key) {
-			return self.dictionary_get(persistent, operator, key);
+		let cached = self.point.as_ref().and_then(|point| point.get(operator, key));
+		if let Some(Some(row)) = cached {
+			return Some(row);
 		}
-		if let Some(cached) = self.read.as_ref().and_then(|read| read.get(operator, key)) {
-			return cached;
+		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
+			if let (Some(None), Some(row)) = (&cached, authoritative.as_ref()) {
+				self.repair_absence(operator, key, row);
+			}
+			return authoritative;
+		}
+		if cached.is_some() {
+			return None;
 		}
 		if !persistent.filter().may_contain(operator, key) {
 			return None;
 		}
-		match self.read.as_ref() {
-			Some(read) if read.begin_fill(operator, key) => {
+		match self.point.as_ref() {
+			Some(point) if point.begin_fill(operator, key) => {
 				let row = persistent.get(operator, key);
-				read.finish_fill(operator, key.clone(), row.clone());
+				point.finish_fill(operator, key.clone(), row.clone());
 				row
 			}
 			_ => persistent.get(operator, key),
@@ -166,19 +150,26 @@ impl StandardOperatorStore {
 		let Some(persistent) = self.persistent.as_ref() else {
 			return false;
 		};
-		if owns(key) {
-			return self.dictionary_get(persistent, operator, key).is_some();
+		let cached = self.point.as_ref().and_then(|point| point.contains(operator, key));
+		if cached == Some(true) {
+			return true;
 		}
-		if let Some(cached) = self.read.as_ref().and_then(|read| read.contains(operator, key)) {
-			return cached;
+		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
+			if let (Some(false), Some(row)) = (&cached, authoritative.as_ref()) {
+				self.repair_absence(operator, key, row);
+			}
+			return authoritative.is_some();
+		}
+		if cached.is_some() {
+			return false;
 		}
 		if !persistent.filter().may_contain(operator, key) {
 			return false;
 		}
-		match self.read.as_ref() {
-			Some(read) if read.begin_fill(operator, key) => {
+		match self.point.as_ref() {
+			Some(point) if point.begin_fill(operator, key) => {
 				let row = persistent.get(operator, key);
-				read.finish_fill(operator, key.clone(), row.clone());
+				point.finish_fill(operator, key.clone(), row.clone());
 				row.is_some()
 			}
 			_ => persistent.contains(operator, key),
@@ -198,18 +189,18 @@ impl StandardOperatorStore {
 		let mut buffer_index = 0usize;
 		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 
-		let read = self.read.as_ref();
+		let range_tier = self.range.as_ref();
 		let mut fill: Option<BucketId> = None;
 		let mut scanned_all = false;
 		if !exhausted {
-			let served = read
-				.and_then(|read| read.range(operator, &range, target.saturating_add(buffered.len())));
+			let served = range_tier
+				.and_then(|tier| tier.range(operator, &range, target.saturating_add(buffered.len())));
 			match served {
 				Some(rows) => {
 					page = rows;
 					exhausted = true;
 				}
-				None => fill = read.and_then(|read| read.begin_range_fill(operator, &range)),
+				None => fill = range_tier.and_then(|tier| tier.begin_fill(operator, &range)),
 			}
 		}
 
@@ -227,10 +218,10 @@ impl StandardOperatorStore {
 				exhausted = !batch.has_more;
 				page = batch.items;
 				page_index = 0;
-				if let (Some(read), Some(bucket)) = (read, fill) {
-					if !read.extend_range_fill(bucket, &page) {
-						fill = None;
-					}
+				if let (Some(tier), Some(bucket)) = (range_tier, fill)
+					&& !tier.extend_fill(bucket, &page)
+				{
+					fill = None;
 				}
 				scanned_all = exhausted;
 				match page.last() {
@@ -279,11 +270,11 @@ impl StandardOperatorStore {
 			}
 		}
 
-		if let (Some(read), Some(bucket)) = (read, fill) {
+		if let (Some(tier), Some(bucket)) = (range_tier, fill) {
 			if scanned_all {
-				read.finish_range_fill(bucket);
+				tier.finish_fill(bucket);
 			} else {
-				read.abort_range_fill(bucket);
+				tier.abort_fill(bucket);
 			}
 		}
 

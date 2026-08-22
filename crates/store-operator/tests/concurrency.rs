@@ -27,7 +27,7 @@ use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
-	tier::read::OperatorReadBufferConfig,
+	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -51,8 +51,8 @@ fn store() -> (OperatorStore, SqliteTempPathGuard) {
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config).flush_interval(Duration::from_hours_const(1))),
-		read: Some(OperatorReadBufferConfig::default()),
-		dictionary: None,
+		point: Some(OperatorPointConfig::default()),
+		range: Some(OperatorRangeConfig::default()),
 		spawner,
 		clock: Clock::Real,
 	});

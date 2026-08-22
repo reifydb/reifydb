@@ -134,7 +134,10 @@ impl AppendOperator {
 	fn undecodable(key: &EncodedKey) -> Error {
 		Error::from(FlowStateError::Decode {
 			state: "append seal timer key",
-			cause: format!("expected an input byte and eight source row bytes, found {}", key.as_slice().len()),
+			cause: format!(
+				"expected an input byte and eight source row bytes, found {}",
+				key.as_slice().len()
+			),
 		})
 	}
 
@@ -671,10 +674,9 @@ mod tests {
 		let mut op = op(12);
 		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[1, 2])).unwrap();
-		assert!(
-			txn.remove_row_number(op.operator, GroupId::ROOT, &AppendOperator::append_key(0, RowNumber(2)))
-				.unwrap()
-		);
+		assert!(txn
+			.remove_row_number(op.operator, GroupId::ROOT, &AppendOperator::append_key(0, RowNumber(2)))
+			.unwrap());
 
 		assert!(op
 			.translate_append_update(&mut host(&mut txn, &op), 0, rows(&[1, 2]), rows(&[1, 2]))

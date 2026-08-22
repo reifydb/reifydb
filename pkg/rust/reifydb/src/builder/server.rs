@@ -28,7 +28,7 @@ use reifydb_sqlite::JournalMode;
 use reifydb_store_multi::tier::{
 	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig,
 };
-use reifydb_store_operator::tier::read::OperatorReadBufferConfig;
+use reifydb_store_operator::tier::{point::OperatorPointConfig, range::OperatorRangeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
@@ -81,7 +81,8 @@ type PoolConfigSources = (
 	Option<MultiPersistentTier>,
 	PoolConfig,
 	Option<ReadBufferConfig>,
-	Option<OperatorReadBufferConfig>,
+	Option<OperatorPointConfig>,
+	Option<OperatorRangeConfig>,
 );
 
 fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, Value)]) -> Result<PoolConfigSources> {
@@ -91,7 +92,14 @@ fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, V
 	if let Some(persistent) = multi_persistent.as_ref() {
 		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);
 	}
-	Ok((multi_commit_buffer, multi_persistent, resolved.pools, resolved.read, resolved.operator_read))
+	Ok((
+		multi_commit_buffer,
+		multi_persistent,
+		resolved.pools,
+		resolved.read,
+		resolved.operator_point,
+		resolved.operator_range,
+	))
 }
 
 use super::{
@@ -314,8 +322,14 @@ impl ServerBuilder {
 		// does not exhaust it (`accept error: Too many open files`).
 		raise_fd_limit();
 
-		let (multi_commit_buffer, multi_persistent, pool_config, read_buffer, operator_read_buffer) =
-			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
+		let (
+			multi_commit_buffer,
+			multi_persistent,
+			pool_config,
+			read_buffer,
+			operator_point_buffer,
+			operator_range_buffer,
+		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		install_fatal(runtime_config.fatal);
@@ -330,7 +344,8 @@ impl ServerBuilder {
 				multi_commit_buffer,
 				multi_persistent,
 				read_buffer,
-				operator_read_buffer,
+				operator_point_buffer,
+				operator_range_buffer,
 				&spawner,
 			);
 		let catalog_cache = CatalogCache::new();

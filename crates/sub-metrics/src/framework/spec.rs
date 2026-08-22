@@ -22,8 +22,10 @@ pub enum MetricsDomain {
 	StoreMultiPersistent,
 	StoreSingleCommit,
 	StoreSinglePersistent,
-	StoreOperatorRead,
-	StoreOperatorReadKeyspace,
+	StoreOperatorPoint,
+	StoreOperatorPointKeyspace,
+	StoreOperatorRange,
+	StoreOperatorRangeKeyspace,
 	StoreOperatorPersistent,
 	Instruments,
 	Epoch,
@@ -278,7 +280,7 @@ mod tests {
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 25] = [
+	pub const ALL: [MetricsDomain; 27] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
@@ -294,8 +296,10 @@ impl MetricsDomain {
 		MetricsDomain::StoreMultiPersistent,
 		MetricsDomain::StoreSingleCommit,
 		MetricsDomain::StoreSinglePersistent,
-		MetricsDomain::StoreOperatorRead,
-		MetricsDomain::StoreOperatorReadKeyspace,
+		MetricsDomain::StoreOperatorPoint,
+		MetricsDomain::StoreOperatorPointKeyspace,
+		MetricsDomain::StoreOperatorRange,
+		MetricsDomain::StoreOperatorRangeKeyspace,
 		MetricsDomain::StoreOperatorPersistent,
 		MetricsDomain::Instruments,
 		MetricsDomain::Epoch,
@@ -326,8 +330,10 @@ impl MetricsDomain {
 			| MetricsDomain::StoreMultiPersistent
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
-			| MetricsDomain::StoreOperatorRead
-			| MetricsDomain::StoreOperatorReadKeyspace
+			| MetricsDomain::StoreOperatorPoint
+			| MetricsDomain::StoreOperatorPointKeyspace
+			| MetricsDomain::StoreOperatorRange
+			| MetricsDomain::StoreOperatorRangeKeyspace
 			| MetricsDomain::StoreOperatorPersistent
 			| MetricsDomain::Instruments
 			| MetricsDomain::Epoch
@@ -360,8 +366,10 @@ impl MetricsDomain {
 			| MetricsDomain::StoreMultiPersistent
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
-			| MetricsDomain::StoreOperatorRead
-			| MetricsDomain::StoreOperatorReadKeyspace
+			| MetricsDomain::StoreOperatorPoint
+			| MetricsDomain::StoreOperatorPointKeyspace
+			| MetricsDomain::StoreOperatorRange
+			| MetricsDomain::StoreOperatorRangeKeyspace
 			| MetricsDomain::StoreOperatorPersistent => None,
 		}
 	}
@@ -594,9 +602,46 @@ impl MetricsDomain {
 				],
 				has_total: true,
 			},
-			MetricsDomain::StoreOperatorRead => DomainSpec {
+			MetricsDomain::StoreOperatorPoint => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_READ,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT,
+				shape: DomainShape::Wide,
+				dimensions: vec![dim("shard", ValueType::Uint2)],
+				measures: vec![
+					level("used", ValueType::Uint8),
+					level("limit", ValueType::Uint8),
+					level("entries", ValueType::Uint8),
+					counter("hits", ValueType::Uint8),
+					counter("misses", ValueType::Uint8),
+					counter("insertions", ValueType::Uint8),
+					counter("evictions", ValueType::Uint8),
+					counter("fills_started", ValueType::Uint8),
+					counter("fills_dirty_aborted", ValueType::Uint8),
+					counter("fills_duplicate", ValueType::Uint8),
+				],
+				has_total: true,
+			},
+			MetricsDomain::StoreOperatorPointKeyspace => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT_KEYSPACE,
+				shape: DomainShape::Wide,
+				dimensions: vec![dim("keyspace", ValueType::Utf8)],
+				measures: vec![
+					level("used", ValueType::Uint8),
+					level("entries", ValueType::Uint8),
+					counter("hits", ValueType::Uint8),
+					counter("misses", ValueType::Uint8),
+					counter("insertions", ValueType::Uint8),
+					counter("evictions", ValueType::Uint8),
+					counter("fills_started", ValueType::Uint8),
+					counter("fills_dirty_aborted", ValueType::Uint8),
+					counter("fills_duplicate", ValueType::Uint8),
+				],
+				has_total: true,
+			},
+			MetricsDomain::StoreOperatorRange => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_RANGE,
 				shape: DomainShape::Wide,
 				dimensions: vec![dim("shard", ValueType::Uint2)],
 				measures: vec![
@@ -606,16 +651,18 @@ impl MetricsDomain {
 					level("entries", ValueType::Uint8),
 					counter("hits", ValueType::Uint8),
 					counter("misses", ValueType::Uint8),
-					counter("evictions", ValueType::Uint8),
-					counter("fills_started", ValueType::Uint8),
+					counter("fills", ValueType::Uint8),
+					counter("fills_declined", ValueType::Uint8),
 					counter("fills_dirty_aborted", ValueType::Uint8),
-					counter("fills_duplicate", ValueType::Uint8),
+					counter("evictions", ValueType::Uint8),
+					counter("point_hits", ValueType::Uint8),
+					counter("point_misses", ValueType::Uint8),
 				],
 				has_total: true,
 			},
-			MetricsDomain::StoreOperatorReadKeyspace => DomainSpec {
+			MetricsDomain::StoreOperatorRangeKeyspace => DomainSpec {
 				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_READ_KEYSPACE,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_RANGE_KEYSPACE,
 				shape: DomainShape::Wide,
 				dimensions: vec![dim("keyspace", ValueType::Utf8)],
 				measures: vec![
@@ -624,10 +671,12 @@ impl MetricsDomain {
 					level("entries", ValueType::Uint8),
 					counter("hits", ValueType::Uint8),
 					counter("misses", ValueType::Uint8),
-					counter("evictions", ValueType::Uint8),
-					counter("fills_started", ValueType::Uint8),
+					counter("fills", ValueType::Uint8),
+					counter("fills_declined", ValueType::Uint8),
 					counter("fills_dirty_aborted", ValueType::Uint8),
-					counter("fills_duplicate", ValueType::Uint8),
+					counter("evictions", ValueType::Uint8),
+					counter("point_hits", ValueType::Uint8),
+					counter("point_misses", ValueType::Uint8),
 				],
 				has_total: true,
 			},

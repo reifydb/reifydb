@@ -33,9 +33,9 @@ use crate::{
 	flush::{FlushMessage, flush_now, flush_pending},
 	tier::{
 		commit::OperatorCommitBuffer,
-		dictionary::{OperatorDictionaryMetrics, OperatorDictionaryTier},
 		persistent::{OperatorPageCacheMetrics, OperatorPersistentTier},
-		read::{OperatorReadBufferKeyspaceMetrics, OperatorReadBufferShardMetrics, OperatorReadBufferTier},
+		point::{OperatorPointKeyspaceMetrics, OperatorPointShardMetrics, OperatorPointTier},
+		range::{OperatorRangeKeyspaceMetrics, OperatorRangeShardMetrics, OperatorRangeTier},
 	},
 };
 
@@ -51,8 +51,8 @@ pub struct StandardOperatorStore(Arc<StandardOperatorStoreInner>);
 pub struct StandardOperatorStoreInner {
 	pub(crate) commit: OperatorCommitBuffer,
 	pub(crate) persistent: Option<OperatorPersistentTier>,
-	pub(crate) read: Option<OperatorReadBufferTier>,
-	pub(crate) dictionary: Option<OperatorDictionaryTier>,
+	pub(crate) point: Option<OperatorPointTier>,
+	pub(crate) range: Option<OperatorRangeTier>,
 	pub(crate) flush: Option<ActorRef<FlushMessage>>,
 	pub(crate) filter: Option<ActorRef<FilterMessage>>,
 	#[allow(dead_code)]
@@ -71,16 +71,10 @@ impl StandardOperatorStore {
 	pub fn new(config: OperatorStoreConfig) -> Self {
 		let commit = config.commit.storage;
 		let spawner = config.spawner;
-		let read = config
-			.persistent
-			.is_some()
-			.then(|| config.read.and_then(OperatorReadBufferTier::new))
-			.flatten();
-		let dictionary = config
-			.persistent
-			.is_some()
-			.then(|| config.dictionary.and_then(OperatorDictionaryTier::new))
-			.flatten();
+		let point =
+			config.persistent.is_some().then(|| config.point.and_then(OperatorPointTier::new)).flatten();
+		let range =
+			config.persistent.is_some().then(|| config.range.and_then(OperatorRangeTier::new)).flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush, filter) = {
@@ -89,8 +83,8 @@ impl StandardOperatorStore {
 					&spawner,
 					commit.clone(),
 					persistent.storage.clone(),
-					read.clone(),
-					dictionary.clone(),
+					point.clone(),
+					range.clone(),
 					persistent.flush_interval,
 				)
 			});
@@ -118,8 +112,8 @@ impl StandardOperatorStore {
 			None => (None, None, None),
 		};
 
-		let read = persistent.as_ref().and(read);
-		let dictionary = persistent.as_ref().and(dictionary);
+		let point = persistent.as_ref().and(point);
+		let range = persistent.as_ref().and(range);
 		if let Some(flush) = flush.as_ref() {
 			commit.attach_flusher(flush.clone());
 		}
@@ -127,8 +121,8 @@ impl StandardOperatorStore {
 		Self(Arc::new(StandardOperatorStoreInner {
 			commit,
 			persistent,
-			read,
-			dictionary,
+			point,
+			range,
 			flush,
 			filter,
 			spawner,
@@ -151,24 +145,28 @@ impl StandardOperatorStore {
 		}
 	}
 
-	pub fn read(&self) -> Option<&OperatorReadBufferTier> {
-		self.read.as_ref()
+	pub fn point(&self) -> Option<&OperatorPointTier> {
+		self.point.as_ref()
 	}
 
-	pub fn dictionary(&self) -> Option<&OperatorDictionaryTier> {
-		self.dictionary.as_ref()
+	pub fn range(&self) -> Option<&OperatorRangeTier> {
+		self.range.as_ref()
 	}
 
-	pub fn dictionary_metrics(&self) -> Option<OperatorDictionaryMetrics> {
-		self.dictionary.as_ref().map(OperatorDictionaryTier::metrics)
+	pub fn point_shard_metrics(&self) -> Vec<OperatorPointShardMetrics> {
+		self.point.as_ref().map(OperatorPointTier::shard_metrics).unwrap_or_default()
 	}
 
-	pub fn read_buffer_shard_metrics(&self) -> Vec<OperatorReadBufferShardMetrics> {
-		self.read.as_ref().map(OperatorReadBufferTier::shard_metrics).unwrap_or_default()
+	pub fn point_keyspace_metrics(&self) -> Vec<OperatorPointKeyspaceMetrics> {
+		self.point.as_ref().map(OperatorPointTier::keyspace_metrics).unwrap_or_default()
 	}
 
-	pub fn read_buffer_keyspace_metrics(&self) -> Vec<OperatorReadBufferKeyspaceMetrics> {
-		self.read.as_ref().map(OperatorReadBufferTier::keyspace_metrics).unwrap_or_default()
+	pub fn range_shard_metrics(&self) -> Vec<OperatorRangeShardMetrics> {
+		self.range.as_ref().map(OperatorRangeTier::shard_metrics).unwrap_or_default()
+	}
+
+	pub fn range_keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
+		self.range.as_ref().map(OperatorRangeTier::keyspace_metrics).unwrap_or_default()
 	}
 
 	pub fn persistent_page_cache_metrics(&self) -> Option<OperatorPageCacheMetrics> {
@@ -182,11 +180,11 @@ impl StandardOperatorStore {
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		let mut collectors =
 			self.persistent.as_ref().map(OperatorPersistentTier::metrics_collectors).unwrap_or_default();
-		if let Some(read) = &self.read {
-			collectors.push(Arc::new(read.clone()));
+		if let Some(point) = &self.point {
+			collectors.push(Arc::new(point.clone()));
 		}
-		if let Some(dictionary) = &self.dictionary {
-			collectors.push(Arc::new(dictionary.clone()));
+		if let Some(range) = &self.range {
+			collectors.push(Arc::new(range.clone()));
 		}
 		collectors
 	}
@@ -200,7 +198,7 @@ impl Shutdown for StandardOperatorStore {
 		let Some(persistent) = self.persistent.as_ref() else {
 			return;
 		};
-		flush_now(&self.commit, persistent, self.read.as_ref(), self.dictionary.as_ref());
+		flush_now(&self.commit, persistent, self.point.as_ref(), self.range.as_ref());
 		persistent.shutdown();
 	}
 }
@@ -250,33 +248,39 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn read(&self) -> Option<&OperatorReadBufferTier> {
+	pub fn point(&self) -> Option<&OperatorPointTier> {
 		match self {
-			Self::Standard(store) => store.read(),
+			Self::Standard(store) => store.point(),
 		}
 	}
 
-	pub fn dictionary(&self) -> Option<&OperatorDictionaryTier> {
+	pub fn range(&self) -> Option<&OperatorRangeTier> {
 		match self {
-			Self::Standard(store) => store.dictionary(),
+			Self::Standard(store) => store.range(),
 		}
 	}
 
-	pub fn dictionary_metrics(&self) -> Option<OperatorDictionaryMetrics> {
+	pub fn point_shard_metrics(&self) -> Vec<OperatorPointShardMetrics> {
 		match self {
-			Self::Standard(store) => store.dictionary_metrics(),
+			Self::Standard(store) => store.point_shard_metrics(),
 		}
 	}
 
-	pub fn read_buffer_shard_metrics(&self) -> Vec<OperatorReadBufferShardMetrics> {
+	pub fn point_keyspace_metrics(&self) -> Vec<OperatorPointKeyspaceMetrics> {
 		match self {
-			Self::Standard(store) => store.read_buffer_shard_metrics(),
+			Self::Standard(store) => store.point_keyspace_metrics(),
 		}
 	}
 
-	pub fn read_buffer_keyspace_metrics(&self) -> Vec<OperatorReadBufferKeyspaceMetrics> {
+	pub fn range_shard_metrics(&self) -> Vec<OperatorRangeShardMetrics> {
 		match self {
-			Self::Standard(store) => store.read_buffer_keyspace_metrics(),
+			Self::Standard(store) => store.range_shard_metrics(),
+		}
+	}
+
+	pub fn range_keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
+		match self {
+			Self::Standard(store) => store.range_keyspace_metrics(),
 		}
 	}
 

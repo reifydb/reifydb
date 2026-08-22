@@ -21,7 +21,7 @@ use reifydb_store_multi::{
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
-	tier::read::OperatorReadBufferConfig,
+	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 };
 use reifydb_store_single::{
 	SingleStore,
@@ -63,7 +63,8 @@ impl StorageFactory {
 		multi_commit_buffer: MultiCommitBufferTier,
 		multi_persistent: Option<MultiPersistentTier>,
 		read: Option<ReadBufferConfig>,
-		operator_read: Option<OperatorReadBufferConfig>,
+		operator_point: Option<OperatorPointConfig>,
+		operator_range: Option<OperatorRangeConfig>,
 		spawner: &ActorSpawner,
 	) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
 		match self {
@@ -72,7 +73,8 @@ impl StorageFactory {
 				multi_commit_buffer,
 				multi_persistent.expect("sqlite storage must supply an opened persistent tier"),
 				read,
-				operator_read,
+				operator_point,
+				operator_range,
 				config.clone(),
 				spawner,
 			),
@@ -148,7 +150,8 @@ fn create_sqlite_store_with(
 	multi_commit_buffer: MultiCommitBufferTier,
 	multi_persistent: MultiPersistentTier,
 	read: Option<ReadBufferConfig>,
-	operator_read: Option<OperatorReadBufferConfig>,
+	operator_point: Option<OperatorPointConfig>,
+	operator_range: Option<OperatorRangeConfig>,
 	config: SqliteConfig,
 	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
@@ -183,7 +186,8 @@ fn create_sqlite_store_with(
 		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("operator.db")),
 	};
 	let operator_store = OperatorStore::standard(OperatorStoreConfig {
-		read: operator_read,
+		point: operator_point,
+		range: operator_range,
 		..OperatorStoreConfig::sqlite(
 			OperatorPersistentConfig::sqlite(SqliteConfig {
 				path: operator_path,

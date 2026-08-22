@@ -2,81 +2,152 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::{interface::catalog::flow::OperatorId, util::budget::MemoryBudget};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::Keyspace};
 use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::dictionary::{DictionaryKey, OperatorDictionaryTier, Shard, Slot, entry_footprint};
+use crate::tier::point::{OperatorPointTier, PointKey, Shard, Slot, account, entry_footprint, keyspace_of};
 
-impl OperatorDictionaryTier {
-	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
-		let id = DictionaryKey::of(operator, key)?;
+impl OperatorPointTier {
+	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
+		let keyspace = keyspace_of(key)?;
+		if !keyspace.is_cached() {
+			self.charge_excluded_miss(keyspace);
+			return None;
+		}
+		let id = PointKey {
+			operator,
+			key: key.clone(),
+		};
+		let counter = keyspace.0 as usize;
 		let mut shard = self.shard_for(&id).lock();
 		let next = shard.next_tick;
 		let Some(position) = shard.index.get(&id).copied() else {
 			shard.metrics.misses += 1;
+			shard.keyspace_metrics[counter].misses += 1;
 			return None;
 		};
-		let slot = &mut shard.slots[position];
-		slot.tick = next;
-		let row = slot.row.clone();
+		let row = {
+			let slot = &mut shard.slots[position];
+			slot.tick = next;
+			slot.row.clone()
+		};
 		shard.next_tick = next + 1;
 		shard.metrics.hits += 1;
+		shard.keyspace_metrics[counter].hits += 1;
 		Some(row)
 	}
 
+	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> Option<bool> {
+		let keyspace = keyspace_of(key)?;
+		if !keyspace.is_cached() {
+			self.charge_excluded_miss(keyspace);
+			return None;
+		}
+		let id = PointKey {
+			operator,
+			key: key.clone(),
+		};
+		let counter = keyspace.0 as usize;
+		let mut shard = self.shard_for(&id).lock();
+		let next = shard.next_tick;
+		let Some(position) = shard.index.get(&id).copied() else {
+			shard.metrics.misses += 1;
+			shard.keyspace_metrics[counter].misses += 1;
+			return None;
+		};
+		let present = {
+			let slot = &mut shard.slots[position];
+			slot.tick = next;
+			slot.row.is_some()
+		};
+		shard.next_tick = next + 1;
+		shard.metrics.hits += 1;
+		shard.keyspace_metrics[counter].hits += 1;
+		Some(present)
+	}
+
 	pub fn begin_fill(&self, operator: OperatorId, key: &EncodedKey) -> bool {
-		let Some(id) = DictionaryKey::of(operator, key) else {
+		let Some(keyspace) = keyspace_of(key) else {
 			return false;
 		};
+		if !keyspace.is_cached() {
+			return false;
+		}
+		let id = PointKey {
+			operator,
+			key: key.clone(),
+		};
+		let counter = keyspace.0 as usize;
 		let mut shard = self.shard_for(&id).lock();
 		if shard.filling.contains_key(&id) {
 			shard.metrics.fills_duplicate += 1;
+			shard.keyspace_metrics[counter].fills_duplicate += 1;
 			return false;
 		}
 		shard.filling.insert(id, false);
 		shard.metrics.fills_started += 1;
+		shard.keyspace_metrics[counter].fills_started += 1;
 		true
 	}
 
-	pub fn finish_fill(&self, operator: OperatorId, key: &EncodedKey, row: Option<EncodedPodRow>) -> bool {
-		let Some(id) = DictionaryKey::of(operator, key) else {
+	pub fn finish_fill(&self, operator: OperatorId, key: EncodedKey, row: Option<EncodedPodRow>) -> bool {
+		let Some(keyspace) = keyspace_of(&key) else {
 			return false;
+		};
+		let id = PointKey {
+			operator,
+			key,
 		};
 		let mut shard = self.shard_for(&id).lock();
 		match shard.filling.remove(&id) {
 			Some(false) => {}
 			Some(true) | None => {
 				shard.metrics.fills_dirty_aborted += 1;
+				shard.keyspace_metrics[keyspace.0 as usize].fills_dirty_aborted += 1;
 				return false;
 			}
 		}
-		if let Some(row) = row {
-			insert_entry(&mut shard, id, row);
+		#[cfg(test)]
+		if let Some(interlock) = self.inner.interlock.as_ref() {
+			interlock(self, &id);
 		}
+		insert_entry(&mut shard, keyspace, id, row);
 		true
 	}
 
 	pub fn abort_fill(&self, operator: OperatorId, key: &EncodedKey) {
-		let Some(id) = DictionaryKey::of(operator, key) else {
+		if keyspace_of(key).is_none() {
 			return;
+		}
+		let id = PointKey {
+			operator,
+			key: key.clone(),
 		};
 		self.shard_for(&id).lock().filling.remove(&id);
 	}
 
-	pub fn overwrite(&self, operator: OperatorId, key: &EncodedKey, row: EncodedPodRow) {
-		let Some(id) = DictionaryKey::of(operator, key) else {
+	pub fn overwrite(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
+		let Some(keyspace) = keyspace_of(&key) else {
 			return;
+		};
+		let id = PointKey {
+			operator,
+			key,
 		};
 		let mut shard = self.shard_for(&id).lock();
 		if let Some(dirty) = shard.filling.get_mut(&id) {
 			*dirty = true;
 		}
-		insert_entry(&mut shard, id, row);
+		insert_entry(&mut shard, keyspace, id, Some(row));
 	}
 
 	pub fn invalidate(&self, operator: OperatorId, key: &EncodedKey) {
-		let Some(id) = DictionaryKey::of(operator, key) else {
+		if keyspace_of(key).is_none() {
 			return;
+		}
+		let id = PointKey {
+			operator,
+			key: key.clone(),
 		};
 		let mut shard = self.shard_for(&id).lock();
 		if let Some(dirty) = shard.filling.get_mut(&id) {
@@ -131,15 +202,10 @@ impl OperatorDictionaryTier {
 	}
 }
 
-fn account(budget: &MemoryBudget, old: usize, new: usize) {
-	if new >= old {
-		budget.charge(ByteSize::from_bytes((new - old) as u64));
-	} else {
-		budget.release(ByteSize::from_bytes((old - new) as u64));
+fn insert_entry(shard: &mut Shard, keyspace: Keyspace, id: PointKey, row: Option<EncodedPodRow>) {
+	if !keyspace.is_cached() {
+		return;
 	}
-}
-
-fn insert_entry(shard: &mut Shard, id: DictionaryKey, row: EncodedPodRow) {
 	let next = shard.next_tick;
 	let new = entry_footprint(&id, &row);
 	match shard.index.get(&id).copied() {
@@ -161,6 +227,7 @@ fn insert_entry(shard: &mut Shard, id: DictionaryKey, row: EncodedPodRow) {
 		}
 	}
 	shard.metrics.insertions += 1;
+	shard.keyspace_metrics[keyspace.0 as usize].insertions += 1;
 	shard.next_tick = next + 1;
 	shard.evict_to_capacity();
 }

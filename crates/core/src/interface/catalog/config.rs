@@ -57,7 +57,8 @@ pub enum ConfigKey {
 	MultiReadBufferPages,
 	MultiReadBufferPageSize,
 	MultiReadBufferBytes,
-	OperatorReadBufferBytes,
+	OperatorPointBufferBytes,
+	OperatorRangeBufferBytes,
 	MultiFlushInterval,
 	MultiFlushKeyBudget,
 	MultiWalAutocheckpoint,
@@ -109,7 +110,8 @@ impl ConfigKey {
 			Self::MultiReadBufferPages,
 			Self::MultiReadBufferPageSize,
 			Self::MultiReadBufferBytes,
-			Self::OperatorReadBufferBytes,
+			Self::OperatorPointBufferBytes,
+			Self::OperatorRangeBufferBytes,
 			Self::MultiFlushInterval,
 			Self::MultiFlushKeyBudget,
 			Self::MultiWalAutocheckpoint,
@@ -163,7 +165,8 @@ impl ConfigKey {
 			Self::MultiReadBufferPages => Value::Uint8(1024),
 			Self::MultiReadBufferPageSize => Value::Uint8(65536),
 			Self::MultiReadBufferBytes => Value::Uint8(64 * 1024 * 1024),
-			Self::OperatorReadBufferBytes => Value::Uint8(64 * 1024 * 1024),
+			Self::OperatorPointBufferBytes => Value::Uint8(64 * 1024 * 1024),
+			Self::OperatorRangeBufferBytes => Value::Uint8(64 * 1024 * 1024),
 			Self::MultiFlushInterval => Value::duration_seconds(5),
 			Self::MultiFlushKeyBudget => Value::Uint8(2048),
 			Self::MultiWalAutocheckpoint => Value::Uint8(10000),
@@ -272,10 +275,15 @@ impl ConfigKey {
 				 None disables the cache outright: no page is warmed or inserted, so reads always go to \
 				 the persistent tier. Read once at boot; changing it requires a restart."
 			}
-			Self::OperatorReadBufferBytes => {
-				"Resident byte budget for the operator-state read cache, split evenly across its shards. \
+			Self::OperatorPointBufferBytes => {
+				"Resident byte budget for the operator-state point cache, split evenly across its shards. \
 				 None disables the cache outright, so every point read that misses the commit buffer goes \
 				 to the persistent tier. Read once at boot; changing it requires a restart."
+			}
+			Self::OperatorRangeBufferBytes => {
+				"Resident byte budget for the operator-state range cache, split evenly across its shards. \
+				 None disables the cache outright, so every operator range scan goes to the persistent \
+				 tier. Read once at boot; changing it requires a restart."
 			}
 			Self::MultiFlushInterval => {
 				"How often the persistent-flush actor drains the in-memory commit buffer into the multi \
@@ -417,7 +425,8 @@ impl ConfigKey {
 			Self::MultiReadBufferPages => true,
 			Self::MultiReadBufferPageSize => true,
 			Self::MultiReadBufferBytes => true,
-			Self::OperatorReadBufferBytes => true,
+			Self::OperatorPointBufferBytes => true,
+			Self::OperatorRangeBufferBytes => true,
 			Self::MultiFlushInterval => true,
 			Self::MultiFlushKeyBudget => false,
 			Self::MultiWalAutocheckpoint => true,
@@ -469,7 +478,8 @@ impl ConfigKey {
 			Self::MultiReadBufferPages => &[ValueType::Uint8],
 			Self::MultiReadBufferPageSize => &[ValueType::Uint8],
 			Self::MultiReadBufferBytes => &[ValueType::Uint8],
-			Self::OperatorReadBufferBytes => &[ValueType::Uint8],
+			Self::OperatorPointBufferBytes => &[ValueType::Uint8],
+			Self::OperatorRangeBufferBytes => &[ValueType::Uint8],
 			Self::MultiFlushInterval => &[ValueType::Duration],
 			Self::MultiFlushKeyBudget => &[ValueType::Uint8],
 			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
@@ -521,7 +531,8 @@ impl ConfigKey {
 			Self::MultiReadBufferPages => false,
 			Self::MultiReadBufferPageSize => false,
 			Self::MultiReadBufferBytes => true,
-			Self::OperatorReadBufferBytes => true,
+			Self::OperatorPointBufferBytes => true,
+			Self::OperatorRangeBufferBytes => true,
 			Self::MultiFlushInterval => false,
 			Self::MultiFlushKeyBudget => false,
 			Self::MultiWalAutocheckpoint => false,
@@ -647,9 +658,16 @@ impl ConfigKey {
 				),
 				_ => Ok(()),
 			},
-			Self::OperatorReadBufferBytes => match value {
+			Self::OperatorPointBufferBytes => match value {
 				Value::Uint8(0) => Err(
-					"OPERATOR_READ_BUFFER_BYTES must be greater than zero; use none to disable the read cache"
+					"OPERATOR_POINT_BUFFER_BYTES must be greater than zero; use none to disable the point cache"
+						.to_string(),
+				),
+				_ => Ok(()),
+			},
+			Self::OperatorRangeBufferBytes => match value {
+				Value::Uint8(0) => Err(
+					"OPERATOR_RANGE_BUFFER_BYTES must be greater than zero; use none to disable the range cache"
 						.to_string(),
 				),
 				_ => Ok(()),
@@ -859,7 +877,8 @@ impl fmt::Display for ConfigKey {
 			Self::MultiReadBufferPages => write!(f, "MULTI_READ_BUFFER_PAGES"),
 			Self::MultiReadBufferPageSize => write!(f, "MULTI_READ_BUFFER_PAGE_SIZE"),
 			Self::MultiReadBufferBytes => write!(f, "MULTI_READ_BUFFER_BYTES"),
-			Self::OperatorReadBufferBytes => write!(f, "OPERATOR_READ_BUFFER_BYTES"),
+			Self::OperatorPointBufferBytes => write!(f, "OPERATOR_POINT_BUFFER_BYTES"),
+			Self::OperatorRangeBufferBytes => write!(f, "OPERATOR_RANGE_BUFFER_BYTES"),
 			Self::MultiFlushInterval => write!(f, "MULTI_FLUSH_INTERVAL"),
 			Self::MultiFlushKeyBudget => write!(f, "MULTI_FLUSH_KEY_BUDGET"),
 			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
@@ -915,7 +934,8 @@ impl FromStr for ConfigKey {
 			"MULTI_READ_BUFFER_PAGES" => Ok(Self::MultiReadBufferPages),
 			"MULTI_READ_BUFFER_PAGE_SIZE" => Ok(Self::MultiReadBufferPageSize),
 			"MULTI_READ_BUFFER_BYTES" => Ok(Self::MultiReadBufferBytes),
-			"OPERATOR_READ_BUFFER_BYTES" => Ok(Self::OperatorReadBufferBytes),
+			"OPERATOR_POINT_BUFFER_BYTES" => Ok(Self::OperatorPointBufferBytes),
+			"OPERATOR_RANGE_BUFFER_BYTES" => Ok(Self::OperatorRangeBufferBytes),
 			"MULTI_FLUSH_INTERVAL" => Ok(Self::MultiFlushInterval),
 			"MULTI_FLUSH_KEY_BUDGET" => Ok(Self::MultiFlushKeyBudget),
 			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
@@ -1110,7 +1130,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 47);
+		assert_eq!(all.len(), 48);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -1130,6 +1150,8 @@ mod tests {
 		assert!(all.contains(&ConfigKey::CdcCompactBlockCacheCapacity));
 		assert!(all.contains(&ConfigKey::CdcCompactZstdLevel));
 		assert!(all.contains(&ConfigKey::MultiReadBufferPages));
+		assert!(all.contains(&ConfigKey::OperatorPointBufferBytes));
+		assert!(all.contains(&ConfigKey::OperatorRangeBufferBytes));
 		assert!(all.contains(&ConfigKey::FlowBacklogMemoryLimit));
 		assert!(all.contains(&ConfigKey::FlowPullBatchBytes));
 		assert!(all.contains(&ConfigKey::FlowLoadBatchBytes));

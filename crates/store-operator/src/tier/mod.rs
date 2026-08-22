@@ -2,6 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod commit;
-pub mod dictionary;
 pub mod persistent;
-pub mod read;
+pub mod point;
+pub mod range;

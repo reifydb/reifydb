@@ -26,7 +26,7 @@ use crate::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
-	tier::{persistent::OperatorPersistentTier, read::OperatorReadBufferConfig},
+	tier::{persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig},
 	types::BufferedState,
 };
 
@@ -54,8 +54,8 @@ fn store_fixture() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard
 		commit: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
 			.flush_interval(idle_interval())),
-		read: Some(OperatorReadBufferConfig::default()),
-		dictionary: None,
+		point: Some(OperatorPointConfig::default()),
+		range: Some(OperatorRangeConfig::default()),
 		spawner,
 		clock,
 	});
@@ -462,7 +462,7 @@ fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")));
 	}
 
-	flush_now(&buffer, &tier(&storage), None);
+	flush_now(&buffer, &tier(&storage), None, None);
 
 	for index in 0..67 {
 		let durable = storage
@@ -487,7 +487,7 @@ fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 	assert_eq!(storage.get(OP_A, &key(1)).map(|row| body(&row)), Some("early".to_string()));
 
 	buffer.record_state_set(OP_A, key(1), row("late"));
-	flush_now(&buffer, &tier(&storage), None);
+	flush_now(&buffer, &tier(&storage), None, None);
 
 	assert_eq!(
 		storage.get(OP_A, &key(1)).map(|row| body(&row)),
@@ -505,9 +505,10 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::with_budget(4);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, idle_interval());
+	let actor_ref =
+		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
 
-	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, idle_interval());
+	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, None, idle_interval());
 	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
 	let mut state = actor.init(&ctx);
 
@@ -534,9 +535,10 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::with_budget(4);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, idle_interval());
+	let actor_ref =
+		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
 
-	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, idle_interval());
+	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, None, idle_interval());
 	let cancel = CancellationToken::new();
 	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
 	let mut state = actor.init(&ctx);
@@ -571,7 +573,8 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let budget = 16;
 	let buffer = OperatorCommitBuffer::with_budget(budget);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, idle_interval());
+	let actor_ref =
+		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
 	buffer.attach_flusher(actor_ref);
 
 	for index in 0..budget - 1 {

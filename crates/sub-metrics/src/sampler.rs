@@ -20,7 +20,10 @@ use reifydb_runtime::{
 use reifydb_store_multi::{MultiStore, tier::read::ReadBufferShardMetrics};
 use reifydb_store_operator::{
 	store::OperatorStore,
-	tier::read::{OperatorReadBufferKeyspaceMetrics, OperatorReadBufferShardMetrics},
+	tier::{
+		point::{OperatorPointKeyspaceMetrics, OperatorPointShardMetrics},
+		range::{OperatorRangeKeyspaceMetrics, OperatorRangeShardMetrics},
+	},
 };
 use reifydb_store_single::SingleStore;
 use reifydb_value::{
@@ -188,14 +191,24 @@ impl MetricsSamplerActor {
 			single_persistent_rows(&self.single_store),
 		);
 		accumulator.push(
-			MetricsDomain::StoreOperatorRead,
+			MetricsDomain::StoreOperatorPoint,
 			Surface::Current,
-			operator_read_rows(&self.operator_store),
+			operator_point_rows(&self.operator_store),
 		);
 		accumulator.push(
-			MetricsDomain::StoreOperatorReadKeyspace,
+			MetricsDomain::StoreOperatorPointKeyspace,
 			Surface::Current,
-			operator_read_keyspace_rows(&self.operator_store),
+			operator_point_keyspace_rows(&self.operator_store),
+		);
+		accumulator.push(
+			MetricsDomain::StoreOperatorRange,
+			Surface::Current,
+			operator_range_rows(&self.operator_store),
+		);
+		accumulator.push(
+			MetricsDomain::StoreOperatorRangeKeyspace,
+			Surface::Current,
+			operator_range_keyspace_rows(&self.operator_store),
 		);
 		accumulator.push(
 			MetricsDomain::StoreOperatorPersistent,
@@ -387,11 +400,54 @@ fn single_commit_rows(store: &SingleStore) -> Vec<MetricsRow> {
 	}]
 }
 
-fn operator_read_rows(store: &OperatorStore) -> Vec<MetricsRow> {
-	store.read_buffer_shard_metrics().iter().map(operator_read_row).collect()
+fn operator_point_rows(store: &OperatorStore) -> Vec<MetricsRow> {
+	store.point_shard_metrics().iter().map(operator_point_row).collect()
 }
 
-fn operator_read_row(metrics: &OperatorReadBufferShardMetrics) -> MetricsRow {
+fn operator_point_row(metrics: &OperatorPointShardMetrics) -> MetricsRow {
+	MetricsRow {
+		dimensions: vec![Value::Uint2(metrics.shard as u16)],
+		measures: vec![
+			level_bytes("used", metrics.used),
+			level_bytes("limit", metrics.limit),
+			level_count("entries", metrics.entries as u64),
+			counter_count("hits", metrics.counters.hits),
+			counter_count("misses", metrics.counters.misses),
+			counter_count("insertions", metrics.counters.insertions),
+			counter_count("evictions", metrics.counters.evictions),
+			counter_count("fills_started", metrics.counters.fills_started),
+			counter_count("fills_dirty_aborted", metrics.counters.fills_dirty_aborted),
+			counter_count("fills_duplicate", metrics.counters.fills_duplicate),
+		],
+	}
+}
+
+fn operator_point_keyspace_rows(store: &OperatorStore) -> Vec<MetricsRow> {
+	store.point_keyspace_metrics().iter().map(operator_point_keyspace_row).collect()
+}
+
+fn operator_point_keyspace_row(metrics: &OperatorPointKeyspaceMetrics) -> MetricsRow {
+	MetricsRow {
+		dimensions: vec![Value::Utf8(metrics.keyspace.name().to_string())],
+		measures: vec![
+			level_bytes("used", metrics.used),
+			level_count("entries", metrics.entries as u64),
+			counter_count("hits", metrics.counters.hits),
+			counter_count("misses", metrics.counters.misses),
+			counter_count("insertions", metrics.counters.insertions),
+			counter_count("evictions", metrics.counters.evictions),
+			counter_count("fills_started", metrics.counters.fills_started),
+			counter_count("fills_dirty_aborted", metrics.counters.fills_dirty_aborted),
+			counter_count("fills_duplicate", metrics.counters.fills_duplicate),
+		],
+	}
+}
+
+fn operator_range_rows(store: &OperatorStore) -> Vec<MetricsRow> {
+	store.range_shard_metrics().iter().map(operator_range_row).collect()
+}
+
+fn operator_range_row(metrics: &OperatorRangeShardMetrics) -> MetricsRow {
 	MetricsRow {
 		dimensions: vec![Value::Uint2(metrics.shard as u16)],
 		measures: vec![
@@ -401,19 +457,21 @@ fn operator_read_row(metrics: &OperatorReadBufferShardMetrics) -> MetricsRow {
 			level_count("entries", metrics.entries as u64),
 			counter_count("hits", metrics.counters.hits),
 			counter_count("misses", metrics.counters.misses),
-			counter_count("evictions", metrics.counters.evictions),
-			counter_count("fills_started", metrics.counters.fills_started),
+			counter_count("fills", metrics.counters.fills),
+			counter_count("fills_declined", metrics.counters.fills_declined),
 			counter_count("fills_dirty_aborted", metrics.counters.fills_dirty_aborted),
-			counter_count("fills_duplicate", metrics.counters.fills_duplicate),
+			counter_count("evictions", metrics.counters.evictions),
+			counter_count("point_hits", metrics.counters.point_hits),
+			counter_count("point_misses", metrics.counters.point_misses),
 		],
 	}
 }
 
-fn operator_read_keyspace_rows(store: &OperatorStore) -> Vec<MetricsRow> {
-	store.read_buffer_keyspace_metrics().iter().map(operator_read_keyspace_row).collect()
+fn operator_range_keyspace_rows(store: &OperatorStore) -> Vec<MetricsRow> {
+	store.range_keyspace_metrics().iter().map(operator_range_keyspace_row).collect()
 }
 
-fn operator_read_keyspace_row(metrics: &OperatorReadBufferKeyspaceMetrics) -> MetricsRow {
+fn operator_range_keyspace_row(metrics: &OperatorRangeKeyspaceMetrics) -> MetricsRow {
 	MetricsRow {
 		dimensions: vec![Value::Utf8(metrics.keyspace.name().to_string())],
 		measures: vec![
@@ -422,10 +480,12 @@ fn operator_read_keyspace_row(metrics: &OperatorReadBufferKeyspaceMetrics) -> Me
 			level_count("entries", metrics.entries as u64),
 			counter_count("hits", metrics.counters.hits),
 			counter_count("misses", metrics.counters.misses),
-			counter_count("evictions", metrics.counters.evictions),
-			counter_count("fills_started", metrics.counters.fills_started),
+			counter_count("fills", metrics.counters.fills),
+			counter_count("fills_declined", metrics.counters.fills_declined),
 			counter_count("fills_dirty_aborted", metrics.counters.fills_dirty_aborted),
-			counter_count("fills_duplicate", metrics.counters.fills_duplicate),
+			counter_count("evictions", metrics.counters.evictions),
+			counter_count("point_hits", metrics.counters.point_hits),
+			counter_count("point_misses", metrics.counters.point_misses),
 		],
 	}
 }
@@ -554,36 +614,59 @@ fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::key::operator_state::Keyspace;
-	use reifydb_store_operator::tier::read::OperatorReadBufferMetrics;
+	use reifydb_store_operator::tier::{point::OperatorPointMetrics, range::OperatorRangeMetrics};
 
 	use super::*;
 
-	fn sample() -> OperatorReadBufferKeyspaceMetrics {
-		OperatorReadBufferKeyspaceMetrics {
+	fn point_sample() -> OperatorPointKeyspaceMetrics {
+		OperatorPointKeyspaceMetrics {
 			keyspace: Keyspace::SOURCE_WATERMARK,
 			used: ByteSize::from_bytes(12_401),
-			buckets: 115,
 			entries: 231,
-			complete_buckets: 97,
-			counters: OperatorReadBufferMetrics {
+			counters: OperatorPointMetrics {
 				hits: 367_918,
 				misses: 2_944,
+				insertions: 1_884,
 				evictions: 51,
 				fills_started: 3_001,
 				fills_dirty_aborted: 7,
 				fills_duplicate: 13,
-				range_hits: 1_207,
-				range_misses: 89,
-				range_fills: 41,
-				range_fills_declined: 5,
-				range_fills_dirty_aborted: 2,
+			},
+		}
+	}
+
+	fn range_sample() -> OperatorRangeKeyspaceMetrics {
+		OperatorRangeKeyspaceMetrics {
+			keyspace: Keyspace::SOURCE_WATERMARK,
+			used: ByteSize::from_bytes(20_733),
+			buckets: 115,
+			entries: 419,
+			counters: OperatorRangeMetrics {
+				hits: 1_207,
+				misses: 89,
+				fills: 41,
+				fills_declined: 5,
+				fills_dirty_aborted: 2,
+				evictions: 63,
+				point_hits: 704,
+				point_misses: 22,
 			},
 		}
 	}
 
 	#[test]
-	fn keyspace_row_names_the_keyspace_rather_than_numbering_it() {
-		let row = operator_read_keyspace_row(&sample());
+	fn point_keyspace_row_names_the_keyspace_rather_than_numbering_it() {
+		let row = operator_point_keyspace_row(&point_sample());
+		assert_eq!(
+			row.dimensions,
+			vec![Value::Utf8("SOURCE_WATERMARK".to_string())],
+			"the dimension must be the keyspace name; a raw u8 breaks the moment a constant is renumbered"
+		);
+	}
+
+	#[test]
+	fn range_keyspace_row_names_the_keyspace_rather_than_numbering_it() {
+		let row = operator_range_keyspace_row(&range_sample());
 		assert_eq!(
 			row.dimensions,
 			vec![Value::Utf8("SOURCE_WATERMARK".to_string())],
@@ -595,39 +678,84 @@ mod tests {
 	fn the_real_custom_keyspace_keeps_its_plain_name() {
 		// CUSTOM_NOT_CACHED and CUSTOM_CACHED are declared constants, not gaps: relabelling either as
 		// CUSTOM_0x40 hides which admission side a keyspace sits on.
-		let mut metrics = sample();
+		let mut metrics = point_sample();
 		metrics.keyspace = Keyspace::CUSTOM_NOT_CACHED;
-		let row = operator_read_keyspace_row(&metrics);
+		let row = operator_point_keyspace_row(&metrics);
 		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_NOT_CACHED".to_string())]);
 
-		let mut metrics = sample();
+		let mut metrics = point_sample();
 		metrics.keyspace = Keyspace::CUSTOM_CACHED;
-		let row = operator_read_keyspace_row(&metrics);
+		let row = operator_point_keyspace_row(&metrics);
 		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_CACHED".to_string())]);
+
+		let mut metrics = range_sample();
+		metrics.keyspace = Keyspace::CUSTOM_NOT_CACHED;
+		let row = operator_range_keyspace_row(&metrics);
+		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_NOT_CACHED".to_string())]);
 	}
 
 	#[test]
-	fn keyspace_row_carries_every_declared_measure_exactly_once() {
-		let row = operator_read_keyspace_row(&sample());
+	fn point_keyspace_row_carries_every_declared_measure_exactly_once() {
+		let row = operator_point_keyspace_row(&point_sample());
 		let declared: Vec<&str> =
-			MetricsDomain::StoreOperatorReadKeyspace.spec().measures.iter().map(|m| m.name).collect();
+			MetricsDomain::StoreOperatorPointKeyspace.spec().measures.iter().map(|m| m.name).collect();
 		let built: Vec<&str> = row.measures.iter().map(|m| m.metric).collect();
 		assert_eq!(built, declared, "a declared measure the row omits publishes as none forever");
 	}
 
 	#[test]
-	fn keyspace_row_maps_each_field_to_its_own_measure() {
-		let metrics = sample();
-		let row = operator_read_keyspace_row(&metrics);
+	fn range_keyspace_row_carries_every_declared_measure_exactly_once() {
+		let row = operator_range_keyspace_row(&range_sample());
+		let declared: Vec<&str> =
+			MetricsDomain::StoreOperatorRangeKeyspace.spec().measures.iter().map(|m| m.name).collect();
+		let built: Vec<&str> = row.measures.iter().map(|m| m.metric).collect();
+		assert_eq!(built, declared, "a declared measure the row omits publishes as none forever");
+	}
+
+	#[test]
+	fn point_shard_row_carries_every_declared_measure_exactly_once() {
+		let row = operator_point_row(&OperatorPointShardMetrics {
+			shard: 3,
+			used: ByteSize::from_bytes(900),
+			limit: ByteSize::from_bytes(4_096),
+			entries: 12,
+			counters: point_sample().counters,
+		});
+		let declared: Vec<&str> =
+			MetricsDomain::StoreOperatorPoint.spec().measures.iter().map(|m| m.name).collect();
+		let built: Vec<&str> = row.measures.iter().map(|m| m.metric).collect();
+		assert_eq!(built, declared, "a declared measure the row omits publishes as none forever");
+		assert!(built.iter().all(|name| *name != "buckets"), "the point tier is flat and owns no buckets");
+	}
+
+	#[test]
+	fn range_shard_row_carries_every_declared_measure_exactly_once() {
+		let row = operator_range_row(&OperatorRangeShardMetrics {
+			shard: 3,
+			used: ByteSize::from_bytes(900),
+			limit: ByteSize::from_bytes(4_096),
+			buckets: 5,
+			entries: 12,
+			counters: range_sample().counters,
+		});
+		let declared: Vec<&str> =
+			MetricsDomain::StoreOperatorRange.spec().measures.iter().map(|m| m.name).collect();
+		let built: Vec<&str> = row.measures.iter().map(|m| m.metric).collect();
+		assert_eq!(built, declared, "a declared measure the row omits publishes as none forever");
+	}
+
+	#[test]
+	fn point_keyspace_row_maps_each_field_to_its_own_measure() {
+		let row = operator_point_keyspace_row(&point_sample());
 		let find = |name: &str| {
 			row.measures.iter().find(|m| m.metric == name).unwrap_or_else(|| panic!("missing {name}"))
 		};
 
 		assert_eq!(find("used").reading, Reading::Bytes(ByteSize::from_bytes(12_401)));
-		assert_eq!(find("buckets").reading, Reading::Count(Count::new(115)));
 		assert_eq!(find("entries").reading, Reading::Count(Count::new(231)));
 		assert_eq!(find("hits").reading, Reading::Count(Count::new(367_918)));
 		assert_eq!(find("misses").reading, Reading::Count(Count::new(2_944)));
+		assert_eq!(find("insertions").reading, Reading::Count(Count::new(1_884)));
 		assert_eq!(find("evictions").reading, Reading::Count(Count::new(51)));
 		assert_eq!(find("fills_started").reading, Reading::Count(Count::new(3_001)));
 		assert_eq!(find("fills_dirty_aborted").reading, Reading::Count(Count::new(7)));
@@ -635,9 +763,31 @@ mod tests {
 	}
 
 	#[test]
-	fn keyspace_row_kinds_match_the_declared_spec() {
-		let row = operator_read_keyspace_row(&sample());
-		let spec = MetricsDomain::StoreOperatorReadKeyspace.spec();
+	fn range_keyspace_row_maps_each_field_to_its_own_measure() {
+		// hits/misses are range hits and misses; point_hits/point_misses count point reads a whole
+		// resident bucket answered, so crossing the two pairs reports the wrong cache entirely.
+		let row = operator_range_keyspace_row(&range_sample());
+		let find = |name: &str| {
+			row.measures.iter().find(|m| m.metric == name).unwrap_or_else(|| panic!("missing {name}"))
+		};
+
+		assert_eq!(find("used").reading, Reading::Bytes(ByteSize::from_bytes(20_733)));
+		assert_eq!(find("buckets").reading, Reading::Count(Count::new(115)));
+		assert_eq!(find("entries").reading, Reading::Count(Count::new(419)));
+		assert_eq!(find("hits").reading, Reading::Count(Count::new(1_207)));
+		assert_eq!(find("misses").reading, Reading::Count(Count::new(89)));
+		assert_eq!(find("fills").reading, Reading::Count(Count::new(41)));
+		assert_eq!(find("fills_declined").reading, Reading::Count(Count::new(5)));
+		assert_eq!(find("fills_dirty_aborted").reading, Reading::Count(Count::new(2)));
+		assert_eq!(find("evictions").reading, Reading::Count(Count::new(63)));
+		assert_eq!(find("point_hits").reading, Reading::Count(Count::new(704)));
+		assert_eq!(find("point_misses").reading, Reading::Count(Count::new(22)));
+	}
+
+	#[test]
+	fn point_keyspace_row_kinds_match_the_declared_spec() {
+		let row = operator_point_keyspace_row(&point_sample());
+		let spec = MetricsDomain::StoreOperatorPointKeyspace.spec();
 		for measure in &row.measures {
 			let declared = spec.measures.iter().find(|m| m.name == measure.metric).expect("declared");
 			assert_eq!(
@@ -649,10 +799,29 @@ mod tests {
 	}
 
 	#[test]
-	fn keyspace_rows_report_nothing_for_a_store_without_a_read_tier() {
+	fn range_keyspace_row_kinds_match_the_declared_spec() {
+		let row = operator_range_keyspace_row(&range_sample());
+		let spec = MetricsDomain::StoreOperatorRangeKeyspace.spec();
+		for measure in &row.measures {
+			let declared = spec.measures.iter().find(|m| m.name == measure.metric).expect("declared");
+			assert_eq!(
+				measure.kind, declared.kind,
+				"{} must be pushed with the kind the spec declares, otherwise a level accumulates as a counter",
+				measure.metric
+			);
+		}
+	}
+
+	#[test]
+	fn keyspace_rows_report_nothing_for_a_store_without_a_cache_tier() {
+		let store = OperatorStore::testing_memory();
 		assert!(
-			operator_read_keyspace_rows(&OperatorStore::testing_memory()).is_empty(),
-			"an absent read tier must publish no rows, never one row of zeros claiming a perfect cache"
+			operator_point_keyspace_rows(&store).is_empty(),
+			"an absent point tier must publish no rows, never one row of zeros claiming a perfect cache"
+		);
+		assert!(
+			operator_range_keyspace_rows(&store).is_empty(),
+			"an absent range tier must publish no rows, never one row of zeros claiming a perfect cache"
 		);
 	}
 }

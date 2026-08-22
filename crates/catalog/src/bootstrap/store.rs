@@ -45,7 +45,7 @@ pub fn bootstrap_store(
 	Ok(())
 }
 
-const STORE_NAMESPACES: [(NamespaceId, &str, &str, NamespaceId); 11] = [
+const STORE_NAMESPACES: [(NamespaceId, &str, &str, NamespaceId); 13] = [
 	(
 		NamespaceId::SYSTEM_METRICS_STORE_MULTI,
 		"system::metrics::store::multi",
@@ -95,16 +95,28 @@ const STORE_NAMESPACES: [(NamespaceId, &str, &str, NamespaceId); 11] = [
 		NamespaceId::SYSTEM_METRICS_STORE,
 	),
 	(
-		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_READ,
-		"system::metrics::store::operator::read",
-		"read",
+		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT,
+		"system::metrics::store::operator::point",
+		"point",
 		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR,
 	),
 	(
-		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_READ_KEYSPACE,
-		"system::metrics::store::operator::read::keyspace",
+		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT_KEYSPACE,
+		"system::metrics::store::operator::point::keyspace",
 		"keyspace",
-		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_READ,
+		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_POINT,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_RANGE,
+		"system::metrics::store::operator::range",
+		"range",
+		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_RANGE_KEYSPACE,
+		"system::metrics::store::operator::range::keyspace",
+		"keyspace",
+		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_RANGE,
 	),
 	(
 		NamespaceId::SYSTEM_METRICS_STORE_OPERATOR_PERSISTENT,

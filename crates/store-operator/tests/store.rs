@@ -18,7 +18,7 @@ use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
-	tier::{persistent::OperatorPersistentTier, read::OperatorReadBufferConfig},
+	tier::{persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig},
 	types::{OperatorBatch, OperatorSealAnchor, OperatorWrite},
 };
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
@@ -39,8 +39,8 @@ fn flushed_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard
 		commit: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
 			.flush_interval(Duration::from_hours_const(1))),
-		read: Some(OperatorReadBufferConfig::default()),
-		dictionary: None,
+		point: Some(OperatorPointConfig::default()),
+		range: Some(OperatorRangeConfig::default()),
 		spawner,
 		clock,
 	});
@@ -54,8 +54,8 @@ fn store_at(config: SqliteConfig) -> OperatorStore {
 	OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config).flush_interval(Duration::from_hours_const(1))),
-		read: Some(OperatorReadBufferConfig::default()),
-		dictionary: None,
+		point: Some(OperatorPointConfig::default()),
+		range: Some(OperatorRangeConfig::default()),
 		spawner,
 		clock,
 	})

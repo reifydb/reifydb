@@ -24,7 +24,7 @@ use reifydb_store_operator::{
 	filter::{ARMED_CAPACITY_KEYS, OperatorKeyFilter, source::OperatorStateKeySource},
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
-	tier::read::OperatorReadBufferConfig,
+	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -52,8 +52,8 @@ fn store_at(config: SqliteConfig) -> OperatorStore {
 	OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config).flush_interval(Duration::from_hours_const(1))),
-		read: Some(OperatorReadBufferConfig::default()),
-		dictionary: None,
+		point: Some(OperatorPointConfig::default()),
+		range: Some(OperatorRangeConfig::default()),
 		spawner,
 		clock,
 	})

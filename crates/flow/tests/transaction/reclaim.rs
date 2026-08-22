@@ -124,7 +124,8 @@ fn a_bounded_identity_reclaim_keeps_the_dictionary_until_the_range_is_drained() 
 
 #[test]
 fn a_partial_identity_reclaim_puts_back_the_record_the_final_pass_needs() {
-	// The record sorts between the mappings and the timers, so a budget stopping past it must restore it or the dictionary entry strands behind an id nothing will intern again.
+	// The record sorts between the mappings and the timers, so a budget stopping past it must restore it or the
+	// dictionary entry strands behind an id nothing will intern again.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let group_bytes = EncodedKey::new(b"outlives-its-budget");

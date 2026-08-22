@@ -1,30 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	ops::Bound,
-	sync::{
-		Arc,
-		atomic::{AtomicBool, Ordering},
-	},
+use std::sync::{
+	Arc,
+	atomic::{AtomicBool, Ordering},
 };
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{
-		GroupId, Keyspace, OperatorStateKey, group_data_inner_range, group_identity_inner_range,
-		group_inner_range, keyspace_inner_range, keyspace_inner_range_upto,
-	},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 };
 use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::read::{
-	BUCKET_OVERHEAD, BucketId, ENTRY_OVERHEAD, FillInterlock, OperatorReadBufferConfig,
-	OperatorReadBufferKeyspaceMetrics, OperatorReadBufferMetrics, OperatorReadBufferTier, range::bucket_scope,
+use crate::tier::point::{
+	ENTRY_OVERHEAD, FillInterlock, OperatorPointConfig, OperatorPointKeyspaceMetrics, OperatorPointMetrics,
+	OperatorPointTier, PointKey, keyspace_of,
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -32,16 +23,19 @@ const OP_B: OperatorId = OperatorId(2);
 const GROUP_A: GroupId = GroupId(10);
 const GROUP_B: GroupId = GroupId(11);
 
-fn tier(limit: u64) -> OperatorReadBufferTier {
-	OperatorReadBufferTier::new(OperatorReadBufferConfig {
+fn sharded(limit: u64, shards: usize) -> OperatorPointTier {
+	OperatorPointTier::new(OperatorPointConfig {
 		resident_bytes: Some(ByteSize::from_bytes(limit)),
-		range_resident_bytes: ByteSize::from_bytes(limit),
-		shards: 1,
+		shards,
 	})
 	.expect("a tier with a byte budget must be constructed")
 }
 
-fn roomy() -> OperatorReadBufferTier {
+fn tier(limit: u64) -> OperatorPointTier {
+	sharded(limit, 1)
+}
+
+fn roomy() -> OperatorPointTier {
 	tier(ByteSize::from_mib(1).as_bytes())
 }
 
@@ -58,13 +52,20 @@ fn body(entry: &Option<EncodedPodRow>) -> String {
 		.expect("test bodies are utf8")
 }
 
-fn fill(tier: &OperatorReadBufferTier, operator: OperatorId, key: EncodedKey, row: Option<EncodedPodRow>) {
+fn fill(tier: &OperatorPointTier, operator: OperatorId, key: EncodedKey, row: Option<EncodedPodRow>) {
 	assert!(tier.begin_fill(operator, &key), "the fixture must be allowed to start the fill it is staging");
 	assert!(tier.finish_fill(operator, key, row), "the fixture must be allowed to publish the fill it started");
 }
 
 fn footprint(key: &EncodedKey, row: &Option<EncodedPodRow>) -> usize {
 	ENTRY_OVERHEAD + key.heap_bytes() + row.as_ref().map_or(0, EncodedPodRow::len)
+}
+
+fn keyspace_row(tier: &OperatorPointTier, keyspace: Keyspace) -> OperatorPointKeyspaceMetrics {
+	tier.keyspace_metrics()
+		.into_iter()
+		.find(|row| row.keyspace == keyspace)
+		.unwrap_or_else(|| panic!("keyspace {} must be reported", keyspace.name()))
 }
 
 #[test]
@@ -94,12 +95,7 @@ fn a_remembered_absence_is_a_hit_and_differs_from_an_unknown_key() {
 		"a fill that found nothing must publish the absence"
 	);
 
-	assert_eq!(
-		tier.get(OP_A, &known_absent),
-		Some(None),
-		"a remembered absence must be served as a hit; collapsing it to a miss sends every repeat read \
-		 back to the store, which is the cost this tier exists to remove"
-	);
+	assert_eq!(tier.get(OP_A, &known_absent), Some(None), "a remembered absence must be served as a hit");
 	assert_eq!(tier.contains(OP_A, &known_absent), Some(false));
 	assert_eq!(tier.hits(), 2, "both the get and the contains of a known absence are hits");
 
@@ -115,14 +111,15 @@ fn invalidate_drops_only_the_named_key() {
 	let sibling = key(GROUP_A, Keyspace::ACCUMULATOR, b"y");
 	tier.overwrite(OP_A, dropped.clone(), row("x"));
 	tier.overwrite(OP_A, sibling.clone(), row("y"));
-	assert_eq!(tier.buckets(), 1, "both keys share one bucket, so the fixture actually tests sibling survival");
+	assert_eq!(tier.entries(), 2, "both keys must be resident, or sibling survival is not under test");
 
 	tier.invalidate(OP_A, &dropped);
 
 	assert_eq!(tier.get(OP_A, &dropped), None, "an invalidated key must go unknown, never stay as a stale row");
-	let served = tier.get(OP_A, &sibling).expect("the sibling in the same bucket must survive");
+	let served = tier.get(OP_A, &sibling).expect("the sibling sharing the group and keyspace must survive");
 	assert_eq!(body(&served), "y", "invalidating one key must not disturb another key's row");
 	assert_eq!(tier.entries(), 1);
+	assert_eq!(tier.resident_bytes(), tier.tallied_bytes(), "the drop must release exactly the dropped bytes");
 }
 
 #[test]
@@ -131,90 +128,53 @@ fn invalidate_operator_spares_other_operators() {
 	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"k");
 	tier.overwrite(OP_A, k.clone(), row("a"));
 	tier.overwrite(OP_B, k.clone(), row("b"));
-	assert_eq!(tier.buckets(), 2, "the same inner key under two operators must occupy two buckets");
+	assert_eq!(tier.entries(), 2, "the same inner key under two operators must occupy two entries");
 
 	tier.invalidate_operator(OP_A);
 
 	assert_eq!(tier.get(OP_A, &k), None, "a dropped operator must leave no cached state behind");
 	let survivor = tier.get(OP_B, &k).expect("another operator's identical key must survive");
-	assert_eq!(body(&survivor), "b", "operator scoping must be by bucket, not by key bytes");
-	assert_eq!(tier.buckets(), 1);
+	assert_eq!(body(&survivor), "b", "operator scoping must be by entry, not by key bytes");
+	assert_eq!(tier.entries(), 1);
 	assert_eq!(tier.resident_bytes(), tier.tallied_bytes(), "dropping an operator must release exactly its bytes");
+	assert!(tier.index_is_consistent(), "the rebuilt index must address the surviving slots");
 }
 
 #[test]
-fn bucketing_splits_on_operator_group_and_keyspace() {
-	let base = BucketId::of(OP_A, &key(GROUP_A, Keyspace::ACCUMULATOR, b"a"))
-		.expect("a well formed inner key must yield a bucket");
-
-	assert_eq!(
-		BucketId::of(OP_A, &key(GROUP_A, Keyspace::ACCUMULATOR, b"b")),
-		Some(base),
-		"the suffix must not take part in bucketing, or every key becomes its own bucket"
-	);
-	for (name, other) in [
-		("keyspace", BucketId::of(OP_A, &key(GROUP_A, Keyspace::BUFFER, b"a"))),
-		("group", BucketId::of(OP_A, &key(GROUP_B, Keyspace::ACCUMULATOR, b"a"))),
-		("operator", BucketId::of(OP_B, &key(GROUP_A, Keyspace::ACCUMULATOR, b"a"))),
-	] {
-		assert_ne!(other, Some(base), "changing the {name} must produce a different bucket");
-	}
-
-	assert_eq!(base.operator, OP_A);
-	assert_eq!(base.group, GROUP_A, "the group must be decoded, not read as raw keycode bytes");
-	assert_eq!(base.keyspace, Keyspace::ACCUMULATOR);
-}
-
-#[test]
-fn two_keys_of_one_bucket_share_one_bucket() {
-	let tier = roomy();
-	tier.overwrite(OP_A, key(GROUP_A, Keyspace::ACCUMULATOR, b"a"), row("a"));
-	tier.overwrite(OP_A, key(GROUP_A, Keyspace::ACCUMULATOR, b"b"), row("b"));
-	assert_eq!(tier.buckets(), 1);
-	assert_eq!(tier.entries(), 2);
-
-	tier.overwrite(OP_A, key(GROUP_A, Keyspace::BUFFER, b"a"), row("c"));
-	tier.overwrite(OP_A, key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("d"));
-	tier.overwrite(OP_B, key(GROUP_A, Keyspace::ACCUMULATOR, b"a"), row("e"));
-	assert_eq!(tier.buckets(), 4, "keyspace, group and operator must each split the bucket");
-	assert_eq!(tier.entries(), 5);
-}
-
-#[test]
-fn filling_past_the_budget_evicts_whole_buckets_and_releases_their_bytes() {
+fn filling_past_the_budget_evicts_entries_and_releases_their_bytes() {
 	let sample_key = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	let sample_row = Some(row("v"));
-	let per_bucket = (BUCKET_OVERHEAD + footprint(&sample_key, &sample_row)) as u64;
-	let tier = tier(per_bucket * 2);
+	let per_entry = footprint(&sample_key, &sample_row) as u64;
+	let tier = tier(per_entry * 2);
 
 	for group in [GROUP_A, GROUP_B] {
 		fill(&tier, OP_A, key(group, Keyspace::ACCUMULATOR, b"a"), sample_row.clone());
 	}
-	assert_eq!(tier.buckets(), 2, "two buckets fit exactly, so nothing may be evicted yet");
+	assert_eq!(tier.entries(), 2, "two entries fit exactly, so nothing may be evicted yet");
 	assert_eq!(tier.evictions(), 0);
-	assert_eq!(tier.resident_bytes().as_bytes(), per_bucket * 2);
+	assert_eq!(tier.resident_bytes().as_bytes(), per_entry * 2);
 
 	fill(&tier, OP_A, key(GroupId(12), Keyspace::ACCUMULATOR, b"a"), sample_row.clone());
 
-	assert_eq!(tier.evictions(), 1, "the third bucket must push exactly one victim out, not the whole shard");
-	assert_eq!(tier.buckets(), 2);
+	assert_eq!(tier.evictions(), 1, "the third entry must push exactly one victim out, not the whole shard");
+	assert_eq!(tier.entries(), 2);
 	assert!(
-		tier.resident_bytes().as_bytes() <= per_bucket * 2,
+		tier.resident_bytes().as_bytes() <= per_entry * 2,
 		"eviction must bring used bytes back under the limit, or the budget stops bounding anything"
 	);
 	assert_eq!(
 		tier.resident_bytes(),
 		tier.tallied_bytes(),
-		"the budget must equal the sum of the surviving buckets, or eviction released the wrong amount"
+		"the budget must equal the sum of the surviving entries, or eviction released the wrong amount"
 	);
 	assert_eq!(
 		tier.get(OP_A, &key(GROUP_A, Keyspace::ACCUMULATOR, b"a")),
 		None,
-		"the least recently touched bucket must be the victim"
+		"the least recently touched entry must be the victim"
 	);
 	assert!(
 		tier.get(OP_A, &key(GroupId(12), Keyspace::ACCUMULATOR, b"a")).is_some(),
-		"the bucket that triggered eviction must not evict itself while older buckets remain"
+		"the entry that triggered eviction must not evict itself while older entries remain"
 	);
 }
 
@@ -222,23 +182,22 @@ fn filling_past_the_budget_evicts_whole_buckets_and_releases_their_bytes() {
 fn charge_and_release_balance_across_the_entry_lifecycle() {
 	let sample_key = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	let sample_row = Some(row("v"));
-	let per_bucket = (BUCKET_OVERHEAD + footprint(&sample_key, &sample_row)) as u64;
-	let tier = tier(per_bucket * 2);
+	let per_entry = footprint(&sample_key, &sample_row) as u64;
+	let tier = tier(per_entry * 2);
 	let balanced = |stage: &str| {
 		assert_eq!(
 			tier.resident_bytes(),
 			tier.tallied_bytes(),
-			"after {stage} the budget and the per-bucket tally must agree; a drift either way is a leak \
-			 that silently shrinks or unbounds the cache"
+			"after {stage} the budget and the per-entry tally must agree"
 		);
 	};
 
 	fill(&tier, OP_A, sample_key.clone(), sample_row.clone());
-	assert_eq!(tier.resident_bytes().as_bytes(), per_bucket);
+	assert_eq!(tier.resident_bytes().as_bytes(), per_entry);
 	balanced("insert");
 
 	tier.invalidate(OP_A, &sample_key);
-	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "invalidating the last entry must release the bucket too");
+	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "invalidating the last entry must release its bytes");
 	balanced("invalidate");
 
 	fill(&tier, OP_A, sample_key.clone(), sample_row.clone());
@@ -247,7 +206,7 @@ fn charge_and_release_balance_across_the_entry_lifecycle() {
 	fill(&tier, OP_A, sample_key.clone(), Some(row("a much longer row body")));
 	balanced("overwrite with a larger row");
 	fill(&tier, OP_A, sample_key.clone(), sample_row.clone());
-	assert_eq!(tier.resident_bytes().as_bytes(), per_bucket, "shrinking an entry must release the difference");
+	assert_eq!(tier.resident_bytes().as_bytes(), per_entry, "shrinking an entry must release the difference");
 	balanced("overwrite with a smaller row");
 
 	for group in [GROUP_B, GroupId(12), GroupId(13)] {
@@ -262,7 +221,6 @@ fn charge_and_release_balance_across_the_entry_lifecycle() {
 		ByteSize::ZERO,
 		"clear must release every byte it charged rather than zero the counter, or a leak stays invisible"
 	);
-	assert_eq!(tier.buckets(), 0);
 	assert_eq!(tier.entries(), 0);
 }
 
@@ -281,7 +239,7 @@ fn a_long_key_charges_its_heap_bytes() {
 	assert_eq!(
 		tier.resident_bytes().as_bytes() - after_short,
 		(ENTRY_OVERHEAD + long.heap_bytes() + 1) as u64,
-		"a heap allocated key must be charged for its allocation, or long keys are cached for free"
+		"a heap allocated key must be charged for its allocation"
 	);
 	tier.clear();
 	assert_eq!(tier.resident_bytes(), ByteSize::ZERO);
@@ -308,23 +266,24 @@ fn a_key_too_short_to_carry_a_keyspace_is_declined_not_cached() {
 
 	for bytes in [vec![], vec![0u8], vec![0u8; 8]] {
 		let short = EncodedKey::new(&bytes);
-		assert_eq!(BucketId::of(OP_A, &short), None, "a {} byte key cannot carry a bucket", bytes.len());
+		assert_eq!(keyspace_of(&short), None, "a {} byte key cannot carry a keyspace", bytes.len());
 
-		assert!(!tier.begin_fill(OP_A, &short), "a key with no bucket cannot be filled into one");
+		assert!(!tier.begin_fill(OP_A, &short), "a key with no keyspace cannot be filled");
+		assert!(!tier.finish_fill(OP_A, short.clone(), Some(row("v"))), "nor published through the handshake");
 		tier.overwrite(OP_A, short.clone(), row("v"));
 		assert_eq!(tier.get(OP_A, &short), None, "a declined key must never be served back");
 		assert_eq!(tier.contains(OP_A, &short), None);
 		tier.invalidate(OP_A, &short);
 	}
 
-	assert_eq!(tier.buckets(), 0, "declining must mean not caching, not caching under a wrong bucket");
+	assert_eq!(tier.entries(), 0, "declining must mean not caching, not caching under a wrong keyspace");
 	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "a declined key must not be charged");
 	assert_eq!(tier.hits(), 0);
-	assert_eq!(tier.misses(), 0, "an undecodable key is not attributable to a shard, so it counts as neither");
+	assert_eq!(tier.misses(), 0, "an undecodable key is not attributable to a keyspace, so it counts as neither");
 
 	let shortest_valid = key(GROUP_A, Keyspace::ACCUMULATOR, b"");
 	assert_eq!(shortest_valid.len(), 9, "group plus keyspace with an empty suffix is the shortest valid key");
-	assert!(BucketId::of(OP_A, &shortest_valid).is_some(), "the shortest valid key must not be declined");
+	assert!(keyspace_of(&shortest_valid).is_some(), "the shortest valid key must not be declined");
 }
 
 #[test]
@@ -355,7 +314,7 @@ fn a_fill_dirtied_by_an_operator_drop_is_discarded() {
 	assert_eq!(tier.get(OP_A, &k), None);
 	assert!(
 		tier.finish_fill(OP_B, neighbour.clone(), Some(row("fresh"))),
-		"marking dirty must be scoped to the dropped operator, otherwise one drop aborts every live fill"
+		"marking dirty must be scoped to the dropped operator"
 	);
 	assert!(tier.get(OP_B, &neighbour).is_some());
 }
@@ -391,8 +350,7 @@ fn a_published_fill_is_accounted_exactly_like_an_overwritten_row() {
 	assert!(tier.finish_fill(OP_A, k.clone(), Some(row("v"))));
 
 	assert_eq!(tier.resident_bytes(), by_overwrite, "publishing a fill must charge what an overwrite charges");
-	assert_eq!(tier.resident_bytes(), tier.tallied_bytes(), "the budget must match the per-bucket tally");
-	assert_eq!(tier.buckets(), 1);
+	assert_eq!(tier.resident_bytes(), tier.tallied_bytes(), "the budget must match the per-entry tally");
 	assert_eq!(tier.entries(), 1);
 }
 
@@ -400,8 +358,8 @@ fn a_published_fill_is_accounted_exactly_like_an_overwritten_row() {
 fn a_published_fill_evicts_to_capacity() {
 	let sample_key = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	let sample_row = Some(row("v"));
-	let per_bucket = (BUCKET_OVERHEAD + footprint(&sample_key, &sample_row)) as u64;
-	let tier = tier(per_bucket * 2);
+	let per_entry = footprint(&sample_key, &sample_row) as u64;
+	let tier = tier(per_entry * 2);
 
 	for group in [GROUP_A, GROUP_B, GroupId(12)] {
 		let k = key(group, Keyspace::ACCUMULATOR, b"a");
@@ -410,8 +368,8 @@ fn a_published_fill_evicts_to_capacity() {
 	}
 
 	assert_eq!(tier.evictions(), 1, "the third published fill must push exactly one victim out");
-	assert_eq!(tier.buckets(), 2);
-	assert!(tier.resident_bytes().as_bytes() <= per_bucket * 2, "eviction must bring used bytes back under");
+	assert_eq!(tier.entries(), 2);
+	assert!(tier.resident_bytes().as_bytes() <= per_entry * 2, "eviction must bring used bytes back under");
 	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
 }
 
@@ -423,7 +381,7 @@ fn a_second_fill_of_the_same_key_is_declined_while_one_is_in_flight() {
 
 	assert!(tier.begin_fill(OP_A, &k));
 	assert!(!tier.begin_fill(OP_A, &k), "a duplicate fill of the same key must be declined");
-	assert!(tier.begin_fill(OP_A, &sibling), "a different key in the same bucket must still be admitted");
+	assert!(tier.begin_fill(OP_A, &sibling), "a different key in the same keyspace must still be admitted");
 	assert!(tier.begin_fill(OP_B, &k), "the same inner key under another operator is a different fill");
 
 	assert_eq!(tier.metrics().fills_duplicate, 1);
@@ -449,15 +407,14 @@ fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
 	let probed = Arc::new(AtomicBool::new(false));
 	let flag = acquired.clone();
 	let seen = probed.clone();
-	let hook: FillInterlock = Box::new(move |tier: &OperatorReadBufferTier, id: BucketId| {
+	let hook: FillInterlock = Box::new(move |tier: &OperatorPointTier, id: &PointKey| {
 		seen.store(true, Ordering::Relaxed);
-		flag.store(tier.shard_for(&id).try_lock().is_some(), Ordering::Relaxed);
+		flag.store(tier.shard_for(id).try_lock().is_some(), Ordering::Relaxed);
 	});
 
-	let tier = OperatorReadBufferTier::with_interlock(
-		OperatorReadBufferConfig {
+	let tier = OperatorPointTier::with_interlock(
+		OperatorPointConfig {
 			resident_bytes: Some(ByteSize::from_mib(1)),
-			range_resident_bytes: ByteSize::from_mib(1),
 			shards: 1,
 		},
 		hook,
@@ -471,60 +428,42 @@ fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
 	assert!(probed.load(Ordering::Relaxed), "the seam hook never fired, so the invariant went unchecked");
 	assert!(
 		!acquired.load(Ordering::Relaxed),
-		"the shard lock was acquirable between clearing the fill marker and publishing the row; a writer \
-		 invalidating in that window is silently dropped and the stale row is published over it"
+		"the shard lock was acquirable between clearing the fill marker and publishing the row"
 	);
 }
 
 #[test]
 fn a_tier_without_a_byte_budget_is_not_constructed() {
-	assert!(OperatorReadBufferTier::new(OperatorReadBufferConfig {
+	assert!(OperatorPointTier::new(OperatorPointConfig {
 		resident_bytes: None,
-		range_resident_bytes: ByteSize::from_mib(32),
 		shards: 16,
 	})
 	.is_none());
-	assert!(OperatorReadBufferTier::new(OperatorReadBufferConfig::default()).is_some());
-	assert_eq!(OperatorReadBufferConfig::default().shards, 16);
-	assert_eq!(OperatorReadBufferConfig::default().resident_bytes, Some(ByteSize::from_mib(64)));
+	assert!(OperatorPointTier::new(OperatorPointConfig::default()).is_some());
+	assert_eq!(OperatorPointConfig::default().shards, 16);
+	assert_eq!(OperatorPointConfig::default().resident_bytes, Some(ByteSize::from_mib(64)));
 }
 
 #[test]
 fn every_shard_is_reachable_and_reports_its_own_slice_of_the_budget() {
-	let tier = OperatorReadBufferTier::new(OperatorReadBufferConfig {
-		resident_bytes: Some(ByteSize::from_mib(64)),
-		range_resident_bytes: ByteSize::from_mib(32),
-		shards: 4,
-	})
-	.expect("a sharded tier must be constructed");
+	let tier = sharded(ByteSize::from_mib(64).as_bytes(), 4);
 
 	let metrics = tier.shard_metrics();
 	assert_eq!(metrics.len(), 4);
 	for (index, shard) in metrics.iter().enumerate() {
 		assert_eq!(shard.shard, index);
-		assert_eq!(
-			shard.limit,
-			ByteSize::from_mib(16),
-			"the total budget must be split across shards, or the tier holds shards times the limit"
-		);
+		assert_eq!(shard.limit, ByteSize::from_mib(16), "the total budget must be split across shards");
 	}
 
 	for group in 0..64u64 {
 		tier.overwrite(OP_A, key(GroupId(group), Keyspace::ACCUMULATOR, b"a"), row("v"));
 	}
-	assert_eq!(tier.buckets(), 64);
+	assert_eq!(tier.entries(), 64);
 	assert!(
-		tier.shard_metrics().iter().all(|shard| shard.buckets > 0),
-		"64 buckets must reach all 4 shards, or the shard hash ignores part of the bucket id"
+		tier.shard_metrics().iter().all(|shard| shard.entries > 0),
+		"64 entries must reach all 4 shards, or the shard hash ignores part of the key"
 	);
 	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
-}
-
-fn keyspace_row(tier: &OperatorReadBufferTier, keyspace: Keyspace) -> OperatorReadBufferKeyspaceMetrics {
-	tier.keyspace_metrics()
-		.into_iter()
-		.find(|row| row.keyspace == keyspace)
-		.unwrap_or_else(|| panic!("keyspace {} must be reported", keyspace.name()))
 }
 
 #[test]
@@ -539,23 +478,17 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	assert!(tier.get(OP_A, &buffer).is_none());
 
 	let reported = tier.keyspace_metrics();
-	assert_eq!(
-		reported.len(),
-		2,
-		"only the two keyspaces that were touched may be reported; a fixed 256 slot table must never \
-		 surface as 256 rows of zeros"
-	);
+	assert_eq!(reported.len(), 2, "only the two keyspaces that were touched may be reported");
 
 	let accumulator = keyspace_row(&tier, Keyspace::ACCUMULATOR);
 	assert_eq!(accumulator.counters.hits, 1);
 	assert_eq!(accumulator.counters.misses, 1);
-	assert_eq!(accumulator.buckets, 1);
 	assert_eq!(accumulator.entries, 1);
 
 	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
 	assert_eq!(buffer.counters.hits, 0, "a miss in one keyspace must not borrow the other keyspace's hit");
 	assert_eq!(buffer.counters.misses, 1);
-	assert_eq!(buffer.buckets, 0, "a keyspace with no resident bucket is still reported once a counter moved");
+	assert_eq!(buffer.entries, 0, "a keyspace with no resident entry is still reported once a counter moved");
 
 	assert_eq!(tier.metrics().hits, 1, "the per shard aggregate must survive alongside the keyspace table");
 	assert_eq!(tier.metrics().misses, 2);
@@ -582,7 +515,7 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 	let tier = roomy();
 	let sample_key = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	let sample_row = Some(row("v"));
-	let per_bucket = (BUCKET_OVERHEAD + footprint(&sample_key, &sample_row)) as u64;
+	let per_entry = footprint(&sample_key, &sample_row) as u64;
 
 	for group in [GROUP_A, GROUP_B] {
 		fill(&tier, OP_A, key(group, Keyspace::ACCUMULATOR, b"a"), sample_row.clone());
@@ -591,33 +524,21 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 	fill(&tier, OP_A, buffer_key.clone(), sample_row.clone());
 
 	let accumulator = keyspace_row(&tier, Keyspace::ACCUMULATOR);
-	assert_eq!(accumulator.buckets, 2);
 	assert_eq!(accumulator.entries, 2);
-	assert_eq!(accumulator.used, ByteSize::from_bytes(per_bucket * 2));
+	assert_eq!(accumulator.used, ByteSize::from_bytes(per_entry * 2));
 
 	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
-	assert_eq!(buffer.buckets, 1);
 	assert_eq!(buffer.entries, 1);
-	assert_eq!(buffer.used, ByteSize::from_bytes(per_bucket));
+	assert_eq!(buffer.used, ByteSize::from_bytes(per_entry));
 
 	let total: u64 = tier.keyspace_metrics().iter().map(|row| row.used.as_bytes()).sum();
-	assert_eq!(
-		ByteSize::from_bytes(total),
-		tier.tallied_bytes(),
-		"every resident byte must be attributed to exactly one keyspace, or the table leaks or double counts"
-	);
-	assert_eq!(tier.keyspace_metrics().iter().map(|row| row.buckets).sum::<usize>(), tier.buckets());
+	assert_eq!(ByteSize::from_bytes(total), tier.tallied_bytes(), "every resident byte belongs to one keyspace");
 	assert_eq!(tier.keyspace_metrics().iter().map(|row| row.entries).sum::<usize>(), tier.entries());
 }
 
 #[test]
 fn keyspace_counters_are_summed_across_every_shard() {
-	let tier = OperatorReadBufferTier::new(OperatorReadBufferConfig {
-		resident_bytes: Some(ByteSize::from_mib(64)),
-		range_resident_bytes: ByteSize::from_mib(32),
-		shards: 4,
-	})
-	.expect("a sharded tier must be constructed");
+	let tier = sharded(ByteSize::from_mib(64).as_bytes(), 4);
 
 	for group in 0..64u64 {
 		tier.overwrite(OP_A, key(GroupId(group), Keyspace::SOURCE_WATERMARK, b"a"), row("v"));
@@ -635,16 +556,15 @@ fn keyspace_counters_are_summed_across_every_shard() {
 	assert_eq!(reported.len(), 1, "one keyspace spread over four shards must collapse to a single row");
 	assert_eq!(reported[0].keyspace, Keyspace::SOURCE_WATERMARK);
 	assert_eq!(reported[0].counters.hits, 64);
-	assert_eq!(reported[0].buckets, 64);
 	assert_eq!(reported[0].entries, 64);
 }
 
 #[test]
-fn an_eviction_is_charged_to_the_evicted_bucket_keyspace() {
+fn an_eviction_is_charged_to_the_evicted_entry_keyspace() {
 	let sample_key = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	let sample_row = Some(row("v"));
-	let per_bucket = (BUCKET_OVERHEAD + footprint(&sample_key, &sample_row)) as u64;
-	let tier = tier(per_bucket);
+	let per_entry = footprint(&sample_key, &sample_row) as u64;
+	let tier = tier(per_entry);
 
 	fill(&tier, OP_A, key(GROUP_A, Keyspace::ACCUMULATOR, b"a"), sample_row.clone());
 	fill(&tier, OP_A, key(GROUP_A, Keyspace::BUFFER, b"a"), sample_row.clone());
@@ -653,11 +573,11 @@ fn an_eviction_is_charged_to_the_evicted_bucket_keyspace() {
 
 	let accumulator = keyspace_row(&tier, Keyspace::ACCUMULATOR);
 	assert_eq!(accumulator.counters.evictions, 1);
-	assert_eq!(accumulator.buckets, 0, "the evicted bucket must be gone from its keyspace's resident state");
+	assert_eq!(accumulator.entries, 0, "the evicted entry must be gone from its keyspace's resident state");
 
 	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
 	assert_eq!(buffer.counters.evictions, 0, "the survivor must not be charged for the victim's eviction");
-	assert_eq!(buffer.buckets, 1);
+	assert_eq!(buffer.entries, 1);
 }
 
 #[test]
@@ -688,22 +608,27 @@ fn fill_counters_are_charged_to_the_filled_keyspace() {
 #[test]
 fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 	let tier = roomy();
-	assert!(tier.keyspace_metrics().is_empty());
+	assert!(tier.keyspace_metrics().is_empty(), "an untouched tier must not surface its 256 empty slots");
 
 	let resident = key(GROUP_A, Keyspace::JOIN_LEFT, b"a");
+	let charged = footprint(&resident, &Some(row("v"))) as u64;
 	tier.overwrite(OP_A, resident.clone(), row("v"));
-	assert_eq!(tier.keyspace_metrics().len(), 1, "resident state alone must be enough to report a keyspace");
+	assert_eq!(tier.keyspace_metrics().len(), 1, "the keyspace that was written must be the only one reported");
 	assert_eq!(tier.keyspace_metrics()[0].keyspace, Keyspace::JOIN_LEFT);
-	assert_eq!(tier.keyspace_metrics()[0].counters, OperatorReadBufferMetrics::default());
+	assert_eq!(
+		tier.keyspace_metrics()[0].entries,
+		1,
+		"the row must carry the keyspace's residency, not only its counters"
+	);
+	assert_eq!(tier.keyspace_metrics()[0].used, ByteSize::from_bytes(charged));
+	assert_eq!(tier.keyspace_metrics()[0].counters.hits, 0);
+	assert_eq!(tier.keyspace_metrics()[0].counters.misses, 0);
 
 	assert!(tier.get(OP_A, &resident).is_some());
 	tier.clear();
-	assert_eq!(
-		tier.keyspace_metrics().len(),
-		1,
-		"clearing drops resident state but not the counters, so a keyspace with history stays reported"
-	);
-	assert_eq!(tier.keyspace_metrics()[0].buckets, 0);
+	assert_eq!(tier.keyspace_metrics().len(), 1, "clearing drops resident state but not the counters");
+	assert_eq!(tier.keyspace_metrics()[0].entries, 0, "and the residency it reports must go with the state");
+	assert_eq!(tier.keyspace_metrics()[0].counters.hits, 1, "the hit taken before the clear must survive it");
 }
 
 #[test]
@@ -715,12 +640,9 @@ fn an_overwrite_publishes_the_row_instead_of_dropping_the_entry() {
 	assert_eq!(body(&tier.get(OP_A, &k).expect("an overwritten key must be known")), "v1");
 
 	tier.overwrite(OP_A, k.clone(), row("v2"));
-	assert_eq!(
-		body(&tier.get(OP_A, &k).expect("the key stays known across overwrites")),
-		"v2",
-		"an overwrite that kept the earlier row would serve a value the writer already replaced"
-	);
+	assert_eq!(body(&tier.get(OP_A, &k).expect("the key stays known across overwrites")), "v2");
 	assert_eq!(tier.metrics().misses, 0, "every read here was answerable from the tier");
+	assert_eq!(tier.entries(), 1, "an overwrite must reuse the entry, not add a second one for the same key");
 }
 
 #[test]
@@ -738,7 +660,7 @@ fn an_overwrite_dirties_an_in_flight_fill_so_the_stale_row_cannot_publish() {
 	assert_eq!(
 		body(&tier.get(OP_A, &k).expect("the overwritten row survives the refused fill")),
 		"flushed",
-		"the refused fill overwrote the newer row, so the tier now serves a value the flush already replaced"
+		"the refused fill overwrote the newer row"
 	);
 	assert_eq!(tier.metrics().fills_dirty_aborted, 1);
 }
@@ -759,12 +681,7 @@ fn no_admission_path_lets_an_excluded_keyspace_into_the_tier() {
 		let present = key(GROUP_A, keyspace, b"a");
 		let absent = key(GROUP_A, keyspace, b"b");
 
-		assert!(
-			!tier.begin_fill(OP_A, &present),
-			"{} must be refused before the fill starts; a fill that can only be thrown away still takes the \
-			 shard lock and inflates the counter",
-			keyspace.name()
-		);
+		assert!(!tier.begin_fill(OP_A, &present), "{} must be refused before the fill starts", keyspace.name());
 		assert!(
 			!tier.finish_fill(OP_A, present.clone(), Some(row("v"))),
 			"a fill that was never admitted must not publish {} through the back of the handshake",
@@ -780,33 +697,22 @@ fn no_admission_path_lets_an_excluded_keyspace_into_the_tier() {
 		assert_eq!(
 			tier.get(OP_A, &present),
 			None,
-			"{} must stay unknown so the read falls through to the store, never be served from the tier",
+			"{} must stay unknown so the read falls through to the store",
 			keyspace.name()
 		);
 		assert_eq!(tier.get(OP_A, &absent), None, "{} must remember no absence either", keyspace.name());
 	}
 
-	assert_eq!(tier.buckets(), 0, "an excluded keyspace must not occupy a bucket, not even an empty one");
 	assert_eq!(tier.entries(), 0, "an excluded keyspace must leave no entry behind");
-	assert_eq!(
-		tier.resident_bytes(),
-		ByteSize::ZERO,
-		"every byte charged here is a byte a read-served keyspace loses to whole-bucket eviction and can \
-		 never win back with a hit"
-	);
-	assert_eq!(
-		tier.metrics().fills_started,
-		0,
-		"a refused keyspace must not even be counted as filled, or the fill counters stop meaning work the \
-		 tier kept"
-	);
+	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "an excluded keyspace must not be charged a byte");
+	assert_eq!(tier.metrics().fills_started, 0, "a refused keyspace must not even be counted as filled");
 
 	let cached = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	tier.overwrite(OP_A, cached.clone(), row("v"));
 	assert!(
 		tier.get(OP_A, &cached).is_some(),
 		"the control: a gate that refused every keyspace would pass the assertions above while turning the \
-		 whole tier into an off switch, and that only shows up as a throughput loss in a replay"
+		 whole tier into an off switch"
 	);
 }
 
@@ -825,9 +731,7 @@ fn a_point_read_of_an_excluded_keyspace_still_charges_its_miss() {
 		assert_eq!(
 			reported.counters.misses,
 			2,
-			"{} must charge a miss for the get and a miss for the contains; an unaccounted read of a \
-			 keyspace the tier refuses is invisible, and the sqlite lookup it costs per call has nothing \
-			 pointing at it",
+			"{} must charge a miss for the get and a miss for the contains",
 			keyspace.name()
 		);
 		assert_eq!(
@@ -837,114 +741,127 @@ fn a_point_read_of_an_excluded_keyspace_still_charges_its_miss() {
 			keyspace.name()
 		);
 		assert_eq!(reported.entries, 0, "{} must own no entry", keyspace.name());
-		assert_eq!(reported.buckets, 0, "{} must own no bucket", keyspace.name());
 	}
 
 	assert_eq!(
 		tier.misses(),
 		2 * EXCLUDED.len() as u64,
-		"the shard aggregate must count these reads too, or a refused keyspace read is missing from the \
-		 only counter a replay actually watches"
+		"the tier aggregate must count these reads too, or a refused keyspace read is missing from the only \
+		 counter a replay actually watches"
 	);
 	assert_eq!(tier.hits(), 0);
 	assert_eq!(tier.entries(), 0, "reading an excluded keyspace must not be a back door into admitting it");
-	assert_eq!(tier.buckets(), 0);
 }
 
 #[test]
-fn only_a_range_that_stays_inside_one_keyspace_is_ever_scoped_to_a_bucket() {
-	let single = bucket_scope(OP_A, &keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR))
-		.expect("a whole-keyspace range lives in exactly one bucket");
-	assert_eq!(single.bucket.keyspace, Keyspace::ACCUMULATOR);
-	assert!(single.whole, "a whole-keyspace range covers its bucket end to end, so a finished scan may fill it");
+fn one_keyspaces_entries_spread_across_shards() {
+	let tier = sharded(ByteSize::from_mib(1).as_bytes(), 16);
+	for index in 0..512 {
+		let k = key(GroupId::ROOT, Keyspace::ACCUMULATOR, format!("g{index}").as_bytes());
+		tier.overwrite(OP_A, k, row("v"));
+	}
 
-	let upto = bucket_scope(OP_A, &keyspace_inner_range_upto(GROUP_A, Keyspace::ACCUMULATOR, b"m"))
-		.expect("a bounded suffix stays inside the keyspace");
-	assert_eq!(upto.bucket.keyspace, Keyspace::ACCUMULATOR);
-	assert!(!upto.whole, "a range stopping short of the bucket end must never claim to have filled the bucket");
-
-	let continued = bucket_scope(
-		OP_A,
-		&EncodedKeyRange::new(
-			Bound::Excluded(key(GROUP_A, Keyspace::ACCUMULATOR, b"m")),
-			keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR).end,
-		),
-	)
-	.expect("a paged continuation stays inside the keyspace it started in");
-	assert!(!continued.whole, "a page that starts past the bucket start never saw the keys before its cursor");
-
+	assert_eq!(tier.entries(), 512, "the fixture must fit without eviction, or the spread is not what is measured");
 	assert!(
-		bucket_scope(OP_A, &group_inner_range(GROUP_A)).is_none(),
-		"a whole-group range crosses every keyspace of the group"
+		tier.occupied_shards() > 8,
+		"one group's keys in one keyspace must land on many shards, not collapse onto a single one"
 	);
-	assert!(
-		bucket_scope(OP_A, &group_data_inner_range(GROUP_A)).is_none(),
-		"the data range crosses every keyspace at or below the data ceiling"
-	);
-	assert!(
-		bucket_scope(OP_A, &group_identity_inner_range(GROUP_A)).is_none(),
-		"the identity range crosses every keyspace above the data ceiling"
-	);
-	assert!(
-		bucket_scope(
-			OP_A,
-			&EncodedKeyRange::new(Bound::Included(EncodedKey::new(Vec::new())), Bound::Unbounded)
-		)
-		.is_none(),
-		"a whole-operator scan reaches the store as an unbounded inner range and can never be one bucket"
-	);
-	assert!(
-		bucket_scope(
-			OP_A,
-			&EncodedKeyRange::new(
-				keyspace_inner_range(GROUP_A, Keyspace::COUNT).start,
-				keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR).end,
-			)
-		)
-		.is_none(),
-		"a range opening in one keyspace and closing in another must be refused even though both ends parse"
-	);
+	let busiest = tier.shard_metrics().iter().map(|shard| shard.entries).max().expect("shards must be reported");
+	assert!(busiest < 512, "no single shard may hold every key, or the whole tier serialises behind one mutex");
 }
 
 #[test]
-fn a_carried_absence_is_charged_to_the_range_budget_the_fill_it_joined_pays_from() {
-	let tier = roomy();
-	let absent = key(GROUP_A, Keyspace::ACCUMULATOR, b"absent");
-	let scanned = key(GROUP_A, Keyspace::ACCUMULATOR, b"scanned");
-	let scanned_row = row("v");
-	fill(&tier, OP_A, absent.clone(), None);
+fn eviction_removes_one_entry_not_every_key_sharing_a_group() {
+	let sample_key = key(GROUP_A, Keyspace::ACCUMULATOR, b"k0");
+	let sample_row = Some(row("v"));
+	let per_entry = footprint(&sample_key, &sample_row) as u64;
+	let tier = tier(per_entry * 3);
 
-	let carried = footprint(&absent, &None);
-	assert_eq!(
-		tier.resident_bytes().as_bytes() as usize,
-		BUCKET_OVERHEAD + carried,
-		"the absence must start out charged to the point budget, or the move below is unobservable"
-	);
-	assert_eq!(tier.range_resident_bytes(), ByteSize::ZERO, "no range fill has run yet");
+	for index in 0..4 {
+		let k = key(GROUP_A, Keyspace::ACCUMULATOR, format!("k{index}").as_bytes());
+		fill(&tier, OP_A, k, sample_row.clone());
+	}
 
-	let range = keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR);
-	let bucket = tier.begin_range_fill(OP_A, &range).expect("a whole-keyspace range must be fillable");
-	assert!(tier.extend_range_fill(bucket, &[(scanned.clone(), scanned_row.clone())]));
-	assert!(tier.finish_range_fill(bucket), "the fill must be admitted, or no accounting moved at all");
+	assert_eq!(tier.evictions(), 1, "exactly one entry may go, not every key that shared the group");
+	assert_eq!(tier.entries(), 3, "three of the four keys must survive their neighbour's eviction");
+	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
 
+	let survivors = (0..4)
+		.filter(|index| {
+			tier.get(OP_A, &key(GROUP_A, Keyspace::ACCUMULATOR, format!("k{index}").as_bytes())).is_some()
+		})
+		.count();
+	assert_eq!(survivors, 3, "every surviving entry must still be readable, not just counted");
+}
+
+#[test]
+fn the_index_stays_consistent_with_the_slab() {
+	let sample_key = key(GROUP_A, Keyspace::ACCUMULATOR, b"k0");
+	let sample_row = Some(row("v"));
+	let per_entry = footprint(&sample_key, &sample_row) as u64;
+	let tier = tier(per_entry * 4);
+
+	for index in 0..4 {
+		fill(
+			&tier,
+			OP_A,
+			key(GROUP_A, Keyspace::ACCUMULATOR, format!("k{index}").as_bytes()),
+			sample_row.clone(),
+		);
+	}
+	assert!(tier.index_is_consistent(), "insert must leave every index position addressing its own slot");
+
+	tier.overwrite(OP_A, key(GROUP_A, Keyspace::ACCUMULATOR, b"k1"), row("replaced"));
+	assert!(tier.index_is_consistent(), "an overwrite must reuse the position, not orphan it");
+
+	tier.invalidate(OP_A, &key(GROUP_A, Keyspace::ACCUMULATOR, b"k0"));
+	assert!(tier.index_is_consistent(), "a removal must repair the position of the slot swapped into the hole");
 	assert_eq!(
-		tier.resident_bytes(),
-		ByteSize::ZERO,
-		"the point budget must shed every byte of the bucket the range fill took over, the carried absence included"
+		body(&tier.get(OP_A, &key(GROUP_A, Keyspace::ACCUMULATOR, b"k1")).expect("k1 must survive")),
+		"replaced",
+		"the swapped slot must still answer under its own key"
 	);
+
+	for index in 4..12 {
+		fill(
+			&tier,
+			OP_A,
+			key(GROUP_A, Keyspace::ACCUMULATOR, format!("k{index}").as_bytes()),
+			sample_row.clone(),
+		);
+	}
+	assert!(tier.evictions() > 0, "the fixture must actually evict, or the check below repeats the insert case");
+	assert!(tier.index_is_consistent(), "eviction must repair the index the same way an invalidate does");
+
+	tier.overwrite(OP_B, key(GROUP_A, Keyspace::ACCUMULATOR, b"other"), row("b"));
+	tier.invalidate_operator(OP_A);
+	assert!(tier.index_is_consistent(), "the index rebuilt after an operator drop must address the survivors");
+	assert_eq!(tier.entries(), 1, "only the other operator's entry may remain");
+}
+
+#[test]
+fn an_excluded_keyspace_read_acquires_no_shard() {
+	let tier = sharded(ByteSize::from_mib(1).as_bytes(), 4);
+	let k = key(GROUP_A, Keyspace::TIMER_WHEEL, b"a");
+
+	for _ in 0..32 {
+		assert_eq!(tier.get(OP_A, &k), None);
+	}
+
+	for shard in tier.shard_metrics() {
+		assert_eq!(
+			shard.counters,
+			OperatorPointMetrics::default(),
+			"shard {} recorded a counter for a read that must never have reached it",
+			shard.shard
+		);
+		assert_eq!(shard.used, ByteSize::ZERO, "shard {} charged bytes for a refused keyspace", shard.shard);
+		assert_eq!(shard.entries, 0);
+	}
 	assert_eq!(
-		tier.range_resident_bytes().as_bytes() as usize,
-		BUCKET_OVERHEAD + footprint(&scanned, &Some(scanned_row)) + carried,
-		"the range budget must carry the scanned row and the absence it inherited, each charged exactly once"
+		keyspace_row(&tier, Keyspace::TIMER_WHEEL).counters.misses,
+		32,
+		"the miss must still be charged to the keyspace, or the read is invisible"
 	);
-	assert_eq!(
-		tier.tallied_bytes(),
-		tier.range_resident_bytes(),
-		"the bucket's own tally must match what the budget was charged, or eviction releases the wrong amount"
-	);
-	assert_eq!(
-		tier.get(OP_A, &absent),
-		Some(None),
-		"and the absence must still be served rather than merely paid for"
-	);
+	assert_eq!(tier.misses(), 32, "and the tier aggregate must fold the lock free counter in");
 }

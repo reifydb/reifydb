@@ -94,7 +94,7 @@ impl SnapshotLedger {
 	}
 
 	fn published_key(&self, group: GroupId, left: RowNumber) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, encode_u64_asc(left.0).to_vec())
+		OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, encode_u64_asc(left.0))
 	}
 
 	fn published_set(&self, host: &mut dyn HostContext, group: GroupId, left: RowNumber) -> Result<PublishedSet> {

@@ -7,8 +7,8 @@ use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::value::duration::Duration;
 
 use crate::tier::{
-	commit::OperatorCommitBuffer, dictionary::OperatorDictionaryConfig, persistent::OperatorPersistentTier,
-	read::OperatorReadBufferConfig,
+	commit::OperatorCommitBuffer, persistent::OperatorPersistentTier, point::OperatorPointConfig,
+	range::OperatorRangeConfig,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -51,8 +51,8 @@ impl OperatorPersistentConfig {
 pub struct OperatorStoreConfig {
 	pub commit: OperatorCommitConfig,
 	pub persistent: Option<OperatorPersistentConfig>,
-	pub read: Option<OperatorReadBufferConfig>,
-	pub dictionary: Option<OperatorDictionaryConfig>,
+	pub point: Option<OperatorPointConfig>,
+	pub range: Option<OperatorRangeConfig>,
 	pub spawner: ActorSpawner,
 	pub clock: Clock,
 }
@@ -62,8 +62,8 @@ impl OperatorStoreConfig {
 		Self {
 			commit: OperatorCommitConfig::default(),
 			persistent: None,
-			read: None,
-			dictionary: None,
+			point: None,
+			range: None,
 			spawner,
 			clock,
 		}
@@ -74,8 +74,8 @@ impl OperatorStoreConfig {
 		Self {
 			commit: OperatorCommitConfig::default(),
 			persistent: Some(persistent),
-			read: Some(OperatorReadBufferConfig::default()),
-			dictionary: Some(OperatorDictionaryConfig::default()),
+			point: Some(OperatorPointConfig::default()),
+			range: Some(OperatorRangeConfig::default()),
 			spawner,
 			clock,
 		}
