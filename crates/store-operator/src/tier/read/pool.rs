@@ -231,6 +231,20 @@ impl MetricsCollector for OperatorReadBufferTier {
 				shard.lock().budget.used(),
 			));
 		}
+		for keyspace in self.keyspace_metrics() {
+			let scope = format!("{READ_BUFFER_SCOPE}::keyspace::{}", keyspace.keyspace.name());
+			out.push(MetricsSample::bytes(scope.clone(), "used_bytes", keyspace.used));
+			out.push(MetricsSample::count(scope.clone(), "buckets", keyspace.buckets as u64));
+			out.push(MetricsSample::count(scope.clone(), "entries", keyspace.entries as u64));
+			out.push(MetricsSample::count(
+				scope.clone(),
+				"complete_buckets",
+				keyspace.complete_buckets as u64,
+			));
+			out.push(MetricsSample::counter(scope.clone(), "hits", keyspace.counters.hits));
+			out.push(MetricsSample::counter(scope.clone(), "misses", keyspace.counters.misses));
+			out.push(MetricsSample::counter(scope, "evictions", keyspace.counters.evictions));
+		}
 	}
 }
 
