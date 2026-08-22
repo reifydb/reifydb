@@ -5,20 +5,25 @@ use std::{
 	ops::Bound,
 	sync::{
 		Arc,
-		atomic::{AtomicU64, Ordering},
+		atomic::{AtomicU64, AtomicUsize, Ordering},
 	},
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::internal_error;
-use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
+use reifydb_runtime::{
+	shutdown::Shutdown,
+	sync::mutex::{Mutex, MutexGuard},
+};
 use reifydb_sqlite::{
 	JournalMode, SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
 	memory::sweep_connection_cache,
 	pragma,
 };
-use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{
+	Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::cowvec::CowVec, value::duration::Duration,
+};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction, params,
 };
@@ -29,7 +34,33 @@ use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage, p
 
 const TABLE_NAME: &str = "entries";
 
-const JOURNAL_MODE: JournalMode = JournalMode::Persist;
+struct ReadPool {
+	conns: Vec<Mutex<Option<Connection>>>,
+	next: AtomicUsize,
+}
+
+impl ReadPool {
+	fn acquire(&self) -> MutexGuard<'_, Option<Connection>> {
+		let n = self.conns.len();
+		let start = self.next.fetch_add(1, Ordering::Relaxed) % n;
+		for i in 0..n {
+			if let Some(guard) = self.conns[(start + i) % n].try_lock() {
+				return guard;
+			}
+		}
+		self.conns[start].lock()
+	}
+
+	fn shutdown(&self) {
+		for slot in &self.conns {
+			drop(slot.lock().take());
+		}
+	}
+}
+
+const JOURNAL_MODE: JournalMode = JournalMode::Wal;
+
+const BUSY_TIMEOUT: Duration = Duration::from_milliseconds_const(200);
 
 #[derive(Clone)]
 pub struct SqlitePersistentStorage {
@@ -38,6 +69,7 @@ pub struct SqlitePersistentStorage {
 
 struct SqlitePersistentStorageInner {
 	conn: Mutex<Option<Connection>>,
+	readers: ReadPool,
 	cache_hits: AtomicU64,
 	cache_misses: AtomicU64,
 }
@@ -51,7 +83,6 @@ impl SqlitePersistentStorage {
 	pub fn new(config: SqliteConfig) -> Self {
 		let config = SqliteConfig {
 			journal_mode: Some(JOURNAL_MODE),
-			wal_autocheckpoint: None,
 			..config
 		};
 		let db_path = resolve_db_path(config.path.clone(), "persistent.db");
@@ -59,10 +90,24 @@ impl SqlitePersistentStorage {
 
 		let conn = connect(&db_path, flags).expect("Failed to connect to database");
 		pragma::apply(&conn, &config).expect("Failed to configure SQLite pragmas");
+		conn.busy_timeout(BUSY_TIMEOUT.to_std()).expect("Failed to set single busy timeout");
+
+		let pool_size = config.read_pool_size.max(1) as usize;
+		let mut conns = Vec::with_capacity(pool_size);
+		for _ in 0..pool_size {
+			let reader = connect(&db_path, flags).expect("Failed to open single read connection");
+			pragma::apply_read_only(&reader, &config).expect("Failed to configure single read connection");
+			reader.busy_timeout(BUSY_TIMEOUT.to_std()).expect("Failed to set single read busy timeout");
+			conns.push(Mutex::new(Some(reader)));
+		}
 
 		Self {
 			inner: Arc::new(SqlitePersistentStorageInner {
 				conn: Mutex::new(Some(conn)),
+				readers: ReadPool {
+					conns,
+					next: AtomicUsize::new(0),
+				},
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
 			}),
@@ -99,7 +144,7 @@ impl SqlitePersistentStorage {
 impl TierStorage for SqlitePersistentStorage {
 	#[instrument(name = "store::single::persistent::get", level = "trace", skip(self, key), fields(key_len = key.len()))]
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
-		let guard = self.inner.conn.lock();
+		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(None);
 		};
@@ -119,7 +164,7 @@ impl TierStorage for SqlitePersistentStorage {
 
 	#[instrument(name = "store::single::persistent::get_with_tombstone", level = "trace", skip(self, key), fields(key_len = key.len()))]
 	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>> {
-		let guard = self.inner.conn.lock();
+		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(None);
 		};
@@ -138,7 +183,7 @@ impl TierStorage for SqlitePersistentStorage {
 
 	#[instrument(name = "store::single::persistent::contains", level = "trace", skip(self, key), fields(key_len = key.len()), ret)]
 	fn contains(&self, key: &[u8]) -> Result<bool> {
-		let guard = self.inner.conn.lock();
+		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(false);
 		};
@@ -185,7 +230,7 @@ impl TierStorage for SqlitePersistentStorage {
 
 		let (effective_start, end_owned) = self.forward_bounds(cursor, start, end);
 
-		let guard = self.inner.conn.lock();
+		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			cursor.exhausted = true;
 			return Ok(RangeBatch::empty());
@@ -215,7 +260,7 @@ impl TierStorage for SqlitePersistentStorage {
 
 		let (start_owned, effective_end) = self.reverse_bounds(cursor, start, end);
 
-		let guard = self.inner.conn.lock();
+		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			cursor.exhausted = true;
 			return Ok(RangeBatch::empty());
@@ -464,6 +509,7 @@ impl TierBackend for SqlitePersistentStorage {}
 
 impl Shutdown for SqlitePersistentStorage {
 	fn shutdown(&self) {
+		self.inner.readers.shutdown();
 		if let Some(conn) = self.inner.conn.lock().take() {
 			if let Err(e) = pragma::shutdown(&conn) {
 				warn!(error = %e, "single persistent close: pragma shutdown failed");
@@ -522,17 +568,23 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn an_explicit_wal_request_from_the_caller_never_reaches_the_connection() {
-		// One connection behind a mutex never contends with itself, so journal_mode is this store's call.
+	fn every_connection_reports_wal_regardless_of_what_the_caller_asked_for() {
+		// Readers share the file with the writer, so a non-WAL mode makes them block each other outright.
 		temp_dir(|dir| {
 			let storage = SqlitePersistentStorage::new(
-				SqliteConfig::new(dir.join("single.db")).journal_mode(JournalMode::Wal),
+				SqliteConfig::new(dir.join("single.db")).journal_mode(JournalMode::Persist),
 			);
 
 			let guard = storage.inner.conn.lock();
 			let conn = guard.as_ref().expect("write connection is present");
 			let mode: String = conn.pragma_query_value(None, "journal_mode", |r| r.get(0)).unwrap();
-			assert_eq!(mode, "persist", "an inherited journal_mode must be overridden, not applied");
+			assert_eq!(mode, "wal", "an inherited journal_mode must be overridden, not applied");
+			drop(guard);
+
+			let reader = storage.inner.readers.acquire();
+			let conn = reader.as_ref().expect("read connection is present");
+			let mode: String = conn.pragma_query_value(None, "journal_mode", |r| r.get(0)).unwrap();
+			assert_eq!(mode, "wal", "a reader that is not in wal cannot read while the writer writes");
 
 			Ok(())
 		})
@@ -540,7 +592,27 @@ mod tests {
 	}
 
 	#[test]
-	fn a_write_leaves_no_wal_companion_beside_a_fresh_database() {
+	fn the_store_opens_one_writer_and_a_reader_per_configured_pool_slot() {
+		// A single shared connection serialises every read behind the writer, which is what wal avoids.
+		temp_dir(|dir| {
+			let storage = SqlitePersistentStorage::new(
+				SqliteConfig::new(dir.join("single.db")).read_pool_size(3),
+			);
+
+			assert_eq!(storage.inner.readers.conns.len(), 3, "each pool slot must own its own connection");
+			assert!(storage.inner.conn.lock().is_some(), "the single writer must be present");
+
+			let first = storage.inner.readers.acquire();
+			let second = storage.inner.readers.acquire();
+			assert!(first.is_some() && second.is_some(), "two readers must be usable at the same time");
+
+			Ok(())
+		})
+		.unwrap();
+	}
+
+	#[test]
+	fn a_write_leaves_a_wal_companion_beside_a_fresh_database() {
 		// WAL lives in the database header, so a regression survives every existing file and only shows up
 		// here.
 		temp_dir(|dir| {
@@ -548,12 +620,12 @@ mod tests {
 			storage.set(vec![(EncodedKey::new(vec![1]), Some(CowVec::new(vec![2])))]).unwrap();
 
 			assert!(
-				!dir.join("single.db-wal").exists(),
-				"a -wal companion means the write-ahead log is back"
+				dir.join("single.db-wal").exists(),
+				"no -wal companion means the write-ahead log is gone"
 			);
 			assert!(
-				!dir.join("single.db-shm").exists(),
-				"a -shm companion means the write-ahead log is back"
+				dir.join("single.db-shm").exists(),
+				"no -shm companion means the write-ahead log is gone"
 			);
 
 			Ok(())

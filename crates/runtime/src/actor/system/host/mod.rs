@@ -131,6 +131,8 @@ impl ActorSystem {
 		}
 		drop(wakers);
 
+		self.inner.scheduler.shutdown();
+
 		self.inner.keepalive.lock().clear();
 	}
 
@@ -393,5 +395,19 @@ mod tests {
 		// join() must not return before every actor has finished, or shutdown races teardown.
 		system.shutdown();
 		system.join().unwrap();
+	}
+
+	#[test]
+	fn test_shutdown_stops_the_timer_scheduler() {
+		// Timers must be dead before the cells are released, otherwise a callback owns the last system ref.
+		let system = test_system();
+		system.shutdown();
+
+		let (tx, rx) = sync::mpsc::channel();
+		system.scheduler().schedule_once(Duration::from_millis(5), move || {
+			let _ = tx.send(());
+		});
+
+		assert!(rx.recv_timeout(Duration::from_millis(200)).is_err());
 	}
 }

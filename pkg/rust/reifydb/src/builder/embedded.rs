@@ -12,7 +12,6 @@ use reifydb_runtime::{
 	Runtime, RuntimeConfig, fatal::install as install_fatal, pool::PoolConfig, version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use reifydb_sqlite::JournalMode;
 use reifydb_store_multi::tier::{
 	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig,
 };
@@ -38,6 +37,7 @@ type PoolConfigSources = (
 	Option<ReadBufferConfig>,
 	Option<OperatorPointConfig>,
 	Option<OperatorRangeConfig>,
+	u32,
 );
 
 fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, Value)]) -> Result<PoolConfigSources> {
@@ -54,6 +54,7 @@ fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, V
 		resolved.read,
 		resolved.operator_point,
 		resolved.operator_range,
+		resolved.cdc_wal_autocheckpoint,
 	))
 }
 
@@ -202,6 +203,7 @@ impl EmbeddedBuilder {
 			read_buffer,
 			operator_point_buffer,
 			operator_range_buffer,
+			cdc_wal_autocheckpoint,
 		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		install_fatal(runtime_config.fatal);
@@ -234,7 +236,7 @@ impl EmbeddedBuilder {
 		let cdc_backend = match &self.storage_factory {
 			StorageFactory::Memory => CdcBackend::Memory,
 			#[cfg(not(target_arch = "wasm32"))]
-			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone().journal_mode(JournalMode::Memory)),
+			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone().wal_autocheckpoint(cdc_wal_autocheckpoint)),
 		};
 
 		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus, version_epoch)

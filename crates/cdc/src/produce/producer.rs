@@ -33,7 +33,7 @@ use tracing::{debug, error, info};
 use crate::{
 	consume::{backlog::FlowBacklog, is_relevant_cdc, wake::CdcWakeRegistry},
 	produce::watermark::CdcProducerWatermark,
-	storage::CdcStorage,
+	storage::{CdcStorage, CdcStorageResult},
 };
 
 pub struct CdcProducerActor<S, T> {
@@ -69,7 +69,7 @@ where
 		}
 	}
 
-	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
+	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) -> CdcStorageResult<()> {
 		let mut cdc_changes: Vec<CdcChange> = Vec::new();
 
 		debug!(version = version.0, delta_count = deltas.len(), "Processing CDC");
@@ -83,7 +83,7 @@ where
 			}
 		}
 
-		self.write_and_emit(version, changed_at, cdc_changes);
+		self.write_and_emit(version, changed_at, cdc_changes)
 	}
 
 	#[inline]
@@ -97,21 +97,23 @@ where
 	}
 
 	#[inline]
-	fn write_and_emit(&self, version: CommitVersion, changed_at: DateTime, cdc_changes: Vec<CdcChange>) {
+	fn write_and_emit(
+		&self,
+		version: CommitVersion,
+		changed_at: DateTime,
+		cdc_changes: Vec<CdcChange>,
+	) -> CdcStorageResult<()> {
 		if cdc_changes.is_empty() {
 			self.backlog.publish(version, None);
-			return;
+			return Ok(());
 		}
 		let cdc = Arc::new(Cdc::new(version, changed_at, cdc_changes.clone()));
-		match self.storage.write(&cdc) {
-			Ok(_) => {
-				debug!(version = version.0, "CDC written successfully");
-				self.emit_written_event(version, &cdc_changes);
-			}
-			Err(e) => error!(version = version.0, "CDC write failed: {:?}", e),
-		}
+		self.storage.write(&cdc)?;
+		debug!(version = version.0, "CDC written successfully");
+		self.emit_written_event(version, &cdc_changes);
 		let relevant = is_relevant_cdc(&cdc).then_some(cdc);
 		self.backlog.publish(version, relevant);
+		Ok(())
 	}
 
 	#[inline]
@@ -127,12 +129,13 @@ where
 	}
 
 	#[inline]
-	fn on_produce(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
-		self.process(version, changed_at, deltas);
+	fn on_produce(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) -> CdcStorageResult<()> {
+		self.process(version, changed_at, deltas)?;
 
 		self.watermark.advance(version);
 		self.wake_registry.notify_all();
 		self.backlog.notify();
+		Ok(())
 	}
 }
 
@@ -213,7 +216,11 @@ where
 				version,
 				changed_at,
 				deltas,
-			} => self.on_produce(version, changed_at, deltas),
+			} => {
+				if let Err(e) = self.on_produce(version, changed_at, deltas) {
+					panic!("CDC producer failed to write version {}: {:?}", version.0, e);
+				}
+			}
 		}
 		Directive::Continue
 	}

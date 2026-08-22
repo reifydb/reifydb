@@ -22,6 +22,7 @@ pub(crate) struct StartupConfig {
 	pub operator_point: Option<OperatorPointConfig>,
 	pub operator_range: Option<OperatorRangeConfig>,
 	pub multi_wal_autocheckpoint: u32,
+	pub cdc_wal_autocheckpoint: u32,
 }
 
 const STARTUP_KEYS: &[ConfigKey] = &[
@@ -36,6 +37,7 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::OperatorPointBufferBytes,
 	ConfigKey::OperatorRangeBufferBytes,
 	ConfigKey::MultiWalAutocheckpoint,
+	ConfigKey::CdcWalAutocheckpoint,
 ];
 
 pub(crate) fn resolve_startup_configs(
@@ -110,5 +112,6 @@ pub(crate) fn resolve_startup_configs(
 		operator_point,
 		operator_range,
 		multi_wal_autocheckpoint: uint8(ConfigKey::MultiWalAutocheckpoint) as u32,
+		cdc_wal_autocheckpoint: uint8(ConfigKey::CdcWalAutocheckpoint) as u32,
 	})
 }

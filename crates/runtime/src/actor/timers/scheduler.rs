@@ -20,6 +20,7 @@ use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 use reifydb_value::reifydb_assertions;
 
 use super::{Repeat, TimerHandle, next_timer_id};
+use crate::sync::mutex::Mutex;
 
 struct TimerEntry {
 	id: u64,
@@ -82,7 +83,7 @@ enum SchedulerCommand {
 
 pub struct SchedulerHandle {
 	command_tx: Sender<SchedulerCommand>,
-	join_handle: Option<JoinHandle<()>>,
+	join_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl SchedulerHandle {
@@ -98,7 +99,7 @@ impl SchedulerHandle {
 
 		Self {
 			command_tx,
-			join_handle: Some(join_handle),
+			join_handle: Mutex::new(Some(join_handle)),
 		}
 	}
 
@@ -141,15 +142,22 @@ impl SchedulerHandle {
 	pub fn shared(&self) -> Self {
 		Self {
 			command_tx: self.command_tx.clone(),
-			join_handle: None,
+			join_handle: Mutex::new(None),
 		}
 	}
 
-	pub fn shutdown(&mut self) {
-		if let Some(handle) = self.join_handle.take() {
-			let _ = self.command_tx.send(SchedulerCommand::Shutdown);
-			let _ = handle.join();
+	pub fn shutdown(&self) {
+		let Some(handle) = self.join_handle.lock().take() else {
+			return;
+		};
+
+		let _ = self.command_tx.send(SchedulerCommand::Shutdown);
+
+		if handle.thread().id() == thread::current().id() {
+			return;
 		}
+
+		let _ = handle.join();
 	}
 }
 
@@ -161,10 +169,7 @@ impl Default for SchedulerHandle {
 
 impl Drop for SchedulerHandle {
 	fn drop(&mut self) {
-		if let Some(handle) = self.join_handle.take() {
-			let _ = self.command_tx.send(SchedulerCommand::Shutdown);
-			let _ = handle.join();
-		}
+		self.shutdown();
 	}
 }
 
@@ -339,7 +344,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_once() {
-		let mut scheduler = SchedulerHandle::new();
+		let scheduler = SchedulerHandle::new();
 
 		let (tx, rx) = mpsc::channel();
 		scheduler.schedule_once(Duration::from_millis(10), move || {
@@ -352,7 +357,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_once_zero_delay() {
-		let mut scheduler = SchedulerHandle::new();
+		let scheduler = SchedulerHandle::new();
 
 		let (tx, rx) = mpsc::channel();
 		scheduler.schedule_once(Duration::ZERO, move || {
@@ -365,7 +370,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_repeat() {
-		let mut scheduler = SchedulerHandle::new();
+		let scheduler = SchedulerHandle::new();
 
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = counter.clone();
@@ -391,7 +396,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_repeat_stops_on_cancel() {
-		let mut scheduler = SchedulerHandle::new();
+		let scheduler = SchedulerHandle::new();
 
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = counter.clone();
@@ -416,7 +421,7 @@ mod tests {
 
 	#[test]
 	fn test_cancel_before_fire() {
-		let mut scheduler = SchedulerHandle::new();
+		let scheduler = SchedulerHandle::new();
 
 		let (tx, rx) = mpsc::channel();
 		let handle = scheduler.schedule_once(Duration::from_millis(50), move || {
@@ -433,7 +438,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_timers() {
-		let mut scheduler = SchedulerHandle::new();
+		let scheduler = SchedulerHandle::new();
 
 		let results = Arc::new(Mutex::new(Vec::new()));
 
@@ -456,7 +461,7 @@ mod tests {
 
 	#[test]
 	fn test_callback_runs_on_scheduler_thread() {
-		let mut scheduler = SchedulerHandle::new();
+		let scheduler = SchedulerHandle::new();
 
 		let (tx, rx) = mpsc::channel();
 		scheduler.schedule_once(Duration::from_millis(5), move || {
@@ -471,7 +476,7 @@ mod tests {
 
 	#[test]
 	fn test_reentrant_schedule_from_callback() {
-		let mut scheduler = SchedulerHandle::new();
+		let scheduler = SchedulerHandle::new();
 		let shared = scheduler.shared();
 
 		let (tx, rx) = mpsc::channel();
@@ -483,5 +488,21 @@ mod tests {
 
 		rx.recv_timeout(Duration::from_secs(1)).unwrap();
 		scheduler.shutdown();
+	}
+
+	#[test]
+	fn test_drop_from_callback_detaches_instead_of_self_joining() {
+		// A callback releasing the last owner must never join the scheduler thread from itself: EDEADLK.
+		let owner = Arc::new(Mutex::new(Some(SchedulerHandle::new())));
+		let (tx, rx) = mpsc::channel();
+
+		let callback_owner = Arc::clone(&owner);
+		owner.lock().as_ref().unwrap().schedule_once(Duration::from_millis(5), move || {
+			callback_owner.lock().take();
+			tx.send(()).unwrap();
+		});
+
+		rx.recv_timeout(Duration::from_secs(1)).unwrap();
+		assert!(owner.lock().is_none());
 	}
 }
