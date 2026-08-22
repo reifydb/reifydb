@@ -91,10 +91,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
 
-	fn create_row_numbers(&mut self, groups: &[GroupId], key: &EncodedKey) -> Result<Vec<RowNumber>> {
-		Ok(self.get_or_create_row_numbers_for_groups(groups, key)?.into_iter().map(|(row, _)| row).collect())
-	}
-
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;
 
 	fn get_row_numbers_for_groups(
@@ -355,10 +351,6 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		self.txn.reclaim_group_identity(self.operator, group, limit)
-	}
-
-	fn create_row_numbers(&mut self, groups: &[GroupId], key: &EncodedKey) -> Result<Vec<RowNumber>> {
-		self.txn.create_row_numbers(self.operator, groups, key)
 	}
 
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {

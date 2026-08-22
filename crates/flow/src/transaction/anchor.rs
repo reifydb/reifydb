@@ -32,8 +32,6 @@ use crate::transaction::{FlowTransaction, scope::scoped_key};
 
 pub const ANCHOR_SUFFIX_LEN: usize = 9;
 
-pub const UNGROUPED_SIDE: u8 = 0xFF;
-
 #[operator_state]
 #[derive(Clone)]
 pub struct SealAnchor {
