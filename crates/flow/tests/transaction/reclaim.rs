@@ -123,6 +123,38 @@ fn a_bounded_identity_reclaim_keeps_the_dictionary_until_the_range_is_drained() 
 }
 
 #[test]
+fn a_partial_identity_reclaim_puts_back_the_record_the_final_pass_needs() {
+	// The record sorts between the mappings and the timers, so a budget stopping past it must restore it or the dictionary entry strands behind an id nothing will intern again.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let group_bytes = EncodedKey::new(b"outlives-its-budget");
+	let (id, _) = txn.intern_groups(NODE, &[group_bytes.clone()]).unwrap().remove(0);
+	write(&mut txn, id, Keyspace::ROW_NUMBER_MAPPING, 1);
+	write(&mut txn, id, Keyspace::ROW_NUMBER_MAPPING, 2);
+	write(&mut txn, id, Keyspace::TIMER_WHEEL, 1);
+	write(&mut txn, id, Keyspace::TIMER_WHEEL, 2);
+
+	let partial = txn.reclaim_group_identity(NODE, id, 3).unwrap();
+
+	assert_eq!(partial.removed, Count::new(3), "the budget must span both mappings and the record");
+	assert!(partial.more, "the timer rows must still be pending, or this never crossed the record");
+	assert!(
+		txn.group_record(NODE, id).unwrap().is_some(),
+		"a pass that consumed the record must put it back, or the next pass cannot finish the group"
+	);
+
+	let rest = txn.reclaim_group_identity(NODE, id, 100).unwrap();
+
+	assert!(!rest.more);
+	assert_eq!(
+		txn.lookup_groups(NODE, &[group_bytes]).unwrap().remove(0),
+		None,
+		"the dictionary entry must not outlive a group that needed two passes to drain"
+	);
+	assert_eq!(count(&mut txn, group_inner_range(id)), 0, "and nothing may be left under the id");
+}
+
+#[test]
 fn reclaiming_one_groups_identity_leaves_its_neighbour_untouched() {
 	// An off-by-one in the identity range bounds silently destroys a live group's mapping. The
 	// neighbour is the adjacent id precisely because that is where a bad upper bound would bleed.

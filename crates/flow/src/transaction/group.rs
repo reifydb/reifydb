@@ -101,7 +101,6 @@ pub trait GroupExtension: FlowTransaction {
 		}
 
 		let mut results: Vec<Option<(GroupId, bool)>> = vec![None; groups.len()];
-		let mut resolved_from_store: Vec<(usize, GroupId)> = Vec::new();
 		let mut new_slots: Vec<bool> = vec![false; dictionary_keys.len()];
 		let mut distinct_new: Vec<usize> = Vec::new();
 		let mut first_new_slot: HashMap<Vec<u8>, usize> = HashMap::new();
@@ -109,7 +108,6 @@ pub trait GroupExtension: FlowTransaction {
 			match found.get(dictionary.as_slice()) {
 				Some(existing) => {
 					let id = GroupId(decode_bytes::<u64>(existing)?);
-					resolved_from_store.push((slot, id));
 					results[slot] = Some((id, false));
 				}
 				None => {
@@ -139,10 +137,6 @@ pub trait GroupExtension: FlowTransaction {
 					results[slot] = Some((id, is_new));
 				}
 			}
-		}
-
-		for (slot, id) in resolved_from_store {
-			stamp(self, operator, keyspace, id, &groups[slot])?;
 		}
 
 		Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
@@ -193,6 +187,16 @@ pub trait GroupExtension: FlowTransaction {
 
 	fn group_bytes(&mut self, operator: OperatorId, id: GroupId) -> Result<Option<EncodedKey>> {
 		Ok(self.group_record(operator, id)?.map(|(bytes, _)| bytes))
+	}
+
+	fn stamp_group(
+		&mut self,
+		operator: OperatorId,
+		keyspace: Keyspace,
+		id: GroupId,
+		group: &EncodedKey,
+	) -> Result<()> {
+		stamp(self, operator, keyspace, id, group)
 	}
 
 	fn group_record(&mut self, operator: OperatorId, id: GroupId) -> Result<Option<(EncodedKey, Keyspace)>> {

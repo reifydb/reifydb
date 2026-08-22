@@ -37,10 +37,12 @@ pub trait ReclaimExtension: StateExtension + GroupExtension {
 		}
 		let record = self.group_record(operator, group)?;
 		let outcome = self.reclaim_range(operator, group_identity_inner_range(group), limit)?;
-		if !outcome.more
-			&& let Some((bytes, keyspace)) = record
-		{
-			self.forget_group_in(operator, keyspace, &bytes)?;
+		if let Some((bytes, keyspace)) = record {
+			if outcome.more {
+				self.stamp_group(operator, keyspace, group, &bytes)?;
+			} else {
+				self.forget_group_in(operator, keyspace, &bytes)?;
+			}
 		}
 		Ok(outcome)
 	}
