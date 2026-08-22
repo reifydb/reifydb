@@ -38,6 +38,8 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			remove_row_numbers_below: state::host_remove_row_numbers_below,
 			intern_groups: state::host_intern_groups,
 			lookup_groups: state::host_lookup_groups,
+			intern_group: state::host_intern_group,
+			lookup_group: state::host_lookup_group,
 			arm_timer: state::host_arm_timer,
 			disarm_timer: state::host_disarm_timer,
 			flow_watermark: state::host_flow_watermark,

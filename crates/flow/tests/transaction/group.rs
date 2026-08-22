@@ -325,3 +325,123 @@ fn the_reverse_record_names_the_dictionary_the_group_was_interned_into() {
 		"the record must name the dictionary reclaim has to sweep"
 	);
 }
+
+#[test]
+fn interning_one_key_stamps_the_reverse_record() {
+	// Reclaim walks from the id back to the group bytes through this record; a mint that skips the
+	// stamp leaves the dictionary entry with nothing pointing at it, so the group can never be
+	// reclaimed and the entry outlives every row it addressed.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+
+	let (id, is_new) = txn.intern_group(NODE, &group("stamped")).unwrap();
+
+	assert!(is_new, "a never-seen group must report as newly interned");
+	assert_eq!(
+		txn.group_record(NODE, id).unwrap(),
+		Some((group("stamped"), Keyspace::GROUP_DICTIONARY)),
+		"the record must carry both the bytes and the dictionary reclaim has to sweep"
+	);
+}
+
+#[test]
+fn a_group_interned_one_key_at_a_time_is_reclaimable() {
+	// The end-to-end consequence of the stamp: reclaim resolves the dictionary entry only through
+	// the reverse record, so an unstamped mint would leave this lookup resolving forever.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let bytes = group("reclaim-me");
+	let (id, _) = txn.intern_group(NODE, &bytes).unwrap();
+	commit_pending(&engine, &mut txn);
+
+	let mut txn = deferred(&engine);
+	let outcome = txn.reclaim_group_identity(NODE, id, 100).unwrap();
+	assert!(!outcome.more, "the group must drain in one pass");
+	commit_pending(&engine, &mut txn);
+
+	let mut txn = deferred(&engine);
+	assert_eq!(txn.lookup_group(NODE, &bytes).unwrap(), None, "a reclaimed group must not resurrect");
+}
+
+#[test]
+fn a_repeated_single_key_intern_resolves_to_the_same_id() {
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+
+	let (first, new_first) = txn.intern_group(NODE, &group("mint-once")).unwrap();
+	let (second, new_second) = txn.intern_group(NODE, &group("mint-once")).unwrap();
+
+	assert_eq!(first, second, "the same group bytes must always resolve to the same id");
+	assert!(new_first);
+	assert!(!new_second, "only the first sighting is newly interned");
+}
+
+#[test]
+fn a_single_key_mint_advances_the_counter_the_batch_mints_from() {
+	// Both paths draw ids from one counter, so a single-key mint that fails to advance it would hand
+	// the next batch an id already addressing another group's state range.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+
+	let (single, _) = txn.intern_group(NODE, &group("by-one")).unwrap();
+	let (batch, _) = txn.intern_groups(NODE, &[group("by-batch")]).unwrap().remove(0);
+
+	assert_eq!(single, GroupId::FIRST, "the first group must not take the operator-scope id");
+	assert_ne!(single, batch, "two distinct groups sharing an id would share a state range");
+}
+
+#[test]
+fn a_single_key_lookup_never_interns_the_key() {
+	// A read probe that interned would mint a dictionary entry, a reverse record and a reclaim
+	// obligation for every absent key ever probed, turning reads into unbounded group growth.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+
+	assert_eq!(txn.lookup_group(NODE, &group("never-written")).unwrap(), None);
+
+	let (id, is_new) = txn.intern_group(NODE, &group("never-written")).unwrap();
+	assert!(is_new, "the probe must have left the key uninterned");
+	assert_eq!(id, GroupId::FIRST, "the probe must not have consumed an id");
+}
+
+#[test]
+fn the_single_key_and_batch_paths_share_one_dictionary() {
+	// They encode the dictionary entry independently; if either drifted, the same bytes would intern
+	// twice under two ids and the two halves of a join would stop meeting.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+
+	let (via_single, _) = txn.intern_group(NODE, &group("from-single")).unwrap();
+	let (via_batch, _) = txn.intern_groups(NODE, &[group("from-batch")]).unwrap().remove(0);
+	commit_pending(&engine, &mut txn);
+
+	let mut txn = deferred(&engine);
+	assert_eq!(
+		txn.lookup_groups(NODE, &[group("from-single")]).unwrap().remove(0),
+		Some(via_single),
+		"the batch lookup must resolve what the single-key intern wrote"
+	);
+	assert_eq!(
+		txn.lookup_group(NODE, &group("from-batch")).unwrap(),
+		Some(via_batch),
+		"the single-key lookup must resolve what the batch intern wrote"
+	);
+}
+
+#[test]
+fn the_same_bytes_intern_to_separate_ids_in_separate_dictionaries_one_key_at_a_time() {
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let bytes = group("same-bytes-single");
+
+	let (shared, _) = txn.intern_group_in(NODE, Keyspace::GROUP_DICTIONARY, &bytes).unwrap();
+	let (append, is_new) = txn.intern_group_in(NODE, Keyspace::APPEND_DICTIONARY, &bytes).unwrap();
+
+	assert!(is_new, "a dictionary must not see an entry another dictionary interned");
+	assert_ne!(shared, append, "two dictionaries must mint independent ids for the same bytes");
+	assert_eq!(
+		txn.lookup_group_in(NODE, Keyspace::APPEND_DICTIONARY, &bytes).unwrap(),
+		Some(append),
+		"the dictionary it was interned into must resolve it"
+	);
+}

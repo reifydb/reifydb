@@ -693,6 +693,41 @@ extern "C" fn test_lookup_groups(
 	}
 }
 
+extern "C" fn test_intern_group(
+	operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	key_ptr: *const u8,
+	key_len: usize,
+	id_out: *mut u64,
+	is_new_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() || id_out.is_null() || is_new_out.is_null() || (key_len > 0 && key_ptr.is_null()) {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	let group = ExternCKeyRef {
+		ptr: key_ptr,
+		len: key_len,
+	};
+	test_intern_groups(operator_id, ctx, &group, 1, id_out, is_new_out)
+}
+
+extern "C" fn test_lookup_group(
+	operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	key_ptr: *const u8,
+	key_len: usize,
+	id_out: *mut u64,
+) -> i32 {
+	if ctx.is_null() || id_out.is_null() || (key_len > 0 && key_ptr.is_null()) {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	let group = ExternCKeyRef {
+		ptr: key_ptr,
+		len: key_len,
+	};
+	test_lookup_groups(operator_id, ctx, &group, 1, id_out)
+}
+
 extern "C" fn test_get_or_create_row_numbers(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
@@ -1042,6 +1077,8 @@ pub fn create_test_callbacks() -> OperatorCallbacks {
 			remove_row_numbers_below: test_remove_row_numbers_below,
 			intern_groups: test_intern_groups,
 			lookup_groups: test_lookup_groups,
+			intern_group: test_intern_group,
+			lookup_group: test_lookup_group,
 			arm_timer: test_arm_timer,
 			disarm_timer: test_disarm_timer,
 			flow_watermark: test_flow_watermark,

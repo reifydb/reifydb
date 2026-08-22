@@ -142,6 +142,26 @@ pub trait GroupExtension: FlowTransaction {
 		Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
 	}
 
+	fn intern_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<(GroupId, bool)> {
+		self.intern_group_in(operator, Keyspace::GROUP_DICTIONARY, group)
+	}
+
+	fn intern_group_in(
+		&mut self,
+		operator: OperatorId,
+		keyspace: Keyspace,
+		group: &EncodedKey,
+	) -> Result<(GroupId, bool)> {
+		let dictionary = dictionary_key(keyspace, group);
+		if let Some(row) = self.state_get(operator, &dictionary)? {
+			return Ok((GroupId(decode_payload::<u64>(&row)?), false));
+		}
+		let id = GroupId(mint(self, operator, 1)?);
+		self.state_set(operator, &dictionary, encode_payload(&id.0)?)?;
+		stamp(self, operator, keyspace, id, group)?;
+		Ok((id, true))
+	}
+
 	fn lookup_groups(&mut self, operator: OperatorId, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
 		self.lookup_groups_in(operator, Keyspace::GROUP_DICTIONARY, groups)
 	}
@@ -170,6 +190,22 @@ pub trait GroupExtension: FlowTransaction {
 				None => Ok(None),
 			})
 			.collect()
+	}
+
+	fn lookup_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<Option<GroupId>> {
+		self.lookup_group_in(operator, Keyspace::GROUP_DICTIONARY, group)
+	}
+
+	fn lookup_group_in(
+		&mut self,
+		operator: OperatorId,
+		keyspace: Keyspace,
+		group: &EncodedKey,
+	) -> Result<Option<GroupId>> {
+		match self.state_get(operator, &dictionary_key(keyspace, group))? {
+			Some(row) => Ok(Some(GroupId(decode_payload::<u64>(&row)?))),
+			None => Ok(None),
+		}
 	}
 
 	fn forget_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<bool> {

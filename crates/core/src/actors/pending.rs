@@ -215,6 +215,13 @@ impl PendingLayers {
 		self.layers.iter().rev().find(|layer| layer.contains_key(key))
 	}
 
+	pub fn write_at(&self, key: &EncodedKey) -> Option<&PendingWrite> {
+		if let Some(write) = self.top.write_at(key) {
+			return Some(write);
+		}
+		self.layers.iter().rev().find_map(|layer| layer.write_at(key))
+	}
+
 	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedBytes> {
 		self.newest_containing(key).and_then(|layer| layer.get(key))
 	}

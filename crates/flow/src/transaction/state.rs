@@ -88,7 +88,7 @@ pub trait StateExtension: FlowTransaction {
 			}
 		}
 
-		self.fetch_state_external(&to_batch, &mut items)?;
+		self.fetch_state_external(to_batch, &mut items)?;
 
 		Span::current().record("found_count", items.len());
 		Ok(MultiVersionBatch {

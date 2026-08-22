@@ -393,6 +393,31 @@ pub(crate) fn intern_groups(ctx: &mut ExternCContext, groups: &[EncodedKey]) -> 
 	Ok(ids.into_iter().zip(is_new).map(|(id, new)| (GroupId(id), new != 0)).collect())
 }
 
+pub(crate) fn intern_group(ctx: &mut ExternCContext, group: &EncodedKey) -> Result<(GroupId, bool)> {
+	let bytes = group.as_ref();
+	let mut id = 0u64;
+	let mut is_new = 0u8;
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; bytes borrows group for the duration of the call, and id and is_new are live,
+	// initialised stack slots the host fills exactly once each.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.intern_group)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			bytes.as_ptr(),
+			bytes.len(),
+			&mut id,
+			&mut is_new,
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!("host_intern_group failed with code {}", result)));
+		}
+	}
+
+	Ok((GroupId(id), is_new != 0))
+}
+
 pub(crate) fn get_or_create_row_numbers_for_pairs(
 	ctx: &mut ExternCContext,
 	pairs: &[(GroupId, EncodedKey)],
@@ -556,6 +581,29 @@ pub(crate) fn lookup_groups(ctx: &mut ExternCContext, groups: &[EncodedKey]) -> 
 	}
 
 	Ok(ids.into_iter().map(|id| (id != GROUP_ABSENT).then_some(GroupId(id))).collect())
+}
+
+pub(crate) fn lookup_group(ctx: &mut ExternCContext, group: &EncodedKey) -> Result<Option<GroupId>> {
+	let bytes = group.as_ref();
+	let mut id = 0u64;
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; bytes borrows group for the duration of the call, and id is a live, initialised
+	// stack slot the host fills exactly once.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.lookup_group)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			bytes.as_ptr(),
+			bytes.len(),
+			&mut id,
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!("host_lookup_group failed with code {}", result)));
+		}
+	}
+
+	Ok((id != GROUP_ABSENT).then_some(GroupId(id)))
 }
 
 pub(crate) fn get_or_create_row_numbers(

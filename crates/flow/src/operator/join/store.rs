@@ -79,11 +79,11 @@ impl Store {
 	}
 
 	fn resolve(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<Option<GroupId>> {
-		Ok(host.lookup_groups(&[group_bytes(hash)])?.into_iter().next().unwrap())
+		host.lookup_group(&group_bytes(hash))
 	}
 
-	fn intern(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<GroupId> {
-		Ok(host.intern_groups(&[group_bytes(hash)])?.into_iter().next().unwrap().0)
+	pub(crate) fn intern(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<GroupId> {
+		Ok(host.intern_group(&group_bytes(hash))?.0)
 	}
 
 	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> GroupStateKey {

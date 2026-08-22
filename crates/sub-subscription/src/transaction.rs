@@ -194,14 +194,14 @@ fn ephemeral_storage_range_rev<'a>(
 fn ephemeral_fetch_state_external(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	version: CommitVersion,
-	keys: &[EncodedKey],
+	keys: Vec<EncodedKey>,
 	items: &mut Vec<MultiVersionRow>,
 ) {
 	for key in keys {
-		if let Some(bytes) = state.get(key) {
+		if let Some(bytes) = state.get(&key) {
 			items.push(MultiVersionRow {
-				key: key.clone(),
 				bytes: bytes.clone(),
+				key,
 				version,
 			});
 		}
@@ -299,7 +299,7 @@ impl FlowTransaction for EphemeralTransaction {
 		ephemeral_storage_range_rev(&self.state, &self.query, self.version, range, scope, batch_size)
 	}
 
-	fn fetch_state_external(&mut self, keys: &[EncodedKey], items: &mut Vec<MultiVersionRow>) -> Result<()> {
+	fn fetch_state_external(&mut self, keys: Vec<EncodedKey>, items: &mut Vec<MultiVersionRow>) -> Result<()> {
 		ephemeral_fetch_state_external(&self.state, self.version, keys, items);
 		Ok(())
 	}

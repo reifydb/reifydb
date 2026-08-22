@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
@@ -79,6 +81,34 @@ pub trait StateStore {
 	fn lookup_groups_in(&mut self, keyspace: Keyspace, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
 		let _ = keyspace;
 		self.lookup_groups(groups)
+	}
+
+	fn intern_group(&mut self, group: &EncodedKey) -> Result<(GroupId, bool)> {
+		Ok(self.intern_groups(from_ref(group))?
+			.into_iter()
+			.next()
+			.expect("intern_groups answers every requested key"))
+	}
+
+	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
+		Ok(self.lookup_groups(from_ref(group))?
+			.into_iter()
+			.next()
+			.expect("lookup_groups answers every requested key"))
+	}
+
+	fn intern_group_in(&mut self, keyspace: Keyspace, group: &EncodedKey) -> Result<(GroupId, bool)> {
+		Ok(self.intern_groups_in(keyspace, from_ref(group))?
+			.into_iter()
+			.next()
+			.expect("intern_groups_in answers every requested key"))
+	}
+
+	fn lookup_group_in(&mut self, keyspace: Keyspace, group: &EncodedKey) -> Result<Option<GroupId>> {
+		Ok(self.lookup_groups_in(keyspace, from_ref(group))?
+			.into_iter()
+			.next()
+			.expect("lookup_groups_in answers every requested key"))
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;

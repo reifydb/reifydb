@@ -800,6 +800,64 @@ pub(super) extern "C" fn host_lookup_groups(
 	}
 }
 
+pub(super) extern "C" fn host_intern_group(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	key_ptr: *const u8,
+	key_len: usize,
+	id_out: *mut u64,
+	is_new_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() || id_out.is_null() || is_new_out.is_null() || (key_len > 0 && key_ptr.is_null()) {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: `ctx`, `id_out` and `is_new_out` are null-checked above, as is `key_ptr` whenever `key_len` is
+	// non-zero; the guest must pass back the ExternCContextRaw the host handed it for this call (discharging
+	// get_host_mut), a `key_ptr` valid for reads of `key_len` bytes (discharging encoded_key) and out pointers
+	// valid and aligned for one write each.
+	unsafe {
+		let host = get_host_mut(&mut *ctx);
+		let key = encoded_key(key_ptr, key_len);
+		match host.intern_group(&key) {
+			Ok((group, is_new)) => {
+				*id_out = group.0;
+				*is_new_out = is_new as u8;
+				EXTERN_C_OK
+			}
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
+		}
+	}
+}
+
+pub(super) extern "C" fn host_lookup_group(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	key_ptr: *const u8,
+	key_len: usize,
+	id_out: *mut u64,
+) -> i32 {
+	if ctx.is_null() || id_out.is_null() || (key_len > 0 && key_ptr.is_null()) {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: `ctx` and `id_out` are null-checked above, as is `key_ptr` whenever `key_len` is non-zero; the
+	// guest must pass back the ExternCContextRaw the host handed it for this call (discharging get_host_mut),
+	// a `key_ptr` valid for reads of `key_len` bytes (discharging encoded_key) and an `id_out` valid and
+	// aligned for one u64 write.
+	unsafe {
+		let host = get_host_mut(&mut *ctx);
+		let key = encoded_key(key_ptr, key_len);
+		match host.lookup_group(&key) {
+			Ok(found) => {
+				*id_out = found.map_or(GROUP_ABSENT, |group| group.0);
+				EXTERN_C_OK
+			}
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
+		}
+	}
+}
+
 #[cfg(test)]
 mod seal_anchor_guard_tests {
 	use std::{cell::Cell, iter::empty, rc::Rc};

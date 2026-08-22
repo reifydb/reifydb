@@ -149,7 +149,7 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>;
 
-	fn fetch_state_external(&mut self, keys: &[EncodedKey], items: &mut Vec<MultiVersionRow>) -> Result<()>;
+	fn fetch_state_external(&mut self, keys: Vec<EncodedKey>, items: &mut Vec<MultiVersionRow>) -> Result<()>;
 
 	fn pending(&self) -> &Pending {
 		self.pending_layers().top()
@@ -256,11 +256,13 @@ pub trait FlowTransaction: Sized + Send + 'static {
 
 	#[inline]
 	fn lookup_overlays(&self, key: &EncodedKey) -> Option<Option<EncodedBytes>> {
-		let pending = self.pending_layers();
-		if pending.is_removed(key) {
-			return Some(None);
+		match self.pending_layers().write_at(key) {
+			Some(PendingWrite::Remove {
+				..
+			}) => Some(None),
+			Some(PendingWrite::Set(value)) => Some(Some(value.clone())),
+			None => None,
 		}
-		pending.get(key).map(|row| Some(row.clone()))
 	}
 
 	fn dictionary_allocators(&self) -> DictionaryAllocatorRegistry {

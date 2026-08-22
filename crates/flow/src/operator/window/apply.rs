@@ -74,7 +74,7 @@ fn route_engine_columns(
 }
 
 fn intern_window_group(host: &mut dyn HostContext, hash: Hash128, span: WindowSpan<DateTime>) -> Result<()> {
-	host.intern_groups(&[window_group_key(hash, span.start.to_order())])?;
+	host.intern_group(&window_group_key(hash, span.start.to_order()))?;
 	Ok(())
 }
 

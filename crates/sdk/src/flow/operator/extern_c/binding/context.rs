@@ -34,8 +34,9 @@ use crate::{
 				sink::ExternCRowSink,
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
-					get_or_create_row_numbers_for_pairs, intern_groups, lookup_groups,
-					reclaim_group_identity, remove_row_number, remove_row_numbers_below,
+					get_or_create_row_numbers_for_pairs, intern_group, intern_groups, lookup_group,
+					lookup_groups, reclaim_group_identity, remove_row_number,
+					remove_row_numbers_below,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -144,6 +145,14 @@ impl ExternCContext {
 
 	pub fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
 		lookup_groups(self, groups)
+	}
+
+	pub fn intern_group(&mut self, group: &EncodedKey) -> Result<(GroupId, bool)> {
+		intern_group(self, group)
+	}
+
+	pub fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
+		lookup_group(self, group)
 	}
 
 	pub fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
@@ -292,6 +301,12 @@ impl GuestContext for ExternCContext {
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
 		ExternCContext::lookup_groups(self, groups)
+	}
+	fn intern_group(&mut self, group: &EncodedKey) -> Result<(GroupId, bool)> {
+		ExternCContext::intern_group(self, group)
+	}
+	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
+		ExternCContext::lookup_group(self, group)
 	}
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		ExternCContext::arm_timer(self, due, kind, key)

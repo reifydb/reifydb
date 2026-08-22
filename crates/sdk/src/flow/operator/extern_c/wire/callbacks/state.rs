@@ -125,6 +125,23 @@ pub struct StateCallbacks {
 		ids_out: *mut u64,
 	) -> i32,
 
+	pub intern_group: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ExternCContextRaw,
+		key: *const u8,
+		key_len: usize,
+		id_out: *mut u64,
+		is_new_out: *mut u8,
+	) -> i32,
+
+	pub lookup_group: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ExternCContextRaw,
+		key: *const u8,
+		key_len: usize,
+		id_out: *mut u64,
+	) -> i32,
+
 	pub arm_timer: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,

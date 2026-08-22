@@ -250,17 +250,17 @@ fn deferred_range_target<'a>(
 pub(crate) fn deferred_fetch_state_external(
 	operators: Option<&OperatorStore>,
 	version: CommitVersion,
-	keys: &[EncodedKey],
+	keys: Vec<EncodedKey>,
 	items: &mut Vec<MultiVersionRow>,
 ) {
 	for encoded_key in keys {
 		let OperatorScope {
 			operator,
 			inner,
-		} = operator_state_coordinates(encoded_key).expect("state_get_many keys must carry an operator id");
+		} = operator_state_coordinates(&encoded_key).expect("state_get_many keys must carry an operator id");
 		if let Some(row) = operators.expect(NO_OPERATOR_STORE).get(operator, &inner) {
 			items.push(MultiVersionRow {
-				key: encoded_key.clone(),
+				key: encoded_key,
 				bytes: row.into_bytes(),
 				version,
 			});
@@ -371,7 +371,7 @@ impl FlowTransaction for DeferredTransaction {
 		)
 	}
 
-	fn fetch_state_external(&mut self, keys: &[EncodedKey], items: &mut Vec<MultiVersionRow>) -> Result<()> {
+	fn fetch_state_external(&mut self, keys: Vec<EncodedKey>, items: &mut Vec<MultiVersionRow>) -> Result<()> {
 		deferred_fetch_state_external(self.substrate.operators.as_ref(), self.version, keys, items);
 		Ok(())
 	}

@@ -118,7 +118,7 @@ impl WindowOperator {
 	}
 
 	pub(super) fn partition_group(&self, host: &mut dyn HostContext, partition: Hash128) -> Result<GroupId> {
-		Ok(host.intern_groups(&[partition_group_key(partition)])?.into_iter().next().unwrap().0)
+		Ok(host.intern_group(&partition_group_key(partition))?.0)
 	}
 
 	pub fn store_row_index(

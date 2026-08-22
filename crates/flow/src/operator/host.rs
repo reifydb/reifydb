@@ -251,6 +251,22 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.lookup_groups_in(self.operator, keyspace, groups)
 	}
 
+	fn intern_group(&mut self, group: &EncodedKey) -> Result<(GroupId, bool)> {
+		self.txn.intern_group(self.operator, group)
+	}
+
+	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
+		self.txn.lookup_group(self.operator, group)
+	}
+
+	fn intern_group_in(&mut self, keyspace: Keyspace, group: &EncodedKey) -> Result<(GroupId, bool)> {
+		self.txn.intern_group_in(self.operator, keyspace, group)
+	}
+
+	fn lookup_group_in(&mut self, keyspace: Keyspace, group: &EncodedKey) -> Result<Option<GroupId>> {
+		self.txn.lookup_group_in(self.operator, keyspace, group)
+	}
+
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		self.txn.get_or_create_row_numbers(self.operator, group, keys)
 	}

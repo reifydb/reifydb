@@ -25,10 +25,11 @@ pub(crate) fn overwrite_right_slot(
 	}
 	let shape = build_shape(columns);
 	right.set_row_shape(host, &shape)?;
+	let group = right.intern(host, key_hash)?;
 	let mut stored: Option<EncodedPodRow> = None;
 	for &idx in indices {
 		let row = encode_row(&shape, columns, idx, host.written_at());
-		right.put_row(host, key_hash, RowNumber::MAX, &row)?;
+		right.write_row(host, group, RowNumber::MAX, &row)?;
 		stored = Some(row);
 	}
 	match stored {
