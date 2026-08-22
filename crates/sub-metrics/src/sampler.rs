@@ -4,7 +4,6 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	key::operator_state::Keyspace,
 	lifecycle::metrics::RetentionMetrics,
 	metrics::sample::{MetricKind, MetricsSample, Reading},
 	value::column::columns::Columns,
@@ -414,18 +413,9 @@ fn operator_read_keyspace_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 	store.read_buffer_keyspace_metrics().iter().map(operator_read_keyspace_row).collect()
 }
 
-fn keyspace_label(keyspace: Keyspace) -> String {
-	let name = keyspace.name();
-	if name == "CUSTOM" {
-		format!("CUSTOM_0x{:02X}", keyspace.0)
-	} else {
-		name.to_string()
-	}
-}
-
 fn operator_read_keyspace_row(metrics: &OperatorReadBufferKeyspaceMetrics) -> MetricsRow {
 	MetricsRow {
-		dimensions: vec![Value::Utf8(keyspace_label(metrics.keyspace))],
+		dimensions: vec![Value::Utf8(metrics.keyspace.name().to_string())],
 		measures: vec![
 			level_bytes("used", metrics.used),
 			level_count("buckets", metrics.buckets as u64),
@@ -563,6 +553,7 @@ fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::key::operator_state::Keyspace;
 	use reifydb_store_operator::tier::read::OperatorReadBufferMetrics;
 
 	use super::*;
@@ -598,23 +589,6 @@ mod tests {
 			vec![Value::Utf8("SOURCE_WATERMARK".to_string())],
 			"the dimension must be the keyspace name; a raw u8 breaks the moment a constant is renumbered"
 		);
-	}
-
-	#[test]
-	fn two_unnamed_keyspaces_never_collapse_into_one_row() {
-		// name() answers "CUSTOM" for every value it has no constant for, so labelling rows with it alone
-		// merges distinct keyspaces into a single accumulator key and silently sums their counters.
-		let mut first = sample();
-		first.keyspace = Keyspace(0x50);
-		let mut second = sample();
-		second.keyspace = Keyspace(0x51);
-
-		let first = operator_read_keyspace_row(&first);
-		let second = operator_read_keyspace_row(&second);
-
-		assert_eq!(first.dimensions, vec![Value::Utf8("CUSTOM_0x50".to_string())]);
-		assert_eq!(second.dimensions, vec![Value::Utf8("CUSTOM_0x51".to_string())]);
-		assert_ne!(first.dimensions, second.dimensions);
 	}
 
 	#[test]

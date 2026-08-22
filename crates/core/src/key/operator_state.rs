@@ -188,7 +188,10 @@ impl Keyspace {
 			Self::SEAL_ANCHOR => "SEAL_ANCHOR",
 			Self::CUSTOM_NOT_CACHED => "CUSTOM_NOT_CACHED",
 			Self::CUSTOM_CACHED => "CUSTOM_CACHED",
-			_ => "CUSTOM",
+			_ => unimplemented!(
+				"keyspace {:#04x} declares no name; it must be a declared constant",
+				self.0
+			),
 		}
 	}
 
@@ -780,9 +783,14 @@ mod tests {
 		}
 
 		assert_eq!(
-			Keyspace(0x41).name(),
-			"CUSTOM",
-			"a byte no constant claims must fall through rather than borrow a neighbour's name"
+			Keyspace::CUSTOM_NOT_CACHED.name(),
+			"CUSTOM_NOT_CACHED",
+			"a custom keyspace names the admission side it sits on; there is no unnamed fallback to absorb it"
+		);
+		assert_eq!(
+			Keyspace::CUSTOM_CACHED.name(),
+			"CUSTOM_CACHED",
+			"a custom keyspace names the admission side it sits on; there is no unnamed fallback to absorb it"
 		);
 	}
 
