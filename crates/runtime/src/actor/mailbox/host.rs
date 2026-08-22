@@ -3,14 +3,13 @@
 
 #![allow(clippy::disallowed_types)]
 
-use std::{fmt, sync, sync::Arc, time::Duration};
+use std::{fmt, sync, sync::Arc};
 
 use crossbeam_channel::{
-	Receiver, RecvTimeoutError as CcRecvTimeoutError, SendError as CcSendError, Sender,
-	TryRecvError as CcTryRecvError, TrySendError as CcTrySendError, bounded, unbounded,
+	Receiver, SendError as CcSendError, Sender, TrySendError as CcTrySendError, bounded, unbounded,
 };
 
-use super::{ActorRef, RecvError, RecvTimeoutError, SendError, TryRecvError};
+use super::{ActorRef, SendError};
 
 pub struct ActorRefInner<M> {
 	pub(crate) tx: Sender<M>,
@@ -76,31 +75,6 @@ impl<M: Send> ActorRefInner<M> {
 
 pub(crate) struct Mailbox<M> {
 	pub(crate) rx: Receiver<M>,
-}
-
-impl<M> Mailbox<M> {
-	pub fn try_recv(&self) -> Result<M, TryRecvError> {
-		match self.rx.try_recv() {
-			Ok(msg) => Ok(msg),
-			Err(CcTryRecvError::Empty) => Err(TryRecvError::Empty),
-			Err(CcTryRecvError::Disconnected) => Err(TryRecvError::Closed),
-		}
-	}
-
-	pub fn recv(&self) -> Result<M, RecvError> {
-		match self.rx.recv() {
-			Ok(msg) => Ok(msg),
-			Err(_) => Err(RecvError::Closed),
-		}
-	}
-
-	pub fn recv_timeout(&self, timeout: Duration) -> Result<M, RecvTimeoutError> {
-		match self.rx.recv_timeout(timeout) {
-			Ok(msg) => Ok(msg),
-			Err(CcRecvTimeoutError::Timeout) => Err(RecvTimeoutError::Timeout),
-			Err(CcRecvTimeoutError::Disconnected) => Err(RecvTimeoutError::Closed),
-		}
-	}
 }
 
 pub(crate) fn create_mailbox<M: Send>(capacity: Option<usize>) -> (ActorRef<M>, Mailbox<M>) {

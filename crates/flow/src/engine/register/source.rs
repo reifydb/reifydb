@@ -81,7 +81,7 @@ impl FlowEngineInner {
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_core::interface::{WithEventBus, catalog::flow::FlowId};
+	use reifydb_core::interface::catalog::flow::FlowId;
 	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_test_harness::engine::TestEngine;
@@ -104,7 +104,6 @@ mod tests {
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(

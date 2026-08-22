@@ -205,7 +205,6 @@ mod tests {
 		) -> Directive {
 			match msg {
 				CounterMessage::Inc => *state += 1,
-				CounterMessage::Dec => *state -= 1,
 				CounterMessage::Set(v) => *state = v,
 				CounterMessage::Stop => return Directive::Stop,
 			}
@@ -220,7 +219,6 @@ mod tests {
 	#[derive(Debug)]
 	enum CounterMessage {
 		Inc,
-		Dec,
 		Set(i64),
 		Stop,
 	}

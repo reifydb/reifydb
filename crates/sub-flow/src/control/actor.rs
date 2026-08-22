@@ -8,7 +8,6 @@ use reifydb_core::{
 	actors::{flow::FlowActorMessage, pending::Pending},
 	common::CommitVersion,
 	interface::{
-		WithEventBus,
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			flow::FlowId,
@@ -200,7 +199,6 @@ impl FlowActor {
 		FlowEngineInner::new(
 			self.engine.catalog(),
 			self.engine.executor().routines.clone(),
-			self.engine.event_bus().clone(),
 			RuntimeContext::with_clock(self.clock.clone()),
 			Arc::new(StandardOperatorProvider::new(self.custom_operators.clone())),
 			self.substrate.clone(),
@@ -822,7 +820,6 @@ mod pull_protocol {
 		let mut probe = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
 			substrate.clone(),

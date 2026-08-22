@@ -27,7 +27,6 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	interface::{
-		WithEventBus,
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			subscription::SubscriptionInspectorRef,
@@ -173,7 +172,6 @@ impl SubscriptionSubsystem {
 		for i in 0..num_workers {
 			let cat = catalog.clone();
 			let routines = engine.executor().routines.clone();
-			let bus = engine.event_bus().clone();
 			let rc = RuntimeContext::with_clock(clock.clone());
 			let provider = Arc::new(EmptyOperatorProvider);
 			let substrate =
@@ -182,7 +180,6 @@ impl SubscriptionSubsystem {
 				FlowEngineInner::new(
 					cat,
 					routines,
-					bus,
 					rc,
 					provider,
 					substrate,

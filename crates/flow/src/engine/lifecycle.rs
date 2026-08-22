@@ -82,10 +82,7 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		common::TimeDomain,
-		interface::{
-			WithEventBus,
-			catalog::id::{SeriesId, ViewId},
-		},
+		interface::catalog::id::{SeriesId, ViewId},
 		key::operator_state::GroupId,
 	};
 	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
@@ -112,7 +109,6 @@ mod tests {
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::new(engine.inner().dictionary_allocators()),
@@ -134,7 +130,6 @@ mod tests {
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(
@@ -173,7 +168,6 @@ mod tests {
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(

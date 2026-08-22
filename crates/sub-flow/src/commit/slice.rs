@@ -498,12 +498,9 @@ mod integration {
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::TimeDomain,
-		interface::{
-			WithEventBus,
-			catalog::{
-				flow::OperatorId,
-				id::{SeriesId, ViewId},
-			},
+		interface::catalog::{
+			flow::OperatorId,
+			id::{SeriesId, ViewId},
 		},
 		key::{Key, kind::KeyKind},
 	};
@@ -571,7 +568,6 @@ mod integration {
 		FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),

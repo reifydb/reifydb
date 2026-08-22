@@ -16,8 +16,6 @@ use reifydb_value::value::duration::Duration;
 use crate::{client::Client, metrics::Metrics, runner::Runner};
 
 pub struct Worker {
-	#[allow(dead_code)]
-	id: usize,
 	client: Client,
 	runner: Arc<Runner>,
 	metrics: Arc<Metrics>,
@@ -35,7 +33,6 @@ impl Worker {
 		let local_histogram = Histogram::new_with_bounds(1, 60_000_000, 3).expect("Failed to create histogram");
 
 		Self {
-			id,
 			client,
 			runner,
 			metrics,

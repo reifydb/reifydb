@@ -78,25 +78,6 @@ impl fmt::Display for AskError {
 
 impl error::Error for AskError {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TryRecvError {
-	Empty,
-
-	Closed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RecvError {
-	Closed,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RecvTimeoutError {
-	Timeout,
-
-	Closed,
-}
-
 pub struct ActorRef<M> {
 	inner: ActorRefInnerImpl<M>,
 }

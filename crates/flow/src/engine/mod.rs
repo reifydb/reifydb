@@ -18,13 +18,10 @@ use std::{
 };
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{
-	event::EventBus,
-	interface::catalog::{
-		flow::{FlowId, OperatorId},
-		id::{TableId, ViewId},
-		object::ObjectId,
-	},
+use reifydb_core::interface::catalog::{
+	flow::{FlowId, OperatorId},
+	id::{TableId, ViewId},
+	object::ObjectId,
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::flow::{
@@ -54,8 +51,6 @@ pub struct FlowEngineInner {
 	pub(crate) sources: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
 	pub(crate) sinks: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
 	pub(crate) analyzer: FlowGraphAnalyzer,
-	#[allow(dead_code)]
-	pub(crate) event_bus: EventBus,
 	pub(crate) runtime_context: RuntimeContext,
 	pub(crate) operator_provider: Arc<dyn OperatorProvider>,
 	pub(crate) substrate: FlowSubstrate,
@@ -67,13 +62,12 @@ impl FlowEngineInner {
 	#[instrument(
 		name = "flow::engine::new",
 		level = "debug",
-		skip(catalog, routines, event_bus, runtime_context, operator_provider, substrate, operator_samples)
+		skip(catalog, routines, runtime_context, operator_provider, substrate, operator_samples)
 	)]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		catalog: Catalog,
 		routines: Routines,
-		event_bus: EventBus,
 		runtime_context: RuntimeContext,
 		operator_provider: Arc<dyn OperatorProvider>,
 		substrate: FlowSubstrate,
@@ -88,7 +82,6 @@ impl FlowEngineInner {
 			sources: BTreeMap::new(),
 			sinks: BTreeMap::new(),
 			analyzer: FlowGraphAnalyzer::new(),
-			event_bus,
 			runtime_context,
 			operator_provider,
 			substrate,

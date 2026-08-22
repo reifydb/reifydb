@@ -154,7 +154,6 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{
-			WithEventBus,
 			catalog::{
 				flow::{FlowId, OperatorId},
 				id::ViewId,
@@ -229,7 +228,6 @@ mod tests {
 		FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(

@@ -1032,6 +1032,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-filter"
+version = "0.9.0"
+dependencies = [
+ "reifydb-build",
+ "reifydb-core",
+ "reifydb-runtime",
+ "reifydb-value",
+ "tracing",
+]
+
+[[package]]
 name = "reifydb-fuzz"
 version = "0.0.0"
 dependencies = [
@@ -1146,6 +1157,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
+ "reifydb-filter",
  "reifydb-runtime",
  "reifydb-sqlite",
  "reifydb-store",

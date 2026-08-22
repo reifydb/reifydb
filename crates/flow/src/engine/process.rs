@@ -330,7 +330,6 @@ mod tests {
 	use reifydb_core::{
 		common::TimeDomain,
 		interface::{
-			WithEventBus,
 			catalog::id::{SeriesId, TableId, ViewId},
 			change::Diff,
 		},
@@ -572,7 +571,6 @@ mod tests {
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(
@@ -614,7 +612,6 @@ mod tests {
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
-			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(
