@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKeyRange},
+	key::encode_u64_asc,
 	row::{
 		bytes::EncodedBytes,
 		operator::state::{decode, encode},
@@ -18,6 +18,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	error::Error,
+	reifydb_assertions,
 	util::{
 		cowvec::CowVec,
 		hash::{Hash128, xxh3_64},
@@ -38,12 +39,11 @@ use crate::{
 				hash::{columns_from_block, stream_join_blocks_encoded},
 			},
 		},
-		state::store::{state_get, state_range, state_remove, state_set},
+		state::store::{state_get, state_remove, state_set},
 	},
 };
 
 const ROW_NUMBER_BYTES: usize = 8;
-const TAG_BYTES: usize = 1;
 const TAG_JOINED: u8 = 0;
 const TAG_UNMATCHED: u8 = 1;
 const SLOT: RowNumber = RowNumber::MAX;
@@ -70,6 +70,22 @@ struct Pin {
 	retired: Option<Vec<u8>>,
 }
 
+#[operator_state]
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PublishedEntry {
+	tag: u8,
+
+	right: u64,
+
+	version: u64,
+}
+
+#[operator_state]
+#[derive(Clone, Debug, Default, PartialEq)]
+struct PublishedSet {
+	entries: Vec<PublishedEntry>,
+}
+
 pub(crate) struct SnapshotLedger;
 
 impl SnapshotLedger {
@@ -77,25 +93,38 @@ impl SnapshotLedger {
 		Self
 	}
 
-	fn published_key(&self, group: GroupId, left: RowNumber, right: RowNumber) -> GroupStateKey {
-		self.tagged_key(group, left, TAG_JOINED, right)
+	fn published_key(&self, group: GroupId, left: RowNumber) -> GroupStateKey {
+		OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, encode_u64_asc(left.0).to_vec())
 	}
 
-	fn unmatched_key(&self, group: GroupId, left: RowNumber) -> GroupStateKey {
-		self.tagged_key(group, left, TAG_UNMATCHED, RowNumber(0))
+	fn published_set(&self, host: &mut dyn HostContext, group: GroupId, left: RowNumber) -> Result<PublishedSet> {
+		match state_get(host, &self.published_key(group, left))? {
+			Some(row) => decode_published_set(&row),
+			None => Ok(PublishedSet::default()),
+		}
 	}
 
-	fn tagged_key(&self, group: GroupId, left: RowNumber, tag: u8, right: RowNumber) -> GroupStateKey {
-		let mut suffix = Vec::with_capacity(2 * ROW_NUMBER_BYTES + TAG_BYTES);
-		suffix.extend_from_slice(&encode_u64_asc(left.0));
-		suffix.push(tag);
-		suffix.extend_from_slice(&encode_u64_asc(right.0));
-		OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, suffix)
-	}
-
-	fn published_prefix(&self, group: GroupId, left: RowNumber) -> EncodedKeyRange {
-		let prefix = OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, encode_u64_asc(left.0));
-		EncodedKeyRange::prefix(prefix.as_ref())
+	fn write_published_set(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		left: RowNumber,
+		set: &PublishedSet,
+	) -> Result<()> {
+		let key = self.published_key(group, left);
+		if set.entries.is_empty() {
+			return state_remove(host, &key);
+		}
+		reifydb_assertions! {
+			const MAX_PUBLISHED_FAN_OUT: usize = 1024;
+			assert!(
+				set.entries.len() <= MAX_PUBLISHED_FAN_OUT,
+				"a left row published {} rights; the ledger stores them as one value, so every publish \
+				 rewrites the whole list and the join degrades quadratically past {MAX_PUBLISHED_FAN_OUT}",
+				set.entries.len()
+			);
+		}
+		state_set(host, &key, encode_published_set(set)?)
 	}
 
 	fn pin_key(&self, group: GroupId, right: RowNumber, version: ContentVersion) -> GroupStateKey {
@@ -114,16 +143,24 @@ impl SnapshotLedger {
 		content: &EncodedBytes,
 	) -> Result<()> {
 		let version = ContentVersion::of(content);
-		let key = self.published_key(group, left, right);
-		if let Some(existing) = state_get(host, &key)? {
-			let previous = decode_version(&existing)?;
-			if previous == version {
-				return Ok(());
+		let mut set = self.published_set(host, group, left)?;
+		match set.entries.iter().position(|entry| entry.tag == TAG_JOINED && entry.right == right.0) {
+			Some(index) => {
+				let previous = ContentVersion(set.entries[index].version);
+				if previous == version {
+					return Ok(());
+				}
+				self.unpin(host, group, right, previous)?;
+				set.entries[index].version = version.0;
 			}
-			self.unpin(host, group, right, previous)?;
+			None => set.entries.push(PublishedEntry {
+				tag: TAG_JOINED,
+				right: right.0,
+				version: version.0,
+			}),
 		}
-		let row = encode_version(version)?;
-		state_set(host, &key, row)?;
+		sort_entries(&mut set);
+		self.write_published_set(host, group, left, &set)?;
 		self.pin(host, group, right, version)
 	}
 
@@ -133,15 +170,11 @@ impl SnapshotLedger {
 		group: GroupId,
 		left: RowNumber,
 	) -> Result<Vec<(PublishedRight, ContentVersion)>> {
-		let mut out = Vec::new();
-		for entry in state_range(host, self.published_prefix(group, left)) {
-			let (key, row) = entry?;
-			let Some(right) = decode_published(key.as_slice()) else {
-				continue;
-			};
-			out.push((right, decode_version(&EncodedPodRow::from(row))?));
-		}
-		Ok(out)
+		Ok(self.published_set(host, group, left)?
+			.entries
+			.iter()
+			.filter_map(|entry| right_of(entry).map(|right| (right, ContentVersion(entry.version))))
+			.collect())
 	}
 
 	pub(crate) fn publish_unmatched(
@@ -150,12 +183,17 @@ impl SnapshotLedger {
 		group: GroupId,
 		left: RowNumber,
 	) -> Result<()> {
-		let key = self.unmatched_key(group, left);
-		if state_get(host, &key)?.is_some() {
+		let mut set = self.published_set(host, group, left)?;
+		if set.entries.iter().any(|entry| entry.tag == TAG_UNMATCHED) {
 			return Ok(());
 		}
-		let row = encode_version(ContentVersion(0))?;
-		state_set(host, &key, row)
+		set.entries.push(PublishedEntry {
+			tag: TAG_UNMATCHED,
+			right: 0,
+			version: 0,
+		});
+		sort_entries(&mut set);
+		self.write_published_set(host, group, left, &set)
 	}
 
 	pub(crate) fn release_unmatched(
@@ -164,7 +202,9 @@ impl SnapshotLedger {
 		group: GroupId,
 		left: RowNumber,
 	) -> Result<()> {
-		state_remove(host, &self.unmatched_key(group, left))
+		let mut set = self.published_set(host, group, left)?;
+		set.entries.retain(|entry| entry.tag != TAG_UNMATCHED);
+		self.write_published_set(host, group, left, &set)
 	}
 
 	pub(crate) fn release(
@@ -174,12 +214,14 @@ impl SnapshotLedger {
 		left: RowNumber,
 		right: RowNumber,
 	) -> Result<Option<EncodedBytes>> {
-		let key = self.published_key(group, left, right);
-		let Some(row) = state_get(host, &key)? else {
+		let mut set = self.published_set(host, group, left)?;
+		let Some(index) =
+			set.entries.iter().position(|entry| entry.tag == TAG_JOINED && entry.right == right.0)
+		else {
 			return Ok(None);
 		};
-		let version = decode_version(&row)?;
-		state_remove(host, &key)?;
+		let version = ContentVersion(set.entries.remove(index).version);
+		self.write_published_set(host, group, left, &set)?;
 		self.unpin(host, group, right, version)
 	}
 
@@ -249,33 +291,31 @@ impl SnapshotLedger {
 	}
 }
 
-fn decode_published(bytes: &[u8]) -> Option<PublishedRight> {
-	if bytes.len() < ROW_NUMBER_BYTES + TAG_BYTES {
-		return None;
-	}
-	match bytes[bytes.len() - ROW_NUMBER_BYTES - TAG_BYTES] {
+fn right_of(entry: &PublishedEntry) -> Option<PublishedRight> {
+	match entry.tag {
 		TAG_UNMATCHED => Some(PublishedRight::Unmatched),
-		TAG_JOINED => {
-			let suffix: [u8; ROW_NUMBER_BYTES] = bytes[bytes.len() - ROW_NUMBER_BYTES..].try_into().ok()?;
-			Some(PublishedRight::Row(RowNumber(decode_u64_asc(suffix))))
-		}
+		TAG_JOINED => Some(PublishedRight::Row(RowNumber(entry.right))),
 		_ => None,
 	}
 }
 
-fn encode_version(version: ContentVersion) -> Result<EncodedPodRow> {
-	encode(&version.0).map_err(|e| {
+fn sort_entries(set: &mut PublishedSet) {
+	set.entries.sort_by_key(|entry| (entry.tag, entry.right));
+}
+
+fn encode_published_set(set: &PublishedSet) -> Result<EncodedPodRow> {
+	encode(set).map_err(|e| {
 		Error::from(FlowStateError::Encode {
-			state: "snapshot published version",
+			state: "snapshot published set",
 			cause: e.to_string(),
 		})
 	})
 }
 
-fn decode_version(row: &EncodedPodRow) -> Result<ContentVersion> {
-	decode::<u64>(row).map(ContentVersion).map_err(|e| {
+fn decode_published_set(row: &EncodedPodRow) -> Result<PublishedSet> {
+	decode::<PublishedSet>(row).map_err(|e| {
 		Error::from(FlowStateError::Decode {
-			state: "snapshot published version",
+			state: "snapshot published set",
 			cause: e.to_string(),
 		})
 	})
