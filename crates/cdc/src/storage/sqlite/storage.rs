@@ -65,7 +65,7 @@ pub enum ReadClass {
 
 type CompactionCandidates = (Vec<Cdc>, Vec<Vec<u8>>);
 
-type RangeSnapshot = (Vec<(Vec<u8>, Vec<u8>)>, Vec<Vec<u8>>);
+type RangeSnapshot = (Vec<(Vec<u8>, Vec<u8>)>, Option<CommitVersion>, Vec<Vec<u8>>);
 
 struct FullBlockScan {
 	entries: Vec<CdcEviction>,
@@ -348,12 +348,12 @@ impl SqliteCdcStorage {
 		let limit = (batch_size as i64).saturating_add(1);
 		let guard = self.read_conn(class).lock();
 		let Some(conn) = guard.as_ref() else {
-			return Ok((Vec::new(), Vec::new()));
+			return Ok((Vec::new(), None, Vec::new()));
 		};
 
-		let block_rows = read_block_index_rows(conn, &lo_b, &hi_b)?;
+		let (block_rows, block_frontier) = read_block_index_rows(conn, &lo_b, &hi_b, batch_size)?;
 		let live_payloads = read_live_payloads(conn, &lo_b, &hi_b, limit)?;
-		Ok((block_rows, live_payloads))
+		Ok((block_rows, block_frontier, live_payloads))
 	}
 
 	#[inline]
@@ -726,24 +726,36 @@ fn read_block_index_rows(
 	conn: &Connection,
 	lo_b: &[u8; 8],
 	hi_b: &[u8; 8],
-) -> CdcStorageResult<Vec<(Vec<u8>, Vec<u8>)>> {
+	batch_size: u64,
+) -> CdcStorageResult<(Vec<(Vec<u8>, Vec<u8>)>, Option<CommitVersion>)> {
 	let mut stmt = conn
 		.prepare_cached(
-			r#"SELECT max_version, payload FROM "cdc_block"
+			r#"SELECT max_version, num_entries, payload FROM "cdc_block"
 			   WHERE max_version >= ?1 AND min_version <= ?2
 			   ORDER BY max_version ASC"#,
 		)
 		.map_err(|e| CdcError::Internal(format!("range blocks prepare: {e}")))?;
-	let rows = stmt
-		.query_map(params![lo_b.as_slice(), hi_b.as_slice()], |row| {
-			Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?))
-		})
+	let mut rows = stmt
+		.query(params![lo_b.as_slice(), hi_b.as_slice()])
 		.map_err(|e| CdcError::Internal(format!("range blocks rows: {e}")))?;
-	let mut out = Vec::new();
-	for r in rows {
-		out.push(r.map_err(|e| CdcError::Internal(format!("range blocks row: {e}")))?);
+	let mut out: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+	let mut budget = batch_size.saturating_add(1);
+	let mut frontier = None;
+	while let Some(row) = rows.next().map_err(|e| CdcError::Internal(format!("range blocks row: {e}")))? {
+		if budget == 0 {
+			return Ok((out, frontier));
+		}
+		let max_bytes: Vec<u8> =
+			row.get(0).map_err(|e| CdcError::Internal(format!("range blocks max_version: {e}")))?;
+		let num_entries: i64 =
+			row.get(1).map_err(|e| CdcError::Internal(format!("range blocks num_entries: {e}")))?;
+		let payload: Vec<u8> =
+			row.get(2).map_err(|e| CdcError::Internal(format!("range blocks payload: {e}")))?;
+		frontier = Some(bytes_to_version(&max_bytes)?);
+		out.push((max_bytes, payload));
+		budget = budget.saturating_sub(num_entries.max(1) as u64);
 	}
-	Ok(out)
+	Ok((out, None))
 }
 
 #[inline]
@@ -1129,6 +1141,12 @@ impl SqliteCdcStorage {
 		batch_size: u64,
 		class: ReadClass,
 	) -> CdcStorageResult<CdcBatch> {
+		reifydb_assertions! {
+			assert!(
+				batch_size > 0,
+				"a zero batch size yields an empty batch with has_more set, which callers paginate on forever"
+			);
+		}
 		let Some((lo_inc, hi_inc)) = normalize_range_inclusive(start, end) else {
 			return Ok(CdcBatch {
 				items: Vec::new(),
@@ -1137,12 +1155,18 @@ impl SqliteCdcStorage {
 		};
 		let want = batch_size as usize;
 
-		let (block_rows, live_payloads) = self.snapshot_block_and_live(lo_inc, hi_inc, batch_size, class)?;
+		let (block_rows, block_frontier, live_payloads) =
+			self.snapshot_block_and_live(lo_inc, hi_inc, batch_size, class)?;
 		let block_items = self.decode_block_rows(block_rows, lo_inc, hi_inc)?;
 		let live_items = decode_live_payloads(live_payloads)?;
 		let mut merged = merge_block_and_live(block_items, live_items);
 
-		let has_more = merged.len() > want;
+		if let Some(frontier) = block_frontier {
+			let cut = merged.iter().position(|c| c.version > frontier).unwrap_or(merged.len());
+			merged.truncate(cut);
+		}
+
+		let has_more = merged.len() > want || block_frontier.is_some();
 		merged.truncate(want);
 		Ok(CdcBatch {
 			items: merged,
@@ -1202,5 +1226,93 @@ impl SqliteCdcStorage {
 			Err(QueryReturnedNoRows) => Ok(None),
 			Err(e) => Err(CdcError::Internal(format!("read cdc: {e}"))),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+	use reifydb_core::interface::cdc::CdcChange;
+	use reifydb_value::util::cowvec::CowVec;
+
+	use super::*;
+
+	fn cdc_at(version: u64) -> Cdc {
+		Cdc::new(
+			CommitVersion(version),
+			DateTime::from_nanos(1_700_000_000_000_000_000 + version * 1_000_000),
+			vec![CdcChange::Insert {
+				key: EncodedKey::new(format!("k-{version}").into_bytes()),
+				post: EncodedBytes(CowVec::new(format!("v-{version}").into_bytes())),
+			}],
+		)
+	}
+
+	fn decoded_block_count(store: &SqliteCdcStorage, blocks: u64, block_size: u64) -> usize {
+		(1..=blocks).filter(|b| store.inner.block_cache.get(CommitVersion(b * block_size)).is_some()).count()
+	}
+
+	#[test]
+	fn read_range_decodes_only_the_blocks_needed_for_the_batch() {
+		// A wide range with a small batch must not drag every overlapping block through zstd decode.
+		// Unbounded, one pull re-inflates the whole backlog and the lag feeds itself.
+		let (config, _guard) = SqliteConfig::in_memory();
+		let store = SqliteCdcStorage::new_with_cache_capacity(config, 4096);
+		for v in 1..=2000u64 {
+			store.write(&cdc_at(v)).unwrap();
+		}
+		assert_eq!(store.compact_all(10, 1, CommitVersion(u64::MAX)).unwrap().len(), 200);
+
+		let batch = store
+			.read_range(Bound::Excluded(CommitVersion(0)), Bound::Included(CommitVersion(u64::MAX)), 5)
+			.unwrap();
+
+		assert_eq!(batch.items.len(), 5);
+		assert!(batch.has_more);
+		assert_eq!(batch.items.iter().map(|c| c.version.0).collect::<Vec<_>>(), vec![1, 2, 3, 4, 5]);
+
+		let decoded = decoded_block_count(&store, 200, 10);
+		assert!(decoded <= 2, "expected at most 2 of 200 blocks decoded for a 5 item batch, got {decoded}");
+	}
+
+	#[test]
+	fn wide_range_pagination_yields_every_entry_exactly_once() {
+		// Live rows sort above every block, so a short block prefix must never let them jump the
+		// versions still sitting in unread blocks: that would silently skip a stretch of the log.
+		let (store, _guard) = SqliteCdcStorage::in_memory();
+		for v in 1..=1000u64 {
+			store.write(&cdc_at(v)).unwrap();
+		}
+		assert_eq!(store.compact_all(10, 1, CommitVersion(u64::MAX)).unwrap().len(), 100);
+		for v in 1001..=1050u64 {
+			store.write(&cdc_at(v)).unwrap();
+		}
+
+		let first = store
+			.read_range(Bound::Excluded(CommitVersion(0)), Bound::Included(CommitVersion(u64::MAX)), 7)
+			.unwrap();
+		assert!(first.has_more, "a 7 item batch over 1050 entries must report more");
+		assert_eq!(first.items.len(), 7);
+
+		let mut seen: Vec<u64> = Vec::new();
+		let mut cursor = Bound::Excluded(CommitVersion(0));
+		for _ in 0..4000 {
+			let batch = store.read_range(cursor, Bound::Included(CommitVersion(u64::MAX)), 7).unwrap();
+			if batch.has_more {
+				assert!(!batch.items.is_empty(), "has_more with no items stalls every consumer");
+			}
+			assert!(batch.items.len() <= 7, "batch must never exceed the requested size");
+			seen.extend(batch.items.iter().map(|c| c.version.0));
+			if !batch.has_more {
+				break;
+			}
+			cursor = Bound::Excluded(batch.items.last().unwrap().version);
+		}
+
+		assert_eq!(
+			seen,
+			(1..=1050u64).collect::<Vec<_>>(),
+			"pagination must yield every version once, in order"
+		);
 	}
 }
