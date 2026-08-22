@@ -6,13 +6,16 @@ use std::ops::{
 	Bound::{Excluded, Included, Unbounded},
 };
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::{
+	encoded::{EncodedKey, EncodedKeyRange},
+	serializer::KeySerializer,
+};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		Key,
 		kind::KeyKind,
-		operator_state::{GroupStateKey, OperatorStateKey, node_prefix},
+		operator_state::{GroupStateKey, NODE_PREFIX_LEN, OperatorStateKey, extend_node_prefix, node_prefix},
 	},
 };
 
@@ -29,9 +32,11 @@ pub struct OperatorRangeScope {
 }
 
 pub(crate) fn scoped_key(id: OperatorId, key: &GroupStateKey) -> EncodedKey {
-	let mut bytes = node_prefix(id);
-	bytes.extend_from_slice(key.as_slice());
-	EncodedKey::new(bytes)
+	let suffix = key.as_slice();
+	let mut serializer = KeySerializer::with_capacity(NODE_PREFIX_LEN + suffix.len());
+	extend_node_prefix(&mut serializer, id);
+	serializer.extend_raw(suffix);
+	serializer.finish()
 }
 
 pub fn operator_state_coordinates(key: &EncodedKey) -> Option<OperatorScope> {

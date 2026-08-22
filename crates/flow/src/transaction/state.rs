@@ -72,20 +72,19 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
 		let version = self.version();
-		let encoded: Vec<EncodedKey> = keys.iter().map(|key| scoped_key(id, key)).collect();
-
-		let mut items: Vec<MultiVersionRow> = Vec::new();
+		let mut items: Vec<MultiVersionRow> = Vec::with_capacity(keys.len());
 		let mut to_batch: Vec<EncodedKey> = Vec::new();
 
-		for encoded_key in encoded.iter() {
-			match self.lookup_overlays(encoded_key) {
+		for key in keys {
+			let encoded_key = scoped_key(id, key);
+			match self.lookup_overlays(&encoded_key) {
 				Some(None) => continue,
 				Some(Some(bytes)) => items.push(MultiVersionRow {
-					key: encoded_key.clone(),
+					key: encoded_key,
 					bytes,
 					version,
 				}),
-				None => to_batch.push(encoded_key.clone()),
+				None => to_batch.push(encoded_key),
 			}
 		}
 

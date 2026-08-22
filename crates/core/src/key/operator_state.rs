@@ -454,9 +454,15 @@ pub fn group_identity_inner_range(group: GroupId) -> EncodedKeyRange {
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(prefix)), Bound::Excluded(EncodedKey::new(end)))
 }
 
-pub fn node_prefix(operator: OperatorId) -> Vec<u8> {
-	let mut serializer = KeySerializer::with_capacity(12);
+pub const NODE_PREFIX_LEN: usize = 9;
+
+pub fn extend_node_prefix(serializer: &mut KeySerializer, operator: OperatorId) {
 	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(operator.0);
+}
+
+pub fn node_prefix(operator: OperatorId) -> Vec<u8> {
+	let mut serializer = KeySerializer::with_capacity(NODE_PREFIX_LEN);
+	extend_node_prefix(&mut serializer, operator);
 	serializer.finish().as_ref().to_vec()
 }
 
