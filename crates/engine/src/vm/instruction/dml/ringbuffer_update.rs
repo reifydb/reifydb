@@ -41,7 +41,7 @@ use reifydb_value::{
 use super::{
 	coerce::coerce_value_to_column_type,
 	context::RingBufferTarget,
-	returning::{decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
 	shape::get_or_create_ringbuffer_shape,
 };
 use crate::{
@@ -172,7 +172,8 @@ pub(crate) fn update_ringbuffer(
 	}
 
 	if let Some(returning_exprs) = &returning {
-		let columns = decode_rows_to_columns(&shape, &returned_rows);
+		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
+		decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut columns)?;
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 	Ok(update_ringbuffer_result(namespace.name(), &ringbuffer.name, updated_count))

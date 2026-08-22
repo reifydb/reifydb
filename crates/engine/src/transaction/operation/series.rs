@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, series::EncodedSeriesRow, shape::RowShape},
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -14,64 +11,13 @@ use reifydb_core::{
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::{Key, series_row::SeriesRowKey},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::columns::Columns,
 };
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
-use reifydb_value::{
-	fragment::Fragment,
-	value::{Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
-};
+use reifydb_value::value::datetime::DateTime;
 use smallvec::smallvec;
 
 use crate::Result;
-
-pub fn decode_series_storage_key(key: &EncodedKey) -> Option<SeriesRowKey> {
-	match Key::decode(key)? {
-		Key::SeriesRow(decoded) => Some(decoded),
-		Key::PartitionedSeriesRow(decoded) => Some(SeriesRowKey {
-			storage: decoded.storage,
-			variant_tag: decoded.variant_tag,
-			key: decoded.key,
-			sequence: decoded.sequence,
-		}),
-		_ => None,
-	}
-}
-
-pub fn build_series_delete_pre_columns_from_storage(
-	series: &Series,
-	shape: &RowShape,
-	encoded_bytes: &EncodedBytes,
-	decoded_key: &SeriesRowKey,
-) -> Columns {
-	let row_number = RowNumber::from(decoded_key.sequence);
-	let data_values: Vec<Value> =
-		series.data_columns().enumerate().map(|(i, _)| shape.get_value(encoded_bytes, i + 1)).collect();
-	let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
-	pre_col_vec.push(ColumnWithName::new(
-		Fragment::internal(series.key.column()),
-		series.key_column_data(vec![decoded_key.key]),
-	));
-	for (col_idx, col_def) in series.data_columns().enumerate() {
-		let mut data = ColumnBuffer::with_capacity(col_def.constraint.get_type(), 1);
-		data.push_value(data_values.get(col_idx).cloned().unwrap_or(Value::none()));
-		pre_col_vec.push(ColumnWithName {
-			name: Fragment::internal(&col_def.name),
-			data,
-		});
-	}
-	Columns::with_system(
-		pre_col_vec,
-		SystemColumns::new(
-			vec![row_number],
-			Vec::new(),
-			vec![EncodedSeriesRow::view(encoded_bytes).created_at()],
-			vec![EncodedSeriesRow::view(encoded_bytes).updated_at()],
-			EncodedSeriesRow::view(encoded_bytes).time().into_iter().collect(),
-		),
-	)
-}
 
 pub(crate) fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Series, pre: Columns) {
 	txn.track_flow_change(Change {

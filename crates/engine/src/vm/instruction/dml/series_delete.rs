@@ -3,10 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, series::EncodedSeriesRow},
-};
+use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRow};
 use reifydb_core::{
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
@@ -20,16 +17,12 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
-	key::{
-		EncodableKey,
-		partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
-		series_row::{SeriesRowKey, SeriesRowKeyRange},
-	},
+	key::{EncodableKey, partitioned_series_row::PartitionedSeriesRowKey, series_row::SeriesRowKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
-use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
@@ -40,16 +33,13 @@ use tracing::instrument;
 
 use super::{
 	context::{SeriesTarget, WriteExecCtx},
-	returning::{decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
 };
 use crate::{
 	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
-	transaction::operation::series::{
-		apply_series_metadata_after_delete, build_series_delete_pre_columns_from_storage,
-		decode_series_storage_key, remove_series_row,
-	},
+	transaction::operation::series::{apply_series_metadata_after_delete, remove_series_row},
 	vm::{
 		instruction::dml::shape::get_or_create_series_shape,
 		services::Services,
@@ -85,11 +75,9 @@ pub(crate) fn delete_series(
 		services,
 		symbols,
 	};
-	let (deleted_count, returning_columns) = if let Some(input_plan) = input {
-		run_series_delete_with_input(&exec, txn, *input_plan, &target_data, &params, has_tag, has_returning)?
-	} else {
-		run_series_delete_all(services, txn, &target_data, has_returning)?
-	};
+	let input_plan = input.expect("DELETE on a series requires a filter pipeline");
+	let (deleted_count, returned_rows) =
+		run_series_delete_with_input(&exec, txn, *input_plan, &target_data, &params, has_tag, has_returning)?;
 
 	if deleted_count > 0 {
 		apply_series_metadata_after_delete(&mut metadata, deleted_count);
@@ -97,7 +85,9 @@ pub(crate) fn delete_series(
 	}
 
 	if let Some(returning_exprs) = &returning {
-		let cols = returning_columns.unwrap_or_else(Columns::empty);
+		let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
+		let mut cols = decode_rows_to_columns(&shape, &returned_rows);
+		decode_returning_dictionaries(services, txn, &series.columns, &mut cols)?;
 		return evaluate_returning(services, symbols, returning_exprs, cols);
 	}
 	Ok(delete_series_result(namespace.name(), &series.name, deleted_count))
@@ -133,12 +123,10 @@ fn run_series_delete_with_input(
 	params: &Params,
 	has_tag: bool,
 	has_returning: bool,
-) -> Result<(u64, Option<Columns>)> {
+) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let context = build_series_delete_query_context(exec, target, params);
 	let mut input_node = compile_series_delete_input(txn, input_plan, &context)?;
-	let (deleted_count, returning_columns) =
-		drive_series_delete_input(exec, txn, &mut input_node, &context, target, has_tag, has_returning)?;
-	Ok((deleted_count, finalize_series_delete_returning(returning_columns, has_returning)))
+	drive_series_delete_input(exec, txn, &mut input_node, &context, target, has_tag, has_returning)
 }
 
 #[inline]
@@ -183,10 +171,10 @@ fn drive_series_delete_input(
 	target: &SeriesTarget<'_>,
 	has_tag: bool,
 	has_returning: bool,
-) -> Result<(u64, Option<Columns>)> {
+) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let series = target.series;
 	let mut deleted_count = 0u64;
-	let mut returning_columns: Option<Columns> = None;
+	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let mut mutable_context = context.clone();
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -260,79 +248,14 @@ fn drive_series_delete_input(
 				row_idx,
 			);
 			remove_series_row(txn, series, &encoded_key, pre_for_cdc, committed.is_some(), Some(pre))?;
+			if has_returning {
+				returned_rows.push((row_number, encoded_bytes));
+			}
 			deleted_count += 1;
 		}
-
-		if has_returning {
-			returning_columns = Some(accumulate_returning_columns(returning_columns, columns));
-		}
 	}
 
-	Ok((deleted_count, returning_columns))
-}
-
-#[inline]
-fn finalize_series_delete_returning(returning_columns: Option<Columns>, has_returning: bool) -> Option<Columns> {
-	if has_returning && returning_columns.is_none() {
-		Some(Columns::empty())
-	} else {
-		returning_columns
-	}
-}
-
-fn run_series_delete_all(
-	services: &Arc<Services>,
-	txn: &mut Transaction<'_>,
-	target: &SeriesTarget<'_>,
-	has_returning: bool,
-) -> Result<(u64, Option<Columns>)> {
-	let series = target.series;
-	let partitioned = !series.partition_by.is_empty();
-	let range = if partitioned {
-		PartitionedSeriesRowKeyRange::full_scan(StorageId::series(series.id))
-	} else {
-		SeriesRowKeyRange::full_scan(StorageId::series(series.id), None)
-	};
-	let mut entries_to_delete: Vec<(EncodedKey, EncodedBytes)> = Vec::new();
-
-	let mut stream = txn.range(range, RangeScope::All, 32)?;
-	for entry in stream.by_ref() {
-		let entry = entry?;
-		entries_to_delete.push((entry.key, entry.bytes));
-	}
-	drop(stream);
-
-	let delete_all_shape = get_or_create_series_shape(&services.catalog, series, txn)?;
-	let mut deleted_count = 0u64;
-
-	for (key, encoded_bytes) in entries_to_delete.iter() {
-		let committed = txn.get_committed(key)?.map(|v| v.bytes);
-		let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_bytes.clone());
-
-		let pre = decode_series_storage_key(key).map(|decoded_key| {
-			build_series_delete_pre_columns_from_storage(
-				series,
-				&delete_all_shape,
-				&pre_for_cdc,
-				&decoded_key,
-			)
-		});
-		remove_series_row(txn, series, key, pre_for_cdc, committed.is_some(), pre)?;
-		deleted_count += 1;
-	}
-
-	let returning_columns = if has_returning {
-		let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
-		for (key, encoded) in entries_to_delete.iter() {
-			if let Some(decoded_key) = decode_series_storage_key(key) {
-				returned_rows.push((RowNumber::from(decoded_key.sequence), encoded.clone()));
-			}
-		}
-		Some(decode_rows_to_columns(&delete_all_shape, &returned_rows))
-	} else {
-		None
-	};
-	Ok((deleted_count, returning_columns))
+	Ok((deleted_count, returned_rows))
 }
 
 #[inline]
@@ -387,45 +310,6 @@ fn build_series_delete_pre_columns_from_input(
 			EncodedSeriesRow::view(encoded_bytes).time().into_iter().collect(),
 		),
 	)
-}
-
-fn accumulate_returning_columns(returning_columns: Option<Columns>, columns: Columns) -> Columns {
-	match returning_columns {
-		Some(existing) => {
-			let mut cols = Vec::new();
-			for (i, col) in columns.iter().enumerate() {
-				if let Some(existing_col) = existing.get(i) {
-					let mut data = ColumnBuffer::with_capacity(
-						col.data().get_type(),
-						existing_col.data().len() + col.data().len(),
-					);
-					for j in 0..existing_col.data().len() {
-						data.push_value(existing_col.data().get_value(j));
-					}
-					for j in 0..col.data().len() {
-						data.push_value(col.data().get_value(j));
-					}
-					cols.push(ColumnWithName {
-						name: col.name().clone(),
-						data,
-					});
-				}
-			}
-			let mut row_numbers = existing.row_numbers().to_vec();
-			row_numbers.extend(columns.row_numbers().iter().copied());
-			let mut created_at = existing.created_at().to_vec();
-			created_at.extend(columns.created_at().iter().copied());
-			let mut updated_at = existing.updated_at().to_vec();
-			updated_at.extend(columns.updated_at().iter().copied());
-			let mut time = existing.time().to_vec();
-			time.extend(columns.time().iter().copied());
-			Columns::with_system(
-				cols,
-				SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
-			)
-		}
-		None => columns,
-	}
 }
 
 #[inline]

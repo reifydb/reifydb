@@ -46,12 +46,16 @@ use reifydb_value::{
 use smallvec::smallvec;
 use tracing::instrument;
 
-use super::{context::SeriesTarget, returning::evaluate_returning};
+use super::{
+	context::SeriesTarget,
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
+};
 use crate::{
 	Result,
 	error::EngineError,
 	partition::partition_values,
 	policy::PolicyEvaluator,
+	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
 		instruction::dml::{shape::get_or_create_series_shape, time::resolve_time_for_update},
 		services::Services,
@@ -86,7 +90,8 @@ pub(crate) fn update_series(
 
 	let has_tag = series.tag.is_some();
 	let mut updated_count = 0u64;
-	let mut returning_columns: Option<Columns> = None;
+	let has_returning = returning.is_some();
+	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -166,16 +171,17 @@ pub(crate) fn update_series(
 			};
 			track_series_update_flow_change(services, txn, &series, &event)?;
 
+			if has_returning {
+				returned_rows.push((row_number, row.clone()));
+			}
 			updated_count += 1;
-		}
-
-		if returning.is_some() {
-			returning_columns = Some(accumulate_returning_columns(returning_columns, columns));
 		}
 	}
 
 	if let Some(returning_exprs) = &returning {
-		let cols = returning_columns.unwrap_or_else(Columns::empty);
+		let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
+		let mut cols = decode_rows_to_columns(&shape, &returned_rows);
+		decode_returning_dictionaries(services, txn, &series.columns, &mut cols)?;
 		return evaluate_returning(services, symbols, returning_exprs, cols);
 	}
 	Ok(update_series_result(namespace.name(), &series.name, updated_count))
@@ -280,7 +286,7 @@ fn build_series_updates_to_apply(
 		};
 
 		let shape = get_or_create_series_shape(&services.catalog, series, txn)?;
-		let row = build_series_update_bytes(series, columns, &shape, row_idx);
+		let row = build_series_update_bytes(services, txn, series, columns, &shape, row_idx)?;
 		updates_to_apply.push((encoded_key, row, row_idx));
 	}
 	Ok(updates_to_apply)
@@ -339,7 +345,14 @@ fn extract_series_update_variant_tag(columns: &Columns, has_tag: bool, row_idx: 
 }
 
 #[inline]
-fn build_series_update_bytes(series: &Series, columns: &Columns, shape: &RowShape, row_idx: usize) -> EncodedBytes {
+fn build_series_update_bytes(
+	services: &Arc<Services>,
+	txn: &mut Transaction<'_>,
+	series: &Series,
+	columns: &Columns,
+	shape: &RowShape,
+	row_idx: usize,
+) -> Result<EncodedBytes> {
 	let mut row = shape.allocate_series();
 	let key_col_value = columns
 		.iter()
@@ -348,15 +361,34 @@ fn build_series_update_bytes(series: &Series, columns: &Columns, shape: &RowShap
 		.unwrap_or(Value::Int8(0));
 	shape.set_value(&mut row, 0, &key_col_value);
 
-	for (i, col_def) in series.data_columns().enumerate() {
+	let data_columns: Vec<_> = series.data_columns().cloned().collect();
+	for (i, col_def) in data_columns.iter().enumerate() {
 		let value = columns
 			.iter()
 			.find(|c| c.name().text() == col_def.name)
 			.map(|c| c.data().get_value(row_idx))
 			.unwrap_or(Value::none());
+		let value = match col_def.dictionary_id {
+			Some(dict_id) => {
+				let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
+					internal_error!(
+						"Dictionary {:?} not found for column {}",
+						dict_id,
+						col_def.name
+					)
+				})?;
+				let entry_id = if matches!(value, Value::None { .. }) {
+					dictionary.id_type.none()
+				} else {
+					txn.insert_into_dictionary(&dictionary, &value)?
+				};
+				entry_id.to_value()
+			}
+			None => value,
+		};
 		shape.set_value(&mut row, i + 1, &value);
 	}
-	row.freeze_bytes()
+	Ok(row.freeze_bytes())
 }
 
 fn track_series_update_flow_change(
@@ -371,9 +403,10 @@ fn track_series_update_flow_change(
 		Fragment::internal(series.key.column()),
 		series.key_column_data(vec![event.key_value]),
 	));
+	let read_fields = read_shape.fields();
 	for (i, col_def) in series.data_columns().enumerate() {
 		let val = read_shape.get_value(event.pre, i + 1);
-		let mut data = ColumnBuffer::with_capacity(col_def.constraint.get_type(), 1);
+		let mut data = ColumnBuffer::with_capacity(read_fields[i + 1].constraint.get_type(), 1);
 		data.push_value(val);
 		pre_col_vec.push(ColumnWithName {
 			name: Fragment::internal(&col_def.name),
@@ -424,45 +457,6 @@ fn track_series_update_flow_change(
 		changed_at: DateTime::default(),
 	});
 	Ok(())
-}
-
-fn accumulate_returning_columns(returning_columns: Option<Columns>, columns: Columns) -> Columns {
-	match returning_columns {
-		Some(existing) => {
-			let mut cols = Vec::new();
-			for (i, col) in columns.iter().enumerate() {
-				if let Some(existing_col) = existing.get(i) {
-					let mut data = ColumnBuffer::with_capacity(
-						col.data().get_type(),
-						existing_col.data().len() + col.data().len(),
-					);
-					for j in 0..existing_col.data().len() {
-						data.push_value(existing_col.data().get_value(j));
-					}
-					for j in 0..col.data().len() {
-						data.push_value(col.data().get_value(j));
-					}
-					cols.push(ColumnWithName {
-						name: col.name().clone(),
-						data,
-					});
-				}
-			}
-			let mut row_numbers = existing.row_numbers().to_vec();
-			row_numbers.extend(columns.row_numbers().iter().copied());
-			let mut created_at = existing.created_at().to_vec();
-			created_at.extend(columns.created_at().iter().copied());
-			let mut updated_at = existing.updated_at().to_vec();
-			updated_at.extend(columns.updated_at().iter().copied());
-			let mut time = existing.time().to_vec();
-			time.extend(columns.time().iter().copied());
-			Columns::with_system(
-				cols,
-				SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
-			)
-		}
-		None => columns,
-	}
 }
 
 #[inline]
