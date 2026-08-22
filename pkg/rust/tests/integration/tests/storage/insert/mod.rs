@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-mod delete;
-mod insert;
-mod row_lookup;
+mod queue;
+mod ringbuffer;
 mod series;
-mod ttl;
-mod update;
+mod table;

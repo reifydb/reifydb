@@ -33,7 +33,7 @@ use reifydb_value::{
 
 use super::{
 	context::{RingBufferTarget, WriteExecCtx},
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_ringbuffer_shape,
 };
 use crate::{
@@ -99,6 +99,7 @@ pub(crate) fn delete_ringbuffer(
 	if let Some(returning_exprs) = &returning {
 		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
 		decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut columns)?;
+		let columns = with_pre_image(columns.clone(), &columns);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 	Ok(delete_ringbuffer_result(namespace.name(), &ringbuffer.name, deleted_count))

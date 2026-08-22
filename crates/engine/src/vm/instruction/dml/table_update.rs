@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -47,7 +47,7 @@ use reifydb_value::{
 use super::{
 	context::{TableTarget, WriteExecCtx},
 	primary_key,
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_table_shape,
 };
 use crate::{
@@ -95,12 +95,15 @@ pub(crate) fn update_table(
 		services,
 		symbols,
 	};
-	let (updated_count, returned_rows) =
+	let (updated_count, returned_rows, pre_rows) =
 		run_table_update(&exec, txn, &mut input_node, &target_data, &shape, &context, returning.is_some())?;
 
 	if let Some(returning_exprs) = &returning {
 		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
 		decode_returning_dictionaries(services, txn, &table.columns, &mut columns)?;
+		let mut pre_columns = decode_rows_to_columns(&shape, &pre_rows);
+		decode_returning_dictionaries(services, txn, &table.columns, &mut pre_columns)?;
+		let columns = with_pre_image(columns, &pre_columns);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 	Ok(update_table_result(namespace.name(), &table.name, updated_count))
@@ -145,6 +148,8 @@ fn build_update_table_query_context(
 	}
 }
 
+type ReturnedRows = Vec<(RowNumber, EncodedBytes)>;
+
 fn run_table_update(
 	exec: &WriteExecCtx<'_>,
 	txn: &mut Transaction<'_>,
@@ -153,9 +158,10 @@ fn run_table_update(
 	shape: &RowShape,
 	context: &QueryContext,
 	has_returning: bool,
-) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
+) -> Result<(u64, ReturnedRows, ReturnedRows)> {
 	let mut updated_count = 0u64;
-	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
+	let mut returned_rows: ReturnedRows = Vec::new();
+	let mut pre_rows: ReturnedRows = Vec::new();
 	let mut mutable_context = context.clone();
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -187,6 +193,7 @@ fn run_table_update(
 
 		let mut prepared_rows: Vec<EncodedTableRowBuilder> = Vec::with_capacity(row_count);
 		let mut partitions_out: Vec<Partition> = Vec::with_capacity(row_count);
+		let mut pre_by_row: HashMap<RowNumber, EncodedBytes> = HashMap::new();
 		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let mut row = build_updated_table_row(
 				exec.services,
@@ -216,6 +223,9 @@ fn run_table_update(
 			}
 
 			let old_row = txn.get(&row_key)?.expect("bytes must exist for update").bytes;
+			if has_returning {
+				pre_by_row.insert(row_number, old_row.clone());
+			}
 			let old_row = EncodedTableRow::view(&old_row);
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
@@ -241,10 +251,16 @@ fn run_table_update(
 		let stored = txn.update_table(target.table, &row_numbers, &partitions_out, &mut prepared_rows)?;
 		updated_count += stored.len() as u64;
 		if has_returning {
+			for (row_number, _) in &stored {
+				let pre = pre_by_row
+					.remove(row_number)
+					.expect("every stored row must carry the pre image read before its write");
+				pre_rows.push((*row_number, pre));
+			}
 			returned_rows.extend(stored);
 		}
 	}
-	Ok((updated_count, returned_rows))
+	Ok((updated_count, returned_rows, pre_rows))
 }
 
 #[inline]

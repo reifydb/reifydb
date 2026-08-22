@@ -41,7 +41,7 @@ use reifydb_value::{
 use super::{
 	coerce::coerce_value_to_column_type,
 	context::RingBufferTarget,
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_ringbuffer_shape,
 };
 use crate::{
@@ -85,6 +85,7 @@ pub(crate) fn update_ringbuffer(
 
 	let mut updated_count = 0u64;
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
+	let mut pre_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let has_returning = returning.is_some();
 
 	let mut mutable_context = context.clone();
@@ -130,6 +131,7 @@ pub(crate) fn update_ringbuffer(
 				Some(p) => PartitionedRowKey::encoded(ringbuffer.id, p, row_number),
 			};
 			let old_row = txn.get(&old_row_key)?.expect("bytes must exist for update").bytes;
+			let pre_row = old_row.clone();
 			let old_row = EncodedRingBufferRow::view(&old_row);
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
@@ -166,6 +168,7 @@ pub(crate) fn update_ringbuffer(
 			let stored_row = txn.update_ringbuffer(ringbuffer.clone(), partition, row_number, row)?;
 			if has_returning {
 				returned_rows.push((row_number, stored_row));
+				pre_rows.push((row_number, pre_row));
 			}
 			updated_count += 1;
 		}
@@ -174,6 +177,9 @@ pub(crate) fn update_ringbuffer(
 	if let Some(returning_exprs) = &returning {
 		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
 		decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut columns)?;
+		let mut pre_columns = decode_rows_to_columns(&shape, &pre_rows);
+		decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut pre_columns)?;
+		let columns = with_pre_image(columns, &pre_columns);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 	Ok(update_ringbuffer_result(namespace.name(), &ringbuffer.name, updated_count))

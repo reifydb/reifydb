@@ -33,7 +33,7 @@ use tracing::instrument;
 
 use super::{
 	context::{SeriesTarget, WriteExecCtx},
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 };
 use crate::{
 	Result,
@@ -88,6 +88,7 @@ pub(crate) fn delete_series(
 		let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 		let mut cols = decode_rows_to_columns(&shape, &returned_rows);
 		decode_returning_dictionaries(services, txn, &series.columns, &mut cols)?;
+		let cols = with_pre_image(cols.clone(), &cols);
 		return evaluate_returning(services, symbols, returning_exprs, cols);
 	}
 	Ok(delete_series_result(namespace.name(), &series.name, deleted_count))

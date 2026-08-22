@@ -48,7 +48,7 @@ use tracing::instrument;
 
 use super::{
 	context::SeriesTarget,
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 };
 use crate::{
 	Result,
@@ -92,6 +92,7 @@ pub(crate) fn update_series(
 	let mut updated_count = 0u64;
 	let has_returning = returning.is_some();
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
+	let mut pre_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -173,6 +174,7 @@ pub(crate) fn update_series(
 
 			if has_returning {
 				returned_rows.push((row_number, row.clone()));
+				pre_rows.push((row_number, pre_values.clone()));
 			}
 			updated_count += 1;
 		}
@@ -182,6 +184,9 @@ pub(crate) fn update_series(
 		let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 		let mut cols = decode_rows_to_columns(&shape, &returned_rows);
 		decode_returning_dictionaries(services, txn, &series.columns, &mut cols)?;
+		let mut pre_cols = decode_rows_to_columns(&shape, &pre_rows);
+		decode_returning_dictionaries(services, txn, &series.columns, &mut pre_cols)?;
+		let cols = with_pre_image(cols, &pre_cols);
 		return evaluate_returning(services, symbols, returning_exprs, cols);
 	}
 	Ok(update_series_result(namespace.name(), &series.name, updated_count))

@@ -42,7 +42,7 @@ use reifydb_value::{
 use super::{
 	context::{TableTarget, WriteExecCtx},
 	primary_key,
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_table_shape,
 };
 use crate::{
@@ -103,6 +103,7 @@ pub(crate) fn delete(
 		let shape = get_or_create_table_shape(&services.catalog, &table, txn)?;
 		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
 		decode_returning_dictionaries(services, txn, &table.columns, &mut columns)?;
+		let columns = with_pre_image(columns.clone(), &columns);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 	Ok(delete_table_result(namespace.name(), &table.name, deleted_count))

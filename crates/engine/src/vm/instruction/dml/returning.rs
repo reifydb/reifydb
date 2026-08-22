@@ -58,6 +58,27 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 	Columns::with_system(columns_vec, SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time))
 }
 
+pub(crate) fn with_pre_image(post: Columns, pre: &Columns) -> Columns {
+	let mut merged: Vec<ColumnWithName> =
+		post.iter().map(|c| ColumnWithName::new(c.name().clone(), c.data().clone())).collect();
+	for column in pre.iter() {
+		merged.push(ColumnWithName::new(
+			Fragment::internal(format!("pre_{}", column.name().text())),
+			column.data().clone(),
+		));
+	}
+	Columns::with_system(
+		merged,
+		SystemColumns::new(
+			post.row_numbers().to_vec(),
+			post.partitions().to_vec(),
+			post.created_at().to_vec(),
+			post.updated_at().to_vec(),
+			post.time().to_vec(),
+		),
+	)
+}
+
 pub(crate) fn decode_returning_dictionaries(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
