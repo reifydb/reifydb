@@ -100,14 +100,13 @@ pub fn flush_now(
 	read: Option<&OperatorReadBufferTier>,
 ) {
 	let _flushing = buffer.flush_guard();
-	let Some(batch) = buffer.take_for_flush() else {
-		return;
-	};
-	storage.flush_batch(&batch);
-	if let Some(read) = read {
-		invalidate_flushed(read, &batch);
+	while let Some(batch) = buffer.take_for_flush() {
+		storage.flush_batch(&batch);
+		if let Some(read) = read {
+			invalidate_flushed(read, &batch);
+		}
+		buffer.complete_flush();
 	}
-	buffer.complete_flush();
 }
 
 fn invalidate_flushed(read: &OperatorReadBufferTier, batch: &FlushBatch) {

@@ -11,24 +11,35 @@ mod state;
 #[cfg(test)]
 mod tests;
 
-use std::{iter, mem, sync::Arc};
+use std::{
+	iter,
+	sync::{Arc, OnceLock},
+};
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
-use reifydb_runtime::sync::{
-	condvar::Condvar,
-	mutex::{Mutex, MutexGuard},
+use reifydb_runtime::{
+	actor::mailbox::ActorRef,
+	sync::{
+		condvar::Condvar,
+		mutex::{Mutex, MutexGuard},
+		waiter::WaiterHandle,
+	},
 };
 
 use crate::{
+	flush::FlushMessage,
 	tier::commit::batch::{DropMarker, FlushBatch},
 	types::OperatorWrite,
 };
+
+pub const FLUSH_ENTRY_BUDGET: usize = 2048;
 
 #[derive(Debug, Default)]
 struct BufferInner {
 	live: FlushBatch,
 	in_flight: Option<Arc<FlushBatch>>,
 	flushing: bool,
+	triggered: bool,
 }
 
 impl BufferInner {
@@ -38,11 +49,31 @@ impl BufferInner {
 	}
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct Shared {
 	inner: Mutex<BufferInner>,
 	idle: Condvar,
 	flush: Mutex<()>,
+	flusher: OnceLock<ActorRef<FlushMessage>>,
+	budget: usize,
+}
+
+impl Default for Shared {
+	fn default() -> Self {
+		Self::with_budget(FLUSH_ENTRY_BUDGET)
+	}
+}
+
+impl Shared {
+	fn with_budget(budget: usize) -> Self {
+		Self {
+			inner: Default::default(),
+			idle: Default::default(),
+			flush: Default::default(),
+			flusher: OnceLock::new(),
+			budget,
+		}
+	}
 }
 
 #[derive(Debug, Clone, Default)]
@@ -55,11 +86,23 @@ impl OperatorCommitBuffer {
 		Self::default()
 	}
 
+	pub fn with_budget(budget: usize) -> Self {
+		Self {
+			shared: Arc::new(Shared::with_budget(budget)),
+		}
+	}
+
+	pub fn attach_flusher(&self, flusher: ActorRef<FlushMessage>) {
+		let _ = self.shared.flusher.set(flusher);
+	}
+
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
 		if writes.is_empty() {
 			return;
 		}
-		record_writes(&mut self.shared.inner.lock().live, writes);
+		let mut inner = self.shared.inner.lock();
+		record_writes(&mut inner.live, writes);
+		self.request_flush_when_full(&mut inner);
 	}
 
 	pub fn apply_batch_with_checkpoints(
@@ -79,6 +122,7 @@ impl OperatorCommitBuffer {
 		for flow in checkpoint_deletes {
 			inner.live.checkpoints.insert(*flow, None);
 		}
+		self.request_flush_when_full(&mut inner);
 	}
 
 	pub fn record_drop(&self, marker: DropMarker) {
@@ -99,7 +143,7 @@ impl OperatorCommitBuffer {
 		if inner.live.is_empty() {
 			return None;
 		}
-		let batch = Arc::new(mem::take(&mut inner.live));
+		let batch = Arc::new(inner.live.split_within(self.shared.budget));
 		inner.in_flight = Some(Arc::clone(&batch));
 		inner.flushing = true;
 		Some(batch)
@@ -109,8 +153,25 @@ impl OperatorCommitBuffer {
 		let mut inner = self.shared.inner.lock();
 		inner.in_flight = None;
 		inner.flushing = false;
+		inner.triggered = false;
 		drop(inner);
 		self.shared.idle.notify_all();
+	}
+
+	fn request_flush_when_full(&self, inner: &mut BufferInner) {
+		if inner.triggered || inner.flushing || inner.live.entries() < self.shared.budget {
+			return;
+		}
+		let Some(flusher) = self.shared.flusher.get() else {
+			return;
+		};
+		inner.triggered = true;
+		let sent = flusher.send(FlushMessage::FlushPending {
+			waiter: Arc::new(WaiterHandle::new()),
+		});
+		if sent.is_err() {
+			inner.triggered = false;
+		}
 	}
 }
 

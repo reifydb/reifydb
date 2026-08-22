@@ -23,16 +23,15 @@ impl OperatorCommitBuffer {
 		row_number: RowNumber,
 		expiry: DateTime,
 	) {
-		self.shared
-			.inner
-			.lock()
-			.live
-			.anchors
-			.insert((operator, group, side, row_number), Some(expiry.to_millis()));
+		let mut inner = self.shared.inner.lock();
+		inner.live.anchors.insert((operator, group, side, row_number), Some(expiry.to_millis()));
+		self.request_flush_when_full(&mut inner);
 	}
 
 	pub fn record_anchor_remove(&self, operator: OperatorId, group: GroupId, side: u8, row_number: RowNumber) {
-		self.shared.inner.lock().live.anchors.insert((operator, group, side, row_number), None);
+		let mut inner = self.shared.inner.lock();
+		inner.live.anchors.insert((operator, group, side, row_number), None);
+		self.request_flush_when_full(&mut inner);
 	}
 
 	pub fn lookup_anchor(

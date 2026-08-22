@@ -16,11 +16,15 @@ use crate::{
 
 impl OperatorCommitBuffer {
 	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-		self.shared.inner.lock().live.state.insert((operator, key), Some(row));
+		let mut inner = self.shared.inner.lock();
+		inner.live.state.insert((operator, key), Some(row));
+		self.request_flush_when_full(&mut inner);
 	}
 
 	pub fn record_state_remove(&self, operator: OperatorId, key: EncodedKey) {
-		self.shared.inner.lock().live.state.insert((operator, key), None);
+		let mut inner = self.shared.inner.lock();
+		inner.live.state.insert((operator, key), None);
+		self.request_flush_when_full(&mut inner);
 	}
 
 	pub fn lookup_state(&self, operator: OperatorId, key: &EncodedKey) -> BufferedState {

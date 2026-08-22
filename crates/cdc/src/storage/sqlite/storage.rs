@@ -67,6 +67,8 @@ type CompactionCandidates = (Vec<Cdc>, Vec<Vec<u8>>);
 
 type RangeSnapshot = (Vec<(Vec<u8>, Vec<u8>)>, Option<CommitVersion>, Vec<Vec<u8>>);
 
+type BlockIndexScan = (Vec<(Vec<u8>, Vec<u8>)>, Option<CommitVersion>);
+
 struct FullBlockScan {
 	entries: Vec<CdcEviction>,
 	pks: Vec<Vec<u8>>,
@@ -727,7 +729,7 @@ fn read_block_index_rows(
 	lo_b: &[u8; 8],
 	hi_b: &[u8; 8],
 	batch_size: u64,
-) -> CdcStorageResult<(Vec<(Vec<u8>, Vec<u8>)>, Option<CommitVersion>)> {
+) -> CdcStorageResult<BlockIndexScan> {
 	let mut stmt = conn
 		.prepare_cached(
 			r#"SELECT max_version, num_entries, payload FROM "cdc_block"

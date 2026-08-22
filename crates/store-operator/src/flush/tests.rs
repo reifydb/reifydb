@@ -4,6 +4,7 @@
 use std::{
 	sync::atomic::{AtomicBool, Ordering},
 	thread,
+	time::Instant,
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
@@ -448,4 +449,149 @@ fn the_memory_tier_reports_a_flush_as_complete_without_a_flusher() {
 		"the memory tier has nothing to persist, so reporting failure would abort a shutdown that is \
 		 already durable by definition"
 	);
+}
+
+#[test]
+fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+	let buffer = OperatorCommitBuffer::with_budget(8);
+	for index in 0..67 {
+		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")));
+	}
+
+	flush_now(&buffer, &tier(&storage), None);
+
+	for index in 0..67 {
+		let durable = storage
+			.get(OP_A, &key(index))
+			.unwrap_or_else(|| panic!("key {index} must be durable once the bounded flush returns"));
+		assert_eq!(body(&durable), format!("v{index}"), "every slice must carry its own values to sqlite");
+	}
+	assert!(buffer.take_for_flush().is_none(), "a completed flush must leave nothing behind for the next tick");
+}
+
+#[test]
+fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+	let buffer = OperatorCommitBuffer::with_budget(2);
+	buffer.record_state_set(OP_A, key(1), row("early"));
+	buffer.record_state_set(OP_A, key(2), row("filler"));
+	buffer.record_state_set(OP_A, key(3), row("tail"));
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
+	storage.flush_batch(&first);
+	buffer.complete_flush();
+	assert_eq!(storage.get(OP_A, &key(1)).map(|row| body(&row)), Some("early".to_string()));
+
+	buffer.record_state_set(OP_A, key(1), row("late"));
+	flush_now(&buffer, &tier(&storage), None);
+
+	assert_eq!(
+		storage.get(OP_A, &key(1)).map(|row| body(&row)),
+		Some("late".to_string()),
+		"the rewrite must win; a split that replays the earlier value rolls the key back under a reader \
+		 that already saw the newer one"
+	);
+	assert_eq!(storage.get(OP_A, &key(3)).map(|row| body(&row)), Some("tail".to_string()));
+}
+
+#[test]
+fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+	let buffer = OperatorCommitBuffer::with_budget(4);
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, idle_interval());
+
+	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, idle_interval());
+	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
+	let mut state = actor.init(&ctx);
+
+	for index in 0..41 {
+		buffer.record_state_set(OP_A, key(index), row("at-shutdown"));
+	}
+	let directive = actor.handle(&mut state, FlushMessage::Shutdown, &ctx);
+
+	assert!(matches!(directive, Directive::Stop), "the shutdown message must still stop the actor");
+	for index in 0..41 {
+		assert_eq!(
+			storage.get(OP_A, &key(index)).map(|row| body(&row)),
+			Some("at-shutdown".to_string()),
+			"key {index} was committed and acknowledged, so a shutdown that leaves it in memory loses it"
+		);
+	}
+	assert!(buffer.take_for_flush().is_none(), "the shutdown drain must empty the buffer, not bound it");
+}
+
+#[test]
+fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+	let buffer = OperatorCommitBuffer::with_budget(4);
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, idle_interval());
+
+	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, idle_interval());
+	let cancel = CancellationToken::new();
+	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
+	let mut state = actor.init(&ctx);
+
+	for index in 0..37 {
+		buffer.record_state_set(OP_A, key(index), row("at-cancel"));
+	}
+	cancel.cancel();
+	let waiter = Arc::new(WaiterHandle::new());
+	actor.handle(
+		&mut state,
+		FlushMessage::FlushPending {
+			waiter: Arc::clone(&waiter),
+		},
+		&ctx,
+	);
+
+	for index in 0..37 {
+		assert_eq!(
+			storage.get(OP_A, &key(index)).map(|row| body(&row)),
+			Some("at-cancel".to_string()),
+			"key {index} must be durable before the cancelled flusher answers its waiter"
+		);
+	}
+}
+
+#[test]
+fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval() {
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+	let budget = 16;
+	let buffer = OperatorCommitBuffer::with_budget(budget);
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, idle_interval());
+	buffer.attach_flusher(actor_ref);
+
+	for index in 0..budget - 1 {
+		buffer.record_state_set(OP_A, key(index as u8), row("under-the-budget"));
+	}
+	thread::sleep(Duration::from_milliseconds_const(100).to_std());
+	assert!(
+		storage.get(OP_A, &key(0)).is_none(),
+		"a buffer under the budget must not be flushed early, otherwise the buffer stops batching at all"
+	);
+
+	buffer.record_state_set(OP_A, key(budget as u8 - 1), row("under-the-budget"));
+
+	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
+	while Instant::now() < deadline && storage.get(OP_A, &key(0)).is_none() {
+		thread::sleep(Duration::from_milliseconds_const(5).to_std());
+	}
+	for index in 0..budget {
+		assert_eq!(
+			storage.get(OP_A, &key(index as u8)).map(|row| body(&row)),
+			Some("under-the-budget".to_string()),
+			"key {index} must be durable from the size trigger alone; the flush interval here is an \
+			 hour, so anything less means only the timer can ever drain the buffer"
+		);
+	}
 }

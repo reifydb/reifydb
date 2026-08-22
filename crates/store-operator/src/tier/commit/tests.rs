@@ -602,3 +602,147 @@ fn an_empty_write_batch_leaves_the_buffer_untouched() {
 		"an empty apply must not dirty the buffer, otherwise every idle tick opens a transaction"
 	);
 }
+
+#[test]
+fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_nothing() {
+	let budget = 8;
+	let buffer = OperatorCommitBuffer::with_budget(budget);
+	let total: usize = 53;
+	for index in 0..total {
+		buffer.record_state_set(OP_A, key(&format!("k{index:03}")), row(&format!("v{index:03}")));
+	}
+
+	let mut seen: Vec<String> = Vec::new();
+	let mut slices = 0;
+	while let Some(batch) = buffer.take_for_flush() {
+		assert!(
+			batch.entries() <= budget,
+			"a slice of {} entries is past the budget of {budget}; an unbounded slice is exactly the \
+			 multi-second transaction this split exists to prevent",
+			batch.entries()
+		);
+		slices += 1;
+		for ((_, taken), entry) in &batch.state {
+			seen.push(String::from_utf8(taken.as_slice().to_vec()).expect("test keys are utf8"));
+			assert_eq!(
+				body(entry),
+				format!("v{}", &seen[seen.len() - 1][1..]),
+				"a slice must carry each key together with its own value"
+			);
+		}
+		buffer.complete_flush();
+		assert!(slices <= total, "the split must make progress on every take or the drain never terminates");
+	}
+
+	assert_eq!(slices, total.div_ceil(budget), "the buffer must be handed out in full slices plus a remainder");
+	let mut unique = seen.clone();
+	unique.sort();
+	unique.dedup();
+	assert_eq!(
+		unique.len(),
+		seen.len(),
+		"a key handed out twice is a key written twice, which resurrects the value the later slice replaced"
+	);
+	assert_eq!(
+		seen.len(),
+		total,
+		"every buffered key must reach exactly one slice; a key left behind by the last take is committed \
+		 operator state that never becomes durable"
+	);
+}
+
+#[test]
+fn a_key_rewritten_after_its_slice_left_reads_and_flushes_as_the_later_value() {
+	let buffer = OperatorCommitBuffer::with_budget(2);
+	buffer.record_state_set(OP_A, key("k1"), row("early"));
+	buffer.record_state_set(OP_A, key("k2"), row("filler"));
+	buffer.record_state_set(OP_A, key("k3"), row("left-behind"));
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
+	assert_eq!(first.state.get(&(OP_A, key("k1"))).map(body), Some("early".to_string()));
+	buffer.record_state_set(OP_A, key("k1"), row("late"));
+
+	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k1")) else {
+		panic!("the rewritten key must read from the live layer")
+	};
+	assert_eq!(
+		row_body(&found),
+		"late",
+		"the in-flight slice still holds the earlier value, so a read that prefers it serves state the \
+		 operator has already replaced"
+	);
+	buffer.complete_flush();
+
+	let second = buffer.take_for_flush().expect("the leftover and the rewrite make a second slice");
+	assert_eq!(
+		second.state.get(&(OP_A, key("k1"))).map(body),
+		Some("late".to_string()),
+		"the later slice must carry the later value; carrying the earlier one would overwrite the rewrite \
+		 in sqlite and silently roll the key back"
+	);
+	assert_eq!(second.state.get(&(OP_A, key("k3"))).map(body), Some("left-behind".to_string()));
+	buffer.complete_flush();
+	assert!(buffer.take_for_flush().is_none(), "the split must terminate once everything has been handed out");
+}
+
+#[test]
+fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
+	let buffer = OperatorCommitBuffer::with_budget(1);
+	buffer.record_state_set(OP_A, key("k1"), row("pre-drop"));
+	buffer.record_drop(DropMarker::OperatorState(OP_A));
+	buffer.record_state_set(OP_A, key("k2"), row("post-drop-a"));
+	buffer.record_state_set(OP_A, key("k3"), row("post-drop-b"));
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
+	assert_eq!(
+		first.drops,
+		vec![DropMarker::OperatorState(OP_A)],
+		"every marker must ride the first slice, otherwise the drop lands after writes it must precede"
+	);
+	assert!(
+		!first.state.contains_key(&(OP_A, key("k1"))),
+		"a write recorded before the drop must have been cleared, not carried into a slice"
+	);
+	buffer.complete_flush();
+
+	let second = buffer.take_for_flush().expect("a leftover write makes a second slice");
+	assert!(
+		second.drops.is_empty(),
+		"a marker replayed in a later slice deletes the post-drop rows the first slice already made durable"
+	);
+	assert_eq!(second.state.len(), 1, "the leftover must still be handed out under the budget");
+	assert!(
+		second.state.contains_key(&(OP_A, key("k3"))),
+		"the write the first slice could not fit must be the one left for the second"
+	);
+	buffer.complete_flush();
+	assert!(buffer.take_for_flush().is_none(), "both post-drop writes must have been handed out");
+}
+
+#[test]
+fn anchors_are_handed_out_under_the_same_budget_as_state() {
+	let budget = 4;
+	let buffer = OperatorCommitBuffer::with_budget(budget);
+	buffer.record_state_set(OP_A, key("k1"), row("v"));
+	buffer.record_state_set(OP_A, key("k2"), row("v"));
+	for row_number in 0..10u64 {
+		buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(row_number), DateTime::from_millis(100));
+	}
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
+	assert_eq!(first.state.len(), 2, "state is taken first because it dominates the write cost");
+	assert_eq!(
+		first.entries(),
+		budget,
+		"the anchors must fill the remainder of the budget rather than travel unbounded beside the state"
+	);
+	buffer.complete_flush();
+
+	let mut anchors = first.anchors.len();
+	while let Some(batch) = buffer.take_for_flush() {
+		assert!(batch.entries() <= budget, "every anchor slice must respect the budget too");
+		anchors += batch.anchors.len();
+		buffer.complete_flush();
+	}
+	assert_eq!(anchors, 10, "every armed anchor must reach exactly one slice or a seal timer is lost");
+}

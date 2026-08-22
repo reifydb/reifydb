@@ -111,6 +111,9 @@ impl StandardOperatorStore {
 		};
 
 		let read = persistent.as_ref().and(read);
+		if let Some(flush) = flush.as_ref() {
+			commit.attach_flusher(flush.clone());
+		}
 
 		Self(Arc::new(StandardOperatorStoreInner {
 			commit,
