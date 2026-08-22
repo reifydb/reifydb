@@ -111,9 +111,9 @@ fn a_left_row_publishes_against_every_right_row_that_was_already_there() {
 	assert_eq!(db.row_count("FROM app::j FILTER { rv == 7 }"), 1, "the older right row must be joined");
 	assert_eq!(db.row_count("FROM app::j FILTER { rv == 8 }"), 1, "and so must the newer one");
 	assert_eq!(
-		await_state_keys(&db, PUBLISHED, 2, TIMEOUT),
-		2,
-		"the ledger must record one entry per published pair; surface now: {:?}",
+		await_state_keys(&db, PUBLISHED, 1, TIMEOUT),
+		1,
+		"the ledger holds one key per left row, whatever that row published; surface now: {:?}",
 		db.query(SURFACE)
 	);
 	assert_eq!(
