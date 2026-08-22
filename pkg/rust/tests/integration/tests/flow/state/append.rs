@@ -83,8 +83,8 @@ fn assert_only_the_row_number_counter_survives(db: &TestDb, operator: u64) {
 	);
 	assert_eq!(
 		column_values(frame, "keys"),
-		vec![Value::Uint8(2)],
-		"the group-id and row-number counters are fixed per operator, never one key per row; surface now: {:?}",
+		vec![Value::Uint8(1)],
+		"the row-number counter is fixed per operator, never one key per row; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
 }
@@ -118,7 +118,7 @@ fn a_live_row_reports_the_state_that_maps_it_to_its_output_row() {
 
 #[test]
 fn a_sealed_row_leaves_the_append_operator_holding_nothing_at_all() {
-	// Freeing the anchor but keeping the group, the mapping or the dictionary entry leaks one of each per row.
+	// Freeing the anchor but keeping the row-number mapping leaks one mapping row per source row.
 	let db = setup();
 	sealing_append(&db);
 	fill_both_inputs(&db);

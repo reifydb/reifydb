@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	key::{decode_u64, encode_u64, encoded::EncodedKey, serializer::KeySerializer},
+	key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer},
 	row::operator::state::OperatorState,
 };
 use reifydb_core::{
@@ -11,7 +11,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey, Keyspace},
+	key::operator_state::{GroupId, GroupStateKey},
 	metrics::{heap::OperatorSample, instruments::counter::Counter},
 	state::timer::TimerKind,
 	value::column::columns::Columns,
@@ -30,22 +30,13 @@ use crate::{
 		HostOperator,
 		drops::SealedDrops,
 		host::HostContext,
-		state::{
-			reaper::{StoreReaper, drain, drain_group, enqueue, queue_key, queued},
-			seal::{ledger::FiredAt, policy::SealPolicy},
-		},
+		state::seal::{ledger::FiredAt, policy::SealPolicy},
 	},
 	timer::Timer,
-	transaction::anchor::{SealAnchor, UNGROUPED_SIDE, anchor_key as seal_anchor_key},
+	transaction::anchor::{SealAnchor, anchor_key as seal_anchor_key},
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
-
-const REMOVE_RECLAIM_LIMIT: usize = 8;
-
-const SEAL_BATCH: usize = 256;
-
-const QUEUE_SWEEP_EVERY: u64 = 1024;
 
 const DROP_REASON: &str = "mutations whose source row mapping was reclaimed";
 
@@ -72,6 +63,11 @@ impl AppendOperator {
 	) -> Self {
 		reifydb_assertions! {
 			assert!(input_nodes.len() >= 2, "Append requires at least 2 inputs");
+			assert!(
+				input_nodes.len() <= u8::MAX as usize + 1,
+				"the input index is one key byte in both the row-number mapping key and the seal \
+				 anchor side, so a 257th input would alias input 0 and take over its rows"
+			);
 		}
 
 		Self {
@@ -115,126 +111,126 @@ impl AppendOperator {
 		}
 	}
 
-	fn group_bytes(parent_index: u8, source_row: RowNumber) -> EncodedKey {
+	fn append_key(parent_index: u8, source_row: RowNumber) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(parent_index);
 		serializer.extend_u64(source_row.0);
 		serializer.finish()
 	}
 
-	fn group_keys(parent_index: usize, source: &Columns) -> Vec<EncodedKey> {
+	fn append_keys(parent_index: u8, source: &Columns) -> Vec<EncodedKey> {
 		(0..source.row_count())
-			.map(|row_idx| Self::group_bytes(parent_index as u8, source.row_numbers()[row_idx]))
+			.map(|row_idx| Self::append_key(parent_index, source.row_numbers()[row_idx]))
 			.collect()
 	}
 
-	fn mapping_key() -> EncodedKey {
-		EncodedKey::new(Vec::new())
+	fn append_parts(key: &EncodedKey) -> Result<(u8, RowNumber)> {
+		let mut reader = KeyDeserializer::from_bytes(key.as_slice());
+		let parent_index = reader.read_u8().map_err(|_| Self::undecodable(key))?;
+		let source_row = reader.read_u64().map_err(|_| Self::undecodable(key))?;
+		Ok((parent_index, RowNumber(source_row)))
 	}
 
-	fn anchor_key(group: GroupId) -> GroupStateKey {
-		seal_anchor_key(group, UNGROUPED_SIDE, RowNumber(0))
+	fn undecodable(key: &EncodedKey) -> Error {
+		Error::from(FlowStateError::Decode {
+			state: "append seal timer key",
+			cause: format!("expected an input byte and eight source row bytes, found {}", key.as_slice().len()),
+		})
 	}
 
-	fn timer_key(group: GroupId) -> EncodedKey {
-		EncodedKey::new(encode_u64(group.0))
+	fn anchor_key(parent_index: u8, source_row: RowNumber) -> GroupStateKey {
+		seal_anchor_key(GroupId::ROOT, parent_index, source_row)
 	}
 
-	fn timer_group(key: &EncodedKey) -> Result<GroupId> {
-		let bytes = <[u8; 8]>::try_from(key.as_slice()).map_err(|_| {
-			Error::from(FlowStateError::Decode {
-				state: "append seal timer key",
-				cause: format!("expected eight group bytes, found {}", key.as_slice().len()),
-			})
-		})?;
-		Ok(GroupId(decode_u64(bytes)))
+	fn read_anchor(
+		host: &mut dyn HostContext,
+		parent_index: u8,
+		source_row: RowNumber,
+	) -> Result<Option<DateTime>> {
+		host.anchor_at(GroupId::ROOT, parent_index, source_row)
 	}
 
-	fn read_anchor(host: &mut dyn HostContext, group: GroupId) -> Result<Option<DateTime>> {
-		host.anchor_at(group, UNGROUPED_SIDE, RowNumber(0))
-	}
-
-	fn arm_seal(&mut self, host: &mut dyn HostContext, ids: &[GroupId], columns: &Columns) -> Result<()> {
+	fn arm_seal(
+		&mut self,
+		host: &mut dyn HostContext,
+		parent_index: u8,
+		source_rows: &[RowNumber],
+		columns: &Columns,
+	) -> Result<()> {
 		let Some(retention) = self.retention else {
 			return Ok(());
 		};
 		let policy = SealPolicy::of(retention);
 		let times = columns.time().to_vec();
-		for (index, group) in ids.iter().enumerate() {
+		for (index, source_row) in source_rows.iter().enumerate() {
 			let Some(at) = times.get(index) else {
 				continue;
 			};
-			self.move_anchor(host, *group, policy.seal_instant(*at).at())?;
+			self.move_anchor(host, parent_index, *source_row, policy.seal_instant(*at).at())?;
 		}
 		Ok(())
 	}
 
-	fn move_anchor(&mut self, host: &mut dyn HostContext, group: GroupId, expiry: DateTime) -> Result<()> {
-		let prior = Self::read_anchor(host, group)?;
-		if prior == Some(expiry) {
+	fn move_anchor(
+		&mut self,
+		host: &mut dyn HostContext,
+		parent_index: u8,
+		source_row: RowNumber,
+		expiry: DateTime,
+	) -> Result<()> {
+		if Self::read_anchor(host, parent_index, source_row)? == Some(expiry) {
 			return Ok(());
 		}
-		if prior.is_some() {
-			host.state_remove(&queue_key(group))?;
-		}
 		host.state_set(
-			&Self::anchor_key(group),
+			&Self::anchor_key(parent_index, source_row),
 			SealAnchor {
 				expiry,
 			}
 			.encode_state()?,
 		)?;
-		host.arm_timer(expiry, TimerKind::Maintenance, &Self::timer_key(group))
+		host.arm_timer(expiry, TimerKind::Maintenance, &Self::append_key(parent_index, source_row))
 	}
 
-	fn clear_seal(&mut self, host: &mut dyn HostContext, groups: &[GroupId]) -> Result<()> {
+	fn clear_seal(
+		&mut self,
+		host: &mut dyn HostContext,
+		parent_index: u8,
+		source_rows: &[RowNumber],
+	) -> Result<()> {
 		if self.retention.is_none() {
 			return Ok(());
 		}
-		for group in groups {
-			let Some(expiry) = Self::read_anchor(host, *group)? else {
+		for source_row in source_rows {
+			let Some(expiry) = Self::read_anchor(host, parent_index, *source_row)? else {
 				continue;
 			};
-			host.state_remove(&Self::anchor_key(*group))?;
-			host.disarm_timer(expiry, TimerKind::Maintenance, &Self::timer_key(*group))?;
+			host.state_remove(&Self::anchor_key(parent_index, *source_row))?;
+			host.disarm_timer(
+				expiry,
+				TimerKind::Maintenance,
+				&Self::append_key(parent_index, *source_row),
+			)?;
 		}
 		Ok(())
 	}
 
-	fn seal_group(&mut self, host: &mut dyn HostContext, fired: FiredAt, group: GroupId) -> Result<()> {
-		let Some(retention) = self.retention else {
+	fn seal_row(&mut self, host: &mut dyn HostContext, fired: FiredAt, key: &EncodedKey) -> Result<()> {
+		if self.retention.is_none() {
 			return Ok(());
-		};
-		let retry = fired.at().saturating_add(retention);
+		}
+		let (parent_index, source_row) = Self::append_parts(key)?;
 
 		self.seal_fires.inc();
-		if (self.seal_fires.get() as u64).is_multiple_of(QUEUE_SWEEP_EVERY) {
-			let drained = drain(host, &mut StoreReaper, SEAL_BATCH)?;
-			let pending = if drained.more {
-				queued(host, SEAL_BATCH)?.groups
-			} else {
-				drained.still_queued
-			};
-			for stalled in pending {
-				host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(stalled))?;
-			}
-		}
 
-		let Some(expiry) = Self::read_anchor(host, group)? else {
+		let Some(expiry) = Self::read_anchor(host, parent_index, source_row)? else {
 			return Ok(());
 		};
 		if expiry > fired.at() {
-			host.arm_timer(expiry, TimerKind::Maintenance, &Self::timer_key(group))?;
+			host.arm_timer(expiry, TimerKind::Maintenance, key)?;
 			return Ok(());
 		}
-		host.state_remove(&Self::anchor_key(group))?;
-		enqueue(host, group)?;
-
-		let drained = drain_group(host, group, &mut StoreReaper, SEAL_BATCH)?;
-		if drained.still_queued {
-			host.arm_timer(retry, TimerKind::Maintenance, &Self::timer_key(group))?;
-		}
-		Ok(())
+		host.state_remove(&Self::anchor_key(parent_index, source_row))?;
+		host.remove_row_number(GroupId::ROOT, key)
 	}
 }
 
@@ -297,7 +293,7 @@ impl HostOperator for AppendOperator {
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
 		if timer.kind == TimerKind::Maintenance {
-			self.seal_group(host, FiredAt::of(&timer), Self::timer_group(&timer.key)?)?;
+			self.seal_row(host, FiredAt::of(&timer), &timer.key)?;
 		}
 		Ok(None)
 	}
@@ -309,63 +305,33 @@ impl HostOperator for AppendOperator {
 
 impl AppendOperator {
 	#[inline]
-	#[instrument(name = "flow::operator::append::create_row_numbers", level = "trace", skip_all, fields(groups = groups.len()))]
+	#[instrument(name = "flow::operator::append::create_row_numbers", level = "trace", skip_all, fields(rows = keys.len()))]
 	fn translate_create_row_numbers(
 		&self,
 		host: &mut dyn HostContext,
-		groups: &[EncodedKey],
-	) -> Result<(Vec<RowNumber>, Vec<GroupId>)> {
-		let interned = host.intern_groups_in(Keyspace::APPEND_DICTIONARY, groups)?;
-		let mapping = Self::mapping_key();
-		let fresh: Vec<GroupId> =
-			interned.iter().filter(|(_, is_new)| *is_new).map(|(group, _)| *group).collect();
-		let mut minted = host.create_row_numbers(&fresh, &mapping)?.into_iter();
-
-		let known: Vec<GroupId> =
-			interned.iter().filter(|(_, is_new)| !*is_new).map(|(group, _)| *group).collect();
-		let mut looked_up = host.get_or_create_row_numbers_for_groups(&known, &mapping)?.into_iter();
-
-		let mut output_row_numbers = Vec::with_capacity(interned.len());
-		let mut ids = Vec::with_capacity(interned.len());
-		for (group, is_new) in interned {
-			let output_row_number = match is_new {
-				true => minted.next().expect("one row number is minted per freshly interned group"),
-				false => {
-					looked_up
-						.next()
-						.expect("one row number is resolved per already-interned group")
-						.0
-				}
-			};
-			output_row_numbers.push(output_row_number);
-			ids.push(group);
-		}
-		Ok((output_row_numbers, ids))
+		keys: &[EncodedKey],
+	) -> Result<Vec<RowNumber>> {
+		Ok(host.get_or_create_row_numbers(GroupId::ROOT, keys)?
+			.into_iter()
+			.map(|(row_number, _)| row_number)
+			.collect())
 	}
 
 	#[inline]
-	#[instrument(name = "flow::operator::append::lookup_row_numbers", level = "trace", skip_all, fields(groups = groups.len()))]
+	#[instrument(name = "flow::operator::append::lookup_row_numbers", level = "trace", skip_all, fields(rows = keys.len()))]
 	fn lookup_row_numbers(
 		&self,
 		host: &mut dyn HostContext,
-		groups: &[EncodedKey],
-	) -> Result<Option<(Vec<RowNumber>, Vec<GroupId>)>> {
-		let mut ids = Vec::with_capacity(groups.len());
-		for resolved in host.lookup_groups_in(Keyspace::APPEND_DICTIONARY, groups)? {
-			let Some(group) = resolved else {
-				return Ok(None);
-			};
-			ids.push(group);
-		}
-
-		let mut output_row_numbers = Vec::with_capacity(ids.len());
-		for row_number in host.get_row_numbers_for_groups(&ids, &Self::mapping_key())? {
+		keys: &[EncodedKey],
+	) -> Result<Option<Vec<RowNumber>>> {
+		let mut output_row_numbers = Vec::with_capacity(keys.len());
+		for row_number in host.get_row_numbers(GroupId::ROOT, keys)? {
 			let Some(row_number) = row_number else {
 				return Ok(None);
 			};
 			output_row_numbers.push(row_number);
 		}
-		Ok(Some((output_row_numbers, ids)))
+		Ok(Some(output_row_numbers))
 	}
 
 	#[inline]
@@ -379,9 +345,11 @@ impl AppendOperator {
 		if post.row_count() == 0 {
 			return Ok(None);
 		}
-		let groups = Self::group_keys(parent_index, &post);
-		let (output_row_numbers, ids) = self.translate_create_row_numbers(host, &groups)?;
-		self.arm_seal(host, &ids, &post)?;
+		let parent_index = parent_index as u8;
+		let keys = Self::append_keys(parent_index, &post);
+		let output_row_numbers = self.translate_create_row_numbers(host, &keys)?;
+		let source_rows = post.row_numbers().to_vec();
+		self.arm_seal(host, parent_index, &source_rows, &post)?;
 		let output = post.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::insert(output)))
 	}
@@ -398,13 +366,14 @@ impl AppendOperator {
 		if post.row_count() == 0 {
 			return Ok(None);
 		}
-		let groups = Self::group_keys(parent_index, &pre);
-		let Some((output_row_numbers, ids)) = self.lookup_row_numbers(host, &groups)? else {
+		let parent_index = parent_index as u8;
+		let keys = Self::append_keys(parent_index, &pre);
+		let Some(output_row_numbers) = self.lookup_row_numbers(host, &keys)? else {
 			self.dropped.note(post.row_count() as u64);
 			return Ok(None);
 		};
-		host.intern_groups_in(Keyspace::APPEND_DICTIONARY, &groups)?;
-		self.arm_seal(host, &ids, &post)?;
+		let source_rows = pre.row_numbers().to_vec();
+		self.arm_seal(host, parent_index, &source_rows, &post)?;
 		let pre_output = pre.with_row_numbers(output_row_numbers.clone());
 		let post_output = post.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::update(pre_output, post_output)))
@@ -421,14 +390,16 @@ impl AppendOperator {
 		if pre.row_count() == 0 {
 			return Ok(None);
 		}
-		let groups = Self::group_keys(parent_index, &pre);
-		let Some((output_row_numbers, ids)) = self.lookup_row_numbers(host, &groups)? else {
+		let parent_index = parent_index as u8;
+		let keys = Self::append_keys(parent_index, &pre);
+		let Some(output_row_numbers) = self.lookup_row_numbers(host, &keys)? else {
 			self.dropped.note(pre.row_count() as u64);
 			return Ok(None);
 		};
-		self.clear_seal(host, &ids)?;
-		for group in &ids {
-			host.reclaim_group_identity(*group, REMOVE_RECLAIM_LIMIT)?;
+		let source_rows = pre.row_numbers().to_vec();
+		self.clear_seal(host, parent_index, &source_rows)?;
+		for key in &keys {
+			host.remove_row_number(GroupId::ROOT, key)?;
 		}
 		let output = pre.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::remove(output)))
@@ -439,7 +410,7 @@ impl AppendOperator {
 mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator_state::{Keyspace, group_inner_range, keyspace_inner_range},
+		key::operator_state::{Keyspace, keyspace_inner_range},
 		value::column::columns::Columns,
 	};
 	use reifydb_test_harness::engine::TestEngine;
@@ -452,7 +423,6 @@ mod tests {
 		transaction::{
 			ChangeCoordinate, FlowTransaction,
 			deferred::DeferredTransaction,
-			group::GroupExtension,
 			mock::FlowTxn,
 			row_number::RowNumberExtension,
 			state::{StateExtension, StateRange},
@@ -491,13 +461,17 @@ mod tests {
 		AppendOperator::sealing_for_state_tests(OperatorId(operator), Duration::from_seconds(10).unwrap())
 	}
 
-	fn fire(op: &mut AppendOperator, txn: &mut DeferredTransaction, due: DateTime, group: GroupId) {
+	fn keys(parent: u8, source_rows: &[u64]) -> Vec<EncodedKey> {
+		AppendOperator::append_keys(parent, &rows(source_rows))
+	}
+
+	fn fire(op: &mut AppendOperator, txn: &mut DeferredTransaction, due: DateTime, parent: u8, source_row: u64) {
 		// The engine lifts a due timer off the wheel before dispatch, so skipping the disarm reads as a leak.
 		let operator = op.operator;
 		let timer = Timer {
 			due,
 			kind: TimerKind::Maintenance,
-			key: AppendOperator::timer_key(group),
+			key: AppendOperator::append_key(parent, RowNumber(source_row)),
 		};
 		txn.disarm_timer(operator, &timer).unwrap();
 		op.on_timer(&mut TxnHostContext::new(txn, operator), timer).unwrap();
@@ -514,8 +488,30 @@ mod tests {
 		.len()
 	}
 
-	fn anchor_of(txn: &mut DeferredTransaction, op: &AppendOperator, group: GroupId) -> Option<DateTime> {
-		AppendOperator::read_anchor(&mut host(txn, op), group).unwrap()
+	fn anchor_of(
+		txn: &mut DeferredTransaction,
+		op: &AppendOperator,
+		parent: u8,
+		source_row: u64,
+	) -> Option<DateTime> {
+		AppendOperator::read_anchor(&mut host(txn, op), parent, RowNumber(source_row)).unwrap()
+	}
+
+	fn mapped_row(
+		txn: &mut DeferredTransaction,
+		op: &AppendOperator,
+		parent: u8,
+		source_row: u64,
+	) -> Option<RowNumber> {
+		// A source row owns exactly one mapping row, addressed by its own key; reading it back is the
+		// only way to tell a live row from one whose identity was reclaimed.
+		txn.get_row_numbers(
+			op.operator,
+			GroupId::ROOT,
+			&[AppendOperator::append_key(parent, RowNumber(source_row))],
+		)
+		.unwrap()
+		.remove(0)
 	}
 
 	fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
@@ -523,30 +519,11 @@ mod tests {
 		apply_operator_state(&engine.inner().operator_state(), &txn.take_pending());
 	}
 
-	fn group_of(
-		txn: &mut DeferredTransaction,
-		op: &AppendOperator,
-		parent: u8,
-		source_row: u64,
-	) -> Option<GroupId> {
-		txn.lookup_groups_in(
-			op.operator,
-			Keyspace::APPEND_DICTIONARY,
-			&[AppendOperator::group_bytes(parent, RowNumber(source_row))],
-		)
-		.unwrap()
-		.remove(0)
-	}
-
-	fn group_rows(txn: &mut DeferredTransaction, op: &AppendOperator, group: GroupId) -> usize {
-		txn.state_range(op.operator, StateRange::forward(group_inner_range(group), "test")).unwrap().items.len()
-	}
-
 	#[test]
-	fn a_source_row_interns_a_group_that_carries_its_output_row_number() {
-		// The mapping lives at the group's own address, which is what puts it inside the range the
-		// identity phase deletes; written anywhere else it would be invisible to reclamation and
-		// leak one row per source row for the life of the operator.
+	fn a_source_row_maps_its_key_to_its_output_row_number() {
+		// The mapping is addressed by the source row's own key, which is what lets the seal and remove
+		// paths find and delete it; written anywhere else it would be unreachable and leak one row per
+		// source row for the life of the operator.
 		let engine = TestEngine::new();
 		let mut op = op(1);
 		let mut txn = txn_at(&engine, op.operator, 100);
@@ -560,11 +537,10 @@ mod tests {
 			panic!("an insert must translate to an insert");
 		};
 
-		let group = group_of(&mut txn, &op, 0, 42).expect("the source row must have interned a group");
 		assert_eq!(
-			txn.get_row_numbers(op.operator, group, &[AppendOperator::mapping_key()]).unwrap().remove(0),
+			mapped_row(&mut txn, &op, 0, 42),
 			Some(post.row_numbers()[0]),
-			"the output row number must be readable from inside the group that owns it"
+			"the output row number must be readable back from the source row's own key"
 		);
 	}
 
@@ -576,70 +552,40 @@ mod tests {
 		let op = op(2);
 		let mut txn = txn_at(&engine, op.operator, 100);
 
-		let first = op
-			.translate_create_row_numbers(
-				&mut host(&mut txn, &op),
-				&AppendOperator::group_keys(0, &rows(&[7])),
-			)
-			.unwrap()
-			.0;
-		let second = op
-			.translate_create_row_numbers(
-				&mut host(&mut txn, &op),
-				&AppendOperator::group_keys(0, &rows(&[7])),
-			)
-			.unwrap()
-			.0;
+		let first = op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[7])).unwrap();
+		let second = op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[7])).unwrap();
 
-		assert_eq!(first, second, "an already-interned source row must resolve to its existing output row");
+		assert_eq!(first, second, "an already-mapped source row must resolve to its existing output row");
 	}
 
 	#[test]
 	fn each_input_numbers_its_own_source_rows_independently() {
 		// A union's inputs number their rows independently, so the parent index has to be in the
-		// group bytes: sharing one group would collapse two unrelated source rows onto a single
-		// output row and let either input's reclamation erase the other's mapping.
+		// mapping key: sharing one key would collapse two unrelated source rows onto a single output
+		// row and let either input's reclamation erase the other's mapping.
 		let engine = TestEngine::new();
 		let op = op(3);
 		let mut txn = txn_at(&engine, op.operator, 100);
 
-		let left = op
-			.translate_create_row_numbers(
-				&mut host(&mut txn, &op),
-				&AppendOperator::group_keys(0, &rows(&[7])),
-			)
-			.unwrap()
-			.0;
-		let right = op
-			.translate_create_row_numbers(
-				&mut host(&mut txn, &op),
-				&AppendOperator::group_keys(1, &rows(&[7])),
-			)
-			.unwrap()
-			.0;
+		let left = op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[7])).unwrap();
+		let right = op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(1, &[7])).unwrap();
 
 		assert_ne!(
-			group_of(&mut txn, &op, 0, 7),
-			group_of(&mut txn, &op, 1, 7),
-			"the same source row number on two inputs must not share a group"
+			AppendOperator::append_key(0, RowNumber(7)),
+			AppendOperator::append_key(1, RowNumber(7)),
+			"the same source row number on two inputs must not share a mapping key"
 		);
 		assert_ne!(left, right, "and must not share an output row number");
 	}
 
 	#[test]
 	fn a_source_row_repeated_inside_one_batch_lands_on_one_output_row() {
-		// Only the first occurrence interns a group, so the repeat must resolve to the number just minted.
+		// Only the first occurrence creates the mapping, so the repeat must resolve to the number just minted.
 		let engine = TestEngine::new();
 		let op = op(4);
 		let mut txn = txn_at(&engine, op.operator, 100);
 
-		let assigned = op
-			.translate_create_row_numbers(
-				&mut host(&mut txn, &op),
-				&AppendOperator::group_keys(0, &rows(&[7, 9, 7])),
-			)
-			.unwrap()
-			.0;
+		let assigned = op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[7, 9, 7])).unwrap();
 
 		assert_eq!(assigned[0], assigned[2], "both slots of source row 7 must carry one output row number");
 		assert_ne!(assigned[0], assigned[1], "a distinct source row keeps a distinct output row number");
@@ -652,31 +598,16 @@ mod tests {
 		let op = op(5);
 		let mut txn = txn_at(&engine, op.operator, 100);
 
-		let known = op
-			.translate_create_row_numbers(
-				&mut host(&mut txn, &op),
-				&AppendOperator::group_keys(0, &rows(&[7])),
-			)
-			.unwrap()
-			.0;
-		let assigned = op
-			.translate_create_row_numbers(
-				&mut host(&mut txn, &op),
-				&AppendOperator::group_keys(0, &rows(&[5, 7, 9])),
-			)
-			.unwrap()
-			.0;
+		let known = op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[7])).unwrap();
+		let assigned = op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[5, 7, 9])).unwrap();
 
 		assert_eq!(assigned[1], known[0], "the known source row keeps its number in the slot it arrived in");
 		assert_ne!(assigned[0], assigned[2], "the two fresh rows take numbers of their own");
 		for (slot, source) in [(0usize, 5u64), (2, 9)] {
-			let group = group_of(&mut txn, &op, 0, source).expect("a fresh source row interns a group");
 			assert_eq!(
-				txn.get_row_numbers(op.operator, group, &[AppendOperator::mapping_key()])
-					.unwrap()
-					.remove(0),
+				mapped_row(&mut txn, &op, 0, source),
 				Some(assigned[slot]),
-				"each fresh row's number must be stored under its own group"
+				"each fresh row's number must be stored under its own key"
 			);
 		}
 	}
@@ -687,33 +618,21 @@ mod tests {
 		let engine = TestEngine::new();
 		let op = op(6);
 		let mut txn = txn_at(&engine, op.operator, 100);
-		let known = op
-			.translate_create_row_numbers(
-				&mut host(&mut txn, &op),
-				&AppendOperator::group_keys(0, &rows(&[7])),
-			)
-			.unwrap()
-			.0;
+		let known = op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[7])).unwrap();
 		commit(&engine, &mut txn);
 
 		let mut later = txn_at(&engine, op.operator, 200);
-		let assigned = op
-			.translate_create_row_numbers(
-				&mut host(&mut later, &op),
-				&AppendOperator::group_keys(0, &rows(&[3, 7])),
-			)
-			.unwrap()
-			.0;
+		let assigned = op.translate_create_row_numbers(&mut host(&mut later, &op), &keys(0, &[3, 7])).unwrap();
 
 		assert_eq!(assigned[1], known[0], "a persisted source row must not be re-numbered");
 		assert_ne!(assigned[0], known[0], "the fresh row beside it takes a number of its own");
 	}
 
 	#[test]
-	fn a_source_row_that_was_never_seen_is_looked_up_never_interned() {
-		// If lookup interned, every unmatched diff would leave a dictionary entry, a group record
-		// and an activity-index row addressing a mapping that does not exist - unbounded growth
-		// driven entirely by traffic the operator drops on the floor.
+	fn a_source_row_that_was_never_seen_is_looked_up_never_created() {
+		// If lookup created the mapping, every unmatched diff would leave a row-number entry behind
+		// addressing a source row the operator never accepted - unbounded growth driven entirely by
+		// traffic it drops on the floor.
 		let engine = TestEngine::new();
 		let mut op = op(4);
 		let mut txn = txn_at(&engine, op.operator, 100);
@@ -724,7 +643,7 @@ mod tests {
 			.is_none());
 		assert!(op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[99])).unwrap().is_none());
 
-		assert_eq!(group_of(&mut txn, &op, 0, 99), None, "a lookup must not have interned the missing row");
+		assert_eq!(mapped_row(&mut txn, &op, 0, 99), None, "a lookup must not have mapped the missing row");
 	}
 
 	#[test]
@@ -734,31 +653,28 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut op = op(5);
 		let mut txn = txn_at(&engine, op.operator, 100);
-		op.translate_create_row_numbers(&mut host(&mut txn, &op), &AppendOperator::group_keys(0, &rows(&[1])))
-			.unwrap();
+		op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[1])).unwrap();
 
 		assert!(op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[1, 2])).unwrap().is_none());
 		assert!(
-			group_of(&mut txn, &op, 0, 1).is_some(),
+			mapped_row(&mut txn, &op, 0, 1).is_some(),
 			"the row that did resolve must not have been reclaimed by a batch that failed"
 		);
 	}
 
 	#[test]
-	fn a_group_that_outlived_its_mapping_translates_to_nothing() {
-		// The identity phase is row-budgeted, so it can take the mapping and run out before it
-		// clears the dictionary entry. A diff arriving in that window resolves the group and finds
-		// no row number, which is the other half of the all-or-nothing rule.
+	fn a_row_whose_mapping_was_reclaimed_translates_to_nothing() {
+		// Retention frees rows one at a time, so a batch can straddle the moment one of its rows was
+		// sealed. The sealed row resolves to no number, which is the other half of the all-or-nothing
+		// rule, and the live row beside it must not be touched.
 		let engine = TestEngine::new();
 		let mut op = op(12);
 		let mut txn = txn_at(&engine, op.operator, 100);
-		op.translate_create_row_numbers(
-			&mut host(&mut txn, &op),
-			&AppendOperator::group_keys(0, &rows(&[1, 2])),
-		)
-		.unwrap();
-		let stripped = group_of(&mut txn, &op, 0, 2).expect("precondition: both rows are interned");
-		assert!(txn.remove_row_number(op.operator, stripped, &AppendOperator::mapping_key()).unwrap());
+		op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[1, 2])).unwrap();
+		assert!(
+			txn.remove_row_number(op.operator, GroupId::ROOT, &AppendOperator::append_key(0, RowNumber(2)))
+				.unwrap()
+		);
 
 		assert!(op
 			.translate_append_update(&mut host(&mut txn, &op), 0, rows(&[1, 2]), rows(&[1, 2]))
@@ -766,7 +682,7 @@ mod tests {
 			.is_none());
 		assert!(op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[1, 2])).unwrap().is_none());
 		assert!(
-			group_of(&mut txn, &op, 0, 1).is_some(),
+			mapped_row(&mut txn, &op, 0, 1).is_some(),
 			"the row that did resolve must survive a batch that could not translate"
 		);
 	}
@@ -790,8 +706,7 @@ mod tests {
 			.is_none());
 		assert_eq!(op.dropped.total(), 5, "an update for four unknown rows discards four more");
 
-		op.translate_create_row_numbers(&mut host(&mut txn, &op), &AppendOperator::group_keys(0, &rows(&[7])))
-			.unwrap();
+		op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[7])).unwrap();
 		op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[7]))
 			.unwrap()
 			.expect("a known row must translate");
@@ -799,24 +714,20 @@ mod tests {
 	}
 
 	#[test]
-	fn removing_a_source_row_takes_its_whole_group_with_it() {
-		// Forgetting the group alone leaves the group record behind with no path from bytes to id
-		// and no index naming it - one permanently orphaned row per removed source row - so the
-		// remove path has to run the identity phase.
+	fn removing_a_source_row_takes_its_mapping_with_it() {
+		// The mapping is the only state a retention-free append owns, so leaving it behind is one
+		// permanently orphaned row per removed source row, addressed by a source row that is gone.
 		let engine = TestEngine::new();
 		let mut op = op(6);
 		let mut txn = txn_at(&engine, op.operator, 100);
-		op.translate_create_row_numbers(&mut host(&mut txn, &op), &AppendOperator::group_keys(0, &rows(&[5])))
-			.unwrap();
-		let group = group_of(&mut txn, &op, 0, 5).expect("precondition: the row is interned");
-		assert!(group_rows(&mut txn, &op, group) > 0);
+		op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[5])).unwrap();
+		assert!(mapped_row(&mut txn, &op, 0, 5).is_some(), "precondition: the row is mapped");
 
 		op.translate_append_remove(&mut host(&mut txn, &op), 0, rows(&[5]))
 			.unwrap()
 			.expect("a known row must translate");
 
-		assert_eq!(group_of(&mut txn, &op, 0, 5), None, "the dictionary entry must go");
-		assert_eq!(group_rows(&mut txn, &op, group), 0, "and the group's range must be left empty");
+		assert_eq!(mapped_row(&mut txn, &op, 0, 5), None, "the mapping must go with the row");
 	}
 
 	#[test]
@@ -830,9 +741,8 @@ mod tests {
 			.unwrap()
 			.expect("an insert must translate");
 
-		let group = group_of(&mut txn, &op, 0, 42).expect("the row must have interned a group");
 		assert_eq!(
-			anchor_of(&mut txn, &op, group),
+			anchor_of(&mut txn, &op, 0, 42),
 			Some(at_millis(15_001)),
 			"the due time is event time + retention + the strict gate step"
 		);
@@ -858,37 +768,33 @@ mod tests {
 		.unwrap()
 		.expect("a known row must translate");
 
-		let group = group_of(&mut txn, &op, 0, 7).expect("the row is interned");
 		assert_eq!(armed_timers(&mut txn, &op), 1, "an update re-arms one timer, it does not add one");
-		assert_eq!(
-			anchor_of(&mut txn, &op, group),
-			Some(at_millis(30_001)),
-			"and the due time follows the row"
-		);
+		assert_eq!(anchor_of(&mut txn, &op, 0, 7), Some(at_millis(30_001)), "and the due time follows the row");
 	}
 
 	#[test]
-	fn a_sealed_row_loses_its_dictionary_entry_its_group_and_its_mapping() {
-		// Identity is the only state append owns, so a seal that frees none of it leaks a group per source row.
+	fn a_sealed_row_loses_its_mapping_and_its_anchor() {
+		// The mapping and the anchor are the whole of what append owns per row, so a seal that frees
+		// neither leaks both for every source row that ever passed through.
 		let engine = TestEngine::new();
 		let mut op = sealing(22);
 		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_append_insert(&mut host(&mut txn, &op), 0, timed(&[42], at_millis(5_000)))
 			.unwrap()
 			.expect("an insert must translate");
-		let group = group_of(&mut txn, &op, 0, 42).expect("precondition: the row is interned");
+		assert!(mapped_row(&mut txn, &op, 0, 42).is_some(), "precondition: the row is mapped");
 
-		fire(&mut op, &mut txn, at_millis(15_001), group);
+		fire(&mut op, &mut txn, at_millis(15_001), 0, 42);
 
-		assert_eq!(group_of(&mut txn, &op, 0, 42), None, "the dictionary entry must go");
-		assert_eq!(group_rows(&mut txn, &op, group), 0, "the group's range must be left empty");
+		assert_eq!(mapped_row(&mut txn, &op, 0, 42), None, "the mapping must go");
+		assert_eq!(anchor_of(&mut txn, &op, 0, 42), None, "and the anchor behind it");
 		assert_eq!(armed_timers(&mut txn, &op), 0, "and the timer that drove the seal must not re-arm");
 	}
 
 	#[test]
-	fn a_committed_anchor_leaves_no_row_behind_once_its_group_seals() {
-		// The reaper sweeps the key-value rows only, so an anchor in the typed table outlives every group it
-		// seals.
+	fn a_committed_anchor_leaves_no_row_behind_once_its_row_seals() {
+		// An anchor that reached the typed table is invisible to the key-value paths, so a seal that
+		// only clears the batch copy outlives every row it sealed.
 		let engine = TestEngine::new();
 		let store = engine.inner().operator_state();
 		let mut op = sealing(28);
@@ -896,21 +802,20 @@ mod tests {
 		op.translate_append_insert(&mut host(&mut txn, &op), 0, timed(&[42], at_millis(5_000)))
 			.unwrap()
 			.expect("an insert must translate");
-		let group = group_of(&mut txn, &op, 0, 42).expect("precondition: the row is interned");
 		commit(&engine, &mut txn);
 		assert_eq!(
-			store.anchors_by_expiry(op.operator, group, 16).len(),
+			store.anchors_by_expiry(op.operator, GroupId::ROOT, 16).len(),
 			1,
 			"precondition: the anchor is in the table, not merely in the batch"
 		);
 
-		fire(&mut op, &mut txn, at_millis(15_001), group);
+		fire(&mut op, &mut txn, at_millis(15_001), 0, 42);
 		commit(&engine, &mut txn);
 
 		assert_eq!(
-			store.anchors_by_expiry(op.operator, group, 16),
+			store.anchors_by_expiry(op.operator, GroupId::ROOT, 16),
 			Vec::new(),
-			"a group driven through seal, enqueue and drain must leave no anchor row"
+			"a row driven through its seal must leave no anchor row"
 		);
 	}
 
@@ -923,13 +828,18 @@ mod tests {
 		op.translate_append_insert(&mut host(&mut txn, &op), 0, timed(&[42], at_millis(5_000)))
 			.unwrap()
 			.expect("an insert must translate");
-		let group = group_of(&mut txn, &op, 0, 42).expect("precondition: the row is interned");
 
-		fire(&mut op, &mut txn, at_millis(15_000), group);
+		fire(&mut op, &mut txn, at_millis(15_000), 0, 42);
 
-		let group =
-			group_of(&mut txn, &op, 0, 42).expect("a row one millisecond short of its retention must live");
-		assert!(group_rows(&mut txn, &op, group) > 0, "and must keep the state that resolves it");
+		assert!(
+			mapped_row(&mut txn, &op, 0, 42).is_some(),
+			"a row one millisecond short of its retention must live"
+		);
+		assert_eq!(
+			anchor_of(&mut txn, &op, 0, 42),
+			Some(at_millis(15_001)),
+			"and must keep the anchor that seals it"
+		);
 		assert_eq!(armed_timers(&mut txn, &op), 1, "its timer is not due and must stay armed");
 	}
 
@@ -943,8 +853,7 @@ mod tests {
 		op.translate_append_insert(&mut host(&mut txn, &op), 0, timed(&[42], at_millis(5_000)))
 			.unwrap()
 			.expect("an insert must translate");
-		let group = group_of(&mut txn, &op, 0, 42).expect("precondition: the row is interned");
-		fire(&mut op, &mut txn, at_millis(15_001), group);
+		fire(&mut op, &mut txn, at_millis(15_001), 0, 42);
 
 		let translated = op
 			.translate_append_update(
@@ -961,35 +870,34 @@ mod tests {
 
 	#[test]
 	fn removing_a_row_takes_its_timer_and_its_anchor_with_it() {
-		// The anchor sits in the group's data range, which the inline identity reclaim never touches.
+		// The anchor and the timer outlive the mapping unless the remove path clears them explicitly,
+		// and the timer would then fire on a row that no longer exists.
 		let engine = TestEngine::new();
 		let mut op = sealing(25);
 		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_append_insert(&mut host(&mut txn, &op), 0, timed(&[5], at_millis(5_000)))
 			.unwrap()
 			.expect("an insert must translate");
-		let group = group_of(&mut txn, &op, 0, 5).expect("precondition: the row is interned");
 
 		op.translate_append_remove(&mut host(&mut txn, &op), 0, timed(&[5], at_millis(5_000)))
 			.unwrap()
 			.expect("a known row must translate");
 
 		assert_eq!(armed_timers(&mut txn, &op), 0, "the timer must go with the row");
-		assert_eq!(anchor_of(&mut txn, &op, group), None, "and so must the anchor behind it");
+		assert_eq!(anchor_of(&mut txn, &op, 0, 5), None, "and so must the anchor behind it");
 	}
 
 	#[test]
-	fn an_updated_row_leaves_the_reap_queue_it_was_already_placed_in() {
-		// A row re-armed while queued must leave the queue, or the next tick reaps identity that is live.
+	fn a_timer_that_fires_after_its_row_was_extended_re_arms_rather_than_seals() {
+		// An update moves the anchor forward but the old arming is still on the wheel, so the stale
+		// firing must re-arm on the new due time. Sealing on it would reclaim a row that is still
+		// well inside its retention, and the sink would lose a live row with no drop counted.
 		let engine = TestEngine::new();
 		let mut op = sealing(26);
 		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_append_insert(&mut host(&mut txn, &op), 0, timed(&[7], at_millis(5_000)))
 			.unwrap()
 			.expect("an insert must translate");
-		let group = group_of(&mut txn, &op, 0, 7).expect("precondition: the row is interned");
-		enqueue(&mut host(&mut txn, &op), group).unwrap();
-
 		op.translate_append_update(
 			&mut host(&mut txn, &op),
 			0,
@@ -999,10 +907,15 @@ mod tests {
 		.unwrap()
 		.expect("a known row must translate");
 
-		assert!(
-			queued(&mut host(&mut txn, &op), 16).unwrap().groups.is_empty(),
-			"a re-armed row must not be left waiting in the reap queue"
+		fire(&mut op, &mut txn, at_millis(15_001), 0, 7);
+
+		assert!(mapped_row(&mut txn, &op, 0, 7).is_some(), "the extended row must survive its stale timer");
+		assert_eq!(
+			anchor_of(&mut txn, &op, 0, 7),
+			Some(at_millis(30_001)),
+			"and keep the due time the update gave it"
 		);
+		assert_eq!(armed_timers(&mut txn, &op), 1, "which must be re-armed rather than dropped");
 	}
 
 	#[test]
@@ -1016,9 +929,9 @@ mod tests {
 			.unwrap()
 			.expect("an insert must translate");
 
-		let group = group_of(&mut txn, &op, 0, 42).expect("the row must still intern a group");
+		assert!(mapped_row(&mut txn, &op, 0, 42).is_some(), "the row must still be mapped");
 		assert_eq!(armed_timers(&mut txn, &op), 0, "no retention means no timer");
-		assert_eq!(anchor_of(&mut txn, &op, group), None, "and no anchor");
+		assert_eq!(anchor_of(&mut txn, &op, 0, 42), None, "and no anchor");
 	}
 
 	#[test]
