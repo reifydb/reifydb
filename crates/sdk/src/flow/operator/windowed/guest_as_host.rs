@@ -41,6 +41,10 @@ impl<C: GuestContext> IdentityReclaim for GuestAsHost<'_, C> {
 	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		Ok(self.0.reclaim_group_identity(group, limit)?)
 	}
+
+	fn reclaim_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome> {
+		Ok(self.0.reclaim_group_identity(group, keys.len().max(1))?)
+	}
 }
 
 impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {

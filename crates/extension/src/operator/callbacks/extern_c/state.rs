@@ -928,6 +928,14 @@ mod seal_anchor_guard_tests {
 		fn reclaim_identity(&mut self, _group: GroupId, _limit: usize) -> Result<ReclaimOutcome> {
 			Ok(ReclaimOutcome::NOTHING)
 		}
+
+		fn reclaim_identity_keys(
+			&mut self,
+			_group: GroupId,
+			_keys: &[GroupStateKey],
+		) -> Result<ReclaimOutcome> {
+			Ok(ReclaimOutcome::NOTHING)
+		}
 	}
 
 	impl HostContext for RecordingHost {

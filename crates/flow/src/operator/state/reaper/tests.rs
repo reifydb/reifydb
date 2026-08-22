@@ -246,3 +246,156 @@ fn the_reap_scan_stops_fetching_at_the_budget() {
 		"and the scan behind it stops there too, rather than fetching all twelve"
 	);
 }
+
+#[test]
+fn one_merged_scan_reaps_data_and_reclaims_identity_and_dequeues_the_group() {
+	// drain_group's fast path replaces two range scans with one over the whole group. It must land the
+	// same end state the two-scan path did: data gone, identity gone, queue entry gone.
+	let mut store = MockStore::default();
+	let accumulator = key(DOOMED, Keyspace::ACCUMULATOR, 1);
+	let mapping = key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, 1);
+	seed(&mut store, &accumulator);
+	seed(&mut store, &mapping);
+	seed(&mut store, &queue_key(DOOMED));
+
+	let outcome = drain_group(&mut store, DOOMED, &mut StoreReaper, 256).unwrap();
+
+	assert!(!outcome.still_queued, "a fully drained group must not stay queued");
+	assert!(!present(&mut store, &accumulator), "the data key must be reaped");
+	assert!(!present(&mut store, &mapping), "the identity key must be reclaimed in the same pass");
+	assert!(!present(&mut store, &queue_key(DOOMED)), "the queue entry must be removed");
+}
+
+#[test]
+fn the_merged_scan_partitions_by_keyspace_not_by_scan_order() {
+	// Identity sorts BEFORE data inside a group because the keyspace byte is inverted. A partition that
+	// trusted scan order instead of the keyspace predicate would reap the identity keys and spare the data.
+	let mut store = MockStore::default();
+	let lowest_data = key(DOOMED, Keyspace(0x00), 1);
+	let highest_data = key(DOOMED, Keyspace(Keyspace::HIGHEST_DATA), 1);
+	let lowest_identity = key(DOOMED, Keyspace::APPEND_DICTIONARY, 1);
+	let highest_identity = key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, 1);
+	for k in [&lowest_data, &highest_data, &lowest_identity, &highest_identity] {
+		seed(&mut store, k);
+	}
+	seed(&mut store, &queue_key(DOOMED));
+
+	let outcome = drain_group(&mut store, DOOMED, &mut StoreReaper, 256).unwrap();
+
+	assert_eq!(outcome.freed, 4, "both data keys and both identity keys are accounted as freed");
+	for k in [&lowest_data, &highest_data, &lowest_identity, &highest_identity] {
+		assert!(!present(&mut store, k), "every key of a fully drained group must be gone");
+	}
+}
+
+#[test]
+fn the_merged_scan_leaves_a_neighbouring_group_untouched() {
+	// group_inner_range is wider than the data range the old path scanned, so a bad bound here would
+	// reach into the next group and delete rows nothing asked to reap.
+	let mut store = MockStore::default();
+	let doomed_data = key(DOOMED, Keyspace::ACCUMULATOR, 1);
+	let neighbour_data = key(BYSTANDER, Keyspace::ACCUMULATOR, 1);
+	let neighbour_identity = key(BYSTANDER, Keyspace::ROW_NUMBER_MAPPING, 1);
+	for k in [&doomed_data, &neighbour_data, &neighbour_identity] {
+		seed(&mut store, k);
+	}
+	seed(&mut store, &queue_key(DOOMED));
+
+	drain_group(&mut store, DOOMED, &mut StoreReaper, 256).unwrap();
+
+	assert!(!present(&mut store, &doomed_data), "the doomed group's data must go");
+	assert!(present(&mut store, &neighbour_data), "the neighbour's data must survive");
+	assert!(present(&mut store, &neighbour_identity), "so must the neighbour's identity");
+}
+
+#[test]
+fn a_group_too_large_for_the_budget_falls_back_and_keeps_its_identity() {
+	// When the group does not fit in one scan the fast path must hand off to the two-scan path, which
+	// never touches identity while data is still pending; dropping the dictionary entry early would
+	// orphan the remaining data behind a group id nothing can resolve.
+	let mut store = MockStore::default();
+	let data: Vec<GroupStateKey> = (0..5).map(|i| key(DOOMED, Keyspace::ACCUMULATOR, i)).collect();
+	for k in &data {
+		seed(&mut store, k);
+	}
+	let mapping = key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, 1);
+	seed(&mut store, &mapping);
+	seed(&mut store, &queue_key(DOOMED));
+
+	let outcome = drain_group(&mut store, DOOMED, &mut StoreReaper, 2).unwrap();
+
+	assert!(outcome.still_queued, "a group that did not fit the budget must stay queued");
+	assert!(present(&mut store, &mapping), "identity must survive while data is still pending");
+	assert!(present(&mut store, &queue_key(DOOMED)), "the queue entry must survive too");
+	let survivors = data.iter().filter(|k| present(&mut store, k)).count();
+	assert_eq!(survivors, 3, "the budget bounds how much data one pass reaps");
+}
+
+#[test]
+fn a_group_whose_identity_alone_exceeds_the_budget_still_makes_progress() {
+	// Identity sorts first, so a merged scan bounded by the budget can fill up on identity and never
+	// reach the data. Without the fall-back that group would be rescanned forever and never drain.
+	let mut store = MockStore::default();
+	let identity: Vec<GroupStateKey> = (0..5).map(|i| key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, i)).collect();
+	for k in &identity {
+		seed(&mut store, k);
+	}
+	let data = key(DOOMED, Keyspace::ACCUMULATOR, 1);
+	seed(&mut store, &data);
+	seed(&mut store, &queue_key(DOOMED));
+
+	let outcome = drain_group(&mut store, DOOMED, &mut StoreReaper, 2).unwrap();
+
+	assert!(!present(&mut store, &data), "the fall-back reaps data first even when identity crowds the scan");
+	assert!(outcome.freed > 0, "a pass that frees nothing would spin on this group forever");
+}
+
+#[derive(Default)]
+struct RecordingReaper {
+	seen: Vec<GroupStateKey>,
+}
+
+impl Reaper for RecordingReaper {
+	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
+		self.seen.push(key.clone());
+		store.state_remove(key)
+	}
+}
+
+#[test]
+fn the_reaper_is_handed_the_data_keys_and_never_an_identity_key() {
+	// End state alone cannot tell a correct partition from an inverted one: a fully drained group loses
+	// every key either way. Watching what the reaper is actually handed is what pins the predicate down,
+	// and an inverted partition would also hand the dictionary entry to reap() before data was gone.
+	let mut store = MockStore::default();
+	let data = key(DOOMED, Keyspace::ACCUMULATOR, 1);
+	let mapping = key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, 1);
+	seed(&mut store, &data);
+	seed(&mut store, &mapping);
+	seed(&mut store, &queue_key(DOOMED));
+	let mut reaper = RecordingReaper::default();
+
+	drain_group(&mut store, DOOMED, &mut reaper, 256).unwrap();
+
+	assert_eq!(reaper.seen, vec![data], "the reaper must receive the data key and nothing else");
+}
+
+#[test]
+fn a_drainable_group_is_covered_by_a_single_scan_that_spans_both_phases() {
+	// The whole point of the merged path is one scan instead of two. Every other assertion here passes
+	// just as well when the fall-back runs every time, so without this a silent regression to two scans
+	// would cost the win and break nothing.
+	let mut store = MockStore::default();
+	seed(&mut store, &key(DOOMED, Keyspace::ACCUMULATOR, 1));
+	seed(&mut store, &key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, 1));
+	seed(&mut store, &queue_key(DOOMED));
+	let before = store.rows_visited();
+
+	drain_group(&mut store, DOOMED, &mut StoreReaper, 256).unwrap();
+
+	assert_eq!(
+		store.rows_visited() - before,
+		2,
+		"one scan must see the data row and the identity row together; a data-only scan sees one"
+	);
+}

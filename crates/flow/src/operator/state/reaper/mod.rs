@@ -7,11 +7,12 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::{
-		GroupId, GroupStateKey, Keyspace, OperatorStateKey, group_data_inner_range, keyspace_inner_range,
+		GroupId, GroupStateKey, Keyspace, OperatorStateKey, group_data_inner_range, group_inner_range,
+		keyspace_inner_range,
 	},
 	state::timer::StateStore,
 };
-use reifydb_value::Result;
+use reifydb_value::{Result, reifydb_assertions};
 
 use crate::operator::state::reclaim::ReclaimOutcome;
 
@@ -24,6 +25,8 @@ pub trait Reaper {
 
 pub trait IdentityReclaim: StateStore {
 	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
+
+	fn reclaim_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome>;
 }
 
 pub struct StoreReaper;
@@ -89,7 +92,74 @@ pub struct GroupDrain {
 	pub still_queued: bool,
 }
 
+struct GroupScan {
+	identity: Vec<GroupStateKey>,
+	data: Vec<GroupStateKey>,
+}
+
+fn scan_group(store: &mut dyn StateStore, group: GroupId, budget: usize) -> Result<Option<GroupScan>> {
+	let mut identity = Vec::new();
+	let mut data = Vec::new();
+	let mut seen = 0usize;
+	store.state_range_visit(group_inner_range(group), Some(budget.saturating_add(1)), &mut |key, _| {
+		seen += 1;
+		if seen > budget {
+			return Ok(());
+		}
+		match OperatorStateKey::decode_inner(key.as_encoded().as_bytes()) {
+			Some((_, keyspace, _)) if keyspace.is_data() => data.push(key),
+			Some(_) => identity.push(key),
+			None => {}
+		}
+		Ok(())
+	})?;
+	if seen > budget {
+		return Ok(None);
+	}
+	Ok(Some(GroupScan {
+		identity,
+		data,
+	}))
+}
+
 pub fn drain_group<R>(
+	store: &mut dyn IdentityReclaim,
+	group: GroupId,
+	reaper: &mut R,
+	budget: usize,
+) -> Result<GroupDrain>
+where
+	R: Reaper,
+{
+	let Some(scan) = scan_group(store, group, budget)? else {
+		return drain_group_scanning(store, group, reaper, budget);
+	};
+	for key in &scan.data {
+		reaper.reap(store, key)?;
+	}
+	reifydb_assertions! {
+		let mut leftover = 0usize;
+		store.state_range_visit(group_data_inner_range(group), None, &mut |_, _| {
+			leftover += 1;
+			Ok(())
+		})?;
+		assert!(
+			leftover == 0,
+			"group {} still holds {leftover} data rows; forgetting its dictionary entry now would \
+			 orphan them behind a group id nothing can resolve again",
+			group.0
+		);
+	}
+	let freed = scan.data.len();
+	let outcome = store.reclaim_identity_keys(group, &scan.identity)?;
+	store.state_remove(&queue_key(group))?;
+	Ok(GroupDrain {
+		freed: freed + outcome.removed.as_u64() as usize,
+		still_queued: false,
+	})
+}
+
+fn drain_group_scanning<R>(
 	store: &mut dyn IdentityReclaim,
 	group: GroupId,
 	reaper: &mut R,

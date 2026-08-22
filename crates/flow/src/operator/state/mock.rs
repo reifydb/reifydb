@@ -207,6 +207,23 @@ impl IdentityReclaim for MockStore {
 			more,
 		})
 	}
+
+	fn reclaim_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome> {
+		let mut removed = 0usize;
+		for key in keys {
+			if self.data.remove(key.as_encoded().as_bytes()).is_some() {
+				removed += 1;
+			}
+		}
+		let before = self.rows.len();
+		self.rows.retain(|(owner, _), _| *owner != group);
+		removed += before - self.rows.len();
+		self.groups.retain(|_, owner| *owner != group);
+		Ok(ReclaimOutcome {
+			removed: Count::new(removed as u64),
+			more: false,
+		})
+	}
 }
 
 impl TimerStore for MockStore {

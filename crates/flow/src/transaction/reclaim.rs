@@ -45,6 +45,34 @@ pub trait ReclaimExtension: StateExtension + GroupExtension {
 		Ok(outcome)
 	}
 
+	fn reclaim_group_identity_keys(
+		&mut self,
+		operator: OperatorId,
+		group: GroupId,
+		keys: &[GroupStateKey],
+	) -> Result<ReclaimOutcome> {
+		reifydb_assertions! {
+			assert!(
+				!group.is_root(),
+				"group id 0 is the root group; reclaiming its identity would delete the interning dictionary itself"
+			);
+		}
+		if group.is_root() {
+			return Ok(ReclaimOutcome::NOTHING);
+		}
+		let record = self.group_record(operator, group)?;
+		for key in keys {
+			self.state_remove(operator, key)?;
+		}
+		if let Some((bytes, keyspace)) = record {
+			self.forget_group_in(operator, keyspace, &bytes)?;
+		}
+		Ok(ReclaimOutcome {
+			removed: Count::new(keys.len() as u64),
+			more: false,
+		})
+	}
+
 	fn reclaim_range(
 		&mut self,
 		operator: OperatorId,

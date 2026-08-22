@@ -279,6 +279,10 @@ impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
 	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		self.txn.reclaim_group_identity(self.operator, group, limit)
 	}
+
+	fn reclaim_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome> {
+		self.txn.reclaim_group_identity_keys(self.operator, group, keys)
+	}
 }
 
 impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
