@@ -45,6 +45,7 @@ fn cached_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard)
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
 			.flush_interval(Duration::from_hours_const(1))),
 		read: Some(OperatorReadBufferConfig::default()),
+		dictionary: None,
 		spawner,
 		clock,
 	});
@@ -62,6 +63,7 @@ fn cached_store_on(storage: SqliteOperatorStorage) -> OperatorStore {
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))
 			.flush_interval(Duration::from_hours_const(1))),
 		read: Some(OperatorReadBufferConfig::default()),
+		dictionary: None,
 		spawner,
 		clock,
 	})
@@ -212,6 +214,7 @@ fn a_memory_only_store_builds_no_read_tier() {
 		commit: Default::default(),
 		persistent: None,
 		read: Some(OperatorReadBufferConfig::default()),
+		dictionary: None,
 		spawner: actor_system.spawner(),
 		clock,
 	});
@@ -549,6 +552,7 @@ fn cached_store_with(read: OperatorReadBufferConfig) -> (OperatorStore, SqliteOp
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
 			.flush_interval(Duration::from_hours_const(1))),
 		read: Some(read),
+		dictionary: None,
 		spawner,
 		clock,
 	});

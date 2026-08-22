@@ -40,6 +40,7 @@ fn test_churn(path: &Path) {
 				persistent: Some(OperatorPersistentConfig::sqlite(sqlite_config)
 					.flush_interval(Duration::from_milliseconds_const(1))),
 				read: Some(OperatorReadBufferConfig::default()),
+				dictionary: None,
 				spawner,
 				clock: Clock::Real,
 			});

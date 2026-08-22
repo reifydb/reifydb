@@ -55,6 +55,7 @@ fn store_fixture() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
 			.flush_interval(idle_interval())),
 		read: Some(OperatorReadBufferConfig::default()),
+		dictionary: None,
 		spawner,
 		clock,
 	});
@@ -67,7 +68,8 @@ fn buffer_fixture() -> (OperatorCommitBuffer, SqliteOperatorStorage, ActorRef<Fl
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, idle_interval());
+	let actor_ref =
+		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
 	(buffer, storage, actor_ref, guard)
 }
 
@@ -315,7 +317,7 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 		let storage = storage.clone();
 		let ran = Arc::clone(&ran);
 		thread::spawn(move || {
-			flush_now(&buffer, &tier(&storage), None);
+			flush_now(&buffer, &tier(&storage), None, None);
 			ran.store(true, Ordering::Release);
 		})
 	};
@@ -357,9 +359,10 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, idle_interval());
+	let actor_ref =
+		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
 
-	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, idle_interval());
+	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, None, idle_interval());
 	let cancel = CancellationToken::new();
 	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
 	let mut state = actor.init(&ctx);
@@ -398,7 +401,7 @@ fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 	buffer.record_state_set(OP_A, key(1), row("never-written"));
 	storage.shutdown();
 
-	flush_now(&buffer, &tier(&storage), None);
+	flush_now(&buffer, &tier(&storage), None, None);
 }
 
 #[test]

@@ -6,7 +6,10 @@ use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::value::duration::Duration;
 
-use crate::tier::{commit::OperatorCommitBuffer, persistent::OperatorPersistentTier, read::OperatorReadBufferConfig};
+use crate::tier::{
+	commit::OperatorCommitBuffer, dictionary::OperatorDictionaryConfig, persistent::OperatorPersistentTier,
+	read::OperatorReadBufferConfig,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct OperatorCommitConfig {
@@ -49,6 +52,7 @@ pub struct OperatorStoreConfig {
 	pub commit: OperatorCommitConfig,
 	pub persistent: Option<OperatorPersistentConfig>,
 	pub read: Option<OperatorReadBufferConfig>,
+	pub dictionary: Option<OperatorDictionaryConfig>,
 	pub spawner: ActorSpawner,
 	pub clock: Clock,
 }
@@ -59,6 +63,7 @@ impl OperatorStoreConfig {
 			commit: OperatorCommitConfig::default(),
 			persistent: None,
 			read: None,
+			dictionary: None,
 			spawner,
 			clock,
 		}
@@ -70,6 +75,7 @@ impl OperatorStoreConfig {
 			commit: OperatorCommitConfig::default(),
 			persistent: Some(persistent),
 			read: Some(OperatorReadBufferConfig::default()),
+			dictionary: Some(OperatorDictionaryConfig::default()),
 			spawner,
 			clock,
 		}

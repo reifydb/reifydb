@@ -50,6 +50,7 @@ fn store_at(path: &Path) -> OperatorStore {
 		persistent: Some(OperatorPersistentConfig::sqlite(SqliteConfig::new(path))
 			.flush_interval(Duration::from_hours_const(1))),
 		read: Some(OperatorReadBufferConfig::default()),
+		dictionary: None,
 		spawner,
 		clock: Clock::Real,
 	})

@@ -15,7 +15,7 @@ use tracing::instrument;
 
 use crate::{
 	store::{OperatorStore, StandardOperatorStore},
-	tier::{commit::batch::DropMarker, read::BucketId},
+	tier::{commit::batch::DropMarker, dictionary::owns, persistent::OperatorPersistentTier, read::BucketId},
 	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
 
@@ -55,18 +55,27 @@ impl StandardOperatorStore {
 		if let Some(read) = self.read.as_ref() {
 			read.invalidate_operator(operator);
 		}
+		if let Some(dictionary) = self.dictionary.as_ref() {
+			dictionary.invalidate_operator(operator);
+		}
 	}
 
 	fn invalidate_read(&self, operator: OperatorId, key: &EncodedKey) {
+		if owns(key) {
+			if let Some(dictionary) = self.dictionary.as_ref() {
+				dictionary.invalidate(operator, key);
+			}
+			return;
+		}
 		if let Some(read) = self.read.as_ref() {
 			read.invalidate(operator, key);
 		}
 	}
 
 	fn invalidate_read_batch(&self, writes: &[OperatorWrite]) {
-		let Some(read) = self.read.as_ref() else {
+		if self.read.is_none() && self.dictionary.is_none() {
 			return;
-		};
+		}
 		for write in writes {
 			match write {
 				OperatorWrite::Set {
@@ -77,7 +86,7 @@ impl StandardOperatorStore {
 				| OperatorWrite::Remove {
 					operator,
 					key,
-				} => read.invalidate(*operator, key),
+				} => self.invalidate_read(*operator, key),
 				OperatorWrite::AnchorSet {
 					..
 				}
@@ -97,8 +106,37 @@ impl StandardOperatorStore {
 		}
 	}
 
+	fn dictionary_get(
+		&self,
+		persistent: &OperatorPersistentTier,
+		operator: OperatorId,
+		key: &EncodedKey,
+	) -> Option<EncodedPodRow> {
+		let Some(dictionary) = self.dictionary.as_ref() else {
+			if !persistent.filter().may_contain(operator, key) {
+				return None;
+			}
+			return persistent.get(operator, key);
+		};
+		if let Some(cached) = dictionary.get(operator, key) {
+			return Some(cached);
+		}
+		if !persistent.filter().may_contain(operator, key) {
+			return None;
+		}
+		if !dictionary.begin_fill(operator, key) {
+			return persistent.get(operator, key);
+		}
+		let row = persistent.get(operator, key);
+		dictionary.finish_fill(operator, key, row.clone());
+		row
+	}
+
 	fn persistent_get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		let persistent = self.persistent.as_ref()?;
+		if owns(key) {
+			return self.dictionary_get(persistent, operator, key);
+		}
 		if let Some(cached) = self.read.as_ref().and_then(|read| read.get(operator, key)) {
 			return cached;
 		}
@@ -128,6 +166,9 @@ impl StandardOperatorStore {
 		let Some(persistent) = self.persistent.as_ref() else {
 			return false;
 		};
+		if owns(key) {
+			return self.dictionary_get(persistent, operator, key).is_some();
+		}
 		if let Some(cached) = self.read.as_ref().and_then(|read| read.contains(operator, key)) {
 			return cached;
 		}

@@ -52,6 +52,7 @@ fn store() -> (OperatorStore, SqliteTempPathGuard) {
 		commit: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config).flush_interval(Duration::from_hours_const(1))),
 		read: Some(OperatorReadBufferConfig::default()),
+		dictionary: None,
 		spawner,
 		clock: Clock::Real,
 	});
