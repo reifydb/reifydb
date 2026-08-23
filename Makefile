@@ -56,6 +56,14 @@ help:
 	@printf "  %-25s %s\n" "test-chaos N=64" "Run chaos tests (N= per workload, FILTER=, SEED=, PACKAGE=, PACKAGES=)"
 	@printf "  %-25s %s\n" "list-chaos" "List chaos tests (PACKAGE=, PACKAGES=, FILTER=)"
 	@echo ""
+	@echo "  📈 Coverage"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-25s %s\n" "coverage-install" "Install cargo-llvm-cov and llvm-tools-preview (one-time)"
+	@printf "  %-25s %s\n" "coverage" "Coverage for normal tests (PACKAGE=, PACKAGES=)"
+	@printf "  %-25s %s\n" "coverage-chaos N=1000" "Coverage for chaos tests (N=, FILTER=, SEED=, PACKAGE=)"
+	@printf "  %-25s %s\n" "coverage-summary" "Print the per-file coverage table (PACKAGE= to scope)"
+	@printf "  %-25s %s\n" "coverage-open" "Open the HTML coverage report"
+	@echo ""
 	@echo "  🔧 Test Components"
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "test-suite" "Run all test suites (smoke, compatibility, etc.)"
@@ -199,6 +207,7 @@ include mk/test-pkg-rust.mk
 include mk/test-pkg-typescript.mk
 include mk/test-examples.mk
 include mk/test-chaos.mk
+include mk/coverage.mk
 
 # Only include benchmark makefile when benchmark targets are being run
 ifneq ($(filter bench bench-% ,$(MAKECMDGOALS)),)

@@ -27,7 +27,7 @@ pub fn drive(seed: u64, p: Params) {
 		let mut rng = StdRng::seed_from_u64(seed);
 		let spawner = spawner();
 		let mut live = boot(&spawner, dir, "live", Oracle::new(CUT_LARGE.as_bytes()));
-		let mut generator = Generator::new();
+		let mut generator = Generator::new(p.version_base);
 
 		let steps = rng.random_range(p.min_steps..=p.max_steps);
 		for step in 0..steps {
@@ -83,7 +83,10 @@ fn boot(spawner: &ActorSpawner, dir: &Path, name: &'static str, oracle: Oracle) 
 }
 
 fn write(rng: &mut StdRng, config: &mut Config, generator: &mut Generator, p: &Params, step: u32) {
-	let (version, cdc, row) = build_record(rng, generator, p);
+	// the version space is exhausted, so there is nothing left to write and the run must not hand out a duplicate
+	let Some((version, cdc, row)) = build_record(rng, generator, p) else {
+		return;
+	};
 	assert!(config.oracle.write(version, row), "WRITE rejected by the model: step={step} version={version}");
 	config.store
 		.write(&cdc)

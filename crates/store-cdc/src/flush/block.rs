@@ -37,8 +37,19 @@ fn seal(batch: &FlushBatch) -> Option<Block> {
 
 #[instrument(name = "store::cdc::flush::flush_now", level = "debug", skip_all)]
 pub fn flush_now(buffer: &CdcCommitBufferTier, storage: &CdcPersistentTier, read: Option<&CdcReadBufferTier>) {
+	flush_with(buffer, storage, read, &mut || {});
+}
+
+#[instrument(name = "store::cdc::flush::flush_with", level = "debug", skip_all)]
+pub fn flush_with(
+	buffer: &CdcCommitBufferTier,
+	storage: &CdcPersistentTier,
+	read: Option<&CdcReadBufferTier>,
+	staged: &mut dyn FnMut(),
+) {
 	let _flushing = buffer.flush_guard();
 	while let Some(batch) = buffer.take_for_flush() {
+		staged();
 		if let Some(block) = seal(&batch) {
 			if let Err(err) = storage.append_block(&block) {
 				panic!("cdc flush failed to append block {:?}: {err:?}", block.id());

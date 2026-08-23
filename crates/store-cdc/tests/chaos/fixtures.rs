@@ -134,6 +134,16 @@ pub fn flush(config: &mut Config) {
 	config.oracle.flush();
 }
 
+/// Runs the same flush the actor runs, but calls `observe` inside the window where a batch has left the commit buffer
+/// and has not yet reached the persistent tier, the one state where a record can fall into the gap or be served twice.
+pub fn flush_staged(config: &mut Config, observe: impl Fn(&Config)) {
+	{
+		let view: &Config = config;
+		view.store.flush_staged(&mut || observe(view));
+	}
+	config.oracle.flush();
+}
+
 /// Leaked so the flush actor outlives the borrow; the flush interval is parked an hour out so only an explicit flush
 /// ever seals a block.
 pub fn spawner() -> ActorSpawner {

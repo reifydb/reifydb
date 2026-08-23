@@ -21,7 +21,7 @@ use reifydb_runtime::{
 	pool::Pools,
 };
 use reifydb_store_cdc::{config::CdcStoreConfig, storage::CdcStorage, store::CdcStore};
-use reifydb_sub_lifecycle::cdc::ttl::CdcTtlTask;
+use reifydb_sub_lifecycle::cdc::ttl::task::CdcTtlTask;
 use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime},

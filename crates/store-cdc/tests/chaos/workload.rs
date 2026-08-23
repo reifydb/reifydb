@@ -7,19 +7,28 @@
 use std::{
 	collections::{BTreeSet, Bound},
 	ops::RangeInclusive,
+	sync::Arc,
 };
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_core::{common::CommitVersion, interface::cdc::Cdc};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::cdc::{Cdc, CdcBatch},
+	metrics::{
+		collect::MetricsCollector,
+		sample::{MetricsSample, Reading},
+	},
+};
 use reifydb_store_cdc::{
 	error::CdcError,
 	storage::{CdcStorage, Cutoff},
+	store::CdcStore,
 };
 use reifydb_testing_chaos::fuzz::{pick, run_reported, split};
 use reifydb_value::value::datetime::DateTime;
 
 use crate::{
-	fixtures::{ChangeKind, Config, Harness, flush, record},
+	fixtures::{ChangeKind, Config, Harness, flush, flush_staged, record},
 	oracle::{Eviction, Record, TtlCutoff, Version},
 };
 
@@ -29,6 +38,7 @@ pub struct Params {
 	pub max_steps: u32,
 	pub write_pct: u32,
 	pub flush_pct: u32,
+	pub staged_flush_pct: u32,
 	pub drop_pct: u32,
 	pub unbounded_drop_pct: u32,
 	pub reopen_pct: u32,
@@ -41,6 +51,7 @@ pub struct Params {
 	pub max_batch: u64,
 	pub max_limit: usize,
 	pub timestamp_span: u64,
+	pub version_base: u64,
 }
 
 pub const TIMESTAMP_BASE: u64 = 1_700_000_000_000_000_000;
@@ -48,24 +59,35 @@ pub const TIMESTAMP_BASE: u64 = 1_700_000_000_000_000_000;
 /// Versions only ever move up and no two records share a timestamp, so the earliest block at or after a ttl cutoff is
 /// unambiguous.
 pub struct Generator {
+	base: u64,
 	next_version: u64,
 	written: Vec<u64>,
 	used: BTreeSet<u64>,
 }
 
 impl Generator {
-	pub fn new() -> Self {
+	pub fn new(base: u64) -> Self {
 		Self {
-			next_version: 0,
+			base,
+			next_version: base,
 			written: Vec::new(),
 			used: BTreeSet::new(),
 		}
 	}
 
-	pub fn advance(&mut self, rng: &mut StdRng, p: &Params) -> u64 {
-		self.next_version += rng.random_range(1..=p.max_gap);
+	/// Stops at the top of the version space instead of wrapping, so a run based near the ceiling exercises the
+	/// overflow guards on the read path rather than handing the same version out twice.
+	pub fn advance(&mut self, rng: &mut StdRng, p: &Params) -> Option<u64> {
+		if self.next_version == u64::MAX {
+			return None;
+		}
+		self.next_version = self.next_version.saturating_add(rng.random_range(1..=p.max_gap));
 		self.written.push(self.next_version);
-		self.next_version
+		Some(self.next_version)
+	}
+
+	pub fn base(&self) -> u64 {
+		self.base
 	}
 
 	pub fn timestamp(&mut self, rng: &mut StdRng, p: &Params) -> u64 {
@@ -103,7 +125,7 @@ impl Generator {
 pub fn drive(seed: u64, p: Params) {
 	let mut rng = StdRng::seed_from_u64(seed);
 	let mut harness = Harness::new();
-	let mut generator = Generator::new();
+	let mut generator = Generator::new(p.version_base);
 
 	let steps = rng.random_range(p.min_steps..=p.max_steps);
 	for step in 0..steps {
@@ -115,7 +137,10 @@ pub fn drive(seed: u64, p: Params) {
 			cut += p.flush_pct;
 			if roll < cut {
 				flush_step(&mut harness, step);
+			} else if roll < cut + p.staged_flush_pct {
+				staged_flush_step(&mut harness, step);
 			} else {
+				cut += p.staged_flush_pct;
 				cut += p.drop_pct;
 				if roll < cut {
 					drop_step(&mut rng, &mut harness, &generator, &p, step);
@@ -134,6 +159,7 @@ pub fn drive(seed: u64, p: Params) {
 			check_bounds(config, step);
 			check_commit_metrics(config, step);
 			check_read_buffer(config, step);
+			check_store_metrics(config, step);
 		}
 	}
 
@@ -179,6 +205,8 @@ pub fn verify(config: &Config, p: &Params, step: u32) {
 		let cutoff = TIMESTAMP_BASE + offset * (p.timestamp_span / 4).max(1);
 		check_ttl(config, cutoff, step);
 	}
+	check_trait_surface(config, step);
+	check_truncation_reads(config, step);
 	check_ttl(config, 0, step);
 	// A cutoff at or above 2^63 wraps negative in the sqlite tier's i64 comparison, so the probe stops below it.
 	check_ttl(config, i64::MAX as u64, step);
@@ -191,7 +219,10 @@ fn write_step(rng: &mut StdRng, harness: &mut Harness, generator: &mut Generator
 			return;
 		}
 	}
-	let (version, cdc, row) = build_record(rng, generator, p);
+	// the version space is exhausted, so there is nothing left to write and the run must not hand out a duplicate
+	let Some((version, cdc, row)) = build_record(rng, generator, p) else {
+		return;
+	};
 
 	for config in &mut harness.configs {
 		assert!(
@@ -271,6 +302,29 @@ fn flush_step(harness: &mut Harness, step: u32) {
 	}
 }
 
+/// Every version must stay readable exactly once while its batch sits between the two tiers; a batch that is already
+/// out of the commit buffer and not yet in the persistent tier belongs to neither, so a reader that consults only one
+/// of them loses the record, and one that consults both without merging returns it twice.
+fn staged_flush_step(harness: &mut Harness, step: u32) {
+	for config in &mut harness.configs {
+		flush_staged(config, |view| check_in_flight(view, step));
+		check_blocks(config, step);
+	}
+}
+
+pub fn check_in_flight(config: &Config, step: u32) {
+	check_bounds(config, step);
+	check_dropped_unreadable(config, step);
+	for version in config.oracle.versions() {
+		check_read(config, version, step);
+		check_count(config, version, step);
+	}
+	// a whole-log read in one page must still be gapless and free of repeats across the in-flight seam
+	check_range(config, Bound::Unbounded, Bound::Unbounded, u64::from(u32::MAX), step);
+	// one record per page walks the seam a page at a time, where a merge that mishandles the boundary shows up
+	check_drain(config, Bound::Unbounded, Bound::Unbounded, 1, step);
+}
+
 fn drop_step(rng: &mut StdRng, harness: &mut Harness, generator: &Generator, p: &Params, step: u32) {
 	// an unbounded reach clears the read buffer instead of invalidating a prefix, a path a version cutoff never
 	// takes
@@ -304,6 +358,7 @@ fn drop_step(rng: &mut StdRng, harness: &mut Harness, generator: &Generator, p: 
 		);
 		check_blocks(config, step);
 		check_dropped_unreadable(config, step);
+		check_truncation_reads(config, step);
 	}
 }
 
@@ -701,6 +756,188 @@ pub fn check_eviction_reached(config: &Config, step: u32) {
 	);
 }
 
+/// A range that opens below the truncation floor must bridge the dropped hole and still hand back the surviving tail
+/// intact; a walk that mistakes the hole for the end of the log strands every record above it.
+pub fn check_truncation_reads(config: &Config, step: u32) {
+	let Some(max) = config.oracle.max_version() else {
+		return;
+	};
+	let top = Bound::Included(CommitVersion(max));
+	check_range(config, Bound::Unbounded, top, 1, step);
+	check_drain(config, Bound::Unbounded, top, 1, step);
+
+	let floor = config.oracle.truncated_before();
+	if floor == 0 {
+		return;
+	}
+	let below = CommitVersion(floor.saturating_sub(1));
+	check_range(config, Bound::Included(below), top, 2, step);
+	check_drain(config, Bound::Included(below), top, 1, step);
+	// the window ends inside the dropped prefix, so the only honest answer is that it holds nothing
+	check_range(config, Bound::Unbounded, Bound::Included(below), 0, step);
+}
+
+/// The trait defaults and the Arc forwarding impl are what an embedder actually calls; a default that pages unlike the
+/// inherent call, or a forward wired to the wrong inner method, is invisible to every check that goes direct.
+pub fn check_trait_surface(config: &Config, step: u32) {
+	let shared: Arc<CdcStore> = Arc::new(config.store.clone());
+	let expected = config.oracle.range(0, u64::MAX, 1024);
+
+	let ranged = versions_of(&config.store.range(Bound::Unbounded, Bound::Unbounded).unwrap());
+	let scanned = versions_of(&config.store.scan(1024).unwrap());
+	let forwarded = versions_of(&shared.read_range(Bound::Unbounded, Bound::Unbounded, 1024).unwrap());
+	assert_eq!(
+		ranged, expected,
+		"RANGE default paged differently from the model: config={} step={step}",
+		config.name
+	);
+	assert_eq!(
+		scanned, expected,
+		"SCAN default paged differently from the model: config={} step={step}",
+		config.name
+	);
+	assert_eq!(
+		forwarded, expected,
+		"ARC forwarded read_range to something other than the inner store: config={} step={step}",
+		config.name
+	);
+
+	assert_eq!(
+		shared.min_version().unwrap(),
+		config.store.min_version().unwrap(),
+		"ARC forwarded min_version elsewhere: config={} step={step}",
+		config.name
+	);
+	assert_eq!(
+		shared.max_version().unwrap(),
+		config.store.max_version().unwrap(),
+		"ARC forwarded max_version elsewhere: config={} step={step}",
+		config.name
+	);
+	assert_eq!(
+		shared.truncated_before().unwrap(),
+		config.store.truncated_before().unwrap(),
+		"ARC forwarded truncated_before elsewhere: config={} step={step}",
+		config.name
+	);
+
+	for version in config.oracle.versions() {
+		let key = CommitVersion(version);
+		assert!(
+			config.store.exists(key).unwrap(),
+			"EXISTS denied a version the model holds: config={} step={step} version={version}",
+			config.name
+		);
+		assert_eq!(
+			shared.count(key).unwrap(),
+			config.store.count(key).unwrap(),
+			"ARC forwarded count elsewhere: config={} step={step} version={version}",
+			config.name
+		);
+	}
+	// exists must never confuse "past the end" with a hit, and at u64::MAX no version above the log exists to probe
+	if let Some(beyond) = config.oracle.max_version().unwrap_or(0).checked_add(1) {
+		let beyond = CommitVersion(beyond);
+		assert!(
+			!config.store.exists(beyond).unwrap(),
+			"EXISTS claimed a version above the log: config={} step={step} version={}",
+			config.name,
+			beyond.0
+		);
+	}
+}
+
+/// The metrics surface is the only view an operator has of what the store holds; a counter that drifts from the tier it
+/// claims to describe reports a healthy store while it leaks.
+pub fn check_store_metrics(config: &Config, step: u32) {
+	let persistent = config.store.persistent_metrics();
+	assert_eq!(
+		persistent.blocks,
+		config.oracle.blocks().len() as u64,
+		"PERSISTENT block count drifted: config={} step={step} store={} oracle={}",
+		config.name,
+		persistent.blocks,
+		config.oracle.blocks().len()
+	);
+	assert_eq!(
+		persistent.stored_bytes.as_bytes() == 0,
+		persistent.blocks == 0,
+		"PERSISTENT charges bytes for no block, or holds blocks for no bytes: config={} step={step} blocks={} bytes={}",
+		config.name,
+		persistent.blocks,
+		persistent.stored_bytes.as_bytes()
+	);
+	assert!(
+		persistent.drops <= persistent.appends,
+		"PERSISTENT dropped more blocks than it ever appended: config={} step={step} drops={} appends={}",
+		config.name,
+		persistent.drops,
+		persistent.appends
+	);
+
+	let shards = config.store.read_buffer_shard_metrics();
+	let shard_bytes: u64 = shards.iter().map(|shard| shard.used.as_bytes()).sum();
+	let shard_blocks: u64 = shards.iter().map(|shard| shard.blocks as u64).sum();
+	assert_eq!(
+		config.store.resident_bytes().as_bytes(),
+		config.oracle.live_bytes() + shard_bytes,
+		"RESIDENT bytes are not the commit buffer plus the read buffer: config={} step={step}",
+		config.name
+	);
+
+	let mut samples = Vec::new();
+	config.store.collect(&mut samples);
+	assert_eq!(
+		sample_bytes(&samples, "store_cdc::commit", "resident_bytes"),
+		config.oracle.live_bytes(),
+		"COLLECT reported commit bytes the commit tier does not hold: config={} step={step}",
+		config.name
+	);
+	assert_eq!(
+		sample_count(&samples, "store_cdc::commit", "resident_entries"),
+		config.oracle.live_len() as u64,
+		"COLLECT reported commit entries the commit tier does not hold: config={} step={step}",
+		config.name
+	);
+	assert_eq!(
+		sample_bytes(&samples, "store_cdc::read", "resident_bytes"),
+		shard_bytes,
+		"COLLECT reported read-buffer bytes the shards do not hold: config={} step={step}",
+		config.name
+	);
+	assert_eq!(
+		sample_count(&samples, "store_cdc::read", "resident_blocks"),
+		shard_blocks,
+		"COLLECT reported read-buffer blocks the shards do not hold: config={} step={step}",
+		config.name
+	);
+}
+
+fn versions_of(batch: &CdcBatch) -> Vec<u64> {
+	batch.items.iter().map(|cdc| cdc.version.0).collect()
+}
+
+fn sample_bytes(samples: &[MetricsSample], scope: &str, metric: &str) -> u64 {
+	match find_sample(samples, scope, metric) {
+		Reading::Heap(bytes) | Reading::Bytes(bytes) => bytes.as_bytes(),
+		other => panic!("{scope}::{metric} is not a byte reading: {other:?}"),
+	}
+}
+
+fn sample_count(samples: &[MetricsSample], scope: &str, metric: &str) -> u64 {
+	match find_sample(samples, scope, metric) {
+		Reading::Count(count) => count.as_u64(),
+		other => panic!("{scope}::{metric} is not a count reading: {other:?}"),
+	}
+}
+
+fn find_sample(samples: &[MetricsSample], scope: &str, metric: &str) -> Reading {
+	samples.iter()
+		.find(|sample| sample.scope.as_ref() == scope && sample.metric == metric)
+		.unwrap_or_else(|| panic!("COLLECT never emitted {scope}::{metric}"))
+		.reading
+}
+
 fn store_cutoff(cutoff: TtlCutoff) -> Cutoff {
 	match cutoff {
 		TtlCutoff::Version(version) => Cutoff::Version(CommitVersion(version)),
@@ -709,11 +946,11 @@ fn store_cutoff(cutoff: TtlCutoff) -> Cutoff {
 }
 
 /// A fresh version above everything ever written, with a timestamp no other record carries.
-pub fn build_record(rng: &mut StdRng, generator: &mut Generator, p: &Params) -> (u64, Cdc, Record) {
-	let version = generator.advance(rng, p);
+pub fn build_record(rng: &mut StdRng, generator: &mut Generator, p: &Params) -> Option<(u64, Cdc, Record)> {
+	let version = generator.advance(rng, p)?;
 	let timestamp = generator.timestamp(rng, p);
 	let (cdc, row) = build(rng, p, version, timestamp);
-	(version, cdc, row)
+	Some((version, cdc, row))
 }
 
 fn build(rng: &mut StdRng, p: &Params, version: u64, timestamp: u64) -> (Cdc, Record) {
@@ -762,11 +999,12 @@ fn nanos(value: u64) -> DateTime {
 }
 
 fn random_version(rng: &mut StdRng, generator: &Generator) -> u64 {
-	rng.random_range(0..=generator.ceiling().saturating_add(3))
+	rng.random_range(generator.base()..=generator.ceiling().saturating_add(3))
 }
 
 fn random_bounds(rng: &mut StdRng, generator: &Generator) -> (Bound<CommitVersion>, Bound<CommitVersion>) {
-	let span: RangeInclusive<u64> = 0..=generator.ceiling().saturating_add(3);
+	// spans from the base rather than zero, or a run seated near the ceiling would probe an empty prefix every time
+	let span: RangeInclusive<u64> = generator.base()..=generator.ceiling().saturating_add(3);
 	let a = rng.random_range(span.clone());
 	let b = rng.random_range(span);
 	let (low, high) = if a <= b {
@@ -789,14 +1027,16 @@ fn random_bounds(rng: &mut StdRng, generator: &Generator) -> (Bound<CommitVersio
 
 /// The bound contract the log answers on, restated here so the model owns it rather than echoing the store.
 fn normalize(start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> Option<(u64, u64)> {
+	// an exclusive bound at the edge of the version space has no inclusive equivalent, so the range is empty, never
+	// clamped
 	let lo = match start {
 		Bound::Included(version) => version.0,
-		Bound::Excluded(version) => version.0.saturating_add(1),
+		Bound::Excluded(version) => version.0.checked_add(1)?,
 		Bound::Unbounded => 0,
 	};
 	let hi = match end {
 		Bound::Included(version) => version.0,
-		Bound::Excluded(version) => version.0.saturating_sub(1),
+		Bound::Excluded(version) => version.0.checked_sub(1)?,
 		Bound::Unbounded => u64::MAX,
 	};
 	if lo > hi {
@@ -815,6 +1055,7 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 		max_steps: min_steps + rng.random_range(40..=120u32),
 		write_pct: rng.random_range(30..=55u32),
 		flush_pct: rng.random_range(5..=25u32),
+		staged_flush_pct: rng.random_range(0..=12u32),
 		drop_pct: rng.random_range(3..=14u32),
 		unbounded_drop_pct: rng.random_range(0..=25u32),
 		reopen_pct: rng.random_range(0..=8u32),
@@ -827,6 +1068,7 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 		max_batch: pick(&mut rng, &[1u64, 2, 5, 16]),
 		max_limit: pick(&mut rng, &[0usize, 1, 3, 8]),
 		timestamp_span: pick(&mut rng, &[1_000u64, 1_000_000]),
+		version_base: pick(&mut rng, &[0u64, u64::MAX - 40]),
 	};
 	(sequence_seed, params)
 }

@@ -30,6 +30,7 @@ chaos_test!(cdc_store_chaos, |seed| {
 			max_steps: 280,
 			write_pct: 46,
 			flush_pct: 10,
+			staged_flush_pct: 6,
 			drop_pct: 8,
 			unbounded_drop_pct: 12,
 			reopen_pct: 3,
@@ -42,6 +43,7 @@ chaos_test!(cdc_store_chaos, |seed| {
 			max_batch: 6,
 			max_limit: 4,
 			timestamp_span: 1_000_000,
+			version_base: 0,
 		},
 	);
 });
@@ -56,6 +58,7 @@ chaos_test!(cdc_store_flush_heavy_chaos, |seed| {
 			max_steps: 280,
 			write_pct: 40,
 			flush_pct: 34,
+			staged_flush_pct: 12,
 			drop_pct: 8,
 			unbounded_drop_pct: 12,
 			reopen_pct: 2,
@@ -68,6 +71,7 @@ chaos_test!(cdc_store_flush_heavy_chaos, |seed| {
 			max_batch: 4,
 			max_limit: 3,
 			timestamp_span: 1_000_000,
+			version_base: 0,
 		},
 	);
 });
@@ -81,6 +85,7 @@ chaos_test!(cdc_store_drop_heavy_chaos, |seed| {
 			max_steps: 320,
 			write_pct: 40,
 			flush_pct: 16,
+			staged_flush_pct: 5,
 			drop_pct: 22,
 			unbounded_drop_pct: 20,
 			reopen_pct: 2,
@@ -93,6 +98,7 @@ chaos_test!(cdc_store_drop_heavy_chaos, |seed| {
 			max_batch: 8,
 			max_limit: 2,
 			timestamp_span: 1_000_000,
+			version_base: 0,
 		},
 	);
 });
@@ -107,6 +113,7 @@ chaos_test!(cdc_store_reopen_chaos, |seed| {
 			max_steps: 280,
 			write_pct: 44,
 			flush_pct: 12,
+			staged_flush_pct: 6,
 			drop_pct: 8,
 			unbounded_drop_pct: 12,
 			reopen_pct: 14,
@@ -119,6 +126,7 @@ chaos_test!(cdc_store_reopen_chaos, |seed| {
 			max_batch: 5,
 			max_limit: 4,
 			timestamp_span: 1_000_000,
+			version_base: 0,
 		},
 	);
 });
@@ -149,6 +157,7 @@ chaos_test!(cdc_store_restart_chaos, |seed| {
 			max_steps: 200,
 			write_pct: 0,
 			flush_pct: 18,
+			staged_flush_pct: 0,
 			drop_pct: 10,
 			unbounded_drop_pct: 15,
 			reopen_pct: 0,
@@ -161,6 +170,34 @@ chaos_test!(cdc_store_restart_chaos, |seed| {
 			max_batch: 6,
 			max_limit: 3,
 			timestamp_span: 1_000_000,
+			version_base: 0,
+		},
+	);
+});
+
+chaos_test!(cdc_store_version_ceiling_chaos, |seed| {
+	// A read step past u64::MAX must stop the walk, never wrap to zero and serve the whole log a second time.
+	drive(
+		seed,
+		Params {
+			min_steps: 140,
+			max_steps: 280,
+			write_pct: 46,
+			flush_pct: 14,
+			staged_flush_pct: 6,
+			drop_pct: 8,
+			unbounded_drop_pct: 10,
+			reopen_pct: 3,
+			duplicate_pct: 14,
+			max_changes: 3,
+			max_value_bytes: 16,
+			max_gap: 2,
+			tables: 3,
+			rows: 12,
+			max_batch: 6,
+			max_limit: 4,
+			timestamp_span: 1_000_000,
+			version_base: u64::MAX - 40,
 		},
 	);
 });

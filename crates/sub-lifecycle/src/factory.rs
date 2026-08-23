@@ -28,7 +28,7 @@ use tracing::{info, warn};
 
 use crate::{
 	actor::LifecycleActor,
-	cdc::ttl::CdcTtlTask,
+	cdc::ttl::task::CdcTtlTask,
 	gc::{
 		epoch::durable::{EpochLogTask, hydrate},
 		historical::actor::HistoricalGcTask,
