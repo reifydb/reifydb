@@ -10,11 +10,11 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::operator_state::{GroupStateKey, OperatorStateKey, node_prefix},
+	key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey, node_prefix},
 	metrics::scan::ScanCounters,
 };
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::Result;
+use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};
 
 use crate::transaction::{FlowTransaction, scope::scoped_key};
@@ -104,6 +104,9 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
 		let scoped = scoped_key(id, key);
+		if key.keyspace() != Some(Keyspace::SEAL_ANCHOR) {
+			self.classify_durable(&scoped)?;
+		}
 		self.set(&scoped, row.into_bytes())
 	}
 
@@ -113,6 +116,9 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
 		let scoped = scoped_key(id, key);
+		if key.keyspace() != Some(Keyspace::SEAL_ANCHOR) {
+			self.classify_durable(&scoped)?;
+		}
 		self.remove_silent(&scoped)
 	}
 
@@ -192,21 +198,22 @@ impl<T: FlowTransaction> StateExtension for T {}
 
 #[inline]
 #[instrument(name = "flow::state::clear::scan", level = "trace", skip(txn), fields(operator_id = id.0))]
-fn scan_keys_for_clear<T: FlowTransaction>(txn: &mut T, id: OperatorId) -> Result<Vec<EncodedKey>> {
+fn scan_keys_for_clear<T: FlowTransaction>(txn: &mut T, id: OperatorId) -> Result<Vec<(EncodedKey, ByteSize)>> {
 	let range = OperatorStateKey::node_range(id);
 	let iter = txn.range(range, RangeScope::All, 1024);
 	let mut keys = Vec::new();
 	for result in iter {
 		let multi = result?;
-		keys.push(multi.key);
+		keys.push((multi.key, ByteSize::from_bytes(multi.bytes.len() as u64)));
 	}
 	Ok(keys)
 }
 
 #[inline]
 #[instrument(name = "flow::state::clear::remove", level = "trace", skip(txn, keys), fields(count = keys.len()))]
-fn remove_keys<T: FlowTransaction>(txn: &mut T, keys: Vec<EncodedKey>) -> Result<()> {
-	for key in keys {
+fn remove_keys<T: FlowTransaction>(txn: &mut T, keys: Vec<(EncodedKey, ByteSize)>) -> Result<()> {
+	for (key, pre) in keys {
+		txn.classify(&key, Some(pre));
 		txn.remove(&key)?;
 	}
 	Ok(())

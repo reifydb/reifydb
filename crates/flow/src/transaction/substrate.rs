@@ -8,7 +8,10 @@ use reifydb_core::{
 	interface::catalog::flow::FlowId,
 	key::operator_state::{Keyspace, OperatorStateKey},
 };
-use reifydb_store_operator::{store::OperatorStore, types::OperatorWrite};
+use reifydb_store_operator::{
+	store::OperatorStore,
+	types::{DurablePre, OperatorWrite},
+};
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 
 use crate::transaction::{
@@ -93,11 +96,27 @@ fn operator_writes(pending: &Pending) -> Vec<OperatorWrite> {
 				side,
 				row_num: row_number,
 			},
-			(None, PendingWrite::Set(row)) => OperatorWrite::Set {
-				operator,
-				key: inner,
-				row: EncodedPodRow::from(row.clone()),
-			},
+			(None, PendingWrite::Set(row)) => {
+				let post = EncodedPodRow::from(row.clone());
+				match pending.pre_at(key) {
+					Some(Some(pre_value_bytes)) => OperatorWrite::Replace {
+						operator,
+						key: inner,
+						pre_value_bytes,
+						post,
+					},
+					Some(None) => OperatorWrite::Insert {
+						operator,
+						key: inner,
+						post,
+					},
+					None => OperatorWrite::Set {
+						operator,
+						key: inner,
+						row: post,
+					},
+				}
+			}
 			(
 				None,
 				PendingWrite::Remove {
@@ -106,7 +125,11 @@ fn operator_writes(pending: &Pending) -> Vec<OperatorWrite> {
 			) => OperatorWrite::Remove {
 				operator,
 				key: inner,
-				pre_value_bytes: None,
+				pre: match pending.pre_at(key) {
+					Some(Some(bytes)) => DurablePre::Present(bytes),
+					Some(None) => DurablePre::Absent,
+					None => DurablePre::Unknown,
+				},
 			},
 		});
 	}

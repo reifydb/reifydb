@@ -8,7 +8,11 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
-use reifydb_store_operator::{config::OperatorStoreConfig, store::OperatorStore, types::OperatorWrite};
+use reifydb_store_operator::{
+	config::OperatorStoreConfig,
+	store::OperatorStore,
+	types::{DurablePre, OperatorWrite},
+};
 use reifydb_value::byte_size::ByteSize;
 
 fn store() -> OperatorStore {
@@ -78,7 +82,9 @@ fn a_correct_chain_of_claims_is_accepted() {
 		OperatorWrite::Remove {
 			operator: OperatorId(1),
 			key: EncodedKey::new(b"k"),
-			pre_value_bytes: Some(ByteSize::from_bytes(EncodedPodRow::new(b"twelve").bytes().len() as u64)),
+			pre: DurablePre::Present(ByteSize::from_bytes(
+				EncodedPodRow::new(b"twelve").bytes().len() as u64
+			)),
 		},
 	]);
 	assert!(store.get(OperatorId(1), &EncodedKey::new(b"k")).is_none());

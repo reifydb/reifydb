@@ -18,7 +18,7 @@ use rusqlite::params;
 use crate::{
 	sqlite::{SqliteOperatorStorage as OperatorStore, schema::ensure_schema, sql::ANCHORS_BY_EXPIRY_SQL},
 	types::{
-		ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, OperatorSealAnchor, OperatorSealAnchorCensus,
+		ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, DurablePre, OperatorSealAnchor, OperatorSealAnchorCensus,
 		OperatorStateCensus, OperatorWrite,
 	},
 };
@@ -625,7 +625,7 @@ fn a_pooled_reader_sees_a_write_the_moment_the_writer_commits() {
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator: OperatorId(1),
 		key: probe.clone(),
-		pre_value_bytes: None,
+		pre: DurablePre::Unknown,
 	}]);
 
 	assert!(!store.contains(OperatorId(1), &probe), "a committed batch must be visible to the pool too");

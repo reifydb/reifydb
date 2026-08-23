@@ -18,7 +18,7 @@ use reifydb_core::{
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
-	types::{BufferedState, OperatorWrite},
+	types::{BufferedState, DurablePre, OperatorWrite},
 };
 use reifydb_testing::testscript;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
@@ -545,7 +545,7 @@ fn parse_batch(command: &Command) -> Result<BatchArgs, Box<dyn StdError>> {
 			"remove" => writes.push(OperatorWrite::Remove {
 				operator,
 				key: encode_key(&decode_binary(&arg.value), keyspace),
-				pre_value_bytes: None,
+				pre: DurablePre::Unknown,
 			}),
 			"anchor_set" => {
 				let parts: Vec<&str> = arg.value.split('/').collect();

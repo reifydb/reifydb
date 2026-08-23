@@ -110,7 +110,7 @@ pub enum OperatorWrite {
 	Remove {
 		operator: OperatorId,
 		key: EncodedKey,
-		pre_value_bytes: Option<ByteSize>,
+		pre: DurablePre,
 	},
 	AnchorSet {
 		operator: OperatorId,
@@ -152,9 +152,9 @@ impl OperatorWrite {
 				..
 			} => DurablePre::Present(*pre_value_bytes),
 			OperatorWrite::Remove {
-				pre_value_bytes: Some(bytes),
+				pre,
 				..
-			} => DurablePre::Present(*bytes),
+			} => *pre,
 			_ => DurablePre::Unknown,
 		}
 	}

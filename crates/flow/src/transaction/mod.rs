@@ -26,7 +26,7 @@ use reifydb_transaction::{
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	transaction::admin::AdminTransaction,
 };
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, byte_size::ByteSize, value::datetime::DateTime};
 
 pub mod anchor;
 pub mod deferred;
@@ -251,6 +251,23 @@ pub trait FlowTransaction: Sized + Send + 'static {
 
 	fn remove_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
 		self.pending_layers_mut().remove_batch(keys);
+		Ok(())
+	}
+
+	fn classify(&mut self, key: &EncodedKey, pre: Option<ByteSize>) {
+		self.pending_layers_mut().classify(key.clone(), pre);
+	}
+
+	fn is_classified(&self, key: &EncodedKey) -> bool {
+		self.pending_layers().is_classified(key)
+	}
+
+	fn classify_durable(&mut self, key: &EncodedKey) -> Result<()> {
+		if self.is_classified(key) {
+			return Ok(());
+		}
+		let pre = self.storage_get(key)?.map(|bytes| ByteSize::from_bytes(bytes.len() as u64));
+		self.classify(key, pre);
 		Ok(())
 	}
 

@@ -23,7 +23,7 @@ use crate::{
 		OperatorCommitBuffer,
 		batch::{DropMarker, StateEntry},
 	},
-	types::{BufferedAnchor, BufferedState, OperatorWrite},
+	types::{BufferedAnchor, BufferedState, DurablePre, OperatorWrite},
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -493,7 +493,7 @@ fn apply_batch_maps_every_write_variant_onto_its_entry() {
 		OperatorWrite::Remove {
 			operator: OP_A,
 			key: key("removed"),
-			pre_value_bytes: None,
+			pre: DurablePre::Unknown,
 		},
 		OperatorWrite::AnchorSet {
 			operator: OP_A,

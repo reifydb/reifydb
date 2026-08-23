@@ -28,7 +28,7 @@ use reifydb_store_operator::{
 		point::{OperatorPointConfig, OperatorPointTier},
 		range::{OperatorRangeConfig, OperatorRangeTier},
 	},
-	types::{OperatorBatch, OperatorWrite},
+	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -316,7 +316,7 @@ fn a_batch_write_invalidates_every_state_key_it_carries() {
 		OperatorWrite::Remove {
 			operator: OP_A,
 			key: key(2),
-			pre_value_bytes: None,
+			pre: DurablePre::Unknown,
 		},
 	]);
 	assert!(store.flush_pending_blocking(), "the batch must reach sqlite before the staleness is observable");

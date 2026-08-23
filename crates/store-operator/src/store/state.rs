@@ -21,7 +21,7 @@ use tracing::instrument;
 use crate::{
 	store::{OperatorStore, StandardOperatorStore},
 	tier::{commit::batch::DropMarker, range::BucketId},
-	types::{BufferedState, OperatorBatch, OperatorWrite},
+	types::{BufferedState, DurablePre, OperatorBatch, OperatorWrite},
 };
 
 impl StandardOperatorStore {
@@ -95,8 +95,17 @@ impl StandardOperatorStore {
 				OperatorWrite::Remove {
 					operator,
 					key,
-					pre_value_bytes,
-				} => (*operator, key, pre_value_bytes.map(Some), None),
+					pre,
+				} => (
+					*operator,
+					key,
+					match pre {
+						DurablePre::Unknown => None,
+						DurablePre::Absent => Some(None),
+						DurablePre::Present(bytes) => Some(Some(*bytes)),
+					},
+					None,
+				),
 				OperatorWrite::AnchorSet {
 					..
 				}

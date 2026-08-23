@@ -4,6 +4,7 @@
 use std::{collections::BTreeMap, iter::once, mem::take, ops::RangeBounds};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_value::byte_size::ByteSize;
 
 use crate::delta::RemoveVisibility;
 
@@ -19,6 +20,7 @@ pub enum PendingWrite {
 pub struct Pending {
 	entries: Vec<(EncodedKey, PendingWrite)>,
 	index: BTreeMap<EncodedKey, usize>,
+	pre: BTreeMap<EncodedKey, Option<ByteSize>>,
 }
 
 impl Pending {
@@ -26,7 +28,20 @@ impl Pending {
 		Self {
 			entries: Vec::new(),
 			index: BTreeMap::new(),
+			pre: BTreeMap::new(),
 		}
+	}
+
+	pub fn classify(&mut self, key: EncodedKey, pre: Option<ByteSize>) {
+		self.pre.entry(key).or_insert(pre);
+	}
+
+	pub fn is_classified(&self, key: &EncodedKey) -> bool {
+		self.pre.contains_key(key)
+	}
+
+	pub fn pre_at(&self, key: &EncodedKey) -> Option<Option<ByteSize>> {
+		self.pre.get(key).copied()
 	}
 
 	fn put(&mut self, key: EncodedKey, write: PendingWrite) {
@@ -118,6 +133,9 @@ impl Pending {
 		for (k, w) in other.iter_ordered() {
 			self.put(k.clone(), w.clone());
 		}
+		for (k, pre) in &other.pre {
+			self.pre.entry(k.clone()).or_insert(*pre);
+		}
 	}
 
 	pub fn iter_ordered(&self) -> impl DoubleEndedIterator<Item = (&EncodedKey, &PendingWrite)> + '_ {
@@ -206,6 +224,14 @@ impl PendingLayers {
 
 	pub fn remove_batch(&mut self, keys: &[EncodedKey]) {
 		self.top.remove_batch(keys);
+	}
+
+	pub fn classify(&mut self, key: EncodedKey, pre: Option<ByteSize>) {
+		self.top.classify(key, pre);
+	}
+
+	pub fn is_classified(&self, key: &EncodedKey) -> bool {
+		self.top.is_classified(key)
 	}
 
 	fn newest_containing(&self, key: &EncodedKey) -> Option<&Pending> {

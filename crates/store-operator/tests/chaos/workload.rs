@@ -14,7 +14,7 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator_state::GroupId,
 };
-use reifydb_store_operator::types::OperatorWrite;
+use reifydb_store_operator::types::{DurablePre, OperatorWrite};
 use reifydb_testing_chaos::fuzz::{pick, run_reported, split};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
@@ -674,7 +674,7 @@ fn random_batch(rng: &mut StdRng, state: &mut State, p: &Params, step: u32) -> B
 				writes.push(OperatorWrite::Remove {
 					operator: OperatorId(operator),
 					key: key_bytes,
-					pre_value_bytes: None,
+					pre: DurablePre::Unknown,
 				});
 			}
 			6..=8 => {
