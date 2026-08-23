@@ -13,11 +13,12 @@ use reifydb_core::{
 	key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey, node_prefix},
 	metrics::scan::ScanCounters,
 };
+use reifydb_store_operator::types::ANCHOR_VALUE_BYTES;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};
 
-use crate::transaction::{FlowTransaction, scope::scoped_key};
+use crate::transaction::{FlowTransaction, anchor::decode_anchor_suffix, scope::scoped_key};
 
 #[derive(Debug, Clone)]
 pub struct StateRange {
@@ -104,9 +105,7 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
 		let scoped = scoped_key(id, key);
-		if key.keyspace() != Some(Keyspace::SEAL_ANCHOR) {
-			self.classify_durable(&scoped)?;
-		}
+		classify_state_write(self, id, key, &scoped)?;
 		self.set(&scoped, row.into_bytes())
 	}
 
@@ -116,9 +115,7 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
 		let scoped = scoped_key(id, key);
-		if key.keyspace() != Some(Keyspace::SEAL_ANCHOR) {
-			self.classify_durable(&scoped)?;
-		}
+		classify_state_write(self, id, key, &scoped)?;
 		self.remove_silent(&scoped)
 	}
 
@@ -195,6 +192,39 @@ pub trait StateExtension: FlowTransaction {
 }
 
 impl<T: FlowTransaction> StateExtension for T {}
+
+#[inline]
+fn classify_state_write<T: FlowTransaction>(
+	txn: &mut T,
+	id: OperatorId,
+	key: &GroupStateKey,
+	scoped: &EncodedKey,
+) -> Result<()> {
+	if key.keyspace() == Some(Keyspace::SEAL_ANCHOR) {
+		return classify_durable_anchor(txn, id, key, scoped);
+	}
+	txn.classify_durable(scoped)
+}
+
+#[inline]
+fn classify_durable_anchor<T: FlowTransaction>(
+	txn: &mut T,
+	id: OperatorId,
+	key: &GroupStateKey,
+	scoped: &EncodedKey,
+) -> Result<()> {
+	if txn.is_classified(scoped) {
+		return Ok(());
+	}
+	let Some((group, side, row_number)) = OperatorStateKey::decode_inner(key.as_slice())
+		.and_then(|(group, _, suffix)| decode_anchor_suffix(&suffix).map(|(side, row)| (group, side, row)))
+	else {
+		return Ok(());
+	};
+	let present = txn.operator_store().anchor_get(id, group, side, row_number).is_some();
+	txn.classify(scoped, present.then_some(ANCHOR_VALUE_BYTES));
+	Ok(())
+}
 
 #[inline]
 #[instrument(name = "flow::state::clear::scan", level = "trace", skip(txn), fields(operator_id = id.0))]

@@ -11,9 +11,10 @@ use reifydb_flow::transaction::{
 	anchor::{SealAnchor, SealAnchorExtension, anchor_key},
 	deferred::DeferredTransaction,
 	state::StateExtension,
-	substrate::{FlowSubstrate, apply_operator_state},
+	substrate::{FlowSubstrate, apply_operator_state, operator_writes},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
+use reifydb_store_operator::types::OperatorWrite;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
@@ -61,6 +62,13 @@ fn clear(txn: &mut DeferredTransaction, side: u8, row_number: u64) {
 fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
 	let pending = txn.take_pending();
 	apply_operator_state(&engine.inner().operator_state(), &pending);
+}
+
+fn commit_writes(engine: &TestEngine, txn: &mut DeferredTransaction) -> Vec<OperatorWrite> {
+	let pending = txn.take_pending();
+	let writes = operator_writes(&pending);
+	apply_operator_state(&engine.inner().operator_state(), &pending);
+	writes
 }
 
 #[test]
@@ -284,4 +292,75 @@ fn one_groups_anchors_never_answer_for_another() {
 
 	assert_eq!(txn.anchor_min(NODE, GROUP).unwrap(), Some(at_millis(9_000)));
 	assert_eq!(txn.anchor_min(NODE, GroupId(8)).unwrap(), Some(at_millis(1_000)));
+}
+
+#[test]
+fn re_arming_an_anchor_the_store_already_holds_classifies_as_a_replace() {
+	// An insert claimed for a tuple the table already carries inflates a census bucket that must stay flat.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	arm(&mut txn, LEFT, 1, 5_000);
+	assert!(
+		matches!(commit_writes(&engine, &mut txn).as_slice(), [OperatorWrite::AnchorInsert { .. }]),
+		"precondition: the first arming has no committed row and must classify as an insert"
+	);
+
+	arm(&mut txn, LEFT, 1, 20_000);
+	let writes = commit_writes(&engine, &mut txn);
+
+	match writes.as_slice() {
+		[
+			OperatorWrite::AnchorReplace {
+				operator,
+				group,
+				side,
+				row_num,
+				expiry,
+			},
+		] => {
+			assert_eq!(*operator, NODE);
+			assert_eq!(*group, GROUP);
+			assert_eq!(*side, LEFT);
+			assert_eq!(*row_num, RowNumber(1));
+			assert_eq!(*expiry, at_millis(20_000), "the replace must carry the batch's own new expiry");
+		}
+		other => panic!("a re-arm over a committed anchor must classify as a replace, got {other:?}"),
+	}
+
+	let store = engine.inner().operator_state();
+	assert_eq!(store.anchor_get(NODE, GROUP, LEFT, RowNumber(1)), Some(at_millis(20_000)));
+	assert_eq!(
+		store.anchors_by_expiry(NODE, GROUP, 8).len(),
+		1,
+		"a re-arm moves the one anchor, it never leaves a second behind"
+	);
+	assert_eq!(
+		store.anchor_census().iter().find(|entry| entry.operator == NODE).map(|entry| entry.keys),
+		Some(1),
+		"and the operator still owns exactly one anchor"
+	);
+}
+
+#[test]
+fn a_re_arm_raised_on_a_later_transaction_is_a_replace_too() {
+	// Each flow batch runs on its own transaction, so the pre-image must come from the store, not a pending.
+	let engine = TestEngine::new();
+	let mut first = deferred(&engine);
+	arm(&mut first, LEFT, 1, 5_000);
+	commit(&engine, &mut first);
+
+	let mut second = deferred(&engine);
+	arm(&mut second, LEFT, 1, 20_000);
+	let writes = commit_writes(&engine, &mut second);
+
+	match writes.as_slice() {
+		[
+			OperatorWrite::AnchorReplace {
+				expiry,
+				..
+			},
+		] => assert_eq!(*expiry, at_millis(20_000)),
+		other => panic!("a fresh transaction must still see the committed anchor as present, got {other:?}"),
+	}
+	assert_eq!(engine.inner().operator_state().anchors_by_expiry(NODE, GROUP, 8).len(), 1);
 }

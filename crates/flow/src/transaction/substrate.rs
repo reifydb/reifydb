@@ -57,7 +57,7 @@ pub fn apply_operator_state_with_checkpoints(
 	store.apply_batch_with_checkpoints(&operator_writes(pending), checkpoints, checkpoint_deletes);
 }
 
-fn operator_writes(pending: &Pending) -> Vec<OperatorWrite> {
+pub fn operator_writes(pending: &Pending) -> Vec<OperatorWrite> {
 	let mut writes = Vec::with_capacity(pending.len());
 	for (key, write) in pending.iter_sorted() {
 		let Some(OperatorScope {
@@ -77,14 +77,33 @@ fn operator_writes(pending: &Pending) -> Vec<OperatorWrite> {
 				)
 			});
 		writes.push(match (anchor, write) {
-			(Some((group, (side, row_number))), PendingWrite::Set(row)) => OperatorWrite::AnchorSet {
-				operator,
-				group,
-				side,
-				row_num: row_number,
-				expiry: decode_anchor_expiry(row)
-					.expect("seal anchor rows are written only through SealAnchor"),
-			},
+			(Some((group, (side, row_number))), PendingWrite::Set(row)) => {
+				let expiry = decode_anchor_expiry(row)
+					.expect("seal anchor rows are written only through SealAnchor");
+				match pending.pre_at(key) {
+					Some(Some(_)) => OperatorWrite::AnchorReplace {
+						operator,
+						group,
+						side,
+						row_num: row_number,
+						expiry,
+					},
+					Some(None) => OperatorWrite::AnchorInsert {
+						operator,
+						group,
+						side,
+						row_num: row_number,
+						expiry,
+					},
+					None => OperatorWrite::AnchorSet {
+						operator,
+						group,
+						side,
+						row_num: row_number,
+						expiry,
+					},
+				}
+			}
 			(
 				Some((group, (side, row_number))),
 				PendingWrite::Remove {
