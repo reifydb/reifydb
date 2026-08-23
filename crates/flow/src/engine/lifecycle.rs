@@ -97,6 +97,7 @@ mod tests {
 	};
 	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
 	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_store_operator::types::OperatorWrite;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{
 		byte_size::ByteSize,
@@ -162,7 +163,11 @@ mod tests {
 		inner.insert_operator(FlowId(1), operator, Box::new(SourceSeriesOperator::new(operator)));
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
-		store.set(operator, EncodedKey::new(b"k"), EncodedPodRow::new(&[1u8; 64]));
+		store.apply_batch(&[OperatorWrite::Insert {
+			operator,
+			key: EncodedKey::new(b"k"),
+			post: EncodedPodRow::new(&[1u8; 64]),
+		}]);
 		assert!(store.bytes(operator) > ByteSize::ZERO, "precondition: the operator's state is resident");
 
 		inner.remove_flow(FlowId(1));

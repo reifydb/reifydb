@@ -28,8 +28,9 @@ use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
+	types::{DurablePre, OperatorWrite},
 };
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
 const OP: OperatorId = OperatorId(1);
 
@@ -90,7 +91,11 @@ fn every_write_from_every_concurrent_writer_is_readable_after_the_flush() {
 			let store = store.clone();
 			thread::spawn(move || {
 				for index in 0..KEYS_PER_WRITER {
-					store.set(OperatorId(writer), key(index), row(&format!("{writer}-{index}")));
+					store.apply_batch(&[OperatorWrite::Insert {
+						operator: OperatorId(writer),
+						key: key(index),
+						post: row(&format!("{writer}-{index}")),
+					}]);
 				}
 			})
 		})
@@ -134,7 +139,12 @@ fn a_read_racing_the_flush_never_sees_the_value_the_flush_is_replacing() {
 		persistent.set(OP, key(index), row(&version(0)));
 	}
 	for index in 0..KEYS_PER_WRITER {
-		store.set(OP, key(index), row(&version(1)));
+		store.apply_batch(&[OperatorWrite::Replace {
+			operator: OP,
+			key: key(index),
+			pre_value_bytes: ByteSize::from_bytes(row(&version(0)).bytes().len() as u64),
+			post: row(&version(1)),
+		}]);
 	}
 
 	let stop = Arc::new(AtomicBool::new(false));
@@ -175,7 +185,12 @@ fn a_read_racing_the_flush_never_sees_the_value_the_flush_is_replacing() {
 	for round in 2..=FLUSH_ROUNDS {
 		assert!(store.flush_pending_blocking(), "the buffered version must reach the flusher");
 		for index in 0..KEYS_PER_WRITER {
-			store.set(OP, key(index), row(&version(round)));
+			store.apply_batch(&[OperatorWrite::Replace {
+				operator: OP,
+				key: key(index),
+				pre_value_bytes: ByteSize::from_bytes(row(&version(round - 1)).bytes().len() as u64),
+				post: row(&version(round)),
+			}]);
 		}
 	}
 	assert!(store.flush_pending_blocking(), "the last buffered version must reach the flusher");
@@ -203,13 +218,21 @@ fn a_write_that_lands_after_a_drop_marker_survives_the_drop() {
 	for index in 0..KEYS_PER_WRITER {
 		persistent.set(OP, key(index), row("pre-drop"));
 	}
-	store.set(OP, key(1_000), row("pre-drop-buffered"));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OP,
+		key: key(1_000),
+		post: row("pre-drop-buffered"),
+	}]);
 
 	let dropper = {
 		let store = store.clone();
 		thread::spawn(move || {
 			store.drop_operator_state(OP);
-			store.set(OP, key(2_000), row("post-drop"));
+			store.apply_batch(&[OperatorWrite::Insert {
+				operator: OP,
+				key: key(2_000),
+				post: row("post-drop"),
+			}]);
 		})
 	};
 
@@ -252,8 +275,29 @@ fn interleaved_writes_and_removals_converge_on_the_last_write() {
 			let store = store.clone();
 			thread::spawn(move || {
 				for _ in 0..KEYS_PER_WRITER {
-					store.set(OP, key(1), row("churn"));
-					store.remove(OP, &key(1));
+					let write = match store.get(OP, &key(1)) {
+						Some(pre) => OperatorWrite::Replace {
+							operator: OP,
+							key: key(1),
+							pre_value_bytes: ByteSize::from_bytes(pre.bytes().len() as u64),
+							post: row("churn"),
+						},
+						None => OperatorWrite::Insert {
+							operator: OP,
+							key: key(1),
+							post: row("churn"),
+						},
+					};
+					store.apply_batch(&[
+						write,
+						OperatorWrite::Remove {
+							operator: OP,
+							key: key(1),
+							pre: DurablePre::Present(ByteSize::from_bytes(
+								row("churn").bytes().len() as u64,
+							)),
+						},
+					]);
 				}
 			})
 		})
@@ -265,7 +309,11 @@ fn interleaved_writes_and_removals_converge_on_the_last_write() {
 	assert!(store.flush_pending_blocking(), "the churn must be drained before the final write");
 	assert!(store.get(OP, &key(1)).is_none(), "every thread ended on a removal, so the key must read as missing");
 
-	store.set(OP, key(1), row("final"));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OP,
+		key: key(1),
+		post: row("final"),
+	}]);
 	assert!(store.flush_pending_blocking(), "the final write must reach the flusher");
 
 	assert_eq!(

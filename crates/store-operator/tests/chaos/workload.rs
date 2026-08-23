@@ -101,16 +101,39 @@ fn write_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Params
 		0..=3 => {
 			let key_bytes = random_key(rng, p);
 			let value = row(operator, step as u64, step);
+			let pre = state.oracle.value_bytes(operator, key_bytes.as_slice());
 			state.oracle.set(operator, key_bytes.as_slice(), value.clone());
+			let write = match pre {
+				Some(pre_value_bytes) => OperatorWrite::Replace {
+					operator: OperatorId(operator),
+					key: key_bytes,
+					pre_value_bytes,
+					post: value,
+				},
+				None => OperatorWrite::Insert {
+					operator: OperatorId(operator),
+					key: key_bytes,
+					post: value,
+				},
+			};
 			for config in &harness.configs {
-				config.store.set(OperatorId(operator), key_bytes.clone(), value.clone());
+				config.store.apply_batch(&[write.clone()]);
 			}
 		}
 		4..=5 => {
 			let key_bytes = random_key(rng, p);
+			let pre = match state.oracle.value_bytes(operator, key_bytes.as_slice()) {
+				Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
+				None => DurablePre::Absent,
+			};
 			state.oracle.remove(operator, key_bytes.as_slice());
+			let write = OperatorWrite::Remove {
+				operator: OperatorId(operator),
+				key: key_bytes,
+				pre,
+			};
 			for config in &harness.configs {
-				config.store.remove(OperatorId(operator), &key_bytes);
+				config.store.apply_batch(&[write.clone()]);
 			}
 		}
 		_ => {

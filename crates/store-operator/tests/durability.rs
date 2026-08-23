@@ -27,7 +27,10 @@ use reifydb_store_operator::{
 	types::OperatorWrite,
 };
 use reifydb_testing::tempdir::temp_dir;
-use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+};
 
 const OP: OperatorId = OperatorId(1);
 
@@ -69,12 +72,30 @@ fn body(store: &OperatorStore, operator: OperatorId, suffix: u8) -> Option<Strin
 		.map(|row| String::from_utf8(row.body().to_vec()).expect("test bodies are utf8"))
 }
 
+fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
+	// reading the pre-image back keeps the claim truthful even when an earlier write in the same test moved the key
+	let write = match store.get(operator, &key) {
+		Some(pre) => OperatorWrite::Replace {
+			operator,
+			key,
+			pre_value_bytes: ByteSize::from_bytes(pre.bytes().len() as u64),
+			post: row,
+		},
+		None => OperatorWrite::Insert {
+			operator,
+			key,
+			post: row,
+		},
+	};
+	store.apply_batch(&[write]);
+}
+
 #[test]
 fn a_write_that_was_never_flushed_is_not_there_after_a_restart() {
 	// nothing promised durability, so the write must be gone rather than half there
 	temp_dir(|dir| {
 		let store = store_at(dir);
-		store.set(OP, key(1), row("unflushed"));
+		put(&store, OP, key(1), row("unflushed"));
 		assert_eq!(body(&store, OP, 1).as_deref(), Some("unflushed"), "the live store serves its own buffer");
 
 		let booted = store_at(dir);
@@ -93,7 +114,7 @@ fn a_write_that_was_never_flushed_is_not_there_after_a_restart() {
 fn a_flushed_write_is_there_after_a_restart() {
 	temp_dir(|dir| {
 		let store = store_at(dir);
-		store.set(OP, key(1), row("flushed"));
+		put(&store, OP, key(1), row("flushed"));
 		assert!(store.flush_pending_blocking(), "a healthy sqlite tier must report the flush as completed");
 
 		let booted = store_at(dir);
@@ -117,10 +138,10 @@ fn a_reopened_store_never_shows_a_checkpoint_ahead_of_the_state_it_was_earned_by
 		let slices = [(1u8, 10u64), (2, 20), (3, 30)];
 		for (index, (suffix, version)) in slices.iter().enumerate() {
 			store.apply_batch_with_checkpoints(
-				&[OperatorWrite::Set {
+				&[OperatorWrite::Insert {
 					operator: OP,
 					key: key(*suffix),
-					row: row(&format!("slice-{suffix}")),
+					post: row(&format!("slice-{suffix}")),
 				}],
 				&[(FLOW, CommitVersion(*version))],
 				&[],
@@ -209,13 +230,13 @@ fn a_drop_recorded_before_a_flush_is_still_a_drop_after_a_restart() {
 	// a lost marker boots a recreated operator on the dead operator's state
 	temp_dir(|dir| {
 		let store = store_at(dir);
-		store.set(OP, key(1), row("before"));
-		store.set(OTHER, key(1), row("neighbour"));
+		put(&store, OP, key(1), row("before"));
+		put(&store, OTHER, key(1), row("neighbour"));
 		store.anchor_set(OP, GROUP, SIDE, RowNumber(1), DateTime::from_millis(100));
 		assert!(store.flush_pending_blocking(), "the pre-drop rows must be durable for the drop to have work");
 
 		store.drop_operator_state(OP);
-		store.set(OP, key(2), row("after"));
+		put(&store, OP, key(2), row("after"));
 		assert!(store.flush_pending_blocking(), "the marker and the later write travel in one batch");
 
 		let booted = store_at(dir);
@@ -254,7 +275,7 @@ fn flushing_twice_writes_the_same_state_once_and_leaves_the_flusher_usable() {
 		assert!(store.flush_pending_blocking(), "an empty buffer has nothing to write and must still succeed");
 		assert!(store.flush_pending_blocking(), "a second empty flush must behave exactly like the first");
 
-		store.set(OP, key(1), row("once"));
+		put(&store, OP, key(1), row("once"));
 		store.checkpoint_set(FLOW, CommitVersion(5));
 		assert!(store.flush_pending_blocking(), "the write must reach the flusher");
 		assert!(
@@ -267,7 +288,7 @@ fn flushing_twice_writes_the_same_state_once_and_leaves_the_flusher_usable() {
 		assert_eq!(body(&booted, OP, 1).as_deref(), Some("once"), "repeated flushes must not lose the row");
 		assert_eq!(booted.checkpoint_get(FLOW), Some(CommitVersion(5)));
 
-		store.set(OP, key(2), row("after-the-repeats"));
+		put(&store, OP, key(2), row("after-the-repeats"));
 		assert!(store.flush_pending_blocking(), "the flusher must still be usable after the repeats");
 
 		let rebooted = store_at(dir);

@@ -9,9 +9,16 @@
 use std::ops::Bound;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::pod::EncodedPodRow,
+};
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_store_operator::types::{DurablePre, OperatorWrite};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::{
 	fixtures::{Harness, key, row},
@@ -45,9 +52,11 @@ pub fn drive(seed: u64, p: Params) {
 	for suffix in 1..=(p.frozen + p.mutable) {
 		let key_bytes = key(GROUP, KEYSPACE, suffix);
 		let value = row(FROZEN.0, suffix, 0);
+		let pre = oracle.value_bytes(FROZEN.0, key_bytes.as_slice());
 		oracle.set(FROZEN.0, key_bytes.as_slice(), value.clone());
+		let write = state_write(FROZEN, key_bytes, value, pre);
 		for config in &harness.configs {
-			config.store.set(FROZEN, key_bytes.clone(), value.clone());
+			config.store.apply_batch(&[write.clone()]);
 		}
 	}
 	// Rewriting only the odd half after a flush is what leaves the drained range split across both layers.
@@ -58,9 +67,11 @@ pub fn drive(seed: u64, p: Params) {
 		}
 		let key_bytes = key(GROUP, KEYSPACE, suffix);
 		let value = row(FROZEN.0, suffix, 1);
+		let pre = oracle.value_bytes(FROZEN.0, key_bytes.as_slice());
 		oracle.set(FROZEN.0, key_bytes.as_slice(), value.clone());
+		let write = state_write(FROZEN, key_bytes, value, pre);
 		for config in &harness.configs {
-			config.store.set(FROZEN, key_bytes.clone(), value.clone());
+			config.store.apply_batch(&[write.clone()]);
 		}
 	}
 
@@ -126,26 +137,39 @@ fn interleave(rng: &mut StdRng, harness: &Harness, oracle: &mut Oracle, p: &Para
 				let suffix = p.frozen + rng.random_range(1..=p.mutable);
 				let key_bytes = key(GROUP, KEYSPACE, suffix);
 				let value = row(FROZEN.0, suffix, index);
+				let pre = oracle.value_bytes(FROZEN.0, key_bytes.as_slice());
 				oracle.set(FROZEN.0, key_bytes.as_slice(), value.clone());
+				let write = state_write(FROZEN, key_bytes, value, pre);
 				for config in &harness.configs {
-					config.store.set(FROZEN, key_bytes.clone(), value.clone());
+					config.store.apply_batch(&[write.clone()]);
 				}
 			}
 			1 => {
 				let suffix = p.frozen + rng.random_range(1..=p.mutable);
 				let key_bytes = key(GROUP, KEYSPACE, suffix);
+				let pre = match oracle.value_bytes(FROZEN.0, key_bytes.as_slice()) {
+					Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
+					None => DurablePre::Absent,
+				};
 				oracle.remove(FROZEN.0, key_bytes.as_slice());
+				let write = OperatorWrite::Remove {
+					operator: FROZEN,
+					key: key_bytes,
+					pre,
+				};
 				for config in &harness.configs {
-					config.store.remove(FROZEN, &key_bytes);
+					config.store.apply_batch(&[write.clone()]);
 				}
 			}
 			2 => {
 				let suffix = rng.random_range(1..=p.frozen + p.mutable);
 				let key_bytes = key(GROUP, KEYSPACE, suffix);
 				let value = row(NOISE.0, suffix, index);
+				let pre = oracle.value_bytes(NOISE.0, key_bytes.as_slice());
 				oracle.set(NOISE.0, key_bytes.as_slice(), value.clone());
+				let write = state_write(NOISE, key_bytes, value, pre);
 				for config in &harness.configs {
-					config.store.set(NOISE, key_bytes.clone(), value.clone());
+					config.store.apply_batch(&[write.clone()]);
 				}
 			}
 			_ => {
@@ -166,5 +190,21 @@ fn interleave(rng: &mut StdRng, harness: &Harness, oracle: &mut Oracle, p: &Para
 	}
 	if rng.random_range(0u32..100) < p.flush_pct {
 		harness.flush_all();
+	}
+}
+
+fn state_write(operator: OperatorId, key: EncodedKey, post: EncodedPodRow, pre: Option<ByteSize>) -> OperatorWrite {
+	match pre {
+		Some(pre_value_bytes) => OperatorWrite::Replace {
+			operator,
+			key,
+			pre_value_bytes,
+			post,
+		},
+		None => OperatorWrite::Insert {
+			operator,
+			key,
+			post,
+		},
 	}
 }

@@ -14,7 +14,10 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator_state::GroupId,
 };
-use reifydb_store_operator::store::OperatorStore;
+use reifydb_store_operator::{
+	store::OperatorStore,
+	types::{DurablePre, OperatorWrite},
+};
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
@@ -80,8 +83,21 @@ fn mutate(rng: &mut StdRng, store: &OperatorStore, oracle: &mut Oracle, p: &Para
 			let key_bytes = key(group, keyspace, suffix);
 			let value = row(operator, suffix, step);
 
+			let pre = oracle.value_bytes(operator, key_bytes.as_slice());
 			oracle.set(operator, key_bytes.as_slice(), value.clone());
-			store.set(OperatorId(operator), key_bytes, value);
+			store.apply_batch(&[match pre {
+				Some(pre_value_bytes) => OperatorWrite::Replace {
+					operator: OperatorId(operator),
+					key: key_bytes,
+					pre_value_bytes,
+					post: value,
+				},
+				None => OperatorWrite::Insert {
+					operator: OperatorId(operator),
+					key: key_bytes,
+					post: value,
+				},
+			}]);
 		}
 		5..=6 => {
 			let group = rng.random_range(1..=p.groups);
@@ -89,8 +105,16 @@ fn mutate(rng: &mut StdRng, store: &OperatorStore, oracle: &mut Oracle, p: &Para
 			let suffix = rng.random_range(1..=p.suffixes);
 			let key_bytes = key(group, keyspace, suffix);
 
+			let pre = match oracle.value_bytes(operator, key_bytes.as_slice()) {
+				Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
+				None => DurablePre::Absent,
+			};
 			oracle.remove(operator, key_bytes.as_slice());
-			store.remove(OperatorId(operator), &key_bytes);
+			store.apply_batch(&[OperatorWrite::Remove {
+				operator: OperatorId(operator),
+				key: key_bytes,
+				pre,
+			}]);
 		}
 		7..=8 => {
 			let group = rng.random_range(1..=p.groups);

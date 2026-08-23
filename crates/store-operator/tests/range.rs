@@ -28,7 +28,7 @@ use reifydb_store_operator::{
 		point::{OperatorPointConfig, OperatorPointTier},
 		range::{OperatorRangeConfig, OperatorRangeTier},
 	},
-	types::OperatorBatch,
+	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
 use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
@@ -104,6 +104,24 @@ fn range_buckets(store: &OperatorStore) -> usize {
 	range_tier(store).buckets()
 }
 
+fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
+	// reading the pre-image back keeps the claim truthful even when an earlier write in the same test moved the key
+	let write = match store.get(operator, &key) {
+		Some(pre) => OperatorWrite::Replace {
+			operator,
+			key,
+			pre_value_bytes: ByteSize::from_bytes(pre.bytes().len() as u64),
+			post: row,
+		},
+		None => OperatorWrite::Insert {
+			operator,
+			key,
+			post: row,
+		},
+	};
+	store.apply_batch(&[write]);
+}
+
 #[test]
 fn a_range_over_a_complete_bucket_is_served_without_reaching_the_persistent_tier() {
 	// A scan that ran to the end has paid for every row in the bucket's key range, so a repeat that still fetches
@@ -167,7 +185,7 @@ fn a_write_into_a_complete_bucket_stops_it_answering_the_next_range() {
 	assert_eq!(range_buckets(&store), 1, "the bucket must start resident or the write proves nothing");
 
 	storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, 4), row("v4"));
-	store.set(OP_A, key_in(Keyspace::ACCUMULATOR, 1), row("rewritten"));
+	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 1), row("rewritten"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite before the staleness is observable");
 
 	assert_eq!(
@@ -281,7 +299,7 @@ fn a_write_of_a_key_the_bucket_never_held_keeps_the_claim_and_the_flush_still_se
 	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
 	assert_eq!(range_buckets(&store), 1, "the bucket must start resident or the write proves nothing");
 
-	store.set(OP_A, key_in(Keyspace::ACCUMULATOR, 4), row("v4"));
+	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 4), row("v4"));
 
 	assert_eq!(
 		range_buckets(&store),
@@ -324,7 +342,7 @@ fn a_write_of_a_key_the_bucket_holds_drops_the_claim() {
 	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
 	assert_eq!(range_buckets(&store), 1, "the bucket must start resident or the write proves nothing");
 
-	store.set(OP_A, key_in(Keyspace::ACCUMULATOR, 2), row("rewritten"));
+	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 2), row("rewritten"));
 
 	assert_eq!(
 		range_buckets(&store),
@@ -348,7 +366,11 @@ fn a_removal_of_a_key_the_bucket_holds_drops_the_claim() {
 	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
 	assert_eq!(range_buckets(&store), 1, "the bucket must start resident or the removal proves nothing");
 
-	store.remove(OP_A, &key_in(Keyspace::ACCUMULATOR, 2));
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator: OP_A,
+		key: key_in(Keyspace::ACCUMULATOR, 2),
+		pre: DurablePre::Present(ByteSize::from_bytes(row("v2").bytes().len() as u64)),
+	}]);
 
 	assert_eq!(range_buckets(&store), 0, "a removal of a key the bucket holds must drop it just as a write does");
 	assert_eq!(
@@ -368,7 +390,11 @@ fn a_removal_of_a_key_the_bucket_never_held_keeps_the_claim() {
 	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
 	assert_eq!(range_buckets(&store), 1, "the bucket must start resident or the removal proves nothing");
 
-	store.remove(OP_A, &key_in(Keyspace::ACCUMULATOR, 9));
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator: OP_A,
+		key: key_in(Keyspace::ACCUMULATOR, 9),
+		pre: DurablePre::Absent,
+	}]);
 	assert!(store.flush_pending_blocking(), "the tombstone must reach sqlite through the same flush path");
 
 	assert_eq!(
@@ -406,7 +432,7 @@ fn a_flushed_row_too_big_for_the_range_budget_takes_the_whole_bucket_with_it() {
 	assert_eq!(range_buckets(&store), 1, "the small fill must fit its budget or nothing below is tested");
 
 	let huge = "x".repeat(8192);
-	store.set(OP_A, key_in(Keyspace::ACCUMULATOR, 4), row(&huge));
+	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 4), row(&huge));
 	assert_eq!(
 		range_buckets(&store),
 		1,

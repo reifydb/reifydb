@@ -19,9 +19,12 @@ use reifydb_store_operator::{
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
 	tier::{persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig},
-	types::{OperatorBatch, OperatorSealAnchor, OperatorWrite},
+	types::{DurablePre, OperatorBatch, OperatorSealAnchor, OperatorWrite},
 };
-use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+};
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -84,12 +87,43 @@ fn scan(store: &OperatorStore, operator: OperatorId) -> OperatorBatch {
 	store.range_batch(operator, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded), 64)
 }
 
+fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
+	// reading the pre-image back keeps the claim truthful even when an earlier write in the same test moved the key
+	let write = match store.get(operator, &key) {
+		Some(pre) => OperatorWrite::Replace {
+			operator,
+			key,
+			pre_value_bytes: ByteSize::from_bytes(pre.bytes().len() as u64),
+			post: row,
+		},
+		None => OperatorWrite::Insert {
+			operator,
+			key,
+			post: row,
+		},
+	};
+	store.apply_batch(&[write]);
+}
+
+fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
+	// a removal must say whether the key was there, and only the store knows after the writes above it
+	let pre = match store.get(operator, key) {
+		Some(row) => DurablePre::Present(ByteSize::from_bytes(row.bytes().len() as u64)),
+		None => DurablePre::Absent,
+	};
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator,
+		key: key.clone(),
+		pre,
+	}]);
+}
+
 #[test]
 fn a_buffered_write_shadows_the_flushed_row_for_the_same_key() {
 	let (store, storage, _guard) = flushed_store();
 	storage.set(OP_A, key(1), row("durable"));
 
-	store.set(OP_A, key(1), row("buffered"));
+	put(&store, OP_A, key(1), row("buffered"));
 
 	let found = store.get(OP_A, &key(1)).expect("the key exists in both layers");
 	assert_eq!(
@@ -113,7 +147,7 @@ fn a_buffered_tombstone_hides_the_flushed_row_from_every_read() {
 	let (store, storage, _guard) = flushed_store();
 	storage.set(OP_A, key(1), row("durable"));
 
-	store.remove(OP_A, &key(1));
+	erase(&store, OP_A, &key(1));
 
 	assert!(
 		store.get(OP_A, &key(1)).is_none(),
@@ -141,7 +175,7 @@ fn paging_interleaved_layers_yields_every_key_once_in_order() {
 		storage.set(OP_A, key(suffix), row(&format!("durable-{suffix}")));
 	}
 	for suffix in [2u8, 4, 6] {
-		store.set(OP_A, key(suffix), row(&format!("buffered-{suffix}")));
+		put(&store, OP_A, key(suffix), row(&format!("buffered-{suffix}")));
 	}
 
 	let mut seen: Vec<String> = Vec::new();
@@ -186,7 +220,7 @@ fn a_page_whose_flushed_rows_are_all_hidden_keeps_pulling_until_the_scan_is_exha
 		storage.set(OP_A, key(suffix), row(&format!("durable-{suffix}")));
 	}
 	for suffix in 1u8..=4 {
-		store.remove(OP_A, &key(suffix));
+		erase(&store, OP_A, &key(suffix));
 	}
 
 	let batch = store.range_batch(OP_A, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded), 2);
@@ -210,8 +244,8 @@ fn a_scan_stays_inside_its_operator_when_a_neighbour_holds_the_same_keys() {
 	for suffix in [1u8, 2, 3] {
 		storage.set(OP_A, key(suffix), row(&format!("a-durable-{suffix}")));
 		storage.set(OP_B, key(suffix), row(&format!("b-durable-{suffix}")));
-		store.set(OP_A, key(suffix + 10), row(&format!("a-buffered-{suffix}")));
-		store.set(OP_B, key(suffix + 10), row(&format!("b-buffered-{suffix}")));
+		put(&store, OP_A, key(suffix + 10), row(&format!("a-buffered-{suffix}")));
+		put(&store, OP_B, key(suffix + 10), row(&format!("b-buffered-{suffix}")));
 	}
 
 	let batch = scan(&store, OP_A);
@@ -325,7 +359,7 @@ fn a_buffered_state_drop_masks_sqlite_while_later_writes_survive() {
 		"the mask is scoped to one operator, otherwise one drop blinds the whole store"
 	);
 
-	store.set(OP_A, key(2), row("after"));
+	put(&store, OP_A, key(2), row("after"));
 
 	let found = store.get(OP_A, &key(2)).expect("a write recorded after the drop must be visible");
 	assert_eq!(
@@ -441,10 +475,10 @@ fn a_freshly_opened_store_boots_from_the_flushed_checkpoint_and_the_state_it_rod
 
 	let store = store_at(config.clone());
 	store.apply_batch_with_checkpoints(
-		&[OperatorWrite::Set {
+		&[OperatorWrite::Insert {
 			operator: OP_A,
 			key: key(1),
-			row: row("state"),
+			post: row("state"),
 		}],
 		&[(FLOW, CommitVersion(77))],
 		&[],
@@ -622,14 +656,22 @@ fn a_zero_length_row_stays_present_in_the_buffer_and_never_reads_as_absent() {
 	// buffer collapsed BufferedState::Row(empty) onto Absent, every marker would vanish on the write path.
 	let (store, _storage, _guard) = flushed_store();
 
-	store.set(OP_A, key(1), EncodedPodRow::new(&[]));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: EncodedPodRow::new(&[]),
+	}]);
 
 	let found = store.get(OP_A, &key(1)).expect("a zero-length row is present, not absent");
 	assert_eq!(found.len(), 0, "the row must round-trip at its written width");
 	assert!(store.contains(OP_A, &key(1)));
 	assert!(store.get(OP_A, &key(2)).is_none(), "an unwritten key stays absent, which is the other case");
 
-	store.remove(OP_A, &key(1));
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator: OP_A,
+		key: key(1),
+		pre: DurablePre::Present(ByteSize::from_bytes(0)),
+	}]);
 	assert!(store.get(OP_A, &key(1)).is_none(), "and a tombstone still reads absent");
 	assert!(!store.contains(OP_A, &key(1)));
 }

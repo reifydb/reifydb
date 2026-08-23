@@ -170,7 +170,7 @@ impl StandardOperatorStore {
 			let slot = (operator, key.clone());
 			let observed = match overlay.get(&slot) {
 				Some(pending) => *pending,
-				None => self.get(operator, key).map(|row| value_bytes(&row)),
+				None => self.durable_pre_image(operator, key).map(|row| value_bytes(&row)),
 			};
 			if let Some(claimed) = claimed {
 				assert_eq!(
@@ -182,6 +182,15 @@ impl StandardOperatorStore {
 				);
 			}
 			overlay.insert(slot, post.map(value_bytes));
+		}
+	}
+
+	#[cfg(reifydb_assertions)]
+	fn durable_pre_image(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
+		match self.commit.lookup_state(operator, key) {
+			BufferedState::Row(row) => Some(row),
+			BufferedState::Tombstone | BufferedState::Dropped => None,
+			BufferedState::Absent => self.persistent.as_ref()?.get(operator, key),
 		}
 	}
 

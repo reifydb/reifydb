@@ -30,7 +30,7 @@ use reifydb_store_operator::{
 	},
 	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -116,6 +116,37 @@ fn range_entries(store: &OperatorStore) -> usize {
 	range_tier(store).entries()
 }
 
+fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
+	// reading the pre-image back keeps the claim truthful even when an earlier write in the same test moved the key
+	let write = match store.get(operator, &key) {
+		Some(pre) => OperatorWrite::Replace {
+			operator,
+			key,
+			pre_value_bytes: ByteSize::from_bytes(pre.bytes().len() as u64),
+			post: row,
+		},
+		None => OperatorWrite::Insert {
+			operator,
+			key,
+			post: row,
+		},
+	};
+	store.apply_batch(&[write]);
+}
+
+fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
+	// a removal must say whether the key was there, and only the store knows after the writes above it
+	let pre = match store.get(operator, key) {
+		Some(row) => DurablePre::Present(ByteSize::from_bytes(row.bytes().len() as u64)),
+		None => DurablePre::Absent,
+	};
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator,
+		key: key.clone(),
+		pre,
+	}]);
+}
+
 #[test]
 fn a_flushed_write_is_served_fresh_after_the_point_tier_cached_the_previous_row() {
 	// Without invalidate-on-write the drained shadow uncovers the pre-write row and it is served forever.
@@ -129,7 +160,7 @@ fn a_flushed_write_is_served_fresh_after_the_point_tier_cached_the_previous_row(
 		"the first read must come from the persistent tier and populate the cache"
 	);
 
-	store.set(OP_A, key(1), row("fresh"));
+	put(&store, OP_A, key(1), row("fresh"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite before the staleness is observable");
 
 	let found = store.get(OP_A, &key(1)).expect("the key still exists after the flush");
@@ -151,7 +182,7 @@ fn a_cached_absence_does_not_survive_the_write_that_fills_the_key() {
 	assert!(store.get(OP_A, &key(1)).is_none(), "the key is gone from sqlite but still passes the filter");
 	assert_eq!(point_entries(&store), 1, "the absence itself must be cached, otherwise this test proves nothing");
 
-	store.set(OP_A, key(1), row("written"));
+	put(&store, OP_A, key(1), row("written"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite before the staleness is observable");
 
 	let found = store.get(OP_A, &key(1)).expect("the written row must be visible after the flush");
@@ -279,7 +310,7 @@ fn contains_is_invalidated_by_a_write_exactly_as_get_is() {
 	assert!(store.contains(OP_A, &key(1)), "the first contains populates the tier from sqlite");
 	assert_eq!(point_entries(&store), 1);
 
-	store.remove(OP_A, &key(1));
+	erase(&store, OP_A, &key(1));
 	assert!(store.flush_pending_blocking(), "the removal must reach sqlite before the staleness is observable");
 
 	assert!(
@@ -288,7 +319,7 @@ fn contains_is_invalidated_by_a_write_exactly_as_get_is() {
 	);
 	assert!(store.get(OP_A, &key(1)).is_none(), "get must agree with contains on the same key");
 
-	store.set(OP_A, key(1), row("again"));
+	put(&store, OP_A, key(1), row("again"));
 	assert!(store.flush_pending_blocking(), "the rewrite must reach sqlite too");
 
 	assert!(store.contains(OP_A, &key(1)), "and the cached absence must not outlive the rewrite either");
@@ -308,15 +339,16 @@ fn a_batch_write_invalidates_every_state_key_it_carries() {
 	assert_eq!(point_entries(&store), 3);
 
 	store.apply_batch(&[
-		OperatorWrite::Set {
+		OperatorWrite::Replace {
 			operator: OP_A,
 			key: key(1),
-			row: row("batched"),
+			pre_value_bytes: ByteSize::from_bytes(row("durable-1").bytes().len() as u64),
+			post: row("batched"),
 		},
 		OperatorWrite::Remove {
 			operator: OP_A,
 			key: key(2),
-			pre: DurablePre::Unknown,
+			pre: DurablePre::Present(ByteSize::from_bytes(row("durable-2").bytes().len() as u64)),
 		},
 	]);
 	assert!(store.flush_pending_blocking(), "the batch must reach sqlite before the staleness is observable");
@@ -340,7 +372,7 @@ fn a_write_in_flight_is_still_shadowed_and_never_lets_the_tier_cache_the_old_row
 	let (store, storage, _guard) = cached_store();
 	storage.set(OP_A, key(1), row("durable"));
 
-	store.set(OP_A, key(1), row("fresh"));
+	put(&store, OP_A, key(1), row("fresh"));
 	let batch = store.commit().take_for_flush().expect("the write is pending and must be taken for flush");
 
 	let found = store.get(OP_A, &key(1)).expect("the in-flight write is still the newest value for the key");
@@ -356,7 +388,7 @@ fn a_flush_leaves_the_row_it_persisted_cached_instead_of_forcing_a_refill() {
 	// The shadow lifts at the flush, so a flush that drops the row it just wrote makes a per-tick key pay a
 	// persistent lookup every tick and never hit.
 	let (store, _storage, _guard) = cached_store();
-	store.set(OP_A, key(1), row("written"));
+	put(&store, OP_A, key(1), row("written"));
 	assert!(store.flush_pending_blocking(), "the shadow must be drained before reads reach the tier");
 
 	let before = point_tier(&store).metrics();
@@ -379,12 +411,26 @@ fn a_read_modify_write_key_stays_cached_across_repeated_flush_cycles() {
 	let (store, _storage, _guard) = cached_store();
 
 	for tick in 0..8u8 {
+		// the tick's own read is the pre-image, so the claim costs no extra counted read of its own
 		let seen = store.get(OP_A, &key(1));
-		let next = match seen {
-			Some(found) => format!("{}-{tick}", body(&found)),
+		let next = match &seen {
+			Some(found) => format!("{}-{tick}", body(found)),
 			None => format!("{tick}"),
 		};
-		store.set(OP_A, key(1), row(&next));
+		let write = match &seen {
+			Some(pre) => OperatorWrite::Replace {
+				operator: OP_A,
+				key: key(1),
+				pre_value_bytes: ByteSize::from_bytes(pre.bytes().len() as u64),
+				post: row(&next),
+			},
+			None => OperatorWrite::Insert {
+				operator: OP_A,
+				key: key(1),
+				post: row(&next),
+			},
+		};
+		store.apply_batch(&[write]);
 		assert!(store.flush_pending_blocking(), "each tick must reach sqlite before the next read");
 	}
 
@@ -406,12 +452,12 @@ fn a_flushed_removal_leaves_no_entry_behind_for_the_key_it_erased() {
 	// Retention erases rows by the million and never reads them again, so caching each erasure as an absence fills
 	// the tier with keys no lookup will ever come for.
 	let (store, _storage, _guard) = cached_store();
-	store.set(OP_A, key(1), row("doomed"));
+	put(&store, OP_A, key(1), row("doomed"));
 	assert!(store.flush_pending_blocking(), "the row must be durable before the removal can erase it");
 	let seeded = point_entries(&store);
 	assert_eq!(seeded, 1, "precondition: the flush left exactly the one row it persisted");
 
-	store.remove(OP_A, &key(1));
+	erase(&store, OP_A, &key(1));
 	assert!(store.flush_pending_blocking(), "the removal must reach the tier through the same flush path");
 
 	assert_eq!(
@@ -426,9 +472,9 @@ fn a_flushed_removal_still_reads_back_as_absent() {
 	// Dropping the entry must not make the key answer wrongly, or the erase is invisible and the stale row is
 	// served forever.
 	let (store, _storage, _guard) = cached_store();
-	store.set(OP_A, key(1), row("doomed"));
+	put(&store, OP_A, key(1), row("doomed"));
 	assert!(store.flush_pending_blocking());
-	store.remove(OP_A, &key(1));
+	erase(&store, OP_A, &key(1));
 	assert!(store.flush_pending_blocking());
 
 	assert_eq!(store.get(OP_A, &key(1)), None, "the erased key must not resurrect from the tier");
@@ -441,7 +487,7 @@ fn a_keyspace_declared_not_cached_never_occupies_the_point_tier() {
 	for keyspace in [Keyspace::CUSTOM_NOT_CACHED, Keyspace::JOIN_PIN, Keyspace::ENGINE_META] {
 		let (store, _storage, _guard) = cached_store();
 		let key = key_in(keyspace, 1);
-		store.set(OP_A, key.clone(), row("durable"));
+		put(&store, OP_A, key.clone(), row("durable"));
 		assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 
 		for _ in 0..4 {
@@ -473,7 +519,7 @@ fn a_keyspace_declared_cached_still_occupies_the_point_tier() {
 	// The control for the refusal above: a gate that refuses everything passes that test while turning the tier
 	// off.
 	let (store, _storage, _guard) = cached_store();
-	store.set(OP_A, key_in(Keyspace::CUSTOM_CACHED, 1), row("durable"));
+	put(&store, OP_A, key_in(Keyspace::CUSTOM_CACHED, 1), row("durable"));
 	assert!(store.flush_pending_blocking());
 
 	assert_eq!(point_entries(&store), 1, "a cached keyspace must be admitted, or the gate is a blanket off switch");
@@ -497,7 +543,7 @@ fn an_expiry_write_never_occupies_the_point_tier() {
 	// never win its budget back with a hit.
 	let (store, _storage, _guard) = cached_store();
 	let key = key_in(Keyspace::EXPIRY, 1);
-	store.set(OP_A, key.clone(), row("armed"));
+	put(&store, OP_A, key.clone(), row("armed"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 
 	for _ in 0..4 {
@@ -526,7 +572,7 @@ fn a_timer_wheel_write_never_occupies_the_point_tier() {
 	// all.
 	let (store, _storage, _guard) = cached_store();
 	let key = key_in(Keyspace::TIMER_WHEEL, 1);
-	store.set(OP_A, key.clone(), row("armed"));
+	put(&store, OP_A, key.clone(), row("armed"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 
 	for _ in 0..4 {
@@ -570,7 +616,7 @@ fn a_row_number_mapping_write_still_occupies_the_point_tier() {
 	// The control for the two refusals above: a refusal list that widened past the measurement turns the tier into
 	// an off switch.
 	let (store, _storage, _guard) = cached_store();
-	store.set(OP_A, key_in(Keyspace::ROW_NUMBER_MAPPING, 1), row("durable"));
+	put(&store, OP_A, key_in(Keyspace::ROW_NUMBER_MAPPING, 1), row("durable"));
 	assert!(store.flush_pending_blocking());
 
 	assert_eq!(point_entries(&store), 1, "a cached keyspace must still be admitted after the refusal list grew");
@@ -582,7 +628,7 @@ fn a_group_dictionary_key_round_trips_through_the_point_tier() {
 	// correctly while paying a persistent lookup on every single read.
 	let (store, _storage, _guard) = cached_store();
 	let key = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::GROUP_DICTIONARY, [1]).as_encoded().clone();
-	store.set(OP_A, key.clone(), row("dictionary"));
+	put(&store, OP_A, key.clone(), row("dictionary"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 
 	assert_eq!(point_entries(&store), 1, "the flush write-through must admit a root-group dictionary key");
@@ -632,7 +678,7 @@ fn a_cached_absence_survives_the_range_fill_that_installs_over_it() {
 	assert_eq!(point_entries(&store), 1, "the install must leave the remembered absence exactly where it was");
 	assert_eq!(range_entries(&store), 3, "and the three scanned rows must land in the range tier beside it");
 
-	store.set(OP_A, key_in(Keyspace::ACCUMULATOR, 1), row("rewritten"));
+	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 1), row("rewritten"));
 	assert_eq!(
 		range_tier(&store).buckets(),
 		0,

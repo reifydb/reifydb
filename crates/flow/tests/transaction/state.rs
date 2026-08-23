@@ -25,15 +25,34 @@ use reifydb_flow::transaction::{
 	substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
+use reifydb_store_operator::types::OperatorWrite;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
-use reifydb_value::value::{identity::IdentityId, row_number::RowNumber};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{identity::IdentityId, row_number::RowNumber},
+};
 
 use crate::common::create_test_transaction;
 
 fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedPodRow) {
 	// Stands in for a prior slice's success-side operator state apply.
-	engine.inner().operator_state().set(operator, EncodedKey::new(key.as_slice()), row);
+	let store = engine.inner().operator_state();
+	let key = EncodedKey::new(key.as_slice());
+	let write = match store.get(operator, &key) {
+		Some(pre) => OperatorWrite::Replace {
+			operator,
+			key,
+			pre_value_bytes: ByteSize::from_bytes(pre.bytes().len() as u64),
+			post: row,
+		},
+		None => OperatorWrite::Insert {
+			operator,
+			key,
+			post: row,
+		},
+	};
+	store.apply_batch(&[write]);
 }
 
 fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {

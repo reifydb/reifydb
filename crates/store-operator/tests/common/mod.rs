@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{error::Error as StdError, fmt::Write, ops::Bound};
+use std::{collections::BTreeMap, error::Error as StdError, fmt::Write, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -21,7 +21,10 @@ use reifydb_store_operator::{
 	types::{BufferedState, DurablePre, OperatorWrite},
 };
 use reifydb_testing::testscript;
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 use testscript::command::{ArgumentConsumer, Command};
 
 /// Every script names its keys by a short suffix; the runner wraps that suffix in the group/keyspace frame the
@@ -98,7 +101,8 @@ impl testscript::runner::Runner for Runner {
 				let row = EncodedPodRow::new(&decode_binary(&kv.value));
 				args.reject_rest()?;
 
-				self.store.set(operator, key, row);
+				let pre = durable_pre(&self.store, operator, &key);
+				self.store.apply_batch(&[state_write(operator, key, row, pre)]);
 				self.maybe_flush();
 			}
 
@@ -112,7 +116,8 @@ impl testscript::runner::Runner for Runner {
 				);
 				args.reject_rest()?;
 
-				self.store.remove(operator, &key);
+				let pre = durable_pre(&self.store, operator, &key);
+				self.store.apply_batch(&[state_remove(operator, key, pre)]);
 				self.maybe_flush();
 			}
 
@@ -181,7 +186,7 @@ impl testscript::runner::Runner for Runner {
 			}
 
 			"batch" => {
-				let (writes, checkpoints, deletes) = parse_batch(command)?;
+				let (writes, checkpoints, deletes) = parse_batch(&self.store, command)?;
 				if !checkpoints.is_empty() || !deletes.is_empty() {
 					return Err("batch takes no checkpoint arguments, use batch_ckpt".into());
 				}
@@ -190,7 +195,7 @@ impl testscript::runner::Runner for Runner {
 			}
 
 			"batch_ckpt" => {
-				let (writes, checkpoints, deletes) = parse_batch(command)?;
+				let (writes, checkpoints, deletes) = parse_batch(&self.store, command)?;
 				self.store.apply_batch_with_checkpoints(&writes, &checkpoints, &deletes);
 				self.maybe_flush();
 			}
@@ -522,9 +527,12 @@ fn parse_keyspace(value: &str) -> Result<u8, Box<dyn StdError>> {
 
 type BatchArgs = (Vec<OperatorWrite>, Vec<(FlowId, CommitVersion)>, Vec<FlowId>);
 
-fn parse_batch(command: &Command) -> Result<BatchArgs, Box<dyn StdError>> {
+fn parse_batch(store: &OperatorStore, command: &Command) -> Result<BatchArgs, Box<dyn StdError>> {
+	// a claim is measured against the write before it in the same batch, so the overlays stand in for the store
 	let mut operator = OperatorId(DEFAULT_OPERATOR);
 	let mut keyspace = DEFAULT_KEYSPACE;
+	let mut pending_state: BTreeMap<(OperatorId, EncodedKey), Option<ByteSize>> = BTreeMap::new();
+	let mut pending_anchors: BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool> = BTreeMap::new();
 	let mut writes: Vec<OperatorWrite> = Vec::new();
 	let mut checkpoints: Vec<(FlowId, CommitVersion)> = Vec::new();
 	let mut deletes: Vec<FlowId> = Vec::new();
@@ -536,28 +544,47 @@ fn parse_batch(command: &Command) -> Result<BatchArgs, Box<dyn StdError>> {
 			"ks" => keyspace = parse_keyspace(&arg.value)?,
 			"set" => {
 				let (key, body) = arg.value.split_once('/').ok_or("set needs key/value")?;
-				writes.push(OperatorWrite::Set {
-					operator,
-					key: encode_key(&decode_binary(key), keyspace),
-					row: EncodedPodRow::new(&decode_binary(body)),
-				});
+				let key = encode_key(&decode_binary(key), keyspace);
+				let post = EncodedPodRow::new(&decode_binary(body));
+				let pre = pending_pre(store, &pending_state, operator, &key);
+				pending_state.insert(
+					(operator, key.clone()),
+					Some(ByteSize::from_bytes(post.bytes().len() as u64)),
+				);
+				writes.push(state_write(operator, key, post, pre));
 			}
-			"remove" => writes.push(OperatorWrite::Remove {
-				operator,
-				key: encode_key(&decode_binary(&arg.value), keyspace),
-				pre: DurablePre::Unknown,
-			}),
+			"remove" => {
+				let key = encode_key(&decode_binary(&arg.value), keyspace);
+				let pre = pending_pre(store, &pending_state, operator, &key);
+				pending_state.insert((operator, key.clone()), None);
+				writes.push(state_remove(operator, key, pre));
+			}
 			"anchor_set" => {
 				let parts: Vec<&str> = arg.value.split('/').collect();
 				if parts.len() != 4 {
 					return Err("anchor_set needs group/side/row/millis".into());
 				}
-				writes.push(OperatorWrite::AnchorSet {
-					operator,
-					group: GroupId(parts[0].parse()?),
-					side: parts[1].parse()?,
-					row_num: RowNumber(parts[2].parse()?),
-					expiry: DateTime::from_millis(parts[3].parse()?),
+				let group = GroupId(parts[0].parse()?);
+				let side: u8 = parts[1].parse()?;
+				let row_num = RowNumber(parts[2].parse()?);
+				let expiry = DateTime::from_millis(parts[3].parse()?);
+				let held = pending_anchor(store, &pending_anchors, operator, group, side, row_num);
+				pending_anchors.insert((operator, group, side, row_num), true);
+				writes.push(match held {
+					true => OperatorWrite::AnchorReplace {
+						operator,
+						group,
+						side,
+						row_num,
+						expiry,
+					},
+					false => OperatorWrite::AnchorInsert {
+						operator,
+						group,
+						side,
+						row_num,
+						expiry,
+					},
 				});
 			}
 			"anchor_remove" => {
@@ -565,11 +592,15 @@ fn parse_batch(command: &Command) -> Result<BatchArgs, Box<dyn StdError>> {
 				if parts.len() != 3 {
 					return Err("anchor_remove needs group/side/row".into());
 				}
+				let group = GroupId(parts[0].parse()?);
+				let side: u8 = parts[1].parse()?;
+				let row_num = RowNumber(parts[2].parse()?);
+				pending_anchors.insert((operator, group, side, row_num), false);
 				writes.push(OperatorWrite::AnchorRemove {
 					operator,
-					group: GroupId(parts[0].parse()?),
-					side: parts[1].parse()?,
-					row_num: RowNumber(parts[2].parse()?),
+					group,
+					side,
+					row_num,
 				});
 			}
 			"ckpt" => {
@@ -582,4 +613,61 @@ fn parse_batch(command: &Command) -> Result<BatchArgs, Box<dyn StdError>> {
 	}
 
 	Ok((writes, checkpoints, deletes))
+}
+
+fn durable_pre(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) -> Option<ByteSize> {
+	store.get(operator, key).map(|row| ByteSize::from_bytes(row.bytes().len() as u64))
+}
+
+fn pending_pre(
+	store: &OperatorStore,
+	overlay: &BTreeMap<(OperatorId, EncodedKey), Option<ByteSize>>,
+	operator: OperatorId,
+	key: &EncodedKey,
+) -> Option<ByteSize> {
+	match overlay.get(&(operator, key.clone())) {
+		Some(pending) => *pending,
+		None => durable_pre(store, operator, key),
+	}
+}
+
+fn pending_anchor(
+	store: &OperatorStore,
+	overlay: &BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool>,
+	operator: OperatorId,
+	group: GroupId,
+	side: u8,
+	row_num: RowNumber,
+) -> bool {
+	match overlay.get(&(operator, group, side, row_num)) {
+		Some(pending) => *pending,
+		None => store.anchor_get(operator, group, side, row_num).is_some(),
+	}
+}
+
+fn state_write(operator: OperatorId, key: EncodedKey, post: EncodedPodRow, pre: Option<ByteSize>) -> OperatorWrite {
+	match pre {
+		Some(pre_value_bytes) => OperatorWrite::Replace {
+			operator,
+			key,
+			pre_value_bytes,
+			post,
+		},
+		None => OperatorWrite::Insert {
+			operator,
+			key,
+			post,
+		},
+	}
+}
+
+fn state_remove(operator: OperatorId, key: EncodedKey, pre: Option<ByteSize>) -> OperatorWrite {
+	OperatorWrite::Remove {
+		operator,
+		key,
+		pre: match pre {
+			Some(bytes) => DurablePre::Present(bytes),
+			None => DurablePre::Absent,
+		},
+	}
 }

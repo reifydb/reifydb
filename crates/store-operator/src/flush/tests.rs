@@ -19,7 +19,10 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 };
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use super::*;
 use crate::{
@@ -27,7 +30,7 @@ use crate::{
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
 	tier::{persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig},
-	types::BufferedState,
+	types::{BufferedState, DurablePre, OperatorWrite},
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -88,10 +91,41 @@ fn body(row: &EncodedPodRow) -> String {
 	String::from_utf8(row.body().to_vec()).expect("test bodies are utf8")
 }
 
+fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
+	// reading the pre-image back keeps the claim truthful even when an earlier write in the same test moved the key
+	let write = match store.get(operator, &key) {
+		Some(pre) => OperatorWrite::Replace {
+			operator,
+			key,
+			pre_value_bytes: ByteSize::from_bytes(pre.bytes().len() as u64),
+			post: row,
+		},
+		None => OperatorWrite::Insert {
+			operator,
+			key,
+			post: row,
+		},
+	};
+	store.apply_batch(&[write]);
+}
+
+fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
+	// a removal must say whether the key was there, and only the store knows after the writes above it
+	let pre = match store.get(operator, key) {
+		Some(row) => DurablePre::Present(ByteSize::from_bytes(row.bytes().len() as u64)),
+		None => DurablePre::Absent,
+	};
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator,
+		key: key.clone(),
+		pre,
+	}]);
+}
+
 #[test]
 fn a_buffered_write_becomes_durable_and_the_buffer_stops_shadowing_it() {
 	let (store, storage, _guard) = store_fixture();
-	store.set(OP_A, key(1), row("written"));
+	put(&store, OP_A, key(1), row("written"));
 
 	assert!(
 		storage.get(OP_A, &key(1)).is_none(),
@@ -123,7 +157,7 @@ fn a_buffered_tombstone_flushes_as_a_delete_so_the_row_cannot_resurrect() {
 	let (store, storage, _guard) = store_fixture();
 	storage.set(OP_A, key(1), row("durable"));
 
-	store.remove(OP_A, &key(1));
+	erase(&store, OP_A, &key(1));
 	assert!(store.flush_pending_blocking(), "the tombstone must reach the flusher");
 
 	assert!(
@@ -143,10 +177,10 @@ fn a_drop_flushes_before_the_writes_recorded_after_it() {
 	storage.set(OP_A, key(1), row("pre-drop-durable"));
 	storage.set(OP_B, key(1), row("neighbour"));
 	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
-	store.set(OP_A, key(2), row("pre-drop-buffered"));
+	put(&store, OP_A, key(2), row("pre-drop-buffered"));
 
 	store.drop_operator_state(OP_A);
-	store.set(OP_A, key(3), row("post-drop"));
+	put(&store, OP_A, key(3), row("post-drop"));
 
 	assert!(store.flush_pending_blocking(), "the marker and the later write travel in one batch");
 
@@ -289,7 +323,7 @@ fn an_empty_flush_is_a_no_op_that_leaves_the_flusher_able_to_flush_again() {
 	assert!(store.flush_pending_blocking(), "an empty buffer has nothing to write and must still succeed");
 	assert!(store.flush_pending_blocking(), "a second empty flush must behave exactly like the first");
 
-	store.set(OP_A, key(1), row("after-the-empty-flushes"));
+	put(&store, OP_A, key(1), row("after-the-empty-flushes"));
 	assert!(store.flush_pending_blocking(), "the flusher must still be usable after an empty drain");
 
 	let durable = storage.get(OP_A, &key(1)).expect("the write after two empty flushes must be durable");
@@ -410,7 +444,7 @@ fn a_batch_spanning_more_than_one_chunk_writes_and_removes_every_row() {
 	let suffixes: Vec<u8> = (0..150).collect();
 
 	for &suffix in &suffixes {
-		store.set(OP_A, key(suffix), row("chunked"));
+		put(&store, OP_A, key(suffix), row("chunked"));
 	}
 	assert!(
 		store.flush_pending_blocking(),
@@ -429,7 +463,7 @@ fn a_batch_spanning_more_than_one_chunk_writes_and_removes_every_row() {
 	}
 
 	for &suffix in &suffixes {
-		store.remove(OP_A, &key(suffix));
+		erase(&store, OP_A, &key(suffix));
 	}
 	assert!(
 		store.flush_pending_blocking(),

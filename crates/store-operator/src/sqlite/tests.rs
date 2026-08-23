@@ -478,12 +478,12 @@ fn a_batch_lands_operator_state_and_its_anchors_together() {
 	let (store, _guard) = OperatorStore::in_memory();
 
 	store.apply_batch(&[
-		OperatorWrite::Set {
+		OperatorWrite::Insert {
 			operator: OperatorId(1),
 			key: real_key(GroupId(7), Keyspace(0x1D), &[1]),
-			row: row(4),
+			post: row(4),
 		},
-		OperatorWrite::AnchorSet {
+		OperatorWrite::AnchorInsert {
 			operator: OperatorId(1),
 			group: GroupId(7),
 			side: LEFT,
@@ -502,7 +502,7 @@ fn a_batch_applies_a_set_and_a_later_remove_of_the_same_row_in_order() {
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(1_000));
 
 	store.apply_batch(&[
-		OperatorWrite::AnchorSet {
+		OperatorWrite::AnchorReplace {
 			operator: OperatorId(1),
 			group: GroupId(7),
 			side: LEFT,
@@ -619,7 +619,7 @@ fn a_pooled_reader_sees_a_write_the_moment_the_writer_commits() {
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator: OperatorId(1),
 		key: probe.clone(),
-		pre: DurablePre::Unknown,
+		pre: DurablePre::Present(ByteSize::from_bytes(row(4).bytes().len() as u64)),
 	}]);
 
 	assert!(!store.contains(OperatorId(1), &probe), "a committed batch must be visible to the pool too");

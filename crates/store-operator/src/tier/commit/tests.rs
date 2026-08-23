@@ -485,17 +485,17 @@ fn a_drop_waits_out_an_in_flight_flush_before_clearing() {
 fn apply_batch_maps_every_write_variant_onto_its_entry() {
 	let buffer = OperatorCommitBuffer::new();
 	buffer.apply_batch(&[
-		OperatorWrite::Set {
+		OperatorWrite::Insert {
 			operator: OP_A,
 			key: key("set"),
-			row: row("v"),
+			post: row("v"),
 		},
 		OperatorWrite::Remove {
 			operator: OP_A,
 			key: key("removed"),
-			pre: DurablePre::Unknown,
+			pre: DurablePre::Absent,
 		},
-		OperatorWrite::AnchorSet {
+		OperatorWrite::AnchorInsert {
 			operator: OP_A,
 			group: GROUP_A,
 			side: 1,
@@ -537,12 +537,12 @@ fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
 
 	buffer.apply_batch_with_checkpoints(
 		&[
-			OperatorWrite::Set {
+			OperatorWrite::Insert {
 				operator: OP_A,
 				key: key("state"),
-				row: row("v"),
+				post: row("v"),
 			},
-			OperatorWrite::AnchorSet {
+			OperatorWrite::AnchorInsert {
 				operator: OP_A,
 				group: GROUP_A,
 				side: 0,
