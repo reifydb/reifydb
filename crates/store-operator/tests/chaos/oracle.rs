@@ -10,6 +10,7 @@ use std::{collections::BTreeMap, ops::Bound};
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::key::operator_state::OperatorStateKey;
 use reifydb_store_operator::types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES};
+use reifydb_value::byte_size::ByteSize;
 
 type StateKey = (u64, Vec<u8>);
 
@@ -82,8 +83,33 @@ impl Oracle {
 		self.state.get(&(operator, key.to_vec())).map(|row| row.body().to_vec())
 	}
 
+	/// The size the census bills and a batch claim is checked against: the whole encoded row, not `get`'s body.
+	pub fn value_bytes(&self, operator: u64, key: &[u8]) -> Option<ByteSize> {
+		self.state.get(&(operator, key.to_vec())).map(|row| ByteSize::from_bytes(row.bytes().len() as u64))
+	}
+
 	pub fn contains(&self, operator: u64, key: &[u8]) -> bool {
 		self.state.contains_key(&(operator, key.to_vec()))
+	}
+
+	pub fn state_len(&self) -> usize {
+		self.state.len()
+	}
+
+	/// Indexed sampling over the live keys. The slot space dwarfs a batch, so a generator that only draws fresh
+	/// keys never reaches the present-key arithmetic; aiming a write here is what makes replace and remove of a
+	/// held key happen at all.
+	pub fn nth_state_slot(&self, index: usize) -> Option<(u64, Vec<u8>)> {
+		self.state.keys().nth(index).cloned()
+	}
+
+	pub fn anchor_len(&self) -> usize {
+		self.anchors.len()
+	}
+
+	/// Indexed sampling over the live anchor slots, for the same reason `nth_state_slot` exists.
+	pub fn nth_anchor_slot(&self, index: usize) -> Option<(u64, u64, u8, u64)> {
+		self.anchors.keys().nth(index).copied()
 	}
 
 	pub fn checkpoint_get(&self, flow: u64) -> Option<u64> {

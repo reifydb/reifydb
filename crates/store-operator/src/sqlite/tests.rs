@@ -444,13 +444,7 @@ fn a_table_written_before_the_counters_existed_is_seeded_to_the_same_totals() {
 
 	let guard = store.inner.conn.lock();
 	let conn = guard.as_ref().expect("the memory store holds its connection");
-	conn.execute_batch(
-		r#"DROP TRIGGER "operator_state_census_insert";
-		   DROP TRIGGER "operator_state_census_update";
-		   DROP TRIGGER "operator_state_census_delete";
-		   DROP TABLE "operator_state_census";"#,
-	)
-	.expect("the counters must be droppable");
+	conn.execute_batch(r#"DROP TABLE "operator_state_census";"#).expect("the counters must be droppable");
 	ensure_schema(conn);
 	let mut stmt = conn
 		.prepare(r#"SELECT COUNT(*) FROM "operator_state_census""#)

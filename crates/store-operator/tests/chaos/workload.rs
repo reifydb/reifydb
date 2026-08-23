@@ -654,53 +654,80 @@ fn random_batch(rng: &mut StdRng, state: &mut State, p: &Params, step: u32) -> B
 	let mut writes = Vec::new();
 	let mut checkpoints = Vec::new();
 	let mut deletes = Vec::new();
+	let mut state_slots: Vec<(u64, EncodedKey)> = Vec::new();
+	let mut anchor_slots: Vec<(u64, u64, u8, u64)> = Vec::new();
 	let count = rng.random_range(1..=p.max_writes);
 	for _ in 0..count {
 		let operator = rng.random_range(1..=p.operators);
 		match rng.random_range(0u32..10) {
 			0..=3 => {
-				let key_bytes = random_key(rng, p);
+				let (operator, key_bytes) = batch_state_slot(rng, state, p, operator, &state_slots);
+				state_slots.push((operator, key_bytes.clone()));
 				let value = row(operator, step as u64, step);
+				let pre = state.oracle.value_bytes(operator, key_bytes.as_slice());
 				state.oracle.set(operator, key_bytes.as_slice(), value.clone());
-				writes.push(OperatorWrite::Set {
-					operator: OperatorId(operator),
-					key: key_bytes,
-					row: value,
+				writes.push(match pre {
+					Some(pre_value_bytes) => OperatorWrite::Replace {
+						operator: OperatorId(operator),
+						key: key_bytes,
+						pre_value_bytes,
+						post: value,
+					},
+					None => OperatorWrite::Insert {
+						operator: OperatorId(operator),
+						key: key_bytes,
+						post: value,
+					},
 				});
 			}
 			4..=5 => {
-				let key_bytes = random_key(rng, p);
+				let (operator, key_bytes) = batch_state_slot(rng, state, p, operator, &state_slots);
+				state_slots.push((operator, key_bytes.clone()));
+				let pre = match state.oracle.value_bytes(operator, key_bytes.as_slice()) {
+					Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
+					None => DurablePre::Absent,
+				};
 				state.oracle.remove(operator, key_bytes.as_slice());
 				writes.push(OperatorWrite::Remove {
 					operator: OperatorId(operator),
 					key: key_bytes,
-					pre: DurablePre::Unknown,
+					pre,
 				});
 			}
 			6..=8 => {
-				let group = rng.random_range(1..=p.groups);
-				let side = rng.random_range(0u32..p.sides as u32) as u8;
-				let row_number = rng.random_range(1..=p.anchor_rows);
+				let (operator, group, side, row_number) =
+					batch_anchor_slot(rng, state, p, operator, &anchor_slots);
+				anchor_slots.push((operator, group, side, row_number));
 				let expiry = rng.random_range(1..=p.expiry_span);
+				let held = state.oracle.anchor_get(operator, group, side, row_number).is_some();
 				state.oracle.anchor_set(operator, group, side, row_number, expiry);
-				writes.push(OperatorWrite::AnchorSet {
-					operator: OperatorId(operator),
-					group: GroupId(group),
-					side,
-					row_num: RowNumber(row_number),
-					expiry: DateTime::from_millis(expiry),
+				writes.push(match held {
+					true => OperatorWrite::AnchorReplace {
+						operator: OperatorId(operator),
+						group: GroupId(group),
+						side,
+						row_num: RowNumber(row_number),
+						expiry: DateTime::from_millis(expiry),
+					},
+					false => OperatorWrite::AnchorInsert {
+						operator: OperatorId(operator),
+						group: GroupId(group),
+						side,
+						row_num: RowNumber(row_number),
+						expiry: DateTime::from_millis(expiry),
+					},
 				});
 			}
 			_ => {
-				let group = rng.random_range(1..=p.groups);
-				let side = rng.random_range(0u32..p.sides as u32) as u8;
-				let row_number = rng.random_range(1..=p.anchor_rows);
+				let (operator, group, side, row_number) =
+					batch_anchor_slot(rng, state, p, operator, &anchor_slots);
+				anchor_slots.push((operator, group, side, row_number));
 				state.oracle.anchor_remove(operator, group, side, row_number);
 				writes.push(OperatorWrite::AnchorRemove {
 					operator: OperatorId(operator),
 					group: GroupId(group),
 					side,
-					run_num: RowNumber(row_number),
+					row_num: RowNumber(row_number),
 				});
 			}
 		}
@@ -719,6 +746,55 @@ fn random_batch(rng: &mut StdRng, state: &mut State, p: &Params, step: u32) -> B
 	}
 
 	(writes, checkpoints, deletes)
+}
+
+/// A slot for one batched state write, biased toward keys that are already live. Uniform draws over the slot space
+/// almost never revisit a key, which leaves the replace and remove-present arithmetic - and the in-batch overlay
+/// that must claim what an EARLIER write in the same batch left - covered by nothing.
+fn batch_state_slot(
+	rng: &mut StdRng,
+	state: &State,
+	p: &Params,
+	operator: u64,
+	batch: &[(u64, EncodedKey)],
+) -> (u64, EncodedKey) {
+	match rng.random_range(0u32..100) {
+		0..=29 if !batch.is_empty() => batch[pick_index(rng, batch.len())].clone(),
+		30..=64 if state.oracle.state_len() > 0 => {
+			let index = pick_index(rng, state.oracle.state_len());
+			let (held, key) = state.oracle.nth_state_slot(index).expect("the index is inside the live set");
+			(held, EncodedKey::new(key))
+		}
+		_ => (operator, random_key(rng, p)),
+	}
+}
+
+/// The anchor twin of `batch_state_slot`, for the same reason: an insert/replace claim is only checked where the
+/// slot is sometimes already held, and the in-batch overlay only where one batch touches a slot twice.
+fn batch_anchor_slot(
+	rng: &mut StdRng,
+	state: &State,
+	p: &Params,
+	operator: u64,
+	batch: &[(u64, u64, u8, u64)],
+) -> (u64, u64, u8, u64) {
+	match rng.random_range(0u32..100) {
+		0..=29 if !batch.is_empty() => batch[pick_index(rng, batch.len())],
+		30..=64 if state.oracle.anchor_len() > 0 => {
+			let index = pick_index(rng, state.oracle.anchor_len());
+			state.oracle.nth_anchor_slot(index).expect("the index is inside the live set")
+		}
+		_ => (
+			operator,
+			rng.random_range(1..=p.groups),
+			rng.random_range(0u32..p.sides as u32) as u8,
+			rng.random_range(1..=p.anchor_rows),
+		),
+	}
+}
+
+fn pick_index(rng: &mut StdRng, len: usize) -> usize {
+	rng.random_range(0u64..len as u64) as usize
 }
 
 /// Seed-derived configuration. The pinned sweeps stay comparable across commits; this one is what explores the

@@ -9,6 +9,8 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
 };
+#[cfg(reifydb_assertions)]
+use reifydb_core::key::operator_state::GroupId;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
@@ -16,12 +18,16 @@ use reifydb_core::{
 #[cfg(reifydb_assertions)]
 use reifydb_value::byte_size::ByteSize;
 use reifydb_value::reifydb_assertions;
+#[cfg(reifydb_assertions)]
+use reifydb_value::value::row_number::RowNumber;
 use tracing::instrument;
 
+#[cfg(reifydb_assertions)]
+use crate::types::DurablePre;
 use crate::{
 	store::{OperatorStore, StandardOperatorStore},
 	tier::{commit::batch::DropMarker, range::BucketId},
-	types::{BufferedState, DurablePre, OperatorBatch, OperatorWrite},
+	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
 
 impl StandardOperatorStore {
@@ -74,6 +80,7 @@ impl StandardOperatorStore {
 	#[cfg(reifydb_assertions)]
 	fn verify_classification(&self, writes: &[OperatorWrite]) {
 		let mut overlay: BTreeMap<(OperatorId, EncodedKey), Option<ByteSize>> = BTreeMap::new();
+		let mut anchors: BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool> = BTreeMap::new();
 		for write in writes {
 			let (operator, key, claimed, post) = match write {
 				OperatorWrite::Set {
@@ -107,17 +114,58 @@ impl StandardOperatorStore {
 					None,
 				),
 				OperatorWrite::AnchorSet {
+					operator,
+					group,
+					side,
+					row_num,
 					..
+				} => {
+					anchors.insert((*operator, *group, *side, *row_num), true);
+					continue;
 				}
-				| OperatorWrite::AnchorInsert {
+				OperatorWrite::AnchorInsert {
+					operator,
+					group,
+					side,
+					row_num,
 					..
+				} => {
+					self.verify_anchor_claim(
+						&mut anchors,
+						*operator,
+						*group,
+						*side,
+						*row_num,
+						false,
+					);
+					continue;
 				}
-				| OperatorWrite::AnchorReplace {
+				OperatorWrite::AnchorReplace {
+					operator,
+					group,
+					side,
+					row_num,
 					..
+				} => {
+					self.verify_anchor_claim(
+						&mut anchors,
+						*operator,
+						*group,
+						*side,
+						*row_num,
+						true,
+					);
+					continue;
 				}
-				| OperatorWrite::AnchorRemove {
-					..
-				} => continue,
+				OperatorWrite::AnchorRemove {
+					operator,
+					group,
+					side,
+					row_num,
+				} => {
+					anchors.insert((*operator, *group, *side, *row_num), false);
+					continue;
+				}
 			};
 			let slot = (operator, key.clone());
 			let observed = match overlay.get(&slot) {
@@ -135,6 +183,31 @@ impl StandardOperatorStore {
 			}
 			overlay.insert(slot, post.map(value_bytes));
 		}
+	}
+
+	#[cfg(reifydb_assertions)]
+	fn verify_anchor_claim(
+		&self,
+		overlay: &mut BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool>,
+		operator: OperatorId,
+		group: GroupId,
+		side: u8,
+		row_num: RowNumber,
+		claimed: bool,
+	) {
+		let slot = (operator, group, side, row_num);
+		let observed = match overlay.get(&slot) {
+			Some(pending) => *pending,
+			None => self.anchor_get(operator, group, side, row_num).is_some(),
+		};
+		assert_eq!(
+			claimed, observed,
+			"operator {} classified an anchor write against a slot the store does not hold; the census \
+			 never bills anchors, but the unclassified anchor write is removed on the strength of these \
+			 claims, so a wrong one leaves a caller no variant that describes what it did",
+			operator.0
+		);
+		overlay.insert(slot, true);
 	}
 
 	fn invalidate_read(&self, operator: OperatorId, key: &EncodedKey) {
