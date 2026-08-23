@@ -181,21 +181,50 @@ fn resident(inner: &BufferInner) -> impl Iterator<Item = &FlushBatch> {
 
 fn record_writes(live: &mut FlushBatch, writes: &[OperatorWrite]) {
 	for write in writes {
+		let durable_pre = write.durable_pre();
 		match write {
 			OperatorWrite::Set {
 				operator,
 				key,
 				row,
 			} => {
-				live.state.insert((*operator, key.clone()), Some(row.clone()));
+				live.record_state((*operator, key.clone()), Some(row.clone()), durable_pre);
+			}
+			OperatorWrite::Insert {
+				operator,
+				key,
+				post,
+			}
+			| OperatorWrite::Replace {
+				operator,
+				key,
+				post,
+				..
+			} => {
+				live.record_state((*operator, key.clone()), Some(post.clone()), durable_pre);
 			}
 			OperatorWrite::Remove {
 				operator,
 				key,
+				..
 			} => {
-				live.state.insert((*operator, key.clone()), None);
+				live.record_state((*operator, key.clone()), None, durable_pre);
 			}
 			OperatorWrite::AnchorSet {
+				operator,
+				group,
+				side,
+				row_num: row_number,
+				expiry,
+			}
+			| OperatorWrite::AnchorInsert {
+				operator,
+				group,
+				side,
+				row_num: row_number,
+				expiry,
+			}
+			| OperatorWrite::AnchorReplace {
 				operator,
 				group,
 				side,
@@ -208,7 +237,7 @@ fn record_writes(live: &mut FlushBatch, writes: &[OperatorWrite]) {
 				operator,
 				group,
 				side,
-				run_num: row_number,
+				row_num: row_number,
 			} => {
 				live.anchors.insert((*operator, *group, *side, *row_number), None);
 			}

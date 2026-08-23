@@ -128,8 +128,8 @@ fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&Operator
 			DropMarker::AnchorsOperator(_) | DropMarker::AnchorsGroup(_, _) => {}
 		}
 	}
-	for ((operator, key), row) in &batch.state {
-		match row {
+	for ((operator, key), entry) in &batch.state {
+		match &entry.post {
 			Some(row) => {
 				if let Some(range) = range {
 					range.overwrite(*operator, key.clone(), row.clone());

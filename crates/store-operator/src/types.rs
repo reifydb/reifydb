@@ -82,6 +82,13 @@ pub struct OperatorStateCensus {
 	pub value_bytes: ByteSize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DurablePre {
+	Unknown,
+	Absent,
+	Present(ByteSize),
+}
+
 #[derive(Debug, Clone)]
 pub enum OperatorWrite {
 	Set {
@@ -89,11 +96,37 @@ pub enum OperatorWrite {
 		key: EncodedKey,
 		row: EncodedPodRow,
 	},
+	Insert {
+		operator: OperatorId,
+		key: EncodedKey,
+		post: EncodedPodRow,
+	},
+	Replace {
+		operator: OperatorId,
+		key: EncodedKey,
+		pre_value_bytes: ByteSize,
+		post: EncodedPodRow,
+	},
 	Remove {
 		operator: OperatorId,
 		key: EncodedKey,
+		pre_value_bytes: Option<ByteSize>,
 	},
 	AnchorSet {
+		operator: OperatorId,
+		group: GroupId,
+		side: u8,
+		row_num: RowNumber,
+		expiry: DateTime,
+	},
+	AnchorInsert {
+		operator: OperatorId,
+		group: GroupId,
+		side: u8,
+		row_num: RowNumber,
+		expiry: DateTime,
+	},
+	AnchorReplace {
 		operator: OperatorId,
 		group: GroupId,
 		side: u8,
@@ -104,6 +137,25 @@ pub enum OperatorWrite {
 		operator: OperatorId,
 		group: GroupId,
 		side: u8,
-		run_num: RowNumber,
+		row_num: RowNumber,
 	},
+}
+
+impl OperatorWrite {
+	pub fn durable_pre(&self) -> DurablePre {
+		match self {
+			OperatorWrite::Insert {
+				..
+			} => DurablePre::Absent,
+			OperatorWrite::Replace {
+				pre_value_bytes,
+				..
+			} => DurablePre::Present(*pre_value_bytes),
+			OperatorWrite::Remove {
+				pre_value_bytes: Some(bytes),
+				..
+			} => DurablePre::Present(*bytes),
+			_ => DurablePre::Unknown,
+		}
+	}
 }

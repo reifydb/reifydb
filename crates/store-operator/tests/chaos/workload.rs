@@ -674,6 +674,7 @@ fn random_batch(rng: &mut StdRng, state: &mut State, p: &Params, step: u32) -> B
 				writes.push(OperatorWrite::Remove {
 					operator: OperatorId(operator),
 					key: key_bytes,
+					pre_value_bytes: None,
 				});
 			}
 			6..=8 => {

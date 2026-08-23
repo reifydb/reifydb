@@ -316,6 +316,7 @@ fn a_batch_write_invalidates_every_state_key_it_carries() {
 		OperatorWrite::Remove {
 			operator: OP_A,
 			key: key(2),
+			pre_value_bytes: None,
 		},
 	]);
 	assert!(store.flush_pending_blocking(), "the batch must reach sqlite before the staleness is observable");

@@ -545,6 +545,7 @@ fn parse_batch(command: &Command) -> Result<BatchArgs, Box<dyn StdError>> {
 			"remove" => writes.push(OperatorWrite::Remove {
 				operator,
 				key: encode_key(&decode_binary(&arg.value), keyspace),
+				pre_value_bytes: None,
 			}),
 			"anchor_set" => {
 				let parts: Vec<&str> = arg.value.split('/').collect();
@@ -568,7 +569,7 @@ fn parse_batch(command: &Command) -> Result<BatchArgs, Box<dyn StdError>> {
 					operator,
 					group: GroupId(parts[0].parse()?),
 					side: parts[1].parse()?,
-					run_num: RowNumber(parts[2].parse()?),
+					row_num: RowNumber(parts[2].parse()?),
 				});
 			}
 			"ckpt" => {

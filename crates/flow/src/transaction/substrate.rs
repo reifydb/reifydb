@@ -91,7 +91,7 @@ fn operator_writes(pending: &Pending) -> Vec<OperatorWrite> {
 				operator,
 				group,
 				side,
-				run_num: row_number,
+				row_num: row_number,
 			},
 			(None, PendingWrite::Set(row)) => OperatorWrite::Set {
 				operator,
@@ -106,6 +106,7 @@ fn operator_writes(pending: &Pending) -> Vec<OperatorWrite> {
 			) => OperatorWrite::Remove {
 				operator,
 				key: inner,
+				pre_value_bytes: None,
 			},
 		});
 	}

@@ -9,21 +9,21 @@ use reifydb_core::interface::catalog::flow::OperatorId;
 use crate::{
 	tier::commit::{
 		OperatorCommitBuffer,
-		batch::{DropMarker, StateKey},
+		batch::{DropMarker, StateEntry, StateKey},
 	},
-	types::{BufferedState, BufferedStateRange},
+	types::{BufferedState, BufferedStateRange, DurablePre},
 };
 
 impl OperatorCommitBuffer {
 	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
 		let mut inner = self.shared.inner.lock();
-		inner.live.state.insert((operator, key), Some(row));
+		inner.live.record_state((operator, key), Some(row), DurablePre::Unknown);
 		self.request_flush_when_full(&mut inner);
 	}
 
 	pub fn record_state_remove(&self, operator: OperatorId, key: EncodedKey) {
 		let mut inner = self.shared.inner.lock();
-		inner.live.state.insert((operator, key), None);
+		inner.live.record_state((operator, key), None, DurablePre::Unknown);
 		self.request_flush_when_full(&mut inner);
 	}
 
@@ -74,8 +74,8 @@ impl OperatorCommitBuffer {
 	}
 }
 
-fn buffered_state(entry: &Option<EncodedPodRow>) -> BufferedState {
-	match entry {
+fn buffered_state(entry: &StateEntry) -> BufferedState {
+	match &entry.post {
 		Some(row) => BufferedState::Row(row.clone()),
 		None => BufferedState::Tombstone,
 	}
@@ -103,7 +103,7 @@ fn is_empty_range(lower: &Bound<StateKey>, upper: &Bound<StateKey>) -> bool {
 }
 
 fn collect_state(
-	source: &BTreeMap<StateKey, Option<EncodedPodRow>>,
+	source: &BTreeMap<StateKey, StateEntry>,
 	operator: OperatorId,
 	range: (Bound<StateKey>, Bound<StateKey>),
 	out: &mut BTreeMap<EncodedKey, Option<EncodedPodRow>>,
@@ -112,6 +112,6 @@ fn collect_state(
 		if *candidate != operator {
 			break;
 		}
-		out.insert(key.clone(), entry.clone());
+		out.insert(key.clone(), entry.post.clone());
 	}
 }

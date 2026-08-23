@@ -97,21 +97,47 @@ impl SqliteOperatorStorage {
 				OperatorWrite::Set {
 					operator,
 					key,
-					row,
+					row: post,
+				}
+				| OperatorWrite::Insert {
+					operator,
+					key,
+					post,
+				}
+				| OperatorWrite::Replace {
+					operator,
+					key,
+					post,
+					..
 				} => transaction
 					.prepare_cached(STATE_SET_SQL)
 					.expect("operator state write could not be prepared")
-					.execute(params![operator.0 as i64, key.as_slice(), &row.bytes()[..]])
+					.execute(params![operator.0 as i64, key.as_slice(), &post.bytes()[..]])
 					.expect("operator state write failed"),
 				OperatorWrite::Remove {
 					operator,
 					key,
+					..
 				} => transaction
 					.prepare_cached(STATE_REMOVE_SQL)
 					.expect("operator state delete could not be prepared")
 					.execute(params![operator.0 as i64, key.as_slice()])
 					.expect("operator state delete failed"),
 				OperatorWrite::AnchorSet {
+					operator,
+					group,
+					side,
+					row_num: row_number,
+					expiry,
+				}
+				| OperatorWrite::AnchorInsert {
+					operator,
+					group,
+					side,
+					row_num: row_number,
+					expiry,
+				}
+				| OperatorWrite::AnchorReplace {
 					operator,
 					group,
 					side,
@@ -132,7 +158,7 @@ impl SqliteOperatorStorage {
 					operator,
 					group,
 					side,
-					run_num: row_number,
+					row_num: row_number,
 				} => transaction
 					.prepare_cached(ANCHOR_REMOVE_SQL)
 					.expect("seal anchor delete could not be prepared")
@@ -159,7 +185,7 @@ impl SqliteOperatorStorage {
 			self.mark_state_written();
 		}
 		for ((operator, key), entry) in &batch.state {
-			if entry.is_some() {
+			if entry.post.is_some() {
 				self.filter().add(*operator, key);
 			}
 		}
@@ -201,7 +227,7 @@ impl SqliteOperatorStorage {
 		let mut state_sets: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
 		let mut state_removes: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
 		for ((operator, key), entry) in &batch.state {
-			match entry {
+			match &entry.post {
 				Some(row) => state_sets.push(vec![
 					Box::new(operator.0 as i64),
 					Box::new(key.as_slice().to_vec()),

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, mem};
+use std::{
+	collections::{BTreeMap, btree_map::Entry},
+	mem,
+};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
@@ -10,6 +13,8 @@ use reifydb_core::{
 	key::operator_state::GroupId,
 };
 use reifydb_value::value::row_number::RowNumber;
+
+use crate::types::DurablePre;
 
 pub type StateKey = (OperatorId, EncodedKey);
 
@@ -24,15 +29,33 @@ pub enum DropMarker {
 	AnchorsGroup(OperatorId, GroupId),
 }
 
+#[derive(Debug, Clone)]
+pub struct StateEntry {
+	pub post: Option<EncodedPodRow>,
+	pub durable_pre: DurablePre,
+}
+
 #[derive(Debug, Default)]
 pub struct FlushBatch {
-	pub state: BTreeMap<StateKey, Option<EncodedPodRow>>,
+	pub state: BTreeMap<StateKey, StateEntry>,
 	pub anchors: BTreeMap<AnchorKey, Option<u64>>,
 	pub checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
 	pub drops: Vec<DropMarker>,
 }
 
 impl FlushBatch {
+	pub(crate) fn record_state(&mut self, key: StateKey, post: Option<EncodedPodRow>, durable_pre: DurablePre) {
+		match self.state.entry(key) {
+			Entry::Occupied(mut slot) => slot.get_mut().post = post,
+			Entry::Vacant(slot) => {
+				slot.insert(StateEntry {
+					post,
+					durable_pre,
+				});
+			}
+		}
+	}
+
 	pub fn is_empty(&self) -> bool {
 		self.state.is_empty() && self.anchors.is_empty() && self.checkpoints.is_empty() && self.drops.is_empty()
 	}

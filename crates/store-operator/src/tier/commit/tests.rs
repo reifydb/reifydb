@@ -19,7 +19,10 @@ use reifydb_core::{
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 
 use crate::{
-	tier::commit::{OperatorCommitBuffer, batch::DropMarker},
+	tier::commit::{
+		OperatorCommitBuffer,
+		batch::{DropMarker, StateEntry},
+	},
 	types::{BufferedAnchor, BufferedState, OperatorWrite},
 };
 
@@ -36,8 +39,12 @@ fn row(body: &str) -> EncodedPodRow {
 	EncodedPodRow::new(body.as_bytes())
 }
 
-fn body(entry: &Option<EncodedPodRow>) -> String {
-	row_body(entry.as_ref().expect("entry must carry a row"))
+fn body(row: &Option<EncodedPodRow>) -> String {
+	row_body(row.as_ref().expect("the slot must carry a row"))
+}
+
+fn entry_body(entry: &StateEntry) -> String {
+	body(&entry.post)
 }
 
 fn row_body(row: &EncodedPodRow) -> String {
@@ -486,6 +493,7 @@ fn apply_batch_maps_every_write_variant_onto_its_entry() {
 		OperatorWrite::Remove {
 			operator: OP_A,
 			key: key("removed"),
+			pre_value_bytes: None,
 		},
 		OperatorWrite::AnchorSet {
 			operator: OP_A,
@@ -498,7 +506,7 @@ fn apply_batch_maps_every_write_variant_onto_its_entry() {
 			operator: OP_A,
 			group: GROUP_A,
 			side: 1,
-			run_num: RowNumber(8),
+			row_num: RowNumber(8),
 		},
 	]);
 
@@ -549,7 +557,7 @@ fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
 	let batch = buffer.take_for_flush().expect("the combined apply must dirty the buffer");
 
 	assert_eq!(
-		body(batch.state.get(&(OP_A, key("state"))).expect("the state write must be in the batch")),
+		entry_body(batch.state.get(&(OP_A, key("state"))).expect("the state write must be in the batch")),
 		"v",
 		"the state of the committed slice must ride the same batch as its checkpoint"
 	);
@@ -625,7 +633,7 @@ fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_noth
 		for ((_, taken), entry) in &batch.state {
 			seen.push(String::from_utf8(taken.as_slice().to_vec()).expect("test keys are utf8"));
 			assert_eq!(
-				body(entry),
+				entry_body(entry),
 				format!("v{}", &seen[seen.len() - 1][1..]),
 				"a slice must carry each key together with its own value"
 			);
@@ -659,7 +667,7 @@ fn a_key_rewritten_after_its_slice_left_reads_and_flushes_as_the_later_value() {
 	buffer.record_state_set(OP_A, key("k3"), row("left-behind"));
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
-	assert_eq!(first.state.get(&(OP_A, key("k1"))).map(body), Some("early".to_string()));
+	assert_eq!(first.state.get(&(OP_A, key("k1"))).map(entry_body), Some("early".to_string()));
 	buffer.record_state_set(OP_A, key("k1"), row("late"));
 
 	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k1")) else {
@@ -675,12 +683,12 @@ fn a_key_rewritten_after_its_slice_left_reads_and_flushes_as_the_later_value() {
 
 	let second = buffer.take_for_flush().expect("the leftover and the rewrite make a second slice");
 	assert_eq!(
-		second.state.get(&(OP_A, key("k1"))).map(body),
+		second.state.get(&(OP_A, key("k1"))).map(entry_body),
 		Some("late".to_string()),
 		"the later slice must carry the later value; carrying the earlier one would overwrite the rewrite \
 		 in sqlite and silently roll the key back"
 	);
-	assert_eq!(second.state.get(&(OP_A, key("k3"))).map(body), Some("left-behind".to_string()));
+	assert_eq!(second.state.get(&(OP_A, key("k3"))).map(entry_body), Some("left-behind".to_string()));
 	buffer.complete_flush();
 	assert!(buffer.take_for_flush().is_none(), "the split must terminate once everything has been handed out");
 }

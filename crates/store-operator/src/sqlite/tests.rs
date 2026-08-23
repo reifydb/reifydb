@@ -519,7 +519,7 @@ fn a_batch_applies_a_set_and_a_later_remove_of_the_same_row_in_order() {
 			operator: OperatorId(1),
 			group: GroupId(7),
 			side: LEFT,
-			run_num: RowNumber(1),
+			row_num: RowNumber(1),
 		},
 	]);
 
@@ -625,6 +625,7 @@ fn a_pooled_reader_sees_a_write_the_moment_the_writer_commits() {
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator: OperatorId(1),
 		key: probe.clone(),
+		pre_value_bytes: None,
 	}]);
 
 	assert!(!store.contains(OperatorId(1), &probe), "a committed batch must be visible to the pool too");

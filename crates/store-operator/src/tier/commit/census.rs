@@ -16,11 +16,11 @@ impl OperatorCommitBuffer {
 		let inner = self.shared.inner.lock();
 		let mut total = ByteSize::ZERO;
 		for batch in resident(&inner) {
-			for ((candidate, key), row) in &batch.state {
+			for ((candidate, key), entry) in &batch.state {
 				if *candidate != operator {
 					continue;
 				}
-				if let Some(row) = row {
+				if let Some(row) = &entry.post {
 					total = total.saturating_add(ByteSize::from_bytes(
 						key.len() as u64 + row.bytes().len() as u64,
 					));
@@ -40,8 +40,8 @@ impl OperatorCommitBuffer {
 		let inner = self.shared.inner.lock();
 		let mut total = ByteSize::ZERO;
 		for batch in resident(&inner) {
-			for ((_, key), row) in &batch.state {
-				if let Some(row) = row {
+			for ((_, key), entry) in &batch.state {
+				if let Some(row) = &entry.post {
 					total = total.saturating_add(ByteSize::from_bytes(
 						key.len() as u64 + row.bytes().len() as u64,
 					));
@@ -58,8 +58,8 @@ impl OperatorCommitBuffer {
 		let offset = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize;
 		let mut buckets: BTreeMap<(OperatorId, u8), OperatorStateCensus> = BTreeMap::new();
 		for batch in resident(&inner) {
-			for ((operator, key), row) in &batch.state {
-				let Some(row) = row else {
+			for ((operator, key), entry) in &batch.state {
+				let Some(row) = &entry.post else {
 					continue;
 				};
 				let stored = *key.as_slice().get(offset).expect("state keys carry a keyspace byte");

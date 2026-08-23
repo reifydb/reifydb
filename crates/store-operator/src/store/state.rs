@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(reifydb_assertions)]
+use std::collections::BTreeMap;
 use std::{cmp::Ordering, ops::Bound};
 
 use reifydb_codec::{
@@ -11,6 +13,9 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 };
+#[cfg(reifydb_assertions)]
+use reifydb_value::byte_size::ByteSize;
+use reifydb_value::reifydb_assertions;
 use tracing::instrument;
 
 use crate::{
@@ -34,6 +39,9 @@ impl StandardOperatorStore {
 
 	#[instrument(name = "store::operator::apply_batch", level = "debug", skip(self, writes), fields(write_count = writes.len()))]
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
+		reifydb_assertions! {
+			self.verify_classification(writes);
+		}
 		self.commit.apply_batch(writes);
 		self.invalidate_read_batch(writes);
 	}
@@ -45,6 +53,9 @@ impl StandardOperatorStore {
 		checkpoints: &[(FlowId, CommitVersion)],
 		checkpoint_deletes: &[FlowId],
 	) {
+		reifydb_assertions! {
+			self.verify_classification(writes);
+		}
 		self.commit.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
 		self.invalidate_read_batch(writes);
 	}
@@ -57,6 +68,63 @@ impl StandardOperatorStore {
 		}
 		if let Some(point) = self.point.as_ref() {
 			point.invalidate_operator(operator);
+		}
+	}
+
+	#[cfg(reifydb_assertions)]
+	fn verify_classification(&self, writes: &[OperatorWrite]) {
+		let mut overlay: BTreeMap<(OperatorId, EncodedKey), Option<ByteSize>> = BTreeMap::new();
+		for write in writes {
+			let (operator, key, claimed, post) = match write {
+				OperatorWrite::Set {
+					operator,
+					key,
+					row,
+				} => (*operator, key, None, Some(row)),
+				OperatorWrite::Insert {
+					operator,
+					key,
+					post,
+				} => (*operator, key, Some(None), Some(post)),
+				OperatorWrite::Replace {
+					operator,
+					key,
+					pre_value_bytes,
+					post,
+				} => (*operator, key, Some(Some(*pre_value_bytes)), Some(post)),
+				OperatorWrite::Remove {
+					operator,
+					key,
+					pre_value_bytes,
+				} => (*operator, key, pre_value_bytes.map(Some), None),
+				OperatorWrite::AnchorSet {
+					..
+				}
+				| OperatorWrite::AnchorInsert {
+					..
+				}
+				| OperatorWrite::AnchorReplace {
+					..
+				}
+				| OperatorWrite::AnchorRemove {
+					..
+				} => continue,
+			};
+			let slot = (operator, key.clone());
+			let observed = match overlay.get(&slot) {
+				Some(pending) => *pending,
+				None => self.get(operator, key).map(|row| value_bytes(&row)),
+			};
+			if let Some(claimed) = claimed {
+				assert_eq!(
+					claimed, observed,
+					"operator {} classified a write against a pre-image the store does not hold; the \
+					 census is delta arithmetic over that claim, so a wrong one drifts the bucket \
+					 until the next restart",
+					operator.0
+				);
+			}
+			overlay.insert(slot, post.map(value_bytes));
 		}
 	}
 
@@ -86,11 +154,28 @@ impl StandardOperatorStore {
 					key,
 					..
 				}
+				| OperatorWrite::Insert {
+					operator,
+					key,
+					..
+				}
+				| OperatorWrite::Replace {
+					operator,
+					key,
+					..
+				}
 				| OperatorWrite::Remove {
 					operator,
 					key,
+					..
 				} => self.invalidate_read(*operator, key),
 				OperatorWrite::AnchorSet {
+					..
+				}
+				| OperatorWrite::AnchorInsert {
+					..
+				}
+				| OperatorWrite::AnchorReplace {
 					..
 				}
 				| OperatorWrite::AnchorRemove {
@@ -342,4 +427,9 @@ impl OperatorStore {
 			Self::Standard(store) => store.range_batch(operator, range, batch_size),
 		}
 	}
+}
+
+#[cfg(reifydb_assertions)]
+fn value_bytes(row: &EncodedPodRow) -> ByteSize {
+	ByteSize::from_bytes(row.bytes().len() as u64)
 }
