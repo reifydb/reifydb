@@ -103,6 +103,9 @@ impl Compiler {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, query)?;
 		let has_ddl = statements.iter().any(|s| s.contains_ddl());
+		if has_ddl {
+			self.0.cache.clear();
+		}
 		if needs_incremental_compile(&statements, has_ddl) {
 			return Ok(CompilationResult::Incremental(IncrementalCompilation {
 				query: query.to_string(),
@@ -189,10 +192,19 @@ impl Compiler {
 			&mut Transaction<'_>,
 		) -> Result<BumpVec<'a, LogicalPlan<'a>>>,
 	{
+		let cacheable = tx.identity().is_privileged();
+		let fingerprint = CompilationFingerprint::from(xxh3_128(query.as_bytes()));
+		if cacheable && let Some(cached) = self.0.cache.get(&fingerprint) {
+			return Ok(CompilationResult::Ready(cached));
+		}
+
 		let bump = Bump::new();
 		let statements = parse_str(&bump, query)?;
 
 		let has_ddl = statements.iter().any(|s| s.contains_ddl());
+		if has_ddl {
+			self.0.cache.clear();
+		}
 		let total_statements = statements.len();
 		let needs_incremental = total_statements > 1 && has_ddl;
 
@@ -220,7 +232,11 @@ impl Compiler {
 			}
 		}
 
-		Ok(CompilationResult::Ready(Arc::new(plans)))
+		let plans = Arc::new(plans);
+		if cacheable && !has_ddl {
+			self.0.cache.put(fingerprint, plans.clone());
+		}
+		Ok(CompilationResult::Ready(plans))
 	}
 
 	pub fn compile_next_with_policy<F>(
