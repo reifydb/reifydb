@@ -24,7 +24,7 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use crate::{
 	operator::{
 		state::{
-			expiry::{expiry_drop, expiry_due, expiry_earliest, expiry_key, expiry_set},
+			expiry::{ExpiryIndex, expiry_drop, expiry_key},
 			seal::coord::{Coord, IsZero},
 		},
 		state_access::{get, put, remove},
@@ -101,6 +101,7 @@ pub struct RollingEngine<G, C: Slot, Accumulator> {
 	meta_low_water: Option<u64>,
 	expire_batch: usize,
 	lag: <C::Coord as Coord>::Span,
+	expiry: ExpiryIndex,
 	_pd: PhantomData<(G, C, Accumulator)>,
 }
 
@@ -168,6 +169,7 @@ where
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
 			lag: Default::default(),
+			expiry: ExpiryIndex::default(),
 			_pd: PhantomData,
 		}
 	}
@@ -405,7 +407,7 @@ where
 						expiry_drop(store, &expiry_key(old, &group, &[]))?;
 					}
 					if let Some(new) = new_index_key {
-						expiry_set(
+						self.expiry.set(
 							store,
 							expiry_key(new, &group, &[]),
 							RollingIndexEntry {
@@ -636,7 +638,7 @@ where
 					expiry_drop(store, &expiry_key(old, &group, &[]))?;
 				}
 				if let Some(new) = new_min {
-					expiry_set(
+					self.expiry.set(
 						store,
 						expiry_key(new, &group, &[]),
 						RollingIndexEntry {
@@ -721,7 +723,7 @@ where
 			);
 		}
 		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
-			expiry_due(store, cutoff.order_key().to_order(), self.expire_batch)?;
+			self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
 
 		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
 		let mut pending: Vec<(G, Option<Accumulator::Output>)> = Vec::new();
@@ -741,7 +743,7 @@ where
 			let expired: Vec<C> = buffer.range(..=cutoff).map(|(coord, _)| *coord).collect();
 			if expired.is_empty() {
 				if let Some(new) = coord_min_key(&buffer) {
-					expiry_set(
+					self.expiry.set(
 						store,
 						expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
@@ -774,7 +776,7 @@ where
 			};
 			match (new_min, merged_any, finalized) {
 				(Some(new), true, Some(value)) => {
-					expiry_set(
+					self.expiry.set(
 						store,
 						expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
@@ -789,7 +791,7 @@ where
 					pending.push((entry.group, Some(value)));
 				}
 				(Some(new), false, _) => {
-					expiry_set(
+					self.expiry.set(
 						store,
 						expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
@@ -813,6 +815,8 @@ where
 				}
 			}
 		}
+
+		self.expiry.settle(store)?;
 
 		let mut out: Vec<RollingExpiry<G, Accumulator::Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
@@ -847,7 +851,7 @@ where
 	}
 
 	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
-		expiry_earliest(store)
+		self.expiry.earliest(store)
 	}
 
 	pub fn expire_before<CB, Output>(
@@ -860,7 +864,7 @@ where
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
 		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
-			expiry_due(store, cutoff.order_key().to_order(), self.expire_batch)?;
+			self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
 
 		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
 		let mut pending: Vec<(G, Option<Output>)> = Vec::new();
@@ -877,7 +881,7 @@ where
 			buffer.retain(|&coord, _| coord > cutoff);
 			if buffer.len() == before {
 				if let Some(new) = coord_min_key(&buffer) {
-					expiry_set(
+					self.expiry.set(
 						store,
 						expiry_key(new, &entry.group, &[]),
 						RollingIndexEntry {
@@ -892,7 +896,7 @@ where
 			match combine(&entry.group, &buffer) {
 				Some(value) if !buffer.is_empty() => {
 					if let Some(new) = coord_min_key(&buffer) {
-						expiry_set(
+						self.expiry.set(
 							store,
 							expiry_key(new, &entry.group, &[]),
 							RollingIndexEntry {
@@ -913,6 +917,8 @@ where
 				}
 			}
 		}
+
+		self.expiry.settle(store)?;
 
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {

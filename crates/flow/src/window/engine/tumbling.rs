@@ -25,7 +25,7 @@ use reifydb_value::{Result, reifydb_assertions};
 use crate::{
 	operator::{
 		state::{
-			expiry::{expiry_drop, expiry_due, expiry_key, expiry_set},
+			expiry::{ExpiryIndex, expiry_drop, expiry_key},
 			reaper::Reaper,
 		},
 		state_access::{get, put, remove},
@@ -95,6 +95,7 @@ pub struct TumblingEngine<G, C, Accumulator> {
 	meta_low_water: Option<u64>,
 	expire_batch: usize,
 	dropped_retractions: u64,
+	expiry: ExpiryIndex,
 	_pd: PhantomData<(G, C, Accumulator)>,
 }
 
@@ -112,6 +113,7 @@ where
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
 			dropped_retractions: 0,
+			expiry: ExpiryIndex::default(),
 			_pd: PhantomData,
 		}
 	}
@@ -145,7 +147,7 @@ where
 				group_id: id.0,
 				slot_key: slot.as_bytes().to_vec(),
 			};
-			expiry_set(store, expiry_key(new, group, &suffix), entry)?;
+			self.expiry.set(store, expiry_key(new, group, &suffix), entry)?;
 		}
 		Ok(())
 	}
@@ -355,7 +357,7 @@ where
 
 	pub fn expire(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<Vec<ExpiredWindow<G, C>>> {
 		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, C>)> =
-			expiry_due(store, threshold, self.expire_batch)?;
+			self.expiry.due(store, threshold, self.expire_batch)?;
 
 		let mut out: Vec<ExpiredWindow<G, C>> = Vec::new();
 		for (index_key, entry) in due {
@@ -366,6 +368,7 @@ where
 				window_start: entry.window_start,
 			});
 		}
+		self.expiry.settle(store)?;
 		note_when_expiry_capped(out.len(), self.expire_batch);
 		Ok(out)
 	}
