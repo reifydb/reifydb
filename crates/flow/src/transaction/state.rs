@@ -144,10 +144,11 @@ pub trait StateExtension: FlowTransaction {
 	fn state_range(&mut self, id: OperatorId, query: StateRange) -> Result<MultiVersionBatch> {
 		let before = ScanCounters::sample();
 		let prefixed_range = query.range.with_prefix(EncodedKey::new(node_prefix(id)));
+		let batch_size = query.limit.map_or(1024, |limit| limit.saturating_add(1).min(1024));
 		let iter = if query.reverse {
-			self.range_rev(prefixed_range, RangeScope::All, 1024)
+			self.range_rev(prefixed_range, RangeScope::All, batch_size)
 		} else {
-			self.range(prefixed_range, RangeScope::All, 1024)
+			self.range(prefixed_range, RangeScope::All, batch_size)
 		};
 		let mut items = Vec::new();
 		let mut has_more = false;
