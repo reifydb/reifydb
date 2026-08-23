@@ -725,7 +725,7 @@ mod tests {
 	};
 
 	use reifydb_catalog::cache::{CatalogCache, load::CatalogCacheLoader};
-	use reifydb_cdc::{produce::watermark::CdcProducerWatermark, storage::CdcStore};
+	use reifydb_cdc::produce::watermark::CdcProducerWatermark;
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		common::CommitVersion,
@@ -742,6 +742,7 @@ mod tests {
 		key::ringbuffer::RingBufferMetadataKey,
 	};
 	use reifydb_runtime::version_epoch::EpochSpan;
+	use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::value::row_number::RowNumber;

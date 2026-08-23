@@ -10,7 +10,7 @@ use std::{
 	},
 };
 
-use reifydb_cdc::{consume::backlog::cdc_bytes, storage::CdcHotReader};
+use reifydb_cdc::consume::backlog::cdc_bytes;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::Cdc,
@@ -24,6 +24,7 @@ use reifydb_runtime::actor::{
 	system::{ActorConfig, ActorHandle},
 	traits::{Actor, Directive},
 };
+use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::error::FlowLoadError;
@@ -81,7 +82,7 @@ impl MetricsCollector for LoaderMetrics {
 }
 
 pub struct LoaderActor {
-	reader: CdcHotReader,
+	store: CdcStore,
 	metrics: LoaderMetrics,
 }
 
@@ -90,9 +91,9 @@ pub struct LoaderState {
 }
 
 impl LoaderActor {
-	pub fn new(reader: CdcHotReader, metrics: LoaderMetrics) -> Self {
+	pub fn new(store: CdcStore, metrics: LoaderMetrics) -> Self {
 		Self {
-			reader,
+			store,
 			metrics,
 		}
 	}
@@ -136,7 +137,7 @@ impl LoaderActor {
 		let mut cursor = from;
 		loop {
 			let batch = self
-				.reader
+				.store
 				.read_range(Bound::Excluded(cursor), Bound::Included(up_to), READ_CHUNK)
 				.map_err(|cause| FlowLoadError::Read {
 					from: from.0,
@@ -203,10 +204,10 @@ mod tests {
 		time::{Duration, Instant},
 	};
 
-	use reifydb_cdc::storage::{CdcStorage, CdcStore, memory::MemoryCdcStorage};
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::interface::cdc::CdcChange;
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
+	use reifydb_store_cdc::{config::CdcStoreConfig, storage::Cutoff};
 	use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 	use super::*;
@@ -226,20 +227,16 @@ mod tests {
 		)
 	}
 
-	fn store_with(versions: impl IntoIterator<Item = u64>) -> CdcStore {
-		let storage = MemoryCdcStorage::new();
+	fn store_with(system: &ActorSystem, versions: impl IntoIterator<Item = u64>) -> CdcStore {
+		let store = CdcStore::new(CdcStoreConfig::memory(system.spawner().clone(), Clock::Real));
 		for v in versions {
-			storage.write(&cdc(v, 100)).unwrap();
+			store.write(&cdc(v, 100)).unwrap();
 		}
-		CdcStore::Memory(storage)
+		store
 	}
 
-	fn spawn(store: &CdcStore) -> (LoaderHandle, ActorSystem) {
-		let system = ActorSystem::new(Pools::default(), Clock::Real);
-		let handle = system
-			.spawner()
-			.spawn_flow("test-loader", LoaderActor::new(store.hot_reader(), LoaderMetrics::default()));
-		(handle, system)
+	fn spawn(system: &ActorSystem, store: &CdcStore) -> LoaderHandle {
+		system.spawner().spawn_flow("test-loader", LoaderActor::new(store.clone(), LoaderMetrics::default()))
 	}
 
 	fn fetch(handle: &LoaderHandle, from: u64, up_to: u64, budget: ByteSize) -> LoadedChunk {
@@ -270,8 +267,9 @@ mod tests {
 	fn an_exhausted_range_advances_to_the_requested_bound() {
 		// With nothing above the last read entry the cursor must still reach the requested bound,
 		// or versions carrying no CDC are re-requested forever.
-		let store = store_with([2, 3]);
-		let (handle, _system) = spawn(&store);
+		let system = ActorSystem::new(Pools::default(), Clock::Real);
+		let store = store_with(&system, [2, 3]);
+		let handle = spawn(&system, &store);
 		let (items, advance_to) = fetch(&handle, 1, 9, ByteSize::from_mib(1)).expect("chunk");
 		assert_eq!(items.iter().map(|c| c.version).collect::<Vec<_>>(), vec![cv(2), cv(3)]);
 		assert_eq!(advance_to, cv(9), "an exhausted read must advance to up_to, not the last entry");
@@ -279,8 +277,9 @@ mod tests {
 
 	#[test]
 	fn the_byte_budget_truncates_and_advances_only_to_the_last_served() {
-		let store = store_with(1..=10);
-		let (handle, _system) = spawn(&store);
+		let system = ActorSystem::new(Pools::default(), Clock::Real);
+		let store = store_with(&system, 1..=10);
+		let handle = spawn(&system, &store);
 		let one = cdc_bytes(&cdc(1, 100));
 		let (items, advance_to) = fetch(&handle, 0, 10, ByteSize::from_bytes(one * 3)).expect("chunk");
 		assert_eq!(items.len(), 3);
@@ -295,18 +294,18 @@ mod tests {
 	fn identical_requests_are_served_from_the_memo_without_a_second_read() {
 		// A restart cohort resumes from one checkpoint and issues the same fetch, which must read
 		// and decode once. Wiping storage after the first fetch is a destructive probe: the
-		// second can only succeed if it never touches storage.
-		let storage = MemoryCdcStorage::new();
-		for v in 1..=5 {
-			storage.write(&cdc(v, 100)).unwrap();
-		}
-		let store = CdcStore::Memory(storage.clone());
-		let (handle, _system) = spawn(&store);
+		// second can only succeed if it never touches storage; the fixture runs without a read buffer for a
+		// wipe to hide behind.
+		let system = ActorSystem::new(Pools::default(), Clock::Real);
+		let store = store_with(&system, 1..=5);
+		let handle = spawn(&system, &store);
 
 		let first = fetch(&handle, 0, 5, ByteSize::from_mib(1)).expect("chunk");
 		assert_eq!(first.0.len(), 5);
 
-		storage.clear();
+		assert!(store.flush_pending(), "the wipe drops sealed blocks, so every record must be sealed first");
+		store.drop_before(Cutoff::Version(CommitVersion(6)), usize::MAX).unwrap();
+		assert!(store.read_range(Bound::Unbounded, Bound::Unbounded, 64).unwrap().items.is_empty());
 
 		let second = fetch(&handle, 0, 5, ByteSize::from_mib(1)).expect("chunk");
 		assert_eq!(

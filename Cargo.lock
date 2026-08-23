@@ -2735,6 +2735,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sdk",
  "reifydb-sqlite",
+ "reifydb-store-cdc",
  "reifydb-store-multi",
  "reifydb-store-operator",
  "reifydb-store-single",
@@ -2872,6 +2873,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-runtime",
  "reifydb-sqlite",
+ "reifydb-store-cdc",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-test-harness",
@@ -3010,6 +3012,7 @@ dependencies = [
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sqlite",
+ "reifydb-store-cdc",
  "reifydb-store-multi",
  "reifydb-store-operator",
  "reifydb-store-single",
@@ -3318,6 +3321,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-store-cdc"
+version = "0.9.0"
+dependencies = [
+ "postcard",
+ "rand 0.10.1",
+ "reifydb-build",
+ "reifydb-catalog",
+ "reifydb-codec",
+ "reifydb-core",
+ "reifydb-runtime",
+ "reifydb-sqlite",
+ "reifydb-testing",
+ "reifydb-testing-chaos",
+ "reifydb-testing-macro",
+ "reifydb-value",
+ "rusqlite",
+ "test_each_file",
+ "tracing",
+ "zstd",
+]
+
+[[package]]
 name = "reifydb-store-multi"
 version = "0.9.0"
 dependencies = [
@@ -3410,6 +3435,7 @@ dependencies = [
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sdk",
+ "reifydb-store-cdc",
  "reifydb-store-operator",
  "reifydb-store-single",
  "reifydb-sub-api",
@@ -3439,6 +3465,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
+ "reifydb-store-cdc",
  "reifydb-store-multi",
  "reifydb-sub-api",
  "reifydb-test-harness",
@@ -3458,7 +3485,6 @@ dependencies = [
  "reifydb-allocator",
  "reifydb-build",
  "reifydb-catalog",
- "reifydb-cdc",
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
@@ -3466,6 +3492,7 @@ dependencies = [
  "reifydb-profiler",
  "reifydb-runtime",
  "reifydb-sqlite",
+ "reifydb-store-cdc",
  "reifydb-store-multi",
  "reifydb-store-operator",
  "reifydb-store-single",
@@ -3509,6 +3536,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
+ "reifydb-store-cdc",
  "reifydb-sub-api",
  "reifydb-transaction",
  "reifydb-value",
@@ -3695,6 +3723,7 @@ dependencies = [
  "reifydb-macro",
  "reifydb-rql",
  "reifydb-runtime",
+ "reifydb-store-cdc",
  "reifydb-sub-api",
  "reifydb-subscription",
  "reifydb-test-harness",
@@ -3768,6 +3797,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sdk",
  "reifydb-sqlite",
+ "reifydb-store-cdc",
  "reifydb-store-multi",
  "reifydb-store-operator",
  "reifydb-store-single",
@@ -3932,6 +3962,7 @@ dependencies = [
  "reifydb-routine-abi",
  "reifydb-rql",
  "reifydb-runtime",
+ "reifydb-store-cdc",
  "reifydb-store-multi",
  "reifydb-store-operator",
  "reifydb-store-single",
@@ -3969,6 +4000,7 @@ dependencies = [
  "reifydb-routine-abi",
  "reifydb-rql",
  "reifydb-runtime",
+ "reifydb-store-cdc",
  "reifydb-store-multi",
  "reifydb-store-operator",
  "reifydb-store-single",

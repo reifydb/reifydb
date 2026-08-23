@@ -23,6 +23,7 @@ use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::clock::Clock,
 };
+use reifydb_store_cdc::store::CdcStore;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
@@ -69,7 +70,10 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 		let multi_store = ioc.resolve::<MultiStore>()?;
 		let single_store = ioc.resolve::<SingleStore>()?;
 		let operator_store = ioc.resolve::<OperatorStore>()?;
+		let cdc_store = ioc.resolve::<CdcStore>()?;
 		let retention_metrics = ioc.resolve::<RetentionMetrics>()?;
+
+		registry.register_collectors(cdc_store.metrics_collectors());
 
 		let collectors = Collectors {
 			engine: engine.clone(),
@@ -86,13 +90,14 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 			&multi_store,
 			&single_store,
 			&operator_store,
+			&cdc_store,
 			&retention_metrics,
 			epoch_gauge.clone(),
 		)?;
 		ioc.register_service(sampler.clone());
 		Self::wire_accounting(ioc, &engine, &spawner, epoch_gauge, sampler)?;
 
-		let store_reader = StoreReader::new(multi_store, single_store, operator_store);
+		let store_reader = StoreReader::new(multi_store, single_store, operator_store, cdc_store);
 
 		Ok(Box::new(MetricsSubsystem::new(SampleReader::new(collectors), store_reader)))
 	}
@@ -109,6 +114,7 @@ impl MetricsSubsystemFactory {
 		multi_store: &MultiStore,
 		single_store: &SingleStore,
 		operator_store: &OperatorStore,
+		cdc_store: &CdcStore,
 		retention_metrics: &RetentionMetrics,
 		epoch_gauge: Arc<EpochGauge>,
 	) -> Result<ActorRef<SamplerMessage>> {
@@ -130,6 +136,7 @@ impl MetricsSubsystemFactory {
 			multi_store.clone(),
 			single_store.clone(),
 			operator_store.clone(),
+			cdc_store.clone(),
 			retention_metrics.clone(),
 			epoch_gauge,
 			surfaces,

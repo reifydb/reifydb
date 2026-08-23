@@ -1,0 +1,28 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# The log carries exactly one record per commit version and a sealed block is never rewritten, so a repeat of
+# a version already written must surface instead of duplicating it or being silently dropped.
+
+write 1
+!write 1
+---
+CDC version already written: CommitVersion(1)
+
+# The rejection survives the flush: the version is now in a block that can never be rewritten.
+
+flush
+!write 1
+---
+CDC version already written: CommitVersion(1)
+
+# A fresh version is still accepted, and the rejected write left nothing behind.
+
+write 2
+read 1
+read 2
+blocks
+---
+v1 => changes=1 ts=1700000000000000000
+v2 => changes=1 ts=1700000000000000000
+blocks=1 [1..1 n=1]

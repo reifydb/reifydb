@@ -12,6 +12,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::context::clock::Clock;
+use reifydb_store_cdc::storage::CdcStorage;
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::replica::watermark::ReplicaWatermark;
 use reifydb_value::{Result, value::duration::Duration};
@@ -125,7 +126,7 @@ impl CdcWatermarks<'_> {
 	/// deltas were entirely excluded from CDC (e.g. `ConfigStorage`-only ones); use `producer()`
 	/// to ask whether the producer is caught up.
 	pub fn max(&self) -> CommitVersion {
-		self.db.engine().cdc_store().max_version().ok().flatten().unwrap_or(CommitVersion(0))
+		self.db.engine().cdc_store().max_version().expect("cdc max version").unwrap_or(CommitVersion(0))
 	}
 
 	pub fn consumer(&self) -> CommitVersion {

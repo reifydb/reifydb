@@ -1,0 +1,34 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# The ttl cutoff is answered from block summaries alone, never by inflating a payload: it is the lowest
+# version of the earliest block that still holds a record at or after the cutoff timestamp.
+
+write 1 ts=100
+write 2 ts=200
+flush
+write 3 ts=300
+write 4 ts=400
+flush
+blocks
+---
+blocks=2 [1..2 n=2] [3..4 n=2]
+
+# A cutoff inside the first block keeps that whole block, so the answer is the block's lowest version.
+
+ttl_cutoff 150
+---
+cutoff=1
+
+# A cutoff past the first block's newest record moves the answer to the next block.
+
+ttl_cutoff 250
+---
+cutoff=3
+
+# A cutoff past everything expires every block, which no version can name: one above the highest version
+# saturates when that version is u64::MAX and would leave the last block behind forever.
+
+ttl_cutoff 500
+---
+cutoff=unbounded

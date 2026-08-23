@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_cdc::storage::CdcStore;
 use reifydb_core::{event::EventBus, util::ioc::IocContainer};
 use reifydb_engine::engine::StandardEngine;
+use reifydb_store_cdc::store::CdcStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
 use tokio::runtime::Handle;

@@ -8,6 +8,10 @@
 use reifydb_catalog::bootstrap::read_configs;
 use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_runtime::pool::PoolConfig;
+use reifydb_store_cdc::{
+	config::CdcCommitConfig,
+	tier::{commit::CdcCommitBufferTier, read::CdcReadConfig},
+};
 use reifydb_store_multi::tier::{
 	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig,
 };
@@ -23,6 +27,8 @@ pub(crate) struct StartupConfig {
 	pub operator_range: Option<OperatorRangeConfig>,
 	pub multi_wal_autocheckpoint: u32,
 	pub cdc_wal_autocheckpoint: u32,
+	pub cdc_commit: CdcCommitConfig,
+	pub cdc_read: Option<CdcReadConfig>,
 }
 
 const STARTUP_KEYS: &[ConfigKey] = &[
@@ -38,6 +44,9 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::OperatorRangeBufferBytes,
 	ConfigKey::MultiWalAutocheckpoint,
 	ConfigKey::CdcWalAutocheckpoint,
+	ConfigKey::CdcCommitBufferBytes,
+	ConfigKey::CdcBlockCutBytes,
+	ConfigKey::CdcReadBufferBytes,
 ];
 
 pub(crate) fn resolve_startup_configs(
@@ -106,6 +115,19 @@ pub(crate) fn resolve_startup_configs(
 		shards: OperatorRangeConfig::default().shards,
 	});
 
+	let cut_bytes = ByteSize::from_bytes(uint8(ConfigKey::CdcBlockCutBytes));
+	let ceiling = ByteSize::from_bytes(uint8(ConfigKey::CdcCommitBufferBytes));
+	let cdc_commit = CdcCommitConfig {
+		storage: CdcCommitBufferTier::new(cut_bytes, ceiling),
+		cut_bytes,
+		ceiling,
+	};
+
+	let cdc_read = uint8_opt(ConfigKey::CdcReadBufferBytes).map(|resident_bytes| CdcReadConfig {
+		resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
+		shards: CdcReadConfig::default().shards,
+	});
+
 	Ok(StartupConfig {
 		pools,
 		read,
@@ -113,5 +135,7 @@ pub(crate) fn resolve_startup_configs(
 		operator_range,
 		multi_wal_autocheckpoint: uint8(ConfigKey::MultiWalAutocheckpoint) as u32,
 		cdc_wal_autocheckpoint: uint8(ConfigKey::CdcWalAutocheckpoint) as u32,
+		cdc_commit,
+		cdc_read,
 	})
 }

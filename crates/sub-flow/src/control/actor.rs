@@ -746,6 +746,7 @@ mod pull_protocol {
 		},
 	};
 	use reifydb_runtime::sync::waiter::WaiterHandle;
+	use reifydb_store_cdc::storage::CdcStorage;
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
@@ -857,7 +858,7 @@ mod pull_protocol {
 
 		let loader_handle = engine.spawner().spawn_flow(
 			"pull-protocol-loader",
-			LoaderActor::new(engine.cdc_store().hot_reader(), LoaderMetrics::default()),
+			LoaderActor::new(engine.cdc_store(), LoaderMetrics::default()),
 		);
 
 		let backlog =

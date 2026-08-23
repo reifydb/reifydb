@@ -17,6 +17,10 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
+use reifydb_store_cdc::{
+	store::CdcStore,
+	tier::{commit::CdcCommitMetrics, persistent::CdcPersistentMetrics, read::CdcReadShardMetrics},
+};
 use reifydb_store_multi::{MultiStore, tier::read::ReadBufferShardMetrics};
 use reifydb_store_operator::{
 	store::OperatorStore,
@@ -67,6 +71,7 @@ pub struct MetricsSamplerActor {
 	multi_store: MultiStore,
 	single_store: SingleStore,
 	operator_store: OperatorStore,
+	cdc_store: CdcStore,
 	retention_metrics: RetentionMetrics,
 	epoch_gauge: Arc<EpochGauge>,
 	surfaces: Arc<MetricsSurfaces>,
@@ -87,6 +92,7 @@ impl MetricsSamplerActor {
 		multi_store: MultiStore,
 		single_store: SingleStore,
 		operator_store: OperatorStore,
+		cdc_store: CdcStore,
 		retention_metrics: RetentionMetrics,
 		epoch_gauge: Arc<EpochGauge>,
 		surfaces: Arc<MetricsSurfaces>,
@@ -99,6 +105,7 @@ impl MetricsSamplerActor {
 			multi_store,
 			single_store,
 			operator_store,
+			cdc_store,
 			retention_metrics,
 			epoch_gauge,
 			surfaces,
@@ -214,6 +221,13 @@ impl MetricsSamplerActor {
 			MetricsDomain::StoreOperatorPersistent,
 			Surface::Current,
 			operator_persistent_rows(&self.operator_store),
+		);
+		accumulator.push(MetricsDomain::StoreCdcCommit, Surface::Current, cdc_commit_rows(&self.cdc_store));
+		accumulator.push(MetricsDomain::StoreCdcRead, Surface::Current, cdc_read_rows(&self.cdc_store));
+		accumulator.push(
+			MetricsDomain::StoreCdcPersistent,
+			Surface::Current,
+			cdc_persistent_rows(&self.cdc_store),
 		);
 		accumulator.push(
 			MetricsDomain::Epoch,
@@ -556,6 +570,58 @@ fn operator_persistent_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 	}]
 }
 
+fn cdc_commit_rows(store: &CdcStore) -> Vec<MetricsRow> {
+	vec![cdc_commit_row(&store.commit_metrics())]
+}
+
+fn cdc_commit_row(metrics: &CdcCommitMetrics) -> MetricsRow {
+	MetricsRow {
+		dimensions: Vec::new(),
+		measures: vec![
+			level_bytes("resident_bytes", metrics.resident_bytes),
+			level_count("entries", metrics.entries.as_u64()),
+			counter_count("blocks_cut", metrics.blocks_cut),
+			counter_count("stalls", metrics.stalls),
+		],
+	}
+}
+
+fn cdc_read_rows(store: &CdcStore) -> Vec<MetricsRow> {
+	store.read_buffer_shard_metrics().iter().map(cdc_read_row).collect()
+}
+
+fn cdc_read_row(metrics: &CdcReadShardMetrics) -> MetricsRow {
+	MetricsRow {
+		dimensions: vec![Value::Uint2(metrics.shard as u16)],
+		measures: vec![
+			level_bytes("used", metrics.used),
+			level_bytes("limit", metrics.limit),
+			level_count("blocks", metrics.blocks as u64),
+			counter_count("hits", metrics.counters.hits),
+			counter_count("misses", metrics.counters.misses),
+			counter_count("insertions", metrics.counters.insertions),
+			counter_count("evictions", metrics.counters.evictions),
+		],
+	}
+}
+
+fn cdc_persistent_rows(store: &CdcStore) -> Vec<MetricsRow> {
+	vec![cdc_persistent_row(&store.persistent_metrics())]
+}
+
+fn cdc_persistent_row(metrics: &CdcPersistentMetrics) -> MetricsRow {
+	MetricsRow {
+		dimensions: Vec::new(),
+		measures: vec![
+			level_count("blocks", metrics.blocks),
+			level_bytes("stored_bytes", metrics.stored_bytes),
+			counter_count("appends", metrics.appends),
+			counter_count("loads", metrics.loads),
+			counter_count("drops", metrics.drops),
+		],
+	}
+}
+
 fn epoch_rows(engine: &StandardEngine, gauge: &EpochGauge) -> Vec<MetricsRow> {
 	let epoch = engine.version_epoch();
 	let stats = epoch.stats();
@@ -614,6 +680,7 @@ fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::key::operator_state::Keyspace;
+	use reifydb_store_cdc::tier::read::CdcReadMetrics;
 	use reifydb_store_operator::tier::{point::OperatorPointMetrics, range::OperatorRangeMetrics};
 
 	use super::*;
@@ -809,6 +876,126 @@ mod tests {
 				"{} must be pushed with the kind the spec declares, otherwise a level accumulates as a counter",
 				measure.metric
 			);
+		}
+	}
+
+	fn cdc_commit_sample() -> CdcCommitMetrics {
+		CdcCommitMetrics {
+			resident_bytes: ByteSize::from_bytes(8_192),
+			entries: Count::new(64),
+			blocks_cut: 12,
+			stalls: 3,
+		}
+	}
+
+	fn cdc_read_sample() -> CdcReadShardMetrics {
+		CdcReadShardMetrics {
+			shard: 5,
+			used: ByteSize::from_bytes(4_096),
+			limit: ByteSize::from_bytes(32_768),
+			blocks: 9,
+			counters: CdcReadMetrics {
+				hits: 811,
+				misses: 47,
+				insertions: 52,
+				evictions: 6,
+			},
+		}
+	}
+
+	fn cdc_persistent_sample() -> CdcPersistentMetrics {
+		CdcPersistentMetrics {
+			blocks: 140,
+			stored_bytes: ByteSize::from_bytes(1_048_576),
+			appends: 141,
+			loads: 88,
+			drops: 1,
+		}
+	}
+
+	fn measure<'a>(row: &'a MetricsRow, name: &str) -> &'a Measure {
+		row.measures.iter().find(|m| m.metric == name).unwrap_or_else(|| panic!("missing {name}"))
+	}
+
+	#[test]
+	fn cdc_commit_row_carries_every_declared_measure_exactly_once() {
+		let row = cdc_commit_row(&cdc_commit_sample());
+		let declared: Vec<&str> =
+			MetricsDomain::StoreCdcCommit.spec().measures.iter().map(|m| m.name).collect();
+		let built: Vec<&str> = row.measures.iter().map(|m| m.metric).collect();
+		assert_eq!(built, declared, "a declared measure the row omits publishes as none forever");
+		assert!(row.dimensions.is_empty(), "the commit tier is a singleton and carries no dimension");
+	}
+
+	#[test]
+	fn cdc_read_row_carries_every_declared_measure_exactly_once() {
+		let row = cdc_read_row(&cdc_read_sample());
+		let declared: Vec<&str> = MetricsDomain::StoreCdcRead.spec().measures.iter().map(|m| m.name).collect();
+		let built: Vec<&str> = row.measures.iter().map(|m| m.metric).collect();
+		assert_eq!(built, declared, "a declared measure the row omits publishes as none forever");
+		assert_eq!(
+			row.dimensions,
+			vec![Value::Uint2(5)],
+			"the shard index is the only dimension; dropping it collapses every shard onto one row"
+		);
+	}
+
+	#[test]
+	fn cdc_persistent_row_carries_every_declared_measure_exactly_once() {
+		let row = cdc_persistent_row(&cdc_persistent_sample());
+		let declared: Vec<&str> =
+			MetricsDomain::StoreCdcPersistent.spec().measures.iter().map(|m| m.name).collect();
+		let built: Vec<&str> = row.measures.iter().map(|m| m.metric).collect();
+		assert_eq!(built, declared, "a declared measure the row omits publishes as none forever");
+	}
+
+	#[test]
+	fn cdc_rows_map_each_field_to_its_own_measure() {
+		// blocks_cut counts flushes and stalls counts writer back-pressure waits; crossing the two reports a
+		// healthy flush cadence as a stalling writer.
+		let commit = cdc_commit_row(&cdc_commit_sample());
+		assert_eq!(measure(&commit, "resident_bytes").reading, Reading::Bytes(ByteSize::from_bytes(8_192)));
+		assert_eq!(measure(&commit, "entries").reading, Reading::Count(Count::new(64)));
+		assert_eq!(measure(&commit, "blocks_cut").reading, Reading::Count(Count::new(12)));
+		assert_eq!(measure(&commit, "stalls").reading, Reading::Count(Count::new(3)));
+
+		let read = cdc_read_row(&cdc_read_sample());
+		assert_eq!(measure(&read, "used").reading, Reading::Bytes(ByteSize::from_bytes(4_096)));
+		assert_eq!(measure(&read, "limit").reading, Reading::Bytes(ByteSize::from_bytes(32_768)));
+		assert_eq!(measure(&read, "blocks").reading, Reading::Count(Count::new(9)));
+		assert_eq!(measure(&read, "hits").reading, Reading::Count(Count::new(811)));
+		assert_eq!(measure(&read, "misses").reading, Reading::Count(Count::new(47)));
+		assert_eq!(measure(&read, "insertions").reading, Reading::Count(Count::new(52)));
+		assert_eq!(measure(&read, "evictions").reading, Reading::Count(Count::new(6)));
+
+		let persistent = cdc_persistent_row(&cdc_persistent_sample());
+		assert_eq!(measure(&persistent, "blocks").reading, Reading::Count(Count::new(140)));
+		assert_eq!(
+			measure(&persistent, "stored_bytes").reading,
+			Reading::Bytes(ByteSize::from_bytes(1_048_576))
+		);
+		assert_eq!(measure(&persistent, "appends").reading, Reading::Count(Count::new(141)));
+		assert_eq!(measure(&persistent, "loads").reading, Reading::Count(Count::new(88)));
+		assert_eq!(measure(&persistent, "drops").reading, Reading::Count(Count::new(1)));
+	}
+
+	#[test]
+	fn cdc_row_kinds_match_the_declared_spec() {
+		let cases = [
+			(MetricsDomain::StoreCdcCommit, cdc_commit_row(&cdc_commit_sample())),
+			(MetricsDomain::StoreCdcRead, cdc_read_row(&cdc_read_sample())),
+			(MetricsDomain::StoreCdcPersistent, cdc_persistent_row(&cdc_persistent_sample())),
+		];
+		for (domain, row) in cases {
+			let spec = domain.spec();
+			for m in &row.measures {
+				let declared = spec.measures.iter().find(|d| d.name == m.metric).expect("declared");
+				assert_eq!(
+					m.kind, declared.kind,
+					"{} must be pushed with the kind the spec declares, otherwise a level accumulates as a counter",
+					m.metric
+				);
+			}
 		}
 	}
 

@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_cdc::{
-	consume::{checkpoint::CdcCheckpoint, watermark::compute_pinning_watermark},
-	storage::{CdcStorage, memory::MemoryCdcStorage},
-};
+use std::ops::Bound;
+
+use reifydb_cdc::consume::{checkpoint::CdcCheckpoint, watermark::compute_pinning_watermark};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
+};
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
+use reifydb_store_cdc::{
+	config::CdcStoreConfig,
+	storage::{CdcStorage, Cutoff},
+	store::CdcStore,
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
@@ -27,6 +32,21 @@ fn make_cdc(version: u64) -> Cdc {
 			post: EncodedBytes(CowVec::new(vec![version as u8])),
 		}],
 	)
+}
+
+/// Retention drops whole blocks, so each version is sealed on its own; a shared block would survive a floor that falls
+/// inside it and read as a retention bug.
+fn sealed_store(system: &ActorSystem, versions: impl IntoIterator<Item = u64>) -> CdcStore {
+	let store = CdcStore::new(CdcStoreConfig::memory(system.spawner().clone(), Clock::Real));
+	for version in versions {
+		store.write(&make_cdc(version)).unwrap();
+		assert!(store.flush_pending());
+	}
+	store
+}
+
+fn len(store: &CdcStore) -> usize {
+	store.read_range(Bound::Unbounded, Bound::Unbounded, u64::MAX).unwrap().items.len()
 }
 
 fn persist(t: &TestEngine, consumer: &str, version: u64, class: ConsumerClass) {
@@ -111,13 +131,11 @@ fn the_floor_advances_as_the_slowest_pinning_consumer_catches_up() {
 fn a_slow_pinning_consumer_prevents_cdc_cleanup_until_caught_up() {
 	// CDC below the slowest pinning checkpoint must survive truncation: that consumer will still
 	// read it after a restart.
-	let storage = MemoryCdcStorage::new();
+	let system = ActorSystem::new(Pools::default(), Clock::Real);
+	let storage = sealed_store(&system, [10u64, 20, 30, 40, 50]);
 	let t = TestEngine::new();
 
-	for version in [10u64, 20, 30, 40, 50] {
-		storage.write(&make_cdc(version)).unwrap();
-	}
-	assert_eq!(storage.len(), 5);
+	assert_eq!(len(&storage), 5);
 
 	persist(&t, "fast_consumer", 50, ConsumerClass::Pinning);
 	persist(&t, "slow_consumer", 20, ConsumerClass::Pinning);
@@ -125,32 +143,29 @@ fn a_slow_pinning_consumer_prevents_cdc_cleanup_until_caught_up() {
 	let watermark = pinning_watermark(&t).unwrap();
 	assert_eq!(watermark, CommitVersion(20));
 
-	let result = storage.drop_before(watermark, usize::MAX).unwrap();
+	let result = storage.drop_before(Cutoff::Version(watermark), usize::MAX).unwrap();
 	assert_eq!(result.count, Count::new(1));
 	assert!(storage.read(CommitVersion(10)).unwrap().is_none());
 	assert!(storage.read(CommitVersion(20)).unwrap().is_some(), "the entry AT the floor must be retained");
-	assert_eq!(storage.len(), 4);
+	assert_eq!(len(&storage), 4);
 
 	persist(&t, "slow_consumer", 50, ConsumerClass::Pinning);
 	let watermark = pinning_watermark(&t).unwrap();
 	assert_eq!(watermark, CommitVersion(50));
 
-	let result = storage.drop_before(watermark, usize::MAX).unwrap();
+	let result = storage.drop_before(Cutoff::Version(watermark), usize::MAX).unwrap();
 	assert_eq!(result.count, Count::new(3));
 	assert!(storage.read(CommitVersion(50)).unwrap().is_some());
-	assert_eq!(storage.len(), 1);
+	assert_eq!(len(&storage), 1);
 }
 
 #[test]
 fn an_ephemeral_laggard_does_not_prevent_cdc_cleanup() {
 	// A subscription parked at version 10 must not keep 10..=40 alive; cleanup runs as if it were
 	// absent and the consumer learns of the truncation through the overtaken protocol.
-	let storage = MemoryCdcStorage::new();
+	let system = ActorSystem::new(Pools::default(), Clock::Real);
+	let storage = sealed_store(&system, [10u64, 20, 30, 40, 50]);
 	let t = TestEngine::new();
-
-	for version in [10u64, 20, 30, 40, 50] {
-		storage.write(&make_cdc(version)).unwrap();
-	}
 
 	persist(&t, "flow_like", 50, ConsumerClass::Pinning);
 	persist(&t, "parked_subscription", 10, ConsumerClass::Ephemeral);
@@ -158,9 +173,9 @@ fn an_ephemeral_laggard_does_not_prevent_cdc_cleanup() {
 	let watermark = pinning_watermark(&t).unwrap();
 	assert_eq!(watermark, CommitVersion(50), "the parked ephemeral consumer must not lower the floor");
 
-	let result = storage.drop_before(watermark, usize::MAX).unwrap();
+	let result = storage.drop_before(Cutoff::Version(watermark), usize::MAX).unwrap();
 	assert_eq!(result.count, Count::new(4));
-	assert_eq!(storage.len(), 1);
+	assert_eq!(len(&storage), 1);
 	assert!(storage.read(CommitVersion(50)).unwrap().is_some());
 }
 

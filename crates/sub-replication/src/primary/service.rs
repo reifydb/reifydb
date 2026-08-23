@@ -3,8 +3,8 @@
 
 use std::{ops::Bound, sync::Arc};
 
-use reifydb_cdc::storage::CdcStore;
 use reifydb_core::common::CommitVersion;
+use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
 use reifydb_value::reifydb_assertions;
 use tokio::{
 	select, spawn,

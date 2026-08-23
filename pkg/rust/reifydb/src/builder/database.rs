@@ -15,8 +15,6 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	system::SystemCatalog,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_cdc::compact::actor::CompactActor;
 use reifydb_cdc::{
 	CdcVersion,
 	consume::{backlog::FlowBacklog, wake::CdcWakeRegistry},
@@ -24,7 +22,6 @@ use reifydb_cdc::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
 	},
-	storage::CdcStore,
 };
 use reifydb_core::{
 	CoreVersion,
@@ -54,8 +51,7 @@ use reifydb_routine::{
 use reifydb_routine_abi::registry::{Routines, RoutinesConfigurator};
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{Runtime, context::RuntimeContext, version_epoch::VersionEpoch};
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_sqlite::SqliteConfig;
+use reifydb_store_cdc::{CdcStoreVersion, store::CdcStore};
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_operator::{OperatorStoreVersion, store::OperatorStore};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
@@ -100,14 +96,6 @@ use crate::{
 	MigrationStatement, Result, boot::Bootloader, database::Database, health::HealthMonitor, subsystem::Subsystems,
 };
 
-#[derive(Default)]
-pub enum CdcBackend {
-	#[default]
-	Memory,
-	#[cfg(not(target_arch = "wasm32"))]
-	Sqlite(SqliteConfig),
-}
-
 pub struct DatabaseBuilder {
 	version_epoch: VersionEpoch,
 	interceptors: InterceptorBuilder,
@@ -124,6 +112,7 @@ pub struct DatabaseBuilder {
 	multi_store: Option<MultiStore>,
 	single_store: Option<SingleStore>,
 	operator_store: Option<OperatorStore>,
+	cdc_store: Option<CdcStore>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(feature = "sub_flow")]
@@ -136,7 +125,6 @@ pub struct DatabaseBuilder {
 	migrations: Vec<MigrationStatement>,
 	is_replica: bool,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
-	cdc_backend: CdcBackend,
 	fast_shutdown: bool,
 }
 
@@ -173,6 +161,7 @@ impl DatabaseBuilder {
 			multi_store: None,
 			single_store: None,
 			operator_store: None,
+			cdc_store: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_factory: None,
 			#[cfg(feature = "sub_flow")]
@@ -185,14 +174,8 @@ impl DatabaseBuilder {
 			migrations: Vec::new(),
 			is_replica: false,
 			bootstrap_configs: Vec::new(),
-			cdc_backend: CdcBackend::default(),
 			fast_shutdown: false,
 		}
-	}
-
-	pub fn with_cdc_backend(mut self, backend: CdcBackend) -> Self {
-		self.cdc_backend = backend;
-		self
 	}
 
 	pub fn with_fast_shutdown(mut self) -> Self {
@@ -200,10 +183,17 @@ impl DatabaseBuilder {
 		self
 	}
 
-	pub fn with_stores(mut self, multi: MultiStore, single: SingleStore, operator: OperatorStore) -> Self {
+	pub fn with_stores(
+		mut self,
+		multi: MultiStore,
+		single: SingleStore,
+		operator: OperatorStore,
+		cdc: CdcStore,
+	) -> Self {
 		self.multi_store = Some(multi);
 		self.single_store = Some(single);
 		self.operator_store = Some(operator);
+		self.cdc_store = Some(cdc);
 		self
 	}
 
@@ -411,14 +401,7 @@ impl DatabaseBuilder {
 			self.ioc = self.ioc.register(tokio_handle.clone());
 		}
 
-		let cdc_store = match &self.cdc_backend {
-			CdcBackend::Memory => CdcStore::memory(),
-			#[cfg(not(target_arch = "wasm32"))]
-			CdcBackend::Sqlite(config) => CdcStore::sqlite_with_block_cache_capacity(
-				config.clone(),
-				multi.config().get_config_uint8(ConfigKey::CdcCompactBlockCacheCapacity) as usize,
-			),
-		};
+		let cdc_store = self.cdc_store.clone().expect("CdcStore must be set via with_stores()");
 		self.ioc = self.ioc.register(cdc_store.clone());
 
 		// Shared CDC producer commit watermark. Producer advances it after
@@ -438,14 +421,6 @@ impl DatabaseBuilder {
 			multi.config().get_config_uint8(ConfigKey::FlowBacklogMemoryLimit),
 		));
 		self.ioc = self.ioc.register(flow_backlog.clone());
-
-		#[cfg(not(target_arch = "wasm32"))]
-		if let CdcStore::Sqlite(ref sqlite_store) = cdc_store {
-			let provider = multi.config();
-			let actor = CompactActor::new(provider, sqlite_store.clone(), cdc_producer_watermark.clone());
-			let cdc_compact_handle = spawner.spawn_coordination("cdc-compact", actor);
-			self.ioc = self.ioc.register(cdc_compact_handle.actor_ref().clone());
-		}
 
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");
 		let single_store = self.single_store.clone().expect("SingleStore must be set via with_stores()");
@@ -594,6 +569,7 @@ impl DatabaseBuilder {
 			MultiStoreVersion.version(),
 			SingleStoreVersion.version(),
 			OperatorStoreVersion.version(),
+			CdcStoreVersion.version(),
 			TransactionVersion.version(),
 			AuthVersion.version(),
 			RqlVersion.version(),

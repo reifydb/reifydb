@@ -21,6 +21,7 @@ reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sub-api = { workspace = true }
+reifydb-store-cdc = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 

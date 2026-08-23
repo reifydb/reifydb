@@ -11,6 +11,7 @@ use reifydb_core::{
 	interface::cdc::CdcConsumerId,
 };
 use reifydb_runtime::actor::system::ActorSpawner;
+use reifydb_store_cdc::store::CdcStore;
 use reifydb_value::{Result, value::duration::Duration};
 
 use super::{
@@ -20,7 +21,6 @@ use super::{
 	wake::CdcWakeRegistry,
 	watermark::CdcConsumerWatermark,
 };
-use crate::storage::CdcStore;
 
 #[derive(Debug, Clone)]
 pub struct PollConsumerConfig {

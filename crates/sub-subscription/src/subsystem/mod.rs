@@ -16,14 +16,11 @@ use std::{
 };
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_cdc::{
-	consume::{
-		consumer::CdcConsumer,
-		poll::{PollConsumer, PollConsumerConfig},
-		wake::CdcWakeRegistry,
-		watermark::CdcConsumerWatermark,
-	},
-	storage::CdcStore,
+use reifydb_cdc::consume::{
+	consumer::CdcConsumer,
+	poll::{PollConsumer, PollConsumerConfig},
+	wake::CdcWakeRegistry,
+	watermark::CdcConsumerWatermark,
 };
 use reifydb_core::{
 	interface::{
@@ -52,6 +49,7 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
+use reifydb_store_cdc::store::CdcStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_value::{Result, value::duration::Duration};

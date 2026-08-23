@@ -1,0 +1,37 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# An empty block is rejected because it has no version range, but a record carrying no changes is a different
+# thing: it still takes a version and must seal, read back, and count as zero rather than go missing.
+
+write 1 changes=0
+read 1
+count 1
+---
+v1 => changes=0 ts=1700000000000000000
+v1 => count=0
+
+flush
+blocks
+read 1
+count 1
+range
+---
+blocks=1 [1..1 n=1]
+v1 => changes=0 ts=1700000000000000000
+v1 => count=0
+v1
+has_more=false
+
+# The block drops like any other, but it rolls up to no per-source entry and to no evicted change, so a zero
+# dropped count is not the same as nothing having been deleted.
+
+drop_before 2
+blocks
+bounds
+read 1
+---
+dropped=0 sources=0 more=false
+blocks=0
+min=None max=None truncated_before=2
+v1 => None

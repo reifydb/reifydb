@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_cdc::storage::CdcStore;
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::config::{ConfigKey, GetConfig},
@@ -21,6 +20,7 @@ use reifydb_runtime::{
 	actor::system::ActorSpawner,
 	version_epoch::{BUCKET_WIDTH, EpochRetention, EpochSpan},
 };
+use reifydb_store_cdc::store::CdcStore;
 use reifydb_store_multi::MultiStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;

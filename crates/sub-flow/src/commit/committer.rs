@@ -343,6 +343,7 @@ mod group_commit_integration {
 		},
 	};
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
+	use reifydb_store_cdc::storage::CdcStorage;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{group::GroupCommitBegin, multi::RangeScope, transaction::Transaction};
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::duration::Duration};

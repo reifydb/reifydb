@@ -19,7 +19,6 @@ use reifydb_cdc::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
 	},
-	storage::CdcStore,
 };
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
@@ -48,6 +47,11 @@ use reifydb_runtime::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+use reifydb_store_cdc::{
+	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
+	store::CdcStore,
+	tier::read::CdcReadConfig,
+};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
@@ -254,12 +258,19 @@ impl TestEngineBuilder {
 		ioc = ioc.register(eventbus.clone());
 
 		#[cfg(not(target_arch = "wasm32"))]
-		let cdc_store = match self.sqlite_cdc {
-			Some(config) => CdcStore::sqlite(config),
-			None => CdcStore::memory(),
+		let cdc_persistent = match self.sqlite_cdc {
+			Some(config) => CdcPersistentConfig::sqlite(config),
+			None => CdcPersistentConfig::memory(),
 		};
 		#[cfg(target_arch = "wasm32")]
-		let cdc_store = CdcStore::memory();
+		let cdc_persistent = CdcPersistentConfig::memory();
+		let cdc_store = CdcStore::new(CdcStoreConfig {
+			commit: CdcCommitConfig::default(),
+			persistent: cdc_persistent,
+			read: Some(CdcReadConfig::default()),
+			spawner: spawner.clone(),
+			clock: clock.clone(),
+		});
 		ioc = ioc.register(cdc_store.clone());
 
 		let cdc_producer_watermark = CdcProducerWatermark::new();

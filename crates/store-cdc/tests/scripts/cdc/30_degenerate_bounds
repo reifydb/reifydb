@@ -1,0 +1,62 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Version 0 is a real commit version and not a sentinel, even though an unbounded start normalizes onto it; a
+# tier that read 0 as absent would lose the first record the log ever carries.
+
+write 0
+write 1
+write 2
+read 0
+bounds
+---
+v0 => changes=1 ts=1700000000000000000
+min=0 max=2 truncated_before=0
+
+flush
+read 0
+blocks
+range
+---
+v0 => changes=1 ts=1700000000000000000
+blocks=1 [0..2 n=3]
+v0
+v1
+v2
+has_more=false
+
+# An exclusive start skips the version it names, and 0 is no exception.
+
+range ">0.."
+---
+v1
+v2
+has_more=false
+
+# A zero batch asks for nothing, so it hands back nothing while reporting the range it refused to read is not
+# exhausted.
+
+range batch=0
+---
+has_more=true
+
+# A cutoff of 0 has nothing below it, so retention is a no-op rather than a floor that steps past the record
+# living at 0.
+
+drop_before 0
+blocks
+bounds
+---
+dropped=0 sources=0 more=false
+blocks=1 [0..2 n=3]
+min=0 max=2 truncated_before=0
+
+# The floor clears 0 only once the cutoff clears the whole block carrying it.
+
+drop_before 3
+blocks
+bounds
+---
+dropped=3 sources=1 more=false
+blocks=0
+min=None max=None truncated_before=3

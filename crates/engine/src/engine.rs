@@ -23,7 +23,6 @@ use reifydb_catalog::{
 use reifydb_cdc::{
 	consume::{host::CdcHost, wake::CdcWakeRegistry, watermark::CdcConsumerWatermark},
 	produce::watermark::CdcProducerWatermark,
-	storage::CdcStore,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -49,6 +48,7 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 	version_epoch::VersionEpoch,
 };
+use reifydb_store_cdc::store::CdcStore;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{

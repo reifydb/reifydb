@@ -2,6 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_filter::adaptive::FilterMetrics;
+use reifydb_store_cdc::{
+	store::CdcStore,
+	tier::{commit::CdcCommitMetrics, persistent::CdcPersistentMetrics, read::CdcReadShardMetrics},
+};
 use reifydb_store_multi::{
 	MultiStore,
 	store::MultiPersistentProbeMetrics,
@@ -26,14 +30,16 @@ pub struct StoreReader {
 	multi: MultiStore,
 	single: SingleStore,
 	operator: OperatorStore,
+	cdc: CdcStore,
 }
 
 impl StoreReader {
-	pub fn new(multi: MultiStore, single: SingleStore, operator: OperatorStore) -> Self {
+	pub fn new(multi: MultiStore, single: SingleStore, operator: OperatorStore, cdc: CdcStore) -> Self {
 		Self {
 			multi,
 			single,
 			operator,
+			cdc,
 		}
 	}
 
@@ -91,5 +97,17 @@ impl StoreReader {
 
 	pub fn operator_filter(&self) -> Option<FilterMetrics> {
 		self.operator.persistent_filter_metrics()
+	}
+
+	pub fn cdc_commit(&self) -> CdcCommitMetrics {
+		self.cdc.commit_metrics()
+	}
+
+	pub fn cdc_read(&self) -> Vec<CdcReadShardMetrics> {
+		self.cdc.read_buffer_shard_metrics()
+	}
+
+	pub fn cdc_persistent(&self) -> CdcPersistentMetrics {
+		self.cdc.persistent_metrics()
 	}
 }

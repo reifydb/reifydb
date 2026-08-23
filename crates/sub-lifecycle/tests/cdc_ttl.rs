@@ -4,10 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use reifydb_catalog::cache::CatalogCache;
-use reifydb_cdc::{
-	storage::{CdcStorage, memory::MemoryCdcStorage},
-	testing::TestCdcHost,
-};
+use reifydb_cdc::testing::TestCdcHost;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
@@ -23,6 +20,7 @@ use reifydb_runtime::{
 	context::clock::{Clock, MockClock},
 	pool::Pools,
 };
+use reifydb_store_cdc::{config::CdcStoreConfig, storage::CdcStorage, store::CdcStore};
 use reifydb_sub_lifecycle::cdc::ttl::CdcTtlTask;
 use reifydb_value::{
 	util::cowvec::CowVec,
@@ -32,8 +30,8 @@ use reifydb_value::{
 /// Handles for a ttl test. `run_slice` runs on the test thread, so storage assertions need no polling; only the
 /// async event bus is waited on.
 struct TtlFixture {
-	task: CdcTtlTask<MemoryCdcStorage, TestCdcHost>,
-	storage: MemoryCdcStorage,
+	task: CdcTtlTask<CdcStore, TestCdcHost>,
+	storage: CdcStore,
 	mock: MockClock,
 	catalog: CatalogCache,
 	event_bus: EventBus,
@@ -43,9 +41,9 @@ struct TtlFixture {
 impl TtlFixture {
 	/// Each fixture owns its `ActorSystem`, kept alive for the event bus, so tests stay isolated.
 	fn new(initial_nanos: u64) -> Self {
-		let storage = MemoryCdcStorage::new();
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
+		let storage = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), Clock::Real));
 		let event_bus = EventBus::new(&spawner);
 		let host = TestCdcHost::with_clock(initial_nanos);
 		let catalog = host.catalog.cache().clone();
@@ -75,7 +73,9 @@ fn set_ttl_secs(catalog: &CatalogCache, secs: i64) {
 		.expect("set CDC_TTL_DURATION");
 }
 
-fn write_cdc(storage: &MemoryCdcStorage, version: u64, timestamp_nanos: u64) {
+/// Ttl drops whole blocks, so each entry is sealed on its own; sharing a block would keep a live entry alive past its
+/// own expiry and read as a ttl bug rather than a fixture artefact.
+fn write_cdc(storage: &CdcStore, version: u64, timestamp_nanos: u64) {
 	let cdc = Cdc::new(
 		CommitVersion(version),
 		DateTime::from_nanos(timestamp_nanos),
@@ -85,6 +85,7 @@ fn write_cdc(storage: &MemoryCdcStorage, version: u64, timestamp_nanos: u64) {
 		}],
 	);
 	storage.write(&cdc).expect("write CDC entry");
+	assert!(storage.flush_pending(), "the entry must be sealed before ttl can see it");
 }
 
 /// Wrapper that lets tests share an `Arc<L>` listener with the EventBus.

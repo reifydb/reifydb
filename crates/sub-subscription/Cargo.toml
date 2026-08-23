@@ -23,6 +23,7 @@ reifydb-flow = { workspace = true, features = ["runtime"] }
 reifydb-macro = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-runtime = { workspace = true }
+reifydb-store-cdc = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-subscription = { workspace = true }
 reifydb-transaction = { workspace = true }

@@ -31,6 +31,7 @@ use reifydb_runtime::{
 		report::{FatalKind, FatalReport},
 	},
 };
+use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
 use reifydb_transaction::{error::TransactionError, transaction::Transaction};
 use reifydb_value::{Result, error::Error, reifydb_assertions, value::duration::Duration};
 use tracing::{debug, error};
@@ -42,7 +43,6 @@ use super::{
 	is_relevant_cdc,
 	watermark::CdcConsumerWatermark,
 };
-use crate::storage::CdcStore;
 
 #[derive(Debug, Clone)]
 pub struct PollActorConfig {

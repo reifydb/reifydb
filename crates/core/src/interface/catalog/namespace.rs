@@ -43,7 +43,6 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_STORE_SINGLE_PERSISTENT: NamespaceId = NamespaceId(32);
 	pub const SYSTEM_METRICS_STORE_OPERATOR: NamespaceId = NamespaceId(33);
 	pub const SYSTEM_METRICS_STORE_MULTI_READ: NamespaceId = NamespaceId(34);
-	pub const SYSTEM_METRICS_STORE_OPERATOR_COMMIT: NamespaceId = NamespaceId(35);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_POINT: NamespaceId = NamespaceId(36);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_PERSISTENT: NamespaceId = NamespaceId(37);
 	pub const SYSTEM_METRICS_INSTRUMENTS: NamespaceId = NamespaceId(38);
@@ -56,6 +55,10 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_STORE_OPERATOR_POINT_KEYSPACE: NamespaceId = NamespaceId(45);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_RANGE: NamespaceId = NamespaceId(46);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_RANGE_KEYSPACE: NamespaceId = NamespaceId(47);
+	pub const SYSTEM_METRICS_STORE_CDC: NamespaceId = NamespaceId(48);
+	pub const SYSTEM_METRICS_STORE_CDC_COMMIT: NamespaceId = NamespaceId(49);
+	pub const SYSTEM_METRICS_STORE_CDC_READ: NamespaceId = NamespaceId(50);
+	pub const SYSTEM_METRICS_STORE_CDC_PERSISTENT: NamespaceId = NamespaceId(51);
 	pub const GRAPHQL: NamespaceId = NamespaceId(55);
 }
 

@@ -48,13 +48,10 @@ pub enum ConfigKey {
 	CdcTtlDuration,
 	CdcTtlScanInterval,
 	CdcTtlScanBatchSize,
-	CdcCompactInterval,
-	CdcCompactBlockSize,
-	CdcCompactSafetyLag,
-	CdcCompactMaxBlocksPerTick,
-	CdcCompactBlockCacheCapacity,
-	CdcCompactZstdLevel,
 	CdcWalAutocheckpoint,
+	CdcCommitBufferBytes,
+	CdcBlockCutBytes,
+	CdcReadBufferBytes,
 	MultiReadBufferPages,
 	MultiReadBufferPageSize,
 	MultiReadBufferBytes,
@@ -102,13 +99,10 @@ impl ConfigKey {
 			Self::CdcTtlDuration,
 			Self::CdcTtlScanInterval,
 			Self::CdcTtlScanBatchSize,
-			Self::CdcCompactInterval,
-			Self::CdcCompactBlockSize,
-			Self::CdcCompactSafetyLag,
-			Self::CdcCompactMaxBlocksPerTick,
-			Self::CdcCompactBlockCacheCapacity,
-			Self::CdcCompactZstdLevel,
 			Self::CdcWalAutocheckpoint,
+			Self::CdcCommitBufferBytes,
+			Self::CdcBlockCutBytes,
+			Self::CdcReadBufferBytes,
 			Self::MultiReadBufferPages,
 			Self::MultiReadBufferPageSize,
 			Self::MultiReadBufferBytes,
@@ -158,13 +152,10 @@ impl ConfigKey {
 			},
 			Self::CdcTtlScanInterval => Value::duration_seconds(30),
 			Self::CdcTtlScanBatchSize => Value::Uint8(8192),
-			Self::CdcCompactInterval => Value::duration_seconds(60),
-			Self::CdcCompactBlockSize => Value::Uint8(1024),
-			Self::CdcCompactSafetyLag => Value::Uint8(1024),
-			Self::CdcCompactMaxBlocksPerTick => Value::Uint8(16),
-			Self::CdcCompactBlockCacheCapacity => Value::Uint8(8),
-			Self::CdcCompactZstdLevel => Value::Uint1(2),
 			Self::CdcWalAutocheckpoint => Value::Uint8(10000),
+			Self::CdcCommitBufferBytes => Value::Uint8(256 * 1024 * 1024),
+			Self::CdcBlockCutBytes => Value::Uint8(4 * 1024 * 1024),
+			Self::CdcReadBufferBytes => Value::Uint8(256 * 1024 * 1024),
 			Self::MultiReadBufferPages => Value::Uint8(1024),
 			Self::MultiReadBufferPageSize => Value::Uint8(65536),
 			Self::MultiReadBufferBytes => Value::Uint8(64 * 1024 * 1024),
@@ -252,25 +243,28 @@ impl ConfigKey {
 			Self::CdcTtlScanBatchSize => {
 				"Max CDC entries deleted per transaction during a CDC TTL eviction tick."
 			}
-			Self::CdcCompactInterval => "How often the CDC compaction actor runs.",
-			Self::CdcCompactBlockSize => "Number of CDC entries packed into one compressed block.",
-			Self::CdcCompactSafetyLag => "Versions newer than (max_version - lag) are never compacted.",
-			Self::CdcCompactMaxBlocksPerTick => {
-				"Upper bound on consecutive blocks produced per actor tick."
-			}
-			Self::CdcCompactBlockCacheCapacity => {
-				"Number of decompressed CDC blocks held in the in-memory LRU cache."
-			}
-			Self::CdcCompactZstdLevel => {
-				"Zstd compression level for CDC blocks. Range 1-22; higher means smaller blocks but \
-				 slower compression. Decompression cost is independent of level."
-			}
 			Self::CdcWalAutocheckpoint => {
 				"WAL frame threshold (SQLite wal_autocheckpoint PRAGMA) for the CDC log's SQLite tier. \
 				 CDC has no explicit checkpoint of its own, so this is the sole control over how often \
 				 cdc.db's WAL is checkpointed into the main file. Higher values checkpoint less often with \
 				 a larger WAL; since CDC is written on the commit path, this also bounds how often a commit \
 				 pays an inline auto-checkpoint. Read once at boot; changing it requires a restart."
+			}
+			Self::CdcCommitBufferBytes => {
+				"Upper bound on unflushed CDC bytes held in the commit buffer. A writer that would push the \
+				 buffer past this stalls until the flusher drains it, so this is the back-pressure point \
+				 between the commit path and the persistent tier. Read once at boot."
+			}
+			Self::CdcBlockCutBytes => {
+				"Target size of one CDC block. The commit buffer cuts a block once its pending bytes reach \
+				 this, and that block is the unit of flush, of persistent storage, and of read-cache \
+				 residency. Larger blocks compress better but coarsen retention, which drops whole blocks. \
+				 Read once at boot."
+			}
+			Self::CdcReadBufferBytes => {
+				"Resident byte budget for the CDC read cache of decoded blocks, split evenly across its \
+				 shards. None disables the cache outright, so every miss below the commit buffer decodes a \
+				 block straight from the persistent tier. Read once at boot."
 			}
 			Self::MultiReadBufferPages => {
 				"Number of pages (contiguous row-number buckets) the multi-version read cache keeps \
@@ -426,13 +420,10 @@ impl ConfigKey {
 			Self::CdcTtlDuration => false,
 			Self::CdcTtlScanInterval => true,
 			Self::CdcTtlScanBatchSize => false,
-			Self::CdcCompactInterval => false,
-			Self::CdcCompactBlockSize => false,
-			Self::CdcCompactSafetyLag => false,
-			Self::CdcCompactMaxBlocksPerTick => false,
-			Self::CdcCompactBlockCacheCapacity => true,
-			Self::CdcCompactZstdLevel => false,
 			Self::CdcWalAutocheckpoint => true,
+			Self::CdcCommitBufferBytes => true,
+			Self::CdcBlockCutBytes => true,
+			Self::CdcReadBufferBytes => true,
 			Self::MultiReadBufferPages => true,
 			Self::MultiReadBufferPageSize => true,
 			Self::MultiReadBufferBytes => true,
@@ -480,13 +471,10 @@ impl ConfigKey {
 			Self::CdcTtlDuration => &[ValueType::Duration],
 			Self::CdcTtlScanInterval => &[ValueType::Duration],
 			Self::CdcTtlScanBatchSize => &[ValueType::Uint8],
-			Self::CdcCompactInterval => &[ValueType::Duration],
-			Self::CdcCompactBlockSize => &[ValueType::Uint8],
-			Self::CdcCompactSafetyLag => &[ValueType::Uint8],
-			Self::CdcCompactMaxBlocksPerTick => &[ValueType::Uint8],
-			Self::CdcCompactBlockCacheCapacity => &[ValueType::Uint8],
-			Self::CdcCompactZstdLevel => &[ValueType::Uint1],
 			Self::CdcWalAutocheckpoint => &[ValueType::Uint8],
+			Self::CdcCommitBufferBytes => &[ValueType::Uint8],
+			Self::CdcBlockCutBytes => &[ValueType::Uint8],
+			Self::CdcReadBufferBytes => &[ValueType::Uint8],
 			Self::MultiReadBufferPages => &[ValueType::Uint8],
 			Self::MultiReadBufferPageSize => &[ValueType::Uint8],
 			Self::MultiReadBufferBytes => &[ValueType::Uint8],
@@ -534,13 +522,10 @@ impl ConfigKey {
 			Self::CdcTtlDuration => true,
 			Self::CdcTtlScanInterval => false,
 			Self::CdcTtlScanBatchSize => false,
-			Self::CdcCompactInterval => false,
-			Self::CdcCompactBlockSize => false,
-			Self::CdcCompactSafetyLag => false,
-			Self::CdcCompactMaxBlocksPerTick => false,
-			Self::CdcCompactBlockCacheCapacity => false,
-			Self::CdcCompactZstdLevel => false,
 			Self::CdcWalAutocheckpoint => false,
+			Self::CdcCommitBufferBytes => false,
+			Self::CdcBlockCutBytes => false,
+			Self::CdcReadBufferBytes => true,
 			Self::MultiReadBufferPages => false,
 			Self::MultiReadBufferPageSize => false,
 			Self::MultiReadBufferBytes => true,
@@ -587,16 +572,6 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
-			Self::CdcCompactInterval => match value {
-				Value::Duration(d) => {
-					if d.is_positive() {
-						Ok(())
-					} else {
-						Err("CDC_COMPACT_INTERVAL must be greater than zero".to_string())
-					}
-				}
-				_ => Ok(()),
-			},
 			Self::EpochBucketInterval => match value {
 				Value::Duration(d) if !d.is_positive() => {
 					Err("EPOCH_BUCKET_INTERVAL must be greater than zero".to_string())
@@ -621,10 +596,6 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
-			Self::CdcCompactBlockSize => match value {
-				Value::Uint8(0) => Err("CDC_COMPACT_BLOCK_SIZE must be greater than zero".to_string()),
-				_ => Ok(()),
-			},
 			Self::QueryRowBatchSize => match value {
 				Value::Uint2(0) => Err("QUERY_ROW_BATCH_SIZE must be greater than zero".to_string()),
 				_ => Ok(()),
@@ -645,12 +616,6 @@ impl ConfigKey {
 			},
 			Self::FlowLoadBatchBytes => match value {
 				Value::Uint8(0) => Err("FLOW_LOAD_BATCH_BYTES must be greater than zero".to_string()),
-				_ => Ok(()),
-			},
-			Self::CdcCompactBlockCacheCapacity => match value {
-				Value::Uint8(0) => {
-					Err("CDC_COMPACT_BLOCK_CACHE_CAPACITY must be greater than zero".to_string())
-				}
 				_ => Ok(()),
 			},
 			Self::MultiReadBufferPages => match value {
@@ -685,6 +650,21 @@ impl ConfigKey {
 				),
 				_ => Ok(()),
 			},
+			Self::CdcCommitBufferBytes => match value {
+				Value::Uint8(0) => Err("CDC_COMMIT_BUFFER_BYTES must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::CdcBlockCutBytes => match value {
+				Value::Uint8(0) => Err("CDC_BLOCK_CUT_BYTES must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::CdcReadBufferBytes => match value {
+				Value::Uint8(0) => Err(
+					"CDC_READ_BUFFER_BYTES must be greater than zero; use none to disable the block cache"
+						.to_string(),
+				),
+				_ => Ok(()),
+			},
 			Self::MultiFlushInterval => match value {
 				Value::Duration(d) if d.is_positive() => Ok(()),
 				Value::Duration(_) => Err("MULTI_FLUSH_INTERVAL must be greater than zero".to_string()),
@@ -703,11 +683,6 @@ impl ConfigKey {
 			},
 			Self::CdcWalAutocheckpoint => match value {
 				Value::Uint8(0) => Err("CDC_WAL_AUTOCHECKPOINT must be greater than zero".to_string()),
-				_ => Ok(()),
-			},
-			Self::CdcCompactZstdLevel => match value {
-				Value::Uint1(v) if (1..=22).contains(v) => Ok(()),
-				Value::Uint1(_) => Err("CDC_COMPACT_ZSTD_LEVEL must be in [1, 22]".to_string()),
 				_ => Ok(()),
 			},
 			Self::HistoricalGcBatchSize => match value {
@@ -885,13 +860,10 @@ impl fmt::Display for ConfigKey {
 			Self::CdcTtlDuration => write!(f, "CDC_TTL_DURATION"),
 			Self::CdcTtlScanInterval => write!(f, "CDC_TTL_SCAN_INTERVAL"),
 			Self::CdcTtlScanBatchSize => write!(f, "CDC_TTL_SCAN_BATCH_SIZE"),
-			Self::CdcCompactInterval => write!(f, "CDC_COMPACT_INTERVAL"),
-			Self::CdcCompactBlockSize => write!(f, "CDC_COMPACT_BLOCK_SIZE"),
-			Self::CdcCompactSafetyLag => write!(f, "CDC_COMPACT_SAFETY_LAG"),
-			Self::CdcCompactMaxBlocksPerTick => write!(f, "CDC_COMPACT_MAX_BLOCKS_PER_TICK"),
-			Self::CdcCompactBlockCacheCapacity => write!(f, "CDC_COMPACT_BLOCK_CACHE_CAPACITY"),
-			Self::CdcCompactZstdLevel => write!(f, "CDC_COMPACT_ZSTD_LEVEL"),
 			Self::CdcWalAutocheckpoint => write!(f, "CDC_WAL_AUTOCHECKPOINT"),
+			Self::CdcCommitBufferBytes => write!(f, "CDC_COMMIT_BUFFER_BYTES"),
+			Self::CdcBlockCutBytes => write!(f, "CDC_BLOCK_CUT_BYTES"),
+			Self::CdcReadBufferBytes => write!(f, "CDC_READ_BUFFER_BYTES"),
 			Self::MultiReadBufferPages => write!(f, "MULTI_READ_BUFFER_PAGES"),
 			Self::MultiReadBufferPageSize => write!(f, "MULTI_READ_BUFFER_PAGE_SIZE"),
 			Self::MultiReadBufferBytes => write!(f, "MULTI_READ_BUFFER_BYTES"),
@@ -943,13 +915,10 @@ impl FromStr for ConfigKey {
 			"CDC_TTL_DURATION" => Ok(Self::CdcTtlDuration),
 			"CDC_TTL_SCAN_INTERVAL" => Ok(Self::CdcTtlScanInterval),
 			"CDC_TTL_SCAN_BATCH_SIZE" => Ok(Self::CdcTtlScanBatchSize),
-			"CDC_COMPACT_INTERVAL" => Ok(Self::CdcCompactInterval),
-			"CDC_COMPACT_BLOCK_SIZE" => Ok(Self::CdcCompactBlockSize),
-			"CDC_COMPACT_SAFETY_LAG" => Ok(Self::CdcCompactSafetyLag),
-			"CDC_COMPACT_MAX_BLOCKS_PER_TICK" => Ok(Self::CdcCompactMaxBlocksPerTick),
-			"CDC_COMPACT_BLOCK_CACHE_CAPACITY" => Ok(Self::CdcCompactBlockCacheCapacity),
-			"CDC_COMPACT_ZSTD_LEVEL" => Ok(Self::CdcCompactZstdLevel),
 			"CDC_WAL_AUTOCHECKPOINT" => Ok(Self::CdcWalAutocheckpoint),
+			"CDC_COMMIT_BUFFER_BYTES" => Ok(Self::CdcCommitBufferBytes),
+			"CDC_BLOCK_CUT_BYTES" => Ok(Self::CdcBlockCutBytes),
+			"CDC_READ_BUFFER_BYTES" => Ok(Self::CdcReadBufferBytes),
 			"MULTI_READ_BUFFER_PAGES" => Ok(Self::MultiReadBufferPages),
 			"MULTI_READ_BUFFER_PAGE_SIZE" => Ok(Self::MultiReadBufferPageSize),
 			"MULTI_READ_BUFFER_BYTES" => Ok(Self::MultiReadBufferBytes),
@@ -1149,7 +1118,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 49);
+		assert_eq!(all.len(), 46);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -1163,12 +1132,11 @@ mod tests {
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
 		assert!(all.contains(&ConfigKey::CdcTtlScanInterval));
 		assert!(all.contains(&ConfigKey::CdcTtlScanBatchSize));
-		assert!(all.contains(&ConfigKey::CdcCompactInterval));
-		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
-		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
-		assert!(all.contains(&ConfigKey::CdcCompactMaxBlocksPerTick));
-		assert!(all.contains(&ConfigKey::CdcCompactBlockCacheCapacity));
-		assert!(all.contains(&ConfigKey::CdcCompactZstdLevel));
+		assert!(all.contains(&ConfigKey::MaxRetentionHorizonFloor));
+		assert!(all.contains(&ConfigKey::FlowLoadBatchBytes));
+		assert!(all.contains(&ConfigKey::CdcCommitBufferBytes));
+		assert!(all.contains(&ConfigKey::CdcBlockCutBytes));
+		assert!(all.contains(&ConfigKey::CdcReadBufferBytes));
 		assert!(all.contains(&ConfigKey::MultiReadBufferPages));
 		assert!(all.contains(&ConfigKey::OperatorPointBufferBytes));
 		assert!(all.contains(&ConfigKey::OperatorRangeBufferBytes));
@@ -1462,114 +1430,21 @@ mod tests {
 	}
 
 	#[test]
-	fn test_cdc_compact_interval_round_trips_through_display_and_from_str() {
-		let key: ConfigKey = "CDC_COMPACT_INTERVAL".parse().unwrap();
-		assert_eq!(key, ConfigKey::CdcCompactInterval);
-		assert_eq!(format!("{}", ConfigKey::CdcCompactInterval), "CDC_COMPACT_INTERVAL");
-	}
-
-	#[test]
-	fn test_cdc_compact_block_size_round_trips_through_display_and_from_str() {
-		let key: ConfigKey = "CDC_COMPACT_BLOCK_SIZE".parse().unwrap();
-		assert_eq!(key, ConfigKey::CdcCompactBlockSize);
-		assert_eq!(format!("{}", ConfigKey::CdcCompactBlockSize), "CDC_COMPACT_BLOCK_SIZE");
-	}
-
-	#[test]
-	fn test_cdc_compact_safety_lag_round_trips_through_display_and_from_str() {
-		let key: ConfigKey = "CDC_COMPACT_SAFETY_LAG".parse().unwrap();
-		assert_eq!(key, ConfigKey::CdcCompactSafetyLag);
-		assert_eq!(format!("{}", ConfigKey::CdcCompactSafetyLag), "CDC_COMPACT_SAFETY_LAG");
-	}
-
-	#[test]
-	fn test_cdc_compact_max_blocks_per_tick_round_trips_through_display_and_from_str() {
-		let key: ConfigKey = "CDC_COMPACT_MAX_BLOCKS_PER_TICK".parse().unwrap();
-		assert_eq!(key, ConfigKey::CdcCompactMaxBlocksPerTick);
-		assert_eq!(format!("{}", ConfigKey::CdcCompactMaxBlocksPerTick), "CDC_COMPACT_MAX_BLOCKS_PER_TICK");
-	}
-
-	#[test]
-	fn test_cdc_compact_interval_default_is_duration() {
-		assert!(matches!(ConfigKey::CdcCompactInterval.default_value(), Value::Duration(_)));
-	}
-
-	#[test]
-	fn test_cdc_compact_block_size_default_is_uint8_1024() {
-		assert_eq!(ConfigKey::CdcCompactBlockSize.default_value(), Value::Uint8(1024));
-	}
-
-	#[test]
-	fn test_cdc_compact_safety_lag_default_is_uint8_1024() {
-		assert_eq!(ConfigKey::CdcCompactSafetyLag.default_value(), Value::Uint8(1024));
-	}
-
-	#[test]
-	fn test_cdc_compact_max_blocks_per_tick_default_is_uint8_16() {
-		assert_eq!(ConfigKey::CdcCompactMaxBlocksPerTick.default_value(), Value::Uint8(16));
-	}
-
-	#[test]
-	fn test_cdc_compact_interval_accept_passes_positive_duration() {
-		let one_sec = Value::duration_seconds(1);
-		assert_eq!(ConfigKey::CdcCompactInterval.accept(one_sec.clone()).unwrap(), one_sec);
-	}
-
-	#[test]
-	fn test_cdc_compact_interval_accept_rejects_zero() {
-		let zero = Value::duration_seconds(0);
-		match ConfigKey::CdcCompactInterval.accept(zero).unwrap_err() {
-			AcceptError::InvalidValue(reason) => {
-				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
-			}
-			other => panic!("expected InvalidValue, got {other:?}"),
-		}
-	}
-
-	#[test]
-	fn test_cdc_compact_interval_accept_rejects_negative() {
-		let negative = Value::duration_seconds(-5);
-		assert!(matches!(ConfigKey::CdcCompactInterval.accept(negative), Err(AcceptError::InvalidValue(_))));
-	}
-
-	#[test]
-	fn test_cdc_compact_block_size_accept_rejects_zero() {
-		match ConfigKey::CdcCompactBlockSize.accept(Value::Uint8(0)).unwrap_err() {
-			AcceptError::InvalidValue(reason) => {
-				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
-			}
-			other => panic!("expected InvalidValue, got {other:?}"),
-		}
-	}
-
-	#[test]
-	fn test_cdc_compact_block_size_accept_passes_positive() {
-		assert_eq!(ConfigKey::CdcCompactBlockSize.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
-		assert_eq!(ConfigKey::CdcCompactBlockSize.accept(Value::Uint8(1024)).unwrap(), Value::Uint8(1024));
-	}
-
-	#[test]
-	fn test_cdc_compact_safety_lag_and_max_blocks_accept_zero() {
-		assert_eq!(ConfigKey::CdcCompactSafetyLag.accept(Value::Uint8(0)).unwrap(), Value::Uint8(0));
-		assert_eq!(ConfigKey::CdcCompactMaxBlocksPerTick.accept(Value::Uint8(0)).unwrap(), Value::Uint8(0));
-	}
-
-	#[test]
-	fn test_accept_rejects_int4_for_uint8_block_size() {
+	fn test_accept_rejects_int4_for_uint8_key() {
 		// accept is strict: SET CONFIG casts to Uint8 via cast_value before calling accept.
 		assert!(matches!(
-			ConfigKey::CdcCompactBlockSize.accept(Value::Int4(1024)),
+			ConfigKey::FlowLoadBatchBytes.accept(Value::Int4(1024)),
 			Err(AcceptError::TypeMismatch { .. })
 		));
 		assert!(matches!(
-			ConfigKey::CdcCompactBlockSize.accept(Value::Int8(2048)),
+			ConfigKey::FlowLoadBatchBytes.accept(Value::Int8(2048)),
 			Err(AcceptError::TypeMismatch { .. })
 		));
 	}
 
 	#[test]
 	fn test_accept_rejects_zero_of_canonical_type() {
-		match ConfigKey::CdcCompactBlockSize.accept(Value::Uint8(0)).unwrap_err() {
+		match ConfigKey::FlowLoadBatchBytes.accept(Value::Uint8(0)).unwrap_err() {
 			AcceptError::InvalidValue(reason) => {
 				assert!(reason.contains("greater than zero"));
 			}
@@ -1582,7 +1457,7 @@ mod tests {
 		// accept is strict on type, so an Int4 is refused before its value is ever inspected; the
 		// sign is incidental.
 		assert!(matches!(
-			ConfigKey::CdcCompactBlockSize.accept(Value::Int4(-1)),
+			ConfigKey::FlowLoadBatchBytes.accept(Value::Int4(-1)),
 			Err(AcceptError::TypeMismatch { .. })
 		));
 	}
@@ -1592,7 +1467,7 @@ mod tests {
 		// Bare integers carry no unit: duration keys take Duration values (or duration
 		// strings cast at the CALL boundary), never int-as-seconds.
 		assert!(matches!(
-			ConfigKey::CdcCompactInterval.accept(Value::Int4(60)),
+			ConfigKey::MaxRetentionHorizonFloor.accept(Value::Int4(60)),
 			Err(AcceptError::TypeMismatch { .. })
 		));
 	}
@@ -1606,12 +1481,12 @@ mod tests {
 	#[test]
 	fn test_accept_idempotent_on_canonical_duration() {
 		let canonical = Value::duration_seconds(5);
-		assert_eq!(ConfigKey::CdcCompactInterval.accept(canonical.clone()).unwrap(), canonical);
+		assert_eq!(ConfigKey::MaxRetentionHorizonFloor.accept(canonical.clone()).unwrap(), canonical);
 	}
 
 	#[test]
 	fn test_accept_rejects_typed_null_for_non_optional_key() {
-		let err = ConfigKey::CdcCompactBlockSize
+		let err = ConfigKey::FlowLoadBatchBytes
 			.accept(Value::None {
 				inner: ValueType::Uint8,
 			})

@@ -10,6 +10,11 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_sqlite::{DbPath, JournalMode, SqliteConfig};
+use reifydb_store_cdc::{
+	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
+	store::CdcStore,
+	tier::read::CdcReadConfig,
+};
 use reifydb_store_multi::{
 	MultiStore,
 	config::{
@@ -58,6 +63,7 @@ impl StorageFactory {
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn create_with_multi_commit_buffer(
 		&self,
 		multi_commit_buffer: MultiCommitBufferTier,
@@ -65,16 +71,24 @@ impl StorageFactory {
 		read: Option<ReadBufferConfig>,
 		operator_point: Option<OperatorPointConfig>,
 		operator_range: Option<OperatorRangeConfig>,
+		cdc_commit: CdcCommitConfig,
+		cdc_read: Option<CdcReadConfig>,
+		cdc_wal_autocheckpoint: u32,
 		spawner: &ActorSpawner,
-	) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
+	) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
 		match self {
-			StorageFactory::Memory => create_memory_store_with(multi_commit_buffer, spawner),
+			StorageFactory::Memory => {
+				create_memory_store_with(multi_commit_buffer, cdc_commit, cdc_read, spawner)
+			}
 			StorageFactory::Sqlite(config) => create_sqlite_store_with(
 				multi_commit_buffer,
 				multi_persistent.expect("sqlite storage must supply an opened persistent tier"),
 				read,
 				operator_point,
 				operator_range,
+				cdc_commit,
+				cdc_read,
+				cdc_wal_autocheckpoint,
 				config.clone(),
 				spawner,
 			),
@@ -112,10 +126,27 @@ pub(crate) fn single_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
 	}
 }
 
+/// CDC is written on the commit path, so this is the sole control over how often cdc.db's write-ahead log
+/// is folded back and therefore how often a commit pays an inline checkpoint.
+pub(crate) fn cdc_sqlite_config(config: &SqliteConfig, wal_autocheckpoint: u32) -> SqliteConfig {
+	let path = match &config.path {
+		DbPath::File(p) => DbPath::File(p.with_extension("").join("cdc.db")),
+		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("cdc.db")),
+		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("cdc.db")),
+	};
+	SqliteConfig {
+		path,
+		wal_autocheckpoint: Some(wal_autocheckpoint),
+		..config.clone()
+	}
+}
+
 fn create_memory_store_with(
 	multi_commit_buffer: MultiCommitBufferTier,
+	cdc_commit: CdcCommitConfig,
+	cdc_read: Option<CdcReadConfig>,
 	spawner: &ActorSpawner,
-) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
+) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(spawner);
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
@@ -142,19 +173,31 @@ fn create_memory_store_with(
 
 	let operator_store = OperatorStore::standard(OperatorStoreConfig::memory(spawner.clone(), Clock::Real));
 
+	let cdc_store = CdcStore::new(CdcStoreConfig {
+		commit: cdc_commit,
+		persistent: CdcPersistentConfig::memory(),
+		read: cdc_read,
+		spawner: spawner.clone(),
+		clock: Clock::Real,
+	});
+
 	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-	(multi_store, single_store, operator_store, transaction_single, eventbus)
+	(multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_sqlite_store_with(
 	multi_commit_buffer: MultiCommitBufferTier,
 	multi_persistent: MultiPersistentTier,
 	read: Option<ReadBufferConfig>,
 	operator_point: Option<OperatorPointConfig>,
 	operator_range: Option<OperatorRangeConfig>,
+	cdc_commit: CdcCommitConfig,
+	cdc_read: Option<CdcReadConfig>,
+	cdc_wal_autocheckpoint: u32,
 	config: SqliteConfig,
 	spawner: &ActorSpawner,
-) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
+) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(spawner);
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
@@ -198,8 +241,16 @@ fn create_sqlite_store_with(
 		)
 	});
 
+	let cdc_store = CdcStore::new(CdcStoreConfig {
+		commit: cdc_commit,
+		persistent: CdcPersistentConfig::sqlite(cdc_sqlite_config(&config, cdc_wal_autocheckpoint)),
+		read: cdc_read,
+		spawner: spawner.clone(),
+		clock: Clock::Real,
+	});
+
 	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-	(multi_store, single_store, operator_store, transaction_single, eventbus)
+	(multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus)
 }
 
 pub(crate) fn transaction(

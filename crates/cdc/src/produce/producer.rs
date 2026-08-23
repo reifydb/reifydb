@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{
 	actors::cdc::{CdcProduceHandle, CdcProduceMessage},
@@ -27,13 +27,13 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
+use reifydb_store_cdc::storage::{CdcStorage, CdcStorageResult};
 use reifydb_value::{byte_size::ByteSize, value::datetime::DateTime};
 use tracing::{debug, error, info};
 
 use crate::{
 	consume::{backlog::FlowBacklog, is_relevant_cdc, wake::CdcWakeRegistry},
 	produce::watermark::CdcProducerWatermark,
-	storage::{CdcStorage, CdcStorageResult},
 };
 
 pub struct CdcProducerActor<S, T> {
@@ -128,13 +128,37 @@ where
 		self.event_bus.emit(CdcWrittenEvent::new(entries, version));
 	}
 
-	#[inline]
-	fn on_produce(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) -> CdcStorageResult<()> {
-		self.process(version, changed_at, deltas)?;
-
-		self.watermark.advance(version);
-		self.wake_registry.notify_all();
-		self.backlog.notify();
+	fn on_produce(
+		&self,
+		state: &mut CdcProducerState,
+		version: CommitVersion,
+		changed_at: DateTime,
+		deltas: Vec<Delta>,
+	) -> CdcStorageResult<()> {
+		state.parked.insert(
+			version.0,
+			Parked {
+				changed_at,
+				deltas,
+			},
+		);
+		let floor = state.next.unwrap_or(version.0);
+		let mut next = floor.min(version.0);
+		let mut released = false;
+		while let Some(parked) = state.parked.remove(&next) {
+			self.process(CommitVersion(next), parked.changed_at, parked.deltas)?;
+			self.watermark.advance(CommitVersion(next));
+			released = true;
+			let Some(following) = next.checked_add(1) else {
+				break;
+			};
+			next = following;
+		}
+		state.next = Some(next.max(floor));
+		if released {
+			self.wake_registry.notify_all();
+			self.backlog.notify();
+		}
 		Ok(())
 	}
 }
@@ -191,7 +215,16 @@ fn delta_to_raw_cdc_change(
 	}
 }
 
-pub struct CdcProducerState;
+struct Parked {
+	changed_at: DateTime,
+	deltas: Vec<Delta>,
+}
+
+#[derive(Default)]
+pub struct CdcProducerState {
+	next: Option<u64>,
+	parked: BTreeMap<u64, Parked>,
+}
 
 impl<S, T> Actor for CdcProducerActor<S, T>
 where
@@ -203,10 +236,10 @@ where
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 		info!("CDC producer actor started");
-		CdcProducerState
+		CdcProducerState::default()
 	}
 
-	fn handle(&self, _state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		if ctx.is_cancelled() {
 			info!("CDC producer actor stopping");
 			return Directive::Stop;
@@ -217,7 +250,7 @@ where
 				changed_at,
 				deltas,
 			} => {
-				if let Err(e) = self.on_produce(version, changed_at, deltas) {
+				if let Err(e) = self.on_produce(state, version, changed_at, deltas) {
 					panic!("CDC producer failed to write version {}: {:?}", version.0, e);
 				}
 			}
@@ -289,6 +322,7 @@ pub mod tests {
 
 	use reifydb_core::{interface::catalog::storage::StorageId, key::row::RowKey};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
+	use reifydb_store_cdc::{config::CdcStoreConfig, store::CdcStore};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_value::{
 		byte_size::ByteSize,
@@ -298,7 +332,6 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		consume::backlog::BacklogPull,
-		storage::memory::MemoryCdcStorage,
 		testing::{make_bytes, make_key},
 	};
 
@@ -308,11 +341,11 @@ pub mod tests {
 
 	#[test]
 	fn test_producer_processes_insert() {
-		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
 		let resolver = store;
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
+		let storage = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), Clock::Real));
 		let event_bus = EventBus::new(&spawner);
 		let handle = spawn_cdc_producer(
 			&spawner,
@@ -359,11 +392,11 @@ pub mod tests {
 
 	#[test]
 	fn test_producer_skips_drop_operations() {
-		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
 		let resolver = store;
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
+		let storage = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), Clock::Real));
 		let event_bus = EventBus::new(&spawner);
 		let handle = spawn_cdc_producer(
 			&spawner,
@@ -403,10 +436,10 @@ pub mod tests {
 		// The backlog is the flow hot path's only transport, so a produced commit must land there
 		// and wake it without any consumer touching storage. A flow-irrelevant commit must still
 		// extend coverage, or the next pull goes Behind for nothing.
-		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
+		let storage = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), Clock::Real));
 		let event_bus = EventBus::new(&spawner);
 		let backlog = test_backlog();
 		let woken = Arc::new(AtomicUsize::new(0));

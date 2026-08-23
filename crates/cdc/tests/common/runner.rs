@@ -5,7 +5,6 @@
 
 use std::{collections::Bound, error::Error as StdError, fmt::Write as _, thread::sleep, time::Instant};
 
-use reifydb_cdc::storage::{CdcStorage as _, CdcStore};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
@@ -13,6 +12,7 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::MockClock;
+use reifydb_store_cdc::{storage::CdcStorage as _, store::CdcStore};
 use reifydb_testing::testscript::{command::Command, runner::Runner as TsRunner};
 use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_value::{

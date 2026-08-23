@@ -13,7 +13,6 @@ use std::{
 use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
 use reifydb_auth::service::AuthService;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_cdc::storage::CdcStore;
 #[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 use reifydb_core::{
 	error::diagnostic::{subscription::hydration_row_cap_exceeded, subsystem::feature_disabled},
@@ -30,6 +29,7 @@ use reifydb_runtime::{
 	pool::Pools,
 	shutdown::Shutdown,
 };
+use reifydb_store_cdc::store::CdcStore;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;

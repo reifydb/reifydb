@@ -14,13 +14,9 @@
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-pub mod compact;
 pub mod consume;
-pub mod error;
 pub mod produce;
 pub mod rebuild;
-pub mod storage;
 pub mod testing;
 
 pub struct CdcVersion;

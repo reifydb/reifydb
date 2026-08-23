@@ -33,6 +33,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
+use reifydb_store_cdc::storage::{CdcStorage, Cutoff};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::error::TransactionError;
 use reifydb_value::{
@@ -1017,7 +1018,10 @@ fn an_overtaken_consumer_resyncs_through_its_hook_and_resumes_past_the_gap() {
 	CdcCheckpoint::persist(&mut txn, &consumer_id, CommitVersion(1), ConsumerClass::Ephemeral).unwrap();
 	txn.commit().unwrap();
 
-	cdc_store.delete_before(head, usize::MAX).unwrap();
+	// Retention drops whole blocks, so the cutoff is set one past head; a cutoff at head would land inside the
+	// block holding it and drop nothing at all.
+	assert!(cdc_store.flush_pending(), "the history must be sealed before it can be truncated");
+	cdc_store.drop_before(Cutoff::Version(CommitVersion(head.0 + 1)), usize::MAX).unwrap();
 	let floor = cdc_store.truncated_before().unwrap();
 	assert!(floor.0 > 2, "precondition: the truncation floor must be past the stale cursor");
 

@@ -2,9 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{common::CommitVersion, interface::cdc::Cdc};
+use reifydb_store_cdc::error::diagnostic;
 use reifydb_value::{Result, error};
-
-use crate::error::diagnostic;
 
 pub trait CdcConsume: Send + Sync + 'static {
 	fn consume(&self, cdcs: Vec<Cdc>, reply: Box<dyn FnOnce(Result<()>) + Send>);

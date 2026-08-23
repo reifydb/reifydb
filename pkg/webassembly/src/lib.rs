@@ -30,7 +30,6 @@ use reifydb_cdc::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
 	},
-	storage::CdcStore,
 };
 use reifydb_core::{
 	CoreVersion,
@@ -51,6 +50,7 @@ use reifydb_runtime::{
 	Runtime, RuntimeConfig, context::clock::Clock, pool::PoolConfig, shutdown::Shutdown,
 	version_epoch::VersionEpoch,
 };
+use reifydb_store_cdc::{config::CdcStoreConfig, store::CdcStore};
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
 	config::{CommitBufferConfig, MultiStoreConfig},
@@ -238,7 +238,7 @@ impl WasmDB {
 		ioc = ioc.register(operator_store.clone());
 
 		// Register CdcStore (required by sub-flow)
-		let cdc_store = CdcStore::memory();
+		let cdc_store = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), clock.clone()));
 		ioc = ioc.register(cdc_store.clone());
 
 		let cdc_producer_watermark = CdcProducerWatermark::new();

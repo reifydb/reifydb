@@ -1,0 +1,40 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Nothing is sealed until a flush asks for it.
+
+write 1
+write 2
+write 3
+blocks
+---
+blocks=0
+
+# One flush seals exactly one block from whatever the commit tier holds.
+
+flush
+blocks
+---
+blocks=1 [1..3 n=3]
+
+# A flush per record seals a block per record, which is the only way a cutoff can land between blocks.
+
+write 4
+flush
+write 5
+flush
+blocks
+---
+blocks=3 [1..3 n=3] [4..4 n=1] [5..5 n=1]
+
+# A flush with nothing pending seals nothing rather than an empty block.
+
+flush
+flush
+blocks
+---
+blocks=3 [1..3 n=3] [4..4 n=1] [5..5 n=1]
+
+bounds
+---
+min=1 max=5 truncated_before=0

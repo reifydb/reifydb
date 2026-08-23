@@ -27,6 +27,9 @@ pub enum MetricsDomain {
 	StoreOperatorRange,
 	StoreOperatorRangeKeyspace,
 	StoreOperatorPersistent,
+	StoreCdcCommit,
+	StoreCdcRead,
+	StoreCdcPersistent,
 	Instruments,
 	Epoch,
 	Lifecycle,
@@ -280,7 +283,7 @@ mod tests {
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 27] = [
+	pub const ALL: [MetricsDomain; 30] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
@@ -301,6 +304,9 @@ impl MetricsDomain {
 		MetricsDomain::StoreOperatorRange,
 		MetricsDomain::StoreOperatorRangeKeyspace,
 		MetricsDomain::StoreOperatorPersistent,
+		MetricsDomain::StoreCdcCommit,
+		MetricsDomain::StoreCdcRead,
+		MetricsDomain::StoreCdcPersistent,
 		MetricsDomain::Instruments,
 		MetricsDomain::Epoch,
 		MetricsDomain::Lifecycle,
@@ -335,6 +341,9 @@ impl MetricsDomain {
 			| MetricsDomain::StoreOperatorRange
 			| MetricsDomain::StoreOperatorRangeKeyspace
 			| MetricsDomain::StoreOperatorPersistent
+			| MetricsDomain::StoreCdcCommit
+			| MetricsDomain::StoreCdcRead
+			| MetricsDomain::StoreCdcPersistent
 			| MetricsDomain::Instruments
 			| MetricsDomain::Epoch
 			| MetricsDomain::Lifecycle
@@ -370,7 +379,10 @@ impl MetricsDomain {
 			| MetricsDomain::StoreOperatorPointKeyspace
 			| MetricsDomain::StoreOperatorRange
 			| MetricsDomain::StoreOperatorRangeKeyspace
-			| MetricsDomain::StoreOperatorPersistent => None,
+			| MetricsDomain::StoreOperatorPersistent
+			| MetricsDomain::StoreCdcCommit
+			| MetricsDomain::StoreCdcRead
+			| MetricsDomain::StoreCdcPersistent => None,
 		}
 	}
 
@@ -696,6 +708,49 @@ impl MetricsDomain {
 					level("filter_rejected", ValueType::Uint8),
 					level("filter_enabled", ValueType::Uint8),
 					level("filter_rebuilds", ValueType::Uint8),
+				],
+				has_total: true,
+			},
+			MetricsDomain::StoreCdcCommit => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_CDC_COMMIT,
+				shape: DomainShape::Wide,
+				dimensions: Vec::new(),
+				measures: vec![
+					level("resident_bytes", ValueType::Uint8),
+					level("entries", ValueType::Uint8),
+					counter("blocks_cut", ValueType::Uint8),
+					counter("stalls", ValueType::Uint8),
+				],
+				has_total: true,
+			},
+			MetricsDomain::StoreCdcRead => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_CDC_READ,
+				shape: DomainShape::Wide,
+				dimensions: vec![dim("shard", ValueType::Uint2)],
+				measures: vec![
+					level("used", ValueType::Uint8),
+					level("limit", ValueType::Uint8),
+					level("blocks", ValueType::Uint8),
+					counter("hits", ValueType::Uint8),
+					counter("misses", ValueType::Uint8),
+					counter("insertions", ValueType::Uint8),
+					counter("evictions", ValueType::Uint8),
+				],
+				has_total: true,
+			},
+			MetricsDomain::StoreCdcPersistent => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_CDC_PERSISTENT,
+				shape: DomainShape::Wide,
+				dimensions: Vec::new(),
+				measures: vec![
+					level("blocks", ValueType::Uint8),
+					level("stored_bytes", ValueType::Uint8),
+					counter("appends", ValueType::Uint8),
+					counter("loads", ValueType::Uint8),
+					counter("drops", ValueType::Uint8),
 				],
 				has_total: true,
 			},

@@ -518,6 +518,7 @@ mod integration {
 		operator::{FlowEdge, FlowNode, OperatorDef},
 	};
 	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_store_cdc::storage::CdcStorage;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{factory::time::at_millis, util::cowvec::CowVec, value::identity::IdentityId};

@@ -82,6 +82,7 @@ pub use reifydb_runtime::{
 pub use reifydb_sdk as sdk;
 pub use reifydb_sqlite as sqlite;
 pub use reifydb_sqlite::SqliteConfig;
+pub use reifydb_store_cdc as cdc_storage;
 pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 pub use reifydb_store_single as single_storage;

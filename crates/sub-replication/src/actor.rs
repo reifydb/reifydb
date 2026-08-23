@@ -3,12 +3,12 @@
 
 use std::ops::Bound;
 
-use reifydb_cdc::storage::CdcStore;
 use reifydb_core::actors::replication::{ReplicationPrimaryMessage, ReplicationReplicaMessage, VersionInfo};
 use reifydb_runtime::actor::{
 	context::Context,
 	traits::{Actor, Directive},
 };
+use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
 
 use crate::replica::applier::ReplicaApplier;
 

@@ -19,6 +19,7 @@ use reifydb_core::{
 	key::{Key, row::RowKey},
 	value::column::columns::Columns,
 };
+use reifydb_store_cdc::storage::CdcStorage;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{identity::IdentityId, row_number::RowNumber};

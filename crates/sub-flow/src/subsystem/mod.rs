@@ -21,12 +21,9 @@ use std::{
 use extern_c::load_extern_c_operators;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use extern_rust::load_extern_rust_operators;
-use reifydb_cdc::{
-	consume::{
-		backlog::FlowBacklog,
-		watermark::{CdcConsumerWatermark, FlowCaughtUpWatermark},
-	},
-	storage::CdcStore,
+use reifydb_cdc::consume::{
+	backlog::FlowBacklog,
+	watermark::{CdcConsumerWatermark, FlowCaughtUpWatermark},
 };
 use reifydb_core::{
 	actors::flow::{FlowSupervisorHandle, FlowSupervisorMessage},
@@ -51,6 +48,7 @@ use reifydb_flow::{
 	transaction::substrate::FlowSubstrate,
 };
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, shutdown::Shutdown, sync::mutex::Mutex};
+use reifydb_store_cdc::store::CdcStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
 	group::{GroupCommitBegin, GroupCommitHandle},
@@ -148,7 +146,7 @@ impl FlowSubsystem {
 		metrics_registry.register_collector(Arc::new(loader_metrics.clone()));
 		let control = ControlFrontier::new();
 		let loader_handle =
-			flow_scope.spawn_flow("flow-loader", LoaderActor::new(cdc_store.hot_reader(), loader_metrics));
+			flow_scope.spawn_flow("flow-loader", LoaderActor::new(cdc_store.clone(), loader_metrics));
 		let pull_batch_bytes =
 			ByteSize::from_bytes(engine.catalog().get_config_uint8(ConfigKey::FlowPullBatchBytes));
 		let load_batch_bytes =

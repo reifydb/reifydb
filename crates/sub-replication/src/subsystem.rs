@@ -11,7 +11,6 @@ use std::{
 	},
 };
 
-use reifydb_cdc::storage::CdcStore;
 use reifydb_core::{
 	error::CoreError,
 	event::{EventBus, metric::CdcWrittenEvent},
@@ -22,6 +21,7 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
+use reifydb_store_cdc::store::CdcStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::{Result, error::Error, reifydb_assertions, value::duration::Duration};
 use tokio::{

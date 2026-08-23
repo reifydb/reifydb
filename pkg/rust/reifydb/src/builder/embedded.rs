@@ -12,6 +12,7 @@ use reifydb_runtime::{
 	Runtime, RuntimeConfig, fatal::install as install_fatal, pool::PoolConfig, version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
+use reifydb_store_cdc::{config::CdcCommitConfig, tier::read::CdcReadConfig};
 use reifydb_store_multi::tier::{
 	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig,
 };
@@ -38,6 +39,8 @@ type PoolConfigSources = (
 	Option<OperatorPointConfig>,
 	Option<OperatorRangeConfig>,
 	u32,
+	CdcCommitConfig,
+	Option<CdcReadConfig>,
 );
 
 fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, Value)]) -> Result<PoolConfigSources> {
@@ -55,13 +58,12 @@ fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, V
 		resolved.operator_point,
 		resolved.operator_range,
 		resolved.cdc_wal_autocheckpoint,
+		resolved.cdc_commit,
+		resolved.cdc_read,
 	))
 }
 
-use super::{
-	DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, startup::resolve_startup_configs,
-	traits::WithSubsystem,
-};
+use super::{DatabaseBuilder, WithInterceptorBuilder, startup::resolve_startup_configs, traits::WithSubsystem};
 use crate::{
 	Database, MigrationSource, Result,
 	api::{StorageFactory, transaction},
@@ -204,6 +206,8 @@ impl EmbeddedBuilder {
 			operator_point_buffer,
 			operator_range_buffer,
 			cdc_wal_autocheckpoint,
+			cdc_commit,
+			cdc_read,
 		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		install_fatal(runtime_config.fatal);
@@ -213,13 +217,16 @@ impl EmbeddedBuilder {
 		let clock = runtime.clock().clone();
 		let rng = runtime.rng().clone();
 
-		let (multi_store, single_store, operator_store, transaction_single, eventbus) =
+		let (multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus) =
 			self.storage_factory.create_with_multi_commit_buffer(
 				multi_commit_buffer,
 				multi_persistent,
 				read_buffer,
 				operator_point_buffer,
 				operator_range_buffer,
+				cdc_commit,
+				cdc_read,
+				cdc_wal_autocheckpoint,
 				&spawner,
 			);
 		let catalog_cache = CatalogCache::new();
@@ -233,17 +240,10 @@ impl EmbeddedBuilder {
 			Arc::new(catalog_cache.clone()),
 		);
 
-		let cdc_backend = match &self.storage_factory {
-			StorageFactory::Memory => CdcBackend::Memory,
-			#[cfg(not(target_arch = "wasm32"))]
-			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone().wal_autocheckpoint(cdc_wal_autocheckpoint)),
-		};
-
 		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus, version_epoch)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime)
-			.with_stores(multi_store, single_store, operator_store)
-			.with_cdc_backend(cdc_backend);
+			.with_stores(multi_store, single_store, operator_store, cdc_store);
 
 		for dependency in self.dependencies {
 			builder = dependency(builder);

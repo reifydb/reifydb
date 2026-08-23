@@ -1,0 +1,64 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# The merge walk hands off from sealed blocks to the commit tier at the commit floor; a range crossing that
+# handoff must return one contiguous run with no gap and no repeat.
+
+write 1
+write 2
+write 3
+flush
+write 4
+write 5
+range
+---
+v1
+v2
+v3
+v4
+v5
+has_more=false
+
+range "2..=4"
+---
+v2
+v3
+v4
+has_more=false
+
+# An exclusive start skips the version it names, an exclusive end stops before it.
+
+range ">2..5"
+---
+v3
+v4
+has_more=false
+
+# A batch smaller than the range stops at the batch and says more remain.
+
+range batch=2
+---
+v1
+v2
+has_more=true
+
+# An inverted range and a pair of bounds that collapse to nothing are empty, not an error.
+
+range "10..=5"
+range ">5..6"
+---
+has_more=false
+has_more=false
+
+# A read starting below the retained floor steps over the hole rather than stalling on it.
+
+flush
+drop_before 4
+range
+bounds
+---
+dropped=3 sources=1 more=false
+v4
+v5
+has_more=false
+min=4 max=5 truncated_before=4

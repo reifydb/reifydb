@@ -2,9 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{
-	ConfigKey, GetConfig, SqliteConfig,
-	cdc::{consume::backlog::FlowBacklog, storage::CdcStore},
-	embedded,
+	ConfigKey, GetConfig, SqliteConfig, cdc::consume::backlog::FlowBacklog, cdc_storage::store::CdcStore, embedded,
 	value::value::Value,
 };
 use reifydb_testing::tempdir::temp_dir;
@@ -33,27 +31,27 @@ fn bootstrap_config_overrides_apply_on_first_boot() {
 }
 
 #[test]
-fn cdc_block_cache_capacity_override_reaches_the_sqlite_cdc_store() {
-	// CDC_COMPACT_BLOCK_CACHE_CAPACITY requires_restart(), so the only moment it can take effect is
-	// when the CDC store is constructed during build(). Asserting on the catalog value alone would
-	// pass even while the store keeps BlockCache::DEFAULT_CAPACITY, which is exactly how this key
-	// stayed inert; the observable has to be the cache the store actually built.
+fn cdc_read_buffer_override_reaches_the_cdc_store() {
+	// CDC_READ_BUFFER_BYTES requires_restart(), so the observable has to be the budget the read buffer actually
+	// built, summed across its shards, not the catalog value.
 	temp_dir(|path| {
 		let db = embedded::sqlite(SqliteConfig::new(path.join("db")))
-			.with_config(ConfigKey::CdcCompactBlockCacheCapacity, Value::Uint8(37))
+			.with_config(ConfigKey::CdcReadBufferBytes, Value::Uint8(8 * 1024 * 1024))
 			.build()
 			.expect("fresh sqlite database must build");
 
-		assert_eq!(db.engine().catalog().get_config(ConfigKey::CdcCompactBlockCacheCapacity), Value::Uint8(37));
+		assert_eq!(
+			db.engine().catalog().get_config(ConfigKey::CdcReadBufferBytes),
+			Value::Uint8(8 * 1024 * 1024)
+		);
 
 		let cdc_store = db.engine().ioc().try_resolve::<CdcStore>().expect("CdcStore must be registered");
-		let CdcStore::Sqlite(storage) = cdc_store else {
-			panic!("a sqlite-backed database must register a sqlite CDC store");
-		};
+		let shards = cdc_store.read_buffer_shard_metrics();
+		assert!(!shards.is_empty(), "a configured read buffer must exist, not be disabled");
 		assert_eq!(
-			storage.block_cache_capacity(),
-			37,
-			"the block cache must be sized from the configured capacity, not the compiled-in default"
+			shards.iter().map(|shard| shard.limit.as_bytes()).sum::<u64>(),
+			8 * 1024 * 1024,
+			"the read buffer must be sized from the configured bytes, not the compiled-in default"
 		);
 
 		Ok(())

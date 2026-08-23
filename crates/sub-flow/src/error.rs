@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_cdc::error::CdcError;
 use reifydb_core::error::diagnostic::flow::{
 	extern_abi_tag_mismatch, extern_create_failed, extern_library_not_loaded, extern_operator_not_found,
 	extern_symbol_not_found, flow_catch_up_read_failed,
 };
+use reifydb_store_cdc::error::CdcError;
 use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
 
 #[derive(Debug, thiserror::Error)]

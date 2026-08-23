@@ -1,0 +1,44 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A version no tier has seen must read as missing rather than as an empty record.
+
+read 1
+---
+v1 => None
+
+# A write is visible to the very next read, before any block is sealed.
+
+write 1
+read 1
+---
+v1 => changes=1 ts=1700000000000000000
+
+# Reading across the flush boundary must return the same record it did before it.
+
+flush
+read 1
+blocks
+---
+v1 => changes=1 ts=1700000000000000000
+blocks=1 [1..1 n=1]
+
+# A record carries every change it was written with, on both sides of the boundary.
+
+write 2 changes=3
+count 2
+flush
+count 2
+---
+v2 => count=3
+v2 => count=3
+
+# Neighbours are undisturbed, and a gap stays a gap.
+
+read 1
+read 2
+read 3
+---
+v1 => changes=1 ts=1700000000000000000
+v2 => changes=3 ts=1700000000000000000
+v3 => None
