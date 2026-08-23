@@ -473,3 +473,46 @@ fn next_due_stored_reports_the_earliest_committed_instant() {
 
 	assert_eq!(TimerWheel::next_due_stored(NODE, &engine.inner().operator_state()), Some(due(5_000)));
 }
+
+#[test]
+fn an_uncapped_take_still_bounds_what_it_pulls_and_leaves_the_rest_armed() {
+	// The wheel is scanned from its first key, so a take that asks for its whole budget pulls every
+	// armed row to fire a handful. The scan must stay bounded regardless of the caller's budget, cut
+	// in firing order, and name the first instant it did not take: a next of none drops the operator
+	// from the registry and the remainder never fires.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+
+	const ARMED: u64 = 200;
+	for step in 0..ARMED {
+		TimerWheel::arm(NODE, &mut txn, &timer(1_000 + step, TimerKind::Seal, "b")).unwrap();
+	}
+
+	let (first, next) = TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap();
+	assert!(
+		(first.len() as u64) < ARMED,
+		"an uncapped budget must not turn into an unbounded scan, took {} of {}",
+		first.len(),
+		ARMED
+	);
+	assert_eq!(
+		next,
+		Some(at_millis(1_000 + first.len() as u64)),
+		"the bound must report the earliest instant it left behind, not none"
+	);
+
+	let mut drained: Vec<u64> = first.iter().map(|timer| timer.due.to_millis() as u64).collect();
+	loop {
+		let (batch, _) = TimerWheel::take_due(NODE, &mut txn, at_millis(10_000), NO_LIMIT).unwrap();
+		if batch.is_empty() {
+			break;
+		}
+		drained.extend(batch.iter().map(|timer| timer.due.to_millis() as u64));
+	}
+
+	assert_eq!(
+		drained,
+		(0..ARMED).map(|step| 1_000 + step).collect::<Vec<u64>>(),
+		"successive takes must reach every armed instant exactly once, in firing order"
+	);
+}

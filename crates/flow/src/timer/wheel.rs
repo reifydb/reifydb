@@ -28,6 +28,8 @@ use crate::{
 	},
 };
 
+const MAX_TIMERS_PER_SCAN: usize = 64;
+
 pub struct TimerWheel;
 
 impl TimerWheel {
@@ -118,10 +120,11 @@ impl TimerWheel {
 		if limit == 0 {
 			return Ok((Vec::new(), None));
 		}
+		let take = limit.min(MAX_TIMERS_PER_SCAN);
 		let wheel = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
 		let batch = txn.state_range(
 			operator,
-			StateRange::forward(wheel, "timer::take_due").limit(limit.saturating_add(1)),
+			StateRange::forward(wheel, "timer::take_due").limit(take.saturating_add(1)),
 		)?;
 		let mut due = Vec::new();
 		let mut next = None;
@@ -129,7 +132,7 @@ impl TimerWheel {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_range must return OperatorState keys");
 			let timer = decode_timer(&decoded.suffix);
-			if timer.due > watermark || due.len() == limit {
+			if timer.due > watermark || due.len() == take {
 				next = Some(timer.due);
 				break;
 			}
