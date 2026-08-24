@@ -25,7 +25,8 @@ fn subscription_name(frames: &[Frame]) -> String {
 
 #[test]
 fn dropping_a_subscription_leaves_a_views_operator_state_intact() {
-	// A view's operators and a subscription's both number from 1, so an unsubscribe that drops state by operator id alone resets the view's limit.
+	// A view's operators and a subscription's both number from 1, so an unsubscribe that drops state by operator id
+	// alone resets the view's limit.
 	let timeout = Duration::from_secs(10);
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("memory db with flow"));
 	db.admin("CREATE NAMESPACE app");

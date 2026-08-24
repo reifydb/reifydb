@@ -1032,3 +1032,44 @@ fn shard_metrics_reports_state_gauges_per_shard() {
 	assert!(only_shard.state.used.as_bytes() > 0);
 	assert_eq!(only_shard.state.limit, ByteSize::from_gib(1), "single shard owns the whole buffer budget");
 }
+
+#[test]
+fn f4_probe_complete_page_versus_scope() {
+	// A complete page proves "RAM holds every key persistent holds here". It does not prove
+	// "RAM holds every VERSION persistent holds here": warm loads latest-per-key at MAX and
+	// sets previous: None. A scan below that version must still see the superseded row.
+	let read = cache_shift(64, 4);
+	let rows: Vec<(u64, u64, &str)> = (0u64..4).map(|n| (n, 100u64, "new")).collect();
+	populate_complete(&read, 1, &rows);
+	let page = read.page_of_key(&row(1, 0));
+	assert!(read.page_is_complete(page), "fixture must produce a complete page");
+
+	let table = EntryKind::Source(StorageId::table(1));
+	let scope = MultiVersionScope::AsOf {
+		read: CommitVersion(50),
+	};
+	let (start, end) = (row(1, 3), row(1, 0));
+	let mut cursor = RangeCursor::new();
+	let chunk = read.serve_persistent_chunk(table, &mut cursor, start.as_slice(), end.as_slice(), scope, 100, false);
+	match chunk {
+		ServedChunk::Served(batch) => println!(
+			"F4 range: Served entries={} exhausted={} (page holds v100, scope AsOf 50)",
+			batch.entries.len(),
+			cursor.exhausted
+		),
+		ServedChunk::Gap => println!("F4 range: Gap (caller falls through to persistent)"),
+	}
+
+	let point = read.get(&row(1, 0), CommitVersion(50));
+	println!(
+		"F4 point: same key at v50 -> {}",
+		match point {
+			VersionedGetResult::Value {
+				version,
+				..
+			} => format!("Value@{}", version.0),
+			VersionedGetResult::Tombstone => "Tombstone".to_string(),
+			VersionedGetResult::NotFound => "NotFound (falls through to persistent)".to_string(),
+		}
+	);
+}

@@ -69,6 +69,10 @@ where
 		self.inner.get(key)
 	}
 
+	pub fn get_with(&self, key: K, init: impl FnOnce() -> V) -> V {
+		self.inner.get_with(key, init)
+	}
+
 	pub fn put(&self, key: K, value: V) -> Option<V> {
 		self.inner.put(key, value)
 	}
@@ -289,6 +293,70 @@ mod tests {
 		let usage = cache.memory_usage().expect("measured cache must report usage");
 		assert_eq!(usage.entries, Count::new(2), "eviction must decrement the entry count");
 		assert_eq!(usage.payload, ByteSize::from_bytes(2 * (8 + 4)));
+	}
+
+	#[test]
+	fn get_with_runs_the_initializer_once_under_concurrent_misses() {
+		// A get-then-put lets every racer insert its own value; the losers are dropped from the
+		// cache while their callers still hold them, so callers disagree on the cached identity.
+		use std::sync::{
+			Barrier,
+			atomic::{AtomicUsize, Ordering},
+		};
+		fn arc_footprint(_key: &u64, value: &Arc<str>) -> CacheFootprint {
+			CacheFootprint {
+				heap: 2 * size_of::<usize>() + value.len(),
+				payload: size_of::<u64>() + value.len(),
+			}
+		}
+		let cache: Arc<SyncLru<u64, Arc<str>>> = Arc::new(SyncLru::measured(8, arc_footprint));
+		let runs = Arc::new(AtomicUsize::new(0));
+		let barrier = Arc::new(Barrier::new(8));
+		let handles: Vec<_> = (0..8)
+			.map(|_| {
+				let cache = Arc::clone(&cache);
+				let runs = Arc::clone(&runs);
+				let barrier = Arc::clone(&barrier);
+				std::thread::spawn(move || {
+					barrier.wait();
+					cache.get_with(1, || {
+						runs.fetch_add(1, Ordering::Relaxed);
+						Arc::from("value")
+					})
+				})
+			})
+			.collect();
+		let values: Vec<Arc<str>> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+
+		assert_eq!(
+			runs.load(Ordering::Relaxed),
+			1,
+			"the initializer must run once per key, not once per racing caller"
+		);
+		for value in &values {
+			assert!(Arc::ptr_eq(value, &values[0]), "every racer must observe one allocation");
+		}
+		cache.run_pending_tasks();
+		let usage = cache.memory_usage().expect("measured cache must report usage");
+		assert_eq!(usage.entries, Count::new(1), "a single-flight insert must be counted exactly once");
+	}
+
+	#[test]
+	fn get_with_on_a_present_key_neither_reruns_the_initializer_nor_double_counts() {
+		let cache: SyncLru<u64, String> = SyncLru::measured(8, footprint);
+		cache.put(1, "aaaa".to_string());
+
+		let value = cache.get_with(1, || panic!("the initializer must not run for a cached key"));
+		cache.run_pending_tasks();
+
+		let usage = cache.memory_usage().expect("measured cache must report usage");
+		assert_eq!(value, "aaaa");
+		assert_eq!(usage.entries, Count::new(1), "a hit must not add a second entry");
+		assert_eq!(
+			usage.payload,
+			ByteSize::from_bytes(8 + 4),
+			"a hit must not re-add the value's payload"
+		);
 	}
 
 	#[test]

@@ -70,6 +70,15 @@ where
 		value
 	}
 
+	pub fn get_with(&self, key: K, init: impl FnOnce() -> V) -> V {
+		if let Some(existing) = self.get(&key) {
+			return existing;
+		}
+		let value = init();
+		self.put(key, value.clone());
+		value
+	}
+
 	pub fn put(&self, key: K, value: V) -> Option<V> {
 		let mut inner = self.inner.lock().unwrap();
 		let access = inner.access_counter;

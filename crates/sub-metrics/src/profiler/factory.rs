@@ -107,8 +107,7 @@ impl ProfilerSubsystemFactory {
 			Some(actor_ref)
 		};
 
-		let sink: Arc<dyn ProfilerSink> =
-			Arc::new(EventBusSink::new(event_bus, Arc::clone(&instruments)));
+		let sink: Arc<dyn ProfilerSink> = Arc::new(EventBusSink::new(event_bus, Arc::clone(&instruments)));
 
 		Ok(ProfilerSubsystem::new(
 			cfg.categories,

@@ -82,6 +82,22 @@ where
 		self.cache.get(key)
 	}
 
+	pub fn get_with(&self, key: K, init: impl FnOnce() -> V) -> V {
+		if let Some(existing) = self.cache.get(&key) {
+			return existing;
+		}
+		let entry = self.cache.entry(key).or_insert_with(init);
+		if entry.is_fresh() {
+			if let Some(metrics) = &self.metrics {
+				let footprint = (metrics.footprint)(entry.key(), entry.value());
+				metrics.entries.fetch_add(1, Ordering::Relaxed);
+				metrics.heap.fetch_add(footprint.heap as u64, Ordering::Relaxed);
+				metrics.payload.fetch_add(footprint.payload as u64, Ordering::Relaxed);
+			}
+		}
+		entry.into_value()
+	}
+
 	pub fn put(&self, key: K, value: V) -> Option<V> {
 		let old = self.cache.get(&key);
 		if let Some(metrics) = &self.metrics {

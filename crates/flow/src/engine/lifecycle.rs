@@ -53,8 +53,7 @@ impl FlowEngineInner {
 
 	pub fn remove_flow(&mut self, flow_id: FlowId) {
 		let flow = self.flows.get(&flow_id);
-		let node_ids: Vec<OperatorId> =
-			flow.map(|flow| flow.get_operator_ids().collect()).unwrap_or_default();
+		let node_ids: Vec<OperatorId> = flow.map(|flow| flow.get_operator_ids().collect()).unwrap_or_default();
 		let ephemeral = flow.is_some_and(|flow| flow.ephemeral);
 
 		self.timers.remove_flow(flow_id);
@@ -219,7 +218,8 @@ mod tests {
 
 	#[test]
 	fn removing_one_flow_spares_another_flows_operator_of_the_same_id() {
-		// Every ephemeral flow numbers from 1, so keyed by the operator alone one retirement unregisters every namesake.
+		// Every ephemeral flow numbers from 1, so keyed by the operator alone one retirement unregisters every
+		// namesake.
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
@@ -256,7 +256,8 @@ mod tests {
 
 	#[test]
 	fn removing_an_ephemeral_flow_leaves_the_shared_operator_state_untouched() {
-		// An ephemeral flow owns no shared state, so dropping the id it reuses takes a durable operator's instead.
+		// An ephemeral flow owns no shared state, so dropping the id it reuses takes a durable operator's
+		// instead.
 		let engine = TestEngine::new();
 		let store = engine.inner().operator_state();
 
