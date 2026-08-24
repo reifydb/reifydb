@@ -227,11 +227,9 @@ impl Keyspace {
 
 	pub fn cache_policy(&self) -> CachePolicy {
 		match *self {
-			Self::CUSTOM_NOT_CACHED
-			| Self::JOIN_PIN
-			| Self::ENGINE_META
-			| Self::EXPIRY
-			| Self::TIMER_WHEEL => CachePolicy::Neither,
+			Self::CUSTOM_NOT_CACHED | Self::JOIN_PIN | Self::ENGINE_META => CachePolicy::Neither,
+			Self::EXPIRY => CachePolicy::Range,
+			Self::TIMER_WHEEL => CachePolicy::Range,
 			_ => CachePolicy::Both,
 		}
 	}
@@ -564,13 +562,13 @@ mod tests {
 		("NODE_COUNTER", Keyspace::NODE_COUNTER, Phase::Identity, CachePolicy::Both),
 		("GROUP_RECORD", Keyspace::GROUP_RECORD, Phase::Identity, CachePolicy::Both),
 		("SOURCE_WATERMARK", Keyspace::SOURCE_WATERMARK, Phase::Identity, CachePolicy::Both),
-		("TIMER_WHEEL", Keyspace::TIMER_WHEEL, Phase::Identity, CachePolicy::Neither),
+		("TIMER_WHEEL", Keyspace::TIMER_WHEEL, Phase::Identity, CachePolicy::Range),
 		("TIMER_INDEX", Keyspace::TIMER_INDEX, Phase::Identity, CachePolicy::Both),
 		("ACCUMULATOR", Keyspace::ACCUMULATOR, Phase::Data, CachePolicy::Both),
 		("BUFFER", Keyspace::BUFFER, Phase::Data, CachePolicy::Both),
 		("RUNNING", Keyspace::RUNNING, Phase::Data, CachePolicy::Both),
 		("EMIT", Keyspace::EMIT, Phase::Data, CachePolicy::Both),
-		("EXPIRY", Keyspace::EXPIRY, Phase::Data, CachePolicy::Neither),
+		("EXPIRY", Keyspace::EXPIRY, Phase::Data, CachePolicy::Range),
 		("COUNT", Keyspace::COUNT, Phase::Data, CachePolicy::Both),
 		("ROW_INDEX", Keyspace::ROW_INDEX, Phase::Data, CachePolicy::Both),
 		("SESSION", Keyspace::SESSION, Phase::Data, CachePolicy::Both),
@@ -845,7 +843,7 @@ mod tests {
 			CENSUS.iter().filter(|(_, _, _, p)| *p == CachePolicy::Neither).map(|(n, ..)| *n).collect();
 		assert_eq!(
 			neither,
-			["TIMER_WHEEL", "EXPIRY", "ENGINE_META", "JOIN_PIN", "CUSTOM_NOT_CACHED"],
+			["ENGINE_META", "JOIN_PIN", "CUSTOM_NOT_CACHED"],
 			"widening the set a tier refuses turns that tier into an off switch and only shows up as a \
 			 throughput loss in a replay, so every move in or out is a measured decision"
 		);
