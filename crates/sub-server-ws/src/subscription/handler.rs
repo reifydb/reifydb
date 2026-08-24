@@ -22,12 +22,16 @@ use crate::{
 	subscription::registry::WsWireSink,
 };
 
+fn subscribe_identity(connection: Option<IdentityId>) -> IdentityId {
+	connection.unwrap_or_else(IdentityId::anonymous)
+}
+
 pub(crate) async fn handle_subscribe(
 	request_id: &str,
 	sub: SubscribeRequest,
 	conn: &mut ConnectionContext<'_>,
 ) -> Option<String> {
-	let identity: IdentityId = conn.identity.unwrap_or_else(IdentityId::root);
+	let identity: IdentityId = subscribe_identity(*conn.identity);
 	let metadata = RequestMetadata::new(Protocol::WebSocket);
 	let sink = WsWireSink::new(conn.push_tx.clone());
 
@@ -68,7 +72,7 @@ pub(crate) async fn handle_batch_subscribe(
 	req: BatchSubscribeRequest,
 	conn: &mut ConnectionContext<'_>,
 ) -> Option<String> {
-	let identity: IdentityId = conn.identity.unwrap_or_else(IdentityId::root);
+	let identity: IdentityId = subscribe_identity(*conn.identity);
 	let metadata = RequestMetadata::new(Protocol::WebSocket);
 	let sink = WsWireSink::new(conn.push_tx.clone());
 
@@ -218,4 +222,25 @@ fn batch_subscribe_error_to_response(request_id: &str, err: BatchSubscribeError)
 
 fn hydrate_error_to_response(request_id: &str, err: HydrateError, rql: &str, cap: u64) -> String {
 	Response::internal_error(request_id, err.wire_code(), err.wire_message(rql, cap)).to_json()
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_value::value::identity::IdentityId;
+
+	use super::subscribe_identity;
+
+	#[test]
+	fn missing_identity_must_not_resolve_to_root() {
+		// A failed auth clears the connection identity to None; resolving that to root hands an unauthenticated
+		// socket full read access.
+		assert_eq!(subscribe_identity(None), IdentityId::anonymous());
+	}
+
+	#[test]
+	fn an_explicitly_authenticated_identity_is_preserved() {
+		// Only the absent case may be rewritten; a real identity must never be substituted.
+		assert_eq!(subscribe_identity(Some(IdentityId::root())), IdentityId::root());
+		assert_eq!(subscribe_identity(Some(IdentityId::anonymous())), IdentityId::anonymous());
+	}
 }

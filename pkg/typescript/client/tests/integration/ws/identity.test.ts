@@ -71,4 +71,32 @@ describe('WS caller identity', () => {
             bob.disconnect();
         }
     }, 10000);
+
+    it('a failed authentication must not subscribe as root', async () => {
+        // The client sends Auth fire-and-forget, so a bad token leaves the socket open with the server identity cleared to None.
+        const denied = `denied_${suffix}`;
+        await root.admin(`CREATE TABLE ${ns}::${denied} { id: int4 }`, {}, []);
+        // Denies every non-privileged read, so any row reaching the subscriber proves it ran privileged.
+        await root.admin(`CREATE TABLE POLICY deny_${suffix} ON ${ns}::${denied} { from: { filter { false } } }`, {}, []);
+        await root.command(`INSERT ${ns}::${denied} [{ id: 1 }]`, {}, []);
+
+        const control = await root.query(`from ${ns}::${denied}`, {}, [Shape.object({id: Shape.number()})]);
+        expect(control[0]).toHaveLength(1);
+
+        const rogue = await Client.connect_ws(WS_URL, {timeout_ms: 10000, token: `not_a_real_token_${suffix}`});
+        try {
+            const received: any[] = [];
+            const sink = (rows: any[]) => received.push(...rows);
+            await rogue.subscribe(
+                `from ${ns}::${denied}`,
+                null,
+                Shape.object({id: Shape.number()}),
+                {on_insert: sink, on_update: sink, on_remove: sink}
+            );
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            expect(received).toHaveLength(0);
+        } finally {
+            rogue.disconnect();
+        }
+    }, 20000);
 });
