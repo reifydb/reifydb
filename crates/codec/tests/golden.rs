@@ -10,7 +10,7 @@ use std::{fs, path::PathBuf, str::FromStr};
 use num_bigint::BigInt;
 use reifydb_codec::{
 	frame::{encode::encode_frames, options::EncodeOptions},
-	key::serializer::KeySerializer,
+	key::{deserializer::KeyDeserializer, serializer::KeySerializer},
 	tag::ValueKind,
 	value::encode_value,
 };
@@ -202,4 +202,33 @@ fn golden_tag_kinds_json() {
 		panic!("missing golden fixture tag/kinds.json ({e}); run with REIFYDB_GOLDEN_WRITE=1 to create")
 	});
 	assert_eq!(expected, json, "the ValueKind numbering changed");
+}
+
+#[test]
+fn golden_key_codec_decodes() {
+	// The write pin proves bytes out only; without this the read path could drift and no fixture would notice.
+	let cases: Vec<(&str, Value)> = vec![
+		("key/none_any.bin", Value::none()),
+		("key/none_option_duration.bin", Value::none_of(ValueType::Option(Box::new(ValueType::Duration)))),
+		("key/boolean_true.bin", Value::Boolean(true)),
+		("key/int4_positive.bin", Value::Int4(42)),
+		("key/int4_negative.bin", Value::Int4(-42)),
+		("key/int8_min.bin", Value::Int8(i64::MIN)),
+		("key/uint8_max.bin", Value::Uint8(u64::MAX)),
+		("key/float8_negative.bin", Value::Float8(OrderedF64::try_from(-1.5).unwrap())),
+		("key/utf8_escaped.bin", Value::Utf8("a\u{00}b".to_string())),
+		("key/blob_ff.bin", Value::Blob(Blob::new(vec![0xff, 0x00, 0xff]))),
+		("key/date.bin", Value::Date(Date::from_days_since_epoch(19_000).unwrap())),
+		("key/dictionary_id_u4.bin", Value::DictionaryId(DictionaryEntryId::U4(70_000))),
+	];
+	for (path, value) in cases {
+		let bytes = fs::read(golden_dir().join(path))
+			.unwrap_or_else(|e| panic!("missing golden fixture {path} ({e})"));
+
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		let decoded = de.read_value().unwrap_or_else(|e| panic!("golden fixture {path} must decode: {e:?}"));
+
+		assert_eq!(decoded, value, "golden fixture {path} must decode back to the value it was written from");
+		assert!(de.is_empty(), "golden fixture {path} must be consumed exactly, with no trailing bytes");
+	}
 }

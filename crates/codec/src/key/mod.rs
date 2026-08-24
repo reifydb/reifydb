@@ -15,13 +15,10 @@
 //! `encode_*_asc` are the uninverted integer forms for keyspaces that need a forward scan.
 
 use reifydb_value::value::datetime::DateTime;
-use serde::{Deserialize, Serialize};
 
 pub mod buf;
-pub mod deserialize;
 pub mod deserializer;
 pub mod encoded;
-pub mod serialize;
 pub mod serializer;
 pub mod sort;
 pub(crate) mod varint;
@@ -33,7 +30,7 @@ use reifydb_value::{
 	error::{Error, TypeError},
 };
 
-use crate::key::{buf::KeyBuf, deserialize::Deserializer, serialize::Serializer};
+use crate::key::buf::KeyBuf;
 
 pub trait ByteSink {
 	fn push(&mut self, byte: u8);
@@ -66,12 +63,31 @@ pub fn encode_bool(value: bool) -> u8 {
 	}
 }
 
+pub fn decode_bool(byte: u8) -> Result<bool> {
+	match byte {
+		0x00 => Ok(true),
+		0x01 => Ok(false),
+		b => Err(Error::from(TypeError::SerdeKeycode {
+			message: format!("invalid boolean value {b}"),
+		})),
+	}
+}
+
 pub fn encode_f32(value: f32) -> [u8; 4] {
 	let bits = value.to_bits();
 	if value.is_sign_negative() {
 		bits.to_be_bytes()
 	} else {
 		(!(bits ^ 0x80000000)).to_be_bytes()
+	}
+}
+
+pub fn decode_f32(bytes: [u8; 4]) -> f32 {
+	let encoded = u32::from_be_bytes(bytes);
+	if encoded & 0x80000000 != 0 {
+		f32::from_bits(encoded)
+	} else {
+		f32::from_bits(!encoded ^ 0x80000000)
 	}
 }
 
@@ -84,36 +100,77 @@ pub fn encode_f64(value: f64) -> [u8; 8] {
 	}
 }
 
+pub fn decode_f64(bytes: [u8; 8]) -> f64 {
+	let encoded = u64::from_be_bytes(bytes);
+	if encoded & 0x8000000000000000 != 0 {
+		f64::from_bits(encoded)
+	} else {
+		f64::from_bits(!encoded ^ 0x8000000000000000)
+	}
+}
+
 pub fn encode_i8(value: i8) -> [u8; 1] {
 	(!(value as u8 ^ 0x80)).to_be_bytes()
+}
+
+pub fn decode_i8(bytes: [u8; 1]) -> i8 {
+	(!u8::from_be_bytes(bytes) ^ 0x80) as i8
 }
 
 pub fn encode_i16(value: i16) -> [u8; 2] {
 	(!(value as u16 ^ 0x8000)).to_be_bytes()
 }
 
+pub fn decode_i16(bytes: [u8; 2]) -> i16 {
+	(!u16::from_be_bytes(bytes) ^ 0x8000) as i16
+}
+
 pub fn encode_i32(value: i32) -> [u8; 4] {
 	(!(value as u32 ^ 0x80000000)).to_be_bytes()
+}
+
+pub fn decode_i32(bytes: [u8; 4]) -> i32 {
+	(!u32::from_be_bytes(bytes) ^ 0x80000000) as i32
 }
 
 pub fn encode_i64(value: i64) -> [u8; 8] {
 	(!(value as u64 ^ 0x8000000000000000)).to_be_bytes()
 }
 
+pub fn decode_i64(bytes: [u8; 8]) -> i64 {
+	(!u64::from_be_bytes(bytes) ^ 0x8000000000000000) as i64
+}
+
 pub fn encode_i128(value: i128) -> [u8; 16] {
 	(!(value as u128 ^ 0x80000000000000000000000000000000)).to_be_bytes()
+}
+
+pub fn decode_i128(bytes: [u8; 16]) -> i128 {
+	(!u128::from_be_bytes(bytes) ^ 0x80000000000000000000000000000000) as i128
 }
 
 pub fn encode_u8(value: u8) -> u8 {
 	!value
 }
 
+pub fn decode_u8(byte: u8) -> u8 {
+	!byte
+}
+
 pub fn encode_u16(value: u16) -> [u8; 2] {
 	(!value).to_be_bytes()
 }
 
+pub fn decode_u16(bytes: [u8; 2]) -> u16 {
+	!u16::from_be_bytes(bytes)
+}
+
 pub fn encode_u32(value: u32) -> [u8; 4] {
 	(!value).to_be_bytes()
+}
+
+pub fn decode_u32(bytes: [u8; 4]) -> u32 {
+	!u32::from_be_bytes(bytes)
 }
 
 pub fn encode_u64(value: u64) -> [u8; 8] {
@@ -215,6 +272,10 @@ pub fn encode_u128(value: u128) -> [u8; 16] {
 	(!value).to_be_bytes()
 }
 
+pub fn decode_u128(bytes: [u8; 16]) -> u128 {
+	!u128::from_be_bytes(bytes)
+}
+
 pub fn encode_u128_varint<B: ByteSink>(value: u128, output: &mut B) {
 	if value < (1 << 56) {
 		encode_u64_varint(value as u64, output);
@@ -297,27 +358,4 @@ macro_rules! key_prefix {
     ($($arg:tt)*) => {
         &EncodedKey::new((&format!($($arg)*)).as_bytes())
     };
-}
-
-pub fn serialize<T: Serialize>(key: &T) -> Vec<u8> {
-	let mut serializer = Serializer {
-		output: Vec::new(),
-	};
-
-	key.serialize(&mut serializer).expect("key must be serializable");
-	serializer.output
-}
-
-pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> Result<T> {
-	let mut deserializer = Deserializer::from_bytes(input);
-	let t = T::deserialize(&mut deserializer)?;
-	if !deserializer.input.is_empty() {
-		return Err(Error::from(TypeError::SerdeKeycode {
-			message: format!(
-				"unexpected trailing bytes {:x?} at end of key {input:x?}",
-				deserializer.input,
-			),
-		}));
-	}
-	Ok(t)
 }

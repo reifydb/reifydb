@@ -25,7 +25,10 @@ use reifydb_value::{
 };
 use uuid::Uuid;
 
-use super::{CONTAINER_END, decode_u128_varint, deserialize};
+use super::{
+	CONTAINER_END, decode_bool, decode_f32, decode_f64, decode_i8, decode_i16, decode_i32, decode_i64, decode_i128,
+	decode_u8, decode_u16, decode_u32, decode_u64, decode_u128, decode_u128_varint,
+};
 use crate::tag::{TypeTag, ValueKind};
 
 pub struct KeyDeserializer<'a> {
@@ -75,67 +78,67 @@ impl<'a> KeyDeserializer<'a> {
 
 	pub fn read_bool(&mut self) -> Result<bool> {
 		let bytes = self.read_exact(1)?;
-		deserialize::<bool>(bytes)
+		decode_bool(bytes[0])
 	}
 
 	pub fn read_f32(&mut self) -> Result<f32> {
 		let bytes = self.read_exact(4)?;
-		deserialize::<f32>(bytes)
+		Ok(decode_f32(bytes.try_into()?))
 	}
 
 	pub fn read_f64(&mut self) -> Result<f64> {
 		let bytes = self.read_exact(8)?;
-		deserialize::<f64>(bytes)
+		Ok(decode_f64(bytes.try_into()?))
 	}
 
 	pub fn read_i8(&mut self) -> Result<i8> {
 		let bytes = self.read_exact(1)?;
-		deserialize::<i8>(bytes)
+		Ok(decode_i8(bytes.try_into()?))
 	}
 
 	pub fn read_i16(&mut self) -> Result<i16> {
 		let bytes = self.read_exact(2)?;
-		deserialize::<i16>(bytes)
+		Ok(decode_i16(bytes.try_into()?))
 	}
 
 	pub fn read_i32(&mut self) -> Result<i32> {
 		let bytes = self.read_exact(4)?;
-		deserialize::<i32>(bytes)
+		Ok(decode_i32(bytes.try_into()?))
 	}
 
 	pub fn read_i64(&mut self) -> Result<i64> {
 		let bytes = self.read_exact(8)?;
-		deserialize::<i64>(bytes)
+		Ok(decode_i64(bytes.try_into()?))
 	}
 
 	pub fn read_i128(&mut self) -> Result<i128> {
 		let bytes = self.read_exact(16)?;
-		deserialize::<i128>(bytes)
+		Ok(decode_i128(bytes.try_into()?))
 	}
 
 	pub fn read_u8(&mut self) -> Result<u8> {
 		let bytes = self.read_exact(1)?;
-		deserialize::<u8>(bytes)
+		Ok(decode_u8(bytes[0]))
 	}
 
 	pub fn read_u16(&mut self) -> Result<u16> {
 		let bytes = self.read_exact(2)?;
-		deserialize::<u16>(bytes)
+		Ok(decode_u16(bytes.try_into()?))
 	}
 
 	pub fn read_u32(&mut self) -> Result<u32> {
 		let bytes = self.read_exact(4)?;
-		deserialize::<u32>(bytes)
+		Ok(decode_u32(bytes.try_into()?))
 	}
 
 	pub fn read_u64(&mut self) -> Result<u64> {
 		let bytes = self.read_exact(8)?;
-		deserialize::<u64>(bytes)
+		Ok(decode_u64(bytes.try_into()?))
 	}
 
 	pub fn read_u128(&mut self) -> Result<u128> {
 		let bytes = self.read_exact(16)?;
-		deserialize::<u128>(bytes)
+		Ok(decode_u128(bytes.try_into()?))
 	}
 
 	pub fn read_u128_varint(&mut self) -> Result<u128> {

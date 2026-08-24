@@ -125,7 +125,7 @@ impl EncodedKeyBuilderCatalogExt for EncodedKeyBuilder {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_codec::key::serialize;
+	use reifydb_codec::key::encode_u64;
 
 	use super::{
 		serialize_index_id as serialize_index_id_inner, serialize_object_id as serialize_object_id_inner, *,
@@ -197,11 +197,11 @@ pub mod tests {
 		let row_key_10_100 = vec![0xFC];
 		let mut key1 = row_key_10_100.clone();
 		key1.extend(&bytes10);
-		key1.extend(&serialize(&100u64));
+		key1.extend(&encode_u64(100u64));
 
 		let mut key2 = row_key_10_100.clone();
 		key2.extend(&bytes10);
-		key2.extend(&serialize(&200u64));
+		key2.extend(&encode_u64(200u64));
 
 		let mut end_key = vec![0xFC];
 		end_key.extend(&bytes9);

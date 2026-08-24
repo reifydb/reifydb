@@ -7,6 +7,8 @@ use rand::rngs::StdRng;
 use reifydb_core::interface::change::{Change, Diff, Diffs};
 use reifydb_value::value::row_number::RowNumber;
 
+use crate::operator::view::OutputKey;
+
 pub struct Lanes {
 	pub number: u64,
 	pub group: u64,
@@ -23,6 +25,10 @@ pub trait Workload {
 
 	fn readmit(&self, _rng: &mut StdRng, row: &Self::Row) -> Self::Row {
 		row.clone()
+	}
+
+	fn adopt(&self, _live: &Self::Row, incoming: &Self::Row) -> Self::Row {
+		incoming.clone()
 	}
 
 	fn lanes(&self, row: &Self::Row) -> Lanes;
@@ -54,7 +60,7 @@ pub trait Workload {
 		&[]
 	}
 
-	fn identity(&self, _row: &Self::Row) -> Option<Vec<u8>> {
+	fn identity(&self, _row: &Self::Row) -> Option<OutputKey> {
 		None
 	}
 }

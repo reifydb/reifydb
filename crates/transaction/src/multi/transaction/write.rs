@@ -835,7 +835,7 @@ impl MultiWriteTransaction {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::key::serialize;
+	use reifydb_codec::key::serializer::KeySerializer;
 	use reifydb_core::common::CommitVersion;
 	use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
@@ -843,11 +843,15 @@ mod tests {
 	use crate::multi::transaction::MultiTransaction;
 
 	fn test_key(s: &str) -> EncodedKey {
-		EncodedKey::new(serialize(&s))
+		let mut ser = KeySerializer::new();
+		ser.extend_str(s);
+		ser.finish()
 	}
 
 	fn test_bytes(s: &str) -> EncodedBytes {
-		EncodedBytes(CowVec::new(serialize(&s.to_string())))
+		let mut ser = KeySerializer::new();
+		ser.extend_str(s);
+		EncodedBytes(CowVec::new(ser.finish().as_slice().to_vec()))
 	}
 
 	#[test]

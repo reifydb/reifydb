@@ -4,8 +4,11 @@
 use std::collections::{BTreeMap, HashMap};
 
 use reifydb_codec::{
-	key as keycode,
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::{
+		deserializer::KeyDeserializer,
+		encoded::{EncodedKey, EncodedKeyRange},
+		serializer::KeySerializer,
+	},
 	row::bytes::EncodedBytes,
 };
 use reifydb_core::common::CommitVersion;
@@ -62,19 +65,23 @@ pub struct Executor {
 }
 
 fn encode_key(key: &str) -> EncodedKey {
-	EncodedKey::new(keycode::serialize(&key.to_string()))
+	let mut ser = KeySerializer::new();
+	ser.extend_str(key);
+	ser.finish()
 }
 
 fn encode_bytes(value: &str) -> EncodedBytes {
-	EncodedBytes(CowVec::new(keycode::serialize(&value.to_string())))
+	let mut ser = KeySerializer::new();
+	ser.extend_str(value);
+	EncodedBytes(CowVec::new(ser.finish().as_slice().to_vec()))
 }
 
 fn decode_key(bytes: &[u8]) -> String {
-	keycode::deserialize::<String>(bytes).unwrap_or_else(|_| format!("<raw:{}>", hex::encode(bytes)))
+	KeyDeserializer::from_bytes(bytes).read_str().unwrap_or_else(|_| format!("<raw:{}>", hex::encode(bytes)))
 }
 
 fn decode_values(bytes: &[u8]) -> String {
-	keycode::deserialize::<String>(bytes).unwrap_or_else(|_| format!("<raw:{}>", hex::encode(bytes)))
+	KeyDeserializer::from_bytes(bytes).read_str().unwrap_or_else(|_| format!("<raw:{}>", hex::encode(bytes)))
 }
 
 mod hex {

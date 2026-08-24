@@ -109,7 +109,7 @@ fn encoded_key(layout: TableLayout, thread_id: u64, index: u64) -> EncodedKey {
 }
 
 fn encoded_bytes(value: u64) -> EncodedBytes {
-	EncodedBytes(CowVec::new(keycode::serialize(&value)))
+	EncodedBytes(CowVec::new(keycode::encode_u64(value).to_vec()))
 }
 
 struct Sample {

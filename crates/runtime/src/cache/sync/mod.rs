@@ -108,7 +108,14 @@ where
 
 #[cfg(all(test, not(reifydb_single_threaded)))]
 mod tests {
-	use std::{mem::size_of, sync::Arc};
+	use std::{
+		mem::size_of,
+		sync::{
+			Arc, Barrier,
+			atomic::{AtomicUsize, Ordering},
+		},
+		thread::spawn,
+	};
 
 	use reifydb_value::{byte_size::ByteSize, count::Count};
 
@@ -299,10 +306,6 @@ mod tests {
 	fn get_with_runs_the_initializer_once_under_concurrent_misses() {
 		// A get-then-put lets every racer insert its own value; the losers are dropped from the
 		// cache while their callers still hold them, so callers disagree on the cached identity.
-		use std::sync::{
-			Barrier,
-			atomic::{AtomicUsize, Ordering},
-		};
 		fn arc_footprint(_key: &u64, value: &Arc<str>) -> CacheFootprint {
 			CacheFootprint {
 				heap: 2 * size_of::<usize>() + value.len(),
@@ -317,7 +320,7 @@ mod tests {
 				let cache = Arc::clone(&cache);
 				let runs = Arc::clone(&runs);
 				let barrier = Arc::clone(&barrier);
-				std::thread::spawn(move || {
+				spawn(move || {
 					barrier.wait();
 					cache.get_with(1, || {
 						runs.fetch_add(1, Ordering::Relaxed);
@@ -352,11 +355,7 @@ mod tests {
 		let usage = cache.memory_usage().expect("measured cache must report usage");
 		assert_eq!(value, "aaaa");
 		assert_eq!(usage.entries, Count::new(1), "a hit must not add a second entry");
-		assert_eq!(
-			usage.payload,
-			ByteSize::from_bytes(8 + 4),
-			"a hit must not re-add the value's payload"
-		);
+		assert_eq!(usage.payload, ByteSize::from_bytes(8 + 4), "a hit must not re-add the value's payload");
 	}
 
 	#[test]

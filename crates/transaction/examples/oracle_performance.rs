@@ -3,16 +3,39 @@
 
 use std::{sync::Arc, thread::spawn, time::Instant};
 
-use reifydb_codec::{key as keycode, key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::{encoded::EncodedKey, serializer::KeySerializer},
+	row::bytes::EncodedBytes,
+};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
 
+trait KeyBytes {
+	fn key_bytes(&self) -> Vec<u8>;
+}
+
+impl KeyBytes for i32 {
+	fn key_bytes(&self) -> Vec<u8> {
+		let mut ser = KeySerializer::new();
+		ser.extend_i32(*self);
+		ser.finish().as_slice().to_vec()
+	}
+}
+
+impl KeyBytes for String {
+	fn key_bytes(&self) -> Vec<u8> {
+		let mut ser = KeySerializer::new();
+		ser.extend_str(self);
+		ser.finish().as_slice().to_vec()
+	}
+}
+
 macro_rules! as_key {
-	($key:expr) => {{ EncodedKey::new(keycode::serialize(&$key)) }};
+	($key:expr) => {{ EncodedKey::new($key.key_bytes()) }};
 }
 
 macro_rules! as_values {
-	($val:expr) => {{ EncodedBytes(CowVec::new(keycode::serialize(&$val))) }};
+	($val:expr) => {{ EncodedBytes(CowVec::new($val.key_bytes())) }};
 }
 
 pub fn oracle_performance_benchmark() {

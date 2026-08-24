@@ -31,6 +31,9 @@ impl OperatorRangeTier {
 	) -> Option<Vec<(EncodedKey, EncodedPodRow)>> {
 		let scope = bucket_scope(operator, range)?;
 		let id = scope.bucket;
+		if !id.keyspace.is_cached() {
+			return None;
+		}
 		let slot = id.keyspace.0 as usize;
 		let mut shard = self.shard_for(&id).lock();
 		let next = shard.next_tick;

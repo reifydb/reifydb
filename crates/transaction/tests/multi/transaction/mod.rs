@@ -14,12 +14,19 @@ mod version;
 mod write;
 mod write_skew;
 
-use reifydb_codec::{key as keycode, key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer},
+	row::bytes::EncodedBytes,
+};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
 
 pub fn test_multi() -> MultiTransaction {
 	MultiTransaction::testing()
+}
+
+pub trait IntoKey {
+	fn into_key(self) -> EncodedKey;
 }
 
 pub trait IntoValues {
@@ -36,7 +43,7 @@ pub trait FromKey: Sized {
 
 #[macro_export]
 macro_rules! as_key {
-	($key:expr) => {{ reifydb_codec::key::encoded::EncodedKey::new(reifydb_codec::key::serialize(&$key)) }};
+	($key:expr) => {{ <_ as crate::multi::transaction::IntoKey>::into_key($key) }};
 }
 
 #[macro_export]
@@ -59,25 +66,42 @@ macro_rules! from_key {
 }
 
 macro_rules! impl_kv_for {
-	($t:ty) => {
+	($t:ty, $extend:ident, $read:ident) => {
+		impl IntoKey for $t {
+			fn into_key(self) -> EncodedKey {
+				let mut ser = KeySerializer::new();
+				ser.$extend(self);
+				ser.finish()
+			}
+		}
 		impl IntoValues for $t {
 			fn into_bytes(self) -> EncodedBytes {
-				EncodedBytes(CowVec::new(keycode::serialize(&self)))
+				let mut ser = KeySerializer::new();
+				ser.$extend(self);
+				EncodedBytes(CowVec::new(ser.finish().as_slice().to_vec()))
 			}
 		}
 		impl FromKey for $t {
 			fn from_key(key: &EncodedKey) -> Option<Self> {
-				keycode::deserialize(key).ok()
+				KeyDeserializer::from_bytes(key.as_slice()).$read().ok()
 			}
 		}
 		impl FromRow for $t {
 			fn from_bytes(bytes: &EncodedBytes) -> Option<Self> {
-				keycode::deserialize(&bytes.0).ok()
+				KeyDeserializer::from_bytes(&bytes.0).$read().ok()
 			}
 		}
 	};
 }
 
-impl_kv_for!(i32);
-impl_kv_for!(u64);
-impl_kv_for!(String);
+impl IntoKey for &str {
+	fn into_key(self) -> EncodedKey {
+		let mut ser = KeySerializer::new();
+		ser.extend_str(self);
+		ser.finish()
+	}
+}
+
+impl_kv_for!(i32, extend_i32, read_i32);
+impl_kv_for!(u64, extend_u64, read_u64);
+impl_kv_for!(String, extend_str, read_str);

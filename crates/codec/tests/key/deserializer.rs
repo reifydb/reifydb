@@ -244,3 +244,187 @@ fn test_chaining() {
 	assert_eq!(de.read_u64().unwrap(), 1000);
 	assert!(de.is_empty());
 }
+
+fn keys_for<T: Copy>(values: &[T], extend: impl Fn(&mut KeySerializer, T)) -> Vec<EncodedKey> {
+	// Encodes each value independently so the comparison below sees whole keys, not shared prefixes.
+	values.iter()
+		.map(|value| {
+			let mut ser = KeySerializer::new();
+			extend(&mut ser, *value);
+			ser.finish()
+		})
+		.collect()
+}
+
+fn assert_strictly_descending(keys: &[EncodedKey], width: &str) {
+	// Range scans walk keys in byte order, so an inverted or equal pair silently returns the wrong rows.
+	for i in 0..keys.len() - 1 {
+		assert!(
+			keys[i] > keys[i + 1],
+			"{width}: value at index {i} must encode above index {}, keycode is descending",
+			i + 1
+		);
+	}
+}
+
+#[test]
+fn test_read_u128_roundtrip_at_boundaries() {
+	// u128 reads had no coverage, and a 16-byte decode is where a dropped or swapped half hides.
+	for value in [0u128, 1, u64::MAX as u128, u64::MAX as u128 + 1, u128::MAX] {
+		let mut ser = KeySerializer::new();
+		ser.extend_u128(value);
+		let bytes = ser.finish();
+
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_u128().unwrap(), value, "u128 {value} must survive a key round trip");
+		assert!(de.is_empty(), "u128 must consume exactly its 16 bytes");
+	}
+}
+
+#[test]
+fn test_read_i128_roundtrip_at_boundaries() {
+	// i128 reads had no coverage, and MIN and -1 are where an off-by-one sign flip surfaces.
+	for value in [i128::MIN, -1i128, 0, 1, i128::MAX] {
+		let mut ser = KeySerializer::new();
+		ser.extend_i128(value);
+		let bytes = ser.finish();
+
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_i128().unwrap(), value, "i128 {value} must survive a key round trip");
+		assert!(de.is_empty(), "i128 must consume exactly its 16 bytes");
+	}
+}
+
+#[test]
+fn test_unsigned_keys_descend_as_values_ascend() {
+	// Every unsigned width shares one inversion, so a regression in any single width breaks range scans.
+	assert_strictly_descending(
+		&keys_for(&[0u8, 1, 127, 128, u8::MAX], |s, v| {
+			s.extend_u8(v);
+		}),
+		"u8",
+	);
+	assert_strictly_descending(
+		&keys_for(&[0u16, 1, 255, 256, u16::MAX], |s, v| {
+			s.extend_u16(v);
+		}),
+		"u16",
+	);
+	assert_strictly_descending(
+		&keys_for(&[0u32, 1, 65535, 65536, u32::MAX], |s, v| {
+			s.extend_u32(v);
+		}),
+		"u32",
+	);
+	assert_strictly_descending(
+		&keys_for(&[0u64, 1, u32::MAX as u64, u32::MAX as u64 + 1, u64::MAX], |s, v| {
+			s.extend_u64(v);
+		}),
+		"u64",
+	);
+	assert_strictly_descending(
+		&keys_for(&[0u128, 1, u64::MAX as u128, u64::MAX as u128 + 1, u128::MAX], |s, v| {
+			s.extend_u128(v);
+		}),
+		"u128",
+	);
+}
+
+#[test]
+fn test_signed_keys_descend_as_values_ascend() {
+	// The sign-bit flip is what sorts negatives below positives; without it a scan reads them as larger.
+	assert_strictly_descending(
+		&keys_for(&[i8::MIN, -1i8, 0, 1, i8::MAX], |s, v| {
+			s.extend_i8(v);
+		}),
+		"i8",
+	);
+	assert_strictly_descending(
+		&keys_for(&[i16::MIN, -1i16, 0, 1, i16::MAX], |s, v| {
+			s.extend_i16(v);
+		}),
+		"i16",
+	);
+	assert_strictly_descending(
+		&keys_for(&[i32::MIN, -1i32, 0, 1, i32::MAX], |s, v| {
+			s.extend_i32(v);
+		}),
+		"i32",
+	);
+	assert_strictly_descending(
+		&keys_for(&[i64::MIN, -1i64, 0, 1, i64::MAX], |s, v| {
+			s.extend_i64(v);
+		}),
+		"i64",
+	);
+	assert_strictly_descending(
+		&keys_for(&[i128::MIN, -1i128, 0, 1, i128::MAX], |s, v| {
+			s.extend_i128(v);
+		}),
+		"i128",
+	);
+}
+
+#[test]
+fn test_float_keys_descend_as_values_ascend() {
+	// Negative floats take a different encode branch than non-negative, so the halves must still join in order.
+	assert_strictly_descending(
+		&keys_for(
+			&[
+				f32::NEG_INFINITY,
+				f32::MIN,
+				-1.5f32,
+				-0.0,
+				0.0,
+				f32::MIN_POSITIVE,
+				1.5,
+				f32::MAX,
+				f32::INFINITY,
+			],
+			|s, v| {
+				s.extend_f32(v);
+			},
+		),
+		"f32",
+	);
+	assert_strictly_descending(
+		&keys_for(
+			&[
+				f64::NEG_INFINITY,
+				f64::MIN,
+				-1.5f64,
+				-0.0,
+				0.0,
+				f64::MIN_POSITIVE,
+				1.5,
+				f64::MAX,
+				f64::INFINITY,
+			],
+			|s, v| {
+				s.extend_f64(v);
+			},
+		),
+		"f64",
+	);
+}
+
+#[test]
+fn test_float_keys_round_trip_exact_bits() {
+	// A tolerance comparison cannot catch a mantissa, signed-zero, or NaN-payload regression; bits can.
+	for value in [f32::NEG_INFINITY, f32::MIN, -1.5f32, -0.0, 0.0, f32::MIN_POSITIVE, f32::MAX, f32::NAN] {
+		let mut ser = KeySerializer::new();
+		ser.extend_f32(value);
+		let bytes = ser.finish();
+
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_f32().unwrap().to_bits(), value.to_bits(), "f32 key must restore the exact bits");
+	}
+	for value in [f64::NEG_INFINITY, f64::MIN, -1.5f64, -0.0, 0.0, f64::MIN_POSITIVE, f64::MAX, f64::NAN] {
+		let mut ser = KeySerializer::new();
+		ser.extend_f64(value);
+		let bytes = ser.finish();
+
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_f64().unwrap().to_bits(), value.to_bits(), "f64 key must restore the exact bits");
+	}
+}

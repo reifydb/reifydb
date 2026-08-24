@@ -131,6 +131,14 @@ impl Expectation for ViewClaim {
 		_tolerances: &[Option<f64>],
 		bound: Bound,
 	) -> Result<(), String> {
+		if !self.view.incoherent.is_empty() {
+			return Err(format!(
+				"the claim's own view holds rows its key columns {:?} cannot tell apart, so no operator \
+				 could satisfy it: {:?}",
+				self.key_columns, self.view.incoherent
+			));
+		}
+
 		let published = actual.rekey(&RowKey::columns(self.key_columns.clone()));
 
 		if !published.incoherent.is_empty() {
@@ -347,6 +355,28 @@ mod tests {
 			claim.check(&published, &[], &[], Bound::Exactly).is_ok(),
 			"the same row under a different row number must still satisfy a claim keyed on g"
 		);
+	}
+
+	#[test]
+	fn a_view_claim_whose_own_view_is_incoherent_blames_the_model_not_the_operator() {
+		// An unsatisfiable claim reported against the operator sends triage after a defect that is not there.
+		let mut oracle = MaterializedView::empty();
+		oracle.columns = vec!["g".to_string(), "total".to_string()];
+		oracle.insert(
+			OutputKey::new(vec![Value::Int4(1)]),
+			MaterializedRow::from_pairs(vec![
+				("g".to_string(), Value::Int4(1)),
+				("total".to_string(), Value::Int4(5)),
+			]),
+		);
+		oracle.incoherent.push("two published rows share the key".to_string());
+		let claim = ViewClaim::new(oracle, vec!["g".to_string()], Tolerances::new());
+
+		let clean = view(&[(1, &[("g", Value::Int4(1)), ("total", Value::Int4(5))])], &["g", "total"]);
+		let report =
+			claim.check(&clean, &[], &[], Bound::Exactly).expect_err("an unsatisfiable claim must fail");
+
+		assert!(report.contains("the claim's own view"), "the failure must name the model: {report}");
 	}
 
 	#[test]

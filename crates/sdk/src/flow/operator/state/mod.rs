@@ -59,7 +59,7 @@ impl<'a> State<'a> {
 	}
 
 	pub fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> Result<Vec<(GroupStateKey, T)>> {
-		extern_c::prefix(self.ctx, prefix.as_encoded())?
+		extern_c::prefix(self.ctx, prefix.as_encoded(), usize::MAX)?
 			.into_iter()
 			.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
 			.collect()
@@ -74,7 +74,10 @@ impl<'a> State<'a> {
 	}
 
 	pub fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>> {
-		extern_c::prefix(self.ctx, prefix.as_encoded())?.into_iter().map(|(k, _)| framed(k)).collect()
+		extern_c::prefix(self.ctx, prefix.as_encoded(), usize::MAX)?
+			.into_iter()
+			.map(|(k, _)| framed(k))
+			.collect()
 	}
 
 	pub fn range<T: OperatorState>(
@@ -82,10 +85,15 @@ impl<'a> State<'a> {
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
 	) -> Result<Vec<(GroupStateKey, T)>> {
-		extern_c::range(self.ctx, start.map(GroupStateKey::as_encoded), end.map(GroupStateKey::as_encoded))?
-			.into_iter()
-			.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
-			.collect()
+		extern_c::range(
+			self.ctx,
+			start.map(GroupStateKey::as_encoded),
+			end.map(GroupStateKey::as_encoded),
+			usize::MAX,
+		)?
+		.into_iter()
+		.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
+		.collect()
 	}
 
 	pub fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
@@ -122,6 +130,7 @@ impl<'a> State<'a> {
 			self.ctx,
 			start.map(GroupStateKey::as_encoded),
 			end.map(GroupStateKey::as_encoded),
+			limit.unwrap_or(usize::MAX),
 		)?
 		.into_iter()
 		.enumerate()

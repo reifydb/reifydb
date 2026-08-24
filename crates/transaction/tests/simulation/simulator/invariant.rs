@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reifydb_codec::key as keycode;
+use reifydb_codec::key::{deserializer::KeyDeserializer, serializer::KeySerializer};
 
 use super::{
 	executor::{ExecutionTrace, OpResult},
@@ -53,7 +53,11 @@ impl Invariant for NoDirtyReads {
 					value,
 				} => {
 					if matches!(&result.result, OpResult::Ok) {
-						let value_bytes = keycode::serialize(&value.to_string());
+						let value_bytes = {
+							let mut ser = KeySerializer::new();
+							ser.extend_str(value);
+							ser.finish().as_slice().to_vec()
+						};
 						pending_writes
 							.entry(tx_id)
 							.or_default()
@@ -255,7 +259,11 @@ impl Invariant for ReadYourOwnWrites {
 					value,
 				} => {
 					if matches!(&result.result, OpResult::Ok) {
-						let value_bytes = keycode::serialize(&value.to_string());
+						let value_bytes = {
+							let mut ser = KeySerializer::new();
+							ser.extend_str(value);
+							ser.finish().as_slice().to_vec()
+						};
 						pending_writes
 							.entry(tx_id)
 							.or_default()
@@ -386,9 +394,11 @@ impl Invariant for SnapshotConsistency {
 
 						let mut actual: BTreeMap<String, String> = BTreeMap::new();
 						for (k_bytes, v_bytes) in pairs {
-							let key = keycode::deserialize::<String>(k_bytes)
+							let key = KeyDeserializer::from_bytes(k_bytes)
+								.read_str()
 								.unwrap_or_else(|_| format!("<raw:{}>", k_bytes.len()));
-							let value = keycode::deserialize::<String>(v_bytes)
+							let value = KeyDeserializer::from_bytes(v_bytes)
+								.read_str()
 								.unwrap_or_else(|_| format!("<raw:{}>", v_bytes.len()));
 							actual.insert(key, value);
 						}

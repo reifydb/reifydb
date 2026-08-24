@@ -6,7 +6,11 @@ use std::collections::Bound;
 use reifydb_codec::key::encoded::EncodedKey;
 
 macro_rules! as_key {
-	($key:expr) => {{ EncodedKey::new(reifydb_codec::key::serialize(&$key)) }};
+	($key:expr) => {{
+		let mut ser = reifydb_codec::key::serializer::KeySerializer::new();
+		ser.extend_i32($key);
+		ser.finish()
+	}};
 }
 
 mod prefix {
@@ -62,7 +66,7 @@ mod prefix {
 mod start_end {
 	use std::ops::Bound;
 
-	use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+	use reifydb_codec::key::encoded::EncodedKeyRange;
 
 	use super::included;
 

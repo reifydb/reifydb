@@ -174,6 +174,7 @@ impl MaterializedView {
 	pub fn rekey(&self, key: &RowKey) -> MaterializedView {
 		let mut out = MaterializedView::empty();
 		out.columns = self.columns.clone();
+		out.incoherent = self.incoherent.clone();
 		for row in self.rows.values() {
 			let mut values: Vec<Value> = key
 				.columns
@@ -397,6 +398,23 @@ mod projection_tests {
 			rekeyed.incoherent.len(),
 			1,
 			"but it must be reported, or the collapse is indistinguishable from a single publish"
+		);
+	}
+
+	#[test]
+	fn rekeying_carries_the_source_views_incoherence_forward() {
+		// Every consumer rekeys before comparing, so a clean slate here discards the fold's report.
+		let mut view = MaterializedView::empty();
+		view.columns = vec!["lid".to_string()];
+		view.incoherent.push("remove of absent row".to_string());
+		view.insert(OutputKey::new(vec![Value::Uint8(1)]), row(&[("lid", Value::Int8(1))]));
+
+		let rekeyed = view.rekey(&RowKey::columns(["lid"]));
+
+		assert_eq!(
+			rekeyed.incoherent,
+			vec!["remove of absent row".to_string()],
+			"the fold's report must survive the rekey"
 		);
 	}
 

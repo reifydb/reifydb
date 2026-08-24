@@ -312,7 +312,7 @@ impl Key {
 			return None;
 		}
 
-		keycode::deserialize(&key[0..1]).ok()
+		keycode::decode_u8(key[0]).try_into().ok()
 	}
 
 	pub fn decode(key: &EncodedKey) -> Option<Self> {
@@ -320,7 +320,7 @@ impl Key {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[0..1]).ok()?;
+		let kind: KeyKind = keycode::decode_u8(key[0]).try_into().ok()?;
 		match kind {
 			KeyKind::CdcConsumer => CdcConsumerKey::decode(key).map(Self::CdcConsumer),
 			KeyKind::Columns => ColumnsKey::decode(key).map(Self::Columns),

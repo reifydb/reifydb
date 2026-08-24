@@ -224,6 +224,7 @@ extern "C" fn test_state_prefix(
 	ctx: *mut ExternCContextRaw,
 	prefix_ptr: *const u8,
 	prefix_len: usize,
+	limit: usize,
 	iterator_out: *mut *mut ExternCStateIterator,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
@@ -256,6 +257,7 @@ extern "C" fn test_state_prefix(
 			.collect();
 
 		items.sort_by(|a, b| a.0.cmp(&b.0));
+		items.truncate(limit);
 
 		let iter = Box::new(TestStateIterator {
 			items,
@@ -334,6 +336,7 @@ extern "C" fn test_state_range(
 	end_ptr: *const u8,
 	end_len: usize,
 	end_bound_type: u8,
+	limit: usize,
 	iterator_out: *mut *mut ExternCStateIterator,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
@@ -384,6 +387,7 @@ extern "C" fn test_state_range(
 			.collect();
 
 		items.sort_by(|a, b| a.0.cmp(&b.0));
+		items.truncate(limit);
 
 		let iter = Box::new(TestStateIterator {
 			items,

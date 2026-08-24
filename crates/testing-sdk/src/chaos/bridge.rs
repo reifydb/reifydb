@@ -10,7 +10,7 @@ use reifydb_testing_chaos::operator::{
 	event::{ChaosBatch, ChaosEvent},
 	expectation::ViewClaim,
 	model::Model,
-	view::MaterializedView,
+	view::{MaterializedView, OutputKey},
 	workload::{Lanes, Workload},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -43,6 +43,16 @@ impl SamplerWorkload {
 			projection,
 		}
 	}
+
+	fn pinned_columns(&self) -> Vec<String> {
+		let mut columns: Vec<String> = self.schema.key_strategy.deriving_columns().to_vec();
+		for column in &self.schema.output_key_columns {
+			if !columns.contains(column) {
+				columns.push(column.clone());
+			}
+		}
+		columns
+	}
 }
 
 impl Workload for SamplerWorkload {
@@ -58,25 +68,26 @@ impl Workload for SamplerWorkload {
 
 	fn revalue(&self, rng: &mut StdRng, row: &GuestRow) -> GuestRow {
 		let target = row.row.number;
-		let (mut post, mut content) = sample_row(&self.schema, &self.registry, rng, target.0);
+		let (_, mut content) = sample_row(&self.schema, &self.registry, rng, target.0);
 
-		match self.schema.key_strategy.deriving_columns() {
-			[] => post.number = target,
-			columns => {
-				for column in columns {
-					if let Some(value) = row.content.get(column).cloned() {
-						content.set(column.clone(), value);
-					}
-				}
-				if let Some(constraint) = &self.registry.constraint {
-					constraint(&mut content);
-				}
-				post = encode_row(&self.schema, &content, target);
+		for column in self.pinned_columns() {
+			if let Some(value) = row.content.get(&column).cloned() {
+				content.set(column, value);
 			}
 		}
+		if let Some(constraint) = &self.registry.constraint {
+			constraint(&mut content);
+		}
 		GuestRow {
-			row: post,
+			row: encode_row(&self.schema, &content, target),
 			content,
+		}
+	}
+
+	fn adopt(&self, live: &GuestRow, incoming: &GuestRow) -> GuestRow {
+		GuestRow {
+			row: encode_row(&self.schema, &incoming.content, live.row.number),
+			content: incoming.content.clone(),
 		}
 	}
 
@@ -109,8 +120,12 @@ impl Workload for SamplerWorkload {
 		&self.projection
 	}
 
-	fn identity(&self, row: &GuestRow) -> Option<Vec<u8>> {
-		Some(row.row.number.0.to_le_bytes().to_vec())
+	fn identity(&self, row: &GuestRow) -> Option<OutputKey> {
+		let mut values = Vec::with_capacity(self.schema.output_key_columns.len());
+		for column in &self.schema.output_key_columns {
+			values.push(row.content.get(column).cloned()?);
+		}
+		Some(OutputKey::new(values))
 	}
 }
 
@@ -461,8 +476,12 @@ mod tests {
 	fn insert_only_emits_only_inserts() {
 		// max_live exceeds the step count so the ceiling never binds; with sequential keys every step
 		// mints a fresh row, so the run must be all inserts and nothing else.
-		let events =
-			run(schema_sequential(), registry_kv(1..1000), cfg(100, 200, SupportedOps::insert_only()), 42);
+		let events = run(
+			schema_sequential(),
+			registry_kv(1..1_000_000_000_000),
+			cfg(100, 200, SupportedOps::insert_only()),
+			42,
+		);
 		assert!(events.iter().all(|e| e.kind == Kind::Insert), "a non-insert appeared under insert_only");
 		assert_eq!(events.len(), 100);
 		assert_eq!(
@@ -476,8 +495,12 @@ mod tests {
 	fn insert_only_with_tight_cap_stops_at_cap() {
 		// max_live is a ceiling, not an eviction policy: if it silently evicted, a configuration
 		// asking for 25 live rows would exercise 100.
-		let events =
-			run(schema_sequential(), registry_kv(1..1000), cfg(100, 25, SupportedOps::insert_only()), 42);
+		let events = run(
+			schema_sequential(),
+			registry_kv(1..1_000_000_000_000),
+			cfg(100, 25, SupportedOps::insert_only()),
+			42,
+		);
 		assert!(events.iter().all(|e| e.kind == Kind::Insert));
 		assert_eq!(events.len(), 25, "inserts must stop at the ceiling");
 		assert_eq!(replay_live(&events).len(), 25);
@@ -514,8 +537,12 @@ mod tests {
 	fn no_update_never_emits_an_update_and_removes_drop_from_live() {
 		// Insert plus remove only, so the live set is exactly inserts minus removes and any update would be
 		// the driver inventing an operation the configuration forbids.
-		let events =
-			run(schema_sequential(), registry_kv(1..1000), cfg(100, 50, SupportedOps::no_update()), 11);
+		let events = run(
+			schema_sequential(),
+			registry_kv(1..1_000_000_000_000),
+			cfg(100, 50, SupportedOps::no_update()),
+			11,
+		);
 		let (inserts, updates, removes) = counts(&events);
 		assert_eq!(updates, 0, "an update appeared under no_update");
 		assert!(removes > 0, "expected at least one remove");
@@ -568,7 +595,7 @@ mod tests {
 		// tolerate. At p=1 each real update is followed by exactly one repeat whose pre equals its post.
 		let events = run(
 			schema_sequential(),
-			registry_kv(1..1000),
+			registry_kv(1..1_000_000_000_000),
 			cfg_with_chaos(200, 100, SupportedOps::no_remove(), 1.0, 0.0),
 			77,
 		);
@@ -643,7 +670,7 @@ mod tests {
 		// mishandles the split is exactly what this primitive is looking for, so no update may survive.
 		let events = run(
 			schema_sequential(),
-			registry_kv(1..1000),
+			registry_kv(1..1_000_000_000_000),
 			cfg_with_chaos(100, 50, SupportedOps::all(), 0.0, 1.0),
 			33,
 		);

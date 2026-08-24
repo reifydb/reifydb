@@ -130,6 +130,7 @@ where
 						Some(slot) => {
 							let pre = live[slot].clone();
 							fingerprint = mix(fingerprint, 7);
+							let row = workload.adopt(&pre, &row);
 							model.update(&pre, &row);
 							live[slot] = row.clone();
 							ops.push(Op::Update(pre, row));
@@ -220,9 +221,10 @@ where
 					Some(slot) => {
 						let pre = live[slot].clone();
 						fingerprint = mix(fingerprint, 7);
-						model.update(&pre, row);
+						let row = workload.adopt(&pre, row);
+						model.update(&pre, &row);
 						live[slot] = row.clone();
-						session.apply(workload.update(&pre, row)).expect("apply must succeed");
+						session.apply(workload.update(&pre, &row)).expect("apply must succeed");
 					}
 					None => {
 						if model.admit(row) {

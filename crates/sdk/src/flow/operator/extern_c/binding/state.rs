@@ -181,7 +181,11 @@ pub(crate) fn get_many(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Vec<
 	prefix_len = prefix.as_bytes().len(),
 	result_count
 ))]
-pub(crate) fn prefix(ctx: &ExternCContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+pub(crate) fn prefix(
+	ctx: &ExternCContext,
+	prefix: &EncodedKey,
+	limit: usize,
+) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut ExternCStateIterator = null_mut();
 
@@ -194,6 +198,7 @@ pub(crate) fn prefix(ctx: &ExternCContext, prefix: &EncodedKey) -> Result<Vec<(E
 			ctx.ctx,
 			prefix_bytes.as_ptr(),
 			prefix_bytes.len(),
+			limit,
 			&mut iterator,
 		);
 
@@ -217,6 +222,7 @@ pub(crate) fn range(
 	ctx: &ExternCContext,
 	start: Bound<&EncodedKey>,
 	end: Bound<&EncodedKey>,
+	limit: usize,
 ) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let mut iterator: *mut ExternCStateIterator = null_mut();
 
@@ -245,6 +251,7 @@ pub(crate) fn range(
 			end_ptr,
 			end_len,
 			end_bound_type,
+			limit,
 			&mut iterator,
 		);
 

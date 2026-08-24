@@ -87,13 +87,13 @@ where
 			return existing;
 		}
 		let entry = self.cache.entry(key).or_insert_with(init);
-		if entry.is_fresh() {
-			if let Some(metrics) = &self.metrics {
-				let footprint = (metrics.footprint)(entry.key(), entry.value());
-				metrics.entries.fetch_add(1, Ordering::Relaxed);
-				metrics.heap.fetch_add(footprint.heap as u64, Ordering::Relaxed);
-				metrics.payload.fetch_add(footprint.payload as u64, Ordering::Relaxed);
-			}
+		if entry.is_fresh()
+			&& let Some(metrics) = &self.metrics
+		{
+			let footprint = (metrics.footprint)(entry.key(), entry.value());
+			metrics.entries.fetch_add(1, Ordering::Relaxed);
+			metrics.heap.fetch_add(footprint.heap as u64, Ordering::Relaxed);
+			metrics.payload.fetch_add(footprint.payload as u64, Ordering::Relaxed);
 		}
 		entry.into_value()
 	}

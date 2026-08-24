@@ -48,11 +48,18 @@ pub struct ComparisonResult {
 	pub only_in_oracle: Vec<OutputKey>,
 	pub only_in_operator: Vec<OutputKey>,
 	pub divergent: Vec<DivergentRow>,
+
+	pub oracle_incoherent: Vec<String>,
+	pub operator_incoherent: Vec<String>,
 }
 
 impl ComparisonResult {
 	pub fn is_match(&self) -> bool {
-		self.only_in_oracle.is_empty() && self.only_in_operator.is_empty() && self.divergent.is_empty()
+		self.only_in_oracle.is_empty()
+			&& self.only_in_operator.is_empty()
+			&& self.divergent.is_empty()
+			&& self.oracle_incoherent.is_empty()
+			&& self.operator_incoherent.is_empty()
 	}
 
 	pub fn format_failure(&self, header_lines: &[String], max_divergent_shown: usize) -> String {
@@ -69,6 +76,8 @@ impl ComparisonResult {
 			self.divergent.len(),
 			max_divergent_shown
 		);
+		let _ = writeln!(out, "    oracle keys not distinct:   {}", self.oracle_incoherent.len());
+		let _ = writeln!(out, "    operator keys not distinct: {}", self.operator_incoherent.len());
 
 		for (idx, dr) in self.divergent.iter().take(max_divergent_shown).enumerate() {
 			let _ = writeln!(out);
@@ -93,6 +102,24 @@ impl ComparisonResult {
 			let _ = writeln!(out, "  --- keys present in operator but missing in oracle (first 10) ---");
 			for k in self.only_in_operator.iter().take(10) {
 				let _ = writeln!(out, "    {}", format_output_key(k));
+			}
+		}
+		if !self.oracle_incoherent.is_empty() {
+			let _ = writeln!(out);
+			let _ = writeln!(out, "  --- the MODEL's own view cannot tell its rows apart (first 10) ---");
+			let _ = writeln!(out, "      the claim is unsatisfiable; the operator is not at fault here");
+			for line in self.oracle_incoherent.iter().take(10) {
+				let _ = writeln!(out, "    {line}");
+			}
+		}
+		if !self.operator_incoherent.is_empty() {
+			let _ = writeln!(out);
+			let _ = writeln!(
+				out,
+				"  --- the operator's published view cannot tell its rows apart (first 10) ---"
+			);
+			for line in self.operator_incoherent.iter().take(10) {
+				let _ = writeln!(out, "    {line}");
 			}
 		}
 		out
@@ -296,6 +323,8 @@ pub fn compare(operator: &MaterializedView, oracle: &MaterializedView, tolerance
 		only_in_oracle,
 		only_in_operator,
 		divergent,
+		oracle_incoherent: oracle.incoherent.clone(),
+		operator_incoherent: operator.incoherent.clone(),
 	}
 }
 
@@ -382,6 +411,34 @@ mod tests {
 	fn empty_tables_match() {
 		let result = compare(&MaterializedView::empty(), &MaterializedView::empty(), &Tolerances::new());
 		assert!(result.is_match());
+	}
+
+	#[test]
+	fn a_collapsed_key_on_either_side_breaks_the_match_and_is_named_in_the_report() {
+		// A collapse leaves both sides row-for-row identical, so without this a broken run reads as clean.
+		let populated = || {
+			let mut view = MaterializedView::empty();
+			view.insert(key(vec![Value::uint8(1u64)]), row(&[("v", Value::float8(1.0_f64))]));
+			view
+		};
+
+		let mut oracle = populated();
+		oracle.incoherent.push("two published rows share the key OutputKey([Uint8(7)])".to_string());
+		let result = compare(&populated(), &oracle, &Tolerances::new());
+		assert!(result.only_in_oracle.is_empty() && result.divergent.is_empty(), "the rows themselves agree");
+		assert!(!result.is_match(), "an incoherent model must not report a match");
+		let report = result.format_failure(&[], 5);
+		assert!(report.contains("the MODEL's own view"), "the report must blame the model: {report}");
+
+		let mut operator = populated();
+		operator.incoherent.push("two published rows share the key OutputKey([Uint8(7)])".to_string());
+		let result = compare(&operator, &populated(), &Tolerances::new());
+		assert!(!result.is_match(), "an incoherent operator view must not report a match");
+		let report = result.format_failure(&[], 5);
+		assert!(
+			report.contains("the operator's published view"),
+			"the report must blame the operator: {report}"
+		);
 	}
 
 	#[test]

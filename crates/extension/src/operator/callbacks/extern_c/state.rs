@@ -177,6 +177,7 @@ pub(super) extern "C" fn host_state_prefix(
 	ctx: *mut ExternCContextRaw,
 	prefix_ptr: *const u8,
 	prefix_len: usize,
+	limit: usize,
 	iterator_out: *mut *mut ExternCStateIterator,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
@@ -202,7 +203,7 @@ pub(super) extern "C" fn host_state_prefix(
 			EncodedKeyRange::prefix(&prefix_bytes)
 		};
 
-		match host.state_range(range) {
+		match host.state_range_limited(range, (limit != usize::MAX).then_some(limit)) {
 			Ok(entries) => {
 				let handle = state_iterator::create_iterator(iterator_entries(entries));
 
@@ -313,6 +314,7 @@ pub(super) extern "C" fn host_state_range(
 	end_ptr: *const u8,
 	end_len: usize,
 	end_bound_type: u8,
+	limit: usize,
 	iterator_out: *mut *mut ExternCStateIterator,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
@@ -366,7 +368,7 @@ pub(super) extern "C" fn host_state_range(
 		};
 
 		let range = EncodedKeyRange::new(start_bound, end_bound);
-		let result = host.state_range(range);
+		let result = host.state_range_limited(range, (limit != usize::MAX).then_some(limit));
 
 		match result {
 			Ok(entries) => {

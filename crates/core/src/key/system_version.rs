@@ -48,7 +48,7 @@ impl EncodableKey for SystemVersionKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(Self::KIND as u8).extend_serialize(&self.version);
+		serializer.extend_u8(Self::KIND as u8).extend_u8(self.version as u8);
 		serializer.to_encoded_key()
 	}
 

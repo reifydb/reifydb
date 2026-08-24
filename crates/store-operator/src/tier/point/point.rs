@@ -142,7 +142,10 @@ impl OperatorPointTier {
 	}
 
 	pub fn invalidate(&self, operator: OperatorId, key: &EncodedKey) {
-		if keyspace_of(key).is_none() {
+		let Some(keyspace) = keyspace_of(key) else {
+			return;
+		};
+		if !keyspace.is_cached() {
 			return;
 		}
 		let id = PointKey {

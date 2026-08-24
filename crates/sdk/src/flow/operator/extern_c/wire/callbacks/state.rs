@@ -39,6 +39,7 @@ pub struct StateCallbacks {
 		ctx: *mut ExternCContextRaw,
 		prefix: *const u8,
 		prefix_len: usize,
+		limit: usize,
 		iterator_out: *mut *mut ExternCStateIterator,
 	) -> i32,
 
@@ -51,6 +52,7 @@ pub struct StateCallbacks {
 		end: *const u8,
 		end_len: usize,
 		end_bound_type: u8,
+		limit: usize,
 		iterator_out: *mut *mut ExternCStateIterator,
 	) -> i32,
 

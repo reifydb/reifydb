@@ -12,7 +12,10 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_testing_chaos::operator::workload::{Lanes, Op, Workload};
+use reifydb_testing_chaos::operator::{
+	view::OutputKey,
+	workload::{Lanes, Op, Workload},
+};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
@@ -100,12 +103,9 @@ impl Workload for AppendWorkload {
 		}
 	}
 
-	fn identity(&self, row: &AppendRow) -> Option<Vec<u8>> {
-		// The same number on a different input is an unrelated row, so the input has to be part of
-		// the identity or half the corpus would collapse into updates.
-		let mut id = vec![row.input as u8];
-		id.extend_from_slice(&row.source.0.to_le_bytes());
-		Some(id)
+	fn identity(&self, row: &AppendRow) -> Option<OutputKey> {
+		// The input must be part of the identity; without it half the corpus collapses into updates.
+		Some(OutputKey::new(vec![Value::Int4(row.input as i32), Value::Uint8(row.source.0)]))
 	}
 
 	fn insert(&self, rows: &[AppendRow]) -> Change {

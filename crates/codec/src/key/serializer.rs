@@ -18,12 +18,10 @@ use reifydb_value::value::{
 	uuid::{Uuid4, Uuid7},
 	value_type::ValueType,
 };
-use serde::Serialize;
 
 use super::{
 	CONTAINER_END, encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32,
 	encode_i64, encode_i128, encode_u8, encode_u16, encode_u32, encode_u64, encode_u128, encode_u128_varint,
-	serialize,
 };
 use crate::{
 	key::{buf::KeyBuf, encoded::EncodedKey, sort::SortOrder},
@@ -147,11 +145,6 @@ impl KeySerializer {
 
 	pub fn to_encoded_key(self) -> EncodedKey {
 		self.buffer.finish()
-	}
-
-	pub fn extend_serialize<T: Serialize>(&mut self, value: &T) -> &mut Self {
-		self.buffer.extend_from_slice(&serialize(value));
-		self
 	}
 
 	pub fn extend_raw(&mut self, bytes: &[u8]) -> &mut Self {

@@ -284,11 +284,6 @@ impl EncodedKeyBuilder {
 		self
 	}
 
-	pub fn serialize<T: Serialize>(mut self, value: &T) -> Self {
-		self.serializer.extend_serialize(value);
-		self
-	}
-
 	pub fn raw(mut self, bytes: &[u8]) -> Self {
 		self.serializer.extend_raw(bytes);
 		self
