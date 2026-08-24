@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[path = "regression/aggregate_engine_meta_reads.rs"]
+mod aggregate_engine_meta_reads;
+
 #[path = "regression/latest_snapshot_join_republish.rs"]
 mod latest_snapshot_join_republish;
 

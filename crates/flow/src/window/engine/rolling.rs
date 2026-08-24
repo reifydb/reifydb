@@ -27,7 +27,7 @@ use crate::{
 			expiry::{ExpiryIndex, expiry_drop, expiry_key},
 			seal::coord::{Coord, IsZero},
 		},
-		state_access::{get, put, remove},
+		state_access::{get, get_classified, put, remove},
 	},
 	window::{
 		accumulator::WindowAccumulator,
@@ -310,7 +310,8 @@ where
 						None => row_key(&group),
 					};
 					let buffer: RollingBuffer<C, Accumulator> =
-						get(store, &BufferKey::new(group_id, key.clone()))?.unwrap_or_default();
+						get_classified(store, &BufferKey::new(group_id, key.clone()))?
+							.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
 					let prior_output = if was_empty_before {
 						None
@@ -478,7 +479,7 @@ where
 		slot: &EncodedKey,
 		frontier: Option<C::Coord>,
 	) -> Result<Accumulator> {
-		if let Some(running) = get(store, &RunningKey::new(group_id, slot.clone()))? {
+		if let Some(running) = get_classified(store, &RunningKey::new(group_id, slot.clone()))? {
 			return Ok(running);
 		}
 		Ok(running_below(buffer, frontier))
@@ -527,7 +528,8 @@ where
 						None => row_key(&group),
 					};
 					let buffer: RollingBuffer<C, Accumulator> =
-						get(store, &BufferKey::new(group_id, key.clone()))?.unwrap_or_default();
+						get_classified(store, &BufferKey::new(group_id, key.clone()))?
+							.unwrap_or_default();
 					let old_frontier = frontier_for(self.lag, &meta.high_water());
 					let prior_min = coord_min_key(&buffer);
 					let merged_before = prior_min.is_some_and(|m| {
@@ -739,7 +741,7 @@ where
 					.and_then(|meta| frontier_for::<C>(lag, &meta.high_water))
 			};
 			let mut buffer: RollingBuffer<C, Accumulator> =
-				get(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
+				get_classified(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
 			let expired: Vec<C> = buffer.range(..=cutoff).map(|(coord, _)| *coord).collect();
 			if expired.is_empty() {
 				if let Some(new) = coord_min_key(&buffer) {
@@ -873,7 +875,7 @@ where
 			let group_id = GroupId(entry.group_id);
 			expiry_drop(store, &index_key)?;
 			let mut buffer: RollingBuffer<C, Accumulator> =
-				get(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
+				get_classified(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
 			if buffer.is_empty() {
 				continue;
 			}

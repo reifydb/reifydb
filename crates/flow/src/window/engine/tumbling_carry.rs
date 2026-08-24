@@ -21,7 +21,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
-	operator::state_access::{get, put, remove},
+	operator::state_access::{get, get_classified, put, remove},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -165,7 +165,7 @@ where
 			}
 
 			let mut accumulator: Accumulator =
-				get(store, &WindowStateKey::new(group_id, slot_key.clone()))?
+				get_classified(store, &WindowStateKey::new(group_id, slot_key.clone()))?
 					.unwrap_or_else(&new_accumulator);
 			let mut changed = false;
 			for event in events {

@@ -28,7 +28,7 @@ use crate::{
 			expiry::{ExpiryIndex, expiry_drop, expiry_key},
 			reaper::Reaper,
 		},
-		state_access::{get, put, remove},
+		state_access::{get_classified, put, remove},
 	},
 	window::{
 		accumulator::WindowAccumulator,
@@ -250,7 +250,8 @@ where
 			};
 			let state_key = WindowStateKey::new(id, key.clone());
 
-			let mut accumulator: Accumulator = get(store, &state_key)?.unwrap_or_else(new_accumulator);
+			let mut accumulator: Accumulator =
+				get_classified(store, &state_key)?.unwrap_or_else(new_accumulator);
 			let was_empty_before = accumulator.is_empty();
 			let prior = if was_empty_before {
 				None

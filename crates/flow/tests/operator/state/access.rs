@@ -3,10 +3,17 @@
 
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator_state::{GroupStateKey, IntoGroupStateKey, Keyspace},
+	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace},
 	metrics::heap::HeapSize,
 };
-use reifydb_flow::operator::state_access::{get, get_or_default, set, update};
+use reifydb_flow::operator::{
+	host::TxnHostContext,
+	state_access::{get, get_classified, get_or_default, set, update},
+};
+use reifydb_flow::window::{
+	kind::session::SessionTracker,
+	meta::{EngineMeta, EngineMetaKey, WindowMeta},
+};
 use reifydb_macro::operator_state;
 use reifydb_sdk::{
 	error::Result,
@@ -18,8 +25,9 @@ use reifydb_sdk::{
 		windowed::guest_as_host::GuestAsHost,
 	},
 };
+use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
-use reifydb_value::{config::Config, value::Value};
+use reifydb_value::{config::Config, factory::time::at_millis, value::Value};
 
 /// A bare `String` cannot be a state key: `IntoGroupStateKey` exists to force every key through the operator-state
 /// framing, so this wrapper frames the test's keys exactly as an operator would.
@@ -406,4 +414,180 @@ fn test_with_operator_apply() {
 			})
 		);
 	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CachedKey(String);
+
+impl HeapSize for CachedKey {
+	fn heap_size(&self) -> usize {
+		self.0.capacity()
+	}
+}
+
+impl IntoGroupStateKey for &CachedKey {
+	fn into_group_state_key(self) -> GroupStateKey {
+		GroupStateKey::root(Keyspace::ACCUMULATOR, self.0.as_bytes())
+	}
+}
+
+#[test]
+fn an_update_pays_one_read_for_the_row_it_rewrites() {
+	// A write classifies itself by reading the key again unless the caller hands the pre-image down, so a helper
+	// that has already read the row must cost one lookup, not one per operation. The seed is flushed out of the
+	// commit buffer first: while it is still buffered the store answers from there and the tier sees nothing, so
+	// the count would read zero either way and prove nothing.
+	let engine = TestEngine::new();
+	let store = engine.inner().operator_state();
+	let op = OperatorId(1);
+	let key = CachedKey("a".to_string());
+	let lookups = || {
+		let metrics = store.point().expect("the test store configures a point tier").metrics();
+		metrics.hits + metrics.misses
+	};
+
+	let mut seed = engine.flow_txn().deferred();
+	set(
+		&mut TxnHostContext::new(&mut seed, op),
+		&key,
+		&CounterState {
+			count: 123_456_789,
+		},
+	)
+	.unwrap();
+	engine.commit_pending(&mut seed);
+	assert!(store.flush_pending_blocking(), "the seed must be durable or the tier is never consulted at all");
+
+	let mut txn = engine.flow_txn().deferred();
+	let before = lookups();
+	update::<_, CounterState, _>(&mut TxnHostContext::new(&mut txn, op), &key, |c| {
+		c.count += 1;
+		Ok(())
+	})
+	.unwrap();
+
+	assert_eq!(
+		lookups() - before,
+		1,
+		"the read the helper already paid must classify the write, or every rewrite reads its key twice"
+	);
+}
+
+#[test]
+fn a_classified_read_then_write_pays_one_read_for_the_row() {
+	// The window engines read a key and write it straight back; without the pre-image riding that read the write
+	// re-reads the same key, so every rolling and tumbling slot update costs two durable lookups instead of one.
+	// The seed is flushed first: while it is still buffered the store answers from there and the tier sees
+	// nothing, so the count would read zero either way and prove nothing.
+	let engine = TestEngine::new();
+	let store = engine.inner().operator_state();
+	let op = OperatorId(1);
+	let key = CachedKey("a".to_string());
+	let lookups = || {
+		let metrics = store.point().expect("the test store configures a point tier").metrics();
+		metrics.hits + metrics.misses
+	};
+
+	let mut seed = engine.flow_txn().deferred();
+	set(
+		&mut TxnHostContext::new(&mut seed, op),
+		&key,
+		&CounterState {
+			count: 123_456_789,
+		},
+	)
+	.unwrap();
+	engine.commit_pending(&mut seed);
+	assert!(store.flush_pending_blocking(), "the seed must be durable or the tier is never consulted at all");
+
+	let mut txn = engine.flow_txn().deferred();
+	let mut host = TxnHostContext::new(&mut txn, op);
+	let before = lookups();
+	let mut state: CounterState = get_classified(&mut host, &key).unwrap().expect("the seed is durable");
+	state.count += 1;
+	set(&mut host, &key, &state).unwrap();
+
+	assert_eq!(
+		lookups() - before,
+		1,
+		"the classified read must satisfy the write, or a read-modify-write slot costs two durable lookups"
+	);
+}
+
+#[test]
+fn a_session_load_then_save_pays_one_read_for_the_row() {
+	// The session tracker is loaded once per hash and written back at the end of the pass; without the load
+	// claiming what it saw, the write re-derives the pre-image and every session-window group reads its own
+	// state twice. The seed is flushed first so the tier, not the commit buffer, answers the measured reads.
+	let engine = TestEngine::new();
+	let store = engine.inner().operator_state();
+	let op = OperatorId(1);
+	let group = GroupId(7);
+	let mut meta = WindowMeta::new();
+	let lookups = || {
+		let metrics = store.point().expect("the test store configures a point tier").metrics();
+		metrics.hits + metrics.misses
+	};
+
+	let mut seed = engine.flow_txn().deferred();
+	meta.save_session(
+		&mut TxnHostContext::new(&mut seed, op),
+		group,
+		&SessionTracker::resumed(1, at_millis(5_000), at_millis(1_000)),
+	)
+	.unwrap();
+	engine.commit_pending(&mut seed);
+	assert!(store.flush_pending_blocking(), "the seed must be durable or the tier is never consulted at all");
+
+	let mut txn = engine.flow_txn().deferred();
+	let mut host = TxnHostContext::new(&mut txn, op);
+	let before = lookups();
+	let tracker = meta.load_session(&mut host, group).unwrap();
+	meta.save_session(&mut host, group, &tracker).unwrap();
+
+	assert_eq!(
+		lookups() - before,
+		1,
+		"the load must satisfy the save, or every session group reads its own state twice per pass"
+	);
+}
+
+#[test]
+fn a_classified_read_saves_a_lookup_on_a_keyspace_the_point_tier_never_caches() {
+	// Engine meta lives on a keyspace excluded from caching, so its reads never become resident and every one
+	// of them is charged as a miss. That is exactly why the pre-image must ride the read: the write's fallback
+	// lookup is a durable read that no cache can absorb, not a tier hit.
+	let engine = TestEngine::new();
+	let store = engine.inner().operator_state();
+	let op = OperatorId(1);
+	let key = EngineMetaKey(GroupId(7));
+	let lookups = || {
+		let metrics = store.point().expect("the test store configures a point tier").metrics();
+		metrics.hits + metrics.misses
+	};
+
+	let mut seed = engine.flow_txn().deferred();
+	set(
+		&mut TxnHostContext::new(&mut seed, op),
+		&key,
+		&EngineMeta {
+			last_event_time: 5_000,
+		},
+	)
+	.unwrap();
+	engine.commit_pending(&mut seed);
+	assert!(store.flush_pending_blocking(), "the seed must be durable or the tier is never consulted at all");
+
+	let mut txn = engine.flow_txn().deferred();
+	let mut host = TxnHostContext::new(&mut txn, op);
+	let before = lookups();
+	let mut meta: EngineMeta = get_classified(&mut host, &key).unwrap().expect("the seed is durable");
+	meta.last_event_time += 1;
+	set(&mut host, &key, &meta).unwrap();
+
+	assert_eq!(
+		lookups() - before,
+		1,
+		"an uncached keyspace must still hand its pre-image forward, or the write pays a second durable read"
+	);
 }

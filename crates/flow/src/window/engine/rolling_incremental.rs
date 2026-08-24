@@ -16,7 +16,7 @@ use reifydb_core::{key::operator_state::GroupId, metrics::heap::HeapSize, state:
 use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
-	operator::state_access::{get, put},
+	operator::state_access::{get_classified, put},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -107,10 +107,11 @@ where
 						}
 					};
 					let buffer: RollingBuffer<C, Accumulator> =
-						get(store, &WindowStateKey::new(group_id, key.clone()))?
+						get_classified(store, &WindowStateKey::new(group_id, key.clone()))?
 							.unwrap_or_default();
-					let running: Running = get(store, &RunningKey::new(group_id, key.clone()))?
-						.unwrap_or_default();
+					let running: Running =
+						get_classified(store, &RunningKey::new(group_id, key.clone()))?
+							.unwrap_or_default();
 					let prior_output = match buffer.iter().next_back() {
 						Some((coord, accumulator)) => {
 							accumulator.finalize().and_then(|newest| {

@@ -5,7 +5,7 @@ use std::hash::Hash;
 
 use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_core::{key::operator_state::IntoGroupStateKey, metrics::heap::HeapSize, state::timer::StateStore};
-use reifydb_value::{Result, byte_size::ByteSize};
+use reifydb_value::Result;
 
 pub fn get<K, V>(store: &mut dyn StateStore, key: &K) -> Result<Option<V>>
 where
@@ -18,6 +18,21 @@ where
 		Some(bytes) => Ok(Some(decode::<V>(&bytes)?)),
 		None => Ok(None),
 	}
+}
+
+pub fn get_classified<K, V>(store: &mut dyn StateStore, key: &K) -> Result<Option<V>>
+where
+	K: Hash + Eq + Clone + HeapSize,
+	for<'a> &'a K: IntoGroupStateKey,
+	V: Clone + OperatorState + HeapSize,
+{
+	let encoded_key = key.into_group_state_key();
+	let (value, pre) = match store.state_get(&encoded_key)? {
+		Some(bytes) => (Some(decode::<V>(&bytes)?), Some(bytes.byte_size())),
+		None => (None, None),
+	};
+	store.state_classify(&encoded_key, pre);
+	Ok(value)
 }
 
 pub fn set<K, V>(store: &mut dyn StateStore, key: &K, value: &V) -> Result<()>
@@ -109,7 +124,10 @@ mod tests {
 		state::timer::{TimerKind, TimerStore},
 	};
 	use reifydb_macro::operator_state;
-	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+	use reifydb_value::{
+		byte_size::ByteSize,
+		value::{datetime::DateTime, row_number::RowNumber},
+	};
 
 	use super::*;
 
@@ -495,6 +513,47 @@ mod tests {
 		})
 		.unwrap();
 
+		assert_eq!(
+			store.classifications,
+			vec![(Key::new("missing").into_group_state_key().as_slice().to_vec(), None)],
+			"a key the read did not find must be handed down as absent, not left for the write to discover"
+		);
+	}
+
+	#[test]
+	fn get_classified_hands_the_write_the_size_it_already_read() {
+		// Every caller of this reads a key it is about to write back, so the read must carry the pre-image
+		// forward; otherwise the write re-reads the same key and the helper costs two lookups, not one.
+		let mut store = MockStore::default();
+		set(&mut store, &Key::new("a"), &cell(123_456_789)).unwrap();
+		let durable = store.data.values().next().expect("the seed write is in the store").bytes().len();
+		assert!(
+			durable > 1,
+			"the seed must encode to more than one byte or the size assertion cannot discriminate"
+		);
+		store.classifications.clear();
+		store.gets = 0;
+
+		let value: Option<Cell> = get_classified(&mut store, &Key::new("a")).unwrap();
+
+		assert_eq!(value, Some(cell(123_456_789)), "classifying must not disturb the value it returns");
+		assert_eq!(store.gets, 1, "the classification must ride the read it already paid for");
+		assert_eq!(
+			store.classifications[0].1,
+			Some(ByteSize::from_bytes(durable as u64)),
+			"the size handed down must be what a durable read of the row would measure"
+		);
+	}
+
+	#[test]
+	fn get_classified_of_a_key_that_is_not_there_hands_down_an_absence() {
+		// A first write billed as a replace debits a row the census never held, so absence must be claimed
+		// as loudly as presence.
+		let mut store = MockStore::default();
+
+		let value: Option<Cell> = get_classified(&mut store, &Key::new("missing")).unwrap();
+
+		assert_eq!(value, None, "a missing key still reads as missing");
 		assert_eq!(
 			store.classifications,
 			vec![(Key::new("missing").into_group_state_key().as_slice().to_vec(), None)],

@@ -25,7 +25,7 @@ use crate::{
 	operator::{
 		host::HostContext,
 		state::{seal::coord::Coord, store},
-		state_access::{get, put, remove},
+		state_access::{get_classified, put, remove},
 	},
 	window::{
 		engine::{
@@ -168,7 +168,7 @@ pub(crate) fn finish_tumbling_engine(
 	for r in &results {
 		let group = group_of(groups, r.group, r.span.start.to_order());
 		let window_start = r.span.start.to_order();
-		let prior_meta = get::<_, EngineMeta>(host, &EngineMetaKey(group))?;
+		let prior_meta = get_classified::<_, EngineMeta>(host, &EngineMetaKey(group))?;
 		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
 		match r.kind {

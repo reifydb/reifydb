@@ -20,7 +20,7 @@ use crate::{
 			coord::Coord,
 			ledger::{SealLedgerState, seal_ledger_key},
 		},
-		state_access::{get, get_or_default, put, remove},
+		state_access::{get_classified, get_or_default, put, remove},
 	},
 	window::kind::session::SessionTracker,
 };
@@ -254,7 +254,7 @@ impl WindowMeta {
 	}
 
 	pub fn load_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<SessionTracker> {
-		let Some(state) = get::<_, SessionState>(store, &SessionKey(group))? else {
+		let Some(state) = get_classified::<_, SessionState>(store, &SessionKey(group))? else {
 			return Ok(SessionTracker::default());
 		};
 		Ok(SessionTracker::resumed(
@@ -282,7 +282,7 @@ impl WindowMeta {
 	}
 
 	pub fn rolling_meta(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<Option<RollingMeta>> {
-		get(store, &RollingMetaKey(group))
+		get_classified(store, &RollingMetaKey(group))
 	}
 
 	pub fn put_rolling_meta(

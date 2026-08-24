@@ -16,7 +16,7 @@ use reifydb_core::{key::operator_state::GroupId, metrics::heap::HeapSize, state:
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	operator::state_access::{get, put, remove},
+	operator::state_access::{get_classified, put, remove},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
@@ -263,10 +263,10 @@ where
 							.expect("every group outside state_rows was resolved upfront"),
 					};
 					let buffer: RollingTopKBuffer<C, Accumulator> =
-						get(store, &BufferKey::of_row(group_id, state_row_number))?
+						get_classified(store, &BufferKey::of_row(group_id, state_row_number))?
 							.unwrap_or_default();
 					let prior_emit: RollingTopKEmit<SK, Output> =
-						get(store, &EmitKey::new(group_id, state_row_number))?
+						get_classified(store, &EmitKey::new(group_id, state_row_number))?
 							.unwrap_or_default();
 					group_slots.insert(
 						group.clone(),
