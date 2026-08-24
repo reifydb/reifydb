@@ -85,7 +85,7 @@ pub(crate) fn insert_table(
 		table: &table,
 		fragment: target.identifier(),
 	};
-	let context = build_insert_table_query_context(services, &target_data, symbols);
+	let context = build_insert_table_query_context(services, &target_data, symbols, txn.identity());
 	let mut input_node = compile(*input, txn, context.clone());
 	input_node.initialize(txn, &context)?;
 
@@ -134,7 +134,7 @@ pub(crate) fn insert_table(
 	if let Some(returning_exprs) = &returning {
 		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
 		decode_returning_dictionaries(services, txn, &table.columns, &mut columns)?;
-		return evaluate_returning(services, symbols, returning_exprs, columns);
+		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 	Ok(insert_table_result(namespace.name(), &table.name, total_rows as u64))
 }
@@ -171,6 +171,7 @@ fn build_insert_table_query_context(
 	services: &Arc<Services>,
 	target: &TableTarget<'_>,
 	symbols: &SymbolTable,
+	identity: IdentityId,
 ) -> Arc<QueryContext> {
 	let namespace_ident = Fragment::internal(target.namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, target.namespace.clone());
@@ -182,7 +183,7 @@ fn build_insert_table_query_context(
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: Params::None,
 		symbols: symbols.clone(),
-		identity: IdentityId::root(),
+		identity,
 		memory: query_budget(services),
 	})
 }

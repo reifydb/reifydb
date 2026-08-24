@@ -86,7 +86,7 @@ pub(crate) fn update_table(
 		table: &table,
 		fragment: target.identifier(),
 	};
-	let context = build_update_table_query_context(services, &target_data, &params, symbols);
+	let context = build_update_table_query_context(services, &target_data, &params, symbols, txn.identity());
 
 	let mut input_node = compile(*input, txn, Arc::new(context.clone()));
 	input_node.initialize(txn, &context)?;
@@ -104,7 +104,7 @@ pub(crate) fn update_table(
 		let mut pre_columns = decode_rows_to_columns(&shape, &pre_rows);
 		decode_returning_dictionaries(services, txn, &table.columns, &mut pre_columns)?;
 		let columns = with_pre_image(columns, &pre_columns);
-		return evaluate_returning(services, symbols, returning_exprs, columns);
+		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 	Ok(update_table_result(namespace.name(), &table.name, updated_count))
 }
@@ -132,6 +132,7 @@ fn build_update_table_query_context(
 	target: &TableTarget<'_>,
 	params: &Params,
 	symbols: &SymbolTable,
+	identity: IdentityId,
 ) -> QueryContext {
 	let namespace_ident = Fragment::internal(target.namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, target.namespace.clone());
@@ -143,7 +144,7 @@ fn build_update_table_query_context(
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: symbols.clone(),
-		identity: IdentityId::root(),
+		identity,
 		memory: query_budget(services),
 	}
 }

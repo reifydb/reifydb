@@ -18,7 +18,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, value_type::ValueType},
+	value::{Value, dictionary::DictionaryEntryId, value_type::ValueType},
 };
 
 use super::returning::evaluate_returning;
@@ -59,7 +59,7 @@ pub(crate) fn insert_dictionary(
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: Params::None,
 		symbols: symbols.clone(),
-		identity: IdentityId::root(),
+		identity: txn.identity(),
 		memory: query_budget(services),
 	});
 
@@ -115,12 +115,18 @@ pub(crate) fn insert_dictionary(
 
 	if let Some(returning_exprs) = &plan.returning {
 		if ids.is_empty() {
-			return evaluate_returning(services, symbols, returning_exprs, Columns::empty());
+			return evaluate_returning(
+				services,
+				symbols,
+				returning_exprs,
+				Columns::empty(),
+				txn.identity(),
+			);
 		}
 		let id_column = build_id_column(&ids, dictionary.id_type)?;
 		let value_column = build_value_column(&values, dictionary.value_type)?;
 		let columns = Columns::new(vec![id_column, value_column]);
-		return evaluate_returning(services, symbols, returning_exprs, columns);
+		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 
 	if ids.is_empty() {

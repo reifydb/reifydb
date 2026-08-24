@@ -14,7 +14,7 @@ pub struct FlowContext {
 impl Default for FlowContext {
 	fn default() -> Self {
 		Self {
-			identity: IdentityId::root(),
+			identity: IdentityId::system(),
 			symbols: SymbolTable::new(),
 			params: Params::None,
 		}

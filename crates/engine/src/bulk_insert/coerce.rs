@@ -16,6 +16,7 @@ pub(super) fn coerce_columns(
 	column_data: &[ColumnBuffer],
 	columns: &[Column],
 	num_rows: usize,
+	identity: IdentityId,
 ) -> Result<Vec<ColumnBuffer>> {
 	let runtime_ctx = RuntimeContext::with_clock(Clock::Real);
 	let routines = Routines::empty();
@@ -24,7 +25,7 @@ pub(super) fn coerce_columns(
 		symbols: &SymbolTable::new(),
 		routines: &routines,
 		runtime_context: &runtime_ctx,
-		identity: IdentityId::root(),
+		identity,
 		is_aggregate_context: false,
 		columns: Columns::empty(),
 		row_count: num_rows,

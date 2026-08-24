@@ -84,7 +84,7 @@ pub(crate) fn update_series(
 		namespace: &namespace,
 		series: &series,
 	};
-	let context = build_update_series_query_context(services, &target_data, &params, symbols);
+	let context = build_update_series_query_context(services, &target_data, &params, symbols, txn.identity());
 	let mut input_node = compile(*input, txn, Arc::new(context.clone()));
 	input_node.initialize(txn, &context)?;
 
@@ -187,7 +187,7 @@ pub(crate) fn update_series(
 		let mut pre_cols = decode_rows_to_columns(&shape, &pre_rows);
 		decode_returning_dictionaries(services, txn, &series.columns, &mut pre_cols)?;
 		let cols = with_pre_image(cols, &pre_cols);
-		return evaluate_returning(services, symbols, returning_exprs, cols);
+		return evaluate_returning(services, symbols, returning_exprs, cols, txn.identity());
 	}
 	Ok(update_series_result(namespace.name(), &series.name, updated_count))
 }
@@ -225,6 +225,7 @@ fn build_update_series_query_context(
 	target: &SeriesTarget<'_>,
 	params: &Params,
 	symbols: &SymbolTable,
+	identity: IdentityId,
 ) -> QueryContext {
 	let namespace_ident = Fragment::internal(target.namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, target.namespace.clone());
@@ -236,7 +237,7 @@ fn build_update_series_query_context(
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: symbols.clone(),
-		identity: IdentityId::root(),
+		identity,
 		memory: query_budget(services),
 	}
 }

@@ -14,11 +14,7 @@ use reifydb_evaluate::{
 };
 use reifydb_rql::nodes::AlterSequenceNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_value::{
-	params::Params,
-	reifydb_assertions, return_error,
-	value::{Value, identity::IdentityId},
-};
+use reifydb_value::{params::Params, reifydb_assertions, return_error, value::Value};
 
 use crate::{Result, vm::services::Services};
 
@@ -46,7 +42,7 @@ pub(crate) fn alter_table_sequence(
 		symbols: &EMPTY_SYMBOL_TABLE,
 		routines: &services.routines,
 		runtime_context: &services.runtime_context,
-		identity: IdentityId::root(),
+		identity: txn.identity,
 		is_aggregate_context: false,
 		columns: Columns::empty(),
 		row_count: 1,

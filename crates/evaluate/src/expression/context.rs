@@ -44,7 +44,7 @@ impl<'a> EvalContext<'a> {
 			is_aggregate_context: false,
 			routines: &EMPTY_ROUTINES,
 			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
-			identity: IdentityId::root(),
+			identity: IdentityId::system(),
 		}
 	}
 

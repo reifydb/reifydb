@@ -128,6 +128,7 @@ pub(crate) fn evaluate_returning(
 	symbols: &SymbolTable,
 	returning_exprs: &[Expression],
 	input: Columns,
+	identity: IdentityId,
 ) -> Result<Columns> {
 	if let Some(columns) = try_column_passthrough(returning_exprs, &input) {
 		return Ok(columns);
@@ -148,7 +149,7 @@ pub(crate) fn evaluate_returning(
 		symbols,
 		routines: &services.routines,
 		runtime_context: &services.runtime_context,
-		identity: IdentityId::root(),
+		identity,
 		is_aggregate_context: false,
 		columns: Columns::empty(),
 		row_count: 1,

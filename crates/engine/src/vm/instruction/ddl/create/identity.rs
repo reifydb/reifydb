@@ -75,7 +75,7 @@ pub(crate) fn resolve_attribute_assignments(
 			}
 			.into());
 		};
-		let value = evaluate_attribute_value(services, &attribute, assignment, params)?;
+		let value = evaluate_attribute_value(services, &attribute, assignment, params, txn.identity)?;
 		resolved.push((attribute, value));
 	}
 	Ok(resolved)
@@ -86,6 +86,7 @@ fn evaluate_attribute_value(
 	attribute: &IdentityAttribute,
 	assignment: &IdentityAttributeAssignment,
 	params: &Params,
+	identity: IdentityId,
 ) -> Result<Value> {
 	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
@@ -94,7 +95,7 @@ fn evaluate_attribute_value(
 		symbols: &EMPTY_SYMBOL_TABLE,
 		routines: &services.routines,
 		runtime_context: &services.runtime_context,
-		identity: IdentityId::root(),
+		identity,
 		is_aggregate_context: false,
 		columns: Columns::empty(),
 		row_count: 1,

@@ -311,7 +311,7 @@ fn encode_table_rows<V: ValidationMode>(
 	shape: &RowShape,
 	clock: &Clock,
 ) -> Result<Vec<EncodedTableRowBuilder>> {
-	let coerced_rows = coerce_table_rows::<V>(&pending.rows, table)?;
+	let coerced_rows = coerce_table_rows::<V>(&pending.rows, table, txn.identity)?;
 	let mut encoded_bytes_list = Vec::with_capacity(coerced_rows.len());
 	for values in coerced_rows {
 		encoded_bytes_list.push(prepare_table_row::<V>(catalog, txn, table, shape, clock, values)?);
@@ -320,9 +320,13 @@ fn encode_table_rows<V: ValidationMode>(
 }
 
 #[inline]
-fn coerce_table_rows<V: ValidationMode>(rows: &[Params], table: &Table) -> Result<Vec<Vec<Value>>> {
+fn coerce_table_rows<V: ValidationMode>(
+	rows: &[Params],
+	table: &Table,
+	identity: IdentityId,
+) -> Result<Vec<Vec<Value>>> {
 	if V::VALIDATED {
-		validate_and_coerce_rows(rows, table)
+		validate_and_coerce_rows(rows, table, identity)
 	} else {
 		reorder_rows_unvalidated(rows, table)
 	}
@@ -436,7 +440,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 ) -> Result<RingBufferInsertResult> {
 	let ringbuffer = resolve_ringbuffer(catalog, txn, pending)?;
 	let shape = get_or_create_ringbuffer_shape(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
-	let coerced_rows = coerce_ringbuffer_rows::<V>(pending, &ringbuffer)?;
+	let coerced_rows = coerce_ringbuffer_rows::<V>(pending, &ringbuffer, txn.identity)?;
 	let inserted = insert_ringbuffer_rows::<V>(catalog, txn, &ringbuffer, &shape, coerced_rows, clock)?;
 	Ok(RingBufferInsertResult {
 		namespace: pending.namespace.clone(),
@@ -476,9 +480,10 @@ fn resolve_ringbuffer(
 fn coerce_ringbuffer_rows<V: ValidationMode>(
 	pending: &PendingRingBufferInsert,
 	ringbuffer: &RingBuffer,
+	identity: IdentityId,
 ) -> Result<Vec<Vec<Value>>> {
 	if V::VALIDATED {
-		validate_and_coerce_rows_rb(&pending.rows, ringbuffer)
+		validate_and_coerce_rows_rb(&pending.rows, ringbuffer, identity)
 	} else {
 		reorder_rows_unvalidated_rb(&pending.rows, ringbuffer)
 	}
@@ -684,7 +689,7 @@ fn execute_series_insert<V: ValidationMode>(
 	let series = resolve_series(catalog, txn, pending)?;
 	let mut metadata = load_series_metadata(catalog, txn, pending, &series)?;
 	let shape = get_or_create_series_shape(catalog, &series, &mut Transaction::Command(txn))?;
-	let coerced_rows = coerce_series_rows::<V>(pending, &series)?;
+	let coerced_rows = coerce_series_rows::<V>(pending, &series, txn.identity)?;
 	let inserted = insert_series_rows::<V>(catalog, txn, &series, &shape, coerced_rows, &mut metadata, clock)?;
 	catalog.update_series_metadata_txn(&mut Transaction::Command(txn), series.id, metadata)?;
 	Ok(SeriesInsertResult {
@@ -735,9 +740,13 @@ fn load_series_metadata(
 }
 
 #[inline]
-fn coerce_series_rows<V: ValidationMode>(pending: &PendingSeriesInsert, series: &Series) -> Result<Vec<Vec<Value>>> {
+fn coerce_series_rows<V: ValidationMode>(
+	pending: &PendingSeriesInsert,
+	series: &Series,
+	identity: IdentityId,
+) -> Result<Vec<Vec<Value>>> {
 	if V::VALIDATED {
-		validate_and_coerce_rows_series(&pending.rows, series)
+		validate_and_coerce_rows_series(&pending.rows, series, identity)
 	} else {
 		reorder_rows_unvalidated_series(&pending.rows, series)
 	}

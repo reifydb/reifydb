@@ -92,7 +92,7 @@ pub(crate) fn insert_queue(
 		queue: &queue,
 	};
 
-	let context = build_insert_queue_query_context(services, &target_data, symbols);
+	let context = build_insert_queue_query_context(services, &target_data, symbols, txn.identity());
 	let mut input_node = compile(*input, txn, context.clone());
 	input_node.initialize(txn, &context)?;
 
@@ -303,7 +303,7 @@ fn project_returning(
 	columns.columns.push(created);
 	columns.names.push(Fragment::internal(QUEUE_CREATED_COLUMN));
 
-	evaluate_returning(services, symbols, returning_exprs, columns)
+	evaluate_returning(services, symbols, returning_exprs, columns, txn.identity())
 }
 
 fn declared_key_indices(queue: &Queue) -> Result<Option<Vec<usize>>> {
@@ -379,6 +379,7 @@ fn build_insert_queue_query_context(
 	services: &Arc<Services>,
 	target: &QueueTarget<'_>,
 	symbols: &SymbolTable,
+	identity: IdentityId,
 ) -> Arc<QueryContext> {
 	let namespace_ident = Fragment::internal(target.namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, target.namespace.clone());
@@ -390,7 +391,7 @@ fn build_insert_queue_query_context(
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: Params::None,
 		symbols: symbols.clone(),
-		identity: IdentityId::root(),
+		identity,
 		memory: query_budget(services),
 	})
 }

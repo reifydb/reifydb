@@ -36,7 +36,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
+	value::{Value, partition::Partition, row_number::RowNumber},
 };
 
 use super::{
@@ -104,7 +104,7 @@ pub(crate) fn delete(
 		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
 		decode_returning_dictionaries(services, txn, &table.columns, &mut columns)?;
 		let columns = with_pre_image(columns.clone(), &columns);
-		return evaluate_returning(services, symbols, returning_exprs, columns);
+		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 	Ok(delete_table_result(namespace.name(), &table.name, deleted_count))
 }
@@ -161,7 +161,7 @@ fn run_table_delete_with_input(
 		batch_size: exec.services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
-		identity: IdentityId::root(),
+		identity: txn.identity(),
 		memory: query_budget(exec.services),
 	};
 	let mut input_node = compile(input_plan, txn, Arc::new(context.clone()));

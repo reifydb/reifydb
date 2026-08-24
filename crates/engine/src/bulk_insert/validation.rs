@@ -7,12 +7,16 @@ use reifydb_core::{
 	interface::catalog::{column::Column, ringbuffer::RingBuffer, series::Series, table::Table},
 	value::column::buffer::ColumnBuffer,
 };
-use reifydb_value::{fragment::Fragment, params::Params, value::Value};
+use reifydb_value::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, identity::IdentityId},
+};
 
 use super::coerce::coerce_columns;
 use crate::{Result, error::EngineError};
 
-pub fn validate_and_coerce_rows(rows: &[Params], table: &Table) -> Result<Vec<Vec<Value>>> {
+pub fn validate_and_coerce_rows(rows: &[Params], table: &Table, identity: IdentityId) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -21,12 +25,16 @@ pub fn validate_and_coerce_rows(rows: &[Params], table: &Table) -> Result<Vec<Ve
 	let num_rows = rows.len();
 
 	let column_data = collect_rows_to_columns(rows, &table.columns, &table.name)?;
-	let coerced_columns = coerce_columns(&column_data, &table.columns, num_rows)?;
+	let coerced_columns = coerce_columns(&column_data, &table.columns, num_rows, identity)?;
 
 	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
 }
 
-pub fn validate_and_coerce_rows_rb(rows: &[Params], ringbuffer: &RingBuffer) -> Result<Vec<Vec<Value>>> {
+pub fn validate_and_coerce_rows_rb(
+	rows: &[Params],
+	ringbuffer: &RingBuffer,
+	identity: IdentityId,
+) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -35,7 +43,7 @@ pub fn validate_and_coerce_rows_rb(rows: &[Params], ringbuffer: &RingBuffer) -> 
 	let num_rows = rows.len();
 
 	let column_data = collect_rows_to_columns(rows, &ringbuffer.columns, &ringbuffer.name)?;
-	let coerced_columns = coerce_columns(&column_data, &ringbuffer.columns, num_rows)?;
+	let coerced_columns = coerce_columns(&column_data, &ringbuffer.columns, num_rows, identity)?;
 
 	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
 }
@@ -66,7 +74,11 @@ pub fn reorder_rows_unvalidated_rb(rows: &[Params], ringbuffer: &RingBuffer) -> 
 	Ok(columns_to_rows(&column_data, num_rows, num_cols))
 }
 
-pub fn validate_and_coerce_rows_series(rows: &[Params], series: &Series) -> Result<Vec<Vec<Value>>> {
+pub fn validate_and_coerce_rows_series(
+	rows: &[Params],
+	series: &Series,
+	identity: IdentityId,
+) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -75,7 +87,7 @@ pub fn validate_and_coerce_rows_series(rows: &[Params], series: &Series) -> Resu
 	let num_rows = rows.len();
 
 	let column_data = collect_rows_to_columns(rows, &series.columns, &series.name)?;
-	let coerced_columns = coerce_columns(&column_data, &series.columns, num_rows)?;
+	let coerced_columns = coerce_columns(&column_data, &series.columns, num_rows, identity)?;
 
 	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
 }

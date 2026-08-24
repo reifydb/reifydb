@@ -28,7 +28,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
+	value::{Value, partition::Partition, row_number::RowNumber},
 };
 
 use super::{
@@ -100,7 +100,7 @@ pub(crate) fn delete_ringbuffer(
 		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
 		decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut columns)?;
 		let columns = with_pre_image(columns.clone(), &columns);
-		return evaluate_returning(services, symbols, returning_exprs, columns);
+		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 	Ok(delete_ringbuffer_result(namespace.name(), &ringbuffer.name, deleted_count))
 }
@@ -161,7 +161,7 @@ fn collect_row_numbers_for_ringbuffer_delete(
 			batch_size,
 			params: params.clone(),
 			symbols: exec.symbols.clone(),
-			identity: IdentityId::root(),
+			identity: txn.identity(),
 			memory: query_budget(exec.services),
 		}),
 	);
@@ -172,7 +172,7 @@ fn collect_row_numbers_for_ringbuffer_delete(
 		batch_size,
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
-		identity: IdentityId::root(),
+		identity: txn.identity(),
 		memory: query_budget(exec.services),
 	};
 	input_node.initialize(txn, &context)?;

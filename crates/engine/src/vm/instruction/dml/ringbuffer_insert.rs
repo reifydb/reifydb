@@ -74,7 +74,7 @@ pub(crate) fn insert_ringbuffer(
 		namespace: &namespace,
 		ringbuffer: &ringbuffer,
 	};
-	let context = build_insert_ringbuffer_query_context(services, &target_data, &params, symbols);
+	let context = build_insert_ringbuffer_query_context(services, &target_data, &params, symbols, txn.identity());
 	let mut input_node = compile_and_initialize_input(*input, txn, &context)?;
 
 	let mut partition_metadata_cache: HashMap<Vec<Value>, RingBufferMetadata> = HashMap::new();
@@ -218,7 +218,7 @@ fn finalize_ringbuffer_insert(
 	if let Some(returning_exprs) = returning {
 		let mut columns = decode_rows_to_columns(shape, returned_rows);
 		decode_returning_dictionaries(services, txn, &ringbuffer.columns, &mut columns)?;
-		return evaluate_returning(services, symbols, returning_exprs, columns);
+		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 	Ok(insert_ringbuffer_result(target_data.namespace.name(), &ringbuffer.name, inserted_count))
 }
@@ -248,6 +248,7 @@ fn build_insert_ringbuffer_query_context(
 	target: &RingBufferTarget<'_>,
 	params: &Params,
 	symbols: &SymbolTable,
+	identity: IdentityId,
 ) -> Arc<QueryContext> {
 	let namespace_ident = Fragment::internal(target.namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, target.namespace.clone());
@@ -259,7 +260,7 @@ fn build_insert_ringbuffer_query_context(
 		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: symbols.clone(),
-		identity: IdentityId::root(),
+		identity,
 		memory: query_budget(services),
 	})
 }

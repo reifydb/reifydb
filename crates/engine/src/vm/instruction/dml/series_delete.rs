@@ -89,7 +89,7 @@ pub(crate) fn delete_series(
 		let mut cols = decode_rows_to_columns(&shape, &returned_rows);
 		decode_returning_dictionaries(services, txn, &series.columns, &mut cols)?;
 		let cols = with_pre_image(cols.clone(), &cols);
-		return evaluate_returning(services, symbols, returning_exprs, cols);
+		return evaluate_returning(services, symbols, returning_exprs, cols, txn.identity());
 	}
 	Ok(delete_series_result(namespace.name(), &series.name, deleted_count))
 }
@@ -125,7 +125,7 @@ fn run_series_delete_with_input(
 	has_tag: bool,
 	has_returning: bool,
 ) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
-	let context = build_series_delete_query_context(exec, target, params);
+	let context = build_series_delete_query_context(exec, target, params, txn.identity());
 	let mut input_node = compile_series_delete_input(txn, input_plan, &context)?;
 	drive_series_delete_input(exec, txn, &mut input_node, &context, target, has_tag, has_returning)
 }
@@ -135,6 +135,7 @@ fn build_series_delete_query_context(
 	exec: &WriteExecCtx<'_>,
 	target: &SeriesTarget<'_>,
 	params: &Params,
+	identity: IdentityId,
 ) -> QueryContext {
 	let series = target.series;
 	let namespace_ident = Fragment::internal(target.namespace.name());
@@ -147,7 +148,7 @@ fn build_series_delete_query_context(
 		batch_size: exec.services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
-		identity: IdentityId::root(),
+		identity,
 		memory: query_budget(exec.services),
 	}
 }
