@@ -83,11 +83,11 @@ pub(crate) fn apply_migrations(engine: &StandardEngine, migrations: &[MigrationS
 					rql.push('}');
 				}
 				rql.push(';');
-				run_admin_root(engine, &rql)?;
+				run_admin_system(engine, &rql)?;
 				info!("Registered migration '{}'", name);
 			}
 			MigrationStatement::Raw(stmt) => {
-				run_admin_root(engine, stmt)?;
+				run_admin_system(engine, stmt)?;
 				info!("Registered raw migration statement ({} bytes)", stmt.len());
 			}
 		}
@@ -101,7 +101,7 @@ pub(crate) fn apply_migrations(engine: &StandardEngine, migrations: &[MigrationS
 	);
 	let rng = engine.rng();
 	let result =
-		strategy.execute(rng, "MIGRATE;", || engine.admin_as(IdentityId::root(), "MIGRATE;", Params::None));
+		strategy.execute(rng, "MIGRATE;", || engine.admin_as(IdentityId::system(), "MIGRATE;", Params::None));
 	if let Some(e) = result.error {
 		return Err(e);
 	}
@@ -114,8 +114,8 @@ pub(crate) fn apply_migrations(engine: &StandardEngine, migrations: &[MigrationS
 	Ok(())
 }
 
-fn run_admin_root(engine: &StandardEngine, rql: &str) -> Result<()> {
-	let result = engine.admin_as(IdentityId::root(), rql, Params::None);
+fn run_admin_system(engine: &StandardEngine, rql: &str) -> Result<()> {
+	let result = engine.admin_as(IdentityId::system(), rql, Params::None);
 	match result.error {
 		Some(e) => Err(e),
 		None => Ok(()),

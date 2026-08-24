@@ -68,7 +68,7 @@ impl Database {
 			all_queues,
 			all_series,
 		) = {
-			let mut qt = self.engine().begin_query(IdentityId::root())?;
+			let mut qt = self.engine().begin_query(IdentityId::system())?;
 			let mut txn = Transaction::Query(&mut qt);
 
 			let user_namespaces: Vec<Namespace> =
