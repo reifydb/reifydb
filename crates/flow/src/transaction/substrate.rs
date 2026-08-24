@@ -95,13 +95,10 @@ pub fn operator_writes(pending: &Pending) -> Vec<OperatorWrite> {
 						row_num: row_number,
 						expiry,
 					},
-					None => OperatorWrite::AnchorSet {
-						operator,
-						group,
-						side,
-						row_num: row_number,
-						expiry,
-					},
+					None => panic!(
+						"unclassified seal anchor write on operator {}, group {}",
+						operator.0, group.0
+					),
 				}
 			}
 			(
@@ -129,11 +126,7 @@ pub fn operator_writes(pending: &Pending) -> Vec<OperatorWrite> {
 						key: inner,
 						post,
 					},
-					None => OperatorWrite::Set {
-						operator,
-						key: inner,
-						row: post,
-					},
+					None => panic!("unclassified operator state write on operator {}", operator.0),
 				}
 			}
 			(
@@ -147,7 +140,7 @@ pub fn operator_writes(pending: &Pending) -> Vec<OperatorWrite> {
 				pre: match pending.pre_at(key) {
 					Some(Some(bytes)) => DurablePre::Present(bytes),
 					Some(None) => DurablePre::Absent,
-					None => DurablePre::Unknown,
+					None => panic!("unclassified operator state remove on operator {}", operator.0),
 				},
 			},
 		});

@@ -84,18 +84,12 @@ pub struct OperatorStateCensus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DurablePre {
-	Unknown,
 	Absent,
 	Present(ByteSize),
 }
 
 #[derive(Debug, Clone)]
 pub enum OperatorWrite {
-	Set {
-		operator: OperatorId,
-		key: EncodedKey,
-		row: EncodedPodRow,
-	},
 	Insert {
 		operator: OperatorId,
 		key: EncodedKey,
@@ -111,13 +105,6 @@ pub enum OperatorWrite {
 		operator: OperatorId,
 		key: EncodedKey,
 		pre: DurablePre,
-	},
-	AnchorSet {
-		operator: OperatorId,
-		group: GroupId,
-		side: u8,
-		row_num: RowNumber,
-		expiry: DateTime,
 	},
 	AnchorInsert {
 		operator: OperatorId,
@@ -139,23 +126,4 @@ pub enum OperatorWrite {
 		side: u8,
 		row_num: RowNumber,
 	},
-}
-
-impl OperatorWrite {
-	pub fn durable_pre(&self) -> DurablePre {
-		match self {
-			OperatorWrite::Insert {
-				..
-			} => DurablePre::Absent,
-			OperatorWrite::Replace {
-				pre_value_bytes,
-				..
-			} => DurablePre::Present(*pre_value_bytes),
-			OperatorWrite::Remove {
-				pre,
-				..
-			} => *pre,
-			_ => DurablePre::Unknown,
-		}
-	}
 }

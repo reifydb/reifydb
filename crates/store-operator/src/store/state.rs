@@ -31,18 +31,6 @@ use crate::{
 };
 
 impl StandardOperatorStore {
-	#[instrument(name = "store::operator::set", level = "debug", skip(self, key, row), fields(operator = operator.0, key_len = key.len()))]
-	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-		self.commit.record_state_set(operator, key.clone(), row);
-		self.invalidate_read(operator, &key);
-	}
-
-	#[instrument(name = "store::operator::remove", level = "debug", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
-	pub fn remove(&self, operator: OperatorId, key: &EncodedKey) {
-		self.commit.record_state_remove(operator, key.clone());
-		self.invalidate_read(operator, key);
-	}
-
 	#[instrument(name = "store::operator::apply_batch", level = "debug", skip(self, writes), fields(write_count = writes.len()))]
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
 		reifydb_assertions! {
@@ -83,11 +71,6 @@ impl StandardOperatorStore {
 		let mut anchors: BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool> = BTreeMap::new();
 		for write in writes {
 			let (operator, key, claimed, post) = match write {
-				OperatorWrite::Set {
-					operator,
-					key,
-					row,
-				} => (*operator, key, None, Some(row)),
 				OperatorWrite::Insert {
 					operator,
 					key,
@@ -107,22 +90,11 @@ impl StandardOperatorStore {
 					*operator,
 					key,
 					match pre {
-						DurablePre::Unknown => None,
 						DurablePre::Absent => Some(None),
 						DurablePre::Present(bytes) => Some(Some(*bytes)),
 					},
 					None,
 				),
-				OperatorWrite::AnchorSet {
-					operator,
-					group,
-					side,
-					row_num,
-					..
-				} => {
-					anchors.insert((*operator, *group, *side, *row_num), true);
-					continue;
-				}
 				OperatorWrite::AnchorInsert {
 					operator,
 					group,
@@ -240,12 +212,7 @@ impl StandardOperatorStore {
 		}
 		for write in writes {
 			match write {
-				OperatorWrite::Set {
-					operator,
-					key,
-					..
-				}
-				| OperatorWrite::Insert {
+				OperatorWrite::Insert {
 					operator,
 					key,
 					..
@@ -260,10 +227,7 @@ impl StandardOperatorStore {
 					key,
 					..
 				} => self.invalidate_read(*operator, key),
-				OperatorWrite::AnchorSet {
-					..
-				}
-				| OperatorWrite::AnchorInsert {
+				OperatorWrite::AnchorInsert {
 					..
 				}
 				| OperatorWrite::AnchorReplace {
@@ -464,18 +428,6 @@ impl StandardOperatorStore {
 }
 
 impl OperatorStore {
-	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-		match self {
-			Self::Standard(store) => store.set(operator, key, row),
-		}
-	}
-
-	pub fn remove(&self, operator: OperatorId, key: &EncodedKey) {
-		match self {
-			Self::Standard(store) => store.remove(operator, key),
-		}
-	}
-
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
 		match self {
 			Self::Standard(store) => store.apply_batch(writes),

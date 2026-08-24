@@ -339,11 +339,11 @@ fn an_empty_flush_is_a_no_op_that_leaves_the_flusher_able_to_flush_again() {
 fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
-	buffer.record_state_set(OP_A, key(1), row("first"));
+	buffer.record_state_set(OP_A, key(1), row("first"), DurablePre::Absent);
 
 	let held = buffer.flush_guard();
 	let batch = buffer.take_for_flush().expect("the running flusher takes the seeded batch");
-	buffer.record_state_set(OP_A, key(2), row("second"));
+	buffer.record_state_set(OP_A, key(2), row("second"), DurablePre::Absent);
 
 	let ran = Arc::new(AtomicBool::new(false));
 	let second = {
@@ -401,7 +401,7 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
 	let mut state = actor.init(&ctx);
 
-	buffer.record_state_set(OP_A, key(1), row("pending-at-cancel"));
+	buffer.record_state_set(OP_A, key(1), row("pending-at-cancel"), DurablePre::Absent);
 	cancel.cancel();
 
 	let waiter = Arc::new(WaiterHandle::new());
@@ -432,7 +432,7 @@ fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
 
-	buffer.record_state_set(OP_A, key(1), row("never-written"));
+	buffer.record_state_set(OP_A, key(1), row("never-written"), DurablePre::Absent);
 	storage.shutdown();
 
 	flush_now(&buffer, &tier(&storage), None, None);
@@ -493,7 +493,7 @@ fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::with_budget(8);
 	for index in 0..67 {
-		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")));
+		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")), DurablePre::Absent);
 	}
 
 	flush_now(&buffer, &tier(&storage), None, None);
@@ -511,16 +511,21 @@ fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::with_budget(2);
-	buffer.record_state_set(OP_A, key(1), row("early"));
-	buffer.record_state_set(OP_A, key(2), row("filler"));
-	buffer.record_state_set(OP_A, key(3), row("tail"));
+	buffer.record_state_set(OP_A, key(1), row("early"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(2), row("filler"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(3), row("tail"), DurablePre::Absent);
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
 	storage.flush_batch(&first);
 	buffer.complete_flush();
 	assert_eq!(storage.get(OP_A, &key(1)).map(|row| body(&row)), Some("early".to_string()));
 
-	buffer.record_state_set(OP_A, key(1), row("late"));
+	buffer.record_state_set(
+		OP_A,
+		key(1),
+		row("late"),
+		DurablePre::Present(ByteSize::from_bytes(row("early").bytes().len() as u64)),
+	);
 	flush_now(&buffer, &tier(&storage), None, None);
 
 	assert_eq!(
@@ -547,7 +552,7 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let mut state = actor.init(&ctx);
 
 	for index in 0..41 {
-		buffer.record_state_set(OP_A, key(index), row("at-shutdown"));
+		buffer.record_state_set(OP_A, key(index), row("at-shutdown"), DurablePre::Absent);
 	}
 	let directive = actor.handle(&mut state, FlushMessage::Shutdown, &ctx);
 
@@ -578,7 +583,7 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let mut state = actor.init(&ctx);
 
 	for index in 0..37 {
-		buffer.record_state_set(OP_A, key(index), row("at-cancel"));
+		buffer.record_state_set(OP_A, key(index), row("at-cancel"), DurablePre::Absent);
 	}
 	cancel.cancel();
 	let waiter = Arc::new(WaiterHandle::new());
@@ -612,7 +617,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	buffer.attach_flusher(actor_ref);
 
 	for index in 0..budget - 1 {
-		buffer.record_state_set(OP_A, key(index as u8), row("under-the-budget"));
+		buffer.record_state_set(OP_A, key(index as u8), row("under-the-budget"), DurablePre::Absent);
 	}
 	thread::sleep(Duration::from_milliseconds_const(100).to_std());
 	assert!(
@@ -620,7 +625,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 		"a buffer under the budget must not be flushed early, otherwise the buffer stops batching at all"
 	);
 
-	buffer.record_state_set(OP_A, key(budget as u8 - 1), row("under-the-budget"));
+	buffer.record_state_set(OP_A, key(budget as u8 - 1), row("under-the-budget"), DurablePre::Absent);
 
 	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
 	while Instant::now() < deadline && storage.get(OP_A, &key(0)).is_none() {

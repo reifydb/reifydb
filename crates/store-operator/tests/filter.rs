@@ -25,8 +25,9 @@ use reifydb_store_operator::{
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
+	types::OperatorWrite,
 };
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
 const OP: OperatorId = OperatorId(1);
 
@@ -368,6 +369,49 @@ fn a_key_written_after_an_armed_open_is_found_by_the_armed_filter() {
 	let found = storage.get(OP, &key(7)).expect("the row written after an armed open is missing");
 	assert_eq!(body_of(&found), "written after open");
 	assert!(!storage.filter().may_contain(OP, &key(8)), "a neighbouring key nothing wrote answered present");
+}
+
+#[test]
+fn the_batch_write_path_production_uses_feeds_the_armed_filter() {
+	// The test-only set() arms the filter through its own call to add(). Production never uses it: every
+	// durable write arrives as an OperatorWrite through apply_batch, and only the classified variants that
+	// leave a row behind may arm the filter. A batch that skipped add() would leave the row on disk and
+	// unreachable through an armed filter, which is silent data loss the direct-set test cannot see.
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+
+	assert!(storage.filter().metrics().enabled, "a fresh database must arm the filter");
+
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP,
+		key: key(7),
+		post: row("inserted through a batch"),
+	}]);
+	assert!(storage.filter().may_contain(OP, &key(7)), "an insert through apply_batch did not arm the filter");
+	assert_eq!(
+		storage.get(OP, &key(7)).map(|found| body_of(&found)),
+		Some("inserted through a batch".to_string()),
+		"the row an armed filter admits must be the row sqlite holds"
+	);
+
+	storage.apply_batch(&[OperatorWrite::Replace {
+		operator: OP,
+		key: key(9),
+		pre_value_bytes: ByteSize::from_bytes(0),
+		post: row("replaced through a batch"),
+	}]);
+	assert!(
+		storage.filter().may_contain(OP, &key(9)),
+		"a replace writes a row the same way an insert does, so it must arm the filter too"
+	);
+
+	assert!(
+		!storage.filter().may_contain(OP, &key(8)),
+		"a neighbouring key no batch wrote answered present"
+	);
+	assert!(
+		!storage.filter().may_contain(OTHER, &key(7)),
+		"the filter must scope its claim to the operator that was written"
+	);
 }
 
 #[test]

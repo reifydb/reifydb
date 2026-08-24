@@ -78,7 +78,12 @@ impl SqliteOperatorStorage {
 		}
 		self.mark_state_written();
 		for write in writes {
-			if let OperatorWrite::Set {
+			if let OperatorWrite::Insert {
+				operator,
+				key,
+				..
+			}
+			| OperatorWrite::Replace {
 				operator,
 				key,
 				..
@@ -94,12 +99,7 @@ impl SqliteOperatorStorage {
 		let transaction = conn.unchecked_transaction().expect("operator state batch could not begin");
 		for write in writes {
 			match write {
-				OperatorWrite::Set {
-					operator,
-					key,
-					row: post,
-				}
-				| OperatorWrite::Insert {
+				OperatorWrite::Insert {
 					operator,
 					key,
 					post,
@@ -123,14 +123,7 @@ impl SqliteOperatorStorage {
 					.expect("operator state delete could not be prepared")
 					.execute(params![operator.0 as i64, key.as_slice()])
 					.expect("operator state delete failed"),
-				OperatorWrite::AnchorSet {
-					operator,
-					group,
-					side,
-					row_num: row_number,
-					expiry,
-				}
-				| OperatorWrite::AnchorInsert {
+				OperatorWrite::AnchorInsert {
 					operator,
 					group,
 					side,

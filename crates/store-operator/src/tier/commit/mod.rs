@@ -29,7 +29,7 @@ use reifydb_runtime::{
 use crate::{
 	flush::FlushMessage,
 	tier::commit::batch::{DropMarker, FlushBatch},
-	types::OperatorWrite,
+	types::{DurablePre, OperatorWrite},
 };
 
 pub const FLUSH_ENTRY_BUDGET: usize = 2048;
@@ -181,43 +181,34 @@ fn resident(inner: &BufferInner) -> impl Iterator<Item = &FlushBatch> {
 
 fn record_writes(live: &mut FlushBatch, writes: &[OperatorWrite]) {
 	for write in writes {
-		let durable_pre = write.durable_pre();
 		match write {
-			OperatorWrite::Set {
-				operator,
-				key,
-				row,
-			} => {
-				live.record_state((*operator, key.clone()), Some(row.clone()), durable_pre);
-			}
 			OperatorWrite::Insert {
 				operator,
 				key,
 				post,
+			} => {
+				live.record_state((*operator, key.clone()), Some(post.clone()), DurablePre::Absent);
 			}
-			| OperatorWrite::Replace {
+			OperatorWrite::Replace {
 				operator,
 				key,
+				pre_value_bytes,
 				post,
-				..
 			} => {
-				live.record_state((*operator, key.clone()), Some(post.clone()), durable_pre);
+				live.record_state(
+					(*operator, key.clone()),
+					Some(post.clone()),
+					DurablePre::Present(*pre_value_bytes),
+				);
 			}
 			OperatorWrite::Remove {
 				operator,
 				key,
-				..
+				pre,
 			} => {
-				live.record_state((*operator, key.clone()), None, durable_pre);
+				live.record_state((*operator, key.clone()), None, *pre);
 			}
-			OperatorWrite::AnchorSet {
-				operator,
-				group,
-				side,
-				row_num: row_number,
-				expiry,
-			}
-			| OperatorWrite::AnchorInsert {
+			OperatorWrite::AnchorInsert {
 				operator,
 				group,
 				side,

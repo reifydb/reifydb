@@ -61,13 +61,13 @@ fn a_removed_key_reads_back_as_a_tombstone_not_as_absent() {
 		"a key no layer has seen must report as unknown so the read continues to sqlite"
 	);
 
-	buffer.record_state_set(OP_A, key("k"), row("v"));
+	buffer.record_state_set(OP_A, key("k"), row("v"), DurablePre::Absent);
 	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k")) else {
 		panic!("the live layer knows the key it just wrote")
 	};
 	assert_eq!(row_body(&found), "v", "the buffer must hand back the row that was written, not a stale one");
 
-	buffer.record_state_remove(OP_A, key("k"));
+	buffer.record_state_remove(OP_A, key("k"), DurablePre::Absent);
 	assert_eq!(
 		buffer.lookup_state(OP_A, &key("k")),
 		BufferedState::Tombstone,
@@ -104,8 +104,8 @@ fn checkpoints_distinguish_a_delete_from_a_never_written_flow() {
 #[test]
 fn taken_entries_stay_readable_until_the_flush_completes() {
 	let buffer = OperatorCommitBuffer::new();
-	buffer.record_state_set(OP_A, key("k"), row("v"));
-	buffer.record_state_remove(OP_A, key("gone"));
+	buffer.record_state_set(OP_A, key("k"), row("v"), DurablePre::Absent);
+	buffer.record_state_remove(OP_A, key("gone"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(500));
 	buffer.record_checkpoint_set(FlowId(3), CommitVersion(9));
 
@@ -156,13 +156,13 @@ fn taken_entries_stay_readable_until_the_flush_completes() {
 #[test]
 fn a_live_write_shadows_the_same_key_in_the_in_flight_batch() {
 	let buffer = OperatorCommitBuffer::new();
-	buffer.record_state_set(OP_A, key("k"), row("old"));
-	buffer.record_state_set(OP_A, key("doomed"), row("old"));
+	buffer.record_state_set(OP_A, key("k"), row("old"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("doomed"), row("old"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 
-	buffer.record_state_set(OP_A, key("k"), row("new"));
-	buffer.record_state_remove(OP_A, key("doomed"));
+	buffer.record_state_set(OP_A, key("k"), row("new"), DurablePre::Absent);
+	buffer.record_state_remove(OP_A, key("doomed"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(900));
 
 	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k")) else {
@@ -184,15 +184,15 @@ fn a_live_write_shadows_the_same_key_in_the_in_flight_batch() {
 #[test]
 fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
 	let buffer = OperatorCommitBuffer::new();
-	buffer.record_state_set(OP_A, key("a"), row("flushing-a"));
-	buffer.record_state_set(OP_A, key("b"), row("flushing-b"));
-	buffer.record_state_set(OP_A, key("c"), row("flushing-c"));
-	buffer.record_state_set(OP_B, key("b"), row("other-operator"));
+	buffer.record_state_set(OP_A, key("a"), row("flushing-a"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("b"), row("flushing-b"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("c"), row("flushing-c"), DurablePre::Absent);
+	buffer.record_state_set(OP_B, key("b"), row("other-operator"), DurablePre::Absent);
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 
-	buffer.record_state_set(OP_A, key("b"), row("live-b"));
-	buffer.record_state_remove(OP_A, key("c"));
-	buffer.record_state_set(OP_A, key("d"), row("live-d"));
+	buffer.record_state_set(OP_A, key("b"), row("live-b"), DurablePre::Absent);
+	buffer.record_state_remove(OP_A, key("c"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("d"), row("live-d"), DurablePre::Absent);
 
 	let all = buffer.state_range(OP_A, Bound::Unbounded, Bound::Unbounded).items;
 	let keys: Vec<Vec<u8>> = all.iter().map(|(k, _)| k.to_vec()).collect();
@@ -267,26 +267,26 @@ fn a_window_that_spans_nothing_still_reports_a_pending_drop() {
 
 fn seeded_two_layer_buffer() -> OperatorCommitBuffer {
 	let buffer = OperatorCommitBuffer::new();
-	buffer.record_state_set(OP_A, key("a"), row("flushing-a"));
-	buffer.record_state_set(OP_A, key("b"), row("flushing-b"));
-	buffer.record_state_set(OP_A, key("c"), row("flushing-c"));
+	buffer.record_state_set(OP_A, key("a"), row("flushing-a"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("b"), row("flushing-b"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("c"), row("flushing-c"), DurablePre::Absent);
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 
-	buffer.record_state_set(OP_A, key("b"), row("live-b"));
-	buffer.record_state_set(OP_A, key("d"), row("live-d"));
+	buffer.record_state_set(OP_A, key("b"), row("live-b"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("d"), row("live-d"), DurablePre::Absent);
 	buffer
 }
 
 fn seeded_two_layer_buffer_with_dropped_operator() -> OperatorCommitBuffer {
 	let buffer = OperatorCommitBuffer::new();
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
-	buffer.record_state_set(OP_A, key("a"), row("flushing-a"));
-	buffer.record_state_set(OP_A, key("b"), row("flushing-b"));
-	buffer.record_state_set(OP_A, key("c"), row("flushing-c"));
+	buffer.record_state_set(OP_A, key("a"), row("flushing-a"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("b"), row("flushing-b"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("c"), row("flushing-c"), DurablePre::Absent);
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 
-	buffer.record_state_set(OP_A, key("b"), row("live-b"));
-	buffer.record_state_set(OP_A, key("d"), row("live-d"));
+	buffer.record_state_set(OP_A, key("b"), row("live-b"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("d"), row("live-d"), DurablePre::Absent);
 	buffer
 }
 
@@ -314,14 +314,14 @@ fn anchors_for_group_overlays_the_in_flight_batch_and_keeps_tombstones() {
 #[test]
 fn a_drop_clears_what_came_before_it_and_keeps_what_came_after() {
 	let buffer = OperatorCommitBuffer::new();
-	buffer.record_state_set(OP_A, key("before"), row("v"));
+	buffer.record_state_set(OP_A, key("before"), row("v"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
-	buffer.record_state_set(OP_B, key("untouched"), row("v"));
+	buffer.record_state_set(OP_B, key("untouched"), row("v"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_B, GROUP_A, 0, RowNumber(2), DateTime::from_millis(200));
 
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
 
-	buffer.record_state_set(OP_A, key("after"), row("v"));
+	buffer.record_state_set(OP_A, key("after"), row("v"), DurablePre::Absent);
 
 	assert_eq!(
 		buffer.lookup_state(OP_A, &key("before")),
@@ -355,7 +355,7 @@ fn a_drop_clears_what_came_before_it_and_keeps_what_came_after() {
 #[test]
 fn an_anchor_drop_clears_only_the_anchors_it_names() {
 	let buffer = OperatorCommitBuffer::new();
-	buffer.record_state_set(OP_A, key("k"), row("v"));
+	buffer.record_state_set(OP_A, key("k"), row("v"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	buffer.record_anchor_set(OP_A, GROUP_B, 0, RowNumber(2), DateTime::from_millis(200));
 
@@ -417,7 +417,7 @@ fn a_buffer_holding_only_a_drop_is_still_worth_flushing() {
 #[test]
 fn take_for_flush_sets_flushing_and_complete_flush_clears_it() {
 	let buffer = OperatorCommitBuffer::new();
-	buffer.record_state_set(OP_A, key("k"), row("v"));
+	buffer.record_state_set(OP_A, key("k"), row("v"), DurablePre::Absent);
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 
 	{
@@ -436,7 +436,7 @@ fn take_for_flush_sets_flushing_and_complete_flush_clears_it() {
 #[test]
 fn a_drop_waits_out_an_in_flight_flush_before_clearing() {
 	let buffer = OperatorCommitBuffer::new();
-	buffer.record_state_set(OP_A, key("k"), row("v"));
+	buffer.record_state_set(OP_A, key("k"), row("v"), DurablePre::Absent);
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 
 	let dropped = Arc::new(AtomicBool::new(false));
@@ -617,7 +617,7 @@ fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_noth
 	let buffer = OperatorCommitBuffer::with_budget(budget);
 	let total: usize = 53;
 	for index in 0..total {
-		buffer.record_state_set(OP_A, key(&format!("k{index:03}")), row(&format!("v{index:03}")));
+		buffer.record_state_set(OP_A, key(&format!("k{index:03}")), row(&format!("v{index:03}")), DurablePre::Absent);
 	}
 
 	let mut seen: Vec<String> = Vec::new();
@@ -662,13 +662,13 @@ fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_noth
 #[test]
 fn a_key_rewritten_after_its_slice_left_reads_and_flushes_as_the_later_value() {
 	let buffer = OperatorCommitBuffer::with_budget(2);
-	buffer.record_state_set(OP_A, key("k1"), row("early"));
-	buffer.record_state_set(OP_A, key("k2"), row("filler"));
-	buffer.record_state_set(OP_A, key("k3"), row("left-behind"));
+	buffer.record_state_set(OP_A, key("k1"), row("early"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("k2"), row("filler"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("k3"), row("left-behind"), DurablePre::Absent);
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
 	assert_eq!(first.state.get(&(OP_A, key("k1"))).map(entry_body), Some("early".to_string()));
-	buffer.record_state_set(OP_A, key("k1"), row("late"));
+	buffer.record_state_set(OP_A, key("k1"), row("late"), DurablePre::Absent);
 
 	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k1")) else {
 		panic!("the rewritten key must read from the live layer")
@@ -696,10 +696,10 @@ fn a_key_rewritten_after_its_slice_left_reads_and_flushes_as_the_later_value() {
 #[test]
 fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
 	let buffer = OperatorCommitBuffer::with_budget(1);
-	buffer.record_state_set(OP_A, key("k1"), row("pre-drop"));
+	buffer.record_state_set(OP_A, key("k1"), row("pre-drop"), DurablePre::Absent);
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
-	buffer.record_state_set(OP_A, key("k2"), row("post-drop-a"));
-	buffer.record_state_set(OP_A, key("k3"), row("post-drop-b"));
+	buffer.record_state_set(OP_A, key("k2"), row("post-drop-a"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("k3"), row("post-drop-b"), DurablePre::Absent);
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
 	assert_eq!(
@@ -731,8 +731,8 @@ fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
 fn anchors_are_handed_out_under_the_same_budget_as_state() {
 	let budget = 4;
 	let buffer = OperatorCommitBuffer::with_budget(budget);
-	buffer.record_state_set(OP_A, key("k1"), row("v"));
-	buffer.record_state_set(OP_A, key("k2"), row("v"));
+	buffer.record_state_set(OP_A, key("k1"), row("v"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("k2"), row("v"), DurablePre::Absent);
 	for row_number in 0..10u64 {
 		buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(row_number), DateTime::from_millis(100));
 	}
