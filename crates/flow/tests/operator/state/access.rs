@@ -6,13 +6,15 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace},
 	metrics::heap::HeapSize,
 };
-use reifydb_flow::operator::{
-	host::TxnHostContext,
-	state_access::{get, get_classified, get_or_default, set, update},
-};
-use reifydb_flow::window::{
-	kind::session::SessionTracker,
-	meta::{EngineMeta, EngineMetaKey, WindowMeta},
+use reifydb_flow::{
+	operator::{
+		host::TxnHostContext,
+		state_access::{get, get_classified, get_or_default, set, update},
+	},
+	window::{
+		kind::session::SessionTracker,
+		meta::{EngineMeta, EngineMetaKey, WindowMeta},
+	},
 };
 use reifydb_macro::operator_state;
 use reifydb_sdk::{

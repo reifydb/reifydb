@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::interface::change::Change;
+#[cfg(feature = "runtime")]
 use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
+	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_value::{
-	Result,
-	value::{datetime::DateTime, duration::Duration},
-};
+#[cfg(feature = "runtime")]
+use reifydb_value::Result;
+use reifydb_value::value::datetime::DateTime;
+#[cfg(any(feature = "runtime", all(reifydb_target = "host", not(reifydb_dst))))]
+use reifydb_value::value::duration::Duration;
 
 #[cfg(feature = "runtime")]
 use crate::{operator::host::HostContext, timer::Timer};
@@ -98,6 +101,7 @@ pub fn max_input_time(change: &Change) -> Option<DateTime> {
 		.max()
 }
 
+#[cfg_attr(not(feature = "runtime"), allow(dead_code))]
 pub(crate) fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>) {
 	let Some(inherited) = inherited else {
 		return;

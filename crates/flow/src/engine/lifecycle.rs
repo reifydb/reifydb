@@ -267,7 +267,11 @@ mod tests {
 		let store = engine.inner().operator_state();
 
 		let operator = OperatorId(1);
-		store.set(operator, EncodedKey::new(b"k"), EncodedPodRow::new(&[1u8; 64]));
+		store.apply_batch(&[OperatorWrite::Insert {
+			operator,
+			key: EncodedKey::new(b"k"),
+			post: EncodedPodRow::new(&[1u8; 64]),
+		}]);
 		let durable_bytes = store.bytes(operator);
 		assert!(durable_bytes > ByteSize::ZERO, "precondition: the durable operator's state is resident");
 

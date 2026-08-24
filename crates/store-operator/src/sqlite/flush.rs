@@ -11,7 +11,8 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sqlite::batch::values_placeholders;
 #[cfg(reifydb_assertions)]
-use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
+use reifydb_value::byte_size::ByteSize;
+use reifydb_value::reifydb_assertions;
 #[cfg(reifydb_assertions)]
 use rusqlite::OptionalExtension;
 use rusqlite::{ToSql, Transaction, TransactionBehavior, params, params_from_iter};

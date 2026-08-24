@@ -28,6 +28,7 @@ pub(super) const STATE_REMOVE_SQL: &str = r#"DELETE FROM "operator_state" WHERE 
 
 pub(super) const STATE_DROP_SQL: &str = r#"DELETE FROM "operator_state" WHERE "operator" = ?1"#;
 
+#[cfg(reifydb_assertions)]
 pub(super) const STATE_VALUE_LEN_SQL: &str =
 	r#"SELECT LENGTH("bytes") FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2"#;
 

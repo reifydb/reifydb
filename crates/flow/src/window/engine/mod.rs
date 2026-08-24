@@ -35,7 +35,7 @@ use tracing::{debug, instrument};
 use crate::{
 	operator::{
 		state::seal::coord::Coord,
-		state_access::{get, modify, remove},
+		state_access::{get_classified, remove, set},
 	},
 	window::span::{Slot, WindowSpan},
 };
@@ -140,7 +140,7 @@ pub(crate) fn load_batch_meta<C>(store: &mut dyn StateStore, key: &MetaKey) -> R
 where
 	C: Slot,
 {
-	let initial = get::<_, GroupMeta<C>>(store, key)?.and_then(|meta| meta.high_water);
+	let initial = get_classified::<_, GroupMeta<C>>(store, key)?.and_then(|meta| meta.high_water);
 	Ok(BatchMeta {
 		initial,
 		bumped: None,
@@ -156,11 +156,13 @@ where
 		let Some(bumped) = batch.bumped else {
 			continue;
 		};
-		modify(store, &meta_key_for(&group), |native: &mut GroupMeta<C>| {
-			if native.high_water.is_none_or(|hw| bumped > hw) {
-				native.high_water = Some(bumped);
-			}
-		})?;
+		set(
+			store,
+			&meta_key_for(&group),
+			&GroupMeta {
+				high_water: Some(bumped),
+			},
+		)?;
 	}
 	Ok(())
 }

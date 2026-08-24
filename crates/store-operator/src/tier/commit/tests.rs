@@ -14,16 +14,19 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::GroupId,
+	key::operator_state::{GroupId, OperatorStateKey},
 };
-use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+};
 
 use crate::{
 	tier::commit::{
 		OperatorCommitBuffer,
 		batch::{DropMarker, StateEntry},
 	},
-	types::{BufferedAnchor, BufferedState, DurablePre, OperatorWrite},
+	types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, BufferedAnchor, BufferedState, DurablePre, OperatorWrite},
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -33,6 +36,13 @@ const GROUP_B: GroupId = GroupId(11);
 
 fn key(bytes: &str) -> EncodedKey {
 	EncodedKey::new(bytes.as_bytes())
+}
+
+fn state_key(tail: &str) -> EncodedKey {
+	let mut bytes = vec![0u8; OperatorStateKey::KEYSPACE_INNER_OFFSET as usize];
+	bytes.push(0x10);
+	bytes.extend_from_slice(tail.as_bytes());
+	EncodedKey::new(bytes)
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -758,4 +768,73 @@ fn anchors_are_handed_out_under_the_same_budget_as_state() {
 		buffer.complete_flush();
 	}
 	assert_eq!(anchors, 10, "every armed anchor must reach exactly one slice or a seal timer is lost");
+}
+
+#[test]
+fn a_key_rewritten_while_its_flush_is_in_flight_is_counted_once() {
+	let buffer = OperatorCommitBuffer::new();
+	let k = state_key("a");
+	buffer.record_state_set(OP_A, k.clone(), row("v1"), DurablePre::Absent);
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+	buffer.record_state_set(OP_A, k.clone(), row("rewritten"), DurablePre::Absent);
+
+	let census = buffer.census();
+	assert_eq!(census.len(), 1, "one key in one keyspace is one bucket");
+	assert_eq!(census[0].keys, 1, "the key is one key, however many batches happen to hold a copy of it");
+	assert_eq!(
+		census[0].key_bytes,
+		ByteSize::from_bytes(k.len() as u64),
+		"the key is billed once, not once per resident batch"
+	);
+	assert_eq!(
+		census[0].value_bytes,
+		ByteSize::from_bytes(row("rewritten").bytes().len() as u64),
+		"the live rewrite is the row that stands, so its size is the one billed"
+	);
+	assert_eq!(
+		buffer.total_bytes(),
+		ByteSize::from_bytes((k.len() + row("rewritten").bytes().len()) as u64),
+		"total bytes must agree with the census it is derived from"
+	);
+	assert_eq!(buffer.bytes(OP_A), buffer.total_bytes(), "one operator holds everything here");
+}
+
+#[test]
+fn a_key_removed_while_its_flush_is_in_flight_is_not_counted_at_all() {
+	let buffer = OperatorCommitBuffer::new();
+	let k = state_key("a");
+	buffer.record_state_set(OP_A, k.clone(), row("v1"), DurablePre::Absent);
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+	buffer.record_state_remove(OP_A, k.clone(), DurablePre::Absent);
+
+	assert!(buffer.census().is_empty(), "a key the newest batch tombstones is gone, not merely shadowed");
+	assert_eq!(buffer.total_bytes(), ByteSize::ZERO, "and it bills nothing");
+}
+
+#[test]
+fn an_anchor_rearmed_while_its_flush_is_in_flight_is_counted_once() {
+	let buffer = OperatorCommitBuffer::new();
+	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::default());
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::default());
+
+	let census = buffer.anchor_census();
+	assert_eq!(census.len(), 1, "one operator is one bucket");
+	assert_eq!(census[0].keys, 1, "one anchor tuple is one anchor, in however many batches it appears");
+	assert_eq!(
+		buffer.total_bytes(),
+		ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES,
+		"and it bills one anchor's worth of bytes, not two"
+	);
+}
+
+#[test]
+fn an_anchor_disarmed_while_its_flush_is_in_flight_is_not_counted() {
+	let buffer = OperatorCommitBuffer::new();
+	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::default());
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+	buffer.record_anchor_remove(OP_A, GROUP_A, 0, RowNumber(1));
+
+	assert!(buffer.anchor_census().is_empty(), "a disarmed anchor is gone, not merely shadowed");
+	assert_eq!(buffer.total_bytes(), ByteSize::ZERO, "and it bills nothing");
 }

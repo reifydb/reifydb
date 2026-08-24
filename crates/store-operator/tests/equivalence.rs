@@ -5,7 +5,7 @@
 //! without them; the caches are read-through and never authoritative, so any divergence is
 //! a cache serving stale or fabricated state.
 
-use std::ops::Bound;
+use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -28,6 +28,7 @@ use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
+	types::{DurablePre, OperatorWrite},
 };
 use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
@@ -168,18 +169,44 @@ fn cached_reads_equal_uncached_oracle_across_randomized_workload() {
 	let (cached, _cached_guard) = store(true);
 	let (oracle, _oracle_guard) = store(false);
 	let mut rng = Rng(SEED);
+	// every write must claim its own pre-image, and a wrong claim drifts the census forever, so the live
+	// value sizes are tracked here rather than read back out of the store under test
+	let mut live: HashMap<(OperatorId, EncodedKey), ByteSize> = HashMap::new();
 	for step in 0..STEPS {
 		match rng.below(100) {
 			0..40 => {
 				let (operator, key) = key(&mut rng);
 				let row = EncodedPodRow::new(format!("{step}").as_bytes());
-				cached.set(operator, key.clone(), row.clone());
-				oracle.set(operator, key, row);
+				let post_bytes = ByteSize::from_bytes(row.bytes().len() as u64);
+				let write = match live.insert((operator, key.clone()), post_bytes) {
+					Some(pre_value_bytes) => OperatorWrite::Replace {
+						operator,
+						key,
+						pre_value_bytes,
+						post: row,
+					},
+					None => OperatorWrite::Insert {
+						operator,
+						key,
+						post: row,
+					},
+				};
+				cached.apply_batch(&[write.clone()]);
+				oracle.apply_batch(&[write]);
 			}
 			40..55 => {
 				let (operator, key) = key(&mut rng);
-				cached.remove(operator, &key);
-				oracle.remove(operator, &key);
+				let pre = match live.remove(&(operator, key.clone())) {
+					Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
+					None => DurablePre::Absent,
+				};
+				let write = OperatorWrite::Remove {
+					operator,
+					key,
+					pre,
+				};
+				cached.apply_batch(&[write.clone()]);
+				oracle.apply_batch(&[write]);
 			}
 			55..65 => {
 				let (operator, key) = key(&mut rng);
