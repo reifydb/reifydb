@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use reifydb_catalog::bootstrap::bootstrap_system_objects;
-use reifydb_core::{event::EventBus, util::ioc::IocContainer};
+use reifydb_core::{event::EventBus, metrics::registry::MetricsRegistry, util::ioc::IocContainer};
 use reifydb_profiler::{category::CategorySet, intern::DimInterner, sink::NoopSink};
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
@@ -39,7 +39,6 @@ fn with_subsystem_returns_provided_and_registers_vtables() {
 	let accumulator = Arc::new(RwLock::new(ProfilerAccumulator::new(16, 0, Arc::clone(&instruments))));
 	let sink: Arc<dyn reifydb_profiler::sink::ProfilerSink> = Arc::new(NoopSink);
 	let subsystem = ProfilerSubsystem::new(
-		false,
 		CategorySet::empty(),
 		interner,
 		accumulator,
@@ -49,7 +48,11 @@ fn with_subsystem_returns_provided_and_registers_vtables() {
 		None,
 	);
 
-	let ioc = IocContainer::new().register(engine.clone()).register(spawner).register(eventbus.clone());
+	let ioc = IocContainer::new()
+		.register(engine.clone())
+		.register(spawner)
+		.register(eventbus.clone())
+		.register(MetricsRegistry::new());
 
 	let factory = Box::new(ProfilerSubsystemFactory::with_subsystem(subsystem));
 	let result = factory.create(&ioc).expect("create should succeed with engine in IoC");

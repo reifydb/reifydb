@@ -16,7 +16,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_profiler::{
 	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
 	intern::DimInterner,
-	sink::{NoopSink, ProfilerSink},
+	sink::ProfilerSink,
 };
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
@@ -85,7 +85,7 @@ impl ProfilerSubsystemFactory {
 		let event_bus = ioc.resolve::<EventBus>()?;
 		let clock = ioc.resolve::<Clock>()?;
 
-		let collector = if cfg.enabled {
+		let collector = {
 			let spawner = ioc.resolve::<ActorSpawner>()?;
 			let actor = ProfilerCollectorActor::new(
 				Arc::clone(&accumulator),
@@ -105,18 +105,12 @@ impl ProfilerSubsystemFactory {
 				actor_ref.clone(),
 			));
 			Some(actor_ref)
-		} else {
-			None
 		};
 
-		let sink: Arc<dyn ProfilerSink> = if cfg.enabled {
-			Arc::new(EventBusSink::new(event_bus, Arc::clone(&instruments)))
-		} else {
-			Arc::new(NoopSink)
-		};
+		let sink: Arc<dyn ProfilerSink> =
+			Arc::new(EventBusSink::new(event_bus, Arc::clone(&instruments)));
 
 		Ok(ProfilerSubsystem::new(
-			cfg.enabled,
 			cfg.categories,
 			interner,
 			accumulator,
@@ -146,10 +140,8 @@ impl SubsystemFactory for ProfilerSubsystemFactory {
 			None => Self::build_subsystem(self.configurator, ioc)?,
 		};
 
-		if subsystem.enabled() {
-			let registry = ioc.resolve::<MetricsRegistry>()?;
-			subsystem.instruments().register_into(&registry);
-		}
+		let registry = ioc.resolve::<MetricsRegistry>()?;
+		subsystem.instruments().register_into(&registry);
 
 		if let Some(collector) = subsystem.collector() {
 			let interval = engine.catalog().get_config_duration(ConfigKey::MetricsSampleInterval);

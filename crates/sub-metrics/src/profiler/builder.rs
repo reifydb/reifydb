@@ -4,7 +4,6 @@
 use reifydb_profiler::category::{CategorySet, ProfilerCategory, ProfilerLevel};
 
 pub struct ProfilerConfigurator {
-	pub enabled: bool,
 	pub categories: CategorySet,
 	pub accumulator_capacity: usize,
 	pub min_calls_for_retention: u64,
@@ -20,17 +19,11 @@ impl Default for ProfilerConfigurator {
 impl ProfilerConfigurator {
 	pub fn new() -> Self {
 		Self {
-			enabled: true,
 			categories: CategorySet::all(),
 			accumulator_capacity: 4096,
 			min_calls_for_retention: 0,
 			scope_local_capacity: 256,
 		}
-	}
-
-	pub fn disabled(mut self) -> Self {
-		self.enabled = false;
-		self
 	}
 
 	pub fn with_category_level(mut self, c: ProfilerCategory, level: ProfilerLevel) -> Self {
@@ -69,7 +62,6 @@ mod tests {
 	#[test]
 	fn default_enables_all_categories_at_trace() {
 		let cfg = ProfilerConfigurator::default();
-		assert!(cfg.enabled);
 		for c in ALL_CATEGORIES {
 			assert!(cfg.categories.contains(c));
 			assert_eq!(cfg.categories.level_for(c), Some(ProfilerLevel::Trace));

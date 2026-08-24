@@ -13,7 +13,7 @@ use reifydb_profiler::{
 	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
 	intern::DimInterner,
 	layer::ProfilerLayer,
-	sink::{NoopSink, ProfilerSink},
+	sink::ProfilerSink,
 };
 use reifydb_routine_abi::registry::RoutinesConfigurator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
@@ -422,31 +422,26 @@ impl ServerBuilder {
 				0,
 				Arc::new(ProfilerInstruments::new()),
 			)));
-			let mut collector = None;
-			let sink: Arc<dyn ProfilerSink> = if cfg.enabled {
-				let actor = ProfilerCollectorActor::new(
-					Arc::clone(&accumulator),
-					Arc::clone(&interner),
-					Arc::clone(&instruments),
-					cfg.accumulator_capacity,
-					cfg.min_calls_for_retention,
-					clock.clone(),
-				);
-				let handle = spawner.spawn_coordination("profile-collector", actor);
-				let actor_ref = handle.actor_ref().clone();
-				eventbus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
-					actor_ref.clone(),
-				));
-				eventbus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(
-					actor_ref.clone(),
-				));
-				collector = Some(actor_ref);
-				Arc::new(EventBusSink::new(eventbus.clone(), Arc::clone(&instruments)))
-			} else {
-				Arc::new(NoopSink)
-			};
+			let actor = ProfilerCollectorActor::new(
+				Arc::clone(&accumulator),
+				Arc::clone(&interner),
+				Arc::clone(&instruments),
+				cfg.accumulator_capacity,
+				cfg.min_calls_for_retention,
+				clock.clone(),
+			);
+			let handle = spawner.spawn_coordination("profile-collector", actor);
+			let actor_ref = handle.actor_ref().clone();
+			eventbus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
+				actor_ref.clone(),
+			));
+			eventbus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(
+				actor_ref.clone(),
+			));
+			let collector = Some(actor_ref);
+			let sink: Arc<dyn ProfilerSink> =
+				Arc::new(EventBusSink::new(eventbus.clone(), Arc::clone(&instruments)));
 			let subsystem = ProfilerSubsystem::new(
-				cfg.enabled,
 				cfg.categories,
 				interner,
 				accumulator,

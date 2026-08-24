@@ -22,7 +22,6 @@ use super::{
 
 pub struct ProfilerSubsystem {
 	running: AtomicBool,
-	enabled: bool,
 	categories: CategorySet,
 	interner: Arc<DimInterner>,
 	accumulator: Arc<RwLock<ProfilerAccumulator>>,
@@ -35,7 +34,6 @@ pub struct ProfilerSubsystem {
 impl ProfilerSubsystem {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		enabled: bool,
 		categories: CategorySet,
 		interner: Arc<DimInterner>,
 		accumulator: Arc<RwLock<ProfilerAccumulator>>,
@@ -44,10 +42,9 @@ impl ProfilerSubsystem {
 		clock: Clock,
 		collector: Option<ActorRef<ProfilerMessage>>,
 	) -> Self {
-		info!("Profiler subsystem started (enabled={}, categories={:?})", enabled, categories);
+		info!("Profiler subsystem started (categories={:?})", categories);
 		Self {
 			running: AtomicBool::new(true),
-			enabled,
 			categories,
 			interner,
 			accumulator,
@@ -56,10 +53,6 @@ impl ProfilerSubsystem {
 			clock,
 			collector,
 		}
-	}
-
-	pub fn enabled(&self) -> bool {
-		self.enabled
 	}
 
 	pub fn collector(&self) -> Option<&ActorRef<ProfilerMessage>> {
