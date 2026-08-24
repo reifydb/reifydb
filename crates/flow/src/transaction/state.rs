@@ -100,6 +100,9 @@ pub trait StateExtension: FlowTransaction {
 
 	fn state_classify(&mut self, id: OperatorId, key: &GroupStateKey, pre: Option<ByteSize>) {
 		let scoped = scoped_key(id, key);
+		if self.pending_layers().top().contains_key(&scoped) {
+			return;
+		}
 		self.classify(&scoped, pre);
 	}
 
@@ -233,7 +236,7 @@ fn classify_durable_anchor<T: FlowTransaction>(
 
 #[inline]
 #[instrument(name = "flow::state::clear::scan", level = "trace", skip(txn), fields(operator_id = id.0))]
-fn scan_keys_for_clear<T: FlowTransaction>(txn: &mut T, id: OperatorId) -> Result<Vec<(EncodedKey, ByteSize)>> {
+fn scan_keys_for_clear<T: FlowTransaction>(txn: &mut T, id: OperatorId) -> Result<Vec<(EncodedKey, Option<ByteSize>)>> {
 	let range = OperatorStateKey::node_range(id);
 	let iter = txn.range(range, RangeScope::All, 1024);
 	let mut keys = Vec::new();
@@ -241,14 +244,21 @@ fn scan_keys_for_clear<T: FlowTransaction>(txn: &mut T, id: OperatorId) -> Resul
 		let multi = result?;
 		keys.push((multi.key, ByteSize::from_bytes(multi.bytes.len() as u64)));
 	}
-	Ok(keys)
+	Ok(keys.into_iter()
+		.map(|(key, pre)| {
+			let durable = !txn.pending_layers().top().contains_key(&key);
+			(key, durable.then_some(pre))
+		})
+		.collect())
 }
 
 #[inline]
 #[instrument(name = "flow::state::clear::remove", level = "trace", skip(txn, keys), fields(count = keys.len()))]
-fn remove_keys<T: FlowTransaction>(txn: &mut T, keys: Vec<(EncodedKey, ByteSize)>) -> Result<()> {
+fn remove_keys<T: FlowTransaction>(txn: &mut T, keys: Vec<(EncodedKey, Option<ByteSize>)>) -> Result<()> {
 	for (key, pre) in keys {
-		txn.classify(&key, Some(pre));
+		if let Some(pre) = pre {
+			txn.classify(&key, Some(pre));
+		}
 		txn.remove(&key)?;
 	}
 	Ok(())

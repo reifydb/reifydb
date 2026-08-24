@@ -24,31 +24,35 @@ pub(crate) enum CallSite<'a> {
 	},
 }
 
+pub(crate) struct ProcedureCall<'a> {
+	pub routine: &'a Arc<dyn RoutineProcedure>,
+	pub fragment: &'a Fragment,
+	pub target: &'a str,
+	pub params: &'a Params,
+}
+
 pub(crate) fn invoke_procedure_routine(
 	services: &Arc<Services>,
 	symbols: &SymbolTable,
 	tx: &mut Transaction<'_>,
-	routine: &Arc<dyn RoutineProcedure>,
-	fragment: &Fragment,
-	target: &str,
-	params: &Params,
+	call: ProcedureCall<'_>,
 	site: CallSite<'_>,
 ) -> Result<Columns> {
-	enforce_call_policy(services, symbols, tx, target, site)?;
+	enforce_call_policy(services, symbols, tx, call.target, site)?;
 
 	let identity = tx.identity();
 	let mut ctx = ProcedureContext {
-		fragment: fragment.clone(),
+		fragment: call.fragment.clone(),
 		identity,
 		row_count: 1,
 		runtime_context: &services.runtime_context,
 		tx,
-		params,
+		params: call.params,
 		catalog: &services.catalog,
 		ioc: &services.ioc,
 	};
 	let empty = Columns::empty();
-	routine.call(&mut ctx, &empty).map_err(|e| e.with_context(fragment.clone(), true))
+	call.routine.call(&mut ctx, &empty).map_err(|e| e.with_context(call.fragment.clone(), true))
 }
 
 pub(crate) fn enforce_call_policy(

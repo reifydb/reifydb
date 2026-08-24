@@ -25,7 +25,7 @@ use reifydb_flow::transaction::{
 	substrate::{FlowSubstrate, classify_pending, operator_writes},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_store_operator::types::OperatorWrite;
+use reifydb_store_operator::types::{DurablePre, OperatorWrite};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
@@ -662,5 +662,62 @@ fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
 	assert!(
 		!writes.iter().any(|write| matches!(write, OperatorWrite::Replace { key, .. } if *key == fresh_inner)),
 		"an absent key must never be claimed as Replace"
+	);
+}
+
+#[test]
+fn clearing_state_claims_a_pre_image_only_for_the_keys_the_store_actually_holds() {
+	// state_clear scans through txn.range, which merges the pending overlay, so a key this transaction has
+	// already written is measured at the size of its own uncommitted value. Claiming that size debits the
+	// census for a row the store never held, so such a key must reach the drain unclassified and let the
+	// deferred probe resolve it as absent. Falsified by classifying every scanned key, which turns the fresh
+	// key's removal into Present and drifts the bucket until the next restart.
+	let engine = TestEngine::new();
+	let operator = OperatorId(1);
+	let durable = make_key("durable");
+	let fresh = make_key("fresh");
+
+	seed_state_row(&engine, operator, &durable, make_value("0123456789"));
+
+	let store = engine.inner().operator_state();
+	let durable_inner = EncodedKey::new(durable.as_slice());
+	let fresh_inner = EncodedKey::new(fresh.as_slice());
+	let expected_pre = ByteSize::from_bytes(
+		store.get(operator, &durable_inner)
+			.expect("the seeded row must be durable before the clear")
+			.bytes()
+			.len() as u64,
+	);
+
+	let mut txn = deferred_shared(&engine);
+	txn.state_set(operator, &fresh, make_value("new")).unwrap();
+	txn.state_clear(operator).unwrap();
+
+	let pending = txn.take_pending();
+	let deferred = classify_pending(&store, &pending);
+	let writes = operator_writes(&pending, &deferred);
+
+	let pre_of = |wanted: &EncodedKey| {
+		writes.iter()
+			.find_map(|write| match write {
+				OperatorWrite::Remove {
+					key,
+					pre,
+					..
+				} if key == wanted => Some(*pre),
+				_ => None,
+			})
+			.expect("state_clear must emit a Remove for every key its scan reached")
+	};
+
+	assert_eq!(
+		pre_of(&durable_inner),
+		DurablePre::Present(expected_pre),
+		"a key the store holds must be removed against its exact durable size"
+	);
+	assert_eq!(
+		pre_of(&fresh_inner),
+		DurablePre::Absent,
+		"a key that exists only as this transaction's own write must never be removed as Present"
 	);
 }

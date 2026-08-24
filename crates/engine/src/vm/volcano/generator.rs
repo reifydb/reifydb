@@ -15,7 +15,7 @@ use crate::{
 	Result,
 	error::EngineError,
 	vm::{
-		callable::{CallSite, invoke_procedure_routine},
+		callable::{CallSite, ProcedureCall, invoke_procedure_routine},
 		volcano::query::{QueryContext, QueryNode, eval_context_from_query},
 	},
 };
@@ -82,10 +82,12 @@ impl GeneratorNode {
 					&stored_ctx.services,
 					&stored_ctx.symbols,
 					txn,
-					procedure,
-					&self.function_name,
-					self.function_name.text(),
-					&params,
+					ProcedureCall {
+						routine: procedure,
+						fragment: &self.function_name,
+						target: self.function_name.text(),
+						params: &params,
+					},
 					CallSite::Named,
 				)
 			}

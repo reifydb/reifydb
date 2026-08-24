@@ -37,7 +37,7 @@ use crate::{
 	error::EngineError,
 	policy::PolicyEvaluator,
 	vm::{
-		callable::{CallSite, invoke_procedure_routine},
+		callable::{CallSite, ProcedureCall, invoke_procedure_routine},
 		exec::broadcast::broadcast_many,
 		services::Services,
 		stack::ControlFlow,
@@ -672,10 +672,12 @@ impl<'a> Vm<'a> {
 			ctx.services,
 			&self.symbols,
 			ctx.tx,
-			&routine,
-			name,
-			func_name,
-			&call_params,
+			ProcedureCall {
+				routine: &routine,
+				fragment: name,
+				target: func_name,
+				params: &call_params,
+			},
 			CallSite::Named,
 		)?;
 		let columns = if attach_metadata {

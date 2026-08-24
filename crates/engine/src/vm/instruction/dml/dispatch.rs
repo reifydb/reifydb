@@ -24,7 +24,7 @@ use reifydb_value::{
 use crate::{
 	Result,
 	vm::{
-		callable::{CallSite, enforce_call_policy, invoke_procedure_routine},
+		callable::{CallSite, ProcedureCall, enforce_call_policy, invoke_procedure_routine},
 		services::Services,
 		vm::Vm,
 	},
@@ -201,10 +201,12 @@ pub(crate) fn dispatch(
 				services,
 				&vm.symbols,
 				tx,
-				&native_proc,
-				&handler_fragment,
-				&handler_name,
-				&call_params,
+				ProcedureCall {
+					routine: &native_proc,
+					fragment: &handler_fragment,
+					target: &handler_name,
+					params: &call_params,
+				},
 				CallSite::EventHandler {
 					event: &sumtype.name,
 					variant: &plan.variant_name,
