@@ -75,8 +75,12 @@ impl Rng {
 	}
 }
 
+const TIGHT_RANGE_BUDGET: u64 = 128 * 1024;
+
+const BUDGET_ABOVE_WORKING_SET: u64 = 4 * 1024 * 1024;
+
 fn store(cached: bool) -> (OperatorStore, SqliteTempPathGuard) {
-	store_with_range_budget(cached, 128 * 1024)
+	store_with_range_budget(cached, TIGHT_RANGE_BUDGET)
 }
 
 fn store_with_range_budget(cached: bool, range_bytes: u64) -> (OperatorStore, SqliteTempPathGuard) {
@@ -190,8 +194,8 @@ fn drain_cacheable(store: &OperatorStore) {
 #[test]
 fn a_warm_cache_reads_far_less_than_the_oracle_for_the_same_answers() {
 	// A tier that answers correctly while still reaching sqlite is worthless, so reads are measured.
-	let (cached, _cached_guard) = store_with_range_budget(true, 4 * 1024 * 1024);
-	let (oracle, _oracle_guard) = store_with_range_budget(false, 4 * 1024 * 1024);
+	let (cached, _cached_guard) = store_with_range_budget(true, BUDGET_ABOVE_WORKING_SET);
+	let (oracle, _oracle_guard) = store_with_range_budget(false, BUDGET_ABOVE_WORKING_SET);
 	let mut rng = Rng(SEED);
 	let mut live: HashMap<(OperatorId, EncodedKey), ByteSize> = HashMap::new();
 

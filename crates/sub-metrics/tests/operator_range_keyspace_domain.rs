@@ -94,13 +94,20 @@ fn operator_range_keyspace_pins_the_published_layout() {
 	// Resident state is a level and cache work is a counter; swapping either publishes a summed gauge.
 	let spec = MetricsDomain::StoreOperatorRangeKeyspace.spec();
 
+	let intervals = spec
+		.measures
+		.iter()
+		.find(|m| m.name == "intervals")
+		.expect("coverage fragmentation is invisible without a claim count per keyspace");
+	assert_eq!(intervals.kind, MetricKind::Level, "a claim count is a level; as a counter it sums across samples");
+
 	let levels = spec.measures.iter().filter(|m| m.kind == MetricKind::Level).count();
 	let counters = spec.measures.iter().filter(|m| m.kind == MetricKind::Counter).count();
-	assert_eq!((levels, counters), (3, 8), "used/partitions/entries are levels, the rest counters");
-	assert_eq!(spec.measures.len(), 11, "no measure outside the level/counter split");
+	assert_eq!((levels, counters), (4, 8), "used/partitions/intervals/entries are levels, the rest counters");
+	assert_eq!(spec.measures.len(), 12, "no measure outside the level/counter split");
 
 	let current = spec.columns(Surface::Current);
-	assert_eq!(current.len(), 13, "ts + keyspace + 3 levels + 8 counters");
+	assert_eq!(current.len(), 14, "ts + keyspace + 4 levels + 8 counters");
 	assert_eq!(current[0].name, "ts");
 	assert_eq!(current[1].name, "keyspace");
 	assert!(

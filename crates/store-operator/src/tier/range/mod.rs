@@ -260,6 +260,7 @@ pub struct OperatorRangeKeyspaceMetrics {
 	pub keyspace: Keyspace,
 	pub used: ByteSize,
 	pub partitions: usize,
+	pub intervals: usize,
 	pub entries: usize,
 	pub counters: OperatorRangeMetrics,
 }

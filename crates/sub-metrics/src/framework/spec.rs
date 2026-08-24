@@ -680,6 +680,7 @@ impl MetricsDomain {
 				measures: vec![
 					level("used", ValueType::Uint8),
 					level("partitions", ValueType::Uint8),
+					level("intervals", ValueType::Uint8),
 					level("entries", ValueType::Uint8),
 					counter("hits", ValueType::Uint8),
 					counter("misses", ValueType::Uint8),

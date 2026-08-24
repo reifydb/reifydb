@@ -711,11 +711,13 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 
 	let accumulator = keyspace_row(&tier, Keyspace::ACCUMULATOR);
 	assert_eq!(accumulator.partitions, 2);
+	assert_eq!(accumulator.intervals, 2);
 	assert_eq!(accumulator.entries, 2);
 	assert_eq!(accumulator.used, ByteSize::from_bytes(per_partition * 2));
 
 	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
 	assert_eq!(buffer.partitions, 1);
+	assert_eq!(buffer.intervals, 1);
 	assert_eq!(buffer.entries, 1);
 	assert_eq!(buffer.used, ByteSize::from_bytes(per_partition));
 
@@ -726,6 +728,10 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 		"every resident byte must be attributed to exactly one keyspace, or the table leaks or double counts"
 	);
 	assert_eq!(tier.keyspace_metrics().iter().map(|row| row.partitions).sum::<usize>(), tier.partitions());
+	assert!(
+		tier.keyspace_metrics().iter().map(|row| row.intervals).sum::<usize>() >= tier.intervals(),
+		"every claim must be counted in at least one keyspace, or a fragmenting keyspace reports none"
+	);
 	assert_eq!(tier.keyspace_metrics().iter().map(|row| row.entries).sum::<usize>(), tier.entries());
 }
 

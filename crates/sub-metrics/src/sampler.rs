@@ -491,6 +491,7 @@ fn operator_range_keyspace_row(metrics: &OperatorRangeKeyspaceMetrics) -> Metric
 		measures: vec![
 			level_bytes("used", metrics.used),
 			level_count("partitions", metrics.partitions as u64),
+			level_count("intervals", metrics.intervals as u64),
 			level_count("entries", metrics.entries as u64),
 			counter_count("hits", metrics.counters.hits),
 			counter_count("misses", metrics.counters.misses),
@@ -707,6 +708,7 @@ mod tests {
 			keyspace: Keyspace::SOURCE_WATERMARK,
 			used: ByteSize::from_bytes(20_733),
 			partitions: 115,
+			intervals: 203,
 			entries: 419,
 			counters: OperatorRangeMetrics {
 				hits: 1_207,

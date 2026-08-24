@@ -247,9 +247,11 @@ impl OperatorRangeTier {
 	pub fn keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
 		let mut used = vec![0u64; KEYSPACE_SLOTS];
 		let mut partitions = vec![0usize; KEYSPACE_SLOTS];
+		let mut intervals = vec![0usize; KEYSPACE_SLOTS];
 		let mut entries = vec![0usize; KEYSPACE_SLOTS];
 		let mut counters = vec![OperatorRangeMetrics::default(); KEYSPACE_SLOTS];
 
+		let mut resident: Vec<PartitionId> = Vec::new();
 		for shard in self.all_shards() {
 			let shard = shard.lock();
 			for (id, partition) in &shard.partitions {
@@ -257,9 +259,21 @@ impl OperatorRangeTier {
 				used[slot] += partition.bytes as u64;
 				partitions[slot] += 1;
 				entries[slot] += partition.entries.len();
+				resident.push(*id);
 			}
 			for (slot, source) in shard.keyspace_metrics.iter().enumerate() {
 				accumulate(&mut counters[slot], source);
+			}
+		}
+
+		{
+			let coverage = self.coverage().read();
+			for id in resident {
+				let Some(set) = coverage.operators.get(&id.operator) else {
+					continue;
+				};
+				let (start, end) = id.span();
+				intervals[id.keyspace.0 as usize] += set.overlapping(&start, &end).len();
 			}
 		}
 
@@ -270,6 +284,7 @@ impl OperatorRangeTier {
 				keyspace: Keyspace(slot as u8),
 				used: ByteSize::from_bytes(used[slot]),
 				partitions: partitions[slot],
+				intervals: intervals[slot],
 				entries: entries[slot],
 				counters: counters[slot],
 			})
