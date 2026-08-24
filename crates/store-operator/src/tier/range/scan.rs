@@ -837,7 +837,7 @@ mod tests {
 
 		for keyspace in [top, middle, bottom] {
 			assert!(keyspace.is_cached());
-			assert!(claim(&tier, &range, &whole(keyspace), &[(key(keyspace, b"k"), row(keyspace.name()))]));
+			assert!(claim(&tier, &range, &whole(keyspace), &[(key(keyspace, b"k"), row(&keyspace.name()))]));
 		}
 
 		assert_eq!(intervals(&tier).len(), 1, "the three claims must coalesce, or the split is not under test");

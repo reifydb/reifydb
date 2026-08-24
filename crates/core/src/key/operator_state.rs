@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{borrow::Cow, ops::Bound};
 
 use reifydb_codec::key::{
 	deserializer::KeyDeserializer,
@@ -149,7 +149,7 @@ impl Keyspace {
 
 	pub const CUSTOM_CACHED: Self = Self(0x42);
 
-	pub fn name(&self) -> &'static str {
+	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
 			Self::ROW_NUMBER_MAPPING => "ROW_NUMBER_MAPPING",
 			Self::GROUP_DICTIONARY => "GROUP_DICTIONARY",
@@ -188,11 +188,9 @@ impl Keyspace {
 			Self::SEAL_ANCHOR => "SEAL_ANCHOR",
 			Self::CUSTOM_NOT_CACHED => "CUSTOM_NOT_CACHED",
 			Self::CUSTOM_CACHED => "CUSTOM_CACHED",
-			_ => unimplemented!(
-				"keyspace {:#04x} declares no name; it must be a declared constant",
-				self.0
-			),
+			_ => return Cow::Owned(format!("{:#04x}", self.0)),
 		}
+		.into()
 	}
 
 	pub fn is_data(&self) -> bool {
