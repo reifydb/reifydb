@@ -69,6 +69,30 @@ pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
 	inner.starts_with(&group_inner_prefix(group)).then_some(group)
 }
 
+/// Which operator-store tiers a keyspace may live in.
+///
+/// The two tiers answer opposite access patterns, so one flag cannot speak for both: a keyspace
+/// drained only by a due-ordered range scan earns nothing in the point tier and everything in the
+/// range tier, and a keyspace of one hot key per group is the reverse. A keyspace that states the
+/// wrong side is not wrong loudly; it just reads sqlite forever.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CachePolicy {
+	Neither,
+	Point,
+	Range,
+	Both,
+}
+
+impl CachePolicy {
+	pub fn caches_points(&self) -> bool {
+		matches!(self, Self::Point | Self::Both)
+	}
+
+	pub fn caches_ranges(&self) -> bool {
+		matches!(self, Self::Range | Self::Both)
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Keyspace(pub u8);
 
@@ -201,11 +225,15 @@ impl Keyspace {
 		!self.is_data()
 	}
 
-	pub fn is_cached(&self) -> bool {
-		!matches!(
-			*self,
-			Self::CUSTOM_NOT_CACHED | Self::JOIN_PIN | Self::ENGINE_META | Self::EXPIRY | Self::TIMER_WHEEL
-		)
+	pub fn cache_policy(&self) -> CachePolicy {
+		match *self {
+			Self::CUSTOM_NOT_CACHED
+			| Self::JOIN_PIN
+			| Self::ENGINE_META
+			| Self::EXPIRY
+			| Self::TIMER_WHEEL => CachePolicy::Neither,
+			_ => CachePolicy::Both,
+		}
 	}
 
 	pub fn is_known(&self) -> bool {
@@ -507,7 +535,7 @@ mod tests {
 	use std::{ops::Bound, slice};
 
 	use super::{
-		EncodedKey, EncodedKeyRange, GroupId, GroupSet, KeySerializer, Keyspace, OperatorStateKey,
+		CachePolicy, EncodedKey, EncodedKeyRange, GroupId, GroupSet, KeySerializer, Keyspace, OperatorStateKey,
 		group_data_inner_range, group_data_of_inner, group_data_range, group_identity_inner_range,
 		group_identity_range, group_inner_prefix, group_inner_range, group_range, is_framed_inner,
 		keyspace_range, node_prefix, node_range,
@@ -526,46 +554,47 @@ mod tests {
 		Identity,
 	}
 
-	/// Every keyspace the substrate declares, with the phase allowed to erase it. The phase is written
-	/// down rather than read back from `is_data`, or a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, Keyspace, Phase); 37] = [
-		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity),
-		("APPEND_DICTIONARY", Keyspace::APPEND_DICTIONARY, Phase::Identity),
-		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity),
-		("NODE_COUNTER", Keyspace::NODE_COUNTER, Phase::Identity),
-		("GROUP_RECORD", Keyspace::GROUP_RECORD, Phase::Identity),
-		("SOURCE_WATERMARK", Keyspace::SOURCE_WATERMARK, Phase::Identity),
-		("TIMER_WHEEL", Keyspace::TIMER_WHEEL, Phase::Identity),
-		("TIMER_INDEX", Keyspace::TIMER_INDEX, Phase::Identity),
-		("ACCUMULATOR", Keyspace::ACCUMULATOR, Phase::Data),
-		("BUFFER", Keyspace::BUFFER, Phase::Data),
-		("RUNNING", Keyspace::RUNNING, Phase::Data),
-		("EMIT", Keyspace::EMIT, Phase::Data),
-		("EXPIRY", Keyspace::EXPIRY, Phase::Data),
-		("COUNT", Keyspace::COUNT, Phase::Data),
-		("ROW_INDEX", Keyspace::ROW_INDEX, Phase::Data),
-		("SESSION", Keyspace::SESSION, Phase::Data),
-		("ROLLING_META", Keyspace::ROLLING_META, Phase::Data),
-		("ENGINE_META", Keyspace::ENGINE_META, Phase::Data),
-		("DISTINCT_ENTRY", Keyspace::DISTINCT_ENTRY, Phase::Data),
-		("WINDOW_META", Keyspace::WINDOW_META, Phase::Data),
-		("JOIN_LEFT", Keyspace::JOIN_LEFT, Phase::Data),
-		("JOIN_RIGHT", Keyspace::JOIN_RIGHT, Phase::Data),
-		("JOIN_SCHEMA", Keyspace::JOIN_SCHEMA, Phase::Data),
-		("RINGBUFFER_FORWARD", Keyspace::RINGBUFFER_FORWARD, Phase::Data),
-		("RINGBUFFER_ENTRY", Keyspace::RINGBUFFER_ENTRY, Phase::Data),
-		("GATE_VISIBILITY", Keyspace::GATE_VISIBILITY, Phase::Data),
-		("DISTINCT_LAYOUT", Keyspace::DISTINCT_LAYOUT, Phase::Data),
-		("RINGBUFFER_EXPIRY", Keyspace::RINGBUFFER_EXPIRY, Phase::Data),
-		("RINGBUFFER_TTL_ARM", Keyspace::RINGBUFFER_TTL_ARM, Phase::Data),
-		("SEAL_LEDGER", Keyspace::SEAL_LEDGER, Phase::Data),
-		("JOIN_PUBLISHED", Keyspace::JOIN_PUBLISHED, Phase::Data),
-		("JOIN_PIN", Keyspace::JOIN_PIN, Phase::Data),
-		("RINGBUFFER_META", Keyspace::RINGBUFFER_META, Phase::Data),
-		("REAP_QUEUE", Keyspace::REAP_QUEUE, Phase::Data),
-		("SEAL_ANCHOR", Keyspace::SEAL_ANCHOR, Phase::Data),
-		("CUSTOM_NOT_CACHED", Keyspace::CUSTOM_NOT_CACHED, Phase::Data),
-		("CUSTOM_CACHED", Keyspace::CUSTOM_CACHED, Phase::Data),
+	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
+	/// be cached in. Both are written down rather than read back from `is_data` and `cache_policy`, or
+	/// a keyspace changing sides would pass unremarked.
+	const CENSUS: [(&str, Keyspace, Phase, CachePolicy); 37] = [
+		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity, CachePolicy::Both),
+		("APPEND_DICTIONARY", Keyspace::APPEND_DICTIONARY, Phase::Identity, CachePolicy::Both),
+		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity, CachePolicy::Both),
+		("NODE_COUNTER", Keyspace::NODE_COUNTER, Phase::Identity, CachePolicy::Both),
+		("GROUP_RECORD", Keyspace::GROUP_RECORD, Phase::Identity, CachePolicy::Both),
+		("SOURCE_WATERMARK", Keyspace::SOURCE_WATERMARK, Phase::Identity, CachePolicy::Both),
+		("TIMER_WHEEL", Keyspace::TIMER_WHEEL, Phase::Identity, CachePolicy::Neither),
+		("TIMER_INDEX", Keyspace::TIMER_INDEX, Phase::Identity, CachePolicy::Both),
+		("ACCUMULATOR", Keyspace::ACCUMULATOR, Phase::Data, CachePolicy::Both),
+		("BUFFER", Keyspace::BUFFER, Phase::Data, CachePolicy::Both),
+		("RUNNING", Keyspace::RUNNING, Phase::Data, CachePolicy::Both),
+		("EMIT", Keyspace::EMIT, Phase::Data, CachePolicy::Both),
+		("EXPIRY", Keyspace::EXPIRY, Phase::Data, CachePolicy::Neither),
+		("COUNT", Keyspace::COUNT, Phase::Data, CachePolicy::Both),
+		("ROW_INDEX", Keyspace::ROW_INDEX, Phase::Data, CachePolicy::Both),
+		("SESSION", Keyspace::SESSION, Phase::Data, CachePolicy::Both),
+		("ROLLING_META", Keyspace::ROLLING_META, Phase::Data, CachePolicy::Both),
+		("ENGINE_META", Keyspace::ENGINE_META, Phase::Data, CachePolicy::Neither),
+		("DISTINCT_ENTRY", Keyspace::DISTINCT_ENTRY, Phase::Data, CachePolicy::Both),
+		("WINDOW_META", Keyspace::WINDOW_META, Phase::Data, CachePolicy::Both),
+		("JOIN_LEFT", Keyspace::JOIN_LEFT, Phase::Data, CachePolicy::Both),
+		("JOIN_RIGHT", Keyspace::JOIN_RIGHT, Phase::Data, CachePolicy::Both),
+		("JOIN_SCHEMA", Keyspace::JOIN_SCHEMA, Phase::Data, CachePolicy::Both),
+		("RINGBUFFER_FORWARD", Keyspace::RINGBUFFER_FORWARD, Phase::Data, CachePolicy::Both),
+		("RINGBUFFER_ENTRY", Keyspace::RINGBUFFER_ENTRY, Phase::Data, CachePolicy::Both),
+		("GATE_VISIBILITY", Keyspace::GATE_VISIBILITY, Phase::Data, CachePolicy::Both),
+		("DISTINCT_LAYOUT", Keyspace::DISTINCT_LAYOUT, Phase::Data, CachePolicy::Both),
+		("RINGBUFFER_EXPIRY", Keyspace::RINGBUFFER_EXPIRY, Phase::Data, CachePolicy::Both),
+		("RINGBUFFER_TTL_ARM", Keyspace::RINGBUFFER_TTL_ARM, Phase::Data, CachePolicy::Both),
+		("SEAL_LEDGER", Keyspace::SEAL_LEDGER, Phase::Data, CachePolicy::Both),
+		("JOIN_PUBLISHED", Keyspace::JOIN_PUBLISHED, Phase::Data, CachePolicy::Both),
+		("JOIN_PIN", Keyspace::JOIN_PIN, Phase::Data, CachePolicy::Neither),
+		("RINGBUFFER_META", Keyspace::RINGBUFFER_META, Phase::Data, CachePolicy::Both),
+		("REAP_QUEUE", Keyspace::REAP_QUEUE, Phase::Data, CachePolicy::Both),
+		("SEAL_ANCHOR", Keyspace::SEAL_ANCHOR, Phase::Data, CachePolicy::Both),
+		("CUSTOM_NOT_CACHED", Keyspace::CUSTOM_NOT_CACHED, Phase::Data, CachePolicy::Neither),
+		("CUSTOM_CACHED", Keyspace::CUSTOM_CACHED, Phase::Data, CachePolicy::Both),
 	];
 
 	/// Counts `Keyspace` constants from the source text. There is no reflection over associated
@@ -777,7 +806,7 @@ mod tests {
 	#[test]
 	fn every_declared_keyspace_names_itself_for_offline_attribution() {
 		// every declared keyspace must name itself, or an offline census misattributes it as CUSTOM
-		for (name, keyspace, _) in CENSUS {
+		for (name, keyspace, _, _) in CENSUS {
 			assert_eq!(
 				keyspace.name(),
 				name,
@@ -799,6 +828,36 @@ mod tests {
 	}
 
 	#[test]
+	fn every_declared_keyspace_states_the_tiers_it_may_be_cached_in() {
+		// The census names the policy so a keyspace moving between tiers has to be moved here too. A
+		// wrong side is silent: the tier just declines every span and the keyspace reads sqlite forever,
+		// which reads as a cold cache rather than as a policy mistake.
+		for (name, keyspace, _, policy) in CENSUS {
+			assert_eq!(
+				keyspace.cache_policy(),
+				policy,
+				"{name} ({:#04x}) is cached on a different side than the census records",
+				keyspace.0
+			);
+		}
+
+		let neither: Vec<&str> =
+			CENSUS.iter().filter(|(_, _, _, p)| *p == CachePolicy::Neither).map(|(n, ..)| *n).collect();
+		assert_eq!(
+			neither,
+			["TIMER_WHEEL", "EXPIRY", "ENGINE_META", "JOIN_PIN", "CUSTOM_NOT_CACHED"],
+			"widening the set a tier refuses turns that tier into an off switch and only shows up as a \
+			 throughput loss in a replay, so every move in or out is a measured decision"
+		);
+
+		assert!(
+			Keyspace(0x43).cache_policy() == CachePolicy::Both,
+			"an undeclared keyspace must default to cacheable, or a custom operator silently loses \
+			 both tiers"
+		);
+	}
+
+	#[test]
 	fn every_declared_keyspace_is_distinct_framing_and_swept_by_exactly_one_phase() {
 		// every declared keyspace must have a unique byte and belong to exactly one reclamation phase
 		assert_eq!(
@@ -809,7 +868,7 @@ mod tests {
 		);
 
 		let mut seen: Vec<(&str, u8)> = Vec::new();
-		for (name, keyspace, phase) in CENSUS {
+		for (name, keyspace, phase, _) in CENSUS {
 			if let Some((other, _)) = seen.iter().find(|(_, byte)| *byte == keyspace.0) {
 				panic!("{name} and {other} both claim keyspace byte {:#04x}", keyspace.0);
 			}

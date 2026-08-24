@@ -28,7 +28,7 @@ fn absence_interlock() {
 impl OperatorRangeTier {
 	pub fn lookup(&self, operator: OperatorId, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
 		let partition = PartitionId::of(operator, key)?;
-		if !partition.is_cached() {
+		if !partition.caches_ranges() {
 			return None;
 		}
 		let index = self.shard_index(&partition);

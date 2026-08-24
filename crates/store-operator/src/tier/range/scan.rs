@@ -54,7 +54,7 @@ impl OperatorRangeTier {
 
 		let head = partition_at(operator, &lo)?;
 		let (_, head_end) = head.span();
-		if hi <= head_end && !head.is_cached() {
+		if hi <= head_end && !head.caches_ranges() {
 			return None;
 		}
 
@@ -77,7 +77,7 @@ impl OperatorRangeTier {
 				} else {
 					Segment::Gap {
 						interval,
-						exempt: !head.is_cached(),
+						exempt: !head.caches_ranges(),
 					}
 				},
 				Some(head),
@@ -154,7 +154,7 @@ impl OperatorRangeTier {
 					}
 					Tally::Untallied => {}
 				}
-				if partition.is_cached() {
+				if partition.caches_ranges() {
 					if let Some(resident) = shard.partitions.get_mut(&partition) {
 						resident.covered = true;
 					}
@@ -190,7 +190,7 @@ impl OperatorRangeTier {
 		let Some(partition) = PartitionId::of(scan.operator, &segment.start) else {
 			return ServedChunk::Gap;
 		};
-		if !partition.is_cached() {
+		if !partition.caches_ranges() {
 			return ServedChunk::Gap;
 		}
 
@@ -267,7 +267,7 @@ impl OperatorRangeTier {
 				let (_, bound) = partition.span();
 				let end = bound.min(span.end.clone());
 				let piece = Interval::new(start, end.clone());
-				if partition.is_cached() && !piece.is_empty() {
+				if partition.caches_ranges() && !piece.is_empty() {
 					if !self.install_partition(scan, &piece, rows) {
 						return Install::Refused;
 					}
@@ -293,7 +293,7 @@ impl OperatorRangeTier {
 		let Some(partition) = PartitionId::of(scan.operator, &span.start) else {
 			return false;
 		};
-		if !partition.is_cached() {
+		if !partition.caches_ranges() {
 			return false;
 		}
 		let (_, bound) = partition.span();
@@ -448,7 +448,7 @@ fn exempt_gap(operator: OperatorId, gap: &Interval) -> bool {
 	let Some(partition) = PartitionId::of(operator, &gap.start) else {
 		return false;
 	};
-	if partition.is_cached() {
+	if partition.caches_ranges() {
 		return false;
 	}
 	let (_, end) = partition.span();
@@ -539,7 +539,7 @@ fn split_at_partitions(operator: OperatorId, segment: &Segment, out: &mut Vec<(S
 			} else {
 				Segment::Gap {
 					interval: piece,
-					exempt: !partition.is_cached(),
+					exempt: !partition.caches_ranges(),
 				}
 			},
 			Some(partition),
@@ -766,7 +766,10 @@ mod tests {
 
 		for raw in (Keyspace::EXPIRY.0 + 1)..UNCACHED.0 {
 			let keyspace = Keyspace(raw);
-			assert!(keyspace.is_cached(), "the fixture middle must be cacheable, or it proves nothing");
+			assert!(
+				keyspace.cache_policy().caches_ranges(),
+				"the fixture middle must be cacheable, or it proves nothing"
+			);
 			assert!(
 				claim(&tier, &range, &whole(keyspace), &[]) == Install::Installed,
 				"an empty proven span is still a claim"
@@ -914,7 +917,7 @@ mod tests {
 		let range = across(top, bottom);
 
 		for keyspace in [top, middle, bottom] {
-			assert!(keyspace.is_cached());
+			assert!(keyspace.cache_policy().caches_ranges());
 			assert!(claim(
 				&tier,
 				&range,

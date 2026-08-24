@@ -83,7 +83,7 @@ impl OperatorRangeTier {
 	}
 
 	fn cacheable(&self, operator: OperatorId, key: &EncodedKey) -> Option<PartitionId> {
-		PartitionId::of(operator, key).filter(PartitionId::is_cached)
+		PartitionId::of(operator, key).filter(PartitionId::caches_ranges)
 	}
 
 	fn participates(&self, index: usize, partition: &PartitionId) -> bool {

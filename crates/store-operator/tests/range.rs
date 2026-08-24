@@ -580,8 +580,14 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_still_installs_the_on
 	let (store, storage, _guard) = cached_store();
 	let uncached = Keyspace::JOIN_PIN;
 	let cached = Keyspace::JOIN_PUBLISHED;
-	assert!(!uncached.is_cached(), "the fixture needs an uncached keyspace the scan crosses first");
-	assert!(cached.is_cached(), "the fixture needs a cached keyspace the scan reaches second");
+	assert!(
+		!uncached.cache_policy().caches_ranges(),
+		"the fixture needs a keyspace the range tier keeps out and the scan crosses first"
+	);
+	assert!(
+		cached.cache_policy().caches_ranges(),
+		"the fixture needs a keyspace the range tier admits and the scan reaches second"
+	);
 	assert_eq!(cached.0 + 1, uncached.0, "the two keyspaces must be adjacent, or the scan never orders them");
 
 	for suffix in 1..=3u8 {

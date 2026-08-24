@@ -125,10 +125,11 @@ impl PartitionId {
 		(start, end)
 	}
 
-	/// Whether the keyspace may be cached at all. An uncacheable partition is never installed, and
-	/// its gaps never count against the gap guard, or a group-wide scan would degrade forever.
-	pub fn is_cached(&self) -> bool {
-		self.keyspace.is_cached()
+	/// Whether the keyspace may live in this tier. A partition the policy keeps out is never
+	/// installed, and its gaps never count against the gap guard, or a group-wide scan would degrade
+	/// forever.
+	pub fn caches_ranges(&self) -> bool {
+		self.keyspace.cache_policy().caches_ranges()
 	}
 }
 

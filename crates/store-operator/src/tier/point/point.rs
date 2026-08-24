@@ -10,7 +10,7 @@ use crate::tier::point::{OperatorPointTier, PointKey, Shard, Slot, account, entr
 impl OperatorPointTier {
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
 		let keyspace = keyspace_of(key)?;
-		if !keyspace.is_cached() {
+		if !keyspace.cache_policy().caches_points() {
 			self.charge_excluded_miss(keyspace);
 			return None;
 		}
@@ -39,7 +39,7 @@ impl OperatorPointTier {
 
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> Option<bool> {
 		let keyspace = keyspace_of(key)?;
-		if !keyspace.is_cached() {
+		if !keyspace.cache_policy().caches_points() {
 			self.charge_excluded_miss(keyspace);
 			return None;
 		}
@@ -70,7 +70,7 @@ impl OperatorPointTier {
 		let Some(keyspace) = keyspace_of(key) else {
 			return false;
 		};
-		if !keyspace.is_cached() {
+		if !keyspace.cache_policy().caches_points() {
 			return false;
 		}
 		let id = PointKey {
@@ -145,7 +145,7 @@ impl OperatorPointTier {
 		let Some(keyspace) = keyspace_of(key) else {
 			return;
 		};
-		if !keyspace.is_cached() {
+		if !keyspace.cache_policy().caches_points() {
 			return;
 		}
 		let id = PointKey {
@@ -206,7 +206,7 @@ impl OperatorPointTier {
 }
 
 fn insert_entry(shard: &mut Shard, keyspace: Keyspace, id: PointKey, row: Option<EncodedPodRow>) {
-	if !keyspace.is_cached() {
+	if !keyspace.cache_policy().caches_points() {
 		return;
 	}
 	let next = shard.next_tick;
