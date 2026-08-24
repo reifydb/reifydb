@@ -14,7 +14,7 @@ use reifydb_sqlite::batch::values_placeholders;
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 #[cfg(reifydb_assertions)]
 use rusqlite::OptionalExtension;
-use rusqlite::{ToSql, Transaction, params, params_from_iter};
+use rusqlite::{ToSql, Transaction, TransactionBehavior, params, params_from_iter};
 use tracing::instrument;
 
 #[cfg(reifydb_assertions)]
@@ -109,7 +109,8 @@ impl SqliteOperatorStorage {
 		let Some(conn) = guard.as_ref() else {
 			return;
 		};
-		let transaction = conn.unchecked_transaction().expect("operator state batch could not begin");
+		let transaction = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
+			.expect("operator state batch could not begin");
 		reifydb_assertions! {
 			verify_batch_classification(&transaction, writes);
 		}
@@ -201,7 +202,8 @@ impl SqliteOperatorStorage {
 		}
 		let guard = self.inner.conn.lock();
 		let conn = guard.as_ref().expect("operator state flush ran without an open connection");
-		let transaction = conn.unchecked_transaction().expect("operator state flush could not begin");
+		let transaction = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
+			.expect("operator state flush could not begin");
 		reifydb_assertions! {
 			verify_flush_classification(&transaction, batch);
 		}
