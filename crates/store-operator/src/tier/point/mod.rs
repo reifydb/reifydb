@@ -12,6 +12,7 @@
 #[allow(clippy::module_inception)]
 mod point;
 mod pool;
+mod sketch;
 #[cfg(test)]
 mod tests;
 
@@ -33,10 +34,15 @@ use reifydb_core::{
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::byte_size::ByteSize;
 
+use crate::tier::point::sketch::Sketch;
+
 #[derive(Clone, Copy, Debug)]
 pub struct OperatorPointConfig {
 	pub resident_bytes: Option<ByteSize>,
 	pub shards: usize,
+	/// Frequency counters per sketch row, per shard; the sketch is fixed size and sits outside the
+	/// resident budget, so raising this buys admission accuracy with memory the budget never sees.
+	pub sketch_counters: usize,
 }
 
 impl Default for OperatorPointConfig {
@@ -44,6 +50,7 @@ impl Default for OperatorPointConfig {
 		Self {
 			resident_bytes: Some(ByteSize::from_mib(64)),
 			shards: 16,
+			sketch_counters: 16384,
 		}
 	}
 }
@@ -98,6 +105,8 @@ pub struct OperatorPointMetrics {
 	pub fills_started: u64,
 	pub fills_dirty_aborted: u64,
 	pub fills_duplicate: u64,
+	/// New entries the sketch judged colder than the victim they would have displaced.
+	pub admissions_refused: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -126,6 +135,7 @@ struct Shard {
 	budget: MemoryBudget,
 	next_tick: u64,
 	rng: u64,
+	sketch: Sketch,
 	metrics: OperatorPointMetrics,
 	keyspace_metrics: KeyspaceCounters,
 }

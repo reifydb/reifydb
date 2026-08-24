@@ -20,6 +20,7 @@ impl OperatorPointTier {
 		};
 		let counter = keyspace.0 as usize;
 		let mut shard = self.shard_for(&id).lock();
+		shard.record_access(&id);
 		let next = shard.next_tick;
 		let Some(position) = shard.index.get(&id).copied() else {
 			shard.metrics.misses += 1;
@@ -49,6 +50,7 @@ impl OperatorPointTier {
 		};
 		let counter = keyspace.0 as usize;
 		let mut shard = self.shard_for(&id).lock();
+		shard.record_access(&id);
 		let next = shard.next_tick;
 		let Some(position) = shard.index.get(&id).copied() else {
 			shard.metrics.misses += 1;
@@ -111,8 +113,7 @@ impl OperatorPointTier {
 		if let Some(interlock) = self.inner.interlock.as_ref() {
 			interlock(self, &id);
 		}
-		insert_entry(&mut shard, keyspace, id, row);
-		true
+		insert_entry(&mut shard, keyspace, id, row)
 	}
 
 	pub fn abort_fill(&self, operator: OperatorId, key: &EncodedKey) {
@@ -200,14 +201,15 @@ impl OperatorPointTier {
 			shard.slots.clear();
 			shard.filling.clear();
 			shard.next_tick = 0;
+			shard.sketch.clear();
 			shard.budget.reset();
 		}
 	}
 }
 
-fn insert_entry(shard: &mut Shard, keyspace: Keyspace, id: PointKey, row: Option<EncodedPodRow>) {
+fn insert_entry(shard: &mut Shard, keyspace: Keyspace, id: PointKey, row: Option<EncodedPodRow>) -> bool {
 	if !keyspace.cache_policy().caches_points() {
-		return;
+		return false;
 	}
 	let next = shard.next_tick;
 	let new = entry_footprint(&id, &row);
@@ -220,6 +222,12 @@ fn insert_entry(shard: &mut Shard, keyspace: Keyspace, id: PointKey, row: Option
 			account(&shard.budget, old, new);
 		}
 		None => {
+			let fits = shard.budget.used().as_bytes() + new as u64 <= shard.budget.limit().as_bytes();
+			if !fits && !shard.admits(&id) {
+				shard.metrics.admissions_refused += 1;
+				shard.keyspace_metrics[keyspace.0 as usize].admissions_refused += 1;
+				return false;
+			}
 			shard.slots.push(Slot {
 				key: id.clone(),
 				row,
@@ -233,4 +241,5 @@ fn insert_entry(shard: &mut Shard, keyspace: Keyspace, id: PointKey, row: Option
 	shard.keyspace_metrics[keyspace.0 as usize].insertions += 1;
 	shard.next_tick = next + 1;
 	shard.evict_to_capacity();
+	true
 }

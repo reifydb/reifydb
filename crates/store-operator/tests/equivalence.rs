@@ -97,6 +97,7 @@ fn store_with_range_budget(cached: bool, range_bytes: u64) -> (OperatorStore, Sq
 		point: cached.then(|| OperatorPointConfig {
 			resident_bytes: Some(ByteSize::from_bytes(128 * 1024)),
 			shards: 4,
+			sketch_counters: OperatorPointConfig::default().sketch_counters,
 		}),
 		range: cached.then(|| OperatorRangeConfig {
 			resident_bytes: Some(ByteSize::from_bytes(range_bytes)),

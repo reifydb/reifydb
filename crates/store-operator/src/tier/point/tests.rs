@@ -15,7 +15,7 @@ use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::point::{
 	ENTRY_OVERHEAD, FillInterlock, OperatorPointConfig, OperatorPointKeyspaceMetrics, OperatorPointMetrics,
-	OperatorPointTier, PointKey, keyspace_of,
+	OperatorPointTier, PointKey, keyspace_of, sketch::Sketch,
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -27,6 +27,7 @@ fn sharded(limit: u64, shards: usize) -> OperatorPointTier {
 	OperatorPointTier::new(OperatorPointConfig {
 		resident_bytes: Some(ByteSize::from_bytes(limit)),
 		shards,
+		sketch_counters: OperatorPointConfig::default().sketch_counters,
 	})
 	.expect("a tier with a byte budget must be constructed")
 }
@@ -416,6 +417,7 @@ fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
 		OperatorPointConfig {
 			resident_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
+			sketch_counters: OperatorPointConfig::default().sketch_counters,
 		},
 		hook,
 	)
@@ -437,6 +439,7 @@ fn a_tier_without_a_byte_budget_is_not_constructed() {
 	assert!(OperatorPointTier::new(OperatorPointConfig {
 		resident_bytes: None,
 		shards: 16,
+		sketch_counters: 16384,
 	})
 	.is_none());
 	assert!(OperatorPointTier::new(OperatorPointConfig::default()).is_some());
@@ -864,4 +867,133 @@ fn an_excluded_keyspace_read_acquires_no_shard() {
 		"the miss must still be charged to the keyspace, or the read is invisible"
 	);
 	assert_eq!(tier.misses(), 32, "and the tier aggregate must fold the lock free counter in");
+}
+
+fn sweep(tier: &OperatorPointTier, count: u32, sample: &Option<EncodedPodRow>) {
+	for index in 0..count {
+		let cold = key(GROUP_A, Keyspace::ACCUMULATOR, &index.to_be_bytes());
+		assert!(tier.get(OP_A, &cold).is_none(), "a swept key must be unknown before it is filled");
+		tier.begin_fill(OP_A, &cold);
+		tier.finish_fill(OP_A, cold, sample.clone());
+	}
+}
+
+#[test]
+fn a_cold_sweep_does_not_displace_the_key_the_reads_keep_asking_for() {
+	let hot = key(GROUP_A, Keyspace::ACCUMULATOR, b"hot");
+	let sample = Some(row("v"));
+	let tier = tier((footprint(&hot, &sample) * 4) as u64);
+
+	fill(&tier, OP_A, hot.clone(), sample.clone());
+	for _ in 0..64 {
+		assert!(tier.get(OP_A, &hot).is_some(), "the fixture must keep the hot key resident while it warms");
+	}
+
+	sweep(&tier, 64, &sample);
+
+	assert!(
+		tier.get(OP_A, &hot).is_some(),
+		"a sweep of keys read once each must not evict a key read sixty four times"
+	);
+	assert!(
+		tier.evictions() > 0,
+		"the sweep must have put the shard under real pressure, or survival proves nothing"
+	);
+}
+
+#[test]
+fn a_key_missed_often_enough_out_ranks_its_victim_and_is_admitted() {
+	let probe = key(GROUP_A, Keyspace::ACCUMULATOR, b"probe");
+	let sample = Some(row("v"));
+	let tier = tier((footprint(&probe, &sample) * 4) as u64);
+
+	sweep(&tier, 32, &sample);
+
+	let mut attempts = 0;
+	while tier.get(OP_A, &probe).is_none() {
+		attempts += 1;
+		assert!(attempts <= 32, "a key read repeatedly must be admitted, or admission starves every newcomer");
+		tier.begin_fill(OP_A, &probe);
+		tier.finish_fill(OP_A, probe.clone(), sample.clone());
+	}
+}
+
+#[test]
+fn an_update_to_a_resident_key_is_never_refused() {
+	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"k");
+	let sample = Some(row("v"));
+	let tier = tier(footprint(&k, &sample) as u64);
+
+	fill(&tier, OP_A, k.clone(), sample);
+	tier.overwrite(OP_A, k.clone(), row("w"));
+
+	let served = tier.get(OP_A, &k).expect("a resident key must stay resident across an update");
+	assert_eq!(body(&served), "w", "the update must replace the row, never be dropped by admission");
+	assert_eq!(tier.metrics().admissions_refused, 0, "an update must never reach the gate at all");
+}
+
+#[test]
+fn admission_stays_out_of_the_way_while_the_shard_has_room() {
+	let tier = roomy();
+
+	for index in 0..64u32 {
+		let k = key(GROUP_A, Keyspace::ACCUMULATOR, &index.to_be_bytes());
+		assert!(tier.begin_fill(OP_A, &k));
+		assert!(tier.finish_fill(OP_A, k, Some(row("v"))), "a fill into a shard with room must publish");
+	}
+
+	assert_eq!(tier.metrics().admissions_refused, 0, "nothing may be refused while the budget is unspent");
+	assert_eq!(tier.entries(), 64, "every fill must have landed");
+}
+
+#[test]
+fn a_refused_insert_charges_no_bytes_and_writes_no_index_entry() {
+	let sample = Some(row("v"));
+	let shape = key(GROUP_A, Keyspace::ACCUMULATOR, b"aaaa");
+	let tier = tier((footprint(&shape, &sample) * 3) as u64);
+
+	for index in 0..3u32 {
+		let resident = key(GROUP_A, Keyspace::ACCUMULATOR, &index.to_be_bytes());
+		fill(&tier, OP_A, resident.clone(), sample.clone());
+		for _ in 0..32 {
+			assert!(tier.get(OP_A, &resident).is_some(), "the fixture must warm every resident key");
+		}
+	}
+
+	let cold = key(GROUP_A, Keyspace::ACCUMULATOR, b"cold");
+	assert!(tier.get(OP_A, &cold).is_none());
+	tier.begin_fill(OP_A, &cold);
+	assert!(
+		!tier.finish_fill(OP_A, cold, sample),
+		"a key colder than every entry in the sample must be refused, not admitted over one of them"
+	);
+
+	assert_eq!(tier.metrics().admissions_refused, 1, "exactly the one refused insert must be counted");
+	assert_eq!(tier.tallied_bytes(), tier.resident_bytes(), "a refusal must charge exactly nothing");
+	assert!(tier.index_is_consistent(), "a refusal must leave no index entry behind its missing slot");
+}
+
+#[test]
+fn halving_decays_the_counters_without_flattening_their_ranking() {
+	let mut sketch = Sketch::new(1024);
+	let hot = 1u64;
+	let cold = 2u64;
+	let filler = 3u64;
+
+	for _ in 0..200 {
+		sketch.record(&hot, 0);
+	}
+	sketch.record(&cold, 0);
+	assert_eq!(sketch.resets(), 0, "the decay must not fire before its threshold");
+	let warm = sketch.estimate(&hot);
+
+	while sketch.resets() == 0 {
+		sketch.record(&filler, 0);
+	}
+
+	assert!(sketch.estimate(&hot) < warm, "the decay must actually lower the counters it halves");
+	assert!(
+		sketch.estimate(&hot) > sketch.estimate(&cold),
+		"a key read two hundred times must still out-rank one read once after the decay"
+	);
 }
