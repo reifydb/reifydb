@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::BTreeMap;
+
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_store::coverage::{Edge, Entry, successor};
 use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::range::{OperatorRangeTier, PartitionId, Shard, account, entry_footprint};
+use crate::tier::range::{
+	OperatorRangeTier, PARTITION_OVERHEAD, Partition, PartitionId, PinnedCount, Shard, account, entry_footprint,
+};
 
 impl OperatorRangeTier {
 	pub fn overwrite(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
@@ -91,40 +95,57 @@ impl OperatorRangeTier {
 	}
 
 	fn place(&self, index: usize, partition: &PartitionId, key: EncodedKey, entry: Entry<EncodedPodRow>) -> bool {
+		let resident = self.shard(index).lock().partitions.get(partition).map(|target| target.covered);
+		let admit = match resident {
+			Some(covered) => covered,
+			None => self.claims(partition, &key),
+		};
+		if !admit {
+			return false;
+		}
+
 		let mut shard = self.shard(index).lock();
 		let next = shard.next_tick;
-		let mut placed = false;
 		{
 			let Shard {
 				partitions,
 				budget,
 				..
 			} = &mut *shard;
-			if let Some(target) = partitions.get_mut(partition) {
-				if target.covered {
-					let new = entry_footprint(&key, &entry);
-					let old = match target.entries.get(&key) {
-						Some(previous) => {
-							let old = entry_footprint(&key, previous);
-							target.pinned.replace(previous, &entry);
-							old
-						}
-						None => {
-							target.pinned.insert(&entry);
-							0
-						}
-					};
-					target.entries.insert(key, entry);
-					account(&mut target.bytes, budget, old, new);
-					target.tick = next;
-					placed = true;
-				}
+			let fresh = !partitions.contains_key(partition);
+			let target = partitions.entry(*partition).or_insert_with(|| Partition {
+				entries: BTreeMap::new(),
+				pinned: PinnedCount::new(),
+				bytes: PARTITION_OVERHEAD,
+				tick: next,
+				installs: 0,
+				covered: true,
+			});
+			if fresh {
+				budget.charge(ByteSize::from_bytes(PARTITION_OVERHEAD as u64));
 			}
+			let new = entry_footprint(&key, &entry);
+			let old = match target.entries.get(&key) {
+				Some(previous) => {
+					let old = entry_footprint(&key, previous);
+					target.pinned.replace(previous, &entry);
+					old
+				}
+				None => {
+					target.pinned.insert(&entry);
+					0
+				}
+			};
+			target.entries.insert(key, entry);
+			account(&mut target.bytes, budget, old, new);
+			target.tick = next;
 		}
-		if placed {
-			shard.next_tick = next + 1;
-		}
-		placed
+		shard.next_tick = next + 1;
+		true
+	}
+
+	fn claims(&self, partition: &PartitionId, key: &EncodedKey) -> bool {
+		self.coverage().read().operators.get(&partition.operator).is_some_and(|set| set.contains(key))
 	}
 
 	fn discard(&self, index: usize, partition: &PartitionId, key: &EncodedKey) {

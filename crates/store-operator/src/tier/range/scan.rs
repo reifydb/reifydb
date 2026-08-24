@@ -303,9 +303,14 @@ impl OperatorRangeTier {
 
 		let index = self.shard_index(&partition);
 		let slot = partition.keyspace.0 as usize;
+		let lands = rows.iter().any(|(key, _)| span.contains(key));
 		let (fresh, inserted) = {
 			let mut inserted = Vec::new();
 			let mut shard = self.shard(index).lock();
+			if !lands && !shard.partitions.contains_key(&partition) {
+				drop(shard);
+				return self.claim_only(scan, span, index, slot);
+			}
 			let tick = shard.next_tick;
 			let Shard {
 				partitions,
@@ -374,6 +379,28 @@ impl OperatorRangeTier {
 			if self.retractions() != scan.retractions {
 				drop(coverage);
 				self.roll_back_install(index, partition, fresh, &inserted);
+				let mut shard = self.shard(index).lock();
+				shard.metrics.installs_raced += 1;
+				shard.keyspace_metrics[slot].installs_raced += 1;
+				return false;
+			}
+			coverage.operators
+				.entry(scan.operator)
+				.or_default()
+				.extend(span.start.clone(), span.end.clone());
+		}
+
+		let mut shard = self.shard(index).lock();
+		shard.metrics.installs += 1;
+		shard.keyspace_metrics[slot].installs += 1;
+		true
+	}
+
+	fn claim_only(&self, scan: &RangeScan, span: &Interval, index: usize, slot: usize) -> bool {
+		{
+			let mut coverage = self.coverage().write();
+			if self.retractions() != scan.retractions {
+				drop(coverage);
 				let mut shard = self.shard(index).lock();
 				shard.metrics.installs_raced += 1;
 				shard.keyspace_metrics[slot].installs_raced += 1;
@@ -1019,6 +1046,54 @@ mod tests {
 				}
 			),
 			"the fixture must actually straddle an exempt keyspace"
+		);
+	}
+
+	#[test]
+	fn an_install_that_proves_an_empty_span_claims_it_without_paying_for_a_partition() {
+		// A span the persistent tier answered with nothing is worth claiming, but the claim lives in the
+		// coverage index and the partition would hold no row. Charging one anyway lets a scan that crosses
+		// many empty keyspaces spend the whole budget on structures holding nothing, which evicts the rows
+		// the tier exists to serve.
+		let tier = roomy();
+		let range = keyspace_inner_range(GROUP, CACHED);
+
+		assert!(claim(&tier, &range, &whole(CACHED), &[]) == Install::Installed);
+
+		assert_eq!(tier.partitions(), 0, "a proof of emptiness must not materialise a partition to hold it");
+		assert_eq!(tier.intervals(), 1, "the claim itself must survive, or the span is read again forever");
+		assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "an unmaterialised proof must cost no budget");
+		assert_eq!(
+			tier.lookup(OP, &key(CACHED, b"a")),
+			Some(None),
+			"the claim must still answer a point read as a proven absence"
+		);
+	}
+
+	#[test]
+	fn a_write_into_a_span_proved_empty_lands_instead_of_vanishing_behind_the_proof() {
+		// Before, a claim implied a partition, so a write finding none could be dropped: no partition meant
+		// no claim to contradict. Once a claim can outlive its partition that reasoning inverts, and a
+		// dropped write leaves the claim asserting the tier holds every key in a span it no longer does.
+		let tier = roomy();
+		let range = keyspace_inner_range(GROUP, CACHED);
+		let at = key(CACHED, b"a");
+
+		assert!(claim(&tier, &range, &whole(CACHED), &[]) == Install::Installed);
+		assert_eq!(tier.partitions(), 0, "precondition: the claim stands with nothing behind it");
+
+		tier.insert(OP, at.clone(), row("v"));
+
+		assert_eq!(
+			tier.lookup(OP, &at),
+			Some(Some(row("v"))),
+			"a write the tier swallowed while keeping the claim reads back as a proven absence, which is \
+             the claim answering for a row sqlite holds"
+		);
+		assert_eq!(
+			tier.partitions(),
+			1,
+			"the write is what pays for the partition, not the scan that crossed it"
 		);
 	}
 }
