@@ -140,7 +140,7 @@ fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&Operator
 			}
 			None => {
 				if let Some(range) = range {
-					range.invalidate(*operator, key);
+					range.retract(*operator, key);
 				}
 				if let Some(point) = point {
 					point.invalidate(*operator, key);

@@ -414,6 +414,38 @@ fn a_removal_of_a_key_the_bucket_holds_drops_the_claim() {
 }
 
 #[test]
+fn a_flushed_removal_takes_its_row_out_of_the_bucket_and_leaves_the_rest_standing() {
+	// The refill runs while the tombstone is still only buffered, so the bucket installs the row sqlite has not
+	// erased yet and its claim holds only until the flush lands. Nothing revisits the bucket after that, so a flush
+	// that leaves the row behind serves a deleted row out of a bucket that answers outright.
+	let (store, storage, _guard) = cached_store();
+	seed_accumulator(&storage, 3);
+
+	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
+
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator: OP_A,
+		key: key_in(Keyspace::ACCUMULATOR, 2),
+		pre: DurablePre::Present(ByteSize::from_bytes(row("v2").bytes().len() as u64)),
+	}]);
+	assert_eq!(range_buckets(&store), 0, "the removal drops the bucket, which is what sets the refill up");
+
+	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v3"]);
+	assert_eq!(range_buckets(&store), 1, "the refill must install a bucket or the flush has nothing to correct");
+
+	assert!(store.flush_pending_blocking(), "the tombstone must reach sqlite before the bucket is put to the test");
+
+	assert_eq!(range_buckets(&store), 1, "a flushed removal must take one entry, not the whole keyspace");
+
+	let before = ScanCounters::sample();
+	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let scanned = before.since();
+
+	assert_eq!(bodies(&served), ["v1", "v3"], "the kept bucket must not serve the row the flush erased");
+	assert_eq!(scanned.fetched, 0, "the answer must have come from the bucket the flushed removal left standing");
+}
+
+#[test]
 fn a_removal_of_a_key_the_bucket_never_held_keeps_the_claim() {
 	// Retention erases keys by the million against buckets that never held them, so dropping the claim on each one
 	// is how the whole feature gets ground down to nothing.

@@ -188,6 +188,33 @@ impl OperatorRangeTier {
 		shard.evict_to_capacity();
 	}
 
+	pub fn retract(&self, operator: OperatorId, key: &EncodedKey) {
+		let Some(id) = BucketId::of(operator, key) else {
+			return;
+		};
+		let mut shard = self.shard_for(&id).lock();
+		if let Some(fill) = shard.filling.get_mut(&id) {
+			fill.dirty = true;
+		}
+		let next = shard.next_tick;
+		{
+			let Shard {
+				buckets,
+				budget,
+				..
+			} = &mut *shard;
+			let Some(bucket) = buckets.get_mut(&id) else {
+				return;
+			};
+			let Some(row) = bucket.entries.remove(key) else {
+				return;
+			};
+			account(&mut bucket.bytes, budget, entry_footprint(key, &row), 0);
+			bucket.tick = next;
+		}
+		shard.next_tick = next + 1;
+	}
+
 	pub fn invalidate(&self, operator: OperatorId, key: &EncodedKey) {
 		let Some(id) = BucketId::of(operator, key) else {
 			return;
