@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::scan::record_page};
 use reifydb_value::util::cowvec::CowVec;
-use rusqlite::{Connection, Rows, ToSql, params};
+use rusqlite::{Connection, Rows, ToSql, Transaction, TransactionBehavior, params};
 use tracing::instrument;
 
 use crate::{
@@ -109,7 +109,8 @@ impl SqliteOperatorStorage {
 		let Some(conn) = guard.as_ref() else {
 			return;
 		};
-		let transaction = conn.unchecked_transaction().expect("operator state drop could not begin");
+		let transaction = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
+			.expect("operator state drop could not begin");
 		transaction.execute(STATE_DROP_SQL, params![operator.0 as i64]).expect("operator state drop failed");
 		zero_operator_buckets(&transaction, operator);
 		transaction

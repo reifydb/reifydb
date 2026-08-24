@@ -24,7 +24,7 @@ use reifydb_value::{
 	error, reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration},
 };
-use rusqlite::{Connection, OptionalExtension, Result as SqliteResult, Row, Transaction, params};
+use rusqlite::{Connection, OptionalExtension, Result as SqliteResult, Row, Transaction, TransactionBehavior, params};
 use tracing::instrument;
 
 use crate::{
@@ -509,7 +509,8 @@ fn scan_droppable(conn: &Connection, cutoff_bytes: Option<&[u8; 8]>, limit: usiz
 
 #[instrument(name = "store::cdc::persistent::delete_blocks", level = "debug", skip_all, fields(block_count = doomed.len()))]
 fn delete_blocks(conn: &Connection, doomed: &[DoomedRow], floor_bytes: &[u8; 8]) -> Result<()> {
-	let tx = conn.unchecked_transaction().map_err(|e| error!(internal(format!("cdc drop tx begin: {e}"))))?;
+	let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
+		.map_err(|e| error!(internal(format!("cdc drop tx begin: {e}"))))?;
 	{
 		let mut stmt = tx
 			.prepare_cached(r#"DELETE FROM "cdc_block" WHERE max_version = ?1"#)

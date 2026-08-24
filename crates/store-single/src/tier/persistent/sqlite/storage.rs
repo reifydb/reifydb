@@ -25,7 +25,8 @@ use reifydb_value::{
 	Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::cowvec::CowVec, value::duration::Duration,
 };
 use rusqlite::{
-	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction, params,
+	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction,
+	TransactionBehavior, params,
 };
 use tracing::{instrument, warn};
 
@@ -317,7 +318,8 @@ impl TierStorage for SqlitePersistentStorage {
 impl SqlitePersistentStorage {
 	#[inline]
 	fn begin_tx<'a>(&self, conn: &'a Connection) -> Result<SqliteTransaction<'a>> {
-		conn.unchecked_transaction().map_err(|e| internal_error!("Failed to start transaction: {}", e))
+		SqliteTransaction::new_unchecked(conn, TransactionBehavior::Immediate)
+			.map_err(|e| internal_error!("Failed to start transaction: {}", e))
 	}
 
 	#[inline]
