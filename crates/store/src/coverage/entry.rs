@@ -1,0 +1,314 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+//! The three states a covered key can be in, and the rule that keeps a removal from being undone
+//! by eviction.
+//!
+//! Splitting a removal that has not reached the persistent tier from a proven absence is what lets
+//! coverage survive a write at all: a `Deleted` entry carries the removal, so the interval around
+//! it stays authoritative. Dropping one would resurrect the row the persistent tier still holds,
+//! so it is pinned until the flush that demotes it to `Absent`.
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Residency<V> {
+	Row(V),
+	Deleted,
+	Absent,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Entry<V> {
+	pub residency: Residency<V>,
+}
+
+impl<V> Entry<V> {
+	pub fn row(value: V) -> Self {
+		Self {
+			residency: Residency::Row(value),
+		}
+	}
+
+	/// A removal the persistent tier has not seen yet. Pinned until flushed.
+	pub fn deleted() -> Self {
+		Self {
+			residency: Residency::Deleted,
+		}
+	}
+
+	/// A proven absence: the persistent tier holds nothing here.
+	pub fn absent() -> Self {
+		Self {
+			residency: Residency::Absent,
+		}
+	}
+
+	pub fn value(&self) -> Option<&V> {
+		match &self.residency {
+			Residency::Row(value) => Some(value),
+			Residency::Deleted | Residency::Absent => None,
+		}
+	}
+
+	/// Whether a read is answered by this entry rather than falling through.
+	pub fn resolves(&self) -> bool {
+		match &self.residency {
+			Residency::Row(_) | Residency::Deleted | Residency::Absent => true,
+		}
+	}
+
+	/// Whether eviction may drop this entry without losing a claim the persistent tier disagrees
+	/// with.
+	pub fn evictable(&self) -> bool {
+		match &self.residency {
+			Residency::Row(_) | Residency::Absent => true,
+			Residency::Deleted => false,
+		}
+	}
+
+	/// Demotes a flushed removal to a proven absence, which is evictable again.
+	pub fn demote_flushed(&mut self) {
+		if matches!(self.residency, Residency::Deleted) {
+			self.residency = Residency::Absent;
+		}
+	}
+}
+
+/// Running count of entries eviction may not drop, so a budget can admit that a shard has a floor
+/// it cannot evict below and fall through to unpinned victims instead of wedging on a pinned
+/// sample.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PinnedCount {
+	pinned: usize,
+	total: usize,
+}
+
+impl PinnedCount {
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	pub fn insert<V>(&mut self, entry: &Entry<V>) {
+		self.total += 1;
+		if !entry.evictable() {
+			self.pinned += 1;
+		}
+	}
+
+	pub fn remove<V>(&mut self, entry: &Entry<V>) {
+		self.total -= 1;
+		if !entry.evictable() {
+			self.pinned -= 1;
+		}
+	}
+
+	/// Applies a state change in place, for a demotion or an overwrite of an existing key.
+	pub fn replace<V>(&mut self, before: &Entry<V>, after: &Entry<V>) {
+		match (before.evictable(), after.evictable()) {
+			(true, false) => self.pinned += 1,
+			(false, true) => self.pinned -= 1,
+			_ => {}
+		}
+	}
+
+	pub fn pinned(&self) -> usize {
+		self.pinned
+	}
+
+	pub fn total(&self) -> usize {
+		self.total
+	}
+
+	/// Whether any entry is still available for eviction.
+	pub fn has_victim(&self) -> bool {
+		self.total > self.pinned
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{Entry, PinnedCount, Residency};
+
+	fn row(value: u32) -> Entry<u32> {
+		Entry::row(value)
+	}
+
+	fn deleted() -> Entry<u32> {
+		Entry::deleted()
+	}
+
+	fn absent() -> Entry<u32> {
+		Entry::absent()
+	}
+
+	#[test]
+	fn deleted_is_never_evictable() {
+		// Dropping a removal the persistent tier has not seen resurrects the row it still holds.
+		assert!(!deleted().evictable());
+	}
+
+	#[test]
+	fn a_row_and_a_proven_absence_are_evictable() {
+		// Neither contradicts the persistent tier, so eviction only shrinks coverage.
+		assert!(row(7).evictable());
+		assert!(absent().evictable());
+	}
+
+	#[test]
+	fn only_a_row_carries_a_value() {
+		// A removal or an absence must never be read back as a row.
+		assert_eq!(row(7).value(), Some(&7));
+		assert_eq!(deleted().value(), None);
+		assert_eq!(absent().value(), None);
+	}
+
+	#[test]
+	fn every_state_resolves_a_read_outright() {
+		// A stored absence exists precisely so a read stops here instead of hitting sqlite.
+		assert!(row(7).resolves());
+		assert!(deleted().resolves());
+		assert!(absent().resolves());
+	}
+
+	#[test]
+	fn demote_flushed_makes_a_removal_evictable_again() {
+		// The flush proved the persistent tier agrees, so the pin must be released.
+		let mut entry = deleted();
+		entry.demote_flushed();
+		assert_eq!(entry.residency, Residency::Absent);
+		assert!(entry.evictable());
+	}
+
+	#[test]
+	fn demote_flushed_is_idempotent() {
+		// A second flush of the same key must not walk the state any further.
+		let mut entry = deleted();
+		entry.demote_flushed();
+		entry.demote_flushed();
+		entry.demote_flushed();
+		assert_eq!(entry.residency, Residency::Absent);
+	}
+
+	#[test]
+	fn demote_flushed_leaves_a_row_untouched() {
+		// A flush must never erase a live value it was only meant to confirm.
+		let mut entry = row(7);
+		entry.demote_flushed();
+		assert_eq!(entry.residency, Residency::Row(7));
+		assert_eq!(entry.value(), Some(&7));
+	}
+
+	#[test]
+	fn demote_flushed_leaves_a_proven_absence_untouched() {
+		// An absence is already the post-flush state; a flush must be a no-op on it.
+		let mut entry = absent();
+		entry.demote_flushed();
+		assert_eq!(entry.residency, Residency::Absent);
+	}
+
+	#[test]
+	fn insert_charges_a_removal_against_the_pinned_floor() {
+		// A budget that cannot see the floor would keep asking for victims that do not exist.
+		let mut count = PinnedCount::new();
+		count.insert(&deleted());
+		assert_eq!(count.pinned(), 1);
+		assert_eq!(count.total(), 1);
+	}
+
+	#[test]
+	fn insert_charges_an_evictable_entry_to_total_only() {
+		// Counting a row as pinned would understate the victims eviction can actually take.
+		let mut count = PinnedCount::new();
+		count.insert(&row(7));
+		count.insert(&absent());
+		assert_eq!(count.pinned(), 0);
+		assert_eq!(count.total(), 2);
+	}
+
+	#[test]
+	fn replace_moves_an_entry_across_the_pin_without_changing_total() {
+		// A transition is one entry before and after; charging total again double counts it.
+		let mut count = PinnedCount::new();
+		count.insert(&row(7));
+		assert_eq!((count.pinned(), count.total()), (0, 1));
+
+		count.replace(&row(7), &deleted());
+		assert_eq!((count.pinned(), count.total()), (1, 1));
+
+		count.replace(&deleted(), &absent());
+		assert_eq!((count.pinned(), count.total()), (0, 1));
+	}
+
+	#[test]
+	fn replace_between_two_evictable_states_changes_nothing() {
+		// An overwrite of a live row must not disturb the pinned floor.
+		let mut count = PinnedCount::new();
+		count.insert(&row(7));
+		count.replace(&row(7), &row(9));
+		assert_eq!((count.pinned(), count.total()), (0, 1));
+	}
+
+	#[test]
+	fn pinned_count_returns_to_zero_across_a_full_lifecycle() {
+		// Any leak in the arithmetic leaves a phantom floor eviction can never clear.
+		let mut count = PinnedCount::new();
+		count.insert(&row(7));
+		count.insert(&absent());
+		count.insert(&deleted());
+		assert_eq!((count.pinned(), count.total()), (1, 3));
+
+		count.replace(&deleted(), &absent());
+		assert_eq!((count.pinned(), count.total()), (0, 3));
+
+		count.remove(&row(7));
+		count.remove(&absent());
+		count.remove(&absent());
+		assert_eq!(count, PinnedCount::new());
+	}
+
+	#[test]
+	fn remove_releases_the_pin_of_a_removal_it_drops() {
+		// A pin outliving its entry wedges the shard on a floor with nothing behind it.
+		let mut count = PinnedCount::new();
+		count.insert(&deleted());
+		count.remove(&deleted());
+		assert_eq!((count.pinned(), count.total()), (0, 0));
+	}
+
+	#[test]
+	fn has_victim_is_false_when_every_entry_is_pinned() {
+		// The eviction loop must stop cleanly here rather than spin on an all-pinned sample.
+		let mut count = PinnedCount::new();
+		count.insert(&deleted());
+		count.insert(&deleted());
+		assert!(!count.has_victim());
+	}
+
+	#[test]
+	fn has_victim_is_true_when_one_unpinned_entry_remains() {
+		// Pressure must fall through to the single victim, not give up because most are pinned.
+		let mut count = PinnedCount::new();
+		count.insert(&deleted());
+		count.insert(&deleted());
+		count.insert(&row(7));
+		assert!(count.has_victim());
+	}
+
+	#[test]
+	fn has_victim_is_false_when_there_are_no_entries() {
+		// An empty shard has nothing to offer and must not report a victim.
+		assert!(!PinnedCount::new().has_victim());
+	}
+
+	#[test]
+	fn has_victim_follows_a_flush_that_releases_the_last_pin() {
+		// Flush lag, not tombstone density, is what bounds the pinned population.
+		let mut count = PinnedCount::new();
+		count.insert(&deleted());
+		assert!(!count.has_victim());
+
+		let mut entry = deleted();
+		entry.demote_flushed();
+		count.replace(&deleted(), &entry);
+		assert!(count.has_victim());
+	}
+}
