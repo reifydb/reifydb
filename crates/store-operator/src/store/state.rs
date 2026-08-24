@@ -27,7 +27,7 @@ use crate::{
 	store::{OperatorStore, StandardOperatorStore},
 	tier::{
 		commit::batch::DropMarker,
-		range::{proven_span, scan_range},
+		range::{Install, proven_span, scan_range},
 	},
 	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
@@ -445,13 +445,18 @@ impl StandardOperatorStore {
 								let last = batch.items.last().map(|(key, _)| key);
 								if let Some(proven) = proven_span(&span, last, complete)
 								{
-									if tier.install(scan, &proven, &batch.items) {
-										claim_start = batch
-											.items
-											.last()
-											.map(|(key, _)| successor(key));
-									} else {
-										installing = false;
+									match tier.install(scan, &proven, &batch.items)
+									{
+										Install::Installed
+										| Install::NothingCacheable => {
+											claim_start = batch
+												.items
+												.last()
+												.map(|(key, _)| {
+													successor(key)
+												});
+										}
+										Install::Refused => installing = false,
 									}
 								}
 							}

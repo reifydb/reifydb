@@ -17,7 +17,8 @@ use reifydb_store::coverage::{
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::range::{
-	OperatorRangeTier, PARTITION_OVERHEAD, Partition, PartitionId, RangeRows, RangeScan, Shard, entry_footprint,
+	Install, OperatorRangeTier, PARTITION_OVERHEAD, Partition, PartitionId, RangeRows, RangeScan, Shard,
+	entry_footprint,
 };
 
 impl RangeScan {
@@ -255,32 +256,36 @@ impl OperatorRangeTier {
 		ServedChunk::Served(rows)
 	}
 
-	pub fn install(&self, scan: &RangeScan, span: &Interval, rows: &[(EncodedKey, EncodedPodRow)]) -> bool {
-		if span.is_empty() {
-			return false;
-		}
+	pub fn install(&self, scan: &RangeScan, span: &Interval, rows: &[(EncodedKey, EncodedPodRow)]) -> Install {
 		let mut start = span.start.clone();
 		let mut installed = false;
-		loop {
-			let Some(partition) = PartitionId::of(scan.operator, &start) else {
-				return installed;
-			};
-			let (_, bound) = partition.span();
-			let end = bound.min(span.end.clone());
-			let piece = Interval::new(start, end.clone());
-			if partition.is_cached() && !piece.is_empty() {
-				if !self.install_partition(scan, &piece, rows) {
-					return false;
+		if !span.is_empty() {
+			loop {
+				let Some(partition) = PartitionId::of(scan.operator, &start) else {
+					break;
+				};
+				let (_, bound) = partition.span();
+				let end = bound.min(span.end.clone());
+				let piece = Interval::new(start, end.clone());
+				if partition.is_cached() && !piece.is_empty() {
+					if !self.install_partition(scan, &piece, rows) {
+						return Install::Refused;
+					}
+					installed = true;
 				}
-				installed = true;
+				if end == span.end {
+					break;
+				}
+				match end {
+					Edge::Key(key) => start = key,
+					Edge::Top => break,
+				}
 			}
-			if end == span.end {
-				return installed;
-			}
-			match end {
-				Edge::Key(key) => start = key,
-				Edge::Top => return installed,
-			}
+		}
+		if installed {
+			Install::Installed
+		} else {
+			Install::NothingCacheable
 		}
 	}
 
@@ -565,7 +570,7 @@ mod tests {
 	use reifydb_store::coverage::{Edge, Interval, RangeCursor, Segment, ServedChunk};
 	use reifydb_value::byte_size::ByteSize;
 
-	use crate::tier::range::{OperatorRangeConfig, OperatorRangeTier, PartitionId, RangeScan};
+	use crate::tier::range::{Install, OperatorRangeConfig, OperatorRangeTier, PartitionId, RangeScan};
 
 	const OP: OperatorId = OperatorId(1);
 	const GROUP: GroupId = GroupId(10);
@@ -617,7 +622,7 @@ mod tests {
 		range: &EncodedKeyRange,
 		span: &Interval,
 		rows: &[(EncodedKey, EncodedPodRow)],
-	) -> bool {
+	) -> Install {
 		let scan = tier.plan_scan(OP, range).expect("the fixture range must be plannable");
 		tier.install(&scan, span, rows)
 	}
@@ -661,13 +666,13 @@ mod tests {
 			&range,
 			&spanning(&at(b"c"), &at(b"e")),
 			&[(at(b"c"), row("c")), (at(b"d"), row("d"))]
-		));
+		) == Install::Installed);
 		assert!(claim(
 			&tier,
 			&range,
 			&spanning(&at(b"f"), &at(b"h")),
 			&[(at(b"f"), row("f")), (at(b"g"), row("g"))]
-		));
+		) == Install::Installed);
 
 		let scan = tier.plan_scan(OP, &range).expect("a whole-keyspace range must be plannable");
 		let keyspace = whole(CACHED);
@@ -711,13 +716,13 @@ mod tests {
 			&range,
 			&spanning(&at(b"a"), &at(b"c")),
 			&[(at(b"a"), row("a1")), (at(b"b"), row("b1"))]
-		));
+		) == Install::Installed);
 		assert!(claim(
 			&tier,
 			&range,
 			&spanning(&at(b"b"), &at(b"e")),
 			&[(at(b"b"), row("b2")), (at(b"c"), row("c1")), (at(b"d"), row("d1"))]
-		));
+		) == Install::Installed);
 
 		assert_eq!(intervals(&tier), [spanning(&at(b"a"), &at(b"e"))], "two touching claims must coalesce");
 
@@ -736,8 +741,10 @@ mod tests {
 		let range = keyspace_inner_range(GROUP, CACHED);
 		let at = |suffix: &[u8]| key(CACHED, suffix);
 
-		assert!(claim(&tier, &range, &spanning(&at(b"b"), &at(b"c")), &[(at(b"b"), row("b"))]));
-		assert!(claim(&tier, &range, &spanning(&at(b"d"), &at(b"e")), &[(at(b"d"), row("d"))]));
+		assert!(claim(&tier, &range, &spanning(&at(b"b"), &at(b"c")), &[(at(b"b"), row("b"))])
+			== Install::Installed);
+		assert!(claim(&tier, &range, &spanning(&at(b"d"), &at(b"e")), &[(at(b"d"), row("d"))])
+			== Install::Installed);
 
 		let scan = tier.plan_scan(OP, &range).expect("a whole-keyspace range must be plannable");
 		assert!(scan.degraded(), "three non-exempt gaps against a guard of one must abandon the plan");
@@ -760,7 +767,10 @@ mod tests {
 		for raw in (Keyspace::EXPIRY.0 + 1)..UNCACHED.0 {
 			let keyspace = Keyspace(raw);
 			assert!(keyspace.is_cached(), "the fixture middle must be cacheable, or it proves nothing");
-			assert!(claim(&tier, &range, &whole(keyspace), &[]), "an empty proven span is still a claim");
+			assert!(
+				claim(&tier, &range, &whole(keyspace), &[]) == Install::Installed,
+				"an empty proven span is still a claim"
+			);
 		}
 
 		let scan = tier.plan_scan(OP, &range).expect("a cross-keyspace range must be plannable");
@@ -795,7 +805,7 @@ mod tests {
 			&range,
 			&span,
 			&[(at(b"a"), row("a")), (at(b"b"), row("b")), (at(b"c"), row("c"))]
-		));
+		) == Install::Installed);
 		tier.mark_deleted(OP, &at(b"a"));
 		tier.mark_deleted(OP, &at(b"b"));
 
@@ -832,7 +842,10 @@ mod tests {
 		let page: Vec<(EncodedKey, EncodedPodRow)> =
 			(0..64u8).map(|index| (key(CACHED, &[index]), row("a fairly long row body"))).collect();
 
-		assert!(!claim(&tier, &range, &whole(CACHED), &page), "a span past the shard limit must be refused");
+		assert!(
+			claim(&tier, &range, &whole(CACHED), &page) == Install::Refused,
+			"a span past the shard limit must be refused"
+		);
 
 		assert_eq!(tier.partitions(), 0, "a refused install must leave no partition behind");
 		assert_eq!(tier.entries(), 0);
@@ -851,7 +864,11 @@ mod tests {
 		let range = across(UNCACHED, Keyspace(UNCACHED.0 - 1));
 		let at = key(UNCACHED, b"a");
 
-		assert!(!claim(&tier, &range, &whole(UNCACHED), &[(at.clone(), row("v"))]));
+		assert!(
+			claim(&tier, &range, &whole(UNCACHED), &[(at.clone(), row("v"))]) == Install::NothingCacheable,
+			"a span holding no cacheable partition must report nothing to cache, never refusal, or the \
+             caller stops installing for the rest of the scan"
+		);
 
 		assert_eq!(
 			tier.partitions(),
@@ -875,7 +892,7 @@ mod tests {
 
 		tier.record_retraction();
 
-		assert!(!tier.install(&scan, &whole(CACHED), &[(at.clone(), row("v"))]));
+		assert!(tier.install(&scan, &whole(CACHED), &[(at.clone(), row("v"))]) == Install::Refused);
 
 		assert_eq!(tier.partitions(), 0, "a refused install must roll back the partition it created");
 		assert_eq!(tier.entries(), 0);
@@ -898,7 +915,12 @@ mod tests {
 
 		for keyspace in [top, middle, bottom] {
 			assert!(keyspace.is_cached());
-			assert!(claim(&tier, &range, &whole(keyspace), &[(key(keyspace, b"k"), row(&keyspace.name()))]));
+			assert!(claim(
+				&tier,
+				&range,
+				&whole(keyspace),
+				&[(key(keyspace, b"k"), row(&keyspace.name()))]
+			) == Install::Installed);
 		}
 
 		assert_eq!(intervals(&tier).len(), 1, "the three claims must coalesce, or the split is not under test");
@@ -939,7 +961,10 @@ mod tests {
 		let rows = [(head.clone(), row("top")), (tail.clone(), row("bottom"))];
 
 		let scan = tier.plan_scan(OP, &across(top, bottom)).expect("a two-keyspace range must be plannable");
-		assert!(tier.install(&scan, &span, &rows), "an install spanning two cached partitions must be accepted");
+		assert!(
+			tier.install(&scan, &span, &rows) == Install::Installed,
+			"an install spanning two cached partitions must be accepted"
+		);
 
 		let body = |key: &EncodedKey| {
 			tier.lookup(OP, key)
@@ -964,9 +989,7 @@ mod tests {
 		let top = Keyspace::BUFFER;
 		let bottom = Keyspace::ACCUMULATOR;
 
-		let merged = tier
-			.plan_scan(OP, &across(top, bottom))
-			.expect("a two-keyspace range must be plannable");
+		let merged = tier.plan_scan(OP, &across(top, bottom)).expect("a two-keyspace range must be plannable");
 		assert_eq!(
 			merged.segments(),
 			[Segment::Gap {

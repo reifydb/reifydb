@@ -228,6 +228,18 @@ pub struct RangeScan {
 	pub(super) retractions: u64,
 }
 
+/// What an install did with the span it was handed.
+///
+/// `NothingCacheable` and `Refused` both leave RAM unchanged, but only `Refused` means the tier
+/// declined the claim; a caller that stops installing on `NothingCacheable` starves every keyspace
+/// sitting behind an uncacheable one for the rest of the scan.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Install {
+	Installed,
+	NothingCacheable,
+	Refused,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct OperatorRangeMetrics {
 	/// Segments a plan answered from RAM.

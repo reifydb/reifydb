@@ -21,8 +21,8 @@ use reifydb_store::coverage::{DEFAULT_GAP_GUARD, Interval, RangeCursor, Segment,
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::range::{
-	ENTRY_OVERHEAD, InstallInterlock, OperatorRangeConfig, OperatorRangeKeyspaceMetrics, OperatorRangeMetrics,
-	OperatorRangeTier, PARTITION_OVERHEAD, PartitionId,
+	ENTRY_OVERHEAD, Install, InstallInterlock, OperatorRangeConfig, OperatorRangeKeyspaceMetrics,
+	OperatorRangeMetrics, OperatorRangeTier, PARTITION_OVERHEAD, PartitionId,
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -73,7 +73,10 @@ fn install(
 	let range = keyspace_inner_range(group, keyspace);
 	let scan = tier.plan_scan(operator, &range).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap the fixture can install over");
-	assert!(tier.install(&scan, &gap, page), "the fixture page must fit the install it is staging");
+	assert!(
+		tier.install(&scan, &gap, page) == Install::Installed,
+		"the fixture page must fit the install it is staging"
+	);
 	PartitionId {
 		operator,
 		group,
@@ -328,7 +331,7 @@ fn an_install_that_does_not_fit_the_budget_is_refused_whole_and_evicts_nothing()
 		.map(|index| (key(third, Keyspace::ACCUMULATOR, &[index]), row("a fairly long row body")))
 		.collect();
 
-	assert!(!tier.install(&scan, &gap, &page), "a span past the shard limit must be refused");
+	assert!(tier.install(&scan, &gap, &page) == Install::Refused, "a span past the shard limit must be refused");
 
 	assert_eq!(tier.metrics().installs_refused, 1);
 	assert_eq!(tier.metrics().evictions, 0, "a new claim must never evict a proven resident to make room");
@@ -836,7 +839,7 @@ fn an_install_that_races_a_retraction_refuses_rather_than_reinstating_the_claim(
 
 	assert!(fired.load(Ordering::Relaxed), "the seam hook never fired, so the invariant went unchecked");
 	assert!(
-		!published,
+		published == Install::Refused,
 		"a claim withdrawn while the persistent read was in flight must refuse the install, or the install \
          reinstates a claim over a row the writer already removed"
 	);
@@ -883,7 +886,7 @@ fn a_concurrent_install_never_refuses_another_install() {
 	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 
 	assert!(
-		tier.install(&scan, &gap, &[(k.clone(), row("v"))]),
+		tier.install(&scan, &gap, &[(k.clone(), row("v"))]) == Install::Installed,
 		"only a withdrawal may refuse an install; the old fill handshake let two concurrent fills cancel each \
          other, which throws away work neither of them raced"
 	);

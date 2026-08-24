@@ -570,3 +570,60 @@ fn dropping_one_operators_state_forgets_every_claim_and_row_it_cached() {
 		"the neighbour operator keeps every row across the flushed drop"
 	);
 }
+
+#[test]
+fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_still_installs_the_ones_after_it() {
+	// Keycode inverts, so a scan walks keyspaces downward and every cached keyspace sitting one slot
+	// below an uncached one is reached only after the tier has already declined a span. Reading that
+	// decline as "the tier is full" starves the rest of the scan, and the starved keyspaces re-read
+	// sqlite on every pass forever.
+	let (store, storage, _guard) = cached_store();
+	let uncached = Keyspace::JOIN_PIN;
+	let cached = Keyspace::JOIN_PUBLISHED;
+	assert!(!uncached.is_cached(), "the fixture needs an uncached keyspace the scan crosses first");
+	assert!(cached.is_cached(), "the fixture needs a cached keyspace the scan reaches second");
+	assert_eq!(cached.0 + 1, uncached.0, "the two keyspaces must be adjacent, or the scan never orders them");
+
+	for suffix in 1..=3u8 {
+		storage.apply_batch(&[
+			OperatorWrite::Insert {
+				operator: OP_A,
+				key: key_in(uncached, suffix),
+				post: row(&format!("pin{suffix}")),
+			},
+			OperatorWrite::Insert {
+				operator: OP_A,
+				key: key_in(cached, suffix),
+				post: row(&format!("pub{suffix}")),
+			},
+		]);
+	}
+
+	let span = EncodedKeyRange::new(
+		keyspace_inner_range(GROUP, uncached).start,
+		keyspace_inner_range(GROUP, cached).end,
+	);
+
+	let first = store.range_batch(OP_A, span.clone(), 64);
+	assert_eq!(
+		bodies(&first),
+		["pin1", "pin2", "pin3", "pub1", "pub2", "pub3"],
+		"the scan must answer both keyspaces in full, or it never reached the cached one"
+	);
+	assert_eq!(
+		range_partitions(&store),
+		1,
+		"crossing an uncached keyspace must not stop the scan from installing the cached one behind it"
+	);
+
+	let before = ScanCounters::sample();
+	let second = store.range_batch(OP_A, span, 64);
+	let scanned = before.since();
+
+	assert_eq!(bodies(&second), ["pin1", "pin2", "pin3", "pub1", "pub2", "pub3"]);
+	assert_eq!(
+		scanned.fetched, 3,
+		"only the three rows of the uncacheable keyspace may reach sqlite twice; the cached keyspace \
+         must be answered from ram"
+	);
+}
