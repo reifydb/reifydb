@@ -22,7 +22,7 @@ use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	state::{StateExtension, StateRange},
-	substrate::FlowSubstrate,
+	substrate::{FlowSubstrate, classify_pending, operator_writes},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_store_operator::types::OperatorWrite;
@@ -607,4 +607,60 @@ fn probe_reverse_limit_one_round_trips() {
 	assert_eq!(batch.items[0].key, full_key(operator, &make_key("k04999")));
 	let batch = txn.state_range(operator, StateRange::reverse(range(), "probe")).unwrap();
 	assert_eq!(batch.items.len(), 5000);
+}
+
+#[test]
+fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
+	// The write path no longer reads a pre-image; classify_pending resolves every unclassified key in one
+	// batch at drain. A key that is already durable must still emit Replace carrying its exact byte size,
+	// and an unseen key must emit Insert. Falsified by returning an empty classification (operator_writes
+	// panics on unclassified) or by claiming Absent for the seeded key, which turns the Replace into an
+	// Insert and drifts the census by the pre-image size forever.
+	let engine = TestEngine::new();
+	let operator = OperatorId(1);
+	let seeded = make_key("durable");
+	let fresh = make_key("fresh");
+
+	seed_state_row(&engine, operator, &seeded, make_value("0123456789"));
+
+	let store = engine.inner().operator_state();
+	let seeded_inner = EncodedKey::new(seeded.as_slice());
+	let fresh_inner = EncodedKey::new(fresh.as_slice());
+	let expected_pre = ByteSize::from_bytes(
+		store.get(operator, &seeded_inner).expect("seeded row must be durable before the write").bytes().len()
+			as u64,
+	);
+
+	let mut txn = deferred_shared(&engine);
+	txn.state_set(operator, &seeded, make_value("replacement")).unwrap();
+	txn.state_set(operator, &fresh, make_value("new")).unwrap();
+
+	let pending = txn.take_pending();
+	let deferred = classify_pending(&store, &pending);
+	let writes = operator_writes(&pending, &deferred);
+
+	let replace = writes
+		.iter()
+		.find_map(|write| match write {
+			OperatorWrite::Replace {
+				key,
+				pre_value_bytes,
+				..
+			} if *key == seeded_inner => Some(*pre_value_bytes),
+			_ => None,
+		})
+		.expect("a write over a durable row must classify as Replace");
+	assert_eq!(
+		replace, expected_pre,
+		"the deferred classification must carry the durable pre-image size, not a guess"
+	);
+
+	assert!(
+		writes.iter().any(|write| matches!(write, OperatorWrite::Insert { key, .. } if *key == fresh_inner)),
+		"a write over a key with no durable row must classify as Insert"
+	);
+	assert!(
+		!writes.iter().any(|write| matches!(write, OperatorWrite::Replace { key, .. } if *key == fresh_inner)),
+		"an absent key must never be claimed as Replace"
+	);
 }

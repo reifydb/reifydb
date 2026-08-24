@@ -51,7 +51,11 @@ impl StandardOperatorStore {
 			BufferedAnchor::Expiry(millis) => Some(DateTime::from_millis(millis)),
 			BufferedAnchor::Tombstone | BufferedAnchor::Dropped => None,
 			BufferedAnchor::Absent => {
-				self.persistent.as_ref()?.anchor_get(operator, group, side, row_number)
+				let persistent = self.persistent.as_ref()?;
+				if !persistent.anchor_filter().may_contain(operator, group, side, row_number) {
+					return None;
+				}
+				persistent.anchor_get(operator, group, side, row_number)
 			}
 		}
 	}

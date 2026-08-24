@@ -262,15 +262,6 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		self.pending_layers().is_classified(key)
 	}
 
-	fn classify_durable(&mut self, key: &EncodedKey) -> Result<()> {
-		if self.is_classified(key) {
-			return Ok(());
-		}
-		let pre = self.storage_get(key)?.map(|bytes| ByteSize::from_bytes(bytes.len() as u64));
-		self.classify(key, pre);
-		Ok(())
-	}
-
 	#[inline]
 	fn lookup_overlays(&self, key: &EncodedKey) -> Option<Option<EncodedBytes>> {
 		match self.pending_layers().write_at(key) {

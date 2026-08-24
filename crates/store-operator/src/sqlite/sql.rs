@@ -32,6 +32,21 @@ pub(super) const STATE_DROP_SQL: &str = r#"DELETE FROM "operator_state" WHERE "o
 pub(super) const STATE_VALUE_LEN_SQL: &str =
 	r#"SELECT LENGTH("bytes") FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2"#;
 
+pub(super) const STATE_SIZE_CHUNK: usize = 512;
+
+pub(super) fn state_sizes_sql(count: usize) -> String {
+	let mut sql = String::from(r#"SELECT "key", LENGTH("bytes") FROM "operator_state" WHERE "operator" = ?1 AND "key" IN ("#);
+	for index in 0..count {
+		if index > 0 {
+			sql.push(',');
+		}
+		sql.push('?');
+		sql.push_str(&(index + 2).to_string());
+	}
+	sql.push(')');
+	sql
+}
+
 pub(super) const STATE_BYTES_SQL: &str =
 	r#"SELECT COALESCE(SUM(LENGTH("key") + LENGTH("bytes")), 0) FROM "operator_state" WHERE "operator" = ?1"#;
 
@@ -78,6 +93,8 @@ pub(super) const ANCHORS_DROP_OPERATOR_SQL: &str = r#"DELETE FROM "operator_seal
 
 pub(super) const ANCHORS_DROP_GROUP_SQL: &str =
 	r#"DELETE FROM "operator_seal_anchor" WHERE "operator" = ?1 AND "group" = ?2"#;
+
+pub(super) const ANCHOR_EXISTS_SQL: &str = r#"SELECT EXISTS(SELECT 1 FROM "operator_seal_anchor")"#;
 
 pub(super) const ANCHOR_COUNT_SQL: &str = r#"SELECT COUNT(*) FROM "operator_seal_anchor" WHERE "operator" = ?1"#;
 

@@ -3,7 +3,7 @@
 
 #[cfg(reifydb_assertions)]
 use std::collections::BTreeMap;
-use std::{cmp::Ordering, ops::Bound};
+use std::{cmp::Ordering, collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -15,7 +15,6 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 };
-#[cfg(reifydb_assertions)]
 use reifydb_value::byte_size::ByteSize;
 use reifydb_value::reifydb_assertions;
 #[cfg(reifydb_assertions)]
@@ -250,6 +249,57 @@ impl StandardOperatorStore {
 		}
 	}
 
+	#[instrument(name = "store::operator::state_sizes", level = "trace", skip(self, probes), fields(probe_count = probes.len()))]
+	pub fn state_sizes(&self, probes: &[(OperatorId, EncodedKey)]) -> Vec<Option<ByteSize>> {
+		let mut sizes: Vec<Option<ByteSize>> = Vec::with_capacity(probes.len());
+		let mut residual: HashMap<OperatorId, Vec<(usize, EncodedKey)>> = HashMap::new();
+		for (index, (operator, key)) in probes.iter().enumerate() {
+			match self.resolve_size(*operator, key) {
+				SizeProbe::Known(size) => sizes.push(size),
+				SizeProbe::Persistent => {
+					sizes.push(None);
+					residual.entry(*operator).or_default().push((index, key.clone()));
+				}
+			}
+		}
+		let Some(persistent) = self.persistent.as_ref() else {
+			return sizes;
+		};
+		for (operator, pending) in residual {
+			let keys: Vec<EncodedKey> = pending.iter().map(|(_, key)| key.clone()).collect();
+			let found = persistent.state_sizes(operator, &keys);
+			for (index, key) in pending {
+				sizes[index] = found.get(&key).copied();
+			}
+		}
+		sizes
+	}
+
+	fn resolve_size(&self, operator: OperatorId, key: &EncodedKey) -> SizeProbe {
+		match self.commit.lookup_state(operator, key) {
+			BufferedState::Row(row) => return SizeProbe::Known(Some(row_size(&row))),
+			BufferedState::Tombstone | BufferedState::Dropped => return SizeProbe::Known(None),
+			BufferedState::Absent => {}
+		}
+		let Some(persistent) = self.persistent.as_ref() else {
+			return SizeProbe::Known(None);
+		};
+		let cached = self.point.as_ref().and_then(|point| point.get(operator, key));
+		if let Some(Some(row)) = &cached {
+			return SizeProbe::Known(Some(row_size(row)));
+		}
+		if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
+			return SizeProbe::Known(authoritative.as_ref().map(row_size));
+		}
+		if cached.is_some() {
+			return SizeProbe::Known(None);
+		}
+		if !persistent.filter().may_contain(operator, key) {
+			return SizeProbe::Known(None);
+		}
+		SizeProbe::Persistent
+	}
+
 	#[instrument(name = "store::operator::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		match self.commit.lookup_state(operator, key) {
@@ -469,6 +519,12 @@ impl OperatorStore {
 		}
 	}
 
+	pub fn state_sizes(&self, probes: &[(OperatorId, EncodedKey)]) -> Vec<Option<ByteSize>> {
+		match self {
+			Self::Standard(store) => store.state_sizes(probes),
+		}
+	}
+
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
 		match self {
 			Self::Standard(store) => store.contains(operator, key),
@@ -484,5 +540,14 @@ impl OperatorStore {
 
 #[cfg(reifydb_assertions)]
 fn value_bytes(row: &EncodedPodRow) -> ByteSize {
+	ByteSize::from_bytes(row.bytes().len() as u64)
+}
+
+enum SizeProbe {
+	Known(Option<ByteSize>),
+	Persistent,
+}
+
+fn row_size(row: &EncodedPodRow) -> ByteSize {
 	ByteSize::from_bytes(row.bytes().len() as u64)
 }

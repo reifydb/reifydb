@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -25,7 +25,7 @@ use reifydb_value::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::sqlite::SqliteOperatorStorage;
 use crate::{
-	filter::OperatorKeyFilter,
+	filter::{OperatorAnchorFilter, OperatorKeyFilter},
 	tier::commit::batch::FlushBatch,
 	types::{OperatorBatch, OperatorSealAnchor, OperatorSealAnchorCensus, OperatorStateCensus},
 };
@@ -78,6 +78,18 @@ impl OperatorPersistentTier {
 	pub fn filter(&self) -> &OperatorKeyFilter {
 		match self {
 			Self::Sqlite(storage) => storage.filter(),
+		}
+	}
+
+	pub fn anchor_filter(&self) -> &OperatorAnchorFilter {
+		match self {
+			Self::Sqlite(storage) => storage.anchor_filter(),
+		}
+	}
+
+	pub fn state_sizes(&self, operator: OperatorId, keys: &[EncodedKey]) -> HashMap<EncodedKey, ByteSize> {
+		match self {
+			Self::Sqlite(storage) => storage.state_sizes(operator, keys),
 		}
 	}
 
@@ -189,6 +201,14 @@ impl OperatorPersistentTier {
 	}
 
 	pub fn filter(&self) -> &OperatorKeyFilter {
+		match *self {}
+	}
+
+	pub fn anchor_filter(&self) -> &OperatorAnchorFilter {
+		match *self {}
+	}
+
+	pub fn state_sizes(&self, _operator: OperatorId, _keys: &[EncodedKey]) -> HashMap<EncodedKey, ByteSize> {
 		match *self {}
 	}
 

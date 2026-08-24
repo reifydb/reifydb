@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::scan::record_page};
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use rusqlite::{Connection, Rows, ToSql, Transaction, TransactionBehavior, params};
 use tracing::instrument;
 
@@ -18,13 +18,45 @@ use crate::{
 		census::zero_operator_buckets,
 		sql::{
 			ANCHORS_DROP_OPERATOR_SQL, STATE_CONTAINS_SQL, STATE_DROP_SQL, STATE_EXISTS_SQL, STATE_GET_SQL,
-			STATE_KEY_COUNT_SQL, STATE_KEYS_AFTER_SQL, STATE_KEYS_FIRST_SQL, range_sql,
+			STATE_KEY_COUNT_SQL, STATE_KEYS_AFTER_SQL, STATE_KEYS_FIRST_SQL, STATE_SIZE_CHUNK, range_sql,
+			state_sizes_sql,
 		},
 	},
 	types::OperatorBatch,
 };
 
 impl SqliteOperatorStorage {
+	#[instrument(name = "store::operator::persistent::sqlite::state_sizes", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
+	pub fn state_sizes(&self, operator: OperatorId, keys: &[EncodedKey]) -> HashMap<EncodedKey, ByteSize> {
+		let mut sizes = HashMap::with_capacity(keys.len());
+		if keys.is_empty() || !self.state_written() {
+			return sizes;
+		}
+		let guard = self.read_conn();
+		let Some(conn) = guard.as_ref() else {
+			return sizes;
+		};
+		for chunk in keys.chunks(STATE_SIZE_CHUNK) {
+			let mut stmt = conn
+				.prepare_cached(&state_sizes_sql(chunk.len()))
+				.expect("operator state size probe could not be prepared");
+			let slices: Vec<&[u8]> = chunk.iter().map(|key| key.as_slice()).collect();
+			let mut params: Vec<&dyn ToSql> = Vec::with_capacity(chunk.len() + 1);
+			let operator_param = operator.0 as i64;
+			params.push(&operator_param);
+			for slice in &slices {
+				params.push(slice);
+			}
+			let mut rows = stmt.query(params.as_slice()).expect("operator state size probe failed");
+			while let Some(row) = rows.next().expect("operator state size probe failed") {
+				let key: Vec<u8> = row.get(0).expect("operator state rows carry a blob key");
+				let len: i64 = row.get(1).expect("operator state rows carry a byte length");
+				sizes.insert(EncodedKey::new(key), ByteSize::from_bytes(len as u64));
+			}
+		}
+		sizes
+	}
+
 	#[instrument(name = "store::operator::persistent::sqlite::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		if !self.state_written() {

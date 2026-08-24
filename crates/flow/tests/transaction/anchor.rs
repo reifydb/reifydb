@@ -11,7 +11,7 @@ use reifydb_flow::transaction::{
 	anchor::{SealAnchor, SealAnchorExtension, anchor_key},
 	deferred::DeferredTransaction,
 	state::StateExtension,
-	substrate::{FlowSubstrate, apply_operator_state, operator_writes},
+	substrate::{FlowSubstrate, apply_operator_state, classify_pending, operator_writes},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_store_operator::types::OperatorWrite;
@@ -66,8 +66,10 @@ fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
 
 fn commit_writes(engine: &TestEngine, txn: &mut DeferredTransaction) -> Vec<OperatorWrite> {
 	let pending = txn.take_pending();
-	let writes = operator_writes(&pending);
-	apply_operator_state(&engine.inner().operator_state(), &pending);
+	let store = engine.inner().operator_state();
+	let deferred = classify_pending(&store, &pending);
+	let writes = operator_writes(&pending, &deferred);
+	apply_operator_state(&store, &pending);
 	writes
 }
 

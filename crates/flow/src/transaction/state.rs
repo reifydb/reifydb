@@ -208,7 +208,7 @@ fn classify_state_write<T: FlowTransaction>(
 	if key.keyspace() == Some(Keyspace::SEAL_ANCHOR) {
 		return classify_durable_anchor(txn, id, key, scoped);
 	}
-	txn.classify_durable(scoped)
+	Ok(())
 }
 
 #[inline]

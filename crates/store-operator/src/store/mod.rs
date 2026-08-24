@@ -177,6 +177,10 @@ impl StandardOperatorStore {
 		self.persistent.as_ref().map(|tier| tier.filter().metrics())
 	}
 
+	pub fn persistent_anchor_filter_metrics(&self) -> Option<FilterMetrics> {
+		self.persistent.as_ref().map(|tier| tier.anchor_filter().metrics())
+	}
+
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		let mut collectors =
 			self.persistent.as_ref().map(OperatorPersistentTier::metrics_collectors).unwrap_or_default();
@@ -293,6 +297,12 @@ impl OperatorStore {
 	pub fn persistent_filter_metrics(&self) -> Option<FilterMetrics> {
 		match self {
 			Self::Standard(store) => store.persistent_filter_metrics(),
+		}
+	}
+
+	pub fn persistent_anchor_filter_metrics(&self) -> Option<FilterMetrics> {
+		match self {
+			Self::Standard(store) => store.persistent_anchor_filter_metrics(),
 		}
 	}
 

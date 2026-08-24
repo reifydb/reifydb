@@ -33,8 +33,8 @@ use rusqlite::Connection;
 use tracing::instrument;
 
 use crate::{
-	filter::{ARMED_CAPACITY_KEYS, OperatorKeyFilter},
-	sqlite::{schema::ensure_schema, state::state_exists},
+	filter::{ARMED_CAPACITY_ANCHORS, ARMED_CAPACITY_KEYS, OperatorAnchorFilter, OperatorKeyFilter},
+	sqlite::{anchor::anchor_exists, schema::ensure_schema, state::state_exists},
 };
 
 const BUSY_TIMEOUT: Duration = Duration::from_milliseconds_const(200);
@@ -51,6 +51,7 @@ struct StoreInner {
 	cache_misses: AtomicU64,
 	state_written: AtomicBool,
 	filter: OperatorKeyFilter,
+	anchor_filter: OperatorAnchorFilter,
 }
 
 struct ReadPool {
@@ -120,6 +121,11 @@ impl SqliteOperatorStorage {
 		} else {
 			OperatorKeyFilter::armed(ARMED_CAPACITY_KEYS)
 		};
+		let anchor_filter = if anchor_exists(&conn) {
+			OperatorAnchorFilter::new()
+		} else {
+			OperatorAnchorFilter::armed(ARMED_CAPACITY_ANCHORS)
+		};
 		Self {
 			inner: Arc::new(StoreInner {
 				conn: Mutex::new(Some(conn)),
@@ -131,6 +137,7 @@ impl SqliteOperatorStorage {
 				cache_misses: AtomicU64::new(0),
 				state_written: AtomicBool::new(state_written),
 				filter,
+				anchor_filter,
 			}),
 		}
 	}
@@ -152,6 +159,10 @@ impl SqliteOperatorStorage {
 
 	pub fn filter(&self) -> &OperatorKeyFilter {
 		&self.inner.filter
+	}
+
+	pub fn anchor_filter(&self) -> &OperatorAnchorFilter {
+		&self.inner.anchor_filter
 	}
 }
 

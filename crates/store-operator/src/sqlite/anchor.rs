@@ -3,15 +3,15 @@
 
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
-use rusqlite::{Rows, params};
+use rusqlite::{Connection, Rows, params};
 use tracing::instrument;
 
 use crate::{
 	sqlite::{
 		SqliteOperatorStorage,
 		sql::{
-			ANCHOR_GET_SQL, ANCHOR_REMOVE_SQL, ANCHOR_SET_SQL, ANCHORS_BY_EXPIRY_SQL,
-			ANCHORS_DROP_GROUP_SQL, ANCHORS_DROP_OPERATOR_SQL, ANCHORS_DUE_SQL,
+			ANCHOR_EXISTS_SQL, ANCHOR_GET_SQL, ANCHOR_REMOVE_SQL, ANCHOR_SET_SQL,
+			ANCHORS_BY_EXPIRY_SQL, ANCHORS_DROP_GROUP_SQL, ANCHORS_DROP_OPERATOR_SQL, ANCHORS_DUE_SQL,
 		},
 	},
 	types::OperatorSealAnchor,
@@ -130,6 +130,12 @@ impl SqliteOperatorStorage {
 			.execute(params![operator.0 as i64])
 			.expect("seal anchor operator delete failed");
 	}
+}
+
+pub(super) fn anchor_exists(conn: &Connection) -> bool {
+	let exists: i64 =
+		conn.query_row(ANCHOR_EXISTS_SQL, [], |row| row.get(0)).expect("seal anchor existence probe failed");
+	exists != 0
 }
 
 pub(super) fn decode_expiry(millis: i64) -> DateTime {

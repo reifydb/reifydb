@@ -733,3 +733,45 @@ fn a_zero_length_row_survives_the_sqlite_blob_column_distinctly_from_absence() {
 	assert_eq!(scanned.items.len(), 1, "the range scan must yield the empty row, not skip it");
 	assert_eq!(scanned.items[0].1.len(), 0);
 }
+
+#[test]
+fn an_anchor_the_store_never_wrote_is_rejected_without_reaching_sqlite() {
+	// anchor_get is gated on a bloom filter that only flush and apply populate, so every durable anchor must
+	// arrive through one of those two paths. A seeded anchor that skipped them would be invisible here.
+	// Falsified by dropping the filter population in flush_batch (the flushed anchor stops resolving) or by
+	// removing the gate (the absent probe stops being answered without a read).
+	let (store, _storage, _guard) = flushed_store();
+
+	store.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
+	assert!(store.flush_pending_blocking(), "the anchor must reach the persistent tier before it is probed");
+
+	assert_eq!(
+		store.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(1)),
+		Some(DateTime::from_millis(100)),
+		"an anchor that went through the buffer and flushed must still resolve once the filter gates the read"
+	);
+
+	let before = store.persistent_anchor_filter_metrics().expect("the persistent tier carries an anchor filter");
+	assert_eq!(
+		store.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(999)),
+		None,
+		"an anchor that was never written must be rejected by the filter"
+	);
+	let after = store.persistent_anchor_filter_metrics().expect("the persistent tier carries an anchor filter");
+	assert_eq!(
+		after.rejected,
+		before.rejected + 1,
+		"the absent probe must be answered by the filter itself; a bare None also comes back from sqlite, \
+		 so only the rejection counter proves the read never reached it"
+	);
+	assert_eq!(
+		store.anchor_get(OP_B, GROUP_A, SIDE, RowNumber(1)),
+		None,
+		"the filter must key on the operator, or one operator's anchors answer another's probes"
+	);
+	assert_eq!(
+		store.anchor_get(OP_A, GROUP_B, SIDE, RowNumber(1)),
+		None,
+		"the filter must key on the group as well as the row number"
+	);
+}
