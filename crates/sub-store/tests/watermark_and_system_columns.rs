@@ -125,17 +125,17 @@ fn series_snapshot_system_columns_match_row_metadata() {
 	assert!(n > 0, "expected non-empty snapshot batch");
 
 	for i in 0..n {
-		let rn = batch.row_numbers[i];
+		let rn = batch.row_numbers()[i];
 		assert!(
 			rn != RowNumber(0) && rn != RowNumber(i as u64),
 			"row {i}: row_number {rn:?} looks synthetic (0 or sequential index); expected a real series sequence",
 		);
-		let created = batch.created_at[i];
+		let created = batch.created_at()[i];
 		assert!(
 			created != DateTime::default(),
 			"row {i}: created_at is DateTime::default() - expected real wall-clock from the row header",
 		);
-		let updated = batch.updated_at[i];
+		let updated = batch.updated_at()[i];
 		assert_eq!(updated, created, "row {i}: insert-only row should have updated_at == created_at");
 	}
 
@@ -179,15 +179,15 @@ fn table_snapshot_system_columns_match_row_metadata() {
 	assert_eq!(batch.row_count(), 3);
 
 	for i in 0..3 {
-		assert_ne!(batch.row_numbers[i], RowNumber(0), "row {i}: row_number should be a real key, not 0");
-		let created = batch.created_at[i];
+		assert_ne!(batch.row_numbers()[i], RowNumber(0), "row {i}: row_number should be a real key, not 0");
+		let created = batch.created_at()[i];
 		assert_ne!(
 			created,
 			DateTime::default(),
 			"row {i}: created_at is DateTime::default() - expected real wall-clock from the row header",
 		);
 		assert_eq!(
-			batch.updated_at[i], created,
+			batch.updated_at()[i], created,
 			"row {i}: insert-only row should have updated_at == created_at"
 		);
 	}
