@@ -234,8 +234,9 @@ mod tests {
 		task.abort();
 	}
 
-	#[tokio::test]
+	#[tokio::test(start_paused = true)]
 	async fn run_loop_coalesces_same_linger_subscriptions_into_one_envelope() {
+		// Paused clock: both appends share one instant, else a preemption past the 1ms timer splits them.
 		let out = Arc::new(Mutex::new(Vec::new()));
 		let batcher = ConnectionBatcher::new(sum_merge(), collecting_emit(out.clone()));
 
