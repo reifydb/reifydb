@@ -47,7 +47,6 @@ pub enum SubscriptionWorkerMessage {
 	Register {
 		flow_id: FlowId,
 		flow_dag: FlowDag,
-		gate: Option<CommitVersion>,
 		ctx: SubscriptionContext,
 		reply: Box<dyn FnOnce(Result<()>) + Send>,
 	},
@@ -73,11 +72,11 @@ pub enum SubscriptionWorkerMessage {
 
 struct SubscriptionFlowState {
 	keyed_state: HashMap<EncodedKey, EncodedBytes>,
-	gate: Option<CommitVersion>,
+	gate: CommitVersion,
 }
 
 impl SubscriptionFlowState {
-	fn new(gate: Option<CommitVersion>) -> Self {
+	fn new(gate: CommitVersion) -> Self {
 		Self {
 			keyed_state: HashMap::new(),
 			gate,
@@ -151,10 +150,9 @@ impl Actor for SubscriptionWorkerActor {
 				SubscriptionWorkerMessage::Register {
 					flow_id,
 					flow_dag,
-					gate,
 					ctx,
 					reply,
-				} => self.handle_register(state, flow_id, flow_dag, gate, ctx, reply),
+				} => self.handle_register(state, flow_id, flow_dag, ctx, reply),
 				SubscriptionWorkerMessage::Unregister {
 					flow_id,
 					reply,
@@ -190,7 +188,6 @@ impl SubscriptionWorkerActor {
 		state: &mut SubscriptionWorkerState,
 		flow_id: FlowId,
 		flow_dag: FlowDag,
-		gate: Option<CommitVersion>,
 		ctx: SubscriptionContext,
 		reply: Box<dyn FnOnce(Result<()>) + Send>,
 	) {
@@ -216,6 +213,14 @@ impl SubscriptionWorkerActor {
 						}
 					}
 				}
+				let gate = match self.engine.multi().begin_query() {
+					Ok(query) => query.version(),
+					Err(e) => {
+						state.flow_engine.remove_flow(flow_id);
+						reply(Err(e));
+						return;
+					}
+				};
 				state.flows.insert(flow_id, SubscriptionFlowState::new(gate));
 				reply(Ok(()));
 			}

@@ -43,7 +43,7 @@ impl SubscriptionWorkerActor {
 
 		let version = lease.version();
 		if let Some(flow_state) = state.flows.get_mut(&flow_id) {
-			flow_state.gate = Some(version);
+			flow_state.gate = version;
 		}
 		let hydrate_start = self.engine.clock().instant();
 

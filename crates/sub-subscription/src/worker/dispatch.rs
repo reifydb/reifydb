@@ -107,9 +107,7 @@ impl SubscriptionWorkerActor {
 		flow_id: FlowId,
 		operator_id: OperatorId,
 	) {
-		if let Some(gate) = flow_state.gate
-			&& change.version <= gate
-		{
+		if change.version <= flow_state.gate {
 			return;
 		}
 
@@ -150,7 +148,7 @@ fn min_version_the_flows_will_read(state: &SubscriptionWorkerState, changes: &[C
 			continue;
 		};
 		let read_by_any_flow = flow_entries.iter().any(|(flow_id, _)| {
-			state.flows.get(flow_id).is_some_and(|fs| fs.gate.is_none_or(|gate| change.version > gate))
+			state.flows.get(flow_id).is_some_and(|fs| change.version > fs.gate)
 		});
 		if read_by_any_flow {
 			min_needed = Some(min_needed.map_or(change.version, |m| m.min(change.version)));

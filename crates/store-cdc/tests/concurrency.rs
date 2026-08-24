@@ -762,60 +762,62 @@ mod cases {
 	}
 
 	pub fn appends_complete_while_a_flush_is_in_flight(fixture: Fixture) {
-		// the live map always fits in one cut, so a flush sealing a second block must have taken records
-		// appended
+		// a second sealed block can only hold records appended after the first batch left the live map
 		let store = fixture.store.clone();
 		assert!(
 			cdc_resident_bytes(&cdc_at(INFLIGHT_APPENDS)).as_bytes() * INFLIGHT_APPENDS
 				< BLOCK_CUT_BYTES.as_bytes(),
 			"the whole run must fit inside one cut, otherwise a second block proves nothing about concurrency"
 		);
-		let done = Arc::new(AtomicBool::new(false));
-		let barrier = Arc::new(Barrier::new(2));
+		// the staged hook fires before the block is sealed, so the appends must land inside that window
+		let seeded = Arc::new(Barrier::new(2));
+		let taken = Arc::new(Barrier::new(2));
+		let appended = Arc::new(Barrier::new(2));
 
-		let flusher = {
+		let writer = {
 			let store = store.clone();
-			let done = Arc::clone(&done);
-			let barrier = Arc::clone(&barrier);
+			let seeded = Arc::clone(&seeded);
+			let taken = Arc::clone(&taken);
+			let appended = Arc::clone(&appended);
 			thread::spawn(move || {
-				let mut deltas: Vec<u64> = Vec::new();
-				let mut timeouts = 0usize;
-				barrier.wait();
-				loop {
-					let finished = done.load(Ordering::Acquire);
-					let before = store.commit_metrics().blocks_cut;
-					if !store.flush_pending() {
-						timeouts += 1;
-					}
-					deltas.push(store.commit_metrics().blocks_cut.saturating_sub(before));
-					if finished && deltas.len() >= MIN_ROUNDS {
-						break;
-					}
+				store.write(&cdc_at(1)).expect("a single writer advances the version space in order");
+				seeded.wait();
+				taken.wait();
+				for version in 2..=INFLIGHT_APPENDS {
+					store.write(&cdc_at(version))
+						.expect("a single writer advances the version space in order");
 				}
-				(deltas, timeouts)
+				appended.wait();
 			})
 		};
 
-		barrier.wait();
-		for version in 1..=INFLIGHT_APPENDS {
-			store.write(&cdc_at(version)).expect("a single writer advances the version space in order");
-		}
-		done.store(true, Ordering::Release);
-		let (deltas, timeouts) = flusher.join().expect("the flushing thread must not panic");
+		seeded.wait();
+		let before = store.commit_metrics().blocks_cut;
+		let mut stages = 0usize;
+		let mut staged = || {
+			stages += 1;
+			// only the first batch may hold the writer, otherwise the drain waits on a finished thread
+			if stages == 1 {
+				taken.wait();
+				appended.wait();
+			}
+		};
+		store.flush_staged(&mut staged);
+		writer.join().expect("the writing thread must not panic");
 
-		assert_eq!(timeouts, 0, "a flush must not time out while the writer is appending");
 		let metrics = store.commit_metrics();
 		assert_eq!(
 			metrics.stalls, 0,
 			"no append may have waited on the flusher; the commit tier only stalls a writer above its ceiling \
 			 and this test never reaches it"
 		);
-		let widest = deltas.iter().copied().max().unwrap_or_default();
+		let sealed = metrics.blocks_cut.saturating_sub(before);
 		assert!(
-			widest >= 2,
-			"no flush ever sealed more than {widest} block, so every append landed either before the flush took \
-			 the live map or after it had finished; writes are being serialised behind the flush instead of \
-			 running through it"
+			sealed >= 2,
+			"the drain sealed {sealed} block, so none of the {} records appended while the first batch was \
+			 staged reached the live map; writes are being serialised behind the flush instead of running \
+			 through it",
+			INFLIGHT_APPENDS - 1
 		);
 	}
 }
