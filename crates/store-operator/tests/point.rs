@@ -758,11 +758,11 @@ fn a_cached_absence_survives_the_range_fill_that_installs_over_it() {
 	assert_eq!(point_entries(&store), 1, "the install must leave the remembered absence exactly where it was");
 	assert_eq!(range_entries(&store), 3, "and the three scanned rows must land in the range tier beside it");
 
-	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 1), row("rewritten"));
+	range_tier(&store).clear();
 	assert_eq!(
 		range_tier(&store).buckets(),
 		0,
-		"the write must drop the claim, or the absence is answered by the bucket and the carry is untested"
+		"the claim must be gone, or the absence is answered by the bucket and the carry is untested"
 	);
 
 	let counters = point_tier(&store).metrics();

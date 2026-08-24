@@ -178,36 +178,39 @@ fn a_range_over_an_incomplete_bucket_falls_through_and_still_answers_in_full() {
 }
 
 #[test]
-fn a_write_into_a_complete_bucket_stops_it_answering_the_next_range() {
-	// A bucket that keeps its claim after losing an entry answers "that key does not exist" for a row sqlite still
-	// holds, and only a scan can see the shortfall.
+fn a_new_key_and_a_rewrite_together_leave_the_bucket_whole_and_current() {
+	// A resident bucket carries no completeness flag: being resident is the claim. That claim survives only because
+	// every durable write reaches the tier, the new key through the flush write-through and the rewrite through the
+	// write path. Pinning both in one bucket is what proves neither route is the only one maintaining it, since a
+	// bucket short of a row sqlite holds answers "no such key" and only a scan could ever see the shortfall.
 	let (store, storage, _guard) = cached_store();
 	seed_accumulator(&storage, 3);
 
 	let primed = store.range_batch(OP_A, accumulator_range(), 64);
 	assert_eq!(bodies(&primed), ["v1", "v2", "v3"]);
-	assert_eq!(range_buckets(&store), 1, "the bucket must start resident or the write proves nothing");
+	assert_eq!(range_buckets(&store), 1, "the bucket must start resident or the writes prove nothing");
 
-	storage.apply_batch(&[OperatorWrite::Insert {
-		operator: OP_A,
-		key: key_in(Keyspace::ACCUMULATOR, 4),
-		post: row("v4"),
-	}]);
+	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 4), row("v4"));
 	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 1), row("rewritten"));
-	assert!(store.flush_pending_blocking(), "the write must reach sqlite before the staleness is observable");
+	assert!(store.flush_pending_blocking(), "both writes must reach sqlite before the claim is put to the test");
 
 	assert_eq!(
 		range_buckets(&store),
-		0,
-		"a write of a key the bucket holds must drop the whole bucket, not merely evict the one entry"
+		1,
+		"neither a key the bucket never held nor a rewrite of one it does may evict the bucket"
 	);
 
+	let before = ScanCounters::sample();
 	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let scanned = before.since();
+
 	assert_eq!(
 		bodies(&served),
 		["rewritten", "v2", "v3", "v4"],
-		"a bucket that kept its claim serves the rows it remembers and silently loses the durable row it never saw"
+		"a kept claim must answer for the rewritten row and for the one it learned at flush, or it serves a \
+		 short answer that reads as a correct one"
 	);
+	assert_eq!(scanned.fetched, 0, "the answer must have come from the bucket, not from a fallback scan");
 }
 
 #[test]
@@ -349,9 +352,10 @@ fn a_write_of_a_key_the_bucket_never_held_keeps_the_claim_and_the_flush_still_se
 }
 
 #[test]
-fn a_write_of_a_key_the_bucket_holds_drops_the_claim() {
-	// The write shadows the cached row, so a bucket that kept the claim would answer absent for a row sqlite still
-	// has.
+fn a_write_of_a_key_the_bucket_holds_updates_it_in_place() {
+	// The write is classified as a replace, so the tier is told exactly which entry moved and can carry the rest of
+	// the claim. Evicting the whole bucket would throw away every other key in the keyspace to absorb one write,
+	// which is the tier's entire value spent on its most common event.
 	let (store, storage, _guard) = cached_store();
 	seed_accumulator(&storage, 3);
 
@@ -362,14 +366,27 @@ fn a_write_of_a_key_the_bucket_holds_drops_the_claim() {
 
 	assert_eq!(
 		range_buckets(&store),
-		0,
-		"a write of a key the bucket holds must drop it; the bucket is now short exactly that key"
+		1,
+		"a replace of a key the bucket holds must move that one entry, not evict the whole keyspace"
 	);
 	assert_eq!(
 		bodies(&store.range_batch(OP_A, accumulator_range(), 64)),
 		["v1", "rewritten", "v3"],
 		"and the answer must stay right whichever tier serves it"
 	);
+
+	assert!(store.flush_pending_blocking(), "the write must reach sqlite before the kept claim is put to the test");
+
+	let before = ScanCounters::sample();
+	let served = store.range_batch(OP_A, accumulator_range(), 64);
+	let scanned = before.since();
+
+	assert_eq!(
+		bodies(&served),
+		["v1", "rewritten", "v3"],
+		"the carried claim must still answer for the row the flush made durable"
+	);
+	assert_eq!(scanned.fetched, 0, "the answer must have come from the bucket the replace left standing");
 }
 
 #[test]

@@ -200,6 +200,15 @@ impl StandardOperatorStore {
 		}
 	}
 
+	fn overwrite_range_read(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
+		if let Some(range) = self.range.as_ref() {
+			range.overwrite(operator, key.clone(), row.clone());
+		}
+		if let Some(point) = self.point.as_ref() {
+			point.invalidate(operator, key);
+		}
+	}
+
 	fn repair_absence(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
 		if let Some(point) = self.point.as_ref() {
 			point.overwrite(operator, key.clone(), row.clone());
@@ -212,12 +221,13 @@ impl StandardOperatorStore {
 		}
 		for write in writes {
 			match write {
-				OperatorWrite::Insert {
+				OperatorWrite::Replace {
 					operator,
 					key,
+					post,
 					..
-				}
-				| OperatorWrite::Replace {
+				} => self.overwrite_range_read(*operator, key, post),
+				OperatorWrite::Insert {
 					operator,
 					key,
 					..
