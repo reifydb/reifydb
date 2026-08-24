@@ -617,7 +617,12 @@ fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_noth
 	let buffer = OperatorCommitBuffer::with_budget(budget);
 	let total: usize = 53;
 	for index in 0..total {
-		buffer.record_state_set(OP_A, key(&format!("k{index:03}")), row(&format!("v{index:03}")), DurablePre::Absent);
+		buffer.record_state_set(
+			OP_A,
+			key(&format!("k{index:03}")),
+			row(&format!("v{index:03}")),
+			DurablePre::Absent,
+		);
 	}
 
 	let mut seen: Vec<String> = Vec::new();

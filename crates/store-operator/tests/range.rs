@@ -84,7 +84,11 @@ fn accumulator_range() -> EncodedKeyRange {
 
 fn seed_accumulator(storage: &SqliteOperatorStorage, count: u8) {
 	for suffix in 1..=count {
-		storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, suffix), row(&format!("v{suffix}")));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: key_in(Keyspace::ACCUMULATOR, suffix),
+			post: row(&format!("v{suffix}")),
+		}]);
 	}
 }
 
@@ -184,7 +188,11 @@ fn a_write_into_a_complete_bucket_stops_it_answering_the_next_range() {
 	assert_eq!(bodies(&primed), ["v1", "v2", "v3"]);
 	assert_eq!(range_buckets(&store), 1, "the bucket must start resident or the write proves nothing");
 
-	storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, 4), row("v4"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key_in(Keyspace::ACCUMULATOR, 4),
+		post: row("v4"),
+	}]);
 	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 1), row("rewritten"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite before the staleness is observable");
 
@@ -217,7 +225,11 @@ fn a_range_fill_that_does_not_fit_its_own_budget_evicts_no_point_entry() {
 		},
 	);
 	seed_accumulator(&storage, 8);
-	storage.set(OP_A, key_in(Keyspace::COUNT, 1), row("pinned"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key_in(Keyspace::COUNT, 1),
+		post: row("pinned"),
+	}]);
 
 	assert!(store.get(OP_A, &key_in(Keyspace::COUNT, 1)).is_some(), "the point read warms an entry of its own");
 	let point_used = point_tier(&store).resident_bytes();
@@ -261,7 +273,11 @@ fn a_range_spanning_two_complete_buckets_is_never_served_from_the_tier() {
 	let (store, storage, _guard) = cached_store();
 	seed_accumulator(&storage, 3);
 	for suffix in 1..=2u8 {
-		storage.set(OP_A, key_in(Keyspace::COUNT, suffix), row(&format!("c{suffix}")));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: key_in(Keyspace::COUNT, suffix),
+			post: row(&format!("c{suffix}")),
+		}]);
 	}
 
 	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
@@ -463,7 +479,11 @@ fn dropping_one_operators_state_forgets_the_whole_buckets_it_cached() {
 	let (store, storage, _guard) = cached_store();
 	seed_accumulator(&storage, 3);
 	for suffix in 1..=3u8 {
-		storage.set(OP_B, key_in(Keyspace::ACCUMULATOR, suffix), row(&format!("b{suffix}")));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP_B,
+			key: key_in(Keyspace::ACCUMULATOR, suffix),
+			post: row(&format!("b{suffix}")),
+		}]);
 	}
 
 	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);

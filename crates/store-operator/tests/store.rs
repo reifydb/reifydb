@@ -121,7 +121,11 @@ fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
 #[test]
 fn a_buffered_write_shadows_the_flushed_row_for_the_same_key() {
 	let (store, storage, _guard) = flushed_store();
-	storage.set(OP_A, key(1), row("durable"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("durable"),
+	}]);
 
 	put(&store, OP_A, key(1), row("buffered"));
 
@@ -145,7 +149,11 @@ fn a_buffered_write_shadows_the_flushed_row_for_the_same_key() {
 #[test]
 fn a_buffered_tombstone_hides_the_flushed_row_from_every_read() {
 	let (store, storage, _guard) = flushed_store();
-	storage.set(OP_A, key(1), row("durable"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("durable"),
+	}]);
 
 	erase(&store, OP_A, &key(1));
 
@@ -172,7 +180,11 @@ fn a_buffered_tombstone_hides_the_flushed_row_from_every_read() {
 fn paging_interleaved_layers_yields_every_key_once_in_order() {
 	let (store, storage, _guard) = flushed_store();
 	for suffix in [1u8, 3, 5] {
-		storage.set(OP_A, key(suffix), row(&format!("durable-{suffix}")));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: key(suffix),
+			post: row(&format!("durable-{suffix}")),
+		}]);
 	}
 	for suffix in [2u8, 4, 6] {
 		put(&store, OP_A, key(suffix), row(&format!("buffered-{suffix}")));
@@ -217,7 +229,11 @@ fn paging_interleaved_layers_yields_every_key_once_in_order() {
 fn a_page_whose_flushed_rows_are_all_hidden_keeps_pulling_until_the_scan_is_exhausted() {
 	let (store, storage, _guard) = flushed_store();
 	for suffix in 1u8..=6 {
-		storage.set(OP_A, key(suffix), row(&format!("durable-{suffix}")));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: key(suffix),
+			post: row(&format!("durable-{suffix}")),
+		}]);
 	}
 	for suffix in 1u8..=4 {
 		erase(&store, OP_A, &key(suffix));
@@ -242,8 +258,16 @@ fn a_page_whose_flushed_rows_are_all_hidden_keeps_pulling_until_the_scan_is_exha
 fn a_scan_stays_inside_its_operator_when_a_neighbour_holds_the_same_keys() {
 	let (store, storage, _guard) = flushed_store();
 	for suffix in [1u8, 2, 3] {
-		storage.set(OP_A, key(suffix), row(&format!("a-durable-{suffix}")));
-		storage.set(OP_B, key(suffix), row(&format!("b-durable-{suffix}")));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: key(suffix),
+			post: row(&format!("a-durable-{suffix}")),
+		}]);
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP_B,
+			key: key(suffix),
+			post: row(&format!("b-durable-{suffix}")),
+		}]);
 		put(&store, OP_A, key(suffix + 10), row(&format!("a-buffered-{suffix}")));
 		put(&store, OP_B, key(suffix + 10), row(&format!("b-buffered-{suffix}")));
 	}
@@ -333,8 +357,16 @@ fn a_buffered_expiry_reorders_the_flushed_anchors() {
 #[test]
 fn a_buffered_state_drop_masks_sqlite_while_later_writes_survive() {
 	let (store, storage, _guard) = flushed_store();
-	storage.set(OP_A, key(1), row("durable"));
-	storage.set(OP_B, key(1), row("neighbour"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("durable"),
+	}]);
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_B,
+		key: key(1),
+		post: row("neighbour"),
+	}]);
 	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
 
 	store.drop_operator_state(OP_A);
@@ -628,7 +660,11 @@ fn a_group_anchor_drop_does_not_mask_a_sibling_group() {
 	let (store, storage, _guard) = flushed_store();
 	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
 	storage.anchor_set(OP_A, GROUP_B, SIDE, RowNumber(2), DateTime::from_millis(200));
-	storage.set(OP_A, key(1), row("durable"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("durable"),
+	}]);
 
 	store.anchors_remove_group(OP_A, GROUP_A);
 
@@ -682,7 +718,11 @@ fn a_zero_length_row_survives_the_sqlite_blob_column_distinctly_from_absence() {
 	// as an empty slice; a driver that mapped it to NULL would turn every flushed marker into a missing key.
 	let (_store, storage, _guard) = flushed_store();
 
-	storage.set(OP_A, key(1), EncodedPodRow::new(&[]));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: EncodedPodRow::new(&[]),
+	}]);
 
 	let found = storage.get(OP_A, &key(1)).expect("a flushed zero-length row is present, not absent");
 	assert_eq!(found.len(), 0);

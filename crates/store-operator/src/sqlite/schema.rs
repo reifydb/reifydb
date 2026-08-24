@@ -5,8 +5,8 @@ use reifydb_core::key::operator_state::OperatorStateKey;
 use rusqlite::Connection;
 
 pub(crate) fn ensure_schema(conn: &Connection) {
-	let keyspace = OperatorStateKey::KEYSPACE_INNER_OFFSET + 1;
-	conn.execute_batch(&format!(r#"CREATE TABLE IF NOT EXISTS "operator_state" (
+	conn.execute_batch(
+		r#"CREATE TABLE IF NOT EXISTS "operator_state" (
 			"operator" INTEGER NOT NULL,
 			"key" BLOB NOT NULL,
 			"bytes" BLOB NOT NULL,
@@ -39,36 +39,11 @@ pub(crate) fn ensure_schema(conn: &Connection) {
 			PRIMARY KEY ("operator", "keyspace")
 		) WITHOUT ROWID;
 
-		CREATE TRIGGER IF NOT EXISTS "operator_state_census_insert"
-		AFTER INSERT ON "operator_state" BEGIN
-			INSERT INTO "operator_state_census"
-				("operator", "keyspace", "keys", "key_bytes", "value_bytes")
-			VALUES (NEW."operator", substr(NEW."key", {keyspace}, 1), 1,
-				LENGTH(NEW."key"), LENGTH(NEW."bytes"))
-			ON CONFLICT ("operator", "keyspace") DO UPDATE SET
-				"keys" = "keys" + 1,
-				"key_bytes" = "key_bytes" + LENGTH(NEW."key"),
-				"value_bytes" = "value_bytes" + LENGTH(NEW."bytes");
-		END;
-
-		CREATE TRIGGER IF NOT EXISTS "operator_state_census_update"
-		AFTER UPDATE ON "operator_state" BEGIN
-			UPDATE "operator_state_census"
-			SET "value_bytes" = "value_bytes" - LENGTH(OLD."bytes") + LENGTH(NEW."bytes")
-			WHERE "operator" = NEW."operator"
-			  AND "keyspace" = substr(NEW."key", {keyspace}, 1);
-		END;
-
-		CREATE TRIGGER IF NOT EXISTS "operator_state_census_delete"
-		AFTER DELETE ON "operator_state" BEGIN
-			UPDATE "operator_state_census"
-			SET "keys" = "keys" - 1,
-			    "key_bytes" = "key_bytes" - LENGTH(OLD."key"),
-			    "value_bytes" = "value_bytes" - LENGTH(OLD."bytes")
-			WHERE "operator" = OLD."operator"
-			  AND "keyspace" = substr(OLD."key", {keyspace}, 1);
-		END;"#))
-		.expect("operator state schema could not be created");
+		DROP TRIGGER IF EXISTS "operator_state_census_insert";
+		DROP TRIGGER IF EXISTS "operator_state_census_update";
+		DROP TRIGGER IF EXISTS "operator_state_census_delete";"#,
+	)
+	.expect("operator state schema could not be created");
 
 	seed_census(conn);
 }

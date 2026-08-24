@@ -15,38 +15,16 @@ use tracing::instrument;
 use crate::{
 	sqlite::{
 		SqliteOperatorStorage,
+		census::zero_operator_buckets,
 		sql::{
 			ANCHORS_DROP_OPERATOR_SQL, STATE_CONTAINS_SQL, STATE_DROP_SQL, STATE_EXISTS_SQL, STATE_GET_SQL,
-			STATE_KEY_COUNT_SQL, STATE_KEYS_AFTER_SQL, STATE_KEYS_FIRST_SQL, STATE_REMOVE_SQL,
-			STATE_SET_SQL, range_sql,
+			STATE_KEY_COUNT_SQL, STATE_KEYS_AFTER_SQL, STATE_KEYS_FIRST_SQL, range_sql,
 		},
 	},
 	types::OperatorBatch,
 };
 
 impl SqliteOperatorStorage {
-	#[instrument(name = "store::operator::persistent::sqlite::set", level = "debug", skip(self, key, row), fields(operator = operator.0, key_len = key.len()))]
-	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-		self.mark_state_written();
-		self.filter().add(operator, &key);
-		let guard = self.inner.conn.lock();
-		let Some(conn) = guard.as_ref() else {
-			return;
-		};
-		conn.execute(STATE_SET_SQL, params![operator.0 as i64, key.as_slice(), &row.bytes()[..]])
-			.expect("operator state write failed");
-	}
-
-	#[instrument(name = "store::operator::persistent::sqlite::remove", level = "debug", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
-	pub fn remove(&self, operator: OperatorId, key: &EncodedKey) {
-		let guard = self.inner.conn.lock();
-		let Some(conn) = guard.as_ref() else {
-			return;
-		};
-		conn.execute(STATE_REMOVE_SQL, params![operator.0 as i64, key.as_slice()])
-			.expect("operator state delete failed");
-	}
-
 	#[instrument(name = "store::operator::persistent::sqlite::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		if !self.state_written() {
@@ -133,6 +111,7 @@ impl SqliteOperatorStorage {
 		};
 		let transaction = conn.unchecked_transaction().expect("operator state drop could not begin");
 		transaction.execute(STATE_DROP_SQL, params![operator.0 as i64]).expect("operator state drop failed");
+		zero_operator_buckets(&transaction, operator);
 		transaction
 			.execute(ANCHORS_DROP_OPERATOR_SQL, params![operator.0 as i64])
 			.expect("seal anchor drop failed");

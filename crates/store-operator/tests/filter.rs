@@ -25,7 +25,7 @@ use reifydb_store_operator::{
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
-	types::OperatorWrite,
+	types::{DurablePre, OperatorWrite},
 };
 use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
@@ -120,7 +120,11 @@ fn a_store_opened_on_existing_rows_serves_every_one_before_any_rebuild_has_run()
 	{
 		let storage = SqliteOperatorStorage::new(config.clone());
 		for suffix in 0..32u8 {
-			storage.set(OP, key(suffix), row(&format!("v{suffix}")));
+			storage.apply_batch(&[OperatorWrite::Insert {
+				operator: OP,
+				key: key(suffix),
+				post: row(&format!("v{suffix}")),
+			}]);
 		}
 	}
 
@@ -145,8 +149,16 @@ fn every_pre_existing_key_still_reads_back_after_a_completed_rebuild() {
 	// and the only thing that can put a key into the new filter is the scan.
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	for suffix in 0..64u8 {
-		storage.set(OP, key(suffix), row("live"));
-		storage.set(OTHER, key(suffix), row("live"));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP,
+			key: key(suffix),
+			post: row("live"),
+		}]);
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OTHER,
+			key: key(suffix),
+			post: row("live"),
+		}]);
 	}
 
 	rebuild(&storage, rebuilding_config(7));
@@ -173,7 +185,11 @@ fn the_source_hashes_a_key_exactly_as_the_read_path_does() {
 	// keys that exist and the store silently loses rows. The literal comparison catches a change to the
 	// hashed expression; the may_contain round trip catches the two paths drifting apart at all.
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	storage.set(OP, key(3), row("written through the normal path"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP,
+		key: key(3),
+		post: row("written through the normal path"),
+	}]);
 
 	let mut source = OperatorStateKeySource::new(storage.clone());
 	let slice = source.next_slice(64);
@@ -199,7 +215,11 @@ fn a_key_deleted_from_sqlite_stops_reporting_present_after_a_rebuild() {
 	// surviving neighbours are asserted alongside so a rebuild that simply lost keys cannot pass.
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	for suffix in 0..128u8 {
-		storage.set(OP, key(suffix), row("live"));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP,
+			key: key(suffix),
+			post: row("live"),
+		}]);
 	}
 	rebuild(&storage, rebuilding_config(32));
 	for suffix in 0..16u8 {
@@ -207,7 +227,11 @@ fn a_key_deleted_from_sqlite_stops_reporting_present_after_a_rebuild() {
 	}
 
 	for suffix in 0..16u8 {
-		storage.remove(OP, &key(suffix));
+		storage.apply_batch(&[OperatorWrite::Remove {
+			operator: OP,
+			key: key(suffix),
+			pre: DurablePre::Present(ByteSize::from_bytes(row("live").bytes().len() as u64)),
+		}]);
 	}
 	rebuild(&storage, rebuilding_config(32));
 
@@ -234,7 +258,11 @@ fn a_reopened_populated_database_serves_rows_the_way_the_open_scan_used_to_estab
 	let (config, _guard) = SqliteConfig::in_memory();
 	{
 		let storage = SqliteOperatorStorage::new(config.clone());
-		storage.set(OP, key(1), row("durable"));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP,
+			key: key(1),
+			post: row("durable"),
+		}]);
 	}
 
 	let reopened = SqliteOperatorStorage::new(config);
@@ -254,8 +282,16 @@ fn the_keyset_scan_yields_every_row_exactly_once_including_on_an_exact_budget_mu
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let mut expected: Vec<u64> = Vec::new();
 	for suffix in 0..6u8 {
-		storage.set(OP, key(suffix), row("x"));
-		storage.set(OTHER, key(suffix), row("x"));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP,
+			key: key(suffix),
+			post: row("x"),
+		}]);
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OTHER,
+			key: key(suffix),
+			post: row("x"),
+		}]);
 		expected.push(hash_item(&(OP.0, key(suffix).as_slice())));
 		expected.push(hash_item(&(OTHER.0, key(suffix).as_slice())));
 	}
@@ -302,7 +338,11 @@ fn a_store_opened_on_an_empty_database_starts_armed_and_skips_sqlite_for_unwritt
 
 	assert!(storage.filter().metrics().enabled, "an empty database at open must arm the filter");
 
-	storage.set(OP, key(1), row("durable"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP,
+		key: key(1),
+		post: row("durable"),
+	}]);
 
 	let before = storage.filter().metrics();
 	assert!(booted.get(OP, &key(200)).is_none(), "a key nothing ever wrote must read as absent");
@@ -327,7 +367,11 @@ fn a_store_opened_on_a_populated_database_starts_disabled_and_serves_every_exist
 	{
 		let storage = SqliteOperatorStorage::new(config.clone());
 		for suffix in 0..32u8 {
-			storage.set(OP, key(suffix), row(&format!("v{suffix}")));
+			storage.apply_batch(&[OperatorWrite::Insert {
+				operator: OP,
+				key: key(suffix),
+				post: row(&format!("v{suffix}")),
+			}]);
 		}
 	}
 
@@ -363,7 +407,11 @@ fn a_key_written_after_an_armed_open_is_found_by_the_armed_filter() {
 	assert!(storage.filter().metrics().enabled, "a fresh database must arm the filter");
 	assert!(!storage.filter().may_contain(OP, &key(7)), "an armed empty filter must rule out an unwritten key");
 
-	storage.set(OP, key(7), row("written after open"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP,
+		key: key(7),
+		post: row("written after open"),
+	}]);
 
 	assert!(storage.filter().may_contain(OP, &key(7)), "the write path did not feed the armed filter");
 	let found = storage.get(OP, &key(7)).expect("the row written after an armed open is missing");
@@ -393,10 +441,15 @@ fn the_batch_write_path_production_uses_feeds_the_armed_filter() {
 		"the row an armed filter admits must be the row sqlite holds"
 	);
 
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP,
+		key: key(9),
+		post: row("seeded for the replace"),
+	}]);
 	storage.apply_batch(&[OperatorWrite::Replace {
 		operator: OP,
 		key: key(9),
-		pre_value_bytes: ByteSize::from_bytes(0),
+		pre_value_bytes: ByteSize::from_bytes(row("seeded for the replace").bytes().len() as u64),
 		post: row("replaced through a batch"),
 	}]);
 	assert!(
@@ -404,10 +457,7 @@ fn the_batch_write_path_production_uses_feeds_the_armed_filter() {
 		"a replace writes a row the same way an insert does, so it must arm the filter too"
 	);
 
-	assert!(
-		!storage.filter().may_contain(OP, &key(8)),
-		"a neighbouring key no batch wrote answered present"
-	);
+	assert!(!storage.filter().may_contain(OP, &key(8)), "a neighbouring key no batch wrote answered present");
 	assert!(
 		!storage.filter().may_contain(OTHER, &key(7)),
 		"the filter must scope its claim to the operator that was written"
@@ -440,7 +490,11 @@ fn an_armed_filter_is_left_alone_until_it_fills_and_is_then_resized_from_the_liv
 	// used here only so the fill trigger can be reached without writing 700k rows; the mechanism is the same.
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	for suffix in 0..64u8 {
-		storage.set(OP, key(suffix), row("live"));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP,
+			key: key(suffix),
+			post: row("live"),
+		}]);
 	}
 
 	let filter = OperatorKeyFilter::armed(4096);

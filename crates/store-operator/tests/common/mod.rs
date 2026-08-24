@@ -456,7 +456,10 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
-				persistent.set(operator, key.clone(), row);
+				let pre = persistent
+					.get(operator, &key)
+					.map(|held| ByteSize::from_bytes(held.bytes().len() as u64));
+				persistent.apply_batch(&[state_write(operator, key.clone(), row, pre)]);
 				self.invalidate_read(operator, &key);
 			}
 
@@ -471,7 +474,10 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
-				persistent.remove(operator, &key);
+				let pre = persistent
+					.get(operator, &key)
+					.map(|held| ByteSize::from_bytes(held.bytes().len() as u64));
+				persistent.apply_batch(&[state_remove(operator, key.clone(), pre)]);
 				self.invalidate_read(operator, &key);
 			}
 

@@ -136,7 +136,11 @@ fn a_read_racing_the_flush_never_sees_the_value_the_flush_is_replacing() {
 	let persistent = store.persistent().expect("the sqlite tier is configured");
 	// only the flusher may advance sqlite past this seed, otherwise a torn two-tier read reports a false regression
 	for index in 0..KEYS_PER_WRITER {
-		persistent.set(OP, key(index), row(&version(0)));
+		persistent.apply_batch(&[OperatorWrite::Insert {
+			operator: OP,
+			key: key(index),
+			post: row(&version(0)),
+		}]);
 	}
 	for index in 0..KEYS_PER_WRITER {
 		store.apply_batch(&[OperatorWrite::Replace {
@@ -216,7 +220,11 @@ fn a_write_that_lands_after_a_drop_marker_survives_the_drop() {
 	let (store, _guard) = store();
 	let persistent = store.persistent().expect("the sqlite tier is configured");
 	for index in 0..KEYS_PER_WRITER {
-		persistent.set(OP, key(index), row("pre-drop"));
+		persistent.apply_batch(&[OperatorWrite::Insert {
+			operator: OP,
+			key: key(index),
+			post: row("pre-drop"),
+		}]);
 	}
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OP,

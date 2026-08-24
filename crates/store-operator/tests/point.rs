@@ -96,7 +96,11 @@ fn accumulator_range() -> EncodedKeyRange {
 
 fn seed_accumulator(storage: &SqliteOperatorStorage, count: u8) {
 	for suffix in 1..=count {
-		storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, suffix), row(&format!("v{suffix}")));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: key_in(Keyspace::ACCUMULATOR, suffix),
+			post: row(&format!("v{suffix}")),
+		}]);
 	}
 }
 
@@ -151,7 +155,11 @@ fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
 fn a_flushed_write_is_served_fresh_after_the_point_tier_cached_the_previous_row() {
 	// Without invalidate-on-write the drained shadow uncovers the pre-write row and it is served forever.
 	let (store, storage, _guard) = cached_store();
-	storage.set(OP_A, key(1), row("durable"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("durable"),
+	}]);
 
 	let primed = store.get(OP_A, &key(1)).expect("the seeded row is readable");
 	assert_eq!(
@@ -176,8 +184,16 @@ fn a_flushed_write_is_served_fresh_after_the_point_tier_cached_the_previous_row(
 fn a_cached_absence_does_not_survive_the_write_that_fills_the_key() {
 	// A remembered absence answers as a hit, so it must never outlive the write that fills the key.
 	let (store, storage, _guard) = cached_store();
-	storage.set(OP_A, key(1), row("seed"));
-	storage.remove(OP_A, &key(1));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("seed"),
+	}]);
+	storage.apply_batch(&[OperatorWrite::Remove {
+		operator: OP_A,
+		key: key(1),
+		pre: DurablePre::Present(ByteSize::from_bytes(row("seed").bytes().len() as u64)),
+	}]);
 
 	assert!(store.get(OP_A, &key(1)).is_none(), "the key is gone from sqlite but still passes the filter");
 	assert_eq!(point_entries(&store), 1, "the absence itself must be cached, otherwise this test proves nothing");
@@ -197,7 +213,11 @@ fn a_cached_absence_does_not_survive_the_write_that_fills_the_key() {
 fn repeated_reads_of_one_key_cost_a_single_persistent_lookup() {
 	// One fill for many reads is the whole point of the tier; a second fill means it never retained the row.
 	let (store, storage, _guard) = cached_store();
-	storage.set(OP_A, key(1), row("durable"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("durable"),
+	}]);
 
 	for _ in 0..8 {
 		assert_eq!(body(&store.get(OP_A, &key(1)).expect("the seeded row stays readable")), "durable");
@@ -217,8 +237,16 @@ fn repeated_reads_of_one_key_cost_a_single_persistent_lookup() {
 fn dropping_one_operators_state_clears_only_its_cached_entries() {
 	// Two operators sharing identical key bytes must not be collected together by a drop of either one.
 	let (store, storage, _guard) = cached_store();
-	storage.set(OP_A, key(1), row("a-durable"));
-	storage.set(OP_B, key(1), row("b-durable"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("a-durable"),
+	}]);
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_B,
+		key: key(1),
+		post: row("b-durable"),
+	}]);
 
 	assert!(store.get(OP_A, &key(1)).is_some());
 	assert!(store.get(OP_B, &key(1)).is_some());
@@ -253,7 +281,11 @@ fn a_lookup_under_a_disabled_filter_caches_the_absence() {
 	let (config, _guard) = SqliteConfig::in_memory();
 	{
 		let seed = SqliteOperatorStorage::new(config.clone());
-		seed.set(OP_B, key(9), row("seed"));
+		seed.apply_batch(&[OperatorWrite::Insert {
+			operator: OP_B,
+			key: key(9),
+			post: row("seed"),
+		}]);
 	}
 
 	let store = cached_store_on(SqliteOperatorStorage::new(config));
@@ -305,7 +337,11 @@ fn a_memory_only_store_builds_no_read_caches() {
 fn contains_is_invalidated_by_a_write_exactly_as_get_is() {
 	// contains and get read the same entry, so they must never disagree across a removal or a rewrite.
 	let (store, storage, _guard) = cached_store();
-	storage.set(OP_A, key(1), row("durable"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("durable"),
+	}]);
 
 	assert!(store.contains(OP_A, &key(1)), "the first contains populates the tier from sqlite");
 	assert_eq!(point_entries(&store), 1);
@@ -329,9 +365,21 @@ fn contains_is_invalidated_by_a_write_exactly_as_get_is() {
 fn a_batch_write_invalidates_every_state_key_it_carries() {
 	// The bulk path must invalidate exactly like the point path, or it leaves the same stale row unseen.
 	let (store, storage, _guard) = cached_store();
-	storage.set(OP_A, key(1), row("durable-1"));
-	storage.set(OP_A, key(2), row("durable-2"));
-	storage.set(OP_A, key(3), row("durable-3"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("durable-1"),
+	}]);
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(2),
+		post: row("durable-2"),
+	}]);
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(3),
+		post: row("durable-3"),
+	}]);
 
 	for suffix in 1u8..=3 {
 		assert!(store.get(OP_A, &key(suffix)).is_some());
@@ -370,7 +418,11 @@ fn a_batch_write_invalidates_every_state_key_it_carries() {
 fn a_write_in_flight_is_still_shadowed_and_never_lets_the_tier_cache_the_old_row() {
 	// A lookup that read only the live batch would fall through as absent here and cache the pre-write row.
 	let (store, storage, _guard) = cached_store();
-	storage.set(OP_A, key(1), row("durable"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("durable"),
+	}]);
 
 	put(&store, OP_A, key(1), row("fresh"));
 	let batch = store.commit().take_for_flush().expect("the write is pending and must be taken for flush");
@@ -530,8 +582,16 @@ fn a_refused_keyspace_reads_absent_without_remembering_the_absence() {
 	// An absence costs the same entry overhead as a row, so the refusal must cover the absence path too.
 	let (store, storage, _guard) = cached_store();
 	let key = key_in(Keyspace::JOIN_PIN, 1);
-	storage.set(OP_A, key.clone(), row("seed"));
-	storage.remove(OP_A, &key);
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key.clone(),
+		post: row("seed"),
+	}]);
+	storage.apply_batch(&[OperatorWrite::Remove {
+		operator: OP_A,
+		key: key.clone(),
+		pre: DurablePre::Present(ByteSize::from_bytes(row("seed").bytes().len() as u64)),
+	}]);
 
 	assert_eq!(store.get(OP_A, &key), None, "the key is gone from sqlite but still passes the filter");
 	assert_eq!(point_entries(&store), 0, "the absence must not be remembered for a refused keyspace");
@@ -601,9 +661,21 @@ fn a_point_read_of_an_expiry_key_remembers_neither_the_row_nor_the_absence() {
 	let (store, storage, _guard) = cached_store();
 	let present = key_in(Keyspace::EXPIRY, 1);
 	let absent = key_in(Keyspace::EXPIRY, 2);
-	storage.set(OP_A, present.clone(), row("armed"));
-	storage.set(OP_A, absent.clone(), row("seed"));
-	storage.remove(OP_A, &absent);
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: present.clone(),
+		post: row("armed"),
+	}]);
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: absent.clone(),
+		post: row("seed"),
+	}]);
+	storage.apply_batch(&[OperatorWrite::Remove {
+		operator: OP_A,
+		key: absent.clone(),
+		pre: DurablePre::Present(ByteSize::from_bytes(row("seed").bytes().len() as u64)),
+	}]);
 
 	assert_eq!(body(&store.get(OP_A, &present).expect("the seeded row is readable")), "armed");
 	assert_eq!(store.get(OP_A, &absent), None, "the key is gone from sqlite but still passes the filter");
@@ -660,8 +732,16 @@ fn a_cached_absence_survives_the_range_fill_that_installs_over_it() {
 	// is bought from sqlite twice.
 	let (store, storage, _guard) = cached_store();
 	seed_accumulator(&storage, 3);
-	storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, 9), row("gone"));
-	storage.remove(OP_A, &key_in(Keyspace::ACCUMULATOR, 9));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key_in(Keyspace::ACCUMULATOR, 9),
+		post: row("gone"),
+	}]);
+	storage.apply_batch(&[OperatorWrite::Remove {
+		operator: OP_A,
+		key: key_in(Keyspace::ACCUMULATOR, 9),
+		pre: DurablePre::Present(ByteSize::from_bytes(row("gone").bytes().len() as u64)),
+	}]);
 
 	assert!(
 		store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 9)).is_none(),
@@ -707,16 +787,32 @@ fn a_whole_bucket_outranks_the_absence_the_point_tier_remembers() {
 	let (store, storage, _guard) = cached_store();
 	seed_accumulator(&storage, 3);
 	for suffix in 4..=5u8 {
-		storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, suffix), row("later"));
-		storage.remove(OP_A, &key_in(Keyspace::ACCUMULATOR, suffix));
+		storage.apply_batch(&[OperatorWrite::Insert {
+			operator: OP_A,
+			key: key_in(Keyspace::ACCUMULATOR, suffix),
+			post: row("later"),
+		}]);
+		storage.apply_batch(&[OperatorWrite::Remove {
+			operator: OP_A,
+			key: key_in(Keyspace::ACCUMULATOR, suffix),
+			pre: DurablePre::Present(ByteSize::from_bytes(row("later").bytes().len() as u64)),
+		}]);
 	}
 
 	assert!(store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 4)).is_none(), "the key starts absent");
 	assert!(!store.contains(OP_A, &key_in(Keyspace::ACCUMULATOR, 5)), "and so does the one contains will read");
 	assert_eq!(point_entries(&store), 2, "both absences must be remembered, or the contradiction never arises");
 
-	storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, 4), row("v4"));
-	storage.set(OP_A, key_in(Keyspace::ACCUMULATOR, 5), row("v5"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key_in(Keyspace::ACCUMULATOR, 4),
+		post: row("v4"),
+	}]);
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key_in(Keyspace::ACCUMULATOR, 5),
+		post: row("v5"),
+	}]);
 
 	let primed = store.range_batch(OP_A, accumulator_range(), 64);
 	assert_eq!(

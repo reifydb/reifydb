@@ -46,8 +46,16 @@ fn row(len: usize) -> EncodedPodRow {
 #[test]
 fn keyspaces_of_one_group_are_counted_apart() {
 	let (store, _guard) = OperatorStore::in_memory();
-	store.set(OperatorId(1), key(7, 0x10, 1), row(2));
-	store.set(OperatorId(1), key(7, 0xFE, 1), row(2));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 1),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0xFE, 1),
+		post: row(2),
+	}]);
 
 	let census = store.census();
 
@@ -62,8 +70,16 @@ fn keys_and_bytes_accumulate_over_a_bucket() {
 	let (small, large) = (row(2), row(3));
 	let expected_keys = key(7, 0x10, 1).len() + key(7, 0x10, 2).len();
 	let expected_values = small.len() + large.len();
-	store.set(OperatorId(1), key(7, 0x10, 1), small);
-	store.set(OperatorId(1), key(7, 0x10, 2), large);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 1),
+		post: small,
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 2),
+		post: large,
+	}]);
 
 	let census = store.census();
 
@@ -84,8 +100,16 @@ fn keys_and_bytes_accumulate_over_a_bucket() {
 #[test]
 fn the_same_group_under_two_operators_stays_apart() {
 	let (store, _guard) = OperatorStore::in_memory();
-	store.set(OperatorId(1), key(7, 0x10, 1), row(2));
-	store.set(OperatorId(2), key(7, 0x10, 1), row(2));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 1),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(2),
+		key: key(7, 0x10, 1),
+		post: row(2),
+	}]);
 
 	let census = store.census();
 
@@ -97,8 +121,16 @@ fn the_same_group_under_two_operators_stays_apart() {
 #[test]
 fn a_removed_key_leaves_the_census() {
 	let (store, _guard) = OperatorStore::in_memory();
-	store.set(OperatorId(1), key(7, 0x10, 1), row(2));
-	store.remove(OperatorId(1), &key(7, 0x10, 1));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 1),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 1),
+		pre: DurablePre::Present(ByteSize::from_bytes(row(2).bytes().len() as u64)),
+	}]);
 
 	assert_eq!(store.census(), Vec::<OperatorStateCensus>::new());
 }
@@ -108,8 +140,16 @@ fn a_small_group_id_encoded_the_real_way_still_yields_one_bucket_per_keyspace() 
 	let (store, _guard) = OperatorStore::in_memory();
 	let group = GroupId(1);
 	let keyspace = Keyspace(0x10);
-	store.set(OperatorId(1), real_key(group, keyspace, &[0]), row(2));
-	store.set(OperatorId(1), real_key(group, keyspace, &[1]), row(2));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: real_key(group, keyspace, &[0]),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: real_key(group, keyspace, &[1]),
+		post: row(2),
+	}]);
 
 	let census = store.census();
 
@@ -124,8 +164,16 @@ fn a_small_group_id_encoded_the_real_way_still_yields_one_bucket_per_keyspace() 
 #[test]
 fn real_keys_of_two_small_groups_now_share_one_keyspace_bucket() {
 	let (store, _guard) = OperatorStore::in_memory();
-	store.set(OperatorId(1), real_key(GroupId(1), Keyspace(0x10), &[0]), row(2));
-	store.set(OperatorId(1), real_key(GroupId(2), Keyspace(0x10), &[0]), row(2));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: real_key(GroupId(1), Keyspace(0x10), &[0]),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: real_key(GroupId(2), Keyspace(0x10), &[0]),
+		post: row(2),
+	}]);
 
 	let census = store.census();
 
@@ -138,8 +186,16 @@ fn real_keys_of_two_small_groups_now_share_one_keyspace_bucket() {
 fn real_keys_split_by_keyspace_within_one_group() {
 	let (store, _guard) = OperatorStore::in_memory();
 	let group = GroupId(1);
-	store.set(OperatorId(1), real_key(group, Keyspace(0x10), &[0]), row(2));
-	store.set(OperatorId(1), real_key(group, Keyspace(0xFE), &[0]), row(2));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: real_key(group, Keyspace(0x10), &[0]),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: real_key(group, Keyspace(0xFE), &[0]),
+		post: row(2),
+	}]);
 
 	let census = store.census();
 
@@ -385,8 +441,17 @@ fn the_by_expiry_scan_is_answered_by_a_covering_index() {
 fn overwriting_a_key_moves_its_bytes_without_counting_it_twice() {
 	let (store, _guard) = OperatorStore::in_memory();
 	let overwritten = key(7, 0x10, 1);
-	store.set(OperatorId(1), overwritten.clone(), row(2));
-	store.set(OperatorId(1), overwritten.clone(), row(9));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: overwritten.clone(),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Replace {
+		operator: OperatorId(1),
+		key: overwritten.clone(),
+		pre_value_bytes: ByteSize::from_bytes(row(2).bytes().len() as u64),
+		post: row(9),
+	}]);
 
 	let census = store.census();
 
@@ -407,9 +472,21 @@ fn overwriting_a_key_moves_its_bytes_without_counting_it_twice() {
 #[test]
 fn dropping_an_operator_empties_every_census_bucket_it_owned() {
 	let (store, _guard) = OperatorStore::in_memory();
-	store.set(OperatorId(1), key(7, 0x10, 1), row(2));
-	store.set(OperatorId(1), key(7, 0x20, 1), row(2));
-	store.set(OperatorId(2), key(7, 0x10, 1), row(2));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 1),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x20, 1),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(2),
+		key: key(7, 0x10, 1),
+		post: row(2),
+	}]);
 
 	store.drop_operator_state(OperatorId(1));
 	let census = store.census();
@@ -422,9 +499,21 @@ fn dropping_an_operator_empties_every_census_bucket_it_owned() {
 #[test]
 fn a_bucket_emptied_to_zero_comes_back_counting_from_zero() {
 	let (store, _guard) = OperatorStore::in_memory();
-	store.set(OperatorId(1), key(7, 0x10, 1), row(2));
-	store.remove(OperatorId(1), &key(7, 0x10, 1));
-	store.set(OperatorId(1), key(7, 0x10, 2), row(3));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 1),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Remove {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 1),
+		pre: DurablePre::Present(ByteSize::from_bytes(row(2).bytes().len() as u64)),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 2),
+		post: row(3),
+	}]);
 
 	let census = store.census();
 
@@ -436,10 +525,26 @@ fn a_bucket_emptied_to_zero_comes_back_counting_from_zero() {
 #[test]
 fn a_table_written_before_the_counters_existed_is_seeded_to_the_same_totals() {
 	let (store, _guard) = OperatorStore::in_memory();
-	store.set(OperatorId(1), key(7, 0x10, 1), row(2));
-	store.set(OperatorId(1), key(7, 0x10, 2), row(5));
-	store.set(OperatorId(1), key(7, 0x20, 1), row(4));
-	store.set(OperatorId(2), key(7, 0x10, 1), row(3));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 1),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 2),
+		post: row(5),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x20, 1),
+		post: row(4),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(2),
+		key: key(7, 0x10, 1),
+		post: row(3),
+	}]);
 	let expected = store.census();
 
 	let guard = store.inner.conn.lock();
@@ -462,9 +567,21 @@ fn a_long_suffix_never_splits_a_keyspace_bucket() {
 	let (store, _guard) = OperatorStore::in_memory();
 	let group = GroupId(3);
 	let keyspace = Keyspace(0x20);
-	store.set(OperatorId(1), real_key(group, keyspace, &[9; 24]), row(2));
-	store.set(OperatorId(1), real_key(group, keyspace, &[8; 24]), row(2));
-	store.set(OperatorId(1), real_key(group, keyspace, &[7; 24]), row(2));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: real_key(group, keyspace, &[9; 24]),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: real_key(group, keyspace, &[8; 24]),
+		post: row(2),
+	}]);
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: real_key(group, keyspace, &[7; 24]),
+		post: row(2),
+	}]);
 
 	let census = store.census();
 
@@ -546,7 +663,11 @@ fn anchors_are_counted_in_the_byte_accounting_of_their_operator() {
 #[test]
 fn dropping_an_operators_state_takes_its_anchors_with_it() {
 	let (store, _guard) = OperatorStore::in_memory();
-	store.set(OperatorId(1), real_key(GroupId(7), Keyspace(0x1D), &[1]), row(4));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: real_key(GroupId(7), Keyspace(0x1D), &[1]),
+		post: row(4),
+	}]);
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));
 	store.anchor_set(OperatorId(2), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(6_000));
 
@@ -611,7 +732,11 @@ fn a_pooled_reader_sees_a_write_the_moment_the_writer_commits() {
 	let store = OperatorStore::new(config);
 	let probe = key(7, 0x10, 1);
 
-	store.set(OperatorId(1), probe.clone(), row(4));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: probe.clone(),
+		post: row(4),
+	}]);
 
 	assert!(store.contains(OperatorId(1), &probe));
 	assert!(store.get(OperatorId(1), &probe).is_some());
@@ -630,7 +755,11 @@ fn concurrent_reads_during_writes_do_not_deadlock() {
 	let (config, _guard) = SqliteConfig::test();
 	let store = OperatorStore::new(config);
 	let probe = key(7, 0x10, 1);
-	store.set(OperatorId(1), probe.clone(), row(4));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: probe.clone(),
+		post: row(4),
+	}]);
 
 	let readers: Vec<_> = (0..4)
 		.map(|_| {
@@ -645,7 +774,11 @@ fn concurrent_reads_during_writes_do_not_deadlock() {
 		.collect();
 
 	for i in 0..200u64 {
-		store.set(OperatorId(2), key(8, 0x10, (i % 251) as u8), row(8));
+		store.apply_batch(&[OperatorWrite::Insert {
+			operator: OperatorId(2),
+			key: key(8, 0x10, (i % 251) as u8),
+			post: row(8),
+		}]);
 	}
 
 	for reader in readers {
@@ -659,7 +792,11 @@ fn state_written_is_false_until_a_row_exists_and_survives_a_reopen() {
 	let store = OperatorStore::new(config.clone());
 	assert!(!store.state_written(), "an empty database has never been written and must not claim it was");
 
-	store.set(OperatorId(1), key(7, 0x10, 1), row(4));
+	store.apply_batch(&[OperatorWrite::Insert {
+		operator: OperatorId(1),
+		key: key(7, 0x10, 1),
+		post: row(4),
+	}]);
 	assert!(store.state_written(), "a write must mark the database as written or its own row reads back absent");
 
 	let reopened = OperatorStore::new(config);

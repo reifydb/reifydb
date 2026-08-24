@@ -15,13 +15,7 @@ use crate::{
 };
 
 impl OperatorCommitBuffer {
-	pub fn record_state_set(
-		&self,
-		operator: OperatorId,
-		key: EncodedKey,
-		row: EncodedPodRow,
-		pre: DurablePre,
-	) {
+	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow, pre: DurablePre) {
 		let mut inner = self.shared.inner.lock();
 		inner.live.record_state((operator, key), Some(row), pre);
 		self.request_flush_when_full(&mut inner);

@@ -28,6 +28,9 @@ pub(super) const STATE_REMOVE_SQL: &str = r#"DELETE FROM "operator_state" WHERE 
 
 pub(super) const STATE_DROP_SQL: &str = r#"DELETE FROM "operator_state" WHERE "operator" = ?1"#;
 
+pub(super) const STATE_VALUE_LEN_SQL: &str =
+	r#"SELECT LENGTH("bytes") FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2"#;
+
 pub(super) const STATE_BYTES_SQL: &str =
 	r#"SELECT COALESCE(SUM(LENGTH("key") + LENGTH("bytes")), 0) FROM "operator_state" WHERE "operator" = ?1"#;
 
@@ -38,6 +41,18 @@ pub(super) const STATE_CENSUS_SQL: &str = r#"SELECT "operator", "keyspace", "key
 	   FROM "operator_state_census"
 	   WHERE "keys" > 0
 	   ORDER BY "operator", "keyspace""#;
+
+pub(super) const CENSUS_APPLY_SQL: &str = r#"INSERT INTO "operator_state_census"
+		("operator", "keyspace", "keys", "key_bytes", "value_bytes")
+	   VALUES (?1, ?2, ?3, ?4, ?5)
+	   ON CONFLICT ("operator", "keyspace") DO UPDATE SET
+		"keys" = "keys" + excluded."keys",
+		"key_bytes" = "key_bytes" + excluded."key_bytes",
+		"value_bytes" = "value_bytes" + excluded."value_bytes""#;
+
+pub(super) const CENSUS_ZERO_OPERATOR_SQL: &str = r#"UPDATE "operator_state_census"
+	   SET "keys" = 0, "key_bytes" = 0, "value_bytes" = 0
+	   WHERE "operator" = ?1"#;
 
 pub(crate) const ANCHORS_BY_EXPIRY_SQL: &str = r#"SELECT "side", "row_number", "expiry" FROM "operator_seal_anchor"
 	   WHERE "operator" = ?1 AND "group" = ?2

@@ -92,7 +92,6 @@ fn body(row: &EncodedPodRow) -> String {
 }
 
 fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-	// reading the pre-image back keeps the claim truthful even when an earlier write in the same test moved the key
 	let write = match store.get(operator, &key) {
 		Some(pre) => OperatorWrite::Replace {
 			operator,
@@ -110,7 +109,6 @@ fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: Encode
 }
 
 fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
-	// a removal must say whether the key was there, and only the store knows after the writes above it
 	let pre = match store.get(operator, key) {
 		Some(row) => DurablePre::Present(ByteSize::from_bytes(row.bytes().len() as u64)),
 		None => DurablePre::Absent,
@@ -155,7 +153,11 @@ fn a_buffered_write_becomes_durable_and_the_buffer_stops_shadowing_it() {
 #[test]
 fn a_buffered_tombstone_flushes_as_a_delete_so_the_row_cannot_resurrect() {
 	let (store, storage, _guard) = store_fixture();
-	storage.set(OP_A, key(1), row("durable"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("durable"),
+	}]);
 
 	erase(&store, OP_A, &key(1));
 	assert!(store.flush_pending_blocking(), "the tombstone must reach the flusher");
@@ -174,8 +176,16 @@ fn a_buffered_tombstone_flushes_as_a_delete_so_the_row_cannot_resurrect() {
 #[test]
 fn a_drop_flushes_before_the_writes_recorded_after_it() {
 	let (store, storage, _guard) = store_fixture();
-	storage.set(OP_A, key(1), row("pre-drop-durable"));
-	storage.set(OP_B, key(1), row("neighbour"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("pre-drop-durable"),
+	}]);
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_B,
+		key: key(1),
+		post: row("neighbour"),
+	}]);
 	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
 	put(&store, OP_A, key(2), row("pre-drop-buffered"));
 
@@ -215,7 +225,11 @@ fn an_anchor_drop_erases_only_the_group_it_names() {
 	let (store, storage, _guard) = store_fixture();
 	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
 	storage.anchor_set(OP_A, GROUP_B, SIDE, RowNumber(2), DateTime::from_millis(200));
-	storage.set(OP_A, key(1), row("durable"));
+	storage.apply_batch(&[OperatorWrite::Insert {
+		operator: OP_A,
+		key: key(1),
+		post: row("durable"),
+	}]);
 
 	store.anchors_remove_group(OP_A, GROUP_A);
 	store.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(3), DateTime::from_millis(300));

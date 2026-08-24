@@ -1,15 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(reifydb_assertions)]
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
 
+#[cfg(reifydb_assertions)]
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+#[cfg(reifydb_assertions)]
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sqlite::batch::values_placeholders;
+#[cfg(reifydb_assertions)]
+use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
+#[cfg(reifydb_assertions)]
+use rusqlite::OptionalExtension;
 use rusqlite::{ToSql, Transaction, params, params_from_iter};
 use tracing::instrument;
 
+#[cfg(reifydb_assertions)]
+use crate::{sqlite::sql::STATE_VALUE_LEN_SQL, types::DurablePre};
 use crate::{
 	sqlite::{
 		SqliteOperatorStorage,
+		census::{batch_delta, flush_delta, zero_operator_buckets},
 		sql::{
 			ANCHOR_REMOVE_SQL, ANCHOR_SET_SQL, ANCHORS_DROP_GROUP_SQL, ANCHORS_DROP_OPERATOR_SQL,
 			CHECKPOINT_REMOVE_SQL, CHECKPOINT_SET_SQL, STATE_DROP_SQL, STATE_REMOVE_SQL, STATE_SET_SQL,
@@ -97,6 +110,9 @@ impl SqliteOperatorStorage {
 			return;
 		};
 		let transaction = conn.unchecked_transaction().expect("operator state batch could not begin");
+		reifydb_assertions! {
+			verify_batch_classification(&transaction, writes);
+		}
 		for write in writes {
 			match write {
 				OperatorWrite::Insert {
@@ -164,6 +180,7 @@ impl SqliteOperatorStorage {
 					.expect("seal anchor delete failed"),
 			};
 		}
+		batch_delta(writes).apply(&transaction);
 		transaction.commit().expect("operator state batch could not commit");
 	}
 
@@ -185,6 +202,9 @@ impl SqliteOperatorStorage {
 		let guard = self.inner.conn.lock();
 		let conn = guard.as_ref().expect("operator state flush ran without an open connection");
 		let transaction = conn.unchecked_transaction().expect("operator state flush could not begin");
+		reifydb_assertions! {
+			verify_flush_classification(&transaction, batch);
+		}
 
 		for marker in &batch.drops {
 			match marker {
@@ -199,6 +219,7 @@ impl SqliteOperatorStorage {
 						.expect("seal anchor operator delete could not be prepared")
 						.execute(params![operator.0 as i64])
 						.expect("seal anchor operator delete failed");
+					zero_operator_buckets(&transaction, *operator);
 				}
 				DropMarker::AnchorsOperator(operator) => {
 					transaction
@@ -232,6 +253,7 @@ impl SqliteOperatorStorage {
 		}
 		execute_chunked(&transaction, &STATE_SET_CHUNK_SQL, STATE_SET_SQL, &state_sets);
 		execute_chunked(&transaction, &STATE_REMOVE_CHUNK_SQL, STATE_REMOVE_SQL, &state_removes);
+		flush_delta(batch).apply(&transaction);
 
 		let mut anchor_sets: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
 		let mut anchor_removes: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
@@ -271,5 +293,87 @@ impl SqliteOperatorStorage {
 		}
 
 		transaction.commit().expect("operator state flush could not commit");
+	}
+}
+
+#[cfg(reifydb_assertions)]
+fn value_bytes(row: &EncodedPodRow) -> ByteSize {
+	ByteSize::from_bytes(row.bytes().len() as u64)
+}
+
+#[cfg(reifydb_assertions)]
+fn durable_value_len(transaction: &Transaction, operator: OperatorId, key: &EncodedKey) -> Option<ByteSize> {
+	transaction
+		.prepare_cached(STATE_VALUE_LEN_SQL)
+		.expect("operator state pre-image probe could not be prepared")
+		.query_row(params![operator.0 as i64, key.as_slice()], |row| row.get::<_, i64>(0))
+		.optional()
+		.expect("operator state pre-image probe failed")
+		.map(|len| ByteSize::from_bytes(len as u64))
+}
+
+#[cfg(reifydb_assertions)]
+fn assert_claim(operator: OperatorId, claimed: DurablePre, observed: Option<ByteSize>) {
+	let claimed = match claimed {
+		DurablePre::Absent => None,
+		DurablePre::Present(bytes) => Some(bytes),
+	};
+	assert_eq!(
+		claimed, observed,
+		"operator {} classified a durable write against a pre-image sqlite does not hold; the census is \
+		 delta arithmetic over that claim, so a wrong one drifts the bucket until the next reseed",
+		operator.0
+	);
+}
+
+#[cfg(reifydb_assertions)]
+fn verify_batch_classification(transaction: &Transaction, writes: &[OperatorWrite]) {
+	let mut overlay: BTreeMap<(OperatorId, EncodedKey), Option<ByteSize>> = BTreeMap::new();
+	for write in writes {
+		let (operator, key, claimed, post) = match write {
+			OperatorWrite::Insert {
+				operator,
+				key,
+				post,
+			} => (*operator, key, DurablePre::Absent, Some(value_bytes(post))),
+			OperatorWrite::Replace {
+				operator,
+				key,
+				pre_value_bytes,
+				post,
+			} => (*operator, key, DurablePre::Present(*pre_value_bytes), Some(value_bytes(post))),
+			OperatorWrite::Remove {
+				operator,
+				key,
+				pre,
+			} => (*operator, key, *pre, None),
+			_ => continue,
+		};
+		let slot = (operator, key.clone());
+		let observed = match overlay.get(&slot) {
+			Some(pending) => *pending,
+			None => durable_value_len(transaction, operator, key),
+		};
+		assert_claim(operator, claimed, observed);
+		overlay.insert(slot, post);
+	}
+}
+
+#[cfg(reifydb_assertions)]
+fn verify_flush_classification(transaction: &Transaction, batch: &FlushBatch) {
+	let dropped: BTreeSet<OperatorId> = batch
+		.drops
+		.iter()
+		.filter_map(|marker| match marker {
+			DropMarker::OperatorState(operator) => Some(*operator),
+			_ => None,
+		})
+		.collect();
+	for ((operator, key), entry) in &batch.state {
+		let observed = match dropped.contains(operator) {
+			true => None,
+			false => durable_value_len(transaction, *operator, key),
+		};
+		assert_claim(*operator, entry.durable_pre, observed);
 	}
 }
