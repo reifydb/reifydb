@@ -74,11 +74,8 @@ impl Runner {
 		}
 	}
 
-	/// Every writer of the persistent tier must invalidate both read tiers, or a cached row outlives the write.
+	/// Every writer of the persistent tier must invalidate the point tier, or a cached row outlives the write.
 	fn invalidate_read(&self, operator: OperatorId, key: &EncodedKey) {
-		if let Some(range) = self.store.range() {
-			range.invalidate(operator, key);
-		}
 		if let Some(point) = self.store.point() {
 			point.invalidate(operator, key);
 		}

@@ -3374,6 +3374,7 @@ dependencies = [
  "reifydb-filter",
  "reifydb-runtime",
  "reifydb-sqlite",
+ "reifydb-store",
  "reifydb-testing",
  "reifydb-testing-chaos",
  "reifydb-testing-macro",

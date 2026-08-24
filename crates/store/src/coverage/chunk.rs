@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The chunk protocol a cache and its persistent tier share to interleave one scan.
-//!
-//! Both advance the same cursor, so the caller never decides up front whether the whole range is
-//! resident. It asks for the next chunk, gets either rows or a gap signal, and on a gap reads the
-//! persistent tier from exactly where the cache stopped.
-
 use reifydb_codec::key::encoded::EncodedKey;
 
-/// Where a scan has reached, shared by the cache and the persistent tier.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RangeCursor {
 	pub last_key: Option<EncodedKey>,
@@ -25,7 +18,6 @@ impl RangeCursor {
 		self.exhausted
 	}
 
-	/// Advances past `key`, which the next chunk must start strictly after.
 	pub fn advance(&mut self, key: EncodedKey) {
 		self.last_key = Some(key);
 	}
@@ -40,7 +32,6 @@ impl RangeCursor {
 	}
 }
 
-/// One step of a scan: rows the cache proved, or a span it cannot speak for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ServedChunk<B> {
 	Served(B),
@@ -113,7 +104,7 @@ mod tests {
 
 	#[test]
 	fn finish_keeps_the_last_key_for_attribution() {
-		// Metric attribution reads last_key after the scan ends; clearing it misattributes every exhausted scan.
+		// Clearing last_key on finish misattributes every exhausted scan in the metrics.
 		let mut cursor = RangeCursor::new();
 		cursor.advance(key(b"f"));
 		cursor.finish();

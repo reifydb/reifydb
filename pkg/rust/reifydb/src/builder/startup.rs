@@ -113,6 +113,7 @@ pub(crate) fn resolve_startup_configs(
 	let operator_range = uint8_opt(ConfigKey::OperatorRangeBufferBytes).map(|resident_bytes| OperatorRangeConfig {
 		resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
 		shards: OperatorRangeConfig::default().shards,
+		gap_guard: OperatorRangeConfig::default().gap_guard,
 	});
 
 	let cut_bytes = ByteSize::from_bytes(uint8(ConfigKey::CdcBlockCutBytes));

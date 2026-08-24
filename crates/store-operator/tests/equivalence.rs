@@ -17,6 +17,7 @@ use reifydb_core::{
 		GroupId, Keyspace, OperatorStateKey, group_data_inner_range, keyspace_inner_range,
 		keyspace_inner_range_upto,
 	},
+	metrics::scan::ScanCounters,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -24,6 +25,7 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+use reifydb_store::coverage::DEFAULT_GAP_GUARD;
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
@@ -41,6 +43,9 @@ const OPERATORS: u64 = 2;
 const GROUPS: u64 = 2;
 
 const SUFFIXES: u64 = 160;
+
+/// The subset the range tier is allowed to cache, which is what the read-cost gate may measure.
+const CACHED_KEYSPACES: [Keyspace; 2] = [Keyspace::ACCUMULATOR, Keyspace::JOIN_PUBLISHED];
 
 const KEYSPACES: [Keyspace; 5] = [
 	Keyspace::ACCUMULATOR,
@@ -71,6 +76,10 @@ impl Rng {
 }
 
 fn store(cached: bool) -> (OperatorStore, SqliteTempPathGuard) {
+	store_with_range_budget(cached, 128 * 1024)
+}
+
+fn store_with_range_budget(cached: bool, range_bytes: u64) -> (OperatorStore, SqliteTempPathGuard) {
 	// a one-hour flush interval means rows reach sqlite only when the test flushes, keeping both stores in lockstep
 	let pools = Pools::new(PoolConfig::default());
 	let actor_system = ActorSystem::new(pools, Clock::Real);
@@ -86,8 +95,9 @@ fn store(cached: bool) -> (OperatorStore, SqliteTempPathGuard) {
 			shards: 4,
 		}),
 		range: cached.then(|| OperatorRangeConfig {
-			resident_bytes: Some(ByteSize::from_bytes(128 * 1024)),
+			resident_bytes: Some(ByteSize::from_bytes(range_bytes)),
 			shards: 4,
+			gap_guard: DEFAULT_GAP_GUARD,
 		}),
 		spawner,
 		clock: Clock::Real,
@@ -163,14 +173,87 @@ fn sweep(cached: &OperatorStore, oracle: &OperatorStore, step: u64) {
 	}
 }
 
+/// Drains every cacheable keyspace of one store, ignoring the answers, and reports nothing.
+///
+/// Equality is asserted elsewhere; this exists purely so the persistent reads it costs can be
+/// bracketed by a counter.
+fn drain_cacheable(store: &OperatorStore) {
+	for operator in 1..=OPERATORS {
+		for group in 1..=GROUPS {
+			for keyspace in CACHED_KEYSPACES {
+				drain(store, OperatorId(operator), &keyspace_inner_range(GroupId(group), keyspace), 64);
+			}
+		}
+	}
+}
+
+#[test]
+fn a_warm_cache_reads_far_less_than_the_oracle_for_the_same_answers() {
+	// A tier that answers correctly while still reaching sqlite is worthless, so reads are measured.
+	let (cached, _cached_guard) = store_with_range_budget(true, 4 * 1024 * 1024);
+	let (oracle, _oracle_guard) = store_with_range_budget(false, 4 * 1024 * 1024);
+	let mut rng = Rng(SEED);
+	let mut live: HashMap<(OperatorId, EncodedKey), ByteSize> = HashMap::new();
+
+	for step in 0..STEPS {
+		let (operator, key) = key(&mut rng);
+		let row = EncodedPodRow::new(format!("{step}").as_bytes());
+		let post_bytes = ByteSize::from_bytes(row.bytes().len() as u64);
+		let write = match live.insert((operator, key.clone()), post_bytes) {
+			Some(pre_value_bytes) => OperatorWrite::Replace {
+				operator,
+				key,
+				pre_value_bytes,
+				post: row,
+			},
+			None => OperatorWrite::Insert {
+				operator,
+				key,
+				post: row,
+			},
+		};
+		cached.apply_batch(&[write.clone()]);
+		oracle.apply_batch(&[write]);
+	}
+	assert!(cached.flush_pending_blocking(), "the rows must reach sqlite, or nothing is read back from it");
+	assert!(oracle.flush_pending_blocking(), "the rows must reach sqlite, or nothing is read back from it");
+
+	drain_cacheable(&cached);
+
+	let before_warm = ScanCounters::sample();
+	drain_cacheable(&cached);
+	let warm = before_warm.since();
+
+	let before_cold = ScanCounters::sample();
+	drain_cacheable(&oracle);
+	let cold = before_cold.since();
+
+	let tier = cached.range().expect("the cached fixture configures a range tier");
+	let counters = tier.metrics();
+	assert!(counters.installs > 0, "the workload must install at least one span, or there is no cache to measure");
+	assert!(counters.hits > 0, "a warmed tier that never reports a hit answered nothing from RAM");
+	assert_eq!(
+		counters.installs_refused, 0,
+		"the fixture budget must hold the working set, or this measures budget refusals and not coverage"
+	);
+	assert!(cold.fetched > 0, "the oracle must actually read sqlite, or the comparison below has no denominator");
+	assert!(
+		warm.fetched * 4 < cold.fetched,
+		"a warmed range tier answered {} rows out of sqlite where the uncached oracle answered {}; a tier \
+		 that serves the right answer while still reaching the store on every read costs memory and saves \
+		 nothing, and equivalence alone can never fail it",
+		warm.fetched,
+		cold.fetched
+	);
+}
+
 #[test]
 fn cached_reads_equal_uncached_oracle_across_randomized_workload() {
 	// interleaving reads with writes is the point: fills, invalidations and write-through all race the workload
 	let (cached, _cached_guard) = store(true);
 	let (oracle, _oracle_guard) = store(false);
 	let mut rng = Rng(SEED);
-	// every write must claim its own pre-image, and a wrong claim drifts the census forever, so the live
-	// value sizes are tracked here rather than read back out of the store under test
+	// A wrong pre-image claim drifts the census forever, so live value sizes are tracked here.
 	let mut live: HashMap<(OperatorId, EncodedKey), ByteSize> = HashMap::new();
 	for step in 0..STEPS {
 		match rng.below(100) {

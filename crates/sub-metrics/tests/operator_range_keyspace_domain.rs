@@ -66,16 +66,16 @@ fn range_and_point_are_four_separate_namespaces() {
 }
 
 #[test]
-fn operator_range_owns_the_bucket_count_and_the_point_read_counters() {
-	// Every resident bucket is whole by construction, so `buckets` is the complete-bucket count and no
-	// separate one may exist. point_hits/point_misses count point reads a resident bucket settled, a
-	// number only the range tier can produce.
+fn operator_range_owns_the_partition_count_and_the_point_read_counters() {
+	// Residency is no longer the completeness claim, so `partitions` counts resident partitions only and
+	// says nothing about what is proven; the claim lives in the coverage index. point_hits/point_misses
+	// count point reads a proven span settled, a number only the range tier can produce.
 	for domain in [MetricsDomain::StoreOperatorRange, MetricsDomain::StoreOperatorRangeKeyspace] {
 		let spec = domain.spec();
-		assert!(spec.measures.iter().any(|m| m.name == "buckets"), "{domain:?} must count its buckets");
+		assert!(spec.measures.iter().any(|m| m.name == "partitions"), "{domain:?} must count its partitions");
 		assert!(
 			spec.measures.iter().all(|m| m.name != "complete_buckets"),
-			"{domain:?} must not publish a second bucket count; residency already means complete"
+			"{domain:?} must not publish a residency count dressed as a completeness count"
 		);
 		for name in ["point_hits", "point_misses"] {
 			assert!(spec.measures.iter().any(|m| m.name == name), "{domain:?} must publish {name}");
@@ -96,7 +96,7 @@ fn operator_range_keyspace_pins_the_published_layout() {
 
 	let levels = spec.measures.iter().filter(|m| m.kind == MetricKind::Level).count();
 	let counters = spec.measures.iter().filter(|m| m.kind == MetricKind::Counter).count();
-	assert_eq!((levels, counters), (3, 8), "used/buckets/entries are levels, the rest counters");
+	assert_eq!((levels, counters), (3, 8), "used/partitions/entries are levels, the rest counters");
 	assert_eq!(spec.measures.len(), 11, "no measure outside the level/counter split");
 
 	let current = spec.columns(Surface::Current);

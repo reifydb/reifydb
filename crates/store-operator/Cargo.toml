@@ -20,6 +20,7 @@ reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-filter = { workspace = true }
 reifydb-runtime = { workspace = true }
+reifydb-store = { workspace = true }
 reifydb-sqlite = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
 tracing = { workspace = true }

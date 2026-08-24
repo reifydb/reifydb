@@ -467,13 +467,13 @@ fn operator_range_row(metrics: &OperatorRangeShardMetrics) -> MetricsRow {
 		measures: vec![
 			level_bytes("used", metrics.used),
 			level_bytes("limit", metrics.limit),
-			level_count("buckets", metrics.buckets as u64),
+			level_count("partitions", metrics.partitions as u64),
 			level_count("entries", metrics.entries as u64),
 			counter_count("hits", metrics.counters.hits),
 			counter_count("misses", metrics.counters.misses),
-			counter_count("fills", metrics.counters.fills),
-			counter_count("fills_declined", metrics.counters.fills_declined),
-			counter_count("fills_dirty_aborted", metrics.counters.fills_dirty_aborted),
+			counter_count("installs", metrics.counters.installs),
+			counter_count("installs_refused", metrics.counters.installs_refused),
+			counter_count("installs_raced", metrics.counters.installs_raced),
 			counter_count("evictions", metrics.counters.evictions),
 			counter_count("point_hits", metrics.counters.point_hits),
 			counter_count("point_misses", metrics.counters.point_misses),
@@ -490,13 +490,13 @@ fn operator_range_keyspace_row(metrics: &OperatorRangeKeyspaceMetrics) -> Metric
 		dimensions: vec![Value::Utf8(metrics.keyspace.name().to_string())],
 		measures: vec![
 			level_bytes("used", metrics.used),
-			level_count("buckets", metrics.buckets as u64),
+			level_count("partitions", metrics.partitions as u64),
 			level_count("entries", metrics.entries as u64),
 			counter_count("hits", metrics.counters.hits),
 			counter_count("misses", metrics.counters.misses),
-			counter_count("fills", metrics.counters.fills),
-			counter_count("fills_declined", metrics.counters.fills_declined),
-			counter_count("fills_dirty_aborted", metrics.counters.fills_dirty_aborted),
+			counter_count("installs", metrics.counters.installs),
+			counter_count("installs_refused", metrics.counters.installs_refused),
+			counter_count("installs_raced", metrics.counters.installs_raced),
 			counter_count("evictions", metrics.counters.evictions),
 			counter_count("point_hits", metrics.counters.point_hits),
 			counter_count("point_misses", metrics.counters.point_misses),
@@ -706,14 +706,14 @@ mod tests {
 		OperatorRangeKeyspaceMetrics {
 			keyspace: Keyspace::SOURCE_WATERMARK,
 			used: ByteSize::from_bytes(20_733),
-			buckets: 115,
+			partitions: 115,
 			entries: 419,
 			counters: OperatorRangeMetrics {
 				hits: 1_207,
 				misses: 89,
-				fills: 41,
-				fills_declined: 5,
-				fills_dirty_aborted: 2,
+				installs: 41,
+				installs_refused: 5,
+				installs_raced: 2,
 				evictions: 63,
 				point_hits: 704,
 				point_misses: 22,
@@ -792,7 +792,10 @@ mod tests {
 			MetricsDomain::StoreOperatorPoint.spec().measures.iter().map(|m| m.name).collect();
 		let built: Vec<&str> = row.measures.iter().map(|m| m.metric).collect();
 		assert_eq!(built, declared, "a declared measure the row omits publishes as none forever");
-		assert!(built.iter().all(|name| *name != "buckets"), "the point tier is flat and owns no buckets");
+		assert!(
+			built.iter().all(|name| *name != "partitions"),
+			"the point tier is flat and owns no partitions"
+		);
 	}
 
 	#[test]
@@ -801,7 +804,7 @@ mod tests {
 			shard: 3,
 			used: ByteSize::from_bytes(900),
 			limit: ByteSize::from_bytes(4_096),
-			buckets: 5,
+			partitions: 5,
 			entries: 12,
 			counters: range_sample().counters,
 		});
@@ -839,13 +842,13 @@ mod tests {
 		};
 
 		assert_eq!(find("used").reading, Reading::Bytes(ByteSize::from_bytes(20_733)));
-		assert_eq!(find("buckets").reading, Reading::Count(Count::new(115)));
+		assert_eq!(find("partitions").reading, Reading::Count(Count::new(115)));
 		assert_eq!(find("entries").reading, Reading::Count(Count::new(419)));
 		assert_eq!(find("hits").reading, Reading::Count(Count::new(1_207)));
 		assert_eq!(find("misses").reading, Reading::Count(Count::new(89)));
-		assert_eq!(find("fills").reading, Reading::Count(Count::new(41)));
-		assert_eq!(find("fills_declined").reading, Reading::Count(Count::new(5)));
-		assert_eq!(find("fills_dirty_aborted").reading, Reading::Count(Count::new(2)));
+		assert_eq!(find("installs").reading, Reading::Count(Count::new(41)));
+		assert_eq!(find("installs_refused").reading, Reading::Count(Count::new(5)));
+		assert_eq!(find("installs_raced").reading, Reading::Count(Count::new(2)));
 		assert_eq!(find("evictions").reading, Reading::Count(Count::new(63)));
 		assert_eq!(find("point_hits").reading, Reading::Count(Count::new(704)));
 		assert_eq!(find("point_misses").reading, Reading::Count(Count::new(22)));

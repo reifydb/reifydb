@@ -15,6 +15,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 };
+use reifydb_store::coverage::{Interval, RangeCursor, Segment, ServedChunk, successor};
 #[cfg(reifydb_assertions)]
 use reifydb_value::value::row_number::RowNumber;
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
@@ -24,7 +25,10 @@ use tracing::instrument;
 use crate::types::DurablePre;
 use crate::{
 	store::{OperatorStore, StandardOperatorStore},
-	tier::{commit::batch::DropMarker, range::BucketId},
+	tier::{
+		commit::batch::DropMarker,
+		range::{proven_span, scan_range},
+	},
 	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
 
@@ -189,18 +193,27 @@ impl StandardOperatorStore {
 		overlay.insert(slot, true);
 	}
 
-	fn invalidate_read(&self, operator: OperatorId, key: &EncodedKey) {
+	fn overwrite_range_read(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
 		if let Some(range) = self.range.as_ref() {
-			range.invalidate(operator, key);
+			range.overwrite(operator, key.clone(), row.clone());
 		}
 		if let Some(point) = self.point.as_ref() {
 			point.invalidate(operator, key);
 		}
 	}
 
-	fn overwrite_range_read(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
+	fn insert_range_read(&self, operator: OperatorId, key: &EncodedKey, row: &EncodedPodRow) {
 		if let Some(range) = self.range.as_ref() {
-			range.overwrite(operator, key.clone(), row.clone());
+			range.insert(operator, key.clone(), row.clone());
+		}
+		if let Some(point) = self.point.as_ref() {
+			point.invalidate(operator, key);
+		}
+	}
+
+	fn remove_range_read(&self, operator: OperatorId, key: &EncodedKey) {
+		if let Some(range) = self.range.as_ref() {
+			range.mark_deleted(operator, key);
 		}
 		if let Some(point) = self.point.as_ref() {
 			point.invalidate(operator, key);
@@ -228,13 +241,13 @@ impl StandardOperatorStore {
 				OperatorWrite::Insert {
 					operator,
 					key,
-					..
-				}
-				| OperatorWrite::Remove {
+					post,
+				} => self.insert_range_read(*operator, key, post),
+				OperatorWrite::Remove {
 					operator,
 					key,
 					..
-				} => self.invalidate_read(*operator, key),
+				} => self.remove_range_read(*operator, key),
 				OperatorWrite::AnchorInsert {
 					..
 				}
@@ -382,52 +395,142 @@ impl StandardOperatorStore {
 		let snapshot = self.commit.state_range(operator, range.start.as_ref(), range.end.as_ref());
 		let buffered = snapshot.items;
 		let mut exhausted = snapshot.dropped;
-		let mut lower = range.start.clone();
+		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
+		let mut buffer_index = 0usize;
 		let mut page: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut page_index = 0usize;
-		let mut buffer_index = 0usize;
-		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
+		let mut lower = range.start.clone();
 
-		let range_tier = self.range.as_ref();
-		let mut fill: Option<BucketId> = None;
-		let mut scanned_all = false;
-		if !exhausted {
-			let served = range_tier
-				.and_then(|tier| tier.range(operator, &range, target.saturating_add(buffered.len())));
-			match served {
-				Some(rows) => {
-					page = rows;
-					exhausted = true;
-				}
-				None => fill = range_tier.and_then(|tier| tier.begin_fill(operator, &range)),
-			}
-		}
+		let tier = self.range.as_ref();
+		let scan = if exhausted {
+			None
+		} else {
+			tier.and_then(|tier| tier.plan_scan(operator, &range))
+		};
+		let mut segment_index = 0usize;
+		let mut cursor = RangeCursor::new();
+		let mut pending: Option<(Interval, bool)> = None;
+		let mut claim_start: Option<EncodedKey> = None;
+		let mut installing = true;
 
 		while items.len() < target {
 			if page_index == page.len() && !exhausted {
-				let Some(persistent) = self.persistent.as_ref() else {
-					exhausted = true;
-					continue;
-				};
-				let batch = persistent.range_batch(
-					operator,
-					EncodedKeyRange::new(lower.clone(), range.end.clone()),
-					limit,
-				);
-				exhausted = !batch.has_more;
-				page = batch.items;
+				page = Vec::new();
 				page_index = 0;
-				if let (Some(tier), Some(bucket)) = (range_tier, fill)
-					&& !tier.extend_fill(bucket, &page)
-				{
-					fill = None;
-				}
-				scanned_all = exhausted;
-				match page.last() {
-					Some((key, _)) => lower = Bound::Excluded(key.clone()),
-					None => {
-						exhausted = true;
-						scanned_all = true;
+
+				match (tier, scan.as_ref()) {
+					(Some(tier), Some(scan)) => loop {
+						if let Some((interval, installable)) = pending.take() {
+							let Some(persistent) = self.persistent.as_ref() else {
+								exhausted = true;
+								break;
+							};
+							let from = match cursor.last_key.as_ref() {
+								Some(key) => Bound::Excluded(key.clone()),
+								None => Bound::Included(interval.start.clone()),
+							};
+							let read = scan_range(&interval);
+							let batch = persistent.range_batch(
+								operator,
+								EncodedKeyRange::new(from, read.end),
+								limit,
+							);
+							let complete = !batch.has_more || batch.items.is_empty();
+
+							if installable && installing {
+								let start = claim_start
+									.clone()
+									.unwrap_or_else(|| interval.start.clone());
+								let span = Interval::new(start, interval.end.clone());
+								let last = batch.items.last().map(|(key, _)| key);
+								if let Some(proven) = proven_span(&span, last, complete)
+								{
+									if tier.install(scan, &proven, &batch.items) {
+										claim_start = batch
+											.items
+											.last()
+											.map(|(key, _)| successor(key));
+									} else {
+										installing = false;
+									}
+								}
+							}
+
+							if let Some((key, _)) = batch.items.last() {
+								cursor.advance(key.clone());
+							}
+							if complete {
+								segment_index += 1;
+								cursor.reset();
+								claim_start = None;
+							} else {
+								pending = Some((interval, installable));
+							}
+
+							if batch.items.is_empty() {
+								continue;
+							}
+							page = batch.items;
+							break;
+						}
+
+						let Some(segment) = scan.segments().get(segment_index) else {
+							exhausted = true;
+							break;
+						};
+						match segment {
+							Segment::Ram(interval) => {
+								match tier.serve(
+									scan,
+									interval,
+									&mut cursor,
+									limit as usize,
+								) {
+									ServedChunk::Served(rows) => {
+										let done = cursor.is_exhausted();
+										assert!(
+											done || !rows.is_empty(),
+											"a served chunk that reports more work must carry a row, or the cursor never advances"
+										);
+										if done {
+											segment_index += 1;
+											cursor.reset();
+										}
+										if rows.is_empty() {
+											continue;
+										}
+										page = rows;
+										break;
+									}
+									ServedChunk::Gap => {
+										pending =
+											Some((interval.clone(), false));
+									}
+								}
+							}
+							Segment::Gap {
+								interval,
+								..
+							} => {
+								pending = Some((interval.clone(), true));
+							}
+						}
+					},
+					_ => {
+						let Some(persistent) = self.persistent.as_ref() else {
+							exhausted = true;
+							continue;
+						};
+						let batch = persistent.range_batch(
+							operator,
+							EncodedKeyRange::new(lower.clone(), range.end.clone()),
+							limit,
+						);
+						exhausted = !batch.has_more || batch.items.is_empty();
+						if let Some((key, _)) = batch.items.last() {
+							lower = Bound::Excluded(key.clone());
+						}
+						page = batch.items;
 					}
 				}
 				continue;
@@ -466,14 +569,6 @@ impl StandardOperatorStore {
 						}
 					}
 				}
-			}
-		}
-
-		if let (Some(tier), Some(bucket)) = (range_tier, fill) {
-			if scanned_all {
-				tier.finish_fill(bucket);
-			} else {
-				tier.abort_fill(bucket);
 			}
 		}
 

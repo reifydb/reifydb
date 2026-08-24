@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Decomposition of a requested range into alternating resident segments and persistent-tier gaps.
-//!
-//! A plan with many small gaps is worse than no cache at all, so a plan that needs more than the
-//! guard's hole budget is abandoned in favour of one full scan that installs one interval. Gaps
-//! over spans that can never be cached do not count against that budget: they can never close, so
-//! counting them would trip the guard forever on exactly the group-wide reads this exists to serve.
-
 use reifydb_codec::key::encoded::EncodedKey;
 
 use crate::coverage::{CoverageSet, Edge, Interval};
@@ -30,8 +23,6 @@ pub struct ScanPlan {
 }
 
 impl ScanPlan {
-	/// The whole range as a single gap, which is what the guard falls back to and what an empty
-	/// coverage set produces.
 	pub fn full(lo: EncodedKey, hi: Edge, degraded: bool) -> Self {
 		Self {
 			segments: vec![Segment::Gap {
@@ -56,10 +47,6 @@ impl ScanPlan {
 
 pub const DEFAULT_GAP_GUARD: usize = 4;
 
-/// Decomposes `[lo, hi)` into resident and gap segments against `coverage`.
-///
-/// `exempt` classifies a gap as permanently uncacheable; those gaps are emitted but excluded from
-/// the `guard` budget. Generic and monomorphised: this is the hot path for every range read.
 pub fn plan<F>(coverage: &CoverageSet, lo: EncodedKey, hi: Edge, guard: usize, exempt: F) -> ScanPlan
 where
 	F: Fn(&Interval) -> bool,
@@ -123,8 +110,6 @@ where
 
 const HISTOGRAM_SLOTS: usize = 8;
 
-/// Gaps observed per served scan, bucketed, so the guard's real value comes from a measurement
-/// rather than from the argument that picked its starting point.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct GapHistogram {
 	slots: [u64; HISTOGRAM_SLOTS],
@@ -157,7 +142,6 @@ impl GapHistogram {
 		self.degraded += other.degraded;
 	}
 
-	/// The inclusive lower bound of each slot, so a reader can label the counts.
 	pub fn bounds() -> [usize; HISTOGRAM_SLOTS] {
 		[0, 1, 2, 3, 4, 5, 9, 17]
 	}
@@ -174,7 +158,6 @@ impl GapHistogram {
 		self.degraded
 	}
 
-	/// The gap count at or below which half of all scans fall.
 	pub fn median(&self) -> Option<usize> {
 		if self.scans == 0 {
 			return None;
@@ -321,8 +304,7 @@ mod tests {
 
 	#[test]
 	fn exempt_gaps_do_not_trip_the_guard() {
-		// Permanently uncacheable spans recur on every group-wide scan; counting them would
-		// degrade that traffic forever.
+		// Counting permanently uncacheable spans would degrade every group-wide scan forever.
 		let coverage = punched();
 
 		let plan = plan(&coverage, key(b"a"), Edge::of(b"m"), 1, |interval| interval.start != key(b"a"));
@@ -341,12 +323,13 @@ mod tests {
 		let plan = plan(&coverage, key(b"a"), Edge::of(b"m"), DEFAULT_GAP_GUARD, |_| false);
 
 		assert!(plan.degraded);
-		assert_eq!(plan.segments, vec![
-			Segment::Gap {
+		assert_eq!(
+			plan.segments,
+			vec![Segment::Gap {
 				interval: Interval::new(key(b"a"), Edge::of(b"m")),
 				exempt: false,
-			}
-		]);
+			}]
+		);
 		assert_eq!(plan.gaps, 1);
 		assert_eq!(plan.exempt_gaps, 0);
 	}

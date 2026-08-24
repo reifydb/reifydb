@@ -52,7 +52,7 @@ fn operator_point_carries_no_bucket_measure_on_either_surface() {
 	// number no structure produces, and would re-merge the point rows with the range tier's shape.
 	for domain in [MetricsDomain::StoreOperatorPoint, MetricsDomain::StoreOperatorPointKeyspace] {
 		let spec = domain.spec();
-		assert!(spec.measures.iter().all(|m| m.name != "buckets"), "{domain:?} must own no bucket count");
+		assert!(spec.measures.iter().all(|m| m.name != "partitions"), "{domain:?} must own no partition count");
 		assert!(
 			spec.measures.iter().any(|m| m.name == "insertions"),
 			"{domain:?} must publish insertions, which only the point tier counts"

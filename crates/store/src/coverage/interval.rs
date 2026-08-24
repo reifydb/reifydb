@@ -1,23 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The set of spans RAM is authoritative over, held as disjoint half-open intervals ordered by
-//! start key.
-//!
-//! Two intervals that touch are always merged, so a keyspace read as sequential pages stays one
-//! interval rather than fragmenting into one per page. That coalescing is what keeps a scan plan
-//! at a single segment for the dominant paged-read shape.
-
 use std::{
 	cmp::Ordering,
-	collections::{BTreeMap, Bound::Excluded, Bound::Unbounded},
+	collections::{
+		BTreeMap,
+		Bound::{Excluded, Unbounded},
+	},
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
 
 use crate::coverage::{Edge, successor};
 
-/// One span RAM is authoritative over, half-open as `[start, end)`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Interval {
 	pub start: EncodedKey,
@@ -51,10 +46,6 @@ impl CoverageSet {
 		Self::default()
 	}
 
-	/// Claims `[start, end)` as covered, merging with every interval it overlaps or touches.
-	///
-	/// Extending is the only operation that grows a claim, so it is the one place an overstatement
-	/// could be introduced; the caller must have inserted the rows first.
 	pub fn extend(&mut self, start: EncodedKey, end: Edge) {
 		if !end.covers(&start) {
 			return;
@@ -86,16 +77,10 @@ impl CoverageSet {
 		self.intervals.insert(merged_start, merged_end);
 	}
 
-	/// Drops `key` from coverage, splitting the interval that held it.
-	///
-	/// Used only to repair a claim whose row could not be stored. Eviction must use
-	/// [`CoverageSet::shrink_range`] over a whole interval instead, or coverage fragments into one
-	/// extra persistent round trip per hole.
 	pub fn shrink_key(&mut self, key: &EncodedKey) {
 		self.shrink_range(key, &Edge::Key(successor(key)));
 	}
 
-	/// Drops every part of `[start, end)` from coverage, splitting or removing what it overlaps.
 	pub fn shrink_range(&mut self, start: &EncodedKey, end: &Edge) {
 		if !end.covers(start) {
 			return;
@@ -132,7 +117,6 @@ impl CoverageSet {
 		self.covering(key).is_some()
 	}
 
-	/// The interval covering `key`, if any.
 	pub fn covering(&self, key: &EncodedKey) -> Option<Interval> {
 		self.intervals.range::<EncodedKey, _>(..=key).next_back().and_then(|(start, end)| {
 			if end.covers(key) {
@@ -143,7 +127,6 @@ impl CoverageSet {
 		})
 	}
 
-	/// Every covered interval overlapping `[lo, hi)`, clipped to it, in ascending key order.
 	pub fn overlapping(&self, lo: &EncodedKey, hi: &Edge) -> Vec<Interval> {
 		let mut clipped = Vec::new();
 		if !hi.covers(lo) {
@@ -166,7 +149,6 @@ impl CoverageSet {
 		clipped
 	}
 
-	/// Every uncovered span inside `[lo, hi)`, in ascending key order.
 	pub fn gaps(&self, lo: &EncodedKey, hi: &Edge) -> Vec<Interval> {
 		let mut holes = Vec::new();
 		if !hi.covers(lo) {

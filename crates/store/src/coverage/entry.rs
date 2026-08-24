@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The three states a covered key can be in, and the rule that keeps a removal from being undone
-//! by eviction.
-//!
-//! Splitting a removal that has not reached the persistent tier from a proven absence is what lets
-//! coverage survive a write at all: a `Deleted` entry carries the removal, so the interval around
-//! it stays authoritative. Dropping one would resurrect the row the persistent tier still holds,
-//! so it is pinned until the flush that demotes it to `Absent`.
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Residency<V> {
 	Row(V),
@@ -28,14 +20,12 @@ impl<V> Entry<V> {
 		}
 	}
 
-	/// A removal the persistent tier has not seen yet. Pinned until flushed.
 	pub fn deleted() -> Self {
 		Self {
 			residency: Residency::Deleted,
 		}
 	}
 
-	/// A proven absence: the persistent tier holds nothing here.
 	pub fn absent() -> Self {
 		Self {
 			residency: Residency::Absent,
@@ -49,15 +39,12 @@ impl<V> Entry<V> {
 		}
 	}
 
-	/// Whether a read is answered by this entry rather than falling through.
 	pub fn resolves(&self) -> bool {
 		match &self.residency {
 			Residency::Row(_) | Residency::Deleted | Residency::Absent => true,
 		}
 	}
 
-	/// Whether eviction may drop this entry without losing a claim the persistent tier disagrees
-	/// with.
 	pub fn evictable(&self) -> bool {
 		match &self.residency {
 			Residency::Row(_) | Residency::Absent => true,
@@ -65,7 +52,6 @@ impl<V> Entry<V> {
 		}
 	}
 
-	/// Demotes a flushed removal to a proven absence, which is evictable again.
 	pub fn demote_flushed(&mut self) {
 		if matches!(self.residency, Residency::Deleted) {
 			self.residency = Residency::Absent;
@@ -73,9 +59,6 @@ impl<V> Entry<V> {
 	}
 }
 
-/// Running count of entries eviction may not drop, so a budget can admit that a shard has a floor
-/// it cannot evict below and fall through to unpinned victims instead of wedging on a pinned
-/// sample.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PinnedCount {
 	pinned: usize,
@@ -101,7 +84,6 @@ impl PinnedCount {
 		}
 	}
 
-	/// Applies a state change in place, for a demotion or an overwrite of an existing key.
 	pub fn replace<V>(&mut self, before: &Entry<V>, after: &Entry<V>) {
 		match (before.evictable(), after.evictable()) {
 			(true, false) => self.pinned += 1,
@@ -118,7 +100,6 @@ impl PinnedCount {
 		self.total
 	}
 
-	/// Whether any entry is still available for eviction.
 	pub fn has_victim(&self) -> bool {
 		self.total > self.pinned
 	}

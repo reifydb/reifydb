@@ -751,18 +751,18 @@ fn a_cached_absence_survives_the_range_fill_that_installs_over_it() {
 
 	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
 	assert_eq!(
-		range_tier(&store).buckets(),
+		range_tier(&store).partitions(),
 		1,
-		"the whole-bucket scan must claim the bucket or nothing below is tested"
+		"the scan must claim the span it covered or nothing below is tested"
 	);
 	assert_eq!(point_entries(&store), 1, "the install must leave the remembered absence exactly where it was");
 	assert_eq!(range_entries(&store), 3, "and the three scanned rows must land in the range tier beside it");
 
-	range_tier(&store).clear();
+	range_tier(&store).invalidate_operator(OP_A);
 	assert_eq!(
-		range_tier(&store).buckets(),
+		range_tier(&store).partitions(),
 		0,
-		"the claim must be gone, or the absence is answered by the bucket and the carry is untested"
+		"the claim must be gone, or the range tier answers the absence and the carry is untested"
 	);
 
 	let counters = point_tier(&store).metrics();
@@ -781,8 +781,8 @@ fn a_cached_absence_survives_the_range_fill_that_installs_over_it() {
 }
 
 #[test]
-fn a_whole_bucket_outranks_the_absence_the_point_tier_remembers() {
-	// A stale absence that outranks the whole bucket covering it makes the store contradict itself: the point read
+fn a_proven_span_outranks_the_absence_the_point_tier_remembers() {
+	// A stale absence that outranks the proven span covering it makes the store contradict itself: the point read
 	// answers gone while the range answer returns the row, with nothing anywhere to report it.
 	let (store, storage, _guard) = cached_store();
 	seed_accumulator(&storage, 3);
@@ -820,14 +820,14 @@ fn a_whole_bucket_outranks_the_absence_the_point_tier_remembers() {
 		["v1", "v2", "v3", "v4", "v5"],
 		"the scan must find the keys the point tier believes are absent"
 	);
-	assert_eq!(range_tier(&store).buckets(), 1, "the scan must install a whole bucket or nothing below is tested");
+	assert_eq!(range_tier(&store).partitions(), 1, "the scan must install its span or nothing below is tested");
 
 	assert_eq!(
 		body(&store
 			.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 4))
-			.expect("the whole bucket must answer the point read")),
+			.expect("the proven span must answer the point read")),
 		"v4",
-		"an absence that outranks the bucket makes the store deny a row its own range answer returns"
+		"an absence that outranks the span makes the store deny a row its own range answer returns"
 	);
 	assert!(
 		store.contains(OP_A, &key_in(Keyspace::ACCUMULATOR, 5)),
