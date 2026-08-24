@@ -510,8 +510,12 @@ mod tests {
 	fn no_remove_keeps_live_monotonic() {
 		// Nothing may shrink the live set when removes are disabled, including the update path - an update
 		// rewritten into remove-plus-insert would violate the configuration it was run under.
-		let events =
-			run(schema_sequential(), registry_kv(1..1000), cfg(200, 100, SupportedOps::no_remove()), 7);
+		let events = run(
+			schema_sequential(),
+			registry_kv(1..1_000_000_000_000),
+			cfg(200, 100, SupportedOps::no_remove()),
+			7,
+		);
 		assert!(events.iter().all(|e| e.kind != Kind::Remove), "a remove appeared under no_remove");
 		let mut live = 0usize;
 		for event in &events {
@@ -525,7 +529,12 @@ mod tests {
 
 	#[test]
 	fn all_ops_produces_mix() {
-		let events = run(schema_sequential(), registry_kv(1..1000), cfg(500, 50, SupportedOps::all()), 99);
+		let events = run(
+			schema_sequential(),
+			registry_kv(1..1_000_000_000_000),
+			cfg(500, 50, SupportedOps::all()),
+			99,
+		);
 		let (inserts, updates, removes) = counts(&events);
 		assert!(inserts > 10, "too few inserts: {inserts}");
 		assert!(updates > 10, "too few updates: {updates}");
@@ -552,10 +561,15 @@ mod tests {
 	#[test]
 	fn same_seed_produces_same_event_sequence() {
 		let sequence = |seed| {
-			run(schema_sequential(), registry_kv(1..1000), cfg(50, 25, SupportedOps::all()), seed)
-				.iter()
-				.map(|e| (e.kind, e.number()))
-				.collect::<Vec<_>>()
+			run(
+				schema_sequential(),
+				registry_kv(1..1_000_000_000_000),
+				cfg(50, 25, SupportedOps::all()),
+				seed,
+			)
+			.iter()
+			.map(|e| (e.kind, e.number()))
+			.collect::<Vec<_>>()
 		};
 		assert_eq!(sequence(123), sequence(123));
 		assert_ne!(sequence(123), sequence(124));
@@ -617,13 +631,13 @@ mod tests {
 	fn duplicate_burst_at_one_inflates_the_update_count() {
 		let with_burst = run(
 			schema_sequential(),
-			registry_kv(1..1000),
+			registry_kv(1..1_000_000_000_000),
 			cfg_with_chaos(200, 100, SupportedOps::no_remove(), 1.0, 0.0),
 			77,
 		);
 		let without = run(
 			schema_sequential(),
-			registry_kv(1..1000),
+			registry_kv(1..1_000_000_000_000),
 			cfg_with_chaos(200, 100, SupportedOps::no_remove(), 0.0, 0.0),
 			77,
 		);
@@ -642,7 +656,7 @@ mod tests {
 		let quiet = |seed| {
 			run(
 				schema_sequential(),
-				registry_kv(1..1000),
+				registry_kv(1..1_000_000_000_000),
 				cfg_with_chaos(200, 100, SupportedOps::no_remove(), 0.0, 0.0),
 				seed,
 			)
@@ -686,7 +700,7 @@ mod tests {
 		// operation observe the row as absent, which the rewrite is not meant to simulate.
 		let events = run(
 			schema_sequential(),
-			registry_kv(1..1000),
+			registry_kv(1..1_000_000_000_000),
 			cfg_with_chaos(100, 50, SupportedOps::all(), 0.0, 1.0),
 			99,
 		);
@@ -705,7 +719,7 @@ mod tests {
 		// down rather than manufacture an operation the configuration disabled.
 		let events = run(
 			schema_sequential(),
-			registry_kv(1..1000),
+			registry_kv(1..1_000_000_000_000),
 			cfg_with_chaos(100, 50, SupportedOps::no_remove(), 0.0, 1.0),
 			11,
 		);
@@ -719,7 +733,7 @@ mod tests {
 		let sequence = |seed| {
 			run(
 				schema_sequential(),
-				registry_kv(1..1000),
+				registry_kv(1..1_000_000_000_000),
 				cfg_with_chaos(50, 25, SupportedOps::all(), 0.5, 0.3),
 				seed,
 			)
@@ -735,7 +749,7 @@ mod tests {
 	fn a_constant_batch_of_one_applies_a_single_row_per_change() {
 		let (_, changes) = run_with_changes(
 			schema_sequential(),
-			registry_kv(1..1000),
+			registry_kv(1..1_000_000_000_000),
 			cfg(50, 200, SupportedOps::insert_only()),
 			0,
 		);
@@ -750,7 +764,8 @@ mod tests {
 		// Batching is what makes a single change span a boundary, so the rows must arrive together rather
 		// than as n separate changes.
 		let scenario = cfg(4, 500, SupportedOps::insert_only()).with_batch(BatchSize::Constant(50));
-		let (events, changes) = run_with_changes(schema_sequential(), registry_kv(1..1000), scenario, 0);
+		let (events, changes) =
+			run_with_changes(schema_sequential(), registry_kv(1..1_000_000_000_000), scenario, 0);
 		assert_eq!(changes.len(), 4, "one change per step");
 		for change in &changes {
 			assert_eq!(change.diffs.len(), 50, "every row of the batch must ride one change");
@@ -764,7 +779,7 @@ mod tests {
 		// make all downstream comparisons meaningless while still looking self-consistent.
 		let (events, changes) = run_with_changes(
 			schema_sequential(),
-			registry_kv(1..1000),
+			registry_kv(1..1_000_000_000_000),
 			cfg(200, 100, SupportedOps::all()),
 			5,
 		);

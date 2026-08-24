@@ -40,7 +40,7 @@ pub struct ChaosOutcome {
 
 impl ChaosOutcome {
 	pub fn is_match(&self) -> bool {
-		self.comparison.is_match() && self.divergence.is_none()
+		self.comparison.is_match() && self.comparison.is_coherent() && self.divergence.is_none()
 	}
 
 	#[track_caller]

@@ -55,11 +55,11 @@ pub struct ComparisonResult {
 
 impl ComparisonResult {
 	pub fn is_match(&self) -> bool {
-		self.only_in_oracle.is_empty()
-			&& self.only_in_operator.is_empty()
-			&& self.divergent.is_empty()
-			&& self.oracle_incoherent.is_empty()
-			&& self.operator_incoherent.is_empty()
+		self.only_in_oracle.is_empty() && self.only_in_operator.is_empty() && self.divergent.is_empty()
+	}
+
+	pub fn is_coherent(&self) -> bool {
+		self.oracle_incoherent.is_empty() && self.operator_incoherent.is_empty()
 	}
 
 	pub fn format_failure(&self, header_lines: &[String], max_divergent_shown: usize) -> String {
@@ -425,15 +425,16 @@ mod tests {
 		let mut oracle = populated();
 		oracle.incoherent.push("two published rows share the key OutputKey([Uint8(7)])".to_string());
 		let result = compare(&populated(), &oracle, &Tolerances::new());
-		assert!(result.only_in_oracle.is_empty() && result.divergent.is_empty(), "the rows themselves agree");
-		assert!(!result.is_match(), "an incoherent model must not report a match");
+		assert!(result.is_match(), "the values themselves agree, which is what makes the collapse invisible");
+		assert!(!result.is_coherent(), "an incoherent model must not pass the coherence check");
 		let report = result.format_failure(&[], 5);
 		assert!(report.contains("the MODEL's own view"), "the report must blame the model: {report}");
 
 		let mut operator = populated();
 		operator.incoherent.push("two published rows share the key OutputKey([Uint8(7)])".to_string());
 		let result = compare(&operator, &populated(), &Tolerances::new());
-		assert!(!result.is_match(), "an incoherent operator view must not report a match");
+		assert!(result.is_match(), "the values agree on this side too");
+		assert!(!result.is_coherent(), "an incoherent operator view must not pass the coherence check");
 		let report = result.format_failure(&[], 5);
 		assert!(
 			report.contains("the operator's published view"),
