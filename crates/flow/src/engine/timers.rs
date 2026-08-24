@@ -112,9 +112,9 @@ impl FlowEngineInner {
 				let Some(graph_node) = flow.get_operator(&operator_id) else {
 					continue;
 				};
-				let node = match self.operators.get_mut(&operator_id) {
+				let node = match self.operators.get_mut(&(flow.id, operator_id)) {
 					Some(operator) => Node::Operator(operator),
-					None => match self.durable_sinks.get_mut(&operator_id) {
+					None => match self.durable_sinks.get_mut(&(flow.id, operator_id)) {
 						Some(sink) => Node::DurableSink(sink),
 						None => continue,
 					},
@@ -259,6 +259,7 @@ mod tests {
 
 	fn probe(inner: &mut FlowEngineInner, fails: bool) {
 		inner.insert_operator(
+			FLOW,
 			OPERATOR,
 			Box::new(TimerProbe {
 				fails,

@@ -185,7 +185,7 @@ impl FlowEngineInner {
 				version,
 			});
 
-			let combined_output = self.dispatch_node(txn, &operator, inbox)?;
+			let combined_output = self.dispatch_node(txn, flow.id, &operator, inbox)?;
 			nodes_processed += 1;
 			if combined_output.diffs.is_empty() {
 				continue;

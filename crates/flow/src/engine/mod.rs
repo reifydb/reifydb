@@ -45,8 +45,8 @@ pub const COMPLETENESS_OBJECT: ObjectId = ObjectId::Table(TableId::SOURCE_COMPLE
 pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,
 	pub(crate) routines: Routines,
-	pub(crate) operators: BTreeMap<OperatorId, BoxedHostOperator>,
-	pub(crate) durable_sinks: BTreeMap<OperatorId, BoxedDurableSink>,
+	pub(crate) operators: BTreeMap<(FlowId, OperatorId), BoxedHostOperator>,
+	pub(crate) durable_sinks: BTreeMap<(FlowId, OperatorId), BoxedDurableSink>,
 	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
 	pub(crate) sources: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
 	pub(crate) sinks: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
@@ -92,7 +92,7 @@ impl FlowEngineInner {
 
 	#[instrument(name = "flow::engine::sample", level = "debug", skip_all)]
 	pub fn sample_operators(&self) {
-		for (operator_id, operator) in &self.operators {
+		for ((_, operator_id), operator) in &self.operators {
 			if let Some(sample) = operator.sample() {
 				self.operator_samples.record(*operator_id, sample);
 			}
@@ -100,7 +100,7 @@ impl FlowEngineInner {
 	}
 
 	pub fn forget_operator_samples(&self) {
-		for operator in self.operators.keys() {
+		for (_, operator) in self.operators.keys() {
 			self.operator_samples.forget(*operator);
 		}
 	}
@@ -113,12 +113,12 @@ impl FlowEngineInner {
 		&self.substrate
 	}
 
-	pub fn operator(&self, operator_id: OperatorId) -> Option<&dyn HostOperator> {
-		self.operators.get(&operator_id).map(|operator| &**operator)
+	pub fn operator(&self, flow_id: FlowId, operator_id: OperatorId) -> Option<&dyn HostOperator> {
+		self.operators.get(&(flow_id, operator_id)).map(|operator| &**operator)
 	}
 
-	pub fn insert_operator(&mut self, operator_id: OperatorId, operator: BoxedHostOperator) {
-		self.operators.insert(operator_id, operator);
+	pub fn insert_operator(&mut self, flow_id: FlowId, operator_id: OperatorId, operator: BoxedHostOperator) {
+		self.operators.insert((flow_id, operator_id), operator);
 	}
 
 	pub fn flow_by_id(&self, flow_id: FlowId) -> Option<FlowDag> {

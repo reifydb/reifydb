@@ -26,12 +26,14 @@ impl FlowEngineInner {
 		inputs: &[OperatorId],
 		view: ViewId,
 	) -> Result<()> {
-		self.require_parent(first_input(inputs)?)?;
+		self.require_parent(flow.id, first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = resolved.def().partition_by().to_vec();
-		self.durable_sinks
-			.insert(operator_id, Box::new(SinkTableViewOperator::new(operator_id, resolved, partition_by)));
+		self.durable_sinks.insert(
+			(flow.id, operator_id),
+			Box::new(SinkTableViewOperator::new(operator_id, resolved, partition_by)),
+		);
 		Ok(())
 	}
 
@@ -46,7 +48,7 @@ impl FlowEngineInner {
 		view: ViewId,
 		capacity: u64,
 	) -> Result<()> {
-		self.require_parent(first_input(inputs)?)?;
+		self.require_parent(flow.id, first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = resolved.def().partition_by().to_vec();
@@ -56,7 +58,7 @@ impl FlowEngineInner {
 			.and_then(|settings| settings.ttl);
 		let row_ttl = ttl.as_ref().map(|t| t.duration);
 		self.durable_sinks.insert(
-			operator_id,
+			(flow.id, operator_id),
 			Box::new(SinkRingBufferViewOperator::new(
 				operator_id,
 				resolved,
@@ -79,12 +81,12 @@ impl FlowEngineInner {
 		view: ViewId,
 		key: SeriesKey,
 	) -> Result<()> {
-		self.require_parent(first_input(inputs)?)?;
+		self.require_parent(flow.id, first_input(inputs)?)?;
 		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = resolved.def().partition_by().to_vec();
 		self.durable_sinks.insert(
-			operator_id,
+			(flow.id, operator_id),
 			Box::new(SinkSeriesViewOperator::new(operator_id, resolved, key.clone(), partition_by)),
 		);
 		Ok(())

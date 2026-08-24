@@ -63,18 +63,20 @@ impl FlowEngineInner {
 	pub(super) fn dispatch_node<T: FlowTransaction>(
 		&mut self,
 		txn: &mut T,
+		flow_id: FlowId,
 		operator: &FlowNode,
 		inbox: Vec<Change>,
 	) -> Result<Change> {
 		let merged = Change::merge(inbox)?;
 		let version = merged.version;
 		let changed_at = merged.changed_at;
-		let result = self.apply(txn, operator, merged)?;
+		let result = self.apply(txn, flow_id, operator, merged)?;
 		let combined = Change::from_flow(operator.id, version, result.diffs, changed_at.max(result.changed_at));
 		Ok(combined)
 	}
 
 	#[instrument(name = "flow::engine::apply", level = "trace", skip(self, txn, change, operator), fields(
+		flow_id = flow_id.0,
 		operator_id = operator.id.0,
 		node_type = operator.ty.label(),
 		num_parents = operator.inputs.len(),
@@ -85,7 +87,13 @@ impl FlowEngineInner {
 		lock_wait_us = field::Empty,
 		apply_time_us = field::Empty
 	))]
-	fn apply<T: FlowTransaction>(&mut self, txn: &mut T, operator: &FlowNode, change: Change) -> Result<Change> {
+	fn apply<T: FlowTransaction>(
+		&mut self,
+		txn: &mut T,
+		flow_id: FlowId,
+		operator: &FlowNode,
+		change: Change,
+	) -> Result<Change> {
 		let FlowEngineInner {
 			operators,
 			durable_sinks,
@@ -94,9 +102,9 @@ impl FlowEngineInner {
 		} = self;
 
 		let lock_start = runtime_context.clock.instant();
-		let node = match operators.get_mut(&operator.id) {
+		let node = match operators.get_mut(&(flow_id, operator.id)) {
 			Some(operator) => Node::Operator(operator),
-			None => Node::DurableSink(durable_sinks.get_mut(&operator.id).unwrap()),
+			None => Node::DurableSink(durable_sinks.get_mut(&(flow_id, operator.id)).unwrap()),
 		};
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 

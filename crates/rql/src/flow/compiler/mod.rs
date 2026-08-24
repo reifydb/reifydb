@@ -5,9 +5,9 @@ use reifydb_catalog::{catalog::Catalog, store::operator_settings::create::create
 use reifydb_core::{
 	error::diagnostic::{
 		flow::{
-			flow_dictionary_source_unsupported, flow_ephemeral_id_capacity_exceeded,
-			flow_queue_source_unsupported, flow_remote_source_unsupported, flow_sort_must_be_terminal,
-			flow_source_required, flow_window_requires_a_timed_source,
+			flow_dictionary_source_unsupported, flow_queue_source_unsupported,
+			flow_remote_source_unsupported, flow_sort_must_be_terminal, flow_source_required,
+			flow_window_requires_a_timed_source,
 		},
 		subscription::subscription_operation_unsupported,
 	},
@@ -86,8 +86,6 @@ pub(crate) struct FlowCompiler {
 	local_node_counter: u64,
 
 	local_edge_counter: u64,
-
-	local_id_limit: u64,
 }
 
 impl FlowCompiler {
@@ -100,29 +98,23 @@ impl FlowCompiler {
 			ephemeral: false,
 			local_node_counter: 0,
 			local_edge_counter: 0,
-			local_id_limit: 0,
 		}
 	}
 
 	pub fn new_ephemeral(catalog: Catalog, routines: Routines, flow_id: FlowId) -> Self {
-		let base = flow_id.0 * 100;
 		Self {
 			catalog,
 			routines,
 			builder: FlowDag::builder(flow_id),
 			sink: None,
 			ephemeral: true,
-			local_node_counter: base,
-			local_edge_counter: base,
-			local_id_limit: base + 99,
+			local_node_counter: 0,
+			local_edge_counter: 0,
 		}
 	}
 
 	fn next_node_id(&mut self, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		if self.ephemeral {
-			if self.local_node_counter >= self.local_id_limit {
-				return Err(Error(Box::new(flow_ephemeral_id_capacity_exceeded(self.builder.id().0))));
-			}
 			self.local_node_counter += 1;
 			Ok(OperatorId(self.local_node_counter))
 		} else {
@@ -132,9 +124,6 @@ impl FlowCompiler {
 
 	fn next_edge_id(&mut self, txn: &mut Transaction<'_>) -> Result<FlowEdgeId> {
 		if self.ephemeral {
-			if self.local_edge_counter >= self.local_id_limit {
-				return Err(Error(Box::new(flow_ephemeral_id_capacity_exceeded(self.builder.id().0))));
-			}
 			self.local_edge_counter += 1;
 			Ok(FlowEdgeId(self.local_edge_counter))
 		} else {

@@ -50,13 +50,11 @@ impl FlowEngineInner {
 		self.timers.remove_flow(flow_id);
 
 		for operator_id in node_ids {
-			self.operators.remove(&operator_id);
-			self.durable_sinks.remove(&operator_id);
-			self.substrate
-				.operators
-				.as_ref()
-				.expect("flow engine was built without an operator store")
-				.drop_operator_state(operator_id);
+			self.operators.remove(&(flow_id, operator_id));
+			self.durable_sinks.remove(&(flow_id, operator_id));
+			if let Some(store) = self.substrate.operators.as_ref() {
+				store.drop_operator_state(operator_id);
+			}
 		}
 
 		for entries in self.sources.values_mut() {
@@ -149,7 +147,7 @@ mod tests {
 			},
 		));
 		inner.register_flow_dag(builder.build());
-		inner.insert_operator(operator, Box::new(SourceSeriesOperator::new(operator)));
+		inner.insert_operator(FlowId(1), operator, Box::new(SourceSeriesOperator::new(operator)));
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		store.set(operator, EncodedKey::new(b"k"), EncodedPodRow::new(&[1u8; 64]));
@@ -187,7 +185,7 @@ mod tests {
 			},
 		));
 		inner.register_flow_dag(builder.build());
-		inner.insert_operator(operator, Box::new(SourceSeriesOperator::new(operator)));
+		inner.insert_operator(FlowId(1), operator, Box::new(SourceSeriesOperator::new(operator)));
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		store.anchor_set(operator, GroupId(3), 0, RowNumber(1), DateTime::from_millis(5_000));

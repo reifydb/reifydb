@@ -30,7 +30,7 @@ impl FlowEngineInner {
 		let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
 
 		self.add_source(flow.id, operator_id, ObjectId::table(table.id));
-		self.operators.insert(operator_id, Box::new(SourceTableOperator::new(operator_id, table)));
+		self.operators.insert((flow.id, operator_id), Box::new(SourceTableOperator::new(operator_id, table)));
 		Ok(())
 	}
 
@@ -44,7 +44,7 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let rb = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
 		self.add_source(flow.id, operator_id, ObjectId::ringbuffer(rb.id));
-		self.operators.insert(operator_id, Box::new(SourceRingBufferOperator::new(operator_id, rb)));
+		self.operators.insert((flow.id, operator_id), Box::new(SourceRingBufferOperator::new(operator_id, rb)));
 		Ok(())
 	}
 
@@ -58,7 +58,7 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let s = self.catalog.get_series(&mut txn.reborrow(), series)?;
 		self.add_source(flow.id, operator_id, ObjectId::series(s.id));
-		self.operators.insert(operator_id, Box::new(SourceSeriesOperator::new(operator_id)));
+		self.operators.insert((flow.id, operator_id), Box::new(SourceSeriesOperator::new(operator_id)));
 		Ok(())
 	}
 
@@ -72,7 +72,7 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
 		self.add_source(flow.id, operator_id, ObjectId::view(view.id()));
-		self.operators.insert(operator_id, Box::new(SourceViewOperator::new(operator_id, view)));
+		self.operators.insert((flow.id, operator_id), Box::new(SourceViewOperator::new(operator_id, view)));
 		Ok(())
 	}
 }

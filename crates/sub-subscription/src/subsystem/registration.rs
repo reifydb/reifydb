@@ -30,11 +30,12 @@ pub(crate) fn register_ephemeral_flow(
 				..
 			} => {
 				let parent_schema = engine
-					.operator(operator.inputs[0])
+					.operator(flow.id, operator.inputs[0])
 					.expect("Parent operator not found")
 					.output_schema();
 				let op = EphemeralSinkSubscriptionOperator::new(*operator_id, ctx.id, delivery.clone());
 				engine.insert_operator(
+					flow.id,
 					*operator_id,
 					Box::new(ApplyOperator::new(parent_schema, *operator_id, Box::new(op))),
 				);

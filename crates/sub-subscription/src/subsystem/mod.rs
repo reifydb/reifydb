@@ -172,8 +172,7 @@ impl SubscriptionSubsystem {
 			let routines = engine.executor().routines.clone();
 			let rc = RuntimeContext::with_clock(clock.clone());
 			let provider = Arc::new(EmptyOperatorProvider);
-			let substrate =
-				FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
+			let substrate = FlowSubstrate::new(engine.dictionary_allocators());
 			let factory = move || {
 				FlowEngineInner::new(
 					cat,

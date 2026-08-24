@@ -67,7 +67,7 @@ impl FlowEngineInner {
 fn output_frontiers<T: FlowTransaction>(
 	txn: &mut T,
 	flow: &FlowDag,
-	operators: &BTreeMap<OperatorId, BoxedHostOperator>,
+	operators: &BTreeMap<(FlowId, OperatorId), BoxedHostOperator>,
 	topo: &[OperatorId],
 ) -> Result<BTreeMap<OperatorId, DateTime>> {
 	let mut computed: BTreeMap<OperatorId, DateTime> = BTreeMap::new();
@@ -95,7 +95,7 @@ fn output_frontiers<T: FlowTransaction>(
 		};
 
 		let frontier = operators
-			.get(operator_id)
+			.get(&(flow.id, *operator_id))
 			.and_then(|operator| operator.seal_span())
 			.map_or(input, |span| seal_horizon(input, span));
 
@@ -284,7 +284,7 @@ mod tests {
 
 		fn sealing(mut self, id: u64, horizon: Duration) -> Self {
 			self.inner.operators.insert(
-				OperatorId(id),
+				(FLOW, OperatorId(id)),
 				Box::new(Sealing {
 					operator: OperatorId(id),
 					horizon: Some(horizon),

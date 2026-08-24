@@ -202,23 +202,6 @@ pub fn flow_sort_must_be_terminal() -> Diagnostic {
 	}
 }
 
-pub fn flow_ephemeral_id_capacity_exceeded(flow_id: u64) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_011".to_string(),
-		rql: None,
-		message: format!("Ephemeral flow {} exceeded maximum ID capacity of 99", flow_id),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("An ephemeral flow is limited to 99 operators and 99 edges. \
-			Simplify the subscription query to reduce operator count."
-			.to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
 pub fn flow_unsupported_aggregate_expression(output: &str) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_013".to_string(),

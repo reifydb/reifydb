@@ -8,7 +8,10 @@ mod transform;
 
 use std::{mem, sync::Arc};
 
-use reifydb_core::{interface::catalog::flow::OperatorId, value::column::columns::Columns};
+use reifydb_core::{
+	interface::catalog::flow::{FlowId, OperatorId},
+	value::column::columns::Columns,
+};
 use reifydb_rql::flow::{
 	flow::FlowDag,
 	operator::{
@@ -62,8 +65,8 @@ impl FlowEngineInner {
 			let operator = flow.get_operator(operator_id).unwrap();
 			if let Err(err) = self.add(txn, &flow, operator, &ctx) {
 				for id in &added {
-					self.operators.remove(id);
-					self.durable_sinks.remove(id);
+					self.operators.remove(&(flow.id, *id));
+					self.durable_sinks.remove(&(flow.id, *id));
 				}
 				for entries in self.sources.values_mut() {
 					entries.retain(|(fid, _)| *fid != flow.id);
@@ -107,7 +110,7 @@ impl FlowEngineInner {
 				view,
 			} => {
 				reifydb_assertions! {
-					assert!(!self.durable_sinks.contains_key(&operator_id), "Operator already registered");
+					assert!(!self.durable_sinks.contains_key(&(flow.id, operator_id)), "Operator already registered");
 				}
 				self.add_sink_table_view(txn, flow, operator_id, &inputs, view)
 			}
@@ -116,7 +119,7 @@ impl FlowEngineInner {
 				capacity,
 			} => {
 				reifydb_assertions! {
-					assert!(!self.durable_sinks.contains_key(&operator_id), "Operator already registered");
+					assert!(!self.durable_sinks.contains_key(&(flow.id, operator_id)), "Operator already registered");
 				}
 				self.add_sink_ringbuffer_view(txn, flow, operator_id, &inputs, view, capacity)
 			}
@@ -125,7 +128,7 @@ impl FlowEngineInner {
 				key,
 			} => {
 				reifydb_assertions! {
-					assert!(!self.durable_sinks.contains_key(&operator_id), "Operator already registered");
+					assert!(!self.durable_sinks.contains_key(&(flow.id, operator_id)), "Operator already registered");
 				}
 				self.add_sink_series_view(txn, flow, operator_id, &inputs, view, key)
 			}
@@ -142,8 +145,9 @@ impl FlowEngineInner {
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		reifydb_assertions! {
-			assert!(!self.operators.contains_key(&operator.id), "Operator already registered");
+			assert!(!self.operators.contains_key(&(flow.id, operator.id)), "Operator already registered");
 		}
+		let flow_id = flow.id;
 		let operator = operator.clone();
 		let operator_id = operator.id;
 		let inputs = operator.inputs;
@@ -197,22 +201,22 @@ impl FlowEngineInner {
 			}
 			Filter {
 				conditions,
-			} => self.add_filter(operator_id, &inputs, conditions, ctx)?,
+			} => self.add_filter(flow_id, operator_id, &inputs, conditions, ctx)?,
 			Gate {
 				conditions,
-			} => self.add_gate(operator_id, &inputs, conditions, ctx)?,
+			} => self.add_gate(flow_id, operator_id, &inputs, conditions, ctx)?,
 			Map {
 				expressions,
-			} => self.add_map(operator_id, &inputs, expressions, ctx)?,
+			} => self.add_map(flow_id, operator_id, &inputs, expressions, ctx)?,
 			Extend {
 				expressions,
-			} => self.add_extend(operator_id, &inputs, expressions, ctx)?,
+			} => self.add_extend(flow_id, operator_id, &inputs, expressions, ctx)?,
 			Sort {
 				by: _,
-			} => self.add_sort(operator_id, &inputs)?,
+			} => self.add_sort(flow_id, operator_id, &inputs)?,
 			Take {
 				limit,
-			} => self.add_take(operator_id, &inputs, limit)?,
+			} => self.add_take(flow_id, operator_id, &inputs, limit)?,
 			Join {
 				join_type,
 				left,
@@ -223,6 +227,7 @@ impl FlowEngineInner {
 				latest,
 			} => self.add_join(
 				txn,
+				flow_id,
 				operator_id,
 				&inputs,
 				join_type,
@@ -236,16 +241,16 @@ impl FlowEngineInner {
 			)?,
 			Distinct {
 				expressions,
-			} => self.add_distinct(operator_id, &inputs, expressions, ctx)?,
-			Append {} => self.add_append(txn, operator_id, &inputs)?,
+			} => self.add_distinct(flow_id, operator_id, &inputs, expressions, ctx)?,
+			Append {} => self.add_append(txn, flow_id, operator_id, &inputs)?,
 			Apply {
 				operator,
 				expressions,
-			} => self.add_apply(operator_id, &inputs, operator, expressions)?,
+			} => self.add_apply(flow_id, operator_id, &inputs, operator, expressions)?,
 			Aggregate {
 				by,
 				map,
-			} => self.add_aggregate(operator_id, &inputs, by, map)?,
+			} => self.add_aggregate(flow_id, operator_id, &inputs, by, map)?,
 			Window {
 				kind,
 				group_by,
@@ -253,6 +258,7 @@ impl FlowEngineInner {
 				lateness,
 				immutable,
 			} => self.add_window(
+				flow_id,
 				operator_id,
 				&inputs,
 				kind,
@@ -274,16 +280,16 @@ impl FlowEngineInner {
 			.map(|retention| retention.duration))
 	}
 
-	fn require_parent(&self, input: OperatorId) -> Result<&BoxedHostOperator> {
-		self.operators.get(&input).ok_or_else(|| {
+	fn require_parent(&self, flow_id: FlowId, input: OperatorId) -> Result<&BoxedHostOperator> {
+		self.operators.get(&(flow_id, input)).ok_or_else(|| {
 			Error::from(FlowGraphError::ParentOperatorNotFound {
 				input: format!("{:?}", input),
 			})
 		})
 	}
 
-	fn parent_schema(&self, input: OperatorId) -> Result<Option<Columns>> {
-		Ok(self.require_parent(input)?.output_schema())
+	fn parent_schema(&self, flow_id: FlowId, input: OperatorId) -> Result<Option<Columns>> {
+		Ok(self.require_parent(flow_id, input)?.output_schema())
 	}
 }
 

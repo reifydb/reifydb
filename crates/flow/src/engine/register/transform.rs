@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::{JoinType, WindowKind},
 	interface::{
-		catalog::flow::OperatorId,
+		catalog::flow::{FlowId, OperatorId},
 		identifier::{ColumnIdentifier, ColumnObject},
 	},
 	value::column::columns::Columns,
@@ -42,14 +42,15 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_filter(
 		&mut self,
+		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		conditions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		self.operators.insert(
-			operator_id,
+			(flow_id, operator_id),
 			Box::new(FilterOperator::new(
 				parent_schema,
 				operator_id,
@@ -65,14 +66,15 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_gate(
 		&mut self,
+		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		conditions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		self.operators.insert(
-			operator_id,
+			(flow_id, operator_id),
 			Box::new(GateOperator::new(
 				parent_schema,
 				operator_id,
@@ -88,14 +90,15 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_map(
 		&mut self,
+		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		self.operators.insert(
-			operator_id,
+			(flow_id, operator_id),
 			Box::new(MapOperator::new(
 				parent_schema,
 				operator_id,
@@ -111,14 +114,15 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_extend(
 		&mut self,
+		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		self.operators.insert(
-			operator_id,
+			(flow_id, operator_id),
 			Box::new(ExtendOperator::new(
 				parent_schema,
 				operator_id,
@@ -132,16 +136,31 @@ impl FlowEngineInner {
 	}
 
 	#[inline]
-	pub(super) fn add_sort(&mut self, operator_id: OperatorId, inputs: &[OperatorId]) -> Result<()> {
-		let parent_schema = self.parent_schema(first_input(inputs)?)?;
-		self.operators.insert(operator_id, Box::new(SortOperator::new(parent_schema, operator_id, Vec::new())));
+	pub(super) fn add_sort(
+		&mut self,
+		flow_id: FlowId,
+		operator_id: OperatorId,
+		inputs: &[OperatorId],
+	) -> Result<()> {
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		self.operators.insert(
+			(flow_id, operator_id),
+			Box::new(SortOperator::new(parent_schema, operator_id, Vec::new())),
+		);
 		Ok(())
 	}
 
 	#[inline]
-	pub(super) fn add_take(&mut self, operator_id: OperatorId, inputs: &[OperatorId], limit: usize) -> Result<()> {
-		let parent_schema = self.parent_schema(first_input(inputs)?)?;
-		self.operators.insert(operator_id, Box::new(TakeOperator::new(parent_schema, operator_id, limit)));
+	pub(super) fn add_take(
+		&mut self,
+		flow_id: FlowId,
+		operator_id: OperatorId,
+		inputs: &[OperatorId],
+		limit: usize,
+	) -> Result<()> {
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		self.operators
+			.insert((flow_id, operator_id), Box::new(TakeOperator::new(parent_schema, operator_id, limit)));
 		Ok(())
 	}
 
@@ -150,6 +169,7 @@ impl FlowEngineInner {
 	pub(super) fn add_join(
 		&mut self,
 		txn: &mut Transaction<'_>,
+		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		join_type: JoinType,
@@ -174,7 +194,7 @@ impl FlowEngineInner {
 
 		let left_schema = self
 			.operators
-			.get(&left_node)
+			.get(&(flow_id, left_node))
 			.ok_or_else(|| {
 				Error::from(FlowGraphError::ParentOperatorNotFound {
 					input: "left parent".to_string(),
@@ -185,7 +205,7 @@ impl FlowEngineInner {
 
 		let right_schema = self
 			.operators
-			.get(&right_node)
+			.get(&(flow_id, right_node))
 			.ok_or_else(|| {
 				Error::from(FlowGraphError::ParentOperatorNotFound {
 					input: "right parent".to_string(),
@@ -209,7 +229,7 @@ impl FlowEngineInner {
 		let right_retention = right.map(|t| t.duration);
 
 		self.operators.insert(
-			operator_id,
+			(flow_id, operator_id),
 			Box::new(JoinOperator::new(
 				JoinSideConfig {
 					schema: left_schema,
@@ -240,14 +260,15 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_distinct(
 		&mut self,
+		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		self.operators.insert(
-			operator_id,
+			(flow_id, operator_id),
 			Box::new(DistinctOperator::new(
 				parent_schema,
 				operator_id,
@@ -264,6 +285,7 @@ impl FlowEngineInner {
 	pub(super) fn add_append(
 		&mut self,
 		txn: &mut Transaction<'_>,
+		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 	) -> Result<()> {
@@ -280,7 +302,7 @@ impl FlowEngineInner {
 		for input_node_id in inputs {
 			let schema = self
 				.operators
-				.get(input_node_id)
+				.get(&(flow_id, *input_node_id))
 				.ok_or_else(|| {
 					Error::from(FlowGraphError::ParentOperatorNotFound {
 						input: format!("{:?}", input_node_id),
@@ -293,7 +315,7 @@ impl FlowEngineInner {
 		let parent_schema = parent_schemas.swap_remove(0);
 		let retention = self.operator_retention(txn, operator_id)?;
 		self.operators.insert(
-			operator_id,
+			(flow_id, operator_id),
 			Box::new(AppendOperator::new(operator_id, parent_schema, inputs.to_vec(), retention)),
 		);
 		Ok(())
@@ -302,6 +324,7 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_apply(
 		&mut self,
+		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		operator: String,
@@ -309,12 +332,15 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		let config = evaluate_operator_config(expressions.as_slice(), &self.routines, &self.runtime_context)?;
 		let cfg = Config::new(operator.as_str(), config);
-		let parent_schema = self.parent_schema(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 
 		let provider = self.operator_provider.clone();
 		let inner = provider.provide(operator_id, &cfg)?;
 
-		self.operators.insert(operator_id, Box::new(ApplyOperator::new(parent_schema, operator_id, inner)));
+		self.operators.insert(
+			(flow_id, operator_id),
+			Box::new(ApplyOperator::new(parent_schema, operator_id, inner)),
+		);
 		Ok(())
 	}
 
@@ -322,6 +348,7 @@ impl FlowEngineInner {
 	#[allow(clippy::too_many_arguments)]
 	pub(super) fn add_window(
 		&mut self,
+		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		kind: WindowKind,
@@ -331,7 +358,7 @@ impl FlowEngineInner {
 		immutable: Option<Duration>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		let operator = WindowOperator::new(WindowConfig {
 			parent_schema,
 			operator: operator_id,
@@ -344,19 +371,20 @@ impl FlowEngineInner {
 			immutable,
 			ctx: Arc::clone(ctx),
 		});
-		self.operators.insert(operator_id, Box::new(operator));
+		self.operators.insert((flow_id, operator_id), Box::new(operator));
 		Ok(())
 	}
 
 	#[inline]
 	pub(super) fn add_aggregate(
 		&mut self,
+		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		let operator = AggregateOperator::new(
 			parent_schema,
 			operator_id,
@@ -365,7 +393,7 @@ impl FlowEngineInner {
 			self.routines.clone(),
 			self.runtime_context.clone(),
 		);
-		self.operators.insert(operator_id, Box::new(operator));
+		self.operators.insert((flow_id, operator_id), Box::new(operator));
 		Ok(())
 	}
 }
