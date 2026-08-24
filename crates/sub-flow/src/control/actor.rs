@@ -1805,9 +1805,9 @@ mod pull_protocol {
 mod tick_failures {
 	use std::{collections::HashMap, marker::PhantomData};
 
-	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{
-		actors::pending::PendingLayers,
+		actors::pending::{Pending, PendingLayers},
 		interface::{
 			catalog::{flow::OperatorId, id::ViewId},
 			change::Change,
@@ -1838,6 +1838,7 @@ mod tick_failures {
 		Result as ValueResult,
 		error::{Diagnostic, Error},
 		factory::time::at_millis,
+		util::cowvec::CowVec,
 	};
 
 	use super::*;
@@ -2143,5 +2144,105 @@ mod tick_failures {
 
 		assert_eq!(harness.state().retry_count, 0, "a tick that dispatched its timers is evidence of recovery");
 		assert!(!harness.state().poisoned, "a recovered flow must not be one strike from poison");
+	}
+
+	#[test]
+	fn a_tick_while_a_commit_is_in_flight_computes_nothing() {
+		// The operator write path classifies each key by reading the store, then carries that claim to the
+		// committer on another thread. The claim holds only if nothing else writes the key in between, and
+		// nothing in the store enforces that: the commit buffer takes its lock separately for the read half
+		// and the write half. This latch is the whole fence. A tick computing while it is set would start a
+		// second read-modify-write over the same operator state, and both would claim the same pre-image.
+		//
+		// Each of these tests clears the latch and repeats the message, so a fence that appeared to hold
+		// because there was nothing to do cannot pass as a fence that held.
+		let (_te, _health, actor) = ticking_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().committing = true;
+
+		tick(&mut harness);
+
+		assert_eq!(
+			harness.state().retry_count,
+			0,
+			"the latch must keep the tick from computing; a strike proves a compute ran beside an \
+			 in-flight commit"
+		);
+
+		harness.state_mut().committing = false;
+		tick(&mut harness);
+
+		assert_eq!(
+			harness.state().retry_count,
+			1,
+			"the same tick must compute once the latch clears, or the assertion above passed only \
+			 because there was nothing to compute"
+		);
+	}
+
+	#[test]
+	fn a_drain_while_a_commit_is_in_flight_returns_before_touching_anything() {
+		// The drain is the other entry into compute, and its latch check is the first statement in it, so
+		// nothing downstream (the pull, the compute, the dispatch) can run while a commit is in flight.
+		// Overlay pruning is what proves the early return: it sits at the top of the idle branch with this
+		// latch as its only guard, unlike the checkpoint below it, which re-checks the latch itself.
+		let (_te, _health, actor) = ticking_actor();
+		let mut harness = TestHarness::new(actor);
+		let mut generation = Pending::new();
+		generation.insert(EncodedKey::new(b"k"), EncodedBytes(CowVec::new(vec![1])));
+		harness.state_mut().cursor = CommitVersion(1);
+		harness.state_mut().overlay.promote(CommitVersion(1), generation);
+		assert_eq!(harness.state().overlay.generations_len(), 1, "precondition: the overlay must hold work");
+		harness.state_mut().committing = true;
+
+		harness.send(FlowActorMessage::Drain);
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the drain must be handled");
+
+		assert_eq!(
+			harness.state().overlay.generations_len(),
+			1,
+			"the latch must stop the drain before it prunes; anything it touched proves it ran beside \
+			 an in-flight commit"
+		);
+
+		harness.state_mut().committing = false;
+		harness.send(FlowActorMessage::Drain);
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the drain must be handled");
+
+		assert_eq!(
+			harness.state().overlay.generations_len(),
+			0,
+			"the same drain must prune once the latch clears, or the assertion above passed only \
+			 because the overlay had nothing to prune"
+		);
+	}
+
+	#[test]
+	fn a_wake_while_a_commit_is_in_flight_defers_the_drain_instead_of_starting_one() {
+		// A latch guarding only the two compute entry points would still lose the window if a wake could
+		// queue a drain behind it. The wake has to be remembered and replayed after the commit lands.
+		let (_te, _health, actor) = quiet_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().committing = true;
+
+		harness.send(FlowActorMessage::Wake);
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the wake must be handled");
+
+		assert!(
+			harness.state().drain_after_commit,
+			"a wake during a commit must be deferred, not dropped, or the flow stalls until the next \
+			 timer"
+		);
+
+		harness.state_mut().committing = false;
+		harness.state_mut().drain_after_commit = false;
+		harness.send(FlowActorMessage::Wake);
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "the wake must be handled");
+
+		assert!(
+			!harness.state().drain_after_commit,
+			"an unfenced wake drains at once and has nothing to defer, or the assertion above says \
+			 nothing about the latch"
+		);
 	}
 }

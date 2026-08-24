@@ -575,10 +575,9 @@ mod group_commit_integration {
 		for (operator, inner, tag) in entries {
 			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
 				.expect("test fixture group-state key must decode");
-			combined.insert(
-				OperatorStateKey::encoded(*operator, group, keyspace, suffix),
-				EncodedPodRow::new(&[*tag; 4]).into_bytes(),
-			);
+			let key = OperatorStateKey::encoded(*operator, group, keyspace, suffix);
+			combined.classify(key.clone(), None);
+			combined.insert(key, EncodedPodRow::new(&[*tag; 4]).into_bytes());
 		}
 		let mut slice = FlowSlice::empty();
 		slice.combined = combined;
