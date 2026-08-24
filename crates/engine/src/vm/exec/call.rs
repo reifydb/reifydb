@@ -13,6 +13,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
 use reifydb_evaluate::stack::{Callable, ClosureValue, Variable, strip_dollar_prefix};
+use reifydb_policy::inject_from_policies;
 use reifydb_routine_abi::{
 	Function as RoutineFunction, Procedure as RoutineProcedure,
 	context::{FunctionContext as RoutineFunctionContext, ProcedureContext as RoutineProcedureContext},
@@ -515,7 +516,11 @@ impl<'a> Vm<'a> {
 			} => {
 				let source = body.clone();
 				let params = params.clone();
-				let compiled = ctx.services.compiler.compile(ctx.tx, &source)?;
+				let compiled = ctx.services.compiler.compile_with_policy(
+					ctx.tx,
+					&source,
+					inject_from_policies,
+				)?;
 				match compiled {
 					CompilationResult::Ready(compiled_list) => {
 						self.execute_procedure_body(ctx, &compiled_list, &params, args, name)?;
@@ -550,7 +555,7 @@ impl<'a> Vm<'a> {
 
 		let source = proc_def.body().unwrap_or_default().to_string();
 		let params = proc_def.params().to_vec();
-		let compiled = ctx.services.compiler.compile(ctx.tx, &source)?;
+		let compiled = ctx.services.compiler.compile_with_policy(ctx.tx, &source, inject_from_policies)?;
 		match compiled {
 			CompilationResult::Ready(compiled_list) => {
 				self.execute_procedure_body(ctx, &compiled_list, &params, args, name)?;

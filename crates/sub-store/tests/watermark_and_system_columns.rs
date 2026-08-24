@@ -187,7 +187,8 @@ fn table_snapshot_system_columns_match_row_metadata() {
 			"row {i}: created_at is DateTime::default() - expected real wall-clock from the row header",
 		);
 		assert_eq!(
-			batch.updated_at()[i], created,
+			batch.updated_at()[i],
+			created,
 			"row {i}: insert-only row should have updated_at == created_at"
 		);
 	}

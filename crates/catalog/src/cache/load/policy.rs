@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashMap;
+
 use reifydb_core::key::{policy::PolicyKey, policy_op::PolicyOpKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -25,17 +27,15 @@ pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 	let op_range = PolicyOpKey::full_scan();
 	let op_stream = rx.range(op_range, RangeScope::All, 1024)?;
 
+	let mut operations: HashMap<_, Vec<_>> = HashMap::new();
 	for entry in op_stream {
 		let multi = entry?;
 		let op_def = convert_policy_op(multi)?;
-		let policy_id = op_def.policy_id;
-		if let Some(existing) = catalog.policy_operations.get(&policy_id) {
-			let mut ops = existing.value().clone();
-			ops.push(op_def);
-			catalog.set_policy_operations(policy_id, ops);
-		} else {
-			catalog.set_policy_operations(policy_id, vec![op_def]);
-		}
+		operations.entry(op_def.policy_id).or_default().push(op_def);
+	}
+
+	for (policy_id, ops) in operations {
+		catalog.set_policy_operations(policy_id, ops);
 	}
 
 	Ok(())

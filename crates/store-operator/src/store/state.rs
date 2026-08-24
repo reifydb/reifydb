@@ -15,10 +15,9 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 };
-use reifydb_value::byte_size::ByteSize;
-use reifydb_value::reifydb_assertions;
 #[cfg(reifydb_assertions)]
 use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 use tracing::instrument;
 
 #[cfg(reifydb_assertions)]

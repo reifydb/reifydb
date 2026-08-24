@@ -3,9 +3,8 @@
 
 use reifydb_catalog::bootstrap::bootstrap_system_objects;
 use reifydb_core::{event::EventBus, execution::ExecutionResult};
-use reifydb_value::error::Diagnostic;
 use reifydb_test_harness::{engine::TestEngine, fixture::identity::identity};
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{error::Diagnostic, params::Params, value::identity::IdentityId};
 
 const NO_POLICY: &str = "POLICY_002";
 const POLICY_DENIED: &str = "POLICY_001";
@@ -233,7 +232,9 @@ fn event_engine() -> (TestEngine, IdentityId) {
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE TABLE ns::audit { kind: utf8 }");
 	t.admin("CREATE EVENT ns::order_event { OrderPlaced { id: int4 } }");
-	t.admin("CREATE HANDLER ns::on_placed ON ns::order_event::OrderPlaced { INSERT ns::audit [{ kind: 'placed' }] }");
+	t.admin(
+		"CREATE HANDLER ns::on_placed ON ns::order_event::OrderPlaced { INSERT ns::audit [{ kind: 'placed' }] }",
+	);
 	let alice = identity("alice").create(&t);
 	(t, alice.id)
 }

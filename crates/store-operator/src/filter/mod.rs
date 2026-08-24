@@ -7,9 +7,7 @@ pub mod source;
 use std::sync::Arc;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{
-	interface::catalog::flow::OperatorId, key::operator_state::GroupId, util::bloom::hash_item,
-};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId, util::bloom::hash_item};
 use reifydb_filter::adaptive::{AdaptiveKeyFilter, FilterMetrics};
 use reifydb_value::value::row_number::RowNumber;
 

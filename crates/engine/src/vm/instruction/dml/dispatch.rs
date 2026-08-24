@@ -12,6 +12,7 @@ use reifydb_evaluate::{
 	expression::{context::EvalContext, eval::evaluate},
 	stack::Variable,
 };
+use reifydb_policy::inject_from_policies;
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -119,7 +120,11 @@ pub(crate) fn dispatch(
 			},
 		)?;
 
-		let compiled = services.compiler.compile(tx, procedure.body().unwrap_or_default())?;
+		let compiled = services.compiler.compile_with_policy(
+			tx,
+			procedure.body().unwrap_or_default(),
+			inject_from_policies,
+		)?;
 
 		match compiled {
 			CompilationResult::Ready(compiled_list) => {

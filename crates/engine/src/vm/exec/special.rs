@@ -8,6 +8,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_evaluate::stack::Variable;
+use reifydb_policy::inject_from_policies;
 use reifydb_rql::{
 	compiler::CompilationResult,
 	nodes::{AssertBlockNode, DispatchNode, MigrateNode, RollbackMigrationNode},
@@ -76,7 +77,7 @@ impl<'a> Vm<'a> {
 		node: &AssertBlockNode,
 	) -> Result<()> {
 		let rql = &node.rql;
-		let compile_result = services.compiler.compile(tx, rql);
+		let compile_result = services.compiler.compile_with_policy(tx, rql, inject_from_policies);
 
 		if node.expect_error {
 			match compile_result {

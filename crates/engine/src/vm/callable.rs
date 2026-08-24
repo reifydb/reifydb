@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Single funnel for the `CallableOp::Call` gate. Every path that reaches a procedure without going through
-//! catalog resolution enters here, so adding a builtin or an event handler cannot create an ungated entry point.
-
 use std::sync::Arc;
 
 use reifydb_catalog::catalog::Catalog;
@@ -66,13 +63,7 @@ pub(crate) fn enforce_call_policy(
 		None => ("default".to_string(), target.to_string()),
 	};
 	PolicyEvaluator::new(services, symbols)
-		.enforce_identity_policy(
-			tx,
-			&namespace,
-			&object,
-			CallableOp::Call,
-			PolicyTargetType::Procedure,
-		)
+		.enforce_identity_policy(tx, &namespace, &object, CallableOp::Call, PolicyTargetType::Procedure)
 		.map_err(|denial| match site {
 			CallSite::Named => denial,
 			CallSite::EventHandler {
