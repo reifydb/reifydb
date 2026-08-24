@@ -117,7 +117,7 @@ mod tests {
 	const OP_A: OperatorId = OperatorId(1);
 	const GROUP_A: GroupId = GroupId(10);
 	const CACHED: Keyspace = Keyspace::ACCUMULATOR;
-	const UNCACHED: Keyspace = Keyspace::EXPIRY;
+	const UNCACHED: Keyspace = Keyspace::CUSTOM_NOT_CACHED;
 
 	fn tier() -> OperatorRangeTier {
 		OperatorRangeTier::new(OperatorRangeConfig {

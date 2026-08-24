@@ -169,6 +169,8 @@ impl Keyspace {
 
 	pub const SEAL_ANCHOR: Self = Self(0x2B);
 
+	pub const CUSTOM_CACHED_BELOW: Self = Self(0x3F);
+
 	pub const CUSTOM_NOT_CACHED: Self = Self(0x40);
 
 	pub const CUSTOM_CACHED: Self = Self(0x42);
@@ -210,6 +212,7 @@ impl Keyspace {
 			Self::RINGBUFFER_META => "RINGBUFFER_META",
 			Self::REAP_QUEUE => "REAP_QUEUE",
 			Self::SEAL_ANCHOR => "SEAL_ANCHOR",
+			Self::CUSTOM_CACHED_BELOW => "CUSTOM_CACHED_BELOW",
 			Self::CUSTOM_NOT_CACHED => "CUSTOM_NOT_CACHED",
 			Self::CUSTOM_CACHED => "CUSTOM_CACHED",
 			_ => return Cow::Owned(format!("{:#04x}", self.0)),
@@ -227,9 +230,11 @@ impl Keyspace {
 
 	pub fn cache_policy(&self) -> CachePolicy {
 		match *self {
-			Self::CUSTOM_NOT_CACHED | Self::JOIN_PIN | Self::ENGINE_META => CachePolicy::Neither,
+			Self::CUSTOM_NOT_CACHED => CachePolicy::Neither,
 			Self::EXPIRY => CachePolicy::Range,
 			Self::TIMER_WHEEL => CachePolicy::Range,
+			Self::ENGINE_META => CachePolicy::Range,
+			Self::JOIN_PIN => CachePolicy::Range,
 			_ => CachePolicy::Both,
 		}
 	}
@@ -555,7 +560,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and `cache_policy`, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, Keyspace, Phase, CachePolicy); 37] = [
+	const CENSUS: [(&str, Keyspace, Phase, CachePolicy); 38] = [
 		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity, CachePolicy::Both),
 		("APPEND_DICTIONARY", Keyspace::APPEND_DICTIONARY, Phase::Identity, CachePolicy::Both),
 		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity, CachePolicy::Both),
@@ -573,7 +578,7 @@ mod tests {
 		("ROW_INDEX", Keyspace::ROW_INDEX, Phase::Data, CachePolicy::Both),
 		("SESSION", Keyspace::SESSION, Phase::Data, CachePolicy::Both),
 		("ROLLING_META", Keyspace::ROLLING_META, Phase::Data, CachePolicy::Both),
-		("ENGINE_META", Keyspace::ENGINE_META, Phase::Data, CachePolicy::Neither),
+		("ENGINE_META", Keyspace::ENGINE_META, Phase::Data, CachePolicy::Range),
 		("DISTINCT_ENTRY", Keyspace::DISTINCT_ENTRY, Phase::Data, CachePolicy::Both),
 		("WINDOW_META", Keyspace::WINDOW_META, Phase::Data, CachePolicy::Both),
 		("JOIN_LEFT", Keyspace::JOIN_LEFT, Phase::Data, CachePolicy::Both),
@@ -587,10 +592,11 @@ mod tests {
 		("RINGBUFFER_TTL_ARM", Keyspace::RINGBUFFER_TTL_ARM, Phase::Data, CachePolicy::Both),
 		("SEAL_LEDGER", Keyspace::SEAL_LEDGER, Phase::Data, CachePolicy::Both),
 		("JOIN_PUBLISHED", Keyspace::JOIN_PUBLISHED, Phase::Data, CachePolicy::Both),
-		("JOIN_PIN", Keyspace::JOIN_PIN, Phase::Data, CachePolicy::Neither),
+		("JOIN_PIN", Keyspace::JOIN_PIN, Phase::Data, CachePolicy::Range),
 		("RINGBUFFER_META", Keyspace::RINGBUFFER_META, Phase::Data, CachePolicy::Both),
 		("REAP_QUEUE", Keyspace::REAP_QUEUE, Phase::Data, CachePolicy::Both),
 		("SEAL_ANCHOR", Keyspace::SEAL_ANCHOR, Phase::Data, CachePolicy::Both),
+		("CUSTOM_CACHED_BELOW", Keyspace::CUSTOM_CACHED_BELOW, Phase::Data, CachePolicy::Both),
 		("CUSTOM_NOT_CACHED", Keyspace::CUSTOM_NOT_CACHED, Phase::Data, CachePolicy::Neither),
 		("CUSTOM_CACHED", Keyspace::CUSTOM_CACHED, Phase::Data, CachePolicy::Both),
 	];
@@ -843,7 +849,7 @@ mod tests {
 			CENSUS.iter().filter(|(_, _, _, p)| *p == CachePolicy::Neither).map(|(n, ..)| *n).collect();
 		assert_eq!(
 			neither,
-			["ENGINE_META", "JOIN_PIN", "CUSTOM_NOT_CACHED"],
+			["CUSTOM_NOT_CACHED"],
 			"widening the set a tier refuses turns that tier into an off switch and only shows up as a \
 			 throughput loss in a replay, so every move in or out is a measured decision"
 		);

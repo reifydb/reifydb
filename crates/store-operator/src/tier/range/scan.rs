@@ -471,7 +471,17 @@ fn partition_at(operator: OperatorId, key: &EncodedKey) -> Option<PartitionId> {
 	}
 }
 
+/// Whether a gap holds no key any row could occupy, which happens at a group boundary: the last
+/// keyspace prefix ends in `0xff`, so its successor carries out and truncates below the partition
+/// prefix length, leaving a sliver no install can ever cover.
+fn unaddressable_gap(gap: &Interval) -> bool {
+	gap.start.as_slice().len() < PartitionId::PREFIX_LEN && gap.end <= Edge::Key(pad_to_prefix(&gap.start))
+}
+
 fn exempt_gap(operator: OperatorId, gap: &Interval) -> bool {
+	if unaddressable_gap(gap) {
+		return true;
+	}
 	let Some(partition) = PartitionId::of(operator, &gap.start) else {
 		return false;
 	};
@@ -538,13 +548,16 @@ fn split_at_partitions(operator: OperatorId, segment: &Segment, out: &mut Vec<(S
 				whole.end.clone()
 			};
 			let end = bound.min(whole.end.clone());
-			out.push((
-				Segment::Gap {
-					interval: Interval::new(start, end.clone()),
-					exempt: false,
-				},
-				None,
-			));
+			let interval = Interval::new(start, end.clone());
+			if !unaddressable_gap(&interval) {
+				out.push((
+					Segment::Gap {
+						interval,
+						exempt: false,
+					},
+					None,
+				));
+			}
 			head = false;
 			match end {
 				_ if end == whole.end => return,
@@ -602,7 +615,7 @@ mod tests {
 	const OP: OperatorId = OperatorId(1);
 	const GROUP: GroupId = GroupId(10);
 	const CACHED: Keyspace = Keyspace::ACCUMULATOR;
-	const UNCACHED: Keyspace = Keyspace::ENGINE_META;
+	const UNCACHED: Keyspace = Keyspace::CUSTOM_NOT_CACHED;
 
 	fn tier(limit: u64, gap_guard: usize) -> OperatorRangeTier {
 		OperatorRangeTier::new(OperatorRangeConfig {
@@ -788,37 +801,64 @@ mod tests {
 	#[test]
 	fn a_plan_whose_excess_gaps_are_all_exempt_never_degrades() {
 		// A gap that can never close must not count, or the guard trips forever on cross-keyspace reads.
+		// Groups encode inverted just like keyspaces, so a range spanning two of them crosses the one
+		// uncacheable keyspace once per group, giving two exempt gaps against a guard of one.
 		let tier = tier(ByteSize::from_mib(1).as_bytes(), 1);
-		let range = across(UNCACHED, Keyspace::EXPIRY);
+		let top = GROUP;
+		let bottom = GroupId(GROUP.0 - 1);
+		let span_of = |group: GroupId, keyspace: Keyspace| {
+			PartitionId {
+				operator: OP,
+				group,
+				keyspace,
+			}
+			.span()
+		};
+		let range = EncodedKeyRange::new(
+			Bound::Included(OperatorStateKey::inner_encoded(top, UNCACHED, b"").into_encoded()),
+			keyspace_inner_range(bottom, UNCACHED).end,
+		);
 
-		for raw in (Keyspace::EXPIRY.0 + 1)..UNCACHED.0 {
-			let keyspace = Keyspace(raw);
-			assert!(
-				keyspace.cache_policy().caches_ranges(),
-				"the fixture middle must be cacheable, or it proves nothing"
-			);
-			assert!(
-				claim(&tier, &range, &whole(keyspace), &[]) == Install::Installed,
-				"an empty proven span is still a claim"
-			);
-		}
+		let upper = Interval::new(span_of(top, Keyspace(UNCACHED.0 - 1)).0, span_of(top, Keyspace(0x00)).1);
+		let lower = Interval::new(span_of(bottom, Keyspace(0xff)).0, span_of(bottom, Keyspace(UNCACHED.0 + 1)).1);
+		assert!(claim(&tier, &range, &upper, &[]) == Install::Installed, "an empty proven span is still a claim");
+		assert!(claim(&tier, &range, &lower, &[]) == Install::Installed, "an empty proven span is still a claim");
 
-		let scan = tier.plan_scan(OP, &range).expect("a cross-keyspace range must be plannable");
-		assert_eq!(scan.gaps(), 0, "both remaining gaps lie in keyspaces that are never cached");
+		let scan = tier.plan_scan(OP, &range).expect("a cross-group range must be plannable");
+		assert_eq!(scan.gaps(), 0, "both remaining gaps lie in a keyspace that is never cached");
 		assert!(
 			!scan.degraded(),
 			"two exempt gaps against a guard of one must not degrade, or every cross-keyspace read \
              collapses to a full scan forever"
 		);
-		assert!(
-			scan.segments().iter().any(|segment| matches!(
-				segment,
-				Segment::Gap {
-					exempt: true,
-					..
-				}
-			)),
-			"the fixture must actually produce an exempt gap"
+		assert_eq!(
+			scan.segments()
+				.iter()
+				.filter(|segment| matches!(
+					segment,
+					Segment::Gap {
+						exempt: true,
+						..
+					}
+				))
+				.count(),
+			2,
+			"the fixture must actually produce two exempt gaps"
+		);
+		assert_eq!(
+			scan.segments()
+				.iter()
+				.filter(|segment| matches!(
+					segment,
+					Segment::Gap {
+						exempt: false,
+						..
+					}
+				))
+				.count(),
+			0,
+			"the sliver at a group boundary holds no key a row could occupy, so planning a read over \
+             it spends one sqlite call per boundary crossed and can never return a row"
 		);
 	}
 
@@ -1030,8 +1070,8 @@ mod tests {
 		);
 
 		let split = tier
-			.plan_scan(OP, &across(Keyspace::DISTINCT_ENTRY, Keyspace::ROLLING_META))
-			.expect("a three-keyspace range must be plannable");
+			.plan_scan(OP, &across(Keyspace::CUSTOM_CACHED, Keyspace::SEAL_ANCHOR))
+			.expect("a range straddling an uncacheable keyspace must be plannable");
 		assert_eq!(
 			split.segments().len(),
 			3,

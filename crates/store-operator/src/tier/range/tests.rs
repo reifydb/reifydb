@@ -525,13 +525,7 @@ fn a_key_too_short_to_carry_a_keyspace_is_declined_not_cached() {
 	assert!(PartitionId::of(OP_A, &shortest_valid).is_some(), "the shortest valid key must not be declined");
 }
 
-const EXCLUDED: [Keyspace; 5] = [
-	Keyspace::CUSTOM_NOT_CACHED,
-	Keyspace::JOIN_PIN,
-	Keyspace::ENGINE_META,
-	Keyspace::EXPIRY,
-	Keyspace::TIMER_WHEEL,
-];
+const EXCLUDED: [Keyspace; 1] = [Keyspace::CUSTOM_NOT_CACHED];
 
 #[test]
 fn no_admission_path_lets_an_excluded_keyspace_into_the_tier() {

@@ -578,8 +578,8 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_still_installs_the_on
 	// decline as "the tier is full" starves the rest of the scan, and the starved keyspaces re-read
 	// sqlite on every pass forever.
 	let (store, storage, _guard) = cached_store();
-	let uncached = Keyspace::JOIN_PIN;
-	let cached = Keyspace::JOIN_PUBLISHED;
+	let uncached = Keyspace::CUSTOM_NOT_CACHED;
+	let cached = Keyspace::CUSTOM_CACHED_BELOW;
 	assert!(
 		!uncached.cache_policy().caches_ranges(),
 		"the fixture needs a keyspace the range tier keeps out and the scan crosses first"
