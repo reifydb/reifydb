@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
@@ -37,6 +38,13 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for IdentityInject {
 	}
 
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+		if !matches!(ctx.tx, Transaction::Test(..)) {
+			return Err(RoutineError::ProcedureExecutionFailed {
+				procedure: Fragment::internal("identity::inject"),
+				reason: "must run in a test transaction".to_string(),
+			});
+		}
+
 		let identity_id = match ctx.params {
 			Params::Positional(args) if args.len() == 1 => match &args[0] {
 				Value::IdentityId(id) => *id,
