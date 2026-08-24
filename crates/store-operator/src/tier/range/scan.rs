@@ -85,6 +85,7 @@ impl OperatorRangeTier {
 		for segment in &planned.segments {
 			split_at_partitions(operator, segment, &mut pieces);
 		}
+		let pieces = coalesce_gaps(pieces);
 		if pieces.is_empty() {
 			return Some(RangeScan {
 				operator,
@@ -258,6 +259,32 @@ impl OperatorRangeTier {
 		if span.is_empty() {
 			return false;
 		}
+		let mut start = span.start.clone();
+		let mut installed = false;
+		loop {
+			let Some(partition) = PartitionId::of(scan.operator, &start) else {
+				return installed;
+			};
+			let (_, bound) = partition.span();
+			let end = bound.min(span.end.clone());
+			let piece = Interval::new(start, end.clone());
+			if partition.is_cached() && !piece.is_empty() {
+				if !self.install_partition(scan, &piece, rows) {
+					return false;
+				}
+				installed = true;
+			}
+			if end == span.end {
+				return installed;
+			}
+			match end {
+				Edge::Key(key) => start = key,
+				Edge::Top => return installed,
+			}
+		}
+	}
+
+	fn install_partition(&self, scan: &RangeScan, span: &Interval, rows: &[(EncodedKey, EncodedPodRow)]) -> bool {
 		let Some(partition) = PartitionId::of(scan.operator, &span.start) else {
 			return false;
 		};
@@ -421,6 +448,40 @@ fn exempt_gap(operator: OperatorId, gap: &Interval) -> bool {
 	}
 	let (_, end) = partition.span();
 	gap.end <= end
+}
+
+fn coalesce_gaps(pieces: Vec<(Segment, Option<PartitionId>)>) -> Vec<(Segment, Option<PartitionId>)> {
+	let mut out: Vec<(Segment, Option<PartitionId>)> = Vec::with_capacity(pieces.len());
+	for (segment, partition) in pieces {
+		let Segment::Gap {
+			interval,
+			exempt,
+		} = &segment
+		else {
+			out.push((segment, partition));
+			continue;
+		};
+		let merged = match (out.last_mut(), partition) {
+			(
+				Some((
+					Segment::Gap {
+						interval: prev,
+						exempt: prev_exempt,
+					},
+					Some(_),
+				)),
+				Some(_),
+			) if *prev_exempt == *exempt && prev.end == Edge::Key(interval.start.clone()) => {
+				prev.end = interval.end.clone();
+				true
+			}
+			_ => false,
+		};
+		if !merged {
+			out.push((segment, partition));
+		}
+	}
+	out
 }
 
 fn split_at_partitions(operator: OperatorId, segment: &Segment, out: &mut Vec<(Segment, Option<PartitionId>)>) {
@@ -863,6 +924,75 @@ mod tests {
 			served,
 			[top.name(), middle.name(), bottom.name()],
 			"every partition must answer its own slice, and none may be skipped"
+		);
+	}
+
+	#[test]
+	fn an_install_whose_span_crosses_a_partition_boundary_lands_rows_in_both_keyspaces() {
+		// A coalesced gap hands install one span covering several keyspaces, so install must re-split it per partition; refusing the whole span instead would leave every cross-keyspace read permanently uncached.
+		let tier = roomy();
+		let top = Keyspace::BUFFER;
+		let bottom = Keyspace::ACCUMULATOR;
+		let head = key(top, b"a");
+		let tail = key(bottom, b"m");
+		let span = Interval::new(head.clone(), whole(bottom).end);
+		let rows = [(head.clone(), row("top")), (tail.clone(), row("bottom"))];
+
+		let scan = tier.plan_scan(OP, &across(top, bottom)).expect("a two-keyspace range must be plannable");
+		assert!(tier.install(&scan, &span, &rows), "an install spanning two cached partitions must be accepted");
+
+		let body = |key: &EncodedKey| {
+			tier.lookup(OP, key)
+				.map(|found| found.map(|row| String::from_utf8(row.body().to_vec()).expect("utf8")))
+		};
+		assert_eq!(
+			body(&head),
+			Some(Some("top".to_string())),
+			"the partition holding the span start must keep its row"
+		);
+		assert_eq!(
+			body(&tail),
+			Some(Some("bottom".to_string())),
+			"the partition past the boundary must be installed too, not discarded with the rest of the span"
+		);
+	}
+
+	#[test]
+	fn a_plan_merges_contiguous_gaps_into_one_read_but_never_across_an_exempt_boundary() {
+		// One read per uncovered run is the point: splitting every gap at a keyspace boundary issued a separate store read per keyspace byte the scan crossed. Folding an exempt keyspace into a cached run would also hide it from the gap guard.
+		let tier = roomy();
+		let top = Keyspace::BUFFER;
+		let bottom = Keyspace::ACCUMULATOR;
+
+		let merged = tier
+			.plan_scan(OP, &across(top, bottom))
+			.expect("a two-keyspace range must be plannable");
+		assert_eq!(
+			merged.segments(),
+			[Segment::Gap {
+				interval: Interval::new(whole(top).start, whole(bottom).end),
+				exempt: false,
+			}],
+			"two adjacent uncovered cached keyspaces must read as one span, not one read per keyspace"
+		);
+
+		let split = tier
+			.plan_scan(OP, &across(Keyspace::DISTINCT_ENTRY, Keyspace::ROLLING_META))
+			.expect("a three-keyspace range must be plannable");
+		assert_eq!(
+			split.segments().len(),
+			3,
+			"an uncacheable keyspace must break the run, or its gap stops counting against the guard"
+		);
+		assert!(
+			matches!(
+				split.segments()[1],
+				Segment::Gap {
+					exempt: true,
+					..
+				}
+			),
+			"the fixture must actually straddle an exempt keyspace"
 		);
 	}
 }
