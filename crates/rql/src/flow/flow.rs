@@ -24,6 +24,7 @@ pub struct Inner {
 	pub id: FlowId,
 	pub graph: DirectedGraph<FlowNode>,
 	pub order: Vec<OperatorId>,
+	pub ephemeral: bool,
 }
 
 impl Deref for FlowDag {
@@ -38,6 +39,7 @@ impl Deref for FlowDag {
 pub struct FlowBuilder {
 	id: FlowId,
 	graph: DirectedGraph<FlowNode>,
+	ephemeral: bool,
 }
 
 impl FlowBuilder {
@@ -45,11 +47,17 @@ impl FlowBuilder {
 		Self {
 			id: id.into(),
 			graph: DirectedGraph::new(),
+			ephemeral: false,
 		}
 	}
 
 	pub fn id(&self) -> FlowId {
 		self.id
+	}
+
+	pub fn ephemeral(&mut self) -> &mut Self {
+		self.ephemeral = true;
+		self
 	}
 
 	pub fn add_node(&mut self, node: FlowNode) -> OperatorId {
@@ -95,6 +103,7 @@ impl FlowBuilder {
 				id: self.id,
 				graph: self.graph,
 				order,
+				ephemeral: self.ephemeral,
 			}),
 		}
 	}

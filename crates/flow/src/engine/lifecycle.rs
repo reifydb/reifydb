@@ -6,11 +6,19 @@ use reifydb_core::interface::catalog::{
 	object::ObjectId,
 };
 use reifydb_rql::flow::flow::FlowDag;
+use reifydb_value::reifydb_assertions;
 
 use crate::engine::FlowEngineInner;
 
 impl FlowEngineInner {
 	pub fn register_flow_dag(&mut self, flow: FlowDag) {
+		reifydb_assertions! {
+			assert!(
+				self.flows.values().all(|registered| registered.ephemeral == flow.ephemeral),
+				"an engine holding both durable and ephemeral flows keys two different operators \
+				 under the same flow and operator id, and dropping one takes the other's state"
+			);
+		}
 		self.analyzer.add(flow.clone());
 		self.flows.insert(flow.id, flow);
 	}
@@ -44,14 +52,19 @@ impl FlowEngineInner {
 	}
 
 	pub fn remove_flow(&mut self, flow_id: FlowId) {
+		let flow = self.flows.get(&flow_id);
 		let node_ids: Vec<OperatorId> =
-			self.flows.get(&flow_id).map(|flow| flow.get_operator_ids().collect()).unwrap_or_default();
+			flow.map(|flow| flow.get_operator_ids().collect()).unwrap_or_default();
+		let ephemeral = flow.is_some_and(|flow| flow.ephemeral);
 
 		self.timers.remove_flow(flow_id);
 
 		for operator_id in node_ids {
 			self.operators.remove(&(flow_id, operator_id));
 			self.durable_sinks.remove(&(flow_id, operator_id));
+			if ephemeral {
+				continue;
+			}
 			if let Some(store) = self.substrate.operators.as_ref() {
 				store.drop_operator_state(operator_id);
 			}
@@ -201,6 +214,84 @@ mod tests {
 			store.total_bytes(),
 			ByteSize::ZERO,
 			"and their bytes must leave the process-wide accounting"
+		);
+	}
+
+	#[test]
+	fn removing_one_flow_spares_another_flows_operator_of_the_same_id() {
+		// Every ephemeral flow numbers from 1, so keyed by the operator alone one retirement unregisters every namesake.
+		let engine = TestEngine::new();
+		let mut inner = FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor().routines.clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			Arc::new(EmptyOperatorProvider),
+			FlowSubstrate::new(engine.inner().dictionary_allocators()),
+			OperatorSampleRegistry::new(),
+		);
+
+		let operator = OperatorId(1);
+		for flow_id in [FlowId(1), FlowId(2)] {
+			let mut builder = FlowDag::builder(flow_id);
+			builder.ephemeral();
+			builder.add_node(FlowNode::new(
+				operator,
+				OperatorDef::SourceSeries {
+					series: SeriesId(1),
+					time_domain: TimeDomain::None,
+				},
+			));
+			inner.register_flow_dag(builder.build());
+			inner.insert_operator(flow_id, operator, Box::new(SourceSeriesOperator::new(operator)));
+		}
+
+		inner.remove_flow(FlowId(1));
+
+		assert!(inner.operator(FlowId(1), operator).is_none(), "the retired flow's operator must be gone");
+		assert!(
+			inner.operator(FlowId(2), operator).is_some(),
+			"the surviving flow's operator shares only the id, so it must still be registered"
+		);
+	}
+
+	#[test]
+	fn removing_an_ephemeral_flow_leaves_the_shared_operator_state_untouched() {
+		// An ephemeral flow owns no shared state, so dropping the id it reuses takes a durable operator's instead.
+		let engine = TestEngine::new();
+		let store = engine.inner().operator_state();
+
+		let operator = OperatorId(1);
+		store.set(operator, EncodedKey::new(b"k"), EncodedPodRow::new(&[1u8; 64]));
+		let durable_bytes = store.bytes(operator);
+		assert!(durable_bytes > ByteSize::ZERO, "precondition: the durable operator's state is resident");
+
+		let mut inner = FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor().routines.clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			Arc::new(EmptyOperatorProvider),
+			FlowSubstrate::new(engine.inner().dictionary_allocators()),
+			OperatorSampleRegistry::new(),
+		);
+
+		let mut builder = FlowDag::builder(FlowId(1));
+		builder.ephemeral();
+		builder.add_node(FlowNode::new(
+			operator,
+			OperatorDef::SourceSeries {
+				series: SeriesId(1),
+				time_domain: TimeDomain::None,
+			},
+		));
+		inner.register_flow_dag(builder.build());
+		inner.insert_operator(FlowId(1), operator, Box::new(SourceSeriesOperator::new(operator)));
+
+		inner.remove_flow(FlowId(1));
+
+		assert_eq!(
+			store.bytes(operator),
+			durable_bytes,
+			"the durable operator's state must survive an unrelated flow retiring under its id"
 		);
 	}
 }

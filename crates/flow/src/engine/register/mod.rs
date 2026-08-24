@@ -46,6 +46,11 @@ impl FlowEngineInner {
 	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: FlowDag) -> Result<()> {
 		reifydb_assertions! {
 			assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
+			assert!(
+				self.flows.values().all(|registered| registered.ephemeral == flow.ephemeral),
+				"an engine holding both durable and ephemeral flows keys two different operators \
+				 under the same flow and operator id, and dropping one takes the other's state"
+			);
 		}
 
 		check_window_time_requirements(&self.catalog, txn, &flow)?;

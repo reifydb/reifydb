@@ -102,10 +102,12 @@ impl FlowCompiler {
 	}
 
 	pub fn new_ephemeral(catalog: Catalog, routines: Routines, flow_id: FlowId) -> Self {
+		let mut builder = FlowDag::builder(flow_id);
+		builder.ephemeral();
 		Self {
 			catalog,
 			routines,
-			builder: FlowDag::builder(flow_id),
+			builder,
 			sink: None,
 			ephemeral: true,
 			local_node_counter: 0,
