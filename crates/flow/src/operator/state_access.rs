@@ -5,7 +5,7 @@ use std::hash::Hash;
 
 use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_core::{key::operator_state::IntoGroupStateKey, metrics::heap::HeapSize, state::timer::StateStore};
-use reifydb_value::Result;
+use reifydb_value::{Result, byte_size::ByteSize};
 
 pub fn get<K, V>(store: &mut dyn StateStore, key: &K) -> Result<Option<V>>
 where
@@ -47,10 +47,11 @@ where
 	V: Clone + Default + OperatorState + HeapSize,
 {
 	let encoded_key = key.into_group_state_key();
-	let mut value = match store.state_get(&encoded_key)? {
-		Some(bytes) => decode::<V>(&bytes)?,
-		None => V::default(),
+	let (mut value, pre) = match store.state_get(&encoded_key)? {
+		Some(bytes) => (decode::<V>(&bytes)?, Some(bytes.byte_size())),
+		None => (V::default(), None),
 	};
+	store.state_classify(&encoded_key, pre);
 	let result = f(&mut value);
 	store.state_set(&encoded_key, value.encode_state()?)?;
 	Ok(result)
@@ -84,9 +85,14 @@ where
 	V: Clone + Default + OperatorState + HeapSize,
 	U: FnOnce(&mut V) -> Result<()>,
 {
-	let mut value = get_or_default(store, key)?;
+	let encoded_key = key.into_group_state_key();
+	let (mut value, pre) = match store.state_get(&encoded_key)? {
+		Some(bytes) => (decode::<V>(&bytes)?, Some(bytes.byte_size())),
+		None => (V::default(), None),
+	};
+	store.state_classify(&encoded_key, pre);
 	updater(&mut value)?;
-	set(store, key, &value)?;
+	store.state_set(&encoded_key, value.encode_state()?)?;
 	Ok(value)
 }
 
@@ -155,6 +161,7 @@ mod tests {
 		removes: usize,
 		sets: usize,
 		gets: usize,
+		classifications: Vec<(Vec<u8>, Option<ByteSize>)>,
 		// Settable clock so the persisted timestamp is observable; defaults to epoch.
 		now: DateTime,
 	}
@@ -210,6 +217,10 @@ mod tests {
 				}
 			}
 			Ok(())
+		}
+
+		fn state_classify(&mut self, key: &GroupStateKey, pre: Option<ByteSize>) {
+			self.classifications.push((key.as_slice().to_vec(), pre));
 		}
 
 		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
@@ -401,5 +412,93 @@ mod tests {
 
 		assert_eq!(returned, cell(4));
 		assert_eq!(get::<_, Cell>(&mut store, &Key::new("a")).unwrap(), Some(cell(4)));
+	}
+
+	#[test]
+	fn modify_hands_the_write_the_size_it_already_read() {
+		// The write classifies itself by reading the key again unless the caller hands the pre-image down, and
+		// modify has just paid that read. The size must be what a durable read of the row would have measured,
+		// or the census is billed a weight the store never held.
+		let mut store = MockStore::default();
+		set(&mut store, &Key::new("a"), &cell(123_456_789)).unwrap();
+		let durable = store.data.values().next().expect("the seed write is in the store").bytes().len();
+		assert!(
+			durable > 1,
+			"the seed must encode to more than one byte or the size assertion cannot discriminate"
+		);
+		store.classifications.clear();
+
+		modify::<_, Cell, _>(&mut store, &Key::new("a"), |c| c.value += 1).unwrap();
+
+		assert_eq!(store.gets, 1, "modify must classify from its own read, never pay a second one");
+		assert_eq!(
+			store.classifications.len(),
+			1,
+			"the write must be handed exactly one pre-image, or it falls back to reading the key again"
+		);
+		assert_eq!(
+			store.classifications[0].1,
+			Some(ByteSize::from_bytes(durable as u64)),
+			"the size handed down must be what a durable read of the row would measure"
+		);
+	}
+
+	#[test]
+	fn modify_of_a_key_that_is_not_there_hands_down_an_absence() {
+		// Absence is a classification too: an insert billed as a replace debits a row the census never held.
+		let mut store = MockStore::default();
+
+		modify::<_, Cell, _>(&mut store, &Key::new("missing"), |c| c.value = 3).unwrap();
+
+		assert_eq!(
+			store.classifications,
+			vec![(Key::new("missing").into_group_state_key().as_slice().to_vec(), None)],
+			"a key the read did not find must be handed down as absent, not left for the write to discover"
+		);
+	}
+
+	#[test]
+	fn update_hands_the_write_the_size_it_already_read() {
+		// update read through get_or_default, which collapses a missing row into a default and throws the
+		// existence bit away, so it could not classify at all without re-reading.
+		let mut store = MockStore::default();
+		set(&mut store, &Key::new("a"), &cell(123_456_789)).unwrap();
+		let durable = store.data.values().next().expect("the seed write is in the store").bytes().len();
+		assert!(
+			durable > 1,
+			"the seed must encode to more than one byte or the size assertion cannot discriminate"
+		);
+		store.classifications.clear();
+
+		update::<_, Cell, _>(&mut store, &Key::new("a"), |c| {
+			c.value += 5;
+			Ok(())
+		})
+		.unwrap();
+
+		assert_eq!(store.gets, 1, "update must classify from its own read, never pay a second one");
+		assert_eq!(
+			store.classifications[0].1,
+			Some(ByteSize::from_bytes(durable as u64)),
+			"the size handed down must be what a durable read of the row would measure"
+		);
+	}
+
+	#[test]
+	fn update_of_a_key_that_is_not_there_hands_down_an_absence() {
+		// The defaulting read it used to go through cannot tell this case from a present zero value.
+		let mut store = MockStore::default();
+
+		update::<_, Cell, _>(&mut store, &Key::new("missing"), |c: &mut Cell| {
+			c.value = 9;
+			Ok(())
+		})
+		.unwrap();
+
+		assert_eq!(
+			store.classifications,
+			vec![(Key::new("missing").into_group_state_key().as_slice().to_vec(), None)],
+			"a key the read did not find must be handed down as absent, not left for the write to discover"
+		);
 	}
 }

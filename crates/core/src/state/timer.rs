@@ -9,6 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_value::{
 	Result,
+	byte_size::ByteSize,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
@@ -47,6 +48,8 @@ pub trait StateStore {
 		keys: &[GroupStateKey],
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
+
+	fn state_classify(&mut self, _key: &GroupStateKey, _pre: Option<ByteSize>) {}
 
 	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()>;
 

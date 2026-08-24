@@ -98,6 +98,11 @@ pub trait StateExtension: FlowTransaction {
 		})
 	}
 
+	fn state_classify(&mut self, id: OperatorId, key: &GroupStateKey, pre: Option<ByteSize>) {
+		let scoped = scoped_key(id, key);
+		self.classify(&scoped, pre);
+	}
+
 	#[instrument(name = "flow::state::set", level = "trace", skip(self, row), fields(
 		operator_id = id.0,
 		key_len = key.as_slice().len(),

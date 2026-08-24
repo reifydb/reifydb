@@ -20,6 +20,7 @@ use reifydb_core::{
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
+	byte_size::ByteSize,
 	value::{
 		Value,
 		datetime::DateTime,
@@ -186,6 +187,10 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 			visit(inner, EncodedPodRow::from(r.bytes))?;
 		}
 		Ok(())
+	}
+
+	fn state_classify(&mut self, key: &GroupStateKey, pre: Option<ByteSize>) {
+		self.txn.state_classify(self.operator, key, pre);
 	}
 
 	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
