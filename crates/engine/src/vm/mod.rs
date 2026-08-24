@@ -37,6 +37,7 @@ pub struct Test<'a> {
 	pub params: Params,
 }
 
+pub(crate) mod callable;
 pub(crate) mod exec;
 pub mod executor;
 pub mod flow_lineage;

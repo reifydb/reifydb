@@ -12,7 +12,6 @@ use reifydb_evaluate::{
 	expression::{context::EvalContext, eval::evaluate},
 	stack::Variable,
 };
-use reifydb_routine_abi::context::ProcedureContext;
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -23,7 +22,11 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	vm::{services::Services, vm::Vm},
+	vm::{
+		callable::{CallSite, enforce_call_policy, invoke_procedure_routine},
+		services::Services,
+		vm::Vm,
+	},
 };
 
 pub(crate) const MAX_DISPATCH_DEPTH: u8 = 32;
@@ -100,6 +103,22 @@ pub(crate) fn dispatch(
 	);
 
 	for procedure in &procedures {
+		let handler_namespace = {
+			let mut tx_tmp = tx.reborrow();
+			services.catalog.get_namespace(&mut tx_tmp, procedure.namespace())?.name().to_string()
+		};
+		let handler_name = format!("{}::{}", handler_namespace, procedure.name());
+		enforce_call_policy(
+			services,
+			&vm.symbols,
+			tx,
+			&handler_name,
+			CallSite::EventHandler {
+				event: &sumtype.name,
+				variant: &plan.variant_name,
+			},
+		)?;
+
 		let compiled = services.compiler.compile(tx, procedure.body().unwrap_or_default())?;
 
 		match compiled {
@@ -172,21 +191,20 @@ pub(crate) fn dispatch(
 		for native_proc in native_handlers {
 			let handler_fragment =
 				Fragment::internal(format!("handler for {}::{}", sumtype.name, plan.variant_name));
-			let identity = tx.identity();
-			let mut ctx = ProcedureContext {
-				fragment: handler_fragment.clone(),
-				identity,
-				row_count: 1,
-				runtime_context: &services.runtime_context,
+			let handler_name = native_proc.info().name.clone();
+			let _result = invoke_procedure_routine(
+				services,
+				&vm.symbols,
 				tx,
-				params: &call_params,
-				catalog: &services.catalog,
-				ioc: &services.ioc,
-			};
-			let empty = Columns::empty();
-			let _result = native_proc
-				.call(&mut ctx, &empty)
-				.map_err(|e| e.with_context(handler_fragment, true))?;
+				&native_proc,
+				&handler_fragment,
+				&handler_name,
+				&call_params,
+				CallSite::EventHandler {
+					event: &sumtype.name,
+					variant: &plan.variant_name,
+				},
+			)?;
 		}
 	}
 

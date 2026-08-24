@@ -49,6 +49,7 @@ pub mod identity;
 pub mod instruments;
 pub mod lifecycle;
 pub mod metric;
+pub mod policy;
 pub mod proc;
 pub mod procedure;
 pub mod profiler;
@@ -74,6 +75,7 @@ pub fn bootstrap_system_objects(
 	lifecycle::bootstrap_lifecycle(multi, single, catalog, eventbus)?;
 	flow::bootstrap_flow(multi, single, catalog, eventbus)?;
 	completeness::bootstrap_completeness(multi, single, catalog, eventbus)?;
+	policy::bootstrap_call_policies(multi, single, eventbus)?;
 	load_catalog_cache(multi, single, catalog)?;
 	Ok(())
 }

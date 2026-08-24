@@ -26,6 +26,13 @@ pub enum PolicyError {
 	SessionDenied {
 		session_type: String,
 	},
+
+	#[error("DISPATCH of {event}::{variant} was refused: no call policy grants call on the handler {handler}")]
+	HandlerCallDenied {
+		event: String,
+		variant: String,
+		handler: String,
+	},
 }
 
 impl IntoDiagnostic for PolicyError {
@@ -92,6 +99,28 @@ impl IntoDiagnostic for PolicyError {
 				fragment: Fragment::None,
 				label: None,
 				help: Some("Create a session policy to grant access".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			PolicyError::HandlerCallDenied {
+				event,
+				variant,
+				handler,
+			} => Diagnostic {
+				code: "POLICY_003".to_string(),
+				rql: None,
+				message: format!(
+					"DISPATCH of {}::{} was refused: no call policy grants call on the handler {}",
+					event, variant, handler
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some(format!(
+					"A handler runs with the identity that dispatched the event. Grant it with:\n  CREATE PROCEDURE POLICY ON {} {{ call: {{ filter {{ ... }} }} }}",
+					handler
+				)),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

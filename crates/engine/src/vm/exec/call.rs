@@ -36,6 +36,7 @@ use crate::{
 	error::EngineError,
 	policy::PolicyEvaluator,
 	vm::{
+		callable::{CallSite, invoke_procedure_routine},
 		exec::broadcast::broadcast_many,
 		services::Services,
 		stack::ControlFlow,
@@ -661,20 +662,17 @@ impl<'a> Vm<'a> {
 		func_name: &str,
 	) -> Result<()> {
 		let call_params = Params::Positional(Arc::new(args));
-		let identity = ctx.tx.identity();
-		let mut proc_ctx = RoutineProcedureContext {
-			fragment: name.clone(),
-			identity,
-			row_count: 1,
-			runtime_context: &ctx.services.runtime_context,
-			tx: ctx.tx,
-			params: &call_params,
-			catalog: &ctx.services.catalog,
-			ioc: &ctx.services.ioc,
-		};
-		let empty = Columns::empty();
 		let attach_metadata = routine.attaches_row_metadata();
-		let columns = routine.call(&mut proc_ctx, &empty).map_err(|e| e.with_context(name.clone(), true))?;
+		let columns = invoke_procedure_routine(
+			ctx.services,
+			&self.symbols,
+			ctx.tx,
+			&routine,
+			name,
+			func_name,
+			&call_params,
+			CallSite::Named,
+		)?;
 		let columns = if attach_metadata {
 			assign_row_numbers_if_absent(columns)
 		} else {

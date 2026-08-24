@@ -5,10 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders};
 use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
-use reifydb_routine_abi::{
-	Function, Procedure,
-	context::{FunctionContext, ProcedureContext},
-};
+use reifydb_routine_abi::{Function, Procedure, context::FunctionContext};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, params::Params, value::Value};
@@ -17,7 +14,10 @@ use tracing::instrument;
 use crate::{
 	Result,
 	error::EngineError,
-	vm::volcano::query::{QueryContext, QueryNode, eval_context_from_query},
+	vm::{
+		callable::{CallSite, invoke_procedure_routine},
+		volcano::query::{QueryContext, QueryNode, eval_context_from_query},
+	},
 };
 
 enum GeneratorImpl {
@@ -78,18 +78,16 @@ impl GeneratorNode {
 				let values: Vec<Value> =
 					evaluated_columns.iter().map(|col| col.data().get_value(0)).collect();
 				let params = Params::Positional(Arc::new(values));
-				let mut proc_ctx = ProcedureContext {
-					fragment: self.function_name.clone(),
-					identity: stored_ctx.identity,
-					row_count: 1,
-					runtime_context: &stored_ctx.services.runtime_context,
-					tx: txn,
-					params: &params,
-					catalog: &stored_ctx.services.catalog,
-					ioc: &stored_ctx.services.ioc,
-				};
-				let empty = Columns::empty();
-				Ok(procedure.call(&mut proc_ctx, &empty)?)
+				invoke_procedure_routine(
+					&stored_ctx.services,
+					&stored_ctx.symbols,
+					txn,
+					procedure,
+					&self.function_name,
+					self.function_name.text(),
+					&params,
+					CallSite::Named,
+				)
 			}
 		}
 	}
