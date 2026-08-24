@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_test_harness::engine::TestEngine;
+use reifydb_transaction::error::TransactionError;
 use reifydb_value::{params::Params, value::identity::IdentityId};
 
 #[test]
@@ -62,4 +63,33 @@ fn shutdown_does_not_gate_reads() {
 			"reads must not be rejected by the shutdown gate, got: {e:?}"
 		);
 	}
+}
+
+#[test]
+fn shutdown_rejection_is_recognizable_without_matching_on_the_rendered_code() {
+	// Embedders (an ingestion loop calling storage::advance) must be able to tell the shutdown
+	// rejection apart from a real failure and stop cleanly instead of aborting the process; without
+	// this predicate the only handle is the rendered "TXN_014" string.
+	let t = TestEngine::new();
+	t.admin("CREATE NAMESPACE test");
+	t.admin("CREATE TABLE test::items { id: int8, name: utf8 }");
+
+	t.inner().set_shutting_down();
+
+	let rejected = t
+		.inner()
+		.command_as(IdentityId::root(), "INSERT test::items [{ id: 1, name: 'x' }]", Params::None)
+		.error
+		.expect("an external command must be rejected once the engine is shutting down");
+	assert!(TransactionError::is_shutting_down(&rejected), "got: {rejected:?}");
+
+	let unrelated = t
+		.inner()
+		.command_as(IdentityId::system(), "INSERT test::nope [{ id: 1 }]", Params::None)
+		.error
+		.expect("writing to a table that does not exist must fail");
+	assert!(
+		!TransactionError::is_shutting_down(&unrelated),
+		"a failure that is not the shutdown gate must not be reported as one, got: {unrelated:?}"
+	);
 }

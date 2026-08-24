@@ -73,6 +73,7 @@ pub enum TransactionError {
 
 impl TransactionError {
 	pub const CONSUMER_OVERTAKEN: &'static str = "TXN_016";
+	pub const SHUTTING_DOWN: &'static str = "TXN_014";
 	pub const SNAPSHOT_EVICTED: &'static str = "TXN_012";
 
 	pub fn is_consumer_overtaken(error: &Error) -> bool {
@@ -81,6 +82,10 @@ impl TransactionError {
 
 	pub fn is_snapshot_evicted(error: &Error) -> bool {
 		error.0.code == Self::SNAPSHOT_EVICTED
+	}
+
+	pub fn is_shutting_down(error: &Error) -> bool {
+		error.0.code == Self::SHUTTING_DOWN
 	}
 }
 
@@ -245,7 +250,7 @@ impl IntoDiagnostic for TransactionError {
 			},
 
 			TransactionError::ShuttingDown => Diagnostic {
-				code: "TXN_014".to_string(),
+				code: TransactionError::SHUTTING_DOWN.to_string(),
 				rql: None,
 				message: "Database is shutting down; new transactions are rejected".to_string(),
 				column: None,
