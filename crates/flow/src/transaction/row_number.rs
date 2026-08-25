@@ -42,10 +42,6 @@ pub fn counter_key() -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
 }
 
-pub fn published_key(group: GroupId) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, b"")
-}
-
 fn present_keys(
 	txn: &mut impl FlowTransaction,
 	operator: OperatorId,
@@ -137,20 +133,13 @@ pub trait RowNumberExtension: FlowTransaction {
 		resolve_or_mint(self, operator, keys.iter().map(|key| mapping_key(group, key)).collect())
 	}
 
-	fn publish_groups(&mut self, operator: OperatorId, groups: &[GroupId]) -> Result<Vec<bool>> {
-		let map_keys: Vec<GroupStateKey> = groups.iter().map(|group| published_key(*group)).collect();
-		let mut present = present_keys(self, operator, &map_keys)?;
-		let mut first = Vec::with_capacity(map_keys.len());
-		for map_key in &map_keys {
-			if present.contains(map_key.as_slice()) {
-				first.push(false);
-				continue;
-			}
-			self.state_set(operator, map_key, EncodedPodRow::new(&[]))?;
-			present.insert(map_key.clone().into_encoded());
-			first.push(true);
-		}
-		Ok(first)
+	fn get_or_create_row_numbers_for_groups(
+		&mut self,
+		operator: OperatorId,
+		groups: &[GroupId],
+		key: &EncodedKey,
+	) -> Result<Vec<(RowNumber, bool)>> {
+		resolve_or_mint(self, operator, groups.iter().map(|group| mapping_key(*group, key)).collect())
 	}
 
 	fn get_or_create_row_numbers_for_pairs(
@@ -161,10 +150,28 @@ pub trait RowNumberExtension: FlowTransaction {
 		resolve_or_mint(self, operator, pairs.iter().map(|(group, key)| mapping_key(*group, key)).collect())
 	}
 
-	fn published_groups(&mut self, operator: OperatorId, groups: &[GroupId]) -> Result<Vec<bool>> {
-		let map_keys: Vec<GroupStateKey> = groups.iter().map(|group| published_key(*group)).collect();
-		let present = present_keys(self, operator, &map_keys)?;
-		Ok(map_keys.iter().map(|map_key| present.contains(map_key.as_slice())).collect())
+	fn get_row_numbers_for_groups(
+		&mut self,
+		operator: OperatorId,
+		groups: &[GroupId],
+		key: &EncodedKey,
+	) -> Result<Vec<Option<RowNumber>>> {
+		let map_keys: Vec<GroupStateKey> = groups.iter().map(|group| mapping_key(*group, key)).collect();
+		let batch = self.state_get_many(operator, &map_keys)?;
+		let mut found: HashMap<EncodedKey, EncodedBytes> = HashMap::with_capacity(batch.items.len());
+		for item in batch.items {
+			let decoded = OperatorStateKey::decode(&item.key)
+				.expect("state_get_many must return OperatorState keys");
+			found.insert(decoded.inner(), item.bytes);
+		}
+
+		let mut results: Vec<Option<RowNumber>> = vec![None; groups.len()];
+		for (slot, map_key) in map_keys.iter().enumerate() {
+			if let Some(existing_row) = found.get(map_key.as_slice()) {
+				results[slot] = Some(RowNumber(decode_bytes::<u64>(existing_row)?));
+			}
+		}
+		Ok(results)
 	}
 
 	fn get_row_numbers(

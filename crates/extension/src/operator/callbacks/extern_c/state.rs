@@ -1064,11 +1064,19 @@ mod seal_anchor_guard_tests {
 			Ok(Vec::new())
 		}
 
-		fn published_groups(&mut self, _groups: &[GroupId]) -> Result<Vec<bool>> {
+		fn get_row_numbers_for_groups(
+			&mut self,
+			_groups: &[GroupId],
+			_key: &EncodedKey,
+		) -> Result<Vec<Option<RowNumber>>> {
 			Ok(Vec::new())
 		}
 
-		fn publish_groups(&mut self, _groups: &[GroupId]) -> Result<Vec<bool>> {
+		fn get_or_create_row_numbers_for_groups(
+			&mut self,
+			_groups: &[GroupId],
+			_key: &EncodedKey,
+		) -> Result<Vec<(RowNumber, bool)>> {
 			Ok(Vec::new())
 		}
 

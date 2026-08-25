@@ -177,8 +177,13 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 	let erased = erase_group_data(&op, &mut txn, groups[0]);
 	assert!(erased > 0, "precondition: compaction must have erased the entry");
 	assert!(
-		txn.published_groups(op.plan.operator, &[groups[0]]).unwrap().into_iter().next().unwrap(),
-		"precondition: the floor must leave the published marker behind, or there is nothing to collide with"
+		txn.get_row_numbers_for_groups(op.plan.operator, &[groups[0]], &store::empty_key())
+			.unwrap()
+			.into_iter()
+			.next()
+			.unwrap()
+			.is_some(),
+		"precondition: the floor must leave the mapping behind, or there is nothing to collide with"
 	);
 
 	op = make_op(6, &engine);

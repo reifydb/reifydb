@@ -94,9 +94,17 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;
 
-	fn published_groups(&mut self, groups: &[GroupId]) -> Result<Vec<bool>>;
+	fn get_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+		key: &EncodedKey,
+	) -> Result<Vec<Option<RowNumber>>>;
 
-	fn publish_groups(&mut self, groups: &[GroupId]) -> Result<Vec<bool>>;
+	fn get_or_create_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+		key: &EncodedKey,
+	) -> Result<Vec<(RowNumber, bool)>>;
 
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 
@@ -374,12 +382,20 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.get_row_numbers(self.operator, group, keys)
 	}
 
-	fn published_groups(&mut self, groups: &[GroupId]) -> Result<Vec<bool>> {
-		self.txn.published_groups(self.operator, groups)
+	fn get_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+		key: &EncodedKey,
+	) -> Result<Vec<Option<RowNumber>>> {
+		self.txn.get_row_numbers_for_groups(self.operator, groups, key)
 	}
 
-	fn publish_groups(&mut self, groups: &[GroupId]) -> Result<Vec<bool>> {
-		self.txn.publish_groups(self.operator, groups)
+	fn get_or_create_row_numbers_for_groups(
+		&mut self,
+		groups: &[GroupId],
+		key: &EncodedKey,
+	) -> Result<Vec<(RowNumber, bool)>> {
+		self.txn.get_or_create_row_numbers_for_groups(self.operator, groups, key)
 	}
 
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
