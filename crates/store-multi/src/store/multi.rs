@@ -32,7 +32,7 @@ use super::StandardMultiStore;
 use crate::{
 	MultiVersionScope, Result,
 	tier::{
-		DisplacedValues, RangeBatch, RangeCursor, TierBatch, TierStorage, VersionedGetResult,
+		DisplacedValues, RangeBatch, RangeCursor, RangeStop, TierBatch, TierStorage, VersionedGetResult,
 		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ServedChunk,
 	},
 };
@@ -453,6 +453,8 @@ pub struct MultiVersionRangeCursor {
 
 	pub exhausted: bool,
 
+	persistent_recheck_spent: bool,
+
 	install: bool,
 }
 
@@ -667,6 +669,9 @@ impl StandardMultiStore {
 			}
 
 			if cursor.commit.exhausted && cursor.persistent.exhausted {
+				if reread_persistent_absent_before_its_table(cursor) {
+					continue;
+				}
 				cursor.exhausted = true;
 				break;
 			}
@@ -796,6 +801,9 @@ impl StandardMultiStore {
 			}
 
 			if cursor.commit.exhausted && cursor.persistent.exhausted {
+				if reread_persistent_absent_before_its_table(cursor) {
+					continue;
+				}
 				cursor.exhausted = true;
 				break;
 			}
@@ -937,6 +945,16 @@ impl StandardMultiStore {
 		read.install_scanned_chunk(scan.table, &lo, &through, &batch.entries);
 		Ok(())
 	}
+}
+
+fn reread_persistent_absent_before_its_table(cursor: &mut MultiVersionRangeCursor) -> bool {
+	if cursor.persistent_recheck_spent || cursor.persistent.stop != Some(RangeStop::AbsentTable) {
+		return false;
+	}
+	cursor.persistent_recheck_spent = true;
+	cursor.persistent.exhausted = false;
+	cursor.persistent.stop = None;
+	true
 }
 
 fn mark_unconfigured_exhausted(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor) {
@@ -1278,7 +1296,10 @@ mod cache_tests {
 	use crate::{
 		MultiVersionScope,
 		store::StandardMultiStore,
-		tier::{RawEntry, TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
+		tier::{
+			RangeStop, RawEntry, TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier,
+			read::ReadBufferConfig,
+		},
 	};
 
 	const STORAGE: StorageId = StorageId::Table(TableId(1));
@@ -1433,6 +1454,248 @@ mod cache_tests {
 		assert!(
 			!read.page_is_complete(page),
 			"writing a source row into a range-complete page must clear the flag so the range cache reclaims it"
+		);
+	}
+
+	fn drain_forward(
+		store: &StandardMultiStore,
+		cursor: &mut super::MultiVersionRangeCursor,
+		read: u64,
+	) -> Vec<u64> {
+		let mut seen = Vec::new();
+		loop {
+			let batch = store
+				.range_next(
+					cursor,
+					RowKey::full_scan(STORAGE),
+					MultiVersionScope::AsOf {
+						read: CommitVersion(read),
+					},
+					2,
+				)
+				.unwrap();
+			seen.extend(batch.items.iter().map(|row| row.key.clone()));
+			if !batch.has_more {
+				return rows_of(seen);
+			}
+		}
+	}
+
+	fn drain_reverse(
+		store: &StandardMultiStore,
+		cursor: &mut super::MultiVersionRangeCursor,
+		read: u64,
+	) -> Vec<u64> {
+		let mut seen = Vec::new();
+		loop {
+			let batch = store
+				.range_rev_next(
+					cursor,
+					RowKey::full_scan(STORAGE),
+					MultiVersionScope::AsOf {
+						read: CommitVersion(read),
+					},
+					2,
+				)
+				.unwrap();
+			seen.extend(batch.items.iter().map(|row| row.key.clone()));
+			if !batch.has_more {
+				return rows_of(seen);
+			}
+		}
+	}
+
+	fn rows_of(keys: Vec<EncodedKey>) -> Vec<u64> {
+		let mut rows: Vec<u64> = keys.iter().map(|key| RowKey::decode(key).expect("a row key").row.0).collect();
+		rows.sort_unstable();
+		rows.dedup();
+		rows
+	}
+
+	const ROWS: u64 = 200;
+
+	fn store_without_read_tier() -> (StandardMultiStore, impl Drop) {
+		StandardMultiStore::testing_memory_with_persistent_sqlite_read(ReadBufferConfig {
+			resident_bytes: None,
+			..ReadBufferConfig::default()
+		})
+	}
+
+	const PERSISTED: u64 = 200;
+	const BUFFERED: u64 = 200;
+
+	fn seed_both_tiers(store: &StandardMultiStore, persist_the_low_rows: bool) {
+		let (persist, buffer) = if persist_the_low_rows {
+			(1..=PERSISTED, PERSISTED + 1..=PERSISTED + BUFFERED)
+		} else {
+			(PERSISTED + 1..=PERSISTED + BUFFERED, 1..=BUFFERED)
+		};
+		for n in persist {
+			commit_row(store, n, 1);
+		}
+		flush(store, CommitVersion(1));
+		for n in buffer {
+			commit_row(store, n, 2);
+		}
+	}
+
+	#[test]
+	fn a_scan_reading_both_tiers_loses_nothing_when_a_flush_lands_under_it() {
+		let (store, _g) = store_without_read_tier();
+		seed_both_tiers(&store, true);
+
+		let mut cursor = super::MultiVersionRangeCursor::new();
+		let first = store
+			.range_next(
+				&mut cursor,
+				RowKey::full_scan(STORAGE),
+				MultiVersionScope::AsOf {
+					read: CommitVersion(2),
+				},
+				2,
+			)
+			.unwrap();
+		assert!(first.has_more, "four hundred rows cannot fit in one tier chunk, so the scan must continue");
+		assert_ne!(
+			cursor.persistent.stop,
+			Some(RangeStop::AbsentTable),
+			"the persistent tier must hold a table here, or this is the empty-database case again"
+		);
+		assert!(
+			cursor.persistent.last_key.is_some(),
+			"the persistent tier contributed nothing, so the scan is not merging two live tiers"
+		);
+
+		flush(&store, CommitVersion(2));
+
+		let mut seen = rows_of(first.items.iter().map(|row| row.key.clone()).collect());
+		seen.extend(drain_forward(&store, &mut cursor, 2));
+		seen.sort_unstable();
+		seen.dedup();
+
+		assert_eq!(
+			seen,
+			(1..=PERSISTED + BUFFERED).collect::<Vec<_>>(),
+			"the merge dropped rows the flush moved from the buffer into a tier the scan had already read past"
+		);
+	}
+
+	#[test]
+	fn a_reverse_scan_reading_both_tiers_loses_nothing_when_a_flush_lands_under_it() {
+		let (store, _g) = store_without_read_tier();
+		seed_both_tiers(&store, false);
+
+		let mut cursor = super::MultiVersionRangeCursor::new();
+		let first = store
+			.range_rev_next(
+				&mut cursor,
+				RowKey::full_scan(STORAGE),
+				MultiVersionScope::AsOf {
+					read: CommitVersion(2),
+				},
+				2,
+			)
+			.unwrap();
+		assert!(first.has_more, "four hundred rows cannot fit in one tier chunk, so the scan must continue");
+		assert_ne!(
+			cursor.persistent.stop,
+			Some(RangeStop::AbsentTable),
+			"the persistent tier must hold a table here, or this is the empty-database case again"
+		);
+		assert!(
+			cursor.persistent.last_key.is_some(),
+			"the persistent tier contributed nothing, so the scan is not merging two live tiers"
+		);
+
+		flush(&store, CommitVersion(2));
+
+		let mut seen = rows_of(first.items.iter().map(|row| row.key.clone()).collect());
+		seen.extend(drain_reverse(&store, &mut cursor, 2));
+		seen.sort_unstable();
+		seen.dedup();
+
+		assert_eq!(
+			seen,
+			(1..=PERSISTED + BUFFERED).collect::<Vec<_>>(),
+			"the reverse merge dropped rows the flush moved from the buffer into a tier the scan had already read past"
+		);
+	}
+
+	#[test]
+	fn a_scan_that_asked_persistent_before_its_table_existed_reads_it_again_once_the_buffer_drains() {
+		let (store, _g) = store_without_read_tier();
+		for n in 1..=ROWS {
+			commit_row(&store, n, 1);
+		}
+
+		let mut cursor = super::MultiVersionRangeCursor::new();
+		let first = store
+			.range_next(
+				&mut cursor,
+				RowKey::full_scan(STORAGE),
+				MultiVersionScope::AsOf {
+					read: CommitVersion(1),
+				},
+				2,
+			)
+			.unwrap();
+		assert!(first.has_more, "two hundred rows cannot fit in one tier chunk, so the scan must continue");
+		assert_eq!(
+			cursor.persistent.stop,
+			Some(RangeStop::AbsentTable),
+			"nothing is flushed yet, so this test is not exercising the interleaving it exists for"
+		);
+
+		flush(&store, CommitVersion(1));
+
+		let mut seen = rows_of(first.items.iter().map(|row| row.key.clone()).collect());
+		seen.extend(drain_forward(&store, &mut cursor, 1));
+		seen.sort_unstable();
+		seen.dedup();
+
+		assert_eq!(
+			seen,
+			(1..=ROWS).collect::<Vec<_>>(),
+			"the scan dropped rows the flush moved out from under it"
+		);
+	}
+
+	#[test]
+	fn a_reverse_scan_that_asked_persistent_before_its_table_existed_reads_it_again_too() {
+		let (store, _g) = store_without_read_tier();
+		for n in 1..=ROWS {
+			commit_row(&store, n, 1);
+		}
+
+		let mut cursor = super::MultiVersionRangeCursor::new();
+		let first = store
+			.range_rev_next(
+				&mut cursor,
+				RowKey::full_scan(STORAGE),
+				MultiVersionScope::AsOf {
+					read: CommitVersion(1),
+				},
+				2,
+			)
+			.unwrap();
+		assert!(first.has_more, "two hundred rows cannot fit in one tier chunk, so the scan must continue");
+		assert_eq!(
+			cursor.persistent.stop,
+			Some(RangeStop::AbsentTable),
+			"nothing is flushed yet, so this test is not exercising the interleaving it exists for"
+		);
+
+		flush(&store, CommitVersion(1));
+
+		let mut seen = rows_of(first.items.iter().map(|row| row.key.clone()).collect());
+		seen.extend(drain_reverse(&store, &mut cursor, 1));
+		seen.sort_unstable();
+		seen.dedup();
+
+		assert_eq!(
+			seen,
+			(1..=ROWS).collect::<Vec<_>>(),
+			"the reverse scan dropped rows the flush moved out from under it"
 		);
 	}
 }

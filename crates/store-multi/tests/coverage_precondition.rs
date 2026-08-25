@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Preconditions for replacing the read tier's all-or-nothing `range_complete` bucket with the shared
-//! interval coverage model. Coverage asserts "no key exists strictly between a and b", which in an MVCC
-//! store is only true as of a version. These tests pin the property that makes a version stamp unnecessary:
-//! every write path leaves the key reachable from RAM or the always-scanned commit buffer before the span
-//! can be claimed complete, so a reader at a version newer than the claim can never miss it.
+//! Coverage asserts "no key exists strictly between a and b", which in an MVCC store is only true as
+//! of a version. These tests pin the property that makes a version stamp unnecessary: every write path
+//! leaves the key reachable from RAM or the always-scanned commit buffer before the span can be claimed
+//! covered, so a reader at a version newer than the claim can never miss it.
 
 use std::{
 	collections::{BTreeMap, HashMap},

@@ -17,10 +17,7 @@ use reifydb_value::{Result, byte_size::ByteSize, count::Count, value::datetime::
 use crate::{
 	MultiVersionScope,
 	filter::MultiKeyFilter,
-	tier::{
-		DisplacedValues, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage,
-		VersionedGetResult,
-	},
+	tier::{DisplacedValues, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult},
 };
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]

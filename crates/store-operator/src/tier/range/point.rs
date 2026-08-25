@@ -109,7 +109,10 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 	};
-	use reifydb_store::coverage::{Edge, entry::{Entry, PinnedCount}};
+	use reifydb_store::coverage::{
+		Edge,
+		entry::{Entry, PinnedCount},
+	};
 	use reifydb_value::byte_size::ByteSize;
 
 	use super::arm_absence_interlock;

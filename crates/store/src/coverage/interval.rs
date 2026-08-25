@@ -197,9 +197,8 @@ impl CoverageSet {
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use crate::coverage::{Edge, successor};
-
 	use super::{CoverageSet, Interval};
+	use crate::coverage::{Edge, successor};
 
 	fn k(bytes: &str) -> EncodedKey {
 		EncodedKey::new(bytes)

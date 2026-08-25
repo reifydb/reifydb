@@ -18,12 +18,12 @@ use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_store::row::page::PageId;
 use reifydb_value::byte_size::ByteSize;
 
-#[cfg(test)]
-use crate::tier::read::{FillInterlock, InvalidateInterlock};
 use crate::tier::read::{
 	CoverageIndex, MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferCoverageMetrics,
 	ReadBufferPageMetrics, ReadBufferReadMetrics, ReadBufferShardMetrics, ReadBufferStateMetrics, Shard, Span,
 };
+#[cfg(test)]
+use crate::tier::read::{FillInterlock, InvalidateInterlock};
 
 const READ_BUFFER_SCOPE: &str = "read_buffer";
 

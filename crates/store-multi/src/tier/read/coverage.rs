@@ -284,7 +284,10 @@ mod tests {
 
 		assert_eq!(page_of(&key, SHIFT).kind, EntryKind::Multi);
 		assert!(read.covers(EntryKind::Multi, &key), "a non-source kind must still be claimable");
-		assert!(!read.page_is_complete(page_of(&key, SHIFT)), "a page with no reconstructable range can never be claimed whole");
+		assert!(
+			!read.page_is_complete(page_of(&key, SHIFT)),
+			"a page with no reconstructable range can never be claimed whole"
+		);
 	}
 
 	#[test]
