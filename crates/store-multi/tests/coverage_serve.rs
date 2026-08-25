@@ -68,13 +68,6 @@ fn hot_config() -> ReadBufferConfig {
 }
 
 /// A read tier with no byte budget is never constructed, so this store's scans never consult one.
-fn cold_config() -> ReadBufferConfig {
-	ReadBufferConfig {
-		resident_bytes: None,
-		..hot_config()
-	}
-}
-
 struct Pair {
 	hot: StandardMultiStore,
 	cold: StandardMultiStore,
@@ -82,8 +75,18 @@ struct Pair {
 }
 
 fn pair() -> Pair {
-	let (hot, hot_guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_read(hot_config());
-	let (cold, cold_guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_read(cold_config());
+	pair_with(hot_config())
+}
+
+/// A pair whose read tier buckets at `hot.bucket_shift`, so a workload can be made to span several pages
+/// of one storage rather than living entirely in the storage's last bucket.
+fn pair_with(hot: ReadBufferConfig) -> Pair {
+	let cold = ReadBufferConfig {
+		resident_bytes: None,
+		..hot
+	};
+	let (hot, hot_guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_read(hot);
+	let (cold, cold_guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_read(cold);
 	assert!(hot.read_buffer_shard_metrics().len() > 0, "the hot store must have a read tier");
 	assert!(cold.read_buffer_shard_metrics().is_empty(), "the cold store must have no read tier to consult");
 	Pair {
@@ -221,7 +224,10 @@ fn storage_tag(storage: StorageId) -> u64 {
 }
 
 fn run_equivalence(seed_value: u64) -> Served {
-	let pair = pair();
+	run_equivalence_on(pair(), seed_value)
+}
+
+fn run_equivalence_on(pair: Pair, seed_value: u64) -> Served {
 	let mut rng = Rng(seed_value);
 	let mut version = 1u64;
 
@@ -296,4 +302,45 @@ fn interval_served_scans_match_a_store_with_no_read_tier() {
 	);
 	assert!(total.installs > 20, "no install published a claim, so nothing was ever serveable: {total:?}");
 	assert!(total.evicted > 0, "no page was evicted, so a claim whose page left RAM was never exercised");
+}
+
+/// Buckets small enough that one storage's rows span several pages, so the page holding a scan's first
+/// rows is not the page its last rows are in.
+fn paged_config() -> ReadBufferConfig {
+	ReadBufferConfig {
+		bucket_shift: 4,
+		resident_pages: 24,
+		..hot_config()
+	}
+}
+
+#[test]
+fn interval_served_scans_match_a_store_with_no_read_tier_across_several_pages() {
+	// The same equivalence over a workload whose storages span ten pages rather than one. Every scan
+	// starts at a storage prefix that names no page, so any serve of its leading chunk has to derive
+	// the page rather than classify it; a derivation landing on the page a scan ends in, instead of the
+	// one it starts in, drops every row of every page above. With one page per storage that mistake
+	// returns the right rows anyway, so the single-page workload above cannot see it.
+	let mut total = Served::default();
+	for seed_value in [1u64, 7, 42, 1337, 90210] {
+		let seen = run_equivalence_on(pair_with(paged_config()), seed_value);
+		total.chunks += seen.chunks;
+		total.rows += seen.rows;
+		total.gaps += seen.gaps;
+		total.refused += seen.refused;
+		total.installs += seen.installs;
+		total.evicted += seen.evicted;
+	}
+	println!("paged coverage serve totals: {total:?}");
+
+	assert!(
+		total.chunks > 200,
+		"the interval path must actually have served chunks, or the equivalence proves nothing: {total:?}"
+	);
+	assert!(
+		total.rows > 2000,
+		"the interval path must actually have carried rows out of RAM, or the equivalence proves \
+		 nothing: {total:?}"
+	);
+	assert!(total.installs > 20, "no install published a claim, so nothing was ever serveable: {total:?}");
 }
