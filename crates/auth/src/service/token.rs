@@ -9,7 +9,10 @@ use reifydb_core::interface::{
 	catalog::token::{Token, TokenId},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
+use reifydb_value::{
+	error::Error,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 
 use super::AuthService;
 
@@ -68,12 +71,12 @@ impl AuthService {
 		None
 	}
 
-	pub fn revoke_token(&self, token: &str) -> bool {
-		let def = match self.find_token(token) {
-			Some(def) => def,
-			None => return false,
+	pub fn revoke_token(&self, token: &str) -> Result<bool, Error> {
+		let Some(def) = self.find_token(token) else {
+			return Ok(false);
 		};
-		self.drop_and_commit(def.id)
+		self.drop_and_commit(def.id)?;
+		Ok(true)
 	}
 
 	#[inline]
@@ -86,33 +89,26 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn drop_and_commit(&self, id: TokenId) -> bool {
-		let mut admin = match self.engine.begin_admin() {
-			Ok(a) => a,
-			Err(_) => return false,
-		};
-
-		if drop_token(&mut admin, id).is_err() {
-			return false;
-		}
-
-		admin.commit().is_ok()
+	fn drop_and_commit(&self, id: TokenId) -> Result<(), Error> {
+		let mut admin = self.engine.begin_admin()?;
+		drop_token(&mut admin, id)?;
+		admin.commit()?;
+		Ok(())
 	}
 
-	pub fn revoke_all(&self, identity: IdentityId) {
-		if let Ok(mut admin) = self.engine.begin_admin()
-			&& drop_tokens_by_identity(&mut admin, identity).is_ok()
-		{
-			let _ = admin.commit();
-		}
+	pub fn revoke_all(&self, identity: IdentityId) -> Result<(), Error> {
+		let mut admin = self.engine.begin_admin()?;
+		drop_tokens_by_identity(&mut admin, identity)?;
+		admin.commit()?;
+		Ok(())
 	}
 
-	pub fn cleanup_expired(&self) {
-		if let (Ok(mut admin), Ok(now)) = (self.engine.begin_admin(), self.now())
-			&& drop_expired_tokens(&mut admin, now).is_ok()
-		{
-			let _ = admin.commit();
-		}
+	pub fn cleanup_expired(&self) -> Result<(), Error> {
 		self.challenges.cleanup_expired();
+
+		let mut admin = self.engine.begin_admin()?;
+		drop_expired_tokens(&mut admin, self.now()?)?;
+		admin.commit()?;
+		Ok(())
 	}
 }

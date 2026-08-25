@@ -494,10 +494,10 @@ impl WasmDB {
 			Some(t) => {
 				let revoked = self.auth_service.revoke_token(&t);
 				self.session.clear();
-				if revoked {
-					Ok(())
-				} else {
-					Err(JsError::from_message("Failed to revoke session token"))
+				match revoked {
+					Ok(true) => Ok(()),
+					Ok(false) => Err(JsError::from_message("Failed to revoke session token")),
+					Err(e) => Err(JsError::from_error(&e)),
 				}
 			}
 			None => Ok(()),

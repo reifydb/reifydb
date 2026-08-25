@@ -89,7 +89,7 @@ fn test_cleanup_removes_expired_tokens() {
 
 	mock.advance_secs(61);
 
-	db.auth_service().cleanup_expired();
+	db.auth_service().cleanup_expired().unwrap();
 
 	assert!(db.auth_service().validate_token(&token).is_none(), "Expired token should be cleaned up");
 

@@ -25,6 +25,7 @@ use reifydb_value::{
 	params::Params,
 	value::{duration::Duration, identity::IdentityId},
 };
+use tracing::error;
 
 pub struct ServerActor {
 	engine: StandardEngine,
@@ -170,10 +171,13 @@ impl ServerActor {
 
 	#[inline]
 	fn handle_logout(&self, token: String, reply: Reply<ServerLogoutResponse>) {
-		if self.auth_service.revoke_token(&token) {
-			reply.send(ServerLogoutResponse::Ok);
-		} else {
-			reply.send(ServerLogoutResponse::InvalidToken);
+		match self.auth_service.revoke_token(&token) {
+			Ok(true) => reply.send(ServerLogoutResponse::Ok),
+			Ok(false) => reply.send(ServerLogoutResponse::InvalidToken),
+			Err(e) => {
+				error!("logout could not revoke the session token: {e}");
+				reply.send(ServerLogoutResponse::Error(e.to_string()));
+			}
 		}
 	}
 }
