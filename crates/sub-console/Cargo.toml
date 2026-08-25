@@ -1,11 +1,11 @@
 [package]
-name = "reifydb-sub-control"
+name = "reifydb-sub-console"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Control plane subsystem for ReifyDB"
+description = "Console subsystem for ReifyDB"
 
 [features]
 default = []

@@ -1,7 +1,7 @@
 {
-  "name": "@reifydb/console",
+  "name": "@reifydb/editor",
   "version": "0.9.0",
-  "description": "Database console and embeddable snippet component for ReifyDB",
+  "description": "Database editor and embeddable snippet component for ReifyDB",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -63,7 +63,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/reifydb/reifydb.git",
-    "directory": "pkg/typescript/console"
+    "directory": "pkg/typescript/editor"
   },
   "homepage": "https://github.com/reifydb/reifydb#readme",
   "bugs": {

@@ -3,7 +3,7 @@ packages:
   - auth-solana
   - core
   - client
-  - console
+  - editor
   - react
   - shell
   - ui

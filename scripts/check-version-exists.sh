@@ -122,7 +122,7 @@ echo -e "${YELLOW}[3/3] Checking npm registry...${NC}"
 NPM_PACKAGES=(
     "@reifydb/core"
     "@reifydb/client"
-    "@reifydb/console"
+    "@reifydb/editor"
     "@reifydb/react"
     "@reifydb/shell"
     "@reifydb/wasm"

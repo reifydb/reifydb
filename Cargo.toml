@@ -61,7 +61,7 @@ members = [
     "crates/sub-server-http",
     "crates/sub-server-otel",
     "crates/sub-server-ws",
-    "crates/sub-control",
+    "crates/sub-console",
     "crates/sub-replication",
     "crates/sub-subscription",
     "crates/subscription",

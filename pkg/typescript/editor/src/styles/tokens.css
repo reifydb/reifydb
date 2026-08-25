@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Copyright (c) 2026 ReifyDB */
 
-/* CSS custom properties for @reifydb/console theming */
+/* CSS custom properties for @reifydb/editor theming */
 :where(.rdb-console),
 :where(.rdb-snippet) {
   --rdb-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
