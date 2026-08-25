@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use reifydb::{auth::service::AuthResponse, testing::db::TestDb, value::value::Value};
 use reifydb_test_harness::{
 	auth::{AuthResponseAssert, auth_service},
+	fixture::identity::identity,
 	lookup::{find_identity_by_attribute, find_identity_by_name},
 };
 
@@ -101,4 +102,75 @@ fn test_auto_provision_writes_public_key_attribute() {
 	// Auto-provisioning must record the lookup attribute or a renamed identity is unreachable.
 	let found = find_identity_by_attribute(&db, "solana_public_key", &Value::Utf8(pubkey));
 	assert_eq!(found.map(|ident| ident.id), Some(identity));
+}
+
+#[test]
+fn test_provision_rejects_identifier_that_is_not_the_public_key() {
+	// Auto-provisioning names the identity after the identifier, so a free-form identifier lets an unauthenticated caller squat any name against any wallet.
+	let db = TestDb::memory();
+	let (_, pubkey) = keypair(51);
+	let chosen_name = "vitalik";
+
+	let service = auth_service(&db).build();
+	let response = service
+		.authenticate(
+			"solana",
+			HashMap::from([
+				("identifier".to_string(), chosen_name.to_string()),
+				("public_key".to_string(), pubkey.clone()),
+			]),
+		)
+		.unwrap();
+
+	assert!(
+		matches!(response, AuthResponse::Failed { .. }),
+		"an identifier that is not the wallet address must be refused before any challenge is issued, got {:?}",
+		response
+	);
+	assert!(
+		find_identity_by_name(&db, chosen_name).is_none(),
+		"a refused provision must not create the identity it was asked to squat"
+	);
+	assert!(
+		find_identity_by_name(&db, &pubkey).is_none(),
+		"a refused provision must not create the wallet-named identity either"
+	);
+	assert!(
+		find_identity_by_attribute(&db, "solana_public_key", &Value::Utf8(pubkey)).is_none(),
+		"a refused provision must leave no lookup attribute bound to the wallet"
+	);
+}
+
+#[test]
+fn test_provision_cannot_bind_a_registered_wallet_to_a_second_name() {
+	// A second identity carrying the same wallet attribute makes attribute resolution pick whichever row the scan reaches first.
+	let db = TestDb::memory();
+	let (_, pubkey) = keypair(52);
+	let owner = identity(&pubkey).solana_key(&pubkey).create(&db);
+
+	let service = auth_service(&db).build();
+	let response = service
+		.authenticate(
+			"solana",
+			HashMap::from([
+				("identifier".to_string(), "squatter".to_string()),
+				("public_key".to_string(), pubkey.clone()),
+			]),
+		)
+		.unwrap();
+
+	assert!(
+		matches!(response, AuthResponse::Failed { .. }),
+		"a wallet that already has an identity must not be provisioned under a second name, got {:?}",
+		response
+	);
+	assert!(
+		find_identity_by_name(&db, "squatter").is_none(),
+		"the wallet already resolves to its owner, so no second identity may be created for it"
+	);
+	assert_eq!(
+		find_identity_by_attribute(&db, "solana_public_key", &Value::Utf8(pubkey)).map(|ident| ident.id),
+		Some(owner.id),
+		"the wallet attribute must still resolve to the identity that proved ownership of it"
+	);
 }

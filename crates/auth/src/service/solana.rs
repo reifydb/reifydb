@@ -22,6 +22,10 @@ impl AuthService {
 		public_key: &str,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthResponse, Error> {
+		if identifier != public_key {
+			return Ok(invalid_credentials());
+		}
+
 		let provider = self.solana_provider()?;
 		let properties = self.solana_properties(provider, public_key)?;
 
