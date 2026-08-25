@@ -13,7 +13,12 @@ use reifydb_codec::{
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::Keyspace};
 use reifydb_store::coverage::{
-	CoverageSet, Edge, Entry, Interval, PinnedCount, RangeCursor, Residency, Segment, ServedChunk, plan, successor,
+	Edge,
+	chunk::{RangeCursor, ServedChunk},
+	entry::{Entry, PinnedCount, Residency},
+	interval::{CoverageSet, Interval},
+	plan::{Segment, plan},
+	successor,
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -735,7 +740,12 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
 	};
-	use reifydb_store::coverage::{Edge, Interval, RangeCursor, Segment, ServedChunk};
+	use reifydb_store::coverage::{
+		Edge,
+		chunk::{RangeCursor, ServedChunk},
+		interval::Interval,
+		plan::Segment,
+	};
 	use reifydb_value::byte_size::ByteSize;
 
 	use super::split_at_partitions;

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(test)]
+use std::cell::RefCell;
+
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
 
@@ -8,8 +11,8 @@ use crate::tier::range::{OperatorRangeTier, PartitionId, Shard};
 
 #[cfg(test)]
 thread_local! {
-	static ABSENCE_INTERLOCK: std::cell::RefCell<Option<Box<dyn Fn()>>> =
-		const { std::cell::RefCell::new(None) };
+	static ABSENCE_INTERLOCK: RefCell<Option<Box<dyn Fn()>>> =
+		const { RefCell::new(None) };
 }
 
 #[cfg(test)]
@@ -67,13 +70,13 @@ impl OperatorRangeTier {
 				keyspace_metrics,
 				..
 			} = &mut *shard;
-			if let Some(target) = partitions.get_mut(partition) {
-				if let Some(entry) = target.entries.get(key) {
-					answer = Some(entry.value().cloned());
-					target.tick = next;
-					metrics.point_hits += 1;
-					keyspace_metrics[slot].point_hits += 1;
-				}
+			if let Some(target) = partitions.get_mut(partition)
+				&& let Some(entry) = target.entries.get(key)
+			{
+				answer = Some(entry.value().cloned());
+				target.tick = next;
+				metrics.point_hits += 1;
+				keyspace_metrics[slot].point_hits += 1;
 			}
 		}
 		if answer.is_some() {
@@ -106,7 +109,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 	};
-	use reifydb_store::coverage::{Edge, Entry, PinnedCount};
+	use reifydb_store::coverage::{Edge, entry::{Entry, PinnedCount}};
 	use reifydb_value::byte_size::ByteSize;
 
 	use super::arm_absence_interlock;

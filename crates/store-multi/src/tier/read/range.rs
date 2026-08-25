@@ -4,7 +4,7 @@
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{interface::store::EntryKind, util::budget::MemoryBudget};
 use reifydb_store::{
-	coverage::{Edge, Interval, successor},
+	coverage::{Edge, interval::Interval, successor},
 	row::page::{PageId, key_range_of, page_of},
 };
 use reifydb_value::reifydb_assertions;

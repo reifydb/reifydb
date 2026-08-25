@@ -6,8 +6,14 @@ use std::{ops::Bound, sync::atomic::Ordering};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::interface::store::EntryKind;
 use reifydb_runtime::sync::rwlock::RwLock;
+#[cfg(test)]
+use reifydb_store::coverage::interval::Interval;
 use reifydb_store::{
-	coverage::{DEFAULT_GAP_GUARD, Edge, ScanPlan, successor},
+	coverage::{
+		Edge,
+		plan::{DEFAULT_GAP_GUARD, ScanPlan, plan},
+		successor,
+	},
 	row::page::{PageId, key_range_of},
 };
 
@@ -70,7 +76,7 @@ impl MultiReadBufferTier {
 		let set = coverage.kinds.get(&kind)?;
 		let claim = set.covering(lo)?;
 		let cap = claim.end.min(hi.clone());
-		let planned = reifydb_store::coverage::plan(set, lo.clone(), cap, DEFAULT_GAP_GUARD, |_| false);
+		let planned = plan(set, lo.clone(), cap, DEFAULT_GAP_GUARD, |_| false);
 		Some((planned, self.retractions()))
 	}
 
@@ -154,12 +160,12 @@ impl MultiReadBufferTier {
 	}
 
 	#[cfg(test)]
-	pub(super) fn intervals(&self, kind: EntryKind) -> Vec<reifydb_store::coverage::Interval> {
+	pub(super) fn intervals(&self, kind: EntryKind) -> Vec<Interval> {
 		self.coverage().read().kinds.get(&kind).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
 	#[cfg(test)]
-	pub(super) fn claimed_keys(&self) -> Vec<(EntryKind, reifydb_store::coverage::Interval)> {
+	pub(super) fn claimed_keys(&self) -> Vec<(EntryKind, Interval)> {
 		let coverage = self.coverage().read();
 		let mut out = Vec::new();
 		for (kind, set) in coverage.kinds.iter() {
@@ -188,7 +194,7 @@ mod tests {
 		key::{EncodableKey, row::RowKey},
 	};
 	use reifydb_store::{
-		coverage::{Edge, Interval, successor},
+		coverage::{Edge, interval::Interval, successor},
 		row::page::{PageId, key_range_of, page_of},
 	};
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};

@@ -16,7 +16,7 @@ use reifydb_core::{
 	util::budget::MemoryBudget,
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
-use reifydb_store::coverage::GapHistogram;
+use reifydb_store::coverage::plan::GapHistogram;
 use reifydb_value::byte_size::ByteSize;
 
 #[cfg(test)]
@@ -407,7 +407,11 @@ mod tests {
 			sample::{MetricsSample, Reading},
 		},
 	};
-	use reifydb_store::coverage::{DEFAULT_GAP_GUARD, Entry, Interval, PinnedCount, Residency, ScanPlan};
+	use reifydb_store::coverage::{
+		entry::{Entry, PinnedCount, Residency},
+		interval::Interval,
+		plan::{DEFAULT_GAP_GUARD, ScanPlan},
+	};
 	use reifydb_value::{byte_size::ByteSize, count::Count};
 
 	use crate::tier::range::{

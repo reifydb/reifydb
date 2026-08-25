@@ -17,12 +17,16 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range},
 };
-use reifydb_store::coverage::{DEFAULT_GAP_GUARD, Interval, RangeCursor, Segment, ServedChunk};
+use reifydb_store::coverage::{
+	chunk::{RangeCursor, ServedChunk},
+	interval::Interval,
+	plan::{DEFAULT_GAP_GUARD, Segment},
+};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::range::{
 	ENTRY_OVERHEAD, Install, InstallInterlock, OperatorRangeConfig, OperatorRangeKeyspaceMetrics,
-	OperatorRangeMetrics, OperatorRangeTier, PARTITION_OVERHEAD, PartitionId,
+	OperatorRangeMetrics, OperatorRangeTier, PARTITION_OVERHEAD, PartitionId, RangeScan,
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -84,7 +88,7 @@ fn install(
 	}
 }
 
-fn first_gap(scan: &crate::tier::range::RangeScan) -> Option<Interval> {
+fn first_gap(scan: &RangeScan) -> Option<Interval> {
 	scan.segments().iter().find_map(|segment| match segment {
 		Segment::Gap {
 			interval,

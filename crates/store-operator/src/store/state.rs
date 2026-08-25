@@ -15,7 +15,13 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 };
-use reifydb_store::coverage::{Edge, Interval, RangeCursor, Segment, ServedChunk, successor};
+use reifydb_store::coverage::{
+	Edge,
+	chunk::{RangeCursor, ServedChunk},
+	interval::Interval,
+	plan::Segment,
+	successor,
+};
 #[cfg(reifydb_assertions)]
 use reifydb_value::value::row_number::RowNumber;
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};

@@ -6,7 +6,7 @@ use std::ops::Bound;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{interface::store::EntryKind, key::row::RowKey};
 use reifydb_store::{
-	coverage::{Edge, Segment, successor},
+	coverage::{Edge, plan::Segment, successor},
 	row::page::{PageId, key_range_of, page_of},
 };
 
@@ -151,11 +151,10 @@ fn page_ends_the_range(table: EntryKind, page: PageId, range_hi: &EncodedKey) ->
 }
 
 pub(super) fn page_bounds(page: PageId, shift: u8) -> Option<(EncodedKey, EncodedKey)> {
-	match key_range_of(page, shift)? {
-		range => match (range.start, range.end) {
-			(Bound::Included(start), Bound::Included(end)) => Some((start, end)),
-			_ => None,
-		},
+	let range = key_range_of(page, shift)?;
+	match (range.start, range.end) {
+		(Bound::Included(start), Bound::Included(end)) => Some((start, end)),
+		_ => None,
 	}
 }
 

@@ -56,7 +56,11 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_store::coverage::{
-	CoverageSet, DEFAULT_GAP_GUARD, Edge, Entry, GapHistogram, Interval, PinnedCount, Segment, successor,
+	Edge,
+	entry::{Entry, PinnedCount},
+	interval::{CoverageSet, Interval},
+	plan::{DEFAULT_GAP_GUARD, GapHistogram, Segment},
+	successor,
 };
 use reifydb_value::byte_size::ByteSize;
 

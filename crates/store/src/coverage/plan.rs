@@ -3,7 +3,10 @@
 
 use reifydb_codec::key::encoded::EncodedKey;
 
-use crate::coverage::{CoverageSet, Edge, Interval};
+use crate::coverage::{
+	Edge,
+	interval::{CoverageSet, Interval},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Segment {
@@ -183,7 +186,10 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
 	use super::{DEFAULT_GAP_GUARD, GapHistogram, ScanPlan, Segment, plan};
-	use crate::coverage::{CoverageSet, Edge, Interval};
+	use crate::coverage::{
+		Edge,
+		interval::{CoverageSet, Interval},
+	};
 
 	fn key(bytes: &[u8]) -> EncodedKey {
 		EncodedKey::new(bytes)

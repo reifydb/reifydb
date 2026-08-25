@@ -55,12 +55,12 @@ impl CoverageSet {
 		let mut merged_end = end;
 		let mut doomed = Vec::new();
 
-		if let Some((left_start, left_end)) = self.intervals.range::<EncodedKey, _>(..=&start).next_back() {
-			if left_end.cmp_key(&start) != Ordering::Less {
-				merged_start = left_start.clone();
-				merged_end = merged_end.max(left_end.clone());
-				doomed.push(left_start.clone());
-			}
+		if let Some((left_start, left_end)) = self.intervals.range::<EncodedKey, _>(..=&start).next_back()
+			&& left_end.cmp_key(&start) != Ordering::Less
+		{
+			merged_start = left_start.clone();
+			merged_end = merged_end.max(left_end.clone());
+			doomed.push(left_start.clone());
 		}
 
 		for (next_start, next_end) in self.intervals.range::<EncodedKey, _>((Excluded(&start), Unbounded)) {
@@ -88,10 +88,10 @@ impl CoverageSet {
 
 		let mut doomed = Vec::new();
 
-		if let Some((left_start, left_end)) = self.intervals.range::<EncodedKey, _>(..=start).next_back() {
-			if left_end.cmp_key(start) == Ordering::Greater {
-				doomed.push(left_start.clone());
-			}
+		if let Some((left_start, left_end)) = self.intervals.range::<EncodedKey, _>(..=start).next_back()
+			&& left_end.cmp_key(start) == Ordering::Greater
+		{
+			doomed.push(left_start.clone());
 		}
 
 		for (next_start, _) in self.intervals.range::<EncodedKey, _>((Excluded(start), Unbounded)) {
@@ -133,10 +133,10 @@ impl CoverageSet {
 			return clipped;
 		}
 
-		if let Some((_, end)) = self.intervals.range::<EncodedKey, _>(..=lo).next_back() {
-			if end.cmp_key(lo) == Ordering::Greater {
-				clipped.push(Interval::new(lo.clone(), end.clone().min(hi.clone())));
-			}
+		if let Some((_, end)) = self.intervals.range::<EncodedKey, _>(..=lo).next_back()
+			&& end.cmp_key(lo) == Ordering::Greater
+		{
+			clipped.push(Interval::new(lo.clone(), end.clone().min(hi.clone())));
 		}
 
 		for (start, end) in self.intervals.range::<EncodedKey, _>((Excluded(lo), Unbounded)) {
@@ -167,10 +167,10 @@ impl CoverageSet {
 			cursor = covered.end.key().cloned();
 		}
 
-		if let Some(at) = cursor {
-			if hi.covers(&at) {
-				holes.push(Interval::new(at, hi.clone()));
-			}
+		if let Some(at) = cursor
+			&& hi.covers(&at)
+		{
+			holes.push(Interval::new(at, hi.clone()));
 		}
 
 		holes
@@ -197,7 +197,9 @@ impl CoverageSet {
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 
-	use crate::coverage::{CoverageSet, Edge, Interval, successor};
+	use crate::coverage::{Edge, successor};
+
+	use super::{CoverageSet, Interval};
 
 	fn k(bytes: &str) -> EncodedKey {
 		EncodedKey::new(bytes)

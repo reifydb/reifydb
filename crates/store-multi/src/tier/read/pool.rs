@@ -4,7 +4,10 @@
 use std::{
 	collections::{HashMap, hash_map::DefaultHasher},
 	hash::{Hash, Hasher},
-	sync::{Arc, atomic::AtomicU64},
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
 };
 
 use reifydb_core::{
@@ -80,7 +83,7 @@ impl MultiReadBufferTier {
 	}
 
 	pub(super) fn next_fill(&self) -> u64 {
-		self.inner.fill_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+		self.inner.fill_sequence.fetch_add(1, Ordering::SeqCst) + 1
 	}
 
 	pub(super) fn shard_index(&self, page: &PageId) -> usize {
@@ -126,7 +129,7 @@ impl MultiReadBufferTier {
 		match shard.pages.get(&victim) {
 			Some(page) if page.fills != fills => {
 				#[cfg(test)]
-				self.inner.drops_refused.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+				self.inner.drops_refused.fetch_add(1, Ordering::SeqCst);
 				return false;
 			}
 			Some(_) => {}

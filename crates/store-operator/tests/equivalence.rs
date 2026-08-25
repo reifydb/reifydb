@@ -25,7 +25,7 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_store::coverage::DEFAULT_GAP_GUARD;
+use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,

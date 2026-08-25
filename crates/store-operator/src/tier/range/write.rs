@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_store::coverage::{Edge, Entry, successor};
+use reifydb_store::coverage::{Edge, entry::Entry, successor};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::range::{
@@ -191,7 +191,12 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 	};
-	use reifydb_store::coverage::{Edge, Interval, PinnedCount, Residency, successor};
+	use reifydb_store::coverage::{
+		Edge,
+		entry::{PinnedCount, Residency},
+		interval::Interval,
+		successor,
+	};
 	use reifydb_value::byte_size::ByteSize;
 
 	use crate::tier::range::{OperatorRangeConfig, OperatorRangeTier, PARTITION_OVERHEAD, Partition, PartitionId};

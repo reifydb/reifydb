@@ -23,17 +23,13 @@
 //! coverage lock are never held at the same time; the orderings above are sequences of separately
 //! locked steps, which is what keeps the understatement safe rather than atomic.
 
-mod chunk;
-mod entry;
-mod interval;
-mod plan;
+pub mod chunk;
+pub mod entry;
+pub mod interval;
+pub mod plan;
 
 use std::{cmp::Ordering, hash::Hash};
 
-pub use chunk::{RangeCursor, ServedChunk};
-pub use entry::{Entry, PinnedCount, Residency};
-pub use interval::{CoverageSet, Interval};
-pub use plan::{DEFAULT_GAP_GUARD, GapHistogram, ScanPlan, Segment, plan};
 use reifydb_codec::key::encoded::EncodedKey;
 
 /// The exclusive upper end of a coverage interval.
