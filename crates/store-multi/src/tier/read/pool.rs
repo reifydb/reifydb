@@ -4,20 +4,22 @@
 use std::{
 	collections::{HashMap, hash_map::DefaultHasher},
 	hash::{Hash, Hasher},
-	sync::Arc,
+	sync::{Arc, atomic::AtomicU64},
 };
 
 use reifydb_core::{
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	util::budget::MemoryBudget,
 };
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_store::row::page::PageId;
 use reifydb_value::byte_size::ByteSize;
 
+#[cfg(test)]
+use crate::tier::read::FillInterlock;
 use crate::tier::read::{
-	MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferReadMetrics, ReadBufferShardMetrics,
-	ReadBufferStateMetrics, ReadBufferWarmMetrics, Shard,
+	CoverageIndex, MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferReadMetrics, ReadBufferShardMetrics,
+	ReadBufferStateMetrics, ReadBufferWarmMetrics, Shard, Span,
 };
 
 const READ_BUFFER_SCOPE: &str = "read_buffer";
@@ -29,20 +31,149 @@ impl MultiReadBufferTier {
 			inner: Arc::new(PoolInner {
 				shards: build_shards(config, resident_bytes),
 				bucket_shift: config.bucket_shift,
+				coverage: RwLock::new(CoverageIndex {
+					kinds: HashMap::new(),
+				}),
+				retractions: AtomicU64::new(0),
+				fill_sequence: AtomicU64::new(0),
+				#[cfg(test)]
+				claims_published: AtomicU64::new(0),
+				#[cfg(test)]
+				claims_refused: AtomicU64::new(0),
+				#[cfg(test)]
+				drops_refused: AtomicU64::new(0),
+				#[cfg(test)]
+				interlock: None,
 			}),
 		})
+	}
+
+	#[cfg(test)]
+	pub(super) fn with_interlock(config: ReadBufferConfig, interlock: FillInterlock) -> Option<Self> {
+		let resident_bytes = config.resident_bytes?;
+		Some(Self {
+			inner: Arc::new(PoolInner {
+				shards: build_shards(config, resident_bytes),
+				bucket_shift: config.bucket_shift,
+				coverage: RwLock::new(CoverageIndex {
+					kinds: HashMap::new(),
+				}),
+				retractions: AtomicU64::new(0),
+				fill_sequence: AtomicU64::new(0),
+				claims_published: AtomicU64::new(0),
+				claims_refused: AtomicU64::new(0),
+				drops_refused: AtomicU64::new(0),
+				interlock: Some(interlock),
+			}),
+		})
+	}
+
+	#[cfg(test)]
+	pub(super) fn interlock(&self, page: PageId) {
+		if let Some(interlock) = self.inner.interlock.as_ref() {
+			interlock(self, page);
+		}
 	}
 
 	pub(super) fn bucket_shift(&self) -> u8 {
 		self.inner.bucket_shift
 	}
 
-	pub(super) fn shard_for(&self, page: &PageId) -> &Mutex<Shard> {
-		let shards = &self.inner.shards;
+	/// The next never-reused fill number, stamped on a page by the fill that widened its hull.
+	///
+	/// It must be tier-wide rather than per page: a per-page count restarts at one on a recreated
+	/// page, which is exactly the value a stale evictor is still holding from before the drop. At one
+	/// draw per nanosecond a `u64` needs 584 years to wrap, so a collision cannot arise in practice.
+	pub(super) fn next_fill(&self) -> u64 {
+		self.inner.fill_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+	}
+
+	pub(super) fn shard_index(&self, page: &PageId) -> usize {
 		let mut hasher = DefaultHasher::new();
 		page.hash(&mut hasher);
-		let index = (hasher.finish() % shards.len() as u64) as usize;
-		&shards[index]
+		(hasher.finish() % self.inner.shards.len() as u64) as usize
+	}
+
+	pub(super) fn shard(&self, index: usize) -> &Mutex<Shard> {
+		&self.inner.shards[index]
+	}
+
+	pub(super) fn shard_for(&self, page: &PageId) -> &Mutex<Shard> {
+		self.shard(self.shard_index(page))
+	}
+
+	/// Drops pages until the shard fits, retracting each victim's claims before its rows leave RAM.
+	///
+	/// The two locks are taken in turn, never together, so a fill can slip between the shrink and the
+	/// drop; the fill count is re-read to catch exactly that, since dropping then would leave the
+	/// fill's fresh claim standing over a page that is gone.
+	pub(super) fn evict_to_capacity(&self, index: usize) {
+		loop {
+			let Some((victim, hull, fills)) = self.pick_victim(index) else {
+				break;
+			};
+			if let Some(hull) = hull {
+				self.withdraw_span(victim.kind, &hull);
+			}
+			if !self.drop_victim(index, victim, fills) {
+				break;
+			}
+		}
+	}
+
+	pub(super) fn pick_victim(&self, index: usize) -> Option<(PageId, Option<Span>, u64)> {
+		let shard = self.shard(index).lock();
+		if shard.pages.len() <= shard.page_cap && !shard.budget.over_budget() {
+			return None;
+		}
+		let victim = shard.pick_victim()?;
+		let page = shard.pages.get(&victim)?;
+		Some((victim, page.claimed.clone(), page.fills))
+	}
+
+	pub(super) fn drop_victim(&self, index: usize, victim: PageId, fills: u64) -> bool {
+		let mut shard = self.shard(index).lock();
+		match shard.pages.get(&victim) {
+			Some(page) if page.fills != fills => {
+				#[cfg(test)]
+				self.inner.drops_refused.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+				return false;
+			}
+			Some(_) => {}
+			None => return true,
+		}
+		if let Some(page) = shard.pages.remove(&victim) {
+			shard.budget.release(ByteSize::from_bytes(page.bytes as u64));
+			shard.warm_metrics.pages_evicted += 1;
+		}
+		true
+	}
+
+	/// Retracts and drops a page a removal has emptied, so no claim outlives the rows that backed it.
+	pub(super) fn retract_page(&self, index: usize, victim: PageId, keep_complete: bool) {
+		let removable = |shard: &Shard| {
+			shard.pages
+				.get(&victim)
+				.is_some_and(|page| page.entries.is_empty() && !(keep_complete && page.range_complete))
+		};
+		let (hull, fills) = {
+			let shard = self.shard(index).lock();
+			if !removable(&shard) {
+				return;
+			}
+			let page = shard.pages.get(&victim).expect("a removable page is present under the lock");
+			(page.claimed.clone(), page.fills)
+		};
+		if let Some(hull) = hull {
+			self.withdraw_span(victim.kind, &hull);
+		}
+		let mut shard = self.shard(index).lock();
+		if !removable(&shard) || shard.pages.get(&victim).is_none_or(|page| page.fills != fills) {
+			return;
+		}
+		if let Some(page) = shard.pages.remove(&victim) {
+			shard.budget.release(ByteSize::from_bytes(page.bytes as u64));
+		}
 	}
 
 	pub(super) fn all_shards(&self) -> impl Iterator<Item = &Mutex<Shard>> {
@@ -185,17 +316,5 @@ impl Shard {
 			}
 		}
 		probationary.or(hot).map(|(_, id)| id)
-	}
-
-	pub(super) fn evict_to_capacity(&mut self) {
-		while self.pages.len() > self.page_cap || self.budget.over_budget() {
-			let Some(victim) = self.pick_victim() else {
-				break;
-			};
-			if let Some(page) = self.pages.remove(&victim) {
-				self.budget.release(ByteSize::from_bytes(page.bytes as u64));
-				self.warm_metrics.pages_evicted += 1;
-			}
-		}
 	}
 }

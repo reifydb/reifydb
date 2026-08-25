@@ -6,9 +6,16 @@
 //! in-place supersede, so it stays version-adjacent to the current slot. Range scans consult this tier only
 //! for `range_complete` buckets, and the always-scanned commit buffer still wins on version, so the cache
 //! can never mask a newer value nor resurrect a deleted one.
+//!
+//! A second, finer record of the same residency is maintained alongside the buckets in [`coverage`]: the
+//! shared interval model, which claims spans proven by what a fill actually placed rather than whole
+//! buckets. Nothing reads it yet.
 
+mod coverage;
 mod point;
 mod pool;
+#[cfg(test)]
+mod race;
 mod range;
 #[cfg(test)]
 mod tests;
@@ -16,13 +23,16 @@ mod tests;
 use std::{
 	collections::{BTreeMap, HashMap},
 	mem::size_of,
-	sync::Arc,
+	sync::{Arc, atomic::AtomicU64},
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, util::budget::MemoryBudget};
-use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_store::row::page::{DEFAULT_BUCKET_SHIFT, PageId};
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind, util::budget::MemoryBudget};
+use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
+use reifydb_store::{
+	coverage::{CoverageSet, Edge},
+	row::page::{DEFAULT_BUCKET_SHIFT, PageId},
+};
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 
 use crate::tier::RangeBatch;
@@ -53,6 +63,9 @@ struct PageEntry {
 	previous: Option<(CommitVersion, Option<CowVec<u8>>)>,
 }
 
+/// The half-open span of one claim, and the unit a page's hull is widened by.
+type Span = (EncodedKey, Edge);
+
 struct ResidentPage {
 	entries: BTreeMap<EncodedKey, PageEntry>,
 	bytes: usize,
@@ -61,6 +74,55 @@ struct ResidentPage {
 	tick: u64,
 	range_complete: bool,
 	warm_blocked: bool,
+	/// The union hull of every claim this page has published, so a page leaves the tier in one shrink
+	/// even for a kind whose bucket has no reconstructable key range.
+	///
+	/// `page_of` maps a key to exactly one page and distinct pages never share a byte domain, so a
+	/// hull can never reach a key another page is responsible for.
+	claimed: Option<Span>,
+	/// The tier-wide sequence number the last claim-bearing fill on this page drew, or zero when no
+	/// such fill has run; a move between choosing a victim and dropping it means a fill published a
+	/// claim, and dropping the page would leave that claim standing over nothing.
+	///
+	/// The number must come from one monotonic tier counter and never restart per page: two evictors
+	/// can hold one victim, and a page dropped by the first and recreated by a fill would otherwise
+	/// present the value the second already read, so its stale drop would take a page it never
+	/// inspected. Zero is safe to repeat because a page that never drew a number never claimed.
+	fills: u64,
+}
+
+impl ResidentPage {
+	fn fresh(tick: u64) -> Self {
+		Self {
+			entries: BTreeMap::new(),
+			bytes: 0,
+			payload: 0,
+			hot: false,
+			tick,
+			range_complete: false,
+			warm_blocked: false,
+			claimed: None,
+			fills: 0,
+		}
+	}
+}
+
+/// A warm in flight, and the retraction count read when it was claimed.
+///
+/// The token spans the persistent load, not just the publish: an eviction of the page between the
+/// snapshot and the publish would otherwise let the snapshot claim a span whose newer keys the
+/// eviction has already dropped from RAM.
+struct WarmClaim {
+	dirty: bool,
+	retractions: u64,
+}
+
+/// The claims RAM holds, one disjoint coalesced set per entry kind, behind a single lock.
+///
+/// `EntryKind` is the dimension a range read is already parameterised by, so one scan consults one
+/// set, and every key of one kind sorts together in the encoded key space.
+struct CoverageIndex {
+	kinds: HashMap<EntryKind, CoverageSet>,
 }
 
 const NODE_FILL_DIVISOR: usize = 2;
@@ -155,7 +217,7 @@ pub struct ReadBufferShardMetrics {
 
 struct Shard {
 	pages: HashMap<PageId, ResidentPage>,
-	warming: HashMap<PageId, bool>,
+	warming: HashMap<PageId, WarmClaim>,
 	next_tick: u64,
 	page_cap: usize,
 	budget: MemoryBudget,
@@ -163,9 +225,27 @@ struct Shard {
 	read_metrics: ReadBufferReadMetrics,
 }
 
+#[cfg(test)]
+type FillInterlock = Box<dyn Fn(&MultiReadBufferTier, PageId) + Send + Sync>;
+
 struct PoolInner {
 	shards: Box<[Mutex<Shard>]>,
 	bucket_shift: u8,
+	coverage: RwLock<CoverageIndex>,
+	/// Bumped inside every coverage shrink, so a fill can tell that no claim was withdrawn between
+	/// reading the token and publishing.
+	retractions: AtomicU64,
+	/// Drawn by every claim-bearing fill and never reused, so a page dropped and refilled can never
+	/// present the value a stale evictor sampled before the drop.
+	fill_sequence: AtomicU64,
+	#[cfg(test)]
+	claims_published: AtomicU64,
+	#[cfg(test)]
+	claims_refused: AtomicU64,
+	#[cfg(test)]
+	drops_refused: AtomicU64,
+	#[cfg(test)]
+	interlock: Option<FillInterlock>,
 }
 
 #[derive(Clone)]

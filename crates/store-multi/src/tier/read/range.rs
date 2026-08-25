@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, ops::Bound};
+use std::ops::Bound;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::interface::store::EntryKind;
@@ -15,6 +15,7 @@ use crate::{
 		RangeBatch, RangeCursor, RawEntry,
 		read::{
 			EntryFootprint, MultiReadBufferTier, PageEntry, ResidentPage, ServedChunk, Shard, account,
+			coverage::{span_of, widen},
 			entry_footprint,
 		},
 	},
@@ -31,8 +32,11 @@ impl MultiReadBufferTier {
 
 	pub fn populate_page(&self, page: PageId, entries: Vec<RawEntry>, complete: bool) {
 		let shift = self.bucket_shift();
-		let range_complete = complete && key_range_of(page, shift).is_some();
-		let mut shard = self.shard_for(&page).lock();
+		let span = span_of(key_range_of(page, shift));
+		let range_complete = complete && span.is_some();
+		let index = self.shard_index(&page);
+		let token = self.retractions();
+		let mut shard = self.shard(index).lock();
 		let next = shard.next_tick;
 		{
 			let Shard {
@@ -40,15 +44,7 @@ impl MultiReadBufferTier {
 				budget,
 				..
 			} = &mut *shard;
-			let resident = pages.entry(page).or_insert_with(|| ResidentPage {
-				entries: BTreeMap::new(),
-				bytes: 0,
-				payload: 0,
-				hot: false,
-				tick: next,
-				range_complete: false,
-				warm_blocked: false,
-			});
+			let resident = pages.entry(page).or_insert_with(|| ResidentPage::fresh(next));
 			for entry in entries {
 				let key = entry.key;
 				let old = match resident.entries.get(&key) {
@@ -67,26 +63,36 @@ impl MultiReadBufferTier {
 			}
 			resident.range_complete = range_complete;
 			resident.tick = next;
+			if range_complete {
+				resident.fills = self.next_fill();
+				widen(&mut resident.claimed, span.clone().expect("a complete page has a span"));
+			}
 		}
 		shard.next_tick = next + 1;
-		shard.evict_to_capacity();
+		drop(shard);
+
+		if let Some(span) = span.filter(|_| range_complete) {
+			self.claim(page.kind, &span, token);
+		}
+		self.evict_to_capacity(index);
 	}
 
 	pub fn finish_warm(&self, page: PageId, entries: Vec<RawEntry>) -> bool {
 		let shift = self.bucket_shift();
-		let range_complete = key_range_of(page, shift).is_some();
-		let mut shard = self.shard_for(&page).lock();
-		let Some(dirty) = shard.warming.remove(&page) else {
+		let span = span_of(key_range_of(page, shift));
+		let index = self.shard_index(&page);
+		let mut shard = self.shard(index).lock();
+		let Some(claim) = shard.warming.remove(&page) else {
 			return false;
 		};
-		if dirty {
+		if claim.dirty {
 			shard.warm_metrics.warms_dirty_aborted += 1;
 			return false;
 		}
-		if !range_complete {
+		let Some(span) = span else {
 			shard.warm_metrics.warms_aborted += 1;
 			return false;
-		}
+		};
 		let next = shard.next_tick;
 		{
 			let Shard {
@@ -94,15 +100,7 @@ impl MultiReadBufferTier {
 				budget,
 				..
 			} = &mut *shard;
-			let resident = pages.entry(page).or_insert_with(|| ResidentPage {
-				entries: BTreeMap::new(),
-				bytes: 0,
-				payload: 0,
-				hot: false,
-				tick: next,
-				range_complete: false,
-				warm_blocked: false,
-			});
+			let resident = pages.entry(page).or_insert_with(|| ResidentPage::fresh(next));
 			for entry in entries {
 				let key = entry.key;
 				let old = match resident.entries.get(&key) {
@@ -121,10 +119,15 @@ impl MultiReadBufferTier {
 			}
 			resident.range_complete = true;
 			resident.tick = next;
+			resident.fills = self.next_fill();
+			widen(&mut resident.claimed, span.clone());
 		}
 		shard.next_tick = next + 1;
 		shard.warm_metrics.warms_completed += 1;
-		shard.evict_to_capacity();
+		drop(shard);
+
+		self.claim(page.kind, &span, claim.retractions);
+		self.evict_to_capacity(index);
 		true
 	}
 

@@ -1,20 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
-
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::store::{EntryKind, classify_key},
 };
-use reifydb_store::row::page::{PageId, page_of};
+use reifydb_store::{
+	coverage::{Edge, successor},
+	row::page::{PageId, page_of},
+};
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::tier::{
 	VersionedGetResult,
-	read::{EntryFootprint, MultiReadBufferTier, PageEntry, ResidentPage, Shard, account, entry_footprint},
+	read::{
+		EntryFootprint, MultiReadBufferTier, PageEntry, ResidentPage, Shard, WarmClaim, account,
+		coverage::widen, entry_footprint,
+	},
 };
 
 impl MultiReadBufferTier {
@@ -92,53 +96,50 @@ impl MultiReadBufferTier {
 
 	pub fn insert(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
 		let page_id = page_of(&key, self.bucket_shift());
-		let mut shard = self.shard_for(&page_id).lock();
+		let index = self.shard_index(&page_id);
+		let token = self.retractions();
+		let island = (key.clone(), Edge::Key(successor(&key)));
+		let mut shard = self.shard(index).lock();
 		let next = shard.next_tick;
-		{
+		let placed = 'place: {
 			let Shard {
 				pages,
 				budget,
 				..
 			} = &mut *shard;
-			match pages.get_mut(&page_id) {
-				Some(page) => {
-					match page.entries.get_mut(&key) {
-						Some(existing) if existing.version > version => return,
-						Some(existing) if existing.version == version => {
-							let old = entry_footprint(&key, existing);
-							existing.value = value;
-							existing.previous = None;
-							let new = entry_footprint(&key, existing);
-							account(&mut page.bytes, &mut page.payload, budget, old, new);
-						}
-						Some(existing) => {
-							let old = entry_footprint(&key, existing);
-							existing.previous =
-								Some((existing.version, existing.value.take()));
-							existing.version = version;
-							existing.value = value;
-							let new = entry_footprint(&key, existing);
-							account(&mut page.bytes, &mut page.payload, budget, old, new);
-						}
-						None => {
-							let entry = PageEntry {
-								version,
-								value,
-								previous: None,
-							};
-							let footprint = entry_footprint(&key, &entry);
-							page.entries.insert(key, entry);
-							account(
-								&mut page.bytes,
-								&mut page.payload,
-								budget,
-								EntryFootprint::default(),
-								footprint,
-							);
-						}
-					}
-					page.hot = true;
-					page.tick = next;
+			let Some(page) = pages.get_mut(&page_id) else {
+				let entry = PageEntry {
+					version,
+					value,
+					previous: None,
+				};
+				let footprint = entry_footprint(&key, &entry);
+				let mut fresh = ResidentPage::fresh(next);
+				fresh.entries.insert(key.clone(), entry);
+				fresh.bytes = footprint.resident;
+				fresh.payload = footprint.payload;
+				fresh.fills = self.next_fill();
+				fresh.claimed = Some(island.clone());
+				budget.charge(ByteSize::from_bytes(footprint.resident as u64));
+				pages.insert(page_id, fresh);
+				break 'place true;
+			};
+			match page.entries.get_mut(&key) {
+				Some(existing) if existing.version > version => break 'place false,
+				Some(existing) if existing.version == version => {
+					let old = entry_footprint(&key, existing);
+					existing.value = value;
+					existing.previous = None;
+					let new = entry_footprint(&key, existing);
+					account(&mut page.bytes, &mut page.payload, budget, old, new);
+				}
+				Some(existing) => {
+					let old = entry_footprint(&key, existing);
+					existing.previous = Some((existing.version, existing.value.take()));
+					existing.version = version;
+					existing.value = value;
+					let new = entry_footprint(&key, existing);
+					account(&mut page.bytes, &mut page.payload, budget, old, new);
 				}
 				None => {
 					let entry = PageEntry {
@@ -147,33 +148,50 @@ impl MultiReadBufferTier {
 						previous: None,
 					};
 					let footprint = entry_footprint(&key, &entry);
-					let mut entries = BTreeMap::new();
-					entries.insert(key, entry);
-					budget.charge(ByteSize::from_bytes(footprint.resident as u64));
-					pages.insert(
-						page_id,
-						ResidentPage {
-							entries,
-							bytes: footprint.resident,
-							payload: footprint.payload,
-							hot: false,
-							tick: next,
-							range_complete: false,
-							warm_blocked: false,
-						},
+					page.entries.insert(key.clone(), entry);
+					account(
+						&mut page.bytes,
+						&mut page.payload,
+						budget,
+						EntryFootprint::default(),
+						footprint,
 					);
 				}
 			}
+			page.hot = true;
+			page.tick = next;
+			page.fills = self.next_fill();
+			widen(&mut page.claimed, island.clone());
+			true
+		};
+		if !placed {
+			return;
 		}
 		shard.next_tick = next + 1;
-		shard.evict_to_capacity();
+		drop(shard);
+
+		#[cfg(test)]
+		self.interlock(page_id);
+
+		if !self.claims(page_id.kind, &key) {
+			self.claim(page_id.kind, &island, token);
+		}
+		self.evict_to_capacity(index);
 	}
 
+	/// Drops one key from RAM, shrinking coverage on both sides of the row mutation.
+	///
+	/// The pre-shrink stops a reader from trusting a claim the removal is about to falsify; the
+	/// post-shrink is what makes the pair sufficient. A fill that sampled its retraction token after
+	/// the pre-shrink and placed its rows before the mutation is invisible to the token, so only a
+	/// withdrawal that runs after the row is gone can take its claim back.
 	pub fn invalidate(&self, key: &EncodedKey) {
 		let page_id = page_of(key, self.bucket_shift());
-		let mut shard = self.shard_for(&page_id).lock();
-		if let Some(dirty) = shard.warming.get_mut(&page_id) {
-			*dirty = true;
+		let index = self.shard_index(&page_id);
+		self.withdraw_key(page_id.kind, key);
+		let mut shard = self.shard(index).lock();
+		if let Some(claim) = shard.warming.get_mut(&page_id) {
+			claim.dirty = true;
 		}
 		let Shard {
 			pages,
@@ -201,16 +219,22 @@ impl MultiReadBufferTier {
 			}
 			None => false,
 		};
+		drop(shard);
+		self.withdraw_key(page_id.kind, key);
 		if now_empty {
-			pages.remove(&page_id);
+			self.retract_page(index, page_id, false);
 		}
 	}
 
+	/// Drops a key the persistent tier no longer holds, shrinking coverage on both sides of the row
+	/// mutation for the same reason `invalidate` does.
 	pub fn remove_dropped(&self, key: &EncodedKey) {
 		let page_id = page_of(key, self.bucket_shift());
-		let mut shard = self.shard_for(&page_id).lock();
-		if let Some(dirty) = shard.warming.get_mut(&page_id) {
-			*dirty = true;
+		let index = self.shard_index(&page_id);
+		self.withdraw_key(page_id.kind, key);
+		let mut shard = self.shard(index).lock();
+		if let Some(claim) = shard.warming.get_mut(&page_id) {
+			claim.dirty = true;
 		}
 		let Shard {
 			pages,
@@ -233,16 +257,22 @@ impl MultiReadBufferTier {
 			}
 			None => false,
 		};
+		drop(shard);
+		self.withdraw_key(page_id.kind, key);
 		if now_empty_incomplete {
-			pages.remove(&page_id);
+			self.retract_page(index, page_id, true);
 		}
 	}
 
+	/// Drops a key's versions at or below `through`, shrinking coverage on both sides of the row
+	/// mutation for the same reason `invalidate` does.
 	pub fn remove_dropped_through(&self, key: &EncodedKey, through: CommitVersion) {
 		let page_id = page_of(key, self.bucket_shift());
-		let mut shard = self.shard_for(&page_id).lock();
-		if let Some(dirty) = shard.warming.get_mut(&page_id) {
-			*dirty = true;
+		let index = self.shard_index(&page_id);
+		self.withdraw_key(page_id.kind, key);
+		let mut shard = self.shard(index).lock();
+		if let Some(claim) = shard.warming.get_mut(&page_id) {
+			claim.dirty = true;
 		}
 		let Shard {
 			pages,
@@ -277,35 +307,33 @@ impl MultiReadBufferTier {
 			}
 			None => false,
 		};
+		drop(shard);
+		self.withdraw_key(page_id.kind, key);
 		if now_empty_incomplete {
-			pages.remove(&page_id);
+			self.retract_page(index, page_id, true);
 		}
 	}
 
 	pub fn set_warm_blocked(&self, page: PageId) {
 		let mut shard = self.shard_for(&page).lock();
 		let next = shard.next_tick;
-		shard.pages
-			.entry(page)
-			.or_insert_with(|| ResidentPage {
-				entries: BTreeMap::new(),
-				bytes: 0,
-				payload: 0,
-				hot: false,
-				tick: next,
-				range_complete: false,
-				warm_blocked: false,
-			})
-			.warm_blocked = true;
+		shard.pages.entry(page).or_insert_with(|| ResidentPage::fresh(next)).warm_blocked = true;
 		shard.warm_metrics.pages_warm_blocked += 1;
 	}
 
 	pub fn begin_warm(&self, page: PageId) -> bool {
+		let token = self.retractions();
 		let mut shard = self.shard_for(&page).lock();
 		if shard.warming.contains_key(&page) {
 			return false;
 		}
-		shard.warming.insert(page, false);
+		shard.warming.insert(
+			page,
+			WarmClaim {
+				dirty: false,
+				retractions: token,
+			},
+		);
 		shard.warm_metrics.warms_started += 1;
 		true
 	}
@@ -317,7 +345,13 @@ impl MultiReadBufferTier {
 		}
 	}
 
+	/// Empties the tier, withdrawing all coverage on both sides of the page wipe.
+	///
+	/// The second withdrawal closes at tier scale the window the pre-shrink leaves open: a fill that
+	/// sampled its token after the first withdrawal can publish over pages this wipe has already
+	/// removed.
 	pub fn clear(&self) {
+		self.withdraw_all();
 		for shard in self.all_shards() {
 			let mut shard = shard.lock();
 			shard.pages.clear();
@@ -325,5 +359,6 @@ impl MultiReadBufferTier {
 			shard.next_tick = 0;
 			shard.budget.reset();
 		}
+		self.withdraw_all();
 	}
 }
