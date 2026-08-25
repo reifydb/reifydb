@@ -16,10 +16,7 @@ use crate::{
 		RangeBatch, RangeCursor, RawEntry,
 		read::{
 			EntryFootprint, MultiReadBufferTier, PageEntry, ResidentPage, ServedChunk, Shard, Span,
-			account,
-			coverage::widen,
-			entry_footprint,
-			scan::page_bounds,
+			account, coverage::widen, entry_footprint, scan::page_bounds,
 		},
 	},
 };

@@ -10,6 +10,8 @@ use std::{
 	},
 };
 
+#[cfg(test)]
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	util::budget::MemoryBudget,
@@ -109,7 +111,7 @@ impl MultiReadBufferTier {
 	}
 
 	#[cfg(test)]
-	pub(super) fn invalidate_interlock(&self, key: &reifydb_codec::key::encoded::EncodedKey) {
+	pub(super) fn invalidate_interlock(&self, key: &EncodedKey) {
 		if let Some(interlock) = self.inner.invalidate_interlock.as_ref() {
 			interlock(self, key);
 		}

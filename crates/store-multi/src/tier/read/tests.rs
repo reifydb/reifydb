@@ -199,7 +199,6 @@ fn raw_entry(object: u64, n: u64, version: u64, value: &str) -> RawEntry {
 }
 
 fn install_page(read: &MultiReadBufferTier, page: PageId, mut entries: Vec<RawEntry>) {
-	// A scan yields ascending encoded keys, which row keys invert into descending row number, so a caller's order can never be trusted.
 	let range = read.page_key_range(page).expect("a table row page has a reconstructable range");
 	let (Bound::Included(lo), Bound::Included(through)) = (range.start, range.end) else {
 		panic!("a table row page range is inclusive at both ends");

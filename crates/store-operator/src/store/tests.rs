@@ -20,17 +20,14 @@ const FLOW_A: FlowId = FlowId(1);
 const FLOW_B: FlowId = FlowId(2);
 
 fn store_fixture() -> (StandardOperatorStore, SqliteTempPathGuard) {
-	// An hour-long flush interval keeps the spawned flusher idle, so the only flush is the one a test asks for.
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock.clone());
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let store = StandardOperatorStore::new(OperatorStoreConfig {
 		commit: Default::default(),
-		persistent: Some(
-			OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))
-				.flush_interval(Duration::from_hours_const(1)),
-		),
+		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))
+			.flush_interval(Duration::from_hours_const(1))),
 		point: Some(OperatorPointConfig::default()),
 		range: Some(OperatorRangeConfig::default()),
 		spawner,
@@ -45,7 +42,6 @@ fn flush(store: &StandardOperatorStore) {
 }
 
 fn flush_once_interlock() -> CheckpointInterlock {
-	// Fires on the first merge only, so a test can assert a second merge unclouded by another flush.
 	let fired = AtomicBool::new(false);
 	Box::new(move |store| {
 		if fired.swap(true, Ordering::SeqCst) {
@@ -57,7 +53,6 @@ fn flush_once_interlock() -> CheckpointInterlock {
 
 #[test]
 fn a_flush_between_the_two_tier_reads_cannot_hide_a_buffered_checkpoint_delete() {
-	// A flush in the gap between the two reads moves the delete out of the buffer and into the tier read first, so it must be seen twice and never in neither.
 	let (store, _guard) = store_fixture();
 
 	store.checkpoint_set(FLOW_A, CommitVersion(10));
@@ -79,7 +74,6 @@ fn a_flush_between_the_two_tier_reads_cannot_hide_a_buffered_checkpoint_delete()
 
 #[test]
 fn a_flush_between_the_two_tier_reads_cannot_raise_the_floor_over_a_buffered_checkpoint() {
-	// Losing an entry in that same gap raises the floor over a live checkpoint, which lets a reap delete rows the flow still needs to resume from.
 	let (store, _guard) = store_fixture();
 
 	store.checkpoint_set(FLOW_A, CommitVersion(100));
@@ -99,7 +93,6 @@ fn a_flush_between_the_two_tier_reads_cannot_raise_the_floor_over_a_buffered_che
 
 #[test]
 fn a_checkpoint_merge_without_an_interlock_is_unaffected() {
-	// Without an interlock attached the merge must behave exactly as a release build does, or the two tests above prove something about the hook rather than the order.
 	let (store, _guard) = store_fixture();
 
 	store.checkpoint_set(FLOW_A, CommitVersion(10));

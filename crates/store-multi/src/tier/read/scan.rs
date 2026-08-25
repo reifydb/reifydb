@@ -250,7 +250,8 @@ mod tests {
 	}
 
 	fn fill_bucket(read: &MultiReadBufferTier, bucket: u64, rows: &[u64], version: u64) {
-		// A scan yields entries in ascending key order, which row keys invert into descending row number, so the caller's order cannot be trusted.
+		// A scan yields entries in ascending key order, which row keys invert into descending row number, so
+		// the caller's order cannot be trusted.
 		let base = bucket * BUCKET;
 		let mut entries: Vec<RawEntry> = rows.iter().map(|n| entry(*n, version)).collect();
 		entries.sort_by(|left, right| left.key.cmp(&right.key));
@@ -791,7 +792,8 @@ mod tests {
 		// The plan is read under the coverage lock and the rows under the page locks, never both, so a
 		// removal can land in between and falsify the claim the plan was built from. Serving anyway
 		// returns rows RAM no longer holds and, worse, reports proven absence over the key it dropped.
-		// The interlock stays disarmed while the bucket is installed, because an install is a fill too and would race its own seeding.
+		// The interlock stays disarmed while the bucket is installed, because an install is a fill too and
+		// would race its own seeding.
 		let armed = Arc::new(AtomicBool::new(false));
 		let read = MultiReadBufferTier::with_interlock(config(), {
 			let armed = armed.clone();
@@ -817,7 +819,8 @@ mod tests {
 
 	#[test]
 	fn an_empty_storage_is_read_from_persistent_once_and_never_again() {
-		// Neither storage sentinel resolves to a row page, so the head is the only proof an empty storage can ever produce; without cashing it in every scan falls through to persistent forever.
+		// Neither storage sentinel resolves to a row page, so the head is the only proof an empty storage can
+		// ever produce; without cashing it in every scan falls through to persistent forever.
 		let read = tier();
 
 		let mut first = RangeCursor::new();
@@ -829,15 +832,23 @@ mod tests {
 		let chunk = serve_whole_storage(&read, &mut second);
 		assert!(!is_gap(&chunk), "the proven-empty storage must never reach the persistent tier again");
 		assert!(rows_of(&chunk).is_empty(), "a proven-empty range must serve no rows");
-		assert!(second.exhausted, "an empty range that is not exhausted hands the scan straight back to persistent");
+		assert!(
+			second.exhausted,
+			"an empty range that is not exhausted hands the scan straight back to persistent"
+		);
 	}
 
 	#[test]
 	fn a_range_ending_on_the_head_is_never_answered_empty() {
-		// The head names a key a row may sit on, so only the storage end sentinel, which no row can occupy, may be answered as proven empty; answering at the head itself drops the row standing on it.
+		// The head names a key a row may sit on, so only the storage end sentinel, which no row can occupy, may
+		// be answered as proven empty; answering at the head itself drops the row standing on it.
 		let read = tier();
 		install_from_prefix(&read, &[5, 3], 10);
-		assert_eq!(read.head(source()).as_ref(), Some(&row(5)), "the install must name the first row as the head");
+		assert_eq!(
+			read.head(source()).as_ref(),
+			Some(&row(5)),
+			"the install must name the first row as the head"
+		);
 
 		read.invalidate(&row(5));
 		read.invalidate(&row(3));
@@ -852,7 +863,10 @@ mod tests {
 			64,
 			false,
 		);
-		assert!(is_gap(&chunk), "a range whose last key is the head itself is not proven empty and the persistent tier still owes it");
+		assert!(
+			is_gap(&chunk),
+			"a range whose last key is the head itself is not proven empty and the persistent tier still owes it"
+		);
 		assert!(!cursor.exhausted, "a gap must leave the cursor untouched");
 	}
 }

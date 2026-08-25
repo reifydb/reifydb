@@ -1293,6 +1293,7 @@ mod cache_tests {
 	};
 	use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
+	use super::MultiVersionRangeCursor;
 	use crate::{
 		MultiVersionScope,
 		store::StandardMultiStore,
@@ -1465,11 +1466,7 @@ mod cache_tests {
 		);
 	}
 
-	fn drain_forward(
-		store: &StandardMultiStore,
-		cursor: &mut super::MultiVersionRangeCursor,
-		read: u64,
-	) -> Vec<u64> {
+	fn drain_forward(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor, read: u64) -> Vec<u64> {
 		let mut seen = Vec::new();
 		loop {
 			let batch = store
@@ -1489,11 +1486,7 @@ mod cache_tests {
 		}
 	}
 
-	fn drain_reverse(
-		store: &StandardMultiStore,
-		cursor: &mut super::MultiVersionRangeCursor,
-		read: u64,
-	) -> Vec<u64> {
+	fn drain_reverse(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor, read: u64) -> Vec<u64> {
 		let mut seen = Vec::new();
 		loop {
 			let batch = store
@@ -1552,7 +1545,7 @@ mod cache_tests {
 		let (store, _g) = store_without_read_tier();
 		seed_both_tiers(&store, true);
 
-		let mut cursor = super::MultiVersionRangeCursor::new();
+		let mut cursor = MultiVersionRangeCursor::new();
 		let first = store
 			.range_next(
 				&mut cursor,
@@ -1593,7 +1586,7 @@ mod cache_tests {
 		let (store, _g) = store_without_read_tier();
 		seed_both_tiers(&store, false);
 
-		let mut cursor = super::MultiVersionRangeCursor::new();
+		let mut cursor = MultiVersionRangeCursor::new();
 		let first = store
 			.range_rev_next(
 				&mut cursor,
@@ -1636,7 +1629,7 @@ mod cache_tests {
 			commit_row(&store, n, 1);
 		}
 
-		let mut cursor = super::MultiVersionRangeCursor::new();
+		let mut cursor = MultiVersionRangeCursor::new();
 		let first = store
 			.range_next(
 				&mut cursor,
@@ -1675,7 +1668,7 @@ mod cache_tests {
 			commit_row(&store, n, 1);
 		}
 
-		let mut cursor = super::MultiVersionRangeCursor::new();
+		let mut cursor = MultiVersionRangeCursor::new();
 		let first = store
 			.range_rev_next(
 				&mut cursor,
@@ -1727,6 +1720,7 @@ mod probe_tests {
 	use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 	use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
+	use super::MultiVersionRangeCursor;
 	use crate::{
 		config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
 		store::StandardMultiStore,

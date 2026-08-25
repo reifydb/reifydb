@@ -399,7 +399,8 @@ mod tests {
 	}
 
 	fn fill_bucket(read: &MultiReadBufferTier, bucket: u64, rows: &[u64], version: u64) {
-		// Rows must be listed descending by row number, which is ascending encoded key order, the order a scan yields them in.
+		// Rows must be listed descending by row number, which is ascending encoded key order, the order a scan
+		// yields them in.
 		let base = bucket * BUCKET;
 		let entries: Vec<RawEntry> = rows.iter().map(|n| entry(*n, version)).collect();
 		assert!(
