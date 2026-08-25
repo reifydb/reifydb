@@ -36,6 +36,7 @@ impl MultiReadBufferTier {
 				bucket_shift: config.bucket_shift,
 				coverage: RwLock::new(CoverageIndex {
 					kinds: HashMap::new(),
+					heads: HashMap::new(),
 				}),
 				retractions: AtomicU64::new(0),
 				fill_sequence: AtomicU64::new(0),
@@ -62,6 +63,7 @@ impl MultiReadBufferTier {
 				bucket_shift: config.bucket_shift,
 				coverage: RwLock::new(CoverageIndex {
 					kinds: HashMap::new(),
+					heads: HashMap::new(),
 				}),
 				retractions: AtomicU64::new(0),
 				fill_sequence: AtomicU64::new(0),
@@ -86,6 +88,7 @@ impl MultiReadBufferTier {
 				bucket_shift: config.bucket_shift,
 				coverage: RwLock::new(CoverageIndex {
 					kinds: HashMap::new(),
+					heads: HashMap::new(),
 				}),
 				retractions: AtomicU64::new(0),
 				fill_sequence: AtomicU64::new(0),

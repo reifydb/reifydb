@@ -162,6 +162,7 @@ struct Served {
 	refused: u64,
 	installs: u64,
 	evicted: u64,
+	head_advances: u64,
 }
 
 fn served(store: &StandardMultiStore) -> Served {
@@ -173,6 +174,7 @@ fn served(store: &StandardMultiStore) -> Served {
 		total.refused += shard.coverage.refused;
 		total.installs += shard.coverage.installs;
 		total.evicted += shard.pages.pages_evicted;
+		total.head_advances += shard.coverage.head_advances;
 	}
 	total
 }
@@ -288,6 +290,7 @@ fn interval_served_scans_match_a_store_with_no_read_tier() {
 		total.refused += seen.refused;
 		total.installs += seen.installs;
 		total.evicted += seen.evicted;
+		total.head_advances += seen.head_advances;
 	}
 	println!("coverage serve totals: {total:?}");
 
@@ -302,6 +305,10 @@ fn interval_served_scans_match_a_store_with_no_read_tier() {
 	);
 	assert!(total.installs > 20, "no install published a claim, so nothing was ever serveable: {total:?}");
 	assert!(total.evicted > 0, "no page was evicted, so a claim whose page left RAM was never exercised");
+	assert!(
+		total.head_advances > 20,
+		"no scan was moved off its storage prefix by a head, so the head path is untested here: {total:?}"
+	);
 }
 
 /// Buckets small enough that one storage's rows span several pages, so the page holding a scan's first
@@ -330,6 +337,7 @@ fn interval_served_scans_match_a_store_with_no_read_tier_across_several_pages() 
 		total.refused += seen.refused;
 		total.installs += seen.installs;
 		total.evicted += seen.evicted;
+		total.head_advances += seen.head_advances;
 	}
 	println!("paged coverage serve totals: {total:?}");
 
@@ -343,4 +351,8 @@ fn interval_served_scans_match_a_store_with_no_read_tier_across_several_pages() 
 		 nothing: {total:?}"
 	);
 	assert!(total.installs > 20, "no install published a claim, so nothing was ever serveable: {total:?}");
+	assert!(
+		total.head_advances > 20,
+		"no scan was moved off its storage prefix by a head, so the head path is untested here: {total:?}"
+	);
 }

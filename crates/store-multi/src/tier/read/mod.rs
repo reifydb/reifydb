@@ -109,6 +109,13 @@ impl ResidentPage {
 /// set, and every key of one kind sorts together in the encoded key space.
 struct CoverageIndex {
 	kinds: HashMap<EntryKind, CoverageSet>,
+	/// One key per kind proving the persistent tier holds no row key of that kind below it, so a scan
+	/// resuming at a storage prefix no claim can reach still starts at a page a claim can answer for.
+	///
+	/// This is a proof of absence, never one of residency: it may only move `lo` forward, and every
+	/// guard the serve applies afterwards still runs. It is held apart from the claims because a
+	/// prefix-anchored interval coalesces with its neighbours and would name the page a scan ends in.
+	heads: HashMap<EntryKind, EncodedKey>,
 }
 
 const NODE_FILL_DIVISOR: usize = 2;
@@ -182,6 +189,7 @@ pub struct ReadBufferCoverageMetrics {
 	pub installs: u64,
 	pub install_rows: u64,
 	pub installs_refused: u64,
+	pub head_advances: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

@@ -91,6 +91,7 @@ impl MultiReadBufferTier {
 	pub fn insert(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
 		let page_id = page_of(&key, self.bucket_shift());
 		let index = self.shard_index(&page_id);
+		self.lower_head(page_id.kind, &key);
 		let token = self.retractions();
 		let island = (key.clone(), Edge::Key(successor(&key)));
 		let mut shard = self.shard(index).lock();

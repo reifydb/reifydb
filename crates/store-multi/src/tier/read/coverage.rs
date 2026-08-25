@@ -4,7 +4,7 @@
 use std::{ops::Bound, sync::atomic::Ordering};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
-use reifydb_core::interface::store::EntryKind;
+use reifydb_core::{interface::store::EntryKind, key::row::RowKey};
 use reifydb_runtime::sync::rwlock::RwLock;
 #[cfg(test)]
 use reifydb_store::coverage::interval::Interval;
@@ -14,10 +14,10 @@ use reifydb_store::{
 		plan::{DEFAULT_GAP_GUARD, ScanPlan, plan},
 		successor,
 	},
-	row::page::{PageId, key_range_of},
+	row::page::{PageId, key_range_of, page_of},
 };
 
-use crate::tier::read::{CoverageIndex, MultiReadBufferTier, Span};
+use crate::tier::read::{CoverageIndex, MultiReadBufferTier, Span, scan::page_bounds};
 
 pub(super) fn span_of(range: Option<EncodedKeyRange>) -> Option<Span> {
 	let range = range?;
@@ -37,6 +37,36 @@ pub(super) fn widen(hull: &mut Option<Span>, span: Span) {
 		}
 		None => *hull = Some(span),
 	}
+}
+
+/// The span of encoded keys a storage's plain row keys can occupy, which the series row keys of the
+/// same storage never reach: the two differ in their leading kind byte, and the series band sorts
+/// wholly below the row band.
+///
+/// A head is a statement about row keys alone, so every raise, use and lowering is confined here.
+pub(super) fn row_band(kind: EntryKind) -> Option<(EncodedKey, EncodedKey)> {
+	match kind {
+		EntryKind::Source(storage) => Some((RowKey::storage_start(storage), RowKey::storage_end(storage))),
+		_ => None,
+	}
+}
+
+fn in_row_band(kind: EntryKind, key: &EncodedKey) -> bool {
+	match row_band(kind) {
+		Some((start, end)) => start.as_slice() <= key.as_slice() && key.as_slice() <= end.as_slice(),
+		None => false,
+	}
+}
+
+/// The leading chunk a serve may answer: where it starts, the page it lands in, the claim plan over it
+/// and the retraction token every one of those was read under.
+pub(super) struct Leading {
+	pub(super) lo: EncodedKey,
+	pub(super) page: PageId,
+	pub(super) page_end: EncodedKey,
+	pub(super) plan: ScanPlan,
+	pub(super) token: u64,
+	pub(super) advanced: bool,
 }
 
 fn page_fully_claimed(coverage: &CoverageIndex, page: PageId, shift: u8) -> bool {
@@ -71,13 +101,120 @@ impl MultiReadBufferTier {
 		pages.iter().filter(|page| page_fully_claimed(&coverage, **page, shift)).count()
 	}
 
-	pub(super) fn plan_leading(&self, kind: EntryKind, lo: &EncodedKey, hi: &Edge) -> Option<(ScanPlan, u64)> {
+	/// Reads the head and the claim plan under one acquisition of the coverage lock and one retraction
+	/// token, so a withdrawal landing between them can never leave an advanced `lo` standing on a head
+	/// the withdrawal has already invalidated.
+	///
+	/// `page_bounds` and `page_of` are arithmetic over the key alone and take no page lock, so deriving
+	/// the page here does not hold a page lock and the coverage lock together.
+	#[allow(clippy::too_many_arguments)]
+	pub(super) fn plan_leading(
+		&self,
+		kind: EntryKind,
+		anchor: &EncodedKey,
+		lo: &EncodedKey,
+		range_hi: &EncodedKey,
+		hi: &Edge,
+		shift: u8,
+		head: bool,
+	) -> Option<Leading> {
 		let coverage = self.coverage().read();
+		let mut lo = lo.clone();
+		let mut advanced = false;
+		if head && let Some((start, _)) = row_band(kind)
+			&& lo.as_slice() >= start.as_slice()
+			&& let Some(at) = coverage.heads.get(&kind)
+			&& lo.as_slice() < at.as_slice()
+			&& at.as_slice() <= range_hi.as_slice()
+		{
+			lo = at.clone();
+			advanced = true;
+		}
+		let page = page_of(
+			if advanced {
+				&lo
+			} else {
+				anchor
+			},
+			shift,
+		);
+		let (page_start, page_end) = page_bounds(page, shift)?;
+		if lo.as_slice() < page_start.as_slice() {
+			return None;
+		}
+		let ceiling = Edge::Key(successor(&page_end)).min(hi.clone());
 		let set = coverage.kinds.get(&kind)?;
-		let claim = set.covering(lo)?;
-		let cap = claim.end.min(hi.clone());
+		let claim = set.covering(&lo)?;
+		let cap = claim.end.min(ceiling);
 		let planned = plan(set, lo.clone(), cap, DEFAULT_GAP_GUARD, |_| false);
-		Some((planned, self.retractions()))
+		Some(Leading {
+			lo,
+			page,
+			page_end,
+			plan: planned,
+			token: self.retractions(),
+			advanced,
+		})
+	}
+
+	/// Records that a scan which began at or below the storage prefix reached `first` without meeting a
+	/// row, or reached `through` without meeting one at all.
+	///
+	/// The token is the same one a claim publishes under: a withdrawal since it was read means a row may
+	/// have appeared inside the proven span, and refusing then only understates.
+	pub(super) fn raise_head(
+		&self,
+		kind: EntryKind,
+		lo: &EncodedKey,
+		through: &EncodedKey,
+		first: Option<&EncodedKey>,
+		token: u64,
+	) {
+		let Some((start, end)) = row_band(kind) else {
+			return;
+		};
+		if lo.as_slice() > start.as_slice() {
+			return;
+		}
+		let proven = match first {
+			Some(key) => key.clone(),
+			None => successor(through),
+		};
+		let proven = if proven.as_slice() > end.as_slice() {
+			end
+		} else {
+			proven
+		};
+		if proven.as_slice() <= start.as_slice() {
+			return;
+		}
+		let mut coverage = self.coverage().write();
+		if self.retractions() != token {
+			return;
+		}
+		if coverage.heads.get(&kind).is_none_or(|current| current.as_slice() < proven.as_slice()) {
+			coverage.heads.insert(kind, proven);
+		}
+	}
+
+	/// Pulls the head back to a key the persistent tier may now hold, which every path placing a row into
+	/// RAM must do before it places it: a head left above such a key makes a scan skip it outright.
+	pub(super) fn lower_head(&self, kind: EntryKind, key: &EncodedKey) {
+		if !in_row_band(kind, key) {
+			return;
+		}
+		{
+			let coverage = self.coverage().read();
+			if coverage.heads.get(&kind).is_none_or(|current| current.as_slice() <= key.as_slice()) {
+				return;
+			}
+		}
+		let mut coverage = self.coverage().write();
+		if coverage.heads.get(&kind).is_none_or(|current| current.as_slice() <= key.as_slice()) {
+			return;
+		}
+		coverage.heads.insert(kind, key.clone());
+		self.record_retraction();
 	}
 
 	pub(super) fn claim(&self, kind: EntryKind, span: &Span, token: u64) -> bool {
@@ -111,6 +248,11 @@ impl MultiReadBufferTier {
 		if emptied {
 			coverage.kinds.remove(&kind);
 		}
+		if in_row_band(kind, key)
+			&& coverage.heads.get(&kind).is_some_and(|current| current.as_slice() > key.as_slice())
+		{
+			coverage.heads.insert(kind, key.clone());
+		}
 		self.record_retraction();
 	}
 
@@ -132,6 +274,7 @@ impl MultiReadBufferTier {
 	pub(super) fn withdraw_all(&self) {
 		let mut coverage = self.coverage().write();
 		coverage.kinds.clear();
+		coverage.heads.clear();
 		self.record_retraction();
 	}
 
@@ -157,6 +300,11 @@ impl MultiReadBufferTier {
 	#[cfg(test)]
 	pub(super) fn covers(&self, kind: EntryKind, key: &EncodedKey) -> bool {
 		self.claims(kind, key)
+	}
+
+	#[cfg(test)]
+	pub(super) fn head(&self, kind: EntryKind) -> Option<EncodedKey> {
+		self.coverage().read().heads.get(&kind).cloned()
 	}
 
 	#[cfg(test)]
@@ -191,7 +339,7 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{catalog::storage::StorageId, store::EntryKind},
-		key::{EncodableKey, row::RowKey},
+		key::{EncodableKey, row::RowKey, series_row::SeriesRowKey},
 	};
 	use reifydb_store::{
 		coverage::{Edge, interval::Interval, successor},
@@ -257,6 +405,24 @@ mod tests {
 
 	fn island(n: u64) -> Interval {
 		Interval::new(row(n), Edge::Key(successor(&row(n))))
+	}
+
+	fn storage_start() -> EncodedKey {
+		RowKey::storage_start(StorageId::table(STORAGE))
+	}
+
+	fn storage_end() -> EncodedKey {
+		RowKey::storage_end(StorageId::table(STORAGE))
+	}
+
+	fn series(n: u64) -> EncodedKey {
+		SeriesRowKey {
+			storage: StorageId::table(STORAGE),
+			variant_tag: None,
+			key: n,
+			sequence: 0,
+		}
+		.encode()
 	}
 
 	#[test]
@@ -475,6 +641,82 @@ mod tests {
 
 		assert!(read.intervals(source()).is_empty());
 		assert_eq!(read.resident_pages(), 0);
+	}
+
+	#[test]
+	fn evicting_the_page_the_head_came_from_leaves_the_head_standing() {
+		// Eviction takes rows out of RAM; it cannot put one into the persistent tier. The head asserts
+		// only that the persistent tier is empty below it, so it outlives every row that produced it.
+		// That is the whole reason it is kept apart from the claims: a claim must die with its page,
+		// while a proof of absence that died with its page would be lost on the first page turnover and
+		// every scan would fall through at its prefix again.
+		let read = tier(1);
+		let entries = vec![entry(BUCKET * 4 + 3, 1), entry(BUCKET * 4 + 2, 1), entry(BUCKET * 4 + 1, 1)];
+		read.install_scanned_chunk(source(), &storage_start(), &storage_end(), &entries);
+		assert_eq!(
+			read.head(source()).as_ref(),
+			Some(&row(BUCKET * 4 + 3)),
+			"the install must have recorded a head"
+		);
+		assert!(read.covers(source(), &row(BUCKET * 4 + 2)), "the install must have published a claim");
+
+		read.insert(row(1), CommitVersion(1), Some(val(1)));
+
+		assert_eq!(read.resident_pages(), 1, "the page cap must have forced an eviction");
+		assert!(!read.covers(source(), &row(BUCKET * 4 + 2)), "the evicted page's claim must be withdrawn");
+		assert_eq!(
+			read.head(source()).as_ref(),
+			Some(&row(BUCKET * 4 + 3)),
+			"eviction cannot create a row, so the proof of absence must survive it"
+		);
+	}
+
+	#[test]
+	fn a_row_placed_into_ram_below_the_head_pulls_the_head_back_to_it() {
+		// A flush writes a row to the persistent tier and only then seeds it here, so from this call on
+		// the persistent tier may hold it. A head left above it makes every later scan begin past the row
+		// and never read it from any tier. Placing a row can only ever be evidence that the span below
+		// the head is not empty after all, so the head must yield to it, and it must yield before the row
+		// lands or a reader in between still skips it.
+		let read = tier(8);
+		read.raise_head(source(), &storage_start(), &storage_end(), Some(&row(3)), read.retractions());
+
+		read.insert(row(7), CommitVersion(1), Some(val(1)));
+
+		assert_eq!(
+			read.head(source()).as_ref(),
+			Some(&row(7)),
+			"a row placed inside the head span must pull the head back to it"
+		);
+	}
+
+	#[test]
+	fn a_head_raise_that_read_its_token_before_a_withdrawal_publishes_nothing() {
+		// The scan that proves a span empty runs under no lock, so a commit can place a row inside that
+		// span between the scan and the raise. Publishing the raise anyway makes every later scan start
+		// past the new row and never read it from any tier, with no gap and no error to show for it.
+		let read = tier(8);
+		let token = read.retractions();
+
+		read.invalidate(&row(7));
+
+		read.raise_head(source(), &storage_start(), &storage_end(), Some(&row(3)), token);
+		assert_eq!(read.head(source()), None, "a head published across a withdrawal");
+
+		read.raise_head(source(), &storage_start(), &storage_end(), Some(&row(3)), read.retractions());
+		assert_eq!(read.head(source()).as_ref(), Some(&row(3)), "a fresh token must publish");
+	}
+
+	#[test]
+	fn a_scan_below_the_row_band_never_raises_a_head_over_it() {
+		// Row keys and series row keys of one storage share an entry kind but occupy disjoint byte bands,
+		// with the series band wholly below the row band. A series scan proves nothing about the rows, so
+		// a head raised from one would report every row of the storage absent.
+		let read = tier(8);
+
+		read.raise_head(source(), &series(9), &storage_end(), Some(&series(1)), read.retractions());
+
+		assert_eq!(read.head(source()), None, "a scan that never entered the row band proved nothing about it");
 	}
 
 	struct Lcg(u64);

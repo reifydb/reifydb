@@ -14,7 +14,7 @@ use crate::{
 	MultiVersionScope,
 	tier::{
 		RangeCursor, RawEntry,
-		read::{CoverageOutcome, MultiReadBufferTier, ServedChunk, range::served_chunk},
+		read::{CoverageOutcome, MultiReadBufferTier, ServedChunk, coverage::Leading, range::served_chunk},
 	},
 };
 
@@ -52,22 +52,23 @@ impl MultiReadBufferTier {
 		let hi = Edge::Key(successor(&range_hi));
 
 		let shift = self.bucket_shift();
+		let head = resume.is_none();
 		let anchor = resume.unwrap_or_else(|| range_lo.clone());
-		let page = page_of(&anchor, shift);
-		let Some((page_start, page_end)) = page_bounds(page, shift) else {
+		let Some(Leading {
+			lo,
+			page,
+			page_end,
+			plan: planned,
+			token,
+			advanced,
+		}) = self.plan_leading(table, &anchor, &lo, &range_hi, &hi, shift, head)
+		else {
 			self.tally_coverage(&anchor, CoverageOutcome::Gap);
 			return ServedChunk::Gap;
 		};
-		if lo < page_start {
-			self.tally_coverage(&anchor, CoverageOutcome::Gap);
-			return ServedChunk::Gap;
+		if advanced {
+			self.tally_head_advance(page);
 		}
-		let ceiling = Edge::Key(successor(&page_end)).min(hi.clone());
-
-		let Some((planned, token)) = self.plan_leading(table, &lo, &ceiling) else {
-			self.tally_coverage(&anchor, CoverageOutcome::Gap);
-			return ServedChunk::Gap;
-		};
 		let Some(Segment::Ram(claimed)) = planned.segments.first() else {
 			self.tally_coverage(&anchor, CoverageOutcome::Gap);
 			return ServedChunk::Gap;
@@ -123,6 +124,11 @@ impl MultiReadBufferTier {
 		served_chunk(out, cursor, exhausted)
 	}
 
+	fn tally_head_advance(&self, page: PageId) {
+		let mut shard = self.shard_for(&page).lock();
+		shard.coverage_metrics.head_advances += 1;
+	}
+
 	fn tally_coverage(&self, at: &EncodedKey, outcome: CoverageOutcome) {
 		let page = page_of(at, self.bucket_shift());
 		let mut shard = self.shard_for(&page).lock();
@@ -160,6 +166,11 @@ pub(super) fn page_bounds(page: PageId, shift: u8) -> Option<(EncodedKey, Encode
 
 #[cfg(test)]
 mod tests {
+	use std::sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	};
+
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		common::CommitVersion,
@@ -237,6 +248,38 @@ mod tests {
 	fn fill_bucket(read: &MultiReadBufferTier, bucket: u64, rows: &[u64], version: u64) {
 		let entries = rows.iter().map(|n| entry(*n, version)).collect();
 		read.populate_page(page(bucket * BUCKET), entries, true);
+	}
+
+	fn storage_start() -> EncodedKey {
+		RowKey::storage_start(StorageId::table(STORAGE))
+	}
+
+	fn storage_end() -> EncodedKey {
+		RowKey::storage_end(StorageId::table(STORAGE))
+	}
+
+	/// Installs a chunk of a scan that began at the storage prefix and ran to the storage end, which is
+	/// the shape of every full scan in this codebase; `rows` must be listed in encoded key order, so
+	/// descending by row number.
+	fn install_from_prefix(read: &MultiReadBufferTier, rows: &[u64], version: u64) {
+		let entries: Vec<RawEntry> = rows.iter().map(|n| entry(*n, version)).collect();
+		read.install_scanned_chunk(source(), &storage_start(), &storage_end(), &entries);
+	}
+
+	fn serve_whole_storage(read: &MultiReadBufferTier, cursor: &mut RangeCursor) -> ServedChunk {
+		read.serve_covered_chunk(
+			source(),
+			cursor,
+			storage_start().as_slice(),
+			storage_end().as_slice(),
+			newest(),
+			64,
+			false,
+		)
+	}
+
+	fn head_advances(read: &MultiReadBufferTier) -> u64 {
+		read.shard_metrics().iter().map(|shard| shard.coverage.head_advances).sum()
 	}
 
 	/// Row keys invert the row number, so the highest row in a bucket is its lowest key: a forward scan
@@ -599,6 +642,135 @@ mod tests {
 			end.as_slice() > RowKey::storage_end(StorageId::table(STORAGE)).as_slice(),
 			"the range end must really sort past this storage, or the case under test never arose"
 		);
+	}
+
+	#[test]
+	fn a_scan_starting_at_a_storage_prefix_serves_once_the_head_names_the_first_row() {
+		// A scan starts at a ten byte storage prefix that sorts below every key of the storage, so no
+		// claim can ever reach it and the leading chunk of every scan falls through. Where scans are one
+		// chunk long that is every chunk, and the read tier answers nothing at all. One recorded key
+		// proving the span below the first row empty is enough to move the scan onto a page a claim does
+		// cover, and it is the only thing that can be: where the first row lies cannot be derived, only
+		// observed.
+		let read = tier();
+		install_from_prefix(&read, &[3, 2, 1], 10);
+
+		let mut cursor = RangeCursor::new();
+		let chunk = serve_whole_storage(&read, &mut cursor);
+
+		assert_eq!(rows_of(&chunk), vec![3, 2, 1], "the leading chunk of a prefix scan must serve from RAM");
+		assert!(cursor.exhausted, "the claim reaches the storage end, so nothing is left for persistent");
+		assert_eq!(
+			head_advances(&read),
+			1,
+			"the serve must be attributed to the head, not to a claim over the prefix"
+		);
+	}
+
+	#[test]
+	fn a_commit_below_the_head_pulls_it_back_and_stops_the_scan_skipping_the_new_row() {
+		// The head proves the persistent tier holds nothing below it. A commit places a row inside that
+		// span, so a head left standing makes every later scan begin past the new row. That loss is
+		// silent: the chunk is served, not gapped, and reports the range exhausted, so the row is never
+		// read from any tier.
+		let read = tier();
+		install_from_prefix(&read, &[3, 2, 1], 10);
+		assert_eq!(read.head(source()).as_ref(), Some(&row(3)), "the install must have recorded a head");
+
+		read.invalidate(&row(7));
+
+		assert_eq!(
+			read.head(source()).as_ref(),
+			Some(&row(7)),
+			"a row committed inside the head span must pull the head back to it"
+		);
+		let mut cursor = RangeCursor::new();
+		let chunk = serve_whole_storage(&read, &mut cursor);
+		assert!(
+			is_gap(&chunk),
+			"the span the commit landed in is no longer claimed, so the scan must fall through"
+		);
+		assert!(!cursor.exhausted, "a gap must leave the cursor untouched");
+	}
+
+	#[test]
+	fn the_head_never_moves_a_scan_past_the_end_of_its_own_range() {
+		// The head names the first row of the whole storage, which can sort past the end of a narrower
+		// range. Moving lo there abandons the span the caller asked about and consults a claim over a
+		// span it did not, so a range RAM can prove empty falls through to the persistent tier instead.
+		let read = tier();
+		install_from_prefix(&read, &[3, 2, 1], 10);
+		assert_eq!(read.head(source()).as_ref(), Some(&row(3)), "the install must have recorded a head");
+
+		let mut cursor = RangeCursor::new();
+		let chunk = serve(&read, &mut cursor, 5, 9, 64);
+
+		assert!(rows_of(&chunk).is_empty(), "no row of this storage lies in rows five through nine");
+		assert!(cursor.exhausted, "the claim spans the whole range, so RAM has proven it empty");
+		assert_eq!(head_advances(&read), 0, "the head sorts past this range and must not have been used");
+	}
+
+	#[test]
+	fn a_head_advanced_serve_is_refused_when_a_retraction_races_it() {
+		// The head and the claim plan are read under one hold of the coverage lock; the rows are read
+		// under the page lock afterwards, with neither held in between. A withdrawal landing in that
+		// window falsifies both, and serving anyway reports proven absence over the key it removed.
+		let armed = Arc::new(AtomicBool::new(false));
+		let read = {
+			let armed = armed.clone();
+			MultiReadBufferTier::with_interlock(
+				config(),
+				Box::new(move |tier, _page| {
+					if armed.load(Ordering::SeqCst) {
+						tier.invalidate(&row(2));
+					}
+				}),
+			)
+			.expect("a tier with a byte budget must be constructed")
+		};
+		install_from_prefix(&read, &[3, 2, 1], 10);
+		armed.store(true, Ordering::SeqCst);
+
+		let mut cursor = RangeCursor::new();
+		let chunk = serve_whole_storage(&read, &mut cursor);
+
+		assert_eq!(head_advances(&read), 1, "the head must have moved lo, or the race under test never arose");
+		assert!(is_gap(&chunk), "a chunk whose head and claim were retracted mid-walk must be refused");
+		assert!(!cursor.exhausted, "a refused chunk must leave the cursor untouched");
+		assert!(
+			read.shard_metrics().iter().map(|s| s.coverage.refused).sum::<u64>() > 0,
+			"the refusal must be counted, or a silent one is indistinguishable from a miss"
+		);
+	}
+
+	#[test]
+	fn a_range_below_the_row_band_is_never_moved_onto_it_by_the_head() {
+		// One entry kind covers both a storage's row keys and its series row keys, and the two bands are
+		// disjoint: they differ in their leading kind byte and the series band sorts wholly below the row
+		// band. A head names a row key, so applying it to a range starting below that band moves the scan
+		// off the keys the caller asked for and onto the rows, reporting everything below proven absent.
+		let read = tier();
+		install_from_prefix(&read, &[3, 2, 1], 10);
+		read.insert(series(1), CommitVersion(10), Some(CowVec::new(vec![1])));
+		assert!(
+			series(1).as_slice() < storage_start().as_slice(),
+			"the series band must sort below the row band, or this range never crosses the boundary"
+		);
+
+		let mut cursor = RangeCursor::new();
+		let chunk = read.serve_covered_chunk(
+			source(),
+			&mut cursor,
+			series(9).as_slice(),
+			storage_end().as_slice(),
+			newest(),
+			64,
+			false,
+		);
+
+		assert!(is_gap(&chunk), "a range starting below the row band must never be answered from a row head");
+		assert!(!cursor.exhausted, "a gap must leave the cursor untouched");
+		assert_eq!(head_advances(&read), 0, "the head must not have been applied outside its own band");
 	}
 
 	#[test]

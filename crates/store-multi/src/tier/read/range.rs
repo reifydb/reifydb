@@ -73,6 +73,7 @@ impl MultiReadBufferTier {
 		if !matches!(table, EntryKind::Source(_)) {
 			return false;
 		}
+		self.raise_head(table, lo, through, entries.first().map(|entry| &entry.key), self.retractions());
 		let shift = self.bucket_shift();
 		let tail = Edge::Key(successor(through));
 		if entries.is_empty() {
