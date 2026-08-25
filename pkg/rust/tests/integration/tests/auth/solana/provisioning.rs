@@ -106,7 +106,7 @@ fn test_auto_provision_writes_public_key_attribute() {
 
 #[test]
 fn test_provision_rejects_identifier_that_is_not_the_public_key() {
-	// Auto-provisioning names the identity after the identifier, so a free-form identifier lets an unauthenticated caller squat any name against any wallet.
+	// A free-form identifier lets an unauthenticated caller squat any name against any wallet.
 	let db = TestDb::memory();
 	let (_, pubkey) = keypair(51);
 	let chosen_name = "vitalik";
@@ -143,7 +143,7 @@ fn test_provision_rejects_identifier_that_is_not_the_public_key() {
 
 #[test]
 fn test_provision_cannot_bind_a_registered_wallet_to_a_second_name() {
-	// A second identity carrying the same wallet attribute makes attribute resolution pick whichever row the scan reaches first.
+	// A duplicate wallet attribute makes resolution pick whichever row the scan reaches first.
 	let db = TestDb::memory();
 	let (_, pubkey) = keypair(52);
 	let owner = identity(&pubkey).solana_key(&pubkey).create(&db);
