@@ -321,6 +321,67 @@ impl StandardOperatorStore {
 		}
 	}
 
+	#[instrument(name = "store::operator::get_many", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
+	pub fn get_many(&self, operator: OperatorId, keys: &[EncodedKey]) -> Vec<Option<EncodedPodRow>> {
+		let mut results: Vec<Option<EncodedPodRow>> = Vec::with_capacity(keys.len());
+		let mut buffered: Vec<(usize, &EncodedKey)> = Vec::new();
+		for (index, key) in keys.iter().enumerate() {
+			match self.commit.lookup_state(operator, key) {
+				BufferedState::Row(row) => results.push(Some(row)),
+				BufferedState::Tombstone | BufferedState::Dropped => results.push(None),
+				BufferedState::Absent => {
+					results.push(None);
+					buffered.push((index, key));
+				}
+			}
+		}
+		let Some(persistent) = self.persistent.as_ref() else {
+			return results;
+		};
+
+		let mut fetch: Vec<(usize, &EncodedKey)> = Vec::new();
+		for (index, key) in buffered {
+			let cached = self.point.as_ref().and_then(|point| point.get(operator, key));
+			if let Some(Some(row)) = cached {
+				results[index] = Some(row);
+				continue;
+			}
+			if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key))
+			{
+				if let (Some(None), Some(row)) = (&cached, authoritative.as_ref()) {
+					self.repair_absence(operator, key, row);
+				}
+				results[index] = authoritative;
+				continue;
+			}
+			if cached.is_some() {
+				continue;
+			}
+			if !persistent.filter().may_contain(operator, key) {
+				continue;
+			}
+			fetch.push((index, key));
+		}
+		if fetch.is_empty() {
+			return results;
+		}
+
+		let filling: Vec<bool> = fetch
+			.iter()
+			.map(|(_, key)| self.point.as_ref().is_some_and(|point| point.begin_fill(operator, key)))
+			.collect();
+		let batch: Vec<EncodedKey> = fetch.iter().map(|(_, key)| (*key).clone()).collect();
+		let found = persistent.get_many(operator, &batch);
+		for ((index, key), filling) in fetch.into_iter().zip(filling) {
+			let row = found.get(key).cloned();
+			if filling && let Some(point) = self.point.as_ref() {
+				point.finish_fill(operator, key.clone(), row.clone());
+			}
+			results[index] = row;
+		}
+		results
+	}
+
 	fn persistent_get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
 		let persistent = self.persistent.as_ref()?;
 		let cached = self.point.as_ref().and_then(|point| point.get(operator, key));
@@ -627,6 +688,12 @@ impl OperatorStore {
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
 		match self {
 			Self::Standard(store) => store.contains(operator, key),
+		}
+	}
+
+	pub fn get_many(&self, operator: OperatorId, keys: &[EncodedKey]) -> Vec<Option<EncodedPodRow>> {
+		match self {
+			Self::Standard(store) => store.get_many(operator, keys),
 		}
 	}
 

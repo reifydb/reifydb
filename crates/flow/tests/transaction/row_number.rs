@@ -226,7 +226,7 @@ fn dropping_a_mapping_removes_it_and_a_re_lookup_mints_a_fresh_number() {
 
 	let mut first = deferred(&engine);
 	let (minted, _) = first.get_or_create_row_numbers(NODE, GROUP, &[key("victim")]).unwrap().remove(0);
-	assert!(first.remove_row_number(NODE, GROUP, &key("victim")).unwrap(), "dropping a present key returns true");
+	first.remove_row_number(NODE, GROUP, &key("victim")).unwrap();
 	assert_eq!(
 		first.get_row_numbers(NODE, GROUP, &[key("victim")]).unwrap().remove(0),
 		None,
@@ -244,9 +244,27 @@ fn dropping_a_mapping_removes_it_and_a_re_lookup_mints_a_fresh_number() {
 fn dropping_an_absent_mapping_is_idempotent() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	assert!(
-		!txn.remove_row_number(NODE, GROUP, &key("nope")).unwrap(),
-		"dropping an absent key returns false, not an error"
+	txn.remove_row_number(NODE, GROUP, &key("nope")).unwrap();
+	assert_eq!(
+		txn.get_row_numbers(NODE, GROUP, &[key("nope")]).unwrap().remove(0),
+		None,
+		"dropping an absent key must neither error nor conjure a mapping"
+	);
+}
+
+#[test]
+fn dropping_a_batch_removes_the_present_keys_and_leaves_the_absent_ones_alone() {
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+	let (kept, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[key("kept")]).unwrap().remove(0);
+	txn.get_or_create_row_numbers(NODE, GROUP, &[key("doomed")]).unwrap();
+
+	txn.remove_row_numbers(NODE, GROUP, &[key("doomed"), key("never_mapped")]).unwrap();
+
+	assert_eq!(
+		txn.get_row_numbers(NODE, GROUP, &[key("doomed"), key("never_mapped"), key("kept")]).unwrap(),
+		vec![None, None, Some(kept)],
+		"a batched drop must take exactly the keys it names and spare every other mapping"
 	);
 }
 

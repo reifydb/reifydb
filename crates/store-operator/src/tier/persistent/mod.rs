@@ -69,6 +69,12 @@ impl OperatorPersistentTier {
 		}
 	}
 
+	pub fn get_many(&self, operator: OperatorId, keys: &[EncodedKey]) -> HashMap<EncodedKey, EncodedPodRow> {
+		match self {
+			Self::Sqlite(storage) => storage.get_many(operator, keys),
+		}
+	}
+
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
 		match self {
 			Self::Sqlite(storage) => storage.contains(operator, key),
@@ -193,6 +199,10 @@ impl OperatorPersistentTier {
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl OperatorPersistentTier {
 	pub fn get(&self, _operator: OperatorId, _key: &EncodedKey) -> Option<EncodedPodRow> {
+		match *self {}
+	}
+
+	pub fn get_many(&self, _operator: OperatorId, _keys: &[EncodedKey]) -> HashMap<EncodedKey, EncodedPodRow> {
 		match *self {}
 	}
 

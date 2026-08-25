@@ -94,17 +94,9 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;
 
-	fn get_row_numbers_for_groups(
-		&mut self,
-		groups: &[GroupId],
-		key: &EncodedKey,
-	) -> Result<Vec<Option<RowNumber>>>;
+	fn published_groups(&mut self, groups: &[GroupId]) -> Result<Vec<bool>>;
 
-	fn get_or_create_row_numbers_for_groups(
-		&mut self,
-		groups: &[GroupId],
-		key: &EncodedKey,
-	) -> Result<Vec<(RowNumber, bool)>>;
+	fn publish_groups(&mut self, groups: &[GroupId]) -> Result<Vec<bool>>;
 
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 
@@ -284,7 +276,11 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		self.txn.remove_row_number(self.operator, group, key).map(|_| ())
+		self.txn.remove_row_number(self.operator, group, key)
+	}
+
+	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+		self.txn.remove_row_numbers(self.operator, group, keys)
 	}
 
 	fn written_at(&self) -> DateTime {
@@ -378,20 +374,12 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.get_row_numbers(self.operator, group, keys)
 	}
 
-	fn get_row_numbers_for_groups(
-		&mut self,
-		groups: &[GroupId],
-		key: &EncodedKey,
-	) -> Result<Vec<Option<RowNumber>>> {
-		self.txn.get_row_numbers_for_groups(self.operator, groups, key)
+	fn published_groups(&mut self, groups: &[GroupId]) -> Result<Vec<bool>> {
+		self.txn.published_groups(self.operator, groups)
 	}
 
-	fn get_or_create_row_numbers_for_groups(
-		&mut self,
-		groups: &[GroupId],
-		key: &EncodedKey,
-	) -> Result<Vec<(RowNumber, bool)>> {
-		self.txn.get_or_create_row_numbers_for_groups(self.operator, groups, key)
+	fn publish_groups(&mut self, groups: &[GroupId]) -> Result<Vec<bool>> {
+		self.txn.publish_groups(self.operator, groups)
 	}
 
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {

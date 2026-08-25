@@ -674,9 +674,9 @@ mod tests {
 		let mut op = op(12);
 		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_create_row_numbers(&mut host(&mut txn, &op), &keys(0, &[1, 2])).unwrap();
-		assert!(txn
-			.remove_row_number(op.operator, GroupId::ROOT, &AppendOperator::append_key(0, RowNumber(2)))
-			.unwrap());
+		txn.remove_row_number(op.operator, GroupId::ROOT, &AppendOperator::append_key(0, RowNumber(2)))
+			.unwrap();
+		assert!(mapped_row(&mut txn, &op, 0, 2).is_none(), "the sealed row must have no mapping left");
 
 		assert!(op
 			.translate_append_update(&mut host(&mut txn, &op), 0, rows(&[1, 2]), rows(&[1, 2]))

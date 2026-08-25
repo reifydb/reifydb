@@ -334,3 +334,85 @@ fn cached_reads_equal_uncached_oracle_across_randomized_workload() {
 	assert!(oracle.flush_pending_blocking(), "the workload must leave something to flush");
 	sweep(&cached, &oracle, STEPS);
 }
+
+#[test]
+fn get_many_answers_exactly_as_repeated_get_across_randomized_workload() {
+	// get_many resolves the commit, point and range tiers itself and batches only the sqlite tail, so it
+	// duplicates the whole tier walk that get performs; a divergence means the batched path invented a
+	// row, missed a tombstone, or mismatched a result to the wrong slot.
+	let (store, _guard) = store(true);
+	let mut rng = Rng(SEED);
+	let mut live: HashMap<(OperatorId, EncodedKey), ByteSize> = HashMap::new();
+	let mut compared = 0u64;
+	let mut seen_present = false;
+	let mut seen_absent = false;
+
+	for step in 0..STEPS {
+		match rng.below(100) {
+			0..40 => {
+				let (operator, key) = key(&mut rng);
+				let row = EncodedPodRow::new(format!("{step}").as_bytes());
+				let post_bytes = ByteSize::from_bytes(row.bytes().len() as u64);
+				let write = match live.insert((operator, key.clone()), post_bytes) {
+					Some(pre_value_bytes) => OperatorWrite::Replace {
+						operator,
+						key,
+						pre_value_bytes,
+						post: row,
+					},
+					None => OperatorWrite::Insert {
+						operator,
+						key,
+						post: row,
+					},
+				};
+				store.apply_batch(&[write]);
+			}
+			40..55 => {
+				let (operator, key) = key(&mut rng);
+				let pre = match live.remove(&(operator, key.clone())) {
+					Some(pre_value_bytes) => DurablePre::Present(pre_value_bytes),
+					None => DurablePre::Absent,
+				};
+				store.apply_batch(&[OperatorWrite::Remove {
+					operator,
+					key,
+					pre,
+				}]);
+			}
+			55..95 => {
+				let operator = OperatorId(1 + rng.below(OPERATORS));
+				// duplicates in one batch must each resolve, so the same key is allowed to repeat
+				let batch: Vec<EncodedKey> =
+					(0..1 + rng.below(12)).map(|_| key(&mut rng).1).collect();
+				let batched = store.get_many(operator, &batch);
+				assert_eq!(batched.len(), batch.len(), "get_many must answer every slot at step {step}");
+				for (slot, key) in batch.iter().enumerate() {
+					let single = store.get(operator, key);
+					assert_eq!(
+						batched[slot], single,
+						"get_many slot {slot} diverged from get at step {step}"
+					);
+					// get runs second and would echo a tier get_many corrupted, so live must witness it
+					assert_eq!(
+						batched[slot].is_some(),
+						live.contains_key(&(operator, key.clone())),
+						"get_many slot {slot} disagreed with the tracked live set at step {step}"
+					);
+					match single {
+						Some(_) => seen_present = true,
+						None => seen_absent = true,
+					}
+				}
+				compared += batch.len() as u64;
+			}
+			_ => {
+				store.flush_pending_blocking();
+			}
+		}
+	}
+
+	assert!(compared > 0, "the workload must actually compare batched reads against single reads");
+	assert!(seen_present, "a run that never resolves a live row would pass with get_many always returning none");
+	assert!(seen_absent, "a run that never resolves a missing row would not exercise tombstones or filter misses");
+}

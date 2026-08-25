@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound::{Excluded, Included, Unbounded};
+use std::{
+	collections::HashMap,
+	ops::Bound::{Excluded, Included, Unbounded},
+};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
@@ -11,7 +14,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::PendingLayers,
 	common::CommitVersion,
-	interface::{change::Change, store::MultiVersionRow},
+	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
@@ -253,12 +256,30 @@ pub(crate) fn deferred_fetch_state_external(
 	keys: Vec<EncodedKey>,
 	items: &mut Vec<MultiVersionRow>,
 ) {
-	for encoded_key in keys {
+	if keys.is_empty() {
+		return;
+	}
+	let store = operators.expect(NO_OPERATOR_STORE);
+
+	let mut grouped: HashMap<OperatorId, Vec<(usize, EncodedKey)>> = HashMap::new();
+	for (index, encoded_key) in keys.iter().enumerate() {
 		let OperatorScope {
 			operator,
 			inner,
-		} = operator_state_coordinates(&encoded_key).expect("state_get_many keys must carry an operator id");
-		if let Some(row) = operators.expect(NO_OPERATOR_STORE).get(operator, &inner) {
+		} = operator_state_coordinates(encoded_key).expect("state_get_many keys must carry an operator id");
+		grouped.entry(operator).or_default().push((index, inner));
+	}
+
+	let mut resolved: Vec<Option<EncodedPodRow>> = vec![None; keys.len()];
+	for (operator, entries) in grouped {
+		let inners: Vec<EncodedKey> = entries.iter().map(|(_, inner)| inner.clone()).collect();
+		for ((index, _), row) in entries.into_iter().zip(store.get_many(operator, &inners)) {
+			resolved[index] = row;
+		}
+	}
+
+	for (encoded_key, row) in keys.into_iter().zip(resolved) {
+		if let Some(row) = row {
 			items.push(MultiVersionRow {
 				key: encoded_key,
 				bytes: row.into_bytes(),

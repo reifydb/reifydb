@@ -17,9 +17,9 @@ use crate::{
 		SqliteOperatorStorage,
 		census::zero_operator_buckets,
 		sql::{
-			ANCHORS_DROP_OPERATOR_SQL, STATE_CONTAINS_SQL, STATE_DROP_SQL, STATE_EXISTS_SQL, STATE_GET_SQL,
-			STATE_KEY_COUNT_SQL, STATE_KEYS_AFTER_SQL, STATE_KEYS_FIRST_SQL, STATE_SIZE_CHUNK, range_sql,
-			state_sizes_sql,
+			ANCHORS_DROP_OPERATOR_SQL, STATE_CONTAINS_SQL, STATE_DROP_SQL, STATE_EXISTS_SQL,
+			STATE_GET_CHUNK, STATE_GET_SQL, STATE_KEY_COUNT_SQL, STATE_KEYS_AFTER_SQL,
+			STATE_KEYS_FIRST_SQL, STATE_SIZE_CHUNK, range_sql, state_gets_sql, state_sizes_sql,
 		},
 	},
 	types::OperatorBatch,
@@ -55,6 +55,37 @@ impl SqliteOperatorStorage {
 			}
 		}
 		sizes
+	}
+
+	#[instrument(name = "store::operator::persistent::sqlite::get_many", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
+	pub fn get_many(&self, operator: OperatorId, keys: &[EncodedKey]) -> HashMap<EncodedKey, EncodedPodRow> {
+		let mut found = HashMap::with_capacity(keys.len());
+		if keys.is_empty() || !self.state_written() {
+			return found;
+		}
+		let guard = self.read_conn();
+		let Some(conn) = guard.as_ref() else {
+			return found;
+		};
+		for chunk in keys.chunks(STATE_GET_CHUNK) {
+			let mut stmt = conn
+				.prepare_cached(&state_gets_sql(chunk.len()))
+				.expect("operator state batch read could not be prepared");
+			let slices: Vec<&[u8]> = chunk.iter().map(|key| key.as_slice()).collect();
+			let mut params: Vec<&dyn ToSql> = Vec::with_capacity(chunk.len() + 1);
+			let operator_param = operator.0 as i64;
+			params.push(&operator_param);
+			for slice in &slices {
+				params.push(slice);
+			}
+			let mut rows = stmt.query(params.as_slice()).expect("operator state batch read failed");
+			while let Some(row) = rows.next().expect("operator state batch read failed") {
+				let key: Vec<u8> = row.get(0).expect("operator state rows carry a blob key");
+				let bytes: Vec<u8> = row.get(1).expect("operator state rows carry a blob payload");
+				found.insert(EncodedKey::new(key), decode_row(bytes));
+			}
+		}
+		found
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]

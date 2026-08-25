@@ -437,12 +437,13 @@ impl JoinOperator {
 				state.left.remove_row_in(host, group, row_number)?;
 			}
 			JoinSide::Right => {
-				for left_number in state.left.row_numbers_in(host, group)? {
-					host.remove_row_number(
-						GroupId::ROOT,
-						&Self::make_composite_key(left_number, row_number),
-					)?;
-				}
+				let composites: Vec<EncodedKey> = state
+					.left
+					.row_numbers_in(host, group)?
+					.into_iter()
+					.map(|left_number| Self::make_composite_key(left_number, row_number))
+					.collect();
+				host.remove_row_numbers(GroupId::ROOT, &composites)?;
 				state.right.remove_row_in(host, group, row_number)?;
 			}
 		}
