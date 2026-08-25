@@ -3,10 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_auth::{
-	registry::AuthenticationRegistry,
-	service::{AuthService, AuthServiceConfig},
-};
+use reifydb_auth::service::AuthService;
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -161,13 +158,7 @@ impl SubsystemFactory for WsSubsystemFactory {
 		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
 		let handle = config.runtime.unwrap_or(ioc_handle);
 
-		let auth_service = AuthService::new(
-			Arc::new(engine.clone()),
-			Arc::new(AuthenticationRegistry::new(clock.clone())),
-			rng.clone(),
-			clock.clone(),
-			AuthServiceConfig::default(),
-		);
+		let auth_service = ioc.resolve::<AuthService>()?;
 
 		let state = AppState::new(
 			spawner,

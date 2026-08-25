@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
-use reifydb_auth::{
-	registry::AuthenticationRegistry,
-	service::{AuthService, AuthServiceConfig},
-};
+use reifydb_auth::service::AuthService;
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -158,13 +153,13 @@ impl HttpSubsystemFactory {
 	}
 }
 
-type ResolvedDeps = (StandardEngine, RequestInterceptorChain, ActorSpawner, Clock, Rng, Handle);
+type ResolvedDeps = (StandardEngine, RequestInterceptorChain, ActorSpawner, Clock, Rng, Handle, AuthService);
 
 impl SubsystemFactory for HttpSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let config = (self.config_fn)();
 
-		let (engine, interceptors, spawner, clock, rng, handle) =
+		let (engine, interceptors, spawner, clock, rng, handle, auth_service) =
 			Self::resolve_deps(ioc, config.spawner, config.clock, config.rng, config.handle)?;
 
 		let state = Self::build_app_state(
@@ -176,6 +171,7 @@ impl SubsystemFactory for HttpSubsystemFactory {
 			clock,
 			rng,
 			interceptors,
+			auth_service,
 		);
 
 		let subsystem =
@@ -215,7 +211,9 @@ impl HttpSubsystemFactory {
 			None => ioc.resolve::<Handle>()?,
 		};
 
-		Ok((engine, interceptors, spawner, clock, rng, handle))
+		let auth_service = ioc.resolve::<AuthService>()?;
+
+		Ok((engine, interceptors, spawner, clock, rng, handle, auth_service))
 	}
 
 	#[inline]
@@ -229,19 +227,12 @@ impl HttpSubsystemFactory {
 		clock: Clock,
 		rng: Rng,
 		interceptors: RequestInterceptorChain,
+		auth_service: AuthService,
 	) -> AppState {
 		let query_config = StateConfig::new()
 			.query_timeout(query_timeout)
 			.request_timeout(request_timeout)
 			.max_connections(max_connections);
-
-		let auth_service = AuthService::new(
-			Arc::new(engine.clone()),
-			Arc::new(AuthenticationRegistry::new(clock.clone())),
-			rng.clone(),
-			clock.clone(),
-			AuthServiceConfig::default(),
-		);
 
 		AppState::new(spawner, engine, auth_service, query_config, interceptors, clock, rng)
 	}

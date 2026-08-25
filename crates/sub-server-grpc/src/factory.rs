@@ -3,10 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_auth::{
-	registry::AuthenticationRegistry,
-	service::{AuthService, AuthServiceConfig},
-};
+use reifydb_auth::service::AuthService;
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -125,17 +122,25 @@ impl GrpcSubsystemFactory {
 	}
 }
 
-type ResolvedDeps =
-	(StandardEngine, ActorSpawner, Clock, Rng, Handle, RequestInterceptorChain, Option<Arc<SubscriptionStore>>);
+type ResolvedDeps = (
+	StandardEngine,
+	ActorSpawner,
+	Clock,
+	Rng,
+	Handle,
+	RequestInterceptorChain,
+	Option<Arc<SubscriptionStore>>,
+	AuthService,
+);
 
 impl SubsystemFactory for GrpcSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
-		let (engine, spawner, clock, rng, handle, interceptors, subscription_store) =
+		let (engine, spawner, clock, rng, handle, interceptors, subscription_store, auth_service) =
 			Self::resolve_dependencies(ioc)?;
 
 		let config = (self.config_fn)();
 
-		let state = Self::build_app_state(&config, engine, spawner, interceptors, &clock, &rng);
+		let state = Self::build_app_state(&config, engine, spawner, interceptors, &clock, &rng, auth_service);
 
 		let subsystem = GrpcSubsystem::new(
 			config.bind_addr.clone(),
@@ -160,11 +165,13 @@ impl GrpcSubsystemFactory {
 		let handle = ioc.resolve::<Handle>()?;
 		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
 		let subscription_store = ioc.resolve::<Arc<SubscriptionStore>>().ok();
+		let auth_service = ioc.resolve::<AuthService>()?;
 
-		Ok((engine, spawner, clock, rng, handle, interceptors, subscription_store))
+		Ok((engine, spawner, clock, rng, handle, interceptors, subscription_store, auth_service))
 	}
 
 	#[inline]
+	#[allow(clippy::too_many_arguments)]
 	fn build_app_state(
 		config: &GrpcConfig,
 		engine: StandardEngine,
@@ -172,19 +179,12 @@ impl GrpcSubsystemFactory {
 		interceptors: RequestInterceptorChain,
 		clock: &Clock,
 		rng: &Rng,
+		auth_service: AuthService,
 	) -> AppState {
 		let query_config = StateConfig::new()
 			.query_timeout(config.query_timeout)
 			.request_timeout(config.request_timeout)
 			.max_connections(config.max_connections);
-
-		let auth_service = AuthService::new(
-			Arc::new(engine.clone()),
-			Arc::new(AuthenticationRegistry::new(clock.clone())),
-			rng.clone(),
-			clock.clone(),
-			AuthServiceConfig::default(),
-		);
 
 		AppState::new(spawner, engine, auth_service, query_config, interceptors, clock.clone(), rng.clone())
 	}
