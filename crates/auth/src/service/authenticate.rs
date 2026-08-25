@@ -23,7 +23,7 @@ impl AuthService {
 	#[instrument(name = "auth::authenticate", level = "debug", skip(self, credentials))]
 	pub fn authenticate(&self, method: &str, credentials: HashMap<String, String>) -> Result<AuthResponse, Error> {
 		if let Some(challenge_id) = credentials.get("challenge_id").cloned() {
-			return self.authenticate_challenge_response(&challenge_id, credentials);
+			return self.authenticate_challenge_response(method, &challenge_id, credentials);
 		}
 		if method == "token" {
 			return self.authenticate_token(credentials);
@@ -198,6 +198,7 @@ impl AuthService {
 
 	fn authenticate_challenge_response(
 		&self,
+		method: &str,
 		challenge_id: &str,
 		mut credentials: HashMap<String, String>,
 	) -> Result<AuthResponse, Error> {
@@ -206,6 +207,12 @@ impl AuthService {
 				reason: "invalid or expired challenge".to_string(),
 			});
 		};
+
+		if method != challenge.method {
+			return Ok(AuthResponse::Failed {
+				reason: "challenge was issued for a different method".to_string(),
+			});
+		}
 
 		if challenge.method == "github" {
 			return self.complete_github_login(&challenge, &credentials);

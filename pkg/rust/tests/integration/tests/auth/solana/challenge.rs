@@ -206,3 +206,34 @@ fn test_client_supplied_message_cannot_override_challenge_payload() {
 		response
 	);
 }
+
+#[test]
+fn test_completion_naming_a_different_method_is_rejected() {
+	// The method argument is dropped once challenge_id is present, so any method name completes
+	// any challenge. The stored method still picks the verifier, so nothing is bypassed, but a
+	// request that contradicts itself must be refused rather than quietly honoured.
+	let db = TestDb::memory();
+	let (signing_key, pubkey) = keypair(28);
+	identity("ivan").solana_key(&pubkey).create(&db);
+
+	let service = auth_service(&db).build();
+	let (challenge_id, message) =
+		begin_challenge(&service, HashMap::from([("identifier".to_string(), pubkey.clone())]));
+
+	let response = service
+		.authenticate(
+			"token",
+			HashMap::from([
+				("challenge_id".to_string(), challenge_id),
+				("signature".to_string(), sign(&signing_key, &message)),
+				("signed_message".to_string(), message),
+			]),
+		)
+		.unwrap();
+
+	assert!(
+		matches!(response, AuthResponse::Failed { .. }),
+		"a completion naming a method the challenge was never issued for must be refused, got {:?}",
+		response
+	);
+}
