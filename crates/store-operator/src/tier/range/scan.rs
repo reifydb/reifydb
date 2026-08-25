@@ -21,6 +21,11 @@ use crate::tier::range::{
 	entry_footprint,
 };
 
+enum PartitionAction {
+	Claim(usize),
+	Install,
+}
+
 impl RangeScan {
 	pub fn segments(&self) -> &[Segment] {
 		&self.segments
@@ -259,6 +264,8 @@ impl OperatorRangeTier {
 	pub fn install(&self, scan: &RangeScan, span: &Interval, rows: &[(EncodedKey, EncodedPodRow)]) -> Install {
 		let mut start = span.start.clone();
 		let mut installed = false;
+		let mut claim: Option<Interval> = None;
+		let mut claimed: Vec<usize> = Vec::new();
 		if !span.is_empty() {
 			loop {
 				let Some(partition) = PartitionId::of(scan.operator, &start) else {
@@ -267,11 +274,30 @@ impl OperatorRangeTier {
 				let (_, bound) = partition.span();
 				let end = bound.min(span.end.clone());
 				let piece = Interval::new(start, end.clone());
-				if partition.caches_ranges() && !piece.is_empty() {
-					if !self.install_partition(scan, &piece, rows) {
+				if !partition.caches_ranges() || piece.is_empty() {
+					if !self.flush_claims(scan, &mut claim, &mut claimed) {
 						return Install::Refused;
 					}
-					installed = true;
+				} else {
+					match self.classify(&piece, partition, rows) {
+						PartitionAction::Claim(index) => {
+							match &mut claim {
+								Some(run) => run.end = piece.end.clone(),
+								None => claim = Some(piece.clone()),
+							}
+							claimed.push(index);
+							installed = true;
+						}
+						PartitionAction::Install => {
+							if !self.flush_claims(scan, &mut claim, &mut claimed) {
+								return Install::Refused;
+							}
+							if !self.install_partition(scan, &piece, rows) {
+								return Install::Refused;
+							}
+							installed = true;
+						}
+					}
 				}
 				if end == span.end {
 					break;
@@ -282,11 +308,63 @@ impl OperatorRangeTier {
 				}
 			}
 		}
+		if !self.flush_claims(scan, &mut claim, &mut claimed) {
+			return Install::Refused;
+		}
 		if installed {
 			Install::Installed
 		} else {
 			Install::NothingCacheable
 		}
+	}
+
+	fn classify(
+		&self,
+		piece: &Interval,
+		partition: PartitionId,
+		rows: &[(EncodedKey, EncodedPodRow)],
+	) -> PartitionAction {
+		if rows.iter().any(|(key, _)| piece.contains(key)) {
+			return PartitionAction::Install;
+		}
+		let index = self.shard_index(&partition);
+		let mut shard = self.shard(index).lock();
+		if shard.partitions.contains_key(&partition) {
+			return PartitionAction::Install;
+		}
+		shard.metrics.installs += 1;
+		PartitionAction::Claim(index)
+	}
+
+	fn flush_claims(&self, scan: &RangeScan, claim: &mut Option<Interval>, claimed: &mut Vec<usize>) -> bool {
+		let Some(span) = claim.take() else {
+			return true;
+		};
+		let mut coverage = self.coverage().write();
+		if self.retractions() != scan.retractions {
+			drop(coverage);
+			self.undo_claims(claimed);
+			return false;
+		}
+		coverage.operators.entry(scan.operator).or_default().extend(span.start, span.end);
+		drop(coverage);
+		claimed.clear();
+		true
+	}
+
+	fn undo_claims(&self, claimed: &mut Vec<usize>) {
+		claimed.sort_unstable();
+		let mut cursor = 0;
+		while cursor < claimed.len() {
+			let index = claimed[cursor];
+			let mut shard = self.shard(index).lock();
+			while cursor < claimed.len() && claimed[cursor] == index {
+				shard.metrics.installs -= 1;
+				shard.metrics.installs_raced += 1;
+				cursor += 1;
+			}
+		}
+		claimed.clear();
 	}
 
 	fn install_partition(&self, scan: &RangeScan, span: &Interval, rows: &[(EncodedKey, EncodedPodRow)]) -> bool {
