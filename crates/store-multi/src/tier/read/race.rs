@@ -225,6 +225,61 @@ fn a_drop_must_refuse_a_page_that_was_evicted_and_refilled_since_the_victim_was_
 }
 
 #[test]
+fn a_chunk_install_never_lets_one_page_hull_reach_the_page_before_it() {
+	// A chunk that crosses a page edge proves both sides, but a hull retracts a byte span rather than a page
+	// id, so a hull reaching back over the page before it would let evicting the later page withdraw claims
+	// over rows the earlier one still holds. Row numbers invert in the key, so bucket 2 sorts ahead of
+	// bucket 1 and a chunk covering both is exactly that straddle.
+	let read = tier(8, ByteSize::from_gib(1));
+	let kind = EntryKind::Source(StorageId::table(ROW_STORAGE));
+	let mut entries = bucket_entries(2, 1);
+	entries.extend(bucket_entries(1, 1));
+	entries.sort_by(|left, right| left.key.as_slice().cmp(right.key.as_slice()));
+	let lo = row(u64::MAX / 2);
+	let through = entries.last().expect("the chunk carries rows").key.clone();
+
+	let earlier = page(&row(BUCKET * 2));
+	let later = page(&row(BUCKET));
+	assert_ne!(earlier, later, "the chunk must straddle a page edge");
+	assert!(read.install_scanned_chunk(kind, &lo, &through, &entries), "the chunk must publish its claim");
+
+	read.withdraw_span(later.kind, &hull_of(&read, later).expect("an install records a hull"));
+
+	for n in BUCKET * 2..BUCKET * 3 {
+		assert!(read.covers(kind, &row(n)), "the later page's hull reached back over the page before it");
+	}
+	for n in BUCKET..BUCKET * 2 {
+		assert!(!read.covers(kind, &row(n)), "the later page's hull did not retract its own page");
+	}
+}
+
+#[test]
+fn a_chunk_install_places_its_rows_before_it_publishes_the_claim() {
+	// Coverage may only widen once the rows behind it are in RAM: a reader landing between the two finds the
+	// span claimed and the rows absent, and reads that absence as proof. The interlock runs in exactly that
+	// window, so every row the chunk carries must already be resident when it fires.
+	let fired = Arc::new(AtomicUsize::new(0));
+	let read = {
+		let fired = fired.clone();
+		MultiReadBufferTier::with_interlock(
+			config(8, ByteSize::from_gib(1)),
+			Box::new(move |read, _page| {
+				assert!(resident(read, &row(0)), "a claim was published before its rows were placed");
+				fired.fetch_add(1, Ordering::Relaxed);
+			}),
+		)
+		.expect("a tier with a byte budget must be constructed")
+	};
+	let kind = EntryKind::Source(StorageId::table(ROW_STORAGE));
+
+	assert!(
+		read.install_scanned_chunk(kind, &row(BUCKET - 1), &row(0), &bucket_entries(0, 1)),
+		"the chunk must publish its claim"
+	);
+	assert_eq!(fired.load(Ordering::Relaxed), 1, "the interlock must have run inside the install window");
+}
+
+#[test]
 fn a_row_page_hull_never_reaches_the_series_page_of_the_same_storage() {
 	// Row and series keys of one storage share an EntryKind, so they share a CoverageSet, and the hull
 	// retracts a byte span rather than a page id. If the two byte domains interleaved, evicting the row
@@ -316,9 +371,12 @@ fn step(read: &MultiReadBufferTier, rng: &mut Lcg, keys: &[EncodedKey], version:
 		40..46 => {
 			let bucket = rng.next() % ROWS.div_ceil(BUCKET);
 			let id = page(&row(bucket * BUCKET));
-			if read.begin_warm(id) {
-				read.finish_warm(id, bucket_entries(bucket, at));
-			}
+			read.install_scanned_chunk(
+				id.kind,
+				&row(bucket * BUCKET + BUCKET - 1),
+				&row(bucket * BUCKET),
+				&bucket_entries(bucket, at),
+			);
 		}
 		46..70 => read.invalidate(&key),
 		70..78 => read.remove_dropped(&key),
@@ -348,8 +406,8 @@ fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
 	let mut refused = 0u64;
 	let mut drops_refused = 0u64;
 	let mut retractions = 0u64;
-	let mut warms = 0u64;
-	let mut dirty_aborts = 0u64;
+	let mut installs = 0u64;
+	let mut installs_refused = 0u64;
 	let violation: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
 	for seed in SEEDS {
@@ -389,9 +447,9 @@ fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
 			handle.join().expect("a stress thread must not panic");
 		}
 		for shard in read.shard_metrics() {
-			evictions += shard.warms.pages_evicted;
-			warms += shard.warms.warms_completed;
-			dirty_aborts += shard.warms.warms_dirty_aborted;
+			evictions += shard.pages.pages_evicted;
+			installs += shard.coverage.installs;
+			installs_refused += shard.coverage.installs_refused;
 		}
 		published += read.claims_published();
 		refused += read.claims_refused();
@@ -405,7 +463,9 @@ fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
 	assert!(retractions > 1000, "only {retractions} retractions: nothing was ever withdrawn");
 	assert!(refused > 100, "only {refused} claims refused by a token: the fill-versus-shrink race is rare");
 	assert!(drops_refused > 10, "only {drops_refused} drops refused: the fill-count guard never ran");
-	assert!(warms > 100, "only {warms} warms completed: the warm claim path never ran");
-	assert!(dirty_aborts > 0, "no warm was dirty-aborted, so a warm never raced a write");
-	println!("COUNTERS evictions={evictions} published={published} retractions={retractions} refused={refused} drops_refused={drops_refused} warms={warms} dirty_aborts={dirty_aborts}");
+	assert!(installs > 100, "only {installs} installs published: the chunk install path never ran");
+	assert!(installs_refused > 0, "no install was refused, so an install never raced a retraction");
+	println!(
+		"COUNTERS evictions={evictions} published={published} retractions={retractions} refused={refused} drops_refused={drops_refused} installs={installs} installs_refused={installs_refused}"
+	);
 }

@@ -177,7 +177,7 @@ fn page_ends_the_range(table: EntryKind, page: PageId, range_hi: &EncodedKey) ->
 }
 
 /// The closed key range of a page, or none for a kind whose bucket cannot be turned back into one.
-fn page_bounds(page: PageId, shift: u8) -> Option<(EncodedKey, EncodedKey)> {
+pub(super) fn page_bounds(page: PageId, shift: u8) -> Option<(EncodedKey, EncodedKey)> {
 	match key_range_of(page, shift)? {
 		range => match (range.start, range.end) {
 			(Bound::Included(start), Bound::Included(end)) => Some((start, end)),
@@ -345,7 +345,7 @@ mod tests {
 
 	#[test]
 	fn a_claim_over_a_bucket_holding_nothing_serves_an_empty_exhausted_chunk() {
-		// The proof-of-absence case, and the one a bug makes silent: a warm of an empty span claims it,
+		// The proof-of-absence case, and the one a bug makes silent: an install of an empty span claims it,
 		// and the serve must answer "nothing here" rather than fall through, or the claim buys nothing.
 		let read = tier();
 		read.populate_page(page(0), Vec::new(), true);

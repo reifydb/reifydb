@@ -272,11 +272,11 @@ mod tests {
 		// makes the boot-time column check enforceable.
 		let spec = MetricsDomain::StoreMultiRead.spec();
 		let current = spec.columns(Surface::Current);
-		let in_current = current.iter().find(|c| c.name == "warms_started").expect("column");
+		let in_current = current.iter().find(|c| c.name == "installs").expect("column");
 		assert_eq!(in_current.kind, MetricKind::Delta);
 
 		let total = spec.columns(Surface::Total);
-		let in_total = total.iter().find(|c| c.name == "warms_started").expect("column");
+		let in_total = total.iter().find(|c| c.name == "installs").expect("column");
 		assert_eq!(in_total.kind, MetricKind::Counter);
 		assert!(!total.iter().any(|c| c.name == "used"), "levels must not appear in a ::total surface");
 	}
@@ -549,13 +549,8 @@ impl MetricsDomain {
 					level("entries", ValueType::Uint8),
 					level("hot_pages", ValueType::Uint8),
 					level("complete_pages", ValueType::Uint8),
-					level("blocked_pages", ValueType::Uint8),
-					level("warming", ValueType::Uint8),
-					counter("warms_started", ValueType::Uint8),
-					counter("warms_completed", ValueType::Uint8),
-					counter("warms_dirty_aborted", ValueType::Uint8),
-					counter("warms_aborted", ValueType::Uint8),
-					counter("pages_warm_blocked", ValueType::Uint8),
+					counter("installs", ValueType::Uint8),
+					counter("installs_refused", ValueType::Uint8),
 					counter("pages_evicted", ValueType::Uint8),
 					counter("complete_pages_invalidated", ValueType::Uint8),
 					counter("point_hits", ValueType::Uint8),

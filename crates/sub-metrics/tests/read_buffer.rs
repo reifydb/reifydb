@@ -26,21 +26,21 @@ fn read_buffer_current_and_total_are_queryable_after_bootstrap() {
 
 #[test]
 fn read_buffer_spec_pins_the_merged_layout() {
-	// One merged table replaced shards/warms/reads: the namespace was only serving as the
+	// One merged table replaced shards/pages/reads: the namespace was only serving as the
 	// kind marker, so the split line (levels vs counters) must now live in the kind, not in
 	// a table name, and no row may carry a domain discriminator column.
 	let spec = MetricsDomain::StoreMultiRead.spec();
 
 	let current = spec.columns(Surface::Current);
-	assert_eq!(current.len(), 24, "ts + shard + 10 levels + 12 counters");
+	assert_eq!(current.len(), 19, "ts + shard + 8 levels + 9 counters");
 	assert_eq!(current[0].name, "ts");
 	assert_eq!(current[1].name, "shard");
 	assert!(current.iter().all(|column| column.name != "domain"), "no domain discriminator column");
 
 	let total = spec.columns(Surface::Total);
-	assert_eq!(total.len(), 14, "ts + shard + 12 counters; levels must not reach ::total");
+	assert_eq!(total.len(), 11, "ts + shard + 9 counters; levels must not reach ::total");
 
 	let counters = spec.measures.iter().filter(|m| m.kind == MetricKind::Counter).count();
 	let levels = spec.measures.iter().filter(|m| m.kind == MetricKind::Level).count();
-	assert_eq!((levels, counters), (10, 12), "the old shards/warms/reads split was exactly levels vs counters");
+	assert_eq!((levels, counters), (8, 9), "the old shards/pages/reads split was exactly levels vs counters");
 }

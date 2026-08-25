@@ -151,6 +151,12 @@ impl MultiPersistentTier {
 		}
 	}
 
+	pub fn install_floor(&self) -> CommitVersion {
+		match self {
+			Self::Sqlite(s) => s.install_floor(),
+		}
+	}
+
 	pub fn load_range_consistent(
 		&self,
 		table: EntryKind,
@@ -218,6 +224,10 @@ impl MultiPersistentTier {
 	}
 
 	pub fn persist_sweep(&self, _batches: Vec<(CommitVersion, TierBatch)>) -> Result<Vec<EncodedKey>> {
+		match *self {}
+	}
+
+	pub fn install_floor(&self) -> CommitVersion {
 		match *self {}
 	}
 

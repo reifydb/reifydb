@@ -21,7 +21,7 @@ use reifydb_core::{
 		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, classify_key, classify_range,
 	},
 };
-use reifydb_store::row::page::PageId;
+use reifydb_store::coverage::successor;
 use reifydb_value::{
 	reifydb_assertions,
 	util::{cowvec::CowVec, hex},
@@ -33,15 +33,11 @@ use crate::{
 	MultiVersionScope, Result,
 	tier::{
 		DisplacedValues, RangeBatch, RangeCursor, TierBatch, TierStorage, VersionedGetResult,
-		commit::buffer::MultiCommitBufferTier,
-		persistent::MultiPersistentTier,
-		read::{MultiReadBufferTier, ServedChunk},
+		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ServedChunk,
 	},
 };
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
-
-pub(crate) const WARM_THRESHOLD: u64 = 4 * TIER_SCAN_CHUNK_SIZE as u64;
 
 impl MultiVersionGet for StandardMultiStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
@@ -457,24 +453,23 @@ pub struct MultiVersionRangeCursor {
 
 	pub exhausted: bool,
 
-	warm: bool,
-
-	warm_bucket: Option<PageId>,
-
-	warm_consumed: u64,
+	/// Whether a persistent chunk of this scan may publish what it read into the read tier.
+	///
+	/// A persistence scan sweeps a whole keyspace once and must not leave claims behind it.
+	install: bool,
 }
 
 impl MultiVersionRangeCursor {
 	pub fn new() -> Self {
 		Self {
-			warm: true,
+			install: true,
 			..Default::default()
 		}
 	}
 
 	pub fn cold() -> Self {
 		Self {
-			warm: false,
+			install: false,
 			..Default::default()
 		}
 	}
@@ -842,21 +837,15 @@ impl StandardMultiStore {
 			return Ok(());
 		};
 
-		let consumed = match self.serve_from_read_cache(scan, cursor, collected, descending) {
+		match self.serve_from_read_cache(scan, cursor, collected, descending) {
 			Some(served) => served?,
 			None => self.scan_persistent_chunk(persistent, scan, cursor, collected, descending)?,
-		};
-		self.warm_read_bucket_after_scan(persistent, scan, cursor, consumed)?;
+		}
 
 		Ok(())
 	}
 
-	/// Serves one chunk from the read tier, returning how many entries it carried so a served chunk drives
-	/// the warm counter exactly as a persistent chunk does.
-	///
-	/// Without that, a tier that has started serving a bucket never consults persistent for it again, so
-	/// nothing ever re-warms the bucket a commit made incomplete and the tier decays to whatever single
-	/// keys its fills happen to leave behind.
+	/// Serves one chunk from the read tier, or reports that no claim reached the resume point.
 	#[inline]
 	fn serve_from_read_cache(
 		&self,
@@ -864,7 +853,7 @@ impl StandardMultiStore {
 		cursor: &mut MultiVersionRangeCursor,
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
-	) -> Option<Result<usize>> {
+	) -> Option<Result<()>> {
 		let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) else {
 			return None;
 		};
@@ -877,10 +866,7 @@ impl StandardMultiStore {
 			TIER_SCAN_CHUNK_SIZE,
 			descending,
 		) {
-			ServedChunk::Served(batch) => {
-				let consumed = batch.entries.len();
-				Some(merge_tier_batch(batch, scan.range, collected).map(|()| consumed))
-			}
+			ServedChunk::Served(batch) => Some(merge_tier_batch(batch, scan.range, collected)),
 			ServedChunk::Gap => None,
 		}
 	}
@@ -893,7 +879,8 @@ impl StandardMultiStore {
 		cursor: &mut MultiVersionRangeCursor,
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
-	) -> Result<usize> {
+	) -> Result<()> {
+		let resumed_at = cursor.persistent.last_key.clone();
 		let batch = if descending {
 			persistent.range_rev_next(
 				scan.table,
@@ -913,98 +900,51 @@ impl StandardMultiStore {
 				TIER_SCAN_CHUNK_SIZE,
 			)?
 		};
-		let consumed = batch.entries.len();
-		merge_tier_batch(batch, scan.range, collected)?;
-		Ok(consumed)
+		if !descending && cursor.install {
+			self.install_scanned_chunk(persistent, scan, resumed_at.as_ref(), &cursor.persistent, &batch);
+		}
+		merge_tier_batch(batch, scan.range, collected)
 	}
 
+	/// Claims the span the chunk just read has proven, from the rows it already carries.
+	///
+	/// The claim answers for the newest version, so a chunk read below [`MultiPersistentTier::install_floor`]
+	/// serves its rows and claims nothing: the `version <= read` predicate may have hidden a row from it,
+	/// and a claim over a key RAM never placed reports that key absent to every later reader. A `Between`
+	/// scope drops rows at or below its lower end for the same reason and is never installed from.
 	#[inline]
-	fn warm_read_bucket_after_scan(
+	fn install_scanned_chunk(
 		&self,
 		persistent: &MultiPersistentTier,
 		scan: &TierScanQuery,
-		cursor: &mut MultiVersionRangeCursor,
-		consumed: usize,
-	) -> Result<()> {
-		if !cursor.warm {
-			return Ok(());
-		}
-		if let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) {
-			maybe_warm_bucket(read, persistent, cursor, scan.table, consumed)?;
-		}
-		Ok(())
-	}
-}
-
-fn maybe_warm_bucket(
-	read: &MultiReadBufferTier,
-	persistent: &MultiPersistentTier,
-	cursor: &mut MultiVersionRangeCursor,
-	table: EntryKind,
-	consumed: usize,
-) -> Result<()> {
-	let page = {
-		let Some(last) = cursor.persistent.last_key.as_ref() else {
-			return Ok(());
+		resumed_at: Option<&EncodedKey>,
+		cursor: &RangeCursor,
+		batch: &RangeBatch,
+	) {
+		let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) else {
+			return;
 		};
-		read.page_of_key(last)
-	};
-	if !matches!(page.kind, EntryKind::Source(_)) {
-		return Ok(());
-	}
-
-	if cursor.warm_bucket == Some(page) {
-		cursor.warm_consumed = cursor.warm_consumed.saturating_add(consumed as u64);
-	} else {
-		cursor.warm_bucket = Some(page);
-		cursor.warm_consumed = consumed as u64;
-	}
-
-	if cursor.warm_consumed <= WARM_THRESHOLD {
-		return Ok(());
-	}
-
-	let settle = |cursor: &mut MultiVersionRangeCursor| {
-		cursor.warm_bucket = None;
-		cursor.warm_consumed = 0;
-	};
-
-	if read.page_is_complete(page) {
-		settle(cursor);
-		return Ok(());
-	}
-
-	let Some(range) = read.page_key_range(page) else {
-		return Ok(());
-	};
-	let (Bound::Included(lo), Bound::Included(hi)) = (range.start, range.end) else {
-		return Ok(());
-	};
-
-	if !read.begin_warm(page) {
-		settle(cursor);
-		return Ok(());
-	}
-
-	let loaded = persistent.load_range_consistent(
-		table,
-		Bound::Included(lo.as_slice()),
-		Bound::Included(hi.as_slice()),
-		CommitVersion(u64::MAX),
-		None,
-	);
-	let entries = match loaded {
-		Ok(entries) => entries,
-		Err(e) => {
-			read.abort_warm(page);
-			settle(cursor);
-			return Err(e);
+		let MultiVersionScope::AsOf {
+			read: at,
+		} = scan.scope
+		else {
+			return;
+		};
+		if at < persistent.install_floor() {
+			return;
 		}
-	};
-
-	read.finish_warm(page, entries);
-	settle(cursor);
-	Ok(())
+		let range_start = EncodedKey::new(scan.start);
+		let lo = match resumed_at {
+			Some(last) => successor(last).max(range_start),
+			None => range_start,
+		};
+		let through = match (cursor.exhausted, cursor.last_key.as_ref()) {
+			(true, _) => EncodedKey::new(scan.end),
+			(false, Some(last)) => last.clone(),
+			(false, None) => return,
+		};
+		read.install_scanned_chunk(scan.table, &lo, &through, &batch.entries);
+	}
 }
 
 fn mark_unconfigured_exhausted(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor) {
@@ -1345,7 +1285,7 @@ mod cache_tests {
 
 	use crate::{
 		MultiVersionScope,
-		store::{StandardMultiStore, multi::WARM_THRESHOLD},
+		store::StandardMultiStore,
 		tier::{RawEntry, TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
 	};
 
@@ -1402,8 +1342,11 @@ mod cache_tests {
 	}
 
 	#[test]
-	fn warm_threshold_warms_only_buckets_above_threshold() {
-		const HEAVY: u64 = WARM_THRESHOLD + 64;
+	fn a_full_scan_claims_every_bucket_it_walks_to_the_edge() {
+		// A scan installs the rows it already holds, so a bucket it walked to the end of must come out
+		// spanned by one claim. The bucket the scan only entered must not: the claim there stops at the
+		// last row read, and reporting the rest of that bucket proven absent would drop its remaining rows.
+		const HEAVY: u64 = 192;
 		const LIGHT: u64 = 20;
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 
@@ -1419,7 +1362,7 @@ mod cache_tests {
 		let heavy_bucket = read.page_of_key(&RowKey::encoded(STORAGE, 1));
 		let light_bucket = read.page_of_key(&RowKey::encoded(STORAGE, 1u64 << 16));
 		assert_ne!(heavy_bucket, light_bucket, "the two row groups must land in different buckets");
-		assert!(!read.page_is_complete(heavy_bucket), "nothing is warm before the scan");
+		assert!(!read.page_is_complete(heavy_bucket), "nothing is claimed before the scan");
 
 		let scanned = store
 			.range(
@@ -1431,13 +1374,10 @@ mod cache_tests {
 			)
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();
-		assert_eq!(scanned.len() as u64, HEAVY + LIGHT, "the scan returns every row regardless of warming");
+		assert_eq!(scanned.len() as u64, HEAVY + LIGHT, "the scan returns every row");
 
-		assert!(read.page_is_complete(heavy_bucket), "a bucket scanned past the threshold must be warmed");
-		assert!(
-			!read.page_is_complete(light_bucket),
-			"a bucket scanned below the threshold must not be warmed"
-		);
+		assert!(read.page_is_complete(heavy_bucket), "a bucket the scan walked to its edge must be claimed");
+		assert!(read.page_is_complete(light_bucket), "a bucket the scan walked to its edge must be claimed");
 	}
 
 	#[test]
@@ -1503,81 +1443,7 @@ mod cache_tests {
 
 		assert!(
 			!read.page_is_complete(page),
-			"writing a source row into a range-complete page must clear the flag so the range cache re-warms"
-		);
-	}
-
-	#[test]
-	fn source_warm_does_not_publish_a_page_another_warm_has_claimed() {
-		const HEAVY: u64 = WARM_THRESHOLD + 64;
-		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-
-		for n in 1..=HEAVY {
-			commit_row(&store, n, 1);
-		}
-		flush(&store, CommitVersion(1));
-
-		let read = store.read.clone().expect("read tier configured");
-		let page = read.page_of_key(&RowKey::encoded(STORAGE, 1));
-		assert!(!read.page_is_complete(page), "nothing is warm before the scan");
-
-		assert!(read.begin_warm(page), "the page is unclaimed, so this claim must succeed");
-
-		let scanned = store
-			.range(
-				RowKey::full_scan(STORAGE),
-				MultiVersionScope::AsOf {
-					read: CommitVersion(10),
-				},
-				32,
-			)
-			.collect::<Result<Vec<_>, _>>()
-			.unwrap();
-		assert_eq!(scanned.len() as u64, HEAVY, "the scan still returns every row");
-
-		assert!(
-			!read.page_is_complete(page),
-			"a source range scan published a page that another warm had claimed. The operator warm path \
-			 claims with begin_warm and publishes with finish_warm, which refuses a claim that a \
-			 concurrent drop has dirtied; the source path claims nothing and publishes with \
-			 populate_page, which sets range_complete unconditionally. So a drop landing during a source \
-			 warm cannot invalidate it, and the stale pre-drop snapshot is republished as authoritative - \
-			 resurrecting the dropped row in both point reads and range scans, permanently, because the \
-			 persistent tier no longer holds anything to contradict the cache"
-		);
-	}
-
-	#[test]
-	fn source_warm_releases_its_claim_when_it_publishes() {
-		const HEAVY: u64 = WARM_THRESHOLD + 64;
-		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-
-		for n in 1..=HEAVY {
-			commit_row(&store, n, 1);
-		}
-		flush(&store, CommitVersion(1));
-
-		let read = store.read.clone().expect("read tier configured");
-		let page = read.page_of_key(&RowKey::encoded(STORAGE, 1));
-
-		let _ = store
-			.range(
-				RowKey::full_scan(STORAGE),
-				MultiVersionScope::AsOf {
-					read: CommitVersion(10),
-				},
-				32,
-			)
-			.collect::<Result<Vec<_>, _>>()
-			.unwrap();
-		assert!(read.page_is_complete(page), "a bucket scanned past the threshold must be warmed");
-
-		assert!(
-			read.begin_warm(page),
-			"the source warm did not hand its claim back. Publishing through finish_warm consumes the \
-			 claim; publishing through populate_page leaves it stranded in shard.warming, and then every \
-			 later begin_warm on this page is refused - so once the page is invalidated it can never warm \
-			 again for the life of the process"
+			"writing a source row into a range-complete page must clear the flag so the range cache reclaims it"
 		);
 	}
 }

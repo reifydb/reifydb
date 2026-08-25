@@ -28,8 +28,8 @@ use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
-/// WARM_THRESHOLD is 4 * TIER_SCAN_CHUNK_SIZE = 128 rows consumed from one bucket before a warm fires; the
-/// default shift of 16 keeps rows 0..65535 in bucket 0, so this many rows warms exactly one page.
+/// The default shift of 16 keeps rows 0..65535 in bucket 0, so every row seeded here lands in one page and
+/// a full scan of it installs that page's coverage from the chunks it already read.
 const BUCKET_ROWS: u64 = 200;
 
 struct StaticWatermark(CommitVersion);
@@ -89,6 +89,24 @@ fn complete_pages(store: &StandardMultiStore) -> usize {
 	store.read_buffer_shard_metrics().iter().map(|s| s.state.complete_pages).sum()
 }
 
+fn scan_between(store: &StandardMultiStore, after: u64, read: u64) -> BTreeMap<Vec<u8>, (Vec<u8>, CommitVersion)> {
+	store.range(
+		RowKey::full_scan(STORAGE),
+		MultiVersionScope::Between {
+			after: CommitVersion(after),
+			read: CommitVersion(read),
+		},
+		64,
+	)
+	.map(|r| r.unwrap())
+	.map(|r| (r.key.to_vec(), (r.bytes.to_vec(), r.version)))
+	.collect()
+}
+
+fn installs(store: &StandardMultiStore) -> u64 {
+	store.read_buffer_shard_metrics().iter().map(|s| s.coverage.installs).sum()
+}
+
 fn range_served(store: &StandardMultiStore) -> u64 {
 	store.read_buffer_shard_metrics().iter().map(|s| s.reads.range_served).sum()
 }
@@ -110,10 +128,12 @@ const MID_ROW: u64 = BUCKET_ROWS - 1;
 
 const MID_EXISTING_ROW: u64 = BUCKET_ROWS;
 
-/// Warms the bucket by scanning past the warm threshold and asserts the claim actually got made, so a later
-/// assertion about a claimed span is not vacuously true because nothing was ever claimed.
-fn warm_and_require_complete(store: &StandardMultiStore, read: u64) {
+/// Scans the bucket and asserts the chunks it read actually published their span, so a later assertion
+/// about a claimed span is not vacuously true because nothing was ever claimed.
+fn scan_and_require_claimed(store: &StandardMultiStore, read: u64) {
+	let before = installs(store);
 	let _ = scan(store, read);
+	assert!(installs(store) > before, "the scan must have installed at least one claim from its own chunks");
 	assert!(complete_pages(store) > 0, "the scan must have claimed at least one page complete");
 }
 
@@ -125,7 +145,7 @@ fn a_commit_into_a_claimed_span_is_visible_at_the_write_version() {
 	let (store, _g) = store();
 	seed(&store, 1);
 	flush(&store, 1);
-	warm_and_require_complete(&store, 10);
+	scan_and_require_claimed(&store, 10);
 
 	let before = range_served(&store);
 	commit_set(&store, MID_ROW, 20, "written-after-the-claim");
@@ -141,23 +161,23 @@ fn a_commit_into_a_claimed_span_is_visible_at_the_write_version() {
 }
 
 #[test]
-fn a_flush_of_a_key_committed_after_a_warm_leaves_it_in_ram() {
+fn a_flush_of_a_key_committed_after_a_claim_leaves_it_in_ram() {
 	// The dangerous interleaving. Key MID_ROW is committed at version 20 while page P is cold, then a scan
-	// re-warms P from the persistent tier, which does not hold MID_ROW yet, so P is claimed complete WITHOUT
+	// re-claims P from the persistent tier, which does not hold MID_ROW yet, so P is claimed complete WITHOUT
 	// it and only the commit buffer carries it. The flush then moves MID_ROW out of the commit buffer. If the
 	// sweep does not place MID_ROW into RAM before dropping it from the commit buffer, the claimed span is
 	// served from RAM and MID_ROW vanishes even though the persistent tier holds it.
 	let (store, _g) = store();
 	seed(&store, 1);
 	flush(&store, 1);
-	warm_and_require_complete(&store, 10);
+	scan_and_require_claimed(&store, 10);
 
 	commit_set(&store, MID_ROW, 20, "committed-then-flushed");
 	assert_eq!(complete_pages(&store), 0, "the commit must have dropped the claim on its own page");
 
-	let rewarmed = scan(&store, 20);
+	let rescanned = scan(&store, 20);
 	assert!(
-		rewarmed.contains_key(&key(MID_ROW)),
+		rescanned.contains_key(&key(MID_ROW)),
 		"the commit buffer must carry the key while it is uncommitted to disk"
 	);
 	assert!(complete_pages(&store) > 0, "the re-scan must reclaim the page, or the interleaving is not exercised");
@@ -182,7 +202,7 @@ fn a_remove_of_a_key_inside_a_claimed_span_is_visible_at_the_remove_version() {
 	let (store, _g) = store();
 	seed(&store, 1);
 	flush(&store, 1);
-	warm_and_require_complete(&store, 10);
+	scan_and_require_claimed(&store, 10);
 
 	commit_remove(&store, MID_EXISTING_ROW, 20);
 	let buffered = scan(&store, 20);
@@ -191,10 +211,10 @@ fn a_remove_of_a_key_inside_a_claimed_span_is_visible_at_the_remove_version() {
 		"the tombstone must hide the row while it sits in the commit buffer"
 	);
 
-	let rewarmed = scan(&store, 20);
+	let rescanned = scan(&store, 20);
 	assert!(complete_pages(&store) > 0, "the re-scan must reclaim the page, or the interleaving is not exercised");
 	assert!(
-		!rewarmed.contains_key(&key(MID_EXISTING_ROW)),
+		!rescanned.contains_key(&key(MID_EXISTING_ROW)),
 		"reclaiming the page must not resurrect the removed row"
 	);
 
@@ -285,12 +305,11 @@ fn randomised_interleavings_never_miss_a_key_at_the_newest_version() {
 }
 
 #[test]
-fn concurrent_writers_flushes_and_warms_never_drop_a_key() {
-	// The warm protocol is asynchronous with respect to writers: a warm snapshots the persistent tier
-	// outside every lock, then publishes the span as complete. A key committed and swept while that snapshot
-	// is in flight is exactly the interleaving a version-stamped coverage interval would have to defend
-	// against. Row number doubles as commit version, so a scan at the newest version must contain every row
-	// the writer has already published, and any key the warm-then-publish race drops shows up as a gap.
+fn concurrent_writers_flushes_and_installs_never_drop_a_key() {
+	// A chunk install publishes a span from rows read outside every lock, then claims it. A key committed
+	// and swept while that chunk is in flight is exactly the interleaving a version-stamped coverage
+	// interval would have to defend against. Row number doubles as commit version, so a scan at the newest version must contain every row
+	// the writer has already published, and any key the read-then-publish race drops shows up as a gap.
 	let (store, _g) = store();
 	let rows: u64 = 1500;
 	let published = Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -337,5 +356,64 @@ fn concurrent_writers_flushes_and_warms_never_drop_a_key() {
 
 	let final_scan = scan(&store, u64::MAX);
 	assert_eq!(final_scan.len(), rows as usize, "every published row must survive the concurrent workload");
+	assert!(installs(&store) > 0, "the workload must have installed at least one claim, or it proves nothing");
 	assert!(complete_pages(&store) > 0, "the workload must have claimed at least one page, or it proves nothing");
+}
+
+#[test]
+fn a_scan_below_the_persisted_high_water_installs_nothing() {
+	// The scope gate stated as a property: a persistent chunk read at version R applies `version <= R`, so
+	// every row written above R is invisible to it. A claim taken from such a chunk answers "absent" for
+	// keys RAM never placed, and every later reader inherits that. Even rows are persisted at version 5 and
+	// odd rows at version 50, so the scan at version 10 sees only half of them; the scan at 60 that follows
+	// must still find all of them.
+	let (store, _g) = store();
+	for n in 1..=BUCKET_ROWS {
+		commit_set(&store, n * 2, 5, &format!("even{n}"));
+	}
+	flush(&store, 5);
+	for n in 1..=BUCKET_ROWS {
+		commit_set(&store, n * 2 - 1, 50, &format!("odd{n}"));
+	}
+	flush(&store, 50);
+
+	let stale = scan(&store, 10);
+	assert_eq!(stale.len(), BUCKET_ROWS as usize, "only the rows written at version 5 are visible at 10");
+	assert_eq!(installs(&store), 0, "a scan below the persisted high water must not install a claim");
+
+	let fresh = scan(&store, 60);
+	assert_eq!(
+		fresh.len(),
+		2 * BUCKET_ROWS as usize,
+		"a claim taken from a chunk that could not see the newer rows reported those rows absent"
+	);
+	assert!(installs(&store) > 0, "the scan at version 60 must install, or the zero above proves nothing");
+}
+
+#[test]
+fn a_windowed_scan_installs_nothing() {
+	// A `Between` scope drops every key whose newest qualifying version is at or below the window's lower
+	// end, so a chunk read under it speaks only for the versions inside the window. A claim taken from it
+	// answers "absent" for the older rows it filtered out, and the `AsOf` scan that follows inherits that.
+	let (store, _g) = store();
+	for n in 1..=BUCKET_ROWS {
+		commit_set(&store, n * 2, 5, &format!("even{n}"));
+	}
+	flush(&store, 5);
+	for n in 1..=BUCKET_ROWS {
+		commit_set(&store, n * 2 - 1, 50, &format!("odd{n}"));
+	}
+	flush(&store, 50);
+
+	let windowed = scan_between(&store, 10, 60);
+	assert_eq!(windowed.len(), BUCKET_ROWS as usize, "only the rows written above version 10 fall in the window");
+	assert_eq!(installs(&store), 0, "a scan under a windowed scope must not install a claim");
+
+	let full = scan(&store, 60);
+	assert_eq!(
+		full.len(),
+		2 * BUCKET_ROWS as usize,
+		"a claim taken from a windowed chunk reported the rows it filtered out absent"
+	);
+	assert!(installs(&store) > 0, "the unwindowed scan must install, or the zero above proves nothing");
 }

@@ -6,7 +6,7 @@ use std::{
 	iter::repeat_n,
 	ops::Bound,
 	sync::{
-		Arc,
+		Arc, OnceLock,
 		atomic::{AtomicU64, AtomicUsize, Ordering},
 	},
 };
@@ -62,9 +62,9 @@ use crate::{
 					build_chunked_upsert_sql, build_create_current_sql, build_current_exists_sql,
 					build_current_keys_sql, build_delete_below_version_sql, build_delete_keys_sql,
 					build_expired_keys_sql, build_get_current_sql, build_get_many_current_sql,
-					build_range_consistent_sql, build_range_current_sql, build_reap_tombstones_sql,
-					build_upsert_current_sql, prefix_upper_bound, version_from_bytes,
-					version_to_bytes,
+					build_max_version_sql, build_range_consistent_sql, build_range_current_sql,
+					build_reap_tombstones_sql, build_upsert_current_sql, prefix_upper_bound,
+					version_from_bytes, version_to_bytes,
 				},
 			},
 		},
@@ -102,6 +102,10 @@ struct SqlitePersistentStorageInner {
 	reaped_high_water: Map<EntryKind, Arc<AtomicU64>>,
 	resurrections: AtomicU64,
 	filter: MultiKeyFilter,
+	/// The highest version this process has written, and the highest one the database already held
+	/// when it was opened, probed once and only when a caller asks.
+	written_high_water: AtomicU64,
+	opened_high_water: OnceLock<u64>,
 }
 
 struct TableSql {
@@ -197,8 +201,32 @@ impl SqlitePersistentStorage {
 				reaped_high_water: Map::new(),
 				resurrections: AtomicU64::new(0),
 				filter,
+				written_high_water: AtomicU64::new(0),
+				opened_high_water: OnceLock::new(),
 			}),
 		}
+	}
+
+	/// The lowest read version at which a forward range chunk is guaranteed to have seen every row this
+	/// tier holds over the span it scanned.
+	///
+	/// A chunk read below it may have had rows hidden by the `version <= read` predicate, and a coverage
+	/// claim taken from such a chunk would answer for keys RAM never placed.
+	pub fn install_floor(&self) -> CommitVersion {
+		let opened = *self.inner.opened_high_water.get_or_init(|| self.probe_high_water());
+		CommitVersion(opened.max(self.inner.written_high_water.load(Ordering::SeqCst)))
+	}
+
+	fn probe_high_water(&self) -> u64 {
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return u64::MAX;
+		};
+		highest_current_version(conn)
+	}
+
+	fn record_written_version(&self, version: CommitVersion) {
+		self.inner.written_high_water.fetch_max(version.0, Ordering::SeqCst);
 	}
 
 	pub fn filter(&self) -> &MultiKeyFilter {
@@ -580,6 +608,7 @@ impl SqlitePersistentStorage {
 		entries: &[(EncodedKey, Option<CowVec<u8>>)],
 		accepted: &mut Vec<EncodedKey>,
 	) -> Result<()> {
+		self.record_written_version(version);
 		let new_version_bytes = version_to_bytes(version);
 		let mut chunk_stmt = tx
 			.prepare_cached(&table_sql.chunked_upsert_sql)
@@ -901,6 +930,32 @@ fn any_current_row(conn: &Connection) -> bool {
 		}
 	}
 	false
+}
+
+fn highest_current_version(conn: &Connection) -> u64 {
+	let mut stmt = conn
+		.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+		.expect("persistent table listing could not be prepared");
+	let names: Vec<String> = stmt
+		.query_map([], |row| row.get::<_, String>(0))
+		.expect("persistent table listing failed")
+		.collect::<SqliteResult<Vec<String>>>()
+		.expect("persistent table name could not be read");
+	drop(stmt);
+
+	let mut highest = 0u64;
+	for name in names {
+		if current_table_name_to_entry(&name).is_none() {
+			continue;
+		}
+		let blob: Option<Vec<u8>> = conn
+			.query_row(&build_max_version_sql(&name), [], |row| row.get(0))
+			.expect("persistent high water probe failed");
+		if let Some(blob) = blob {
+			highest = highest.max(version_from_bytes(&blob).0);
+		}
+	}
+	highest
 }
 
 fn expiry_stamp(table: EntryKind, value: Option<&CowVec<u8>>) -> Option<DateTime> {

@@ -21,7 +21,7 @@ use crate::{
 	tier::{
 		RangeCursor, RawEntry, VersionedGetResult,
 		read::{
-			MultiReadBufferTier, ReadBufferConfig, ReadBufferReadMetrics, ReadBufferWarmMetrics,
+			MultiReadBufferTier, ReadBufferConfig, ReadBufferPageMetrics, ReadBufferReadMetrics,
 			ServedChunk,
 		},
 	},
@@ -183,6 +183,10 @@ fn clone_shares_backing_storage() {
 
 fn cache_shift(resident_pages: usize, shift: u8) -> MultiReadBufferTier {
 	buffer(resident_pages, ByteSize::from_gib(1), shift, 1)
+}
+
+fn source(storage: u64) -> EntryKind {
+	EntryKind::Source(StorageId::table(storage))
 }
 
 fn raw_entry(object: u64, n: u64, version: u64, value: &str) -> RawEntry {
@@ -571,7 +575,7 @@ fn older_insert_is_rejected_and_leaves_previous_intact() {
 }
 
 #[test]
-fn warm_replace_does_not_fabricate_a_previous_slot() {
+fn a_replace_does_not_fabricate_a_previous_slot() {
 	let read = cache(8);
 	let page = read.page_of_key(&row(1, 5));
 	read.insert(row(1, 5), CommitVersion(5), Some(val("resident-v5")));
@@ -579,7 +583,7 @@ fn warm_replace_does_not_fabricate_a_previous_slot() {
 
 	assert!(
 		matches!(read.get(&row(1, 5), CommitVersion(7)), VersionedGetResult::NotFound),
-		"a warm replace must not invent adjacency between v5 and v10"
+		"a replace must not invent adjacency between v5 and v10"
 	);
 }
 
@@ -635,12 +639,26 @@ fn remove_dropped_through_clears_a_dropped_previous_slot() {
 }
 
 #[test]
-fn remove_dropped_through_dirties_an_in_flight_warm() {
-	let read = cache(8);
-	let page = read.page_of_key(&row(1, 5));
-	assert!(read.begin_warm(page));
-	read.remove_dropped_through(&row(1, 5), CommitVersion(8));
-	assert!(!read.finish_warm(page, vec![raw_entry(1, 5, 5, "stale")]), "a warm racing a delayed drop must abort");
+fn a_drop_landing_inside_an_install_refuses_its_claim() {
+	// The install places its rows and publishes its claim under two different locks. A drop landing
+	// between them takes the row out of RAM, so the claim must be refused; standing it would report
+	// every key in the span proven absent while the persistent tier still answers for them.
+	let read = MultiReadBufferTier::with_interlock(
+		ReadBufferConfig {
+			resident_pages: 8,
+			resident_bytes: Some(ByteSize::from_gib(1)),
+			shards: 1,
+			bucket_shift: DEFAULT_BUCKET_SHIFT,
+		},
+		Box::new(|tier, _page| tier.remove_dropped_through(&row(1, 5), CommitVersion(8))),
+	)
+	.unwrap();
+
+	let published = read.install_scanned_chunk(source(1), &row(1, 10), &row(1, 0), &[raw_entry(1, 5, 5, "stale")]);
+
+	assert!(!published, "an install whose token was falsified mid-fill must publish nothing");
+	assert!(!read.covers(source(1), &row(1, 5)), "the refused claim landed anyway");
+	assert!(!read.covers(source(1), &row(1, 7)), "the refused claim landed anyway");
 }
 
 #[test]
@@ -839,18 +857,25 @@ fn sum_reads(read: &MultiReadBufferTier) -> ReadBufferReadMetrics {
 	total
 }
 
-fn sum_warms(read: &MultiReadBufferTier) -> ReadBufferWarmMetrics {
-	let mut total = ReadBufferWarmMetrics::default();
+fn sum_pages(read: &MultiReadBufferTier) -> ReadBufferPageMetrics {
+	let mut total = ReadBufferPageMetrics::default();
 	for metrics in read.shard_metrics() {
-		total.warms_started += metrics.warms.warms_started;
-		total.warms_completed += metrics.warms.warms_completed;
-		total.warms_dirty_aborted += metrics.warms.warms_dirty_aborted;
-		total.warms_aborted += metrics.warms.warms_aborted;
-		total.pages_warm_blocked += metrics.warms.pages_warm_blocked;
-		total.pages_evicted += metrics.warms.pages_evicted;
-		total.complete_pages_invalidated += metrics.warms.complete_pages_invalidated;
+		total.pages_evicted += metrics.pages.pages_evicted;
+		total.complete_pages_invalidated += metrics.pages.complete_pages_invalidated;
 	}
 	total
+}
+
+fn sum_installs(read: &MultiReadBufferTier) -> (u64, u64, u64) {
+	let mut published = 0;
+	let mut rows = 0;
+	let mut refused = 0;
+	for metrics in read.shard_metrics() {
+		published += metrics.coverage.installs;
+		rows += metrics.coverage.install_rows;
+		refused += metrics.coverage.installs_refused;
+	}
+	(published, rows, refused)
 }
 
 #[test]
@@ -924,37 +949,47 @@ fn range_serve_outcomes_are_tallied_as_served_and_gaps() {
 }
 
 #[test]
-fn warm_lifecycle_counters_track_each_outcome_separately() {
-	let read = cache(8);
-	let entry = raw_entry(1, 5, 1, "v");
-	let page = read.page_of_key(&entry.key);
-
-	assert!(read.begin_warm(page));
-	assert!(read.finish_warm(page, vec![raw_entry(1, 5, 1, "v")]));
-	assert!(read.page_is_complete(page));
-
-	assert!(read.begin_warm(page));
-	read.invalidate(&entry.key);
-	assert!(!read.finish_warm(page, vec![raw_entry(1, 5, 1, "v")]), "a write during the warm discards it");
-
-	assert!(read.begin_warm(page));
-	read.abort_warm(page);
-
-	read.set_warm_blocked(page);
-
-	assert_eq!(
-		sum_warms(&read),
-		ReadBufferWarmMetrics {
-			warms_started: 3,
-			warms_completed: 1,
-			warms_dirty_aborted: 1,
-			warms_aborted: 1,
-			pages_warm_blocked: 1,
-			pages_evicted: 0,
-			complete_pages_invalidated: 1,
+fn install_outcomes_are_tallied_as_published_rows_and_refusals() {
+	// A published install and a refused one are the two things the counter must keep apart: a refusal
+	// looks exactly like a claim that was never attempted, so an install path silently refusing every
+	// time is invisible without it.
+	let read = MultiReadBufferTier::with_interlock(
+		ReadBufferConfig {
+			resident_pages: 8,
+			resident_bytes: Some(ByteSize::from_gib(1)),
+			shards: 1,
+			bucket_shift: DEFAULT_BUCKET_SHIFT,
 		},
-		"one clean warm, one dirty discard, one abort, one block mark, and the invalidate \
-		 that broke the completed page"
+		Box::new(|tier, _page| {
+			if tier.covers(source(1), &row(1, 5)) {
+				tier.invalidate(&row(1, 5));
+			}
+		}),
+	)
+	.unwrap();
+
+	// Row numbers invert in the key, so bucket 0 runs from row 65535 up to row 0 in key order; a chunk
+	// spanning exactly those two ends claims the whole page, which is what makes the invalidate below a
+	// break of a complete page rather than of a partial claim.
+	assert!(read.install_scanned_chunk(
+		source(1),
+		&row(1, 65535),
+		&row(1, 0),
+		&[raw_entry(1, 5, 1, "v"), raw_entry(1, 7, 1, "w")]
+	));
+	assert_eq!(sum_installs(&read), (1, 2, 0), "the first install published both rows it was handed");
+
+	assert!(!read.install_scanned_chunk(source(1), &row(1, 65535), &row(1, 0), &[raw_entry(1, 5, 2, "v2")]));
+	assert_eq!(
+		sum_installs(&read),
+		(1, 2, 1),
+		"the invalidate inside the second fill must refuse its claim, and a refused claim must not count \
+		 its rows as published"
+	);
+	assert_eq!(
+		sum_pages(&read).complete_pages_invalidated,
+		1,
+		"the invalidate broke a page one claim spanned entirely"
 	);
 }
 
@@ -965,7 +1000,7 @@ fn budget_evictions_are_counted_per_evicted_page() {
 	read.insert(row(2, 0), CommitVersion(1), Some(val("b")));
 
 	assert_eq!(read.resident_pages(), 1, "the page bound must hold");
-	assert_eq!(sum_warms(&read).pages_evicted, 1, "exactly one page was evicted for capacity");
+	assert_eq!(sum_pages(&read).pages_evicted, 1, "exactly one page was evicted for capacity");
 }
 
 #[test]
@@ -983,8 +1018,6 @@ fn shard_metrics_reports_state_gauges_per_shard() {
 	assert_eq!(only_shard.state.entries, 2);
 	assert_eq!(only_shard.state.complete_pages, 1);
 	assert_eq!(only_shard.state.hot_pages, 1, "the point hit marked the page hot");
-	assert_eq!(only_shard.state.blocked_pages, 0);
-	assert_eq!(only_shard.state.warming, 0);
 	assert!(only_shard.state.used.as_bytes() > 0);
 	assert_eq!(only_shard.state.limit, ByteSize::from_gib(1), "single shard owns the whole buffer budget");
 }

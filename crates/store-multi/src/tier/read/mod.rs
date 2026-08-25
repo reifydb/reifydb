@@ -72,7 +72,6 @@ struct ResidentPage {
 	payload: usize,
 	hot: bool,
 	tick: u64,
-	warm_blocked: bool,
 	/// The union hull of every claim this page has published, so a page leaves the tier in one shrink
 	/// even for a kind whose bucket has no reconstructable key range.
 	///
@@ -98,21 +97,10 @@ impl ResidentPage {
 			payload: 0,
 			hot: false,
 			tick,
-			warm_blocked: false,
 			claimed: None,
 			fills: 0,
 		}
 	}
-}
-
-/// A warm in flight, and the retraction count read when it was claimed.
-///
-/// The token spans the persistent load, not just the publish: an eviction of the page between the
-/// snapshot and the publish would otherwise let the snapshot claim a span whose newer keys the
-/// eviction has already dropped from RAM.
-struct WarmClaim {
-	dirty: bool,
-	retractions: u64,
 }
 
 /// The claims RAM holds, one disjoint coalesced set per entry kind, behind a single lock.
@@ -172,12 +160,7 @@ pub enum ServedChunk {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct ReadBufferWarmMetrics {
-	pub warms_started: u64,
-	pub warms_completed: u64,
-	pub warms_dirty_aborted: u64,
-	pub warms_aborted: u64,
-	pub pages_warm_blocked: u64,
+pub struct ReadBufferPageMetrics {
 	pub pages_evicted: u64,
 	pub complete_pages_invalidated: u64,
 }
@@ -196,6 +179,9 @@ pub struct ReadBufferCoverageMetrics {
 	pub rows: u64,
 	pub gaps: u64,
 	pub refused: u64,
+	pub installs: u64,
+	pub install_rows: u64,
+	pub installs_refused: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -217,26 +203,23 @@ pub struct ReadBufferStateMetrics {
 	pub entries: usize,
 	pub hot_pages: usize,
 	pub complete_pages: usize,
-	pub blocked_pages: usize,
-	pub warming: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct ReadBufferShardMetrics {
 	pub shard: usize,
 	pub state: ReadBufferStateMetrics,
-	pub warms: ReadBufferWarmMetrics,
+	pub pages: ReadBufferPageMetrics,
 	pub reads: ReadBufferReadMetrics,
 	pub coverage: ReadBufferCoverageMetrics,
 }
 
 struct Shard {
 	pages: HashMap<PageId, ResidentPage>,
-	warming: HashMap<PageId, WarmClaim>,
 	next_tick: u64,
 	page_cap: usize,
 	budget: MemoryBudget,
-	warm_metrics: ReadBufferWarmMetrics,
+	page_metrics: ReadBufferPageMetrics,
 	read_metrics: ReadBufferReadMetrics,
 	coverage_metrics: ReadBufferCoverageMetrics,
 }

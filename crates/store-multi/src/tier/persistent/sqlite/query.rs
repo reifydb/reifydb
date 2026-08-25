@@ -69,6 +69,10 @@ pub(super) fn build_current_exists_sql(table_name: &str) -> String {
 	format!("SELECT EXISTS(SELECT 1 FROM \"{}\")", table_name)
 }
 
+pub(super) fn build_max_version_sql(table_name: &str) -> String {
+	format!("SELECT MAX(version) FROM \"{}\"", table_name)
+}
+
 pub(super) fn build_get_many_current_sql(table_name: &str, key_count: usize) -> String {
 	let placeholders = build_placeholders(key_count);
 	format!("SELECT key, version, value FROM \"{}\" WHERE key IN ({})", table_name, placeholders)

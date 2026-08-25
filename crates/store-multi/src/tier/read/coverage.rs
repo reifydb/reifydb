@@ -4,7 +4,7 @@
 //! The read tier's partial-range coverage: the claim that RAM is authoritative over a span of the
 //! encoded key space, held apart from the pages that back it and keyed by [`EntryKind`].
 //!
-//! It is the sole record of what RAM may answer for. Its granularity is per key: a commit into a warm
+//! It is the sole record of what RAM may answer for. Its granularity is per key: a commit into a claimed
 //! bucket punches out exactly the one key RAM stopped holding, leaving the rest of the span claimed.
 //!
 //! Two fills publish a claim. A single-key fill claims the one key it placed, which is authoritative
@@ -506,7 +506,7 @@ mod tests {
 		//
 		// The model mirrors the production write paths: a commit invalidates while the persistent tier
 		// still holds the old row, the sweep writes persistent and then inserts, a rejected sweep
-		// invalidates and leaves persistent alone, and a warm publishes exactly what persistent holds.
+		// invalidates and leaves persistent alone, and an install publishes exactly what persistent holds.
 		const ROWS: u64 = BUCKET * 4;
 		let mut total_checked = 0usize;
 		let mut evictions = 0usize;

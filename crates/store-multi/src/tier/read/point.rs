@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_store::{
 	coverage::{Edge, successor},
-	row::page::{PageId, page_of},
+	row::page::page_of,
 };
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use tracing::instrument;
@@ -16,8 +16,8 @@ use tracing::instrument;
 use crate::tier::{
 	VersionedGetResult,
 	read::{
-		EntryFootprint, MultiReadBufferTier, PageEntry, ResidentPage, Shard, WarmClaim, account,
-		coverage::widen, entry_footprint,
+		EntryFootprint, MultiReadBufferTier, PageEntry, ResidentPage, Shard, account, coverage::widen,
+		entry_footprint,
 	},
 };
 
@@ -185,13 +185,10 @@ impl MultiReadBufferTier {
 		let was_complete = self.page_is_complete(page_id);
 		self.withdraw_key(page_id.kind, key);
 		let mut shard = self.shard(index).lock();
-		if let Some(claim) = shard.warming.get_mut(&page_id) {
-			claim.dirty = true;
-		}
 		let Shard {
 			pages,
 			budget,
-			warm_metrics,
+			page_metrics,
 			..
 		} = &mut *shard;
 		let now_empty = match pages.get_mut(&page_id) {
@@ -207,7 +204,7 @@ impl MultiReadBufferTier {
 					);
 				}
 				if was_complete {
-					warm_metrics.complete_pages_invalidated += 1;
+					page_metrics.complete_pages_invalidated += 1;
 				}
 				page.entries.is_empty()
 			}
@@ -227,9 +224,6 @@ impl MultiReadBufferTier {
 		let index = self.shard_index(&page_id);
 		self.withdraw_key(page_id.kind, key);
 		let mut shard = self.shard(index).lock();
-		if let Some(claim) = shard.warming.get_mut(&page_id) {
-			claim.dirty = true;
-		}
 		let Shard {
 			pages,
 			budget,
@@ -265,9 +259,6 @@ impl MultiReadBufferTier {
 		let index = self.shard_index(&page_id);
 		self.withdraw_key(page_id.kind, key);
 		let mut shard = self.shard(index).lock();
-		if let Some(claim) = shard.warming.get_mut(&page_id) {
-			claim.dirty = true;
-		}
 		let Shard {
 			pages,
 			budget,
@@ -308,37 +299,6 @@ impl MultiReadBufferTier {
 		}
 	}
 
-	pub fn set_warm_blocked(&self, page: PageId) {
-		let mut shard = self.shard_for(&page).lock();
-		let next = shard.next_tick;
-		shard.pages.entry(page).or_insert_with(|| ResidentPage::fresh(next)).warm_blocked = true;
-		shard.warm_metrics.pages_warm_blocked += 1;
-	}
-
-	pub fn begin_warm(&self, page: PageId) -> bool {
-		let token = self.retractions();
-		let mut shard = self.shard_for(&page).lock();
-		if shard.warming.contains_key(&page) {
-			return false;
-		}
-		shard.warming.insert(
-			page,
-			WarmClaim {
-				dirty: false,
-				retractions: token,
-			},
-		);
-		shard.warm_metrics.warms_started += 1;
-		true
-	}
-
-	pub fn abort_warm(&self, page: PageId) {
-		let mut shard = self.shard_for(&page).lock();
-		if shard.warming.remove(&page).is_some() {
-			shard.warm_metrics.warms_aborted += 1;
-		}
-	}
-
 	/// Empties the tier, withdrawing all coverage on both sides of the page wipe.
 	///
 	/// The second withdrawal closes at tier scale the window the pre-shrink leaves open: a fill that
@@ -349,7 +309,6 @@ impl MultiReadBufferTier {
 		for shard in self.all_shards() {
 			let mut shard = shard.lock();
 			shard.pages.clear();
-			shard.warming.clear();
 			shard.next_tick = 0;
 			shard.budget.reset();
 		}

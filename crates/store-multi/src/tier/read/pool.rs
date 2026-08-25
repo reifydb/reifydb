@@ -19,7 +19,7 @@ use reifydb_value::byte_size::ByteSize;
 use crate::tier::read::FillInterlock;
 use crate::tier::read::{
 	CoverageIndex, MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferCoverageMetrics,
-	ReadBufferReadMetrics, ReadBufferShardMetrics, ReadBufferStateMetrics, ReadBufferWarmMetrics, Shard, Span,
+	ReadBufferPageMetrics, ReadBufferReadMetrics, ReadBufferShardMetrics, ReadBufferStateMetrics, Shard, Span,
 };
 
 const READ_BUFFER_SCOPE: &str = "read_buffer";
@@ -144,7 +144,7 @@ impl MultiReadBufferTier {
 		}
 		if let Some(page) = shard.pages.remove(&victim) {
 			shard.budget.release(ByteSize::from_bytes(page.bytes as u64));
-			shard.warm_metrics.pages_evicted += 1;
+			shard.page_metrics.pages_evicted += 1;
 		}
 		true
 	}
@@ -196,13 +196,11 @@ impl MultiReadBufferTier {
 				let mut payload = 0u64;
 				let mut entries = 0usize;
 				let mut hot_pages = 0usize;
-				let mut blocked_pages = 0usize;
 				let mut resident = Vec::with_capacity(shard.pages.len());
 				for (id, page) in &shard.pages {
 					payload += page.payload as u64;
 					entries += page.entries.len();
 					hot_pages += usize::from(page.hot);
-					blocked_pages += usize::from(page.warm_blocked);
 					resident.push(*id);
 				}
 				(
@@ -217,10 +215,8 @@ impl MultiReadBufferTier {
 							entries,
 							hot_pages,
 							complete_pages: 0,
-							blocked_pages,
-							warming: shard.warming.len(),
 						},
-						warms: shard.warm_metrics,
+						pages: shard.page_metrics,
 						reads: shard.read_metrics,
 						coverage: shard.coverage_metrics,
 					},
@@ -293,11 +289,10 @@ fn build_shards(config: ReadBufferConfig, resident_bytes: ByteSize) -> Box<[Mute
 		.map(|_| {
 			Mutex::new(Shard {
 				pages: HashMap::new(),
-				warming: HashMap::new(),
 				next_tick: 0,
 				page_cap,
 				budget: MemoryBudget::new(byte_cap),
-				warm_metrics: ReadBufferWarmMetrics::default(),
+				page_metrics: ReadBufferPageMetrics::default(),
 				read_metrics: ReadBufferReadMetrics::default(),
 				coverage_metrics: ReadBufferCoverageMetrics::default(),
 			})

@@ -42,9 +42,8 @@ const STORAGES: [StorageId; 4] = [
 	StorageId::Table(TableId(4)),
 ];
 
-/// A warm fires only after WARM_THRESHOLD (128) rows have been consumed from one bucket in one scan, and
-/// a warm claim is the only wide span the read tier publishes today, so a storage that never reaches this
-/// many rows can never be served from a claim at all.
+/// Enough rows per storage that one scan spans several chunk installs, so claims have to coalesce across
+/// chunks before anything can be served from them.
 const ROWS: u64 = 160;
 
 const BATCH: u64 = 64;
@@ -158,7 +157,7 @@ struct Served {
 	rows: u64,
 	gaps: u64,
 	refused: u64,
-	warms: u64,
+	installs: u64,
 	evicted: u64,
 }
 
@@ -169,8 +168,8 @@ fn served(store: &StandardMultiStore) -> Served {
 		total.rows += shard.coverage.rows;
 		total.gaps += shard.coverage.gaps;
 		total.refused += shard.coverage.refused;
-		total.warms += shard.warms.warms_completed;
-		total.evicted += shard.warms.pages_evicted;
+		total.installs += shard.coverage.installs;
+		total.evicted += shard.pages.pages_evicted;
 	}
 	total
 }
@@ -281,7 +280,7 @@ fn interval_served_scans_match_a_store_with_no_read_tier() {
 		total.rows += seen.rows;
 		total.gaps += seen.gaps;
 		total.refused += seen.refused;
-		total.warms += seen.warms;
+		total.installs += seen.installs;
 		total.evicted += seen.evicted;
 	}
 	println!("coverage serve totals: {total:?}");
@@ -295,6 +294,6 @@ fn interval_served_scans_match_a_store_with_no_read_tier() {
 		"the interval path must actually have carried rows out of RAM, or the equivalence proves \
 		 nothing: {total:?}"
 	);
-	assert!(total.warms > 20, "no warm published a wide claim, so nothing was ever serveable: {total:?}");
+	assert!(total.installs > 20, "no install published a claim, so nothing was ever serveable: {total:?}");
 	assert!(total.evicted > 0, "no page was evicted, so a claim whose page left RAM was never exercised");
 }
