@@ -205,6 +205,10 @@ impl MultiReadBufferTier {
 			None => false,
 		};
 		drop(shard);
+
+		#[cfg(test)]
+		self.invalidate_interlock(key);
+
 		self.withdraw_key(page_id.kind, key);
 		if now_empty {
 			self.retract_page(index, page_id);

@@ -425,7 +425,7 @@ fn populate_non_source_page_is_never_complete() {
 		}],
 		true,
 	);
-	assert!(!read.page_is_complete(page), "a non-Source page can never be range_complete");
+	assert!(!read.page_is_complete(page), "a non-Source page can never be covered");
 }
 
 #[test]
@@ -464,7 +464,7 @@ fn populate_respects_stale_version_guard() {
 }
 
 #[test]
-fn invalidate_clears_range_complete() {
+fn invalidate_clears_the_page_coverage() {
 	let read = cache(8);
 	populate_complete(&read, 1, &[(0u64, 1u64, "a"), (5, 1, "b")]);
 	let page = read.page_of_key(&row(1, 0));

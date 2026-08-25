@@ -1406,7 +1406,7 @@ mod cache_tests {
 	}
 
 	#[test]
-	fn source_row_write_clears_range_complete_on_its_page() {
+	fn source_row_write_clears_coverage_on_its_page() {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 		let read = store.read.clone().expect("read tier configured");
 

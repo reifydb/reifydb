@@ -30,7 +30,7 @@ use reifydb_value::{cow_vec, util::cowvec::CowVec};
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
 /// Enough rows in one bucket (default shift 16 keeps rows 0..65535 in bucket 0) to span many scan chunks,
-/// so the second scan actually serves from a range_complete page rather than reading through again.
+/// so the second scan actually serves from covered rows rather than reading through again.
 const BUCKET_ROWS: u64 = 200;
 
 /// Few enough rows that the scan never claims a whole page: the cold-merge

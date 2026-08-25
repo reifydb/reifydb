@@ -3,10 +3,10 @@
 
 //! Equivalence of the interval serve against the tier it substitutes for.
 //!
-//! The oracle is deliberately NOT the `range_complete` bucket path. That path bails on the first page of
-//! every scan that starts at a storage prefix, which is every scan in this codebase, so a differential
-//! test against it would compare against a path that always answers "gap" and would pass whatever the
-//! serve returned. The oracle here is a second store built with no read tier at all, driven by the same
+//! The oracle is deliberately NOT a whole-page claim path. Such a path bails on the first page of every
+//! scan that starts at a storage prefix, which is every scan in this codebase, so a differential test
+//! against it would compare against a path that always answers "gap" and would pass whatever the serve
+//! returned. The oracle here is a second store built with no read tier at all, driven by the same
 //! commits, removals and flushes, so its scans reach the persistent tier and the commit buffer and
 //! nothing else.
 //!

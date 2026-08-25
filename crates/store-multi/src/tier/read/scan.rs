@@ -269,22 +269,22 @@ mod tests {
 	}
 
 	#[test]
-	fn a_claim_serves_a_bucket_the_bucket_flag_no_longer_calls_complete() {
-		// The capability this work item exists for. A commit anywhere in a bucket clears range_complete
-		// for all of its row numbers, which is what makes the bucket model refuse; the claim only loses
-		// the one key that left RAM, so everything either side of it must still be served from the claim.
+	fn a_claim_serves_a_bucket_no_longer_covered_end_to_end() {
+		// A commit anywhere in a bucket withdraws the whole-page claim covering all of its row numbers;
+		// the interval only loses the one key that left RAM, so everything either side of it must still
+		// be served from the claim.
 		let read = tier();
 		fill_bucket(&read, 0, &[1, 2, 3, 4, 5], 10);
 		read.invalidate(&row(3));
 
-		assert!(!read.page_is_complete(page(0)), "the invalidate must have cleared the bucket flag");
+		assert!(!read.page_is_complete(page(0)), "the invalidate must have withdrawn the whole-page claim");
 
 		let mut cursor = RangeCursor::new();
 		let chunk = serve(&read, &mut cursor, 0, BUCKET - 1, 64);
 		assert_eq!(
 			rows_of(&chunk),
 			vec![5, 4],
-			"the claim below the punched key must still serve, where the bucket flag serves nothing"
+			"the claim below the punched key must still serve, where a whole-page claim serves nothing"
 		);
 		assert!(!cursor.exhausted, "a claim that stops at the punched key has proven nothing beyond it");
 	}

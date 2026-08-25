@@ -19,7 +19,7 @@ use reifydb_store::row::page::PageId;
 use reifydb_value::byte_size::ByteSize;
 
 #[cfg(test)]
-use crate::tier::read::FillInterlock;
+use crate::tier::read::{FillInterlock, InvalidateInterlock};
 use crate::tier::read::{
 	CoverageIndex, MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferCoverageMetrics,
 	ReadBufferPageMetrics, ReadBufferReadMetrics, ReadBufferShardMetrics, ReadBufferStateMetrics, Shard, Span,
@@ -47,6 +47,8 @@ impl MultiReadBufferTier {
 				drops_refused: AtomicU64::new(0),
 				#[cfg(test)]
 				interlock: None,
+				#[cfg(test)]
+				invalidate_interlock: None,
 			}),
 		})
 	}
@@ -67,6 +69,31 @@ impl MultiReadBufferTier {
 				claims_refused: AtomicU64::new(0),
 				drops_refused: AtomicU64::new(0),
 				interlock: Some(interlock),
+				invalidate_interlock: None,
+			}),
+		})
+	}
+
+	#[cfg(test)]
+	pub(super) fn with_invalidate_interlock(
+		config: ReadBufferConfig,
+		invalidate_interlock: InvalidateInterlock,
+	) -> Option<Self> {
+		let resident_bytes = config.resident_bytes?;
+		Some(Self {
+			inner: Arc::new(PoolInner {
+				shards: build_shards(config, resident_bytes),
+				bucket_shift: config.bucket_shift,
+				coverage: RwLock::new(CoverageIndex {
+					kinds: HashMap::new(),
+				}),
+				retractions: AtomicU64::new(0),
+				fill_sequence: AtomicU64::new(0),
+				claims_published: AtomicU64::new(0),
+				claims_refused: AtomicU64::new(0),
+				drops_refused: AtomicU64::new(0),
+				interlock: None,
+				invalidate_interlock: Some(invalidate_interlock),
 			}),
 		})
 	}
@@ -75,6 +102,13 @@ impl MultiReadBufferTier {
 	pub(super) fn interlock(&self, page: PageId) {
 		if let Some(interlock) = self.inner.interlock.as_ref() {
 			interlock(self, page);
+		}
+	}
+
+	#[cfg(test)]
+	pub(super) fn invalidate_interlock(&self, key: &reifydb_codec::key::encoded::EncodedKey) {
+		if let Some(interlock) = self.inner.invalidate_interlock.as_ref() {
+			interlock(self, key);
 		}
 	}
 

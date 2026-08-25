@@ -226,6 +226,8 @@ struct Shard {
 
 #[cfg(test)]
 type FillInterlock = Box<dyn Fn(&MultiReadBufferTier, PageId) + Send + Sync>;
+#[cfg(test)]
+type InvalidateInterlock = Box<dyn Fn(&MultiReadBufferTier, &EncodedKey) + Send + Sync>;
 
 struct PoolInner {
 	shards: Box<[Mutex<Shard>]>,
@@ -245,6 +247,10 @@ struct PoolInner {
 	drops_refused: AtomicU64,
 	#[cfg(test)]
 	interlock: Option<FillInterlock>,
+	/// Entered while an invalidate holds neither lock, so a test can read the tier at the one instant a
+	/// claim that outlived its row would be visible to every other thread.
+	#[cfg(test)]
+	invalidate_interlock: Option<InvalidateInterlock>,
 }
 
 #[derive(Clone)]

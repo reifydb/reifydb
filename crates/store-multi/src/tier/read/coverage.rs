@@ -274,9 +274,9 @@ mod tests {
 	}
 
 	#[test]
-	fn a_single_key_fill_claims_a_kind_the_bucket_model_can_never_cache() {
-		// A key with no reconstructable bucket range can never be range_complete, so the interval model
-		// is the only record that can ever make it range-cacheable.
+	fn a_single_key_fill_claims_a_kind_with_no_reconstructable_page() {
+		// A key whose bucket range cannot be reconstructed can never carry a whole-page claim, so the
+		// interval is the only record that can ever make it range-cacheable.
 		let read = tier(8);
 		let key = EncodedKey::new(b"an-unclassifiable-catalog-key".to_vec());
 
@@ -284,11 +284,11 @@ mod tests {
 
 		assert_eq!(page_of(&key, SHIFT).kind, EntryKind::Multi);
 		assert!(read.covers(EntryKind::Multi, &key), "a non-source kind must still be claimable");
-		assert!(!read.page_is_complete(page_of(&key, SHIFT)), "the bucket model must still refuse it");
+		assert!(!read.page_is_complete(page_of(&key, SHIFT)), "a page with no reconstructable range can never be claimed whole");
 	}
 
 	#[test]
-	fn a_whole_page_fill_claims_the_span_the_bucket_flag_asserts() {
+	fn a_whole_page_fill_claims_exactly_its_own_bucket() {
 		// The claim must be the whole bucket, or a proven-absent row inside it costs a persistent read
 		// on every scan; it must be no wider, or it answers for the next bucket's rows.
 		let read = tier(8);
@@ -311,8 +311,52 @@ mod tests {
 	}
 
 	#[test]
+	fn an_invalidate_withdraws_the_claim_before_the_row_leaves_ram() {
+		// An invalidate removes the row under the page lock and withdraws the claim under the coverage
+		// lock, and between the two it holds neither: every other thread sees whatever order it chose.
+		// Withdrawing second leaves a claim standing over a key RAM no longer holds, and a reader that
+		// serves that span reports the key absent, so the shrink must come first. The interlock runs at
+		// exactly that instant and reads the pair the wrong order would break.
+		let overstated = Arc::new(AtomicUsize::new(0));
+		let fired = Arc::new(AtomicUsize::new(0));
+		let read = {
+			let overstated = overstated.clone();
+			let fired = fired.clone();
+			MultiReadBufferTier::with_invalidate_interlock(
+				ReadBufferConfig {
+					resident_pages: 8,
+					resident_bytes: Some(ByteSize::from_gib(1)),
+					shards: 1,
+					bucket_shift: SHIFT,
+				},
+				Box::new(move |read, key| {
+					fired.fetch_add(1, Ordering::SeqCst);
+					if read.covers(source(), key) && !resident(read, key) {
+						overstated.fetch_add(1, Ordering::SeqCst);
+					}
+				}),
+			)
+			.expect("a tier with a byte budget must be constructed")
+		};
+
+		read.populate_page(page(0), vec![entry(0, 1), entry(1, 1), entry(2, 1)], true);
+		read.invalidate(&row(1));
+
+		assert_eq!(fired.load(Ordering::SeqCst), 1, "the interlock never ran, so the window went unread");
+		assert!(!resident(&read, &row(1)), "the invalidate left the row in RAM, so nothing was observed");
+		assert_eq!(
+			overstated.load(Ordering::SeqCst),
+			0,
+			"the claim outlived the row it covered: a reader in this window serves the span from RAM and \
+			 reports a key the persistent tier still holds as absent"
+		);
+		assert!(read.covers(source(), &row(0)), "the withdrawal took more than the key that left RAM");
+		assert!(read.covers(source(), &row(2)), "the withdrawal took more than the key that left RAM");
+	}
+
+	#[test]
 	fn an_invalidate_punches_out_exactly_the_key_that_left_ram() {
-		// The bucket flag dies for all 2^shift rows on one write; losing the whole span here would
+		// A whole-page claim dies for all 2^shift rows on one write; losing the whole span here would
 		// throw away the only thing the interval model is for.
 		let read = tier(8);
 		read.populate_page(page(0), vec![entry(0, 1), entry(2, 1)], true);
@@ -322,7 +366,7 @@ mod tests {
 		assert!(!read.covers(source(), &row(0)), "a key RAM no longer holds must not stay claimed");
 		assert!(read.covers(source(), &row(1)), "the claim lost more than the key that left RAM");
 		assert!(read.covers(source(), &row(2)));
-		assert!(!read.page_is_complete(page(0)), "the bucket flag is still all-or-nothing");
+		assert!(!read.page_is_complete(page(0)), "a whole-page claim is still all-or-nothing");
 	}
 
 	#[test]
