@@ -18,7 +18,7 @@ export type {
 // Terminal components
 export { TerminalAdapter } from './terminal/adapter';
 export type { KeyHandler } from './terminal/adapter';
-export { defaultTheme, COLORS } from './terminal/theme';
+export { defaultTheme, reifydb_dark_theme, COLORS } from './terminal/theme';
 export type { TerminalTheme } from './terminal/theme';
 
 // Input components

@@ -11,18 +11,18 @@
   width: 100vw !important;
   height: 100vh !important;
   z-index: 9999 !important;
-  background: #1e1e2e !important;
+  background: var(--rdb-shell-bg, #1e1e2e) !important;
 }
 
 /* xterm.js container styling */
 .xterm {
-  padding: 12px;
+  padding: var(--rdb-shell-padding, 12px);
 }
 
 .xterm-viewport {
   /* Hide scrollbar but keep scrolling functional */
   scrollbar-width: thin;
-  scrollbar-color: #45475a #1e1e2e;
+  scrollbar-color: var(--rdb-shell-scrollbar-thumb, #45475a) var(--rdb-shell-bg, #1e1e2e);
 }
 
 .xterm-viewport::-webkit-scrollbar {
@@ -30,14 +30,14 @@
 }
 
 .xterm-viewport::-webkit-scrollbar-track {
-  background: #1e1e2e;
+  background: var(--rdb-shell-bg, #1e1e2e);
 }
 
 .xterm-viewport::-webkit-scrollbar-thumb {
-  background: #45475a;
+  background: var(--rdb-shell-scrollbar-thumb, #45475a);
   border-radius: 4px;
 }
 
 .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: #585b70;
+  background: var(--rdb-shell-scrollbar-thumb-hover, #585b70);
 }

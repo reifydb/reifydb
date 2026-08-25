@@ -36,6 +36,7 @@ export class Shell {
   private continuationPrompt: string;
   private continuationPromptLen: number;
   private welcomeMessage: string | string[] | (() => string[]) | undefined;
+  private initialInput: string | undefined;
   private onExit: (() => void) | undefined;
   private onFullscreenChange: ((isFullscreen: boolean) => void) | undefined;
 
@@ -43,6 +44,7 @@ export class Shell {
     this.executor = options.executor;
     this.displayMode = options.displayMode ?? 'full';
     this.welcomeMessage = options.welcomeMessage;
+    this.initialInput = options.initialInput;
     this.onExit = options.onExit;
     this.onFullscreenChange = options.onFullscreenChange;
 
@@ -65,6 +67,10 @@ export class Shell {
   start(): void {
     this.showWelcomeBanner();
     this.showPrompt();
+    if (this.initialInput) {
+      this.lineEditor.setValue(this.initialInput);
+      this.redrawLine();
+    }
     this.terminal.focus();
   }
 

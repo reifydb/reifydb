@@ -56,6 +56,33 @@ export const defaultTheme: TerminalTheme = {
 };
 
 /**
+ * ReifyDB product theme - zinc-900 ground with the indigo brand accent
+ */
+export const reifydb_dark_theme: TerminalTheme = {
+  background: '#18181b',
+  foreground: '#e4e4e7',
+  cursor: '#7e85f2',
+  cursorAccent: '#18181b',
+  selectionBackground: 'rgba(126, 133, 242, 0.30)',
+  black: '#27272a',
+  red: '#f87171',
+  green: '#4ade80',
+  yellow: '#fbbf24',
+  blue: '#7e85f2',
+  magenta: '#a78bfa',
+  cyan: '#7e85f2',
+  white: '#e4e4e7',
+  brightBlack: '#71717a',
+  brightRed: '#fca5a5',
+  brightGreen: '#86efac',
+  brightYellow: '#fcd34d',
+  brightBlue: '#a5b4fc',
+  brightMagenta: '#c4b5fd',
+  brightCyan: '#a5b4fc',
+  brightWhite: '#fafafa',
+};
+
+/**
  * ANSI escape codes for terminal colors and formatting
  */
 export const COLORS = {

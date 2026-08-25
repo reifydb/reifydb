@@ -111,6 +111,11 @@ export interface ShellOptions {
   displayMode?: DisplayMode;
 
   /**
+   * Text placed on the input line when the shell starts, ready to run.
+   */
+  initialInput?: string;
+
+  /**
    * Callback when user exits the shell
    */
   onExit?: () => void;
