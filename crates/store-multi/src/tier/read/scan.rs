@@ -13,7 +13,7 @@
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::interface::store::EntryKind;
+use reifydb_core::{interface::store::EntryKind, key::row::RowKey};
 use reifydb_store::{
 	coverage::{Edge, Segment, successor},
 	row::page::{PageId, key_range_of, page_of},
@@ -35,10 +35,10 @@ impl MultiReadBufferTier {
 	/// into a neighbouring key. What the page still supplies is its key range, which is where the walk has
 	/// to stop, so a kind that has none falls through and understates.
 	///
-	/// A chunk may only report the persistent tier exhausted when the claim reaches past the range end,
-	/// because that is the only case in which RAM has proven there is nothing left to find. Every other
-	/// stop leaves the cursor on the last row served and the store's loop takes the remainder from
-	/// persistent.
+	/// A chunk may only report the persistent tier exhausted when one claim reaches past the range end, or
+	/// past the end of a page no key of the range can sort above, because those are the only cases in which
+	/// RAM has proven there is nothing left to find. Every other stop leaves the cursor on the last row
+	/// served and the store's loop takes the remainder from persistent.
 	#[allow(clippy::too_many_arguments)]
 	pub(super) fn serve_covered_chunk(
 		&self,
@@ -131,7 +131,10 @@ impl MultiReadBufferTier {
 			return ServedChunk::Gap;
 		}
 
-		let exhausted = !full && stop >= hi;
+		let exhausted = !full
+			&& (stop >= hi
+				|| (stop >= Edge::Key(successor(&page_end))
+					&& page_ends_the_range(table, page, &range_hi)));
 		if !exhausted && out.is_empty() {
 			self.tally_coverage(&anchor, CoverageOutcome::Gap);
 			return ServedChunk::Gap;
@@ -155,6 +158,22 @@ impl MultiReadBufferTier {
 		shard.coverage_metrics.served += 1;
 		shard.coverage_metrics.rows += rows;
 	}
+}
+
+/// Whether no key of the scanned range can sort above `page`'s key range, so one claim spanning the whole
+/// of that page has proven the rest of the range empty.
+///
+/// A row key inverts its row number, so bucket zero holds the byte-highest rows of its storage and the
+/// only bytes between that page's end and the storage's own end are ones no row key can occupy. The range
+/// must stop inside that storage too: a scan reaching into the next one is still owed its rows.
+fn page_ends_the_range(table: EntryKind, page: PageId, range_hi: &EncodedKey) -> bool {
+	let EntryKind::Source(storage) = table else {
+		return false;
+	};
+	if page.kind != table || page.series || page.bucket != 0 {
+		return false;
+	}
+	range_hi.as_slice() <= RowKey::storage_end(storage).as_slice()
 }
 
 /// The closed key range of a page, or none for a kind whose bucket cannot be turned back into one.
@@ -475,6 +494,133 @@ mod tests {
 			false,
 		);
 		assert_eq!(rows_of(&resumed), vec![2, 1], "once the cursor is on a real key the claim serves");
+	}
+
+	#[test]
+	fn a_claim_over_the_last_bucket_reports_exhausted_at_the_storage_end() {
+		// Every scan ends at a storage end sentinel no bucket claim can ever reach, so without a tail rule the last chunk of every scan falls through and buys one persistent read to confirm the range is over.
+		let read = tier();
+		fill_bucket(&read, 0, &[1, 2, 3], 10);
+
+		let start = RowKey::storage_start(StorageId::table(STORAGE));
+		let end = RowKey::storage_end(StorageId::table(STORAGE));
+		let mut cursor = RangeCursor::new();
+		cursor.last_key = Some(row(3));
+		let chunk = read.serve_covered_chunk(
+			source(),
+			&mut cursor,
+			start.as_slice(),
+			end.as_slice(),
+			newest(),
+			64,
+			false,
+		);
+
+		assert!(cursor.exhausted, "no row key of this storage can sort above the claim over its last bucket");
+		assert_eq!(rows_of(&chunk), vec![2, 1]);
+	}
+
+	#[test]
+	fn a_last_bucket_claim_punched_short_of_the_page_end_is_not_exhausted() {
+		// The tail rule needs one claim spanning the whole last page; a claim ending at a punched key proves nothing past it and reporting exhausted there silently drops every remaining row.
+		let read = tier();
+		fill_bucket(&read, 0, &[1, 2, 3], 10);
+		read.invalidate(&row(1));
+
+		let start = RowKey::storage_start(StorageId::table(STORAGE));
+		let end = RowKey::storage_end(StorageId::table(STORAGE));
+		let mut cursor = RangeCursor::new();
+		cursor.last_key = Some(row(3));
+		let chunk = read.serve_covered_chunk(
+			source(),
+			&mut cursor,
+			start.as_slice(),
+			end.as_slice(),
+			newest(),
+			64,
+			false,
+		);
+
+		assert!(!cursor.exhausted, "the claim stops at the punched key, which proves nothing past it");
+		assert_eq!(rows_of(&chunk), vec![2]);
+	}
+
+	#[test]
+	fn a_last_bucket_claim_punched_at_the_final_row_is_not_exhausted() {
+		// A commit into row zero ends the claim exactly at the page end rather than past it, so the tail rule must compare against the successor or it reports the byte-highest row of the storage proven absent.
+		let read = tier();
+		fill_bucket(&read, 0, &[0, 1, 2, 3], 10);
+		read.invalidate(&row(0));
+
+		let start = RowKey::storage_start(StorageId::table(STORAGE));
+		let end = RowKey::storage_end(StorageId::table(STORAGE));
+		let mut cursor = RangeCursor::new();
+		cursor.last_key = Some(row(3));
+		let chunk = read.serve_covered_chunk(
+			source(),
+			&mut cursor,
+			start.as_slice(),
+			end.as_slice(),
+			newest(),
+			64,
+			false,
+		);
+
+		assert!(!cursor.exhausted, "the claim stops one key short of the page end, which still holds a row");
+		assert_eq!(rows_of(&chunk), vec![2, 1]);
+	}
+
+	#[test]
+	fn a_claim_over_a_bucket_that_is_not_the_last_is_not_exhausted_at_the_storage_end() {
+		// Every scan ends at the storage end, so a tail rule keyed on the range rather than on the page being the storage's last would report exhausted on the first bucket served to its edge and drop every bucket below it.
+		let read = tier();
+		fill_bucket(&read, 1, &[BUCKET + 1, BUCKET + 2], 10);
+		fill_bucket(&read, 0, &[1, 2], 10);
+
+		let start = RowKey::storage_start(StorageId::table(STORAGE));
+		let end = RowKey::storage_end(StorageId::table(STORAGE));
+		let mut cursor = RangeCursor::new();
+		cursor.last_key = Some(row(BUCKET + 2));
+		let chunk = read.serve_covered_chunk(
+			source(),
+			&mut cursor,
+			start.as_slice(),
+			end.as_slice(),
+			newest(),
+			64,
+			false,
+		);
+
+		assert!(!cursor.exhausted, "the lower bucket is a separate claim the persistent tier still owes");
+		assert_eq!(rows_of(&chunk), vec![BUCKET + 1]);
+	}
+
+	#[test]
+	fn a_range_reaching_past_the_storage_end_is_never_reported_exhausted() {
+		// A range is classified by its start, so its end may lie in another storage whose rows this claim says nothing about; reporting exhausted there drops all of them.
+		let read = tier();
+		fill_bucket(&read, 0, &[1, 2, 3], 10);
+
+		let start = RowKey::storage_start(StorageId::table(STORAGE));
+		let end = RowKey::encoded(StorageId::table(STORAGE - 1), 5);
+		let mut cursor = RangeCursor::new();
+		cursor.last_key = Some(row(3));
+		let chunk = read.serve_covered_chunk(
+			source(),
+			&mut cursor,
+			start.as_slice(),
+			end.as_slice(),
+			newest(),
+			64,
+			false,
+		);
+
+		assert!(!cursor.exhausted, "the claim says nothing about the storage the range runs on into");
+		assert_eq!(rows_of(&chunk), vec![2, 1]);
+		assert!(
+			end.as_slice() > RowKey::storage_end(StorageId::table(STORAGE)).as_slice(),
+			"the range end must really sort past this storage, or the case under test never arose"
+		);
 	}
 
 	#[test]
