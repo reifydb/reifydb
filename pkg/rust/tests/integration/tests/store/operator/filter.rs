@@ -29,7 +29,8 @@ fn open(path: &TempDbPath) -> TestDb {
 }
 
 fn define_distinct(db: &TestDb) {
-	// Distinct must persist one durable key per admitted value; append stores nothing and would leave the table empty.
+	// Distinct must persist one durable key per admitted value; append stores nothing and would leave the table
+	// empty.
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::a { id: int4, v: int4 }");
 	db.admin("CREATE DEFERRED VIEW app::u { id: int4, v: int4 } AS { FROM app::a | distinct { v } }");

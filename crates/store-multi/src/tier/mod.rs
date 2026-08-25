@@ -80,9 +80,6 @@ pub enum RangeStop {
 
 	/// The tier holds no table for this entry kind, so it read nothing.
 	AbsentTable,
-
-	/// The tier is shut down and its readers are gone, so it read nothing.
-	ShutDown,
 }
 
 #[derive(Debug, Clone)]

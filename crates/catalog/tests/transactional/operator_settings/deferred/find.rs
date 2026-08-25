@@ -46,7 +46,8 @@ fn deferred_append_view_persists_no_operator_settings() {
 
 #[test]
 fn deferred_append_view_rejects_a_retention() {
-	// Without a parse-time rejection the clause is accepted and dropped, leaving the user believing state is bounded.
+	// Without a parse-time rejection the clause is accepted and dropped, leaving the user believing state is
+	// bounded.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE os_app_r");
 	t.admin("CREATE TABLE os_app_r::s1 { id: int4, val: int4 }");

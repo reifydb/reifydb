@@ -102,8 +102,7 @@ struct SqlitePersistentStorageInner {
 	reaped_high_water: Map<EntryKind, Arc<AtomicU64>>,
 	resurrections: AtomicU64,
 	filter: MultiKeyFilter,
-	/// The highest version this process has written, and the highest one the database already held
-	/// when it was opened, probed once and only when a caller asks.
+
 	written_high_water: AtomicU64,
 	opened_high_water: OnceLock<u64>,
 }
@@ -207,22 +206,27 @@ impl SqlitePersistentStorage {
 		}
 	}
 
-	/// The lowest read version at which a forward range chunk is guaranteed to have seen every row this
-	/// tier holds over the span it scanned.
-	///
-	/// A chunk read below it may have had rows hidden by the `version <= read` predicate, and a coverage
-	/// claim taken from such a chunk would answer for keys RAM never placed.
-	pub fn install_floor(&self) -> CommitVersion {
-		let opened = *self.inner.opened_high_water.get_or_init(|| self.probe_high_water());
-		CommitVersion(opened.max(self.inner.written_high_water.load(Ordering::SeqCst)))
+	pub fn install_floor(&self) -> Result<CommitVersion> {
+		let opened = match self.inner.opened_high_water.get() {
+			Some(opened) => *opened,
+			None => {
+				let probed = self.probe_high_water()?;
+				*self.inner.opened_high_water.get_or_init(|| probed)
+			}
+		};
+		Ok(CommitVersion(opened.max(self.inner.written_high_water.load(Ordering::SeqCst))))
 	}
 
-	fn probe_high_water(&self) -> u64 {
+	fn probe_high_water(&self) -> Result<u64> {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
-			return u64::MAX;
+			return Err(error!(internal(
+				"Persistent storage is shut down; refusing to probe the install floor, whose \
+				 fallback would gate coverage installs on a version no read ever observed"
+					.to_string()
+			)));
 		};
-		highest_current_version(conn)
+		Ok(highest_current_version(conn))
 	}
 
 	fn record_written_version(&self, version: CommitVersion) {
@@ -753,9 +757,12 @@ impl SqlitePersistentStorage {
 		let table_sql = self.table_sql(req.table);
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
-			cursor.exhausted = true;
-			cursor.stop = Some(RangeStop::ShutDown);
-			return Ok(RangeBatch::empty());
+			return Err(error!(internal(
+				"Persistent storage is shut down; refusing to report a range chunk exhausted \
+				 having read nothing, which hands the caller a short scan reported as a \
+				 complete one"
+					.to_string()
+			)));
 		};
 
 		let sql = build_range_current_sql(
@@ -845,7 +852,11 @@ impl SqlitePersistentStorage {
 		let table_sql = self.table_sql(table);
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
-			return Ok(Vec::new());
+			return Err(error!(internal(
+				"Persistent storage is shut down; refusing to answer a consistent range with no \
+				 rows, which reads as the rows not existing"
+					.to_string()
+			)));
 		};
 
 		let sql = build_range_consistent_sql(&table_sql.table_name, bound_shape(start), bound_shape(end));

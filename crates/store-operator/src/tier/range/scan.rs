@@ -119,7 +119,9 @@ impl OperatorRangeTier {
 				} => Tally::Miss,
 			};
 			match partition {
-				Some(partition) => work.push((self.shard_index(partition), Some(*partition), tally, at)),
+				Some(partition) => {
+					work.push((self.shard_index(partition), Some(*partition), tally, at))
+				}
 				None => {
 					if matches!(tally, Tally::Miss) {
 						orphaned += 1;
@@ -177,9 +179,12 @@ impl OperatorRangeTier {
 		}
 
 		let pieces = match barren {
-			Some(barren) if self.retractions() == retractions => {
-				pieces.into_iter().zip(barren).filter(|(_, drop)| !drop).map(|(piece, _)| piece).collect()
-			}
+			Some(barren) if self.retractions() == retractions => pieces
+				.into_iter()
+				.zip(barren)
+				.filter(|(_, drop)| !drop)
+				.map(|(piece, _)| piece)
+				.collect(),
 			_ => pieces,
 		};
 
@@ -617,12 +622,6 @@ fn coalesce_gaps(pieces: Vec<(Segment, Option<PartitionId>)>) -> Vec<(Segment, O
 	out
 }
 
-/// The lowest keyspace reachable from each keyspace without a change of range-cache policy.
-///
-/// A keyspace byte is encoded inverted, so a forward scan walks keyspaces downward; the run a scan
-/// enters at one keyspace therefore ends at this keyspace, and every partition between the two
-/// shares one policy. Built from the policy itself rather than a named keyspace, or a new exempt
-/// keyspace would silently widen a run over a partition the tier must never claim.
 static POLICY_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 	let mut floor = [0u8; 256];
 	let mut lowest = 0u8;
@@ -638,7 +637,6 @@ static POLICY_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 	floor
 });
 
-/// The exclusive end of the maximal run of same-policy partitions this partition opens.
 fn policy_run_end(partition: PartitionId) -> Edge {
 	let floor = POLICY_RUN_FLOOR[partition.keyspace.0 as usize];
 	if floor == partition.keyspace.0 {
@@ -1256,7 +1254,10 @@ mod tests {
 			[
 				(
 					Segment::Gap {
-						interval: Interval::new(whole(top).start, Edge::Key(whole(UNCACHED).start)),
+						interval: Interval::new(
+							whole(top).start,
+							Edge::Key(whole(UNCACHED).start)
+						),
 						exempt: false,
 					},
 					Some(partition(top))
@@ -1288,7 +1289,8 @@ mod tests {
 			"a RAM segment must still yield one piece per partition, or serve answers only the first"
 		);
 		assert!(
-			ram.iter().all(|(segment, partition)| matches!(segment, Segment::Ram(_)) && partition.is_some()),
+			ram.iter()
+				.all(|(segment, partition)| matches!(segment, Segment::Ram(_)) && partition.is_some()),
 			"every RAM piece must name the partition that serves it"
 		);
 	}

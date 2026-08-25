@@ -63,7 +63,8 @@ fn state_of(operator: u64) -> String {
 
 #[test]
 fn an_append_holds_no_state_for_any_row_it_has_ever_seen() {
-	// The output row is computed from the lane and the source row, so any key at all here is state that must not exist.
+	// The output row is computed from the lane and the source row, so any key at all here is state that must not
+	// exist.
 	let db = setup();
 	append_view(&db);
 	fill_both_inputs(&db);
@@ -85,9 +86,7 @@ fn state_stays_empty_however_many_rows_pass_through() {
 	let operator = append_operator(&db);
 
 	for id in 0..50 {
-		db.command(&format!(
-			r#"INSERT app::a [{{ id: {id}, v: {id}, ts: "2026-01-01T00:00:00.000Z" }}]"#
-		));
+		db.command(&format!(r#"INSERT app::a [{{ id: {id}, v: {id}, ts: "2026-01-01T00:00:00.000Z" }}]"#));
 	}
 	db.await_row_count("FROM app::u", 50, TIMEOUT);
 
@@ -101,7 +100,8 @@ fn state_stays_empty_however_many_rows_pass_through() {
 
 #[test]
 fn a_retraction_withdraws_the_published_row_however_late_it_arrives() {
-	// This is the defect the stateless rewrite fixes: a late delete once found no mapping and was dropped in silence.
+	// This is the defect the stateless rewrite fixes: a late delete once found no mapping and was dropped in
+	// silence.
 	let db = setup();
 	append_view(&db);
 	fill_both_inputs(&db);

@@ -79,11 +79,6 @@ impl MultiReadBufferTier {
 		self.inner.bucket_shift
 	}
 
-	/// The next never-reused fill number, stamped on a page by the fill that widened its hull.
-	///
-	/// It must be tier-wide rather than per page: a per-page count restarts at one on a recreated
-	/// page, which is exactly the value a stale evictor is still holding from before the drop. At one
-	/// draw per nanosecond a `u64` needs 584 years to wrap, so a collision cannot arise in practice.
 	pub(super) fn next_fill(&self) -> u64 {
 		self.inner.fill_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
 	}
@@ -102,11 +97,6 @@ impl MultiReadBufferTier {
 		self.shard(self.shard_index(page))
 	}
 
-	/// Drops pages until the shard fits, retracting each victim's claims before its rows leave RAM.
-	///
-	/// The two locks are taken in turn, never together, so a fill can slip between the shrink and the
-	/// drop; the fill count is re-read to catch exactly that, since dropping then would leave the
-	/// fill's fresh claim standing over a page that is gone.
 	pub(super) fn evict_to_capacity(&self, index: usize) {
 		loop {
 			let Some((victim, hull, fills)) = self.pick_victim(index) else {
@@ -149,7 +139,6 @@ impl MultiReadBufferTier {
 		true
 	}
 
-	/// Retracts and drops a page a removal has emptied, so no claim outlives the rows that backed it.
 	pub(super) fn retract_page(&self, index: usize, victim: PageId) {
 		let removable = |shard: &Shard| shard.pages.get(&victim).is_some_and(|page| page.entries.is_empty());
 		let (hull, fills) = {

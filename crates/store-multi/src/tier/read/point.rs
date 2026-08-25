@@ -173,12 +173,6 @@ impl MultiReadBufferTier {
 		self.evict_to_capacity(index);
 	}
 
-	/// Drops one key from RAM, shrinking coverage on both sides of the row mutation.
-	///
-	/// The pre-shrink stops a reader from trusting a claim the removal is about to falsify; the
-	/// post-shrink is what makes the pair sufficient. A fill that sampled its retraction token after
-	/// the pre-shrink and placed its rows before the mutation is invisible to the token, so only a
-	/// withdrawal that runs after the row is gone can take its claim back.
 	pub fn invalidate(&self, key: &EncodedKey) {
 		let page_id = page_of(key, self.bucket_shift());
 		let index = self.shard_index(&page_id);
@@ -217,8 +211,6 @@ impl MultiReadBufferTier {
 		}
 	}
 
-	/// Drops a key the persistent tier no longer holds, shrinking coverage on both sides of the row
-	/// mutation for the same reason `invalidate` does.
 	pub fn remove_dropped(&self, key: &EncodedKey) {
 		let page_id = page_of(key, self.bucket_shift());
 		let index = self.shard_index(&page_id);
@@ -252,8 +244,6 @@ impl MultiReadBufferTier {
 		}
 	}
 
-	/// Drops a key's versions at or below `through`, shrinking coverage on both sides of the row
-	/// mutation for the same reason `invalidate` does.
 	pub fn remove_dropped_through(&self, key: &EncodedKey, through: CommitVersion) {
 		let page_id = page_of(key, self.bucket_shift());
 		let index = self.shard_index(&page_id);
@@ -299,11 +289,6 @@ impl MultiReadBufferTier {
 		}
 	}
 
-	/// Empties the tier, withdrawing all coverage on both sides of the page wipe.
-	///
-	/// The second withdrawal closes at tier scale the window the pre-shrink leaves open: a fill that
-	/// sampled its token after the first withdrawal can publish over pages this wipe has already
-	/// removed.
 	pub fn clear(&self) {
 		self.withdraw_all();
 		for shard in self.all_shards() {

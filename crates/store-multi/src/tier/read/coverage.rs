@@ -1,28 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The read tier's partial-range coverage: the claim that RAM is authoritative over a span of the
-//! encoded key space, held apart from the pages that back it and keyed by [`EntryKind`].
-//!
-//! It is the sole record of what RAM may answer for. Its granularity is per key: a commit into a claimed
-//! bucket punches out exactly the one key RAM stopped holding, leaving the rest of the span claimed.
-//!
-//! Two fills publish a claim. A single-key fill claims the one key it placed, which is authoritative
-//! because the persistent tier is current-only, so a back-fill can only ever carry the version that
-//! tier holds. A whole-page fill claims the page's reconstructed key range and is never wider.
-//!
-//! The coverage lock and a page lock are never held together, so every path is a sequence of
-//! separately locked steps ordered to understate rather than overstate:
-//!
-//! ```text
-//! fill                   place rows and widen the hull first, then extend coverage
-//! invalidate or remove   shrink coverage first, then drop rows
-//! evict                  shrink coverage first, then drop the page
-//! ```
-//!
-//! A claim is authoritative as of the newest version. A reader below the eviction watermark is out
-//! of the persistent tier's contract already, and coverage does not extend that contract.
-
 use std::{ops::Bound, sync::atomic::Ordering};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
@@ -35,8 +13,6 @@ use reifydb_store::{
 
 use crate::tier::read::{CoverageIndex, MultiReadBufferTier, Span};
 
-/// The half-open coverage span of a closed `Included..Included` bucket range, or none when the kind
-/// has no reconstructable range.
 pub(super) fn span_of(range: Option<EncodedKeyRange>) -> Option<Span> {
 	let range = range?;
 	match (range.start, range.end) {
@@ -45,7 +21,6 @@ pub(super) fn span_of(range: Option<EncodedKeyRange>) -> Option<Span> {
 	}
 }
 
-/// Widens a page's hull to also hold `span`, so one shrink retracts everything the page claimed.
 pub(super) fn widen(hull: &mut Option<Span>, span: Span) {
 	match hull {
 		Some((start, end)) => {
@@ -78,35 +53,18 @@ impl MultiReadBufferTier {
 		self.coverage().read().kinds.get(&kind).is_some_and(|set| set.contains(key))
 	}
 
-	/// Whether one claim spans the whole of a page's key range, so RAM answers for every key the page
-	/// is responsible for.
-	///
-	/// A kind whose bucket has no reconstructable range can never satisfy this, however much of it is
-	/// claimed, because there is no range to compare a claim against.
 	pub fn page_is_complete(&self, page: PageId) -> bool {
 		let shift = self.bucket_shift();
 		let coverage = self.coverage().read();
 		page_fully_claimed(&coverage, page, shift)
 	}
 
-	/// The count of `pages` one claim spans entirely, read under a single lock.
 	pub(super) fn count_complete_pages(&self, pages: &[PageId]) -> usize {
 		let shift = self.bucket_shift();
 		let coverage = self.coverage().read();
 		pages.iter().filter(|page| page_fully_claimed(&coverage, **page, shift)).count()
 	}
 
-	/// Plans the leading segment of `[lo, hi)`, capped at the one claim that covers `lo`, together with the
-	/// retraction count the plan was read at.
-	///
-	/// The cap is what makes planning cheap enough to run once per chunk: the range of a source scan holds
-	/// one claim per point-filled key, so planning the whole range would allocate a segment per key every
-	/// time. Capping costs no coverage, because a serve consumes one contiguous claim and the store's scan
-	/// loop re-plans from the key it stopped at. The substrate's gap guard cannot help here either, since a
-	/// refused plan and a planned gap both cost exactly one persistent chunk.
-	///
-	/// The count is read under the same lock the shrink takes, so a plan and its token can never straddle a
-	/// withdrawal.
 	pub(super) fn plan_leading(&self, kind: EntryKind, lo: &EncodedKey, hi: &Edge) -> Option<(ScanPlan, u64)> {
 		let coverage = self.coverage().read();
 		let set = coverage.kinds.get(&kind)?;
@@ -116,10 +74,6 @@ impl MultiReadBufferTier {
 		Some((planned, self.retractions()))
 	}
 
-	/// Publishes a claim, unless a shrink landed since `token` was read.
-	///
-	/// Without the token a fill would reinstate a claim over rows an eviction or an invalidate had
-	/// already dropped, and nothing later would withdraw it.
 	pub(super) fn claim(&self, kind: EntryKind, span: &Span, token: u64) -> bool {
 		let mut coverage = self.coverage().write();
 		if self.retractions() != token {

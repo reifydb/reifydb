@@ -382,17 +382,21 @@ fn get_many_answers_exactly_as_repeated_get_across_randomized_workload() {
 			55..95 => {
 				let operator = OperatorId(1 + rng.below(OPERATORS));
 				// duplicates in one batch must each resolve, so the same key is allowed to repeat
-				let batch: Vec<EncodedKey> =
-					(0..1 + rng.below(12)).map(|_| key(&mut rng).1).collect();
+				let batch: Vec<EncodedKey> = (0..1 + rng.below(12)).map(|_| key(&mut rng).1).collect();
 				let batched = store.get_many(operator, &batch);
-				assert_eq!(batched.len(), batch.len(), "get_many must answer every slot at step {step}");
+				assert_eq!(
+					batched.len(),
+					batch.len(),
+					"get_many must answer every slot at step {step}"
+				);
 				for (slot, key) in batch.iter().enumerate() {
 					let single = store.get(operator, key);
 					assert_eq!(
 						batched[slot], single,
 						"get_many slot {slot} diverged from get at step {step}"
 					);
-					// get runs second and would echo a tier get_many corrupted, so live must witness it
+					// get runs second and would echo a tier get_many corrupted, so live must
+					// witness it
 					assert_eq!(
 						batched[slot].is_some(),
 						live.contains_key(&(operator, key.clone())),

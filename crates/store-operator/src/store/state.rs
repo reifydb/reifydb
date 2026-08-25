@@ -346,8 +346,7 @@ impl StandardOperatorStore {
 				results[index] = Some(row);
 				continue;
 			}
-			if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key))
-			{
+			if let Some(authoritative) = self.range.as_ref().and_then(|range| range.lookup(operator, key)) {
 				if let (Some(None), Some(row)) = (&cached, authoritative.as_ref()) {
 					self.repair_absence(operator, key, row);
 				}

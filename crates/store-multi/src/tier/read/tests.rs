@@ -640,9 +640,6 @@ fn remove_dropped_through_clears_a_dropped_previous_slot() {
 
 #[test]
 fn a_drop_landing_inside_an_install_refuses_its_claim() {
-	// The install places its rows and publishes its claim under two different locks. A drop landing
-	// between them takes the row out of RAM, so the claim must be refused; standing it would report
-	// every key in the span proven absent while the persistent tier still answers for them.
 	let read = MultiReadBufferTier::with_interlock(
 		ReadBufferConfig {
 			resident_pages: 8,
@@ -950,9 +947,6 @@ fn range_serve_outcomes_are_tallied_as_served_and_gaps() {
 
 #[test]
 fn install_outcomes_are_tallied_as_published_rows_and_refusals() {
-	// A published install and a refused one are the two things the counter must keep apart: a refusal
-	// looks exactly like a claim that was never attempted, so an install path silently refusing every
-	// time is invisible without it.
 	let read = MultiReadBufferTier::with_interlock(
 		ReadBufferConfig {
 			resident_pages: 8,
@@ -968,9 +962,6 @@ fn install_outcomes_are_tallied_as_published_rows_and_refusals() {
 	)
 	.unwrap();
 
-	// Row numbers invert in the key, so bucket 0 runs from row 65535 up to row 0 in key order; a chunk
-	// spanning exactly those two ends claims the whole page, which is what makes the invalidate below a
-	// break of a complete page rather than of a partial claim.
 	assert!(read.install_scanned_chunk(
 		source(1),
 		&row(1, 65535),

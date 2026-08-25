@@ -453,9 +453,6 @@ pub struct MultiVersionRangeCursor {
 
 	pub exhausted: bool,
 
-	/// Whether a persistent chunk of this scan may publish what it read into the read tier.
-	///
-	/// A persistence scan sweeps a whole keyspace once and must not leave claims behind it.
 	install: bool,
 }
 
@@ -845,7 +842,6 @@ impl StandardMultiStore {
 		Ok(())
 	}
 
-	/// Serves one chunk from the read tier, or reports that no claim reached the resume point.
 	#[inline]
 	fn serve_from_read_cache(
 		&self,
@@ -901,22 +897,11 @@ impl StandardMultiStore {
 			)?
 		};
 		if !descending && cursor.install {
-			self.install_scanned_chunk(persistent, scan, resumed_at.as_ref(), &cursor.persistent, &batch);
+			self.install_scanned_chunk(persistent, scan, resumed_at.as_ref(), &cursor.persistent, &batch)?;
 		}
 		merge_tier_batch(batch, scan.range, collected)
 	}
 
-	/// Claims the span the chunk just read has proven, from the rows it already carries.
-	///
-	/// The claim answers for the newest version, so a chunk read below [`MultiPersistentTier::install_floor`]
-	/// serves its rows and claims nothing: the `version <= read` predicate may have hidden a row from it,
-	/// and a claim over a key RAM never placed reports that key absent to every later reader. A `Between`
-	/// scope drops rows at or below its lower end for the same reason and is never installed from.
-	///
-	/// A cursor reported exhausted claims to the range end only when the tier stopped because it read to
-	/// that end. A tier that stopped without reading, because it is shut down or holds no table, has
-	/// proven nothing, and stretching the claim to the range end there would answer absent for every row
-	/// still beyond the resume point.
 	#[inline]
 	fn install_scanned_chunk(
 		&self,
@@ -925,18 +910,18 @@ impl StandardMultiStore {
 		resumed_at: Option<&EncodedKey>,
 		cursor: &RangeCursor,
 		batch: &RangeBatch,
-	) {
+	) -> Result<()> {
 		let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) else {
-			return;
+			return Ok(());
 		};
 		let MultiVersionScope::AsOf {
 			read: at,
 		} = scan.scope
 		else {
-			return;
+			return Ok(());
 		};
-		if at < persistent.install_floor() {
-			return;
+		if at < persistent.install_floor()? {
+			return Ok(());
 		}
 		let range_start = EncodedKey::new(scan.start);
 		let lo = match resumed_at {
@@ -945,11 +930,12 @@ impl StandardMultiStore {
 		};
 		let through = match (cursor.scanned_to_end(), cursor.exhausted, cursor.last_key.as_ref()) {
 			(true, _, _) => EncodedKey::new(scan.end),
-			(false, true, _) => return,
+			(false, true, _) => return Ok(()),
 			(false, false, Some(last)) => last.clone(),
-			(false, false, None) => return,
+			(false, false, None) => return Ok(()),
 		};
 		read.install_scanned_chunk(scan.table, &lo, &through, &batch.entries);
+		Ok(())
 	}
 }
 
@@ -1349,9 +1335,6 @@ mod cache_tests {
 
 	#[test]
 	fn a_full_scan_claims_every_bucket_it_walks_to_the_edge() {
-		// A scan installs the rows it already holds, so a bucket it walked to the end of must come out
-		// spanned by one claim. The bucket the scan only entered must not: the claim there stops at the
-		// last row read, and reporting the rest of that bucket proven absent would drop its remaining rows.
 		const HEAVY: u64 = 192;
 		const LIGHT: u64 = 20;
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();

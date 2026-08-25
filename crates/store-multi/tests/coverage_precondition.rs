@@ -308,8 +308,9 @@ fn randomised_interleavings_never_miss_a_key_at_the_newest_version() {
 fn concurrent_writers_flushes_and_installs_never_drop_a_key() {
 	// A chunk install publishes a span from rows read outside every lock, then claims it. A key committed
 	// and swept while that chunk is in flight is exactly the interleaving a version-stamped coverage
-	// interval would have to defend against. Row number doubles as commit version, so a scan at the newest version must contain every row
-	// the writer has already published, and any key the read-then-publish race drops shows up as a gap.
+	// interval would have to defend against. Row number doubles as commit version, so a scan at the newest version
+	// must contain every row the writer has already published, and any key the read-then-publish race drops shows
+	// up as a gap.
 	let (store, _g) = store();
 	let rows: u64 = 1500;
 	let published = Arc::new(std::sync::atomic::AtomicU64::new(0));

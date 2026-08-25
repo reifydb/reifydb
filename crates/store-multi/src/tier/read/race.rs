@@ -109,7 +109,6 @@ fn hot_page(read: &MultiReadBufferTier, id: PageId, tick: u64) {
 	shard.pages.insert(id, fresh);
 }
 
-/// Every key the model's persistent tier holds, across the five pages one pair of storages produces.
 fn domain() -> Vec<EncodedKey> {
 	let mut keys = Vec::new();
 	for n in 0..ROWS {
@@ -139,18 +138,11 @@ struct Lcg(u64);
 
 impl Lcg {
 	fn next(&mut self) -> u64 {
-		// A fixed generator pins each thread's operation sequence; the interleaving between threads is
-		// what this test samples and is deliberately not pinned.
 		self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
 		self.0 >> 33
 	}
 }
 
-/// The first domain key a claim covers that RAM does not hold, or none.
-///
-/// The model's persistent tier holds every domain key at every instant, so a claim over a key that is
-/// not resident is exactly the overstatement the coverage contract forbids. Understating is legal and
-/// never reported. A claim over a key outside the domain is legal and is never inspected.
 fn overstated(read: &MultiReadBufferTier, keys: &[EncodedKey]) -> Option<EncodedKey> {
 	keys.iter().find(|key| read.covers(page(key).kind, key) && !resident(read, key)).cloned()
 }
@@ -166,10 +158,6 @@ fn describe(read: &MultiReadBufferTier, key: &EncodedKey) -> String {
 
 #[test]
 fn an_invalidate_that_lands_inside_a_fill_window_must_not_leave_the_key_claimed() {
-	// A fill places its rows, drops the shard lock, then publishes its claim under the coverage lock.
-	// An invalidate of a key that is not yet claimed takes withdraw_key's early return, so it removes
-	// the row from RAM without moving the retraction counter, and the fill's token still matches when
-	// it publishes. The claim then stands over a key RAM does not hold and persistent still does.
 	let fired = Arc::new(AtomicUsize::new(0));
 	let read = {
 		let fired = fired.clone();
@@ -198,10 +186,6 @@ fn an_invalidate_that_lands_inside_a_fill_window_must_not_leave_the_key_claimed(
 
 #[test]
 fn a_drop_must_refuse_a_page_that_was_evicted_and_refilled_since_the_victim_was_chosen() {
-	// Two evictors can hold the same victim at once. The first drops the page; a fill then recreates
-	// it, and ResidentPage::fresh restarts the fill count at one. The second evictor's guard compares
-	// a count that has come back round to the value it read, so it drops a page it never inspected and
-	// the fill's claim survives the rows it was proving.
 	let read = tier(2, ByteSize::from_gib(1));
 	let kind = EntryKind::Source(StorageId::table(ROW_STORAGE));
 	read.insert(row(0), CommitVersion(1), Some(val(1)));
@@ -226,10 +210,6 @@ fn a_drop_must_refuse_a_page_that_was_evicted_and_refilled_since_the_victim_was_
 
 #[test]
 fn a_chunk_install_never_lets_one_page_hull_reach_the_page_before_it() {
-	// A chunk that crosses a page edge proves both sides, but a hull retracts a byte span rather than a page
-	// id, so a hull reaching back over the page before it would let evicting the later page withdraw claims
-	// over rows the earlier one still holds. Row numbers invert in the key, so bucket 2 sorts ahead of
-	// bucket 1 and a chunk covering both is exactly that straddle.
 	let read = tier(8, ByteSize::from_gib(1));
 	let kind = EntryKind::Source(StorageId::table(ROW_STORAGE));
 	let mut entries = bucket_entries(2, 1);
@@ -255,9 +235,6 @@ fn a_chunk_install_never_lets_one_page_hull_reach_the_page_before_it() {
 
 #[test]
 fn a_chunk_install_places_its_rows_before_it_publishes_the_claim() {
-	// Coverage may only widen once the rows behind it are in RAM: a reader landing between the two finds the
-	// span claimed and the rows absent, and reads that absence as proof. The interlock runs in exactly that
-	// window, so every row the chunk carries must already be resident when it fires.
 	let fired = Arc::new(AtomicUsize::new(0));
 	let read = {
 		let fired = fired.clone();
@@ -281,9 +258,6 @@ fn a_chunk_install_places_its_rows_before_it_publishes_the_claim() {
 
 #[test]
 fn a_row_page_hull_never_reaches_the_series_page_of_the_same_storage() {
-	// Row and series keys of one storage share an EntryKind, so they share a CoverageSet, and the hull
-	// retracts a byte span rather than a page id. If the two byte domains interleaved, evicting the row
-	// page would silently withdraw claims over series rows still in RAM.
 	let read = tier(8, ByteSize::from_gib(1));
 	let kind = EntryKind::Source(StorageId::table(ROW_STORAGE));
 	for n in 0..ROWS {
@@ -312,9 +286,6 @@ fn a_row_page_hull_never_reaches_the_series_page_of_the_same_storage() {
 
 #[test]
 fn a_partitioned_page_hull_never_reaches_the_partitioned_series_page_of_the_same_storage() {
-	// Both kinds land on bucket zero of one PartitionedSource and neither has a reconstructable key
-	// range, so their hulls are unions of single-key islands with nothing but the key encoding keeping
-	// them apart.
 	let read = tier(8, ByteSize::from_gib(1));
 	let kind = EntryKind::PartitionedSource(StorageId::table(PARTITIONED_STORAGE));
 	for n in 0..OTHERS {
@@ -340,8 +311,6 @@ fn a_partitioned_page_hull_never_reaches_the_partitioned_series_page_of_the_same
 
 #[test]
 fn a_hull_end_is_never_the_top_of_the_key_space() {
-	// Edge::Top on a hull is the one shape that would let a retraction cross out of its own page's byte
-	// domain no matter how the kinds are encoded.
 	let read = tier(8, ByteSize::from_gib(1));
 	for n in 0..OTHERS {
 		read.insert(catalog(n), CommitVersion(1), Some(val(n)));
@@ -391,15 +360,6 @@ fn step(read: &MultiReadBufferTier, rng: &mut Lcg, keys: &[EncodedKey], version:
 
 #[test]
 fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
-	// Coverage may understate what RAM holds and must never overstate it: an overstated claim makes a
-	// future serve answer "nothing exists here" over keys the persistent tier still holds, silently.
-	// The model's persistent tier holds every domain key always, so the check is that every claimed
-	// domain key is resident.
-	//
-	// The check runs between two barriers with every thread parked, because coverage and the page map
-	// are read under different locks; a check taken while a thread is mid-operation could tear across
-	// them and report a violation that never existed. Once a violation is recorded the run continues,
-	// so the anti-vacuity counters still describe the whole workload.
 	let keys = domain();
 	let mut evictions = 0u64;
 	let mut published = 0u64;

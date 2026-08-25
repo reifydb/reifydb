@@ -151,7 +151,7 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn install_floor(&self) -> CommitVersion {
+	pub fn install_floor(&self) -> Result<CommitVersion> {
 		match self {
 			Self::Sqlite(s) => s.install_floor(),
 		}
@@ -227,7 +227,7 @@ impl MultiPersistentTier {
 		match *self {}
 	}
 
-	pub fn install_floor(&self) -> CommitVersion {
+	pub fn install_floor(&self) -> Result<CommitVersion> {
 		match *self {}
 	}
 

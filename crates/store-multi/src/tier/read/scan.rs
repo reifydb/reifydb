@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Serving a forward range chunk from the interval coverage, the counterpart of the claims
-//! [`super::coverage`] publishes.
-//!
-//! A claim answers the question a scan actually needs: is RAM authoritative from here to there. So a page
-//! one commit has just punched a hole in still serves everything the surrounding claims still hold.
-//!
-//! Only forward scans are served. `range_rev_next` keeps falling through, deliberately: descending
-//! traversal of the interval set is not free and reverse range reads have no measured volume.
-
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;
@@ -28,17 +19,6 @@ use crate::{
 };
 
 impl MultiReadBufferTier {
-	/// Serves the leading run of a forward scan from the interval coverage, over the one page the resume
-	/// point falls in.
-	///
-	/// The claim is the authority and the page is only where the rows live, so a claim survives a commit
-	/// into a neighbouring key. What the page still supplies is its key range, which is where the walk has
-	/// to stop, so a kind that has none falls through and understates.
-	///
-	/// A chunk may only report the persistent tier exhausted when one claim reaches past the range end, or
-	/// past the end of a page no key of the range can sort above, because those are the only cases in which
-	/// RAM has proven there is nothing left to find. Every other stop leaves the cursor on the last row
-	/// served and the store's loop takes the remainder from persistent.
 	#[allow(clippy::too_many_arguments)]
 	pub(super) fn serve_covered_chunk(
 		&self,
@@ -160,12 +140,6 @@ impl MultiReadBufferTier {
 	}
 }
 
-/// Whether no key of the scanned range can sort above `page`'s key range, so one claim spanning the whole
-/// of that page has proven the rest of the range empty.
-///
-/// A row key inverts its row number, so bucket zero holds the byte-highest rows of its storage and the
-/// only bytes between that page's end and the storage's own end are ones no row key can occupy. The range
-/// must stop inside that storage too: a scan reaching into the next one is still owed its rows.
 fn page_ends_the_range(table: EntryKind, page: PageId, range_hi: &EncodedKey) -> bool {
 	let EntryKind::Source(storage) = table else {
 		return false;
@@ -176,7 +150,6 @@ fn page_ends_the_range(table: EntryKind, page: PageId, range_hi: &EncodedKey) ->
 	range_hi.as_slice() <= RowKey::storage_end(storage).as_slice()
 }
 
-/// The closed key range of a page, or none for a kind whose bucket cannot be turned back into one.
 pub(super) fn page_bounds(page: PageId, shift: u8) -> Option<(EncodedKey, EncodedKey)> {
 	match key_range_of(page, shift)? {
 		range => match (range.start, range.end) {
@@ -498,7 +471,8 @@ mod tests {
 
 	#[test]
 	fn a_claim_over_the_last_bucket_reports_exhausted_at_the_storage_end() {
-		// Every scan ends at a storage end sentinel no bucket claim can ever reach, so without a tail rule the last chunk of every scan falls through and buys one persistent read to confirm the range is over.
+		// Every scan ends at a storage end sentinel no bucket claim can ever reach, so without a tail rule the
+		// last chunk of every scan falls through and buys one persistent read to confirm the range is over.
 		let read = tier();
 		fill_bucket(&read, 0, &[1, 2, 3], 10);
 
@@ -522,7 +496,8 @@ mod tests {
 
 	#[test]
 	fn a_last_bucket_claim_punched_short_of_the_page_end_is_not_exhausted() {
-		// The tail rule needs one claim spanning the whole last page; a claim ending at a punched key proves nothing past it and reporting exhausted there silently drops every remaining row.
+		// The tail rule needs one claim spanning the whole last page; a claim ending at a punched key proves
+		// nothing past it and reporting exhausted there silently drops every remaining row.
 		let read = tier();
 		fill_bucket(&read, 0, &[1, 2, 3], 10);
 		read.invalidate(&row(1));
@@ -547,7 +522,8 @@ mod tests {
 
 	#[test]
 	fn a_last_bucket_claim_punched_at_the_final_row_is_not_exhausted() {
-		// A commit into row zero ends the claim exactly at the page end rather than past it, so the tail rule must compare against the successor or it reports the byte-highest row of the storage proven absent.
+		// A commit into row zero ends the claim exactly at the page end rather than past it, so the tail rule
+		// must compare against the successor or it reports the byte-highest row of the storage proven absent.
 		let read = tier();
 		fill_bucket(&read, 0, &[0, 1, 2, 3], 10);
 		read.invalidate(&row(0));
@@ -572,7 +548,9 @@ mod tests {
 
 	#[test]
 	fn a_claim_over_a_bucket_that_is_not_the_last_is_not_exhausted_at_the_storage_end() {
-		// Every scan ends at the storage end, so a tail rule keyed on the range rather than on the page being the storage's last would report exhausted on the first bucket served to its edge and drop every bucket below it.
+		// Every scan ends at the storage end, so a tail rule keyed on the range rather than on the page being
+		// the storage's last would report exhausted on the first bucket served to its edge and drop every
+		// bucket below it.
 		let read = tier();
 		fill_bucket(&read, 1, &[BUCKET + 1, BUCKET + 2], 10);
 		fill_bucket(&read, 0, &[1, 2], 10);
@@ -597,7 +575,8 @@ mod tests {
 
 	#[test]
 	fn a_range_reaching_past_the_storage_end_is_never_reported_exhausted() {
-		// A range is classified by its start, so its end may lie in another storage whose rows this claim says nothing about; reporting exhausted there drops all of them.
+		// A range is classified by its start, so its end may lie in another storage whose rows this claim says
+		// nothing about; reporting exhausted there drops all of them.
 		let read = tier();
 		fill_bucket(&read, 0, &[1, 2, 3], 10);
 

@@ -37,7 +37,8 @@ pub(super) const STATE_SIZE_CHUNK: usize = 512;
 pub(super) const STATE_GET_CHUNK: usize = 512;
 
 pub(super) fn state_gets_sql(count: usize) -> String {
-	let mut sql = String::from(r#"SELECT "key", "bytes" FROM "operator_state" WHERE "operator" = ?1 AND "key" IN ("#);
+	let mut sql =
+		String::from(r#"SELECT "key", "bytes" FROM "operator_state" WHERE "operator" = ?1 AND "key" IN ("#);
 	for index in 0..count {
 		if index > 0 {
 			sql.push(',');

@@ -122,10 +122,11 @@ fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor, read: u64) -
 
 #[test]
 fn a_scan_stopped_by_a_drained_reader_pool_installs_no_claim() {
-	// The defect: the reader pool drains at shutdown, the chunk reports the cursor exhausted having read
-	// nothing, and the install path stretches its claim to the range end over an empty result. Every row
-	// past the resume point is then reported absent by RAM, which is the one direction coverage may never
-	// move in. The first chunk must still install, or the zero below is vacuous.
+	// The defect: the reader pool drains at shutdown, the chunk reads nothing, and the install path
+	// stretches its claim to the range end over an empty result. Every row past the resume point is then
+	// reported absent by RAM, which is the one direction coverage may never move in. The read now refuses
+	// outright rather than answering, so the claim can never be taken. The first chunk must still install,
+	// or the unchanged count below is vacuous.
 	let (store, _g) = store();
 	for row in 1..=(CHUNK * 6) {
 		commit_set(&store, row, 10);
@@ -141,8 +142,15 @@ fn a_scan_stopped_by_a_drained_reader_pool_installs_no_claim() {
 
 	Shutdown::shutdown(&store);
 
-	let (second, _) = chunk(&store, &mut cursor, 30);
-	assert_eq!(second, 0, "a drained pool reads nothing");
+	let refused = store.range_next(
+		&mut cursor,
+		RowKey::full_scan(STORAGE),
+		MultiVersionScope::AsOf {
+			read: CommitVersion(30),
+		},
+		CHUNK,
+	);
+	assert!(refused.is_err(), "a drained pool must refuse the read, not answer it as a finished range");
 	assert_eq!(
 		installs(&store),
 		installed,
@@ -205,9 +213,9 @@ fn a_chunk_that_read_a_present_table_to_its_end_is_a_scan_to_the_range_end() {
 
 #[test]
 fn a_chunk_stopped_by_a_drained_reader_pool_is_not_a_scan_to_the_range_end() {
-	// Read at the tier, where the three stops are told apart, so the classification is pinned even if the
-	// install path above is later rewritten. A cursor resumed on a real row key is what makes the store's
-	// install path reach its claim at all, so that is the shape asserted here.
+	// Read at the tier, where the stops are told apart, so the classification is pinned even if the install
+	// path above is later rewritten. A cursor resumed on a real row key is what makes the store's install
+	// path reach its claim at all, so that is the shape asserted here.
 	let (tier, _g) = tier_with_rows(CHUNK * 2, 5);
 	let mut cursor = RangeCursor::new();
 	assert_eq!(tier_chunk(&tier, &mut cursor, 30) as u64, CHUNK, "the first chunk must fill");
@@ -215,10 +223,17 @@ fn a_chunk_stopped_by_a_drained_reader_pool_is_not_a_scan_to_the_range_end() {
 
 	tier.shutdown();
 
-	let rows = tier_chunk(&tier, &mut cursor, 30);
-	assert_eq!(rows, 0, "a drained pool reads nothing");
-	assert!(cursor.exhausted, "the scan must still terminate");
-	assert_eq!(cursor.stop, Some(RangeStop::ShutDown), "the stop must name the shutdown");
+	let refused = tier.range_next(
+		EntryKind::Source(STORAGE),
+		&mut cursor,
+		Bound::Unbounded,
+		Bound::Unbounded,
+		MultiVersionScope::AsOf {
+			read: CommitVersion(30),
+		},
+		CHUNK as usize,
+	);
+	assert!(refused.is_err(), "a drained pool must refuse the read, not answer it as a finished range");
 	assert!(!cursor.scanned_to_end(), "no read happened, so no claim may be taken from this stop");
 }
 

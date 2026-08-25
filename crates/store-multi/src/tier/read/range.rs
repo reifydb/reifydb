@@ -63,15 +63,6 @@ impl MultiReadBufferTier {
 		self.evict_to_capacity(index);
 	}
 
-	/// Claims the span a forward persistent chunk has just proven, placing that chunk's own rows.
-	///
-	/// `lo` is where the chunk's read began and `through` the highest key it is known to have examined,
-	/// so `[lo, successor(through))` is exactly the span the read spoke for. That span is split at every
-	/// page edge it crosses and claimed one page at a time, because a page's hull must never reach a key
-	/// another page answers for.
-	///
-	/// The rows are already in hand, so no read is issued here. The retraction token is drawn before the
-	/// rows are placed, so a withdrawal that lands anywhere in between refuses the claim.
 	pub fn install_scanned_chunk(
 		&self,
 		table: EntryKind,
