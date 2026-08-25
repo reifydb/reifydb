@@ -9,7 +9,8 @@
 //!
 //! A second, finer record of the same residency is maintained alongside the buckets in [`coverage`]: the
 //! shared interval model, which claims spans proven by what a fill actually placed rather than whole
-//! buckets. Nothing reads it yet.
+//! buckets. A forward range read consults it first and walks the pages one claim spans; only when no claim
+//! covers the resume point does it fall back to the bucket flag, and only then to the persistent tier.
 
 mod coverage;
 mod point;
@@ -17,6 +18,7 @@ mod pool;
 #[cfg(test)]
 mod race;
 mod range;
+mod scan;
 #[cfg(test)]
 mod tests;
 
@@ -184,6 +186,22 @@ pub struct ReadBufferWarmMetrics {
 	pub complete_pages_invalidated: u64,
 }
 
+/// How one refused attempt to serve a forward chunk from the interval coverage ended.
+enum CoverageOutcome {
+	Gap,
+	Refused,
+}
+
+/// Outcomes of the interval serve, counted apart from `range_served` so a chunk the bucket fallback
+/// answered can never be mistaken for one a claim answered.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ReadBufferCoverageMetrics {
+	pub served: u64,
+	pub rows: u64,
+	pub gaps: u64,
+	pub refused: u64,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ReadBufferReadMetrics {
 	pub point_hits: u64,
@@ -213,6 +231,7 @@ pub struct ReadBufferShardMetrics {
 	pub state: ReadBufferStateMetrics,
 	pub warms: ReadBufferWarmMetrics,
 	pub reads: ReadBufferReadMetrics,
+	pub coverage: ReadBufferCoverageMetrics,
 }
 
 struct Shard {
@@ -223,6 +242,7 @@ struct Shard {
 	budget: MemoryBudget,
 	warm_metrics: ReadBufferWarmMetrics,
 	read_metrics: ReadBufferReadMetrics,
+	coverage_metrics: ReadBufferCoverageMetrics,
 }
 
 #[cfg(test)]

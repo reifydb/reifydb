@@ -30,7 +30,7 @@ use std::{ops::Bound, sync::atomic::Ordering};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::interface::store::EntryKind;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_store::coverage::{Edge, successor};
+use reifydb_store::coverage::{DEFAULT_GAP_GUARD, Edge, ScanPlan, successor};
 
 use crate::tier::read::{CoverageIndex, MultiReadBufferTier, Span};
 
@@ -68,6 +68,26 @@ impl MultiReadBufferTier {
 
 	pub(super) fn claims(&self, kind: EntryKind, key: &EncodedKey) -> bool {
 		self.coverage().read().kinds.get(&kind).is_some_and(|set| set.contains(key))
+	}
+
+	/// Plans the leading segment of `[lo, hi)`, capped at the one claim that covers `lo`, together with the
+	/// retraction count the plan was read at.
+	///
+	/// The cap is what makes planning cheap enough to run once per chunk: the range of a source scan holds
+	/// one claim per point-filled key, so planning the whole range would allocate a segment per key every
+	/// time. Capping costs no coverage, because a serve consumes one contiguous claim and the store's scan
+	/// loop re-plans from the key it stopped at. The substrate's gap guard cannot help here either, since a
+	/// refused plan and a planned gap both cost exactly one persistent chunk.
+	///
+	/// The count is read under the same lock the shrink takes, so a plan and its token can never straddle a
+	/// withdrawal.
+	pub(super) fn plan_leading(&self, kind: EntryKind, lo: &EncodedKey, hi: &Edge) -> Option<(ScanPlan, u64)> {
+		let coverage = self.coverage().read();
+		let set = coverage.kinds.get(&kind)?;
+		let claim = set.covering(lo)?;
+		let cap = claim.end.min(hi.clone());
+		let planned = reifydb_store::coverage::plan(set, lo.clone(), cap, DEFAULT_GAP_GUARD, |_| false);
+		Some((planned, self.retractions()))
 	}
 
 	/// Publishes a claim, unless a shrink landed since `token` was read.

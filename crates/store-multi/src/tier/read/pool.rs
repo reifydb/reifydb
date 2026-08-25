@@ -18,8 +18,8 @@ use reifydb_value::byte_size::ByteSize;
 #[cfg(test)]
 use crate::tier::read::FillInterlock;
 use crate::tier::read::{
-	CoverageIndex, MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferReadMetrics, ReadBufferShardMetrics,
-	ReadBufferStateMetrics, ReadBufferWarmMetrics, Shard, Span,
+	CoverageIndex, MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferCoverageMetrics,
+	ReadBufferReadMetrics, ReadBufferShardMetrics, ReadBufferStateMetrics, ReadBufferWarmMetrics, Shard, Span,
 };
 
 const READ_BUFFER_SCOPE: &str = "read_buffer";
@@ -224,6 +224,7 @@ impl MultiReadBufferTier {
 				},
 				warms: shard.warm_metrics,
 				reads: shard.read_metrics,
+				coverage: shard.coverage_metrics,
 			});
 		}
 		out
@@ -295,6 +296,7 @@ fn build_shards(config: ReadBufferConfig, resident_bytes: ByteSize) -> Box<[Mute
 				budget: MemoryBudget::new(byte_cap),
 				warm_metrics: ReadBufferWarmMetrics::default(),
 				read_metrics: ReadBufferReadMetrics::default(),
+				coverage_metrics: ReadBufferCoverageMetrics::default(),
 			})
 		})
 		.collect::<Vec<_>>()

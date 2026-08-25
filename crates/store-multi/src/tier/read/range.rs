@@ -155,7 +155,10 @@ impl MultiReadBufferTier {
 			None => page_of(&EncodedKey::new(start), shift),
 		};
 
-		let chunk = self.serve_source_chunk(cursor, start, end, scope, batch_size, descending);
+		let chunk = match self.serve_covered_chunk(table, cursor, start, end, scope, batch_size, descending) {
+			ServedChunk::Served(batch) => ServedChunk::Served(batch),
+			ServedChunk::Gap => self.serve_source_chunk(cursor, start, end, scope, batch_size, descending),
+		};
 
 		{
 			let mut shard = self.shard_for(&attribution).lock();
@@ -313,14 +316,13 @@ impl MultiReadBufferTier {
 			first = false;
 		}
 	}
-
 	pub fn page_is_complete(&self, page: PageId) -> bool {
 		let shard = self.shard_for(&page).lock();
 		shard.pages.get(&page).map(|p| p.range_complete).unwrap_or(false)
 	}
 }
 
-fn served_chunk(out: Vec<RawEntry>, cursor: &mut RangeCursor, exhausted: bool) -> ServedChunk {
+pub(super) fn served_chunk(out: Vec<RawEntry>, cursor: &mut RangeCursor, exhausted: bool) -> ServedChunk {
 	reifydb_assertions! {
 		assert!(
 			exhausted || !out.is_empty(),

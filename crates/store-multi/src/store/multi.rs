@@ -842,16 +842,21 @@ impl StandardMultiStore {
 			return Ok(());
 		};
 
-		if let Some(served) = self.serve_from_read_cache(scan, cursor, collected, descending) {
-			return served;
-		}
-
-		let consumed = self.scan_persistent_chunk(persistent, scan, cursor, collected, descending)?;
+		let consumed = match self.serve_from_read_cache(scan, cursor, collected, descending) {
+			Some(served) => served?,
+			None => self.scan_persistent_chunk(persistent, scan, cursor, collected, descending)?,
+		};
 		self.warm_read_bucket_after_scan(persistent, scan, cursor, consumed)?;
 
 		Ok(())
 	}
 
+	/// Serves one chunk from the read tier, returning how many entries it carried so a served chunk drives
+	/// the warm counter exactly as a persistent chunk does.
+	///
+	/// Without that, a tier that has started serving a bucket never consults persistent for it again, so
+	/// nothing ever re-warms the bucket a commit made incomplete and the tier decays to whatever single
+	/// keys its fills happen to leave behind.
 	#[inline]
 	fn serve_from_read_cache(
 		&self,
@@ -859,7 +864,7 @@ impl StandardMultiStore {
 		cursor: &mut MultiVersionRangeCursor,
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
-	) -> Option<Result<()>> {
+	) -> Option<Result<usize>> {
 		let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) else {
 			return None;
 		};
@@ -872,7 +877,10 @@ impl StandardMultiStore {
 			TIER_SCAN_CHUNK_SIZE,
 			descending,
 		) {
-			ServedChunk::Served(batch) => Some(merge_tier_batch(batch, scan.range, collected)),
+			ServedChunk::Served(batch) => {
+				let consumed = batch.entries.len();
+				Some(merge_tier_batch(batch, scan.range, collected).map(|()| consumed))
+			}
 			ServedChunk::Gap => None,
 		}
 	}
