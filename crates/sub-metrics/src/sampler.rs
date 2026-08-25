@@ -699,7 +699,6 @@ mod tests {
 				fills_started: 3_001,
 				fills_dirty_aborted: 7,
 				fills_duplicate: 13,
-				admissions_refused: 29,
 			},
 		}
 	}

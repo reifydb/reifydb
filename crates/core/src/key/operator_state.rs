@@ -69,12 +69,6 @@ pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
 	inner.starts_with(&group_inner_prefix(group)).then_some(group)
 }
 
-/// Which operator-store tiers a keyspace may live in.
-///
-/// The two tiers answer opposite access patterns, so one flag cannot speak for both: a keyspace
-/// drained only by a due-ordered range scan earns nothing in the point tier and everything in the
-/// range tier, and a keyspace of one hot key per group is the reverse. A keyspace that states the
-/// wrong side is not wrong loudly; it just reads sqlite forever.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CachePolicy {
 	Neither,

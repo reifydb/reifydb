@@ -24,7 +24,6 @@ use crate::tier::point::FillInterlock;
 use crate::tier::point::{
 	EVICTION_SAMPLE, KEYSPACE_SLOTS, OperatorPointConfig, OperatorPointKeyspaceMetrics, OperatorPointMetrics,
 	OperatorPointShardMetrics, OperatorPointTier, PointKey, PoolInner, Shard, Slot, entry_footprint, keyspace_of,
-	sketch::Sketch,
 };
 
 const POINT_SCOPE: &str = "operator_point";
@@ -162,15 +161,6 @@ impl OperatorPointTier {
 		self.inner.shards[0].lock().budget.limit()
 	}
 
-	pub fn sketch_bytes(&self) -> ByteSize {
-		let total = self.all_shards().map(|shard| shard.lock().sketch.bytes() as u64).sum();
-		ByteSize::from_bytes(total)
-	}
-
-	pub fn sketch_resets(&self) -> u64 {
-		self.all_shards().map(|shard| shard.lock().sketch.resets()).sum()
-	}
-
 	#[cfg(test)]
 	pub(crate) fn tallied_bytes(&self) -> ByteSize {
 		let total = self
@@ -215,10 +205,7 @@ impl MetricsCollector for OperatorPointTier {
 		out.push(MetricsSample::counter(POINT_SCOPE, "fills_started", counters.fills_started));
 		out.push(MetricsSample::counter(POINT_SCOPE, "fills_dirty_aborted", counters.fills_dirty_aborted));
 		out.push(MetricsSample::counter(POINT_SCOPE, "fills_duplicate", counters.fills_duplicate));
-		out.push(MetricsSample::counter(POINT_SCOPE, "admissions_refused", counters.admissions_refused));
 		out.push(MetricsSample::bytes(POINT_SCOPE, "shard_limit_bytes", self.shard_limit_bytes()));
-		out.push(MetricsSample::bytes(POINT_SCOPE, "sketch_bytes", self.sketch_bytes()));
-		out.push(MetricsSample::counter(POINT_SCOPE, "sketch_resets", self.sketch_resets()));
 		for (index, shard) in self.inner.shards.iter().enumerate() {
 			out.push(MetricsSample::bytes(
 				format!("{POINT_SCOPE}::shard::{index:02}"),
@@ -232,12 +219,7 @@ impl MetricsCollector for OperatorPointTier {
 			out.push(MetricsSample::count(scope.clone(), "entries", keyspace.entries as u64));
 			out.push(MetricsSample::counter(scope.clone(), "hits", keyspace.counters.hits));
 			out.push(MetricsSample::counter(scope.clone(), "misses", keyspace.counters.misses));
-			out.push(MetricsSample::counter(scope.clone(), "evictions", keyspace.counters.evictions));
-			out.push(MetricsSample::counter(
-				scope,
-				"admissions_refused",
-				keyspace.counters.admissions_refused,
-			));
+			out.push(MetricsSample::counter(scope, "evictions", keyspace.counters.evictions));
 		}
 	}
 }
@@ -250,7 +232,6 @@ fn accumulate(target: &mut OperatorPointMetrics, source: &OperatorPointMetrics) 
 	target.fills_started += source.fills_started;
 	target.fills_dirty_aborted += source.fills_dirty_aborted;
 	target.fills_duplicate += source.fills_duplicate;
-	target.admissions_refused += source.admissions_refused;
 }
 
 fn slot_keyspace(slot: &Slot) -> Keyspace {
@@ -269,7 +250,6 @@ fn build_shards(config: OperatorPointConfig, resident_bytes: ByteSize) -> Box<[M
 				budget: MemoryBudget::new(byte_cap),
 				next_tick: 0,
 				rng: 0x9E37_79B9_7F4A_7C15 ^ (index as u64 + 1),
-				sketch: Sketch::new(config.sketch_counters),
 				metrics: OperatorPointMetrics::default(),
 				keyspace_metrics: Box::new([OperatorPointMetrics::default(); KEYSPACE_SLOTS]),
 			})
@@ -288,25 +268,20 @@ impl Shard {
 		state
 	}
 
-	fn rank(&self, position: usize) -> (u8, u64) {
-		let slot = &self.slots[position];
-		(self.sketch.estimate(&slot.key), slot.tick)
-	}
-
 	fn pick_victim(&mut self) -> Option<usize> {
 		let len = self.slots.len();
 		if len == 0 {
 			return None;
 		}
 		if len <= EVICTION_SAMPLE {
-			return (0..len).min_by_key(|position| self.rank(*position));
+			return (0..len).min_by_key(|position| self.slots[*position].tick);
 		}
-		let mut victim: Option<((u8, u64), usize)> = None;
+		let mut victim: Option<(u64, usize)> = None;
 		for _ in 0..EVICTION_SAMPLE {
 			let position = (self.next_random() % len as u64) as usize;
-			let rank = self.rank(position);
-			if victim.map(|(lowest, _)| rank < lowest).unwrap_or(true) {
-				victim = Some((rank, position));
+			let tick = self.slots[position].tick;
+			if victim.map(|(lowest, _)| tick < lowest).unwrap_or(true) {
+				victim = Some((tick, position));
 			}
 		}
 		victim.map(|(_, position)| position)
@@ -320,19 +295,6 @@ impl Shard {
 			let moved = self.slots[position].key.clone();
 			self.index.insert(moved, position);
 		}
-	}
-
-	pub(super) fn admits(&mut self, candidate: &PointKey) -> bool {
-		let Some(victim) = self.pick_victim() else {
-			return true;
-		};
-		let incumbent = self.sketch.estimate(&self.slots[victim].key);
-		self.sketch.estimate(candidate) >= incumbent
-	}
-
-	pub(super) fn record_access(&mut self, key: &PointKey) {
-		let population = self.slots.len();
-		self.sketch.record(key, population);
 	}
 
 	pub(super) fn evict_to_capacity(&mut self) {

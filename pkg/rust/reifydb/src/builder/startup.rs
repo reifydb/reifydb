@@ -108,7 +108,6 @@ pub(crate) fn resolve_startup_configs(
 	let operator_point = uint8_opt(ConfigKey::OperatorPointBufferBytes).map(|resident_bytes| OperatorPointConfig {
 		resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
 		shards: OperatorPointConfig::default().shards,
-		sketch_counters: OperatorPointConfig::default().sketch_counters,
 	});
 
 	let operator_range = uint8_opt(ConfigKey::OperatorRangeBufferBytes).map(|resident_bytes| OperatorRangeConfig {

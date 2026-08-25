@@ -471,9 +471,6 @@ fn partition_at(operator: OperatorId, key: &EncodedKey) -> Option<PartitionId> {
 	}
 }
 
-/// Whether a gap holds no key any row could occupy, which happens at a group boundary: the last
-/// keyspace prefix ends in `0xff`, so its successor carries out and truncates below the partition
-/// prefix length, leaving a sliver no install can ever cover.
 fn unaddressable_gap(gap: &Interval) -> bool {
 	gap.start.as_slice().len() < PartitionId::PREFIX_LEN && gap.end <= Edge::Key(pad_to_prefix(&gap.start))
 }
@@ -820,9 +817,16 @@ mod tests {
 		);
 
 		let upper = Interval::new(span_of(top, Keyspace(UNCACHED.0 - 1)).0, span_of(top, Keyspace(0x00)).1);
-		let lower = Interval::new(span_of(bottom, Keyspace(0xff)).0, span_of(bottom, Keyspace(UNCACHED.0 + 1)).1);
-		assert!(claim(&tier, &range, &upper, &[]) == Install::Installed, "an empty proven span is still a claim");
-		assert!(claim(&tier, &range, &lower, &[]) == Install::Installed, "an empty proven span is still a claim");
+		let lower =
+			Interval::new(span_of(bottom, Keyspace(0xff)).0, span_of(bottom, Keyspace(UNCACHED.0 + 1)).1);
+		assert!(
+			claim(&tier, &range, &upper, &[]) == Install::Installed,
+			"an empty proven span is still a claim"
+		);
+		assert!(
+			claim(&tier, &range, &lower, &[]) == Install::Installed,
+			"an empty proven span is still a claim"
+		);
 
 		let scan = tier.plan_scan(OP, &range).expect("a cross-group range must be plannable");
 		assert_eq!(scan.gaps(), 0, "both remaining gaps lie in a keyspace that is never cached");
@@ -1021,7 +1025,9 @@ mod tests {
 
 	#[test]
 	fn an_install_whose_span_crosses_a_partition_boundary_lands_rows_in_both_keyspaces() {
-		// A coalesced gap hands install one span covering several keyspaces, so install must re-split it per partition; refusing the whole span instead would leave every cross-keyspace read permanently uncached.
+		// A coalesced gap hands install one span covering several keyspaces, so install must re-split it per
+		// partition; refusing the whole span instead would leave every cross-keyspace read permanently
+		// uncached.
 		let tier = roomy();
 		let top = Keyspace::BUFFER;
 		let bottom = Keyspace::ACCUMULATOR;
@@ -1054,7 +1060,9 @@ mod tests {
 
 	#[test]
 	fn a_plan_merges_contiguous_gaps_into_one_read_but_never_across_an_exempt_boundary() {
-		// One read per uncovered run is the point: splitting every gap at a keyspace boundary issued a separate store read per keyspace byte the scan crossed. Folding an exempt keyspace into a cached run would also hide it from the gap guard.
+		// One read per uncovered run is the point: splitting every gap at a keyspace boundary issued a separate
+		// store read per keyspace byte the scan crossed. Folding an exempt keyspace into a cached run would
+		// also hide it from the gap guard.
 		let tier = roomy();
 		let top = Keyspace::BUFFER;
 		let bottom = Keyspace::ACCUMULATOR;
