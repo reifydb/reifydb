@@ -5,8 +5,12 @@ mod anchor;
 mod census;
 mod checkpoint;
 mod state;
+#[cfg(test)]
+mod tests;
 
 use std::{ops::Deref, sync::Arc};
+#[cfg(test)]
+use std::sync::OnceLock;
 
 use reifydb_core::{common::CommitVersion, lifecycle::watermark::CheckpointFloor, metrics::collect::MetricsCollector};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -45,6 +49,11 @@ pub enum OperatorStore {
 	Standard(StandardOperatorStore) = 0,
 }
 
+/// Entered between the two tier reads of a checkpoint merge, so a test can land a whole flush at the
+/// one instant an entry is leaving the buffer and has not yet landed in the persistent tier.
+#[cfg(test)]
+type CheckpointInterlock = Box<dyn Fn(&StandardOperatorStore) + Send + Sync>;
+
 #[derive(Clone)]
 pub struct StandardOperatorStore(Arc<StandardOperatorStoreInner>);
 
@@ -57,6 +66,8 @@ pub struct StandardOperatorStoreInner {
 	pub(crate) filter: Option<ActorRef<FilterMessage>>,
 	#[allow(dead_code)]
 	pub(crate) spawner: ActorSpawner,
+	#[cfg(test)]
+	pub(crate) checkpoint_interlock: OnceLock<CheckpointInterlock>,
 }
 
 impl Deref for StandardOperatorStore {
@@ -126,8 +137,25 @@ impl StandardOperatorStore {
 			flush,
 			filter,
 			spawner,
+			#[cfg(test)]
+			checkpoint_interlock: OnceLock::new(),
 		}))
 	}
+
+	#[cfg(test)]
+	pub(crate) fn attach_checkpoint_interlock(&self, interlock: CheckpointInterlock) {
+		let _ = self.checkpoint_interlock.set(interlock);
+	}
+
+	#[cfg(test)]
+	pub(crate) fn checkpoint_interlock(&self) {
+		if let Some(interlock) = self.checkpoint_interlock.get() {
+			interlock(self);
+		}
+	}
+
+	#[cfg(not(test))]
+	pub(crate) fn checkpoint_interlock(&self) {}
 
 	pub fn commit(&self) -> &OperatorCommitBuffer {
 		&self.commit

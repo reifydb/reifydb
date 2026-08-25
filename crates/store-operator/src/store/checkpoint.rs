@@ -30,6 +30,7 @@ impl StandardOperatorStore {
 	#[instrument(name = "store::operator::checkpoint_floor", level = "trace", skip(self))]
 	pub fn checkpoint_floor(&self) -> Option<CommitVersion> {
 		let buffered = self.commit.checkpoint_floor();
+		self.checkpoint_interlock();
 		let durable = self.persistent.as_ref().and_then(|persistent| persistent.checkpoint_floor());
 		match (durable, buffered) {
 			(Some(durable), Some(buffered)) => Some(durable.min(buffered)),
@@ -40,6 +41,7 @@ impl StandardOperatorStore {
 	#[instrument(name = "store::operator::checkpoint_list", level = "trace", skip(self))]
 	pub fn checkpoint_list(&self) -> Vec<FlowId> {
 		let buffered = self.commit.checkpoint_entries();
+		self.checkpoint_interlock();
 		let mut merged: BTreeSet<FlowId> = self
 			.persistent
 			.as_ref()
