@@ -268,6 +268,8 @@ impl WasmDB {
 			default_in_process_procedures(b).configure()
 		};
 
+		let auth_registry = Arc::new(AuthenticationRegistry::new(clock.clone()));
+
 		let eventbus_clone = eventbus.clone();
 		let inner = StandardEngine::new(
 			multi,
@@ -280,6 +282,7 @@ impl WasmDB {
 				routines,
 				transforms: Transforms::empty(),
 				ioc,
+				auth_registry: auth_registry.clone(),
 				#[cfg(not(target_arch = "wasm32"))]
 				remote_registry: None,
 			},
@@ -335,7 +338,7 @@ impl WasmDB {
 
 		let auth_service = AuthService::new(
 			Arc::new(inner.clone()),
-			Arc::new(AuthenticationRegistry::new(clock.clone())),
+			auth_registry,
 			rng.clone(),
 			clock.clone(),
 			AuthServiceConfig::default(),

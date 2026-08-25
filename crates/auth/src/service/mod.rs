@@ -173,6 +173,10 @@ impl AuthService {
 		}))
 	}
 
+	pub fn auth_registry(&self) -> &Arc<AuthenticationRegistry> {
+		&self.auth_registry
+	}
+
 	pub(super) fn now(&self) -> Result<DateTime, Error> {
 		Ok(self.clock.now())
 	}

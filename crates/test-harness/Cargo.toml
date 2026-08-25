@@ -35,6 +35,7 @@ reifydb-store-single = { workspace = true, optional = true }
 [features]
 default = ["engine", "auth"]
 engine = [
+    "dep:reifydb-auth",
     "dep:reifydb-engine",
     "dep:reifydb-catalog",
     "dep:reifydb-cdc",
@@ -50,7 +51,7 @@ engine = [
     "dep:reifydb-store-single",
     "dep:reifydb-transaction",
 ]
-auth = ["engine", "dep:reifydb-auth", "dep:reifydb-runtime"]
+auth = ["engine", "dep:reifydb-runtime"]
 operator = [
     "engine",
     "dep:reifydb-runtime",

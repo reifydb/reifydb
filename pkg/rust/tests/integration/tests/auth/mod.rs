@@ -2,5 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 mod github;
+mod registry;
 mod solana;
 mod token;

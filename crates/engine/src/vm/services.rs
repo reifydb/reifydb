@@ -34,6 +34,7 @@ pub struct EngineConfig {
 	pub routines: Routines,
 	pub transforms: Transforms,
 	pub ioc: IocContainer,
+	pub auth_registry: Arc<AuthenticationRegistry>,
 	#[cfg(not(reifydb_single_threaded))]
 	pub remote_registry: Option<RemoteRegistry>,
 }
@@ -48,7 +49,7 @@ pub struct Services {
 	pub virtual_table_registry: UserVTableRegistry,
 	pub metrics_reader: MetricsReader<SingleStore>,
 	pub ioc: IocContainer,
-	pub auth_registry: AuthenticationRegistry,
+	pub auth_registry: Arc<AuthenticationRegistry>,
 	pub view_lineage: ViewLineage,
 	#[cfg(not(reifydb_single_threaded))]
 	pub remote_registry: Option<RemoteRegistry>,
@@ -61,7 +62,6 @@ impl Services {
 		operator_store: OperatorLibrary,
 		metrics_reader: MetricsReader<SingleStore>,
 	) -> Self {
-		let auth_registry = AuthenticationRegistry::new(config.runtime_context.clock.clone());
 		Self {
 			compiler: Compiler::new(catalog.clone()),
 			catalog,
@@ -72,7 +72,7 @@ impl Services {
 			virtual_table_registry: UserVTableRegistry::new(),
 			metrics_reader,
 			ioc: config.ioc,
-			auth_registry,
+			auth_registry: config.auth_registry,
 			view_lineage: ViewLineage::default(),
 			#[cfg(not(reifydb_single_threaded))]
 			remote_registry: config.remote_registry,
@@ -97,20 +97,20 @@ impl Services {
 		let routines_builder = default_in_process_monoids(routines_builder);
 		let routines = routines_builder.configure();
 
-		let mut services = Self::new(
+		let services = Self::new(
 			Catalog::testing(),
 			EngineConfig {
 				runtime_context: RuntimeContext::with_clock(Clock::Real),
 				routines,
 				transforms: Transforms::empty(),
 				ioc: IocContainer::new(),
+				auth_registry: Arc::new(AuthenticationRegistry::default()),
 				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},
 			OperatorLibrary::new(),
 			MetricsReader::new(store),
 		);
-		services.auth_registry = AuthenticationRegistry::default();
 		Arc::new(services)
 	}
 }

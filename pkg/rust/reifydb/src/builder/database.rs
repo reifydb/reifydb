@@ -471,6 +471,8 @@ impl DatabaseBuilder {
 		#[cfg(not(reifydb_single_threaded))]
 		let remote_registry = RemoteRegistry::new(tokio_handle.clone());
 
+		let auth_registry = Arc::new(AuthenticationRegistry::new(clock.clone()));
+
 		// Create engine and CDC producer BEFORE bootstrap so that bootstrap
 		// commits produce CDC entries (PostCommitEvent is captured).
 		let engine = StandardEngine::new(
@@ -488,6 +490,7 @@ impl DatabaseBuilder {
 				routines,
 				transforms,
 				ioc: self.ioc.clone(),
+				auth_registry: auth_registry.clone(),
 				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: Some(remote_registry),
 			},
@@ -497,7 +500,7 @@ impl DatabaseBuilder {
 
 		let auth_service = AuthService::new(
 			Arc::new(engine.clone()),
-			Arc::new(AuthenticationRegistry::new(clock.clone())),
+			auth_registry,
 			rng.clone(),
 			clock.clone(),
 			match self.auth_configurator {
