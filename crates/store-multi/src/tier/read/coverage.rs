@@ -41,11 +41,6 @@ pub(super) fn widen(hull: &mut Option<Span>, span: Span) {
 	}
 }
 
-/// The span of encoded keys a storage's plain row keys can occupy, which the series row keys of the
-/// same storage never reach: the two differ in their leading kind byte, and the series band sorts
-/// wholly below the row band.
-///
-/// A head is a statement about row keys alone, so every raise, use and lowering is confined here.
 pub(super) fn row_band(kind: EntryKind) -> Option<(EncodedKey, EncodedKey)> {
 	match kind {
 		EntryKind::Source(storage) => Some((RowKey::storage_start(storage), RowKey::storage_end(storage))),
@@ -60,8 +55,6 @@ fn in_row_band(kind: EntryKind, key: &EncodedKey) -> bool {
 	}
 }
 
-/// The leading chunk a serve may answer: where it starts, the page it lands in, the claim plan over it
-/// and the retraction token every one of those was read under.
 pub(super) struct Leading {
 	pub(super) lo: EncodedKey,
 	pub(super) page: PageId,
@@ -107,12 +100,6 @@ impl MultiReadBufferTier {
 		pages.iter().filter(|page| page_fully_claimed(&coverage, **page, shift)).count()
 	}
 
-	/// Reads the head and the claim plan under one acquisition of the coverage lock and one retraction
-	/// token, so a withdrawal landing between them can never leave an advanced `lo` standing on a head
-	/// the withdrawal has already invalidated.
-	///
-	/// `page_bounds` and `page_of` are arithmetic over the key alone and take no page lock, so deriving
-	/// the page here does not hold a page lock and the coverage lock together.
 	#[allow(clippy::too_many_arguments)]
 	pub(super) fn plan_leading(
 		&self,
@@ -163,11 +150,6 @@ impl MultiReadBufferTier {
 		})
 	}
 
-	/// Records that a scan which began at or below the storage prefix reached `first` without meeting a
-	/// row, or reached `through` without meeting one at all.
-	///
-	/// The token is the same one a claim publishes under: a withdrawal since it was read means a row may
-	/// have appeared inside the proven span, and refusing then only understates.
 	pub(super) fn raise_head(
 		&self,
 		kind: EntryKind,
@@ -203,8 +185,6 @@ impl MultiReadBufferTier {
 		}
 	}
 
-	/// Pulls the head back to a key the persistent tier may now hold, which every path placing a row into
-	/// RAM must do before it places it: a head left above such a key makes a scan skip it outright.
 	pub(super) fn lower_head(&self, kind: EntryKind, key: &EncodedKey) {
 		if !in_row_band(kind, key) {
 			return;

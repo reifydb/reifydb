@@ -3,13 +3,6 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// A monotonic count of coverage withdrawals, so a step that reads coverage under one lock and mutates
-/// rows under another can tell that nothing was withdrawn in between.
-///
-/// A fill reads the token before it inspects rows and re-reads it before it publishes; a moved token
-/// means a claim was withdrawn in the window, and the fill must refuse rather than answer for a span
-/// RAM no longer holds. `SeqCst` is part of that argument: the token and the coverage mutation must
-/// agree on one order across every thread, or a refusal can be missed and the claim overstates.
 #[derive(Debug, Default)]
 pub struct Retractions(AtomicU64);
 
