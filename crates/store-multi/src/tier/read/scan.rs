@@ -4,10 +4,8 @@
 //! Serving a forward range chunk from the interval coverage, the counterpart of the claims
 //! [`super::coverage`] publishes.
 //!
-//! The bucket flag asks "is this whole bucket resident", which no scan starting at a storage prefix can
-//! ever answer, and which one commit anywhere in the bucket falsifies for all 65536 of its row numbers. A
-//! claim asks the narrower question the scan actually needs: is RAM authoritative from here to there. So a
-//! page a commit has just made incomplete still serves everything the claim still holds.
+//! A claim answers the question a scan actually needs: is RAM authoritative from here to there. So a page
+//! one commit has just punched a hole in still serves everything the surrounding claims still hold.
 //!
 //! Only forward scans are served. `range_rev_next` keeps falling through, deliberately: descending
 //! traversal of the interval set is not free and reverse range reads have no measured volume.
@@ -33,10 +31,9 @@ impl MultiReadBufferTier {
 	/// Serves the leading run of a forward scan from the interval coverage, over the one page the resume
 	/// point falls in.
 	///
-	/// The claim is the authority and the page is only where the rows live, so this answers spans the
-	/// bucket flag cannot: a claim survives a commit into a neighbouring key, where `range_complete` is
-	/// cleared for all 65536 row numbers of the bucket at once. What the page still supplies is its key
-	/// range, which is where the walk has to stop, so a kind that has none falls through and understates.
+	/// The claim is the authority and the page is only where the rows live, so a claim survives a commit
+	/// into a neighbouring key. What the page still supplies is its key range, which is where the walk has
+	/// to stop, so a kind that has none falls through and understates.
 	///
 	/// A chunk may only report the persistent tier exhausted when the claim reaches past the range end,
 	/// because that is the only case in which RAM has proven there is nothing left to find. Every other

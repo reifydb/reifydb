@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
-
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::interface::store::EntryKind;
 use reifydb_store::row::page::{PageId, key_range_of, page_of};
@@ -32,8 +30,7 @@ impl MultiReadBufferTier {
 
 	pub fn populate_page(&self, page: PageId, entries: Vec<RawEntry>, complete: bool) {
 		let shift = self.bucket_shift();
-		let span = span_of(key_range_of(page, shift));
-		let range_complete = complete && span.is_some();
+		let span = span_of(key_range_of(page, shift)).filter(|_| complete);
 		let index = self.shard_index(&page);
 		let token = self.retractions();
 		let mut shard = self.shard(index).lock();
@@ -61,17 +58,16 @@ impl MultiReadBufferTier {
 				resident.entries.insert(key, new_entry);
 				account(&mut resident.bytes, &mut resident.payload, budget, old, new);
 			}
-			resident.range_complete = range_complete;
 			resident.tick = next;
-			if range_complete {
+			if let Some(span) = span.clone() {
 				resident.fills = self.next_fill();
-				widen(&mut resident.claimed, span.clone().expect("a complete page has a span"));
+				widen(&mut resident.claimed, span);
 			}
 		}
 		shard.next_tick = next + 1;
 		drop(shard);
 
-		if let Some(span) = span.filter(|_| range_complete) {
+		if let Some(span) = span {
 			self.claim(page.kind, &span, token);
 		}
 		self.evict_to_capacity(index);
@@ -117,7 +113,6 @@ impl MultiReadBufferTier {
 				resident.entries.insert(key, new_entry);
 				account(&mut resident.bytes, &mut resident.payload, budget, old, new);
 			}
-			resident.range_complete = true;
 			resident.tick = next;
 			resident.fills = self.next_fill();
 			widen(&mut resident.claimed, span.clone());
@@ -155,10 +150,7 @@ impl MultiReadBufferTier {
 			None => page_of(&EncodedKey::new(start), shift),
 		};
 
-		let chunk = match self.serve_covered_chunk(table, cursor, start, end, scope, batch_size, descending) {
-			ServedChunk::Served(batch) => ServedChunk::Served(batch),
-			ServedChunk::Gap => self.serve_source_chunk(cursor, start, end, scope, batch_size, descending),
-		};
+		let chunk = self.serve_covered_chunk(table, cursor, start, end, scope, batch_size, descending);
 
 		{
 			let mut shard = self.shard_for(&attribution).lock();
@@ -168,157 +160,6 @@ impl MultiReadBufferTier {
 			}
 		}
 		chunk
-	}
-
-	#[allow(clippy::too_many_arguments)]
-	fn serve_source_chunk(
-		&self,
-		cursor: &mut RangeCursor,
-		start: &[u8],
-		end: &[u8],
-		scope: MultiVersionScope,
-		batch_size: usize,
-		descending: bool,
-	) -> ServedChunk {
-		let shift = self.bucket_shift();
-		let range_lo = EncodedKey::new(start);
-		let range_hi = EncodedKey::new(end);
-		if range_lo > range_hi {
-			cursor.exhausted = true;
-			return ServedChunk::Served(RangeBatch::empty());
-		}
-
-		let mut out: Vec<RawEntry> = Vec::new();
-		let mut first = true;
-		let mut page = match &cursor.last_key {
-			Some(last) => page_of(last, shift),
-			None if descending => page_of(&range_hi, shift),
-			None => page_of(&range_lo, shift),
-		};
-
-		loop {
-			let Some(page_range) = key_range_of(page, shift) else {
-				if out.is_empty() {
-					return ServedChunk::Gap;
-				}
-				return served_chunk(out, cursor, false);
-			};
-			let (page_start, page_end) = match (page_range.start, page_range.end) {
-				(Bound::Included(s), Bound::Included(e)) => (s, e),
-				_ => {
-					if out.is_empty() {
-						return ServedChunk::Gap;
-					}
-					return served_chunk(out, cursor, false);
-				}
-			};
-
-			if descending {
-				if page_end < range_lo {
-					return served_chunk(out, cursor, true);
-				}
-			} else if page_start > range_hi {
-				return served_chunk(out, cursor, true);
-			}
-
-			let mut shard = self.shard_for(&page).lock();
-			let complete = shard.pages.get(&page).map(|p| p.range_complete).unwrap_or(false);
-			if !complete {
-				drop(shard);
-				if out.is_empty() {
-					return ServedChunk::Gap;
-				}
-				return served_chunk(out, cursor, false);
-			}
-
-			let tick = shard.next_tick;
-			let page_ref = shard.pages.get_mut(&page).expect("complete page present under lock");
-
-			let lo_bound: Bound<EncodedKey> = if first {
-				match &cursor.last_key {
-					Some(last) if !descending && *last >= range_lo => Bound::Excluded(last.clone()),
-					_ => Bound::Included(page_start.clone().max(range_lo.clone())),
-				}
-			} else {
-				Bound::Included(page_start.clone().max(range_lo.clone()))
-			};
-			let hi_bound: Bound<EncodedKey> = if first {
-				match &cursor.last_key {
-					Some(last) if descending && *last <= range_hi => Bound::Excluded(last.clone()),
-					_ => Bound::Included(page_end.clone().min(range_hi.clone())),
-				}
-			} else {
-				Bound::Included(page_end.clone().min(range_hi.clone()))
-			};
-
-			let mut full = false;
-			if descending {
-				for (key, entry) in page_ref.entries.range((lo_bound, hi_bound)).rev() {
-					if out.len() >= batch_size {
-						full = true;
-						break;
-					}
-					if scope.contains(entry.version) {
-						out.push(RawEntry {
-							key: key.clone(),
-							version: entry.version,
-							value: entry.value.clone(),
-						});
-					}
-				}
-			} else {
-				for (key, entry) in page_ref.entries.range((lo_bound, hi_bound)) {
-					if out.len() >= batch_size {
-						full = true;
-						break;
-					}
-					if scope.contains(entry.version) {
-						out.push(RawEntry {
-							key: key.clone(),
-							version: entry.version,
-							value: entry.value.clone(),
-						});
-					}
-				}
-			}
-
-			page_ref.hot = true;
-			page_ref.tick = tick;
-			shard.next_tick = tick + 1;
-			drop(shard);
-
-			if full {
-				return served_chunk(out, cursor, false);
-			}
-
-			if descending {
-				if page_start <= range_lo {
-					return served_chunk(out, cursor, true);
-				}
-				page = PageId {
-					kind: page.kind,
-					bucket: page.bucket + 1,
-					series: page.series,
-				};
-			} else {
-				if page_end >= range_hi {
-					return served_chunk(out, cursor, true);
-				}
-				if page.bucket == 0 {
-					return served_chunk(out, cursor, true);
-				}
-				page = PageId {
-					kind: page.kind,
-					bucket: page.bucket - 1,
-					series: page.series,
-				};
-			}
-			first = false;
-		}
-	}
-	pub fn page_is_complete(&self, page: PageId) -> bool {
-		let shard = self.shard_for(&page).lock();
-		shard.pages.get(&page).map(|p| p.range_complete).unwrap_or(false)
 	}
 }
 

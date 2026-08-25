@@ -4,14 +4,12 @@
 //! The read tier's partial-range coverage: the claim that RAM is authoritative over a span of the
 //! encoded key space, held apart from the pages that back it and keyed by [`EntryKind`].
 //!
-//! It runs alongside the `range_complete` bucket flag and nothing reads it yet. What it adds over
-//! that flag is granularity: a commit into a warm bucket clears `range_complete` for all 65536 row
-//! numbers, where a shrink punches out exactly the one key RAM stopped holding.
+//! It is the sole record of what RAM may answer for. Its granularity is per key: a commit into a warm
+//! bucket punches out exactly the one key RAM stopped holding, leaving the rest of the span claimed.
 //!
 //! Two fills publish a claim. A single-key fill claims the one key it placed, which is authoritative
 //! because the persistent tier is current-only, so a back-fill can only ever carry the version that
-//! tier holds. A whole-page fill claims the page's reconstructed key range, which is the same span
-//! `range_complete` already asserts and is never wider.
+//! tier holds. A whole-page fill claims the page's reconstructed key range and is never wider.
 //!
 //! The coverage lock and a page lock are never held together, so every path is a sequence of
 //! separately locked steps ordered to understate rather than overstate:
@@ -30,7 +28,10 @@ use std::{ops::Bound, sync::atomic::Ordering};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::interface::store::EntryKind;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_store::coverage::{DEFAULT_GAP_GUARD, Edge, ScanPlan, successor};
+use reifydb_store::{
+	coverage::{DEFAULT_GAP_GUARD, Edge, ScanPlan, successor},
+	row::page::{PageId, key_range_of},
+};
 
 use crate::tier::read::{CoverageIndex, MultiReadBufferTier, Span};
 
@@ -57,6 +58,13 @@ pub(super) fn widen(hull: &mut Option<Span>, span: Span) {
 	}
 }
 
+fn page_fully_claimed(coverage: &CoverageIndex, page: PageId, shift: u8) -> bool {
+	let Some((start, end)) = span_of(key_range_of(page, shift)) else {
+		return false;
+	};
+	coverage.kinds.get(&page.kind).and_then(|set| set.covering(&start)).is_some_and(|claim| claim.end >= end)
+}
+
 impl MultiReadBufferTier {
 	pub(super) fn coverage(&self) -> &RwLock<CoverageIndex> {
 		&self.inner.coverage
@@ -68,6 +76,24 @@ impl MultiReadBufferTier {
 
 	pub(super) fn claims(&self, kind: EntryKind, key: &EncodedKey) -> bool {
 		self.coverage().read().kinds.get(&kind).is_some_and(|set| set.contains(key))
+	}
+
+	/// Whether one claim spans the whole of a page's key range, so RAM answers for every key the page
+	/// is responsible for.
+	///
+	/// A kind whose bucket has no reconstructable range can never satisfy this, however much of it is
+	/// claimed, because there is no range to compare a claim against.
+	pub fn page_is_complete(&self, page: PageId) -> bool {
+		let shift = self.bucket_shift();
+		let coverage = self.coverage().read();
+		page_fully_claimed(&coverage, page, shift)
+	}
+
+	/// The count of `pages` one claim spans entirely, read under a single lock.
+	pub(super) fn count_complete_pages(&self, pages: &[PageId]) -> usize {
+		let shift = self.bucket_shift();
+		let coverage = self.coverage().read();
+		pages.iter().filter(|page| page_fully_claimed(&coverage, **page, shift)).count()
 	}
 
 	/// Plans the leading segment of `[lo, hi)`, capped at the one claim that covers `lo`, together with the

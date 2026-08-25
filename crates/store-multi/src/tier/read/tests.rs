@@ -373,31 +373,6 @@ fn serve_paginates_without_dups_or_gaps() {
 }
 
 #[test]
-fn serve_steps_across_consecutive_complete_buckets() {
-	let read = cache_shift(64, 4);
-	let rows: Vec<(u64, u64, &str)> = (0u64..32).map(|n| (n, 1u64, "x")).collect();
-	populate_complete(&read, 1, &rows);
-	assert!(read.page_is_complete(read.page_of_key(&row(1, 0))));
-	assert!(read.page_is_complete(read.page_of_key(&row(1, 16))));
-
-	let served = serve_collect(
-		&read,
-		1,
-		0,
-		31,
-		MultiVersionScope::AsOf {
-			read: CommitVersion(1),
-		},
-		5,
-		false,
-	);
-	let keys: Vec<EncodedKey> = served.iter().map(|e| e.key.clone()).collect();
-	let mut expected: Vec<EncodedKey> = (0u64..32).map(|n| row(1, n)).collect();
-	expected.sort();
-	assert_eq!(keys, expected, "cross-bucket serve must yield every row once, in ascending-encoded order");
-}
-
-#[test]
 fn serve_stops_at_incomplete_bucket_after_a_complete_one() {
 	let read = cache_shift(64, 4);
 	let rows: Vec<(u64, u64, &str)> = (16u64..32).map(|n| (n, 1u64, "x")).collect();
@@ -427,25 +402,6 @@ fn serve_stops_at_incomplete_bucket_after_a_complete_one() {
 	assert!(matches!(gap, ServedChunk::Gap), "the incomplete bucket must read through");
 	assert_eq!(cursor.last_key, last_before, "Gap must not advance the cursor");
 	assert!(!cursor.exhausted);
-}
-
-#[test]
-fn serve_reverse_is_forward_reversed() {
-	let read = cache_shift(64, 4);
-	let rows: Vec<(u64, u64, &str)> = (0u64..32).map(|n| (n, 1u64, "x")).collect();
-	populate_complete(&read, 1, &rows);
-
-	let scope = MultiVersionScope::AsOf {
-		read: CommitVersion(1),
-	};
-	let forward: Vec<EncodedKey> =
-		serve_collect(&read, 1, 0, 31, scope, 5, false).into_iter().map(|e| e.key).collect();
-	let mut reverse: Vec<EncodedKey> =
-		serve_collect(&read, 1, 0, 31, scope, 5, true).into_iter().map(|e| e.key).collect();
-	reverse.reverse();
-
-	assert_eq!(forward, reverse, "reverse serve must be the exact reverse of forward serve");
-	assert_eq!(forward.len(), 32);
 }
 
 #[test]

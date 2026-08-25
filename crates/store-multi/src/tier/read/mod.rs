@@ -3,14 +3,12 @@
 
 //! Read buffer tier of the multi-version store, caching keys the commit buffer has evicted so a repeated
 //! point read need not fall through to persistent every time. The previous slot is only ever filled by an
-//! in-place supersede, so it stays version-adjacent to the current slot. Range scans consult this tier only
-//! for `range_complete` buckets, and the always-scanned commit buffer still wins on version, so the cache
-//! can never mask a newer value nor resurrect a deleted one.
+//! in-place supersede, so it stays version-adjacent to the current slot. The always-scanned commit buffer
+//! still wins on version, so the cache can never mask a newer value nor resurrect a deleted one.
 //!
-//! A second, finer record of the same residency is maintained alongside the buckets in [`coverage`]: the
-//! shared interval model, which claims spans proven by what a fill actually placed rather than whole
-//! buckets. A forward range read consults it first and walks the pages one claim spans; only when no claim
-//! covers the resume point does it fall back to the bucket flag, and only then to the persistent tier.
+//! Residency is recorded in [`coverage`]: the shared interval model, which claims spans proven by what a
+//! fill actually placed rather than whole buckets. A forward range read consults it and walks the pages one
+//! claim spans; where no claim covers the resume point the read falls through to the persistent tier.
 
 mod coverage;
 mod point;
@@ -74,7 +72,6 @@ struct ResidentPage {
 	payload: usize,
 	hot: bool,
 	tick: u64,
-	range_complete: bool,
 	warm_blocked: bool,
 	/// The union hull of every claim this page has published, so a page leaves the tier in one shrink
 	/// even for a kind whose bucket has no reconstructable key range.
@@ -101,7 +98,6 @@ impl ResidentPage {
 			payload: 0,
 			hot: false,
 			tick,
-			range_complete: false,
 			warm_blocked: false,
 			claimed: None,
 			fills: 0,
@@ -192,8 +188,8 @@ enum CoverageOutcome {
 	Refused,
 }
 
-/// Outcomes of the interval serve, counted apart from `range_served` so a chunk the bucket fallback
-/// answered can never be mistaken for one a claim answered.
+/// Outcomes of the interval serve, counted apart from `range_served` so a refused plan stays
+/// distinguishable from a span no claim reached.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ReadBufferCoverageMetrics {
 	pub served: u64,

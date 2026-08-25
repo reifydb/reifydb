@@ -54,12 +54,6 @@ impl MultiReadBufferTier {
 				return VersionedGetResult::NotFound;
 			};
 			let Some(entry) = page.entries.get(key) else {
-				if page.range_complete {
-					page.hot = true;
-					page.tick = next;
-					read_metrics.point_hits += 1;
-					return VersionedGetResult::Tombstone;
-				}
 				read_metrics.point_misses += 1;
 				return VersionedGetResult::NotFound;
 			};
@@ -188,6 +182,7 @@ impl MultiReadBufferTier {
 	pub fn invalidate(&self, key: &EncodedKey) {
 		let page_id = page_of(key, self.bucket_shift());
 		let index = self.shard_index(&page_id);
+		let was_complete = self.page_is_complete(page_id);
 		self.withdraw_key(page_id.kind, key);
 		let mut shard = self.shard(index).lock();
 		if let Some(claim) = shard.warming.get_mut(&page_id) {
@@ -211,10 +206,9 @@ impl MultiReadBufferTier {
 						EntryFootprint::default(),
 					);
 				}
-				if page.range_complete {
+				if was_complete {
 					warm_metrics.complete_pages_invalidated += 1;
 				}
-				page.range_complete = false;
 				page.entries.is_empty()
 			}
 			None => false,
@@ -222,7 +216,7 @@ impl MultiReadBufferTier {
 		drop(shard);
 		self.withdraw_key(page_id.kind, key);
 		if now_empty {
-			self.retract_page(index, page_id, false);
+			self.retract_page(index, page_id);
 		}
 	}
 
@@ -241,7 +235,7 @@ impl MultiReadBufferTier {
 			budget,
 			..
 		} = &mut *shard;
-		let now_empty_incomplete = match pages.get_mut(&page_id) {
+		let now_empty = match pages.get_mut(&page_id) {
 			Some(page) => {
 				if let Some(removed) = page.entries.remove(key) {
 					let footprint = entry_footprint(key, &removed);
@@ -253,14 +247,14 @@ impl MultiReadBufferTier {
 						EntryFootprint::default(),
 					);
 				}
-				page.entries.is_empty() && !page.range_complete
+				page.entries.is_empty()
 			}
 			None => false,
 		};
 		drop(shard);
 		self.withdraw_key(page_id.kind, key);
-		if now_empty_incomplete {
-			self.retract_page(index, page_id, true);
+		if now_empty {
+			self.retract_page(index, page_id);
 		}
 	}
 
@@ -279,7 +273,7 @@ impl MultiReadBufferTier {
 			budget,
 			..
 		} = &mut *shard;
-		let now_empty_incomplete = match pages.get_mut(&page_id) {
+		let now_empty = match pages.get_mut(&page_id) {
 			Some(page) => {
 				let (do_remove, do_clear_previous) = match page.entries.get(key) {
 					Some(entry) if entry.version <= through => (true, false),
@@ -303,14 +297,14 @@ impl MultiReadBufferTier {
 					let new = entry_footprint(key, entry);
 					account(&mut page.bytes, &mut page.payload, budget, old, new);
 				}
-				page.entries.is_empty() && !page.range_complete
+				page.entries.is_empty()
 			}
 			None => false,
 		};
 		drop(shard);
 		self.withdraw_key(page_id.kind, key);
-		if now_empty_incomplete {
-			self.retract_page(index, page_id, true);
+		if now_empty {
+			self.retract_page(index, page_id);
 		}
 	}
 

@@ -150,12 +150,8 @@ impl MultiReadBufferTier {
 	}
 
 	/// Retracts and drops a page a removal has emptied, so no claim outlives the rows that backed it.
-	pub(super) fn retract_page(&self, index: usize, victim: PageId, keep_complete: bool) {
-		let removable = |shard: &Shard| {
-			shard.pages
-				.get(&victim)
-				.is_some_and(|page| page.entries.is_empty() && !(keep_complete && page.range_complete))
-		};
+	pub(super) fn retract_page(&self, index: usize, victim: PageId) {
+		let removable = |shard: &Shard| shard.pages.get(&victim).is_some_and(|page| page.entries.is_empty());
 		let (hull, fills) = {
 			let shard = self.shard(index).lock();
 			if !removable(&shard) {
@@ -195,37 +191,44 @@ impl MultiReadBufferTier {
 	pub fn shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
 		let mut out = Vec::with_capacity(self.inner.shards.len());
 		for (index, shard) in self.inner.shards.iter().enumerate() {
-			let shard = shard.lock();
-			let mut payload = 0u64;
-			let mut entries = 0usize;
-			let mut hot_pages = 0usize;
-			let mut complete_pages = 0usize;
-			let mut blocked_pages = 0usize;
-			for page in shard.pages.values() {
-				payload += page.payload as u64;
-				entries += page.entries.len();
-				hot_pages += usize::from(page.hot);
-				complete_pages += usize::from(page.range_complete);
-				blocked_pages += usize::from(page.warm_blocked);
-			}
-			out.push(ReadBufferShardMetrics {
-				shard: index,
-				state: ReadBufferStateMetrics {
-					used: shard.budget.used(),
-					limit: shard.budget.limit(),
-					pages: shard.pages.len(),
-					page_cap: shard.page_cap,
-					payload: ByteSize::from_bytes(payload),
-					entries,
-					hot_pages,
-					complete_pages,
-					blocked_pages,
-					warming: shard.warming.len(),
-				},
-				warms: shard.warm_metrics,
-				reads: shard.read_metrics,
-				coverage: shard.coverage_metrics,
-			});
+			let (mut metrics, resident) = {
+				let shard = shard.lock();
+				let mut payload = 0u64;
+				let mut entries = 0usize;
+				let mut hot_pages = 0usize;
+				let mut blocked_pages = 0usize;
+				let mut resident = Vec::with_capacity(shard.pages.len());
+				for (id, page) in &shard.pages {
+					payload += page.payload as u64;
+					entries += page.entries.len();
+					hot_pages += usize::from(page.hot);
+					blocked_pages += usize::from(page.warm_blocked);
+					resident.push(*id);
+				}
+				(
+					ReadBufferShardMetrics {
+						shard: index,
+						state: ReadBufferStateMetrics {
+							used: shard.budget.used(),
+							limit: shard.budget.limit(),
+							pages: shard.pages.len(),
+							page_cap: shard.page_cap,
+							payload: ByteSize::from_bytes(payload),
+							entries,
+							hot_pages,
+							complete_pages: 0,
+							blocked_pages,
+							warming: shard.warming.len(),
+						},
+						warms: shard.warm_metrics,
+						reads: shard.read_metrics,
+						coverage: shard.coverage_metrics,
+					},
+					resident,
+				)
+			};
+			metrics.state.complete_pages = self.count_complete_pages(&resident);
+			out.push(metrics);
 		}
 		out
 	}
