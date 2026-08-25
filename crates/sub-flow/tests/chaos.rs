@@ -546,7 +546,7 @@ fn an_append_operator_can_be_built_and_driven() {
 		inputs: 2,
 		row_space: 4,
 	};
-	let mut harness = Harness::new(|_| operators::append::build(2));
+	let mut harness = Harness::new(|_| operators::append::build());
 
 	let first = AppendRow {
 		input: 0,
@@ -613,11 +613,10 @@ chaos_test!(join_random_chaos, |seed| {
 	operators::join::drive_random(seed);
 });
 
-chaos_test!(append_inputs_3_row_space_8_chaos, |seed| {
+chaos_test!(append_row_space_8_chaos, |seed| {
 	operators::append::drive(
 		seed,
 		operators::append::Params {
-			inputs: 3,
 			row_space: 8,
 			steps: 60,
 			max_batch: 5,
@@ -1594,23 +1593,18 @@ fn the_join_and_append_sweeps_reach_the_shapes_their_operators_are_built_around(
 	assert!(without_undefined > 0, "every draw carries undefined keys; the all-defined path is no longer isolated");
 
 	let mut collides = 0;
-	let mut input_counts = std::collections::BTreeSet::new();
 	for seed in 0..SEEDS {
 		let (_, params) = operators::append::random_params(seed);
-		input_counts.insert(params.inputs);
-		// A collision across inputs is near-certain once the row space is smaller than the rows
-		// drawn into it.
+		// A collision across inputs is near-certain once the row space is under the rows drawn into it.
 		if params.row_space <= params.max_live as u64 {
 			collides += 1;
 		}
-		assert!(params.inputs >= 2, "append requires at least two inputs: {params:?}");
 		assert!(params.row_space > 0 && params.steps > 0, "degenerate draw: {params:?}");
 	}
-	assert!(input_counts.len() >= 3, "append input arity collapsed to {input_counts:?}");
 	assert!(
 		collides > SEEDS as usize / 2,
 		"only {collides} of {SEEDS} draws crowd the row-number space; the same source row arriving on \
-		 two inputs is what the group key exists to separate"
+		 two inputs is what the lane in the output row number exists to separate"
 	);
 }
 

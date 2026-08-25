@@ -30,7 +30,7 @@ use reifydb_core::{
 			ResolvedView,
 		},
 	},
-	row::{JoinRetention, OperatorRetention, Ttl},
+	row::{JoinRetention, Ttl},
 	sort::{SortDirection, SortKey},
 };
 use reifydb_value::{
@@ -753,7 +753,6 @@ pub struct JoinNaturalNode {
 pub struct AppendQueryNode {
 	pub left: Box<QueryPlan>,
 	pub right: Box<QueryPlan>,
-	pub retention: Option<OperatorRetention>,
 }
 
 #[derive(Debug, Clone)]

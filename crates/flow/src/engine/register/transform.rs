@@ -11,7 +11,10 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_rql::expression::{ColumnExpression, Expression};
+use reifydb_rql::{
+	expression::{ColumnExpression, Expression},
+	flow::flow::FlowDag,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, config::Config, error::Error, fragment::Fragment, value::duration::Duration};
 
@@ -24,7 +27,7 @@ use crate::{
 	error::FlowGraphError,
 	operator::{
 		aggregation::operator::AggregateOperator,
-		append::AppendOperator,
+		append::{AppendOperator, lane::assign_lanes},
 		apply::ApplyOperator,
 		distinct::operator::DistinctOperator,
 		extend::ExtendOperator,
@@ -284,15 +287,15 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_append(
 		&mut self,
-		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 	) -> Result<()> {
-		if inputs.len() < 2 {
+		if inputs.len() != 2 {
 			return Err(Error::from(FlowGraphError::NodeInputArity {
 				operator: "Append",
-				expected: "at least 2",
+				expected: "exactly 2",
 				found: inputs.len(),
 			}));
 		}
@@ -313,10 +316,10 @@ impl FlowEngineInner {
 		}
 
 		let parent_schema = parent_schemas.swap_remove(0);
-		let retention = self.operator_retention(txn, operator_id)?;
+		let lanes = assign_lanes(flow, operator_id)?;
 		self.operators.insert(
 			(flow_id, operator_id),
-			Box::new(AppendOperator::new(operator_id, parent_schema, inputs.to_vec(), retention)),
+			Box::new(AppendOperator::new(operator_id, parent_schema, inputs.to_vec(), lanes)),
 		);
 		Ok(())
 	}

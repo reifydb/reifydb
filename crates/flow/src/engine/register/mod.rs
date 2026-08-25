@@ -25,7 +25,7 @@ use reifydb_rql::flow::{
 	time_domain::{check_join_retention_requirements, check_window_time_requirements},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_value::{Result, error::Error, reifydb_assertions, value::duration::Duration};
+use reifydb_value::{Result, error::Error, reifydb_assertions};
 use tracing::{info, instrument};
 
 use crate::{
@@ -247,7 +247,7 @@ impl FlowEngineInner {
 			Distinct {
 				expressions,
 			} => self.add_distinct(flow_id, operator_id, &inputs, expressions, ctx)?,
-			Append {} => self.add_append(txn, flow_id, operator_id, &inputs)?,
+			Append {} => self.add_append(flow, flow_id, operator_id, &inputs)?,
 			Apply {
 				operator,
 				expressions,
@@ -276,13 +276,6 @@ impl FlowEngineInner {
 		}
 
 		Ok(())
-	}
-
-	fn operator_retention(&self, txn: &mut Transaction<'_>, operator_id: OperatorId) -> Result<Option<Duration>> {
-		Ok(self.catalog
-			.find_operator_settings(txn, operator_id)?
-			.and_then(|s| s.retention)
-			.map(|retention| retention.duration))
 	}
 
 	fn require_parent(&self, flow_id: FlowId, input: OperatorId) -> Result<&BoxedHostOperator> {

@@ -44,17 +44,11 @@ impl<'bump> Compiler<'bump> {
 			}
 			AstAppend::Query {
 				with,
-				retention,
 				..
 			} => {
 				let with = self.compile(with.statement, tx)?;
-				let retention = match retention {
-					Some(ast_retention) => Some(Self::compile_operator_retention(ast_retention)?),
-					None => None,
-				};
 				Ok(LogicalPlan::Append(AppendNode::Query {
 					with,
-					retention,
 				}))
 			}
 		}

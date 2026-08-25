@@ -30,7 +30,7 @@ use reifydb_core::{
 			ResolvedRingBuffer, ResolvedSeries, ResolvedTable, ResolvedView,
 		},
 	},
-	row::{JoinRetention, OperatorRetention, Ttl},
+	row::{JoinRetention, Ttl},
 	sort::SortKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -392,7 +392,6 @@ pub enum AppendPhysicalNode<'bump> {
 	Query {
 		left: BumpBox<'bump, PhysicalPlan<'bump>>,
 		right: BumpBox<'bump, PhysicalPlan<'bump>>,
-		retention: Option<OperatorRetention>,
 	},
 }
 
@@ -2428,14 +2427,12 @@ impl<'bump> Compiler<'bump> {
 					}
 					logical::AppendNode::Query {
 						with,
-						retention,
 					} => {
 						let left = stack.pop().unwrap();
 						let right = self.compile(rx, with)?.unwrap();
 						stack.push(PhysicalPlan::Append(AppendPhysicalNode::Query {
 							left: self.bump_box(left),
 							right: self.bump_box(right),
-							retention,
 						}));
 					}
 				},

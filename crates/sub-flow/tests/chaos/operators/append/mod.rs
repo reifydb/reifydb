@@ -6,7 +6,7 @@ pub mod workload;
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::{interface::catalog::flow::OperatorId, value::column::columns::Columns};
-use reifydb_flow::operator::append::AppendOperator;
+use reifydb_flow::operator::append::{AppendOperator, lane::AppendLanes};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},
@@ -15,7 +15,6 @@ use reifydb_testing_chaos::{
 		scenario::{BatchSize, Scenario},
 	},
 };
-use reifydb_value::value::duration::Duration;
 
 use crate::{
 	framework::harness::Harness,
@@ -25,21 +24,18 @@ use crate::{
 	},
 };
 
-pub fn build(inputs: usize) -> AppendOperator {
-	build_with_ttl(inputs, None)
-}
+pub const APPEND_INPUTS: usize = 2;
 
-pub fn build_with_ttl(inputs: usize, ttl: Option<Duration>) -> AppendOperator {
-	let operators: Vec<OperatorId> = (0..inputs).map(input).collect();
-	AppendOperator::new(APPEND_OPERATOR, Some(Columns::empty()), operators, ttl)
+pub fn build() -> AppendOperator {
+	let operators: Vec<OperatorId> = (0..APPEND_INPUTS).map(input).collect();
+	let lanes = AppendLanes::new(APPEND_OPERATOR, 1, [Some(0), Some(1)]);
+	AppendOperator::new(APPEND_OPERATOR, Some(Columns::empty()), operators, lanes)
 }
 
 #[derive(Debug, Clone)]
 pub struct Params {
-	pub inputs: usize,
-
 	/// How many distinct row numbers each input draws from. Narrow enough that the inputs collide on
-	/// the same number, which is what makes the input index in the group key load-bearing.
+	/// the same number, which is what makes the lane in the output row number load-bearing.
 	pub row_space: u64,
 
 	pub steps: u32,
@@ -50,9 +46,9 @@ pub struct Params {
 }
 
 pub fn drive(seed: u64, params: Params) -> Corpus {
-	let mut harness = Harness::new(|_| build(params.inputs));
+	let mut harness = Harness::new(|_| build());
 	let workload = AppendWorkload {
-		inputs: params.inputs,
+		inputs: APPEND_INPUTS,
 		row_space: params.row_space,
 	};
 	let mut model = AppendOracle::new();
@@ -79,7 +75,6 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 	let (mut rng, sequence_seed) = split(seed);
 	let max_batch = rng.random_range(1..=8u32);
 	let params = Params {
-		inputs: rng.random_range(2..=4usize),
 		row_space: row_space(&mut rng),
 		max_batch,
 		steps: rng.random_range(30..=90u32).min((320 / max_batch).max(30)),

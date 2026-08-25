@@ -126,6 +126,29 @@ pub mod tests {
 	}
 
 	#[test]
+	fn test_list_flow_edges_by_flow_returns_edges_in_creation_order() {
+		// Append lane assignment reads a node's inputs positionally, so this order decides which branch owns
+		// lane 0; the scan itself yields descending, which makes the id sort load-bearing rather than cosmetic.
+		let mut txn = create_test_admin_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
+
+		let left = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let right = create_operator(&mut txn, flow.id, 2, &[0x02]);
+		let extra = create_operator(&mut txn, flow.id, 3, &[0x03]);
+		let target = create_operator(&mut txn, flow.id, 4, &[0x04]);
+
+		let first = create_flow_edge(&mut txn, flow.id, left.id, target.id);
+		let second = create_flow_edge(&mut txn, flow.id, right.id, target.id);
+		let third = create_flow_edge(&mut txn, flow.id, extra.id, target.id);
+
+		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+
+		assert_eq!(edges.iter().map(|e| e.id).collect::<Vec<_>>(), vec![first.id, second.id, third.id]);
+		assert_eq!(edges.iter().map(|e| e.source).collect::<Vec<_>>(), vec![left.id, right.id, extra.id]);
+	}
+
+	#[test]
 	fn test_list_flow_edges_all() {
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");

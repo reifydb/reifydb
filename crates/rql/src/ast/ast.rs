@@ -2118,7 +2118,6 @@ pub enum AstAppend<'bump> {
 	Query {
 		token: Token<'bump>,
 		with: AstSubQuery<'bump>,
-		retention: Option<AstOperatorRetention<'bump>>,
 	},
 }
 

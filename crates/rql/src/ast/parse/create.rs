@@ -18,7 +18,7 @@ use crate::{
 			AstCreatePrimaryKey, AstCreateProcedure, AstCreateQueue, AstCreateRelationship,
 			AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
 			AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest, AstCreateTransactionalView,
-			AstHydrationConfig, AstIndexColumn, AstJoinRetention, AstOperatorRetention, AstPersistent,
+			AstHydrationConfig, AstIndexColumn, AstJoinRetention, AstPersistent,
 			AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstQueueDeduplicate, AstQueueDispatch,
 			AstQueueFifo, AstQueueRetention, AstQueueRetry, AstRelationshipCardinality,
 			AstRelationshipJunction, AstRowSettings, AstStatement, AstTimeDeclaration,
@@ -60,7 +60,6 @@ const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
 const QUEUE_RETENTION_KEYS: &str = "'done'";
 const QUEUE_RETRY_KEYS: &str = "'attempts' or 'backoff'";
 const ROW_CONFIG_KEYS: &str = "'ttl', 'persistent', or 'on'";
-const OPERATOR_WITH_KEYS: &str = "'retention' or 'on'";
 const JOIN_WITH_KEYS: &str = "'retention', 'snapshot', or 'latest'";
 
 fn unexpected_queue_option(token: &Token<'_>, expected: &str) -> Error {
@@ -3096,68 +3095,6 @@ impl<'bump> Parser<'bump> {
 			fragment: self.current()?.fragment.to_owned(),
 		}
 		.into())
-	}
-
-	pub(crate) fn parse_with_clause_for_operator(&mut self) -> Result<Option<AstOperatorRetention<'bump>>> {
-		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
-			return Ok(None);
-		}
-		self.advance()?;
-		self.consume_operator(Operator::OpenCurly)?;
-
-		let mut duration: Option<Token<'bump>> = None;
-		let mut anchor: Option<Token<'bump>> = None;
-
-		loop {
-			self.skip_new_line()?;
-			if self.current()?.is_operator(Operator::CloseCurly) {
-				break;
-			}
-
-			let key = self.consume_identifier()?;
-			self.consume_operator(Operator::Colon)?;
-
-			match key.fragment.text() {
-				"retention" => {
-					duration = Some(self.consume_duration(OPERATOR_WITH_KEYS)?);
-				}
-				"on" => {
-					anchor = Some(self.consume_identifier()?);
-				}
-				other => {
-					let fragment = key.fragment.to_owned();
-					return Err(Error::from(TypeError::Ast {
-						kind: AstErrorKind::UnexpectedToken {
-							expected: OPERATOR_WITH_KEYS.to_string(),
-						},
-						message: format!("unexpected key '{}' in operator WITH clause", other),
-						fragment,
-					}));
-				}
-			}
-
-			self.consume_if(TokenKind::Separator(Comma))?;
-		}
-
-		self.consume_operator(Operator::CloseCurly)?;
-
-		if duration.is_none()
-			&& let Some(orphan) = anchor
-		{
-			let fragment = orphan.fragment.to_owned();
-			return Err(Error::from(TypeError::Ast {
-				kind: AstErrorKind::UnexpectedToken {
-					expected: "a 'retention' alongside it".to_string(),
-				},
-				message: "'on' qualifies a 'retention'; add 'retention' to the WITH clause".to_string(),
-				fragment,
-			}));
-		}
-
-		Ok(duration.map(|duration| AstOperatorRetention {
-			duration,
-			anchor,
-		}))
 	}
 
 	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinRetention<'bump>>, bool, bool)> {

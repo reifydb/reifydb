@@ -38,7 +38,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedObject},
 	},
-	row::{JoinRetention, OperatorRetention, Ttl},
+	row::{JoinRetention, Ttl},
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
@@ -932,7 +932,6 @@ pub enum AppendNode<'bump> {
 	},
 	Query {
 		with: BumpVec<'bump, LogicalPlan<'bump>>,
-		retention: Option<OperatorRetention>,
 	},
 }
 

@@ -18,11 +18,20 @@ impl<'bump> Parser<'bump> {
 
 		if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
 			let with = self.parse_sub_query()?;
-			let retention = self.parse_with_clause_for_operator()?;
+			if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+				let fragment = self.current()?.fragment.to_owned();
+				return Err(Error::from(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: "no with-clause; append keeps no state to configure"
+							.to_string(),
+					},
+					message: "append does not take a with-clause".to_string(),
+					fragment,
+				}));
+			}
 			return Ok(AstAppend::Query {
 				token,
 				with,
-				retention,
 			});
 		}
 
@@ -209,57 +218,33 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let node = result.first_unchecked();
 		let Ast::Append(AstAppend::Query {
-			retention,
 			..
 		}) = node
 		else {
 			panic!("Expected Append::Query");
 		};
-		assert!(retention.is_none(), "no retention when with-clause is absent");
 	}
 
 	#[test]
-	fn test_append_query_with_ttl_duration_only() {
+	fn test_append_query_rejects_a_retention_duration() {
+		// Append keeps no state, so a retention has nothing to bound and must not parse into silence.
 		let bump = Bump::new();
 		let source = "append { from test::orders } with { retention: 1h }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
 
-		let result = result.pop().unwrap();
-		let node = result.first_unchecked();
-		let Ast::Append(AstAppend::Query {
-			retention,
-			..
-		}) = node
-		else {
-			panic!("Expected Append::Query");
-		};
-		let retention = retention.as_ref().expect("expected retention");
-		assert_eq!(retention.duration.fragment.text(), "1h");
-		assert!(retention.anchor.is_none());
+		assert!(parser.parse().is_err(), "a retention on append must be rejected");
 	}
 
 	#[test]
-	fn test_append_query_with_ttl_full_config() {
+	fn test_append_query_rejects_a_full_retention_config() {
+		// Same rejection with an anchor: no part of the with-clause may be accepted and dropped.
 		let bump = Bump::new();
 		let source = "append { from test::orders } with { retention: 30m, on: updated }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
-		let mut result = parser.parse().unwrap();
 
-		let result = result.pop().unwrap();
-		let node = result.first_unchecked();
-		let Ast::Append(AstAppend::Query {
-			retention,
-			..
-		}) = node
-		else {
-			panic!("Expected Append::Query");
-		};
-		let retention = retention.as_ref().expect("expected retention");
-		assert_eq!(retention.duration.fragment.text(), "30m");
-		assert_eq!(retention.anchor.as_ref().unwrap().fragment.text(), "updated");
+		assert!(parser.parse().is_err(), "a retention on append must be rejected");
 	}
 
 	#[test]

@@ -461,11 +461,9 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 		PhysicalPlan::Append(physical::AppendPhysicalNode::Query {
 			left,
 			right,
-			retention,
 		}) => QueryPlan::Append(nodes::AppendQueryNode {
 			left: Box::new(materialize_query_plan(BumpBox::into_inner(left))?),
 			right: Box::new(materialize_query_plan(BumpBox::into_inner(right))?),
-			retention,
 		}),
 
 		PhysicalPlan::RunTests(node) => QueryPlan::RunTests(node),
@@ -1399,13 +1397,11 @@ impl InstructionCompiler {
 				physical::AppendPhysicalNode::Query {
 					left,
 					right,
-					retention,
 				} => {
 					self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Append(
 						physical::AppendPhysicalNode::Query {
 							left,
 							right,
-							retention,
 						},
 					))?));
 					self.emit(Instruction::Emit);
@@ -1975,13 +1971,11 @@ impl InstructionCompiler {
 			physical::AppendPhysicalNode::Query {
 				left,
 				right,
-				retention,
 			} => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Append(
 					physical::AppendPhysicalNode::Query {
 						left,
 						right,
-						retention,
 					},
 				))?));
 				self.emit(Instruction::Emit);

@@ -28,21 +28,17 @@ fn open(path: &TempDbPath) -> TestDb {
 	)
 }
 
-fn define_append(db: &TestDb) {
-	// An append declared without a retention never seals, so it keeps one row-number mapping per source
-	// row for as long as the row lives. That is the operator state a restart has to serve back: every
-	// published row stays addressable only through the mapping the operator persisted for it.
+fn define_distinct(db: &TestDb) {
+	// Distinct must persist one durable key per admitted value; append stores nothing and would leave the table empty.
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::a { id: int4, v: int4 }");
-	db.admin("CREATE TABLE app::b { id: int4, v: int4 }");
-	db.admin("CREATE DEFERRED VIEW app::u { id: int4, v: int4 } AS { FROM app::a | append { from app::b } }");
+	db.admin("CREATE DEFERRED VIEW app::u { id: int4, v: int4 } AS { FROM app::a | distinct { v } }");
 }
 
 fn fill(db: &TestDb) {
 	let want = (SOURCE_ROWS * 2) as usize;
-	for i in 0..SOURCE_ROWS {
+	for i in 0..(SOURCE_ROWS * 2) {
 		db.command(&format!("INSERT app::a [{{ id: {i}, v: {i} }}]"));
-		db.command(&format!("INSERT app::b [{{ id: {}, v: {i} }}]", i + 1000));
 	}
 	assert_eq!(db.await_row_count("FROM app::u", want, TIMEOUT), want, "the view never absorbed every source row");
 	db.await_all_flows(TIMEOUT);
@@ -85,7 +81,7 @@ fn every_operator_state_backed_row_is_still_addressable_after_a_restart() {
 
 	let before = {
 		let mut db = open(&path);
-		define_append(&db);
+		define_distinct(&db);
 		fill(&db);
 		let before = rows(&db.query("FROM app::u"));
 		db.stop();
@@ -126,7 +122,7 @@ fn a_restart_rebuilds_the_filter_instead_of_leaving_it_disabled() {
 
 	{
 		let mut db = open(&path);
-		define_append(&db);
+		define_distinct(&db);
 		fill(&db);
 		db.stop();
 	}
@@ -155,7 +151,7 @@ fn a_fresh_database_opens_with_its_filter_already_armed() {
 	// just after it. The rebuild interval is far longer than this test runs, so the zero is not a race.
 	let path = TempDbPath::new("operator_filter_fresh");
 	let mut db = open(&path);
-	define_append(&db);
+	define_distinct(&db);
 	fill(&db);
 
 	assert_eq!(
