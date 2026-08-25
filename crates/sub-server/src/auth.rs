@@ -40,12 +40,9 @@ impl StdError for AuthError {}
 pub type AuthResult<T> = Result<T, AuthError>;
 
 pub fn extract_identity_from_auth_header(auth_service: &AuthService, auth_header: &str) -> AuthResult<IdentityId> {
-	if let Some(token) = auth_header.strip_prefix("Bearer ") {
-		validate_bearer_token(auth_service, token.trim())
-	} else if let Some(credentials) = auth_header.strip_prefix("Basic ") {
-		validate_basic_auth(auth_service, credentials.trim())
-	} else {
-		Err(AuthError::InvalidHeader)
+	match auth_header.strip_prefix("Bearer ") {
+		Some(token) => validate_bearer_token(auth_service, token.trim()),
+		None => Err(AuthError::InvalidHeader),
 	}
 }
 
@@ -69,11 +66,6 @@ fn validate_bearer_token(auth_service: &AuthService, token: &str) -> AuthResult<
 			Err(AuthError::Internal)
 		}
 	}
-}
-
-fn validate_basic_auth(_auth_service: &AuthService, _credentials: &str) -> AuthResult<IdentityId> {
-	// TODO: Implement Basic auth (Base64 decode -> username:password -> auth_service.authenticate)
-	Err(AuthError::InvalidToken)
 }
 
 #[cfg(test)]
