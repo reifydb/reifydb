@@ -18,6 +18,8 @@ pub enum AuthError {
 	Expired,
 
 	InsufficientPermissions,
+
+	Internal,
 }
 
 impl fmt::Display for AuthError {
@@ -28,6 +30,7 @@ impl fmt::Display for AuthError {
 			AuthError::InvalidToken => write!(f, "Invalid authentication token"),
 			AuthError::Expired => write!(f, "Authentication token expired"),
 			AuthError::InsufficientPermissions => write!(f, "Insufficient permissions"),
+			AuthError::Internal => write!(f, "Authentication could not be completed"),
 		}
 	}
 }
@@ -63,7 +66,7 @@ fn validate_bearer_token(auth_service: &AuthService, token: &str) -> AuthResult<
 		Ok(None) => Err(AuthError::InvalidToken),
 		Err(e) => {
 			error!("token validation could not reach storage, rejecting the request: {e}");
-			Err(AuthError::InvalidToken)
+			Err(AuthError::Internal)
 		}
 	}
 }
@@ -95,5 +98,13 @@ pub mod tests {
 	fn test_root_identity() {
 		let identity = IdentityId::root();
 		assert!(identity.is_root());
+	}
+
+	#[test]
+	fn internal_does_not_read_as_a_client_mistake() {
+		// The gRPC status carries this text verbatim, so it must not send the caller after its credentials.
+		let message = AuthError::Internal.to_string();
+		assert_eq!(message, "Authentication could not be completed");
+		assert!(!message.contains("token"), "a storage failure must not point the client at its token");
 	}
 }

@@ -15,6 +15,7 @@ use reifydb::{
 	catalog::catalog::Catalog,
 	engine::engine::StandardEngine,
 	runtime::context::rng::Rng,
+	sub_server::auth::{AuthError, extract_identity_from_auth_header, extract_identity_from_ws_auth},
 	testing::db::TestDb,
 	transaction::transaction::{admin::AdminTransaction, query::QueryTransaction},
 	value::error::{Diagnostic, Error},
@@ -187,6 +188,45 @@ fn revoke_token_surfaces_a_failed_lookup() {
 
 	let err = service.revoke_token(&token).expect_err("a failed lookup must reach the caller");
 	assert_eq!(err.code, "TEST_STORAGE", "the storage diagnostic must survive, not be replaced");
+
+	db.stop();
+}
+
+#[test]
+fn bearer_validation_separates_a_storage_failure_from_a_bad_token() {
+	// Answering a storage blip with "invalid token" makes the client refresh credentials and retry forever.
+	let mut db = TestDb::memory();
+	let (_identity, token) = setup_user_and_login(&db);
+	let (engine, service) = faulty_service(&db);
+
+	let rejected = extract_identity_from_auth_header(&service, "Bearer never-issued")
+		.expect_err("a token that was never issued must still be rejected");
+	assert_eq!(rejected, AuthError::InvalidToken, "an unknown token is the client's fault");
+
+	engine.fail_query.store(true, Ordering::SeqCst);
+
+	let failed = extract_identity_from_auth_header(&service, &format!("Bearer {token}"))
+		.expect_err("a storage failure must never authenticate the request");
+	assert_eq!(failed, AuthError::Internal, "a storage failure is the server's fault, not a bad token");
+
+	db.stop();
+}
+
+#[test]
+fn ws_validation_separates_a_storage_failure_from_a_missing_token() {
+	// The websocket path shares the same validator, so a storage blip must not read as a rejected token there.
+	let mut db = TestDb::memory();
+	let (_identity, token) = setup_user_and_login(&db);
+	let (engine, service) = faulty_service(&db);
+
+	let anonymous = extract_identity_from_ws_auth(&service, None).expect("no token at all stays anonymous");
+	assert!(anonymous.is_anonymous(), "an unauthenticated socket is anonymous, not an error");
+
+	engine.fail_query.store(true, Ordering::SeqCst);
+
+	let failed = extract_identity_from_ws_auth(&service, Some(token.as_str()))
+		.expect_err("a storage failure must never authenticate the connection");
+	assert_eq!(failed, AuthError::Internal, "a storage failure is the server's fault, not a bad token");
 
 	db.stop();
 }

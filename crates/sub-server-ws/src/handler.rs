@@ -17,7 +17,7 @@ use reifydb_core::{
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel, system::ActorHandle};
 use reifydb_sub_server::{
 	actor::ServerActor,
-	auth::extract_identity_from_ws_auth,
+	auth::{AuthError, extract_identity_from_ws_auth},
 	binding::dispatch_binding,
 	dispatch::dispatch,
 	execute::ExecuteError,
@@ -422,7 +422,8 @@ async fn handle_auth(request_id: &str, auth: AuthRequest, conn: &mut ConnectionC
 			}
 			Err(e) => {
 				*conn.identity = None;
-				Some(WsResponse::Text(build_error(request_id, "AUTH_FAILED", &format!("{:?}", e))))
+				let (code, message) = auth_error_response(&e);
+				Some(WsResponse::Text(build_error(request_id, code, &message)))
 			}
 		}
 	}
@@ -674,6 +675,13 @@ pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 	}
 }
 
+fn auth_error_response(e: &AuthError) -> (&'static str, String) {
+	match e {
+		AuthError::Internal => ("INTERNAL_ERROR", e.to_string()),
+		_ => ("AUTH_FAILED", format!("{:?}", e)),
+	}
+}
+
 pub(crate) fn build_error(id: &str, code: &str, message: &str) -> String {
 	Response::internal_error(id, code, message).to_json()
 }
@@ -827,5 +835,32 @@ fn build_response_body(frames: Vec<Frame>, format: WireFormat, unwrap: bool) -> 
 			(CONTENT_TYPE_FRAMES.to_string(), body)
 		}
 		WireFormat::Rbcf => unreachable!("Rbcf is handled before build_response_body"),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_sub_server::auth::AuthError;
+
+	use super::auth_error_response;
+
+	#[test]
+	fn storage_failure_reports_an_internal_error_not_a_failed_auth() {
+		// AUTH_FAILED tells the client its credentials are wrong, so it reconnects and fails the same way.
+		assert_eq!(
+			auth_error_response(&AuthError::InvalidToken).0,
+			"AUTH_FAILED",
+			"a token that was never issued is the client's fault"
+		);
+		assert_eq!(
+			auth_error_response(&AuthError::Expired).0,
+			"AUTH_FAILED",
+			"an expired token is the client's fault"
+		);
+		assert_eq!(
+			auth_error_response(&AuthError::Internal).0,
+			"INTERNAL_ERROR",
+			"authentication that could not reach storage is the server's fault"
+		);
 	}
 }
