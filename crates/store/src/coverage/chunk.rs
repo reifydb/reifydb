@@ -3,13 +3,48 @@
 
 use reifydb_codec::key::encoded::EncodedKey;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct RangeCursor {
+/// Where a range read resumes, whether the tier has more to give, and why it stopped.
+///
+/// A stop reason is a tier's own vocabulary, so it is a type parameter rather than a shared enum: a
+/// tier that has no reason to name instantiates `S` as `()` and carries nothing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Cursor<S> {
 	pub last_key: Option<EncodedKey>,
 	pub exhausted: bool,
+	/// Set by the tier that exhausted this cursor, and left as none by a tier that has no answer.
+	///
+	/// None refuses a coverage claim, so a tier that stops without naming a reason understates rather
+	/// than answering for a span it never read.
+	pub stop: Option<S>,
 }
 
-impl RangeCursor {
+impl<S> Default for Cursor<S> {
+	fn default() -> Self {
+		Self {
+			last_key: None,
+			exhausted: false,
+			stop: None,
+		}
+	}
+}
+
+/// The cursor of a tier that names no stop reason.
+pub type RangeCursor = Cursor<()>;
+
+/// A stop reason that can say whether the tier read the range to its end.
+pub trait ScannedStop {
+	fn scanned(&self) -> bool;
+}
+
+impl<S: ScannedStop> Cursor<S> {
+	/// Whether this cursor stopped because a tier read the range to its end, which is the only stop a
+	/// coverage claim may be taken from.
+	pub fn scanned_to_end(&self) -> bool {
+		self.exhausted && self.stop.as_ref().is_some_and(ScannedStop::scanned)
+	}
+}
+
+impl<S> Cursor<S> {
 	pub fn new() -> Self {
 		Self::default()
 	}
@@ -29,6 +64,7 @@ impl RangeCursor {
 	pub fn reset(&mut self) {
 		self.last_key = None;
 		self.exhausted = false;
+		self.stop = None;
 	}
 }
 

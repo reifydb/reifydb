@@ -50,7 +50,7 @@ impl OperatorRangeTier {
 		if let Some(resident) = self.resolve(index, &partition, key) {
 			return Some(resident);
 		}
-		if self.retractions() != before {
+		if !self.retractions_unchanged(before) {
 			self.record_point_miss(index, &partition);
 			return None;
 		}

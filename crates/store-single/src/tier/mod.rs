@@ -35,31 +35,8 @@ impl RangeBatch {
 	}
 }
 
-#[derive(Debug, Clone)]
-pub struct RangeCursor {
-	pub last_key: Option<EncodedKey>,
-
-	pub exhausted: bool,
-}
-
-impl RangeCursor {
-	pub fn new() -> Self {
-		Self {
-			last_key: None,
-			exhausted: false,
-		}
-	}
-
-	pub fn is_exhausted(&self) -> bool {
-		self.exhausted
-	}
-}
-
-impl Default for RangeCursor {
-	fn default() -> Self {
-		Self::new()
-	}
-}
+/// The cursor of a tier that names no stop reason.
+pub type RangeCursor = reifydb_store::coverage::chunk::RangeCursor;
 
 pub trait TierStorage: Send + Sync + Clone + 'static {
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>>;

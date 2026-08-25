@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, sync::atomic::Ordering};
+use std::ops::Bound;
+#[cfg(test)]
+use std::sync::atomic::Ordering;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{interface::store::EntryKind, key::row::RowKey};
@@ -82,7 +84,11 @@ impl MultiReadBufferTier {
 	}
 
 	pub(super) fn retractions(&self) -> u64 {
-		self.inner.retractions.load(Ordering::SeqCst)
+		self.inner.retractions.token()
+	}
+
+	pub(super) fn retractions_unchanged(&self, token: u64) -> bool {
+		self.inner.retractions.unchanged(token)
 	}
 
 	pub(super) fn claims(&self, kind: EntryKind, key: &EncodedKey) -> bool {
@@ -189,7 +195,7 @@ impl MultiReadBufferTier {
 			return;
 		}
 		let mut coverage = self.coverage().write();
-		if self.retractions() != token {
+		if !self.retractions_unchanged(token) {
 			return;
 		}
 		if coverage.heads.get(&kind).is_none_or(|current| current.as_slice() < proven.as_slice()) {
@@ -219,7 +225,7 @@ impl MultiReadBufferTier {
 
 	pub(super) fn claim(&self, kind: EntryKind, span: &Span, token: u64) -> bool {
 		let mut coverage = self.coverage().write();
-		if self.retractions() != token {
+		if !self.retractions_unchanged(token) {
 			#[cfg(test)]
 			self.inner.claims_refused.fetch_add(1, Ordering::SeqCst);
 			return false;
@@ -279,7 +285,7 @@ impl MultiReadBufferTier {
 	}
 
 	fn record_retraction(&self) {
-		self.inner.retractions.fetch_add(1, Ordering::SeqCst);
+		self.inner.retractions.record()
 	}
 
 	#[cfg(test)]

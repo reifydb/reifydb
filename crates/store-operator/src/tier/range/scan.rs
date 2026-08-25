@@ -184,7 +184,7 @@ impl OperatorRangeTier {
 		}
 
 		let pieces = match barren {
-			Some(barren) if self.retractions() == retractions => pieces
+			Some(barren) if self.retractions_unchanged(retractions) => pieces
 				.into_iter()
 				.zip(barren)
 				.filter(|(_, drop)| !drop)
@@ -269,7 +269,7 @@ impl OperatorRangeTier {
 			shard.next_tick = tick + 1;
 		}
 
-		if self.retractions() != observed {
+		if !self.retractions_unchanged(observed) {
 			return ServedChunk::Gap;
 		}
 
@@ -367,7 +367,7 @@ impl OperatorRangeTier {
 			return true;
 		};
 		let mut coverage = self.coverage().write();
-		if self.retractions() != scan.retractions {
+		if !self.retractions_unchanged(scan.retractions) {
 			drop(coverage);
 			self.undo_claims(claimed);
 			return false;
@@ -480,7 +480,7 @@ impl OperatorRangeTier {
 
 		{
 			let mut coverage = self.coverage().write();
-			if self.retractions() != scan.retractions {
+			if !self.retractions_unchanged(scan.retractions) {
 				drop(coverage);
 				self.roll_back_install(index, partition, fresh, &inserted);
 				let mut shard = self.shard(index).lock();
@@ -503,7 +503,7 @@ impl OperatorRangeTier {
 	fn claim_only(&self, scan: &RangeScan, span: &Interval, index: usize, slot: usize) -> bool {
 		{
 			let mut coverage = self.coverage().write();
-			if self.retractions() != scan.retractions {
+			if !self.retractions_unchanged(scan.retractions) {
 				drop(coverage);
 				let mut shard = self.shard(index).lock();
 				shard.metrics.installs_raced += 1;

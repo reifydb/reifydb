@@ -15,7 +15,7 @@ use reifydb_core::{
 	util::budget::MemoryBudget,
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
-use reifydb_store::row::page::PageId;
+use reifydb_store::{coverage::retraction::Retractions, row::page::PageId};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::read::{
@@ -38,7 +38,7 @@ impl MultiReadBufferTier {
 					kinds: HashMap::new(),
 					heads: HashMap::new(),
 				}),
-				retractions: AtomicU64::new(0),
+				retractions: Retractions::new(),
 				fill_sequence: AtomicU64::new(0),
 				#[cfg(test)]
 				claims_published: AtomicU64::new(0),
@@ -65,7 +65,7 @@ impl MultiReadBufferTier {
 					kinds: HashMap::new(),
 					heads: HashMap::new(),
 				}),
-				retractions: AtomicU64::new(0),
+				retractions: Retractions::new(),
 				fill_sequence: AtomicU64::new(0),
 				claims_published: AtomicU64::new(0),
 				claims_refused: AtomicU64::new(0),
@@ -90,7 +90,7 @@ impl MultiReadBufferTier {
 					kinds: HashMap::new(),
 					heads: HashMap::new(),
 				}),
-				retractions: AtomicU64::new(0),
+				retractions: Retractions::new(),
 				fill_sequence: AtomicU64::new(0),
 				claims_published: AtomicU64::new(0),
 				claims_refused: AtomicU64::new(0),

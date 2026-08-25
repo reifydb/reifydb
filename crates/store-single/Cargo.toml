@@ -18,6 +18,7 @@ reifydb-build = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
+reifydb-store = { workspace = true }
 reifydb-sqlite = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
 

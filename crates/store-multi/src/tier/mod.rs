@@ -9,6 +9,7 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_store::coverage::chunk::{Cursor, ScannedStop};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
 use crate::MultiVersionScope;
@@ -82,17 +83,12 @@ pub enum RangeStop {
 	AbsentTable,
 }
 
-#[derive(Debug, Clone)]
-pub struct RangeCursor {
-	pub last_key: Option<EncodedKey>,
+pub type RangeCursor = Cursor<RangeStop>;
 
-	pub exhausted: bool,
-
-	/// Set by the tier that exhausted this cursor, and left as none by a tier that has no answer.
-	///
-	/// None refuses a coverage claim, so a tier that stops without naming a reason understates rather
-	/// than answering for a span it never read.
-	pub stop: Option<RangeStop>,
+impl ScannedStop for RangeStop {
+	fn scanned(&self) -> bool {
+		matches!(self, RangeStop::Scanned)
+	}
 }
 
 #[derive(Debug, Clone, Default)]
@@ -109,32 +105,6 @@ impl HistoricalCursor {
 
 	pub fn is_exhausted(&self) -> bool {
 		self.exhausted
-	}
-}
-
-impl RangeCursor {
-	pub fn new() -> Self {
-		Self {
-			last_key: None,
-			exhausted: false,
-			stop: None,
-		}
-	}
-
-	pub fn is_exhausted(&self) -> bool {
-		self.exhausted
-	}
-
-	/// Whether this cursor stopped because a tier read the range to its end, which is the only stop a
-	/// coverage claim may be taken from.
-	pub fn scanned_to_end(&self) -> bool {
-		self.exhausted && self.stop == Some(RangeStop::Scanned)
-	}
-}
-
-impl Default for RangeCursor {
-	fn default() -> Self {
-		Self::new()
 	}
 }
 

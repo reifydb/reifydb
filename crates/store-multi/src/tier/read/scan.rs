@@ -107,7 +107,7 @@ impl MultiReadBufferTier {
 		#[cfg(test)]
 		self.interlock(page);
 
-		if self.retractions() != token {
+		if !self.retractions_unchanged(token) {
 			self.tally_coverage(&anchor, CoverageOutcome::Refused);
 			return ServedChunk::Gap;
 		}

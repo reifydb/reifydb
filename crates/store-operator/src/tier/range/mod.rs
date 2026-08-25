@@ -39,7 +39,7 @@ use std::{
 	collections::{BTreeMap, HashMap},
 	mem::size_of,
 	ops::Bound,
-	sync::{Arc, atomic::AtomicU64},
+	sync::Arc,
 };
 
 use reifydb_codec::{
@@ -60,6 +60,7 @@ use reifydb_store::coverage::{
 	entry::{Entry, PinnedCount},
 	interval::{CoverageSet, Interval},
 	plan::{DEFAULT_GAP_GUARD, GapHistogram, Segment},
+	retraction::Retractions,
 	successor,
 };
 use reifydb_value::byte_size::ByteSize;
@@ -294,7 +295,7 @@ struct PoolInner {
 	coverage: RwLock<CoverageIndex>,
 	/// Bumped inside every coverage shrink, so a reader and an install can each tell that no claim
 	/// was withdrawn between two of their steps.
-	retractions: AtomicU64,
+	retractions: Retractions,
 	gap_guard: usize,
 	#[cfg(test)]
 	interlock: Option<InstallInterlock>,

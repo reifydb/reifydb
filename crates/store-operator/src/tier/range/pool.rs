@@ -4,10 +4,7 @@
 use std::{
 	collections::{HashMap, hash_map::DefaultHasher},
 	hash::{Hash, Hasher},
-	sync::{
-		Arc,
-		atomic::{AtomicU64, Ordering},
-	},
+	sync::Arc,
 };
 
 use reifydb_core::{
@@ -16,7 +13,7 @@ use reifydb_core::{
 	util::budget::MemoryBudget,
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
-use reifydb_store::coverage::plan::GapHistogram;
+use reifydb_store::coverage::{plan::GapHistogram, retraction::Retractions};
 use reifydb_value::byte_size::ByteSize;
 
 #[cfg(test)]
@@ -43,7 +40,7 @@ impl OperatorRangeTier {
 				coverage: RwLock::new(CoverageIndex {
 					operators: HashMap::new(),
 				}),
-				retractions: AtomicU64::new(0),
+				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
 				#[cfg(test)]
 				interlock: None,
@@ -60,7 +57,7 @@ impl OperatorRangeTier {
 				coverage: RwLock::new(CoverageIndex {
 					operators: HashMap::new(),
 				}),
-				retractions: AtomicU64::new(0),
+				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
 				interlock: Some(interlock),
 			}),
@@ -90,11 +87,15 @@ impl OperatorRangeTier {
 	}
 
 	pub(super) fn retractions(&self) -> u64 {
-		self.inner.retractions.load(Ordering::SeqCst)
+		self.inner.retractions.token()
+	}
+
+	pub(super) fn retractions_unchanged(&self, token: u64) -> bool {
+		self.inner.retractions.unchanged(token)
 	}
 
 	pub(super) fn record_retraction(&self) {
-		self.inner.retractions.fetch_add(1, Ordering::SeqCst);
+		self.inner.retractions.record()
 	}
 
 	pub(super) fn gap_guard(&self) -> usize {

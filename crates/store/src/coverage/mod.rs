@@ -22,13 +22,18 @@
 //! Coverage may understate what RAM holds and must never overstate it. A partition lock and the
 //! coverage lock are never held at the same time; the orderings above are sequences of separately
 //! locked steps, which is what keeps the understatement safe rather than atomic.
+//!
+//! How an interval is proven differs per cache. Where a partition's key range can be reconstructed
+//! arithmetically, residency alone seeds a covered interval; where the key suffixes are opaque, the
+//! cache can only ever know what a scan observed.
 
 pub mod chunk;
 pub mod entry;
 pub mod interval;
 pub mod plan;
+pub mod retraction;
 
-use std::{cmp::Ordering, hash::Hash};
+use std::cmp::Ordering;
 
 use reifydb_codec::key::encoded::EncodedKey;
 
@@ -124,21 +129,4 @@ pub fn successor(key: &EncodedKey) -> EncodedKey {
 	bytes.extend_from_slice(key.as_slice());
 	bytes.push(0);
 	EncodedKey::new(bytes)
-}
-
-/// A key space a cache is layered over: how a key maps to a storage partition, and whether that
-/// partition's span can be derived without a scan.
-///
-/// `seed_span` returning `Some` is a cheap special case of observed coverage: `store-multi` can
-/// reconstruct a page's key range arithmetically, so residency alone seeds a covered interval.
-/// `store-operator` returns `None`, because operator key suffixes are opaque and it can only ever
-/// know what a scan observed.
-pub trait CacheDomain {
-	type Partition: Copy + Eq + Hash;
-
-	type Value: Clone;
-
-	fn partition_of(key: &EncodedKey) -> Option<Self::Partition>;
-
-	fn seed_span(partition: Self::Partition) -> Option<(EncodedKey, Edge)>;
 }
