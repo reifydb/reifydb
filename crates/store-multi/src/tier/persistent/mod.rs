@@ -18,7 +18,7 @@ use crate::{
 	MultiVersionScope,
 	filter::MultiKeyFilter,
 	tier::{
-		DisplacedValues, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
+		DisplacedValues, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage,
 		VersionedGetResult,
 	},
 };
@@ -156,19 +156,6 @@ impl MultiPersistentTier {
 			Self::Sqlite(s) => s.install_floor(),
 		}
 	}
-
-	pub fn load_range_consistent(
-		&self,
-		table: EntryKind,
-		start: Bound<&[u8]>,
-		end: Bound<&[u8]>,
-		read: CommitVersion,
-		limit: Option<usize>,
-	) -> Result<Vec<RawEntry>> {
-		match self {
-			Self::Sqlite(s) => s.load_range_consistent(table, start, end, read, limit),
-		}
-	}
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
@@ -228,17 +215,6 @@ impl MultiPersistentTier {
 	}
 
 	pub fn install_floor(&self) -> Result<CommitVersion> {
-		match *self {}
-	}
-
-	pub fn load_range_consistent(
-		&self,
-		_table: EntryKind,
-		_start: Bound<&[u8]>,
-		_end: Bound<&[u8]>,
-		_read: CommitVersion,
-		_limit: Option<usize>,
-	) -> Result<Vec<RawEntry>> {
 		match *self {}
 	}
 }

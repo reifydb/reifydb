@@ -101,17 +101,6 @@ fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor) -> reifydb_v
 	.len())
 }
 
-fn consistent_range(tier: &MultiPersistentTier) -> reifydb_value::Result<usize> {
-	Ok(tier.load_range_consistent(
-		EntryKind::Source(STORAGE),
-		Bound::Unbounded,
-		Bound::Unbounded,
-		CommitVersion(30),
-		None,
-	)?
-	.len())
-}
-
 /// A refusal must be debuggable from its message alone, so it names the condition and not just the failure.
 fn names_the_shutdown(error: &reifydb_value::error::Error) {
 	let message = error.to_string();
@@ -193,20 +182,6 @@ fn an_iteration_that_straddles_a_shutdown_yields_an_error_rather_than_ending() {
 		Some(Ok(row)) => panic!("a drained pool served row {:?}", row.key),
 		Some(Err(error)) => names_the_shutdown(&error),
 	}
-}
-
-#[test]
-fn a_consistent_range_on_a_drained_reader_pool_fails_instead_of_reporting_no_rows() {
-	// An empty vector is the same sentence as "these keys do not exist" and the caller cannot tell which.
-	let (tier, _g) = tier_with_rows(CHUNK);
-	// Asserted live first, so the refusal below is known to come from the drain and not an empty table.
-	assert_eq!(consistent_range(&tier).unwrap() as u64, CHUNK, "a live tier answers with the rows it holds");
-
-	tier.shutdown();
-
-	let error = consistent_range(&tier)
-		.expect_err("a drained pool answered no rows, which reads as the rows not existing");
-	names_the_shutdown(&error);
 }
 
 #[test]
