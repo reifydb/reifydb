@@ -621,9 +621,12 @@ impl DatabaseBuilder {
 
 		#[cfg(not(reifydb_single_threaded))]
 		{
-			let factory = self.task_factory.unwrap_or_else(|| {
-				Box::new(TaskSubsystemFactory::with_config(TaskConfig::new(create_system_tasks())))
-			});
+			let factory = match self.task_factory {
+				Some(factory) => factory,
+				None => Box::new(TaskSubsystemFactory::with_config(TaskConfig::new(
+					create_system_tasks(&self.ioc)?,
+				))),
+			};
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);

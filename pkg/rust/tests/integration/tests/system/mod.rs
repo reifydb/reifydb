@@ -2,4 +2,5 @@
 // Copyright (c) 2026 ReifyDB
 
 mod config;
+mod tasks;
 mod time;

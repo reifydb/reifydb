@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+pub mod auth;
 pub mod fd;
 pub mod memory;
 pub mod tasks;
