@@ -8,7 +8,7 @@ import { register_rql_language } from '../monaco/register';
 import { SnippetResults } from './snippet-results';
 import { SplitPane } from './layout/split-pane';
 import type { Executor, ExecutionResult } from '../types';
-import type { RdbTheme } from './console';
+import { theme_class, type RdbTheme } from './console';
 
 export interface SnippetProps {
   executor: Executor;
@@ -57,7 +57,7 @@ export function Snippet({
     return monaco_theme;
   }, [monaco_theme]);
 
-  const resolved_theme = resolved_monaco_theme_name ?? (theme === 'light' ? 'premium-light' : 'premium-dark');
+  const resolved_theme = resolved_monaco_theme_name ?? (theme === 'dark' ? 'premium-dark' : 'premium-light');
 
   const [editor_height, setEditorHeight] = useState(() => Math.max(initial_code.split('\n').length * 20 + 16, 80));
 
@@ -159,7 +159,7 @@ export function Snippet({
   );
 
   const content = (
-    <div ref={container_ref} className={`rdb-snippet${is_fullscreen ? ' rdb-snippet--fullscreen' : ''}${theme === 'light' ? ' rdb-theme-light' : ''}${className ? ` ${className}` : ''}`}>
+    <div ref={container_ref} className={`rdb-snippet${is_fullscreen ? ' rdb-snippet--fullscreen' : ''}${theme_class(theme)}${className ? ` ${className}` : ''}`}>
       {/* Header */}
       <div className="rdb-snippet__header">
         <div className="rdb-snippet__title">

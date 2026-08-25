@@ -14,7 +14,7 @@ export type { Executor, ExecutionResult, HistoryEntry, TransactionType } from '.
 
 // Monaco assets
 export { rql_language_definition, rql_language_configuration } from './monaco/rql-language';
-export { premium_dark_theme, premium_light_theme, brutalist_dark_theme, brutalist_light_theme } from './monaco/themes';
+export { premium_dark_theme, premium_light_theme, brutalist_dark_theme, brutalist_light_theme, reifydb_light_theme } from './monaco/themes';
 export { register_rql_language } from './monaco/register';
 export type { editor } from 'monaco-editor';
 

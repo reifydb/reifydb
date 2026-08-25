@@ -36,6 +36,12 @@
   --rdb-color-overlay-bg: rgba(0, 0, 0, 0.8);
   --rdb-color-hover-secondary-btn: rgba(255, 255, 255, 0.1);
 
+  /* Shape */
+  --rdb-border-width: 1px;
+  --rdb-color-border-hairline: var(--rdb-color-border);
+  --rdb-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --rdb-shadow-card-hover: var(--rdb-shadow-card);
+
   /* Spacing */
   --rdb-space-1: 0.25rem;
   --rdb-space-2: 0.5rem;
@@ -77,4 +83,21 @@
   --rdb-color-row-border: rgba(0, 0, 0, 0.08);
   --rdb-color-overlay-bg: rgba(24, 24, 27, 0.4);
   --rdb-color-hover-secondary-btn: rgba(0, 0, 0, 0.06);
+}
+
+/* ReifyDB product theme - light palette, hairline borders, soft elevation */
+.rdb-theme-reifydb {
+  --rdb-color-border-hairline: #e4e4e7;
+  --rdb-color-primary-hover: #6366f1;
+  --rdb-color-success: #22C55E;
+
+  --rdb-color-row-border: #f0f0f2;
+  --rdb-color-hover-bg: rgba(126, 133, 242, 0.05);
+  --rdb-color-hover-bg-strong: rgba(126, 133, 242, 0.10);
+
+  --rdb-radius: 6px;
+  --rdb-border: var(--rdb-border-width) solid var(--rdb-color-border-hairline);
+  --rdb-border-thin: var(--rdb-border-width) solid var(--rdb-color-border-hairline);
+  --rdb-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --rdb-shadow-card-hover: 0 2px 8px rgba(0, 0, 0, 0.2);
 }

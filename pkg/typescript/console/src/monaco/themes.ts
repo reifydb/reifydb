@@ -3,6 +3,33 @@
 
 import type { editor } from 'monaco-editor';
 
+export const reifydb_light_theme: editor.IStandaloneThemeData = {
+  base: 'vs',
+  inherit: true,
+  rules: [
+    { token: 'keyword', foreground: '2E39DF', fontStyle: 'bold' },
+    { token: 'string', foreground: '525BEC' },
+    { token: 'string.quote', foreground: '525BEC' },
+    { token: 'number', foreground: '2E39DF', fontStyle: 'bold' },
+    { token: 'comment', foreground: '71717A', fontStyle: 'italic' },
+    { token: 'operator', foreground: '3F3F46' },
+    { token: 'identifier', foreground: '18181B' },
+    { token: 'key', foreground: '3F3F46' },
+    { token: 'namespace', foreground: '18181B', fontStyle: 'bold' },
+    { token: 'entity', foreground: '18181B', fontStyle: 'bold' },
+    { token: 'function', foreground: '18181B', fontStyle: 'bold' },
+  ],
+  colors: {
+    'editor.background': '#FFFFFF',
+    'editor.foreground': '#18181B',
+    'editor.lineHighlightBackground': '#F7F7F8',
+    'editor.selectionBackground': '#7E85F240',
+    'editorCursor.foreground': '#7E85F2',
+    'editorLineNumber.foreground': '#A1A1AA',
+    'editorLineNumber.activeForeground': '#3F3F46',
+  },
+};
+
 export const brutalist_light_theme: editor.IStandaloneThemeData = {
   base: 'vs',
   inherit: true,

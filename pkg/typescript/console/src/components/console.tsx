@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Client } from '@reifydb/client';
 import type { editor } from 'monaco-editor';
-import type { Executor, TransactionType } from '../types';
+import type { Executor, RdbTheme, TransactionType } from '../types';
 import { WsExecutor, type WsClient } from '../executor/ws-executor';
 import { ConsoleProvider, useConsoleStore } from '../state/use-console-store';
 import { load_history, save_history } from '../state/history';
@@ -22,7 +22,17 @@ export type ConnectionConfig =
   | { mode: 'wasm' }
   | { mode: 'websocket'; url: string; connect?: (url: string) => Promise<WsClient> };
 
-export type RdbTheme = 'light' | 'dark';
+export type { RdbTheme };
+
+const THEME_CLASSES: Record<RdbTheme, string> = {
+  dark: '',
+  light: ' rdb-theme-light',
+  reifydb: ' rdb-theme-light rdb-theme-reifydb',
+};
+
+export function theme_class(theme: RdbTheme = 'light'): string {
+  return THEME_CLASSES[theme];
+}
 
 export type CatalogPlacement = 'tab' | 'sidebar';
 
@@ -385,7 +395,7 @@ function ConsoleInner({ executor, code, auto_run, history_key, connection, theme
   );
 
   return (
-    <div className={`rdb-console${theme === 'light' ? ' rdb-theme-light' : ''}`}>
+    <div className={`rdb-console${theme_class(theme)}`}>
       {catalog_placement === 'sidebar' && (
         <aside className="rdb-console__sidebar">
           <div className="rdb-console__sidebar-title">Catalog</div>

@@ -6,6 +6,8 @@ import type { Diagnostic } from '@reifydb/core';
 export type { Diagnostic };
 export type { TransactionType } from './executor/ws-executor';
 
+export type RdbTheme = 'light' | 'dark' | 'reifydb';
+
 export interface ExecutionResult {
   success: boolean;
   data?: Record<string, unknown>[];

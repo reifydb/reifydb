@@ -4,13 +4,14 @@
 import { useRef } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
+import type { RdbTheme } from '../../types';
 import { register_rql_language } from '../../monaco/register';
 
 interface QueryEditorProps {
   code: string;
   on_change: (code: string) => void;
   on_run: () => void;
-  theme?: 'light' | 'dark';
+  theme?: RdbTheme;
   monaco_theme_name?: string;
   monaco_theme_data?: editor.IStandaloneThemeData;
 }
@@ -20,7 +21,7 @@ export function QueryEditor({ code, on_change, on_run, theme = 'light', monaco_t
   const on_run_ref = useRef(on_run);
   on_run_ref.current = on_run;
 
-  const resolved_theme = monaco_theme_name ?? (theme === 'light' ? 'premium-light' : 'premium-dark');
+  const resolved_theme = monaco_theme_name ?? (theme === 'dark' ? 'premium-dark' : 'premium-light');
 
   const handle_mount: OnMount = (editor, monaco) => {
     editor_ref.current = editor;
