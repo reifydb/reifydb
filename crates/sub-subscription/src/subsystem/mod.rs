@@ -23,9 +23,11 @@ use reifydb_cdc::consume::{
 	watermark::CdcConsumerWatermark,
 };
 use reifydb_core::{
+	common::CommitVersion,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
+			id::SubscriptionId,
 			subscription::SubscriptionInspectorRef,
 		},
 		cdc::CdcConsumerId,
@@ -141,6 +143,10 @@ impl SubscriptionSubsystem {
 
 	pub fn store(&self) -> &Arc<SubscriptionStore> {
 		&self.state.store
+	}
+
+	pub fn gate(&self, id: &SubscriptionId) -> Option<CommitVersion> {
+		self.state.gate(id)
 	}
 
 	#[inline]

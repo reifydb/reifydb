@@ -8,6 +8,7 @@ use std::{
 };
 
 use reifydb_core::{
+	common::CommitVersion,
 	error::diagnostic::catalog::subscription_not_found,
 	interface::catalog::{flow::FlowId, id::SubscriptionId},
 	internal,
@@ -38,6 +39,21 @@ impl SubscriptionState {
 	fn worker_for(&self, flow_id: FlowId) -> &ActorRef<SubscriptionWorkerMessage> {
 		let index = (flow_id.0 as usize) % self.workers.len();
 		&self.workers[index]
+	}
+
+	pub(super) fn gate(&self, id: &SubscriptionId) -> Option<CommitVersion> {
+		let flow_id = *self.subscription_flows.read().get(id)?;
+		let (tx, rx) = mpsc::channel();
+		let reply: Box<dyn FnOnce(Option<CommitVersion>) + Send> = Box::new(move |gate| {
+			let _ = tx.send(gate);
+		});
+		self.worker_for(flow_id)
+			.send(SubscriptionWorkerMessage::Gate {
+				flow_id,
+				reply,
+			})
+			.ok()?;
+		rx.recv().ok().flatten()
 	}
 }
 

@@ -57,6 +57,11 @@ pub enum SubscriptionWorkerMessage {
 		reply: Box<dyn FnOnce() + Send>,
 	},
 
+	Gate {
+		flow_id: FlowId,
+		reply: Box<dyn FnOnce(Option<CommitVersion>) + Send>,
+	},
+
 	Terminate {
 		done: Box<dyn FnOnce() + Send>,
 	},
@@ -159,6 +164,10 @@ impl Actor for SubscriptionWorkerActor {
 					flow_id,
 					reply,
 				} => self.handle_unregister(state, flow_id, reply),
+				SubscriptionWorkerMessage::Gate {
+					flow_id,
+					reply,
+				} => reply(state.flows.get(&flow_id).and_then(|flow_state| flow_state.gate)),
 				SubscriptionWorkerMessage::Terminate {
 					done,
 				} => self.handle_terminate(state, done),

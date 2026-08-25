@@ -29,8 +29,9 @@ use reifydb::{
 	value::value::duration::Duration,
 };
 use reifydb_client::{WireFormat, WsClient};
+use reqwest::{Client, redirect::Policy};
 use rustls::crypto::ring::default_provider;
-use tokio::{net::TcpListener, sync::watch, time::interval};
+use tokio::{net::TcpListener, pin, runtime::Builder, select, sync::watch, time::interval};
 use tracing::info;
 
 use crate::{checks::CheckContext, cli::RunArgs, state::AppState, store::ProbeBackend};
@@ -167,10 +168,7 @@ fn main() {
 fn run_standalone_probe(args: RunArgs, token: String) {
 	let ws = args.probe_reifydb_ws.clone().expect("UPTIME_PROBE_REIFYDB_WS must be set for a standalone probe");
 
-	let runtime = tokio::runtime::Builder::new_multi_thread()
-		.enable_all()
-		.build()
-		.expect("failed to build tokio runtime");
+	let runtime = Builder::new_multi_thread().enable_all().build().expect("failed to build tokio runtime");
 
 	runtime.block_on(async move {
 		let mut client = WsClient::connect(&ws, WireFormat::Frames)
@@ -193,8 +191,8 @@ fn run_standalone_probe(args: RunArgs, token: String) {
 		let ctx = CheckContext {
 			clock: Clock::Real,
 			rng: Rng::Os,
-			http: reqwest::Client::builder()
-				.redirect(reqwest::redirect::Policy::limited(5))
+			http: Client::builder()
+				.redirect(Policy::limited(5))
 				.build()
 				.expect("failed to build http client"),
 			allow_private_targets: args.allow_private_targets,
@@ -206,9 +204,9 @@ fn run_standalone_probe(args: RunArgs, token: String) {
 		install_probe_signal_handlers();
 		let (shutdown_tx, shutdown_rx) = watch::channel(false);
 		let probe_fut = probe::run(backend, ctx, id, name, region_id, shutdown_rx);
-		tokio::pin!(probe_fut);
+		pin!(probe_fut);
 
-		tokio::select! {
+		select! {
 			_ = &mut probe_fut => {}
 			_ = await_termination_signal() => {
 				info!("termination signal received, draining in-flight check and shutting down");
@@ -221,7 +219,10 @@ fn run_standalone_probe(args: RunArgs, token: String) {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::atomic::Ordering;
+	use std::{sync::atomic::Ordering, time::Duration};
+
+	use libc::{SIGTERM, raise};
+	use tokio::time::timeout;
 
 	use super::{PROBE_SHUTDOWN, await_termination_signal, install_probe_signal_handlers};
 
@@ -238,11 +239,11 @@ mod tests {
 		// SAFETY: raising a signal whose handler we just installed; that handler is
 		// async-signal-safe and does not terminate the process.
 		unsafe {
-			libc::raise(libc::SIGTERM);
+			raise(SIGTERM);
 		}
 
 		#[allow(clippy::disallowed_types)]
-		let wait = tokio::time::timeout(std::time::Duration::from_secs(2), await_termination_signal());
+		let wait = timeout(Duration::from_secs(2), await_termination_signal());
 		wait.await.expect("await_termination_signal must return after SIGTERM");
 		assert!(PROBE_SHUTDOWN.load(Ordering::SeqCst), "SIGTERM must set the shutdown flag");
 	}
