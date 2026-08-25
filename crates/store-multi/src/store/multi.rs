@@ -912,6 +912,11 @@ impl StandardMultiStore {
 	/// serves its rows and claims nothing: the `version <= read` predicate may have hidden a row from it,
 	/// and a claim over a key RAM never placed reports that key absent to every later reader. A `Between`
 	/// scope drops rows at or below its lower end for the same reason and is never installed from.
+	///
+	/// A cursor reported exhausted claims to the range end only when the tier stopped because it read to
+	/// that end. A tier that stopped without reading, because it is shut down or holds no table, has
+	/// proven nothing, and stretching the claim to the range end there would answer absent for every row
+	/// still beyond the resume point.
 	#[inline]
 	fn install_scanned_chunk(
 		&self,
@@ -938,10 +943,11 @@ impl StandardMultiStore {
 			Some(last) => successor(last).max(range_start),
 			None => range_start,
 		};
-		let through = match (cursor.exhausted, cursor.last_key.as_ref()) {
-			(true, _) => EncodedKey::new(scan.end),
-			(false, Some(last)) => last.clone(),
-			(false, None) => return,
+		let through = match (cursor.scanned_to_end(), cursor.exhausted, cursor.last_key.as_ref()) {
+			(true, _, _) => EncodedKey::new(scan.end),
+			(false, true, _) => return,
+			(false, false, Some(last)) => last.clone(),
+			(false, false, None) => return,
 		};
 		read.install_scanned_chunk(scan.table, &lo, &through, &batch.entries);
 	}

@@ -68,11 +68,34 @@ impl RangeBatch {
 	}
 }
 
+/// Why a tier stopped a range scan, which is a different question from whether it stopped.
+///
+/// Only [`RangeStop::Scanned`] is a statement about the range itself: the tier read it and found nothing
+/// beyond what it returned. The other two end the scan without having read the span at all, so a coverage
+/// claim taken from such a chunk would answer for keys nothing ever examined.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RangeStop {
+	/// The tier read to the end of the range.
+	Scanned,
+
+	/// The tier holds no table for this entry kind, so it read nothing.
+	AbsentTable,
+
+	/// The tier is shut down and its readers are gone, so it read nothing.
+	ShutDown,
+}
+
 #[derive(Debug, Clone)]
 pub struct RangeCursor {
 	pub last_key: Option<EncodedKey>,
 
 	pub exhausted: bool,
+
+	/// Set by the tier that exhausted this cursor, and left as none by a tier that has no answer.
+	///
+	/// None refuses a coverage claim, so a tier that stops without naming a reason understates rather
+	/// than answering for a span it never read.
+	pub stop: Option<RangeStop>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -97,11 +120,18 @@ impl RangeCursor {
 		Self {
 			last_key: None,
 			exhausted: false,
+			stop: None,
 		}
 	}
 
 	pub fn is_exhausted(&self) -> bool {
 		self.exhausted
+	}
+
+	/// Whether this cursor stopped because a tier read the range to its end, which is the only stop a
+	/// coverage claim may be taken from.
+	pub fn scanned_to_end(&self) -> bool {
+		self.exhausted && self.stop == Some(RangeStop::Scanned)
 	}
 }
 

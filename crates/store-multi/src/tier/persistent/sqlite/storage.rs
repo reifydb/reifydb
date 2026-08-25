@@ -52,7 +52,7 @@ use crate::{
 	MultiVersionScope,
 	filter::{ARMED_CAPACITY_KEYS, MultiKeyFilter},
 	tier::{
-		DisplacedValues, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
+		DisplacedValues, RangeBatch, RangeCursor, RangeStop, RawEntry, TierBackend, TierBatch, TierStorage,
 		VersionedGetResult,
 		persistent::{
 			SqlitePageCacheMetrics,
@@ -749,10 +749,12 @@ impl SqlitePersistentStorage {
 			return Ok(RangeBatch::empty());
 		}
 
+		cursor.stop = None;
 		let table_sql = self.table_sql(req.table);
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			cursor.exhausted = true;
+			cursor.stop = Some(RangeStop::ShutDown);
 			return Ok(RangeBatch::empty());
 		};
 
@@ -768,6 +770,7 @@ impl SqlitePersistentStorage {
 			Ok(s) => s,
 			Err(e) if e.to_string().contains("no such table") => {
 				cursor.exhausted = true;
+				cursor.stop = Some(RangeStop::AbsentTable);
 				return Ok(RangeBatch::empty());
 			}
 			Err(e) => return Err(error!(internal(format!("Failed to prepare persistent range: {}", e)))),
@@ -805,6 +808,7 @@ impl SqlitePersistentStorage {
 				.map_err(|e| error!(internal(format!("Failed to read persistent row: {}", e))))?,
 			Err(e) if e.to_string().contains("no such table") => {
 				cursor.exhausted = true;
+				cursor.stop = Some(RangeStop::AbsentTable);
 				return Ok(RangeBatch::empty());
 			}
 			Err(e) => return Err(error!(internal(format!("Failed to scan persistent range: {}", e)))),
@@ -816,6 +820,7 @@ impl SqlitePersistentStorage {
 
 		if !page_was_full {
 			cursor.exhausted = true;
+			cursor.stop = Some(RangeStop::Scanned);
 		}
 		if let Some(last) = last_scanned {
 			cursor.last_key = Some(last);
