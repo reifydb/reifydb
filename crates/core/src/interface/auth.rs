@@ -12,6 +12,10 @@ pub enum AuthStep {
 
 	Failed,
 
+	Rejected {
+		reason: String,
+	},
+
 	Challenge {
 		payload: HashMap<String, String>,
 	},
@@ -27,4 +31,13 @@ pub trait AuthenticationProvider: Send + Sync {
 		stored: &HashMap<String, String>,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthStep>;
+
+	fn verify_challenge(
+		&self,
+		_stored: &HashMap<String, String>,
+		_challenge: &HashMap<String, String>,
+		_credentials: &HashMap<String, String>,
+	) -> Result<AuthStep> {
+		Ok(AuthStep::Failed)
+	}
 }

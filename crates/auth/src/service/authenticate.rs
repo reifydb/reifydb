@@ -131,6 +131,11 @@ impl AuthService {
 		match step {
 			AuthStep::Authenticated => self.finalize_authentication(identity),
 			AuthStep::Failed => Ok(invalid_credentials()),
+			AuthStep::Rejected {
+				reason,
+			} => Ok(AuthResponse::Failed {
+				reason,
+			}),
 			AuthStep::Challenge {
 				payload,
 			} => Ok(self.issue_challenge(identifier, method, payload)),
@@ -220,7 +225,13 @@ impl AuthService {
 			return Ok(invalid_credentials());
 		};
 
-		self.run_challenge_provider_and_respond(&stored_auth, &credentials, ident.id, &challenge.method)
+		self.run_challenge_provider_and_respond(
+			&stored_auth,
+			&challenge.payload,
+			&credentials,
+			ident.id,
+			&challenge.method,
+		)
 	}
 
 	#[inline]
@@ -263,12 +274,13 @@ impl AuthService {
 	fn run_challenge_provider_and_respond(
 		&self,
 		stored_auth: &Authentication,
+		challenge_payload: &HashMap<String, String>,
 		credentials: &HashMap<String, String>,
 		identity: IdentityId,
 		method: &str,
 	) -> Result<AuthResponse, Error> {
 		let provider = self.provider_for(method)?;
-		let step = provider.authenticate(&stored_auth.properties, credentials)?;
+		let step = provider.verify_challenge(&stored_auth.properties, challenge_payload, credentials)?;
 		respond_to_challenge_step(step, identity, self)
 	}
 }
@@ -276,7 +288,7 @@ impl AuthService {
 #[inline]
 fn merge_challenge_payload(credentials: &mut HashMap<String, String>, payload: &HashMap<String, String>) {
 	for (k, v) in payload {
-		credentials.entry(k.clone()).or_insert_with(|| v.clone());
+		credentials.insert(k.clone(), v.clone());
 	}
 	credentials.remove("challenge_id");
 }
@@ -290,6 +302,11 @@ fn respond_to_challenge_step(
 	match step {
 		AuthStep::Authenticated => service.finalize_authentication(identity),
 		AuthStep::Failed => Ok(invalid_credentials()),
+		AuthStep::Rejected {
+			reason,
+		} => Ok(AuthResponse::Failed {
+			reason,
+		}),
 		AuthStep::Challenge {
 			..
 		} => Ok(AuthResponse::Failed {

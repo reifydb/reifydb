@@ -95,6 +95,11 @@ impl AuthService {
 					token,
 				})
 			}
+			AuthStep::Rejected {
+				reason,
+			} => Ok(AuthResponse::Failed {
+				reason,
+			}),
 			AuthStep::Failed => Ok(AuthResponse::Failed {
 				reason: "auto-provision succeeded but authentication failed".to_string(),
 			}),

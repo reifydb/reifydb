@@ -62,6 +62,9 @@ pub enum SolanaError {
 	InvalidSignature {
 		reason: String,
 	},
+
+	#[error("challenge payload is missing the sign-in message")]
+	MissingChallengeMessage,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -265,6 +268,19 @@ impl IntoDiagnostic for SolanaError {
 				fragment: Fragment::None,
 				label: Some("invalid signature".to_string()),
 				help: Some("provide a valid base58-encoded 64-byte ed25519 signature".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			SolanaError::MissingChallengeMessage => Diagnostic {
+				code: "AU_017".to_string(),
+				rql: None,
+				message: "challenge payload is missing the sign-in message".to_string(),
+				fragment: Fragment::None,
+				label: Some("missing challenge message".to_string()),
+				help: Some("the stored sign-in challenge is corrupted or incomplete".to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,

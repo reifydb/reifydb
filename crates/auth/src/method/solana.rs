@@ -11,6 +11,8 @@ use reifydb_value::{Result, error::Error, reifydb_assertions};
 
 use crate::error::SolanaError;
 
+pub const SIGNED_MESSAGE_MISMATCH: &str = "signed message does not match the issued challenge";
+
 pub struct SolanaProvider {
 	clock: Clock,
 }
@@ -54,28 +56,39 @@ impl AuthenticationProvider for SolanaProvider {
 		let public_key_b58 =
 			stored.get("public_key").ok_or_else(|| Error::from(SolanaError::MissingPublicKey))?;
 
-		if let Some(signature_b58) = credentials.get("signature") {
-			return self.verify_signature(public_key_b58, signature_b58, credentials);
+		Ok(self.issue_signin_challenge(public_key_b58, credentials))
+	}
+
+	fn verify_challenge(
+		&self,
+		stored: &HashMap<String, String>,
+		challenge: &HashMap<String, String>,
+		credentials: &HashMap<String, String>,
+	) -> Result<AuthStep> {
+		let public_key_b58 =
+			stored.get("public_key").ok_or_else(|| Error::from(SolanaError::MissingPublicKey))?;
+		let message =
+			challenge.get("message").ok_or_else(|| Error::from(SolanaError::MissingChallengeMessage))?;
+
+		let Some(signature_b58) = credentials.get("signature") else {
+			return Ok(AuthStep::Failed);
+		};
+
+		if let Some(echoed) = credentials.get("signed_message")
+			&& echoed != message
+		{
+			return Ok(AuthStep::Rejected {
+				reason: SIGNED_MESSAGE_MISMATCH.to_string(),
+			});
 		}
 
-		Ok(self.issue_signin_challenge(public_key_b58, credentials))
+		self.verify_signature(public_key_b58, signature_b58, message)
 	}
 }
 
 impl SolanaProvider {
 	#[inline]
-	fn verify_signature(
-		&self,
-		public_key_b58: &str,
-		signature_b58: &str,
-		credentials: &HashMap<String, String>,
-	) -> Result<AuthStep> {
-		let signed_message = credentials.get("signed_message").ok_or_else(|| {
-			Error::from(SolanaError::InvalidSignature {
-				reason: "missing signed_message".to_string(),
-			})
-		})?;
-
+	fn verify_signature(&self, public_key_b58: &str, signature_b58: &str, message: &str) -> Result<AuthStep> {
 		let pk_bytes: [u8; 32] = bs58_decode(public_key_b58)
 			.into_vec()
 			.map_err(|e| {
@@ -112,7 +125,7 @@ impl SolanaProvider {
 
 		let signature = Signature::from_bytes(&sig_bytes);
 
-		match verifying_key.verify(signed_message.as_bytes(), &signature) {
+		match verifying_key.verify(message.as_bytes(), &signature) {
 			Ok(()) => Ok(AuthStep::Authenticated),
 			Err(_) => Ok(AuthStep::Failed),
 		}
@@ -249,7 +262,7 @@ mod tests {
 			("signed_message".to_string(), message.clone()),
 		]);
 
-		let step2 = provider.authenticate(&stored, &credentials).unwrap();
+		let step2 = provider.verify_challenge(&stored, &challenge_data, &credentials).unwrap();
 		assert_eq!(step2, AuthStep::Authenticated);
 	}
 
@@ -263,12 +276,13 @@ mod tests {
 		let signature = wrong_key.sign(b"some message");
 		let signature_b58 = bs58_encode(signature.to_bytes()).into_string();
 
+		let challenge = HashMap::from([("message".to_string(), "some message".to_string())]);
 		let credentials = HashMap::from([
 			("signature".to_string(), signature_b58),
 			("signed_message".to_string(), "some message".to_string()),
 		]);
 
-		let step = provider.authenticate(&stored, &credentials).unwrap();
+		let step = provider.verify_challenge(&stored, &challenge, &credentials).unwrap();
 		assert_eq!(step, AuthStep::Failed);
 	}
 }
