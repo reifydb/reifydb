@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+import type { ResultColumn } from '@reifydb/core';
 import type { TerminalAdapter } from './terminal/adapter';
 import type { TerminalTheme } from './terminal/theme';
+import type { TableBorder, TableTheme } from './output/table';
 
 /**
  * Result from executing a statement
@@ -10,6 +12,11 @@ import type { TerminalTheme } from './terminal/theme';
 export interface ExecutionResult {
   success: boolean;
   data?: Record<string, unknown>[];
+  /**
+   * Column metadata for `data`, in display order.
+   * Omit it and the formatter infers columns from the rows.
+   */
+  columns?: ResultColumn[];
   error?: string;
   execution_time: number;
 }
@@ -127,6 +134,16 @@ export interface ShellOptions {
    * Use `rql_highlighter()` for RQL syntax coloring.
    */
   highlight?: Highlighter;
+
+  /**
+   * Border style for result tables (default: "unicode")
+   */
+  tableBorder?: TableBorder;
+
+  /**
+   * Colors for result tables
+   */
+  tableTheme?: TableTheme;
 
   /**
    * Callback when user exits the shell

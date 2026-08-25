@@ -61,7 +61,10 @@ export class Shell {
     this.lineEditor = new LineEditor(this.terminal);
     this.history = new CommandHistory(options.historyStorage, options.history_key);
     this.multiline = new MultilineBuffer();
-    this.formatter = new OutputFormatter(this.terminal, this.displayMode);
+    this.formatter = new OutputFormatter(this.terminal, this.displayMode, {
+      border: options.tableBorder,
+      theme: options.tableTheme,
+    });
 
     this.setupKeyHandler();
   }

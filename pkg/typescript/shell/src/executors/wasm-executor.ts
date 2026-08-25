@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+import { infer_columns } from '@reifydb/core';
 import type { Executor, ExecutionResult } from '../types';
 
 /**
@@ -41,10 +42,12 @@ export class WasmExecutor implements Executor {
     try {
       const results = await this.db.admin(query);
       const endTime = performance.now();
+      const data = Array.isArray(results) ? results : [];
 
       return {
         success: true,
-        data: Array.isArray(results) ? results : [],
+        data,
+        columns: infer_columns(data),
         execution_time: Math.round(endTime - start_time),
       };
     } catch (error) {

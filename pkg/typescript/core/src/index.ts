@@ -5,6 +5,7 @@ export {decode} from './decoder';
 export {TYPE_CODE, type_name_from_code} from './type-code';
 export type {TypeName} from './type-code';
 export * from './shape'
+export * from './present';
 export * from './syntax';
 export * from './value';
 export type {

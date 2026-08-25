@@ -1,6 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+import {
+  cell_text,
+  infer_columns,
+  pad_to_width,
+  plan_table,
+  value_role,
+  type PlannedColumn,
+  type ResultColumn,
+  type TablePlan,
+  type ValueRole,
+} from '@reifydb/core';
+import {paint, sgr, type AnsiStyle} from '../ansi';
+
+export type TableBorder = 'unicode' | 'ascii' | 'none';
+
+export type ValuePalette = Partial<Record<ValueRole, AnsiStyle>>;
+
+export interface TableTheme {
+  border?: AnsiStyle;
+  header?: AnsiStyle;
+  values?: ValuePalette;
+}
+
 export interface TableColumn {
   name: string;
   width: number;
@@ -9,151 +32,173 @@ export interface TableColumn {
 export interface TableOptions {
   maxWidth?: number;
   truncate?: boolean;
+  border?: TableBorder;
+  theme?: TableTheme;
+  columns?: ResultColumn[];
 }
+
+interface BorderGlyphs {
+  vertical: string;
+  horizontal: string;
+  top: [string, string, string];
+  middle: [string, string, string];
+  bottom: [string, string, string];
+  padding: number;
+  columnOverhead: number;
+  tableOverhead: number;
+}
+
+const BORDERS: Record<TableBorder, BorderGlyphs> = {
+  unicode: {
+    vertical: '│',
+    horizontal: '─',
+    top: ['┌', '┬', '┐'],
+    middle: ['├', '┼', '┤'],
+    bottom: ['└', '┴', '┘'],
+    padding: 1,
+    columnOverhead: 3,
+    tableOverhead: 1,
+  },
+  ascii: {
+    vertical: '|',
+    horizontal: '-',
+    top: ['+', '+', '+'],
+    middle: ['+', '+', '+'],
+    bottom: ['+', '+', '+'],
+    padding: 1,
+    columnOverhead: 3,
+    tableOverhead: 1,
+  },
+  none: {
+    vertical: '',
+    horizontal: '─',
+    top: ['', '', ''],
+    middle: ['', '', ''],
+    bottom: ['', '', ''],
+    padding: 1,
+    columnOverhead: 2,
+    tableOverhead: 0,
+  },
+};
+
+export const reifydb_dark_table_theme: TableTheme = {
+  border: {color: '#3f3f46'},
+  header: {color: '#818cf8', bold: true},
+  values: {
+    none: {color: '#71717a', italic: true},
+    boolean: {color: '#fbbf24'},
+    number: {color: '#a5b4fc'},
+    temporal: {color: '#5eead4'},
+    uuid: {color: '#c4b5fd'},
+    string: {color: '#e4e4e7'},
+    blob: {color: '#a1a1aa'},
+  },
+};
 
 export class TableRenderer {
   private data: Record<string, unknown>[];
-  private columns: TableColumn[];
-  private maxWidth: number;
-  private truncate: boolean;
+  private glyphs: BorderGlyphs;
+  private plan: TablePlan;
+  private borderPrefix: string;
+  private headerPrefix: string;
+  private valuePrefixes: Map<ValueRole, string>;
 
   constructor(data: Record<string, unknown>[], options: TableOptions = {}) {
     this.data = data;
-    this.maxWidth = options.maxWidth ?? 120;
-    this.truncate = options.truncate ?? false;
-    this.columns = this.calculateColumns();
+    this.glyphs = BORDERS[options.border ?? 'unicode'];
+
+    const theme = options.theme ?? reifydb_dark_table_theme;
+    this.borderPrefix = theme.border ? sgr(theme.border) : '';
+    this.headerPrefix = theme.header ? sgr(theme.header) : '';
+    this.valuePrefixes = new Map();
+    for (const [role, style] of Object.entries(theme.values ?? {})) {
+      if (style) this.valuePrefixes.set(role as ValueRole, sgr(style));
+    }
+
+    const columns = options.columns ?? infer_columns(data);
+    this.plan = plan_table(data, columns, {
+      width: options.truncate ? options.maxWidth : undefined,
+      column_overhead: this.glyphs.columnOverhead,
+      table_overhead: this.glyphs.tableOverhead,
+    });
   }
 
-  private calculateColumns(): TableColumn[] {
-    if (this.data.length === 0) return [];
-
-    const columns: Map<string, number> = new Map();
-
-    // Get all column names and calculate max widths
-    for (const row of this.data) {
-      for (const [key, value] of Object.entries(row)) {
-        const valueStr = this.formatValue(value);
-        const currentMax = columns.get(key) ?? key.length;
-        columns.set(key, Math.max(currentMax, valueStr.length));
-      }
-    }
-
-    return Array.from(columns.entries()).map(([name, width]) => ({
-      name,
-      width: Math.max(width, name.length),
-    }));
+  get columns(): TableColumn[] {
+    return this.plan.columns.map((entry) => ({name: entry.column.name, width: entry.width}));
   }
 
-  private formatValue(value: unknown): string {
-    if (value === null || value === undefined) {
-      return 'undefined';
-    }
-    // Check if it's a core Value object (has type property and toString)
-    if (value && typeof value === 'object' && 'type' in value && typeof (value as { toString(): string }).toString === 'function') {
-      return (value as { toString(): string }).toString();
-    }
-    if (typeof value === 'object') {
-      return JSON.stringify(value);
-    }
-    return String(value);
-  }
-
-  private truncateString(str: string, maxLen: number): string {
-    if (str.length <= maxLen) return str;
-    if (maxLen <= 3) return str.slice(0, maxLen);
-    return str.slice(0, maxLen - 3) + '...';
+  get dropped(): string[] {
+    return this.plan.dropped.map((column) => column.name);
   }
 
   render(): string[] {
-    if (this.data.length === 0 || this.columns.length === 0) {
+    if (this.data.length === 0 || this.plan.columns.length === 0) {
       return ['(no results)'];
     }
 
+    const bordered = this.glyphs.vertical !== '';
     const lines: string[] = [];
-    let columnsToShow = this.columns;
-    let widths = this.columns.map((c) => c.width);
 
-    // Calculate how many columns fit
-    if (this.truncate) {
-      const result = this.fitColumns(this.maxWidth);
-      columnsToShow = result.columns;
-      widths = result.widths;
-    }
+    if (bordered) lines.push(this.rule(this.glyphs.top));
+    lines.push(this.headerRow());
+    lines.push(this.rule(this.glyphs.middle));
 
-    // Build separator line
-    const separator =
-      '+' + widths.map((w) => '-'.repeat(w + 2)).join('+') + '+';
-
-    lines.push(separator);
-
-    // Build header
-    const headerCells = columnsToShow.map((col, i) =>
-      this.padCenter(col.name, widths[i])
-    );
-    lines.push('| ' + headerCells.join(' | ') + ' |');
-    lines.push(separator);
-
-    // Build rows
     for (const row of this.data) {
-      const cells = columnsToShow.map((col, i) => {
-        const value = this.formatValue(row[col.name]);
-        const truncated = this.truncate
-          ? this.truncateString(value, widths[i])
-          : value;
-        return this.padRight(truncated, widths[i]);
-      });
-      lines.push('| ' + cells.join(' | ') + ' |');
+      lines.push(this.dataRow(row));
     }
 
-    lines.push(separator);
+    if (bordered) lines.push(this.rule(this.glyphs.bottom));
 
     return lines;
   }
 
-  private fitColumns(maxWidth: number): {
-    columns: TableColumn[];
-    widths: number[];
-  } {
-    const columns: TableColumn[] = [];
-    const widths: number[] = [];
-    let currentWidth = 1; // Starting '|'
+  private rule(corners: [string, string, string]): string {
+    const pad = this.glyphs.padding * 2;
 
-    for (const col of this.columns) {
-      // Each column: ' content ' + '|' = 3 extra chars
-      const colWidth = Math.min(col.width, 40); // Cap individual column width
-      const totalColWidth = colWidth + 3;
-
-      if (currentWidth + totalColWidth <= maxWidth) {
-        columns.push(col);
-        widths.push(colWidth);
-        currentWidth += totalColWidth;
-      } else {
-        break;
-      }
+    if (this.glyphs.vertical === '') {
+      return paint(this.glyphs.horizontal.repeat(this.width()), this.borderPrefix);
     }
 
-    // If no columns fit, show at least the first one
-    if (columns.length === 0 && this.columns.length > 0) {
-      const firstCol = this.columns[0];
-      const availableWidth = maxWidth - 4; // '| ' and ' |'
-      columns.push(firstCol);
-      widths.push(Math.max(availableWidth, 10));
+    const segments = this.plan.columns.map((entry) =>
+      this.glyphs.horizontal.repeat(entry.width + pad)
+    );
+    const [left, joint, right] = corners;
+    return paint(left + segments.join(joint) + right, this.borderPrefix);
+  }
+
+  private width(): number {
+    const gaps = this.glyphs.columnOverhead * (this.plan.columns.length - 1);
+    const body = this.plan.columns.reduce((total, entry) => total + entry.width, 0);
+    return this.glyphs.padding + body + gaps;
+  }
+
+  private headerRow(): string {
+    const cells = this.plan.columns.map((entry) =>
+      paint(pad_to_width(entry.column.name, entry.width, entry.column.align), this.headerPrefix)
+    );
+    return this.joinCells(cells);
+  }
+
+  private dataRow(row: Record<string, unknown>): string {
+    const cells = this.plan.columns.map((entry) => {
+      const value = row[entry.column.name];
+      const text = pad_to_width(cell_text(value, entry.width), entry.width, entry.column.align);
+      return paint(text, this.valuePrefixes.get(value_role(value)) ?? '');
+    });
+    return this.joinCells(cells);
+  }
+
+  private joinCells(cells: string[]): string {
+    const pad = ' '.repeat(this.glyphs.padding);
+
+    if (this.glyphs.vertical === '') {
+      const gap = ' '.repeat(this.glyphs.columnOverhead);
+      return pad + cells.join(gap);
     }
 
-    return { columns, widths };
-  }
-
-  private padCenter(str: string, width: number): string {
-    const padding = width - str.length;
-    if (padding <= 0) return str.slice(0, width);
-    const left = Math.floor(padding / 2);
-    const right = padding - left;
-    return ' '.repeat(left) + str + ' '.repeat(right);
-  }
-
-  private padRight(str: string, width: number): string {
-    const padding = width - str.length;
-    if (padding <= 0) return str.slice(0, width);
-    return str + ' '.repeat(padding);
+    const bar = paint(this.glyphs.vertical, this.borderPrefix);
+    return bar + pad + cells.join(pad + bar + pad) + pad + bar;
   }
 }
+
+export type {PlannedColumn, ResultColumn};

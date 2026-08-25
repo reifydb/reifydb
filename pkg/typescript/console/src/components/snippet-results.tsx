@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+import { infer_columns } from '@reifydb/core';
 import { format_value, get_value_style } from '../format/value';
 
 interface SnippetResultsProps {
@@ -9,6 +10,8 @@ interface SnippetResultsProps {
 }
 
 export function SnippetResults({ data, columns }: SnippetResultsProps) {
+  const align = new Map(infer_columns(data).map((col) => [col.name, col.align]));
+
   return (
     <>
       <div className="rdb-snippet__table-wrap">
@@ -16,7 +19,7 @@ export function SnippetResults({ data, columns }: SnippetResultsProps) {
           <thead>
             <tr>
               {columns.map((col) => (
-                <th key={col}>{col}</th>
+                <th key={col} style={{ textAlign: align.get(col) }}>{col}</th>
               ))}
             </tr>
           </thead>
@@ -28,7 +31,11 @@ export function SnippetResults({ data, columns }: SnippetResultsProps) {
                   return (
                     <td
                       key={col}
-                      style={{ color: vs.color, fontStyle: vs.italic ? 'italic' : undefined }}
+                      style={{
+                        color: vs.color,
+                        fontStyle: vs.italic ? 'italic' : undefined,
+                        textAlign: align.get(col),
+                      }}
                     >{format_value(row[col])}</td>
                   );
                 })}

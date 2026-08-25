@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+import { infer_columns } from '@reifydb/core';
 import type { Executor, ExecutionResult } from '../types';
 
 /**
@@ -65,6 +66,7 @@ export class WsExecutor implements Executor {
       return {
         success: true,
         data,
+        columns: infer_columns(data),
         execution_time: Math.round(endTime - start_time),
       };
     } catch (error) {

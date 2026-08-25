@@ -27,12 +27,21 @@ export { LineEditor } from './input/line-editor';
 export { CommandHistory, LocalStorageHistoryStorage, MemoryHistoryStorage } from './input/history';
 export { MultilineBuffer } from './input/multiline';
 export { rql_highlighter, reifydb_dark_palette } from './input/highlight';
-export type { RqlPalette, RqlStyle } from './input/highlight';
+export type { RqlPalette } from './input/highlight';
+export { sgr, paint, RESET } from './ansi';
+export type { AnsiStyle } from './ansi';
 
 // Output components
 export { OutputFormatter } from './output/formatter';
-export { TableRenderer } from './output/table';
-export type { TableColumn, TableOptions } from './output/table';
+export type { FormatterOptions } from './output/formatter';
+export { TableRenderer, reifydb_dark_table_theme } from './output/table';
+export type {
+  TableBorder,
+  TableColumn,
+  TableOptions,
+  TableTheme,
+  ValuePalette,
+} from './output/table';
 
 // Executors
 export { WasmExecutor, WsExecutor } from './executors';
