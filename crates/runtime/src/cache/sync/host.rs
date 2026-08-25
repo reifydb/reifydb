@@ -45,7 +45,7 @@ where
 {
 	pub fn new(capacity: usize) -> Self {
 		let cache = CacheBuilder::new(capacity as u64)
-			.eviction_policy(EvictionPolicy::tiny_lfu())
+			.eviction_policy(EvictionPolicy::lru())
 			.build_with_hasher(Xxh3Builder::new());
 		Self {
 			cache,
@@ -63,7 +63,7 @@ where
 		});
 		let listener_metrics = Arc::clone(&metrics);
 		let cache = CacheBuilder::new(capacity as u64)
-			.eviction_policy(EvictionPolicy::tiny_lfu())
+			.eviction_policy(EvictionPolicy::lru())
 			.eviction_listener(move |key: Arc<K>, value: V, _cause| {
 				let footprint = (listener_metrics.footprint)(&key, &value);
 				listener_metrics.entries.fetch_sub(1, Ordering::Relaxed);
