@@ -3,6 +3,7 @@
 
 mod challenge;
 mod login;
+mod provisioning;
 
 use std::collections::HashMap;
 
@@ -52,4 +53,12 @@ pub fn submit(service: &AuthService, credentials: HashMap<String, String>) -> Au
 	// Deliberately unwrapped: a wallet login must answer with a typed AuthResponse, never an
 	// Err, or a caller cannot tell "rejected" from "server broke".
 	service.authenticate("solana", credentials).unwrap()
+}
+
+pub fn provision_credentials(public_key: &str) -> HashMap<String, String> {
+	// Both keys are required to reach auto-provisioning; identifier names the not-yet-existing identity.
+	HashMap::from([
+		("identifier".to_string(), public_key.to_string()),
+		("public_key".to_string(), public_key.to_string()),
+	])
 }

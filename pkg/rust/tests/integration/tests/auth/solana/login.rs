@@ -3,11 +3,10 @@
 
 use std::collections::HashMap;
 
-use reifydb::{auth::service::AuthResponse, testing::db::TestDb, value::value::Value};
+use reifydb::{auth::service::AuthResponse, testing::db::TestDb};
 use reifydb_test_harness::{
 	auth::{AuthResponseAssert, auth_service},
 	fixture::identity::identity,
-	lookup::find_identity_by_attribute,
 };
 
 use crate::auth::solana::{begin_challenge, complete_challenge, keypair};
@@ -29,26 +28,6 @@ fn test_login_resolves_identity_by_public_key_attribute() {
 	let (identity, _token) =
 		complete_challenge(&service, &signing_key, challenge_id, &message).expect_authenticated();
 	assert_eq!(identity, alice.id, "wallet login must authenticate as alice via the attribute lookup");
-}
-
-#[test]
-fn test_auto_provision_writes_public_key_attribute() {
-	let db = TestDb::memory();
-	let (signing_key, pubkey) = keypair(9);
-
-	let service = auth_service(&db).build();
-	let (challenge_id, message) = begin_challenge(
-		&service,
-		HashMap::from([("identifier".to_string(), pubkey.clone()), ("public_key".to_string(), pubkey.clone())]),
-	);
-
-	let (identity, _token) =
-		complete_challenge(&service, &signing_key, challenge_id, &message).expect_authenticated();
-
-	// Auto-provisioning must record the lookup attribute, otherwise identities whose
-	// name diverges from the wallet address become unreachable on the next login.
-	let found = find_identity_by_attribute(&db, "solana_public_key", &Value::Utf8(pubkey));
-	assert_eq!(found.map(|ident| ident.id), Some(identity));
 }
 
 #[test]

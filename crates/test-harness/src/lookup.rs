@@ -26,3 +26,9 @@ pub fn identity_attribute(engine: &impl AsEngine, identity: IdentityId, name: &s
 		.find(|value| value.attribute == attribute.id)
 		.map(|value| value.value)
 }
+
+pub fn find_identity_by_name(engine: &impl AsEngine, name: &str) -> Option<Identity> {
+	let engine = engine.engine();
+	let mut txn = engine.begin_query(IdentityId::root()).unwrap();
+	engine.catalog().find_identity_by_name(&mut Transaction::Query(&mut txn), name).unwrap()
+}

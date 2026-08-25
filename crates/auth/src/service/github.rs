@@ -44,6 +44,7 @@ impl AuthService {
 			"github".to_string(),
 			"github".to_string(),
 			payload.clone(),
+			None,
 			&self.clock,
 			&self.rng,
 		);

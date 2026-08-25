@@ -115,7 +115,7 @@ impl AuthService {
 		if method == "solana"
 			&& let Some(public_key) = credentials.get("public_key").cloned()
 		{
-			return self.auto_provision_solana(identifier, &public_key, credentials);
+			return self.begin_solana_provision(identifier, &public_key, credentials);
 		}
 		Ok(invalid_credentials())
 	}
@@ -165,6 +165,7 @@ impl AuthService {
 			identifier.to_string(),
 			method.to_string(),
 			payload.clone(),
+			None,
 			&self.clock,
 			&self.rng,
 		);
@@ -208,6 +209,15 @@ impl AuthService {
 
 		if challenge.method == "github" {
 			return self.complete_github_login(&challenge, &credentials);
+		}
+
+		if let Some(public_key) = challenge.pending_public_key.as_deref() {
+			return self.complete_solana_provision(
+				&challenge.identifier,
+				public_key,
+				&challenge.payload,
+				&credentials,
+			);
 		}
 
 		merge_challenge_payload(&mut credentials, &challenge.payload);

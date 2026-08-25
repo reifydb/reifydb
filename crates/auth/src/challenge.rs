@@ -17,6 +17,7 @@ struct ChallengeEntry {
 	pub identifier: String,
 	pub method: String,
 	pub payload: HashMap<String, String>,
+	pub pending_public_key: Option<String>,
 	pub created_at: Instant,
 }
 
@@ -24,6 +25,7 @@ pub struct ChallengeInfo {
 	pub identifier: String,
 	pub method: String,
 	pub payload: HashMap<String, String>,
+	pub pending_public_key: Option<String>,
 }
 
 pub struct ChallengeStore {
@@ -44,6 +46,7 @@ impl ChallengeStore {
 		identifier: String,
 		method: String,
 		payload: HashMap<String, String>,
+		pending_public_key: Option<String>,
 		clock: &Clock,
 		rng: &Rng,
 	) -> String {
@@ -54,6 +57,7 @@ impl ChallengeStore {
 			identifier,
 			method,
 			payload,
+			pending_public_key,
 			created_at: clock.instant(),
 		};
 		let mut entries = self.entries.write();
@@ -73,6 +77,7 @@ impl ChallengeStore {
 			identifier: entry.identifier,
 			method: entry.method,
 			payload: entry.payload,
+			pending_public_key: entry.pending_public_key,
 		})
 	}
 
@@ -100,7 +105,7 @@ mod tests {
 		let store = ChallengeStore::new(Duration::from_seconds(60).unwrap());
 		let data = HashMap::from([("nonce".to_string(), "abc123".to_string())]);
 
-		let id = store.create("alice".to_string(), "solana".to_string(), data, &clock, &rng);
+		let id = store.create("alice".to_string(), "solana".to_string(), data, None, &clock, &rng);
 		let info = store.consume(&id).unwrap();
 
 		assert_eq!(info.identifier, "alice");
@@ -112,7 +117,7 @@ mod tests {
 	fn test_one_time_use() {
 		let (clock, _, rng) = test_clock_and_rng();
 		let store = ChallengeStore::new(Duration::from_seconds(60).unwrap());
-		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new(), &clock, &rng);
+		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new(), None, &clock, &rng);
 
 		assert!(store.consume(&id).is_some());
 		assert!(store.consume(&id).is_none()); // second attempt fails
@@ -125,10 +130,33 @@ mod tests {
 	}
 
 	#[test]
+	fn test_pending_public_key_round_trips_outside_the_payload() {
+		// The pending key must stay server-side; in the payload a client could swap it.
+		let (clock, _, rng) = test_clock_and_rng();
+		let store = ChallengeStore::new(Duration::from_seconds(60).unwrap());
+
+		let id = store.create(
+			"wallet".to_string(),
+			"solana".to_string(),
+			HashMap::from([("message".to_string(), "sign me".to_string())]),
+			Some("PubKey111".to_string()),
+			&clock,
+			&rng,
+		);
+		let info = store.consume(&id).unwrap();
+
+		assert_eq!(info.pending_public_key.as_deref(), Some("PubKey111"));
+		assert!(
+			!info.payload.contains_key("public_key"),
+			"the pending key must never reach the client payload"
+		);
+	}
+
+	#[test]
 	fn test_expired_challenge() {
 		let (clock, mock, rng) = test_clock_and_rng();
 		let store = ChallengeStore::new(Duration::from_milliseconds(1).unwrap());
-		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new(), &clock, &rng);
+		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new(), None, &clock, &rng);
 
 		mock.advance_millis(10);
 		assert!(store.consume(&id).is_none());
