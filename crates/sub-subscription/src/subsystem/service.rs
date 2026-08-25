@@ -60,7 +60,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		&self,
 		flow_dag: FlowDag,
 		column_names: Vec<String>,
-		hydration_enabled: bool,
+		_hydration_enabled: bool,
 		ctx: SubscriptionContext,
 		_txn: &mut Transaction<'_>,
 	) -> Result<()> {
@@ -71,11 +71,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		self.state.position_tracker.update(id, current);
 
 		let flow_id = flow_dag.id;
-		let gate = if hydration_enabled {
-			Some(current)
-		} else {
-			None
-		};
+		let gate = Some(current);
 
 		let (tx, rx) = mpsc::channel();
 		let reply: Box<dyn FnOnce(Result<()>) + Send> = Box::new(move |r| {
