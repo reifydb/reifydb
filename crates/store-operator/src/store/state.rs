@@ -15,7 +15,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 };
-use reifydb_store::coverage::{Interval, RangeCursor, Segment, ServedChunk, successor};
+use reifydb_store::coverage::{Edge, Interval, RangeCursor, Segment, ServedChunk, successor};
 #[cfg(reifydb_assertions)]
 use reifydb_value::value::row_number::RowNumber;
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
@@ -470,7 +470,7 @@ impl StandardOperatorStore {
 		};
 		let mut segment_index = 0usize;
 		let mut cursor = RangeCursor::new();
-		let mut pending: Option<(Interval, bool)> = None;
+		let mut pending: Option<(Interval, bool, usize)> = None;
 		let mut claim_start: Option<EncodedKey> = None;
 		let mut installing = true;
 
@@ -481,7 +481,7 @@ impl StandardOperatorStore {
 
 				match (tier, scan.as_ref()) {
 					(Some(tier), Some(scan)) => loop {
-						if let Some((interval, installable)) = pending.take() {
+						if let Some((interval, installable, consumed)) = pending.take() {
 							let Some(persistent) = self.persistent.as_ref() else {
 								exhausted = true;
 								break;
@@ -526,11 +526,11 @@ impl StandardOperatorStore {
 								cursor.advance(key.clone());
 							}
 							if complete {
-								segment_index += 1;
+								segment_index += consumed;
 								cursor.reset();
 								claim_start = None;
 							} else {
-								pending = Some((interval, installable));
+								pending = Some((interval, installable, consumed));
 							}
 
 							if batch.items.is_empty() {
@@ -569,8 +569,11 @@ impl StandardOperatorStore {
 										break;
 									}
 									ServedChunk::Gap => {
-										pending =
-											Some((interval.clone(), false));
+										pending = Some((
+											interval.clone(),
+											false,
+											1,
+										));
 									}
 								}
 							}
@@ -578,7 +581,20 @@ impl StandardOperatorStore {
 								interval,
 								..
 							} => {
-								pending = Some((interval.clone(), true));
+								let mut span = interval.clone();
+								let mut consumed = 1usize;
+								while let Some(Segment::Gap {
+									interval: next,
+									..
+								}) = scan.segments().get(segment_index + consumed)
+								{
+									if span.end != Edge::Key(next.start.clone()) {
+										break;
+									}
+									span.end = next.end.clone();
+									consumed += 1;
+								}
+								pending = Some((span, true, consumed));
 							}
 						}
 					},
