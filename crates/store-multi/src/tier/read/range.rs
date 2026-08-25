@@ -17,7 +17,7 @@ use crate::{
 		read::{
 			EntryFootprint, MultiReadBufferTier, PageEntry, ResidentPage, ServedChunk, Shard, Span,
 			account,
-			coverage::{span_of, widen},
+			coverage::widen,
 			entry_footprint,
 			scan::page_bounds,
 		},
@@ -31,36 +31,6 @@ impl MultiReadBufferTier {
 
 	pub fn page_key_range(&self, page: PageId) -> Option<EncodedKeyRange> {
 		key_range_of(page, self.bucket_shift())
-	}
-
-	pub fn populate_page(&self, page: PageId, entries: Vec<RawEntry>, complete: bool) {
-		let shift = self.bucket_shift();
-		let span = span_of(key_range_of(page, shift)).filter(|_| complete);
-		let index = self.shard_index(&page);
-		let token = self.retractions();
-		let mut shard = self.shard(index).lock();
-		let next = shard.next_tick;
-		{
-			let Shard {
-				pages,
-				budget,
-				..
-			} = &mut *shard;
-			let resident = pages.entry(page).or_insert_with(|| ResidentPage::fresh(next));
-			place_entries(resident, budget, entries.into_iter());
-			resident.tick = next;
-			if let Some(span) = span.clone() {
-				resident.fills = self.next_fill();
-				widen(&mut resident.claimed, span);
-			}
-		}
-		shard.next_tick = next + 1;
-		drop(shard);
-
-		if let Some(span) = span {
-			self.claim(page.kind, &span, token);
-		}
-		self.evict_to_capacity(index);
 	}
 
 	pub fn install_scanned_chunk(

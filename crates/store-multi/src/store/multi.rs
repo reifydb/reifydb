@@ -1275,7 +1275,7 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod cache_tests {
-	use std::collections::HashMap;
+	use std::{collections::HashMap, ops::Bound};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{
@@ -1438,14 +1438,22 @@ mod cache_tests {
 			page,
 			"both source rows must share a page for this test to exercise flag-clearing"
 		);
-		read.populate_page(
-			page,
-			vec![RawEntry {
-				key: neighbor,
-				version: CommitVersion(1),
-				value: Some(CowVec::new(b"neighbor".to_vec())),
-			}],
-			true,
+		let range = read.page_key_range(page).expect("a table row page has a reconstructable range");
+		let (Bound::Included(lo), Bound::Included(through)) = (range.start, range.end) else {
+			panic!("a table row page range is inclusive at both ends");
+		};
+		assert!(
+			read.install_scanned_chunk(
+				page.kind,
+				&lo,
+				&through,
+				&[RawEntry {
+					key: neighbor,
+					version: CommitVersion(1),
+					value: Some(CowVec::new(b"neighbor".to_vec())),
+				}],
+			),
+			"the seeding chunk must publish its claim"
 		);
 		assert!(read.page_is_complete(page), "the page must start range-complete");
 

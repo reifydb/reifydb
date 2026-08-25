@@ -4,6 +4,7 @@
 use std::{
 	collections::{HashMap, HashSet},
 	mem::size_of,
+	ops::Bound,
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
@@ -197,6 +198,16 @@ fn raw_entry(object: u64, n: u64, version: u64, value: &str) -> RawEntry {
 	}
 }
 
+fn install_page(read: &MultiReadBufferTier, page: PageId, mut entries: Vec<RawEntry>) {
+	// A scan yields ascending encoded keys, which row keys invert into descending row number, so a caller's order can never be trusted.
+	let range = read.page_key_range(page).expect("a table row page has a reconstructable range");
+	let (Bound::Included(lo), Bound::Included(through)) = (range.start, range.end) else {
+		panic!("a table row page range is inclusive at both ends");
+	};
+	entries.sort_by(|left, right| left.key.cmp(&right.key));
+	assert!(read.install_scanned_chunk(page.kind, &lo, &through, &entries), "a page chunk must publish its claim");
+}
+
 fn populate_complete(read: &MultiReadBufferTier, object: u64, rows: &[(u64, u64, &str)]) {
 	let mut by_page: HashMap<PageId, Vec<RawEntry>> = HashMap::new();
 	for (n, v, val) in rows {
@@ -204,7 +215,7 @@ fn populate_complete(read: &MultiReadBufferTier, object: u64, rows: &[(u64, u64,
 		by_page.entry(read.page_of_key(&entry.key)).or_default().push(entry);
 	}
 	for (page, entries) in by_page {
-		read.populate_page(page, entries, true);
+		install_page(read, page, entries);
 	}
 }
 
@@ -270,9 +281,8 @@ fn serve_complete_bucket_returns_rows_in_ascending_encoded_order() {
 #[test]
 fn serve_returns_gap_when_bucket_not_complete() {
 	let read = cache(8);
-	let entry = raw_entry(1, 5, 1, "v");
-	let page = read.page_of_key(&entry.key);
-	read.populate_page(page, vec![entry], false);
+	let page = read.page_of_key(&row(1, 5));
+	read.insert(row(1, 5), CommitVersion(1), Some(val("v")));
 	assert!(!read.page_is_complete(page));
 
 	let table = EntryKind::Source(StorageId::table(1));
@@ -411,20 +421,11 @@ fn serve_stops_at_incomplete_bucket_after_a_complete_one() {
 #[test]
 fn populate_non_source_page_is_never_complete() {
 	let read = cache(8);
-	let page = PageId {
-		kind: EntryKind::Multi,
-		bucket: 0,
-		series: false,
-	};
-	read.populate_page(
-		page,
-		vec![RawEntry {
-			key: EncodedKey::new(vec![0u8, 1, 2]),
-			version: CommitVersion(1),
-			value: Some(CowVec::new(b"v".to_vec())),
-		}],
-		true,
-	);
+	let key = EncodedKey::new(vec![0u8, 1, 2]);
+	read.insert(key.clone(), CommitVersion(1), Some(CowVec::new(b"v".to_vec())));
+
+	let page = read.page_of_key(&key);
+	assert_eq!(page.kind, EntryKind::Multi, "the key must land outside the source band");
 	assert!(!read.page_is_complete(page), "a non-Source page can never be covered");
 }
 
@@ -433,23 +434,23 @@ fn populate_respects_stale_version_guard() {
 	let read = cache(8);
 	let k = row(1, 5);
 	let page = read.page_of_key(&k);
-	read.populate_page(
+	install_page(
+		&read,
 		page,
 		vec![RawEntry {
 			key: k.clone(),
 			version: CommitVersion(5),
 			value: Some(CowVec::new(b"v5".to_vec())),
 		}],
-		true,
 	);
-	read.populate_page(
+	install_page(
+		&read,
 		page,
 		vec![RawEntry {
 			key: k.clone(),
 			version: CommitVersion(2),
 			value: Some(CowVec::new(b"v2".to_vec())),
 		}],
-		true,
 	);
 	match read.get(&k, CommitVersion(5)) {
 		VersionedGetResult::Value {
@@ -579,7 +580,7 @@ fn a_replace_does_not_fabricate_a_previous_slot() {
 	let read = cache(8);
 	let page = read.page_of_key(&row(1, 5));
 	read.insert(row(1, 5), CommitVersion(5), Some(val("resident-v5")));
-	read.populate_page(page, vec![raw_entry(1, 5, 10, "loaded-v10")], true);
+	install_page(&read, page, vec![raw_entry(1, 5, 10, "loaded-v10")]);
 
 	assert!(
 		matches!(read.get(&row(1, 5), CommitVersion(7)), VersionedGetResult::NotFound),
@@ -905,9 +906,7 @@ fn point_read_outcomes_are_tallied_as_hits_previous_hits_and_misses() {
 #[test]
 fn range_serve_outcomes_are_tallied_as_served_and_gaps() {
 	let read = cache(8);
-	let entry = raw_entry(1, 5, 1, "v");
-	let page = read.page_of_key(&entry.key);
-	read.populate_page(page, vec![entry], false);
+	read.insert(row(1, 5), CommitVersion(1), Some(val("v")));
 
 	let table = EntryKind::Source(StorageId::table(1));
 	let (start, end) = (row(1, 10), row(1, 0));

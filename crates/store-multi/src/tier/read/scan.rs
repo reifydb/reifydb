@@ -246,8 +246,14 @@ mod tests {
 	}
 
 	fn fill_bucket(read: &MultiReadBufferTier, bucket: u64, rows: &[u64], version: u64) {
-		let entries = rows.iter().map(|n| entry(*n, version)).collect();
-		read.populate_page(page(bucket * BUCKET), entries, true);
+		// A scan yields entries in ascending key order, which row keys invert into descending row number, so the caller's order cannot be trusted.
+		let base = bucket * BUCKET;
+		let mut entries: Vec<RawEntry> = rows.iter().map(|n| entry(*n, version)).collect();
+		entries.sort_by(|left, right| left.key.cmp(&right.key));
+		assert!(
+			read.install_scanned_chunk(source(), &row(base + BUCKET - 1), &row(base), &entries),
+			"a whole-bucket chunk must publish its claim"
+		);
 	}
 
 	fn storage_start() -> EncodedKey {
@@ -346,7 +352,7 @@ mod tests {
 		assert!(whole.exhausted, "a claim spanning the whole range has proven the rest of it empty");
 
 		let punched = tier();
-		punched.populate_page(page(0), vec![entry(2, 10), entry(4, 10), entry(6, 10)], true);
+		fill_bucket(&punched, 0, &[2, 4, 6], 10);
 		punched.invalidate(&row(1));
 
 		let mut clipped = RangeCursor::new();
@@ -363,7 +369,7 @@ mod tests {
 		// The proof-of-absence case, and the one a bug makes silent: an install of an empty span claims it,
 		// and the serve must answer "nothing here" rather than fall through, or the claim buys nothing.
 		let read = tier();
-		read.populate_page(page(0), Vec::new(), true);
+		fill_bucket(&read, 0, &[], 10);
 
 		let mut cursor = RangeCursor::new();
 		let chunk = serve(&read, &mut cursor, 0, BUCKET - 1, 64);
@@ -414,7 +420,10 @@ mod tests {
 		// Coverage decides whether a span is claimed; the scope decides which entries in it are visible.
 		// Conflating the two would let a reader below a row's version see it.
 		let read = tier();
-		read.populate_page(page(0), vec![entry(1, 5), entry(2, 50)], true);
+		assert!(
+			read.install_scanned_chunk(source(), &row(BUCKET - 1), &row(0), &[entry(2, 50), entry(1, 5)]),
+			"the bucket chunk must publish its claim"
+		);
 
 		let mut cursor = RangeCursor::new();
 		let chunk = read.serve_covered_chunk(
@@ -778,14 +787,19 @@ mod tests {
 		// The plan is read under the coverage lock and the rows under the page locks, never both, so a
 		// removal can land in between and falsify the claim the plan was built from. Serving anyway
 		// returns rows RAM no longer holds and, worse, reports proven absence over the key it dropped.
-		let read = MultiReadBufferTier::with_interlock(
-			config(),
-			Box::new(|tier, _page| {
-				tier.invalidate(&row(2));
-			}),
-		)
+		// The interlock stays disarmed while the bucket is installed, because an install is a fill too and would race its own seeding.
+		let armed = Arc::new(AtomicBool::new(false));
+		let read = MultiReadBufferTier::with_interlock(config(), {
+			let armed = armed.clone();
+			Box::new(move |tier, _page| {
+				if armed.load(Ordering::SeqCst) {
+					tier.invalidate(&row(2));
+				}
+			})
+		})
 		.expect("a tier with a byte budget must be constructed");
 		fill_bucket(&read, 0, &[1, 2, 3], 10);
+		armed.store(true, Ordering::SeqCst);
 
 		let mut cursor = RangeCursor::new();
 		let chunk = serve(&read, &mut cursor, 0, BUCKET - 1, 64);

@@ -384,6 +384,16 @@ mod tests {
 		span_of(key_range_of(page(n), SHIFT)).expect("a table row page has a reconstructable range")
 	}
 
+	fn fill_bucket(read: &MultiReadBufferTier, bucket: u64, rows: &[u64], version: u64) {
+		// Rows must be listed descending by row number, which is ascending encoded key order, the order a scan yields them in.
+		let base = bucket * BUCKET;
+		let entries: Vec<RawEntry> = rows.iter().map(|n| entry(*n, version)).collect();
+		assert!(
+			read.install_scanned_chunk(source(), &row(base + BUCKET - 1), &row(base), &entries),
+			"a whole-bucket chunk must publish its claim"
+		);
+	}
+
 	fn resident(read: &MultiReadBufferTier, key: &EncodedKey) -> bool {
 		let page = page_of(key, SHIFT);
 		read.shard_for(&page).lock().pages.get(&page).is_some_and(|page| page.entries.contains_key(key))
@@ -448,21 +458,11 @@ mod tests {
 		// on every scan; it must be no wider, or it answers for the next bucket's rows.
 		let read = tier(8);
 
-		read.populate_page(page(0), vec![entry(0, 1), entry(2, 1)], true);
+		fill_bucket(&read, 0, &[2, 0], 1);
 
 		assert!(read.covers(source(), &row(2)));
 		assert!(read.covers(source(), &row(BUCKET - 1)), "a row proven absent inside the bucket");
 		assert!(!read.covers(source(), &row(BUCKET)), "the claim reached into the next bucket");
-	}
-
-	#[test]
-	fn a_page_fill_that_is_not_complete_claims_nothing() {
-		// Rows placed without a proof that they are all of them say nothing about the span between.
-		let read = tier(8);
-
-		read.populate_page(page(0), vec![entry(0, 1), entry(2, 1)], false);
-
-		assert!(read.intervals(source()).is_empty(), "an incomplete fill claimed a span it never proved");
 	}
 
 	#[test]
@@ -494,7 +494,7 @@ mod tests {
 			.expect("a tier with a byte budget must be constructed")
 		};
 
-		read.populate_page(page(0), vec![entry(0, 1), entry(1, 1), entry(2, 1)], true);
+		fill_bucket(&read, 0, &[2, 1, 0], 1);
 		read.invalidate(&row(1));
 
 		assert_eq!(fired.load(Ordering::SeqCst), 1, "the interlock never ran, so the window went unread");
@@ -514,7 +514,7 @@ mod tests {
 		// A whole-page claim dies for all 2^shift rows on one write; losing the whole span here would
 		// throw away the only thing the interval model is for.
 		let read = tier(8);
-		read.populate_page(page(0), vec![entry(0, 1), entry(2, 1)], true);
+		fill_bucket(&read, 0, &[2, 0], 1);
 
 		read.invalidate(&row(0));
 
@@ -528,7 +528,7 @@ mod tests {
 	fn a_page_emptied_by_an_invalidate_leaves_no_claim_behind() {
 		// A claim outliving its page answers for a span nothing in RAM can ever be read for again.
 		let read = tier(8);
-		read.populate_page(page(0), vec![entry(0, 1)], true);
+		fill_bucket(&read, 0, &[0], 1);
 		assert!(read.covers(source(), &row(1)));
 
 		read.invalidate(&row(0));
@@ -542,8 +542,8 @@ mod tests {
 		// The hull retracts a byte span, not a page id. If two pages of one kind shared byte space,
 		// evicting either would silently withdraw the other's claim over rows still resident.
 		let read = tier(8);
-		read.populate_page(page(0), vec![entry(0, 1)], true);
-		read.populate_page(page(BUCKET), vec![entry(BUCKET, 1)], true);
+		fill_bucket(&read, 0, &[0], 1);
+		fill_bucket(&read, 1, &[BUCKET], 1);
 		let hull = read
 			.shard_for(&page(0))
 			.lock()
@@ -620,7 +620,7 @@ mod tests {
 	fn clearing_the_tier_withdraws_every_claim() {
 		// Every row goes; a surviving claim reports the whole cleared span as proven absent.
 		let read = tier(8);
-		read.populate_page(page(0), vec![entry(0, 1)], true);
+		fill_bucket(&read, 0, &[0], 1);
 		read.insert(row(BUCKET * 4), CommitVersion(1), Some(val(1)));
 
 		read.clear();
@@ -771,12 +771,19 @@ mod tests {
 					}
 					3 => {
 						let target = page(number);
+						let base = number & !(BUCKET - 1);
 						let entries: Vec<RawEntry> = persistent
 							.iter()
 							.filter(|(at, _)| page(**at) == target)
 							.map(|(at, version)| entry(*at, *version))
+							.rev()
 							.collect();
-						read.populate_page(target, entries, true);
+						read.install_scanned_chunk(
+							source(),
+							&row(base + BUCKET - 1),
+							&row(base),
+							&entries,
+						);
 					}
 					_ => {
 						let before = read.resident_pages();

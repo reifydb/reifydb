@@ -333,11 +333,7 @@ fn step(read: &MultiReadBufferTier, rng: &mut Lcg, keys: &[EncodedKey], version:
 	let at = version.fetch_add(1, Ordering::SeqCst);
 	match rng.next() % 100 {
 		0..30 => read.insert(key, CommitVersion(at), Some(val(at))),
-		30..40 => {
-			let bucket = rng.next() % ROWS.div_ceil(BUCKET);
-			read.populate_page(page(&row(bucket * BUCKET)), bucket_entries(bucket, at), true);
-		}
-		40..46 => {
+		30..46 => {
 			let bucket = rng.next() % ROWS.div_ceil(BUCKET);
 			let id = page(&row(bucket * BUCKET));
 			read.install_scanned_chunk(
