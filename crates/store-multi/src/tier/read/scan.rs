@@ -63,6 +63,10 @@ impl MultiReadBufferTier {
 			advanced,
 		}) = self.plan_leading(table, &anchor, &lo, &range_hi, &hi, shift, head)
 		else {
+			if self.head_proves_empty(table, &lo, &range_hi) {
+				self.tally_coverage_served(&anchor, 0);
+				return served_chunk(Vec::new(), cursor, true);
+			}
 			self.tally_coverage(&anchor, CoverageOutcome::Gap);
 			return ServedChunk::Gap;
 		};
@@ -809,5 +813,46 @@ mod tests {
 			read.shard_metrics().iter().map(|s| s.coverage.refused).sum::<u64>() > 0,
 			"the refusal must be counted, or a silent one is indistinguishable from a miss"
 		);
+	}
+
+	#[test]
+	fn an_empty_storage_is_read_from_persistent_once_and_never_again() {
+		// Neither storage sentinel resolves to a row page, so the head is the only proof an empty storage can ever produce; without cashing it in every scan falls through to persistent forever.
+		let read = tier();
+
+		let mut first = RangeCursor::new();
+		assert!(is_gap(&serve_whole_storage(&read, &mut first)), "nothing is proven before the first scan");
+
+		read.install_scanned_chunk(source(), &storage_start(), &storage_end(), &[]);
+
+		let mut second = RangeCursor::new();
+		let chunk = serve_whole_storage(&read, &mut second);
+		assert!(!is_gap(&chunk), "the proven-empty storage must never reach the persistent tier again");
+		assert!(rows_of(&chunk).is_empty(), "a proven-empty range must serve no rows");
+		assert!(second.exhausted, "an empty range that is not exhausted hands the scan straight back to persistent");
+	}
+
+	#[test]
+	fn a_range_ending_on_the_head_is_never_answered_empty() {
+		// The head names a key a row may sit on, so only the storage end sentinel, which no row can occupy, may be answered as proven empty; answering at the head itself drops the row standing on it.
+		let read = tier();
+		install_from_prefix(&read, &[5, 3], 10);
+		assert_eq!(read.head(source()).as_ref(), Some(&row(5)), "the install must name the first row as the head");
+
+		read.invalidate(&row(5));
+		read.invalidate(&row(3));
+
+		let mut cursor = RangeCursor::new();
+		let chunk = read.serve_covered_chunk(
+			source(),
+			&mut cursor,
+			storage_start().as_slice(),
+			row(5).as_slice(),
+			newest(),
+			64,
+			false,
+		);
+		assert!(is_gap(&chunk), "a range whose last key is the head itself is not proven empty and the persistent tier still owes it");
+		assert!(!cursor.exhausted, "a gap must leave the cursor untouched");
 	}
 }

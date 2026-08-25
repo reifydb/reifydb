@@ -150,6 +150,20 @@ impl MultiReadBufferTier {
 		})
 	}
 
+	pub(super) fn head_proves_empty(&self, kind: EntryKind, lo: &EncodedKey, range_hi: &EncodedKey) -> bool {
+		let Some((start, end)) = row_band(kind) else {
+			return false;
+		};
+		if lo.as_slice() < start.as_slice() {
+			return false;
+		}
+		let coverage = self.coverage().read();
+		coverage.heads.get(&kind).is_some_and(|at| {
+			at.as_slice() > range_hi.as_slice()
+				|| (at.as_slice() == range_hi.as_slice() && range_hi.as_slice() >= end.as_slice())
+		})
+	}
+
 	pub(super) fn raise_head(
 		&self,
 		kind: EntryKind,
