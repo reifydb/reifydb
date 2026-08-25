@@ -4,13 +4,14 @@
 use std::{
 	collections::BTreeMap,
 	ops::Bound::{Excluded, Included, Unbounded},
+	sync::LazyLock,
 };
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
 };
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::Keyspace};
 use reifydb_store::coverage::{
 	CoverageSet, Edge, Entry, Interval, PinnedCount, RangeCursor, Residency, Segment, ServedChunk, plan, successor,
 };
@@ -105,7 +106,7 @@ impl OperatorRangeTier {
 		let head_shard = self.shard_index(&head);
 		let mut orphaned = 0;
 		let mut work = Vec::with_capacity(pieces.len());
-		for (segment, partition) in &pieces {
+		for (at, (segment, partition)) in pieces.iter().enumerate() {
 			let tally = match segment {
 				Segment::Ram(_) => Tally::Hit,
 				Segment::Gap {
@@ -118,7 +119,7 @@ impl OperatorRangeTier {
 				} => Tally::Miss,
 			};
 			match partition {
-				Some(partition) => work.push((self.shard_index(partition), Some(*partition), tally)),
+				Some(partition) => work.push((self.shard_index(partition), Some(*partition), tally, at)),
 				None => {
 					if matches!(tally, Tally::Miss) {
 						orphaned += 1;
@@ -126,11 +127,12 @@ impl OperatorRangeTier {
 				}
 			}
 		}
-		work.sort_by_key(|(index, _, _)| *index);
+		work.sort_by_key(|(index, _, _, _)| *index);
 		if orphaned > 0 {
-			work.push((head_shard, None, Tally::Untallied));
+			work.push((head_shard, None, Tally::Untallied, pieces.len()));
 		}
 
+		let mut barren: Option<Vec<bool>> = None;
 		let mut at = 0;
 		let mut recorded = false;
 		while at < work.len() {
@@ -142,7 +144,7 @@ impl OperatorRangeTier {
 				shard.metrics.misses += orphaned;
 			}
 			while at < work.len() && work[at].0 == index {
-				let (_, partition, tally) = work[at];
+				let (_, partition, tally, piece) = work[at];
 				at += 1;
 				let Some(partition) = partition else {
 					continue;
@@ -160,12 +162,26 @@ impl OperatorRangeTier {
 					Tally::Untallied => {}
 				}
 				if partition.caches_ranges() {
-					if let Some(resident) = shard.partitions.get_mut(&partition) {
-						resident.covered = true;
+					match shard.partitions.get_mut(&partition) {
+						Some(resident) => resident.covered = true,
+						None => {
+							if matches!(tally, Tally::Hit) {
+								barren.get_or_insert_with(|| {
+									vec![false; pieces.len()]
+								})[piece] = true;
+							}
+						}
 					}
 				}
 			}
 		}
+
+		let pieces = match barren {
+			Some(barren) if self.retractions() == retractions => {
+				pieces.into_iter().zip(barren).filter(|(_, drop)| !drop).map(|(piece, _)| piece).collect()
+			}
+			_ => pieces,
+		};
 
 		Some(RangeScan {
 			operator,
@@ -601,6 +617,41 @@ fn coalesce_gaps(pieces: Vec<(Segment, Option<PartitionId>)>) -> Vec<(Segment, O
 	out
 }
 
+/// The lowest keyspace reachable from each keyspace without a change of range-cache policy.
+///
+/// A keyspace byte is encoded inverted, so a forward scan walks keyspaces downward; the run a scan
+/// enters at one keyspace therefore ends at this keyspace, and every partition between the two
+/// shares one policy. Built from the policy itself rather than a named keyspace, or a new exempt
+/// keyspace would silently widen a run over a partition the tier must never claim.
+static POLICY_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
+	let mut floor = [0u8; 256];
+	let mut lowest = 0u8;
+	for keyspace in 0..=u8::MAX {
+		if keyspace > 0
+			&& Keyspace(keyspace).cache_policy().caches_ranges()
+				!= Keyspace(keyspace - 1).cache_policy().caches_ranges()
+		{
+			lowest = keyspace;
+		}
+		floor[keyspace as usize] = lowest;
+	}
+	floor
+});
+
+/// The exclusive end of the maximal run of same-policy partitions this partition opens.
+fn policy_run_end(partition: PartitionId) -> Edge {
+	let floor = POLICY_RUN_FLOOR[partition.keyspace.0 as usize];
+	if floor == partition.keyspace.0 {
+		return partition.span().1;
+	}
+	PartitionId {
+		keyspace: Keyspace(floor),
+		..partition
+	}
+	.span()
+	.1
+}
+
 fn split_at_partitions(operator: OperatorId, segment: &Segment, out: &mut Vec<(Segment, Option<PartitionId>)>) {
 	let (whole, ram) = match segment {
 		Segment::Ram(interval) => (interval, true),
@@ -645,7 +696,11 @@ fn split_at_partitions(operator: OperatorId, segment: &Segment, out: &mut Vec<(S
 		};
 		head = false;
 
-		let (_, bound) = partition.span();
+		let bound = if ram {
+			partition.span().1
+		} else {
+			policy_run_end(partition)
+		};
 		let end = bound.min(whole.end.clone());
 		let piece = Interval::new(start, end.clone());
 		out.push((
@@ -685,6 +740,7 @@ mod tests {
 	use reifydb_store::coverage::{Edge, Interval, RangeCursor, Segment, ServedChunk};
 	use reifydb_value::byte_size::ByteSize;
 
+	use super::split_at_partitions;
 	use crate::tier::range::{Install, OperatorRangeConfig, OperatorRangeTier, PartitionId, RangeScan};
 
 	const OP: OperatorId = OperatorId(1);
@@ -1172,6 +1228,111 @@ mod tests {
 				}
 			),
 			"the fixture must actually straddle an exempt keyspace"
+		);
+	}
+
+	#[test]
+	fn a_wide_gap_splits_once_per_cache_policy_run_while_ram_still_splits_once_per_partition() {
+		// A gap piece per keyspace byte made a group-wide scan build ~97 pieces that coalesce_gaps then
+		// merged back into ~3; the run is the unit that survives, so emitting bytes is pure waste. RAM must
+		// keep splitting per partition, because serve resolves one partition from the segment start and a
+		// merged RAM piece would silently answer only the first partition's rows.
+		let top = Keyspace(UNCACHED.0 + 8);
+		let below = Keyspace(UNCACHED.0 - 1);
+		let bottom = Keyspace(UNCACHED.0 - 8);
+		let span = Interval::new(whole(top).start, whole(bottom).end);
+
+		let mut gap = Vec::new();
+		split_at_partitions(
+			OP,
+			&Segment::Gap {
+				interval: span.clone(),
+				exempt: false,
+			},
+			&mut gap,
+		);
+		assert_eq!(
+			gap,
+			[
+				(
+					Segment::Gap {
+						interval: Interval::new(whole(top).start, Edge::Key(whole(UNCACHED).start)),
+						exempt: false,
+					},
+					Some(partition(top))
+				),
+				(
+					Segment::Gap {
+						interval: whole(UNCACHED),
+						exempt: true,
+					},
+					Some(partition(UNCACHED))
+				),
+				(
+					Segment::Gap {
+						interval: Interval::new(whole(below).start, whole(bottom).end),
+						exempt: false,
+					},
+					Some(partition(below))
+				),
+			],
+			"seventeen keyspaces holding one exempt byte must split into three policy runs, each carrying \
+			 the first partition of its run so the miss tally stays per run"
+		);
+
+		let mut ram = Vec::new();
+		split_at_partitions(OP, &Segment::Ram(span), &mut ram);
+		assert_eq!(
+			ram.len(),
+			(bottom.0..=top.0).len(),
+			"a RAM segment must still yield one piece per partition, or serve answers only the first"
+		);
+		assert!(
+			ram.iter().all(|(segment, partition)| matches!(segment, Segment::Ram(_)) && partition.is_some()),
+			"every RAM piece must name the partition that serves it"
+		);
+	}
+
+	#[test]
+	fn a_claim_over_a_partition_holding_nothing_plans_no_segment_and_no_gap() {
+		// A claim can outlive its partition, so most RAM pieces address a partition that was never
+		// materialised; serving one took a coverage read lock and a shard mutex to return zero rows. Dropping
+		// the piece is only safe if the span does not reappear as a gap: a gap sends the reader to the
+		// persistent tier for a span the claim already proved empty, which is both a wasted read and, once
+		// the claim is the only proof, a different answer.
+		let tier = roomy();
+		let top = Keyspace::BUFFER;
+		let bottom = Keyspace::ACCUMULATOR;
+		let range = across(top, bottom);
+
+		assert!(claim(&tier, &range, &whole(top), &[]) == Install::Installed);
+		assert!(claim(&tier, &range, &whole(bottom), &[(key(bottom, b"k"), row("k"))]) == Install::Installed);
+		assert_eq!(intervals(&tier).len(), 1, "the two claims must coalesce, or the drop is not under test");
+		assert_eq!(tier.partitions(), 1, "only the keyspace holding a row may hold a partition");
+
+		let before = tier.metrics().hits;
+		let scan = tier.plan_scan(OP, &range).expect("a two-keyspace range must be plannable");
+
+		assert_eq!(
+			scan.segments(),
+			[Segment::Ram(whole(bottom))],
+			"the piece addressing the unmaterialised partition must be dropped, not served empty"
+		);
+		assert_eq!(
+			scan.gaps(),
+			0,
+			"and the span it covered must not become a gap, or the reader pays a persistent read for a \
+			 span the claim proved empty"
+		);
+		assert_eq!(
+			tier.metrics().hits - before,
+			2,
+			"both pieces must still tally as hits, or dropping one rewrites the hit rate the tier reports"
+		);
+		assert_eq!(
+			drain(&tier, &scan, &whole(bottom), 64),
+			["k"],
+			"the partition that does hold a row must still answer it"
 		);
 	}
 
