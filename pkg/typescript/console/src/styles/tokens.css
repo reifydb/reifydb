@@ -18,6 +18,7 @@
   --rdb-color-text: #ffffff;
   --rdb-color-secondary: #a0a0a0;
   --rdb-color-muted: #585858;
+  --rdb-color-none: #454545;
   --rdb-color-border: rgba(65, 65, 65, 0.8);
   --rdb-color-error: #DC2626;
   --rdb-color-success: #22C55E;
@@ -68,6 +69,7 @@
   --rdb-color-text: #18181b;
   --rdb-color-secondary: #3f3f46;
   --rdb-color-muted: #71717a;
+  --rdb-color-none: #a1a1aa;
   --rdb-color-border: #18181b;
   --rdb-color-error: #DC2626;
   --rdb-color-success: #16A34A;
@@ -87,6 +89,7 @@
 
 /* ReifyDB product theme - light palette, hairline borders, soft elevation */
 .rdb-theme-reifydb {
+  --rdb-color-none: #a1a1aa;
   --rdb-color-border-hairline: #e4e4e7;
   --rdb-color-primary-hover: #6366f1;
   --rdb-color-success: #22C55E;

@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+export interface MissingPresentation {
+    text: string;
+    italic: boolean;
+    muted: boolean;
+}
+
+export const NONE_PRESENTATION: MissingPresentation = {
+    text: 'none',
+    italic: true,
+    muted: true,
+};
+
 export type ValueRole =
     | 'none'
     | 'boolean'
@@ -71,11 +83,13 @@ export function value_role(value: unknown): ValueRole {
 }
 
 export function format_value(value: unknown): string {
-    if (value === null || value === undefined) return 'none';
+    if (value === null || value === undefined) return NONE_PRESENTATION.text;
     if (typeof value === 'bigint') return value.toString();
 
     if (typeof value === 'object') {
-        if (type_name(value) !== undefined) return String(value);
+        const name = type_name(value);
+        if (name === 'None') return NONE_PRESENTATION.text;
+        if (name !== undefined) return String(value);
         return JSON.stringify(value) ?? String(value);
     }
 

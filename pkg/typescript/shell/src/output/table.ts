@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 import {
+  NONE_PRESENTATION,
   cell_text,
   infer_columns,
   pad_to_width,
@@ -85,7 +86,10 @@ export const reifydb_dark_table_theme: TableTheme = {
   border: {color: '#3f3f46'},
   header: {color: '#818cf8', bold: true},
   values: {
-    none: {color: '#71717a', italic: true},
+    none: {
+      color: NONE_PRESENTATION.muted ? '#52525b' : undefined,
+      italic: NONE_PRESENTATION.italic,
+    },
     boolean: {color: '#fbbf24'},
     number: {color: '#a5b4fc'},
     temporal: {color: '#5eead4'},

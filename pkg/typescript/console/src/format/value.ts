@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { format_value, value_role, type ValueRole } from '@reifydb/core';
+import { NONE_PRESENTATION, format_value, value_role, type ValueRole } from '@reifydb/core';
 
 export { format_value };
 
@@ -11,7 +11,10 @@ export interface ValueStyle {
 }
 
 const STYLE_BY_ROLE: Record<ValueRole, ValueStyle> = {
-  none: { color: 'var(--rdb-color-muted)', italic: true },
+  none: {
+    color: NONE_PRESENTATION.muted ? 'var(--rdb-color-none)' : undefined,
+    italic: NONE_PRESENTATION.italic,
+  },
   boolean: { color: 'var(--rdb-color-value-boolean)' },
   number: { color: 'var(--rdb-color-value-number)' },
   temporal: { color: 'var(--rdb-color-value-date)' },

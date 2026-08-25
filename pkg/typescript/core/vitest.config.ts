@@ -57,6 +57,7 @@ export default defineConfig({
 
     resolve: {
         alias: {
+            '@reifydb/core': resolve(__dirname, './src/index.ts'),
             '@': resolve(__dirname, './src'),
             '@tests': resolve(__dirname, './tests')
         }
