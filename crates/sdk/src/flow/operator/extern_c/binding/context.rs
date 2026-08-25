@@ -35,8 +35,8 @@ use crate::{
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
 					get_or_create_row_numbers_for_pairs, intern_group, intern_groups, lookup_group,
-					lookup_groups, reclaim_group_identity, remove_row_number,
-					remove_row_numbers_below,
+					lookup_groups, reclaim_group_identity, reclaim_group_identity_keys,
+					remove_row_number, remove_row_numbers_below,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -194,6 +194,14 @@ impl ExternCContext {
 		reclaim_group_identity(self, group, limit)
 	}
 
+	pub fn reclaim_group_identity_keys(
+		&mut self,
+		group: GroupId,
+		keys: &[GroupStateKey],
+	) -> Result<ReclaimOutcome> {
+		reclaim_group_identity_keys(self, group, keys)
+	}
+
 	pub fn builder(&mut self) -> ColumnsBuilder<'_> {
 		ColumnsBuilder::new(self.ctx as *mut c_void, unsafe { (*self.ctx).callbacks.builder }, unsafe {
 			(*self.ctx).written_at_nanos
@@ -335,6 +343,9 @@ impl GuestContext for ExternCContext {
 	}
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		ExternCContext::reclaim_group_identity(self, group, limit)
+	}
+	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome> {
+		ExternCContext::reclaim_group_identity_keys(self, group, keys)
 	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCInsertEmit<'_>> {
 		let mut builder = self.builder();

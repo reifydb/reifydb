@@ -626,6 +626,55 @@ extern "C" fn test_reclaim_group_identity(
 	EXTERN_C_OK
 }
 
+extern "C" fn test_reclaim_group_identity_keys(
+	operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	_group: u64,
+	keys: *const ExternCKeyRef,
+	keys_len: usize,
+	removed_out: *mut usize,
+	more_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() || removed_out.is_null() || more_out.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if keys_len > 0 && keys.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: ctx and both out-params are null-checked, as is `keys` whenever `keys_len` is non-zero;
+	// every entry must be valid for reads of its own len, which the caller guarantees.
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let prefix = node_prefix(OperatorId(operator_id));
+		let refs = if keys_len == 0 {
+			&[][..]
+		} else {
+			from_raw_parts(keys, keys_len)
+		};
+		let mut removed = 0usize;
+		for entry in refs {
+			if entry.len > 0 && entry.ptr.is_null() {
+				return EXTERN_C_ERROR_NULL_PTR;
+			}
+			let inner = if entry.len == 0 {
+				&[][..]
+			} else {
+				from_raw_parts(entry.ptr, entry.len)
+			};
+			let mut full = prefix.to_vec();
+			full.extend_from_slice(inner);
+			if test_ctx.remove_state(&EncodedKey::new(full)).is_some() {
+				removed += 1;
+			}
+		}
+		*removed_out = removed;
+		*more_out = 0;
+	}
+
+	EXTERN_C_OK
+}
+
 extern "C" fn test_flow_watermark(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
@@ -1087,6 +1136,7 @@ pub fn create_test_callbacks() -> OperatorCallbacks {
 			disarm_timer: test_disarm_timer,
 			flow_watermark: test_flow_watermark,
 			reclaim_group_identity: test_reclaim_group_identity,
+			reclaim_group_identity_keys: test_reclaim_group_identity_keys,
 		},
 		dictionary: DictionaryCallbacks {
 			id_by_name: test_dictionary_id_by_name,

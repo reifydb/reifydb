@@ -84,7 +84,7 @@ impl OperatorRangeTier {
 			let interval = Interval::new(lo, hi);
 			pieces.push((
 				if held {
-					Segment::Ram(interval)
+					Segment::Resident(interval)
 				} else {
 					Segment::Gap {
 						interval,
@@ -102,7 +102,7 @@ impl OperatorRangeTier {
 			return Some(RangeScan {
 				operator,
 				segments: Vec::new(),
-				gaps: planned.gaps - planned.exempt_gaps,
+				gaps: planned.gaps - planned.exempted,
 				degraded: planned.degraded,
 				retractions,
 			});
@@ -113,7 +113,7 @@ impl OperatorRangeTier {
 		let mut work = Vec::with_capacity(pieces.len());
 		for (at, (segment, partition)) in pieces.iter().enumerate() {
 			let tally = match segment {
-				Segment::Ram(_) => Tally::Hit,
+				Segment::Resident(_) => Tally::Hit,
 				Segment::Gap {
 					exempt: true,
 					..
@@ -196,7 +196,7 @@ impl OperatorRangeTier {
 		Some(RangeScan {
 			operator,
 			segments: pieces.into_iter().map(|(segment, _)| segment).collect(),
-			gaps: planned.gaps - planned.exempt_gaps,
+			gaps: planned.gaps - planned.exempted,
 			degraded: planned.degraded,
 			retractions,
 		})
@@ -657,7 +657,7 @@ fn policy_run_end(partition: PartitionId) -> Edge {
 
 fn split_at_partitions(operator: OperatorId, segment: &Segment, out: &mut Vec<(Segment, Option<PartitionId>)>) {
 	let (whole, ram) = match segment {
-		Segment::Ram(interval) => (interval, true),
+		Segment::Resident(interval) => (interval, true),
 		Segment::Gap {
 			interval,
 			..
@@ -708,7 +708,7 @@ fn split_at_partitions(operator: OperatorId, segment: &Segment, out: &mut Vec<(S
 		let piece = Interval::new(start, end.clone());
 		out.push((
 			if ram {
-				Segment::Ram(piece)
+				Segment::Resident(piece)
 			} else {
 				Segment::Gap {
 					interval: piece,
@@ -863,12 +863,12 @@ mod tests {
 					interval: Interval::new(keyspace.start.clone(), Edge::Key(at(b"c"))),
 					exempt: false,
 				},
-				Segment::Ram(spanning(&at(b"c"), &at(b"e"))),
+				Segment::Resident(spanning(&at(b"c"), &at(b"e"))),
 				Segment::Gap {
 					interval: spanning(&at(b"e"), &at(b"f")),
 					exempt: false,
 				},
-				Segment::Ram(spanning(&at(b"f"), &at(b"h"))),
+				Segment::Resident(spanning(&at(b"f"), &at(b"h"))),
 				Segment::Gap {
 					interval: Interval::new(at(b"h"), keyspace.end.clone()),
 					exempt: false,
@@ -1144,7 +1144,11 @@ mod tests {
 		let scan = tier.plan_scan(OP, &range).expect("a cross-keyspace range must be plannable");
 		assert_eq!(
 			scan.segments(),
-			[Segment::Ram(whole(top)), Segment::Ram(whole(middle)), Segment::Ram(whole(bottom))],
+			[
+				Segment::Resident(whole(top)),
+				Segment::Resident(whole(middle)),
+				Segment::Resident(whole(bottom))
+			],
 			"one coalesced claim must split into one segment per partition, in ascending key order"
 		);
 
@@ -1152,7 +1156,7 @@ mod tests {
 			.segments()
 			.iter()
 			.flat_map(|segment| match segment {
-				Segment::Ram(interval) => drain(&tier, &scan, interval, 64),
+				Segment::Resident(interval) => drain(&tier, &scan, interval, 64),
 				Segment::Gap {
 					..
 				} => Vec::new(),
@@ -1292,7 +1296,7 @@ mod tests {
 		);
 
 		let mut ram = Vec::new();
-		split_at_partitions(OP, &Segment::Ram(span), &mut ram);
+		split_at_partitions(OP, &Segment::Resident(span), &mut ram);
 		assert_eq!(
 			ram.len(),
 			(bottom.0..=top.0).len(),
@@ -1300,7 +1304,8 @@ mod tests {
 		);
 		assert!(
 			ram.iter()
-				.all(|(segment, partition)| matches!(segment, Segment::Ram(_)) && partition.is_some()),
+				.all(|(segment, partition)| matches!(segment, Segment::Resident(_))
+					&& partition.is_some()),
 			"every RAM piece must name the partition that serves it"
 		);
 	}
@@ -1327,7 +1332,7 @@ mod tests {
 
 		assert_eq!(
 			scan.segments(),
-			[Segment::Ram(whole(bottom))],
+			[Segment::Resident(whole(bottom))],
 			"the piece addressing the unmaterialised partition must be dropped, not served empty"
 		);
 		assert_eq!(

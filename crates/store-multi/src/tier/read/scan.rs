@@ -73,7 +73,7 @@ impl MultiReadBufferTier {
 		if advanced {
 			self.tally_head_advance(page);
 		}
-		let Some(Segment::Ram(claimed)) = planned.segments.first() else {
+		let Some(Segment::Resident(claimed)) = planned.segments.first() else {
 			self.tally_coverage(&anchor, CoverageOutcome::Gap);
 			return ServedChunk::Gap;
 		};

@@ -526,7 +526,7 @@ mod tests {
 		ScanPlan {
 			segments: Vec::new(),
 			gaps,
-			exempt_gaps: 0,
+			exempted: 0,
 			degraded,
 		}
 	}

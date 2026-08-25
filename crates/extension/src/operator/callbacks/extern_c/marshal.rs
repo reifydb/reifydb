@@ -55,6 +55,13 @@ pub(super) unsafe fn encoded_keys(keys: *const ExternCKeyRef, len: usize) -> Opt
 	Some(encoded)
 }
 
+// SAFETY: same contract as [`encoded_keys`]; every entry must additionally carry a framed inner key,
+// and a single unframed entry rejects the whole batch rather than reclaiming a key it cannot name.
+pub(super) unsafe fn state_keys(keys: *const ExternCKeyRef, len: usize) -> Option<Vec<GroupStateKey>> {
+	// SAFETY: forwards this function's own contract to encoded_keys unchanged.
+	unsafe { encoded_keys(keys, len) }?.into_iter().map(GroupStateKey::from_framed).collect()
+}
+
 // SAFETY: `ptr` must be valid for reads of `len` bytes.
 pub(super) unsafe fn encoded_bytes(ptr: *const u8, len: usize) -> EncodedBytes {
 	EncodedBytes(CowVec::new(unsafe { from_raw_parts(ptr, len) }.to_vec()))

@@ -94,7 +94,7 @@ fn first_gap(scan: &RangeScan) -> Option<Interval> {
 			interval,
 			..
 		} => Some(interval.clone()),
-		Segment::Ram(_) => None,
+		Segment::Resident(_) => None,
 	})
 }
 
@@ -115,7 +115,7 @@ fn serve_ram(
 	let mut resident = false;
 
 	for segment in scan.segments() {
-		let Segment::Ram(interval) = segment else {
+		let Segment::Resident(interval) = segment else {
 			continue;
 		};
 		resident = true;
@@ -142,7 +142,7 @@ fn serve_ram(
 
 fn covers(tier: &OperatorRangeTier, operator: OperatorId, range: &EncodedKeyRange) -> bool {
 	tier.plan_scan(operator, range)
-		.map(|scan| scan.segments().iter().any(|segment| matches!(segment, Segment::Ram(_))))
+		.map(|scan| scan.segments().iter().any(|segment| matches!(segment, Segment::Resident(_))))
 		.unwrap_or(false)
 }
 

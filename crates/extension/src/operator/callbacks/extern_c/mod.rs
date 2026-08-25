@@ -44,6 +44,7 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			disarm_timer: state::host_disarm_timer,
 			flow_watermark: state::host_flow_watermark,
 			reclaim_group_identity: state::host_reclaim_group_identity,
+			reclaim_group_identity_keys: state::host_reclaim_group_identity_keys,
 		},
 		dictionary: DictionaryCallbacks {
 			id_by_name: dictionary::host_dictionary_id_by_name,

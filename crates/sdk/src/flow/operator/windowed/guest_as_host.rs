@@ -43,7 +43,7 @@ impl<C: GuestContext> IdentityReclaim for GuestAsHost<'_, C> {
 	}
 
 	fn reclaim_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome> {
-		Ok(self.0.reclaim_group_identity(group, keys.len().max(1))?)
+		Ok(self.0.reclaim_group_identity_keys(group, keys)?)
 	}
 }
 

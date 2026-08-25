@@ -10,7 +10,7 @@ use crate::coverage::{
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Segment {
-	Ram(Interval),
+	Resident(Interval),
 	Gap {
 		interval: Interval,
 		exempt: bool,
@@ -21,20 +21,20 @@ pub enum Segment {
 pub struct ScanPlan {
 	pub segments: Vec<Segment>,
 	pub gaps: usize,
-	pub exempt_gaps: usize,
+	pub exempted: usize,
 	pub degraded: bool,
 }
 
 impl ScanPlan {
-	pub fn full(lo: EncodedKey, hi: Edge, degraded: bool) -> Self {
+	pub fn full(lo: EncodedKey, hi: Edge) -> Self {
 		Self {
 			segments: vec![Segment::Gap {
 				interval: Interval::new(lo, hi),
 				exempt: false,
 			}],
 			gaps: 1,
-			exempt_gaps: 0,
-			degraded,
+			exempted: 0,
+			degraded: true,
 		}
 	}
 
@@ -42,7 +42,7 @@ impl ScanPlan {
 		Self {
 			segments: Vec::new(),
 			gaps: 0,
-			exempt_gaps: 0,
+			exempted: 0,
 			degraded: false,
 		}
 	}
@@ -78,7 +78,7 @@ where
 
 		if resident_first {
 			match resident.next() {
-				Some(interval) => segments.push(Segment::Ram(interval)),
+				Some(interval) => segments.push(Segment::Resident(interval)),
 				None => break,
 			}
 		} else {
@@ -100,13 +100,13 @@ where
 	}
 
 	if gaps - exempt_gaps > guard {
-		return ScanPlan::full(lo, hi, true);
+		return ScanPlan::full(lo, hi);
 	}
 
 	ScanPlan {
 		segments,
 		gaps,
-		exempt_gaps,
+		exempted: exempt_gaps,
 		degraded: false,
 	}
 }
@@ -126,7 +126,7 @@ impl GapHistogram {
 	}
 
 	pub fn record(&mut self, plan: &ScanPlan) {
-		let count = plan.gaps - plan.exempt_gaps;
+		let count = plan.gaps - plan.exempted;
 		let bounds = Self::bounds();
 		let slot = bounds.iter().rposition(|bound| count >= *bound).unwrap_or(0);
 
@@ -197,7 +197,7 @@ mod tests {
 
 	fn interval_of(segment: &Segment) -> &Interval {
 		match segment {
-			Segment::Ram(interval) => interval,
+			Segment::Resident(interval) => interval,
 			Segment::Gap {
 				interval,
 				..
@@ -213,7 +213,7 @@ mod tests {
 		ScanPlan {
 			segments: Vec::new(),
 			gaps,
-			exempt_gaps,
+			exempted: exempt_gaps,
 			degraded,
 		}
 	}
@@ -231,7 +231,7 @@ mod tests {
 	#[test]
 	fn full_plan_is_one_non_exempt_gap_spanning_the_whole_range() {
 		// The guard fallback must be a single scan the caller can install as one interval.
-		let plan = ScanPlan::full(key(b"a"), Edge::of(b"m"), true);
+		let plan = ScanPlan::full(key(b"a"), Edge::of(b"m"));
 
 		assert_eq!(plan.segments.len(), 1);
 		assert_eq!(
@@ -242,7 +242,7 @@ mod tests {
 			}
 		);
 		assert_eq!(plan.gaps, 1);
-		assert_eq!(plan.exempt_gaps, 0);
+		assert_eq!(plan.exempted, 0);
 		assert!(plan.degraded);
 	}
 
@@ -257,7 +257,7 @@ mod tests {
 		assert_eq!(interval_of(&plan.segments[0]), &Interval::new(key(b"a"), Edge::of(b"m")));
 		assert!(is_gap(&plan.segments[0]));
 		assert_eq!(plan.gaps, 1);
-		assert_eq!(plan.exempt_gaps, 0);
+		assert_eq!(plan.exempted, 0);
 		assert!(!plan.degraded);
 	}
 
@@ -269,9 +269,9 @@ mod tests {
 
 		let plan = plan(&coverage, key(b"a"), Edge::of(b"m"), DEFAULT_GAP_GUARD, |_| false);
 
-		assert_eq!(plan.segments, vec![Segment::Ram(Interval::new(key(b"a"), Edge::of(b"m")))]);
+		assert_eq!(plan.segments, vec![Segment::Resident(Interval::new(key(b"a"), Edge::of(b"m")))]);
 		assert_eq!(plan.gaps, 0);
-		assert_eq!(plan.exempt_gaps, 0);
+		assert_eq!(plan.exempted, 0);
 		assert!(!plan.degraded);
 	}
 
@@ -287,12 +287,12 @@ mod tests {
 		assert_eq!(
 			plan.segments,
 			vec![
-				Segment::Ram(Interval::new(key(b"a"), Edge::of(b"d"))),
+				Segment::Resident(Interval::new(key(b"a"), Edge::of(b"d"))),
 				Segment::Gap {
 					interval: Interval::new(key(b"d"), Edge::of(b"f")),
 					exempt: false,
 				},
-				Segment::Ram(Interval::new(key(b"f"), Edge::of(b"h"))),
+				Segment::Resident(Interval::new(key(b"f"), Edge::of(b"h"))),
 				Segment::Gap {
 					interval: Interval::new(key(b"h"), Edge::of(b"m")),
 					exempt: false,
@@ -316,7 +316,7 @@ mod tests {
 		let plan = plan(&coverage, key(b"a"), Edge::of(b"m"), 1, |interval| interval.start != key(b"a"));
 
 		assert_eq!(plan.gaps, 6);
-		assert_eq!(plan.exempt_gaps, 5);
+		assert_eq!(plan.exempted, 5);
 		assert!(!plan.degraded);
 		assert_eq!(plan.segments.len(), 11);
 	}
@@ -337,7 +337,7 @@ mod tests {
 			}]
 		);
 		assert_eq!(plan.gaps, 1);
-		assert_eq!(plan.exempt_gaps, 0);
+		assert_eq!(plan.exempted, 0);
 	}
 
 	#[test]
@@ -367,7 +367,7 @@ mod tests {
 					interval: Interval::new(key(b"a"), Edge::of(b"d")),
 					exempt: false,
 				},
-				Segment::Ram(Interval::new(key(b"d"), Edge::of(b"f"))),
+				Segment::Resident(Interval::new(key(b"d"), Edge::of(b"f"))),
 				Segment::Gap {
 					interval: Interval::new(key(b"f"), Edge::Top),
 					exempt: false,

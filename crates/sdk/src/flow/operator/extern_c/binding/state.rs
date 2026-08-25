@@ -4,7 +4,10 @@
 use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::{key::operator_state::GroupId, state::timer::TimerKind};
+use reifydb_core::{
+	key::operator_state::{GroupId, GroupStateKey},
+	state::timer::TimerKind,
+};
 use reifydb_flow::operator::state::reclaim::ReclaimOutcome;
 use reifydb_value::{
 	count::Count,
@@ -510,6 +513,52 @@ pub(crate) fn reclaim_group_identity(ctx: &mut ExternCContext, group: GroupId, l
 		if result != EXTERN_C_OK {
 			return Err(SdkError::Other(format!(
 				"host_reclaim_group_identity failed with code {}",
+				result
+			)));
+		}
+	}
+
+	Ok(ReclaimOutcome {
+		removed: Count::new(removed as u64),
+		more: more != 0,
+	})
+}
+
+pub(crate) fn reclaim_group_identity_keys(
+	ctx: &mut ExternCContext,
+	group: GroupId,
+	keys: &[GroupStateKey],
+) -> Result<ReclaimOutcome> {
+	let key_refs: Vec<ExternCKeyRef> = keys
+		.iter()
+		.map(|key| {
+			let bytes = key.as_bytes();
+			ExternCKeyRef {
+				ptr: bytes.as_ptr(),
+				len: bytes.len(),
+			}
+		})
+		.collect();
+
+	let mut removed = 0usize;
+	let mut more = 0u8;
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null, and the host keeps the ExternCContextRaw alive
+	// and aligned for the whole guest call; key_refs borrows keys that outlive the callback, and removed and
+	// more are local stack slots.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.reclaim_group_identity_keys)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			group.0,
+			key_refs.as_ptr(),
+			key_refs.len(),
+			&mut removed,
+			&mut more,
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!(
+				"host_reclaim_group_identity_keys failed with code {}",
 				result
 			)));
 		}

@@ -7,7 +7,6 @@ use reifydb_codec::key::encoded::EncodedKey;
 pub struct Cursor<S> {
 	pub last_key: Option<EncodedKey>,
 	pub exhausted: bool,
-
 	pub stop: Option<S>,
 }
 

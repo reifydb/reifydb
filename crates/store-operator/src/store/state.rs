@@ -550,7 +550,7 @@ impl StandardOperatorStore {
 							break;
 						};
 						match segment {
-							Segment::Ram(interval) => {
+							Segment::Resident(interval) => {
 								match tier.serve(
 									scan,
 									interval,
