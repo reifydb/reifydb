@@ -305,6 +305,32 @@ impl Catalog {
 		Ok(post)
 	}
 
+	#[instrument(name = "catalog::identity::enable", level = "info", skip(self, txn))]
+	pub fn enable_identity(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<Identity> {
+		let pre = self.get_mutable_identity(txn, identity, "enabled")?;
+
+		let post = Identity {
+			enabled: true,
+			..pre.clone()
+		};
+		CatalogStore::update_identity(txn, &post)?;
+		txn.track_identity_updated(pre, post.clone())?;
+		Ok(post)
+	}
+
+	#[instrument(name = "catalog::identity::disable", level = "info", skip(self, txn))]
+	pub fn disable_identity(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<Identity> {
+		let pre = self.get_mutable_identity(txn, identity, "disabled")?;
+
+		let post = Identity {
+			enabled: false,
+			..pre.clone()
+		};
+		CatalogStore::update_identity(txn, &post)?;
+		txn.track_identity_updated(pre, post.clone())?;
+		Ok(post)
+	}
+
 	fn get_mutable_identity(
 		&self,
 		txn: &mut AdminTransaction,
