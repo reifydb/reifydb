@@ -23,6 +23,16 @@ impl AuthService {
 			{
 				return None;
 			}
+
+			let catalog = self.engine.catalog();
+			let enabled = catalog
+				.find_identity(&mut Transaction::Query(&mut txn), def.identity)
+				.ok()?
+				.is_some_and(|identity| identity.enabled);
+			if !enabled {
+				return None;
+			}
+
 			return Some(def);
 		}
 
