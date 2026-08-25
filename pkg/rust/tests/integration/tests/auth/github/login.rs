@@ -148,7 +148,7 @@ fn test_complete_login_provisions_identity_and_mints_token() {
 
 	// The session token must actually validate, otherwise the client is handed a token
 	// that every subsequent request rejects.
-	let validated = service.validate_token(&token).expect("minted token must validate");
+	let validated = service.validate_token(&token).unwrap().expect("minted token must validate");
 	assert_eq!(validated.identity, identity);
 }
 

@@ -5,6 +5,7 @@ use std::{error::Error as StdError, fmt};
 
 use reifydb_auth::service::AuthService;
 use reifydb_value::value::identity::IdentityId;
+use tracing::error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthError {
@@ -58,8 +59,12 @@ fn validate_bearer_token(auth_service: &AuthService, token: &str) -> AuthResult<
 	}
 
 	match auth_service.validate_token(token) {
-		Some(session) => Ok(session.identity),
-		None => Err(AuthError::InvalidToken),
+		Ok(Some(session)) => Ok(session.identity),
+		Ok(None) => Err(AuthError::InvalidToken),
+		Err(e) => {
+			error!("token validation could not reach storage, rejecting the request: {e}");
+			Err(AuthError::InvalidToken)
+		}
 	}
 }
 

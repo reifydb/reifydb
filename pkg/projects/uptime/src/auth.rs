@@ -28,7 +28,8 @@ pub async fn identity_for_token(st: &AppState, token: String) -> Result<Option<I
 	let validated =
 		st.tokio.spawn_blocking(move || auth.validate_token(&token))
 			.await
-			.map_err(|e| ApiError::internal("token validation task failed", e))?;
+			.map_err(|e| ApiError::internal("token validation task failed", e))?
+			.map_err(|e| ApiError::internal("token validation could not reach storage", e))?;
 	Ok(validated.map(|token| token.identity))
 }
 

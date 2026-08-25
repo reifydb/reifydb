@@ -20,14 +20,14 @@ fn test_disabled_identity_token_is_rejected() {
 	let mut db = TestDb::memory();
 	let (identity, token) = setup_user_and_login(&db);
 
-	assert!(db.auth_service().validate_token(&token).is_some(), "a freshly minted token must validate");
+	assert!(db.auth_service().validate_token(&token).unwrap().is_some(), "a freshly minted token must validate");
 
 	let mut txn = db.engine().begin_admin(IdentityId::root()).unwrap();
 	db.catalog().disable_identity(&mut txn, identity).unwrap();
 	txn.commit().unwrap();
 
 	assert!(
-		db.auth_service().validate_token(&token).is_none(),
+		db.auth_service().validate_token(&token).unwrap().is_none(),
 		"a token minted before the identity was disabled must stop validating"
 	);
 
@@ -44,14 +44,17 @@ fn test_reenabled_identity_token_validates_again() {
 	db.catalog().disable_identity(&mut txn, identity).unwrap();
 	txn.commit().unwrap();
 
-	assert!(db.auth_service().validate_token(&token).is_none(), "the disabled account must be locked out");
+	assert!(db.auth_service().validate_token(&token).unwrap().is_none(), "the disabled account must be locked out");
 
 	let mut txn = db.engine().begin_admin(IdentityId::root()).unwrap();
 	db.catalog().enable_identity(&mut txn, identity).unwrap();
 	txn.commit().unwrap();
 
-	let validated =
-		db.auth_service().validate_token(&token).expect("re-enabling must restore the existing session");
+	let validated = db
+		.auth_service()
+		.validate_token(&token)
+		.unwrap()
+		.expect("re-enabling must restore the existing session");
 	assert_eq!(validated.identity, identity, "the restored token must still resolve to the same account");
 
 	db.stop();

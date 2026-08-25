@@ -17,62 +17,63 @@ use reifydb_value::{
 use super::AuthService;
 
 impl AuthService {
-	pub fn validate_token(&self, token: &str) -> Option<Token> {
-		let mut txn = self.engine.begin_query().ok()?;
+	pub fn validate_token(&self, token: &str) -> Result<Option<Token>, Error> {
+		let mut txn = self.engine.begin_query()?;
 
-		if let Ok(Some(def)) = find_token_by_value(&mut Transaction::Query(&mut txn), token) {
+		if let Some(def) = find_token_by_value(&mut Transaction::Query(&mut txn), token)? {
 			if let Some(expires_at) = def.expires_at
-				&& expires_at < self.now().ok()?
+				&& expires_at < self.now()?
 			{
-				return None;
+				return Ok(None);
 			}
 
 			let catalog = self.engine.catalog();
 			let enabled = catalog
-				.find_identity(&mut Transaction::Query(&mut txn), def.identity)
-				.ok()?
+				.find_identity(&mut Transaction::Query(&mut txn), def.identity)?
 				.is_some_and(|identity| identity.enabled);
 			if !enabled {
-				return None;
+				return Ok(None);
 			}
 
-			return Some(def);
+			return Ok(Some(def));
 		}
 
 		self.validate_catalog_token(token)
 	}
 
-	fn validate_catalog_token(&self, token: &str) -> Option<Token> {
-		let provider = self.auth_registry.get("token")?;
+	fn validate_catalog_token(&self, token: &str) -> Result<Option<Token>, Error> {
+		let Some(provider) = self.auth_registry.get("token") else {
+			return Ok(None);
+		};
 
-		let mut txn = self.engine.begin_query().ok()?;
+		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
 
-		let auths = catalog.list_authentications_by_method(&mut Transaction::Query(&mut txn), "token").ok()?;
+		let auths = catalog.list_authentications_by_method(&mut Transaction::Query(&mut txn), "token")?;
 
 		let creds = HashMap::from([("token".to_string(), token.to_string())]);
 
 		for auth in auths {
 			if let Ok(AuthStep::Authenticated) = provider.authenticate(&auth.properties, &creds)
-				&& let Ok(Some(ident)) =
-					catalog.find_identity(&mut Transaction::Query(&mut txn), auth.identity)
+				&& let Some(ident) =
+					catalog.find_identity(&mut Transaction::Query(&mut txn), auth.identity)?
 				&& ident.enabled
 			{
-				return Some(Token {
+				return Ok(Some(Token {
 					id: 0,
 					token: token.to_string(),
 					identity: ident.id,
 					expires_at: None,
 					created_at: DateTime::default(),
-				});
+				}));
 			}
 		}
 
-		None
+		Ok(None)
 	}
 
 	pub fn revoke_token(&self, token: &str) -> Result<bool, Error> {
-		let Some(def) = self.find_token(token) else {
+		let Some(def) = self.find_token(token)? else {
 			return Ok(false);
 		};
 		self.drop_and_commit(def.id)?;
@@ -80,12 +81,9 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn find_token(&self, token: &str) -> Option<Token> {
-		let mut txn = self.engine.begin_query().ok()?;
-		match find_token_by_value(&mut Transaction::Query(&mut txn), token) {
-			Ok(Some(def)) => Some(def),
-			_ => None,
-		}
+	fn find_token(&self, token: &str) -> Result<Option<Token>, Error> {
+		let mut txn = self.engine.begin_query()?;
+		find_token_by_value(&mut Transaction::Query(&mut txn), token)
 	}
 
 	#[inline]

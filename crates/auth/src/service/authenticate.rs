@@ -190,7 +190,7 @@ impl AuthService {
 			_ => return Ok(invalid_credentials()),
 		};
 
-		match self.validate_token(token_value) {
+		match self.validate_token(token_value)? {
 			Some(token) => self.finalize_authentication(token.identity),
 			None => Ok(invalid_credentials()),
 		}

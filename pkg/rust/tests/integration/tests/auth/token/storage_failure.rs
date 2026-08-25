@@ -108,7 +108,10 @@ fn revoke_token_surfaces_a_failed_drop() {
 
 	let err = service.revoke_token(&token).expect_err("a failed drop must reach the caller");
 	assert_eq!(err.code, "TEST_STORAGE", "the storage diagnostic must survive, not be replaced");
-	assert!(db.auth_service().validate_token(&token).is_some(), "the session is still live after the failure");
+	assert!(
+		db.auth_service().validate_token(&token).unwrap().is_some(),
+		"the session is still live after the failure"
+	);
 
 	db.stop();
 }
@@ -137,6 +140,52 @@ fn cleanup_expired_surfaces_a_failed_sweep() {
 	engine.fail_admin.store(true, Ordering::SeqCst);
 
 	let err = service.cleanup_expired().expect_err("a failed cleanup must reach the caller");
+	assert_eq!(err.code, "TEST_STORAGE", "the storage diagnostic must survive, not be replaced");
+
+	db.stop();
+}
+
+#[test]
+fn validate_token_surfaces_a_failed_session_lookup() {
+	// A storage blip must reject as an error, never look identical to a token that was never issued.
+	let mut db = TestDb::memory();
+	let (_identity, token) = setup_user_and_login(&db);
+	let (engine, service) = faulty_service(&db);
+
+	engine.fail_query.store(true, Ordering::SeqCst);
+
+	let err = service.validate_token(&token).expect_err("a failed lookup must reach the caller");
+	assert_eq!(err.code, "TEST_STORAGE", "the storage diagnostic must survive, not be replaced");
+
+	db.stop();
+}
+
+#[test]
+fn validate_token_surfaces_a_failed_catalog_token_lookup() {
+	// The catalog-token fallback opens its own transaction; its failure must reject the request too.
+	let mut db = TestDb::memory();
+	let (engine, service) = faulty_service(&db);
+
+	engine.healthy_queries.store(1, Ordering::SeqCst);
+	engine.fail_query.store(true, Ordering::SeqCst);
+
+	let err =
+		service.validate_token("not-a-session-token").expect_err("the fallback failure must reach the caller");
+	assert_eq!(err.code, "TEST_STORAGE", "the storage diagnostic must survive, not be replaced");
+
+	db.stop();
+}
+
+#[test]
+fn revoke_token_surfaces_a_failed_lookup() {
+	// A revoke that cannot even read the token back must not answer as if the token were unknown.
+	let mut db = TestDb::memory();
+	let (_identity, token) = setup_user_and_login(&db);
+	let (engine, service) = faulty_service(&db);
+
+	engine.fail_query.store(true, Ordering::SeqCst);
+
+	let err = service.revoke_token(&token).expect_err("a failed lookup must reach the caller");
 	assert_eq!(err.code, "TEST_STORAGE", "the storage diagnostic must survive, not be replaced");
 
 	db.stop();

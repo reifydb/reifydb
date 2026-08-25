@@ -171,7 +171,7 @@ fn guest_session_token_resolves_to_the_guest() {
 	let identity = new_guest(&db);
 
 	let token = db.auth_service().create_session(identity, Some(guest_session_ttl())).expect("create session");
-	let validated = db.auth_service().validate_token(&token.token).expect("token must validate");
+	let validated = db.auth_service().validate_token(&token.token).unwrap().expect("token must validate");
 
 	assert_eq!(validated.identity, identity);
 	assert!(token.expires_at.is_some(), "a guest session must expire eventually");
