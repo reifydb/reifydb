@@ -24,14 +24,21 @@ export type ConnectionConfig =
 
 export type RdbTheme = 'light' | 'dark';
 
+export type CatalogPlacement = 'tab' | 'sidebar';
+
 export interface ConsoleProps {
   executor: Executor;
   initial_code?: string;
+  code?: string;
+  auto_run?: boolean;
   history_key?: string;
   connection?: ConnectionConfig;
   theme?: RdbTheme;
   monaco_theme?: string | editor.IStandaloneThemeData;
   transaction_types?: readonly TransactionType[];
+  catalog_placement?: CatalogPlacement;
+  catalog_expanded?: readonly string[];
+  catalog_namespaces?: readonly string[];
 }
 
 const DEFAULT_TRANSACTION_TYPES: readonly TransactionType[] = ['query', 'command', 'admin'];
@@ -42,9 +49,11 @@ const TABS = [
   { id: 'catalog', label: 'Catalog' },
 ];
 
+const TABS_WITH_SIDEBAR = TABS.filter((tab) => tab.id !== 'catalog');
+
 const WS_URL_STORAGE_KEY = 'rdb-console-ws-url';
 
-function ConsoleInner({ executor, history_key, connection, theme = 'light', monaco_theme, transaction_types = DEFAULT_TRANSACTION_TYPES }: { executor: Executor; history_key?: string; connection?: ConnectionConfig; theme?: RdbTheme; monaco_theme?: string | editor.IStandaloneThemeData; transaction_types?: readonly TransactionType[] }) {
+function ConsoleInner({ executor, code, auto_run, history_key, connection, theme = 'light', monaco_theme, transaction_types = DEFAULT_TRANSACTION_TYPES, catalog_placement = 'tab', catalog_expanded, catalog_namespaces }: { executor: Executor; code?: string; auto_run?: boolean; history_key?: string; connection?: ConnectionConfig; theme?: RdbTheme; monaco_theme?: string | editor.IStandaloneThemeData; transaction_types?: readonly TransactionType[]; catalog_placement?: CatalogPlacement; catalog_expanded?: readonly string[]; catalog_namespaces?: readonly string[] }) {
   const { state, dispatch } = useConsoleStore();
   const connection_locked = connection != null;
   const locked_ws_url = connection?.mode === 'websocket' ? (connection.url ?? null) : null;
@@ -71,6 +80,8 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
   const ws_client_ref = useRef<{ disconnect(): void } | null>(null);
   const owns_client_ref = useRef(true);
   const reconnect_timer_ref = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const auto_run_fired = useRef(false);
+  const auto_run_code = useRef<string | null>(null);
 
   // Persist ws_url to localStorage (only when not locked)
   useEffect(() => {
@@ -169,6 +180,17 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
     save_history(state.history, history_key);
   }, [state.history, history_key]);
 
+  useEffect(() => {
+    if (code === undefined) return;
+    dispatch({ type: 'LOAD_QUERY', code });
+  }, [code, dispatch]);
+
+  useEffect(() => {
+    if (catalog_placement === 'sidebar' && state.active_tab === 'catalog') {
+      dispatch({ type: 'SET_TAB', tab: 'results' });
+    }
+  }, [catalog_placement, state.active_tab, dispatch]);
+
   const handle_connect = useCallback(async () => {
     if (!ws_url.trim()) return;
     set_connection_status('connecting');
@@ -242,16 +264,17 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
 
   const connection_label = connection_mode === 'wasm' ? 'wasm' : ws_url;
 
-  const handle_run = useCallback(async () => {
-    if (state.is_executing || !state.code.trim()) return;
+  const handle_run = useCallback(async (override?: string) => {
+    const rql = override ?? state.code;
+    if (state.is_executing || !rql.trim()) return;
     dispatch({ type: 'EXECUTE_START' });
 
     try {
-      const result = await active_executor.execute(state.code);
+      const result = await active_executor.execute(rql);
       if (result.success) {
-        dispatch({ type: 'EXECUTE_SUCCESS', result, query: state.code });
+        dispatch({ type: 'EXECUTE_SUCCESS', result, query: rql });
       } else {
-        dispatch({ type: 'EXECUTE_ERROR', result, query: state.code });
+        dispatch({ type: 'EXECUTE_ERROR', result, query: rql });
       }
     } catch (err) {
       dispatch({
@@ -261,11 +284,35 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
           error: err instanceof Error ? err.message : String(err),
           execution_time: 0,
         },
-        query: state.code,
+        query: rql,
       });
     }
 
   }, [state.is_executing, state.code, active_executor, dispatch]);
+
+  useEffect(() => {
+    if (!auto_run) return;
+
+    if (code !== undefined) {
+      if (!code.trim() || auto_run_code.current === code) return;
+      auto_run_code.current = code;
+      handle_run(code);
+      return;
+    }
+
+    if (auto_run_fired.current || !state.code.trim()) return;
+    auto_run_fired.current = true;
+    handle_run(state.code);
+  }, [auto_run, code, state.code, handle_run]);
+
+  const run_current = useCallback(() => {
+    handle_run();
+  }, [handle_run]);
+
+  const handle_catalog_select = useCallback((selected: string) => {
+    dispatch({ type: 'LOAD_QUERY', code: selected });
+    handle_run(selected);
+  }, [dispatch, handle_run]);
 
   const handle_clear = useCallback(() => {
     dispatch({ type: 'CLEAR_RESULTS' });
@@ -279,7 +326,7 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ position: 'relative' }}>
         <EditorToolbar
-          on_run={handle_run}
+          on_run={run_current}
           on_clear={handle_clear}
           is_executing={state.is_executing}
           connection_label={connection_label}
@@ -309,7 +356,7 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
         <QueryEditor
           code={state.code}
           on_change={(code) => dispatch({ type: 'SET_CODE', code })}
-          on_run={handle_run}
+          on_run={run_current}
           theme={theme}
           monaco_theme_name={resolved_monaco_theme_name}
           monaco_theme_data={resolved_monaco_theme_data}
@@ -322,7 +369,7 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <TabBar
         active_tab={state.active_tab}
-        tabs={TABS}
+        tabs={catalog_placement === 'sidebar' ? TABS_WITH_SIDEBAR : TABS}
         on_tab_change={(tab) => dispatch({ type: 'SET_TAB', tab: tab as 'results' | 'history' | 'catalog' })}
       />
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
@@ -330,8 +377,8 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
           <ResultsPanel result={state.result} />
         ) : state.active_tab === 'history' ? (
           <HistoryPanel entries={state.history} on_select={handle_select_history} />
-        ) : state.active_tab === 'catalog' ? (
-          <CatalogBrowser executor={active_executor} />
+        ) : state.active_tab === 'catalog' && catalog_placement === 'tab' ? (
+          <CatalogBrowser executor={active_executor} namespaces={catalog_namespaces} on_select={handle_catalog_select} />
         ) : null}
       </div>
     </div>
@@ -339,6 +386,14 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
 
   return (
     <div className={`rdb-console${theme === 'light' ? ' rdb-theme-light' : ''}`}>
+      {catalog_placement === 'sidebar' && (
+        <aside className="rdb-console__sidebar">
+          <div className="rdb-console__sidebar-title">Catalog</div>
+          <div className="rdb-console__sidebar-body">
+            <CatalogBrowser executor={active_executor} namespaces={catalog_namespaces} expanded_paths={catalog_expanded} on_select={handle_catalog_select} />
+          </div>
+        </aside>
+      )}
       <div className="rdb-console__main">
         <SplitPane top={editor_pane} bottom={bottom_pane} initial_split={45} />
       </div>
@@ -346,10 +401,10 @@ function ConsoleInner({ executor, history_key, connection, theme = 'light', mona
   );
 }
 
-export function Console({ executor, initial_code, history_key, connection, theme, monaco_theme, transaction_types }: ConsoleProps) {
+export function Console({ executor, initial_code, code, auto_run, history_key, connection, theme, monaco_theme, transaction_types, catalog_placement, catalog_expanded, catalog_namespaces }: ConsoleProps) {
   return (
-    <ConsoleProvider initial_code={initial_code}>
-      <ConsoleInner executor={executor} history_key={history_key} connection={connection} theme={theme} monaco_theme={monaco_theme} transaction_types={transaction_types} />
+    <ConsoleProvider initial_code={code ?? initial_code}>
+      <ConsoleInner executor={executor} code={code} auto_run={auto_run} history_key={history_key} connection={connection} theme={theme} monaco_theme={monaco_theme} transaction_types={transaction_types} catalog_placement={catalog_placement} catalog_expanded={catalog_expanded} catalog_namespaces={catalog_namespaces} />
     </ConsoleProvider>
   );
 }

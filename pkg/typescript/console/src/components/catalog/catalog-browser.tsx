@@ -9,6 +9,9 @@ import { CatalogNode } from './catalog-node';
 
 interface CatalogBrowserProps {
   executor: Executor;
+  namespaces?: readonly string[];
+  expanded_paths?: readonly string[];
+  on_select?: (code: string) => void;
 }
 
 interface ColumnInfo {
@@ -68,9 +71,36 @@ function extract_str(value: unknown): string {
   return String(value);
 }
 
+const BASE_PROCEDURE_KINDS = ['rql', 'test'] as const;
+const EXTENDED_PROCEDURE_KINDS = ['in_process', 'extern_c', 'extern_wasm'] as const;
+const EXTENDED_PROCEDURES_MIN_VERSION = [0, 9, 0];
+
+function parse_version(raw: string): number[] {
+  return raw.split('.').map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function version_at_least(actual: number[], required: number[]): boolean {
+  for (let i = 0; i < required.length; i++) {
+    const value = actual[i] ?? 0;
+    if (value !== required[i]) return value > required[i];
+  }
+  return true;
+}
+
 async function query_rows(executor: Executor, query: string): Promise<Record<string, unknown>[]> {
   const result = await executor.execute(query);
   return result.success && result.data ? result.data : [];
+}
+
+async function resolve_procedure_kinds(executor: Executor): Promise<readonly string[]> {
+  const rows = await query_rows(executor, 'FROM system::versions MAP { name, version }');
+  const engine = rows.find((row) => extract_str(row.name) === 'engine');
+  if (!engine) return BASE_PROCEDURE_KINDS;
+
+  const version = parse_version(extract_str(engine.version));
+  return version_at_least(version, EXTENDED_PROCEDURES_MIN_VERSION)
+    ? [...BASE_PROCEDURE_KINDS, ...EXTENDED_PROCEDURE_KINDS]
+    : BASE_PROCEDURE_KINDS;
 }
 
 function type_color_class(type_name: string): string | undefined {
@@ -96,20 +126,24 @@ function type_color_class(type_name: string): string | undefined {
 
 const QUERYABLE_CATEGORIES = new Set<SourceInfo['category']>(['table', 'view', 'vtable', 'ringbuffer']);
 
-const CATEGORY_GROUPS: { key: SourceInfo['category']; label: string }[] = [
-  { key: 'table', label: 'Tables' },
-  { key: 'vtable', label: 'Virtual Tables' },
-  { key: 'view', label: 'Views' },
-  { key: 'ringbuffer', label: 'Ring Buffers' },
-  { key: 'procedure', label: 'Procedures' },
-  { key: 'handler', label: 'Handlers' },
-  { key: 'enum', label: 'Enums' },
-  { key: 'event', label: 'Events' },
-  { key: 'dictionary', label: 'Dictionaries' },
-  { key: 'migration', label: 'Migrations' },
+function has_content(ns: NamespaceTree): boolean {
+  return ns.sources.length > 0 || ns.children.some(has_content);
+}
+
+const CATEGORY_GROUPS: { key: SourceInfo['category']; label: string; slug: string }[] = [
+  { key: 'table', label: 'Tables', slug: 'tables' },
+  { key: 'vtable', label: 'Virtual Tables', slug: 'virtual-tables' },
+  { key: 'view', label: 'Views', slug: 'views' },
+  { key: 'ringbuffer', label: 'Ring Buffers', slug: 'ring-buffers' },
+  { key: 'procedure', label: 'Procedures', slug: 'procedures' },
+  { key: 'handler', label: 'Handlers', slug: 'handlers' },
+  { key: 'enum', label: 'Enums', slug: 'enums' },
+  { key: 'event', label: 'Events', slug: 'events' },
+  { key: 'dictionary', label: 'Dictionaries', slug: 'dictionaries' },
+  { key: 'migration', label: 'Migrations', slug: 'migrations' },
 ];
 
-export function CatalogBrowser({ executor }: CatalogBrowserProps) {
+export function CatalogBrowser({ executor, namespaces, expanded_paths, on_select }: CatalogBrowserProps) {
   const { dispatch } = useConsoleStore();
   const [roots, setRoots] = useState<NamespaceTree[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,7 +151,9 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
   const load_catalog = async () => {
     setLoading(true);
     try {
-      const [ns_rows, table_rows, view_rows, vtable_rows, rb_rows, col_rows, vtable_col_rows, proc_rql_rows, proc_test_rows, proc_in_process_rows, proc_extern_c_rows, proc_extern_wasm_rows, handler_rows, enum_rows, event_rows, dict_rows, migration_rows] = await Promise.all([
+      const procedure_kinds = await resolve_procedure_kinds(executor);
+
+      const [ns_rows, table_rows, view_rows, vtable_rows, rb_rows, col_rows, vtable_col_rows, proc_rows, handler_rows, enum_rows, event_rows, dict_rows, migration_rows] = await Promise.all([
         query_rows(executor, 'FROM system::namespaces MAP { id, name, local_name, parent_id }'),
         query_rows(executor, 'FROM system::tables MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::views MAP { id, namespace_id, name, kind }'),
@@ -125,19 +161,17 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
         query_rows(executor, 'FROM system::ringbuffers MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::columns MAP { object_id, object_type, name, type, position }'),
         query_rows(executor, 'FROM system::virtual_table_columns MAP { vtable_id, name, type, position }'),
-        query_rows(executor, 'FROM system::procedures::rql MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::procedures::test MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::procedures::in_process MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::procedures::extern_c MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::procedures::extern_wasm MAP { id, namespace_id, name }'),
+        Promise.all(
+          procedure_kinds.map((kind) =>
+            query_rows(executor, `FROM system::procedures::${kind} MAP { id, namespace_id, name }`),
+          ),
+        ).then((results) => results.flat()),
         query_rows(executor, 'FROM system::handlers MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::enums MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::events MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::dictionaries MAP { id, namespace_id, name }'),
         query_rows(executor, 'FROM system::migrations MAP { name }'),
       ]);
-      const proc_rows = [...proc_rql_rows, ...proc_test_rows, ...proc_in_process_rows, ...proc_extern_c_rows, ...proc_extern_wasm_rows];
-
       // Build namespace tree nodes: id → NamespaceTree
       const ns_by_id = new Map<number, NamespaceTree>();
       const parent_map = new Map<number, number>(); // id → parent_id
@@ -286,7 +320,11 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
     );
   }
 
-  if (roots.length === 0) {
+  const visible_roots = roots
+    .filter(ns => namespaces?.includes(ns.local_name) ?? true)
+    .filter(has_content);
+
+  if (visible_roots.length === 0) {
     return (
       <>
         {toolbar}
@@ -295,18 +333,31 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
     );
   }
 
-  const render_sources = (sources: SourceInfo[], namespace_name: string) =>
-    CATEGORY_GROUPS.map(({ key, label }) => {
+  const is_expanded = (path: string) =>
+    expanded_paths?.some(candidate => candidate === path || candidate.startsWith(`${path}.`)) ?? false;
+
+  const select_source = (code: string) => {
+    if (on_select) on_select(code);
+    else dispatch({ type: 'LOAD_QUERY', code });
+  };
+
+  const render_sources = (sources: SourceInfo[], namespace_name: string, namespace_path: string) =>
+    CATEGORY_GROUPS.map(({ key, label, slug }) => {
       const matching = sources.filter(s => s.category === key);
       if (matching.length === 0) return null;
       return (
-        <CatalogNode key={key} label={`${label} (${matching.length})`} label_class="rdb-catalog__node-label--category">
+        <CatalogNode
+          key={key}
+          label={`${label} (${matching.length})`}
+          label_class="rdb-catalog__node-label--category"
+          default_expanded={is_expanded(`${namespace_path}.${slug}`)}
+        >
           {matching.map(source => (
             <CatalogNode
               key={source.name}
               label={source.name}
               on_click={QUERYABLE_CATEGORIES.has(source.category) ? () => {
-                dispatch({ type: 'LOAD_QUERY', code: `FROM ${namespace_name}::${source.name}\nTAKE 10;` });
+                select_source(`FROM ${namespace_name}::${source.name}\nTAKE 10;`);
               } : undefined}
             >
               {source.columns.length > 0
@@ -326,18 +377,26 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
       );
     });
 
-  const render_tree = (nodes: NamespaceTree[]) =>
-    nodes.map(ns => (
-      <CatalogNode key={ns.id} label={ns.local_name} label_class="rdb-catalog__node-label--namespace">
-        {render_sources(ns.sources, ns.name)}
-        {render_tree(ns.children)}
-      </CatalogNode>
-    ));
+  const render_tree = (nodes: NamespaceTree[], parent_path = '') =>
+    nodes.filter(has_content).map(ns => {
+      const path = parent_path ? `${parent_path}.${ns.local_name}` : ns.local_name;
+      return (
+        <CatalogNode
+          key={ns.id}
+          label={ns.local_name}
+          label_class="rdb-catalog__node-label--namespace"
+          default_expanded={is_expanded(path)}
+        >
+          {render_sources(ns.sources, ns.name, path)}
+          {render_tree(ns.children, path)}
+        </CatalogNode>
+      );
+    });
 
   return (
     <>
       {toolbar}
-      <div>{render_tree(roots)}</div>
+      <div>{render_tree(visible_roots)}</div>
     </>
   );
 }

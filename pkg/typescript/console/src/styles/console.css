@@ -352,6 +352,45 @@
   min-width: 0;
 }
 
+.rdb-console__sidebar {
+  display: none;
+  flex-direction: column;
+  width: 240px;
+  flex-shrink: 0;
+  border-right: var(--rdb-border);
+  background: var(--rdb-color-bg-elevated);
+  overflow: hidden;
+}
+
+@media (min-width: 900px) {
+  .rdb-console__sidebar {
+    display: flex;
+  }
+}
+
+.rdb-console__sidebar-title {
+  font-family: var(--rdb-font-mono);
+  font-size: var(--rdb-font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--rdb-color-muted);
+  padding: var(--rdb-space-2) var(--rdb-space-4);
+  border-bottom: var(--rdb-border);
+  flex-shrink: 0;
+}
+
+.rdb-console__sidebar-body {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  padding-bottom: var(--rdb-space-4);
+}
+
+.rdb-console__sidebar-body .rdb-catalog__toolbar {
+  justify-content: flex-start;
+  padding: var(--rdb-space-2) var(--rdb-space-3);
+}
+
 /* === Split Pane === */
 
 .rdb-split {
@@ -532,6 +571,19 @@
   background: var(--rdb-color-hover-bg-strong);
 }
 
+.rdb-catalog__node-header--clickable:hover .rdb-catalog__node-label {
+  color: var(--rdb-color-primary);
+  text-decoration: underline;
+}
+
+.rdb-catalog__node-header--clickable:active {
+  background: var(--rdb-color-hover-bg-strong);
+}
+
+.rdb-catalog__node-header--clickable .rdb-catalog__node-toggle {
+  cursor: pointer;
+}
+
 .rdb-catalog__node-toggle {
   color: var(--rdb-color-muted);
   width: 1em;
@@ -555,14 +607,6 @@
 
 .rdb-catalog__node-label--column {
   color: var(--rdb-color-secondary);
-}
-
-.rdb-catalog__node-label--clickable {
-  cursor: pointer;
-}
-
-.rdb-catalog__node-label--clickable:hover {
-  text-decoration: underline;
 }
 
 .rdb-catalog__node-type {
