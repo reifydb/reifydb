@@ -760,7 +760,8 @@ mod cases {
 	}
 
 	pub fn appends_complete_while_a_flush_is_in_flight(fixture: Fixture) {
-		// staged runs after the flush took the live map and before it sealed, so the append is in flight by construction and never by timing
+		// staged runs after the flush took the live map and before it sealed, so the append is in flight by
+		// construction and never by timing
 		let store = fixture.store.clone();
 		store.write(&cdc_at(1)).expect("the first record must reach the live map before any flush runs");
 
