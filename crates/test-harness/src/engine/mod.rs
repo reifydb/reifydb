@@ -303,7 +303,7 @@ impl TestEngineBuilder {
 				},
 				transforms: Transforms::empty(),
 				ioc,
-				auth_registry: Arc::new(AuthenticationRegistry::new(clock.clone())),
+				auth_registry: Arc::new(AuthenticationRegistry::new(clock.clone(), rng.clone())),
 				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},

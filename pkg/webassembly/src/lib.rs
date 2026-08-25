@@ -268,7 +268,7 @@ impl WasmDB {
 			default_in_process_procedures(b).configure()
 		};
 
-		let auth_registry = Arc::new(AuthenticationRegistry::new(clock.clone()));
+		let auth_registry = Arc::new(AuthenticationRegistry::new(clock.clone(), rng.clone()));
 
 		let eventbus_clone = eventbus.clone();
 		let inner = StandardEngine::new(

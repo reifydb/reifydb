@@ -173,7 +173,7 @@ impl Bridge {
 				routines,
 				transforms: Transforms::empty(),
 				ioc,
-				auth_registry: Arc::new(AuthenticationRegistry::new(clock.clone())),
+				auth_registry: Arc::new(AuthenticationRegistry::new(clock.clone(), rng.clone())),
 				#[cfg(not(target_arch = "wasm32"))]
 				remote_registry: None,
 			},

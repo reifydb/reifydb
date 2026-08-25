@@ -15,12 +15,14 @@ pub const SIGNED_MESSAGE_MISMATCH: &str = "signed message does not match the iss
 
 pub struct SolanaProvider {
 	clock: Clock,
+	rng: Rng,
 }
 
 impl SolanaProvider {
-	pub fn new(clock: Clock) -> Self {
+	pub fn new(clock: Clock, rng: Rng) -> Self {
 		Self {
 			clock,
+			rng,
 		}
 	}
 }
@@ -133,7 +135,7 @@ impl SolanaProvider {
 
 	#[inline]
 	fn issue_signin_challenge(&self, public_key_b58: &str, credentials: &HashMap<String, String>) -> AuthStep {
-		let nonce_bytes = Rng::Os.bytes_32();
+		let nonce_bytes = self.rng.bytes_32();
 		let nonce: String = nonce_bytes.iter().map(|b| format!("{:02x}", b)).collect();
 
 		reifydb_assertions! {
@@ -186,7 +188,24 @@ mod tests {
 
 	fn test_provider() -> SolanaProvider {
 		let mock = MockClock::from_millis(1_700_000_000_000); // fixed timestamp
-		SolanaProvider::new(Clock::Mock(mock))
+		SolanaProvider::new(Clock::Mock(mock), Rng::default())
+	}
+
+	fn seeded_provider(seed: u64) -> SolanaProvider {
+		let mock = MockClock::from_millis(1_700_000_000_000); // fixed timestamp
+		SolanaProvider::new(Clock::Mock(mock), Rng::seeded(seed))
+	}
+
+	fn issued_nonce(provider: &SolanaProvider) -> String {
+		let (_, public_key_b58) = test_keypair();
+		let stored = HashMap::from([("public_key".to_string(), public_key_b58)]);
+
+		match provider.authenticate(&stored, &HashMap::new()).unwrap() {
+			AuthStep::Challenge {
+				payload,
+			} => payload.get("nonce").expect("challenge must carry a nonce").clone(),
+			other => panic!("expected Challenge, got {:?}", other),
+		}
 	}
 
 	fn test_keypair() -> (SigningKey, String) {
@@ -284,5 +303,32 @@ mod tests {
 
 		let step = provider.verify_challenge(&stored, &challenge, &credentials).unwrap();
 		assert_eq!(step, AuthStep::Failed);
+	}
+
+	#[test]
+	fn test_nonce_is_reproducible_from_the_injected_seed() {
+		// The nonce must come from the injected Rng, never Rng::Os, or a seeded replay cannot reproduce it.
+		let first = issued_nonce(&seeded_provider(42));
+		let second = issued_nonce(&seeded_provider(42));
+
+		assert_eq!(first, second, "same seed must yield the same nonce; the provider is bypassing its Rng");
+	}
+
+	#[test]
+	fn test_nonce_differs_across_seeds() {
+		// Guards the reproducibility test: a hardcoded constant nonce would satisfy it but fail here.
+		let first = issued_nonce(&seeded_provider(42));
+		let second = issued_nonce(&seeded_provider(43));
+
+		assert_ne!(first, second, "distinct seeds must yield distinct nonces; entropy collapsed to a constant");
+	}
+
+	#[test]
+	fn test_nonce_keeps_full_entropy_under_a_seed() {
+		// Pins 32 bytes rendered as 64 hex chars so routing through the injected Rng cannot shrink entropy.
+		let nonce = issued_nonce(&seeded_provider(42));
+
+		assert_eq!(nonce.len(), 64, "nonce must stay 32 bytes of entropy rendered as 64 hex chars");
+		assert!(nonce.chars().all(|c| c.is_ascii_hexdigit()), "nonce must be hex; got {nonce}");
 	}
 }

@@ -100,8 +100,9 @@ impl IdentityBuilder {
 		}
 
 		for authentication in &self.authentications {
-			let properties =
-				provider(&authentication.method, &clock).create(&rng, &authentication.config).unwrap();
+			let properties = provider(&authentication.method, &clock, &rng)
+				.create(&rng, &authentication.config)
+				.unwrap();
 			catalog.create_authentication(&mut admin, identity.id, &authentication.method, properties)
 				.unwrap();
 			if let Some((name, value)) = &authentication.lookup {
@@ -114,9 +115,9 @@ impl IdentityBuilder {
 	}
 }
 
-fn provider(method: &str, clock: &Clock) -> Box<dyn AuthenticationProvider> {
+fn provider(method: &str, clock: &Clock, rng: &Rng) -> Box<dyn AuthenticationProvider> {
 	match method {
-		"solana" => Box::new(SolanaProvider::new(clock.clone())),
+		"solana" => Box::new(SolanaProvider::new(clock.clone(), rng.clone())),
 		"github" => Box::new(GithubProvider),
 		"password" => Box::new(PasswordProvider),
 		other => panic!("identity builder has no provider for method '{other}'"),

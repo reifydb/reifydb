@@ -484,7 +484,7 @@ impl DatabaseBuilder {
 		let remote_registry = RemoteRegistry::new(tokio_handle.clone());
 
 		let auth_registry = {
-			let mut registry = AuthenticationRegistry::new(clock.clone());
+			let mut registry = AuthenticationRegistry::new(clock.clone(), rng.clone());
 			for provider in self.auth_providers.drain(..) {
 				registry.register(provider);
 			}

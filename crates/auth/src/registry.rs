@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::auth::AuthenticationProvider;
-use reifydb_runtime::context::clock::Clock;
+use reifydb_runtime::context::{clock::Clock, rng::Rng};
 
 use crate::method::{github::GithubProvider, password::PasswordProvider, solana::SolanaProvider, token::TokenProvider};
 
@@ -13,11 +13,11 @@ pub struct AuthenticationRegistry {
 }
 
 impl AuthenticationRegistry {
-	pub fn new(clock: Clock) -> Self {
+	pub fn new(clock: Clock, rng: Rng) -> Self {
 		let mut providers: HashMap<String, Box<dyn AuthenticationProvider>> = HashMap::new();
 		providers.insert("password".to_string(), Box::new(PasswordProvider));
 		providers.insert("token".to_string(), Box::new(TokenProvider));
-		providers.insert("solana".to_string(), Box::new(SolanaProvider::new(clock)));
+		providers.insert("solana".to_string(), Box::new(SolanaProvider::new(clock, rng)));
 		providers.insert("github".to_string(), Box::new(GithubProvider));
 		Self {
 			providers,
@@ -35,6 +35,6 @@ impl AuthenticationRegistry {
 
 impl Default for AuthenticationRegistry {
 	fn default() -> Self {
-		Self::new(Clock::Real)
+		Self::new(Clock::Real, Rng::default())
 	}
 }
