@@ -8,7 +8,7 @@ import { CommandHistory } from './input/history';
 import { MultilineBuffer } from './input/multiline';
 import { handleDotCommand } from './commands/dot-commands';
 import { OutputFormatter } from './output/formatter';
-import type { ShellOptions, DisplayMode, Executor } from './types';
+import type { ShellOptions, DisplayMode, Executor, Highlighter } from './types';
 
 const C = COLORS;
 
@@ -37,6 +37,7 @@ export class Shell {
   private continuationPromptLen: number;
   private welcomeMessage: string | string[] | (() => string[]) | undefined;
   private initialInput: string | undefined;
+  private highlight: Highlighter | undefined;
   private onExit: (() => void) | undefined;
   private onFullscreenChange: ((isFullscreen: boolean) => void) | undefined;
 
@@ -45,6 +46,7 @@ export class Shell {
     this.displayMode = options.displayMode ?? 'full';
     this.welcomeMessage = options.welcomeMessage;
     this.initialInput = options.initialInput;
+    this.highlight = options.highlight;
     this.onExit = options.onExit;
     this.onFullscreenChange = options.onFullscreenChange;
 
@@ -255,7 +257,8 @@ export class Shell {
 
   private redrawLine(): void {
     const prompt = this.multiline.isEmpty ? this.primaryPrompt : this.continuationPrompt;
-    this.lineEditor.render(prompt);
+    const context = this.multiline.isEmpty ? undefined : this.multiline.content + ' ';
+    this.lineEditor.render(prompt, this.highlight?.(this.lineEditor.value, context));
   }
 
   private navigateHistory(direction: 'up' | 'down'): void {
@@ -328,7 +331,6 @@ export class Shell {
 
   private clearScreen(): void {
     this.terminal.write(TerminalAdapter.clearScreen());
-    this.showPrompt();
-    this.terminal.write(this.lineEditor.value);
+    this.redrawLine();
   }
 }

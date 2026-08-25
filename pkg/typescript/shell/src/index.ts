@@ -13,6 +13,7 @@ export type {
   HistoryStorage,
   DotCommandContext,
   DotCommandResult,
+  Highlighter,
 } from './types';
 
 // Terminal components
@@ -25,6 +26,8 @@ export type { TerminalTheme } from './terminal/theme';
 export { LineEditor } from './input/line-editor';
 export { CommandHistory, LocalStorageHistoryStorage, MemoryHistoryStorage } from './input/history';
 export { MultilineBuffer } from './input/multiline';
+export { rql_highlighter, reifydb_dark_palette } from './input/highlight';
+export type { RqlPalette, RqlStyle } from './input/highlight';
 
 // Output components
 export { OutputFormatter } from './output/formatter';

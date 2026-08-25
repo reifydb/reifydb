@@ -50,6 +50,13 @@ export interface HistoryStorage {
 }
 
 /**
+ * Paints a single input line for display.
+ * Receives the line being edited plus the already-entered part of a
+ * multi-line statement, and returns the line with ANSI colors applied.
+ */
+export type Highlighter = (line: string, context?: string) => string;
+
+/**
  * Configuration options for the Shell
  */
 export interface ShellOptions {
@@ -114,6 +121,12 @@ export interface ShellOptions {
    * Text placed on the input line when the shell starts, ready to run.
    */
   initialInput?: string;
+
+  /**
+   * Paints the input line as it is typed.
+   * Use `rql_highlighter()` for RQL syntax coloring.
+   */
+  highlight?: Highlighter;
 
   /**
    * Callback when user exits the shell

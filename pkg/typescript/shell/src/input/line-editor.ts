@@ -170,12 +170,13 @@ export class LineEditor {
   }
 
   // Called by shell to render the line with prompt
-  render(prompt: string): void {
+  // `display` carries zero-width ANSI codes only, so cursor math stays on the raw buffer
+  render(prompt: string, display?: string): void {
     this.terminal.write(
       '\r' +
       TerminalAdapter.clearToEndOfLine() +
       prompt +
-      this.buffer
+      (display ?? this.buffer)
     );
 
     // Position cursor correctly
