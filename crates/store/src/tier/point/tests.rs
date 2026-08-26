@@ -15,7 +15,7 @@ use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::point::{
 	ENTRY_OVERHEAD, FillInterlock, PointConfig, PointKey, PointSlotMetrics, PointMetrics, PointTier,
-	domain::{TestDomain as D, keyspace_of},
+	domain::{ChainingDomain as C, TestDomain as D, keyspace_of},
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -864,4 +864,45 @@ fn an_excluded_keyspace_read_acquires_no_shard() {
 		"the miss must still be charged to the keyspace, or the read is invisible"
 	);
 	assert_eq!(tier.misses(), 32, "and the tier aggregate must fold the lock free counter in");
+}
+
+#[test]
+fn a_refused_supersede_leaves_the_row_and_its_accounting_alone() {
+	// A refusal that still swaps or still charges leaves the tier holding bytes its budget cannot account for.
+	let tier = PointTier::<C>::new(PointConfig {
+		resident_bytes: Some(ByteSize::from_mib(1)),
+		shards: 1,
+	})
+	.expect("a tier with a byte budget must be constructed");
+	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+
+	tier.overwrite(OP_A, k.clone(), row("resident"));
+	let charged = tier.resident_bytes();
+	let entries = tier.entries();
+
+	tier.overwrite(OP_A, k.clone(), row("no"));
+
+	let served = tier.get(OP_A, &k).expect("a refusal must not evict the key it declined to replace");
+	assert_eq!(body(&served), "resident", "the refused row replaced the resident one, so a downgrade won");
+	assert_eq!(tier.entries(), entries, "the refusal seated a second entry for a key that already had one");
+	assert_eq!(charged, tier.resident_bytes(), "the refusal moved the budget for a row it never took");
+	assert_eq!(tier.resident_bytes(), tier.tallied_bytes(), "the budget drifted from the bytes the tier holds");
+}
+
+#[test]
+fn an_accepted_supersede_recharges_from_the_merged_row() {
+	// Charging the incoming row instead of the merged one drifts for any domain whose merge keeps the old value.
+	let tier = PointTier::<C>::new(PointConfig {
+		resident_bytes: Some(ByteSize::from_mib(1)),
+		shards: 1,
+	})
+	.expect("a tier with a byte budget must be constructed");
+	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+
+	tier.overwrite(OP_A, k.clone(), row("ab"));
+	tier.overwrite(OP_A, k.clone(), row("abcdefgh"));
+
+	let served = tier.get(OP_A, &k).expect("an accepted supersede must leave the key resident");
+	assert_eq!(body(&served), "abcdefghab", "the merge dropped what the domain chose to keep");
+	assert_eq!(tier.resident_bytes(), tier.tallied_bytes(), "the budget drifted from the bytes the tier holds");
 }

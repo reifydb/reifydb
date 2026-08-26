@@ -58,6 +58,12 @@ pub trait PointDomain: Copy + Debug + 'static {
 	/// path, and its read is answered before a shard is hashed or locked.
 	fn caches_points(slot: usize) -> bool;
 
+	/// How `incoming` lands on the resident row; a refusal must leave the entry and its accounting untouched.
+	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {
+		*resident = incoming;
+		true
+	}
+
 	fn slot_at(index: usize) -> Self::Slot;
 
 	fn slot_name(slot: Self::Slot) -> Cow<'static, str>;

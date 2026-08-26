@@ -51,3 +51,42 @@ impl PointDomain for TestDomain {
 		slot.name()
 	}
 }
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ChainingDomain;
+
+impl PointDomain for ChainingDomain {
+	type Dimension = OperatorId;
+	type Slot = Keyspace;
+	type Row = EncodedPodRow;
+
+	const SLOTS: usize = 256;
+
+	const SCOPE: &'static str = "chaining_point";
+
+	fn slot(key: &EncodedKey) -> Option<usize> {
+		keyspace_of(key).map(|keyspace| keyspace.0 as usize)
+	}
+
+	fn caches_points(slot: usize) -> bool {
+		Keyspace(slot as u8).cache_policy().caches_points()
+	}
+
+	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {
+		if incoming.len() < resident.len() {
+			return false;
+		}
+		let mut merged = incoming.body().to_vec();
+		merged.extend_from_slice(resident.body());
+		*resident = EncodedPodRow::new(&merged);
+		true
+	}
+
+	fn slot_at(index: usize) -> Self::Slot {
+		Keyspace(index as u8)
+	}
+
+	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {
+		slot.name()
+	}
+}

@@ -206,16 +206,24 @@ fn insert_entry<D: PointDomain>(shard: &mut Shard<D>, slot: usize, id: PointKey<
 		return;
 	}
 	let next = shard.next_tick;
-	let new = entry_footprint::<D>(&id, &row);
 	match shard.index.get(&id).copied() {
 		Some(position) => {
 			let entry = &mut shard.entries[position];
 			let old = entry_footprint::<D>(&entry.key, &entry.row);
-			entry.row = row;
+			match (entry.row.as_mut(), row) {
+				(Some(resident), Some(incoming)) => {
+					if !D::supersede(resident, incoming) {
+						return;
+					}
+				}
+				(_, incoming) => entry.row = incoming,
+			}
 			entry.tick = next;
+			let new = entry_footprint::<D>(&entry.key, &entry.row);
 			account(&shard.budget, old, new);
 		}
 		None => {
+			let new = entry_footprint::<D>(&id, &row);
 			shard.entries.push(Entry {
 				key: id.clone(),
 				row,
