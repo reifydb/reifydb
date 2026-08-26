@@ -52,7 +52,7 @@ fn row(number: u64) -> reifydb_core::row::Row {
 fn window_meta_lookups(store: &OperatorStore) -> u64 {
 	store.point_keyspace_metrics()
 		.into_iter()
-		.filter(|m| m.keyspace == Keyspace::WINDOW_META)
+		.filter(|m| m.slot == Keyspace::WINDOW_META)
 		.map(|m| m.counters.hits + m.counters.misses)
 		.sum()
 }

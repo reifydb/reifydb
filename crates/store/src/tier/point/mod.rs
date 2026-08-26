@@ -134,14 +134,14 @@ pub struct PointShardMetrics {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct PointKeyspaceMetrics<D: PointDomain> {
-	pub keyspace: D::Slot,
+pub struct PointSlotMetrics<D: PointDomain> {
+	pub slot: D::Slot,
 	pub used: ByteSize,
 	pub entries: usize,
 	pub counters: PointMetrics,
 }
 
-type KeyspaceCounters = Box<[PointMetrics]>;
+type SlotCounters = Box<[PointMetrics]>;
 
 struct Shard<D: PointDomain> {
 	index: HashMap<PointKey<D::Dimension>, usize>,
@@ -151,7 +151,7 @@ struct Shard<D: PointDomain> {
 	next_tick: u64,
 	rng: u64,
 	metrics: PointMetrics,
-	keyspace_metrics: KeyspaceCounters,
+	slot_metrics: SlotCounters,
 }
 
 #[cfg(test)]

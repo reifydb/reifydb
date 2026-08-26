@@ -20,14 +20,14 @@ use reifydb_core::{
 	key::operator_state::{Keyspace, OperatorStateKey},
 };
 use reifydb_store::tier::point::{
-	PointConfig, PointDomain, PointKeyspaceMetrics, PointMetrics, PointShardMetrics, PointTier,
+	PointConfig, PointDomain, PointSlotMetrics, PointMetrics, PointShardMetrics, PointTier,
 };
 
 pub type OperatorPointConfig = PointConfig;
 pub type OperatorPointTier = PointTier<OperatorDomain>;
 pub type OperatorPointMetrics = PointMetrics;
 pub type OperatorPointShardMetrics = PointShardMetrics;
-pub type OperatorPointKeyspaceMetrics = PointKeyspaceMetrics<OperatorDomain>;
+pub type OperatorPointKeyspaceMetrics = PointSlotMetrics<OperatorDomain>;
 
 /// The operator store's point domain: a dimension is one operator and a counter slot is the keyspace
 /// byte the inner key carries.

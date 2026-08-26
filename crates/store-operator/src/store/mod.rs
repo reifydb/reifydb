@@ -187,7 +187,7 @@ impl StandardOperatorStore {
 	}
 
 	pub fn point_keyspace_metrics(&self) -> Vec<OperatorPointKeyspaceMetrics> {
-		self.point.as_ref().map(OperatorPointTier::keyspace_metrics).unwrap_or_default()
+		self.point.as_ref().map(OperatorPointTier::slot_metrics).unwrap_or_default()
 	}
 
 	pub fn range_shard_metrics(&self) -> Vec<OperatorRangeShardMetrics> {

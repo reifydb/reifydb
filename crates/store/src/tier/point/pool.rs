@@ -20,7 +20,7 @@ use reifydb_value::byte_size::ByteSize;
 #[cfg(test)]
 use crate::tier::point::FillInterlock;
 use crate::tier::point::{
-	EVICTION_SAMPLE, Entry, PointConfig, PointDomain, PointKey, PointKeyspaceMetrics, PointMetrics,
+	EVICTION_SAMPLE, Entry, PointConfig, PointDomain, PointKey, PointSlotMetrics, PointMetrics,
 	PointShardMetrics, PointTier, PoolInner, Shard, entry_footprint,
 };
 
@@ -121,7 +121,7 @@ impl<D: PointDomain> PointTier<D> {
 		out
 	}
 
-	pub fn keyspace_metrics(&self) -> Vec<PointKeyspaceMetrics<D>> {
+	pub fn slot_metrics(&self) -> Vec<PointSlotMetrics<D>> {
 		let mut used = vec![0u64; D::SLOTS];
 		let mut entries = vec![0usize; D::SLOTS];
 		let mut counters = vec![PointMetrics::default(); D::SLOTS];
@@ -133,7 +133,7 @@ impl<D: PointDomain> PointTier<D> {
 				used[slot] += entry_footprint::<D>(&entry.key, &entry.row) as u64;
 				entries[slot] += 1;
 			}
-			for (slot, source) in shard.keyspace_metrics.iter().enumerate() {
+			for (slot, source) in shard.slot_metrics.iter().enumerate() {
 				accumulate(&mut counters[slot], source);
 			}
 		}
@@ -144,8 +144,8 @@ impl<D: PointDomain> PointTier<D> {
 		let empty = PointMetrics::default();
 		(0..D::SLOTS)
 			.filter(|slot| entries[*slot] > 0 || counters[*slot] != empty)
-			.map(|slot| PointKeyspaceMetrics {
-				keyspace: D::slot_at(slot),
+			.map(|slot| PointSlotMetrics {
+				slot: D::slot_at(slot),
 				used: ByteSize::from_bytes(used[slot]),
 				entries: entries[slot],
 				counters: counters[slot],
@@ -209,8 +209,8 @@ impl<D: PointDomain> MetricsCollector for PointTier<D> {
 				shard.lock().budget.used(),
 			));
 		}
-		for keyspace in self.keyspace_metrics() {
-			let scope = format!("{}::keyspace::{}", D::SCOPE, D::slot_name(keyspace.keyspace));
+		for keyspace in self.slot_metrics() {
+			let scope = format!("{}::keyspace::{}", D::SCOPE, D::slot_name(keyspace.slot));
 			out.push(MetricsSample::bytes(scope.clone(), "used_bytes", keyspace.used));
 			out.push(MetricsSample::count(scope.clone(), "entries", keyspace.entries as u64));
 			out.push(MetricsSample::counter(scope.clone(), "hits", keyspace.counters.hits));
@@ -251,7 +251,7 @@ fn build_shards<D: PointDomain>(config: PointConfig, resident_bytes: ByteSize) -
 				next_tick: 0,
 				rng: 0x9E37_79B9_7F4A_7C15 ^ (index as u64 + 1),
 				metrics: PointMetrics::default(),
-				keyspace_metrics: vec![PointMetrics::default(); D::SLOTS].into_boxed_slice(),
+				slot_metrics: vec![PointMetrics::default(); D::SLOTS].into_boxed_slice(),
 			})
 		})
 		.collect::<Vec<_>>()
@@ -305,7 +305,7 @@ impl<D: PointDomain> Shard<D> {
 			let slot = entry_slot::<D>(&self.entries[victim]);
 			self.remove_at(victim);
 			self.metrics.evictions += 1;
-			self.keyspace_metrics[slot].evictions += 1;
+			self.slot_metrics[slot].evictions += 1;
 		}
 	}
 }

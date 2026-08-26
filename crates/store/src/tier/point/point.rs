@@ -21,7 +21,7 @@ impl<D: PointDomain> PointTier<D> {
 		let next = shard.next_tick;
 		let Some(position) = shard.index.get(&id).copied() else {
 			shard.metrics.misses += 1;
-			shard.keyspace_metrics[slot].misses += 1;
+			shard.slot_metrics[slot].misses += 1;
 			return None;
 		};
 		let row = {
@@ -31,7 +31,7 @@ impl<D: PointDomain> PointTier<D> {
 		};
 		shard.next_tick = next + 1;
 		shard.metrics.hits += 1;
-		shard.keyspace_metrics[slot].hits += 1;
+		shard.slot_metrics[slot].hits += 1;
 		Some(row)
 	}
 
@@ -49,7 +49,7 @@ impl<D: PointDomain> PointTier<D> {
 		let next = shard.next_tick;
 		let Some(position) = shard.index.get(&id).copied() else {
 			shard.metrics.misses += 1;
-			shard.keyspace_metrics[slot].misses += 1;
+			shard.slot_metrics[slot].misses += 1;
 			return None;
 		};
 		let present = {
@@ -59,7 +59,7 @@ impl<D: PointDomain> PointTier<D> {
 		};
 		shard.next_tick = next + 1;
 		shard.metrics.hits += 1;
-		shard.keyspace_metrics[slot].hits += 1;
+		shard.slot_metrics[slot].hits += 1;
 		Some(present)
 	}
 
@@ -77,12 +77,12 @@ impl<D: PointDomain> PointTier<D> {
 		let mut shard = self.shard_for(&id).lock();
 		if shard.filling.contains_key(&id) {
 			shard.metrics.fills_duplicate += 1;
-			shard.keyspace_metrics[slot].fills_duplicate += 1;
+			shard.slot_metrics[slot].fills_duplicate += 1;
 			return false;
 		}
 		shard.filling.insert(id, false);
 		shard.metrics.fills_started += 1;
-		shard.keyspace_metrics[slot].fills_started += 1;
+		shard.slot_metrics[slot].fills_started += 1;
 		true
 	}
 
@@ -99,7 +99,7 @@ impl<D: PointDomain> PointTier<D> {
 			Some(false) => {}
 			Some(true) | None => {
 				shard.metrics.fills_dirty_aborted += 1;
-				shard.keyspace_metrics[slot].fills_dirty_aborted += 1;
+				shard.slot_metrics[slot].fills_dirty_aborted += 1;
 				return false;
 			}
 		}
@@ -226,7 +226,7 @@ fn insert_entry<D: PointDomain>(shard: &mut Shard<D>, slot: usize, id: PointKey<
 		}
 	}
 	shard.metrics.insertions += 1;
-	shard.keyspace_metrics[slot].insertions += 1;
+	shard.slot_metrics[slot].insertions += 1;
 	shard.next_tick = next + 1;
 	shard.evict_to_capacity();
 }

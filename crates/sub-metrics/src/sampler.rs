@@ -437,7 +437,7 @@ fn operator_point_keyspace_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 
 fn operator_point_keyspace_row(metrics: &OperatorPointKeyspaceMetrics) -> MetricsRow {
 	MetricsRow {
-		dimensions: vec![Value::Utf8(metrics.keyspace.name().to_string())],
+		dimensions: vec![Value::Utf8(metrics.slot.name().to_string())],
 		measures: vec![
 			level_bytes("used", metrics.used),
 			level_count("entries", metrics.entries as u64),
@@ -683,7 +683,7 @@ mod tests {
 
 	fn point_sample() -> OperatorPointKeyspaceMetrics {
 		OperatorPointKeyspaceMetrics {
-			keyspace: Keyspace::SOURCE_WATERMARK,
+			slot: Keyspace::SOURCE_WATERMARK,
 			used: ByteSize::from_bytes(12_401),
 			entries: 231,
 			counters: OperatorPointMetrics {
@@ -743,12 +743,12 @@ mod tests {
 		// CUSTOM_NOT_CACHED and CUSTOM_CACHED are declared constants, not gaps: relabelling either as
 		// CUSTOM_0x40 hides which admission side a keyspace sits on.
 		let mut metrics = point_sample();
-		metrics.keyspace = Keyspace::CUSTOM_NOT_CACHED;
+		metrics.slot = Keyspace::CUSTOM_NOT_CACHED;
 		let row = operator_point_keyspace_row(&metrics);
 		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_NOT_CACHED".to_string())]);
 
 		let mut metrics = point_sample();
-		metrics.keyspace = Keyspace::CUSTOM_CACHED;
+		metrics.slot = Keyspace::CUSTOM_CACHED;
 		let row = operator_point_keyspace_row(&metrics);
 		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_CACHED".to_string())]);
 
