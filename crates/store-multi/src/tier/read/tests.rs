@@ -198,13 +198,13 @@ fn raw_entry(object: u64, n: u64, version: u64, value: &str) -> RawEntry {
 	}
 }
 
-fn install_page(read: &MultiReadBufferTier, page: PageId, mut entries: Vec<RawEntry>) {
+fn materialize_page(read: &MultiReadBufferTier, page: PageId, mut entries: Vec<RawEntry>) {
 	let range = read.page_key_range(page).expect("a table row page has a reconstructable range");
 	let (Bound::Included(lo), Bound::Included(through)) = (range.start, range.end) else {
 		panic!("a table row page range is inclusive at both ends");
 	};
 	entries.sort_by(|left, right| left.key.cmp(&right.key));
-	assert!(read.install_scanned_chunk(page.kind, &lo, &through, &entries), "a page chunk must publish its claim");
+	assert!(read.materialize_scanned_chunk(page.kind, &lo, &through, &entries), "a page chunk must publish its claim");
 }
 
 fn populate_complete(read: &MultiReadBufferTier, object: u64, rows: &[(u64, u64, &str)]) {
@@ -214,7 +214,7 @@ fn populate_complete(read: &MultiReadBufferTier, object: u64, rows: &[(u64, u64,
 		by_page.entry(read.page_of_key(&entry.key)).or_default().push(entry);
 	}
 	for (page, entries) in by_page {
-		install_page(read, page, entries);
+		materialize_page(read, page, entries);
 	}
 }
 
@@ -433,7 +433,7 @@ fn populate_respects_stale_version_guard() {
 	let read = cache(8);
 	let k = row(1, 5);
 	let page = read.page_of_key(&k);
-	install_page(
+	materialize_page(
 		&read,
 		page,
 		vec![RawEntry {
@@ -442,7 +442,7 @@ fn populate_respects_stale_version_guard() {
 			value: Some(CowVec::new(b"v5".to_vec())),
 		}],
 	);
-	install_page(
+	materialize_page(
 		&read,
 		page,
 		vec![RawEntry {
@@ -579,7 +579,7 @@ fn a_replace_does_not_fabricate_a_previous_slot() {
 	let read = cache(8);
 	let page = read.page_of_key(&row(1, 5));
 	read.insert(row(1, 5), CommitVersion(5), Some(val("resident-v5")));
-	install_page(&read, page, vec![raw_entry(1, 5, 10, "loaded-v10")]);
+	materialize_page(&read, page, vec![raw_entry(1, 5, 10, "loaded-v10")]);
 
 	assert!(
 		matches!(read.get(&row(1, 5), CommitVersion(7)), VersionedGetResult::NotFound),
@@ -639,7 +639,7 @@ fn remove_dropped_through_clears_a_dropped_previous_slot() {
 }
 
 #[test]
-fn a_drop_landing_inside_an_install_refuses_its_claim() {
+fn a_drop_landing_inside_a_materialize_refuses_its_claim() {
 	let read = MultiReadBufferTier::with_interlock(
 		ReadBufferConfig {
 			resident_pages: 8,
@@ -651,9 +651,9 @@ fn a_drop_landing_inside_an_install_refuses_its_claim() {
 	)
 	.unwrap();
 
-	let published = read.install_scanned_chunk(source(1), &row(1, 10), &row(1, 0), &[raw_entry(1, 5, 5, "stale")]);
+	let published = read.materialize_scanned_chunk(source(1), &row(1, 10), &row(1, 0), &[raw_entry(1, 5, 5, "stale")]);
 
-	assert!(!published, "an install whose token was falsified mid-fill must publish nothing");
+	assert!(!published, "a materialize whose token was falsified mid-fill must publish nothing");
 	assert!(!read.covers(source(1), &row(1, 5)), "the refused claim landed anyway");
 	assert!(!read.covers(source(1), &row(1, 7)), "the refused claim landed anyway");
 }
@@ -863,14 +863,14 @@ fn sum_pages(read: &MultiReadBufferTier) -> ReadBufferPageMetrics {
 	total
 }
 
-fn sum_installs(read: &MultiReadBufferTier) -> (u64, u64, u64) {
+fn sum_materializes(read: &MultiReadBufferTier) -> (u64, u64, u64) {
 	let mut published = 0;
 	let mut rows = 0;
 	let mut refused = 0;
 	for metrics in read.shard_metrics() {
-		published += metrics.coverage.installs;
-		rows += metrics.coverage.install_rows;
-		refused += metrics.coverage.installs_refused;
+		published += metrics.coverage.materializes;
+		rows += metrics.coverage.materialize_rows;
+		refused += metrics.coverage.materializes_refused;
 	}
 	(published, rows, refused)
 }
@@ -944,7 +944,7 @@ fn range_serve_outcomes_are_tallied_as_served_and_gaps() {
 }
 
 #[test]
-fn install_outcomes_are_tallied_as_published_rows_and_refusals() {
+fn materialize_outcomes_are_tallied_as_published_rows_and_refusals() {
 	let read = MultiReadBufferTier::with_interlock(
 		ReadBufferConfig {
 			resident_pages: 8,
@@ -960,17 +960,17 @@ fn install_outcomes_are_tallied_as_published_rows_and_refusals() {
 	)
 	.unwrap();
 
-	assert!(read.install_scanned_chunk(
+	assert!(read.materialize_scanned_chunk(
 		source(1),
 		&row(1, 65535),
 		&row(1, 0),
 		&[raw_entry(1, 5, 1, "v"), raw_entry(1, 7, 1, "w")]
 	));
-	assert_eq!(sum_installs(&read), (1, 2, 0), "the first install published both rows it was handed");
+	assert_eq!(sum_materializes(&read), (1, 2, 0), "the first materialize published both rows it was handed");
 
-	assert!(!read.install_scanned_chunk(source(1), &row(1, 65535), &row(1, 0), &[raw_entry(1, 5, 2, "v2")]));
+	assert!(!read.materialize_scanned_chunk(source(1), &row(1, 65535), &row(1, 0), &[raw_entry(1, 5, 2, "v2")]));
 	assert_eq!(
-		sum_installs(&read),
+		sum_materializes(&read),
 		(1, 2, 1),
 		"the invalidate inside the second fill must refuse its claim, and a refused claim must not count \
 		 its rows as published"

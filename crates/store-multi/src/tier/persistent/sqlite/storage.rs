@@ -222,7 +222,7 @@ impl SqlitePersistentStorage {
 		let Some(conn) = guard.as_ref() else {
 			return Err(error!(internal(
 				"Persistent storage is shut down; refusing to probe the install floor, whose \
-				 fallback would gate coverage installs on a version no read ever observed"
+				 fallback would gate coverage materializes on a version no read ever observed"
 					.to_string()
 			)));
 		};

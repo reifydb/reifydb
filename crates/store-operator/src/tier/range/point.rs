@@ -164,7 +164,7 @@ mod tests {
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,
-				installs: 0,
+				materializes: 0,
 				covered: true,
 			},
 		);
@@ -310,7 +310,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_row_installed_between_the_two_steps_is_answered_rather_than_missed() {
+	fn a_row_materialized_between_the_two_steps_is_answered_rather_than_missed() {
 		// The row read must come second, or a write landing in between reads as a proven absence.
 		let tier = tier();
 		let id = partition(CACHED);

@@ -183,9 +183,9 @@ pub struct ReadBufferCoverageMetrics {
 	pub rows: u64,
 	pub gaps: u64,
 	pub refused: u64,
-	pub installs: u64,
-	pub install_rows: u64,
-	pub installs_refused: u64,
+	pub materializes: u64,
+	pub materialize_rows: u64,
+	pub materializes_refused: u64,
 	pub head_advances: u64,
 }
 

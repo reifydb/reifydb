@@ -455,20 +455,20 @@ pub struct MultiVersionRangeCursor {
 
 	persistent_recheck_spent: bool,
 
-	install: bool,
+	materialize: bool,
 }
 
 impl MultiVersionRangeCursor {
 	pub fn new() -> Self {
 		Self {
-			install: true,
+			materialize: true,
 			..Default::default()
 		}
 	}
 
 	pub fn cold() -> Self {
 		Self {
-			install: false,
+			materialize: false,
 			..Default::default()
 		}
 	}
@@ -906,14 +906,14 @@ impl StandardMultiStore {
 				TIER_SCAN_CHUNK_SIZE,
 			)?
 		};
-		if !descending && cursor.install {
-			self.install_scanned_chunk(persistent, scan, resumed_at.as_ref(), &cursor.persistent, &batch)?;
+		if !descending && cursor.materialize {
+			self.materialize_scanned_chunk(persistent, scan, resumed_at.as_ref(), &cursor.persistent, &batch)?;
 		}
 		merge_tier_batch(batch, scan.range, collected)
 	}
 
 	#[inline]
-	fn install_scanned_chunk(
+	fn materialize_scanned_chunk(
 		&self,
 		persistent: &MultiPersistentTier,
 		scan: &TierScanQuery,
@@ -944,7 +944,7 @@ impl StandardMultiStore {
 			(false, false, Some(last)) => last.clone(),
 			(false, false, None) => return Ok(()),
 		};
-		read.install_scanned_chunk(scan.table, &lo, &through, &batch.entries);
+		read.materialize_scanned_chunk(scan.table, &lo, &through, &batch.entries);
 		Ok(())
 	}
 }
@@ -1443,7 +1443,7 @@ mod cache_tests {
 			panic!("a table row page range is inclusive at both ends");
 		};
 		assert!(
-			read.install_scanned_chunk(
+			read.materialize_scanned_chunk(
 				page.kind,
 				&lo,
 				&through,

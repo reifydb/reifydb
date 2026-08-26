@@ -66,8 +66,8 @@ fn flush(store: &StandardMultiStore, cutoff: u64) {
 	store.flush_pending_blocking();
 }
 
-fn installs(store: &StandardMultiStore) -> u64 {
-	store.read_buffer_shard_metrics().iter().map(|s| s.coverage.installs).sum()
+fn materializes(store: &StandardMultiStore) -> u64 {
+	store.read_buffer_shard_metrics().iter().map(|s| s.coverage.materializes).sum()
 }
 
 fn chunk(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor, read: u64) -> (usize, bool) {
@@ -121,12 +121,8 @@ fn tier_chunk(tier: &MultiPersistentTier, cursor: &mut RangeCursor, read: u64) -
 }
 
 #[test]
-fn a_scan_stopped_by_a_drained_reader_pool_installs_no_claim() {
-	// The defect: the reader pool drains at shutdown, the chunk reads nothing, and the install path
-	// stretches its claim to the range end over an empty result. Every row past the resume point is then
-	// reported absent by RAM, which is the one direction coverage may never move in. The read now refuses
-	// outright rather than answering, so the claim can never be taken. The first chunk must still install,
-	// or the unchanged count below is vacuous.
+fn a_scan_stopped_by_a_drained_reader_pool_materializes_no_claim() {
+	// The defect: an empty chunk still stretched its claim to the range end; the read now refuses outright instead.
 	let (store, _g) = store();
 	for row in 1..=(CHUNK * 6) {
 		commit_set(&store, row, 10);
@@ -137,8 +133,8 @@ fn a_scan_stopped_by_a_drained_reader_pool_installs_no_claim() {
 	let (first, more) = chunk(&store, &mut cursor, 30);
 	assert_eq!(first as u64, CHUNK, "the first chunk must fill, or the scan never resumes past it");
 	assert!(more, "rows must remain, or the shutdown below lands on an already finished scan");
-	let installed = installs(&store);
-	assert!(installed > 0, "the first chunk must install its own span, or the delta below proves nothing");
+	let materialized = materializes(&store);
+	assert!(materialized > 0, "the first chunk must materialize its own span, or the delta below proves nothing");
 
 	Shutdown::shutdown(&store);
 
@@ -152,15 +148,15 @@ fn a_scan_stopped_by_a_drained_reader_pool_installs_no_claim() {
 	);
 	assert!(refused.is_err(), "a drained pool must refuse the read, not answer it as a finished range");
 	assert_eq!(
-		installs(&store),
-		installed,
+		materializes(&store),
+		materialized,
 		"a chunk that read nothing because the tier is shut down claimed the rest of the range anyway; \
 		 every row past the resume point is now absent as far as RAM is concerned"
 	);
 }
 
 #[test]
-fn a_scan_that_read_to_the_range_end_installs_a_claim() {
+fn a_scan_that_read_to_the_range_end_materializes_a_claim() {
 	// The partner of the test above: the only stop a claim may be taken from must still take it, or the
 	// fix would have been a blanket refusal and the read tier would never serve a range again.
 	let (store, _g) = store();
@@ -179,14 +175,12 @@ fn a_scan_that_read_to_the_range_end_installs_a_claim() {
 		}
 	}
 	assert_eq!(total, CHUNK * 2 + 5, "the scan must return every flushed row");
-	assert!(installs(&store) > 0, "a scan that read the range to its end must claim what it read");
+	assert!(materializes(&store) > 0, "a scan that read the range to its end must claim what it read");
 }
 
 #[test]
 fn a_chunk_over_an_absent_table_is_not_a_scan_to_the_range_end() {
-	// A keyspace never flushed has no persistent table at all, which is expected and ends the scan. It is
-	// not a proof about the range: nothing was read, so nothing may be claimed. Naming it a scan to the
-	// end would hand the install path a span no read ever examined.
+	// Naming an unflushed keyspace's absent table a scan to the end would hand the materialize path a span no read ever examined.
 	let (tier, _g) = tier_with_rows(0, 5);
 	let mut cursor = RangeCursor::new();
 	let rows = tier_chunk(&tier, &mut cursor, 30);
@@ -199,8 +193,7 @@ fn a_chunk_over_an_absent_table_is_not_a_scan_to_the_range_end() {
 
 #[test]
 fn a_chunk_that_read_a_present_table_to_its_end_is_a_scan_to_the_range_end() {
-	// The partner of the absent-table test: a short page really is the end of the range, and it is the one
-	// stop the install path may stretch to the range end.
+	// The partner of the absent-table test: a short page is the one stop the materialize path may stretch to the range end.
 	let (tier, _g) = tier_with_rows(CHUNK / 2, 5);
 	let mut cursor = RangeCursor::new();
 	let rows = tier_chunk(&tier, &mut cursor, 30);
@@ -213,9 +206,7 @@ fn a_chunk_that_read_a_present_table_to_its_end_is_a_scan_to_the_range_end() {
 
 #[test]
 fn a_chunk_stopped_by_a_drained_reader_pool_is_not_a_scan_to_the_range_end() {
-	// Read at the tier, where the stops are told apart, so the classification is pinned even if the install
-	// path above is later rewritten. A cursor resumed on a real row key is what makes the store's install
-	// path reach its claim at all, so that is the shape asserted here.
+	// Read at the tier so the classification is pinned even if the materialize path above is rewritten.
 	let (tier, _g) = tier_with_rows(CHUNK * 2, 5);
 	let mut cursor = RangeCursor::new();
 	assert_eq!(tier_chunk(&tier, &mut cursor, 30) as u64, CHUNK, "the first chunk must fill");

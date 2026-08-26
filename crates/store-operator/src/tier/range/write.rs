@@ -118,7 +118,7 @@ impl OperatorRangeTier {
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick: next,
-				installs: 0,
+				materializes: 0,
 				covered: true,
 			});
 			if fresh {
@@ -250,7 +250,7 @@ mod tests {
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,
-				installs: 0,
+				materializes: 0,
 				covered: true,
 			},
 		);
@@ -424,7 +424,7 @@ mod tests {
 
 	#[test]
 	fn mark_deleted_outside_a_claim_shrinks_coverage_instead_of_storing_an_absence() {
-		// Without the retraction bump an install in flight never learns the removal happened.
+		// Without the retraction bump a materialize in flight never learns the removal happened.
 		let tier = tier();
 		let id = partition(OP_A, CACHED);
 		let at = key(CACHED, b"m");
@@ -437,7 +437,7 @@ mod tests {
 		assert_eq!(residency(&tier, &id, &at), None, "a removal outside a claim must store nothing");
 		assert!(
 			tier.retractions() > before,
-			"an install reading the persistent tier right now would reinstate the removed row"
+			"a materialize reading the persistent tier right now would reinstate the removed row"
 		);
 		assert_eq!(tier.lookup(OP_A, &at), None, "an uncovered removal must fall through");
 		assert_eq!(pinned(&tier, &id), PinnedCount::new());
@@ -483,7 +483,7 @@ mod tests {
 
 	#[test]
 	fn retract_leaves_a_proven_absence_where_no_entry_stood() {
-		// Without the entry the next install places the row it read before the flush.
+		// Without the entry the next materialize places the row it read before the flush.
 		let tier = tier();
 		let id = partition(OP_A, CACHED);
 		let at = key(CACHED, b"m");
@@ -569,7 +569,7 @@ mod tests {
 		assert!(intervals(&tier, OP_A).is_empty(), "a purged operator must hold no claim");
 		assert!(!has_partition(&tier, &live));
 		assert!(!has_partition(&tier, &second), "a partition holding a pinned removal must go too");
-		assert!(tier.retractions() > before, "an install in flight against the purge must refuse");
+		assert!(tier.retractions() > before, "a materialize in flight against the purge must refuse");
 		assert!(
 			tier.shard_for(&live).lock().budget.used() < charged,
 			"a purge that never releases its bytes starves every other partition"
@@ -589,7 +589,7 @@ mod tests {
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,
-				installs: 0,
+				materializes: 0,
 				covered: false,
 			},
 		);

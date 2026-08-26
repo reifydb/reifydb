@@ -209,7 +209,7 @@ fn a_drop_must_refuse_a_page_that_was_evicted_and_refilled_since_the_victim_was_
 }
 
 #[test]
-fn a_chunk_install_never_lets_one_page_hull_reach_the_page_before_it() {
+fn a_chunk_materialize_never_lets_one_page_hull_reach_the_page_before_it() {
 	let read = tier(8, ByteSize::from_gib(1));
 	let kind = EntryKind::Source(StorageId::table(ROW_STORAGE));
 	let mut entries = bucket_entries(2, 1);
@@ -221,9 +221,9 @@ fn a_chunk_install_never_lets_one_page_hull_reach_the_page_before_it() {
 	let earlier = page(&row(BUCKET * 2));
 	let later = page(&row(BUCKET));
 	assert_ne!(earlier, later, "the chunk must straddle a page edge");
-	assert!(read.install_scanned_chunk(kind, &lo, &through, &entries), "the chunk must publish its claim");
+	assert!(read.materialize_scanned_chunk(kind, &lo, &through, &entries), "the chunk must publish its claim");
 
-	read.withdraw_span(later.kind, &hull_of(&read, later).expect("an install records a hull"));
+	read.withdraw_span(later.kind, &hull_of(&read, later).expect("a materialize records a hull"));
 
 	for n in BUCKET * 2..BUCKET * 3 {
 		assert!(read.covers(kind, &row(n)), "the later page's hull reached back over the page before it");
@@ -234,7 +234,7 @@ fn a_chunk_install_never_lets_one_page_hull_reach_the_page_before_it() {
 }
 
 #[test]
-fn a_chunk_install_places_its_rows_before_it_publishes_the_claim() {
+fn a_chunk_materialize_places_its_rows_before_it_publishes_the_claim() {
 	let fired = Arc::new(AtomicUsize::new(0));
 	let read = {
 		let fired = fired.clone();
@@ -250,10 +250,10 @@ fn a_chunk_install_places_its_rows_before_it_publishes_the_claim() {
 	let kind = EntryKind::Source(StorageId::table(ROW_STORAGE));
 
 	assert!(
-		read.install_scanned_chunk(kind, &row(BUCKET - 1), &row(0), &bucket_entries(0, 1)),
+		read.materialize_scanned_chunk(kind, &row(BUCKET - 1), &row(0), &bucket_entries(0, 1)),
 		"the chunk must publish its claim"
 	);
-	assert_eq!(fired.load(Ordering::Relaxed), 1, "the interlock must have run inside the install window");
+	assert_eq!(fired.load(Ordering::Relaxed), 1, "the interlock must have run inside the materialize window");
 }
 
 #[test]
@@ -336,7 +336,7 @@ fn step(read: &MultiReadBufferTier, rng: &mut Lcg, keys: &[EncodedKey], version:
 		30..46 => {
 			let bucket = rng.next() % ROWS.div_ceil(BUCKET);
 			let id = page(&row(bucket * BUCKET));
-			read.install_scanned_chunk(
+			read.materialize_scanned_chunk(
 				id.kind,
 				&row(bucket * BUCKET + BUCKET - 1),
 				&row(bucket * BUCKET),
@@ -362,8 +362,8 @@ fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
 	let mut refused = 0u64;
 	let mut drops_refused = 0u64;
 	let mut retractions = 0u64;
-	let mut installs = 0u64;
-	let mut installs_refused = 0u64;
+	let mut materializes = 0u64;
+	let mut materializes_refused = 0u64;
 	let violation: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
 	for seed in SEEDS {
@@ -404,8 +404,8 @@ fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
 		}
 		for shard in read.shard_metrics() {
 			evictions += shard.pages.pages_evicted;
-			installs += shard.coverage.installs;
-			installs_refused += shard.coverage.installs_refused;
+			materializes += shard.coverage.materializes;
+			materializes_refused += shard.coverage.materializes_refused;
 		}
 		published += read.claims_published();
 		refused += read.claims_refused();
@@ -419,9 +419,9 @@ fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
 	assert!(retractions > 1000, "only {retractions} retractions: nothing was ever withdrawn");
 	assert!(refused > 100, "only {refused} claims refused by a token: the fill-versus-shrink race is rare");
 	assert!(drops_refused > 10, "only {drops_refused} drops refused: the fill-count guard never ran");
-	assert!(installs > 100, "only {installs} installs published: the chunk install path never ran");
-	assert!(installs_refused > 0, "no install was refused, so an install never raced a retraction");
+	assert!(materializes > 100, "only {materializes} materializes published: the chunk materialize path never ran");
+	assert!(materializes_refused > 0, "no materialize was refused, so a materialize never raced a retraction");
 	println!(
-		"COUNTERS evictions={evictions} published={published} retractions={retractions} refused={refused} drops_refused={drops_refused} installs={installs} installs_refused={installs_refused}"
+		"COUNTERS evictions={evictions} published={published} retractions={retractions} refused={refused} drops_refused={drops_refused} materializes={materializes} materializes_refused={materializes_refused}"
 	);
 }

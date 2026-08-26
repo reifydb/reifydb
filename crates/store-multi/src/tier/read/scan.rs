@@ -258,7 +258,7 @@ mod tests {
 		let mut entries: Vec<RawEntry> = rows.iter().map(|n| entry(*n, version)).collect();
 		entries.sort_by(|left, right| left.key.cmp(&right.key));
 		assert!(
-			read.install_scanned_chunk(source(), &row(base + BUCKET - 1), &row(base), &entries),
+			read.materialize_scanned_chunk(source(), &row(base + BUCKET - 1), &row(base), &entries),
 			"a whole-bucket chunk must publish its claim"
 		);
 	}
@@ -271,12 +271,12 @@ mod tests {
 		RowKey::storage_end(StorageId::table(STORAGE))
 	}
 
-	/// Installs a chunk of a scan that began at the storage prefix and ran to the storage end, which is
+	/// Materializes a chunk of a scan that began at the storage prefix and ran to the storage end, which is
 	/// the shape of every full scan in this codebase; `rows` must be listed in encoded key order, so
 	/// descending by row number.
-	fn install_from_prefix(read: &MultiReadBufferTier, rows: &[u64], version: u64) {
+	fn materialize_from_prefix(read: &MultiReadBufferTier, rows: &[u64], version: u64) {
 		let entries: Vec<RawEntry> = rows.iter().map(|n| entry(*n, version)).collect();
-		read.install_scanned_chunk(source(), &storage_start(), &storage_end(), &entries);
+		read.materialize_scanned_chunk(source(), &storage_start(), &storage_end(), &entries);
 	}
 
 	fn serve_whole_storage(read: &MultiReadBufferTier, cursor: &mut RangeCursor) -> ServedChunk {
@@ -373,7 +373,7 @@ mod tests {
 
 	#[test]
 	fn a_claim_over_a_bucket_holding_nothing_serves_an_empty_exhausted_chunk() {
-		// The proof-of-absence case, and the one a bug makes silent: an install of an empty span claims it,
+		// The proof-of-absence case, and the one a bug makes silent: a materialize of an empty span claims it,
 		// and the serve must answer "nothing here" rather than fall through, or the claim buys nothing.
 		let read = tier();
 		fill_bucket(&read, 0, &[], 10);
@@ -431,7 +431,7 @@ mod tests {
 		// Conflating the two would let a reader below a row's version see it.
 		let read = tier();
 		assert!(
-			read.install_scanned_chunk(source(), &row(BUCKET - 1), &row(0), &[entry(2, 50), entry(1, 5)]),
+			read.materialize_scanned_chunk(source(), &row(BUCKET - 1), &row(0), &[entry(2, 50), entry(1, 5)]),
 			"the bucket chunk must publish its claim"
 		);
 
@@ -678,7 +678,7 @@ mod tests {
 		// cover, and it is the only thing that can be: where the first row lies cannot be derived, only
 		// observed.
 		let read = tier();
-		install_from_prefix(&read, &[3, 2, 1], 10);
+		materialize_from_prefix(&read, &[3, 2, 1], 10);
 
 		let mut cursor = RangeCursor::new();
 		let chunk = serve_whole_storage(&read, &mut cursor);
@@ -699,8 +699,8 @@ mod tests {
 		// silent: the chunk is served, not gapped, and reports the range exhausted, so the row is never
 		// read from any tier.
 		let read = tier();
-		install_from_prefix(&read, &[3, 2, 1], 10);
-		assert_eq!(read.head(source()).as_ref(), Some(&row(3)), "the install must have recorded a head");
+		materialize_from_prefix(&read, &[3, 2, 1], 10);
+		assert_eq!(read.head(source()).as_ref(), Some(&row(3)), "the materialize must have recorded a head");
 
 		read.invalidate(&row(7));
 
@@ -724,8 +724,8 @@ mod tests {
 		// range. Moving lo there abandons the span the caller asked about and consults a claim over a
 		// span it did not, so a range RAM can prove empty falls through to the persistent tier instead.
 		let read = tier();
-		install_from_prefix(&read, &[3, 2, 1], 10);
-		assert_eq!(read.head(source()).as_ref(), Some(&row(3)), "the install must have recorded a head");
+		materialize_from_prefix(&read, &[3, 2, 1], 10);
+		assert_eq!(read.head(source()).as_ref(), Some(&row(3)), "the materialize must have recorded a head");
 
 		let mut cursor = RangeCursor::new();
 		let chunk = serve(&read, &mut cursor, 5, 9, 64);
@@ -753,7 +753,7 @@ mod tests {
 			)
 			.expect("a tier with a byte budget must be constructed")
 		};
-		install_from_prefix(&read, &[3, 2, 1], 10);
+		materialize_from_prefix(&read, &[3, 2, 1], 10);
 		armed.store(true, Ordering::SeqCst);
 
 		let mut cursor = RangeCursor::new();
@@ -775,7 +775,7 @@ mod tests {
 		// band. A head names a row key, so applying it to a range starting below that band moves the scan
 		// off the keys the caller asked for and onto the rows, reporting everything below proven absent.
 		let read = tier();
-		install_from_prefix(&read, &[3, 2, 1], 10);
+		materialize_from_prefix(&read, &[3, 2, 1], 10);
 		read.insert(series(1), CommitVersion(10), Some(CowVec::new(vec![1])));
 		assert!(
 			series(1).as_slice() < storage_start().as_slice(),
@@ -803,7 +803,7 @@ mod tests {
 		// The plan is read under the coverage lock and the rows under the page locks, never both, so a
 		// removal can land in between and falsify the claim the plan was built from. Serving anyway
 		// returns rows RAM no longer holds and, worse, reports proven absence over the key it dropped.
-		// The interlock stays disarmed while the bucket is installed, because an install is a fill too and
+		// The interlock stays disarmed while the bucket is materialized, because a materialize is a fill too and
 		// would race its own seeding.
 		let armed = Arc::new(AtomicBool::new(false));
 		let read = MultiReadBufferTier::with_interlock(config(), {
@@ -837,7 +837,7 @@ mod tests {
 		let mut first = RangeCursor::new();
 		assert!(is_gap(&serve_whole_storage(&read, &mut first)), "nothing is proven before the first scan");
 
-		read.install_scanned_chunk(source(), &storage_start(), &storage_end(), &[]);
+		read.materialize_scanned_chunk(source(), &storage_start(), &storage_end(), &[]);
 
 		let mut second = RangeCursor::new();
 		let chunk = serve_whole_storage(&read, &mut second);
@@ -854,11 +854,11 @@ mod tests {
 		// The head names a key a row may sit on, so only the storage end sentinel, which no row can occupy, may
 		// be answered as proven empty; answering at the head itself drops the row standing on it.
 		let read = tier();
-		install_from_prefix(&read, &[5, 3], 10);
+		materialize_from_prefix(&read, &[5, 3], 10);
 		assert_eq!(
 			read.head(source()).as_ref(),
 			Some(&row(5)),
-			"the install must name the first row as the head"
+			"the materialize must name the first row as the head"
 		);
 
 		read.invalidate(&row(5));

@@ -25,7 +25,7 @@ use reifydb_store::coverage::{
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::range::{
-	ENTRY_OVERHEAD, Install, InstallInterlock, OperatorRangeConfig, OperatorRangeKeyspaceMetrics,
+	ENTRY_OVERHEAD, Materialize, MaterializeInterlock, OperatorRangeConfig, OperatorRangeKeyspaceMetrics,
 	OperatorRangeMetrics, OperatorRangeTier, PARTITION_OVERHEAD, PartitionId, RangeScan,
 };
 
@@ -67,7 +67,7 @@ fn per_partition_bytes() -> u64 {
 	(PARTITION_OVERHEAD + footprint(&key(GROUP_A, Keyspace::ACCUMULATOR, b"a"), &row("v"))) as u64
 }
 
-fn install(
+fn materialize(
 	tier: &OperatorRangeTier,
 	operator: OperatorId,
 	group: GroupId,
@@ -76,10 +76,10 @@ fn install(
 ) -> PartitionId {
 	let range = keyspace_inner_range(group, keyspace);
 	let scan = tier.plan_scan(operator, &range).expect("a whole-keyspace range must be plannable");
-	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap the fixture can install over");
+	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap the fixture can materialize over");
 	assert!(
-		tier.install(&scan, &gap, page) == Install::Installed,
-		"the fixture page must fit the install it is staging"
+		tier.materialize(&scan, &gap, page) == Materialize::Materialized,
+		"the fixture page must fit the materialize it is staging"
 	);
 	PartitionId {
 		operator,
@@ -100,7 +100,7 @@ fn first_gap(scan: &RangeScan) -> Option<Interval> {
 
 fn one_row_partition(tier: &OperatorRangeTier, operator: OperatorId, group: GroupId, keyspace: Keyspace) -> EncodedKey {
 	let k = key(group, keyspace, b"a");
-	install(tier, operator, group, keyspace, &[(k.clone(), row("v"))]);
+	materialize(tier, operator, group, keyspace, &[(k.clone(), row("v"))]);
 	k
 }
 
@@ -156,10 +156,10 @@ fn a_covered_span_answers_a_range_and_an_uncovered_one_falls_through() {
 
 	let a = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	let b = key(GROUP_A, Keyspace::ACCUMULATOR, b"b");
-	install(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(a.clone(), row("v1")), (b.clone(), row("v2"))]);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(a.clone(), row("v1")), (b.clone(), row("v2"))]);
 
 	let served = serve_ram(&tier, OP_A, &range, 64).expect("a covered span must answer its own range");
-	assert_eq!(bodies(&served), ["v1", "v2"], "the claim must serve every row it was installed with, in key order");
+	assert_eq!(bodies(&served), ["v1", "v2"], "the claim must serve every row it was materialized with, in key order");
 	assert_eq!(served[0].0, a);
 	assert_eq!(served[1].0, b);
 	assert_eq!(tier.metrics().hits, 1);
@@ -177,7 +177,7 @@ fn a_range_serves_only_the_slice_it_was_asked_for() {
 		[b"a", b"b", b"c", b"d"].iter().map(|s| key(GROUP_A, Keyspace::ACCUMULATOR, *s)).collect();
 	let page: Vec<(EncodedKey, EncodedPodRow)> =
 		keys.iter().enumerate().map(|(index, k)| (k.clone(), row(&format!("v{index}")))).collect();
-	install(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &page);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &page);
 
 	let limited = serve_ram(&tier, OP_A, &keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR), 2)
 		.expect("the covered span must answer");
@@ -251,9 +251,9 @@ fn a_lookup_with_nothing_covered_falls_through_and_charges_a_point_miss() {
 	assert_eq!(tier.metrics().point_hits, 0);
 	assert_eq!(tier.metrics().misses, 0, "a point read must not be charged to the range counters");
 
-	install(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v"))]);
 	assert!(tier.lookup(OP_A, &k).is_some(), "the control: the same key answers once a scan covered it");
-	assert_eq!(tier.metrics().point_misses, 1, "the install must not retroactively change the earlier miss");
+	assert_eq!(tier.metrics().point_misses, 1, "the materialize must not retroactively change the earlier miss");
 }
 
 #[test]
@@ -269,7 +269,7 @@ fn an_overwrite_never_creates_a_claim() {
 	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "a write that cached nothing must be charged nothing");
 	assert_eq!(tier.lookup(OP_A, &k), None, "and the key must stay unknown rather than become a false claim");
 
-	install(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[]);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[]);
 	tier.overwrite(OP_A, k.clone(), row("v"));
 	assert_eq!(
 		tier.lookup(OP_A, &k),
@@ -299,31 +299,31 @@ fn invalidate_operator_drops_only_its_own_claims() {
 }
 
 #[test]
-fn an_install_keeps_a_row_already_resident_rather_than_replacing_it() {
+fn a_materialize_keeps_a_row_already_resident_rather_than_replacing_it() {
 	let tier = roomy();
 	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
-	install(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v1"))]);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v1"))]);
 
 	let range = keyspace_inner_range(GROUP_B, Keyspace::ACCUMULATOR);
 	let scan = tier.plan_scan(OP_A, &range).expect("an uncovered keyspace must be plannable");
 	tier.overwrite(OP_A, k.clone(), row("v2"));
 	let gap = first_gap(&scan).expect("the uncovered keyspace must plan as a gap");
-	tier.install(&scan, &gap, &[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("other"))]);
+	tier.materialize(&scan, &gap, &[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("other"))]);
 
 	assert_eq!(
 		tier.lookup(OP_A, &k),
 		Some(Some(row("v2"))),
-		"a resident row is at least as new as any persistent read, so an install must never undo a write \
+		"a resident row is at least as new as any persistent read, so a materialize must never undo a write \
          that landed while that read was in flight"
 	);
 }
 
 #[test]
-fn an_install_that_does_not_fit_the_budget_is_refused_whole_and_evicts_nothing() {
+fn a_materialize_that_does_not_fit_the_budget_is_refused_whole_and_evicts_nothing() {
 	let per_partition = per_partition_bytes();
 	let tier = tier(per_partition * 2);
-	install(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(key(GROUP_A, Keyspace::ACCUMULATOR, b"a"), row("v"))]);
-	install(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR, &[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(key(GROUP_A, Keyspace::ACCUMULATOR, b"a"), row("v"))]);
+	materialize(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR, &[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("v"))]);
 	assert_eq!(tier.resident_bytes().as_bytes(), per_partition * 2, "the fixture must fill the budget exactly");
 	let before = tier.resident_bytes();
 
@@ -335,18 +335,18 @@ fn an_install_that_does_not_fit_the_budget_is_refused_whole_and_evicts_nothing()
 		.map(|index| (key(third, Keyspace::ACCUMULATOR, &[index]), row("a fairly long row body")))
 		.collect();
 
-	assert!(tier.install(&scan, &gap, &page) == Install::Refused, "a span past the shard limit must be refused");
+	assert!(tier.materialize(&scan, &gap, &page) == Materialize::Refused, "a span past the shard limit must be refused");
 
-	assert_eq!(tier.metrics().installs_refused, 1);
+	assert_eq!(tier.metrics().materializes_refused, 1);
 	assert_eq!(tier.metrics().evictions, 0, "a new claim must never evict a proven resident to make room");
 	assert_eq!(tier.partitions(), 2);
-	assert_eq!(tier.resident_bytes(), before, "a refused install must not be charged a single byte");
+	assert_eq!(tier.resident_bytes(), before, "a refused materialize must not be charged a single byte");
 	assert_eq!(
 		tier.lookup(OP_A, &key(third, Keyspace::ACCUMULATOR, &[0u8])),
 		None,
-		"a refused install must roll its rows back, or a later read answers from a row no claim ever proved"
+		"a refused materialize must roll its rows back, or a later read answers from a row no claim ever proved"
 	);
-	assert!(!covers(&tier, OP_A, &range), "and it must leave no claim over the span it failed to install");
+	assert!(!covers(&tier, OP_A, &range), "and it must leave no claim over the span it failed to materialize");
 	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
 }
 
@@ -356,8 +356,8 @@ fn growing_past_the_budget_evicts_a_whole_partition_and_releases_its_bytes() {
 	let tier = tier(per_partition * 2);
 	let old = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	let grown = key(GROUP_B, Keyspace::ACCUMULATOR, b"a");
-	install(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(old.clone(), row("v"))]);
-	install(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR, &[(grown.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(old.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR, &[(grown.clone(), row("v"))]);
 	assert_eq!(tier.partitions(), 2, "two partitions fit exactly, so nothing may be evicted yet");
 	assert_eq!(tier.metrics().evictions, 0);
 
@@ -388,9 +388,9 @@ fn three_partition_tier() -> (OperatorRangeTier, EncodedKey, EncodedKey, Encoded
 	let touched = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	let idle = key(GROUP_B, Keyspace::ACCUMULATOR, b"a");
 	let grown = key(GroupId(12), Keyspace::ACCUMULATOR, b"a");
-	install(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(touched.clone(), row("v"))]);
-	install(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR, &[(idle.clone(), row("v"))]);
-	install(&tier, OP_A, GroupId(12), Keyspace::ACCUMULATOR, &[(grown.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(touched.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR, &[(idle.clone(), row("v"))]);
+	materialize(&tier, OP_A, GroupId(12), Keyspace::ACCUMULATOR, &[(grown.clone(), row("v"))]);
 	(tier, touched, idle, grown)
 }
 
@@ -403,7 +403,7 @@ fn assert_idle_partition_was_the_victim(tier: &OperatorRangeTier, touched: &Enco
 	assert_eq!(
 		tier.lookup(OP_A, idle),
 		None,
-		"the partition nothing read since it was installed must be the victim"
+		"the partition nothing read since it was materialized must be the victim"
 	);
 	assert!(
 		tier.lookup(OP_A, touched).is_some(),
@@ -446,9 +446,9 @@ fn charge_and_release_balance_across_the_partition_lifecycle() {
 		);
 	};
 
-	install(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v"))]);
 	assert_eq!(tier.resident_bytes().as_bytes(), per_partition);
-	balanced("install");
+	balanced("materialize");
 
 	tier.overwrite(OP_A, k.clone(), row("a much longer row body"));
 	assert!(tier.resident_bytes().as_bytes() > per_partition, "a larger row must be charged the difference");
@@ -462,8 +462,8 @@ fn charge_and_release_balance_across_the_partition_lifecycle() {
 	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "an operator drop must release every byte it removed");
 	balanced("operator drop");
 
-	install(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v"))]);
-	install(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR, &[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR, &[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("v"))]);
 	tier.overwrite(OP_A, key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("a very much longer row body indeed"));
 	assert!(tier.metrics().evictions > 0, "the fixture must actually evict, or this stage proves nothing");
 	balanced("evict");
@@ -487,7 +487,7 @@ fn a_long_key_charges_its_heap_bytes() {
 	assert_eq!(short.heap_bytes(), 0, "the short fixture must stay inline, or the comparison below is meaningless");
 	assert!(long.heap_bytes() > 0, "the long fixture must spill to the heap, or nothing tests heap accounting");
 
-	install(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(short.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(short.clone(), row("v"))]);
 	let after_short = tier.resident_bytes().as_bytes();
 	tier.overwrite(OP_A, long.clone(), row("v"));
 
@@ -662,9 +662,9 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	assert_eq!(accumulator.counters.hits, 1);
 	assert_eq!(
 		accumulator.counters.misses, 2,
-		"a gap stays charged once it is handed to the store; an install may never take its miss back"
+		"a gap stays charged once it is handed to the store; a materialize may never take its miss back"
 	);
-	assert_eq!(accumulator.counters.installs, 1);
+	assert_eq!(accumulator.counters.materializes, 1);
 	assert_eq!(accumulator.partitions, 1);
 	assert_eq!(accumulator.entries, 1);
 
@@ -762,7 +762,7 @@ fn keyspace_counters_are_summed_across_every_shard() {
 	assert_eq!(reported.len(), 1, "one keyspace spread over four shards must collapse to a single row");
 	assert_eq!(reported[0].keyspace, Keyspace::SOURCE_WATERMARK);
 	assert_eq!(reported[0].counters.hits, 64);
-	assert_eq!(reported[0].counters.installs, 64);
+	assert_eq!(reported[0].counters.materializes, 64);
 	assert_eq!(reported[0].partitions, 64);
 	assert_eq!(reported[0].entries, 64);
 }
@@ -772,8 +772,8 @@ fn an_eviction_is_charged_to_the_evicted_partition_keyspace() {
 	let tier = tier(per_partition_bytes() * 2);
 	let accumulator = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	let buffer = key(GROUP_A, Keyspace::BUFFER, b"a");
-	install(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(accumulator.clone(), row("v"))]);
-	install(&tier, OP_A, GROUP_A, Keyspace::BUFFER, &[(buffer.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(accumulator.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, Keyspace::BUFFER, &[(buffer.clone(), row("v"))]);
 
 	tier.overwrite(OP_A, buffer.clone(), row("a very much longer row body than the one it replaces"));
 
@@ -808,12 +808,12 @@ fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 }
 
 #[test]
-fn an_install_that_races_a_retraction_refuses_rather_than_reinstating_the_claim() {
+fn a_materialize_that_races_a_retraction_refuses_rather_than_reinstating_the_claim() {
 	let fired = Arc::new(AtomicBool::new(false));
 	let seen = fired.clone();
 	let victim = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 	let raced = victim.clone();
-	let hook: InstallInterlock = Box::new(move |tier: &OperatorRangeTier, _partition: PartitionId| {
+	let hook: MaterializeInterlock = Box::new(move |tier: &OperatorRangeTier, _partition: PartitionId| {
 		if !seen.swap(true, Ordering::Relaxed) {
 			tier.mark_deleted(OP_A, &raced);
 		}
@@ -833,32 +833,32 @@ fn an_install_that_races_a_retraction_refuses_rather_than_reinstating_the_claim(
 	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
 
-	let published = tier.install(&scan, &gap, &[(victim.clone(), row("stale"))]);
+	let published = tier.materialize(&scan, &gap, &[(victim.clone(), row("stale"))]);
 
 	assert!(fired.load(Ordering::Relaxed), "the seam hook never fired, so the invariant went unchecked");
 	assert!(
-		published == Install::Refused,
-		"a claim withdrawn while the persistent read was in flight must refuse the install, or the install \
+		published == Materialize::Refused,
+		"a claim withdrawn while the persistent read was in flight must refuse the materialize, or the materialize \
          reinstates a claim over a row the writer already removed"
 	);
-	assert_eq!(tier.metrics().installs_raced, 1);
-	assert_eq!(tier.metrics().installs, 0);
+	assert_eq!(tier.metrics().materializes_raced, 1);
+	assert_eq!(tier.metrics().materializes, 0);
 	assert_eq!(
 		tier.lookup(OP_A, &victim),
 		None,
-		"the refused install must roll its rows back and leave the key falling through to the store"
+		"the refused materialize must roll its rows back and leave the key falling through to the store"
 	);
-	assert!(!covers(&tier, OP_A, &range), "and it must leave no claim behind over the span it failed to install");
+	assert!(!covers(&tier, OP_A, &range), "and it must leave no claim behind over the span it failed to materialize");
 	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
 }
 
 #[test]
-fn a_concurrent_install_never_refuses_another_install() {
+fn a_concurrent_materialize_never_refuses_another_materialize() {
 	let fired = Arc::new(AtomicBool::new(false));
 	let seen = fired.clone();
-	let hook: InstallInterlock = Box::new(move |tier: &OperatorRangeTier, _partition: PartitionId| {
+	let hook: MaterializeInterlock = Box::new(move |tier: &OperatorRangeTier, _partition: PartitionId| {
 		if !seen.swap(true, Ordering::Relaxed) {
-			install(
+			materialize(
 				tier,
 				OP_A,
 				GROUP_B,
@@ -884,11 +884,11 @@ fn a_concurrent_install_never_refuses_another_install() {
 	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
 
 	assert!(
-		tier.install(&scan, &gap, &[(k.clone(), row("v"))]) == Install::Installed,
-		"only a withdrawal may refuse an install; the old fill handshake let two concurrent fills cancel each \
+		tier.materialize(&scan, &gap, &[(k.clone(), row("v"))]) == Materialize::Materialized,
+		"only a withdrawal may refuse a materialize; the old fill handshake let two concurrent fills cancel each \
          other, which throws away work neither of them raced"
 	);
 	assert!(fired.load(Ordering::Relaxed), "the seam hook never fired, so the invariant went unchecked");
-	assert_eq!(tier.metrics().installs_raced, 0);
+	assert_eq!(tier.metrics().materializes_raced, 0);
 	assert_eq!(tier.lookup(OP_A, &k), Some(Some(row("v"))));
 }

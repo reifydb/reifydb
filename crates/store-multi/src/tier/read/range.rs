@@ -30,7 +30,7 @@ impl MultiReadBufferTier {
 		key_range_of(page, self.bucket_shift())
 	}
 
-	pub fn install_scanned_chunk(
+	pub fn materialize_scanned_chunk(
 		&self,
 		table: EntryKind,
 		lo: &EncodedKey,
@@ -48,7 +48,7 @@ impl MultiReadBufferTier {
 			if page.kind != table {
 				return false;
 			}
-			return self.install_page_segment(page, shift, lo, tail, entries);
+			return self.materialize_page_segment(page, shift, lo, tail, entries);
 		}
 
 		let mut published = false;
@@ -65,14 +65,14 @@ impl MultiReadBufferTier {
 				ExclusiveUpperEnd::Top
 			};
 			if page.kind == table {
-				published |= self.install_page_segment(page, shift, lo, limit, &entries[run..next]);
+				published |= self.materialize_page_segment(page, shift, lo, limit, &entries[run..next]);
 			}
 			run = next;
 		}
 		published
 	}
 
-	fn install_page_segment(
+	fn materialize_page_segment(
 		&self,
 		page: PageId,
 		shift: u8,
@@ -129,10 +129,10 @@ impl MultiReadBufferTier {
 		{
 			let mut shard = self.shard(index).lock();
 			if published {
-				shard.coverage_metrics.installs += 1;
-				shard.coverage_metrics.install_rows += placed;
+				shard.coverage_metrics.materializes += 1;
+				shard.coverage_metrics.materialize_rows += placed;
 			} else {
-				shard.coverage_metrics.installs_refused += 1;
+				shard.coverage_metrics.materializes_refused += 1;
 			}
 		}
 		self.evict_to_capacity(index);

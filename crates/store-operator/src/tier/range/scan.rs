@@ -23,13 +23,13 @@ use reifydb_store::coverage::{
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::range::{
-	Install, OperatorRangeTier, PARTITION_OVERHEAD, Partition, PartitionId, RangeRows, RangeScan, Shard,
+	Materialize, OperatorRangeTier, PARTITION_OVERHEAD, Partition, PartitionId, RangeRows, RangeScan, Shard,
 	entry_footprint,
 };
 
 enum PartitionAction {
 	Claim(usize),
-	Install,
+	Materialize,
 }
 
 impl RangeScan {
@@ -287,9 +287,9 @@ impl OperatorRangeTier {
 		ServedChunk::Served(rows)
 	}
 
-	pub fn install(&self, scan: &RangeScan, span: &Interval, rows: &[(EncodedKey, EncodedPodRow)]) -> Install {
+	pub fn materialize(&self, scan: &RangeScan, span: &Interval, rows: &[(EncodedKey, EncodedPodRow)]) -> Materialize {
 		let mut start = span.start.clone();
-		let mut installed = false;
+		let mut materialized = false;
 		let mut claim: Option<Interval> = None;
 		let mut claimed: Vec<usize> = Vec::new();
 		if !span.is_empty() {
@@ -302,7 +302,7 @@ impl OperatorRangeTier {
 				let piece = Interval::new(start, end.clone());
 				if !partition.caches_ranges() || piece.is_empty() {
 					if !self.flush_claims(scan, &mut claim, &mut claimed) {
-						return Install::Refused;
+						return Materialize::Refused;
 					}
 				} else {
 					match self.classify(&piece, partition, rows) {
@@ -312,16 +312,16 @@ impl OperatorRangeTier {
 								None => claim = Some(piece.clone()),
 							}
 							claimed.push(index);
-							installed = true;
+							materialized = true;
 						}
-						PartitionAction::Install => {
+						PartitionAction::Materialize => {
 							if !self.flush_claims(scan, &mut claim, &mut claimed) {
-								return Install::Refused;
+								return Materialize::Refused;
 							}
-							if !self.install_partition(scan, &piece, rows) {
-								return Install::Refused;
+							if !self.materialize_partition(scan, &piece, rows) {
+								return Materialize::Refused;
 							}
-							installed = true;
+							materialized = true;
 						}
 					}
 				}
@@ -335,12 +335,12 @@ impl OperatorRangeTier {
 			}
 		}
 		if !self.flush_claims(scan, &mut claim, &mut claimed) {
-			return Install::Refused;
+			return Materialize::Refused;
 		}
-		if installed {
-			Install::Installed
+		if materialized {
+			Materialize::Materialized
 		} else {
-			Install::NothingCacheable
+			Materialize::NothingCacheable
 		}
 	}
 
@@ -351,14 +351,14 @@ impl OperatorRangeTier {
 		rows: &[(EncodedKey, EncodedPodRow)],
 	) -> PartitionAction {
 		if rows.iter().any(|(key, _)| piece.contains(key)) {
-			return PartitionAction::Install;
+			return PartitionAction::Materialize;
 		}
 		let index = self.shard_index(&partition);
 		let mut shard = self.shard(index).lock();
 		if shard.partitions.contains_key(&partition) {
-			return PartitionAction::Install;
+			return PartitionAction::Materialize;
 		}
-		shard.metrics.installs += 1;
+		shard.metrics.materializes += 1;
 		PartitionAction::Claim(index)
 	}
 
@@ -385,15 +385,15 @@ impl OperatorRangeTier {
 			let index = claimed[cursor];
 			let mut shard = self.shard(index).lock();
 			while cursor < claimed.len() && claimed[cursor] == index {
-				shard.metrics.installs -= 1;
-				shard.metrics.installs_raced += 1;
+				shard.metrics.materializes -= 1;
+				shard.metrics.materializes_raced += 1;
 				cursor += 1;
 			}
 		}
 		claimed.clear();
 	}
 
-	fn install_partition(&self, scan: &RangeScan, span: &Interval, rows: &[(EncodedKey, EncodedPodRow)]) -> bool {
+	fn materialize_partition(&self, scan: &RangeScan, span: &Interval, rows: &[(EncodedKey, EncodedPodRow)]) -> bool {
 		let Some(partition) = PartitionId::of(scan.operator, &span.start) else {
 			return false;
 		};
@@ -430,7 +430,7 @@ impl OperatorRangeTier {
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick,
-				installs: 0,
+				materializes: 0,
 				covered: false,
 			});
 
@@ -460,13 +460,13 @@ impl OperatorRangeTier {
 				if fresh {
 					partitions.remove(&partition);
 				}
-				metrics.installs_refused += 1;
-				keyspace_metrics[slot].installs_refused += 1;
+				metrics.materializes_refused += 1;
+				keyspace_metrics[slot].materializes_refused += 1;
 				return false;
 			}
 
 			resident.bytes += added;
-			resident.installs += 1;
+			resident.materializes += 1;
 			resident.tick = tick;
 			resident.covered = true;
 			shard.next_tick = tick + 1;
@@ -482,10 +482,10 @@ impl OperatorRangeTier {
 			let mut coverage = self.coverage().write();
 			if !self.retractions_unchanged(scan.retractions) {
 				drop(coverage);
-				self.roll_back_install(index, partition, fresh, &inserted);
+				self.roll_back_materialize(index, partition, fresh, &inserted);
 				let mut shard = self.shard(index).lock();
-				shard.metrics.installs_raced += 1;
-				shard.keyspace_metrics[slot].installs_raced += 1;
+				shard.metrics.materializes_raced += 1;
+				shard.keyspace_metrics[slot].materializes_raced += 1;
 				return false;
 			}
 			coverage.operators
@@ -495,8 +495,8 @@ impl OperatorRangeTier {
 		}
 
 		let mut shard = self.shard(index).lock();
-		shard.metrics.installs += 1;
-		shard.keyspace_metrics[slot].installs += 1;
+		shard.metrics.materializes += 1;
+		shard.keyspace_metrics[slot].materializes += 1;
 		true
 	}
 
@@ -506,8 +506,8 @@ impl OperatorRangeTier {
 			if !self.retractions_unchanged(scan.retractions) {
 				drop(coverage);
 				let mut shard = self.shard(index).lock();
-				shard.metrics.installs_raced += 1;
-				shard.keyspace_metrics[slot].installs_raced += 1;
+				shard.metrics.materializes_raced += 1;
+				shard.keyspace_metrics[slot].materializes_raced += 1;
 				return false;
 			}
 			coverage.operators
@@ -517,12 +517,12 @@ impl OperatorRangeTier {
 		}
 
 		let mut shard = self.shard(index).lock();
-		shard.metrics.installs += 1;
-		shard.keyspace_metrics[slot].installs += 1;
+		shard.metrics.materializes += 1;
+		shard.keyspace_metrics[slot].materializes += 1;
 		true
 	}
 
-	fn roll_back_install(&self, index: usize, partition: PartitionId, fresh: bool, inserted: &[EncodedKey]) {
+	fn roll_back_materialize(&self, index: usize, partition: PartitionId, fresh: bool, inserted: &[EncodedKey]) {
 		let mut shard = self.shard(index).lock();
 		let Shard {
 			partitions,
@@ -750,7 +750,7 @@ mod tests {
 	use reifydb_value::byte_size::ByteSize;
 
 	use super::split_at_partitions;
-	use crate::tier::range::{Install, OperatorRangeConfig, OperatorRangeTier, PartitionId, RangeScan};
+	use crate::tier::range::{Materialize, OperatorRangeConfig, OperatorRangeTier, PartitionId, RangeScan};
 
 	const OP: OperatorId = OperatorId(1);
 	const GROUP: GroupId = GroupId(10);
@@ -802,9 +802,9 @@ mod tests {
 		range: &EncodedKeyRange,
 		span: &Interval,
 		rows: &[(EncodedKey, EncodedPodRow)],
-	) -> Install {
+	) -> Materialize {
 		let scan = tier.plan_scan(OP, range).expect("the fixture range must be plannable");
-		tier.install(&scan, span, rows)
+		tier.materialize(&scan, span, rows)
 	}
 
 	fn spanning(from: &EncodedKey, to: &EncodedKey) -> Interval {
@@ -846,13 +846,13 @@ mod tests {
 			&range,
 			&spanning(&at(b"c"), &at(b"e")),
 			&[(at(b"c"), row("c")), (at(b"d"), row("d"))]
-		) == Install::Installed);
+		) == Materialize::Materialized);
 		assert!(claim(
 			&tier,
 			&range,
 			&spanning(&at(b"f"), &at(b"h")),
 			&[(at(b"f"), row("f")), (at(b"g"), row("g"))]
-		) == Install::Installed);
+		) == Materialize::Materialized);
 
 		let scan = tier.plan_scan(OP, &range).expect("a whole-keyspace range must be plannable");
 		let keyspace = whole(CACHED);
@@ -888,7 +888,7 @@ mod tests {
 	}
 
 	#[test]
-	fn two_overlapping_installs_compose_instead_of_clobbering_each_other() {
+	fn two_overlapping_materializes_compose_instead_of_clobbering_each_other() {
 		// A re-read key must not overwrite the resident row, nor drop the keys only the second read saw.
 		let tier = roomy();
 		let range = keyspace_inner_range(GROUP, CACHED);
@@ -899,13 +899,13 @@ mod tests {
 			&range,
 			&spanning(&at(b"a"), &at(b"c")),
 			&[(at(b"a"), row("a1")), (at(b"b"), row("b1"))]
-		) == Install::Installed);
+		) == Materialize::Materialized);
 		assert!(claim(
 			&tier,
 			&range,
 			&spanning(&at(b"b"), &at(b"e")),
 			&[(at(b"b"), row("b2")), (at(b"c"), row("c1")), (at(b"d"), row("d1"))]
-		) == Install::Installed);
+		) == Materialize::Materialized);
 
 		assert_eq!(intervals(&tier), [spanning(&at(b"a"), &at(b"e"))], "two touching claims must coalesce");
 
@@ -925,9 +925,9 @@ mod tests {
 		let at = |suffix: &[u8]| key(CACHED, suffix);
 
 		assert!(claim(&tier, &range, &spanning(&at(b"b"), &at(b"c")), &[(at(b"b"), row("b"))])
-			== Install::Installed);
+			== Materialize::Materialized);
 		assert!(claim(&tier, &range, &spanning(&at(b"d"), &at(b"e")), &[(at(b"d"), row("d"))])
-			== Install::Installed);
+			== Materialize::Materialized);
 
 		let scan = tier.plan_scan(OP, &range).expect("a whole-keyspace range must be plannable");
 		assert!(scan.degraded(), "three non-exempt gaps against a guard of one must abandon the plan");
@@ -966,11 +966,11 @@ mod tests {
 		let lower =
 			Interval::new(span_of(bottom, Keyspace(0xff)).0, span_of(bottom, Keyspace(UNCACHED.0 + 1)).1);
 		assert!(
-			claim(&tier, &range, &upper, &[]) == Install::Installed,
+			claim(&tier, &range, &upper, &[]) == Materialize::Materialized,
 			"an empty proven span is still a claim"
 		);
 		assert!(
-			claim(&tier, &range, &lower, &[]) == Install::Installed,
+			claim(&tier, &range, &lower, &[]) == Materialize::Materialized,
 			"an empty proven span is still a claim"
 		);
 
@@ -1025,7 +1025,7 @@ mod tests {
 			&range,
 			&span,
 			&[(at(b"a"), row("a")), (at(b"b"), row("b")), (at(b"c"), row("c"))]
-		) == Install::Installed);
+		) == Materialize::Materialized);
 		tier.mark_deleted(OP, &at(b"a"));
 		tier.mark_deleted(OP, &at(b"b"));
 
@@ -1055,7 +1055,7 @@ mod tests {
 	}
 
 	#[test]
-	fn an_install_refused_for_the_budget_leaves_the_tier_exactly_as_it_found_it() {
+	fn a_materialize_refused_for_the_budget_leaves_the_tier_exactly_as_it_found_it() {
 		// A refusal that keeps its rows lets a later read answer from a row no claim ever proved.
 		let tier = tier(512, 4);
 		let range = keyspace_inner_range(GROUP, CACHED);
@@ -1063,31 +1063,31 @@ mod tests {
 			(0..64u8).map(|index| (key(CACHED, &[index]), row("a fairly long row body"))).collect();
 
 		assert!(
-			claim(&tier, &range, &whole(CACHED), &page) == Install::Refused,
+			claim(&tier, &range, &whole(CACHED), &page) == Materialize::Refused,
 			"a span past the shard limit must be refused"
 		);
 
-		assert_eq!(tier.partitions(), 0, "a refused install must leave no partition behind");
+		assert_eq!(tier.partitions(), 0, "a refused materialize must leave no partition behind");
 		assert_eq!(tier.entries(), 0);
-		assert_eq!(tier.intervals(), 0, "and no claim over the span it failed to install");
-		assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "a refused install must not be charged a byte");
+		assert_eq!(tier.intervals(), 0, "and no claim over the span it failed to materialize");
+		assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "a refused materialize must not be charged a byte");
 		assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
 		assert_eq!(tier.lookup(OP, &key(CACHED, &[0u8])), None);
-		assert_eq!(tier.metrics().installs_refused, 1);
-		assert_eq!(tier.metrics().installs, 0);
+		assert_eq!(tier.metrics().materializes_refused, 1);
+		assert_eq!(tier.metrics().materializes, 0);
 	}
 
 	#[test]
-	fn an_install_into_a_keyspace_that_is_never_cached_leaves_the_tier_exactly_as_it_found_it() {
+	fn a_materialize_into_a_keyspace_that_is_never_cached_leaves_the_tier_exactly_as_it_found_it() {
 		// Taking these rows would admit a keyspace the tier is configured never to hold.
 		let tier = roomy();
 		let range = across(UNCACHED, Keyspace(UNCACHED.0 - 1));
 		let at = key(UNCACHED, b"a");
 
 		assert!(
-			claim(&tier, &range, &whole(UNCACHED), &[(at.clone(), row("v"))]) == Install::NothingCacheable,
+			claim(&tier, &range, &whole(UNCACHED), &[(at.clone(), row("v"))]) == Materialize::NothingCacheable,
 			"a span holding no cacheable partition must report nothing to cache, never refusal, or the \
-             caller stops installing for the rest of the scan"
+             caller stops materializing for the rest of the scan"
 		);
 
 		assert_eq!(
@@ -1099,11 +1099,11 @@ mod tests {
 		assert_eq!(tier.intervals(), 0);
 		assert_eq!(tier.resident_bytes(), ByteSize::ZERO);
 		assert_eq!(tier.lookup(OP, &at), None);
-		assert_eq!(tier.metrics().installs, 0);
+		assert_eq!(tier.metrics().materializes, 0);
 	}
 
 	#[test]
-	fn an_install_that_races_a_retraction_leaves_the_tier_exactly_as_it_found_it() {
+	fn a_materialize_that_races_a_retraction_leaves_the_tier_exactly_as_it_found_it() {
 		// Extending coverage after a retraction reinstates a claim over a row the writer removed.
 		let tier = roomy();
 		let range = keyspace_inner_range(GROUP, CACHED);
@@ -1112,16 +1112,16 @@ mod tests {
 
 		tier.record_retraction();
 
-		assert!(tier.install(&scan, &whole(CACHED), &[(at.clone(), row("v"))]) == Install::Refused);
+		assert!(tier.materialize(&scan, &whole(CACHED), &[(at.clone(), row("v"))]) == Materialize::Refused);
 
-		assert_eq!(tier.partitions(), 0, "a refused install must roll back the partition it created");
+		assert_eq!(tier.partitions(), 0, "a refused materialize must roll back the partition it created");
 		assert_eq!(tier.entries(), 0);
-		assert_eq!(tier.intervals(), 0, "and leave no claim behind over the span it failed to install");
+		assert_eq!(tier.intervals(), 0, "and leave no claim behind over the span it failed to materialize");
 		assert_eq!(tier.resident_bytes(), ByteSize::ZERO);
 		assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
 		assert_eq!(tier.lookup(OP, &at), None, "the rolled back row must fall through, not answer");
-		assert_eq!(tier.metrics().installs_raced, 1);
-		assert_eq!(tier.metrics().installs, 0);
+		assert_eq!(tier.metrics().materializes_raced, 1);
+		assert_eq!(tier.metrics().materializes, 0);
 	}
 
 	#[test]
@@ -1140,7 +1140,7 @@ mod tests {
 				&range,
 				&whole(keyspace),
 				&[(key(keyspace, b"k"), row(&keyspace.name()))]
-			) == Install::Installed);
+			) == Materialize::Materialized);
 		}
 
 		assert_eq!(intervals(&tier).len(), 1, "the three claims must coalesce, or the split is not under test");
@@ -1174,10 +1174,8 @@ mod tests {
 	}
 
 	#[test]
-	fn an_install_whose_span_crosses_a_partition_boundary_lands_rows_in_both_keyspaces() {
-		// A coalesced gap hands install one span covering several keyspaces, so install must re-split it per
-		// partition; refusing the whole span instead would leave every cross-keyspace read permanently
-		// uncached.
+	fn a_materialize_whose_span_crosses_a_partition_boundary_lands_rows_in_both_keyspaces() {
+		// A coalesced gap hands materialize one multi-keyspace span; refusing it whole leaves cross-keyspace reads permanently uncached.
 		let tier = roomy();
 		let top = Keyspace::BUFFER;
 		let bottom = Keyspace::ACCUMULATOR;
@@ -1188,8 +1186,8 @@ mod tests {
 
 		let scan = tier.plan_scan(OP, &across(top, bottom)).expect("a two-keyspace range must be plannable");
 		assert!(
-			tier.install(&scan, &span, &rows) == Install::Installed,
-			"an install spanning two cached partitions must be accepted"
+			tier.materialize(&scan, &span, &rows) == Materialize::Materialized,
+			"a materialize spanning two cached partitions must be accepted"
 		);
 
 		let body = |key: &EncodedKey| {
@@ -1204,7 +1202,7 @@ mod tests {
 		assert_eq!(
 			body(&tail),
 			Some(Some("bottom".to_string())),
-			"the partition past the boundary must be installed too, not discarded with the rest of the span"
+			"the partition past the boundary must be materialized too, not discarded with the rest of the span"
 		);
 	}
 
@@ -1326,8 +1324,8 @@ mod tests {
 		let bottom = Keyspace::ACCUMULATOR;
 		let range = across(top, bottom);
 
-		assert!(claim(&tier, &range, &whole(top), &[]) == Install::Installed);
-		assert!(claim(&tier, &range, &whole(bottom), &[(key(bottom, b"k"), row("k"))]) == Install::Installed);
+		assert!(claim(&tier, &range, &whole(top), &[]) == Materialize::Materialized);
+		assert!(claim(&tier, &range, &whole(bottom), &[(key(bottom, b"k"), row("k"))]) == Materialize::Materialized);
 		assert_eq!(intervals(&tier).len(), 1, "the two claims must coalesce, or the drop is not under test");
 		assert_eq!(tier.partitions(), 1, "only the keyspace holding a row may hold a partition");
 
@@ -1358,7 +1356,7 @@ mod tests {
 	}
 
 	#[test]
-	fn an_install_that_proves_an_empty_span_claims_it_without_paying_for_a_partition() {
+	fn a_materialize_that_proves_an_empty_span_claims_it_without_paying_for_a_partition() {
 		// A span the persistent tier answered with nothing is worth claiming, but the claim lives in the
 		// coverage index and the partition would hold no row. Charging one anyway lets a scan that crosses
 		// many empty keyspaces spend the whole budget on structures holding nothing, which evicts the rows
@@ -1366,7 +1364,7 @@ mod tests {
 		let tier = roomy();
 		let range = keyspace_inner_range(GROUP, CACHED);
 
-		assert!(claim(&tier, &range, &whole(CACHED), &[]) == Install::Installed);
+		assert!(claim(&tier, &range, &whole(CACHED), &[]) == Materialize::Materialized);
 
 		assert_eq!(tier.partitions(), 0, "a proof of emptiness must not materialise a partition to hold it");
 		assert_eq!(tier.intervals(), 1, "the claim itself must survive, or the span is read again forever");
@@ -1387,7 +1385,7 @@ mod tests {
 		let range = keyspace_inner_range(GROUP, CACHED);
 		let at = key(CACHED, b"a");
 
-		assert!(claim(&tier, &range, &whole(CACHED), &[]) == Install::Installed);
+		assert!(claim(&tier, &range, &whole(CACHED), &[]) == Materialize::Materialized);
 		assert_eq!(tier.partitions(), 0, "precondition: the claim stands with nothing behind it");
 
 		tier.insert(OP, at.clone(), row("v"));

@@ -42,8 +42,7 @@ const STORAGES: [StorageId; 4] = [
 	StorageId::Table(TableId(4)),
 ];
 
-/// Enough rows per storage that one scan spans several chunk installs, so claims have to coalesce across
-/// chunks before anything can be served from them.
+/// Enough rows per storage that one scan spans several chunk materializes, so claims coalesce across chunks.
 const ROWS: u64 = 160;
 
 const BATCH: u64 = 64;
@@ -160,7 +159,7 @@ struct Served {
 	rows: u64,
 	gaps: u64,
 	refused: u64,
-	installs: u64,
+	materializes: u64,
 	evicted: u64,
 	head_advances: u64,
 }
@@ -172,7 +171,7 @@ fn served(store: &StandardMultiStore) -> Served {
 		total.rows += shard.coverage.rows;
 		total.gaps += shard.coverage.gaps;
 		total.refused += shard.coverage.refused;
-		total.installs += shard.coverage.installs;
+		total.materializes += shard.coverage.materializes;
 		total.evicted += shard.pages.pages_evicted;
 		total.head_advances += shard.coverage.head_advances;
 	}
@@ -288,7 +287,7 @@ fn interval_served_scans_match_a_store_with_no_read_tier() {
 		total.rows += seen.rows;
 		total.gaps += seen.gaps;
 		total.refused += seen.refused;
-		total.installs += seen.installs;
+		total.materializes += seen.materializes;
 		total.evicted += seen.evicted;
 		total.head_advances += seen.head_advances;
 	}
@@ -303,7 +302,7 @@ fn interval_served_scans_match_a_store_with_no_read_tier() {
 		"the interval path must actually have carried rows out of RAM, or the equivalence proves \
 		 nothing: {total:?}"
 	);
-	assert!(total.installs > 20, "no install published a claim, so nothing was ever serveable: {total:?}");
+	assert!(total.materializes > 20, "no materialize published a claim, so nothing was ever serveable: {total:?}");
 	assert!(total.evicted > 0, "no page was evicted, so a claim whose page left RAM was never exercised");
 	assert!(
 		total.head_advances > 20,
@@ -335,7 +334,7 @@ fn interval_served_scans_match_a_store_with_no_read_tier_across_several_pages() 
 		total.rows += seen.rows;
 		total.gaps += seen.gaps;
 		total.refused += seen.refused;
-		total.installs += seen.installs;
+		total.materializes += seen.materializes;
 		total.evicted += seen.evicted;
 		total.head_advances += seen.head_advances;
 	}
@@ -350,7 +349,7 @@ fn interval_served_scans_match_a_store_with_no_read_tier_across_several_pages() 
 		"the interval path must actually have carried rows out of RAM, or the equivalence proves \
 		 nothing: {total:?}"
 	);
-	assert!(total.installs > 20, "no install published a claim, so nothing was ever serveable: {total:?}");
+	assert!(total.materializes > 20, "no materialize published a claim, so nothing was ever serveable: {total:?}");
 	assert!(
 		total.head_advances > 20,
 		"no scan was moved off its storage prefix by a head, so the head path is untested here: {total:?}"

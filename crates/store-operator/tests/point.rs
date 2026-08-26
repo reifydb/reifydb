@@ -727,9 +727,8 @@ fn a_group_dictionary_key_round_trips_through_the_point_tier() {
 }
 
 #[test]
-fn a_cached_absence_survives_the_range_fill_that_installs_over_it() {
-	// A range install must not cost the point tier the absences its reads paid sqlite to learn, or every such key
-	// is bought from sqlite twice.
+fn a_cached_absence_survives_the_range_fill_that_materializes_over_it() {
+	// A range materialize must not cost the point tier the absences its reads paid sqlite to learn.
 	let (store, storage, _guard) = cached_store();
 	seed_accumulator(&storage, 3);
 	storage.apply_batch(&[OperatorWrite::Insert {
@@ -755,7 +754,7 @@ fn a_cached_absence_survives_the_range_fill_that_installs_over_it() {
 		1,
 		"the scan must claim the span it covered or nothing below is tested"
 	);
-	assert_eq!(point_entries(&store), 1, "the install must leave the remembered absence exactly where it was");
+	assert_eq!(point_entries(&store), 1, "the materialize must leave the remembered absence exactly where it was");
 	assert_eq!(range_entries(&store), 3, "and the three scanned rows must land in the range tier beside it");
 
 	range_tier(&store).invalidate_operator(OP_A);
@@ -774,7 +773,7 @@ fn a_cached_absence_survives_the_range_fill_that_installs_over_it() {
 	assert_eq!(
 		after.fills_started, counters.fills_started,
 		"a re-read of an absence the tier already owns must cost no persistent lookup; a second fill means \
-		 the range install threw the absence away and every such key is bought from sqlite twice"
+		 the range materialize threw the absence away and every such key is bought from sqlite twice"
 	);
 	assert_eq!(scanned.fetched, 0, "a point read served from the tier must reach no persistent scan either");
 	assert_eq!(after.hits, counters.hits + 1, "the read must be attributed as a hit, not silently as a miss");
@@ -820,7 +819,7 @@ fn a_proven_span_outranks_the_absence_the_point_tier_remembers() {
 		["v1", "v2", "v3", "v4", "v5"],
 		"the scan must find the keys the point tier believes are absent"
 	);
-	assert_eq!(range_tier(&store).partitions(), 1, "the scan must install its span or nothing below is tested");
+	assert_eq!(range_tier(&store).partitions(), 1, "the scan must materialize its span or nothing below is tested");
 
 	assert_eq!(
 		body(&store

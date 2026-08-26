@@ -140,7 +140,7 @@ fn a_range_over_a_claimed_span_is_served_without_reaching_the_persistent_tier() 
 	assert_eq!(
 		range_partitions(&store),
 		1,
-		"a whole-keyspace scan that was not cut short must install the span, or nothing below is tested"
+		"a whole-keyspace scan that was not cut short must materialize the span, or nothing below is tested"
 	);
 	assert_eq!(range_intervals(&store), 1, "one uninterrupted scan must prove one claim, not a claim per row");
 
@@ -152,7 +152,7 @@ fn a_range_over_a_claimed_span_is_served_without_reaching_the_persistent_tier() 
 	assert_eq!(scanned.fetched, 0, "a claimed span that still scans sqlite saves nothing");
 	let counters = range_tier(&store).metrics();
 	assert_eq!(counters.hits, 1, "the second scan must be attributed as a range hit");
-	assert_eq!(counters.installs, 1, "only the first scan may install");
+	assert_eq!(counters.materializes, 1, "only the first scan may materialize");
 }
 
 #[test]
@@ -162,7 +162,7 @@ fn a_range_over_a_keyspace_no_scan_proved_falls_through_and_still_answers_in_ful
 	seed_accumulator(&storage, 3);
 
 	assert!(store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 2)).is_some(), "the point read warms one key");
-	assert_eq!(range_partitions(&store), 0, "a point fill must never install a claim over keys it did not read");
+	assert_eq!(range_partitions(&store), 0, "a point fill must never materialize a claim over keys it did not read");
 
 	let before = ScanCounters::sample();
 	let served = store.range_batch(OP_A, accumulator_range(), 64);
@@ -214,7 +214,7 @@ fn a_new_key_and_a_rewrite_together_leave_the_claim_whole_and_current() {
 }
 
 #[test]
-fn a_range_install_that_does_not_fit_its_own_budget_evicts_no_point_entry() {
+fn a_range_materialize_that_does_not_fit_its_own_budget_evicts_no_point_entry() {
 	// A shared budget would let one range scan flush the point entries that serve their keyspaces.
 	let (store, storage, _guard) = cached_store_with(
 		OperatorPointConfig {
@@ -244,28 +244,28 @@ fn a_range_install_that_does_not_fit_its_own_budget_evicts_no_point_entry() {
 	assert_eq!(
 		bodies(&served),
 		["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"],
-		"a refused install must leave the answer exactly as the persistent tier gave it"
+		"a refused materialize must leave the answer exactly as the persistent tier gave it"
 	);
 	let counters = range_tier(&store).metrics();
-	assert_eq!(counters.installs_refused, 1, "the install must be refused, not silently admitted");
-	assert_eq!(counters.installs, 0);
-	assert_eq!(range_partitions(&store), 0, "a refused install must leave no partition behind");
+	assert_eq!(counters.materializes_refused, 1, "the materialize must be refused, not silently admitted");
+	assert_eq!(counters.materializes, 0);
+	assert_eq!(range_partitions(&store), 0, "a refused materialize must leave no partition behind");
 	assert_eq!(range_intervals(&store), 0, "and it must leave no claim behind over rows it did not keep");
 	assert_eq!(
 		point_tier(&store).resident_bytes(),
 		point_used,
-		"a range install must never be charged to the point budget"
+		"a range materialize must never be charged to the point budget"
 	);
-	assert_eq!(point_entries(&store), point_held, "a refused range install must evict no point entry");
+	assert_eq!(point_entries(&store), point_held, "a refused range materialize must evict no point entry");
 	assert_eq!(
 		point_tier(&store).metrics().evictions,
 		0,
-		"a refused install must not start an eviction cascade in the other tier"
+		"a refused materialize must not start an eviction cascade in the other tier"
 	);
 	assert_eq!(
 		body(&store
 			.get(OP_A, &key_in(Keyspace::COUNT, 1))
-			.expect("the point entry survives the refused install")),
+			.expect("the point entry survives the refused materialize")),
 		"pinned"
 	);
 }
@@ -388,7 +388,7 @@ fn a_write_of_a_key_the_claim_holds_updates_it_in_place() {
 
 #[test]
 fn a_removal_of_a_key_the_claim_holds_hides_that_key_and_keeps_the_claim() {
-	// Erasing the key would let a scan reinstall the row sqlite still holds until the flush.
+	// Erasing the key would let a scan rematerialize the row sqlite still holds until the flush.
 	let (store, storage, _guard) = cached_store();
 	seed_accumulator(&storage, 3);
 
@@ -497,7 +497,7 @@ fn a_written_row_too_big_for_the_range_budget_takes_the_whole_claim_with_it() {
 	seed_accumulator(&storage, 3);
 
 	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
-	assert_eq!(range_partitions(&store), 1, "the small install must fit its budget or nothing below is tested");
+	assert_eq!(range_partitions(&store), 1, "the small materialize must fit its budget or nothing below is tested");
 
 	let huge = "x".repeat(8192);
 	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 4), row(&huge));
@@ -572,7 +572,7 @@ fn dropping_one_operators_state_forgets_every_claim_and_row_it_cached() {
 }
 
 #[test]
-fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_still_installs_the_ones_after_it() {
+fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_still_materializes_the_ones_after_it() {
 	// Keycode inverts, so a scan walks keyspaces downward and every cached keyspace sitting one slot
 	// below an uncached one is reached only after the tier has already declined a span. Reading that
 	// decline as "the tier is full" starves the rest of the scan, and the starved keyspaces re-read
@@ -619,7 +619,7 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_still_installs_the_on
 	assert_eq!(
 		range_partitions(&store),
 		1,
-		"crossing an uncached keyspace must not stop the scan from installing the cached one behind it"
+		"crossing an uncached keyspace must not stop the scan from materializing the cached one behind it"
 	);
 
 	let before = ScanCounters::sample();

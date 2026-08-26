@@ -406,7 +406,7 @@ mod tests {
 		let base = bucket * BUCKET;
 		let entries: Vec<RawEntry> = rows.iter().map(|n| entry(*n, version)).collect();
 		assert!(
-			read.install_scanned_chunk(source(), &row(base + BUCKET - 1), &row(base), &entries),
+			read.materialize_scanned_chunk(source(), &row(base + BUCKET - 1), &row(base), &entries),
 			"a whole-bucket chunk must publish its claim"
 		);
 	}
@@ -655,13 +655,13 @@ mod tests {
 		// every scan would fall through at its prefix again.
 		let read = tier(1);
 		let entries = vec![entry(BUCKET * 4 + 3, 1), entry(BUCKET * 4 + 2, 1), entry(BUCKET * 4 + 1, 1)];
-		read.install_scanned_chunk(source(), &storage_start(), &storage_end(), &entries);
+		read.materialize_scanned_chunk(source(), &storage_start(), &storage_end(), &entries);
 		assert_eq!(
 			read.head(source()).as_ref(),
 			Some(&row(BUCKET * 4 + 3)),
-			"the install must have recorded a head"
+			"the materialize must have recorded a head"
 		);
-		assert!(read.covers(source(), &row(BUCKET * 4 + 2)), "the install must have published a claim");
+		assert!(read.covers(source(), &row(BUCKET * 4 + 2)), "the materialize must have published a claim");
 
 		read.insert(row(1), CommitVersion(1), Some(val(1)));
 
@@ -758,7 +758,7 @@ mod tests {
 		//
 		// The model mirrors the production write paths: a commit invalidates while the persistent tier
 		// still holds the old row, the sweep writes persistent and then inserts, a rejected sweep
-		// invalidates and leaves persistent alone, and an install publishes exactly what persistent holds.
+		// invalidates and leaves persistent alone, and a materialize publishes exactly what persistent holds.
 		const ROWS: u64 = BUCKET * 4;
 		let mut total_checked = 0usize;
 		let mut evictions = 0usize;
@@ -795,7 +795,7 @@ mod tests {
 							.map(|(at, version)| entry(*at, *version))
 							.rev()
 							.collect();
-						read.install_scanned_chunk(
+						read.materialize_scanned_chunk(
 							source(),
 							&row(base + BUCKET - 1),
 							&row(base),

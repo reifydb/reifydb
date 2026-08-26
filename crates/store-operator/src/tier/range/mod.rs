@@ -13,7 +13,7 @@
 //! steps. They are ordered so that coverage understates what RAM holds rather than overstating it:
 //!
 //! ```text
-//! install                insert rows first, then extend coverage
+//! materialize            insert rows first, then extend coverage
 //! remove or invalidate   shrink coverage first, then drop rows
 //! evict                  shrink coverage first, then drop rows
 //! read                   observe coverage first, then read the row
@@ -21,7 +21,7 @@
 //!
 //! Overstating answers a key the persistent tier still holds as a proven absence, which is silent
 //! wrong data; understating costs one persistent read. The two locks are never held together: the
-//! write paths and the install path take them in opposite directions.
+//! write paths and the materialize path take them in opposite directions.
 //!
 //! Two claims survive a write. A removal becomes a `Deleted` entry, so the interval around it stays
 //! authoritative until the flush demotes it to `Absent`; that `Absent` entry must not vanish, or a
@@ -131,7 +131,7 @@ impl PartitionId {
 	}
 
 	/// Whether the keyspace may live in this tier. A partition the policy keeps out is never
-	/// installed, and its gaps never count against the gap guard, or a group-wide scan would degrade
+	/// materialized, and its gaps never count against the gap guard, or a group-wide scan would degrade
 	/// forever.
 	pub fn caches_ranges(&self) -> bool {
 		self.keyspace.cache_policy().caches_ranges()
@@ -178,9 +178,9 @@ struct Partition {
 	pinned: PinnedCount,
 	bytes: usize,
 	tick: u64,
-	/// Bumped by every install: a move between choosing a victim and dropping its rows means an
-	/// install claimed the span, and dropping the rows would leave that claim standing over nothing.
-	installs: u64,
+	/// Bumped by every materialize: a move between choosing a victim and dropping its rows means a
+	/// materialize claimed the span, and dropping the rows would leave that claim standing over nothing.
+	materializes: u64,
 	/// Whether this partition has ever taken part in a claim; it gates the coverage lock for every
 	/// write and must err toward `true`, since a false no leaves a stale claim standing.
 	covered: bool,
@@ -222,10 +222,10 @@ fn account(bytes: &mut usize, budget: &MemoryBudget, old: usize, new: usize) {
 	}
 }
 
-/// A planned scan, and the token its installs use to prove they did not race a retraction.
+/// A planned scan, and the token its materializes use to prove they did not race a retraction.
 ///
 /// The token is the retraction count read at plan time, bumped by every coverage shrink; without it
-/// an install would reinstate a claim over rows a concurrent write had already removed.
+/// a materialize would reinstate a claim over rows a concurrent write had already removed.
 pub struct RangeScan {
 	pub(super) operator: OperatorId,
 	pub(super) segments: Vec<Segment>,
@@ -234,14 +234,14 @@ pub struct RangeScan {
 	pub(super) retractions: u64,
 }
 
-/// What an install did with the span it was handed.
+/// What a materialize did with the span it was handed.
 ///
 /// `NothingCacheable` and `Refused` both leave RAM unchanged, but only `Refused` means the tier
-/// declined the claim; a caller that stops installing on `NothingCacheable` starves every keyspace
+/// declined the claim; a caller that stops materializing on `NothingCacheable` starves every keyspace
 /// sitting behind an uncacheable one for the rest of the scan.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Install {
-	Installed,
+pub enum Materialize {
+	Materialized,
 	NothingCacheable,
 	Refused,
 }
@@ -253,11 +253,11 @@ pub struct OperatorRangeMetrics {
 	/// Non-exempt gaps a plan handed to the persistent tier.
 	pub misses: u64,
 	/// Spans a persistent read proved and this tier took.
-	pub installs: u64,
+	pub materializes: u64,
 	/// Spans refused whole because they did not fit the shard budget.
-	pub installs_refused: u64,
+	pub materializes_refused: u64,
 	/// Spans refused because a claim was withdrawn while the persistent read was in flight.
-	pub installs_raced: u64,
+	pub materializes_raced: u64,
 	pub evictions: u64,
 	pub point_hits: u64,
 	pub point_misses: u64,
@@ -288,17 +288,17 @@ const KEYSPACE_SLOTS: usize = 256;
 type KeyspaceCounters = Box<[OperatorRangeMetrics; KEYSPACE_SLOTS]>;
 
 #[cfg(test)]
-pub(crate) type InstallInterlock = Box<dyn Fn(&OperatorRangeTier, PartitionId) + Send + Sync>;
+pub(crate) type MaterializeInterlock = Box<dyn Fn(&OperatorRangeTier, PartitionId) + Send + Sync>;
 
 struct PoolInner {
 	shards: Box<[Mutex<Shard>]>,
 	coverage: RwLock<CoverageIndex>,
-	/// Bumped inside every coverage shrink, so a reader and an install can each tell that no claim
+	/// Bumped inside every coverage shrink, so a reader and a materialize can each tell that no claim
 	/// was withdrawn between two of their steps.
 	retractions: Retractions,
 	gap_guard: usize,
 	#[cfg(test)]
-	interlock: Option<InstallInterlock>,
+	interlock: Option<MaterializeInterlock>,
 }
 
 #[derive(Clone)]

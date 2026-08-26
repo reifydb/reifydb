@@ -33,7 +33,7 @@ use crate::{
 	store::{OperatorStore, StandardOperatorStore},
 	tier::{
 		commit::batch::DropMarker,
-		range::{Install, proven_span, scan_range},
+		range::{Materialize, proven_span, scan_range},
 	},
 	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
@@ -477,7 +477,7 @@ impl StandardOperatorStore {
 		let mut cursor = RangeCursor::new();
 		let mut pending: Option<(Interval, bool, usize)> = None;
 		let mut claim_start: Option<EncodedKey> = None;
-		let mut installing = true;
+		let mut materializing = true;
 
 		while items.len() < target {
 			if page_index == page.len() && !exhausted {
@@ -486,7 +486,7 @@ impl StandardOperatorStore {
 
 				match (tier, scan.as_ref()) {
 					(Some(tier), Some(scan)) => loop {
-						if let Some((interval, installable, consumed)) = pending.take() {
+						if let Some((interval, materializable, consumed)) = pending.take() {
 							let Some(persistent) = self.persistent.as_ref() else {
 								exhausted = true;
 								break;
@@ -503,7 +503,7 @@ impl StandardOperatorStore {
 							);
 							let complete = !batch.has_more || batch.items.is_empty();
 
-							if installable && installing {
+							if materializable && materializing {
 								let start = claim_start
 									.clone()
 									.unwrap_or_else(|| interval.start.clone());
@@ -511,10 +511,10 @@ impl StandardOperatorStore {
 								let last = batch.items.last().map(|(key, _)| key);
 								if let Some(proven) = proven_span(&span, last, complete)
 								{
-									match tier.install(scan, &proven, &batch.items)
+									match tier.materialize(scan, &proven, &batch.items)
 									{
-										Install::Installed
-										| Install::NothingCacheable => {
+										Materialize::Materialized
+										| Materialize::NothingCacheable => {
 											claim_start = batch
 												.items
 												.last()
@@ -522,7 +522,7 @@ impl StandardOperatorStore {
 													successor(key)
 												});
 										}
-										Install::Refused => installing = false,
+										Materialize::Refused => materializing = false,
 									}
 								}
 							}
@@ -535,7 +535,7 @@ impl StandardOperatorStore {
 								cursor.reset();
 								claim_start = None;
 							} else {
-								pending = Some((interval, installable, consumed));
+								pending = Some((interval, materializable, consumed));
 							}
 
 							if batch.items.is_empty() {

@@ -17,7 +17,7 @@ use reifydb_store::coverage::{plan::GapHistogram, retraction::Retractions};
 use reifydb_value::byte_size::ByteSize;
 
 #[cfg(test)]
-use crate::tier::range::InstallInterlock;
+use crate::tier::range::MaterializeInterlock;
 use crate::tier::range::{
 	CoverageIndex, KEYSPACE_SLOTS, OperatorRangeConfig, OperatorRangeKeyspaceMetrics, OperatorRangeMetrics,
 	OperatorRangeShardMetrics, OperatorRangeTier, Partition, PartitionId, PoolInner, Shard, account,
@@ -49,7 +49,7 @@ impl OperatorRangeTier {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn with_interlock(config: OperatorRangeConfig, interlock: InstallInterlock) -> Option<Self> {
+	pub(crate) fn with_interlock(config: OperatorRangeConfig, interlock: MaterializeInterlock) -> Option<Self> {
 		let resident_bytes = config.resident_bytes?;
 		Some(Self {
 			inner: Arc::new(PoolInner {
@@ -104,7 +104,7 @@ impl OperatorRangeTier {
 
 	pub(super) fn evict_to_capacity(&self, shard: usize) {
 		loop {
-			let Some((victim, installs)) = self.pick_victim(shard) else {
+			let Some((victim, materializes)) = self.pick_victim(shard) else {
 				break;
 			};
 			self.retract_partition(&victim);
@@ -112,7 +112,7 @@ impl OperatorRangeTier {
 			if let Some(interlock) = self.inner.interlock.as_ref() {
 				interlock(self, victim);
 			}
-			if !self.drop_unpinned(shard, &victim, installs) {
+			if !self.drop_unpinned(shard, &victim, materializes) {
 				break;
 			}
 		}
@@ -129,10 +129,10 @@ impl OperatorRangeTier {
 				continue;
 			}
 			if victim.map(|(tick, _, _)| partition.tick < tick).unwrap_or(true) {
-				victim = Some((partition.tick, *id, partition.installs));
+				victim = Some((partition.tick, *id, partition.materializes));
 			}
 		}
-		victim.map(|(_, id, installs)| (id, installs))
+		victim.map(|(_, id, materializes)| (id, materializes))
 	}
 
 	fn retract_partition(&self, victim: &PartitionId) {
@@ -151,7 +151,7 @@ impl OperatorRangeTier {
 		self.record_retraction();
 	}
 
-	fn drop_unpinned(&self, index: usize, victim: &PartitionId, installs: u64) -> bool {
+	fn drop_unpinned(&self, index: usize, victim: &PartitionId, materializes: u64) -> bool {
 		let mut shard = self.shard(index).lock();
 		let Shard {
 			partitions,
@@ -164,7 +164,7 @@ impl OperatorRangeTier {
 			let Some(partition) = partitions.get_mut(victim) else {
 				return true;
 			};
-			if partition.installs != installs {
+			if partition.materializes != materializes {
 				return false;
 			}
 			let Partition {
@@ -322,9 +322,9 @@ impl MetricsCollector for OperatorRangeTier {
 		out.push(MetricsSample::count(RANGE_SCOPE, "resident_entries", self.entries() as u64));
 		out.push(MetricsSample::counter(RANGE_SCOPE, "hits", counters.hits));
 		out.push(MetricsSample::counter(RANGE_SCOPE, "misses", counters.misses));
-		out.push(MetricsSample::counter(RANGE_SCOPE, "installs", counters.installs));
-		out.push(MetricsSample::counter(RANGE_SCOPE, "installs_refused", counters.installs_refused));
-		out.push(MetricsSample::counter(RANGE_SCOPE, "installs_raced", counters.installs_raced));
+		out.push(MetricsSample::counter(RANGE_SCOPE, "materializes", counters.materializes));
+		out.push(MetricsSample::counter(RANGE_SCOPE, "materializes_refused", counters.materializes_refused));
+		out.push(MetricsSample::counter(RANGE_SCOPE, "materializes_raced", counters.materializes_raced));
 		out.push(MetricsSample::counter(RANGE_SCOPE, "evictions", counters.evictions));
 		out.push(MetricsSample::counter(RANGE_SCOPE, "point_hits", counters.point_hits));
 		out.push(MetricsSample::counter(RANGE_SCOPE, "point_misses", counters.point_misses));
@@ -343,7 +343,7 @@ impl MetricsCollector for OperatorRangeTier {
 			out.push(MetricsSample::count(scope.clone(), "entries", keyspace.entries as u64));
 			out.push(MetricsSample::counter(scope.clone(), "hits", keyspace.counters.hits));
 			out.push(MetricsSample::counter(scope.clone(), "misses", keyspace.counters.misses));
-			out.push(MetricsSample::counter(scope.clone(), "installs", keyspace.counters.installs));
+			out.push(MetricsSample::counter(scope.clone(), "materializes", keyspace.counters.materializes));
 			out.push(MetricsSample::counter(scope.clone(), "evictions", keyspace.counters.evictions));
 			out.push(MetricsSample::counter(scope.clone(), "point_hits", keyspace.counters.point_hits));
 			out.push(MetricsSample::counter(scope, "point_misses", keyspace.counters.point_misses));
@@ -363,9 +363,9 @@ impl MetricsCollector for OperatorRangeTier {
 fn accumulate(target: &mut OperatorRangeMetrics, source: &OperatorRangeMetrics) {
 	target.hits += source.hits;
 	target.misses += source.misses;
-	target.installs += source.installs;
-	target.installs_refused += source.installs_refused;
-	target.installs_raced += source.installs_raced;
+	target.materializes += source.materializes;
+	target.materializes_refused += source.materializes_refused;
+	target.materializes_raced += source.materializes_raced;
 	target.evictions += source.evictions;
 	target.point_hits += source.point_hits;
 	target.point_misses += source.point_misses;
@@ -479,12 +479,12 @@ mod tests {
 					pinned: PinnedCount::new(),
 					bytes: PARTITION_OVERHEAD,
 					tick,
-					installs: 0,
+					materializes: 0,
 					covered: true,
 				}
 			});
 			slot.tick = tick;
-			slot.installs += 1;
+			slot.materializes += 1;
 			slot.covered = true;
 			for (key, entry) in rows {
 				let footprint = entry_footprint(&key, &entry);
@@ -552,7 +552,7 @@ mod tests {
 		assert_eq!(tier.entries(), 0);
 		assert_eq!(tier.partitions(), 0);
 		assert_eq!(tier.metrics().evictions, 1);
-		assert_eq!(tier.retractions(), 1, "the shrink must be visible to an install still in flight");
+		assert_eq!(tier.retractions(), 1, "the shrink must be visible to a materialize still in flight");
 	}
 
 	#[test]
@@ -594,8 +594,8 @@ mod tests {
 	}
 
 	#[test]
-	fn an_install_that_reclaims_the_span_stops_the_rows_being_dropped() {
-		// An install racing the drop must keep its rows, or its fresh claim stands over nothing.
+	fn a_materialize_that_reclaims_the_span_stops_the_rows_being_dropped() {
+		// A materialize racing the drop must keep its rows, or its fresh claim stands over nothing.
 		let k = key(Keyspace::ACCUMULATOR, b"a");
 		let rows = vec![(k.clone(), Entry::row(row("v")))];
 		let fired = Arc::new(AtomicBool::new(false));
@@ -614,7 +614,7 @@ mod tests {
 		tier.evict_to_capacity(0);
 
 		assert_eq!(probe(&tier, &k), Some(Some(row("v"))), "the raced rows must survive untouched");
-		assert_eq!(tier.entries(), 2, "the install's row joined them rather than replacing them");
+		assert_eq!(tier.entries(), 2, "the materialize's row joined them rather than replacing them");
 		assert_eq!(tier.metrics().evictions, 0, "a raced pass evicts nothing");
 	}
 
@@ -698,9 +698,9 @@ mod tests {
 		assert_eq!(reading(&out, "operator_range", "resident_intervals"), Some(Reading::Count(Count::new(1))));
 		assert_eq!(reading(&out, "operator_range", "resident_partitions"), Some(Reading::Count(Count::new(1))));
 		assert_eq!(reading(&out, "operator_range", "resident_entries"), Some(Reading::Count(Count::new(1))));
-		assert!(reading(&out, "operator_range", "installs").is_some());
-		assert!(reading(&out, "operator_range", "installs_refused").is_some());
-		assert!(reading(&out, "operator_range", "installs_raced").is_some());
+		assert!(reading(&out, "operator_range", "materializes").is_some());
+		assert!(reading(&out, "operator_range", "materializes_refused").is_some());
+		assert!(reading(&out, "operator_range", "materializes_raced").is_some());
 		assert!(reading(&out, "operator_range", "fills").is_none(), "the old name must not survive");
 		assert!(reading(&out, "operator_range", "resident_buckets").is_none());
 		assert_eq!(reading(&out, "operator_range::gaps", "scans"), Some(Reading::Count(Count::new(1))));
