@@ -5,8 +5,11 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Shared napi bindings exposing a real ReifyDB Database, for per-app Node test bridges"
+description = "Shared napi bindings exposing a real ReifyDB Database, for Node test bridges and @reifydb/reifydb"
 publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 reifydb = { workspace = true }
@@ -15,3 +18,8 @@ napi = { workspace = true }
 napi-derive = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
+tokio = { workspace = true }
+
+[build-dependencies]
+napi-build = { workspace = true }
+reifydb-build = { workspace = true }

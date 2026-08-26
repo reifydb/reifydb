@@ -2069,6 +2069,7 @@ dependencies = [
  "napi-derive",
  "napi-sys",
  "once_cell",
+ "tokio",
 ]
 
 [[package]]
@@ -3218,10 +3219,13 @@ name = "reifydb-node"
 version = "0.9.0"
 dependencies = [
  "napi",
+ "napi-build",
  "napi-derive",
  "reifydb",
+ "reifydb-build",
  "reifydb-value",
  "serde_json",
+ "tokio",
  "uuid",
 ]
 

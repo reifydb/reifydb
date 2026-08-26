@@ -8,11 +8,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ADDON_PATH = path.resolve(__dirname, '../../../../../../target/release/libbridge.so')
 
 export interface Backend {
-  commandRoot(rql: string): string
-  queryRoot(rql: string): string
-  commandAs(identity: string, rql: string): string
-  queryAs(identity: string, rql: string): string
-  authenticate(method: string, credentials: Record<string, string>): string
+  commandRoot(rql: string): Promise<string>
+  queryRoot(rql: string): Promise<string>
+  commandAs(identity: string, rql: string): Promise<string>
+  queryAs(identity: string, rql: string): Promise<string>
+  authenticate(method: string, credentials: Record<string, string>): Promise<string>
 }
 
 export interface BackendFactory {

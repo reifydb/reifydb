@@ -30,7 +30,7 @@ function installFetchBridge(engine: Backend) {
       if (init?.method === 'POST' && url.endsWith('/monitors')) {
         const body = JSON.parse(init.body as string)
         const id = uuid7()
-        engine.commandRoot(insertMonitorRql(id, body))
+        await engine.commandRoot(insertMonitorRql(id, body))
         return new Response(JSON.stringify({ id, ...body }), {
           status: 201,
           headers: { 'Content-Type': 'application/json' },
@@ -75,11 +75,10 @@ describe('create monitor flow', () => {
     expect(params.monitorId).toBeTruthy()
 
     // Asserts against the real engine, not the mock response - otherwise a broken migration would go undetected.
-    const rows = JSON.parse(
-      engine.queryRoot(
-        'from uptime::monitors filter { name == "reifydb.com" } map { name, kind, target, status }',
-      ),
+    const result = await engine.queryRoot(
+      'from uptime::monitors filter { name == "reifydb.com" } map { name, kind, target, status }',
     )
+    const rows = JSON.parse(result)
     expect(rows).toEqual([
       { name: 'reifydb.com', kind: 'http', target: 'https://reifydb.com/health', status: 'unknown' },
     ])
