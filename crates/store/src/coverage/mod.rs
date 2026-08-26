@@ -33,6 +33,9 @@ pub mod interval;
 pub mod plan;
 pub mod retraction;
 
+#[cfg(test)]
+mod protocol;
+
 use std::cmp::Ordering;
 
 use reifydb_codec::key::encoded::EncodedKey;
