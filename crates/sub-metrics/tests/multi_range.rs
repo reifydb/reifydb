@@ -30,13 +30,13 @@ fn multi_range_spec_pins_the_layout_the_read_buffer_gave_up() {
 	let spec = MetricsDomain::StoreMultiRange.spec();
 
 	let current = spec.columns(Surface::Current);
-	assert_eq!(current.len(), 18, "ts + shard + 5 levels + 11 counters");
+	assert_eq!(current.len(), 19, "ts + shard + 5 levels + 12 counters");
 	assert_eq!(current[0].name, "ts");
 	assert_eq!(current[1].name, "shard");
 	assert!(current.iter().all(|column| column.name != "domain"), "no domain discriminator column");
 
 	let total = spec.columns(Surface::Total);
-	assert_eq!(total.len(), 13, "ts + shard + 11 counters; levels must not reach ::total");
+	assert_eq!(total.len(), 14, "ts + shard + 12 counters; levels must not reach ::total");
 
 	for moved in ["materializes", "materializes_refused"] {
 		assert!(
@@ -57,5 +57,5 @@ fn multi_range_spec_pins_the_layout_the_read_buffer_gave_up() {
 
 	let counters = spec.measures.iter().filter(|m| m.kind == MetricKind::Counter).count();
 	let levels = spec.measures.iter().filter(|m| m.kind == MetricKind::Level).count();
-	assert_eq!((levels, counters), (5, 11));
+	assert_eq!((levels, counters), (5, 12));
 }

@@ -289,6 +289,8 @@ pub struct RangeMetrics {
 	pub hits: u64,
 	/// Non-exempt gaps a plan handed to the persistent tier.
 	pub misses: u64,
+	/// Gaps the domain exempts, served by neither this tier nor the persistent one.
+	pub exempt: u64,
 	/// Spans a persistent read proved and this tier took.
 	pub materializes: u64,
 	/// Spans refused whole because they did not fit the shard budget.

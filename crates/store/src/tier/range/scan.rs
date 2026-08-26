@@ -171,7 +171,10 @@ impl<D: RangeDomain> RangeTier<D> {
 						shard.metrics.misses += 1;
 						shard.slot_metrics[slot].misses += 1;
 					}
-					Tally::Untallied => {}
+					Tally::Untallied => {
+						shard.metrics.exempt += 1;
+						shard.slot_metrics[slot].exempt += 1;
+					}
 				}
 				if D::caches_ranges(&partition) {
 					match shard.partitions.get_mut(&partition) {

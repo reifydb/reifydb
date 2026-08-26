@@ -351,6 +351,7 @@ impl<D: RangeDomain> MetricsCollector for RangeTier<D> {
 		out.push(MetricsSample::count(D::SCOPE, "resident_entries", self.entries() as u64));
 		out.push(MetricsSample::counter(D::SCOPE, "hits", counters.hits));
 		out.push(MetricsSample::counter(D::SCOPE, "misses", counters.misses));
+		out.push(MetricsSample::counter(D::SCOPE, "exempt", counters.exempt));
 		out.push(MetricsSample::counter(D::SCOPE, "materializes", counters.materializes));
 		out.push(MetricsSample::counter(D::SCOPE, "materializes_refused", counters.materializes_refused));
 		out.push(MetricsSample::counter(D::SCOPE, "materializes_raced", counters.materializes_raced));
@@ -372,6 +373,7 @@ impl<D: RangeDomain> MetricsCollector for RangeTier<D> {
 			out.push(MetricsSample::count(scope.clone(), "entries", keyspace.entries as u64));
 			out.push(MetricsSample::counter(scope.clone(), "hits", keyspace.counters.hits));
 			out.push(MetricsSample::counter(scope.clone(), "misses", keyspace.counters.misses));
+			out.push(MetricsSample::counter(scope.clone(), "exempt", keyspace.counters.exempt));
 			out.push(MetricsSample::counter(scope.clone(), "materializes", keyspace.counters.materializes));
 			out.push(MetricsSample::counter(scope.clone(), "evictions", keyspace.counters.evictions));
 			out.push(MetricsSample::counter(scope.clone(), "point_hits", keyspace.counters.point_hits));
@@ -392,6 +394,7 @@ impl<D: RangeDomain> MetricsCollector for RangeTier<D> {
 fn accumulate(target: &mut RangeMetrics, source: &RangeMetrics) {
 	target.hits += source.hits;
 	target.misses += source.misses;
+	target.exempt += source.exempt;
 	target.materializes += source.materializes;
 	target.materializes_refused += source.materializes_refused;
 	target.materializes_raced += source.materializes_raced;

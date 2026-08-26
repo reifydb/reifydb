@@ -103,11 +103,11 @@ fn operator_range_keyspace_pins_the_published_layout() {
 
 	let levels = spec.measures.iter().filter(|m| m.kind == MetricKind::Level).count();
 	let counters = spec.measures.iter().filter(|m| m.kind == MetricKind::Counter).count();
-	assert_eq!((levels, counters), (4, 8), "used/partitions/intervals/entries are levels, the rest counters");
-	assert_eq!(spec.measures.len(), 12, "no measure outside the level/counter split");
+	assert_eq!((levels, counters), (4, 9), "used/partitions/intervals/entries are levels, the rest counters");
+	assert_eq!(spec.measures.len(), 13, "no measure outside the level/counter split");
 
 	let current = spec.columns(Surface::Current);
-	assert_eq!(current.len(), 14, "ts + keyspace + 4 levels + 8 counters");
+	assert_eq!(current.len(), 15, "ts + keyspace + 4 levels + 9 counters");
 	assert_eq!(current[0].name, "ts");
 	assert_eq!(current[1].name, "keyspace");
 	assert!(
@@ -116,7 +116,7 @@ fn operator_range_keyspace_pins_the_published_layout() {
 	);
 
 	let total = spec.columns(Surface::Total);
-	assert_eq!(total.len(), 10, "ts + keyspace + 8 counters; levels must never reach ::total");
+	assert_eq!(total.len(), 11, "ts + keyspace + 9 counters; levels must never reach ::total");
 	assert!(!total.iter().any(|column| column.name == "used"), "a level in ::total is a summed gauge");
 	assert!(spec.has_total, "cache work is cumulative, so ::total must exist");
 }
