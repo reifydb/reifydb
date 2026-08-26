@@ -3,6 +3,7 @@
 
 pub mod commit;
 pub mod persistent;
+pub mod point;
 pub mod range;
 pub mod read;
 
