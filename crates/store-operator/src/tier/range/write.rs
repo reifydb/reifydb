@@ -43,7 +43,7 @@ impl OperatorRangeTier {
 		if !self.participates(index, &partition) {
 			return;
 		}
-		if self.coverage().read().operators.get(&operator).is_some_and(|set| set.contains(key)) {
+		if self.coverage().read().contains(operator, key) {
 			if self.place(index, &partition, key.clone(), Entry::deleted()) {
 				self.evict_to_capacity(index);
 			}
@@ -66,7 +66,7 @@ impl OperatorRangeTier {
 	pub fn invalidate_operator(&self, operator: OperatorId) {
 		{
 			let mut coverage = self.coverage().write();
-			coverage.operators.remove(&operator);
+			coverage.remove(operator);
 			self.record_retraction();
 		}
 		for shard in self.all_shards() {
@@ -145,7 +145,7 @@ impl OperatorRangeTier {
 	}
 
 	fn claims(&self, partition: &PartitionId, key: &EncodedKey) -> bool {
-		self.coverage().read().operators.get(&partition.operator).is_some_and(|set| set.contains(key))
+		self.coverage().read().contains(partition.operator, key)
 	}
 
 	fn discard(&self, index: usize, partition: &PartitionId, key: &EncodedKey) {
@@ -167,21 +167,16 @@ impl OperatorRangeTier {
 
 	fn withdraw(&self, operator: OperatorId, key: &EncodedKey) {
 		let mut coverage = self.coverage().write();
-		if let Some(set) = coverage.operators.get_mut(&operator) {
-			set.shrink_key(key);
-		}
+		coverage.shrink_key(operator, key);
 		self.record_retraction();
 	}
 
 	fn claim_island(&self, operator: OperatorId, key: &EncodedKey) {
-		if self.coverage().read().operators.get(&operator).is_some_and(|set| set.contains(key)) {
+		if self.coverage().read().contains(operator, key) {
 			return;
 		}
 		let mut coverage = self.coverage().write();
-		coverage.operators
-			.entry(operator)
-			.or_default()
-			.extend(key.clone(), ExclusiveUpperEnd::Key(successor(key)));
+		coverage.extend(operator, key.clone(), ExclusiveUpperEnd::Key(successor(key)));
 	}
 }
 
@@ -257,12 +252,7 @@ mod tests {
 	}
 
 	fn claim(tier: &OperatorRangeTier, operator: OperatorId, start: &EncodedKey, end: &EncodedKey) {
-		tier.coverage()
-			.write()
-			.operators
-			.entry(operator)
-			.or_default()
-			.extend(start.clone(), ExclusiveUpperEnd::Key(end.clone()));
+		tier.coverage().write().extend(operator, start.clone(), ExclusiveUpperEnd::Key(end.clone()));
 	}
 
 	fn residency(tier: &OperatorRangeTier, id: &PartitionId, at: &EncodedKey) -> Option<Entry<EncodedPodRow>> {
@@ -289,11 +279,11 @@ mod tests {
 	}
 
 	fn covers(tier: &OperatorRangeTier, operator: OperatorId, at: &EncodedKey) -> bool {
-		tier.coverage().read().operators.get(&operator).is_some_and(|set| set.contains(at))
+		tier.coverage().read().contains(operator, at)
 	}
 
 	fn intervals(tier: &OperatorRangeTier, operator: OperatorId) -> Vec<Interval> {
-		tier.coverage().read().operators.get(&operator).map(|set| set.iter().collect()).unwrap_or_default()
+		tier.coverage().read().set(operator).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
 	fn island(at: &EncodedKey) -> Interval {

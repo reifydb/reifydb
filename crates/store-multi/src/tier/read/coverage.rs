@@ -19,7 +19,7 @@ use reifydb_store::{
 	row::page::{PageId, key_range_of, page_of},
 };
 
-use crate::tier::read::{CoverageIndex, MultiReadBufferTier, Span, scan::page_bounds};
+use crate::tier::read::{Coverage, MultiReadBufferTier, Span, scan::page_bounds};
 
 pub(super) fn span_of(range: Option<EncodedKeyRange>) -> Option<Span> {
 	let range = range?;
@@ -66,15 +66,15 @@ pub(super) struct Leading {
 	pub(super) advanced: bool,
 }
 
-fn page_fully_claimed(coverage: &CoverageIndex, page: PageId, shift: u8) -> bool {
+fn page_fully_claimed(coverage: &Coverage, page: PageId, shift: u8) -> bool {
 	let Some((start, end)) = span_of(key_range_of(page, shift)) else {
 		return false;
 	};
-	coverage.kinds.get(&page.kind).and_then(|set| set.covering(&start)).is_some_and(|claim| claim.end >= end)
+	coverage.index.set(page.kind).and_then(|set| set.covering(&start)).is_some_and(|claim| claim.end >= end)
 }
 
 impl MultiReadBufferTier {
-	pub(super) fn coverage(&self) -> &RwLock<CoverageIndex> {
+	pub(super) fn coverage(&self) -> &RwLock<Coverage> {
 		&self.inner.coverage
 	}
 
@@ -87,7 +87,7 @@ impl MultiReadBufferTier {
 	}
 
 	pub(super) fn claims(&self, kind: EntryKind, key: &EncodedKey) -> bool {
-		self.coverage().read().kinds.get(&kind).is_some_and(|set| set.contains(key))
+		self.coverage().read().index.contains(kind, key)
 	}
 
 	pub fn page_is_complete(&self, page: PageId) -> bool {
@@ -138,7 +138,7 @@ impl MultiReadBufferTier {
 			return None;
 		}
 		let ceiling = ExclusiveUpperEnd::Key(successor(&page_end)).min(hi.clone());
-		let set = coverage.kinds.get(&kind)?;
+		let set = coverage.index.set(kind)?;
 		let claim = set.covering(&lo)?;
 		let cap = claim.end.min(ceiling);
 		let planned = plan(set, lo.clone(), cap, DEFAULT_GAP_GUARD, |_| false);
@@ -226,7 +226,7 @@ impl MultiReadBufferTier {
 			self.inner.claims_refused.fetch_add(1, Ordering::SeqCst);
 			return false;
 		}
-		coverage.kinds.entry(kind).or_default().extend(span.0.clone(), span.1.clone());
+		coverage.index.extend(kind, span.0.clone(), span.1.clone());
 		#[cfg(test)]
 		self.inner.claims_published.fetch_add(1, Ordering::SeqCst);
 		true
@@ -240,16 +240,7 @@ impl MultiReadBufferTier {
 	/// over a key RAM no longer holds. A bump that refuses a claim only understates, which is free.
 	pub(super) fn withdraw_key(&self, kind: EntryKind, key: &EncodedKey) {
 		let mut coverage = self.coverage().write();
-		let emptied = match coverage.kinds.get_mut(&kind) {
-			Some(set) => {
-				set.shrink_key(key);
-				set.is_empty()
-			}
-			None => false,
-		};
-		if emptied {
-			coverage.kinds.remove(&kind);
-		}
+		coverage.index.shrink_key(kind, key);
 		if in_row_band(kind, key)
 			&& coverage.heads.get(&kind).is_some_and(|current| current.as_slice() > key.as_slice())
 		{
@@ -260,22 +251,13 @@ impl MultiReadBufferTier {
 
 	pub(super) fn withdraw_span(&self, kind: EntryKind, span: &Span) {
 		let mut coverage = self.coverage().write();
-		let emptied = match coverage.kinds.get_mut(&kind) {
-			Some(set) => {
-				set.shrink_range(&span.0, &span.1);
-				set.is_empty()
-			}
-			None => false,
-		};
-		if emptied {
-			coverage.kinds.remove(&kind);
-		}
+		coverage.index.shrink_range(kind, &span.0, &span.1);
 		self.record_retraction();
 	}
 
 	pub(super) fn withdraw_all(&self) {
 		let mut coverage = self.coverage().write();
-		coverage.kinds.clear();
+		coverage.index.clear();
 		coverage.heads.clear();
 		self.record_retraction();
 	}
@@ -311,16 +293,16 @@ impl MultiReadBufferTier {
 
 	#[cfg(test)]
 	pub(super) fn intervals(&self, kind: EntryKind) -> Vec<Interval> {
-		self.coverage().read().kinds.get(&kind).map(|set| set.iter().collect()).unwrap_or_default()
+		self.coverage().read().index.set(kind).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
 	#[cfg(test)]
 	pub(super) fn claimed_keys(&self) -> Vec<(EntryKind, Interval)> {
 		let coverage = self.coverage().read();
 		let mut out = Vec::new();
-		for (kind, set) in coverage.kinds.iter() {
+		for (kind, set) in coverage.index.iter() {
 			for interval in set.iter() {
-				out.push((*kind, interval));
+				out.push((kind, interval));
 			}
 		}
 		out

@@ -40,7 +40,7 @@ impl OperatorRangeTier {
 		}
 
 		let before = self.retractions();
-		let claimed = self.coverage().read().operators.get(&operator).is_some_and(|set| set.contains(key));
+		let claimed = self.coverage().read().contains(operator, key);
 		if !claimed {
 			self.record_point_miss(index, &partition);
 			return None;
@@ -182,12 +182,7 @@ mod tests {
 	}
 
 	fn claim(tier: &OperatorRangeTier, start: &EncodedKey, end: &EncodedKey) {
-		tier.coverage()
-			.write()
-			.operators
-			.entry(OP_A)
-			.or_default()
-			.extend(start.clone(), ExclusiveUpperEnd::Key(end.clone()));
+		tier.coverage().write().extend(OP_A, start.clone(), ExclusiveUpperEnd::Key(end.clone()));
 	}
 
 	fn point_hits(tier: &OperatorRangeTier, id: &PartitionId) -> u64 {
@@ -247,7 +242,7 @@ mod tests {
 		let at = key(CACHED, b"m");
 		seat(&tier, id, &at, Entry::row(row("v")));
 
-		assert!(tier.coverage().read().operators.get(&OP_A).is_none(), "the fixture must claim nothing");
+		assert!(tier.coverage().read().set(OP_A).is_none(), "the fixture must claim nothing");
 		assert_eq!(tier.lookup(OP_A, &at), Some(Some(row("v"))));
 	}
 

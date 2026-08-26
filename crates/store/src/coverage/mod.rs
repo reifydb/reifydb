@@ -29,6 +29,7 @@
 
 pub mod cursor;
 pub mod entry;
+pub mod index;
 pub mod interval;
 pub mod plan;
 pub mod retraction;

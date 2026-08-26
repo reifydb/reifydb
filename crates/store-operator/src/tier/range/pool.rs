@@ -8,18 +8,19 @@ use std::{
 };
 
 use reifydb_core::{
+	interface::catalog::flow::OperatorId,
 	key::operator_state::Keyspace,
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	util::budget::MemoryBudget,
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
-use reifydb_store::coverage::{plan::GapHistogram, retraction::Retractions};
+use reifydb_store::coverage::{index::CoverageIndex, plan::GapHistogram, retraction::Retractions};
 use reifydb_value::byte_size::ByteSize;
 
 #[cfg(test)]
 use crate::tier::range::MaterializeInterlock;
 use crate::tier::range::{
-	CoverageIndex, KEYSPACE_SLOTS, OperatorRangeConfig, OperatorRangeKeyspaceMetrics, OperatorRangeMetrics,
+	KEYSPACE_SLOTS, OperatorRangeConfig, OperatorRangeKeyspaceMetrics, OperatorRangeMetrics,
 	OperatorRangeShardMetrics, OperatorRangeTier, Partition, PartitionId, PoolInner, Shard, account,
 	entry_footprint,
 };
@@ -37,9 +38,7 @@ impl OperatorRangeTier {
 		Some(Self {
 			inner: Arc::new(PoolInner {
 				shards: build_shards(config, resident_bytes),
-				coverage: RwLock::new(CoverageIndex {
-					operators: HashMap::new(),
-				}),
+				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
 				#[cfg(test)]
@@ -54,9 +53,7 @@ impl OperatorRangeTier {
 		Some(Self {
 			inner: Arc::new(PoolInner {
 				shards: build_shards(config, resident_bytes),
-				coverage: RwLock::new(CoverageIndex {
-					operators: HashMap::new(),
-				}),
+				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
 				interlock: Some(interlock),
@@ -82,7 +79,7 @@ impl OperatorRangeTier {
 		&self.inner.shards
 	}
 
-	pub(super) fn coverage(&self) -> &RwLock<CoverageIndex> {
+	pub(super) fn coverage(&self) -> &RwLock<CoverageIndex<OperatorId>> {
 		&self.inner.coverage
 	}
 
@@ -138,16 +135,7 @@ impl OperatorRangeTier {
 	fn retract_partition(&self, victim: &PartitionId) {
 		let (start, end) = victim.span();
 		let mut coverage = self.coverage().write();
-		let emptied = match coverage.operators.get_mut(&victim.operator) {
-			Some(set) => {
-				set.shrink_range(&start, &end);
-				set.is_empty()
-			}
-			None => false,
-		};
-		if emptied {
-			coverage.operators.remove(&victim.operator);
-		}
+		coverage.shrink_range(victim.operator, &start, &end);
 		self.record_retraction();
 	}
 
@@ -200,7 +188,7 @@ impl OperatorRangeTier {
 	}
 
 	pub fn intervals(&self) -> usize {
-		self.coverage().read().operators.values().map(|set| set.len()).sum()
+		self.coverage().read().intervals()
 	}
 
 	pub fn partitions(&self) -> usize {
@@ -270,7 +258,7 @@ impl OperatorRangeTier {
 		{
 			let coverage = self.coverage().read();
 			for id in resident {
-				let Some(set) = coverage.operators.get(&id.operator) else {
+				let Some(set) = coverage.set(id.operator) else {
 					continue;
 				};
 				let (start, end) = id.span();
@@ -495,7 +483,7 @@ mod tests {
 			}
 		}
 		let (start, end) = id.span();
-		tier.coverage().write().operators.entry(id.operator).or_default().extend(start, end);
+		tier.coverage().write().extend(id.operator, start, end);
 	}
 
 	fn resident(tier: &OperatorRangeTier, key: &EncodedKey) -> Option<Entry<EncodedPodRow>> {
@@ -510,7 +498,7 @@ mod tests {
 		if let Some(entry) = resident(tier, key) {
 			return Some(entry.value().cloned());
 		}
-		let covered = tier.coverage().read().operators.get(&OP_A).is_some_and(|set| set.contains(key));
+		let covered = tier.coverage().read().contains(OP_A, key);
 		if covered {
 			Some(None)
 		} else {
@@ -519,7 +507,7 @@ mod tests {
 	}
 
 	fn claims(tier: &OperatorRangeTier) -> Vec<Interval> {
-		tier.coverage().read().operators.get(&OP_A).map(|set| set.iter().collect()).unwrap_or_default()
+		tier.coverage().read().set(OP_A).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
 	fn scan_plan(gaps: usize, degraded: bool) -> ScanPlan {

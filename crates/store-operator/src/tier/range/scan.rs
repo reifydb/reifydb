@@ -72,7 +72,7 @@ impl OperatorRangeTier {
 		let (planned, held, retractions) = {
 			let coverage = self.coverage().read();
 			let vacant = CoverageSet::new();
-			let claims = coverage.operators.get(&operator).unwrap_or(&vacant);
+			let claims = coverage.set(operator).unwrap_or(&vacant);
 			let planned =
 				plan(claims, lo.clone(), hi.clone(), self.gap_guard(), |gap| exempt_gap(operator, gap));
 			let held = claims.contains(&lo);
@@ -227,7 +227,7 @@ impl OperatorRangeTier {
 
 		let observed = {
 			let coverage = self.coverage().read();
-			let Some(claims) = coverage.operators.get(&scan.operator) else {
+			let Some(claims) = coverage.set(scan.operator) else {
 				return ServedChunk::Gap;
 			};
 			match claims.covering(&start) {
@@ -377,7 +377,7 @@ impl OperatorRangeTier {
 			self.undo_claims(claimed);
 			return false;
 		}
-		coverage.operators.entry(scan.operator).or_default().extend(span.start, span.end);
+		coverage.extend(scan.operator, span.start, span.end);
 		drop(coverage);
 		claimed.clear();
 		true
@@ -498,10 +498,7 @@ impl OperatorRangeTier {
 				shard.keyspace_metrics[slot].materializes_raced += 1;
 				return false;
 			}
-			coverage.operators
-				.entry(scan.operator)
-				.or_default()
-				.extend(span.start.clone(), span.end.clone());
+			coverage.extend(scan.operator, span.start.clone(), span.end.clone());
 		}
 
 		let mut shard = self.shard(index).lock();
@@ -520,10 +517,7 @@ impl OperatorRangeTier {
 				shard.keyspace_metrics[slot].materializes_raced += 1;
 				return false;
 			}
-			coverage.operators
-				.entry(scan.operator)
-				.or_default()
-				.extend(span.start.clone(), span.end.clone());
+			coverage.extend(scan.operator, span.start.clone(), span.end.clone());
 		}
 
 		let mut shard = self.shard(index).lock();
@@ -841,7 +835,7 @@ mod tests {
 	}
 
 	fn intervals(tier: &OperatorRangeTier) -> Vec<Interval> {
-		tier.coverage().read().operators.get(&OP).map(|set| set.iter().collect()).unwrap_or_default()
+		tier.coverage().read().set(OP).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
 	#[test]

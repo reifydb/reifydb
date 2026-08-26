@@ -58,7 +58,8 @@ use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_store::coverage::{
 	ExclusiveUpperEnd,
 	entry::{Entry, PinnedCount},
-	interval::{CoverageSet, Interval},
+	index::CoverageIndex,
+	interval::Interval,
 	plan::{DEFAULT_GAP_GUARD, GapHistogram, Segment},
 	retraction::Retractions,
 	successor,
@@ -195,11 +196,6 @@ struct Shard {
 	keyspace_metrics: KeyspaceCounters,
 }
 
-/// The claims RAM holds, one disjoint coalesced set per operator, behind a single lock.
-struct CoverageIndex {
-	operators: HashMap<OperatorId, CoverageSet>,
-}
-
 const NODE_FILL_DIVISOR: usize = 2;
 
 const ENTRY_OVERHEAD: usize = NODE_FILL_DIVISOR * (size_of::<EncodedKey>() + size_of::<Entry<EncodedPodRow>>());
@@ -292,7 +288,7 @@ pub(crate) type MaterializeInterlock = Box<dyn Fn(&OperatorRangeTier, PartitionI
 
 struct PoolInner {
 	shards: Box<[Mutex<Shard>]>,
-	coverage: RwLock<CoverageIndex>,
+	coverage: RwLock<CoverageIndex<OperatorId>>,
 	/// Bumped inside every coverage shrink, so a reader and a materialize can each tell that no claim
 	/// was withdrawn between two of their steps.
 	retractions: Retractions,

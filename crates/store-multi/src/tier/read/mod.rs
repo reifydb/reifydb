@@ -30,7 +30,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind, util::budget::MemoryBudget};
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_store::{
-	coverage::{ExclusiveUpperEnd, interval::CoverageSet, retraction::Retractions},
+	coverage::{ExclusiveUpperEnd, index::CoverageIndex, retraction::Retractions},
 	row::page::{DEFAULT_BUCKET_SHIFT, PageId},
 };
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
@@ -103,12 +103,10 @@ impl ResidentPage {
 	}
 }
 
-/// The claims RAM holds, one disjoint coalesced set per entry kind, behind a single lock.
-///
-/// `EntryKind` is the dimension a range read is already parameterised by, so one scan consults one
-/// set, and every key of one kind sorts together in the encoded key space.
-struct CoverageIndex {
-	kinds: HashMap<EntryKind, CoverageSet>,
+/// The claims RAM holds, keyed by entry kind, and the per-kind heads that sit alongside them behind
+/// the one coverage lock.
+struct Coverage {
+	index: CoverageIndex<EntryKind>,
 	/// One key per kind proving the persistent tier holds no row key of that kind below it, so a scan
 	/// resuming at a storage prefix no claim can reach still starts at a page a claim can answer for.
 	///
@@ -237,7 +235,7 @@ type InvalidateInterlock = Box<dyn Fn(&MultiReadBufferTier, &EncodedKey) + Send 
 struct PoolInner {
 	shards: Box<[Mutex<Shard>]>,
 	bucket_shift: u8,
-	coverage: RwLock<CoverageIndex>,
+	coverage: RwLock<Coverage>,
 	/// Bumped inside every coverage shrink, so a fill can tell that no claim was withdrawn between
 	/// reading the token and publishing.
 	retractions: Retractions,

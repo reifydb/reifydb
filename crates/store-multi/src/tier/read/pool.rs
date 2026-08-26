@@ -17,12 +17,15 @@ use reifydb_core::{
 	util::budget::MemoryBudget,
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
-use reifydb_store::{coverage::retraction::Retractions, row::page::PageId};
+use reifydb_store::{
+	coverage::{index::CoverageIndex, retraction::Retractions},
+	row::page::PageId,
+};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::read::{
-	CoverageIndex, MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferCoverageMetrics,
-	ReadBufferPageMetrics, ReadBufferReadMetrics, ReadBufferShardMetrics, ReadBufferStateMetrics, Shard, Span,
+	Coverage, MultiReadBufferTier, PoolInner, ReadBufferConfig, ReadBufferCoverageMetrics, ReadBufferPageMetrics,
+	ReadBufferReadMetrics, ReadBufferShardMetrics, ReadBufferStateMetrics, Shard, Span,
 };
 #[cfg(test)]
 use crate::tier::read::{FillInterlock, InvalidateInterlock};
@@ -36,8 +39,8 @@ impl MultiReadBufferTier {
 			inner: Arc::new(PoolInner {
 				shards: build_shards(config, resident_bytes),
 				bucket_shift: config.bucket_shift,
-				coverage: RwLock::new(CoverageIndex {
-					kinds: HashMap::new(),
+				coverage: RwLock::new(Coverage {
+					index: CoverageIndex::new(),
 					heads: HashMap::new(),
 				}),
 				retractions: Retractions::new(),
@@ -63,8 +66,8 @@ impl MultiReadBufferTier {
 			inner: Arc::new(PoolInner {
 				shards: build_shards(config, resident_bytes),
 				bucket_shift: config.bucket_shift,
-				coverage: RwLock::new(CoverageIndex {
-					kinds: HashMap::new(),
+				coverage: RwLock::new(Coverage {
+					index: CoverageIndex::new(),
 					heads: HashMap::new(),
 				}),
 				retractions: Retractions::new(),
@@ -88,8 +91,8 @@ impl MultiReadBufferTier {
 			inner: Arc::new(PoolInner {
 				shards: build_shards(config, resident_bytes),
 				bucket_shift: config.bucket_shift,
-				coverage: RwLock::new(CoverageIndex {
-					kinds: HashMap::new(),
+				coverage: RwLock::new(Coverage {
+					index: CoverageIndex::new(),
 					heads: HashMap::new(),
 				}),
 				retractions: Retractions::new(),
