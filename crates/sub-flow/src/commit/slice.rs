@@ -120,18 +120,20 @@ impl SliceComputer {
 		more: bool,
 		config: &SliceConfig,
 	) -> Result<SliceStep> {
-		let holds = self.resolved_holds(flow_engine, flow_id, advance_to)?;
-		if advance_to.0.saturating_sub(durable_cursor.0) > config.checkpoint_lag {
-			let mut slice = FlowSlice::empty();
-			slice.checkpoints.push((flow_id, advance_to));
-			return Ok(SliceStep::Commit {
-				slice,
+		let (holds, folded) = self.resolved_holds(flow_engine, flow_id, advance_to)?;
+		let checkpoint_due = advance_to.0.saturating_sub(durable_cursor.0) > config.checkpoint_lag;
+		if folded.is_empty() && !checkpoint_due {
+			return Ok(SliceStep::Skip {
 				advance_to,
 				more,
 				holds,
 			});
 		}
-		Ok(SliceStep::Skip {
+		let mut slice = FlowSlice::empty();
+		slice.combined = folded;
+		slice.checkpoints.push((flow_id, advance_to));
+		Ok(SliceStep::Commit {
+			slice,
 			advance_to,
 			more,
 			holds,
@@ -143,7 +145,7 @@ impl SliceComputer {
 		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
 		state_version: CommitVersion,
-	) -> Result<WatermarkHolds> {
+	) -> Result<(WatermarkHolds, Pending)> {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
 
@@ -166,7 +168,8 @@ impl SliceComputer {
 		});
 
 		flow_engine.fold_published_arrivals(&mut txn, flow_id, state_version)?;
-		flow_engine.holds(&mut txn, flow_id)
+		let holds = flow_engine.holds(&mut txn, flow_id)?;
+		Ok((holds, txn.take_pending()))
 	}
 
 	fn compute(
@@ -634,7 +637,7 @@ mod integration {
 		apply_operator_state(&engine.operator_state(), &seeded);
 
 		let computer = SliceComputer::new(engine.clone());
-		let held = computer.resolved_holds(&mut flow_engine, flow, version).unwrap();
+		let (held, _) = computer.resolved_holds(&mut flow_engine, flow, version).unwrap();
 
 		assert_eq!(
 			held,
