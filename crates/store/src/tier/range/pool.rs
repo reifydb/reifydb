@@ -56,7 +56,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		})
 	}
 
-	pub(super) fn shard_index(&self, partition: &D::Partition) -> usize {
+	pub fn shard_index(&self, partition: &D::Partition) -> usize {
 		let mut hasher = DefaultHasher::new();
 		partition.hash(&mut hasher);
 		(hasher.finish() % self.inner.shards.len() as u64) as usize
@@ -78,7 +78,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		&self.inner.coverage
 	}
 
-	pub(super) fn retractions(&self) -> u64 {
+	pub fn retractions(&self) -> u64 {
 		self.inner.retractions.token()
 	}
 
@@ -275,6 +275,27 @@ impl<D: RangeDomain> RangeTier<D> {
 			.collect()
 	}
 
+	pub fn complete_partitions(&self) -> Vec<usize> {
+		let mut resident: Vec<Vec<D::Partition>> = Vec::with_capacity(self.inner.shards.len());
+		for shard in self.all_shards() {
+			resident.push(shard.lock().partitions.keys().copied().collect());
+		}
+		let coverage = self.coverage().read();
+		resident.iter()
+			.map(|ids| {
+				ids.iter()
+					.filter(|id| {
+						let (start, span_end) = D::span(id);
+						let end = span_end.min(D::policy_run_end(id));
+						coverage.set(D::dimension(id))
+							.and_then(|set| set.covering(&start))
+							.is_some_and(|claim| claim.end >= end)
+					})
+					.count()
+			})
+			.collect()
+	}
+
 	pub fn gap_histogram(&self) -> GapHistogram {
 		let mut merged = GapHistogram::new();
 		for shard in self.all_shards() {
@@ -363,6 +384,7 @@ fn build_shards<D: RangeDomain>(config: RangeConfig, resident_bytes: ByteSize) -
 				partitions: HashMap::new(),
 				budget: MemoryBudget::new(byte_cap),
 				next_tick: 0,
+				writes: 0,
 				gaps: GapHistogram::new(),
 				metrics: RangeMetrics::default(),
 				slot_metrics: vec![RangeMetrics::default(); D::SLOTS].into_boxed_slice(),

@@ -28,7 +28,7 @@ use reifydb_runtime::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
-use reifydb_value::{count::Count, util::cowvec::CowVec};
+use reifydb_value::{count::Count, reifydb_assertions, util::cowvec::CowVec};
 use tracing::instrument;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -40,6 +40,7 @@ use crate::{
 	tier::{
 		commit::buffer::{MultiCommitBufferTier, MultiCommitMetrics},
 		persistent::MultiPersistentTier,
+		range::{MultiRangeConfig, MultiRangeTier},
 		read::{MultiReadBufferTier, ReadBufferShardMetrics},
 	},
 };
@@ -84,6 +85,7 @@ pub struct StandardMultiStoreInner {
 	pub(crate) commit: MultiCommitBufferTier,
 	pub(crate) persistent: Option<MultiPersistentTier>,
 	pub(crate) read: Option<MultiReadBufferTier>,
+	pub(crate) range: Option<MultiRangeTier>,
 
 	#[allow(dead_code)]
 	pub(crate) flush_engine: Option<Arc<FlushEngine>>,
@@ -114,6 +116,20 @@ impl StandardMultiStore {
 		let read =
 			config.persistent.is_some().then(|| config.read.and_then(MultiReadBufferTier::new)).flatten();
 
+		let range = config
+			.persistent
+			.is_some()
+			.then(|| {
+				config.read.and_then(|read| {
+					MultiRangeTier::new(MultiRangeConfig {
+						resident_bytes: read.resident_bytes,
+						shards: read.shards,
+						..MultiRangeConfig::default()
+					})
+				})
+			})
+			.flatten();
+
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush_engine, filter) = {
 			let persistent_config = config.persistent.clone();
@@ -130,15 +146,18 @@ impl StandardMultiStore {
 				actor
 			});
 			let flush_engine = match (persistent.as_ref(), persistent_config.as_ref()) {
-				(Some(persistent_storage), Some(_)) => Some(Arc::new(FlushEngine::new(
-					commit.clone(),
-					persistent_storage.clone(),
-					row_settings_provider.clone(),
-					eviction_watermark.clone(),
-					read.clone(),
-					config.clock.clone(),
-					config.event_bus.clone(),
-				))),
+				(Some(persistent_storage), Some(_)) => Some(Arc::new(
+					FlushEngine::new(
+						commit.clone(),
+						persistent_storage.clone(),
+						row_settings_provider.clone(),
+						eviction_watermark.clone(),
+						read.clone(),
+						config.clock.clone(),
+						config.event_bus.clone(),
+					)
+					.with_range(range.clone()),
+				)),
 				_ => None,
 			};
 			(persistent, flush_engine, filter)
@@ -155,11 +174,13 @@ impl StandardMultiStore {
 		};
 
 		let read = persistent.as_ref().and(read);
+		let range = persistent.as_ref().and(range);
 
 		Ok(Self(Arc::new(StandardMultiStoreInner {
 			commit,
 			persistent,
 			read,
+			range,
 			flush_engine,
 			row_settings_provider,
 			eviction_watermark,
@@ -175,18 +196,27 @@ impl StandardMultiStore {
 	}
 
 	pub fn insert_read_key(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
+		if let Some(range) = &self.range {
+			range.insert(key.clone(), version, value.clone());
+		}
 		if let Some(read) = &self.read {
 			read.insert(key, version, value);
 		}
 	}
 
 	pub fn invalidate_read_key(&self, key: &EncodedKey) {
+		if let Some(range) = &self.range {
+			range.invalidate(key);
+		}
 		if let Some(read) = &self.read {
 			read.invalidate(key);
 		}
 	}
 
 	pub fn clear_read(&self) {
+		if let Some(range) = &self.range {
+			range.clear();
+		}
 		if let Some(read) = &self.read {
 			read.clear();
 		}
@@ -232,7 +262,34 @@ impl StandardMultiStore {
 	}
 
 	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
-		self.read.as_ref().map(|read| read.shard_metrics()).unwrap_or_default()
+		let mut out = self.read.as_ref().map(|read| read.shard_metrics()).unwrap_or_default();
+		let Some(range) = &self.range else {
+			return out;
+		};
+		let shards = range.shard_metrics();
+		let serves = range.serve_metrics();
+		let complete = range.complete_partitions();
+		reifydb_assertions! {
+			assert_eq!(
+				(out.len(), out.len(), out.len()),
+				(shards.len(), serves.len(), complete.len()),
+				"both read tiers must shard alike, or a range counter is dropped and every materialize on the shards past the shorter tier reports zero"
+			);
+		}
+		for (((target, source), serve), complete) in out.iter_mut().zip(shards).zip(serves).zip(complete) {
+			target.state.complete_pages += complete;
+			target.reads.point_hits += source.counters.point_hits;
+			target.reads.point_misses += source.counters.point_misses;
+			target.reads.range_served += source.counters.hits;
+			target.reads.range_gaps += source.counters.misses;
+			target.coverage.materializes += source.counters.materializes;
+			target.coverage.materializes_refused += source.counters.materializes_refused;
+			target.coverage.served += serve.served;
+			target.coverage.rows += serve.rows;
+			target.coverage.head_advances += serve.head_advances;
+			target.pages.pages_evicted += source.counters.evictions;
+		}
+		out
 	}
 
 	pub fn commit_metrics(&self) -> MultiCommitMetrics {

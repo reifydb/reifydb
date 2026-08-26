@@ -33,7 +33,10 @@ use crate::tier::TierStorage;
 use crate::tier::commit::memory::storage::EvictedVersion;
 use crate::{
 	flush::ObjectPersistence,
-	tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::MultiReadBufferTier},
+	tier::{
+		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, range::MultiRangeTier,
+		read::MultiReadBufferTier,
+	},
 };
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -52,6 +55,7 @@ pub struct FlushEngine {
 	persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 	read: Option<MultiReadBufferTier>,
+	range: Option<MultiRangeTier>,
 	clock: Clock,
 	event_bus: EventBus,
 	sweep_lock: Mutex<FlushEngineState>,
@@ -89,10 +93,16 @@ impl FlushEngine {
 			persistence,
 			eviction_watermark,
 			read,
+			range: None,
 			clock,
 			event_bus,
 			sweep_lock: Mutex::new(FlushEngineState::default()),
 		}
+	}
+
+	pub fn with_range(mut self, range: Option<MultiRangeTier>) -> Self {
+		self.range = range;
+		self
 	}
 
 	pub fn sweep_slice(&self, budget: usize) -> SweepOutcome {
@@ -284,21 +294,36 @@ impl FlushEngine {
 		to_drop: &[EvictedVersion],
 		accepted: &[EncodedKey],
 	) {
-		let Some(read) = &self.read else {
+		if self.read.is_none() && self.range.is_none() {
 			return;
-		};
+		}
 		if persistent_object {
 			let accepted: HashSet<&[u8]> = accepted.iter().map(|k| k.as_slice()).collect();
 			for (key, version, value) in to_persist {
 				if accepted.contains(key.as_slice()) {
-					read.insert(key.clone(), *version, value.clone());
+					if let Some(range) = &self.range {
+						range.insert(key.clone(), *version, value.clone());
+					}
+					if let Some(read) = &self.read {
+						read.insert(key.clone(), *version, value.clone());
+					}
 				} else {
-					read.invalidate(key);
+					if let Some(range) = &self.range {
+						range.invalidate(key);
+					}
+					if let Some(read) = &self.read {
+						read.invalidate(key);
+					}
 				}
 			}
 		} else {
 			for evicted in to_drop {
-				read.invalidate(&evicted.key);
+				if let Some(range) = &self.range {
+					range.invalidate(&evicted.key);
+				}
+				if let Some(read) = &self.read {
+					read.invalidate(&evicted.key);
+				}
 			}
 		}
 	}

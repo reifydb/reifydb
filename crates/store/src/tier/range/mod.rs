@@ -116,6 +116,16 @@ pub trait RangeDomain: Copy + Debug + 'static {
 	/// splits once per run rather than once per partition.
 	fn policy_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd;
 
+	/// Whether `incoming` may replace the resident row; a domain that versions its rows must refuse a downgrade.
+	fn supersedes(_resident: &Self::Row, _incoming: &Self::Row) -> bool {
+		true
+	}
+
+	/// Whether a write may seat a partition no claim reached; a handoff domain must, or a claim taken across one answers the row absent.
+	fn admits_unproven_writes() -> bool {
+		false
+	}
+
 	fn slot(partition: &Self::Partition) -> usize;
 
 	fn slot_at(index: usize) -> Self::Slot;
@@ -194,6 +204,8 @@ struct Shard<D: RangeDomain> {
 	partitions: HashMap<D::Partition, Partition<D::Row>>,
 	budget: MemoryBudget,
 	next_tick: u64,
+	/// Bumped by every landed write, so a rollback can tell whether the row it drops is still its own.
+	writes: u64,
 	gaps: GapHistogram,
 	metrics: RangeMetrics,
 	slot_metrics: SlotCounters,
@@ -234,6 +246,7 @@ fn account(bytes: &mut usize, budget: &MemoryBudget, old: usize, new: usize) {
 /// a materialize would reinstate a claim over rows a concurrent write had already removed.
 pub struct RangeScan<D: RangeDomain> {
 	pub(super) dimension: D::Dimension,
+	pub(super) advanced: bool,
 	pub(super) segments: Vec<Segment>,
 	pub(super) gaps: usize,
 	pub(super) degraded: bool,

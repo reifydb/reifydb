@@ -33,7 +33,7 @@ use crate::{
 	MultiVersionScope, Result,
 	tier::{
 		DisplacedValues, RangeBatch, RangeCursor, RangeStop, TierBatch, TierStorage, VersionedGetResult,
-		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ServedChunk,
+		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, range::ServedChunk,
 	},
 };
 
@@ -409,12 +409,17 @@ impl StandardMultiStore {
 
 	#[inline]
 	fn update_read_cache_on_commit(&self, batches: &TierBatch) {
-		let Some(read) = &self.read else {
+		if self.read.is_none() && self.range.is_none() {
 			return;
-		};
+		}
 		for entries in batches.values() {
 			for (key, _) in entries {
-				read.invalidate(key);
+				if let Some(range) = &self.range {
+					range.invalidate(key);
+				}
+				if let Some(read) = &self.read {
+					read.invalidate(key);
+				}
 			}
 		}
 	}
@@ -860,10 +865,10 @@ impl StandardMultiStore {
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
 	) -> Option<Result<()>> {
-		let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) else {
+		let (Some(range), true) = (&self.range, scan.table.cache_policy().caches_ranges()) else {
 			return None;
 		};
-		match read.serve_persistent_chunk(
+		match range.serve_persistent_chunk(
 			scan.table,
 			&mut cursor.persistent,
 			scan.start,
@@ -927,7 +932,7 @@ impl StandardMultiStore {
 		cursor: &RangeCursor,
 		batch: &RangeBatch,
 	) -> Result<()> {
-		let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) else {
+		let (Some(range), true) = (&self.range, scan.table.cache_policy().caches_ranges()) else {
 			return Ok(());
 		};
 		let MultiVersionScope::AsOf {
@@ -950,7 +955,7 @@ impl StandardMultiStore {
 			(false, false, Some(last)) => last.clone(),
 			(false, false, None) => return Ok(()),
 		};
-		read.materialize_scanned_chunk(scan.table, &lo, &through, &batch.entries);
+		range.materialize_scanned_chunk(scan.table, &lo, &through, &batch.entries);
 		Ok(())
 	}
 }

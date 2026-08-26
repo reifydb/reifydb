@@ -45,6 +45,10 @@ impl<D: RangeDomain> RangeScan<D> {
 	pub fn dimension(&self) -> D::Dimension {
 		self.dimension
 	}
+
+	pub fn advanced(&self) -> bool {
+		self.advanced
+	}
 }
 
 impl<D: RangeDomain> RangeTier<D> {
@@ -60,9 +64,11 @@ impl<D: RangeDomain> RangeTier<D> {
 			Unbounded => ExclusiveUpperEnd::Top,
 		};
 
-		let (lo, head, planned, held, retractions) = {
+		let (lo, head, planned, held, retractions, advanced) = {
 			let coverage = self.coverage().read();
+			let anchor = lo.clone();
 			let lo = advance_to_head::<D>(&coverage, dimension, lo, &hi);
+			let advanced = lo != anchor;
 			let head = partition_at::<D>(dimension, &lo)?;
 			let (_, head_end) = D::span(&head);
 			if hi <= head_end && !D::caches_ranges(&head) {
@@ -74,7 +80,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				exempt_gap::<D>(dimension, gap)
 			});
 			let held = claims.contains(&lo);
-			(lo, head, planned, held, self.retractions())
+			(lo, head, planned, held, self.retractions(), advanced)
 		};
 
 		let mut pieces = Vec::with_capacity(planned.segments.len().max(1));
@@ -99,6 +105,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		if pieces.is_empty() {
 			return Some(RangeScan {
 				dimension,
+				advanced,
 				segments: Vec::new(),
 				gaps: planned.gaps - planned.exempted,
 				degraded: planned.degraded,
@@ -193,6 +200,7 @@ impl<D: RangeDomain> RangeTier<D> {
 
 		Some(RangeScan {
 			dimension,
+			advanced,
 			segments: pieces.into_iter().map(|(segment, _)| segment).collect(),
 			gaps: planned.gaps - planned.exempted,
 			degraded: planned.degraded,
@@ -287,14 +295,28 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	pub fn materialize(&self, scan: &RangeScan<D>, span: &Interval, rows: &[(EncodedKey, D::Row)]) -> Materialize {
 		let mut start = span.start.clone();
+		let mut head = true;
 		let mut materialized = false;
 		let mut claim: Option<Interval> = None;
 		let mut claimed: Vec<usize> = Vec::new();
 		if !span.is_empty() {
 			loop {
 				let Some(partition) = D::partition(scan.dimension, &start) else {
-					break;
+					let Some(anchor) = rows
+						.first()
+						.and_then(|(key, _)| D::partition(scan.dimension, key))
+						.map(|at| D::span(&at).0)
+					else {
+						break;
+					};
+					if !head || anchor.as_slice() <= start.as_slice() || !span.end.covers(&anchor) {
+						break;
+					}
+					head = false;
+					start = anchor;
+					continue;
 				};
+				head = false;
 				let (_, bound) = D::span(&partition);
 				let end = bound.min(span.end.clone());
 				let piece = Interval::new(start, end.clone());
@@ -406,7 +428,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		let index = self.shard_index(&partition);
 		let slot = D::slot(&partition);
 		let lands = rows.iter().any(|(key, _)| span.contains(key));
-		let (fresh, inserted) = {
+		let (fresh, inserted, writes) = {
 			let mut inserted = Vec::new();
 			let mut shard = self.shard(index).lock();
 			if !lands && !shard.partitions.contains_key(&partition) {
@@ -468,7 +490,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			resident.tick = tick;
 			resident.covered = true;
 			shard.next_tick = tick + 1;
-			(fresh, inserted)
+			(fresh, inserted, shard.writes)
 		};
 
 		#[cfg(test)]
@@ -480,7 +502,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			let mut coverage = self.coverage().write();
 			if !self.retractions_unchanged(scan.retractions) {
 				drop(coverage);
-				self.roll_back_materialize(index, partition, fresh, &inserted);
+				self.roll_back_materialize(index, partition, fresh, &inserted, writes);
 				let mut shard = self.shard(index).lock();
 				shard.metrics.materializes_raced += 1;
 				shard.slot_metrics[slot].materializes_raced += 1;
@@ -514,8 +536,36 @@ impl<D: RangeDomain> RangeTier<D> {
 		true
 	}
 
-	fn roll_back_materialize(&self, index: usize, partition: D::Partition, fresh: bool, inserted: &[EncodedKey]) {
+	fn roll_back_materialize(
+		&self,
+		index: usize,
+		partition: D::Partition,
+		fresh: bool,
+		inserted: &[EncodedKey],
+		writes: u64,
+	) {
+		let dimension = D::dimension(&partition);
+		for key in inserted {
+			self.withdraw(dimension, key);
+		}
+		self.drop_placed(index, partition, fresh, inserted, writes);
+		for key in inserted {
+			self.withdraw(dimension, key);
+		}
+	}
+
+	fn drop_placed(
+		&self,
+		index: usize,
+		partition: D::Partition,
+		fresh: bool,
+		inserted: &[EncodedKey],
+		writes: u64,
+	) {
 		let mut shard = self.shard(index).lock();
+		if shard.writes != writes {
+			return;
+		}
 		let Shard {
 			partitions,
 			budget,

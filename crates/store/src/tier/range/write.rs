@@ -67,6 +67,26 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 	}
 
+	pub fn invalidate(&self, dimension: D::Dimension, key: &EncodedKey) {
+		let Some(partition) = self.cacheable(dimension, key) else {
+			return;
+		};
+		let index = self.shard_index(&partition);
+		self.withdraw(dimension, key);
+		self.discard(index, &partition, key);
+		self.withdraw(dimension, key);
+	}
+
+	pub fn clear(&self) {
+		self.withdraw_all();
+		for shard in self.all_shards() {
+			let mut shard = shard.lock();
+			shard.partitions.clear();
+			shard.budget.reset();
+		}
+		self.withdraw_all();
+	}
+
 	pub fn invalidate_operator(&self, dimension: D::Dimension) {
 		{
 			let mut coverage = self.coverage().write();
@@ -100,15 +120,22 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	fn place(&self, index: usize, partition: &D::Partition, key: EncodedKey, entry: Entry<D::Row>) -> bool {
 		let resident = self.shard(index).lock().partitions.get(partition).map(|target| target.covered);
-		let admit = match resident {
-			Some(covered) => covered,
-			None => self.claims(partition, &key),
-		};
+		let admit = D::admits_unproven_writes()
+			|| match resident {
+				Some(covered) => covered,
+				None => self.claims(partition, &key),
+			};
 		if !admit {
 			return false;
 		}
 
 		let mut shard = self.shard(index).lock();
+		if let Some(target) = shard.partitions.get(partition)
+			&& let Some(resident) = target.entries.get(&key)
+			&& !supersedes::<D>(resident, &entry)
+		{
+			return false;
+		}
 		let next = shard.next_tick;
 		{
 			let Shard {
@@ -145,6 +172,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			target.tick = next;
 		}
 		shard.next_tick = next + 1;
+		shard.writes += 1;
 		true
 	}
 
@@ -169,7 +197,13 @@ impl<D: RangeDomain> RangeTier<D> {
 		account(&mut target.bytes, budget, entry_footprint(key, &previous), 0);
 	}
 
-	fn withdraw(&self, dimension: D::Dimension, key: &EncodedKey) {
+	fn withdraw_all(&self) {
+		let mut coverage = self.coverage().write();
+		coverage.clear();
+		self.record_retraction();
+	}
+
+	pub(super) fn withdraw(&self, dimension: D::Dimension, key: &EncodedKey) {
 		let mut coverage = self.coverage().write();
 		coverage.shrink_key(dimension, key);
 		if in_head_band::<D>(dimension, key)
@@ -186,6 +220,13 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 		let mut coverage = self.coverage().write();
 		coverage.extend(dimension, key.clone(), ExclusiveUpperEnd::Key(successor(key)));
+	}
+}
+
+fn supersedes<D: RangeDomain>(resident: &Entry<D::Row>, incoming: &Entry<D::Row>) -> bool {
+	match (resident, incoming) {
+		(Entry::Row(resident), Entry::Row(incoming)) => D::supersedes(resident, incoming),
+		_ => true,
 	}
 }
 
