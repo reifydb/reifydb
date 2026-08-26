@@ -84,7 +84,7 @@ fn scan(store: &StandardMultiStore, read: u64) -> BTreeMap<Vec<u8>, (Vec<u8>, Co
 }
 
 fn complete_pages(store: &StandardMultiStore) -> usize {
-	store.read_buffer_shard_metrics().iter().map(|s| s.state.complete_pages).sum()
+	store.range_shard_metrics().iter().map(|s| s.complete_partitions).sum()
 }
 
 fn scan_between(store: &StandardMultiStore, after: u64, read: u64) -> BTreeMap<Vec<u8>, (Vec<u8>, CommitVersion)> {
@@ -102,11 +102,11 @@ fn scan_between(store: &StandardMultiStore, after: u64, read: u64) -> BTreeMap<V
 }
 
 fn materializes(store: &StandardMultiStore) -> u64 {
-	store.read_buffer_shard_metrics().iter().map(|s| s.coverage.materializes).sum()
+	store.range_shard_metrics().iter().map(|s| s.counters.materializes).sum()
 }
 
 fn range_served(store: &StandardMultiStore) -> u64 {
-	store.read_buffer_shard_metrics().iter().map(|s| s.reads.range_served).sum()
+	store.range_shard_metrics().iter().map(|s| s.counters.hits).sum()
 }
 
 fn key(row: u64) -> Vec<u8> {

@@ -28,7 +28,7 @@ use reifydb_runtime::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
-use reifydb_value::{count::Count, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{count::Count, util::cowvec::CowVec};
 use tracing::instrument;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -40,7 +40,7 @@ use crate::{
 	tier::{
 		commit::buffer::{MultiCommitBufferTier, MultiCommitMetrics},
 		persistent::MultiPersistentTier,
-		range::{MultiRangeConfig, MultiRangeTier},
+		range::{MultiRangeConfig, MultiRangeShardMetrics, MultiRangeTier},
 		read::{MultiReadBufferTier, ReadBufferShardMetrics},
 	},
 };
@@ -262,34 +262,11 @@ impl StandardMultiStore {
 	}
 
 	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
-		let mut out = self.read.as_ref().map(|read| read.shard_metrics()).unwrap_or_default();
-		let Some(range) = &self.range else {
-			return out;
-		};
-		let shards = range.shard_metrics();
-		let serves = range.serve_metrics();
-		let complete = range.complete_partitions();
-		reifydb_assertions! {
-			assert_eq!(
-				(out.len(), out.len(), out.len()),
-				(shards.len(), serves.len(), complete.len()),
-				"both read tiers must shard alike, or a range counter is dropped and every materialize on the shards past the shorter tier reports zero"
-			);
-		}
-		for (((target, source), serve), complete) in out.iter_mut().zip(shards).zip(serves).zip(complete) {
-			target.state.complete_pages += complete;
-			target.reads.point_hits += source.counters.point_hits;
-			target.reads.point_misses += source.counters.point_misses;
-			target.reads.range_served += source.counters.hits;
-			target.reads.range_gaps += source.counters.misses;
-			target.coverage.materializes += source.counters.materializes;
-			target.coverage.materializes_refused += source.counters.materializes_refused;
-			target.coverage.served += serve.served;
-			target.coverage.rows += serve.rows;
-			target.coverage.head_advances += serve.head_advances;
-			target.pages.pages_evicted += source.counters.evictions;
-		}
-		out
+		self.read.as_ref().map(|read| read.shard_metrics()).unwrap_or_default()
+	}
+
+	pub fn range_shard_metrics(&self) -> Vec<MultiRangeShardMetrics> {
+		self.range.as_ref().map(|range| range.full_shard_metrics()).unwrap_or_default()
 	}
 
 	pub fn commit_metrics(&self) -> MultiCommitMetrics {

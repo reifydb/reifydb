@@ -41,11 +41,11 @@ use reifydb_store::{
 		successor,
 	},
 	tier::range::{
-		Materialize, RangeConfig, RangeDomain, RangeRows, RangeShardMetrics, RangeTier, RowBytes,
-		prefix_successor,
+		Materialize, RangeConfig, RangeDomain, RangeMetrics, RangeRows, RangeShardMetrics, RangeTier,
+		RowBytes, prefix_successor,
 	},
 };
-use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
 
 use crate::{
 	MultiVersionScope,
@@ -207,6 +207,20 @@ impl RangeDomain for MultiDomain {
 	}
 }
 
+/// Everything one shard's range tier reports, joined here because the three sources are indexed by shard
+/// and only line up while they are the same length.
+#[derive(Clone, Copy, Debug)]
+pub struct MultiRangeShardMetrics {
+	pub shard: usize,
+	pub used: ByteSize,
+	pub limit: ByteSize,
+	pub partitions: usize,
+	pub entries: usize,
+	pub complete_partitions: usize,
+	pub counters: RangeMetrics,
+	pub serve: MultiServeMetrics,
+}
+
 /// What one shard's range serves carried, counted here because the shared tier serves per segment while
 /// the store reads per chunk and only the chunk is comparable to the page tier's numbers.
 #[derive(Clone, Copy, Debug, Default)]
@@ -275,6 +289,33 @@ impl MultiRangeTier {
 
 	pub fn shard_metrics(&self) -> Vec<RangeShardMetrics> {
 		self.tier.shard_metrics()
+	}
+
+	pub fn full_shard_metrics(&self) -> Vec<MultiRangeShardMetrics> {
+		let shards = self.tier.shard_metrics();
+		let serves = self.serve_metrics();
+		let complete = self.complete_partitions();
+		reifydb_assertions! {
+			assert_eq!(
+				(shards.len(), shards.len()),
+				(serves.len(), complete.len()),
+				"every shard must report all three sources, or a shard past the shortest reports zero forever"
+			);
+		}
+		shards.into_iter()
+			.zip(serves)
+			.zip(complete)
+			.map(|((shard, serve), complete_partitions)| MultiRangeShardMetrics {
+				shard: shard.shard,
+				used: shard.used,
+				limit: shard.limit,
+				partitions: shard.partitions,
+				entries: shard.entries,
+				complete_partitions,
+				counters: shard.counters,
+				serve,
+			})
+			.collect()
 	}
 
 	pub fn materialize_scanned_chunk(

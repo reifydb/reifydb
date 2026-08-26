@@ -21,7 +21,10 @@ use reifydb_store_cdc::{
 	store::CdcStore,
 	tier::{commit::CdcCommitMetrics, persistent::CdcPersistentMetrics, read::CdcReadShardMetrics},
 };
-use reifydb_store_multi::{MultiStore, tier::read::ReadBufferShardMetrics};
+use reifydb_store_multi::{
+	MultiStore,
+	tier::{range::MultiRangeShardMetrics, read::ReadBufferShardMetrics},
+};
 use reifydb_store_operator::{
 	store::OperatorStore,
 	tier::{
@@ -182,6 +185,7 @@ impl MetricsSamplerActor {
 			multi_commit_rows(&self.multi_store),
 		);
 		accumulator.push(MetricsDomain::StoreMultiRead, Surface::Current, multi_read_rows(&self.multi_store));
+		accumulator.push(MetricsDomain::StoreMultiRange, Surface::Current, multi_range_rows(&self.multi_store));
 		accumulator.push(
 			MetricsDomain::StoreMultiPersistent,
 			Surface::Current,
@@ -354,6 +358,34 @@ fn level_bytes(metric: &'static str, bytes: ByteSize) -> Measure {
 	}
 }
 
+fn multi_range_rows(store: &MultiStore) -> Vec<MetricsRow> {
+	store.range_shard_metrics().iter().map(multi_range_row).collect()
+}
+
+fn multi_range_row(metrics: &MultiRangeShardMetrics) -> MetricsRow {
+	MetricsRow {
+		dimensions: vec![Value::Uint2(metrics.shard as u16)],
+		measures: vec![
+			level_bytes("used", metrics.used),
+			level_bytes("limit", metrics.limit),
+			level_count("partitions", metrics.partitions as u64),
+			level_count("entries", metrics.entries as u64),
+			level_count("complete_partitions", metrics.complete_partitions as u64),
+			counter_count("hits", metrics.counters.hits),
+			counter_count("misses", metrics.counters.misses),
+			counter_count("materializes", metrics.counters.materializes),
+			counter_count("materializes_refused", metrics.counters.materializes_refused),
+			counter_count("materializes_raced", metrics.counters.materializes_raced),
+			counter_count("evictions", metrics.counters.evictions),
+			counter_count("point_hits", metrics.counters.point_hits),
+			counter_count("point_misses", metrics.counters.point_misses),
+			counter_count("served", metrics.serve.served),
+			counter_count("rows", metrics.serve.rows),
+			counter_count("head_advances", metrics.serve.head_advances),
+		],
+	}
+}
+
 fn multi_read_rows(store: &MultiStore) -> Vec<MetricsRow> {
 	store.read_buffer_shard_metrics().iter().map(multi_read_row).collect()
 }
@@ -370,15 +402,11 @@ fn multi_read_row(metrics: &ReadBufferShardMetrics) -> MetricsRow {
 			level_count("entries", metrics.state.entries as u64),
 			level_count("hot_pages", metrics.state.hot_pages as u64),
 			level_count("complete_pages", metrics.state.complete_pages as u64),
-			counter_count("materializes", metrics.coverage.materializes),
-			counter_count("materializes_refused", metrics.coverage.materializes_refused),
 			counter_count("pages_evicted", metrics.pages.pages_evicted),
 			counter_count("complete_pages_invalidated", metrics.pages.complete_pages_invalidated),
 			counter_count("point_hits", metrics.reads.point_hits),
 			counter_count("previous_hits", metrics.reads.previous_hits),
 			counter_count("point_misses", metrics.reads.point_misses),
-			counter_count("range_served", metrics.reads.range_served),
-			counter_count("range_gaps", metrics.reads.range_gaps),
 		],
 	}
 }

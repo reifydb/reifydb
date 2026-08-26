@@ -167,13 +167,15 @@ struct Served {
 fn served(store: &StandardMultiStore) -> Served {
 	let mut total = Served::default();
 	for shard in store.read_buffer_shard_metrics() {
-		total.chunks += shard.coverage.served;
-		total.rows += shard.coverage.rows;
-		total.gaps += shard.coverage.gaps;
-		total.refused += shard.coverage.refused;
-		total.materializes += shard.coverage.materializes;
 		total.evicted += shard.pages.pages_evicted;
-		total.head_advances += shard.coverage.head_advances;
+	}
+	for shard in store.range_shard_metrics() {
+		total.chunks += shard.serve.served;
+		total.rows += shard.serve.rows;
+		total.gaps += shard.counters.misses;
+		total.refused += shard.counters.materializes_refused;
+		total.materializes += shard.counters.materializes;
+		total.head_advances += shard.serve.head_advances;
 	}
 	total
 }

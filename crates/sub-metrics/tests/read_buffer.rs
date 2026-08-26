@@ -32,15 +32,15 @@ fn read_buffer_spec_pins_the_merged_layout() {
 	let spec = MetricsDomain::StoreMultiRead.spec();
 
 	let current = spec.columns(Surface::Current);
-	assert_eq!(current.len(), 19, "ts + shard + 8 levels + 9 counters");
+	assert_eq!(current.len(), 15, "ts + shard + 8 levels + 5 counters");
 	assert_eq!(current[0].name, "ts");
 	assert_eq!(current[1].name, "shard");
 	assert!(current.iter().all(|column| column.name != "domain"), "no domain discriminator column");
 
 	let total = spec.columns(Surface::Total);
-	assert_eq!(total.len(), 11, "ts + shard + 9 counters; levels must not reach ::total");
+	assert_eq!(total.len(), 7, "ts + shard + 5 counters; levels must not reach ::total");
 
 	let counters = spec.measures.iter().filter(|m| m.kind == MetricKind::Counter).count();
 	let levels = spec.measures.iter().filter(|m| m.kind == MetricKind::Level).count();
-	assert_eq!((levels, counters), (8, 9), "the old shards/pages/reads split was exactly levels vs counters");
+	assert_eq!((levels, counters), (8, 5), "the old shards/pages/reads split was exactly levels vs counters");
 }

@@ -55,6 +55,7 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_STORE_OPERATOR_POINT_KEYSPACE: NamespaceId = NamespaceId(45);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_RANGE: NamespaceId = NamespaceId(46);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_RANGE_KEYSPACE: NamespaceId = NamespaceId(47);
+	pub const SYSTEM_METRICS_STORE_MULTI_RANGE: NamespaceId = NamespaceId(52);
 	pub const SYSTEM_METRICS_STORE_CDC: NamespaceId = NamespaceId(48);
 	pub const SYSTEM_METRICS_STORE_CDC_COMMIT: NamespaceId = NamespaceId(49);
 	pub const SYSTEM_METRICS_STORE_CDC_READ: NamespaceId = NamespaceId(50);

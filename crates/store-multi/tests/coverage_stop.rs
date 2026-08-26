@@ -67,7 +67,7 @@ fn flush(store: &StandardMultiStore, cutoff: u64) {
 }
 
 fn materializes(store: &StandardMultiStore) -> u64 {
-	store.read_buffer_shard_metrics().iter().map(|s| s.coverage.materializes).sum()
+	store.range_shard_metrics().iter().map(|s| s.counters.materializes).sum()
 }
 
 fn chunk(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor, read: u64) -> (usize, bool) {

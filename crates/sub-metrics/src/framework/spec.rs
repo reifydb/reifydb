@@ -19,6 +19,7 @@ pub enum MetricsDomain {
 	ProcCgroupPressure,
 	StoreMultiCommit,
 	StoreMultiRead,
+	StoreMultiRange,
 	StoreMultiPersistent,
 	StoreSingleCommit,
 	StoreSinglePersistent,
@@ -270,7 +271,7 @@ mod tests {
 	fn counter_measures_publish_as_delta_in_current_and_counter_in_total() {
 		// The same measure name serves both surfaces; only the kind differs, which is what
 		// makes the boot-time column check enforceable.
-		let spec = MetricsDomain::StoreMultiRead.spec();
+		let spec = MetricsDomain::StoreMultiRange.spec();
 		let current = spec.columns(Surface::Current);
 		let in_current = current.iter().find(|c| c.name == "materializes").expect("column");
 		assert_eq!(in_current.kind, MetricKind::Delta);
@@ -283,7 +284,7 @@ mod tests {
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 30] = [
+	pub const ALL: [MetricsDomain; 31] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
@@ -296,6 +297,7 @@ impl MetricsDomain {
 		MetricsDomain::ProcCgroupPressure,
 		MetricsDomain::StoreMultiCommit,
 		MetricsDomain::StoreMultiRead,
+		MetricsDomain::StoreMultiRange,
 		MetricsDomain::StoreMultiPersistent,
 		MetricsDomain::StoreSingleCommit,
 		MetricsDomain::StoreSinglePersistent,
@@ -333,6 +335,7 @@ impl MetricsDomain {
 			| MetricsDomain::RuntimeOperators
 			| MetricsDomain::StoreMultiCommit
 			| MetricsDomain::StoreMultiRead
+			| MetricsDomain::StoreMultiRange
 			| MetricsDomain::StoreMultiPersistent
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
@@ -372,6 +375,7 @@ impl MetricsDomain {
 			| MetricsDomain::ProcCgroupPressure
 			| MetricsDomain::StoreMultiCommit
 			| MetricsDomain::StoreMultiRead
+			| MetricsDomain::StoreMultiRange
 			| MetricsDomain::StoreMultiPersistent
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
@@ -549,15 +553,36 @@ impl MetricsDomain {
 					level("entries", ValueType::Uint8),
 					level("hot_pages", ValueType::Uint8),
 					level("complete_pages", ValueType::Uint8),
-					counter("materializes", ValueType::Uint8),
-					counter("materializes_refused", ValueType::Uint8),
 					counter("pages_evicted", ValueType::Uint8),
 					counter("complete_pages_invalidated", ValueType::Uint8),
 					counter("point_hits", ValueType::Uint8),
 					counter("previous_hits", ValueType::Uint8),
 					counter("point_misses", ValueType::Uint8),
-					counter("range_served", ValueType::Uint8),
-					counter("range_gaps", ValueType::Uint8),
+				],
+				has_total: true,
+			},
+			MetricsDomain::StoreMultiRange => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_MULTI_RANGE,
+				shape: DomainShape::Wide,
+				dimensions: vec![dim("shard", ValueType::Uint2)],
+				measures: vec![
+					level("used", ValueType::Uint8),
+					level("limit", ValueType::Uint8),
+					level("partitions", ValueType::Uint8),
+					level("entries", ValueType::Uint8),
+					level("complete_partitions", ValueType::Uint8),
+					counter("hits", ValueType::Uint8),
+					counter("misses", ValueType::Uint8),
+					counter("materializes", ValueType::Uint8),
+					counter("materializes_refused", ValueType::Uint8),
+					counter("materializes_raced", ValueType::Uint8),
+					counter("evictions", ValueType::Uint8),
+					counter("point_hits", ValueType::Uint8),
+					counter("point_misses", ValueType::Uint8),
+					counter("served", ValueType::Uint8),
+					counter("rows", ValueType::Uint8),
+					counter("head_advances", ValueType::Uint8),
 				],
 				has_total: true,
 			},
