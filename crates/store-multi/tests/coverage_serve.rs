@@ -293,7 +293,6 @@ fn interval_served_scans_match_a_store_with_no_read_tier() {
 		total.evicted += seen.evicted;
 		total.head_advances += seen.head_advances;
 	}
-	println!("coverage serve totals: {total:?}");
 
 	assert!(
 		total.chunks > 200,
@@ -340,7 +339,6 @@ fn interval_served_scans_match_a_store_with_no_read_tier_across_several_pages() 
 		total.evicted += seen.evicted;
 		total.head_advances += seen.head_advances;
 	}
-	println!("paged coverage serve totals: {total:?}");
 
 	assert!(
 		total.chunks > 200,

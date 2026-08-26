@@ -419,7 +419,4 @@ fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
 	assert!(drops_refused > 10, "only {drops_refused} drops refused: the fill-count guard never ran");
 	assert!(materializes > 100, "only {materializes} materializes published: the chunk materialize path never ran");
 	assert!(materializes_refused > 0, "no materialize was refused, so a materialize never raced a retraction");
-	println!(
-		"COUNTERS evictions={evictions} published={published} retractions={retractions} refused={refused} drops_refused={drops_refused} materializes={materializes} materializes_refused={materializes_refused}"
-	);
 }

@@ -7,13 +7,12 @@
 
 use std::collections::HashMap;
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
+		store::{EntryKind, MultiVersionGet, classify_key},
 	},
 	key::{EncodableKey, row::RowKey},
 };
@@ -21,7 +20,7 @@ use reifydb_store_multi::{
 	store::StandardMultiStore,
 	tier::{TierStorage, point::MultiReadMetrics},
 };
-use reifydb_value::{cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
 
 fn row_key(n: u64) -> EncodedKey {
 	RowKey {
@@ -29,18 +28,6 @@ fn row_key(n: u64) -> EncodedKey {
 		row: RowNumber(n),
 	}
 	.encode()
-}
-
-fn commit(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {
-	MultiVersionCommit::commit(
-		store,
-		cow_vec![Delta::Set {
-			key: k.clone(),
-			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
-		}],
-		CommitVersion(version),
-	)
-	.unwrap();
 }
 
 fn persistent_only_set(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {
