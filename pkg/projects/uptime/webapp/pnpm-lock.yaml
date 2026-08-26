@@ -24,11 +24,11 @@ importers:
         specifier: link:../../../typescript/client
         version: link:../../../typescript/client
       '@reifydb/core':
-        specifier: ^0.8.1
-        version: 0.8.1
+        specifier: ^0.9.0
+        version: 0.9.0
       '@reifydb/ui':
-        specifier: ^0.8.1
-        version: 0.8.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        specifier: ^0.9.0
+        version: 0.9.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@tanstack/react-query':
         specifier: ^5.90.19
         version: 5.101.2(react@19.2.7)
@@ -336,12 +336,12 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@reifydb/core@0.8.1':
-    resolution: {integrity: sha512-12NjG50YPmRw3+1McPg82XdRFEeppc82WjAul70l1PyBQqLvwaRERExKKuq/FfhhraFc+ftJW7i1PqmVXYkuUA==}
+  '@reifydb/core@0.9.0':
+    resolution: {integrity: sha512-IDbBEVQAbwgbN2vFMnosTcyNQsXqauvlFdEFEBvLxYlxItXykMlPFR8ssGqs8CU6FC2YCzS9dlF0XVVdoZsNRA==}
     engines: {node: '>=16.0.0'}
 
-  '@reifydb/ui@0.8.1':
-    resolution: {integrity: sha512-7ZzYoBZ9AayA50VxBrMsr/kocnasl+2H+F5SQTQWJBQRoIYk1wCXkGTNPvr+7w8PdlSXjJVknCn19PmeFFh8Sg==}
+  '@reifydb/ui@0.9.0':
+    resolution: {integrity: sha512-ScEFQvbBSzn0pc5BSwIWpwx75eALlwuo5m3eMSUuNu09P9ifoqNn6OkTqy0FfjedxOGyTmysRrwQ3OfUjQVxcA==}
     engines: {node: '>=16.0.0'}
     peerDependencies:
       react: '>=18.0.0'
@@ -1178,11 +1178,11 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@reifydb/core@0.8.1':
+  '@reifydb/core@0.9.0':
     dependencies:
       uuid: 11.1.1
 
-  '@reifydb/ui@0.8.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@reifydb/ui@0.9.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       prismjs: 1.30.0
       react: 19.2.7

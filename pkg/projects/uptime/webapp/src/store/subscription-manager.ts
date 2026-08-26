@@ -2,12 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 import { Client, type BatchSubscriptionMember, type WsClient } from '@reifydb/client'
+import { DurationValue } from '@reifydb/core'
 import { UPTIME_CONFIG } from '@/config'
 import type { Monitor, MonitorKind, MonitorRegion, MonitorStatus, Region, Result } from '@/lib/types'
 import { useRealtimeStore } from './realtime'
 
 const RESULTS_HYDRATION_CAP = 2000
-const BATCH_LINGER_MS = 300
+const BATCH_LINGER = DurationValue.fromMilliseconds(300)
 
 let client: WsClient | null = null
 let currentToken: string | null = null
@@ -117,7 +118,7 @@ function monitorsMember(): BatchSubscriptionMember {
       on_update: (rows) => store().upsertMonitors(rows.map(toMonitor)),
       on_remove: (rows) => store().removeMonitors(rows.map((r: Record<string, unknown>) => String(r.id))),
     },
-    config: { hydration: { enabled: true, max_rows: 1000 }, linger: BATCH_LINGER_MS },
+    config: { hydration: { enabled: true, max_rows: 1000 }, linger: BATCH_LINGER },
   }
 }
 
@@ -129,7 +130,7 @@ function monitorRegionsMember(): BatchSubscriptionMember {
       on_update: (rows) => store().upsertMonitorRegions(rows.map(toMonitorRegion)),
       on_remove: (rows) => store().removeMonitorRegions(rows.map(toMonitorRegion)),
     },
-    config: { hydration: { enabled: true, max_rows: 5000 }, linger: BATCH_LINGER_MS },
+    config: { hydration: { enabled: true, max_rows: 5000 }, linger: BATCH_LINGER },
   }
 }
 
@@ -141,7 +142,7 @@ function regionsMember(): BatchSubscriptionMember {
       on_update: (rows) => store().upsertRegions(rows.map(toRegion)),
       on_remove: (rows) => store().removeRegions(rows.map((r: Record<string, unknown>) => String(r.id))),
     },
-    config: { hydration: { enabled: true, max_rows: 1000 }, linger: BATCH_LINGER_MS },
+    config: { hydration: { enabled: true, max_rows: 1000 }, linger: BATCH_LINGER },
   }
 }
 
@@ -164,7 +165,7 @@ function resultsMember(): BatchSubscriptionMember {
         }
       },
     },
-    config: { hydration: { enabled: true, max_rows: RESULTS_HYDRATION_CAP }, linger: BATCH_LINGER_MS },
+    config: { hydration: { enabled: true, max_rows: RESULTS_HYDRATION_CAP }, linger: BATCH_LINGER },
   }
 }
 
@@ -191,7 +192,7 @@ function dailyMember(view: string, isUps: boolean): BatchSubscriptionMember {
         }
       },
     },
-    config: { hydration: { enabled: true, max_rows: 20000 }, linger: BATCH_LINGER_MS },
+    config: { hydration: { enabled: true, max_rows: 20000 }, linger: BATCH_LINGER },
   }
 }
 
@@ -229,7 +230,8 @@ export async function startRealtime(token: string): Promise<void> {
     ])
     store().setMonitorsReady()
     if (gen === generation) store().setStatus('live')
-  } catch {
+  } catch (err) {
+    console.error('uptime realtime subscribe failed', err)
     if (gen === generation) store().setStatus('offline')
   }
 }
@@ -242,8 +244,8 @@ async function teardown(): Promise<void> {
   if (c != null) {
     try {
       await c.disconnect()
-    } catch {
-      void 0
+    } catch (err) {
+      console.error('uptime realtime disconnect failed', err)
     }
   }
 }
