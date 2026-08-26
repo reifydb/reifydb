@@ -225,7 +225,7 @@ impl TierStorage for SqlitePersistentStorage {
 		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
-		if cursor.exhausted {
+		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
 
@@ -233,12 +233,12 @@ impl TierStorage for SqlitePersistentStorage {
 
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
-			cursor.exhausted = true;
+			cursor.finish();
 			return Ok(RangeBatch::empty());
 		};
 
 		let Some(entries) = self.query_forward(conn, &effective_start, &end_owned, batch_size)? else {
-			cursor.exhausted = true;
+			cursor.finish();
 			return Ok(RangeBatch::empty());
 		};
 
@@ -255,7 +255,7 @@ impl TierStorage for SqlitePersistentStorage {
 		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
-		if cursor.exhausted {
+		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
 
@@ -263,12 +263,12 @@ impl TierStorage for SqlitePersistentStorage {
 
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
-			cursor.exhausted = true;
+			cursor.finish();
 			return Ok(RangeBatch::empty());
 		};
 
 		let Some(entries) = self.query_reverse(conn, &start_owned, &effective_end, batch_size)? else {
-			cursor.exhausted = true;
+			cursor.finish();
 			return Ok(RangeBatch::empty());
 		};
 
@@ -363,7 +363,7 @@ impl SqlitePersistentStorage {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 	) -> (Bound<Vec<u8>>, Bound<Vec<u8>>) {
-		let effective_start = match &cursor.last_key {
+		let effective_start = match cursor.last_key() {
 			Some(last) => Bound::Excluded(last.as_slice().to_vec()),
 			None => bound_to_owned(start),
 		};
@@ -411,7 +411,7 @@ impl SqlitePersistentStorage {
 	#[inline]
 	fn advance_forward_cursor(&self, cursor: &mut RangeCursor, batch: &RangeBatch) {
 		reifydb_assertions! {
-			if let (Some(prev), Some(first)) = (cursor.last_key.as_ref(), batch.entries.first()) {
+			if let (Some(prev), Some(first)) = (cursor.last_key(), batch.entries.first()) {
 				let prev_key = prev.as_slice();
 				let first_key = first.key.as_slice();
 				assert!(
@@ -424,10 +424,10 @@ impl SqlitePersistentStorage {
 		}
 
 		if let Some(last_entry) = batch.entries.last() {
-			cursor.last_key = Some(last_entry.key.clone());
+			cursor.advance(last_entry.key.clone());
 		}
 		if !batch.has_more {
-			cursor.exhausted = true;
+			cursor.finish();
 		}
 	}
 
@@ -438,7 +438,7 @@ impl SqlitePersistentStorage {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 	) -> (Bound<Vec<u8>>, Bound<Vec<u8>>) {
-		let effective_end = match &cursor.last_key {
+		let effective_end = match cursor.last_key() {
 			Some(last) => Bound::Excluded(last.as_slice().to_vec()),
 			None => bound_to_owned(end),
 		};
@@ -486,7 +486,7 @@ impl SqlitePersistentStorage {
 	#[inline]
 	fn advance_reverse_cursor(&self, cursor: &mut RangeCursor, batch: &RangeBatch) {
 		reifydb_assertions! {
-			if let (Some(prev), Some(first)) = (cursor.last_key.as_ref(), batch.entries.first()) {
+			if let (Some(prev), Some(first)) = (cursor.last_key(), batch.entries.first()) {
 				let prev_key = prev.as_slice();
 				let first_key = first.key.as_slice();
 				assert!(
@@ -499,10 +499,10 @@ impl SqlitePersistentStorage {
 		}
 
 		if let Some(last_entry) = batch.entries.last() {
-			cursor.last_key = Some(last_entry.key.clone());
+			cursor.advance(last_entry.key.clone());
 		}
 		if !batch.has_more {
-			cursor.exhausted = true;
+			cursor.finish();
 		}
 	}
 }

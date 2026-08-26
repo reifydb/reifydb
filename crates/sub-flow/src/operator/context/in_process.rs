@@ -227,12 +227,10 @@ impl GuestState for InProcessState<'_> {
 			end.map(|k| k.as_encoded().clone()),
 		);
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let rows = unsafe { (*self.host).state_range_limited(range, limit) }.map_err(to_sdk_err)?;
-		for (k, row) in rows {
-			visit(k, row)?;
-		}
-		Ok(())
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
+		// cannot reach the context, so it cannot re-enter the host while this borrow is live.
+		unsafe { (*self.host).state_range_limited_visit(range, limit, &mut |k, row| Ok(visit(k, row)?)) }
+			.map_err(to_sdk_err)
 	}
 }
 

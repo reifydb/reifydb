@@ -4,19 +4,20 @@
 use reifydb_codec::key::encoded::EncodedKey;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Cursor<S> {
-	pub last_key: Option<EncodedKey>,
-	pub exhausted: bool,
-	pub stop: Option<S>,
+pub enum Cursor<S> {
+	NotStarted,
+	InProgress {
+		last_key: EncodedKey,
+	},
+	Exhausted {
+		last_key: Option<EncodedKey>,
+		stop: Option<S>,
+	},
 }
 
 impl<S> Default for Cursor<S> {
 	fn default() -> Self {
-		Self {
-			last_key: None,
-			exhausted: false,
-			stop: None,
-		}
+		Cursor::NotStarted
 	}
 }
 
@@ -28,7 +29,7 @@ pub trait ScannedStop {
 
 impl<S: ScannedStop> Cursor<S> {
 	pub fn scanned_to_end(&self) -> bool {
-		self.exhausted && self.stop.as_ref().is_some_and(ScannedStop::scanned)
+		matches!(self, Cursor::Exhausted { stop: Some(s), .. } if s.scanned())
 	}
 }
 
@@ -37,22 +38,88 @@ impl<S> Cursor<S> {
 		Self::default()
 	}
 
+	pub fn start_exhausted() -> Self {
+		Cursor::Exhausted {
+			last_key: None,
+			stop: None,
+		}
+	}
+
 	pub fn is_exhausted(&self) -> bool {
-		self.exhausted
+		matches!(self, Cursor::Exhausted { .. })
+	}
+
+	pub fn last_key(&self) -> Option<&EncodedKey> {
+		match self {
+			Cursor::NotStarted => None,
+			Cursor::InProgress {
+				last_key,
+			} => Some(last_key),
+			Cursor::Exhausted {
+				last_key,
+				..
+			} => last_key.as_ref(),
+		}
+	}
+
+	pub fn stop(&self) -> Option<&S> {
+		match self {
+			Cursor::Exhausted {
+				stop,
+				..
+			} => stop.as_ref(),
+			_ => None,
+		}
 	}
 
 	pub fn advance(&mut self, key: EncodedKey) {
-		self.last_key = Some(key);
+		*self = match self {
+			Cursor::Exhausted {
+				stop,
+				..
+			} => Cursor::Exhausted {
+				last_key: Some(key),
+				stop: stop.take(),
+			},
+			_ => Cursor::InProgress {
+				last_key: key,
+			},
+		};
+	}
+
+	pub fn resume(&mut self, key: EncodedKey) {
+		*self = Cursor::InProgress {
+			last_key: key,
+		};
 	}
 
 	pub fn finish(&mut self) {
-		self.exhausted = true;
+		let last_key = self.last_key().cloned();
+		*self = Cursor::Exhausted {
+			last_key,
+			stop: None,
+		};
+	}
+
+	pub fn finish_with(&mut self, stop: S) {
+		let last_key = self.last_key().cloned();
+		*self = Cursor::Exhausted {
+			last_key,
+			stop: Some(stop),
+		};
+	}
+
+	pub fn reopen(&mut self) {
+		*self = match self.last_key() {
+			Some(k) => Cursor::InProgress {
+				last_key: k.clone(),
+			},
+			None => Cursor::NotStarted,
+		};
 	}
 
 	pub fn reset(&mut self) {
-		self.last_key = None;
-		self.exhausted = false;
-		self.stop = None;
+		*self = Cursor::NotStarted;
 	}
 }
 
@@ -87,7 +154,7 @@ mod tests {
 	fn new_starts_before_the_first_key_and_unexhausted() {
 		// A fresh cursor must mean "not started", otherwise the first chunk skips the caller's own lower bound.
 		let cursor = RangeCursor::new();
-		assert_eq!(cursor.last_key, None);
+		assert_eq!(cursor.last_key(), None);
 		assert!(!cursor.is_exhausted());
 	}
 
@@ -96,7 +163,7 @@ mod tests {
 		// advance only moves the start of the next chunk; exhausting here would end a scan that has more pages.
 		let mut cursor = RangeCursor::new();
 		cursor.advance(key(b"c"));
-		assert_eq!(cursor.last_key, Some(key(b"c")));
+		assert_eq!(cursor.last_key(), Some(&key(b"c")));
 		assert!(!cursor.is_exhausted());
 	}
 
@@ -106,7 +173,7 @@ mod tests {
 		let mut cursor = RangeCursor::new();
 		cursor.advance(key(b"c"));
 		cursor.advance(key(b"f"));
-		assert_eq!(cursor.last_key, Some(key(b"f")));
+		assert_eq!(cursor.last_key(), Some(&key(b"f")));
 	}
 
 	#[test]
@@ -132,7 +199,7 @@ mod tests {
 		let mut cursor = RangeCursor::new();
 		cursor.advance(key(b"f"));
 		cursor.finish();
-		assert_eq!(cursor.last_key, Some(key(b"f")));
+		assert_eq!(cursor.last_key(), Some(&key(b"f")));
 	}
 
 	#[test]
@@ -142,7 +209,7 @@ mod tests {
 		cursor.advance(key(b"f"));
 		cursor.finish();
 		cursor.reset();
-		assert_eq!(cursor.last_key, None);
+		assert_eq!(cursor.last_key(), None);
 		assert!(!cursor.is_exhausted());
 		assert_eq!(cursor, RangeCursor::new());
 	}

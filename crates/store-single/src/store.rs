@@ -350,7 +350,7 @@ impl StandardSingleStore {
 			for entry in batch.entries {
 				all_entries.entry(entry.key).or_insert(entry.value);
 			}
-			if cursor.exhausted {
+			if cursor.is_exhausted() {
 				break;
 			}
 		}
@@ -370,7 +370,7 @@ impl StandardSingleStore {
 			for entry in batch.entries {
 				all_entries.entry(entry.key).or_insert(entry.value);
 			}
-			if cursor.exhausted {
+			if cursor.is_exhausted() {
 				break;
 			}
 		}
@@ -442,7 +442,7 @@ impl StandardSingleStore {
 			for entry in batch.entries {
 				all_entries.entry(entry.key).or_insert(entry.value);
 			}
-			if cursor.exhausted {
+			if cursor.is_exhausted() {
 				break;
 			}
 		}
@@ -463,7 +463,7 @@ impl StandardSingleStore {
 			for entry in batch.entries {
 				all_entries.entry(entry.key).or_insert(entry.value);
 			}
-			if cursor.exhausted {
+			if cursor.is_exhausted() {
 				break;
 			}
 		}

@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_store::{
-	coverage::Edge,
+	coverage::ExclusiveUpperEnd,
 	row::page::{PageId, page_of},
 };
 use reifydb_value::{
@@ -319,7 +319,7 @@ fn a_hull_end_is_never_the_top_of_the_key_space() {
 
 	for id in [page(&catalog(0)), page(&partitioned_series(0))] {
 		let (_, end) = hull_of(&read, id).expect("a fill records a hull");
-		assert_ne!(end, Edge::Top, "a hull that runs to the top retracts every kind above it");
+		assert_ne!(end, ExclusiveUpperEnd::Top, "a hull that runs to the top retracts every kind above it");
 	}
 }
 

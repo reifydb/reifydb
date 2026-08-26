@@ -6,7 +6,7 @@ use std::ops::Bound;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{interface::store::EntryKind, key::row::RowKey};
 use reifydb_store::{
-	coverage::{Edge, plan::Segment, successor},
+	coverage::{ExclusiveUpperEnd, plan::Segment, successor},
 	row::page::{PageId, key_range_of, page_of},
 };
 
@@ -38,7 +38,7 @@ impl MultiReadBufferTier {
 		if range_lo > range_hi {
 			return ServedChunk::Gap;
 		}
-		let resume = match &cursor.last_key {
+		let resume = match cursor.last_key() {
 			Some(last) if *last >= range_lo => Some(last.clone()),
 			_ => None,
 		};
@@ -49,7 +49,7 @@ impl MultiReadBufferTier {
 		if lo > range_hi {
 			return ServedChunk::Gap;
 		}
-		let hi = Edge::Key(successor(&range_hi));
+		let hi = ExclusiveUpperEnd::Key(successor(&range_hi));
 
 		let shift = self.bucket_shift();
 		let head = resume.is_none();
@@ -79,7 +79,9 @@ impl MultiReadBufferTier {
 		};
 		let stop = claimed.end.clone();
 		let upper: Bound<EncodedKey> = match &stop {
-			Edge::Key(edge) if edge.as_slice() <= page_end.as_slice() => Bound::Excluded(edge.clone()),
+			ExclusiveUpperEnd::Key(edge) if edge.as_slice() <= page_end.as_slice() => {
+				Bound::Excluded(edge.clone())
+			}
 			_ => Bound::Included(page_end.clone()),
 		};
 
@@ -118,7 +120,7 @@ impl MultiReadBufferTier {
 
 		let exhausted = !full
 			&& (stop >= hi
-				|| (stop >= Edge::Key(successor(&page_end))
+				|| (stop >= ExclusiveUpperEnd::Key(successor(&page_end))
 					&& page_ends_the_range(table, page, &range_hi)));
 		if !exhausted && out.is_empty() {
 			self.tally_coverage(&anchor, CoverageOutcome::Gap);
@@ -340,7 +342,7 @@ mod tests {
 			vec![5, 4],
 			"the claim below the punched key must still serve, where a whole-page claim serves nothing"
 		);
-		assert!(!cursor.exhausted, "a claim that stops at the punched key has proven nothing beyond it");
+		assert!(!cursor.is_exhausted(), "a claim that stops at the punched key has proven nothing beyond it");
 	}
 
 	#[test]
@@ -354,7 +356,7 @@ mod tests {
 		let mut whole = RangeCursor::new();
 		let chunk = serve(&read, &mut whole, 0, BUCKET - 1, 64);
 		assert_eq!(rows_of(&chunk), vec![6, 4, 2]);
-		assert!(whole.exhausted, "a claim spanning the whole range has proven the rest of it empty");
+		assert!(whole.is_exhausted(), "a claim spanning the whole range has proven the rest of it empty");
 
 		let punched = tier();
 		fill_bucket(&punched, 0, &[2, 4, 6], 10);
@@ -364,7 +366,7 @@ mod tests {
 		let chunk = serve(&punched, &mut clipped, 0, BUCKET - 1, 64);
 		assert_eq!(rows_of(&chunk), vec![6, 4, 2], "the rows below the punched key are the same");
 		assert!(
-			!clipped.exhausted,
+			!clipped.is_exhausted(),
 			"the claim now ends at the punched key, so the persistent tier still owes the rest"
 		);
 	}
@@ -379,7 +381,10 @@ mod tests {
 		let mut cursor = RangeCursor::new();
 		let chunk = serve(&read, &mut cursor, 0, BUCKET - 1, 64);
 		assert!(rows_of(&chunk).is_empty());
-		assert!(cursor.exhausted, "an empty claimed span must terminate the scan, not hand it to persistent");
+		assert!(
+			cursor.is_exhausted(),
+			"an empty claimed span must terminate the scan, not hand it to persistent"
+		);
 	}
 
 	#[test]
@@ -394,12 +399,12 @@ mod tests {
 		let mut cursor = RangeCursor::new();
 		let chunk = serve(&read, &mut cursor, 0, BUCKET * 2 - 1, 64);
 		assert_eq!(rows_of(&chunk), vec![BUCKET + 2, BUCKET + 1], "only the page the scan resumed in serves");
-		assert!(!cursor.exhausted, "the lower bucket is a separate claim the persistent tier still owes");
+		assert!(!cursor.is_exhausted(), "the lower bucket is a separate claim the persistent tier still owes");
 
-		cursor.last_key = Some(row(2));
+		cursor.advance(row(2));
 		let next = serve(&read, &mut cursor, 0, BUCKET * 2 - 1, 64);
 		assert_eq!(rows_of(&next), vec![1], "resuming inside the lower bucket serves from its own claim");
-		assert!(cursor.exhausted, "that claim does reach the range end");
+		assert!(cursor.is_exhausted(), "that claim does reach the range end");
 	}
 
 	#[test]
@@ -412,12 +417,12 @@ mod tests {
 		let mut cursor = RangeCursor::new();
 		let first = serve(&read, &mut cursor, 0, BUCKET - 1, 2);
 		assert_eq!(rows_of(&first), vec![4, 3]);
-		assert!(!cursor.exhausted);
-		assert_eq!(cursor.last_key.as_ref(), Some(&row(3)));
+		assert!(!cursor.is_exhausted());
+		assert_eq!(cursor.last_key(), Some(&row(3)));
 
 		let second = serve(&read, &mut cursor, 0, BUCKET - 1, 2);
 		assert_eq!(rows_of(&second), vec![2, 1], "the resume must pick up strictly after the last row served");
-		assert!(cursor.exhausted);
+		assert!(cursor.is_exhausted());
 	}
 
 	#[test]
@@ -466,7 +471,7 @@ mod tests {
 			false,
 		);
 		assert!(is_gap(&chunk), "a page with no key range must fall through, not answer");
-		assert!(!cursor.exhausted, "a gap must leave the cursor untouched");
+		assert!(!cursor.is_exhausted(), "a gap must leave the cursor untouched");
 	}
 
 	#[test]
@@ -512,7 +517,7 @@ mod tests {
 		);
 		assert!(is_gap(&chunk), "no claim covers the prefix the scan starts at");
 
-		cursor.last_key = Some(row(3));
+		cursor.advance(row(3));
 		let resumed = read.serve_covered_chunk(
 			source(),
 			&mut cursor,
@@ -535,7 +540,7 @@ mod tests {
 		let start = RowKey::storage_start(StorageId::table(STORAGE));
 		let end = RowKey::storage_end(StorageId::table(STORAGE));
 		let mut cursor = RangeCursor::new();
-		cursor.last_key = Some(row(3));
+		cursor.advance(row(3));
 		let chunk = read.serve_covered_chunk(
 			source(),
 			&mut cursor,
@@ -546,7 +551,10 @@ mod tests {
 			false,
 		);
 
-		assert!(cursor.exhausted, "no row key of this storage can sort above the claim over its last bucket");
+		assert!(
+			cursor.is_exhausted(),
+			"no row key of this storage can sort above the claim over its last bucket"
+		);
 		assert_eq!(rows_of(&chunk), vec![2, 1]);
 	}
 
@@ -561,7 +569,7 @@ mod tests {
 		let start = RowKey::storage_start(StorageId::table(STORAGE));
 		let end = RowKey::storage_end(StorageId::table(STORAGE));
 		let mut cursor = RangeCursor::new();
-		cursor.last_key = Some(row(3));
+		cursor.advance(row(3));
 		let chunk = read.serve_covered_chunk(
 			source(),
 			&mut cursor,
@@ -572,7 +580,7 @@ mod tests {
 			false,
 		);
 
-		assert!(!cursor.exhausted, "the claim stops at the punched key, which proves nothing past it");
+		assert!(!cursor.is_exhausted(), "the claim stops at the punched key, which proves nothing past it");
 		assert_eq!(rows_of(&chunk), vec![2]);
 	}
 
@@ -587,7 +595,7 @@ mod tests {
 		let start = RowKey::storage_start(StorageId::table(STORAGE));
 		let end = RowKey::storage_end(StorageId::table(STORAGE));
 		let mut cursor = RangeCursor::new();
-		cursor.last_key = Some(row(3));
+		cursor.advance(row(3));
 		let chunk = read.serve_covered_chunk(
 			source(),
 			&mut cursor,
@@ -598,7 +606,10 @@ mod tests {
 			false,
 		);
 
-		assert!(!cursor.exhausted, "the claim stops one key short of the page end, which still holds a row");
+		assert!(
+			!cursor.is_exhausted(),
+			"the claim stops one key short of the page end, which still holds a row"
+		);
 		assert_eq!(rows_of(&chunk), vec![2, 1]);
 	}
 
@@ -614,7 +625,7 @@ mod tests {
 		let start = RowKey::storage_start(StorageId::table(STORAGE));
 		let end = RowKey::storage_end(StorageId::table(STORAGE));
 		let mut cursor = RangeCursor::new();
-		cursor.last_key = Some(row(BUCKET + 2));
+		cursor.advance(row(BUCKET + 2));
 		let chunk = read.serve_covered_chunk(
 			source(),
 			&mut cursor,
@@ -625,7 +636,7 @@ mod tests {
 			false,
 		);
 
-		assert!(!cursor.exhausted, "the lower bucket is a separate claim the persistent tier still owes");
+		assert!(!cursor.is_exhausted(), "the lower bucket is a separate claim the persistent tier still owes");
 		assert_eq!(rows_of(&chunk), vec![BUCKET + 1]);
 	}
 
@@ -639,7 +650,7 @@ mod tests {
 		let start = RowKey::storage_start(StorageId::table(STORAGE));
 		let end = RowKey::encoded(StorageId::table(STORAGE - 1), 5);
 		let mut cursor = RangeCursor::new();
-		cursor.last_key = Some(row(3));
+		cursor.advance(row(3));
 		let chunk = read.serve_covered_chunk(
 			source(),
 			&mut cursor,
@@ -650,7 +661,7 @@ mod tests {
 			false,
 		);
 
-		assert!(!cursor.exhausted, "the claim says nothing about the storage the range runs on into");
+		assert!(!cursor.is_exhausted(), "the claim says nothing about the storage the range runs on into");
 		assert_eq!(rows_of(&chunk), vec![2, 1]);
 		assert!(
 			end.as_slice() > RowKey::storage_end(StorageId::table(STORAGE)).as_slice(),
@@ -673,7 +684,7 @@ mod tests {
 		let chunk = serve_whole_storage(&read, &mut cursor);
 
 		assert_eq!(rows_of(&chunk), vec![3, 2, 1], "the leading chunk of a prefix scan must serve from RAM");
-		assert!(cursor.exhausted, "the claim reaches the storage end, so nothing is left for persistent");
+		assert!(cursor.is_exhausted(), "the claim reaches the storage end, so nothing is left for persistent");
 		assert_eq!(
 			head_advances(&read),
 			1,
@@ -704,7 +715,7 @@ mod tests {
 			is_gap(&chunk),
 			"the span the commit landed in is no longer claimed, so the scan must fall through"
 		);
-		assert!(!cursor.exhausted, "a gap must leave the cursor untouched");
+		assert!(!cursor.is_exhausted(), "a gap must leave the cursor untouched");
 	}
 
 	#[test]
@@ -720,7 +731,7 @@ mod tests {
 		let chunk = serve(&read, &mut cursor, 5, 9, 64);
 
 		assert!(rows_of(&chunk).is_empty(), "no row of this storage lies in rows five through nine");
-		assert!(cursor.exhausted, "the claim spans the whole range, so RAM has proven it empty");
+		assert!(cursor.is_exhausted(), "the claim spans the whole range, so RAM has proven it empty");
 		assert_eq!(head_advances(&read), 0, "the head sorts past this range and must not have been used");
 	}
 
@@ -750,7 +761,7 @@ mod tests {
 
 		assert_eq!(head_advances(&read), 1, "the head must have moved lo, or the race under test never arose");
 		assert!(is_gap(&chunk), "a chunk whose head and claim were retracted mid-walk must be refused");
-		assert!(!cursor.exhausted, "a refused chunk must leave the cursor untouched");
+		assert!(!cursor.is_exhausted(), "a refused chunk must leave the cursor untouched");
 		assert!(
 			read.shard_metrics().iter().map(|s| s.coverage.refused).sum::<u64>() > 0,
 			"the refusal must be counted, or a silent one is indistinguishable from a miss"
@@ -783,7 +794,7 @@ mod tests {
 		);
 
 		assert!(is_gap(&chunk), "a range starting below the row band must never be answered from a row head");
-		assert!(!cursor.exhausted, "a gap must leave the cursor untouched");
+		assert!(!cursor.is_exhausted(), "a gap must leave the cursor untouched");
 		assert_eq!(head_advances(&read), 0, "the head must not have been applied outside its own band");
 	}
 
@@ -810,7 +821,7 @@ mod tests {
 		let mut cursor = RangeCursor::new();
 		let chunk = serve(&read, &mut cursor, 0, BUCKET - 1, 64);
 		assert!(is_gap(&chunk), "a plan whose claim was retracted mid-walk must be refused");
-		assert!(!cursor.exhausted, "a refused plan must leave the cursor untouched");
+		assert!(!cursor.is_exhausted(), "a refused plan must leave the cursor untouched");
 		assert!(
 			read.shard_metrics().iter().map(|s| s.coverage.refused).sum::<u64>() > 0,
 			"the refusal must be counted, or a silent one is indistinguishable from a miss"
@@ -833,7 +844,7 @@ mod tests {
 		assert!(!is_gap(&chunk), "the proven-empty storage must never reach the persistent tier again");
 		assert!(rows_of(&chunk).is_empty(), "a proven-empty range must serve no rows");
 		assert!(
-			second.exhausted,
+			second.is_exhausted(),
 			"an empty range that is not exhausted hands the scan straight back to persistent"
 		);
 	}
@@ -867,6 +878,6 @@ mod tests {
 			is_gap(&chunk),
 			"a range whose last key is the head itself is not proven empty and the persistent tier still owes it"
 		);
-		assert!(!cursor.exhausted, "a gap must leave the cursor untouched");
+		assert!(!cursor.is_exhausted(), "a gap must leave the cursor untouched");
 	}
 }

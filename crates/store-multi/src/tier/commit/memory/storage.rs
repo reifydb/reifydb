@@ -375,19 +375,19 @@ impl TierStorage for MemoryRowStorage {
 		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
-		if cursor.exhausted {
+		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
 
 		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
 			None => {
-				cursor.exhausted = true;
+				cursor.finish();
 				return Ok(RangeBatch::empty());
 			}
 		};
 
-		let cursor_key = cursor.last_key.clone();
+		let cursor_key = cursor.last_key().cloned();
 
 		let current = entry.current.read();
 		let historical = entry.historical.read();
@@ -481,10 +481,10 @@ impl TierStorage for MemoryRowStorage {
 		}
 
 		if let Some(last_entry) = entries.last() {
-			cursor.last_key = Some(last_entry.key.clone());
+			cursor.advance(last_entry.key.clone());
 		}
 		if !has_more {
-			cursor.exhausted = true;
+			cursor.finish();
 		}
 
 		Ok(RangeBatch {
@@ -503,19 +503,19 @@ impl TierStorage for MemoryRowStorage {
 		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
-		if cursor.exhausted {
+		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
 
 		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
 			None => {
-				cursor.exhausted = true;
+				cursor.finish();
 				return Ok(RangeBatch::empty());
 			}
 		};
 
-		let cursor_key = cursor.last_key.clone();
+		let cursor_key = cursor.last_key().cloned();
 
 		let current = entry.current.read();
 		let historical = entry.historical.read();
@@ -609,10 +609,10 @@ impl TierStorage for MemoryRowStorage {
 		}
 
 		if let Some(last_entry) = entries.last() {
-			cursor.last_key = Some(last_entry.key.clone());
+			cursor.advance(last_entry.key.clone());
 		}
 		if !has_more {
-			cursor.exhausted = true;
+			cursor.finish();
 		}
 
 		Ok(RangeBatch {
@@ -1036,7 +1036,7 @@ pub mod tests {
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
-		assert!(cursor.exhausted);
+		assert!(cursor.is_exhausted());
 
 		assert_eq!(&*batch.entries[0].key, b"a");
 		assert_eq!(&*batch.entries[1].key, b"b");
@@ -1077,7 +1077,7 @@ pub mod tests {
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
-		assert!(cursor.exhausted);
+		assert!(cursor.is_exhausted());
 
 		assert_eq!(&*batch.entries[0].key, b"c");
 		assert_eq!(&*batch.entries[1].key, b"b");
@@ -1110,7 +1110,7 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
-		assert!(!cursor.exhausted);
+		assert!(!cursor.is_exhausted());
 
 		assert_eq!(&*batch1.entries[0].key, &[0]);
 		assert_eq!(&*batch1.entries[2].key, &[2]);
@@ -1129,7 +1129,7 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
-		assert!(!cursor.exhausted);
+		assert!(!cursor.is_exhausted());
 
 		assert_eq!(&*batch2.entries[0].key, &[3]);
 		assert_eq!(&*batch2.entries[2].key, &[5]);
@@ -1148,7 +1148,7 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(batch3.entries.len(), 3);
 		assert!(batch3.has_more);
-		assert!(!cursor.exhausted);
+		assert!(!cursor.is_exhausted());
 
 		assert_eq!(&*batch3.entries[0].key, &[6]);
 		assert_eq!(&*batch3.entries[2].key, &[8]);
@@ -1167,7 +1167,7 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(batch4.entries.len(), 1);
 		assert!(!batch4.has_more);
-		assert!(cursor.exhausted);
+		assert!(cursor.is_exhausted());
 
 		assert_eq!(&*batch4.entries[0].key, &[9]);
 
@@ -1212,7 +1212,7 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(batch1.entries.len(), 3);
 		assert!(batch1.has_more);
-		assert!(!cursor.exhausted);
+		assert!(!cursor.is_exhausted());
 
 		assert_eq!(&*batch1.entries[0].key, &[9]);
 		assert_eq!(&*batch1.entries[2].key, &[7]);
@@ -1231,7 +1231,7 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(batch2.entries.len(), 3);
 		assert!(batch2.has_more);
-		assert!(!cursor.exhausted);
+		assert!(!cursor.is_exhausted());
 
 		assert_eq!(&*batch2.entries[0].key, &[6]);
 		assert_eq!(&*batch2.entries[2].key, &[4]);

@@ -192,8 +192,8 @@ fn a_chunk_over_an_absent_table_is_not_a_scan_to_the_range_end() {
 	let rows = tier_chunk(&tier, &mut cursor, 30);
 
 	assert_eq!(rows, 0, "an absent table yields no rows");
-	assert!(cursor.exhausted, "an absent table must still end the scan, or the store's loop spins forever");
-	assert_eq!(cursor.stop, Some(RangeStop::AbsentTable), "the stop must name the absent table");
+	assert!(cursor.is_exhausted(), "an absent table must still end the scan, or the store's loop spins forever");
+	assert_eq!(cursor.stop(), Some(&RangeStop::AbsentTable), "the stop must name the absent table");
 	assert!(!cursor.scanned_to_end(), "no read happened, so no claim may be taken from this stop");
 }
 
@@ -206,8 +206,8 @@ fn a_chunk_that_read_a_present_table_to_its_end_is_a_scan_to_the_range_end() {
 	let rows = tier_chunk(&tier, &mut cursor, 30);
 
 	assert_eq!(rows as u64, CHUNK / 2, "the whole table fits in one chunk");
-	assert!(cursor.exhausted);
-	assert_eq!(cursor.stop, Some(RangeStop::Scanned), "a short page is a read that reached the range end");
+	assert!(cursor.is_exhausted());
+	assert_eq!(cursor.stop(), Some(&RangeStop::Scanned), "a short page is a read that reached the range end");
 	assert!(cursor.scanned_to_end(), "this is the stop a claim is taken from");
 }
 
@@ -219,7 +219,7 @@ fn a_chunk_stopped_by_a_drained_reader_pool_is_not_a_scan_to_the_range_end() {
 	let (tier, _g) = tier_with_rows(CHUNK * 2, 5);
 	let mut cursor = RangeCursor::new();
 	assert_eq!(tier_chunk(&tier, &mut cursor, 30) as u64, CHUNK, "the first chunk must fill");
-	assert!(cursor.last_key.is_some(), "the cursor must have resumed on a row key");
+	assert!(cursor.last_key().is_some(), "the cursor must have resumed on a row key");
 
 	tier.shutdown();
 
@@ -246,15 +246,15 @@ fn a_chunk_that_comes_back_exactly_full_is_not_the_end_of_the_range() {
 	let mut cursor = RangeCursor::new();
 
 	assert_eq!(tier_chunk(&tier, &mut cursor, 30) as u64, CHUNK);
-	assert!(!cursor.exhausted, "a full page proves nothing beyond itself; a whole chunk still follows it");
-	assert_eq!(cursor.stop, None, "a chunk that did not stop must leave no stop reason behind");
+	assert!(!cursor.is_exhausted(), "a full page proves nothing beyond itself; a whole chunk still follows it");
+	assert_eq!(cursor.stop(), None, "a chunk that did not stop must leave no stop reason behind");
 
 	assert_eq!(tier_chunk(&tier, &mut cursor, 30) as u64, CHUNK);
-	assert!(!cursor.exhausted, "the second page is full too, so the range is still not proven over");
+	assert!(!cursor.is_exhausted(), "the second page is full too, so the range is still not proven over");
 
 	assert_eq!(tier_chunk(&tier, &mut cursor, 30), 0, "the table holds exactly two chunks");
-	assert!(cursor.exhausted);
-	assert_eq!(cursor.stop, Some(RangeStop::Scanned));
+	assert!(cursor.is_exhausted());
+	assert_eq!(cursor.stop(), Some(&RangeStop::Scanned));
 }
 
 #[test]

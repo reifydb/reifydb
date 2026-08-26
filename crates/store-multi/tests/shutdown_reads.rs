@@ -114,7 +114,7 @@ fn a_range_chunk_on_a_drained_reader_pool_fails_instead_of_reporting_the_range_o
 	let mut cursor = RangeCursor::new();
 	assert_eq!(tier_chunk(&tier, &mut cursor).unwrap() as u64, CHUNK, "the first chunk must fill");
 	// An already exhausted cursor short-circuits, so without this the refusal below would be vacuous.
-	assert!(!cursor.exhausted, "a full page must leave rows behind it");
+	assert!(!cursor.is_exhausted(), "a full page must leave rows behind it");
 
 	tier.shutdown();
 

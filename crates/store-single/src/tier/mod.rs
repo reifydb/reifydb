@@ -36,7 +36,7 @@ impl RangeBatch {
 }
 
 /// The cursor of a tier that names no stop reason.
-pub type RangeCursor = reifydb_store::coverage::chunk::RangeCursor;
+pub type RangeCursor = reifydb_store::coverage::cursor::RangeCursor;
 
 pub trait TierStorage: Send + Sync + Clone + 'static {
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>>;

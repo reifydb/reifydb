@@ -9,7 +9,7 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
-use reifydb_store::coverage::chunk::{Cursor, ScannedStop};
+use reifydb_store::coverage::cursor::{Cursor, ScannedStop};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
 use crate::MultiVersionScope;

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_store::coverage::{Edge, entry::Entry, successor};
+use reifydb_store::coverage::{ExclusiveUpperEnd, entry::Entry, successor};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::range::{
@@ -178,7 +178,10 @@ impl OperatorRangeTier {
 			return;
 		}
 		let mut coverage = self.coverage().write();
-		coverage.operators.entry(operator).or_default().extend(key.clone(), Edge::Key(successor(key)));
+		coverage.operators
+			.entry(operator)
+			.or_default()
+			.extend(key.clone(), ExclusiveUpperEnd::Key(successor(key)));
 	}
 }
 
@@ -192,7 +195,7 @@ mod tests {
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 	};
 	use reifydb_store::coverage::{
-		Edge,
+		ExclusiveUpperEnd,
 		entry::{PinnedCount, Residency},
 		interval::Interval,
 		successor,
@@ -259,7 +262,7 @@ mod tests {
 			.operators
 			.entry(operator)
 			.or_default()
-			.extend(start.clone(), Edge::Key(end.clone()));
+			.extend(start.clone(), ExclusiveUpperEnd::Key(end.clone()));
 	}
 
 	fn residency(tier: &OperatorRangeTier, id: &PartitionId, at: &EncodedKey) -> Option<Residency<EncodedPodRow>> {
@@ -299,7 +302,7 @@ mod tests {
 	}
 
 	fn island(at: &EncodedKey) -> Interval {
-		Interval::new(at.clone(), Edge::Key(successor(at)))
+		Interval::new(at.clone(), ExclusiveUpperEnd::Key(successor(at)))
 	}
 
 	#[test]

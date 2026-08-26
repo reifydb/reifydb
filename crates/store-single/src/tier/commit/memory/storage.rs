@@ -86,13 +86,13 @@ impl TierStorage for MemoryRowStorage {
 		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
-		if cursor.exhausted {
+		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
 
 		let map = self.inner.data.read();
 
-		let actual_start = if let Some(ref last_key) = cursor.last_key {
+		let actual_start = if let Some(last_key) = cursor.last_key() {
 			Bound::Excluded(last_key.as_slice())
 		} else {
 			start
@@ -108,15 +108,17 @@ impl TierStorage for MemoryRowStorage {
 			.collect();
 
 		if let Some(last_entry) = entries.last() {
-			cursor.last_key = Some(last_entry.key.clone());
-			cursor.exhausted = entries.len() < batch_size;
+			cursor.advance(last_entry.key.clone());
+			if entries.len() < batch_size {
+				cursor.finish();
+			}
 		} else {
-			cursor.exhausted = true;
+			cursor.finish();
 		}
 
 		Ok(RangeBatch {
 			entries,
-			has_more: !cursor.exhausted,
+			has_more: !cursor.is_exhausted(),
 		})
 	}
 
@@ -128,13 +130,13 @@ impl TierStorage for MemoryRowStorage {
 		end: Bound<&[u8]>,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
-		if cursor.exhausted {
+		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
 
 		let map = self.inner.data.read();
 
-		let actual_end = if let Some(ref last_key) = cursor.last_key {
+		let actual_end = if let Some(last_key) = cursor.last_key() {
 			Bound::Excluded(last_key.as_slice())
 		} else {
 			end
@@ -151,15 +153,17 @@ impl TierStorage for MemoryRowStorage {
 			.collect();
 
 		if let Some(last_entry) = entries.last() {
-			cursor.last_key = Some(last_entry.key.clone());
-			cursor.exhausted = entries.len() < batch_size;
+			cursor.advance(last_entry.key.clone());
+			if entries.len() < batch_size {
+				cursor.finish();
+			}
 		} else {
-			cursor.exhausted = true;
+			cursor.finish();
 		}
 
 		Ok(RangeBatch {
 			entries,
-			has_more: !cursor.exhausted,
+			has_more: !cursor.is_exhausted(),
 		})
 	}
 

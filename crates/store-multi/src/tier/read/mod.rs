@@ -30,7 +30,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind, util::budget::MemoryBudget};
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_store::{
-	coverage::{Edge, interval::CoverageSet, retraction::Retractions},
+	coverage::{ExclusiveUpperEnd, interval::CoverageSet, retraction::Retractions},
 	row::page::{DEFAULT_BUCKET_SHIFT, PageId},
 };
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
@@ -64,7 +64,7 @@ struct PageEntry {
 }
 
 /// The half-open span of one claim, and the unit a page's hull is widened by.
-type Span = (EncodedKey, Edge);
+type Span = (EncodedKey, ExclusiveUpperEnd);
 
 struct ResidentPage {
 	entries: BTreeMap<EncodedKey, PageEntry>,
@@ -161,7 +161,7 @@ fn account(bytes: &mut usize, payload: &mut usize, budget: &MemoryBudget, old: E
 	}
 }
 
-pub type ServedChunk = reifydb_store::coverage::chunk::ServedChunk<RangeBatch>;
+pub type ServedChunk = reifydb_store::coverage::cursor::ServedChunk<RangeBatch>;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ReadBufferPageMetrics {

@@ -56,7 +56,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_store::coverage::{
-	Edge,
+	ExclusiveUpperEnd,
 	entry::{Entry, PinnedCount},
 	interval::{CoverageSet, Interval},
 	plan::{DEFAULT_GAP_GUARD, GapHistogram, Segment},
@@ -121,11 +121,11 @@ impl PartitionId {
 	}
 
 	/// The half-open span this partition owns, so a whole partition retracts in one shrink.
-	pub fn span(&self) -> (EncodedKey, Edge) {
+	pub fn span(&self) -> (EncodedKey, ExclusiveUpperEnd) {
 		let start = self.prefix();
 		let end = match prefix_successor(start.as_slice()) {
-			Some(successor) => Edge::of(successor),
-			None => Edge::Top,
+			Some(successor) => ExclusiveUpperEnd::of(successor),
+			None => ExclusiveUpperEnd::Top,
 		};
 		(start, end)
 	}
@@ -151,8 +151,8 @@ pub type RangeRows = Vec<(EncodedKey, EncodedPodRow)>;
 /// The key range a caller reads from the persistent tier to fill one gap segment.
 pub fn scan_range(gap: &Interval) -> EncodedKeyRange {
 	let end = match &gap.end {
-		Edge::Key(key) => Bound::Excluded(key.clone()),
-		Edge::Top => Bound::Unbounded,
+		ExclusiveUpperEnd::Key(key) => Bound::Excluded(key.clone()),
+		ExclusiveUpperEnd::Top => Bound::Unbounded,
 	};
 	EncodedKeyRange::new(Bound::Included(gap.start.clone()), end)
 }
@@ -168,7 +168,7 @@ pub fn proven_span(gap: &Interval, last_key: Option<&EncodedKey>, exhausted: boo
 		return Some(gap.clone());
 	}
 	let last = last_key?;
-	Some(Interval::new(gap.start.clone(), Edge::Key(successor(last)).min(gap.end.clone())))
+	Some(Interval::new(gap.start.clone(), ExclusiveUpperEnd::Key(successor(last)).min(gap.end.clone())))
 }
 
 struct Partition {

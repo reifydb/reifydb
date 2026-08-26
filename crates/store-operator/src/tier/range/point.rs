@@ -110,7 +110,7 @@ mod tests {
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 	};
 	use reifydb_store::coverage::{
-		Edge,
+		ExclusiveUpperEnd,
 		entry::{Entry, PinnedCount},
 	};
 	use reifydb_value::byte_size::ByteSize;
@@ -187,7 +187,7 @@ mod tests {
 			.operators
 			.entry(OP_A)
 			.or_default()
-			.extend(start.clone(), Edge::Key(end.clone()));
+			.extend(start.clone(), ExclusiveUpperEnd::Key(end.clone()));
 	}
 
 	fn point_hits(tier: &OperatorRangeTier, id: &PartitionId) -> u64 {

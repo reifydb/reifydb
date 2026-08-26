@@ -18,7 +18,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range},
 };
 use reifydb_store::coverage::{
-	chunk::{RangeCursor, ServedChunk},
+	cursor::{RangeCursor, ServedChunk},
 	interval::Interval,
 	plan::{DEFAULT_GAP_GUARD, Segment},
 };

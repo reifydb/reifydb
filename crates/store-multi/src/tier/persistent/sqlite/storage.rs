@@ -749,11 +749,10 @@ impl SqlitePersistentStorage {
 	}
 
 	fn range_chunk(&self, cursor: &mut RangeCursor, req: RangeChunkRequest<'_>) -> Result<RangeBatch> {
-		if cursor.exhausted {
+		if cursor.is_exhausted() {
 			return Ok(RangeBatch::empty());
 		}
 
-		cursor.stop = None;
 		let table_sql = self.table_sql(req.table);
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
@@ -769,15 +768,14 @@ impl SqlitePersistentStorage {
 			&table_sql.table_name,
 			bound_shape(req.start),
 			bound_shape(req.end),
-			cursor.last_key.is_some(),
+			cursor.last_key().is_some(),
 			req.descending,
 		);
 
 		let mut stmt = match conn.prepare_cached(&sql) {
 			Ok(s) => s,
 			Err(e) if e.to_string().contains("no such table") => {
-				cursor.exhausted = true;
-				cursor.stop = Some(RangeStop::AbsentTable);
+				cursor.finish_with(RangeStop::AbsentTable);
 				return Ok(RangeBatch::empty());
 			}
 			Err(e) => return Err(error!(internal(format!("Failed to prepare persistent range: {}", e)))),
@@ -794,7 +792,7 @@ impl SqlitePersistentStorage {
 			Bound::Included(e) | Bound::Excluded(e) => params.push(Box::new(e.to_vec())),
 			Bound::Unbounded => {}
 		}
-		if let Some(k) = cursor.last_key.as_deref() {
+		if let Some(k) = cursor.last_key().map(|k| k.as_slice()) {
 			params.push(Box::new(k.to_vec()));
 		}
 		params.push(Box::new(version_bytes));
@@ -814,8 +812,7 @@ impl SqlitePersistentStorage {
 				.collect::<SqliteResult<Vec<_>>>()
 				.map_err(|e| error!(internal(format!("Failed to read persistent row: {}", e))))?,
 			Err(e) if e.to_string().contains("no such table") => {
-				cursor.exhausted = true;
-				cursor.stop = Some(RangeStop::AbsentTable);
+				cursor.finish_with(RangeStop::AbsentTable);
 				return Ok(RangeBatch::empty());
 			}
 			Err(e) => return Err(error!(internal(format!("Failed to scan persistent range: {}", e)))),
@@ -825,15 +822,14 @@ impl SqlitePersistentStorage {
 		record_page(raw.len() as u64, raw.iter().filter(|e| e.value.is_none()).count() as u64);
 		let entries: Vec<RawEntry> = raw.into_iter().filter(|e| req.scope.contains(e.version)).collect();
 
-		if !page_was_full {
-			cursor.exhausted = true;
-			cursor.stop = Some(RangeStop::Scanned);
-		}
 		if let Some(last) = last_scanned {
-			cursor.last_key = Some(last);
+			cursor.advance(last);
+		}
+		if !page_was_full {
+			cursor.finish_with(RangeStop::Scanned);
 		}
 
-		let has_more = !cursor.exhausted;
+		let has_more = !cursor.is_exhausted();
 		Ok(RangeBatch {
 			entries,
 			has_more,

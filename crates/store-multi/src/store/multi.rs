@@ -578,12 +578,12 @@ fn step_all_tiers(
 	collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 ) -> Result<()> {
 	if let Some(s) = buffer
-		&& !buffer_cursor.exhausted
+		&& !buffer_cursor.is_exhausted()
 	{
 		scan_tier_chunk(s, buffer_cursor, scan, collected)?;
 	}
 	if let Some(s) = persistent
-		&& !persistent_cursor.exhausted
+		&& !persistent_cursor.is_exhausted()
 	{
 		scan_tier_chunk(s, persistent_cursor, scan, collected)?;
 	}
@@ -608,19 +608,21 @@ pub fn scan_tiers_latest(
 	};
 
 	let mut collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
-	let mut buffer_cursor = RangeCursor {
-		exhausted: buffer.is_none(),
-		..Default::default()
+	let mut buffer_cursor = if buffer.is_none() {
+		RangeCursor::start_exhausted()
+	} else {
+		RangeCursor::new()
 	};
-	let mut persistent_cursor = RangeCursor {
-		exhausted: persistent.is_none(),
-		..Default::default()
+	let mut persistent_cursor = if persistent.is_none() {
+		RangeCursor::start_exhausted()
+	} else {
+		RangeCursor::new()
 	};
 	let mut exhausted = false;
 
 	while collected.len() < max_keys {
 		step_all_tiers(buffer, &mut buffer_cursor, persistent, &mut persistent_cursor, &scan, &mut collected)?;
-		if buffer_cursor.exhausted && persistent_cursor.exhausted {
+		if buffer_cursor.is_exhausted() && persistent_cursor.is_exhausted() {
 			exhausted = true;
 			break;
 		}
@@ -660,15 +662,15 @@ impl StandardMultiStore {
 		let mut collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
 		while collected.len() < batch_size {
-			if !cursor.commit.exhausted {
+			if !cursor.commit.is_exhausted() {
 				scan_tier_chunk(&self.commit, &mut cursor.commit, &scan, &mut collected)?;
 			}
 
-			if self.persistent.is_some() && !cursor.persistent.exhausted {
+			if self.persistent.is_some() && !cursor.persistent.is_exhausted() {
 				self.step_persistent_cached(&scan, cursor, &mut collected, false)?;
 			}
 
-			if cursor.commit.exhausted && cursor.persistent.exhausted {
+			if cursor.commit.is_exhausted() && cursor.persistent.is_exhausted() {
 				if reread_persistent_absent_before_its_table(cursor) {
 					continue;
 				}
@@ -792,15 +794,15 @@ impl StandardMultiStore {
 		let mut collected: BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
 		while collected.len() < batch_size {
-			if !cursor.commit.exhausted {
+			if !cursor.commit.is_exhausted() {
 				scan_tier_chunk_rev(&self.commit, &mut cursor.commit, &scan, &mut collected)?;
 			}
 
-			if self.persistent.is_some() && !cursor.persistent.exhausted {
+			if self.persistent.is_some() && !cursor.persistent.is_exhausted() {
 				self.step_persistent_cached(&scan, cursor, &mut collected, true)?;
 			}
 
-			if cursor.commit.exhausted && cursor.persistent.exhausted {
+			if cursor.commit.is_exhausted() && cursor.persistent.is_exhausted() {
 				if reread_persistent_absent_before_its_table(cursor) {
 					continue;
 				}
@@ -884,7 +886,7 @@ impl StandardMultiStore {
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
 	) -> Result<()> {
-		let resumed_at = cursor.persistent.last_key.clone();
+		let resumed_at = cursor.persistent.last_key().cloned();
 		let batch = if descending {
 			persistent.range_rev_next(
 				scan.table,
@@ -936,7 +938,7 @@ impl StandardMultiStore {
 			Some(last) => successor(last).max(range_start),
 			None => range_start,
 		};
-		let through = match (cursor.scanned_to_end(), cursor.exhausted, cursor.last_key.as_ref()) {
+		let through = match (cursor.scanned_to_end(), cursor.is_exhausted(), cursor.last_key()) {
 			(true, _, _) => EncodedKey::new(scan.end),
 			(false, true, _) => return Ok(()),
 			(false, false, Some(last)) => last.clone(),
@@ -948,18 +950,17 @@ impl StandardMultiStore {
 }
 
 fn reread_persistent_absent_before_its_table(cursor: &mut MultiVersionRangeCursor) -> bool {
-	if cursor.persistent_recheck_spent || cursor.persistent.stop != Some(RangeStop::AbsentTable) {
+	if cursor.persistent_recheck_spent || cursor.persistent.stop() != Some(&RangeStop::AbsentTable) {
 		return false;
 	}
 	cursor.persistent_recheck_spent = true;
-	cursor.persistent.exhausted = false;
-	cursor.persistent.stop = None;
+	cursor.persistent.reopen();
 	true
 }
 
 fn mark_unconfigured_exhausted(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor) {
 	if store.persistent.is_none() {
-		cursor.persistent.exhausted = true;
+		cursor.persistent.finish();
 	}
 }
 
@@ -988,10 +989,10 @@ fn apply_reverse_horizon(
 fn forward_horizon(cursor: &MultiVersionRangeCursor) -> Option<EncodedKey> {
 	let mut horizon: Option<EncodedKey> = None;
 	for tier in [&cursor.commit, &cursor.persistent] {
-		if tier.exhausted {
+		if tier.is_exhausted() {
 			continue;
 		}
-		let last = match &tier.last_key {
+		let last = match tier.last_key() {
 			Some(k) => k.clone(),
 
 			None => return None,
@@ -1013,10 +1014,10 @@ fn forward_horizon(cursor: &MultiVersionRangeCursor) -> Option<EncodedKey> {
 fn reverse_horizon(cursor: &MultiVersionRangeCursor) -> Option<EncodedKey> {
 	let mut horizon: Option<EncodedKey> = None;
 	for tier in [&cursor.commit, &cursor.persistent] {
-		if tier.exhausted {
+		if tier.is_exhausted() {
 			continue;
 		}
-		let last = match &tier.last_key {
+		let last = match tier.last_key() {
 			Some(k) => k.clone(),
 			None => return None,
 		};
@@ -1036,22 +1037,20 @@ fn reverse_horizon(cursor: &MultiVersionRangeCursor) -> Option<EncodedKey> {
 
 fn rewind_over_advanced_forward(cursor: &mut MultiVersionRangeCursor, horizon: &EncodedKey) {
 	for tier in [&mut cursor.commit, &mut cursor.persistent] {
-		if let Some(last) = &tier.last_key
+		if let Some(last) = tier.last_key()
 			&& last.as_slice() > horizon.as_slice()
 		{
-			tier.last_key = Some(horizon.clone());
-			tier.exhausted = false;
+			tier.resume(horizon.clone());
 		}
 	}
 }
 
 fn rewind_over_advanced_reverse(cursor: &mut MultiVersionRangeCursor, horizon: &EncodedKey) {
 	for tier in [&mut cursor.commit, &mut cursor.persistent] {
-		if let Some(last) = &tier.last_key
+		if let Some(last) = tier.last_key()
 			&& last.as_slice() < horizon.as_slice()
 		{
-			tier.last_key = Some(horizon.clone());
-			tier.exhausted = false;
+			tier.resume(horizon.clone());
 		}
 	}
 }
@@ -1558,12 +1557,12 @@ mod cache_tests {
 			.unwrap();
 		assert!(first.has_more, "four hundred rows cannot fit in one tier chunk, so the scan must continue");
 		assert_ne!(
-			cursor.persistent.stop,
-			Some(RangeStop::AbsentTable),
+			cursor.persistent.stop(),
+			Some(&RangeStop::AbsentTable),
 			"the persistent tier must hold a table here, or this is the empty-database case again"
 		);
 		assert!(
-			cursor.persistent.last_key.is_some(),
+			cursor.persistent.last_key().is_some(),
 			"the persistent tier contributed nothing, so the scan is not merging two live tiers"
 		);
 
@@ -1599,12 +1598,12 @@ mod cache_tests {
 			.unwrap();
 		assert!(first.has_more, "four hundred rows cannot fit in one tier chunk, so the scan must continue");
 		assert_ne!(
-			cursor.persistent.stop,
-			Some(RangeStop::AbsentTable),
+			cursor.persistent.stop(),
+			Some(&RangeStop::AbsentTable),
 			"the persistent tier must hold a table here, or this is the empty-database case again"
 		);
 		assert!(
-			cursor.persistent.last_key.is_some(),
+			cursor.persistent.last_key().is_some(),
 			"the persistent tier contributed nothing, so the scan is not merging two live tiers"
 		);
 
@@ -1642,8 +1641,8 @@ mod cache_tests {
 			.unwrap();
 		assert!(first.has_more, "two hundred rows cannot fit in one tier chunk, so the scan must continue");
 		assert_eq!(
-			cursor.persistent.stop,
-			Some(RangeStop::AbsentTable),
+			cursor.persistent.stop(),
+			Some(&RangeStop::AbsentTable),
 			"nothing is flushed yet, so this test is not exercising the interleaving it exists for"
 		);
 
@@ -1681,8 +1680,8 @@ mod cache_tests {
 			.unwrap();
 		assert!(first.has_more, "two hundred rows cannot fit in one tier chunk, so the scan must continue");
 		assert_eq!(
-			cursor.persistent.stop,
-			Some(RangeStop::AbsentTable),
+			cursor.persistent.stop(),
+			Some(&RangeStop::AbsentTable),
 			"nothing is flushed yet, so this test is not exercising the interleaving it exists for"
 		);
 
@@ -1720,7 +1719,6 @@ mod probe_tests {
 	use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 	use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
-	use super::MultiVersionRangeCursor;
 	use crate::{
 		config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
 		store::StandardMultiStore,

@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::store::{EntryKind, classify_key},
 };
 use reifydb_store::{
-	coverage::{Edge, successor},
+	coverage::{ExclusiveUpperEnd, successor},
 	row::page::page_of,
 };
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
@@ -93,7 +93,7 @@ impl MultiReadBufferTier {
 		let index = self.shard_index(&page_id);
 		self.lower_head(page_id.kind, &key);
 		let token = self.retractions();
-		let island = (key.clone(), Edge::Key(successor(&key)));
+		let island = (key.clone(), ExclusiveUpperEnd::Key(successor(&key)));
 		let mut shard = self.shard(index).lock();
 		let next = shard.next_tick;
 		let placed = 'place: {

@@ -244,7 +244,7 @@ fn serve_collect(
 		) {
 			ServedChunk::Served(batch) => {
 				out.extend(batch.entries);
-				if cursor.exhausted {
+				if cursor.is_exhausted() {
 					break;
 				}
 			}
@@ -299,7 +299,7 @@ fn serve_returns_gap_when_bucket_not_complete() {
 		false,
 	);
 	assert!(matches!(result, ServedChunk::Gap));
-	assert!(cursor.last_key.is_none() && !cursor.exhausted, "Gap must leave the cursor untouched");
+	assert!(cursor.last_key().is_none() && !cursor.is_exhausted(), "Gap must leave the cursor untouched");
 }
 
 #[test]
@@ -408,13 +408,13 @@ fn serve_stops_at_incomplete_bucket_after_a_complete_one() {
 		}
 		ServedChunk::Gap => panic!("expected Served for the complete bucket"),
 	}
-	assert!(!cursor.exhausted, "the incomplete bucket still remains");
+	assert!(!cursor.is_exhausted(), "the incomplete bucket still remains");
 
-	let last_before = cursor.last_key.clone();
+	let last_before = cursor.last_key().cloned();
 	let gap = read.serve_persistent_chunk(table, &mut cursor, start.as_slice(), end.as_slice(), scope, 100, false);
 	assert!(matches!(gap, ServedChunk::Gap), "the incomplete bucket must read through");
-	assert_eq!(cursor.last_key, last_before, "Gap must not advance the cursor");
-	assert!(!cursor.exhausted);
+	assert_eq!(cursor.last_key(), last_before.as_ref(), "Gap must not advance the cursor");
+	assert!(!cursor.is_exhausted());
 }
 
 #[test]
@@ -1039,7 +1039,7 @@ fn complete_page_hides_writes_newer_than_the_read_scope() {
 		"every resident row is newer than the read scope, so none of them may be visible to this reader"
 	);
 	assert!(
-		cursor.exhausted,
+		cursor.is_exhausted(),
 		"the page covers the whole range, so the scan must end rather than resume in persistent"
 	);
 

@@ -277,6 +277,6 @@ pub mod tests {
 
 		assert_eq!(batch.entries.len(), 3);
 		assert!(!batch.has_more);
-		assert!(cursor.exhausted);
+		assert!(cursor.is_exhausted());
 	}
 }

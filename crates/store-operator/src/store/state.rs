@@ -16,8 +16,8 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, OperatorId},
 };
 use reifydb_store::coverage::{
-	Edge,
-	chunk::{RangeCursor, ServedChunk},
+	ExclusiveUpperEnd,
+	cursor::{RangeCursor, ServedChunk},
 	interval::Interval,
 	plan::Segment,
 	successor,
@@ -491,7 +491,7 @@ impl StandardOperatorStore {
 								exhausted = true;
 								break;
 							};
-							let from = match cursor.last_key.as_ref() {
+							let from = match cursor.last_key() {
 								Some(key) => Bound::Excluded(key.clone()),
 								None => Bound::Included(interval.start.clone()),
 							};
@@ -593,7 +593,10 @@ impl StandardOperatorStore {
 									..
 								}) = scan.segments().get(segment_index + consumed)
 								{
-									if span.end != Edge::Key(next.start.clone()) {
+									if span.end
+										!= ExclusiveUpperEnd::Key(
+											next.start.clone(),
+										) {
 										break;
 									}
 									span.end = next.end.clone();

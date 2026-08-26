@@ -82,6 +82,18 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
+	fn state_range_limited_visit(
+		&mut self,
+		range: EncodedKeyRange,
+		limit: Option<usize>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
+	) -> Result<()> {
+		for (key, row) in self.state_range_limited(range, limit)? {
+			visit(key, row)?;
+		}
+		Ok(())
+	}
+
 	fn state_range_iter(&mut self, range: EncodedKeyRange) -> StateIterator<'_>;
 
 	fn state_clear(&mut self) -> Result<()>;
@@ -354,17 +366,30 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		range: EncodedKeyRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		let mut out = Vec::new();
+		self.state_range_limited_visit(range, limit, &mut |key, row| {
+			out.push((key, row));
+			Ok(())
+		})?;
+		Ok(out)
+	}
+
+	fn state_range_limited_visit(
+		&mut self,
+		range: EncodedKeyRange,
+		limit: Option<usize>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
+	) -> Result<()> {
 		let mut query = StateRange::forward(range, "operator::host_range");
 		query.limit = limit;
 		let batch = self.txn.state_range(self.operator, query)?;
-		let mut out = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
 			let Some(key) = unscope(&r.key) else {
 				continue;
 			};
-			out.push((key, EncodedPodRow::from(r.bytes)));
+			visit(key, EncodedPodRow::from(r.bytes))?;
 		}
-		Ok(out)
+		Ok(())
 	}
 
 	fn state_range_iter(&mut self, range: EncodedKeyRange) -> StateIterator<'_> {

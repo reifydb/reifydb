@@ -27,7 +27,7 @@
 //! arithmetically, residency alone seeds a covered interval; where the key suffixes are opaque, the
 //! cache can only ever know what a scan observed.
 
-pub mod chunk;
+pub mod cursor;
 pub mod entry;
 pub mod interval;
 pub mod plan;
@@ -41,33 +41,33 @@ use reifydb_codec::key::encoded::EncodedKey;
 ///
 /// Byte-lexicographic order gives the empty key as a natural bottom, so a lower bound is always a
 /// concrete [`EncodedKey`]. There is no such largest key, so an unbounded upper end needs the
-/// [`Edge::Top`] sentinel.
+/// [`ExclusiveUpperEnd::Top`] sentinel.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Edge {
+pub enum ExclusiveUpperEnd {
 	Key(EncodedKey),
 	Top,
 }
 
-impl Edge {
+impl ExclusiveUpperEnd {
 	pub fn of(key: impl AsRef<[u8]>) -> Self {
-		Edge::Key(EncodedKey::new(key))
+		ExclusiveUpperEnd::Key(EncodedKey::new(key))
 	}
 
 	pub fn is_top(&self) -> bool {
-		matches!(self, Edge::Top)
+		matches!(self, ExclusiveUpperEnd::Top)
 	}
 
 	pub fn key(&self) -> Option<&EncodedKey> {
 		match self {
-			Edge::Key(key) => Some(key),
-			Edge::Top => None,
+			ExclusiveUpperEnd::Key(key) => Some(key),
+			ExclusiveUpperEnd::Top => None,
 		}
 	}
 
 	pub fn cmp_key(&self, key: &EncodedKey) -> Ordering {
 		match self {
-			Edge::Key(edge) => edge.as_slice().cmp(key.as_slice()),
-			Edge::Top => Ordering::Greater,
+			ExclusiveUpperEnd::Key(edge) => edge.as_slice().cmp(key.as_slice()),
+			ExclusiveUpperEnd::Top => Ordering::Greater,
 		}
 	}
 
@@ -75,11 +75,11 @@ impl Edge {
 		self.cmp_key(key) == Ordering::Greater
 	}
 
-	pub fn min(self, other: Edge) -> Edge {
+	pub fn min(self, other: ExclusiveUpperEnd) -> ExclusiveUpperEnd {
 		match (&self, &other) {
-			(Edge::Top, _) => other,
-			(_, Edge::Top) => self,
-			(Edge::Key(left), Edge::Key(right)) => {
+			(ExclusiveUpperEnd::Top, _) => other,
+			(_, ExclusiveUpperEnd::Top) => self,
+			(ExclusiveUpperEnd::Key(left), ExclusiveUpperEnd::Key(right)) => {
 				if left.as_slice() <= right.as_slice() {
 					self
 				} else {
@@ -89,10 +89,10 @@ impl Edge {
 		}
 	}
 
-	pub fn max(self, other: Edge) -> Edge {
+	pub fn max(self, other: ExclusiveUpperEnd) -> ExclusiveUpperEnd {
 		match (&self, &other) {
-			(Edge::Top, _) | (_, Edge::Top) => Edge::Top,
-			(Edge::Key(left), Edge::Key(right)) => {
+			(ExclusiveUpperEnd::Top, _) | (_, ExclusiveUpperEnd::Top) => ExclusiveUpperEnd::Top,
+			(ExclusiveUpperEnd::Key(left), ExclusiveUpperEnd::Key(right)) => {
 				if left.as_slice() >= right.as_slice() {
 					self
 				} else {
@@ -103,19 +103,21 @@ impl Edge {
 	}
 }
 
-impl PartialOrd for Edge {
+impl PartialOrd for ExclusiveUpperEnd {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		Some(self.cmp(other))
 	}
 }
 
-impl Ord for Edge {
+impl Ord for ExclusiveUpperEnd {
 	fn cmp(&self, other: &Self) -> Ordering {
 		match (self, other) {
-			(Edge::Top, Edge::Top) => Ordering::Equal,
-			(Edge::Top, Edge::Key(_)) => Ordering::Greater,
-			(Edge::Key(_), Edge::Top) => Ordering::Less,
-			(Edge::Key(left), Edge::Key(right)) => left.as_slice().cmp(right.as_slice()),
+			(ExclusiveUpperEnd::Top, ExclusiveUpperEnd::Top) => Ordering::Equal,
+			(ExclusiveUpperEnd::Top, ExclusiveUpperEnd::Key(_)) => Ordering::Greater,
+			(ExclusiveUpperEnd::Key(_), ExclusiveUpperEnd::Top) => Ordering::Less,
+			(ExclusiveUpperEnd::Key(left), ExclusiveUpperEnd::Key(right)) => {
+				left.as_slice().cmp(right.as_slice())
+			}
 		}
 	}
 }

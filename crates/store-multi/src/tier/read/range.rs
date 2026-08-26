@@ -4,7 +4,7 @@
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{interface::store::EntryKind, util::budget::MemoryBudget};
 use reifydb_store::{
-	coverage::{Edge, interval::Interval, successor},
+	coverage::{ExclusiveUpperEnd, interval::Interval, successor},
 	row::page::{PageId, key_range_of, page_of},
 };
 use reifydb_value::reifydb_assertions;
@@ -42,7 +42,7 @@ impl MultiReadBufferTier {
 		}
 		self.raise_head(table, lo, through, entries.first().map(|entry| &entry.key), self.retractions());
 		let shift = self.bucket_shift();
-		let tail = Edge::Key(successor(through));
+		let tail = ExclusiveUpperEnd::Key(successor(through));
 		if entries.is_empty() {
 			let page = page_of(lo, shift);
 			if page.kind != table {
@@ -62,7 +62,7 @@ impl MultiReadBufferTier {
 			let limit = if next == entries.len() {
 				tail.clone()
 			} else {
-				Edge::Top
+				ExclusiveUpperEnd::Top
 			};
 			if page.kind == table {
 				published |= self.install_page_segment(page, shift, lo, limit, &entries[run..next]);
@@ -77,7 +77,7 @@ impl MultiReadBufferTier {
 		page: PageId,
 		shift: u8,
 		lo: &EncodedKey,
-		limit: Edge,
+		limit: ExclusiveUpperEnd,
 		entries: &[RawEntry],
 	) -> bool {
 		let Some((page_start, page_end)) = page_bounds(page, shift) else {
@@ -88,7 +88,7 @@ impl MultiReadBufferTier {
 		} else {
 			lo.clone()
 		};
-		let end = limit.min(Edge::Key(successor(&page_end)));
+		let end = limit.min(ExclusiveUpperEnd::Key(successor(&page_end)));
 		if !end.covers(&start) {
 			return false;
 		}
@@ -157,7 +157,7 @@ impl MultiReadBufferTier {
 		}
 
 		let shift = self.bucket_shift();
-		let attribution = match &cursor.last_key {
+		let attribution = match cursor.last_key() {
 			Some(last) => page_of(last, shift),
 			None if descending => page_of(&EncodedKey::new(end), shift),
 			None => page_of(&EncodedKey::new(start), shift),
@@ -206,9 +206,11 @@ pub(super) fn served_chunk(out: Vec<RawEntry>, cursor: &mut RangeCursor, exhaust
 		);
 	}
 	if let Some(last) = out.last() {
-		cursor.last_key = Some(last.key.clone());
+		cursor.advance(last.key.clone());
 	}
-	cursor.exhausted = exhausted;
+	if exhausted {
+		cursor.finish();
+	}
 	ServedChunk::Served(RangeBatch {
 		entries: out,
 		has_more: !exhausted,

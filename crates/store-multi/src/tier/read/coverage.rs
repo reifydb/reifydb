@@ -12,7 +12,7 @@ use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_store::coverage::interval::Interval;
 use reifydb_store::{
 	coverage::{
-		Edge,
+		ExclusiveUpperEnd,
 		plan::{DEFAULT_GAP_GUARD, ScanPlan, plan},
 		successor,
 	},
@@ -24,7 +24,9 @@ use crate::tier::read::{CoverageIndex, MultiReadBufferTier, Span, scan::page_bou
 pub(super) fn span_of(range: Option<EncodedKeyRange>) -> Option<Span> {
 	let range = range?;
 	match (range.start, range.end) {
-		(Bound::Included(start), Bound::Included(end)) => Some((start, Edge::Key(successor(&end)))),
+		(Bound::Included(start), Bound::Included(end)) => {
+			Some((start, ExclusiveUpperEnd::Key(successor(&end))))
+		}
 		_ => None,
 	}
 }
@@ -107,7 +109,7 @@ impl MultiReadBufferTier {
 		anchor: &EncodedKey,
 		lo: &EncodedKey,
 		range_hi: &EncodedKey,
-		hi: &Edge,
+		hi: &ExclusiveUpperEnd,
 		shift: u8,
 		head: bool,
 	) -> Option<Leading> {
@@ -135,7 +137,7 @@ impl MultiReadBufferTier {
 		if lo.as_slice() < page_start.as_slice() {
 			return None;
 		}
-		let ceiling = Edge::Key(successor(&page_end)).min(hi.clone());
+		let ceiling = ExclusiveUpperEnd::Key(successor(&page_end)).min(hi.clone());
 		let set = coverage.kinds.get(&kind)?;
 		let claim = set.covering(&lo)?;
 		let cap = claim.end.min(ceiling);
@@ -342,7 +344,7 @@ mod tests {
 		key::{EncodableKey, row::RowKey, series_row::SeriesRowKey},
 	};
 	use reifydb_store::{
-		coverage::{Edge, interval::Interval, successor},
+		coverage::{ExclusiveUpperEnd, interval::Interval, successor},
 		row::page::{PageId, key_range_of, page_of},
 	};
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
@@ -394,7 +396,7 @@ mod tests {
 		page_of(&row(n), SHIFT)
 	}
 
-	fn bucket_span(n: u64) -> (EncodedKey, Edge) {
+	fn bucket_span(n: u64) -> (EncodedKey, ExclusiveUpperEnd) {
 		span_of(key_range_of(page(n), SHIFT)).expect("a table row page has a reconstructable range")
 	}
 
@@ -415,7 +417,7 @@ mod tests {
 	}
 
 	fn island(n: u64) -> Interval {
-		Interval::new(row(n), Edge::Key(successor(&row(n))))
+		Interval::new(row(n), ExclusiveUpperEnd::Key(successor(&row(n))))
 	}
 
 	fn storage_start() -> EncodedKey {

@@ -13,8 +13,8 @@ use reifydb_codec::{
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::Keyspace};
 use reifydb_store::coverage::{
-	Edge,
-	chunk::{RangeCursor, ServedChunk},
+	ExclusiveUpperEnd,
+	cursor::{RangeCursor, ServedChunk},
 	entry::{Entry, PinnedCount, Residency},
 	interval::{CoverageSet, Interval},
 	plan::{Segment, plan},
@@ -58,9 +58,9 @@ impl OperatorRangeTier {
 			Unbounded => return None,
 		};
 		let hi = match range.end.as_ref() {
-			Included(key) => Edge::Key(successor(key)),
-			Excluded(key) => Edge::Key(key.clone()),
-			Unbounded => Edge::Top,
+			Included(key) => ExclusiveUpperEnd::Key(successor(key)),
+			Excluded(key) => ExclusiveUpperEnd::Key(key.clone()),
+			Unbounded => ExclusiveUpperEnd::Top,
 		};
 
 		let head = partition_at(operator, &lo)?;
@@ -209,7 +209,7 @@ impl OperatorRangeTier {
 		cursor: &mut RangeCursor,
 		limit: usize,
 	) -> ServedChunk<RangeRows> {
-		let start = match cursor.last_key.as_ref() {
+		let start = match cursor.last_key() {
 			Some(last) if last.as_slice() >= segment.start.as_slice() => successor(last),
 			_ => segment.start.clone(),
 		};
@@ -250,8 +250,8 @@ impl OperatorRangeTier {
 				if let Some(resident) = partitions.get_mut(&partition) {
 					resident.tick = tick;
 					let upper = match &segment.end {
-						Edge::Key(key) => Excluded(key.clone()),
-						Edge::Top => Unbounded,
+						ExclusiveUpperEnd::Key(key) => Excluded(key.clone()),
+						ExclusiveUpperEnd::Top => Unbounded,
 					};
 					let span = (Included(start), upper);
 					for (key, entry) in resident.entries.range::<EncodedKey, _>(span) {
@@ -329,8 +329,8 @@ impl OperatorRangeTier {
 					break;
 				}
 				match end {
-					Edge::Key(key) => start = key,
-					Edge::Top => break,
+					ExclusiveUpperEnd::Key(key) => start = key,
+					ExclusiveUpperEnd::Top => break,
 				}
 			}
 		}
@@ -576,7 +576,8 @@ fn partition_at(operator: OperatorId, key: &EncodedKey) -> Option<PartitionId> {
 }
 
 fn unaddressable_gap(gap: &Interval) -> bool {
-	gap.start.as_slice().len() < PartitionId::PREFIX_LEN && gap.end <= Edge::Key(pad_to_prefix(&gap.start))
+	gap.start.as_slice().len() < PartitionId::PREFIX_LEN
+		&& gap.end <= ExclusiveUpperEnd::Key(pad_to_prefix(&gap.start))
 }
 
 fn exempt_gap(operator: OperatorId, gap: &Interval) -> bool {
@@ -614,7 +615,7 @@ fn coalesce_gaps(pieces: Vec<(Segment, Option<PartitionId>)>) -> Vec<(Segment, O
 					Some(_),
 				)),
 				Some(_),
-			) if *prev_exempt == *exempt && prev.end == Edge::Key(interval.start.clone()) => {
+			) if *prev_exempt == *exempt && prev.end == ExclusiveUpperEnd::Key(interval.start.clone()) => {
 				prev.end = interval.end.clone();
 				true
 			}
@@ -642,7 +643,7 @@ static POLICY_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 	floor
 });
 
-fn policy_run_end(partition: PartitionId) -> Edge {
+fn policy_run_end(partition: PartitionId) -> ExclusiveUpperEnd {
 	let floor = POLICY_RUN_FLOOR[partition.keyspace.0 as usize];
 	if floor == partition.keyspace.0 {
 		return partition.span().1;
@@ -672,7 +673,7 @@ fn split_at_partitions(operator: OperatorId, segment: &Segment, out: &mut Vec<(S
 		}
 		let Some(partition) = PartitionId::of(operator, &start) else {
 			let bound = if head {
-				Edge::Key(pad_to_prefix(&start))
+				ExclusiveUpperEnd::Key(pad_to_prefix(&start))
 			} else {
 				whole.end.clone()
 			};
@@ -690,11 +691,11 @@ fn split_at_partitions(operator: OperatorId, segment: &Segment, out: &mut Vec<(S
 			head = false;
 			match end {
 				_ if end == whole.end => return,
-				Edge::Key(key) => {
+				ExclusiveUpperEnd::Key(key) => {
 					start = key;
 					continue;
 				}
-				Edge::Top => return,
+				ExclusiveUpperEnd::Top => return,
 			}
 		};
 		head = false;
@@ -722,8 +723,8 @@ fn split_at_partitions(operator: OperatorId, segment: &Segment, out: &mut Vec<(S
 			return;
 		}
 		match end {
-			Edge::Key(key) => start = key,
-			Edge::Top => return,
+			ExclusiveUpperEnd::Key(key) => start = key,
+			ExclusiveUpperEnd::Top => return,
 		}
 	}
 }
@@ -741,8 +742,8 @@ mod tests {
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
 	};
 	use reifydb_store::coverage::{
-		Edge,
-		chunk::{RangeCursor, ServedChunk},
+		ExclusiveUpperEnd,
+		cursor::{RangeCursor, ServedChunk},
 		interval::Interval,
 		plan::Segment,
 	};
@@ -807,7 +808,7 @@ mod tests {
 	}
 
 	fn spanning(from: &EncodedKey, to: &EncodedKey) -> Interval {
-		Interval::new(from.clone(), Edge::Key(to.clone()))
+		Interval::new(from.clone(), ExclusiveUpperEnd::Key(to.clone()))
 	}
 
 	fn drain(tier: &OperatorRangeTier, scan: &RangeScan, segment: &Interval, limit: usize) -> Vec<String> {
@@ -860,7 +861,10 @@ mod tests {
 			scan.segments(),
 			[
 				Segment::Gap {
-					interval: Interval::new(keyspace.start.clone(), Edge::Key(at(b"c"))),
+					interval: Interval::new(
+						keyspace.start.clone(),
+						ExclusiveUpperEnd::Key(at(b"c"))
+					),
 					exempt: false,
 				},
 				Segment::Resident(spanning(&at(b"c"), &at(b"e"))),
@@ -1270,7 +1274,7 @@ mod tests {
 					Segment::Gap {
 						interval: Interval::new(
 							whole(top).start,
-							Edge::Key(whole(UNCACHED).start)
+							ExclusiveUpperEnd::Key(whole(UNCACHED).start)
 						),
 						exempt: false,
 					},
