@@ -1309,7 +1309,7 @@ mod cache_tests {
 		store::StandardMultiStore,
 		tier::{
 			RangeStop, RawEntry, TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier,
-			read::ReadBufferConfig,
+			range::PartitionId, read::ReadBufferConfig,
 		},
 	};
 
@@ -1367,6 +1367,7 @@ mod cache_tests {
 
 	#[test]
 	fn a_full_scan_claims_every_bucket_it_walks_to_the_edge() {
+		// A claim stopping at a chunk boundary instead of the bucket edge leaves the rest of that bucket unproven.
 		const HEAVY: u64 = 192;
 		const LIGHT: u64 = 20;
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
@@ -1379,11 +1380,12 @@ mod cache_tests {
 		}
 		flush(&store, CommitVersion(1));
 
-		let read = store.read.clone().expect("read tier configured");
-		let heavy_bucket = read.page_of_key(&RowKey::encoded(STORAGE, 1));
-		let light_bucket = read.page_of_key(&RowKey::encoded(STORAGE, 1u64 << 16));
-		assert_ne!(heavy_bucket, light_bucket, "the two row groups must land in different buckets");
-		assert!(!read.page_is_complete(heavy_bucket), "nothing is claimed before the scan");
+		let range = store.range.clone().expect("range tier configured");
+		let kind = EntryKind::Source(STORAGE);
+		let heavy = PartitionId::of(kind, &RowKey::encoded(STORAGE, 1)).expect("a row key names a bucket");
+		let light = PartitionId::of(kind, &RowKey::encoded(STORAGE, 1u64 << 16)).expect("a row key names a bucket");
+		assert_ne!(heavy, light, "the two row groups must land in different buckets");
+		assert_eq!(range.complete_partitions().iter().sum::<usize>(), 0, "nothing is claimed before the scan");
 
 		let scanned = store
 			.range(
@@ -1397,8 +1399,11 @@ mod cache_tests {
 			.unwrap();
 		assert_eq!(scanned.len() as u64, HEAVY + LIGHT, "the scan returns every row");
 
-		assert!(read.page_is_complete(heavy_bucket), "a bucket the scan walked to its edge must be claimed");
-		assert!(read.page_is_complete(light_bucket), "a bucket the scan walked to its edge must be claimed");
+		assert_eq!(
+			range.complete_partitions().iter().sum::<usize>(),
+			2,
+			"both buckets the scan walked to their edge must be claimed"
+		);
 	}
 
 	#[test]

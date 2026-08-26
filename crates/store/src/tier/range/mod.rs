@@ -121,7 +121,7 @@ pub trait RangeDomain: Copy + Debug + 'static {
 		true
 	}
 
-	/// Whether a write may seat a partition no claim reached; a handoff domain must, or a claim taken across one answers the row absent.
+	/// A handoff domain must seat a write no claim reached, or a claim taken across it answers the row absent.
 	fn admits_unproven_writes() -> bool {
 		false
 	}
