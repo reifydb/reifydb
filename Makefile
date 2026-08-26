@@ -72,6 +72,7 @@ help:
 	@printf "  %-25s %s\n" "test-reference-dev" "Run fast reference conformance tests"
 	@printf "  %-25s %s\n" "test-pkg-rust" "Run test packages (rust)"
 	@printf "  %-25s %s\n" "test-pkg-typescript" "Run test packages (typescript)"
+	@printf "  %-25s %s\n" "test-projects" "Run 'make test' in every pkg/projects/* directory"
 	@printf "  %-25s %s\n" "test-examples" "Build and run all examples"
 	@printf "  %-25s %s\n" "test-external" "Run external SLT regression tests"
 	@echo ""
@@ -193,7 +194,7 @@ push: check
 .PHONY: test test-full test-dev
 test: test-full
 
-test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-external test-pkg-typescript fuzz-regression
+test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-external test-pkg-typescript test-projects fuzz-regression
 	@echo "✅ All tests completed successfully!"
 
 test-dev: test-workspace test-dst test-pkg-rust test-examples test-suite-dev
@@ -207,6 +208,7 @@ include mk/test-reference.mk
 include mk/test-external.mk
 include mk/test-pkg-rust.mk
 include mk/test-pkg-typescript.mk
+include mk/test-projects.mk
 include mk/test-examples.mk
 include mk/test-chaos.mk
 include mk/coverage.mk

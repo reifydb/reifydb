@@ -1,19 +1,20 @@
 [package]
-name = "reifydb-uptime-dst-bridge"
+name = "reifydb-uptime-bridge"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "POC: Node native addon exposing uptime's real DST-mode engine for webapp tests"
+description = "POC: Node native addon exposing uptime's real DST-mode engine for web tests"
 publish = false
 
 [lib]
+name = "bridge"
 crate-type = ["cdylib"]
 
 [dependencies]
 reifydb = { workspace = true, features = ["testing"] }
-reifydb-uptime = { version = "0.9.0", path = ".." }
+reifydb-uptime-backend = { version = "0.9.0", path = "../backend" }
 napi = { workspace = true }
 napi-derive = { workspace = true }
 serde_json = { workspace = true }

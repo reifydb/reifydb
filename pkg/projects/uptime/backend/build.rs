@@ -9,21 +9,21 @@ use reifydb_build::emit_target_cfg;
 fn main() {
 	emit_target_cfg();
 
-	println!("cargo:rerun-if-changed=webapp/src");
-	println!("cargo:rerun-if-changed=webapp/package.json");
+	println!("cargo:rerun-if-changed=../web/src");
+	println!("cargo:rerun-if-changed=../web/package.json");
 
 	let out_dir = env::var("OUT_DIR").unwrap();
-	let webapp_dist = Path::new("webapp/dist");
+	let webapp_dist = Path::new("../web/dist");
 	let dest_path = Path::new(&out_dir).join("webapp");
 
 	if webapp_dist.exists() {
-		println!("cargo:rerun-if-changed=webapp/dist");
+		println!("cargo:rerun-if-changed=../web/dist");
 
 		create_dir_all(&dest_path).expect("Failed to create webapp directory in OUT_DIR");
 		copy_dir_all(webapp_dist, &dest_path).expect("Failed to copy webapp dist files");
 		generate_asset_manifest(&dest_path).expect("Failed to generate asset manifest");
 	} else {
-		println!("cargo:warning=No webapp/dist directory found. Run 'pnpm build' in webapp/ directory first.");
+		println!("cargo:warning=No web/dist directory found. Run 'pnpm build' in web/ directory first.");
 
 		create_dir_all(&dest_path).expect("Failed to create webapp directory");
 
@@ -39,7 +39,7 @@ fn main() {
 <body>
     <h1>ReifyDB Uptime</h1>
     <div class="error">
-        <p>Web app not found. Please build the webapp first: pnpm build in webapp/.</p>
+        <p>Web app not found. Please build the webapp first: pnpm build in web/.</p>
     </div>
 </body>
 </html>"#;

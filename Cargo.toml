@@ -87,8 +87,8 @@ members = [
     "pkg/webassembly",
     "pkg/wasi",
     # Self-hostable projects
-    "pkg/projects/uptime",
-    "pkg/projects/uptime/dst-bridge",
+    "pkg/projects/uptime/backend",
+    "pkg/projects/uptime/bridge",
 ]
 
 default-members = [
@@ -165,7 +165,7 @@ default-members = [
     "pkg/rust/tests/regression",
     "pkg/rust/tests/integration",
     # Self-hostable projects
-    "pkg/projects/uptime",
+    "pkg/projects/uptime/backend",
 ]
 
 [workspace.package]

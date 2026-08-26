@@ -1,5 +1,5 @@
 [package]
-name = "reifydb-uptime"
+name = "reifydb-uptime-backend"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

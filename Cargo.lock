@@ -3997,7 +3997,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-uptime"
+name = "reifydb-uptime-backend"
 version = "0.9.0"
 dependencies = [
  "axum",
@@ -4019,7 +4019,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-uptime-dst-bridge"
+name = "reifydb-uptime-bridge"
 version = "0.9.0"
 dependencies = [
  "napi",
@@ -4027,7 +4027,7 @@ dependencies = [
  "napi-derive",
  "reifydb",
  "reifydb-build",
- "reifydb-uptime",
+ "reifydb-uptime-backend",
  "serde_json",
 ]
 
