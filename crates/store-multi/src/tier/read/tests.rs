@@ -591,58 +591,7 @@ fn a_replace_does_not_fabricate_a_previous_slot() {
 }
 
 #[test]
-fn removal_drops_both_version_slots() {
-	let read = cache(8);
-	read.insert(key("k"), CommitVersion(5), Some(val("v5")));
-	read.insert(key("k"), CommitVersion(10), Some(val("v10")));
-	read.remove_dropped(&key("k"));
-	assert!(matches!(read.get(&key("k"), CommitVersion(7)), VersionedGetResult::NotFound));
-	assert!(matches!(read.get(&key("k"), CommitVersion(10)), VersionedGetResult::NotFound));
-}
-
-#[test]
-fn remove_dropped_through_removes_only_older_entries() {
-	let read = cache(8);
-	read.insert(key("old"), CommitVersion(5), Some(val("v5")));
-	read.remove_dropped_through(&key("old"), CommitVersion(8));
-	assert!(
-		matches!(read.get(&key("old"), CommitVersion(9)), VersionedGetResult::NotFound),
-		"an entry older than the drop version must be removed"
-	);
-
-	read.insert(key("new"), CommitVersion(10), Some(val("v10")));
-	read.remove_dropped_through(&key("new"), CommitVersion(8));
-	match read.get(&key("new"), CommitVersion(10)) {
-		VersionedGetResult::Value {
-			value,
-			..
-		} => assert_eq!(value.as_ref(), b"v10", "a recreated newer entry must survive the delayed drop"),
-		other => panic!("expected the recreated entry to survive, got {other:?}"),
-	}
-}
-
-#[test]
-fn remove_dropped_through_clears_a_dropped_previous_slot() {
-	let read = cache(8);
-	read.insert(key("k"), CommitVersion(5), Some(val("v5")));
-	read.insert(key("k"), CommitVersion(10), Some(val("v10")));
-	read.remove_dropped_through(&key("k"), CommitVersion(8));
-
-	assert!(
-		matches!(read.get(&key("k"), CommitVersion(7)), VersionedGetResult::NotFound),
-		"the dropped previous version must not be served"
-	);
-	match read.get(&key("k"), CommitVersion(10)) {
-		VersionedGetResult::Value {
-			value,
-			..
-		} => assert_eq!(value.as_ref(), b"v10"),
-		other => panic!("current slot must survive, got {other:?}"),
-	}
-}
-
-#[test]
-fn a_drop_landing_inside_a_materialize_refuses_its_claim() {
+fn an_invalidate_landing_inside_a_materialize_refuses_its_claim() {
 	let read = MultiReadBufferTier::with_interlock(
 		ReadBufferConfig {
 			resident_pages: 8,
@@ -650,7 +599,7 @@ fn a_drop_landing_inside_a_materialize_refuses_its_claim() {
 			shards: 1,
 			bucket_shift: DEFAULT_BUCKET_SHIFT,
 		},
-		Box::new(|tier, _page| tier.remove_dropped_through(&row(1, 5), CommitVersion(8))),
+		Box::new(|tier, _page| tier.invalidate(&row(1, 5))),
 	)
 	.unwrap();
 
@@ -660,17 +609,6 @@ fn a_drop_landing_inside_a_materialize_refuses_its_claim() {
 	assert!(!published, "a materialize whose token was falsified mid-fill must publish nothing");
 	assert!(!read.covers(source(1), &row(1, 5)), "the refused claim landed anyway");
 	assert!(!read.covers(source(1), &row(1, 7)), "the refused claim landed anyway");
-}
-
-#[test]
-fn remove_dropped_through_removes_an_entry_at_exactly_the_drop_version() {
-	let read = cache(8);
-	read.insert(key("k"), CommitVersion(8), Some(val("v8")));
-	read.remove_dropped_through(&key("k"), CommitVersion(8));
-	assert!(
-		matches!(read.get(&key("k"), CommitVersion(9)), VersionedGetResult::NotFound),
-		"an entry at the drop version itself must be removed"
-	);
 }
 
 fn cache_bytes(resident_pages: usize, resident_bytes: ByteSize, shift: u8) -> MultiReadBufferTier {
@@ -710,8 +648,8 @@ fn used_bytes_equal_sum_of_page_bytes_across_churn() {
 	read.insert(row(1, 3), CommitVersion(5), wide(400));
 	read.insert(row(1, 4), CommitVersion(5), wide(150));
 	read.insert(row(1, 4), CommitVersion(9), wide(150));
-	read.remove_dropped_through(&row(1, 4), CommitVersion(5));
-	read.remove_dropped_through(&row(1, 3), CommitVersion(5));
+	read.invalidate(&row(1, 4));
+	read.invalidate(&row(1, 3));
 	read.invalidate(&row(1, 1));
 	assert_eq!(
 		read.resident_bytes(),
@@ -806,17 +744,17 @@ fn payload_accounting_survives_supersede_echo_and_removal_churn() {
 	read.insert(row(4, 1), CommitVersion(9), Some(val("bbbbb")));
 	read.insert(row(4, 2), CommitVersion(5), Some(val("cc")));
 	read.insert(row(4, 2), CommitVersion(9), Some(val("d")));
-	read.remove_dropped_through(&row(4, 2), CommitVersion(5));
+	read.invalidate(&row(4, 2));
 	read.insert(row(4, 3), CommitVersion(5), Some(val("x")));
-	read.remove_dropped(&row(4, 3));
+	read.invalidate(&row(4, 3));
 
-	let expected = (row(4, 1).len() as u64 + version + 5) + (row(4, 2).len() as u64 + version + 1);
+	let expected = row(4, 1).len() as u64 + version + 5;
 	assert_eq!(
 		read.payload_bytes().as_bytes(),
 		expected,
-		"after a supersede, a flush echo (clears previous), a delayed drop of a previous slot, and a \
-		 full removal, the payload counter must equal exactly the surviving versions' bytes; any drift \
-		 means a mutation site mis-accounted payload"
+		"after a supersede, a flush echo (clears previous), and two invalidates, the payload counter \
+		 must equal exactly the surviving version's bytes; any drift means a mutation site \
+		 mis-accounted payload"
 	);
 }
 

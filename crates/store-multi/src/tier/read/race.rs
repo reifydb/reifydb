@@ -343,9 +343,7 @@ fn step(read: &MultiReadBufferTier, rng: &mut Lcg, keys: &[EncodedKey], version:
 				&bucket_entries(bucket, at),
 			);
 		}
-		46..70 => read.invalidate(&key),
-		70..78 => read.remove_dropped(&key),
-		78..84 => read.remove_dropped_through(&key, CommitVersion(at)),
+		46..84 => read.invalidate(&key),
 		84..96 => read.evict_to_capacity(0),
 		96..99 => {
 			read.get(&key, CommitVersion(at));
