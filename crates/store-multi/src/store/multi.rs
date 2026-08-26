@@ -1378,7 +1378,6 @@ mod cache_tests {
 
 	#[test]
 	fn a_full_scan_claims_every_bucket_it_walks_to_the_edge() {
-		// A claim stopping at a chunk boundary instead of the bucket edge leaves the rest of that bucket unproven.
 		const HEAVY: u64 = 192;
 		const LIGHT: u64 = 20;
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
@@ -1394,7 +1393,8 @@ mod cache_tests {
 		let range = store.range.clone().expect("range tier configured");
 		let kind = EntryKind::Source(STORAGE);
 		let heavy = PartitionId::of(kind, &RowKey::encoded(STORAGE, 1)).expect("a row key names a bucket");
-		let light = PartitionId::of(kind, &RowKey::encoded(STORAGE, 1u64 << 16)).expect("a row key names a bucket");
+		let light =
+			PartitionId::of(kind, &RowKey::encoded(STORAGE, 1u64 << 16)).expect("a row key names a bucket");
 		assert_ne!(heavy, light, "the two row groups must land in different buckets");
 		assert_eq!(range.complete_partitions().iter().sum::<usize>(), 0, "nothing is claimed before the scan");
 

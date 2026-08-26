@@ -81,7 +81,10 @@ fn a_read_below_every_cached_version_is_counted_a_miss_not_a_hit() {
 	assert_eq!(get(&store, &key, 30).as_deref(), Some(b"thirty".as_slice()));
 	assert_eq!(get(&store, &key, 25).as_deref(), Some(b"twenty".as_slice()));
 	let seated = reads(&store);
-	assert_eq!(seated.previous_hits, 1, "the second read must come from the displaced version, or the entry never held two");
+	assert_eq!(
+		seated.previous_hits, 1,
+		"the second read must come from the displaced version, or the entry never held two"
+	);
 
 	let _ = get(&store, &key, 1);
 	let after = reads(&store);

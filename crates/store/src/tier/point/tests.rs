@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::point::{
-	ENTRY_OVERHEAD, FillInterlock, PointConfig, PointKey, PointSlotMetrics, PointMetrics, PointTier,
+	ENTRY_OVERHEAD, FillInterlock, PointConfig, PointKey, PointMetrics, PointSlotMetrics, PointTier,
 	domain::{ChainingDomain as C, TestDomain as D, keyspace_of},
 };
 
@@ -868,7 +868,6 @@ fn an_excluded_keyspace_read_acquires_no_shard() {
 
 #[test]
 fn a_refused_supersede_leaves_the_row_and_its_accounting_alone() {
-	// A refusal that still swaps or still charges leaves the tier holding bytes its budget cannot account for.
 	let tier = PointTier::<C>::new(PointConfig {
 		resident_bytes: Some(ByteSize::from_mib(1)),
 		shards: 1,
@@ -891,7 +890,6 @@ fn a_refused_supersede_leaves_the_row_and_its_accounting_alone() {
 
 #[test]
 fn an_accepted_supersede_recharges_from_the_merged_row() {
-	// Charging the incoming row instead of the merged one drifts for any domain whose merge keeps the old value.
 	let tier = PointTier::<C>::new(PointConfig {
 		resident_bytes: Some(ByteSize::from_mib(1)),
 		shards: 1,

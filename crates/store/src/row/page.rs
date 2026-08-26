@@ -89,11 +89,8 @@ mod tests {
 			store::{EntryKind, classify_key},
 		},
 		key::{
-			EncodableKey,
-			partitioned_row::PartitionedRowKey,
-			partitioned_series_row::PartitionedSeriesRowKey,
-			row::RowKey,
-			series_row::SeriesRowKey,
+			EncodableKey, partitioned_row::PartitionedRowKey,
+			partitioned_series_row::PartitionedSeriesRowKey, row::RowKey, series_row::SeriesRowKey,
 		},
 	};
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
@@ -264,7 +261,6 @@ mod tests {
 		assert_eq!(page.kind, classify_key(&key));
 		assert!(key_range_of(page, 16).is_none());
 	}
-
 
 	#[test]
 	fn key_range_of_survives_for_a_table_keyed_view_page() {

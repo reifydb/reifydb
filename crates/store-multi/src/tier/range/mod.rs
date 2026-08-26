@@ -41,8 +41,8 @@ use reifydb_store::{
 		successor,
 	},
 	tier::range::{
-		Materialize, RangeConfig, RangeDomain, RangeMetrics, RangeRows, RangeShardMetrics, RangeTier,
-		RowBytes, prefix_successor,
+		Materialize, RangeConfig, RangeDomain, RangeMetrics, RangeRows, RangeShardMetrics, RangeTier, RowBytes,
+		prefix_successor,
 	},
 };
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
@@ -467,14 +467,14 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::catalog::{id::TableId, storage::StorageId},
-		key::row::RowKey,
+		key::{EncodableKey, row::RowKey, series_row::SeriesRowKey},
 	};
 	use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 
 	use super::{
-		EncodedKey, EntryKind, MultiDomain, MultiRangeConfig, MultiRangeTier, MultiVersionScope, RangeCursor,
-		RangeDomain, RawEntry, ServedChunk,
+		EncodedKey, EntryKind, MultiDomain, MultiRangeConfig, MultiRangeTier, MultiVersionScope,
+		ROW_BUCKET_SHIFT, RangeCursor, RangeDomain, RawEntry, ServedChunk,
 	};
 
 	const STORAGE: StorageId = StorageId::Table(TableId(1));
@@ -486,6 +486,104 @@ mod tests {
 			gap_guard: DEFAULT_GAP_GUARD,
 		})
 		.expect("a tier with a byte budget must be constructed")
+	}
+
+	const BUCKET: u64 = 1 << ROW_BUCKET_SHIFT;
+
+	fn tight() -> MultiRangeTier {
+		MultiRangeTier::new(MultiRangeConfig {
+			resident_bytes: Some(ByteSize::from_kib(4)),
+			shards: 1,
+			gap_guard: DEFAULT_GAP_GUARD,
+		})
+		.expect("a tier with a byte budget must be constructed")
+	}
+
+	fn row(n: u64) -> EncodedKey {
+		RowKey::encoded(STORAGE, n)
+	}
+
+	fn series(n: u64) -> EncodedKey {
+		SeriesRowKey {
+			storage: STORAGE,
+			variant_tag: None,
+			key: n,
+			sequence: 0,
+		}
+		.encode()
+	}
+
+	fn source() -> EntryKind {
+		EntryKind::Source(STORAGE)
+	}
+
+	fn entry(n: u64, version: u64) -> RawEntry {
+		RawEntry {
+			key: row(n),
+			version: CommitVersion(version),
+			value: Some(CowVec::new(version.to_be_bytes().to_vec())),
+		}
+	}
+
+	fn newest() -> MultiVersionScope {
+		MultiVersionScope::AsOf {
+			read: CommitVersion(u64::MAX),
+		}
+	}
+
+	fn storage_start() -> EncodedKey {
+		RowKey::storage_start(STORAGE)
+	}
+
+	fn storage_end() -> EncodedKey {
+		RowKey::storage_end(STORAGE)
+	}
+
+	/// Materializes a chunk of a scan that began at the storage prefix and ran to the storage end, which is
+	/// the shape of every full scan in this codebase; `rows` must be listed in encoded key order, so
+	/// descending by row number.
+	fn materialize_from_prefix(tier: &MultiRangeTier, rows: &[u64], version: u64) {
+		let entries: Vec<RawEntry> = rows.iter().map(|n| entry(*n, version)).collect();
+		tier.materialize_scanned_chunk(source(), &storage_start(), &storage_end(), &entries);
+	}
+
+	fn serve_whole_storage(tier: &MultiRangeTier, cursor: &mut RangeCursor) -> ServedChunk {
+		tier.serve_persistent_chunk(
+			source(),
+			cursor,
+			storage_start().as_slice(),
+			storage_end().as_slice(),
+			newest(),
+			64,
+			false,
+		)
+	}
+
+	fn head_advances(tier: &MultiRangeTier) -> u64 {
+		tier.serve_metrics().iter().map(|shard| shard.head_advances).sum()
+	}
+
+	/// Row keys invert the row number, so the highest row in a bucket is its lowest key: a forward scan
+	/// over rows 0..n runs from `row(n)` down to `row(0)`.
+	fn serve(tier: &MultiRangeTier, cursor: &mut RangeCursor, lo_row: u64, hi_row: u64, batch: usize) -> ServedChunk {
+		let start = row(hi_row);
+		let end = row(lo_row);
+		tier.serve_persistent_chunk(source(), cursor, start.as_slice(), end.as_slice(), newest(), batch, false)
+	}
+
+	fn rows_of(chunk: &ServedChunk) -> Vec<u64> {
+		match chunk {
+			ServedChunk::Served(batch) => batch
+				.entries
+				.iter()
+				.map(|e| RowKey::decode(&e.key).expect("a served row key must decode").row.0)
+				.collect(),
+			ServedChunk::Gap => panic!("expected a served chunk, got a gap"),
+		}
+	}
+
+	fn is_gap(chunk: &ServedChunk) -> bool {
+		matches!(chunk, ServedChunk::Gap)
 	}
 
 	#[test]
@@ -501,13 +599,17 @@ mod tests {
 
 	#[test]
 	fn a_claim_taken_across_a_declined_write_must_not_answer_that_row_absent() {
-		// The persistent read feeding a claim can predate a flushed row, so a write the cache declined is lost under it.
+		// The persistent read feeding a claim can predate a flushed row, so a write the cache declined is lost
+		// under it.
 		let tier = tier();
 		let kind = EntryKind::Source(STORAGE);
 		let flushed = RowKey::encoded(STORAGE, 5);
 		let lo = RowKey::encoded(STORAGE, 9);
 		let through = RowKey::encoded(STORAGE, 1);
-		assert!(lo < through, "row keys encode descending, so the low end of the span is the highest row number");
+		assert!(
+			lo < through,
+			"row keys encode descending, so the low end of the span is the highest row number"
+		);
 
 		tier.insert(flushed.clone(), CommitVersion(1), Some(CowVec::new(b"flushed".to_vec())));
 
@@ -604,8 +706,254 @@ mod tests {
 		let ServedChunk::Served(batch) = served else {
 			panic!("the claimed span must serve from ram");
 		};
-		let entry = batch.entries.iter().find(|entry| entry.key == key).expect("the row must still be resident");
+		let entry =
+			batch.entries.iter().find(|entry| entry.key == key).expect("the row must still be resident");
 		assert_eq!(entry.version, CommitVersion(5), "the older write must not have displaced the newer row");
 		assert_eq!(entry.value.as_ref().expect("a value, not a tombstone").as_ref(), b"v5");
+	}
+
+	#[test]
+	fn evicting_the_partition_the_head_came_from_leaves_the_head_standing() {
+		// Eviction takes rows out of ram; it cannot put one into the persistent tier. The head asserts only
+		// that the persistent tier is empty below it, so it must outlive every row that produced it. That is
+		// why it is kept apart from the claims: a claim must die with its partition, while a proof of absence
+		// that died with its partition is lost on the first turnover and every scan falls through at the
+		// storage prefix again.
+		let tier = tight();
+		let entries = vec![entry(BUCKET * 4 + 3, 1), entry(BUCKET * 4 + 2, 1), entry(BUCKET * 4 + 1, 1)];
+		assert!(
+			tier.materialize_scanned_chunk(source(), &storage_start(), &storage_end(), &entries),
+			"the chunk must publish its claim, or the test never reaches the case it is here to pin"
+		);
+		assert_eq!(
+			tier.tier.head(source()).as_ref(),
+			Some(&row(BUCKET * 4 + 3)),
+			"the materialize must have recorded a head"
+		);
+		assert!(
+			tier.tier.lookup(source(), &row(BUCKET * 4 + 2)).is_some(),
+			"the materialize must have published a claim"
+		);
+
+		for n in 1..=512 {
+			tier.insert(row(n), CommitVersion(1), Some(CowVec::new(vec![n as u8; 8])));
+		}
+
+		assert!(
+			tier.tier.lookup(source(), &row(BUCKET * 4 + 2)).is_none(),
+			"the evicted partition's claim must be withdrawn, or it answers for rows ram no longer holds"
+		);
+		assert_eq!(
+			tier.tier.head(source()).as_ref(),
+			Some(&row(BUCKET * 4 + 3)),
+			"eviction cannot create a row, so the proof of absence must survive it"
+		);
+	}
+
+	#[test]
+	fn a_row_placed_into_ram_below_the_head_pulls_the_head_back_to_it() {
+		// A flush writes a row to the persistent tier and only then seeds it here, so from this call on the
+		// persistent tier may hold it. A head left above it makes every later scan begin past the row and
+		// never read it from any tier. Placing a row can only ever be evidence that the span below the head
+		// is not empty after all, so the head must yield to it.
+		let tier = tier();
+		tier.tier.raise_head(source(), &storage_start(), &storage_end(), Some(&row(3)), tier.tier.retractions());
+
+		tier.insert(row(7), CommitVersion(1), Some(CowVec::new(vec![1])));
+
+		assert_eq!(
+			tier.tier.head(source()).as_ref(),
+			Some(&row(7)),
+			"a row placed inside the head span must pull the head back to it"
+		);
+	}
+
+	#[test]
+	fn a_head_raise_that_read_its_token_before_a_withdrawal_publishes_nothing() {
+		// The scan that proves a span empty runs under no lock, so a commit can place a row inside that span
+		// between the scan and the raise. Publishing the raise anyway makes every later scan start past the
+		// new row and never read it from any tier, with no gap and no error to show for it.
+		let tier = tier();
+		let token = tier.tier.retractions();
+
+		tier.invalidate(&row(7));
+
+		tier.tier.raise_head(source(), &storage_start(), &storage_end(), Some(&row(3)), token);
+		assert_eq!(tier.tier.head(source()), None, "a head published across a withdrawal");
+
+		tier.tier.raise_head(source(), &storage_start(), &storage_end(), Some(&row(3)), tier.tier.retractions());
+		assert_eq!(tier.tier.head(source()).as_ref(), Some(&row(3)), "a fresh token must publish");
+	}
+
+	#[test]
+	fn a_scan_below_the_row_band_never_raises_a_head_over_it() {
+		// Row keys and series row keys of one storage share an entry kind but occupy disjoint byte bands,
+		// with the series band wholly below the row band. A series scan proves nothing about the rows, so a
+		// head raised from one would report every row of the storage absent.
+		let tier = tier();
+
+		tier.tier.raise_head(source(), &series(9), &storage_end(), Some(&series(1)), tier.tier.retractions());
+
+		assert_eq!(
+			tier.tier.head(source()),
+			None,
+			"a scan that never entered the row band proved nothing about it"
+		);
+	}
+
+	#[test]
+	fn a_scan_starting_at_a_storage_prefix_serves_once_the_head_names_the_first_row() {
+		// A scan starts at a ten byte storage prefix that sorts below every key of the storage, so no claim
+		// can ever reach it and the leading chunk of every scan falls through. Where scans are one chunk long
+		// that is every chunk, and the tier answers nothing at all. One recorded key proving the span below
+		// the first row empty is enough to move the scan onto a partition a claim does cover, and it is the
+		// only thing that can be: where the first row lies cannot be derived, only observed.
+		let tier = tier();
+		materialize_from_prefix(&tier, &[3, 2, 1], 10);
+
+		let mut cursor = RangeCursor::new();
+		let chunk = serve_whole_storage(&tier, &mut cursor);
+
+		assert_eq!(rows_of(&chunk), vec![3, 2, 1], "the leading chunk of a prefix scan must serve from ram");
+		assert!(cursor.is_exhausted(), "the claim reaches the storage end, so nothing is left for persistent");
+		assert_eq!(
+			head_advances(&tier),
+			1,
+			"the serve must be attributed to the head, not to a claim over the prefix"
+		);
+	}
+
+	#[test]
+	fn a_commit_below_the_head_pulls_it_back_and_stops_the_scan_skipping_the_new_row() {
+		// The head proves the persistent tier holds nothing below it. A commit places a row inside that span,
+		// so a head left standing makes every later scan begin past the new row. That loss is silent: the
+		// chunk is served, not gapped, and reports the range exhausted, so the row is never read from any
+		// tier.
+		let tier = tier();
+		materialize_from_prefix(&tier, &[3, 2, 1], 10);
+		assert_eq!(
+			tier.tier.head(source()).as_ref(),
+			Some(&row(3)),
+			"the materialize must have recorded a head"
+		);
+
+		tier.invalidate(&row(7));
+
+		assert_eq!(
+			tier.tier.head(source()).as_ref(),
+			Some(&row(7)),
+			"a row committed inside the head span must pull the head back to it"
+		);
+		let mut cursor = RangeCursor::new();
+		let chunk = serve_whole_storage(&tier, &mut cursor);
+		assert!(
+			is_gap(&chunk),
+			"the span the commit landed in is no longer claimed, so the scan must fall through"
+		);
+		assert!(!cursor.is_exhausted(), "a gap must leave the cursor untouched");
+	}
+
+	#[test]
+	fn the_head_never_moves_a_scan_past_the_end_of_its_own_range() {
+		// The head names the first row of the whole storage, which can sort past the end of a narrower range.
+		// Moving lo there abandons the span the caller asked about and consults a claim over a span it did
+		// not, so a range ram can prove empty falls through to the persistent tier instead.
+		let tier = tier();
+		materialize_from_prefix(&tier, &[3, 2, 1], 10);
+		assert_eq!(
+			tier.tier.head(source()).as_ref(),
+			Some(&row(3)),
+			"the materialize must have recorded a head"
+		);
+
+		let mut cursor = RangeCursor::new();
+		let chunk = serve(&tier, &mut cursor, 5, 9, 64);
+
+		assert!(rows_of(&chunk).is_empty(), "no row of this storage lies in rows five through nine");
+		assert!(cursor.is_exhausted(), "the claim spans the whole range, so ram has proven it empty");
+		assert_eq!(head_advances(&tier), 0, "the head sorts past this range and must not have been used");
+	}
+
+	#[test]
+	fn a_range_below_the_row_band_is_never_moved_onto_it_by_the_head() {
+		// One entry kind covers both a storage's row keys and its series row keys, and the two bands are
+		// disjoint: they differ in their leading kind byte and the series band sorts wholly below the row
+		// band. A head names a row key, so applying it to a range starting below that band moves the scan off
+		// the keys the caller asked for and onto the rows, reporting everything below proven absent.
+		let tier = tier();
+		materialize_from_prefix(&tier, &[3, 2, 1], 10);
+		tier.insert(series(1), CommitVersion(10), Some(CowVec::new(vec![1])));
+		assert!(
+			series(1).as_slice() < storage_start().as_slice(),
+			"the series band must sort below the row band, or this range never crosses the boundary"
+		);
+
+		let mut cursor = RangeCursor::new();
+		let chunk = tier.serve_persistent_chunk(
+			source(),
+			&mut cursor,
+			series(9).as_slice(),
+			storage_end().as_slice(),
+			newest(),
+			64,
+			false,
+		);
+
+		assert!(is_gap(&chunk), "a range starting below the row band must never be answered from a row head");
+		assert!(!cursor.is_exhausted(), "a gap must leave the cursor untouched");
+		assert_eq!(head_advances(&tier), 0, "the head must not have been applied outside its own band");
+	}
+
+	#[test]
+	fn an_empty_storage_is_read_from_persistent_once_and_never_again() {
+		// Neither storage sentinel resolves to a row partition, so the head is the only proof an empty
+		// storage can ever produce; without cashing it in every scan falls through to persistent forever.
+		let tier = tier();
+
+		let mut first = RangeCursor::new();
+		assert!(is_gap(&serve_whole_storage(&tier, &mut first)), "nothing is proven before the first scan");
+
+		tier.materialize_scanned_chunk(source(), &storage_start(), &storage_end(), &[]);
+
+		let mut second = RangeCursor::new();
+		let chunk = serve_whole_storage(&tier, &mut second);
+		assert!(!is_gap(&chunk), "the proven-empty storage must never reach the persistent tier again");
+		assert!(rows_of(&chunk).is_empty(), "a proven-empty range must serve no rows");
+		assert!(
+			second.is_exhausted(),
+			"an empty range that is not exhausted hands the scan straight back to persistent"
+		);
+	}
+
+	#[test]
+	fn a_range_ending_on_the_head_is_never_answered_empty() {
+		// The head names a key a row may sit on, so only the storage end sentinel, which no row can occupy,
+		// may be answered as proven empty; answering at the head itself drops the row standing on it.
+		let tier = tier();
+		materialize_from_prefix(&tier, &[5, 3], 10);
+		assert_eq!(
+			tier.tier.head(source()).as_ref(),
+			Some(&row(5)),
+			"the materialize must name the first row as the head"
+		);
+
+		tier.invalidate(&row(5));
+		tier.invalidate(&row(3));
+
+		let mut cursor = RangeCursor::new();
+		let chunk = tier.serve_persistent_chunk(
+			source(),
+			&mut cursor,
+			storage_start().as_slice(),
+			row(5).as_slice(),
+			newest(),
+			64,
+			false,
+		);
+		assert!(
+			is_gap(&chunk),
+			"a range whose last key is the head itself is not proven empty and the persistent tier still owes it"
+		);
+		assert!(!cursor.is_exhausted(), "a gap must leave the cursor untouched");
 	}
 }

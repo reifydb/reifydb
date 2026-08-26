@@ -21,8 +21,8 @@ use reifydb_value::byte_size::ByteSize;
 #[cfg(test)]
 use crate::tier::point::FillInterlock;
 use crate::tier::point::{
-	EVICTION_SAMPLE, Entry, PointConfig, PointDomain, PointKey, PointSlotMetrics, PointMetrics,
-	PointShardMetrics, PointTier, PoolInner, Shard, entry_footprint,
+	EVICTION_SAMPLE, Entry, PointConfig, PointDomain, PointKey, PointMetrics, PointShardMetrics, PointSlotMetrics,
+	PointTier, PoolInner, Shard, entry_footprint,
 };
 
 impl<D: PointDomain> PointTier<D> {

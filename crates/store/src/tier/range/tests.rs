@@ -512,7 +512,6 @@ fn a_materialize_that_races_a_retraction_refuses_rather_than_reinstating_the_cla
 
 #[test]
 fn a_refused_materialize_must_not_delete_a_row_written_while_it_was_placing() {
-	// Rolling back by key name deletes whatever sits under it now, so a concurrent write vanishes beneath a standing claim.
 	let fired = Arc::new(AtomicBool::new(false));
 	let seen = fired.clone();
 	let contested = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
@@ -541,7 +540,10 @@ fn a_refused_materialize_must_not_delete_a_row_written_while_it_was_placing() {
 	let published = tier.materialize(&scan, &gap, &[(contested.clone(), row("scanned"))]);
 
 	assert!(fired.load(Ordering::Relaxed), "the seam hook never fired, so the invariant went unchecked");
-	assert!(published == Materialize::Refused, "a retraction taken during the placing window must refuse the materialize");
+	assert!(
+		published == Materialize::Refused,
+		"a retraction taken during the placing window must refuse the materialize"
+	);
 	assert_eq!(
 		tier.lookup(OP_A, &contested),
 		Some(Some(row("flushed"))),

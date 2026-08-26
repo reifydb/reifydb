@@ -218,8 +218,7 @@ impl MultiPointTier {
 				"every shard must report both sources, or a shard past the shortest reports zero forever"
 			);
 		}
-		shards
-			.into_iter()
+		shards.into_iter()
 			.zip(reads)
 			.map(|(shard, reads)| MultiPointShardMetrics {
 				shard: shard.shard,
@@ -276,7 +275,6 @@ mod tests {
 		})
 	}
 
-
 	fn value(body: &str) -> Option<CowVec<u8>> {
 		Some(CowVec::new(body.as_bytes().to_vec()))
 	}
@@ -302,7 +300,8 @@ mod tests {
 
 	#[test]
 	fn a_write_at_the_same_version_replaces_without_inventing_a_previous() {
-		// One version can only hold one value, so keeping the displaced one would let a reader see a version twice.
+		// One version can only hold one value, so keeping the displaced one would let a reader see a version
+		// twice.
 		let mut resident = row(5, "first");
 
 		assert!(MultiPointDomain::supersede(&mut resident, row(5, "second")), "a same-version write must land");
@@ -342,7 +341,8 @@ mod tests {
 		MultiPointDomain::supersede(&mut resident, row(3, "third"));
 
 		assert_eq!(body(&resident.value), "third");
-		let (version, displaced) = resident.previous.as_ref().expect("the chain must still hold one displaced value");
+		let (version, displaced) =
+			resident.previous.as_ref().expect("the chain must still hold one displaced value");
 		assert_eq!(*version, CommitVersion(2), "the chain kept the wrong version");
 		assert_eq!(body(displaced), "second", "a two-deep chain must forget the oldest, not the newest");
 	}
@@ -353,10 +353,14 @@ mod tests {
 		let mut resident = row(5, "old");
 		MultiPointDomain::supersede(&mut resident, row(9, "new"));
 
-		let (version, served) = resident.at(CommitVersion(7)).expect("previous must answer a reader below the current version");
+		let (version, served) =
+			resident.at(CommitVersion(7)).expect("previous must answer a reader below the current version");
 		assert_eq!(version, CommitVersion(5));
 		assert_eq!(body(served), "old");
-		assert!(resident.served_previous(CommitVersion(7)), "the read came from previous and must be counted as such");
+		assert!(
+			resident.served_previous(CommitVersion(7)),
+			"the read came from previous and must be counted as such"
+		);
 	}
 
 	#[test]
@@ -365,8 +369,14 @@ mod tests {
 		let mut resident = row(5, "old");
 		MultiPointDomain::supersede(&mut resident, row(9, "new"));
 
-		assert!(resident.at(CommitVersion(4)).is_none(), "a reader below every cached version must fall through");
-		assert!(!resident.served_previous(CommitVersion(4)), "a fall-through must not be counted as a previous hit");
+		assert!(
+			resident.at(CommitVersion(4)).is_none(),
+			"a reader below every cached version must fall through"
+		);
+		assert!(
+			!resident.served_previous(CommitVersion(4)),
+			"a fall-through must not be counted as a previous hit"
+		);
 	}
 
 	#[test]
@@ -375,10 +385,14 @@ mod tests {
 		let mut resident = row(5, "old");
 		MultiPointDomain::supersede(&mut resident, row(9, "new"));
 
-		let (version, served) = resident.at(CommitVersion(9)).expect("the current slot must answer its own version");
+		let (version, served) =
+			resident.at(CommitVersion(9)).expect("the current slot must answer its own version");
 		assert_eq!(version, CommitVersion(9));
 		assert_eq!(body(served), "new");
-		assert!(!resident.served_previous(CommitVersion(9)), "a current-slot read must not be counted as a previous hit");
+		assert!(
+			!resident.served_previous(CommitVersion(9)),
+			"a current-slot read must not be counted as a previous hit"
+		);
 	}
 
 	#[test]
@@ -408,11 +422,14 @@ mod tests {
 			}
 			other => panic!("expected the cached value, got {other:?}"),
 		}
-		assert_eq!(totals(&tier), MultiReadMetrics {
-			hits: 1,
-			previous_hits: 0,
-			misses: 0
-		});
+		assert_eq!(
+			totals(&tier),
+			MultiReadMetrics {
+				hits: 1,
+				previous_hits: 0,
+				misses: 0
+			}
+		);
 	}
 
 	#[test]
@@ -469,11 +486,14 @@ mod tests {
 		tier.insert(key.clone(), CommitVersion(5), None);
 
 		assert!(matches!(tier.get(&key, CommitVersion(7)), VersionedGetResult::Tombstone));
-		assert_eq!(totals(&tier), MultiReadMetrics {
-			hits: 1,
-			previous_hits: 0,
-			misses: 0
-		});
+		assert_eq!(
+			totals(&tier),
+			MultiReadMetrics {
+				hits: 1,
+				previous_hits: 0,
+				misses: 0
+			}
+		);
 	}
 
 	#[test]
@@ -484,11 +504,14 @@ mod tests {
 		tier.invalidate(&key);
 
 		assert!(matches!(tier.get(&key, CommitVersion(7)), VersionedGetResult::NotFound));
-		assert_eq!(totals(&tier), MultiReadMetrics {
-			hits: 0,
-			previous_hits: 0,
-			misses: 1
-		});
+		assert_eq!(
+			totals(&tier),
+			MultiReadMetrics {
+				hits: 0,
+				previous_hits: 0,
+				misses: 1
+			}
+		);
 	}
 
 	#[test]

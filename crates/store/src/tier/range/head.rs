@@ -48,6 +48,10 @@ impl<D: RangeDomain> RangeTier<D> {
 		})
 	}
 
+	pub fn head(&self, dimension: D::Dimension) -> Option<EncodedKey> {
+		self.coverage().read().head(dimension).cloned()
+	}
+
 	pub fn raise_head(
 		&self,
 		dimension: D::Dimension,

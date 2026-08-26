@@ -161,7 +161,8 @@ mod tests {
 
 	#[test]
 	fn a_range_shrink_that_empties_a_dimension_leaves_the_map() {
-		// Span retraction must prune on the same terms as a single key, or the two paths leave different residue.
+		// Span retraction must prune on the same terms as a single key, or the two paths leave different
+		// residue.
 		let mut index = index();
 		index.extend(1, k("c"), ExclusiveUpperEnd::of("f"));
 
