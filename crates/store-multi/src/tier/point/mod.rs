@@ -11,18 +11,28 @@
 //! The version scope filter lives above this module, not in it: the tier stores whatever row the domain
 //! names and knows nothing about which versions a reader may see.
 
-use std::borrow::Cow;
+use std::{
+	borrow::Cow,
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
+};
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::store::{EntryKind, classify_key},
+};
 use reifydb_store::tier::{
-	point::{PointConfig, PointDomain, PointTier},
+	point::{PointConfig, PointDomain, PointMetrics, PointTier},
 	range::RowBytes,
 };
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
+
+use crate::tier::VersionedGetResult;
 
 pub type MultiPointConfig = PointConfig;
-pub type MultiPointTier = PointTier<MultiPointDomain>;
 
 /// Two cached versions of a key, since a reader below the newest version must still find what it displaced.
 #[derive(Clone, Debug)]
@@ -105,9 +115,163 @@ impl PointDomain for MultiPointDomain {
 	}
 }
 
+/// Reads scored the way multi means them, since the shared tier counts a hit on residency alone and a
+/// reader below every cached version must still read as a miss.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MultiReadMetrics {
+	pub hits: u64,
+	pub previous_hits: u64,
+	pub misses: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MultiPointShardMetrics {
+	pub shard: usize,
+	pub used: ByteSize,
+	pub limit: ByteSize,
+	pub entries: usize,
+	pub counters: PointMetrics,
+	pub reads: MultiReadMetrics,
+}
+
+#[derive(Default)]
+struct ReadCounters {
+	hits: AtomicU64,
+	previous_hits: AtomicU64,
+	misses: AtomicU64,
+}
+
+#[derive(Clone)]
+pub struct MultiPointTier {
+	tier: PointTier<MultiPointDomain>,
+	reads: Arc<[ReadCounters]>,
+}
+
+impl MultiPointTier {
+	pub fn new(config: MultiPointConfig) -> Option<Self> {
+		let tier = PointTier::new(config)?;
+		let shards = config.shards.max(1);
+		Some(Self {
+			tier,
+			reads: (0..shards).map(|_| ReadCounters::default()).collect(),
+		})
+	}
+
+	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> VersionedGetResult {
+		let dimension = classify_key(key);
+		let counters = &self.reads[self.tier.shard_index(dimension, key)];
+		let Some(Some(row)) = self.tier.get(dimension, key) else {
+			counters.misses.fetch_add(1, Ordering::Relaxed);
+			return VersionedGetResult::NotFound;
+		};
+		let previous = row.served_previous(version);
+		let Some((served, value)) = row.at(version) else {
+			counters.misses.fetch_add(1, Ordering::Relaxed);
+			return VersionedGetResult::NotFound;
+		};
+		let counter = if previous {
+			&counters.previous_hits
+		} else {
+			&counters.hits
+		};
+		counter.fetch_add(1, Ordering::Relaxed);
+		match value {
+			Some(value) => VersionedGetResult::Value {
+				value: value.clone(),
+				version: served,
+			},
+			None => VersionedGetResult::Tombstone,
+		}
+	}
+
+	pub fn insert(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
+		let dimension = classify_key(&key);
+		self.tier.overwrite(dimension, key, MultiPointRow::new(version, value));
+	}
+
+	pub fn invalidate(&self, key: &EncodedKey) {
+		self.tier.invalidate(classify_key(key), key);
+	}
+
+	pub fn clear(&self) {
+		self.tier.clear();
+	}
+
+	pub fn read_metrics(&self) -> Vec<MultiReadMetrics> {
+		self.reads
+			.iter()
+			.map(|counters| MultiReadMetrics {
+				hits: counters.hits.load(Ordering::Relaxed),
+				previous_hits: counters.previous_hits.load(Ordering::Relaxed),
+				misses: counters.misses.load(Ordering::Relaxed),
+			})
+			.collect()
+	}
+
+	pub fn shard_metrics(&self) -> Vec<MultiPointShardMetrics> {
+		let shards = self.tier.shard_metrics();
+		let reads = self.read_metrics();
+		reifydb_assertions! {
+			assert_eq!(
+				shards.len(),
+				reads.len(),
+				"every shard must report both sources, or a shard past the shortest reports zero forever"
+			);
+		}
+		shards
+			.into_iter()
+			.zip(reads)
+			.map(|(shard, reads)| MultiPointShardMetrics {
+				shard: shard.shard,
+				used: shard.used,
+				limit: shard.limit,
+				entries: shard.entries,
+				counters: shard.counters,
+				reads,
+			})
+			.collect()
+	}
+}
+
 #[cfg(test)]
 mod tests {
-	use super::{CommitVersion, CowVec, MultiPointDomain, MultiPointRow, PointDomain, RowBytes};
+	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::{
+		interface::catalog::{id::TableId, storage::StorageId},
+		key::{EncodableKey, row::RowKey},
+	};
+	use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
+
+	use super::{
+		CommitVersion, CowVec, MultiPointConfig, MultiPointDomain, MultiPointRow, MultiPointTier,
+		MultiReadMetrics, PointDomain, RowBytes, VersionedGetResult,
+	};
+
+	fn tier() -> MultiPointTier {
+		MultiPointTier::new(MultiPointConfig {
+			resident_bytes: Some(ByteSize::from_mib(1)),
+			shards: 4,
+		})
+		.expect("a configured budget yields a tier")
+	}
+
+	fn row_key(n: u64) -> EncodedKey {
+		RowKey {
+			storage: StorageId::Table(TableId(1)),
+			row: RowNumber(n),
+		}
+		.encode()
+	}
+
+	fn totals(tier: &MultiPointTier) -> MultiReadMetrics {
+		tier.read_metrics().into_iter().fold(MultiReadMetrics::default(), |mut acc, shard| {
+			acc.hits += shard.hits;
+			acc.previous_hits += shard.previous_hits;
+			acc.misses += shard.misses;
+			acc
+		})
+	}
+
 
 	fn value(body: &str) -> Option<CowVec<u8>> {
 		Some(CowVec::new(body.as_bytes().to_vec()))
@@ -222,5 +386,104 @@ mod tests {
 
 		assert_eq!(current_only, 4);
 		assert_eq!(resident.row_bytes(), 12, "the displaced value is resident and must be charged for");
+	}
+
+	#[test]
+	fn a_read_at_the_current_version_is_a_hit() {
+		let tier = tier();
+		let key = row_key(1);
+		tier.insert(key.clone(), CommitVersion(5), value("five"));
+
+		match tier.get(&key, CommitVersion(7)) {
+			VersionedGetResult::Value {
+				value,
+				version,
+			} => {
+				assert_eq!(version, CommitVersion(5));
+				assert_eq!(value.as_ref(), b"five");
+			}
+			other => panic!("expected the cached value, got {other:?}"),
+		}
+		assert_eq!(totals(&tier), MultiReadMetrics {
+			hits: 1,
+			previous_hits: 0,
+			misses: 0
+		});
+	}
+
+	#[test]
+	fn a_read_below_the_newest_version_is_served_from_previous_and_counted_apart() {
+		let tier = tier();
+		let key = row_key(2);
+		tier.insert(key.clone(), CommitVersion(5), value("five"));
+		tier.insert(key.clone(), CommitVersion(9), value("nine"));
+
+		match tier.get(&key, CommitVersion(6)) {
+			VersionedGetResult::Value {
+				value,
+				version,
+			} => {
+				assert_eq!(version, CommitVersion(5));
+				assert_eq!(value.as_ref(), b"five");
+			}
+			other => panic!("expected the displaced value, got {other:?}"),
+		}
+		assert_eq!(
+			totals(&tier),
+			MultiReadMetrics {
+				hits: 0,
+				previous_hits: 1,
+				misses: 0
+			},
+			"a read the second slot answered must not be indistinguishable from one the first answered"
+		);
+	}
+
+	#[test]
+	fn a_read_below_every_cached_version_is_a_miss_not_a_hit() {
+		let tier = tier();
+		let key = row_key(3);
+		tier.insert(key.clone(), CommitVersion(5), value("five"));
+		tier.insert(key.clone(), CommitVersion(9), value("nine"));
+
+		assert!(matches!(tier.get(&key, CommitVersion(2)), VersionedGetResult::NotFound));
+		assert_eq!(
+			totals(&tier),
+			MultiReadMetrics {
+				hits: 0,
+				previous_hits: 0,
+				misses: 1
+			},
+			"the key was resident, so scoring residency alone would call this a hit and hide a reader the cache could not answer"
+		);
+	}
+
+	#[test]
+	fn a_cached_tombstone_reads_back_as_a_tombstone() {
+		let tier = tier();
+		let key = row_key(4);
+		tier.insert(key.clone(), CommitVersion(5), None);
+
+		assert!(matches!(tier.get(&key, CommitVersion(7)), VersionedGetResult::Tombstone));
+		assert_eq!(totals(&tier), MultiReadMetrics {
+			hits: 1,
+			previous_hits: 0,
+			misses: 0
+		});
+	}
+
+	#[test]
+	fn an_invalidated_key_reads_as_a_miss() {
+		let tier = tier();
+		let key = row_key(5);
+		tier.insert(key.clone(), CommitVersion(5), value("five"));
+		tier.invalidate(&key);
+
+		assert!(matches!(tier.get(&key, CommitVersion(7)), VersionedGetResult::NotFound));
+		assert_eq!(totals(&tier), MultiReadMetrics {
+			hits: 0,
+			previous_hits: 0,
+			misses: 1
+		});
 	}
 }

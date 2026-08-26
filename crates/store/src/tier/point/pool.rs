@@ -10,6 +10,7 @@ use std::{
 	},
 };
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	util::budget::MemoryBudget,
@@ -49,13 +50,15 @@ impl<D: PointDomain> PointTier<D> {
 		})
 	}
 
-	pub(super) fn shard_for(&self, key: &PointKey<D::Dimension>) -> &Mutex<Shard<D>> {
-		let shards = &self.inner.shards;
+	pub fn shard_index(&self, dimension: D::Dimension, key: &EncodedKey) -> usize {
 		let mut hasher = DefaultHasher::new();
-		key.dimension.hash(&mut hasher);
-		key.key.as_slice().hash(&mut hasher);
-		let index = (hasher.finish() % shards.len() as u64) as usize;
-		&shards[index]
+		dimension.hash(&mut hasher);
+		key.as_slice().hash(&mut hasher);
+		(hasher.finish() % self.inner.shards.len() as u64) as usize
+	}
+
+	pub(super) fn shard_for(&self, key: &PointKey<D::Dimension>) -> &Mutex<Shard<D>> {
+		&self.inner.shards[self.shard_index(key.dimension, &key.key)]
 	}
 
 	pub(super) fn all_shards(&self) -> impl Iterator<Item = &Mutex<Shard<D>>> {
