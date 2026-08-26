@@ -20,7 +20,7 @@ use reifydb_core::{
 	key::operator_state::{Keyspace, OperatorStateKey},
 };
 use reifydb_store::tier::point::{
-	PointConfig, PointDomain, PointSlotMetrics, PointMetrics, PointShardMetrics, PointTier,
+	PointConfig, PointDomain, PointMetrics, PointShardMetrics, PointSlotMetrics, PointTier,
 };
 
 pub type OperatorPointConfig = PointConfig;
