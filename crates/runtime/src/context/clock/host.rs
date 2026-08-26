@@ -13,7 +13,7 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::value::{datetime::DateTime, duration::Duration as RvDuration};
 
 #[allow(clippy::disallowed_methods)]
 #[inline(always)]
@@ -253,6 +253,14 @@ impl ops::Add<Duration> for Instant {
 				},
 			},
 		}
+	}
+}
+
+impl ops::Add<RvDuration> for Instant {
+	type Output = Instant;
+
+	fn add(self, duration: RvDuration) -> Instant {
+		self + duration.to_std()
 	}
 }
 

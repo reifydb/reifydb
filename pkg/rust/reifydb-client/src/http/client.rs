@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use std::{collections::HashMap, time::Duration as StdDuration};
+use std::collections::HashMap;
 
 use reifydb_codec::{frame::decode::decode_frames, json::types::ResponseFrame};
 use reifydb_value::{
@@ -300,7 +300,7 @@ impl HttpClient {
 	/// `wait_for` is a plain non-blocking claim.
 	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, Error> {
 		let budget = request.wait_for.as_deref().and_then(|raw| parse_duration(Fragment::internal(raw)).ok());
-		let timeout = budget.unwrap_or(Duration::zero()).to_std() + StdDuration::from_secs(30);
+		let timeout = budget.unwrap_or(Duration::zero()) + Duration::from_seconds(30).unwrap();
 
 		let url = format!("{}/v1/queue/claim?format=rbcf", self.base_url);
 		let (bytes, _) = self.send_request_bytes_with_timeout(&url, &request, timeout).await?;
@@ -312,9 +312,9 @@ impl HttpClient {
 		&self,
 		url: &str,
 		body: &T,
-		timeout: StdDuration,
+		timeout: Duration,
 	) -> Result<(Vec<u8>, Option<ResponseMeta>), Error> {
-		let mut request = self.inner.post(url).timeout(timeout).json(body);
+		let mut request = self.inner.post(url).timeout(timeout.to_std()).json(body);
 
 		if let Some(ref token) = self.token {
 			request = request.bearer_auth(token);

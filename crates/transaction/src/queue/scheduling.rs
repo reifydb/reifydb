@@ -144,10 +144,7 @@ pub fn apply_ack_transitions(
 			single,
 			&mut tx,
 			&mut overlay,
-			queue,
-			partition,
-			ack.row_number,
-			ack.key_hash,
+			TransitionTarget::for_ack(queue, partition, ack),
 			&mut state,
 			&ack.transition,
 		)?;
@@ -213,10 +210,7 @@ pub fn apply_reap_transition(
 		single,
 		&mut tx,
 		&mut overlay,
-		queue,
-		partition,
-		lease.row,
-		lease.key_hash,
+		TransitionTarget::for_lease(queue, partition, lease),
 		&mut state,
 		transition,
 	)?;
@@ -338,17 +332,48 @@ pub fn remove_item_states(
 	Ok(removed)
 }
 
-fn apply_state_transition(
-	single: &SingleTransaction,
-	tx: &mut SingleWriteTransaction<'_>,
-	overlay: &mut ChainOverlay,
+struct TransitionTarget {
 	queue: QueueId,
 	partition: u16,
 	row: RowNumber,
 	key_hash: Option<u64>,
+}
+
+impl TransitionTarget {
+	fn for_ack(queue: QueueId, partition: u16, ack: &QueueRowAck) -> Self {
+		Self {
+			queue,
+			partition,
+			row: ack.row_number,
+			key_hash: ack.key_hash,
+		}
+	}
+
+	fn for_lease(queue: QueueId, partition: u16, lease: &ExpiredLease) -> Self {
+		Self {
+			queue,
+			partition,
+			row: lease.row,
+			key_hash: lease.key_hash,
+		}
+	}
+}
+
+fn apply_state_transition(
+	single: &SingleTransaction,
+	tx: &mut SingleWriteTransaction<'_>,
+	overlay: &mut ChainOverlay,
+	target: TransitionTarget,
 	state: &mut QueueItemState,
 	transition: &QueueAckTransition,
 ) -> Result<TransitionEffect> {
+	let TransitionTarget {
+		queue,
+		partition,
+		row,
+		key_hash,
+	} = target;
+
 	state.lease_deadline = None;
 
 	let terminal = match transition {

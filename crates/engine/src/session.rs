@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc, thread, time::Instant};
+use std::{collections::HashMap, sync::Arc, thread};
 
 use reifydb_core::{
 	execution::ExecutionResult,
 	interface::catalog::{id::QueueId, token::Token},
 };
-use reifydb_runtime::{context::rng::Rng, sync::waiter::WaiterHandle};
+use reifydb_runtime::{
+	context::{clock::Instant, rng::Rng},
+	sync::waiter::WaiterHandle,
+};
 use reifydb_value::{
 	params::Params,
 	value::{Value, duration::Duration, identity::IdentityId},
@@ -264,7 +267,8 @@ impl Session {
 			return result;
 		};
 		let registry = self.engine.queue_wake();
-		let deadline = Instant::now() + wait_for.to_std();
+		let clock = self.engine.clock();
+		let deadline = clock.instant() + wait_for;
 
 		loop {
 			let waiter = Arc::new(WaiterHandle::new());
@@ -276,7 +280,7 @@ impl Session {
 				return result;
 			}
 
-			let Some(remaining) = remaining_budget(deadline) else {
+			let Some(remaining) = remaining_budget(&clock.instant(), &deadline) else {
 				return result;
 			};
 			guard.wait(remaining);
@@ -330,12 +334,11 @@ fn claimed_any(result: &ExecutionResult) -> bool {
 	result.frames.iter().any(|frame| frame.row_count() > 0)
 }
 
-fn remaining_budget(deadline: Instant) -> Option<Duration> {
-	let now = Instant::now();
+fn remaining_budget(now: &Instant, deadline: &Instant) -> Option<Duration> {
 	if now >= deadline {
 		return None;
 	}
-	Duration::from_nanoseconds((deadline - now).as_nanos().min(i64::MAX as u128) as i64).ok()
+	Duration::from_nanoseconds(deadline.duration_since(now).as_nanos().min(i64::MAX as u128) as i64).ok()
 }
 
 #[cfg(test)]

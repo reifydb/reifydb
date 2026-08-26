@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[allow(clippy::disallowed_types)]
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{Params, WithSubsystem, embedded};
@@ -37,6 +38,7 @@ fn main() {
 	command(&db, &format!(r#"CALL queue::ack("{}")"#, utf8_column(&now, "token")[0]));
 
 	info!("Waiting for the delayed job to come due...");
+	#[allow(clippy::disallowed_types)]
 	sleep(Duration::from_millis(2_200));
 
 	info!("The same claim now finds it - nothing woke it, the claim simply reads the due index...");

@@ -86,7 +86,7 @@ impl QueueAttemptKey {
 mod tests {
 	use std::ops::Bound;
 
-	use super::*;
+	use super::{super::queue_schedule::QueueItemStateKey, *};
 
 	fn contains(range: &EncodedKeyRange, key: &EncodedKey) -> bool {
 		let after_start = match &range.start {
@@ -161,7 +161,7 @@ mod tests {
 	fn test_a_foreign_kind_does_not_decode() {
 		// Every family shares the single-lane and MVCC keyspace; decoding a neighbour's key
 		// as an attempt record would attribute another object's bytes to a queue item.
-		let foreign = super::super::queue_schedule::QueueItemStateKey::encoded(QueueId(1), 0, RowNumber(1));
+		let foreign = QueueItemStateKey::encoded(QueueId(1), 0, RowNumber(1));
 
 		assert_eq!(QueueAttemptKey::decode(&foreign), None);
 	}

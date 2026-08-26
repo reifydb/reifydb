@@ -14,7 +14,7 @@ use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
 	binding::dispatch_binding,
-	claim::{WireClaimRequest, dispatch_claim},
+	claim::{WireClaimRequest, native::dispatch_claim},
 	dispatch::dispatch,
 	interceptor::{Protocol, RequestContext, RequestMetadata},
 	subscription::{

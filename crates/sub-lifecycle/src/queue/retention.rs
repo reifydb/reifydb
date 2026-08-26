@@ -149,9 +149,8 @@ impl QueueRetentionTask {
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		let mut attempt_keys = Vec::new();
 		for item in &purge {
-			let mut stream =
-				txn.range(QueueAttemptKey::item_scan(queue, item.row), RangeScope::All, 1024)?;
-			while let Some(entry) = stream.next() {
+			let stream = txn.range(QueueAttemptKey::item_scan(queue, item.row), RangeScope::All, 1024)?;
+			for entry in stream {
 				attempt_keys.push(entry?.key.clone());
 			}
 		}
@@ -202,10 +201,10 @@ impl QueueRetentionTask {
 		limit: usize,
 	) -> Result<ExpiredDeduplication> {
 		let query_txn = self.engine.begin_query(IdentityId::system())?;
-		let mut stream = query_txn.range(range, RangeScope::All, limit);
+		let stream = query_txn.range(range, RangeScope::All, limit);
 
 		let mut out = ExpiredDeduplication::default();
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let entry = entry?;
 			if out.scanned >= limit {
 				break;

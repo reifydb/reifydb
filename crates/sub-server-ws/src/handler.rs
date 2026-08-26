@@ -20,7 +20,7 @@ use reifydb_sub_server::{
 	actor::ServerActor,
 	auth::{AuthError, extract_identity_from_ws_auth},
 	binding::dispatch_binding,
-	claim::{WireClaimRequest, dispatch_claim},
+	claim::{WireClaimRequest, native::dispatch_claim},
 	dispatch::dispatch,
 	execute::ExecuteError,
 	format::WireFormat,
@@ -38,7 +38,7 @@ use reifydb_value::{
 use serde_json::{Value as JsonValue, from_str, json, to_string as json_to_string};
 use tokio::{
 	net::TcpStream,
-	select,
+	select, spawn,
 	sync::{mpsc, watch},
 	task::JoinHandle,
 	time::timeout,
@@ -717,7 +717,7 @@ fn handle_queue_claim(
 	let deferred_tx = conn.deferred_tx.clone();
 	let request_id = request_id.to_string();
 
-	conn.claim_tasks.push(tokio::spawn(async move {
+	conn.claim_tasks.push(spawn(async move {
 		let result = dispatch_claim(&state, identity, request, metadata).await;
 		if let Some(response) =
 			encode_dispatch_result(&request_id, format, unwrap, result, |id, ct, body, meta| {

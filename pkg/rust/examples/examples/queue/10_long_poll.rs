@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[allow(clippy::disallowed_types)]
 use std::{
 	thread,
 	thread::sleep,
@@ -31,6 +32,7 @@ fn main() {
 	thread::scope(|scope| {
 		let waiting = scope.spawn(|| {
 			log_query(r#"claim_wait("jobs::tasks", "worker-1", 10, 30s, wait_for: 5s)"#);
+			#[allow(clippy::disallowed_methods)]
 			let started = Instant::now();
 			let result = worker.claim_wait(
 				"jobs::tasks",
@@ -50,6 +52,7 @@ fn main() {
 			}
 		});
 
+		#[allow(clippy::disallowed_types)]
 		sleep(StdDuration::from_millis(500));
 		info!("A producer enqueues while the worker is parked...");
 		command(&db, r#"INSERT jobs::tasks [{ name: "resize avatar" }]"#);
@@ -60,6 +63,7 @@ fn main() {
 	info!("The worker returned in about half a second, not after the full five second budget.");
 	info!("A budget that runs out is a success with zero rows, not an error - the worker just asks again...");
 
+	#[allow(clippy::disallowed_methods)]
 	let started = Instant::now();
 	let empty = worker.claim_wait(
 		"jobs::tasks",

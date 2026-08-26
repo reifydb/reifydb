@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[allow(clippy::disallowed_types)]
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{Params, WithSubsystem, embedded};
@@ -36,6 +37,7 @@ fn main() {
 	command(&db, r#"CALL queue::claim("biller-1", "jobs::charges", 1, duration::seconds(30))"#);
 
 	info!("Waiting out the one second backoff...");
+	#[allow(clippy::disallowed_types)]
 	sleep(Duration::from_millis(1_200));
 
 	info!("The job comes back on its own, as attempt 2 - note the attempt column...");
@@ -45,6 +47,7 @@ fn main() {
 	command(&db, &format!(r#"CALL queue::fail("{}", "gateway timeout")"#, utf8_column(&second, "token")[0]));
 
 	info!("With the budget gone the job is dead, not retried - it will never be claimed again...");
+	#[allow(clippy::disallowed_types)]
 	sleep(Duration::from_millis(1_200));
 	command(&db, r#"CALL queue::claim("biller-1", "jobs::charges", 1, duration::seconds(30))"#);
 

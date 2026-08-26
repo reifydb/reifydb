@@ -54,10 +54,7 @@ fn parse_optional_duration(field: &str, raw: Option<&str>) -> Result<Option<Dura
 }
 
 #[cfg(not(reifydb_single_threaded))]
-pub use native::dispatch_claim;
-
-#[cfg(not(reifydb_single_threaded))]
-mod native {
+pub mod native {
 	use std::{collections::HashMap, sync::Arc};
 
 	use reifydb_core::{
@@ -69,7 +66,10 @@ mod native {
 		params::Params,
 		value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityId},
 	};
-	use tokio::{sync::oneshot, time::Instant};
+	use tokio::{
+		sync::oneshot,
+		time::{Instant, timeout_at},
+	};
 	use tracing::instrument;
 
 	use super::ClaimRequest;
@@ -121,7 +121,7 @@ mod native {
 				return Ok(attempted);
 			}
 
-			if tokio::time::timeout_at(deadline, guard.notified()).await.is_err() {
+			if timeout_at(deadline, guard.notified()).await.is_err() {
 				return Ok(attempted);
 			}
 		}
