@@ -511,6 +511,50 @@ fn a_materialize_that_races_a_retraction_refuses_rather_than_reinstating_the_cla
 }
 
 #[test]
+fn a_refused_materialize_must_not_delete_a_row_written_while_it_was_placing() {
+	// Rolling back by key name deletes whatever sits under it now, so a concurrent write vanishes beneath a standing claim.
+	let fired = Arc::new(AtomicBool::new(false));
+	let seen = fired.clone();
+	let contested = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let raced = contested.clone();
+	let hook: MaterializeInterlock<D> = Box::new(move |tier: &RangeTier<D>, _partition: TestPartition| {
+		if !seen.swap(true, Ordering::Relaxed) {
+			tier.insert(OP_A, raced.clone(), row("flushed"));
+			tier.record_retraction();
+		}
+	});
+
+	let tier = RangeTier::<D>::with_interlock(
+		RangeConfig {
+			resident_bytes: Some(ByteSize::from_mib(1)),
+			shards: 1,
+			gap_guard: DEFAULT_GAP_GUARD,
+		},
+		hook,
+	)
+	.expect("a tier with a byte budget must be constructed");
+
+	let range = keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR);
+	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
+	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
+
+	let published = tier.materialize(&scan, &gap, &[(contested.clone(), row("scanned"))]);
+
+	assert!(fired.load(Ordering::Relaxed), "the seam hook never fired, so the invariant went unchecked");
+	assert!(published == Materialize::Refused, "a retraction taken during the placing window must refuse the materialize");
+	assert_eq!(
+		tier.lookup(OP_A, &contested),
+		Some(Some(row("flushed"))),
+		"the rollback deleted a row it never placed, so a write the store believes landed is gone"
+	);
+	assert!(
+		!covers(&tier, OP_A, &range),
+		"and the refused span must carry no claim, or the surviving row is read as proof of its neighbours"
+	);
+	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
+}
+
+#[test]
 fn a_concurrent_materialize_never_refuses_another_materialize() {
 	let fired = Arc::new(AtomicBool::new(false));
 	let seen = fired.clone();

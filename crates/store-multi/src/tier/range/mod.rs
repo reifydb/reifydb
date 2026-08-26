@@ -420,3 +420,93 @@ fn served_chunk(out: Vec<RawEntry>, cursor: &mut RangeCursor, exhausted: bool) -
 		has_more: !exhausted,
 	})
 }
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::catalog::{id::TableId, storage::StorageId},
+		key::row::RowKey,
+	};
+	use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;
+	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
+
+	use super::{
+		EntryKind, MultiDomain, MultiRangeConfig, MultiRangeTier, MultiVersionScope, RangeCursor, RangeDomain,
+		RawEntry, ServedChunk,
+	};
+
+	const STORAGE: StorageId = StorageId::Table(TableId(1));
+
+	fn tier() -> MultiRangeTier {
+		MultiRangeTier::new(MultiRangeConfig {
+			resident_bytes: Some(ByteSize::from_mib(1)),
+			shards: 4,
+			gap_guard: DEFAULT_GAP_GUARD,
+		})
+		.expect("a tier with a byte budget must be constructed")
+	}
+
+	#[test]
+	fn a_write_into_a_partition_no_claim_reached_is_still_seated() {
+		// A declined write leaves a later materialize free to claim the span and answer the row absent.
+		let tier = tier();
+
+		tier.insert(RowKey::encoded(STORAGE, 1), CommitVersion(1), Some(CowVec::new(b"v".to_vec())));
+
+		let entries: usize = tier.shard_metrics().iter().map(|shard| shard.entries).sum();
+		assert_eq!(entries, 1, "the write was dropped, so a claim taken across it answers the row absent");
+	}
+
+	#[test]
+	fn a_claim_taken_across_a_declined_write_must_not_answer_that_row_absent() {
+		// The persistent read feeding a claim can predate a flushed row, so a write the cache declined is lost under it.
+		let tier = tier();
+		let kind = EntryKind::Source(STORAGE);
+		let flushed = RowKey::encoded(STORAGE, 5);
+		let lo = RowKey::encoded(STORAGE, 9);
+		let through = RowKey::encoded(STORAGE, 1);
+		assert!(lo < through, "row keys encode descending, so the low end of the span is the highest row number");
+
+		tier.insert(flushed.clone(), CommitVersion(1), Some(CowVec::new(b"flushed".to_vec())));
+
+		let stale = [RawEntry {
+			key: lo.clone(),
+			version: CommitVersion(1),
+			value: Some(CowVec::new(b"scanned".to_vec())),
+		}];
+		assert!(
+			tier.materialize_scanned_chunk(kind, &lo, &through, &stale),
+			"the chunk must claim its span, or the test never reaches the case it is here to pin"
+		);
+
+		let mut cursor = RangeCursor::new();
+		let served = tier.serve_persistent_chunk(
+			kind,
+			&mut cursor,
+			lo.as_slice(),
+			through.as_slice(),
+			MultiVersionScope::AsOf {
+				read: CommitVersion(10),
+			},
+			32,
+			false,
+		);
+		let ServedChunk::Served(batch) = served else {
+			panic!("a claimed span must serve from ram, or the claim bought nothing");
+		};
+		assert!(
+			batch.entries.iter().any(|entry| entry.key == flushed),
+			"the claim outranked a flushed row the persistent read never saw, so the row reads as absent"
+		);
+	}
+
+	#[test]
+	fn the_multi_domain_hands_durability_to_ram_rather_than_declining_a_write() {
+		// Flipping this back makes every uncovered write a candidate for silent loss under a later claim.
+		assert!(
+			MultiDomain::admits_unproven_writes(),
+			"multi hands a flushed row to ram unconditionally, or the row is lost between the buffer and the claim"
+		);
+	}
+}
