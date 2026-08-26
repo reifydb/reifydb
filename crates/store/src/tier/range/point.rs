@@ -327,6 +327,40 @@ mod tests {
 	}
 
 	#[test]
+	fn an_eviction_between_the_two_steps_is_not_a_proven_absence() {
+		// An eviction that shrinks coverage must bump the token, or the key it withdrew still reads absent.
+		let per_entry = entry_footprint(&key(CACHED, b"f0"), &Entry::row(row("v")));
+		let tier = RangeTier::<D>::new(RangeConfig {
+			resident_bytes: Some(ByteSize::from_bytes((PARTITION_OVERHEAD + 2 * per_entry) as u64)),
+			shards: 1,
+			..RangeConfig::default()
+		})
+		.expect("a tier with a byte budget must be constructed");
+		let id = partition(CACHED);
+		let at = key(CACHED, b"m");
+		participate(&tier, id);
+		claim(&tier, &key(CACHED, b"a"), &key(CACHED, b"z"));
+		for index in 0..4 {
+			seat(&tier, id, &key(CACHED, format!("f{index}").as_bytes()), Entry::row(row("v")));
+		}
+
+		assert!(
+			tier.shard_for(&id).lock().budget.over_budget(),
+			"the fixture must be over budget, or the eviction is a no-op and this test proves nothing"
+		);
+		assert_eq!(tier.lookup(OP_A, &at), Some(None), "the claim must answer absent before the eviction");
+
+		let evicting = tier.clone();
+		arm_absence_interlock(move || evicting.evict_to_capacity(0));
+
+		assert_eq!(
+			tier.lookup(OP_A, &at),
+			None,
+			"the eviction withdrew the claim mid-read, so this tier can no longer speak for the key"
+		);
+	}
+
+	#[test]
 	fn a_key_too_short_to_name_a_partition_is_declined() {
 		// The tier cannot tell which claim it would belong to, so it must never answer for it.
 		let tier = tier();

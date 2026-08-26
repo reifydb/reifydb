@@ -4,9 +4,10 @@
 //! Point tier of the multi-version store: the shared point cache, instantiated over multi's keys and a
 //! two-deep row.
 //!
-//! A dimension is one entry kind, matching the range tier, so an invalidation scoped to a storage reaches
-//! every key it cached. There is one counter slot, because multi has no keyspace byte to attribute a read
-//! to and every point read here is the same kind of work.
+//! There is no dimension, because an entry kind is derived from the key and so can never tell two keys
+//! apart; storing one would cost every entry a copy that answers nothing. There is one counter slot,
+//! because multi has no keyspace byte to attribute a read to and every point read here is the same
+//! kind of work.
 //!
 //! The version scope filter lives above this module, not in it: the tier stores whatever row the domain
 //! names and knows nothing about which versions a reader may see.
@@ -39,7 +40,7 @@ pub type MultiPointConfig = PointConfig;
 pub struct MultiPointRow {
 	pub version: CommitVersion,
 	pub value: Option<CowVec<u8>>,
-	pub previous: Option<(CommitVersion, Option<CowVec<u8>>)>,
+	pub previous: Option<Box<(CommitVersion, Option<CowVec<u8>>)>>,
 }
 
 impl MultiPointRow {
@@ -55,21 +56,21 @@ impl MultiPointRow {
 		if self.version <= read {
 			return Some((self.version, &self.value));
 		}
-		match &self.previous {
+		match self.previous.as_deref() {
 			Some((version, value)) if *version <= read => Some((*version, value)),
 			_ => None,
 		}
 	}
 
 	pub fn served_previous(&self, read: CommitVersion) -> bool {
-		self.version > read && self.previous.as_ref().is_some_and(|(version, _)| *version <= read)
+		self.version > read && self.previous.as_deref().is_some_and(|(version, _)| *version <= read)
 	}
 }
 
 impl RowBytes for MultiPointRow {
 	fn row_bytes(&self) -> usize {
 		let current = self.value.as_ref().map_or(0, |value| value.len());
-		let previous = self.previous.as_ref().map_or(0, |(_, value)| value.as_ref().map_or(0, CowVec::len));
+		let previous = self.previous.as_deref().map_or(0, |(_, value)| value.as_ref().map_or(0, CowVec::len));
 		current + previous
 	}
 }
@@ -78,7 +79,7 @@ impl RowBytes for MultiPointRow {
 pub struct MultiPointDomain;
 
 impl PointDomain for MultiPointDomain {
-	type Dimension = EntryKind;
+	type Dimension = ();
 	type Slot = ();
 	type Row = MultiPointRow;
 
@@ -99,7 +100,7 @@ impl PointDomain for MultiPointDomain {
 			return false;
 		}
 		resident.previous = if resident.version < incoming.version {
-			Some((resident.version, resident.value.take()))
+			Some(Box::new((resident.version, resident.value.take())))
 		} else {
 			None
 		};
@@ -158,9 +159,8 @@ impl MultiPointTier {
 	}
 
 	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> VersionedGetResult {
-		let dimension = classify_key(key);
-		let counters = &self.reads[self.tier.shard_index(dimension, key)];
-		let Some(Some(row)) = self.tier.get(dimension, key) else {
+		let counters = &self.reads[self.tier.shard_index((), key)];
+		let Some(Some(row)) = self.tier.get((), key) else {
 			counters.misses.fetch_add(1, Ordering::Relaxed);
 			return VersionedGetResult::NotFound;
 		};
@@ -185,12 +185,11 @@ impl MultiPointTier {
 	}
 
 	pub fn insert(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
-		let dimension = classify_key(&key);
-		self.tier.overwrite(dimension, key, MultiPointRow::new(version, value));
+		self.tier.overwrite((), key, MultiPointRow::new(version, value));
 	}
 
 	pub fn invalidate(&self, key: &EncodedKey) {
-		self.tier.invalidate(classify_key(key), key);
+		self.tier.invalidate((), key);
 	}
 
 	pub fn clear(&self) {
@@ -206,6 +205,14 @@ impl MultiPointTier {
 				misses: counters.misses.load(Ordering::Relaxed),
 			})
 			.collect()
+	}
+
+	pub fn debug_overhead(&self) -> usize {
+		self.tier.debug_overhead()
+	}
+
+	pub fn debug_keys(&self) -> Vec<(EntryKind, reifydb_codec::key::encoded::EncodedKey, Option<MultiPointRow>)> {
+		self.tier.debug_keys().into_iter().map(|(_, key, row)| (classify_key(&key), key, row)).collect()
 	}
 
 	pub fn shard_metrics(&self) -> Vec<MultiPointShardMetrics> {
@@ -319,7 +326,7 @@ mod tests {
 		assert!(MultiPointDomain::supersede(&mut resident, row(9, "new")), "a newer write must land");
 		assert_eq!(resident.version, CommitVersion(9));
 		assert_eq!(body(&resident.value), "new");
-		let (version, displaced) = resident.previous.as_ref().expect("the displaced value must be kept");
+		let (version, displaced) = resident.previous.as_deref().expect("the displaced value must be kept");
 		assert_eq!(*version, CommitVersion(5), "previous must carry the version it was written at");
 		assert_eq!(body(displaced), "old");
 	}
@@ -330,7 +337,7 @@ mod tests {
 		let mut resident = MultiPointRow::new(CommitVersion(5), None);
 
 		assert!(MultiPointDomain::supersede(&mut resident, row(9, "resurrected")), "a newer write must land");
-		let (version, displaced) = resident.previous.as_ref().expect("a displaced tombstone must be kept");
+		let (version, displaced) = resident.previous.as_deref().expect("a displaced tombstone must be kept");
 		assert_eq!(*version, CommitVersion(5));
 		assert!(displaced.is_none(), "the tombstone was rewritten as a value");
 	}
@@ -344,7 +351,7 @@ mod tests {
 
 		assert_eq!(body(&resident.value), "third");
 		let (version, displaced) =
-			resident.previous.as_ref().expect("the chain must still hold one displaced value");
+			resident.previous.as_deref().expect("the chain must still hold one displaced value");
 		assert_eq!(*version, CommitVersion(2), "the chain kept the wrong version");
 		assert_eq!(body(displaced), "second", "a two-deep chain must forget the oldest, not the newest");
 	}

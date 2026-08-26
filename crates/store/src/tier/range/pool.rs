@@ -20,7 +20,7 @@ use crate::{
 	coverage::{index::CoverageIndex, plan::GapHistogram, retraction::Retractions},
 	tier::range::{
 		Partition, PoolInner, Progress, RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics,
-		RangeSlotMetrics, RangeTier, Shard, account, entry_footprint,
+		RangeSlotMetrics, RangeTier, Shard, account, entry_footprint, entry_overhead,
 	},
 };
 
@@ -222,6 +222,24 @@ impl<D: RangeDomain> RangeTier<D> {
 				shard.lock().partitions.values().map(|partition| partition.entries.len()).sum::<usize>()
 			})
 			.sum()
+	}
+
+	pub fn debug_overhead(&self) -> usize {
+		entry_overhead::<D::Row>()
+	}
+
+	pub fn debug_keys(&self) -> Vec<(D::Dimension, reifydb_codec::key::encoded::EncodedKey, Option<D::Row>)> {
+		let mut out = Vec::new();
+		for shard in self.all_shards() {
+			let shard = shard.lock();
+			for (id, partition) in shard.partitions.iter() {
+				let dimension = D::dimension(id);
+				for (key, entry) in partition.entries.iter() {
+					out.push((dimension, key.clone(), entry.value().cloned()));
+				}
+			}
+		}
+		out
 	}
 
 	pub fn shard_limit_bytes(&self) -> ByteSize {

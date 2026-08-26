@@ -51,6 +51,14 @@ impl StoreReader {
 		self.multi.commit_metrics()
 	}
 
+	pub fn multi_byte_split(&self) -> (usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) {
+		self.multi.debug_byte_split()
+	}
+
+	pub fn multi_key_overlap(&self) -> (usize, usize, usize, usize, usize) {
+		self.multi.debug_key_overlap()
+	}
+
 	pub fn multi_point(&self) -> Vec<MultiPointShardMetrics> {
 		self.multi.point_shard_metrics()
 	}
