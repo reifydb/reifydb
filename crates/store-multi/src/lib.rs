@@ -43,7 +43,10 @@ use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_value::util::cowvec::CowVec;
 use store::{MultiPersistentProbeMetrics, StandardMultiStore};
-use tier::{commit::buffer::MultiCommitMetrics, range::MultiRangeShardMetrics, read::ReadBufferShardMetrics};
+use tier::{
+	commit::buffer::MultiCommitMetrics, point::MultiPointShardMetrics, range::MultiRangeShardMetrics,
+	read::ReadBufferShardMetrics,
+};
 
 pub mod memory {}
 pub mod sqlite {}
@@ -130,6 +133,12 @@ impl MultiStore {
 	pub fn range_shard_metrics(&self) -> Vec<MultiRangeShardMetrics> {
 		match self {
 			MultiStore::Standard(store) => store.range_shard_metrics(),
+		}
+	}
+
+	pub fn point_shard_metrics(&self) -> Vec<MultiPointShardMetrics> {
+		match self {
+			MultiStore::Standard(store) => store.point_shard_metrics(),
 		}
 	}
 

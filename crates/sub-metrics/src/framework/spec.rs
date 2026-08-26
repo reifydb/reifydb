@@ -20,6 +20,7 @@ pub enum MetricsDomain {
 	StoreMultiCommit,
 	StoreMultiRead,
 	StoreMultiRange,
+	StoreMultiPoint,
 	StoreMultiPersistent,
 	StoreSingleCommit,
 	StoreSinglePersistent,
@@ -284,7 +285,7 @@ mod tests {
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 31] = [
+	pub const ALL: [MetricsDomain; 32] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
@@ -298,6 +299,7 @@ impl MetricsDomain {
 		MetricsDomain::StoreMultiCommit,
 		MetricsDomain::StoreMultiRead,
 		MetricsDomain::StoreMultiRange,
+		MetricsDomain::StoreMultiPoint,
 		MetricsDomain::StoreMultiPersistent,
 		MetricsDomain::StoreSingleCommit,
 		MetricsDomain::StoreSinglePersistent,
@@ -336,6 +338,7 @@ impl MetricsDomain {
 			| MetricsDomain::StoreMultiCommit
 			| MetricsDomain::StoreMultiRead
 			| MetricsDomain::StoreMultiRange
+			| MetricsDomain::StoreMultiPoint
 			| MetricsDomain::StoreMultiPersistent
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
@@ -376,6 +379,7 @@ impl MetricsDomain {
 			| MetricsDomain::StoreMultiCommit
 			| MetricsDomain::StoreMultiRead
 			| MetricsDomain::StoreMultiRange
+			| MetricsDomain::StoreMultiPoint
 			| MetricsDomain::StoreMultiPersistent
 			| MetricsDomain::StoreSingleCommit
 			| MetricsDomain::StoreSinglePersistent
@@ -583,6 +587,26 @@ impl MetricsDomain {
 					counter("served", ValueType::Uint8),
 					counter("rows", ValueType::Uint8),
 					counter("head_advances", ValueType::Uint8),
+				],
+				has_total: true,
+			},
+			MetricsDomain::StoreMultiPoint => DomainSpec {
+				domain: self,
+				namespace: NamespaceId::SYSTEM_METRICS_STORE_MULTI_POINT,
+				shape: DomainShape::Wide,
+				dimensions: vec![dim("shard", ValueType::Uint2)],
+				measures: vec![
+					level("used", ValueType::Uint8),
+					level("limit", ValueType::Uint8),
+					level("entries", ValueType::Uint8),
+					counter("hits", ValueType::Uint8),
+					counter("previous_hits", ValueType::Uint8),
+					counter("misses", ValueType::Uint8),
+					counter("insertions", ValueType::Uint8),
+					counter("evictions", ValueType::Uint8),
+					counter("fills_started", ValueType::Uint8),
+					counter("fills_dirty_aborted", ValueType::Uint8),
+					counter("fills_duplicate", ValueType::Uint8),
 				],
 				has_total: true,
 			},

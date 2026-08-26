@@ -23,7 +23,7 @@ use reifydb_store_cdc::{
 };
 use reifydb_store_multi::{
 	MultiStore,
-	tier::{range::MultiRangeShardMetrics, read::ReadBufferShardMetrics},
+	tier::{point::MultiPointShardMetrics, range::MultiRangeShardMetrics, read::ReadBufferShardMetrics},
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
@@ -186,6 +186,7 @@ impl MetricsSamplerActor {
 		);
 		accumulator.push(MetricsDomain::StoreMultiRead, Surface::Current, multi_read_rows(&self.multi_store));
 		accumulator.push(MetricsDomain::StoreMultiRange, Surface::Current, multi_range_rows(&self.multi_store));
+		accumulator.push(MetricsDomain::StoreMultiPoint, Surface::Current, multi_point_rows(&self.multi_store));
 		accumulator.push(
 			MetricsDomain::StoreMultiPersistent,
 			Surface::Current,
@@ -382,6 +383,29 @@ fn multi_range_row(metrics: &MultiRangeShardMetrics) -> MetricsRow {
 			counter_count("served", metrics.serve.served),
 			counter_count("rows", metrics.serve.rows),
 			counter_count("head_advances", metrics.serve.head_advances),
+		],
+	}
+}
+
+fn multi_point_rows(store: &MultiStore) -> Vec<MetricsRow> {
+	store.point_shard_metrics().iter().map(multi_point_row).collect()
+}
+
+fn multi_point_row(metrics: &MultiPointShardMetrics) -> MetricsRow {
+	MetricsRow {
+		dimensions: vec![Value::Uint2(metrics.shard as u16)],
+		measures: vec![
+			level_bytes("used", metrics.used),
+			level_bytes("limit", metrics.limit),
+			level_count("entries", metrics.entries as u64),
+			counter_count("hits", metrics.reads.hits),
+			counter_count("previous_hits", metrics.reads.previous_hits),
+			counter_count("misses", metrics.reads.misses),
+			counter_count("insertions", metrics.counters.insertions),
+			counter_count("evictions", metrics.counters.evictions),
+			counter_count("fills_started", metrics.counters.fills_started),
+			counter_count("fills_dirty_aborted", metrics.counters.fills_dirty_aborted),
+			counter_count("fills_duplicate", metrics.counters.fills_duplicate),
 		],
 	}
 }
