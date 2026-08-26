@@ -22,6 +22,13 @@ impl ClockNow for Clock {
 	}
 }
 
+pub trait TimerWake: Send + Sync {
+	fn wake(&self);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct TimerId(u64);
+
 #[cfg(test)]
 mod tests {
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]

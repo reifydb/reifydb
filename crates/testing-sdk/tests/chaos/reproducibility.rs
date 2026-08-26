@@ -95,6 +95,8 @@ fn the_corpus_fingerprint_identifies_the_sequence_a_seed_produced() {
 
 	first.assert_pinned(again.fingerprint());
 
-	let stale = std::panic::catch_unwind(|| build_and_run(1234).assert_pinned(other.fingerprint()));
+	let stale = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+		build_and_run(1234).assert_pinned(other.fingerprint())
+	}));
 	assert!(stale.is_err(), "a fingerprint that no longer matches its pin must fail loudly");
 }

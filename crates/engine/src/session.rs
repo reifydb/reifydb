@@ -271,7 +271,7 @@ impl Session {
 		let deadline = clock.instant() + wait_for;
 
 		loop {
-			let waiter = Arc::new(WaiterHandle::new());
+			let waiter = Arc::new(WaiterHandle::on_clock(clock.clone()));
 			let guard = ParkGuard::park(&registry, queue_id, waiter);
 
 			result = self.command(CLAIM_RQL, params.clone());

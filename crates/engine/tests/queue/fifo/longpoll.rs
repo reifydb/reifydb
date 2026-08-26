@@ -2,12 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	sync::atomic::{AtomicBool, Ordering},
 	thread,
 	time::{Duration as StdDuration, Instant},
 };
 
-use reifydb_core::execution::ExecutionResult;
-use reifydb_engine::session::Session;
+use reifydb_core::{execution::ExecutionResult, interface::catalog::id::QueueId};
+use reifydb_engine::{queue::lookup::find_queue_id, session::Session};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::duration::Duration;
 
@@ -34,6 +35,22 @@ fn rows(result: &ExecutionResult) -> usize {
 
 fn claim_wait(session: &Session, wait_for: Duration) -> ExecutionResult {
 	session.claim_wait("test::jobs", "w1", 10, Duration::from_seconds(30).unwrap(), wait_for)
+}
+
+fn queue_id(t: &TestEngine) -> QueueId {
+	find_queue_id(t.inner(), TestEngine::identity(), "test::jobs").expect("the queue must exist")
+}
+
+fn await_parked(t: &TestEngine, count: usize) {
+	// Advancing before the worker is on the registry expires the budget before it ever parks.
+	let registry = t.inner().queue_wake();
+	let queue = queue_id(t);
+	let deadline = Instant::now() + StdDuration::from_secs(5);
+
+	while registry.parked(queue) < count {
+		assert!(Instant::now() < deadline, "{count} worker(s) never parked");
+		thread::yield_now();
+	}
 }
 
 #[test]
@@ -65,18 +82,33 @@ fn test_a_parked_claim_is_released_by_a_concurrent_insert() {
 
 #[test]
 fn test_a_claim_that_waits_out_its_budget_returns_zero_rows_as_a_success() {
-	// Clients re-poll on the timeout, so it must be an ordinary empty result, never an error.
-	// Returning early would also be wrong: a worker that gets an instant empty answer spins.
+	// A timeout must be a clean empty result, and the 299ms probe fails a claim that returns early.
 	let t = engine();
 	let worker = session(&t);
+	let clock = t.mock_clock();
+	let returned = AtomicBool::new(false);
 
-	let started = Instant::now();
-	let result = claim_wait(&worker, millis(300));
-	let elapsed = started.elapsed();
+	let result = thread::scope(|scope| {
+		let handle = scope.spawn(|| {
+			let result = claim_wait(&worker, millis(300));
+			returned.store(true, Ordering::SeqCst);
+			result
+		});
+
+		await_parked(&t, 1);
+		clock.advance_millis(299);
+		thread::sleep(StdDuration::from_millis(50));
+		assert!(
+			!returned.load(Ordering::SeqCst),
+			"the claim must not return one millisecond short of its budget"
+		);
+
+		clock.advance_millis(1);
+		handle.join().unwrap()
+	});
 
 	assert!(result.error.is_none(), "a timed-out claim must be a clean success: {:?}", result.error);
 	assert_eq!(rows(&result), 0);
-	assert!(elapsed >= StdDuration::from_millis(300), "the claim must wait out its budget; took {elapsed:?}");
 }
 
 #[test]
@@ -131,23 +163,22 @@ fn test_an_unknown_queue_faults_instead_of_parking() {
 
 #[test]
 fn test_one_insert_wakes_exactly_one_of_two_parked_workers() {
-	// Wake-N FIFO end to end. Asserting WHICH worker wins is what makes this a real test: under
-	// FIFO the older park is woken and takes the item while the younger one sleeps on, so the
-	// outcome is deterministic. Under LIFO the younger worker would be woken and win the race,
-	// and under wake-all the winner would be a coin flip - both break this assertion.
+	// Under FIFO the older park must win the item, so LIFO order or wake-all break these assertions.
 	let t = engine();
 	let first = session(&t);
 	let second = session(&t);
+	let clock = t.mock_clock();
 
 	thread::scope(|scope| {
 		let a = scope.spawn(|| claim_wait(&first, Duration::from_seconds(3).unwrap()));
-		thread::sleep(StdDuration::from_millis(100));
+		await_parked(&t, 1);
 		let b = scope.spawn(|| claim_wait(&second, millis(600)));
-		thread::sleep(StdDuration::from_millis(100));
+		await_parked(&t, 2);
 
 		t.command("INSERT test::jobs [{ id: 1 }]");
 
 		assert_eq!(rows(&a.join().unwrap()), 1, "the worker that parked first must be the one woken");
+		clock.advance_millis(600);
 		assert_eq!(rows(&b.join().unwrap()), 0, "a single item must not stampede the second worker");
 	});
 }
