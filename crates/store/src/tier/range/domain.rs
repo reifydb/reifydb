@@ -135,3 +135,61 @@ impl RangeDomain for TestDomain {
 		slot.name()
 	}
 }
+
+/// Seats every write the way multi does; without it no test domain can reach the eviction path.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct AdmittingDomain;
+
+impl RangeDomain for AdmittingDomain {
+	type Dimension = OperatorId;
+	type Partition = TestPartition;
+	type Slot = Keyspace;
+	type Row = EncodedPodRow;
+
+	const PREFIX_LEN: usize = TestPartition::PREFIX_LEN;
+	const SLOTS: usize = 256;
+
+	const SCOPE: &'static str = "admitting_range";
+
+	const GAP_SCOPE: &'static str = "admitting_range::gaps";
+
+	fn partition(dimension: Self::Dimension, key: &EncodedKey) -> Option<Self::Partition> {
+		TestDomain::partition(dimension, key)
+	}
+
+	fn dimension(partition: &Self::Partition) -> Self::Dimension {
+		TestDomain::dimension(partition)
+	}
+
+	fn span(partition: &Self::Partition) -> (EncodedKey, ExclusiveUpperEnd) {
+		TestDomain::span(partition)
+	}
+
+	fn head_band(dimension: Self::Dimension) -> Option<(EncodedKey, EncodedKey)> {
+		TestDomain::head_band(dimension)
+	}
+
+	fn caches_ranges(partition: &Self::Partition) -> bool {
+		TestDomain::caches_ranges(partition)
+	}
+
+	fn policy_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
+		TestDomain::policy_run_end(partition)
+	}
+
+	fn admits_unproven_writes() -> bool {
+		true
+	}
+
+	fn slot(partition: &Self::Partition) -> usize {
+		TestDomain::slot(partition)
+	}
+
+	fn slot_at(index: usize) -> Self::Slot {
+		TestDomain::slot_at(index)
+	}
+
+	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {
+		TestDomain::slot_name(slot)
+	}
+}

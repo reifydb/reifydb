@@ -170,6 +170,7 @@ mod tests {
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,
 				materializes: 0,
+				written_at: 0,
 				covered: true,
 			},
 		);

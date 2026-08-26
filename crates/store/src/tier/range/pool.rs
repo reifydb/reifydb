@@ -19,8 +19,8 @@ use crate::tier::range::{MaterializeInterlock, ServeInterlock};
 use crate::{
 	coverage::{index::CoverageIndex, plan::GapHistogram, retraction::Retractions},
 	tier::range::{
-		Partition, PoolInner, RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics, RangeSlotMetrics,
-		RangeTier, Shard, account, entry_footprint,
+		Partition, PoolInner, Progress, RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics,
+		RangeSlotMetrics, RangeTier, Shard, account, entry_footprint,
 	},
 };
 
@@ -121,7 +121,7 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	pub(super) fn evict_to_capacity(&self, shard: usize) {
 		loop {
-			let Some((victim, materializes)) = self.pick_victim(shard) else {
+			let Some((victim, progress)) = self.pick_victim(shard) else {
 				break;
 			};
 			self.retract_partition(&victim);
@@ -129,27 +129,27 @@ impl<D: RangeDomain> RangeTier<D> {
 			if let Some(interlock) = self.inner.interlock.as_ref() {
 				interlock(self, victim);
 			}
-			if !self.drop_unpinned(shard, &victim, materializes) {
+			if !self.drop_unpinned(shard, &victim, progress) {
 				break;
 			}
 		}
 	}
 
-	fn pick_victim(&self, index: usize) -> Option<(D::Partition, u64)> {
+	fn pick_victim(&self, index: usize) -> Option<(D::Partition, Progress)> {
 		let shard = self.shard(index).lock();
 		if !shard.budget.over_budget() {
 			return None;
 		}
-		let mut victim: Option<(u64, D::Partition, u64)> = None;
+		let mut victim: Option<(u64, D::Partition, Progress)> = None;
 		for (id, partition) in shard.partitions.iter() {
 			if !partition.pinned.has_victim() {
 				continue;
 			}
 			if victim.map(|(tick, _, _)| partition.tick < tick).unwrap_or(true) {
-				victim = Some((partition.tick, *id, partition.materializes));
+				victim = Some((partition.tick, *id, partition.progress()));
 			}
 		}
-		victim.map(|(_, id, materializes)| (id, materializes))
+		victim.map(|(_, id, progress)| (id, progress))
 	}
 
 	fn retract_partition(&self, victim: &D::Partition) {
@@ -159,7 +159,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.record_retraction();
 	}
 
-	fn drop_unpinned(&self, index: usize, victim: &D::Partition, materializes: u64) -> bool {
+	fn drop_unpinned(&self, index: usize, victim: &D::Partition, progress: Progress) -> bool {
 		let mut shard = self.shard(index).lock();
 		let Shard {
 			partitions,
@@ -172,7 +172,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			let Some(partition) = partitions.get_mut(victim) else {
 				return true;
 			};
-			if partition.materializes != materializes {
+			if partition.progress() != progress {
 				return false;
 			}
 			let Partition {
@@ -514,6 +514,7 @@ mod tests {
 					bytes: PARTITION_OVERHEAD,
 					tick,
 					materializes: 0,
+					written_at: 0,
 					covered: true,
 				}
 			});

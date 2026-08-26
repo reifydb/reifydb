@@ -454,6 +454,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				bytes: partition_overhead::<D>(),
 				tick,
 				materializes: 0,
+				written_at: 0,
 				covered: false,
 			});
 

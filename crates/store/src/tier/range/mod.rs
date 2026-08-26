@@ -195,9 +195,27 @@ struct Partition<R> {
 	/// Bumped by every materialize: a move between choosing a victim and dropping its rows means a
 	/// materialize claimed the span, and dropping the rows would leave that claim standing over nothing.
 	materializes: u64,
+	/// The shard write counter at the last write here; a local tally would reset when a partition is reseated.
+	written_at: u64,
 	/// Whether this partition has ever taken part in a claim; it gates the coverage lock for every
 	/// write and must err toward `true`, since a false no leaves a stale claim standing.
 	covered: bool,
+}
+
+/// What eviction saw when it chose a victim; either count moving means another caller has claimed since.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Progress {
+	materializes: u64,
+	written_at: u64,
+}
+
+impl<R> Partition<R> {
+	fn progress(&self) -> Progress {
+		Progress {
+			materializes: self.materializes,
+			written_at: self.written_at,
+		}
+	}
 }
 
 struct Shard<D: RangeDomain> {

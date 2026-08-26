@@ -162,6 +162,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			return false;
 		}
 		let next = shard.next_tick;
+		let stamp = shard.writes + 1;
 		{
 			let Shard {
 				partitions,
@@ -175,6 +176,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				bytes: partition_overhead::<D>(),
 				tick: next,
 				materializes: 0,
+				written_at: 0,
 				covered: true,
 			});
 			if fresh {
@@ -195,9 +197,10 @@ impl<D: RangeDomain> RangeTier<D> {
 			target.entries.insert(key, entry);
 			account(&mut target.bytes, budget, old, new);
 			target.tick = next;
+			target.written_at = stamp;
 		}
 		shard.next_tick = next + 1;
-		shard.writes += 1;
+		shard.writes = stamp;
 		true
 	}
 
@@ -341,6 +344,7 @@ mod tests {
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,
 				materializes: 0,
+				written_at: 0,
 				covered: true,
 			},
 		);
@@ -670,6 +674,7 @@ mod tests {
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,
 				materializes: 0,
+				written_at: 0,
 				covered: false,
 			},
 		);

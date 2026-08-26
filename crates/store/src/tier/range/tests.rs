@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{
-	Arc,
-	atomic::{AtomicBool, Ordering},
+use std::{
+	sync::{
+		Arc, Barrier,
+		atomic::{AtomicBool, AtomicUsize, Ordering},
+	},
+	thread,
 };
 
 use reifydb_codec::{
@@ -23,8 +26,9 @@ use crate::{
 		plan::{DEFAULT_GAP_GUARD, Segment},
 	},
 	tier::range::{
-		ENTRY_OVERHEAD, Materialize, MaterializeInterlock, RangeConfig, RangeScan, RangeSlotMetrics, RangeTier,
-		domain::{TestDomain as D, TestPartition},
+		ENTRY_OVERHEAD, Materialize, MaterializeInterlock, RangeConfig, RangeDomain, RangeMetrics, RangeScan,
+		RangeSlotMetrics, RangeTier,
+		domain::{AdmittingDomain as A, TestDomain as D, TestPartition},
 		partition_overhead,
 	},
 };
@@ -86,7 +90,7 @@ fn materialize(
 	}
 }
 
-fn first_gap(scan: &RangeScan<D>) -> Option<Interval> {
+fn first_gap<X: RangeDomain>(scan: &RangeScan<X>) -> Option<Interval> {
 	scan.segments().iter().find_map(|segment| match segment {
 		Segment::Gap {
 			interval,
@@ -640,3 +644,187 @@ fn a_materialize_places_its_rows_before_it_publishes_the_claim() {
 	);
 	assert_eq!(tier.lookup(OP_A, &unscanned), Some(None), "and once published the claim does prove that absence");
 }
+
+struct Lcg(u64);
+
+impl Lcg {
+	fn next(&mut self) -> u64 {
+		self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+		self.0 >> 33
+	}
+}
+
+const SWEEP_GROUPS: u64 = 24;
+
+/// Op codes the sweep draws from: seat a row, materialize a span, invalidate a key, evict, clear.
+const MIX: [u8; 18] = [0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4];
+const SWEEP_KEYS: u64 = 8;
+
+fn sweep_key(group: u64, n: u64) -> EncodedKey {
+	key(GroupId(group), Keyspace::ACCUMULATOR, format!("k{n}").as_bytes())
+}
+
+fn sweep_domain() -> Vec<EncodedKey> {
+	(1..=SWEEP_GROUPS).flat_map(|group| (0..SWEEP_KEYS).map(move |n| sweep_key(group, n))).collect()
+}
+
+fn sweep_page(group: u64) -> Vec<(EncodedKey, EncodedPodRow)> {
+	(0..SWEEP_KEYS).map(|n| (sweep_key(group, n), row("m"))).collect()
+}
+
+trait Sweep: RangeDomain<Dimension = OperatorId, Partition = TestPartition, Row = EncodedPodRow> {}
+
+impl Sweep for D {}
+
+impl Sweep for A {}
+
+fn sweep_tier<X: Sweep>(budget: u64) -> RangeTier<X> {
+	RangeTier::<X>::new(RangeConfig {
+		resident_bytes: Some(ByteSize::from_bytes(budget)),
+		shards: 1,
+		gap_guard: DEFAULT_GAP_GUARD,
+	})
+	.expect("a tier with a byte budget must be constructed")
+}
+
+fn sweep_materialize<X: Sweep>(tier: &RangeTier<X>, group: u64) {
+	let range = keyspace_inner_range(GroupId(group), Keyspace::ACCUMULATOR);
+	let Some(scan) = tier.plan_scan(OP_A, &range) else {
+		return;
+	};
+	let Some(gap) = first_gap(&scan) else {
+		return;
+	};
+	let page: Vec<_> = sweep_page(group).into_iter().filter(|(key, _)| gap.contains(key)).collect();
+	tier.materialize(&scan, &gap, &page);
+}
+
+fn sweep_explain<X: Sweep>(tier: &RangeTier<X>, key: &EncodedKey, at: usize) -> String {
+	let partition = TestPartition::of(OP_A, key).expect("a domain key must map to a partition");
+	let shard = tier.shard(tier.shard_index(&partition)).lock();
+	let resident = shard.partitions.get(&partition);
+	format!(
+		"key[{at}] group={} partition_resident={} covered={:?} entries={:?} holds_key={:?} claimed={}",
+		partition.group.0,
+		resident.is_some(),
+		resident.map(|target| target.covered),
+		resident.map(|target| target.entries.len()),
+		resident.map(|target| target.entries.contains_key(key)),
+		tier.coverage().read().contains(OP_A, key),
+	)
+}
+
+fn sweep_step<X: Sweep>(tier: &RangeTier<X>, rng: &mut Lcg, domain: &[EncodedKey]) {
+	let at = domain[(rng.next() % domain.len() as u64) as usize].clone();
+	match MIX[(rng.next() % MIX.len() as u64) as usize] {
+		0 => tier.insert(OP_A, at, row("i")),
+		1 => sweep_materialize(tier, rng.next() % SWEEP_GROUPS + 1),
+		2 => tier.invalidate(OP_A, &at),
+		3 => tier.evict_to_capacity(0),
+		_ => tier.clear(),
+	}
+}
+
+fn sweep<X: Sweep>() -> RangeMetrics {
+	const THREADS: usize = 4;
+	const ROUNDS: usize = 200;
+	const STEPS: usize = 5;
+	const SEEDS: [u64; 4] = [1, 29, 307, 4517];
+
+	let domain = sweep_domain();
+	let per_key = footprint(&sweep_key(1, 0), &row("m"));
+	let budget = 2 * (PARTITION_OVERHEAD + SWEEP_KEYS as usize * per_key) as u64;
+	let mut total = RangeMetrics::default();
+
+	for seed in SEEDS {
+		let tier = Arc::new(sweep_tier::<X>(budget));
+		let barrier = Arc::new(Barrier::new(THREADS));
+		let overstated = Arc::new(AtomicUsize::new(usize::MAX));
+		let mut handles = Vec::with_capacity(THREADS);
+
+		for id in 0..THREADS {
+			let tier = tier.clone();
+			let barrier = barrier.clone();
+			let overstated = overstated.clone();
+			let domain = domain.clone();
+			handles.push(thread::spawn(move || {
+				let mut rng = Lcg(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(id as u64));
+				for _ in 0..ROUNDS {
+					for _ in 0..STEPS {
+						sweep_step(&tier, &mut rng, &domain);
+					}
+					barrier.wait();
+					if id == 0 {
+						let found = domain
+							.iter()
+							.position(|key| tier.lookup(OP_A, key) == Some(None));
+						if let Some(at) = found {
+							let _ = overstated.compare_exchange(
+								usize::MAX,
+								at,
+								Ordering::SeqCst,
+								Ordering::SeqCst,
+							);
+						}
+					}
+					barrier.wait();
+				}
+			}));
+		}
+		for handle in handles {
+			handle.join().expect("a sweep thread must not panic");
+		}
+
+		let metrics = tier.metrics();
+		total.materializes += metrics.materializes;
+		total.materializes_refused += metrics.materializes_refused;
+		total.materializes_raced += metrics.materializes_raced;
+		total.evictions += metrics.evictions;
+
+		let at = overstated.load(Ordering::SeqCst);
+		assert_eq!(
+			at,
+			usize::MAX,
+			"seed {seed}: coverage proved a key absent that holds a value: {}",
+			sweep_explain(&tier, &domain[at], at)
+		);
+	}
+
+	total
+}
+
+#[test]
+fn a_handoff_domain_never_overstates_coverage_under_concurrent_writes_and_invalidates() {
+	// A handoff domain seats no write a claim did not reach, so eviction is unreachable here.
+	let total = sweep::<D>();
+
+	assert!(total.materializes > 100, "only {} spans claimed: nothing was ever claimed to overstate", total.materializes);
+	assert!(
+		total.materializes_raced > 0,
+		"no materialize was refused by a token, so the claim-versus-shrink race never ran"
+	);
+	assert_eq!(
+		total.evictions, 0,
+		"a materialize that does not fit is refused whole, so nothing on this domain can push the budget over"
+	);
+}
+
+#[test]
+fn an_admitting_domain_never_overstates_coverage_under_concurrent_writes_and_evictions() {
+	// Seating every write is what lets the budget go over and eviction retract a claim mid-flight.
+	let total = sweep::<A>();
+
+	assert!(total.materializes > 100, "only {} spans claimed: nothing was ever claimed to overstate", total.materializes);
+	assert!(
+		total.evictions > 100,
+		"only {} evictions: the byte budget never forced the retraction path",
+		total.evictions
+	);
+	assert!(
+		total.materializes_raced > 0,
+		"no materialize was refused by a token, so the claim-versus-shrink race never ran"
+	);
+}
+
+
+
