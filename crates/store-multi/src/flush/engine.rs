@@ -459,14 +459,7 @@ mod tests {
 		event_bus.register::<MultiSweptEvent, _>(collector.clone());
 
 		(
-			FlushEngine::new(
-				buffer,
-				persistent,
-				persistence_lock,
-				watermark_lock,
-				Clock::Real,
-				event_bus,
-			),
+			FlushEngine::new(buffer, persistent, persistence_lock, watermark_lock, Clock::Real, event_bus),
 			guard,
 			collector,
 		)
@@ -538,8 +531,15 @@ mod tests {
 		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 		*watermark_lock.write() = Some(Arc::new(StaticWatermark(watermark)));
 		(
-			FlushEngine::new(buffer, persistent, persistence_lock, watermark_lock, Clock::Real, testing_event_bus())
-				.with_point(Some(point)),
+			FlushEngine::new(
+				buffer,
+				persistent,
+				persistence_lock,
+				watermark_lock,
+				Clock::Real,
+				testing_event_bus(),
+			)
+			.with_point(Some(point)),
 			guard,
 		)
 	}
@@ -786,7 +786,8 @@ mod tests {
 	#[test]
 	fn sweep_invalidates_ephemeral_object_in_read_tier() {
 		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
-		let (actor, _guard) = build_engine_with_point(Arc::new(NonePersistent), CommitVersion(2), point.clone());
+		let (actor, _guard) =
+			build_engine_with_point(Arc::new(NonePersistent), CommitVersion(2), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(24)));
 		let key = ek("k");
 

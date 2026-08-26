@@ -40,12 +40,15 @@ use crate::{
 	tier::{
 		commit::buffer::{MultiCommitBufferTier, MultiCommitMetrics},
 		persistent::MultiPersistentTier,
-		point::{MultiPointConfig, MultiPointShardMetrics, MultiPointTier},
-		range::{MultiRangeConfig, MultiRangeShardMetrics, MultiRangeTier},
+		point::{MultiPointShardMetrics, MultiPointTier},
+		range::{MultiRangeShardMetrics, MultiRangeTier},
 	},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::config::PersistentConfig;
+use crate::{
+	config::PersistentConfig,
+	tier::{point::MultiPointConfig, range::MultiRangeConfig},
+};
 
 pub mod multi;
 pub mod router;

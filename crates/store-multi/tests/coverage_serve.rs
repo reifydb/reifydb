@@ -321,10 +321,7 @@ fn interval_served_scans_match_a_store_with_no_range_tier() {
 		 nothing: {total:?}"
 	);
 	assert!(total.materializes > 20, "no materialize published a claim, so nothing was ever serveable: {total:?}");
-	assert!(
-		total.evicted > 0,
-		"no partition was evicted, so a claim whose partition left ram was never exercised"
-	);
+	assert!(total.evicted > 0, "no partition was evicted, so a claim whose partition left ram was never exercised");
 	assert!(
 		total.head_advances > 20,
 		"no scan was moved off its storage prefix by a head, so the head path is untested here: {total:?}"

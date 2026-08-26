@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-mod pool;
+pub mod pool;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-pub use pool::ReadPool;
+use pool::ReadPool;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sqlite::{
 	SqliteConfig,

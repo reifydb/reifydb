@@ -28,9 +28,7 @@ use reifydb_store_multi::{
 	MultiVersionScope,
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
-	tier::{
-		TierStorage, commit::buffer::MultiCommitBufferTier, point::MultiPointConfig, range::MultiRangeConfig,
-	},
+	tier::{TierStorage, commit::buffer::MultiCommitBufferTier, point::MultiPointConfig, range::MultiRangeConfig},
 };
 use reifydb_value::{
 	util::cowvec::CowVec,

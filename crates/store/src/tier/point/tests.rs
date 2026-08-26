@@ -907,8 +907,6 @@ fn an_accepted_supersede_recharges_from_the_merged_row() {
 
 #[test]
 fn a_key_read_every_round_survives_eviction_past_the_sample_threshold() {
-	// Above EVICTION_SAMPLE the victim comes from a random sample, not a full walk, so a hot key can
-	// only be lost if every sampled slot lands on it; a policy that ignores the tick loses it at once.
 	let sample_key = key(GROUP_A, Keyspace::ACCUMULATOR, b"k0");
 	let sample_row = Some(row("v"));
 	let per_entry = footprint(&sample_key, &sample_row) as u64;
@@ -918,14 +916,24 @@ fn a_key_read_every_round_survives_eviction_past_the_sample_threshold() {
 	let hot = key(GROUP_A, Keyspace::ACCUMULATOR, b"hot");
 	fill(&tier, OP_A, hot.clone(), sample_row.clone());
 	for index in 0..resident - 1 {
-		fill(&tier, OP_A, key(GROUP_A, Keyspace::ACCUMULATOR, format!("c{index}").as_bytes()), sample_row.clone());
+		fill(
+			&tier,
+			OP_A,
+			key(GROUP_A, Keyspace::ACCUMULATOR, format!("c{index}").as_bytes()),
+			sample_row.clone(),
+		);
 	}
 	assert_eq!(tier.entries(), resident as usize, "the fixture must fill the budget exactly before it evicts");
 	assert_eq!(tier.evictions(), 0);
 
 	for index in 0..200 {
 		assert!(tier.get(OP_A, &hot).is_some(), "the hot key must be readable on round {index}");
-		fill(&tier, OP_A, key(GROUP_A, Keyspace::ACCUMULATOR, format!("n{index}").as_bytes()), sample_row.clone());
+		fill(
+			&tier,
+			OP_A,
+			key(GROUP_A, Keyspace::ACCUMULATOR, format!("n{index}").as_bytes()),
+			sample_row.clone(),
+		);
 	}
 
 	assert!(

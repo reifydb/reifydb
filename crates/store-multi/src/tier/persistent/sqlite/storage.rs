@@ -32,7 +32,7 @@ use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard, pragma};
 use reifydb_store::{
 	filter::KeyFilter,
 	metrics::PageCacheMetrics,
-	sqlite::{OpenMessages, ReadPool, open, page_cache_metrics},
+	sqlite::{OpenMessages, open, page_cache_metrics, pool::ReadPool},
 };
 use reifydb_value::{Result, error, reifydb_assertions, util::cowvec::CowVec, value::datetime::DateTime};
 use rusqlite::{

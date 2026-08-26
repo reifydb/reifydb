@@ -43,9 +43,7 @@ use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_value::util::cowvec::CowVec;
 use store::{MultiPersistentProbeMetrics, StandardMultiStore};
-use tier::{
-	commit::buffer::MultiCommitMetrics, point::MultiPointShardMetrics, range::MultiRangeShardMetrics,
-};
+use tier::{commit::buffer::MultiCommitMetrics, point::MultiPointShardMetrics, range::MultiRangeShardMetrics};
 
 pub mod memory {}
 pub mod sqlite {}

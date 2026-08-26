@@ -26,7 +26,7 @@ use reifydb_runtime::{
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::{
 	filter::KeyFilter,
-	sqlite::{OpenMessages, ReadPool, open},
+	sqlite::{OpenMessages, open, pool::ReadPool},
 };
 use rusqlite::Connection;
 use tracing::instrument;

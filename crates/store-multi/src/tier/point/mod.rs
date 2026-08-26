@@ -234,6 +234,8 @@ impl MultiPointTier {
 
 #[cfg(test)]
 mod tests {
+	use std::str::from_utf8;
+
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		interface::catalog::{id::TableId, storage::StorageId},
@@ -284,7 +286,7 @@ mod tests {
 	}
 
 	fn body(slot: &Option<CowVec<u8>>) -> &str {
-		std::str::from_utf8(slot.as_ref().expect("the slot must carry a value")).expect("test bodies are utf8")
+		from_utf8(slot.as_ref().expect("the slot must carry a value")).expect("test bodies are utf8")
 	}
 
 	#[test]

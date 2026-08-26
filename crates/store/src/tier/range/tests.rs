@@ -656,7 +656,6 @@ impl Lcg {
 
 const SWEEP_GROUPS: u64 = 24;
 
-/// Op codes the sweep draws from: seat a row, materialize a span, invalidate a key, evict, clear.
 const MIX: [u8; 18] = [0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4];
 const SWEEP_KEYS: u64 = 8;
 
@@ -795,10 +794,13 @@ fn sweep<X: Sweep>() -> RangeMetrics {
 
 #[test]
 fn a_handoff_domain_never_overstates_coverage_under_concurrent_writes_and_invalidates() {
-	// A handoff domain seats no write a claim did not reach, so eviction is unreachable here.
 	let total = sweep::<D>();
 
-	assert!(total.materializes > 100, "only {} spans claimed: nothing was ever claimed to overstate", total.materializes);
+	assert!(
+		total.materializes > 100,
+		"only {} spans claimed: nothing was ever claimed to overstate",
+		total.materializes
+	);
 	assert!(
 		total.materializes_raced > 0,
 		"no materialize was refused by a token, so the claim-versus-shrink race never ran"
@@ -811,10 +813,13 @@ fn a_handoff_domain_never_overstates_coverage_under_concurrent_writes_and_invali
 
 #[test]
 fn an_admitting_domain_never_overstates_coverage_under_concurrent_writes_and_evictions() {
-	// Seating every write is what lets the budget go over and eviction retract a claim mid-flight.
 	let total = sweep::<A>();
 
-	assert!(total.materializes > 100, "only {} spans claimed: nothing was ever claimed to overstate", total.materializes);
+	assert!(
+		total.materializes > 100,
+		"only {} spans claimed: nothing was ever claimed to overstate",
+		total.materializes
+	);
 	assert!(
 		total.evictions > 100,
 		"only {} evictions: the byte budget never forced the retraction path",
@@ -825,6 +830,3 @@ fn an_admitting_domain_never_overstates_coverage_under_concurrent_writes_and_evi
 		"no materialize was refused by a token, so the claim-versus-shrink race never ran"
 	);
 }
-
-
-

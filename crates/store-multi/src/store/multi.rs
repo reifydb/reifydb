@@ -348,11 +348,9 @@ impl StandardMultiStore {
 				if let VersionedGetResult::Value {
 					value,
 					version: v,
-				} = &result
+				} = &result && let Some(point) = &self.point
 				{
-					if let Some(point) = &self.point {
-						point.insert(table_keys[slot].clone(), *v, Some(value.clone()));
-					}
+					point.insert(table_keys[slot].clone(), *v, Some(value.clone()));
 				}
 				persistent_aligned[slot] = result;
 			}
@@ -1307,8 +1305,10 @@ mod cache_tests {
 		MultiVersionScope,
 		store::StandardMultiStore,
 		tier::{
-			RangeStop, RawEntry, TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier,
-			point::MultiPointConfig, range::{MultiRangeConfig, PartitionId},
+			RangeStop, RawEntry, TierStorage, VersionedGetResult,
+			commit::buffer::MultiCommitBufferTier,
+			point::MultiPointConfig,
+			range::{MultiRangeConfig, PartitionId},
 		},
 	};
 

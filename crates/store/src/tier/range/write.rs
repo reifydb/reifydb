@@ -242,8 +242,6 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.record_retraction();
 	}
 
-	/// Claims the one key a write placed, and only while no withdrawal has landed since it read `token`:
-	/// a claim published across one stands over a key the withdrawal already took out of ram.
 	fn claim_island(&self, dimension: D::Dimension, key: &EncodedKey, token: u64) {
 		if self.coverage().read().contains(dimension, key) {
 			return;

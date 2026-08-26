@@ -571,7 +571,13 @@ mod tests {
 
 	/// Row keys invert the row number, so the highest row in a bucket is its lowest key: a forward scan
 	/// over rows 0..n runs from `row(n)` down to `row(0)`.
-	fn serve(tier: &MultiRangeTier, cursor: &mut RangeCursor, lo_row: u64, hi_row: u64, batch: usize) -> ServedChunk {
+	fn serve(
+		tier: &MultiRangeTier,
+		cursor: &mut RangeCursor,
+		lo_row: u64,
+		hi_row: u64,
+		batch: usize,
+	) -> ServedChunk {
 		let start = row(hi_row);
 		let end = row(lo_row);
 		tier.serve_persistent_chunk(source(), cursor, start.as_slice(), end.as_slice(), newest(), batch, false)
@@ -775,7 +781,13 @@ mod tests {
 		// never read it from any tier. Placing a row can only ever be evidence that the span below the head
 		// is not empty after all, so the head must yield to it.
 		let tier = tier();
-		tier.tier.raise_head(source(), &storage_start(), &storage_end(), Some(&row(3)), tier.tier.retractions());
+		tier.tier.raise_head(
+			source(),
+			&storage_start(),
+			&storage_end(),
+			Some(&row(3)),
+			tier.tier.retractions(),
+		);
 
 		tier.insert(row(7), CommitVersion(1), Some(CowVec::new(vec![1])));
 
@@ -799,7 +811,13 @@ mod tests {
 		tier.tier.raise_head(source(), &storage_start(), &storage_end(), Some(&row(3)), token);
 		assert_eq!(tier.tier.head(source()), None, "a head published across a withdrawal");
 
-		tier.tier.raise_head(source(), &storage_start(), &storage_end(), Some(&row(3)), tier.tier.retractions());
+		tier.tier.raise_head(
+			source(),
+			&storage_start(),
+			&storage_end(),
+			Some(&row(3)),
+			tier.tier.retractions(),
+		);
 		assert_eq!(tier.tier.head(source()).as_ref(), Some(&row(3)), "a fresh token must publish");
 	}
 
@@ -1050,7 +1068,10 @@ mod tests {
 		cursor.advance(row(3));
 		let chunk = serve_whole_storage(&tier, &mut cursor);
 
-		assert!(!cursor.is_exhausted(), "the claim stops on the last row it read, which proves nothing past it");
+		assert!(
+			!cursor.is_exhausted(),
+			"the claim stops on the last row it read, which proves nothing past it"
+		);
 		assert_eq!(rows_of(&chunk), vec![2, 1]);
 	}
 
@@ -1067,7 +1088,10 @@ mod tests {
 		cursor.advance(row(BUCKET + 2));
 		let chunk = serve_whole_storage(&tier, &mut cursor);
 
-		assert!(!cursor.is_exhausted(), "the lower partition is a separate claim the persistent tier still owes");
+		assert!(
+			!cursor.is_exhausted(),
+			"the lower partition is a separate claim the persistent tier still owes"
+		);
 		assert_eq!(rows_of(&chunk), vec![BUCKET + 1]);
 	}
 

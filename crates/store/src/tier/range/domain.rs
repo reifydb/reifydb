@@ -136,7 +136,6 @@ impl RangeDomain for TestDomain {
 	}
 }
 
-/// Seats every write the way multi does; without it no test domain can reach the eviction path.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct AdmittingDomain;
 

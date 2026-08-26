@@ -18,10 +18,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::{
 	config::{MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
-	tier::{
-		TierStorage, commit::buffer::MultiCommitBufferTier, point::MultiPointConfig,
-		range::MultiRangeConfig,
-	},
+	tier::{TierStorage, commit::buffer::MultiCommitBufferTier, point::MultiPointConfig, range::MultiRangeConfig},
 };
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 

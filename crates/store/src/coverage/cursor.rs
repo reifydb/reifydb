@@ -3,8 +3,9 @@
 
 use reifydb_codec::key::encoded::EncodedKey;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Cursor<S> {
+	#[default]
 	NotStarted,
 	InProgress {
 		last_key: EncodedKey,
@@ -13,12 +14,6 @@ pub enum Cursor<S> {
 		last_key: Option<EncodedKey>,
 		stop: Option<S>,
 	},
-}
-
-impl<S> Default for Cursor<S> {
-	fn default() -> Self {
-		Cursor::NotStarted
-	}
 }
 
 pub type RangeCursor = Cursor<()>;

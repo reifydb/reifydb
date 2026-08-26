@@ -32,8 +32,7 @@ use reifydb_store_multi::{
 	store::StandardMultiStore,
 	tier::{
 		TierBatch, TierStorage, commit::buffer::MultiCommitBufferTier,
-		persistent::sqlite::storage::SqlitePersistentStorage, point::MultiPointConfig,
-		range::MultiRangeConfig,
+		persistent::sqlite::storage::SqlitePersistentStorage, point::MultiPointConfig, range::MultiRangeConfig,
 	},
 };
 use reifydb_value::util::cowvec::CowVec;

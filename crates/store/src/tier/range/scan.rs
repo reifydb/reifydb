@@ -1127,8 +1127,12 @@ mod tests {
 		};
 		let range = keyspace_inner_range(GROUP, CACHED);
 		assert!(
-			claim(&tier, &range, &whole(CACHED), &[(key(CACHED, b"a"), row("a")), (raced.clone(), row("b"))])
-				== Materialize::Materialized,
+			claim(
+				&tier,
+				&range,
+				&whole(CACHED),
+				&[(key(CACHED, b"a"), row("a")), (raced.clone(), row("b"))]
+			) == Materialize::Materialized,
 			"the fixture must publish its claim, or the race under test never arose"
 		);
 
