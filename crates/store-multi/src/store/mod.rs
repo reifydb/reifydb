@@ -271,6 +271,18 @@ impl StandardMultiStore {
 		(point.len(), range_len, overlap, shared, distinct)
 	}
 
+	pub fn debug_key_lengths(&self) -> (Vec<usize>, Vec<usize>) {
+		let mut point = vec![0usize; 65];
+		for (_, key, _) in self.point.as_ref().map(|point| point.debug_keys()).unwrap_or_default() {
+			point[key.as_slice().len().min(64)] += 1;
+		}
+		let mut range = vec![0usize; 65];
+		for (_, key, _) in self.range.as_ref().map(|range| range.debug_keys()).unwrap_or_default() {
+			range[key.as_slice().len().min(64)] += 1;
+		}
+		(point, range)
+	}
+
 	pub fn debug_byte_split(&self) -> (usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) {
 		let (mut entries, mut keys, mut current, mut previous, mut carrying) = (0usize, 0usize, 0usize, 0usize, 0usize);
 		for (_, key, row) in self.point.as_ref().map(|point| point.debug_keys()).unwrap_or_default() {

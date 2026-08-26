@@ -51,6 +51,10 @@ impl StoreReader {
 		self.multi.commit_metrics()
 	}
 
+	pub fn multi_key_lengths(&self) -> (Vec<usize>, Vec<usize>) {
+		self.multi.debug_key_lengths()
+	}
+
 	pub fn multi_byte_split(&self) -> (usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) {
 		self.multi.debug_byte_split()
 	}

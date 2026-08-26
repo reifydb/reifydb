@@ -21,13 +21,14 @@ mod tests;
 
 use std::{
 	borrow::Cow,
-	collections::HashMap,
+	collections::{HashMap, hash_map::DefaultHasher},
 	fmt::Debug,
-	hash::Hash,
+	hash::{Hash, Hasher},
 	mem::size_of,
 	sync::{Arc, atomic::AtomicU64},
 };
 
+use hashbrown::HashTable;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::util::budget::MemoryBudget;
 use reifydb_runtime::sync::mutex::Mutex;
@@ -99,7 +100,7 @@ struct Entry<D: PointDomain> {
 const INDEX_FILL_DIVISOR: usize = 2;
 
 const fn entry_overhead<D: PointDomain>() -> usize {
-	size_of::<Entry<D>>() + INDEX_FILL_DIVISOR * (size_of::<PointKey<D::Dimension>>() + size_of::<usize>())
+	size_of::<Entry<D>>() + INDEX_FILL_DIVISOR * (size_of::<u32>() + 1)
 }
 
 #[cfg(test)]
@@ -109,6 +110,38 @@ const EVICTION_SAMPLE: usize = 8;
 
 fn entry_footprint<D: PointDomain>(key: &PointKey<D::Dimension>, row: &Option<D::Row>) -> usize {
 	entry_overhead::<D>() + key.key.heap_bytes() + row.as_ref().map_or(0, RowBytes::row_bytes)
+}
+
+const BUCKET_SEED: u64 = 0xD6E8_FEB8_6659_FD93;
+
+fn bucket_hash<K: Hash>(dimension: &K, key: &EncodedKey) -> u64 {
+	let mut hasher = DefaultHasher::new();
+	hasher.write_u64(BUCKET_SEED);
+	dimension.hash(&mut hasher);
+	key.as_slice().hash(&mut hasher);
+	hasher.finish()
+}
+
+fn entry_hash<D: PointDomain>(entry: &Entry<D>) -> u64 {
+	bucket_hash(&entry.key.dimension, &entry.key.key)
+}
+
+fn find_position<D: PointDomain>(
+	shard: &Shard<D>,
+	hash: u64,
+	dimension: D::Dimension,
+	key: &EncodedKey,
+) -> Option<u32> {
+	let Shard {
+		index,
+		entries,
+		..
+	} = shard;
+	index.find(hash, |position| {
+		let entry = &entries[*position as usize];
+		entry.key.dimension == dimension && entry.key.key == *key
+	})
+	.copied()
 }
 
 fn account(budget: &MemoryBudget, old: usize, new: usize) {
@@ -150,7 +183,7 @@ pub struct PointSlotMetrics<D: PointDomain> {
 type SlotCounters = Box<[PointMetrics]>;
 
 struct Shard<D: PointDomain> {
-	index: HashMap<PointKey<D::Dimension>, usize>,
+	index: HashTable<u32>,
 	entries: Vec<Entry<D>>,
 	filling: HashMap<PointKey<D::Dimension>, bool>,
 	budget: MemoryBudget,

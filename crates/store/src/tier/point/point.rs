@@ -4,7 +4,10 @@
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::point::{Entry, PointDomain, PointKey, PointTier, Shard, account, entry_footprint};
+use crate::tier::point::{
+	Entry, PointDomain, PointKey, PointTier, Shard, account, bucket_hash, entry_footprint, entry_hash,
+	find_position,
+};
 
 impl<D: PointDomain> PointTier<D> {
 	pub fn get(&self, dimension: D::Dimension, key: &EncodedKey) -> Option<Option<D::Row>> {
@@ -13,19 +16,16 @@ impl<D: PointDomain> PointTier<D> {
 			self.charge_excluded_miss(slot);
 			return None;
 		}
-		let id = PointKey {
-			dimension,
-			key: key.clone(),
-		};
-		let mut shard = self.shard_for(&id).lock();
+		let hash = bucket_hash(&dimension, key);
+		let mut shard = self.shard_at(dimension, key).lock();
 		let next = shard.next_tick;
-		let Some(position) = shard.index.get(&id).copied() else {
+		let Some(position) = find_position(&shard, hash, dimension, key) else {
 			shard.metrics.misses += 1;
 			shard.slot_metrics[slot].misses += 1;
 			return None;
 		};
 		let row = {
-			let entry = &mut shard.entries[position];
+			let entry = &mut shard.entries[position as usize];
 			entry.tick = next;
 			entry.row.clone()
 		};
@@ -41,19 +41,16 @@ impl<D: PointDomain> PointTier<D> {
 			self.charge_excluded_miss(slot);
 			return None;
 		}
-		let id = PointKey {
-			dimension,
-			key: key.clone(),
-		};
-		let mut shard = self.shard_for(&id).lock();
+		let hash = bucket_hash(&dimension, key);
+		let mut shard = self.shard_at(dimension, key).lock();
 		let next = shard.next_tick;
-		let Some(position) = shard.index.get(&id).copied() else {
+		let Some(position) = find_position(&shard, hash, dimension, key) else {
 			shard.metrics.misses += 1;
 			shard.slot_metrics[slot].misses += 1;
 			return None;
 		};
 		let present = {
-			let entry = &mut shard.entries[position];
+			let entry = &mut shard.entries[position as usize];
 			entry.tick = next;
 			entry.row.is_some()
 		};
@@ -70,11 +67,11 @@ impl<D: PointDomain> PointTier<D> {
 		if !D::caches_points(slot) {
 			return false;
 		}
+		let mut shard = self.shard_at(dimension, key).lock();
 		let id = PointKey {
 			dimension,
 			key: key.clone(),
 		};
-		let mut shard = self.shard_for(&id).lock();
 		if shard.filling.contains_key(&id) {
 			shard.metrics.fills_duplicate += 1;
 			shard.slot_metrics[slot].fills_duplicate += 1;
@@ -90,11 +87,11 @@ impl<D: PointDomain> PointTier<D> {
 		let Some(slot) = D::slot(&key) else {
 			return false;
 		};
+		let mut shard = self.shard_at(dimension, &key).lock();
 		let id = PointKey {
 			dimension,
 			key,
 		};
-		let mut shard = self.shard_for(&id).lock();
 		match shard.filling.remove(&id) {
 			Some(false) => {}
 			Some(true) | None => {
@@ -115,22 +112,25 @@ impl<D: PointDomain> PointTier<D> {
 		if D::slot(key).is_none() {
 			return;
 		}
-		let id = PointKey {
+		let mut shard = self.shard_at(dimension, key).lock();
+		if shard.filling.is_empty() {
+			return;
+		}
+		shard.filling.remove(&PointKey {
 			dimension,
 			key: key.clone(),
-		};
-		self.shard_for(&id).lock().filling.remove(&id);
+		});
 	}
 
 	pub fn overwrite(&self, dimension: D::Dimension, key: EncodedKey, row: D::Row) {
 		let Some(slot) = D::slot(&key) else {
 			return;
 		};
+		let mut shard = self.shard_at(dimension, &key).lock();
 		let id = PointKey {
 			dimension,
 			key,
 		};
-		let mut shard = self.shard_for(&id).lock();
 		if let Some(dirty) = shard.filling.get_mut(&id) {
 			*dirty = true;
 		}
@@ -144,18 +144,21 @@ impl<D: PointDomain> PointTier<D> {
 		if !D::caches_points(slot) {
 			return;
 		}
-		let id = PointKey {
-			dimension,
-			key: key.clone(),
-		};
-		let mut shard = self.shard_for(&id).lock();
-		if let Some(dirty) = shard.filling.get_mut(&id) {
-			*dirty = true;
+		let hash = bucket_hash(&dimension, key);
+		let mut shard = self.shard_at(dimension, key).lock();
+		if !shard.filling.is_empty() {
+			let id = PointKey {
+				dimension,
+				key: key.clone(),
+			};
+			if let Some(dirty) = shard.filling.get_mut(&id) {
+				*dirty = true;
+			}
 		}
-		let Some(position) = shard.index.get(&id).copied() else {
+		let Some(position) = find_position(&shard, hash, dimension, key) else {
 			return;
 		};
-		shard.remove_at(position);
+		shard.remove_at(position as usize);
 	}
 
 	pub fn invalidate_operator(&self, dimension: D::Dimension) {
@@ -181,8 +184,11 @@ impl<D: PointDomain> PointTier<D> {
 					false
 				});
 				index.clear();
-				for (position, entry) in entries.iter().enumerate() {
-					index.insert(entry.key.clone(), position);
+				for position in 0..entries.len() {
+					let hash = entry_hash::<D>(&entries[position]);
+					index.insert_unique(hash, position as u32, |resident| {
+						entry_hash::<D>(&entries[*resident as usize])
+					});
 				}
 			}
 			shard.budget.release(ByteSize::from_bytes(released as u64));
@@ -206,9 +212,10 @@ fn insert_entry<D: PointDomain>(shard: &mut Shard<D>, slot: usize, id: PointKey<
 		return;
 	}
 	let next = shard.next_tick;
-	match shard.index.get(&id).copied() {
+	let hash = bucket_hash(&id.dimension, &id.key);
+	match find_position(shard, hash, id.dimension, &id.key) {
 		Some(position) => {
-			let entry = &mut shard.entries[position];
+			let entry = &mut shard.entries[position as usize];
 			let old = entry_footprint::<D>(&entry.key, &entry.row);
 			match (entry.row.as_mut(), row) {
 				(Some(resident), Some(incoming)) => {
@@ -224,13 +231,20 @@ fn insert_entry<D: PointDomain>(shard: &mut Shard<D>, slot: usize, id: PointKey<
 		}
 		None => {
 			let new = entry_footprint::<D>(&id, &row);
-			shard.entries.push(Entry {
-				key: id.clone(),
+			let Shard {
+				index,
+				entries,
+				budget,
+				..
+			} = &mut *shard;
+			entries.push(Entry {
+				key: id,
 				row,
 				tick: next,
 			});
-			shard.index.insert(id, shard.entries.len() - 1);
-			shard.budget.charge(ByteSize::from_bytes(new as u64));
+			let position = (entries.len() - 1) as u32;
+			index.insert_unique(hash, position, |resident| entry_hash::<D>(&entries[*resident as usize]));
+			budget.charge(ByteSize::from_bytes(new as u64));
 		}
 	}
 	shard.metrics.insertions += 1;

@@ -10,6 +10,8 @@ use std::{
 	},
 };
 
+use hashbrown::HashTable;
+
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
@@ -20,9 +22,11 @@ use reifydb_value::byte_size::ByteSize;
 
 #[cfg(test)]
 use crate::tier::point::FillInterlock;
+#[cfg(test)]
+use crate::tier::point::PointKey;
 use crate::tier::point::{
-	EVICTION_SAMPLE, Entry, PointConfig, PointDomain, PointKey, PointMetrics, PointShardMetrics, PointSlotMetrics,
-	PointTier, PoolInner, Shard, entry_footprint, entry_overhead,
+	EVICTION_SAMPLE, Entry, PointConfig, PointDomain, PointMetrics, PointShardMetrics, PointSlotMetrics, PointTier,
+	PoolInner, Shard, entry_footprint, entry_hash, entry_overhead,
 };
 
 impl<D: PointDomain> PointTier<D> {
@@ -57,8 +61,13 @@ impl<D: PointDomain> PointTier<D> {
 		(hasher.finish() % self.inner.shards.len() as u64) as usize
 	}
 
+	pub(super) fn shard_at(&self, dimension: D::Dimension, key: &EncodedKey) -> &Mutex<Shard<D>> {
+		&self.inner.shards[self.shard_index(dimension, key)]
+	}
+
+	#[cfg(test)]
 	pub(super) fn shard_for(&self, key: &PointKey<D::Dimension>) -> &Mutex<Shard<D>> {
-		&self.inner.shards[self.shard_index(key.dimension, &key.key)]
+		self.shard_at(key.dimension, &key.key)
 	}
 
 	pub(super) fn all_shards(&self) -> impl Iterator<Item = &Mutex<Shard<D>>> {
@@ -198,9 +207,19 @@ impl<D: PointDomain> PointTier<D> {
 	pub(crate) fn index_is_consistent(&self) -> bool {
 		self.all_shards().all(|shard| {
 			let shard = shard.lock();
-			shard.index.len() == shard.entries.len()
-				&& shard.index.iter().all(|(key, position)| {
-					shard.entries.get(*position).is_some_and(|entry| entry.key == *key)
+			let Shard {
+				index,
+				entries,
+				..
+			} = &*shard;
+			index.len() == entries.len()
+				&& entries.iter().enumerate().all(|(position, entry)| {
+					index.find(entry_hash::<D>(entry), |resident| {
+						let other = &entries[*resident as usize];
+						other.key.dimension == entry.key.dimension
+							&& other.key.key == entry.key.key
+					})
+					.copied() == Some(position as u32)
 				})
 		})
 	}
@@ -261,7 +280,7 @@ fn build_shards<D: PointDomain>(config: PointConfig, resident_bytes: ByteSize) -
 	(0..shard_count)
 		.map(|index| {
 			Mutex::new(Shard {
-				index: HashMap::new(),
+				index: HashTable::new(),
 				entries: Vec::new(),
 				filling: HashMap::new(),
 				budget: MemoryBudget::new(byte_cap),
@@ -305,13 +324,26 @@ impl<D: PointDomain> Shard<D> {
 	}
 
 	pub(super) fn remove_at(&mut self, position: usize) {
-		let entry = self.entries.swap_remove(position);
-		self.index.remove(&entry.key);
-		self.budget.release(ByteSize::from_bytes(entry_footprint::<D>(&entry.key, &entry.row) as u64));
-		if position < self.entries.len() {
-			let moved = self.entries[position].key.clone();
-			self.index.insert(moved, position);
+		let Shard {
+			index,
+			entries,
+			budget,
+			..
+		} = self;
+		let last = entries.len() - 1;
+		let entry = entries.swap_remove(position);
+		if let Ok(occupied) =
+			index.find_entry(entry_hash::<D>(&entry), |resident| *resident as usize == position)
+		{
+			occupied.remove();
 		}
+		if position < entries.len() {
+			let moved = entry_hash::<D>(&entries[position]);
+			if let Some(resident) = index.find_mut(moved, |resident| *resident as usize == last) {
+				*resident = position as u32;
+			}
+		}
+		budget.release(ByteSize::from_bytes(entry_footprint::<D>(&entry.key, &entry.row) as u64));
 	}
 
 	pub(super) fn evict_to_capacity(&mut self) {

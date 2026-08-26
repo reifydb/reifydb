@@ -353,6 +353,7 @@ rusqlite = { version = "0.39.0", features = ["bundled"] }
 zstd = { version = "0.13" }
 
 # hashing
+hashbrown = { version = "0.15" }
 xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
 
 # serde
