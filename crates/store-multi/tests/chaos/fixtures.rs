@@ -18,17 +18,23 @@ use reifydb_runtime::{
 use reifydb_store_multi::{
 	config::{MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
-	tier::{TierStorage, commit::buffer::MultiCommitBufferTier, read::ReadBufferConfig},
+	tier::{
+		TierStorage, commit::buffer::MultiCommitBufferTier, point::MultiPointConfig,
+		range::MultiRangeConfig,
+	},
 };
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 
-/// Commit buffer + SQLite persistent + read cache on sync_only pools, so the timer-driven flush and
+/// Commit buffer + SQLite persistent + read tiers on sync_only pools, so the timer-driven flush and
 /// compaction actors never fire on their own and the run stays a pure function of the seed.
 pub fn sync_persistent_store() -> (StandardMultiStore, impl Drop) {
-	sync_persistent_store_with_read(ReadBufferConfig::default())
+	sync_persistent_store_with_tiers(MultiPointConfig::default(), MultiRangeConfig::default())
 }
 
-pub fn sync_persistent_store_with_read(read: ReadBufferConfig) -> (StandardMultiStore, impl Drop) {
+pub fn sync_persistent_store_with_tiers(
+	point: MultiPointConfig,
+	range: MultiRangeConfig,
+) -> (StandardMultiStore, impl Drop) {
 	let pools = Pools::new(PoolConfig::sync_only());
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::new(pools, clock.clone());
@@ -37,18 +43,26 @@ pub fn sync_persistent_store_with_read(read: ReadBufferConfig) -> (StandardMulti
 	let event_bus = EventBus::new(&spawner);
 	let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 	let mut config = MultiStoreConfig::sqlite(persistent, spawner, clock, event_bus);
-	config.read = Some(read);
+	config.point = Some(point);
+	config.range = Some(range);
 	let store = StandardMultiStore::new(config).unwrap();
 	(store, guard)
 }
 
-/// Matches the per-shard page cap the store derives itself, so `resident_pages` keeps its old meaning.
-pub fn tiny_read_buffer(resident_pages: usize, page_size_rows: u64) -> ReadBufferConfig {
-	ReadBufferConfig {
-		resident_pages,
-		bucket_shift: page_size_rows.max(1).trailing_zeros() as u8,
-		..ReadBufferConfig::default()
-	}
+/// One shard, so the budget is not split and a few kib really does evict; a roomy cache would make the
+/// differential run agree for the wrong reason.
+pub fn tiny_tiers(kib: u64) -> (MultiPointConfig, MultiRangeConfig) {
+	(
+		MultiPointConfig {
+			resident_bytes: Some(ByteSize::from_kib(kib)),
+			shards: 1,
+		},
+		MultiRangeConfig {
+			resident_bytes: Some(ByteSize::from_kib(kib)),
+			shards: 1,
+			..MultiRangeConfig::default()
+		},
+	)
 }
 
 /// Deterministic stand-in for the flush sweep, in its persist -> refresh-read -> evict order. The

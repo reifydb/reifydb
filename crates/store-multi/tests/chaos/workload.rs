@@ -22,7 +22,7 @@ use reifydb_value::util::cowvec::CowVec;
 
 use crate::{
 	STORAGE,
-	fixtures::{flush, sync_persistent_store, sync_persistent_store_with_read, tiny_read_buffer},
+	fixtures::{flush, sync_persistent_store, sync_persistent_store_with_tiers, tiny_tiers},
 	oracle::{Oracle, RangeFilter, Scope},
 };
 
@@ -263,9 +263,8 @@ pub fn drive(seed: u64, p: Params) {
 
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
-	let pages = pick(&mut rng, &[2usize, 3, 4, 6]);
-	let page_rows = pick(&mut rng, &[4u64, 8, 16, 32]);
-	let (tiny, _g2) = sync_persistent_store_with_read(tiny_read_buffer(pages, page_rows));
+	let (point, range) = tiny_tiers(pick(&mut rng, &[1u64, 2, 4, 8]));
+	let (tiny, _g2) = sync_persistent_store_with_tiers(point, range);
 
 	let configs: Vec<(&str, StandardMultiStore)> =
 		vec![("memory", memory), ("persistent", persistent), ("tiny_cache", tiny)];

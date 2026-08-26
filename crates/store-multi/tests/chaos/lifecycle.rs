@@ -21,7 +21,7 @@ use reifydb_value::util::cowvec::CowVec;
 
 use crate::{
 	STORAGE,
-	fixtures::{build_bytes, flush, sync_persistent_store, sync_persistent_store_with_read, tiny_read_buffer},
+	fixtures::{build_bytes, flush, sync_persistent_store, sync_persistent_store_with_tiers, tiny_tiers},
 	oracle::{Oracle, Scope},
 	workload::{check_get, check_get_many, check_range, distinct_rows},
 };
@@ -120,11 +120,9 @@ pub fn drive(seed: u64, p: Params) {
 
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
-	// Pages must be fully scanned before their span is covered, with few resident pages so eviction still
-	// churns.
-	let pages = pick(&mut rng, &[1usize, 2, 3]);
-	let page_rows = pick(&mut rng, &[256u64, 512]);
-	let (tiny, _g2) = sync_persistent_store_with_read(tiny_read_buffer(pages, page_rows));
+	// A span is covered only once fully scanned, so keep the budget small enough that eviction churns.
+	let (point, range) = tiny_tiers(pick(&mut rng, &[1u64, 2, 4]));
+	let (tiny, _g2) = sync_persistent_store_with_tiers(point, range);
 	let configs: Vec<(&str, StandardMultiStore)> =
 		vec![("memory", memory), ("persistent", persistent), ("tiny_cache", tiny)];
 
