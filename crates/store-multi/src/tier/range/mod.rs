@@ -473,8 +473,8 @@ mod tests {
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 
 	use super::{
-		EntryKind, MultiDomain, MultiRangeConfig, MultiRangeTier, MultiVersionScope, RangeCursor, RangeDomain,
-		RawEntry, ServedChunk,
+		EncodedKey, EntryKind, MultiDomain, MultiRangeConfig, MultiRangeTier, MultiVersionScope, RangeCursor,
+		RangeDomain, RawEntry, ServedChunk,
 	};
 
 	const STORAGE: StorageId = StorageId::Table(TableId(1));
@@ -549,5 +549,63 @@ mod tests {
 			MultiDomain::admits_unproven_writes(),
 			"multi hands a flushed row to ram unconditionally, or the row is lost between the buffer and the claim"
 		);
+	}
+
+	#[test]
+	fn a_key_the_domain_cannot_attribute_names_no_partition() {
+		// A key outside the row band must be declined outright. Attributed to a neighbouring partition it
+		// would fall under that partition's span, which would then answer for rows it never held.
+		let stray = EncodedKey::new(vec![0u8, 1, 2]);
+		assert_eq!(
+			MultiDomain::partition(EntryKind::Source(STORAGE), &stray),
+			None,
+			"a key shorter than the band prefix carries no bucket to attribute it by"
+		);
+		assert_eq!(
+			MultiDomain::partition(EntryKind::Multi, &RowKey::encoded(STORAGE, 5)),
+			None,
+			"a row key under a kind with no row band must not be attributed either"
+		);
+	}
+
+	#[test]
+	fn an_older_write_must_not_displace_a_newer_resident_row() {
+		// A flush can deliver a version the cache has already moved past. Seating it would roll the cached
+		// row backwards and serve a value the store no longer holds.
+		let tier = tier();
+		let kind = EntryKind::Source(STORAGE);
+		let key = RowKey::encoded(STORAGE, 5);
+		let through = RowKey::encoded(STORAGE, 1);
+
+		let newer = [RawEntry {
+			key: key.clone(),
+			version: CommitVersion(5),
+			value: Some(CowVec::new(b"v5".to_vec())),
+		}];
+		assert!(
+			tier.materialize_scanned_chunk(kind, &key, &through, &newer),
+			"the chunk must claim its span, or the write below never lands on a resident row"
+		);
+
+		tier.insert(key.clone(), CommitVersion(2), Some(CowVec::new(b"v2".to_vec())));
+
+		let mut cursor = RangeCursor::new();
+		let served = tier.serve_persistent_chunk(
+			kind,
+			&mut cursor,
+			key.as_slice(),
+			through.as_slice(),
+			MultiVersionScope::AsOf {
+				read: CommitVersion(10),
+			},
+			32,
+			false,
+		);
+		let ServedChunk::Served(batch) = served else {
+			panic!("the claimed span must serve from ram");
+		};
+		let entry = batch.entries.iter().find(|entry| entry.key == key).expect("the row must still be resident");
+		assert_eq!(entry.version, CommitVersion(5), "the older write must not have displaced the newer row");
+		assert_eq!(entry.value.as_ref().expect("a value, not a tombstone").as_ref(), b"v5");
 	}
 }

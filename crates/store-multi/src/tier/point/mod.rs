@@ -263,6 +263,10 @@ mod tests {
 		.encode()
 	}
 
+	fn used(tier: &MultiPointTier) -> u64 {
+		tier.shard_metrics().into_iter().map(|shard| shard.used.as_bytes()).sum()
+	}
+
 	fn totals(tier: &MultiPointTier) -> MultiReadMetrics {
 		tier.read_metrics().into_iter().fold(MultiReadMetrics::default(), |mut acc, shard| {
 			acc.hits += shard.hits;
@@ -485,5 +489,46 @@ mod tests {
 			previous_hits: 0,
 			misses: 1
 		});
+	}
+
+	#[test]
+	fn a_clone_shares_the_entries_and_the_counters() {
+		// Two handles must be one cache. A clone that copied the shard array instead of sharing it would
+		// serve stale rows and tally its own reads, and neither shows up as a compile error.
+		let original = tier();
+		let clone = original.clone();
+		original.insert(row_key(9), CommitVersion(5), value("five"));
+
+		assert!(
+			matches!(clone.get(&row_key(9), CommitVersion(7)), VersionedGetResult::Value { .. }),
+			"a clone must observe a write made through the original"
+		);
+		assert_eq!(totals(&original).hits, 1, "the read counters must be shared, not duplicated per handle");
+	}
+
+	#[test]
+	fn accounting_survives_supersede_echo_and_invalidate_churn() {
+		// Every mutation path charges and releases; a single mis-charge leaves the total drifted. Comparing
+		// against a tier holding only the survivor pins the exact figure without restating the per-entry
+		// overhead, which would rot the moment the entry layout changes.
+		let churned = tier();
+		churned.insert(row_key(1), CommitVersion(5), value("aaa"));
+		churned.insert(row_key(1), CommitVersion(9), value("bbbbb"));
+		churned.insert(row_key(1), CommitVersion(9), value("bbbbb"));
+		churned.insert(row_key(2), CommitVersion(5), value("cc"));
+		churned.insert(row_key(2), CommitVersion(9), value("d"));
+		churned.invalidate(&row_key(2));
+		churned.insert(row_key(3), CommitVersion(5), value("x"));
+		churned.invalidate(&row_key(3));
+
+		let survivor = tier();
+		survivor.insert(row_key(1), CommitVersion(9), value("bbbbb"));
+
+		assert_eq!(
+			used(&churned),
+			used(&survivor),
+			"after a supersede, an echo that clears the displaced slot, and two invalidates, only one entry remains and the total must say so"
+		);
+		assert!(used(&churned) > 0, "an empty total would satisfy the comparison without proving anything");
 	}
 }
