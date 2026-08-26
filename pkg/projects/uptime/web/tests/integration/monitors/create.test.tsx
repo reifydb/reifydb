@@ -6,7 +6,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MonitorNewPage } from '@/pages/monitors/new.tsx'
 import { useRealtimeStore } from '@/store/realtime'
-import { type Backend, type BackendFactory, loadBackend } from '../../support/backend'
+import type { TestDb, TestFactory } from '@reifydb/reifydb'
+import { loadBackend } from '../../support/backend'
 import { renderWithProviders } from '../../support/render'
 import { insertMonitorRql, uuid7 } from '../../support/rql'
 import { navigate } from '../../support/router-mock'
@@ -15,14 +16,14 @@ import { navigate } from '../../support/router-mock'
 vi.mock('@reifydb/auth', async () => (await import('../../support/auth-mock')).authMock())
 vi.mock('@tanstack/react-router', async () => (await import('../../support/router-mock')).routerMock())
 
-let create: BackendFactory
+let create: TestFactory
 
 beforeAll(() => {
   create = loadBackend()
 })
 
 // Stubs fetch, never the mutation hook, so apiFetch's real code path still executes.
-function installFetchBridge(engine: Backend) {
+function installFetchBridge(db: TestDb) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -30,7 +31,7 @@ function installFetchBridge(engine: Backend) {
       if (init?.method === 'POST' && url.endsWith('/monitors')) {
         const body = JSON.parse(init.body as string)
         const id = uuid7()
-        await engine.commandRoot(insertMonitorRql(id, body))
+        await db.command_root(insertMonitorRql(id, body))
         return new Response(JSON.stringify({ id, ...body }), {
           status: 201,
           headers: { 'Content-Type': 'application/json' },
@@ -46,12 +47,12 @@ function renderPage() {
 }
 
 describe('create monitor flow', () => {
-  let engine: Backend
+  let db: TestDb
 
   beforeEach(() => {
-    engine = create(1)
+    db = create(1)
     useRealtimeStore.setState({ regions: { 'region-1': { id: 'region-1', label: 'US East' } } })
-    installFetchBridge(engine)
+    installFetchBridge(db)
     navigate.mockClear()
   })
 
@@ -74,8 +75,8 @@ describe('create monitor flow', () => {
     const [{ params }] = navigate.mock.calls[0]
     expect(params.monitorId).toBeTruthy()
 
-    // Asserts against the real engine, not the mock response - otherwise a broken migration would go undetected.
-    const result = await engine.queryRoot(
+    // Asserts against the real db, not the mock response - otherwise a broken migration would go undetected.
+    const result = await db.query_root(
       'from uptime::monitors filter { name == "reifydb.com" } map { name, kind, target, status }',
     )
     const rows = JSON.parse(result)

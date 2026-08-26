@@ -31,7 +31,7 @@ impl ReifydbNode {
 }
 
 #[cfg(not(reifydb_dst))]
-#[napi]
+#[napi(js_name = "open_with_migrations_dir")]
 pub fn open_with_migrations_dir(migrations_dir: String) -> napi::Result<ReifydbNode> {
 	let db = embedded::memory()
 		.with_migrations(migrations_dir)
@@ -44,7 +44,7 @@ pub fn open_with_migrations_dir(migrations_dir: String) -> napi::Result<ReifydbN
 
 #[napi]
 impl ReifydbNode {
-	#[napi]
+	#[napi(js_name = "command_root")]
 	pub async fn command_root(&self, rql: String) -> napi::Result<String> {
 		let db = self.db.clone();
 		spawn_blocking(move || db.command_as_root(&rql, ()))
@@ -54,7 +54,7 @@ impl ReifydbNode {
 			.map_err(|e| napi::Error::from_reason(format!("{e:?}")))
 	}
 
-	#[napi]
+	#[napi(js_name = "query_root")]
 	pub async fn query_root(&self, rql: String) -> napi::Result<String> {
 		let db = self.db.clone();
 		spawn_blocking(move || db.query_as_root(&rql, ()))
@@ -64,7 +64,7 @@ impl ReifydbNode {
 			.map_err(|e| napi::Error::from_reason(format!("{e:?}")))
 	}
 
-	#[napi]
+	#[napi(js_name = "command_as")]
 	pub async fn command_as(&self, identity: String, rql: String) -> napi::Result<String> {
 		let db = self.db.clone();
 		spawn_blocking(move || {
@@ -76,7 +76,7 @@ impl ReifydbNode {
 		.map(|frames| frames_to_json(&frames))
 	}
 
-	#[napi]
+	#[napi(js_name = "query_as")]
 	pub async fn query_as(&self, identity: String, rql: String) -> napi::Result<String> {
 		let db = self.db.clone();
 		spawn_blocking(move || {
