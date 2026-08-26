@@ -25,9 +25,10 @@ use reifydb_filter::{
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown};
 use reifydb_sqlite::SqliteConfig;
+use reifydb_store::filter::KeyFilter;
 use reifydb_store_multi::{
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
-	filter::{ARMED_CAPACITY_KEYS, MultiKeyFilter, source::MultiCurrentKeySource},
+	filter::{ARMED_CAPACITY_KEYS, MultiKeys, source::MultiCurrentKeySource},
 	store::StandardMultiStore,
 	tier::{
 		TierBatch, TierStorage, commit::buffer::MultiCommitBufferTier,
@@ -113,17 +114,20 @@ fn a_key_written_through_the_flush_path_is_afterwards_maybe_present() {
 	let (storage, _guard) = SqlitePersistentStorage::in_memory();
 
 	assert!(storage.filter().metrics().enabled, "an empty database at open must arm the filter");
-	assert!(!storage.filter().may_contain(EntryKind::Multi, &key(7)), "an armed empty filter rules out every key");
+	assert!(
+		!storage.filter().may_contain((EntryKind::Multi, &key(7))),
+		"an armed empty filter rules out every key"
+	);
 
 	storage.set_collecting_accepted(CommitVersion(5), batch(EntryKind::Multi, vec![(key(7), Some(body(7)))]))
 		.expect("the flush write failed");
 
 	assert!(
-		storage.filter().may_contain(EntryKind::Multi, &key(7)),
+		storage.filter().may_contain((EntryKind::Multi, &key(7))),
 		"the commit flush path did not feed the armed filter"
 	);
 	assert!(
-		!storage.filter().may_contain(EntryKind::Multi, &key(8)),
+		!storage.filter().may_contain((EntryKind::Multi, &key(8))),
 		"a neighbouring key nothing wrote answered present"
 	);
 }
@@ -141,10 +145,10 @@ fn a_key_written_through_the_sweep_path_is_afterwards_maybe_present() {
 	)])
 	.expect("the sweep write failed");
 
-	assert!(storage.filter().may_contain(EntryKind::Multi, &key(11)), "the sweep path did not feed the filter");
-	assert!(storage.filter().may_contain(EntryKind::Multi, &key(12)), "the sweep path did not feed the filter");
+	assert!(storage.filter().may_contain((EntryKind::Multi, &key(11))), "the sweep path did not feed the filter");
+	assert!(storage.filter().may_contain((EntryKind::Multi, &key(12))), "the sweep path did not feed the filter");
 	assert!(
-		!storage.filter().may_contain(EntryKind::Multi, &key(13)),
+		!storage.filter().may_contain((EntryKind::Multi, &key(13))),
 		"a neighbouring key nothing wrote answered present"
 	);
 }
@@ -163,12 +167,12 @@ fn every_key_of_a_batch_large_enough_to_take_the_chunked_upsert_is_fed_to_the_fi
 
 	for n in 0..250u64 {
 		assert!(
-			storage.filter().may_contain(EntryKind::Multi, &key(n)),
+			storage.filter().may_contain((EntryKind::Multi, &key(n))),
 			"key {n} was written but the chunked upsert loop never fed it to the filter"
 		);
 	}
 	assert!(
-		!storage.filter().may_contain(EntryKind::Multi, &key(999)),
+		!storage.filter().may_contain((EntryKind::Multi, &key(999))),
 		"a key nothing wrote answered present, so the filter is saturated and proves nothing"
 	);
 }
@@ -183,7 +187,7 @@ fn a_key_written_through_the_tier_set_path_is_afterwards_maybe_present() {
 	TierStorage::set(&storage, CommitVersion(3), batch(OTHER, vec![(key(21), Some(body(21)))]))
 		.expect("the tier set write failed");
 
-	assert!(storage.filter().may_contain(OTHER, &key(21)), "the tier set path did not feed the filter");
+	assert!(storage.filter().may_contain((OTHER, &key(21))), "the tier set path did not feed the filter");
 }
 
 #[test]
@@ -266,10 +270,10 @@ fn a_tombstoned_key_is_still_reported_maybe_present_after_a_rebuild() {
 
 	assert!(storage.filter().metrics().enabled, "a committed rebuild must leave the filter active");
 	assert!(
-		storage.filter().may_contain(EntryKind::Multi, &key(1)),
+		storage.filter().may_contain((EntryKind::Multi, &key(1))),
 		"the rebuild dropped a tombstoned key, so its removal now reads as never-written"
 	);
-	assert!(storage.filter().may_contain(EntryKind::Multi, &key(2)), "the rebuild dropped a live key");
+	assert!(storage.filter().may_contain((EntryKind::Multi, &key(2))), "the rebuild dropped a live key");
 	assert!(
 		matches!(
 			storage.get(EntryKind::Multi, key(1).as_slice(), CommitVersion(u64::MAX)),
@@ -304,7 +308,7 @@ fn the_rebuild_source_hashes_a_key_exactly_as_the_read_path_does() {
 
 	rebuild(&storage, rebuilding_config(64));
 	assert!(
-		storage.filter().may_contain(EntryKind::Multi, &key(3)),
+		storage.filter().may_contain((EntryKind::Multi, &key(3))),
 		"a filter built purely from the source's hashes answered absent for a key the read path would test"
 	);
 }
@@ -336,10 +340,10 @@ fn identical_key_bytes_in_two_entry_kinds_stay_separately_reachable_across_a_reb
 
 	for n in 0..24u64 {
 		assert!(
-			storage.filter().may_contain(EntryKind::Multi, &key(n)),
+			storage.filter().may_contain((EntryKind::Multi, &key(n))),
 			"multi key {n} was lost by the rebuild"
 		);
-		assert!(storage.filter().may_contain(OTHER, &key(n)), "source key {n} was lost by the rebuild");
+		assert!(storage.filter().may_contain((OTHER, &key(n))), "source key {n} was lost by the rebuild");
 		assert!(
 			storage.get(EntryKind::Multi, key(n).as_slice(), CommitVersion(u64::MAX))
 				.expect("the read failed")
@@ -374,7 +378,7 @@ fn an_armed_filter_is_left_alone_until_it_fills_and_is_then_resized_from_the_liv
 		.expect("setup write failed");
 	}
 
-	let filter = MultiKeyFilter::armed(4096);
+	let filter = KeyFilter::<MultiKeys>::armed(4096);
 	let armed_bits = filter.metrics().size_bits;
 	let mut driver = RebuildDriver::new(
 		filter.handle(),
@@ -412,7 +416,10 @@ fn an_armed_filter_is_left_alone_until_it_fills_and_is_then_resized_from_the_liv
 	assert_eq!(after.rebuilds, 1);
 	assert!(after.fill_ratio < filled, "the resized filter is no emptier than the saturated one it replaced");
 	for n in 0..64u64 {
-		assert!(filter.may_contain(EntryKind::Multi, &key(n)), "live row {n} was lost by the resizing rebuild");
+		assert!(
+			filter.may_contain((EntryKind::Multi, &key(n))),
+			"live row {n} was lost by the resizing rebuild"
+		);
 	}
 }
 

@@ -27,6 +27,7 @@ use reifydb_runtime::{
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
+use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_value::{count::Count, util::cowvec::CowVec};
 use tracing::instrument;
 
@@ -38,7 +39,7 @@ use crate::{
 	flush::{ObjectPersistence, engine::FlushEngine},
 	tier::{
 		commit::buffer::{MultiCommitBufferTier, MultiCommitMetrics},
-		persistent::{MultiPersistentTier, SqlitePageCacheMetrics},
+		persistent::MultiPersistentTier,
 		read::{MultiReadBufferTier, ReadBufferShardMetrics},
 	},
 };
@@ -238,7 +239,7 @@ impl StandardMultiStore {
 		self.commit.metrics()
 	}
 
-	pub fn persistent_page_cache_metrics(&self) -> Option<SqlitePageCacheMetrics> {
+	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {
 		self.persistent.as_ref().map(MultiPersistentTier::page_cache_metrics)
 	}
 

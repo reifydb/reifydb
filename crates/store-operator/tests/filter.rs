@@ -19,9 +19,10 @@ use reifydb_filter::{
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteConfig;
+use reifydb_store::filter::KeyFilter;
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
-	filter::{ARMED_CAPACITY_KEYS, OperatorKeyFilter, source::OperatorStateKeySource},
+	filter::{ARMED_CAPACITY_KEYS, OperatorKeys, source::OperatorStateKeySource},
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
@@ -112,9 +113,9 @@ fn a_store_opened_on_existing_rows_serves_every_one_before_any_rebuild_has_run()
 	// active it would answer "definitely absent" for every row already in sqlite and the store would report
 	// an empty operator state after a restart. The fresh-filter assertions below are what pin the
 	// disabled-and-permissive start; the reopened store then proves the read path really is permissive.
-	let fresh = OperatorKeyFilter::new();
+	let fresh = KeyFilter::<OperatorKeys>::new();
 	assert!(!fresh.metrics().enabled, "a fresh filter must not be active, it holds none of the durable keys");
-	assert!(fresh.may_contain(OP, &key(1)), "a disabled filter must answer may-contain for every key");
+	assert!(fresh.may_contain((OP, &key(1))), "a disabled filter must answer may-contain for every key");
 
 	let (config, _guard) = SqliteConfig::in_memory();
 	{
@@ -166,11 +167,11 @@ fn every_pre_existing_key_still_reads_back_after_a_completed_rebuild() {
 	assert!(storage.filter().metrics().enabled, "a committed rebuild must leave the filter active");
 	for suffix in 0..64u8 {
 		assert!(
-			storage.filter().may_contain(OP, &key(suffix)),
+			storage.filter().may_contain((OP, &key(suffix))),
 			"operator 1 key {suffix} was lost by the rebuild"
 		);
 		assert!(
-			storage.filter().may_contain(OTHER, &key(suffix)),
+			storage.filter().may_contain((OTHER, &key(suffix))),
 			"operator 2 key {suffix} was lost by the rebuild"
 		);
 		assert!(storage.get(OP, &key(suffix)).is_some(), "operator 1 row {suffix} became unreadable");
@@ -203,7 +204,7 @@ fn the_source_hashes_a_key_exactly_as_the_read_path_does() {
 
 	rebuild(&storage, rebuilding_config(64));
 	assert!(
-		storage.filter().may_contain(OP, &key(3)),
+		storage.filter().may_contain((OP, &key(3))),
 		"a filter built purely from the source's hashes answered absent for a key the read path would test"
 	);
 }
@@ -223,7 +224,10 @@ fn a_key_deleted_from_sqlite_stops_reporting_present_after_a_rebuild() {
 	}
 	rebuild(&storage, rebuilding_config(32));
 	for suffix in 0..16u8 {
-		assert!(storage.filter().may_contain(OP, &key(suffix)), "setup failed: key {suffix} was never present");
+		assert!(
+			storage.filter().may_contain((OP, &key(suffix))),
+			"setup failed: key {suffix} was never present"
+		);
 	}
 
 	for suffix in 0..16u8 {
@@ -237,13 +241,13 @@ fn a_key_deleted_from_sqlite_stops_reporting_present_after_a_rebuild() {
 
 	for suffix in 0..16u8 {
 		assert!(
-			!storage.filter().may_contain(OP, &key(suffix)),
+			!storage.filter().may_contain((OP, &key(suffix))),
 			"deleted key {suffix} still reports present, so the rebuild is not reclaiming removed keys"
 		);
 	}
 	for suffix in 16..128u8 {
 		assert!(
-			storage.filter().may_contain(OP, &key(suffix)),
+			storage.filter().may_contain((OP, &key(suffix))),
 			"surviving key {suffix} was dropped by the rebuild that reclaimed its deleted neighbours"
 		);
 	}
@@ -405,7 +409,7 @@ fn a_key_written_after_an_armed_open_is_found_by_the_armed_filter() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 
 	assert!(storage.filter().metrics().enabled, "a fresh database must arm the filter");
-	assert!(!storage.filter().may_contain(OP, &key(7)), "an armed empty filter must rule out an unwritten key");
+	assert!(!storage.filter().may_contain((OP, &key(7))), "an armed empty filter must rule out an unwritten key");
 
 	storage.apply_batch(&[OperatorWrite::Insert {
 		operator: OP,
@@ -413,10 +417,10 @@ fn a_key_written_after_an_armed_open_is_found_by_the_armed_filter() {
 		post: row("written after open"),
 	}]);
 
-	assert!(storage.filter().may_contain(OP, &key(7)), "the write path did not feed the armed filter");
+	assert!(storage.filter().may_contain((OP, &key(7))), "the write path did not feed the armed filter");
 	let found = storage.get(OP, &key(7)).expect("the row written after an armed open is missing");
 	assert_eq!(body_of(&found), "written after open");
-	assert!(!storage.filter().may_contain(OP, &key(8)), "a neighbouring key nothing wrote answered present");
+	assert!(!storage.filter().may_contain((OP, &key(8))), "a neighbouring key nothing wrote answered present");
 }
 
 #[test]
@@ -434,7 +438,7 @@ fn the_batch_write_path_production_uses_feeds_the_armed_filter() {
 		key: key(7),
 		post: row("inserted through a batch"),
 	}]);
-	assert!(storage.filter().may_contain(OP, &key(7)), "an insert through apply_batch did not arm the filter");
+	assert!(storage.filter().may_contain((OP, &key(7))), "an insert through apply_batch did not arm the filter");
 	assert_eq!(
 		storage.get(OP, &key(7)).map(|found| body_of(&found)),
 		Some("inserted through a batch".to_string()),
@@ -453,13 +457,13 @@ fn the_batch_write_path_production_uses_feeds_the_armed_filter() {
 		post: row("replaced through a batch"),
 	}]);
 	assert!(
-		storage.filter().may_contain(OP, &key(9)),
+		storage.filter().may_contain((OP, &key(9))),
 		"a replace writes a row the same way an insert does, so it must arm the filter too"
 	);
 
-	assert!(!storage.filter().may_contain(OP, &key(8)), "a neighbouring key no batch wrote answered present");
+	assert!(!storage.filter().may_contain((OP, &key(8))), "a neighbouring key no batch wrote answered present");
 	assert!(
-		!storage.filter().may_contain(OTHER, &key(7)),
+		!storage.filter().may_contain((OTHER, &key(7))),
 		"the filter must scope its claim to the operator that was written"
 	);
 }
@@ -497,7 +501,7 @@ fn an_armed_filter_is_left_alone_until_it_fills_and_is_then_resized_from_the_liv
 		}]);
 	}
 
-	let filter = OperatorKeyFilter::armed(4096);
+	let filter = KeyFilter::<OperatorKeys>::armed(4096);
 	let armed_bits = filter.metrics().size_bits;
 	let mut driver = RebuildDriver::new(
 		filter.handle(),
@@ -537,7 +541,7 @@ fn an_armed_filter_is_left_alone_until_it_fills_and_is_then_resized_from_the_liv
 	assert!(after.fill_ratio < filled, "the resized filter is no emptier than the saturated one it replaced");
 	for suffix in 0..64u8 {
 		assert!(
-			filter.may_contain(OP, &key(suffix)),
+			filter.may_contain((OP, &key(suffix))),
 			"live row {suffix} was lost by the rebuild that resized the armed filter"
 		);
 	}

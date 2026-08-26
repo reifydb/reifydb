@@ -126,7 +126,7 @@ impl StandardMultiStore {
 		let Some(persistent) = &self.persistent else {
 			return Ok(None);
 		};
-		if !persistent.filter().may_contain(table, key) {
+		if !persistent.filter().may_contain((table, key)) {
 			return Ok(None);
 		}
 		self.persistent_probes.fetch_add(1, Ordering::Relaxed);
@@ -323,7 +323,7 @@ impl StandardMultiStore {
 				VersionedGetResult::NotFound => {
 					let maybe = match &self.persistent {
 						Some(persistent) => {
-							persistent.filter().may_contain(table, table_keys[i])
+							persistent.filter().may_contain((table, table_keys[i]))
 						}
 						None => false,
 					};
@@ -1150,7 +1150,7 @@ impl StandardMultiStore {
 		let Some(persistent) = &self.persistent else {
 			return Ok(None);
 		};
-		if !persistent.filter().may_contain(table, key) {
+		if !persistent.filter().may_contain((table, key)) {
 			return Ok(None);
 		}
 		self.persistent_probes.fetch_add(1, Ordering::Relaxed);

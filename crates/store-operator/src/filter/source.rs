@@ -6,8 +6,9 @@ use std::fmt::{self, Debug, Formatter};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_filter::source::{FilterSlice, KeyFilterSource};
+use reifydb_store::filter::FilterDomain;
 
-use crate::{filter::hash_key, sqlite::SqliteOperatorStorage};
+use crate::{filter::OperatorKeys, sqlite::SqliteOperatorStorage};
 
 pub struct OperatorStateKeySource {
 	storage: SqliteOperatorStorage,
@@ -49,7 +50,7 @@ impl KeyFilterSource for OperatorStateKeySource {
 			self.cursor = Some((*operator, key.clone()));
 		}
 		FilterSlice {
-			hashes: rows.iter().map(|(operator, key)| hash_key(*operator, key)).collect(),
+			hashes: rows.iter().map(|(operator, key)| OperatorKeys::hash((*operator, key))).collect(),
 			exhausted,
 		}
 	}

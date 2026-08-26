@@ -12,11 +12,12 @@ use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_value::{Result, byte_size::ByteSize, count::Count, value::datetime::DateTime};
+use reifydb_store::{filter::KeyFilter, metrics::PageCacheMetrics};
+use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
 	MultiVersionScope,
-	filter::MultiKeyFilter,
+	filter::MultiKeys,
 	tier::{DisplacedValues, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult},
 };
 
@@ -25,15 +26,6 @@ pub mod sqlite;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use sqlite::storage::SqlitePersistentStorage;
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct SqlitePageCacheMetrics {
-	pub used: ByteSize,
-	pub hits: Count,
-	pub misses: Count,
-	pub connections_sampled: Count,
-	pub connections_total: Count,
-}
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
@@ -70,13 +62,13 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn filter(&self) -> &MultiKeyFilter {
+	pub fn filter(&self) -> &KeyFilter<MultiKeys> {
 		match self {
 			Self::Sqlite(storage) => storage.filter(),
 		}
 	}
 
-	pub fn page_cache_metrics(&self) -> SqlitePageCacheMetrics {
+	pub fn page_cache_metrics(&self) -> PageCacheMetrics {
 		match self {
 			Self::Sqlite(storage) => storage.page_cache_metrics(),
 		}
@@ -157,11 +149,11 @@ impl MultiPersistentTier {
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl MultiPersistentTier {
-	pub fn filter(&self) -> &MultiKeyFilter {
+	pub fn filter(&self) -> &KeyFilter<MultiKeys> {
 		match *self {}
 	}
 
-	pub fn page_cache_metrics(&self) -> SqlitePageCacheMetrics {
+	pub fn page_cache_metrics(&self) -> PageCacheMetrics {
 		match *self {}
 	}
 

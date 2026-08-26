@@ -26,6 +26,7 @@ use reifydb_runtime::{
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+use reifydb_store::metrics::PageCacheMetrics;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
@@ -37,7 +38,7 @@ use crate::{
 	flush::{FlushMessage, flush_now, flush_pending},
 	tier::{
 		commit::OperatorCommitBuffer,
-		persistent::{OperatorPageCacheMetrics, OperatorPersistentTier},
+		persistent::OperatorPersistentTier,
 		point::{OperatorPointKeyspaceMetrics, OperatorPointShardMetrics, OperatorPointTier},
 		range::{OperatorRangeKeyspaceMetrics, OperatorRangeShardMetrics, OperatorRangeTier},
 	},
@@ -197,7 +198,7 @@ impl StandardOperatorStore {
 		self.range.as_ref().map(OperatorRangeTier::keyspace_metrics).unwrap_or_default()
 	}
 
-	pub fn persistent_page_cache_metrics(&self) -> Option<OperatorPageCacheMetrics> {
+	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {
 		self.persistent.as_ref().map(OperatorPersistentTier::page_cache_metrics)
 	}
 
@@ -316,7 +317,7 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn persistent_page_cache_metrics(&self) -> Option<OperatorPageCacheMetrics> {
+	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {
 		match self {
 			Self::Standard(store) => store.persistent_page_cache_metrics(),
 		}

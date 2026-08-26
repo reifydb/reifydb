@@ -52,7 +52,7 @@ impl StandardOperatorStore {
 			BufferedAnchor::Tombstone | BufferedAnchor::Dropped => None,
 			BufferedAnchor::Absent => {
 				let persistent = self.persistent.as_ref()?;
-				if !persistent.anchor_filter().may_contain(operator, group, side, row_number) {
+				if !persistent.anchor_filter().may_contain((operator, group, side, row_number)) {
 					return None;
 				}
 				persistent.anchor_get(operator, group, side, row_number)

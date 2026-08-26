@@ -16,28 +16,19 @@ use reifydb_core::{
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+use reifydb_store::{filter::KeyFilter, metrics::PageCacheMetrics};
 use reifydb_value::{
 	byte_size::ByteSize,
-	count::Count,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::sqlite::SqliteOperatorStorage;
 use crate::{
-	filter::{OperatorAnchorFilter, OperatorKeyFilter},
+	filter::{OperatorAnchors, OperatorKeys},
 	tier::commit::batch::FlushBatch,
 	types::{OperatorBatch, OperatorSealAnchor, OperatorSealAnchorCensus, OperatorStateCensus},
 };
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct OperatorPageCacheMetrics {
-	pub used: ByteSize,
-	pub hits: Count,
-	pub misses: Count,
-	pub connections_sampled: Count,
-	pub connections_total: Count,
-}
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
@@ -81,13 +72,13 @@ impl OperatorPersistentTier {
 		}
 	}
 
-	pub fn filter(&self) -> &OperatorKeyFilter {
+	pub fn filter(&self) -> &KeyFilter<OperatorKeys> {
 		match self {
 			Self::Sqlite(storage) => storage.filter(),
 		}
 	}
 
-	pub fn anchor_filter(&self) -> &OperatorAnchorFilter {
+	pub fn anchor_filter(&self) -> &KeyFilter<OperatorAnchors> {
 		match self {
 			Self::Sqlite(storage) => storage.anchor_filter(),
 		}
@@ -189,7 +180,7 @@ impl OperatorPersistentTier {
 		}
 	}
 
-	pub fn page_cache_metrics(&self) -> OperatorPageCacheMetrics {
+	pub fn page_cache_metrics(&self) -> PageCacheMetrics {
 		match self {
 			Self::Sqlite(storage) => storage.page_cache_metrics(),
 		}
@@ -210,11 +201,11 @@ impl OperatorPersistentTier {
 		match *self {}
 	}
 
-	pub fn filter(&self) -> &OperatorKeyFilter {
+	pub fn filter(&self) -> &KeyFilter<OperatorKeys> {
 		match *self {}
 	}
 
-	pub fn anchor_filter(&self) -> &OperatorAnchorFilter {
+	pub fn anchor_filter(&self) -> &KeyFilter<OperatorAnchors> {
 		match *self {}
 	}
 
@@ -291,7 +282,7 @@ impl OperatorPersistentTier {
 		match *self {}
 	}
 
-	pub fn page_cache_metrics(&self) -> OperatorPageCacheMetrics {
+	pub fn page_cache_metrics(&self) -> PageCacheMetrics {
 		match *self {}
 	}
 }

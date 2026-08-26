@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_filter::adaptive::FilterMetrics;
+use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_store_cdc::{
 	store::CdcStore,
 	tier::{commit::CdcCommitMetrics, persistent::CdcPersistentMetrics, read::CdcReadShardMetrics},
@@ -9,12 +10,11 @@ use reifydb_store_cdc::{
 use reifydb_store_multi::{
 	MultiStore,
 	store::MultiPersistentProbeMetrics,
-	tier::{commit::buffer::MultiCommitMetrics, persistent::SqlitePageCacheMetrics, read::ReadBufferShardMetrics},
+	tier::{commit::buffer::MultiCommitMetrics, read::ReadBufferShardMetrics},
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
 	tier::{
-		persistent::OperatorPageCacheMetrics,
 		point::{OperatorPointKeyspaceMetrics, OperatorPointShardMetrics},
 		range::{OperatorRangeKeyspaceMetrics, OperatorRangeShardMetrics},
 	},
@@ -51,7 +51,7 @@ impl StoreReader {
 		self.multi.read_buffer_shard_metrics()
 	}
 
-	pub fn multi_persistent(&self) -> Option<SqlitePageCacheMetrics> {
+	pub fn multi_persistent(&self) -> Option<PageCacheMetrics> {
 		self.multi.persistent_page_cache_metrics()
 	}
 
@@ -91,7 +91,7 @@ impl StoreReader {
 		self.operator.range_keyspace_metrics()
 	}
 
-	pub fn operator_persistent(&self) -> Option<OperatorPageCacheMetrics> {
+	pub fn operator_persistent(&self) -> Option<PageCacheMetrics> {
 		self.operator.persistent_page_cache_metrics()
 	}
 

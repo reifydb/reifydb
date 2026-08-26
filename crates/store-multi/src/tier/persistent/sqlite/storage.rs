@@ -7,7 +7,7 @@ use std::{
 	ops::Bound,
 	sync::{
 		Arc, OnceLock,
-		atomic::{AtomicU64, AtomicUsize, Ordering},
+		atomic::{AtomicU64, Ordering},
 	},
 };
 
@@ -28,20 +28,13 @@ use reifydb_runtime::{
 		mutex::{Mutex, MutexGuard},
 	},
 };
-use reifydb_sqlite::{
-	SqliteConfig, SqliteTempPathGuard,
-	connection::{connect, convert_flags, resolve_db_path},
-	memory::sweep_connection_cache,
-	pragma,
+use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard, pragma};
+use reifydb_store::{
+	filter::KeyFilter,
+	metrics::PageCacheMetrics,
+	sqlite::{OpenMessages, ReadPool, open, page_cache_metrics},
 };
-use reifydb_value::{
-	Result,
-	byte_size::ByteSize,
-	count::Count,
-	error, reifydb_assertions,
-	util::cowvec::CowVec,
-	value::{datetime::DateTime, duration::Duration},
-};
+use reifydb_value::{Result, error, reifydb_assertions, util::cowvec::CowVec, value::datetime::DateTime};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior,
 	params, params_from_iter,
@@ -50,22 +43,18 @@ use tracing::{instrument, warn};
 
 use crate::{
 	MultiVersionScope,
-	filter::{ARMED_CAPACITY_KEYS, MultiKeyFilter},
+	filter::{ARMED_CAPACITY_KEYS, MultiKeys},
 	tier::{
 		DisplacedValues, RangeBatch, RangeCursor, RangeStop, RawEntry, TierBackend, TierBatch, TierStorage,
 		VersionedGetResult,
-		persistent::{
-			SqlitePageCacheMetrics,
-			sqlite::{
-				entry::{current_table_name, current_table_name_to_entry},
-				query::{
-					build_chunked_upsert_sql, build_create_current_sql, build_current_exists_sql,
-					build_current_keys_sql, build_delete_below_version_sql, build_delete_keys_sql,
-					build_expired_keys_sql, build_get_current_sql, build_get_many_current_sql,
-					build_max_version_sql, build_range_current_sql, build_reap_tombstones_sql,
-					build_upsert_current_sql, prefix_upper_bound, version_from_bytes,
-					version_to_bytes,
-				},
+		persistent::sqlite::{
+			entry::{current_table_name, current_table_name_to_entry},
+			query::{
+				build_chunked_upsert_sql, build_create_current_sql, build_current_exists_sql,
+				build_current_keys_sql, build_delete_below_version_sql, build_delete_keys_sql,
+				build_expired_keys_sql, build_get_current_sql, build_get_many_current_sql,
+				build_max_version_sql, build_range_current_sql, build_reap_tombstones_sql,
+				build_upsert_current_sql, prefix_upper_bound, version_from_bytes, version_to_bytes,
 			},
 		},
 	},
@@ -86,8 +75,6 @@ fn bucket_key_count(len: usize) -> usize {
 	GET_MANY_CHUNK
 }
 
-const BUSY_TIMEOUT: Duration = Duration::from_milliseconds_const(200);
-
 #[derive(Clone)]
 pub struct SqlitePersistentStorage {
 	inner: Arc<SqlitePersistentStorageInner>,
@@ -101,7 +88,7 @@ struct SqlitePersistentStorageInner {
 	cache_misses: AtomicU64,
 	reaped_high_water: Map<EntryKind, Arc<AtomicU64>>,
 	resurrections: AtomicU64,
-	filter: MultiKeyFilter,
+	filter: KeyFilter<MultiKeys>,
 
 	written_high_water: AtomicU64,
 	opened_high_water: OnceLock<u64>,
@@ -132,29 +119,14 @@ impl TableSql {
 	}
 }
 
-struct ReadPool {
-	conns: Vec<Mutex<Option<Connection>>>,
-	next: AtomicUsize,
-}
-
-impl ReadPool {
-	fn acquire(&self) -> MutexGuard<'_, Option<Connection>> {
-		let n = self.conns.len();
-		let start = self.next.fetch_add(1, Ordering::Relaxed) % n;
-		for i in 0..n {
-			if let Some(guard) = self.conns[(start + i) % n].try_lock() {
-				return guard;
-			}
-		}
-		self.conns[start].lock()
-	}
-
-	fn shutdown(&self) {
-		for slot in &self.conns {
-			drop(slot.lock().take());
-		}
-	}
-}
+const OPEN_MESSAGES: OpenMessages = OpenMessages {
+	connect: "Failed to connect to persistent database",
+	pragmas: "Failed to configure persistent SQLite pragmas",
+	busy_timeout: "Failed to set persistent busy timeout",
+	read_connect: "Failed to open persistent read connection",
+	read_pragmas: "Failed to configure persistent read connection",
+	read_busy_timeout: "Failed to set persistent read busy timeout",
+};
 
 impl SqlitePersistentStorage {
 	#[instrument(name = "store::multi::persistent::sqlite::new", level = "debug", skip(config), fields(
@@ -164,36 +136,18 @@ impl SqlitePersistentStorage {
 		journal_mode = config.journal_mode.as_ref().map(|mode| mode.as_str())
 	))]
 	pub fn new(config: SqliteConfig) -> Self {
-		let db_path = resolve_db_path(config.path.clone(), "persistent.db");
-		let flags = convert_flags(&config.flags);
-
-		let conn = connect(&db_path, flags).expect("Failed to connect to persistent database");
-		pragma::apply(&conn, &config).expect("Failed to configure persistent SQLite pragmas");
-		conn.busy_timeout(BUSY_TIMEOUT.to_std()).expect("Failed to set persistent busy timeout");
-
-		let pool_size = config.read_pool_size.max(1) as usize;
-		let mut conns = Vec::with_capacity(pool_size);
-		for _ in 0..pool_size {
-			let reader = connect(&db_path, flags).expect("Failed to open persistent read connection");
-			pragma::apply_read_only(&reader, &config)
-				.expect("Failed to configure persistent read connection");
-			reader.busy_timeout(BUSY_TIMEOUT.to_std()).expect("Failed to set persistent read busy timeout");
-			conns.push(Mutex::new(Some(reader)));
-		}
+		let (conn, readers) = open(&config, "persistent.db", &OPEN_MESSAGES);
 
 		let filter = if any_current_row(&conn) {
-			MultiKeyFilter::new()
+			KeyFilter::<MultiKeys>::new()
 		} else {
-			MultiKeyFilter::armed(ARMED_CAPACITY_KEYS)
+			KeyFilter::<MultiKeys>::armed(ARMED_CAPACITY_KEYS)
 		};
 
 		Self {
 			inner: Arc::new(SqlitePersistentStorageInner {
 				conn: Mutex::new(Some(conn)),
-				readers: ReadPool {
-					conns,
-					next: AtomicUsize::new(0),
-				},
+				readers,
 				table_sql: Map::new(),
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
@@ -233,7 +187,7 @@ impl SqlitePersistentStorage {
 		self.inner.written_high_water.fetch_max(version.0, Ordering::SeqCst);
 	}
 
-	pub fn filter(&self) -> &MultiKeyFilter {
+	pub fn filter(&self) -> &KeyFilter<MultiKeys> {
 		&self.inner.filter
 	}
 
@@ -278,35 +232,13 @@ impl SqlitePersistentStorage {
 		Ok(out)
 	}
 
-	pub fn page_cache_metrics(&self) -> SqlitePageCacheMetrics {
-		let mut used = 0u64;
-		let mut sampled = 0u64;
-		let mut sweep = |conn: &Connection| {
-			let swept = sweep_connection_cache(conn);
-			self.inner.cache_hits.fetch_add(swept.hits.as_u64(), Ordering::Relaxed);
-			self.inner.cache_misses.fetch_add(swept.misses.as_u64(), Ordering::Relaxed);
-			used += swept.used.as_bytes();
-			sampled += 1;
-		};
-		if let Some(guard) = self.inner.conn.try_lock()
-			&& let Some(conn) = guard.as_ref()
-		{
-			sweep(conn);
-		}
-		for slot in &self.inner.readers.conns {
-			if let Some(guard) = slot.try_lock()
-				&& let Some(conn) = guard.as_ref()
-			{
-				sweep(conn);
-			}
-		}
-		SqlitePageCacheMetrics {
-			used: ByteSize::from_bytes(used),
-			hits: Count::new(self.inner.cache_hits.load(Ordering::Relaxed)),
-			misses: Count::new(self.inner.cache_misses.load(Ordering::Relaxed)),
-			connections_sampled: Count::new(sampled),
-			connections_total: Count::new(1 + self.inner.readers.conns.len() as u64),
-		}
+	pub fn page_cache_metrics(&self) -> PageCacheMetrics {
+		page_cache_metrics(
+			&self.inner.conn,
+			&self.inner.readers,
+			&self.inner.cache_hits,
+			&self.inner.cache_misses,
+		)
 	}
 
 	#[instrument(name = "store::multi::sqlite::conn_acquire", level = "debug", skip(self))]
@@ -628,7 +560,7 @@ impl SqlitePersistentStorage {
 				reifydb_assertions! {
 					self.assert_no_resurrection(tx, table, table_sql, key, version);
 				}
-				self.inner.filter.add(table, key);
+				self.inner.filter.add((table, key));
 				boxed.push(Box::new(key.as_slice().to_vec()));
 				boxed.push(Box::new(new_version_bytes.to_vec()));
 				boxed.push(Box::new(value.as_ref().map(|v| v.as_slice().to_vec())));
@@ -652,7 +584,7 @@ impl SqlitePersistentStorage {
 			reifydb_assertions! {
 				self.assert_no_resurrection(tx, table, table_sql, key, version);
 			}
-			self.inner.filter.add(table, key);
+			self.inner.filter.add((table, key));
 			let value_slice = value.as_ref().map(|v| v.as_slice());
 			let affected = single_stmt
 				.execute(params![

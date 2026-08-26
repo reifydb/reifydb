@@ -7,7 +7,16 @@ authors.workspace = true
 repository.workspace = true
 description = "Row-tier store layer: page model and residency traits"
 
+[features]
+sqlite = ["rusqlite", "reifydb-sqlite"]
+
 [dependencies]
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-filter = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-sqlite = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rusqlite = { workspace = true, features = ["bundled"], optional = true }

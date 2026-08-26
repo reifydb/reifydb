@@ -9,7 +9,7 @@ description = "Single-version storage for flow operator state"
 
 [features]
 default = ["sqlite"]
-sqlite = ["rusqlite", "reifydb-sqlite"]
+sqlite = ["rusqlite", "reifydb-sqlite", "reifydb-store/sqlite"]
 chaos = ["sqlite"]
 
 [build-dependencies]

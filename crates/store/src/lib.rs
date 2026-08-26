@@ -5,4 +5,8 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod coverage;
+pub mod filter;
+pub mod metrics;
 pub mod row;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+pub mod sqlite;

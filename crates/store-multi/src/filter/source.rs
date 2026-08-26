@@ -6,8 +6,9 @@ use std::fmt::{self, Debug, Formatter};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::interface::store::EntryKind;
 use reifydb_filter::source::{FilterSlice, KeyFilterSource};
+use reifydb_store::filter::FilterDomain;
 
-use crate::{filter::hash_key, tier::persistent::sqlite::storage::SqlitePersistentStorage};
+use crate::{filter::MultiKeys, tier::persistent::sqlite::storage::SqlitePersistentStorage};
 
 pub struct MultiCurrentKeySource {
 	storage: SqlitePersistentStorage,
@@ -85,7 +86,7 @@ impl KeyFilterSource for MultiCurrentKeySource {
 			if let Some(last) = keys.last() {
 				self.cursor = Some(last.clone());
 			}
-			hashes.extend(keys.iter().map(|key| hash_key(table, key)));
+			hashes.extend(keys.iter().map(|key| MultiKeys::hash((table, key))));
 			if fetched < want {
 				self.index += 1;
 				self.cursor = None;

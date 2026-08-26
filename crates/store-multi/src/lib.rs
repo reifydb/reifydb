@@ -40,9 +40,10 @@ use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
+use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_value::util::cowvec::CowVec;
 use store::{MultiPersistentProbeMetrics, StandardMultiStore};
-use tier::{commit::buffer::MultiCommitMetrics, persistent::SqlitePageCacheMetrics, read::ReadBufferShardMetrics};
+use tier::{commit::buffer::MultiCommitMetrics, read::ReadBufferShardMetrics};
 
 pub mod memory {}
 pub mod sqlite {}
@@ -132,7 +133,7 @@ impl MultiStore {
 		}
 	}
 
-	pub fn persistent_page_cache_metrics(&self) -> Option<SqlitePageCacheMetrics> {
+	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {
 		match self {
 			MultiStore::Standard(store) => store.persistent_page_cache_metrics(),
 		}

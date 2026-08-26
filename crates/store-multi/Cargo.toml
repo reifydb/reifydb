@@ -9,7 +9,7 @@ description = "Multi-version storage for OLTP operations with MVCC support"
 
 [features]
 default = ["sqlite"]
-sqlite = ["rusqlite", "reifydb-sqlite"]
+sqlite = ["rusqlite", "reifydb-sqlite", "reifydb-store/sqlite"]
 chaos = ["sqlite"]
 
 [build-dependencies]

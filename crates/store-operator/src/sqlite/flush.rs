@@ -102,7 +102,7 @@ impl SqliteOperatorStorage {
 					operator,
 					key,
 					..
-				} => self.filter().add(*operator, key),
+				} => self.filter().add((*operator, key)),
 				OperatorWrite::AnchorInsert {
 					operator,
 					group,
@@ -116,7 +116,7 @@ impl SqliteOperatorStorage {
 					side,
 					row_num,
 					..
-				} => self.anchor_filter().add(*operator, *group, *side, *row_num),
+				} => self.anchor_filter().add((*operator, *group, *side, *row_num)),
 				_ => {}
 			}
 		}
@@ -212,12 +212,12 @@ impl SqliteOperatorStorage {
 		}
 		for ((operator, key), entry) in &batch.state {
 			if entry.post.is_some() {
-				self.filter().add(*operator, key);
+				self.filter().add((*operator, key));
 			}
 		}
 		for ((operator, group, side, row_number), entry) in &batch.anchors {
 			if entry.is_some() {
-				self.anchor_filter().add(*operator, *group, *side, *row_number);
+				self.anchor_filter().add((*operator, *group, *side, *row_number));
 			}
 		}
 		let guard = self.inner.conn.lock();

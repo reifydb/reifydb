@@ -312,7 +312,7 @@ impl StandardOperatorStore {
 		if cached.is_some() {
 			return SizeProbe::Known(None);
 		}
-		if !persistent.filter().may_contain(operator, key) {
+		if !persistent.filter().may_contain((operator, key)) {
 			return SizeProbe::Known(None);
 		}
 		SizeProbe::Persistent
@@ -362,7 +362,7 @@ impl StandardOperatorStore {
 			if cached.is_some() {
 				continue;
 			}
-			if !persistent.filter().may_contain(operator, key) {
+			if !persistent.filter().may_contain((operator, key)) {
 				continue;
 			}
 			fetch.push((index, key));
@@ -402,7 +402,7 @@ impl StandardOperatorStore {
 		if cached.is_some() {
 			return None;
 		}
-		if !persistent.filter().may_contain(operator, key) {
+		if !persistent.filter().may_contain((operator, key)) {
 			return None;
 		}
 		match self.point.as_ref() {
@@ -441,7 +441,7 @@ impl StandardOperatorStore {
 		if cached.is_some() {
 			return false;
 		}
-		if !persistent.filter().may_contain(operator, key) {
+		if !persistent.filter().may_contain((operator, key)) {
 			return false;
 		}
 		match self.point.as_ref() {

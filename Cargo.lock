@@ -3324,7 +3324,11 @@ version = "0.9.0"
 dependencies = [
  "reifydb-codec",
  "reifydb-core",
+ "reifydb-filter",
+ "reifydb-runtime",
+ "reifydb-sqlite",
  "reifydb-value",
+ "rusqlite",
 ]
 
 [[package]]
@@ -3509,6 +3513,7 @@ dependencies = [
  "reifydb-profiler",
  "reifydb-runtime",
  "reifydb-sqlite",
+ "reifydb-store",
  "reifydb-store-cdc",
  "reifydb-store-multi",
  "reifydb-store-operator",

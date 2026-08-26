@@ -15,7 +15,7 @@ mod tests;
 
 use std::sync::{
 	Arc,
-	atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+	atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 use reifydb_runtime::{
@@ -23,21 +23,18 @@ use reifydb_runtime::{
 	sync::mutex::{Mutex, MutexGuard},
 };
 #[cfg(not(target_arch = "wasm32"))]
-use reifydb_sqlite::{
-	SqliteConfig, SqliteTempPathGuard,
-	connection::{connect, convert_flags, resolve_db_path},
-	pragma,
+use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+use reifydb_store::{
+	filter::KeyFilter,
+	sqlite::{OpenMessages, ReadPool, open},
 };
-use reifydb_value::value::duration::Duration;
 use rusqlite::Connection;
 use tracing::instrument;
 
 use crate::{
-	filter::{ARMED_CAPACITY_ANCHORS, ARMED_CAPACITY_KEYS, OperatorAnchorFilter, OperatorKeyFilter},
+	filter::{ARMED_CAPACITY_ANCHORS, ARMED_CAPACITY_KEYS, OperatorAnchors, OperatorKeys},
 	sqlite::{anchor::anchor_exists, schema::ensure_schema, state::state_exists},
 };
-
-const BUSY_TIMEOUT: Duration = Duration::from_milliseconds_const(200);
 
 #[derive(Clone)]
 pub struct SqliteOperatorStorage {
@@ -50,33 +47,18 @@ struct StoreInner {
 	cache_hits: AtomicU64,
 	cache_misses: AtomicU64,
 	state_written: AtomicBool,
-	filter: OperatorKeyFilter,
-	anchor_filter: OperatorAnchorFilter,
+	filter: KeyFilter<OperatorKeys>,
+	anchor_filter: KeyFilter<OperatorAnchors>,
 }
 
-struct ReadPool {
-	conns: Vec<Mutex<Option<Connection>>>,
-	next: AtomicUsize,
-}
-
-impl ReadPool {
-	fn acquire(&self) -> MutexGuard<'_, Option<Connection>> {
-		let n = self.conns.len();
-		let start = self.next.fetch_add(1, Ordering::Relaxed) % n;
-		for i in 0..n {
-			if let Some(guard) = self.conns[(start + i) % n].try_lock() {
-				return guard;
-			}
-		}
-		self.conns[start].lock()
-	}
-
-	fn shutdown(&self) {
-		for slot in &self.conns {
-			drop(slot.lock().take());
-		}
-	}
-}
+const OPEN_MESSAGES: OpenMessages = OpenMessages {
+	connect: "operator state database could not be opened",
+	pragmas: "operator state pragmas could not be applied",
+	busy_timeout: "operator state busy timeout could not be set",
+	read_connect: "operator state read connection could not be opened",
+	read_pragmas: "operator state read pragmas could not be applied",
+	read_busy_timeout: "operator state read busy timeout could not be set",
+};
 
 impl SqliteOperatorStorage {
 	pub fn in_memory() -> (Self, SqliteTempPathGuard) {
@@ -92,47 +74,27 @@ impl SqliteOperatorStorage {
 		journal_mode = config.journal_mode.as_ref().map(|mode| mode.as_str())
 	))]
 	pub fn new(config: SqliteConfig) -> Self {
-		let path = resolve_db_path(config.path.clone(), "operator.db");
-		let flags = convert_flags(&config.flags);
-
-		let conn = connect(&path, flags).expect("operator state database could not be opened");
-		pragma::apply(&conn, &config).expect("operator state pragmas could not be applied");
-		conn.busy_timeout(BUSY_TIMEOUT.to_std()).expect("operator state busy timeout could not be set");
-
-		let pool_size = config.read_pool_size.max(1) as usize;
-		let mut readers = Vec::with_capacity(pool_size);
-		for _ in 0..pool_size {
-			let reader = connect(&path, flags).expect("operator state read connection could not be opened");
-			pragma::apply_read_only(&reader, &config)
-				.expect("operator state read pragmas could not be applied");
-			reader.busy_timeout(BUSY_TIMEOUT.to_std())
-				.expect("operator state read busy timeout could not be set");
-			readers.push(reader);
-		}
-
+		let (conn, readers) = open(&config, "operator.db", &OPEN_MESSAGES);
 		Self::with_connections(conn, readers)
 	}
 
-	fn with_connections(conn: Connection, readers: Vec<Connection>) -> Self {
+	fn with_connections(conn: Connection, readers: ReadPool) -> Self {
 		ensure_schema(&conn);
 		let state_written = state_exists(&conn);
 		let filter = if state_written {
-			OperatorKeyFilter::new()
+			KeyFilter::<OperatorKeys>::new()
 		} else {
-			OperatorKeyFilter::armed(ARMED_CAPACITY_KEYS)
+			KeyFilter::<OperatorKeys>::armed(ARMED_CAPACITY_KEYS)
 		};
 		let anchor_filter = if anchor_exists(&conn) {
-			OperatorAnchorFilter::new()
+			KeyFilter::<OperatorAnchors>::new()
 		} else {
-			OperatorAnchorFilter::armed(ARMED_CAPACITY_ANCHORS)
+			KeyFilter::<OperatorAnchors>::armed(ARMED_CAPACITY_ANCHORS)
 		};
 		Self {
 			inner: Arc::new(StoreInner {
 				conn: Mutex::new(Some(conn)),
-				readers: ReadPool {
-					conns: readers.into_iter().map(|reader| Mutex::new(Some(reader))).collect(),
-					next: AtomicUsize::new(0),
-				},
+				readers,
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
 				state_written: AtomicBool::new(state_written),
@@ -143,7 +105,7 @@ impl SqliteOperatorStorage {
 	}
 
 	fn read_conn(&self) -> MutexGuard<'_, Option<Connection>> {
-		if self.inner.readers.conns.is_empty() {
+		if self.inner.readers.is_empty() {
 			return self.inner.conn.lock();
 		}
 		self.inner.readers.acquire()
@@ -157,11 +119,11 @@ impl SqliteOperatorStorage {
 		self.inner.state_written.store(true, Ordering::Release);
 	}
 
-	pub fn filter(&self) -> &OperatorKeyFilter {
+	pub fn filter(&self) -> &KeyFilter<OperatorKeys> {
 		&self.inner.filter
 	}
 
-	pub fn anchor_filter(&self) -> &OperatorAnchorFilter {
+	pub fn anchor_filter(&self) -> &KeyFilter<OperatorAnchors> {
 		&self.inner.anchor_filter
 	}
 }

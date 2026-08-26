@@ -20,6 +20,7 @@ reifydb-filter = { workspace = true }
 reifydb-profiler = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sqlite = { workspace = true }
+reifydb-store = { workspace = true }
 reifydb-store-cdc = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-store-multi = { workspace = true }
