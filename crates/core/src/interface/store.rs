@@ -244,8 +244,17 @@ mod tests {
 
 	use super::{EntryKind, classify_key, classify_range};
 	use crate::{
-		interface::catalog::{id::TableId, storage::StorageId},
-		key::{partitioned_row::PartitionedRowKey, row::RowKey},
+		interface::catalog::{
+			id::{SeriesId, TableId, ViewId},
+			storage::StorageId,
+		},
+		key::{
+			EncodableKey,
+			partitioned_row::PartitionedRowKey,
+			partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
+			row::RowKey,
+			series_row::{SeriesRowKey, SeriesRowKeyRange},
+		},
 	};
 
 	fn part(v: &str) -> Partition {
@@ -308,5 +317,41 @@ mod tests {
 	fn classify_range_row_range_is_still_source() {
 		let storage = StorageId::Table(TableId(9));
 		assert_eq!(classify_range(&RowKey::full_scan(storage)), Some(EntryKind::Source(storage)));
+	}
+
+	#[test]
+	fn classify_key_and_classify_range_agree_for_the_series_kinds() {
+		// expired_batch picks its indexed scan by classify_range while the tier stores entries by classify_key;
+		// if the two disagree the evictor scans an entry that holds none of the rows it is trying to expire.
+		let series = StorageId::series(SeriesId(11));
+		let view = StorageId::View(ViewId(11));
+
+		for storage in [series, view] {
+			let key = SeriesRowKey {
+				storage,
+				variant_tag: None,
+				key: 5,
+				sequence: 1,
+			}
+			.encode();
+			assert_eq!(classify_key(&key), EntryKind::Source(storage));
+			assert_eq!(
+				classify_range(&SeriesRowKeyRange::full_scan(storage, None)),
+				Some(EntryKind::Source(storage))
+			);
+
+			let partitioned = PartitionedSeriesRowKey::encoded(
+				storage,
+				Partition::of(&[Value::Utf8("us".to_string())]),
+				None,
+				5,
+				1,
+			);
+			assert_eq!(classify_key(&partitioned), EntryKind::PartitionedSource(storage));
+			assert_eq!(
+				classify_range(&PartitionedSeriesRowKeyRange::full_scan(storage)),
+				Some(EntryKind::PartitionedSource(storage))
+			);
+		}
 	}
 }

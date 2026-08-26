@@ -86,14 +86,14 @@ mod tests {
 				id::{SeriesId, ViewId},
 				storage::StorageId,
 			},
-			store::{EntryKind, classify_key, classify_range},
+			store::{EntryKind, classify_key},
 		},
 		key::{
 			EncodableKey,
 			partitioned_row::PartitionedRowKey,
-			partitioned_series_row::{PartitionedSeriesRowKey, PartitionedSeriesRowKeyRange},
+			partitioned_series_row::PartitionedSeriesRowKey,
 			row::RowKey,
-			series_row::{SeriesRowKey, SeriesRowKeyRange},
+			series_row::SeriesRowKey,
 		},
 	};
 	use reifydb_value::value::{Value, partition::Partition, row_number::RowNumber};
@@ -265,41 +265,6 @@ mod tests {
 		assert!(key_range_of(page, 16).is_none());
 	}
 
-	#[test]
-	fn classify_key_and_classify_range_agree_for_the_series_kinds() {
-		// expired_batch picks its indexed scan by classify_range while the tier stores entries by classify_key;
-		// if the two disagree the evictor scans an entry that holds none of the rows it is trying to expire.
-		let series = StorageId::series(SeriesId(11));
-		let view = StorageId::View(ViewId(11));
-
-		for storage in [series, view] {
-			let key = SeriesRowKey {
-				storage,
-				variant_tag: None,
-				key: 5,
-				sequence: 1,
-			}
-			.encode();
-			assert_eq!(classify_key(&key), EntryKind::Source(storage));
-			assert_eq!(
-				classify_range(&SeriesRowKeyRange::full_scan(storage, None)),
-				Some(EntryKind::Source(storage))
-			);
-
-			let partitioned = PartitionedSeriesRowKey::encoded(
-				storage,
-				Partition::of(&[Value::Utf8("us".to_string())]),
-				None,
-				5,
-				1,
-			);
-			assert_eq!(classify_key(&partitioned), EntryKind::PartitionedSource(storage));
-			assert_eq!(
-				classify_range(&PartitionedSeriesRowKeyRange::full_scan(storage)),
-				Some(EntryKind::PartitionedSource(storage))
-			);
-		}
-	}
 
 	#[test]
 	fn key_range_of_survives_for_a_table_keyed_view_page() {
