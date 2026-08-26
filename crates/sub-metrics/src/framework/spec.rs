@@ -18,7 +18,6 @@ pub enum MetricsDomain {
 	ProcCgroupCpu,
 	ProcCgroupPressure,
 	StoreMultiCommit,
-	StoreMultiRead,
 	StoreMultiRange,
 	StoreMultiPoint,
 	StoreMultiPersistent,
@@ -285,7 +284,7 @@ mod tests {
 }
 
 impl MetricsDomain {
-	pub const ALL: [MetricsDomain; 32] = [
+	pub const ALL: [MetricsDomain; 31] = [
 		MetricsDomain::RuntimeMemory,
 		MetricsDomain::RuntimeWatermarks,
 		MetricsDomain::RuntimeOperators,
@@ -297,7 +296,6 @@ impl MetricsDomain {
 		MetricsDomain::ProcCgroupCpu,
 		MetricsDomain::ProcCgroupPressure,
 		MetricsDomain::StoreMultiCommit,
-		MetricsDomain::StoreMultiRead,
 		MetricsDomain::StoreMultiRange,
 		MetricsDomain::StoreMultiPoint,
 		MetricsDomain::StoreMultiPersistent,
@@ -336,7 +334,6 @@ impl MetricsDomain {
 			| MetricsDomain::RuntimeWatermarks
 			| MetricsDomain::RuntimeOperators
 			| MetricsDomain::StoreMultiCommit
-			| MetricsDomain::StoreMultiRead
 			| MetricsDomain::StoreMultiRange
 			| MetricsDomain::StoreMultiPoint
 			| MetricsDomain::StoreMultiPersistent
@@ -377,7 +374,6 @@ impl MetricsDomain {
 			| MetricsDomain::ProcCgroupCpu
 			| MetricsDomain::ProcCgroupPressure
 			| MetricsDomain::StoreMultiCommit
-			| MetricsDomain::StoreMultiRead
 			| MetricsDomain::StoreMultiRange
 			| MetricsDomain::StoreMultiPoint
 			| MetricsDomain::StoreMultiPersistent
@@ -542,28 +538,6 @@ impl MetricsDomain {
 					level("current_entries", ValueType::Uint8),
 				],
 				has_total: false,
-			},
-			MetricsDomain::StoreMultiRead => DomainSpec {
-				domain: self,
-				namespace: NamespaceId::SYSTEM_METRICS_STORE_MULTI_READ,
-				shape: DomainShape::Wide,
-				dimensions: vec![dim("shard", ValueType::Uint2)],
-				measures: vec![
-					level("used", ValueType::Uint8),
-					level("limit", ValueType::Uint8),
-					level("pages", ValueType::Uint8),
-					level("page_cap", ValueType::Uint8),
-					level("payload", ValueType::Uint8),
-					level("entries", ValueType::Uint8),
-					level("hot_pages", ValueType::Uint8),
-					level("complete_pages", ValueType::Uint8),
-					counter("pages_evicted", ValueType::Uint8),
-					counter("complete_pages_invalidated", ValueType::Uint8),
-					counter("point_hits", ValueType::Uint8),
-					counter("previous_hits", ValueType::Uint8),
-					counter("point_misses", ValueType::Uint8),
-				],
-				has_total: true,
 			},
 			MetricsDomain::StoreMultiRange => DomainSpec {
 				domain: self,

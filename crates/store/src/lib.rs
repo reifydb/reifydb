@@ -7,7 +7,6 @@
 pub mod coverage;
 pub mod filter;
 pub mod metrics;
-pub mod row;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
 pub mod tier;

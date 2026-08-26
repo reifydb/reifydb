@@ -35,7 +35,7 @@ use crate::{
 	flush::ObjectPersistence,
 	tier::{
 		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, point::MultiPointTier,
-		range::MultiRangeTier, read::MultiReadBufferTier,
+		range::MultiRangeTier,
 	},
 };
 
@@ -54,7 +54,6 @@ pub struct FlushEngine {
 	persistent: MultiPersistentTier,
 	persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
-	read: Option<MultiReadBufferTier>,
 	point: Option<MultiPointTier>,
 	range: Option<MultiRangeTier>,
 	clock: Clock,
@@ -84,7 +83,6 @@ impl FlushEngine {
 		persistent: MultiPersistentTier,
 		persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
-		read: Option<MultiReadBufferTier>,
 		clock: Clock,
 		event_bus: EventBus,
 	) -> Self {
@@ -93,7 +91,6 @@ impl FlushEngine {
 			persistent,
 			persistence,
 			eviction_watermark,
-			read,
 			point: None,
 			range: None,
 			clock,
@@ -301,7 +298,7 @@ impl FlushEngine {
 		to_drop: &[EvictedVersion],
 		accepted: &[EncodedKey],
 	) {
-		if self.read.is_none() && self.point.is_none() && self.range.is_none() {
+		if self.point.is_none() && self.range.is_none() {
 			return;
 		}
 		if persistent_object {
@@ -314,18 +311,12 @@ impl FlushEngine {
 					if let Some(point) = &self.point {
 						point.insert(key.clone(), *version, value.clone());
 					}
-					if let Some(read) = &self.read {
-						read.insert(key.clone(), *version, value.clone());
-					}
 				} else {
 					if let Some(range) = &self.range {
 						range.invalidate(key);
 					}
 					if let Some(point) = &self.point {
 						point.invalidate(key);
-					}
-					if let Some(read) = &self.read {
-						read.invalidate(key);
 					}
 				}
 			}
@@ -336,9 +327,6 @@ impl FlushEngine {
 				}
 				if let Some(point) = &self.point {
 					point.invalidate(&evicted.key);
-				}
-				if let Some(read) = &self.read {
-					read.invalidate(&evicted.key);
 				}
 			}
 		}
@@ -376,7 +364,7 @@ mod tests {
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
-	use crate::tier::{VersionedGetResult, read::ReadBufferConfig};
+	use crate::tier::{VersionedGetResult, point::MultiPointConfig};
 
 	fn ek(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes())
@@ -433,7 +421,6 @@ mod tests {
 				persistent,
 				persistence_lock,
 				watermark_lock,
-				None,
 				Clock::Real,
 				testing_event_bus(),
 			),
@@ -477,7 +464,6 @@ mod tests {
 				persistent,
 				persistence_lock,
 				watermark_lock,
-				None,
 				Clock::Real,
 				event_bus,
 			),
@@ -540,10 +526,10 @@ mod tests {
 		assert!(events[0].persists().is_empty(), "a non-persistent object persists nothing");
 	}
 
-	fn build_engine_with_read(
+	fn build_engine_with_point(
 		persistence: Arc<dyn ObjectPersistence>,
 		watermark: CommitVersion,
-		read: MultiReadBufferTier,
+		point: MultiPointTier,
 	) -> (FlushEngine, SqliteTempPathGuard) {
 		let buffer = MultiCommitBufferTier::memory();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
@@ -552,15 +538,8 @@ mod tests {
 		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 		*watermark_lock.write() = Some(Arc::new(StaticWatermark(watermark)));
 		(
-			FlushEngine::new(
-				buffer,
-				persistent,
-				persistence_lock,
-				watermark_lock,
-				Some(read),
-				Clock::Real,
-				testing_event_bus(),
-			),
+			FlushEngine::new(buffer, persistent, persistence_lock, watermark_lock, Clock::Real, testing_event_bus())
+				.with_point(Some(point)),
 			guard,
 		)
 	}
@@ -704,42 +683,34 @@ mod tests {
 
 	#[test]
 	fn sweep_seeds_evicted_keys_into_the_read_tier() {
-		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			resident_pages: 16,
-			..Default::default()
-		})
-		.unwrap();
-		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
+		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
+		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(11)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
 		write(&actor.commit, kind, &key, 2, "v2");
 
-		read.insert(key.clone(), CommitVersion(2), Some(val("stale")));
+		point.insert(key.clone(), CommitVersion(2), Some(val("stale")));
 
 		actor.sweep(CommitVersion(2));
 
-		match read.get(&key, CommitVersion(2)) {
+		match point.get(&key, CommitVersion(2)) {
 			VersionedGetResult::Value {
 				value,
 				..
 			} => assert_eq!(
 				value.as_ref(),
 				val("v2").as_ref(),
-				"the read tier must hold the persisted value, not the stale one"
+				"the point tier must hold the persisted value, not the stale one"
 			),
-			other => panic!("the sweep must seed the evicted key into the read tier, got {other:?}"),
+			other => panic!("the sweep must seed the evicted key into the point tier, got {other:?}"),
 		}
 	}
 
 	#[test]
 	fn sweep_seeds_tombstone_into_read_tier() {
-		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			resident_pages: 16,
-			..Default::default()
-		})
-		.unwrap();
-		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
+		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
+		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(21)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
@@ -748,20 +719,16 @@ mod tests {
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(read.get(&key, CommitVersion(2)), VersionedGetResult::Tombstone),
-			"an evicted tombstone must be seeded into the read tier as a definitive miss, not left absent \
+			matches!(point.get(&key, CommitVersion(2)), VersionedGetResult::Tombstone),
+			"an evicted tombstone must be seeded into the point tier as a definitive miss, not left absent \
 			 (which would fall through and risk resurrecting an older value)"
 		);
 	}
 
 	#[test]
 	fn sweep_invalidates_rejected_key_but_seeds_accepted() {
-		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			resident_pages: 16,
-			..Default::default()
-		})
-		.unwrap();
-		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
+		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
+		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(22)));
 		let rejected = ek("rejected");
 		let accepted = ek("accepted");
@@ -770,7 +737,7 @@ mod tests {
 			.set(CommitVersion(3), HashMap::from([(kind, vec![(rejected.clone(), Some(val("high")))])]))
 			.unwrap();
 
-		read.insert(rejected.clone(), CommitVersion(2), Some(val("stale")));
+		point.insert(rejected.clone(), CommitVersion(2), Some(val("stale")));
 
 		write(&actor.commit, kind, &rejected, 2, "low");
 		write(&actor.commit, kind, &accepted, 2, "b");
@@ -778,67 +745,59 @@ mod tests {
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(read.get(&rejected, CommitVersion(2)), VersionedGetResult::NotFound),
-			"a guard-rejected key must be invalidated in the read tier so reads fall through to the newer \
+			matches!(point.get(&rejected, CommitVersion(2)), VersionedGetResult::NotFound),
+			"a guard-rejected key must be invalidated in the point tier so reads fall through to the newer \
 			 persisted value, never serving the stale entry"
 		);
-		match read.get(&accepted, CommitVersion(2)) {
+		match point.get(&accepted, CommitVersion(2)) {
 			VersionedGetResult::Value {
 				value,
 				..
 			} => assert_eq!(value.as_ref(), val("b").as_ref(), "the accepted key must be seeded"),
-			other => panic!("the accepted key must be seeded into the read tier, got {other:?}"),
+			other => panic!("the accepted key must be seeded into the point tier, got {other:?}"),
 		}
 	}
 
 	#[test]
 	fn sweep_seed_respects_read_tier_downgrade_guard() {
-		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			resident_pages: 16,
-			..Default::default()
-		})
-		.unwrap();
-		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
+		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
+		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(23)));
 		let key = ek("k");
 
-		read.insert(key.clone(), CommitVersion(5), Some(val("newer")));
+		point.insert(key.clone(), CommitVersion(5), Some(val("newer")));
 
 		write(&actor.commit, kind, &key, 2, "older");
 		actor.sweep(CommitVersion(2));
 
-		match read.get(&key, CommitVersion(5)) {
+		match point.get(&key, CommitVersion(5)) {
 			VersionedGetResult::Value {
 				value,
 				..
 			} => assert_eq!(
 				value.as_ref(),
 				val("newer").as_ref(),
-				"the older seeded value must not overwrite a newer resident read-tier entry"
+				"the older seeded value must not overwrite a newer resident point-tier entry"
 			),
-			other => panic!("the newer read-tier entry must survive the sweep's seed, got {other:?}"),
+			other => panic!("the newer point-tier entry must survive the sweep's seed, got {other:?}"),
 		}
 	}
 
 	#[test]
 	fn sweep_invalidates_ephemeral_object_in_read_tier() {
-		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			resident_pages: 16,
-			..Default::default()
-		})
-		.unwrap();
-		let (actor, _guard) = build_engine_with_read(Arc::new(NonePersistent), CommitVersion(2), read.clone());
+		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
+		let (actor, _guard) = build_engine_with_point(Arc::new(NonePersistent), CommitVersion(2), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(24)));
 		let key = ek("k");
 
-		read.insert(key.clone(), CommitVersion(2), Some(val("stale")));
+		point.insert(key.clone(), CommitVersion(2), Some(val("stale")));
 		write(&actor.commit, kind, &key, 2, "v2");
 
 		actor.sweep(CommitVersion(2));
 
 		assert!(
-			matches!(read.get(&key, CommitVersion(2)), VersionedGetResult::NotFound),
-			"an ephemeral (persistent:false) object must be invalidated in the read tier, never seeded"
+			matches!(point.get(&key, CommitVersion(2)), VersionedGetResult::NotFound),
+			"an ephemeral (persistent:false) object must be invalidated in the point tier, never seeded"
 		);
 		assert!(
 			matches!(
@@ -851,12 +810,8 @@ mod tests {
 
 	#[test]
 	fn sweep_seeds_accepted_keys_across_version_buckets() {
-		let read = MultiReadBufferTier::new(ReadBufferConfig {
-			resident_pages: 16,
-			..Default::default()
-		})
-		.unwrap();
-		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(4), read.clone());
+		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
+		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(4), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(25)));
 		let a = ek("a");
 		let b = ek("b");
@@ -867,14 +822,14 @@ mod tests {
 
 		actor.sweep(CommitVersion(4));
 
-		match read.get(&a, CommitVersion(4)) {
+		match point.get(&a, CommitVersion(4)) {
 			VersionedGetResult::Value {
 				value,
 				..
 			} => assert_eq!(value.as_ref(), val("a2").as_ref(), "a's latest-<=W (v2) must be seeded"),
 			other => panic!("key a must be seeded across version buckets, got {other:?}"),
 		}
-		match read.get(&b, CommitVersion(4)) {
+		match point.get(&b, CommitVersion(4)) {
 			VersionedGetResult::Value {
 				value,
 				..

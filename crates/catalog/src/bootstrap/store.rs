@@ -45,7 +45,7 @@ pub fn bootstrap_store(
 	Ok(())
 }
 
-const STORE_NAMESPACES: [(NamespaceId, &str, &str, NamespaceId); 19] = [
+const STORE_NAMESPACES: [(NamespaceId, &str, &str, NamespaceId); 18] = [
 	(
 		NamespaceId::SYSTEM_METRICS_STORE_MULTI,
 		"system::metrics::store::multi",
@@ -56,12 +56,6 @@ const STORE_NAMESPACES: [(NamespaceId, &str, &str, NamespaceId); 19] = [
 		NamespaceId::SYSTEM_METRICS_STORE_MULTI_COMMIT,
 		"system::metrics::store::multi::commit",
 		"commit",
-		NamespaceId::SYSTEM_METRICS_STORE_MULTI,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_STORE_MULTI_READ,
-		"system::metrics::store::multi::read",
-		"read",
 		NamespaceId::SYSTEM_METRICS_STORE_MULTI,
 	),
 	(

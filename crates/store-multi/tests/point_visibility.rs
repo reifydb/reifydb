@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! MVCC correctness for the read buffer tier inside the tiered store. An entry holds the latest committed
+//! MVCC correctness for the point tier inside the tiered store. An entry holds the latest committed
 //! `(version, value)` plus the one version it superseded, so a hit must never serve a value the requested
 //! snapshot cannot see, and a newer commit must invalidate the entry rather than shadow it.
 
@@ -20,8 +20,12 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, row::RowKey},
 };
-use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore, tier::read::ReadBufferConfig};
-use reifydb_value::{cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_store_multi::{
+	MultiVersionScope,
+	store::StandardMultiStore,
+	tier::{point::MultiPointConfig, range::MultiRangeConfig},
+};
+use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
 
 fn key(s: &str) -> EncodedKey {
 	EncodedKey::new(s.as_bytes())
@@ -130,8 +134,8 @@ fn scan(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)> {
 }
 
 #[test]
-fn range_scan_does_not_consult_the_read_tier() {
-	// A point read never marks its bucket range-complete, and only range-complete buckets may serve a
+fn range_scan_does_not_consult_the_point_tier() {
+	// A point read never marks its partition range-complete, and only a covered partition may serve a
 	// scan; otherwise capacity eviction of a point-cached entry would silently change scan results.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = key("only_in_cache");
@@ -154,7 +158,7 @@ fn range_scan_does_not_consult_the_read_tier() {
 	let scanned_after = scan(&store, 5);
 	assert!(
 		!scanned_after.iter().any(|(kk, _)| kk == k.as_ref()),
-		"a value present only in the read cache must never appear in a range scan"
+		"a value present only in the point tier must never appear in a range scan"
 	);
 }
 
@@ -205,13 +209,19 @@ fn reaping_a_key_invalidates_the_cached_row_it_removed() {
 
 #[test]
 fn capacity_eviction_of_a_cache_entry_never_changes_a_read_result() {
-	// Capacity is a resident-page cap and a RAM trade only: a cap below the pages touched evicts on every read, and
-	// every key must still resolve.
-	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_read(ReadBufferConfig {
-		resident_pages: 1,
-		shards: 1,
-		..ReadBufferConfig::default()
-	});
+	// Capacity is a resident-byte cap and a RAM trade only: a budget below the rows touched evicts on every
+	// read, and every key must still resolve.
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(
+		MultiPointConfig {
+			resident_bytes: Some(ByteSize::from_bytes(256)),
+			shards: 1,
+		},
+		MultiRangeConfig {
+			resident_bytes: Some(ByteSize::from_bytes(256)),
+			shards: 1,
+			..MultiRangeConfig::default()
+		},
+	);
 	let keys = ["a", "b", "c", "d"];
 	for (i, name) in keys.iter().enumerate() {
 		persistent_only_set(&store, &key(name), 5, &format!("val{i}"));

@@ -42,7 +42,6 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_STORE_SINGLE_COMMIT: NamespaceId = NamespaceId(31);
 	pub const SYSTEM_METRICS_STORE_SINGLE_PERSISTENT: NamespaceId = NamespaceId(32);
 	pub const SYSTEM_METRICS_STORE_OPERATOR: NamespaceId = NamespaceId(33);
-	pub const SYSTEM_METRICS_STORE_MULTI_READ: NamespaceId = NamespaceId(34);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_POINT: NamespaceId = NamespaceId(36);
 	pub const SYSTEM_METRICS_STORE_OPERATOR_PERSISTENT: NamespaceId = NamespaceId(37);
 	pub const SYSTEM_METRICS_INSTRUMENTS: NamespaceId = NamespaceId(38);

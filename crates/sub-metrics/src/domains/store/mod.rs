@@ -10,7 +10,7 @@ use reifydb_store_cdc::{
 use reifydb_store_multi::{
 	MultiStore,
 	store::MultiPersistentProbeMetrics,
-	tier::{commit::buffer::MultiCommitMetrics, read::ReadBufferShardMetrics},
+	tier::commit::buffer::MultiCommitMetrics,
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
@@ -45,10 +45,6 @@ impl StoreReader {
 
 	pub fn multi_commit(&self) -> MultiCommitMetrics {
 		self.multi.commit_metrics()
-	}
-
-	pub fn multi_read(&self) -> Vec<ReadBufferShardMetrics> {
-		self.multi.read_buffer_shard_metrics()
 	}
 
 	pub fn multi_persistent(&self) -> Option<PageCacheMetrics> {

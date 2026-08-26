@@ -14,7 +14,8 @@ use reifydb_runtime::{
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_store_cdc::{config::CdcCommitConfig, tier::read::CdcReadConfig};
 use reifydb_store_multi::tier::{
-	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig,
+	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, point::MultiPointConfig,
+	range::MultiRangeConfig,
 };
 use reifydb_store_operator::tier::{point::OperatorPointConfig, range::OperatorRangeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
@@ -35,7 +36,8 @@ type PoolConfigSources = (
 	MultiCommitBufferTier,
 	Option<MultiPersistentTier>,
 	PoolConfig,
-	Option<ReadBufferConfig>,
+	Option<MultiPointConfig>,
+	Option<MultiRangeConfig>,
 	Option<OperatorPointConfig>,
 	Option<OperatorRangeConfig>,
 	u32,
@@ -54,7 +56,8 @@ fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, V
 		multi_commit_buffer,
 		multi_persistent,
 		resolved.pools,
-		resolved.read,
+		resolved.multi_point,
+		resolved.multi_range,
 		resolved.operator_point,
 		resolved.operator_range,
 		resolved.cdc_wal_autocheckpoint,
@@ -202,7 +205,8 @@ impl EmbeddedBuilder {
 			multi_commit_buffer,
 			multi_persistent,
 			pool_config,
-			read_buffer,
+			multi_point_buffer,
+			multi_range_buffer,
 			operator_point_buffer,
 			operator_range_buffer,
 			cdc_wal_autocheckpoint,
@@ -221,7 +225,8 @@ impl EmbeddedBuilder {
 			self.storage_factory.create_with_multi_commit_buffer(
 				multi_commit_buffer,
 				multi_persistent,
-				read_buffer,
+				multi_point_buffer,
+				multi_range_buffer,
 				operator_point_buffer,
 				operator_range_buffer,
 				cdc_commit,

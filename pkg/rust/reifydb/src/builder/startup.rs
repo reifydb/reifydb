@@ -13,7 +13,8 @@ use reifydb_store_cdc::{
 	tier::{commit::CdcCommitBufferTier, read::CdcReadConfig},
 };
 use reifydb_store_multi::tier::{
-	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig,
+	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, point::MultiPointConfig,
+	range::MultiRangeConfig,
 };
 use reifydb_store_operator::tier::{point::OperatorPointConfig, range::OperatorRangeConfig};
 use reifydb_value::{byte_size::ByteSize, value::Value};
@@ -22,7 +23,8 @@ use crate::Result;
 
 pub(crate) struct StartupConfig {
 	pub pools: PoolConfig,
-	pub read: Option<ReadBufferConfig>,
+	pub multi_point: Option<MultiPointConfig>,
+	pub multi_range: Option<MultiRangeConfig>,
 	pub operator_point: Option<OperatorPointConfig>,
 	pub operator_range: Option<OperatorRangeConfig>,
 	pub multi_wal_autocheckpoint: u32,
@@ -37,9 +39,8 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::ThreadsFlow,
 	ConfigKey::ThreadsTask,
 	ConfigKey::ThreadsCompute,
-	ConfigKey::MultiReadBufferPages,
-	ConfigKey::MultiReadBufferPageSize,
-	ConfigKey::MultiReadBufferBytes,
+	ConfigKey::MultiPointBufferBytes,
+	ConfigKey::MultiRangeBufferBytes,
 	ConfigKey::OperatorPointBufferBytes,
 	ConfigKey::OperatorRangeBufferBytes,
 	ConfigKey::MultiWalAutocheckpoint,
@@ -98,11 +99,15 @@ pub(crate) fn resolve_startup_configs(
 		async_threads: threads(ConfigKey::ThreadsAsync),
 	};
 
-	let read = uint8_opt(ConfigKey::MultiReadBufferBytes).map(|resident_bytes| ReadBufferConfig {
-		resident_pages: uint8(ConfigKey::MultiReadBufferPages) as usize,
+	let multi_point = uint8_opt(ConfigKey::MultiPointBufferBytes).map(|resident_bytes| MultiPointConfig {
 		resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
-		shards: ReadBufferConfig::default().shards,
-		bucket_shift: uint8(ConfigKey::MultiReadBufferPageSize).max(1).trailing_zeros() as u8,
+		shards: MultiPointConfig::default().shards,
+	});
+
+	let multi_range = uint8_opt(ConfigKey::MultiRangeBufferBytes).map(|resident_bytes| MultiRangeConfig {
+		resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
+		shards: MultiRangeConfig::default().shards,
+		gap_guard: MultiRangeConfig::default().gap_guard,
 	});
 
 	let operator_point = uint8_opt(ConfigKey::OperatorPointBufferBytes).map(|resident_bytes| OperatorPointConfig {
@@ -131,7 +136,8 @@ pub(crate) fn resolve_startup_configs(
 
 	Ok(StartupConfig {
 		pools,
-		read,
+		multi_point,
+		multi_range,
 		operator_point,
 		operator_range,
 		multi_wal_autocheckpoint: uint8(ConfigKey::MultiWalAutocheckpoint) as u32,

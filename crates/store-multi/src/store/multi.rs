@@ -138,9 +138,6 @@ impl StandardMultiStore {
 				if let Some(point) = &self.point {
 					point.insert(key.clone(), v, Some(value.clone()));
 				}
-				if let Some(read) = &self.read {
-					read.insert(key.clone(), v, Some(value.clone()));
-				}
 				Some(Some(MultiVersionRow {
 					key: key.clone(),
 					bytes: EncodedBytes(value),
@@ -356,9 +353,6 @@ impl StandardMultiStore {
 					if let Some(point) = &self.point {
 						point.insert(table_keys[slot].clone(), *v, Some(value.clone()));
 					}
-					if let Some(read) = &self.read {
-						read.insert(table_keys[slot].clone(), *v, Some(value.clone()));
-					}
 				}
 				persistent_aligned[slot] = result;
 			}
@@ -414,7 +408,7 @@ impl StandardMultiStore {
 
 	#[inline]
 	fn update_read_cache_on_commit(&self, batches: &TierBatch) {
-		if self.read.is_none() && self.range.is_none() {
+		if self.point.is_none() && self.range.is_none() {
 			return;
 		}
 		for entries in batches.values() {
@@ -424,9 +418,6 @@ impl StandardMultiStore {
 				}
 				if let Some(point) = &self.point {
 					point.invalidate(key);
-				}
-				if let Some(read) = &self.read {
-					read.invalidate(key);
 				}
 			}
 		}
@@ -1175,9 +1166,6 @@ impl StandardMultiStore {
 				if let Some(point) = &self.point {
 					point.insert(key.clone(), version, Some(value.clone()));
 				}
-				if let Some(read) = &self.read {
-					read.insert(key.clone(), version, Some(value.clone()));
-				}
 				Some(Some(MultiVersionRow {
 					key: key.clone(),
 					bytes: EncodedBytes(CowVec::new(value.to_vec())),
@@ -1296,7 +1284,7 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod cache_tests {
-	use std::{collections::HashMap, ops::Bound};
+	use std::collections::HashMap;
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{
@@ -1304,7 +1292,7 @@ mod cache_tests {
 		delta::Delta,
 		interface::{
 			catalog::{flow::OperatorId, id::TableId, storage::StorageId},
-			store::{EntryKind, MultiVersionCommit, MultiVersionGet},
+			store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 		},
 		key::{
 			EncodableKey,
@@ -1320,7 +1308,7 @@ mod cache_tests {
 		store::StandardMultiStore,
 		tier::{
 			RangeStop, RawEntry, TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier,
-			range::PartitionId, read::ReadBufferConfig,
+			point::MultiPointConfig, range::{MultiRangeConfig, PartitionId},
 		},
 	};
 
@@ -1418,9 +1406,9 @@ mod cache_tests {
 	}
 
 	#[test]
-	fn operator_state_commit_does_not_populate_the_read_tier() {
+	fn operator_state_commit_does_not_populate_the_point_tier() {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-		let read = store.read.clone().expect("read tier configured");
+		let point = store.point.clone().expect("point tier configured");
 
 		let opkey =
 			OperatorStateKey::new(OperatorId(7), GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, vec![1, 2, 3])
@@ -1436,10 +1424,14 @@ mod cache_tests {
 		.unwrap();
 
 		assert!(
-			matches!(read.get(&opkey, CommitVersion(10)), VersionedGetResult::NotFound),
-			"an operator commit must not write through into the read tier"
+			matches!(point.get(&opkey, CommitVersion(10)), VersionedGetResult::NotFound),
+			"an operator commit must not write through into the point tier"
 		);
-		assert_eq!(read.resident_pages(), 0, "no operator page may become resident on commit");
+		assert_eq!(
+			store.point_shard_metrics().iter().map(|shard| shard.entries).sum::<usize>(),
+			0,
+			"no operator row may become resident on commit"
+		);
 
 		let row = MultiVersionGet::get(&store, &opkey, CommitVersion(10))
 			.unwrap()
@@ -1448,32 +1440,29 @@ mod cache_tests {
 		assert_eq!(row.version, CommitVersion(10));
 
 		assert!(
-			matches!(read.get(&opkey, CommitVersion(10)), VersionedGetResult::NotFound),
-			"a store-level operator read must not back-populate the read tier"
+			matches!(point.get(&opkey, CommitVersion(10)), VersionedGetResult::NotFound),
+			"a store-level operator read must not back-populate the point tier"
 		);
 	}
 
 	#[test]
-	fn source_row_write_clears_coverage_on_its_page() {
+	fn source_row_write_clears_coverage_on_its_partition() {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-		let read = store.read.clone().expect("read tier configured");
+		let range = store.range.clone().expect("range tier configured");
 
 		let neighbor = RowKey::encoded(STORAGE, 1);
-		let page = read.page_of_key(&neighbor);
+		let kind = classify_key(&neighbor);
+		let partition = PartitionId::of(kind, &neighbor).expect("a source row key must name a partition");
 		assert_eq!(
-			read.page_of_key(&RowKey::encoded(STORAGE, 2)),
-			page,
-			"both source rows must share a page for this test to exercise flag-clearing"
+			PartitionId::of(kind, &RowKey::encoded(STORAGE, 2)),
+			Some(partition),
+			"both source rows must share a partition for this test to exercise the retraction"
 		);
-		let range = read.page_key_range(page).expect("a table row page has a reconstructable range");
-		let (Bound::Included(lo), Bound::Included(through)) = (range.start, range.end) else {
-			panic!("a table row page range is inclusive at both ends");
-		};
 		assert!(
-			read.materialize_scanned_chunk(
-				page.kind,
-				&lo,
-				&through,
+			range.materialize_scanned_chunk(
+				kind,
+				&RowKey::storage_start(STORAGE),
+				&RowKey::storage_end(STORAGE),
 				&[RawEntry {
 					key: neighbor,
 					version: CommitVersion(1),
@@ -1482,13 +1471,19 @@ mod cache_tests {
 			),
 			"the seeding chunk must publish its claim"
 		);
-		assert!(read.page_is_complete(page), "the page must start range-complete");
+		assert_eq!(
+			range.complete_partitions().iter().sum::<usize>(),
+			1,
+			"the partition must start range-complete, or the retraction below proves nothing"
+		);
 
 		commit_row(&store, 2, 5);
 
-		assert!(
-			!read.page_is_complete(page),
-			"writing a source row into a range-complete page must clear the flag so the range cache reclaims it"
+		assert_eq!(
+			range.complete_partitions().iter().sum::<usize>(),
+			0,
+			"writing a source row into a covered partition must retract the claim, or a later read is \
+			 answered from a partition that no longer holds every row it claims"
 		);
 	}
 
@@ -1542,10 +1537,16 @@ mod cache_tests {
 	const ROWS: u64 = 200;
 
 	fn store_without_read_tier() -> (StandardMultiStore, impl Drop) {
-		StandardMultiStore::testing_memory_with_persistent_sqlite_read(ReadBufferConfig {
-			resident_bytes: None,
-			..ReadBufferConfig::default()
-		})
+		StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(
+			MultiPointConfig {
+				resident_bytes: None,
+				..MultiPointConfig::default()
+			},
+			MultiRangeConfig {
+				resident_bytes: None,
+				..MultiRangeConfig::default()
+			},
+		)
 	}
 
 	const PERSISTED: u64 = 200;
@@ -1751,7 +1752,8 @@ mod probe_tests {
 		store::StandardMultiStore,
 		tier::{
 			TierBatch, commit::buffer::MultiCommitBufferTier,
-			persistent::sqlite::storage::SqlitePersistentStorage, read::ReadBufferConfig,
+			persistent::sqlite::storage::SqlitePersistentStorage, point::MultiPointConfig,
+			range::MultiRangeConfig,
 		},
 	};
 
@@ -1797,7 +1799,8 @@ mod probe_tests {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: Some(PersistentConfig::sqlite(sqlite_config)),
-			read: Some(ReadBufferConfig::default()),
+			point: Some(MultiPointConfig::default()),
+			range: Some(MultiRangeConfig::default()),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,

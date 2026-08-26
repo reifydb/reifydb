@@ -42,11 +42,10 @@ use crate::{
 		persistent::MultiPersistentTier,
 		point::{MultiPointConfig, MultiPointShardMetrics, MultiPointTier},
 		range::{MultiRangeConfig, MultiRangeShardMetrics, MultiRangeTier},
-		read::{MultiReadBufferTier, ReadBufferShardMetrics},
 	},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::{config::PersistentConfig, tier::read::ReadBufferConfig};
+use crate::config::PersistentConfig;
 
 pub mod multi;
 pub mod router;
@@ -85,7 +84,6 @@ pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
 pub struct StandardMultiStoreInner {
 	pub(crate) commit: MultiCommitBufferTier,
 	pub(crate) persistent: Option<MultiPersistentTier>,
-	pub(crate) read: Option<MultiReadBufferTier>,
 	pub(crate) point: Option<MultiPointTier>,
 	pub(crate) range: Option<MultiRangeTier>,
 
@@ -115,35 +113,9 @@ impl StandardMultiStore {
 
 		let eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 
-		let read =
-			config.persistent.is_some().then(|| config.read.and_then(MultiReadBufferTier::new)).flatten();
+		let point = config.persistent.is_some().then(|| config.point.and_then(MultiPointTier::new)).flatten();
 
-		let point = config
-			.persistent
-			.is_some()
-			.then(|| {
-				config.read.and_then(|read| {
-					MultiPointTier::new(MultiPointConfig {
-						resident_bytes: read.resident_bytes,
-						shards: read.shards,
-					})
-				})
-			})
-			.flatten();
-
-		let range = config
-			.persistent
-			.is_some()
-			.then(|| {
-				config.read.and_then(|read| {
-					MultiRangeTier::new(MultiRangeConfig {
-						resident_bytes: read.resident_bytes,
-						shards: read.shards,
-						..MultiRangeConfig::default()
-					})
-				})
-			})
-			.flatten();
+		let range = config.persistent.is_some().then(|| config.range.and_then(MultiRangeTier::new)).flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush_engine, filter) = {
@@ -167,7 +139,6 @@ impl StandardMultiStore {
 						persistent_storage.clone(),
 						row_settings_provider.clone(),
 						eviction_watermark.clone(),
-						read.clone(),
 						config.clock.clone(),
 						config.event_bus.clone(),
 					)
@@ -189,13 +160,12 @@ impl StandardMultiStore {
 			(None, None, None)
 		};
 
-		let read = persistent.as_ref().and(read);
+		let point = persistent.as_ref().and(point);
 		let range = persistent.as_ref().and(range);
 
 		Ok(Self(Arc::new(StandardMultiStoreInner {
 			commit,
 			persistent,
-			read,
 			point,
 			range,
 			flush_engine,
@@ -217,10 +187,7 @@ impl StandardMultiStore {
 			range.insert(key.clone(), version, value.clone());
 		}
 		if let Some(point) = &self.point {
-			point.insert(key.clone(), version, value.clone());
-		}
-		if let Some(read) = &self.read {
-			read.insert(key, version, value);
+			point.insert(key, version, value);
 		}
 	}
 
@@ -231,9 +198,6 @@ impl StandardMultiStore {
 		if let Some(point) = &self.point {
 			point.invalidate(key);
 		}
-		if let Some(read) = &self.read {
-			read.invalidate(key);
-		}
 	}
 
 	pub fn clear_read(&self) {
@@ -242,9 +206,6 @@ impl StandardMultiStore {
 		}
 		if let Some(point) = &self.point {
 			point.clear();
-		}
-		if let Some(read) = &self.read {
-			read.clear();
 		}
 	}
 
@@ -270,9 +231,6 @@ impl StandardMultiStore {
 
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		let mut collectors: Vec<Arc<dyn MetricsCollector>> = Vec::new();
-		if let Some(read) = &self.read {
-			collectors.push(Arc::new(read.clone()));
-		}
 		collectors.push(Arc::new(self.commit.clone()));
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		if let Some(persistent) = &self.persistent {
@@ -285,10 +243,6 @@ impl StandardMultiStore {
 
 	pub fn persistent(&self) -> Option<&MultiPersistentTier> {
 		self.persistent.as_ref()
-	}
-
-	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
-		self.read.as_ref().map(|read| read.shard_metrics()).unwrap_or_default()
 	}
 
 	pub fn point_shard_metrics(&self) -> Vec<MultiPointShardMetrics> {
@@ -365,7 +319,8 @@ impl StandardMultiStore {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: None,
-			read: None,
+			point: None,
+			range: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
@@ -384,7 +339,8 @@ impl StandardMultiStore {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: None,
-			read: None,
+			point: None,
+			range: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
@@ -396,11 +352,17 @@ impl StandardMultiStore {
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn testing_memory_with_persistent_sqlite() -> (Self, SqliteTempPathGuard) {
-		Self::testing_memory_with_persistent_sqlite_read(ReadBufferConfig::default())
+		Self::testing_memory_with_persistent_sqlite_tiers(
+			MultiPointConfig::default(),
+			MultiRangeConfig::default(),
+		)
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_persistent_sqlite_read(read: ReadBufferConfig) -> (Self, SqliteTempPathGuard) {
+	pub fn testing_memory_with_persistent_sqlite_tiers(
+		point: MultiPointConfig,
+		range: MultiRangeConfig,
+	) -> (Self, SqliteTempPathGuard) {
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::testing(clock.clone());
 		let spawner = actor_system.spawner();
@@ -411,7 +373,8 @@ impl StandardMultiStore {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: Some(persistent),
-			read: Some(read),
+			point: Some(point),
+			range: Some(range),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
@@ -433,7 +396,8 @@ impl StandardMultiStore {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: Some(persistent),
-			read: Some(ReadBufferConfig::default()),
+			point: Some(MultiPointConfig::default()),
+			range: Some(MultiRangeConfig::default()),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,

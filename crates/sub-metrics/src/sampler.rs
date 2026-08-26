@@ -23,7 +23,7 @@ use reifydb_store_cdc::{
 };
 use reifydb_store_multi::{
 	MultiStore,
-	tier::{point::MultiPointShardMetrics, range::MultiRangeShardMetrics, read::ReadBufferShardMetrics},
+	tier::{point::MultiPointShardMetrics, range::MultiRangeShardMetrics},
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
@@ -184,7 +184,6 @@ impl MetricsSamplerActor {
 			Surface::Current,
 			multi_commit_rows(&self.multi_store),
 		);
-		accumulator.push(MetricsDomain::StoreMultiRead, Surface::Current, multi_read_rows(&self.multi_store));
 		accumulator.push(MetricsDomain::StoreMultiRange, Surface::Current, multi_range_rows(&self.multi_store));
 		accumulator.push(MetricsDomain::StoreMultiPoint, Surface::Current, multi_point_rows(&self.multi_store));
 		accumulator.push(
@@ -406,31 +405,6 @@ fn multi_point_row(metrics: &MultiPointShardMetrics) -> MetricsRow {
 			counter_count("fills_started", metrics.counters.fills_started),
 			counter_count("fills_dirty_aborted", metrics.counters.fills_dirty_aborted),
 			counter_count("fills_duplicate", metrics.counters.fills_duplicate),
-		],
-	}
-}
-
-fn multi_read_rows(store: &MultiStore) -> Vec<MetricsRow> {
-	store.read_buffer_shard_metrics().iter().map(multi_read_row).collect()
-}
-
-fn multi_read_row(metrics: &ReadBufferShardMetrics) -> MetricsRow {
-	MetricsRow {
-		dimensions: vec![Value::Uint2(metrics.shard as u16)],
-		measures: vec![
-			level_bytes("used", metrics.state.used),
-			level_bytes("limit", metrics.state.limit),
-			level_count("pages", metrics.state.pages as u64),
-			level_count("page_cap", metrics.state.page_cap as u64),
-			level_bytes("payload", metrics.state.payload),
-			level_count("entries", metrics.state.entries as u64),
-			level_count("hot_pages", metrics.state.hot_pages as u64),
-			level_count("complete_pages", metrics.state.complete_pages as u64),
-			counter_count("pages_evicted", metrics.pages.pages_evicted),
-			counter_count("complete_pages_invalidated", metrics.pages.complete_pages_invalidated),
-			counter_count("point_hits", metrics.reads.point_hits),
-			counter_count("previous_hits", metrics.reads.previous_hits),
-			counter_count("point_misses", metrics.reads.point_misses),
 		],
 	}
 }

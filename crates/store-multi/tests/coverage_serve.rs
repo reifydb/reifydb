@@ -31,7 +31,7 @@ use reifydb_core::{
 use reifydb_store_multi::{
 	MultiVersionScope,
 	store::{StandardMultiStore, multi::MultiVersionRangeCursor},
-	tier::read::ReadBufferConfig,
+	tier::{point::MultiPointConfig, range::MultiRangeConfig},
 };
 use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec};
 
@@ -55,42 +55,53 @@ impl EvictionWatermark for StaticWatermark {
 	}
 }
 
-/// Holds fewer pages than the workload touches, so a claim whose page has been evicted is exercised
-/// rather than assumed away, and one shard so the page cap bites deterministically.
-fn hot_config() -> ReadBufferConfig {
-	ReadBufferConfig {
-		resident_pages: 3,
-		resident_bytes: Some(ByteSize::from_mib(4)),
-		shards: 1,
-		bucket_shift: 16,
-	}
+/// Holds fewer bytes than the workload touches, so a claim whose partition has been evicted is exercised
+/// rather than assumed away, and one shard so the budget bites deterministically.
+fn hot_budget() -> ByteSize {
+	ByteSize::from_kib(16)
 }
 
-/// A read tier with no byte budget is never constructed, so this store's scans never consult one.
+/// The row numbers one partition of the row band owns.
+const PARTITION_SIZE: u64 = 1 << 16;
+
+/// A range tier with no byte budget is never constructed, so this store's scans never consult one.
 struct Pair {
 	hot: StandardMultiStore,
 	cold: StandardMultiStore,
+	rows_per_partition: u64,
 	_guards: (Box<dyn std::any::Any>, Box<dyn std::any::Any>),
 }
 
 fn pair() -> Pair {
-	pair_with(hot_config())
+	pair_with(ROWS, hot_budget())
 }
 
-/// A pair whose read tier buckets at `hot.bucket_shift`, so a workload can be made to span several pages
-/// of one storage rather than living entirely in the storage's last bucket.
-fn pair_with(hot: ReadBufferConfig) -> Pair {
-	let cold = ReadBufferConfig {
-		resident_bytes: None,
-		..hot
+/// A pair that packs `rows_per_partition` logical rows into each partition, so a workload can be made to
+/// span several partitions of one storage rather than living entirely in the storage's first bucket.
+fn pair_with(rows_per_partition: u64, budget: ByteSize) -> Pair {
+	let tiers = |bytes: Option<ByteSize>| {
+		(
+			MultiPointConfig {
+				resident_bytes: bytes,
+				shards: 1,
+			},
+			MultiRangeConfig {
+				resident_bytes: bytes,
+				shards: 1,
+				..MultiRangeConfig::default()
+			},
+		)
 	};
-	let (hot, hot_guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_read(hot);
-	let (cold, cold_guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_read(cold);
-	assert!(hot.read_buffer_shard_metrics().len() > 0, "the hot store must have a read tier");
-	assert!(cold.read_buffer_shard_metrics().is_empty(), "the cold store must have no read tier to consult");
+	let (point, range) = tiers(Some(budget));
+	let (hot, hot_guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(point, range);
+	let (point, range) = tiers(None);
+	let (cold, cold_guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(point, range);
+	assert!(!hot.range_shard_metrics().is_empty(), "the hot store must have a range tier");
+	assert!(cold.range_shard_metrics().is_empty(), "the cold store must have no range tier to consult");
 	Pair {
 		hot,
 		cold,
+		rows_per_partition,
 		_guards: (Box::new(hot_guard), Box::new(cold_guard)),
 	}
 }
@@ -166,10 +177,8 @@ struct Served {
 
 fn served(store: &StandardMultiStore) -> Served {
 	let mut total = Served::default();
-	for shard in store.read_buffer_shard_metrics() {
-		total.evicted += shard.pages.pages_evicted;
-	}
 	for shard in store.range_shard_metrics() {
+		total.evicted += shard.counters.evictions;
 		total.chunks += shard.serve.served;
 		total.rows += shard.serve.rows;
 		total.gaps += shard.counters.misses;
@@ -187,7 +196,7 @@ fn assert_same(pair: &Pair, storage: StorageId, read: u64, context: &str) {
 		rows_of(&hot),
 		rows_of(&cold),
 		"{context}: a scan served from the interval coverage returned different rows than the same scan \
-		 with no read tier at all; coverage claimed a span the persistent tier still had rows in"
+		 with no range tier at all; coverage claimed a span the persistent tier still had rows in"
 	);
 	assert!(
 		!hot.last().expect("a scan always yields a batch").1
@@ -209,10 +218,18 @@ impl Rng {
 	}
 }
 
+/// The row number logical row `n` is written at, chosen so every `rows_per_partition` of them share one
+/// partition of the row band.
+fn row_at(pair: &Pair, n: u64) -> u64 {
+	let per = pair.rows_per_partition;
+	((n - 1) / per) * PARTITION_SIZE + ((n - 1) % per) + 1
+}
+
 fn seed_both(pair: &Pair, version: u64) {
 	for storage in STORAGES {
-		for row in 1..=ROWS {
-			let value = format!("seed-{}-{row}", storage_tag(storage));
+		for n in 1..=ROWS {
+			let row = row_at(pair, n);
+			let value = format!("seed-{}-{n}", storage_tag(storage));
 			commit_set(&pair.hot, storage, row, version, &value);
 			commit_set(&pair.cold, storage, row, version, &value);
 		}
@@ -248,14 +265,14 @@ fn run_equivalence_on(pair: Pair, seed_value: u64) -> Served {
 		match rng.below(10) {
 			0..=3 => {
 				version += 1;
-				let row = 1 + rng.below(ROWS + 32);
+				let row = row_at(&pair, 1 + rng.below(ROWS + 32));
 				let value = format!("s{step}r{row}");
 				commit_set(&pair.hot, storage, row, version, &value);
 				commit_set(&pair.cold, storage, row, version, &value);
 			}
 			4..=5 => {
 				version += 1;
-				let row = 1 + rng.below(ROWS + 32);
+				let row = row_at(&pair, 1 + rng.below(ROWS + 32));
 				commit_remove(&pair.hot, storage, row, version);
 				commit_remove(&pair.cold, storage, row, version);
 			}
@@ -277,9 +294,9 @@ fn run_equivalence_on(pair: Pair, seed_value: u64) -> Served {
 }
 
 #[test]
-fn interval_served_scans_match_a_store_with_no_read_tier() {
+fn interval_served_scans_match_a_store_with_no_range_tier() {
 	// The highest-value test in the plan. Two stores take the identical commit, removal and flush stream;
-	// one has a read tier and serves range chunks from its coverage claims, the other has none and can only
+	// one has a range tier and serves range chunks from its coverage claims, the other has none and can only
 	// answer from the commit buffer and the persistent tier. Every scan must return the same rows in the
 	// same batches. A serve that trusts a claim RAM no longer backs drops rows here and nowhere else.
 	let mut total = Served::default();
@@ -304,33 +321,30 @@ fn interval_served_scans_match_a_store_with_no_read_tier() {
 		 nothing: {total:?}"
 	);
 	assert!(total.materializes > 20, "no materialize published a claim, so nothing was ever serveable: {total:?}");
-	assert!(total.evicted > 0, "no page was evicted, so a claim whose page left RAM was never exercised");
+	assert!(
+		total.evicted > 0,
+		"no partition was evicted, so a claim whose partition left ram was never exercised"
+	);
 	assert!(
 		total.head_advances > 20,
 		"no scan was moved off its storage prefix by a head, so the head path is untested here: {total:?}"
 	);
 }
 
-/// Buckets small enough that one storage's rows span several pages, so the page holding a scan's first
-/// rows is not the page its last rows are in.
-fn paged_config() -> ReadBufferConfig {
-	ReadBufferConfig {
-		bucket_shift: 4,
-		resident_pages: 24,
-		..hot_config()
-	}
-}
+/// Few enough rows per partition that one storage spans ten of them, so the partition holding a scan's
+/// first rows is never the partition its last rows are in.
+const PACKED_ROWS: u64 = 16;
 
 #[test]
-fn interval_served_scans_match_a_store_with_no_read_tier_across_several_pages() {
-	// The same equivalence over a workload whose storages span ten pages rather than one. Every scan
-	// starts at a storage prefix that names no page, so any serve of its leading chunk has to derive
-	// the page rather than classify it; a derivation landing on the page a scan ends in, instead of the
-	// one it starts in, drops every row of every page above. With one page per storage that mistake
-	// returns the right rows anyway, so the single-page workload above cannot see it.
+fn interval_served_scans_match_a_store_with_no_range_tier_across_several_partitions() {
+	// The same equivalence over a workload whose storages span many partitions rather than one. Every scan
+	// starts at a storage prefix that names no partition, so any serve of its leading chunk has to derive
+	// the partition rather than classify it; a derivation landing on the partition a scan ends in, instead
+	// of the one it starts in, drops every row of every partition above. With one partition per storage
+	// that mistake returns the right rows anyway, so the single-partition workload above cannot see it.
 	let mut total = Served::default();
 	for seed_value in [1u64, 7, 42, 1337, 90210] {
-		let seen = run_equivalence_on(pair_with(paged_config()), seed_value);
+		let seen = run_equivalence_on(pair_with(PACKED_ROWS, ByteSize::from_kib(64)), seed_value);
 		total.chunks += seen.chunks;
 		total.rows += seen.rows;
 		total.gaps += seen.gaps;

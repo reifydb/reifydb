@@ -28,7 +28,9 @@ use reifydb_store_multi::{
 	MultiVersionScope,
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
-	tier::{TierStorage, commit::buffer::MultiCommitBufferTier, read::ReadBufferConfig},
+	tier::{
+		TierStorage, commit::buffer::MultiCommitBufferTier, point::MultiPointConfig, range::MultiRangeConfig,
+	},
 };
 use reifydb_value::{
 	util::cowvec::CowVec,
@@ -61,7 +63,8 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		commit: CommitBufferConfig {
 			storage: MultiCommitBufferTier::memory(),
 		},
-		read: Some(ReadBufferConfig::default()),
+		point: Some(MultiPointConfig::default()),
+		range: Some(MultiRangeConfig::default()),
 		persistent: Some(PersistentConfig::sqlite(sqlite_config)),
 		retention: Default::default(),
 		merge_config: Default::default(),

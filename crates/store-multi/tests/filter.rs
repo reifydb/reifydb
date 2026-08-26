@@ -32,7 +32,8 @@ use reifydb_store_multi::{
 	store::StandardMultiStore,
 	tier::{
 		TierBatch, TierStorage, commit::buffer::MultiCommitBufferTier,
-		persistent::sqlite::storage::SqlitePersistentStorage, read::ReadBufferConfig,
+		persistent::sqlite::storage::SqlitePersistentStorage, point::MultiPointConfig,
+		range::MultiRangeConfig,
 	},
 };
 use reifydb_value::util::cowvec::CowVec;
@@ -66,7 +67,8 @@ fn store_at(config: SqliteConfig) -> StandardMultiStore {
 			storage: MultiCommitBufferTier::memory(),
 		},
 		persistent: Some(PersistentConfig::sqlite(config)),
-		read: Some(ReadBufferConfig::default()),
+		point: Some(MultiPointConfig::default()),
+		range: Some(MultiRangeConfig::default()),
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus,

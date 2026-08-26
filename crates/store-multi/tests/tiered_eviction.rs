@@ -29,7 +29,10 @@ use reifydb_store_multi::{
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
 	flush::ObjectPersistence,
 	store::StandardMultiStore,
-	tier::{TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier, read::ReadBufferConfig},
+	tier::{
+		TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier, point::MultiPointConfig,
+		range::MultiRangeConfig,
+	},
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec, value::duration::Duration};
 
@@ -52,7 +55,8 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 		commit: CommitBufferConfig {
 			storage: MultiCommitBufferTier::memory(),
 		},
-		read: Some(ReadBufferConfig::default()),
+		point: Some(MultiPointConfig::default()),
+		range: Some(MultiRangeConfig::default()),
 		persistent: Some(persistent),
 		retention: Default::default(),
 		merge_config: Default::default(),

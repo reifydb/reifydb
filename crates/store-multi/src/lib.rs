@@ -45,7 +45,6 @@ use reifydb_value::util::cowvec::CowVec;
 use store::{MultiPersistentProbeMetrics, StandardMultiStore};
 use tier::{
 	commit::buffer::MultiCommitMetrics, point::MultiPointShardMetrics, range::MultiRangeShardMetrics,
-	read::ReadBufferShardMetrics,
 };
 
 pub mod memory {}
@@ -121,12 +120,6 @@ impl MultiStore {
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		match self {
 			MultiStore::Standard(store) => store.metrics_collectors(),
-		}
-	}
-
-	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
-		match self {
-			MultiStore::Standard(store) => store.read_buffer_shard_metrics(),
 		}
 	}
 

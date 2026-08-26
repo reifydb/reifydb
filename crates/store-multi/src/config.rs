@@ -7,13 +7,17 @@ use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::value::duration::Duration;
 
-use crate::tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::ReadBufferConfig};
+use crate::tier::{
+	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, point::MultiPointConfig,
+	range::MultiRangeConfig,
+};
 
 #[derive(Clone)]
 pub struct MultiStoreConfig {
 	pub commit: CommitBufferConfig,
 	pub persistent: Option<PersistentConfig>,
-	pub read: Option<ReadBufferConfig>,
+	pub point: Option<MultiPointConfig>,
+	pub range: Option<MultiRangeConfig>,
 	pub retention: RetentionConfig,
 	pub merge_config: MergeConfig,
 	pub event_bus: EventBus,
@@ -28,7 +32,8 @@ impl MultiStoreConfig {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: None,
-			read: None,
+			point: None,
+			range: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
@@ -44,7 +49,8 @@ impl MultiStoreConfig {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: Some(persistent),
-			read: Some(ReadBufferConfig::default()),
+			point: Some(MultiPointConfig::default()),
+			range: Some(MultiRangeConfig::default()),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,

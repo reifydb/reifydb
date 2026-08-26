@@ -52,9 +52,8 @@ pub enum ConfigKey {
 	CdcCommitBufferBytes,
 	CdcBlockCutBytes,
 	CdcReadBufferBytes,
-	MultiReadBufferPages,
-	MultiReadBufferPageSize,
-	MultiReadBufferBytes,
+	MultiPointBufferBytes,
+	MultiRangeBufferBytes,
 	OperatorPointBufferBytes,
 	OperatorRangeBufferBytes,
 	MultiFlushInterval,
@@ -103,9 +102,8 @@ impl ConfigKey {
 			Self::CdcCommitBufferBytes,
 			Self::CdcBlockCutBytes,
 			Self::CdcReadBufferBytes,
-			Self::MultiReadBufferPages,
-			Self::MultiReadBufferPageSize,
-			Self::MultiReadBufferBytes,
+			Self::MultiPointBufferBytes,
+			Self::MultiRangeBufferBytes,
 			Self::OperatorPointBufferBytes,
 			Self::OperatorRangeBufferBytes,
 			Self::MultiFlushInterval,
@@ -156,9 +154,8 @@ impl ConfigKey {
 			Self::CdcCommitBufferBytes => Value::Uint8(256 * 1024 * 1024),
 			Self::CdcBlockCutBytes => Value::Uint8(4 * 1024 * 1024),
 			Self::CdcReadBufferBytes => Value::Uint8(256 * 1024 * 1024),
-			Self::MultiReadBufferPages => Value::Uint8(1024),
-			Self::MultiReadBufferPageSize => Value::Uint8(65536),
-			Self::MultiReadBufferBytes => Value::Uint8(64 * 1024 * 1024),
+			Self::MultiPointBufferBytes => Value::Uint8(64 * 1024 * 1024),
+			Self::MultiRangeBufferBytes => Value::Uint8(64 * 1024 * 1024),
 			Self::OperatorPointBufferBytes => Value::Uint8(64 * 1024 * 1024),
 			Self::OperatorRangeBufferBytes => Value::Uint8(64 * 1024 * 1024),
 			Self::MultiFlushInterval => Value::duration_seconds(5),
@@ -266,18 +263,15 @@ impl ConfigKey {
 				 shards. None disables the cache outright, so every miss below the commit buffer decodes a \
 				 block straight from the persistent tier. Read once at boot."
 			}
-			Self::MultiReadBufferPages => {
-				"Number of pages (contiguous row-number buckets) the multi-version read cache keeps \
-				 resident before eviction. Raising it trades RAM for fewer persistent-tier reads."
+			Self::MultiPointBufferBytes => {
+				"Resident byte budget for the multi-version point cache, split evenly across its shards. \
+				 None disables the cache outright, so every point read that misses the commit buffer goes \
+				 to the persistent tier. Read once at boot; changing it requires a restart."
 			}
-			Self::MultiReadBufferPageSize => {
-				"Number of rows per cached page (bucket) in the multi-version read cache. Must be a \
-				 power of two; sets the granularity of whole-page read-ahead and completeness tracking."
-			}
-			Self::MultiReadBufferBytes => {
-				"Resident byte budget for the multi-version read cache, split evenly across its shards. \
-				 None disables the cache outright: no page is warmed or inserted, so reads always go to \
-				 the persistent tier. Read once at boot; changing it requires a restart."
+			Self::MultiRangeBufferBytes => {
+				"Resident byte budget for the multi-version range cache, split evenly across its shards. \
+				 None disables the cache outright, so every multi-version range scan goes to the \
+				 persistent tier. Read once at boot; changing it requires a restart."
 			}
 			Self::OperatorPointBufferBytes => {
 				"Resident byte budget for the operator-state point cache, split evenly across its shards. \
@@ -424,9 +418,8 @@ impl ConfigKey {
 			Self::CdcCommitBufferBytes => true,
 			Self::CdcBlockCutBytes => true,
 			Self::CdcReadBufferBytes => true,
-			Self::MultiReadBufferPages => true,
-			Self::MultiReadBufferPageSize => true,
-			Self::MultiReadBufferBytes => true,
+			Self::MultiPointBufferBytes => true,
+			Self::MultiRangeBufferBytes => true,
 			Self::OperatorPointBufferBytes => true,
 			Self::OperatorRangeBufferBytes => true,
 			Self::MultiFlushInterval => true,
@@ -475,9 +468,8 @@ impl ConfigKey {
 			Self::CdcCommitBufferBytes => &[ValueType::Uint8],
 			Self::CdcBlockCutBytes => &[ValueType::Uint8],
 			Self::CdcReadBufferBytes => &[ValueType::Uint8],
-			Self::MultiReadBufferPages => &[ValueType::Uint8],
-			Self::MultiReadBufferPageSize => &[ValueType::Uint8],
-			Self::MultiReadBufferBytes => &[ValueType::Uint8],
+			Self::MultiPointBufferBytes => &[ValueType::Uint8],
+			Self::MultiRangeBufferBytes => &[ValueType::Uint8],
 			Self::OperatorPointBufferBytes => &[ValueType::Uint8],
 			Self::OperatorRangeBufferBytes => &[ValueType::Uint8],
 			Self::MultiFlushInterval => &[ValueType::Duration],
@@ -526,9 +518,8 @@ impl ConfigKey {
 			Self::CdcCommitBufferBytes => false,
 			Self::CdcBlockCutBytes => false,
 			Self::CdcReadBufferBytes => true,
-			Self::MultiReadBufferPages => false,
-			Self::MultiReadBufferPageSize => false,
-			Self::MultiReadBufferBytes => true,
+			Self::MultiPointBufferBytes => true,
+			Self::MultiRangeBufferBytes => true,
 			Self::OperatorPointBufferBytes => true,
 			Self::OperatorRangeBufferBytes => true,
 			Self::MultiFlushInterval => false,
@@ -618,20 +609,16 @@ impl ConfigKey {
 				Value::Uint8(0) => Err("FLOW_LOAD_BATCH_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::MultiReadBufferPages => match value {
-				Value::Uint8(0) => Err("MULTI_READ_BUFFER_PAGES must be greater than zero".to_string()),
-				_ => Ok(()),
-			},
-			Self::MultiReadBufferPageSize => match value {
-				Value::Uint8(v) if v.is_power_of_two() => Ok(()),
-				Value::Uint8(_) => {
-					Err("MULTI_READ_BUFFER_PAGE_SIZE must be a power of two".to_string())
-				}
-				_ => Ok(()),
-			},
-			Self::MultiReadBufferBytes => match value {
+			Self::MultiPointBufferBytes => match value {
 				Value::Uint8(0) => Err(
-					"MULTI_READ_BUFFER_BYTES must be greater than zero; use none to disable the read cache"
+					"MULTI_POINT_BUFFER_BYTES must be greater than zero; use none to disable the point cache"
+						.to_string(),
+				),
+				_ => Ok(()),
+			},
+			Self::MultiRangeBufferBytes => match value {
+				Value::Uint8(0) => Err(
+					"MULTI_RANGE_BUFFER_BYTES must be greater than zero; use none to disable the range cache"
 						.to_string(),
 				),
 				_ => Ok(()),
@@ -864,9 +851,8 @@ impl fmt::Display for ConfigKey {
 			Self::CdcCommitBufferBytes => write!(f, "CDC_COMMIT_BUFFER_BYTES"),
 			Self::CdcBlockCutBytes => write!(f, "CDC_BLOCK_CUT_BYTES"),
 			Self::CdcReadBufferBytes => write!(f, "CDC_READ_BUFFER_BYTES"),
-			Self::MultiReadBufferPages => write!(f, "MULTI_READ_BUFFER_PAGES"),
-			Self::MultiReadBufferPageSize => write!(f, "MULTI_READ_BUFFER_PAGE_SIZE"),
-			Self::MultiReadBufferBytes => write!(f, "MULTI_READ_BUFFER_BYTES"),
+			Self::MultiPointBufferBytes => write!(f, "MULTI_POINT_BUFFER_BYTES"),
+			Self::MultiRangeBufferBytes => write!(f, "MULTI_RANGE_BUFFER_BYTES"),
 			Self::OperatorPointBufferBytes => write!(f, "OPERATOR_POINT_BUFFER_BYTES"),
 			Self::OperatorRangeBufferBytes => write!(f, "OPERATOR_RANGE_BUFFER_BYTES"),
 			Self::MultiFlushInterval => write!(f, "MULTI_FLUSH_INTERVAL"),
@@ -919,9 +905,8 @@ impl FromStr for ConfigKey {
 			"CDC_COMMIT_BUFFER_BYTES" => Ok(Self::CdcCommitBufferBytes),
 			"CDC_BLOCK_CUT_BYTES" => Ok(Self::CdcBlockCutBytes),
 			"CDC_READ_BUFFER_BYTES" => Ok(Self::CdcReadBufferBytes),
-			"MULTI_READ_BUFFER_PAGES" => Ok(Self::MultiReadBufferPages),
-			"MULTI_READ_BUFFER_PAGE_SIZE" => Ok(Self::MultiReadBufferPageSize),
-			"MULTI_READ_BUFFER_BYTES" => Ok(Self::MultiReadBufferBytes),
+			"MULTI_POINT_BUFFER_BYTES" => Ok(Self::MultiPointBufferBytes),
+			"MULTI_RANGE_BUFFER_BYTES" => Ok(Self::MultiRangeBufferBytes),
 			"OPERATOR_POINT_BUFFER_BYTES" => Ok(Self::OperatorPointBufferBytes),
 			"OPERATOR_RANGE_BUFFER_BYTES" => Ok(Self::OperatorRangeBufferBytes),
 			"MULTI_FLUSH_INTERVAL" => Ok(Self::MultiFlushInterval),
@@ -1118,7 +1103,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 46);
+		assert_eq!(all.len(), 45);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -1137,13 +1122,11 @@ mod tests {
 		assert!(all.contains(&ConfigKey::CdcCommitBufferBytes));
 		assert!(all.contains(&ConfigKey::CdcBlockCutBytes));
 		assert!(all.contains(&ConfigKey::CdcReadBufferBytes));
-		assert!(all.contains(&ConfigKey::MultiReadBufferPages));
 		assert!(all.contains(&ConfigKey::OperatorPointBufferBytes));
 		assert!(all.contains(&ConfigKey::OperatorRangeBufferBytes));
 		assert!(all.contains(&ConfigKey::FlowBacklogMemoryLimit));
 		assert!(all.contains(&ConfigKey::FlowPullBatchBytes));
 		assert!(all.contains(&ConfigKey::FlowLoadBatchBytes));
-		assert!(all.contains(&ConfigKey::MultiReadBufferPageSize));
 		assert!(all.contains(&ConfigKey::QueryRowBatchSize));
 		assert!(all.contains(&ConfigKey::ThreadsAsync));
 		assert!(all.contains(&ConfigKey::ThreadsCoordination));
@@ -1268,56 +1251,6 @@ mod tests {
 
 		let zero = Value::duration_seconds(0);
 		assert!(matches!(ConfigKey::MetricsFlushInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
-	}
-
-	#[test]
-	fn test_multi_read_buffer_pages_round_trip() {
-		assert_eq!("MULTI_READ_BUFFER_PAGES".parse::<ConfigKey>().unwrap(), ConfigKey::MultiReadBufferPages);
-		assert_eq!(format!("{}", ConfigKey::MultiReadBufferPages), "MULTI_READ_BUFFER_PAGES");
-	}
-
-	#[test]
-	fn test_multi_read_buffer_pages_metadata_and_rejects_zero() {
-		assert_eq!(ConfigKey::MultiReadBufferPages.default_value(), Value::Uint8(1024));
-		assert_eq!(ConfigKey::MultiReadBufferPages.expected_types(), &[ValueType::Uint8]);
-		assert!(ConfigKey::MultiReadBufferPages.requires_restart());
-		assert!(!ConfigKey::MultiReadBufferPages.is_optional());
-		match ConfigKey::MultiReadBufferPages.accept(Value::Uint8(0)).unwrap_err() {
-			AcceptError::InvalidValue(reason) => {
-				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
-			}
-			other => panic!("expected InvalidValue, got {other:?}"),
-		}
-	}
-
-	#[test]
-	fn test_multi_read_buffer_page_size_round_trip() {
-		assert_eq!(
-			"MULTI_READ_BUFFER_PAGE_SIZE".parse::<ConfigKey>().unwrap(),
-			ConfigKey::MultiReadBufferPageSize
-		);
-		assert_eq!(format!("{}", ConfigKey::MultiReadBufferPageSize), "MULTI_READ_BUFFER_PAGE_SIZE");
-	}
-
-	#[test]
-	fn test_multi_read_buffer_page_size_metadata_and_rejects_non_power_of_two() {
-		// Page size must be a power of two because pages are addressed by a row-number bit shift
-		// (bucket = row >> shift); a non-power-of-two would not map to a single shift.
-		assert_eq!(ConfigKey::MultiReadBufferPageSize.default_value(), Value::Uint8(65536));
-		assert_eq!(ConfigKey::MultiReadBufferPageSize.expected_types(), &[ValueType::Uint8]);
-		assert!(ConfigKey::MultiReadBufferPageSize.requires_restart());
-		assert!(!ConfigKey::MultiReadBufferPageSize.is_optional());
-		assert_eq!(
-			ConfigKey::MultiReadBufferPageSize.accept(Value::Uint8(4096)).unwrap(),
-			Value::Uint8(4096),
-			"a power-of-two page size is accepted"
-		);
-		match ConfigKey::MultiReadBufferPageSize.accept(Value::Uint8(1000)).unwrap_err() {
-			AcceptError::InvalidValue(reason) => {
-				assert!(reason.contains("power of two"), "unexpected reason: {reason}");
-			}
-			other => panic!("expected InvalidValue, got {other:?}"),
-		}
 	}
 
 	#[test]
