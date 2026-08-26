@@ -101,8 +101,8 @@ impl StandardMultiStore {
 
 	#[inline]
 	fn get_probe_read(&self, key: &EncodedKey, version: CommitVersion) -> Option<Option<MultiVersionRow>> {
-		let read = self.read.as_ref()?;
-		match read.get(key, version) {
+		let point = self.point.as_ref()?;
+		match point.get(key, version) {
 			VersionedGetResult::Value {
 				value,
 				version: v,
@@ -135,6 +135,9 @@ impl StandardMultiStore {
 				value,
 				version: v,
 			} => {
+				if let Some(point) = &self.point {
+					point.insert(key.clone(), v, Some(value.clone()));
+				}
 				if let Some(read) = &self.read {
 					read.insert(key.clone(), v, Some(value.clone()));
 				}
@@ -303,7 +306,7 @@ impl StandardMultiStore {
 				continue;
 			}
 			let read_hit = self
-				.read
+				.point
 				.as_ref()
 				.map(|c| c.get(table_keys[i], version))
 				.unwrap_or(VersionedGetResult::NotFound);
@@ -345,15 +348,17 @@ impl StandardMultiStore {
 				if matches!(result, VersionedGetResult::NotFound) {
 					self.persistent_absent.fetch_add(1, Ordering::Relaxed);
 				}
-				if let (
-					Some(read),
-					VersionedGetResult::Value {
-						value,
-						version: v,
-					},
-				) = (&self.read, &result)
+				if let VersionedGetResult::Value {
+					value,
+					version: v,
+				} = &result
 				{
-					read.insert(table_keys[slot].clone(), *v, Some(value.clone()));
+					if let Some(point) = &self.point {
+						point.insert(table_keys[slot].clone(), *v, Some(value.clone()));
+					}
+					if let Some(read) = &self.read {
+						read.insert(table_keys[slot].clone(), *v, Some(value.clone()));
+					}
 				}
 				persistent_aligned[slot] = result;
 			}
@@ -416,6 +421,9 @@ impl StandardMultiStore {
 			for (key, _) in entries {
 				if let Some(range) = &self.range {
 					range.invalidate(key);
+				}
+				if let Some(point) = &self.point {
+					point.invalidate(key);
 				}
 				if let Some(read) = &self.read {
 					read.invalidate(key);
@@ -1130,8 +1138,8 @@ impl StandardMultiStore {
 		key: &EncodedKey,
 		prev_version: CommitVersion,
 	) -> Option<Option<MultiVersionRow>> {
-		let read = self.read.as_ref()?;
-		match read.get(key, prev_version) {
+		let point = self.point.as_ref()?;
+		match point.get(key, prev_version) {
 			VersionedGetResult::Value {
 				value,
 				version,
@@ -1164,6 +1172,9 @@ impl StandardMultiStore {
 				value,
 				version,
 			} => {
+				if let Some(point) = &self.point {
+					point.insert(key.clone(), version, Some(value.clone()));
+				}
 				if let Some(read) = &self.read {
 					read.insert(key.clone(), version, Some(value.clone()));
 				}

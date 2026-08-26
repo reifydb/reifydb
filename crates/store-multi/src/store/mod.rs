@@ -40,6 +40,7 @@ use crate::{
 	tier::{
 		commit::buffer::{MultiCommitBufferTier, MultiCommitMetrics},
 		persistent::MultiPersistentTier,
+		point::{MultiPointConfig, MultiPointShardMetrics, MultiPointTier},
 		range::{MultiRangeConfig, MultiRangeShardMetrics, MultiRangeTier},
 		read::{MultiReadBufferTier, ReadBufferShardMetrics},
 	},
@@ -85,6 +86,7 @@ pub struct StandardMultiStoreInner {
 	pub(crate) commit: MultiCommitBufferTier,
 	pub(crate) persistent: Option<MultiPersistentTier>,
 	pub(crate) read: Option<MultiReadBufferTier>,
+	pub(crate) point: Option<MultiPointTier>,
 	pub(crate) range: Option<MultiRangeTier>,
 
 	#[allow(dead_code)]
@@ -115,6 +117,19 @@ impl StandardMultiStore {
 
 		let read =
 			config.persistent.is_some().then(|| config.read.and_then(MultiReadBufferTier::new)).flatten();
+
+		let point = config
+			.persistent
+			.is_some()
+			.then(|| {
+				config.read.and_then(|read| {
+					MultiPointTier::new(MultiPointConfig {
+						resident_bytes: read.resident_bytes,
+						shards: read.shards,
+					})
+				})
+			})
+			.flatten();
 
 		let range = config
 			.persistent
@@ -156,6 +171,7 @@ impl StandardMultiStore {
 						config.clock.clone(),
 						config.event_bus.clone(),
 					)
+					.with_point(point.clone())
 					.with_range(range.clone()),
 				)),
 				_ => None,
@@ -180,6 +196,7 @@ impl StandardMultiStore {
 			commit,
 			persistent,
 			read,
+			point,
 			range,
 			flush_engine,
 			row_settings_provider,
@@ -199,6 +216,9 @@ impl StandardMultiStore {
 		if let Some(range) = &self.range {
 			range.insert(key.clone(), version, value.clone());
 		}
+		if let Some(point) = &self.point {
+			point.insert(key.clone(), version, value.clone());
+		}
 		if let Some(read) = &self.read {
 			read.insert(key, version, value);
 		}
@@ -208,6 +228,9 @@ impl StandardMultiStore {
 		if let Some(range) = &self.range {
 			range.invalidate(key);
 		}
+		if let Some(point) = &self.point {
+			point.invalidate(key);
+		}
 		if let Some(read) = &self.read {
 			read.invalidate(key);
 		}
@@ -216,6 +239,9 @@ impl StandardMultiStore {
 	pub fn clear_read(&self) {
 		if let Some(range) = &self.range {
 			range.clear();
+		}
+		if let Some(point) = &self.point {
+			point.clear();
 		}
 		if let Some(read) = &self.read {
 			read.clear();
@@ -263,6 +289,10 @@ impl StandardMultiStore {
 
 	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
 		self.read.as_ref().map(|read| read.shard_metrics()).unwrap_or_default()
+	}
+
+	pub fn point_shard_metrics(&self) -> Vec<MultiPointShardMetrics> {
+		self.point.as_ref().map(|point| point.shard_metrics()).unwrap_or_default()
 	}
 
 	pub fn range_shard_metrics(&self) -> Vec<MultiRangeShardMetrics> {

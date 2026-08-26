@@ -34,8 +34,8 @@ use crate::tier::commit::memory::storage::EvictedVersion;
 use crate::{
 	flush::ObjectPersistence,
 	tier::{
-		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, range::MultiRangeTier,
-		read::MultiReadBufferTier,
+		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, point::MultiPointTier,
+		range::MultiRangeTier, read::MultiReadBufferTier,
 	},
 };
 
@@ -55,6 +55,7 @@ pub struct FlushEngine {
 	persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 	read: Option<MultiReadBufferTier>,
+	point: Option<MultiPointTier>,
 	range: Option<MultiRangeTier>,
 	clock: Clock,
 	event_bus: EventBus,
@@ -93,11 +94,17 @@ impl FlushEngine {
 			persistence,
 			eviction_watermark,
 			read,
+			point: None,
 			range: None,
 			clock,
 			event_bus,
 			sweep_lock: Mutex::new(FlushEngineState::default()),
 		}
+	}
+
+	pub fn with_point(mut self, point: Option<MultiPointTier>) -> Self {
+		self.point = point;
+		self
 	}
 
 	pub fn with_range(mut self, range: Option<MultiRangeTier>) -> Self {
@@ -294,7 +301,7 @@ impl FlushEngine {
 		to_drop: &[EvictedVersion],
 		accepted: &[EncodedKey],
 	) {
-		if self.read.is_none() && self.range.is_none() {
+		if self.read.is_none() && self.point.is_none() && self.range.is_none() {
 			return;
 		}
 		if persistent_object {
@@ -304,12 +311,18 @@ impl FlushEngine {
 					if let Some(range) = &self.range {
 						range.insert(key.clone(), *version, value.clone());
 					}
+					if let Some(point) = &self.point {
+						point.insert(key.clone(), *version, value.clone());
+					}
 					if let Some(read) = &self.read {
 						read.insert(key.clone(), *version, value.clone());
 					}
 				} else {
 					if let Some(range) = &self.range {
 						range.invalidate(key);
+					}
+					if let Some(point) = &self.point {
+						point.invalidate(key);
 					}
 					if let Some(read) = &self.read {
 						read.invalidate(key);
@@ -320,6 +333,9 @@ impl FlushEngine {
 			for evicted in to_drop {
 				if let Some(range) = &self.range {
 					range.invalidate(&evicted.key);
+				}
+				if let Some(point) = &self.point {
+					point.invalidate(&evicted.key);
 				}
 				if let Some(read) = &self.read {
 					read.invalidate(&evicted.key);
