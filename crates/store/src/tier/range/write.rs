@@ -3,18 +3,20 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	coverage::{ExclusiveUpperEnd, entry::Entry, successor},
 	tier::range::{
-		Partition, PinnedCount, RangeDomain, RangeTier, Shard, account, entry_footprint, partition_overhead,
+		Partition, PinnedCount, RangeDomain, RangeTier, Shard, account, entry_footprint, head::in_head_band,
+		partition_overhead,
 	},
 };
 
 impl<D: RangeDomain> RangeTier<D> {
-	pub fn overwrite(&self, dimension: D::Dimension, key: EncodedKey, row: EncodedPodRow) {
+	pub fn overwrite(&self, dimension: D::Dimension, key: EncodedKey, row: D::Row) {
+		self.lower_head(dimension, &key);
 		let Some(partition) = self.cacheable(dimension, &key) else {
 			return;
 		};
@@ -24,7 +26,8 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 	}
 
-	pub fn insert(&self, dimension: D::Dimension, key: EncodedKey, row: EncodedPodRow) {
+	pub fn insert(&self, dimension: D::Dimension, key: EncodedKey, row: D::Row) {
+		self.lower_head(dimension, &key);
 		let Some(partition) = self.cacheable(dimension, &key) else {
 			return;
 		};
@@ -95,7 +98,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.shard(index).lock().partitions.get(partition).is_some_and(|target| target.covered)
 	}
 
-	fn place(&self, index: usize, partition: &D::Partition, key: EncodedKey, entry: Entry<EncodedPodRow>) -> bool {
+	fn place(&self, index: usize, partition: &D::Partition, key: EncodedKey, entry: Entry<D::Row>) -> bool {
 		let resident = self.shard(index).lock().partitions.get(partition).map(|target| target.covered);
 		let admit = match resident {
 			Some(covered) => covered,
@@ -169,6 +172,11 @@ impl<D: RangeDomain> RangeTier<D> {
 	fn withdraw(&self, dimension: D::Dimension, key: &EncodedKey) {
 		let mut coverage = self.coverage().write();
 		coverage.shrink_key(dimension, key);
+		if in_head_band::<D>(dimension, key)
+			&& coverage.head(dimension).is_some_and(|current| current.as_slice() > key.as_slice())
+		{
+			coverage.set_head(dimension, key.clone());
+		}
 		self.record_retraction();
 	}
 

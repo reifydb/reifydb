@@ -6,10 +6,7 @@ use std::{
 	ops::Bound::{Excluded, Included, Unbounded},
 };
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
@@ -23,7 +20,7 @@ use crate::{
 	},
 	tier::range::{
 		Materialize, Partition, RangeDomain, RangeRows, RangeScan, RangeTier, Shard, entry_footprint,
-		partition_overhead,
+		head::advance_to_head, partition_overhead,
 	},
 };
 
@@ -63,21 +60,21 @@ impl<D: RangeDomain> RangeTier<D> {
 			Unbounded => ExclusiveUpperEnd::Top,
 		};
 
-		let head = partition_at::<D>(dimension, &lo)?;
-		let (_, head_end) = D::span(&head);
-		if hi <= head_end && !D::caches_ranges(&head) {
-			return None;
-		}
-
-		let (planned, held, retractions) = {
+		let (lo, head, planned, held, retractions) = {
 			let coverage = self.coverage().read();
+			let lo = advance_to_head::<D>(&coverage, dimension, lo, &hi);
+			let head = partition_at::<D>(dimension, &lo)?;
+			let (_, head_end) = D::span(&head);
+			if hi <= head_end && !D::caches_ranges(&head) {
+				return None;
+			}
 			let vacant = CoverageSet::new();
 			let claims = coverage.set(dimension).unwrap_or(&vacant);
 			let planned = plan(claims, lo.clone(), hi.clone(), self.gap_guard(), |gap| {
 				exempt_gap::<D>(dimension, gap)
 			});
 			let held = claims.contains(&lo);
-			(planned, held, self.retractions())
+			(lo, head, planned, held, self.retractions())
 		};
 
 		let mut pieces = Vec::with_capacity(planned.segments.len().max(1));
@@ -209,7 +206,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		segment: &Interval,
 		cursor: &mut RangeCursor,
 		limit: usize,
-	) -> ServedChunk<RangeRows> {
+	) -> ServedChunk<RangeRows<D>> {
 		let start = match cursor.last_key() {
 			Some(last) if last.as_slice() >= segment.start.as_slice() => successor(last),
 			_ => segment.start.clone(),
@@ -238,7 +235,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		};
 
 		let limit = limit.max(1);
-		let mut rows: RangeRows = Vec::new();
+		let mut rows: RangeRows<D> = Vec::new();
 		let mut exhausted = true;
 		{
 			let mut shard = self.shard_for(&partition).lock();
@@ -288,12 +285,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		ServedChunk::Served(rows)
 	}
 
-	pub fn materialize(
-		&self,
-		scan: &RangeScan<D>,
-		span: &Interval,
-		rows: &[(EncodedKey, EncodedPodRow)],
-	) -> Materialize {
+	pub fn materialize(&self, scan: &RangeScan<D>, span: &Interval, rows: &[(EncodedKey, D::Row)]) -> Materialize {
 		let mut start = span.start.clone();
 		let mut materialized = false;
 		let mut claim: Option<Interval> = None;
@@ -354,7 +346,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		&self,
 		piece: &Interval,
 		partition: D::Partition,
-		rows: &[(EncodedKey, EncodedPodRow)],
+		rows: &[(EncodedKey, D::Row)],
 	) -> PartitionAction {
 		if rows.iter().any(|(key, _)| piece.contains(key)) {
 			return PartitionAction::Materialize;
@@ -399,12 +391,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		claimed.clear();
 	}
 
-	fn materialize_partition(
-		&self,
-		scan: &RangeScan<D>,
-		span: &Interval,
-		rows: &[(EncodedKey, EncodedPodRow)],
-	) -> bool {
+	fn materialize_partition(&self, scan: &RangeScan<D>, span: &Interval, rows: &[(EncodedKey, D::Row)]) -> bool {
 		let Some(partition) = D::partition(scan.dimension, &span.start) else {
 			return false;
 		};

@@ -9,12 +9,15 @@ use crate::coverage::{ExclusiveUpperEnd, interval::CoverageSet};
 
 pub struct CoverageIndex<D> {
 	sets: HashMap<D, CoverageSet>,
+
+	heads: HashMap<D, EncodedKey>,
 }
 
 impl<D> Default for CoverageIndex<D> {
 	fn default() -> Self {
 		Self {
 			sets: HashMap::new(),
+			heads: HashMap::new(),
 		}
 	}
 }
@@ -44,12 +47,22 @@ impl<D: Hash + Eq + Copy> CoverageIndex<D> {
 		self.shrink(dimension, |set| set.shrink_range(start, end));
 	}
 
+	pub fn head(&self, dimension: D) -> Option<&EncodedKey> {
+		self.heads.get(&dimension)
+	}
+
+	pub fn set_head(&mut self, dimension: D, key: EncodedKey) {
+		self.heads.insert(dimension, key);
+	}
+
 	pub fn remove(&mut self, dimension: D) {
 		self.sets.remove(&dimension);
+		self.heads.remove(&dimension);
 	}
 
 	pub fn clear(&mut self) {
 		self.sets.clear();
+		self.heads.clear();
 	}
 
 	pub fn intervals(&self) -> usize {

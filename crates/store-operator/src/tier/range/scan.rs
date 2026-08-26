@@ -13,15 +13,16 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
 	};
-	use reifydb_store::coverage::{
-		ExclusiveUpperEnd,
-		cursor::{RangeCursor, ServedChunk},
-		interval::Interval,
-		plan::Segment,
+	use reifydb_store::{
+		coverage::{
+			ExclusiveUpperEnd,
+			cursor::{RangeCursor, ServedChunk},
+			interval::Interval,
+			plan::Segment,
+		},
+		tier::range::Materialize,
 	};
 	use reifydb_value::byte_size::ByteSize;
-
-	use reifydb_store::tier::range::Materialize;
 
 	use crate::tier::range::{OperatorRangeConfig, OperatorRangeTier, PartitionId, RangeScan};
 

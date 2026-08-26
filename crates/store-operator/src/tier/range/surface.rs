@@ -11,18 +11,19 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range},
 };
-use reifydb_store::coverage::{
-	cursor::{RangeCursor, ServedChunk},
-	interval::Interval,
-	plan::{DEFAULT_GAP_GUARD, Segment},
+use reifydb_store::{
+	coverage::{
+		cursor::{RangeCursor, ServedChunk},
+		interval::Interval,
+		plan::{DEFAULT_GAP_GUARD, Segment},
+	},
+	tier::range::Materialize,
 };
 use reifydb_value::byte_size::ByteSize;
 
-use reifydb_store::tier::range::Materialize;
-
 use super::{
-	OperatorRangeConfig, OperatorRangeKeyspaceMetrics, OperatorRangeMetrics, OperatorRangeTier,
-	PartitionId, RangeScan,
+	OperatorRangeConfig, OperatorRangeKeyspaceMetrics, OperatorRangeMetrics, OperatorRangeTier, PartitionId,
+	RangeScan,
 };
 
 const OP_A: OperatorId = OperatorId(1);

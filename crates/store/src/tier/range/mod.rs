@@ -30,6 +30,7 @@
 
 #[cfg(test)]
 mod domain;
+mod head;
 mod point;
 mod pool;
 mod scan;
@@ -65,6 +66,17 @@ use crate::coverage::{
 	successor,
 };
 
+/// The heap cost of one cached row, so the tier can charge a row type it never inspects.
+pub trait RowBytes {
+	fn row_bytes(&self) -> usize;
+}
+
+impl RowBytes for EncodedPodRow {
+	fn row_bytes(&self) -> usize {
+		self.len()
+	}
+}
+
 /// How one keyspace shape is cut into partitions, and which of them this tier may hold.
 ///
 /// The tier never decodes a key itself: every question that depends on what a key means is answered
@@ -73,6 +85,8 @@ pub trait RangeDomain: Copy + Debug + 'static {
 	type Dimension: Copy + Eq + Hash + Send + Sync + 'static;
 	type Partition: Copy + Eq + Hash + Send + Sync + 'static;
 	type Slot: Copy + Eq + Debug + Send + Sync + 'static;
+	/// What this tier stores per key; anything a reader filters on must survive here, or the cache answers wrong.
+	type Row: RowBytes + Clone + Send + Sync + 'static;
 
 	/// The shortest key that still names a partition; a shorter one is declined.
 	const PREFIX_LEN: usize;
@@ -90,6 +104,9 @@ pub trait RangeDomain: Copy + Debug + 'static {
 
 	/// The half-open span this partition owns, so a whole partition retracts in one shrink.
 	fn span(partition: &Self::Partition) -> (EncodedKey, ExclusiveUpperEnd);
+
+	/// The inclusive band a head may prove empty, or `None` where the domain proves no such absence.
+	fn head_band(dimension: Self::Dimension) -> Option<(EncodedKey, EncodedKey)>;
 
 	/// Whether the partition may live in this tier. One the domain keeps out is never materialized,
 	/// and its gaps never count against the gap guard, or a wide scan would degrade forever.
@@ -133,7 +150,7 @@ pub fn prefix_successor(prefix: &[u8]) -> Option<Vec<u8>> {
 	Some(out)
 }
 
-pub type RangeRows = Vec<(EncodedKey, EncodedPodRow)>;
+pub type RangeRows<D> = Vec<(EncodedKey, <D as RangeDomain>::Row)>;
 
 /// The key range a caller reads from the persistent tier to fill one gap segment.
 pub fn scan_range(gap: &Interval) -> EncodedKeyRange {
@@ -158,8 +175,8 @@ pub fn proven_span(gap: &Interval, last_key: Option<&EncodedKey>, exhausted: boo
 	Some(Interval::new(gap.start.clone(), ExclusiveUpperEnd::Key(successor(last)).min(gap.end.clone())))
 }
 
-struct Partition {
-	entries: BTreeMap<EncodedKey, Entry<EncodedPodRow>>,
+struct Partition<R> {
+	entries: BTreeMap<EncodedKey, Entry<R>>,
 	/// Entries eviction may not drop, so the budget can stop instead of spinning on a partition
 	/// whose every entry carries an unflushed removal.
 	pinned: PinnedCount,
@@ -174,7 +191,7 @@ struct Partition {
 }
 
 struct Shard<D: RangeDomain> {
-	partitions: HashMap<D::Partition, Partition>,
+	partitions: HashMap<D::Partition, Partition<D::Row>>,
 	budget: MemoryBudget,
 	next_tick: u64,
 	gaps: GapHistogram,
@@ -184,14 +201,19 @@ struct Shard<D: RangeDomain> {
 
 const NODE_FILL_DIVISOR: usize = 2;
 
-const ENTRY_OVERHEAD: usize = NODE_FILL_DIVISOR * (size_of::<EncodedKey>() + size_of::<Entry<EncodedPodRow>>());
-
-const fn partition_overhead<D: RangeDomain>() -> usize {
-	size_of::<D::Partition>() + size_of::<Partition>()
+const fn entry_overhead<R>() -> usize {
+	NODE_FILL_DIVISOR * (size_of::<EncodedKey>() + size_of::<Entry<R>>())
 }
 
-fn entry_footprint(key: &EncodedKey, entry: &Entry<EncodedPodRow>) -> usize {
-	ENTRY_OVERHEAD + key.heap_bytes() + entry.value().map_or(0, |row| row.len())
+#[cfg(test)]
+const ENTRY_OVERHEAD: usize = entry_overhead::<EncodedPodRow>();
+
+const fn partition_overhead<D: RangeDomain>() -> usize {
+	size_of::<D::Partition>() + size_of::<Partition<D::Row>>()
+}
+
+fn entry_footprint<R: RowBytes>(key: &EncodedKey, entry: &Entry<R>) -> usize {
+	entry_overhead::<R>() + key.heap_bytes() + entry.value().map_or(0, RowBytes::row_bytes)
 }
 
 fn account(bytes: &mut usize, budget: &MemoryBudget, old: usize, new: usize) {

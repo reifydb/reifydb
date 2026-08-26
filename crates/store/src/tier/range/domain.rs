@@ -3,7 +3,10 @@
 
 use std::{borrow::Cow, sync::LazyLock};
 
-use reifydb_codec::key::{decode_u64, encode_u8, encoded::EncodedKey};
+use reifydb_codec::{
+	key::{decode_u64, encode_u8, encoded::EncodedKey},
+	row::pod::EncodedPodRow,
+};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
@@ -78,6 +81,7 @@ impl RangeDomain for TestDomain {
 	type Dimension = OperatorId;
 	type Partition = TestPartition;
 	type Slot = Keyspace;
+	type Row = EncodedPodRow;
 
 	const PREFIX_LEN: usize = TestPartition::PREFIX_LEN;
 	const SLOTS: usize = 256;
@@ -96,6 +100,10 @@ impl RangeDomain for TestDomain {
 
 	fn span(partition: &Self::Partition) -> (EncodedKey, ExclusiveUpperEnd) {
 		partition.span()
+	}
+
+	fn head_band(_dimension: Self::Dimension) -> Option<(EncodedKey, EncodedKey)> {
+		None
 	}
 
 	fn caches_ranges(partition: &Self::Partition) -> bool {

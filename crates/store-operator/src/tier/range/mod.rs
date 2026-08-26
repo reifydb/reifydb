@@ -35,7 +35,10 @@ mod surface;
 
 use std::{borrow::Cow, sync::LazyLock};
 
-use reifydb_codec::key::{decode_u64, encode_u8, encoded::EncodedKey};
+use reifydb_codec::{
+	key::{decode_u64, encode_u8, encoded::EncodedKey},
+	row::pod::EncodedPodRow,
+};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
@@ -135,6 +138,7 @@ impl RangeDomain for OperatorDomain {
 	type Dimension = OperatorId;
 	type Partition = PartitionId;
 	type Slot = Keyspace;
+	type Row = EncodedPodRow;
 
 	const PREFIX_LEN: usize = PartitionId::PREFIX_LEN;
 	const SLOTS: usize = 256;
@@ -153,6 +157,10 @@ impl RangeDomain for OperatorDomain {
 
 	fn span(partition: &Self::Partition) -> (EncodedKey, ExclusiveUpperEnd) {
 		partition.span()
+	}
+
+	fn head_band(_dimension: Self::Dimension) -> Option<(EncodedKey, EncodedKey)> {
+		None
 	}
 
 	fn caches_ranges(partition: &Self::Partition) -> bool {
@@ -192,12 +200,13 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
 	};
-	use reifydb_store::coverage::{
-		cursor::{RangeCursor, ServedChunk},
-		plan::Segment,
+	use reifydb_store::{
+		coverage::{
+			cursor::{RangeCursor, ServedChunk},
+			plan::Segment,
+		},
+		tier::range::Materialize,
 	};
-
-	use reifydb_store::tier::range::Materialize;
 
 	use super::{OperatorRangeConfig, OperatorRangeTier};
 
