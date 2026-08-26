@@ -3214,6 +3214,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-node"
+version = "0.9.0"
+dependencies = [
+ "napi",
+ "napi-derive",
+ "reifydb",
+ "reifydb-value",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "reifydb-policy"
 version = "0.9.0"
 dependencies = [
@@ -4025,10 +4037,9 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
- "reifydb",
  "reifydb-build",
+ "reifydb-node",
  "reifydb-uptime-backend",
- "serde_json",
 ]
 
 [[package]]

@@ -1,0 +1,17 @@
+[package]
+name = "reifydb-node"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Shared napi bindings exposing a real ReifyDB Database, for per-app Node test bridges"
+publish = false
+
+[dependencies]
+reifydb = { workspace = true }
+reifydb-value = { workspace = true }
+napi = { workspace = true }
+napi-derive = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }

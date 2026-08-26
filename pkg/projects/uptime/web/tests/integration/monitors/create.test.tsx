@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MonitorNewPage } from '@/pages/monitors/new.tsx'
 import { useRealtimeStore } from '@/store/realtime'
-import { type Backend, type BackendCtor, loadBackend } from '../../support/backend'
+import { type Backend, type BackendFactory, loadBackend } from '../../support/backend'
 import { renderWithProviders } from '../../support/render'
 import { insertMonitorRql, uuid7 } from '../../support/rql'
 import { navigate } from '../../support/router-mock'
@@ -15,10 +15,10 @@ import { navigate } from '../../support/router-mock'
 vi.mock('@reifydb/auth', async () => (await import('../../support/auth-mock')).authMock())
 vi.mock('@tanstack/react-router', async () => (await import('../../support/router-mock')).routerMock())
 
-let Engine: BackendCtor
+let create: BackendFactory
 
 beforeAll(() => {
-  Engine = loadBackend()
+  create = loadBackend()
 })
 
 // Stubs fetch, never the mutation hook, so apiFetch's real code path still executes.
@@ -30,7 +30,7 @@ function installFetchBridge(engine: Backend) {
       if (init?.method === 'POST' && url.endsWith('/monitors')) {
         const body = JSON.parse(init.body as string)
         const id = uuid7()
-        engine.command(insertMonitorRql(id, body))
+        engine.commandRoot(insertMonitorRql(id, body))
         return new Response(JSON.stringify({ id, ...body }), {
           status: 201,
           headers: { 'Content-Type': 'application/json' },
@@ -49,7 +49,7 @@ describe('create monitor flow', () => {
   let engine: Backend
 
   beforeEach(() => {
-    engine = new Engine(1)
+    engine = create(1)
     useRealtimeStore.setState({ regions: { 'region-1': { id: 'region-1', label: 'US East' } } })
     installFetchBridge(engine)
     navigate.mockClear()
@@ -76,7 +76,7 @@ describe('create monitor flow', () => {
 
     // Asserts against the real engine, not the mock response - otherwise a broken migration would go undetected.
     const rows = JSON.parse(
-      engine.query(
+      engine.queryRoot(
         'from uptime::monitors filter { name == "reifydb.com" } map { name, kind, target, status }',
       ),
     )

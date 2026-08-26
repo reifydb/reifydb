@@ -79,6 +79,7 @@ members = [
     "pkg/rust/reifydb-client",
     "pkg/rust/reifydb-derive",
     "pkg/rust/reifydb-client-derive",
+    "pkg/rust/reifydb-node",
     "pkg/rust/examples",
     "pkg/rust/tests/limit",
     "pkg/rust/tests/regression",

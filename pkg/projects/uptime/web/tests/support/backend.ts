@@ -8,23 +8,26 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ADDON_PATH = path.resolve(__dirname, '../../../../../../target/release/libbridge.so')
 
 export interface Backend {
-  command(rql: string): string
-  query(rql: string): string
+  commandRoot(rql: string): string
+  queryRoot(rql: string): string
+  commandAs(identity: string, rql: string): string
+  queryAs(identity: string, rql: string): string
+  authenticate(method: string, credentials: Record<string, string>): string
 }
 
-export interface BackendCtor {
-  new (seed: number): Backend
+export interface BackendFactory {
+  (seed: number): Backend
 }
 
-let ctor: BackendCtor | null = null
+let factory: BackendFactory | null = null
 
 // dlopen, not require: .so has no require() extension handler, so it must be loaded directly
-export function loadBackend(): BackendCtor {
-  if (ctor != null) return ctor
+export function loadBackend(): BackendFactory {
+  if (factory != null) return factory
   try {
-    const addon = { exports: {} as { DstEngine: BackendCtor } }
+    const addon = { exports: {} as { create: BackendFactory } }
     process.dlopen(addon as unknown as NodeJS.Module, ADDON_PATH)
-    ctor = addon.exports.DstEngine
+    factory = addon.exports.create
   } catch (err) {
     throw new Error(
       `bridge addon not built at ${ADDON_PATH}. From the repo root, run:\n` +
@@ -32,5 +35,5 @@ export function loadBackend(): BackendCtor {
         `Original error: ${err}`,
     )
   }
-  return ctor!
+  return factory!
 }

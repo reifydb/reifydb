@@ -13,11 +13,10 @@ name = "bridge"
 crate-type = ["cdylib"]
 
 [dependencies]
-reifydb = { workspace = true, features = ["testing"] }
-reifydb-uptime-backend = { version = "0.9.0", path = "../backend" }
+reifydb-node = { version = "0.9.0", path = "../../../rust/reifydb-node" }
+reifydb-uptime-backend = { path = "../backend" }
 napi = { workspace = true }
 napi-derive = { workspace = true }
-serde_json = { workspace = true }
 
 [build-dependencies]
 napi-build = { workspace = true }
