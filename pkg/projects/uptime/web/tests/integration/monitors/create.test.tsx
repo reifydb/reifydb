@@ -7,6 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { MonitorNewPage } from '@/pages/monitors/new.tsx'
 import { useRealtimeStore } from '@/store/realtime'
 import type { TestDb, TestFactory } from '@reifydb/reifydb'
+import { Shape, Utf8Value } from '@reifydb/core'
 import { loadBackend } from '../../support/backend'
 import { renderWithProviders } from '../../support/render'
 import { insertMonitorRql, uuid7 } from '../../support/rql'
@@ -31,7 +32,7 @@ function installFetchBridge(db: TestDb) {
       if (init?.method === 'POST' && url.endsWith('/monitors')) {
         const body = JSON.parse(init.body as string)
         const id = uuid7()
-        await db.command_root(insertMonitorRql(id, body))
+        await db.command_root(insertMonitorRql(id, body), {}, [])
         return new Response(JSON.stringify({ id, ...body }), {
           status: 201,
           headers: { 'Content-Type': 'application/json' },
@@ -76,12 +77,25 @@ describe('create monitor flow', () => {
     expect(params.monitorId).toBeTruthy()
 
     // Asserts against the real db, not the mock response - otherwise a broken migration would go undetected.
-    const result = await db.query_root(
+    const [rows] = await db.query_root(
       'from uptime::monitors filter { name == "reifydb.com" } map { name, kind, target, status }',
+      {},
+      [
+        Shape.object({
+          name: Shape.utf8Value(),
+          kind: Shape.utf8Value(),
+          target: Shape.utf8Value(),
+          status: Shape.utf8Value(),
+        }),
+      ],
     )
-    const rows = JSON.parse(result)
     expect(rows).toEqual([
-      { name: 'reifydb.com', kind: 'http', target: 'https://reifydb.com/health', status: 'unknown' },
+      {
+        name: new Utf8Value('reifydb.com'),
+        kind: new Utf8Value('http'),
+        target: new Utf8Value('https://reifydb.com/health'),
+        status: new Utf8Value('unknown'),
+      },
     ])
   })
 

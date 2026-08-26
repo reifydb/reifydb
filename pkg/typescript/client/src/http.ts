@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {
-    decode,
-    Value
+    columns_to_rows,
+    transform_frames
 } from "@reifydb/core";
 import type {
     ShapeNode,
@@ -10,7 +10,6 @@ import type {
 } from "@reifydb/core";
 
 import type {
-    Column,
     LoginChallengeResult,
     LoginResult,
     ResponseMeta,
@@ -273,15 +272,7 @@ export class HttpClient {
 
         const { result, meta } = await this.send(endpoint, rql, encoded_params, req_opts);
 
-        const transformed_frames = result.map((frame: any, frame_index: number) => {
-            const frame_shape = shapes[frame_index];
-            if (!frame_shape) {
-                return frame;
-            }
-            return frame.map((row: any) => this.transform_result(row, frame_shape));
-        });
-
-        return { frames: transformed_frames as FrameResults<S>, meta };
+        return { frames: transform_frames(result, shapes), meta };
     }
 
     private async send(
@@ -382,86 +373,6 @@ export class HttpClient {
         }
     }
 
-    private transform_result(row: any, result_shape: any): any {
-        if (result_shape && result_shape.kind === 'object' && result_shape.properties) {
-            const transformed_row: any = {};
-            for (const [key, value] of Object.entries(row)) {
-                const property_shape = result_shape.properties[key];
-                if (property_shape && property_shape.kind === 'primitive') {
-                    if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
-                        const raw_value = (value as any).valueOf();
-                        transformed_row[key] = this.coerce_to_primitive_type(raw_value, property_shape.type);
-                    } else {
-                        transformed_row[key] = this.coerce_to_primitive_type(value, property_shape.type);
-                    }
-                } else if (property_shape && property_shape.kind === 'value') {
-                    transformed_row[key] = value;
-                } else {
-                    transformed_row[key] = property_shape ? this.transform_result(value, property_shape) : value;
-                }
-            }
-            return transformed_row;
-        }
-
-        if (result_shape && result_shape.kind === 'primitive') {
-            if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-                return this.coerce_to_primitive_type(row.valueOf(), result_shape.type);
-            }
-            return this.coerce_to_primitive_type(row, result_shape.type);
-        }
-
-        if (result_shape && result_shape.kind === 'value') {
-            return row;
-        }
-
-        if (result_shape && result_shape.kind === 'array') {
-            if (Array.isArray(row)) {
-                return row.map((item: any) => this.transform_result(item, result_shape.items));
-            }
-            return row;
-        }
-
-        if (result_shape && result_shape.kind === 'optional') {
-            if (row === undefined || row === null) {
-                return undefined;
-            }
-            return this.transform_result(row, result_shape.shape);
-        }
-
-        return row;
-    }
-
-    private coerce_to_primitive_type(value: any, value_type: string): any {
-        if (value === undefined || value === null) {
-            return value;
-        }
-
-        const bigint_types = ['Int8', 'Int16', 'Uint8', 'Uint16'];
-        if (bigint_types.includes(value_type)) {
-            if (typeof value === 'bigint') {
-                return value;
-            }
-            if (typeof value === 'number') {
-                return BigInt(Math.trunc(value));
-            }
-            if (typeof value === 'string') {
-                return BigInt(value);
-            }
-        }
-
-        return value;
-    }
-}
-
-function columns_to_rows(columns: Column[]): Record<string, Value>[] {
-    const row_count = columns[0]?.payload.length ?? 0;
-    return Array.from({length: row_count}, (_, i) => {
-        const row: Record<string, Value> = {};
-        for (const col of columns) {
-            row[col.name] = decode({type: col.type, value: col.payload[i]});
-        }
-        return row;
-    });
 }
 
 function extract_meta(headers: Headers | undefined): ResponseMeta | undefined {

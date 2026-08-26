@@ -2,7 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 import {
     decode,
-    Value
+    columns_to_rows,
+    transform_frames,
+    transform_result
 } from "@reifydb/core";
 import type {
     ShapeNode,
@@ -20,7 +22,6 @@ import type {
     QueryResponse,
     CallRequest,
     CallResponse,
-    Column,
     ErrorResponse,
     LoginChallengeResult,
     LoginResult,
@@ -382,7 +383,7 @@ export class WsClient {
             },
         } as CallRequest);
 
-        return { frames: this.transform_frames(result, shapes), meta };
+        return { frames: transform_frames(result, shapes), meta };
     }
 
     private async execute<const S extends readonly ShapeNode[]>(
@@ -407,21 +408,7 @@ export class WsClient {
             },
         } as AdminRequest | CommandRequest | QueryRequest);
 
-        return { frames: this.transform_frames(result, shapes), meta };
-    }
-
-    private transform_frames<const S extends readonly ShapeNode[]>(
-        result: any[],
-        shapes: S
-    ): FrameResults<S> {
-        // Transform each frame with its corresponding shape
-        return result.map((frame: any, frame_index: number) => {
-            const frame_shape = shapes[frame_index];
-            if (!frame_shape) {
-                return frame; // No shape for this frame, return as-is
-            }
-            return frame.map((row: any) => this.transform_result(row, frame_shape));
-        }) as FrameResults<S>;
+        return { frames: transform_frames(result, shapes), meta };
     }
 
     async subscribe<T = any>(
@@ -683,94 +670,6 @@ export class WsClient {
         return this.options.format ?? "frames";
     }
 
-
-    private transform_result(row: any, result_shape: any): any {
-        // Handle object shape with primitive or value properties
-        if (result_shape && result_shape.kind === 'object' && result_shape.properties) {
-            const transformed_row: any = {};
-            for (const [key, value] of Object.entries(row)) {
-                const property_shape = result_shape.properties[key];
-                if (property_shape && property_shape.kind === 'primitive') {
-                    // Convert Value objects to primitives for primitive shape properties
-                    // Check if it's a Value instance by checking for valueOf method
-                    if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
-                        const raw_value = (value as any).valueOf();
-                        transformed_row[key] = this.coerce_to_primitive_type(raw_value, property_shape.type);
-                    } else {
-                        transformed_row[key] = this.coerce_to_primitive_type(value, property_shape.type);
-                    }
-                } else if (property_shape && property_shape.kind === 'value') {
-                    // Keep Value objects as-is for value shape properties
-                    transformed_row[key] = value;
-                } else {
-                    // Recursively transform nested structures
-                    transformed_row[key] = property_shape ? this.transform_result(value, property_shape) : value;
-                }
-            }
-            return transformed_row;
-        }
-
-        // Handle primitive shape transformation
-        if (result_shape && result_shape.kind === 'primitive') {
-            // Single primitive value - extract from Value object if needed
-            // Check if it's a Value instance by checking for valueOf method
-            if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-                return this.coerce_to_primitive_type(row.valueOf(), result_shape.type);
-            }
-            return this.coerce_to_primitive_type(row, result_shape.type);
-        }
-
-        // Handle value shape transformation - keep Value objects as-is
-        if (result_shape && result_shape.kind === 'value') {
-            return row;
-        }
-
-        // Handle array shape
-        if (result_shape && result_shape.kind === 'array') {
-            if (Array.isArray(row)) {
-                return row.map((item: any) => this.transform_result(item, result_shape.items));
-            }
-            return row;
-        }
-
-        // Handle optional shape
-        if (result_shape && result_shape.kind === 'optional') {
-            if (row === undefined || row === null) {
-                return undefined;
-            }
-            return this.transform_result(row, result_shape.shape);
-        }
-
-        // Default: return as-is
-        return row;
-    }
-
-    /**
-     * Coerce a value to the expected primitive type based on shape.
-     * This handles cases where the server returns a smaller integer type
-     * but the shape expects a bigint type (Int8, Int16, Uint8, Uint16).
-     */
-    private coerce_to_primitive_type(value: any, value_type: string): any {
-        if (value === undefined || value === null) {
-            return value;
-        }
-
-        // Bigint types: Int8, Int16, Uint8, Uint16
-        const bigint_types = ['Int8', 'Int16', 'Uint8', 'Uint16'];
-        if (bigint_types.includes(value_type)) {
-            if (typeof value === 'bigint') {
-                return value;
-            }
-            if (typeof value === 'number') {
-                return BigInt(Math.trunc(value));
-            }
-            if (typeof value === 'string') {
-                return BigInt(value);
-            }
-        }
-
-        return value;
-    }
 
     async login_with_password(identity: string, password: string): Promise<LoginResult> {
         return this.login("password", {identifier: identity, password});
@@ -1177,9 +1076,8 @@ export class WsClient {
             rows.push(row);
         }
 
-        // Apply shape transformation if provided
         if (shape) {
-            return rows.map(row => this.transform_result(row, shape));
+            return rows.map(row => transform_result(row, shape));
         }
 
         return rows;
@@ -1389,16 +1287,4 @@ export class WsClient {
             });
         }
     }
-}
-
-
-function columns_to_rows(columns: Column[]): Record<string, Value>[] {
-    const row_count = columns[0]?.payload.length ?? 0;
-    return Array.from({length: row_count}, (_, i) => {
-        const row: Record<string, Value> = {};
-        for (const col of columns) {
-            row[col.name] = decode({type: col.type, value: col.payload[i]});
-        }
-        return row;
-    });
 }

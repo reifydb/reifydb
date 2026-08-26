@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { Reifydb } from '../src/index'
+import { Shape, Int4Value, Utf8Value } from '@reifydb/core'
 
 describe('migration', () => {
   it('rejects when the migrations directory does not exist', () => {
@@ -18,16 +19,20 @@ describe('migration', () => {
       })
       .build()
 
-    await db.command_root('insert inline_smoke::items [{ id: 1, label: "hello" }]')
-    const result = await db.query_root('from inline_smoke::items map { id, label }')
+    await db.command_root('insert inline_smoke::items [{ id: 1, label: "hello" }]', {}, [])
+    const [rows] = await db.query_root(
+      'from inline_smoke::items map { id, label }',
+      {},
+      [Shape.object({ id: Shape.int4Value(), label: Shape.utf8Value() })],
+    )
 
-    expect(JSON.parse(result)).toEqual([{ id: '1', label: 'hello' }])
+    expect(rows).toEqual([{ id: new Int4Value(1), label: new Utf8Value('hello') }])
   })
 
   it('builds with no migrations at all', async () => {
     const db = Reifydb.memory().build()
 
     // must reject, not silently return empty, since the namespace itself was never created
-    await expect(db.query_root('from smoke::items map { id, label }')).rejects.toThrow()
+    await expect(db.query_root('from smoke::items map { id, label }', {}, [])).rejects.toThrow()
   })
 })

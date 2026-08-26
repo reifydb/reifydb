@@ -346,7 +346,7 @@ tower = { version = "0.5.3", features = ["limit", "timeout"] }
 tower-http = { version = "0.6.11", features = ["trace", "timeout"] }
 
 # Node native addon bindings, shared by uptime's DST test bridge and @reifydb/reifydb
-napi = { version = "2", default-features = false, features = ["napi4", "tokio_rt"] }
+napi = { version = "2", default-features = false, features = ["napi4", "tokio_rt", "serde-json"] }
 napi-derive = { version = "2" }
 napi-build = { version = "2" }
 futures-util = { version = "0.3.32", features = ["sink"] }

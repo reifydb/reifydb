@@ -2069,6 +2069,8 @@ dependencies = [
  "napi-derive",
  "napi-sys",
  "once_cell",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -3223,6 +3225,8 @@ dependencies = [
  "napi-derive",
  "reifydb",
  "reifydb-build",
+ "reifydb-codec",
+ "reifydb-sub-server",
  "reifydb-value",
  "serde_json",
  "tokio",

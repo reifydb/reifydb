@@ -3,18 +3,75 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
+use napi::bindgen_prelude::Either;
 use napi_derive::napi;
 #[cfg(reifydb_dst)]
 use reifydb::runtime::RuntimeConfig;
-use reifydb::{
-	Database, Frame, IdentityId, Migration, MigrationSource, Value, auth::service::AuthResponse, embedded,
-};
-use reifydb_value::value::uuid::Uuid7;
+use reifydb::{Database, IdentityId, Migration, MigrationSource, auth::service::AuthResponse, embedded};
+use reifydb_codec::json::to::convert_frames;
+use reifydb_sub_server::wire::{WireParams, WireValue};
+use reifydb_value::{params::Params, value::uuid::Uuid7};
 use tokio::task::spawn_blocking;
 
 #[napi]
 pub struct ReifydbNode {
 	db: Arc<Database>,
+}
+
+#[napi(object)]
+pub struct ParamValue {
+	pub r#type: String,
+	pub value: String,
+}
+
+#[napi(object)]
+pub struct Column {
+	pub name: String,
+	pub r#type: serde_json::Value,
+	pub payload: Vec<String>,
+}
+
+#[napi(object)]
+pub struct Frame {
+	pub columns: Vec<Column>,
+}
+
+fn frames_to_napi(frames: &[reifydb::Frame]) -> Vec<Frame> {
+	convert_frames(frames)
+		.into_iter()
+		.map(|frame| Frame {
+			columns: frame
+				.columns
+				.into_iter()
+				.map(|column| Column {
+					name: column.name,
+					r#type: serde_json::to_value(&column.r#type)
+						.expect("value type is always representable as JSON"),
+					payload: column.payload,
+				})
+				.collect(),
+		})
+		.collect()
+}
+
+type ParamsInput = Either<Vec<ParamValue>, HashMap<String, ParamValue>>;
+
+fn parse_params(params: Option<ParamsInput>) -> napi::Result<Params> {
+	let wire = match params {
+		None => return Ok(Params::None),
+		Some(Either::A(items)) => WireParams::Positional(items.into_iter().map(to_wire_value).collect()),
+		Some(Either::B(map)) => {
+			WireParams::Named(map.into_iter().map(|(name, value)| (name, to_wire_value(value))).collect())
+		}
+	};
+	wire.into_params().map_err(napi::Error::from_reason)
+}
+
+fn to_wire_value(param: ParamValue) -> WireValue {
+	WireValue {
+		type_name: param.r#type,
+		value: param.value,
+	}
 }
 
 #[cfg(reifydb_dst)]
@@ -71,48 +128,103 @@ pub fn open_with_migrations(entries: Vec<MigrationEntry>) -> napi::Result<Reifyd
 
 #[napi]
 impl ReifydbNode {
-	#[napi(js_name = "command_root")]
-	pub async fn command_root(&self, rql: String) -> napi::Result<String> {
+	#[napi(js_name = "admin_root")]
+	pub async fn admin_root(
+		&self,
+		rql: String,
+		params: Option<Either<Vec<ParamValue>, HashMap<String, ParamValue>>>,
+	) -> napi::Result<Vec<Frame>> {
 		let db = self.db.clone();
-		spawn_blocking(move || db.command_as_root(&rql, ()))
+		let params = parse_params(params)?;
+		spawn_blocking(move || db.admin_as_root(&rql, params))
 			.await
 			.expect("blocking task panicked")
-			.map(|frames| frames_to_json(&frames))
+			.map(|frames| frames_to_napi(&frames))
+			.map_err(|e| napi::Error::from_reason(format!("{e:?}")))
+	}
+
+	#[napi(js_name = "command_root")]
+	pub async fn command_root(
+		&self,
+		rql: String,
+		params: Option<Either<Vec<ParamValue>, HashMap<String, ParamValue>>>,
+	) -> napi::Result<Vec<Frame>> {
+		let db = self.db.clone();
+		let params = parse_params(params)?;
+		spawn_blocking(move || db.command_as_root(&rql, params))
+			.await
+			.expect("blocking task panicked")
+			.map(|frames| frames_to_napi(&frames))
 			.map_err(|e| napi::Error::from_reason(format!("{e:?}")))
 	}
 
 	#[napi(js_name = "query_root")]
-	pub async fn query_root(&self, rql: String) -> napi::Result<String> {
+	pub async fn query_root(
+		&self,
+		rql: String,
+		params: Option<Either<Vec<ParamValue>, HashMap<String, ParamValue>>>,
+	) -> napi::Result<Vec<Frame>> {
 		let db = self.db.clone();
-		spawn_blocking(move || db.query_as_root(&rql, ()))
+		let params = parse_params(params)?;
+		spawn_blocking(move || db.query_as_root(&rql, params))
 			.await
 			.expect("blocking task panicked")
-			.map(|frames| frames_to_json(&frames))
+			.map(|frames| frames_to_napi(&frames))
 			.map_err(|e| napi::Error::from_reason(format!("{e:?}")))
 	}
 
-	#[napi(js_name = "command_as")]
-	pub async fn command_as(&self, identity: String, rql: String) -> napi::Result<String> {
+	#[napi(js_name = "admin_as")]
+	pub async fn admin_as(
+		&self,
+		identity: String,
+		rql: String,
+		params: Option<Either<Vec<ParamValue>, HashMap<String, ParamValue>>>,
+	) -> napi::Result<Vec<Frame>> {
 		let db = self.db.clone();
+		let params = parse_params(params)?;
 		spawn_blocking(move || {
 			let identity = parse_identity(&identity)?;
-			db.command_as(identity, &rql, ()).map_err(|e| napi::Error::from_reason(format!("{e:?}")))
+			db.admin_as(identity, &rql, params).map_err(|e| napi::Error::from_reason(format!("{e:?}")))
 		})
 		.await
 		.expect("blocking task panicked")
-		.map(|frames| frames_to_json(&frames))
+		.map(|frames| frames_to_napi(&frames))
+	}
+
+	#[napi(js_name = "command_as")]
+	pub async fn command_as(
+		&self,
+		identity: String,
+		rql: String,
+		params: Option<Either<Vec<ParamValue>, HashMap<String, ParamValue>>>,
+	) -> napi::Result<Vec<Frame>> {
+		let db = self.db.clone();
+		let params = parse_params(params)?;
+		spawn_blocking(move || {
+			let identity = parse_identity(&identity)?;
+			db.command_as(identity, &rql, params).map_err(|e| napi::Error::from_reason(format!("{e:?}")))
+		})
+		.await
+		.expect("blocking task panicked")
+		.map(|frames| frames_to_napi(&frames))
 	}
 
 	#[napi(js_name = "query_as")]
-	pub async fn query_as(&self, identity: String, rql: String) -> napi::Result<String> {
+	pub async fn query_as(
+		&self,
+		identity: String,
+		rql: String,
+		params: Option<Either<Vec<ParamValue>, HashMap<String, ParamValue>>>,
+	) -> napi::Result<Vec<Frame>> {
 		let db = self.db.clone();
+		let params = parse_params(params)?;
 		spawn_blocking(move || {
 			let identity = parse_identity(&identity)?;
-			db.query_as(identity, &rql, ()).map_err(|e| napi::Error::from_reason(format!("{e:?}")))
+			db.query_as(identity, &rql, params).map_err(|e| napi::Error::from_reason(format!("{e:?}")))
 		})
 		.await
 		.expect("blocking task panicked")
-		.map(|frames| frames_to_json(&frames))
+		.map(|frames| frames_to_napi(&frames))
 	}
 
 	#[napi]
@@ -130,21 +242,6 @@ fn parse_identity(raw: &str) -> napi::Result<IdentityId> {
 	let uuid =
 		uuid::Uuid::parse_str(raw).map_err(|e| napi::Error::from_reason(format!("invalid identity: {e}")))?;
 	Ok(IdentityId::new(Uuid7::from(uuid)))
-}
-
-fn frames_to_json(frames: &[Frame]) -> String {
-	let rows: Vec<serde_json::Value> = frames
-		.iter()
-		.flat_map(|frame| frame.to_rows())
-		.map(|row| {
-			let map: serde_json::Map<String, serde_json::Value> = row
-				.into_iter()
-				.map(|(name, value): (String, Value)| (name, value.to_string().into()))
-				.collect();
-			serde_json::Value::Object(map)
-		})
-		.collect();
-	serde_json::to_string(&rows).expect("row values are all plain strings")
 }
 
 fn auth_response_to_json(response: &AuthResponse) -> String {

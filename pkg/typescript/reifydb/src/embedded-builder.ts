@@ -4,6 +4,7 @@
 import { open_with_migrations } from '../native'
 import type { Db } from './db'
 import type { MigrationInput } from './migration'
+import { NativeDb } from './native-db'
 
 export class EmbeddedBuilder {
   private readonly migrations: MigrationInput[]
@@ -17,7 +18,7 @@ export class EmbeddedBuilder {
   }
 
   build(): Db {
-    return open_with_migrations(this.migrations.map(to_entry))
+    return new NativeDb(open_with_migrations(this.migrations.map(to_entry)))
   }
 }
 
