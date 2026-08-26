@@ -195,7 +195,7 @@ impl StandardOperatorStore {
 	}
 
 	pub fn range_keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
-		self.range.as_ref().map(OperatorRangeTier::keyspace_metrics).unwrap_or_default()
+		self.range.as_ref().map(OperatorRangeTier::slot_metrics).unwrap_or_default()
 	}
 
 	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {

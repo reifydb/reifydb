@@ -8,36 +8,31 @@ use std::{
 };
 
 use reifydb_core::{
-	interface::catalog::flow::OperatorId,
-	key::operator_state::Keyspace,
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	util::budget::MemoryBudget,
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
-use reifydb_store::coverage::{index::CoverageIndex, plan::GapHistogram, retraction::Retractions};
 use reifydb_value::byte_size::ByteSize;
 
 #[cfg(test)]
 use crate::tier::range::MaterializeInterlock;
-use crate::tier::range::{
-	KEYSPACE_SLOTS, OperatorRangeConfig, OperatorRangeKeyspaceMetrics, OperatorRangeMetrics,
-	OperatorRangeShardMetrics, OperatorRangeTier, Partition, PartitionId, PoolInner, Shard, account,
-	entry_footprint,
+use crate::{
+	coverage::{index::CoverageIndex, plan::GapHistogram, retraction::Retractions},
+	tier::range::{
+		Partition, PoolInner, RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics, RangeSlotMetrics,
+		RangeTier, Shard, account, entry_footprint,
+	},
 };
-
-const RANGE_SCOPE: &str = "operator_range";
-
-const GAP_SCOPE: &str = "operator_range::gaps";
 
 const GAP_SLOTS: [&str; 8] =
 	["count_0", "count_1", "count_2", "count_3", "count_4", "count_5_8", "count_9_16", "count_17_plus"];
 
-impl OperatorRangeTier {
-	pub fn new(config: OperatorRangeConfig) -> Option<Self> {
+impl<D: RangeDomain> RangeTier<D> {
+	pub fn new(config: RangeConfig) -> Option<Self> {
 		let resident_bytes = config.resident_bytes?;
 		Some(Self {
 			inner: Arc::new(PoolInner {
-				shards: build_shards(config, resident_bytes),
+				shards: build_shards::<D>(config, resident_bytes),
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
@@ -48,11 +43,11 @@ impl OperatorRangeTier {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn with_interlock(config: OperatorRangeConfig, interlock: MaterializeInterlock) -> Option<Self> {
+	pub(crate) fn with_interlock(config: RangeConfig, interlock: MaterializeInterlock<D>) -> Option<Self> {
 		let resident_bytes = config.resident_bytes?;
 		Some(Self {
 			inner: Arc::new(PoolInner {
-				shards: build_shards(config, resident_bytes),
+				shards: build_shards::<D>(config, resident_bytes),
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
@@ -61,25 +56,25 @@ impl OperatorRangeTier {
 		})
 	}
 
-	pub(super) fn shard_index(&self, partition: &PartitionId) -> usize {
+	pub(super) fn shard_index(&self, partition: &D::Partition) -> usize {
 		let mut hasher = DefaultHasher::new();
 		partition.hash(&mut hasher);
 		(hasher.finish() % self.inner.shards.len() as u64) as usize
 	}
 
-	pub(super) fn shard(&self, index: usize) -> &Mutex<Shard> {
+	pub(super) fn shard(&self, index: usize) -> &Mutex<Shard<D>> {
 		&self.inner.shards[index]
 	}
 
-	pub(super) fn shard_for(&self, partition: &PartitionId) -> &Mutex<Shard> {
+	pub(super) fn shard_for(&self, partition: &D::Partition) -> &Mutex<Shard<D>> {
 		&self.inner.shards[self.shard_index(partition)]
 	}
 
-	pub(super) fn all_shards(&self) -> &[Mutex<Shard>] {
+	pub(super) fn all_shards(&self) -> &[Mutex<Shard<D>>] {
 		&self.inner.shards
 	}
 
-	pub(super) fn coverage(&self) -> &RwLock<CoverageIndex<OperatorId>> {
+	pub(super) fn coverage(&self) -> &RwLock<CoverageIndex<D::Dimension>> {
 		&self.inner.coverage
 	}
 
@@ -115,12 +110,12 @@ impl OperatorRangeTier {
 		}
 	}
 
-	fn pick_victim(&self, index: usize) -> Option<(PartitionId, u64)> {
+	fn pick_victim(&self, index: usize) -> Option<(D::Partition, u64)> {
 		let shard = self.shard(index).lock();
 		if !shard.budget.over_budget() {
 			return None;
 		}
-		let mut victim: Option<(u64, PartitionId, u64)> = None;
+		let mut victim: Option<(u64, D::Partition, u64)> = None;
 		for (id, partition) in shard.partitions.iter() {
 			if !partition.pinned.has_victim() {
 				continue;
@@ -132,20 +127,20 @@ impl OperatorRangeTier {
 		victim.map(|(_, id, materializes)| (id, materializes))
 	}
 
-	fn retract_partition(&self, victim: &PartitionId) {
-		let (start, end) = victim.span();
+	fn retract_partition(&self, victim: &D::Partition) {
+		let (start, end) = D::span(victim);
 		let mut coverage = self.coverage().write();
-		coverage.shrink_range(victim.operator, &start, &end);
+		coverage.shrink_range(D::dimension(victim), &start, &end);
 		self.record_retraction();
 	}
 
-	fn drop_unpinned(&self, index: usize, victim: &PartitionId, materializes: u64) -> bool {
+	fn drop_unpinned(&self, index: usize, victim: &D::Partition, materializes: u64) -> bool {
 		let mut shard = self.shard(index).lock();
 		let Shard {
 			partitions,
 			budget,
 			metrics,
-			keyspace_metrics,
+			slot_metrics,
 			..
 		} = &mut *shard;
 		let emptied = {
@@ -178,7 +173,7 @@ impl OperatorRangeTier {
 			budget.release(ByteSize::from_bytes(gone.bytes as u64));
 		}
 		metrics.evictions += 1;
-		keyspace_metrics[victim.keyspace.0 as usize].evictions += 1;
+		slot_metrics[D::slot(victim)].evictions += 1;
 		true
 	}
 
@@ -208,20 +203,20 @@ impl OperatorRangeTier {
 		self.inner.shards[0].lock().budget.limit()
 	}
 
-	pub fn metrics(&self) -> OperatorRangeMetrics {
-		let mut total = OperatorRangeMetrics::default();
+	pub fn metrics(&self) -> RangeMetrics {
+		let mut total = RangeMetrics::default();
 		for shard in self.all_shards() {
 			accumulate(&mut total, &shard.lock().metrics);
 		}
 		total
 	}
 
-	pub fn shard_metrics(&self) -> Vec<OperatorRangeShardMetrics> {
+	pub fn shard_metrics(&self) -> Vec<RangeShardMetrics> {
 		let mut out = Vec::with_capacity(self.inner.shards.len());
 		for (index, shard) in self.inner.shards.iter().enumerate() {
 			let shard = shard.lock();
 			let entries = shard.partitions.values().map(|partition| partition.entries.len()).sum();
-			out.push(OperatorRangeShardMetrics {
+			out.push(RangeShardMetrics {
 				shard: index,
 				used: shard.budget.used(),
 				limit: shard.budget.limit(),
@@ -233,24 +228,24 @@ impl OperatorRangeTier {
 		out
 	}
 
-	pub fn keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
-		let mut used = vec![0u64; KEYSPACE_SLOTS];
-		let mut partitions = vec![0usize; KEYSPACE_SLOTS];
-		let mut intervals = vec![0usize; KEYSPACE_SLOTS];
-		let mut entries = vec![0usize; KEYSPACE_SLOTS];
-		let mut counters = vec![OperatorRangeMetrics::default(); KEYSPACE_SLOTS];
+	pub fn slot_metrics(&self) -> Vec<RangeSlotMetrics<D>> {
+		let mut used = vec![0u64; D::SLOTS];
+		let mut partitions = vec![0usize; D::SLOTS];
+		let mut intervals = vec![0usize; D::SLOTS];
+		let mut entries = vec![0usize; D::SLOTS];
+		let mut counters = vec![RangeMetrics::default(); D::SLOTS];
 
-		let mut resident: Vec<PartitionId> = Vec::new();
+		let mut resident: Vec<D::Partition> = Vec::new();
 		for shard in self.all_shards() {
 			let shard = shard.lock();
 			for (id, partition) in &shard.partitions {
-				let slot = id.keyspace.0 as usize;
+				let slot = D::slot(id);
 				used[slot] += partition.bytes as u64;
 				partitions[slot] += 1;
 				entries[slot] += partition.entries.len();
 				resident.push(*id);
 			}
-			for (slot, source) in shard.keyspace_metrics.iter().enumerate() {
+			for (slot, source) in shard.slot_metrics.iter().enumerate() {
 				accumulate(&mut counters[slot], source);
 			}
 		}
@@ -258,19 +253,19 @@ impl OperatorRangeTier {
 		{
 			let coverage = self.coverage().read();
 			for id in resident {
-				let Some(set) = coverage.set(id.operator) else {
+				let Some(set) = coverage.set(D::dimension(&id)) else {
 					continue;
 				};
-				let (start, end) = id.span();
-				intervals[id.keyspace.0 as usize] += set.overlapping(&start, &end).len();
+				let (start, end) = D::span(&id);
+				intervals[D::slot(&id)] += set.overlapping(&start, &end).len();
 			}
 		}
 
-		let empty = OperatorRangeMetrics::default();
-		(0..KEYSPACE_SLOTS)
+		let empty = RangeMetrics::default();
+		(0..D::SLOTS)
 			.filter(|slot| partitions[*slot] > 0 || counters[*slot] != empty)
-			.map(|slot| OperatorRangeKeyspaceMetrics {
-				keyspace: Keyspace(slot as u8),
+			.map(|slot| RangeSlotMetrics {
+				slot: D::slot_at(slot),
 				used: ByteSize::from_bytes(used[slot]),
 				partitions: partitions[slot],
 				intervals: intervals[slot],
@@ -301,31 +296,31 @@ impl OperatorRangeTier {
 	}
 }
 
-impl MetricsCollector for OperatorRangeTier {
+impl<D: RangeDomain> MetricsCollector for RangeTier<D> {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
 		let counters = self.metrics();
-		out.push(MetricsSample::heap(RANGE_SCOPE, "resident_bytes", self.resident_bytes()));
-		out.push(MetricsSample::count(RANGE_SCOPE, "resident_intervals", self.intervals() as u64));
-		out.push(MetricsSample::count(RANGE_SCOPE, "resident_partitions", self.partitions() as u64));
-		out.push(MetricsSample::count(RANGE_SCOPE, "resident_entries", self.entries() as u64));
-		out.push(MetricsSample::counter(RANGE_SCOPE, "hits", counters.hits));
-		out.push(MetricsSample::counter(RANGE_SCOPE, "misses", counters.misses));
-		out.push(MetricsSample::counter(RANGE_SCOPE, "materializes", counters.materializes));
-		out.push(MetricsSample::counter(RANGE_SCOPE, "materializes_refused", counters.materializes_refused));
-		out.push(MetricsSample::counter(RANGE_SCOPE, "materializes_raced", counters.materializes_raced));
-		out.push(MetricsSample::counter(RANGE_SCOPE, "evictions", counters.evictions));
-		out.push(MetricsSample::counter(RANGE_SCOPE, "point_hits", counters.point_hits));
-		out.push(MetricsSample::counter(RANGE_SCOPE, "point_misses", counters.point_misses));
-		out.push(MetricsSample::bytes(RANGE_SCOPE, "shard_limit_bytes", self.shard_limit_bytes()));
+		out.push(MetricsSample::heap(D::SCOPE, "resident_bytes", self.resident_bytes()));
+		out.push(MetricsSample::count(D::SCOPE, "resident_intervals", self.intervals() as u64));
+		out.push(MetricsSample::count(D::SCOPE, "resident_partitions", self.partitions() as u64));
+		out.push(MetricsSample::count(D::SCOPE, "resident_entries", self.entries() as u64));
+		out.push(MetricsSample::counter(D::SCOPE, "hits", counters.hits));
+		out.push(MetricsSample::counter(D::SCOPE, "misses", counters.misses));
+		out.push(MetricsSample::counter(D::SCOPE, "materializes", counters.materializes));
+		out.push(MetricsSample::counter(D::SCOPE, "materializes_refused", counters.materializes_refused));
+		out.push(MetricsSample::counter(D::SCOPE, "materializes_raced", counters.materializes_raced));
+		out.push(MetricsSample::counter(D::SCOPE, "evictions", counters.evictions));
+		out.push(MetricsSample::counter(D::SCOPE, "point_hits", counters.point_hits));
+		out.push(MetricsSample::counter(D::SCOPE, "point_misses", counters.point_misses));
+		out.push(MetricsSample::bytes(D::SCOPE, "shard_limit_bytes", self.shard_limit_bytes()));
 		for (index, shard) in self.inner.shards.iter().enumerate() {
 			out.push(MetricsSample::bytes(
-				format!("{RANGE_SCOPE}::shard::{index:02}"),
+				format!("{}::shard::{index:02}", D::SCOPE),
 				"used_bytes",
 				shard.lock().budget.used(),
 			));
 		}
-		for keyspace in self.keyspace_metrics() {
-			let scope = format!("{RANGE_SCOPE}::keyspace::{}", keyspace.keyspace.name());
+		for keyspace in self.slot_metrics() {
+			let scope = format!("{}::keyspace::{}", D::SCOPE, D::slot_name(keyspace.slot));
 			out.push(MetricsSample::bytes(scope.clone(), "used_bytes", keyspace.used));
 			out.push(MetricsSample::count(scope.clone(), "partitions", keyspace.partitions as u64));
 			out.push(MetricsSample::count(scope.clone(), "entries", keyspace.entries as u64));
@@ -337,18 +332,18 @@ impl MetricsCollector for OperatorRangeTier {
 			out.push(MetricsSample::counter(scope, "point_misses", keyspace.counters.point_misses));
 		}
 		let gaps = self.gap_histogram();
-		out.push(MetricsSample::counter(GAP_SCOPE, "scans", gaps.scans()));
-		out.push(MetricsSample::counter(GAP_SCOPE, "degraded", gaps.degraded()));
+		out.push(MetricsSample::counter(D::GAP_SCOPE, "scans", gaps.scans()));
+		out.push(MetricsSample::counter(D::GAP_SCOPE, "degraded", gaps.degraded()));
 		for (slot, count) in GAP_SLOTS.iter().zip(gaps.slots().iter()) {
-			out.push(MetricsSample::counter(GAP_SCOPE, slot, *count));
+			out.push(MetricsSample::counter(D::GAP_SCOPE, slot, *count));
 		}
 		if let Some(median) = gaps.median() {
-			out.push(MetricsSample::count(GAP_SCOPE, "median", median as u64));
+			out.push(MetricsSample::count(D::GAP_SCOPE, "median", median as u64));
 		}
 	}
 }
 
-fn accumulate(target: &mut OperatorRangeMetrics, source: &OperatorRangeMetrics) {
+fn accumulate(target: &mut RangeMetrics, source: &RangeMetrics) {
 	target.hits += source.hits;
 	target.misses += source.misses;
 	target.materializes += source.materializes;
@@ -359,7 +354,7 @@ fn accumulate(target: &mut OperatorRangeMetrics, source: &OperatorRangeMetrics) 
 	target.point_misses += source.point_misses;
 }
 
-fn build_shards(config: OperatorRangeConfig, resident_bytes: ByteSize) -> Box<[Mutex<Shard>]> {
+fn build_shards<D: RangeDomain>(config: RangeConfig, resident_bytes: ByteSize) -> Box<[Mutex<Shard<D>>]> {
 	let shard_count = config.shards.max(1);
 	let byte_cap = ByteSize::from_bytes((resident_bytes.as_bytes() / shard_count as u64).max(1));
 	(0..shard_count)
@@ -369,8 +364,8 @@ fn build_shards(config: OperatorRangeConfig, resident_bytes: ByteSize) -> Box<[M
 				budget: MemoryBudget::new(byte_cap),
 				next_tick: 0,
 				gaps: GapHistogram::new(),
-				metrics: OperatorRangeMetrics::default(),
-				keyspace_metrics: Box::new([OperatorRangeMetrics::default(); KEYSPACE_SLOTS]),
+				metrics: RangeMetrics::default(),
+				slot_metrics: vec![RangeMetrics::default(); D::SLOTS].into_boxed_slice(),
 			})
 		})
 		.collect::<Vec<_>>()
@@ -396,35 +391,39 @@ mod tests {
 			sample::{MetricsSample, Reading},
 		},
 	};
-	use reifydb_store::coverage::{
-		entry::{Entry, PinnedCount},
-		interval::Interval,
-		plan::{DEFAULT_GAP_GUARD, ScanPlan},
-	};
 	use reifydb_value::{byte_size::ByteSize, count::Count};
 
-	use crate::tier::range::{
-		OperatorRangeConfig, OperatorRangeTier, PARTITION_OVERHEAD, Partition, PartitionId, Shard,
-		entry_footprint,
+	use crate::{
+		coverage::{
+			entry::{Entry, PinnedCount},
+			interval::Interval,
+			plan::{DEFAULT_GAP_GUARD, ScanPlan},
+		},
+		tier::range::{
+			Partition, RangeConfig, RangeTier, Shard,
+			domain::{TestDomain as D, TestPartition},
+			entry_footprint, partition_overhead,
+		},
 	};
+
+	const PARTITION_OVERHEAD: usize = partition_overhead::<D>();
 
 	const OP_A: OperatorId = OperatorId(1);
 	const GROUP_A: GroupId = GroupId(10);
 
-	fn config(limit_bytes: u64, shards: usize) -> OperatorRangeConfig {
-		OperatorRangeConfig {
+	fn config(limit_bytes: u64, shards: usize) -> RangeConfig {
+		RangeConfig {
 			resident_bytes: Some(ByteSize::from_bytes(limit_bytes)),
 			shards,
 			gap_guard: DEFAULT_GAP_GUARD,
 		}
 	}
 
-	fn tier(limit_bytes: u64, shards: usize) -> OperatorRangeTier {
-		OperatorRangeTier::new(config(limit_bytes, shards))
-			.expect("a tier with a byte budget must be constructed")
+	fn tier(limit_bytes: u64, shards: usize) -> RangeTier<D> {
+		RangeTier::<D>::new(config(limit_bytes, shards)).expect("a tier with a byte budget must be constructed")
 	}
 
-	fn roomy() -> OperatorRangeTier {
+	fn roomy() -> RangeTier<D> {
 		tier(ByteSize::from_mib(1).as_bytes(), 1)
 	}
 
@@ -436,11 +435,11 @@ mod tests {
 		EncodedPodRow::new(body.as_bytes())
 	}
 
-	fn part(keyspace: Keyspace) -> PartitionId {
-		PartitionId {
-			operator: OP_A,
+	fn part(keyspace: Keyspace) -> TestPartition {
+		TestPartition {
+			dimension: OP_A,
 			group: GROUP_A,
-			keyspace,
+			slot: keyspace,
 		}
 	}
 
@@ -448,7 +447,7 @@ mod tests {
 		PARTITION_OVERHEAD + rows.iter().map(|(key, entry)| entry_footprint(key, entry)).sum::<usize>()
 	}
 
-	fn seed(tier: &OperatorRangeTier, id: PartitionId, rows: Vec<(EncodedKey, Entry<EncodedPodRow>)>) {
+	fn seed(tier: &RangeTier<D>, id: TestPartition, rows: Vec<(EncodedKey, Entry<EncodedPodRow>)>) {
 		// Rows must land before coverage extends, or the fixture claims a span it does not hold.
 		let index = tier.shard_index(&id);
 		{
@@ -483,17 +482,17 @@ mod tests {
 			}
 		}
 		let (start, end) = id.span();
-		tier.coverage().write().extend(id.operator, start, end);
+		tier.coverage().write().extend(id.dimension, start, end);
 	}
 
-	fn resident(tier: &OperatorRangeTier, key: &EncodedKey) -> Option<Entry<EncodedPodRow>> {
-		let id = PartitionId::of(OP_A, key).expect("a fixture key always names a partition");
+	fn resident(tier: &RangeTier<D>, key: &EncodedKey) -> Option<Entry<EncodedPodRow>> {
+		let id = TestPartition::of(OP_A, key).expect("a fixture key always names a partition");
 		let index = tier.shard_index(&id);
 		let shard = tier.shard(index).lock();
 		shard.partitions.get(&id).and_then(|partition| partition.entries.get(key).cloned())
 	}
 
-	fn probe(tier: &OperatorRangeTier, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
+	fn probe(tier: &RangeTier<D>, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
 		// Some(None) is a proven absence and None a fall through; the two must never be confused.
 		if let Some(entry) = resident(tier, key) {
 			return Some(entry.value().cloned());
@@ -506,7 +505,7 @@ mod tests {
 		}
 	}
 
-	fn claims(tier: &OperatorRangeTier) -> Vec<Interval> {
+	fn claims(tier: &RangeTier<D>) -> Vec<Interval> {
 		tier.coverage().read().set(OP_A).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
@@ -587,7 +586,7 @@ mod tests {
 		let k = key(Keyspace::ACCUMULATOR, b"a");
 		let rows = vec![(k.clone(), Entry::row(row("v")))];
 		let fired = Arc::new(AtomicBool::new(false));
-		let tier = OperatorRangeTier::with_interlock(
+		let tier = RangeTier::<D>::with_interlock(
 			config(cost(&rows) as u64 - 1, 1),
 			Box::new(move |tier, id| {
 				if fired.swap(true, AtomicOrdering::SeqCst) {

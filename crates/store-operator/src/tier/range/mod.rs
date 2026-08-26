@@ -28,62 +28,37 @@
 //! scan still in flight reinstates the row it read before the flush. A write landing in an uncovered
 //! gap becomes a one-key island, since the writer knows nothing about the neighbourhood.
 
-mod point;
-mod pool;
+#[cfg(test)]
 mod scan;
 #[cfg(test)]
-mod tests;
-mod write;
+mod surface;
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	mem::size_of,
-	ops::Bound,
-	sync::Arc,
-};
+use std::{borrow::Cow, sync::LazyLock};
 
-use reifydb_codec::{
-	key::{
-		decode_u64, encode_u8,
-		encoded::{EncodedKey, EncodedKeyRange},
-	},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::key::{decode_u64, encode_u8, encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
-	util::budget::MemoryBudget,
 };
-use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
-use reifydb_store::coverage::{
-	ExclusiveUpperEnd,
-	entry::{Entry, PinnedCount},
-	index::CoverageIndex,
-	interval::Interval,
-	plan::{DEFAULT_GAP_GUARD, GapHistogram, Segment},
-	retraction::Retractions,
-	successor,
+use reifydb_store::{
+	coverage::ExclusiveUpperEnd,
+	tier::range::{
+		RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics, RangeSlotMetrics, RangeTier,
+		prefix_successor,
+	},
 };
-use reifydb_value::byte_size::ByteSize;
 
+pub type OperatorRangeConfig = RangeConfig;
+pub type OperatorRangeTier = RangeTier<OperatorDomain>;
+pub type OperatorRangeMetrics = RangeMetrics;
+pub type OperatorRangeShardMetrics = RangeShardMetrics;
+pub type OperatorRangeKeyspaceMetrics = RangeSlotMetrics<OperatorDomain>;
+pub type RangeScan = reifydb_store::tier::range::RangeScan<OperatorDomain>;
+
+/// The operator store's range domain: a partition is one `(operator, group, keyspace)` prefix and a
+/// counter slot is the keyspace byte.
 #[derive(Clone, Copy, Debug)]
-pub struct OperatorRangeConfig {
-	pub resident_bytes: Option<ByteSize>,
-	pub shards: usize,
-	/// Non-exempt gaps a plan may carry before it is abandoned for one full scan; a plan of many
-	/// small persistent reads is slower than no cache at all.
-	pub gap_guard: usize,
-}
-
-impl Default for OperatorRangeConfig {
-	fn default() -> Self {
-		Self {
-			resident_bytes: Some(ByteSize::from_mib(64)),
-			shards: 16,
-			gap_guard: DEFAULT_GAP_GUARD,
-		}
-	}
-}
+pub struct OperatorDomain;
 
 /// The set of keys sharing one `(operator, group, keyspace)` prefix: the unit of row storage,
 /// sharding, budgeting and eviction.
@@ -139,165 +114,205 @@ impl PartitionId {
 	}
 }
 
-/// The exclusive upper end of a prefix, or `None` when the prefix is all `0xff` and has none.
-pub fn prefix_successor(prefix: &[u8]) -> Option<Vec<u8>> {
-	let last = prefix.iter().rposition(|&byte| byte != 0xff)?;
-	let mut out = prefix[..=last].to_vec();
-	out[last] += 1;
-	Some(out)
-}
-
-pub type RangeRows = Vec<(EncodedKey, EncodedPodRow)>;
-
-/// The key range a caller reads from the persistent tier to fill one gap segment.
-pub fn scan_range(gap: &Interval) -> EncodedKeyRange {
-	let end = match &gap.end {
-		ExclusiveUpperEnd::Key(key) => Bound::Excluded(key.clone()),
-		ExclusiveUpperEnd::Top => Bound::Unbounded,
-	};
-	EncodedKeyRange::new(Bound::Included(gap.start.clone()), end)
-}
-
-/// The span a persistent read proved, given where it stopped.
-///
-/// An exhausted read proves the whole gap. A read that stopped early proves only up to and
-/// including its last key, so the claim ends at that key's successor; ending it at the key itself
-/// would leave the key uncovered, and ending it at the gap end would claim a span the read never
-/// reached. A read that returned nothing without exhausting proves nothing.
-pub fn proven_span(gap: &Interval, last_key: Option<&EncodedKey>, exhausted: bool) -> Option<Interval> {
-	if exhausted {
-		return Some(gap.clone());
+/// The lowest keyspace byte whose cache policy still matches this one, so a wide gap splits once per
+/// policy run rather than once per keyspace.
+static POLICY_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
+	let mut floor = [0u8; 256];
+	let mut lowest = 0u8;
+	for keyspace in 0..=u8::MAX {
+		if keyspace > 0
+			&& Keyspace(keyspace).cache_policy().caches_ranges()
+				!= Keyspace(keyspace - 1).cache_policy().caches_ranges()
+		{
+			lowest = keyspace;
+		}
+		floor[keyspace as usize] = lowest;
 	}
-	let last = last_key?;
-	Some(Interval::new(gap.start.clone(), ExclusiveUpperEnd::Key(successor(last)).min(gap.end.clone())))
-}
+	floor
+});
 
-struct Partition {
-	entries: BTreeMap<EncodedKey, Entry<EncodedPodRow>>,
-	/// Entries eviction may not drop, so the budget can stop instead of spinning on a partition
-	/// whose every entry carries an unflushed removal.
-	pinned: PinnedCount,
-	bytes: usize,
-	tick: u64,
-	/// Bumped by every materialize: a move between choosing a victim and dropping its rows means a
-	/// materialize claimed the span, and dropping the rows would leave that claim standing over nothing.
-	materializes: u64,
-	/// Whether this partition has ever taken part in a claim; it gates the coverage lock for every
-	/// write and must err toward `true`, since a false no leaves a stale claim standing.
-	covered: bool,
-}
+impl RangeDomain for OperatorDomain {
+	type Dimension = OperatorId;
+	type Partition = PartitionId;
+	type Slot = Keyspace;
 
-struct Shard {
-	partitions: HashMap<PartitionId, Partition>,
-	budget: MemoryBudget,
-	next_tick: u64,
-	gaps: GapHistogram,
-	metrics: OperatorRangeMetrics,
-	keyspace_metrics: KeyspaceCounters,
-}
+	const PREFIX_LEN: usize = PartitionId::PREFIX_LEN;
+	const SLOTS: usize = 256;
 
-const NODE_FILL_DIVISOR: usize = 2;
+	const SCOPE: &'static str = "operator_range";
 
-const ENTRY_OVERHEAD: usize = NODE_FILL_DIVISOR * (size_of::<EncodedKey>() + size_of::<Entry<EncodedPodRow>>());
+	const GAP_SCOPE: &'static str = "operator_range::gaps";
 
-const PARTITION_OVERHEAD: usize = size_of::<PartitionId>() + size_of::<Partition>();
+	fn partition(dimension: Self::Dimension, key: &EncodedKey) -> Option<Self::Partition> {
+		PartitionId::of(dimension, key)
+	}
 
-fn entry_footprint(key: &EncodedKey, entry: &Entry<EncodedPodRow>) -> usize {
-	ENTRY_OVERHEAD + key.heap_bytes() + entry.value().map_or(0, |row| row.len())
-}
+	fn dimension(partition: &Self::Partition) -> Self::Dimension {
+		partition.operator
+	}
 
-fn account(bytes: &mut usize, budget: &MemoryBudget, old: usize, new: usize) {
-	if new >= old {
-		let delta = new - old;
-		*bytes += delta;
-		budget.charge(ByteSize::from_bytes(delta as u64));
-	} else {
-		let delta = old - new;
-		*bytes -= delta;
-		budget.release(ByteSize::from_bytes(delta as u64));
+	fn span(partition: &Self::Partition) -> (EncodedKey, ExclusiveUpperEnd) {
+		partition.span()
+	}
+
+	fn caches_ranges(partition: &Self::Partition) -> bool {
+		partition.caches_ranges()
+	}
+
+	fn policy_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
+		let floor = POLICY_RUN_FLOOR[partition.keyspace.0 as usize];
+		if floor == partition.keyspace.0 {
+			return partition.span().1;
+		}
+		PartitionId {
+			keyspace: Keyspace(floor),
+			..*partition
+		}
+		.span()
+		.1
+	}
+
+	fn slot(partition: &Self::Partition) -> usize {
+		partition.keyspace.0 as usize
+	}
+
+	fn slot_at(index: usize) -> Self::Slot {
+		Keyspace(index as u8)
+	}
+
+	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {
+		slot.name()
 	}
 }
-
-/// A planned scan, and the token its materializes use to prove they did not race a retraction.
-///
-/// The token is the retraction count read at plan time, bumped by every coverage shrink; without it
-/// a materialize would reinstate a claim over rows a concurrent write had already removed.
-pub struct RangeScan {
-	pub(super) operator: OperatorId,
-	pub(super) segments: Vec<Segment>,
-	pub(super) gaps: usize,
-	pub(super) degraded: bool,
-	pub(super) retractions: u64,
-}
-
-/// What a materialize did with the span it was handed.
-///
-/// `NothingCacheable` and `Refused` both leave RAM unchanged, but only `Refused` means the tier
-/// declined the claim; a caller that stops materializing on `NothingCacheable` starves every keyspace
-/// sitting behind an uncacheable one for the rest of the scan.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Materialize {
-	Materialized,
-	NothingCacheable,
-	Refused,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct OperatorRangeMetrics {
-	/// Segments a plan answered from RAM.
-	pub hits: u64,
-	/// Non-exempt gaps a plan handed to the persistent tier.
-	pub misses: u64,
-	/// Spans a persistent read proved and this tier took.
-	pub materializes: u64,
-	/// Spans refused whole because they did not fit the shard budget.
-	pub materializes_refused: u64,
-	/// Spans refused because a claim was withdrawn while the persistent read was in flight.
-	pub materializes_raced: u64,
-	pub evictions: u64,
-	pub point_hits: u64,
-	pub point_misses: u64,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct OperatorRangeShardMetrics {
-	pub shard: usize,
-	pub used: ByteSize,
-	pub limit: ByteSize,
-	pub partitions: usize,
-	pub entries: usize,
-	pub counters: OperatorRangeMetrics,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct OperatorRangeKeyspaceMetrics {
-	pub keyspace: Keyspace,
-	pub used: ByteSize,
-	pub partitions: usize,
-	pub intervals: usize,
-	pub entries: usize,
-	pub counters: OperatorRangeMetrics,
-}
-
-const KEYSPACE_SLOTS: usize = 256;
-
-type KeyspaceCounters = Box<[OperatorRangeMetrics; KEYSPACE_SLOTS]>;
 
 #[cfg(test)]
-pub(crate) type MaterializeInterlock = Box<dyn Fn(&OperatorRangeTier, PartitionId) + Send + Sync>;
+mod tests {
+	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+	use reifydb_core::{
+		interface::catalog::flow::OperatorId,
+		key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+	};
+	use reifydb_store::coverage::{
+		cursor::{RangeCursor, ServedChunk},
+		plan::Segment,
+	};
 
-struct PoolInner {
-	shards: Box<[Mutex<Shard>]>,
-	coverage: RwLock<CoverageIndex<OperatorId>>,
-	/// Bumped inside every coverage shrink, so a reader and a materialize can each tell that no claim
-	/// was withdrawn between two of their steps.
-	retractions: Retractions,
-	gap_guard: usize,
-	#[cfg(test)]
-	interlock: Option<MaterializeInterlock>,
-}
+	use reifydb_store::tier::range::Materialize;
 
-#[derive(Clone)]
-pub struct OperatorRangeTier {
-	inner: Arc<PoolInner>,
+	use super::{OperatorRangeConfig, OperatorRangeTier};
+
+	const OP_A: OperatorId = OperatorId(1);
+	const OP_B: OperatorId = OperatorId(2);
+	const GROUP_A: GroupId = GroupId(10);
+
+	fn tier() -> OperatorRangeTier {
+		OperatorRangeTier::new(OperatorRangeConfig::default())
+			.expect("a tier with a byte budget must be constructed")
+	}
+
+	fn key(keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
+		OperatorStateKey::inner_encoded(GROUP_A, keyspace, suffix).into_encoded()
+	}
+
+	fn row(body: &str) -> EncodedPodRow {
+		EncodedPodRow::new(body.as_bytes())
+	}
+
+	fn claim(
+		tier: &OperatorRangeTier,
+		operator: OperatorId,
+		keyspace: Keyspace,
+		page: &[(EncodedKey, EncodedPodRow)],
+	) {
+		let range = keyspace_inner_range(GROUP_A, keyspace);
+		let scan = tier.plan_scan(operator, &range).expect("a whole-keyspace range must be plannable");
+		let gap = scan
+			.segments()
+			.iter()
+			.find_map(|segment| match segment {
+				Segment::Gap {
+					interval,
+					..
+				} => Some(interval.clone()),
+				Segment::Resident(_) => None,
+			})
+			.expect("an uncovered keyspace must plan as a gap the fixture can materialize over");
+		assert_eq!(tier.materialize(&scan, &gap, page), Materialize::Materialized);
+	}
+
+	fn serve_ram(tier: &OperatorRangeTier, operator: OperatorId, keyspace: Keyspace) -> Option<Vec<EncodedKey>> {
+		let range = keyspace_inner_range(GROUP_A, keyspace);
+		let scan = tier.plan_scan(operator, &range)?;
+		let mut out: Vec<EncodedKey> = Vec::new();
+		let mut resident = false;
+		for segment in scan.segments() {
+			let Segment::Resident(interval) = segment else {
+				continue;
+			};
+			resident = true;
+			let mut cursor = RangeCursor::new();
+			while !cursor.is_exhausted() {
+				match tier.serve(&scan, interval, &mut cursor, 64) {
+					ServedChunk::Served(rows) => out.extend(rows.into_iter().map(|(key, _)| key)),
+					ServedChunk::Gap => break,
+				}
+			}
+		}
+		resident.then_some(out)
+	}
+
+	#[test]
+	fn a_key_that_names_no_keyspace_is_declined_by_the_operator_mapping() {
+		// A key too short to name a partition must never go resident; the tier cannot place its claim.
+		let tier = tier();
+		let short = EncodedKey::new(b"short");
+
+		tier.insert(OP_A, short.clone(), row("v"));
+
+		assert_eq!(tier.entries(), 0);
+		assert_eq!(tier.lookup(OP_A, &short), None);
+	}
+
+	#[test]
+	fn a_keyspace_the_operator_policy_never_caches_is_declined() {
+		// The cache policy must reach the tier here, or a never-cached keyspace goes resident.
+		let tier = tier();
+		let at = key(Keyspace::CUSTOM_NOT_CACHED, b"a");
+
+		tier.insert(OP_A, at.clone(), row("v"));
+
+		assert_eq!(tier.entries(), 0);
+		assert_eq!(tier.lookup(OP_A, &at), None);
+		assert!(tier.plan_scan(OP_A, &keyspace_inner_range(GROUP_A, Keyspace::CUSTOM_NOT_CACHED)).is_none());
+	}
+
+	#[test]
+	fn a_claim_and_a_serve_round_trip_for_the_operator_that_made_it() {
+		// The operator must reach the coverage index, or one operator's claim answers another operator's read.
+		let tier = tier();
+		let at = key(Keyspace::ACCUMULATOR, b"a");
+		claim(&tier, OP_A, Keyspace::ACCUMULATOR, &[(at.clone(), row("v"))]);
+
+		assert_eq!(serve_ram(&tier, OP_A, Keyspace::ACCUMULATOR), Some(vec![at.clone()]));
+		assert_eq!(tier.lookup(OP_A, &at), Some(Some(row("v"))));
+
+		assert_eq!(serve_ram(&tier, OP_B, Keyspace::ACCUMULATOR), None);
+		assert_eq!(tier.lookup(OP_B, &at), None);
+	}
+
+	#[test]
+	fn invalidating_an_operator_withdraws_the_claim_it_made() {
+		// A claim that outlives its operator answers absences for rows the persistent tier still holds.
+		let tier = tier();
+		let at = key(Keyspace::ACCUMULATOR, b"a");
+		claim(&tier, OP_A, Keyspace::ACCUMULATOR, &[(at.clone(), row("v"))]);
+		assert_eq!(tier.lookup(OP_A, &at), Some(Some(row("v"))));
+
+		tier.invalidate_operator(OP_A);
+
+		assert_eq!(tier.entries(), 0);
+		assert_eq!(tier.intervals(), 0);
+		assert_eq!(tier.lookup(OP_A, &at), None);
+		assert_eq!(serve_ram(&tier, OP_A, Keyspace::ACCUMULATOR), None);
+	}
 }

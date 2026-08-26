@@ -5,9 +5,8 @@
 use std::cell::RefCell;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::interface::catalog::flow::OperatorId;
 
-use crate::tier::range::{OperatorRangeTier, PartitionId, Shard};
+use crate::tier::range::{RangeDomain, RangeTier, Shard};
 
 #[cfg(test)]
 thread_local! {
@@ -28,10 +27,10 @@ fn absence_interlock() {
 	}
 }
 
-impl OperatorRangeTier {
-	pub fn lookup(&self, operator: OperatorId, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
-		let partition = PartitionId::of(operator, key)?;
-		if !partition.caches_ranges() {
+impl<D: RangeDomain> RangeTier<D> {
+	pub fn lookup(&self, dimension: D::Dimension, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
+		let partition = D::partition(dimension, key)?;
+		if !D::caches_ranges(&partition) {
 			return None;
 		}
 		let index = self.shard_index(&partition);
@@ -40,7 +39,7 @@ impl OperatorRangeTier {
 		}
 
 		let before = self.retractions();
-		let claimed = self.coverage().read().contains(operator, key);
+		let claimed = self.coverage().read().contains(dimension, key);
 		if !claimed {
 			self.record_point_miss(index, &partition);
 			return None;
@@ -58,16 +57,16 @@ impl OperatorRangeTier {
 		Some(None)
 	}
 
-	fn resolve(&self, index: usize, partition: &PartitionId, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
+	fn resolve(&self, index: usize, partition: &D::Partition, key: &EncodedKey) -> Option<Option<EncodedPodRow>> {
 		let mut shard = self.shard(index).lock();
 		let next = shard.next_tick;
-		let slot = partition.keyspace.0 as usize;
+		let slot = D::slot(partition);
 		let mut answer = None;
 		{
 			let Shard {
 				partitions,
 				metrics,
-				keyspace_metrics,
+				slot_metrics,
 				..
 			} = &mut *shard;
 			if let Some(target) = partitions.get_mut(partition)
@@ -76,7 +75,7 @@ impl OperatorRangeTier {
 				answer = Some(entry.value().cloned());
 				target.tick = next;
 				metrics.point_hits += 1;
-				keyspace_metrics[slot].point_hits += 1;
+				slot_metrics[slot].point_hits += 1;
 			}
 		}
 		if answer.is_some() {
@@ -85,18 +84,18 @@ impl OperatorRangeTier {
 		answer
 	}
 
-	fn record_point_hit(&self, index: usize, partition: &PartitionId) {
+	fn record_point_hit(&self, index: usize, partition: &D::Partition) {
 		let mut shard = self.shard(index).lock();
-		let slot = partition.keyspace.0 as usize;
+		let slot = D::slot(partition);
 		shard.metrics.point_hits += 1;
-		shard.keyspace_metrics[slot].point_hits += 1;
+		shard.slot_metrics[slot].point_hits += 1;
 	}
 
-	fn record_point_miss(&self, index: usize, partition: &PartitionId) {
+	fn record_point_miss(&self, index: usize, partition: &D::Partition) {
 		let mut shard = self.shard(index).lock();
-		let slot = partition.keyspace.0 as usize;
+		let slot = D::slot(partition);
 		shard.metrics.point_misses += 1;
-		shard.keyspace_metrics[slot].point_misses += 1;
+		shard.slot_metrics[slot].point_misses += 1;
 	}
 }
 
@@ -109,27 +108,33 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 	};
-	use reifydb_store::coverage::{
-		ExclusiveUpperEnd,
-		entry::{Entry, PinnedCount},
-	};
 	use reifydb_value::byte_size::ByteSize;
 
 	use super::arm_absence_interlock;
-	use crate::tier::range::{
-		OperatorRangeConfig, OperatorRangeTier, PARTITION_OVERHEAD, Partition, PartitionId, entry_footprint,
+	use crate::{
+		coverage::{
+			ExclusiveUpperEnd,
+			entry::{Entry, PinnedCount},
+		},
+		tier::range::{
+			Partition, RangeConfig, RangeTier,
+			domain::{TestDomain as D, TestPartition},
+			entry_footprint, partition_overhead,
+		},
 	};
+
+	const PARTITION_OVERHEAD: usize = partition_overhead::<D>();
 
 	const OP_A: OperatorId = OperatorId(1);
 	const GROUP_A: GroupId = GroupId(10);
 	const CACHED: Keyspace = Keyspace::ACCUMULATOR;
 	const UNCACHED: Keyspace = Keyspace::CUSTOM_NOT_CACHED;
 
-	fn tier() -> OperatorRangeTier {
-		OperatorRangeTier::new(OperatorRangeConfig {
+	fn tier() -> RangeTier<D> {
+		RangeTier::<D>::new(RangeConfig {
 			resident_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
-			..OperatorRangeConfig::default()
+			..RangeConfig::default()
 		})
 		.expect("a tier with a byte budget must be constructed")
 	}
@@ -142,15 +147,15 @@ mod tests {
 		EncodedPodRow::new(body.as_bytes())
 	}
 
-	fn partition(keyspace: Keyspace) -> PartitionId {
-		PartitionId {
-			operator: OP_A,
+	fn partition(keyspace: Keyspace) -> TestPartition {
+		TestPartition {
+			dimension: OP_A,
 			group: GROUP_A,
-			keyspace,
+			slot: keyspace,
 		}
 	}
 
-	fn participate(tier: &OperatorRangeTier, id: PartitionId) {
+	fn participate(tier: &RangeTier<D>, id: TestPartition) {
 		// Seating a second entry must not reset the first, so an existing partition is left alone.
 		let mut shard = tier.shard_for(&id).lock();
 		if shard.partitions.contains_key(&id) {
@@ -170,7 +175,7 @@ mod tests {
 		);
 	}
 
-	fn seat(tier: &OperatorRangeTier, id: PartitionId, at: &EncodedKey, entry: Entry<EncodedPodRow>) {
+	fn seat(tier: &RangeTier<D>, id: TestPartition, at: &EncodedKey, entry: Entry<EncodedPodRow>) {
 		participate(tier, id);
 		let mut shard = tier.shard_for(&id).lock();
 		let charged = entry_footprint(at, &entry);
@@ -181,15 +186,15 @@ mod tests {
 		target.entries.insert(at.clone(), entry);
 	}
 
-	fn claim(tier: &OperatorRangeTier, start: &EncodedKey, end: &EncodedKey) {
+	fn claim(tier: &RangeTier<D>, start: &EncodedKey, end: &EncodedKey) {
 		tier.coverage().write().extend(OP_A, start.clone(), ExclusiveUpperEnd::Key(end.clone()));
 	}
 
-	fn point_hits(tier: &OperatorRangeTier, id: &PartitionId) -> u64 {
+	fn point_hits(tier: &RangeTier<D>, id: &TestPartition) -> u64 {
 		tier.shard_for(id).lock().metrics.point_hits
 	}
 
-	fn point_misses(tier: &OperatorRangeTier, id: &PartitionId) -> u64 {
+	fn point_misses(tier: &RangeTier<D>, id: &TestPartition) -> u64 {
 		tier.shard_for(id).lock().metrics.point_misses
 	}
 
@@ -359,7 +364,7 @@ mod tests {
 		tier.lookup(OP_A, &at);
 
 		let shard = tier.shard_for(&id).lock();
-		assert_eq!(shard.keyspace_metrics[CACHED.0 as usize].point_hits, 1);
-		assert_eq!(shard.keyspace_metrics[UNCACHED.0 as usize].point_hits, 0);
+		assert_eq!(shard.slot_metrics[CACHED.0 as usize].point_hits, 1);
+		assert_eq!(shard.slot_metrics[UNCACHED.0 as usize].point_hits, 0);
 	}
 }

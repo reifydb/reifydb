@@ -254,8 +254,7 @@ fn dense(part: PartId, from: u64, through: u64, value: u64) -> Vec<(EncodedKey, 
 
 #[test]
 fn a_single_key_fill_claims_that_key_and_nothing_around_it() {
-	// A fill that widened past the one key it placed would answer a neighbouring absence from RAM that RAM
-	// never proved, so a later read skips the persistent tier and misses a row that is really there.
+	// A claim wider than the key it placed answers a neighbour absent that RAM never proved.
 	let cache = ModelCache::new(8);
 	assert!(cache.fill(key(1, 10), 100));
 
@@ -266,8 +265,7 @@ fn a_single_key_fill_claims_that_key_and_nothing_around_it() {
 
 #[test]
 fn a_fill_places_its_rows_before_it_publishes_the_claim() {
-	// Publishing first leaves a window where coverage says RAM is authoritative over a key RAM does not yet
-	// hold; a read landing in that window is answered absent for a row that exists.
+	// Publishing before the row lands claims a key RAM does not hold, so a read there is answered absent.
 	let observed = Arc::new(AtomicU64::new(0));
 	let seen_resident = Arc::new(AtomicU64::new(0));
 	let cache = {
@@ -291,10 +289,7 @@ fn a_fill_places_its_rows_before_it_publishes_the_claim() {
 
 #[test]
 fn a_partition_records_its_hull_when_its_rows_land_not_when_the_claim_publishes() {
-	// An eviction landing between the rows and the publish must find a hull to withdraw: withdrawing is what
-	// records the retraction that invalidates the in-flight claim. A partition that only learns its hull at
-	// publish time is evicted without recording anything, so the publish that follows sees an unchanged token
-	// and extends coverage over rows that are already gone.
+	// A hull learnt at publish time leaves an eviction nothing to withdraw, so the claim outlives its rows.
 	let seen = Arc::new(AtomicU64::new(0));
 	let cache = {
 		let seen = seen.clone();
@@ -315,8 +310,7 @@ fn a_partition_records_its_hull_when_its_rows_land_not_when_the_claim_publishes(
 
 #[test]
 fn a_fill_that_read_its_token_before_a_shrink_publishes_nothing() {
-	// The token is the only thing tying a claim to the coverage state it was computed against; without the
-	// check the fill reinstates a claim the shrink just withdrew, over a row the shrink removed.
+	// Without the token check a fill reinstates a claim the shrink just withdrew, over a row it removed.
 	let cache = {
 		ModelCache::with_interlock(
 			8,
@@ -333,8 +327,7 @@ fn a_fill_that_read_its_token_before_a_shrink_publishes_nothing() {
 
 #[test]
 fn an_invalidate_that_lands_inside_a_fill_window_must_not_leave_the_key_claimed() {
-	// This is the ordering the whole protocol rests on: the invalidate shrinks and bumps the token while the
-	// fill is between placing its row and publishing, so the publish must lose.
+	// The invalidate bumps the token while the fill sits between placing and publishing, so the publish loses.
 	let fired = Arc::new(AtomicU64::new(0));
 	let cache = {
 		let fired = fired.clone();
@@ -359,8 +352,7 @@ fn an_invalidate_that_lands_inside_a_fill_window_must_not_leave_the_key_claimed(
 
 #[test]
 fn an_invalidate_withdraws_the_claim_before_the_row_leaves_ram() {
-	// Removing the row first opens a window where coverage still claims a key RAM no longer holds, which is
-	// the one direction this protocol may never drift in.
+	// Removing the row first claims a key RAM no longer holds, the one direction coverage may never drift.
 	let cache = ModelCache::new(8);
 	cache.fill(key(1, 10), 100);
 	assert!(cache.covers(&key(1, 10)) && cache.resident(&key(1, 10)));
@@ -373,8 +365,7 @@ fn an_invalidate_withdraws_the_claim_before_the_row_leaves_ram() {
 
 #[test]
 fn an_invalidate_punches_out_exactly_the_key_that_left_ram() {
-	// Shrinking the whole partition would throw away proof of neighbours that are still resident, turning a
-	// correctness fix into a silent cache wipe.
+	// Shrinking the whole partition discards proof of neighbours that are still resident.
 	let cache = ModelCache::new(8);
 	for n in 10..15 {
 		cache.fill(key(1, n), n);
@@ -390,8 +381,7 @@ fn an_invalidate_punches_out_exactly_the_key_that_left_ram() {
 
 #[test]
 fn a_partition_emptied_by_an_invalidate_leaves_no_claim_behind() {
-	// A claim outliving the last row of its partition claims a span nothing backs, so every read in it is
-	// answered from an empty partition.
+	// A claim outliving its partition's last row spans nothing, so every read in it is answered from empty.
 	let cache = ModelCache::new(8);
 	cache.fill(key(1, 10), 100);
 	cache.fill(key(1, 11), 101);
@@ -407,9 +397,7 @@ fn a_partition_emptied_by_an_invalidate_leaves_no_claim_behind() {
 
 #[test]
 fn a_hull_that_outlived_its_rows_withdraws_nothing_a_neighbour_still_needs() {
-	// A hull is kept until its partition is dropped, so it outlives the rows an invalidate removed. That is
-	// only safe because a hull ends at the successor of its own last key and partition prefixes are disjoint,
-	// so withdrawing a stale hull can never reach the partition beside it.
+	// A hull ends at its own last key's successor, so a stale one never reaches the partition beside it.
 	let cache = ModelCache::new(8);
 	cache.fill(key(1, 10), 100);
 	cache.fill(key(1, 11), 101);
@@ -426,8 +414,7 @@ fn a_hull_that_outlived_its_rows_withdraws_nothing_a_neighbour_still_needs() {
 
 #[test]
 fn evicting_a_partition_withdraws_every_claim_it_published() {
-	// Eviction drops rows wholesale; if the hull it published survives, the whole span reads as proven and
-	// every row in it disappears from view.
+	// A hull surviving the rows an eviction dropped reads as proven, so the whole span disappears.
 	let cache = ModelCache::new(1);
 	for n in 10..14 {
 		cache.fill(key(1, n), n);
@@ -446,8 +433,7 @@ fn evicting_a_partition_withdraws_every_claim_it_published() {
 
 #[test]
 fn a_drop_refuses_a_partition_that_was_evicted_and_refilled_since_the_victim_was_chosen() {
-	// Two evictors can hold the same victim. Without the fill counter the second drops rows a fill placed
-	// after the first looked, and the fresh claim is left standing over nothing.
+	// Without the fill counter a second evictor drops rows a fill placed after the victim was chosen.
 	let cache = ModelCache::new(1);
 	cache.fill(key(1, 10), 100);
 	cache.fill(key(2, 10), 200);
@@ -466,8 +452,7 @@ fn a_drop_refuses_a_partition_that_was_evicted_and_refilled_since_the_victim_was
 
 #[test]
 fn one_partition_hull_never_reaches_another_partitions_keys() {
-	// Claims from different partitions coalesce into one interval set, so retracting one hull must split the
-	// coalesced interval rather than take the neighbour down with it.
+	// Retracting one hull must split the coalesced interval, never take the neighbour down with it.
 	let cache = ModelCache::new(8);
 	for n in 10..13 {
 		cache.fill(key(1, n), n);
@@ -485,8 +470,7 @@ fn one_partition_hull_never_reaches_another_partitions_keys() {
 
 #[test]
 fn a_hull_end_is_never_the_top_of_the_key_space() {
-	// A hull running to Top retracts every partition sorting above it when it is withdrawn, so one eviction
-	// silently wipes the coverage of unrelated partitions.
+	// A hull running to Top wipes the coverage of every partition sorting above it.
 	let cache = ModelCache::new(8);
 	cache.fill(key(1, 10), 100);
 	cache.materialize(&key(2, 0), &key(2, 5), &dense(2, 0, 5, 200));
@@ -499,8 +483,7 @@ fn a_hull_end_is_never_the_top_of_the_key_space() {
 
 #[test]
 fn a_materialize_claims_the_span_it_scanned_and_stops_at_its_edge() {
-	// The scanned span is the proof: it covers the gaps between observed keys, because the scan looked there
-	// and found nothing. One key past the edge was never looked at.
+	// The scan proves the gaps it looked at and nothing one key past its edge.
 	let cache = ModelCache::new(8);
 	let rows = dense(1, 10, 14, 500);
 
@@ -515,8 +498,7 @@ fn a_materialize_claims_the_span_it_scanned_and_stops_at_its_edge() {
 
 #[test]
 fn a_materialize_that_read_its_token_before_a_shrink_publishes_nothing() {
-	// A materialize claims a whole span rather than one key, so a stale publish here overstates far more than
-	// a stale fill does.
+	// A stale materialize overstates a whole span where a stale fill overstates one key.
 	let cache = {
 		ModelCache::with_interlock(
 			8,
@@ -555,10 +537,7 @@ fn clearing_withdraws_every_claim() {
 
 #[test]
 fn a_publish_that_lands_inside_an_invalidate_must_not_survive_the_row_removal() {
-	// An invalidate shrinks coverage and removes the row as two separate steps. A materialize landing between
-	// them reads a token the shrink already bumped past, so its claim is accepted, and the row removal then
-	// runs underneath it: the span outlives the row it claimed. Withdrawing again after the row is gone is
-	// what closes the window, which is why one invalidate withdraws twice.
+	// Withdrawing again after the row is gone closes the window where a publish lands mid-invalidate.
 	let fired = Arc::new(AtomicU64::new(0));
 	let cache = {
 		let fired = fired.clone();
@@ -622,8 +601,7 @@ fn step(cache: &ModelCache, rng: &mut Lcg, domain: &[EncodedKey], version: &Atom
 
 #[test]
 fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
-	// Coverage may understate what RAM holds and must never overstate it: an overstatement means a read is
-	// answered "proven absent" from a claim whose rows are gone, which loses a row that is really there.
+	// Coverage may understate what RAM holds and must never overstate it.
 	const THREADS: usize = 8;
 	const ROUNDS: usize = 200;
 	const STEPS: usize = 5;

@@ -32,6 +32,33 @@ pub enum EntryKind {
 	PartitionedSource(StorageId),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EntryPolicy {
+	Neither,
+	Point,
+	Range,
+	Both,
+}
+
+impl EntryPolicy {
+	pub fn caches_points(&self) -> bool {
+		matches!(self, Self::Point | Self::Both)
+	}
+
+	pub fn caches_ranges(&self) -> bool {
+		matches!(self, Self::Range | Self::Both)
+	}
+}
+
+impl EntryKind {
+	pub fn cache_policy(&self) -> EntryPolicy {
+		match self {
+			Self::Source(_) => EntryPolicy::Both,
+			Self::Multi | Self::PartitionedSource(_) => EntryPolicy::Point,
+		}
+	}
+}
+
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	match Key::decode(key) {
 		Some(Key::Row(row_key)) => EntryKind::Source(row_key.storage),

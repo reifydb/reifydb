@@ -7,12 +7,6 @@ use reifydb_codec::key::encoded::EncodedKey;
 
 use crate::coverage::{ExclusiveUpperEnd, interval::CoverageSet};
 
-/// The claims RAM holds, one disjoint coalesced set per dimension, meant to sit behind a single
-/// lock.
-///
-/// The dimension is whatever a range read is already parameterised by, so one scan consults one
-/// set and every key of one dimension sorts together in the encoded key space. A set that shrinks
-/// to nothing leaves the map, so an untouched dimension and an exhausted one read alike.
 pub struct CoverageIndex<D> {
 	sets: HashMap<D, CoverageSet>,
 }

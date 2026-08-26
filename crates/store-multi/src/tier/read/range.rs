@@ -37,7 +37,7 @@ impl MultiReadBufferTier {
 		through: &EncodedKey,
 		entries: &[RawEntry],
 	) -> bool {
-		if !matches!(table, EntryKind::Source(_)) {
+		if !table.cache_policy().caches_ranges() {
 			return false;
 		}
 		self.raise_head(table, lo, through, entries.first().map(|entry| &entry.key), self.retractions());

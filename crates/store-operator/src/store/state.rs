@@ -15,12 +15,15 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 };
-use reifydb_store::coverage::{
-	ExclusiveUpperEnd,
-	cursor::{RangeCursor, ServedChunk},
-	interval::Interval,
-	plan::Segment,
-	successor,
+use reifydb_store::{
+	coverage::{
+		ExclusiveUpperEnd,
+		cursor::{RangeCursor, ServedChunk},
+		interval::Interval,
+		plan::Segment,
+		successor,
+	},
+	tier::range::{Materialize, proven_span, scan_range},
 };
 #[cfg(reifydb_assertions)]
 use reifydb_value::value::row_number::RowNumber;
@@ -31,10 +34,7 @@ use tracing::instrument;
 use crate::types::DurablePre;
 use crate::{
 	store::{OperatorStore, StandardOperatorStore},
-	tier::{
-		commit::batch::DropMarker,
-		range::{Materialize, proven_span, scan_range},
-	},
+	tier::commit::batch::DropMarker,
 	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
 

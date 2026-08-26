@@ -4,17 +4,18 @@
 use std::collections::BTreeMap;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_store::coverage::{ExclusiveUpperEnd, entry::Entry, successor};
 use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::range::{
-	OperatorRangeTier, PARTITION_OVERHEAD, Partition, PartitionId, PinnedCount, Shard, account, entry_footprint,
+use crate::{
+	coverage::{ExclusiveUpperEnd, entry::Entry, successor},
+	tier::range::{
+		Partition, PinnedCount, RangeDomain, RangeTier, Shard, account, entry_footprint, partition_overhead,
+	},
 };
 
-impl OperatorRangeTier {
-	pub fn overwrite(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-		let Some(partition) = self.cacheable(operator, &key) else {
+impl<D: RangeDomain> RangeTier<D> {
+	pub fn overwrite(&self, dimension: D::Dimension, key: EncodedKey, row: EncodedPodRow) {
+		let Some(partition) = self.cacheable(dimension, &key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -23,38 +24,38 @@ impl OperatorRangeTier {
 		}
 	}
 
-	pub fn insert(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-		let Some(partition) = self.cacheable(operator, &key) else {
+	pub fn insert(&self, dimension: D::Dimension, key: EncodedKey, row: EncodedPodRow) {
+		let Some(partition) = self.cacheable(dimension, &key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
 		if !self.place(index, &partition, key.clone(), Entry::row(row)) {
 			return;
 		}
-		self.claim_island(operator, &key);
+		self.claim_island(dimension, &key);
 		self.evict_to_capacity(index);
 	}
 
-	pub fn mark_deleted(&self, operator: OperatorId, key: &EncodedKey) {
-		let Some(partition) = self.cacheable(operator, key) else {
+	pub fn mark_deleted(&self, dimension: D::Dimension, key: &EncodedKey) {
+		let Some(partition) = self.cacheable(dimension, key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
 		if !self.participates(index, &partition) {
 			return;
 		}
-		if self.coverage().read().contains(operator, key) {
+		if self.coverage().read().contains(dimension, key) {
 			if self.place(index, &partition, key.clone(), Entry::deleted()) {
 				self.evict_to_capacity(index);
 			}
 			return;
 		}
-		self.withdraw(operator, key);
+		self.withdraw(dimension, key);
 		self.discard(index, &partition, key);
 	}
 
-	pub fn retract(&self, operator: OperatorId, key: &EncodedKey) {
-		let Some(partition) = self.cacheable(operator, key) else {
+	pub fn retract(&self, dimension: D::Dimension, key: &EncodedKey) {
+		let Some(partition) = self.cacheable(dimension, key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -63,10 +64,10 @@ impl OperatorRangeTier {
 		}
 	}
 
-	pub fn invalidate_operator(&self, operator: OperatorId) {
+	pub fn invalidate_operator(&self, dimension: D::Dimension) {
 		{
 			let mut coverage = self.coverage().write();
-			coverage.remove(operator);
+			coverage.remove(dimension);
 			self.record_retraction();
 		}
 		for shard in self.all_shards() {
@@ -76,8 +77,8 @@ impl OperatorRangeTier {
 				budget,
 				..
 			} = &mut *shard;
-			let victims: Vec<PartitionId> =
-				partitions.keys().filter(|id| id.operator == operator).copied().collect();
+			let victims: Vec<D::Partition> =
+				partitions.keys().filter(|id| D::dimension(id) == dimension).copied().collect();
 			for victim in victims {
 				if let Some(target) = partitions.remove(&victim) {
 					budget.release(ByteSize::from_bytes(target.bytes as u64));
@@ -86,15 +87,15 @@ impl OperatorRangeTier {
 		}
 	}
 
-	fn cacheable(&self, operator: OperatorId, key: &EncodedKey) -> Option<PartitionId> {
-		PartitionId::of(operator, key).filter(PartitionId::caches_ranges)
+	fn cacheable(&self, dimension: D::Dimension, key: &EncodedKey) -> Option<D::Partition> {
+		D::partition(dimension, key).filter(D::caches_ranges)
 	}
 
-	fn participates(&self, index: usize, partition: &PartitionId) -> bool {
+	fn participates(&self, index: usize, partition: &D::Partition) -> bool {
 		self.shard(index).lock().partitions.get(partition).is_some_and(|target| target.covered)
 	}
 
-	fn place(&self, index: usize, partition: &PartitionId, key: EncodedKey, entry: Entry<EncodedPodRow>) -> bool {
+	fn place(&self, index: usize, partition: &D::Partition, key: EncodedKey, entry: Entry<EncodedPodRow>) -> bool {
 		let resident = self.shard(index).lock().partitions.get(partition).map(|target| target.covered);
 		let admit = match resident {
 			Some(covered) => covered,
@@ -116,13 +117,13 @@ impl OperatorRangeTier {
 			let target = partitions.entry(*partition).or_insert_with(|| Partition {
 				entries: BTreeMap::new(),
 				pinned: PinnedCount::new(),
-				bytes: PARTITION_OVERHEAD,
+				bytes: partition_overhead::<D>(),
 				tick: next,
 				materializes: 0,
 				covered: true,
 			});
 			if fresh {
-				budget.charge(ByteSize::from_bytes(PARTITION_OVERHEAD as u64));
+				budget.charge(ByteSize::from_bytes(partition_overhead::<D>() as u64));
 			}
 			let new = entry_footprint(&key, &entry);
 			let old = match target.entries.get(&key) {
@@ -144,11 +145,11 @@ impl OperatorRangeTier {
 		true
 	}
 
-	fn claims(&self, partition: &PartitionId, key: &EncodedKey) -> bool {
-		self.coverage().read().contains(partition.operator, key)
+	fn claims(&self, partition: &D::Partition, key: &EncodedKey) -> bool {
+		self.coverage().read().contains(D::dimension(partition), key)
 	}
 
-	fn discard(&self, index: usize, partition: &PartitionId, key: &EncodedKey) {
+	fn discard(&self, index: usize, partition: &D::Partition, key: &EncodedKey) {
 		let mut shard = self.shard(index).lock();
 		let Shard {
 			partitions,
@@ -165,18 +166,18 @@ impl OperatorRangeTier {
 		account(&mut target.bytes, budget, entry_footprint(key, &previous), 0);
 	}
 
-	fn withdraw(&self, operator: OperatorId, key: &EncodedKey) {
+	fn withdraw(&self, dimension: D::Dimension, key: &EncodedKey) {
 		let mut coverage = self.coverage().write();
-		coverage.shrink_key(operator, key);
+		coverage.shrink_key(dimension, key);
 		self.record_retraction();
 	}
 
-	fn claim_island(&self, operator: OperatorId, key: &EncodedKey) {
-		if self.coverage().read().contains(operator, key) {
+	fn claim_island(&self, dimension: D::Dimension, key: &EncodedKey) {
+		if self.coverage().read().contains(dimension, key) {
 			return;
 		}
 		let mut coverage = self.coverage().write();
-		coverage.extend(operator, key.clone(), ExclusiveUpperEnd::Key(successor(key)));
+		coverage.extend(dimension, key.clone(), ExclusiveUpperEnd::Key(successor(key)));
 	}
 }
 
@@ -189,15 +190,23 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 	};
-	use reifydb_store::coverage::{
-		ExclusiveUpperEnd,
-		entry::{Entry, PinnedCount},
-		interval::Interval,
-		successor,
-	};
 	use reifydb_value::byte_size::ByteSize;
 
-	use crate::tier::range::{OperatorRangeConfig, OperatorRangeTier, PARTITION_OVERHEAD, Partition, PartitionId};
+	use crate::{
+		coverage::{
+			ExclusiveUpperEnd,
+			entry::{Entry, PinnedCount},
+			interval::Interval,
+			successor,
+		},
+		tier::range::{
+			Partition, RangeConfig, RangeTier,
+			domain::{TestDomain as D, TestPartition},
+			partition_overhead,
+		},
+	};
+
+	const PARTITION_OVERHEAD: usize = partition_overhead::<D>();
 
 	const OP_A: OperatorId = OperatorId(1);
 	const OP_B: OperatorId = OperatorId(2);
@@ -206,11 +215,11 @@ mod tests {
 	const OTHER: Keyspace = Keyspace::BUFFER;
 	const UNCACHED: Keyspace = Keyspace::CUSTOM_NOT_CACHED;
 
-	fn tier() -> OperatorRangeTier {
-		OperatorRangeTier::new(OperatorRangeConfig {
+	fn tier() -> RangeTier<D> {
+		RangeTier::<D>::new(RangeConfig {
 			resident_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
-			..OperatorRangeConfig::default()
+			..RangeConfig::default()
 		})
 		.expect("a tier with a byte budget must be constructed")
 	}
@@ -223,15 +232,15 @@ mod tests {
 		EncodedPodRow::new(body.as_bytes())
 	}
 
-	fn partition(operator: OperatorId, keyspace: Keyspace) -> PartitionId {
-		PartitionId {
-			operator,
+	fn partition(operator: OperatorId, keyspace: Keyspace) -> TestPartition {
+		TestPartition {
+			dimension: operator,
 			group: GROUP_A,
-			keyspace,
+			slot: keyspace,
 		}
 	}
 
-	fn participate(tier: &OperatorRangeTier, id: PartitionId) {
+	fn participate(tier: &RangeTier<D>, id: TestPartition) {
 		// Seating a second entry must not reset the first, so an existing partition is left alone.
 		let mut shard = tier.shard_for(&id).lock();
 		if shard.partitions.contains_key(&id) {
@@ -251,38 +260,38 @@ mod tests {
 		);
 	}
 
-	fn claim(tier: &OperatorRangeTier, operator: OperatorId, start: &EncodedKey, end: &EncodedKey) {
+	fn claim(tier: &RangeTier<D>, operator: OperatorId, start: &EncodedKey, end: &EncodedKey) {
 		tier.coverage().write().extend(operator, start.clone(), ExclusiveUpperEnd::Key(end.clone()));
 	}
 
-	fn residency(tier: &OperatorRangeTier, id: &PartitionId, at: &EncodedKey) -> Option<Entry<EncodedPodRow>> {
+	fn residency(tier: &RangeTier<D>, id: &TestPartition, at: &EncodedKey) -> Option<Entry<EncodedPodRow>> {
 		tier.shard_for(id).lock().partitions.get(id).and_then(|target| target.entries.get(at)).cloned()
 	}
 
-	fn pinned(tier: &OperatorRangeTier, id: &PartitionId) -> PinnedCount {
+	fn pinned(tier: &RangeTier<D>, id: &TestPartition) -> PinnedCount {
 		tier.shard_for(id).lock().partitions.get(id).map(|target| target.pinned).unwrap_or_default()
 	}
 
-	fn bytes(tier: &OperatorRangeTier, id: &PartitionId) -> usize {
+	fn bytes(tier: &RangeTier<D>, id: &TestPartition) -> usize {
 		tier.shard_for(id).lock().partitions.get(id).map(|target| target.bytes).unwrap_or(0)
 	}
 
-	fn has_partition(tier: &OperatorRangeTier, id: &PartitionId) -> bool {
+	fn has_partition(tier: &RangeTier<D>, id: &TestPartition) -> bool {
 		tier.shard_for(id).lock().partitions.contains_key(id)
 	}
 
-	fn resident_entries(tier: &OperatorRangeTier) -> usize {
+	fn resident_entries(tier: &RangeTier<D>) -> usize {
 		tier.all_shards()
 			.iter()
 			.map(|shard| shard.lock().partitions.values().map(|target| target.entries.len()).sum::<usize>())
 			.sum()
 	}
 
-	fn covers(tier: &OperatorRangeTier, operator: OperatorId, at: &EncodedKey) -> bool {
+	fn covers(tier: &RangeTier<D>, operator: OperatorId, at: &EncodedKey) -> bool {
 		tier.coverage().read().contains(operator, at)
 	}
 
-	fn intervals(tier: &OperatorRangeTier, operator: OperatorId) -> Vec<Interval> {
+	fn intervals(tier: &RangeTier<D>, operator: OperatorId) -> Vec<Interval> {
 		tier.coverage().read().set(operator).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
@@ -564,7 +573,7 @@ mod tests {
 		assert!(covers(&tier, OP_B, &at));
 	}
 
-	fn seat_unclaimed(tier: &OperatorRangeTier, id: PartitionId) {
+	fn seat_unclaimed(tier: &RangeTier<D>, id: TestPartition) {
 		// The partition must exist yet stay uncovered, or the write paths under test are not reached.
 		let mut shard = tier.shard_for(&id).lock();
 		shard.partitions.insert(

@@ -482,7 +482,7 @@ fn operator_range_keyspace_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 
 fn operator_range_keyspace_row(metrics: &OperatorRangeKeyspaceMetrics) -> MetricsRow {
 	MetricsRow {
-		dimensions: vec![Value::Utf8(metrics.keyspace.name().to_string())],
+		dimensions: vec![Value::Utf8(metrics.slot.name().to_string())],
 		measures: vec![
 			level_bytes("used", metrics.used),
 			level_count("partitions", metrics.partitions as u64),
@@ -700,7 +700,7 @@ mod tests {
 
 	fn range_sample() -> OperatorRangeKeyspaceMetrics {
 		OperatorRangeKeyspaceMetrics {
-			keyspace: Keyspace::SOURCE_WATERMARK,
+			slot: Keyspace::SOURCE_WATERMARK,
 			used: ByteSize::from_bytes(20_733),
 			partitions: 115,
 			intervals: 203,
@@ -753,7 +753,7 @@ mod tests {
 		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_CACHED".to_string())]);
 
 		let mut metrics = range_sample();
-		metrics.keyspace = Keyspace::CUSTOM_NOT_CACHED;
+		metrics.slot = Keyspace::CUSTOM_NOT_CACHED;
 		let row = operator_range_keyspace_row(&metrics);
 		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_NOT_CACHED".to_string())]);
 	}
