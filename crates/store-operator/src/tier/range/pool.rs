@@ -409,7 +409,7 @@ mod tests {
 		},
 	};
 	use reifydb_store::coverage::{
-		entry::{Entry, PinnedCount, Residency},
+		entry::{Entry, PinnedCount},
 		interval::Interval,
 		plan::{DEFAULT_GAP_GUARD, ScanPlan},
 	};
@@ -567,8 +567,8 @@ mod tests {
 		tier.evict_to_capacity(0);
 
 		assert_eq!(
-			resident(&tier, &gone).map(|entry| entry.residency),
-			Some(Residency::Deleted),
+			resident(&tier, &gone),
+			Some(Entry::Deleted),
 			"the unflushed removal must still be resident"
 		);
 		assert_eq!(tier.entries(), 1, "only the evictable row may be dropped");

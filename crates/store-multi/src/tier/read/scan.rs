@@ -431,7 +431,12 @@ mod tests {
 		// Conflating the two would let a reader below a row's version see it.
 		let read = tier();
 		assert!(
-			read.materialize_scanned_chunk(source(), &row(BUCKET - 1), &row(0), &[entry(2, 50), entry(1, 5)]),
+			read.materialize_scanned_chunk(
+				source(),
+				&row(BUCKET - 1),
+				&row(0),
+				&[entry(2, 50), entry(1, 5)]
+			),
 			"the bucket chunk must publish its claim"
 		);
 
@@ -803,8 +808,8 @@ mod tests {
 		// The plan is read under the coverage lock and the rows under the page locks, never both, so a
 		// removal can land in between and falsify the claim the plan was built from. Serving anyway
 		// returns rows RAM no longer holds and, worse, reports proven absence over the key it dropped.
-		// The interlock stays disarmed while the bucket is materialized, because a materialize is a fill too and
-		// would race its own seeding.
+		// The interlock stays disarmed while the bucket is materialized, because a materialize is a fill too
+		// and would race its own seeding.
 		let armed = Arc::new(AtomicBool::new(false));
 		let read = MultiReadBufferTier::with_interlock(config(), {
 			let armed = armed.clone();

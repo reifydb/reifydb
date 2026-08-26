@@ -370,8 +370,8 @@ fn multi_read_row(metrics: &ReadBufferShardMetrics) -> MetricsRow {
 			level_count("entries", metrics.state.entries as u64),
 			level_count("hot_pages", metrics.state.hot_pages as u64),
 			level_count("complete_pages", metrics.state.complete_pages as u64),
-			counter_count("installs", metrics.coverage.installs),
-			counter_count("installs_refused", metrics.coverage.installs_refused),
+			counter_count("materializes", metrics.coverage.materializes),
+			counter_count("materializes_refused", metrics.coverage.materializes_refused),
 			counter_count("pages_evicted", metrics.pages.pages_evicted),
 			counter_count("complete_pages_invalidated", metrics.pages.complete_pages_invalidated),
 			counter_count("point_hits", metrics.reads.point_hits),
@@ -466,9 +466,9 @@ fn operator_range_row(metrics: &OperatorRangeShardMetrics) -> MetricsRow {
 			level_count("entries", metrics.entries as u64),
 			counter_count("hits", metrics.counters.hits),
 			counter_count("misses", metrics.counters.misses),
-			counter_count("installs", metrics.counters.installs),
-			counter_count("installs_refused", metrics.counters.installs_refused),
-			counter_count("installs_raced", metrics.counters.installs_raced),
+			counter_count("materializes", metrics.counters.materializes),
+			counter_count("materializes_refused", metrics.counters.materializes_refused),
+			counter_count("materializes_raced", metrics.counters.materializes_raced),
 			counter_count("evictions", metrics.counters.evictions),
 			counter_count("point_hits", metrics.counters.point_hits),
 			counter_count("point_misses", metrics.counters.point_misses),
@@ -490,9 +490,9 @@ fn operator_range_keyspace_row(metrics: &OperatorRangeKeyspaceMetrics) -> Metric
 			level_count("entries", metrics.entries as u64),
 			counter_count("hits", metrics.counters.hits),
 			counter_count("misses", metrics.counters.misses),
-			counter_count("installs", metrics.counters.installs),
-			counter_count("installs_refused", metrics.counters.installs_refused),
-			counter_count("installs_raced", metrics.counters.installs_raced),
+			counter_count("materializes", metrics.counters.materializes),
+			counter_count("materializes_refused", metrics.counters.materializes_refused),
+			counter_count("materializes_raced", metrics.counters.materializes_raced),
 			counter_count("evictions", metrics.counters.evictions),
 			counter_count("point_hits", metrics.counters.point_hits),
 			counter_count("point_misses", metrics.counters.point_misses),
@@ -708,9 +708,9 @@ mod tests {
 			counters: OperatorRangeMetrics {
 				hits: 1_207,
 				misses: 89,
-				installs: 41,
-				installs_refused: 5,
-				installs_raced: 2,
+				materializes: 41,
+				materializes_refused: 5,
+				materializes_raced: 2,
 				evictions: 63,
 				point_hits: 704,
 				point_misses: 22,
@@ -843,9 +843,9 @@ mod tests {
 		assert_eq!(find("entries").reading, Reading::Count(Count::new(419)));
 		assert_eq!(find("hits").reading, Reading::Count(Count::new(1_207)));
 		assert_eq!(find("misses").reading, Reading::Count(Count::new(89)));
-		assert_eq!(find("installs").reading, Reading::Count(Count::new(41)));
-		assert_eq!(find("installs_refused").reading, Reading::Count(Count::new(5)));
-		assert_eq!(find("installs_raced").reading, Reading::Count(Count::new(2)));
+		assert_eq!(find("materializes").reading, Reading::Count(Count::new(41)));
+		assert_eq!(find("materializes_refused").reading, Reading::Count(Count::new(5)));
+		assert_eq!(find("materializes_raced").reading, Reading::Count(Count::new(2)));
 		assert_eq!(find("evictions").reading, Reading::Count(Count::new(63)));
 		assert_eq!(find("point_hits").reading, Reading::Count(Count::new(704)));
 		assert_eq!(find("point_misses").reading, Reading::Count(Count::new(22)));

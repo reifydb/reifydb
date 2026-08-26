@@ -511,8 +511,11 @@ impl StandardOperatorStore {
 								let last = batch.items.last().map(|(key, _)| key);
 								if let Some(proven) = proven_span(&span, last, complete)
 								{
-									match tier.materialize(scan, &proven, &batch.items)
-									{
+									match tier.materialize(
+										scan,
+										&proven,
+										&batch.items,
+									) {
 										Materialize::Materialized
 										| Materialize::NothingCacheable => {
 											claim_start = batch
@@ -522,7 +525,9 @@ impl StandardOperatorStore {
 													successor(key)
 												});
 										}
-										Materialize::Refused => materializing = false,
+										Materialize::Refused => {
+											materializing = false
+										}
 									}
 								}
 							}

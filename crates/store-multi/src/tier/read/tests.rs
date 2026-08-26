@@ -204,7 +204,10 @@ fn materialize_page(read: &MultiReadBufferTier, page: PageId, mut entries: Vec<R
 		panic!("a table row page range is inclusive at both ends");
 	};
 	entries.sort_by(|left, right| left.key.cmp(&right.key));
-	assert!(read.materialize_scanned_chunk(page.kind, &lo, &through, &entries), "a page chunk must publish its claim");
+	assert!(
+		read.materialize_scanned_chunk(page.kind, &lo, &through, &entries),
+		"a page chunk must publish its claim"
+	);
 }
 
 fn populate_complete(read: &MultiReadBufferTier, object: u64, rows: &[(u64, u64, &str)]) {
@@ -651,7 +654,8 @@ fn a_drop_landing_inside_a_materialize_refuses_its_claim() {
 	)
 	.unwrap();
 
-	let published = read.materialize_scanned_chunk(source(1), &row(1, 10), &row(1, 0), &[raw_entry(1, 5, 5, "stale")]);
+	let published =
+		read.materialize_scanned_chunk(source(1), &row(1, 10), &row(1, 0), &[raw_entry(1, 5, 5, "stale")]);
 
 	assert!(!published, "a materialize whose token was falsified mid-fill must publish nothing");
 	assert!(!read.covers(source(1), &row(1, 5)), "the refused claim landed anyway");

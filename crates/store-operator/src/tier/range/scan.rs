@@ -15,7 +15,7 @@ use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::Ke
 use reifydb_store::coverage::{
 	ExclusiveUpperEnd,
 	cursor::{RangeCursor, ServedChunk},
-	entry::{Entry, PinnedCount, Residency},
+	entry::{Entry, PinnedCount},
 	interval::{CoverageSet, Interval},
 	plan::{Segment, plan},
 	successor,
@@ -287,7 +287,12 @@ impl OperatorRangeTier {
 		ServedChunk::Served(rows)
 	}
 
-	pub fn materialize(&self, scan: &RangeScan, span: &Interval, rows: &[(EncodedKey, EncodedPodRow)]) -> Materialize {
+	pub fn materialize(
+		&self,
+		scan: &RangeScan,
+		span: &Interval,
+		rows: &[(EncodedKey, EncodedPodRow)],
+	) -> Materialize {
 		let mut start = span.start.clone();
 		let mut materialized = false;
 		let mut claim: Option<Interval> = None;
@@ -393,7 +398,12 @@ impl OperatorRangeTier {
 		claimed.clear();
 	}
 
-	fn materialize_partition(&self, scan: &RangeScan, span: &Interval, rows: &[(EncodedKey, EncodedPodRow)]) -> bool {
+	fn materialize_partition(
+		&self,
+		scan: &RangeScan,
+		span: &Interval,
+		rows: &[(EncodedKey, EncodedPodRow)],
+	) -> bool {
 		let Some(partition) = PartitionId::of(scan.operator, &span.start) else {
 			return false;
 		};
@@ -538,7 +548,7 @@ impl OperatorRangeTier {
 			let Some(entry) = resident.entries.remove(key) else {
 				continue;
 			};
-			if !matches!(entry.residency, Residency::Row(_)) {
+			if !matches!(entry, Entry::Row(_)) {
 				resident.entries.insert(key.clone(), entry);
 				continue;
 			}
@@ -1085,7 +1095,8 @@ mod tests {
 		let at = key(UNCACHED, b"a");
 
 		assert!(
-			claim(&tier, &range, &whole(UNCACHED), &[(at.clone(), row("v"))]) == Materialize::NothingCacheable,
+			claim(&tier, &range, &whole(UNCACHED), &[(at.clone(), row("v"))])
+				== Materialize::NothingCacheable,
 			"a span holding no cacheable partition must report nothing to cache, never refusal, or the \
              caller stops materializing for the rest of the scan"
 		);
@@ -1175,7 +1186,8 @@ mod tests {
 
 	#[test]
 	fn a_materialize_whose_span_crosses_a_partition_boundary_lands_rows_in_both_keyspaces() {
-		// A coalesced gap hands materialize one multi-keyspace span; refusing it whole leaves cross-keyspace reads permanently uncached.
+		// A coalesced gap hands materialize one multi-keyspace span; refusing it whole leaves cross-keyspace
+		// reads permanently uncached.
 		let tier = roomy();
 		let top = Keyspace::BUFFER;
 		let bottom = Keyspace::ACCUMULATOR;
@@ -1325,7 +1337,8 @@ mod tests {
 		let range = across(top, bottom);
 
 		assert!(claim(&tier, &range, &whole(top), &[]) == Materialize::Materialized);
-		assert!(claim(&tier, &range, &whole(bottom), &[(key(bottom, b"k"), row("k"))]) == Materialize::Materialized);
+		assert!(claim(&tier, &range, &whole(bottom), &[(key(bottom, b"k"), row("k"))])
+			== Materialize::Materialized);
 		assert_eq!(intervals(&tier).len(), 1, "the two claims must coalesce, or the drop is not under test");
 		assert_eq!(tier.partitions(), 1, "only the keyspace holding a row may hold a partition");
 

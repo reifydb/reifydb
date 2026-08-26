@@ -2,59 +2,48 @@
 // Copyright (c) 2026 ReifyDB
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Residency<V> {
+pub enum Entry<V> {
 	Row(V),
 	Deleted,
 	Absent,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Entry<V> {
-	pub residency: Residency<V>,
-}
-
 impl<V> Entry<V> {
 	pub fn row(value: V) -> Self {
-		Self {
-			residency: Residency::Row(value),
-		}
+		Self::Row(value)
 	}
 
 	pub fn deleted() -> Self {
-		Self {
-			residency: Residency::Deleted,
-		}
+		Self::Deleted
 	}
 
 	pub fn absent() -> Self {
-		Self {
-			residency: Residency::Absent,
-		}
+		Self::Absent
 	}
 
 	pub fn value(&self) -> Option<&V> {
-		match &self.residency {
-			Residency::Row(value) => Some(value),
-			Residency::Deleted | Residency::Absent => None,
+		match self {
+			Entry::Row(value) => Some(value),
+			Entry::Deleted | Entry::Absent => None,
 		}
 	}
 
 	pub fn resolves(&self) -> bool {
-		match &self.residency {
-			Residency::Row(_) | Residency::Deleted | Residency::Absent => true,
+		match self {
+			Entry::Row(_) | Entry::Deleted | Entry::Absent => true,
 		}
 	}
 
 	pub fn evictable(&self) -> bool {
-		match &self.residency {
-			Residency::Row(_) | Residency::Absent => true,
-			Residency::Deleted => false,
+		match self {
+			Entry::Row(_) | Entry::Absent => true,
+			Entry::Deleted => false,
 		}
 	}
 
 	pub fn demote_flushed(&mut self) {
-		if matches!(self.residency, Residency::Deleted) {
-			self.residency = Residency::Absent;
+		if matches!(self, Entry::Deleted) {
+			*self = Entry::Absent;
 		}
 	}
 }
@@ -107,7 +96,7 @@ impl PinnedCount {
 
 #[cfg(test)]
 mod tests {
-	use super::{Entry, PinnedCount, Residency};
+	use super::{Entry, PinnedCount};
 
 	fn row(value: u32) -> Entry<u32> {
 		Entry::row(value)
@@ -155,7 +144,7 @@ mod tests {
 		// The flush proved the persistent tier agrees, so the pin must be released.
 		let mut entry = deleted();
 		entry.demote_flushed();
-		assert_eq!(entry.residency, Residency::Absent);
+		assert_eq!(entry, Entry::Absent);
 		assert!(entry.evictable());
 	}
 
@@ -166,7 +155,7 @@ mod tests {
 		entry.demote_flushed();
 		entry.demote_flushed();
 		entry.demote_flushed();
-		assert_eq!(entry.residency, Residency::Absent);
+		assert_eq!(entry, Entry::Absent);
 	}
 
 	#[test]
@@ -174,7 +163,7 @@ mod tests {
 		// A flush must never erase a live value it was only meant to confirm.
 		let mut entry = row(7);
 		entry.demote_flushed();
-		assert_eq!(entry.residency, Residency::Row(7));
+		assert_eq!(entry, Entry::Row(7));
 		assert_eq!(entry.value(), Some(&7));
 	}
 
@@ -183,7 +172,7 @@ mod tests {
 		// An absence is already the post-flush state; a flush must be a no-op on it.
 		let mut entry = absent();
 		entry.demote_flushed();
-		assert_eq!(entry.residency, Residency::Absent);
+		assert_eq!(entry, Entry::Absent);
 	}
 
 	#[test]

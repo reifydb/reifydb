@@ -26,10 +26,10 @@ pub struct ScanPlan {
 }
 
 impl ScanPlan {
-	pub fn full(lo: EncodedKey, hi: ExclusiveUpperEnd) -> Self {
+	pub fn full(interval: Interval) -> Self {
 		Self {
 			segments: vec![Segment::Gap {
-				interval: Interval::new(lo, hi),
+				interval,
 				exempt: false,
 			}],
 			gaps: 1,
@@ -100,7 +100,7 @@ where
 	}
 
 	if gaps - exempt_gaps > guard {
-		return ScanPlan::full(lo, hi);
+		return ScanPlan::full(Interval::new(lo, hi));
 	}
 
 	ScanPlan {
@@ -231,7 +231,7 @@ mod tests {
 	#[test]
 	fn full_plan_is_one_non_exempt_gap_spanning_the_whole_range() {
 		// The guard fallback must be a single scan the caller can install as one interval.
-		let plan = ScanPlan::full(key(b"a"), ExclusiveUpperEnd::of(b"m"));
+		let plan = ScanPlan::full(Interval::new(key(b"a"), ExclusiveUpperEnd::of(b"m")));
 
 		assert_eq!(plan.segments.len(), 1);
 		assert_eq!(

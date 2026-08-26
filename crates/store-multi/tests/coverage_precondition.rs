@@ -355,7 +355,10 @@ fn concurrent_writers_flushes_and_materializes_never_drop_a_key() {
 
 	let final_scan = scan(&store, u64::MAX);
 	assert_eq!(final_scan.len(), rows as usize, "every published row must survive the concurrent workload");
-	assert!(materializes(&store) > 0, "the workload must have materialized at least one claim, or it proves nothing");
+	assert!(
+		materializes(&store) > 0,
+		"the workload must have materialized at least one claim, or it proves nothing"
+	);
 	assert!(complete_pages(&store) > 0, "the workload must have claimed at least one page, or it proves nothing");
 }
 

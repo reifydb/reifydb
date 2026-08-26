@@ -234,7 +234,10 @@ fn a_warm_cache_reads_far_less_than_the_oracle_for_the_same_answers() {
 
 	let tier = cached.range().expect("the cached fixture configures a range tier");
 	let counters = tier.metrics();
-	assert!(counters.materializes > 0, "the workload must materialize at least one span, or there is no cache to measure");
+	assert!(
+		counters.materializes > 0,
+		"the workload must materialize at least one span, or there is no cache to measure"
+	);
 	assert!(counters.hits > 0, "a warmed tier that never reports a hit answered nothing from RAM");
 	assert_eq!(
 		counters.materializes_refused, 0,

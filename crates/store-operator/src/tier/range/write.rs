@@ -196,7 +196,7 @@ mod tests {
 	};
 	use reifydb_store::coverage::{
 		ExclusiveUpperEnd,
-		entry::{PinnedCount, Residency},
+		entry::{Entry, PinnedCount},
 		interval::Interval,
 		successor,
 	};
@@ -265,13 +265,8 @@ mod tests {
 			.extend(start.clone(), ExclusiveUpperEnd::Key(end.clone()));
 	}
 
-	fn residency(tier: &OperatorRangeTier, id: &PartitionId, at: &EncodedKey) -> Option<Residency<EncodedPodRow>> {
-		tier.shard_for(id)
-			.lock()
-			.partitions
-			.get(id)
-			.and_then(|target| target.entries.get(at))
-			.map(|entry| entry.residency.clone())
+	fn residency(tier: &OperatorRangeTier, id: &PartitionId, at: &EncodedKey) -> Option<Entry<EncodedPodRow>> {
+		tier.shard_for(id).lock().partitions.get(id).and_then(|target| target.entries.get(at)).cloned()
 	}
 
 	fn pinned(tier: &OperatorRangeTier, id: &PartitionId) -> PinnedCount {
@@ -329,7 +324,7 @@ mod tests {
 
 		tier.overwrite(OP_A, at.clone(), row("v"));
 
-		assert_eq!(residency(&tier, &id, &at), Some(Residency::Row(row("v"))));
+		assert_eq!(residency(&tier, &id, &at), Some(Entry::Row(row("v"))));
 		assert!(intervals(&tier, OP_A).is_empty(), "an overwrite claimed a span the writer never observed");
 		assert!(!covers(&tier, OP_A, &at));
 	}
@@ -346,7 +341,7 @@ mod tests {
 		let one = bytes(&tier, &id);
 		tier.overwrite(OP_A, at.clone(), row("w"));
 
-		assert_eq!(residency(&tier, &id, &at), Some(Residency::Row(row("w"))));
+		assert_eq!(residency(&tier, &id, &at), Some(Entry::Row(row("w"))));
 		assert_eq!(bytes(&tier, &id), one, "an equal-sized replacement must not move the tally");
 		assert_eq!(pinned(&tier, &id).total(), 1, "a replacement is one entry, not two");
 	}
@@ -361,7 +356,7 @@ mod tests {
 
 		tier.insert(OP_A, at.clone(), row("v"));
 
-		assert_eq!(residency(&tier, &id, &at), Some(Residency::Row(row("v"))));
+		assert_eq!(residency(&tier, &id, &at), Some(Entry::Row(row("v"))));
 		assert_eq!(intervals(&tier, OP_A), vec![island(&at)]);
 		assert!(!covers(&tier, OP_A, &key(CACHED, b"l")), "the island widened below its key");
 		assert!(!covers(&tier, OP_A, &key(CACHED, b"n")), "the island widened above its key");
@@ -379,7 +374,7 @@ mod tests {
 
 		tier.insert(OP_A, at.clone(), row("v"));
 
-		assert_eq!(residency(&tier, &id, &at), Some(Residency::Row(row("v"))));
+		assert_eq!(residency(&tier, &id, &at), Some(Entry::Row(row("v"))));
 		assert_eq!(intervals(&tier, OP_A), before, "an insert inside a claim must leave it alone");
 	}
 
@@ -411,7 +406,7 @@ mod tests {
 
 		assert_eq!(
 			residency(&tier, &id, &at),
-			Some(Residency::Deleted),
+			Some(Entry::Deleted),
 			"a removal the flush has not seen must never be stored as a proven absence"
 		);
 		assert_eq!(pinned(&tier, &id).pinned(), 1);
@@ -472,7 +467,7 @@ mod tests {
 
 		assert_eq!(
 			residency(&tier, &id, &at),
-			Some(Residency::Absent),
+			Some(Entry::Absent),
 			"an erased key lets a stale in-flight row back in under a fresh claim"
 		);
 		assert_eq!(pinned(&tier, &id).pinned(), 0, "a flushed removal must be reclaimable");
@@ -491,7 +486,7 @@ mod tests {
 
 		tier.retract(OP_A, &at);
 
-		assert_eq!(residency(&tier, &id, &at), Some(Residency::Absent));
+		assert_eq!(residency(&tier, &id, &at), Some(Entry::Absent));
 		assert_eq!(pinned(&tier, &id).total(), 1);
 	}
 
@@ -506,7 +501,7 @@ mod tests {
 
 		tier.retract(OP_A, &at);
 
-		assert_eq!(residency(&tier, &id, &at), Some(Residency::Absent));
+		assert_eq!(residency(&tier, &id, &at), Some(Entry::Absent));
 		assert_eq!(tier.lookup(OP_A, &at), Some(None));
 	}
 
@@ -536,7 +531,7 @@ mod tests {
 
 		tier.overwrite(OP_A, at.clone(), row("w"));
 
-		assert_eq!(residency(&tier, &id, &at), Some(Residency::Row(row("w"))));
+		assert_eq!(residency(&tier, &id, &at), Some(Entry::Row(row("w"))));
 		assert_eq!((pinned(&tier, &id).pinned(), pinned(&tier, &id).total()), (0, 1));
 		assert_eq!(tier.lookup(OP_A, &at), Some(Some(row("w"))));
 	}
@@ -575,7 +570,7 @@ mod tests {
 			"a purge that never releases its bytes starves every other partition"
 		);
 		assert!(has_partition(&tier, &other_operator), "another operator must be untouched");
-		assert_eq!(residency(&tier, &other_operator, &at), Some(Residency::Row(row("v"))));
+		assert_eq!(residency(&tier, &other_operator, &at), Some(Entry::Row(row("v"))));
 		assert!(covers(&tier, OP_B, &at));
 	}
 

@@ -159,7 +159,11 @@ fn a_covered_span_answers_a_range_and_an_uncovered_one_falls_through() {
 	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(a.clone(), row("v1")), (b.clone(), row("v2"))]);
 
 	let served = serve_ram(&tier, OP_A, &range, 64).expect("a covered span must answer its own range");
-	assert_eq!(bodies(&served), ["v1", "v2"], "the claim must serve every row it was materialized with, in key order");
+	assert_eq!(
+		bodies(&served),
+		["v1", "v2"],
+		"the claim must serve every row it was materialized with, in key order"
+	);
 	assert_eq!(served[0].0, a);
 	assert_eq!(served[1].0, b);
 	assert_eq!(tier.metrics().hits, 1);
@@ -322,8 +326,20 @@ fn a_materialize_keeps_a_row_already_resident_rather_than_replacing_it() {
 fn a_materialize_that_does_not_fit_the_budget_is_refused_whole_and_evicts_nothing() {
 	let per_partition = per_partition_bytes();
 	let tier = tier(per_partition * 2);
-	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(key(GROUP_A, Keyspace::ACCUMULATOR, b"a"), row("v"))]);
-	materialize(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR, &[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("v"))]);
+	materialize(
+		&tier,
+		OP_A,
+		GROUP_A,
+		Keyspace::ACCUMULATOR,
+		&[(key(GROUP_A, Keyspace::ACCUMULATOR, b"a"), row("v"))],
+	);
+	materialize(
+		&tier,
+		OP_A,
+		GROUP_B,
+		Keyspace::ACCUMULATOR,
+		&[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("v"))],
+	);
 	assert_eq!(tier.resident_bytes().as_bytes(), per_partition * 2, "the fixture must fill the budget exactly");
 	let before = tier.resident_bytes();
 
@@ -335,7 +351,10 @@ fn a_materialize_that_does_not_fit_the_budget_is_refused_whole_and_evicts_nothin
 		.map(|index| (key(third, Keyspace::ACCUMULATOR, &[index]), row("a fairly long row body")))
 		.collect();
 
-	assert!(tier.materialize(&scan, &gap, &page) == Materialize::Refused, "a span past the shard limit must be refused");
+	assert!(
+		tier.materialize(&scan, &gap, &page) == Materialize::Refused,
+		"a span past the shard limit must be refused"
+	);
 
 	assert_eq!(tier.metrics().materializes_refused, 1);
 	assert_eq!(tier.metrics().evictions, 0, "a new claim must never evict a proven resident to make room");
@@ -463,7 +482,13 @@ fn charge_and_release_balance_across_the_partition_lifecycle() {
 	balanced("operator drop");
 
 	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v"))]);
-	materialize(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR, &[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("v"))]);
+	materialize(
+		&tier,
+		OP_A,
+		GROUP_B,
+		Keyspace::ACCUMULATOR,
+		&[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("v"))],
+	);
 	tier.overwrite(OP_A, key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("a very much longer row body indeed"));
 	assert!(tier.metrics().evictions > 0, "the fixture must actually evict, or this stage proves nothing");
 	balanced("evict");
@@ -848,7 +873,10 @@ fn a_materialize_that_races_a_retraction_refuses_rather_than_reinstating_the_cla
 		None,
 		"the refused materialize must roll its rows back and leave the key falling through to the store"
 	);
-	assert!(!covers(&tier, OP_A, &range), "and it must leave no claim behind over the span it failed to materialize");
+	assert!(
+		!covers(&tier, OP_A, &range),
+		"and it must leave no claim behind over the span it failed to materialize"
+	);
 	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
 }
 

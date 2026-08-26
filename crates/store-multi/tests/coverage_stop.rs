@@ -180,7 +180,8 @@ fn a_scan_that_read_to_the_range_end_materializes_a_claim() {
 
 #[test]
 fn a_chunk_over_an_absent_table_is_not_a_scan_to_the_range_end() {
-	// Naming an unflushed keyspace's absent table a scan to the end would hand the materialize path a span no read ever examined.
+	// Naming an unflushed keyspace's absent table a scan to the end would hand the materialize path a span no read
+	// ever examined.
 	let (tier, _g) = tier_with_rows(0, 5);
 	let mut cursor = RangeCursor::new();
 	let rows = tier_chunk(&tier, &mut cursor, 30);
@@ -193,7 +194,8 @@ fn a_chunk_over_an_absent_table_is_not_a_scan_to_the_range_end() {
 
 #[test]
 fn a_chunk_that_read_a_present_table_to_its_end_is_a_scan_to_the_range_end() {
-	// The partner of the absent-table test: a short page is the one stop the materialize path may stretch to the range end.
+	// The partner of the absent-table test: a short page is the one stop the materialize path may stretch to the
+	// range end.
 	let (tier, _g) = tier_with_rows(CHUNK / 2, 5);
 	let mut cursor = RangeCursor::new();
 	let rows = tier_chunk(&tier, &mut cursor, 30);

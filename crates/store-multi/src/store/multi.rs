@@ -907,7 +907,13 @@ impl StandardMultiStore {
 			)?
 		};
 		if !descending && cursor.materialize {
-			self.materialize_scanned_chunk(persistent, scan, resumed_at.as_ref(), &cursor.persistent, &batch)?;
+			self.materialize_scanned_chunk(
+				persistent,
+				scan,
+				resumed_at.as_ref(),
+				&cursor.persistent,
+				&batch,
+			)?;
 		}
 		merge_tier_batch(batch, scan.range, collected)
 	}

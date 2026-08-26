@@ -162,7 +162,11 @@ fn a_range_over_a_keyspace_no_scan_proved_falls_through_and_still_answers_in_ful
 	seed_accumulator(&storage, 3);
 
 	assert!(store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 2)).is_some(), "the point read warms one key");
-	assert_eq!(range_partitions(&store), 0, "a point fill must never materialize a claim over keys it did not read");
+	assert_eq!(
+		range_partitions(&store),
+		0,
+		"a point fill must never materialize a claim over keys it did not read"
+	);
 
 	let before = ScanCounters::sample();
 	let served = store.range_batch(OP_A, accumulator_range(), 64);

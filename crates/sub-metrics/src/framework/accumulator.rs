@@ -711,7 +711,7 @@ mod tests {
 		// Two shards with distinct values; a misaligned pivot would attribute shard 1's
 		// bytes to shard 0.
 		let mut acc = MetricsAccumulator::new([MetricsDomain::StoreMultiRead.spec()]);
-		let shard_row = |shard: u16, used: u64, installs: u64| MetricsRow {
+		let shard_row = |shard: u16, used: u64, materializes: u64| MetricsRow {
 			dimensions: vec![Value::Uint2(shard)],
 			measures: vec![
 				Measure {
@@ -720,8 +720,8 @@ mod tests {
 					kind: MetricKind::Level,
 				},
 				Measure {
-					metric: "installs",
-					reading: Reading::Count(Count::new(installs)),
+					metric: "materializes",
+					reading: Reading::Count(Count::new(materializes)),
 					kind: MetricKind::Counter,
 				},
 			],
@@ -736,10 +736,10 @@ mod tests {
 		let current = surface(&published, MetricsDomain::StoreMultiRead, Surface::Current);
 		assert_eq!(column_values(current, "shard"), vec![Value::Uint2(0), Value::Uint2(1)]);
 		assert_eq!(column_values(current, "used"), vec![Value::Uint8(100), Value::Uint8(200)]);
-		assert_eq!(column_values(current, "installs"), vec![Value::Uint8(3), Value::Uint8(9)]);
+		assert_eq!(column_values(current, "materializes"), vec![Value::Uint8(3), Value::Uint8(9)]);
 
 		let total = surface(&published, MetricsDomain::StoreMultiRead, Surface::Total);
-		assert_eq!(column_values(total, "installs"), vec![Value::Uint8(3), Value::Uint8(9)]);
+		assert_eq!(column_values(total, "materializes"), vec![Value::Uint8(3), Value::Uint8(9)]);
 		assert!(
 			!total.iter().any(|c| c.name().text() == "used"),
 			"levels must not appear in a wide ::total surface"
