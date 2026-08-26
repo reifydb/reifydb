@@ -14,8 +14,8 @@ use reifydb_core::{
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::point::{
-	ENTRY_OVERHEAD, FillInterlock, OperatorPointConfig, OperatorPointKeyspaceMetrics, OperatorPointMetrics,
-	OperatorPointTier, PointKey, keyspace_of,
+	ENTRY_OVERHEAD, FillInterlock, PointConfig, PointKey, PointKeyspaceMetrics, PointMetrics, PointTier,
+	domain::{TestDomain as D, keyspace_of},
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -23,19 +23,19 @@ const OP_B: OperatorId = OperatorId(2);
 const GROUP_A: GroupId = GroupId(10);
 const GROUP_B: GroupId = GroupId(11);
 
-fn sharded(limit: u64, shards: usize) -> OperatorPointTier {
-	OperatorPointTier::new(OperatorPointConfig {
+fn sharded(limit: u64, shards: usize) -> PointTier<D> {
+	PointTier::<D>::new(PointConfig {
 		resident_bytes: Some(ByteSize::from_bytes(limit)),
 		shards,
 	})
 	.expect("a tier with a byte budget must be constructed")
 }
 
-fn tier(limit: u64) -> OperatorPointTier {
+fn tier(limit: u64) -> PointTier<D> {
 	sharded(limit, 1)
 }
 
-fn roomy() -> OperatorPointTier {
+fn roomy() -> PointTier<D> {
 	tier(ByteSize::from_mib(1).as_bytes())
 }
 
@@ -52,7 +52,7 @@ fn body(entry: &Option<EncodedPodRow>) -> String {
 		.expect("test bodies are utf8")
 }
 
-fn fill(tier: &OperatorPointTier, operator: OperatorId, key: EncodedKey, row: Option<EncodedPodRow>) {
+fn fill(tier: &PointTier<D>, operator: OperatorId, key: EncodedKey, row: Option<EncodedPodRow>) {
 	assert!(tier.begin_fill(operator, &key), "the fixture must be allowed to start the fill it is staging");
 	assert!(tier.finish_fill(operator, key, row), "the fixture must be allowed to publish the fill it started");
 }
@@ -61,7 +61,7 @@ fn footprint(key: &EncodedKey, row: &Option<EncodedPodRow>) -> usize {
 	ENTRY_OVERHEAD + key.heap_bytes() + row.as_ref().map_or(0, EncodedPodRow::len)
 }
 
-fn keyspace_row(tier: &OperatorPointTier, keyspace: Keyspace) -> OperatorPointKeyspaceMetrics {
+fn keyspace_row(tier: &PointTier<D>, keyspace: Keyspace) -> PointKeyspaceMetrics<D> {
 	tier.keyspace_metrics()
 		.into_iter()
 		.find(|row| row.keyspace == keyspace)
@@ -407,13 +407,13 @@ fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
 	let probed = Arc::new(AtomicBool::new(false));
 	let flag = acquired.clone();
 	let seen = probed.clone();
-	let hook: FillInterlock = Box::new(move |tier: &OperatorPointTier, id: &PointKey| {
+	let hook: FillInterlock<D> = Box::new(move |tier: &PointTier<D>, id: &PointKey<OperatorId>| {
 		seen.store(true, Ordering::Relaxed);
 		flag.store(tier.shard_for(id).try_lock().is_some(), Ordering::Relaxed);
 	});
 
-	let tier = OperatorPointTier::with_interlock(
-		OperatorPointConfig {
+	let tier = PointTier::<D>::with_interlock(
+		PointConfig {
 			resident_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
 		},
@@ -434,14 +434,14 @@ fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
 
 #[test]
 fn a_tier_without_a_byte_budget_is_not_constructed() {
-	assert!(OperatorPointTier::new(OperatorPointConfig {
+	assert!(PointTier::<D>::new(PointConfig {
 		resident_bytes: None,
 		shards: 16,
 	})
 	.is_none());
-	assert!(OperatorPointTier::new(OperatorPointConfig::default()).is_some());
-	assert_eq!(OperatorPointConfig::default().shards, 16);
-	assert_eq!(OperatorPointConfig::default().resident_bytes, Some(ByteSize::from_mib(64)));
+	assert!(PointTier::<D>::new(PointConfig::default()).is_some());
+	assert_eq!(PointConfig::default().shards, 16);
+	assert_eq!(PointConfig::default().resident_bytes, Some(ByteSize::from_mib(64)));
 }
 
 #[test]
@@ -851,7 +851,7 @@ fn an_excluded_keyspace_read_acquires_no_shard() {
 	for shard in tier.shard_metrics() {
 		assert_eq!(
 			shard.counters,
-			OperatorPointMetrics::default(),
+			PointMetrics::default(),
 			"shard {} recorded a counter for a read that must never have reached it",
 			shard.shard
 		);

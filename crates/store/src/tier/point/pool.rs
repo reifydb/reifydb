@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	array,
 	collections::{HashMap, hash_map::DefaultHasher},
 	hash::{Hash, Hasher},
 	sync::{
@@ -12,7 +11,6 @@ use std::{
 };
 
 use reifydb_core::{
-	key::operator_state::Keyspace,
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	util::budget::MemoryBudget,
 };
@@ -22,19 +20,17 @@ use reifydb_value::byte_size::ByteSize;
 #[cfg(test)]
 use crate::tier::point::FillInterlock;
 use crate::tier::point::{
-	EVICTION_SAMPLE, KEYSPACE_SLOTS, OperatorPointConfig, OperatorPointKeyspaceMetrics, OperatorPointMetrics,
-	OperatorPointShardMetrics, OperatorPointTier, PointKey, PoolInner, Shard, Slot, entry_footprint, keyspace_of,
+	EVICTION_SAMPLE, Entry, PointConfig, PointDomain, PointKey, PointKeyspaceMetrics, PointMetrics,
+	PointShardMetrics, PointTier, PoolInner, Shard, entry_footprint,
 };
 
-const POINT_SCOPE: &str = "operator_point";
-
-impl OperatorPointTier {
-	pub fn new(config: OperatorPointConfig) -> Option<Self> {
+impl<D: PointDomain> PointTier<D> {
+	pub fn new(config: PointConfig) -> Option<Self> {
 		let resident_bytes = config.resident_bytes?;
 		Some(Self {
 			inner: Arc::new(PoolInner {
-				shards: build_shards(config, resident_bytes),
-				excluded_misses: array::from_fn(|_| AtomicU64::new(0)),
+				shards: build_shards::<D>(config, resident_bytes),
+				excluded_misses: build_excluded_misses::<D>(),
 				#[cfg(test)]
 				interlock: None,
 			}),
@@ -42,36 +38,36 @@ impl OperatorPointTier {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn with_interlock(config: OperatorPointConfig, interlock: FillInterlock) -> Option<Self> {
+	pub(crate) fn with_interlock(config: PointConfig, interlock: FillInterlock<D>) -> Option<Self> {
 		let resident_bytes = config.resident_bytes?;
 		Some(Self {
 			inner: Arc::new(PoolInner {
-				shards: build_shards(config, resident_bytes),
-				excluded_misses: array::from_fn(|_| AtomicU64::new(0)),
+				shards: build_shards::<D>(config, resident_bytes),
+				excluded_misses: build_excluded_misses::<D>(),
 				interlock: Some(interlock),
 			}),
 		})
 	}
 
-	pub(super) fn shard_for(&self, key: &PointKey) -> &Mutex<Shard> {
+	pub(super) fn shard_for(&self, key: &PointKey<D::Dimension>) -> &Mutex<Shard<D>> {
 		let shards = &self.inner.shards;
 		let mut hasher = DefaultHasher::new();
-		key.operator.hash(&mut hasher);
+		key.dimension.hash(&mut hasher);
 		key.key.as_slice().hash(&mut hasher);
 		let index = (hasher.finish() % shards.len() as u64) as usize;
 		&shards[index]
 	}
 
-	pub(super) fn all_shards(&self) -> impl Iterator<Item = &Mutex<Shard>> {
+	pub(super) fn all_shards(&self) -> impl Iterator<Item = &Mutex<Shard<D>>> {
 		self.inner.shards.iter()
 	}
 
-	pub(super) fn charge_excluded_miss(&self, keyspace: Keyspace) {
-		self.inner.excluded_misses[keyspace.0 as usize].fetch_add(1, Ordering::Relaxed);
+	pub(super) fn charge_excluded_miss(&self, slot: usize) {
+		self.inner.excluded_misses[slot].fetch_add(1, Ordering::Relaxed);
 	}
 
-	fn excluded_misses(&self, keyspace: usize) -> u64 {
-		self.inner.excluded_misses[keyspace].load(Ordering::Relaxed)
+	fn excluded_misses(&self, slot: usize) -> u64 {
+		self.inner.excluded_misses[slot].load(Ordering::Relaxed)
 	}
 
 	fn excluded_misses_total(&self) -> u64 {
@@ -84,7 +80,7 @@ impl OperatorPointTier {
 	}
 
 	pub fn entries(&self) -> usize {
-		self.all_shards().map(|shard| shard.lock().slots.len()).sum()
+		self.all_shards().map(|shard| shard.lock().entries.len()).sum()
 	}
 
 	pub fn hits(&self) -> u64 {
@@ -100,8 +96,8 @@ impl OperatorPointTier {
 		self.all_shards().map(|shard| shard.lock().metrics.evictions).sum()
 	}
 
-	pub fn metrics(&self) -> OperatorPointMetrics {
-		let mut total = OperatorPointMetrics::default();
+	pub fn metrics(&self) -> PointMetrics {
+		let mut total = PointMetrics::default();
 		for shard in self.all_shards() {
 			let shard = shard.lock();
 			accumulate(&mut total, &shard.metrics);
@@ -110,49 +106,49 @@ impl OperatorPointTier {
 		total
 	}
 
-	pub fn shard_metrics(&self) -> Vec<OperatorPointShardMetrics> {
+	pub fn shard_metrics(&self) -> Vec<PointShardMetrics> {
 		let mut out = Vec::with_capacity(self.inner.shards.len());
 		for (index, shard) in self.inner.shards.iter().enumerate() {
 			let shard = shard.lock();
-			out.push(OperatorPointShardMetrics {
+			out.push(PointShardMetrics {
 				shard: index,
 				used: shard.budget.used(),
 				limit: shard.budget.limit(),
-				entries: shard.slots.len(),
+				entries: shard.entries.len(),
 				counters: shard.metrics,
 			});
 		}
 		out
 	}
 
-	pub fn keyspace_metrics(&self) -> Vec<OperatorPointKeyspaceMetrics> {
-		let mut used = vec![0u64; KEYSPACE_SLOTS];
-		let mut entries = vec![0usize; KEYSPACE_SLOTS];
-		let mut counters = vec![OperatorPointMetrics::default(); KEYSPACE_SLOTS];
+	pub fn keyspace_metrics(&self) -> Vec<PointKeyspaceMetrics<D>> {
+		let mut used = vec![0u64; D::SLOTS];
+		let mut entries = vec![0usize; D::SLOTS];
+		let mut counters = vec![PointMetrics::default(); D::SLOTS];
 
 		for shard in self.all_shards() {
 			let shard = shard.lock();
-			for slot in &shard.slots {
-				let keyspace = slot_keyspace(slot).0 as usize;
-				used[keyspace] += entry_footprint(&slot.key, &slot.row) as u64;
-				entries[keyspace] += 1;
+			for entry in &shard.entries {
+				let slot = entry_slot::<D>(entry);
+				used[slot] += entry_footprint::<D>(&entry.key, &entry.row) as u64;
+				entries[slot] += 1;
 			}
-			for (keyspace, source) in shard.keyspace_metrics.iter().enumerate() {
-				accumulate(&mut counters[keyspace], source);
+			for (slot, source) in shard.keyspace_metrics.iter().enumerate() {
+				accumulate(&mut counters[slot], source);
 			}
 		}
-		for (keyspace, counter) in counters.iter_mut().enumerate() {
-			counter.misses += self.excluded_misses(keyspace);
+		for (slot, counter) in counters.iter_mut().enumerate() {
+			counter.misses += self.excluded_misses(slot);
 		}
 
-		let empty = OperatorPointMetrics::default();
-		(0..KEYSPACE_SLOTS)
-			.filter(|keyspace| entries[*keyspace] > 0 || counters[*keyspace] != empty)
-			.map(|keyspace| OperatorPointKeyspaceMetrics {
-				keyspace: Keyspace(keyspace as u8),
-				used: ByteSize::from_bytes(used[keyspace]),
-				entries: entries[keyspace],
-				counters: counters[keyspace],
+		let empty = PointMetrics::default();
+		(0..D::SLOTS)
+			.filter(|slot| entries[*slot] > 0 || counters[*slot] != empty)
+			.map(|slot| PointKeyspaceMetrics {
+				keyspace: D::slot_at(slot),
+				used: ByteSize::from_bytes(used[slot]),
+				entries: entries[slot],
+				counters: counters[slot],
 			})
 			.collect()
 	}
@@ -167,9 +163,9 @@ impl OperatorPointTier {
 			.all_shards()
 			.map(|shard| {
 				shard.lock()
-					.slots
+					.entries
 					.iter()
-					.map(|slot| entry_footprint(&slot.key, &slot.row) as u64)
+					.map(|entry| entry_footprint::<D>(&entry.key, &entry.row) as u64)
 					.sum::<u64>()
 			})
 			.sum();
@@ -178,43 +174,43 @@ impl OperatorPointTier {
 
 	#[cfg(test)]
 	pub(crate) fn occupied_shards(&self) -> usize {
-		self.all_shards().filter(|shard| !shard.lock().slots.is_empty()).count()
+		self.all_shards().filter(|shard| !shard.lock().entries.is_empty()).count()
 	}
 
 	#[cfg(test)]
 	pub(crate) fn index_is_consistent(&self) -> bool {
 		self.all_shards().all(|shard| {
 			let shard = shard.lock();
-			shard.index.len() == shard.slots.len()
+			shard.index.len() == shard.entries.len()
 				&& shard.index.iter().all(|(key, position)| {
-					shard.slots.get(*position).is_some_and(|slot| slot.key == *key)
+					shard.entries.get(*position).is_some_and(|entry| entry.key == *key)
 				})
 		})
 	}
 }
 
-impl MetricsCollector for OperatorPointTier {
+impl<D: PointDomain> MetricsCollector for PointTier<D> {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
 		let counters = self.metrics();
-		out.push(MetricsSample::heap(POINT_SCOPE, "resident_bytes", self.resident_bytes()));
-		out.push(MetricsSample::count(POINT_SCOPE, "resident_entries", self.entries() as u64));
-		out.push(MetricsSample::counter(POINT_SCOPE, "hits", counters.hits));
-		out.push(MetricsSample::counter(POINT_SCOPE, "misses", counters.misses));
-		out.push(MetricsSample::counter(POINT_SCOPE, "insertions", counters.insertions));
-		out.push(MetricsSample::counter(POINT_SCOPE, "evictions", counters.evictions));
-		out.push(MetricsSample::counter(POINT_SCOPE, "fills_started", counters.fills_started));
-		out.push(MetricsSample::counter(POINT_SCOPE, "fills_dirty_aborted", counters.fills_dirty_aborted));
-		out.push(MetricsSample::counter(POINT_SCOPE, "fills_duplicate", counters.fills_duplicate));
-		out.push(MetricsSample::bytes(POINT_SCOPE, "shard_limit_bytes", self.shard_limit_bytes()));
+		out.push(MetricsSample::heap(D::SCOPE, "resident_bytes", self.resident_bytes()));
+		out.push(MetricsSample::count(D::SCOPE, "resident_entries", self.entries() as u64));
+		out.push(MetricsSample::counter(D::SCOPE, "hits", counters.hits));
+		out.push(MetricsSample::counter(D::SCOPE, "misses", counters.misses));
+		out.push(MetricsSample::counter(D::SCOPE, "insertions", counters.insertions));
+		out.push(MetricsSample::counter(D::SCOPE, "evictions", counters.evictions));
+		out.push(MetricsSample::counter(D::SCOPE, "fills_started", counters.fills_started));
+		out.push(MetricsSample::counter(D::SCOPE, "fills_dirty_aborted", counters.fills_dirty_aborted));
+		out.push(MetricsSample::counter(D::SCOPE, "fills_duplicate", counters.fills_duplicate));
+		out.push(MetricsSample::bytes(D::SCOPE, "shard_limit_bytes", self.shard_limit_bytes()));
 		for (index, shard) in self.inner.shards.iter().enumerate() {
 			out.push(MetricsSample::bytes(
-				format!("{POINT_SCOPE}::shard::{index:02}"),
+				format!("{}::shard::{index:02}", D::SCOPE),
 				"used_bytes",
 				shard.lock().budget.used(),
 			));
 		}
 		for keyspace in self.keyspace_metrics() {
-			let scope = format!("{POINT_SCOPE}::keyspace::{}", keyspace.keyspace.name());
+			let scope = format!("{}::keyspace::{}", D::SCOPE, D::slot_name(keyspace.keyspace));
 			out.push(MetricsSample::bytes(scope.clone(), "used_bytes", keyspace.used));
 			out.push(MetricsSample::count(scope.clone(), "entries", keyspace.entries as u64));
 			out.push(MetricsSample::counter(scope.clone(), "hits", keyspace.counters.hits));
@@ -224,7 +220,7 @@ impl MetricsCollector for OperatorPointTier {
 	}
 }
 
-fn accumulate(target: &mut OperatorPointMetrics, source: &OperatorPointMetrics) {
+fn accumulate(target: &mut PointMetrics, source: &PointMetrics) {
 	target.hits += source.hits;
 	target.misses += source.misses;
 	target.insertions += source.insertions;
@@ -234,31 +230,35 @@ fn accumulate(target: &mut OperatorPointMetrics, source: &OperatorPointMetrics) 
 	target.fills_duplicate += source.fills_duplicate;
 }
 
-fn slot_keyspace(slot: &Slot) -> Keyspace {
-	keyspace_of(&slot.key.key).expect("a resident slot carries a keyspace, or it was admitted past the guard")
+fn entry_slot<D: PointDomain>(entry: &Entry<D>) -> usize {
+	D::slot(&entry.key.key).expect("a resident entry carries a slot, or it was admitted past the guard")
 }
 
-fn build_shards(config: OperatorPointConfig, resident_bytes: ByteSize) -> Box<[Mutex<Shard>]> {
+fn build_excluded_misses<D: PointDomain>() -> Box<[AtomicU64]> {
+	(0..D::SLOTS).map(|_| AtomicU64::new(0)).collect::<Vec<_>>().into_boxed_slice()
+}
+
+fn build_shards<D: PointDomain>(config: PointConfig, resident_bytes: ByteSize) -> Box<[Mutex<Shard<D>>]> {
 	let shard_count = config.shards.max(1);
 	let byte_cap = ByteSize::from_bytes((resident_bytes.as_bytes() / shard_count as u64).max(1));
 	(0..shard_count)
 		.map(|index| {
 			Mutex::new(Shard {
 				index: HashMap::new(),
-				slots: Vec::new(),
+				entries: Vec::new(),
 				filling: HashMap::new(),
 				budget: MemoryBudget::new(byte_cap),
 				next_tick: 0,
 				rng: 0x9E37_79B9_7F4A_7C15 ^ (index as u64 + 1),
-				metrics: OperatorPointMetrics::default(),
-				keyspace_metrics: Box::new([OperatorPointMetrics::default(); KEYSPACE_SLOTS]),
+				metrics: PointMetrics::default(),
+				keyspace_metrics: vec![PointMetrics::default(); D::SLOTS].into_boxed_slice(),
 			})
 		})
 		.collect::<Vec<_>>()
 		.into_boxed_slice()
 }
 
-impl Shard {
+impl<D: PointDomain> Shard<D> {
 	fn next_random(&mut self) -> u64 {
 		let mut state = self.rng;
 		state ^= state << 13;
@@ -269,17 +269,17 @@ impl Shard {
 	}
 
 	fn pick_victim(&mut self) -> Option<usize> {
-		let len = self.slots.len();
+		let len = self.entries.len();
 		if len == 0 {
 			return None;
 		}
 		if len <= EVICTION_SAMPLE {
-			return (0..len).min_by_key(|position| self.slots[*position].tick);
+			return (0..len).min_by_key(|position| self.entries[*position].tick);
 		}
 		let mut victim: Option<(u64, usize)> = None;
 		for _ in 0..EVICTION_SAMPLE {
 			let position = (self.next_random() % len as u64) as usize;
-			let tick = self.slots[position].tick;
+			let tick = self.entries[position].tick;
 			if victim.map(|(lowest, _)| tick < lowest).unwrap_or(true) {
 				victim = Some((tick, position));
 			}
@@ -288,11 +288,11 @@ impl Shard {
 	}
 
 	pub(super) fn remove_at(&mut self, position: usize) {
-		let slot = self.slots.swap_remove(position);
-		self.index.remove(&slot.key);
-		self.budget.release(ByteSize::from_bytes(entry_footprint(&slot.key, &slot.row) as u64));
-		if position < self.slots.len() {
-			let moved = self.slots[position].key.clone();
+		let entry = self.entries.swap_remove(position);
+		self.index.remove(&entry.key);
+		self.budget.release(ByteSize::from_bytes(entry_footprint::<D>(&entry.key, &entry.row) as u64));
+		if position < self.entries.len() {
+			let moved = self.entries[position].key.clone();
 			self.index.insert(moved, position);
 		}
 	}
@@ -302,10 +302,10 @@ impl Shard {
 			let Some(victim) = self.pick_victim() else {
 				break;
 			};
-			let keyspace = slot_keyspace(&self.slots[victim]);
+			let slot = entry_slot::<D>(&self.entries[victim]);
 			self.remove_at(victim);
 			self.metrics.evictions += 1;
-			self.keyspace_metrics[keyspace.0 as usize].evictions += 1;
+			self.keyspace_metrics[slot].evictions += 1;
 		}
 	}
 }
