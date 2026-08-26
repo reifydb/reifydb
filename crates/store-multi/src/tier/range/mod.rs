@@ -470,7 +470,7 @@ mod tests {
 		key::{EncodableKey, row::RowKey, series_row::SeriesRowKey},
 	};
 	use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;
-	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
+	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
 
 	use super::{
 		EncodedKey, EntryKind, MultiDomain, MultiRangeConfig, MultiRangeTier, MultiVersionScope,
@@ -478,6 +478,7 @@ mod tests {
 	};
 
 	const STORAGE: StorageId = StorageId::Table(TableId(1));
+	const NEIGHBOUR: StorageId = StorageId::Table(TableId(0));
 
 	fn tier() -> MultiRangeTier {
 		MultiRangeTier::new(MultiRangeConfig {
@@ -500,7 +501,11 @@ mod tests {
 	}
 
 	fn row(n: u64) -> EncodedKey {
-		RowKey::encoded(STORAGE, n)
+		RowKey {
+			storage: STORAGE,
+			row: RowNumber(n),
+		}
+		.encode()
 	}
 
 	fn series(n: u64) -> EncodedKey {
@@ -584,6 +589,18 @@ mod tests {
 
 	fn is_gap(chunk: &ServedChunk) -> bool {
 		matches!(chunk, ServedChunk::Gap)
+	}
+
+	fn fill_bucket(tier: &MultiRangeTier, bucket: u64, rows: &[u64], version: u64) {
+		// A scan yields entries in ascending key order, which row keys invert into descending row number, so
+		// the caller's order cannot be trusted.
+		let base = bucket * BUCKET;
+		let mut entries: Vec<RawEntry> = rows.iter().map(|n| entry(*n, version)).collect();
+		entries.sort_by(|left, right| left.key.cmp(&right.key));
+		assert!(
+			tier.materialize_scanned_chunk(source(), &row(base + BUCKET - 1), &row(base), &entries),
+			"a whole-bucket chunk must publish its claim"
+		);
 	}
 
 	#[test]
@@ -955,5 +972,129 @@ mod tests {
 			"a range whose last key is the head itself is not proven empty and the persistent tier still owes it"
 		);
 		assert!(!cursor.is_exhausted(), "a gap must leave the cursor untouched");
+	}
+
+	#[test]
+	fn a_serve_reports_exhausted_only_when_the_claim_reaches_past_the_range_end() {
+		// Reporting the persistent tier exhausted is the one thing a serve can say that loses rows. It is only
+		// true when ram has proven there is nothing left in the range, which is when the claim runs past the
+		// range's last key and not merely to the last row ram happens to hold.
+		let intact = tier();
+		fill_bucket(&intact, 0, &[2, 4, 6], 10);
+
+		let mut whole = RangeCursor::new();
+		let chunk = serve(&intact, &mut whole, 0, BUCKET - 1, 64);
+		assert_eq!(rows_of(&chunk), vec![6, 4, 2]);
+		assert!(whole.is_exhausted(), "a claim spanning the whole range has proven the rest of it empty");
+
+		let punched = tier();
+		fill_bucket(&punched, 0, &[2, 4, 6], 10);
+		punched.invalidate(&row(1));
+
+		let mut clipped = RangeCursor::new();
+		let chunk = serve(&punched, &mut clipped, 0, BUCKET - 1, 64);
+		assert_eq!(rows_of(&chunk), vec![6, 4, 2], "the rows below the punched key are the same");
+		assert!(
+			!clipped.is_exhausted(),
+			"the claim now ends at the punched key, so the persistent tier still owes the rest"
+		);
+	}
+
+	#[test]
+	fn a_claim_that_scanned_to_the_storage_end_reports_exhausted_there() {
+		// Every scan ends at a storage end sentinel no row key can occupy, so without a tail rule the last
+		// chunk of every scan falls through and buys one persistent read to confirm the range is over.
+		let tier = tier();
+		materialize_from_prefix(&tier, &[3, 2, 1], 10);
+
+		let mut cursor = RangeCursor::new();
+		cursor.advance(row(3));
+		let chunk = serve_whole_storage(&tier, &mut cursor);
+
+		assert!(
+			cursor.is_exhausted(),
+			"a claim that scanned to the storage end has proven the rest of it empty"
+		);
+		assert_eq!(rows_of(&chunk), vec![2, 1]);
+	}
+
+	#[test]
+	fn a_claim_punched_short_of_the_storage_end_is_not_exhausted() {
+		// The tail rule needs one claim reaching the band end; a claim clipped by a punched key proves
+		// nothing past it and reporting exhausted there silently drops every remaining row.
+		let tier = tier();
+		materialize_from_prefix(&tier, &[3, 2, 1], 10);
+		tier.invalidate(&row(1));
+
+		let mut cursor = RangeCursor::new();
+		cursor.advance(row(3));
+		let chunk = serve_whole_storage(&tier, &mut cursor);
+
+		assert!(!cursor.is_exhausted(), "the claim stops at the punched key, which proves nothing past it");
+		assert_eq!(rows_of(&chunk), vec![2]);
+	}
+
+	#[test]
+	fn a_claim_stopping_on_its_last_row_rather_than_past_it_is_not_exhausted() {
+		// A chunk that stopped on a row ends its claim at that key rather than past the band, so the tail rule
+		// must compare against the band end or it reports every row above the one it stopped on absent.
+		let tier = tier();
+		let entries = vec![entry(3, 10), entry(2, 10), entry(1, 10)];
+		assert!(
+			tier.materialize_scanned_chunk(source(), &storage_start(), &row(1), &entries),
+			"the chunk must publish its claim, or the test never reaches the case it is here to pin"
+		);
+
+		let mut cursor = RangeCursor::new();
+		cursor.advance(row(3));
+		let chunk = serve_whole_storage(&tier, &mut cursor);
+
+		assert!(!cursor.is_exhausted(), "the claim stops on the last row it read, which proves nothing past it");
+		assert_eq!(rows_of(&chunk), vec![2, 1]);
+	}
+
+	#[test]
+	fn a_claim_over_a_partition_that_is_not_the_last_is_not_exhausted_at_the_storage_end() {
+		// Every scan ends at the storage end, so a tail rule keyed on the range rather than on the segment
+		// reaching the band end would report exhausted on the first partition served to its edge and drop
+		// every partition below it.
+		let tier = tier();
+		fill_bucket(&tier, 1, &[BUCKET + 1, BUCKET + 2], 10);
+		fill_bucket(&tier, 0, &[1, 2], 10);
+
+		let mut cursor = RangeCursor::new();
+		cursor.advance(row(BUCKET + 2));
+		let chunk = serve_whole_storage(&tier, &mut cursor);
+
+		assert!(!cursor.is_exhausted(), "the lower partition is a separate claim the persistent tier still owes");
+		assert_eq!(rows_of(&chunk), vec![BUCKET + 1]);
+	}
+
+	#[test]
+	fn a_range_reaching_past_the_storage_end_is_never_reported_exhausted() {
+		// A range is classified by its start, so its end may lie in another storage whose rows this claim says
+		// nothing about; reporting exhausted there drops all of them.
+		let tier = tier();
+		materialize_from_prefix(&tier, &[3, 2, 1], 10);
+
+		let end = RowKey::encoded(NEIGHBOUR, 5);
+		let mut cursor = RangeCursor::new();
+		cursor.advance(row(3));
+		let chunk = tier.serve_persistent_chunk(
+			source(),
+			&mut cursor,
+			storage_start().as_slice(),
+			end.as_slice(),
+			newest(),
+			64,
+			false,
+		);
+
+		assert!(!cursor.is_exhausted(), "the claim says nothing about the storage the range runs on into");
+		assert_eq!(rows_of(&chunk), vec![2, 1]);
+		assert!(
+			end.as_slice() > storage_end().as_slice(),
+			"the range end must really sort past this storage, or the case under test never arose"
+		);
 	}
 }
