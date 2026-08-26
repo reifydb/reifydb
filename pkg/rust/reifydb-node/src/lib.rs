@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use napi_derive::napi;
 #[cfg(reifydb_dst)]
-use reifydb::MigrationSource;
-#[cfg(reifydb_dst)]
 use reifydb::runtime::RuntimeConfig;
-use reifydb::{Database, Frame, IdentityId, Value, auth::service::AuthResponse, embedded};
+use reifydb::{
+	Database, Frame, IdentityId, Migration, MigrationSource, Value, auth::service::AuthResponse, embedded,
+};
 use reifydb_value::value::uuid::Uuid7;
 use tokio::task::spawn_blocking;
 
@@ -31,12 +31,39 @@ impl ReifydbNode {
 }
 
 #[cfg(not(reifydb_dst))]
-#[napi(js_name = "open_with_migrations_dir")]
-pub fn open_with_migrations_dir(migrations_dir: String) -> napi::Result<ReifydbNode> {
-	let db = embedded::memory()
-		.with_migrations(migrations_dir)
-		.build()
-		.map_err(|e| napi::Error::from_reason(format!("{e:?}")))?;
+#[napi(object)]
+pub struct MigrationEntry {
+	pub dir: Option<String>,
+	pub name: Option<String>,
+	pub statements: Option<Vec<String>>,
+	pub rollback: Option<Vec<String>>,
+}
+
+#[cfg(not(reifydb_dst))]
+fn migration_source(entry: MigrationEntry) -> MigrationSource {
+	match entry.dir {
+		Some(dir) => MigrationSource::Directory(PathBuf::from(dir)),
+		None => {
+			let name = entry.name.unwrap_or_default();
+			let statements = entry.statements.unwrap_or_default();
+			let migration = match entry.rollback {
+				Some(rollback) => Migration::with_rollback(name, statements, rollback),
+				None => Migration::new(name, statements),
+			};
+			MigrationSource::List(vec![migration])
+		}
+	}
+}
+
+#[cfg(not(reifydb_dst))]
+#[napi(js_name = "open_with_migrations")]
+pub fn open_with_migrations(entries: Vec<MigrationEntry>) -> napi::Result<ReifydbNode> {
+	let mut builder = embedded::memory();
+	if !entries.is_empty() {
+		let sources = entries.into_iter().map(migration_source).collect();
+		builder = builder.with_migrations(MigrationSource::Multiple(sources));
+	}
+	let db = builder.build().map_err(|e| napi::Error::from_reason(format!("{e:?}")))?;
 	Ok(ReifydbNode {
 		db: Arc::new(db),
 	})

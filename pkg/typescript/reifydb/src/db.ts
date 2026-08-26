@@ -11,10 +11,6 @@ export interface Db {
 
 export interface TestDb extends Db {}
 
-export interface Factory {
-  (migrationsDir: string): Db
-}
-
 export interface TestFactory {
   (seed: number): TestDb
 }
