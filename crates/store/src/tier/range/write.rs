@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(test)]
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use reifydb_codec::key::encoded::EncodedKey;
@@ -13,6 +15,24 @@ use crate::{
 		partition_overhead,
 	},
 };
+
+#[cfg(test)]
+thread_local! {
+	static WRITE_INTERLOCK: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) fn arm_write_interlock(hook: impl Fn() + 'static) {
+	WRITE_INTERLOCK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+}
+
+#[cfg(test)]
+fn write_interlock() {
+	let hook = WRITE_INTERLOCK.with(|slot| slot.borrow_mut().take());
+	if let Some(hook) = hook {
+		hook();
+	}
+}
 
 impl<D: RangeDomain> RangeTier<D> {
 	pub fn overwrite(&self, dimension: D::Dimension, key: EncodedKey, row: D::Row) {
@@ -32,10 +52,13 @@ impl<D: RangeDomain> RangeTier<D> {
 			return;
 		};
 		let index = self.shard_index(&partition);
+		let token = self.retractions();
 		if !self.place(index, &partition, key.clone(), Entry::row(row)) {
 			return;
 		}
-		self.claim_island(dimension, &key);
+		#[cfg(test)]
+		write_interlock();
+		self.claim_island(dimension, &key, token);
 		self.evict_to_capacity(index);
 	}
 
@@ -73,6 +96,8 @@ impl<D: RangeDomain> RangeTier<D> {
 		};
 		let index = self.shard_index(&partition);
 		self.withdraw(dimension, key);
+		#[cfg(test)]
+		write_interlock();
 		self.discard(index, &partition, key);
 		self.withdraw(dimension, key);
 	}
@@ -214,11 +239,16 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.record_retraction();
 	}
 
-	fn claim_island(&self, dimension: D::Dimension, key: &EncodedKey) {
+	/// Claims the one key a write placed, and only while no withdrawal has landed since it read `token`:
+	/// a claim published across one stands over a key the withdrawal already took out of ram.
+	fn claim_island(&self, dimension: D::Dimension, key: &EncodedKey, token: u64) {
 		if self.coverage().read().contains(dimension, key) {
 			return;
 		}
 		let mut coverage = self.coverage().write();
+		if !self.retractions_unchanged(token) {
+			return;
+		}
 		coverage.extend(dimension, key.clone(), ExclusiveUpperEnd::Key(successor(key)));
 	}
 }
@@ -232,7 +262,13 @@ fn supersedes<D: RangeDomain>(resident: &Entry<D::Row>, incoming: &Entry<D::Row>
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeMap;
+	use std::{
+		collections::BTreeMap,
+		sync::{
+			Arc,
+			atomic::{AtomicBool, Ordering},
+		},
+	};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
@@ -241,6 +277,7 @@ mod tests {
 	};
 	use reifydb_value::byte_size::ByteSize;
 
+	use super::arm_write_interlock;
 	use crate::{
 		coverage::{
 			ExclusiveUpperEnd,
@@ -690,5 +727,135 @@ mod tests {
 
 		assert_eq!(resident_entries(&tier), 0);
 		assert_eq!(tier.retractions(), before);
+	}
+
+	#[test]
+	fn an_invalidate_withdraws_the_claim_before_the_row_leaves_ram() {
+		// The row goes under the shard lock and the claim under the coverage lock, and between the two the
+		// invalidate holds neither, so every other thread sees whatever order it chose. Withdrawing second
+		// leaves a claim standing over a key ram no longer holds, and a reader serving that span reports the
+		// key absent while the persistent tier still has it.
+		let tier = tier();
+		let id = partition(OP_A, CACHED);
+		let at = key(CACHED, b"m");
+		participate(&tier, id);
+		claim(&tier, OP_A, &key(CACHED, b"a"), &key(CACHED, b"z"));
+		tier.overwrite(OP_A, at.clone(), row("v"));
+
+		let fired = Arc::new(AtomicBool::new(false));
+		let covered = Arc::new(AtomicBool::new(false));
+		let resident = Arc::new(AtomicBool::new(false));
+		{
+			let (fired, covered, resident) = (fired.clone(), covered.clone(), resident.clone());
+			let watching = tier.clone();
+			let seen = at.clone();
+			arm_write_interlock(move || {
+				fired.store(true, Ordering::SeqCst);
+				covered.store(covers(&watching, OP_A, &seen), Ordering::SeqCst);
+				resident.store(residency(&watching, &id, &seen).is_some(), Ordering::SeqCst);
+			});
+		}
+
+		tier.invalidate(OP_A, &at);
+
+		assert!(fired.load(Ordering::SeqCst), "the seam hook never fired, so the invariant went unchecked");
+		assert!(
+			!covered.load(Ordering::SeqCst),
+			"the claim must be withdrawn before the row leaves ram, never after"
+		);
+		assert!(
+			resident.load(Ordering::SeqCst),
+			"the row must still be resident at that instant, or the window under test never arose"
+		);
+	}
+
+	#[test]
+	fn an_invalidate_that_lands_inside_a_write_window_must_not_leave_the_key_claimed() {
+		// A write places its row under the shard lock and claims it under the coverage lock. An invalidate
+		// landing between the two takes the row back out, so a claim published afterwards stands over a key
+		// ram no longer holds and every read of it is answered absent.
+		let tier = tier();
+		let id = partition(OP_A, CACHED);
+		let at = key(CACHED, b"m");
+		participate(&tier, id);
+		{
+			let writing = tier.clone();
+			let raced = at.clone();
+			arm_write_interlock(move || writing.invalidate(OP_A, &raced));
+		}
+
+		tier.insert(OP_A, at.clone(), row("v"));
+
+		assert_eq!(residency(&tier, &id, &at), None, "the invalidate in the window must have removed the row");
+		assert!(
+			!covers(&tier, OP_A, &at),
+			"a write republished a claim over the key an invalidate in its window removed"
+		);
+	}
+
+	#[test]
+	fn a_write_publishes_nothing_when_a_withdrawal_lands_between_its_row_and_its_claim() {
+		// A withdrawal anywhere invalidates the token this write read before placing, because the write cannot
+		// tell whose span was taken back. Refusing understates coverage, which is always safe; publishing
+		// anyway reinstates a span the withdrawal already retracted.
+		let tier = tier();
+		let id = partition(OP_A, CACHED);
+		let at = key(CACHED, b"m");
+		let elsewhere = key(CACHED, b"z");
+		participate(&tier, id);
+		{
+			let writing = tier.clone();
+			let raced = elsewhere.clone();
+			arm_write_interlock(move || writing.invalidate(OP_A, &raced));
+		}
+
+		tier.insert(OP_A, at.clone(), row("v"));
+
+		assert!(residency(&tier, &id, &at).is_some(), "the row itself must survive, only the claim is refused");
+		assert!(
+			!covers(&tier, OP_A, &at),
+			"a claim published across a withdrawal reinstates a span the withdrawal took back"
+		);
+	}
+
+	#[test]
+	fn a_partition_emptied_by_an_invalidate_leaves_no_claim_behind() {
+		// A claim outliving the last row of its partition answers for a span nothing in ram can ever be read
+		// for again, so every key in it reads as proven absent.
+		let tier = tier();
+		let id = partition(OP_A, CACHED);
+		let first = key(CACHED, b"m");
+		let second = key(CACHED, b"n");
+		participate(&tier, id);
+		tier.insert(OP_A, first.clone(), row("v"));
+		tier.insert(OP_A, second.clone(), row("v"));
+		assert!(covers(&tier, OP_A, &first) && covers(&tier, OP_A, &second));
+
+		tier.invalidate(OP_A, &first);
+		tier.invalidate(OP_A, &second);
+
+		assert!(intervals(&tier, OP_A).is_empty(), "a partition with no rows left must hold no claim");
+		assert!(!covers(&tier, OP_A, &first), "the emptied span must fall through, never answer proven absent");
+		assert!(!covers(&tier, OP_A, &second));
+	}
+
+	#[test]
+	fn clearing_the_tier_withdraws_every_claim() {
+		// Every row goes at once, so a surviving claim reports the whole cleared span as proven absent.
+		let tier = tier();
+		let here = partition(OP_A, CACHED);
+		let there = partition(OP_B, CACHED);
+		let at = key(CACHED, b"m");
+		participate(&tier, here);
+		participate(&tier, there);
+		tier.insert(OP_A, at.clone(), row("v"));
+		tier.insert(OP_B, at.clone(), row("v"));
+		assert!(covers(&tier, OP_A, &at) && covers(&tier, OP_B, &at));
+
+		tier.clear();
+
+		assert!(intervals(&tier, OP_A).is_empty(), "a cleared tier must hold no claim for any dimension");
+		assert!(intervals(&tier, OP_B).is_empty());
+		assert_eq!(resident_entries(&tier), 0, "and no rows, or the clear left the two halves disagreeing");
 	}
 }

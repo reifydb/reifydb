@@ -307,6 +307,9 @@ type SlotCounters = Box<[RangeMetrics]>;
 #[cfg(test)]
 pub(crate) type MaterializeInterlock<D> = Box<dyn Fn(&RangeTier<D>, <D as RangeDomain>::Partition) + Send + Sync>;
 
+#[cfg(test)]
+pub(crate) type ServeInterlock<D> = Box<dyn Fn(&RangeTier<D>) + Send + Sync>;
+
 struct PoolInner<D: RangeDomain> {
 	shards: Box<[Mutex<Shard<D>>]>,
 	coverage: RwLock<CoverageIndex<D::Dimension>>,
@@ -316,6 +319,8 @@ struct PoolInner<D: RangeDomain> {
 	gap_guard: usize,
 	#[cfg(test)]
 	interlock: Option<MaterializeInterlock<D>>,
+	#[cfg(test)]
+	serve_interlock: Option<ServeInterlock<D>>,
 }
 
 pub struct RangeTier<D: RangeDomain> {

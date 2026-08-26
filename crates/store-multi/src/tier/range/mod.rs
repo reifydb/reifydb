@@ -473,8 +473,9 @@ mod tests {
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::row_number::RowNumber};
 
 	use super::{
-		EncodedKey, EntryKind, MultiDomain, MultiRangeConfig, MultiRangeTier, MultiVersionScope,
-		ROW_BUCKET_SHIFT, RangeCursor, RangeDomain, RawEntry, ServedChunk,
+		Bound, EncodedKey, EncodedKeyRange, EntryKind, ExclusiveUpperEnd, MultiDomain, MultiRangeConfig,
+		MultiRangeTier, MultiVersionScope, PartitionId, ROW_BUCKET_SHIFT, RangeCursor, RangeDomain, RawEntry,
+		Segment, ServedChunk,
 	};
 
 	const STORAGE: StorageId = StorageId::Table(TableId(1));
@@ -1096,5 +1097,84 @@ mod tests {
 			end.as_slice() > storage_end().as_slice(),
 			"the range end must really sort past this storage, or the case under test never arose"
 		);
+	}
+
+	#[test]
+	fn a_claim_serves_a_partition_no_longer_covered_end_to_end() {
+		// A commit anywhere in a partition withdraws only the one key that left ram; everything either side of
+		// it must still serve from the claim, where a whole-partition claim would serve nothing at all.
+		let tier = tier();
+		fill_bucket(&tier, 0, &[1, 2, 3, 4, 5], 10);
+		tier.invalidate(&row(3));
+
+		let mut cursor = RangeCursor::new();
+		let chunk = serve(&tier, &mut cursor, 0, BUCKET - 1, 64);
+
+		assert_eq!(
+			rows_of(&chunk),
+			vec![5, 4],
+			"the claim below the punched key must still serve, where a whole-partition claim serves nothing"
+		);
+		assert!(!cursor.is_exhausted(), "a claim that stops at the punched key has proven nothing beyond it");
+	}
+
+	#[test]
+	fn a_scan_starting_at_a_storage_prefix_is_not_claimed_and_falls_through() {
+		// Every range scan starts at a ten byte storage prefix, which no claim reaches because a claim's lower
+		// end is always a key a materialize observed. The leading chunk of a scan is therefore the persistent
+		// tier's, and a serve that answered it would be inventing a proof no scan ever made.
+		let tier = tier();
+		fill_bucket(&tier, 0, &[1, 2, 3], 10);
+
+		let range = EncodedKeyRange::new(Bound::Included(storage_start()), Bound::Included(storage_end()));
+		let plan = tier.tier.plan_scan(source(), &range).expect("a whole storage must be plannable");
+		assert!(
+			matches!(plan.segments().first(), Some(Segment::Gap { .. })),
+			"a claim reached below the lowest key its materialize observed, down to a prefix nothing proved"
+		);
+
+		let mut cursor = RangeCursor::new();
+		let chunk = serve_whole_storage(&tier, &mut cursor);
+		assert!(is_gap(&chunk), "no claim covers the prefix the scan starts at");
+
+		cursor.advance(row(3));
+		let resumed = serve_whole_storage(&tier, &mut cursor);
+		assert_eq!(rows_of(&resumed), vec![2, 1], "once the cursor is on a real key the claim serves");
+	}
+
+	#[test]
+	fn a_partition_span_never_reaches_the_series_band_of_the_same_storage() {
+		// One entry kind covers a storage's row keys and its series row keys, and the series band sorts wholly
+		// below the row band. A span reaching into it would retract coverage over keys the partition never
+		// held, and a series key answered from a row partition reads as a row that is not there.
+		let bucket = PartitionId::of(source(), &row(1)).expect("a row key must name a partition");
+		let (start, _) = bucket.span();
+
+		assert!(series(1).as_slice() < start.as_slice(), "the series band must sort below every row partition");
+		assert_eq!(PartitionId::of(source(), &series(1)), None, "a series key must name no row partition");
+		assert_eq!(
+			PartitionId::of(source(), &series(u64::MAX)),
+			None,
+			"no series key of the band may be attributed to a row partition"
+		);
+	}
+
+	#[test]
+	fn a_partition_span_never_reaches_the_top_of_the_key_space() {
+		// A span running to the top of the key space retracts the coverage of everything sorting above it, so
+		// the row band must always leave a successor for the span to stop at.
+		for storage in [STORAGE, NEIGHBOUR, StorageId::Table(TableId(u64::MAX))] {
+			for bucket in [0u64, 1, u64::MAX >> ROW_BUCKET_SHIFT] {
+				let (_, end) = PartitionId {
+					kind: EntryKind::Source(storage),
+					bucket,
+				}
+				.span();
+				assert!(
+					!matches!(end, ExclusiveUpperEnd::Top),
+					"partition {bucket} of {storage:?} spans to the top of the key space"
+				);
+			}
+		}
 	}
 }

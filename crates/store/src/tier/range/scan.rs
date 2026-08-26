@@ -242,6 +242,9 @@ impl<D: RangeDomain> RangeTier<D> {
 			}
 		};
 
+		#[cfg(test)]
+		self.fire_serve_interlock();
+
 		let limit = limit.max(1);
 		let mut rows: RangeRows<D> = Vec::new();
 		let mut exhausted = true;
@@ -748,7 +751,13 @@ fn split_at_partitions<D: RangeDomain>(
 
 #[cfg(test)]
 mod tests {
-	use std::ops::Bound;
+	use std::{
+		ops::Bound,
+		sync::{
+			Arc,
+			atomic::{AtomicBool, Ordering},
+		},
+	};
 
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
@@ -1089,5 +1098,49 @@ mod tests {
 			["k"],
 			"the partition that does hold a row must still answer it"
 		);
+	}
+
+	#[test]
+	fn a_serve_refuses_a_plan_a_retraction_raced() {
+		// The plan is read under the coverage lock and the rows under the shard lock, never both at once, so a
+		// withdrawal can land between them and falsify the claim the plan was built from. Serving anyway hands
+		// back rows the tier no longer holds and, worse, reports proven absence over the key it dropped.
+		let raced = key(CACHED, b"b");
+		let armed = Arc::new(AtomicBool::new(false));
+		let tier = {
+			let armed = armed.clone();
+			let raced = raced.clone();
+			RangeTier::<D>::with_serve_interlock(
+				RangeConfig {
+					resident_bytes: Some(ByteSize::from_mib(1)),
+					shards: 1,
+					gap_guard: 4,
+				},
+				Box::new(move |tier: &RangeTier<D>| {
+					if armed.swap(false, Ordering::SeqCst) {
+						tier.invalidate(OP, &raced);
+					}
+				}),
+			)
+			.expect("a tier with a byte budget must be constructed")
+		};
+		let range = keyspace_inner_range(GROUP, CACHED);
+		assert!(
+			claim(&tier, &range, &whole(CACHED), &[(key(CACHED, b"a"), row("a")), (raced.clone(), row("b"))])
+				== Materialize::Materialized,
+			"the fixture must publish its claim, or the race under test never arose"
+		);
+
+		armed.store(true, Ordering::SeqCst);
+		let scan = tier.plan_scan(OP, &range).expect("a whole-keyspace range must be plannable");
+		let mut cursor = RangeCursor::new();
+		let served = tier.serve(&scan, &whole(CACHED), &mut cursor, 64);
+
+		assert!(!armed.load(Ordering::SeqCst), "the seam hook never fired, so the invariant went unchecked");
+		assert!(
+			matches!(served, ServedChunk::Gap),
+			"a chunk whose claim was retracted mid-walk must be refused, not served from a stale plan"
+		);
+		assert!(!cursor.is_exhausted(), "a refused chunk must leave the cursor untouched");
 	}
 }

@@ -596,3 +596,47 @@ fn a_concurrent_materialize_never_refuses_another_materialize() {
 	assert_eq!(tier.metrics().materializes_raced, 0);
 	assert_eq!(tier.lookup(OP_A, &k), Some(Some(row("v"))));
 }
+
+#[test]
+fn a_materialize_places_its_rows_before_it_publishes_the_claim() {
+	let fired = Arc::new(AtomicBool::new(false));
+	let readable = Arc::new(AtomicBool::new(false));
+	let proven_absent = Arc::new(AtomicBool::new(false));
+	let (seen, saw_row, saw_proof) = (fired.clone(), readable.clone(), proven_absent.clone());
+	let scanned = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let unscanned = key(GROUP_A, Keyspace::ACCUMULATOR, b"b");
+	let (probed, absent) = (scanned.clone(), unscanned.clone());
+	let hook: MaterializeInterlock<D> = Box::new(move |tier: &RangeTier<D>, _partition: TestPartition| {
+		seen.store(true, Ordering::Relaxed);
+		saw_row.store(tier.lookup(OP_A, &probed) == Some(Some(row("v"))), Ordering::Relaxed);
+		saw_proof.store(tier.lookup(OP_A, &absent) == Some(None), Ordering::Relaxed);
+	});
+
+	let tier = RangeTier::<D>::with_interlock(
+		RangeConfig {
+			resident_bytes: Some(ByteSize::from_mib(1)),
+			shards: 1,
+			gap_guard: DEFAULT_GAP_GUARD,
+		},
+		hook,
+	)
+	.expect("a tier with a byte budget must be constructed");
+
+	let range = keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR);
+	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
+	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
+
+	assert!(tier.materialize(&scan, &gap, &[(scanned.clone(), row("v"))]) == Materialize::Materialized);
+	assert!(fired.load(Ordering::Relaxed), "the seam hook never fired, so the invariant went unchecked");
+	assert!(
+		readable.load(Ordering::Relaxed),
+		"the rows a materialize scanned must be resident before its claim goes up, or a reader crossing the \
+         window is told the span is proven while the rows proving it are still missing"
+	);
+	assert!(
+		!proven_absent.load(Ordering::Relaxed),
+		"a key the scan did not carry must fall through to the store until the claim is published, never answer \
+         proven absent over a span the materialize has not finished"
+	);
+	assert_eq!(tier.lookup(OP_A, &unscanned), Some(None), "and once published the claim does prove that absence");
+}

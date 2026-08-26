@@ -15,7 +15,7 @@ use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_value::byte_size::ByteSize;
 
 #[cfg(test)]
-use crate::tier::range::MaterializeInterlock;
+use crate::tier::range::{MaterializeInterlock, ServeInterlock};
 use crate::{
 	coverage::{index::CoverageIndex, plan::GapHistogram, retraction::Retractions},
 	tier::range::{
@@ -38,6 +38,8 @@ impl<D: RangeDomain> RangeTier<D> {
 				gap_guard: config.gap_guard,
 				#[cfg(test)]
 				interlock: None,
+				#[cfg(test)]
+				serve_interlock: None,
 			}),
 		})
 	}
@@ -52,8 +54,31 @@ impl<D: RangeDomain> RangeTier<D> {
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
 				interlock: Some(interlock),
+				serve_interlock: None,
 			}),
 		})
+	}
+
+	#[cfg(test)]
+	pub(crate) fn with_serve_interlock(config: RangeConfig, interlock: ServeInterlock<D>) -> Option<Self> {
+		let resident_bytes = config.resident_bytes?;
+		Some(Self {
+			inner: Arc::new(PoolInner {
+				shards: build_shards::<D>(config, resident_bytes),
+				coverage: RwLock::new(CoverageIndex::new()),
+				retractions: Retractions::new(),
+				gap_guard: config.gap_guard,
+				interlock: None,
+				serve_interlock: Some(interlock),
+			}),
+		})
+	}
+
+	#[cfg(test)]
+	pub(super) fn fire_serve_interlock(&self) {
+		if let Some(interlock) = self.inner.serve_interlock.as_ref() {
+			interlock(self);
+		}
 	}
 
 	pub fn shard_index(&self, partition: &D::Partition) -> usize {
