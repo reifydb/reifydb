@@ -8,6 +8,10 @@ repository.workspace = true
 description = "Self-hostable uptime monitoring service built on ReifyDB"
 publish = false
 
+[lib]
+name = "reifydb_uptime"
+path = "src/lib.rs"
+
 [[bin]]
 name = "reifydb-uptime"
 path = "src/main.rs"
