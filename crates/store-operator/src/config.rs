@@ -26,7 +26,7 @@ impl OperatorPersistentConfig {
 	pub fn opened(storage: OperatorPersistentTier) -> Self {
 		Self {
 			storage,
-			flush_interval: Duration::from_seconds(5).unwrap(),
+			flush_interval: Duration::from_seconds(120).unwrap(),
 		}
 	}
 

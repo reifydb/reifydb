@@ -34,7 +34,7 @@ use crate::{
 
 pub type MultiCommitTier = CommitTier<MultiDomain>;
 
-const TICK_INTERVAL: Duration = Duration::from_seconds_const(5);
+const TICK_INTERVAL: Duration = Duration::from_seconds_const(120);
 
 pub fn commit_config(budget: ByteSize) -> CommitConfig {
 	CommitConfig {

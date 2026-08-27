@@ -44,7 +44,7 @@ use crate::{
 
 pub const FLUSH_BUDGET_BYTES: ByteSize = ByteSize::from_mib(4);
 
-const TICK_INTERVAL: Duration = Duration::from_seconds_const(5);
+const TICK_INTERVAL: Duration = Duration::from_seconds_const(120);
 
 pub type OperatorCommitTier = CommitTier<OperatorCommitDomain>;
 

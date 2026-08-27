@@ -168,7 +168,7 @@ impl ConfigKey {
 			},
 			Self::CdcTtlScanInterval => Value::duration_seconds(30),
 			Self::CdcTtlScanBatchSize => Value::Uint8(8192),
-			Self::CdcWalAutocheckpoint => Value::Uint8(10000),
+			Self::CdcWalAutocheckpoint => Value::Uint8(1000000),
 			Self::CdcCommitBufferBytes => Value::Uint8(256 * 1024 * 1024),
 			Self::CdcBlockCutBytes => Value::Uint8(4 * 1024 * 1024),
 			Self::CdcReadBufferBytes => Value::Uint8(256 * 1024 * 1024),
@@ -180,12 +180,12 @@ impl ConfigKey {
 			Self::MultiRangeBufferShards => Value::Uint2(16),
 			Self::OperatorPointBufferShards => Value::Uint2(16),
 			Self::OperatorRangeBufferShards => Value::Uint2(16),
-			Self::MultiFlushInterval => Value::duration_seconds(5),
+			Self::MultiFlushInterval => Value::duration_seconds(120),
 			Self::MultiFlushBudgetBytes => Value::Uint8(4 * 1024 * 1024),
-			Self::MultiWalAutocheckpoint => Value::Uint8(10000),
-			Self::OperatorFlushInterval => Value::duration_seconds(5),
+			Self::MultiWalAutocheckpoint => Value::Uint8(1000000),
+			Self::OperatorFlushInterval => Value::duration_seconds(120),
 			Self::OperatorFlushBudgetBytes => Value::Uint8(4 * 1024 * 1024),
-			Self::OperatorWalAutocheckpoint => Value::Uint8(10000),
+			Self::OperatorWalAutocheckpoint => Value::Uint8(1000000),
 			Self::FlowTick => Value::duration_seconds(1),
 			Self::FlowSampleInterval => Value::duration_seconds(60),
 			Self::FlowBacklogMemoryLimit => Value::Uint8(64 * 1024 * 1024),
@@ -1627,7 +1627,7 @@ mod tests {
 
 	#[test]
 	fn test_operator_flush_interval_metadata() {
-		assert_eq!(ConfigKey::OperatorFlushInterval.default_value(), Value::duration_seconds(5));
+		assert_eq!(ConfigKey::OperatorFlushInterval.default_value(), Value::duration_seconds(120));
 		assert_eq!(ConfigKey::OperatorFlushInterval.expected_types(), &[ValueType::Duration]);
 		assert!(!ConfigKey::OperatorFlushInterval.is_optional());
 		assert!(ConfigKey::OperatorFlushInterval.requires_restart());
@@ -1691,7 +1691,7 @@ mod tests {
 
 	#[test]
 	fn test_operator_wal_autocheckpoint_metadata() {
-		assert_eq!(ConfigKey::OperatorWalAutocheckpoint.default_value(), Value::Uint8(10000));
+		assert_eq!(ConfigKey::OperatorWalAutocheckpoint.default_value(), Value::Uint8(1000000));
 		assert_eq!(ConfigKey::OperatorWalAutocheckpoint.expected_types(), &[ValueType::Uint8]);
 		assert!(!ConfigKey::OperatorWalAutocheckpoint.is_optional());
 		assert!(ConfigKey::OperatorWalAutocheckpoint.requires_restart());
