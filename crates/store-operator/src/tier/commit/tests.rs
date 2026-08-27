@@ -66,11 +66,11 @@ fn entry_bytes(key_body: &str, row_body: &str) -> ByteSize {
 }
 
 fn live_bytes(buffer: &OperatorCommitBuffer) -> ByteSize {
-	buffer.shared.inner.lock().live.bytes
+	buffer.shared().inner.lock().live.bytes
 }
 
 fn resident_bytes(buffer: &OperatorCommitBuffer) -> ByteSize {
-	buffer.shared.inner.lock().resident_bytes()
+	buffer.shared().inner.lock().resident_bytes()
 }
 
 #[test]
@@ -416,7 +416,7 @@ fn take_for_flush_on_an_empty_buffer_returns_none_and_leaves_flushing_clear() {
 
 	assert!(buffer.take_for_flush().is_none(), "an empty tick must not open a transaction");
 
-	let inner = buffer.shared.inner.lock();
+	let inner = buffer.shared().inner.lock();
 	assert!(
 		!inner.flushing,
 		"a refused take must leave the flag clear, otherwise every later drop blocks forever on a \
@@ -443,14 +443,14 @@ fn take_for_flush_sets_flushing_and_complete_flush_clears_it() {
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 
 	{
-		let inner = buffer.shared.inner.lock();
+		let inner = buffer.shared().inner.lock();
 		assert!(inner.flushing, "a taken batch must mark the buffer flushing so drops wait it out");
 		assert!(inner.in_flight.is_some(), "the taken batch stays readable while the flush runs");
 	}
 
 	buffer.complete_flush();
 
-	let inner = buffer.shared.inner.lock();
+	let inner = buffer.shared().inner.lock();
 	assert!(!inner.flushing, "a completed flush must release waiting drops");
 	assert!(inner.in_flight.is_none(), "the flushed batch now lives in sqlite and must not be read twice");
 }

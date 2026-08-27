@@ -13,10 +13,7 @@ use std::sync::OnceLock;
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{
-	common::CommitVersion,
-	interface::catalog::config::GetConfig,
-	lifecycle::watermark::CheckpointFloor,
-	metrics::collect::MetricsCollector,
+	common::CommitVersion, lifecycle::watermark::CheckpointFloor, metrics::collect::MetricsCollector,
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_filter::{actor::FilterActor, config::FilterConfig};
@@ -98,15 +95,11 @@ impl StandardOperatorStore {
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush, filter) = {
+			if let Some(persistent) = config.persistent.as_ref() {
+				commit.attach_sinks(persistent.storage.clone(), point.clone(), range.clone());
+			}
 			let flush = config.persistent.as_ref().map(|persistent| {
-				OperatorFlushActor::spawn(
-					&spawner,
-					commit.clone(),
-					persistent.storage.clone(),
-					point.clone(),
-					range.clone(),
-					persistent.flush_interval,
-				)
+				OperatorFlushActor::spawn(&spawner, commit.clone(), persistent.flush_interval)
 			});
 			let filter = config.persistent.as_ref().map(|persistent| {
 				let storage = persistent.storage.sqlite_storage().clone();
@@ -182,16 +175,6 @@ impl StandardOperatorStore {
 		}
 	}
 
-	pub fn attach_config(&self, config: Arc<dyn GetConfig>) {
-		let Some(actor) = self.flush.as_ref() else {
-			return;
-		};
-		assert!(
-			actor.send(FlushMessage::AttachConfig(config)).is_ok(),
-			"operator flush actor could not be given the config handle"
-		);
-	}
-
 	pub fn point(&self) -> Option<&OperatorPointTier> {
 		self.point.as_ref()
 	}
@@ -249,7 +232,7 @@ impl Shutdown for StandardOperatorStore {
 		let Some(persistent) = self.persistent.as_ref() else {
 			return;
 		};
-		flush_now(&self.commit, persistent, self.point.as_ref(), self.range.as_ref());
+		flush_now(&self.commit);
 		persistent.shutdown();
 	}
 }
@@ -307,12 +290,6 @@ impl OperatorStore {
 	pub fn flush_pending_blocking(&self) -> bool {
 		match self {
 			Self::Standard(store) => store.flush_pending_blocking(),
-		}
-	}
-
-	pub fn attach_config(&self, config: Arc<dyn GetConfig>) {
-		match self {
-			Self::Standard(store) => store.attach_config(config),
 		}
 	}
 

@@ -48,7 +48,7 @@ fn anchor_bytes(anchors: u64) -> ByteSize {
 
 impl OperatorCommitBuffer {
 	pub fn bytes(&self, operator: OperatorId) -> ByteSize {
-		let inner = self.shared.inner.lock();
+		let inner = self.shared().inner.lock();
 		let mut total = ByteSize::ZERO;
 		for ((_, key), row) in live_state(resident(&inner)).iter().filter(|((op, _), _)| *op == operator) {
 			total = total.saturating_add(ByteSize::from_bytes(key.len() as u64 + row.bytes().len() as u64));
@@ -59,7 +59,7 @@ impl OperatorCommitBuffer {
 	}
 
 	pub fn total_bytes(&self) -> ByteSize {
-		let inner = self.shared.inner.lock();
+		let inner = self.shared().inner.lock();
 		let mut total = ByteSize::ZERO;
 		for ((_, key), row) in live_state(resident(&inner)) {
 			total = total.saturating_add(ByteSize::from_bytes(key.len() as u64 + row.bytes().len() as u64));
@@ -68,7 +68,7 @@ impl OperatorCommitBuffer {
 	}
 
 	pub fn census(&self) -> Vec<OperatorStateCensus> {
-		let inner = self.shared.inner.lock();
+		let inner = self.shared().inner.lock();
 		let offset = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize;
 		let mut buckets: BTreeMap<(OperatorId, u8), OperatorStateCensus> = BTreeMap::new();
 		for ((operator, key), row) in live_state(resident(&inner)) {
@@ -89,7 +89,7 @@ impl OperatorCommitBuffer {
 	}
 
 	pub fn anchor_census(&self) -> Vec<OperatorSealAnchorCensus> {
-		let inner = self.shared.inner.lock();
+		let inner = self.shared().inner.lock();
 		let mut buckets: BTreeMap<OperatorId, u64> = BTreeMap::new();
 		for (operator, _, _, _) in live_anchors(resident(&inner)).keys() {
 			*buckets.entry(*operator).or_insert(0) += 1;

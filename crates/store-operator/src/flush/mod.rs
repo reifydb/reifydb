@@ -6,7 +6,6 @@ mod tests;
 
 use std::sync::Arc;
 
-use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_runtime::{
 	actor::{
 		context::Context,
@@ -17,21 +16,10 @@ use reifydb_runtime::{
 	},
 	sync::waiter::WaiterHandle,
 };
-use reifydb_value::{
-	byte_size::ByteSize,
-	value::{datetime::DateTime, duration::Duration},
-};
+use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use tracing::debug;
 
-use crate::tier::{
-	commit::{
-		OperatorCommitBuffer,
-		batch::{DropMarker, FlushBatch},
-	},
-	persistent::OperatorPersistentTier,
-	point::OperatorPointTier,
-	range::OperatorRangeTier,
-};
+use crate::tier::commit::OperatorCommitBuffer;
 
 const FLUSH_PENDING_TIMEOUT: Duration = Duration::from_seconds_const(5);
 
@@ -42,36 +30,22 @@ pub enum FlushMessage {
 	FlushPending {
 		waiter: Arc<WaiterHandle>,
 	},
-	AttachConfig(Arc<dyn GetConfig>),
 }
 
 #[allow(dead_code)]
 pub struct OperatorFlushActorState {
 	_timer_handle: Option<TimerHandle>,
-	config: Option<Arc<dyn GetConfig>>,
 }
 
 pub struct OperatorFlushActor {
 	buffer: OperatorCommitBuffer,
-	storage: OperatorPersistentTier,
-	point: Option<OperatorPointTier>,
-	range: Option<OperatorRangeTier>,
 	flush_interval: Duration,
 }
 
 impl OperatorFlushActor {
-	pub fn new(
-		buffer: OperatorCommitBuffer,
-		storage: OperatorPersistentTier,
-		point: Option<OperatorPointTier>,
-		range: Option<OperatorRangeTier>,
-		flush_interval: Duration,
-	) -> Self {
+	pub fn new(buffer: OperatorCommitBuffer, flush_interval: Duration) -> Self {
 		Self {
 			buffer,
-			storage,
-			point,
-			range,
 			flush_interval,
 		}
 	}
@@ -80,89 +54,19 @@ impl OperatorFlushActor {
 	pub fn spawn(
 		spawner: &ActorSpawner,
 		buffer: OperatorCommitBuffer,
-		storage: OperatorPersistentTier,
-		point: Option<OperatorPointTier>,
-		range: Option<OperatorRangeTier>,
 		flush_interval: Duration,
 	) -> ActorRef<FlushMessage> {
-		let actor = Self::new(buffer, storage, point, range, flush_interval);
+		let actor = Self::new(buffer, flush_interval);
 		spawner.spawn_coordination("operator-persistent-flush", actor).actor_ref().clone()
 	}
 
-	#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-	pub fn spawn(
-		_spawner: &ActorSpawner,
-		_buffer: OperatorCommitBuffer,
-		storage: OperatorPersistentTier,
-		_point: Option<OperatorPointTier>,
-		_range: Option<OperatorRangeTier>,
-		_flush_interval: Duration,
-	) -> ActorRef<FlushMessage> {
-		match storage {}
-	}
-
 	fn drain(&self) {
-		flush_now(&self.buffer, &self.storage, self.point.as_ref(), self.range.as_ref());
-	}
-
-	fn refresh_budget(&self, state: &OperatorFlushActorState) {
-		let Some(config) = state.config.as_ref() else {
-			return;
-		};
-		self.buffer.set_budget(ByteSize::from_bytes(
-			config.get_config_uint8(ConfigKey::OperatorFlushBudgetBytes),
-		));
+		flush_now(&self.buffer);
 	}
 }
 
-pub fn flush_now(
-	buffer: &OperatorCommitBuffer,
-	storage: &OperatorPersistentTier,
-	point: Option<&OperatorPointTier>,
-	range: Option<&OperatorRangeTier>,
-) {
-	let _flushing = buffer.flush_guard();
-	while let Some(batch) = buffer.take_for_flush() {
-		storage.flush_batch(&batch);
-		invalidate_flushed(point, range, &batch);
-		buffer.complete_flush();
-	}
-}
-
-fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&OperatorRangeTier>, batch: &FlushBatch) {
-	for marker in &batch.drops {
-		match marker {
-			DropMarker::OperatorState(operator) => {
-				if let Some(range) = range {
-					range.invalidate_operator(*operator);
-				}
-				if let Some(point) = point {
-					point.invalidate_operator(*operator);
-				}
-			}
-			DropMarker::AnchorsOperator(_) | DropMarker::AnchorsGroup(_, _) => {}
-		}
-	}
-	for ((operator, key), entry) in &batch.state {
-		match &entry.post {
-			Some(row) => {
-				if let Some(range) = range {
-					range.overwrite(*operator, key.clone(), row.clone());
-				}
-				if let Some(point) = point {
-					point.overwrite(*operator, key.clone(), row.clone());
-				}
-			}
-			None => {
-				if let Some(range) = range {
-					range.retract(*operator, key);
-				}
-				if let Some(point) = point {
-					point.invalidate(*operator, key);
-				}
-			}
-		}
-	}
+pub fn flush_now(buffer: &OperatorCommitBuffer) {
+	buffer.flush_all();
 }
 
 pub fn flush_pending(actor_ref: &ActorRef<FlushMessage>) -> bool {
@@ -189,13 +93,12 @@ impl Actor for OperatorFlushActor {
 		});
 		OperatorFlushActorState {
 			_timer_handle: Some(timer_handle),
-			config: None,
 		}
 	}
 
 	fn handle(
 		&self,
-		state: &mut OperatorFlushActorState,
+		_state: &mut OperatorFlushActorState,
 		msg: FlushMessage,
 		ctx: &Context<FlushMessage>,
 	) -> Directive {
@@ -211,7 +114,6 @@ impl Actor for OperatorFlushActor {
 		}
 		match msg {
 			FlushMessage::Tick(_) => {
-				self.refresh_budget(state);
 				self.drain();
 			}
 			FlushMessage::Shutdown => {
@@ -224,9 +126,6 @@ impl Actor for OperatorFlushActor {
 			} => {
 				self.drain();
 				waiter.notify();
-			}
-			FlushMessage::AttachConfig(config) => {
-				state.config = Some(config);
 			}
 		}
 		Directive::Continue

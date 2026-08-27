@@ -9,15 +9,15 @@ use crate::tier::commit::OperatorCommitBuffer;
 
 impl OperatorCommitBuffer {
 	pub fn record_checkpoint_set(&self, flow: FlowId, version: CommitVersion) {
-		self.shared.inner.lock().live.checkpoints.insert(flow, Some(version));
+		self.shared().inner.lock().live.checkpoints.insert(flow, Some(version));
 	}
 
 	pub fn record_checkpoint_delete(&self, flow: FlowId) {
-		self.shared.inner.lock().live.checkpoints.insert(flow, None);
+		self.shared().inner.lock().live.checkpoints.insert(flow, None);
 	}
 
 	pub fn lookup_checkpoint(&self, flow: FlowId) -> Option<Option<CommitVersion>> {
-		let inner = self.shared.inner.lock();
+		let inner = self.shared().inner.lock();
 		if let Some(entry) = inner.live.checkpoints.get(&flow) {
 			return Some(*entry);
 		}
@@ -25,7 +25,7 @@ impl OperatorCommitBuffer {
 	}
 
 	pub fn checkpoint_entries(&self) -> Vec<(FlowId, Option<CommitVersion>)> {
-		let inner = self.shared.inner.lock();
+		let inner = self.shared().inner.lock();
 		let mut merged: BTreeMap<FlowId, Option<CommitVersion>> = BTreeMap::new();
 		if let Some(batch) = inner.in_flight.as_ref() {
 			merged.extend(batch.checkpoints.iter().map(|(flow, entry)| (*flow, *entry)));
@@ -35,7 +35,7 @@ impl OperatorCommitBuffer {
 	}
 
 	pub fn checkpoint_floor(&self) -> Option<CommitVersion> {
-		let inner = self.shared.inner.lock();
+		let inner = self.shared().inner.lock();
 		let mut floor: Option<CommitVersion> = None;
 		if let Some(batch) = inner.in_flight.as_ref() {
 			for version in batch.checkpoints.values().flatten() {

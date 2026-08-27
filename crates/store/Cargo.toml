@@ -10,6 +10,9 @@ description = "Row-tier store layer: page model and residency traits"
 [features]
 sqlite = ["rusqlite", "reifydb-sqlite"]
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 hashbrown = { workspace = true }
 reifydb-codec = { workspace = true }

@@ -524,7 +524,7 @@ impl ConfigKey {
 			Self::MultiFlushBudgetBytes => false,
 			Self::MultiWalAutocheckpoint => true,
 			Self::OperatorFlushInterval => true,
-			Self::OperatorFlushBudgetBytes => false,
+			Self::OperatorFlushBudgetBytes => true,
 			Self::OperatorWalAutocheckpoint => true,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => false,
@@ -1791,7 +1791,11 @@ mod tests {
 		assert_eq!(ConfigKey::OperatorFlushBudgetBytes.default_value(), Value::Uint8(4 * 1024 * 1024));
 		assert_eq!(ConfigKey::OperatorFlushBudgetBytes.expected_types(), &[ValueType::Uint8]);
 		assert!(!ConfigKey::OperatorFlushBudgetBytes.is_optional());
-		assert!(!ConfigKey::OperatorFlushBudgetBytes.requires_restart());
+		assert!(
+			ConfigKey::OperatorFlushBudgetBytes.requires_restart(),
+			"the budget sizes a MemoryBudget built once with the commit tier; declaring it live would \
+			 promise a rewrite that no running store can adopt"
+		);
 	}
 
 	#[test]

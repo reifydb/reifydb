@@ -35,6 +35,7 @@ pub(crate) struct StartupConfig {
 	pub cdc_wal_autocheckpoint: u32,
 	pub operator_wal_autocheckpoint: u32,
 	pub operator_flush_interval: Duration,
+	pub operator_flush_budget: ByteSize,
 	pub cdc_commit: CdcCommitConfig,
 	pub cdc_read: Option<CdcReadConfig>,
 }
@@ -57,6 +58,7 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::CdcWalAutocheckpoint,
 	ConfigKey::OperatorWalAutocheckpoint,
 	ConfigKey::OperatorFlushInterval,
+	ConfigKey::OperatorFlushBudgetBytes,
 	ConfigKey::CdcCommitBufferBytes,
 	ConfigKey::CdcBlockCutBytes,
 	ConfigKey::CdcReadBufferBytes,
@@ -170,6 +172,7 @@ pub(crate) fn resolve_startup_configs(
 		cdc_wal_autocheckpoint: uint8(ConfigKey::CdcWalAutocheckpoint) as u32,
 		operator_wal_autocheckpoint: uint8(ConfigKey::OperatorWalAutocheckpoint) as u32,
 		operator_flush_interval: duration(ConfigKey::OperatorFlushInterval),
+		operator_flush_budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorFlushBudgetBytes)),
 		cdc_commit,
 		cdc_read,
 	})

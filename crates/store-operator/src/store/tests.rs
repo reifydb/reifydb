@@ -37,8 +37,7 @@ fn store_fixture() -> (StandardOperatorStore, SqliteTempPathGuard) {
 }
 
 fn flush(store: &StandardOperatorStore) {
-	let persistent = store.persistent.as_ref().expect("the fixture store is built with a persistent tier");
-	flush_now(&store.commit, persistent, store.point.as_ref(), store.range.as_ref());
+	flush_now(&store.commit);
 }
 
 fn flush_once_interlock() -> CheckpointInterlock {

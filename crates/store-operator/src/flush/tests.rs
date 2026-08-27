@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	sync::atomic::{AtomicBool, AtomicU64, Ordering},
+	sync::atomic::{AtomicBool, Ordering},
 	thread,
 	time::Instant,
 };
@@ -10,10 +10,7 @@ use std::{
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{
-		config::{ConfigKey, GetConfig},
-		flow::{FlowId, OperatorId},
-	},
+	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator_state::GroupId,
 };
 use reifydb_runtime::{
@@ -24,7 +21,7 @@ use reifydb_runtime::{
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::{
 	byte_size::ByteSize,
-	value::{Value, datetime::DateTime, row_number::RowNumber},
+	value::{datetime::DateTime, row_number::RowNumber},
 };
 
 use super::*;
@@ -77,8 +74,9 @@ fn buffer_fixture() -> (OperatorCommitBuffer, SqliteOperatorStorage, ActorRef<Fl
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
+	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref =
-		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
+		OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
 	(buffer, storage, actor_ref, guard)
 }
 
@@ -363,6 +361,7 @@ fn an_empty_flush_is_a_no_op_that_leaves_the_flusher_able_to_flush_again() {
 fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
+	buffer.attach_sinks(tier(&storage), None, None);
 	buffer.record_state_set(OP_A, key(1), row("first"), DurablePre::Absent);
 
 	let held = buffer.flush_guard();
@@ -372,10 +371,9 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 	let ran = Arc::new(AtomicBool::new(false));
 	let second = {
 		let buffer = buffer.clone();
-		let storage = storage.clone();
 		let ran = Arc::clone(&ran);
 		thread::spawn(move || {
-			flush_now(&buffer, &tier(&storage), None, None);
+			flush_now(&buffer);
 			ran.store(true, Ordering::Release);
 		})
 	};
@@ -417,10 +415,11 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
+	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref =
-		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
+		OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
 
-	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, None, idle_interval());
+	let actor = OperatorFlushActor::new(buffer.clone(), idle_interval());
 	let cancel = CancellationToken::new();
 	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
 	let mut state = actor.init(&ctx);
@@ -455,11 +454,24 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
+	buffer.attach_sinks(tier(&storage), None, None);
 
 	buffer.record_state_set(OP_A, key(1), row("never-written"), DurablePre::Absent);
 	storage.shutdown();
 
-	flush_now(&buffer, &tier(&storage), None, None);
+	flush_now(&buffer);
+}
+
+#[test]
+#[should_panic(expected = "flushed before its sinks were attached")]
+fn a_flush_before_the_sinks_are_attached_panics_instead_of_dropping_the_batch() {
+	// The buffer is built before the persistent tier is opened, so a drain reaching it early must stop
+	// the process. Settling a batch nothing wrote releases its bytes and leaves the rows neither in RAM
+	// nor in sqlite, and the loss is silent because the flusher reports a clean drain.
+	let buffer = OperatorCommitBuffer::new();
+	buffer.record_state_set(OP_A, key(1), row("never-written"), DurablePre::Absent);
+
+	flush_now(&buffer);
 }
 
 #[test]
@@ -516,11 +528,12 @@ fn the_memory_tier_reports_a_flush_as_complete_without_a_flusher() {
 fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "v00") * 8);
+	buffer.attach_sinks(tier(&storage), None, None);
 	for index in 0..67 {
 		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")), DurablePre::Absent);
 	}
 
-	flush_now(&buffer, &tier(&storage), None, None);
+	flush_now(&buffer);
 
 	for index in 0..67 {
 		let durable = storage
@@ -536,6 +549,7 @@ fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer =
 		OperatorCommitBuffer::with_budget(entry_bytes(1, "early").saturating_add(entry_bytes(2, "filler")));
+	buffer.attach_sinks(tier(&storage), None, None);
 	buffer.record_state_set(OP_A, key(1), row("early"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key(2), row("filler"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key(3), row("tail"), DurablePre::Absent);
@@ -551,7 +565,7 @@ fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 		row("late"),
 		DurablePre::Present(ByteSize::from_bytes(row("early").bytes().len() as u64)),
 	);
-	flush_now(&buffer, &tier(&storage), None, None);
+	flush_now(&buffer);
 
 	assert_eq!(
 		storage.get(OP_A, &key(1)).map(|row| body(&row)),
@@ -569,10 +583,11 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "at-shutdown") * 4);
+	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref =
-		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
+		OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
 
-	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, None, idle_interval());
+	let actor = OperatorFlushActor::new(buffer.clone(), idle_interval());
 	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
 	let mut state = actor.init(&ctx);
 
@@ -599,10 +614,11 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "at-cancel") * 4);
+	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref =
-		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
+		OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
 
-	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, None, idle_interval());
+	let actor = OperatorFlushActor::new(buffer.clone(), idle_interval());
 	let cancel = CancellationToken::new();
 	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
 	let mut state = actor.init(&ctx);
@@ -636,10 +652,11 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let entries = 16u8;
-	let budget = entry_bytes(0, "under-the-budget") * entries as u64;
+	let budget = entry_bytes(0, "under-the-budget") * (entries - 1) as u64;
 	let buffer = OperatorCommitBuffer::with_budget(budget);
+	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref =
-		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
+		OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
 	buffer.attach_flusher(actor_ref);
 
 	for index in 0..entries - 1 {
@@ -648,8 +665,8 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	thread::sleep(Duration::from_milliseconds_const(100).to_std());
 	assert!(
 		storage.get(OP_A, &key(0)).is_none(),
-		"a buffer one entry short of the byte budget must not be flushed early, otherwise the buffer stops \
-		 batching at all"
+		"a buffer resting exactly on the byte budget must not be flushed early; the budget is the window, \
+		 and a trigger that fires on it stops the buffer batching at all"
 	);
 
 	buffer.record_state_set(OP_A, key(entries - 1), row("under-the-budget"), DurablePre::Absent);
@@ -668,44 +685,6 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	}
 }
 
-struct StubConfig {
-	budget_bytes: AtomicU64,
-	reads: AtomicU64,
-}
-
-impl StubConfig {
-	fn new(budget_bytes: u64) -> Self {
-		Self {
-			budget_bytes: AtomicU64::new(budget_bytes),
-			reads: AtomicU64::new(0),
-		}
-	}
-
-	fn set(&self, budget_bytes: u64) {
-		self.budget_bytes.store(budget_bytes, Ordering::Release);
-	}
-
-	fn reads(&self) -> u64 {
-		self.reads.load(Ordering::Acquire)
-	}
-}
-
-impl GetConfig for StubConfig {
-	fn get_config(&self, key: ConfigKey) -> Value {
-		assert_eq!(
-			key,
-			ConfigKey::OperatorFlushBudgetBytes,
-			"the flusher must read the operator budget key and no other"
-		);
-		self.reads.fetch_add(1, Ordering::AcqRel);
-		Value::Uint8(self.budget_bytes.load(Ordering::Acquire))
-	}
-
-	fn get_config_at(&self, _key: ConfigKey, _version: CommitVersion) -> Value {
-		panic!("the flusher must read the live value, not a versioned one")
-	}
-}
-
 fn flusher_fixture(
 	interval: Duration,
 ) -> (OperatorFlushActor, OperatorCommitBuffer, Context<FlushMessage>, ActorSystem, SqliteTempPathGuard) {
@@ -714,8 +693,9 @@ fn flusher_fixture(
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, interval);
-	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, None, interval);
+	buffer.attach_sinks(tier(&storage), None, None);
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), interval);
+	let actor = OperatorFlushActor::new(buffer.clone(), interval);
 	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
 	(actor, buffer, ctx, actor_system, guard)
 }
@@ -753,37 +733,6 @@ fn the_flush_interval_the_store_was_configured_with_is_the_one_the_timer_fires_o
 		"a 100ms interval must have drained the buffer well inside three seconds; the default interval \
 		 is five seconds, so anything slower means the configured value never reached the timer"
 	);
-}
-
-#[test]
-fn a_tick_re_reads_the_budget_so_a_config_change_lands_without_recreating_the_actor() {
-	// The budget key is declared as not requiring a restart, so a sweep that rewrites it must
-	// change the effective threshold on the next tick. Reading it once at construction would
-	// pin the first value forever and every later step of the sweep would measure the first one.
-	let (actor, buffer, ctx, _system, _guard) = flusher_fixture(idle_interval());
-	let mut state = actor.init(&ctx);
-	let config = Arc::new(StubConfig::new(4096));
-	let handle: Arc<dyn GetConfig> = config.clone();
-
-	actor.handle(&mut state, FlushMessage::AttachConfig(handle), &ctx);
-	assert_eq!(
-		buffer.budget(),
-		FLUSH_BUDGET_BYTES,
-		"attaching alone must not move the budget; only a tick may adopt the configured value"
-	);
-
-	actor.handle(&mut state, FlushMessage::Tick(DateTime::from_millis(1)), &ctx);
-	assert_eq!(buffer.budget(), ByteSize::from_bytes(4096), "the first tick must adopt the configured budget");
-
-	config.set(65_536);
-	actor.handle(&mut state, FlushMessage::Tick(DateTime::from_millis(2)), &ctx);
-	assert_eq!(
-		buffer.budget(),
-		ByteSize::from_bytes(65_536),
-		"the second tick must observe the rewritten value; a cached read makes the knob a restart-only \
-		 one in everything but its declaration"
-	);
-	assert_eq!(config.reads(), 2, "exactly one read per tick, or the budget is being sampled somewhere else");
 }
 
 #[test]

@@ -20,10 +20,11 @@ use reifydb_core::{
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_operator::{
-	config::{OperatorPersistentConfig, OperatorStoreConfig},
+	config::{OperatorCommitConfig, OperatorPersistentConfig, OperatorStoreConfig},
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
 	tier::{
+		commit::OperatorCommitBuffer,
 		persistent::OperatorPersistentTier,
 		point::{OperatorPointConfig, OperatorPointTier},
 		range::{OperatorRangeConfig, OperatorRangeTier},
@@ -850,3 +851,45 @@ fn a_proven_span_outranks_the_absence_the_point_tier_remembers() {
 		"the contains path repairs its own absences or it leaves the same contradiction behind"
 	);
 }
+
+fn sliced_store(budget: ByteSize) -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
+	// A budget this small forces one drain to run many slices, so a write-back that only covers one of them shows up.
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock.clone());
+	let spawner = actor_system.spawner();
+	let (storage, guard) = SqliteOperatorStorage::in_memory();
+	let store = OperatorStore::standard(OperatorStoreConfig {
+		commit: OperatorCommitConfig {
+			storage: OperatorCommitBuffer::with_budget(budget),
+		},
+		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
+			.flush_interval(Duration::from_hours_const(1))),
+		point: Some(OperatorPointConfig::testing()),
+		range: Some(OperatorRangeConfig::testing()),
+		spawner,
+		clock,
+	});
+	(store, storage, guard)
+}
+
+
+
+#[test]
+fn a_drain_that_runs_many_slices_writes_back_every_slice_and_not_just_one() {
+	// Each slice carries its own rows, so a write-back wired to fire once per drain instead of once per
+	// slice leaves whichever slices it missed uncached while their rows are already durable.
+	let (store, _storage, _guard) = sliced_store(ByteSize::from_bytes(64));
+	for suffix in 1..=8u8 {
+		put(&store, OP_A, key(suffix), row(&format!("v{suffix}")));
+	}
+
+	store.commit().flush_all();
+
+	assert_eq!(
+		point_entries(&store),
+		8,
+		"every slice of the drain must write its own rows back; a first-slice-only or last-slice-only \
+		 write-back leaves the rest durable but uncached"
+	);
+}
+

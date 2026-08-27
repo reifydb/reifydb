@@ -23,15 +23,11 @@ impl OperatorCommitBuffer {
 		row_number: RowNumber,
 		expiry: DateTime,
 	) {
-		let mut inner = self.shared.inner.lock();
-		inner.live.record_anchor((operator, group, side, row_number), Some(expiry.to_millis()));
-		self.request_flush_when_full(&mut inner);
+		self.write(|live| live.record_anchor((operator, group, side, row_number), Some(expiry.to_millis())));
 	}
 
 	pub fn record_anchor_remove(&self, operator: OperatorId, group: GroupId, side: u8, row_number: RowNumber) {
-		let mut inner = self.shared.inner.lock();
-		inner.live.record_anchor((operator, group, side, row_number), None);
-		self.request_flush_when_full(&mut inner);
+		self.write(|live| live.record_anchor((operator, group, side, row_number), None));
 	}
 
 	pub fn lookup_anchor(
@@ -42,7 +38,7 @@ impl OperatorCommitBuffer {
 		row_number: RowNumber,
 	) -> BufferedAnchor {
 		let composite = (operator, group, side, row_number);
-		let inner = self.shared.inner.lock();
+		let inner = self.shared().inner.lock();
 		if let Some(entry) = inner.live.anchors.get(&composite) {
 			return buffered_anchor(*entry);
 		}
@@ -61,7 +57,7 @@ impl OperatorCommitBuffer {
 			Bound::Included((operator, group, u8::MAX, RowNumber(u64::MAX))),
 		);
 
-		let inner = self.shared.inner.lock();
+		let inner = self.shared().inner.lock();
 		let mut merged: BTreeMap<AnchorSlot, Option<u64>> = BTreeMap::new();
 		if let Some(batch) = inner.in_flight.as_ref() {
 			collect_anchors(&batch.anchors, range, &mut merged);

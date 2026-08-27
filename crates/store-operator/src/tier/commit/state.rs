@@ -16,20 +16,16 @@ use crate::{
 
 impl OperatorCommitBuffer {
 	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow, pre: DurablePre) {
-		let mut inner = self.shared.inner.lock();
-		inner.live.record_state((operator, key), Some(row), pre);
-		self.request_flush_when_full(&mut inner);
+		self.write(|live| live.record_state((operator, key), Some(row), pre));
 	}
 
 	pub fn record_state_remove(&self, operator: OperatorId, key: EncodedKey, pre: DurablePre) {
-		let mut inner = self.shared.inner.lock();
-		inner.live.record_state((operator, key), None, pre);
-		self.request_flush_when_full(&mut inner);
+		self.write(|live| live.record_state((operator, key), None, pre));
 	}
 
 	pub fn lookup_state(&self, operator: OperatorId, key: &EncodedKey) -> BufferedState {
 		let composite = (operator, key.clone());
-		let inner = self.shared.inner.lock();
+		let inner = self.shared().inner.lock();
 		if let Some(entry) = inner.live.state.get(&composite) {
 			return buffered_state(entry);
 		}
@@ -59,7 +55,7 @@ impl OperatorCommitBuffer {
 			Bound::Unbounded => Bound::Unbounded,
 		};
 
-		let inner = self.shared.inner.lock();
+		let inner = self.shared().inner.lock();
 		let mut merged: BTreeMap<EncodedKey, Option<EncodedPodRow>> = BTreeMap::new();
 		if !is_empty_range(&lower, &upper) {
 			if let Some(batch) = inner.in_flight.as_ref() {
