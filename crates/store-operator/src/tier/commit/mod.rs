@@ -313,8 +313,6 @@ impl OperatorCommitBuffer {
 		self.tier.settle(batch, ());
 	}
 
-	/// Drains every slice under one guard, so a caller holding it waits out a whole drain rather than one
-	/// slice; a shutdown that returned mid-drain would close the connection under the running flusher.
 	pub fn flush_all(&self) {
 		let _guard = self.flush_guard();
 		self.tier.flush_all();

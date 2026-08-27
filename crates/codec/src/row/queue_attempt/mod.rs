@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The queue attempt storage family: the source header plus the three fixed-width facts every
-//! attempt carries - outcome, lost and finished_at. They sit in the header rather than the body so a
-//! sweeper can classify an attempt without decoding the variable-length worker and response text.
-
 use std::ops::Deref;
 
 use reifydb_value::value::datetime::DateTime;
@@ -94,9 +90,6 @@ impl From<EncodedBytes> for EncodedQueueAttemptRow {
 	}
 }
 
-/// The write side of the queue attempt family: a buffer whose source header and outcome, lost and
-/// finished_at slots are already reserved, which freezes into an [`EncodedQueueAttemptRow`] and never
-/// into a row of another family.
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedQueueAttemptRowBuilder(EncodedRowBuilder);

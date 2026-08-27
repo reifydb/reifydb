@@ -81,7 +81,6 @@ use crate::{
 	subsystem::shutdown::FlowShutdownState,
 };
 
-/// Versions of in-memory skip-ahead a flow tolerates before forcing a checkpoint-only commit.
 const FLOW_CHECKPOINT_LAG: u64 = 10_000;
 const FLOW_CHECKPOINT_MAX_AGE_MS: i64 = 5_000;
 const FLOW_FRONTIER_PERSIST_MS: i64 = 5_000;

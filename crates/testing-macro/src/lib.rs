@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Expands one chaos workload into N independent `#[test]` functions, one per iteration index.
-//! N comes from an explicit count argument, else `ITERATIONS` (default 32); the emitted
-//! `option_env!` reference is what forces a recompile when `ITERATIONS` changes.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

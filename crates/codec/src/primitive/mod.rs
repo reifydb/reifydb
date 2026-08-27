@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Canonical byte layouts for every leaf value the database stores or transmits, one submodule
-//! per kind. A shipped layout is used by storage, replication, CDC and the wire protocol at once,
-//! so changing one is a coordinated cross-format break: old bytes must keep round-tripping.
-
 pub mod any;
 pub mod blob;
 pub mod boolean;

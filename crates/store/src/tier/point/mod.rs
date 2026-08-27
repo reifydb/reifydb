@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Point tier: a single-version cache of point reads that also remembers absences, so a key read many
-//! times costs one persistent lookup rather than one per read. An entry keys on the whole key under its
-//! dimension instead of on a bucket, so neighbouring keys spread across every shard and eviction removes
-//! one entry rather than every key that happened to share a prefix.
-//!
-//! Which counter slot a key belongs to and which of those slots this tier may hold is the domain's to
-//! answer, through [`PointDomain`]; a key too short to name a slot is declined rather than cached. A slot
-//! the domain keeps out is answered from the key alone, before any hash or lock, and its miss is charged
-//! to a lock free per slot counter that folds into the slot table.
-
 #[cfg(test)]
 mod domain;
 #[allow(clippy::module_inception)]

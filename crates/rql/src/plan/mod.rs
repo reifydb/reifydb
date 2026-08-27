@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Two-stage planner: logical compilation resolves and type-checks, physical lowering produces what the engine VM
-//! runs. The split exists so policy injection and optimisation operate on a backend-neutral representation - nothing
-//! in the logical layer knows whether its source is a single-version or multi-version store.
-
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_transaction::transaction::Transaction;

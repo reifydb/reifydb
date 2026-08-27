@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Public `Transaction` handle: wraps a single-version or multi-version transaction body in one shape so the
-//! engine, planner, and policy layers never branch on backend.
-
 use std::sync::Arc;
 
 use reifydb_codec::{
@@ -242,11 +239,6 @@ impl<'a> TestTransaction<'a> {
 			})
 			.collect();
 
-		// View entries re-tracked by earlier captures are commit bookkeeping, not
-		// scheduler input: their downstream effects were already applied in-step by
-		// the inline scheduler when they were produced. Re-seeding them here would
-		// apply every view-over-view hop a second time, one capture later. Carry
-		// them straight back into the accumulator instead.
 		let (carried, flow_changes): (Vec<Change>, Vec<Change>) = self
 			.inner
 			.accumulator
@@ -322,9 +314,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// True when accumulated object changes have not yet been folded into the commit's change
-	/// stream. Query and Replica never accumulate; Test is exempt because the shared admin
-	/// accumulator legitimately holds entries mid-test.
 	pub fn has_unprocessed_flow_changes(&self) -> bool {
 		match self {
 			Self::Command(txn) => !txn.accumulator.is_empty(),
@@ -333,8 +322,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Distinct objects with unprocessed flow changes; empty for the
-	/// variants exempted by [`Self::has_unprocessed_flow_changes`].
 	pub fn unprocessed_flow_change_objects(&self) -> Vec<ObjectId> {
 		match self {
 			Self::Command(txn) => txn.accumulator.pending_objects(),

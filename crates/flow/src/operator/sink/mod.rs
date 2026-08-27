@@ -52,10 +52,6 @@ use crate::{
 	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
 
-/// A durable view sink: the terminal node that writes a flow's output into a table, series or
-/// ring buffer. Unlike an [`crate::operator::HostOperator`] it needs the whole transaction (raw
-/// keyspace writes, change tracking, dictionary allocation and catalog lookups), so it is
-/// dispatched off a separate map and only ever exists on the deferred path.
 pub trait DurableSink: Send {
 	fn id(&self) -> OperatorId;
 

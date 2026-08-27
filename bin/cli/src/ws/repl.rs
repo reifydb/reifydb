@@ -128,9 +128,6 @@ fn handle_dot_command(
 			DotCommandResult::Continue
 		}
 		".clear" => {
-			// \x1B[2J - Clear entire screen
-			// \x1B[3J - Clear scrollback buffer
-			// \x1B[H - Move cursor to home position (1,1)
 			print!("\x1B[2J\x1B[3J\x1B[H");
 			io::stdout().flush().unwrap();
 			DotCommandResult::Continue
@@ -236,14 +233,11 @@ fn print_frame_truncated(frame: &Frame, max_width: usize) {
 		natural_widths.push(header_width.max(max_val_width));
 	}
 
-	// Format: "| col1 | col2 | col3 |"
-	// Each column: " content " (2 padding) + "|" separator
 	let mut num_cols_to_show = 0;
 	let mut current_width = 0;
 	for &col_width in &natural_widths {
-		let col_total = col_width + 3; // 2 padding + 1 separator
+		let col_total = col_width + 3;
 		if current_width + col_total < max_width {
-			// +1 for final "|"
 			current_width += col_total;
 			num_cols_to_show += 1;
 		} else {

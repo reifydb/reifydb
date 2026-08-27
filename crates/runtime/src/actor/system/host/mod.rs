@@ -30,7 +30,6 @@ use crate::{
 	sync::mutex::Mutex,
 };
 
-/// Backs every [`ActorSystem::testing`] scope in the process. Initialised once, never shut down.
 static TESTING_ROOT: OnceLock<ActorSystem> = OnceLock::new();
 
 struct ActorSystemInner {
@@ -67,9 +66,6 @@ impl ActorSystem {
 		}
 	}
 
-	/// A scope over one process-wide set of worker threads and timer scheduler, held alive by the shared
-	/// root so callers may drop it while the spawners they handed out keep working. A pool per fixture
-	/// would spawn threads nothing joins and hit the OS per-process thread limit within one test binary.
 	pub fn testing(clock: Clock) -> Self {
 		TESTING_ROOT.get_or_init(|| Self::new(Pools::new(PoolConfig::default()), Clock::Real)).scope_with(clock)
 	}

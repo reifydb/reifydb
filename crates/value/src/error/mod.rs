@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! `Error` carries a structured `Diagnostic` plus the source fragment needed to point a user-visible
-//! message at the offending span. Every user-facing failure goes through it: returning a bare string
-//! from deeper code is what makes a diagnostic lose its span between layers.
-
 use std::{
 	fmt::{Display, Formatter},
 	mem,

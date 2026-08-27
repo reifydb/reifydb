@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Multi-version storage backend for OLTP traffic, tiered as in-memory commit buffer over a pluggable
-//! persistent tier. Invariant: a row at `version V` is what a reader whose snapshot is `>= V` sees when no
-//! later version exists at `V' <= snapshot`, and a commit must publish all its deltas atomically to readers.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
@@ -220,15 +216,11 @@ impl MultiVersionGetPrevious for MultiStore {
 
 pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>;
 
-/// Selects which version each key resolves to during a range walk.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MultiVersionScope {
-	/// For each key, yield the highest version `v` with `v <= read`.
 	AsOf {
 		read: CommitVersion,
 	},
-	/// For each key, yield the highest version `v` with `after < v <= read`.
-	/// Keys with no qualifying version are dropped from the output.
 	Between {
 		after: CommitVersion,
 		read: CommitVersion,

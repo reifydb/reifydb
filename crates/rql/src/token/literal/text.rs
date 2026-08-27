@@ -31,8 +31,7 @@ pub fn scan_text<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 					text_start,
 					text_end,
 					start_line,
-					start_column + 1, /* +1 for opening
-					                   * quote */
+					start_column + 1,
 					start_pos,
 				),
 			});

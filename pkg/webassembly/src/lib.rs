@@ -161,7 +161,6 @@ impl WasmSession {
 	}
 }
 
-/// Runs entirely in the browser; all data lives in memory and is lost when the page closes.
 #[wasm_bindgen]
 pub struct WasmDB {
 	inner: StandardEngine,
@@ -238,7 +237,6 @@ impl WasmDB {
 
 		ioc = ioc.register(operator_store.clone());
 
-		// Register CdcStore (required by sub-flow)
 		let cdc_store = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), clock.clone()));
 		ioc = ioc.register(cdc_store.clone());
 
@@ -253,10 +251,8 @@ impl WasmDB {
 		));
 		ioc = ioc.register(flow_backlog.clone());
 
-		// Register RetentionMetrics (required by FlowSubsystem)
 		ioc = ioc.register(RetentionMetrics::new());
 
-		// Clone ioc for FlowSubsystem (engine consumes ioc)
 		let ioc_ref = ioc.clone();
 
 		load_catalog_cache(&multi, &single, &catalog_cache).map_err(|e| JsError::from_error(&e))?;
@@ -354,7 +350,6 @@ impl WasmDB {
 		})
 	}
 
-	/// Read-only; results come back as an array of plain JavaScript objects.
 	#[wasm_bindgen]
 	pub fn query(&self, rql: &str) -> Result<JsValue, JsValue> {
 		let identity = self.session.current_identity();
@@ -365,7 +360,6 @@ impl WasmDB {
 		utils::frames_to_js(&result)
 	}
 
-	/// The only entry point that accepts DDL; also handles DML and queries.
 	#[wasm_bindgen]
 	pub fn admin(&self, rql: &str) -> Result<JsValue, JsValue> {
 		let identity = self.session.current_identity();
@@ -376,7 +370,6 @@ impl WasmDB {
 		utils::frames_to_js(&result)
 	}
 
-	/// DML only; DDL must go through `admin()`.
 	#[wasm_bindgen]
 	pub fn command(&self, rql: &str) -> Result<JsValue, JsValue> {
 		let identity = self.session.current_identity();
@@ -422,7 +415,6 @@ impl WasmDB {
 		utils::frames_to_js(&result)
 	}
 
-	/// Returns the Display-rendered frames rather than JavaScript objects.
 	#[wasm_bindgen(js_name = commandText)]
 	pub fn command_text(&self, rql: &str) -> Result<String, JsValue> {
 		let result = self
@@ -437,7 +429,6 @@ impl WasmDB {
 		Ok(output)
 	}
 
-	/// Returns the Display-rendered frames rather than JavaScript objects.
 	#[wasm_bindgen(js_name = adminText)]
 	pub fn admin_text(&self, rql: &str) -> Result<String, JsValue> {
 		let result = self
@@ -452,7 +443,6 @@ impl WasmDB {
 		Ok(output)
 	}
 
-	/// Returns the Display-rendered frames rather than JavaScript objects.
 	#[wasm_bindgen(js_name = queryText)]
 	pub fn query_text(&self, rql: &str) -> Result<String, JsValue> {
 		let result = self
@@ -490,7 +480,6 @@ impl WasmDB {
 		self.handle_auth_response(response)
 	}
 
-	/// Also revokes the session token server-side, not just locally.
 	#[wasm_bindgen]
 	pub fn logout(&self) -> Result<(), JsValue> {
 		let token = self.session.take_token();

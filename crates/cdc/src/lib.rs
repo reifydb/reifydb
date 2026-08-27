@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Change Data Capture: a durable, ordered, addressable record of every committed write. Producers and
-//! consumers are decoupled, so a consumer may fall arbitrarily far behind and catch up later.
-//!
-//! Invariant: a CDC record reflects exactly the deltas committed under its transaction id, in the order the
-//! engine produced them. Reordering or dropping deltas here desynchronises replicas and subscriptions.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

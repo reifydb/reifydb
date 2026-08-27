@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Expression-evaluation contract types shared between the engine, the planner, and the catalog.
-//!
-//! `TargetColumn` is the central value: a column-targeting expression (insert, update, default-value resolution) either
-//! knows the fully-resolved column it is writing to (`TargetColumn::Resolved`) or describes the partial information
-//! available before resolution (`TargetColumn::Partial`). Number-out-of-range descriptor construction lives here too so
-//! range-violation diagnostics are assembled identically by every evaluator.
-
 use reifydb_value::{error::NumberOutOfRangeDescriptor, value::value_type::ValueType};
 
 use crate::interface::{

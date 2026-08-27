@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Compute kernels the engine VM dispatches to for the per-instruction work of a query. Kernels run directly on
-//! encoded bytes and decode only when they cannot, so a new operator vectorises by growing a kernel here; a per-row
-//! loop in the VM bypasses that entirely.
-
 pub mod canonical;
 
 use reifydb_core::value::column::{data::Column, mask::RowMask};

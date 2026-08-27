@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! gRPC server: accepts requests, hands them to `sub-server` for execution, and streams subscription updates back.
-//! Delivery uses server-streaming, so one subscribe call drains for the lifetime of the subscription, and convert
-//! maps between RBCF columnar payloads and the protobuf shapes the wire requires.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

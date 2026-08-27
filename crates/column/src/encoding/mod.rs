@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Per-column encodings. Every encoding produces and consumes the same encoded-bytes contract, so compute kernels
-//! are written once and work across all of them. Picking an encoding for a write batch is a statistics-driven
-//! heuristic that affects space and read cost only, never correctness.
-
 pub mod canonical;
 pub mod compressed;
 

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Cold tier of the multi-version store: one durable row per key, carrying the latest version the sweep
-//! flushed, not a version chain. The default backend is SQLite; the trait surface is generic so another
-//! backend can be plugged in without touching the buffer or transaction layer.
-
 use std::ops::Bound;
 
 use reifydb_codec::key::encoded::EncodedKey;

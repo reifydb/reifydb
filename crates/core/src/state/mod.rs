@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Operator state: the [`timer`] contract every operator reads and writes through, and the group/horizon/keyspace
-//! vocabulary reclamation works in. Not window-specific: extern_c, extern_rust, distinct and take all route their
-//! state through the same contract.
-
 pub mod timer;
 
 pub mod group {

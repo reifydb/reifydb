@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-/// Builds the whole numeric type-pair match by push-down accumulation. The 144 fixed-width pairs
-/// dispatch to `$fh`; the 81 pairs involving an arbitrary-precision type dispatch to `$ah`.
 macro_rules! dispatch_arith {
 
 	(

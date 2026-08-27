@@ -172,10 +172,6 @@ impl TestState {
 		self.live.lock().kinds.get(&kind).map_or(0, BTreeMap::len)
 	}
 
-	pub fn live_keys(&self, kind: Kind) -> Vec<EncodedKey> {
-		self.live.lock().kinds.get(&kind).map_or_else(Vec::new, |entries| entries.keys().cloned().collect())
-	}
-
 	pub fn persistent_entries(&self) -> usize {
 		self.persistent.lock().len()
 	}

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Built-in functions: pure transformations evaluated as part of expression evaluation, grouped by domain.
-//!
-//! The qualified name (`json::array`, `math::abs`) is what users type, so renaming or re-grouping an existing
-//! function silently breaks queries that already reference it.
-
 pub mod blob;
 pub mod clock;
 pub mod date;

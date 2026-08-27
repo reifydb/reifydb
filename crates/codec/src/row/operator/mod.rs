@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The operator family: a row carrying nothing but the instant it belongs to, so offset zero is an
-//! 8-byte time slot and `DateTime::MAX` stands for a row that has no time at all.
-
 use std::ops::Deref;
 
 use reifydb_value::{byte_size::ByteSize, encoding::LeBytes, util::cowvec::CowVec, value::datetime::DateTime};
@@ -112,8 +109,6 @@ impl From<EncodedOperatorRow> for EncodedBytes {
 	}
 }
 
-/// The write side of the operator family: a buffer already carrying a time header, which freezes
-/// into an [`EncodedOperatorRow`] and never into a row of another family.
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedOperatorRowBuilder(EncodedRowBuilder);

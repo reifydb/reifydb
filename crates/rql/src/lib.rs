@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! RQL: the whole pipeline from source string to the instruction stream the engine VM executes.
-//!
-//! Planner output stays decoupled from any storage backend - the physical plan speaks only `core::interface/` traits
-//! and the engine picks the backend later. Reaching into one from the planner recouples this crate to the storage
-//! tier and reintroduces the cycles `core` exists to avoid.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

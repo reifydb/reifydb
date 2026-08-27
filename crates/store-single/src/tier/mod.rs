@@ -35,7 +35,6 @@ impl RangeBatch {
 	}
 }
 
-/// The cursor of a tier that names no stop reason.
 pub type RangeCursor = reifydb_store::coverage::cursor::RangeCursor;
 
 pub trait TierStorage: Send + Sync + Clone + 'static {

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Per-object-type catalog operations, one sibling module per object kind, each in the same shape:
-//! admin-only mutations, transactional reads, name-and-id resolution. Resolution lives here rather
-//! than in callers so DDL, DML and admin paths all resolve names through one set of helpers.
-
 pub mod authentication;
 pub mod binding;
 pub mod column;

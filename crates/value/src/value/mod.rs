@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Workspace-wide value system: the `Value` enum every column carries, the `ValueType` that classifies
-//! it, and the `Constraint` family that narrows a type. Variant order is part of the wire format -
-//! adding one is a coordinated change and rearranging existing ones corrupts persisted data.
-
 use std::{
 	cmp::Ordering,
 	fmt::{Display, Formatter},

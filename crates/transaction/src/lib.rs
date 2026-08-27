@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Transactional layer over the storage tier: a multi-version path for OLTP traffic that needs snapshot
-//! isolation and a single-version path for workloads where versioning is pure overhead, both behind one
-//! `Transaction` handle.
-//!
-//! Invariant: a `TransactionId` is system-wide unique and monotonic via Uuid7. CDC, replication and
-//! subscriptions order events by it, so reusing or back-dating an id silently breaks consumer consistency.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

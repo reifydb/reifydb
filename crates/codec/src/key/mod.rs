@@ -9,11 +9,6 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-//! Order-determining codec turning typed keys into the bytes that go on disk: a range scan reads
-//! order straight off the bytes with no decode pass. Booleans, numbers and temporals are
-//! bit-inverted and so sort descending; utf8, blobs and uuids are stored plain and sort ascending.
-//! `encode_*_asc` are the uninverted integer forms for keyspaces that need a forward scan.
-
 use reifydb_value::value::datetime::DateTime;
 
 pub mod buf;

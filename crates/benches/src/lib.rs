@@ -12,10 +12,6 @@ use std::{
 
 use hdrhistogram::Histogram;
 
-// Every benchmark takes its axes from unprefixed environment variables so `make bench-x THREADS=4`
-// works, which requires the makefile to export those names. An exported-but-unset make variable
-// arrives as an empty string rather than as absent, so empty has to mean "use the default"; without
-// that, naming a variable in the makefile's export list would pin its axis on every run.
 pub fn env_opt(key: &str) -> Option<String> {
 	env::var(key).ok().map(|raw| raw.trim().to_string()).filter(|raw| !raw.is_empty())
 }
@@ -46,7 +42,6 @@ pub fn env_list_usize(key: &str, fallback: &[usize]) -> Vec<usize> {
 	}
 }
 
-/// Selects named items by a comma-separated list, keeping `fallback` when the variable is unset.
 pub fn env_select<T: Copy>(key: &str, all: &[(&str, T)], fallback: &[T]) -> Vec<T> {
 	match env_opt(key) {
 		Some(raw) => raw
@@ -72,11 +67,6 @@ pub fn merge(histograms: impl IntoIterator<Item = Histogram<u64>>) -> Histogram<
 	merged
 }
 
-/// Returns the sample whose throughput is the median of the set.
-///
-/// Run-to-run variance on this workload is wide enough to swamp several of the wins being
-/// evaluated, so single samples are not decision-grade. Median (not mean) so one descheduled run
-/// cannot drag the reported figure.
 #[allow(clippy::disallowed_types)]
 pub fn median_by_throughput<S>(samples: &[S], key: impl Fn(&S) -> (u64, Duration)) -> &S {
 	assert!(!samples.is_empty(), "median of an empty sample set is undefined");

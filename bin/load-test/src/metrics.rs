@@ -28,7 +28,6 @@ impl Metrics {
 			total_requests: AtomicU64::new(0),
 			successful_requests: AtomicU64::new(0),
 			failed_requests: AtomicU64::new(0),
-			// 1 microsecond to 60 seconds (60_000_000 microseconds), 3 significant figures
 			latency_histogram: Mutex::new(
 				Histogram::new_with_bounds(1, 60_000_000, 3).expect("Failed to create histogram"),
 			),
@@ -42,7 +41,6 @@ impl Metrics {
 		*start = Some(Instant::now());
 	}
 
-	/// Latency is recorded in the caller's per-worker histogram, avoiding mutex contention.
 	pub fn record_success_count_only(&self) {
 		self.successful_requests.fetch_add(1, Ordering::Relaxed);
 		self.total_requests.fetch_add(1, Ordering::Relaxed);

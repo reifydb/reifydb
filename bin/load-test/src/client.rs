@@ -32,7 +32,6 @@ impl Client {
 		Self::connect_with_http_client(protocol, url, token, None).await
 	}
 
-	/// Passing an existing `ReqwestClient` shares its connection pool across workers.
 	pub async fn connect_with_http_client(
 		protocol: Protocol,
 		url: &str,
@@ -85,7 +84,6 @@ impl Client {
 		Ok(())
 	}
 
-	/// A no-op for HTTP, which has no explicit close and relies on the connection pool.
 	pub async fn close(self) -> Result<(), Error> {
 		if let Client::Ws(client) = self {
 			client.close().await?;

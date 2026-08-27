@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Encoder side of RBCF: frame header, per-column header, optional none-bitmap, encoded value
-//! bytes, with the encoding chosen per column by `heuristics.rs`. The fixed and varlen submodules
-//! cover the two width regimes a column's values can fall into.
-
 pub(crate) mod any;
 mod fixed;
 mod varlen;

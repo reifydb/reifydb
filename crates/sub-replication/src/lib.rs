@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! CDC-driven replication: a primary publishes its change stream, replicas tail it and apply the deltas locally.
-//! A replica is just another consumer of the CDC log; there is no separate replication log.
-//!
-//! Invariant: a replica applies CDC records in strictly increasing commit version. The applier rejects anything
-//! at or below its last applied version rather than applying it, because replaying out of order lets an older
-//! write stomp a newer one.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

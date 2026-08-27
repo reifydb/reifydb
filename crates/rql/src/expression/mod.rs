@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Planner-side expression representation: the AST's expression shapes after type-checking and name resolution.
-//! Routine call resolution and JSON-path navigation are settled here rather than at runtime.
-
 pub mod fragment;
 pub mod join;
 pub mod json;
@@ -1902,8 +1899,6 @@ impl ExpressionCompiler {
 		}
 	}
 
-	/// In namespace position a keyword such as `undefined` or `true` is taken as an identifier, so `is::none(x)`
-	/// resolves to a call instead of parsing its right side as a literal.
 	fn compile_namespace_right(namespace: &str, right_ast: Ast<'_>) -> Result<Expression> {
 		fn identifier_or_keyword_name(ast: &Ast<'_>) -> Option<String> {
 			Some(ast.token().fragment.text().to_string())
@@ -1926,9 +1921,6 @@ impl ExpressionCompiler {
 					fragment: infix.token.fragment.to_owned(),
 				}))
 			}
-			// ns::func(args) where func is parsed as CallFunction
-			// (happens when the namespace token is a keyword like `is`,
-			// so the parser treats the right side as a standalone call)
 			Ast::CallFunction(call) => {
 				let func_name = call.function.name.text().to_string();
 				let full_name = if call.function.namespaces.is_empty() {

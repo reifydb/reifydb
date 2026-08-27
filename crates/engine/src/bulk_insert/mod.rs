@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Fast path for inserting many rows at once: validates the batch up front and writes through the storage commit
-//! path instead of the per-row VM dispatch loop. Validation here must match what the per-row INSERT path applies;
-//! any divergence lets one path accept rows the other rejects and silently produces inconsistent state.
-
 pub mod builder;
 pub mod coerce;
 pub mod storage;

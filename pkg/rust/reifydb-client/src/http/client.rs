@@ -70,7 +70,6 @@ struct HttpErrorResponse {
 	diagnostic: Option<Diagnostic>,
 }
 
-/// HTTP authentication response matching the server's `/v1/authenticate` format
 #[derive(Debug, Deserialize)]
 struct HttpAuthenticateResponse {
 	status: String,
@@ -102,7 +101,6 @@ impl HttpClient {
 		})
 	}
 
-	/// Shares an existing reqwest Client so connections are pooled across clients.
 	pub fn with_client(client: ReqwestClient, url: &str, format: WireFormat) -> Result<Self, Error> {
 		let base_url = url.trim_end_matches('/').to_string();
 		Ok(Self {
@@ -179,7 +177,6 @@ impl HttpClient {
 		}
 	}
 
-	/// Execute an admin (DDL + DML + Query) statement.
 	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
 		Ok(self.admin_with_meta(rql, params).await?.frames)
 	}
@@ -207,7 +204,6 @@ impl HttpClient {
 		parse_admin_response(ws_response)
 	}
 
-	/// Execute a command (write) statement.
 	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
 		Ok(self.command_with_meta(rql, params).await?.frames)
 	}
@@ -235,7 +231,6 @@ impl HttpClient {
 		parse_command_response(ws_response)
 	}
 
-	/// Execute a query (read) statement.
 	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
 		Ok(self.query_with_meta(rql, params).await?.frames)
 	}
@@ -293,11 +288,6 @@ impl HttpClient {
 		}
 	}
 
-	/// Send an RBCF request: append ?format=rbcf, decode binary response.
-	/// Claim items from a queue, optionally long-polling until work arrives or the budget expires.
-	///
-	/// `wait_for` and `lease_ttl` are RQL duration literals such as `"25s"`. An absent or zero
-	/// `wait_for` is a plain non-blocking claim.
 	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, Error> {
 		let budget = request.wait_for.as_deref().and_then(|raw| parse_duration(Fragment::internal(raw)).ok());
 		let timeout = budget.unwrap_or(Duration::zero()) + Duration::from_seconds(30).unwrap();

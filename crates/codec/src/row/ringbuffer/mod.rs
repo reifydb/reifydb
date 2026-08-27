@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The ring buffer storage family: the source header, byte for byte as the table family. Eviction
-//! overwrites a slot in place, so `created_at` survives a rewrite while `updated_at` moves.
-
 use std::ops::Deref;
 
 use reifydb_value::value::datetime::DateTime;
@@ -82,8 +79,6 @@ impl From<EncodedBytes> for EncodedRingBufferRow {
 	}
 }
 
-/// The write side of the ring buffer family: a buffer whose source header is already reserved, which
-/// freezes into an [`EncodedRingBufferRow`] and never into a row of another family.
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedRingBufferRowBuilder(EncodedRowBuilder);

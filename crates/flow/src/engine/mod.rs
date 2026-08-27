@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Flow execution engine: registers compiled flow definitions and evaluates each flow's operator
-//! graph against incoming change deltas, writing the outputs back through the catalog.
-
 mod dispatch;
 pub mod frontier;
 mod lifecycle;

@@ -12,7 +12,6 @@ pub fn parse_admin_response(response: Response) -> Result<AdminResult, Error> {
 			frames: convert_envelope_response(admin_response.body),
 			meta: admin_response.meta,
 		}),
-		// Admin responses may come back as Command responses from the server
 		ResponsePayload::Command(cmd_response) => Ok(AdminResult {
 			frames: convert_envelope_response(cmd_response.body),
 			meta: cmd_response.meta,

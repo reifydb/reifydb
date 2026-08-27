@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The catalog storage family: a row whose header is the shape fingerprint and nothing else.
-
 use std::ops::Deref;
 
 use reifydb_value::{
@@ -136,8 +134,6 @@ impl From<EncodedCatalogRow> for EncodedBytes {
 	}
 }
 
-/// The write side of the catalog family: a buffer already carrying a fingerprint header, which
-/// freezes into an [`EncodedCatalogRow`] and never into a row of another family.
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedCatalogRowBuilder(EncodedRowBuilder);

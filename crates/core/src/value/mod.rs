@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! In-memory representation of query results and the structures that carry rows from the engine to the consumer.
-//!
-//! Holds the columnar data model and the in-memory index types used by the engine. Together these form the runtime
-//! representation that everything above the storage tier (engine, subscriptions, the wire layer, the SDK) operates on.
-
 pub mod column;
 pub mod index;

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Catalog change handlers: one per object kind, decoding a CDC record describing a catalog
-//! mutation, folding it into the materialised catalog view, and emitting the catalog change event
-//! the rest of the workspace listens for.
-
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	interface::cdc::CdcChange,

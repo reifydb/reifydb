@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Background-task scheduler for ReifyDB-internal jobs: recurring or deferred work dispatched on the runtime's
-//! pools, with handles so an admin can list, cancel or inspect what is running. Not a user-facing job system -
-//! user-supplied procedures on a schedule belong in routines and flow.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

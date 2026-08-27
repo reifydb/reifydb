@@ -20,16 +20,13 @@ pub struct Worker {
 	runner: Arc<Runner>,
 	metrics: Arc<Metrics>,
 	rng: StdRng,
-	/// Latency is recorded here rather than in Metrics, so workers never contend on its mutex.
 	local_histogram: Histogram<u64>,
 }
 
 impl Worker {
 	pub fn new(id: usize, client: Client, runner: Arc<Runner>, metrics: Arc<Metrics>, seed: u64) -> Self {
-		// Unique per worker but derived from the run seed, so a run stays reproducible.
 		let rng = StdRng::seed_from_u64(seed.wrapping_add(id as u64));
 
-		// Must match the global histogram's bounds for merge_histogram to accept it.
 		let local_histogram = Histogram::new_with_bounds(1, 60_000_000, 3).expect("Failed to create histogram");
 
 		Self {

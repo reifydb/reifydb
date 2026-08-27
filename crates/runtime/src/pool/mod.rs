@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Execution domains split by workload shape so one kind of work cannot starve another: long-lived actors on the
-//! actor pool (`coordination` for tiny high-frequency handlers, `flow` for heavy flow execution), short-lived work
-//! on the task pool, data-parallel work on the compute pool, async I/O on the embedded tokio runtime.
-
 #[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
 pub(crate) mod actor_pool;
 

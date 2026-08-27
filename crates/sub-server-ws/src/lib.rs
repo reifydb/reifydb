@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! WebSocket server. One bidirectional socket multiplexes multiple in-flight commands and live subscriptions, so a
-//! long-lived session pays no per-call connection overhead. Outbound subscription updates carry the subscription id
-//! so the client can demultiplex.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

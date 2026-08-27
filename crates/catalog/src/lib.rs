@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Concrete implementation of the catalog object hierarchy declared by `core::interface::catalog`.
-//! Reads ride a regular transaction; writes go through the admin transaction so DDL and identity
-//! mutations stay isolated from concurrent OLTP traffic and emit their own change records.
-//!
-//! Invariant: persisted catalog ids are stable across reboots, while ephemeral per-boot ids exist
-//! only for in-memory resolution and must never round-trip through storage - mixing the two leaves
-//! dangling references after a restart.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

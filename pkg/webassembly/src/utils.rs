@@ -10,8 +10,6 @@ use web_sys::console;
 
 use crate::error::JsError;
 
-/// Shares `convert_frames` with the server so value formatting is identical (Duration renders as `0s`,
-/// not its Debug form).
 pub fn frames_to_js(frames: &[Frame]) -> Result<JsValue, JsValue> {
 	let response_frames = convert_frames(frames);
 

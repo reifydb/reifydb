@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Storage-facing catalog persistence: one sibling module per object kind, owning its `EncodedKey`
-//! layout and its (de)serialisation. `catalog/` goes through this layer instead of a backend
-//! directly, so a new backend re-implements this surface rather than the entire catalog.
-
 pub(crate) mod authentication;
 pub(crate) mod binding;
 pub mod column;

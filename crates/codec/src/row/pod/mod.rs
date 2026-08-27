@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The pod storage family: an entry read and written whole, carrying no header at all, so the body
-//! is the whole row and offset zero is payload rather than a fingerprint or a stamp.
-
 use std::ops::Deref;
 
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
@@ -72,8 +69,6 @@ impl From<EncodedPodRow> for EncodedBytes {
 	}
 }
 
-/// The write side of the pod family: a buffer with no header at all, so offset zero is already
-/// payload and no stamp or fingerprint may be written into it.
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedPodRowBuilder(EncodedRowBuilder);

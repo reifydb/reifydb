@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Virtual-table runtime backing the system tables declared in `system/`. No persisted bytes back a
-//! system table; a handler materialises its rows from in-memory catalog state on each read.
-
 use std::sync::Arc;
 
 use reifydb_core::{

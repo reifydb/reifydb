@@ -12,7 +12,6 @@ pub(crate) fn fire(callback: &Option<Arc<dyn Fn() + Send + Sync>>) {
 	}
 }
 
-/// Exponential backoff in milliseconds for a 1-based `attempt`, capped at 30s.
 pub(crate) fn backoff_millis(base_ms: u64, attempt: u32) -> u64 {
 	let factor = 1u64.checked_shl(attempt.saturating_sub(1).min(20)).unwrap_or(u64::MAX);
 	base_ms.saturating_mul(factor).min(30_000)

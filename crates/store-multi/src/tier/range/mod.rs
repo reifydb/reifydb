@@ -1,19 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Range tier of the multi-version store: the shared partial-coverage cache, instantiated over multi's
-//! keys and rows.
-//!
-//! A dimension is one entry kind, so every claim is scoped to the storage it was proven for. A partition
-//! is the run of row keys sharing one `(kind, bucket)` prefix, where the bucket is the leading bytes of
-//! the encoded row number; a key that names no such prefix is declined rather than cached, which is what
-//! keeps the series band, whose keys sit below the row band under the same entry kind, out of a partition
-//! whose span could never contain it.
-//!
-//! The version scope filter lives here rather than in the tier: the tier stores whatever row the domain
-//! names and knows nothing about which versions a reader may see, so a served chunk is filtered before it
-//! reaches the store and an emptied chunk that has not exhausted its range reads as a gap.
-
 use std::{
 	borrow::Cow,
 	ops::Bound,
@@ -61,15 +48,9 @@ const STORAGE_ID_BYTES: usize = 9;
 const BAND_BYTES: usize = KIND_BYTES + STORAGE_ID_BYTES;
 const BUCKET_BYTES: usize = (u64::BITS - ROW_BUCKET_SHIFT) as usize / 8;
 
-/// The multi store's range domain: a dimension is one entry kind and a partition is one bucket of the
-/// row band that kind owns.
 #[derive(Clone, Copy, Debug)]
 pub struct MultiDomain;
 
-/// One bucket of row keys: the unit of row storage, sharding, budgeting and eviction.
-///
-/// Coverage is not partitioned. Two claims over adjacent buckets coalesce into one interval, which is why
-/// eviction retracts a bucket's whole span rather than a named interval.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PartitionId {
 	pub kind: EntryKind,
@@ -79,8 +60,6 @@ pub struct PartitionId {
 impl PartitionId {
 	pub const PREFIX_LEN: usize = BAND_BYTES + BUCKET_BYTES;
 
-	/// Reads the bucket prefix straight off the encoded key, since decoding it would fail on the short
-	/// key a partition mapping is handed and read every key back as uncacheable.
 	pub fn of(dimension: EntryKind, key: &EncodedKey) -> Option<Self> {
 		let bytes = key.as_slice();
 		if bytes.len() < Self::PREFIX_LEN {
@@ -112,14 +91,12 @@ impl PartitionId {
 		}
 	}
 
-	/// The encoded `kind || storage || bucket` prefix, which must round-trip [`PartitionId::of`].
 	pub fn prefix(&self) -> EncodedKey {
 		let mut bytes = RowKey::storage_start(self.storage()).as_slice().to_vec();
 		bytes.extend_from_slice(&self.bucket.to_be_bytes()[8 - BUCKET_BYTES..]);
 		EncodedKey::new(bytes)
 	}
 
-	/// The half-open span this partition owns, so a whole partition retracts in one shrink.
 	pub fn span(&self) -> (EncodedKey, ExclusiveUpperEnd) {
 		let start = self.prefix();
 		let end = match prefix_successor(start.as_slice()) {
@@ -130,7 +107,6 @@ impl PartitionId {
 	}
 }
 
-/// The inclusive band of row keys one entry kind owns, and the only span a head may prove empty.
 pub fn row_band(kind: EntryKind) -> Option<(EncodedKey, EncodedKey)> {
 	match kind {
 		EntryKind::Source(storage) => Some((RowKey::storage_start(storage), RowKey::storage_end(storage))),
@@ -138,7 +114,6 @@ pub fn row_band(kind: EntryKind) -> Option<(EncodedKey, EncodedKey)> {
 	}
 }
 
-/// One cached version of a key, which must carry the version or a scoped reader filters on nothing.
 #[derive(Clone, Debug)]
 pub struct MultiRow {
 	pub version: CommitVersion,
@@ -207,8 +182,6 @@ impl RangeDomain for MultiDomain {
 	}
 }
 
-/// Everything one shard's range tier reports, joined here because the three sources are indexed by shard
-/// and only line up while they are the same length.
 #[derive(Clone, Copy, Debug)]
 pub struct MultiRangeShardMetrics {
 	pub shard: usize,
@@ -221,8 +194,6 @@ pub struct MultiRangeShardMetrics {
 	pub serve: MultiServeMetrics,
 }
 
-/// What one shard's range serves carried, counted here because the shared tier serves per segment while
-/// the store reads per chunk and only the chunk is comparable to the page tier's numbers.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct MultiServeMetrics {
 	pub served: u64,

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Schema-agnostic windowing state-machine engines. An engine owns accumulator state, late
-//! rejection, eviction and diff routing; the caller (the "face") owns extraction and output
-//! construction, handing over pre-bucketed events and translating [`WindowResult`]s into diffs.
-
 pub mod config;
 pub mod rolling;
 pub mod rolling_incremental;
@@ -40,7 +36,6 @@ use crate::{
 	window::span::{Slot, WindowSpan},
 };
 
-/// One contribution routed to a window accumulator.
 pub enum AccumulatorEvent<C> {
 	Add(C),
 	Remove(C),
@@ -52,7 +47,6 @@ fn note_when_expiry_capped(expired: usize, expire_batch: usize) {
 	}
 }
 
-/// How a finalized window value should be emitted downstream.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EmitKind {
 	Insert,
@@ -60,19 +54,15 @@ pub enum EmitKind {
 	Remove,
 }
 
-/// A finalized window the engine produced; the face turns it into a diff.
 pub struct WindowResult<G, Coord, Output> {
 	pub row_number: RowNumber,
 	pub group: G,
 	pub span: WindowSpan<Coord>,
 	pub value: Output,
-	/// The finalized value before this batch's events, for faces that emit a real pre on
-	/// Update/Remove. `None` for a brand-new window.
 	pub prior: Option<Output>,
 	pub kind: EmitKind,
 }
 
-/// The highest window start seen for a group, used to drop late events for already-closed windows.
 #[operator_state]
 #[derive(Debug, Clone)]
 pub struct GroupMeta<K> {
@@ -93,9 +83,6 @@ impl<K> HeapSize for GroupMeta<K> {
 	}
 }
 
-/// The group's high-water anchor as a comparable order key, so the meta sweep is uniform across
-/// engines. Callers sweep at the seal horizon, so a group below it has seen nothing since its own
-/// windows sealed and the late-event rejection this meta drives has nothing left to reject.
 pub(crate) trait MetaHighWater: OperatorState {
 	fn high_water_order(&self) -> Option<u64>;
 }
@@ -106,8 +93,6 @@ impl<C: Slot> MetaHighWater for GroupMeta<C> {
 	}
 }
 
-/// `initial` is the persisted value snapshotted at load, served archived without materializing;
-/// `bumped` is the batch-local monotonic advance. Only groups with a bump persist.
 pub(crate) struct BatchMeta<C> {
 	pub(crate) initial: Option<C>,
 	pub(crate) bumped: Option<C>,
@@ -167,17 +152,10 @@ where
 	Ok(())
 }
 
-/// The internal-key range covering every per-group meta. It lives in the root group because the meta
-/// is keyed by partition while a window group is (partition, window), so it fits inside neither group's range.
 pub(crate) fn meta_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::ROOT, Keyspace::WINDOW_META)
 }
 
-/// Reclaim every group meta whose high water is strictly below `threshold`.
-///
-/// `low_water` is a lower bound on the current minimum high water, so a bound already at or above
-/// the threshold skips the scan entirely and keeps the steady-state sweep O(1). Staleness is a
-/// value, not a key prefix, so the scan itself must cover the whole meta keyspace.
 #[instrument(name = "flow::window::sweep_stale_meta", level = "debug", skip_all)]
 pub(crate) fn sweep_stale_meta<M>(
 	store: &mut dyn StateStore,
@@ -213,8 +191,6 @@ where
 	Ok(count)
 }
 
-/// State-cache key for a group's [`GroupMeta`], tagged into a keyspace distinct from the
-/// per-window accumulators.
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct MetaKey(pub EncodedKey);
 
@@ -376,23 +352,14 @@ where
 	MetaKey(group.into_encoded_key())
 }
 
-/// Which coordinate a window's expiry-index entry is ordered by, and so which coordinate its seal
-/// horizon is measured from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpiryAnchor {
-	/// Never indexed, never swept: count-based and plain aggregation windows have no time
-	/// coordinate to expire against.
 	Unindexed,
-	/// Fixed grid, so a late event can neither extend the horizon nor resurrect a swept window.
 	WindowStart,
-	/// A session, whose horizon rides the newest event because that is what keeps it open.
 	LastEvent,
 }
 
 impl ExpiryAnchor {
-	/// `last_event` is `None` only when no event time is known, never zero-as-absent: an event at
-	/// the epoch is a legitimate coordinate, and reading its zero as "no information" lets a
-	/// long-sealed window keep admitting rows.
 	pub fn of(&self, window_start: u64, last_event: Option<u64>) -> Option<u64> {
 		match self {
 			ExpiryAnchor::Unindexed => None,

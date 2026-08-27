@@ -6,11 +6,6 @@
 // Original copyright:
 //   Copyright (c) 2024 Erik Grinaker
 
-//! Raft distributed consensus protocol for ReifyDB.
-//!
-//! The core state machine (node, log, message, state) is pure and zero-I/O, driven by `step(message)` and
-//! `tick()`; transport and driver connect it to the network and storage layers.
-
 pub mod config;
 pub mod driver;
 pub mod generated;

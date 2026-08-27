@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Flow execution substrate in two tiers: the lean default carries only what a guest cdylib can name without
-//! linking the host, and `runtime` adds `FlowTransaction` plus the `HostOperator` contract. Lean is the default so a
-//! forgotten feature fails the host build loudly rather than linking the catalog, transactions and store into a guest.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

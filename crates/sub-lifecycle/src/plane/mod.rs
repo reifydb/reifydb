@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The retention plane: retention rules and floors above the lane that executes them.
-//!
-//! The lane answers when a class gets a slice; the plane answers up to which version it may reclaim ([`ledger`]),
-//! how far back the epoch must stay answerable ([`horizon`]), and how far behind each class is ([`metrics`]).
-//! One ledger keeps every floor inspectable instead of each executor computing its own cutoff privately.
-
 pub mod horizon;
 pub mod ledger;
 pub mod measured;
@@ -29,7 +23,6 @@ use tracing::warn;
 
 use crate::plane::ledger::{EngineFloors, FloorScope, FloorSource, HorizonLedger};
 
-/// One per process: the floor source and accounting surface shared by every executor.
 #[derive(Clone)]
 pub struct RetentionPlane {
 	inner: Arc<Inner>,
@@ -143,7 +136,6 @@ impl RetentionPlane {
 		self.inner.metrics.report()
 	}
 
-	/// The flush tier's cutoff, resolved from the [`RetentionClass::PersistentFlush`] floor terms.
 	pub fn eviction_watermark(&self, clock: Clock) -> Arc<dyn EvictionWatermark> {
 		Arc::new(PlaneEvictionWatermark {
 			plane: self.clone(),

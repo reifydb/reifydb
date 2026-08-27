@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Row-shape descriptor: the schema-of-bytes that lets storage, replication and CDC address an
-//! `EncodedBytes`'s fields without consulting the catalog. `SHAPE_HEADER_SIZE` and the packed-mode bit
-//! layout are part of the wire format; resizing either breaks every row written under the old one.
-
 pub mod fingerprint;
 pub mod values;
 

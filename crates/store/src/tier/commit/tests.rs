@@ -169,7 +169,7 @@ fn a_split_moves_the_charge_exactly() {
 		parked.open();
 	}));
 
-	tier.flush_slice((one * 2));
+	tier.flush_slice(one * 2);
 	gate.wait();
 
 	let (live, in_flight, used) = *observed.lock();

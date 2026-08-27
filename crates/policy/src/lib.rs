@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Default-deny policy enforcement between engine and catalog: reads compile to filter predicates injected into the
-//! logical plan, writes are checked at the commit boundary. Policies live in the catalog as RQL fragments and are
-//! parsed, planned and cached here so per-query evaluation skips that cost.
-//!
-//! Invariant: with no matching policy, reads default to `Filter(false)` and writes to `PolicyDenied`. Only the root
-//! identity bypasses policy; a bypass anywhere else is a security regression.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

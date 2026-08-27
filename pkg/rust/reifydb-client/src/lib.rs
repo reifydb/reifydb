@@ -119,10 +119,6 @@ pub fn connection_lost_error() -> Error {
 	ClientError::ConnectionLost.into()
 }
 
-/// Automatic-reconnection settings shared by the WebSocket and gRPC clients.
-///
-/// Backoff is `reconnect_delay_ms * 2^(attempt-1)`, capped at 30s; a successful reconnect
-/// restores the session token and re-establishes active subscriptions against the same handles.
 #[cfg(any(feature = "ws", feature = "grpc"))]
 #[derive(Clone)]
 pub struct ReconnectOptions {
@@ -147,7 +143,6 @@ impl Default for ReconnectOptions {
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
-/// Wire format for a single typed value: `{"type": "Int2", "value": "1234"}`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WireValue {
 	#[serde(rename = "type")]
@@ -156,7 +151,6 @@ pub struct WireValue {
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
-/// Untagged: positional serializes as a JSON array, named as a JSON object.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum WireParams {
@@ -509,8 +503,6 @@ pub enum ChangeKind {
 	Remove,
 }
 
-/// The server stages one uniform `_op` per frame, so a change carries exactly one kind;
-/// the `_op` column is already stripped from `frame`.
 #[derive(Debug, Clone)]
 pub struct FrameChange {
 	pub kind: ChangeKind,

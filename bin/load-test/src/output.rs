@@ -50,7 +50,6 @@ pub fn print_scenarios(scenarios: &[Scenario]) {
 	println!();
 }
 
-/// Laid out to match redis-benchmark output.
 pub fn print_summary(summary: &MetricsSummary, description: &str) {
 	println!();
 	println!("====== {} ======", description);
@@ -89,7 +88,6 @@ pub fn print_summary(summary: &MetricsSummary, description: &str) {
 	}
 }
 
-/// Groups digits with commas.
 fn format_number(n: u64) -> String {
 	let s = n.to_string();
 	let mut result = String::new();
@@ -109,7 +107,6 @@ fn format_latency(us: u64) -> String {
 	format_latency_f64(us as f64)
 }
 
-/// Picks the unit that keeps the value readable: microseconds, milliseconds, then seconds.
 fn format_latency_f64(us: f64) -> String {
 	if us < 1000.0 {
 		format!("{:.0} µs", us)

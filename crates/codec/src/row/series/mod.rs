@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The series storage family: the source header, byte for byte as the table family. The key repeats
-//! in field 0 and again in `#time`; deduping it against `SeriesRowKey` is deferred, not rejected.
-
 use std::ops::Deref;
 
 use reifydb_value::value::datetime::DateTime;
@@ -82,8 +79,6 @@ impl From<EncodedBytes> for EncodedSeriesRow {
 	}
 }
 
-/// The write side of the series family: a buffer whose source header is already reserved, which
-/// freezes into an [`EncodedSeriesRow`] and never into a row of another family.
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedSeriesRowBuilder(EncodedRowBuilder);

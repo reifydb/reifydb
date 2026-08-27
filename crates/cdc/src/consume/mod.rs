@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Consumer side of the CDC stream. Each subscriber holds its own checkpoint, so a slow consumer never blocks
-//! a fast one, and the checkpoint is persisted so a consumer that restarts resumes instead of re-reading. The
-//! watermark it advances is what tells the producer side which records are safe to compact.
-
 pub mod actor;
 pub mod backlog;
 pub mod checkpoint;

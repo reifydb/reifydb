@@ -70,17 +70,10 @@ impl RangeBatch {
 	}
 }
 
-/// Why a tier stopped a range scan, which is a different question from whether it stopped.
-///
-/// Only [`RangeStop::Scanned`] is a statement about the range itself: the tier read it and found nothing
-/// beyond what it returned. The other two end the scan without having read the span at all, so a coverage
-/// claim taken from such a chunk would answer for keys nothing ever examined.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RangeStop {
-	/// The tier read to the end of the range.
 	Scanned,
 
-	/// The tier holds no table for this entry kind, so it read nothing.
 	AbsentTable,
 }
 

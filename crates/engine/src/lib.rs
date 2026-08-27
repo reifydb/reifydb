@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Every public entry point that mutates catalog or storage state runs inside a transaction obtained from
-//! `reifydb-transaction`. Reading or writing a backend directly defeats MVCC, policy enforcement and CDC
-//! capture, all of which assume the engine is the single mediator of those concerns.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The table storage family: the source header of fingerprint, wall stamps, `#time` and flags. A
-//! table row is addressed through its shape, so the header ends where the definedness bitvec begins.
-
 use std::ops::Deref;
 
 use reifydb_value::value::datetime::DateTime;
@@ -82,8 +79,6 @@ impl From<EncodedBytes> for EncodedTableRow {
 	}
 }
 
-/// The write side of the table family: a buffer whose source header is already reserved, which
-/// freezes into an [`EncodedTableRow`] and never into a row of another family.
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedTableRowBuilder(EncodedRowBuilder);

@@ -271,7 +271,6 @@ fn main() {
 			}
 		};
 
-		// Fire any timers that expired while waiting for input (e.g. CDC poll timers).
 		drain_expired_timers();
 
 		let cmd = msg.get("cmd").and_then(|v| v.as_str()).unwrap_or("");

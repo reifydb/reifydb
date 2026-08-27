@@ -52,17 +52,12 @@ type WsRead = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 
 type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<ClientResponse>>>>;
 
-/// Where a single subscription's changes are delivered.
 #[derive(Clone)]
 enum SubSink {
-	/// A dedicated handle created via `ReifyClient::subscribe`.
 	Dedicated(mpsc::Sender<ChangePayload>),
-	/// The shared `WsClient::recv` channel used by the inherent `WsClient::subscribe`.
 	Shared,
 }
 
-/// `rql` is the built `CREATE SUBSCRIPTION`, replayed verbatim after a reconnect; `server_id`
-/// is the server's current per-connection id, used to route pushes and to target unsubscribe.
 struct SubEntry {
 	rql: String,
 	sink: SubSink,
@@ -75,7 +70,6 @@ struct BatchEntry {
 	server_batch_id: Option<String>,
 }
 
-/// Cloning shares the maps with the background connection task; only `format` is copied.
 #[derive(Clone)]
 struct Shared {
 	pending: PendingRequests,
@@ -119,7 +113,6 @@ pub struct WsClient {
 	request_tx: mpsc::Sender<(Request, oneshot::Sender<ClientResponse>)>,
 	shutdown_tx: mpsc::Sender<()>,
 	is_authenticated: bool,
-	/// Carries only pushes routed to the shared sink, never those with a dedicated handle.
 	change_rx: mpsc::UnboundedReceiver<ChangePayload>,
 	shared: Shared,
 	token: Arc<Mutex<Option<String>>>,
@@ -434,8 +427,6 @@ impl WsClient {
 		}
 	}
 
-	/// Stamps the payload with the stable client id; an unknown server id falls through to the
-	/// shared sink rather than being dropped.
 	async fn route_change(
 		shared: &Shared,
 		server_id: &str,
@@ -462,7 +453,6 @@ impl WsClient {
 		}
 	}
 
-	/// Stamps the event with the stable client batch id; an unknown server id is dropped.
 	async fn route_batch(shared: &Shared, server_batch_id: &str, mut event: BatchPushEvent) {
 		let client_id = shared.server_to_client_batch.lock().await.get(server_batch_id).copied();
 		if let Some(cid) = client_id {
@@ -474,13 +464,10 @@ impl WsClient {
 		}
 	}
 
-	/// Dropping the oneshots is what makes awaiting callers see [`ClientError::ConnectionLost`].
 	async fn reject_pending(shared: &Shared) {
 		shared.pending.lock().await.clear();
 	}
 
-	/// On success re-authenticates and replays active subscriptions against the same handles;
-	/// requests arriving while waiting are rejected so callers never block.
 	#[allow(clippy::too_many_arguments)]
 	async fn reconnect(
 		url: &str,
@@ -511,8 +498,6 @@ impl WsClient {
 		None
 	}
 
-	/// Run under a single deadline by [`Self::reconnect`]: a peer that completes the upgrade and
-	/// then answers nothing leaves the re-auth response outstanding forever.
 	async fn open_socket(
 		url: &str,
 		shared: &Shared,
@@ -533,8 +518,6 @@ impl WsClient {
 		Some((write, read))
 	}
 
-	/// Rejects requests that arrive during the wait; `false` means shutdown was requested or the
-	/// client handle was dropped.
 	async fn wait_backoff(
 		backoff_ms: u64,
 		request_rx: &mut mpsc::Receiver<(Request, oneshot::Sender<ClientResponse>)>,
@@ -556,8 +539,6 @@ impl WsClient {
 		}
 	}
 
-	/// Keeps dispatching inbound messages while the auth response is outstanding, so pushes
-	/// arriving mid-handshake are not lost.
 	async fn reauth(
 		write: &mut WsWrite,
 		read: &mut WsRead,
@@ -606,8 +587,6 @@ impl WsClient {
 		}
 	}
 
-	/// Keeps each stable client id bound to its existing handle; new server ids are wired by the
-	/// normal ack handling once the loop resumes.
 	async fn resubscribe_all(write: &mut WsWrite, shared: &Shared) {
 		shared.server_to_client_sub.lock().await.clear();
 		shared.server_to_client_batch.lock().await.clear();
@@ -763,7 +742,6 @@ impl WsClient {
 		}
 	}
 
-	/// Execute an admin (DDL + DML + Query) statement.
 	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
 		Ok(self.admin_with_meta(rql, params).await?.frames)
 	}
@@ -788,7 +766,6 @@ impl WsClient {
 		}
 	}
 
-	/// Execute a command (write) statement.
 	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
 		Ok(self.command_with_meta(rql, params).await?.frames)
 	}
@@ -813,7 +790,6 @@ impl WsClient {
 		}
 	}
 
-	/// Execute a query (read) statement.
 	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
 		Ok(self.query_with_meta(rql, params).await?.frames)
 	}
@@ -838,7 +814,6 @@ impl WsClient {
 		}
 	}
 
-	/// Invoke a WS binding by its globally-unique name.
 	pub async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
 		Ok(self.call_with_meta(name, params).await?.frames)
 	}
@@ -863,10 +838,6 @@ impl WsClient {
 		}
 	}
 
-	/// Claim items from a queue, optionally long-polling until work arrives or the budget expires.
-	///
-	/// `wait_for` and `lease_ttl` are RQL duration literals such as `"25s"`. The reply is
-	/// correlated by request id, so the socket keeps serving other requests while this one parks.
 	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, Error> {
 		let id = generate_request_id();
 		let request = Request {
@@ -887,7 +858,6 @@ impl WsClient {
 		}
 	}
 
-	/// The entry is retained after the ack so the subscription can be replayed across reconnects.
 	async fn subscribe_inner(&self, built_rql: String, sink: SubSink) -> Result<u64, Error> {
 		let client_id = self.sub_id_counter.fetch_add(1, Ordering::Relaxed);
 		let req_id = generate_request_id();
@@ -936,14 +906,12 @@ impl WsClient {
 		}
 	}
 
-	/// Changes arrive on [`WsClient::recv`]; the returned id is stable across reconnects.
 	pub async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<String, Error> {
 		let built = build_subscription_rql(rql, &config);
 		let client_id = self.subscribe_inner(built, SubSink::Shared).await?;
 		Ok(client_id.to_string())
 	}
 
-	/// Unsubscribe from a subscription by its stable client id.
 	pub async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error> {
 		let server_id = self.take_sub_server_id(subscription_id).await;
 		let target = server_id.unwrap_or_else(|| subscription_id.to_string());
@@ -964,7 +932,6 @@ impl WsClient {
 		}
 	}
 
-	/// Drops the routing-table entry too, not just the active registry.
 	async fn take_sub_server_id(&self, subscription_id: &str) -> Option<String> {
 		let client_id = subscription_id.parse::<u64>().ok()?;
 		let entry = self.shared.active_subs.lock().await.remove(&client_id)?;
@@ -974,7 +941,6 @@ impl WsClient {
 		entry.server_id
 	}
 
-	/// The server coalesces per-tick deltas across all members into one envelope.
 	pub async fn batch_subscribe(&self, items: &[BatchItem<'_>]) -> Result<WsBatchSubscription, Error> {
 		let client_id = self.batch_id_counter.fetch_add(1, Ordering::Relaxed);
 		let req_id = generate_request_id();
@@ -1028,7 +994,6 @@ impl WsClient {
 		}
 	}
 
-	/// Unsubscribe a batch; cascade-removes all members server-side.
 	pub async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
 		let server_batch_id = self.take_batch_server_id(batch_id).await;
 		let target = server_batch_id.unwrap_or_else(|| batch_id.to_string());
@@ -1082,7 +1047,6 @@ impl WsClient {
 		}
 	}
 
-	/// Only for control responses (auth, logout, subscribe, unsubscribe), which are never binary.
 	async fn send_request_json(&self, request: Request) -> Result<Response, Error> {
 		match self.send_request(request).await? {
 			ClientResponse::Json(resp) => Ok(*resp),
@@ -1091,14 +1055,11 @@ impl WsClient {
 		}
 	}
 
-	/// Close the WebSocket connection gracefully, disabling reconnection.
 	pub async fn close(self) -> Result<(), Error> {
 		let _ = self.shutdown_tx.send(()).await;
 		Ok(())
 	}
 
-	/// Same as [`WsClient::close`] but borrows instead of consuming, for parity with the TS
-	/// client's `disconnect`.
 	pub async fn disconnect(&self) {
 		let _ = self.shutdown_tx.send(()).await;
 	}
@@ -1143,8 +1104,6 @@ fn stamp_batch_id(event: &mut BatchPushEvent, client_id: u64) {
 	}
 }
 
-/// Layout: `[u8 0x02][u32 batch_id_len][batch_id][u32 num_entries]` then
-/// N * `[u32 sub_id_len][sub_id][u32 rbcf_len][rbcf_bytes]`, lengths little-endian.
 fn parse_rbcf_batch_envelope(data: &[u8]) -> Option<BatchChangePayload> {
 	if data.len() < 5 || data[0] != 0x02 {
 		return None;

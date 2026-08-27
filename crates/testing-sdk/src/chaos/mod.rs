@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Drives seeded Insert/Update/Remove diffs through an FFI operator and an
-//! author-supplied naive oracle, then asserts the two materialized tables
-//! agree. Entrypoint: [`ChaosHarness::builder`].
-
 use std::{
 	error::Error,
 	fmt::{self, Display, Formatter},
@@ -43,17 +39,14 @@ use crate::harness::ExternCOperatorHarness;
 
 #[derive(Debug)]
 pub enum ChaosError {
-	/// Update or Remove without Insert: the driver can never populate live rows.
 	UnreachableSupportedOps,
 
 	MissingField(&'static str),
 
-	/// `output_key` names a column absent from `output_shape`.
 	OutputKeyColumnMissing(String),
 
 	InputColumnsMissingSampler(Vec<String>),
 
-	/// The inner FFI operator harness rejected the config or failed to initialize.
 	HarnessBuild(String),
 }
 
@@ -82,7 +75,6 @@ pub type ChaosResult<T> = Result<T, ChaosError>;
 
 const DEFAULT_STEPS: u32 = 200;
 
-/// Namespace only; the active object is the [`RunnableChaos`] that `build()` returns.
 pub struct ChaosHarness<T: ExternCOperator> {
 	_phantom: PhantomData<T>,
 }
@@ -93,8 +85,6 @@ impl<T: ExternCOperator> ChaosHarness<T> {
 	}
 }
 
-/// Required: input/output shape, key strategy, output key, one sampler per input
-/// column, and an oracle. Everything else has a default.
 pub struct ChaosHarnessBuilder<T: ExternCOperator> {
 	seed: u64,
 	scenario: Scenario,
@@ -166,8 +156,6 @@ impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	/// Config handed to `T::new`; mirrors
-	/// [`crate::harness::ExternCOperatorHarnessBuilder::with_config`].
 	pub fn with_config<I, K>(mut self, config: I) -> Self
 	where
 		I: IntoIterator<Item = (K, Value)>,
@@ -206,14 +194,11 @@ impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	/// Samplers come from [`samplers`], or hand-roll an
-	/// `Arc<dyn Fn(&mut StdRng) -> Value + Send + Sync>`.
 	pub fn with_column(mut self, name: impl Into<String>, sampler: ColumnSampler) -> Self {
 		self.registry.register(name, sampler);
 		self
 	}
 
-	/// Runs after per-column sampling, so it can derive or override sampled values.
 	pub fn with_row_constraints(mut self, f: impl Fn(&mut RowContent) + Send + Sync + 'static) -> Self {
 		self.registry.set_constraint(Arc::new(f));
 		self
@@ -224,8 +209,6 @@ impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	/// Required. The oracle sees one `ChaosBatch` per `Change` the operator's
-	/// `apply()` saw; windowed oracles snapshot at the end of each batch.
 	pub fn with_oracle<F>(mut self, f: F) -> Self
 	where
 		F: Fn(&ChaosContext, &[ChaosBatch]) -> MaterializedView + Send + Sync + 'static,
@@ -234,8 +217,6 @@ impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	/// Validation rules live in [`ChaosSchema::validate`] and
-	/// [`ColumnRegistry::validate`]; this only maps their errors onto `ChaosError`.
 	pub fn build(self) -> ChaosResult<RunnableChaos<T>> {
 		validate_supported_ops(&self.supported_ops)?;
 		let input_shape = self.input_shape.ok_or(ChaosError::MissingField("input_shape"))?;
@@ -288,8 +269,6 @@ fn validate_supported_ops(ops: &SupportedOps) -> ChaosResult<()> {
 	}
 }
 
-/// Lets authors write `.with_column("k", 1u64..1000)` instead of
-/// `.with_column("k", samplers::u64_range(1..1000))`.
 pub trait IntoColumnSampler {
 	fn into_sampler(self) -> ColumnSampler;
 }

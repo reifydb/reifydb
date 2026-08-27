@@ -174,8 +174,6 @@ impl ActorSystem {
 		}
 	}
 
-	/// A system for test fixtures: each keeps its own ready queue and logical clock so simulations
-	/// stay independent. The retained clone only ensures the system outlives the spawners it hands out.
 	pub fn testing(clock: Clock) -> Self {
 		let system = Self::new(Pools::default(), clock);
 		mem::forget(system.clone());

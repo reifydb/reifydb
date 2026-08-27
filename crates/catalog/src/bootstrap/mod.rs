@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Catalog bootstrap: installs the system namespace, the seed identities and the built-in objects
-//! the engine needs before it can serve traffic. Idempotent - on a recovered database it confirms
-//! the same objects exist and matches versions rather than rewriting them.
-
 use std::collections::{HashMap, HashSet};
 
 use reifydb_core::{

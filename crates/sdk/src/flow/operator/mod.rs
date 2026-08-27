@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Operator authoring surface: the builder, the column and row views, the diff an operator emits, and the context
-//! through which it reaches engine services. Everything an extension needs to write an operator lives here.
-
 pub mod change;
 pub mod column;
 pub mod context;

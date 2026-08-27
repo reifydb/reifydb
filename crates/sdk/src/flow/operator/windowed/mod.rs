@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Windowed-aggregation authoring surface, one trait per window shape over a `WindowAccumulator`. Each trait's
-//! driver owns diff routing, boundary math, late-event drop and state persistence in one place, so an operator
-//! only describes its accumulator and how to build an output row.
-
 pub mod guest_as_host;
 pub mod rolling;
 pub mod rolling_incremental;

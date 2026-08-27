@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Single-version transactional path: no snapshot isolation, no conflict detector, no version oracle.
-//! Trades last-writer-wins semantics between concurrent writers for lower overhead, so it fits only
-//! workloads that do not need history.
-
 use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
@@ -72,7 +68,6 @@ impl SingleTransaction {
 		*self.inner.raft.write() = None;
 	}
 
-	/// Bypasses the per-key locking; for bulk reload scans only.
 	pub fn read_store(&self) -> SingleStore {
 		self.inner.store.read().clone()
 	}

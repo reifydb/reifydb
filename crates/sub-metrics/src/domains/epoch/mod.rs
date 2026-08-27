@@ -5,10 +5,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use reifydb_value::count::Count;
 
-/// What only the durable epoch log can see about itself.
-///
-/// Fed from the event bus: the log belongs to the lifecycle subsystem, and reaching into it from a metrics domain
-/// would couple two subsystems that otherwise share nothing but core.
 #[derive(Default)]
 pub struct EpochGauge {
 	durable_samples: AtomicU64,

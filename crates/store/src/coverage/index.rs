@@ -9,7 +9,6 @@ use crate::coverage::{ExclusiveUpperEnd, interval::CoverageSet};
 
 pub struct CoverageIndex<D> {
 	sets: HashMap<D, CoverageSet>,
-
 	heads: HashMap<D, EncodedKey>,
 }
 

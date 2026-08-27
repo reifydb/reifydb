@@ -486,10 +486,6 @@ impl<'bump> Parser<'bump> {
 		self.advance()
 	}
 
-	/// Consume a token that is either an Identifier or a Keyword, returning it as an Identifier.
-	/// Used in name positions where keyword-colliding names (e.g. enum variant `Pending`,
-	/// relationship `from`) are valid. Prefer over `consume(TokenKind::Identifier)` for any
-	/// name position that is not itself the keyword being matched.
 	pub(crate) fn consume_identifier(&mut self) -> Result<Token<'bump>> {
 		let token = self.advance()?;
 		if matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {

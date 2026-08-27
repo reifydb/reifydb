@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! In-memory materialised view of the catalog, indexed by id and by qualified name. Built from
-//! storage at boot and updated incrementally through change events, so reads never block on the
-//! storage tier and a miss means the object is genuinely absent, not that a fallback is needed.
-
 pub mod authentication;
 pub mod binding;
 pub mod column_snapshot;
@@ -282,14 +278,9 @@ pub struct CatalogCacheInner {
 
 	pub(crate) row_shapes: SkipMap<RowShapeFingerprint, RowShape>,
 	pub(crate) column_snapshots: SkipMap<ColumnSnapshotId, MultiVersionColumnSnapshot>,
-	/// `BTreeSet` so the merge planner can iterate in `bucket_start` order.
 	pub(crate) column_snapshots_for_series: SkipMap<SeriesId, BTreeSet<(u64, ColumnSnapshotId)>>,
-	/// Ordered by commit version so callers can pick the latest by reading the max key.
 	pub(crate) column_snapshots_for_table: SkipMap<TableId, BTreeMap<CommitVersion, ColumnSnapshotId>>,
 
-	/// Serialises the `set_*` mutators: `crossbeam::SkipMap` has no atomic read-modify-write, so two
-	/// concurrent secondary-index updates each erase the other's entry. They run from the post-commit
-	/// interceptor, which the oracle does not serialise. DDL only, never the OLTP path.
 	pub(crate) write_lock: Mutex<()>,
 }
 

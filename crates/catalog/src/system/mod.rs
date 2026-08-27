@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Self-hosted system tables: every catalog object kind ReifyDB stores about itself, declared here
-//! as a virtual table so it can be queried with regular RQL.
-
 use std::sync::Arc;
 
 use reifydb_core::interface::{catalog::vtable::VTable, version::SystemVersion};

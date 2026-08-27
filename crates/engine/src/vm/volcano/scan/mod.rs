@@ -25,9 +25,6 @@ pub mod table;
 pub mod view;
 pub mod vtable;
 
-/// Reading a view while the transaction holds unprocessed changes upstream of it would return the
-/// view's pre-request contents, since view maintenance runs after commit. Fails closed: an unknown
-/// view is resolved from the catalog, not waved through.
 pub(crate) fn guard_view_read(view: &ResolvedView, rx: &mut Transaction<'_>, services: &Services) -> Result<()> {
 	if matches!(rx, Transaction::Test(_)) {
 		unimplemented!("RUN TESTS view reads; see plan-operator.md follow-up");
@@ -56,8 +53,6 @@ pub(crate) fn guard_view_read(view: &ResolvedView, rx: &mut Transaction<'_>, ser
 	.into())
 }
 
-/// The published snapshot only learns of a flow at post-commit, so a view this transaction just
-/// created is missing from it while the catalog already holds the uncommitted CREATE VIEW.
 fn upstream_from_catalog(
 	services: &Services,
 	rx: &mut Transaction<'_>,
@@ -119,8 +114,6 @@ fn resolve_object_names(services: &Services, rx: &mut Transaction<'_>, objects: 
 		.collect()
 }
 
-/// Without the namespace, `alpha::orders` and `beta::orders` both print as `orders` and the
-/// diagnostic cannot be acted on. Degrades to the bare name rather than masking the real error.
 fn qualify(services: &Services, rx: &mut Transaction<'_>, namespace: NamespaceId, name: &str) -> String {
 	match services.catalog.find_namespace(rx, namespace) {
 		Ok(Some(namespace)) => format!("{}::{}", namespace.name(), name),

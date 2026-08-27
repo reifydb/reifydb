@@ -43,8 +43,6 @@ impl ActorSystem {
 		}
 	}
 
-	/// A system for test fixtures. Actors run inline, so the system only has to outlive the spawners it
-	/// hands out; the retained clone is what guarantees that.
 	pub fn testing(clock: Clock) -> Self {
 		let system = Self::new(Pools::default(), clock);
 		mem::forget(system.clone());

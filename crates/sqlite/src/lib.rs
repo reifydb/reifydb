@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Shared SQLite paths, flags, pragma settings and connection plumbing for the storage subsystems.
-//!
-//! Configuration only: no `core::interface::store` trait is implemented here, and nothing knows about deltas,
-//! versions or the encoded-key layout.
-
 #[cfg(not(target_os = "linux"))]
 use std::env;
 use std::{
@@ -35,9 +30,6 @@ pub enum DbPath {
 	Memory(PathBuf),
 }
 
-/// Removes both the base-path file and the sibling directory at `base.with_extension("")`, where the embedded
-/// API factory drops `multi.db` / `single.db` and their `-wal` / `-shm` companions.
-/// `DbPath::File` is left alone; the caller owns those.
 #[derive(Debug)]
 pub struct SqliteTempPathGuard {
 	base_path: Option<PathBuf>,
@@ -54,7 +46,6 @@ impl SqliteTempPathGuard {
 		}
 	}
 
-	/// Makes Drop a no-op, for when the database has been moved elsewhere on purpose.
 	pub fn disarm(&mut self) {
 		self.base_path = None;
 	}

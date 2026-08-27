@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Decoder side of RBCF, reversing `encode/` header by header. Payloads can arrive from untrusted
-//! peers, so every malformed input returns a typed `DecodeError` rather than panicking.
-
 mod any;
 mod fixed;
 mod varlen;

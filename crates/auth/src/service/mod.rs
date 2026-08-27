@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The "authenticate this request" entry point server transports invoke. Per-method specifics live in submodules
-//! so the public surface stays method-agnostic.
-
 mod authenticate;
 mod github;
 mod solana;

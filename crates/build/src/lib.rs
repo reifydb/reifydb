@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Resolves the `reifydb_target`, `reifydb_dst` and `reifydb_single_threaded` cfg flags from each downstream
-//! crate's `build.rs`, keeping target detection in one place. `reifydb_target` names the execution substrate;
-//! `reifydb_dst` is a mode that rides on top of it.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

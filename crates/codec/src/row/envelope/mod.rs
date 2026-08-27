@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! A variable-width envelope carried inside a pod body: one leading flags byte followed only by the
-//! eight-byte fields the writer actually set, in flag-bit order, so a row pays for a stamp or a
-//! fingerprint only when it carries one and presence is the flag rather than a sentinel value.
-
 use reifydb_value::{
 	encoding::LeBytes,
 	error::{Error as ValueError, TypeError},

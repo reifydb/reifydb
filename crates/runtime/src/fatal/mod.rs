@@ -1,18 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Process-wide fatal handling: either the database is healthy or it does not run at all.
-//!
-//! Anything unexpected - a panic on any thread, a violated invariant, an error that has no handler - renders one
-//! ticket-grade report and aborts. The report is the only artifact a maintainer gets, so it carries the error id,
-//! the origin, the thread, the build, and the real stack.
-//!
-//! The stack is why this is a panic hook rather than a `catch_unwind` wrapper: a hook runs *before* unwinding, so
-//! `Backtrace::force_capture` there sees the panicking frames. Capturing in a `catch_unwind` arm sees only the
-//! landing pad, because the frames it should have shown are already gone.
-//!
-//! Arming is configuration and defaults to on. Disarming exists for tests that panic on purpose.
-
 pub mod report;
 
 use std::{

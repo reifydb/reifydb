@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The workspace's two sources of non-determinism, the wall clock and the RNG, behind mockable handles so a
-//! seeded run reproduces the same trace. Reaching into `std` for either instead defeats DST replay.
-
 pub mod clock;
 pub mod rng;
 

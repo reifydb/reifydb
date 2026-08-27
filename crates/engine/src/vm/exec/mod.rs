@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The lowest-level operations a handler in `instruction/` delegates to, kept separate so one primitive can be
-//! reused across many opcodes rather than reimplemented per handler.
-
 pub(crate) mod arithmetic;
 pub(crate) mod broadcast;
 pub(crate) mod call;

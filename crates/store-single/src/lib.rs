@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Single-version storage backend for workloads where snapshot isolation would only add overhead: a
-//! buffered tier over a persistent tier, the same shape as the multi-version backend minus history.
-//! Invariant: a key's value after commit is what the next reader sees - no version cursor, no time travel.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

@@ -95,9 +95,6 @@ async fn async_main() -> Result<()> {
 
 		for operation in setup_operations {
 			if let Err(e) = setup_client.execute(&operation).await {
-				// Tolerating an existing table keeps a rerun after an aborted run working;
-				// every other failure means the workload would measure a dataset that was
-				// never created, so it has to stop the run rather than print and continue.
 				let message = e.to_string();
 				if !is_already_exists(&message) {
 					setup_client.close().await?;
@@ -235,7 +232,6 @@ async fn async_main() -> Result<()> {
 	stop_signal.store(true, Ordering::Relaxed);
 
 	if let Some(handle) = progress_handle {
-		// Give progress reporter time to notice the stop signal
 		time::sleep(Duration::from_milliseconds(100).unwrap().to_std()).await;
 		handle.abort();
 	}

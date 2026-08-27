@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Built-in procedures: imperative routines invoked as named statements, which may mutate catalog or storage state.
-//! Anything that does not fit cleanly into a pure function goes here.
-//!
-//! `default_in_process_procedures` installs the workspace's built-ins; extensions add their own through the same
-//! `RoutinesConfigurator`.
-
 pub mod identity;
 pub mod subscription;
 pub mod testing;

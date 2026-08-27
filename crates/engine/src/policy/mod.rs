@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Read policy is injected into the plan before execution; this module covers the cases injection cannot reach,
-//! where the engine has to actively gate the operation. Anything that mutates state or transitions a session
-//! goes through these enforce calls, and a "trusted" path that skips them runs no policy at all.
-
 use std::sync::Arc;
 
 use reifydb_core::{

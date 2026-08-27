@@ -90,15 +90,11 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 					let state = cursor.save_state();
 					match scan_literal(&mut cursor) {
 						Some(tok) => {
-							// If the number is immediately followed by an alpha char,
-							// it's likely a digit-starting identifier like "10min"
 							if cursor.peek().is_some_and(|c| c.is_ascii_alphabetic()) {
 								let num_state = cursor.save_state();
 								cursor.restore_state(state);
 								scan_digit_starting_identifier(&mut cursor).or_else(
 									|| {
-										// Fallback: accept the number (e.g.,
-										// 3.14px)
 										cursor.restore_state(num_state);
 										Some(tok)
 									},
@@ -114,8 +110,6 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 					}
 				}
 
-				// A leading dot is ambiguous: `.5` is a decimal literal, `a.b` is the access operator,
-				// so only the next character decides which scanner gets first refusal.
 				'.' => {
 					if cursor.peek_ahead(1).is_some_and(|ch| ch.is_ascii_digit()) {
 						scan_literal(&mut cursor).or_else(|| scan_operator(&mut cursor))

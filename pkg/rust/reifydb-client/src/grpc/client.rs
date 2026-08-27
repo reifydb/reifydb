@@ -133,7 +133,6 @@ impl GrpcClient {
 		self.token = Some(token.to_string());
 	}
 
-	/// Stores the session token on success; later requests carry it automatically.
 	pub async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, Error> {
 		let mut credentials = HashMap::new();
 		credentials.insert("identifier".to_string(), identifier.to_string());
@@ -256,7 +255,6 @@ impl GrpcClient {
 		})
 	}
 
-	/// Invoke a gRPC binding by its globally-unique name.
 	pub async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
 		Ok(self.call_with_meta(name, params).await?.frames)
 	}
@@ -280,10 +278,6 @@ impl GrpcClient {
 		})
 	}
 
-	/// Claim items from a queue, optionally long-polling until work arrives or the budget expires.
-	///
-	/// `wait_for` and `lease_ttl` are RQL duration literals such as `"25s"`. An absent or zero
-	/// `wait_for` is a plain non-blocking claim.
 	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, Error> {
 		let mut client = self.inner.clone();
 		let mut req = Request::new(ProtoQueueClaimRequest {
@@ -334,7 +328,6 @@ impl GrpcClient {
 		Ok(())
 	}
 
-	/// The server coalesces per-tick deltas into one envelope keyed by member subscription id.
 	pub async fn batch_subscribe(&self, items: &[BatchItem<'_>]) -> Result<BatchGrpcSubscription, Error> {
 		let queries: Vec<String> = items.iter().map(|i| build_subscription_rql(i.rql, &i.config)).collect();
 		let client_batch_id = self.sub_id_counter.fetch_add(1, Ordering::Relaxed).to_string();
@@ -441,7 +434,6 @@ pub struct GrpcSubscription {
 	attempt: u32,
 }
 
-/// Pairs the client's query index with the server-assigned subscription id.
 #[derive(Debug, Clone)]
 pub struct BatchMemberHandle {
 	pub index: usize,
@@ -459,7 +451,6 @@ pub struct BatchGrpcSubscription {
 	attempt: u32,
 }
 
-/// One poller tick: member `subscription_id` -> the change that arrived within it.
 #[derive(Debug, Clone)]
 pub struct BatchFramesEnvelope {
 	pub batch_id: String,
@@ -467,7 +458,6 @@ pub struct BatchFramesEnvelope {
 	pub entry_errors: HashMap<String, String>,
 }
 
-/// `MemberClosed` means that member's upstream ended; the batch stays alive.
 #[derive(Debug, Clone)]
 pub enum BatchStreamEvent {
 	Change(BatchFramesEnvelope),
@@ -486,8 +476,6 @@ impl BatchGrpcSubscription {
 		&self.members
 	}
 
-	/// On stream end or error the batch is re-established under the same client batch id;
-	/// `None` only once reconnect attempts are exhausted. `MemberClosed` is surfaced, not swallowed.
 	pub async fn recv(&mut self) -> Option<BatchStreamEvent> {
 		loop {
 			match self.stream.message().await {
@@ -554,8 +542,6 @@ impl BatchGrpcSubscription {
 		}
 	}
 
-	/// `connect_timeout_ms` bounds the whole attempt (dial, `batch_subscribe`, subscribed ack):
-	/// a peer that completes the TCP handshake then answers nothing passes dial but never the rest.
 	async fn open_stream(&self) -> Option<(Streaming<BatchSubscriptionEvent>, Vec<BatchMemberHandle>)> {
 		let channel = open_channel(&self.url).await.ok()?;
 		let mut client = ReifyDbClient::new(channel);
@@ -587,14 +573,10 @@ impl BatchGrpcSubscription {
 }
 
 impl GrpcSubscription {
-	/// The server-assigned id from the initial subscribe; it is not refreshed when the stream is
-	/// re-established, so after a reconnect it no longer names the server's current subscription.
 	pub fn subscription_id(&self) -> &str {
 		&self.subscription_id
 	}
 
-	/// On stream end or error the subscription is re-established by replaying the same RQL on a
-	/// fresh channel; `None` only once reconnect attempts are exhausted.
 	pub async fn recv(&mut self) -> Option<GrpcChange> {
 		loop {
 			match self.stream.message().await {
@@ -624,7 +606,6 @@ impl GrpcSubscription {
 		}
 	}
 
-	/// Unlike `recv`, does not reconnect: `None` as soon as the stream ends or errors.
 	pub async fn recv_raw(&mut self) -> Option<RawChangePayload> {
 		loop {
 			let msg = self.stream.message().await.ok()??;
@@ -645,8 +626,6 @@ impl GrpcSubscription {
 		}
 	}
 
-	/// `connect_timeout_ms` bounds the whole attempt (dial, `subscribe`, subscribed ack):
-	/// a peer that completes the TCP handshake then answers nothing passes dial but never the rest.
 	async fn open_stream(&self) -> Option<Streaming<SubscriptionEvent>> {
 		let channel = open_channel(&self.url).await.ok()?;
 		let mut client = ReifyDbClient::new(channel);

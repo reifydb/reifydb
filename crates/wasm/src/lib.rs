@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Sandboxed WebAssembly host for user-supplied operators, procedures and transforms. wasmtime-backed on native
-//! targets, a stub on `wasm32` (wasmtime cannot host itself); memory pages, fuel and call depth are capped by the
-//! host so a misbehaving guest cannot exhaust the process.
-//!
-//! Invariant: invoke, write_memory and read_memory each validate argument shape and bounds against the loaded
-//! module first. Skipping a check trusts guest-provided indices, the exact attack surface the sandbox exists for.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]

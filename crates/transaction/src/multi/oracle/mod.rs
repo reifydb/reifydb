@@ -313,15 +313,7 @@ where
 		self.clock.advance_to(version);
 	}
 
-	/// Allocates a commit version without OCC conflict detection or committed-window
-	/// registration. Sound only for a single trusted writer of a keyspace with no concurrent
-	/// conflicting writers (bulk ingest, flow operator-state commits).
 	pub(crate) fn advance_unchecked(&self, version: CommitVersion) -> Result<CreateCommitResult> {
-		// Exclusive, not shared. Allocating a version and registering it on the watermarks has
-		// to be one step: if a later allocator could register and complete while this version
-		// was still unregistered, done_until would advance straight past it, telling readers a
-		// commit is applied when it is not and letting GC reclaim it. new_commit allocates under
-		// this same write lock, so holding it here serializes every version allocation.
 		let inner = self.inner.write();
 		if version < inner.evicted_up_through {
 			return Ok(CreateCommitResult::TooOld);

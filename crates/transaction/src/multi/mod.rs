@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Multi-version transactional path: the conflict detector, the watermark tracking the lowest still-readable
-//! version for GC, and the oracle handing out commit versions in monotonic order.
-//!
-//! The detector aborts on read-write overlap as well as write-write; there is no isolation-level
-//! switch, only `ConflictMode::Disabled` for trusted single-writer paths that skip detection entirely.
-
 use reifydb_core::common::CommitVersion;
 use reifydb_store_multi::MultiVersionScope;
 use reifydb_value::{Result, value::duration::Duration};
@@ -15,12 +9,9 @@ use crate::multi::transaction::{
 	MultiTransaction, read::MultiReadTransaction, replica::MultiReplicaTransaction, write::MultiWriteTransaction,
 };
 
-/// Whether a transaction-level range scan applies a lower-bound watermark; the upper bound is always the
-/// transaction's own read version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum RangeScope {
 	All,
-	/// Skips rows at or below `after`, so a Delta + Main merge does not re-emit rows already in the snapshot.
 	After(CommitVersion),
 }
 

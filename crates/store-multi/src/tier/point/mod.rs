@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Point tier of the multi-version store: the shared point cache, instantiated over multi's keys and a
-//! two-deep row.
-//!
-//! There is no dimension, because an entry kind is derived from the key and so can never tell two keys
-//! apart; storing one would cost every entry a copy that answers nothing. There is one counter slot,
-//! because multi has no keyspace byte to attribute a read to and every point read here is the same
-//! kind of work.
-//!
-//! The version scope filter lives above this module, not in it: the tier stores whatever row the domain
-//! names and knows nothing about which versions a reader may see.
-
 use std::{
 	borrow::Cow,
 	sync::{
@@ -32,7 +21,6 @@ use crate::tier::VersionedGetResult;
 
 pub type MultiPointConfig = PointConfig;
 
-/// Two cached versions of a key, since a reader below the newest version must still find what it displaced.
 #[derive(Clone, Debug)]
 pub struct MultiPointRow {
 	pub version: CommitVersion,
@@ -113,8 +101,6 @@ impl PointDomain for MultiPointDomain {
 	}
 }
 
-/// Reads scored the way multi means them, since the shared tier counts a hit on residency alone and a
-/// reader below every cached version must still read as a miss.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MultiReadMetrics {
 	pub hits: u64,

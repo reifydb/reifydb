@@ -17,67 +17,51 @@ pub const DEFAULT_SCALE: u64 = 10_000;
 #[command(about = "ReifyDB load testing tool - similar to redis-benchmark", long_about = None)]
 #[command(version)]
 pub struct Config {
-	/// Protocol to use for connections
 	#[arg(value_enum)]
 	pub protocol: Protocol,
 
-	/// Server host
 	#[arg(short = 'H', long, env = "REIFYDB_HOST", default_value = "127.0.0.1")]
 	pub host: String,
 
-	/// Server port (default: 8090 for http, 8091 for ws)
 	#[arg(short = 'p', long, env = "REIFYDB_PORT")]
 	pub port: Option<u16>,
 
-	/// Admin port used for scenario setup and teardown (default: 9090 for http, 9091 for ws)
 	#[arg(long, env = "REIFYDB_ADMIN_PORT")]
 	pub admin_port: Option<u16>,
 
-	/// Authentication token
 	#[arg(short = 't', long, env = "REIFYDB_TOKEN")]
 	pub token: Option<String>,
 
-	/// Scenario to run (see --list)
 	#[arg(short = 's', long, default_value = "read")]
 	pub scenario: String,
 
-	/// Named profile supplying thread count, stop condition and dataset scale
 	#[arg(short = 'P', long)]
 	pub profile: Option<String>,
 
-	/// Named query within the scenario (required only when the scenario defines more than one)
 	#[arg(short = 'Q', long)]
 	pub query: Option<String>,
 
-	/// List the registered scenarios with their queries and profiles, then exit
 	#[arg(long)]
 	pub list: bool,
 
-	/// Number of parallel connections/workers, overriding the profile
 	#[arg(short = 'c', long)]
 	pub connections: Option<usize>,
 
-	/// Total number of requests, overriding the profile
 	#[arg(short = 'n', long)]
 	pub requests: Option<u64>,
 
-	/// Run for a duration instead of a request count (e.g. "30s", "5m"), overriding the profile
 	#[arg(long, value_parser = parse_duration)]
 	pub duration: Option<Duration>,
 
-	/// Rows to seed for generated datasets, overriding the profile
 	#[arg(long)]
 	pub table_size: Option<u64>,
 
-	/// Warmup requests before measuring (set to 0 to disable)
 	#[arg(long, default_value = "1000")]
 	pub warmup: u64,
 
-	/// Quiet mode - only show final summary
 	#[arg(short = 'q', long)]
 	pub quiet: bool,
 
-	/// Seed for random number generation (for reproducible runs)
 	#[arg(long)]
 	pub seed: Option<u64>,
 }
@@ -176,9 +160,7 @@ impl Config {
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum Protocol {
-	/// HTTP protocol
 	Http,
-	/// WebSocket protocol
 	Ws,
 }
 

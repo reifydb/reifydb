@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! DML instruction handlers, specialised per object because each stores rows under a different encoded-key
-//! layout and carries different uniqueness and ordering invariants the dispatcher must respect before committing.
-
 pub mod coerce;
 pub(crate) mod context;
 pub mod dictionary_insert;

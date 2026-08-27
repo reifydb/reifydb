@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Virtual machine that executes the instruction stream emitted by the planner and owns the per-request
-//! lifecycle. The dispatch table here is the single place that decides what an opcode does; planner output
-//! never reaches storage without being interpreted through it.
-
 use reifydb_value::params::Params;
 
 #[derive(Debug)]

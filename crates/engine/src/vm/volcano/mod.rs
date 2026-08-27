@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Volcano-style open/next/close pipeline, running alongside the vectorised path; the planner picks between
-//! them on query shape and cost.
-
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
 	value::column::{buffer::ColumnBuffer, columns::Columns},

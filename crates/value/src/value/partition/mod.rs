@@ -13,9 +13,6 @@ use crate::util::hash::xxh3_128;
 pub struct Partition(pub u128);
 
 impl Partition {
-	/// Seedless `xxh3_128` over the concatenated postcard encodings, so the partition of a row is
-	/// identical on every node and across restarts. Values are appended without a separator, which
-	/// only stays unambiguous because postcard is self-delimiting.
 	pub fn of(values: &[Value]) -> Self {
 		let mut buf: Vec<u8> = Vec::new();
 		for value in values {

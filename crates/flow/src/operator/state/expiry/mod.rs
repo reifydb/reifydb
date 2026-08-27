@@ -17,8 +17,6 @@ use reifydb_core::{
 use reifydb_value::Result;
 use tracing::instrument;
 
-/// The due-ordered expiry index lives in the root group so a group's entries survive the phase-1 range
-/// delete and drain on their own.
 pub(crate) fn expiry_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::ROOT, Keyspace::EXPIRY)
 }

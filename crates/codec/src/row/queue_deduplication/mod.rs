@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The queue deduplication storage family: the source header plus the two facts a deduplication
-//! record carries - the row number it claims and the instant that claim expires. Both sit in the
-//! header, so the record has no body at all and the retention sweeper can read an expiry without a
-//! shape.
-
 use std::ops::Deref;
 
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
@@ -80,9 +75,6 @@ impl From<EncodedBytes> for EncodedQueueDeduplicationRow {
 	}
 }
 
-/// The write side of the queue deduplication family: a buffer whose source header and row number and
-/// expires_at slots are already reserved, which freezes into an [`EncodedQueueDeduplicationRow`] and
-/// never into a row of another family.
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedQueueDeduplicationRowBuilder(EncodedRowBuilder);

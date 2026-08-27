@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Process-level runtime: actor system, pools, clock, RNG and the mockable synchronisation primitives, all
-//! behind one `SharedRuntime` handle so callers never branch on platform. `SharedRuntime::seeded(...)` is what
-//! makes ReifyDB deterministic; an unmocked clock, an unseeded RNG or a pool scheduling outside the seeded
-//! executor defeats DST replay.
-
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![allow(clippy::tabs_in_doc_comments)]

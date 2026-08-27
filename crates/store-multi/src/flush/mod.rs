@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Background flusher that migrates writes from the buffer tier to the persistent tier. Flush is the
-//! watermark-coupled eviction sweep: on each tick (or explicit request) it persists the latest-<=W value per key of
-//! every persistent object, then drops all <=W versions from the commit tier, bounding the commit tier's RAM.
-
 use reifydb_core::interface::catalog::storage::StorageId;
 
 pub trait ObjectPersistence: Send + Sync + 'static {

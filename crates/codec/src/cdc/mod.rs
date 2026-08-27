@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Byte layout of a CDC row payload: postcard, then zstd. One commit or a whole compacted block use
-//! the same shape, so the block reader and the row reader never diverge.
-//!
-//! Generic over the payload type because the CDC types live in `reifydb-core`, which depends on this
-//! crate; naming them here would close a dependency cycle.
-
 use postcard::{from_bytes, to_stdvec};
 use serde::{Serialize, de::DeserializeOwned};
 use zstd::{decode_all, encode_all};

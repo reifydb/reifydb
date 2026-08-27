@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The queue storage family: the source header plus a `not_before` instant that gates when an item
-//! becomes due. Absence is a flag bit, not a sentinel instant, so a due-now item stays due-now.
-
 use std::ops::Deref;
 
 use reifydb_value::value::datetime::DateTime;
@@ -82,8 +79,6 @@ impl From<EncodedBytes> for EncodedQueueRow {
 	}
 }
 
-/// The write side of the queue family: a buffer whose source header and `not_before` slot are
-/// already reserved, which freezes into an [`EncodedQueueRow`] and never into a row of another family.
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodedQueueRowBuilder(EncodedRowBuilder);
