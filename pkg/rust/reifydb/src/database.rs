@@ -46,7 +46,6 @@ use reifydb_sub_server_ws::subsystem::WsSubsystem;
 use reifydb_sub_subscription::{store::SubscriptionStore, subsystem::SubscriptionSubsystem};
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
-use reifydb_transaction::group::GroupCommitHandle;
 use reifydb_value::{
 	Result,
 	params::Params,
@@ -232,9 +231,6 @@ impl Database {
 		self.subsystems.shutdown_all();
 		if let Some(runtime) = self.owned_runtime.take() {
 			runtime.shutdown();
-		}
-		if let Some(group_commit) = self.engine.ioc().try_resolve::<GroupCommitHandle>() {
-			group_commit.shutdown();
 		}
 		self.shutdown_stores();
 		self.engine.shutdown();

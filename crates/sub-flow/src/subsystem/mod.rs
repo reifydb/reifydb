@@ -51,7 +51,7 @@ use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, shutdo
 use reifydb_store_cdc::store::CdcStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
-	group::{GroupCommitBegin, GroupCommitHandle},
+	commit::{CommitBegin, CommitHandle},
 	transaction::Transaction,
 };
 use reifydb_value::{
@@ -115,11 +115,10 @@ impl FlowSubsystem {
 		let flow_scope = spawner.scope();
 		let flow_catalog = FlowCatalog::new(engine.catalog());
 
-		let group_commit = ioc.try_resolve::<GroupCommitHandle>().unwrap_or_else(|| {
+		let commit_handle = ioc.try_resolve::<CommitHandle>().unwrap_or_else(|| {
 			let begin_engine = engine.clone();
-			let begin: GroupCommitBegin =
-				Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-			GroupCommitHandle::inline(begin)
+			let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+			CommitHandle::new(begin)
 		});
 		let poll_frontier = CdcConsumerWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
@@ -129,7 +128,7 @@ impl FlowSubsystem {
 			substrate.operators.clone().expect("the flow substrate is built with an operator store"),
 		);
 		let committer_handle =
-			flow_scope.spawn_flow("flow-committer", CommitterActor::new(committer, group_commit));
+			flow_scope.spawn_flow("flow-committer", CommitterActor::new(committer, commit_handle));
 		let committer_ref = committer_handle.actor_ref().clone();
 
 		let health = FlowHealthRegistry::new();

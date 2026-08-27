@@ -29,7 +29,7 @@ use reifydb_core::{
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
 		auth::AuthenticationProvider,
-		catalog::config::{ConfigKey, GetConfig},
+		catalog::config::ConfigKey,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	lifecycle::{coverage::RetentionCoverage, metrics::RetentionMetrics, registry::LifecycleRegistry},
@@ -81,7 +81,7 @@ use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_sub_tracing::factory::TracingSubsystemFactory;
 use reifydb_transaction::{
 	TransactionVersion,
-	group::{GroupCommitBegin, GroupCommitHandle},
+	commit::{CommitBegin, CommitHandle},
 	interceptor::builder::InterceptorBuilder,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
@@ -561,22 +561,12 @@ impl DatabaseBuilder {
 
 		bootloader.apply_migrations(&self.migrations)?;
 
-		let group_commit = {
+		let commit_handle = {
 			let begin_engine = engine.clone();
-			let begin: GroupCommitBegin =
-				Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-			match engine.catalog().get_config_duration_opt(ConfigKey::CommitGroupLinger) {
-				Some(linger) => GroupCommitHandle::spawn(
-					&spawner,
-					begin,
-					linger,
-					engine.catalog().get_config_uint8(ConfigKey::CommitGroupMaxTransactions)
-						as usize,
-				),
-				None => GroupCommitHandle::inline(begin),
-			}
+			let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+			CommitHandle::new(begin)
 		};
-		self.ioc = self.ioc.register(group_commit);
+		self.ioc = self.ioc.register(commit_handle);
 
 		let mut all_versions = vec![
 			SystemVersion {

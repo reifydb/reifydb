@@ -82,8 +82,6 @@ pub enum ConfigKey {
 	MetricsFlushInterval,
 	MetricsSampleInterval,
 	MetricsSnapshotInterval,
-	CommitGroupLinger,
-	CommitGroupMaxTransactions,
 	TombstoneReapInterval,
 	TombstoneReapBatchSize,
 	QueueLeaseReapInterval,
@@ -143,8 +141,6 @@ impl ConfigKey {
 			Self::MetricsFlushInterval,
 			Self::MetricsSampleInterval,
 			Self::MetricsSnapshotInterval,
-			Self::CommitGroupLinger,
-			Self::CommitGroupMaxTransactions,
 			Self::TombstoneReapInterval,
 			Self::TombstoneReapBatchSize,
 			Self::QueueLeaseReapInterval,
@@ -208,10 +204,6 @@ impl ConfigKey {
 			Self::MetricsSnapshotInterval => Value::None {
 				inner: ValueType::Duration,
 			},
-			Self::CommitGroupLinger => Value::None {
-				inner: ValueType::Duration,
-			},
-			Self::CommitGroupMaxTransactions => Value::Uint8(256),
 			Self::TombstoneReapInterval => Value::duration_seconds(1),
 			Self::TombstoneReapBatchSize => Value::Uint8(1024),
 			Self::QueueLeaseReapInterval => Value::duration_seconds(5),
@@ -460,17 +452,6 @@ impl ConfigKey {
 				 series. When none, no snapshot is ever written; when set, must be > 0 and not shorter than \
 				 METRICS_SAMPLE_INTERVAL. Read once at boot; changing it requires a restart."
 			}
-			Self::CommitGroupLinger => {
-				"Maximum time an unchecked commit submitted to the group-commit coordinator waits \
-				 for other commits to join its group before the merged transaction is flushed. \
-				 Defaults to none, which disables grouping entirely (every submission commits \
-				 immediately in its own transaction); when set, must be > 0. Read once at database \
-				 construction, so changing it requires a restart."
-			}
-			Self::CommitGroupMaxTransactions => {
-				"Upper bound on commits merged into one group-commit flush. A group is flushed as \
-				 soon as it reaches this size, even before the linger expires. Must be > 0."
-			}
 			Self::TombstoneReapInterval => {
 				"How often the tombstone reaper scans persistent tables for delete-mode tombstones whose superseding write has flushed."
 			}
@@ -542,8 +523,6 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => false,
 			Self::MetricsSampleInterval => true,
 			Self::MetricsSnapshotInterval => true,
-			Self::CommitGroupLinger => true,
-			Self::CommitGroupMaxTransactions => true,
 			Self::TombstoneReapInterval => false,
 			Self::TombstoneReapBatchSize => false,
 			Self::QueueLeaseReapInterval => false,
@@ -603,8 +582,6 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => &[ValueType::Duration],
 			Self::MetricsSampleInterval => &[ValueType::Duration],
 			Self::MetricsSnapshotInterval => &[ValueType::Duration],
-			Self::CommitGroupLinger => &[ValueType::Duration],
-			Self::CommitGroupMaxTransactions => &[ValueType::Uint8],
 			Self::TombstoneReapInterval => &[ValueType::Duration],
 			Self::TombstoneReapBatchSize => &[ValueType::Uint8],
 			Self::QueueLeaseReapInterval => &[ValueType::Duration],
@@ -664,8 +641,6 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => false,
 			Self::MetricsSampleInterval => false,
 			Self::MetricsSnapshotInterval => true,
-			Self::CommitGroupLinger => true,
-			Self::CommitGroupMaxTransactions => false,
 			Self::TombstoneReapInterval => false,
 			Self::TombstoneReapBatchSize => false,
 			Self::QueueLeaseReapInterval => false,
@@ -942,25 +917,6 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
-			Self::CommitGroupLinger => match value {
-				Value::None {
-					..
-				} => Ok(()),
-				Value::Duration(d) => {
-					if d.is_positive() {
-						Ok(())
-					} else {
-						Err("COMMIT_GROUP_LINGER must be greater than zero".to_string())
-					}
-				}
-				_ => Ok(()),
-			},
-			Self::CommitGroupMaxTransactions => match value {
-				Value::Uint8(0) => {
-					Err("COMMIT_GROUP_MAX_TRANSACTIONS must be greater than zero".to_string())
-				}
-				_ => Ok(()),
-			},
 			_ => Ok(()),
 		}
 	}
@@ -1042,8 +998,6 @@ impl fmt::Display for ConfigKey {
 			Self::MetricsFlushInterval => write!(f, "METRICS_FLUSH_INTERVAL"),
 			Self::MetricsSampleInterval => write!(f, "METRICS_SAMPLE_INTERVAL"),
 			Self::MetricsSnapshotInterval => write!(f, "METRICS_SNAPSHOT_INTERVAL"),
-			Self::CommitGroupLinger => write!(f, "COMMIT_GROUP_LINGER"),
-			Self::CommitGroupMaxTransactions => write!(f, "COMMIT_GROUP_MAX_TRANSACTIONS"),
 			Self::TombstoneReapInterval => write!(f, "TOMBSTONE_REAP_INTERVAL"),
 			Self::TombstoneReapBatchSize => write!(f, "TOMBSTONE_REAP_BATCH_SIZE"),
 			Self::QueueLeaseReapInterval => write!(f, "QUEUE_LEASE_REAP_INTERVAL"),
@@ -1107,8 +1061,6 @@ impl FromStr for ConfigKey {
 			"METRICS_FLUSH_INTERVAL" => Ok(Self::MetricsFlushInterval),
 			"METRICS_SAMPLE_INTERVAL" => Ok(Self::MetricsSampleInterval),
 			"METRICS_SNAPSHOT_INTERVAL" => Ok(Self::MetricsSnapshotInterval),
-			"COMMIT_GROUP_LINGER" => Ok(Self::CommitGroupLinger),
-			"COMMIT_GROUP_MAX_TRANSACTIONS" => Ok(Self::CommitGroupMaxTransactions),
 			"TOMBSTONE_REAP_INTERVAL" => Ok(Self::TombstoneReapInterval),
 			"TOMBSTONE_REAP_BATCH_SIZE" => Ok(Self::TombstoneReapBatchSize),
 			"QUEUE_LEASE_REAP_INTERVAL" => Ok(Self::QueueLeaseReapInterval),
@@ -1286,10 +1238,8 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 56);
+		assert_eq!(all.len(), 54);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
-		assert!(all.contains(&ConfigKey::CommitGroupLinger));
-		assert!(all.contains(&ConfigKey::CommitGroupMaxTransactions));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
 		assert!(all.contains(&ConfigKey::RetentionEvictMaxBatchesPerTick));
@@ -1638,87 +1588,6 @@ mod tests {
 			})
 			.unwrap_err();
 		assert!(matches!(err, AcceptError::TypeMismatch { .. }));
-	}
-
-	#[test]
-	fn test_commit_group_linger_default_is_none() {
-		// Group commit is opt-in: leaving this key untouched must keep every unchecked commit on
-		// its own transaction and version. Grouping is enabled by setting a positive linger.
-		assert_eq!(
-			ConfigKey::CommitGroupLinger.default_value(),
-			Value::None {
-				inner: ValueType::Duration,
-			}
-		);
-		assert!(ConfigKey::CommitGroupLinger.is_optional());
-		assert_eq!(ConfigKey::CommitGroupLinger.expected_types(), &[ValueType::Duration]);
-	}
-
-	#[test]
-	fn test_commit_group_linger_accepts_none_to_disable_grouping() {
-		let none = Value::None {
-			inner: ValueType::Duration,
-		};
-		assert_eq!(ConfigKey::CommitGroupLinger.accept(none.clone()).unwrap(), none);
-	}
-
-	#[test]
-	fn test_commit_group_linger_rejects_zero_and_negative() {
-		// A zero linger arms a fire-immediately timer for every submission and a negative one
-		// cannot schedule at all; "disabled" is expressed by absence, so zero must be rejected.
-		match ConfigKey::CommitGroupLinger.accept(Value::duration_seconds(0)).unwrap_err() {
-			AcceptError::InvalidValue(reason) => {
-				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
-			}
-			other => panic!("expected InvalidValue, got {other:?}"),
-		}
-		assert!(matches!(
-			ConfigKey::CommitGroupLinger.accept(Value::duration_seconds(-5)),
-			Err(AcceptError::InvalidValue(_))
-		));
-	}
-
-	#[test]
-	fn test_commit_group_linger_requires_restart() {
-		// The coordinator is spawned (or not) once at database construction and never re-reads
-		// this key, so a live change would silently have no effect.
-		assert!(ConfigKey::CommitGroupLinger.requires_restart());
-	}
-
-	#[test]
-	fn test_commit_group_linger_round_trips_through_display_and_from_str() {
-		assert_eq!("COMMIT_GROUP_LINGER".parse::<ConfigKey>().unwrap(), ConfigKey::CommitGroupLinger);
-		assert_eq!(format!("{}", ConfigKey::CommitGroupLinger), "COMMIT_GROUP_LINGER");
-	}
-
-	#[test]
-	fn test_commit_group_max_transactions_metadata() {
-		assert_eq!(ConfigKey::CommitGroupMaxTransactions.default_value(), Value::Uint8(256));
-		assert_eq!(ConfigKey::CommitGroupMaxTransactions.expected_types(), &[ValueType::Uint8]);
-		assert!(!ConfigKey::CommitGroupMaxTransactions.is_optional());
-		assert!(ConfigKey::CommitGroupMaxTransactions.requires_restart());
-	}
-
-	#[test]
-	fn test_commit_group_max_transactions_rejects_zero() {
-		// A zero bound would flush every group before it could accept a single submission,
-		// deadlocking every commit behind a group that can never fill.
-		match ConfigKey::CommitGroupMaxTransactions.accept(Value::Uint8(0)).unwrap_err() {
-			AcceptError::InvalidValue(reason) => {
-				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
-			}
-			other => panic!("expected InvalidValue, got {other:?}"),
-		}
-		assert_eq!(ConfigKey::CommitGroupMaxTransactions.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
-	}
-
-	#[test]
-	fn test_commit_group_max_transactions_round_trips_through_display_and_from_str() {
-		assert_eq!(
-			"COMMIT_GROUP_MAX_TRANSACTIONS".parse::<ConfigKey>().unwrap(),
-			ConfigKey::CommitGroupMaxTransactions
-		);
-		assert_eq!(format!("{}", ConfigKey::CommitGroupMaxTransactions), "COMMIT_GROUP_MAX_TRANSACTIONS");
 	}
 
 	#[test]

@@ -25,7 +25,7 @@ use reifydb_runtime::actor::{
 };
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
-	group::{GroupCommitApply, GroupCommitCompletion, GroupCommitHandle, GroupCommitSubmission},
+	commit::{CommitApply, CommitCompletion, CommitHandle, CommitSubmission},
 	transaction::command::CommandTransaction,
 };
 use reifydb_value::Result;
@@ -55,14 +55,14 @@ pub enum CommitterMessage {
 
 pub struct CommitterActor {
 	committer: Committer,
-	group: GroupCommitHandle,
+	commit: CommitHandle,
 }
 
 impl CommitterActor {
-	pub fn new(committer: Committer, group: GroupCommitHandle) -> Self {
+	pub fn new(committer: Committer, commit: CommitHandle) -> Self {
 		Self {
 			committer,
-			group,
+			commit,
 		}
 	}
 
@@ -79,12 +79,12 @@ impl CommitterActor {
 
 		let apply_committer = self.committer.clone();
 		let apply_combined = Arc::clone(&combined);
-		let apply: GroupCommitApply = Box::new(move |transaction| {
+		let apply: CommitApply = Box::new(move |transaction| {
 			apply_committer.apply_slice(transaction, &apply_combined, view_changes, &control_cursor)
 		});
 
 		let completion_committer = self.committer.clone();
-		let completion: GroupCommitCompletion = Box::new(move |result| match result {
+		let completion: CommitCompletion = Box::new(move |result| match result {
 			Ok(version) => {
 				apply_operator_state_with_checkpoints(
 					&completion_committer.operators,
@@ -102,7 +102,7 @@ impl CommitterActor {
 			Err(e) => (reply)(Err(e)),
 		});
 
-		self.group.submit(GroupCommitSubmission {
+		self.commit.submit(CommitSubmission {
 			apply,
 			completion,
 		});
@@ -113,12 +113,12 @@ impl CommitterActor {
 
 		let apply_committer = self.committer.clone();
 		let apply_pending = Arc::clone(&pending);
-		let apply: GroupCommitApply = Box::new(move |transaction| {
+		let apply: CommitApply = Box::new(move |transaction| {
 			apply_committer.apply_tick(transaction, &apply_pending, view_changes)
 		});
 
 		let completion_committer = self.committer.clone();
-		let completion: GroupCommitCompletion = Box::new(move |result| match result {
+		let completion: CommitCompletion = Box::new(move |result| match result {
 			Ok(version) => {
 				apply_operator_state(&completion_committer.operators, &pending);
 				completion_committer.materialization.record_output(version);
@@ -128,7 +128,7 @@ impl CommitterActor {
 			Err(e) => (reply)(Err(e)),
 		});
 
-		self.group.submit(GroupCommitSubmission {
+		self.commit.submit(CommitSubmission {
 			apply,
 			completion,
 		});
@@ -321,12 +321,8 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 }
 
 #[cfg(test)]
-mod group_commit_integration {
-	use std::{
-		sync::atomic::{AtomicUsize, Ordering},
-		thread::sleep,
-		time::Duration as StdDuration,
-	};
+mod commit_integration {
+	use std::sync::atomic::{AtomicUsize, Ordering};
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_codec::{
@@ -334,7 +330,7 @@ mod group_commit_integration {
 		row::{bytes::EncodedBytes, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
-		interface::{catalog::flow::OperatorId, cdc::CdcChange},
+		interface::catalog::flow::OperatorId,
 		internal_error,
 		key::{
 			EncodableKey,
@@ -343,9 +339,8 @@ mod group_commit_integration {
 		},
 	};
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
-	use reifydb_store_cdc::storage::CdcStorage;
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::{group::GroupCommitBegin, multi::RangeScope, transaction::Transaction};
+	use reifydb_transaction::{commit::CommitBegin, multi::RangeScope, transaction::Transaction};
 	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::duration::Duration};
 
 	use super::*;
@@ -403,7 +398,7 @@ mod group_commit_integration {
 		slice
 	}
 
-	fn build_committer_actor(engine: &StandardEngine, group: GroupCommitHandle) -> (CommitterHandle, Committer) {
+	fn build_committer_actor(engine: &StandardEngine, commit: CommitHandle) -> (CommitterHandle, Committer) {
 		let tracker = FlowPositionTracker::new();
 		let committer = Committer::new(
 			tracker.clone(),
@@ -412,7 +407,7 @@ mod group_commit_integration {
 		);
 		let handle = engine
 			.spawner()
-			.spawn_flow("group-commit-test-committer", CommitterActor::new(committer.clone(), group));
+			.spawn_flow("commit-test-committer", CommitterActor::new(committer.clone(), commit));
 		(handle, committer)
 	}
 
@@ -430,79 +425,12 @@ mod group_commit_integration {
 	}
 
 	#[test]
-	fn grouped_slices_share_one_version_and_one_cdc_record() {
+	fn each_slice_commits_in_its_own_version() {
 		let te = TestEngine::builder().with_cdc().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
-		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let group = GroupCommitHandle::spawn(
-			&engine.spawner(),
-			begin,
-			Duration::from_milliseconds(50).unwrap(),
-			16,
-		);
-		let (handle, committer) = build_committer_actor(&engine, group);
-
-		let replies = SliceReplies::new(3);
-		send_slices(&handle, &replies, 3);
-		replies.wait();
-
-		let versions = replies.versions();
-		assert_eq!(versions.len(), 3);
-		let shared = versions[0].1;
-		assert!(shared > CommitVersion(0));
-		assert!(
-			versions.iter().all(|(_, v)| *v == shared),
-			"all flows' slices must share one commit version: {versions:?}"
-		);
-
-		let tracked = committer.flow_tracker.all();
-		for i in 1..=3u64 {
-			assert_eq!(
-				tracked.get(&FlowId(i)).copied(),
-				Some(CommitVersion(100 + i)),
-				"tracker must be updated per flow"
-			);
-		}
-
-		// CDC production is async, so the record for the shared version has to be polled for.
-		let cdc_store = engine.cdc_store();
-		let mut record = None;
-		for _ in 0..400 {
-			if let Some(cdc) = cdc_store.read(shared).expect("cdc read") {
-				record = Some(cdc);
-				break;
-			}
-			sleep(StdDuration::from_millis(5));
-		}
-		let record = record.expect("one CDC record must exist at the shared version");
-
-		let expected: Vec<EncodedKey> = (1..=3).map(synthetic_key).collect();
-		let written: Vec<EncodedKey> = record
-			.changes
-			.iter()
-			.filter_map(|change| match change {
-				CdcChange::Insert {
-					key,
-					..
-				} => expected.contains(key).then(|| key.clone()),
-				_ => None,
-			})
-			.collect();
-		assert_eq!(
-			written, expected,
-			"the merged CDC record must contain every slice's writes in submission order"
-		);
-	}
-
-	#[test]
-	fn inline_handle_commits_each_slice_in_its_own_version() {
-		let te = TestEngine::builder().with_cdc().build();
-		let engine = te.inner().clone();
-		let begin_engine = engine.clone();
-		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let group = GroupCommitHandle::inline(begin);
-		let (handle, committer) = build_committer_actor(&engine, group);
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
 
 		let replies = SliceReplies::new(2);
 		send_slices(&handle, &replies, 2);
@@ -529,9 +457,8 @@ mod group_commit_integration {
 		let te = TestEngine::builder().with_cdc().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
-		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let group = GroupCommitHandle::inline(begin);
-		let (handle, committer) = build_committer_actor(&engine, group);
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
 
 		let replies = SliceReplies::new(2);
 		send_slices(&handle, &replies, 2);
@@ -586,18 +513,12 @@ mod group_commit_integration {
 	}
 
 	#[test]
-	fn a_failed_group_commit_leaves_the_operator_state_untouched() {
-		// A rolled-back group must leave no operator state: otherwise flows read versions that
-		// never became durable. Falsified by applying operator state writes on the failure side or
-		// inside the apply closure.
+	fn a_failed_commit_leaves_the_operator_state_untouched() {
+		// Operator state is written in the completion, so a failed commit must write none of it.
 		let te = TestEngine::builder().with_cdc().build();
 		let engine = te.inner().clone();
-		let begin_engine = engine.clone();
-		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		// max_transactions = 2 flushes when the poison joins the slice; slice first so its apply
-		// runs before the sibling fails the group.
-		let group = GroupCommitHandle::spawn(&engine.spawner(), begin, Duration::from_seconds(5).unwrap(), 2);
-		let (handle, committer) = build_committer_actor(&engine, group.clone());
+		let begin: CommitBegin = Arc::new(|| Err(internal_error!("commit could not begin")));
+		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
 		let store = committer.operators.clone();
 
 		let operator = OperatorId(9);
@@ -612,17 +533,11 @@ mod group_commit_integration {
 				reply: replies.reply(0),
 			})
 			.is_ok());
-		sleep(StdDuration::from_millis(200));
-
-		group.submit(GroupCommitSubmission {
-			apply: Box::new(|_| Err(internal_error!("poisoned sibling"))),
-			completion: Box::new(|_| {}),
-		});
 		replies.wait();
 
 		{
 			let results = replies.results.lock();
-			assert!(results[0].1.is_err(), "the poisoned group must fail the slice commit");
+			assert!(results[0].1.is_err(), "a commit that cannot begin must fail the slice commit");
 		}
 		assert_eq!(
 			store.get(operator, &EncodedKey::new(inner.as_slice())),
@@ -642,14 +557,8 @@ mod group_commit_integration {
 		let te = TestEngine::builder().with_cdc().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
-		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let group = GroupCommitHandle::spawn(
-			&engine.spawner(),
-			begin,
-			Duration::from_milliseconds(2000).unwrap(),
-			16,
-		);
-		let (handle, committer) = build_committer_actor(&engine, group);
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
 		let store = committer.operators.clone();
 
 		let op_a = OperatorId(3);
@@ -657,6 +566,12 @@ mod group_commit_integration {
 		let inner_a = state_inner(b"a");
 		let inner_b = state_inner(b"b");
 		let slice = state_slice(&[(op_a, &inner_a, 1), (op_b, &inner_b, 2)]);
+
+		assert_eq!(
+			store.total_bytes(),
+			ByteSize::ZERO,
+			"precondition: the store must be empty before the slice is submitted, or the post-commit read proves nothing"
+		);
 
 		let replies = SliceReplies::new(1);
 		assert!(handle
@@ -666,14 +581,6 @@ mod group_commit_integration {
 				reply: replies.reply(0),
 			})
 			.is_ok());
-
-		sleep(StdDuration::from_millis(300));
-		assert_eq!(
-			store.total_bytes(),
-			ByteSize::ZERO,
-			"operator state must not become visible in the store before the group flushes and \
-			 the commit completes"
-		);
 
 		replies.wait();
 		assert_eq!(

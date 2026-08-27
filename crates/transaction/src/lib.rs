@@ -22,10 +22,10 @@ use uuid::{Builder, Uuid};
 
 pub mod change;
 pub mod change_accumulator;
+pub mod commit;
 pub mod delta;
 pub mod dictionary;
 pub mod error;
-pub mod group;
 pub mod interceptor;
 pub mod multi;
 pub mod queue;

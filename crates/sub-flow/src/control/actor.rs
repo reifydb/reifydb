@@ -750,7 +750,7 @@ mod pull_protocol {
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
-		group::{GroupCommitBegin, GroupCommitHandle},
+		commit::{CommitBegin, CommitHandle},
 		multi::RangeScope,
 		transaction::Transaction,
 	};
@@ -846,15 +846,11 @@ mod pull_protocol {
 			substrate.operators.clone().expect("the test substrate carries an operator store"),
 		);
 		let begin_engine = engine.clone();
-		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		let group = GroupCommitHandle::spawn(
-			&engine.spawner(),
-			begin,
-			Duration::from_milliseconds(100).unwrap(),
-			256,
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let committer_handle = engine.spawner().spawn_flow(
+			"pull-protocol-committer",
+			CommitterActor::new(committer, CommitHandle::new(begin)),
 		);
-		let committer_handle =
-			engine.spawner().spawn_flow("pull-protocol-committer", CommitterActor::new(committer, group));
 
 		let loader_handle = engine.spawner().spawn_flow(
 			"pull-protocol-loader",
@@ -1667,10 +1663,10 @@ mod pull_protocol {
 			operators2.clone(),
 		);
 		let begin_engine = h.engine.clone();
-		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let committer2_handle = h.engine.spawner().spawn_flow(
 			"pull-protocol-committer-restart",
-			CommitterActor::new(committer2, GroupCommitHandle::inline(begin)),
+			CommitterActor::new(committer2, CommitHandle::new(begin)),
 		);
 		let health2 = FlowHealthRegistry::new();
 		let actor2 = h.engine.spawner().spawn_flow(
