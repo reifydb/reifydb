@@ -24,13 +24,13 @@ impl OperatorCommitBuffer {
 		expiry: DateTime,
 	) {
 		let mut inner = self.shared.inner.lock();
-		inner.live.anchors.insert((operator, group, side, row_number), Some(expiry.to_millis()));
+		inner.live.record_anchor((operator, group, side, row_number), Some(expiry.to_millis()));
 		self.request_flush_when_full(&mut inner);
 	}
 
 	pub fn record_anchor_remove(&self, operator: OperatorId, group: GroupId, side: u8, row_number: RowNumber) {
 		let mut inner = self.shared.inner.lock();
-		inner.live.anchors.insert((operator, group, side, row_number), None);
+		inner.live.record_anchor((operator, group, side, row_number), None);
 		self.request_flush_when_full(&mut inner);
 	}
 

@@ -34,7 +34,7 @@ use reifydb_store_multi::{
 		range::MultiRangeConfig,
 	},
 };
-use reifydb_value::{cow_vec, util::cowvec::CowVec, value::duration::Duration};
+use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::duration::Duration};
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
@@ -110,8 +110,10 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 	let commit = store.commit();
 	let kinds = commit.list_all_entry_kinds().unwrap();
 	for kind in kinds {
-		let (to_persist, to_compact, _) = match commit {
-			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, usize::MAX),
+		let (to_persist, to_compact, _, _) = match commit {
+			MultiCommitBufferTier::Memory(s) => {
+				s.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX))
+			}
 		};
 		if to_compact.is_empty() {
 			continue;

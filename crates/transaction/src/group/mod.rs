@@ -42,7 +42,7 @@ pub enum GroupCommitMessage {
 pub struct GroupCommitActor {
 	begin: GroupCommitBegin,
 	linger: Duration,
-	max_entries: usize,
+	max_transactions: usize,
 }
 
 pub struct GroupCommitState {
@@ -81,7 +81,7 @@ impl Actor for GroupCommitActor {
 					return Directive::Continue;
 				}
 				state.pending.push(submission);
-				if state.pending.len() >= self.max_entries {
+				if state.pending.len() >= self.max_transactions {
 					self.flush(state);
 				} else if state.pending.len() == 1 {
 					let generation = state.generation;
@@ -135,11 +135,16 @@ impl GroupCommitHandle {
 	}
 
 	#[cfg(not(reifydb_single_threaded))]
-	pub fn spawn(spawner: &ActorSpawner, begin: GroupCommitBegin, linger: Duration, max_entries: usize) -> Self {
+	pub fn spawn(
+		spawner: &ActorSpawner,
+		begin: GroupCommitBegin,
+		linger: Duration,
+		max_transactions: usize,
+	) -> Self {
 		let actor = GroupCommitActor {
 			begin,
 			linger,
-			max_entries: max_entries.max(1),
+			max_transactions: max_transactions.max(1),
 		};
 		let actor_ref = spawner.spawn_coordination("group-commit", actor).actor_ref().clone();
 		Self {
@@ -148,7 +153,12 @@ impl GroupCommitHandle {
 	}
 
 	#[cfg(reifydb_single_threaded)]
-	pub fn spawn(_spawner: &ActorSpawner, begin: GroupCommitBegin, _linger: Duration, _max_entries: usize) -> Self {
+	pub fn spawn(
+		_spawner: &ActorSpawner,
+		begin: GroupCommitBegin,
+		_linger: Duration,
+		_max_transactions: usize,
+	) -> Self {
 		Self::inline(begin)
 	}
 

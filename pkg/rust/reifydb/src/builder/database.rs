@@ -437,6 +437,7 @@ impl DatabaseBuilder {
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");
 		let single_store = self.single_store.clone().expect("SingleStore must be set via with_stores()");
 		let operator_store = self.operator_store.clone().expect("OperatorStore must be set via with_stores()");
+		operator_store.attach_config(multi.config());
 
 		self.ioc = self.ioc.register(single_store.clone());
 		self.ioc = self.ioc.register(multi_store.clone());
@@ -570,7 +571,8 @@ impl DatabaseBuilder {
 					&spawner,
 					begin,
 					linger,
-					engine.catalog().get_config_uint8(ConfigKey::CommitGroupMaxEntries) as usize,
+					engine.catalog().get_config_uint8(ConfigKey::CommitGroupMaxTransactions)
+						as usize,
 				),
 				None => GroupCommitHandle::inline(begin),
 			}

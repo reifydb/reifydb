@@ -69,7 +69,7 @@ use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, duration::Duration};
 #[cfg(feature = "sub_metric_profiler")]
 use tracing_subscriber::filter::LevelFilter;
 
@@ -88,6 +88,8 @@ type PoolConfigSources = (
 	u32,
 	CdcCommitConfig,
 	Option<CdcReadConfig>,
+	u32,
+	Duration,
 );
 
 fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, Value)]) -> Result<PoolConfigSources> {
@@ -108,6 +110,8 @@ fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, V
 		resolved.cdc_wal_autocheckpoint,
 		resolved.cdc_commit,
 		resolved.cdc_read,
+		resolved.operator_wal_autocheckpoint,
+		resolved.operator_flush_interval,
 	))
 }
 
@@ -346,6 +350,8 @@ impl ServerBuilder {
 			cdc_wal_autocheckpoint,
 			cdc_commit,
 			cdc_read,
+			operator_wal_autocheckpoint,
+			operator_flush_interval,
 		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 
 		let runtime_config = self.runtime_config.unwrap_or_default();
@@ -367,6 +373,8 @@ impl ServerBuilder {
 				cdc_commit,
 				cdc_read,
 				cdc_wal_autocheckpoint,
+				operator_wal_autocheckpoint,
+				operator_flush_interval,
 				&spawner,
 			);
 		let catalog_cache = CatalogCache::new();

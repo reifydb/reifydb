@@ -12,7 +12,12 @@ mod tests;
 use std::sync::OnceLock;
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_core::{common::CommitVersion, lifecycle::watermark::CheckpointFloor, metrics::collect::MetricsCollector};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::config::GetConfig,
+	lifecycle::watermark::CheckpointFloor,
+	metrics::collect::MetricsCollector,
+};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_filter::{actor::FilterActor, config::FilterConfig};
 use reifydb_filter::{actor::FilterMessage, adaptive::FilterMetrics};
@@ -177,6 +182,16 @@ impl StandardOperatorStore {
 		}
 	}
 
+	pub fn attach_config(&self, config: Arc<dyn GetConfig>) {
+		let Some(actor) = self.flush.as_ref() else {
+			return;
+		};
+		assert!(
+			actor.send(FlushMessage::AttachConfig(config)).is_ok(),
+			"operator flush actor could not be given the config handle"
+		);
+	}
+
 	pub fn point(&self) -> Option<&OperatorPointTier> {
 		self.point.as_ref()
 	}
@@ -292,6 +307,12 @@ impl OperatorStore {
 	pub fn flush_pending_blocking(&self) -> bool {
 		match self {
 			Self::Standard(store) => store.flush_pending_blocking(),
+		}
+	}
+
+	pub fn attach_config(&self, config: Arc<dyn GetConfig>) {
+		match self {
+			Self::Standard(store) => store.attach_config(config),
 		}
 	}
 

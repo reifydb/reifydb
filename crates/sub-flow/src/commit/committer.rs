@@ -594,7 +594,7 @@ mod group_commit_integration {
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
 		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
-		// max_entries = 2 flushes when the poison joins the slice; slice first so its apply
+		// max_transactions = 2 flushes when the poison joins the slice; slice first so its apply
 		// runs before the sibling fails the group.
 		let group = GroupCommitHandle::spawn(&engine.spawner(), begin, Duration::from_seconds(5).unwrap(), 2);
 		let (handle, committer) = build_committer_actor(&engine, group.clone());

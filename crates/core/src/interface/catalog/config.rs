@@ -61,8 +61,11 @@ pub enum ConfigKey {
 	OperatorPointBufferShards,
 	OperatorRangeBufferShards,
 	MultiFlushInterval,
-	MultiFlushKeyBudget,
+	MultiFlushBudgetBytes,
 	MultiWalAutocheckpoint,
+	OperatorFlushInterval,
+	OperatorFlushBudgetBytes,
+	OperatorWalAutocheckpoint,
 	FlowTick,
 	FlowSampleInterval,
 	FlowBacklogMemoryLimit,
@@ -80,7 +83,7 @@ pub enum ConfigKey {
 	MetricsSampleInterval,
 	MetricsSnapshotInterval,
 	CommitGroupLinger,
-	CommitGroupMaxEntries,
+	CommitGroupMaxTransactions,
 	TombstoneReapInterval,
 	TombstoneReapBatchSize,
 	QueueLeaseReapInterval,
@@ -119,8 +122,11 @@ impl ConfigKey {
 			Self::OperatorPointBufferShards,
 			Self::OperatorRangeBufferShards,
 			Self::MultiFlushInterval,
-			Self::MultiFlushKeyBudget,
+			Self::MultiFlushBudgetBytes,
 			Self::MultiWalAutocheckpoint,
+			Self::OperatorFlushInterval,
+			Self::OperatorFlushBudgetBytes,
+			Self::OperatorWalAutocheckpoint,
 			Self::FlowTick,
 			Self::FlowSampleInterval,
 			Self::FlowBacklogMemoryLimit,
@@ -138,7 +144,7 @@ impl ConfigKey {
 			Self::MetricsSampleInterval,
 			Self::MetricsSnapshotInterval,
 			Self::CommitGroupLinger,
-			Self::CommitGroupMaxEntries,
+			Self::CommitGroupMaxTransactions,
 			Self::TombstoneReapInterval,
 			Self::TombstoneReapBatchSize,
 			Self::QueueLeaseReapInterval,
@@ -179,8 +185,11 @@ impl ConfigKey {
 			Self::OperatorPointBufferShards => Value::Uint2(16),
 			Self::OperatorRangeBufferShards => Value::Uint2(16),
 			Self::MultiFlushInterval => Value::duration_seconds(5),
-			Self::MultiFlushKeyBudget => Value::Uint8(2048),
+			Self::MultiFlushBudgetBytes => Value::Uint8(4 * 1024 * 1024),
 			Self::MultiWalAutocheckpoint => Value::Uint8(10000),
+			Self::OperatorFlushInterval => Value::duration_seconds(5),
+			Self::OperatorFlushBudgetBytes => Value::Uint8(4 * 1024 * 1024),
+			Self::OperatorWalAutocheckpoint => Value::Uint8(10000),
 			Self::FlowTick => Value::duration_seconds(1),
 			Self::FlowSampleInterval => Value::duration_seconds(60),
 			Self::FlowBacklogMemoryLimit => Value::Uint8(64 * 1024 * 1024),
@@ -202,7 +211,7 @@ impl ConfigKey {
 			Self::CommitGroupLinger => Value::None {
 				inner: ValueType::Duration,
 			},
-			Self::CommitGroupMaxEntries => Value::Uint8(256),
+			Self::CommitGroupMaxTransactions => Value::Uint8(256),
 			Self::TombstoneReapInterval => Value::duration_seconds(1),
 			Self::TombstoneReapBatchSize => Value::Uint8(1024),
 			Self::QueueLeaseReapInterval => Value::duration_seconds(5),
@@ -341,10 +350,11 @@ impl ConfigKey {
 				 the cost of more resident commit-buffer memory and a longer window before data is \
 				 materialized in the persistent file. Read once at boot; changing it requires a restart."
 			}
-			Self::MultiFlushKeyBudget => {
-				"Maximum keys the persistent-flush class moves from the commit buffer to the SQLite tier \
-				 in one slice. Bounds how long a single flush holds the lane, so a large backlog drains \
-				 across ticks instead of stalling every other retention class behind it."
+			Self::MultiFlushBudgetBytes => {
+				"Maximum bytes of buffered entries the persistent-flush class moves from the commit \
+				 buffer to the SQLite tier in one slice. Bounds how long a single flush holds the lane, \
+				 so a large backlog drains across ticks instead of stalling every other retention class \
+				 behind it."
 			}
 			Self::MultiWalAutocheckpoint => {
 				"WAL frame threshold for the multi store's SQLite tier: sets the SQLite \
@@ -352,6 +362,26 @@ impl ConfigKey {
 				 database. Higher values checkpoint less often with a larger WAL, reducing checkpoint \
 				 I/O; lower values keep the WAL small at the cost of more frequent checkpoints. Read once \
 				 at boot; changing it requires a restart."
+			}
+			Self::OperatorFlushInterval => {
+				"How often the persistent-flush actor drains the in-memory commit buffer into the \
+				 operator store's SQLite tier. Longer intervals coalesce more writes per flush - a \
+				 larger WAL - at the cost of more resident commit-buffer memory and a longer window \
+				 before operator state is materialized in the persistent file. Read once at boot; \
+				 changing it requires a restart."
+			}
+			Self::OperatorFlushBudgetBytes => {
+				"Maximum bytes the persistent-flush class moves from the operator commit buffer to \
+				 the SQLite tier in one slice. Bounds how long a single flush holds the lane, so a \
+				 large backlog drains across ticks instead of stalling every other retention class \
+				 behind it."
+			}
+			Self::OperatorWalAutocheckpoint => {
+				"WAL frame threshold for the operator store's SQLite tier: sets the SQLite \
+				 wal_autocheckpoint PRAGMA that governs when SQLite folds the WAL back into the main \
+				 database. Higher values checkpoint less often with a larger WAL, reducing checkpoint \
+				 I/O; lower values keep the WAL small at the cost of more frequent checkpoints. Read \
+				 once at boot; changing it requires a restart."
 			}
 			Self::FlowTick => {
 				"How often the deferred and transactional flow tick coordinators wake up to dispatch \
@@ -437,7 +467,7 @@ impl ConfigKey {
 				 immediately in its own transaction); when set, must be > 0. Read once at database \
 				 construction, so changing it requires a restart."
 			}
-			Self::CommitGroupMaxEntries => {
+			Self::CommitGroupMaxTransactions => {
 				"Upper bound on commits merged into one group-commit flush. A group is flushed as \
 				 soon as it reaches this size, even before the linger expires. Must be > 0."
 			}
@@ -491,8 +521,11 @@ impl ConfigKey {
 			Self::OperatorPointBufferShards => true,
 			Self::OperatorRangeBufferShards => true,
 			Self::MultiFlushInterval => true,
-			Self::MultiFlushKeyBudget => false,
+			Self::MultiFlushBudgetBytes => false,
 			Self::MultiWalAutocheckpoint => true,
+			Self::OperatorFlushInterval => true,
+			Self::OperatorFlushBudgetBytes => false,
+			Self::OperatorWalAutocheckpoint => true,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => false,
 			Self::FlowBacklogMemoryLimit => true,
@@ -510,7 +543,7 @@ impl ConfigKey {
 			Self::MetricsSampleInterval => true,
 			Self::MetricsSnapshotInterval => true,
 			Self::CommitGroupLinger => true,
-			Self::CommitGroupMaxEntries => true,
+			Self::CommitGroupMaxTransactions => true,
 			Self::TombstoneReapInterval => false,
 			Self::TombstoneReapBatchSize => false,
 			Self::QueueLeaseReapInterval => false,
@@ -549,8 +582,11 @@ impl ConfigKey {
 			Self::OperatorPointBufferShards => &[ValueType::Uint2],
 			Self::OperatorRangeBufferShards => &[ValueType::Uint2],
 			Self::MultiFlushInterval => &[ValueType::Duration],
-			Self::MultiFlushKeyBudget => &[ValueType::Uint8],
+			Self::MultiFlushBudgetBytes => &[ValueType::Uint8],
 			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
+			Self::OperatorFlushInterval => &[ValueType::Duration],
+			Self::OperatorFlushBudgetBytes => &[ValueType::Uint8],
+			Self::OperatorWalAutocheckpoint => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::FlowSampleInterval => &[ValueType::Duration],
 			Self::FlowBacklogMemoryLimit => &[ValueType::Uint8],
@@ -568,7 +604,7 @@ impl ConfigKey {
 			Self::MetricsSampleInterval => &[ValueType::Duration],
 			Self::MetricsSnapshotInterval => &[ValueType::Duration],
 			Self::CommitGroupLinger => &[ValueType::Duration],
-			Self::CommitGroupMaxEntries => &[ValueType::Uint8],
+			Self::CommitGroupMaxTransactions => &[ValueType::Uint8],
 			Self::TombstoneReapInterval => &[ValueType::Duration],
 			Self::TombstoneReapBatchSize => &[ValueType::Uint8],
 			Self::QueueLeaseReapInterval => &[ValueType::Duration],
@@ -607,8 +643,11 @@ impl ConfigKey {
 			Self::OperatorPointBufferShards => false,
 			Self::OperatorRangeBufferShards => false,
 			Self::MultiFlushInterval => false,
-			Self::MultiFlushKeyBudget => false,
+			Self::MultiFlushBudgetBytes => false,
 			Self::MultiWalAutocheckpoint => false,
+			Self::OperatorFlushInterval => false,
+			Self::OperatorFlushBudgetBytes => false,
+			Self::OperatorWalAutocheckpoint => false,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => true,
 			Self::FlowBacklogMemoryLimit => false,
@@ -626,7 +665,7 @@ impl ConfigKey {
 			Self::MetricsSampleInterval => false,
 			Self::MetricsSnapshotInterval => true,
 			Self::CommitGroupLinger => true,
-			Self::CommitGroupMaxEntries => false,
+			Self::CommitGroupMaxTransactions => false,
 			Self::TombstoneReapInterval => false,
 			Self::TombstoneReapBatchSize => false,
 			Self::QueueLeaseReapInterval => false,
@@ -761,14 +800,32 @@ impl ConfigKey {
 				Value::Duration(_) => Err("MULTI_FLUSH_INTERVAL must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::MultiFlushKeyBudget => match value {
+			Self::MultiFlushBudgetBytes => match value {
 				Value::Uint8(n) if *n > 0 => Ok(()),
-				Value::Uint8(_) => Err("MULTI_FLUSH_KEY_BUDGET must be greater than zero".to_string()),
+				Value::Uint8(_) => Err("MULTI_FLUSH_BUDGET_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::MultiWalAutocheckpoint => match value {
 				Value::Uint8(0) => {
 					Err("MULTI_WAL_AUTOCHECKPOINT must be greater than zero".to_string())
+				}
+				_ => Ok(()),
+			},
+			Self::OperatorFlushInterval => match value {
+				Value::Duration(d) if d.is_positive() => Ok(()),
+				Value::Duration(_) => Err("OPERATOR_FLUSH_INTERVAL must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::OperatorFlushBudgetBytes => match value {
+				Value::Uint8(n) if *n > 0 => Ok(()),
+				Value::Uint8(_) => {
+					Err("OPERATOR_FLUSH_BUDGET_BYTES must be greater than zero".to_string())
+				}
+				_ => Ok(()),
+			},
+			Self::OperatorWalAutocheckpoint => match value {
+				Value::Uint8(0) => {
+					Err("OPERATOR_WAL_AUTOCHECKPOINT must be greater than zero".to_string())
 				}
 				_ => Ok(()),
 			},
@@ -898,9 +955,9 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
-			Self::CommitGroupMaxEntries => match value {
+			Self::CommitGroupMaxTransactions => match value {
 				Value::Uint8(0) => {
-					Err("COMMIT_GROUP_MAX_ENTRIES must be greater than zero".to_string())
+					Err("COMMIT_GROUP_MAX_TRANSACTIONS must be greater than zero".to_string())
 				}
 				_ => Ok(()),
 			},
@@ -964,8 +1021,11 @@ impl fmt::Display for ConfigKey {
 			Self::OperatorPointBufferShards => write!(f, "OPERATOR_POINT_BUFFER_SHARDS"),
 			Self::OperatorRangeBufferShards => write!(f, "OPERATOR_RANGE_BUFFER_SHARDS"),
 			Self::MultiFlushInterval => write!(f, "MULTI_FLUSH_INTERVAL"),
-			Self::MultiFlushKeyBudget => write!(f, "MULTI_FLUSH_KEY_BUDGET"),
+			Self::MultiFlushBudgetBytes => write!(f, "MULTI_FLUSH_BUDGET_BYTES"),
 			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
+			Self::OperatorFlushInterval => write!(f, "OPERATOR_FLUSH_INTERVAL"),
+			Self::OperatorFlushBudgetBytes => write!(f, "OPERATOR_FLUSH_BUDGET_BYTES"),
+			Self::OperatorWalAutocheckpoint => write!(f, "OPERATOR_WAL_AUTOCHECKPOINT"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::FlowSampleInterval => write!(f, "FLOW_SAMPLE_INTERVAL"),
 			Self::FlowBacklogMemoryLimit => write!(f, "FLOW_BACKLOG_MEMORY_LIMIT"),
@@ -983,7 +1043,7 @@ impl fmt::Display for ConfigKey {
 			Self::MetricsSampleInterval => write!(f, "METRICS_SAMPLE_INTERVAL"),
 			Self::MetricsSnapshotInterval => write!(f, "METRICS_SNAPSHOT_INTERVAL"),
 			Self::CommitGroupLinger => write!(f, "COMMIT_GROUP_LINGER"),
-			Self::CommitGroupMaxEntries => write!(f, "COMMIT_GROUP_MAX_ENTRIES"),
+			Self::CommitGroupMaxTransactions => write!(f, "COMMIT_GROUP_MAX_TRANSACTIONS"),
 			Self::TombstoneReapInterval => write!(f, "TOMBSTONE_REAP_INTERVAL"),
 			Self::TombstoneReapBatchSize => write!(f, "TOMBSTONE_REAP_BATCH_SIZE"),
 			Self::QueueLeaseReapInterval => write!(f, "QUEUE_LEASE_REAP_INTERVAL"),
@@ -1026,8 +1086,11 @@ impl FromStr for ConfigKey {
 			"OPERATOR_POINT_BUFFER_SHARDS" => Ok(Self::OperatorPointBufferShards),
 			"OPERATOR_RANGE_BUFFER_SHARDS" => Ok(Self::OperatorRangeBufferShards),
 			"MULTI_FLUSH_INTERVAL" => Ok(Self::MultiFlushInterval),
-			"MULTI_FLUSH_KEY_BUDGET" => Ok(Self::MultiFlushKeyBudget),
+			"MULTI_FLUSH_BUDGET_BYTES" => Ok(Self::MultiFlushBudgetBytes),
 			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
+			"OPERATOR_FLUSH_INTERVAL" => Ok(Self::OperatorFlushInterval),
+			"OPERATOR_FLUSH_BUDGET_BYTES" => Ok(Self::OperatorFlushBudgetBytes),
+			"OPERATOR_WAL_AUTOCHECKPOINT" => Ok(Self::OperatorWalAutocheckpoint),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"FLOW_SAMPLE_INTERVAL" => Ok(Self::FlowSampleInterval),
 			"FLOW_BACKLOG_MEMORY_LIMIT" => Ok(Self::FlowBacklogMemoryLimit),
@@ -1045,7 +1108,7 @@ impl FromStr for ConfigKey {
 			"METRICS_SAMPLE_INTERVAL" => Ok(Self::MetricsSampleInterval),
 			"METRICS_SNAPSHOT_INTERVAL" => Ok(Self::MetricsSnapshotInterval),
 			"COMMIT_GROUP_LINGER" => Ok(Self::CommitGroupLinger),
-			"COMMIT_GROUP_MAX_ENTRIES" => Ok(Self::CommitGroupMaxEntries),
+			"COMMIT_GROUP_MAX_TRANSACTIONS" => Ok(Self::CommitGroupMaxTransactions),
 			"TOMBSTONE_REAP_INTERVAL" => Ok(Self::TombstoneReapInterval),
 			"TOMBSTONE_REAP_BATCH_SIZE" => Ok(Self::TombstoneReapBatchSize),
 			"QUEUE_LEASE_REAP_INTERVAL" => Ok(Self::QueueLeaseReapInterval),
@@ -1223,15 +1286,18 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 53);
+		assert_eq!(all.len(), 56);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
-		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
+		assert!(all.contains(&ConfigKey::CommitGroupMaxTransactions));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
 		assert!(all.contains(&ConfigKey::RetentionEvictMaxBatchesPerTick));
 		assert!(all.contains(&ConfigKey::MultiFlushInterval));
 		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
+		assert!(all.contains(&ConfigKey::OperatorFlushInterval));
+		assert!(all.contains(&ConfigKey::OperatorFlushBudgetBytes));
+		assert!(all.contains(&ConfigKey::OperatorWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcConsumeWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
@@ -1626,30 +1692,33 @@ mod tests {
 	}
 
 	#[test]
-	fn test_commit_group_max_entries_metadata() {
-		assert_eq!(ConfigKey::CommitGroupMaxEntries.default_value(), Value::Uint8(256));
-		assert_eq!(ConfigKey::CommitGroupMaxEntries.expected_types(), &[ValueType::Uint8]);
-		assert!(!ConfigKey::CommitGroupMaxEntries.is_optional());
-		assert!(ConfigKey::CommitGroupMaxEntries.requires_restart());
+	fn test_commit_group_max_transactions_metadata() {
+		assert_eq!(ConfigKey::CommitGroupMaxTransactions.default_value(), Value::Uint8(256));
+		assert_eq!(ConfigKey::CommitGroupMaxTransactions.expected_types(), &[ValueType::Uint8]);
+		assert!(!ConfigKey::CommitGroupMaxTransactions.is_optional());
+		assert!(ConfigKey::CommitGroupMaxTransactions.requires_restart());
 	}
 
 	#[test]
-	fn test_commit_group_max_entries_rejects_zero() {
+	fn test_commit_group_max_transactions_rejects_zero() {
 		// A zero bound would flush every group before it could accept a single submission,
 		// deadlocking every commit behind a group that can never fill.
-		match ConfigKey::CommitGroupMaxEntries.accept(Value::Uint8(0)).unwrap_err() {
+		match ConfigKey::CommitGroupMaxTransactions.accept(Value::Uint8(0)).unwrap_err() {
 			AcceptError::InvalidValue(reason) => {
 				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
 			}
 			other => panic!("expected InvalidValue, got {other:?}"),
 		}
-		assert_eq!(ConfigKey::CommitGroupMaxEntries.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
+		assert_eq!(ConfigKey::CommitGroupMaxTransactions.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
 	}
 
 	#[test]
-	fn test_commit_group_max_entries_round_trips_through_display_and_from_str() {
-		assert_eq!("COMMIT_GROUP_MAX_ENTRIES".parse::<ConfigKey>().unwrap(), ConfigKey::CommitGroupMaxEntries);
-		assert_eq!(format!("{}", ConfigKey::CommitGroupMaxEntries), "COMMIT_GROUP_MAX_ENTRIES");
+	fn test_commit_group_max_transactions_round_trips_through_display_and_from_str() {
+		assert_eq!(
+			"COMMIT_GROUP_MAX_TRANSACTIONS".parse::<ConfigKey>().unwrap(),
+			ConfigKey::CommitGroupMaxTransactions
+		);
+		assert_eq!(format!("{}", ConfigKey::CommitGroupMaxTransactions), "COMMIT_GROUP_MAX_TRANSACTIONS");
 	}
 
 	#[test]
@@ -1685,5 +1754,95 @@ mod tests {
 			}
 			other => panic!("expected InvalidValue, got {other:?}"),
 		}
+	}
+
+	#[test]
+	fn test_operator_flush_interval_metadata() {
+		assert_eq!(ConfigKey::OperatorFlushInterval.default_value(), Value::duration_seconds(5));
+		assert_eq!(ConfigKey::OperatorFlushInterval.expected_types(), &[ValueType::Duration]);
+		assert!(!ConfigKey::OperatorFlushInterval.is_optional());
+		assert!(ConfigKey::OperatorFlushInterval.requires_restart());
+	}
+
+	#[test]
+	fn test_operator_flush_interval_rejects_zero_and_negative() {
+		// A non-positive interval can never schedule a drain, so the operator commit buffer would
+		// grow without bound instead of being handed to the persistent tier.
+		match ConfigKey::OperatorFlushInterval.accept(Value::duration_seconds(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+		assert!(matches!(
+			ConfigKey::OperatorFlushInterval.accept(Value::duration_seconds(-5)),
+			Err(AcceptError::InvalidValue(_))
+		));
+	}
+
+	#[test]
+	fn test_operator_flush_interval_round_trips_through_display_and_from_str() {
+		assert_eq!("OPERATOR_FLUSH_INTERVAL".parse::<ConfigKey>().unwrap(), ConfigKey::OperatorFlushInterval);
+		assert_eq!(format!("{}", ConfigKey::OperatorFlushInterval), "OPERATOR_FLUSH_INTERVAL");
+	}
+
+	#[test]
+	fn test_operator_flush_budget_bytes_metadata() {
+		assert_eq!(ConfigKey::OperatorFlushBudgetBytes.default_value(), Value::Uint8(4 * 1024 * 1024));
+		assert_eq!(ConfigKey::OperatorFlushBudgetBytes.expected_types(), &[ValueType::Uint8]);
+		assert!(!ConfigKey::OperatorFlushBudgetBytes.is_optional());
+		assert!(!ConfigKey::OperatorFlushBudgetBytes.requires_restart());
+	}
+
+	#[test]
+	fn test_operator_flush_budget_bytes_rejects_zero() {
+		// A zero budget moves nothing per slice, so the flush lane spins forever on a backlog it
+		// is never allowed to drain.
+		match ConfigKey::OperatorFlushBudgetBytes.accept(Value::Uint8(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+		assert_eq!(ConfigKey::OperatorFlushBudgetBytes.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
+	}
+
+	#[test]
+	fn test_operator_flush_budget_bytes_round_trips_through_display_and_from_str() {
+		assert_eq!(
+			"OPERATOR_FLUSH_BUDGET_BYTES".parse::<ConfigKey>().unwrap(),
+			ConfigKey::OperatorFlushBudgetBytes
+		);
+		assert_eq!(format!("{}", ConfigKey::OperatorFlushBudgetBytes), "OPERATOR_FLUSH_BUDGET_BYTES");
+	}
+
+	#[test]
+	fn test_operator_wal_autocheckpoint_metadata() {
+		assert_eq!(ConfigKey::OperatorWalAutocheckpoint.default_value(), Value::Uint8(10000));
+		assert_eq!(ConfigKey::OperatorWalAutocheckpoint.expected_types(), &[ValueType::Uint8]);
+		assert!(!ConfigKey::OperatorWalAutocheckpoint.is_optional());
+		assert!(ConfigKey::OperatorWalAutocheckpoint.requires_restart());
+	}
+
+	#[test]
+	fn test_operator_wal_autocheckpoint_rejects_zero() {
+		// Zero is SQLite's "never checkpoint automatically", which lets the operator WAL grow
+		// without bound; disabling autocheckpointing must not be reachable by configuration.
+		match ConfigKey::OperatorWalAutocheckpoint.accept(Value::Uint8(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+		assert_eq!(ConfigKey::OperatorWalAutocheckpoint.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
+	}
+
+	#[test]
+	fn test_operator_wal_autocheckpoint_round_trips_through_display_and_from_str() {
+		assert_eq!(
+			"OPERATOR_WAL_AUTOCHECKPOINT".parse::<ConfigKey>().unwrap(),
+			ConfigKey::OperatorWalAutocheckpoint
+		);
+		assert_eq!(format!("{}", ConfigKey::OperatorWalAutocheckpoint), "OPERATOR_WAL_AUTOCHECKPOINT");
 	}
 }

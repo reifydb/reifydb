@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	sync::atomic::{AtomicBool, Ordering},
+	sync::atomic::{AtomicBool, AtomicU64, Ordering},
 	thread,
 	time::Instant,
 };
@@ -10,7 +10,10 @@ use std::{
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::flow::{FlowId, OperatorId},
+	interface::catalog::{
+		config::{ConfigKey, GetConfig},
+		flow::{FlowId, OperatorId},
+	},
 	key::operator_state::GroupId,
 };
 use reifydb_runtime::{
@@ -21,7 +24,7 @@ use reifydb_runtime::{
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::{
 	byte_size::ByteSize,
-	value::{datetime::DateTime, row_number::RowNumber},
+	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 
 use super::*;
@@ -29,7 +32,10 @@ use crate::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
-	tier::{persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig},
+	tier::{
+		commit::FLUSH_BUDGET_BYTES, persistent::OperatorPersistentTier, point::OperatorPointConfig,
+		range::OperatorRangeConfig,
+	},
 	types::{BufferedState, DurablePre, OperatorWrite},
 };
 
@@ -85,6 +91,10 @@ fn key(suffix: u8) -> EncodedKey {
 
 fn row(body: &str) -> EncodedPodRow {
 	EncodedPodRow::new(body.as_bytes())
+}
+
+fn entry_bytes(suffix: u8, body: &str) -> ByteSize {
+	ByteSize::from_bytes((key(suffix).len() + row(body).bytes().len()) as u64)
 }
 
 fn body(row: &EncodedPodRow) -> String {
@@ -505,7 +515,7 @@ fn the_memory_tier_reports_a_flush_as_complete_without_a_flusher() {
 #[test]
 fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorCommitBuffer::with_budget(8);
+	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "v00") * 8);
 	for index in 0..67 {
 		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")), DurablePre::Absent);
 	}
@@ -524,7 +534,8 @@ fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 #[test]
 fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorCommitBuffer::with_budget(2);
+	let buffer =
+		OperatorCommitBuffer::with_budget(entry_bytes(1, "early").saturating_add(entry_bytes(2, "filler")));
 	buffer.record_state_set(OP_A, key(1), row("early"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key(2), row("filler"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key(3), row("tail"), DurablePre::Absent);
@@ -557,7 +568,7 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorCommitBuffer::with_budget(4);
+	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "at-shutdown") * 4);
 	let actor_ref =
 		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
 
@@ -587,7 +598,7 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorCommitBuffer::with_budget(4);
+	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "at-cancel") * 4);
 	let actor_ref =
 		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
 
@@ -624,33 +635,173 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let budget = 16;
+	let entries = 16u8;
+	let budget = entry_bytes(0, "under-the-budget") * entries as u64;
 	let buffer = OperatorCommitBuffer::with_budget(budget);
 	let actor_ref =
 		OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, idle_interval());
 	buffer.attach_flusher(actor_ref);
 
-	for index in 0..budget - 1 {
-		buffer.record_state_set(OP_A, key(index as u8), row("under-the-budget"), DurablePre::Absent);
+	for index in 0..entries - 1 {
+		buffer.record_state_set(OP_A, key(index), row("under-the-budget"), DurablePre::Absent);
 	}
 	thread::sleep(Duration::from_milliseconds_const(100).to_std());
 	assert!(
 		storage.get(OP_A, &key(0)).is_none(),
-		"a buffer under the budget must not be flushed early, otherwise the buffer stops batching at all"
+		"a buffer one entry short of the byte budget must not be flushed early, otherwise the buffer stops \
+		 batching at all"
 	);
 
-	buffer.record_state_set(OP_A, key(budget as u8 - 1), row("under-the-budget"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key(entries - 1), row("under-the-budget"), DurablePre::Absent);
 
 	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
 	while Instant::now() < deadline && storage.get(OP_A, &key(0)).is_none() {
 		thread::sleep(Duration::from_milliseconds_const(5).to_std());
 	}
-	for index in 0..budget {
+	for index in 0..entries {
 		assert_eq!(
-			storage.get(OP_A, &key(index as u8)).map(|row| body(&row)),
+			storage.get(OP_A, &key(index)).map(|row| body(&row)),
 			Some("under-the-budget".to_string()),
 			"key {index} must be durable from the size trigger alone; the flush interval here is an \
 			 hour, so anything less means only the timer can ever drain the buffer"
 		);
 	}
+}
+
+struct StubConfig {
+	budget_bytes: AtomicU64,
+	reads: AtomicU64,
+}
+
+impl StubConfig {
+	fn new(budget_bytes: u64) -> Self {
+		Self {
+			budget_bytes: AtomicU64::new(budget_bytes),
+			reads: AtomicU64::new(0),
+		}
+	}
+
+	fn set(&self, budget_bytes: u64) {
+		self.budget_bytes.store(budget_bytes, Ordering::Release);
+	}
+
+	fn reads(&self) -> u64 {
+		self.reads.load(Ordering::Acquire)
+	}
+}
+
+impl GetConfig for StubConfig {
+	fn get_config(&self, key: ConfigKey) -> Value {
+		assert_eq!(
+			key,
+			ConfigKey::OperatorFlushBudgetBytes,
+			"the flusher must read the operator budget key and no other"
+		);
+		self.reads.fetch_add(1, Ordering::AcqRel);
+		Value::Uint8(self.budget_bytes.load(Ordering::Acquire))
+	}
+
+	fn get_config_at(&self, _key: ConfigKey, _version: CommitVersion) -> Value {
+		panic!("the flusher must read the live value, not a versioned one")
+	}
+}
+
+fn flusher_fixture(
+	interval: Duration,
+) -> (OperatorFlushActor, OperatorCommitBuffer, Context<FlushMessage>, ActorSystem, SqliteTempPathGuard) {
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let spawner = actor_system.spawner();
+	let (storage, guard) = SqliteOperatorStorage::in_memory();
+	let buffer = OperatorCommitBuffer::new();
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), tier(&storage), None, None, interval);
+	let actor = OperatorFlushActor::new(buffer.clone(), tier(&storage), None, None, interval);
+	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
+	(actor, buffer, ctx, actor_system, guard)
+}
+
+#[test]
+fn the_flush_interval_the_store_was_configured_with_is_the_one_the_timer_fires_on() {
+	// Nothing here calls flush_pending: the only thing that can move the write to sqlite is the
+	// timer the actor armed in init. A timer armed from a constant instead of the configured
+	// interval leaves the knob inert, and the write sits in memory until shutdown.
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock.clone());
+	let spawner = actor_system.spawner();
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+	let store = OperatorStore::standard(OperatorStoreConfig {
+		commit: Default::default(),
+		persistent: Some(
+			OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
+				.flush_interval(Duration::from_milliseconds_const(100)),
+		),
+		point: Some(OperatorPointConfig::testing()),
+		range: Some(OperatorRangeConfig::testing()),
+		spawner,
+		clock,
+	});
+
+	put(&store, OP_A, key(1), row("on-the-timer"));
+
+	let deadline = Instant::now() + Duration::from_seconds_const(3).to_std();
+	while Instant::now() < deadline && storage.get(OP_A, &key(1)).is_none() {
+		thread::sleep(Duration::from_milliseconds_const(5).to_std());
+	}
+	assert_eq!(
+		storage.get(OP_A, &key(1)).map(|row| body(&row)),
+		Some("on-the-timer".to_string()),
+		"a 100ms interval must have drained the buffer well inside three seconds; the default interval \
+		 is five seconds, so anything slower means the configured value never reached the timer"
+	);
+}
+
+#[test]
+fn a_tick_re_reads_the_budget_so_a_config_change_lands_without_recreating_the_actor() {
+	// The budget key is declared as not requiring a restart, so a sweep that rewrites it must
+	// change the effective threshold on the next tick. Reading it once at construction would
+	// pin the first value forever and every later step of the sweep would measure the first one.
+	let (actor, buffer, ctx, _system, _guard) = flusher_fixture(idle_interval());
+	let mut state = actor.init(&ctx);
+	let config = Arc::new(StubConfig::new(4096));
+	let handle: Arc<dyn GetConfig> = config.clone();
+
+	actor.handle(&mut state, FlushMessage::AttachConfig(handle), &ctx);
+	assert_eq!(
+		buffer.budget(),
+		FLUSH_BUDGET_BYTES,
+		"attaching alone must not move the budget; only a tick may adopt the configured value"
+	);
+
+	actor.handle(&mut state, FlushMessage::Tick(DateTime::from_millis(1)), &ctx);
+	assert_eq!(buffer.budget(), ByteSize::from_bytes(4096), "the first tick must adopt the configured budget");
+
+	config.set(65_536);
+	actor.handle(&mut state, FlushMessage::Tick(DateTime::from_millis(2)), &ctx);
+	assert_eq!(
+		buffer.budget(),
+		ByteSize::from_bytes(65_536),
+		"the second tick must observe the rewritten value; a cached read makes the knob a restart-only \
+		 one in everything but its declaration"
+	);
+	assert_eq!(config.reads(), 2, "exactly one read per tick, or the budget is being sampled somewhere else");
+}
+
+#[test]
+fn a_tick_with_no_config_attached_keeps_the_compiled_default_and_does_not_panic() {
+	// Memory-only stores and the whole window before the catalog exists never attach a handle.
+	// Unwrapping a missing handle there would abort the process on the first tick, and falling
+	// back to a zero budget would split every flush into single-entry slices.
+	let (actor, buffer, ctx, _system, _guard) = flusher_fixture(idle_interval());
+	let mut state = actor.init(&ctx);
+	buffer.record_state_set(OP_A, key(1), row("no-config"), DurablePre::Absent);
+
+	let directive = actor.handle(&mut state, FlushMessage::Tick(DateTime::from_millis(1)), &ctx);
+
+	assert!(matches!(directive, Directive::Continue), "a tick without a config handle must keep the actor alive");
+	assert_eq!(
+		buffer.budget(),
+		FLUSH_BUDGET_BYTES,
+		"an unattached flusher must keep the compiled 4 MiB default rather than adopt zero"
+	);
+	assert_eq!(FLUSH_BUDGET_BYTES, ByteSize::from_mib(4), "the compiled fallback is the documented 4 MiB");
 }

@@ -24,7 +24,7 @@ use reifydb_value::{
 use crate::{
 	tier::commit::{
 		OperatorCommitBuffer,
-		batch::{DropMarker, StateEntry},
+		batch::{ANCHOR_ENTRY_BYTES, DropMarker, StateEntry},
 	},
 	types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, BufferedAnchor, BufferedState, DurablePre, OperatorWrite},
 };
@@ -59,6 +59,18 @@ fn entry_body(entry: &StateEntry) -> String {
 
 fn row_body(row: &EncodedPodRow) -> String {
 	String::from_utf8(row.body().to_vec()).expect("test bodies are utf8")
+}
+
+fn entry_bytes(key_body: &str, row_body: &str) -> ByteSize {
+	ByteSize::from_bytes((key(key_body).len() + row(row_body).bytes().len()) as u64)
+}
+
+fn live_bytes(buffer: &OperatorCommitBuffer) -> ByteSize {
+	buffer.shared.inner.lock().live.bytes
+}
+
+fn resident_bytes(buffer: &OperatorCommitBuffer) -> ByteSize {
+	buffer.shared.inner.lock().resident_bytes()
 }
 
 #[test]
@@ -623,7 +635,8 @@ fn an_empty_write_batch_leaves_the_buffer_untouched() {
 
 #[test]
 fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_nothing() {
-	let budget = 8;
+	let entry = entry_bytes("k000", "v000");
+	let budget = entry * 8;
 	let buffer = OperatorCommitBuffer::with_budget(budget);
 	let total: usize = 53;
 	for index in 0..total {
@@ -639,10 +652,10 @@ fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_noth
 	let mut slices = 0;
 	while let Some(batch) = buffer.take_for_flush() {
 		assert!(
-			batch.entries() <= budget,
-			"a slice of {} entries is past the budget of {budget}; an unbounded slice is exactly the \
+			batch.bytes <= budget,
+			"a slice of {} is past the budget of {budget}; an unbounded slice is exactly the \
 			 multi-second transaction this split exists to prevent",
-			batch.entries()
+			batch.bytes
 		);
 		slices += 1;
 		for ((_, taken), entry) in &batch.state {
@@ -657,7 +670,11 @@ fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_noth
 		assert!(slices <= total, "the split must make progress on every take or the drain never terminates");
 	}
 
-	assert_eq!(slices, total.div_ceil(budget), "the buffer must be handed out in full slices plus a remainder");
+	assert_eq!(
+		slices,
+		(entry * total as u64).as_bytes().div_ceil(budget.as_bytes()) as usize,
+		"the buffer must be handed out in full slices plus a remainder"
+	);
 	let mut unique = seen.clone();
 	unique.sort();
 	unique.dedup();
@@ -676,7 +693,9 @@ fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_noth
 
 #[test]
 fn a_key_rewritten_after_its_slice_left_reads_and_flushes_as_the_later_value() {
-	let buffer = OperatorCommitBuffer::with_budget(2);
+	let buffer = OperatorCommitBuffer::with_budget(
+		entry_bytes("k3", "left-behind").saturating_add(entry_bytes("k1", "late")),
+	);
 	buffer.record_state_set(OP_A, key("k1"), row("early"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("k2"), row("filler"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("k3"), row("left-behind"), DurablePre::Absent);
@@ -710,7 +729,7 @@ fn a_key_rewritten_after_its_slice_left_reads_and_flushes_as_the_later_value() {
 
 #[test]
 fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
-	let buffer = OperatorCommitBuffer::with_budget(1);
+	let buffer = OperatorCommitBuffer::with_budget(entry_bytes("k2", "post-drop-a"));
 	buffer.record_state_set(OP_A, key("k1"), row("pre-drop"), DurablePre::Absent);
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
 	buffer.record_state_set(OP_A, key("k2"), row("post-drop-a"), DurablePre::Absent);
@@ -744,7 +763,8 @@ fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
 
 #[test]
 fn anchors_are_handed_out_under_the_same_budget_as_state() {
-	let budget = 4;
+	let state = entry_bytes("k1", "v").saturating_add(entry_bytes("k2", "v"));
+	let budget = state.saturating_add(ANCHOR_ENTRY_BYTES * 2);
 	let buffer = OperatorCommitBuffer::with_budget(budget);
 	buffer.record_state_set(OP_A, key("k1"), row("v"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("k2"), row("v"), DurablePre::Absent);
@@ -753,9 +773,13 @@ fn anchors_are_handed_out_under_the_same_budget_as_state() {
 	}
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
-	assert_eq!(first.state.len(), 2, "state is taken first because it dominates the write cost");
 	assert_eq!(
-		first.entries(),
+		first.bytes.saturating_sub(ANCHOR_ENTRY_BYTES * first.anchors.len() as u64),
+		state,
+		"state is taken first because it dominates the write cost"
+	);
+	assert_eq!(
+		first.bytes,
 		budget,
 		"the anchors must fill the remainder of the budget rather than travel unbounded beside the state"
 	);
@@ -763,7 +787,7 @@ fn anchors_are_handed_out_under_the_same_budget_as_state() {
 
 	let mut anchors = first.anchors.len();
 	while let Some(batch) = buffer.take_for_flush() {
-		assert!(batch.entries() <= budget, "every anchor slice must respect the budget too");
+		assert!(batch.bytes <= budget, "every anchor slice must respect the budget too");
 		anchors += batch.anchors.len();
 		buffer.complete_flush();
 	}
@@ -837,4 +861,177 @@ fn an_anchor_disarmed_while_its_flush_is_in_flight_is_not_counted() {
 
 	assert!(buffer.anchor_census().is_empty(), "a disarmed anchor is gone, not merely shadowed");
 	assert_eq!(buffer.total_bytes(), ByteSize::ZERO, "and it bills nothing");
+}
+
+#[test]
+fn a_rewritten_key_charges_its_key_once_and_only_the_row_that_stands() {
+	// The running total is maintained per mutation, so a collapse that forgets to subtract the
+	// outgoing row inflates the budget forever and the buffer flushes on phantom bytes.
+	let buffer = OperatorCommitBuffer::new();
+	buffer.record_state_set(OP_A, key("k1"), row("aaaaaaaa"), DurablePre::Absent);
+	assert_eq!(live_bytes(&buffer), entry_bytes("k1", "aaaaaaaa"), "a first write charges its key and its row");
+
+	buffer.record_state_set(OP_A, key("k1"), row("bb"), DurablePre::Absent);
+
+	assert_eq!(
+		live_bytes(&buffer),
+		entry_bytes("k1", "bb"),
+		"the collapse must drop the outgoing row and charge the key exactly once, otherwise every rewrite \
+		 of a hot key counts twice"
+	);
+}
+
+#[test]
+fn a_tombstone_keeps_its_key_charged() {
+	// The key still occupies a slot in the map after the row is gone, so releasing its bytes would
+	// under-report resident memory by the whole tombstone backlog.
+	let buffer = OperatorCommitBuffer::new();
+	buffer.record_state_set(OP_A, key("k1"), row("value"), DurablePre::Absent);
+
+	buffer.record_state_remove(OP_A, key("k1"), DurablePre::Absent);
+
+	assert_eq!(
+		live_bytes(&buffer),
+		ByteSize::from_bytes(key("k1").len() as u64),
+		"a tombstone still holds its key in memory; charging it zero hides a keyspace that is all deletes"
+	);
+	assert_eq!(
+		buffer.lookup_state(OP_A, &key("k1")),
+		BufferedState::Tombstone,
+		"the charge must come from a slot that is really still there"
+	);
+}
+
+#[test]
+fn a_tombstone_recorded_first_charges_its_key() {
+	// A remove of a key the buffer has never seen inserts a fresh slot, so the vacant arm has to
+	// charge the key even though there is no row to charge.
+	let buffer = OperatorCommitBuffer::new();
+
+	buffer.record_state_remove(OP_A, key("k1"), DurablePre::Absent);
+
+	assert_eq!(
+		live_bytes(&buffer),
+		ByteSize::from_bytes(key("k1").len() as u64),
+		"a delete-only key is resident too; a free tombstone lets a delete storm escape the budget"
+	);
+}
+
+#[test]
+fn an_anchor_is_charged_its_fixed_width_once_per_slot() {
+	// Anchors are approximated, not measured, so rearming a slot must not charge a second time.
+	let buffer = OperatorCommitBuffer::new();
+	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
+	assert_eq!(live_bytes(&buffer), ANCHOR_ENTRY_BYTES, "one armed slot is one fixed-width charge");
+
+	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(900));
+	buffer.record_anchor_remove(OP_A, GROUP_A, 0, RowNumber(1));
+
+	assert_eq!(
+		live_bytes(&buffer),
+		ANCHOR_ENTRY_BYTES,
+		"a rearm and a disarm both overwrite one slot; charging each of them again would flush on a \
+		 buffer that never grew"
+	);
+}
+
+#[test]
+fn a_split_moves_exactly_the_bytes_the_slice_carries_away() {
+	// Source and slice must partition the original total; a split that mis-accounts either side
+	// leaves the live batch permanently over or under the budget.
+	let buffer = OperatorCommitBuffer::with_budget(entry_bytes("k1", "aaa"));
+	buffer.record_state_set(OP_A, key("k1"), row("aaa"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, key("k2"), row("bbbbb"), DurablePre::Absent);
+	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
+	let before = live_bytes(&buffer);
+
+	let taken = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+
+	assert!(taken.bytes > ByteSize::ZERO, "a slice that carries rows must carry a charge");
+	assert!(live_bytes(&buffer) > ByteSize::ZERO, "the budget must have left something behind to split at all");
+	assert_eq!(
+		taken.bytes.saturating_add(live_bytes(&buffer)),
+		before,
+		"every byte must land on exactly one side of the split"
+	);
+}
+
+#[test]
+fn a_split_that_takes_everything_leaves_the_source_at_zero() {
+	// The whole-batch path skips the boundary walk, so it is the arm most likely to leak a residue.
+	let buffer = OperatorCommitBuffer::new();
+	buffer.record_state_set(OP_A, key("k1"), row("aaa"), DurablePre::Absent);
+	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
+	let before = live_bytes(&buffer);
+
+	let taken = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+
+	assert_eq!(taken.bytes, before, "a slice that took everything carries the whole charge");
+	assert_eq!(
+		live_bytes(&buffer),
+		ByteSize::ZERO,
+		"a residue left on an emptied batch never drains, so the buffer flushes on every commit forever"
+	);
+}
+
+#[test]
+fn a_drop_marker_releases_the_bytes_of_everything_it_clears() {
+	// clear_drop removes through retain, which is a silent leak site: the entries go, the charge stays.
+	let buffer = OperatorCommitBuffer::new();
+	buffer.record_state_set(OP_A, key("k1"), row("gone"), DurablePre::Absent);
+	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
+	buffer.record_state_set(OP_B, key("k2"), row("stays"), DurablePre::Absent);
+	buffer.record_anchor_set(OP_B, GROUP_B, 0, RowNumber(1), DateTime::from_millis(100));
+
+	buffer.record_drop(DropMarker::OperatorState(OP_A));
+
+	assert_eq!(
+		live_bytes(&buffer),
+		entry_bytes("k2", "stays").saturating_add(ANCHOR_ENTRY_BYTES),
+		"only the surviving operator may still be charged; a dropped operator's bytes are gone from RAM"
+	);
+}
+
+#[test]
+fn an_anchor_group_drop_releases_only_that_group() {
+	// The narrowest retain arm still has to pay back what it removed, and nothing more.
+	let buffer = OperatorCommitBuffer::new();
+	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
+	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(2), DateTime::from_millis(100));
+	buffer.record_anchor_set(OP_A, GROUP_B, 0, RowNumber(1), DateTime::from_millis(100));
+
+	buffer.record_drop(DropMarker::AnchorsGroup(OP_A, GROUP_A));
+
+	assert_eq!(
+		live_bytes(&buffer),
+		ANCHOR_ENTRY_BYTES,
+		"the two cleared anchors must be refunded and the untouched group must stay charged"
+	);
+}
+
+#[test]
+fn a_selected_slice_stays_resident_until_the_flush_settles() {
+	// The rows are still in RAM while sqlite writes them, so releasing at select understates
+	// resident memory and re-arms the full trigger while the flusher is still working.
+	let buffer = OperatorCommitBuffer::new();
+	buffer.record_state_set(OP_A, key("k1"), row("value"), DurablePre::Absent);
+	let charged = live_bytes(&buffer);
+
+	let batch = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+
+	assert_eq!(batch.bytes, charged, "the slice carries the charge it took");
+	assert_eq!(live_bytes(&buffer), ByteSize::ZERO, "the live batch has handed the entries over");
+	assert_eq!(
+		resident_bytes(&buffer),
+		charged,
+		"the in-flight slice is still held in memory, so the buffer must keep counting it"
+	);
+
+	buffer.complete_flush();
+
+	assert_eq!(
+		resident_bytes(&buffer),
+		ByteSize::ZERO,
+		"the settle is where the memory is actually given back"
+	);
 }

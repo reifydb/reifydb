@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_multi::flush::engine::FlushEngine;
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 use tracing::instrument;
 
 use crate::plane::RetentionPlane;
@@ -55,7 +55,8 @@ impl LifecycleTask for PersistentFlushTask {
 
 	#[instrument(name = "lifecycle::store::flush::slice", level = "debug", skip_all)]
 	fn run_slice(&mut self) -> Progress {
-		let budget = (self.config.get_config_uint8(ConfigKey::MultiFlushKeyBudget) as usize).max(1);
+		let budget =
+			ByteSize::from_bytes(self.config.get_config_uint8(ConfigKey::MultiFlushBudgetBytes).max(1));
 		let now = self.clock.now();
 
 		let Some(floor) = self.plane.cutoff_with_binding(RetentionClass::PersistentFlush, now, None) else {

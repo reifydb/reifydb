@@ -219,56 +219,57 @@ impl MemoryRowStorage {
 		&self,
 		table: EntryKind,
 		cutoff: CommitVersion,
-		budget: usize,
-	) -> (EvictablePersist, EvictableDrop, bool) {
+		budget: ByteSize,
+	) -> (EvictablePersist, EvictableDrop, ByteSize, bool) {
 		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
-			None => return (Vec::new(), Vec::new(), false),
+			None => return (Vec::new(), Vec::new(), ByteSize::ZERO, false),
 		};
 		let current = entry.current.read();
 		let historical = entry.historical.read();
 		let oldest = entry.oldest.read();
 
-		let mut selected: Vec<EncodedKey> = Vec::with_capacity(budget.min(current.len()));
+		let budget = budget.as_bytes();
+		let mut consumed = 0u64;
+		let mut selected = 0usize;
+		let mut latest: HashMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = HashMap::new();
+		let mut to_drop: EvictableDrop = Vec::new();
 		let mut more = false;
 		'select: for (_bucket, keys) in oldest.range(..=cutoff) {
 			for key in keys {
-				if selected.len() >= budget {
+				if selected > 0 && consumed >= budget {
 					more = true;
 					break 'select;
 				}
-				selected.push(key.clone());
-			}
-		}
-
-		let mut latest: HashMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> =
-			HashMap::with_capacity(selected.len());
-		let mut to_drop: EvictableDrop = Vec::new();
-		for key in &selected {
-			if let Some((v, val)) = current.get(key)
-				&& *v <= cutoff
-			{
-				to_drop.push(EvictedVersion {
-					key: key.clone(),
-					version: *v,
-					value_bytes: value_bytes_of(val),
-					current: true,
-				});
-				latest.insert(key.clone(), (*v, val.clone()));
-			}
-			if let Some(versions) = historical.get(key) {
-				for (Reverse(v), val) in versions.iter() {
-					if *v <= cutoff {
-						to_drop.push(EvictedVersion {
-							key: key.clone(),
-							version: *v,
-							value_bytes: value_bytes_of(val),
-							current: false,
-						});
-						match latest.get(key) {
-							Some((best, _)) if *best >= *v => {}
-							_ => {
-								latest.insert(key.clone(), (*v, val.clone()));
+				selected += 1;
+				let key_heap = key.heap_bytes();
+				if let Some((v, val)) = current.get(key)
+					&& *v <= cutoff
+				{
+					consumed += entry_bytes_with(key_heap, val);
+					to_drop.push(EvictedVersion {
+						key: key.clone(),
+						version: *v,
+						value_bytes: value_bytes_of(val),
+						current: true,
+					});
+					latest.insert(key.clone(), (*v, val.clone()));
+				}
+				if let Some(versions) = historical.get(key) {
+					for (Reverse(v), val) in versions.iter() {
+						if *v <= cutoff {
+							consumed += entry_bytes_with(key_heap, val);
+							to_drop.push(EvictedVersion {
+								key: key.clone(),
+								version: *v,
+								value_bytes: value_bytes_of(val),
+								current: false,
+							});
+							match latest.get(key) {
+								Some((best, _)) if *best >= *v => {}
+								_ => {
+									latest.insert(key.clone(), (*v, val.clone()));
+								}
 							}
 						}
 					}
@@ -277,7 +278,7 @@ impl MemoryRowStorage {
 		}
 
 		let to_persist = latest.into_iter().map(|(key, (v, val))| (key, v, val)).collect();
-		(to_persist, to_drop, more)
+		(to_persist, to_drop, ByteSize::from_bytes(consumed), more)
 	}
 }
 
@@ -864,6 +865,28 @@ pub mod tests {
 
 	use super::*;
 
+	const UNBOUNDED: ByteSize = ByteSize::from_bytes(u64::MAX);
+
+	fn budget_of(entries: &[(EncodedKey, Option<CowVec<u8>>)]) -> ByteSize {
+		// The budget is expressed in the same accounting the buffer's residency counters use, so a test
+		// budget must be derived from entry_bytes rather than from the value length alone.
+		ByteSize::from_bytes(entries.iter().map(|(key, value)| entry_bytes(key, value)).sum())
+	}
+
+	fn keyed(name: &str, value: &[u8]) -> (EncodedKey, Option<CowVec<u8>>) {
+		(EncodedKey::new(name.as_bytes().to_vec()), Some(CowVec::new(value.to_vec())))
+	}
+
+	fn seed(storage: &MemoryRowStorage, version: u64, entries: &[(EncodedKey, Option<CowVec<u8>>)]) {
+		for (key, value) in entries {
+			storage.set(
+				CommitVersion(version),
+				HashMap::from([(EntryKind::Multi, vec![(key.clone(), value.clone())])]),
+			)
+			.unwrap();
+		}
+	}
+
 	#[test]
 	fn test_basic_operations() {
 		let storage = MemoryRowStorage::new();
@@ -1418,8 +1441,8 @@ pub mod tests {
 		}
 
 		// v2 is what a reader in [2, 3) resolves to, so it is the value that must be persisted.
-		let (to_persist, to_drop, _more) =
-			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(2), usize::MAX);
+		let (to_persist, to_drop, _consumed, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(2), UNBOUNDED);
 		assert_eq!(to_persist.len(), 1);
 		assert_eq!(to_persist[0].0, key);
 		assert_eq!(to_persist[0].1, CommitVersion(2));
@@ -1449,8 +1472,8 @@ pub mod tests {
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v".to_vec())))])]),
 		)
 		.unwrap();
-		let (to_persist, to_drop, _more) =
-			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(3), usize::MAX);
+		let (to_persist, to_drop, _consumed, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(3), UNBOUNDED);
 		assert!(to_persist.is_empty());
 		assert!(to_drop.is_empty());
 	}
@@ -1472,8 +1495,8 @@ pub mod tests {
 			.unwrap();
 		}
 
-		let (to_persist, to_drop, _more) =
-			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(4), usize::MAX);
+		let (to_persist, to_drop, _consumed, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(4), UNBOUNDED);
 		assert_eq!(to_persist.len(), 1, "exactly one value persisted per key");
 		assert_eq!(to_persist[0].1, CommitVersion(4), "the latest version <= cutoff");
 		assert_eq!(to_persist[0].2.as_deref(), Some(b"v4".as_slice()));
@@ -1498,8 +1521,8 @@ pub mod tests {
 		.unwrap();
 		storage.set(CommitVersion(2), HashMap::from([(EntryKind::Multi, vec![(key.clone(), None)])])).unwrap();
 
-		let (to_persist, to_drop, _more) =
-			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(2), usize::MAX);
+		let (to_persist, to_drop, _consumed, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(2), UNBOUNDED);
 		assert_eq!(to_persist.len(), 1);
 		assert_eq!(to_persist[0].1, CommitVersion(2), "the tombstone is the latest version");
 		assert!(to_persist[0].2.is_none(), "the persisted latest value must be the tombstone, not v1");
@@ -1523,8 +1546,8 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let (to_persist, to_drop, _more) =
-			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(3), usize::MAX);
+		let (to_persist, to_drop, _consumed, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(3), UNBOUNDED);
 		assert_eq!(to_persist.len(), 1);
 		assert_eq!(to_persist[0].1, CommitVersion(2), "only the aged-out historical version is persisted");
 		assert_eq!(to_persist[0].2.as_deref(), Some(b"v2".as_slice()));
@@ -1564,8 +1587,8 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let (to_persist, to_drop, _more) =
-			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(5), usize::MAX);
+		let (to_persist, to_drop, _consumed, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(5), UNBOUNDED);
 		assert_eq!(to_persist.len(), 1, "only the cold key is evictable below the cutoff");
 		assert_eq!(to_persist[0].0, cold);
 		assert!(to_drop.iter().all(|e| e.key == cold), "the hot key must not be scheduled for drop");
@@ -1576,19 +1599,16 @@ pub mod tests {
 		// The budget bounds a flush slice so one transaction never persists the whole evictable set;
 		// looping bounded calls must still drain exactly the below-cutoff set, no more, no less.
 		let storage = MemoryRowStorage::new();
-		for i in 0..5u64 {
-			let key = EncodedKey::new(format!("k{i}").into_bytes());
-			storage.set(
-				CommitVersion(1),
-				HashMap::from([(EntryKind::Multi, vec![(key, Some(CowVec::new(vec![i as u8])))])]),
-			)
-			.unwrap();
-		}
+		let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> =
+			(0..5u8).map(|i| keyed(&format!("k{i}"), &[i])).collect();
+		seed(&storage, 1, &entries);
+		let budget = budget_of(&entries[..2]);
 
-		let (to_persist, to_drop, more) =
-			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), 2);
-		assert_eq!(to_persist.len(), 2, "budget caps the collected key count");
+		let (to_persist, to_drop, consumed, more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), budget);
+		assert_eq!(to_persist.len(), 2, "the budget only covers two entries' worth of bytes");
 		assert_eq!(to_drop.len(), 2);
+		assert_eq!(consumed, budget, "the reported spend must be the bytes actually selected");
 		assert!(more, "three keys remain below the cutoff");
 
 		let mut drained = to_persist.len();
@@ -1596,7 +1616,8 @@ pub mod tests {
 		compaction_batch.insert(EntryKind::Multi, to_drop.into_iter().map(|e| (e.key, e.version)).collect());
 		storage.compact(compaction_batch).unwrap();
 		loop {
-			let (p, d, more) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), 2);
+			let (p, d, _consumed, more) =
+				storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), budget);
 			if p.is_empty() {
 				assert!(!more, "an empty collect must not claim more remains");
 				break;
@@ -1610,6 +1631,91 @@ pub mod tests {
 			}
 		}
 		assert_eq!(drained, 5, "every below-cutoff key is drained exactly once");
+	}
+
+	#[test]
+	fn collect_evictable_below_bounds_the_slice_by_bytes_not_by_key_count() {
+		// A key-count budget lets one slice pull an unbounded number of bytes: N fat rows cost the same
+		// as N thin ones. The same byte budget must therefore admit strictly fewer fat keys than thin
+		// ones, which is exactly what a count-based cap cannot do.
+		let thin: Vec<(EncodedKey, Option<CowVec<u8>>)> =
+			(0..8u8).map(|i| keyed(&format!("k{i}"), &[i])).collect();
+		let fat: Vec<(EncodedKey, Option<CowVec<u8>>)> =
+			(0..8u8).map(|i| keyed(&format!("k{i}"), &vec![i; 4096])).collect();
+
+		let budget = budget_of(&thin[..4]);
+
+		let thin_storage = MemoryRowStorage::new();
+		seed(&thin_storage, 1, &thin);
+		let (thin_persist, _, _, thin_more) =
+			thin_storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), budget);
+
+		let fat_storage = MemoryRowStorage::new();
+		seed(&fat_storage, 1, &fat);
+		let (fat_persist, _, fat_consumed, fat_more) =
+			fat_storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), budget);
+
+		assert_eq!(thin_persist.len(), 4, "four thin entries is exactly what the budget buys");
+		assert!(thin_more, "four of the eight thin keys are still pending");
+		assert_eq!(fat_persist.len(), 1, "a single fat entry already exceeds the same byte budget");
+		assert!(fat_more, "the remaining fat keys are still pending");
+		assert!(
+			fat_consumed.as_bytes() > budget.as_bytes(),
+			"the one admitted fat entry is what pushed the slice over the budget"
+		);
+	}
+
+	#[test]
+	fn collect_evictable_below_always_admits_one_entry_even_when_the_budget_cannot_cover_it() {
+		// A slice must never collect nothing while work is pending: an entry no budget can cover would
+		// otherwise be skipped every slice forever, and the key it pins holds the durable frontier at its
+		// commit version, which clamps the tombstone reap cutoff to zero.
+		let storage = MemoryRowStorage::new();
+		let entries = vec![keyed("huge-a", &vec![7u8; 65536]), keyed("huge-b", &vec![9u8; 65536])];
+		seed(&storage, 1, &entries);
+
+		let (to_persist, to_drop, consumed, more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), ByteSize::from_bytes(1));
+		assert_eq!(to_persist.len(), 1, "the oversized entry must be admitted, not skipped");
+		assert_eq!(to_drop.len(), 1);
+		assert!(consumed.as_bytes() > 65536, "the whole oversized entry counts against the slice");
+		assert!(more, "the second oversized entry is still pending");
+
+		let (to_persist, _, consumed, more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), ByteSize::ZERO);
+		assert_eq!(to_persist.len(), 1, "even a zero budget must still release exactly one entry");
+		assert!(consumed.as_bytes() > 65536);
+		assert!(more, "a zero budget yields after the one entry it was forced to take");
+	}
+
+	#[test]
+	fn collect_evictable_below_counts_every_evicted_version_of_a_key_against_the_budget() {
+		// A key's superseded versions leave the buffer in the same slice as its live one, so a budget
+		// that only charged for the live version would let a deep version chain blow the slice's byte
+		// ceiling without ever reporting it.
+		let storage = MemoryRowStorage::new();
+		let key = EncodedKey::new(b"k".to_vec());
+		for v in 1..=4u64 {
+			storage.set(
+				CommitVersion(v),
+				HashMap::from([(
+					EntryKind::Multi,
+					vec![(key.clone(), Some(CowVec::new(vec![v as u8; 512])))],
+				)]),
+			)
+			.unwrap();
+		}
+
+		let (_, to_drop, consumed, _) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(4), UNBOUNDED);
+
+		assert_eq!(to_drop.len(), 4, "all four versions leave the buffer");
+		let expected: u64 = (1..=4u64).map(|v| entry_bytes(&key, &Some(CowVec::new(vec![v as u8; 512])))).sum();
+		assert_eq!(
+			consumed,
+			ByteSize::from_bytes(expected),
+			"the slice must charge itself for every version it evicted, not just the live one"
+		);
 	}
 
 	fn indexed_oldest(storage: &MemoryRowStorage, table: EntryKind, key: &EncodedKey) -> Option<CommitVersion> {
@@ -1722,8 +1828,8 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let (to_persist, to_drop, _more) =
-			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(5), usize::MAX);
+		let (to_persist, to_drop, _consumed, _more) =
+			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(5), UNBOUNDED);
 		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|e| e.version).collect();
 		assert_eq!(
 			dropped,

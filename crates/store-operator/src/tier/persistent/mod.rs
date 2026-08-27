@@ -185,6 +185,12 @@ impl OperatorPersistentTier {
 			Self::Sqlite(storage) => storage.page_cache_metrics(),
 		}
 	}
+
+	pub fn set_checkpoint_threshold(&self, frames: u32) {
+		match self {
+			Self::Sqlite(storage) => storage.set_checkpoint_threshold(frames),
+		}
+	}
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
@@ -283,6 +289,10 @@ impl OperatorPersistentTier {
 	}
 
 	pub fn page_cache_metrics(&self) -> PageCacheMetrics {
+		match *self {}
+	}
+
+	pub fn set_checkpoint_threshold(&self, _frames: u32) {
 		match *self {}
 	}
 }

@@ -29,7 +29,7 @@ use reifydb_store_multi::{
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
-	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
+	tier::{persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig},
 };
 use reifydb_store_single::{
 	SingleStore,
@@ -40,6 +40,7 @@ use reifydb_store_single::{
 	tier::commit::buffer::SingleCommitBufferTier,
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
+use reifydb_value::value::duration::Duration;
 
 pub mod embedded;
 mod export;
@@ -78,6 +79,8 @@ impl StorageFactory {
 		cdc_commit: CdcCommitConfig,
 		cdc_read: Option<CdcReadConfig>,
 		cdc_wal_autocheckpoint: u32,
+		operator_wal_autocheckpoint: u32,
+		operator_flush_interval: Duration,
 		spawner: &ActorSpawner,
 	) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
 		match self {
@@ -94,6 +97,8 @@ impl StorageFactory {
 				cdc_commit,
 				cdc_read,
 				cdc_wal_autocheckpoint,
+				operator_wal_autocheckpoint,
+				operator_flush_interval,
 				config.clone(),
 				spawner,
 			),
@@ -202,6 +207,8 @@ fn create_sqlite_store_with(
 	cdc_commit: CdcCommitConfig,
 	cdc_read: Option<CdcReadConfig>,
 	cdc_wal_autocheckpoint: u32,
+	operator_wal_autocheckpoint: u32,
+	operator_flush_interval: Duration,
 	config: SqliteConfig,
 	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
@@ -236,14 +243,17 @@ fn create_sqlite_store_with(
 		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("operator.db")),
 		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("operator.db")),
 	};
+	let operator_persistent = OperatorPersistentTier::sqlite(SqliteConfig {
+		path: operator_path,
+		wal_autocheckpoint: None,
+		..config.clone()
+	});
+	operator_persistent.set_checkpoint_threshold(operator_wal_autocheckpoint);
 	let operator_store = OperatorStore::standard(OperatorStoreConfig {
 		point: operator_point,
 		range: operator_range,
 		..OperatorStoreConfig::sqlite(
-			OperatorPersistentConfig::sqlite(SqliteConfig {
-				path: operator_path,
-				..config.clone()
-			}),
+			OperatorPersistentConfig::opened(operator_persistent).flush_interval(operator_flush_interval),
 			spawner.clone(),
 			Clock::Real,
 		)

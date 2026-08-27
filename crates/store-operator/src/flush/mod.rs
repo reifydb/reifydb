@@ -6,6 +6,7 @@ mod tests;
 
 use std::sync::Arc;
 
+use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_runtime::{
 	actor::{
 		context::Context,
@@ -16,7 +17,10 @@ use reifydb_runtime::{
 	},
 	sync::waiter::WaiterHandle,
 };
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{datetime::DateTime, duration::Duration},
+};
 use tracing::debug;
 
 use crate::tier::{
@@ -38,11 +42,13 @@ pub enum FlushMessage {
 	FlushPending {
 		waiter: Arc<WaiterHandle>,
 	},
+	AttachConfig(Arc<dyn GetConfig>),
 }
 
 #[allow(dead_code)]
 pub struct OperatorFlushActorState {
 	_timer_handle: Option<TimerHandle>,
+	config: Option<Arc<dyn GetConfig>>,
 }
 
 pub struct OperatorFlushActor {
@@ -97,6 +103,15 @@ impl OperatorFlushActor {
 
 	fn drain(&self) {
 		flush_now(&self.buffer, &self.storage, self.point.as_ref(), self.range.as_ref());
+	}
+
+	fn refresh_budget(&self, state: &OperatorFlushActorState) {
+		let Some(config) = state.config.as_ref() else {
+			return;
+		};
+		self.buffer.set_budget(ByteSize::from_bytes(
+			config.get_config_uint8(ConfigKey::OperatorFlushBudgetBytes),
+		));
 	}
 }
 
@@ -174,12 +189,13 @@ impl Actor for OperatorFlushActor {
 		});
 		OperatorFlushActorState {
 			_timer_handle: Some(timer_handle),
+			config: None,
 		}
 	}
 
 	fn handle(
 		&self,
-		_state: &mut OperatorFlushActorState,
+		state: &mut OperatorFlushActorState,
 		msg: FlushMessage,
 		ctx: &Context<FlushMessage>,
 	) -> Directive {
@@ -195,6 +211,7 @@ impl Actor for OperatorFlushActor {
 		}
 		match msg {
 			FlushMessage::Tick(_) => {
+				self.refresh_budget(state);
 				self.drain();
 			}
 			FlushMessage::Shutdown => {
@@ -207,6 +224,9 @@ impl Actor for OperatorFlushActor {
 			} => {
 				self.drain();
 				waiter.notify();
+			}
+			FlushMessage::AttachConfig(config) => {
+				state.config = Some(config);
 			}
 		}
 		Directive::Continue

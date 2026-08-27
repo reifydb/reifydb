@@ -1298,7 +1298,7 @@ mod cache_tests {
 			row::RowKey,
 		},
 	};
-	use reifydb_value::{cow_vec, util::cowvec::CowVec};
+	use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec};
 
 	use super::MultiVersionRangeCursor;
 	use crate::{
@@ -1329,8 +1329,10 @@ mod cache_tests {
 	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 		let commit = store.commit();
 		for kind in commit.list_all_entry_kinds().unwrap() {
-			let (to_persist, to_compact, _more) = match commit {
-				MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, usize::MAX),
+			let (to_persist, to_compact, _consumed, _more) = match commit {
+				MultiCommitBufferTier::Memory(s) => {
+					s.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX))
+				}
 			};
 			if to_compact.is_empty() {
 				continue;

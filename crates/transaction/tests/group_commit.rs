@@ -215,7 +215,7 @@ fn single_submission_commits_after_linger_expiry() {
 }
 
 #[test]
-fn max_entries_flushes_before_linger_deadline() {
+fn max_transactions_flushes_before_linger_deadline() {
 	let h = harness();
 	let handle = GroupCommitHandle::spawn(&h.spawner, h.begin.clone(), Duration::from_seconds(3600).unwrap(), 3);
 

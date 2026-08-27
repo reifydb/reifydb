@@ -13,7 +13,10 @@ mod tests;
 
 use std::{
 	iter,
-	sync::{Arc, OnceLock},
+	sync::{
+		Arc, OnceLock,
+		atomic::{AtomicU64, Ordering},
+	},
 };
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
@@ -25,6 +28,7 @@ use reifydb_runtime::{
 		waiter::WaiterHandle,
 	},
 };
+use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	flush::FlushMessage,
@@ -32,7 +36,7 @@ use crate::{
 	types::{DurablePre, OperatorWrite},
 };
 
-pub const FLUSH_ENTRY_BUDGET: usize = 2048;
+pub const FLUSH_BUDGET_BYTES: ByteSize = ByteSize::from_mib(4);
 
 #[derive(Debug, Default)]
 struct BufferInner {
@@ -43,6 +47,10 @@ struct BufferInner {
 }
 
 impl BufferInner {
+	fn resident_bytes(&self) -> ByteSize {
+		self.live.bytes.saturating_add(self.in_flight.as_ref().map_or(ByteSize::ZERO, |batch| batch.bytes))
+	}
+
 	fn any_drop(&self, predicate: impl Fn(&DropMarker) -> bool) -> bool {
 		self.live.drops.iter().any(&predicate)
 			|| self.in_flight.as_ref().is_some_and(|batch| batch.drops.iter().any(&predicate))
@@ -55,24 +63,28 @@ struct Shared {
 	idle: Condvar,
 	flush: Mutex<()>,
 	flusher: OnceLock<ActorRef<FlushMessage>>,
-	budget: usize,
+	budget: AtomicU64,
 }
 
 impl Default for Shared {
 	fn default() -> Self {
-		Self::with_budget(FLUSH_ENTRY_BUDGET)
+		Self::with_budget(FLUSH_BUDGET_BYTES)
 	}
 }
 
 impl Shared {
-	fn with_budget(budget: usize) -> Self {
+	fn with_budget(budget: ByteSize) -> Self {
 		Self {
 			inner: Default::default(),
 			idle: Default::default(),
 			flush: Default::default(),
 			flusher: OnceLock::new(),
-			budget,
+			budget: AtomicU64::new(budget.as_bytes()),
 		}
+	}
+
+	fn budget(&self) -> ByteSize {
+		ByteSize::from_bytes(self.budget.load(Ordering::Relaxed))
 	}
 }
 
@@ -86,7 +98,7 @@ impl OperatorCommitBuffer {
 		Self::default()
 	}
 
-	pub fn with_budget(budget: usize) -> Self {
+	pub fn with_budget(budget: ByteSize) -> Self {
 		Self {
 			shared: Arc::new(Shared::with_budget(budget)),
 		}
@@ -94,6 +106,14 @@ impl OperatorCommitBuffer {
 
 	pub fn attach_flusher(&self, flusher: ActorRef<FlushMessage>) {
 		let _ = self.shared.flusher.set(flusher);
+	}
+
+	pub fn budget(&self) -> ByteSize {
+		self.shared.budget()
+	}
+
+	pub fn set_budget(&self, budget: ByteSize) {
+		self.shared.budget.store(budget.as_bytes(), Ordering::Relaxed);
 	}
 
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
@@ -143,7 +163,7 @@ impl OperatorCommitBuffer {
 		if inner.live.is_empty() {
 			return None;
 		}
-		let batch = Arc::new(inner.live.split_within(self.shared.budget));
+		let batch = Arc::new(inner.live.split_within(self.shared.budget()));
 		inner.in_flight = Some(Arc::clone(&batch));
 		inner.flushing = true;
 		Some(batch)
@@ -159,7 +179,7 @@ impl OperatorCommitBuffer {
 	}
 
 	fn request_flush_when_full(&self, inner: &mut BufferInner) {
-		if inner.triggered || inner.flushing || inner.live.entries() < self.shared.budget {
+		if inner.triggered || inner.flushing || inner.resident_bytes() < self.shared.budget() {
 			return;
 		}
 		let Some(flusher) = self.shared.flusher.get() else {
@@ -222,7 +242,7 @@ fn record_writes(live: &mut FlushBatch, writes: &[OperatorWrite]) {
 				row_num: row_number,
 				expiry,
 			} => {
-				live.anchors.insert((*operator, *group, *side, *row_number), Some(expiry.to_millis()));
+				live.record_anchor((*operator, *group, *side, *row_number), Some(expiry.to_millis()));
 			}
 			OperatorWrite::AnchorRemove {
 				operator,
@@ -230,7 +250,7 @@ fn record_writes(live: &mut FlushBatch, writes: &[OperatorWrite]) {
 				side,
 				row_num: row_number,
 			} => {
-				live.anchors.insert((*operator, *group, *side, *row_number), None);
+				live.record_anchor((*operator, *group, *side, *row_number), None);
 			}
 		}
 	}

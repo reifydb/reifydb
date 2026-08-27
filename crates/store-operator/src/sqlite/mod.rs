@@ -126,6 +126,13 @@ impl SqliteOperatorStorage {
 	pub fn anchor_filter(&self) -> &KeyFilter<OperatorAnchors> {
 		&self.inner.anchor_filter
 	}
+
+	pub fn set_checkpoint_threshold(&self, frames: u32) {
+		let guard = self.inner.conn.lock();
+		let conn = guard.as_ref().expect("operator state wal_autocheckpoint ran without an open connection");
+		conn.pragma_update(None, "wal_autocheckpoint", frames)
+			.expect("operator state wal_autocheckpoint pragma could not be applied");
+	}
 }
 
 impl Shutdown for SqliteOperatorStorage {

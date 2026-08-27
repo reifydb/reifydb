@@ -40,7 +40,7 @@ use crate::{
 };
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-pub const FLUSH_KEY_BUDGET: usize = 2048;
+pub const FLUSH_BYTE_BUDGET: ByteSize = ByteSize::from_mib(4);
 
 #[derive(Default)]
 pub struct FlushEngineState {
@@ -109,7 +109,7 @@ impl FlushEngine {
 		self
 	}
 
-	pub fn sweep_slice(&self, budget: usize) -> SweepOutcome {
+	pub fn sweep_slice(&self, budget: ByteSize) -> SweepOutcome {
 		let mut state = self.sweep_lock.lock();
 		let (progress, reclaimed) = match self.eviction_cutoff() {
 			Some(cutoff) => self.sweep_once(&mut state, cutoff, budget),
@@ -132,13 +132,13 @@ impl FlushEngine {
 	pub fn flush_pending(&self) {
 		let mut guard = self.sweep_lock.lock();
 		if let Some(cutoff) = self.eviction_cutoff() {
-			while self.sweep_once(&mut guard, cutoff, FLUSH_KEY_BUDGET).0.is_yielded() {}
+			while self.sweep_once(&mut guard, cutoff, FLUSH_BYTE_BUDGET).0.is_yielded() {}
 		}
 	}
 
 	pub fn flush_all(&self) {
 		let mut guard = self.sweep_lock.lock();
-		while self.sweep_once(&mut guard, CommitVersion(u64::MAX), FLUSH_KEY_BUDGET).0.is_yielded() {}
+		while self.sweep_once(&mut guard, CommitVersion(u64::MAX), FLUSH_BYTE_BUDGET).0.is_yielded() {}
 	}
 
 	fn eviction_cutoff(&self) -> Option<CommitVersion> {
@@ -161,10 +161,10 @@ impl FlushEngine {
 	#[cfg(test)]
 	fn sweep(&self, cutoff: CommitVersion) {
 		let mut guard = self.sweep_lock.lock();
-		while self.sweep_once(&mut guard, cutoff, FLUSH_KEY_BUDGET).0.is_yielded() {}
+		while self.sweep_once(&mut guard, cutoff, FLUSH_BYTE_BUDGET).0.is_yielded() {}
 	}
 
-	fn sweep_once(&self, state: &mut FlushEngineState, cutoff: CommitVersion, budget: usize) -> (Progress, u64) {
+	fn sweep_once(&self, state: &mut FlushEngineState, cutoff: CommitVersion, budget: ByteSize) -> (Progress, u64) {
 		let Some(mut entry_kinds) = self.list_evictable_kinds() else {
 			return (Progress::Exhausted, 0);
 		};
@@ -180,16 +180,17 @@ impl FlushEngine {
 		let mut plan: Vec<(EntryKind, bool, EvictablePartition)> = Vec::new();
 		let mut batches: HashMap<CommitVersion, TierBatch> = HashMap::new();
 		for kind in entry_kinds {
-			if remaining == 0 {
+			if remaining == ByteSize::ZERO {
 				more = true;
 				state.resume_from = Some(kind);
 				break;
 			}
-			let (to_persist, to_drop, kind_more) = self.collect_evictable(kind, cutoff, remaining);
+			let (to_persist, to_drop, consumed, kind_more) =
+				self.collect_evictable(kind, cutoff, remaining);
 			if to_persist.is_empty() && to_drop.is_empty() {
 				continue;
 			}
-			remaining = remaining.saturating_sub(to_persist.len());
+			remaining = remaining.saturating_sub(consumed);
 			more |= kind_more;
 			let persistent_object = self.is_persistent_object(kind);
 			if persistent_object {
@@ -283,8 +284,8 @@ impl FlushEngine {
 		&self,
 		kind: EntryKind,
 		cutoff: CommitVersion,
-		budget: usize,
-	) -> (EvictablePersist, EvictableDrop, bool) {
+		budget: ByteSize,
+	) -> (EvictablePersist, EvictableDrop, ByteSize, bool) {
 		match &self.commit {
 			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, budget),
 		}
@@ -377,6 +378,25 @@ mod tests {
 	fn write(buffer: &MultiCommitBufferTier, kind: EntryKind, key: &EncodedKey, version: u64, value: &str) {
 		buffer.set(CommitVersion(version), HashMap::from([(kind, vec![(key.clone(), Some(val(value)))])]))
 			.unwrap();
+	}
+
+	fn budget_for(keys: &[String], value: &str) -> ByteSize {
+		// The sweep budget is in bytes, but a starvation scenario is defined by how many keys one slice
+		// can take; measuring the real cost of those keys keeps the scenario fixed while the unit moves.
+		let storage = crate::tier::commit::memory::storage::MemoryRowStorage::new();
+		for key in keys {
+			storage.set(
+				CommitVersion(1),
+				HashMap::from([(EntryKind::Multi, vec![(ek(key), Some(val(value)))])]),
+			)
+			.unwrap();
+		}
+		let (_, _, consumed, _) = storage.collect_evictable_below(
+			EntryKind::Multi,
+			CommitVersion(1),
+			ByteSize::from_bytes(u64::MAX),
+		);
+		consumed
 	}
 
 	struct StaticWatermark(CommitVersion);
@@ -564,7 +584,7 @@ mod tests {
 			write(&actor.commit, kind, &ek(&format!("k{i}")), 10 + i, "v");
 		}
 
-		let outcome = actor.sweep_slice(FLUSH_KEY_BUDGET);
+		let outcome = actor.sweep_slice(FLUSH_BYTE_BUDGET);
 
 		assert_eq!(outcome.reclaimed, 0, "nothing is below the pinned cutoff, so nothing can be reclaimed");
 		assert_eq!(
@@ -587,7 +607,7 @@ mod tests {
 			write(&actor.commit, kind, &ek(&format!("k{i}")), 10 + i, "v");
 		}
 
-		let outcome = actor.sweep_slice(FLUSH_KEY_BUDGET);
+		let outcome = actor.sweep_slice(FLUSH_BYTE_BUDGET);
 
 		assert!(outcome.reclaimed > 0, "entries below the cutoff must count as work done");
 		assert_eq!(outcome.backlog, 0, "a drained buffer reports no backlog");
@@ -1056,9 +1076,11 @@ mod tests {
 	fn a_kind_behind_the_budget_prefix_is_still_swept_under_sustained_writes() {
 		const KINDS: u64 = 40;
 		const KEYS_PER_ROUND: u64 = 20;
-		const BUDGET: usize = 40;
+		const KEYS_PER_SLICE: u64 = 40;
 		const ROUNDS: u64 = 60;
 		const FIRST_VERSION: u64 = 1;
+
+		let budget = budget_for(&(0..KEYS_PER_SLICE).map(|i| format!("v1-k{i}")).collect::<Vec<_>>(), "x");
 
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1_000_000)));
 		let kinds: Vec<EntryKind> =
@@ -1075,7 +1097,7 @@ mod tests {
 		round_writes(FIRST_VERSION);
 		let mut exhausted = 0;
 		for round in 0..ROUNDS {
-			if actor.sweep_slice(BUDGET).progress.is_yielded() {
+			if actor.sweep_slice(budget).progress.is_yielded() {
 				exhausted += 1;
 			}
 			round_writes(FIRST_VERSION + 1 + round);
@@ -1101,9 +1123,11 @@ mod tests {
 	fn a_kind_that_sorts_behind_a_deeper_backlog_is_still_reached_by_the_sweep() {
 		const HOT_KINDS: u64 = 3;
 		const KEYS_PER_ROUND: u64 = 40;
-		const BUDGET: usize = 30;
+		const KEYS_PER_SLICE: u64 = 30;
 		const ROUNDS: u64 = 80;
 		const COLD_FIRST_VERSION: u64 = 50;
+
+		let budget = budget_for(&(0..KEYS_PER_SLICE).map(|i| format!("v1-k{i}")).collect::<Vec<_>>(), "x");
 
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1_000_000)));
 		let hot: Vec<EntryKind> =
@@ -1119,7 +1143,7 @@ mod tests {
 			if round == COLD_FIRST_VERSION {
 				write(&actor.commit, cold, &ek("cold-key"), round, "x");
 			}
-			actor.sweep_slice(BUDGET);
+			actor.sweep_slice(budget);
 		}
 
 		assert!(
@@ -1132,5 +1156,96 @@ mod tests {
 			"the single write to the cold kind is still pending after {} slices, so the sweep never reached past the hot kinds sorted ahead of it",
 			ROUNDS - COLD_FIRST_VERSION
 		);
+	}
+
+	#[test]
+	fn a_slice_cut_off_mid_kind_resumes_past_it_instead_of_restarting_at_the_head() {
+		// Isolates the resume cursor from the oldest-pending ranking, which otherwise covers for it.
+		// The deep kind holds the oldest pending version for the whole run, so the ranking alone puts it
+		// at the head of every slice and the budget dies inside it every time; nothing but a cursor that
+		// resumes past the kind it was cut off in can reach the cold kind behind it. The ranking is left
+		// intact here, so a cold write still pending at the end can only mean the cursor is gone.
+		const DEEP_KEYS: u64 = 400;
+		const KEYS_PER_SLICE: u64 = 10;
+		const SLICES: u64 = 20;
+		const COLD_VERSION: u64 = 50;
+
+		let budget = budget_for(&(0..KEYS_PER_SLICE).map(|i| format!("deep-k{i}")).collect::<Vec<_>>(), "x");
+
+		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1_000_000)));
+		let deep = EntryKind::Source(StorageId::Table(TableId(1)));
+		let cold = EntryKind::Source(StorageId::Table(TableId(2)));
+
+		for key in 0..DEEP_KEYS {
+			write(&actor.commit, deep, &ek(&format!("deep-k{key}")), 1, "x");
+		}
+		write(&actor.commit, cold, &ek("cold-k"), COLD_VERSION, "x");
+
+		for _ in 0..SLICES {
+			actor.sweep_slice(budget);
+		}
+
+		assert_eq!(
+			actor.commit.oldest_pending_for(deep),
+			Some(CommitVersion(1)),
+			"the deep kind must still hold the oldest pending version after every slice, otherwise it \
+			 stopped ranking ahead of the cold kind and this never exercised the cursor at all"
+		);
+		assert_eq!(
+			actor.commit.oldest_pending_for(cold),
+			None,
+			"the cold write is still pending after {SLICES} slices, so every slice restarted at the deep \
+			 kind the ranking puts first and never resumed past the kind it was cut off in"
+		);
+	}
+
+	#[test]
+	fn a_slice_with_no_resume_point_serves_the_kind_holding_the_oldest_pending_write() {
+		// Isolates the oldest-pending ranking from the resume cursor, which otherwise covers for it.
+		// Each engine is swept exactly once, so the resume point is provably unset and the cursor cannot
+		// influence the order; the ranking alone decides which kind a one-entry budget buys. Rotating
+		// which kind holds the old write is what makes an unranked traversal fail: a fixed order serves
+		// the same kind every arrangement and so can match the designated one at most once.
+		const KINDS: u64 = 6;
+		const OLD_VERSION: u64 = 1;
+		const YOUNG_VERSION: u64 = 100;
+
+		let budget = budget_for(&["k".to_string()], "v");
+
+		for oldest in 0..KINDS {
+			let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1_000_000)));
+			let kinds: Vec<EntryKind> =
+				(0..KINDS).map(|i| EntryKind::Source(StorageId::Table(TableId(i + 1)))).collect();
+			for (index, kind) in kinds.iter().enumerate() {
+				let version = if index as u64 == oldest {
+					OLD_VERSION
+				} else {
+					YOUNG_VERSION
+				};
+				write(&actor.commit, *kind, &ek("k"), version, "v");
+			}
+
+			actor.sweep_slice(budget);
+
+			assert_eq!(
+				actor.commit.oldest_pending_for(kinds[oldest as usize]),
+				None,
+				"a budget covering exactly one entry must buy the kind holding the oldest pending \
+				 write, but the kind at version {OLD_VERSION} was left pending while a younger kind \
+				 took the slice; the durable frontier is the minimum over kinds, so serving anything \
+				 but the oldest cannot advance it"
+			);
+			for (index, kind) in kinds.iter().enumerate() {
+				if index as u64 == oldest {
+					continue;
+				}
+				assert_eq!(
+					actor.commit.oldest_pending_for(*kind),
+					Some(CommitVersion(YOUNG_VERSION)),
+					"the budget covered one entry, so no kind younger than the oldest may have \
+					 been served in the same slice"
+				);
+			}
+		}
 	}
 }
