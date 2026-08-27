@@ -28,6 +28,8 @@ use reifydb_runtime::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_store::tier::commit::CommitTier;
 use reifydb_value::{count::Count, util::cowvec::CowVec};
 use tracing::instrument;
 
@@ -36,7 +38,7 @@ use crate::filter::source::MultiCurrentKeySource;
 use crate::{
 	CommitBufferConfig,
 	config::MultiStoreConfig,
-	flush::{ObjectPersistence, engine::FlushEngine},
+	flush::ObjectPersistence,
 	tier::{
 		commit::buffer::{MultiCommitBufferTier, MultiCommitMetrics},
 		persistent::MultiPersistentTier,
@@ -47,7 +49,11 @@ use crate::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
 	config::PersistentConfig,
-	tier::{point::MultiPointConfig, range::MultiRangeConfig},
+	tier::{
+		commit::domain::{MultiCommitTier, MultiState, commit_config},
+		point::MultiPointConfig,
+		range::MultiRangeConfig,
+	},
 };
 
 pub mod multi;
@@ -90,8 +96,9 @@ pub struct StandardMultiStoreInner {
 	pub(crate) point: Option<MultiPointTier>,
 	pub(crate) range: Option<MultiRangeTier>,
 
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	#[allow(dead_code)]
-	pub(crate) flush_engine: Option<Arc<FlushEngine>>,
+	pub(crate) commit_tier: Option<MultiCommitTier>,
 	#[allow(dead_code)]
 	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	#[allow(dead_code)]
@@ -121,7 +128,7 @@ impl StandardMultiStore {
 		let range = config.persistent.is_some().then(|| config.range.and_then(MultiRangeTier::new)).flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		let (persistent, flush_engine, filter) = {
+		let (persistent, commit_tier, filter) = {
 			let persistent_config = config.persistent.clone();
 			let persistent = persistent_config.as_ref().map(|c| c.storage.clone());
 			let filter = persistent.as_ref().map(|tier| {
@@ -135,32 +142,27 @@ impl StandardMultiStore {
 				.expect("multi current filter source could not be registered");
 				actor
 			});
-			let flush_engine = match (persistent.as_ref(), persistent_config.as_ref()) {
-				(Some(persistent_storage), Some(_)) => Some(Arc::new(
-					FlushEngine::new(
+			let commit_tier = match (persistent.as_ref(), persistent_config.as_ref()) {
+				(Some(persistent_storage), Some(_)) => CommitTier::new(commit_config(), |_budget| {
+					MultiState::new(
 						commit.clone(),
 						persistent_storage.clone(),
 						row_settings_provider.clone(),
 						eviction_watermark.clone(),
-						config.clock.clone(),
 						config.event_bus.clone(),
 					)
 					.with_point(point.clone())
-					.with_range(range.clone()),
-				)),
+					.with_range(range.clone())
+				}),
 				_ => None,
 			};
-			(persistent, flush_engine, filter)
+			(persistent, commit_tier, filter)
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, flush_engine, filter): (
-			Option<MultiPersistentTier>,
-			Option<Arc<FlushEngine>>,
-			Option<ActorRef<FilterMessage>>,
-		) = {
+		let (persistent, filter): (Option<MultiPersistentTier>, Option<ActorRef<FilterMessage>>) = {
 			let _ = config.persistent;
-			(None, None, None)
+			(None, None)
 		};
 
 		let point = persistent.as_ref().and(point);
@@ -171,7 +173,8 @@ impl StandardMultiStore {
 			persistent,
 			point,
 			range,
-			flush_engine,
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			commit_tier,
 			row_settings_provider,
 			eviction_watermark,
 			event_bus: config.event_bus,
@@ -181,8 +184,9 @@ impl StandardMultiStore {
 		})))
 	}
 
-	pub fn flush_engine(&self) -> Option<Arc<FlushEngine>> {
-		self.flush_engine.clone()
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn commit_tier(&self) -> Option<MultiCommitTier> {
+		self.commit_tier.clone()
 	}
 
 	pub fn insert_read_key(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
@@ -277,17 +281,17 @@ impl StandardMultiStore {
 
 	pub fn flush_pending_blocking(&self) {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		if let Some(engine) = self.flush_engine.as_ref() {
+		if let Some(tier) = self.commit_tier.as_ref() {
 			self.event_bus.wait_for_completion();
-			engine.flush_pending();
+			tier.flush_pending();
 		}
 	}
 
 	pub fn flush_all_blocking(&self) {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		if let Some(engine) = self.flush_engine.as_ref() {
+		if let Some(tier) = self.commit_tier.as_ref() {
 			self.event_bus.wait_for_completion();
-			engine.flush_all();
+			tier.flush_all();
 		}
 	}
 }

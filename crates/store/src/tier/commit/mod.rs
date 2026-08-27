@@ -137,7 +137,12 @@ pub struct Slice<D: CommitDomain> {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Settlement {
 	pub released: ByteSize,
+	/// Rows the persistent tier acknowledged.
 	pub entries: u64,
+	/// Units the resident set gave back. A domain that persists a collapsed subset of what it drops
+	/// reclaims more than it persists, and a host that reads progress from `entries` alone sees such a
+	/// slice as no work done.
+	pub reclaimed: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -145,6 +150,9 @@ pub struct FlushOutcome {
 	pub progress: Progress,
 	pub slices: u64,
 	pub persisted: u64,
+	/// Units the resident set gave back; the host's work-done signal, which `persisted` understates
+	/// whenever a slice drops more than it writes.
+	pub reclaimed: u64,
 	pub released: ByteSize,
 	pub backlog: ByteSize,
 }
@@ -155,6 +163,7 @@ impl FlushOutcome {
 			progress: Progress::Exhausted,
 			slices: 0,
 			persisted: 0,
+			reclaimed: 0,
 			released: ByteSize::ZERO,
 			backlog: ByteSize::ZERO,
 		}

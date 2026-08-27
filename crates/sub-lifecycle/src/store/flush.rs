@@ -8,14 +8,14 @@ use reifydb_core::{
 	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
 };
 use reifydb_runtime::context::clock::Clock;
-use reifydb_store_multi::flush::engine::FlushEngine;
+use reifydb_store_multi::tier::commit::domain::MultiCommitTier;
 use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 use tracing::instrument;
 
 use crate::plane::RetentionPlane;
 
 pub struct PersistentFlushTask {
-	engine: Arc<FlushEngine>,
+	tier: MultiCommitTier,
 	config: Arc<dyn GetConfig>,
 	plane: RetentionPlane,
 	clock: Clock,
@@ -24,14 +24,14 @@ pub struct PersistentFlushTask {
 
 impl PersistentFlushTask {
 	pub fn new(
-		engine: Arc<FlushEngine>,
+		tier: MultiCommitTier,
 		config: Arc<dyn GetConfig>,
 		plane: RetentionPlane,
 		clock: Clock,
 		interval: Duration,
 	) -> Self {
 		Self {
-			engine,
+			tier,
 			config,
 			plane,
 			clock,
@@ -64,12 +64,12 @@ impl LifecycleTask for PersistentFlushTask {
 			return Progress::Exhausted;
 		};
 
-		let outcome = self.engine.sweep_slice(budget);
+		let outcome = self.tier.flush_slice(budget);
 		self.plane.record_reclamation(
 			RetentionClass::PersistentFlush,
 			Some(floor),
 			outcome.reclaimed,
-			outcome.backlog,
+			self.tier.state().buffered_entries(),
 		);
 
 		if outcome.progress.is_yielded() {

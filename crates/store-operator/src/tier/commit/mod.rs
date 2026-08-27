@@ -162,9 +162,11 @@ impl CommitDomain for OperatorCommitDomain {
 			inner.flushing = false;
 		}
 		state.idle.notify_all();
+		let entries = (batch.state.len() + batch.anchors.len()) as u64;
 		Settlement {
 			released: batch.bytes,
-			entries: (batch.state.len() + batch.anchors.len()) as u64,
+			entries,
+			reclaimed: entries,
 		}
 	}
 

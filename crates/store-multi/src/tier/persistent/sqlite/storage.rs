@@ -1605,6 +1605,21 @@ mod tests {
 	}
 
 	#[test]
+	fn persist_sweep_errors_when_storage_is_shut_down() {
+		// The sweep hands over the only copy of a row: the commit buffer drops it on the strength of this
+		// call returning Ok. A shut-down storage that reported success would lose the row silently.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.shutdown();
+
+		let batches = vec![(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"v")))])]))];
+
+		assert!(
+			s.persist_sweep(batches).is_err(),
+			"a shut-down persistent tier must refuse the sweep loudly so the buffer is not dropped"
+		);
+	}
+
+	#[test]
 	fn reap_tombstones_removes_null_valued_rows_and_leaves_live_rows() {
 		// A tombstone is a row stored with no value; the reaper must physically delete only those, never
 		// a live row, even one below the cutoff.

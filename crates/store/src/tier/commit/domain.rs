@@ -317,6 +317,7 @@ impl TestState {
 		Settlement {
 			released,
 			entries,
+			reclaimed: entries,
 		}
 	}
 

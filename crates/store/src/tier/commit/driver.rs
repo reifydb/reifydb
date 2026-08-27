@@ -137,6 +137,7 @@ impl<D: CommitDomain> CommitTier<D> {
 			let slice = self.run_slice(cutoff, budget, drain.is_some());
 			outcome.slices += slice.slices;
 			outcome.persisted += slice.persisted;
+			outcome.reclaimed += slice.reclaimed;
 			outcome.released = outcome.released.saturating_add(slice.released);
 			outcome.progress = slice.progress;
 			if slice.progress.is_exhausted() || slice.slices == 0 {
@@ -188,6 +189,7 @@ impl<D: CommitDomain> CommitTier<D> {
 
 			outcome.slices += 1;
 			outcome.persisted += settlement.entries;
+			outcome.reclaimed += settlement.reclaimed;
 			outcome.released = outcome.released.saturating_add(settlement.released);
 			self.record(kind, settlement);
 		}

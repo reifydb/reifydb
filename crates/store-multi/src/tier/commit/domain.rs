@@ -28,8 +28,8 @@ use reifydb_core::{
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_store::tier::commit::{CommitCensus, CommitDomain, CommitTier, Settlement, Slice};
-use reifydb_value::{byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_store::tier::commit::{CommitCensus, CommitConfig, CommitDomain, CommitTier, Settlement, Slice};
+use reifydb_value::{byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec, value::duration::Duration};
 
 use crate::{
 	flush::ObjectPersistence,
@@ -43,6 +43,16 @@ use crate::{
 };
 
 pub type MultiCommitTier = CommitTier<MultiDomain>;
+
+const FLUSH_BUDGET_BYTES: ByteSize = ByteSize::from_mib(4);
+const TICK_INTERVAL: Duration = Duration::from_seconds_const(5);
+
+pub fn commit_config() -> CommitConfig {
+	CommitConfig {
+		budget: Some(FLUSH_BUDGET_BYTES),
+		interval: TICK_INTERVAL,
+	}
+}
 
 type PersistPlan = Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>;
 
@@ -95,6 +105,19 @@ impl MultiState {
 
 	pub fn event_bus(&self) -> &EventBus {
 		&self.event_bus
+	}
+
+	pub fn buffered_entries(&self) -> u64 {
+		self.commit
+			.list_all_entry_kinds()
+			.expect("multi commit tier could not list its entry kinds")
+			.iter()
+			.map(|kind| {
+				self.commit
+					.count_current(*kind)
+					.expect("multi commit tier could not count a kind's current entries")
+			})
+			.sum()
 	}
 
 	fn is_persistent_object(&self, kind: EntryKind) -> bool {
@@ -273,10 +296,11 @@ impl CommitDomain for MultiDomain {
 
 	fn settle(state: &Self::State, batch: Self::Batch, ack: Self::Ack) -> Settlement {
 		state.emit_swept(&batch, &ack);
-		state.drop_from_commit(batch.kind, batch.to_drop);
+		let reclaimed = state.drop_from_commit(batch.kind, batch.to_drop);
 		Settlement {
 			released: batch.bytes,
 			entries: ack.len() as u64,
+			reclaimed,
 		}
 	}
 
@@ -324,6 +348,13 @@ mod tests {
 		tier.state()
 			.commit()
 			.set(CommitVersion(version), HashMap::from([(kind, vec![(key.clone(), Some(val(value)))])]))
+			.unwrap();
+	}
+
+	fn tombstone(tier: &MultiCommitTier, kind: EntryKind, key: &EncodedKey, version: u64) {
+		tier.state()
+			.commit()
+			.set(CommitVersion(version), HashMap::from([(kind, vec![(key.clone(), None)])]))
 			.unwrap();
 	}
 
@@ -791,8 +822,24 @@ mod tests {
 
 		let events = collector.events.lock().clone();
 		assert_eq!(events.len(), 1, "one kind settled once, so exactly one event may be raised");
-		assert_eq!(events[0].evictions().len(), 2, "both versions left the buffer and both must be accounted");
-		assert_eq!(events[0].persists().len(), 1, "only the latest version below the cutoff was written");
+
+		let evictions = events[0].evictions();
+		assert_eq!(evictions.len(), 2, "both versions left the buffer and both must be accounted");
+
+		let current: Vec<&MultiEviction> = evictions.iter().filter(|eviction| eviction.current).collect();
+		assert_eq!(current.len(), 1, "exactly one of the two was the live version");
+		assert_eq!(
+			current[0].value_bytes,
+			ByteSize::from_bytes(2),
+			"the evicted bytes must be the value's own, not a placeholder"
+		);
+
+		let superseded: Vec<&MultiEviction> = evictions.iter().filter(|eviction| !eviction.current).collect();
+		assert_eq!(superseded.len(), 1, "v1 was superseded by v2 and is discarded, not persisted");
+
+		let persists = events[0].persists();
+		assert_eq!(persists.len(), 1, "only the latest version below the cutoff reaches the persistent tier");
+		assert_eq!(persists[0].value_bytes, ByteSize::from_bytes(2));
 		assert_eq!(*events[0].version(), CommitVersion(2), "the event must carry the cutoff it swept under");
 	}
 
@@ -897,6 +944,353 @@ mod tests {
 			tier.resident_bytes(),
 			ByteSize::ZERO,
 			"one call must paginate until nothing below the cutoff is left"
+		);
+	}
+
+	#[test]
+	fn a_multi_kind_entry_reaches_the_persistent_tier() {
+		// Every other case here is keyed by Source, so this is the only cover for the Multi keyspace.
+		// Dictionary entries and cdc checkpoints live there and are lost on restart if a slice skips it.
+		let (tier, _guard) = tier(Arc::new(AllPersistent), Some(CommitVersion(10)));
+		let kind = EntryKind::Multi;
+		let key = ek("dictionary-entry");
+		write(&tier, kind, &key, 5, "mint-id-7");
+
+		tier.flush_pending();
+
+		assert!(
+			matches!(
+				tier.state().persistent().get(kind, key.as_ref(), CommitVersion(10)).unwrap(),
+				VersionedGetResult::Value { .. }
+			),
+			"a Multi entry committed below the watermark must reach the persistent tier"
+		);
+	}
+
+	#[test]
+	fn two_kinds_committed_at_different_versions_both_reach_durability() {
+		// The kinds are visited in separate passes and persist through separate transactions, so a slice
+		// that only carried the kind it started on would leave the other's write in RAM only.
+		let (tier, _guard) = tier(Arc::new(AllPersistent), Some(CommitVersion(3)));
+		let row_kind = EntryKind::Source(StorageId::Table(TableId(33)));
+		let dict_kind = EntryKind::Multi;
+		let row_key = ek("row-referencing-id-9");
+		let dict_key = ek("dictionary-entry-9");
+		write(&tier, row_kind, &row_key, 3, "id=9");
+		write(&tier, dict_kind, &dict_key, 2, "entry-9");
+
+		tier.flush_pending();
+
+		assert_eq!(
+			tier.state()
+				.persistent()
+				.get(row_kind, row_key.as_ref(), CommitVersion(3))
+				.unwrap()
+				.value()
+				.as_deref(),
+			Some(b"id=9".as_slice()),
+			"the row write must be durable after the slice"
+		);
+		assert_eq!(
+			tier.state()
+				.persistent()
+				.get(dict_kind, dict_key.as_ref(), CommitVersion(3))
+				.unwrap()
+				.value()
+				.as_deref(),
+			Some(b"entry-9".as_slice()),
+			"the dictionary write committed at an earlier version must be durable in the same pass"
+		);
+		assert!(
+			matches!(
+				tier.state().commit().get(row_kind, row_key.as_ref(), CommitVersion(3)).unwrap(),
+				VersionedGetResult::NotFound
+			),
+			"a persisted row write must be drained from the buffer"
+		);
+		assert!(
+			matches!(
+				tier.state().commit().get(dict_kind, dict_key.as_ref(), CommitVersion(3)).unwrap(),
+				VersionedGetResult::NotFound
+			),
+			"a persisted dictionary write must be drained from the buffer"
+		);
+	}
+
+	#[test]
+	fn an_evicted_tombstone_is_persisted_so_a_deleted_key_stays_deleted() {
+		// The buffer is the only copy of the delete. Dropping the tombstone without writing it leaves the
+		// older value as the newest thing on disk, and the deleted row resurrects on the next read.
+		let (tier, _guard) = tier(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(12)));
+		let key = ek("k");
+		write(&tier, kind, &key, 1, "v1");
+		tombstone(&tier, kind, &key, 2);
+
+		tier.flush_pending();
+
+		assert!(
+			matches!(
+				tier.state().commit().get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
+				VersionedGetResult::NotFound
+			),
+			"both versions must be gone from the buffer"
+		);
+		assert!(
+			matches!(
+				tier.state().persistent().get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
+				VersionedGetResult::Tombstone
+			),
+			"the persisted latest value must be the tombstone, not the value it superseded"
+		);
+	}
+
+	#[test]
+	fn a_drain_persists_a_tombstone_committed_above_the_watermark() {
+		// Shutdown is the last chance to write the delete, and it sits above the cutoff every other path
+		// respects; a drain that held it back would resurrect the row on restart.
+		let (tier, _guard) = tier(Arc::new(AllPersistent), Some(CommitVersion(1)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(102)));
+		let key = ek("k");
+		write(&tier, kind, &key, 5, "v5");
+		tombstone(&tier, kind, &key, 9);
+
+		tier.flush_all();
+
+		assert!(
+			matches!(
+				tier.state().persistent().get(kind, key.as_ref(), CommitVersion(u64::MAX)).unwrap(),
+				VersionedGetResult::Tombstone
+			),
+			"a delete committed above the watermark must persist as a tombstone, not resurrect"
+		);
+	}
+
+	#[test]
+	fn an_evicted_tombstone_is_seeded_into_the_read_tier_as_a_definitive_miss() {
+		// Leaving the key absent in the point tier is not the same as absent on disk: an absent entry falls
+		// through to whatever the tier resolves next, which can be the value the delete superseded.
+		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
+		let (tier, _guard) = tier_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
+		let kind = EntryKind::Source(StorageId::Table(TableId(21)));
+		let key = ek("k");
+		write(&tier, kind, &key, 1, "v1");
+		tombstone(&tier, kind, &key, 2);
+
+		tier.flush_pending();
+
+		assert!(
+			matches!(point.get(&key, CommitVersion(2)), VersionedGetResult::Tombstone),
+			"an evicted tombstone must be seeded into the point tier as a definitive miss, never left absent"
+		);
+	}
+
+	#[test]
+	fn a_key_the_persistent_tier_refused_is_invalidated_while_its_neighbour_is_seeded() {
+		// A refusal means the persistent tier already holds a newer version, so the pre-flush point entry is
+		// stale; seeding it would serve a value the store has already superseded on disk.
+		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
+		let (tier, _guard) = tier_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
+		let kind = EntryKind::Source(StorageId::Table(TableId(22)));
+		let rejected = ek("rejected");
+		let accepted = ek("accepted");
+
+		tier.state()
+			.persistent()
+			.set(CommitVersion(3), HashMap::from([(kind, vec![(rejected.clone(), Some(val("high")))])]))
+			.unwrap();
+		point.insert(rejected.clone(), CommitVersion(2), Some(val("stale")));
+
+		write(&tier, kind, &rejected, 2, "low");
+		write(&tier, kind, &accepted, 2, "b");
+
+		tier.flush_pending();
+
+		assert!(
+			matches!(point.get(&rejected, CommitVersion(2)), VersionedGetResult::NotFound),
+			"a refused key must be invalidated so reads fall through to the newer persisted value"
+		);
+		match point.get(&accepted, CommitVersion(2)) {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => assert_eq!(value.as_ref(), val("b").as_ref(), "the accepted key must be seeded"),
+			other => panic!("the accepted key must be seeded into the point tier, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn a_seed_never_overwrites_a_newer_point_tier_entry() {
+		// The slice carries the latest version below the cutoff, which is older than anything a live writer
+		// has since put in the point tier; seeding over it would roll a reader back a version.
+		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
+		let (tier, _guard) = tier_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
+		let kind = EntryKind::Source(StorageId::Table(TableId(23)));
+		let key = ek("k");
+
+		point.insert(key.clone(), CommitVersion(5), Some(val("newer")));
+		write(&tier, kind, &key, 2, "older");
+
+		tier.flush_pending();
+
+		match point.get(&key, CommitVersion(5)) {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => assert_eq!(
+				value.as_ref(),
+				val("newer").as_ref(),
+				"the older seeded value must not overwrite a newer resident point-tier entry"
+			),
+			other => panic!("the newer point-tier entry must survive the seed, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn every_key_is_seeded_at_its_own_latest_version_below_the_cutoff() {
+		// The slice walks version buckets, not keys, so a seed driven by the bucket rather than the key
+		// would give one of these two the other's version and serve a row that never existed at it.
+		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
+		let (tier, _guard) = tier_with_point(Arc::new(AllPersistent), CommitVersion(4), point.clone());
+		let kind = EntryKind::Source(StorageId::Table(TableId(25)));
+		let a = ek("a");
+		let b = ek("b");
+		write(&tier, kind, &a, 1, "a1");
+		write(&tier, kind, &a, 2, "a2");
+		write(&tier, kind, &b, 3, "b3");
+		write(&tier, kind, &b, 4, "b4");
+
+		tier.flush_pending();
+
+		match point.get(&a, CommitVersion(4)) {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => assert_eq!(value.as_ref(), val("a2").as_ref(), "a's latest below the cutoff is v2"),
+			other => panic!("key a must be seeded across version buckets, got {other:?}"),
+		}
+		match point.get(&b, CommitVersion(4)) {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => assert_eq!(value.as_ref(), val("b4").as_ref(), "b's latest below the cutoff is v4"),
+			other => panic!("key b must be seeded across version buckets, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn a_cold_kind_ranked_behind_a_sustained_backlog_is_still_reached() {
+		// Liveness at the level the guarantee is stated: the hot kinds hold the oldest pending versions for
+		// the whole run, so the ranking puts them first every slice and only the cursor can reach past them.
+		const HOT_KINDS: u64 = 3;
+		const KEYS_PER_ROUND: u64 = 40;
+		const KEYS_PER_SLICE: u64 = 30;
+		const ROUNDS: u64 = 80;
+		const COLD_FIRST_VERSION: u64 = 50;
+
+		let budget = budget_for(&(0..KEYS_PER_SLICE).map(|i| format!("v1-k{i}")).collect::<Vec<_>>(), "x");
+
+		let (tier, _guard) = tier(Arc::new(AllPersistent), Some(CommitVersion(1_000_000)));
+		let hot: Vec<EntryKind> =
+			(0..HOT_KINDS).map(|i| EntryKind::Source(StorageId::Table(TableId(i + 1)))).collect();
+		let cold = EntryKind::Source(StorageId::Table(TableId(HOT_KINDS + 1)));
+
+		for round in 1..=ROUNDS {
+			for kind in &hot {
+				for key in 0..KEYS_PER_ROUND {
+					write(&tier, *kind, &ek(&format!("v{round}-k{key}")), round, "x");
+				}
+			}
+			if round == COLD_FIRST_VERSION {
+				write(&tier, cold, &ek("cold-key"), round, "x");
+			}
+			tier.flush_slice(budget);
+		}
+
+		assert!(
+			tier.state().commit().oldest_pending_for(hot[0]).is_some(),
+			"the hot kinds must stay backlogged, otherwise the budget never ran out and this exercises \
+			 nothing"
+		);
+		assert_eq!(
+			tier.state().commit().oldest_pending_for(cold),
+			None,
+			"the single write to the cold kind is still pending after {} slices, so no slice reached \
+			 past the hot kinds ranked ahead of it",
+			ROUNDS - COLD_FIRST_VERSION
+		);
+	}
+
+	#[test]
+	fn a_pinned_cutoff_reports_the_entries_it_could_not_release() {
+		// The lifecycle host distinguishes a pinned floor from an idle one by the backlog it reports
+		// alongside zero work; a pinned cutoff reporting nothing pending looks exactly like an empty tier.
+		let (tier, _guard) = tier(Arc::new(AllPersistent), Some(CommitVersion(1)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(1)));
+		for key in 0..8u64 {
+			write(&tier, kind, &ek(&format!("k{key}")), 10 + key, "v");
+		}
+
+		let outcome = tier.flush_slice(tier.budget().limit());
+
+		assert_eq!(outcome.reclaimed, 0, "nothing is below the pinned cutoff, so nothing can be reclaimed");
+		assert_eq!(
+			tier.state().buffered_entries(),
+			8,
+			"the entries the cutoff could not release must still be reported, or a pinned floor looks \
+			 exactly like an idle one"
+		);
+		assert!(
+			outcome.progress.is_exhausted(),
+			"budget exhaustion must not be the backlog signal: a pinned cutoff collects nothing and \
+			 therefore never reports more work to do"
+		);
+	}
+
+	#[test]
+	fn a_cutoff_that_can_release_reports_what_it_reclaimed() {
+		// Reclaimed is the host's work-done signal and its stuck detector is a greater-than-zero test, so a
+		// draining tier that reports zero trips a starvation warning while it is working normally.
+		let (tier, _guard) = tier(Arc::new(AllPersistent), Some(CommitVersion(20)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(1)));
+		for key in 0..8u64 {
+			write(&tier, kind, &ek(&format!("k{key}")), 10 + key, "v");
+		}
+
+		let outcome = tier.flush_slice(tier.budget().limit());
+
+		assert!(outcome.reclaimed > 0, "entries below the cutoff must count as work done");
+		assert_eq!(tier.state().buffered_entries(), 0, "a drained buffer reports no backlog");
+	}
+
+	#[test]
+	fn a_slice_that_persists_nothing_still_reports_the_versions_it_reclaimed() {
+		// An ephemeral object acknowledges no row, so a work-done signal sourced from the persisted count
+		// reads zero on a slice that emptied the buffer, and the host's stuck detector fires on a tier that
+		// is draining exactly as designed.
+		let (tier, _guard) = tier(Arc::new(NonePersistent), Some(CommitVersion(2)));
+		let kind = EntryKind::Source(StorageId::Table(TableId(41)));
+		write(&tier, kind, &ek("k"), 1, "v");
+
+		let outcome = tier.flush_slice(tier.budget().limit());
+
+		assert_eq!(outcome.persisted, 0, "an ephemeral object acknowledges no row");
+		assert!(
+			outcome.reclaimed > 0,
+			"the version left the resident set, so the slice did work the host must be able to see"
+		);
+		assert_eq!(tier.state().buffered_entries(), 0, "and the buffer is empty afterwards");
+	}
+
+	#[test]
+	fn a_watermark_of_zero_is_not_a_cutoff() {
+		// Version zero precedes every commit, so treating it as a bound would sweep under a cutoff nothing
+		// is below while reporting a live watermark; it must be indistinguishable from no watermark at all.
+		let (tier, _guard) = tier(Arc::new(AllPersistent), Some(CommitVersion(0)));
+
+		assert!(
+			MultiDomain::cutoff(tier.state()).is_none(),
+			"a watermark of zero must yield no cutoff, exactly as an uninjected watermark does"
 		);
 	}
 }
