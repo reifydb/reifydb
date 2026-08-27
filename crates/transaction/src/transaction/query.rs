@@ -440,7 +440,7 @@ impl TransactionalIdentityChanges for QueryTransaction {
 		false
 	}
 
-	fn is_identity_deleted_by_name(&self, _name: &str) -> bool {
+	fn is_identity_name_vacated(&self, _name: &str) -> bool {
 		false
 	}
 }

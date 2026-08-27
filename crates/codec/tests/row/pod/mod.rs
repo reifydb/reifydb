@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::{
-	bytes::EncodedBytes,
+	bytes::{EncodedBytes, RowBuilder},
 	pod::{EncodedPodRow, POD_HEADER_SIZE},
-	shape::RowFamily,
+	shape::{RowFamily, RowShape, RowShapeField},
 };
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{util::cowvec::CowVec, value::value_type::ValueType};
 
 fn entry(id: u128, value: &[u8]) -> Vec<u8> {
 	let mut buffer = Vec::with_capacity(16 + value.len());
@@ -79,4 +79,28 @@ fn body_mut_edits_in_place_without_resizing() {
 	assert_eq!(row.len(), before);
 	assert_eq!(u128::from_be_bytes(row.body()[..16].try_into().unwrap()), 2);
 	assert_eq!(&row.body()[16..], b"before");
+}
+
+#[test]
+fn thawing_a_frozen_entry_is_the_only_way_to_change_its_length() {
+	// body_mut cannot resize, so a pod entry that must grow has no path back to storage without a thaw.
+	let raw = entry(1, b"before");
+	let frozen = EncodedPodRow::new(&raw);
+
+	let mut thawed = frozen.thaw();
+	assert_eq!(thawed.as_slice(), raw.as_slice(), "the thawed buffer starts at payload, never at a header");
+	thawed.as_mut_slice()[..16].copy_from_slice(&2u128.to_be_bytes());
+	thawed.extend_from_slice(b"-more");
+	let refrozen = thawed.freeze();
+
+	assert_eq!(u128::from_be_bytes(refrozen.body()[..16].try_into().unwrap()), 2);
+	assert_eq!(&refrozen.body()[16..], b"before-more");
+	assert_eq!(refrozen.len(), raw.len() + 5, "an appended tail must extend the entry, not overwrite it");
+}
+
+#[test]
+#[should_panic(expected = "allocate_pod on a shape of another family")]
+fn a_shape_of_another_family_cannot_allocate_a_pod_row() {
+	// A table shape stamps a fingerprint at offset zero, which a pod entry hands back as its first payload bytes.
+	RowShape::new(RowFamily::Table, vec![RowShapeField::unconstrained("value", ValueType::Blob)]).allocate_pod();
 }

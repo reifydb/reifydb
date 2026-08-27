@@ -6,7 +6,8 @@ use std::{collections::HashMap, sync::Arc};
 use postcard::to_stdvec;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
-	pod::EncodedPodRow,
+	queue::EncodedQueueRow,
+	queue_deduplication::EncodedQueueDeduplicationRow,
 	shape::RowShape,
 };
 use reifydb_core::{
@@ -18,7 +19,7 @@ use reifydb_core::{
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
-			queue::Queue,
+			queue::{Queue, decode_queue_deduplication, encode_queue_deduplication},
 		},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedQueue},
 	},
@@ -37,10 +38,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{
-		Value, datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
-		row_number::RowNumber,
-	},
+	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -51,6 +49,7 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
+	queue::partition::{ordered_by_index, placement_of},
 	transaction::operation::{
 		dictionary::DictionaryOperations,
 		queue::{QueueInsertRow, QueueOperations},
@@ -136,15 +135,17 @@ pub(crate) fn insert_queue(
 				if let Some(key) = &item.deduplication_key {
 					write_deduplication_record(txn, &queue, key, row_number, now)?;
 				}
+				let placement = placement_of(
+					&queue,
+					&shape,
+					EncodedQueueRow::view(&item.encoded),
+					ordered_by_index,
+					row_number,
+				);
 				rows.push(QueueInsertRow {
 					row_number,
-					partition: partition_of(
-						&queue,
-						&shape,
-						&item.encoded,
-						ordered_by_index,
-						row_number,
-					),
+					partition: placement.partition,
+					key_hash: placement.key_hash,
 					not_before: item.not_before,
 					encoded: item.encoded.clone(),
 				});
@@ -162,6 +163,17 @@ pub(crate) fn insert_queue(
 				row_number,
 				encoded: encoded.unwrap_or_else(|| shape.allocate_queue().freeze_bytes()),
 			}),
+			Outcome::DuplicateInBatch {
+				origin,
+			} => {
+				let row_number = returned[origin].row_number;
+				let encoded = returned[origin].encoded.clone();
+				returned.push(ReturnedRow {
+					created: false,
+					row_number,
+					encoded,
+				});
+			}
 		}
 	}
 
@@ -186,32 +198,15 @@ enum Outcome {
 		row_number: RowNumber,
 		encoded: Option<EncodedBytes>,
 	},
+	DuplicateInBatch {
+		origin: usize,
+	},
 }
 
 struct ReturnedRow {
 	created: bool,
 	row_number: RowNumber,
 	encoded: EncodedBytes,
-}
-
-const DEDUPLICATION_RECORD_WIDTH: usize = 16;
-
-fn encode_deduplication_record(row_number: RowNumber, expires_at: DateTime) -> EncodedPodRow {
-	let mut bytes = Vec::with_capacity(DEDUPLICATION_RECORD_WIDTH);
-	bytes.extend_from_slice(&row_number.0.to_be_bytes());
-	bytes.extend_from_slice(&expires_at.to_millis().to_be_bytes());
-	EncodedPodRow::new(&bytes)
-}
-
-fn decode_deduplication_record(row: &EncodedPodRow) -> Option<(RowNumber, DateTime)> {
-	let bytes = row.body();
-	if bytes.len() != DEDUPLICATION_RECORD_WIDTH {
-		return None;
-	}
-	Some((
-		RowNumber(u64::from_be_bytes(bytes[..8].try_into().ok()?)),
-		DateTime::from_millis(u64::from_be_bytes(bytes[8..].try_into().ok()?)),
-	))
 }
 
 fn write_deduplication_record(
@@ -222,7 +217,7 @@ fn write_deduplication_record(
 	now: DateTime,
 ) -> Result<()> {
 	let ttl = queue.deduplicate.as_ref().map(|d| d.ttl).unwrap_or(Duration::MAX);
-	let record = encode_deduplication_record(row_number, now.saturating_add(ttl));
+	let record = encode_queue_deduplication(row_number, now.saturating_add(ttl));
 	txn.set(&QueueDeduplicationKey::encoded(queue.id, key.to_vec()), record.into_bytes())?;
 	Ok(())
 }
@@ -235,18 +230,17 @@ fn resolve_duplicates(
 	now: DateTime,
 ) -> Result<Vec<Outcome>> {
 	let mut outcomes = Vec::with_capacity(pending.len());
-	let mut seen: HashMap<Vec<u8>, RowNumber> = HashMap::new();
+	let mut seen: HashMap<Vec<u8>, usize> = HashMap::new();
 
-	for item in pending {
+	for (index, item) in pending.iter().enumerate() {
 		let Some(key) = &item.deduplication_key else {
 			outcomes.push(Outcome::Fresh);
 			continue;
 		};
 
-		if let Some(&row_number) = seen.get(key) {
-			outcomes.push(Outcome::Duplicate {
-				row_number,
-				encoded: None,
+		if let Some(&origin) = seen.get(key) {
+			outcomes.push(Outcome::DuplicateInBatch {
+				origin,
 			});
 			continue;
 		}
@@ -254,13 +248,12 @@ fn resolve_duplicates(
 		let stored = txn.get(&QueueDeduplicationKey::encoded(queue.id, key.clone()))?;
 		if let Some(stored) = stored {
 			let Some((row_number, expires_at)) =
-				decode_deduplication_record(EncodedPodRow::view(&stored.bytes))
+				decode_queue_deduplication(EncodedQueueDeduplicationRow::view(&stored.bytes))
 			else {
 				return_internal_error!(
-					"Queue {} deduplication record is {} bytes wide, expected {}. This indicates a corrupt record.",
+					"Queue {} deduplication record is {} bytes wide, too short for its header. This indicates a corrupt record.",
 					queue.name,
-					stored.bytes.len(),
-					DEDUPLICATION_RECORD_WIDTH
+					stored.bytes.len()
 				)
 			};
 			if expires_at > now {
@@ -273,7 +266,7 @@ fn resolve_duplicates(
 			}
 		}
 
-		seen.insert(key.clone(), RowNumber(0));
+		seen.insert(key.clone(), index);
 		outcomes.push(Outcome::Fresh);
 	}
 
@@ -323,32 +316,6 @@ fn declared_key_indices(queue: &Queue) -> Result<Option<Vec<usize>>> {
 fn declared_key_bytes(shape: &RowShape, bytes: &EncodedBytes, indices: &[usize]) -> Vec<u8> {
 	let values: Vec<Value> = indices.iter().map(|&index| shape.get_value(bytes, index)).collect();
 	to_stdvec(&values).expect("postcard serialization of a Value list is total")
-}
-
-#[inline]
-fn ordered_by_index(queue: &Queue) -> Result<Option<usize>> {
-	let Some(ordered_by) = queue.ordered_by() else {
-		return Ok(None);
-	};
-	let index = queue.columns.iter().position(|c| c.name == *ordered_by).ok_or_else(|| {
-		internal_error!("queue {} declares ordered_by {} which is not a column", queue.name, ordered_by)
-	})?;
-	Ok(Some(index))
-}
-
-#[inline]
-fn partition_of(
-	queue: &Queue,
-	shape: &RowShape,
-	bytes: &EncodedBytes,
-	ordered_by_index: Option<usize>,
-	row_number: RowNumber,
-) -> u16 {
-	let hash = match ordered_by_index {
-		Some(index) => Partition::of(&[shape.get_value(bytes, index)]),
-		None => Partition::of(&[Value::Uint8(row_number.0)]),
-	};
-	(hash.0 % queue.partitions() as u128) as u16
 }
 
 #[inline]
@@ -476,16 +443,21 @@ fn read_deduplication_key(
 	let Some(&idx) = column_map.get(QUEUE_DEDUPLICATION_KEY_FIELD) else {
 		return Ok(None);
 	};
-	match columns[idx].get_value(row_idx) {
+	let value = columns[idx].get_value(row_idx);
+	match value {
 		Value::None {
 			..
-		} => Ok(None),
-		Value::Utf8(text) => Ok(Some(text.into_bytes())),
+		}
+		| Value::Utf8(_) => Ok(Some(statement_key_bytes(&value))),
 		other => return_error!(queue_deduplication_key_not_utf8(
 			Fragment::internal(target.queue.name.clone()),
 			other.get_type().to_string().as_str()
 		)),
 	}
+}
+
+fn statement_key_bytes(value: &Value) -> Vec<u8> {
+	to_stdvec(value).expect("postcard serialization of a Value is total")
 }
 
 #[inline]

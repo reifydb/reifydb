@@ -44,6 +44,7 @@ use procedure::ProcedureKey;
 use procedure_param::ProcedureParamKey;
 use property::ColumnPropertyKey;
 use queue::QueueKey;
+use queue_attempt::QueueAttemptKey;
 use queue_deduplication::QueueDeduplicationKey;
 use reifydb_codec::{
 	key as keycode,
@@ -119,7 +120,9 @@ pub mod procedure;
 pub mod procedure_param;
 pub mod property;
 pub mod queue;
+pub mod queue_attempt;
 pub mod queue_deduplication;
+pub mod queue_schedule;
 pub mod relationship;
 pub mod ringbuffer;
 pub mod role;
@@ -172,6 +175,7 @@ pub enum Key {
 	Queue(QueueKey),
 	NamespaceQueue(NamespaceQueueKey),
 	QueueDeduplication(QueueDeduplicationKey),
+	QueueAttempt(QueueAttemptKey),
 	RingBuffer(RingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
 	NamespaceRingBuffer(NamespaceRingBufferKey),
@@ -243,6 +247,7 @@ impl Key {
 			Key::Queue(key) => key.encode(),
 			Key::NamespaceQueue(key) => key.encode(),
 			Key::QueueDeduplication(key) => key.encode(),
+			Key::QueueAttempt(key) => key.encode(),
 			Key::RingBuffer(key) => key.encode(),
 			Key::RingBufferMetadata(key) => key.encode(),
 			Key::NamespaceRingBuffer(key) => key.encode(),
@@ -354,6 +359,11 @@ impl Key {
 			KeyKind::Queue => QueueKey::decode(key).map(Self::Queue),
 			KeyKind::NamespaceQueue => NamespaceQueueKey::decode(key).map(Self::NamespaceQueue),
 			KeyKind::QueueDeduplication => QueueDeduplicationKey::decode(key).map(Self::QueueDeduplication),
+			KeyKind::QueuePartition
+			| KeyKind::QueueItemState
+			| KeyKind::QueueDue
+			| KeyKind::QueueKeyActive => None,
+			KeyKind::QueueAttempt => QueueAttemptKey::decode(key).map(Self::QueueAttempt),
 			KeyKind::RingBuffer => RingBufferKey::decode(key).map(Self::RingBuffer),
 			KeyKind::RingBufferMetadata => RingBufferMetadataKey::decode(key).map(Self::RingBufferMetadata),
 			KeyKind::NamespaceRingBuffer => {

@@ -15,7 +15,7 @@ export interface AuthSession {
   readonly identity: string;
   readonly wallet_address: string;
   readonly expires_at: number;
-  readonly method?: "wallet" | "password";
+  readonly method?: "wallet" | "password" | "token";
   readonly identifier?: string;
 }
 

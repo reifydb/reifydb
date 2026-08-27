@@ -50,6 +50,24 @@ pub struct OperationResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub rbcf: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct QueueClaimRequest {
+    #[prost(string, tag = "1")]
+    pub queue: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub worker: ::prost::alloc::string::String,
+    #[prost(uint32, optional, tag = "3")]
+    pub max_n: ::core::option::Option<u32>,
+    #[prost(string, optional, tag = "4")]
+    pub lease_ttl: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "5")]
+    pub wait_for: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct QueueClaimResponse {
+    #[prost(bytes = "vec", tag = "1")]
+    pub rbcf: ::prost::alloc::vec::Vec<u8>,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubscribeRequest {
     #[prost(string, tag = "1")]
@@ -529,6 +547,30 @@ pub mod reify_db_client {
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Call"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn queue_claim(
+            &mut self,
+            request: impl tonic::IntoRequest<super::QueueClaimRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::QueueClaimResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/reifydb.v1.ReifyDB/QueueClaim",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "QueueClaim"));
             self.inner.unary(req, path, codec).await
         }
     }

@@ -7,7 +7,7 @@
 
 # Benchmark targets
 .PHONY: bench bench-all bench-query bench-query-help bench-txn bench-txn-help
-.PHONY: bench-watermark bench-watermark-help
+.PHONY: bench-watermark bench-watermark-help bench-queue bench-queue-help
 
 bench: bench-all
 
@@ -21,6 +21,7 @@ export SCENARIO QUERY TRANSPORTS IDENTITIES SCALES THREADS
 export ITERATIONS BUDGET_SECONDS WARMUP REPEATS WIRE_FORMAT
 export LAYOUTS MATRIX
 export PHASES PIPELINE_OPS BURST_OPS WAIT_OPS
+export MODES CLAIM WORKERS PARTITIONS BATCH DEPTH RATE SECONDS KEYS LEASE_SECONDS WAIT_MILLIS
 
 bench-query:
 	@echo "🏃‍♂️ Running query pipeline benchmarks..."
@@ -107,6 +108,53 @@ bench-watermark-help:
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@echo "  make bench-watermark PHASES=pipeline THREADS=16"
 	@echo "  make bench-watermark PHASES=burst,burst_with_advancer BURST_OPS=1000"
+	@echo ""
+
+bench-queue:
+	@echo "🏃‍♂️ Running queue benchmarks..."
+	cargo bench -p reifydb-benches --bench queue $(CARGO_OFFLINE)
+
+bench-queue-help:
+	@echo ""
+	@echo "  make bench-queue [VAR=value ...]"
+	@echo ""
+	@echo "  Matrix axes (comma-separated; every combination is run)"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-16s %s\n" "MODES"      "drain,steady (default: both)"
+	@printf "  %-16s %s\n" "CLAIM"      "poll,longpoll (default: both; drain+longpoll is skipped)"
+	@printf "  %-16s %s\n" "TRANSPORTS" "embedded,http,ws,grpc (default: all four)"
+	@printf "  %-16s %s\n" "WORKERS"    "concurrent claim/ack workers (default: 1,4,16,32)"
+	@printf "  %-16s %s\n" "PARTITIONS" "queue partitions (default: 1,16,128; max 1024)"
+	@echo ""
+	@echo "  Tuning knobs"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-16s %s\n" "BATCH"          "items per claim call (default: 10)"
+	@printf "  %-16s %s\n" "DEPTH"          "items pre-filled in drain mode (default: 10000)"
+	@printf "  %-16s %s\n" "RATE"           "items per second enqueued in steady mode (default: 20000)"
+	@printf "  %-16s %s\n" "SECONDS"        "steady mode producer window (default: 3)"
+	@printf "  %-16s %s\n" "KEYS"           "distinct ordered_by keys, 0 leaves the queue unkeyed (default: 0)"
+	@printf "  %-16s %s\n" "LEASE_SECONDS"  "claim lease ttl (default: 30)"
+	@printf "  %-16s %s\n" "WAIT_MILLIS"    "how long a longpoll claim parks for (default: 1000)"
+	@printf "  %-16s %s\n" "BUDGET_SECONDS" "wall-clock cap on the drain (default: 30)"
+	@printf "  %-16s %s\n" "REPEATS"        "samples per cell, median wins (default: 5)"
+	@printf "  %-16s %s\n" "WIRE_FORMAT"    "rbcf or frames; grpc requires rbcf (default: rbcf)"
+	@echo ""
+	@echo "  Examples"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@echo "  make bench-queue MODES=steady TRANSPORTS=embedded"
+	@echo "  make bench-queue MODES=drain WORKERS=1,8 PARTITIONS=16 REPEATS=1"
+	@echo "  make bench-queue KEYS=64 PARTITIONS=1 MODES=steady RATE=5000"
+	@echo "  make bench-queue MODES=steady CLAIM=poll,longpoll TRANSPORTS=embedded"
+	@echo ""
+	@echo "  section=jobs is the headline: ops_per_sec is jobs acked per second, and its"
+	@echo "  percentiles are enqueue->ack in steady mode, claim latency in drain mode."
+	@echo "  section=delay is enqueue->claim, the queueing delay. Every run asserts no"
+	@echo "  duplicate claims, no lost items, and per-key order when KEYS is set."
+	@echo ""
+	@echo "  CLAIM=poll and CLAIM=longpoll issue the same parameterised claim and differ"
+	@echo "  only in wait_for, so section=claim empty= is the poll tax long-poll removes."
+	@echo "  wait_for drops to zero once the producer stops, so a parked worker never"
+	@echo "  inflates the measured window."
 	@echo ""
 
 # Benchmark utilities

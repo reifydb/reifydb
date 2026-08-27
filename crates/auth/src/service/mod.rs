@@ -19,6 +19,7 @@ use reifydb_value::{
 	error::Error,
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
+use tracing::instrument;
 
 use crate::{
 	challenge::ChallengeStore,
@@ -172,6 +173,10 @@ impl AuthService {
 		}))
 	}
 
+	pub fn auth_registry(&self) -> &Arc<AuthenticationRegistry> {
+		&self.auth_registry
+	}
+
 	pub(super) fn now(&self) -> Result<DateTime, Error> {
 		Ok(self.clock.now())
 	}
@@ -206,6 +211,18 @@ impl AuthService {
 		let def = create_token(&mut admin, token, identity, expires_at, self.now()?)?;
 		admin.commit()?;
 		Ok(def)
+	}
+
+	#[instrument(name = "auth::create_session", level = "debug", skip(self))]
+	pub fn create_session(&self, identity: IdentityId, ttl: Option<Duration>) -> Result<Token, Error> {
+		let expires_at = match ttl {
+			Some(ttl) => {
+				let nanos = self.clock.now().to_nanos().saturating_add(ttl.as_nanos()? as u64);
+				Some(DateTime::from_nanos(nanos))
+			}
+			None => self.expires_at()?,
+		};
+		self.create_token(&generate_session_token(&self.rng), identity, expires_at)
 	}
 
 	pub(super) fn set_lookup_attribute(

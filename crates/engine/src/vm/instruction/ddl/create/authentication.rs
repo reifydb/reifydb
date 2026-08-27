@@ -2,12 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_auth::error::AuthError;
+use reifydb_catalog::error::CatalogError;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::nodes::CreateAuthenticationNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::{error::Error, value::Value};
+use reifydb_value::{
+	error::Error,
+	value::{Value, identity::IdentityKind},
+};
 
 use crate::{Result, vm::services::Services};
+
+const PASSWORD_METHOD: &str = "password";
 
 pub(crate) fn create_authentication(
 	services: &Services,
@@ -18,6 +24,15 @@ pub(crate) fn create_authentication(
 	let method = plan.method.text();
 
 	let user = services.catalog.get_identity_by_name(&mut Transaction::Admin(&mut *txn), user_name)?;
+
+	if user.resolved_kind() == IdentityKind::Service && method == PASSWORD_METHOD {
+		return Err(CatalogError::IdentityKindInvalid {
+			name: user_name.to_string(),
+			reason: "a service cannot hold a password credential".to_string(),
+			fragment: plan.user.clone(),
+		}
+		.into());
+	}
 
 	let provider = services.auth_registry.get(method).ok_or_else(|| {
 		Error::from(AuthError::UnknownMethod {

@@ -8,6 +8,8 @@ repository.workspace = true
 publish = false
 
 [dev-dependencies]
+bs58 = { workspace = true }
+ed25519-dalek = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb = { workspace = true, features = ["testing"] }
 reifydb-sub-metrics = { workspace = true }

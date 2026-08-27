@@ -191,6 +191,7 @@ fn span_name_for(category: ProfilerCategory) -> &'static str {
 		Api => "api",
 		Actor => "actor",
 		Lifecycle => "lifecycle",
+		Queue => "queue",
 	}
 }
 

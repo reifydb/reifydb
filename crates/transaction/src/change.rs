@@ -244,7 +244,7 @@ pub trait TransactionalIdentityChanges {
 
 	fn is_identity_deleted(&self, id: IdentityId) -> bool;
 
-	fn is_identity_deleted_by_name(&self, name: &str) -> bool;
+	fn is_identity_name_vacated(&self, name: &str) -> bool;
 }
 
 pub trait TransactionalRoleChanges {
@@ -1299,13 +1299,34 @@ pub struct TableRowInsertion {
 pub struct QueueRowInsertion {
 	pub queue_id: QueueId,
 	pub partition: u16,
+	pub key_hash: Option<u64>,
 	pub row_number: RowNumber,
 	pub not_before: Option<DateTime>,
 	pub encoded: EncodedBytes,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum QueueAckTransition {
+	Done,
+	Retry {
+		backoff_until: DateTime,
+	},
+	Dead,
+}
+
+#[derive(Debug, Clone)]
+pub struct QueueRowAck {
+	pub queue_id: QueueId,
+	pub partition: u16,
+	pub key_hash: Option<u64>,
+	pub row_number: RowNumber,
+	pub attempt: u32,
+	pub transition: QueueAckTransition,
 }
 
 #[derive(Debug, Clone)]
 pub enum RowChange {
 	TableInsert(TableRowInsertion),
 	QueueInsert(QueueRowInsertion),
+	QueueAck(QueueRowAck),
 }

@@ -145,3 +145,13 @@ fn create_queue_is_stable_across_identical_statements() {
 		fp("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: { partitions: 8 } }")
 	);
 }
+
+#[test]
+fn create_user_and_create_service_differ() {
+	assert_ne!(fp("CREATE USER alice"), fp("CREATE SERVICE alice"));
+}
+
+#[test]
+fn create_service_fingerprint_is_stable() {
+	assert_eq!(fp("CREATE SERVICE alice"), fp("CREATE SERVICE alice"));
+}

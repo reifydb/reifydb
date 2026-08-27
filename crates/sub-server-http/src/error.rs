@@ -118,6 +118,9 @@ impl IntoResponse for AppError {
 			AppError::Auth(AuthError::InsufficientPermissions) => {
 				(StatusCode::FORBIDDEN, "FORBIDDEN", "Insufficient permissions for this operation")
 			}
+			AppError::Auth(AuthError::Internal) => {
+				(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error")
+			}
 			AppError::Execute(ExecuteError::Timeout) => {
 				(StatusCode::GATEWAY_TIMEOUT, "QUERY_TIMEOUT", "Query execution timed out")
 			}
@@ -185,5 +188,25 @@ pub mod tests {
 	fn test_app_error_display() {
 		let err = AppError::BadRequest("Invalid JSON".to_string());
 		assert_eq!(err.to_string(), "Bad request: Invalid JSON");
+	}
+
+	#[test]
+	fn storage_failure_answers_500_while_a_bad_token_answers_401() {
+		// A 401 tells the client its token is bad, so it retries forever and never sees the real fault.
+		assert_eq!(
+			AppError::Auth(AuthError::InvalidToken).into_response().status(),
+			StatusCode::UNAUTHORIZED,
+			"a token that was never issued is the client's fault"
+		);
+		assert_eq!(
+			AppError::Auth(AuthError::Expired).into_response().status(),
+			StatusCode::UNAUTHORIZED,
+			"an expired token is the client's fault"
+		);
+		assert_eq!(
+			AppError::Auth(AuthError::Internal).into_response().status(),
+			StatusCode::INTERNAL_SERVER_ERROR,
+			"authentication that could not reach storage is the server's fault"
+		);
 	}
 }

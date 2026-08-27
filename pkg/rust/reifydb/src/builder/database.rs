@@ -28,6 +28,7 @@ use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
+		auth::AuthenticationProvider,
 		catalog::config::{ConfigKey, GetConfig},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
@@ -122,6 +123,7 @@ pub struct DatabaseBuilder {
 	#[cfg(not(reifydb_single_threaded))]
 	task_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
+	auth_providers: Vec<Box<dyn AuthenticationProvider>>,
 	migrations: Vec<MigrationStatement>,
 	is_replica: bool,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
@@ -171,6 +173,7 @@ impl DatabaseBuilder {
 			#[cfg(not(reifydb_single_threaded))]
 			task_factory: None,
 			auth_configurator: None,
+			auth_providers: Vec::new(),
 			migrations: Vec::new(),
 			is_replica: false,
 			bootstrap_configs: Vec::new(),
@@ -308,6 +311,15 @@ impl DatabaseBuilder {
 		F: FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static,
 	{
 		self.auth_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_auth_provider(self, provider: impl AuthenticationProvider + 'static) -> Self {
+		self.with_boxed_auth_provider(Box::new(provider))
+	}
+
+	pub(crate) fn with_boxed_auth_provider(mut self, provider: Box<dyn AuthenticationProvider>) -> Self {
+		self.auth_providers.push(provider);
 		self
 	}
 
@@ -471,6 +483,14 @@ impl DatabaseBuilder {
 		#[cfg(not(reifydb_single_threaded))]
 		let remote_registry = RemoteRegistry::new(tokio_handle.clone());
 
+		let auth_registry = {
+			let mut registry = AuthenticationRegistry::new(clock.clone(), rng.clone());
+			for provider in self.auth_providers.drain(..) {
+				registry.register(provider);
+			}
+			Arc::new(registry)
+		};
+
 		// Create engine and CDC producer BEFORE bootstrap so that bootstrap
 		// commits produce CDC entries (PostCommitEvent is captured).
 		let engine = StandardEngine::new(
@@ -488,6 +508,7 @@ impl DatabaseBuilder {
 				routines,
 				transforms,
 				ioc: self.ioc.clone(),
+				auth_registry: auth_registry.clone(),
 				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: Some(remote_registry),
 			},
@@ -497,7 +518,7 @@ impl DatabaseBuilder {
 
 		let auth_service = AuthService::new(
 			Arc::new(engine.clone()),
-			Arc::new(AuthenticationRegistry::new(clock.clone())),
+			auth_registry,
 			rng.clone(),
 			clock.clone(),
 			match self.auth_configurator {
@@ -621,9 +642,12 @@ impl DatabaseBuilder {
 
 		#[cfg(not(reifydb_single_threaded))]
 		{
-			let factory = self.task_factory.unwrap_or_else(|| {
-				Box::new(TaskSubsystemFactory::with_config(TaskConfig::new(create_system_tasks())))
-			});
+			let factory = match self.task_factory {
+				Some(factory) => factory,
+				None => Box::new(TaskSubsystemFactory::with_config(TaskConfig::new(
+					create_system_tasks(&self.ioc)?,
+				))),
+			};
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);

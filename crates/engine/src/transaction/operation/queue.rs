@@ -15,6 +15,7 @@ use crate::Result;
 pub struct QueueInsertRow {
 	pub row_number: RowNumber,
 	pub partition: u16,
+	pub key_hash: Option<u64>,
 	pub not_before: Option<DateTime>,
 	pub encoded: EncodedBytes,
 }
@@ -29,6 +30,7 @@ fn row_changes(queue: &Queue, rows: &[QueueInsertRow]) -> Vec<RowChange> {
 			RowChange::QueueInsert(QueueRowInsertion {
 				queue_id: queue.id,
 				partition: row.partition,
+				key_hash: row.key_hash,
 				row_number: row.row_number,
 				not_before: row.not_before,
 				encoded: row.encoded.clone(),

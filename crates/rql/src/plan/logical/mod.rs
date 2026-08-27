@@ -42,7 +42,10 @@ use reifydb_core::{
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
-use reifydb_value::{fragment::Fragment, value::duration::Duration};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{duration::Duration, identity::IdentityKind},
+};
 use tracing::instrument;
 
 use crate::{
@@ -1063,6 +1066,7 @@ pub struct DropSubscriptionNode<'bump> {
 #[derive(Debug)]
 pub struct CreateIdentityNode<'bump> {
 	pub name: BumpFragment<'bump>,
+	pub kind: IdentityKind,
 	pub entries: Vec<AstBodyEntry<'bump>>,
 }
 
@@ -1098,6 +1102,7 @@ pub struct RevokeNode<'bump> {
 #[derive(Debug)]
 pub struct DropIdentityNode<'bump> {
 	pub name: BumpFragment<'bump>,
+	pub kind: IdentityKind,
 	pub if_exists: bool,
 }
 

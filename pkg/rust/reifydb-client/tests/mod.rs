@@ -8,4 +8,5 @@ pub mod grpc;
 pub mod meta;
 #[path = "common/proxy.rs"]
 pub(crate) mod proxy;
+pub mod queue;
 pub mod ws;

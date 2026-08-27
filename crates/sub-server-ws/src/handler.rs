@@ -13,12 +13,14 @@ use reifydb_core::{
 		namespace::Namespace,
 		procedure::Procedure,
 	},
+	metrics::execution::ExecutionMetrics,
 };
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel, system::ActorHandle};
 use reifydb_sub_server::{
 	actor::ServerActor,
-	auth::extract_identity_from_ws_auth,
+	auth::{AuthError, extract_identity_from_ws_auth},
 	binding::dispatch_binding,
+	claim::{WireClaimRequest, native::dispatch_claim},
 	dispatch::dispatch,
 	execute::ExecuteError,
 	format::WireFormat,
@@ -36,7 +38,7 @@ use reifydb_value::{
 use serde_json::{Value as JsonValue, from_str, json, to_string as json_to_string};
 use tokio::{
 	net::TcpStream,
-	select,
+	select, spawn,
 	sync::{mpsc, watch},
 	task::JoinHandle,
 	time::timeout,
@@ -47,8 +49,8 @@ use uuid::Builder;
 
 use crate::{
 	protocol::{
-		AdminRequest, AuthRequest, CallRequest, CommandRequest, QueryRequest, Request, RequestPayload,
-		UnsubscribeRequest,
+		AdminRequest, AuthRequest, CallRequest, CommandRequest, QueryRequest, QueueClaimRequest, Request,
+		RequestPayload, UnsubscribeRequest,
 	},
 	response::{BatchChangeEntry, Response, ResponseMeta, ServerPush},
 	subscription::{
@@ -57,7 +59,7 @@ use crate::{
 	},
 };
 
-enum WsResponse {
+pub(crate) enum WsResponse {
 	Text(String),
 	Binary(Vec<u8>),
 }
@@ -111,6 +113,8 @@ pub async fn handle_connection(
 
 	let (push_tx, mut push_rx) = mpsc::unbounded_channel::<PushMessage>();
 
+	let (deferred_tx, mut deferred_rx) = mpsc::unbounded_channel::<WsResponse>();
+
 	let mut identity: Option<IdentityId> = Some(IdentityId::anonymous());
 	let mut auth_token: Option<String> = None;
 
@@ -118,7 +122,11 @@ pub async fn handle_connection(
 
 	let mut batch_remote_tasks: HashMap<BatchId, Vec<JoinHandle<()>>> = HashMap::new();
 
+	let mut claim_tasks: Vec<JoinHandle<()>> = Vec::new();
+
 	loop {
+		claim_tasks.retain(|handle| !handle.is_finished());
+
 		select! {
 			biased;
 
@@ -127,6 +135,18 @@ pub async fn handle_connection(
 				if result.is_err() || *shutdown.borrow() {
 					debug!("WebSocket connection {:?} shutting down", peer);
 					let _ = sender.send(Message::Close(None)).await;
+					break;
+				}
+			}
+
+
+			Some(deferred) = deferred_rx.recv() => {
+				let msg = match deferred {
+					WsResponse::Text(text) => Message::Text(text.into()),
+					WsResponse::Binary(data) => Message::Binary(data.into()),
+				};
+				if sender.send(msg).await.is_err() {
+					debug!("Failed to send deferred response to {:?}", peer);
 					break;
 				}
 			}
@@ -203,6 +223,8 @@ pub async fn handle_connection(
 								push_tx: push_tx.clone(),
 								remote_tasks: &mut remote_tasks,
 								batch_remote_tasks: &mut batch_remote_tasks,
+								claim_tasks: &mut claim_tasks,
+								deferred_tx: deferred_tx.clone(),
 								shutdown: shutdown.clone(),
 							},
 						).await;
@@ -251,6 +273,9 @@ pub async fn handle_connection(
 	}
 
 	drop(actor_handle);
+	for handle in claim_tasks {
+		handle.abort();
+	}
 	abort_remote_tasks(remote_tasks, batch_remote_tasks);
 	cleanup_connection_subscriptions(&state, &registry, connection_id).await;
 
@@ -331,6 +356,8 @@ pub(crate) struct ConnectionContext<'a> {
 	pub push_tx: mpsc::UnboundedSender<PushMessage>,
 	pub remote_tasks: &'a mut HashMap<String, JoinHandle<()>>,
 	pub batch_remote_tasks: &'a mut HashMap<BatchId, Vec<JoinHandle<()>>>,
+	pub claim_tasks: &'a mut Vec<JoinHandle<()>>,
+	pub deferred_tx: mpsc::UnboundedSender<WsResponse>,
 	pub shutdown: watch::Receiver<bool>,
 }
 
@@ -368,6 +395,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 		RequestPayload::BatchUnsubscribe(req) => {
 			handle_batch_unsubscribe(&request.id, req, conn).await.map(WsResponse::Text)
 		}
+		RequestPayload::QueueClaim(claim) => handle_queue_claim(&request.id, claim, conn),
 		RequestPayload::Logout => handle_logout(&request.id, conn).await,
 		RequestPayload::Unsubscribe(unsub) => handle_unsubscribe(&request.id, unsub, conn).await,
 	}
@@ -422,7 +450,8 @@ async fn handle_auth(request_id: &str, auth: AuthRequest, conn: &mut ConnectionC
 			}
 			Err(e) => {
 				*conn.identity = None;
-				Some(WsResponse::Text(build_error(request_id, "AUTH_FAILED", &format!("{:?}", e))))
+				let (code, message) = auth_error_response(&e);
+				Some(WsResponse::Text(build_error(request_id, code, &message)))
 			}
 		}
 	}
@@ -606,7 +635,17 @@ async fn execute_via_dispatch(
 		metadata,
 	};
 
-	match dispatch(conn.state, ctx).await {
+	encode_dispatch_result(request_id, format, unwrap, dispatch(conn.state, ctx).await, build_response)
+}
+
+fn encode_dispatch_result(
+	request_id: &str,
+	format: WireFormat,
+	unwrap: bool,
+	result: Result<(Vec<Frame>, ExecutionMetrics), ExecuteError>,
+	build_response: impl FnOnce(&str, String, JsonValue, ResponseMeta) -> String,
+) -> Option<WsResponse> {
+	match result {
 		Ok((frames, metrics)) => {
 			let meta = ResponseMeta {
 				fingerprint: metrics.fingerprint.to_hex(),
@@ -635,6 +674,60 @@ async fn execute_via_dispatch(
 		}
 		Err(e) => Some(WsResponse::Text(error_to_response(request_id, e))),
 	}
+}
+
+const MAX_PARKED_CLAIMS: usize = 16;
+
+fn handle_queue_claim(
+	request_id: &str,
+	claim: QueueClaimRequest,
+	conn: &mut ConnectionContext<'_>,
+) -> Option<WsResponse> {
+	let identity = match require_identity(request_id, &*conn.identity) {
+		Ok(id) => id,
+		Err(resp) => return Some(resp),
+	};
+
+	conn.claim_tasks.retain(|handle| !handle.is_finished());
+	if conn.claim_tasks.len() >= MAX_PARKED_CLAIMS {
+		return Some(WsResponse::Text(build_error(
+			request_id,
+			"CLAIM_LIMIT",
+			&format!("at most {MAX_PARKED_CLAIMS} claims may be parked on one connection"),
+		)));
+	}
+
+	let format = claim.format;
+	let unwrap = claim.unwrap.unwrap_or(false);
+	let request = match (WireClaimRequest {
+		queue: claim.queue,
+		worker: claim.worker,
+		max_n: claim.max_n,
+		lease_ttl: claim.lease_ttl,
+		wait_for: claim.wait_for,
+	})
+	.into_claim_request()
+	{
+		Ok(request) => request,
+		Err(e) => return Some(WsResponse::Text(build_error(request_id, "INVALID_REQUEST", e.as_str()))),
+	};
+
+	let state = conn.state.clone();
+	let metadata = build_ws_metadata(conn.auth_token);
+	let deferred_tx = conn.deferred_tx.clone();
+	let request_id = request_id.to_string();
+
+	conn.claim_tasks.push(spawn(async move {
+		let result = dispatch_claim(&state, identity, request, metadata).await;
+		if let Some(response) =
+			encode_dispatch_result(&request_id, format, unwrap, result, |id, ct, body, meta| {
+				Response::command(id, ct, body, meta).to_json()
+			}) {
+			let _ = deferred_tx.send(response);
+		}
+	}));
+
+	None
 }
 
 fn build_ws_metadata(auth_token: &Option<String>) -> RequestMetadata {
@@ -671,6 +764,13 @@ pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 			}
 			Response::error(id, diag).to_json()
 		}
+	}
+}
+
+fn auth_error_response(e: &AuthError) -> (&'static str, String) {
+	match e {
+		AuthError::Internal => ("INTERNAL_ERROR", e.to_string()),
+		_ => ("AUTH_FAILED", format!("{:?}", e)),
 	}
 }
 
@@ -827,5 +927,32 @@ fn build_response_body(frames: Vec<Frame>, format: WireFormat, unwrap: bool) -> 
 			(CONTENT_TYPE_FRAMES.to_string(), body)
 		}
 		WireFormat::Rbcf => unreachable!("Rbcf is handled before build_response_body"),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_sub_server::auth::AuthError;
+
+	use super::auth_error_response;
+
+	#[test]
+	fn storage_failure_reports_an_internal_error_not_a_failed_auth() {
+		// AUTH_FAILED tells the client its credentials are wrong, so it reconnects and fails the same way.
+		assert_eq!(
+			auth_error_response(&AuthError::InvalidToken).0,
+			"AUTH_FAILED",
+			"a token that was never issued is the client's fault"
+		);
+		assert_eq!(
+			auth_error_response(&AuthError::Expired).0,
+			"AUTH_FAILED",
+			"an expired token is the client's fault"
+		);
+		assert_eq!(
+			auth_error_response(&AuthError::Internal).0,
+			"INTERNAL_ERROR",
+			"authentication that could not reach storage is the server's fault"
+		);
 	}
 }

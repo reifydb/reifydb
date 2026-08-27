@@ -31,6 +31,16 @@ pub(crate) fn alter_identity(
 		.into());
 	};
 
+	let kind = identity.resolved_kind();
+	if kind.is_builtin() {
+		return Err(CatalogError::IdentityKindInvalid {
+			name: name.to_string(),
+			reason: format!("`{kind}` is a built-in identity and cannot be altered"),
+			fragment: plan.name.clone(),
+		}
+		.into());
+	}
+
 	let resolved = resolve_attribute_assignments(services, txn, &plan.attributes, params)?;
 
 	for (attribute, value) in resolved {

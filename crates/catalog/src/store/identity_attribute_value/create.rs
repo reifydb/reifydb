@@ -45,7 +45,7 @@ mod tests {
 		rng::Rng,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
-	use reifydb_value::value::{Value, value_type::ValueType};
+	use reifydb_value::value::{Value, identity::IdentityKind, value_type::ValueType};
 
 	use crate::CatalogStore;
 
@@ -60,7 +60,8 @@ mod tests {
 	fn test_set_identity_attribute_value() {
 		let mut txn = create_test_admin_transaction();
 		let (_, clock, rng) = test_clock_and_rng();
-		let identity = CatalogStore::create_identity(&mut txn, "alice", &clock, &rng).unwrap();
+		let identity =
+			CatalogStore::create_identity(&mut txn, "alice", IdentityKind::User, &clock, &rng).unwrap();
 		let attribute = CatalogStore::create_identity_attribute(&mut txn, "org_id", ValueType::Utf8).unwrap();
 		let value = CatalogStore::set_identity_attribute_value(
 			&mut txn,

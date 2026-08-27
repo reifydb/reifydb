@@ -14,6 +14,7 @@ pub mod cdc;
 pub mod factory;
 pub mod gc;
 pub mod plane;
+pub mod queue;
 pub mod retention;
 pub mod store;
 pub mod subsystem;

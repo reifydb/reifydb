@@ -38,7 +38,7 @@ fn test_token_valid_before_ttl() {
 
 	mock.advance_secs(59);
 
-	assert!(db.auth_service().validate_token(&token).is_some(), "Token should still be valid before TTL");
+	assert!(db.auth_service().validate_token(&token).unwrap().is_some(), "Token should still be valid before TTL");
 
 	db.stop();
 }
@@ -53,7 +53,7 @@ fn test_token_expires_after_ttl() {
 
 	mock.advance_secs(61);
 
-	assert!(db.auth_service().validate_token(&token).is_none(), "Token should be expired after TTL");
+	assert!(db.auth_service().validate_token(&token).unwrap().is_none(), "Token should be expired after TTL");
 
 	db.stop();
 }
@@ -72,7 +72,7 @@ fn test_token_no_ttl_never_expires() {
 
 	mock.advance_secs(10 * 365 * 24 * 60 * 60);
 
-	assert!(db.auth_service().validate_token(&token).is_some(), "Token with no TTL should never expire");
+	assert!(db.auth_service().validate_token(&token).unwrap().is_some(), "Token with no TTL should never expire");
 
 	db.stop();
 }
@@ -85,13 +85,13 @@ fn test_cleanup_removes_expired_tokens() {
 
 	let token = setup_user_and_login(&db);
 
-	assert!(db.auth_service().validate_token(&token).is_some());
+	assert!(db.auth_service().validate_token(&token).unwrap().is_some());
 
 	mock.advance_secs(61);
 
-	db.auth_service().cleanup_expired();
+	db.auth_service().cleanup_expired().unwrap();
 
-	assert!(db.auth_service().validate_token(&token).is_none(), "Expired token should be cleaned up");
+	assert!(db.auth_service().validate_token(&token).unwrap().is_none(), "Expired token should be cleaned up");
 
 	db.stop();
 }

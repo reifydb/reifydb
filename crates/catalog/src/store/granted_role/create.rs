@@ -36,6 +36,7 @@ mod tests {
 		rng::Rng,
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_value::value::identity::IdentityKind;
 
 	use crate::CatalogStore;
 
@@ -50,7 +51,8 @@ mod tests {
 	fn test_grant_role() {
 		let mut txn = create_test_admin_transaction();
 		let (_, clock, rng) = test_clock_and_rng();
-		let identity = CatalogStore::create_identity(&mut txn, "alice", &clock, &rng).unwrap();
+		let identity =
+			CatalogStore::create_identity(&mut txn, "alice", IdentityKind::User, &clock, &rng).unwrap();
 		let role = CatalogStore::create_role(&mut txn, "admin").unwrap();
 		let ir = CatalogStore::grant_role(&mut txn, identity.id, role.id).unwrap();
 		assert_eq!(ir.identity, identity.id);

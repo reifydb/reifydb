@@ -13,7 +13,12 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::value::{datetime::DateTime, duration::Duration as RvDuration};
+
+use crate::{
+	context::clock::{TimerId, TimerWake},
+	sync::mutex::Mutex,
+};
 
 #[allow(clippy::disallowed_methods)]
 #[inline(always)]
@@ -77,6 +82,14 @@ pub struct MockClock {
 
 struct MockClockInner {
 	time_nanos: AtomicU64,
+	timers: Mutex<Vec<Timer>>,
+	next_timer_id: AtomicU64,
+}
+
+struct Timer {
+	id: u64,
+	deadline_nanos: u64,
+	wake: Arc<dyn TimerWake>,
 }
 
 impl MockClock {
@@ -84,6 +97,8 @@ impl MockClock {
 		Self {
 			inner: Arc::new(MockClockInner {
 				time_nanos: AtomicU64::new(initial_nanos),
+				timers: Mutex::new(Vec::new()),
+				next_timer_id: AtomicU64::new(0),
 			}),
 		}
 	}
@@ -98,6 +113,40 @@ impl MockClock {
 
 	pub fn set_nanos(&self, nanos: u64) {
 		self.inner.time_nanos.store(nanos, Ordering::Release);
+		self.fire_due(nanos);
+	}
+
+	pub fn register_timer(&self, deadline_nanos: u64, wake: Arc<dyn TimerWake>) -> TimerId {
+		let id = self.inner.next_timer_id.fetch_add(1, Ordering::Relaxed);
+		self.inner.timers.lock().push(Timer {
+			id,
+			deadline_nanos,
+			wake,
+		});
+		TimerId(id)
+	}
+
+	pub fn cancel_timer(&self, timer: TimerId) {
+		self.inner.timers.lock().retain(|entry| entry.id != timer.0);
+	}
+
+	fn fire_due(&self, now_nanos: u64) {
+		let due = {
+			let mut timers = self.inner.timers.lock();
+			let mut due: Vec<Arc<dyn TimerWake>> = Vec::new();
+			timers.retain(|entry| {
+				if entry.deadline_nanos <= now_nanos {
+					due.push(entry.wake.clone());
+					return false;
+				}
+				true
+			});
+			due
+		};
+
+		for wake in due {
+			wake.wake();
+		}
 	}
 
 	pub fn set_micros(&self, micros: u64) {
@@ -253,6 +302,14 @@ impl ops::Add<Duration> for Instant {
 				},
 			},
 		}
+	}
+}
+
+impl ops::Add<RvDuration> for Instant {
+	type Output = Instant;
+
+	fn add(self, duration: RvDuration) -> Instant {
+		self + duration.to_std()
 	}
 }
 

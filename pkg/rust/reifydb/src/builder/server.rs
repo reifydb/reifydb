@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::cache::CatalogCache;
-use reifydb_core::interface::catalog::config::ConfigKey;
+use reifydb_core::interface::{auth::AuthenticationProvider, catalog::config::ConfigKey};
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_profiler::{
 	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
@@ -146,6 +146,7 @@ pub struct ServerBuilder {
 	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 	otel_tracing_config: Option<OtelTracingConfig>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
+	auth_providers: Vec<Box<dyn AuthenticationProvider>>,
 	#[cfg(feature = "sub_replication")]
 	is_replica: bool,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
@@ -183,6 +184,7 @@ impl ServerBuilder {
 			))]
 			otel_tracing_config: None,
 			auth_configurator: None,
+			auth_providers: Vec::new(),
 			bootstrap_configs: Vec::new(),
 			fast_shutdown: false,
 		}
@@ -203,6 +205,11 @@ impl ServerBuilder {
 		F: FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static,
 	{
 		self.auth_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_auth_provider(mut self, provider: impl AuthenticationProvider + 'static) -> Self {
+		self.auth_providers.push(Box::new(provider));
 		self
 	}
 
@@ -403,6 +410,10 @@ impl ServerBuilder {
 
 		if let Some(configurator) = self.auth_configurator {
 			database_builder = database_builder.with_auth(configurator);
+		}
+
+		for provider in self.auth_providers {
+			database_builder = database_builder.with_boxed_auth_provider(provider);
 		}
 
 		if let Some(source) = self.migrations {

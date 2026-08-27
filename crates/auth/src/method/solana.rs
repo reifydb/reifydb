@@ -11,14 +11,18 @@ use reifydb_value::{Result, error::Error, reifydb_assertions};
 
 use crate::error::SolanaError;
 
+pub const SIGNED_MESSAGE_MISMATCH: &str = "signed message does not match the issued challenge";
+
 pub struct SolanaProvider {
 	clock: Clock,
+	rng: Rng,
 }
 
 impl SolanaProvider {
-	pub fn new(clock: Clock) -> Self {
+	pub fn new(clock: Clock, rng: Rng) -> Self {
 		Self {
 			clock,
+			rng,
 		}
 	}
 }
@@ -54,28 +58,39 @@ impl AuthenticationProvider for SolanaProvider {
 		let public_key_b58 =
 			stored.get("public_key").ok_or_else(|| Error::from(SolanaError::MissingPublicKey))?;
 
-		if let Some(signature_b58) = credentials.get("signature") {
-			return self.verify_signature(public_key_b58, signature_b58, credentials);
+		Ok(self.issue_signin_challenge(public_key_b58, credentials))
+	}
+
+	fn verify_challenge(
+		&self,
+		stored: &HashMap<String, String>,
+		challenge: &HashMap<String, String>,
+		credentials: &HashMap<String, String>,
+	) -> Result<AuthStep> {
+		let public_key_b58 =
+			stored.get("public_key").ok_or_else(|| Error::from(SolanaError::MissingPublicKey))?;
+		let message =
+			challenge.get("message").ok_or_else(|| Error::from(SolanaError::MissingChallengeMessage))?;
+
+		let Some(signature_b58) = credentials.get("signature") else {
+			return Ok(AuthStep::Failed);
+		};
+
+		if let Some(echoed) = credentials.get("signed_message")
+			&& echoed != message
+		{
+			return Ok(AuthStep::Rejected {
+				reason: SIGNED_MESSAGE_MISMATCH.to_string(),
+			});
 		}
 
-		Ok(self.issue_signin_challenge(public_key_b58, credentials))
+		self.verify_signature(public_key_b58, signature_b58, message)
 	}
 }
 
 impl SolanaProvider {
 	#[inline]
-	fn verify_signature(
-		&self,
-		public_key_b58: &str,
-		signature_b58: &str,
-		credentials: &HashMap<String, String>,
-	) -> Result<AuthStep> {
-		let signed_message = credentials.get("signed_message").ok_or_else(|| {
-			Error::from(SolanaError::InvalidSignature {
-				reason: "missing signed_message".to_string(),
-			})
-		})?;
-
+	fn verify_signature(&self, public_key_b58: &str, signature_b58: &str, message: &str) -> Result<AuthStep> {
 		let pk_bytes: [u8; 32] = bs58_decode(public_key_b58)
 			.into_vec()
 			.map_err(|e| {
@@ -112,7 +127,7 @@ impl SolanaProvider {
 
 		let signature = Signature::from_bytes(&sig_bytes);
 
-		match verifying_key.verify(signed_message.as_bytes(), &signature) {
+		match verifying_key.verify(message.as_bytes(), &signature) {
 			Ok(()) => Ok(AuthStep::Authenticated),
 			Err(_) => Ok(AuthStep::Failed),
 		}
@@ -120,7 +135,7 @@ impl SolanaProvider {
 
 	#[inline]
 	fn issue_signin_challenge(&self, public_key_b58: &str, credentials: &HashMap<String, String>) -> AuthStep {
-		let nonce_bytes = Rng::Os.bytes_32();
+		let nonce_bytes = self.rng.bytes_32();
 		let nonce: String = nonce_bytes.iter().map(|b| format!("{:02x}", b)).collect();
 
 		reifydb_assertions! {
@@ -173,7 +188,24 @@ mod tests {
 
 	fn test_provider() -> SolanaProvider {
 		let mock = MockClock::from_millis(1_700_000_000_000); // fixed timestamp
-		SolanaProvider::new(Clock::Mock(mock))
+		SolanaProvider::new(Clock::Mock(mock), Rng::default())
+	}
+
+	fn seeded_provider(seed: u64) -> SolanaProvider {
+		let mock = MockClock::from_millis(1_700_000_000_000); // fixed timestamp
+		SolanaProvider::new(Clock::Mock(mock), Rng::seeded(seed))
+	}
+
+	fn issued_nonce(provider: &SolanaProvider) -> String {
+		let (_, public_key_b58) = test_keypair();
+		let stored = HashMap::from([("public_key".to_string(), public_key_b58)]);
+
+		match provider.authenticate(&stored, &HashMap::new()).unwrap() {
+			AuthStep::Challenge {
+				payload,
+			} => payload.get("nonce").expect("challenge must carry a nonce").clone(),
+			other => panic!("expected Challenge, got {:?}", other),
+		}
 	}
 
 	fn test_keypair() -> (SigningKey, String) {
@@ -249,7 +281,7 @@ mod tests {
 			("signed_message".to_string(), message.clone()),
 		]);
 
-		let step2 = provider.authenticate(&stored, &credentials).unwrap();
+		let step2 = provider.verify_challenge(&stored, &challenge_data, &credentials).unwrap();
 		assert_eq!(step2, AuthStep::Authenticated);
 	}
 
@@ -263,12 +295,40 @@ mod tests {
 		let signature = wrong_key.sign(b"some message");
 		let signature_b58 = bs58_encode(signature.to_bytes()).into_string();
 
+		let challenge = HashMap::from([("message".to_string(), "some message".to_string())]);
 		let credentials = HashMap::from([
 			("signature".to_string(), signature_b58),
 			("signed_message".to_string(), "some message".to_string()),
 		]);
 
-		let step = provider.authenticate(&stored, &credentials).unwrap();
+		let step = provider.verify_challenge(&stored, &challenge, &credentials).unwrap();
 		assert_eq!(step, AuthStep::Failed);
+	}
+
+	#[test]
+	fn test_nonce_is_reproducible_from_the_injected_seed() {
+		// The nonce must come from the injected Rng, never Rng::Os, or a seeded replay cannot reproduce it.
+		let first = issued_nonce(&seeded_provider(42));
+		let second = issued_nonce(&seeded_provider(42));
+
+		assert_eq!(first, second, "same seed must yield the same nonce; the provider is bypassing its Rng");
+	}
+
+	#[test]
+	fn test_nonce_differs_across_seeds() {
+		// Guards the reproducibility test: a hardcoded constant nonce would satisfy it but fail here.
+		let first = issued_nonce(&seeded_provider(42));
+		let second = issued_nonce(&seeded_provider(43));
+
+		assert_ne!(first, second, "distinct seeds must yield distinct nonces; entropy collapsed to a constant");
+	}
+
+	#[test]
+	fn test_nonce_keeps_full_entropy_under_a_seed() {
+		// Pins 32 bytes rendered as 64 hex chars so routing through the injected Rng cannot shrink entropy.
+		let nonce = issued_nonce(&seeded_provider(42));
+
+		assert_eq!(nonce.len(), 64, "nonce must stay 32 bytes of entropy rendered as 64 hex chars");
+		assert!(nonce.chars().all(|c| c.is_ascii_hexdigit()), "nonce must be hex; got {nonce}");
 	}
 }

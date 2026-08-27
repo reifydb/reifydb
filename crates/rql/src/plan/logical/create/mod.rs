@@ -64,6 +64,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Handler(node) => self.compile_create_handler(node),
 			AstCreate::Identity(node) => Ok(LogicalPlan::CreateIdentity(CreateIdentityNode {
 				name: node.name,
+				kind: node.kind,
 				entries: node.entries,
 			})),
 			AstCreate::IdentityAttribute(node) => {

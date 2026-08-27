@@ -36,6 +36,7 @@ const DEFAULT_TTL_SECONDS = 86400;
 
 export interface AuthContextValue extends AuthState {
   signIn(credentials?: PasswordCredentials): Promise<void>;
+  adoptSession(session: AuthSession): void;
   signOut(): Promise<void>;
 }
 
@@ -148,7 +149,9 @@ export function AuthProvider<TClient extends AuthCapableClient>(
       };
     };
 
-    if (session.method === "password") {
+    // Credential-bound sessions (password, or a token minted server-side) carry
+    // no wallet to prove, so they connect straight away.
+    if (session.method != null && session.method !== "wallet") {
       return establish();
     }
 
@@ -321,6 +324,22 @@ export function AuthProvider<TClient extends AuthCapableClient>(
     effective_namespace,
   ]);
 
+  // Adopt a session minted outside the sign-in flows - a guest session handed
+  // out by the application server, for instance. The session gate below picks
+  // it up and connects the client exactly as it would after a sign-in.
+  const adoptSession = useCallback(
+    (session: AuthSession) => {
+      writeStoredSession(effective_namespace, session);
+      setState({
+        status: "verifying",
+        session,
+        clientReady: false,
+        error: null,
+      });
+    },
+    [effective_namespace],
+  );
+
   const signOut = useCallback(async () => {
     // Best-effort server-side logout via the currently-cached client.
     try {
@@ -338,9 +357,10 @@ export function AuthProvider<TClient extends AuthCapableClient>(
       clientReady: state.clientReady,
       error: state.error,
       signIn,
+      adoptSession,
       signOut,
     }),
-    [state, signIn, signOut],
+    [state, signIn, adoptSession, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

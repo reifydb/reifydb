@@ -5,6 +5,7 @@
 use std::time::Duration as StdDuration;
 use std::{ops::Deref, sync::Arc, thread::sleep};
 
+use reifydb_auth::registry::AuthenticationRegistry;
 use reifydb_catalog::{
 	cache::CatalogCache,
 	catalog::{
@@ -302,6 +303,7 @@ impl TestEngineBuilder {
 				},
 				transforms: Transforms::empty(),
 				ioc,
+				auth_registry: Arc::new(AuthenticationRegistry::new(clock.clone(), rng.clone())),
 				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},

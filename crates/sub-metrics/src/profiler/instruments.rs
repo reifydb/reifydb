@@ -102,6 +102,7 @@ pub struct ProfilerInstruments {
 	api: Arc<Histogram>,
 	actor: Arc<Histogram>,
 	lifecycle: Arc<Histogram>,
+	queue: Arc<Histogram>,
 	pub accumulator_size: Arc<Gauge>,
 	pub accumulator_capacity: Arc<Gauge>,
 	pub accumulator_evictions: Arc<Counter>,
@@ -224,6 +225,11 @@ impl ProfilerInstruments {
 				"Profiler category Lifecycle duration (us)",
 				FLOW_BOUNDS,
 			),
+			queue: duration_histogram(
+				"profiler.queue.duration_us",
+				"Profiler category Queue duration (us)",
+				QUERY_BOUNDS,
+			),
 			accumulator_size: Arc::new(Gauge::new(
 				"profiler.accumulator.size",
 				"Current number of distinct (category, callsite, dimensions) records held by the profile accumulator",
@@ -265,6 +271,7 @@ impl ProfilerInstruments {
 			ProfilerCategory::Api => &self.api,
 			ProfilerCategory::Actor => &self.actor,
 			ProfilerCategory::Lifecycle => &self.lifecycle,
+			ProfilerCategory::Queue => &self.queue,
 		}
 	}
 

@@ -17,7 +17,10 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, identity::IdentityId},
+	value::{
+		Value,
+		identity::{IdentityId, IdentityKind},
+	},
 };
 use tracing::{instrument, warn};
 
@@ -36,7 +39,7 @@ impl Catalog {
 					return Ok(Some(ident.clone()));
 				}
 
-				if TransactionalIdentityChanges::is_identity_deleted_by_name(admin, name) {
+				if TransactionalIdentityChanges::is_identity_name_vacated(admin, name) {
 					return Ok(None);
 				}
 
@@ -87,7 +90,7 @@ impl Catalog {
 					return Ok(Some(ident.clone()));
 				}
 
-				if TransactionalIdentityChanges::is_identity_deleted_by_name(t.inner, name) {
+				if TransactionalIdentityChanges::is_identity_name_vacated(t.inner, name) {
 					return Ok(None);
 				}
 
@@ -237,12 +240,132 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		name: &str,
+		kind: IdentityKind,
 		clock: &Clock,
 		rng: &Rng,
 	) -> Result<Identity> {
-		let ident = CatalogStore::create_identity(txn, name, clock, rng)?;
+		let ident = CatalogStore::create_identity(txn, name, kind, clock, rng)?;
 		txn.track_identity_created(ident.clone())?;
 		Ok(ident)
+	}
+
+	#[instrument(name = "catalog::identity::rename", level = "info", skip(self, txn))]
+	pub fn rename_identity(
+		&self,
+		txn: &mut AdminTransaction,
+		identity: IdentityId,
+		new_name: &str,
+	) -> Result<Identity> {
+		let pre = self.get_mutable_identity(txn, identity, "renamed")?;
+		if pre.name == new_name {
+			return Ok(pre);
+		}
+
+		if let Some(existing) = self.find_identity_by_name(&mut Transaction::Admin(&mut *txn), new_name)?
+			&& existing.id != identity
+		{
+			return Err(CatalogError::AlreadyExists {
+				kind: CatalogObjectKind::Identity,
+				namespace: "system".to_string(),
+				name: new_name.to_string(),
+				fragment: Fragment::None,
+			}
+			.into());
+		}
+
+		let post = Identity {
+			name: new_name.to_string(),
+			..pre.clone()
+		};
+		CatalogStore::update_identity(txn, &post)?;
+		txn.track_identity_updated(pre, post.clone())?;
+		Ok(post)
+	}
+
+	#[instrument(name = "catalog::identity::promote_guest", level = "info", skip(self, txn))]
+	pub fn promote_guest_to_user(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<Identity> {
+		let pre = self.get_mutable_identity(txn, identity, "promoted")?;
+
+		let kind = pre.resolved_kind();
+		if kind != IdentityKind::Guest {
+			return Err(CatalogError::IdentityKindInvalid {
+				name: pre.name.clone(),
+				reason: format!("`{kind}` is not a guest and cannot be promoted"),
+				fragment: Fragment::None,
+			}
+			.into());
+		}
+
+		let post = Identity {
+			kind: IdentityKind::User,
+			..pre.clone()
+		};
+		CatalogStore::update_identity(txn, &post)?;
+		txn.track_identity_updated(pre, post.clone())?;
+		Ok(post)
+	}
+
+	#[instrument(name = "catalog::identity::enable", level = "info", skip(self, txn))]
+	pub fn enable_identity(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<Identity> {
+		let pre = self.get_mutable_identity(txn, identity, "enabled")?;
+
+		let post = Identity {
+			enabled: true,
+			..pre.clone()
+		};
+		CatalogStore::update_identity(txn, &post)?;
+		txn.track_identity_updated(pre, post.clone())?;
+		Ok(post)
+	}
+
+	#[instrument(name = "catalog::identity::disable", level = "info", skip(self, txn))]
+	pub fn disable_identity(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<Identity> {
+		let pre = self.get_mutable_identity(txn, identity, "disabled")?;
+
+		let post = Identity {
+			enabled: false,
+			..pre.clone()
+		};
+		CatalogStore::update_identity(txn, &post)?;
+		txn.track_identity_updated(pre, post.clone())?;
+		Ok(post)
+	}
+
+	fn get_mutable_identity(
+		&self,
+		txn: &mut AdminTransaction,
+		identity: IdentityId,
+		operation: &str,
+	) -> Result<Identity> {
+		if let Some(kind) = identity.sentinel_kind() {
+			return Err(CatalogError::IdentityKindInvalid {
+				name: identity.to_string(),
+				reason: format!("`{kind}` is a built-in identity and cannot be {operation}"),
+				fragment: Fragment::None,
+			}
+			.into());
+		}
+
+		let Some(found) = self.find_identity(&mut Transaction::Admin(&mut *txn), identity)? else {
+			return Err(CatalogError::NotFound {
+				kind: CatalogObjectKind::Identity,
+				namespace: "system".to_string(),
+				name: identity.to_string(),
+				fragment: Fragment::None,
+			}
+			.into());
+		};
+
+		let kind = found.resolved_kind();
+		if kind.is_builtin() {
+			return Err(CatalogError::IdentityKindInvalid {
+				name: found.name.clone(),
+				reason: format!("`{kind}` is a built-in identity and cannot be {operation}"),
+				fragment: Fragment::None,
+			}
+			.into());
+		}
+		Ok(found)
 	}
 
 	#[instrument(name = "catalog::identity::drop", level = "info", skip(self, txn))]

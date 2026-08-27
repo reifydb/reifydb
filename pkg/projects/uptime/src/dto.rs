@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	error::ApiError,
-	store::{DayBucket, MonitorRow, ResultRow, StatusPageRow},
+	store::{DayBucket, MonitorRow, ProbeRow, ResultRow, StatusPageRow},
 };
 
 #[derive(Serialize)]
@@ -136,6 +136,7 @@ impl MonitorInput {
 #[derive(Serialize)]
 pub struct ResultDto {
 	pub region_id: String,
+	pub probe: Option<String>,
 	pub checked_at: String,
 	pub success: bool,
 	pub response_time_ms: Option<i64>,
@@ -147,11 +148,29 @@ impl ResultDto {
 	pub fn from_row(row: &ResultRow) -> Self {
 		Self {
 			region_id: row.region_id.to_string(),
+			probe: row.probe.as_ref().map(|p| p.to_string()),
 			checked_at: row.checked_at.to_string(),
 			success: row.success,
 			response_time_ms: row.response_time.as_ref().and_then(|d| d.milliseconds().ok()),
 			status_code: row.status_code,
 			error: row.error.clone(),
+		}
+	}
+}
+
+#[derive(Serialize)]
+pub struct ProbeDto {
+	pub id: String,
+	pub name: String,
+	pub last_seen: String,
+}
+
+impl ProbeDto {
+	pub fn from_row(row: &ProbeRow) -> Self {
+		Self {
+			id: row.id.to_string(),
+			name: row.name.clone(),
+			last_seen: row.last_seen.to_string(),
 		}
 	}
 }
@@ -258,7 +277,8 @@ pub struct PublicStatusDto {
 #[derive(Serialize)]
 pub struct MeDto {
 	pub id: String,
-	pub email: String,
+	pub email: Option<String>,
+	pub guest: bool,
 }
 
 #[derive(Deserialize)]
@@ -277,4 +297,11 @@ pub struct LoginRequest {
 pub struct LoginResponse {
 	pub token: String,
 	pub identity: String,
+}
+
+#[derive(Serialize)]
+pub struct GuestSessionResponse {
+	pub token: String,
+	pub identity: String,
+	pub expires_at: i64,
 }

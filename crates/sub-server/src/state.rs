@@ -31,6 +31,12 @@ pub struct StateConfig {
 	pub subscribe_min_throttle: Duration,
 
 	pub subscribe_min_linger: Duration,
+
+	pub claim_wait_max: Duration,
+
+	pub claim_lease_ttl: Duration,
+
+	pub claim_max_parked: usize,
 }
 
 impl Default for StateConfig {
@@ -43,6 +49,9 @@ impl Default for StateConfig {
 			subscribe_max_hydration_rows: 10_000,
 			subscribe_min_throttle: Duration::from_milliseconds(50).unwrap(),
 			subscribe_min_linger: Duration::zero(),
+			claim_wait_max: Duration::from_seconds(60).unwrap(),
+			claim_lease_ttl: Duration::from_seconds(30).unwrap(),
+			claim_max_parked: 10_000,
 		}
 	}
 }
@@ -84,6 +93,21 @@ impl StateConfig {
 
 	pub fn subscribe_min_linger(mut self, interval: Duration) -> Self {
 		self.subscribe_min_linger = interval;
+		self
+	}
+
+	pub fn claim_wait_max(mut self, budget: Duration) -> Self {
+		self.claim_wait_max = budget;
+		self
+	}
+
+	pub fn claim_lease_ttl(mut self, ttl: Duration) -> Self {
+		self.claim_lease_ttl = ttl;
+		self
+	}
+
+	pub fn claim_max_parked(mut self, max: usize) -> Self {
+		self.claim_max_parked = max;
 		self
 	}
 }
@@ -180,6 +204,21 @@ impl AppState {
 	#[inline]
 	pub fn subscribe_min_throttle(&self) -> Duration {
 		self.config.subscribe_min_throttle
+	}
+
+	#[inline]
+	pub fn claim_wait_max(&self) -> Duration {
+		self.config.claim_wait_max
+	}
+
+	#[inline]
+	pub fn claim_lease_ttl(&self) -> Duration {
+		self.config.claim_lease_ttl
+	}
+
+	#[inline]
+	pub fn claim_max_parked(&self) -> usize {
+		self.config.claim_max_parked
 	}
 
 	pub fn clamp_throttle(&self, requested: Option<Duration>) -> Duration {

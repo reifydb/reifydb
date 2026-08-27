@@ -5,6 +5,7 @@ use std::{error::Error as StdError, fmt};
 
 use reifydb_auth::service::AuthService;
 use reifydb_value::value::identity::IdentityId;
+use tracing::error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthError {
@@ -17,6 +18,8 @@ pub enum AuthError {
 	Expired,
 
 	InsufficientPermissions,
+
+	Internal,
 }
 
 impl fmt::Display for AuthError {
@@ -27,6 +30,7 @@ impl fmt::Display for AuthError {
 			AuthError::InvalidToken => write!(f, "Invalid authentication token"),
 			AuthError::Expired => write!(f, "Authentication token expired"),
 			AuthError::InsufficientPermissions => write!(f, "Insufficient permissions"),
+			AuthError::Internal => write!(f, "Authentication could not be completed"),
 		}
 	}
 }
@@ -36,12 +40,9 @@ impl StdError for AuthError {}
 pub type AuthResult<T> = Result<T, AuthError>;
 
 pub fn extract_identity_from_auth_header(auth_service: &AuthService, auth_header: &str) -> AuthResult<IdentityId> {
-	if let Some(token) = auth_header.strip_prefix("Bearer ") {
-		validate_bearer_token(auth_service, token.trim())
-	} else if let Some(credentials) = auth_header.strip_prefix("Basic ") {
-		validate_basic_auth(auth_service, credentials.trim())
-	} else {
-		Err(AuthError::InvalidHeader)
+	match auth_header.strip_prefix("Bearer ") {
+		Some(token) => validate_bearer_token(auth_service, token.trim()),
+		None => Err(AuthError::InvalidHeader),
 	}
 }
 
@@ -58,14 +59,13 @@ fn validate_bearer_token(auth_service: &AuthService, token: &str) -> AuthResult<
 	}
 
 	match auth_service.validate_token(token) {
-		Some(session) => Ok(session.identity),
-		None => Err(AuthError::InvalidToken),
+		Ok(Some(session)) => Ok(session.identity),
+		Ok(None) => Err(AuthError::InvalidToken),
+		Err(e) => {
+			error!("token validation could not reach storage, rejecting the request: {e}");
+			Err(AuthError::Internal)
+		}
 	}
-}
-
-fn validate_basic_auth(_auth_service: &AuthService, _credentials: &str) -> AuthResult<IdentityId> {
-	// TODO: Implement Basic auth (Base64 decode -> username:password -> auth_service.authenticate)
-	Err(AuthError::InvalidToken)
 }
 
 #[cfg(test)]
@@ -90,5 +90,13 @@ pub mod tests {
 	fn test_root_identity() {
 		let identity = IdentityId::root();
 		assert!(identity.is_root());
+	}
+
+	#[test]
+	fn internal_does_not_read_as_a_client_mistake() {
+		// The gRPC status carries this text verbatim, so it must not send the caller after its credentials.
+		let message = AuthError::Internal.to_string();
+		assert_eq!(message, "Authentication could not be completed");
+		assert!(!message.contains("token"), "a storage failure must not point the client at its token");
 	}
 }

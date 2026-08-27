@@ -89,3 +89,34 @@ fn the_body_begins_where_the_bitvec_begins() {
 	assert_eq!(typed.body().len(), frozen.len() - SHAPE_HEADER_SIZE);
 	assert_eq!(typed.body(), &frozen.as_slice()[shape.header_size()..]);
 }
+
+#[test]
+fn thawing_an_evicted_slot_moves_updated_at_and_leaves_created_at_alone() {
+	// Eviction rewrites a slot in place, so one shared stamp slot makes an overwritten row look freshly inserted.
+	let shape = shape();
+	let mut row = shape.allocate_ringbuffer();
+	row.set_timestamps(DateTime::from_millis(10), DateTime::from_millis(10));
+	shape.set::<i32>(&mut row, 0, 1);
+	shape.set::<i32>(&mut row, 1, 2);
+	let frozen = row.freeze();
+
+	let mut thawed = frozen.thaw();
+	let created_at = thawed.created_at();
+	thawed.set_timestamps(created_at, DateTime::from_millis(99));
+	shape.set::<i32>(&mut thawed, 1, 3);
+	let refrozen = thawed.freeze();
+
+	assert_eq!(refrozen.created_at(), DateTime::from_millis(10));
+	assert_eq!(refrozen.updated_at(), DateTime::from_millis(99));
+	assert_eq!(shape.get::<i32>(refrozen.as_slice(), 0), 1, "an untouched column must survive the rewrite");
+	assert_eq!(shape.get::<i32>(refrozen.as_slice(), 1), 3);
+	assert_eq!(refrozen.fingerprint(), shape.fingerprint());
+}
+
+#[test]
+#[should_panic(expected = "allocate_ringbuffer on a shape of another family")]
+fn a_shape_of_another_family_cannot_allocate_a_ringbuffer_row() {
+	// A table shape is the same width and the same layout, so the row would differ only in its fingerprint.
+	RowShape::new(RowFamily::Table, vec![RowShapeField::unconstrained("id", ValueType::Int4)])
+		.allocate_ringbuffer();
+}

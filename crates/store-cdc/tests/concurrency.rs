@@ -19,11 +19,9 @@ use reifydb_core::{
 	interface::cdc::{Cdc, CdcChange},
 };
 use reifydb_store_cdc::{
-	config::BLOCK_CUT_BYTES,
 	error::CdcError,
 	storage::{CdcStorage, Cutoff},
 	store::CdcStore,
-	types::cdc_resident_bytes,
 };
 use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
@@ -762,48 +760,34 @@ mod cases {
 	}
 
 	pub fn appends_complete_while_a_flush_is_in_flight(fixture: Fixture) {
-		// a second sealed block can only hold records appended after the first batch left the live map
+		// staged runs after the flush took the live map and before it sealed, so the append is never in flight by timing
 		let store = fixture.store.clone();
-		assert!(
-			cdc_resident_bytes(&cdc_at(INFLIGHT_APPENDS)).as_bytes() * INFLIGHT_APPENDS
-				< BLOCK_CUT_BYTES.as_bytes(),
-			"the whole run must fit inside one cut, otherwise a second block proves nothing about concurrency"
-		);
-		// the staged hook fires before the block is sealed, so the appends must land inside that window
-		let seeded = Arc::new(Barrier::new(2));
-		let taken = Arc::new(Barrier::new(2));
-		let appended = Arc::new(Barrier::new(2));
+		store.write(&cdc_at(1)).expect("the first record must reach the live map before any flush runs");
 
-		let writer = {
-			let store = store.clone();
-			let seeded = Arc::clone(&seeded);
-			let taken = Arc::clone(&taken);
-			let appended = Arc::clone(&appended);
-			thread::spawn(move || {
-				store.write(&cdc_at(1)).expect("a single writer advances the version space in order");
-				seeded.wait();
-				taken.wait();
-				for version in 2..=INFLIGHT_APPENDS {
-					store.write(&cdc_at(version))
-						.expect("a single writer advances the version space in order");
-				}
-				appended.wait();
-			})
-		};
-
-		seeded.wait();
-		let before = store.commit_metrics().blocks_cut;
-		let mut stages = 0usize;
-		let mut staged = || {
-			stages += 1;
-			// only the first batch may hold the writer, otherwise the drain waits on a finished thread
-			if stages == 1 {
-				taken.wait();
-				appended.wait();
+		let mut next = 2u64;
+		let mut refused: Vec<String> = Vec::new();
+		store.flush_staged(&mut || {
+			if next > INFLIGHT_APPENDS {
+				return;
 			}
-		};
-		store.flush_staged(&mut staged);
-		writer.join().expect("the writing thread must not panic");
+			if let Err(err) = store.write(&cdc_at(next)) {
+				refused.push(format!("v{next} was refused with {err:?}"));
+			}
+			next += 1;
+		});
+
+		assert!(
+			refused.is_empty(),
+			"a record appended while the flush held a batch in flight was refused, so a writer cannot make \
+			 progress through a flush: {refused:?}"
+		);
+		assert_eq!(
+			next,
+			INFLIGHT_APPENDS + 1,
+			"the flush stopped after v{}, so it never came back for the records appended while it was in \
+			 flight; writes are being serialised behind the flush instead of running through it",
+			next - 1
+		);
 
 		let metrics = store.commit_metrics();
 		assert_eq!(
@@ -811,13 +795,19 @@ mod cases {
 			"no append may have waited on the flusher; the commit tier only stalls a writer above its ceiling \
 			 and this test never reaches it"
 		);
-		let sealed = metrics.blocks_cut.saturating_sub(before);
+		assert_eq!(
+			metrics.blocks_cut, INFLIGHT_APPENDS,
+			"each staged append lands after its own flush already took the live map, so the same pass must \
+			 seal one block per append instead of folding them into the batch it had cut"
+		);
+
+		let expected: Vec<u64> = (1..=INFLIGHT_APPENDS).collect();
+		let observed = scan(&store);
+		let mismatch = first_mismatch(&expected, &observed);
 		assert!(
-			sealed >= 2,
-			"the drain sealed {sealed} block, so none of the {} records appended while the first batch was \
-			 staged reached the live map; writes are being serialised behind the flush instead of running \
-			 through it",
-			INFLIGHT_APPENDS - 1
+			mismatch.is_none(),
+			"every record appended during the flush must appear once and only once, but {}",
+			mismatch.unwrap_or_default()
 		);
 	}
 }

@@ -12,7 +12,7 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_auth::AuthVersion;
+use reifydb_auth::{AuthVersion, registry::AuthenticationRegistry};
 use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{bootstrap_system_objects, load_catalog_cache},
@@ -174,6 +174,7 @@ impl Bridge {
 				routines,
 				transforms: Transforms::empty(),
 				ioc,
+				auth_registry: Arc::new(AuthenticationRegistry::new(clock.clone(), rng.clone())),
 				#[cfg(not(target_arch = "wasm32"))]
 				remote_registry: None,
 			},

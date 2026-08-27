@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
-use reifydb_auth::{
-	registry::AuthenticationRegistry,
-	service::{AuthService, AuthServiceConfig},
-};
+use reifydb_auth::service::AuthService;
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -29,6 +24,8 @@ pub struct HttpConfigurator {
 	max_connections: usize,
 	query_timeout: Duration,
 	request_timeout: Duration,
+	claim_wait_max: Duration,
+	claim_max_parked: usize,
 	spawner: Option<ActorSpawner>,
 	clock: Option<Clock>,
 	rng: Option<Rng>,
@@ -49,6 +46,8 @@ impl HttpConfigurator {
 			max_connections: 10_000,
 			query_timeout: Duration::from_seconds(30).unwrap(),
 			request_timeout: Duration::from_seconds(60).unwrap(),
+			claim_wait_max: Duration::from_seconds(60).unwrap(),
+			claim_max_parked: 10_000,
 			spawner: None,
 			clock: None,
 			rng: None,
@@ -68,6 +67,16 @@ impl HttpConfigurator {
 
 	pub fn max_connections(mut self, max: usize) -> Self {
 		self.max_connections = max;
+		self
+	}
+
+	pub fn claim_wait_max(mut self, budget: Duration) -> Self {
+		self.claim_wait_max = budget;
+		self
+	}
+
+	pub fn claim_max_parked(mut self, max: usize) -> Self {
+		self.claim_max_parked = max;
 		self
 	}
 
@@ -108,6 +117,8 @@ impl HttpConfigurator {
 			max_connections: self.max_connections,
 			query_timeout: self.query_timeout,
 			request_timeout: self.request_timeout,
+			claim_wait_max: self.claim_wait_max,
+			claim_max_parked: self.claim_max_parked,
 			spawner: self.spawner,
 			clock: self.clock,
 			rng: self.rng,
@@ -127,6 +138,10 @@ pub struct HttpConfig {
 	pub query_timeout: Duration,
 
 	pub request_timeout: Duration,
+
+	pub claim_wait_max: Duration,
+
+	pub claim_max_parked: usize,
 
 	pub spawner: Option<ActorSpawner>,
 
@@ -158,24 +173,27 @@ impl HttpSubsystemFactory {
 	}
 }
 
-type ResolvedDeps = (StandardEngine, RequestInterceptorChain, ActorSpawner, Clock, Rng, Handle);
+type ResolvedDeps = (StandardEngine, RequestInterceptorChain, ActorSpawner, Clock, Rng, Handle, AuthService);
 
 impl SubsystemFactory for HttpSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let config = (self.config_fn)();
 
-		let (engine, interceptors, spawner, clock, rng, handle) =
+		let (engine, interceptors, spawner, clock, rng, handle, auth_service) =
 			Self::resolve_deps(ioc, config.spawner, config.clock, config.rng, config.handle)?;
 
 		let state = Self::build_app_state(
 			config.query_timeout,
 			config.request_timeout,
 			config.max_connections,
+			config.claim_wait_max,
+			config.claim_max_parked,
 			spawner,
 			engine,
 			clock,
 			rng,
 			interceptors,
+			auth_service,
 		);
 
 		let subsystem =
@@ -215,7 +233,9 @@ impl HttpSubsystemFactory {
 			None => ioc.resolve::<Handle>()?,
 		};
 
-		Ok((engine, interceptors, spawner, clock, rng, handle))
+		let auth_service = ioc.resolve::<AuthService>()?;
+
+		Ok((engine, interceptors, spawner, clock, rng, handle, auth_service))
 	}
 
 	#[inline]
@@ -224,24 +244,21 @@ impl HttpSubsystemFactory {
 		query_timeout: Duration,
 		request_timeout: Duration,
 		max_connections: usize,
+		claim_wait_max: Duration,
+		claim_max_parked: usize,
 		spawner: ActorSpawner,
 		engine: StandardEngine,
 		clock: Clock,
 		rng: Rng,
 		interceptors: RequestInterceptorChain,
+		auth_service: AuthService,
 	) -> AppState {
 		let query_config = StateConfig::new()
 			.query_timeout(query_timeout)
 			.request_timeout(request_timeout)
-			.max_connections(max_connections);
-
-		let auth_service = AuthService::new(
-			Arc::new(engine.clone()),
-			Arc::new(AuthenticationRegistry::new(clock.clone())),
-			rng.clone(),
-			clock.clone(),
-			AuthServiceConfig::default(),
-		);
+			.max_connections(max_connections)
+			.claim_wait_max(claim_wait_max)
+			.claim_max_parked(claim_max_parked);
 
 		AppState::new(spawner, engine, auth_service, query_config, interceptors, clock, rng)
 	}

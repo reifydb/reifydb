@@ -3,10 +3,13 @@
 
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use reifydb::engine::engine::StandardEngine;
-use reifydb_client::{GrpcClient, HttpClient, WireFormat, WsClient};
+use reifydb::engine::{engine::StandardEngine, session::Session};
+use reifydb_client::{GrpcClient, HttpClient, QueueClaimRequest, WireFormat, WsClient};
 use reifydb_testing_scenario::query::OperationKind;
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	params::Params,
+	value::{duration::Duration as ValueDuration, frame::frame::Frame, identity::IdentityId},
+};
 use tokio::runtime::{Builder, Runtime};
 
 pub const DEFAULT_HTTP_PORT: u16 = 18190;
@@ -116,6 +119,7 @@ pub enum Driver {
 	Embedded {
 		engine: StandardEngine,
 		identity: IdentityId,
+		session: Session,
 	},
 	Wire {
 		runtime: Runtime,
@@ -141,6 +145,7 @@ impl Driver {
 			return Driver::Embedded {
 				engine: engine.clone(),
 				identity: identity.id(),
+				session: Session::trusted(engine.clone(), identity.id()),
 			};
 		};
 
@@ -182,11 +187,90 @@ impl Driver {
 		}
 	}
 
+	#[allow(dead_code)]
+	pub fn command_frames(&self, rql: &str) -> Vec<Frame> {
+		match self {
+			Driver::Embedded {
+				engine,
+				identity,
+				..
+			} => {
+				let result = engine.command_as(*identity, rql, Params::None);
+				if let Some(error) = result.error {
+					panic!("command `{}` failed: {}", rql, error);
+				}
+				result.frames
+			}
+			Driver::Wire {
+				runtime,
+				client,
+			} => runtime.block_on(async {
+				let outcome = match client {
+					WireClient::Http(client) => client.command(rql, None).await,
+					WireClient::Ws(client) => client.command(rql, None).await,
+					WireClient::Grpc(client) => client.command(rql, None).await,
+				};
+
+				match outcome {
+					Ok(frames) => frames,
+					Err(error) => panic!("command `{}` failed: {}", rql, error),
+				}
+			}),
+		}
+	}
+
+	#[allow(dead_code)]
+	pub fn claim_frames(
+		&self,
+		queue: &str,
+		worker: &str,
+		max_n: u32,
+		lease_ttl: ValueDuration,
+		wait_for: ValueDuration,
+	) -> Vec<Frame> {
+		match self {
+			Driver::Embedded {
+				session,
+				..
+			} => {
+				let result = session.claim_wait(queue, worker, max_n, lease_ttl, wait_for);
+				if let Some(error) = result.error {
+					panic!("claim on `{}` failed: {}", queue, error);
+				}
+				result.frames
+			}
+			Driver::Wire {
+				runtime,
+				client,
+			} => runtime.block_on(async {
+				let request = QueueClaimRequest {
+					queue: queue.to_string(),
+					worker: worker.to_string(),
+					max_n: Some(max_n),
+					lease_ttl: Some(duration_literal(lease_ttl)),
+					wait_for: wait_for.is_positive().then(|| duration_literal(wait_for)),
+				};
+
+				let outcome = match client {
+					WireClient::Http(client) => client.queue_claim(request).await,
+					WireClient::Ws(client) => client.queue_claim(request).await,
+					WireClient::Grpc(client) => client.queue_claim(request).await,
+				};
+
+				match outcome {
+					Ok(frames) => frames,
+					Err(error) => panic!("claim on `{}` failed: {}", queue, error),
+				}
+			}),
+		}
+	}
+
 	pub fn execute(&self, kind: OperationKind, rql: &str) -> Option<Timing> {
 		match self {
 			Driver::Embedded {
 				engine,
 				identity,
+				..
 			} => {
 				let result = match kind {
 					OperationKind::Query => engine.query_as(*identity, rql, Params::None),
@@ -243,4 +327,9 @@ impl Driver {
 			}
 		}
 	}
+}
+
+#[allow(dead_code)]
+fn duration_literal(value: ValueDuration) -> String {
+	format!("{}ms", value.to_std().as_millis())
 }

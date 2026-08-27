@@ -3,27 +3,41 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@reifydb/auth'
+import { useMe } from '@/hooks/use-me'
+import { clearSignedOut } from '@/lib/session-flags'
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@reifydb/ui'
 
 export function LoginPage() {
   const { signIn, status, error } = useAuth()
+  const { data: me } = useMe()
+  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
+  const alreadyRegistered = status === 'authenticated' && me != null && !me.guest
+
   useEffect(() => {
-    if (status === 'authenticated') {
+    if (alreadyRegistered) {
       void navigate({ to: '/monitors' })
     }
-  }, [status, navigate])
+  }, [alreadyRegistered, navigate])
 
   const busy = status === 'signing' || status === 'verifying'
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault()
     if (email.trim().length === 0 || password.length === 0) return
-    void signIn({ identifier: email.trim().toLowerCase(), password })
+    await signIn({ identifier: email.trim().toLowerCase(), password })
+    clearSignedOut()
+    await queryClient.invalidateQueries({ queryKey: ['me'] })
+  }
+
+  function continueAsGuest() {
+    clearSignedOut()
+    void navigate({ to: '/monitors' })
   }
 
   return (
@@ -32,7 +46,7 @@ export function LoginPage() {
         <CardTitle className="text-lg">Sign in</CardTitle>
       </CardHeader>
       <CardContent>
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={(e) => void onSubmit(e)} className="space-y-4">
           <Input
             id="email"
             label="Email"
@@ -63,6 +77,14 @@ export function LoginPage() {
           <Link to="/register" className="text-primary-dark hover:underline">
             Register
           </Link>
+          {' or '}
+          <button
+            type="button"
+            onClick={continueAsGuest}
+            className="text-primary-dark hover:underline"
+          >
+            continue as guest
+          </button>
         </p>
       </CardContent>
     </Card>

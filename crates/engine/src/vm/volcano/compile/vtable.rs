@@ -40,6 +40,7 @@ use reifydb_catalog::vtable::{
 			extern_c::SystemProceduresExternC, extern_wasm::SystemProceduresExternWasm,
 			in_process::SystemProceduresInProcess, rql::SystemProceduresRql, test::SystemProceduresTest,
 		},
+		queue_partitions::SystemQueuePartitions,
 		queues::SystemQueues,
 		relationships::SystemRelationships,
 		ringbuffers::SystemRingBuffers,
@@ -136,6 +137,7 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		)),
 		"ringbuffers" => VTables::RingBuffers(SystemRingBuffers::new()),
 		"queues" => VTables::Queues(SystemQueues::new()),
+		"queue_partitions" => VTables::QueuePartitions(SystemQueuePartitions::new()),
 		"row_shapes" => VTables::RowShapes(SystemRowShapes::new(context.services.catalog.clone())),
 		"row_shape_fields" => {
 			VTables::RowShapeFields(SystemRowShapeFields::new(context.services.catalog.clone()))

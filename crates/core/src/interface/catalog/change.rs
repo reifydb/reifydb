@@ -149,6 +149,8 @@ pub trait CatalogTrackHandlerChangeOperations {
 pub trait CatalogTrackIdentityChangeOperations {
 	fn track_identity_created(&mut self, identity: Identity) -> Result<()>;
 
+	fn track_identity_updated(&mut self, pre: Identity, post: Identity) -> Result<()>;
+
 	fn track_identity_deleted(&mut self, identity: Identity) -> Result<()>;
 }
 

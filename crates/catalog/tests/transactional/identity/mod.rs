@@ -3,5 +3,8 @@
 
 mod create;
 mod drop;
+mod enabled;
 mod find;
+mod kind;
 mod list;
+mod rename;

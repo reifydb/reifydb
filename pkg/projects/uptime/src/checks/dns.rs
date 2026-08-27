@@ -6,13 +6,12 @@ use std::net::IpAddr;
 use tokio::net::lookup_host;
 
 use crate::{
-	checks::{CheckOutcome, elapsed_ms},
-	state::AppState,
+	checks::{CheckContext, CheckOutcome, elapsed_ms},
 	store::MonitorRow,
 };
 
-pub async fn run(st: &AppState, monitor: &MonitorRow) -> CheckOutcome {
-	let started = st.clock.instant();
+pub async fn run(ctx: &CheckContext, monitor: &MonitorRow) -> CheckOutcome {
+	let started = ctx.clock.instant();
 	let resolved = lookup_host((monitor.target.as_str(), 0)).await;
 	let response_time_ms = Some(elapsed_ms(&started));
 

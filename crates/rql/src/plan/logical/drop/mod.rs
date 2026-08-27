@@ -63,6 +63,7 @@ impl<'bump> Compiler<'bump> {
 			})),
 			AstDrop::Identity(node) => Ok(LogicalPlan::DropIdentity(DropIdentityNode {
 				name: node.name,
+				kind: node.kind,
 				if_exists: node.if_exists,
 			})),
 			AstDrop::IdentityAttribute(node) => {

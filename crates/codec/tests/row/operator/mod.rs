@@ -138,3 +138,11 @@ fn allocating_an_operator_row_from_a_pod_shape_panics() {
 	let shape = RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("v", ValueType::Int4)]);
 	let _ = shape.allocate_operator();
 }
+
+#[test]
+#[should_panic(expected = "allocate_operator on a shape of another family")]
+fn test_a_shape_of_another_family_cannot_allocate_an_operator_row() {
+	// A table shape stamps a fingerprint over bytes 0..8, which is exactly where operator keeps created_at.
+	RowShape::new(RowFamily::Table, vec![RowShapeField::unconstrained("state", ValueType::Blob)])
+		.allocate_operator();
+}

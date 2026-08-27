@@ -2714,8 +2714,6 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 name = "reifydb"
 version = "0.9.0"
 dependencies = [
- "bs58",
- "ed25519-dalek",
  "libc",
  "num_cpus",
  "opentelemetry",
@@ -2901,6 +2899,8 @@ name = "reifydb-client"
 version = "0.9.0"
 dependencies = [
  "async-trait",
+ "bs58",
+ "ed25519-dalek",
  "futures-util",
  "num-bigint",
  "prost",
@@ -3188,6 +3188,7 @@ dependencies = [
  "postcard",
  "reifydb-build",
  "reifydb-catalog",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-routine-abi",
@@ -3940,6 +3941,7 @@ version = "0.9.0"
 dependencies = [
  "axum",
  "clap",
+ "libc",
  "reifydb",
  "reifydb-build",
  "reifydb-client",
@@ -4750,6 +4752,8 @@ dependencies = [
 name = "tests-integration"
 version = "0.9.0"
 dependencies = [
+ "bs58",
+ "ed25519-dalek",
  "reifydb",
  "reifydb-codec",
  "reifydb-sub-metrics",

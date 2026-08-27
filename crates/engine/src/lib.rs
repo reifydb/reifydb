@@ -19,6 +19,7 @@ pub mod environment;
 pub mod error;
 pub mod partition;
 pub mod policy;
+pub mod queue;
 #[cfg(not(reifydb_single_threaded))]
 pub mod remote;
 pub mod run_tests;

@@ -921,6 +921,7 @@ impl<'bump> Compiler<'bump> {
 					}
 					stack.push(PhysicalPlan::CreateIdentity(nodes::CreateIdentityNode {
 						name: self.interner.intern_fragment(&node.name),
+						kind: node.kind,
 						attributes,
 					}));
 				}
@@ -967,6 +968,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::DropIdentity(node) => {
 					stack.push(PhysicalPlan::DropIdentity(nodes::DropIdentityNode {
 						name: self.interner.intern_fragment(&node.name),
+						kind: node.kind,
 						if_exists: node.if_exists,
 					}));
 				}
@@ -1580,6 +1582,21 @@ impl<'bump> Compiler<'bump> {
 							queue_id.name.text()
 						));
 					};
+
+					if let Some(key) = &insert_queue.deduplication_key
+						&& let Some(deduplicate) = &queue_def.deduplicate
+					{
+						return Err(RqlError::InsertWithKeyOnDeduplicatingQueue {
+							fragment: key.full_fragment_owned(),
+							queue: format!(
+								"{}::{}",
+								namespace.name(),
+								queue_id.name.text()
+							),
+							by: deduplicate.by.join(", "),
+						}
+						.into());
+					}
 
 					let namespace_id = if let Some(n) = queue_id.namespace.first() {
 						let interned = self.interner.intern_fragment(n);

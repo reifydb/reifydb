@@ -36,8 +36,8 @@ use reifydb_core::{
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		constraint::TypeConstraint, dictionary::DictionaryId, duration::Duration, partition::Partition,
-		sumtype::SumTypeId, value_type::ValueType,
+		constraint::TypeConstraint, dictionary::DictionaryId, duration::Duration, identity::IdentityKind,
+		partition::Partition, sumtype::SumTypeId, value_type::ValueType,
 	},
 };
 
@@ -1082,6 +1082,7 @@ pub struct DropSeriesNode {
 #[derive(Debug, Clone)]
 pub struct CreateIdentityNode {
 	pub name: Fragment,
+	pub kind: IdentityKind,
 	pub attributes: Vec<IdentityAttributeAssignment>,
 }
 
@@ -1123,6 +1124,7 @@ pub struct RevokeNode {
 #[derive(Debug, Clone)]
 pub struct DropIdentityNode {
 	pub name: Fragment,
+	pub kind: IdentityKind,
 	pub if_exists: bool,
 }
 

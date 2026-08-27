@@ -10,6 +10,8 @@ worker. Deployed publicly at uptime.reifydb.com.
 - TCP port checks
 - ICMP ping checks (unprivileged datagram sockets)
 - DNS resolution checks (optional expected IP)
+- No signup wall: every visitor gets a guest identity and can create monitors
+  right away, then registers to keep them
 - Multi-user accounts (email + password); users are ReifyDB identities and
   sessions are ReifyDB tokens
 - Public status pages at `/status/<slug>`
@@ -22,7 +24,7 @@ cd webapp && pnpm install && pnpm build && cd ..
 cargo run -p reifydb-uptime
 ```
 
-Open http://localhost:8080, register an account, and create a monitor.
+Open http://localhost:8080 and create a monitor - no account needed.
 Without `webapp/dist`, the binary still builds and serves a placeholder page.
 
 For UI development run `pnpm dev` in `webapp/` (Vite on :5173, proxying `/api`
@@ -58,6 +60,26 @@ Authentication is ReifyDB's own: registration executes `CREATE USER` plus a
 `password` authentication method (argon2id), login mints an opaque ReifyDB
 session token, and the API validates bearer tokens against the ReifyDB
 catalog. The web UI signs in through `@reifydb/auth`'s password flow.
+
+## Guest mode
+
+The first page load provisions a guest: `POST /api/auth/guest` creates a real
+ReifyDB identity of kind `guest` (named `guest:<uuid7>`) and mints a 30-day
+session token, which the browser adopts through `@reifydb/auth`. A guest owns
+monitors and status pages exactly like a registered user - the `owner ==
+$identity.id` policies make no distinction - and the UI shows a primary-color
+bar with the CTA to register.
+
+Registering while holding a guest token **promotes that identity in place**: one
+admin transaction renames it to the email, flips its kind to `user`, records the
+`email` attribute, and attaches the password credential. The `IdentityId` never
+changes, so every monitor, result and status page stays owned by the same
+principal - nothing is copied or re-created. Registering without a guest token
+creates a fresh account as before.
+
+Guests hold no credential, so their session cannot be re-established once the
+browser storage is gone; the UI therefore offers a guest "Create account" and
+"Sign in" instead of "Sign out". Guest quotas are not implemented yet.
 
 Only port 8080 needs to be exposed; terminate TLS in a reverse proxy.
 

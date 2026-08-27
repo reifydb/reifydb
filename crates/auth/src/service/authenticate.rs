@@ -23,7 +23,7 @@ impl AuthService {
 	#[instrument(name = "auth::authenticate", level = "debug", skip(self, credentials))]
 	pub fn authenticate(&self, method: &str, credentials: HashMap<String, String>) -> Result<AuthResponse, Error> {
 		if let Some(challenge_id) = credentials.get("challenge_id").cloned() {
-			return self.authenticate_challenge_response(&challenge_id, credentials);
+			return self.authenticate_challenge_response(method, &challenge_id, credentials);
 		}
 		if method == "token" {
 			return self.authenticate_token(credentials);
@@ -115,7 +115,7 @@ impl AuthService {
 		if method == "solana"
 			&& let Some(public_key) = credentials.get("public_key").cloned()
 		{
-			return self.auto_provision_solana(identifier, &public_key, credentials);
+			return self.begin_solana_provision(identifier, &public_key, credentials);
 		}
 		Ok(invalid_credentials())
 	}
@@ -131,6 +131,11 @@ impl AuthService {
 		match step {
 			AuthStep::Authenticated => self.finalize_authentication(identity),
 			AuthStep::Failed => Ok(invalid_credentials()),
+			AuthStep::Rejected {
+				reason,
+			} => Ok(AuthResponse::Failed {
+				reason,
+			}),
 			AuthStep::Challenge {
 				payload,
 			} => Ok(self.issue_challenge(identifier, method, payload)),
@@ -160,6 +165,7 @@ impl AuthService {
 			identifier.to_string(),
 			method.to_string(),
 			payload.clone(),
+			None,
 			&self.clock,
 			&self.rng,
 		);
@@ -184,7 +190,7 @@ impl AuthService {
 			_ => return Ok(invalid_credentials()),
 		};
 
-		match self.validate_token(token_value) {
+		match self.validate_token(token_value)? {
 			Some(token) => self.finalize_authentication(token.identity),
 			None => Ok(invalid_credentials()),
 		}
@@ -192,6 +198,7 @@ impl AuthService {
 
 	fn authenticate_challenge_response(
 		&self,
+		method: &str,
 		challenge_id: &str,
 		mut credentials: HashMap<String, String>,
 	) -> Result<AuthResponse, Error> {
@@ -201,8 +208,23 @@ impl AuthService {
 			});
 		};
 
+		if method != challenge.method {
+			return Ok(AuthResponse::Failed {
+				reason: "challenge was issued for a different method".to_string(),
+			});
+		}
+
 		if challenge.method == "github" {
 			return self.complete_github_login(&challenge, &credentials);
+		}
+
+		if let Some(public_key) = challenge.pending_public_key.as_deref() {
+			return self.complete_solana_provision(
+				&challenge.identifier,
+				public_key,
+				&challenge.payload,
+				&credentials,
+			);
 		}
 
 		merge_challenge_payload(&mut credentials, &challenge.payload);
@@ -220,7 +242,13 @@ impl AuthService {
 			return Ok(invalid_credentials());
 		};
 
-		self.run_challenge_provider_and_respond(&stored_auth, &credentials, ident.id, &challenge.method)
+		self.run_challenge_provider_and_respond(
+			&stored_auth,
+			&challenge.payload,
+			&credentials,
+			ident.id,
+			&challenge.method,
+		)
 	}
 
 	#[inline]
@@ -263,12 +291,13 @@ impl AuthService {
 	fn run_challenge_provider_and_respond(
 		&self,
 		stored_auth: &Authentication,
+		challenge_payload: &HashMap<String, String>,
 		credentials: &HashMap<String, String>,
 		identity: IdentityId,
 		method: &str,
 	) -> Result<AuthResponse, Error> {
 		let provider = self.provider_for(method)?;
-		let step = provider.authenticate(&stored_auth.properties, credentials)?;
+		let step = provider.verify_challenge(&stored_auth.properties, challenge_payload, credentials)?;
 		respond_to_challenge_step(step, identity, self)
 	}
 }
@@ -276,7 +305,7 @@ impl AuthService {
 #[inline]
 fn merge_challenge_payload(credentials: &mut HashMap<String, String>, payload: &HashMap<String, String>) {
 	for (k, v) in payload {
-		credentials.entry(k.clone()).or_insert_with(|| v.clone());
+		credentials.insert(k.clone(), v.clone());
 	}
 	credentials.remove("challenge_id");
 }
@@ -290,6 +319,11 @@ fn respond_to_challenge_step(
 	match step {
 		AuthStep::Authenticated => service.finalize_authentication(identity),
 		AuthStep::Failed => Ok(invalid_credentials()),
+		AuthStep::Rejected {
+			reason,
+		} => Ok(AuthResponse::Failed {
+			reason,
+		}),
 		AuthStep::Challenge {
 			..
 		} => Ok(AuthResponse::Failed {

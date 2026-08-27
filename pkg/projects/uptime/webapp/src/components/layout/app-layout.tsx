@@ -5,11 +5,14 @@ import { useEffect } from 'react'
 import { Outlet } from '@tanstack/react-router'
 import { useAuth } from '@reifydb/auth'
 import { startRealtime, stopRealtime } from '@/store/subscription-manager'
+import { useMe } from '@/hooks/use-me'
+import { GuestBanner } from './guest-banner.tsx'
 import { Navbar } from './navbar.tsx'
 
 export function AppLayout() {
   const { session } = useAuth()
   const token = session?.token
+  const { data: me } = useMe()
 
   useEffect(() => {
     if (token) void startRealtime(token)
@@ -22,6 +25,7 @@ export function AppLayout() {
   return (
     <div className="min-h-screen bg-bg-primary">
       <Navbar />
+      {me?.guest === true && <GuestBanner />}
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <Outlet />
       </main>

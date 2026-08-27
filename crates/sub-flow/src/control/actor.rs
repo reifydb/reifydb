@@ -472,7 +472,7 @@ impl FlowActor {
 			return;
 		}
 		match self.computer.resolved_holds(&mut state.flow_engine, self.flow_id, self.initial_cursor) {
-			Ok(holds) => {
+			Ok((holds, _)) => {
 				for hold in holds {
 					self.substrate.frontiers.publish(
 						hold.object,

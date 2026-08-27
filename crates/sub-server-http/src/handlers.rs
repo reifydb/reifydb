@@ -23,6 +23,7 @@ use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
 	binding::dispatch_binding,
+	claim::{WireClaimRequest, native::dispatch_claim},
 	dispatch::dispatch,
 	format::WireFormat,
 	interceptor::{Protocol, RequestContext, RequestMetadata},
@@ -273,6 +274,24 @@ pub async fn handle_command(
 	Json(request): Json<StatementRequest>,
 ) -> Result<Response, AppError> {
 	execute_and_respond(&state, Operation::Command, &headers, request, &format_params).await
+}
+
+#[instrument(name = "http::queue_claim", level = "debug", skip_all)]
+pub async fn handle_queue_claim(
+	State(state): State<HttpServerState>,
+	Query(format_params): Query<FormatParams>,
+	headers: HeaderMap,
+	Json(request): Json<WireClaimRequest>,
+) -> Result<Response, AppError> {
+	let identity = extract_identity(&state, &headers)?;
+	let metadata = build_metadata(&headers);
+	let request = request.into_claim_request().map_err(AppError::BadRequest)?;
+
+	let (frames, metrics) = dispatch_claim(&state, identity, request, metadata).await?;
+
+	let mut response = encode_query_response(frames, &format_params)?;
+	insert_meta_headers(response.headers_mut(), &metrics);
+	Ok(response)
 }
 
 #[instrument(name = "http::execute_and_respond", level = "debug", skip_all, fields(op = ?operation))]

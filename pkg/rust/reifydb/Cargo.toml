@@ -74,8 +74,6 @@ libc = { workspace = true }
 reifydb = { path = ".", features = ["testing"] }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }
-bs58 = { workspace = true }
-ed25519-dalek = { workspace = true }
 
 [build-dependencies]
 reifydb-build = { workspace = true }

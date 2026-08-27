@@ -82,7 +82,7 @@ pub fn drain_sub(db: &TestDb, sub_id: SubscriptionId) -> Vec<Columns> {
 	store.drain(&sub_id, usize::MAX)
 }
 
-pub fn drain_after_consumer_caught_up(db: &TestDb, sub_id: SubscriptionId) -> Vec<Columns> {
+pub fn wait_for_consumer_caught_up(db: &TestDb) {
 	let target = db.watermarks().tx().current().expect("current version");
 	let timeout = Duration::from_seconds(10).unwrap();
 	if !db.watermarks().cdc().wait_for_consumer(target, timeout) {
@@ -93,6 +93,10 @@ pub fn drain_after_consumer_caught_up(db: &TestDb, sub_id: SubscriptionId) -> Ve
 			db.watermarks().cdc().consumer()
 		);
 	}
+}
+
+pub fn drain_after_consumer_caught_up(db: &TestDb, sub_id: SubscriptionId) -> Vec<Columns> {
+	wait_for_consumer_caught_up(db);
 	drain_sub(db, sub_id)
 }
 

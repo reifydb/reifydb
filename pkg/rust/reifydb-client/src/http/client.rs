@@ -5,8 +5,9 @@ use std::collections::HashMap;
 use reifydb_codec::{frame::decode::decode_frames, json::types::ResponseFrame};
 use reifydb_value::{
 	error::{Diagnostic, Error},
+	fragment::Fragment,
 	params::Params,
-	value::{duration::Duration, frame::frame::Frame},
+	value::{duration::Duration, frame::frame::Frame, temporal::parse::duration::parse_duration},
 };
 use reqwest::{Client as ReqwestClient, header::HeaderMap};
 use serde::{Deserialize, Serialize};
@@ -14,7 +15,8 @@ use serde_json::{from_str, json};
 
 use crate::{
 	AdminRequest, AdminResponse, AdminResult, CommandRequest, CommandResponse, CommandResult, ErrResponse,
-	LoginResult, QueryRequest, QueryResponse, QueryResult, Response, ResponseMeta, ResponsePayload, WireFormat,
+	LoginResult, QueryRequest, QueryResponse, QueryResult, QueueClaimRequest, Response, ResponseMeta,
+	ResponsePayload, WireFormat,
 	error::ClientError,
 	params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
@@ -289,6 +291,44 @@ impl HttpClient {
 			Ok(response) => Ok(response.into_query(meta)),
 			Err(_) => Err(self.parse_error_response(&response_body)),
 		}
+	}
+
+	/// Send an RBCF request: append ?format=rbcf, decode binary response.
+	/// Claim items from a queue, optionally long-polling until work arrives or the budget expires.
+	///
+	/// `wait_for` and `lease_ttl` are RQL duration literals such as `"25s"`. An absent or zero
+	/// `wait_for` is a plain non-blocking claim.
+	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, Error> {
+		let budget = request.wait_for.as_deref().and_then(|raw| parse_duration(Fragment::internal(raw)).ok());
+		let timeout = budget.unwrap_or(Duration::zero()) + Duration::from_seconds(30).unwrap();
+
+		let url = format!("{}/v1/queue/claim?format=rbcf", self.base_url);
+		let (bytes, _) = self.send_request_bytes_with_timeout(&url, &request, timeout).await?;
+		decode_frames(&bytes)
+			.map_err(|e| ClientError::Decode(format!("Failed to decode RBCF response: {}", e)).into())
+	}
+
+	async fn send_request_bytes_with_timeout<T: Serialize>(
+		&self,
+		url: &str,
+		body: &T,
+		timeout: Duration,
+	) -> Result<(Vec<u8>, Option<ResponseMeta>), Error> {
+		let mut request = self.inner.post(url).timeout(timeout.to_std()).json(body);
+
+		if let Some(ref token) = self.token {
+			request = request.bearer_auth(token);
+		}
+
+		let response = request.send().await.unwrap(); // FIXME better error handling
+
+		if !response.status().is_success() {
+			let body = response.text().await.unwrap();
+			return Err(self.parse_error_response(&body));
+		}
+
+		let meta = extract_meta(response.headers());
+		Ok((response.bytes().await.unwrap().to_vec(), meta)) // FIXME better error handling
 	}
 
 	async fn send_rbcf<T: Serialize>(

@@ -29,9 +29,9 @@ use tokio_tungstenite::{
 use crate::{
 	AdminRequest, AdminResult, AuthRequest, BatchChangeEntry, BatchChangePayload, BatchMemberInfo, BatchPushEvent,
 	BatchSubscribeRequest, BatchUnsubscribeRequest, CallRequest, ChangePayload, CommandRequest, CommandResult,
-	LoginResult, QueryRequest, QueryResult, ReconnectOptions, Request, RequestPayload, Response, ResponseMeta,
-	ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest, WireBatchChangePayload, WireChangePayload,
-	WireFormat,
+	LoginResult, QueryRequest, QueryResult, QueueClaimRequest, ReconnectOptions, Request, RequestPayload, Response,
+	ResponseMeta, ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest, WireBatchChangePayload,
+	WireChangePayload, WireFormat, WsQueueClaimRequest,
 	changes::frames_to_changes,
 	client::{BatchSubscription as ClientBatchSubscription, ReifyClient, Subscription as ClientSubscription},
 	error::ClientError,
@@ -860,6 +860,30 @@ impl WsClient {
 				meta,
 			}),
 			ClientResponse::Json(resp) => parse_call_response(*resp),
+		}
+	}
+
+	/// Claim items from a queue, optionally long-polling until work arrives or the budget expires.
+	///
+	/// `wait_for` and `lease_ttl` are RQL duration literals such as `"25s"`. The reply is
+	/// correlated by request id, so the socket keeps serving other requests while this one parks.
+	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::QueueClaim(WsQueueClaimRequest {
+				queue: request.queue,
+				worker: request.worker,
+				max_n: request.max_n,
+				lease_ttl: request.lease_ttl,
+				wait_for: request.wait_for,
+				format: self.wire_format(),
+			}),
+		};
+
+		match self.send_request(request).await? {
+			ClientResponse::Frames(frames, _) => Ok(frames),
+			ClientResponse::Json(resp) => parse_call_response(*resp).map(|result| result.frames),
 		}
 	}
 

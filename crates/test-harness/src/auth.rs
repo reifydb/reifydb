@@ -46,9 +46,9 @@ impl AuthServiceFactory {
 	}
 
 	pub fn build(self) -> AuthService {
-		let registry = Arc::new(AuthenticationRegistry::default());
 		let rng = Rng::seeded(42);
 		let clock = Clock::Real;
+		let registry = Arc::new(AuthenticationRegistry::new(clock.clone(), rng.clone()));
 		let config = self.configurator.configure();
 		match self.github_api {
 			Some(api) => AuthService::with_github_api(self.engine, registry, rng, clock, config, api),

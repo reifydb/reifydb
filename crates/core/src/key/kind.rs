@@ -92,6 +92,11 @@ pub enum KeyKind {
 	Relationship = 0x52,
 	SeriesRow = 0x53,
 	PartitionedSeriesRow = 0x54,
+	QueuePartition = 0x55,
+	QueueItemState = 0x56,
+	QueueDue = 0x57,
+	QueueAttempt = 0x58,
+	QueueKeyActive = 0x59,
 }
 
 impl From<KeyKind> for u8 {
@@ -188,6 +193,11 @@ impl TryFrom<u8> for KeyKind {
 			0x52 => Ok(Self::Relationship),
 			0x53 => Ok(Self::SeriesRow),
 			0x54 => Ok(Self::PartitionedSeriesRow),
+			0x55 => Ok(Self::QueuePartition),
+			0x56 => Ok(Self::QueueItemState),
+			0x57 => Ok(Self::QueueDue),
+			0x58 => Ok(Self::QueueAttempt),
+			0x59 => Ok(Self::QueueKeyActive),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

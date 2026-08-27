@@ -63,7 +63,7 @@ mod tests {
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_value::value::{Value, value_type::ValueType};
+	use reifydb_value::value::{Value, identity::IdentityKind, value_type::ValueType};
 
 	use crate::CatalogStore;
 
@@ -78,8 +78,8 @@ mod tests {
 	fn test_find_identity_attribute_values_for_identity() {
 		let mut txn = create_test_admin_transaction();
 		let (_, clock, rng) = test_clock_and_rng();
-		let alice = CatalogStore::create_identity(&mut txn, "alice", &clock, &rng).unwrap();
-		let bob = CatalogStore::create_identity(&mut txn, "bob", &clock, &rng).unwrap();
+		let alice = CatalogStore::create_identity(&mut txn, "alice", IdentityKind::User, &clock, &rng).unwrap();
+		let bob = CatalogStore::create_identity(&mut txn, "bob", IdentityKind::User, &clock, &rng).unwrap();
 		let org = CatalogStore::create_identity_attribute(&mut txn, "org_id", ValueType::Utf8).unwrap();
 		let tier = CatalogStore::create_identity_attribute(&mut txn, "tier", ValueType::Utf8).unwrap();
 		CatalogStore::set_identity_attribute_value(&mut txn, alice.id, org.id, Value::Utf8("acme".to_string()))
@@ -102,7 +102,7 @@ mod tests {
 	fn test_find_identity_attribute_value_not_set() {
 		let mut txn = create_test_admin_transaction();
 		let (_, clock, rng) = test_clock_and_rng();
-		let alice = CatalogStore::create_identity(&mut txn, "alice", &clock, &rng).unwrap();
+		let alice = CatalogStore::create_identity(&mut txn, "alice", IdentityKind::User, &clock, &rng).unwrap();
 		let org = CatalogStore::create_identity_attribute(&mut txn, "org_id", ValueType::Utf8).unwrap();
 		let found = CatalogStore::find_identity_attribute_value(
 			&mut Transaction::Admin(&mut txn),

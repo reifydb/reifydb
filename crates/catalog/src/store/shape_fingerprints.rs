@@ -167,7 +167,7 @@ fn pinned() -> Vec<Pin> {
 			0x0d4888ba97084b01,
 			&["identity", "attribute", "value"],
 		),
-		("identity::identity", &*IDENTITY_SHAPE, 0xedf855f31f733b03, &["identity", "name", "enabled"]),
+		("identity::identity", &*IDENTITY_SHAPE, 0xea254e7af84813ba, &["identity", "name", "enabled", "kind"]),
 		(
 			"migration::migration",
 			&*MIGRATION_SHAPE,

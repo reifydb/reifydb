@@ -7,6 +7,7 @@ use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
 
 use crate::common::{
 	Row, drain_sub, extract_sub_id, insert_one_at_a_time, make_db, normalize, random_rows, run_path_snapshot,
+	wait_for_consumer_caught_up,
 };
 
 // Every other fixture in this suite tops out at nine rows, so none of them ever crosses the 1024-batch capacity.
@@ -39,6 +40,8 @@ fn a_live_subscriber_that_falls_behind_is_terminated_not_truncated() {
 	let sub_id = extract_sub_id(&frames);
 
 	insert_one_at_a_time(&db, &rows);
+
+	wait_for_consumer_caught_up(&db);
 
 	let overran = overrun(&db, sub_id).expect("a subscriber that never drains past capacity must be marked lagged");
 	assert!(overran > 0, "the recorded overrun must say how far past capacity the subscriber fell");

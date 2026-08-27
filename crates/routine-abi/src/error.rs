@@ -9,6 +9,129 @@ use reifydb_value::{
 };
 
 #[derive(Debug, thiserror::Error)]
+pub enum QueueError {
+	#[error("procedure {procedure} received a malformed queue token: {token}")]
+	TokenInvalid {
+		procedure: &'static str,
+		fragment: Fragment,
+		token: String,
+	},
+
+	#[error("queue lease {token} can no longer be extended: {reason}")]
+	ExtendStale {
+		procedure: &'static str,
+		fragment: Fragment,
+		token: String,
+		reason: String,
+	},
+
+	#[error("procedure {procedure} found no item {item} in queue {queue}")]
+	ReplayUnknownItem {
+		procedure: &'static str,
+		fragment: Fragment,
+		queue: String,
+		item: u64,
+	},
+
+	#[error("procedure {procedure} cannot replay item {item} of queue {queue}: it is {status}, not dead")]
+	ReplayNotDead {
+		procedure: &'static str,
+		fragment: Fragment,
+		queue: String,
+		item: u64,
+		status: String,
+	},
+}
+
+impl IntoDiagnostic for QueueError {
+	fn into_diagnostic(self) -> Diagnostic {
+		match self {
+			QueueError::TokenInvalid {
+				procedure,
+				fragment,
+				token,
+			} => Diagnostic {
+				code: "QUEUE_003".to_string(),
+				rql: None,
+				message: format!("Procedure {} received a malformed queue token", procedure),
+				column: None,
+				fragment,
+				label: Some("malformed token".to_string()),
+				help: Some("Pass the token exactly as queue::claim returned it".to_string()),
+				notes: vec![format!("token: {}", token)],
+				cause: None,
+				operator_chain: None,
+			},
+			QueueError::ExtendStale {
+				procedure: _,
+				fragment,
+				token,
+				reason,
+			} => Diagnostic {
+				code: "QUEUE_002".to_string(),
+				rql: None,
+				message: format!("Queue lease can no longer be extended: {}", reason),
+				column: None,
+				fragment,
+				label: Some("stale lease".to_string()),
+				help: Some("abandon the task and claim again".to_string()),
+				notes: vec![format!("token: {}", token)],
+				cause: None,
+				operator_chain: None,
+			},
+			QueueError::ReplayUnknownItem {
+				procedure: _,
+				fragment,
+				queue,
+				item,
+			} => Diagnostic {
+				code: "QUEUE_004".to_string(),
+				rql: None,
+				message: format!("Queue {} holds no item {}", queue, item),
+				column: None,
+				fragment,
+				label: Some("unknown item".to_string()),
+				help: Some(
+					"Check the item number; retention may already have swept it, which closes its replay window"
+						.to_string(),
+				),
+				notes: vec![format!("queue: {}", queue), format!("item: {}", item)],
+				cause: None,
+				operator_chain: None,
+			},
+			QueueError::ReplayNotDead {
+				procedure: _,
+				fragment,
+				queue,
+				item,
+				status,
+			} => Diagnostic {
+				code: "QUEUE_005".to_string(),
+				rql: None,
+				message: format!("Queue item {} is {}, not dead", item, status),
+				column: None,
+				fragment,
+				label: Some("item is not dead".to_string()),
+				help: Some("Only a dead item can be replayed".to_string()),
+				notes: vec![
+					format!("queue: {}", queue),
+					format!("item: {}", item),
+					format!("status: {}", status),
+				],
+				cause: None,
+				operator_chain: None,
+			},
+		}
+	}
+}
+
+impl From<QueueError> for Error {
+	fn from(err: QueueError) -> Self {
+		Error(Box::new(err.into_diagnostic()))
+	}
+}
+
+#[derive(Debug, thiserror::Error)]
 pub enum RoutineError {
 	#[error("function {} expects {expected} arguments, got {actual}", function.text())]
 	FunctionArityMismatch {
@@ -56,6 +179,9 @@ pub enum RoutineError {
 		procedure: Fragment,
 		reason: String,
 	},
+
+	#[error(transparent)]
+	Queue(#[from] QueueError),
 
 	#[error("operation '{op}' is not supported by accumulator '{accumulator}'")]
 	Unsupported {
@@ -260,6 +386,7 @@ impl IntoDiagnostic for RoutineError {
 					operator_chain: None,
 				}
 			}
+			RoutineError::Queue(err) => err.into_diagnostic(),
 			RoutineError::Unsupported {
 				op,
 				accumulator,
@@ -316,7 +443,13 @@ impl RoutineError {
 					operator_chain: None,
 				}))
 			}
-			other => Error(Box::new(other.into_diagnostic())),
+			other => {
+				let mut diagnostic = other.into_diagnostic();
+				if diagnostic.fragment().is_none() {
+					diagnostic.with_fragment(fragment);
+				}
+				Error(Box::new(diagnostic))
+			}
 		}
 	}
 }

@@ -57,6 +57,9 @@ uuid = { workspace = true, optional = true }
 num-bigint = { workspace = true, optional = true }
 
 [dev-dependencies]
+bs58 = { workspace = true }
+ed25519-dalek = { workspace = true }
+reqwest = { workspace = true }
 reifydb = { workspace = true, features = ["sub_server_http", "sub_server_ws", "sub_server_grpc", "sub_flow"] }
 reifydb-client = { path = ".", features = ["grpc", "http", "ws", "dst"] }
 reifydb-sub-server = { workspace = true }

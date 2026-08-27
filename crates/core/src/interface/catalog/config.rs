@@ -79,6 +79,10 @@ pub enum ConfigKey {
 	CommitGroupMaxEntries,
 	TombstoneReapInterval,
 	TombstoneReapBatchSize,
+	QueueLeaseReapInterval,
+	QueueLeaseReapBatchSize,
+	QueueRetentionInterval,
+	QueueRetentionBatchSize,
 }
 
 impl ConfigKey {
@@ -129,6 +133,10 @@ impl ConfigKey {
 			Self::CommitGroupMaxEntries,
 			Self::TombstoneReapInterval,
 			Self::TombstoneReapBatchSize,
+			Self::QueueLeaseReapInterval,
+			Self::QueueLeaseReapBatchSize,
+			Self::QueueRetentionInterval,
+			Self::QueueRetentionBatchSize,
 		]
 	}
 
@@ -185,6 +193,10 @@ impl ConfigKey {
 			Self::CommitGroupMaxEntries => Value::Uint8(256),
 			Self::TombstoneReapInterval => Value::duration_seconds(1),
 			Self::TombstoneReapBatchSize => Value::Uint8(1024),
+			Self::QueueLeaseReapInterval => Value::duration_seconds(5),
+			Self::QueueLeaseReapBatchSize => Value::Uint8(1024),
+			Self::QueueRetentionInterval => Value::duration_seconds(60),
+			Self::QueueRetentionBatchSize => Value::Uint8(1024),
 		}
 	}
 
@@ -395,6 +407,18 @@ impl ConfigKey {
 			Self::TombstoneReapBatchSize => {
 				"Max tombstones one reap statement may physically delete per table per slice. Bounds the write-connection hold; remaining tombstones drain on the next slice."
 			}
+			Self::QueueLeaseReapInterval => {
+				"How often the queue reaper scans for leases whose deadline has passed. A dead worker's item cannot be redelivered sooner than this, so it should stay well below any declared lease ttl."
+			}
+			Self::QueueLeaseReapBatchSize => {
+				"Max queue item-state records one reap slice may scan. Bounds the slice on a deep backlog; the scan resumes from its cursor on the next slice."
+			}
+			Self::QueueRetentionInterval => {
+				"How often the queue retention sweeper deletes finished items whose terminal attempt is older than the queue's declared retention.done, and deduplication records past their own ttl."
+			}
+			Self::QueueRetentionBatchSize => {
+				"Max records one queue retention slice may scan across its item and deduplication sweeps. Remaining work drains on the next slice."
+			}
 		}
 	}
 
@@ -445,6 +469,10 @@ impl ConfigKey {
 			Self::CommitGroupMaxEntries => true,
 			Self::TombstoneReapInterval => false,
 			Self::TombstoneReapBatchSize => false,
+			Self::QueueLeaseReapInterval => false,
+			Self::QueueLeaseReapBatchSize => false,
+			Self::QueueRetentionInterval => false,
+			Self::QueueRetentionBatchSize => false,
 		}
 	}
 
@@ -495,6 +523,10 @@ impl ConfigKey {
 			Self::CommitGroupMaxEntries => &[ValueType::Uint8],
 			Self::TombstoneReapInterval => &[ValueType::Duration],
 			Self::TombstoneReapBatchSize => &[ValueType::Uint8],
+			Self::QueueLeaseReapInterval => &[ValueType::Duration],
+			Self::QueueLeaseReapBatchSize => &[ValueType::Uint8],
+			Self::QueueRetentionInterval => &[ValueType::Duration],
+			Self::QueueRetentionBatchSize => &[ValueType::Uint8],
 		}
 	}
 
@@ -545,6 +577,10 @@ impl ConfigKey {
 			Self::CommitGroupMaxEntries => false,
 			Self::TombstoneReapInterval => false,
 			Self::TombstoneReapBatchSize => false,
+			Self::QueueLeaseReapInterval => false,
+			Self::QueueLeaseReapBatchSize => false,
+			Self::QueueRetentionInterval => false,
+			Self::QueueRetentionBatchSize => false,
 		}
 	}
 
@@ -878,6 +914,10 @@ impl fmt::Display for ConfigKey {
 			Self::CommitGroupMaxEntries => write!(f, "COMMIT_GROUP_MAX_ENTRIES"),
 			Self::TombstoneReapInterval => write!(f, "TOMBSTONE_REAP_INTERVAL"),
 			Self::TombstoneReapBatchSize => write!(f, "TOMBSTONE_REAP_BATCH_SIZE"),
+			Self::QueueLeaseReapInterval => write!(f, "QUEUE_LEASE_REAP_INTERVAL"),
+			Self::QueueLeaseReapBatchSize => write!(f, "QUEUE_LEASE_REAP_BATCH_SIZE"),
+			Self::QueueRetentionInterval => write!(f, "QUEUE_RETENTION_INTERVAL"),
+			Self::QueueRetentionBatchSize => write!(f, "QUEUE_RETENTION_BATCH_SIZE"),
 		}
 	}
 }
@@ -932,6 +972,10 @@ impl FromStr for ConfigKey {
 			"COMMIT_GROUP_MAX_ENTRIES" => Ok(Self::CommitGroupMaxEntries),
 			"TOMBSTONE_REAP_INTERVAL" => Ok(Self::TombstoneReapInterval),
 			"TOMBSTONE_REAP_BATCH_SIZE" => Ok(Self::TombstoneReapBatchSize),
+			"QUEUE_LEASE_REAP_INTERVAL" => Ok(Self::QueueLeaseReapInterval),
+			"QUEUE_LEASE_REAP_BATCH_SIZE" => Ok(Self::QueueLeaseReapBatchSize),
+			"QUEUE_RETENTION_INTERVAL" => Ok(Self::QueueRetentionInterval),
+			"QUEUE_RETENTION_BATCH_SIZE" => Ok(Self::QueueRetentionBatchSize),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -1103,7 +1147,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 45);
+		assert_eq!(all.len(), 49);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -1138,6 +1182,10 @@ mod tests {
 		assert!(all.contains(&ConfigKey::FlowSampleInterval));
 		assert!(all.contains(&ConfigKey::MetricsSampleInterval));
 		assert!(all.contains(&ConfigKey::MetricsSnapshotInterval));
+		assert!(all.contains(&ConfigKey::QueueLeaseReapInterval));
+		assert!(all.contains(&ConfigKey::QueueLeaseReapBatchSize));
+		assert!(all.contains(&ConfigKey::QueueRetentionInterval));
+		assert!(all.contains(&ConfigKey::QueueRetentionBatchSize));
 	}
 
 	#[test]

@@ -3,7 +3,7 @@
 
 use axum::{
 	extract::{Request, State},
-	http::header::AUTHORIZATION,
+	http::{HeaderMap, header::AUTHORIZATION},
 	middleware::Next,
 	response::Response,
 };
@@ -14,8 +14,8 @@ use crate::{error::ApiError, state::AppState};
 #[derive(Clone, Copy)]
 pub struct CurrentUser(pub IdentityId);
 
-fn bearer_token(req: &Request) -> Option<String> {
-	let header = req.headers().get(AUTHORIZATION)?.to_str().ok()?;
+pub fn bearer_token(headers: &HeaderMap) -> Option<String> {
+	let header = headers.get(AUTHORIZATION)?.to_str().ok()?;
 	let token = header.strip_prefix("Bearer ")?;
 	if token.is_empty() {
 		return None;
@@ -23,15 +23,20 @@ fn bearer_token(req: &Request) -> Option<String> {
 	Some(token.to_string())
 }
 
-pub async fn require_auth(State(st): State<AppState>, mut req: Request, next: Next) -> Result<Response, ApiError> {
-	let token = bearer_token(&req).ok_or(ApiError::Unauthorized)?;
+pub async fn identity_for_token(st: &AppState, token: String) -> Result<Option<IdentityId>, ApiError> {
 	let auth = st.auth.clone();
 	let validated =
 		st.tokio.spawn_blocking(move || auth.validate_token(&token))
 			.await
-			.map_err(|e| ApiError::internal("token validation task failed", e))?;
-	let token = validated.ok_or(ApiError::Unauthorized)?;
-	req.extensions_mut().insert(CurrentUser(token.identity));
+			.map_err(|e| ApiError::internal("token validation task failed", e))?
+			.map_err(|e| ApiError::internal("token validation could not reach storage", e))?;
+	Ok(validated.map(|token| token.identity))
+}
+
+pub async fn require_auth(State(st): State<AppState>, mut req: Request, next: Next) -> Result<Response, ApiError> {
+	let token = bearer_token(req.headers()).ok_or(ApiError::Unauthorized)?;
+	let identity = identity_for_token(&st, token).await?.ok_or(ApiError::Unauthorized)?;
+	req.extensions_mut().insert(CurrentUser(identity));
 	Ok(next.run(req).await)
 }
 

@@ -13,7 +13,7 @@ use std::{
 };
 
 use js_sys::Date;
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::value::{datetime::DateTime, duration::Duration as RvDuration};
 use web_sys::window;
 
 #[inline(always)]
@@ -273,6 +273,14 @@ impl ops::Add<Duration> for Instant {
 				},
 			},
 		}
+	}
+}
+
+impl ops::Add<RvDuration> for Instant {
+	type Output = Instant;
+
+	fn add(self, duration: RvDuration) -> Instant {
+		self + duration.to_std()
 	}
 }
 

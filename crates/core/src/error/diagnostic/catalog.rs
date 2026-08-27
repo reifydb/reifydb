@@ -153,7 +153,10 @@ pub fn queue_deduplication_key_not_utf8(fragment: Fragment, actual: &str) -> Dia
 		fragment,
 		label: Some("wrong deduplication_key type".to_string()),
 		help: Some("Produce the key as text, e.g. deduplication_key: \"invoice-\" + order_id".to_string()),
-		notes: vec!["A none deduplication_key is accepted and means the item is not deduplicated".to_string()],
+		notes: vec![
+			"A none deduplication_key is accepted and is a key like any other, matching how a declared deduplicate treats none"
+				.to_string(),
+		],
 		cause: None,
 		operator_chain: None,
 	}

@@ -38,10 +38,12 @@ fn decode_identity(bytes: &EncodedCatalogRow) -> Identity {
 	let id = identity::get_identity(bytes);
 	let name = identity::get_name(bytes).to_string();
 	let enabled = identity::get_enabled(bytes);
+	let kind = identity::get_kind(bytes);
 
 	Identity {
 		id,
 		name,
 		enabled,
+		kind,
 	}
 }

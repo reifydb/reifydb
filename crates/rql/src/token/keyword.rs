@@ -155,6 +155,7 @@ Test => "TEST",
 Tests => "TESTS",
 Run => "RUN",
 User => "USER",
+Service => "SERVICE",
 Role => "ROLE",
 Grant => "GRANT",
 Revoke => "REVOKE",
@@ -275,6 +276,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("TESTS", Keyword::Tests);
 	map.insert("RUN", Keyword::Run);
 	map.insert("USER", Keyword::User);
+	map.insert("SERVICE", Keyword::Service);
 	map.insert("ROLE", Keyword::Role);
 	map.insert("GRANT", Keyword::Grant);
 	map.insert("REVOKE", Keyword::Revoke);
@@ -470,6 +472,7 @@ pub mod tests {
 	test_keyword_match => (Match, "MATCH"),
 	test_keyword_procedure => (Procedure, "PROCEDURE"),
 	test_keyword_user => (User, "USER"),
+	test_keyword_service => (Service, "SERVICE"),
 	test_keyword_role => (Role, "ROLE"),
 	test_keyword_grant => (Grant, "GRANT"),
 	test_keyword_revoke => (Revoke, "REVOKE"),
@@ -611,6 +614,7 @@ pub mod tests {
 	test_not_keyword_match => ( "match"),
 	test_not_keyword_procedure => ( "procedure"),
 	test_not_keyword_user => ( "user"),
+	test_not_keyword_service => ( "service"),
 	test_not_keyword_role => ( "role"),
 	test_not_keyword_grant => ( "grant"),
 	test_not_keyword_revoke => ( "revoke"),

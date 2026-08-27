@@ -595,14 +595,25 @@ fn test_fingerprint_adjacent_max_bytes_values() {
 fn the_family_changes_the_fingerprint_so_two_kinds_cannot_share_a_shape() {
 	// Without this the registry hands a series the table shape whenever their field lists match.
 	let fields = vec![make_field("id", ValueType::Int4)];
+	let families = [
+		RowFamily::Catalog,
+		RowFamily::Table,
+		RowFamily::Series,
+		RowFamily::RingBuffer,
+		RowFamily::Queue,
+		RowFamily::QueueAttempt,
+		RowFamily::QueueDeduplication,
+	];
 
-	let table = compute_fingerprint(RowFamily::Table, &fields);
-	let series = compute_fingerprint(RowFamily::Series, &fields);
-	let ringbuffer = compute_fingerprint(RowFamily::RingBuffer, &fields);
-
-	assert_ne!(table, series);
-	assert_ne!(table, ringbuffer);
-	assert_ne!(series, ringbuffer);
+	for (i, left) in families.iter().enumerate() {
+		for right in families.iter().skip(i + 1) {
+			assert_ne!(
+				compute_fingerprint(*left, &fields),
+				compute_fingerprint(*right, &fields),
+				"{left:?} and {right:?} share a fingerprint"
+			);
+		}
+	}
 }
 
 #[test]

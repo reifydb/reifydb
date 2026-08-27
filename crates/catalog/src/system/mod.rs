@@ -39,6 +39,7 @@ pub mod policy_operations;
 pub mod primary_key_columns;
 pub mod primary_keys;
 pub mod procedures;
+pub mod queue_partitions;
 pub mod queues;
 pub mod relationships;
 pub mod ringbuffers;
@@ -109,7 +110,7 @@ use versions::versions;
 use views::views;
 use virtual_table_columns::virtual_table_columns;
 
-use crate::system::{queues::queues, ringbuffers::ringbuffers};
+use crate::system::{queue_partitions::queue_partitions, queues::queues, ringbuffers::ringbuffers};
 
 pub mod ids {
 	pub mod columns {
@@ -486,7 +487,12 @@ pub mod ids {
 			pub const TIME: ColumnId = ColumnId(8);
 			pub const TS: ColumnId = ColumnId(9);
 
-			pub const ALL: [ColumnId; 9] = [
+			pub const DEPTH: ColumnId = ColumnId(10);
+			pub const IN_FLIGHT: ColumnId = ColumnId(11);
+			pub const BLOCKED_KEYS: ColumnId = ColumnId(12);
+			pub const OLDEST_DUE_AT: ColumnId = ColumnId(13);
+
+			pub const ALL: [ColumnId; 13] = [
 				ID,
 				NAMESPACE_ID,
 				NAME,
@@ -496,6 +502,10 @@ pub mod ids {
 				DEDUPLICATE_TTL,
 				TIME,
 				TS,
+				DEPTH,
+				IN_FLIGHT,
+				BLOCKED_KEYS,
+				OLDEST_DUE_AT,
 			];
 		}
 
@@ -527,6 +537,20 @@ pub mod ids {
 				JUNCTION_TARGET_COLUMN_ID,
 				CARDINALITY,
 			];
+		}
+
+		pub mod queue_partitions {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const QUEUE_ID: ColumnId = ColumnId(1);
+			pub const PARTITION: ColumnId = ColumnId(2);
+			pub const DEPTH: ColumnId = ColumnId(3);
+			pub const IN_FLIGHT: ColumnId = ColumnId(4);
+			pub const BLOCKED_KEYS: ColumnId = ColumnId(5);
+			pub const OLDEST_DUE_AT: ColumnId = ColumnId(6);
+
+			pub const ALL: [ColumnId; 6] =
+				[QUEUE_ID, PARTITION, DEPTH, IN_FLIGHT, BLOCKED_KEYS, OLDEST_DUE_AT];
 		}
 
 		pub mod ringbuffers {
@@ -708,8 +732,9 @@ pub mod ids {
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAME: ColumnId = ColumnId(2);
 			pub const ENABLED: ColumnId = ColumnId(3);
+			pub const KIND: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 3] = [ID, NAME, ENABLED];
+			pub const ALL: [ColumnId; 4] = [ID, NAME, ENABLED, KIND];
 		}
 
 		pub mod roles {
@@ -903,6 +928,7 @@ pub mod ids {
 		pub const IDENTITY_ATTRIBUTES: VTableId = VTableId(60);
 		pub const IDENTITY_ATTRIBUTE_VALUES: VTableId = VTableId(61);
 		pub const QUEUES: VTableId = VTableId(62);
+		pub const QUEUE_PARTITIONS: VTableId = VTableId(63);
 
 		pub const PROCEDURES_RQL: VTableId = VTableId(51);
 		pub const PROCEDURES_TEST: VTableId = VTableId(52);
@@ -936,7 +962,7 @@ pub mod ids {
 		pub const METRICS_CDC_OPERATOR: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 73] = [
+		pub const ALL: [VTableId; 74] = [
 			SEQUENCES,
 			SUBSCRIPTION_WATERMARKS,
 			NAMESPACES,
@@ -960,6 +986,7 @@ pub mod ids {
 			OPERATOR_LIBRARY_OUTPUTS,
 			RINGBUFFERS,
 			QUEUES,
+			QUEUE_PARTITIONS,
 			FLOW_WATERMARKS,
 			SHAPES,
 			SHAPE_FIELDS,
@@ -1135,6 +1162,10 @@ impl SystemCatalog {
 
 	pub fn get_system_queues_table() -> Arc<VTable> {
 		queues()
+	}
+
+	pub fn get_system_queue_partitions_table() -> Arc<VTable> {
+		queue_partitions()
 	}
 
 	pub fn get_system_row_shapes_table() -> Arc<VTable> {

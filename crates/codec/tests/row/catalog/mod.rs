@@ -123,3 +123,33 @@ fn set_fingerprint_rewrites_the_header_without_touching_the_body() {
 	assert_eq!(catalog_row.fingerprint(), replacement);
 	assert_eq!(catalog_row.body(), body_before.as_slice());
 }
+
+#[test]
+fn thawing_a_frozen_row_is_the_only_way_to_rewrite_its_variable_length_field() {
+	// body_mut hands out a fixed-length window, so without a thaw a stored catalog name can never be replaced.
+	let shape = shape();
+	let mut builder = shape.allocate_catalog();
+	shape.set::<u64>(&mut builder, 0, 7);
+	shape.set_utf8(&mut builder, 1, "short");
+	let frozen = builder.freeze();
+	let fingerprint = frozen.fingerprint();
+	let length_before = frozen.len();
+
+	let mut thawed = frozen.thaw();
+	shape.set::<u64>(&mut thawed, 0, 8);
+	shape.set_utf8(&mut thawed, 1, "a considerably longer catalog name");
+	let refrozen = thawed.freeze();
+
+	assert_eq!(refrozen.fingerprint(), fingerprint, "regrowing a field must not disturb the header");
+	assert_eq!(shape.get::<u64>(refrozen.as_slice(), 0), 8);
+	assert_eq!(shape.get_utf8(refrozen.as_slice(), 1), "a considerably longer catalog name");
+	assert!(refrozen.len() > length_before, "the row must have grown to hold the longer name");
+	assert!(refrozen.is_defined(0) && refrozen.is_defined(1), "a resize must not shift the bitvec");
+}
+
+#[test]
+#[should_panic(expected = "allocate_catalog on a shape of another family")]
+fn a_shape_of_another_family_cannot_allocate_a_catalog_row() {
+	// A table shape starts its bitvec at 33, so a catalog reader would probe byte 8 and find dead header space.
+	RowShape::new(RowFamily::Table, vec![RowShapeField::unconstrained("id", ValueType::Uint8)]).allocate_catalog();
+}

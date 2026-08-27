@@ -65,6 +65,7 @@ function toMonitor(row: Record<string, unknown>): Monitor {
 function toResult(row: Record<string, unknown>): Result {
   return {
     region_id: String(row.region_id),
+    probe: text(row.probe),
     checked_at: String(row.checked_at),
     success: bool(row.success),
     response_time_ms: durationMs(row.response_time),
@@ -152,7 +153,7 @@ function resultsMember(): BatchSubscriptionMember {
     }
   }
   return {
-    rql: `from uptime::results map { monitor_id, region_id, checked_at, success, response_time, status_code, error } take ${RESULTS_HYDRATION_CAP}`,
+    rql: `from uptime::results map { monitor_id, region_id, probe, checked_at, success, response_time, status_code, error } take ${RESULTS_HYDRATION_CAP}`,
     callbacks: {
       on_insert: apply,
       on_update: apply,

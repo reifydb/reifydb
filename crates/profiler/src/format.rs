@@ -390,6 +390,7 @@ fn category_label(c: ProfilerCategory) -> &'static str {
 		ProfilerCategory::Api => "Api",
 		ProfilerCategory::Actor => "Actor",
 		ProfilerCategory::Lifecycle => "Lifecycle",
+		ProfilerCategory::Queue => "Queue",
 	}
 }
 

@@ -20,6 +20,9 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 			| KeyKind::SubscriptionRow
 			| KeyKind::ConfigStorage
 			| KeyKind::Token | KeyKind::VersionEpoch
+			| KeyKind::QueuePartition
+			| KeyKind::QueueItemState
+			| KeyKind::QueueDue | KeyKind::QueueKeyActive
 	)
 }
 
@@ -116,6 +119,11 @@ pub mod tests {
 			KeyKind::Queue => {}
 			KeyKind::NamespaceQueue => {}
 			KeyKind::QueueDeduplication => {}
+			KeyKind::QueuePartition => {}
+			KeyKind::QueueItemState => {}
+			KeyKind::QueueDue => {}
+			KeyKind::QueueAttempt => {}
+			KeyKind::QueueKeyActive => {}
 			KeyKind::VersionEpoch => {}
 			KeyKind::SeriesRow => {}
 			KeyKind::Relationship => {} /* When adding a new variant, add it here.
@@ -284,6 +292,34 @@ pub mod tests {
 	#[test]
 	fn test_include_queue_deduplication() {
 		assert!(!should_exclude_from_cdc(KeyKind::QueueDeduplication));
+	}
+
+	#[test]
+	fn test_exclude_queue_partition() {
+		assert!(should_exclude_from_cdc(KeyKind::QueuePartition));
+	}
+
+	#[test]
+	fn test_exclude_queue_item_state() {
+		assert!(should_exclude_from_cdc(KeyKind::QueueItemState));
+	}
+
+	#[test]
+	fn test_exclude_queue_due() {
+		assert!(should_exclude_from_cdc(KeyKind::QueueDue));
+	}
+
+	#[test]
+	fn test_exclude_queue_key_active() {
+		assert!(should_exclude_from_cdc(KeyKind::QueueKeyActive));
+	}
+
+	#[test]
+	fn test_include_queue_attempt() {
+		// Attempt records are the durable audit trail of what a worker reported, not internal
+		// scheduling churn. Excluding them would make every ack invisible to subscribers and
+		// to any downstream view built on effect outcomes.
+		assert!(!should_exclude_from_cdc(KeyKind::QueueAttempt));
 	}
 
 	#[test]

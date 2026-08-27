@@ -679,6 +679,7 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 				}
 				AstCreate::Identity(n) => {
 					buf.write_u8(0x11);
+					buf.write_u8(n.kind.to_u8());
 					buf.write_str(n.name.text());
 					for entry in &n.entries {
 						buf.write_str(entry.key.text());
@@ -933,6 +934,7 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 				}
 				AstDrop::Identity(n) => {
 					buf.write_u8(0x09);
+					buf.write_u8(n.kind.to_u8());
 					buf.write_str(n.name.text());
 				}
 				AstDrop::Role(n) => {

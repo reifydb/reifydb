@@ -100,3 +100,40 @@ fn time_and_not_before_occupy_independent_flag_bits() {
 	assert_eq!(shape.time(&frozen), Some(time));
 	assert_eq!(EncodedQueueRow::view(&frozen).not_before(), Some(not_before));
 }
+
+#[test]
+fn thawing_a_frozen_row_reschedules_it_without_disturbing_the_rest_of_the_header() {
+	// not_before shares its flags byte with the event time, so a retry clearing the wrong bit would lose that time.
+	let shape = shape();
+	let mut row = shape.allocate_queue();
+	row.set_timestamps(DateTime::from_millis(1), DateTime::from_millis(1));
+	row.set_time(DateTime::from_millis(500));
+	row.set_not_before(DateTime::from_millis(1_000));
+	shape.set::<i32>(&mut row, 0, 7);
+	shape.set::<i32>(&mut row, 1, 9);
+	let frozen = row.freeze();
+
+	let mut thawed = frozen.thaw();
+	assert_eq!(thawed.not_before(), Some(DateTime::from_millis(1_000)), "the schedule must survive the thaw");
+	thawed.set_not_before(DateTime::from_millis(2_000));
+	let refrozen = thawed.freeze();
+
+	assert_eq!(refrozen.not_before(), Some(DateTime::from_millis(2_000)));
+	assert_eq!(refrozen.created_at(), DateTime::from_millis(1));
+	assert_eq!(refrozen.updated_at(), DateTime::from_millis(1));
+	assert_eq!(
+		shape.time(refrozen.as_slice()),
+		Some(DateTime::from_millis(500)),
+		"the event time must stay flagged"
+	);
+	assert_eq!(shape.get::<i32>(refrozen.as_slice(), 0), 7);
+	assert_eq!(shape.get::<i32>(refrozen.as_slice(), 1), 9);
+}
+
+#[test]
+#[should_panic(expected = "allocate_queue on a shape of another family")]
+fn a_shape_of_another_family_cannot_allocate_a_queue_row() {
+	// An attempt shape is two bytes wider, so its bitvec would sit inside the slot queue reads as not_before.
+	RowShape::new(RowFamily::QueueAttempt, vec![RowShapeField::unconstrained("id", ValueType::Int4)])
+		.allocate_queue();
+}

@@ -30,9 +30,10 @@ pub enum ProfilerCategory {
 	Api = 19,
 	Actor = 20,
 	Lifecycle = 21,
+	Queue = 22,
 }
 
-pub const CATEGORY_COUNT: usize = 22;
+pub const CATEGORY_COUNT: usize = 23;
 
 pub const ALL_CATEGORIES: [ProfilerCategory; CATEGORY_COUNT] = [
 	ProfilerCategory::Query,
@@ -57,6 +58,7 @@ pub const ALL_CATEGORIES: [ProfilerCategory; CATEGORY_COUNT] = [
 	ProfilerCategory::Api,
 	ProfilerCategory::Actor,
 	ProfilerCategory::Lifecycle,
+	ProfilerCategory::Queue,
 ];
 
 impl ProfilerCategory {
@@ -88,6 +90,7 @@ impl ProfilerCategory {
 			19 => Some(ProfilerCategory::Api),
 			20 => Some(ProfilerCategory::Actor),
 			21 => Some(ProfilerCategory::Lifecycle),
+			22 => Some(ProfilerCategory::Queue),
 			_ => None,
 		}
 	}
@@ -120,6 +123,8 @@ impl ProfilerCategory {
 			Some(ProfilerCategory::Api)
 		} else if name.starts_with("actor::") {
 			Some(ProfilerCategory::Actor)
+		} else if name.starts_with("queue::") {
+			Some(ProfilerCategory::Queue)
 		} else if name.starts_with("cdc::") {
 			Some(ProfilerCategory::Cdc)
 		} else if name.starts_with("subscription::") {
@@ -179,6 +184,7 @@ impl ProfilerCategory {
 			ProfilerCategory::Api => "api",
 			ProfilerCategory::Actor => "actor",
 			ProfilerCategory::Lifecycle => "lifecycle",
+			ProfilerCategory::Queue => "queue",
 		}
 	}
 }
@@ -367,6 +373,28 @@ mod tests {
 		assert_eq!(ProfilerCategory::from_span_name("flow::pool::submit"), Some(ProfilerCategory::Flow));
 		assert_eq!(ProfilerCategory::from_span_name("flow::actor::tick"), Some(ProfilerCategory::Flow));
 		assert_eq!(ProfilerCategory::from_span_name("flow::engine::apply"), Some(ProfilerCategory::Flow));
+	}
+
+	#[test]
+	fn from_span_name_queue_prefix() {
+		// The prefix map is first-match string matching over a hand-ordered if-chain, so a typo
+		// or a reordering that lets an earlier arm swallow "queue::" would drop every queue span
+		// from the profiler with no error anywhere. The negative cases pin that the match is on
+		// the full "queue::" separator, not a bare "queue" substring.
+		assert_eq!(ProfilerCategory::from_span_name("queue::claim"), Some(ProfilerCategory::Queue));
+		assert_eq!(ProfilerCategory::from_span_name("queue::reap::slice"), Some(ProfilerCategory::Queue));
+		assert_eq!(
+			ProfilerCategory::from_span_name("queue::interceptor::enqueue"),
+			Some(ProfilerCategory::Queue)
+		);
+
+		assert_eq!(ProfilerCategory::from_span_name("queues::other"), None);
+		assert_eq!(ProfilerCategory::from_span_name("queue"), None);
+		assert_eq!(
+			ProfilerCategory::from_span_name("catalog::queue::create"),
+			Some(ProfilerCategory::Catalog),
+			"queue DDL stays with the other catalog spans"
+		);
 	}
 
 	#[test]

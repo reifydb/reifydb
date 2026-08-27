@@ -123,3 +123,43 @@ path = "examples/export/03_selective.rs"
 name = "export-tuning"
 path = "examples/export/04_tuning.rs"
 
+# Queue examples (CREATE QUEUE + queue::* procedures)
+[[bin]]
+name = "queue-enqueue-claim"
+path = "examples/queue/01_enqueue_and_claim.rs"
+
+[[bin]]
+name = "queue-extend-lease"
+path = "examples/queue/02_extend_lease.rs"
+
+[[bin]]
+name = "queue-retry"
+path = "examples/queue/03_retry_on_failure.rs"
+
+[[bin]]
+name = "queue-dead-replay"
+path = "examples/queue/04_dead_and_replay.rs"
+
+[[bin]]
+name = "queue-ordered"
+path = "examples/queue/05_ordered_by_key.rs"
+
+[[bin]]
+name = "queue-partitions"
+path = "examples/queue/06_partitions.rs"
+
+[[bin]]
+name = "queue-deduplication"
+path = "examples/queue/07_deduplication.rs"
+
+[[bin]]
+name = "queue-delayed"
+path = "examples/queue/08_delayed_jobs.rs"
+
+[[bin]]
+name = "queue-introspection"
+path = "examples/queue/09_introspection.rs"
+
+[[bin]]
+name = "queue-long-poll"
+path = "examples/queue/10_long_poll.rs"

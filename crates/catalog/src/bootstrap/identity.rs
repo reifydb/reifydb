@@ -9,7 +9,7 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::value::identity::{IdentityId, IdentityKind};
 
 use crate::{
 	CatalogStore, Result,
@@ -37,7 +37,7 @@ pub fn bootstrap_root_identity(
 		Clock::Real,
 	)?;
 
-	CatalogStore::create_identity_with_id(&mut admin, "root", IdentityId::root())?;
+	CatalogStore::create_identity_with_id(&mut admin, "root", IdentityId::root(), IdentityKind::Root)?;
 	admin.commit()?;
 
 	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());

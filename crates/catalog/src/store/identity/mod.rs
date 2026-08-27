@@ -12,16 +12,19 @@ pub mod drop;
 pub mod find;
 pub mod list;
 pub mod shape;
+pub mod update;
 
 pub(crate) fn convert_identity(multi: MultiVersionRow) -> Result<Identity> {
 	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = identity::get_identity(&bytes);
 	let name = identity::get_name(&bytes).to_string();
 	let enabled = identity::get_enabled(&bytes);
+	let kind = identity::get_kind(&bytes);
 
 	Ok(Identity {
 		id,
 		name,
 		enabled,
+		kind,
 	})
 }

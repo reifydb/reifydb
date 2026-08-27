@@ -5,7 +5,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::cache::CatalogCache;
-use reifydb_core::interface::catalog::config::ConfigKey;
+use reifydb_core::interface::{auth::AuthenticationProvider, catalog::config::ConfigKey};
 use reifydb_extension::transform::registry::TransformsConfigurator;
 use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_runtime::{
@@ -92,6 +92,7 @@ pub struct EmbeddedBuilder {
 	#[cfg(feature = "sub_replication")]
 	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
+	auth_providers: Vec<Box<dyn AuthenticationProvider>>,
 	migrations: Option<MigrationSource>,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
 	fast_shutdown: bool,
@@ -118,6 +119,7 @@ impl EmbeddedBuilder {
 			#[cfg(feature = "sub_replication")]
 			replication_factory: None,
 			auth_configurator: None,
+			auth_providers: Vec::new(),
 			migrations: None,
 			bootstrap_configs: Vec::new(),
 			fast_shutdown: false,
@@ -179,6 +181,11 @@ impl EmbeddedBuilder {
 		F: FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static,
 	{
 		self.auth_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_auth_provider(mut self, provider: impl AuthenticationProvider + 'static) -> Self {
+		self.auth_providers.push(Box::new(provider));
 		self
 	}
 
@@ -260,6 +267,10 @@ impl EmbeddedBuilder {
 
 		if let Some(configurator) = self.auth_configurator {
 			builder = builder.with_auth(configurator);
+		}
+
+		for provider in self.auth_providers {
+			builder = builder.with_boxed_auth_provider(provider);
 		}
 
 		if let Some(configurator) = self.routines_configurator {

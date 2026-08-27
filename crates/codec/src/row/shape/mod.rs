@@ -24,8 +24,9 @@ use reifydb_value::{
 use serde::{Deserialize, Serialize};
 
 use super::bytes::{
-	CATALOG_HEADER_SIZE, EncodedRowBuilder, QUEUE_HEADER_SIZE, RowBuilder, SHAPE_HEADER_SIZE, read_created_at,
-	read_defined_at, read_storage_time, read_updated_at, write_fingerprint,
+	CATALOG_HEADER_SIZE, EncodedRowBuilder, QUEUE_ATTEMPT_HEADER_SIZE, QUEUE_DEDUPLICATION_HEADER_SIZE,
+	QUEUE_HEADER_SIZE, RowBuilder, SHAPE_HEADER_SIZE, read_created_at, read_defined_at, read_storage_time,
+	read_updated_at, write_fingerprint,
 };
 use crate::row::{
 	catalog::EncodedCatalogRowBuilder,
@@ -35,6 +36,8 @@ use crate::row::{
 	},
 	pod::{EncodedPodRowBuilder, POD_HEADER_SIZE},
 	queue::EncodedQueueRowBuilder,
+	queue_attempt::EncodedQueueAttemptRowBuilder,
+	queue_deduplication::EncodedQueueDeduplicationRowBuilder,
 	ringbuffer::EncodedRingBufferRowBuilder,
 	series::EncodedSeriesRowBuilder,
 	shape::fingerprint::{RowShapeFingerprint, compute_fingerprint},
@@ -56,6 +59,8 @@ pub enum RowFamily {
 	RingBuffer = 0x05,
 	Queue = 0x06,
 	Operator = 0x07,
+	QueueAttempt = 0x08,
+	QueueDeduplication = 0x09,
 }
 
 impl RowFamily {
@@ -68,13 +73,20 @@ impl RowFamily {
 			Self::RingBuffer => SHAPE_HEADER_SIZE,
 			Self::Queue => QUEUE_HEADER_SIZE,
 			Self::Operator => OPERATOR_HEADER_SIZE,
+			Self::QueueAttempt => QUEUE_ATTEMPT_HEADER_SIZE,
+			Self::QueueDeduplication => QUEUE_DEDUPLICATION_HEADER_SIZE,
 		}
 	}
 
 	#[inline]
 	pub fn updated_at(self, row: &[u8]) -> DateTime {
 		match self {
-			Self::Table | Self::Series | Self::RingBuffer | Self::Queue => read_updated_at(row),
+			Self::Table
+			| Self::Series
+			| Self::RingBuffer
+			| Self::Queue
+			| Self::QueueAttempt
+			| Self::QueueDeduplication => read_updated_at(row),
 			_ => panic!("{self:?} rows carry no updated_at"),
 		}
 	}
@@ -88,6 +100,8 @@ impl RowFamily {
 			0x05 => Some(Self::RingBuffer),
 			0x06 => Some(Self::Queue),
 			0x07 => Some(Self::Operator),
+			0x08 => Some(Self::QueueAttempt),
+			0x09 => Some(Self::QueueDeduplication),
 			_ => None,
 		}
 	}
@@ -488,6 +502,20 @@ impl RowShape {
 	pub fn allocate_queue(&self) -> EncodedQueueRowBuilder {
 		assert_eq!(self.family, RowFamily::Queue, "allocate_queue on a shape of another family");
 		EncodedQueueRowBuilder::wrap(self.allocate())
+	}
+
+	pub fn allocate_queue_attempt(&self) -> EncodedQueueAttemptRowBuilder {
+		assert_eq!(self.family, RowFamily::QueueAttempt, "allocate_queue_attempt on a shape of another family");
+		EncodedQueueAttemptRowBuilder::wrap(self.allocate())
+	}
+
+	pub fn allocate_queue_deduplication(&self) -> EncodedQueueDeduplicationRowBuilder {
+		assert_eq!(
+			self.family,
+			RowFamily::QueueDeduplication,
+			"allocate_queue_deduplication on a shape of another family"
+		);
+		EncodedQueueDeduplicationRowBuilder::wrap(self.allocate())
 	}
 
 	pub fn set_none(&self, row: &mut impl RowBuilder, index: usize) {

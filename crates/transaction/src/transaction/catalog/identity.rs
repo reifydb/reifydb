@@ -7,7 +7,7 @@ use reifydb_value::{Result, value::identity::IdentityId};
 use crate::{
 	change::{
 		Change,
-		OperationType::{Create, Delete},
+		OperationType::{Create, Delete, Update},
 		TransactionalIdentityChanges,
 	},
 	interceptor::identity::{IdentityPostCreateContext, IdentityPreDeleteContext},
@@ -21,6 +21,16 @@ impl CatalogTrackIdentityChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some(identity),
 			op: Create,
+		};
+		self.changes.add_identity_change(change);
+		Ok(())
+	}
+
+	fn track_identity_updated(&mut self, pre: Identity, post: Identity) -> Result<()> {
+		let change = Change {
+			pre: Some(pre),
+			post: Some(post),
+			op: Update,
 		};
 		self.changes.add_identity_change(change);
 		Ok(())
@@ -66,9 +76,15 @@ impl TransactionalIdentityChanges for AdminTransaction {
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|u| u.id) == Some(id))
 	}
 
-	fn is_identity_deleted_by_name(&self, name: &str) -> bool {
-		self.changes.identity.iter().rev().any(|change| {
-			change.op == Delete && change.pre.as_ref().map(|u| u.name == name).unwrap_or(false)
-		})
+	fn is_identity_name_vacated(&self, name: &str) -> bool {
+		for change in self.changes.identity.iter().rev() {
+			if change.post.as_ref().is_some_and(|identity| identity.name == name) {
+				return false;
+			}
+			if change.pre.as_ref().is_some_and(|identity| identity.name == name) {
+				return true;
+			}
+		}
+		false
 	}
 }

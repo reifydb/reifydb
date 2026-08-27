@@ -3,7 +3,7 @@
 
 mod start;
 
-use reifydb_engine::engine::StandardEngine;
+use reifydb_engine::{engine::StandardEngine, queue::hydrate::hydrate_queues};
 
 use crate::{
 	MigrationStatement, Result,
@@ -26,6 +26,7 @@ impl Bootloader {
 	pub fn load(&self) -> Result<()> {
 		ensure_storage_version(&self.engine.single_owned())?;
 		configure_store(&self.engine)?;
+		hydrate_queues(&self.engine)?;
 		Ok(())
 	}
 

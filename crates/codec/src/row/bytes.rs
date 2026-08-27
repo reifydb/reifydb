@@ -3,7 +3,11 @@
 
 use std::ops::Deref;
 
-use reifydb_value::{encoding::LeBytes, util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{
+	encoding::LeBytes,
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::row::shape::fingerprint::RowShapeFingerprint;
@@ -21,6 +25,17 @@ pub const CATALOG_HEADER_SIZE: usize = FINGERPRINT_SIZE;
 const NOT_BEFORE_OFFSET: usize = SHAPE_HEADER_SIZE;
 
 pub const QUEUE_HEADER_SIZE: usize = NOT_BEFORE_OFFSET + DateTime::ENCODED_SIZE;
+
+const OUTCOME_OFFSET: usize = SHAPE_HEADER_SIZE;
+const LOST_OFFSET: usize = OUTCOME_OFFSET + 1;
+const FINISHED_AT_OFFSET: usize = LOST_OFFSET + 1;
+
+pub const QUEUE_ATTEMPT_HEADER_SIZE: usize = FINISHED_AT_OFFSET + DateTime::ENCODED_SIZE;
+
+const DEDUPLICATION_ROW_NUMBER_OFFSET: usize = SHAPE_HEADER_SIZE;
+const EXPIRES_AT_OFFSET: usize = DEDUPLICATION_ROW_NUMBER_OFFSET + RowNumber::ENCODED_SIZE;
+
+pub const QUEUE_DEDUPLICATION_HEADER_SIZE: usize = EXPIRES_AT_OFFSET + DateTime::ENCODED_SIZE;
 
 const HAS_TIME: u8 = 1 << 0;
 
@@ -187,6 +202,48 @@ pub fn write_not_before(buf: &mut [u8], not_before: DateTime) {
 }
 
 #[inline]
+pub fn write_outcome(buf: &mut [u8], outcome: u8) {
+	buf[OUTCOME_OFFSET] = outcome;
+}
+
+#[inline]
+pub fn write_lost(buf: &mut [u8], lost: bool) {
+	buf[LOST_OFFSET] = lost as u8;
+}
+
+#[inline]
+pub fn write_finished_at(buf: &mut [u8], finished_at: DateTime) {
+	buf[FINISHED_AT_OFFSET..FINISHED_AT_OFFSET + DateTime::ENCODED_SIZE]
+		.copy_from_slice(&finished_at.to_le_bytes());
+}
+
+#[inline]
+pub fn write_deduplication_row_number(buf: &mut [u8], row_number: RowNumber) {
+	buf[DEDUPLICATION_ROW_NUMBER_OFFSET..DEDUPLICATION_ROW_NUMBER_OFFSET + RowNumber::ENCODED_SIZE]
+		.copy_from_slice(&row_number.to_le_bytes());
+}
+
+#[inline]
+pub fn write_expires_at(buf: &mut [u8], expires_at: DateTime) {
+	buf[EXPIRES_AT_OFFSET..EXPIRES_AT_OFFSET + DateTime::ENCODED_SIZE].copy_from_slice(&expires_at.to_le_bytes());
+}
+
+#[inline]
+pub fn read_deduplication_row_number(buf: &[u8]) -> RowNumber {
+	RowNumber::read_le(&buf[DEDUPLICATION_ROW_NUMBER_OFFSET..])
+}
+
+#[inline]
+pub fn read_outcome(buf: &[u8]) -> u8 {
+	buf[OUTCOME_OFFSET]
+}
+
+#[inline]
+pub fn read_lost(buf: &[u8]) -> bool {
+	buf[LOST_OFFSET] != 0
+}
+
+#[inline]
 pub fn read_defined_at(buf: &[u8], header_size: usize, index: usize) -> bool {
 	let byte = header_size + index / 8;
 	let bit = index % 8;
@@ -227,6 +284,16 @@ pub fn read_updated_at(buf: &[u8]) -> DateTime {
 #[inline]
 pub fn read_not_before(buf: &[u8]) -> Option<DateTime> {
 	(buf[FLAGS_OFFSET] & HAS_NOT_BEFORE != 0).then(|| read_stamp(buf, NOT_BEFORE_OFFSET))
+}
+
+#[inline]
+pub fn read_finished_at(buf: &[u8]) -> DateTime {
+	read_stamp(buf, FINISHED_AT_OFFSET)
+}
+
+#[inline]
+pub fn read_expires_at(buf: &[u8]) -> DateTime {
+	read_stamp(buf, EXPIRES_AT_OFFSET)
 }
 
 impl EncodedBytes {
