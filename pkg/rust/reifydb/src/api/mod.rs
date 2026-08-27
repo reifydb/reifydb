@@ -85,6 +85,7 @@ impl StorageFactory {
 		operator_wal_autocheckpoint: u32,
 		operator_flush_interval: Duration,
 		operator_flush_budget: ByteSize,
+		multi_flush_budget: ByteSize,
 		spawner: &ActorSpawner,
 	) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
 		match self {
@@ -104,6 +105,7 @@ impl StorageFactory {
 				operator_wal_autocheckpoint,
 				operator_flush_interval,
 				operator_flush_budget,
+				multi_flush_budget,
 				config.clone(),
 				spawner,
 			),
@@ -215,6 +217,7 @@ fn create_sqlite_store_with(
 	operator_wal_autocheckpoint: u32,
 	operator_flush_interval: Duration,
 	operator_flush_budget: ByteSize,
+	multi_flush_budget: ByteSize,
 	config: SqliteConfig,
 	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
@@ -224,7 +227,7 @@ fn create_sqlite_store_with(
 		commit: MultiCommitBufferConfig {
 			storage: multi_commit_buffer,
 		},
-		persistent: Some(MultiPersistentConfig::opened(multi_persistent)),
+		persistent: Some(MultiPersistentConfig::opened(multi_persistent).flush_budget(multi_flush_budget)),
 		point: multi_point,
 		range: multi_range,
 		retention: Default::default(),

@@ -143,17 +143,19 @@ impl StandardMultiStore {
 				actor
 			});
 			let commit_tier = match (persistent.as_ref(), persistent_config.as_ref()) {
-				(Some(persistent_storage), Some(_)) => CommitTier::new(commit_config(), |_budget| {
-					MultiState::new(
-						commit.clone(),
-						persistent_storage.clone(),
-						row_settings_provider.clone(),
-						eviction_watermark.clone(),
-						config.event_bus.clone(),
-					)
-					.with_point(point.clone())
-					.with_range(range.clone())
-				}),
+				(Some(persistent_storage), Some(persistent_settings)) => {
+					CommitTier::new(commit_config(persistent_settings.flush_budget), |_budget| {
+						MultiState::new(
+							commit.clone(),
+							persistent_storage.clone(),
+							row_settings_provider.clone(),
+							eviction_watermark.clone(),
+							config.event_bus.clone(),
+						)
+						.with_point(point.clone())
+						.with_range(range.clone())
+					})
+				}
 				_ => None,
 			};
 			(persistent, commit_tier, filter)
@@ -413,5 +415,68 @@ impl StandardMultiStore {
 		})
 		.unwrap();
 		(store, guard)
+	}
+}
+
+#[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
+mod tests {
+	use reifydb_core::event::EventBus;
+	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
+	use reifydb_value::byte_size::ByteSize;
+
+	use super::*;
+	use crate::{
+		config::{CommitBufferConfig, DEFAULT_FLUSH_BUDGET, MultiStoreConfig, PersistentConfig},
+		tier::{commit::buffer::MultiCommitBufferTier, point::MultiPointConfig, range::MultiRangeConfig},
+	};
+
+	fn store_with_budget(budget: Option<ByteSize>) -> (StandardMultiStore, SqliteTempPathGuard) {
+		let clock = Clock::testing();
+		let actor_system = ActorSystem::testing(clock.clone());
+		let spawner = actor_system.spawner();
+		let event_bus = EventBus::new(&spawner);
+		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
+		let persistent = match budget {
+			Some(budget) => persistent.flush_budget(budget),
+			None => persistent,
+		};
+		let store = StandardMultiStore::new(MultiStoreConfig {
+			commit: CommitBufferConfig {
+				storage: MultiCommitBufferTier::memory(),
+			},
+			persistent: Some(persistent),
+			point: Some(MultiPointConfig::testing()),
+			range: Some(MultiRangeConfig::testing()),
+			retention: Default::default(),
+			merge_config: Default::default(),
+			event_bus,
+			spawner,
+			clock,
+		})
+		.unwrap();
+		(store, guard)
+	}
+
+	#[test]
+	fn the_configured_flush_budget_reaches_the_commit_tier() {
+		// the budget is both the drain slice size and the off-tick trigger threshold, so a tier
+		// built from a hardcoded const ignores the operator's sizing entirely
+		let configured = ByteSize::from_mib(32);
+		let (store, _guard) = store_with_budget(Some(configured));
+
+		let tier = store.commit_tier().expect("a persistent tier must build a commit tier");
+
+		assert_eq!(tier.budget().limit(), configured);
+		assert_ne!(tier.budget().limit(), DEFAULT_FLUSH_BUDGET);
+	}
+
+	#[test]
+	fn an_unconfigured_flush_budget_falls_back_to_the_shared_default() {
+		// without this the fallback could drift away from the catalog default and nothing would say so
+		let (store, _guard) = store_with_budget(None);
+
+		let tier = store.commit_tier().expect("a persistent tier must build a commit tier");
+
+		assert_eq!(tier.budget().limit(), DEFAULT_FLUSH_BUDGET);
 	}
 }
