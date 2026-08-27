@@ -3,9 +3,9 @@
 
 #[cfg(test)]
 use std::cell::RefCell;
-use std::collections::BTreeMap;
 
 use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::util::sorted::SortedVecMap;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
@@ -171,7 +171,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			} = &mut *shard;
 			let fresh = !partitions.contains_key(partition);
 			let target = partitions.entry(*partition).or_insert_with(|| Partition {
-				entries: BTreeMap::new(),
+				entries: SortedVecMap::new(),
 				pinned: PinnedCount::new(),
 				bytes: partition_overhead::<D>(),
 				tick: next,
@@ -263,15 +263,14 @@ fn supersedes<D: RangeDomain>(resident: &Entry<D::Row>, incoming: &Entry<D::Row>
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		collections::BTreeMap,
-		sync::{
-			Arc,
-			atomic::{AtomicBool, Ordering},
-		},
+	use std::sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+	use reifydb_core::util::sorted::SortedVecMap;
+
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
@@ -337,7 +336,7 @@ mod tests {
 		shard.partitions.insert(
 			id,
 			Partition {
-				entries: BTreeMap::new(),
+				entries: SortedVecMap::new(),
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,
@@ -667,7 +666,7 @@ mod tests {
 		shard.partitions.insert(
 			id,
 			Partition {
-				entries: BTreeMap::new(),
+				entries: SortedVecMap::new(),
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,

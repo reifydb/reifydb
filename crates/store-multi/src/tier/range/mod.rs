@@ -291,14 +291,6 @@ impl MultiRangeTier {
 		self.tier.shard_metrics()
 	}
 
-	pub fn debug_overhead(&self) -> usize {
-		self.tier.debug_overhead()
-	}
-
-	pub fn debug_keys(&self) -> Vec<(EntryKind, reifydb_codec::key::encoded::EncodedKey, Option<MultiRow>)> {
-		self.tier.debug_keys()
-	}
-
 	pub fn full_shard_metrics(&self) -> Vec<MultiRangeShardMetrics> {
 		let shards = self.tier.shard_metrics();
 		let serves = self.serve_metrics();

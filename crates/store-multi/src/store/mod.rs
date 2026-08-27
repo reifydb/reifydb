@@ -248,65 +248,6 @@ impl StandardMultiStore {
 		self.persistent.as_ref()
 	}
 
-	pub fn debug_key_overlap(&self) -> (usize, usize, usize, usize, usize) {
-		use std::collections::HashMap;
-		let mut point: HashMap<_, Option<usize>> = HashMap::new();
-		for (kind, key, row) in self.point.as_ref().map(|p| p.debug_keys()).unwrap_or_default() {
-			let ptr = row.and_then(|r| r.value).map(|v| v.as_slice().as_ptr() as usize);
-			point.insert((kind, key), ptr);
-		}
-		let (mut range_len, mut overlap, mut shared, mut distinct) = (0usize, 0usize, 0usize, 0usize);
-		for (kind, key, row) in self.range.as_ref().map(|r| r.debug_keys()).unwrap_or_default() {
-			range_len += 1;
-			let ptr = row.and_then(|r| r.value).map(|v| v.as_slice().as_ptr() as usize);
-			if let Some(other) = point.get(&(kind, key)) {
-				overlap += 1;
-				match (ptr, other) {
-					(Some(a), Some(b)) if a == *b => shared += 1,
-					(Some(_), Some(_)) => distinct += 1,
-					_ => {}
-				}
-			}
-		}
-		(point.len(), range_len, overlap, shared, distinct)
-	}
-
-	pub fn debug_key_lengths(&self) -> (Vec<usize>, Vec<usize>) {
-		let mut point = vec![0usize; 65];
-		for (_, key, _) in self.point.as_ref().map(|point| point.debug_keys()).unwrap_or_default() {
-			point[key.as_slice().len().min(64)] += 1;
-		}
-		let mut range = vec![0usize; 65];
-		for (_, key, _) in self.range.as_ref().map(|range| range.debug_keys()).unwrap_or_default() {
-			range[key.as_slice().len().min(64)] += 1;
-		}
-		(point, range)
-	}
-
-	pub fn debug_byte_split(&self) -> (usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) {
-		let (mut entries, mut keys, mut current, mut previous, mut carrying) = (0usize, 0usize, 0usize, 0usize, 0usize);
-		for (_, key, row) in self.point.as_ref().map(|point| point.debug_keys()).unwrap_or_default() {
-			entries += 1;
-			keys += key.heap_bytes();
-			if let Some(row) = row {
-				current += row.value.as_ref().map_or(0, |value| value.len());
-				if let Some((_, value)) = row.previous.as_deref() {
-					carrying += 1;
-					previous += value.as_ref().map_or(0, |value| value.len());
-				}
-			}
-		}
-		let (mut range_entries, mut range_keys, mut range_values) = (0usize, 0usize, 0usize);
-		for (_, key, row) in self.range.as_ref().map(|range| range.debug_keys()).unwrap_or_default() {
-			range_entries += 1;
-			range_keys += key.heap_bytes();
-			range_values += row.and_then(|row| row.value).map_or(0, |value| value.len());
-		}
-		let point_overhead = self.point.as_ref().map_or(0, |point| point.debug_overhead());
-		let range_overhead = self.range.as_ref().map_or(0, |range| range.debug_overhead());
-		(entries, keys, current, previous, carrying, range_entries, range_keys, range_values, point_overhead, range_overhead)
-	}
-
 	pub fn point_shard_metrics(&self) -> Vec<MultiPointShardMetrics> {
 		self.point.as_ref().map(|point| point.shard_metrics()).unwrap_or_default()
 	}

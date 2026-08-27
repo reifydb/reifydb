@@ -20,7 +20,7 @@ use crate::{
 	coverage::{index::CoverageIndex, plan::GapHistogram, retraction::Retractions},
 	tier::range::{
 		Partition, PoolInner, Progress, RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics,
-		RangeSlotMetrics, RangeTier, Shard, account, entry_footprint, entry_overhead,
+		RangeSlotMetrics, RangeTier, Shard, account, entry_footprint,
 	},
 };
 
@@ -224,24 +224,6 @@ impl<D: RangeDomain> RangeTier<D> {
 			.sum()
 	}
 
-	pub fn debug_overhead(&self) -> usize {
-		entry_overhead::<D::Row>()
-	}
-
-	pub fn debug_keys(&self) -> Vec<(D::Dimension, reifydb_codec::key::encoded::EncodedKey, Option<D::Row>)> {
-		let mut out = Vec::new();
-		for shard in self.all_shards() {
-			let shard = shard.lock();
-			for (id, partition) in shard.partitions.iter() {
-				let dimension = D::dimension(id);
-				for (key, entry) in partition.entries.iter() {
-					out.push((dimension, key.clone(), entry.value().cloned()));
-				}
-			}
-		}
-		out
-	}
-
 	pub fn shard_limit_bytes(&self) -> ByteSize {
 		self.inner.shards[0].lock().budget.limit()
 	}
@@ -442,15 +424,13 @@ fn build_shards<D: RangeDomain>(config: RangeConfig, resident_bytes: ByteSize) -
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		collections::BTreeMap,
-		sync::{
-			Arc,
-			atomic::{AtomicBool, Ordering as AtomicOrdering},
-		},
+	use std::sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering as AtomicOrdering},
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+	use reifydb_core::util::sorted::SortedVecMap;
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
@@ -530,7 +510,7 @@ mod tests {
 			let slot = partitions.entry(id).or_insert_with(|| {
 				budget.charge(ByteSize::from_bytes(PARTITION_OVERHEAD as u64));
 				Partition {
-					entries: BTreeMap::new(),
+					entries: SortedVecMap::new(),
 					pinned: PinnedCount::new(),
 					bytes: PARTITION_OVERHEAD,
 					tick,

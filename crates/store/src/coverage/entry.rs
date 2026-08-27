@@ -40,12 +40,6 @@ impl<V> Entry<V> {
 			Entry::Deleted => false,
 		}
 	}
-
-	pub fn demote_flushed(&mut self) {
-		if matches!(self, Entry::Deleted) {
-			*self = Entry::Absent;
-		}
-	}
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -137,42 +131,6 @@ mod tests {
 		assert!(row(7).resolves());
 		assert!(deleted().resolves());
 		assert!(absent().resolves());
-	}
-
-	#[test]
-	fn demote_flushed_makes_a_removal_evictable_again() {
-		// The flush proved the persistent tier agrees, so the pin must be released.
-		let mut entry = deleted();
-		entry.demote_flushed();
-		assert_eq!(entry, Entry::Absent);
-		assert!(entry.evictable());
-	}
-
-	#[test]
-	fn demote_flushed_is_idempotent() {
-		// A second flush of the same key must not walk the state any further.
-		let mut entry = deleted();
-		entry.demote_flushed();
-		entry.demote_flushed();
-		entry.demote_flushed();
-		assert_eq!(entry, Entry::Absent);
-	}
-
-	#[test]
-	fn demote_flushed_leaves_a_row_untouched() {
-		// A flush must never erase a live value it was only meant to confirm.
-		let mut entry = row(7);
-		entry.demote_flushed();
-		assert_eq!(entry, Entry::Row(7));
-		assert_eq!(entry.value(), Some(&7));
-	}
-
-	#[test]
-	fn demote_flushed_leaves_a_proven_absence_untouched() {
-		// An absence is already the post-flush state; a flush must be a no-op on it.
-		let mut entry = absent();
-		entry.demote_flushed();
-		assert_eq!(entry, Entry::Absent);
 	}
 
 	#[test]
@@ -276,9 +234,7 @@ mod tests {
 		count.insert(&deleted());
 		assert!(!count.has_victim());
 
-		let mut entry = deleted();
-		entry.demote_flushed();
-		count.replace(&deleted(), &entry);
+		count.replace(&deleted(), &absent());
 		assert!(count.has_victim());
 	}
 }

@@ -26,7 +26,7 @@ use crate::tier::point::FillInterlock;
 use crate::tier::point::PointKey;
 use crate::tier::point::{
 	EVICTION_SAMPLE, Entry, PointConfig, PointDomain, PointMetrics, PointShardMetrics, PointSlotMetrics, PointTier,
-	PoolInner, Shard, entry_footprint, entry_hash, entry_overhead,
+	PoolInner, Shard, entry_footprint, entry_hash,
 };
 
 impl<D: PointDomain> PointTier<D> {
@@ -163,20 +163,6 @@ impl<D: PointDomain> PointTier<D> {
 				counters: counters[slot],
 			})
 			.collect()
-	}
-
-	pub fn debug_overhead(&self) -> usize {
-		entry_overhead::<D>()
-	}
-
-	pub fn debug_keys(&self) -> Vec<(D::Dimension, EncodedKey, Option<D::Row>)> {
-		let mut out = Vec::new();
-		for shard in self.all_shards() {
-			for entry in shard.lock().entries.iter() {
-				out.push((entry.key.dimension, entry.key.key.clone(), entry.row.clone()));
-			}
-		}
-		out
 	}
 
 	pub fn shard_limit_bytes(&self) -> ByteSize {

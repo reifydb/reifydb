@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::BTreeMap,
-	ops::Bound::{Excluded, Included, Unbounded},
-};
+use std::ops::Bound::{Excluded, Included, Unbounded};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_core::util::sorted::SortedVecMap;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
@@ -266,7 +264,7 @@ impl<D: RangeDomain> RangeTier<D> {
 						ExclusiveUpperEnd::Top => Unbounded,
 					};
 					let span = (Included(start), upper);
-					for (key, entry) in resident.entries.range::<EncodedKey, _>(span) {
+					for (key, entry) in resident.entries.range(span) {
 						let Some(row) = entry.value() else {
 							continue;
 						};
@@ -452,7 +450,7 @@ impl<D: RangeDomain> RangeTier<D> {
 
 			let fresh = !partitions.contains_key(&partition);
 			let resident = partitions.entry(partition).or_insert_with(|| Partition {
-				entries: BTreeMap::new(),
+				entries: SortedVecMap::new(),
 				pinned: PinnedCount::new(),
 				bytes: partition_overhead::<D>(),
 				tick,

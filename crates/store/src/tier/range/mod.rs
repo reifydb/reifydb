@@ -38,21 +38,13 @@ mod scan;
 mod tests;
 mod write;
 
-use std::{
-	borrow::Cow,
-	collections::{BTreeMap, HashMap},
-	fmt::Debug,
-	hash::Hash,
-	mem::size_of,
-	ops::Bound,
-	sync::Arc,
-};
+use std::{borrow::Cow, collections::HashMap, fmt::Debug, hash::Hash, mem::size_of, ops::Bound, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
 };
-use reifydb_core::util::budget::MemoryBudget;
+use reifydb_core::util::{budget::MemoryBudget, sorted::SortedVecMap};
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_value::byte_size::ByteSize;
 
@@ -186,7 +178,7 @@ pub fn proven_span(gap: &Interval, last_key: Option<&EncodedKey>, exhausted: boo
 }
 
 struct Partition<R> {
-	entries: BTreeMap<EncodedKey, Entry<R>>,
+	entries: SortedVecMap<EncodedKey, Entry<R>>,
 	/// Entries eviction may not drop, so the budget can stop instead of spinning on a partition
 	/// whose every entry carries an unflushed removal.
 	pinned: PinnedCount,
@@ -229,10 +221,8 @@ struct Shard<D: RangeDomain> {
 	slot_metrics: SlotCounters,
 }
 
-const NODE_FILL_DIVISOR: usize = 2;
-
 const fn entry_overhead<R>() -> usize {
-	NODE_FILL_DIVISOR * (size_of::<EncodedKey>() + size_of::<Entry<R>>())
+	size_of::<(EncodedKey, Entry<R>)>()
 }
 
 #[cfg(test)]

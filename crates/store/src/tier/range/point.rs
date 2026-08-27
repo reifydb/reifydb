@@ -101,9 +101,10 @@ impl<D: RangeDomain> RangeTier<D> {
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeMap;
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+	use reifydb_core::util::sorted::SortedVecMap;
+
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
@@ -165,7 +166,7 @@ mod tests {
 		shard.partitions.insert(
 			id,
 			Partition {
-				entries: BTreeMap::new(),
+				entries: SortedVecMap::new(),
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,

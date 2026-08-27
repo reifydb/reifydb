@@ -21,10 +21,7 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{
-	common::CommitVersion,
-	interface::store::{EntryKind, classify_key},
-};
+use reifydb_core::common::CommitVersion;
 use reifydb_store::tier::{
 	point::{PointConfig, PointDomain, PointMetrics, PointTier},
 	range::RowBytes,
@@ -205,14 +202,6 @@ impl MultiPointTier {
 				misses: counters.misses.load(Ordering::Relaxed),
 			})
 			.collect()
-	}
-
-	pub fn debug_overhead(&self) -> usize {
-		self.tier.debug_overhead()
-	}
-
-	pub fn debug_keys(&self) -> Vec<(EntryKind, reifydb_codec::key::encoded::EncodedKey, Option<MultiPointRow>)> {
-		self.tier.debug_keys().into_iter().map(|(_, key, row)| (classify_key(&key), key, row)).collect()
 	}
 
 	pub fn shard_metrics(&self) -> Vec<MultiPointShardMetrics> {

@@ -10,11 +10,7 @@ use reifydb_store_cdc::{
 use reifydb_store_multi::{
 	MultiStore,
 	store::MultiPersistentProbeMetrics,
-	tier::{
-		commit::buffer::MultiCommitMetrics,
-		point::MultiPointShardMetrics,
-		range::MultiRangeShardMetrics,
-	},
+	tier::{commit::buffer::MultiCommitMetrics, point::MultiPointShardMetrics, range::MultiRangeShardMetrics},
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
@@ -49,18 +45,6 @@ impl StoreReader {
 
 	pub fn multi_commit(&self) -> MultiCommitMetrics {
 		self.multi.commit_metrics()
-	}
-
-	pub fn multi_key_lengths(&self) -> (Vec<usize>, Vec<usize>) {
-		self.multi.debug_key_lengths()
-	}
-
-	pub fn multi_byte_split(&self) -> (usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) {
-		self.multi.debug_byte_split()
-	}
-
-	pub fn multi_key_overlap(&self) -> (usize, usize, usize, usize, usize) {
-		self.multi.debug_key_overlap()
 	}
 
 	pub fn multi_point(&self) -> Vec<MultiPointShardMetrics> {

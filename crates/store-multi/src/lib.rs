@@ -133,24 +133,6 @@ impl MultiStore {
 		}
 	}
 
-	pub fn debug_key_lengths(&self) -> (Vec<usize>, Vec<usize>) {
-		match self {
-			MultiStore::Standard(store) => store.debug_key_lengths(),
-		}
-	}
-
-	pub fn debug_byte_split(&self) -> (usize, usize, usize, usize, usize, usize, usize, usize, usize, usize) {
-		match self {
-			MultiStore::Standard(store) => store.debug_byte_split(),
-		}
-	}
-
-	pub fn debug_key_overlap(&self) -> (usize, usize, usize, usize, usize) {
-		match self {
-			MultiStore::Standard(store) => store.debug_key_overlap(),
-		}
-	}
-
 	pub fn commit_metrics(&self) -> MultiCommitMetrics {
 		match self {
 			MultiStore::Standard(store) => store.commit_metrics(),
