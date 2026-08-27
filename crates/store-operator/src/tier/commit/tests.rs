@@ -779,8 +779,7 @@ fn anchors_are_handed_out_under_the_same_budget_as_state() {
 		"state is taken first because it dominates the write cost"
 	);
 	assert_eq!(
-		first.bytes,
-		budget,
+		first.bytes, budget,
 		"the anchors must fill the remainder of the budget rather than travel unbounded beside the state"
 	);
 	buffer.complete_flush();
@@ -865,8 +864,6 @@ fn an_anchor_disarmed_while_its_flush_is_in_flight_is_not_counted() {
 
 #[test]
 fn a_rewritten_key_charges_its_key_once_and_only_the_row_that_stands() {
-	// The running total is maintained per mutation, so a collapse that forgets to subtract the
-	// outgoing row inflates the budget forever and the buffer flushes on phantom bytes.
 	let buffer = OperatorCommitBuffer::new();
 	buffer.record_state_set(OP_A, key("k1"), row("aaaaaaaa"), DurablePre::Absent);
 	assert_eq!(live_bytes(&buffer), entry_bytes("k1", "aaaaaaaa"), "a first write charges its key and its row");
@@ -883,8 +880,6 @@ fn a_rewritten_key_charges_its_key_once_and_only_the_row_that_stands() {
 
 #[test]
 fn a_tombstone_keeps_its_key_charged() {
-	// The key still occupies a slot in the map after the row is gone, so releasing its bytes would
-	// under-report resident memory by the whole tombstone backlog.
 	let buffer = OperatorCommitBuffer::new();
 	buffer.record_state_set(OP_A, key("k1"), row("value"), DurablePre::Absent);
 
@@ -904,8 +899,6 @@ fn a_tombstone_keeps_its_key_charged() {
 
 #[test]
 fn a_tombstone_recorded_first_charges_its_key() {
-	// A remove of a key the buffer has never seen inserts a fresh slot, so the vacant arm has to
-	// charge the key even though there is no row to charge.
 	let buffer = OperatorCommitBuffer::new();
 
 	buffer.record_state_remove(OP_A, key("k1"), DurablePre::Absent);
@@ -919,7 +912,6 @@ fn a_tombstone_recorded_first_charges_its_key() {
 
 #[test]
 fn an_anchor_is_charged_its_fixed_width_once_per_slot() {
-	// Anchors are approximated, not measured, so rearming a slot must not charge a second time.
 	let buffer = OperatorCommitBuffer::new();
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	assert_eq!(live_bytes(&buffer), ANCHOR_ENTRY_BYTES, "one armed slot is one fixed-width charge");
@@ -937,8 +929,6 @@ fn an_anchor_is_charged_its_fixed_width_once_per_slot() {
 
 #[test]
 fn a_split_moves_exactly_the_bytes_the_slice_carries_away() {
-	// Source and slice must partition the original total; a split that mis-accounts either side
-	// leaves the live batch permanently over or under the budget.
 	let buffer = OperatorCommitBuffer::with_budget(entry_bytes("k1", "aaa"));
 	buffer.record_state_set(OP_A, key("k1"), row("aaa"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("k2"), row("bbbbb"), DurablePre::Absent);
@@ -958,7 +948,6 @@ fn a_split_moves_exactly_the_bytes_the_slice_carries_away() {
 
 #[test]
 fn a_split_that_takes_everything_leaves_the_source_at_zero() {
-	// The whole-batch path skips the boundary walk, so it is the arm most likely to leak a residue.
 	let buffer = OperatorCommitBuffer::new();
 	buffer.record_state_set(OP_A, key("k1"), row("aaa"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
@@ -976,7 +965,6 @@ fn a_split_that_takes_everything_leaves_the_source_at_zero() {
 
 #[test]
 fn a_drop_marker_releases_the_bytes_of_everything_it_clears() {
-	// clear_drop removes through retain, which is a silent leak site: the entries go, the charge stays.
 	let buffer = OperatorCommitBuffer::new();
 	buffer.record_state_set(OP_A, key("k1"), row("gone"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
@@ -994,7 +982,6 @@ fn a_drop_marker_releases_the_bytes_of_everything_it_clears() {
 
 #[test]
 fn an_anchor_group_drop_releases_only_that_group() {
-	// The narrowest retain arm still has to pay back what it removed, and nothing more.
 	let buffer = OperatorCommitBuffer::new();
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(2), DateTime::from_millis(100));
@@ -1011,8 +998,6 @@ fn an_anchor_group_drop_releases_only_that_group() {
 
 #[test]
 fn a_selected_slice_stays_resident_until_the_flush_settles() {
-	// The rows are still in RAM while sqlite writes them, so releasing at select understates
-	// resident memory and re-arms the full trigger while the flusher is still working.
 	let buffer = OperatorCommitBuffer::new();
 	buffer.record_state_set(OP_A, key("k1"), row("value"), DurablePre::Absent);
 	let charged = live_bytes(&buffer);
@@ -1029,9 +1014,5 @@ fn a_selected_slice_stays_resident_until_the_flush_settles() {
 
 	buffer.complete_flush();
 
-	assert_eq!(
-		resident_bytes(&buffer),
-		ByteSize::ZERO,
-		"the settle is where the memory is actually given back"
-	);
+	assert_eq!(resident_bytes(&buffer), ByteSize::ZERO, "the settle is where the memory is actually given back");
 }

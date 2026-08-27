@@ -75,8 +75,7 @@ fn buffer_fixture() -> (OperatorCommitBuffer, SqliteOperatorStorage, ActorRef<Fl
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref =
-		OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
 	(buffer, storage, actor_ref, guard)
 }
 
@@ -416,8 +415,7 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref =
-		OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
 
 	let actor = OperatorFlushActor::new(buffer.clone(), idle_interval());
 	let cancel = CancellationToken::new();
@@ -465,9 +463,6 @@ fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 #[test]
 #[should_panic(expected = "flushed before its sinks were attached")]
 fn a_flush_before_the_sinks_are_attached_panics_instead_of_dropping_the_batch() {
-	// The buffer is built before the persistent tier is opened, so a drain reaching it early must stop
-	// the process. Settling a batch nothing wrote releases its bytes and leaves the rows neither in RAM
-	// nor in sqlite, and the loss is silent because the flusher reports a clean drain.
 	let buffer = OperatorCommitBuffer::new();
 	buffer.record_state_set(OP_A, key(1), row("never-written"), DurablePre::Absent);
 
@@ -584,8 +579,7 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "at-shutdown") * 4);
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref =
-		OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
 
 	let actor = OperatorFlushActor::new(buffer.clone(), idle_interval());
 	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
@@ -615,8 +609,7 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "at-cancel") * 4);
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref =
-		OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
 
 	let actor = OperatorFlushActor::new(buffer.clone(), idle_interval());
 	let cancel = CancellationToken::new();
@@ -655,8 +648,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	let budget = entry_bytes(0, "under-the-budget") * (entries - 1) as u64;
 	let buffer = OperatorCommitBuffer::with_budget(budget);
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref =
-		OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
 	buffer.attach_flusher(actor_ref);
 
 	for index in 0..entries - 1 {
@@ -702,19 +694,14 @@ fn flusher_fixture(
 
 #[test]
 fn the_flush_interval_the_store_was_configured_with_is_the_one_the_timer_fires_on() {
-	// Nothing here calls flush_pending: the only thing that can move the write to sqlite is the
-	// timer the actor armed in init. A timer armed from a constant instead of the configured
-	// interval leaves the knob inert, and the write sits in memory until shutdown.
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock.clone());
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
-		persistent: Some(
-			OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
-				.flush_interval(Duration::from_milliseconds_const(100)),
-		),
+		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
+			.flush_interval(Duration::from_milliseconds_const(100))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
@@ -737,9 +724,6 @@ fn the_flush_interval_the_store_was_configured_with_is_the_one_the_timer_fires_o
 
 #[test]
 fn a_tick_with_no_config_attached_keeps_the_compiled_default_and_does_not_panic() {
-	// Memory-only stores and the whole window before the catalog exists never attach a handle.
-	// Unwrapping a missing handle there would abort the process on the first tick, and falling
-	// back to a zero budget would split every flush into single-entry slices.
 	let (actor, buffer, ctx, _system, _guard) = flusher_fixture(idle_interval());
 	let mut state = actor.init(&ctx);
 	buffer.record_state_set(OP_A, key(1), row("no-config"), DurablePre::Absent);

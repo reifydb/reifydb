@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Commit tier of the operator store: the RAM-resident write set between flushes, riding the shared
-//! [`CommitTier`] driver. One operator always executes on its own sequential input stream, so there is no
-//! version cutoff and no starvation ordering to protect: the domain is a single kind under an open cutoff,
-//! and a slice is whatever [`FlushBatch::split_within`] fits under the byte budget.
-//!
-//! Two pieces of control state stay here rather than moving to the driver. `flushing` and `idle` are the
-//! barrier `record_drop` waits on, and it must observe "not flushing" and clear `live` under one lock, which
-//! no tier-level flag can offer because the tier releases its control-plane lock before the domain lock is
-//! taken. `drain` serialises whole drains rather than single slices, so a caller holding it waits out a whole
-//! drain; a shutdown that returned mid-drain would close the connection under the running flusher.
-
 pub mod batch;
 
 mod anchor;

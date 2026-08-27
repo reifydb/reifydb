@@ -34,7 +34,6 @@ impl<D: CommitDomain> CommitTier<D> {
 		})
 	}
 
-	/// The domain's own state, for the store's read-through and write paths; the tier never mediates a read.
 	pub fn state(&self) -> &D::State {
 		&self.inner.state
 	}
@@ -55,19 +54,14 @@ impl<D: CommitDomain> CommitTier<D> {
 		*self.inner.waker.lock() = Some(waker);
 	}
 
-	/// Whether a full-buffer wake has been raised and not yet consumed by a settle.
 	pub fn is_triggered(&self) -> bool {
 		self.inner.inner.lock().triggered
 	}
 
-	/// Whether a write may land now. A domain that refuses over-budget writes turns the collapse window
-	/// into backpressure, and the caller must not proceed until a flush has released bytes.
 	pub fn admits_write(&self) -> bool {
 		D::admits_over_budget_writes() || !self.inner.budget.over_budget()
 	}
 
-	/// Called by the store after a write batch has landed in the resident set; raises one wake when the
-	/// collapse window is full, and no further wake until a settle consumes it.
 	pub fn observe_write(&self) {
 		if !self.inner.budget.over_budget() {
 			return;
@@ -86,7 +80,6 @@ impl<D: CommitDomain> CommitTier<D> {
 		}
 	}
 
-	/// One bounded unit of flush work under the domain's current cutoff.
 	pub fn flush_slice(&self, budget: ByteSize) -> FlushOutcome {
 		let Some(cutoff) = D::cutoff(&self.inner.state) else {
 			return FlushOutcome::exhausted();
@@ -96,14 +89,10 @@ impl<D: CommitDomain> CommitTier<D> {
 		outcome
 	}
 
-	/// Paginate under the domain's current cutoff until it admits nothing more, or
-	/// [`CommitDomain::MAX_SLICES_PER_TICK`] slices have run.
 	pub fn flush_pending(&self) -> FlushOutcome {
 		self.paginate(None, D::MAX_SLICES_PER_TICK)
 	}
 
-	/// Drain everything under [`CommitDomain::cutoff_all`]; the shutdown path, and the only caller that
-	/// must leave the resident set empty, so a domain's per-transaction floor does not apply.
 	pub fn flush_all(&self) -> FlushOutcome {
 		self.paginate(Some(D::cutoff_all()), usize::MAX)
 	}

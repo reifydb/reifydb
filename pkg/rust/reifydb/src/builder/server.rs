@@ -69,7 +69,10 @@ use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_value::{byte_size::ByteSize, value::{Value, duration::Duration}};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{Value, duration::Duration},
+};
 #[cfg(feature = "sub_metric_profiler")]
 use tracing_subscriber::filter::LevelFilter;
 

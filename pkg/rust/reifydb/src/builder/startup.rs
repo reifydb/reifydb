@@ -140,16 +140,18 @@ pub(crate) fn resolve_startup_configs(
 		gap_guard: DEFAULT_GAP_GUARD,
 	});
 
-	let operator_point = uint8_opt(ConfigKey::OperatorPointBufferShardBytes).map(|shard_bytes| OperatorPointConfig {
-		shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
-		shards: shard_count(ConfigKey::OperatorPointBufferShards),
-	});
+	let operator_point =
+		uint8_opt(ConfigKey::OperatorPointBufferShardBytes).map(|shard_bytes| OperatorPointConfig {
+			shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
+			shards: shard_count(ConfigKey::OperatorPointBufferShards),
+		});
 
-	let operator_range = uint8_opt(ConfigKey::OperatorRangeBufferShardBytes).map(|shard_bytes| OperatorRangeConfig {
-		shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
-		shards: shard_count(ConfigKey::OperatorRangeBufferShards),
-		gap_guard: DEFAULT_GAP_GUARD,
-	});
+	let operator_range =
+		uint8_opt(ConfigKey::OperatorRangeBufferShardBytes).map(|shard_bytes| OperatorRangeConfig {
+			shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
+			shards: shard_count(ConfigKey::OperatorRangeBufferShards),
+			gap_guard: DEFAULT_GAP_GUARD,
+		});
 
 	let cut_bytes = ByteSize::from_bytes(uint8(ConfigKey::CdcBlockCutBytes));
 	let ceiling = ByteSize::from_bytes(uint8(ConfigKey::CdcCommitBufferBytes));

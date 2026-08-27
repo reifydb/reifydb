@@ -8,16 +8,15 @@ use crate::tier::commit::{CommitDomain, CommitTier};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CommitMetrics {
-	/// Batches taken from a kind and settled.
 	pub slices: u64,
-	/// Entries the persistent tier acknowledged.
+
 	pub persisted: u64,
 	pub released: ByteSize,
-	/// Bytes still resident, live plus in flight; a gauge, read at sample time rather than accumulated.
+
 	pub backlog: ByteSize,
-	/// Slices that stopped because the byte budget ran out rather than because the cutoff admitted nothing.
+
 	pub budget_exhausted: u64,
-	/// Full-buffer wakes raised; one per crossing of the budget, not one per write over it.
+
 	pub wakes: u64,
 }
 

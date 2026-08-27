@@ -1,33 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Range tier of the operator store: a partial-coverage cache over operator state, where the unit
-//! of proof is the interval between two adjacent observed keys rather than a whole key prefix.
-//!
-//! Rows live in per-partition maps behind the existing shard mutexes; the claim that RAM is
-//! authoritative over a span lives apart, in one ordered coverage index keyed by operator. A
-//! partition is the set of keys sharing one `(operator, group, keyspace)` prefix, and a key too
-//! short to carry both a group and a keyspace is declined rather than cached.
-//!
-//! The two structures are never locked together, so every path is a sequence of separately locked
-//! steps. They are ordered so that coverage understates what RAM holds rather than overstating it:
-//!
-//! ```text
-//! materialize            insert rows first, then extend coverage
-//! remove or invalidate   shrink coverage first, then drop rows
-//! evict                  shrink coverage first, then drop rows
-//! read                   observe coverage first, then read the row
-//! ```
-//!
-//! Overstating answers a key the persistent tier still holds as a proven absence, which is silent
-//! wrong data; understating costs one persistent read. The two locks are never held together: the
-//! write paths and the materialize path take them in opposite directions.
-//!
-//! Two claims survive a write. A removal becomes a `Deleted` entry, so the interval around it stays
-//! authoritative until the flush demotes it to `Absent`; that `Absent` entry must not vanish, or a
-//! scan still in flight reinstates the row it read before the flush. A write landing in an uncovered
-//! gap becomes a one-key island, since the writer knows nothing about the neighbourhood.
-
 #[cfg(test)]
 mod scan;
 #[cfg(test)]
@@ -58,16 +31,9 @@ pub type OperatorRangeShardMetrics = RangeShardMetrics;
 pub type OperatorRangeKeyspaceMetrics = RangeSlotMetrics<OperatorDomain>;
 pub type RangeScan = reifydb_store::tier::range::RangeScan<OperatorDomain>;
 
-/// The operator store's range domain: a partition is one `(operator, group, keyspace)` prefix and a
-/// counter slot is the keyspace byte.
 #[derive(Clone, Copy, Debug)]
 pub struct OperatorDomain;
 
-/// The set of keys sharing one `(operator, group, keyspace)` prefix: the unit of row storage,
-/// sharding, budgeting and eviction.
-///
-/// Coverage is not partitioned. Two claims over adjacent partitions coalesce into one interval,
-/// which is why eviction retracts a partition's whole span rather than a named interval.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PartitionId {
 	pub operator: OperatorId,
@@ -78,8 +44,6 @@ pub struct PartitionId {
 impl PartitionId {
 	pub const PREFIX_LEN: usize = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize + 1;
 
-	/// Declines a key shorter than the prefix: the tier cannot tell which claim it would belong
-	/// to, so it must never be cached.
 	pub fn of(operator: OperatorId, key: &EncodedKey) -> Option<Self> {
 		let bytes = key.as_slice();
 		let offset = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize;
@@ -94,12 +58,10 @@ impl PartitionId {
 		})
 	}
 
-	/// The encoded `group || keyspace` prefix, which must round-trip [`PartitionId::of`].
 	pub fn prefix(&self) -> EncodedKey {
 		EncodedKey::new(OperatorStateKey::inner_encoded(self.group, self.keyspace, [0u8; 0]).as_bytes())
 	}
 
-	/// The half-open span this partition owns, so a whole partition retracts in one shrink.
 	pub fn span(&self) -> (EncodedKey, ExclusiveUpperEnd) {
 		let start = self.prefix();
 		let end = match prefix_successor(start.as_slice()) {
@@ -109,16 +71,11 @@ impl PartitionId {
 		(start, end)
 	}
 
-	/// Whether the keyspace may live in this tier. A partition the policy keeps out is never
-	/// materialized, and its gaps never count against the gap guard, or a group-wide scan would degrade
-	/// forever.
 	pub fn caches_ranges(&self) -> bool {
 		self.keyspace.cache_policy().caches_ranges()
 	}
 }
 
-/// The lowest keyspace byte whose cache policy still matches this one, so a wide gap splits once per
-/// policy run rather than once per keyspace.
 static POLICY_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 	let mut floor = [0u8; 256];
 	let mut lowest = 0u8;

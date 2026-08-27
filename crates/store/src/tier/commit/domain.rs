@@ -35,9 +35,7 @@ pub(super) struct TestEntry {
 }
 
 pub(super) fn footprint(key: &EncodedKey, row: &Option<EncodedPodRow>) -> ByteSize {
-	ENTRY_OVERHEAD
-		.saturating_add(ByteSize::from_bytes(key.heap_bytes() as u64))
-		.saturating_add(row_bytes(row))
+	ENTRY_OVERHEAD.saturating_add(ByteSize::from_bytes(key.heap_bytes() as u64)).saturating_add(row_bytes(row))
 }
 
 fn row_bytes(row: &Option<EncodedPodRow>) -> ByteSize {
@@ -119,15 +117,12 @@ impl TestState {
 		self.record(kind, key, None, version);
 	}
 
-	/// Drops every entry of `kind` the predicate rejects, refunding each one's whole footprint; a
-	/// `retain` that forgot the refund would leak the key and the overhead forever.
 	pub fn drop_where(&self, kind: Kind, keep: impl Fn(&EncodedKey) -> bool) {
 		let mut live = self.live.lock();
 		let Some(entries) = live.kinds.get_mut(&kind) else {
 			return;
 		};
-		let victims: Vec<EncodedKey> =
-			entries.keys().filter(|&key| !keep(key)).cloned().collect();
+		let victims: Vec<EncodedKey> = entries.keys().filter(|&key| !keep(key)).cloned().collect();
 		let mut refunded = ByteSize::ZERO;
 		for key in victims {
 			let entry = entries.remove(&key).expect("a victim key was just observed present");
@@ -145,8 +140,6 @@ impl TestState {
 		self.live.lock().bytes
 	}
 
-	/// The whole resident set recomputed by walking it, so a drifting incremental counter is a test
-	/// failure rather than a silent unbounded-RAM bug.
 	pub fn census_bytes(&self) -> ByteSize {
 		let live = self.live.lock();
 		Self::walk(&live)
@@ -162,8 +155,6 @@ impl TestState {
 		total
 	}
 
-	/// Both measures taken under the live lock, so a writer cannot land between them; the in-flight
-	/// charge is added from its counter because the entries themselves are owned by the batch.
 	pub fn census(&self) -> CommitCensus {
 		let live = self.live.lock();
 		let walked = Self::walk(&live).saturating_add(*self.in_flight.lock());
@@ -340,7 +331,6 @@ impl CommitDomain for TestDomain {
 
 	const MAX_SLICES_PER_TICK: usize = 4;
 
-
 	fn cutoff(state: &Self::State) -> Option<Self::Cutoff> {
 		*state.watermark.lock()
 	}
@@ -353,7 +343,12 @@ impl CommitDomain for TestDomain {
 		state.pending_kinds()
 	}
 
-	fn select(state: &Self::State, kind: Self::Kind, cutoff: Self::Cutoff, budget: ByteSize) -> Option<Slice<Self>> {
+	fn select(
+		state: &Self::State,
+		kind: Self::Kind,
+		cutoff: Self::Cutoff,
+		budget: ByteSize,
+	) -> Option<Slice<Self>> {
 		let (batch, more) = state.take(kind, cutoff, budget)?;
 		Some(Slice {
 			bytes: batch.bytes,
@@ -397,7 +392,6 @@ impl CommitDomain for FloorDomain {
 
 	const MAX_SLICES_PER_TICK: usize = 4;
 
-
 	fn cutoff(state: &Self::State) -> Option<Self::Cutoff> {
 		*state.watermark.lock()
 	}
@@ -410,7 +404,12 @@ impl CommitDomain for FloorDomain {
 		state.pending_kinds()
 	}
 
-	fn select(state: &Self::State, kind: Self::Kind, cutoff: Self::Cutoff, budget: ByteSize) -> Option<Slice<Self>> {
+	fn select(
+		state: &Self::State,
+		kind: Self::Kind,
+		cutoff: Self::Cutoff,
+		budget: ByteSize,
+	) -> Option<Slice<Self>> {
 		let (batch, more) = state.take(kind, cutoff, budget)?;
 		Some(Slice {
 			bytes: batch.bytes,

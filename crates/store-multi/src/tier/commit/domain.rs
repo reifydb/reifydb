@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Commit tier of the multi-version store expressed over the shared [`CommitDomain`] driver. A slice is one
-//! [`EntryKind`]'s latest-per-key values at or below the eviction watermark, plus every version of those keys
-//! the watermark has aged out; the kinds are visited oldest-pending first so the durable frontier, which is the
-//! minimum over kinds, can advance.
-//!
-//! The rows never leave the resident set at selection. Multi's commit buffer is a read path, not only a write
-//! buffer, so a reader between select and persist must still resolve the swept versions from RAM; the buffer is
-//! read under shared locks in [`CommitDomain::select`] and only compacted, by key and version, in
-//! [`CommitDomain::settle`].
-
 use std::{
 	borrow::Cow,
 	collections::{HashMap, HashSet},
@@ -279,7 +269,8 @@ impl CommitDomain for MultiDomain {
 		let accepted = if batch.persistent_object && !batch.to_persist.is_empty() {
 			let mut versioned: HashMap<CommitVersion, TierBatch> = HashMap::new();
 			for (key, version, value) in &batch.to_persist {
-				versioned.entry(*version)
+				versioned
+					.entry(*version)
 					.or_default()
 					.entry(batch.kind)
 					.or_default()
@@ -424,7 +415,10 @@ mod tests {
 		(tier, guard)
 	}
 
-	fn tier(persistence: Arc<dyn ObjectPersistence>, watermark: Option<CommitVersion>) -> (MultiCommitTier, SqliteTempPathGuard) {
+	fn tier(
+		persistence: Arc<dyn ObjectPersistence>,
+		watermark: Option<CommitVersion>,
+	) -> (MultiCommitTier, SqliteTempPathGuard) {
 		build_tier(persistence, watermark, testing_event_bus())
 	}
 
@@ -763,7 +757,8 @@ mod tests {
 	fn the_byte_counter_never_drifts_from_a_walk_of_the_buffer() {
 		// The counter is incremental and the walk is exhaustive; a drift above the walk hides bytes the
 		// budget can never release, and one below lets the resident set grow past a window reporting itself
-		// empty. Tombstones and superseded versions are included because each releases through a different path.
+		// empty. Tombstones and superseded versions are included because each releases through a different
+		// path.
 		let (tier, _guard) = tier(Arc::new(AllPersistent), Some(CommitVersion(4)));
 		let kind = EntryKind::Source(StorageId::table(TableId(1)));
 		let other = EntryKind::Source(StorageId::table(TableId(2)));
@@ -772,10 +767,7 @@ mod tests {
 			write(&tier, kind, &ek("k"), version, &format!("value-{version}"));
 		}
 		write(&tier, other, &ek("j"), 2, "j");
-		tier.state()
-			.commit()
-			.set(CommitVersion(4), HashMap::from([(kind, vec![(ek("k"), None)])]))
-			.unwrap();
+		tier.state().commit().set(CommitVersion(4), HashMap::from([(kind, vec![(ek("k"), None)])])).unwrap();
 		write(&tier, kind, &ek("later"), 9, "still-resident");
 
 		let mid = MultiDomain::census(tier.state());
@@ -854,8 +846,11 @@ mod tests {
 
 		tier.flush_pending();
 
-		let mut labels: Vec<String> =
-			tier.kind_metrics().iter().map(|entry| MultiDomain::kind_name(entry.kind).into_owned()).collect();
+		let mut labels: Vec<String> = tier
+			.kind_metrics()
+			.iter()
+			.map(|entry| MultiDomain::kind_name(entry.kind).into_owned())
+			.collect();
 		labels.sort();
 		assert_eq!(labels, vec!["source::1".to_string(), "source::2".to_string()]);
 		for entry in tier.kind_metrics() {
@@ -927,7 +922,15 @@ mod tests {
 				budget: Some(budget),
 				interval: CommitConfig::testing().interval,
 			},
-			|_budget| MultiState::new(commit, persistent, persistence_lock, watermark_lock, testing_event_bus()),
+			|_budget| {
+				MultiState::new(
+					commit,
+					persistent,
+					persistence_lock,
+					watermark_lock,
+					testing_event_bus(),
+				)
+			},
 		)
 		.expect("the config carries a budget");
 

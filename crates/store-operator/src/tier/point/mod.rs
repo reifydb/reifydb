@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Point tier of the operator store: a single-version cache of point reads that also remembers absences, so a
-//! key read many times costs one persistent lookup rather than one per read. An entry keys on the whole inner
-//! key instead of on a `(operator, group, keyspace)` bucket, so one group's keys spread across every shard and
-//! eviction removes one entry rather than every key that happened to share a group.
-//!
-//! A keyspace the operator store declares uncached is answered from the keyspace byte alone, before any hash
-//! or lock, and its miss is charged to a lock free per keyspace counter that folds into the keyspace table.
-
 use std::borrow::Cow;
 
 use reifydb_codec::{
@@ -29,8 +21,6 @@ pub type OperatorPointMetrics = PointMetrics;
 pub type OperatorPointShardMetrics = PointShardMetrics;
 pub type OperatorPointKeyspaceMetrics = PointSlotMetrics<OperatorDomain>;
 
-/// The operator store's point domain: a dimension is one operator and a counter slot is the keyspace
-/// byte the inner key carries.
 #[derive(Clone, Copy, Debug)]
 pub struct OperatorDomain;
 

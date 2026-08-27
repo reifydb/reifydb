@@ -808,9 +808,6 @@ fn state_written_is_false_until_a_row_exists_and_survives_a_reopen() {
 
 #[test]
 fn setting_the_checkpoint_threshold_applies_the_wal_autocheckpoint_pragma() {
-	// The catalog key is the only source for this pragma, so it must reach the connection: a
-	// no-op setter leaves operator.db on sqlite's built-in frame count and the knob reads as
-	// applied while nothing changed.
 	fn threshold(store: &OperatorStore) -> u32 {
 		let guard = store.inner.conn.lock();
 		let conn = guard.as_ref().expect("the fixture keeps the write connection open");

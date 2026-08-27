@@ -36,30 +36,19 @@ use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::range::RowBytes;
 
-/// How one keyspace shape is cut into counter slots, and which of them this tier may hold.
-///
-/// The tier never decodes a key itself: every question that depends on what a key means is answered
-/// here, so the same machinery serves stores whose keys share nothing.
 pub trait PointDomain: Copy + Debug + 'static {
 	type Dimension: Copy + Eq + Hash + Send + Sync + 'static;
 	type Slot: Copy + Eq + Debug + Send + Sync + 'static;
-	/// What this tier stores per key; anything a reader filters on must survive here, or the cache answers wrong.
 	type Row: RowBytes + Clone + Send + Sync + 'static;
 
-	/// The number of counter slots, which must bound every index [`PointDomain::slot`] returns.
 	const SLOTS: usize;
 
 	const SCOPE: &'static str;
 
-	/// The slot this key belongs to, or `None` for a key too short to name one; a declined key is
-	/// never admitted, since the tier could not attribute it.
 	fn slot(key: &EncodedKey) -> Option<usize>;
 
-	/// Whether the slot may live in this tier. One the domain keeps out is refused on every admission
-	/// path, and its read is answered before a shard is hashed or locked.
 	fn caches_points(slot: usize) -> bool;
 
-	/// How `incoming` lands on the resident row; a refusal must leave the entry and its accounting untouched.
 	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {
 		*resident = incoming;
 		true
@@ -77,7 +66,6 @@ pub struct PointConfig {
 }
 
 impl PointConfig {
-	/// A budget for tests only; production sizing comes from catalog config, never from a fallback here.
 	pub fn testing() -> Self {
 		Self {
 			shard_bytes: Some(ByteSize::from_mib(4)),

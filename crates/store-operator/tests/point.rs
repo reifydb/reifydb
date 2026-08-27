@@ -853,7 +853,8 @@ fn a_proven_span_outranks_the_absence_the_point_tier_remembers() {
 }
 
 fn sliced_store(budget: ByteSize) -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
-	// A budget this small forces one drain to run many slices, so a write-back that only covers one of them shows up.
+	// A budget this small forces one drain to run many slices, so a write-back that only covers one of them shows
+	// up.
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock.clone());
 	let spawner = actor_system.spawner();
@@ -871,8 +872,6 @@ fn sliced_store(budget: ByteSize) -> (OperatorStore, SqliteOperatorStorage, Sqli
 	});
 	(store, storage, guard)
 }
-
-
 
 #[test]
 fn a_drain_that_runs_many_slices_writes_back_every_slice_and_not_just_one() {
@@ -892,4 +891,3 @@ fn a_drain_that_runs_many_slices_writes_back_every_slice_and_not_just_one() {
 		 write-back leaves the rest durable but uncached"
 	);
 }
-

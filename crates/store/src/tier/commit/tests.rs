@@ -87,8 +87,6 @@ impl CommitWaker for CountingWaker {
 
 #[test]
 fn a_tier_without_a_budget_is_not_built() {
-	// The collapse window has no fallback size: a tier built without one would silently hold an
-	// unbounded write set, which is the exact failure the budget exists to prevent.
 	let built = CommitTier::<D>::new(
 		CommitConfig {
 			budget: None,
@@ -101,8 +99,6 @@ fn a_tier_without_a_budget_is_not_built() {
 
 #[test]
 fn a_new_key_charges_its_overhead_key_and_row_once() {
-	// The whole footprint of a fresh entry is charged at insert; anything the map costs beyond the
-	// row is invisible to the budget otherwise, and RAM outruns the number the trigger reads.
 	let tier = roomy();
 	tier.state().record(0, key("alpha"), Some(row("value")), 1);
 
@@ -112,8 +108,6 @@ fn a_new_key_charges_its_overhead_key_and_row_once() {
 
 #[test]
 fn a_collapse_swaps_only_the_row_charge() {
-	// A collapse subtracts the outgoing row and adds the incoming one; recharging the key on every
-	// write to a hot key would drift the counter upward forever and never come back down.
 	let tier = roomy();
 	tier.state().record(0, key("alpha"), Some(row("aa")), 1);
 	let after_first = tier.resident_bytes();
@@ -131,8 +125,6 @@ fn a_collapse_swaps_only_the_row_charge() {
 
 #[test]
 fn a_collapse_to_a_tombstone_keeps_the_key_charge() {
-	// A removal releases the row but the entry is still resident as a tombstone; refunding the key
-	// and the overhead here would under-report RAM the map is still holding.
 	let tier = roomy();
 	tier.state().record(0, key("alpha"), Some(row("value")), 1);
 	tier.state().remove(0, key("alpha"), 2);
@@ -145,8 +137,6 @@ fn a_collapse_to_a_tombstone_keeps_the_key_charge() {
 
 #[test]
 fn every_dropped_entry_refunds_its_whole_footprint() {
-	// The drop path is the easiest place to leak, because removing an entry without refunding it
-	// leaves the budget permanently high and the trigger permanently armed.
 	let tier = roomy();
 	for name in ["a", "bb", "ccc", "dddd"] {
 		tier.state().record(0, key(name), Some(row(name)), 1);
@@ -163,8 +153,6 @@ fn every_dropped_entry_refunds_its_whole_footprint() {
 
 #[test]
 fn a_split_moves_the_charge_exactly() {
-	// What leaves the resident set must arrive in the batch: if the split charged the two sides
-	// differently the total would drift on every slice, in whichever direction the arithmetic leaned.
 	let tier = roomy();
 	for name in ["a", "b", "c", "d"] {
 		tier.state().record(0, key(name), Some(row("payload")), 1);
@@ -193,8 +181,6 @@ fn a_split_moves_the_charge_exactly() {
 
 #[test]
 fn an_entry_wider_than_the_slice_budget_is_taken_alone() {
-	// Without a forced first entry a row larger than the whole slice budget is never selected, and
-	// the flush wedges on it forever while the buffer keeps growing behind it.
 	let tier = roomy();
 	tier.state().record(0, key("wide"), Some(row("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")), 1);
 
@@ -207,9 +193,6 @@ fn an_entry_wider_than_the_slice_budget_is_taken_alone() {
 
 #[test]
 fn bytes_are_released_at_settle_not_at_select() {
-	// A batch taken out of the resident set still occupies RAM until the persistent tier takes it.
-	// Releasing at selection would understate residency and re-arm the full trigger while the
-	// previous batch is still in flight, which is the direction that loses memory.
 	let tier = roomy();
 	for name in ["a", "b", "c"] {
 		tier.state().record(0, key(name), Some(row("payload")), 1);
@@ -233,8 +216,6 @@ fn bytes_are_released_at_settle_not_at_select() {
 
 #[test]
 fn the_full_trigger_fires_only_above_the_limit() {
-	// The budget is the collapse window, not a soft warning: sitting exactly on it is still within
-	// the window, and one byte past it is what asks for a flush.
 	let limit = cost("alpha", Some("value"));
 	let tier = tier(limit.as_bytes());
 	let waker = Arc::new(CountingWaker::default());
@@ -253,8 +234,6 @@ fn the_full_trigger_fires_only_above_the_limit() {
 
 #[test]
 fn a_burst_over_the_limit_raises_exactly_one_wake() {
-	// Without the armed flag every write past the limit raises its own wake, so a burst floods the
-	// host's mailbox with requests for a flush it is already running.
 	let tier = tier(cost("a", Some("x")).as_bytes());
 	let waker = Arc::new(CountingWaker::default());
 	tier.attach_waker(waker.clone());
@@ -263,7 +242,11 @@ fn a_burst_over_the_limit_raises_exactly_one_wake() {
 		tier.state().record(0, key(name), Some(row("x")), 1);
 		tier.observe_write();
 	}
-	assert_eq!(waker.wakes.load(Ordering::SeqCst), 1, "a burst over the limit must raise one wake, not one per write");
+	assert_eq!(
+		waker.wakes.load(Ordering::SeqCst),
+		1,
+		"a burst over the limit must raise one wake, not one per write"
+	);
 
 	tier.flush_all();
 	assert!(!tier.is_triggered(), "settling must consume the armed trigger");
@@ -277,8 +260,6 @@ fn a_burst_over_the_limit_raises_exactly_one_wake() {
 
 #[test]
 fn a_domain_that_refuses_over_budget_writes_stops_admitting_them() {
-	// Admitting turns the budget into a soft target and lets RAM overshoot; refusing turns it into
-	// backpressure. Which one a store gets is the domain's answer, not the tier's.
 	let limit = cost("a", Some("x"));
 	let open = tier(limit.as_bytes());
 	let closed = floor_tier(limit.as_bytes());
@@ -295,8 +276,6 @@ fn a_domain_that_refuses_over_budget_writes_stops_admitting_them() {
 
 #[test]
 fn nothing_evictable_flushes_nothing() {
-	// A domain whose bound is not yet known must not have its resident set drained under a guess; a
-	// slice taken below an unknown cutoff would publish rows no reader is allowed to see yet.
 	let tier = roomy();
 	tier.state().record(0, key("alpha"), Some(row("value")), 9);
 	tier.state().set_watermark(None);
@@ -311,8 +290,6 @@ fn nothing_evictable_flushes_nothing() {
 
 #[test]
 fn a_cutoff_leaves_later_writes_resident() {
-	// The cutoff is the only thing separating what a flush may publish from what it may not; a slice
-	// that ignored it would make a write durable ahead of the bound its store promised readers.
 	let tier = roomy();
 	for version in 1..=4u64 {
 		tier.state().record(0, key(&format!("k{version}")), Some(row("value")), version);
@@ -331,8 +308,6 @@ fn a_cutoff_leaves_later_writes_resident() {
 
 #[test]
 fn a_drain_admits_everything_the_cutoff_held_back() {
-	// Shutdown is the one caller that must leave the resident set empty; a drain that still honoured
-	// the running cutoff would lose every write above it.
 	let tier = roomy();
 	for version in 1..=4u64 {
 		tier.state().record(0, key(&format!("k{version}")), Some(row("value")), version);
@@ -351,8 +326,6 @@ fn a_drain_admits_everything_the_cutoff_held_back() {
 
 #[test]
 fn a_slice_that_runs_out_of_budget_yields() {
-	// Reporting exhaustion with work still pending tells the host to sleep until the next tick, so a
-	// buffer that is full every tick would drain a slice at a time and never catch up.
 	let one = cost("a", Some("value"));
 	let tier = roomy();
 	for kind in 0..2u8 {
@@ -368,8 +341,6 @@ fn a_slice_that_runs_out_of_budget_yields() {
 
 #[test]
 fn the_resume_cursor_serves_the_kind_a_slice_stopped_short_of() {
-	// Without the cursor every slice restarts at the head of the domain's order, so a kind that
-	// never fits in the leftover budget is never visited and pins its store's durable frontier forever.
 	let one = cost("a", Some("value"));
 	let tier = tier(one.as_bytes());
 	for kind in 0..3u8 {
@@ -385,13 +356,15 @@ fn the_resume_cursor_serves_the_kind_a_slice_stopped_short_of() {
 	let mut served: Vec<(u8, u64)> =
 		tier.kind_metrics().into_iter().map(|kind| (kind.kind, kind.counters.slices)).collect();
 	served.sort();
-	assert_eq!(served, vec![(0, 1), (1, 1), (2, 1)], "three slices must serve each kind once, not the first one thrice");
+	assert_eq!(
+		served,
+		vec![(0, 1), (1, 1), (2, 1)],
+		"three slices must serve each kind once, not the first one thrice"
+	);
 }
 
 #[test]
 fn a_pagination_stops_at_the_slice_cap() {
-	// The cap is what returns control to the host; without it a permanently full buffer holds the
-	// flushing thread inside one tick forever and every other maintenance task starves behind it.
 	let one = cost("a", Some("value"));
 	let tier = tier(one.as_bytes());
 	for kind in 0..8u8 {
@@ -409,8 +382,6 @@ fn a_pagination_stops_at_the_slice_cap() {
 
 #[test]
 fn one_slice_visits_every_kind_while_budget_remains() {
-	// A slice that stopped at the first kind holding work would leave every later kind to the next
-	// tick, and yielding when nothing is left would have the host re-tick and spin on an empty buffer.
 	let tier = roomy();
 	for kind in 0..3u8 {
 		for name in ["a", "b"] {
@@ -429,8 +400,6 @@ fn one_slice_visits_every_kind_while_budget_remains() {
 
 #[test]
 fn a_domain_below_its_transaction_floor_waits_for_the_tick() {
-	// A domain paying a fixed per-transaction cost is better off waiting; refusing must report
-	// exhaustion rather than yielding, or the host re-ticks straight into the same refusal and spins.
 	let tier = floor_tier(ByteSize::from_mib(1).as_bytes());
 	tier.state().record(0, key("a"), Some(row("small")), 1);
 	assert!(tier.resident_bytes() < FLOOR, "the fixture must sit below the floor");
@@ -453,8 +422,6 @@ fn a_domain_below_its_transaction_floor_waits_for_the_tick() {
 
 #[test]
 fn a_drain_ignores_the_transaction_floor() {
-	// Shutdown must empty the resident set whatever one transaction costs; honouring the floor here
-	// would leave the last sub-floor writes in RAM and lose them.
 	let tier = floor_tier(ByteSize::from_mib(1).as_bytes());
 	tier.state().record(0, key("a"), Some(row("small")), 1);
 
@@ -467,8 +434,6 @@ fn a_drain_ignores_the_transaction_floor() {
 
 #[test]
 fn a_key_the_persistent_tier_refused_returns_to_the_resident_set() {
-	// Settling releases what the acknowledgement proved durable and nothing else; releasing a refused
-	// key would drop a write on the floor and report the memory back at the same time.
 	let tier = roomy();
 	for name in ["a", "b", "c"] {
 		tier.state().record(0, key(name), Some(row("value")), 1);
@@ -491,8 +456,6 @@ fn a_key_the_persistent_tier_refused_returns_to_the_resident_set() {
 #[test]
 #[should_panic(expected = "commit tier persist failed")]
 fn a_failed_persist_stops_the_process() {
-	// Swallowing a persist error would drop the batch and let the store keep running on a resident
-	// set it believes is durable, which is silent data loss rather than a crash.
 	let tier = roomy();
 	tier.state().record(0, key("a"), Some(row("value")), 1);
 	tier.state().fail_persist(true);
@@ -502,8 +465,6 @@ fn a_failed_persist_stops_the_process() {
 
 #[test]
 fn metrics_report_what_a_flush_moved_and_what_is_left() {
-	// The backlog is a gauge read at sample time; accumulating it instead would report a number that
-	// only ever grows and hide the residency the budget is meant to bound.
 	let tier = roomy();
 	for name in ["a", "b", "c", "d"] {
 		tier.state().record(0, key(name), Some(row("value")), 1);
@@ -523,8 +484,6 @@ fn metrics_report_what_a_flush_moved_and_what_is_left() {
 
 #[test]
 fn metrics_are_labelled_per_kind() {
-	// One shared counter cannot say which kind is falling behind, and the kind that falls behind is
-	// exactly the one whose starvation pins a store's durable frontier.
 	let tier = roomy();
 	tier.state().record(0, key("a"), Some(row("value")), 1);
 	tier.state().record(1, key("b"), Some(row("value")), 1);
@@ -550,8 +509,6 @@ fn metrics_are_labelled_per_kind() {
 
 #[test]
 fn a_mixed_workload_never_drifts_the_counter() {
-	// A byte counter that drifts is a silent unbounded-RAM bug: nothing fails, the trigger simply
-	// stops matching reality. Every path that changes residency has to net out against a full scan.
 	let tier = roomy();
 	for index in 0..12u32 {
 		tier.state().record(0, key(&format!("k{index:02}")), Some(row("value")), 1);

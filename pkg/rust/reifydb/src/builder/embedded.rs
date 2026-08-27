@@ -30,7 +30,10 @@ use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_value::{byte_size::ByteSize, value::{Value, duration::Duration}};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{Value, duration::Duration},
+};
 
 type PoolConfigSources = (
 	MultiCommitBufferTier,
