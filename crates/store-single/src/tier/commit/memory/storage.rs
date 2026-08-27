@@ -38,9 +38,7 @@ impl MemoryRowStorage {
 	}
 
 	pub fn memory_usage(&self) -> (usize, usize) {
-		const NODE_FILL_DIVISOR: usize = 2;
-		const ENTRY_OVERHEAD: usize =
-			NODE_FILL_DIVISOR * (size_of::<EncodedKey>() + size_of::<Option<CowVec<u8>>>());
+		const ENTRY_OVERHEAD: usize = size_of::<EncodedKey>() + size_of::<Option<CowVec<u8>>>();
 		let map = self.inner.data.read();
 		let payload: usize = map
 			.iter()

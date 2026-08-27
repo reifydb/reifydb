@@ -129,7 +129,6 @@ zero_heap!(
 );
 
 const BIGNUM_APPROX_HEAP: usize = 32;
-const BTREE_NODE_FILL_DIVISOR: usize = 2;
 
 impl HeapSize for Percentiles {
 	fn heap_size(&self) -> usize {
@@ -224,15 +223,14 @@ impl HeapSize for Box<str> {
 
 impl<K: HeapSize, V: HeapSize> HeapSize for BTreeMap<K, V> {
 	fn heap_size(&self) -> usize {
-		self.len() * BTREE_NODE_FILL_DIVISOR * (mem::size_of::<K>() + mem::size_of::<V>())
+		self.len() * (mem::size_of::<K>() + mem::size_of::<V>())
 			+ self.iter().map(|(k, v)| k.heap_size() + v.heap_size()).sum::<usize>()
 	}
 }
 
 impl<T: HeapSize> HeapSize for BTreeSet<T> {
 	fn heap_size(&self) -> usize {
-		self.len() * BTREE_NODE_FILL_DIVISOR * mem::size_of::<T>()
-			+ self.iter().map(HeapSize::heap_size).sum::<usize>()
+		self.len() * mem::size_of::<T>() + self.iter().map(HeapSize::heap_size).sum::<usize>()
 	}
 }
 

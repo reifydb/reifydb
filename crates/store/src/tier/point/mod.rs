@@ -97,10 +97,10 @@ struct Entry<D: PointDomain> {
 	tick: u64,
 }
 
-const INDEX_FILL_DIVISOR: usize = 2;
+const APPROXIMATED_INDEX_OVERHEAD: usize = 6;
 
 const fn entry_overhead<D: PointDomain>() -> usize {
-	size_of::<Entry<D>>() + INDEX_FILL_DIVISOR * (size_of::<u32>() + 1)
+	size_of::<Entry<D>>() + APPROXIMATED_INDEX_OVERHEAD
 }
 
 #[cfg(test)]

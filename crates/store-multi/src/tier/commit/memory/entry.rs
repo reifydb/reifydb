@@ -28,10 +28,7 @@ pub(super) type HistoricalMap = BTreeMap<EncodedKey, BTreeMap<Reverse<CommitVers
 
 pub(super) type OldestIndex = BTreeMap<CommitVersion, HashSet<EncodedKey>>;
 
-pub(super) const NODE_FILL_DIVISOR: usize = 2;
-
-pub(super) const ENTRY_OVERHEAD: usize =
-	NODE_FILL_DIVISOR * (size_of::<EncodedKey>() + size_of::<CommitVersion>() + size_of::<Value>());
+pub(super) const ENTRY_OVERHEAD: usize = size_of::<EncodedKey>() + size_of::<CommitVersion>() + size_of::<Value>();
 
 pub(super) fn oldest_version(
 	current: &CurrentMap,

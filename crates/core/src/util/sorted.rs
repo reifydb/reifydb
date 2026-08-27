@@ -8,11 +8,6 @@ use std::{
 
 use crate::metrics::heap::HeapSize;
 
-/// An ordered map over one contiguous run of slots, so an entry costs exactly one slot however many
-/// the map holds and its heap size is measured rather than modelled.
-///
-/// Insert and remove away from the tail move every slot after the position, so this suits a map that
-/// stays small or grows at the tail; a large map taking scattered inserts belongs in a `BTreeMap`.
 pub struct SortedVecMap<K, V> {
 	slots: Vec<(K, V)>,
 }

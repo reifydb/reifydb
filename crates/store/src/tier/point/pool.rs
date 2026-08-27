@@ -11,7 +11,6 @@ use std::{
 };
 
 use hashbrown::HashTable;
-
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	metrics::{collect::MetricsCollector, sample::MetricsSample},

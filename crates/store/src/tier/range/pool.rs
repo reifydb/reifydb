@@ -430,7 +430,6 @@ mod tests {
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-	use reifydb_core::util::sorted::SortedVecMap;
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
@@ -438,6 +437,7 @@ mod tests {
 			collect::MetricsCollector,
 			sample::{MetricsSample, Reading},
 		},
+		util::sorted::SortedVecMap,
 	};
 	use reifydb_value::{byte_size::ByteSize, count::Count};
 
