@@ -4,30 +4,30 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  http_transport,
-  json_http_transport,
-  json_ws_transport,
-  ws_transport,
+  httpTransport,
+  jsonHttpTransport,
+  jsonWsTransport,
+  wsTransport,
 } from "../src/transport";
 
 describe("prebuilt transports", () => {
   it("declare the right transport kind", () => {
-    expect(ws_transport.kind).toBe("ws");
-    expect(http_transport.kind).toBe("http");
-    expect(json_ws_transport.kind).toBe("ws");
-    expect(json_http_transport.kind).toBe("http");
+    expect(wsTransport.kind).toBe("ws");
+    expect(httpTransport.kind).toBe("http");
+    expect(jsonWsTransport.kind).toBe("ws");
+    expect(jsonHttpTransport.kind).toBe("http");
   });
 
   it("release is a no-op for http transports (no disconnect call)", () => {
     const calls: string[] = [];
-    const fake_http = {
+    const fakeHttp = {
       disconnect: () => calls.push("disconnect-http"),
     };
-    const fake_json_http = {
+    const fakeJsonHttp = {
       disconnect: () => calls.push("disconnect-json-http"),
     };
-    expect(() => http_transport.release(fake_http as never)).not.toThrow();
-    expect(() => json_http_transport.release(fake_json_http as never)).not.toThrow();
+    expect(() => httpTransport.release(fakeHttp as never)).not.toThrow();
+    expect(() => jsonHttpTransport.release(fakeJsonHttp as never)).not.toThrow();
     // HTTP transports must never touch disconnect; the field is incidental on
     // the real HttpClient but auth-package contract says release is a no-op.
     expect(calls).toEqual([]);
@@ -35,28 +35,28 @@ describe("prebuilt transports", () => {
 
   it("release calls disconnect on ws transports", () => {
     const calls: string[] = [];
-    const fake_ws = {
+    const fakeWs = {
       disconnect: () => calls.push("disconnect-ws"),
     };
-    const fake_json_ws = {
+    const fakeJsonWs = {
       disconnect: () => calls.push("disconnect-json-ws"),
     };
-    ws_transport.release(fake_ws as never);
-    json_ws_transport.release(fake_json_ws as never);
+    wsTransport.release(fakeWs as never);
+    jsonWsTransport.release(fakeJsonWs as never);
     expect(calls).toEqual(["disconnect-ws", "disconnect-json-ws"]);
   });
 
   it("release swallows disconnect errors", () => {
-    const ws_throws = {
+    const wsThrows = {
       disconnect: () => {
         throw new Error("kaboom");
       },
     };
-    expect(() => ws_transport.release(ws_throws as never)).not.toThrow();
+    expect(() => wsTransport.release(wsThrows as never)).not.toThrow();
   });
 
   it("release is idempotent when disconnect is missing", () => {
-    expect(() => ws_transport.release({} as never)).not.toThrow();
-    expect(() => json_ws_transport.release({} as never)).not.toThrow();
+    expect(() => wsTransport.release({} as never)).not.toThrow();
+    expect(() => jsonWsTransport.release({} as never)).not.toThrow();
   });
 });

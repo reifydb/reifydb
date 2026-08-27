@@ -32,11 +32,11 @@ export class WasmExecutor implements Executor {
       return {
         success: true,
         data: [],
-        execution_time: 0,
+        executionTime: 0,
       };
     }
 
-    const start_time = performance.now();
+    const startTime = performance.now();
 
     try {
       const results = await this.db.admin(query);
@@ -45,7 +45,7 @@ export class WasmExecutor implements Executor {
       return {
         success: true,
         data: Array.isArray(results) ? results : [],
-        execution_time: Math.round(endTime - start_time),
+        executionTime: Math.round(endTime - startTime),
       };
     } catch (error) {
       const endTime = performance.now();
@@ -53,7 +53,7 @@ export class WasmExecutor implements Executor {
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
-        execution_time: Math.round(endTime - start_time),
+        executionTime: Math.round(endTime - startTime),
       };
     }
   }
@@ -75,17 +75,17 @@ export class WasmExecutor implements Executor {
     }
   }
 
-  async getShape(table_name: string): Promise<string | null> {
+  async getShape(tableName: string): Promise<string | null> {
     try {
       // Query system catalog for table shape
       const result = await this.db.admin(
-        `FROM system::columns FILTER table = "${table_name}" MAP { name, type }`
+        `FROM system::columns FILTER table = "${tableName}" MAP { name, type }`
       );
       if (Array.isArray(result) && result.length > 0) {
         const columns = result.map((row: Record<string, unknown>) =>
           `  ${row.name}: ${row.type}`
         ).join(',\n');
-        return `${table_name} {\n${columns}\n}`;
+        return `${tableName} {\n${columns}\n}`;
       }
       return null;
     } catch {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { format_value, get_value_style } from '../../format/value';
+import { formatValue, getValueStyle } from '../../format/value';
 
 interface ResultsTableProps {
   data: Record<string, unknown>[];
@@ -26,7 +26,7 @@ export function ResultsTable({ data }: ResultsTableProps) {
           {data.map((row, i) => (
             <tr key={i}>
               {columns.map((col) => {
-                const vs = get_value_style(row[col]);
+                const vs = getValueStyle(row[col]);
                 return (
                   <td
                     key={col}
@@ -35,7 +35,7 @@ export function ResultsTable({ data }: ResultsTableProps) {
                       fontStyle: vs.italic ? 'italic' : undefined,
                     }}
                   >
-                    {format_value(row[col])}
+                    {formatValue(row[col])}
                   </td>
                 );
               })}

@@ -3,7 +3,6 @@
 import type { Params, Frame, Column, ErrorResponse, ShapeNode, DurationValue } from "@reifydb/core";
 import { ReifyError } from "@reifydb/core";
 
-// Re-export types that are actually available in flow
 export type { Params, Frame, Column, ErrorResponse } from "@reifydb/core";
 export { ReifyError } from "@reifydb/core";
 
@@ -27,7 +26,7 @@ export interface AdminResponse {
     id: string;
     type: "Admin";
     payload: {
-        content_type: string;
+        contentType: string;
         body: any;
         meta?: ResponseMeta;
     };
@@ -48,7 +47,7 @@ export interface CommandResponse {
     id: string;
     type: "Command";
     payload: {
-        content_type: string;
+        contentType: string;
         body: any;
         meta?: ResponseMeta;
     };
@@ -69,7 +68,7 @@ export interface QueryResponse {
     id: string;
     type: "Query";
     payload: {
-        content_type: string;
+        contentType: string;
         body: any;
         meta?: ResponseMeta;
     };
@@ -89,7 +88,7 @@ export interface CallResponse {
     id: string;
     type: "Call";
     payload: {
-        content_type: string;
+        contentType: string;
         body: any;
         meta?: ResponseMeta;
     };
@@ -109,7 +108,7 @@ export interface SubscribedResponse {
     id: string;
     type: "Subscribed";
     payload: {
-        subscription_id: string;
+        subscriptionId: string;
     };
 }
 
@@ -117,7 +116,7 @@ export interface UnsubscribeRequest {
     id: string;
     type: "Unsubscribe";
     payload: {
-        subscription_id: string;
+        subscriptionId: string;
     };
 }
 
@@ -125,16 +124,15 @@ export interface UnsubscribedResponse {
     id: string;
     type: "Unsubscribed";
     payload: {
-        subscription_id: string;
+        subscriptionId: string;
     };
 }
 
 export interface ChangeMessage {
-    // No id field - server-initiated
     type: "Change";
     payload: {
-        subscription_id: string;
-        content_type: string;
+        subscriptionId: string;
+        contentType: string;
         body: any;
     };
 }
@@ -149,14 +147,14 @@ export type SubscriptionOperation = 'INSERT' | 'UPDATE' | 'REMOVE';
 export type SubscriptionRow<T> = T & { "#rownum": number };
 
 export interface SubscriptionCallbacks<T = any> {
-    on_insert?: (rows: SubscriptionRow<T>[]) => void;
-    on_update?: (rows: SubscriptionRow<T>[]) => void;
-    on_remove?: (rows: SubscriptionRow<T>[]) => void;
+    onInsert?: (rows: SubscriptionRow<T>[]) => void;
+    onUpdate?: (rows: SubscriptionRow<T>[]) => void;
+    onRemove?: (rows: SubscriptionRow<T>[]) => void;
 }
 
 export interface HydrationConfig {
     enabled: boolean;
-    max_rows?: number;
+    maxRows?: number;
 }
 
 export interface SubscriptionConfig {
@@ -165,15 +163,15 @@ export interface SubscriptionConfig {
     linger?: DurationValue;
 }
 
-export function default_hydration_config(): HydrationConfig {
+export function defaultHydrationConfig(): HydrationConfig {
     return { enabled: true };
 }
 
-export function default_subscription_config(): SubscriptionConfig {
-    return { hydration: default_hydration_config() };
+export function defaultSubscriptionConfig(): SubscriptionConfig {
+    return { hydration: defaultHydrationConfig() };
 }
 
-function duration_literal(knob: string, value: DurationValue): string {
+function durationLiteral(knob: string, value: DurationValue): string {
     if (value.isNegative()) {
         throw new Error(`${knob} must not be negative`);
     }
@@ -184,17 +182,17 @@ function duration_literal(knob: string, value: DurationValue): string {
     return literal;
 }
 
-export function build_subscription_rql(body: string, config?: SubscriptionConfig): string {
-    const h = config?.hydration ?? default_hydration_config();
+export function buildSubscriptionRql(body: string, config?: SubscriptionConfig): string {
+    const h = config?.hydration ?? defaultHydrationConfig();
     const enabled = h.enabled;
-    let opts = h.max_rows !== undefined
-        ? `hydration: { enabled: ${enabled}, max_rows: ${h.max_rows} }`
+    let opts = h.maxRows !== undefined
+        ? `hydration: { enabled: ${enabled}, max_rows: ${h.maxRows} }`
         : `hydration: { enabled: ${enabled} }`;
     if (config?.throttle !== undefined) {
-        opts += `, throttle: ${duration_literal('throttle', config.throttle)}`;
+        opts += `, throttle: ${durationLiteral('throttle', config.throttle)}`;
     }
     if (config?.linger !== undefined) {
-        opts += `, linger: ${duration_literal('linger', config.linger)}`;
+        opts += `, linger: ${durationLiteral('linger', config.linger)}`;
     }
     return `CREATE SUBSCRIPTION WITH { ${opts} } AS { ${body} }`;
 }
@@ -210,14 +208,14 @@ export interface BatchSubscribeRequest {
 
 export interface BatchMemberInfo {
     index: number;
-    subscription_id: string;
+    subscriptionId: string;
 }
 
 export interface BatchSubscribedResponse {
     id: string;
     type: "BatchSubscribed";
     payload: {
-        batch_id: string;
+        batchId: string;
         members: BatchMemberInfo[];
     };
 }
@@ -226,7 +224,7 @@ export interface BatchUnsubscribeRequest {
     id: string;
     type: "BatchUnsubscribe";
     payload: {
-        batch_id: string;
+        batchId: string;
     };
 }
 
@@ -234,17 +232,17 @@ export interface BatchUnsubscribedResponse {
     id: string;
     type: "BatchUnsubscribed";
     payload: {
-        batch_id: string;
+        batchId: string;
     };
 }
 
 export interface BatchChangeMessage {
     type: "BatchChange";
     payload: {
-        batch_id: string;
+        batchId: string;
         entries: Array<{
-            subscription_id: string;
-            content_type: string;
+            subscriptionId: string;
+            contentType: string;
             body: any;
         }>;
     };
@@ -253,15 +251,15 @@ export interface BatchChangeMessage {
 export interface BatchMemberClosedMessage {
     type: "BatchMemberClosed";
     payload: {
-        batch_id: string;
-        subscription_id: string;
+        batchId: string;
+        subscriptionId: string;
     };
 }
 
 export interface BatchClosedMessage {
     type: "BatchClosed";
     payload: {
-        batch_id: string;
+        batchId: string;
     };
 }
 
@@ -274,14 +272,14 @@ export interface BatchSubscriptionMember<T = any> {
 }
 
 export interface BatchSubscriptionCallbacks {
-    on_member_closed?: (subscription_id: string) => void;
-    on_closed?: () => void;
-    on_entry_error?: (subscription_id: string, error: Error) => void;
+    onMemberClosed?: (subscriptionId: string) => void;
+    onClosed?: () => void;
+    onEntryError?: (subscriptionId: string, error: Error) => void;
 }
 
 export interface BatchSubscription {
-    batch_id: string;
-    subscription_ids: string[];
+    batchId: string;
+    subscriptionIds: string[];
 }
 
 export interface AuthRequest {
@@ -301,7 +299,7 @@ export interface AuthResponse {
         status?: "authenticated" | "challenge" | "failed";
         token?: string;
         identity?: string;
-        challenge_id?: string;
+        challengeId?: string;
         payload?: { message: string; nonce: string };
         reason?: string;
     };
@@ -309,7 +307,7 @@ export interface AuthResponse {
 
 export type LoginChallengeResult =
     | { kind: "authenticated"; token: string; identity: string }
-    | { kind: "challenge"; challenge_id: string; message: string; nonce: string };
+    | { kind: "challenge"; challengeId: string; message: string; nonce: string };
 
 export interface LogoutRequest {
     id: string;

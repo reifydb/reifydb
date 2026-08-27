@@ -9,18 +9,18 @@ import {
   clearClient,
   storageKeyFor,
   useAuth,
-  ws_transport,
+  wsTransport,
   type WalletConnector,
 } from "@reifydb/auth";
 
-import { WS_URL, wait_for_database } from "./setup";
-import { make_test_wallet } from "./test-wallet";
+import { WS_URL, waitForDatabase } from "./setup";
+import { makeTestWallet } from "./test-wallet";
 
 interface ProbeRef {
   status: string;
   clientReady: boolean;
   error: string | null;
-  wallet_address: string | null;
+  walletAddress: string | null;
   token: string | null;
   identity: string | null;
   signIn: () => Promise<void>;
@@ -33,7 +33,7 @@ function Probe({ outRef }: { outRef: { current: ProbeRef | null } }) {
     status: a.status,
     clientReady: a.clientReady,
     error: a.error,
-    wallet_address: a.session?.wallet_address ?? null,
+    walletAddress: a.session?.walletAddress ?? null,
     token: a.session?.token ?? null,
     identity: a.session?.identity ?? null,
     signIn: a.signIn,
@@ -50,7 +50,7 @@ function provider(
   return (
     <AuthProvider
       url={WS_URL}
-      transport={ws_transport}
+      transport={wsTransport}
       storageNamespace={namespace}
       method="solana"
       domain="test"
@@ -64,7 +64,7 @@ function provider(
 }
 
 beforeAll(async () => {
-  await wait_for_database();
+  await waitForDatabase();
 }, 30000);
 
 beforeEach(() => {
@@ -76,16 +76,16 @@ afterEach(() => {
   clearClient();
 });
 
-let test_counter = 0;
-function unique_namespace(): string {
-  test_counter += 1;
-  return `test.int.${test_counter}.${Date.now()}`;
+let testCounter = 0;
+function uniqueNamespace(): string {
+  testCounter += 1;
+  return `test.int.${testCounter}.${Date.now()}`;
 }
 
 describe("AuthProvider — end-to-end against testcontainer", () => {
   it("signIn drives disconnected -> authenticated with a real server-issued token", async () => {
-    const { wallet, publicKeyB58 } = make_test_wallet();
-    const ns = unique_namespace();
+    const { wallet, publicKeyB58 } = makeTestWallet();
+    const ns = uniqueNamespace();
     const ref: { current: ProbeRef | null } = { current: null };
     render(provider(wallet, ns, ref));
 
@@ -102,15 +102,15 @@ describe("AuthProvider — end-to-end against testcontainer", () => {
       { timeout: 10000 },
     );
 
-    expect(ref.current?.wallet_address).toBe(publicKeyB58);
+    expect(ref.current?.walletAddress).toBe(publicKeyB58);
     expect(ref.current?.token?.length).toBeGreaterThan(0);
     expect(ref.current?.identity?.length).toBeGreaterThan(0);
     expect(ref.current?.error).toBeNull();
   });
 
   it("persists the session to localStorage on successful signIn", async () => {
-    const { wallet, publicKeyB58 } = make_test_wallet();
-    const ns = unique_namespace();
+    const { wallet, publicKeyB58 } = makeTestWallet();
+    const ns = uniqueNamespace();
     const ref: { current: ProbeRef | null } = { current: null };
     render(provider(wallet, ns, ref));
 
@@ -125,15 +125,15 @@ describe("AuthProvider — end-to-end against testcontainer", () => {
     const raw = localStorage.getItem(storageKeyFor(ns));
     expect(raw).not.toBeNull();
     const stored = JSON.parse(raw!);
-    expect(stored.wallet_address).toBe(publicKeyB58);
+    expect(stored.walletAddress).toBe(publicKeyB58);
     expect(stored.token).toBe(ref.current?.token);
     expect(stored.identity).toBe(ref.current?.identity);
-    expect(stored.expires_at).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    expect(stored.expiresAt).toBeGreaterThan(Math.floor(Date.now() / 1000));
   });
 
   it("signOut tears down session, storage, and cached client", async () => {
-    const { wallet } = make_test_wallet();
-    const ns = unique_namespace();
+    const { wallet } = makeTestWallet();
+    const ns = uniqueNamespace();
     const ref: { current: ProbeRef | null } = { current: null };
     render(provider(wallet, ns, ref));
 
@@ -157,11 +157,11 @@ describe("AuthProvider — end-to-end against testcontainer", () => {
   });
 
   it("tears down when a different wallet is connected after authentication", async () => {
-    const wallet_a = make_test_wallet();
-    const wallet_b = make_test_wallet();
-    const ns = unique_namespace();
+    const walletA = makeTestWallet();
+    const walletB = makeTestWallet();
+    const ns = uniqueNamespace();
     const ref: { current: ProbeRef | null } = { current: null };
-    const { rerender } = render(provider(wallet_a.wallet, ns, ref));
+    const { rerender } = render(provider(walletA.wallet, ns, ref));
 
     await act(async () => {
       await ref.current!.signIn();
@@ -173,8 +173,8 @@ describe("AuthProvider — end-to-end against testcontainer", () => {
 
     // Swap to a different wallet (different publicKey) by rerendering. The
     // wallet-match gate in AuthProvider must tear the session down because
-    // the stored wallet_address no longer matches the live publicKey.
-    rerender(provider(wallet_b.wallet, ns, ref));
+    // the stored walletAddress no longer matches the live publicKey.
+    rerender(provider(walletB.wallet, ns, ref));
 
     await waitFor(
       () => expect(ref.current?.status).toBe("disconnected"),

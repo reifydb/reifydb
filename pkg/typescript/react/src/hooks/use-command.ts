@@ -7,7 +7,7 @@ import {ConnectionConfig} from '../connection/connection';
 import {useCommandExecutor, type CommandResult, type CommandExecutorOptions} from './use-command-executor';
 
 export interface CommandOptions extends CommandExecutorOptions {
-    connection_config?: ConnectionConfig;
+    connectionConfig?: ConnectionConfig;
 }
 
 // Single command hook - returns a single result
@@ -17,12 +17,12 @@ export function useCommandOne<S extends ShapeNode = any>(
     shape?: S,
     options?: CommandOptions
 ): {
-    is_executing: boolean;
+    isExecuting: boolean;
     result: CommandResult<S extends ShapeNode ? InferShape<S> : any> | undefined;
     error: string | undefined;
 } {
     const {
-        is_executing,
+        isExecuting,
         results,
         error,
         command
@@ -39,7 +39,7 @@ export function useCommandOne<S extends ShapeNode = any>(
         return results && results.length > 0 ? results[0] : undefined;
     }, [results]);
 
-    return {is_executing, result, error};
+    return {isExecuting, result, error};
 }
 
 // Multiple command hook - returns multiple results
@@ -49,12 +49,12 @@ export function useCommandMany<S extends readonly ShapeNode[] = readonly ShapeNo
     shapes?: S,
     options?: CommandOptions
 ): {
-    is_executing: boolean;
+    isExecuting: boolean;
     results: CommandResult<S extends readonly ShapeNode[] ? InferShape<S[number]> : any>[] | undefined;
     error: string | undefined;
 } {
     const {
-        is_executing,
+        isExecuting,
         results,
         error,
         command
@@ -64,5 +64,5 @@ export function useCommandMany<S extends readonly ShapeNode[] = readonly ShapeNo
         command(rql, params, shapes);
     }, [rql, params, command]);
 
-    return {is_executing, results, error};
+    return {isExecuting, results, error};
 }

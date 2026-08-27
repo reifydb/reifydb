@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { open_with_migrations } from '../native'
+import { openWithMigrations } from '../native'
 import type { Db } from './db'
 import type { MigrationInput } from './migration'
 import { NativeDb } from './native-db'
@@ -13,16 +13,16 @@ export class EmbeddedBuilder {
     this.migrations = migrations
   }
 
-  with_migrations(input: MigrationInput | MigrationInput[]): EmbeddedBuilder {
+  withMigrations(input: MigrationInput | MigrationInput[]): EmbeddedBuilder {
     return new EmbeddedBuilder(Array.isArray(input) ? input : [input])
   }
 
   build(): Db {
-    return new NativeDb(open_with_migrations(this.migrations.map(to_entry)))
+    return new NativeDb(openWithMigrations(this.migrations.map(toEntry)))
   }
 }
 
-function to_entry(input: MigrationInput) {
+function toEntry(input: MigrationInput) {
   if ('dir' in input) return { dir: input.dir }
   return { name: input.name, statements: input.statements, rollback: input.rollback }
 }

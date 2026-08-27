@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
-import {wait_for_database} from "../setup";
+import {waitForDatabase} from "../setup";
 import {Client, JsonWsClient, WsClient} from "../../../src";
 
 // JsonWsClient is json-only: it decodes text json rows and silently drops binary frames. Before the
@@ -15,19 +15,19 @@ describe('JsonWs wire-format adherence', () => {
 
     const suffix = `${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
     const ns = `wf_jsonws_${suffix}`;
-    const frames_binding = `wf_frames_${suffix}`;
-    const rbcf_binding = `wf_rbcf_${suffix}`;
+    const framesBinding = `wf_frames_${suffix}`;
+    const rbcfBinding = `wf_rbcf_${suffix}`;
 
     let root: WsClient;
 
     beforeAll(async () => {
-        await wait_for_database();
-        root = await Client.connect_ws(WS_URL, {timeout_ms: 10000, token: AUTH_TOKEN});
+        await waitForDatabase();
+        root = await Client.connectWs(WS_URL, {timeoutMs: 10000, token: AUTH_TOKEN});
 
         await root.admin(`CREATE NAMESPACE ${ns}`, {}, []);
         await root.admin(`CREATE PROCEDURE ${ns}::greet AS { MAP { result: 42 } }`, {}, []);
-        await root.admin(`CREATE WS BINDING ${ns}::greet_frames FOR ${ns}::greet WITH { name: "${frames_binding}", format: "frames" }`, {}, []);
-        await root.admin(`CREATE WS BINDING ${ns}::greet_rbcf FOR ${ns}::greet WITH { name: "${rbcf_binding}", format: "rbcf" }`, {}, []);
+        await root.admin(`CREATE WS BINDING ${ns}::greet_frames FOR ${ns}::greet WITH { name: "${framesBinding}", format: "frames" }`, {}, []);
+        await root.admin(`CREATE WS BINDING ${ns}::greet_rbcf FOR ${ns}::greet WITH { name: "${rbcfBinding}", format: "rbcf" }`, {}, []);
     }, 30000);
 
     afterAll(async () => {
@@ -35,9 +35,9 @@ describe('JsonWs wire-format adherence', () => {
     });
 
     it('decodes a frames-format binding as json rows', async () => {
-        const client = await Client.connect_json_ws(WS_URL, {timeout_ms: 10000, token: AUTH_TOKEN});
+        const client = await Client.connectJsonWs(WS_URL, {timeoutMs: 10000, token: AUTH_TOKEN});
         try {
-            const rows = await client.call(frames_binding, {});
+            const rows = await client.call(framesBinding, {});
             expect(rows[0][0].result).toBe('42');
         } finally {
             client.disconnect();
@@ -45,9 +45,9 @@ describe('JsonWs wire-format adherence', () => {
     }, 10000);
 
     it('decodes an rbcf-format binding as json rows (binary would otherwise be dropped)', async () => {
-        const client = await Client.connect_json_ws(WS_URL, {timeout_ms: 10000, token: AUTH_TOKEN});
+        const client = await Client.connectJsonWs(WS_URL, {timeoutMs: 10000, token: AUTH_TOKEN});
         try {
-            const rows = await client.call(rbcf_binding, {});
+            const rows = await client.call(rbcfBinding, {});
             expect(rows[0][0].result).toBe('42');
         } finally {
             client.disconnect();

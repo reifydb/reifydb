@@ -3,7 +3,7 @@
 
 import { RouterProvider } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AuthProvider, json_http_transport } from '@reifydb/auth'
+import { AuthProvider, jsonHttpTransport } from '@reifydb/auth'
 import { router } from './router'
 import { UPTIME_CONFIG } from './config'
 
@@ -21,7 +21,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider
         url={UPTIME_CONFIG.authUrl()}
-        transport={json_http_transport}
+        transport={jsonHttpTransport}
         storageNamespace={UPTIME_CONFIG.storageNamespace}
         sessionScope="browser"
         sessionTtlSeconds={UPTIME_CONFIG.sessionTtlSeconds}

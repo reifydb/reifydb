@@ -26,8 +26,8 @@ function mintGuestSession(): Promise<AuthSession> {
     .then((session) => ({
       token: session.token,
       identity: session.identity,
-      wallet_address: session.identity,
-      expires_at: session.expires_at,
+      walletAddress: session.identity,
+      expiresAt: session.expires_at,
       method: 'token' as const,
     }))
     .finally(() => {

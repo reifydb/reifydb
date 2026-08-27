@@ -224,7 +224,7 @@ export class DateTimeValue implements Value {
     /**
      * Get Unix timestamp in seconds
      */
-    to_epoch_secs(): number | undefined {
+    toEpochSecs(): number | undefined {
         const date = this.valueOf();
         if (date === undefined) return undefined;
         return Math.floor(date.getTime() / 1000);

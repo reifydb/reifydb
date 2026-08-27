@@ -28,7 +28,7 @@ interface ProbeRef {
   status: string;
   clientReady: boolean;
   error: string | null;
-  wallet_address: string | null;
+  walletAddress: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -39,37 +39,37 @@ function Probe({ outRef }: { outRef: { current: ProbeRef | null } }) {
     status: a.status,
     clientReady: a.clientReady,
     error: a.error,
-    wallet_address: a.session?.wallet_address ?? null,
+    walletAddress: a.session?.walletAddress ?? null,
     signIn: a.signIn,
     signOut: a.signOut,
   };
   return null;
 }
 
-function fake_client(): AuthCapableClient & {
-  login_challenge: ReturnType<typeof vi.fn>;
+function fakeClient(): AuthCapableClient & {
+  loginChallenge: ReturnType<typeof vi.fn>;
   logout: ReturnType<typeof vi.fn>;
 } {
   return {
-    login_challenge: vi.fn(),
+    loginChallenge: vi.fn(),
     logout: vi.fn().mockResolvedValue(undefined),
   };
 }
 
-function fake_transport(
-  signin_client: AuthCapableClient,
-  authed_client: AuthCapableClient,
+function fakeTransport(
+  signinClient: AuthCapableClient,
+  authedClient: AuthCapableClient,
 ): AuthTransport {
   return {
     kind: "ws",
     connect: vi.fn((_url: string, token?: string) =>
-      Promise.resolve(token == null ? signin_client : authed_client),
+      Promise.resolve(token == null ? signinClient : authedClient),
     ),
     release: vi.fn(),
   };
 }
 
-function fake_wallet(over: Partial<WalletConnector> = {}): WalletConnector {
+function fakeWallet(over: Partial<WalletConnector> = {}): WalletConnector {
   return {
     connected: false,
     connecting: false,
@@ -117,12 +117,12 @@ afterEach(() => {
   clearClient();
 });
 
-function future_session(over: Partial<AuthSession> = {}): AuthSession {
+function futureSession(over: Partial<AuthSession> = {}): AuthSession {
   return {
     token: "tok",
     identity: "id",
-    wallet_address: WALLET_A,
-    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    walletAddress: WALLET_A,
+    expiresAt: Math.floor(Date.now() / 1000) + 3600,
     ...over,
   };
 }
@@ -130,17 +130,17 @@ function future_session(over: Partial<AuthSession> = {}): AuthSession {
 describe("AuthProvider", () => {
   it("mounts disconnected when no session is stored", () => {
     const ref: { current: ProbeRef | null } = { current: null };
-    mount(fake_wallet(), fake_transport(fake_client(), fake_client()), ref);
+    mount(fakeWallet(), fakeTransport(fakeClient(), fakeClient()), ref);
     expect(ref.current?.status).toBe("disconnected");
     expect(ref.current?.clientReady).toBe(false);
   });
 
   it("transitions verifying -> authenticated when stored wallet matches", async () => {
-    writeStoredSession(SCOPED_NS, future_session({ wallet_address: WALLET_A }));
+    writeStoredSession(SCOPED_NS, futureSession({ walletAddress: WALLET_A }));
     const ref: { current: ProbeRef | null } = { current: null };
-    const transport = fake_transport(fake_client(), fake_client());
+    const transport = fakeTransport(fakeClient(), fakeClient());
     mount(
-      fake_wallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
+      fakeWallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
       transport,
       ref,
     );
@@ -152,11 +152,11 @@ describe("AuthProvider", () => {
   });
 
   it("tears down to disconnected when stored wallet mismatches connected wallet", async () => {
-    writeStoredSession(SCOPED_NS, future_session({ wallet_address: WALLET_A }));
+    writeStoredSession(SCOPED_NS, futureSession({ walletAddress: WALLET_A }));
     const ref: { current: ProbeRef | null } = { current: null };
-    const transport = fake_transport(fake_client(), fake_client());
+    const transport = fakeTransport(fakeClient(), fakeClient());
     mount(
-      fake_wallet({ connected: true, publicKey: WALLET_B, hasSelectedWallet: true }),
+      fakeWallet({ connected: true, publicKey: WALLET_B, hasSelectedWallet: true }),
       transport,
       ref,
     );
@@ -169,11 +169,11 @@ describe("AuthProvider", () => {
   });
 
   it("stays in verifying while wallet is autoConnecting", async () => {
-    writeStoredSession(SCOPED_NS, future_session({ wallet_address: WALLET_A }));
+    writeStoredSession(SCOPED_NS, futureSession({ walletAddress: WALLET_A }));
     const ref: { current: ProbeRef | null } = { current: null };
-    const transport = fake_transport(fake_client(), fake_client());
+    const transport = fakeTransport(fakeClient(), fakeClient());
     mount(
-      fake_wallet({ connected: false, connecting: true, hasSelectedWallet: true }),
+      fakeWallet({ connected: false, connecting: true, hasSelectedWallet: true }),
       transport,
       ref,
     );
@@ -182,9 +182,9 @@ describe("AuthProvider", () => {
   });
 
   it("tears down when stored session present but no wallet is selected", async () => {
-    writeStoredSession(SCOPED_NS, future_session({ wallet_address: WALLET_A }));
+    writeStoredSession(SCOPED_NS, futureSession({ walletAddress: WALLET_A }));
     const ref: { current: ProbeRef | null } = { current: null };
-    mount(fake_wallet({ connected: false, hasSelectedWallet: false }), fake_transport(fake_client(), fake_client()), ref);
+    mount(fakeWallet({ connected: false, hasSelectedWallet: false }), fakeTransport(fakeClient(), fakeClient()), ref);
     await waitFor(() => {
       expect(ref.current?.status).toBe("disconnected");
     });
@@ -192,11 +192,11 @@ describe("AuthProvider", () => {
   });
 
   it("tears down on cross-tab storage clear", async () => {
-    writeStoredSession(SCOPED_NS, future_session({ wallet_address: WALLET_A }));
+    writeStoredSession(SCOPED_NS, futureSession({ walletAddress: WALLET_A }));
     const ref: { current: ProbeRef | null } = { current: null };
     mount(
-      fake_wallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
-      fake_transport(fake_client(), fake_client()),
+      fakeWallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
+      fakeTransport(fakeClient(), fakeClient()),
       ref,
     );
     await waitFor(() => {
@@ -220,11 +220,11 @@ describe("AuthProvider", () => {
     // Regression: a second tab signing in with the same wallet mints a fresh
     // token and rewrites our storage slot. That is not an intrusion, so we must
     // stay authenticated rather than tear every other tab down.
-    writeStoredSession(SCOPED_NS, future_session({ wallet_address: WALLET_A }));
+    writeStoredSession(SCOPED_NS, futureSession({ walletAddress: WALLET_A }));
     const ref: { current: ProbeRef | null } = { current: null };
     mount(
-      fake_wallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
-      fake_transport(fake_client(), fake_client()),
+      fakeWallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
+      fakeTransport(fakeClient(), fakeClient()),
       ref,
     );
     await waitFor(() => {
@@ -235,7 +235,7 @@ describe("AuthProvider", () => {
         new StorageEvent("storage", {
           key: storageKeyFor(SCOPED_NS),
           newValue: JSON.stringify(
-            future_session({ wallet_address: WALLET_A, identity: "id", token: "tok-rotated" }),
+            futureSession({ walletAddress: WALLET_A, identity: "id", token: "tok-rotated" }),
           ),
         }),
       );
@@ -245,11 +245,11 @@ describe("AuthProvider", () => {
   });
 
   it("tears down on a cross-tab takeover by a different wallet", async () => {
-    writeStoredSession(SCOPED_NS, future_session({ wallet_address: WALLET_A }));
+    writeStoredSession(SCOPED_NS, futureSession({ walletAddress: WALLET_A }));
     const ref: { current: ProbeRef | null } = { current: null };
     mount(
-      fake_wallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
-      fake_transport(fake_client(), fake_client()),
+      fakeWallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
+      fakeTransport(fakeClient(), fakeClient()),
       ref,
     );
     await waitFor(() => {
@@ -260,7 +260,7 @@ describe("AuthProvider", () => {
         new StorageEvent("storage", {
           key: storageKeyFor(SCOPED_NS),
           newValue: JSON.stringify(
-            future_session({ wallet_address: WALLET_B, identity: "id", token: "tok-b" }),
+            futureSession({ walletAddress: WALLET_B, identity: "id", token: "tok-b" }),
           ),
         }),
       );
@@ -271,11 +271,11 @@ describe("AuthProvider", () => {
   });
 
   it("tears down on a cross-tab takeover by a different identity", async () => {
-    writeStoredSession(SCOPED_NS, future_session({ wallet_address: WALLET_A, identity: "id" }));
+    writeStoredSession(SCOPED_NS, futureSession({ walletAddress: WALLET_A, identity: "id" }));
     const ref: { current: ProbeRef | null } = { current: null };
     mount(
-      fake_wallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
-      fake_transport(fake_client(), fake_client()),
+      fakeWallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
+      fakeTransport(fakeClient(), fakeClient()),
       ref,
     );
     await waitFor(() => {
@@ -286,7 +286,7 @@ describe("AuthProvider", () => {
         new StorageEvent("storage", {
           key: storageKeyFor(SCOPED_NS),
           newValue: JSON.stringify(
-            future_session({ wallet_address: WALLET_A, identity: "id-other", token: "tok-2" }),
+            futureSession({ walletAddress: WALLET_A, identity: "id-other", token: "tok-2" }),
           ),
         }),
       );
@@ -300,10 +300,10 @@ describe("AuthProvider", () => {
     // Regression: a tab that is not signed in must not clear the slot another
     // tab just wrote - doing so bounces that tab straight back out.
     const ref: { current: ProbeRef | null } = { current: null };
-    mount(fake_wallet(), fake_transport(fake_client(), fake_client()), ref);
+    mount(fakeWallet(), fakeTransport(fakeClient(), fakeClient()), ref);
     expect(ref.current?.status).toBe("disconnected");
 
-    const written = JSON.stringify(future_session({ wallet_address: WALLET_A }));
+    const written = JSON.stringify(futureSession({ walletAddress: WALLET_A }));
     localStorage.setItem(storageKeyFor(SCOPED_NS), written);
     act(() => {
       window.dispatchEvent(
@@ -318,11 +318,11 @@ describe("AuthProvider", () => {
   });
 
   it("signIn happy path: disconnected -> verifying -> authenticated", async () => {
-    const signin_client = fake_client();
-    signin_client.login_challenge
+    const signinClient = fakeClient();
+    signinClient.loginChallenge
       .mockResolvedValueOnce({
         kind: "challenge",
-        challenge_id: "c1",
+        challengeId: "c1",
         message: "msg",
         nonce: "n",
       })
@@ -331,12 +331,12 @@ describe("AuthProvider", () => {
         token: "tok",
         identity: "id",
       });
-    const authed_client = fake_client();
-    const transport = fake_transport(signin_client, authed_client);
+    const authedClient = fakeClient();
+    const transport = fakeTransport(signinClient, authedClient);
 
     const ref: { current: ProbeRef | null } = { current: null };
     mount(
-      fake_wallet({
+      fakeWallet({
         connected: true,
         publicKey: WALLET_A,
         hasSelectedWallet: true,
@@ -352,7 +352,7 @@ describe("AuthProvider", () => {
     await waitFor(() => {
       expect(ref.current?.status).toBe("authenticated");
       expect(ref.current?.clientReady).toBe(true);
-      expect(ref.current?.wallet_address).toBe(WALLET_A);
+      expect(ref.current?.walletAddress).toBe(WALLET_A);
     });
     expect(localStorage.getItem(storageKeyFor(SCOPED_NS))).not.toBeNull();
   });
@@ -360,8 +360,8 @@ describe("AuthProvider", () => {
   it("signIn rejects when wallet is not connected", async () => {
     const ref: { current: ProbeRef | null } = { current: null };
     mount(
-      fake_wallet({ connected: false }),
-      fake_transport(fake_client(), fake_client()),
+      fakeWallet({ connected: false }),
+      fakeTransport(fakeClient(), fakeClient()),
       ref,
     );
     await act(async () => {
@@ -373,12 +373,12 @@ describe("AuthProvider", () => {
   });
 
   it("signIn surfaces transport errors and does not persist a session", async () => {
-    const signin_client = fake_client();
-    signin_client.login_challenge.mockRejectedValueOnce(new Error("network down"));
-    const transport = fake_transport(signin_client, fake_client());
+    const signinClient = fakeClient();
+    signinClient.loginChallenge.mockRejectedValueOnce(new Error("network down"));
+    const transport = fakeTransport(signinClient, fakeClient());
     const ref: { current: ProbeRef | null } = { current: null };
     mount(
-      fake_wallet({
+      fakeWallet({
         connected: true,
         publicKey: WALLET_A,
         hasSelectedWallet: true,
@@ -398,11 +398,11 @@ describe("AuthProvider", () => {
     // The fix for the multi-tab logout bug: each tab writes its own slot
     // `${NS}.${tabId}.auth`, never the shared `${NS}.auth`, so concurrent
     // sign-ins in different tabs cannot stomp each other.
-    const signin_client = fake_client();
-    signin_client.login_challenge
+    const signinClient = fakeClient();
+    signinClient.loginChallenge
       .mockResolvedValueOnce({
         kind: "challenge",
-        challenge_id: "c1",
+        challengeId: "c1",
         message: "msg",
         nonce: "n",
       })
@@ -413,8 +413,8 @@ describe("AuthProvider", () => {
       });
     const ref: { current: ProbeRef | null } = { current: null };
     mount(
-      fake_wallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
-      fake_transport(signin_client, fake_client()),
+      fakeWallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
+      fakeTransport(signinClient, fakeClient()),
       ref,
     );
     await act(async () => {

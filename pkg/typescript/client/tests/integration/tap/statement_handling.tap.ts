@@ -8,20 +8,20 @@
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Client, WsClient } from '../../../src';
-import { wait_for_database } from '../setup';
+import { waitForDatabase } from '../setup';
 import { Shape } from '@reifydb/core';
 
 describe('Statement Handling', () => {
-    let ws_client: WsClient;
+    let wsClient: WsClient;
 
     beforeAll(async () => {
-        await wait_for_database();
+        await waitForDatabase();
     }, 30000);
 
     beforeEach(async () => {
         try {
-            ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
-                timeout_ms: 10000,
+            wsClient = await Client.connectWs(process.env.REIFYDB_WS_URL, {
+                timeoutMs: 10000,
                 token: process.env.REIFYDB_TOKEN
             });
         } catch (error) {
@@ -31,20 +31,20 @@ describe('Statement Handling', () => {
     }, 15000);
 
     afterEach(async () => {
-        if (ws_client) {
+        if (wsClient) {
             try {
-                ws_client.disconnect();
+                wsClient.disconnect();
             } catch (error) {
                 console.error('⚠️ Error during disconnect:', error);
             }
-            ws_client = null;
+            wsClient = null;
         }
     });
 
     describe('command', () => {
         
         it('no_statements', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 '',
                 null,
                 []
@@ -53,7 +53,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('single_empty_statement', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 ';',
                 null,
                 []
@@ -62,7 +62,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('many_empty_statements', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 ';;;;;',
                 null,
                 []
@@ -71,7 +71,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('mixed_empty_and_non_empty', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
                 null,
                 [
@@ -91,7 +91,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('single_statement_with_semicolon', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 'MAP {result: 1};',
                 null,
                 [Shape.object({ result: Shape.int4() })]
@@ -102,7 +102,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('multiple_statements_same_structure', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 'OUTPUT MAP {result: 1};OUTPUT MAP {result: 2};MAP {result: 3};',
                 null,
                 [
@@ -127,7 +127,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('multiple_statements_different_structure', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 "OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };MAP {result: 'ReifyDB'};",
                 null,
                 [
@@ -153,7 +153,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('statement_without_trailing_semicolon', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 'MAP {x: 1}',
                 null,
                 [Shape.object({ x: Shape.int4() })]
@@ -164,7 +164,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('multiple_statements_no_trailing_semicolon', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 'OUTPUT MAP {x: 1};MAP {y: 2}',
                 null,
                 [
@@ -184,7 +184,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('statement_with_whitespace', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 '  OUTPUT MAP {result: 1}  ;  MAP {result: 2}  ',
                 null,
                 [
@@ -207,7 +207,7 @@ describe('Statement Handling', () => {
     describe('query', () => {
         
         it('query_no_statements', async () => {
-            const frames = await ws_client.query(
+            const frames = await wsClient.query(
                 '',
                 null,
                 []
@@ -216,7 +216,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('query_single_empty_statement', async () => {
-            const frames = await ws_client.query(
+            const frames = await wsClient.query(
                 ';',
                 null,
                 []
@@ -225,7 +225,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('query_many_empty_statements', async () => {
-            const frames = await ws_client.query(
+            const frames = await wsClient.query(
                 ';;;;;',
                 null,
                 []
@@ -234,7 +234,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('query_mixed_empty_and_non_empty', async () => {
-            const frames = await ws_client.query(
+            const frames = await wsClient.query(
                 ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
                 null,
                 [
@@ -254,7 +254,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('query_single_statement_with_semicolon', async () => {
-            const frames = await ws_client.query(
+            const frames = await wsClient.query(
                 'MAP {result: 1};',
                 null,
                 [Shape.object({ result: Shape.int4() })]
@@ -265,7 +265,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('query_multiple_statements_same_structure', async () => {
-            const frames = await ws_client.query(
+            const frames = await wsClient.query(
                 'OUTPUT MAP {result: 1};OUTPUT MAP {result: 2};MAP {result: 3};',
                 null,
                 [
@@ -290,7 +290,7 @@ describe('Statement Handling', () => {
         }, 1000);
 
         it('query_multiple_statements_different_structure', async () => {
-            const frames = await ws_client.query(
+            const frames = await wsClient.query(
                 "OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };MAP {result: 'ReifyDB'};",
                 null,
                 [

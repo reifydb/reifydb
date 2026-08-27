@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Little-endian binary writer backed by a growable Uint8Array.
-
 export class BinaryWriter {
     private buf: Uint8Array;
     private view: DataView;
     private _length: number;
 
-    constructor(initial_capacity: number = 4096) {
-        this.buf = new Uint8Array(initial_capacity);
+    constructor(initialCapacity: number = 4096) {
+        this.buf = new Uint8Array(initialCapacity);
         this.view = new DataView(this.buf.buffer);
         this._length = 0;
     }
@@ -122,20 +120,19 @@ export class BinaryWriter {
 
     zeroes(n: number): void {
         this.grow(n);
-        this._length += n; // already zero-initialized
+        this._length += n;
     }
 
-    // Overwrite a previously reserved region.
-    patch_u8(offset: number, v: number): void {
+    patchU8(offset: number, v: number): void {
         this.buf[offset] = v & 0xff;
     }
-    patch_u16(offset: number, v: number): void {
+    patchU16(offset: number, v: number): void {
         this.view.setUint16(offset, v, true);
     }
-    patch_u32(offset: number, v: number): void {
+    patchU32(offset: number, v: number): void {
         this.view.setUint32(offset, v >>> 0, true);
     }
-    patch_bytes(offset: number, b: Uint8Array): void {
+    patchBytes(offset: number, b: Uint8Array): void {
         this.buf.set(b, offset);
     }
 

@@ -73,10 +73,15 @@ export type PrimitiveToTS<T extends BaseType> = PrimitiveTSMap[T];
 
 export type PrimitiveToValue<T extends BaseType> = PrimitiveValueMap[T];
 
+export type CamelCase<S extends string> =
+    S extends `${infer Head}_${infer Tail}`
+        ? `${Head}${Capitalize<CamelCase<Tail>>}`
+        : S;
+
 export type InferShape<S> =
     S extends PrimitiveShapeNode<infer T> ? T extends BaseType ? PrimitiveToTS<T> : never :
         S extends ValueShapeNode<infer T> ? T extends BaseType ? PrimitiveToValue<T> : never :
-            S extends ObjectShapeNode<infer P> ? { [K in keyof P]: InferShape<P[K]> } :
+            S extends ObjectShapeNode<infer P> ? { [K in keyof P as CamelCase<K & string>]: InferShape<P[K]> } :
                 S extends ArrayShapeNode<infer T> ? InferShape<T>[] :
                     S extends OptionalShapeNode<infer T> ? InferShape<T> | undefined :
                         never;

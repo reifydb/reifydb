@@ -3,76 +3,84 @@
 import {ShapeNode} from '.';
 import {FrameResults} from '../types';
 
-export function transform_frames<const S extends readonly ShapeNode[]>(
+function snakeToCamel(key: string): string {
+    return key.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+}
+
+export function transformFrames<const S extends readonly ShapeNode[]>(
     frames: any[][],
     shapes: S
 ): FrameResults<S> {
-    const transformed: any[][] = frames.map((frame: any[], frame_index: number) => {
-        const frame_shape = shapes[frame_index];
-        if (!frame_shape) {
+    const transformed: any[][] = frames.map((frame: any[], frameIndex: number) => {
+        const frameShape = shapes[frameIndex];
+        if (!frameShape) {
             return frame;
         }
-        return frame.map((row: any) => transform_result(row, frame_shape));
+        return frame.map((row: any) => transformResult(row, frameShape));
     });
     return transformed as FrameResults<S>;
 }
 
-export function transform_result(row: any, result_shape: any): any {
-    if (result_shape && result_shape.kind === 'object' && result_shape.properties) {
-        const transformed_row: any = {};
+export function transformResult(row: any, resultShape: any): any {
+    if (resultShape && resultShape.kind === 'object' && resultShape.properties) {
+        const transformedRow: any = {};
         for (const [key, value] of Object.entries(row)) {
-            const property_shape = result_shape.properties[key];
-            if (property_shape && property_shape.kind === 'primitive') {
+            const propertyShape = resultShape.properties[key];
+            const outputKey = snakeToCamel(key);
+            if (propertyShape && propertyShape.kind === 'primitive') {
                 if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
-                    const raw_value = (value as any).valueOf();
-                    transformed_row[key] = coerce_to_primitive_type(raw_value, property_shape.type);
+                    const rawValue = (value as any).valueOf();
+                    transformedRow[outputKey] = coerceToPrimitiveType(rawValue, propertyShape.type);
                 } else {
-                    transformed_row[key] = coerce_to_primitive_type(value, property_shape.type);
+                    transformedRow[outputKey] = coerceToPrimitiveType(value, propertyShape.type);
                 }
-            } else if (property_shape && property_shape.kind === 'value') {
-                transformed_row[key] = value;
+            } else if (propertyShape && propertyShape.kind === 'value') {
+                transformedRow[outputKey] = value;
             } else {
-                transformed_row[key] = property_shape ? transform_result(value, property_shape) : value;
+                transformedRow[outputKey] = propertyShape ? transformResult(value, propertyShape) : value;
             }
         }
-        return transformed_row;
+        return transformedRow;
     }
 
-    if (result_shape && result_shape.kind === 'primitive') {
+    if (resultShape && resultShape.kind === 'primitive') {
         if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-            return coerce_to_primitive_type(row.valueOf(), result_shape.type);
+            return coerceToPrimitiveType(row.valueOf(), resultShape.type);
         }
-        return coerce_to_primitive_type(row, result_shape.type);
+        return coerceToPrimitiveType(row, resultShape.type);
     }
 
-    if (result_shape && result_shape.kind === 'value') {
+    if (resultShape && resultShape.kind === 'value') {
         return row;
     }
 
-    if (result_shape && result_shape.kind === 'array') {
+    if (resultShape && resultShape.kind === 'array') {
         if (Array.isArray(row)) {
-            return row.map((item: any) => transform_result(item, result_shape.items));
+            return row.map((item: any) => transformResult(item, resultShape.items));
         }
         return row;
     }
 
-    if (result_shape && result_shape.kind === 'optional') {
-        if (row === undefined || row === null) {
+    if (resultShape && resultShape.kind === 'optional') {
+        if (row === undefined) {
             return undefined;
         }
-        return transform_result(row, result_shape.shape);
+        if (row === null) {
+            return null;
+        }
+        return transformResult(row, resultShape.shape);
     }
 
     return row;
 }
 
-function coerce_to_primitive_type(value: any, value_type: string): any {
+function coerceToPrimitiveType(value: any, valueType: string): any {
     if (value === undefined || value === null) {
         return value;
     }
 
-    const bigint_types = ['Int8', 'Int16', 'Uint8', 'Uint16'];
-    if (bigint_types.includes(value_type)) {
+    const bigintTypes = ['Int8', 'Int16', 'Uint8', 'Uint16'];
+    if (bigintTypes.includes(valueType)) {
         if (typeof value === 'bigint') {
             return value;
         }

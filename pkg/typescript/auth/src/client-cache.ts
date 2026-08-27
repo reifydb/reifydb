@@ -8,12 +8,12 @@ import type { AuthTransport } from "./transport";
 // twice with the same inputs, which previously opened two sockets. We cache the
 // in-flight promise so both runs share one connection.
 
-let current_key: string | null = null;
-let current_client: AuthCapableClient | null = null;
-let current_transport: AuthTransport | null = null;
-let pending_promise: Promise<AuthCapableClient> | null = null;
+let currentKey: string | null = null;
+let cachedClient: AuthCapableClient | null = null;
+let currentTransport: AuthTransport | null = null;
+let pendingPromise: Promise<AuthCapableClient> | null = null;
 
-function key_of(kind: string, url: string, token: string): string {
+function keyOf(kind: string, url: string, token: string): string {
   return `${kind}|${url}|${token}`;
 }
 
@@ -22,28 +22,28 @@ export async function ensureClient<T extends AuthCapableClient>(
   url: string,
   token: string,
 ): Promise<T> {
-  const key = key_of(transport.kind, url, token);
+  const key = keyOf(transport.kind, url, token);
 
-  if (current_key === key) {
-    if (current_client) return current_client as T;
-    if (pending_promise) return pending_promise as Promise<T>;
+  if (currentKey === key) {
+    if (cachedClient) return cachedClient as T;
+    if (pendingPromise) return pendingPromise as Promise<T>;
   }
 
   // New (kind, url, token) — release any prior client, start fresh.
-  if (current_client && current_transport) {
+  if (cachedClient && currentTransport) {
     try {
-      (current_transport as AuthTransport<AuthCapableClient>).release(current_client);
+      (currentTransport as AuthTransport<AuthCapableClient>).release(cachedClient);
     } catch {
       // release must be idempotent; ignore
     }
-    current_client = null;
+    cachedClient = null;
   }
-  current_key = key;
-  current_transport = transport as AuthTransport;
+  currentKey = key;
+  currentTransport = transport as AuthTransport;
 
   const p = transport.connect(url, token).then((client) => {
     // Another ensure/clear ran while we were connecting — drop this one.
-    if (current_key !== key) {
+    if (currentKey !== key) {
       try {
         transport.release(client);
       } catch {
@@ -51,31 +51,30 @@ export async function ensureClient<T extends AuthCapableClient>(
       }
       throw new Error("@reifydb/auth: client connect superseded");
     }
-    current_client = client;
-    pending_promise = null;
+    cachedClient = client;
+    pendingPromise = null;
     return client;
   });
-  pending_promise = p as Promise<AuthCapableClient>;
+  pendingPromise = p as Promise<AuthCapableClient>;
   return p;
 }
 
 export function clearClient(): void {
-  if (current_client && current_transport) {
+  if (cachedClient && currentTransport) {
     try {
-      (current_transport as AuthTransport<AuthCapableClient>).release(current_client);
+      (currentTransport as AuthTransport<AuthCapableClient>).release(cachedClient);
     } catch {
-      // ignore
     }
   }
-  current_key = null;
-  current_client = null;
-  current_transport = null;
-  pending_promise = null;
+  currentKey = null;
+  cachedClient = null;
+  currentTransport = null;
+  pendingPromise = null;
 }
 
 export function currentClient<T extends AuthCapableClient = AuthCapableClient>(): T {
-  if (!current_client) {
+  if (!cachedClient) {
     throw new Error("@reifydb/auth: no authenticated client; call ensureClient first");
   }
-  return current_client as T;
+  return cachedClient as T;
 }

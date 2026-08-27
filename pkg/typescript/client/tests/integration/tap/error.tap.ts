@@ -2,21 +2,21 @@
 // Copyright (c) 2026 ReifyDB
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
-import {wait_for_database} from "../setup";
+import {waitForDatabase} from "../setup";
 import {Client, WsClient} from "../../../src";
 import {Shape} from "@reifydb/core";
 
 describe('Error Handling', () => {
-    let ws_client: WsClient;
+    let wsClient: WsClient;
 
     beforeAll(async () => {
-        await wait_for_database();
+        await waitForDatabase();
     }, 30000);
 
     beforeEach(async () => {
         try {
-            ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
-                timeout_ms: 10000,
+            wsClient = await Client.connectWs(process.env.REIFYDB_WS_URL, {
+                timeoutMs: 10000,
                 token: process.env.REIFYDB_TOKEN
             });
         } catch (error) {
@@ -26,19 +26,19 @@ describe('Error Handling', () => {
     }, 15000);
 
     afterEach(async () => {
-        if (ws_client) {
+        if (wsClient) {
             try {
-                ws_client.disconnect();
+                wsClient.disconnect();
             } catch (error) {
                 console.error('⚠️ Error during disconnect:', error);
             }
-            ws_client = null;
+            wsClient = null;
         }
     });
 
     it('command_out_of_range', async () => {
         await expect(
-            ws_client.command(
+            wsClient.command(
                 "MAP {result: cast(129, int1)};",
                 {},
                 [Shape.object({result: Shape.int1Value()})]
@@ -64,7 +64,7 @@ describe('Error Handling', () => {
 
     it('query_out_of_range', async () => {
         await expect(
-            ws_client.query(
+            wsClient.query(
                 "MAP {result: cast(129, int1)};",
                 {},
                 [Shape.object({result: Shape.int1Value()})]

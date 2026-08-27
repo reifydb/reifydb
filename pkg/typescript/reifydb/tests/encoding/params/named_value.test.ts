@@ -23,7 +23,7 @@ describe('Named Parameters (value)', () => {
     describe('admin', () => {
 
         it('Boolean', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new BooleanValue(true) },
                 [Shape.object({result: Shape.booleanValue()})]
@@ -33,7 +33,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int1', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Int1Value(42) },
                 [Shape.object({result: Shape.int1Value()})]
@@ -43,7 +43,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int2', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Int2Value(1234) },
                 [Shape.object({result: Shape.int2Value()})]
@@ -53,7 +53,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int4', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Int4Value(12345678) },
                 [Shape.object({result: Shape.int4Value()})]
@@ -63,7 +63,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int8', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Int8Value(BigInt("9223372036854775807")) },
                 [Shape.object({result: Shape.int8Value()})]
@@ -73,7 +73,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int16', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Int16Value(BigInt("170141183460469231731687303715884105727")) },
                 [Shape.object({result: Shape.int16Value()})]
@@ -83,7 +83,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint1', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Uint1Value(255) },
                 [Shape.object({result: Shape.uint1Value()})]
@@ -93,7 +93,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint2', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Uint2Value(65535) },
                 [Shape.object({result: Shape.uint2Value()})]
@@ -103,7 +103,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint4', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Uint4Value(4294967295) },
                 [Shape.object({result: Shape.uint4Value()})]
@@ -113,7 +113,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint8', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Uint8Value(BigInt("18446744073709551615")) },
                 [Shape.object({result: Shape.uint8Value()})]
@@ -123,7 +123,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint16', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Uint16Value(BigInt("340282366920938463463374607431768211455")) },
                 [Shape.object({result: Shape.uint16Value()})]
@@ -133,7 +133,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Float4', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Float4Value(3.14) },
                 [Shape.object({result: Shape.float4Value()})]
@@ -143,7 +143,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Float8', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Float8Value(3.141592653589793) },
                 [Shape.object({result: Shape.float8Value()})]
@@ -153,7 +153,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Decimal', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new DecimalValue("123.456789") },
                 [Shape.object({result: Shape.decimalValue()})]
@@ -163,7 +163,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Utf8', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Utf8Value("Hello, World!") },
                 [Shape.object({result: Shape.utf8Value()})]
@@ -174,7 +174,7 @@ describe('Named Parameters (value)', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new BlobValue(data) },
                 [Shape.object({result: Shape.blobValue()})]
@@ -185,7 +185,7 @@ describe('Named Parameters (value)', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new DateValue(date) },
                 [Shape.object({result: Shape.dateValue()})]
@@ -195,7 +195,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Time', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new TimeValue("14:30:00.123456789") },
                 [Shape.object({result: Shape.timeValue()})]
@@ -206,7 +206,7 @@ describe('Named Parameters (value)', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new DateTimeValue(datetime) },
                 [Shape.object({result: Shape.dateTimeValue()})]
@@ -216,7 +216,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Duration', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new DurationValue("P1DT2H30M") },
                 [Shape.object({result: Shape.durationValue()})]
@@ -227,7 +227,7 @@ describe('Named Parameters (value)', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Uuid4Value(uuid) },
                 [Shape.object({result: Shape.uuid4Value()})]
@@ -238,7 +238,7 @@ describe('Named Parameters (value)', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new Uuid7Value(uuid) },
                 [Shape.object({result: Shape.uuid7Value()})]
@@ -249,7 +249,7 @@ describe('Named Parameters (value)', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new IdentityIdValue(identityId) },
                 [Shape.object({result: Shape.identityIdValue()})]
@@ -259,7 +259,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('None', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $value}',
                 { value: new NoneValue() },
                 [Shape.object({result: Shape.noneValue()})]
@@ -273,7 +273,7 @@ describe('Named Parameters (value)', () => {
     describe('command', () => {
 
         it('Boolean', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new BooleanValue(true) },
                 [Shape.object({result: Shape.booleanValue()})]
@@ -283,7 +283,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int1', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Int1Value(42) },
                 [Shape.object({result: Shape.int1Value()})]
@@ -293,7 +293,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int2', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Int2Value(1234) },
                 [Shape.object({result: Shape.int2Value()})]
@@ -303,7 +303,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int4', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Int4Value(12345678) },
                 [Shape.object({result: Shape.int4Value()})]
@@ -313,7 +313,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int8', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Int8Value(BigInt("9223372036854775807")) },
                 [Shape.object({result: Shape.int8Value()})]
@@ -323,7 +323,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int16', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Int16Value(BigInt("170141183460469231731687303715884105727")) },
                 [Shape.object({result: Shape.int16Value()})]
@@ -333,7 +333,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint1', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Uint1Value(255) },
                 [Shape.object({result: Shape.uint1Value()})]
@@ -343,7 +343,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint2', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Uint2Value(65535) },
                 [Shape.object({result: Shape.uint2Value()})]
@@ -353,7 +353,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint4', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Uint4Value(4294967295) },
                 [Shape.object({result: Shape.uint4Value()})]
@@ -363,7 +363,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint8', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Uint8Value(BigInt("18446744073709551615")) },
                 [Shape.object({result: Shape.uint8Value()})]
@@ -373,7 +373,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint16', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Uint16Value(BigInt("340282366920938463463374607431768211455")) },
                 [Shape.object({result: Shape.uint16Value()})]
@@ -383,7 +383,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Float4', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Float4Value(3.14) },
                 [Shape.object({result: Shape.float4Value()})]
@@ -393,7 +393,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Float8', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Float8Value(3.141592653589793) },
                 [Shape.object({result: Shape.float8Value()})]
@@ -403,7 +403,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Decimal', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new DecimalValue("123.456789") },
                 [Shape.object({result: Shape.decimalValue()})]
@@ -413,7 +413,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Utf8', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Utf8Value("Hello, World!") },
                 [Shape.object({result: Shape.utf8Value()})]
@@ -424,7 +424,7 @@ describe('Named Parameters (value)', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new BlobValue(data) },
                 [Shape.object({result: Shape.blobValue()})]
@@ -435,7 +435,7 @@ describe('Named Parameters (value)', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new DateValue(date) },
                 [Shape.object({result: Shape.dateValue()})]
@@ -445,7 +445,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Time', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new TimeValue("14:30:00.123456789") },
                 [Shape.object({result: Shape.timeValue()})]
@@ -456,7 +456,7 @@ describe('Named Parameters (value)', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new DateTimeValue(datetime) },
                 [Shape.object({result: Shape.dateTimeValue()})]
@@ -466,7 +466,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Duration', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new DurationValue("P1DT2H30M") },
                 [Shape.object({result: Shape.durationValue()})]
@@ -477,7 +477,7 @@ describe('Named Parameters (value)', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Uuid4Value(uuid) },
                 [Shape.object({result: Shape.uuid4Value()})]
@@ -488,7 +488,7 @@ describe('Named Parameters (value)', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new Uuid7Value(uuid) },
                 [Shape.object({result: Shape.uuid7Value()})]
@@ -499,7 +499,7 @@ describe('Named Parameters (value)', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new IdentityIdValue(identityId) },
                 [Shape.object({result: Shape.identityIdValue()})]
@@ -509,7 +509,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('None', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $value}',
                 { value: new NoneValue() },
                 [Shape.object({result: Shape.noneValue()})]
@@ -523,7 +523,7 @@ describe('Named Parameters (value)', () => {
     describe('query', () => {
 
         it('Boolean', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new BooleanValue(true) },
                 [Shape.object({result: Shape.booleanValue()})]
@@ -533,7 +533,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int1', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Int1Value(42) },
                 [Shape.object({result: Shape.int1Value()})]
@@ -543,7 +543,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int2', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Int2Value(1234) },
                 [Shape.object({result: Shape.int2Value()})]
@@ -553,7 +553,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int4', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Int4Value(12345678) },
                 [Shape.object({result: Shape.int4Value()})]
@@ -563,7 +563,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int8', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Int8Value(BigInt("9223372036854775807")) },
                 [Shape.object({result: Shape.int8Value()})]
@@ -573,7 +573,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Int16', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Int16Value(BigInt("170141183460469231731687303715884105727")) },
                 [Shape.object({result: Shape.int16Value()})]
@@ -583,7 +583,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint1', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Uint1Value(255) },
                 [Shape.object({result: Shape.uint1Value()})]
@@ -593,7 +593,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint2', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Uint2Value(65535) },
                 [Shape.object({result: Shape.uint2Value()})]
@@ -603,7 +603,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint4', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Uint4Value(4294967295) },
                 [Shape.object({result: Shape.uint4Value()})]
@@ -613,7 +613,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint8', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Uint8Value(BigInt("18446744073709551615")) },
                 [Shape.object({result: Shape.uint8Value()})]
@@ -623,7 +623,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Uint16', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Uint16Value(BigInt("340282366920938463463374607431768211455")) },
                 [Shape.object({result: Shape.uint16Value()})]
@@ -633,7 +633,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Float4', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Float4Value(3.14) },
                 [Shape.object({result: Shape.float4Value()})]
@@ -643,7 +643,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Float8', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Float8Value(3.141592653589793) },
                 [Shape.object({result: Shape.float8Value()})]
@@ -653,7 +653,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Decimal', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new DecimalValue("123.456789") },
                 [Shape.object({result: Shape.decimalValue()})]
@@ -663,7 +663,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Utf8', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Utf8Value("Hello, World!") },
                 [Shape.object({result: Shape.utf8Value()})]
@@ -674,7 +674,7 @@ describe('Named Parameters (value)', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new BlobValue(data) },
                 [Shape.object({result: Shape.blobValue()})]
@@ -685,7 +685,7 @@ describe('Named Parameters (value)', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new DateValue(date) },
                 [Shape.object({result: Shape.dateValue()})]
@@ -695,7 +695,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Time', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new TimeValue("14:30:00.123456789") },
                 [Shape.object({result: Shape.timeValue()})]
@@ -706,7 +706,7 @@ describe('Named Parameters (value)', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new DateTimeValue(datetime) },
                 [Shape.object({result: Shape.dateTimeValue()})]
@@ -716,7 +716,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('Duration', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new DurationValue("P1DT2H30M") },
                 [Shape.object({result: Shape.durationValue()})]
@@ -727,7 +727,7 @@ describe('Named Parameters (value)', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Uuid4Value(uuid) },
                 [Shape.object({result: Shape.uuid4Value()})]
@@ -738,7 +738,7 @@ describe('Named Parameters (value)', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new Uuid7Value(uuid) },
                 [Shape.object({result: Shape.uuid7Value()})]
@@ -749,7 +749,7 @@ describe('Named Parameters (value)', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new IdentityIdValue(identityId) },
                 [Shape.object({result: Shape.identityIdValue()})]
@@ -759,7 +759,7 @@ describe('Named Parameters (value)', () => {
         });
 
         it('None', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $value}',
                 { value: new NoneValue() },
                 [Shape.object({result: Shape.noneValue()})]

@@ -3,9 +3,9 @@
 
 import {afterAll, beforeAll, afterEach, describe, expect, it} from 'vitest';
 import {renderHook, waitFor, act} from '@testing-library/react';
-import {useSubscription, ConnectionProvider, get_connection, clear_connection, Shape} from '../../../src';
-import {wait_for_database} from '../setup';
-import {create_test_table_for_hook} from './subscription-test-helpers';
+import {useSubscription, ConnectionProvider, getConnection, clearConnection, Shape} from '../../../src';
+import {waitForDatabase} from '../setup';
+import {createTestTableForHook} from './subscription-test-helpers';
 // @ts-ignore
 import React from 'react';
 
@@ -15,22 +15,22 @@ describe('useSubscription Hook', () => {
     );
 
     beforeAll(async () => {
-        await wait_for_database();
+        await waitForDatabase();
     }, 30000);
 
     afterEach(async () => {
-        await clear_connection();
+        await clearConnection();
         // Give connections time to clean up
         await new Promise(resolve => setTimeout(resolve, 100));
     });
 
     afterAll(async () => {
-        await clear_connection();
+        await clearConnection();
     });
 
     describe('Auto-subscribe Behavior', () => {
         it('should auto-subscribe on mount when enabled=true (default)', async () => {
-            const table_name = await create_test_table_for_hook(
+            const tableName = await createTestTableForHook(
                 'auto_sub',
                 ['id Int4', 'name Utf8']
             );
@@ -38,7 +38,7 @@ describe('useSubscription Hook', () => {
             const shape = Shape.object({id: Shape.number(), name: Shape.string()});
             const {result} = renderHook(
                 () => useSubscription(
-                    `from test::${table_name}`,
+                    `from test::${tableName}`,
                     null,
                     shape
                 ),
@@ -46,19 +46,19 @@ describe('useSubscription Hook', () => {
             );
 
             // Should start subscribing
-            expect(result.current.is_subscribing || result.current.is_subscribed).toBe(true);
+            expect(result.current.isSubscribing || result.current.isSubscribed).toBe(true);
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
-            expect(result.current.is_subscribing).toBe(false);
+            expect(result.current.isSubscribing).toBe(false);
             expect(result.current.error).toBeUndefined();
-            expect(result.current.subscription_id).toBeDefined();
+            expect(result.current.subscriptionId).toBeDefined();
         });
 
         it('should not subscribe when enabled=false', async () => {
-            const table_name = await create_test_table_for_hook(
+            const tableName = await createTestTableForHook(
                 'no_auto_sub',
                 ['id Int4']
             );
@@ -66,7 +66,7 @@ describe('useSubscription Hook', () => {
             const shape = Shape.object({id: Shape.number()});
             const {result} = renderHook(
                 () => useSubscription(
-                    `from test::${table_name}`,
+                    `from test::${tableName}`,
                     null,
                     shape,
                     {enabled: false}
@@ -77,13 +77,13 @@ describe('useSubscription Hook', () => {
             // Give it a moment to potentially subscribe (it shouldn't)
             await new Promise(resolve => setTimeout(resolve, 200));
 
-            expect(result.current.is_subscribed).toBe(false);
-            expect(result.current.is_subscribing).toBe(false);
-            expect(result.current.subscription_id).toBeUndefined();
+            expect(result.current.isSubscribed).toBe(false);
+            expect(result.current.isSubscribing).toBe(false);
+            expect(result.current.subscriptionId).toBeUndefined();
         });
 
         it('should subscribe when enabled switches from false to true', async () => {
-            const table_name = await create_test_table_for_hook(
+            const tableName = await createTestTableForHook(
                 'enable_toggle',
                 ['id Int4']
             );
@@ -91,7 +91,7 @@ describe('useSubscription Hook', () => {
             const shape = Shape.object({id: Shape.number()});
             const {result, rerender} = renderHook(
                 ({enabled}) => useSubscription(
-                    `from test::${table_name}`,
+                    `from test::${tableName}`,
                     null,
                     shape,
                     {enabled}
@@ -99,20 +99,20 @@ describe('useSubscription Hook', () => {
                 {initialProps: {enabled: false}, wrapper}
             );
 
-            expect(result.current.is_subscribed).toBe(false);
+            expect(result.current.isSubscribed).toBe(false);
 
             // Enable subscription
             rerender({enabled: true});
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
-            expect(result.current.subscription_id).toBeDefined();
+            expect(result.current.subscriptionId).toBeDefined();
         });
 
         it('should unsubscribe when enabled switches from true to false', async () => {
-            const table_name = await create_test_table_for_hook(
+            const tableName = await createTestTableForHook(
                 'disable_toggle',
                 ['id Int4']
             );
@@ -120,7 +120,7 @@ describe('useSubscription Hook', () => {
             const shape = Shape.object({id: Shape.number()});
             const {result, rerender} = renderHook(
                 ({enabled}) => useSubscription(
-                    `from test::${table_name}`,
+                    `from test::${tableName}`,
                     null,
                     shape,
                     {enabled}
@@ -129,24 +129,24 @@ describe('useSubscription Hook', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
-            const subscription_id = result.current.subscription_id;
-            expect(subscription_id).toBeDefined();
+            const subscriptionId = result.current.subscriptionId;
+            expect(subscriptionId).toBeDefined();
 
             // Disable subscription
             rerender({enabled: false});
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(false);
+                expect(result.current.isSubscribed).toBe(false);
             });
 
-            expect(result.current.subscription_id).toBeUndefined();
+            expect(result.current.subscriptionId).toBeUndefined();
         });
 
         it('should unsubscribe on unmount', async () => {
-            const table_name = await create_test_table_for_hook(
+            const tableName = await createTestTableForHook(
                 'unmount_cleanup',
                 ['id Int4']
             );
@@ -154,7 +154,7 @@ describe('useSubscription Hook', () => {
             const shape = Shape.object({id: Shape.number()});
             const {result, unmount} = renderHook(
                 () => useSubscription(
-                    `from test::${table_name}`,
+                    `from test::${tableName}`,
                     null,
                     shape
                 ),
@@ -162,7 +162,7 @@ describe('useSubscription Hook', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
             // Unmount should trigger cleanup
@@ -175,11 +175,11 @@ describe('useSubscription Hook', () => {
 
     describe('Dependency Re-subscription', () => {
         it('should re-subscribe when query changes', async () => {
-            const table1 = await create_test_table_for_hook(
+            const table1 = await createTestTableForHook(
                 'query_change1',
                 ['id Int4']
             );
-            const table2 = await create_test_table_for_hook(
+            const table2 = await createTestTableForHook(
                 'query_change2',
                 ['id Int4']
             );
@@ -195,23 +195,23 @@ describe('useSubscription Hook', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
-            const first_sub_id = result.current.subscription_id;
+            const firstSubId = result.current.subscriptionId;
 
             // Change query
             rerender({query: `from test::${table2}`});
 
             await waitFor(() => {
-                expect(result.current.subscription_id).not.toBe(first_sub_id);
+                expect(result.current.subscriptionId).not.toBe(firstSubId);
             });
 
-            expect(result.current.is_subscribed).toBe(true);
+            expect(result.current.isSubscribed).toBe(true);
         });
 
         it('should re-subscribe when params change', async () => {
-            const table_name = await create_test_table_for_hook(
+            const tableName = await createTestTableForHook(
                 'params_change',
                 ['id Int4', 'value Int4']
             );
@@ -219,7 +219,7 @@ describe('useSubscription Hook', () => {
             const shape = Shape.object({id: Shape.number(), value: Shape.number()});
             const {result, rerender} = renderHook(
                 ({params}) => useSubscription(
-                    `from test::${table_name} filter value == $val`,
+                    `from test::${tableName} filter value == $val`,
                     params,
                     shape
                 ),
@@ -227,23 +227,23 @@ describe('useSubscription Hook', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
-            const first_sub_id = result.current.subscription_id;
+            const firstSubId = result.current.subscriptionId;
 
             // Change params
             rerender({params: {val: 2}});
 
             await waitFor(() => {
-                expect(result.current.subscription_id).not.toBe(first_sub_id);
+                expect(result.current.subscriptionId).not.toBe(firstSubId);
             });
 
-            expect(result.current.is_subscribed).toBe(true);
+            expect(result.current.isSubscribed).toBe(true);
         });
 
         it('should re-subscribe when shape changes', async () => {
-            const table_name = await create_test_table_for_hook(
+            const tableName = await createTestTableForHook(
                 'shape_change',
                 ['id Int4', 'name Utf8', 'value Int4']
             );
@@ -253,7 +253,7 @@ describe('useSubscription Hook', () => {
 
             const {result, rerender} = renderHook(
                 ({shape}) => useSubscription(
-                    `from test::${table_name}`,
+                    `from test::${tableName}`,
                     null,
                     shape as any
                 ),
@@ -261,27 +261,27 @@ describe('useSubscription Hook', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
-            const first_sub_id = result.current.subscription_id;
+            const firstSubId = result.current.subscriptionId;
 
             // Change shape
             rerender({shape: shape2});
 
             await waitFor(() => {
-                expect(result.current.subscription_id).not.toBe(first_sub_id);
+                expect(result.current.subscriptionId).not.toBe(firstSubId);
             });
 
-            expect(result.current.is_subscribed).toBe(true);
+            expect(result.current.isSubscribed).toBe(true);
         });
 
-        it('should get new subscription_id after re-subscription', async () => {
-            const table1 = await create_test_table_for_hook(
+        it('should get new subscriptionId after re-subscription', async () => {
+            const table1 = await createTestTableForHook(
                 'resub_id1',
                 ['id Int4']
             );
-            const table2 = await create_test_table_for_hook(
+            const table2 = await createTestTableForHook(
                 'resub_id2',
                 ['id Int4']
             );
@@ -297,26 +297,26 @@ describe('useSubscription Hook', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
-            const first_sub_id = result.current.subscription_id;
-            expect(first_sub_id).toBeDefined();
+            const firstSubId = result.current.subscriptionId;
+            expect(firstSubId).toBeDefined();
 
             // Change query to trigger re-subscription
             rerender({query: `from test::${table2}`});
 
             await waitFor(() => {
-                const new_sub_id = result.current.subscription_id;
-                expect(new_sub_id).toBeDefined();
-                expect(new_sub_id).not.toBe(first_sub_id);
+                const newSubId = result.current.subscriptionId;
+                expect(newSubId).toBeDefined();
+                expect(newSubId).not.toBe(firstSubId);
             });
         });
     });
 
     describe('ConnectionProvider Integration', () => {
         it('should work with ConnectionProvider wrapper', async () => {
-            const table_name = await create_test_table_for_hook(
+            const tableName = await createTestTableForHook(
                 'provider_test',
                 ['id Int4', 'name Utf8']
             );
@@ -324,7 +324,7 @@ describe('useSubscription Hook', () => {
             const shape = Shape.object({id: Shape.number(), name: Shape.string()});
             const {result} = renderHook(
                 () => useSubscription(
-                    `from test::${table_name}`,
+                    `from test::${tableName}`,
                     null,
                     shape
                 ),
@@ -332,14 +332,14 @@ describe('useSubscription Hook', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
             // Trigger an INSERT
             await act(async () => {
-                const client = get_connection().get_client();
+                const client = getConnection().getClient();
                 await client!.command(
-                    `INSERT test::${table_name} FROM [{id: 1, name: 'test'}]`,
+                    `INSERT test::${tableName} FROM [{id: 1, name: 'test'}]`,
                     null,
                     []
                 );
@@ -354,37 +354,37 @@ describe('useSubscription Hook', () => {
         });
 
         it('should work with connection config override', async () => {
-            const table_name = await create_test_table_for_hook(
-                'config_override',
+            const tableName = await createTestTableForHook(
+                'configOverride',
                 ['id Int4']
             );
 
-            const override_config = {url: process.env.REIFYDB_WS_URL!, token: process.env.REIFYDB_TOKEN, options: {timeout_ms: 2000}};
+            const overrideConfig = {url: process.env.REIFYDB_WS_URL!, token: process.env.REIFYDB_TOKEN, options: {timeoutMs: 2000}};
             const shape = Shape.object({id: Shape.number()});
 
             const {result, unmount} = renderHook(
                 () => useSubscription(
-                    `from test::${table_name}`,
+                    `from test::${tableName}`,
                     null,
                     shape,
-                    {connection_config: override_config}
+                    {connectionConfig: overrideConfig}
                 ),
                 {wrapper}
             );
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
             expect(result.current.error).toBeUndefined();
 
             // Clean up
             unmount();
-            await clear_connection();
+            await clearConnection();
         });
 
         it('should flatten state from executor correctly', async () => {
-            const table_name = await create_test_table_for_hook(
+            const tableName = await createTestTableForHook(
                 'flatten_state',
                 ['id Int4', 'value Utf8']
             );
@@ -392,7 +392,7 @@ describe('useSubscription Hook', () => {
             const shape = Shape.object({id: Shape.number(), value: Shape.string()});
             const {result} = renderHook(
                 () => useSubscription(
-                    `from test::${table_name}`,
+                    `from test::${tableName}`,
                     null,
                     shape
                 ),
@@ -400,22 +400,22 @@ describe('useSubscription Hook', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
             // Check that all state properties are accessible at top level
             expect(result.current.data).toBeDefined();
             expect(result.current.changes).toBeDefined();
-            expect(result.current.is_subscribed).toBe(true);
-            expect(result.current.is_subscribing).toBe(false);
+            expect(result.current.isSubscribed).toBe(true);
+            expect(result.current.isSubscribing).toBe(false);
             expect(result.current.error).toBeUndefined();
-            expect(result.current.subscription_id).toBeDefined();
+            expect(result.current.subscriptionId).toBeDefined();
         });
     });
 
     describe('Operation Tracking', () => {
         it('should track INSERT operations', async () => {
-            const table_name = await create_test_table_for_hook(
+            const tableName = await createTestTableForHook(
                 'track_insert',
                 ['id Int4', 'name Utf8']
             );
@@ -423,7 +423,7 @@ describe('useSubscription Hook', () => {
             const shape = Shape.object({id: Shape.number(), name: Shape.string()});
             const {result} = renderHook(
                 () => useSubscription(
-                    `from test::${table_name}`,
+                    `from test::${tableName}`,
                     null,
                     shape
                 ),
@@ -431,13 +431,13 @@ describe('useSubscription Hook', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
             await act(async () => {
-                const client = get_connection().get_client();
+                const client = getConnection().getClient();
                 await client!.command(
-                    `INSERT test::${table_name} FROM [{id: 1, name: 'alice'}, {id: 2, name: 'bob'}]`,
+                    `INSERT test::${tableName} FROM [{id: 1, name: 'alice'}, {id: 2, name: 'bob'}]`,
                     null,
                     []
                 );
@@ -454,7 +454,7 @@ describe('useSubscription Hook', () => {
 
     describe('Edge Cases', () => {
         it('should handle rapid subscribe/unsubscribe cycles', async () => {
-            const table_name = await create_test_table_for_hook(
+            const tableName = await createTestTableForHook(
                 'rapid_toggle',
                 ['id Int4']
             );
@@ -462,7 +462,7 @@ describe('useSubscription Hook', () => {
             const shape = Shape.object({id: Shape.number()});
             const {result, rerender} = renderHook(
                 ({enabled}) => useSubscription(
-                    `from test::${table_name}`,
+                    `from test::${tableName}`,
                     null,
                     shape,
                     {enabled}
@@ -477,14 +477,14 @@ describe('useSubscription Hook', () => {
             rerender({enabled: true});
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
             expect(result.current.error).toBeUndefined();
         });
 
         it('should handle empty result sets', async () => {
-            const table_name = await create_test_table_for_hook(
+            const tableName = await createTestTableForHook(
                 'empty_results',
                 ['id Int4']
             );
@@ -492,7 +492,7 @@ describe('useSubscription Hook', () => {
             const shape = Shape.object({id: Shape.number()});
             const {result} = renderHook(
                 () => useSubscription(
-                    `from test::${table_name} filter id > 1000`,
+                    `from test::${tableName} filter id > 1000`,
                     null,
                     shape
                 ),
@@ -500,7 +500,7 @@ describe('useSubscription Hook', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_subscribed).toBe(true);
+                expect(result.current.isSubscribed).toBe(true);
             });
 
             expect(result.current.data).toEqual([]);
@@ -522,7 +522,7 @@ describe('useSubscription Hook', () => {
                 expect(result.current.error).toBeDefined();
             });
 
-            expect(result.current.is_subscribed).toBe(false);
+            expect(result.current.isSubscribed).toBe(false);
         });
     });
 });

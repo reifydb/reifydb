@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 import {
     decode,
-    columns_to_rows,
-    transform_frames,
-    transform_result,
+    columnsToRows,
+    transformFrames,
+    transformResult,
     ROW_NUMBER_KEY
 } from "@reifydb/core";
 import type {
@@ -48,12 +48,13 @@ import type {
     BatchSubscription
 } from "./types";
 import {
-    build_subscription_rql,
+    buildSubscriptionRql,
     ReifyError
 } from "./types";
-import {encode_params} from "./encoder";
+import {encodeParams} from "./encoder";
 import {rbcf} from "./rbcf";
 import {CONTENT_TYPE_RBCF} from "./content-types";
+import {toCamelCaseKeys, toSnakeCaseKeys, WIRE_PASSTHROUGH_KEYS} from "./case";
 
 const enum BinaryKind {
     Response = 0x00,
@@ -69,102 +70,94 @@ interface BinaryEnvelope {
 }
 
 interface BatchBinaryEnvelope {
-    batch_id: string;
-    entries: Array<{ subscription_id: string; rbcf: Uint8Array }>;
+    batchId: string;
+    entries: Array<{ subscriptionId: string; rbcf: Uint8Array }>;
 }
 
-// Wire format: `[u8 kind][u32 LE id_len][id UTF-8 bytes][u32 LE meta_len][meta UTF-8 JSON bytes][RBCF payload]`.
-// Must stay in sync with `encode_rbcf_envelope` in
-// `crates/sub-server-ws/src/handler.rs`.
-function decode_envelope(bytes: Uint8Array): BinaryEnvelope | null {
+function decodeEnvelope(bytes: Uint8Array): BinaryEnvelope | null {
     if (bytes.length < 5) return null;
     const kind = bytes[0] as BinaryKind;
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    const id_len = view.getUint32(1, true);
-    if (bytes.length < 5 + id_len + 4) return null;
+    const idLen = view.getUint32(1, true);
+    if (bytes.length < 5 + idLen + 4) return null;
     const decoder = new TextDecoder("utf-8");
-    const id = decoder.decode(bytes.subarray(5, 5 + id_len));
+    const id = decoder.decode(bytes.subarray(5, 5 + idLen));
 
-    const meta_len = view.getUint32(5 + id_len, true);
-    if (bytes.length < 5 + id_len + 4 + meta_len) return null;
+    const metaLen = view.getUint32(5 + idLen, true);
+    if (bytes.length < 5 + idLen + 4 + metaLen) return null;
 
     let meta: ResponseMeta | undefined;
-    if (meta_len > 0) {
-        const meta_json = decoder.decode(bytes.subarray(5 + id_len + 4, 5 + id_len + 4 + meta_len));
+    if (metaLen > 0) {
+        const metaJson = decoder.decode(bytes.subarray(5 + idLen + 4, 5 + idLen + 4 + metaLen));
         try {
-            meta = JSON.parse(meta_json);
+            meta = JSON.parse(metaJson);
         } catch (e) {
             console.error("Failed to parse RBCF metadata", e);
         }
     }
 
-    const rbcf = bytes.subarray(5 + id_len + 4 + meta_len);
-    return {kind, id, meta, rbcf};
+    const rbcfBytes = bytes.subarray(5 + idLen + 4 + metaLen);
+    return {kind, id, meta, rbcf: rbcfBytes};
 }
 
-// Batch wire format (kind = 0x02):
-// `[u8 kind][u32 LE batch_id_len][batch_id][u32 LE num_entries]` then N entries of
-// `[u32 LE sub_id_len][sub_id][u32 LE rbcf_len][rbcf_bytes]`.
-// Must stay in sync with `encode_rbcf_batch_envelope` in
-// `crates/sub-server-ws/src/subscription/registry.rs`.
-function decode_batch_envelope(bytes: Uint8Array): BatchBinaryEnvelope | null {
+function decodeBatchEnvelope(bytes: Uint8Array): BatchBinaryEnvelope | null {
     if (bytes.length < 9) return null;
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const decoder = new TextDecoder("utf-8");
 
-    const batch_id_len = view.getUint32(1, true);
+    const batchIdLen = view.getUint32(1, true);
     let offset = 5;
-    if (bytes.length < offset + batch_id_len + 4) return null;
-    const batch_id = decoder.decode(bytes.subarray(offset, offset + batch_id_len));
-    offset += batch_id_len;
+    if (bytes.length < offset + batchIdLen + 4) return null;
+    const batchId = decoder.decode(bytes.subarray(offset, offset + batchIdLen));
+    offset += batchIdLen;
 
-    const num_entries = view.getUint32(offset, true);
+    const numEntries = view.getUint32(offset, true);
     offset += 4;
 
-    const entries: Array<{ subscription_id: string; rbcf: Uint8Array }> = [];
-    for (let i = 0; i < num_entries; i++) {
+    const entries: Array<{ subscriptionId: string; rbcf: Uint8Array }> = [];
+    for (let i = 0; i < numEntries; i++) {
         if (bytes.length < offset + 4) return null;
-        const sub_id_len = view.getUint32(offset, true);
+        const subIdLen = view.getUint32(offset, true);
         offset += 4;
-        if (bytes.length < offset + sub_id_len + 4) return null;
-        const subscription_id = decoder.decode(bytes.subarray(offset, offset + sub_id_len));
-        offset += sub_id_len;
+        if (bytes.length < offset + subIdLen + 4) return null;
+        const subscriptionId = decoder.decode(bytes.subarray(offset, offset + subIdLen));
+        offset += subIdLen;
 
-        const rbcf_len = view.getUint32(offset, true);
+        const rbcfLen = view.getUint32(offset, true);
         offset += 4;
-        if (bytes.length < offset + rbcf_len) return null;
-        const rbcf_bytes = bytes.subarray(offset, offset + rbcf_len);
-        offset += rbcf_len;
+        if (bytes.length < offset + rbcfLen) return null;
+        const rbcfBytes = bytes.subarray(offset, offset + rbcfLen);
+        offset += rbcfLen;
 
-        entries.push({subscription_id, rbcf: rbcf_bytes});
+        entries.push({subscriptionId, rbcf: rbcfBytes});
     }
 
-    return {batch_id, entries};
+    return {batchId, entries};
 }
 
 export interface WsClientOptions {
     url: string;
-    timeout_ms?: number;
+    timeoutMs?: number;
     token?: string;
-    max_reconnect_attempts?: number;
-    reconnect_delay_ms?: number;
+    maxReconnectAttempts?: number;
+    reconnectDelayMs?: number;
     signal?: AbortSignal;
     /**
      * Wire format for data frames. Defaults to `"frames"`.
      *
-     * - `"json"`   — rows-shape JSON: `[[{col: val, ...}, ...], ...]`
-     * - `"frames"` — frames-shape JSON: columnar frames (default)
-     * - `"rbcf"`   — frames-shape binary (RBCF)
+     * - `"json"`   - rows-shape JSON: `[[{col: val, ...}, ...], ...]`
+     * - `"frames"` - frames-shape JSON: columnar frames (default)
+     * - `"rbcf"`   - frames-shape binary (RBCF)
      */
     format?: "json" | "frames" | "rbcf";
     /** Invoked when the connection drops, before any reconnection attempt. */
-    on_disconnect?: () => void;
+    onDisconnect?: () => void;
     /** Invoked after a successful reconnection, once all subscriptions are re-established. */
-    on_reconnect?: () => void;
+    onReconnect?: () => void;
 }
 
 interface SubscriptionState<T = any> {
-    subscription_id: string;
+    subscriptionId: string;
     rql: string;
     params?: any;
     shape?: ShapeNode;
@@ -173,29 +166,26 @@ interface SubscriptionState<T = any> {
 }
 
 interface BatchState {
-    batch_id: string;
+    batchId: string;
     members: BatchSubscriptionMember[];
-    members_by_sub_id: Map<string, SubscriptionState>;
-    batch_callbacks?: BatchSubscriptionCallbacks;
+    membersBySubId: Map<string, SubscriptionState>;
+    batchCallbacks?: BatchSubscriptionCallbacks;
 }
 
 type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | CallResponse | SubscribedResponse | UnsubscribedResponse | BatchSubscribedResponse | BatchUnsubscribedResponse | LogoutResponse;
 
-async function create_web_socket(url: string): Promise<WebSocket> {
+async function createWebSocket(url: string): Promise<WebSocket> {
     let socket: WebSocket;
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
         socket = new WebSocket(url);
     } else {
         //@ts-ignore
-        const ws_module = await import("ws");
-        socket = new ws_module.WebSocket(url);
+        const wsModule = await import("ws");
+        socket = new wsModule.WebSocket(url);
     }
-    // Deliver binary frames as ArrayBuffer so the RBCF envelope parser sees a uniform shape
-    // across the browser native WebSocket and the node `ws` package.
     try {
         (socket as any).binaryType = "arraybuffer";
     } catch {
-        // Some environments disallow setting before open — best effort.
     }
     return socket;
 }
@@ -208,24 +198,24 @@ interface PendingEntry {
 
 export class WsClient {
     private options: WsClientOptions;
-    private next_id: number;
+    private nextId: number;
     private socket: WebSocket;
     private pending = new Map<string, PendingEntry>();
-    private reconnect_attempts: number = 0;
-    private should_reconnect: boolean = true;
-    private is_reconnecting: boolean = false;
-    private reconnect_timer: ReturnType<typeof setTimeout> | null = null;
-    private reconnect_cancel: (() => void) | null = null;
+    private reconnectAttempts: number = 0;
+    private shouldReconnect: boolean = true;
+    private isReconnecting: boolean = false;
+    private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    private reconnectCancel: (() => void) | null = null;
     private subscriptions = new Map<string, SubscriptionState>();
     private batches = new Map<string, BatchState>();
-    private sub_to_batch = new Map<string, string>();
+    private subToBatch = new Map<string, string>();
 
     private constructor(socket: WebSocket, options: WsClientOptions) {
         this.options = options;
-        this.next_id = 1;
+        this.nextId = 1;
         this.socket = socket;
 
-        this.setup_socket_handlers();
+        this.setupSocketHandlers();
     }
 
     static async connect(options: WsClientOptions): Promise<WsClient> {
@@ -233,49 +223,48 @@ export class WsClient {
             throw new Error("AbortError");
         }
 
-        const socket = await create_web_socket(options.url);
+        const socket = await createWebSocket(options.url);
 
-        // Wait for connection to open if not already open, with timeout
         if (socket.readyState !== 1) {
-            const connection_timeout_ms = 30000; // 30 second connection timeout
+            const connectionTimeoutMs = 30000;
             await new Promise<void>((resolve, reject) => {
-                const connection_timeout = setTimeout(() => {
+                const connectionTimeout = setTimeout(() => {
                     cleanup();
                     socket.close();
-                    reject(new Error(`WebSocket connection timeout after ${connection_timeout_ms}ms`));
-                }, connection_timeout_ms);
+                    reject(new Error(`WebSocket connection timeout after ${connectionTimeoutMs}ms`));
+                }, connectionTimeoutMs);
 
-                const on_abort = () => {
+                const onAbort = () => {
                     cleanup();
                     socket.close();
                     reject(new Error("AbortError"));
                 };
 
-                const on_open = () => {
+                const onOpen = () => {
                     cleanup();
                     resolve();
                 };
 
-                const on_error = () => {
+                const onError = () => {
                     cleanup();
                     reject(new Error("WebSocket connection failed"));
                 };
 
                 const cleanup = () => {
-                    clearTimeout(connection_timeout);
-                    socket.removeEventListener("open", on_open);
-                    socket.removeEventListener("error", on_error);
+                    clearTimeout(connectionTimeout);
+                    socket.removeEventListener("open", onOpen);
+                    socket.removeEventListener("error", onError);
                     if (options.signal) {
-                        options.signal.removeEventListener("abort", on_abort);
+                        options.signal.removeEventListener("abort", onAbort);
                     }
                 };
 
                 if (options.signal) {
-                    options.signal.addEventListener("abort", on_abort);
+                    options.signal.addEventListener("abort", onAbort);
                 }
-                
-                socket.addEventListener("open", on_open);
-                socket.addEventListener("error", on_error);
+
+                socket.addEventListener("open", onOpen);
+                socket.addEventListener("error", onError);
             });
         }
 
@@ -285,7 +274,7 @@ export class WsClient {
         }
 
         if (options.token) {
-            socket.send(JSON.stringify({id: "auth-1", type: "Auth", payload: {token: options.token}}));
+            socket.send(JSON.stringify(toSnakeCaseKeys({id: "auth-1", type: "Auth", payload: {token: options.token}}, WIRE_PASSTHROUGH_KEYS)));
         }
 
         return new WsClient(socket, options);
@@ -299,11 +288,11 @@ export class WsClient {
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.admin_with_meta(rql, params, shapes);
+        const { frames } = await this.adminWithMeta(rql, params, shapes);
         return frames;
     }
 
-    async admin_with_meta<const S extends readonly ShapeNode[]>(
+    async adminWithMeta<const S extends readonly ShapeNode[]>(
         rql: string,
         params: any,
         shapes: S
@@ -319,11 +308,11 @@ export class WsClient {
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.command_with_meta(rql, params, shapes);
+        const { frames } = await this.commandWithMeta(rql, params, shapes);
         return frames;
     }
 
-    async command_with_meta<const S extends readonly ShapeNode[]>(
+    async commandWithMeta<const S extends readonly ShapeNode[]>(
         rql: string,
         params: any,
         shapes: S
@@ -340,11 +329,11 @@ export class WsClient {
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.query_with_meta(rql, params, shapes);
+        const { frames } = await this.queryWithMeta(rql, params, shapes);
         return frames;
     }
 
-    async query_with_meta<const S extends readonly ShapeNode[]>(
+    async queryWithMeta<const S extends readonly ShapeNode[]>(
         rql: string,
         params: any,
         shapes: S
@@ -360,31 +349,31 @@ export class WsClient {
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.call_with_meta(name, params, shapes);
+        const { frames } = await this.callWithMeta(name, params, shapes);
         return frames;
     }
 
-    async call_with_meta<const S extends readonly ShapeNode[]>(
+    async callWithMeta<const S extends readonly ShapeNode[]>(
         name: string,
         params: any,
         shapes: S
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        const id = `req-${this.next_id++}`;
+        const id = `req-${this.nextId++}`;
 
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
+        const encodedParams = params !== undefined && params !== null
+            ? encodeParams(params)
             : undefined;
 
-        const { result, meta } = await this.send_with_meta({
+        const { result, meta } = await this.sendWithMeta({
             id,
             type: "Call",
             payload: {
                 name,
-                params: encoded_params
+                params: encodedParams
             },
         } as CallRequest);
 
-        return { frames: transform_frames(result, shapes), meta };
+        return { frames: transformFrames(result, shapes), meta };
     }
 
     private async execute<const S extends readonly ShapeNode[]>(
@@ -393,23 +382,22 @@ export class WsClient {
         params: any,
         shapes: S
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        const id = `req-${this.next_id++}`;
+        const id = `req-${this.nextId++}`;
 
-        // Encode params without shape assumptions
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
+        const encodedParams = params !== undefined && params !== null
+            ? encodeParams(params)
             : undefined;
 
-        const { result, meta } = await this.send_with_meta({
+        const { result, meta } = await this.sendWithMeta({
             id,
             type,
             payload: {
                 rql,
-                params: encoded_params
+                params: encodedParams
             },
         } as AdminRequest | CommandRequest | QueryRequest);
 
-        return { frames: transform_frames(result, shapes), meta };
+        return { frames: transformFrames(result, shapes), meta };
     }
 
     async subscribe<T = any>(
@@ -419,17 +407,17 @@ export class WsClient {
         callbacks: SubscriptionCallbacks<T>,
         config?: SubscriptionConfig
     ): Promise<string> {
-        const id = `sub-${this.next_id++}`;
+        const id = `sub-${this.nextId++}`;
 
-        const sub_format = this.options.format === "rbcf" ? "rbcf" : "frames";
-        const wire_rql = build_subscription_rql(rql, config);
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
+        const subFormat = this.options.format === "rbcf" ? "rbcf" : "frames";
+        const wireRql = buildSubscriptionRql(rql, config);
+        const encodedParams = params !== undefined && params !== null
+            ? encodeParams(params)
             : undefined;
         const request: SubscribeRequest = {
             id,
             type: "Subscribe",
-            payload: {rql: wire_rql, params: encoded_params, format: sub_format} as any
+            payload: {rql: wireRql, params: encodedParams, format: subFormat} as any
         };
 
         return new Promise((resolve, reject) => {
@@ -439,11 +427,10 @@ export class WsClient {
                     if (response.type === "Err") {
                         reject(new ReifyError(response));
                     } else if (response.type === "Subscribed") {
-                        const subscription_id = response.payload.subscription_id;
+                        const subscriptionId = response.payload.subscriptionId;
 
-                        // Store subscription state
-                        this.subscriptions.set(subscription_id, {
-                            subscription_id,
+                        this.subscriptions.set(subscriptionId, {
+                            subscriptionId,
                             rql,
                             params,
                             shape,
@@ -451,24 +438,24 @@ export class WsClient {
                             config
                         });
 
-                        resolve(subscription_id);
+                        resolve(subscriptionId);
                     } else {
                         reject(new Error("Unexpected response type"));
                     }
                 }
             });
 
-            this.socket.send(JSON.stringify(request));
+            this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
         });
     }
 
-    async unsubscribe(subscription_id: string): Promise<void> {
-        const id = `unsub-${this.next_id++}`;
+    async unsubscribe(subscriptionId: string): Promise<void> {
+        const id = `unsub-${this.nextId++}`;
 
         const request: UnsubscribeRequest = {
             id,
             type: "Unsubscribe",
-            payload: {subscription_id: subscription_id}
+            payload: {subscriptionId: subscriptionId}
         };
 
         return new Promise((resolve, reject) => {
@@ -478,7 +465,7 @@ export class WsClient {
                     if (response.type === "Err") {
                         reject(new ReifyError(response));
                     } else if (response.type === "Unsubscribed") {
-                        this.subscriptions.delete(subscription_id);
+                        this.subscriptions.delete(subscriptionId);
                         resolve();
                     } else {
                         reject(new Error("Unexpected response type"));
@@ -486,26 +473,26 @@ export class WsClient {
                 }
             });
 
-            this.socket.send(JSON.stringify(request));
+            this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
         });
     }
 
-    async batch_subscribe(
+    async batchSubscribe(
         members: BatchSubscriptionMember[],
-        batch_callbacks?: BatchSubscriptionCallbacks
+        batchCallbacks?: BatchSubscriptionCallbacks
     ): Promise<BatchSubscription> {
         if (members.length === 0) {
-            throw new Error("batch_subscribe requires at least one member");
+            throw new Error("batchSubscribe requires at least one member");
         }
 
-        const id = `batch-sub-${this.next_id++}`;
-        const sub_format = this.options.format === "rbcf" ? "rbcf" : "frames";
+        const id = `batch-sub-${this.nextId++}`;
+        const subFormat = this.options.format === "rbcf" ? "rbcf" : "frames";
         const request: BatchSubscribeRequest = {
             id,
             type: "BatchSubscribe",
             payload: {
-                queries: members.map(m => build_subscription_rql(m.rql, m.config)),
-                format: sub_format as any
+                queries: members.map(m => buildSubscriptionRql(m.rql, m.config)),
+                format: subFormat as any
             }
         };
 
@@ -522,47 +509,47 @@ export class WsClient {
                         return;
                     }
 
-                    const {batch_id, members: member_infos} = response.payload;
-                    const members_by_sub_id = new Map<string, SubscriptionState>();
-                    const subscription_ids: string[] = new Array(members.length);
+                    const {batchId, members: memberInfos} = response.payload;
+                    const membersBySubId = new Map<string, SubscriptionState>();
+                    const subscriptionIds: string[] = new Array(members.length);
 
-                    for (const info of member_infos) {
+                    for (const info of memberInfos) {
                         const member = members[info.index];
                         if (!member) continue;
-                        subscription_ids[info.index] = info.subscription_id;
-                        members_by_sub_id.set(info.subscription_id, {
-                            subscription_id: info.subscription_id,
+                        subscriptionIds[info.index] = info.subscriptionId;
+                        membersBySubId.set(info.subscriptionId, {
+                            subscriptionId: info.subscriptionId,
                             rql: member.rql,
                             params: member.params,
                             shape: member.shape,
                             callbacks: member.callbacks,
                             config: member.config
                         });
-                        this.sub_to_batch.set(info.subscription_id, batch_id);
+                        this.subToBatch.set(info.subscriptionId, batchId);
                     }
 
-                    this.batches.set(batch_id, {
-                        batch_id,
+                    this.batches.set(batchId, {
+                        batchId,
                         members,
-                        members_by_sub_id,
-                        batch_callbacks
+                        membersBySubId,
+                        batchCallbacks
                     });
 
-                    resolve({batch_id, subscription_ids});
+                    resolve({batchId, subscriptionIds});
                 }
             });
 
-            this.socket.send(JSON.stringify(request));
+            this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
         });
     }
 
-    async batch_unsubscribe(batch_id: string): Promise<void> {
-        const id = `batch-unsub-${this.next_id++}`;
+    async batchUnsubscribe(batchId: string): Promise<void> {
+        const id = `batch-unsub-${this.nextId++}`;
 
         const request: BatchUnsubscribeRequest = {
             id,
             type: "BatchUnsubscribe",
-            payload: {batch_id}
+            payload: {batchId}
         };
 
         return new Promise((resolve, reject) => {
@@ -572,7 +559,7 @@ export class WsClient {
                     if (response.type === "Err") {
                         reject(new ReifyError(response));
                     } else if (response.type === "BatchUnsubscribed") {
-                        this.cleanup_batch(batch_id);
+                        this.cleanupBatch(batchId);
                         resolve();
                     } else {
                         reject(new Error("Unexpected response type"));
@@ -580,25 +567,25 @@ export class WsClient {
                 }
             });
 
-            this.socket.send(JSON.stringify(request));
+            this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
         });
     }
 
-    private cleanup_batch(batch_id: string): void {
-        const batch = this.batches.get(batch_id);
+    private cleanupBatch(batchId: string): void {
+        const batch = this.batches.get(batchId);
         if (!batch) return;
-        for (const sub_id of batch.members_by_sub_id.keys()) {
-            this.sub_to_batch.delete(sub_id);
+        for (const subId of batch.membersBySubId.keys()) {
+            this.subToBatch.delete(subId);
         }
-        this.batches.delete(batch_id);
+        this.batches.delete(batchId);
     }
 
     async send(req: AdminRequest | CommandRequest | QueryRequest | CallRequest): Promise<any> {
-        const { result } = await this.send_with_meta(req);
+        const { result } = await this.sendWithMeta(req);
         return result;
     }
 
-    async send_with_meta(
+    async sendWithMeta(
         req: AdminRequest | CommandRequest | QueryRequest | CallRequest,
     ): Promise<{ result: any, meta?: ResponseMeta }> {
         const id = req.id;
@@ -619,15 +606,15 @@ export class WsClient {
 
         req = {
             ...req,
-            payload: { ...req.payload, format: this.wire_format() },
+            payload: { ...req.payload, format: this.wireFormat() },
         } as AdminRequest | CommandRequest | QueryRequest | CallRequest;
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeout_ms = this.options.timeout_ms ?? 30_000;
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("ReifyDB query timeout"));
-            }, timeout_ms);
+            }, timeoutMs);
 
             this.pending.set(id, {
                 type: req.type,
@@ -637,7 +624,7 @@ export class WsClient {
                 }
             });
 
-            this.socket.send(JSON.stringify(req));
+            this.socket.send(JSON.stringify(toSnakeCaseKeys(req, WIRE_PASSTHROUGH_KEYS)));
         });
 
         if (response.type === "Err") {
@@ -651,35 +638,31 @@ export class WsClient {
 
         const meta = (response.payload as any).meta as ResponseMeta | undefined;
 
-        // Response shape depends on wire format:
-        // - "json"   → body is `[[{col: val}, ...], ...]` already in rows shape
-        // - "frames" → body is `{frames: [ColumnarFrame, ...]}` needing column→row pivot
-        // - "rbcf"   → handle_binary_message synthesizes `{frames}` so it matches "frames"
-        if (this.wire_format() === "json") {
+        if (this.wireFormat() === "json") {
             return { result: response.payload.body ?? [], meta };
         }
         const frames = response.payload.body?.frames || [];
         return {
-            result: frames.map((frame: any) => columns_to_rows(frame.columns)),
+            result: frames.map((frame: any) => columnsToRows(frame.columns)),
             meta,
         };
     }
 
-    private wire_format(): "json" | "frames" | "rbcf" {
+    private wireFormat(): "json" | "frames" | "rbcf" {
         return this.options.format ?? "frames";
     }
 
 
-    async login_with_password(identity: string, password: string): Promise<LoginResult> {
+    async loginWithPassword(identity: string, password: string): Promise<LoginResult> {
         return this.login("password", {identifier: identity, password});
     }
 
-    async login_with_token(token: string): Promise<LoginResult> {
+    async loginWithToken(token: string): Promise<LoginResult> {
         return this.login("token", {token});
     }
 
     async login(method: string, credentials: Record<string, string>): Promise<LoginResult> {
-        const id = `auth-${this.next_id++}`;
+        const id = `auth-${this.nextId++}`;
 
         const request: AuthRequest = {
             id,
@@ -688,11 +671,11 @@ export class WsClient {
         };
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeout_ms = this.options.timeout_ms ?? 30_000;
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("Login timeout"));
-            }, timeout_ms);
+            }, timeoutMs);
 
             this.pending.set(id, {
                 type: "Auth",
@@ -702,7 +685,7 @@ export class WsClient {
                 }
             });
 
-            this.socket.send(JSON.stringify(request));
+            this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
         });
 
         if (response.type === "Err") {
@@ -723,8 +706,8 @@ export class WsClient {
         return {token: payload.token, identity: payload.identity};
     }
 
-    async login_challenge(method: string, credentials: Record<string, string>): Promise<LoginChallengeResult> {
-        const id = `auth-${this.next_id++}`;
+    async loginChallenge(method: string, credentials: Record<string, string>): Promise<LoginChallengeResult> {
+        const id = `auth-${this.nextId++}`;
 
         const request: AuthRequest = {
             id,
@@ -733,11 +716,11 @@ export class WsClient {
         };
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeout_ms = this.options.timeout_ms ?? 30_000;
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("Login timeout"));
-            }, timeout_ms);
+            }, timeoutMs);
 
             this.pending.set(id, {
                 type: "Auth",
@@ -747,7 +730,7 @@ export class WsClient {
                 }
             });
 
-            this.socket.send(JSON.stringify(request));
+            this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
         });
 
         if (response.type === "Err") {
@@ -761,12 +744,12 @@ export class WsClient {
         const payload = (response as AuthResponse).payload;
 
         if (payload.status === "challenge") {
-            if (!payload.challenge_id || !payload.payload?.message || !payload.payload?.nonce) {
+            if (!payload.challengeId || !payload.payload?.message || !payload.payload?.nonce) {
                 throw new Error("Malformed challenge response");
             }
             return {
                 kind: "challenge",
-                challenge_id: payload.challenge_id,
+                challengeId: payload.challengeId,
                 message: payload.payload.message,
                 nonce: payload.payload.nonce,
             };
@@ -785,14 +768,14 @@ export class WsClient {
             return;
         }
 
-        const id = `logout-${this.next_id++}`;
+        const id = `logout-${this.nextId++}`;
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeout_ms = this.options.timeout_ms ?? 30_000;
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("Logout timeout"));
-            }, timeout_ms);
+            }, timeoutMs);
 
             this.pending.set(id, {
                 type: "Logout",
@@ -802,7 +785,7 @@ export class WsClient {
                 }
             });
 
-            this.socket.send(JSON.stringify({id, type: "Logout"}));
+            this.socket.send(JSON.stringify(toSnakeCaseKeys({id, type: "Logout"}, WIRE_PASSTHROUGH_KEYS)));
         });
 
         if (response.type === "Err") {
@@ -813,18 +796,18 @@ export class WsClient {
     }
 
     async disconnect(): Promise<void> {
-        this.should_reconnect = false;
+        this.shouldReconnect = false;
         this.subscriptions.clear();
         this.batches.clear();
-        this.sub_to_batch.clear();
+        this.subToBatch.clear();
 
-        if (this.reconnect_timer !== null) {
-            clearTimeout(this.reconnect_timer);
-            this.reconnect_timer = null;
+        if (this.reconnectTimer !== null) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
         }
-        if (this.reconnect_cancel !== null) {
-            const cancel = this.reconnect_cancel;
-            this.reconnect_cancel = null;
+        if (this.reconnectCancel !== null) {
+            const cancel = this.reconnectCancel;
+            this.reconnectCancel = null;
             cancel();
         }
 
@@ -834,18 +817,18 @@ export class WsClient {
         }
 
         await new Promise<void>(resolve => {
-            const close_timeout_ms = 250;
+            const closeTimeoutMs = 250;
             let settled = false;
             const finish = () => {
                 if (settled) return;
                 settled = true;
                 clearTimeout(timeout);
-                socket.removeEventListener("close", on_close);
+                socket.removeEventListener("close", onClose);
                 resolve();
             };
-            const on_close = () => finish();
-            const timeout = setTimeout(finish, close_timeout_ms);
-            socket.addEventListener("close", on_close);
+            const onClose = () => finish();
+            const timeout = setTimeout(finish, closeTimeoutMs);
+            socket.addEventListener("close", onClose);
             try {
                 socket.close();
             } catch {
@@ -854,189 +837,181 @@ export class WsClient {
         });
     }
 
-    private handle_disconnect() {
-        this.options.on_disconnect?.();
-        this.reject_all_pending_requests();
+    private handleDisconnect() {
+        this.options.onDisconnect?.();
+        this.rejectAllPendingRequests();
 
-        if (!this.should_reconnect || this.is_reconnecting) {
+        if (!this.shouldReconnect || this.isReconnecting) {
             return;
         }
 
-        const max_attempts = this.options.max_reconnect_attempts ?? 5;
-        if (this.reconnect_attempts >= max_attempts) {
-            console.error(`Max reconnection attempts (${max_attempts}) reached`);
+        const maxAttempts = this.options.maxReconnectAttempts ?? 5;
+        if (this.reconnectAttempts >= maxAttempts) {
+            console.error(`Max reconnection attempts (${maxAttempts}) reached`);
             return;
         }
 
-        this.attempt_reconnect();
+        this.attemptReconnect();
     }
 
-    private async attempt_reconnect() {
-        this.is_reconnecting = true;
-        this.reconnect_attempts++;
+    private async attemptReconnect() {
+        this.isReconnecting = true;
+        this.reconnectAttempts++;
 
-        const base_delay = this.options.reconnect_delay_ms ?? 1000;
-        const delay = base_delay * Math.pow(2, this.reconnect_attempts - 1);
+        const baseDelay = this.options.reconnectDelayMs ?? 1000;
+        const delay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
 
         console.log(`Attempting reconnection in ${delay}ms`);
 
         const cancelled = await new Promise<boolean>(resolve => {
-            this.reconnect_cancel = () => {
-                if (this.reconnect_timer !== null) {
-                    clearTimeout(this.reconnect_timer);
-                    this.reconnect_timer = null;
+            this.reconnectCancel = () => {
+                if (this.reconnectTimer !== null) {
+                    clearTimeout(this.reconnectTimer);
+                    this.reconnectTimer = null;
                 }
-                this.reconnect_cancel = null;
+                this.reconnectCancel = null;
                 resolve(true);
             };
-            this.reconnect_timer = setTimeout(() => {
-                this.reconnect_timer = null;
-                this.reconnect_cancel = null;
+            this.reconnectTimer = setTimeout(() => {
+                this.reconnectTimer = null;
+                this.reconnectCancel = null;
                 resolve(false);
             }, delay);
         });
 
-        if (cancelled || !this.should_reconnect) {
-            this.is_reconnecting = false;
+        if (cancelled || !this.shouldReconnect) {
+            this.isReconnecting = false;
             return;
         }
 
         try {
-            const socket = await create_web_socket(this.options.url);
+            const socket = await createWebSocket(this.options.url);
 
             if (socket.readyState !== 1) {
-                const connection_timeout_ms = 30000; // 30 second connection timeout
+                const connectionTimeoutMs = 30000;
                 await new Promise<void>((resolve, reject) => {
-                    const connection_timeout = setTimeout(() => {
-                        socket.removeEventListener("open", on_open);
-                        socket.removeEventListener("error", on_error);
+                    const connectionTimeout = setTimeout(() => {
+                        socket.removeEventListener("open", onOpen);
+                        socket.removeEventListener("error", onError);
                         socket.close();
-                        reject(new Error(`WebSocket reconnection timeout after ${connection_timeout_ms}ms`));
-                    }, connection_timeout_ms);
+                        reject(new Error(`WebSocket reconnection timeout after ${connectionTimeoutMs}ms`));
+                    }, connectionTimeoutMs);
 
-                    const on_open = () => {
-                        clearTimeout(connection_timeout);
-                        socket.removeEventListener("open", on_open);
-                        socket.removeEventListener("error", on_error);
+                    const onOpen = () => {
+                        clearTimeout(connectionTimeout);
+                        socket.removeEventListener("open", onOpen);
+                        socket.removeEventListener("error", onError);
                         resolve();
                     };
 
-                    const on_error = () => {
-                        clearTimeout(connection_timeout);
-                        socket.removeEventListener("open", on_open);
-                        socket.removeEventListener("error", on_error);
+                    const onError = () => {
+                        clearTimeout(connectionTimeout);
+                        socket.removeEventListener("open", onOpen);
+                        socket.removeEventListener("error", onError);
                         reject(new Error("WebSocket connection failed"));
                     };
 
-                    socket.addEventListener("open", on_open);
-                    socket.addEventListener("error", on_error);
+                    socket.addEventListener("open", onOpen);
+                    socket.addEventListener("error", onError);
                 });
             }
 
-            if (!this.should_reconnect) {
+            if (!this.shouldReconnect) {
                 socket.close();
-                this.is_reconnecting = false;
+                this.isReconnecting = false;
                 return;
             }
 
             if (this.options.token) {
-                socket.send(JSON.stringify({id: "auth-1", type: "Auth", payload: {token: this.options.token}}));
+                socket.send(JSON.stringify(toSnakeCaseKeys({id: "auth-1", type: "Auth", payload: {token: this.options.token}}, WIRE_PASSTHROUGH_KEYS)));
             }
 
             this.socket = socket;
-            this.setup_socket_handlers();
-            this.reconnect_attempts = 0;
-            this.is_reconnecting = false;
+            this.setupSocketHandlers();
+            this.reconnectAttempts = 0;
+            this.isReconnecting = false;
 
-            // Re-establish all active subscriptions
-            await this.resubscribe_all();
-            this.options.on_reconnect?.();
+            await this.resubscribeAll();
+            this.options.onReconnect?.();
         } catch (error) {
-            this.is_reconnecting = false;
-            this.handle_disconnect();
+            this.isReconnecting = false;
+            this.handleDisconnect();
         }
     }
 
-    private async resubscribe_all(): Promise<void> {
-        const subscriptions_to_reestablish = Array.from(this.subscriptions.values());
-        const batches_to_reestablish = Array.from(this.batches.values());
+    private async resubscribeAll(): Promise<void> {
+        const subscriptionsToReestablish = Array.from(this.subscriptions.values());
+        const batchesToReestablish = Array.from(this.batches.values());
 
-        // Clear state (will be repopulated by re-subscribe calls)
         this.subscriptions.clear();
         this.batches.clear();
-        this.sub_to_batch.clear();
+        this.subToBatch.clear();
 
-        for (const state of subscriptions_to_reestablish) {
+        for (const state of subscriptionsToReestablish) {
             try {
-                // Re-subscribe with same parameters
-                // Cast to avoid overload resolution issues in internal call
                 await (this.subscribe as any)(state.rql, state.params, state.shape, state.callbacks, state.config);
             } catch (err) {
                 console.error(`Failed to resubscribe to ${state.rql}:`, err);
             }
         }
 
-        for (const batch of batches_to_reestablish) {
+        for (const batch of batchesToReestablish) {
             try {
-                await this.batch_subscribe(batch.members, batch.batch_callbacks);
+                await this.batchSubscribe(batch.members, batch.batchCallbacks);
             } catch (err) {
                 console.error(`Failed to re-establish batch subscription:`, err);
             }
         }
     }
 
-    private find_subscription_state(subscription_id: string): SubscriptionState | undefined {
-        const single = this.subscriptions.get(subscription_id);
+    private findSubscriptionState(subscriptionId: string): SubscriptionState | undefined {
+        const single = this.subscriptions.get(subscriptionId);
         if (single) return single;
-        const batch_id = this.sub_to_batch.get(subscription_id);
-        if (!batch_id) return undefined;
-        return this.batches.get(batch_id)?.members_by_sub_id.get(subscription_id);
+        const batchId = this.subToBatch.get(subscriptionId);
+        if (!batchId) return undefined;
+        return this.batches.get(batchId)?.membersBySubId.get(subscriptionId);
     }
 
-    private handle_change_message(msg: ChangeMessage): void {
-        const {subscription_id, body} = msg.payload;
-        const state = this.find_subscription_state(subscription_id);
+    private handleChangeMessage(msg: ChangeMessage): void {
+        const {subscriptionId, body} = msg.payload;
+        const state = this.findSubscriptionState(subscriptionId);
 
         if (!state) {
-            console.error('No state for subscription_id:', subscription_id);
+            console.error('No state for subscriptionId:', subscriptionId);
             return;
         }
 
-        // A single push may carry more than one frame (e.g. a linger window that
-        // coalesces several changes), so every frame must be dispatched - not just
-        // the first, which silently dropped the rest.
         const frames = body?.frames || [];
         for (const frame of frames) {
-            this.dispatch_change_frame(state, frame);
+            this.dispatchChangeFrame(state, frame);
         }
     }
 
-    private dispatch_change_frame(state: SubscriptionState, frame: any): void {
-        const rows = this.frame_to_rows(frame, state.shape);
+    private dispatchChangeFrame(state: SubscriptionState, frame: any): void {
+        const rows = this.frameToRows(frame, state.shape);
         if (rows.length === 0) return;
 
         switch (frame.op) {
             case 2:
-                state.callbacks.on_update?.(rows);
+                state.callbacks.onUpdate?.(rows);
                 break;
             case 3:
-                state.callbacks.on_remove?.(rows);
+                state.callbacks.onRemove?.(rows);
                 break;
             default:
-                state.callbacks.on_insert?.(rows);
+                state.callbacks.onInsert?.(rows);
                 break;
         }
     }
 
-    private frame_to_rows(frame: any, shape?: ShapeNode): any[] {
-        // Convert frame columns to array of row objects
+    private frameToRows(frame: any, shape?: ShapeNode): any[] {
         if (!frame.columns || frame.columns.length === 0) return [];
 
-        const row_count = frame.columns[0].payload.length;
-        const row_numbers = frame.row_numbers;
+        const rowCount = frame.columns[0].payload.length;
+        const rowNumbers = frame.row_numbers;
         const rows: any[] = [];
 
-        for (let i = 0; i < row_count; i++) {
+        for (let i = 0; i < rowCount; i++) {
             const row: any = {};
             for (const col of frame.columns) {
                 row[col.name] = decode({type: col.type, value: col.payload[i]});
@@ -1044,86 +1019,81 @@ export class WsClient {
             rows.push(row);
         }
 
-        const shaped = shape ? rows.map(row => transform_result(row, shape)) : rows;
+        const shaped = shape ? rows.map(row => transformResult(row, shape)) : rows;
 
-        if (row_numbers) {
+        if (rowNumbers) {
             for (let i = 0; i < shaped.length; i++) {
-                if (row_numbers[i] !== undefined) shaped[i][ROW_NUMBER_KEY] = Number(row_numbers[i]);
+                if (rowNumbers[i] !== undefined) shaped[i][ROW_NUMBER_KEY] = Number(rowNumbers[i]);
             }
         }
 
         return shaped;
     }
 
-    private handle_batch_change(msg: BatchChangeMessage): void {
+    private handleBatchChange(msg: BatchChangeMessage): void {
         const {entries} = msg.payload;
         for (const entry of entries) {
-            this.handle_change_message({
+            this.handleChangeMessage({
                 type: "Change",
                 payload: {
-                    subscription_id: entry.subscription_id,
-                    content_type: entry.content_type,
+                    subscriptionId: entry.subscriptionId,
+                    contentType: entry.contentType,
                     body: entry.body
                 }
             });
         }
     }
 
-    private handle_batch_member_closed(msg: BatchMemberClosedMessage): void {
-        const {batch_id, subscription_id} = msg.payload;
-        const batch = this.batches.get(batch_id);
+    private handleBatchMemberClosed(msg: BatchMemberClosedMessage): void {
+        const {batchId, subscriptionId} = msg.payload;
+        const batch = this.batches.get(batchId);
         if (!batch) return;
-        batch.members_by_sub_id.delete(subscription_id);
-        this.sub_to_batch.delete(subscription_id);
-        batch.batch_callbacks?.on_member_closed?.(subscription_id);
+        batch.membersBySubId.delete(subscriptionId);
+        this.subToBatch.delete(subscriptionId);
+        batch.batchCallbacks?.onMemberClosed?.(subscriptionId);
     }
 
-    private handle_batch_closed(msg: BatchClosedMessage): void {
-        const {batch_id} = msg.payload;
-        const batch = this.batches.get(batch_id);
+    private handleBatchClosed(msg: BatchClosedMessage): void {
+        const {batchId} = msg.payload;
+        const batch = this.batches.get(batchId);
         if (!batch) return;
-        this.cleanup_batch(batch_id);
-        batch.batch_callbacks?.on_closed?.();
+        this.cleanupBatch(batchId);
+        batch.batchCallbacks?.onClosed?.();
     }
 
-    private setup_socket_handlers() {
+    private setupSocketHandlers() {
         this.socket.onmessage = (event) => {
             const data = event.data;
 
-            // Binary path: RBCF envelope [u32 LE id_len][id UTF-8 bytes][RBCF payload].
-            // Only Admin/Command/Query responses arrive as binary; errors and subscription
-            // pushes are always JSON text.
             if (data instanceof ArrayBuffer) {
-                this.handle_binary_message(new Uint8Array(data));
+                this.handleBinaryMessage(new Uint8Array(data));
                 return;
             }
             if (typeof data !== "string") {
-                // Node `ws` without binaryType setting — convert Buffer-like to ArrayBuffer.
                 const buf = data as { buffer?: ArrayBuffer; byteOffset?: number; byteLength?: number };
                 if (buf && typeof buf.byteLength === "number" && buf.buffer instanceof ArrayBuffer) {
                     const u8 = new Uint8Array(buf.buffer, buf.byteOffset ?? 0, buf.byteLength);
-                    this.handle_binary_message(u8);
+                    this.handleBinaryMessage(u8);
                     return;
                 }
                 return;
             }
 
-            const msg = JSON.parse(data);
+            const msg = toCamelCaseKeys<any>(JSON.parse(data), WIRE_PASSTHROUGH_KEYS);
 
-            // Handle server-initiated messages (no id)
             if (!msg.id) {
                 switch (msg.type) {
                     case "Change":
-                        this.handle_change_message(msg);
+                        this.handleChangeMessage(msg);
                         return;
                     case "BatchChange":
-                        this.handle_batch_change(msg);
+                        this.handleBatchChange(msg);
                         return;
                     case "BatchMemberClosed":
-                        this.handle_batch_member_closed(msg);
+                        this.handleBatchMemberClosed(msg);
                         return;
                     case "BatchClosed":
-                        this.handle_batch_closed(msg);
+                        this.handleBatchClosed(msg);
                         return;
                 }
                 return;
@@ -1145,11 +1115,11 @@ export class WsClient {
         };
 
         this.socket.onclose = () => {
-            this.handle_disconnect();
+            this.handleDisconnect();
         };
     }
 
-    private reject_all_pending_requests() {
+    private rejectAllPendingRequests() {
         const error: ErrorResponse = {
             id: "connection-error",
             type: "Err",
@@ -1168,19 +1138,19 @@ export class WsClient {
         this.pending.clear();
     }
 
-    private handle_binary_message(bytes: Uint8Array) {
+    private handleBinaryMessage(bytes: Uint8Array) {
         if (bytes.length > 0 && bytes[0] === BinaryKind.BatchChange) {
-            this.handle_binary_batch_message(bytes);
+            this.handleBinaryBatchMessage(bytes);
             return;
         }
 
-        const envelope = decode_envelope(bytes);
+        const envelope = decodeEnvelope(bytes);
         if (!envelope) return;
-        const {kind, id, rbcf: rbcf_bytes} = envelope;
+        const {kind, id, rbcf: rbcfBytes} = envelope;
 
         let frames: any[];
         try {
-            frames = rbcf.decode(rbcf_bytes);
+            frames = rbcf.decode(rbcfBytes);
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             if (kind === BinaryKind.Response) {
@@ -1204,12 +1174,11 @@ export class WsClient {
             const entry = this.pending.get(id);
             if (!entry) return;
             this.pending.delete(id);
-            // Synthesize a response that looks like the JSON path so downstream logic is unchanged.
             entry.handler({
                 id,
                 type: entry.type,
                 payload: {
-                    content_type: CONTENT_TYPE_RBCF,
+                    contentType: CONTENT_TYPE_RBCF,
                     body: { frames },
                     meta: envelope.meta,
                 },
@@ -1218,23 +1187,22 @@ export class WsClient {
         }
 
         if (kind === BinaryKind.Change) {
-            // Feed decoded frames through the same dispatch path as JSON change pushes.
-            this.handle_change_message({
+            this.handleChangeMessage({
                 type: "Change",
                 payload: {
-                    subscription_id: id,
-                    content_type: CONTENT_TYPE_RBCF,
+                    subscriptionId: id,
+                    contentType: CONTENT_TYPE_RBCF,
                     body: { frames },
                 }
             });
         }
     }
 
-    private handle_binary_batch_message(bytes: Uint8Array) {
-        const envelope = decode_batch_envelope(bytes);
+    private handleBinaryBatchMessage(bytes: Uint8Array) {
+        const envelope = decodeBatchEnvelope(bytes);
         if (!envelope) return;
 
-        const batch = this.batches.get(envelope.batch_id);
+        const batch = this.batches.get(envelope.batchId);
 
         for (const entry of envelope.entries) {
             let frames: any[];
@@ -1242,18 +1210,18 @@ export class WsClient {
                 frames = rbcf.decode(entry.rbcf);
             } catch (e) {
                 const err = e instanceof Error ? e : new Error(String(e));
-                if (batch?.batch_callbacks?.on_entry_error) {
-                    batch.batch_callbacks.on_entry_error(entry.subscription_id, err);
+                if (batch?.batchCallbacks?.onEntryError) {
+                    batch.batchCallbacks.onEntryError(entry.subscriptionId, err);
                 } else {
-                    console.error(`Failed to decode RBCF batch entry for ${entry.subscription_id}: ${err.message}`);
+                    console.error(`Failed to decode RBCF batch entry for ${entry.subscriptionId}: ${err.message}`);
                 }
                 continue;
             }
-            this.handle_change_message({
+            this.handleChangeMessage({
                 type: "Change",
                 payload: {
-                    subscription_id: entry.subscription_id,
-                    content_type: CONTENT_TYPE_RBCF,
+                    subscriptionId: entry.subscriptionId,
+                    contentType: CONTENT_TYPE_RBCF,
                     body: { frames },
                 }
             });

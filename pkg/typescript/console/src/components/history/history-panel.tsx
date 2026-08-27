@@ -7,10 +7,10 @@ import { HistoryEntryRow } from './history-entry';
 
 interface HistoryPanelProps {
   entries: HistoryEntry[];
-  on_select: (query: string) => void;
+  onSelect: (query: string) => void;
 }
 
-export function HistoryPanel({ entries, on_select }: HistoryPanelProps) {
+export function HistoryPanel({ entries, onSelect }: HistoryPanelProps) {
   const [search, setSearch] = useState('');
 
   const filtered = search
@@ -35,7 +35,7 @@ export function HistoryPanel({ entries, on_select }: HistoryPanelProps) {
           </div>
         ) : (
           filtered.map((entry) => (
-            <HistoryEntryRow key={entry.id} entry={entry} on_click={on_select} />
+            <HistoryEntryRow key={entry.id} entry={entry} onClick={onSelect} />
           ))
         )}
       </div>

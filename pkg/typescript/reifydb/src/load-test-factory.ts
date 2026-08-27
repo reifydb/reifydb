@@ -7,7 +7,7 @@ import { NativeDb } from './native-db'
 
 const cache = new Map<string, TestFactory>()
 
-export function load_test_factory(addonPath: string): TestFactory {
+export function loadTestFactory(addonPath: string): TestFactory {
   const cached = cache.get(addonPath)
   if (cached != null) return cached
 

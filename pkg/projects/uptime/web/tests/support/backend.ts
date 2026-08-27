@@ -3,7 +3,7 @@
 
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { load_test_factory, type TestDb, type TestFactory } from '@reifydb/reifydb'
+import { loadTestFactory, type TestDb, type TestFactory } from '@reifydb/reifydb'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ADDON_PATH = path.resolve(__dirname, '../../../../../../target/release/libbridge.so')
@@ -12,7 +12,7 @@ export type { TestDb, TestFactory }
 
 export function loadBackend(): TestFactory {
   try {
-    return load_test_factory(ADDON_PATH)
+    return loadTestFactory(ADDON_PATH)
   } catch (err) {
     throw new Error(
       `bridge addon not built at ${ADDON_PATH}. From the repo root, run:\n` +

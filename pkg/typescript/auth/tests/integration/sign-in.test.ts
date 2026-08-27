@@ -7,17 +7,17 @@ import nacl from "tweetnacl";
 import bs58 from "bs58";
 import {
   performSignIn,
-  ws_transport,
+  wsTransport,
   type WalletConnector,
 } from "@reifydb/auth";
 
-import { WS_URL, wait_for_database } from "./setup";
-import { make_test_wallet } from "./test-wallet";
+import { WS_URL, waitForDatabase } from "./setup";
+import { makeTestWallet } from "./test-wallet";
 
-function sign_in_args(wallet: WalletConnector) {
+function signInArgs(wallet: WalletConnector) {
   return {
     url: WS_URL,
-    transport: ws_transport,
+    transport: wsTransport,
     method: "solana",
     wallet,
     domain: "test",
@@ -28,19 +28,19 @@ function sign_in_args(wallet: WalletConnector) {
 
 describe("performSignIn — error paths against real server", () => {
   beforeAll(async () => {
-    await wait_for_database();
+    await waitForDatabase();
   }, 30000);
 
   it("happy-path round-trip succeeds (harness sanity)", async () => {
-    const { wallet, publicKeyB58 } = make_test_wallet();
-    const session = await performSignIn(sign_in_args(wallet));
-    expect(session.wallet_address).toBe(publicKeyB58);
+    const { wallet, publicKeyB58 } = makeTestWallet();
+    const session = await performSignIn(signInArgs(wallet));
+    expect(session.walletAddress).toBe(publicKeyB58);
     expect(session.token.length).toBeGreaterThan(0);
   });
 
   it("server rejects when wallet signs a different message than the challenge", async () => {
     const keypair = Keypair.generate();
-    const wrong_msg_wallet: WalletConnector = {
+    const wrongMsgWallet: WalletConnector = {
       connected: true,
       connecting: false,
       publicKey: keypair.publicKey.toBase58(),
@@ -60,7 +60,7 @@ describe("performSignIn — error paths against real server", () => {
     };
 
     await expect(
-      performSignIn(sign_in_args(wrong_msg_wallet)),
+      performSignIn(signInArgs(wrongMsgWallet)),
     ).rejects.toThrow(/AUTH_FAILED/);
   });
 
@@ -84,31 +84,31 @@ describe("performSignIn — error paths against real server", () => {
       },
     };
 
-    await expect(performSignIn(sign_in_args(mismatched))).rejects.toThrow(
+    await expect(performSignIn(signInArgs(mismatched))).rejects.toThrow(
       /AUTH_FAILED/,
     );
   });
 
   it("fails fast (no network) when publicKey is empty string", async () => {
-    const { wallet } = make_test_wallet();
+    const { wallet } = makeTestWallet();
     const empty: WalletConnector = { ...wallet, publicKey: "" };
-    await expect(performSignIn(sign_in_args(empty))).rejects.toThrow(
+    await expect(performSignIn(signInArgs(empty))).rejects.toThrow(
       /wallet\.publicKey is required/,
     );
   });
 
   it("fails fast (no network) when publicKey is null", async () => {
-    const { wallet } = make_test_wallet();
+    const { wallet } = makeTestWallet();
     const nullpk: WalletConnector = { ...wallet, publicKey: null };
-    await expect(performSignIn(sign_in_args(nullpk))).rejects.toThrow(
+    await expect(performSignIn(signInArgs(nullpk))).rejects.toThrow(
       /wallet\.publicKey is required/,
     );
   });
 
   it("fails fast (no network) when sessionTtlSeconds is non-positive", async () => {
-    const { wallet } = make_test_wallet();
+    const { wallet } = makeTestWallet();
     await expect(
-      performSignIn({ ...sign_in_args(wallet), sessionTtlSeconds: 0 }),
+      performSignIn({ ...signInArgs(wallet), sessionTtlSeconds: 0 }),
     ).rejects.toThrow(/sessionTtlSeconds must be a positive number/);
   });
 });

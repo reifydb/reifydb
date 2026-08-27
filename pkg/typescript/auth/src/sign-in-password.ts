@@ -18,11 +18,11 @@ export interface PasswordSignInArgs<
   sessionTtlSeconds: number;
 }
 
-function supports_password_login(
+function supportsPasswordLogin(
   client: AuthCapableClient,
 ): client is CredentialAuthCapableClient {
   return (
-    typeof (client as CredentialAuthCapableClient).login_with_password ===
+    typeof (client as CredentialAuthCapableClient).loginWithPassword ===
     "function"
   );
 }
@@ -44,19 +44,19 @@ export async function performPasswordSignIn<TClient extends AuthCapableClient>(
 
   const client = await transport.connect(url);
   try {
-    if (!supports_password_login(client)) {
+    if (!supportsPasswordLogin(client)) {
       throw new Error(
-        "@reifydb/auth: transport client does not support login_with_password",
+        "@reifydb/auth: transport client does not support loginWithPassword",
       );
     }
-    const auth = await client.login_with_password(identifier, password);
+    const auth = await client.loginWithPassword(identifier, password);
     return {
       token: auth.token,
       identity: auth.identity,
-      wallet_address: identifier,
+      walletAddress: identifier,
       identifier,
       method: "password",
-      expires_at: Math.floor(Date.now() / 1000) + sessionTtlSeconds,
+      expiresAt: Math.floor(Date.now() / 1000) + sessionTtlSeconds,
     };
   } finally {
     transport.release(client);

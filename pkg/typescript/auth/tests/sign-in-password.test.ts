@@ -10,19 +10,19 @@ import type {
 } from "../src/types";
 import type { AuthTransport } from "../src/transport";
 
-function make_password_client(): CredentialAuthCapableClient & {
-  login_with_password: ReturnType<typeof vi.fn>;
+function makePasswordClient(): CredentialAuthCapableClient & {
+  loginWithPassword: ReturnType<typeof vi.fn>;
 } {
   return {
-    login_challenge: vi.fn(),
-    login_with_password: vi
-      .fn<CredentialAuthCapableClient["login_with_password"]>()
+    loginChallenge: vi.fn(),
+    loginWithPassword: vi
+      .fn<CredentialAuthCapableClient["loginWithPassword"]>()
       .mockResolvedValue({ token: "tok", identity: "id" }),
     logout: vi.fn().mockResolvedValue(undefined),
   };
 }
 
-function make_transport(
+function makeTransport(
   client: AuthCapableClient,
   kind: "ws" | "http",
 ): AuthTransport & { release: ReturnType<typeof vi.fn> } {
@@ -38,8 +38,8 @@ describe.each([
   ["http", "http" as const],
 ])("performPasswordSignIn (%s)", (_label, kind) => {
   it("logs in with identifier + password and returns a password session", async () => {
-    const client = make_password_client();
-    const transport = make_transport(client, kind);
+    const client = makePasswordClient();
+    const transport = makeTransport(client, kind);
 
     const session = await performPasswordSignIn({
       url: "u",
@@ -49,17 +49,15 @@ describe.each([
       sessionTtlSeconds: 60,
     });
 
-    // The session must carry the identifier as the principal binding so the
-    // provider's cross-tab principal comparison keeps working for password
-    // sessions, and method must mark it as a password session.
+    // identifier must survive as the principal binding for cross-tab comparison, and method must mark password sessions.
     expect(session.token).toBe("tok");
     expect(session.identity).toBe("id");
-    expect(session.wallet_address).toBe("user@example.com");
+    expect(session.walletAddress).toBe("user@example.com");
     expect(session.identifier).toBe("user@example.com");
     expect(session.method).toBe("password");
-    expect(session.expires_at).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    expect(session.expiresAt).toBeGreaterThan(Math.floor(Date.now() / 1000));
 
-    expect(client.login_with_password).toHaveBeenCalledExactlyOnceWith(
+    expect(client.loginWithPassword).toHaveBeenCalledExactlyOnceWith(
       "user@example.com",
       "hunter2",
     );
@@ -67,11 +65,11 @@ describe.each([
   });
 
   it("propagates wrong-credential failures and still releases the client", async () => {
-    const client = make_password_client();
-    client.login_with_password.mockRejectedValueOnce(
+    const client = makePasswordClient();
+    client.loginWithPassword.mockRejectedValueOnce(
       new Error("invalid credentials"),
     );
-    const transport = make_transport(client, kind);
+    const transport = makeTransport(client, kind);
 
     await expect(
       performPasswordSignIn({
@@ -86,14 +84,13 @@ describe.each([
     expect(transport.release).toHaveBeenCalledWith(client);
   });
 
-  it("rejects clients without login_with_password and still releases", async () => {
-    // A minimal AuthCapableClient (challenge-only) must fail loudly instead of
-    // silently degrading - password sign-in has no challenge fallback.
+  it("rejects clients without loginWithPassword and still releases", async () => {
+    // A minimal AuthCapableClient (challenge-only) must fail loudly instead of silently degrading.
     const client: AuthCapableClient = {
-      login_challenge: vi.fn(),
+      loginChallenge: vi.fn(),
       logout: vi.fn().mockResolvedValue(undefined),
     };
-    const transport = make_transport(client, kind);
+    const transport = makeTransport(client, kind);
 
     await expect(
       performPasswordSignIn({
@@ -103,14 +100,14 @@ describe.each([
         password: "hunter2",
         sessionTtlSeconds: 60,
       }),
-    ).rejects.toThrow(/does not support login_with_password/);
+    ).rejects.toThrow(/does not support loginWithPassword/);
 
     expect(transport.release).toHaveBeenCalledWith(client);
   });
 
   it("rejects an empty identifier before connecting", async () => {
-    const client = make_password_client();
-    const transport = make_transport(client, kind);
+    const client = makePasswordClient();
+    const transport = makeTransport(client, kind);
 
     await expect(
       performPasswordSignIn({
@@ -126,8 +123,8 @@ describe.each([
   });
 
   it("rejects an empty password before connecting", async () => {
-    const client = make_password_client();
-    const transport = make_transport(client, kind);
+    const client = makePasswordClient();
+    const transport = makeTransport(client, kind);
 
     await expect(
       performPasswordSignIn({
@@ -143,8 +140,8 @@ describe.each([
   });
 
   it("rejects when sessionTtlSeconds is not positive", async () => {
-    const client = make_password_client();
-    const transport = make_transport(client, kind);
+    const client = makePasswordClient();
+    const transport = makeTransport(client, kind);
 
     await expect(
       performPasswordSignIn({

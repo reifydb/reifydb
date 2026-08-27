@@ -54,6 +54,6 @@ export {
 } from './validator';
 
 export {
-    transform_frames,
-    transform_result
+    transformFrames,
+    transformResult
 } from './transform';

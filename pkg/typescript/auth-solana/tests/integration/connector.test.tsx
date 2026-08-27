@@ -8,12 +8,12 @@ import { WalletProvider, useWallet } from "@solana/wallet-adapter-react";
 import { Shape } from "@reifydb/core";
 import {
   performSignIn,
-  ws_transport,
+  wsTransport,
   type AuthSession,
 } from "@reifydb/auth";
 import { useSolanaWalletConnector } from "@reifydb/auth-solana";
 
-import { WS_URL, wait_for_database } from "./setup";
+import { WS_URL, waitForDatabase } from "./setup";
 import { MockSolanaWalletAdapter } from "./mock-adapter";
 
 interface DriverResult {
@@ -35,7 +35,7 @@ function SignInDriver({
     setStarted(true);
     performSignIn({
       url: WS_URL,
-      transport: ws_transport,
+      transport: wsTransport,
       method: "solana",
       wallet: connector,
       domain: "test",
@@ -52,7 +52,7 @@ function SignInDriver({
 }
 
 beforeAll(async () => {
-  await wait_for_database();
+  await waitForDatabase();
 }, 30000);
 
 beforeEach(() => {
@@ -71,7 +71,7 @@ describe("useSolanaWalletConnector — end-to-end with mock wallet adapter", () 
     localStorage.setItem("walletName", JSON.stringify("Mock"));
 
     const adapter = new MockSolanaWalletAdapter();
-    const expected_pubkey = adapter.keypair.publicKey.toBase58();
+    const expectedPubkey = adapter.keypair.publicKey.toBase58();
     let result: DriverResult | null = null;
 
     render(
@@ -93,16 +93,16 @@ describe("useSolanaWalletConnector — end-to-end with mock wallet adapter", () 
 
     expect(result?.error).toBeUndefined();
     expect(result?.session).toBeDefined();
-    expect(result?.session?.wallet_address).toBe(expected_pubkey);
+    expect(result?.session?.walletAddress).toBe(expectedPubkey);
     expect(result?.session?.token.length).toBeGreaterThan(0);
     expect(result?.session?.identity.length).toBeGreaterThan(0);
-    expect(result?.session?.expires_at).toBeGreaterThan(
+    expect(result?.session?.expiresAt).toBeGreaterThan(
       Math.floor(Date.now() / 1000),
     );
 
     // Prove the issued token is actually accepted by the server for an
     // authenticated query, not just shape-matched at handshake time.
-    const authed = await ws_transport.connect(WS_URL, result!.session!.token);
+    const authed = await wsTransport.connect(WS_URL, result!.session!.token);
     try {
       const frames = await authed.query(
         "MAP {v: 42}",
@@ -111,7 +111,7 @@ describe("useSolanaWalletConnector — end-to-end with mock wallet adapter", () 
       );
       expect(frames[0][0].v).toBe(42);
     } finally {
-      ws_transport.release(authed);
+      wsTransport.release(authed);
     }
   });
 });

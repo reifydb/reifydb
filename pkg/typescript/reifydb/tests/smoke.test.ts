@@ -13,18 +13,18 @@ const itemsShape = Shape.object({ id: Shape.int4Value(), label: Shape.utf8Value(
 
 describe('smoke', () => {
   it('opens, migrates, inserts, and queries a row through the real engine', async () => {
-    const db = Reifydb.memory().with_migrations({ dir: migrationsDir }).build()
+    const db = Reifydb.memory().withMigrations({ dir: migrationsDir }).build()
 
-    await db.command_root('insert smoke::items [{ id: 1, label: "hello" }]', {}, [])
-    const [rows] = await db.query_root('from smoke::items map { id, label }', {}, [itemsShape])
+    await db.commandRoot('insert smoke::items [{ id: 1, label: "hello" }]', {}, [])
+    const [rows] = await db.queryRoot('from smoke::items map { id, label }', {}, [itemsShape])
 
     expect(rows).toEqual([{ id: new Int4Value(1), label: new Utf8Value('hello') }])
   })
 
-  it('query_root on an empty table returns no rows', async () => {
-    const db = Reifydb.memory().with_migrations({ dir: migrationsDir }).build()
+  it('queryRoot on an empty table returns no rows', async () => {
+    const db = Reifydb.memory().withMigrations({ dir: migrationsDir }).build()
 
-    const [rows] = await db.query_root('from smoke::items map { id, label }', {}, [itemsShape])
+    const [rows] = await db.queryRoot('from smoke::items map { id, label }', {}, [itemsShape])
 
     expect(rows).toEqual([])
   })

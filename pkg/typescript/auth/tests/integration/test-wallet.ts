@@ -12,7 +12,7 @@ export interface TestWallet {
   publicKeyB58: string;
 }
 
-export function make_test_wallet(): TestWallet {
+export function makeTestWallet(): TestWallet {
   const keypair = Keypair.generate();
   const publicKeyB58 = keypair.publicKey.toBase58();
   const wallet: WalletConnector = {

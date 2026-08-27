@@ -22,7 +22,7 @@ describe('Positional Parameters (value)', () => {
 
     describe('admin', () => {
         it('Boolean', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new BooleanValue(true)],
                 [Shape.object({result: Shape.booleanValue()})]
@@ -32,7 +32,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int1', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Int1Value(42)],
                 [Shape.object({result: Shape.int1Value()})]
@@ -42,7 +42,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int2', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Int2Value(1234)],
                 [Shape.object({result: Shape.int2Value()})]
@@ -52,7 +52,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int4', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Int4Value(12345678)],
                 [Shape.object({result: Shape.int4Value()})]
@@ -62,7 +62,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int8', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Int8Value(BigInt("9223372036854775807"))],
                 [Shape.object({result: Shape.int8Value()})]
@@ -72,7 +72,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int16', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Int16Value(BigInt("170141183460469231731687303715884105727"))],
                 [Shape.object({result: Shape.int16Value()})]
@@ -82,7 +82,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint1', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Uint1Value(255)],
                 [Shape.object({result: Shape.uint1Value()})]
@@ -92,7 +92,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint2', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Uint2Value(65535)],
                 [Shape.object({result: Shape.uint2Value()})]
@@ -102,7 +102,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint4', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Uint4Value(4294967295)],
                 [Shape.object({result: Shape.uint4Value()})]
@@ -112,7 +112,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint8', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Uint8Value(BigInt("18446744073709551615"))],
                 [Shape.object({result: Shape.uint8Value()})]
@@ -122,7 +122,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint16', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Uint16Value(BigInt("340282366920938463463374607431768211455"))],
                 [Shape.object({result: Shape.uint16Value()})]
@@ -132,7 +132,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Float4', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Float4Value(3.14)],
                 [Shape.object({result: Shape.float4Value()})]
@@ -142,7 +142,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Float8', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Float8Value(3.141592653589793)],
                 [Shape.object({result: Shape.float8Value()})]
@@ -152,7 +152,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Decimal', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new DecimalValue("123.456789")],
                 [Shape.object({result: Shape.decimalValue()})]
@@ -162,7 +162,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Utf8', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Utf8Value("Hello, World!")],
                 [Shape.object({result: Shape.utf8Value()})]
@@ -173,7 +173,7 @@ describe('Positional Parameters (value)', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new BlobValue(data)],
                 [Shape.object({result: Shape.blobValue()})]
@@ -184,7 +184,7 @@ describe('Positional Parameters (value)', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new DateValue(date)],
                 [Shape.object({result: Shape.dateValue()})]
@@ -194,7 +194,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Time', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new TimeValue("14:30:00.123456789")],
                 [Shape.object({result: Shape.timeValue()})]
@@ -205,7 +205,7 @@ describe('Positional Parameters (value)', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new DateTimeValue(datetime)],
                 [Shape.object({result: Shape.dateTimeValue()})]
@@ -215,7 +215,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Duration', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new DurationValue("P1DT2H30M")],
                 [Shape.object({result: Shape.durationValue()})]
@@ -226,7 +226,7 @@ describe('Positional Parameters (value)', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Uuid4Value(uuid)],
                 [Shape.object({result: Shape.uuid4Value()})]
@@ -237,7 +237,7 @@ describe('Positional Parameters (value)', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new Uuid7Value(uuid)],
                 [Shape.object({result: Shape.uuid7Value()})]
@@ -248,7 +248,7 @@ describe('Positional Parameters (value)', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new IdentityIdValue(identityId)],
                 [Shape.object({result: Shape.identityIdValue()})]
@@ -258,7 +258,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('None', async () => {
-            const frames = await db.admin_root(
+            const frames = await db.adminRoot(
                 'MAP {result: $1}',
                 [new NoneValue()],
                 [Shape.object({result: Shape.noneValue()})]
@@ -271,7 +271,7 @@ describe('Positional Parameters (value)', () => {
 
     describe('command', () => {
         it('Boolean', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new BooleanValue(true)],
                 [Shape.object({result: Shape.booleanValue()})]
@@ -281,7 +281,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int1', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Int1Value(42)],
                 [Shape.object({result: Shape.int1Value()})]
@@ -291,7 +291,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int2', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Int2Value(1234)],
                 [Shape.object({result: Shape.int2Value()})]
@@ -301,7 +301,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int4', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Int4Value(12345678)],
                 [Shape.object({result: Shape.int4Value()})]
@@ -311,7 +311,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int8', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Int8Value(BigInt("9223372036854775807"))],
                 [Shape.object({result: Shape.int8Value()})]
@@ -321,7 +321,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int16', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Int16Value(BigInt("170141183460469231731687303715884105727"))],
                 [Shape.object({result: Shape.int16Value()})]
@@ -331,7 +331,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint1', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Uint1Value(255)],
                 [Shape.object({result: Shape.uint1Value()})]
@@ -341,7 +341,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint2', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Uint2Value(65535)],
                 [Shape.object({result: Shape.uint2Value()})]
@@ -351,7 +351,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint4', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Uint4Value(4294967295)],
                 [Shape.object({result: Shape.uint4Value()})]
@@ -361,7 +361,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint8', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Uint8Value(BigInt("18446744073709551615"))],
                 [Shape.object({result: Shape.uint8Value()})]
@@ -371,7 +371,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint16', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Uint16Value(BigInt("340282366920938463463374607431768211455"))],
                 [Shape.object({result: Shape.uint16Value()})]
@@ -381,7 +381,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Float4', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Float4Value(3.14)],
                 [Shape.object({result: Shape.float4Value()})]
@@ -391,7 +391,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Float8', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Float8Value(3.141592653589793)],
                 [Shape.object({result: Shape.float8Value()})]
@@ -401,7 +401,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Decimal', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new DecimalValue("123.456789")],
                 [Shape.object({result: Shape.decimalValue()})]
@@ -411,7 +411,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Utf8', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Utf8Value("Hello, World!")],
                 [Shape.object({result: Shape.utf8Value()})]
@@ -422,7 +422,7 @@ describe('Positional Parameters (value)', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new BlobValue(data)],
                 [Shape.object({result: Shape.blobValue()})]
@@ -433,7 +433,7 @@ describe('Positional Parameters (value)', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new DateValue(date)],
                 [Shape.object({result: Shape.dateValue()})]
@@ -443,7 +443,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Time', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new TimeValue("14:30:00.123456789")],
                 [Shape.object({result: Shape.timeValue()})]
@@ -454,7 +454,7 @@ describe('Positional Parameters (value)', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new DateTimeValue(datetime)],
                 [Shape.object({result: Shape.dateTimeValue()})]
@@ -464,7 +464,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Duration', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new DurationValue("P1DT2H30M")],
                 [Shape.object({result: Shape.durationValue()})]
@@ -475,7 +475,7 @@ describe('Positional Parameters (value)', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Uuid4Value(uuid)],
                 [Shape.object({result: Shape.uuid4Value()})]
@@ -486,7 +486,7 @@ describe('Positional Parameters (value)', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new Uuid7Value(uuid)],
                 [Shape.object({result: Shape.uuid7Value()})]
@@ -497,7 +497,7 @@ describe('Positional Parameters (value)', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new IdentityIdValue(identityId)],
                 [Shape.object({result: Shape.identityIdValue()})]
@@ -507,7 +507,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('None', async () => {
-            const frames = await db.command_root(
+            const frames = await db.commandRoot(
                 'MAP {result: $1}',
                 [new NoneValue()],
                 [Shape.object({result: Shape.noneValue()})]
@@ -520,7 +520,7 @@ describe('Positional Parameters (value)', () => {
 
     describe('query', () => {
         it('Boolean', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new BooleanValue(true)],
                 [Shape.object({result: Shape.booleanValue()})]
@@ -530,7 +530,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int1', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Int1Value(42)],
                 [Shape.object({result: Shape.int1Value()})]
@@ -540,7 +540,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int2', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Int2Value(1234)],
                 [Shape.object({result: Shape.int2Value()})]
@@ -550,7 +550,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int4', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Int4Value(12345678)],
                 [Shape.object({result: Shape.int4Value()})]
@@ -560,7 +560,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int8', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Int8Value(BigInt("9223372036854775807"))],
                 [Shape.object({result: Shape.int8Value()})]
@@ -570,7 +570,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Int16', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Int16Value(BigInt("170141183460469231731687303715884105727"))],
                 [Shape.object({result: Shape.int16Value()})]
@@ -580,7 +580,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint1', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Uint1Value(255)],
                 [Shape.object({result: Shape.uint1Value()})]
@@ -590,7 +590,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint2', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Uint2Value(65535)],
                 [Shape.object({result: Shape.uint2Value()})]
@@ -600,7 +600,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint4', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Uint4Value(4294967295)],
                 [Shape.object({result: Shape.uint4Value()})]
@@ -610,7 +610,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint8', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Uint8Value(BigInt("18446744073709551615"))],
                 [Shape.object({result: Shape.uint8Value()})]
@@ -620,7 +620,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Uint16', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Uint16Value(BigInt("340282366920938463463374607431768211455"))],
                 [Shape.object({result: Shape.uint16Value()})]
@@ -630,7 +630,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Float4', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Float4Value(3.14)],
                 [Shape.object({result: Shape.float4Value()})]
@@ -640,7 +640,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Float8', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Float8Value(3.141592653589793)],
                 [Shape.object({result: Shape.float8Value()})]
@@ -650,7 +650,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Decimal', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new DecimalValue("123.456789")],
                 [Shape.object({result: Shape.decimalValue()})]
@@ -660,7 +660,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Utf8', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Utf8Value("Hello, World!")],
                 [Shape.object({result: Shape.utf8Value()})]
@@ -671,7 +671,7 @@ describe('Positional Parameters (value)', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new BlobValue(data)],
                 [Shape.object({result: Shape.blobValue()})]
@@ -682,7 +682,7 @@ describe('Positional Parameters (value)', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new DateValue(date)],
                 [Shape.object({result: Shape.dateValue()})]
@@ -692,7 +692,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Time', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new TimeValue("14:30:00.123456789")],
                 [Shape.object({result: Shape.timeValue()})]
@@ -703,7 +703,7 @@ describe('Positional Parameters (value)', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new DateTimeValue(datetime)],
                 [Shape.object({result: Shape.dateTimeValue()})]
@@ -713,7 +713,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('Duration', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new DurationValue("P1DT2H30M")],
                 [Shape.object({result: Shape.durationValue()})]
@@ -724,7 +724,7 @@ describe('Positional Parameters (value)', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Uuid4Value(uuid)],
                 [Shape.object({result: Shape.uuid4Value()})]
@@ -735,7 +735,7 @@ describe('Positional Parameters (value)', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new Uuid7Value(uuid)],
                 [Shape.object({result: Shape.uuid7Value()})]
@@ -746,7 +746,7 @@ describe('Positional Parameters (value)', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new IdentityIdValue(identityId)],
                 [Shape.object({result: Shape.identityIdValue()})]
@@ -756,7 +756,7 @@ describe('Positional Parameters (value)', () => {
         });
 
         it('None', async () => {
-            const frames = await db.query_root(
+            const frames = await db.queryRoot(
                 'MAP {result: $1}',
                 [new NoneValue()],
                 [Shape.object({result: Shape.noneValue()})]

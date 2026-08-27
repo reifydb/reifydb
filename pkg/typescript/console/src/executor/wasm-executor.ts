@@ -19,20 +19,20 @@ export class WasmExecutor implements Executor {
     const query = trimmed.endsWith(';') ? trimmed.slice(0, -1).trim() : trimmed;
 
     if (!query) {
-      return { success: true, data: [], execution_time: 0 };
+      return { success: true, data: [], executionTime: 0 };
     }
 
-    const start_time = performance.now();
+    const startTime = performance.now();
     try {
       const results = await this.db.admin(query);
-      const execution_time = Math.round(performance.now() - start_time);
+      const executionTime = Math.round(performance.now() - startTime);
       return {
         success: true,
         data: Array.isArray(results) ? results : [],
-        execution_time,
+        executionTime,
       };
     } catch (error) {
-      const execution_time = Math.round(performance.now() - start_time);
+      const executionTime = Math.round(performance.now() - startTime);
       let diagnostic: Diagnostic | undefined;
       if (error && typeof error === 'object' && 'code' in error) {
         const e = error as Record<string, unknown>;
@@ -51,7 +51,7 @@ export class WasmExecutor implements Executor {
         success: false,
         error: error instanceof Error ? error.message : String(error),
         diagnostic,
-        execution_time,
+        executionTime,
       };
     }
   }

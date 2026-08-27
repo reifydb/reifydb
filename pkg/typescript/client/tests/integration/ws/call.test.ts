@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
-import {wait_for_database} from "../setup";
+import {waitForDatabase} from "../setup";
 import {Shape} from "@reifydb/core";
 import {Client, WsClient} from "../../../src";
 
@@ -13,23 +13,23 @@ describe('WS call RPC', () => {
     // do not collide on the namespace or on the globally-unique binding names.
     const suffix = `${Date.now()}`;
     const ns = `call_ws_${suffix}`;
-    const greet_binding = `greet_${suffix}`;
-    const greet_rbcf_binding = `greet_rbcf_${suffix}`;
-    const echo_binding = `echo_${suffix}`;
+    const greetBinding = `greet_${suffix}`;
+    const greetRbcfBinding = `greet_rbcf_${suffix}`;
+    const echoBinding = `echo_${suffix}`;
 
     let client: WsClient;
 
     beforeAll(async () => {
-        await wait_for_database();
-        client = await Client.connect_ws(WS_URL, {timeout_ms: 10000, token: AUTH_TOKEN});
+        await waitForDatabase();
+        client = await Client.connectWs(WS_URL, {timeoutMs: 10000, token: AUTH_TOKEN});
 
         await client.admin(`CREATE NAMESPACE ${ns}`, {}, []);
         await client.admin(`CREATE PROCEDURE ${ns}::greet AS { MAP { result: 42 } }`, {}, []);
         await client.admin(`CREATE PROCEDURE ${ns}::echo { n: int4 } AS { MAP { out: $n } }`, {}, []);
         // Default binding format is frames; the rbcf binding exercises the binary response path.
-        await client.admin(`CREATE WS BINDING ${ns}::greet_ws FOR ${ns}::greet WITH { name: "${greet_binding}" }`, {}, []);
-        await client.admin(`CREATE WS BINDING ${ns}::greet_rbcf_ws FOR ${ns}::greet WITH { name: "${greet_rbcf_binding}", format: "rbcf" }`, {}, []);
-        await client.admin(`CREATE WS BINDING ${ns}::echo_ws FOR ${ns}::echo WITH { name: "${echo_binding}" }`, {}, []);
+        await client.admin(`CREATE WS BINDING ${ns}::greet_ws FOR ${ns}::greet WITH { name: "${greetBinding}" }`, {}, []);
+        await client.admin(`CREATE WS BINDING ${ns}::greet_rbcf_ws FOR ${ns}::greet WITH { name: "${greetRbcfBinding}", format: "rbcf" }`, {}, []);
+        await client.admin(`CREATE WS BINDING ${ns}::echo_ws FOR ${ns}::echo WITH { name: "${echoBinding}" }`, {}, []);
     }, 30000);
 
     afterAll(async () => {
@@ -37,7 +37,7 @@ describe('WS call RPC', () => {
     });
 
     it('invokes a zero-parameter binding and returns the procedure frame', async () => {
-        const frames = await client.call(greet_binding, {}, [
+        const frames = await client.call(greetBinding, {}, [
             Shape.object({result: Shape.number()}),
         ]);
 
@@ -49,7 +49,7 @@ describe('WS call RPC', () => {
     it('passes named params through to the procedure body', async () => {
         // A wrong result here means the client dropped/renamed params on the wire,
         // not merely that call returned something.
-        const frames = await client.call(echo_binding, {n: 7}, [
+        const frames = await client.call(echoBinding, {n: 7}, [
             Shape.object({out: Shape.number()}),
         ]);
 
@@ -57,7 +57,7 @@ describe('WS call RPC', () => {
     }, 10000);
 
     it('decodes an rbcf-format binding response via the binary path', async () => {
-        const frames = await client.call(greet_rbcf_binding, {}, [
+        const frames = await client.call(greetRbcfBinding, {}, [
             Shape.object({result: Shape.number()}),
         ]);
 
@@ -65,7 +65,7 @@ describe('WS call RPC', () => {
     }, 10000);
 
     it('returns server meta alongside frames', async () => {
-        const {frames, meta} = await client.call_with_meta(greet_binding, {}, [
+        const {frames, meta} = await client.callWithMeta(greetBinding, {}, [
             Shape.object({result: Shape.number()}),
         ]);
 
@@ -76,7 +76,7 @@ describe('WS call RPC', () => {
 
     it('rejects a missing required param with INVALID_PARAMS', async () => {
         await expect(
-            client.call(echo_binding, {}, [Shape.object({out: Shape.number()})])
+            client.call(echoBinding, {}, [Shape.object({out: Shape.number()})])
         ).rejects.toMatchObject({
             name: 'ReifyError',
             code: 'INVALID_PARAMS',

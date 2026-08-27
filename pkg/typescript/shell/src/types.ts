@@ -11,7 +11,7 @@ export interface ExecutionResult {
   success: boolean;
   data?: Record<string, unknown>[];
   error?: string;
-  execution_time: number;
+  executionTime: number;
 }
 
 /**
@@ -32,7 +32,7 @@ export interface Executor {
   /**
    * Get shape for a table (optional, used by .shape command)
    */
-  getShape?(table_name: string): Promise<string | null>;
+  getShape?(tableName: string): Promise<string | null>;
 }
 
 /**
@@ -97,11 +97,11 @@ export interface ShellOptions {
   /**
    * Key for localStorage history (default: "reifydb-shell-history")
    */
-  history_key?: string;
+  historyKey?: string;
 
   /**
    * Custom history storage implementation.
-   * If provided, history_key is ignored.
+   * If provided, historyKey is ignored.
    */
   historyStorage?: HistoryStorage;
 

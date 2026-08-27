@@ -2,18 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useQueryOne, useQueryMany, get_connection, clear_connection, Shape} from '../../../src';
-import {wait_for_database} from '../setup';
+import {useQueryOne, useQueryMany, getConnection, clearConnection, Shape} from '../../../src';
+import {waitForDatabase} from '../setup';
 
 describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
     beforeAll(async () => {
-        await wait_for_database();
-        const conn = get_connection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN, format: 'json'});
+        await waitForDatabase();
+        const conn = getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN, format: 'json'});
         await conn.connect();
     }, 30000);
 
     afterAll(() => {
-        clear_connection();
+        clearConnection();
     });
 
     describe('Primitive Type - With Shape Returns JS Primitives', () => {
@@ -29,7 +29,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 // With shape, strings return as JS primitives
@@ -48,7 +48,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 // With shape, strings return as JS primitives
@@ -68,7 +68,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 // With shape, strings return as JS primitives
@@ -88,7 +88,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].age).toBe("25");
@@ -106,7 +106,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].price).toBe("19.99");
@@ -123,7 +123,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].value).toBe("3.14159265358979");
@@ -140,7 +140,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].amount).toBe('123.456789');
@@ -158,7 +158,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].count).toBe("100");
@@ -175,7 +175,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].temperature).toBe("-40.5");
@@ -192,7 +192,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].zero).toBe("0");
@@ -211,7 +211,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].active).toBe(true);
@@ -229,7 +229,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].enabled).toBe(false);
@@ -248,7 +248,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].missing).toBeNull();
@@ -272,7 +272,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             // With shape, strings are still JS strings
@@ -294,7 +294,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             // With shape, numbers are still JS numbers
@@ -316,7 +316,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.result!.rows[0].active).toBe(true);
@@ -338,7 +338,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.result!.rows[0].required).toBe('present');
@@ -359,7 +359,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.result!.rows[0].result).toBe('Parameter Value');
@@ -391,7 +391,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             const data = result.current.result!.rows[0];
@@ -410,7 +410,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.results![0].rows[0].str).toBe('test');
@@ -433,7 +433,7 @@ describe('useQuery with TypeScript Primitive Types (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.results![0].rows[0].value).toBe('hello');

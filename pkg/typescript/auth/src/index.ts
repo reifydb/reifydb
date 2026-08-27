@@ -15,10 +15,10 @@ export type {
 
 export type { AuthTransport } from "./transport";
 export {
-  http_transport,
-  json_http_transport,
-  json_ws_transport,
-  ws_transport,
+  httpTransport,
+  jsonHttpTransport,
+  jsonWsTransport,
+  wsTransport,
 } from "./transport";
 
 export {

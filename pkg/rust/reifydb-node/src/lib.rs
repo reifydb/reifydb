@@ -128,7 +128,7 @@ fn migration_source(entry: MigrationEntry) -> MigrationSource {
 }
 
 #[cfg(not(reifydb_dst))]
-#[napi(js_name = "open_with_migrations")]
+#[napi(js_name = "openWithMigrations")]
 pub fn open_with_migrations(entries: Vec<MigrationEntry>) -> Result<ReifydbNode> {
 	let mut builder = embedded::memory();
 	if !entries.is_empty() {
@@ -143,7 +143,7 @@ pub fn open_with_migrations(entries: Vec<MigrationEntry>) -> Result<ReifydbNode>
 
 #[napi]
 impl ReifydbNode {
-	#[napi(js_name = "admin_root")]
+	#[napi(js_name = "adminRoot")]
 	pub async fn admin_root(
 		&self,
 		rql: String,
@@ -158,7 +158,7 @@ impl ReifydbNode {
 			.map_err(|e| NapiError::from_reason(format!("{e:?}")))
 	}
 
-	#[napi(js_name = "command_root")]
+	#[napi(js_name = "commandRoot")]
 	pub async fn command_root(
 		&self,
 		rql: String,
@@ -173,7 +173,7 @@ impl ReifydbNode {
 			.map_err(|e| NapiError::from_reason(format!("{e:?}")))
 	}
 
-	#[napi(js_name = "query_root")]
+	#[napi(js_name = "queryRoot")]
 	pub async fn query_root(
 		&self,
 		rql: String,
@@ -188,7 +188,7 @@ impl ReifydbNode {
 			.map_err(|e| NapiError::from_reason(format!("{e:?}")))
 	}
 
-	#[napi(js_name = "admin_as")]
+	#[napi(js_name = "adminAs")]
 	pub async fn admin_as(
 		&self,
 		identity: String,
@@ -206,7 +206,7 @@ impl ReifydbNode {
 		.map(|frames| frames_to_napi(&frames))
 	}
 
-	#[napi(js_name = "command_as")]
+	#[napi(js_name = "commandAs")]
 	pub async fn command_as(
 		&self,
 		identity: String,
@@ -224,7 +224,7 @@ impl ReifydbNode {
 		.map(|frames| frames_to_napi(&frames))
 	}
 
-	#[napi(js_name = "query_as")]
+	#[napi(js_name = "queryAs")]
 	pub async fn query_as(
 		&self,
 		identity: String,

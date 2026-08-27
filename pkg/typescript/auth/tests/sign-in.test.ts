@@ -11,21 +11,21 @@ import type {
 } from "../src/types";
 import type { AuthTransport } from "../src/transport";
 
-function make_stub_client(
+function makeStubClient(
   challenge: LoginChallengeResult,
   authed: LoginChallengeResult,
-): AuthCapableClient & { login_challenge: ReturnType<typeof vi.fn> } {
+): AuthCapableClient & { loginChallenge: ReturnType<typeof vi.fn> } {
   const fn = vi
-    .fn<AuthCapableClient["login_challenge"]>()
+    .fn<AuthCapableClient["loginChallenge"]>()
     .mockResolvedValueOnce(challenge)
     .mockResolvedValueOnce(authed);
   return {
-    login_challenge: fn,
+    loginChallenge: fn,
     logout: vi.fn().mockResolvedValue(undefined),
   };
 }
 
-function make_transport(
+function makeTransport(
   client: AuthCapableClient,
   kind: "ws" | "http",
 ): AuthTransport & { release: ReturnType<typeof vi.fn> } {
@@ -36,7 +36,7 @@ function make_transport(
   };
 }
 
-function make_wallet(
+function makeWallet(
   publicKey: string | null,
   encodeSignature = (bytes: Uint8Array): string => `enc:${bytes.length}`,
 ): Pick<WalletConnector, "publicKey" | "signMessage" | "encodeSignature"> {
@@ -52,12 +52,12 @@ describe.each([
   ["http", "http" as const],
 ])("performSignIn (%s)", (_label, kind) => {
   it("walks challenge -> sign -> submit and returns a session", async () => {
-    const client = make_stub_client(
-      { kind: "challenge", challenge_id: "c1", message: "hello", nonce: "n1" },
+    const client = makeStubClient(
+      { kind: "challenge", challengeId: "c1", message: "hello", nonce: "n1" },
       { kind: "authenticated", token: "tok", identity: "id" },
     );
-    const transport = make_transport(client, kind);
-    const wallet = make_wallet("WaLLeT");
+    const transport = makeTransport(client, kind);
+    const wallet = makeWallet("WaLLeT");
 
     const session = await performSignIn({
       url: "ws://test",
@@ -71,20 +71,20 @@ describe.each([
 
     expect(session.token).toBe("tok");
     expect(session.identity).toBe("id");
-    expect(session.wallet_address).toBe("WaLLeT");
-    expect(session.expires_at).toBeGreaterThan(Math.floor(Date.now() / 1000));
+    expect(session.walletAddress).toBe("WaLLeT");
+    expect(session.expiresAt).toBeGreaterThan(Math.floor(Date.now() / 1000));
 
-    // Two login_challenge calls in order: first the request, then the response.
-    expect(client.login_challenge).toHaveBeenCalledTimes(2);
-    const [first_call, second_call] = client.login_challenge.mock.calls;
-    expect(first_call[0]).toBe("solana");
-    expect(first_call[1]).toMatchObject({
+    // Two loginChallenge calls in order: first the request, then the response.
+    expect(client.loginChallenge).toHaveBeenCalledTimes(2);
+    const [firstCall, secondCall] = client.loginChallenge.mock.calls;
+    expect(firstCall[0]).toBe("solana");
+    expect(firstCall[1]).toMatchObject({
       identifier: "WaLLeT",
       public_key: "WaLLeT",
       domain: "example.com",
       statement: "Sign in",
     });
-    expect(second_call[1]).toMatchObject({
+    expect(secondCall[1]).toMatchObject({
       challenge_id: "c1",
       signature: "enc:3",
       signed_message: "hello",
@@ -95,20 +95,20 @@ describe.each([
 
   it("releases the transient client even when the second call fails", async () => {
     const fn = vi
-      .fn<AuthCapableClient["login_challenge"]>()
+      .fn<AuthCapableClient["loginChallenge"]>()
       .mockResolvedValueOnce({
         kind: "challenge",
-        challenge_id: "c1",
+        challengeId: "c1",
         message: "hello",
         nonce: "n1",
       })
       .mockRejectedValueOnce(new Error("boom"));
     const client: AuthCapableClient = {
-      login_challenge: fn,
+      loginChallenge: fn,
       logout: vi.fn().mockResolvedValue(undefined),
     };
-    const transport = make_transport(client, kind);
-    const wallet = make_wallet("W");
+    const transport = makeTransport(client, kind);
+    const wallet = makeWallet("W");
 
     await expect(
       performSignIn({
@@ -126,17 +126,17 @@ describe.each([
   });
 
   it("rejects when first response is not a challenge", async () => {
-    const client = make_stub_client(
+    const client = makeStubClient(
       { kind: "authenticated", token: "t", identity: "i" },
       { kind: "authenticated", token: "t", identity: "i" },
     );
-    const transport = make_transport(client, kind);
+    const transport = makeTransport(client, kind);
     await expect(
       performSignIn({
         url: "u",
         transport,
         method: "solana",
-        wallet: make_wallet("W"),
+        wallet: makeWallet("W"),
         domain: "d",
         statement: "s",
         sessionTtlSeconds: 60,
@@ -145,17 +145,17 @@ describe.each([
   });
 
   it("rejects when second response is not authenticated", async () => {
-    const client = make_stub_client(
-      { kind: "challenge", challenge_id: "c", message: "m", nonce: "n" },
-      { kind: "challenge", challenge_id: "c2", message: "m2", nonce: "n2" },
+    const client = makeStubClient(
+      { kind: "challenge", challengeId: "c", message: "m", nonce: "n" },
+      { kind: "challenge", challengeId: "c2", message: "m2", nonce: "n2" },
     );
-    const transport = make_transport(client, kind);
+    const transport = makeTransport(client, kind);
     await expect(
       performSignIn({
         url: "u",
         transport,
         method: "solana",
-        wallet: make_wallet("W"),
+        wallet: makeWallet("W"),
         domain: "d",
         statement: "s",
         sessionTtlSeconds: 60,
@@ -164,17 +164,17 @@ describe.each([
   });
 
   it("rejects when publicKey is null", async () => {
-    const client = make_stub_client(
-      { kind: "challenge", challenge_id: "c", message: "m", nonce: "n" },
+    const client = makeStubClient(
+      { kind: "challenge", challengeId: "c", message: "m", nonce: "n" },
       { kind: "authenticated", token: "t", identity: "i" },
     );
-    const transport = make_transport(client, kind);
+    const transport = makeTransport(client, kind);
     await expect(
       performSignIn({
         url: "u",
         transport,
         method: "solana",
-        wallet: make_wallet(null),
+        wallet: makeWallet(null),
         domain: "d",
         statement: "s",
         sessionTtlSeconds: 60,
@@ -183,17 +183,17 @@ describe.each([
   });
 
   it("rejects when sessionTtlSeconds is not positive", async () => {
-    const client = make_stub_client(
-      { kind: "challenge", challenge_id: "c", message: "m", nonce: "n" },
+    const client = makeStubClient(
+      { kind: "challenge", challengeId: "c", message: "m", nonce: "n" },
       { kind: "authenticated", token: "t", identity: "i" },
     );
-    const transport = make_transport(client, kind);
+    const transport = makeTransport(client, kind);
     await expect(
       performSignIn({
         url: "u",
         transport,
         method: "solana",
-        wallet: make_wallet("W"),
+        wallet: makeWallet("W"),
         domain: "d",
         statement: "s",
         sessionTtlSeconds: 0,

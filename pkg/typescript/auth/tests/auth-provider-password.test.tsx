@@ -47,27 +47,27 @@ function Probe({ outRef }: { outRef: { current: ProbeRef | null } }) {
   return null;
 }
 
-function fake_client(): CredentialAuthCapableClient & {
-  login_with_password: ReturnType<typeof vi.fn>;
+function fakeClient(): CredentialAuthCapableClient & {
+  loginWithPassword: ReturnType<typeof vi.fn>;
   logout: ReturnType<typeof vi.fn>;
 } {
   return {
-    login_challenge: vi.fn(),
-    login_with_password: vi
-      .fn<CredentialAuthCapableClient["login_with_password"]>()
+    loginChallenge: vi.fn(),
+    loginWithPassword: vi
+      .fn<CredentialAuthCapableClient["loginWithPassword"]>()
       .mockResolvedValue({ token: "tok", identity: "id" }),
     logout: vi.fn().mockResolvedValue(undefined),
   };
 }
 
-function fake_transport(
-  signin_client: CredentialAuthCapableClient,
-  authed_client: CredentialAuthCapableClient,
+function fakeTransport(
+  signinClient: CredentialAuthCapableClient,
+  authedClient: CredentialAuthCapableClient,
 ): AuthTransport {
   return {
     kind: "http",
     connect: vi.fn((_url: string, token?: string) =>
-      Promise.resolve(token == null ? signin_client : authed_client),
+      Promise.resolve(token == null ? signinClient : authedClient),
     ),
     release: vi.fn(),
   };
@@ -93,14 +93,14 @@ function mount(
   );
 }
 
-function password_session(over: Partial<AuthSession> = {}): AuthSession {
+function passwordSession(over: Partial<AuthSession> = {}): AuthSession {
   return {
     token: "tok",
     identity: "id",
-    wallet_address: EMAIL,
+    walletAddress: EMAIL,
     identifier: EMAIL,
     method: "password",
-    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    expiresAt: Math.floor(Date.now() / 1000) + 3600,
     ...over,
   };
 }
@@ -116,9 +116,9 @@ afterEach(() => {
 
 describe("AuthProvider (password flow)", () => {
   it("signIn(credentials) reaches authenticated without any wallet", async () => {
-    const signin_client = fake_client();
-    const authed_client = fake_client();
-    const transport = fake_transport(signin_client, authed_client);
+    const signinClient = fakeClient();
+    const authedClient = fakeClient();
+    const transport = fakeTransport(signinClient, authedClient);
     const ref: { current: ProbeRef | null } = { current: null };
     mount(transport, ref);
 
@@ -131,7 +131,7 @@ describe("AuthProvider (password flow)", () => {
       expect(ref.current?.clientReady).toBe(true);
     });
     expect(ref.current?.identifier).toBe(EMAIL);
-    expect(signin_client.login_with_password).toHaveBeenCalledWith(
+    expect(signinClient.loginWithPassword).toHaveBeenCalledWith(
       EMAIL,
       "hunter2",
     );
@@ -140,8 +140,8 @@ describe("AuthProvider (password flow)", () => {
   });
 
   it("restores a stored password session on mount without a wallet", async () => {
-    writeStoredSession(SCOPED_NS, password_session());
-    const transport = fake_transport(fake_client(), fake_client());
+    writeStoredSession(SCOPED_NS, passwordSession());
+    const transport = fakeTransport(fakeClient(), fakeClient());
     const ref: { current: ProbeRef | null } = { current: null };
     mount(transport, ref);
 
@@ -158,9 +158,9 @@ describe("AuthProvider (password flow)", () => {
     // refuse to resurrect it instead of silently authenticating.
     writeStoredSession(
       SCOPED_NS,
-      password_session({ method: undefined, identifier: undefined, wallet_address: "WalletA" }),
+      passwordSession({ method: undefined, identifier: undefined, walletAddress: "WalletA" }),
     );
-    const transport = fake_transport(fake_client(), fake_client());
+    const transport = fakeTransport(fakeClient(), fakeClient());
     const ref: { current: ProbeRef | null } = { current: null };
     mount(transport, ref);
 
@@ -172,11 +172,11 @@ describe("AuthProvider (password flow)", () => {
   });
 
   it("signIn surfaces wrong-credential errors and persists nothing", async () => {
-    const signin_client = fake_client();
-    signin_client.login_with_password.mockRejectedValueOnce(
+    const signinClient = fakeClient();
+    signinClient.loginWithPassword.mockRejectedValueOnce(
       new Error("invalid credentials"),
     );
-    const transport = fake_transport(signin_client, fake_client());
+    const transport = fakeTransport(signinClient, fakeClient());
     const ref: { current: ProbeRef | null } = { current: null };
     mount(transport, ref);
 
@@ -189,7 +189,7 @@ describe("AuthProvider (password flow)", () => {
   });
 
   it("signIn() without credentials and without a wallet errors instead of throwing", async () => {
-    const transport = fake_transport(fake_client(), fake_client());
+    const transport = fakeTransport(fakeClient(), fakeClient());
     const ref: { current: ProbeRef | null } = { current: null };
     mount(transport, ref);
 
@@ -201,7 +201,7 @@ describe("AuthProvider (password flow)", () => {
   });
 
   it("sessionScope browser persists under the bare namespace shared by all tabs", async () => {
-    const transport = fake_transport(fake_client(), fake_client());
+    const transport = fakeTransport(fakeClient(), fakeClient());
     const ref: { current: ProbeRef | null } = { current: null };
     mount(transport, ref, "browser");
 
@@ -218,8 +218,8 @@ describe("AuthProvider (password flow)", () => {
   });
 
   it("cross-tab sign-out tears down a browser-scoped session", async () => {
-    writeStoredSession(NS, password_session());
-    const transport = fake_transport(fake_client(), fake_client());
+    writeStoredSession(NS, passwordSession());
+    const transport = fakeTransport(fakeClient(), fakeClient());
     const ref: { current: ProbeRef | null } = { current: null };
     mount(transport, ref, "browser");
 
@@ -241,10 +241,10 @@ describe("AuthProvider (password flow)", () => {
   });
 
   it("signOut revokes server-side, clears storage, and disconnects", async () => {
-    const authed_client = fake_client();
-    const transport = fake_transport(fake_client(), authed_client);
+    const authedClient = fakeClient();
+    const transport = fakeTransport(fakeClient(), authedClient);
     const ref: { current: ProbeRef | null } = { current: null };
-    writeStoredSession(SCOPED_NS, password_session());
+    writeStoredSession(SCOPED_NS, passwordSession());
     mount(transport, ref);
 
     await waitFor(() => {
@@ -253,7 +253,7 @@ describe("AuthProvider (password flow)", () => {
     await act(async () => {
       await ref.current?.signOut();
     });
-    expect(authed_client.logout).toHaveBeenCalled();
+    expect(authedClient.logout).toHaveBeenCalled();
     expect(ref.current?.status).toBe("disconnected");
     expect(localStorage.getItem(storageKeyFor(SCOPED_NS))).toBeNull();
   });

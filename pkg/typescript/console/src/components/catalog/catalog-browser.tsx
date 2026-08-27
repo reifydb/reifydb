@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 import { useEffect, useState } from 'react';
-import { type_name_from_code } from '@reifydb/core';
+import { typeNameFromCode } from '@reifydb/core';
 import type { Executor } from '../../types';
 import { useConsoleStore } from '../../state/use-console-store';
 import { CatalogNode } from './catalog-node';
@@ -25,30 +25,29 @@ interface SourceInfo {
 interface NamespaceTree {
   id: number;
   name: string;
-  local_name: string;
+  localName: string;
   sources: SourceInfo[];
   children: NamespaceTree[];
 }
 
-// object_type: 1=Table, 2=View, 3=VTable, 4=RingBuffer
 const SOURCE_TYPE_TABLE = 1;
 const SOURCE_TYPE_VIEW = 2;
 const SOURCE_TYPE_VTABLE = 3;
 const SOURCE_TYPE_RINGBUFFER = 4;
 
-function resolve_type_name(type_id: number): string {
-  const is_optional = (type_id & 0x80) !== 0;
-  const base_id = type_id & 0x7f;
+function resolveTypeName(typeId: number): string {
+  const isOptional = (typeId & 0x80) !== 0;
+  const baseId = typeId & 0x7f;
   let name: string;
   try {
-    name = type_name_from_code(base_id);
+    name = typeNameFromCode(baseId);
   } catch {
-    name = `Unknown(${base_id})`;
+    name = `Unknown(${baseId})`;
   }
-  return is_optional ? `${name}?` : name;
+  return isOptional ? `${name}?` : name;
 }
 
-function extract_num(value: unknown): number {
+function extractNum(value: unknown): number {
   if (typeof value === 'number') return value;
   if (typeof value === 'bigint') return Number(value);
   if (value && typeof value === 'object' && typeof (value as { valueOf(): unknown }).valueOf === 'function') {
@@ -59,7 +58,7 @@ function extract_num(value: unknown): number {
   return Number(value);
 }
 
-function extract_str(value: unknown): string {
+function extractStr(value: unknown): string {
   if (typeof value === 'string') return value;
   if (value && typeof value === 'object' && typeof (value as { valueOf(): unknown }).valueOf === 'function') {
     const v = (value as { valueOf(): unknown }).valueOf();
@@ -68,13 +67,13 @@ function extract_str(value: unknown): string {
   return String(value);
 }
 
-async function query_rows(executor: Executor, query: string): Promise<Record<string, unknown>[]> {
+async function queryRows(executor: Executor, query: string): Promise<Record<string, unknown>[]> {
   const result = await executor.execute(query);
   return result.success && result.data ? result.data : [];
 }
 
-function type_color_class(type_name: string): string | undefined {
-  const base = type_name.replace(/\?$/, '');
+function typeColorClass(typeName: string): string | undefined {
+  const base = typeName.replace(/\?$/, '');
   switch (base) {
     case 'Float4': case 'Float8':
     case 'Int1': case 'Int2': case 'Int4': case 'Int8': case 'Int16':
@@ -114,146 +113,139 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
   const [roots, setRoots] = useState<NamespaceTree[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const load_catalog = async () => {
+  const loadCatalog = async () => {
     setLoading(true);
     try {
-      const [ns_rows, table_rows, view_rows, vtable_rows, rb_rows, col_rows, vtable_col_rows, proc_rql_rows, proc_test_rows, proc_in_process_rows, proc_extern_c_rows, proc_extern_wasm_rows, handler_rows, enum_rows, event_rows, dict_rows, migration_rows] = await Promise.all([
-        query_rows(executor, 'FROM system::namespaces MAP { id, name, local_name, parent_id }'),
-        query_rows(executor, 'FROM system::tables MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::views MAP { id, namespace_id, name, kind }'),
-        query_rows(executor, 'FROM system::virtual_tables MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::ringbuffers MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::columns MAP { object_id, object_type, name, type, position }'),
-        query_rows(executor, 'FROM system::virtual_table_columns MAP { vtable_id, name, type, position }'),
-        query_rows(executor, 'FROM system::procedures::rql MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::procedures::test MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::procedures::in_process MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::procedures::extern_c MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::procedures::extern_wasm MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::handlers MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::enums MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::events MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::dictionaries MAP { id, namespace_id, name }'),
-        query_rows(executor, 'FROM system::migrations MAP { name }'),
+      const [nsRows, tableRows, viewRows, vtableRows, rbRows, colRows, vtableColRows, procRqlRows, procTestRows, procInProcessRows, procExternCRows, procExternWasmRows, handlerRows, enumRows, eventRows, dictRows, migrationRows] = await Promise.all([
+        queryRows(executor, 'FROM system::namespaces MAP { id, name, local_name, parent_id }'),
+        queryRows(executor, 'FROM system::tables MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::views MAP { id, namespace_id, name, kind }'),
+        queryRows(executor, 'FROM system::virtual_tables MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::ringbuffers MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::columns MAP { object_id, object_type, name, type, position }'),
+        queryRows(executor, 'FROM system::virtual_table_columns MAP { vtable_id, name, type, position }'),
+        queryRows(executor, 'FROM system::procedures::rql MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::procedures::test MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::procedures::in_process MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::procedures::extern_c MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::procedures::extern_wasm MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::handlers MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::enums MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::events MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::dictionaries MAP { id, namespace_id, name }'),
+        queryRows(executor, 'FROM system::migrations MAP { name }'),
       ]);
-      const proc_rows = [...proc_rql_rows, ...proc_test_rows, ...proc_in_process_rows, ...proc_extern_c_rows, ...proc_extern_wasm_rows];
+      const procRows = [...procRqlRows, ...procTestRows, ...procInProcessRows, ...procExternCRows, ...procExternWasmRows];
 
-      // Build namespace tree nodes: id → NamespaceTree
-      const ns_by_id = new Map<number, NamespaceTree>();
-      const parent_map = new Map<number, number>(); // id → parent_id
-      for (const row of ns_rows) {
-        const id = extract_num(row.id);
-        ns_by_id.set(id, {
+      const nsById = new Map<number, NamespaceTree>();
+      const parentMap = new Map<number, number>();
+      for (const row of nsRows) {
+        const id = extractNum(row.id);
+        nsById.set(id, {
           id,
-          name: extract_str(row.name),
-          local_name: extract_str(row.local_name),
+          name: extractStr(row.name),
+          localName: extractStr(row.local_name),
           sources: [],
           children: [],
         });
-        parent_map.set(id, extract_num(row.parent_id));
+        parentMap.set(id, extractNum(row.parent_id));
       }
 
-      // Build column lookup: `${object_type}:${object_id}` → columns
-      const columns_by_source = new Map<string, ColumnInfo[]>();
-      // First collect with position for sorting
-      const raw_columns = new Map<string, { name: string; type: string; position: number }[]>();
-      for (const row of col_rows) {
-        const key = `${extract_num(row.object_type)}:${extract_num(row.object_id)}`;
-        if (!raw_columns.has(key)) raw_columns.set(key, []);
-        raw_columns.get(key)!.push({
-          name: extract_str(row.name),
-          type: resolve_type_name(extract_num(row.type)),
-          position: extract_num(row.position),
+      const columnsBySource = new Map<string, ColumnInfo[]>();
+      const rawColumns = new Map<string, { name: string; type: string; position: number }[]>();
+      for (const row of colRows) {
+        const key = `${extractNum(row.object_type)}:${extractNum(row.object_id)}`;
+        if (!rawColumns.has(key)) rawColumns.set(key, []);
+        rawColumns.get(key)!.push({
+          name: extractStr(row.name),
+          type: resolveTypeName(extractNum(row.type)),
+          position: extractNum(row.position),
         });
       }
-      for (const row of vtable_col_rows) {
-        const key = `${SOURCE_TYPE_VTABLE}:${extract_num(row.vtable_id)}`;
-        if (!raw_columns.has(key)) raw_columns.set(key, []);
-        raw_columns.get(key)!.push({
-          name: extract_str(row.name),
-          type: resolve_type_name(extract_num(row.type)),
-          position: extract_num(row.position),
+      for (const row of vtableColRows) {
+        const key = `${SOURCE_TYPE_VTABLE}:${extractNum(row.vtable_id)}`;
+        if (!rawColumns.has(key)) rawColumns.set(key, []);
+        rawColumns.get(key)!.push({
+          name: extractStr(row.name),
+          type: resolveTypeName(extractNum(row.type)),
+          position: extractNum(row.position),
         });
       }
-      for (const [key, cols] of raw_columns) {
+      for (const [key, cols] of rawColumns) {
         cols.sort((a, b) => a.position - b.position);
-        columns_by_source.set(key, cols.map(c => ({ name: c.name, type: c.type })));
+        columnsBySource.set(key, cols.map(c => ({ name: c.name, type: c.type })));
       }
 
-      // Add sources directly to namespace tree nodes
-      const add_source = (id: number, ns_id: number, name: string, category: SourceInfo['category'], source_type: number) => {
-        const ns = ns_by_id.get(ns_id);
+      const addSource = (id: number, nsId: number, name: string, category: SourceInfo['category'], sourceType: number) => {
+        const ns = nsById.get(nsId);
         if (!ns) return;
-        const columns = columns_by_source.get(`${source_type}:${id}`) ?? [];
-        ns.sources.push({ name: extract_str(name), category, columns });
+        const columns = columnsBySource.get(`${sourceType}:${id}`) ?? [];
+        ns.sources.push({ name: extractStr(name), category, columns });
       };
 
-      for (const row of table_rows) {
-        add_source(extract_num(row.id), extract_num(row.namespace_id), extract_str(row.name), 'table', SOURCE_TYPE_TABLE);
+      for (const row of tableRows) {
+        addSource(extractNum(row.id), extractNum(row.namespace_id), extractStr(row.name), 'table', SOURCE_TYPE_TABLE);
       }
-      for (const row of view_rows) {
-        add_source(extract_num(row.id), extract_num(row.namespace_id), extract_str(row.name), 'view', SOURCE_TYPE_VIEW);
+      for (const row of viewRows) {
+        addSource(extractNum(row.id), extractNum(row.namespace_id), extractStr(row.name), 'view', SOURCE_TYPE_VIEW);
       }
-      for (const row of vtable_rows) {
-        add_source(extract_num(row.id), extract_num(row.namespace_id), extract_str(row.name), 'vtable', SOURCE_TYPE_VTABLE);
+      for (const row of vtableRows) {
+        addSource(extractNum(row.id), extractNum(row.namespace_id), extractStr(row.name), 'vtable', SOURCE_TYPE_VTABLE);
       }
-      for (const row of rb_rows) {
-        add_source(extract_num(row.id), extract_num(row.namespace_id), extract_str(row.name), 'ringbuffer', SOURCE_TYPE_RINGBUFFER);
+      for (const row of rbRows) {
+        addSource(extractNum(row.id), extractNum(row.namespace_id), extractStr(row.name), 'ringbuffer', SOURCE_TYPE_RINGBUFFER);
       }
 
-      const add_leaf_source = (ns_id: number, name: string, category: SourceInfo['category']) => {
-        const ns = ns_by_id.get(ns_id);
+      const addLeafSource = (nsId: number, name: string, category: SourceInfo['category']) => {
+        const ns = nsById.get(nsId);
         if (!ns) return;
-        ns.sources.push({ name: extract_str(name), category, columns: [] });
+        ns.sources.push({ name: extractStr(name), category, columns: [] });
       };
 
-      for (const row of proc_rows) {
-        add_leaf_source(extract_num(row.namespace_id), extract_str(row.name), 'procedure');
+      for (const row of procRows) {
+        addLeafSource(extractNum(row.namespace_id), extractStr(row.name), 'procedure');
       }
-      for (const row of handler_rows) {
-        add_leaf_source(extract_num(row.namespace_id), extract_str(row.name), 'handler');
+      for (const row of handlerRows) {
+        addLeafSource(extractNum(row.namespace_id), extractStr(row.name), 'handler');
       }
-      for (const row of enum_rows) {
-        add_leaf_source(extract_num(row.namespace_id), extract_str(row.name), 'enum');
+      for (const row of enumRows) {
+        addLeafSource(extractNum(row.namespace_id), extractStr(row.name), 'enum');
       }
-      for (const row of event_rows) {
-        add_leaf_source(extract_num(row.namespace_id), extract_str(row.name), 'event');
+      for (const row of eventRows) {
+        addLeafSource(extractNum(row.namespace_id), extractStr(row.name), 'event');
       }
-      for (const row of dict_rows) {
-        add_leaf_source(extract_num(row.namespace_id), extract_str(row.name), 'dictionary');
+      for (const row of dictRows) {
+        addLeafSource(extractNum(row.namespace_id), extractStr(row.name), 'dictionary');
       }
 
-      // Migrations have no namespace_id — assign to "system" namespace
-      let system_ns_id: number | undefined;
-      for (const [id, ns] of ns_by_id) {
-        if (ns.name === 'system') { system_ns_id = id; break; }
+      let systemNsId: number | undefined;
+      for (const [id, ns] of nsById) {
+        if (ns.name === 'system') { systemNsId = id; break; }
       }
-      if (system_ns_id !== undefined) {
-        for (const row of migration_rows) {
-          add_leaf_source(system_ns_id, extract_str(row.name), 'migration');
+      if (systemNsId !== undefined) {
+        for (const row of migrationRows) {
+          addLeafSource(systemNsId, extractStr(row.name), 'migration');
         }
       }
 
-      // Build tree from parent_id relationships
-      const root_nodes: NamespaceTree[] = [];
-      for (const [id, ns] of ns_by_id) {
+      const rootNodes: NamespaceTree[] = [];
+      for (const [id, ns] of nsById) {
         ns.sources.sort((a, b) => a.name.localeCompare(b.name));
-        const pid = parent_map.get(id) ?? 0;
-        const parent = pid !== 0 ? ns_by_id.get(pid) : undefined;
+        const pid = parentMap.get(id) ?? 0;
+        const parent = pid !== 0 ? nsById.get(pid) : undefined;
         if (parent) {
           parent.children.push(ns);
         } else {
-          root_nodes.push(ns);
+          rootNodes.push(ns);
         }
       }
-      // Sort children at every level
-      const sort_children = (nodes: NamespaceTree[]) => {
-        nodes.sort((a, b) => a.local_name.localeCompare(b.local_name));
-        for (const n of nodes) sort_children(n.children);
+      const sortChildren = (nodes: NamespaceTree[]) => {
+        nodes.sort((a, b) => a.localName.localeCompare(b.localName));
+        for (const n of nodes) sortChildren(n.children);
       };
-      sort_children(root_nodes);
+      sortChildren(rootNodes);
 
-      setRoots(root_nodes);
+      setRoots(rootNodes);
     } catch {
       setRoots([]);
     } finally {
@@ -262,14 +254,14 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
   };
 
   useEffect(() => {
-    load_catalog();
+    loadCatalog();
   }, [executor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toolbar = (
     <div className="rdb-catalog__toolbar">
       <button
         className="rdb-catalog__reload-btn"
-        onClick={load_catalog}
+        onClick={loadCatalog}
         disabled={loading}
       >
         {loading ? '[loading...]' : '[reload]'}
@@ -295,18 +287,18 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
     );
   }
 
-  const render_sources = (sources: SourceInfo[], namespace_name: string) =>
+  const renderSources = (sources: SourceInfo[], namespaceName: string) =>
     CATEGORY_GROUPS.map(({ key, label }) => {
       const matching = sources.filter(s => s.category === key);
       if (matching.length === 0) return null;
       return (
-        <CatalogNode key={key} label={`${label} (${matching.length})`} label_class="rdb-catalog__node-label--category">
+        <CatalogNode key={key} label={`${label} (${matching.length})`} labelClass="rdb-catalog__node-label--category">
           {matching.map(source => (
             <CatalogNode
               key={source.name}
               label={source.name}
-              on_click={QUERYABLE_CATEGORIES.has(source.category) ? () => {
-                dispatch({ type: 'LOAD_QUERY', code: `FROM ${namespace_name}::${source.name}\nTAKE 10;` });
+              onClick={QUERYABLE_CATEGORIES.has(source.category) ? () => {
+                dispatch({ type: 'LOAD_QUERY', code: `FROM ${namespaceName}::${source.name}\nTAKE 10;` });
               } : undefined}
             >
               {source.columns.length > 0
@@ -314,9 +306,9 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
                   <CatalogNode
                     key={col.name}
                     label={col.name}
-                    label_class="rdb-catalog__node-label--column"
+                    labelClass="rdb-catalog__node-label--column"
                     type={col.type}
-                    type_class={type_color_class(col.type)}
+                    typeClass={typeColorClass(col.type)}
                   />
                 ))
                 : undefined}
@@ -326,18 +318,18 @@ export function CatalogBrowser({ executor }: CatalogBrowserProps) {
       );
     });
 
-  const render_tree = (nodes: NamespaceTree[]) =>
+  const renderTree = (nodes: NamespaceTree[]) =>
     nodes.map(ns => (
-      <CatalogNode key={ns.id} label={ns.local_name} label_class="rdb-catalog__node-label--namespace">
-        {render_sources(ns.sources, ns.name)}
-        {render_tree(ns.children)}
+      <CatalogNode key={ns.id} label={ns.localName} labelClass="rdb-catalog__node-label--namespace">
+        {renderSources(ns.sources, ns.name)}
+        {renderTree(ns.children)}
       </CatalogNode>
     ));
 
   return (
     <>
       {toolbar}
-      <div>{render_tree(roots)}</div>
+      <div>{renderTree(roots)}</div>
     </>
   );
 }

@@ -42,7 +42,7 @@ const CODE_TO_NAME: Record<number, TypeName> = Object.fromEntries(
     Object.entries(TYPE_CODE).map(([k, v]) => [v, k as TypeName])
 );
 
-export function type_name_from_code(code: number): TypeName {
+export function typeNameFromCode(code: number): TypeName {
     const name = CODE_TO_NAME[code];
     if (!name) throw new Error(`Unknown type code: ${code}`);
     return name;

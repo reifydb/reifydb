@@ -114,11 +114,11 @@ function monitorsMember(): BatchSubscriptionMember {
   return {
     rql: 'from uptime::monitors',
     callbacks: {
-      on_insert: (rows) => store().upsertMonitors(rows.map(toMonitor)),
-      on_update: (rows) => store().upsertMonitors(rows.map(toMonitor)),
-      on_remove: (rows) => store().removeMonitors(rows.map((r: Record<string, unknown>) => String(r.id))),
+      onInsert: (rows) => store().upsertMonitors(rows.map(toMonitor)),
+      onUpdate: (rows) => store().upsertMonitors(rows.map(toMonitor)),
+      onRemove: (rows) => store().removeMonitors(rows.map((r: Record<string, unknown>) => String(r.id))),
     },
-    config: { hydration: { enabled: true, max_rows: 1000 }, linger: BATCH_LINGER },
+    config: { hydration: { enabled: true, maxRows: 1000 }, linger: BATCH_LINGER },
   }
 }
 
@@ -126,11 +126,11 @@ function monitorRegionsMember(): BatchSubscriptionMember {
   return {
     rql: 'from uptime::monitor_regions',
     callbacks: {
-      on_insert: (rows) => store().upsertMonitorRegions(rows.map(toMonitorRegion)),
-      on_update: (rows) => store().upsertMonitorRegions(rows.map(toMonitorRegion)),
-      on_remove: (rows) => store().removeMonitorRegions(rows.map(toMonitorRegion)),
+      onInsert: (rows) => store().upsertMonitorRegions(rows.map(toMonitorRegion)),
+      onUpdate: (rows) => store().upsertMonitorRegions(rows.map(toMonitorRegion)),
+      onRemove: (rows) => store().removeMonitorRegions(rows.map(toMonitorRegion)),
     },
-    config: { hydration: { enabled: true, max_rows: 5000 }, linger: BATCH_LINGER },
+    config: { hydration: { enabled: true, maxRows: 5000 }, linger: BATCH_LINGER },
   }
 }
 
@@ -138,11 +138,11 @@ function regionsMember(): BatchSubscriptionMember {
   return {
     rql: 'from uptime::regions',
     callbacks: {
-      on_insert: (rows) => store().upsertRegions(rows.map(toRegion)),
-      on_update: (rows) => store().upsertRegions(rows.map(toRegion)),
-      on_remove: (rows) => store().removeRegions(rows.map((r: Record<string, unknown>) => String(r.id))),
+      onInsert: (rows) => store().upsertRegions(rows.map(toRegion)),
+      onUpdate: (rows) => store().upsertRegions(rows.map(toRegion)),
+      onRemove: (rows) => store().removeRegions(rows.map((r: Record<string, unknown>) => String(r.id))),
     },
-    config: { hydration: { enabled: true, max_rows: 1000 }, linger: BATCH_LINGER },
+    config: { hydration: { enabled: true, maxRows: 1000 }, linger: BATCH_LINGER },
   }
 }
 
@@ -156,16 +156,16 @@ function resultsMember(): BatchSubscriptionMember {
   return {
     rql: `from uptime::results map { monitor_id, region_id, probe, checked_at, success, response_time, status_code, error } take ${RESULTS_HYDRATION_CAP}`,
     callbacks: {
-      on_insert: apply,
-      on_update: apply,
-      on_remove: (rows) => {
+      onInsert: apply,
+      onUpdate: apply,
+      onRemove: (rows) => {
         const s = store()
         for (const [monitorId, checkedAts] of groupByMonitor(rows, (r) => String(r.checked_at))) {
           s.removeResults(monitorId, checkedAts)
         }
       },
     },
-    config: { hydration: { enabled: true, max_rows: RESULTS_HYDRATION_CAP }, linger: BATCH_LINGER },
+    config: { hydration: { enabled: true, maxRows: RESULTS_HYDRATION_CAP }, linger: BATCH_LINGER },
   }
 }
 
@@ -182,9 +182,9 @@ function dailyMember(view: string, isUps: boolean): BatchSubscriptionMember {
   return {
     rql: `from uptime::${view}`,
     callbacks: {
-      on_insert: apply,
-      on_update: apply,
-      on_remove: (rows) => {
+      onInsert: apply,
+      onUpdate: apply,
+      onRemove: (rows) => {
         const s = store()
         for (const row of rows) {
           if (isUps) s.removeDailyUp(dailyKey(row))
@@ -192,7 +192,7 @@ function dailyMember(view: string, isUps: boolean): BatchSubscriptionMember {
         }
       },
     },
-    config: { hydration: { enabled: true, max_rows: 20000 }, linger: BATCH_LINGER },
+    config: { hydration: { enabled: true, maxRows: 20000 }, linger: BATCH_LINGER },
   }
 }
 
@@ -204,14 +204,14 @@ export async function startRealtime(token: string): Promise<void> {
   currentToken = token
   store().setStatus('connecting')
   try {
-    const c = await Client.connect_ws(UPTIME_CONFIG.wsUrl(), {
+    const c = await Client.connectWs(UPTIME_CONFIG.wsUrl(), {
       token,
-      max_reconnect_attempts: Number.MAX_SAFE_INTEGER,
-      reconnect_delay_ms: 1000,
-      on_disconnect: () => {
+      maxReconnectAttempts: Number.MAX_SAFE_INTEGER,
+      reconnectDelayMs: 1000,
+      onDisconnect: () => {
         if (gen === generation) store().setStatus('reconnecting')
       },
-      on_reconnect: () => {
+      onReconnect: () => {
         if (gen === generation) store().setStatus('live')
       },
     })
@@ -220,7 +220,7 @@ export async function startRealtime(token: string): Promise<void> {
       return
     }
     client = c
-    await c.batch_subscribe([
+    await c.batchSubscribe([
       monitorsMember(),
       monitorRegionsMember(),
       regionsMember(),

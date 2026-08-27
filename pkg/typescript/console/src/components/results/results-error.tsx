@@ -8,11 +8,11 @@ interface ResultsErrorProps {
   diagnostic?: Diagnostic;
 }
 
-function get_line(source: string, line: number): string {
+function getLine(source: string, line: number): string {
   return source.split('\n')[line - 1] ?? '';
 }
 
-function render_flat(d: Diagnostic): string {
+function renderFlat(d: Diagnostic): string {
   const lines: string[] = [];
 
   lines.push(`Error ${d.code}`);
@@ -27,22 +27,22 @@ function render_flat(d: Diagnostic): string {
     lines.push(`  line ${line}, column ${column}`);
     lines.push('');
 
-    const line_content = get_line(statement, line);
+    const lineContent = getLine(statement, line);
 
     lines.push('RQL');
-    lines.push(`  ${line} \u2502 ${line_content}`);
-    const fragment_start = line_content.indexOf(fragment) !== -1
-      ? line_content.indexOf(fragment)
+    lines.push(`  ${line} \u2502 ${lineContent}`);
+    const fragmentStart = lineContent.indexOf(fragment) !== -1
+      ? lineContent.indexOf(fragment)
       : column;
-    lines.push(`    \u2502 ${' '.repeat(fragment_start)}${'~'.repeat(fragment.length)}`);
+    lines.push(`    \u2502 ${' '.repeat(fragmentStart)}${'~'.repeat(fragment.length)}`);
     lines.push('    \u2502');
 
-    const label_text = d.label ?? '';
-    if (label_text) {
-      const fragment_center = fragment_start + Math.floor(fragment.length / 2);
-      const label_half = Math.floor(label_text.length / 2);
-      const label_offset = label_half > fragment_center ? 0 : fragment_center - label_half;
-      lines.push(`    \u2502 ${' '.repeat(label_offset)}${label_text}`);
+    const labelText = d.label ?? '';
+    if (labelText) {
+      const fragmentCenter = fragmentStart + Math.floor(fragment.length / 2);
+      const labelHalf = Math.floor(labelText.length / 2);
+      const labelOffset = labelHalf > fragmentCenter ? 0 : fragmentCenter - labelHalf;
+      lines.push(`    \u2502 ${' '.repeat(labelOffset)}${labelText}`);
     }
     lines.push('');
   }
@@ -63,7 +63,7 @@ function render_flat(d: Diagnostic): string {
   return lines.join('\n');
 }
 
-function render_nested(d: Diagnostic, depth: number): string {
+function renderNested(d: Diagnostic, depth: number): string {
   const lines: string[] = [];
   const indent = depth === 0 ? '' : '  ';
   const prefix = depth === 0 ? '' : '\u21b3 ';
@@ -74,29 +74,29 @@ function render_nested(d: Diagnostic, depth: number): string {
     const { text: fragment, line, column } = d.fragment;
     const statement = d.rql ?? '';
 
-    const at_text = statement ? `"${fragment}"` : 'unknown';
-    lines.push(`${indent}  at ${at_text} (line ${line}, column ${column})`);
+    const atText = statement ? `"${fragment}"` : 'unknown';
+    lines.push(`${indent}  at ${atText} (line ${line}, column ${column})`);
     lines.push('');
 
-    const line_content = get_line(statement, line);
-    lines.push(`${indent}  ${line} \u2502 ${line_content}`);
-    const fragment_start = line_content.indexOf(fragment) !== -1
-      ? line_content.indexOf(fragment)
+    const lineContent = getLine(statement, line);
+    lines.push(`${indent}  ${line} \u2502 ${lineContent}`);
+    const fragmentStart = lineContent.indexOf(fragment) !== -1
+      ? lineContent.indexOf(fragment)
       : column;
-    lines.push(`${indent}    \u2502 ${' '.repeat(fragment_start)}${'~'.repeat(fragment.length)}`);
+    lines.push(`${indent}    \u2502 ${' '.repeat(fragmentStart)}${'~'.repeat(fragment.length)}`);
 
-    const label_text = d.label ?? '';
-    if (label_text) {
-      const fragment_center = fragment_start + Math.floor(fragment.length / 2);
-      const label_half = Math.floor(label_text.length / 2);
-      const label_offset = label_half > fragment_center ? 0 : fragment_center - label_half;
-      lines.push(`${indent}    \u2502 ${' '.repeat(label_offset)}${label_text}`);
+    const labelText = d.label ?? '';
+    if (labelText) {
+      const fragmentCenter = fragmentStart + Math.floor(fragment.length / 2);
+      const labelHalf = Math.floor(labelText.length / 2);
+      const labelOffset = labelHalf > fragmentCenter ? 0 : fragmentCenter - labelHalf;
+      lines.push(`${indent}    \u2502 ${' '.repeat(labelOffset)}${labelText}`);
     }
     lines.push('');
   }
 
   if (d.cause) {
-    lines.push(render_nested(d.cause, depth + 1));
+    lines.push(renderNested(d.cause, depth + 1));
   }
 
   if (d.help) {
@@ -116,15 +116,15 @@ function render_nested(d: Diagnostic, depth: number): string {
   return lines.join('\n');
 }
 
-function render_diagnostic(d: Diagnostic): string {
+function renderDiagnostic(d: Diagnostic): string {
   if (d.cause) {
-    return render_nested(d, 0);
+    return renderNested(d, 0);
   }
-  return render_flat(d);
+  return renderFlat(d);
 }
 
 export function ResultsError({ message, diagnostic }: ResultsErrorProps) {
-  const text = diagnostic ? render_diagnostic(diagnostic) : `Error\n  ${message}`;
+  const text = diagnostic ? renderDiagnostic(diagnostic) : `Error\n  ${message}`;
 
   return (
     <div className="rdb-results__error">

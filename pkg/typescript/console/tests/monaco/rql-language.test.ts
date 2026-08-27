@@ -4,10 +4,10 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error Monaco internal module — no type declarations
 import { compile } from 'monaco-editor/esm/vs/editor/standalone/common/monarch/monarchCompile.js';
-import { rql_language_definition } from '../../src/monaco/rql-language';
+import { rqlLanguageDefinition } from '../../src/monaco/rql-language';
 import { tokenize, tokenizeLine } from './monarch-tokenizer';
 
-const lexer = compile('rql', rql_language_definition);
+const lexer = compile('rql', rqlLanguageDefinition);
 
 describe('RQL Monarch tokenization', () => {
 
