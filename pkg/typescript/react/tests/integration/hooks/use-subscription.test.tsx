@@ -350,7 +350,7 @@ describe('useSubscription Hook', () => {
             });
 
             expect(result.current.changes[0].operation).toBe('INSERT');
-            expect(result.current.changes[0].rows[0]).toEqual({id: 1, name: 'test'});
+            expect(result.current.changes[0].rows[0]).toEqual({'#rownum': 1, id: 1, name: 'test'});
         });
 
         it('should work with connection config override', async () => {

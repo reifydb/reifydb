@@ -224,7 +224,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             const change = result.current.state.changes[0];
             expect(change.operation).toBe('INSERT');
-            expect(change.rows).toEqual([{id: 1, name: 'alice'}]);
+            expect(change.rows).toEqual([{'#rownum': 1, id: 1, name: 'alice'}]);
             expect(change.timestamp).toBeGreaterThanOrEqual(beforeInsert);
             expect(change.timestamp).toBeLessThanOrEqual(Date.now());
         });
@@ -334,8 +334,8 @@ describe('useSubscriptionExecutor Hook', () => {
             // But changes should be tracked
             expect(result.current.state.changes[0].operation).toBe('INSERT');
             expect(result.current.state.changes[0].rows).toEqual([
-                {id: 1, name: 'alice'},
-                {id: 2, name: 'bob'}
+                {'#rownum': 1, id: 1, name: 'alice'},
+                {'#rownum': 2, id: 2, name: 'bob'}
             ]);
         });
     });
@@ -375,7 +375,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             expect(result.current.state.changes[0].operation).toBe('INSERT');
             expect(result.current.state.changes[0].rows).toEqual([
-                {id: 1, value: 'hello'}
+                {'#rownum': 1, id: 1, value: 'hello'}
             ]);
         });
 
@@ -421,7 +421,7 @@ describe('useSubscriptionExecutor Hook', () => {
             expect(result.current.state.changes[0].operation).toBe('INSERT');
             expect(result.current.state.changes[1].operation).toBe('UPDATE');
             expect(result.current.state.changes[1].rows).toEqual([
-                {id: 1, value: 'updated'}
+                {'#rownum': 1, id: 1, value: 'updated'}
             ]);
         });
 
@@ -476,7 +476,7 @@ describe('useSubscriptionExecutor Hook', () => {
 
             expect(result.current.state.changes[1].operation).toBe('REMOVE');
             expect(result.current.state.changes[1].rows).toEqual([
-                {id: 1, value: 'to_delete'}
+                {'#rownum': 1, id: 1, value: 'to_delete'}
             ]);
         });
 
@@ -580,9 +580,9 @@ describe('useSubscriptionExecutor Hook', () => {
             expect(result.current.state.changes[0].operation).toBe('INSERT');
             expect(result.current.state.changes[0].rows).toHaveLength(3);
             expect(result.current.state.changes[0].rows).toEqual([
-                {id: 1, value: 'first'},
-                {id: 2, value: 'second'},
-                {id: 3, value: 'third'}
+                {'#rownum': 1, id: 1, value: 'first'},
+                {'#rownum': 2, id: 2, value: 'second'},
+                {'#rownum': 3, id: 3, value: 'third'}
             ]);
         });
     });

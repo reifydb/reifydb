@@ -7,13 +7,14 @@ export function transform_frames<const S extends readonly ShapeNode[]>(
     frames: any[][],
     shapes: S
 ): FrameResults<S> {
-    return frames.map((frame: any[], frame_index: number) => {
+    const transformed: any[][] = frames.map((frame: any[], frame_index: number) => {
         const frame_shape = shapes[frame_index];
         if (!frame_shape) {
             return frame;
         }
         return frame.map((row: any) => transform_result(row, frame_shape));
-    }) as FrameResults<S>;
+    });
+    return transformed as FrameResults<S>;
 }
 
 export function transform_result(row: any, result_shape: any): any {

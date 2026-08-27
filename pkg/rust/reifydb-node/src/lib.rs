@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
-use napi::{Error as NapiError, Result as NapiResult, bindgen_prelude::Either};
+use napi::{Error as NapiError, Result, bindgen_prelude::Either};
 use napi_derive::napi;
 #[cfg(reifydb_dst)]
 use reifydb::runtime::RuntimeConfig;
@@ -61,7 +61,7 @@ fn frames_to_napi(frames: &[CoreFrame]) -> Vec<Frame> {
 
 type ParamsInput = Either<Vec<ParamValue>, HashMap<String, ParamValue>>;
 
-fn parse_params(params: Option<ParamsInput>) -> NapiResult<Params> {
+fn parse_params(params: Option<ParamsInput>) -> Result<Params> {
 	let wire = match params {
 		None => return Ok(Params::None),
 		Some(Either::A(items)) => WireParams::Positional(items.into_iter().map(to_wire_value).collect()),
@@ -129,7 +129,7 @@ fn migration_source(entry: MigrationEntry) -> MigrationSource {
 
 #[cfg(not(reifydb_dst))]
 #[napi(js_name = "open_with_migrations")]
-pub fn open_with_migrations(entries: Vec<MigrationEntry>) -> NapiResult<ReifydbNode> {
+pub fn open_with_migrations(entries: Vec<MigrationEntry>) -> Result<ReifydbNode> {
 	let mut builder = embedded::memory();
 	if !entries.is_empty() {
 		let sources = entries.into_iter().map(migration_source).collect();
@@ -148,7 +148,7 @@ impl ReifydbNode {
 		&self,
 		rql: String,
 		params: Option<Either<Vec<ParamValue>, HashMap<String, ParamValue>>>,
-	) -> NapiResult<Vec<Frame>> {
+	) -> Result<Vec<Frame>> {
 		let db = self.db.clone();
 		let params = parse_params(params)?;
 		spawn_blocking(move || db.admin_as_root(&rql, params))
@@ -163,7 +163,7 @@ impl ReifydbNode {
 		&self,
 		rql: String,
 		params: Option<Either<Vec<ParamValue>, HashMap<String, ParamValue>>>,
-	) -> NapiResult<Vec<Frame>> {
+	) -> Result<Vec<Frame>> {
 		let db = self.db.clone();
 		let params = parse_params(params)?;
 		spawn_blocking(move || db.command_as_root(&rql, params))
@@ -178,7 +178,7 @@ impl ReifydbNode {
 		&self,
 		rql: String,
 		params: Option<Either<Vec<ParamValue>, HashMap<String, ParamValue>>>,
-	) -> NapiResult<Vec<Frame>> {
+	) -> Result<Vec<Frame>> {
 		let db = self.db.clone();
 		let params = parse_params(params)?;
 		spawn_blocking(move || db.query_as_root(&rql, params))
@@ -194,7 +194,7 @@ impl ReifydbNode {
 		identity: String,
 		rql: String,
 		params: Option<Either<Vec<ParamValue>, HashMap<String, ParamValue>>>,
-	) -> NapiResult<Vec<Frame>> {
+	) -> Result<Vec<Frame>> {
 		let db = self.db.clone();
 		let params = parse_params(params)?;
 		spawn_blocking(move || {
@@ -212,7 +212,7 @@ impl ReifydbNode {
 		identity: String,
 		rql: String,
 		params: Option<Either<Vec<ParamValue>, HashMap<String, ParamValue>>>,
-	) -> NapiResult<Vec<Frame>> {
+	) -> Result<Vec<Frame>> {
 		let db = self.db.clone();
 		let params = parse_params(params)?;
 		spawn_blocking(move || {
@@ -230,7 +230,7 @@ impl ReifydbNode {
 		identity: String,
 		rql: String,
 		params: Option<Either<Vec<ParamValue>, HashMap<String, ParamValue>>>,
-	) -> NapiResult<Vec<Frame>> {
+	) -> Result<Vec<Frame>> {
 		let db = self.db.clone();
 		let params = parse_params(params)?;
 		spawn_blocking(move || {
@@ -243,7 +243,7 @@ impl ReifydbNode {
 	}
 
 	#[napi]
-	pub async fn authenticate(&self, method: String, credentials: HashMap<String, String>) -> NapiResult<String> {
+	pub async fn authenticate(&self, method: String, credentials: HashMap<String, String>) -> Result<String> {
 		let db = self.db.clone();
 		spawn_blocking(move || db.auth_service().authenticate(&method, credentials))
 			.await
@@ -253,7 +253,7 @@ impl ReifydbNode {
 	}
 }
 
-fn parse_identity(raw: &str) -> NapiResult<IdentityId> {
+fn parse_identity(raw: &str) -> Result<IdentityId> {
 	let uuid = Uuid::parse_str(raw).map_err(|e| NapiError::from_reason(format!("invalid identity: {e}")))?;
 	Ok(IdentityId::new(Uuid7::from(uuid)))
 }

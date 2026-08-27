@@ -333,6 +333,7 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
             expect(typeof row.score).toBe('number');
             expect(typeof row.isValid).toBe('boolean');
             expect(row).toEqual({
+                '#rownum': 1,
                 id: 1,
                 name: 'Alice',
                 score: 95.5,
@@ -380,6 +381,7 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
 
             expect(result.current.state.changes[0].operation).toBe('INSERT');
             expect(result.current.state.changes[0].rows[0]).toEqual({
+                '#rownum': 1,
                 id: 1,
                 name: 'test',
                 value: 1.5
@@ -428,6 +430,7 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
             expect(result.current.state.changes[0].operation).toBe('INSERT');
             expect(result.current.state.changes[1].operation).toBe('UPDATE');
             expect(result.current.state.changes[1].rows[0]).toEqual({
+                '#rownum': 1,
                 id: 1,
                 value: 20
             });
@@ -475,6 +478,7 @@ describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
             expect(result.current.state.changes[0].operation).toBe('INSERT');
             expect(result.current.state.changes[1].operation).toBe('REMOVE');
             expect(result.current.state.changes[1].rows[0]).toEqual({
+                '#rownum': 1,
                 id: 1,
                 name: 'to_remove'
             });
