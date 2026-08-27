@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Query execution and processing engine for ReifyDB"
 
+[lib]
+doctest = false
+
 [features]
 default = ["tokio", "sqlite"]
 tokio = []

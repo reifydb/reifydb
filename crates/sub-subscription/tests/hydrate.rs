@@ -4,13 +4,15 @@
 use std::{collections::HashSet, thread};
 
 use reifydb::testing::db::TestDb;
-use reifydb_core::interface::catalog::id::SubscriptionId;
+use reifydb_core::interface::{catalog::id::SubscriptionId, change::StagedBatch};
 use reifydb_engine::{
 	engine::StandardEngine,
 	subscription::{HydrateError, HydrationBound, SubscriptionServiceRef},
 };
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
-use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, frame::frame::Frame, identity::IdentityId};
+use reifydb_value::value::{
+	Value, datetime::DateTime, diff_type::DiffType, duration::Duration, frame::frame::Frame, identity::IdentityId,
+};
 
 fn extract_sub_id(frames: &[Frame]) -> SubscriptionId {
 	let frame = frames.first().expect("subscription frame");
@@ -76,7 +78,7 @@ fn hydrate_returns_existing_rows_at_pinned_version() {
 
 	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 1024).expect("hydrate succeeds");
 
-	let total_rows: usize = outcome.batches.iter().map(|c| c.row_count()).sum();
+	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.row_count()).sum();
 	assert_eq!(total_rows, 3, "snapshot should contain 3 seeded rows");
 }
 
@@ -105,7 +107,7 @@ fn hydrate_500_rows_stages_scan_frame_batches_not_one_per_row() {
 	let outcome =
 		sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, ROWS as u64).expect("hydrate succeeds");
 
-	let total_rows: usize = outcome.batches.iter().map(|c| c.row_count()).sum();
+	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.row_count()).sum();
 	assert_eq!(total_rows, ROWS, "batching must not drop or duplicate snapshot rows");
 
 	assert!(
@@ -132,7 +134,7 @@ fn hydrate_delivers_every_row_of_a_snapshot_larger_than_the_delivery_ring() {
 
 	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 5000).expect("hydrate succeeds");
 
-	let total_rows: usize = outcome.batches.iter().map(|c| c.row_count()).sum();
+	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.row_count()).sum();
 	assert_eq!(total_rows, ROWS, "snapshot must carry every row the query returned, not the ring's last 1024");
 }
 
@@ -144,9 +146,9 @@ fn seed_backdated(db: &TestDb, table: &str, rows: &[(i32, u64)]) {
 	}
 }
 
-fn announced_ids(batches: &[reifydb_core::value::column::columns::Columns]) -> Vec<i32> {
+fn announced_ids(batches: &[StagedBatch]) -> Vec<i32> {
 	let mut out = Vec::new();
-	for batch in batches {
+	for (_, batch) in batches {
 		let id_col = batch.iter().find(|c| c.name().text() == "id").expect("id column");
 		for row_idx in 0..batch.row_count() {
 			match id_col.data().get_value(row_idx) {
@@ -209,14 +211,8 @@ fn hydrate_snapshot_announces_inserts_only() {
 
 	let outcome = sub_service.hydrate(sub_id, &engine, IdentityId::root(), lease, 50).expect("hydrate succeeds");
 
-	for batch in &outcome.batches {
-		let op_col = batch.iter().find(|c| c.name().text() == "_op").expect("subscription output carries _op");
-		for row_idx in 0..batch.row_count() {
-			match op_col.data().get_value(row_idx) {
-				Value::Uint1(1) => {}
-				other => panic!("hydration snapshot must announce inserts only, saw _op={:?}", other),
-			}
-		}
+	for (op, _) in &outcome.batches {
+		assert_eq!(*op, DiffType::Insert, "hydration snapshot must announce inserts only, saw op={:?}", op);
 	}
 }
 
@@ -236,8 +232,7 @@ fn hydrate_never_announces_a_remove_for_a_row_it_did_not_announce() {
 
 	let mut announced: HashSet<u64> = HashSet::new();
 	let mut seen = 0usize;
-	for batch in &outcome.batches {
-		let op_col = batch.iter().find(|c| c.name().text() == "_op").expect("subscription output carries _op");
+	for (op, batch) in &outcome.batches {
 		let row_numbers = batch.row_numbers();
 		assert_eq!(
 			row_numbers.len(),
@@ -247,16 +242,15 @@ fn hydrate_never_announces_a_remove_for_a_row_it_did_not_announce() {
 		for row_idx in 0..batch.row_count() {
 			let row = row_numbers[row_idx].value();
 			seen += 1;
-			match op_col.data().get_value(row_idx) {
-				Value::Uint1(1) => {
+			match op {
+				DiffType::Insert => {
 					announced.insert(row);
 				}
-				Value::Uint1(2) | Value::Uint1(3) => assert!(
+				DiffType::Update | DiffType::Remove => assert!(
 					announced.contains(&row),
-					"_op targeting row {} arrived before any batch announced it",
+					"an op targeting row {} arrived before any batch announced it",
 					row
 				),
-				other => panic!("unexpected _op={:?} in a hydration snapshot", other),
 			}
 		}
 	}
@@ -355,10 +349,10 @@ fn hydrate_pushes_filter_into_source_query() {
 		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
 		.expect("hydrate succeeds at cap=5 (matches TAKE 5)");
 
-	let total_rows: usize = outcome.batches.iter().map(|c| c.row_count()).sum();
+	let total_rows: usize = outcome.batches.iter().map(|(_, c)| c.row_count()).sum();
 	assert!(total_rows > 0, "snapshot must deliver at least one filtered row");
 
-	for cols in &outcome.batches {
+	for (_, cols) in &outcome.batches {
 		let kind_col = cols.iter().find(|c| c.name() == "kind").expect("kind column present");
 		for i in 0..cols.row_count() {
 			match kind_col.data().get_value(i) {

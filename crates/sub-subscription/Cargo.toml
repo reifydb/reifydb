@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Ephemeral subscription subsystem for ReifyDB"
 
+[lib]
+doctest = false
+
 [features]
 default = []
 

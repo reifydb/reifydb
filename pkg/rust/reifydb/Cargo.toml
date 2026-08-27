@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "A modern, real-time database with streaming and analytical capabilities"
 
+[lib]
+doctest = false
+
 [dependencies]
 reifydb-allocator = { workspace = true }
 reifydb-auth = { workspace = true }

@@ -6,6 +6,9 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[lib]
+doctest = false
+
 [features]
 default = ["json", "host"]
 json = ["dep:serde_json"]

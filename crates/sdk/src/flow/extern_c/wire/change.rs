@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::change::DiffType;
+use reifydb_value::value::diff_type::DiffType;
 
 use crate::common::extern_c::wire::columns::ExternCColumns;
 

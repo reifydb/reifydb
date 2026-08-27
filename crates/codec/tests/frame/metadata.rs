@@ -29,6 +29,7 @@ fn assert_col_data_eq(a: &FrameColumnData, b: &FrameColumnData) {
 }
 
 fn assert_frame_eq(a: &Frame, b: &Frame) {
+	assert_eq!(a.op, b.op, "the op rides the frame header and must survive a round trip");
 	assert_eq!(a.row_numbers().len(), b.row_numbers().len());
 	for (i, (ra, rb)) in a.row_numbers().iter().zip(b.row_numbers()).enumerate() {
 		assert_eq!(ra.value(), rb.value(), "row_number mismatch at {}", i);
@@ -78,6 +79,7 @@ fn frame_with_metadata() {
 				DateTime::from_nanos(9_000_000_000),
 			],
 		),
+		op: None,
 		columns: vec![FrameColumn {
 			name: "x".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![10, 20, 30])),
@@ -181,6 +183,7 @@ fn metadata_combinations() {
 	// rather than as all-or-nothing.
 	let frame1 = Frame {
 		system: SystemColumns::new(vec![RowNumber::new(1)], Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+		op: None,
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![10])),
@@ -196,6 +199,7 @@ fn metadata_combinations() {
 			vec![DateTime::from_nanos(200)],
 			vec![DateTime::from_nanos(300)],
 		),
+		op: None,
 		columns: vec![FrameColumn {
 			name: "v".to_string(),
 			data: FrameColumnData::Int4(NumberContainer::new(vec![10])),

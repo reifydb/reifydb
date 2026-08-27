@@ -60,8 +60,7 @@ pub(crate) fn create_subscription(
 
 	let subscription_id = sub_service.next_id();
 
-	let mut column_names: Vec<String> = plan.columns.iter().map(|c| c.name.clone()).collect();
-	column_names.push("_op".to_string());
+	let column_names: Vec<String> = plan.columns.iter().map(|c| c.name.clone()).collect();
 
 	let as_clause =
 		plan.as_clause.ok_or_else(|| Error(Box::new(subscription_missing_as_clause(Fragment::None))))?;

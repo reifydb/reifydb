@@ -5,7 +5,7 @@
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
+	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 };
 use reifydb_sdk::{
@@ -21,7 +21,7 @@ use reifydb_sdk::{
 };
 use reifydb_value::{
 	config::Config,
-	value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType},
+	value::{constraint::TypeConstraint, diff_type::DiffType, row_number::RowNumber, value_type::ValueType},
 };
 
 pub const WINDOW_SIZE: i64 = 100;

@@ -9,11 +9,11 @@ use reifydb_codec::{
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_sub_server::{
 	format::WireFormat,
-	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, resolve_response_json},
+	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, resolve_change_json},
 	subscription::wire_sink::{BatchSubscribedMember, WireSink},
 };
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
-use reifydb_value::value::{frame::frame::Frame, uuid::Uuid7};
+use reifydb_value::value::{diff_type::DiffType, frame::frame::Frame, uuid::Uuid7};
 use serde_json::{Value as JsonValue, from_str, json};
 use tokio::sync::mpsc;
 use tracing::{instrument, warn};
@@ -100,8 +100,14 @@ impl WireSink for WsWireSink {
 	}
 
 	#[instrument(name = "server::ws_encode", level = "trace", skip(self, columns, format), fields(sub = sub_id.0))]
-	fn send_change(&self, sub_id: SubscriptionId, columns: Columns, format: Self::Format) -> DeliveryResult {
-		let msg = match encode_change(sub_id, columns, format) {
+	fn send_change(
+		&self,
+		sub_id: SubscriptionId,
+		op: DiffType,
+		columns: Columns,
+		format: Self::Format,
+	) -> DeliveryResult {
+		let msg = match encode_change(sub_id, op, columns, format) {
 			Some(m) => m,
 			None => return DeliveryResult::Disconnected,
 		};
@@ -157,7 +163,7 @@ impl WireSink for WsWireSink {
 			}
 			(WireFormat::Json, payload) => {
 				let frames = payload.into_frames();
-				let body = match resolve_response_json(frames, false) {
+				let body = match resolve_change_json(frames) {
 					Ok(r) => from_str::<JsonValue>(&r.body).unwrap_or(JsonValue::String(r.body)),
 					Err(_) => JsonValue::Array(vec![]),
 				};
@@ -227,7 +233,7 @@ impl WireSink for WsWireSink {
 				let json_entries: Vec<BatchChangeEntryPush> = entries
 					.into_iter()
 					.filter_map(|(sub_id, frames)| {
-						let resolved = match resolve_response_json(frames, false) {
+						let resolved = match resolve_change_json(frames) {
 							Ok(r) => r,
 							Err(e) => {
 								warn!(
@@ -293,16 +299,22 @@ impl WireSink for WsWireSink {
 
 pub fn encode_change_for_handler(
 	subscription_id: SubscriptionId,
+	op: DiffType,
 	columns: Columns,
 	format: WireFormat,
 ) -> Option<PushMessage> {
-	encode_change(subscription_id, columns, format)
+	encode_change(subscription_id, op, columns, format)
 }
 
-fn encode_change(subscription_id: SubscriptionId, columns: Columns, format: WireFormat) -> Option<PushMessage> {
+fn encode_change(
+	subscription_id: SubscriptionId,
+	op: DiffType,
+	columns: Columns,
+	format: WireFormat,
+) -> Option<PushMessage> {
 	match format {
 		WireFormat::Rbcf => {
-			let frames = vec![Frame::from(columns)];
+			let frames = vec![Frame::from(columns).with_op(op)];
 			let rbcf_bytes = match encode_frames(&frames, &EncodeOptions::fast()) {
 				Ok(b) => b,
 				Err(e) => {
@@ -322,7 +334,7 @@ fn encode_change(subscription_id: SubscriptionId, columns: Columns, format: Wire
 			})
 		}
 		WireFormat::Frames => {
-			let body = json!({ "frames": convert_frames(&[Frame::from(columns)]) });
+			let body = json!({ "frames": convert_frames(&[Frame::from(columns).with_op(op)]) });
 			Some(PushMessage::ChangeJson {
 				subscription_id,
 				content_type: CONTENT_TYPE_FRAMES.to_string(),
@@ -330,8 +342,8 @@ fn encode_change(subscription_id: SubscriptionId, columns: Columns, format: Wire
 			})
 		}
 		WireFormat::Json => {
-			let frames = vec![Frame::from(columns)];
-			let resolved = match resolve_response_json(frames, false) {
+			let frames = vec![Frame::from(columns).with_op(op)];
+			let resolved = match resolve_change_json(frames) {
 				Ok(r) => r,
 				Err(e) => {
 					warn!("Failed to JSON-encode change for {}: {}", subscription_id, e);
@@ -375,6 +387,7 @@ fn encode_rbcf_batch_envelope(batch_id: &str, entries: &[(String, Vec<u8>)]) -> 
 pub mod tests {
 	use std::collections::HashSet;
 
+	use reifydb_codec::frame::decode::decode_frames;
 	use reifydb_core::interface::catalog::id::SubscriptionId;
 	use reifydb_runtime::context::{
 		clock::{Clock, MockClock},
@@ -382,7 +395,9 @@ pub mod tests {
 	};
 	use reifydb_sub_server::subscription::registry::PromoteResult;
 	use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
-	use reifydb_value::value::{Value, duration::Duration, uuid::Uuid7};
+	use reifydb_value::value::{
+		Value, duration::Duration, row_number::RowNumber, system_columns::SystemColumn, uuid::Uuid7,
+	};
 
 	use super::*;
 
@@ -395,6 +410,113 @@ pub mod tests {
 
 	fn single_int_columns(name: &str, value: i64) -> Columns {
 		Columns::single_row([(name, Value::Int8(value))])
+	}
+
+	fn columns_with_row_number(id: i64, row_number: u64) -> Columns {
+		Columns::single_row([("id", Value::Int8(id))]).with_row_numbers(vec![RowNumber::new(row_number)])
+	}
+
+	fn push_body(message: PushMessage) -> JsonValue {
+		match message {
+			PushMessage::ChangeJson {
+				body,
+				..
+			} => body,
+			other => panic!("expected a json push message, got {:?}", other),
+		}
+	}
+
+	fn push_rbcf(message: PushMessage) -> Vec<u8> {
+		match message {
+			PushMessage::ChangeRbcf {
+				envelope,
+				..
+			} => envelope,
+			other => panic!("expected an rbcf push message, got {:?}", other),
+		}
+	}
+
+	#[test]
+	fn every_wire_format_reports_the_same_row_number_and_op() {
+		// A client keys its local state on the row number, so a format that drops it or renames it
+		// would silently strip the only stable identity a row has. `id` here is a user column that
+		// deliberately differs from the row number: the two must never be conflated.
+		let sub_id = SubscriptionId(7);
+		let op = DiffType::Update;
+
+		let json = push_body(
+			encode_change(sub_id, op, columns_with_row_number(500, 42), WireFormat::Json).unwrap(),
+		);
+		let envelope = json.as_array().expect("json format encodes one envelope per frame");
+		assert_eq!(envelope.len(), 1);
+		assert_eq!(envelope[0]["op"], JsonValue::from(DiffType::as_u8(op)));
+		let json_rows = envelope[0]["rows"].as_array().expect("envelope carries rows");
+		assert_eq!(json_rows.len(), 1);
+		assert_eq!(json_rows[0][SystemColumn::RowNumbers.name()], JsonValue::from(42u64));
+		assert_eq!(json_rows[0]["id"], JsonValue::from("500"));
+
+		let frames = push_body(
+			encode_change(sub_id, op, columns_with_row_number(500, 42), WireFormat::Frames).unwrap(),
+		);
+		let frame = &frames["frames"].as_array().expect("frames format carries a frame list")[0];
+		assert_eq!(frame["op"], JsonValue::from(DiffType::as_u8(op)));
+		assert_eq!(frame["row_numbers"], JsonValue::from(vec![42u64]));
+
+		let payload = encode_frames(
+			&[Frame::from(columns_with_row_number(500, 42)).with_op(op)],
+			&EncodeOptions::fast(),
+		)
+		.unwrap();
+		let rbcf = push_rbcf(
+			encode_change(sub_id, op, columns_with_row_number(500, 42), WireFormat::Rbcf).unwrap(),
+		);
+		assert!(rbcf.ends_with(&payload), "the envelope must carry the rbcf payload verbatim");
+		let decoded = decode_frames(&payload).expect("rbcf payload must decode");
+		assert_eq!(decoded.len(), 1);
+		assert_eq!(decoded[0].op, Some(op));
+		assert_eq!(decoded[0].row_numbers(), &[RowNumber::new(42)]);
+	}
+
+	#[test]
+	fn a_user_column_named_id_never_shadows_the_row_number() {
+		// `id` is an ordinary user column and may repeat, be absent, or be reused. The row number is
+		// the server's identity and must survive independently of it, or a client keyed on identity
+		// would collapse two distinct rows into one.
+		let columns = Columns::single_row([("id", Value::Int8(1))]).with_row_numbers(vec![RowNumber::new(99)]);
+		let json = push_body(
+			encode_change(SubscriptionId(1), DiffType::Insert, columns, WireFormat::Json).unwrap(),
+		);
+		let row = &json.as_array().unwrap()[0]["rows"].as_array().unwrap()[0];
+
+		assert_eq!(row["id"], JsonValue::from("1"));
+		assert_eq!(row[SystemColumn::RowNumbers.name()], JsonValue::from(99u64));
+		assert_ne!(row["id"], row[SystemColumn::RowNumbers.name()]);
+	}
+
+	#[test]
+	fn insert_update_remove_report_the_same_row_number() {
+		// A subscriber must be able to follow one entity across its whole lifetime: the identity it
+		// inserted under must be the identity it later updates and finally removes, or the client
+		// leaks the row or deletes the wrong one.
+		let sub_id = SubscriptionId(3);
+		let row_number = RowNumber::new(1234);
+
+		let ops = [DiffType::Insert, DiffType::Update, DiffType::Remove];
+		let seen: Vec<(u8, u64)> = ops
+			.iter()
+			.map(|op| {
+				let columns = Columns::single_row([("id", Value::Int8(7))])
+					.with_row_numbers(vec![row_number]);
+				let json = push_body(encode_change(sub_id, *op, columns, WireFormat::Json).unwrap());
+				let envelope = &json.as_array().unwrap()[0];
+				let rn = envelope["rows"].as_array().unwrap()[0][SystemColumn::RowNumbers.name()]
+					.as_u64()
+					.expect("every row carries its row number");
+				(envelope["op"].as_u64().unwrap() as u8, rn)
+			})
+			.collect();
+
+		assert_eq!(seen, vec![(1, 1234), (2, 1234), (3, 1234)]);
 	}
 
 	#[tokio::test]
@@ -507,11 +629,11 @@ pub mod tests {
 		assert_eq!(registry.batch_for(&sub_b), Some(batch_id));
 
 		assert!(matches!(
-			registry.try_deliver(&sub_a, single_int_columns("value", 10)),
+			registry.try_deliver(&sub_a, DiffType::Insert, single_int_columns("value", 10)),
 			DeliveryResult::Delivered
 		));
 		assert!(matches!(
-			registry.try_deliver(&sub_b, single_int_columns("value", 20)),
+			registry.try_deliver(&sub_b, DiffType::Insert, single_int_columns("value", 20)),
 			DeliveryResult::Delivered
 		));
 
@@ -564,8 +686,8 @@ pub mod tests {
 			&rng,
 		);
 
-		registry.try_deliver(&sub_a, single_int_columns("value", 1));
-		registry.try_deliver(&sub_a, single_int_columns("value", 2));
+		registry.try_deliver(&sub_a, DiffType::Insert, single_int_columns("value", 1));
+		registry.try_deliver(&sub_a, DiffType::Insert, single_int_columns("value", 2));
 
 		registry.flush();
 
@@ -605,8 +727,14 @@ pub mod tests {
 			Duration::zero(),
 		);
 
-		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 1)), DeliveryResult::Delivered));
-		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 2)), DeliveryResult::Delivered));
+		assert!(matches!(
+			registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 1)),
+			DeliveryResult::Delivered
+		));
+		assert!(matches!(
+			registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 2)),
+			DeliveryResult::Delivered
+		));
 		assert!(push_rx.try_recv().is_err(), "no pushes while warming");
 
 		match registry.promote_to_live(sub) {
@@ -619,7 +747,10 @@ pub mod tests {
 		let msg = push_rx.try_recv().expect("expected second buffered push after promote");
 		assert!(matches!(msg, PushMessage::ChangeJson { subscription_id, .. } if subscription_id == sub));
 
-		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 3)), DeliveryResult::Delivered));
+		assert!(matches!(
+			registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 3)),
+			DeliveryResult::Delivered
+		));
 		let msg = push_rx.try_recv().expect("expected live push after promote");
 		assert!(matches!(msg, PushMessage::ChangeJson { subscription_id, .. } if subscription_id == sub));
 	}
@@ -644,9 +775,9 @@ pub mod tests {
 			Duration::zero(),
 		);
 
-		registry.try_deliver(&sub, single_int_columns("v", 1));
-		registry.try_deliver(&sub, single_int_columns("v", 2));
-		registry.try_deliver(&sub, single_int_columns("v", 3));
+		registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 1));
+		registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 2));
+		registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 3));
 
 		match registry.promote_to_live(sub) {
 			PromoteResult::Overflowed => {}
@@ -714,8 +845,8 @@ pub mod tests {
 			&rng,
 		);
 
-		registry.try_deliver(&sub_short, single_int_columns("v", 1));
-		registry.try_deliver(&sub_long, single_int_columns("v", 2));
+		registry.try_deliver(&sub_short, DiffType::Insert, single_int_columns("v", 1));
+		registry.try_deliver(&sub_long, DiffType::Insert, single_int_columns("v", 2));
 
 		registry.flush();
 		assert!(push_rx.try_recv().is_err(), "no member is due before its own linger elapses");
@@ -783,9 +914,9 @@ pub mod tests {
 			&rng,
 		);
 
-		registry.try_deliver(&sub_a, single_int_columns("v", 1));
+		registry.try_deliver(&sub_a, DiffType::Insert, single_int_columns("v", 1));
 		mock.advance_millis(5);
-		registry.try_deliver(&sub_a, single_int_columns("v", 2));
+		registry.try_deliver(&sub_a, DiffType::Insert, single_int_columns("v", 2));
 
 		registry.flush();
 		assert!(
@@ -840,7 +971,7 @@ pub mod tests {
 			&rng,
 		);
 
-		registry.try_deliver(&sub_z, single_int_columns("v", 1));
+		registry.try_deliver(&sub_z, DiffType::Insert, single_int_columns("v", 1));
 		registry.flush();
 		match push_rx.try_recv().expect("a zero-linger member is due immediately, with no added latency") {
 			PushMessage::BatchChangeJson {
@@ -873,7 +1004,7 @@ pub mod tests {
 			Duration::from_milliseconds(10).unwrap(),
 		);
 
-		registry.try_deliver(&sub, single_int_columns("v", 1));
+		registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 1));
 		registry.flush();
 		assert!(
 			push_rx.try_recv().is_err(),
@@ -915,12 +1046,12 @@ pub mod tests {
 			&rng,
 		);
 
-		registry.try_deliver(&sub, single_int_columns("v", 1));
+		registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 1));
 		registry.flush();
 		assert!(push_rx.try_recv().is_ok(), "the first change flushes immediately (throttle not yet fired)");
 
 		mock.advance_millis(5);
-		registry.try_deliver(&sub, single_int_columns("v", 2));
+		registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 2));
 		registry.flush();
 		assert!(
 			push_rx.try_recv().is_err(),
@@ -974,8 +1105,8 @@ pub mod tests {
 			&rng,
 		);
 
-		registry.try_deliver(&sub_a, single_int_columns("v", 1));
-		registry.try_deliver(&sub_b, single_int_columns("v", 2));
+		registry.try_deliver(&sub_a, DiffType::Insert, single_int_columns("v", 1));
+		registry.try_deliver(&sub_b, DiffType::Insert, single_int_columns("v", 2));
 
 		assert_eq!(
 			registry.flush(),

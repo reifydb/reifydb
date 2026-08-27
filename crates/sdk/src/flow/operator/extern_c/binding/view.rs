@@ -2,10 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{extern_c::cells::decode_decimal_cell, tag::ValueKind};
-use reifydb_core::interface::change::DiffType;
 use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, ordered_f32::OrderedF32,
-	ordered_f64::OrderedF64, row_number::RowNumber, time::Time, value_type::ValueType,
+	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
+	ordered_f32::OrderedF32, ordered_f64::OrderedF64, row_number::RowNumber, time::Time, value_type::ValueType,
 };
 
 use crate::flow::operator::{

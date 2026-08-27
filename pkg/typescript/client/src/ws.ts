@@ -4,7 +4,8 @@ import {
     decode,
     columns_to_rows,
     transform_frames,
-    transform_result
+    transform_result,
+    ROW_NUMBER_KEY
 } from "@reifydb/core";
 import type {
     ShapeNode,
@@ -420,8 +421,6 @@ export class WsClient {
     ): Promise<string> {
         const id = `sub-${this.next_id++}`;
 
-        // Subscriptions always use columnar shape (frames or rbcf) — the change-tracking
-        // protocol reads `_op` from the columnar layout, so rows-shape JSON cannot carry it.
         const sub_format = this.options.format === "rbcf" ? "rbcf" : "frames";
         const wire_rql = build_subscription_rql(rql, config);
         const encoded_params = params !== undefined && params !== null
@@ -1013,51 +1012,19 @@ export class WsClient {
     }
 
     private dispatch_change_frame(state: SubscriptionState, frame: any): void {
-        // Extract _op column to determine operation type
-        const op_column = frame.columns.find((c: any) => c.name === "_op");
-        if (!op_column || op_column.payload.length === 0) {
-            console.error('Missing or empty _op column:', { op_column, frame });
-            return;
-        }
-
-        // Transform frame to rows using existing transform_result logic
         const rows = this.frame_to_rows(frame, state.shape);
+        if (rows.length === 0) return;
 
-        // Group rows by operation type (defensive - usually all same type)
-        // Process in order to maintain sequential execution
-        const batches: Array<{ op: 'INSERT' | 'UPDATE' | 'REMOVE'; rows: any[] }> = [];
-
-        for (let i = 0; i < rows.length; i++) {
-            const op_value = parseInt(op_column.payload[i]);
-            const operation: 'INSERT' | 'UPDATE' | 'REMOVE' =
-                op_value === 1 ? 'INSERT' :
-                    op_value === 2 ? 'UPDATE' :
-                        op_value === 3 ? 'REMOVE' : 'INSERT';
-
-            // Remove _op from this row
-            const {_op, ...clean_row} = rows[i];
-
-            // Batch consecutive rows of same operation type
-            if (batches.length > 0 && batches[batches.length - 1].op === operation) {
-                batches[batches.length - 1].rows.push(clean_row);
-            } else {
-                batches.push({op: operation, rows: [clean_row]});
-            }
-        }
-
-        // Execute callbacks sequentially in order
-        for (const batch of batches) {
-            switch (batch.op) {
-                case 'INSERT':
-                    state.callbacks.on_insert?.(batch.rows);
-                    break;
-                case 'UPDATE':
-                    state.callbacks.on_update?.(batch.rows);
-                    break;
-                case 'REMOVE':
-                    state.callbacks.on_remove?.(batch.rows);
-                    break;
-            }
+        switch (frame.op) {
+            case 2:
+                state.callbacks.on_update?.(rows);
+                break;
+            case 3:
+                state.callbacks.on_remove?.(rows);
+                break;
+            default:
+                state.callbacks.on_insert?.(rows);
+                break;
         }
     }
 
@@ -1066,6 +1033,7 @@ export class WsClient {
         if (!frame.columns || frame.columns.length === 0) return [];
 
         const row_count = frame.columns[0].payload.length;
+        const row_numbers = frame.row_numbers;
         const rows: any[] = [];
 
         for (let i = 0; i < row_count; i++) {
@@ -1076,11 +1044,15 @@ export class WsClient {
             rows.push(row);
         }
 
-        if (shape) {
-            return rows.map(row => transform_result(row, shape));
+        const shaped = shape ? rows.map(row => transform_result(row, shape)) : rows;
+
+        if (row_numbers) {
+            for (let i = 0; i < shaped.length; i++) {
+                if (row_numbers[i] !== undefined) shaped[i][ROW_NUMBER_KEY] = Number(row_numbers[i]);
+            }
         }
 
-        return rows;
+        return shaped;
     }
 
     private handle_batch_change(msg: BatchChangeMessage): void {

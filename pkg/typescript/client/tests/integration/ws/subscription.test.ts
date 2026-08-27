@@ -136,8 +136,11 @@ describe('WebSocket Subscriptions', () => {
             expect(rows[0].id).toBe(1);
             expect(rows[0].name).toBe('test');
             expect(rows[0].value).toBe(100);
+            // the op rides the frame, so it must never surface as a row key
             //@ts-ignore
-            expect(rows[0]._op).toBeUndefined(); // _op should be removed
+            expect(rows[0]._op).toBeUndefined();
+            // #rownum is the server's identity for the row; `id` is a user column and cannot stand in for it
+            expect(rows[0]["#rownum"]).toEqual(expect.any(Number));
 
             await ws_client.unsubscribe(subscription_id);
         }, 10000);

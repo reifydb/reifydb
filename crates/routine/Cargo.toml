@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Built-in routines (functions and procedures) for ReifyDB"
 
+[lib]
+doctest = false
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 

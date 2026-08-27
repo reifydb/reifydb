@@ -9,8 +9,8 @@ use super::SubscriptionTestHarness;
 
 #[test]
 fn test_batch_member_entry_reports_per_frame_changes() {
-	// The batch path must derive the op per frame and strip `_op` before handing the entry to
-	// the caller, exactly as the single-subscription path does.
+	// The batch path must derive the op from the frame itself, exactly as the single-subscription
+	// path does. The op never appears as a column, so a user column named `_op` would survive.
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("batch", "id: int4, name: utf8").await?;
 
@@ -51,7 +51,10 @@ fn test_batch_member_entry_reports_per_frame_changes() {
 
 		let id = insert.frame.columns.iter().find(|c| c.name == "id").expect("id column should exist");
 		assert_eq!(id.data.get_value(0), Value::Int4(1));
-		assert!(!insert.frame.columns.iter().any(|c| c.name == "_op"), "_op column must be stripped");
+		assert!(
+			!insert.frame.columns.iter().any(|c| c.name == "_op"),
+			"the op must ride the frame, so it must never appear as a column"
+		);
 
 		Ok(())
 	});

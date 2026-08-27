@@ -141,10 +141,17 @@ export interface ChangeMessage {
 
 export type SubscriptionOperation = 'INSERT' | 'UPDATE' | 'REMOVE';
 
+/**
+ * Every subscription row carries the server's identity for the underlying row under `#rownum`.
+ * `#` is not a legal character in a user column name, so this key can never be shadowed.
+ * Use it to key client-side state; `id` is a user column and may not exist or may not be unique.
+ */
+export type SubscriptionRow<T> = T & { "#rownum": number };
+
 export interface SubscriptionCallbacks<T = any> {
-    on_insert?: (rows: T[]) => void;
-    on_update?: (rows: T[]) => void;
-    on_remove?: (rows: T[]) => void;
+    on_insert?: (rows: SubscriptionRow<T>[]) => void;
+    on_update?: (rows: SubscriptionRow<T>[]) => void;
+    on_remove?: (rows: SubscriptionRow<T>[]) => void;
 }
 
 export interface HydrationConfig {

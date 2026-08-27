@@ -41,7 +41,7 @@ fn gate(db: &TestDb, sub_id: SubscriptionId) -> Option<CommitVersion> {
 fn drain(db: &TestDb, sub_id: SubscriptionId) -> Vec<i32> {
 	let subsystem = db.subsystem::<SubscriptionSubsystem>().expect("subscription subsystem present");
 	let mut out = Vec::new();
-	for batch in subsystem.store().drain(&sub_id, usize::MAX) {
+	for (_, batch) in subsystem.store().drain(&sub_id, usize::MAX) {
 		let id_col = batch.iter().find(|c| c.name().text() == "id").expect("id column");
 		for i in 0..batch.row_count() {
 			match id_col.data().get_value(i) {

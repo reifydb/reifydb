@@ -113,9 +113,27 @@ pub fn find_column(body: &serde_json::Value, name: &str) -> Option<JsonColumn> {
 	extract_columns(body).into_iter().find(|c| c.name == name)
 }
 
-/// `_op` encoding: 1=insert, 2=update, 3=delete.
-pub fn get_op_value(body: &serde_json::Value, row_index: usize) -> Option<i32> {
-	find_column(body, "_op").and_then(|col| col.payload.get(row_index).cloned()).and_then(|s| s.parse::<i32>().ok())
+/// The op rides the frame, not a column, so every row in a frame shares it.
+/// Encoding: 1=insert, 2=update, 3=delete.
+pub fn get_op_value(body: &serde_json::Value, _row_index: usize) -> Option<i32> {
+	body.get("frames")
+		.and_then(|f| f.as_array())
+		.and_then(|f| f.first())
+		.and_then(|f| f.get("op"))
+		.and_then(|o| o.as_i64())
+		.map(|o| o as i32)
+}
+
+/// Row numbers ride the frame alongside the user columns, so they are read from the frame, not
+/// from `columns`.
+pub fn get_row_numbers(body: &serde_json::Value) -> Vec<u64> {
+	body.get("frames")
+		.and_then(|f| f.as_array())
+		.and_then(|f| f.first())
+		.and_then(|f| f.get("row_numbers"))
+		.and_then(|r| r.as_array())
+		.map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect())
+		.unwrap_or_default()
 }
 
 pub struct SubscriptionTestHarness;

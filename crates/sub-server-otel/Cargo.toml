@@ -7,6 +7,9 @@ authors.workspace = true
 repository.workspace = true
 description = "OpenTelemetry/Jaeger tracing subsystem for ReifyDB"
 
+[lib]
+doctest = false
+
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true}

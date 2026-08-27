@@ -69,6 +69,7 @@ export type {
     ChangeMessage,
     SubscriptionCallbacks,
     SubscriptionOperation,
+    SubscriptionRow,
     HydrationConfig,
     SubscriptionConfig,
     BatchSubscribeRequest,

@@ -2,12 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::shape::RowShapeField;
-use reifydb_core::{
-	interface::change::{Change, DiffType},
-	row::Row,
-};
+use reifydb_core::{interface::change::Change, row::Row};
 use reifydb_testing_sdk::builders::{TestChangeBuilder, TestOperatorRowBuilder};
-use reifydb_value::value::{Value, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::value::{Value, diff_type::DiffType, row_number::RowNumber, value_type::ValueType};
 
 pub fn ts_row(row_number: u64, timestamp: i64) -> Row {
 	TestOperatorRowBuilder::new(RowNumber(row_number))

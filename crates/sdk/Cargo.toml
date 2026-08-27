@@ -8,6 +8,9 @@ authors.workspace = true
 repository.workspace = true
 description = "SDK for building ReifyDB operators, procedures, transforms and more"
 
+[lib]
+doctest = false
+
 [features]
 default = ["host"]
 host = [

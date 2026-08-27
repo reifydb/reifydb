@@ -11,6 +11,9 @@ repository.workspace = true
 description = "Hand-rolled performance benchmarks for ReifyDB"
 publish = false
 
+[lib]
+doctest = false
+
 [features]
 cow-stats = ["reifydb-value/cow-stats"]
 

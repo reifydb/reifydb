@@ -48,11 +48,12 @@ function decode_frame(r: BinaryReader): WireFrame {
     const row_count = r.u32();
     const col_count = r.u16();
     const meta_flags = r.u8();
-    r.u8(); // reserved
+    const op = r.u8();
     r.u32(); // frame_size
     void frame_start;
 
     const frame: WireFrame = { columns: [] };
+    if (op === 1 || op === 2 || op === 3) frame.op = op;
 
     if (meta_flags & META_HAS_ROW_NUMBERS) {
         const rows = new Array<string>(row_count);

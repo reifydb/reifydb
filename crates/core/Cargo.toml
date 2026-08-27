@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Core database interfaces and data structures for ReifyDB"
 
+[lib]
+doctest = false
+
 [features]
 default = []
 

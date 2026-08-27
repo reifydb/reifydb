@@ -9,9 +9,11 @@ use reifydb_client::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{id::SubscriptionId, subscription::HydrationConfig},
+	interface::{
+		catalog::{id::SubscriptionId, subscription::HydrationConfig},
+		change::StagedBatch,
+	},
 	metrics::execution::ExecutionMetrics,
-	value::column::columns::Columns,
 };
 use reifydb_engine::subscription::{HydrateError, SubscriptionServiceRef};
 use reifydb_remote_proxy::{RemoteSubscription, connect_remote, proxy_remote_to_sink};
@@ -782,7 +784,7 @@ async fn run_member_hydrate<S: WireSink>(
 
 	let engine = state.engine_clone();
 
-	let (version, outcome): (CommitVersion, Option<(Columns, ExecutionMetrics)>) =
+	let (version, batches, metrics): (CommitVersion, Vec<StagedBatch>, ExecutionMetrics) =
 		match run_hydrate(service, engine, subscription_id, identity, lease, max_rows).await {
 			Ok(t) => t,
 			Err(err) => {
@@ -795,8 +797,8 @@ async fn run_member_hydrate<S: WireSink>(
 			}
 		};
 
-	if let Some((cols, metrics)) = outcome {
-		let row_count = cols.row_count();
+	if !batches.is_empty() {
+		let row_count: usize = batches.iter().map(|(_, cols)| cols.row_count()).sum();
 		debug!(
 			subscription_id = subscription_id.0,
 			version = version.0,
@@ -808,13 +810,13 @@ async fn run_member_hydrate<S: WireSink>(
 			"hydrate completed"
 		);
 		if let Some(batch_id) = registry.batch_for(&subscription_id) {
-			let _ = sink.send_batch_envelope(
-				batch_id,
-				format,
-				vec![(subscription_id, vec![Frame::from(cols)])],
-			);
+			let frames: Vec<Frame> =
+				batches.into_iter().map(|(op, cols)| Frame::from(cols).with_op(op)).collect();
+			let _ = sink.send_batch_envelope(batch_id, format, vec![(subscription_id, frames)]);
 		} else {
-			let _ = sink.send_change(subscription_id, cols, format);
+			for (op, cols) in batches {
+				let _ = sink.send_change(subscription_id, op, cols, format);
+			}
 		}
 	}
 

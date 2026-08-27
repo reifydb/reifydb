@@ -12,9 +12,9 @@ use std::{
 	slice,
 };
 
-use reifydb_core::{interface::change::DiffType, metrics::heap::OperatorSample, state::timer::TimerKind};
+use reifydb_core::{metrics::heap::OperatorSample, state::timer::TimerKind};
 use reifydb_flow::operator::state::seal::coord::Coord;
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::value::{datetime::DateTime, diff_type::DiffType};
 use tracing::{error, instrument, warn};
 
 use crate::{

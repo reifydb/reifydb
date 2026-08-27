@@ -9,5 +9,6 @@ mod dict;
 mod metadata;
 mod multi_frame_roundtrip;
 mod nones;
+mod op;
 mod plain;
 mod rle;

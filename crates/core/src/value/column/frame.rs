@@ -90,6 +90,7 @@ impl From<Columns> for Frame {
 		Frame {
 			system: columns.system,
 			columns: frame_columns,
+			op: None,
 		}
 	}
 }

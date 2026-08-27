@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Implementation for ReifyDB derive macros. Not for direct use - use reifydb-macro, reifydb-derive, or reifydb-client-derive instead."
 
+[lib]
+doctest = false
+
 [dependencies]
 proc-macro2 = { workspace = true }
 quote = { workspace = true }

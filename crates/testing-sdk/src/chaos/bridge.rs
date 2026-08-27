@@ -257,7 +257,6 @@ mod tests {
 	use std::ops::Range;
 
 	use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
-	use reifydb_core::interface::change::DiffType;
 	use reifydb_testing_chaos::operator::{
 		drive::drive,
 		scenario::{BatchSize, Scenario, SupportedOps},
@@ -265,7 +264,7 @@ mod tests {
 	};
 	use reifydb_value::{
 		Result,
-		value::{Value, value_type::ValueType},
+		value::{Value, diff_type::DiffType, value_type::ValueType},
 	};
 
 	use super::*;

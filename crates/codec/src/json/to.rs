@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{Value, frame::frame::Frame};
+use reifydb_value::value::{Value, diff_type::DiffType, frame::frame::Frame};
 use serde_json::{Error, to_string};
 
 use crate::json::types::{ResponseColumn, ResponseFrame};
@@ -38,6 +38,7 @@ pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 		}
 
 		result.push(ResponseFrame {
+			op: frame.op.map(DiffType::as_u8),
 			row_numbers,
 			created_at,
 			updated_at,

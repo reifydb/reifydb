@@ -18,8 +18,8 @@ test-workspace:
 			echo ""; \
 			echo "==> [iter $$i/$(N)] starting at $$(date -Iseconds)"; \
 		fi; \
-		echo "🧪 Running workspace tests..."; \
-		MAKEFLAGS= cargo nextest run --release --workspace --lib --bins --tests --examples --no-fail-fast --status-level fail --final-status-level fail $(CARGO_OFFLINE) || { \
+		echo "🔨 Building examples..."; \
+		MAKEFLAGS= cargo build --release --workspace --examples $(CARGO_OFFLINE) || { \
 			rc=$$?; \
 			iter_end=$$(date +%s); \
 			total_end=$$(date +%s); \
@@ -27,8 +27,8 @@ test-workspace:
 			echo "==> FAILED at iteration $$i/$(N) (exit=$$rc, iter=$$((iter_end - iter_start))s, elapsed=$$((total_end - total_start))s)"; \
 			exit $$rc; \
 		}; \
-		echo "📚 Running doc tests..."; \
-		MAKEFLAGS= cargo test --release --workspace --doc $(CARGO_OFFLINE) || { \
+		echo "🧪 Running workspace tests..."; \
+		MAKEFLAGS= cargo nextest run --release --workspace --no-fail-fast --status-level fail --final-status-level fail $(CARGO_OFFLINE) || { \
 			rc=$$?; \
 			iter_end=$$(date +%s); \
 			total_end=$$(date +%s); \

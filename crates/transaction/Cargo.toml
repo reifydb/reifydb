@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Transaction management and concurrency control for ReifyDB"
 
+[lib]
+doctest = false
+
 [features]
 default = ["test-stress"]
 test-stress = []

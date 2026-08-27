@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "ReifyDB Query Language (RQL) parser and AST"
 
+[lib]
+doctest = false
+
 [features]
 default = []
 

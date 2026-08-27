@@ -3,8 +3,12 @@
 
 use std::{collections::HashMap, mem, sync::Arc};
 
-use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_core::{
+	interface::{catalog::id::SubscriptionId, change::StagedBatch},
+	value::column::columns::Columns,
+};
 use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_value::value::diff_type::DiffType;
 
 use crate::store::SubscriptionStore;
 
@@ -14,7 +18,7 @@ pub(crate) mod sink;
 
 pub struct DeliveryBuffer {
 	store: Arc<SubscriptionStore>,
-	staging: Mutex<HashMap<SubscriptionId, Vec<Columns>>>,
+	staging: Mutex<HashMap<SubscriptionId, Vec<StagedBatch>>>,
 }
 
 impl DeliveryBuffer {
@@ -25,11 +29,11 @@ impl DeliveryBuffer {
 		}
 	}
 
-	pub fn push(&self, subscription_id: SubscriptionId, columns: Columns) {
-		self.staging.lock().entry(subscription_id).or_default().push(columns);
+	pub fn push(&self, subscription_id: SubscriptionId, op: DiffType, columns: Columns) {
+		self.staging.lock().entry(subscription_id).or_default().push((op, columns));
 	}
 
-	pub fn take_staged(&self, subscription_id: SubscriptionId) -> Vec<Columns> {
+	pub fn take_staged(&self, subscription_id: SubscriptionId) -> Vec<StagedBatch> {
 		self.staging.lock().remove(&subscription_id).unwrap_or_default()
 	}
 

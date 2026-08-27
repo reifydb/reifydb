@@ -8,7 +8,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb::{Params, testing::db::TestDb};
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::interface::change::StagedBatch;
 use reifydb_value::value::{Value, identity::IdentityId};
 
 use crate::common::{drain_after_consumer_caught_up, extract_sub_id};
@@ -42,9 +42,9 @@ fn insert_docs(db: &TestDb, alice: IdentityId, bob: IdentityId) {
 		 {{ owner_id: cast('{bob}', identity_id), content: 'bob-doc' }}]"));
 }
 
-fn contents(batches: &[Columns]) -> Vec<String> {
+fn contents(batches: &[StagedBatch]) -> Vec<String> {
 	let mut out = Vec::new();
-	for cols in batches {
+	for (_, cols) in batches {
 		let Some(content) = cols.iter().find(|c| c.name().text() == "content") else {
 			continue;
 		};

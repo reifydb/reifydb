@@ -5,8 +5,6 @@ use std::sync::Arc;
 
 use crate::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 
-pub const IMPLICIT_COLUMN_OP: &str = "_op";
-
 pub trait SubscriptionInspector: Send + Sync {
 	fn inspect(&self, id: SubscriptionId) -> Option<Columns>;
 

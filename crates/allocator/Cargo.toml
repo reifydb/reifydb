@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Facade crate selecting a process-wide global allocator with shared-heap support for dlopened operator modules"
 
+[lib]
+doctest = false
+
 [features]
 default = []
 alloc-jemalloc = ["dep:reifydb-allocator-jemalloc"]

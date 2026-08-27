@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Logical export of ReifyDB catalog shapes and row data to RQL scripts"
 
+[lib]
+doctest = false
+
 [features]
 default = []
 

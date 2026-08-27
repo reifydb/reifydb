@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseFrame {
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub op: Option<u8>,
 	#[serde(default)]
 	pub row_numbers: Vec<u64>,
 	#[serde(default)]

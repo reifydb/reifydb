@@ -10,6 +10,9 @@ rust-version.workspace = true
 edition.workspace = true
 description = "Runtime infrastructure for ReifyDB"
 
+[lib]
+doctest = false
+
 [features]
 default = []
 

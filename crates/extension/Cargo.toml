@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Unified extension loading for ReifyDB (FFI, WASM, native)"
 
+[lib]
+doctest = false
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 

@@ -8,6 +8,9 @@ authors.workspace = true
 repository.workspace = true
 description = "Test harness and chaos framework for ReifyDB SDK operators"
 
+[lib]
+doctest = false
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 

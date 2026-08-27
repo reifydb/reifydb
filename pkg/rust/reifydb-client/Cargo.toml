@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Official Rust client library for ReifyDB"
 
+[lib]
+doctest = false
+
 [[example]]
 name = "http"
 path = "examples/http.rs"

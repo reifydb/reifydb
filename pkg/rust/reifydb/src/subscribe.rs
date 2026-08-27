@@ -42,8 +42,8 @@ impl Subscription {
 		&self.column_names
 	}
 
-	/// Each row carries an `_op` column (Insert=1, Update=2, Remove=3). Batches come back in
-	/// delivery order and are removed from the buffer, hydration-snapshot ones ahead of
+	/// Each frame carries its op on `Frame::op` (Insert=1, Update=2, Remove=3). Batches come back
+	/// in delivery order and are removed from the buffer, hydration-snapshot ones ahead of
 	/// forward-CDC ones.
 	pub fn drain(&self, max: usize) -> Vec<Frame> {
 		let mut out: Vec<Frame> = Vec::new();
@@ -56,7 +56,11 @@ impl Subscription {
 		}
 		if out.len() < max {
 			let remaining = max - out.len();
-			out.extend(self.store.drain(&self.id, remaining).into_iter().map(Frame::from));
+			out.extend(self
+				.store
+				.drain(&self.id, remaining)
+				.into_iter()
+				.map(|(op, columns)| Frame::from(columns).with_op(op)));
 		}
 		out
 	}

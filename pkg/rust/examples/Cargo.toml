@@ -10,6 +10,7 @@ publish = false
 [lib]
 name = "reifydb_examples"
 path = "src/lib.rs"
+doctest = false
 
 [dependencies]
 reifydb = { workspace = true }

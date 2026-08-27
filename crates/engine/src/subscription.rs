@@ -4,8 +4,9 @@
 use std::{result::Result as StdResult, sync::Arc};
 
 use reifydb_core::{
-	common::CommitVersion, interface::catalog::id::SubscriptionId, metrics::execution::ExecutionMetrics,
-	value::column::columns::Columns,
+	common::CommitVersion,
+	interface::{catalog::id::SubscriptionId, change::StagedBatch},
+	metrics::execution::ExecutionMetrics,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::flow::flow::FlowDag;
@@ -115,7 +116,7 @@ impl HydrateError {
 #[derive(Debug)]
 pub struct HydrateOutcome {
 	pub version: CommitVersion,
-	pub batches: Vec<Columns>,
+	pub batches: Vec<StagedBatch>,
 	pub metrics: ExecutionMetrics,
 }
 

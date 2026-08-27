@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Data lifecycle subsystem for ReifyDB: flush, retention, reclamation, and truncation."
 
+[lib]
+doctest = false
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 

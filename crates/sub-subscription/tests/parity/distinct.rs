@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::testing::db::TestDb;
-use reifydb_core::value::column::columns::Columns;
-use reifydb_value::value::Value;
+use reifydb_core::interface::change::StagedBatch;
+use reifydb_value::value::{Value, diff_type::DiffType};
 
 use crate::common::{
 	Row, drain_after_consumer_caught_up, extract_sub_id, make_db, normalize, random_rows, run_path_incremental,
@@ -46,17 +46,12 @@ fn distinct_emits_most_recent_row_per_key() {
 	);
 }
 
-fn ops_and_qty(batches: Vec<Columns>) -> Vec<(u8, i32)> {
+fn ops_and_qty(batches: Vec<StagedBatch>) -> Vec<(DiffType, i32)> {
 	// normalize collapses the op sequence into a final state, so an insert and an update read alike there.
 	let mut out = Vec::new();
-	for cols in batches {
-		let op_col = cols.iter().find(|c| c.name().text() == "_op").expect("subscription output carries _op");
+	for (op, cols) in batches {
 		let qty_col = cols.iter().find(|c| c.name().text() == "qty").expect("subscription output carries qty");
 		for i in 0..cols.row_count() {
-			let op = match op_col.data().get_value(i) {
-				Value::Uint1(v) => v,
-				other => panic!("expected Uint1 _op, got {:?}", other),
-			};
 			let qty = match qty_col.data().get_value(i) {
 				Value::Int4(v) => v,
 				other => panic!("expected Int4 qty, got {:?}", other),
@@ -85,7 +80,7 @@ fn distinct_state_outlives_the_transaction_that_produced_it() {
 
 	assert_eq!(
 		ops_and_qty(drain_after_consumer_caught_up(&db, sub_id)),
-		vec![(1u8, 948), (2u8, 351), (2u8, 948)],
+		vec![(DiffType::Insert, 948), (DiffType::Update, 351), (DiffType::Update, 948)],
 		"operator state must carry across the three commits"
 	);
 }

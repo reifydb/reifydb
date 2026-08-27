@@ -63,7 +63,7 @@ function encode_frame(w: BinaryWriter, frame: WireFrame): void {
     w.patch_u32(frame_header_at + 0, row_count);
     w.patch_u16(frame_header_at + 4, col_count);
     w.patch_u8(frame_header_at + 6, meta_flags);
-    w.patch_u8(frame_header_at + 7, 0);
+    w.patch_u8(frame_header_at + 7, frame.op ?? 0);
     w.patch_u32(frame_header_at + 8, frame_size);
 }
 

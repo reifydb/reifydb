@@ -509,8 +509,8 @@ pub enum ChangeKind {
 	Remove,
 }
 
-/// The server stages one uniform `_op` per frame, so a change carries exactly one kind;
-/// the `_op` column is already stripped from `frame`.
+/// The server stages one uniform op per frame, so a change carries exactly one kind. The op rides
+/// `Frame::op` rather than a column, so it can never collide with a user column name.
 #[derive(Debug, Clone)]
 pub struct FrameChange {
 	pub kind: ChangeKind,

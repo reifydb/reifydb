@@ -499,7 +499,7 @@ impl Database {
 		let max_rows = hydration.max_rows.unwrap_or(u64::MAX);
 		let outcome =
 			service.hydrate(id, &self.engine, identity, lease, max_rows).map_err(hydrate_error_to_error)?;
-		Ok(outcome.batches.into_iter().map(Frame::from).collect())
+		Ok(outcome.batches.into_iter().map(|(op, columns)| Frame::from(columns).with_op(op)).collect())
 	}
 
 	/// Use after `stop()` + reopen: a handle from `subscribe_as` holds the pre-restart store and

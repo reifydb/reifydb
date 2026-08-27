@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability};
+use reifydb_core::interface::{catalog::flow::OperatorId, flow::OperatorCapability};
 use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
@@ -16,7 +16,10 @@ use reifydb_sdk::{
 	row,
 };
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
-use reifydb_value::{config::Config, value::row_number::RowNumber};
+use reifydb_value::{
+	config::Config,
+	value::{diff_type::DiffType, row_number::RowNumber},
+};
 
 struct Bar {
 	mint: String,

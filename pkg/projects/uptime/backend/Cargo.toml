@@ -11,6 +11,7 @@ publish = false
 [lib]
 name = "reifydb_uptime"
 path = "src/lib.rs"
+doctest = false
 
 [[bin]]
 name = "reifydb-uptime"

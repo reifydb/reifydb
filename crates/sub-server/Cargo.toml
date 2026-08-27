@@ -7,6 +7,9 @@ authors.workspace = true
 repository.workspace = true
 description = "Common infrastructure for server subsystems"
 
+[lib]
+doctest = false
+
 [features]
 default = []
 

@@ -4,8 +4,8 @@
 use std::{thread, time::Instant};
 
 use reifydb::{HydrationConfig, Params, Subscription, testing::db::TestDb};
-use reifydb_core::value::column::columns::Columns;
-use reifydb_value::value::{duration::Duration, frame::frame::Frame};
+use reifydb_core::{interface::change::StagedBatch, value::column::columns::Columns};
+use reifydb_value::value::{diff_type::DiffType, duration::Duration, frame::frame::Frame};
 
 use crate::common::{Row, insert_all_at_once, make_db, normalize};
 
@@ -31,7 +31,7 @@ fn rows() -> Vec<Row> {
 	]
 }
 
-fn drain_collect(sub: &Subscription) -> Vec<Columns> {
+fn drain_collect(sub: &Subscription) -> Vec<StagedBatch> {
 	// The handle is drained rather than the raw store because the hydration snapshot lives in the handle's
 	// prelude, which a store drain would bypass.
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
@@ -50,7 +50,9 @@ fn drain_collect(sub: &Subscription) -> Vec<Columns> {
 		}
 		thread::sleep(Duration::from_milliseconds(20).unwrap().to_std());
 	}
-	acc.into_iter().map(Columns::from).collect()
+	// The op rides the frame now, so it must be carried alongside the columns or normalize cannot tell a
+	// remove from an insert.
+	acc.into_iter().map(|f| (f.op.unwrap_or(DiffType::Insert), Columns::from(f))).collect()
 }
 
 fn wait_caught_up(db: &TestDb) {

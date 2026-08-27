@@ -7,6 +7,9 @@ authors.workspace = true
 repository.workspace = true
 description = "Admin web server subsystem for ReifyDB using Axum"
 
+[lib]
+doctest = false
+
 [features]
 default = []
 

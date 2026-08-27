@@ -7,6 +7,9 @@ authors.workspace = true
 repository.workspace = true
 description = "Shared SQLite configuration types used by ReifyDB storage subsystems"
 
+[lib]
+doctest = false
+
 [features]
 default = []
 

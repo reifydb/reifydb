@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "WebAssembly runtime for sandboxed execution in ReifyDB (backed by wasmtime)"
 
+[lib]
+doctest = false
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 

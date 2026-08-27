@@ -5,7 +5,7 @@ use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_sub_server::subscription::wire_sink::{BatchSubscribedMember, WireSink};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
-use reifydb_value::value::frame::frame::Frame;
+use reifydb_value::value::{diff_type::DiffType, frame::frame::Frame};
 use tokio::sync::mpsc;
 use tonic::Status;
 
@@ -82,10 +82,16 @@ impl WireSink for GrpcWireSink {
 		}
 	}
 
-	fn send_change(&self, _sub_id: SubscriptionId, columns: Columns, _format: Self::Format) -> DeliveryResult {
+	fn send_change(
+		&self,
+		_sub_id: SubscriptionId,
+		op: DiffType,
+		columns: Columns,
+		_format: Self::Format,
+	) -> DeliveryResult {
 		match self {
 			Self::Single(tx) => {
-				let event = encode_change_event(columns, WireFormat::Rbcf);
+				let event = encode_change_event(op, columns, WireFormat::Rbcf);
 				if tx.send(Ok(event)).is_ok() {
 					DeliveryResult::Delivered
 				} else {
@@ -185,10 +191,10 @@ impl WireSink for GrpcWireSink {
 	}
 }
 
-pub fn encode_change_event(columns: Columns, format: WireFormat) -> SubscriptionEvent {
+pub fn encode_change_event(op: DiffType, columns: Columns, format: WireFormat) -> SubscriptionEvent {
 	SubscriptionEvent {
 		event: Some(subscription_event::Event::Change(ChangeEvent {
-			rbcf: encode_change_payload(vec![Frame::from(columns)], format),
+			rbcf: encode_change_payload(vec![Frame::from(columns).with_op(op)], format),
 		})),
 	}
 }
@@ -261,8 +267,14 @@ mod tests {
 		);
 		assert_eq!(registry.batch_for(&sub_a), Some(batch_id));
 
-		assert!(matches!(registry.try_deliver(&sub_a, single_int_columns("v", 1)), DeliveryResult::Delivered));
-		assert!(matches!(registry.try_deliver(&sub_b, single_int_columns("v", 2)), DeliveryResult::Delivered));
+		assert!(matches!(
+			registry.try_deliver(&sub_a, DiffType::Insert, single_int_columns("v", 1)),
+			DeliveryResult::Delivered
+		));
+		assert!(matches!(
+			registry.try_deliver(&sub_b, DiffType::Insert, single_int_columns("v", 2)),
+			DeliveryResult::Delivered
+		));
 
 		assert!(batch_rx.try_recv().is_err());
 
@@ -361,8 +373,14 @@ mod tests {
 			Duration::zero(),
 		);
 
-		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 1)), DeliveryResult::Delivered));
-		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 2)), DeliveryResult::Delivered));
+		assert!(matches!(
+			registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 1)),
+			DeliveryResult::Delivered
+		));
+		assert!(matches!(
+			registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 2)),
+			DeliveryResult::Delivered
+		));
 		assert!(rx.try_recv().is_err(), "no pushes while warming");
 
 		match registry.promote_to_live(sub) {
@@ -375,7 +393,10 @@ mod tests {
 		let second = rx.try_recv().expect("expected second buffered push after promote").expect("ok");
 		assert!(matches!(second.event, Some(subscription_event::Event::Change(_))));
 
-		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 3)), DeliveryResult::Delivered));
+		assert!(matches!(
+			registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 3)),
+			DeliveryResult::Delivered
+		));
 		let live = rx.try_recv().expect("expected live push after promote").expect("ok");
 		assert!(matches!(live.event, Some(subscription_event::Event::Change(_))));
 	}
@@ -400,9 +421,9 @@ mod tests {
 			Duration::zero(),
 		);
 
-		registry.try_deliver(&sub, single_int_columns("v", 1));
-		registry.try_deliver(&sub, single_int_columns("v", 2));
-		registry.try_deliver(&sub, single_int_columns("v", 3));
+		registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 1));
+		registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 2));
+		registry.try_deliver(&sub, DiffType::Insert, single_int_columns("v", 3));
 
 		match registry.promote_to_live(sub) {
 			PromoteResult::Overflowed => {}

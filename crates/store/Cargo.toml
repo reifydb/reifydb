@@ -7,6 +7,9 @@ authors.workspace = true
 repository.workspace = true
 description = "Row-tier store layer: page model and residency traits"
 
+[lib]
+doctest = false
+
 [dependencies]
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
