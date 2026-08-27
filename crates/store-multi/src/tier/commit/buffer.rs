@@ -9,6 +9,7 @@ use reifydb_core::{
 	interface::store::EntryKind,
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
+use reifydb_store::tier::commit::CommitCensus;
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
 
 use crate::{
@@ -92,6 +93,12 @@ impl MultiCommitBufferTier {
 	pub fn historical_resident_bytes(&self) -> ByteSize {
 		match self {
 			Self::Memory(s) => s.historical_resident_bytes(),
+		}
+	}
+
+	pub fn census(&self) -> CommitCensus {
+		match self {
+			Self::Memory(s) => s.census(),
 		}
 	}
 

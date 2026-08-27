@@ -6,5 +6,7 @@
 //! freshly-written rows are visible immediately without waiting for the flush.
 
 pub mod buffer;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+pub mod domain;
 pub mod memory;
 pub mod result;

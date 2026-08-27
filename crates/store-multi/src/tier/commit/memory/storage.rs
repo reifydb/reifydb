@@ -10,6 +10,7 @@ use std::{
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_store::tier::commit::CommitCensus;
 use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
 use tracing::{Span, field, instrument};
 
@@ -136,6 +137,32 @@ impl MemoryRowStorage {
 			.map(|entry| entry.bytes.historical())
 			.sum();
 		ByteSize::from_bytes(total)
+	}
+
+	pub fn census(&self) -> CommitCensus {
+		let mut counted = 0u64;
+		let mut walked = 0u64;
+		for kind in self.inner.entries.data.keys() {
+			let Some(entry) = self.inner.entries.data.get(&kind) else {
+				continue;
+			};
+			let current = entry.current.read();
+			let historical = entry.historical.read();
+			counted = counted.saturating_add(entry.bytes.current());
+			counted = counted.saturating_add(entry.bytes.historical());
+			for (key, (_, value)) in current.iter() {
+				walked = walked.saturating_add(entry_bytes(key, value));
+			}
+			for (key, versions) in historical.iter() {
+				for value in versions.values() {
+					walked = walked.saturating_add(entry_bytes(key, value));
+				}
+			}
+		}
+		CommitCensus {
+			counted: ByteSize::from_bytes(counted),
+			walked: ByteSize::from_bytes(walked),
+		}
 	}
 
 	#[inline]
