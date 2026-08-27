@@ -72,14 +72,15 @@ pub trait PointDomain: Copy + Debug + 'static {
 
 #[derive(Clone, Copy, Debug)]
 pub struct PointConfig {
-	pub resident_bytes: Option<ByteSize>,
+	pub shard_bytes: Option<ByteSize>,
 	pub shards: usize,
 }
 
-impl Default for PointConfig {
-	fn default() -> Self {
+impl PointConfig {
+	/// A budget for tests only; production sizing comes from catalog config, never from a fallback here.
+	pub fn testing() -> Self {
 		Self {
-			resident_bytes: Some(ByteSize::from_mib(64)),
+			shard_bytes: Some(ByteSize::from_mib(4)),
 			shards: 16,
 		}
 	}

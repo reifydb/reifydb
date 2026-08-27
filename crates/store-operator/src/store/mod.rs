@@ -30,8 +30,11 @@ use reifydb_store::metrics::PageCacheMetrics;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
-	config::OperatorPersistentConfig, filter::source::OperatorStateKeySource, flush::OperatorFlushActor,
+	config::OperatorPersistentConfig,
+	filter::source::OperatorStateKeySource,
+	flush::OperatorFlushActor,
 	sqlite::SqliteOperatorStorage,
+	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 };
 use crate::{
 	config::OperatorStoreConfig,
@@ -254,12 +257,23 @@ impl OperatorStore {
 		let actor_system = ActorSystem::testing(clock.clone());
 		let spawner = actor_system.spawner();
 		let (persistent, guard) = OperatorPersistentConfig::sqlite_in_memory();
-		(Self::standard(OperatorStoreConfig::sqlite(persistent, spawner, clock)), guard)
+		(
+			Self::standard(OperatorStoreConfig {
+				point: Some(OperatorPointConfig::testing()),
+				range: Some(OperatorRangeConfig::testing()),
+				..OperatorStoreConfig::sqlite(persistent, spawner, clock)
+			}),
+			guard,
+		)
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(config: SqliteConfig, spawner: ActorSpawner, clock: Clock) -> Self {
-		Self::standard(OperatorStoreConfig::sqlite(OperatorPersistentConfig::sqlite(config), spawner, clock))
+		Self::standard(OperatorStoreConfig {
+			point: Some(OperatorPointConfig::testing()),
+			range: Some(OperatorRangeConfig::testing()),
+			..OperatorStoreConfig::sqlite(OperatorPersistentConfig::sqlite(config), spawner, clock)
+		})
 	}
 
 	pub fn commit(&self) -> &OperatorCommitBuffer {

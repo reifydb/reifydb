@@ -28,8 +28,8 @@ fn store_fixture() -> (StandardOperatorStore, SqliteTempPathGuard) {
 		commit: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))
 			.flush_interval(Duration::from_hours_const(1))),
-		point: Some(OperatorPointConfig::default()),
-		range: Some(OperatorRangeConfig::default()),
+		point: Some(OperatorPointConfig::testing()),
+		range: Some(OperatorRangeConfig::testing()),
 		spawner,
 		clock,
 	});

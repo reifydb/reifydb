@@ -52,10 +52,14 @@ pub enum ConfigKey {
 	CdcCommitBufferBytes,
 	CdcBlockCutBytes,
 	CdcReadBufferBytes,
-	MultiPointBufferBytes,
-	MultiRangeBufferBytes,
-	OperatorPointBufferBytes,
-	OperatorRangeBufferBytes,
+	MultiPointBufferShardBytes,
+	MultiRangeBufferShardBytes,
+	OperatorPointBufferShardBytes,
+	OperatorRangeBufferShardBytes,
+	MultiPointBufferShards,
+	MultiRangeBufferShards,
+	OperatorPointBufferShards,
+	OperatorRangeBufferShards,
 	MultiFlushInterval,
 	MultiFlushKeyBudget,
 	MultiWalAutocheckpoint,
@@ -106,10 +110,14 @@ impl ConfigKey {
 			Self::CdcCommitBufferBytes,
 			Self::CdcBlockCutBytes,
 			Self::CdcReadBufferBytes,
-			Self::MultiPointBufferBytes,
-			Self::MultiRangeBufferBytes,
-			Self::OperatorPointBufferBytes,
-			Self::OperatorRangeBufferBytes,
+			Self::MultiPointBufferShardBytes,
+			Self::MultiRangeBufferShardBytes,
+			Self::OperatorPointBufferShardBytes,
+			Self::OperatorRangeBufferShardBytes,
+			Self::MultiPointBufferShards,
+			Self::MultiRangeBufferShards,
+			Self::OperatorPointBufferShards,
+			Self::OperatorRangeBufferShards,
 			Self::MultiFlushInterval,
 			Self::MultiFlushKeyBudget,
 			Self::MultiWalAutocheckpoint,
@@ -162,10 +170,14 @@ impl ConfigKey {
 			Self::CdcCommitBufferBytes => Value::Uint8(256 * 1024 * 1024),
 			Self::CdcBlockCutBytes => Value::Uint8(4 * 1024 * 1024),
 			Self::CdcReadBufferBytes => Value::Uint8(256 * 1024 * 1024),
-			Self::MultiPointBufferBytes => Value::Uint8(64 * 1024 * 1024),
-			Self::MultiRangeBufferBytes => Value::Uint8(64 * 1024 * 1024),
-			Self::OperatorPointBufferBytes => Value::Uint8(64 * 1024 * 1024),
-			Self::OperatorRangeBufferBytes => Value::Uint8(64 * 1024 * 1024),
+			Self::MultiPointBufferShardBytes => Value::Uint8(4 * 1024 * 1024),
+			Self::MultiRangeBufferShardBytes => Value::Uint8(4 * 1024 * 1024),
+			Self::OperatorPointBufferShardBytes => Value::Uint8(4 * 1024 * 1024),
+			Self::OperatorRangeBufferShardBytes => Value::Uint8(4 * 1024 * 1024),
+			Self::MultiPointBufferShards => Value::Uint2(16),
+			Self::MultiRangeBufferShards => Value::Uint2(16),
+			Self::OperatorPointBufferShards => Value::Uint2(16),
+			Self::OperatorRangeBufferShards => Value::Uint2(16),
 			Self::MultiFlushInterval => Value::duration_seconds(5),
 			Self::MultiFlushKeyBudget => Value::Uint8(2048),
 			Self::MultiWalAutocheckpoint => Value::Uint8(10000),
@@ -275,25 +287,53 @@ impl ConfigKey {
 				 shards. None disables the cache outright, so every miss below the commit buffer decodes a \
 				 block straight from the persistent tier. Read once at boot."
 			}
-			Self::MultiPointBufferBytes => {
-				"Resident byte budget for the multi-version point cache, split evenly across its shards. \
-				 None disables the cache outright, so every point read that misses the commit buffer goes \
-				 to the persistent tier. Read once at boot; changing it requires a restart."
+			Self::MultiPointBufferShardBytes => {
+				"Resident byte budget for each shard of the multi-version point cache; total cache memory is \
+				 this value times the shard count. None disables the cache outright, so \
+				 every point read that misses the commit buffer goes to the persistent tier. Read once at boot; changing it \
+				 requires a restart."
 			}
-			Self::MultiRangeBufferBytes => {
-				"Resident byte budget for the multi-version range cache, split evenly across its shards. \
-				 None disables the cache outright, so every multi-version range scan goes to the \
-				 persistent tier. Read once at boot; changing it requires a restart."
+			Self::MultiRangeBufferShardBytes => {
+				"Resident byte budget for each shard of the multi-version range cache; total cache memory is \
+				 this value times the shard count. None disables the cache outright, so \
+				 every multi-version range scan goes to the persistent tier. Read once at boot; changing it \
+				 requires a restart."
 			}
-			Self::OperatorPointBufferBytes => {
-				"Resident byte budget for the operator-state point cache, split evenly across its shards. \
-				 None disables the cache outright, so every point read that misses the commit buffer goes \
-				 to the persistent tier. Read once at boot; changing it requires a restart."
+			Self::OperatorPointBufferShardBytes => {
+				"Resident byte budget for each shard of the operator-state point cache; total cache memory is \
+				 this value times the shard count. None disables the cache outright, so \
+				 every point read that misses the commit buffer goes to the persistent tier. Read once at boot; changing it \
+				 requires a restart."
 			}
-			Self::OperatorRangeBufferBytes => {
-				"Resident byte budget for the operator-state range cache, split evenly across its shards. \
-				 None disables the cache outright, so every operator range scan goes to the persistent \
-				 tier. Read once at boot; changing it requires a restart."
+			Self::OperatorRangeBufferShardBytes => {
+				"Resident byte budget for each shard of the operator-state range cache; total cache memory is \
+				 this value times the shard count. None disables the cache outright, so \
+				 every operator range scan goes to the persistent tier. Read once at boot; changing it \
+				 requires a restart."
+			}
+			Self::MultiPointBufferShards => {
+				"Number of lock-striped shards in the multi-version point cache. Each shard carries its own \
+				 byte budget, so raising this raises total cache memory proportionally rather \
+				 than dividing a fixed pot. Must be >= 1. Read once at boot; changing it \
+				 requires a restart."
+			}
+			Self::MultiRangeBufferShards => {
+				"Number of lock-striped shards in the multi-version range cache. Each shard carries its own \
+				 byte budget, so raising this raises total cache memory proportionally rather \
+				 than dividing a fixed pot. Must be >= 1. Read once at boot; changing it \
+				 requires a restart."
+			}
+			Self::OperatorPointBufferShards => {
+				"Number of lock-striped shards in the operator-state point cache. Each shard carries its own \
+				 byte budget, so raising this raises total cache memory proportionally rather \
+				 than dividing a fixed pot. Must be >= 1. Read once at boot; changing it \
+				 requires a restart."
+			}
+			Self::OperatorRangeBufferShards => {
+				"Number of lock-striped shards in the operator-state range cache. Each shard carries its own \
+				 byte budget, so raising this raises total cache memory proportionally rather \
+				 than dividing a fixed pot. Must be >= 1. Read once at boot; changing it \
+				 requires a restart."
 			}
 			Self::MultiFlushInterval => {
 				"How often the persistent-flush actor drains the in-memory commit buffer into the multi \
@@ -442,10 +482,14 @@ impl ConfigKey {
 			Self::CdcCommitBufferBytes => true,
 			Self::CdcBlockCutBytes => true,
 			Self::CdcReadBufferBytes => true,
-			Self::MultiPointBufferBytes => true,
-			Self::MultiRangeBufferBytes => true,
-			Self::OperatorPointBufferBytes => true,
-			Self::OperatorRangeBufferBytes => true,
+			Self::MultiPointBufferShardBytes => true,
+			Self::MultiRangeBufferShardBytes => true,
+			Self::OperatorPointBufferShardBytes => true,
+			Self::OperatorRangeBufferShardBytes => true,
+			Self::MultiPointBufferShards => true,
+			Self::MultiRangeBufferShards => true,
+			Self::OperatorPointBufferShards => true,
+			Self::OperatorRangeBufferShards => true,
 			Self::MultiFlushInterval => true,
 			Self::MultiFlushKeyBudget => false,
 			Self::MultiWalAutocheckpoint => true,
@@ -496,10 +540,14 @@ impl ConfigKey {
 			Self::CdcCommitBufferBytes => &[ValueType::Uint8],
 			Self::CdcBlockCutBytes => &[ValueType::Uint8],
 			Self::CdcReadBufferBytes => &[ValueType::Uint8],
-			Self::MultiPointBufferBytes => &[ValueType::Uint8],
-			Self::MultiRangeBufferBytes => &[ValueType::Uint8],
-			Self::OperatorPointBufferBytes => &[ValueType::Uint8],
-			Self::OperatorRangeBufferBytes => &[ValueType::Uint8],
+			Self::MultiPointBufferShardBytes => &[ValueType::Uint8],
+			Self::MultiRangeBufferShardBytes => &[ValueType::Uint8],
+			Self::OperatorPointBufferShardBytes => &[ValueType::Uint8],
+			Self::OperatorRangeBufferShardBytes => &[ValueType::Uint8],
+			Self::MultiPointBufferShards => &[ValueType::Uint2],
+			Self::MultiRangeBufferShards => &[ValueType::Uint2],
+			Self::OperatorPointBufferShards => &[ValueType::Uint2],
+			Self::OperatorRangeBufferShards => &[ValueType::Uint2],
 			Self::MultiFlushInterval => &[ValueType::Duration],
 			Self::MultiFlushKeyBudget => &[ValueType::Uint8],
 			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
@@ -550,10 +598,14 @@ impl ConfigKey {
 			Self::CdcCommitBufferBytes => false,
 			Self::CdcBlockCutBytes => false,
 			Self::CdcReadBufferBytes => true,
-			Self::MultiPointBufferBytes => true,
-			Self::MultiRangeBufferBytes => true,
-			Self::OperatorPointBufferBytes => true,
-			Self::OperatorRangeBufferBytes => true,
+			Self::MultiPointBufferShardBytes => true,
+			Self::MultiRangeBufferShardBytes => true,
+			Self::OperatorPointBufferShardBytes => true,
+			Self::OperatorRangeBufferShardBytes => true,
+			Self::MultiPointBufferShards => false,
+			Self::MultiRangeBufferShards => false,
+			Self::OperatorPointBufferShards => false,
+			Self::OperatorRangeBufferShards => false,
 			Self::MultiFlushInterval => false,
 			Self::MultiFlushKeyBudget => false,
 			Self::MultiWalAutocheckpoint => false,
@@ -645,32 +697,48 @@ impl ConfigKey {
 				Value::Uint8(0) => Err("FLOW_LOAD_BATCH_BYTES must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::MultiPointBufferBytes => match value {
+			Self::MultiPointBufferShardBytes => match value {
 				Value::Uint8(0) => Err(
-					"MULTI_POINT_BUFFER_BYTES must be greater than zero; use none to disable the point cache"
+					"MULTI_POINT_BUFFER_SHARD_BYTES must be greater than zero; use none to disable the point cache"
 						.to_string(),
 				),
 				_ => Ok(()),
 			},
-			Self::MultiRangeBufferBytes => match value {
+			Self::MultiRangeBufferShardBytes => match value {
 				Value::Uint8(0) => Err(
-					"MULTI_RANGE_BUFFER_BYTES must be greater than zero; use none to disable the range cache"
+					"MULTI_RANGE_BUFFER_SHARD_BYTES must be greater than zero; use none to disable the range cache"
 						.to_string(),
 				),
 				_ => Ok(()),
 			},
-			Self::OperatorPointBufferBytes => match value {
+			Self::OperatorPointBufferShardBytes => match value {
 				Value::Uint8(0) => Err(
-					"OPERATOR_POINT_BUFFER_BYTES must be greater than zero; use none to disable the point cache"
+					"OPERATOR_POINT_BUFFER_SHARD_BYTES must be greater than zero; use none to disable the point cache"
 						.to_string(),
 				),
 				_ => Ok(()),
 			},
-			Self::OperatorRangeBufferBytes => match value {
+			Self::OperatorRangeBufferShardBytes => match value {
 				Value::Uint8(0) => Err(
-					"OPERATOR_RANGE_BUFFER_BYTES must be greater than zero; use none to disable the range cache"
+					"OPERATOR_RANGE_BUFFER_SHARD_BYTES must be greater than zero; use none to disable the range cache"
 						.to_string(),
 				),
+				_ => Ok(()),
+			},
+			Self::MultiPointBufferShards => match value {
+				Value::Uint2(0) => Err("MULTI_POINT_BUFFER_SHARDS must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::MultiRangeBufferShards => match value {
+				Value::Uint2(0) => Err("MULTI_RANGE_BUFFER_SHARDS must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::OperatorPointBufferShards => match value {
+				Value::Uint2(0) => Err("OPERATOR_POINT_BUFFER_SHARDS must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::OperatorRangeBufferShards => match value {
+				Value::Uint2(0) => Err("OPERATOR_RANGE_BUFFER_SHARDS must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::CdcCommitBufferBytes => match value {
@@ -887,10 +955,14 @@ impl fmt::Display for ConfigKey {
 			Self::CdcCommitBufferBytes => write!(f, "CDC_COMMIT_BUFFER_BYTES"),
 			Self::CdcBlockCutBytes => write!(f, "CDC_BLOCK_CUT_BYTES"),
 			Self::CdcReadBufferBytes => write!(f, "CDC_READ_BUFFER_BYTES"),
-			Self::MultiPointBufferBytes => write!(f, "MULTI_POINT_BUFFER_BYTES"),
-			Self::MultiRangeBufferBytes => write!(f, "MULTI_RANGE_BUFFER_BYTES"),
-			Self::OperatorPointBufferBytes => write!(f, "OPERATOR_POINT_BUFFER_BYTES"),
-			Self::OperatorRangeBufferBytes => write!(f, "OPERATOR_RANGE_BUFFER_BYTES"),
+			Self::MultiPointBufferShardBytes => write!(f, "MULTI_POINT_BUFFER_SHARD_BYTES"),
+			Self::MultiRangeBufferShardBytes => write!(f, "MULTI_RANGE_BUFFER_SHARD_BYTES"),
+			Self::OperatorPointBufferShardBytes => write!(f, "OPERATOR_POINT_BUFFER_SHARD_BYTES"),
+			Self::OperatorRangeBufferShardBytes => write!(f, "OPERATOR_RANGE_BUFFER_SHARD_BYTES"),
+			Self::MultiPointBufferShards => write!(f, "MULTI_POINT_BUFFER_SHARDS"),
+			Self::MultiRangeBufferShards => write!(f, "MULTI_RANGE_BUFFER_SHARDS"),
+			Self::OperatorPointBufferShards => write!(f, "OPERATOR_POINT_BUFFER_SHARDS"),
+			Self::OperatorRangeBufferShards => write!(f, "OPERATOR_RANGE_BUFFER_SHARDS"),
 			Self::MultiFlushInterval => write!(f, "MULTI_FLUSH_INTERVAL"),
 			Self::MultiFlushKeyBudget => write!(f, "MULTI_FLUSH_KEY_BUDGET"),
 			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
@@ -945,10 +1017,14 @@ impl FromStr for ConfigKey {
 			"CDC_COMMIT_BUFFER_BYTES" => Ok(Self::CdcCommitBufferBytes),
 			"CDC_BLOCK_CUT_BYTES" => Ok(Self::CdcBlockCutBytes),
 			"CDC_READ_BUFFER_BYTES" => Ok(Self::CdcReadBufferBytes),
-			"MULTI_POINT_BUFFER_BYTES" => Ok(Self::MultiPointBufferBytes),
-			"MULTI_RANGE_BUFFER_BYTES" => Ok(Self::MultiRangeBufferBytes),
-			"OPERATOR_POINT_BUFFER_BYTES" => Ok(Self::OperatorPointBufferBytes),
-			"OPERATOR_RANGE_BUFFER_BYTES" => Ok(Self::OperatorRangeBufferBytes),
+			"MULTI_POINT_BUFFER_SHARD_BYTES" => Ok(Self::MultiPointBufferShardBytes),
+			"MULTI_RANGE_BUFFER_SHARD_BYTES" => Ok(Self::MultiRangeBufferShardBytes),
+			"OPERATOR_POINT_BUFFER_SHARD_BYTES" => Ok(Self::OperatorPointBufferShardBytes),
+			"OPERATOR_RANGE_BUFFER_SHARD_BYTES" => Ok(Self::OperatorRangeBufferShardBytes),
+			"MULTI_POINT_BUFFER_SHARDS" => Ok(Self::MultiPointBufferShards),
+			"MULTI_RANGE_BUFFER_SHARDS" => Ok(Self::MultiRangeBufferShards),
+			"OPERATOR_POINT_BUFFER_SHARDS" => Ok(Self::OperatorPointBufferShards),
+			"OPERATOR_RANGE_BUFFER_SHARDS" => Ok(Self::OperatorRangeBufferShards),
 			"MULTI_FLUSH_INTERVAL" => Ok(Self::MultiFlushInterval),
 			"MULTI_FLUSH_KEY_BUDGET" => Ok(Self::MultiFlushKeyBudget),
 			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
@@ -1147,7 +1223,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 49);
+		assert_eq!(all.len(), 53);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -1166,8 +1242,12 @@ mod tests {
 		assert!(all.contains(&ConfigKey::CdcCommitBufferBytes));
 		assert!(all.contains(&ConfigKey::CdcBlockCutBytes));
 		assert!(all.contains(&ConfigKey::CdcReadBufferBytes));
-		assert!(all.contains(&ConfigKey::OperatorPointBufferBytes));
-		assert!(all.contains(&ConfigKey::OperatorRangeBufferBytes));
+		assert!(all.contains(&ConfigKey::OperatorPointBufferShardBytes));
+		assert!(all.contains(&ConfigKey::OperatorRangeBufferShardBytes));
+		assert!(all.contains(&ConfigKey::MultiPointBufferShards));
+		assert!(all.contains(&ConfigKey::MultiRangeBufferShards));
+		assert!(all.contains(&ConfigKey::OperatorPointBufferShards));
+		assert!(all.contains(&ConfigKey::OperatorRangeBufferShards));
 		assert!(all.contains(&ConfigKey::FlowBacklogMemoryLimit));
 		assert!(all.contains(&ConfigKey::FlowPullBatchBytes));
 		assert!(all.contains(&ConfigKey::FlowLoadBatchBytes));

@@ -33,7 +33,7 @@ mod tests {
 
 	fn tier(limit: u64, gap_guard: usize) -> OperatorRangeTier {
 		OperatorRangeTier::new(OperatorRangeConfig {
-			resident_bytes: Some(ByteSize::from_bytes(limit)),
+			shard_bytes: Some(ByteSize::from_bytes(limit)),
 			shards: 1,
 			gap_guard,
 		})

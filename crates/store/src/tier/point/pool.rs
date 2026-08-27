@@ -30,10 +30,10 @@ use crate::tier::point::{
 
 impl<D: PointDomain> PointTier<D> {
 	pub fn new(config: PointConfig) -> Option<Self> {
-		let resident_bytes = config.resident_bytes?;
+		let shard_bytes = config.shard_bytes?;
 		Some(Self {
 			inner: Arc::new(PoolInner {
-				shards: build_shards::<D>(config, resident_bytes),
+				shards: build_shards::<D>(config, shard_bytes),
 				excluded_misses: build_excluded_misses::<D>(),
 				#[cfg(test)]
 				interlock: None,
@@ -43,10 +43,10 @@ impl<D: PointDomain> PointTier<D> {
 
 	#[cfg(test)]
 	pub(crate) fn with_interlock(config: PointConfig, interlock: FillInterlock<D>) -> Option<Self> {
-		let resident_bytes = config.resident_bytes?;
+		let shard_bytes = config.shard_bytes?;
 		Some(Self {
 			inner: Arc::new(PoolInner {
-				shards: build_shards::<D>(config, resident_bytes),
+				shards: build_shards::<D>(config, shard_bytes),
 				excluded_misses: build_excluded_misses::<D>(),
 				interlock: Some(interlock),
 			}),
@@ -259,9 +259,9 @@ fn build_excluded_misses<D: PointDomain>() -> Box<[AtomicU64]> {
 	(0..D::SLOTS).map(|_| AtomicU64::new(0)).collect::<Vec<_>>().into_boxed_slice()
 }
 
-fn build_shards<D: PointDomain>(config: PointConfig, resident_bytes: ByteSize) -> Box<[Mutex<Shard<D>>]> {
+fn build_shards<D: PointDomain>(config: PointConfig, shard_bytes: ByteSize) -> Box<[Mutex<Shard<D>>]> {
 	let shard_count = config.shards.max(1);
-	let byte_cap = ByteSize::from_bytes((resident_bytes.as_bytes() / shard_count as u64).max(1));
+	let byte_cap = ByteSize::from_bytes(shard_bytes.as_bytes().max(1));
 	(0..shard_count)
 		.map(|index| {
 			Mutex::new(Shard {

@@ -562,16 +562,16 @@ mod pending_override_tripwire_tests {
 		// A component constructed before seed_bootstrap_configs would otherwise silently
 		// consume the default value while a builder override is still pending.
 		let cache = CatalogCache::new();
-		cache.mark_pending_config_overrides([ConfigKey::MultiPointBufferBytes]);
-		let _ = cache.get_config(ConfigKey::MultiPointBufferBytes);
+		cache.mark_pending_config_overrides([ConfigKey::MultiPointBufferShardBytes]);
+		let _ = cache.get_config(ConfigKey::MultiPointBufferShardBytes);
 	}
 
 	#[test]
 	#[should_panic(expected = "bootstrap override is still pending")]
 	fn versioned_reads_are_guarded_too() {
 		let cache = CatalogCache::new();
-		cache.mark_pending_config_overrides([ConfigKey::MultiPointBufferBytes]);
-		let _ = cache.get_config_at(ConfigKey::MultiPointBufferBytes, CommitVersion(1));
+		cache.mark_pending_config_overrides([ConfigKey::MultiPointBufferShardBytes]);
+		let _ = cache.get_config_at(ConfigKey::MultiPointBufferShardBytes, CommitVersion(1));
 	}
 
 	#[test]
@@ -579,7 +579,7 @@ mod pending_override_tripwire_tests {
 		// Only overridden keys are hazardous before the seed; guarding everything would make
 		// legitimate construction-time reads of non-overridden keys impossible.
 		let cache = CatalogCache::new();
-		cache.mark_pending_config_overrides([ConfigKey::MultiPointBufferBytes]);
+		cache.mark_pending_config_overrides([ConfigKey::MultiPointBufferShardBytes]);
 		let _ = cache.get_config(ConfigKey::CdcTtlDuration);
 	}
 
@@ -588,9 +588,9 @@ mod pending_override_tripwire_tests {
 		// seed_bootstrap_configs clears the marks after inserting the override values, from
 		// which point every read observes the override.
 		let cache = CatalogCache::new();
-		cache.mark_pending_config_overrides([ConfigKey::MultiPointBufferBytes]);
+		cache.mark_pending_config_overrides([ConfigKey::MultiPointBufferShardBytes]);
 		cache.clear_pending_config_overrides();
-		let _ = cache.get_config(ConfigKey::MultiPointBufferBytes);
+		let _ = cache.get_config(ConfigKey::MultiPointBufferShardBytes);
 	}
 }
 

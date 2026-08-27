@@ -1539,12 +1539,12 @@ mod cache_tests {
 	fn store_without_read_tier() -> (StandardMultiStore, impl Drop) {
 		StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(
 			MultiPointConfig {
-				resident_bytes: None,
-				..MultiPointConfig::default()
+				shard_bytes: None,
+				..MultiPointConfig::testing()
 			},
 			MultiRangeConfig {
-				resident_bytes: None,
-				..MultiRangeConfig::default()
+				shard_bytes: None,
+				..MultiRangeConfig::testing()
 			},
 		)
 	}
@@ -1799,8 +1799,8 @@ mod probe_tests {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: Some(PersistentConfig::sqlite(sqlite_config)),
-			point: Some(MultiPointConfig::default()),
-			range: Some(MultiRangeConfig::default()),
+			point: Some(MultiPointConfig::testing()),
+			range: Some(MultiRangeConfig::testing()),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,

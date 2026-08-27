@@ -483,7 +483,7 @@ mod tests {
 
 	fn tier() -> MultiRangeTier {
 		MultiRangeTier::new(MultiRangeConfig {
-			resident_bytes: Some(ByteSize::from_mib(1)),
+			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 4,
 			gap_guard: DEFAULT_GAP_GUARD,
 		})
@@ -494,7 +494,7 @@ mod tests {
 
 	fn tight() -> MultiRangeTier {
 		MultiRangeTier::new(MultiRangeConfig {
-			resident_bytes: Some(ByteSize::from_kib(4)),
+			shard_bytes: Some(ByteSize::from_kib(4)),
 			shards: 1,
 			gap_guard: DEFAULT_GAP_GUARD,
 		})

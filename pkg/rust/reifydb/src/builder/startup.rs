@@ -8,6 +8,7 @@
 use reifydb_catalog::bootstrap::read_configs;
 use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_runtime::pool::PoolConfig;
+use reifydb_store::coverage::plan::DEFAULT_GAP_GUARD;
 use reifydb_store_cdc::{
 	config::CdcCommitConfig,
 	tier::{commit::CdcCommitBufferTier, read::CdcReadConfig},
@@ -39,10 +40,14 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::ThreadsFlow,
 	ConfigKey::ThreadsTask,
 	ConfigKey::ThreadsCompute,
-	ConfigKey::MultiPointBufferBytes,
-	ConfigKey::MultiRangeBufferBytes,
-	ConfigKey::OperatorPointBufferBytes,
-	ConfigKey::OperatorRangeBufferBytes,
+	ConfigKey::MultiPointBufferShardBytes,
+	ConfigKey::MultiRangeBufferShardBytes,
+	ConfigKey::OperatorPointBufferShardBytes,
+	ConfigKey::OperatorRangeBufferShardBytes,
+	ConfigKey::MultiPointBufferShards,
+	ConfigKey::MultiRangeBufferShards,
+	ConfigKey::OperatorPointBufferShards,
+	ConfigKey::OperatorRangeBufferShards,
 	ConfigKey::MultiWalAutocheckpoint,
 	ConfigKey::CdcWalAutocheckpoint,
 	ConfigKey::CdcCommitBufferBytes,
@@ -80,6 +85,13 @@ pub(crate) fn resolve_startup_configs(
 		}
 	};
 
+	let shard_count = |key: ConfigKey| -> usize {
+		match resolve(key) {
+			Value::Uint2(v) => v as usize,
+			other => panic!("config key {key} expected Uint2, got {other:?}"),
+		}
+	};
+
 	let uint8_opt = |key: ConfigKey| -> Option<u64> {
 		match resolve(key) {
 			Value::Uint8(v) => Some(v),
@@ -99,26 +111,26 @@ pub(crate) fn resolve_startup_configs(
 		async_threads: threads(ConfigKey::ThreadsAsync),
 	};
 
-	let multi_point = uint8_opt(ConfigKey::MultiPointBufferBytes).map(|resident_bytes| MultiPointConfig {
-		resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
-		shards: MultiPointConfig::default().shards,
+	let multi_point = uint8_opt(ConfigKey::MultiPointBufferShardBytes).map(|shard_bytes| MultiPointConfig {
+		shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
+		shards: shard_count(ConfigKey::MultiPointBufferShards),
 	});
 
-	let multi_range = uint8_opt(ConfigKey::MultiRangeBufferBytes).map(|resident_bytes| MultiRangeConfig {
-		resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
-		shards: MultiRangeConfig::default().shards,
-		gap_guard: MultiRangeConfig::default().gap_guard,
+	let multi_range = uint8_opt(ConfigKey::MultiRangeBufferShardBytes).map(|shard_bytes| MultiRangeConfig {
+		shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
+		shards: shard_count(ConfigKey::MultiRangeBufferShards),
+		gap_guard: DEFAULT_GAP_GUARD,
 	});
 
-	let operator_point = uint8_opt(ConfigKey::OperatorPointBufferBytes).map(|resident_bytes| OperatorPointConfig {
-		resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
-		shards: OperatorPointConfig::default().shards,
+	let operator_point = uint8_opt(ConfigKey::OperatorPointBufferShardBytes).map(|shard_bytes| OperatorPointConfig {
+		shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
+		shards: shard_count(ConfigKey::OperatorPointBufferShards),
 	});
 
-	let operator_range = uint8_opt(ConfigKey::OperatorRangeBufferBytes).map(|resident_bytes| OperatorRangeConfig {
-		resident_bytes: Some(ByteSize::from_bytes(resident_bytes)),
-		shards: OperatorRangeConfig::default().shards,
-		gap_guard: OperatorRangeConfig::default().gap_guard,
+	let operator_range = uint8_opt(ConfigKey::OperatorRangeBufferShardBytes).map(|shard_bytes| OperatorRangeConfig {
+		shard_bytes: Some(ByteSize::from_bytes(shard_bytes)),
+		shards: shard_count(ConfigKey::OperatorRangeBufferShards),
+		gap_guard: DEFAULT_GAP_GUARD,
 	});
 
 	let cut_bytes = ByteSize::from_bytes(uint8(ConfigKey::CdcBlockCutBytes));

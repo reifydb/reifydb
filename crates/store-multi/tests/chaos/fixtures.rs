@@ -25,7 +25,7 @@ use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 /// Commit buffer + SQLite persistent + read tiers on sync_only pools, so the timer-driven flush and
 /// compaction actors never fire on their own and the run stays a pure function of the seed.
 pub fn sync_persistent_store() -> (StandardMultiStore, impl Drop) {
-	sync_persistent_store_with_tiers(MultiPointConfig::default(), MultiRangeConfig::default())
+	sync_persistent_store_with_tiers(MultiPointConfig::testing(), MultiRangeConfig::testing())
 }
 
 pub fn sync_persistent_store_with_tiers(
@@ -51,13 +51,13 @@ pub fn sync_persistent_store_with_tiers(
 pub fn tiny_tiers(kib: u64) -> (MultiPointConfig, MultiRangeConfig) {
 	(
 		MultiPointConfig {
-			resident_bytes: Some(ByteSize::from_kib(kib)),
+			shard_bytes: Some(ByteSize::from_kib(kib)),
 			shards: 1,
 		},
 		MultiRangeConfig {
-			resident_bytes: Some(ByteSize::from_kib(kib)),
+			shard_bytes: Some(ByteSize::from_kib(kib)),
 			shards: 1,
-			..MultiRangeConfig::default()
+			..MultiRangeConfig::testing()
 		},
 	)
 }

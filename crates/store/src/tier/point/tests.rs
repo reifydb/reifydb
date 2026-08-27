@@ -25,7 +25,7 @@ const GROUP_B: GroupId = GroupId(11);
 
 fn sharded(limit: u64, shards: usize) -> PointTier<D> {
 	PointTier::<D>::new(PointConfig {
-		resident_bytes: Some(ByteSize::from_bytes(limit)),
+		shard_bytes: Some(ByteSize::from_bytes(limit)),
 		shards,
 	})
 	.expect("a tier with a byte budget must be constructed")
@@ -414,7 +414,7 @@ fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
 
 	let tier = PointTier::<D>::with_interlock(
 		PointConfig {
-			resident_bytes: Some(ByteSize::from_mib(1)),
+			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
 		},
 		hook,
@@ -435,24 +435,28 @@ fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
 #[test]
 fn a_tier_without_a_byte_budget_is_not_constructed() {
 	assert!(PointTier::<D>::new(PointConfig {
-		resident_bytes: None,
+		shard_bytes: None,
 		shards: 16,
 	})
 	.is_none());
-	assert!(PointTier::<D>::new(PointConfig::default()).is_some());
-	assert_eq!(PointConfig::default().shards, 16);
-	assert_eq!(PointConfig::default().resident_bytes, Some(ByteSize::from_mib(64)));
+	assert!(PointTier::<D>::new(PointConfig::testing()).is_some());
+	assert_eq!(PointConfig::testing().shards, 16);
+	assert_eq!(PointConfig::testing().shard_bytes, Some(ByteSize::from_mib(4)));
 }
 
 #[test]
-fn every_shard_is_reachable_and_reports_its_own_slice_of_the_budget() {
+fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 	let tier = sharded(ByteSize::from_mib(64).as_bytes(), 4);
 
 	let metrics = tier.shard_metrics();
 	assert_eq!(metrics.len(), 4);
 	for (index, shard) in metrics.iter().enumerate() {
 		assert_eq!(shard.shard, index);
-		assert_eq!(shard.limit, ByteSize::from_mib(16), "the total budget must be split across shards");
+		assert_eq!(
+			shard.limit,
+			ByteSize::from_mib(64),
+			"each shard must carry the full configured per-shard budget"
+		);
 	}
 
 	for group in 0..64u64 {
@@ -869,7 +873,7 @@ fn an_excluded_keyspace_read_acquires_no_shard() {
 #[test]
 fn a_refused_supersede_leaves_the_row_and_its_accounting_alone() {
 	let tier = PointTier::<C>::new(PointConfig {
-		resident_bytes: Some(ByteSize::from_mib(1)),
+		shard_bytes: Some(ByteSize::from_mib(1)),
 		shards: 1,
 	})
 	.expect("a tier with a byte budget must be constructed");
@@ -891,7 +895,7 @@ fn a_refused_supersede_leaves_the_row_and_its_accounting_alone() {
 #[test]
 fn an_accepted_supersede_recharges_from_the_merged_row() {
 	let tier = PointTier::<C>::new(PointConfig {
-		resident_bytes: Some(ByteSize::from_mib(1)),
+		shard_bytes: Some(ByteSize::from_mib(1)),
 		shards: 1,
 	})
 	.expect("a tier with a byte budget must be constructed");

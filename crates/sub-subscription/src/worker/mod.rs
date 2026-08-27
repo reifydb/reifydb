@@ -165,7 +165,7 @@ impl Actor for SubscriptionWorkerActor {
 				SubscriptionWorkerMessage::Gate {
 					flow_id,
 					reply,
-				} => reply(state.flows.get(&flow_id).and_then(|flow_state| flow_state.gate)),
+				} => reply(state.flows.get(&flow_id).map(|flow_state| flow_state.gate)),
 				SubscriptionWorkerMessage::Terminate {
 					done,
 				} => self.handle_terminate(state, done),

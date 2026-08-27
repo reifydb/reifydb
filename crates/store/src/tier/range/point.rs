@@ -132,9 +132,9 @@ mod tests {
 
 	fn tier() -> RangeTier<D> {
 		RangeTier::<D>::new(RangeConfig {
-			resident_bytes: Some(ByteSize::from_mib(1)),
+			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
-			..RangeConfig::default()
+			..RangeConfig::testing()
 		})
 		.expect("a tier with a byte budget must be constructed")
 	}
@@ -331,9 +331,9 @@ mod tests {
 		// An eviction that shrinks coverage must bump the token, or the key it withdrew still reads absent.
 		let per_entry = entry_footprint(&key(CACHED, b"f0"), &Entry::row(row("v")));
 		let tier = RangeTier::<D>::new(RangeConfig {
-			resident_bytes: Some(ByteSize::from_bytes((PARTITION_OVERHEAD + 2 * per_entry) as u64)),
+			shard_bytes: Some(ByteSize::from_bytes((PARTITION_OVERHEAD + 2 * per_entry) as u64)),
 			shards: 1,
-			..RangeConfig::default()
+			..RangeConfig::testing()
 		})
 		.expect("a tier with a byte budget must be constructed");
 		let id = partition(CACHED);

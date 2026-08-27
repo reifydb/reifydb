@@ -37,7 +37,7 @@ const GROUP: GroupId = GroupId(7);
 
 fn cached_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard) {
 	// The hour-long interval on a frozen clock means the only drain a test sees is the one it asked for.
-	cached_store_with(OperatorPointConfig::default(), OperatorRangeConfig::default())
+	cached_store_with(OperatorPointConfig::testing(), OperatorRangeConfig::testing())
 }
 
 fn cached_store_with(
@@ -222,13 +222,13 @@ fn a_range_materialize_that_does_not_fit_its_own_budget_evicts_no_point_entry() 
 	// A shared budget would let one range scan flush the point entries that serve their keyspaces.
 	let (store, storage, _guard) = cached_store_with(
 		OperatorPointConfig {
-			resident_bytes: Some(ByteSize::from_bytes(1024)),
+			shard_bytes: Some(ByteSize::from_bytes(1024)),
 			shards: 1,
 		},
 		OperatorRangeConfig {
-			resident_bytes: Some(ByteSize::from_bytes(256)),
+			shard_bytes: Some(ByteSize::from_bytes(256)),
 			shards: 1,
-			..OperatorRangeConfig::default()
+			..OperatorRangeConfig::testing()
 		},
 	);
 	seed_accumulator(&storage, 8);
@@ -489,13 +489,13 @@ fn a_written_row_too_big_for_the_range_budget_takes_the_whole_claim_with_it() {
 	// A claim that cannot hold the key just written to it must be retracted, never left short.
 	let (store, storage, _guard) = cached_store_with(
 		OperatorPointConfig {
-			resident_bytes: Some(ByteSize::from_mib(1)),
+			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
 		},
 		OperatorRangeConfig {
-			resident_bytes: Some(ByteSize::from_bytes(4096)),
+			shard_bytes: Some(ByteSize::from_bytes(4096)),
 			shards: 1,
-			..OperatorRangeConfig::default()
+			..OperatorRangeConfig::testing()
 		},
 	);
 	seed_accumulator(&storage, 3);

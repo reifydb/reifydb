@@ -683,7 +683,7 @@ mod tests {
 
 	#[test]
 	fn sweep_seeds_evicted_keys_into_the_read_tier() {
-		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
+		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(11)));
 		let key = ek("k");
@@ -709,7 +709,7 @@ mod tests {
 
 	#[test]
 	fn sweep_seeds_tombstone_into_read_tier() {
-		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
+		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(21)));
 		let key = ek("k");
@@ -727,7 +727,7 @@ mod tests {
 
 	#[test]
 	fn sweep_invalidates_rejected_key_but_seeds_accepted() {
-		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
+		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(22)));
 		let rejected = ek("rejected");
@@ -760,7 +760,7 @@ mod tests {
 
 	#[test]
 	fn sweep_seed_respects_read_tier_downgrade_guard() {
-		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
+		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(23)));
 		let key = ek("k");
@@ -785,7 +785,7 @@ mod tests {
 
 	#[test]
 	fn sweep_invalidates_ephemeral_object_in_read_tier() {
-		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
+		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) =
 			build_engine_with_point(Arc::new(NonePersistent), CommitVersion(2), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(24)));
@@ -811,7 +811,7 @@ mod tests {
 
 	#[test]
 	fn sweep_seeds_accepted_keys_across_version_buckets() {
-		let point = MultiPointTier::new(MultiPointConfig::default()).unwrap();
+		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(4), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(25)));
 		let a = ek("a");

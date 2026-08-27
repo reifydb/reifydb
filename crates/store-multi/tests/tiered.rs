@@ -38,8 +38,8 @@ fn test_tiered(path: &Path) {
 				commit: CommitBufferConfig {
 					storage: MultiCommitBufferTier::memory(),
 				},
-				point: Some(MultiPointConfig::default()),
-				range: Some(MultiRangeConfig::default()),
+				point: Some(MultiPointConfig::testing()),
+				range: Some(MultiRangeConfig::testing()),
 				persistent: Some(PersistentConfig::sqlite(sqlite_config)),
 				retention: Default::default(),
 				merge_config: Default::default(),

@@ -792,7 +792,7 @@ mod tests {
 
 	fn tier(limit: u64, gap_guard: usize) -> RangeTier<D> {
 		RangeTier::<D>::new(RangeConfig {
-			resident_bytes: Some(ByteSize::from_bytes(limit)),
+			shard_bytes: Some(ByteSize::from_bytes(limit)),
 			shards: 1,
 			gap_guard,
 		})
@@ -1114,7 +1114,7 @@ mod tests {
 			let raced = raced.clone();
 			RangeTier::<D>::with_serve_interlock(
 				RangeConfig {
-					resident_bytes: Some(ByteSize::from_mib(1)),
+					shard_bytes: Some(ByteSize::from_mib(1)),
 					shards: 1,
 					gap_guard: 4,
 				},

@@ -356,8 +356,8 @@ impl StandardMultiStore {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn testing_memory_with_persistent_sqlite() -> (Self, SqliteTempPathGuard) {
 		Self::testing_memory_with_persistent_sqlite_tiers(
-			MultiPointConfig::default(),
-			MultiRangeConfig::default(),
+			MultiPointConfig::testing(),
+			MultiRangeConfig::testing(),
 		)
 	}
 
@@ -399,8 +399,8 @@ impl StandardMultiStore {
 				storage: MultiCommitBufferTier::memory(),
 			},
 			persistent: Some(persistent),
-			point: Some(MultiPointConfig::default()),
-			range: Some(MultiRangeConfig::default()),
+			point: Some(MultiPointConfig::testing()),
+			range: Some(MultiRangeConfig::testing()),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,

@@ -246,7 +246,7 @@ mod tests {
 
 	fn tier() -> MultiPointTier {
 		MultiPointTier::new(MultiPointConfig {
-			resident_bytes: Some(ByteSize::from_mib(1)),
+			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 4,
 		})
 		.expect("a configured budget yields a tier")

@@ -29,10 +29,10 @@ const GAP_SLOTS: [&str; 8] =
 
 impl<D: RangeDomain> RangeTier<D> {
 	pub fn new(config: RangeConfig) -> Option<Self> {
-		let resident_bytes = config.resident_bytes?;
+		let shard_bytes = config.shard_bytes?;
 		Some(Self {
 			inner: Arc::new(PoolInner {
-				shards: build_shards::<D>(config, resident_bytes),
+				shards: build_shards::<D>(config, shard_bytes),
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
@@ -46,10 +46,10 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	#[cfg(test)]
 	pub(crate) fn with_interlock(config: RangeConfig, interlock: MaterializeInterlock<D>) -> Option<Self> {
-		let resident_bytes = config.resident_bytes?;
+		let shard_bytes = config.shard_bytes?;
 		Some(Self {
 			inner: Arc::new(PoolInner {
-				shards: build_shards::<D>(config, resident_bytes),
+				shards: build_shards::<D>(config, shard_bytes),
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
@@ -61,10 +61,10 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	#[cfg(test)]
 	pub(crate) fn with_serve_interlock(config: RangeConfig, interlock: ServeInterlock<D>) -> Option<Self> {
-		let resident_bytes = config.resident_bytes?;
+		let shard_bytes = config.shard_bytes?;
 		Some(Self {
 			inner: Arc::new(PoolInner {
-				shards: build_shards::<D>(config, resident_bytes),
+				shards: build_shards::<D>(config, shard_bytes),
 				coverage: RwLock::new(CoverageIndex::new()),
 				retractions: Retractions::new(),
 				gap_guard: config.gap_guard,
@@ -403,9 +403,9 @@ fn accumulate(target: &mut RangeMetrics, source: &RangeMetrics) {
 	target.point_misses += source.point_misses;
 }
 
-fn build_shards<D: RangeDomain>(config: RangeConfig, resident_bytes: ByteSize) -> Box<[Mutex<Shard<D>>]> {
+fn build_shards<D: RangeDomain>(config: RangeConfig, shard_bytes: ByteSize) -> Box<[Mutex<Shard<D>>]> {
 	let shard_count = config.shards.max(1);
-	let byte_cap = ByteSize::from_bytes((resident_bytes.as_bytes() / shard_count as u64).max(1));
+	let byte_cap = ByteSize::from_bytes(shard_bytes.as_bytes().max(1));
 	(0..shard_count)
 		.map(|_| {
 			Mutex::new(Shard {
@@ -461,7 +461,7 @@ mod tests {
 
 	fn config(limit_bytes: u64, shards: usize) -> RangeConfig {
 		RangeConfig {
-			resident_bytes: Some(ByteSize::from_bytes(limit_bytes)),
+			shard_bytes: Some(ByteSize::from_bytes(limit_bytes)),
 			shards,
 			gap_guard: DEFAULT_GAP_GUARD,
 		}

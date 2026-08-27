@@ -42,7 +42,7 @@ const GROUP_B: GroupId = GroupId(11);
 
 fn tier(limit: u64) -> RangeTier<D> {
 	RangeTier::<D>::new(RangeConfig {
-		resident_bytes: Some(ByteSize::from_bytes(limit)),
+		shard_bytes: Some(ByteSize::from_bytes(limit)),
 		shards: 1,
 		gap_guard: DEFAULT_GAP_GUARD,
 	})
@@ -372,9 +372,9 @@ fn a_long_key_charges_its_heap_bytes() {
 }
 
 #[test]
-fn every_shard_is_reachable_and_reports_its_own_slice_of_the_budget() {
+fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 	let tier = RangeTier::<D>::new(RangeConfig {
-		resident_bytes: Some(ByteSize::from_mib(64)),
+		shard_bytes: Some(ByteSize::from_mib(64)),
 		shards: 4,
 		gap_guard: DEFAULT_GAP_GUARD,
 	})
@@ -386,11 +386,11 @@ fn every_shard_is_reachable_and_reports_its_own_slice_of_the_budget() {
 		assert_eq!(shard.shard, index);
 		assert_eq!(
 			shard.limit,
-			ByteSize::from_mib(16),
-			"the total budget must be split across shards, or the tier holds shards times the limit"
+			ByteSize::from_mib(64),
+			"each shard must carry the full configured per-shard budget"
 		);
 	}
-	assert_eq!(tier.shard_limit_bytes(), ByteSize::from_mib(16));
+	assert_eq!(tier.shard_limit_bytes(), ByteSize::from_mib(64));
 
 	for group in 0..64u64 {
 		one_row_partition(&tier, OP_A, GroupId(group), Keyspace::ACCUMULATOR);
@@ -480,7 +480,7 @@ fn a_materialize_that_races_a_retraction_refuses_rather_than_reinstating_the_cla
 
 	let tier = RangeTier::<D>::with_interlock(
 		RangeConfig {
-			resident_bytes: Some(ByteSize::from_mib(1)),
+			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
 			gap_guard: DEFAULT_GAP_GUARD,
 		},
@@ -529,7 +529,7 @@ fn a_refused_materialize_must_not_delete_a_row_written_while_it_was_placing() {
 
 	let tier = RangeTier::<D>::with_interlock(
 		RangeConfig {
-			resident_bytes: Some(ByteSize::from_mib(1)),
+			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
 			gap_guard: DEFAULT_GAP_GUARD,
 		},
@@ -578,7 +578,7 @@ fn a_concurrent_materialize_never_refuses_another_materialize() {
 
 	let tier = RangeTier::<D>::with_interlock(
 		RangeConfig {
-			resident_bytes: Some(ByteSize::from_mib(1)),
+			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
 			gap_guard: DEFAULT_GAP_GUARD,
 		},
@@ -618,7 +618,7 @@ fn a_materialize_places_its_rows_before_it_publishes_the_claim() {
 
 	let tier = RangeTier::<D>::with_interlock(
 		RangeConfig {
-			resident_bytes: Some(ByteSize::from_mib(1)),
+			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
 			gap_guard: DEFAULT_GAP_GUARD,
 		},
@@ -679,7 +679,7 @@ impl Sweep for A {}
 
 fn sweep_tier<X: Sweep>(budget: u64) -> RangeTier<X> {
 	RangeTier::<X>::new(RangeConfig {
-		resident_bytes: Some(ByteSize::from_bytes(budget)),
+		shard_bytes: Some(ByteSize::from_bytes(budget)),
 		shards: 1,
 		gap_guard: DEFAULT_GAP_GUARD,
 	})

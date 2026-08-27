@@ -55,8 +55,8 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 		commit: CommitBufferConfig {
 			storage: MultiCommitBufferTier::memory(),
 		},
-		point: Some(MultiPointConfig::default()),
-		range: Some(MultiRangeConfig::default()),
+		point: Some(MultiPointConfig::testing()),
+		range: Some(MultiRangeConfig::testing()),
 		persistent: Some(persistent),
 		retention: Default::default(),
 		merge_config: Default::default(),

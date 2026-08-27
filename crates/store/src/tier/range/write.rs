@@ -302,9 +302,9 @@ mod tests {
 
 	fn tier() -> RangeTier<D> {
 		RangeTier::<D>::new(RangeConfig {
-			resident_bytes: Some(ByteSize::from_mib(1)),
+			shard_bytes: Some(ByteSize::from_mib(1)),
 			shards: 1,
-			..RangeConfig::default()
+			..RangeConfig::testing()
 		})
 		.expect("a tier with a byte budget must be constructed")
 	}

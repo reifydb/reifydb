@@ -74,8 +74,8 @@ impl OperatorStoreConfig {
 		Self {
 			commit: OperatorCommitConfig::default(),
 			persistent: Some(persistent),
-			point: Some(OperatorPointConfig::default()),
-			range: Some(OperatorRangeConfig::default()),
+			point: None,
+			range: None,
 			spawner,
 			clock,
 		}

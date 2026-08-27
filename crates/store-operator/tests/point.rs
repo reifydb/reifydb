@@ -46,8 +46,8 @@ fn cached_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard)
 		commit: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
 			.flush_interval(Duration::from_hours_const(1))),
-		point: Some(OperatorPointConfig::default()),
-		range: Some(OperatorRangeConfig::default()),
+		point: Some(OperatorPointConfig::testing()),
+		range: Some(OperatorRangeConfig::testing()),
 		spawner,
 		clock,
 	});
@@ -63,8 +63,8 @@ fn cached_store_on(storage: SqliteOperatorStorage) -> OperatorStore {
 		commit: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))
 			.flush_interval(Duration::from_hours_const(1))),
-		point: Some(OperatorPointConfig::default()),
-		range: Some(OperatorRangeConfig::default()),
+		point: Some(OperatorPointConfig::testing()),
+		range: Some(OperatorRangeConfig::testing()),
 		spawner,
 		clock,
 	})
@@ -316,8 +316,8 @@ fn a_memory_only_store_builds_no_read_caches() {
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
 		persistent: None,
-		point: Some(OperatorPointConfig::default()),
-		range: Some(OperatorRangeConfig::default()),
+		point: Some(OperatorPointConfig::testing()),
+		range: Some(OperatorRangeConfig::testing()),
 		spawner: actor_system.spawner(),
 		clock,
 	});

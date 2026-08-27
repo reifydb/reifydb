@@ -16,6 +16,7 @@ use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
+	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -140,11 +141,15 @@ pub fn store_at(spawner: &ActorSpawner, path: &Path) -> OperatorStore {
 }
 
 fn store_from(spawner: &ActorSpawner, config: SqliteConfig) -> OperatorStore {
-	OperatorStore::standard(OperatorStoreConfig::sqlite(
-		OperatorPersistentConfig::sqlite(config).flush_interval(Duration::from_hours_const(1)),
-		spawner.clone(),
-		Clock::Real,
-	))
+	OperatorStore::standard(OperatorStoreConfig {
+		point: Some(OperatorPointConfig::testing()),
+		range: Some(OperatorRangeConfig::testing()),
+		..OperatorStoreConfig::sqlite(
+			OperatorPersistentConfig::sqlite(config).flush_interval(Duration::from_hours_const(1)),
+			spawner.clone(),
+			Clock::Real,
+		)
+	})
 }
 
 pub fn key(group: u64, keyspace: u8, suffix: u64) -> EncodedKey {

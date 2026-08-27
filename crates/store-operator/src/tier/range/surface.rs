@@ -32,7 +32,7 @@ const GROUP_B: GroupId = GroupId(11);
 
 fn tier(limit: u64) -> OperatorRangeTier {
 	OperatorRangeTier::new(OperatorRangeConfig {
-		resident_bytes: Some(ByteSize::from_bytes(limit)),
+		shard_bytes: Some(ByteSize::from_bytes(limit)),
 		shards: 1,
 		gap_guard: DEFAULT_GAP_GUARD,
 	})
@@ -373,15 +373,15 @@ fn a_gap_over_an_excluded_keyspace_never_degrades_the_plan() {
 #[test]
 fn a_tier_without_a_byte_budget_is_not_constructed() {
 	assert!(OperatorRangeTier::new(OperatorRangeConfig {
-		resident_bytes: None,
+		shard_bytes: None,
 		shards: 16,
 		gap_guard: DEFAULT_GAP_GUARD,
 	})
 	.is_none());
-	assert!(OperatorRangeTier::new(OperatorRangeConfig::default()).is_some());
-	assert_eq!(OperatorRangeConfig::default().shards, 16);
-	assert_eq!(OperatorRangeConfig::default().resident_bytes, Some(ByteSize::from_mib(64)));
-	assert_eq!(OperatorRangeConfig::default().gap_guard, DEFAULT_GAP_GUARD);
+	assert!(OperatorRangeTier::new(OperatorRangeConfig::testing()).is_some());
+	assert_eq!(OperatorRangeConfig::testing().shards, 16);
+	assert_eq!(OperatorRangeConfig::testing().shard_bytes, Some(ByteSize::from_mib(4)));
+	assert_eq!(OperatorRangeConfig::testing().gap_guard, DEFAULT_GAP_GUARD);
 }
 
 fn keyspace_row(tier: &OperatorRangeTier, keyspace: Keyspace) -> OperatorRangeKeyspaceMetrics {
@@ -455,7 +455,7 @@ fn point_counters_are_charged_to_the_keyspace_that_was_looked_up() {
 #[test]
 fn keyspace_counters_are_summed_across_every_shard() {
 	let tier = OperatorRangeTier::new(OperatorRangeConfig {
-		resident_bytes: Some(ByteSize::from_mib(64)),
+		shard_bytes: Some(ByteSize::from_mib(64)),
 		shards: 4,
 		gap_guard: DEFAULT_GAP_GUARD,
 	})

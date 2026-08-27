@@ -2742,6 +2742,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sdk",
  "reifydb-sqlite",
+ "reifydb-store",
  "reifydb-store-cdc",
  "reifydb-store-multi",
  "reifydb-store-operator",

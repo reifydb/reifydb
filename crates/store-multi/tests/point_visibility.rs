@@ -213,13 +213,13 @@ fn capacity_eviction_of_a_cache_entry_never_changes_a_read_result() {
 	// read, and every key must still resolve.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(
 		MultiPointConfig {
-			resident_bytes: Some(ByteSize::from_bytes(256)),
+			shard_bytes: Some(ByteSize::from_bytes(256)),
 			shards: 1,
 		},
 		MultiRangeConfig {
-			resident_bytes: Some(ByteSize::from_bytes(256)),
+			shard_bytes: Some(ByteSize::from_bytes(256)),
 			shards: 1,
-			..MultiRangeConfig::default()
+			..MultiRangeConfig::testing()
 		},
 	);
 	let keys = ["a", "b", "c", "d"];

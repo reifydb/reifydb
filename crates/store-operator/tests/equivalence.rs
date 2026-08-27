@@ -95,11 +95,11 @@ fn store_with_range_budget(cached: bool, range_bytes: u64) -> (OperatorStore, Sq
 		persistent: Some(OperatorPersistentConfig::sqlite(config).flush_interval(Duration::from_hours_const(1))),
 		// small shard budgets force evictions so the sampled-LRU and abort paths run, not just fills
 		point: cached.then(|| OperatorPointConfig {
-			resident_bytes: Some(ByteSize::from_bytes(128 * 1024)),
+			shard_bytes: Some(ByteSize::from_bytes(128 * 1024)),
 			shards: 4,
 		}),
 		range: cached.then(|| OperatorRangeConfig {
-			resident_bytes: Some(ByteSize::from_bytes(range_bytes)),
+			shard_bytes: Some(ByteSize::from_bytes(range_bytes)),
 			shards: 4,
 			gap_guard: DEFAULT_GAP_GUARD,
 		}),

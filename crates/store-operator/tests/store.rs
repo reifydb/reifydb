@@ -42,8 +42,8 @@ fn flushed_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard
 		commit: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
 			.flush_interval(Duration::from_hours_const(1))),
-		point: Some(OperatorPointConfig::default()),
-		range: Some(OperatorRangeConfig::default()),
+		point: Some(OperatorPointConfig::testing()),
+		range: Some(OperatorRangeConfig::testing()),
 		spawner,
 		clock,
 	});
@@ -57,8 +57,8 @@ fn store_at(config: SqliteConfig) -> OperatorStore {
 	OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config).flush_interval(Duration::from_hours_const(1))),
-		point: Some(OperatorPointConfig::default()),
-		range: Some(OperatorRangeConfig::default()),
+		point: Some(OperatorPointConfig::testing()),
+		range: Some(OperatorRangeConfig::testing()),
 		spawner,
 		clock,
 	})

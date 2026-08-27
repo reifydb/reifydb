@@ -215,7 +215,7 @@ mod tests {
 	const GROUP_A: GroupId = GroupId(10);
 
 	fn tier() -> OperatorRangeTier {
-		OperatorRangeTier::new(OperatorRangeConfig::default())
+		OperatorRangeTier::new(OperatorRangeConfig::testing())
 			.expect("a tier with a byte budget must be constructed")
 	}
 

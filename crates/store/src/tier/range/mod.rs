@@ -127,17 +127,18 @@ pub trait RangeDomain: Copy + Debug + 'static {
 
 #[derive(Clone, Copy, Debug)]
 pub struct RangeConfig {
-	pub resident_bytes: Option<ByteSize>,
+	pub shard_bytes: Option<ByteSize>,
 	pub shards: usize,
 	/// Non-exempt gaps a plan may carry before it is abandoned for one full scan; a plan of many
 	/// small persistent reads is slower than no cache at all.
 	pub gap_guard: usize,
 }
 
-impl Default for RangeConfig {
-	fn default() -> Self {
+impl RangeConfig {
+	/// A budget for tests only; production sizing comes from catalog config, never from a fallback here.
+	pub fn testing() -> Self {
 		Self {
-			resident_bytes: Some(ByteSize::from_mib(64)),
+			shard_bytes: Some(ByteSize::from_mib(4)),
 			shards: 16,
 			gap_guard: DEFAULT_GAP_GUARD,
 		}
