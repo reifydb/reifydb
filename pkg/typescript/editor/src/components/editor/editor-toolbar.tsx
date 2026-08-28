@@ -5,57 +5,57 @@ import type { ConnectionStatus } from '../connection/connection-panel';
 import type { TransactionType } from '../../types';
 
 interface EditorToolbarProps {
-  on_run: () => void;
-  on_clear: () => void;
-  is_executing: boolean;
-  connection_label: string;
-  connection_status: ConnectionStatus;
-  connection_locked?: boolean;
-  on_toggle_connection_panel: () => void;
-  connection_mode: 'wasm' | 'websocket';
-  transaction_type: TransactionType;
-  transaction_types: readonly TransactionType[];
-  on_transaction_type_change: (type: TransactionType) => void;
+  onRun: () => void;
+  onClear: () => void;
+  isExecuting: boolean;
+  connectionLabel: string;
+  connectionStatus: ConnectionStatus;
+  connectionLocked?: boolean;
+  onToggleConnectionPanel: () => void;
+  connectionMode: 'wasm' | 'websocket';
+  transactionType: TransactionType;
+  transactionTypes: readonly TransactionType[];
+  onTransactionTypeChange: (type: TransactionType) => void;
 }
 
 export function EditorToolbar({
-  on_run,
-  on_clear,
-  is_executing,
-  connection_label,
-  connection_status,
-  connection_locked,
-  on_toggle_connection_panel,
-  connection_mode,
-  transaction_type,
-  transaction_types,
-  on_transaction_type_change,
+  onRun,
+  onClear,
+  isExecuting,
+  connectionLabel,
+  connectionStatus,
+  connectionLocked,
+  onToggleConnectionPanel,
+  connectionMode,
+  transactionType,
+  transactionTypes,
+  onTransactionTypeChange,
 }: EditorToolbarProps) {
-  const show_tx_selector = connection_mode === 'websocket' && transaction_types.length > 1;
+  const showTxSelector = connectionMode === 'websocket' && transactionTypes.length > 1;
   return (
     <div className="rdb-editor-toolbar">
       <div className="rdb-editor-toolbar__left">
-        {connection_locked ? (
+        {connectionLocked ? (
           <span className="rdb-editor-toolbar__connection rdb-editor-toolbar__connection--locked">
-            <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connection_status}`}>●</span>
-            <span>[{connection_label}]</span>
+            <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connectionStatus}`}>●</span>
+            <span>[{connectionLabel}]</span>
           </span>
         ) : (
           <button
             className="rdb-editor-toolbar__connection"
-            onClick={on_toggle_connection_panel}
+            onClick={onToggleConnectionPanel}
           >
-            <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connection_status}`}>●</span>
-            <span>[{connection_label}]</span>
+            <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connectionStatus}`}>●</span>
+            <span>[{connectionLabel}]</span>
           </button>
         )}
-        {show_tx_selector && (
+        {showTxSelector && (
           <div className="rdb-editor-toolbar__tx-type">
-            {transaction_types.map((t) => (
+            {transactionTypes.map((t) => (
               <button
                 key={t}
-                className={`rdb-editor-toolbar__tx-type-btn${t === transaction_type ? ' rdb-editor-toolbar__tx-type-btn--active' : ''}`}
-                onClick={() => on_transaction_type_change(t)}
+                className={`rdb-editor-toolbar__tx-type-btn${t === transactionType ? ' rdb-editor-toolbar__tx-type-btn--active' : ''}`}
+                onClick={() => onTransactionTypeChange(t)}
               >
                 {t}
               </button>
@@ -67,17 +67,17 @@ export function EditorToolbar({
       <div className="rdb-editor-toolbar__actions">
         <button
           className="rdb-editor-toolbar__btn rdb-editor-toolbar__btn--secondary"
-          onClick={on_clear}
-          disabled={is_executing}
+          onClick={onClear}
+          disabled={isExecuting}
         >
           Clear
         </button>
         <button
           className="rdb-editor-toolbar__btn"
-          onClick={on_run}
-          disabled={is_executing}
+          onClick={onRun}
+          disabled={isExecuting}
         >
-          {is_executing ? 'Running...' : 'Run'}
+          {isExecuting ? 'Running...' : 'Run'}
         </button>
       </div>
     </div>

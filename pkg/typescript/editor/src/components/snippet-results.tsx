@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { infer_columns } from '@reifydb/core';
-import { format_value, get_value_style } from '../format/value';
+import { inferColumns } from '@reifydb/core';
+import { formatValue, getValueStyle } from '../format/value';
 
 interface SnippetResultsProps {
   data: Record<string, unknown>[];
@@ -10,7 +10,7 @@ interface SnippetResultsProps {
 }
 
 export function SnippetResults({ data, columns }: SnippetResultsProps) {
-  const align = new Map(infer_columns(data).map((col) => [col.name, col.align]));
+  const align = new Map(inferColumns(data).map((col) => [col.name, col.align]));
 
   return (
     <>
@@ -27,7 +27,7 @@ export function SnippetResults({ data, columns }: SnippetResultsProps) {
             {data.map((row, i) => (
               <tr key={i}>
                 {columns.map((col) => {
-                  const vs = get_value_style(row[col]);
+                  const vs = getValueStyle(row[col]);
                   return (
                     <td
                       key={col}
@@ -36,7 +36,7 @@ export function SnippetResults({ data, columns }: SnippetResultsProps) {
                         fontStyle: vs.italic ? 'italic' : undefined,
                         textAlign: align.get(col),
                       }}
-                    >{format_value(row[col])}</td>
+                    >{formatValue(row[col])}</td>
                   );
                 })}
               </tr>
@@ -52,14 +52,14 @@ export function SnippetResults({ data, columns }: SnippetResultsProps) {
             <table className="rdb-snippet__record-table">
               <tbody>
                 {columns.map((col) => {
-                  const vs = get_value_style(row[col]);
+                  const vs = getValueStyle(row[col]);
                   return (
                     <tr key={col}>
                       <th scope="row" className="rdb-snippet__record-key">{col}</th>
                       <td
                         className="rdb-snippet__record-value"
                         style={{ color: vs.color, fontStyle: vs.italic ? 'italic' : undefined }}
-                      >{format_value(row[col])}</td>
+                      >{formatValue(row[col])}</td>
                     </tr>
                   );
                 })}

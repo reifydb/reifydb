@@ -7,6 +7,9 @@ authors.workspace = true
 repository.workspace = true
 description = "Tracing subsystem for ReifyDB using tracing_subscriber"
 
+[lib]
+doctest = false
+
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }

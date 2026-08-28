@@ -9,10 +9,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
 	delta::RemoveVisibility,
-	interface::{
-		catalog::flow::OperatorId,
-		change::{Change, DiffType},
-	},
+	interface::{catalog::flow::OperatorId, change::Change},
 	key::{Key, kind::KeyKind, operator_state::GroupStateKey},
 	row::Row,
 	value::column::columns::Columns,
@@ -38,7 +35,7 @@ use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	Result,
 	config::Config,
-	value::{Value, datetime::DateTime, row_number::RowNumber},
+	value::{Value, datetime::DateTime, diff_type::DiffType, row_number::RowNumber},
 };
 
 pub struct GuestOperatorHarness<C: GuestOperator + OperatorMetadata + 'static> {

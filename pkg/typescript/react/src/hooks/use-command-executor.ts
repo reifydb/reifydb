@@ -9,88 +9,88 @@ import {useConnection} from './use-connection';
 export interface CommandResult<T = any> {
     columns: Column[];
     rows: T[];
-    execution_time_ms: number;
-    rows_affected?: number;
+    executionTimeMs: number;
+    rowsAffected?: number;
 }
 
 export interface CommandState<T = any> {
-    is_executing: boolean;
+    isExecuting: boolean;
     results: CommandResult<T>[] | undefined;
     error: string | undefined;
-    execution_time: number | undefined;
+    executionTime: number | undefined;
 }
 
 export interface CommandExecutorOptions {
-    connection_config?: ConnectionConfig;
+    connectionConfig?: ConnectionConfig;
 }
 
 export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
-    const {client} = useConnection(options?.connection_config);
+    const {client} = useConnection(options?.connectionConfig);
 
     const [state, setState] = useState<CommandState<T>>({
-        is_executing: false,
+        isExecuting: false,
         results: undefined,
         error: undefined,
-        execution_time: undefined,
+        executionTime: undefined,
     });
 
-    const client_ref = useRef(client);
-    client_ref.current = client;
+    const clientRef = useRef(client);
+    clientRef.current = client;
 
-    const is_mounted_ref = useRef(false);
+    const isMountedRef = useRef(false);
     useEffect(() => {
-        is_mounted_ref.current = true;
-        return () => { is_mounted_ref.current = false; };
+        isMountedRef.current = true;
+        return () => { isMountedRef.current = false; };
     }, []);
 
-    const execution_id_ref = useRef(0);
-    const pending_ref = useRef<{rql: string, params?: any, shapes?: readonly ShapeNode[]} | null>(null);
+    const executionIdRef = useRef(0);
+    const pendingRef = useRef<{rql: string, params?: any, shapes?: readonly ShapeNode[]} | null>(null);
 
     const command = useCallback(
         (rql: string, params?: any, shapes?: readonly ShapeNode[]): Promise<void> => {
-            const current_client = client_ref.current;
+            const currentClient = clientRef.current;
 
-            if (!current_client) {
-                pending_ref.current = {rql, params, shapes};
-                setState(prev => ({...prev, is_executing: true, error: undefined}));
+            if (!currentClient) {
+                pendingRef.current = {rql, params, shapes};
+                setState(prev => ({...prev, isExecuting: true, error: undefined}));
                 return Promise.resolve();
             }
 
-            pending_ref.current = null;
-            const this_execution = ++execution_id_ref.current;
+            pendingRef.current = null;
+            const thisExecution = ++executionIdRef.current;
 
-            setState(prev => ({...prev, is_executing: true, error: undefined}));
+            setState(prev => ({...prev, isExecuting: true, error: undefined}));
 
-            const start_time = Date.now();
+            const startTime = Date.now();
 
             return (async () => {
                 try {
-                    const frame_results = await current_client.command(rql, params || null, shapes || []) || [];
+                    const frameResults = await currentClient.command(rql, params || null, shapes || []) || [];
 
-                    if (execution_id_ref.current !== this_execution) return;
+                    if (executionIdRef.current !== thisExecution) return;
 
-                    const execution_time = Date.now() - start_time;
+                    const executionTime = Date.now() - startTime;
 
-                    const results: CommandResult<T>[] = frame_results.map((frame: any) => {
+                    const results: CommandResult<T>[] = frameResults.map((frame: any) => {
                         if (Array.isArray(frame) && frame.length > 0) {
-                            const first_row = frame[0];
+                            const firstRow = frame[0];
                             let columns: Column[] = [];
 
-                            const has_value_objects = first_row && typeof first_row === 'object' &&
-                                Object.values(first_row).some(v => v && typeof v === 'object' && 'type' in v);
+                            const hasValueObjects = firstRow && typeof firstRow === 'object' &&
+                                Object.values(firstRow).some(v => v && typeof v === 'object' && 'type' in v);
 
-                            if (has_value_objects) {
-                                columns = Object.keys(first_row).map((key) => {
-                                    const value = first_row[key];
-                                    const data_type = value?.type || 'Utf8';
+                            if (hasValueObjects) {
+                                columns = Object.keys(firstRow).map((key) => {
+                                    const value = firstRow[key];
+                                    const dataType = value?.type || 'Utf8';
                                     return {
                                         name: key,
-                                        type: data_type,
+                                        type: dataType,
                                         payload: [],
                                     };
                                 });
                             } else {
-                                columns = Object.keys(first_row).map((key) => ({
+                                columns = Object.keys(firstRow).map((key) => ({
                                     name: key,
                                     type: 'Utf8',
                                     payload: [],
@@ -100,47 +100,47 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
                             return {
                                 columns,
                                 rows: frame as T[],
-                                execution_time_ms: execution_time,
+                                executionTimeMs: executionTime,
                             };
                         } else {
                             return {
                                 columns: [],
                                 rows: [],
-                                execution_time_ms: execution_time,
-                                rows_affected: typeof frame === 'number' ? frame : undefined,
+                                executionTimeMs: executionTime,
+                                rowsAffected: typeof frame === 'number' ? frame : undefined,
                             };
                         }
                     });
 
-                    if (!is_mounted_ref.current) return;
+                    if (!isMountedRef.current) return;
                     setState({
-                        is_executing: false,
+                        isExecuting: false,
                         results,
                         error: undefined,
-                        execution_time,
+                        executionTime,
                     });
                 } catch (err) {
-                    if (execution_id_ref.current !== this_execution) return;
+                    if (executionIdRef.current !== thisExecution) return;
 
-                    const execution_time = Date.now() - start_time;
-                    let error_message = 'Command execution failed';
+                    const executionTime = Date.now() - startTime;
+                    let errorMessage = 'Command execution failed';
 
                     if (err instanceof Error) {
-                        error_message = err.message;
+                        errorMessage = err.message;
                     } else if (typeof err === 'string') {
-                        error_message = err;
+                        errorMessage = err;
                     } else if (err && typeof err === 'object' && 'message' in err) {
-                        error_message = (err as { message: string }).message;
+                        errorMessage = (err as { message: string }).message;
                     }
 
-                    console.error('Command execution failed:', error_message);
+                    console.error('Command execution failed:', errorMessage);
 
-                    if (!is_mounted_ref.current) return;
+                    if (!isMountedRef.current) return;
                     setState(prev => ({
                         ...prev,
-                        is_executing: false,
-                        error: error_message,
-                        execution_time,
+                        isExecuting: false,
+                        error: errorMessage,
+                        executionTime,
                     }));
 
                 }
@@ -150,27 +150,27 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
     );
 
     useEffect(() => {
-        if (client && pending_ref.current) {
-            const {rql, params, shapes} = pending_ref.current;
+        if (client && pendingRef.current) {
+            const {rql, params, shapes} = pendingRef.current;
             command(rql, params, shapes);
         }
     }, [client, command]);
 
-    const cancel_command = useCallback(() => {
-        execution_id_ref.current++;
+    const cancelCommand = useCallback(() => {
+        executionIdRef.current++;
         setState((prev) => ({
             ...prev,
-            is_executing: false,
+            isExecuting: false,
             error: 'Command cancelled',
         }));
     }, []);
 
     return {
-        is_executing: state.is_executing,
+        isExecuting: state.isExecuting,
         results: state.results,
         error: state.error,
-        execution_time: state.execution_time,
+        executionTime: state.executionTime,
         command,
-        cancel_command,
+        cancelCommand,
     };
 }

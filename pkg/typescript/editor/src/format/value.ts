@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { NONE_PRESENTATION, format_value, value_role, type ValueRole } from '@reifydb/core';
+import { NONE_PRESENTATION, formatValue, valueRole, type ValueRole } from '@reifydb/core';
 
-export { format_value };
+export { formatValue };
 
 export interface ValueStyle {
   color?: string;
@@ -24,6 +24,6 @@ const STYLE_BY_ROLE: Record<ValueRole, ValueStyle> = {
   unknown: {},
 };
 
-export function get_value_style(value: unknown): ValueStyle {
-  return STYLE_BY_ROLE[value_role(value)];
+export function getValueStyle(value: unknown): ValueStyle {
+  return STYLE_BY_ROLE[valueRole(value)];
 }

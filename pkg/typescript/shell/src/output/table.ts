@@ -3,11 +3,11 @@
 
 import {
   NONE_PRESENTATION,
-  cell_text,
-  infer_columns,
-  pad_to_width,
-  plan_table,
-  value_role,
+  cellText,
+  inferColumns,
+  padToWidth,
+  planTable,
+  valueRole,
   type PlannedColumn,
   type ResultColumn,
   type TablePlan,
@@ -82,7 +82,7 @@ const BORDERS: Record<TableBorder, BorderGlyphs> = {
   },
 };
 
-export const reifydb_dark_table_theme: TableTheme = {
+export const reifydbDarkTableTheme: TableTheme = {
   border: {color: '#3f3f46'},
   header: {color: '#818cf8', bold: true},
   values: {
@@ -111,7 +111,7 @@ export class TableRenderer {
     this.data = data;
     this.glyphs = BORDERS[options.border ?? 'unicode'];
 
-    const theme = options.theme ?? reifydb_dark_table_theme;
+    const theme = options.theme ?? reifydbDarkTableTheme;
     this.borderPrefix = theme.border ? sgr(theme.border) : '';
     this.headerPrefix = theme.header ? sgr(theme.header) : '';
     this.valuePrefixes = new Map();
@@ -119,11 +119,11 @@ export class TableRenderer {
       if (style) this.valuePrefixes.set(role as ValueRole, sgr(style));
     }
 
-    const columns = options.columns ?? infer_columns(data);
-    this.plan = plan_table(data, columns, {
+    const columns = options.columns ?? inferColumns(data);
+    this.plan = planTable(data, columns, {
       width: options.truncate ? options.maxWidth : undefined,
-      column_overhead: this.glyphs.columnOverhead,
-      table_overhead: this.glyphs.tableOverhead,
+      columnOverhead: this.glyphs.columnOverhead,
+      tableOverhead: this.glyphs.tableOverhead,
     });
   }
 
@@ -178,7 +178,7 @@ export class TableRenderer {
 
   private headerRow(): string {
     const cells = this.plan.columns.map((entry) =>
-      paint(pad_to_width(entry.column.name, entry.width, entry.column.align), this.headerPrefix)
+      paint(padToWidth(entry.column.name, entry.width, entry.column.align), this.headerPrefix)
     );
     return this.joinCells(cells);
   }
@@ -186,8 +186,8 @@ export class TableRenderer {
   private dataRow(row: Record<string, unknown>): string {
     const cells = this.plan.columns.map((entry) => {
       const value = row[entry.column.name];
-      const text = pad_to_width(cell_text(value, entry.width), entry.width, entry.column.align);
-      return paint(text, this.valuePrefixes.get(value_role(value)) ?? '');
+      const text = padToWidth(cellText(value, entry.width), entry.width, entry.column.align);
+      return paint(text, this.valuePrefixes.get(valueRole(value)) ?? '');
     });
     return this.joinCells(cells);
   }

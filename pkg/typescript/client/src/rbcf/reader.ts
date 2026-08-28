@@ -93,7 +93,6 @@ export class BinaryReader {
         return v;
     }
 
-    // i128 / u128 (16 bytes) — returned as bigint since JS has no native 128-bit int.
     i128(): bigint {
         this.ensure(16);
         const lo = this.view.getBigUint64(this.pos, true);
@@ -124,53 +123,50 @@ export class BinaryReader {
     }
 }
 
-// Standalone readers for pre-sliced byte arrays (used inside per-column decoders).
-export function read_u8(buf: Uint8Array, pos: number): number {
+export function readU8(buf: Uint8Array, pos: number): number {
     return buf[pos];
 }
-export function read_i8(buf: Uint8Array, pos: number): number {
+export function readI8(buf: Uint8Array, pos: number): number {
     const v = buf[pos];
     return v > 0x7f ? v - 0x100 : v;
 }
-export function read_u16(buf: Uint8Array, pos: number): number {
+export function readU16(buf: Uint8Array, pos: number): number {
     return buf[pos] | (buf[pos + 1] << 8);
 }
-export function read_i16(buf: Uint8Array, pos: number): number {
-    const v = read_u16(buf, pos);
+export function readI16(buf: Uint8Array, pos: number): number {
+    const v = readU16(buf, pos);
     return v > 0x7fff ? v - 0x10000 : v;
 }
-export function read_u32(buf: Uint8Array, pos: number): number {
-    // >>> 0 to keep it as unsigned 32-bit
+export function readU32(buf: Uint8Array, pos: number): number {
     return (buf[pos] | (buf[pos + 1] << 8) | (buf[pos + 2] << 16) | (buf[pos + 3] << 24)) >>> 0;
 }
-export function read_i32(buf: Uint8Array, pos: number): number {
+export function readI32(buf: Uint8Array, pos: number): number {
     return (buf[pos] | (buf[pos + 1] << 8) | (buf[pos + 2] << 16) | (buf[pos + 3] << 24)) | 0;
 }
-export function read_u64(buf: Uint8Array, pos: number): bigint {
-    const lo = BigInt(read_u32(buf, pos));
-    const hi = BigInt(read_u32(buf, pos + 4));
+export function readU64(buf: Uint8Array, pos: number): bigint {
+    const lo = BigInt(readU32(buf, pos));
+    const hi = BigInt(readU32(buf, pos + 4));
     return (hi << 32n) | lo;
 }
-export function read_i64(buf: Uint8Array, pos: number): bigint {
-    const u = read_u64(buf, pos);
-    // sign-extend via 64-bit check
+export function readI64(buf: Uint8Array, pos: number): bigint {
+    const u = readU64(buf, pos);
     return u >= 0x8000000000000000n ? u - 0x10000000000000000n : u;
 }
-export function read_f32(buf: Uint8Array, pos: number): number {
+export function readF32(buf: Uint8Array, pos: number): number {
     const dv = new DataView(buf.buffer, buf.byteOffset + pos, 4);
     return dv.getFloat32(0, true);
 }
-export function read_f64(buf: Uint8Array, pos: number): number {
+export function readF64(buf: Uint8Array, pos: number): number {
     const dv = new DataView(buf.buffer, buf.byteOffset + pos, 8);
     return dv.getFloat64(0, true);
 }
-export function read_i128(buf: Uint8Array, pos: number): bigint {
-    const lo = read_u64(buf, pos);
-    const hi = read_i64(buf, pos + 8);
+export function readI128(buf: Uint8Array, pos: number): bigint {
+    const lo = readU64(buf, pos);
+    const hi = readI64(buf, pos + 8);
     return (hi << 64n) | lo;
 }
-export function read_u128(buf: Uint8Array, pos: number): bigint {
-    const lo = read_u64(buf, pos);
-    const hi = read_u64(buf, pos + 8);
+export function readU128(buf: Uint8Array, pos: number): bigint {
+    const lo = readU64(buf, pos);
+    const hi = readU64(buf, pos + 8);
     return (hi << 64n) | lo;
 }

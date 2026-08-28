@@ -5,42 +5,42 @@ import { useRef } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
 import type { RdbTheme } from '../../types';
-import { register_rql_language } from '../../monaco/register';
+import { registerRqlLanguage } from '../../monaco/register';
 
 interface QueryEditorProps {
   code: string;
-  on_change: (code: string) => void;
-  on_run: () => void;
+  onChange: (code: string) => void;
+  onRun: () => void;
   theme?: RdbTheme;
-  monaco_theme_name?: string;
-  monaco_theme_data?: editor.IStandaloneThemeData;
+  monacoThemeName?: string;
+  monacoThemeData?: editor.IStandaloneThemeData;
 }
 
-export function QueryEditor({ code, on_change, on_run, theme = 'light', monaco_theme_name, monaco_theme_data }: QueryEditorProps) {
-  const editor_ref = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const on_run_ref = useRef(on_run);
-  on_run_ref.current = on_run;
+export function QueryEditor({ code, onChange, onRun, theme = 'light', monacoThemeName, monacoThemeData }: QueryEditorProps) {
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const onRunRef = useRef(onRun);
+  onRunRef.current = onRun;
 
-  const resolved_theme = monaco_theme_name ?? (theme === 'dark' ? 'premium-dark' : 'premium-light');
+  const resolvedTheme = monacoThemeName ?? (theme === 'dark' ? 'premium-dark' : 'premium-light');
 
-  const handle_mount: OnMount = (editor, monaco) => {
-    editor_ref.current = editor;
-    register_rql_language(monaco);
+  const handleMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
+    registerRqlLanguage(monaco);
 
     editor.addAction({
       id: 'run-query',
       label: 'Run Query',
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
       run: () => {
-        on_run_ref.current();
+        onRunRef.current();
       },
     });
   };
 
-  const handle_before_mount = (monaco: typeof import('monaco-editor')) => {
-    register_rql_language(monaco);
-    if (monaco_theme_name && monaco_theme_data) {
-      monaco.editor.defineTheme(monaco_theme_name, monaco_theme_data);
+  const handleBeforeMount = (monaco: typeof import('monaco-editor')) => {
+    registerRqlLanguage(monaco);
+    if (monacoThemeName && monacoThemeData) {
+      monaco.editor.defineTheme(monacoThemeName, monacoThemeData);
     }
   };
 
@@ -48,11 +48,11 @@ export function QueryEditor({ code, on_change, on_run, theme = 'light', monaco_t
     <Editor
       height="100%"
       language="rql"
-      theme={resolved_theme}
+      theme={resolvedTheme}
       value={code}
-      onChange={(value) => on_change(value || '')}
-      beforeMount={handle_before_mount}
-      onMount={handle_mount}
+      onChange={(value) => onChange(value || '')}
+      beforeMount={handleBeforeMount}
+      onMount={handleMount}
       options={{
         minimap: { enabled: false },
         lineNumbers: 'on',

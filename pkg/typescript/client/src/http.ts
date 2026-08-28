@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {
-    decode,
-    Value
+    columnsToRows,
+    transformFrames
 } from "@reifydb/core";
 import type {
     ShapeNode,
@@ -10,7 +10,6 @@ import type {
 } from "@reifydb/core";
 
 import type {
-    Column,
     LoginChallengeResult,
     LoginResult,
     ResponseMeta,
@@ -18,20 +17,21 @@ import type {
 import {
     ReifyError
 } from "./types";
-import {encode_params} from "./encoder";
+import {encodeParams} from "./encoder";
 import {rbcf} from "./rbcf";
 import {CONTENT_TYPE_JSON, CONTENT_TYPE_RBCF} from "./content-types";
+import {toCamelCaseKeys, toSnakeCaseKeys, WIRE_PASSTHROUGH_KEYS} from "./case";
 
 export interface HttpClientOptions {
     url: string;
-    timeout_ms?: number;
+    timeoutMs?: number;
     token?: string;
     /**
      * Wire format for data frames. Defaults to `"frames"`.
      *
-     * - `"json"`   — rows-shape JSON: `[[{col: val, ...}, ...], ...]`
-     * - `"frames"` — frames-shape JSON: columnar frames (default)
-     * - `"rbcf"`   — frames-shape binary (RBCF)
+     * - `"json"`   - rows-shape JSON: `[[{col: val, ...}, ...], ...]`
+     * - `"frames"` - frames-shape JSON: columnar frames (default)
+     * - `"rbcf"`   - frames-shape binary (RBCF)
      */
     format?: "json" | "frames" | "rbcf";
 }
@@ -51,37 +51,36 @@ export class HttpClient {
         return new HttpClient(options);
     }
 
-    async login_with_password(identity: string, password: string, req_opts?: RequestOptions): Promise<LoginResult> {
-        return this.login("password", {identifier: identity, password}, req_opts);
+    async loginWithPassword(identity: string, password: string, reqOpts?: RequestOptions): Promise<LoginResult> {
+        return this.login("password", {identifier: identity, password}, reqOpts);
     }
 
-    async login_with_token(token: string, req_opts?: RequestOptions): Promise<LoginResult> {
-        return this.login("token", {token}, req_opts);
+    async loginWithToken(token: string, reqOpts?: RequestOptions): Promise<LoginResult> {
+        return this.login("token", {token}, reqOpts);
     }
 
-    async login(method: string, credentials: Record<string, string>, req_opts?: RequestOptions): Promise<LoginResult> {
-        const timeout_ms = this.options.timeout_ms ?? 30_000;
+    async login(method: string, credentials: Record<string, string>, reqOpts?: RequestOptions): Promise<LoginResult> {
+        const timeoutMs = this.options.timeoutMs ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
         let signal = controller.signal;
-        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
-            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
-        } else if (req_opts?.signal) {
-            // Polyfill or fallback if AbortSignal.any is missing
-            req_opts.signal.addEventListener('abort', () => controller.abort());
+        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
+        } else if (reqOpts?.signal) {
+            reqOpts.signal.addEventListener('abort', () => controller.abort());
         }
 
         try {
             const response = await fetch(`${this.options.url}/v1/authenticate`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({method, credentials}),
+                body: JSON.stringify(toSnakeCaseKeys({method, credentials}, WIRE_PASSTHROUGH_KEYS)),
                 signal,
             });
 
             clearTimeout(timeout);
-            const body = await response.json();
+            const body = toCamelCaseKeys<any>(await response.json(), WIRE_PASSTHROUGH_KEYS);
 
             if (body.status !== "authenticated" || !body.token || !body.identity) {
                 throw new Error(body.reason || "Authentication failed");
@@ -97,36 +96,36 @@ export class HttpClient {
         }
     }
 
-    async login_challenge(method: string, credentials: Record<string, string>, req_opts?: RequestOptions): Promise<LoginChallengeResult> {
-        const timeout_ms = this.options.timeout_ms ?? 30_000;
+    async loginChallenge(method: string, credentials: Record<string, string>, reqOpts?: RequestOptions): Promise<LoginChallengeResult> {
+        const timeoutMs = this.options.timeoutMs ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
         let signal = controller.signal;
-        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
-            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
-        } else if (req_opts?.signal) {
-            req_opts.signal.addEventListener('abort', () => controller.abort());
+        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
+        } else if (reqOpts?.signal) {
+            reqOpts.signal.addEventListener('abort', () => controller.abort());
         }
 
         try {
             const response = await fetch(`${this.options.url}/v1/authenticate`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({method, credentials}),
+                body: JSON.stringify(toSnakeCaseKeys({method, credentials}, WIRE_PASSTHROUGH_KEYS)),
                 signal,
             });
 
             clearTimeout(timeout);
-            const body = await response.json();
+            const body = toCamelCaseKeys<any>(await response.json(), WIRE_PASSTHROUGH_KEYS);
 
             if (body.status === "challenge") {
-                if (!body.challenge_id || !body.payload?.message || !body.payload?.nonce) {
+                if (!body.challengeId || !body.payload?.message || !body.payload?.nonce) {
                     throw new Error("Malformed challenge response");
                 }
                 return {
                     kind: "challenge",
-                    challenge_id: body.challenge_id,
+                    challengeId: body.challengeId,
                     message: body.payload.message,
                     nonce: body.payload.nonce,
                 };
@@ -145,20 +144,20 @@ export class HttpClient {
         }
     }
 
-    async logout(req_opts?: RequestOptions): Promise<void> {
+    async logout(reqOpts?: RequestOptions): Promise<void> {
         if (!this.options.token) {
             return;
         }
 
-        const timeout_ms = this.options.timeout_ms ?? 30_000;
+        const timeoutMs = this.options.timeoutMs ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
         let signal = controller.signal;
-        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
-            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
-        } else if (req_opts?.signal) {
-            req_opts.signal.addEventListener('abort', () => controller.abort());
+        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
+        } else if (reqOpts?.signal) {
+            reqOpts.signal.addEventListener('abort', () => controller.abort());
         }
 
         try {
@@ -192,22 +191,22 @@ export class HttpClient {
         rql: string,
         params: any,
         shapes: S,
-        req_opts?: RequestOptions
+        reqOpts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.admin_with_meta(rql, params, shapes, req_opts);
+        const { frames } = await this.adminWithMeta(rql, params, shapes, reqOpts);
         return frames;
     }
 
     /**
      * @param rql - RQL string to execute
      */
-    async admin_with_meta<const S extends readonly ShapeNode[]>(
+    async adminWithMeta<const S extends readonly ShapeNode[]>(
         rql: string,
         params: any,
         shapes: S,
-        req_opts?: RequestOptions
+        reqOpts?: RequestOptions
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        return this.execute('admin', rql, params, shapes, req_opts);
+        return this.execute('admin', rql, params, shapes, reqOpts);
     }
 
     /**
@@ -217,22 +216,22 @@ export class HttpClient {
         rql: string,
         params: any,
         shapes: S,
-        req_opts?: RequestOptions
+        reqOpts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.command_with_meta(rql, params, shapes, req_opts);
+        const { frames } = await this.commandWithMeta(rql, params, shapes, reqOpts);
         return frames;
     }
 
     /**
      * @param rql - RQL string to execute
      */
-    async command_with_meta<const S extends readonly ShapeNode[]>(
+    async commandWithMeta<const S extends readonly ShapeNode[]>(
         rql: string,
         params: any,
         shapes: S,
-        req_opts?: RequestOptions
+        reqOpts?: RequestOptions
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        return this.execute('command', rql, params, shapes, req_opts);
+        return this.execute('command', rql, params, shapes, reqOpts);
     }
 
     /**
@@ -242,22 +241,22 @@ export class HttpClient {
         rql: string,
         params: any,
         shapes: S,
-        req_opts?: RequestOptions
+        reqOpts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const { frames } = await this.query_with_meta(rql, params, shapes, req_opts);
+        const { frames } = await this.queryWithMeta(rql, params, shapes, reqOpts);
         return frames;
     }
 
     /**
      * @param rql - RQL string to execute
      */
-    async query_with_meta<const S extends readonly ShapeNode[]>(
+    async queryWithMeta<const S extends readonly ShapeNode[]>(
         rql: string,
         params: any,
         shapes: S,
-        req_opts?: RequestOptions
+        reqOpts?: RequestOptions
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        return this.execute('query', rql, params, shapes, req_opts);
+        return this.execute('query', rql, params, shapes, reqOpts);
     }
 
     private async execute<const S extends readonly ShapeNode[]>(
@@ -265,40 +264,32 @@ export class HttpClient {
         rql: string,
         params: any,
         shapes: S,
-        req_opts?: RequestOptions
+        reqOpts?: RequestOptions
     ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
+        const encodedParams = params !== undefined && params !== null
+            ? encodeParams(params)
             : undefined;
 
-        const { result, meta } = await this.send(endpoint, rql, encoded_params, req_opts);
+        const { result, meta } = await this.send(endpoint, rql, encodedParams, reqOpts);
 
-        const transformed_frames = result.map((frame: any, frame_index: number) => {
-            const frame_shape = shapes[frame_index];
-            if (!frame_shape) {
-                return frame;
-            }
-            return frame.map((row: any) => this.transform_result(row, frame_shape));
-        });
-
-        return { frames: transformed_frames as FrameResults<S>, meta };
+        return { frames: transformFrames(result, shapes), meta };
     }
 
     private async send(
         endpoint: string,
         rql: string,
         params: any,
-        req_opts?: RequestOptions,
+        reqOpts?: RequestOptions,
     ): Promise<{ result: any, meta?: ResponseMeta }> {
-        const timeout_ms = this.options.timeout_ms ?? 30_000;
+        const timeoutMs = this.options.timeoutMs ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
         let signal = controller.signal;
-        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
-            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
-        } else if (req_opts?.signal) {
-            req_opts.signal.addEventListener('abort', () => controller.abort());
+        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
+        } else if (reqOpts?.signal) {
+            reqOpts.signal.addEventListener('abort', () => controller.abort());
         }
 
         const format = this.options.format ?? "frames";
@@ -324,53 +315,51 @@ export class HttpClient {
             const response = await fetch(url, {
                 method: 'POST',
                 headers,
-                body: JSON.stringify(body),
+                body: JSON.stringify(toSnakeCaseKeys(body, WIRE_PASSTHROUGH_KEYS)),
                 signal,
                 credentials: 'include',
             });
 
             clearTimeout(timeout);
 
-            const meta = extract_meta(response.headers);
+            const meta = extractMeta(response.headers);
 
-            const content_type = response.headers?.get?.('content-type') ?? '';
-            const is_binary = response.ok &&
-                (content_type.startsWith(CONTENT_TYPE_RBCF) || content_type.startsWith('application/octet-stream'));
+            const contentType = response.headers?.get?.('content-type') ?? '';
+            const isBinary = response.ok &&
+                (contentType.startsWith(CONTENT_TYPE_RBCF) || contentType.startsWith('application/octet-stream'));
 
-            if (is_binary) {
+            if (isBinary) {
                 const buf = await response.arrayBuffer();
                 const frames = rbcf.decode(new Uint8Array(buf));
-                return { result: frames.map((frame: any) => columns_to_rows(frame.columns)), meta };
+                return { result: frames.map((frame: any) => columnsToRows(frame.columns)), meta };
             }
 
-            const response_body = await response.text();
+            const responseBody = await response.text();
             let parsed: any;
             try {
-                parsed = JSON.parse(response_body);
+                parsed = JSON.parse(responseBody);
             } catch {
-                throw new Error(`Invalid JSON response: ${response_body}`);
+                throw new Error(`Invalid JSON response: ${responseBody}`);
             }
 
             if (!response.ok) {
-                if (parsed.diagnostic) {
+                const errBody = toCamelCaseKeys<any>(parsed, WIRE_PASSTHROUGH_KEYS);
+                if (errBody.diagnostic) {
                     throw new ReifyError({
                         id: '',
                         type: 'Err',
-                        payload: {diagnostic: parsed.diagnostic}
+                        payload: {diagnostic: errBody.diagnostic}
                     });
                 }
-                throw new Error(parsed.error || `HTTP ${response.status}: ${response_body}`);
+                throw new Error(errBody.error || `HTTP ${response.status}: ${responseBody}`);
             }
 
-            // Response shape depends on format:
-            // - "json"   → `[[{col: val}, ...], ...]` already in rows shape
-            // - "frames" → `{frames: [ColumnarFrame, ...]}` needing column→row pivot
             if (format === "json") {
                 return { result: parsed ?? [], meta };
             }
             const frames = parsed.frames || [];
             return {
-                result: frames.map((frame: any) => columns_to_rows(frame.columns)),
+                result: frames.map((frame: any) => columnsToRows(frame.columns)),
                 meta,
             };
         } catch (err: any) {
@@ -382,89 +371,9 @@ export class HttpClient {
         }
     }
 
-    private transform_result(row: any, result_shape: any): any {
-        if (result_shape && result_shape.kind === 'object' && result_shape.properties) {
-            const transformed_row: any = {};
-            for (const [key, value] of Object.entries(row)) {
-                const property_shape = result_shape.properties[key];
-                if (property_shape && property_shape.kind === 'primitive') {
-                    if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
-                        const raw_value = (value as any).valueOf();
-                        transformed_row[key] = this.coerce_to_primitive_type(raw_value, property_shape.type);
-                    } else {
-                        transformed_row[key] = this.coerce_to_primitive_type(value, property_shape.type);
-                    }
-                } else if (property_shape && property_shape.kind === 'value') {
-                    transformed_row[key] = value;
-                } else {
-                    transformed_row[key] = property_shape ? this.transform_result(value, property_shape) : value;
-                }
-            }
-            return transformed_row;
-        }
-
-        if (result_shape && result_shape.kind === 'primitive') {
-            if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-                return this.coerce_to_primitive_type(row.valueOf(), result_shape.type);
-            }
-            return this.coerce_to_primitive_type(row, result_shape.type);
-        }
-
-        if (result_shape && result_shape.kind === 'value') {
-            return row;
-        }
-
-        if (result_shape && result_shape.kind === 'array') {
-            if (Array.isArray(row)) {
-                return row.map((item: any) => this.transform_result(item, result_shape.items));
-            }
-            return row;
-        }
-
-        if (result_shape && result_shape.kind === 'optional') {
-            if (row === undefined || row === null) {
-                return undefined;
-            }
-            return this.transform_result(row, result_shape.shape);
-        }
-
-        return row;
-    }
-
-    private coerce_to_primitive_type(value: any, value_type: string): any {
-        if (value === undefined || value === null) {
-            return value;
-        }
-
-        const bigint_types = ['Int8', 'Int16', 'Uint8', 'Uint16'];
-        if (bigint_types.includes(value_type)) {
-            if (typeof value === 'bigint') {
-                return value;
-            }
-            if (typeof value === 'number') {
-                return BigInt(Math.trunc(value));
-            }
-            if (typeof value === 'string') {
-                return BigInt(value);
-            }
-        }
-
-        return value;
-    }
 }
 
-function columns_to_rows(columns: Column[]): Record<string, Value>[] {
-    const row_count = columns[0]?.payload.length ?? 0;
-    return Array.from({length: row_count}, (_, i) => {
-        const row: Record<string, Value> = {};
-        for (const col of columns) {
-            row[col.name] = decode({type: col.type, value: col.payload[i]});
-        }
-        return row;
-    });
-}
-
-function extract_meta(headers: Headers | undefined): ResponseMeta | undefined {
+function extractMeta(headers: Headers | undefined): ResponseMeta | undefined {
     const fingerprint = headers?.get?.('x-fingerprint');
     const duration = headers?.get?.('x-duration');
     if (!fingerprint || !duration) return undefined;

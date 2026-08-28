@@ -11,8 +11,8 @@ describe('ReifyDB Client Integration Tests', () => {
         let httpClient: JsonHttpClient;
 
         beforeAll(async () => {
-            httpClient = Client.connect_json_http(HTTP_URL, {
-                timeout_ms: 10000,
+            httpClient = Client.connectJsonHttp(HTTP_URL, {
+                timeoutMs: 10000,
                 token: AUTH_TOKEN
             });
         });

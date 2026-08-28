@@ -7,6 +7,9 @@ authors.workspace = true
 repository.workspace = true
 description = "Shared chaos-testing substrate for ReifyDB: iteration seeds, parameter fuzzing, corpus fingerprints"
 
+[lib]
+doctest = false
+
 [features]
 default = []
 # Declared so the crate accepts the unqualified `--features chaos` that mk/test-chaos.mk

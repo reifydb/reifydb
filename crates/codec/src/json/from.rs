@@ -13,6 +13,7 @@ use reifydb_value::{
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
+		diff_type::DiffType,
 		duration::Duration,
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 		identity::IdentityId,
@@ -69,6 +70,7 @@ fn response_frame_to_frame(frame: ResponseFrame) -> Frame {
 	Frame {
 		system: SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
 		columns,
+		op: frame.op.and_then(DiffType::from_u8),
 	}
 }
 

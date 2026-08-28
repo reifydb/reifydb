@@ -7,6 +7,9 @@ authors.workspace = true
 repository.workspace = true
 description = "Multi-version storage for OLTP operations with MVCC support"
 
+[lib]
+doctest = false
+
 [features]
 default = ["sqlite"]
 sqlite = ["rusqlite", "reifydb-sqlite", "reifydb-store/sqlite"]

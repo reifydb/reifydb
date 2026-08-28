@@ -9,3 +9,4 @@ description = "Proc-macro backing reifydb-testing's chaos_test! (internal testin
 
 [lib]
 proc-macro = true
+doctest = false

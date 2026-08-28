@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
-import {wait_for_database} from "../setup";
+import {waitForDatabase} from "../setup";
 import {Client, JsonWsClient} from "../../../src";
 
 describe('Concurrent requests', () => {
-    let ws_client: JsonWsClient;
+    let wsClient: JsonWsClient;
 
     beforeAll(async () => {
-        await wait_for_database();
+        await waitForDatabase();
     }, 30000);
 
 
     beforeEach(async () => {
         try {
-            ws_client = await Client.connect_json_ws(process.env.REIFYDB_WS_URL, {
-                timeout_ms: 10000,
+            wsClient = await Client.connectJsonWs(process.env.REIFYDB_WS_URL, {
+                timeoutMs: 10000,
                 token: process.env.REIFYDB_TOKEN,
             });
         } catch (error) {
@@ -26,22 +26,22 @@ describe('Concurrent requests', () => {
 
 
     afterEach(async () => {
-        if (ws_client) {
+        if (wsClient) {
             try {
-                ws_client.disconnect();
+                wsClient.disconnect();
             } catch (error) {
                 console.error('Error during disconnect:', error);
             }
-            ws_client = null;
+            wsClient = null;
         }
     });
 
     describe('admin', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                ws_client.admin('MAP {result: 1};'),
-                ws_client.admin('MAP { a: 2, b: 3 };'),
-                ws_client.admin("MAP {result: 'ReifyDB'};")
+                wsClient.admin('MAP {result: 1};'),
+                wsClient.admin('MAP { a: 2, b: 3 };'),
+                wsClient.admin("MAP {result: 'ReifyDB'};")
             ]);
 
             expect(result1[0][0].result).toBe("1");
@@ -54,9 +54,9 @@ describe('Concurrent requests', () => {
     describe('command', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                ws_client.command('MAP {result: 1};'),
-                ws_client.command('MAP { a: 2, b: 3 };'),
-                ws_client.command("MAP {result: 'ReifyDB'};")
+                wsClient.command('MAP {result: 1};'),
+                wsClient.command('MAP { a: 2, b: 3 };'),
+                wsClient.command("MAP {result: 'ReifyDB'};")
             ]);
 
             expect(result1[0][0].result).toBe("1");
@@ -70,9 +70,9 @@ describe('Concurrent requests', () => {
     describe('query', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                ws_client.query('MAP {result: 1};'),
-                ws_client.query('MAP { a: 2, b: 3 };'),
-                ws_client.query("MAP {result: 'ReifyDB'};")
+                wsClient.query('MAP {result: 1};'),
+                wsClient.query('MAP { a: 2, b: 3 };'),
+                wsClient.query("MAP {result: 'ReifyDB'};")
             ]);
 
             expect(result1[0][0].result).toBe("1");
@@ -85,9 +85,9 @@ describe('Concurrent requests', () => {
     describe('admin & query mixed', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                ws_client.admin('MAP {result: 1};'),
-                ws_client.query('MAP { a: 2, b: 3 };'),
-                ws_client.admin("MAP {result: 'ReifyDB'};")
+                wsClient.admin('MAP {result: 1};'),
+                wsClient.query('MAP { a: 2, b: 3 };'),
+                wsClient.admin("MAP {result: 'ReifyDB'};")
             ]);
 
             expect(result1[0][0].result).toBe("1");
@@ -100,9 +100,9 @@ describe('Concurrent requests', () => {
     describe('command & query mixed', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                ws_client.command('MAP {result: 1};'),
-                ws_client.query('MAP { a: 2, b: 3 };'),
-                ws_client.command("MAP {result: 'ReifyDB'};")
+                wsClient.command('MAP {result: 1};'),
+                wsClient.query('MAP { a: 2, b: 3 };'),
+                wsClient.command("MAP {result: 'ReifyDB'};")
             ]);
 
             expect(result1[0][0].result).toBe("1");

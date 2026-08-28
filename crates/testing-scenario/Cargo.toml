@@ -11,6 +11,9 @@ authors.workspace = true
 repository.workspace = true
 description = "Fixed load and benchmark scenarios: dataset, queries and concurrency profiles shared by the load tester and the benchmarks"
 
+[lib]
+doctest = false
+
 [dependencies]
 reifydb-value = { workspace = true }
 

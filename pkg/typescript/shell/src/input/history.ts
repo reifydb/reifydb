@@ -61,8 +61,8 @@ export class CommandHistory {
   private savedInput: string = '';
   private storage: HistoryStorage;
 
-  constructor(storage?: HistoryStorage, history_key?: string) {
-    this.storage = storage ?? new LocalStorageHistoryStorage(history_key);
+  constructor(storage?: HistoryStorage, historyKey?: string) {
+    this.storage = storage ?? new LocalStorageHistoryStorage(historyKey);
     this.entries = this.storage.load();
   }
 

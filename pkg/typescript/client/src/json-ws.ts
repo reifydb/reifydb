@@ -21,14 +21,17 @@ import type {
 import {
     ReifyError
 } from "./types";
-import {encode_params} from "./encoder";
+import {encodeParams} from "./encoder";
+import {toCamelCaseKeys, toSnakeCaseKeys, WIRE_PASSTHROUGH_KEYS} from "./case";
+import {transformFrames} from "@reifydb/core";
+import type {ShapeNode} from "@reifydb/core";
 
 export interface JsonWsClientOptions {
     url: string;
-    timeout_ms?: number;
+    timeoutMs?: number;
     token?: string;
-    max_reconnect_attempts?: number;
-    reconnect_delay_ms?: number;
+    maxReconnectAttempts?: number;
+    reconnectDelayMs?: number;
     unwrap?: boolean;
     signal?: AbortSignal;
 }
@@ -40,79 +43,79 @@ interface PendingEntry {
     handler: (response: ResponsePayload) => void;
 }
 
-async function create_web_socket(url: string): Promise<WebSocket> {
+async function createWebSocket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
         return new WebSocket(url);
     }
     //@ts-ignore
-    const ws_module = await import("ws");
-    return new ws_module.WebSocket(url);
+    const wsModule = await import("ws");
+    return new wsModule.WebSocket(url);
 }
 
 export class JsonWsClient {
     private options: JsonWsClientOptions;
-    private next_id: number;
+    private nextId: number;
     private socket: WebSocket;
     private pending = new Map<string, PendingEntry>();
-    private reconnect_attempts: number = 0;
-    private should_reconnect: boolean = true;
-    private is_reconnecting: boolean = false;
+    private reconnectAttempts: number = 0;
+    private shouldReconnect: boolean = true;
+    private isReconnecting: boolean = false;
 
     private constructor(socket: WebSocket, options: JsonWsClientOptions) {
         this.options = options;
-        this.next_id = 1;
+        this.nextId = 1;
         this.socket = socket;
 
-        this.setup_socket_handlers();
+        this.setupSocketHandlers();
     }
 
     static async connect(options: JsonWsClientOptions): Promise<JsonWsClient> {
         if (options.signal?.aborted) {
             throw new Error("AbortError");
         }
-        
-        const socket = await create_web_socket(options.url);
+
+        const socket = await createWebSocket(options.url);
 
         if (socket.readyState !== 1) {
-            const connection_timeout_ms = 30000;
+            const connectionTimeoutMs = 30000;
             await new Promise<void>((resolve, reject) => {
-                const connection_timeout = setTimeout(() => {
+                const connectionTimeout = setTimeout(() => {
                     cleanup();
                     socket.close();
-                    reject(new Error(`WebSocket connection timeout after ${connection_timeout_ms}ms`));
-                }, connection_timeout_ms);
+                    reject(new Error(`WebSocket connection timeout after ${connectionTimeoutMs}ms`));
+                }, connectionTimeoutMs);
 
-                const on_abort = () => {
+                const onAbort = () => {
                     cleanup();
                     socket.close();
                     reject(new Error("AbortError"));
                 };
 
-                const on_open = () => {
+                const onOpen = () => {
                     cleanup();
                     resolve();
                 };
 
-                const on_error = () => {
+                const onError = () => {
                     cleanup();
                     reject(new Error("WebSocket connection failed"));
                 };
 
                 const cleanup = () => {
-                    clearTimeout(connection_timeout);
-                    socket.removeEventListener("open", on_open);
-                    socket.removeEventListener("error", on_error);
+                    clearTimeout(connectionTimeout);
+                    socket.removeEventListener("open", onOpen);
+                    socket.removeEventListener("error", onError);
                     if (options.signal) {
-                        options.signal.removeEventListener("abort", on_abort);
+                        options.signal.removeEventListener("abort", onAbort);
                     }
                 };
 
                 if (options.signal) {
-                    options.signal.addEventListener("abort", on_abort);
+                    options.signal.addEventListener("abort", onAbort);
                 }
 
-                socket.addEventListener("open", on_open);
-                socket.addEventListener("error", on_error);
+                socket.addEventListener("open", onOpen);
+                socket.addEventListener("error", onError);
             });
         }
 
@@ -122,7 +125,7 @@ export class JsonWsClient {
         }
 
         if (options.token) {
-            socket.send(JSON.stringify({id: "auth-1", type: "Auth", payload: {token: options.token}}));
+            socket.send(JSON.stringify(toSnakeCaseKeys({id: "auth-1", type: "Auth", payload: {token: options.token}}, WIRE_PASSTHROUGH_KEYS)));
         }
 
         return new JsonWsClient(socket, options);
@@ -134,19 +137,21 @@ export class JsonWsClient {
     async admin(
         rql: string,
         params?: any,
+        shapes?: readonly ShapeNode[],
     ): Promise<any> {
-        const { data } = await this.admin_with_meta(rql, params);
+        const { data } = await this.adminWithMeta(rql, params, shapes);
         return data;
     }
 
     /**
      * @param rql - RQL string to execute
      */
-    async admin_with_meta(
+    async adminWithMeta(
         rql: string,
         params?: any,
+        shapes?: readonly ShapeNode[],
     ): Promise<{ data: any, meta?: ResponseMeta }> {
-        return this.execute("Admin", rql, params);
+        return this.execute("Admin", rql, params, shapes);
     }
 
     /**
@@ -155,19 +160,21 @@ export class JsonWsClient {
     async command(
         rql: string,
         params?: any,
+        shapes?: readonly ShapeNode[],
     ): Promise<any> {
-        const { data } = await this.command_with_meta(rql, params);
+        const { data } = await this.commandWithMeta(rql, params, shapes);
         return data;
     }
 
     /**
      * @param rql - RQL string to execute
      */
-    async command_with_meta(
+    async commandWithMeta(
         rql: string,
         params?: any,
+        shapes?: readonly ShapeNode[],
     ): Promise<{ data: any, meta?: ResponseMeta }> {
-        return this.execute("Command", rql, params);
+        return this.execute("Command", rql, params, shapes);
     }
 
     /**
@@ -176,19 +183,21 @@ export class JsonWsClient {
     async query(
         rql: string,
         params?: any,
+        shapes?: readonly ShapeNode[],
     ): Promise<any> {
-        const { data } = await this.query_with_meta(rql, params);
+        const { data } = await this.queryWithMeta(rql, params, shapes);
         return data;
     }
 
     /**
      * @param rql - RQL string to execute
      */
-    async query_with_meta(
+    async queryWithMeta(
         rql: string,
         params?: any,
+        shapes?: readonly ShapeNode[],
     ): Promise<{ data: any, meta?: ResponseMeta }> {
-        return this.execute("Query", rql, params);
+        return this.execute("Query", rql, params, shapes);
     }
 
     /**
@@ -197,61 +206,68 @@ export class JsonWsClient {
     async call(
         name: string,
         params?: any,
+        shapes?: readonly ShapeNode[],
     ): Promise<any> {
-        const { data } = await this.call_with_meta(name, params);
+        const { data } = await this.callWithMeta(name, params, shapes);
         return data;
     }
 
-    async call_with_meta(
+    async callWithMeta(
         name: string,
         params?: any,
+        shapes?: readonly ShapeNode[],
     ): Promise<{ data: any, meta?: ResponseMeta }> {
-        const id = `req-${this.next_id++}`;
+        const id = `req-${this.nextId++}`;
 
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
+        const encodedParams = params !== undefined && params !== null
+            ? encodeParams(params)
             : undefined;
 
-        return this.send_with_meta({
+        const { data, meta } = await this.sendWithMeta({
             id,
             type: "Call",
             payload: {
                 name,
-                params: encoded_params,
+                params: encodedParams,
                 format: "json",
             },
         } as CallRequest);
+
+        return { data: transformFrames(data ?? [], shapes ?? []), meta };
     }
 
     private async execute(
         type: "Admin" | "Command" | "Query",
         rql: string,
         params?: any,
+        shapes?: readonly ShapeNode[],
     ): Promise<{ data: any, meta?: ResponseMeta }> {
-        const id = `req-${this.next_id++}`;
+        const id = `req-${this.nextId++}`;
 
-        const encoded_params = params !== undefined && params !== null
-            ? encode_params(params)
+        const encodedParams = params !== undefined && params !== null
+            ? encodeParams(params)
             : undefined;
 
-        return this.send_with_meta({
+        const { data, meta } = await this.sendWithMeta({
             id,
             type,
             payload: {
                 rql,
-                params: encoded_params,
+                params: encodedParams,
                 format: "json",
                 ...(this.options.unwrap ? {unwrap: true} : {}),
             },
         } as AdminRequest | CommandRequest | QueryRequest);
+
+        return { data: transformFrames(data ?? [], shapes ?? []), meta };
     }
 
     async send(req: AdminRequest | CommandRequest | QueryRequest | CallRequest): Promise<any> {
-        const { data } = await this.send_with_meta(req);
+        const { data } = await this.sendWithMeta(req);
         return data;
     }
 
-    async send_with_meta(
+    async sendWithMeta(
         req: AdminRequest | CommandRequest | QueryRequest | CallRequest,
     ): Promise<{ data: any, meta?: ResponseMeta }> {
         const id = req.id;
@@ -271,11 +287,11 @@ export class JsonWsClient {
         }
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeout_ms = this.options.timeout_ms ?? 30_000;
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("ReifyDB query timeout"));
-            }, timeout_ms);
+            }, timeoutMs);
 
             this.pending.set(id, {
                 type: req.type,
@@ -285,7 +301,7 @@ export class JsonWsClient {
                 },
             });
 
-            this.socket.send(JSON.stringify(req));
+            this.socket.send(JSON.stringify(toSnakeCaseKeys(req, WIRE_PASSTHROUGH_KEYS)));
         });
 
         if (response.type === "Err") {
@@ -300,16 +316,16 @@ export class JsonWsClient {
         return { data: response.payload.body, meta };
     }
 
-    async login_with_password(identity: string, password: string): Promise<LoginResult> {
+    async loginWithPassword(identity: string, password: string): Promise<LoginResult> {
         return this.login("password", {identifier: identity, password});
     }
 
-    async login_with_token(token: string): Promise<LoginResult> {
+    async loginWithToken(token: string): Promise<LoginResult> {
         return this.login("token", {token});
     }
 
     async login(method: string, credentials: Record<string, string>): Promise<LoginResult> {
-        const id = `auth-${this.next_id++}`;
+        const id = `auth-${this.nextId++}`;
 
         const request: AuthRequest = {
             id,
@@ -318,11 +334,11 @@ export class JsonWsClient {
         };
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeout_ms = this.options.timeout_ms ?? 30_000;
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("Login timeout"));
-            }, timeout_ms);
+            }, timeoutMs);
 
             this.pending.set(id, {
                 type: "Auth",
@@ -332,7 +348,7 @@ export class JsonWsClient {
                 },
             });
 
-            this.socket.send(JSON.stringify(request));
+            this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
         });
 
         if (response.type === "Err") {
@@ -353,8 +369,8 @@ export class JsonWsClient {
         return {token: payload.token, identity: payload.identity};
     }
 
-    async login_challenge(method: string, credentials: Record<string, string>): Promise<LoginChallengeResult> {
-        const id = `auth-${this.next_id++}`;
+    async loginChallenge(method: string, credentials: Record<string, string>): Promise<LoginChallengeResult> {
+        const id = `auth-${this.nextId++}`;
 
         const request: AuthRequest = {
             id,
@@ -363,11 +379,11 @@ export class JsonWsClient {
         };
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeout_ms = this.options.timeout_ms ?? 30_000;
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("Login timeout"));
-            }, timeout_ms);
+            }, timeoutMs);
 
             this.pending.set(id, {
                 type: "Auth",
@@ -377,7 +393,7 @@ export class JsonWsClient {
                 },
             });
 
-            this.socket.send(JSON.stringify(request));
+            this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
         });
 
         if (response.type === "Err") {
@@ -391,12 +407,12 @@ export class JsonWsClient {
         const payload = (response as AuthResponse).payload;
 
         if (payload.status === "challenge") {
-            if (!payload.challenge_id || !payload.payload?.message || !payload.payload?.nonce) {
+            if (!payload.challengeId || !payload.payload?.message || !payload.payload?.nonce) {
                 throw new Error("Malformed challenge response");
             }
             return {
                 kind: "challenge",
-                challenge_id: payload.challenge_id,
+                challengeId: payload.challengeId,
                 message: payload.payload.message,
                 nonce: payload.payload.nonce,
             };
@@ -415,14 +431,14 @@ export class JsonWsClient {
             return;
         }
 
-        const id = `logout-${this.next_id++}`;
+        const id = `logout-${this.nextId++}`;
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeout_ms = this.options.timeout_ms ?? 30_000;
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("Logout timeout"));
-            }, timeout_ms);
+            }, timeoutMs);
 
             this.pending.set(id, {
                 type: "Logout",
@@ -432,7 +448,7 @@ export class JsonWsClient {
                 },
             });
 
-            this.socket.send(JSON.stringify({id, type: "Logout"}));
+            this.socket.send(JSON.stringify(toSnakeCaseKeys({id, type: "Logout"}, WIRE_PASSTHROUGH_KEYS)));
         });
 
         if (response.type === "Err") {
@@ -443,89 +459,89 @@ export class JsonWsClient {
     }
 
     disconnect() {
-        this.should_reconnect = false;
+        this.shouldReconnect = false;
         this.socket.close();
     }
 
-    private handle_disconnect() {
-        this.reject_all_pending_requests();
+    private handleDisconnect() {
+        this.rejectAllPendingRequests();
 
-        if (!this.should_reconnect || this.is_reconnecting) {
+        if (!this.shouldReconnect || this.isReconnecting) {
             return;
         }
 
-        const max_attempts = this.options.max_reconnect_attempts ?? 5;
-        if (this.reconnect_attempts >= max_attempts) {
-            console.error(`Max reconnection attempts (${max_attempts}) reached`);
+        const maxAttempts = this.options.maxReconnectAttempts ?? 5;
+        if (this.reconnectAttempts >= maxAttempts) {
+            console.error(`Max reconnection attempts (${maxAttempts}) reached`);
             return;
         }
 
-        this.attempt_reconnect();
+        this.attemptReconnect();
     }
 
-    private async attempt_reconnect() {
-        this.is_reconnecting = true;
-        this.reconnect_attempts++;
+    private async attemptReconnect() {
+        this.isReconnecting = true;
+        this.reconnectAttempts++;
 
-        const base_delay = this.options.reconnect_delay_ms ?? 1000;
-        const delay = base_delay * Math.pow(2, this.reconnect_attempts - 1);
+        const baseDelay = this.options.reconnectDelayMs ?? 1000;
+        const delay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
 
         console.log(`Attempting reconnection in ${delay}ms`);
 
         await new Promise(resolve => setTimeout(resolve, delay));
 
         try {
-            const socket = await create_web_socket(this.options.url);
+            const socket = await createWebSocket(this.options.url);
 
             if (socket.readyState !== 1) {
-                const connection_timeout_ms = 30000;
+                const connectionTimeoutMs = 30000;
                 await new Promise<void>((resolve, reject) => {
-                    const connection_timeout = setTimeout(() => {
-                        socket.removeEventListener("open", on_open);
-                        socket.removeEventListener("error", on_error);
+                    const connectionTimeout = setTimeout(() => {
+                        socket.removeEventListener("open", onOpen);
+                        socket.removeEventListener("error", onError);
                         socket.close();
-                        reject(new Error(`WebSocket reconnection timeout after ${connection_timeout_ms}ms`));
-                    }, connection_timeout_ms);
+                        reject(new Error(`WebSocket reconnection timeout after ${connectionTimeoutMs}ms`));
+                    }, connectionTimeoutMs);
 
-                    const on_open = () => {
-                        clearTimeout(connection_timeout);
-                        socket.removeEventListener("open", on_open);
-                        socket.removeEventListener("error", on_error);
+                    const onOpen = () => {
+                        clearTimeout(connectionTimeout);
+                        socket.removeEventListener("open", onOpen);
+                        socket.removeEventListener("error", onError);
                         resolve();
                     };
 
-                    const on_error = () => {
-                        clearTimeout(connection_timeout);
-                        socket.removeEventListener("open", on_open);
-                        socket.removeEventListener("error", on_error);
+                    const onError = () => {
+                        clearTimeout(connectionTimeout);
+                        socket.removeEventListener("open", onOpen);
+                        socket.removeEventListener("error", onError);
                         reject(new Error("WebSocket connection failed"));
                     };
 
-                    socket.addEventListener("open", on_open);
-                    socket.addEventListener("error", on_error);
+                    socket.addEventListener("open", onOpen);
+                    socket.addEventListener("error", onError);
                 });
             }
 
             if (this.options.token) {
-                socket.send(JSON.stringify({id: "auth-1", type: "Auth", payload: {token: this.options.token}}));
+                socket.send(JSON.stringify(toSnakeCaseKeys({id: "auth-1", type: "Auth", payload: {token: this.options.token}}, WIRE_PASSTHROUGH_KEYS)));
             }
 
             this.socket = socket;
-            this.setup_socket_handlers();
-            this.reconnect_attempts = 0;
-            this.is_reconnecting = false;
+            this.setupSocketHandlers();
+            this.reconnectAttempts = 0;
+            this.isReconnecting = false;
         } catch (error) {
-            this.is_reconnecting = false;
-            this.handle_disconnect();
+            this.isReconnecting = false;
+            this.handleDisconnect();
         }
     }
 
-    private setup_socket_handlers() {
+    private setupSocketHandlers() {
         this.socket.onmessage = (event) => {
             const data = event.data;
             if (typeof data !== "string") return;
 
-            const msg = JSON.parse(data);
+            const msg = toCamelCaseKeys<any>(JSON.parse(data), WIRE_PASSTHROUGH_KEYS);
             if (!msg.id) return;
 
             const {id, type, payload} = msg;
@@ -541,11 +557,11 @@ export class JsonWsClient {
         };
 
         this.socket.onclose = () => {
-            this.handle_disconnect();
+            this.handleDisconnect();
         };
     }
 
-    private reject_all_pending_requests() {
+    private rejectAllPendingRequests() {
         const error: ErrorResponse = {
             id: "connection-error",
             type: "Err",

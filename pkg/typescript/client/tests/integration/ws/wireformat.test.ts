@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
-import {wait_for_database} from "../setup";
+import {waitForDatabase} from "../setup";
 import {Shape} from "@reifydb/core";
 import {Client, WsClient} from "../../../src";
 
@@ -17,19 +17,19 @@ describe('WS wire-format adherence', () => {
 
     const suffix = `${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
     const ns = `wf_ws_${suffix}`;
-    const json_binding = `wf_json_${suffix}`;
-    const frames_binding = `wf_frames_${suffix}`;
+    const jsonBinding = `wf_json_${suffix}`;
+    const framesBinding = `wf_frames_${suffix}`;
 
     let root: WsClient;
 
     beforeAll(async () => {
-        await wait_for_database();
-        root = await Client.connect_ws(WS_URL, {timeout_ms: 10000, token: AUTH_TOKEN});
+        await waitForDatabase();
+        root = await Client.connectWs(WS_URL, {timeoutMs: 10000, token: AUTH_TOKEN});
 
         await root.admin(`CREATE NAMESPACE ${ns}`, {}, []);
         await root.admin(`CREATE PROCEDURE ${ns}::greet AS { MAP { result: 42 } }`, {}, []);
-        await root.admin(`CREATE WS BINDING ${ns}::greet_json FOR ${ns}::greet WITH { name: "${json_binding}", format: "json" }`, {}, []);
-        await root.admin(`CREATE WS BINDING ${ns}::greet_frames FOR ${ns}::greet WITH { name: "${frames_binding}", format: "frames" }`, {}, []);
+        await root.admin(`CREATE WS BINDING ${ns}::greet_json FOR ${ns}::greet WITH { name: "${jsonBinding}", format: "json" }`, {}, []);
+        await root.admin(`CREATE WS BINDING ${ns}::greet_frames FOR ${ns}::greet WITH { name: "${framesBinding}", format: "frames" }`, {}, []);
     }, 30000);
 
     afterAll(async () => {
@@ -37,9 +37,9 @@ describe('WS wire-format adherence', () => {
     });
 
     it('a frames client decodes a JSON-format binding', async () => {
-        const client = await Client.connect_ws(WS_URL, {timeout_ms: 10000, token: AUTH_TOKEN, format: 'frames'});
+        const client = await Client.connectWs(WS_URL, {timeoutMs: 10000, token: AUTH_TOKEN, format: 'frames'});
         try {
-            const frames = await client.call(json_binding, {}, [Shape.object({result: Shape.number()})]);
+            const frames = await client.call(jsonBinding, {}, [Shape.object({result: Shape.number()})]);
             expect(frames[0][0].result).toBe(42);
         } finally {
             client.disconnect();
@@ -47,11 +47,11 @@ describe('WS wire-format adherence', () => {
     }, 10000);
 
     it('a json client decodes a frames-format binding', async () => {
-        const client = await Client.connect_ws(WS_URL, {timeout_ms: 10000, token: AUTH_TOKEN, format: 'json'});
+        const client = await Client.connectWs(WS_URL, {timeoutMs: 10000, token: AUTH_TOKEN, format: 'json'});
         try {
             // The json wire format returns row values as json scalars (strings), unlike the
             // shape-coerced frames/rbcf paths; the point here is that the correct value arrives.
-            const frames = await client.call(frames_binding, {}, [Shape.object({result: Shape.number()})]);
+            const frames = await client.call(framesBinding, {}, [Shape.object({result: Shape.number()})]);
             expect(frames[0][0].result).toBe('42');
         } finally {
             client.disconnect();
@@ -59,9 +59,9 @@ describe('WS wire-format adherence', () => {
     }, 10000);
 
     it('an rbcf client decodes a JSON-format binding via the binary path', async () => {
-        const client = await Client.connect_ws(WS_URL, {timeout_ms: 10000, token: AUTH_TOKEN, format: 'rbcf'});
+        const client = await Client.connectWs(WS_URL, {timeoutMs: 10000, token: AUTH_TOKEN, format: 'rbcf'});
         try {
-            const frames = await client.call(json_binding, {}, [Shape.object({result: Shape.number()})]);
+            const frames = await client.call(jsonBinding, {}, [Shape.object({result: Shape.number()})]);
             expect(frames[0][0].result).toBe(42);
         } finally {
             client.disconnect();

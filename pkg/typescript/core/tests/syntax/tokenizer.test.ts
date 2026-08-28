@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {describe, expect, it} from 'vitest';
-import {tokenize_rql, type RqlToken} from '../../src/syntax';
+import {tokenizeRql, type RqlToken} from '../../src/syntax';
 
 function spans(source: string): Array<[string, string]> {
-    return tokenize_rql(source)
+    return tokenizeRql(source)
         .filter((token: RqlToken) => token.kind !== 'white')
         .map((token: RqlToken) => [token.kind, source.slice(token.start, token.end)]);
 }
 
-describe('tokenize_rql', () => {
+describe('tokenizeRql', () => {
     it('covers the source exactly once, in order', () => {
         // a gap or overlap would drop or duplicate characters when the shell repaints the line
         const source = 'from app::users map { name, age } take 3;';
         let cursor = 0;
-        for (const token of tokenize_rql(source)) {
+        for (const token of tokenizeRql(source)) {
             expect(token.start).toBe(cursor);
             expect(token.end).toBeGreaterThan(token.start);
             cursor = token.end;

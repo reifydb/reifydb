@@ -5,20 +5,18 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb_core::{
 	interface::{
-		catalog::{flow::OperatorId, id::SubscriptionId, subscription::IMPLICIT_COLUMN_OP},
-		change::{Change, Diff, DiffType},
+		catalog::{flow::OperatorId, id::SubscriptionId},
+		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
 	metrics::heap::HeapSize,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::columns::Columns,
 };
 use reifydb_flow::operator::{HostOperator, host::HostContext};
 use reifydb_macro::operator_state;
 use reifydb_value::{
-	Result,
-	fragment::Fragment,
-	reifydb_assertions,
-	value::{row_number::RowNumber, system_columns::SystemColumns},
+	Result, reifydb_assertions,
+	value::{diff_type::DiffType, row_number::RowNumber},
 };
 
 use crate::delivery::DeliveryBuffer;
@@ -54,32 +52,17 @@ impl EphemeralSinkSubscriptionOperator {
 }
 
 impl EphemeralSinkPlan {
-	fn add_implicit_columns(columns: &Columns, op: DiffType) -> Columns {
-		let row_count = columns.row_count();
-
-		let mut all_columns: Vec<ColumnWithName> =
-			columns.iter().map(|c| ColumnWithName::new(c.name().clone(), c.data().clone())).collect();
-
-		all_columns.push(ColumnWithName::new(
-			Fragment::internal(IMPLICIT_COLUMN_OP),
-			ColumnBuffer::uint1(vec![op as u8; row_count]),
-		));
-
-		Columns::with_system(
-			all_columns,
-			SystemColumns::new(
-				columns.row_numbers().to_vec(),
-				Vec::new(),
-				columns.created_at().to_vec(),
-				columns.updated_at().to_vec(),
-				columns.time().to_vec(),
-			),
-		)
-	}
-
 	fn stage(&self, columns: &Columns, op: DiffType) {
-		let with_implicit = Self::add_implicit_columns(columns, op);
-		self.delivery.push(self.subscription_id, with_implicit);
+		reifydb_assertions! {
+			assert!(
+				columns.row_numbers().len() == columns.row_count(),
+				"a staged change batch carries {} row numbers for {} rows, so a subscriber could not \
+				 identify which entity changed and would leak or drop rows",
+				columns.row_numbers().len(),
+				columns.row_count()
+			);
+		}
+		self.delivery.push(self.subscription_id, op, columns.clone());
 	}
 }
 
@@ -150,11 +133,17 @@ impl EphemeralSinkPlan {
 		for row_idx in 0..row_count {
 			let pre_rn = pre.row_numbers()[row_idx];
 			let post_rn = post.row_numbers()[row_idx];
+			reifydb_assertions! {
+				assert!(
+					pre_rn == post_rn,
+					"an update renumbered a row from {} to {}, but a subscriber keys its state on the \
+					 row number and would keep the old row forever while treating the new one as an \
+					 unrelated insert",
+					pre_rn.value(),
+					post_rn.value()
+				);
+			}
 			if state.rows.contains(&pre_rn) {
-				if pre_rn != post_rn {
-					state.rows.remove(&pre_rn);
-					state.rows.insert(post_rn);
-				}
 				update_indices.push(row_idx);
 			} else {
 				state.rows.insert(post_rn);

@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
-use reifydb_value::{reifydb_assertions, value::frame::frame::Frame};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{diff_type::DiffType, frame::frame::Frame, system_columns::SystemColumn},
+};
 use serde_json::{self, Map, Value as JsonValue, to_string as json_to_string};
 
 pub const CONTENT_TYPE_JSON: &str = "application/vnd.reifydb.json";
@@ -17,6 +20,35 @@ pub fn encode_frames_rbcf(frames: &[Frame]) -> Result<Vec<u8>, String> {
 pub struct ResolvedResponse {
 	pub content_type: String,
 	pub body: String,
+}
+
+pub fn resolve_change_json(frames: Vec<Frame>) -> Result<ResolvedResponse, String> {
+	let envelopes: Vec<JsonValue> = frames.iter().map(change_envelope).collect();
+	Ok(json_response(json_to_string(&envelopes).map_err(|e| e.to_string())?))
+}
+
+fn change_envelope(frame: &Frame) -> JsonValue {
+	let row_count = frame.columns.first().map(|c| c.data.len()).unwrap_or(0);
+	let row_numbers = frame.row_numbers();
+	let rows: Vec<JsonValue> = (0..row_count)
+		.map(|i| {
+			let mut obj = Map::new();
+			if let Some(rn) = row_numbers.get(i) {
+				obj.insert(SystemColumn::RowNumbers.name().to_string(), JsonValue::from(rn.value()));
+			}
+			for col in frame.iter() {
+				obj.insert(col.name.clone(), col.data.get_value(i).to_json_value());
+			}
+			JsonValue::Object(obj)
+		})
+		.collect();
+
+	let mut envelope = Map::new();
+	if let Some(op) = frame.op {
+		envelope.insert("op".to_string(), JsonValue::from(DiffType::as_u8(op)));
+	}
+	envelope.insert("rows".to_string(), JsonValue::Array(rows));
+	JsonValue::Object(envelope)
 }
 
 pub fn resolve_response_json(frames: Vec<Frame>, unwrap: bool) -> Result<ResolvedResponse, String> {

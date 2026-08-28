@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { infer_columns } from '@reifydb/core';
-import { format_value, get_value_style } from '../../format/value';
+import { inferColumns } from '@reifydb/core';
+import { formatValue, getValueStyle } from '../../format/value';
 
 interface ResultsTableProps {
   data: Record<string, unknown>[];
@@ -11,7 +11,7 @@ interface ResultsTableProps {
 export function ResultsTable({ data }: ResultsTableProps) {
   if (data.length === 0) return null;
 
-  const columns = infer_columns(data);
+  const columns = inferColumns(data);
 
   return (
     <div className="rdb-results">
@@ -29,7 +29,7 @@ export function ResultsTable({ data }: ResultsTableProps) {
           {data.map((row, i) => (
             <tr key={i}>
               {columns.map((col) => {
-                const vs = get_value_style(row[col.name]);
+                const vs = getValueStyle(row[col.name]);
                 return (
                   <td
                     key={col.name}
@@ -39,7 +39,7 @@ export function ResultsTable({ data }: ResultsTableProps) {
                       textAlign: col.align,
                     }}
                   >
-                    {format_value(row[col.name])}
+                    {formatValue(row[col.name])}
                   </td>
                 );
               })}

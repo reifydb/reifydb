@@ -21,10 +21,10 @@ describe("storage (password sessions)", () => {
     const session: AuthSession = {
       token: "tok",
       identity: "id",
-      wallet_address: "user@example.com",
+      walletAddress: "user@example.com",
       identifier: "user@example.com",
       method: "password",
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
     };
     writeStoredSession(NS, session);
     const read = readStoredSession(NS);
@@ -39,8 +39,8 @@ describe("storage (password sessions)", () => {
     const legacy = {
       token: "tok",
       identity: "id",
-      wallet_address: "WalletA",
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      walletAddress: "WalletA",
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
     };
     localStorage.setItem(storageKeyFor(NS), JSON.stringify(legacy));
     expect(readStoredSession(NS)).toEqual(legacy);
@@ -50,9 +50,9 @@ describe("storage (password sessions)", () => {
     const bad = {
       token: "tok",
       identity: "id",
-      wallet_address: "user@example.com",
+      walletAddress: "user@example.com",
       method: "magic-link",
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
     };
     localStorage.setItem(storageKeyFor(NS), JSON.stringify(bad));
     expect(readStoredSession(NS)).toBeNull();
@@ -63,10 +63,10 @@ describe("storage (password sessions)", () => {
     const bad = {
       token: "tok",
       identity: "id",
-      wallet_address: "user@example.com",
+      walletAddress: "user@example.com",
       identifier: 42,
       method: "password",
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
     };
     localStorage.setItem(storageKeyFor(NS), JSON.stringify(bad));
     expect(readStoredSession(NS)).toBeNull();

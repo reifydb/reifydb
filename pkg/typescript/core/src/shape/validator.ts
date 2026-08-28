@@ -5,12 +5,12 @@ import {ShapeNode} from '.';
 
 export function validateShape(shape: ShapeNode, value: any): boolean {
     if (shape.kind === 'primitive') {
-        const object_type = shape.type as Type;
+        const objectType = shape.type as Type;
         if (value === null || value === undefined) {
-            return object_type === 'None';
+            return objectType === 'None';
         }
 
-        switch (object_type) {
+        switch (objectType) {
             case 'Boolean':
                 return typeof value === 'boolean';
             case 'Float4':

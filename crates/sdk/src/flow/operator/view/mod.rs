@@ -3,9 +3,9 @@
 
 pub mod in_process;
 
-use reifydb_core::interface::change::DiffType;
 use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
+	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
+	row_number::RowNumber, time::Time,
 };
 
 pub trait RowView {

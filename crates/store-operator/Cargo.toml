@@ -7,6 +7,9 @@ authors.workspace = true
 repository.workspace = true
 description = "Single-version storage for flow operator state"
 
+[lib]
+doctest = false
+
 [features]
 default = ["sqlite"]
 sqlite = ["rusqlite", "reifydb-sqlite", "reifydb-store/sqlite"]

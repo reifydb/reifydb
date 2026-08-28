@@ -4,10 +4,9 @@
 use core::{slice, str};
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_core::interface::change::DiffType;
 use reifydb_value::{
 	reifydb_assertions,
-	value::{date::Date, datetime::DateTime, duration::Duration, time::Time},
+	value::{date::Date, datetime::DateTime, diff_type::DiffType, duration::Duration, time::Time},
 };
 
 use crate::{
@@ -555,4 +554,4 @@ unsafe fn read_buffer_str(buf: &ExternCBuffer) -> &str {
 	str::from_utf8(bytes).unwrap_or("")
 }
 
-pub type DiffKind = reifydb_core::interface::change::DiffType;
+pub type DiffKind = DiffType;

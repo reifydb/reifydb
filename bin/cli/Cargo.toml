@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+[lib]
+doctest = false
+
 [[bin]]
 name = "reifydb-cli"
 path = "src/main.rs"

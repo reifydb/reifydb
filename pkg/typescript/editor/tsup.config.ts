@@ -15,11 +15,9 @@ export default defineConfig({
   clean: true,
   external: ['react', 'react-dom', 'monaco-editor', '@monaco-editor/react'],
   onSuccess: async () => {
-    // Concatenate CSS files into dist/styles.css
     const tokens = readFileSync(resolve(__dirname, 'src/styles/tokens.css'), 'utf-8');
-    const console_ = readFileSync(resolve(__dirname, 'src/styles/console.css'), 'utf-8');
-    // console.css already imports tokens.css, so replace the import with the actual content
-    const combined = console_.replace("@import './tokens.css';", tokens);
+    const editorCss = readFileSync(resolve(__dirname, 'src/styles/editor.css'), 'utf-8');
+    const combined = editorCss.replace("@import './tokens.css';", tokens);
     mkdirSync(resolve(__dirname, 'dist'), { recursive: true });
     writeFileSync(resolve(__dirname, 'dist/styles.css'), combined);
   },

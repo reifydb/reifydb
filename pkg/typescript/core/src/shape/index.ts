@@ -52,3 +52,8 @@ export {
 export {
     validateShape
 } from './validator';
+
+export {
+    transformFrames,
+    transformResult
+} from './transform';

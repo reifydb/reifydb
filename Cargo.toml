@@ -80,6 +80,7 @@ members = [
     "pkg/rust/reifydb-client",
     "pkg/rust/reifydb-derive",
     "pkg/rust/reifydb-client-derive",
+    "pkg/rust/reifydb-node",
     "pkg/rust/examples",
     "pkg/rust/tests/limit",
     "pkg/rust/tests/regression",
@@ -88,7 +89,8 @@ members = [
     "pkg/webassembly",
     "pkg/wasi",
     # Self-hostable projects
-    "pkg/projects/uptime",
+    "pkg/projects/uptime/backend",
+    "pkg/projects/uptime/bridge",
 ]
 
 default-members = [
@@ -165,7 +167,7 @@ default-members = [
     "pkg/rust/tests/regression",
     "pkg/rust/tests/integration",
     # Self-hostable projects
-    "pkg/projects/uptime",
+    "pkg/projects/uptime/backend",
 ]
 
 [workspace.package]
@@ -344,6 +346,11 @@ rustls = { version = "0.23.42", default-features = false, features = ["ring", "s
 surge-ping = { version = "0.8" }
 tower = { version = "0.5.3", features = ["limit", "timeout"] }
 tower-http = { version = "0.6.11", features = ["trace", "timeout"] }
+
+# Node native addon bindings, shared by uptime's DST test bridge and @reifydb/reifydb
+napi = { version = "2", default-features = false, features = ["napi4", "tokio_rt", "serde-json"] }
+napi-derive = { version = "2" }
+napi-build = { version = "2" }
 futures-util = { version = "0.3.32", features = ["sink"] }
 
 # sqlite

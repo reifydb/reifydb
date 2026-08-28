@@ -4,7 +4,10 @@
 use std::sync::Arc;
 
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_value::{error::Diagnostic, value::duration::Duration};
+use reifydb_value::{
+	error::Diagnostic,
+	value::{diff_type::DiffType, duration::Duration},
+};
 use tokio::sync::Notify;
 
 #[derive(Debug)]
@@ -15,7 +18,7 @@ pub enum DeliveryResult {
 }
 
 pub trait SubscriptionDelivery: Send + Sync {
-	fn try_deliver(&self, subscription: &SubscriptionId, columns: Columns) -> DeliveryResult;
+	fn try_deliver(&self, subscription: &SubscriptionId, op: DiffType, columns: Columns) -> DeliveryResult;
 
 	fn active_subscriptions(&self) -> Vec<SubscriptionId>;
 

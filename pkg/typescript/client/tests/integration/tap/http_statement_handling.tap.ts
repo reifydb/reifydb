@@ -9,8 +9,8 @@ describe('Statement Handling', () => {
     let httpClient: HttpClient;
 
     beforeAll(async () => {
-        httpClient = Client.connect_http(process.env.REIFYDB_HTTP_URL, {
-            timeout_ms: 10000,
+        httpClient = Client.connectHttp(process.env.REIFYDB_HTTP_URL, {
+            timeoutMs: 10000,
             token: process.env.REIFYDB_TOKEN
         });
     });

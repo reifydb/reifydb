@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{flow::FlowId, id::SubscriptionId, object::ObjectId},
-		change::{Change, Diff},
+		change::{Change, Diff, StagedBatch},
 	},
 	metrics::execution::{ExecutionMetrics, StatementMetrics},
 	value::column::columns::Columns,
@@ -114,7 +114,7 @@ impl SubscriptionWorkerActor {
 		version: CommitVersion,
 		hydrate_start: Instant,
 		statements: Vec<StatementMetrics>,
-		batches: Vec<Columns>,
+		batches: Vec<StagedBatch>,
 	) -> HydrateOutcome {
 		let elapsed = hydrate_start.elapsed();
 		let elapsed_nanos = elapsed.as_nanos() as i64;

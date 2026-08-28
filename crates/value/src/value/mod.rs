@@ -17,6 +17,7 @@ pub mod date;
 pub mod datetime;
 pub mod decimal;
 pub mod dictionary;
+pub mod diff_type;
 pub mod duration;
 pub mod frame;
 pub mod identity;

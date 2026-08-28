@@ -14,6 +14,7 @@ use crate::{
 	value::{
 		Value,
 		datetime::DateTime,
+		diff_type::DiffType,
 		row_number::RowNumber,
 		system_columns::{SystemColumn, SystemColumns},
 	},
@@ -23,6 +24,7 @@ use crate::{
 pub struct Frame {
 	pub system: SystemColumns,
 	pub columns: Vec<FrameColumn>,
+	pub op: Option<DiffType>,
 }
 
 impl Frame {
@@ -91,13 +93,20 @@ impl Frame {
 		Self {
 			system: SystemColumns::empty(),
 			columns,
+			op: None,
 		}
+	}
+
+	pub fn with_op(mut self, op: DiffType) -> Self {
+		self.op = Some(op);
+		self
 	}
 
 	pub fn with_row_numbers(columns: Vec<FrameColumn>, row_numbers: Vec<RowNumber>) -> Self {
 		Self {
 			system: SystemColumns::new(row_numbers, Vec::new(), Vec::new(), Vec::new(), Vec::new()),
 			columns,
+			op: None,
 		}
 	}
 

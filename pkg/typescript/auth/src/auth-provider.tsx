@@ -83,42 +83,42 @@ export function AuthProvider<TClient extends AuthCapableClient>(
   // Per-tab storage slot: each tab gets its own localStorage key so concurrent
   // sign-ins in different tabs cannot stomp each other's session. With
   // sessionScope "browser" all tabs deliberately share one slot instead.
-  const effective_namespace =
+  const effectiveNamespace =
     sessionScope === "browser"
       ? storageNamespace
       : tabScopedNamespace(storageNamespace);
 
   const [state, setState] = useState<InternalState>(() => {
-    const stored = readStoredSession(effective_namespace);
+    const stored = readStoredSession(effectiveNamespace);
     return stored
       ? { status: "verifying", session: stored, clientReady: false, error: null }
       : { status: "disconnected", session: null, clientReady: false, error: null };
   });
 
   // Pull live wallet fields into stable primitives for effect deps.
-  const wallet_connected = wallet?.connected ?? false;
-  const wallet_connecting = wallet?.connecting ?? false;
-  const wallet_public_key = wallet?.publicKey ?? null;
-  const wallet_has_selected = wallet?.hasSelectedWallet ?? false;
+  const walletConnected = wallet?.connected ?? false;
+  const walletConnecting = wallet?.connecting ?? false;
+  const walletPublicKey = wallet?.publicKey ?? null;
+  const walletHasSelected = wallet?.hasSelectedWallet ?? false;
 
   // Refs so callbacks can read latest values without re-binding.
-  const session_ref = useRef(state.session);
-  session_ref.current = state.session;
-  const wallet_ref = useRef(wallet);
-  wallet_ref.current = wallet;
+  const sessionRef = useRef(state.session);
+  sessionRef.current = state.session;
+  const walletRef = useRef(wallet);
+  walletRef.current = wallet;
 
-  const tear_down = useCallback(
-    (next_status: InternalState["status"], next_error: string | null) => {
-      clearStoredSession(effective_namespace);
+  const tearDown = useCallback(
+    (nextStatus: InternalState["status"], nextError: string | null) => {
+      clearStoredSession(effectiveNamespace);
       clearClient();
       setState({
-        status: next_status,
+        status: nextStatus,
         session: null,
         clientReady: false,
-        error: next_error,
+        error: nextError,
       });
     },
-    [effective_namespace],
+    [effectiveNamespace],
   );
 
   // Session gate. Password sessions connect directly; wallet sessions keep the
@@ -142,7 +142,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
         .catch((err: unknown) => {
           if (cancelled) return;
           const message = err instanceof Error ? err.message : "Failed to connect client";
-          tear_down("error", message);
+          tearDown("error", message);
         });
       return () => {
         cancelled = true;
@@ -155,15 +155,15 @@ export function AuthProvider<TClient extends AuthCapableClient>(
       return establish();
     }
 
-    if (wallet_connected && wallet_public_key != null) {
-      if (wallet_public_key !== session.wallet_address) {
-        tear_down("disconnected", null);
+    if (walletConnected && walletPublicKey != null) {
+      if (walletPublicKey !== session.walletAddress) {
+        tearDown("disconnected", null);
         return;
       }
       return establish();
     }
 
-    if (!wallet_connected && (wallet_connecting || wallet_has_selected)) {
+    if (!walletConnected && (walletConnecting || walletHasSelected)) {
       // Wallet adapter is autoConnecting; stay in verifying. Do NOT construct
       // the client yet - we must not authenticate before the match is confirmed.
       setState((prev) =>
@@ -176,28 +176,28 @@ export function AuthProvider<TClient extends AuthCapableClient>(
 
     // Wallet is definitively absent (no selected wallet, not connecting). User
     // explicitly disconnected, so the session can no longer be proven; tear down.
-    tear_down("disconnected", null);
+    tearDown("disconnected", null);
   }, [
     state.session,
-    wallet_connected,
-    wallet_connecting,
-    wallet_public_key,
-    wallet_has_selected,
+    walletConnected,
+    walletConnecting,
+    walletPublicKey,
+    walletHasSelected,
     transport,
     url,
-    tear_down,
+    tearDown,
   ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const key = storageKeyFor(effective_namespace);
-    const on_storage = (e: StorageEvent) => {
+    const key = storageKeyFor(effectiveNamespace);
+    const onStorage = (e: StorageEvent) => {
       if (e.key !== key) return;
-      const current = session_ref.current;
+      const current = sessionRef.current;
 
       // Another tab signed out / cleared the session.
       if (e.newValue == null) {
-        if (current != null) tear_down("disconnected", null);
+        if (current != null) tearDown("disconnected", null);
         return;
       }
 
@@ -207,7 +207,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
       } catch {
         // Corrupt entry written by another tab. Only react if we actually hold
         // a session; otherwise there is nothing to defend.
-        if (current != null) tear_down("disconnected", null);
+        if (current != null) tearDown("disconnected", null);
         return;
       }
 
@@ -219,20 +219,20 @@ export function AuthProvider<TClient extends AuthCapableClient>(
 
       // A genuinely different principal took over our storage slot.
       if (
-        parsed.wallet_address !== current.wallet_address ||
+        parsed.walletAddress !== current.walletAddress ||
         parsed.identity !== current.identity
       ) {
-        tear_down("disconnected", null);
+        tearDown("disconnected", null);
       }
 
       // Same principal, different token: a concurrent sign-in in another tab,
       // not an intrusion. Keep our own still-valid client.
     };
-    window.addEventListener("storage", on_storage);
+    window.addEventListener("storage", onStorage);
     return () => {
-      window.removeEventListener("storage", on_storage);
+      window.removeEventListener("storage", onStorage);
     };
-  }, [effective_namespace, tear_down]);
+  }, [effectiveNamespace, tearDown]);
 
   // Housekeeping: drop expired per-tab slots left behind by closed tabs.
   useEffect(() => {
@@ -250,7 +250,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
           password: credentials.password,
           sessionTtlSeconds,
         });
-        writeStoredSession(effective_namespace, session);
+        writeStoredSession(effectiveNamespace, session);
         setState({
           status: "verifying",
           session,
@@ -269,7 +269,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
       return;
     }
 
-    const w = wallet_ref.current;
+    const w = walletRef.current;
     if (w == null || !w.connected || w.publicKey == null) {
       setState((prev) => ({ ...prev, status: "error", error: "Wallet not connected" }));
       return;
@@ -295,10 +295,10 @@ export function AuthProvider<TClient extends AuthCapableClient>(
       });
       // Sanity: signed-in wallet must match the live publicKey. If the user
       // swapped wallets while the signature was in flight, refuse the session.
-      if (session.wallet_address !== wallet_ref.current?.publicKey) {
+      if (session.walletAddress !== walletRef.current?.publicKey) {
         throw new Error("Wallet changed during sign in");
       }
-      writeStoredSession(effective_namespace, session);
+      writeStoredSession(effectiveNamespace, session);
       setState({
         status: "verifying",
         session,
@@ -321,7 +321,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
     domain,
     statement,
     sessionTtlSeconds,
-    effective_namespace,
+    effectiveNamespace,
   ]);
 
   // Adopt a session minted outside the sign-in flows - a guest session handed
@@ -329,7 +329,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
   // it up and connects the client exactly as it would after a sign-in.
   const adoptSession = useCallback(
     (session: AuthSession) => {
-      writeStoredSession(effective_namespace, session);
+      writeStoredSession(effectiveNamespace, session);
       setState({
         status: "verifying",
         session,
@@ -337,7 +337,7 @@ export function AuthProvider<TClient extends AuthCapableClient>(
         error: null,
       });
     },
-    [effective_namespace],
+    [effectiveNamespace],
   );
 
   const signOut = useCallback(async () => {
@@ -347,8 +347,8 @@ export function AuthProvider<TClient extends AuthCapableClient>(
     } catch {
       // no current client, or server-side logout failed; tear down regardless
     }
-    tear_down("disconnected", null);
-  }, [tear_down]);
+    tearDown("disconnected", null);
+  }, [tearDown]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

@@ -2,14 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::change::{Change, Diff, DiffType},
+	interface::change::{Change, Diff},
 	value::column::{
 		buffer::{ColumnBuffer, get::FromColumnBuffer},
 		columns::Columns,
 	},
 };
 use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
+	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
+	row_number::RowNumber, time::Time,
 };
 
 use super::{ChangeView, ColumnsView, DiffView, RowView};

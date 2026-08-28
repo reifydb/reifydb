@@ -22,7 +22,7 @@ import * as fs from "fs";
 import { NONE_VALUE } from "@reifydb/core";
 import { rbcf } from "../src/rbcf";
 import { TYPE_CODE } from "../src/rbcf/format";
-import { decode_any_value } from "../src/rbcf/encoding/plain";
+import { decodeAnyValue } from "../src/rbcf/encoding/plain";
 
 const goldenRoot = path.resolve(__dirname, "../../../../crates/codec/golden");
 
@@ -105,11 +105,11 @@ describe("RBCF golden vectors", () => {
     for (const [fixture, expected] of valueCases) {
         it(`decodes value/${fixture}`, () => {
             const bytes = new Uint8Array(fs.readFileSync(path.join(goldenRoot, "value", fixture)));
-            const { value, next_pos } = decode_any_value(bytes, 0);
+            const { value, nextPos } = decodeAnyValue(bytes, 0);
             expect(value).toBe(expected);
             // The value must consume the fixture exactly (no trailing bytes),
             // which pins the payload widths and the recursive typeinfo framing.
-            expect(next_pos).toBe(bytes.length);
+            expect(nextPos).toBe(bytes.length);
         });
     }
 });

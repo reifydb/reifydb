@@ -499,7 +499,7 @@ pub mod tests {
 	use reifydb_codec::tag::ValueKind;
 	use reifydb_core::{
 		common::CommitVersion,
-		interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
+		interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	};
 	use reifydb_sdk::{
 		common::extern_c::{
@@ -515,7 +515,7 @@ pub mod tests {
 		},
 		row,
 	};
-	use reifydb_value::value::row_number::RowNumber;
+	use reifydb_value::value::{diff_type::DiffType, row_number::RowNumber};
 
 	use super::{
 		super::helpers::{encode_key, probe_row_key},

@@ -11,10 +11,12 @@ use std::collections::BTreeMap;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb::testing::db::TestDb;
-use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_core::interface::{catalog::id::SubscriptionId, change::StagedBatch};
 use reifydb_engine::subscription::SubscriptionServiceRef;
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
-use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, row_number::RowNumber};
+use reifydb_value::value::{
+	Value, diff_type::DiffType, duration::Duration, identity::IdentityId, row_number::RowNumber,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
@@ -76,7 +78,7 @@ pub fn insert_one_at_a_time(db: &TestDb, rows: &[Row]) {
 	}
 }
 
-pub fn drain_sub(db: &TestDb, sub_id: SubscriptionId) -> Vec<Columns> {
+pub fn drain_sub(db: &TestDb, sub_id: SubscriptionId) -> Vec<StagedBatch> {
 	let subsystem = db.subsystem::<SubscriptionSubsystem>().expect("subscription subsystem present");
 	let store = subsystem.store();
 	store.drain(&sub_id, usize::MAX)
@@ -95,16 +97,16 @@ pub fn wait_for_consumer_caught_up(db: &TestDb) {
 	}
 }
 
-pub fn drain_after_consumer_caught_up(db: &TestDb, sub_id: SubscriptionId) -> Vec<Columns> {
+pub fn drain_after_consumer_caught_up(db: &TestDb, sub_id: SubscriptionId) -> Vec<StagedBatch> {
 	wait_for_consumer_caught_up(db);
 	drain_sub(db, sub_id)
 }
 
-pub fn normalize(batches: Vec<Columns>) -> Vec<(i32, i32, i64)> {
-	// For subscriptions that preserve the source schema: replays each row's `_op` (Insert=1, Update=2,
-	// Remove=3) against a RowNumber-keyed map to reduce the diff sequence to the final sink state.
+pub fn normalize(batches: Vec<StagedBatch>) -> Vec<(i32, i32, i64)> {
+	// For subscriptions that preserve the source schema: replays each batch's op (Insert, Update, Remove)
+	// against a RowNumber-keyed map to reduce the diff sequence to the final sink state.
 	let mut state: BTreeMap<RowNumber, (i32, i32, i64)> = BTreeMap::new();
-	for cols in batches {
+	for (op, cols) in batches {
 		let id_col = cols.iter().find(|c| c.name().text() == "id");
 		let qty_col = cols.iter().find(|c| c.name().text() == "qty");
 		let ts_col = cols.iter().find(|c| c.name().text() == "ts_ms");
@@ -112,7 +114,6 @@ pub fn normalize(batches: Vec<Columns>) -> Vec<(i32, i32, i64)> {
 			let names: Vec<&str> = cols.iter().map(|c| c.name().text()).collect();
 			panic!("expected columns id, qty, ts_ms but found {:?}", names);
 		};
-		let op_col = cols.iter().find(|c| c.name().text() == "_op");
 		for i in 0..cols.row_count() {
 			let id = match id_col.data().get_value(i) {
 				Value::Int4(v) => v,
@@ -131,20 +132,13 @@ pub fn normalize(batches: Vec<Columns>) -> Vec<(i32, i32, i64)> {
 			} else {
 				cols.row_numbers()[i]
 			};
-			let op = op_col
-				.map(|c| match c.data().get_value(i) {
-					Value::Uint1(v) => v,
-					_ => 1,
-				})
-				.unwrap_or(1);
 			match op {
-				1 | 2 => {
+				DiffType::Insert | DiffType::Update => {
 					state.insert(rn, (id, qty, ts));
 				}
-				3 => {
+				DiffType::Remove => {
 					state.remove(&rn);
 				}
-				_ => {}
 			}
 		}
 	}
@@ -153,11 +147,11 @@ pub fn normalize(batches: Vec<Columns>) -> Vec<(i32, i32, i64)> {
 	out
 }
 
-pub fn normalize_aggregated(batches: Vec<Columns>) -> Vec<Vec<(String, String)>> {
+pub fn normalize_aggregated(batches: Vec<StagedBatch>) -> Vec<Vec<(String, String)>> {
 	// For output schemas that are not (id, qty, ts_ms): captures every column as (name, debug value) so the
 	// comparison works whatever shape the operator emits.
 	let mut out: Vec<Vec<(String, String)>> = Vec::new();
-	for cols in batches {
+	for (_, cols) in batches {
 		let mut row_records: Vec<Vec<(String, String)>> = vec![Vec::new(); cols.row_count()];
 		for col in cols.iter() {
 			let name = col.name().text().to_string();
@@ -175,7 +169,7 @@ pub fn normalize_aggregated(batches: Vec<Columns>) -> Vec<Vec<(String, String)>>
 	out
 }
 
-pub fn run_path_snapshot(rql: &str, rows: &[Row]) -> Vec<Columns> {
+pub fn run_path_snapshot(rql: &str, rows: &[Row]) -> Vec<StagedBatch> {
 	// Path A: bulk-insert in one commit, then subscribe, then hydrate.
 	let db = make_db();
 	insert_all_at_once(&db, rows);
@@ -196,12 +190,12 @@ pub fn run_path_snapshot(rql: &str, rows: &[Row]) -> Vec<Columns> {
 	all
 }
 
-pub fn run_path_hydrate_then_live(rql: &str, hydrated: &[Row], live: &[Row]) -> Vec<Columns> {
+pub fn run_path_hydrate_then_live(rql: &str, hydrated: &[Row], live: &[Row]) -> Vec<StagedBatch> {
 	let commands: Vec<String> = live.iter().map(insert_stmt).collect();
 	run_path_hydrate_then_commands(rql, hydrated, &commands)
 }
 
-pub fn run_path_hydrate_then_commands(rql: &str, hydrated: &[Row], commands: &[String]) -> Vec<Columns> {
+pub fn run_path_hydrate_then_commands(rql: &str, hydrated: &[Row], commands: &[String]) -> Vec<StagedBatch> {
 	// Operator state seeded from the hydration snapshot must stay correct against the live changes after it.
 	let db = make_db();
 	insert_all_at_once(&db, hydrated);
@@ -227,31 +221,24 @@ pub fn run_path_hydrate_then_commands(rql: &str, hydrated: &[Row], commands: &[S
 	all
 }
 
-pub fn announced_removes(batches: &[Columns]) -> Vec<i32> {
+pub fn announced_removes(batches: &[StagedBatch]) -> Vec<i32> {
 	// Final state cannot tell an eviction cursor running forwards from one running backwards, only this order can.
-	announced_ids(batches, 3)
+	announced_ids(batches, DiffType::Remove)
 }
 
-pub fn announced_inserts(batches: &[Columns]) -> Vec<i32> {
+pub fn announced_inserts(batches: &[StagedBatch]) -> Vec<i32> {
 	// The order rows reach a subscriber is part of the contract, so it must be asserted, not inferred from state.
-	announced_ids(batches, 1)
+	announced_ids(batches, DiffType::Insert)
 }
 
-fn announced_ids(batches: &[Columns], want_op: u8) -> Vec<i32> {
+fn announced_ids(batches: &[StagedBatch], want_op: DiffType) -> Vec<i32> {
 	let mut out: Vec<i32> = Vec::new();
-	for cols in batches {
-		let Some(op_col) = cols.iter().find(|c| c.name().text() == "_op") else {
+	for (op, cols) in batches {
+		if *op != want_op {
 			continue;
-		};
+		}
 		let id_col = cols.iter().find(|c| c.name().text() == "id").expect("id column");
 		for i in 0..cols.row_count() {
-			let op = match op_col.data().get_value(i) {
-				Value::Uint1(v) => v,
-				other => panic!("expected Uint1 _op, got {:?}", other),
-			};
-			if op != want_op {
-				continue;
-			}
 			match id_col.data().get_value(i) {
 				Value::Int4(v) => out.push(v),
 				other => panic!("expected Int4 id, got {:?}", other),
@@ -261,7 +248,7 @@ fn announced_ids(batches: &[Columns], want_op: u8) -> Vec<i32> {
 	out
 }
 
-pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<Columns> {
+pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<StagedBatch> {
 	// Path B: subscribe on an empty table, insert one row at a time, let CDC catch up.
 	let db = make_db();
 

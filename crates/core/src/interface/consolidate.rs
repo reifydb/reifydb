@@ -4,10 +4,13 @@
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
-use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{
+	Result, reifydb_assertions,
+	value::{diff_type::DiffType, row_number::RowNumber},
+};
 
 use crate::{
-	interface::change::{ChangeOrigin, Diff, DiffType},
+	interface::change::{ChangeOrigin, Diff},
 	value::column::columns::Columns,
 };
 

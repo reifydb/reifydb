@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	error::diagnostic::subscription::subscription_lagged, interface::catalog::id::SubscriptionId,
-	value::column::columns::Columns,
+	error::diagnostic::subscription::subscription_lagged,
+	interface::{catalog::id::SubscriptionId, change::StagedBatch},
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
@@ -23,7 +23,7 @@ use crate::store::SubscriptionStore;
 #[derive(Default)]
 struct PollScratch {
 	active: Vec<SubscriptionId>,
-	drained: Vec<Columns>,
+	drained: Vec<StagedBatch>,
 }
 
 pub struct StoreBackedPoller {
@@ -66,8 +66,8 @@ impl StoreBackedPoller {
 			}
 			drained.clear();
 			self.store.drain_into(sub_id, self.batch_size, drained);
-			for columns in drained.drain(..) {
-				match delivery.try_deliver(sub_id, columns) {
+			for (op, columns) in drained.drain(..) {
+				match delivery.try_deliver(sub_id, op, columns) {
 					DeliveryResult::Delivered => {}
 					DeliveryResult::Disconnected => {
 						self.store.unregister(sub_id);

@@ -8,63 +8,63 @@ export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'er
 
 export interface ConnectionPanelProps {
   mode: ConnectionMode;
-  ws_url: string;
+  wsUrl: string;
   status: ConnectionStatus;
   error: string | null;
-  on_mode_change: (mode: ConnectionMode) => void;
-  on_url_change: (url: string) => void;
-  on_connect: () => void;
-  on_disconnect: () => void;
-  on_close: () => void;
+  onModeChange: (mode: ConnectionMode) => void;
+  onUrlChange: (url: string) => void;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onClose: () => void;
 }
 
 export function ConnectionPanel({
   mode,
-  ws_url,
+  wsUrl,
   status,
   error,
-  on_mode_change,
-  on_url_change,
-  on_connect,
-  on_disconnect,
-  on_close,
+  onModeChange,
+  onUrlChange,
+  onConnect,
+  onDisconnect,
+  onClose,
 }: ConnectionPanelProps) {
-  const panel_ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handle_click_outside(e: MouseEvent) {
-      if (panel_ref.current && !panel_ref.current.contains(e.target as Node)) {
-        on_close();
+    function handleClickOutside(e: MouseEvent) {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        onClose();
       }
     }
-    function handle_escape(e: KeyboardEvent) {
-      if (e.key === 'Escape') on_close();
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
     }
-    document.addEventListener('mousedown', handle_click_outside);
-    document.addEventListener('keydown', handle_escape);
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
     return () => {
-      document.removeEventListener('mousedown', handle_click_outside);
-      document.removeEventListener('keydown', handle_escape);
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
     };
-  }, [on_close]);
+  }, [onClose]);
 
-  const is_ws_connected = mode === 'websocket' && status === 'connected';
-  const is_ws_connecting = mode === 'websocket' && status === 'connecting';
+  const isWsConnected = mode === 'websocket' && status === 'connected';
+  const isWsConnecting = mode === 'websocket' && status === 'connecting';
 
   return (
-    <div className="rdb-connection-panel" ref={panel_ref}>
+    <div className="rdb-connection-panel" ref={panelRef}>
       <div className="rdb-connection-panel__header">connection</div>
 
       <div className="rdb-connection-panel__modes">
         <button
           className={`rdb-connection-panel__mode-btn ${mode === 'wasm' ? 'rdb-connection-panel__mode-btn--active' : ''}`}
-          onClick={() => on_mode_change('wasm')}
+          onClick={() => onModeChange('wasm')}
         >
           [wasm (in-browser)]
         </button>
         <button
           className={`rdb-connection-panel__mode-btn ${mode === 'websocket' ? 'rdb-connection-panel__mode-btn--active' : ''}`}
-          onClick={() => on_mode_change('websocket')}
+          onClick={() => onModeChange('websocket')}
         >
           [websocket (remote)]
         </button>
@@ -77,24 +77,24 @@ export function ConnectionPanel({
             <input
               className="rdb-connection-panel__url-input"
               type="text"
-              value={ws_url}
-              onChange={(e) => on_url_change(e.target.value)}
+              value={wsUrl}
+              onChange={(e) => onUrlChange(e.target.value)}
               placeholder="ws://localhost:8090"
-              disabled={is_ws_connected || is_ws_connecting}
+              disabled={isWsConnected || isWsConnecting}
             />
           </div>
           <div className="rdb-connection-panel__actions">
-            {is_ws_connected ? (
-              <button className="rdb-connection-panel__action-btn" onClick={on_disconnect}>
+            {isWsConnected ? (
+              <button className="rdb-connection-panel__action-btn" onClick={onDisconnect}>
                 [disconnect]
               </button>
             ) : (
               <button
                 className="rdb-connection-panel__action-btn"
-                onClick={on_connect}
-                disabled={is_ws_connecting || !ws_url.trim()}
+                onClick={onConnect}
+                disabled={isWsConnecting || !wsUrl.trim()}
               >
-                {is_ws_connecting ? '[connecting...]' : '[connect]'}
+                {isWsConnecting ? '[connecting...]' : '[connect]'}
               </button>
             )}
           </div>

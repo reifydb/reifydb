@@ -7,7 +7,7 @@ import {ConnectionConfig} from '../connection/connection';
 import {useAdminExecutor, type AdminResult, type AdminExecutorOptions} from './use-admin-executor';
 
 export interface AdminOptions extends AdminExecutorOptions {
-    connection_config?: ConnectionConfig;
+    connectionConfig?: ConnectionConfig;
 }
 
 // Single admin hook - returns a single result
@@ -17,12 +17,12 @@ export function useAdminOne<S extends ShapeNode = any>(
     shape?: S,
     options?: AdminOptions
 ): {
-    is_executing: boolean;
+    isExecuting: boolean;
     result: AdminResult<S extends ShapeNode ? InferShape<S> : any> | undefined;
     error: string | undefined;
 } {
     const {
-        is_executing,
+        isExecuting,
         results,
         error,
         admin
@@ -39,7 +39,7 @@ export function useAdminOne<S extends ShapeNode = any>(
         return results && results.length > 0 ? results[0] : undefined;
     }, [results]);
 
-    return {is_executing, result, error};
+    return {isExecuting, result, error};
 }
 
 // Multiple admin hook - returns multiple results
@@ -49,12 +49,12 @@ export function useAdminMany<S extends readonly ShapeNode[] = readonly ShapeNode
     shapes?: S,
     options?: AdminOptions
 ): {
-    is_executing: boolean;
+    isExecuting: boolean;
     results: AdminResult<S extends readonly ShapeNode[] ? InferShape<S[number]> : any>[] | undefined;
     error: string | undefined;
 } {
     const {
-        is_executing,
+        isExecuting,
         results,
         error,
         admin
@@ -64,5 +64,5 @@ export function useAdminMany<S extends readonly ShapeNode[] = readonly ShapeNode
         admin(rql, params, shapes);
     }, [rql, params, admin]);
 
-    return {is_executing, results, error};
+    return {isExecuting, results, error};
 }

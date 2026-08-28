@@ -38,7 +38,7 @@ const WIDE: ReadonlyArray<readonly [number, number]> = [
     [0x20000, 0x3fffd],
 ];
 
-function in_ranges(code: number, ranges: ReadonlyArray<readonly [number, number]>): boolean {
+function inRanges(code: number, ranges: ReadonlyArray<readonly [number, number]>): boolean {
     let low = 0;
     let high = ranges.length - 1;
     while (low <= high) {
@@ -51,11 +51,11 @@ function in_ranges(code: number, ranges: ReadonlyArray<readonly [number, number]
     return false;
 }
 
-function code_point_width(code: number): number {
+function codePointWidth(code: number): number {
     if (code === 0) return 0;
     if (code < 0x20 || (code >= 0x7f && code < 0xa0)) return 0;
-    if (in_ranges(code, ZERO_WIDTH)) return 0;
-    if (in_ranges(code, WIDE)) return 2;
+    if (inRanges(code, ZERO_WIDTH)) return 0;
+    if (inRanges(code, WIDE)) return 2;
     return 1;
 }
 
@@ -68,14 +68,14 @@ type GraphemeSegmenterFactory = new (
     options: {granularity: 'grapheme'},
 ) => GraphemeSegmenter;
 
-function create_segmenter(): GraphemeSegmenter | null {
+function createSegmenter(): GraphemeSegmenter | null {
     if (typeof Intl === 'undefined') return null;
     const factory = (Intl as {Segmenter?: GraphemeSegmenterFactory}).Segmenter;
     if (typeof factory !== 'function') return null;
     return new factory(undefined, {granularity: 'grapheme'});
 }
 
-const segmenter = create_segmenter();
+const segmenter = createSegmenter();
 
 function graphemes(text: string): string[] {
     if (segmenter !== null) {
@@ -84,34 +84,34 @@ function graphemes(text: string): string[] {
     return Array.from(text);
 }
 
-export function grapheme_width(grapheme: string): number {
+export function graphemeWidth(grapheme: string): number {
     let width = 0;
     for (const character of grapheme) {
-        width += code_point_width(character.codePointAt(0) ?? 0);
+        width += codePointWidth(character.codePointAt(0) ?? 0);
     }
     return Math.min(width, 2);
 }
 
-export function display_width(text: string): number {
+export function displayWidth(text: string): number {
     let width = 0;
     for (const grapheme of graphemes(text)) {
-        width += grapheme_width(grapheme);
+        width += graphemeWidth(grapheme);
     }
     return width;
 }
 
-export function truncate_to_width(text: string, width: number, ellipsis = '…'): string {
+export function truncateToWidth(text: string, width: number, ellipsis = '…'): string {
     if (width <= 0) return '';
-    if (display_width(text) <= width) return text;
+    if (displayWidth(text) <= width) return text;
 
-    const marker_width = display_width(ellipsis);
-    if (width <= marker_width) return ellipsis.slice(0, width);
+    const markerWidth = displayWidth(ellipsis);
+    if (width <= markerWidth) return ellipsis.slice(0, width);
 
-    const budget = width - marker_width;
+    const budget = width - markerWidth;
     let used = 0;
     let result = '';
     for (const grapheme of graphemes(text)) {
-        const next = grapheme_width(grapheme);
+        const next = graphemeWidth(grapheme);
         if (used + next > budget) break;
         result += grapheme;
         used += next;
@@ -120,8 +120,8 @@ export function truncate_to_width(text: string, width: number, ellipsis = '…')
     return result + ellipsis;
 }
 
-export function pad_to_width(text: string, width: number, align: 'left' | 'right' | 'center'): string {
-    const padding = width - display_width(text);
+export function padToWidth(text: string, width: number, align: 'left' | 'right' | 'center'): string {
+    const padding = width - displayWidth(text);
     if (padding <= 0) return text;
 
     if (align === 'right') return ' '.repeat(padding) + text;

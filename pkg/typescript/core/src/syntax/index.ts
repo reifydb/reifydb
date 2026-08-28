@@ -8,5 +8,5 @@ export {
     RQL_SYSTEM_COLUMNS,
     RQL_TYPES,
 } from './keyword';
-export {tokenize_rql} from './tokenizer';
+export {tokenizeRql} from './tokenizer';
 export type {RqlToken, RqlTokenKind} from './tokenizer';

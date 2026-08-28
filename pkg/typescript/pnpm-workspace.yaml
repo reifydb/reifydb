@@ -5,6 +5,7 @@ packages:
   - client
   - editor
   - react
+  - reifydb
   - shell
   - ui
   - wasm

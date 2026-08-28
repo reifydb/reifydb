@@ -1,3 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 export const NONE_VALUE = "⟪none⟫";
+
+export const ROW_NUMBER_KEY = "#rownum";

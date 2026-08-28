@@ -5,10 +5,10 @@ import type { ExecutionResult, HistoryEntry } from '../types';
 
 export interface ConsoleState {
   code: string;
-  is_executing: boolean;
+  isExecuting: boolean;
   result: ExecutionResult | null;
   history: HistoryEntry[];
-  active_tab: 'results' | 'history' | 'catalog';
+  activeTab: 'results' | 'history' | 'catalog';
 }
 
 export type ConsoleAction =
@@ -22,48 +22,48 @@ export type ConsoleAction =
   | { type: 'CLEAR_HISTORY' }
   | { type: 'LOAD_QUERY'; code: string };
 
-let next_history_id = 1;
+let nextHistoryId = 1;
 
-export function console_reducer(state: ConsoleState, action: ConsoleAction): ConsoleState {
+export function consoleReducer(state: ConsoleState, action: ConsoleAction): ConsoleState {
   switch (action.type) {
     case 'SET_CODE':
       return { ...state, code: action.code };
 
     case 'EXECUTE_START':
-      return { ...state, is_executing: true, result: null };
+      return { ...state, isExecuting: true, result: null };
 
     case 'EXECUTE_SUCCESS': {
       const entry: HistoryEntry = {
-        id: String(next_history_id++),
+        id: String(nextHistoryId++),
         query: action.query,
         timestamp: Date.now(),
         success: true,
-        row_count: action.result.data?.length,
-        execution_time: action.result.execution_time,
+        rowCount: action.result.data?.length,
+        executionTime: action.result.executionTime,
       };
       return {
         ...state,
-        is_executing: false,
+        isExecuting: false,
         result: action.result,
         history: [entry, ...state.history],
-        active_tab: 'results',
+        activeTab: 'results',
       };
     }
 
     case 'EXECUTE_ERROR': {
       const entry: HistoryEntry = {
-        id: String(next_history_id++),
+        id: String(nextHistoryId++),
         query: action.query,
         timestamp: Date.now(),
         success: false,
-        execution_time: action.result.execution_time,
+        executionTime: action.result.executionTime,
       };
       return {
         ...state,
-        is_executing: false,
+        isExecuting: false,
         result: action.result,
         history: [entry, ...state.history],
-        active_tab: 'results',
+        activeTab: 'results',
       };
     }
 
@@ -71,7 +71,7 @@ export function console_reducer(state: ConsoleState, action: ConsoleAction): Con
       return { ...state, result: null };
 
     case 'SET_TAB':
-      return { ...state, active_tab: action.tab };
+      return { ...state, activeTab: action.tab };
 
     case 'LOAD_HISTORY':
       return { ...state, history: action.entries };
@@ -80,17 +80,17 @@ export function console_reducer(state: ConsoleState, action: ConsoleAction): Con
       return { ...state, history: [] };
 
     case 'LOAD_QUERY':
-      return { ...state, code: action.code, active_tab: 'results' };
+      return { ...state, code: action.code, activeTab: 'results' };
 
     default:
       return state;
   }
 }
 
-export const initial_console_state: ConsoleState = {
+export const initialConsoleState: ConsoleState = {
   code: '',
-  is_executing: false,
+  isExecuting: false,
   result: null,
   history: [],
-  active_tab: 'results',
+  activeTab: 'results',
 };

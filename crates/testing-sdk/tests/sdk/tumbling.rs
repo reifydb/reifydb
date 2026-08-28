@@ -5,7 +5,6 @@ use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShapeField};
 use reifydb_core::{
 	interface::{
 		catalog::flow::OperatorId,
-		change::DiffType,
 		flow::{OperatorCapability, from_bitmask},
 	},
 	metrics::heap::HeapSize,
@@ -39,7 +38,7 @@ use reifydb_testing_sdk::{
 use reifydb_value::{
 	config::Config,
 	factory::time::millis,
-	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
+	value::{Value, datetime::DateTime, diff_type::DiffType, duration::Duration, value_type::ValueType},
 };
 
 #[test]

@@ -3,8 +3,8 @@
 
 import {afterAll, beforeAll, afterEach, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useCommandOne, useCommandMany, ConnectionProvider, get_connection, clear_connection, Shape} from '../../../src';
-import {wait_for_database} from '../setup';
+import {useCommandOne, useCommandMany, ConnectionProvider, getConnection, clearConnection, Shape} from '../../../src';
+import {waitForDatabase} from '../setup';
 // @ts-ignore
 import React from "react";
 
@@ -15,16 +15,16 @@ describe('useCommand Hooks (JSON WS)', () => {
     );
 
     beforeAll(async () => {
-        await wait_for_database();
+        await waitForDatabase();
     }, 30000);
 
     afterEach(async () => {
         // Clear all connections after each test to prevent interference
-        await clear_connection();
+        await clearConnection();
     });
 
     afterAll(async () => {
-        await clear_connection();
+        await clearConnection();
     });
 
     describe('useCommandOne', () => {
@@ -38,11 +38,11 @@ describe('useCommand Hooks (JSON WS)', () => {
                 ), {wrapper}
             );
 
-            expect(result.current.is_executing).toBe(true);
+            expect(result.current.isExecuting).toBe(true);
             expect(result.current.result).toBeUndefined();
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
                 expect(result.current.result).toBeDefined();
             });
 
@@ -63,7 +63,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
 
@@ -77,7 +77,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({num: "1"});
@@ -98,7 +98,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({result: "10"});
@@ -126,7 +126,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             const person = result.current.result!.rows[0];
@@ -142,7 +142,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
                 expect(result.current.error).toBeDefined();
             });
 
@@ -155,7 +155,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.error).toBeUndefined();
@@ -177,7 +177,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
                 expect(result.current.results).toBeDefined();
             });
 
@@ -197,7 +197,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(1);
@@ -217,7 +217,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.results![0].rows[0]).toEqual({first: "10"});
@@ -237,7 +237,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.results![0].rows[0]).toEqual({value: "100"});
@@ -251,7 +251,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(1);
@@ -276,7 +276,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(3);
@@ -297,7 +297,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             // When one command fails, the entire batch fails
@@ -323,8 +323,8 @@ describe('useCommand Hooks (JSON WS)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result1.current.is_executing).toBe(false);
-                expect(result2.current.is_executing).toBe(false);
+                expect(result1.current.isExecuting).toBe(false);
+                expect(result2.current.isExecuting).toBe(false);
             });
 
             expect(result1.current.result!.rows[0]).toEqual({value: "100"});
@@ -345,7 +345,7 @@ describe('useCommand Hooks (JSON WS)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({value: "999"});
@@ -353,7 +353,7 @@ describe('useCommand Hooks (JSON WS)', () => {
 
         it('should support config override in hooks', async () => {
             const shape = Shape.object({test: Shape.string()});
-            const override_config = {url: process.env.REIFYDB_WS_URL!, options: {timeout_ms: 2000}};
+            const overrideConfig = {url: process.env.REIFYDB_WS_URL!, options: {timeoutMs: 2000}};
 
             // Use override config (different timeout to ensure it's treated as a separate connection)
             const {result, unmount} = renderHook(() =>
@@ -361,19 +361,19 @@ describe('useCommand Hooks (JSON WS)', () => {
                     `MAP {test: 'override'}`,
                     undefined,
                     shape,
-                    {connection_config: override_config}
+                    {connectionConfig: overrideConfig}
                 )
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({test: 'override'});
 
             // Clean up the override connection
             unmount();
-            await clear_connection(override_config);
+            await clearConnection(overrideConfig);
         });
     });
 });

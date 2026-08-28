@@ -4,20 +4,20 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type { editor } from 'monaco-editor';
-import { register_rql_language } from '../monaco/register';
+import { registerRqlLanguage } from '../monaco/register';
 import { SnippetResults } from './snippet-results';
 import { SplitPane } from './layout/split-pane';
 import type { Executor, ExecutionResult } from '../types';
-import { theme_class, type RdbTheme } from './console';
+import { themeClass, type RdbTheme } from './console';
 
 export interface SnippetProps {
   executor: Executor;
-  initial_code: string;
+  initialCode: string;
   title?: string;
   description?: string;
   className?: string;
   theme?: RdbTheme;
-  monaco_theme?: string | editor.IStandaloneThemeData;
+  monacoTheme?: string | editor.IStandaloneThemeData;
   readonly?: boolean;
 }
 
@@ -28,59 +28,59 @@ interface QueryResult {
 
 export function Snippet({
   executor,
-  initial_code,
+  initialCode,
   title = 'reifydb playground',
   description,
   className,
   theme = 'light',
-  monaco_theme,
+  monacoTheme,
   readonly = false,
 }: SnippetProps) {
-  const [code, setCode] = useState(initial_code);
+  const [code, setCode] = useState(initialCode);
   const [result, setResult] = useState<QueryResult | null>(null);
-  const [is_executing, set_is_executing] = useState(false);
-  const [is_initializing, set_is_initializing] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [is_fullscreen, set_is_fullscreen] = useState(false);
-  const editor_ref = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const container_ref = useRef<HTMLDivElement | null>(null);
-  const handle_run_ref = useRef<() => void>(() => {});
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const handleRunRef = useRef<() => void>(() => {});
 
-  const resolved_monaco_theme_name = useMemo(() => {
-    if (!monaco_theme) return undefined;
-    if (typeof monaco_theme === 'string') return monaco_theme;
+  const resolvedMonacoThemeName = useMemo(() => {
+    if (!monacoTheme) return undefined;
+    if (typeof monacoTheme === 'string') return monacoTheme;
     return 'rdb-custom';
-  }, [monaco_theme]);
+  }, [monacoTheme]);
 
-  const resolved_monaco_theme_data = useMemo(() => {
-    if (!monaco_theme || typeof monaco_theme === 'string') return undefined;
-    return monaco_theme;
-  }, [monaco_theme]);
+  const resolvedMonacoThemeData = useMemo(() => {
+    if (!monacoTheme || typeof monacoTheme === 'string') return undefined;
+    return monacoTheme;
+  }, [monacoTheme]);
 
-  const resolved_theme = resolved_monaco_theme_name ?? (theme === 'dark' ? 'premium-dark' : 'premium-light');
+  const resolvedTheme = resolvedMonacoThemeName ?? (theme === 'dark' ? 'premium-dark' : 'premium-light');
 
-  const [editor_height, setEditorHeight] = useState(() => Math.max(initial_code.split('\n').length * 20 + 16, 80));
+  const [editorHeight, setEditorHeight] = useState(() => Math.max(initialCode.split('\n').length * 20 + 16, 80));
 
-  const toggle_fullscreen = useCallback(() => {
-    if (!container_ref.current) return;
+  const toggleFullscreen = useCallback(() => {
+    if (!containerRef.current) return;
     if (!document.fullscreenElement) {
-      container_ref.current.requestFullscreen();
+      containerRef.current.requestFullscreen();
     } else {
       document.exitFullscreen();
     }
   }, []);
 
   useEffect(() => {
-    const on_fs_change = () => set_is_fullscreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', on_fs_change);
-    return () => document.removeEventListener('fullscreenchange', on_fs_change);
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
-  const handle_run = useCallback(async () => {
-    if (is_executing) return;
+  const handleRun = useCallback(async () => {
+    if (isExecuting) return;
     setResult(null);
-    set_is_initializing(executor.isReady ? !executor.isReady() : false);
-    set_is_executing(true);
+    setIsInitializing(executor.isReady ? !executor.isReady() : false);
+    setIsExecuting(true);
     await new Promise(r => setTimeout(r, 0));
 
     try {
@@ -93,27 +93,27 @@ export function Snippet({
     } catch (err) {
       setResult({ data: [], error: err instanceof Error ? err.message : String(err) });
     } finally {
-      set_is_executing(false);
-      set_is_initializing(false);
+      setIsExecuting(false);
+      setIsInitializing(false);
     }
-  }, [code, executor, is_executing]);
+  }, [code, executor, isExecuting]);
 
-  handle_run_ref.current = handle_run;
+  handleRunRef.current = handleRun;
 
-  const handle_reset = useCallback(() => {
-    setCode(initial_code);
+  const handleReset = useCallback(() => {
+    setCode(initialCode);
     setResult(null);
-  }, [initial_code]);
+  }, [initialCode]);
 
-  const handle_copy = useCallback(async () => {
+  const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [code]);
 
-  const handle_editor_did_mount: OnMount = (editor, monaco) => {
-    editor_ref.current = editor;
-    register_rql_language(monaco);
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
+    registerRqlLanguage(monaco);
 
     setEditorHeight(editor.getContentHeight());
     editor.onDidContentSizeChange(() => setEditorHeight(editor.getContentHeight()));
@@ -124,43 +124,42 @@ export function Snippet({
         label: 'Run Query',
         keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
         run: () => {
-          handle_run_ref.current();
+          handleRunRef.current();
         },
       });
     }
   };
 
-  const handle_before_mount = (monaco: typeof import('monaco-editor')) => {
-    register_rql_language(monaco);
-    if (resolved_monaco_theme_name && resolved_monaco_theme_data) {
-      monaco.editor.defineTheme(resolved_monaco_theme_name, resolved_monaco_theme_data);
+  const handleBeforeMount = (monaco: typeof import('monaco-editor')) => {
+    registerRqlLanguage(monaco);
+    if (resolvedMonacoThemeName && resolvedMonacoThemeData) {
+      monaco.editor.defineTheme(resolvedMonacoThemeName, resolvedMonacoThemeData);
     }
   };
 
   const columns = result?.data && result.data.length > 0 ? Object.keys(result.data[0]) : [];
 
-  const run_hint = is_initializing ? '$ downloading engine...' : is_executing ? '$ running...' : '$ ctrl+enter to run';
-  const run_label = is_initializing ? 'Downloading...' : is_executing ? 'Running...' : 'Run';
-  const run_button = (
+  const runHint = isInitializing ? '$ downloading engine...' : isExecuting ? '$ running...' : '$ ctrl+enter to run';
+  const runLabel = isInitializing ? 'Downloading...' : isExecuting ? 'Running...' : 'Run';
+  const runButton = (
     <button
-      onClick={handle_run}
-      disabled={is_executing}
-      className={`rdb-snippet__run-btn${is_executing ? ' rdb-snippet__run-btn--loading' : ''}`}
+      onClick={handleRun}
+      disabled={isExecuting}
+      className={`rdb-snippet__run-btn${isExecuting ? ' rdb-snippet__run-btn--loading' : ''}`}
     >
-      {is_executing ? (
+      {isExecuting ? (
         <span className="rdb-snippet__spinner" />
       ) : (
         <svg className="rdb-snippet__run-icon" viewBox="0 0 24 24" fill="currentColor">
           <polygon points="6 3 20 12 6 21" />
         </svg>
       )}
-      {run_label}
+      {runLabel}
     </button>
   );
 
   const content = (
-    <div ref={container_ref} className={`rdb-snippet${is_fullscreen ? ' rdb-snippet--fullscreen' : ''}${theme_class(theme)}${className ? ` ${className}` : ''}`}>
-      {/* Header */}
+    <div ref={containerRef} className={`rdb-snippet${isFullscreen ? ' rdb-snippet--fullscreen' : ''}${themeClass(theme)}${className ? ` ${className}` : ''}`}>
       <div className="rdb-snippet__header">
         <div className="rdb-snippet__title">
           <span className="rdb-snippet__title-marker">$</span> {title}
@@ -168,11 +167,11 @@ export function Snippet({
         <div className="rdb-snippet__actions">
           {!readonly && (
             <button
-              onClick={toggle_fullscreen}
+              onClick={toggleFullscreen}
               className="rdb-snippet__action-btn"
-              title={is_fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             >
-              {is_fullscreen ? (
+              {isFullscreen ? (
                 <>
                   <svg className="rdb-snippet__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="4 14 10 14 10 20" />
@@ -196,7 +195,7 @@ export function Snippet({
             </button>
           )}
           <button
-            onClick={handle_copy}
+            onClick={handleCopy}
             className="rdb-snippet__action-btn"
             title="Copy code"
           >
@@ -219,7 +218,7 @@ export function Snippet({
           </button>
           {!readonly && (
             <button
-              onClick={handle_reset}
+              onClick={handleReset}
               className="rdb-snippet__action-btn"
               title="Reset code"
             >
@@ -233,7 +232,6 @@ export function Snippet({
         </div>
       </div>
 
-      {/* Description */}
       {description && (
         <div className="rdb-snippet__description">
           <p className="rdb-snippet__description-text">
@@ -243,14 +241,14 @@ export function Snippet({
       )}
 
       {readonly ? (
-        <div className="rdb-snippet__editor-wrap" style={{ height: editor_height }}>
+        <div className="rdb-snippet__editor-wrap" style={{ height: editorHeight }}>
           <Editor
             height="100%"
             language="rql"
-            theme={resolved_theme}
+            theme={resolvedTheme}
             value={code}
-            beforeMount={handle_before_mount}
-            onMount={handle_editor_did_mount}
+            beforeMount={handleBeforeMount}
+            onMount={handleEditorDidMount}
             options={{
               readOnly: true,
               minimap: { enabled: false },
@@ -273,19 +271,19 @@ export function Snippet({
             }}
           />
         </div>
-      ) : is_fullscreen ? (
+      ) : isFullscreen ? (
         <SplitPane
-          initial_split={50}
+          initialSplit={50}
           top={
             <div className="rdb-snippet__editor--fullscreen">
               <Editor
                 height="100%"
                 language="rql"
-                theme={resolved_theme}
+                theme={resolvedTheme}
                 value={code}
                 onChange={(value) => setCode(value || '')}
-                beforeMount={handle_before_mount}
-                onMount={handle_editor_did_mount}
+                beforeMount={handleBeforeMount}
+                onMount={handleEditorDidMount}
                 options={{
                   minimap: { enabled: false },
                   lineNumbers: 'on',
@@ -310,13 +308,11 @@ export function Snippet({
           }
           bottom={
             <div className="rdb-snippet__fullscreen-bottom">
-              {/* Toolbar */}
               <div className="rdb-snippet__toolbar">
-                <span className="rdb-snippet__hint">{run_hint}</span>
-                {run_button}
+                <span className="rdb-snippet__hint">{runHint}</span>
+                {runButton}
               </div>
 
-              {/* Results */}
               {result && (
                 <div className="rdb-snippet__results rdb-snippet__results--fullscreen">
                   {result.error && (
@@ -339,16 +335,15 @@ export function Snippet({
         />
       ) : (
         <>
-          {/* Editor + Results Overlay */}
-          <div className="rdb-snippet__editor-wrap" style={{ height: editor_height }}>
+          <div className="rdb-snippet__editor-wrap" style={{ height: editorHeight }}>
             <Editor
               height="100%"
               language="rql"
-              theme={resolved_theme}
+              theme={resolvedTheme}
               value={code}
               onChange={(value) => setCode(value || '')}
-              beforeMount={handle_before_mount}
-              onMount={handle_editor_did_mount}
+              beforeMount={handleBeforeMount}
+              onMount={handleEditorDidMount}
               options={{
                 minimap: { enabled: false },
                 lineNumbers: 'on',
@@ -371,13 +366,11 @@ export function Snippet({
             />
           </div>
 
-          {/* Toolbar */}
           <div className="rdb-snippet__toolbar">
-            <span className="rdb-snippet__hint">{run_hint}</span>
-            {run_button}
+            <span className="rdb-snippet__hint">{runHint}</span>
+            {runButton}
           </div>
 
-          {/* Results */}
           {result && (
             <div className="rdb-snippet__results-panel">
               <div className="rdb-snippet__results-body">

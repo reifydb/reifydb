@@ -50,21 +50,21 @@ const ROLE_BY_TYPE: Record<string, ValueRole> = {
     Blob: 'blob',
 };
 
-function type_name(value: unknown): string | undefined {
+function typeName(value: unknown): string | undefined {
     if (value === null || typeof value !== 'object') return undefined;
     const candidate = (value as {type?: unknown}).type;
     return typeof candidate === 'string' ? candidate : undefined;
 }
 
-export function value_type_name(value: unknown): string | undefined {
+export function valueTypeName(value: unknown): string | undefined {
     if (value === null || value === undefined) return 'None';
-    return type_name(value);
+    return typeName(value);
 }
 
-export function value_role(value: unknown): ValueRole {
+export function valueRole(value: unknown): ValueRole {
     if (value === null || value === undefined) return 'none';
 
-    const name = type_name(value);
+    const name = typeName(value);
     if (name !== undefined) {
         return ROLE_BY_TYPE[name] ?? 'unknown';
     }
@@ -82,12 +82,12 @@ export function value_role(value: unknown): ValueRole {
     }
 }
 
-export function format_value(value: unknown): string {
+export function formatValue(value: unknown): string {
     if (value === null || value === undefined) return NONE_PRESENTATION.text;
     if (typeof value === 'bigint') return value.toString();
 
     if (typeof value === 'object') {
-        const name = type_name(value);
+        const name = typeName(value);
         if (name === 'None') return NONE_PRESENTATION.text;
         if (name !== undefined) return String(value);
         return JSON.stringify(value) ?? String(value);

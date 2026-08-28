@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from "vitest";
 import {Client, WsClient} from "../../../src";
-import {wait_for_database} from "../setup";
+import {waitForDatabase} from "../setup";
 import {Shape, Utf8Value, Int4Value, Int1Value, InferShape} from "@reifydb/core";
 
 // Define the shape once
@@ -20,16 +20,16 @@ describe.each([
     {format: "frames"},
     {format: "rbcf"},
 ] as const)('Shape Type Conversion [$format]', ({format}) => {
-    let ws_client: WsClient;
+    let wsClient: WsClient;
 
     beforeAll(async () => {
-        await wait_for_database();
+        await waitForDatabase();
     }, 30000);
 
     beforeEach(async () => {
         try {
-            ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
-                timeout_ms: 10000,
+            wsClient = await Client.connectWs(process.env.REIFYDB_WS_URL, {
+                timeoutMs: 10000,
                 token: process.env.REIFYDB_TOKEN,
                 format,
             });
@@ -40,19 +40,19 @@ describe.each([
     }, 15000);
 
     afterEach(async () => {
-        if (ws_client) {
+        if (wsClient) {
             try {
-                ws_client.disconnect();
+                wsClient.disconnect();
             } catch (error) {
                 console.error('⚠️ Error during disconnect:', error);
             }
-            ws_client = null;
+            wsClient = null;
         }
     });
 
     describe('Primitive Shape Conversion', () => {
         it('should convert Value objects to primitives when using primitive shape', async () => {
-            const result = await ws_client.query(
+            const result = await wsClient.query(
                 "FROM system::versions TAKE 1",
                 null,
                 [versionShape]
@@ -92,7 +92,7 @@ describe.each([
                 float_val: Shape.float8()
             });
 
-            const result = await ws_client.admin(
+            const result = await wsClient.admin(
                 "MAP { str_val: 'test', int_val: 42, bool_val: true, float_val: cast(3.14, float8) }",
                 null,
                 [shape]
@@ -104,17 +104,17 @@ describe.each([
             const row = result[0][0];
             
             // Verify primitive types
-            expect(typeof row.str_val).toBe('string');
-            expect(row.str_val).toBe('test');
-            
-            expect(typeof row.int_val).toBe('number');
-            expect(row.int_val).toBe(42);
-            
-            expect(typeof row.bool_val).toBe('boolean');
-            expect(row.bool_val).toBe(true);
-            
-            expect(typeof row.float_val).toBe('number');
-            expect(row.float_val).toBeCloseTo(3.14);
+            expect(typeof row.strVal).toBe('string');
+            expect(row.strVal).toBe('test');
+
+            expect(typeof row.intVal).toBe('number');
+            expect(row.intVal).toBe(42);
+
+            expect(typeof row.boolVal).toBe('boolean');
+            expect(row.boolVal).toBe(true);
+
+            expect(typeof row.floatVal).toBe('number');
+            expect(row.floatVal).toBeCloseTo(3.14);
         }, 5000);
 
         it('should handle bigint types correctly', async () => {
@@ -123,7 +123,7 @@ describe.each([
                 another_val: Shape.int8()
             });
 
-            const result = await ws_client.admin(
+            const result = await wsClient.admin(
                 "MAP { big_val: 9223372036854775807, another_val: 1 }",
                 null,
                 [shape]
@@ -135,11 +135,11 @@ describe.each([
             const row = result[0][0];
 
             // Verify bigint types
-            expect(typeof row.big_val).toBe('bigint');
-            expect(row.big_val).toBe(BigInt("9223372036854775807"));
+            expect(typeof row.bigVal).toBe('bigint');
+            expect(row.bigVal).toBe(BigInt("9223372036854775807"));
 
-            expect(typeof row.another_val).toBe('bigint');
-            expect(row.another_val).toBe(BigInt(1));
+            expect(typeof row.anotherVal).toBe('bigint');
+            expect(row.anotherVal).toBe(BigInt(1));
         }, 5000);
     });
 
@@ -150,7 +150,7 @@ describe.each([
                 count: Shape.int4Value()
             });
 
-            const result = await ws_client.admin(
+            const result = await wsClient.admin(
                 "MAP { name: 'test', count: 42 }",
                 null,
                 [valueShape]
@@ -178,7 +178,7 @@ describe.each([
 
     describe('Without Shape (backward compatibility)', () => {
         it('should return Value objects when no shape is provided', async () => {
-            const result = await ws_client.query(
+            const result = await wsClient.query(
                 "FROM system::versions TAKE 1",
                 null,
                 [] // No shape provided

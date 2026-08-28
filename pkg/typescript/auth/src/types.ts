@@ -13,8 +13,8 @@ export type AuthStatus =
 export interface AuthSession {
   readonly token: string;
   readonly identity: string;
-  readonly wallet_address: string;
-  readonly expires_at: number;
+  readonly walletAddress: string;
+  readonly expiresAt: number;
   readonly method?: "wallet" | "password" | "token";
   readonly identifier?: string;
 }
@@ -41,7 +41,7 @@ export interface WalletConnector {
 }
 
 export interface AuthCapableClient {
-  login_challenge(
+  loginChallenge(
     method: string,
     credentials: Record<string, string>,
   ): Promise<LoginChallengeResult>;
@@ -49,7 +49,7 @@ export interface AuthCapableClient {
 }
 
 export interface CredentialAuthCapableClient extends AuthCapableClient {
-  login_with_password(
+  loginWithPassword(
     identifier: string,
     password: string,
   ): Promise<LoginResult>;

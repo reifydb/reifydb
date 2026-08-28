@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import {format_value, value_role, value_type_name, type ValueRole} from './value';
-import {display_width, truncate_to_width} from './width';
+import {formatValue, valueRole, valueTypeName, type ValueRole} from './value';
+import {displayWidth, truncateToWidth} from './width';
 
 export type ColumnAlign = 'left' | 'right';
 
@@ -26,17 +26,17 @@ export interface TablePlan {
 
 export interface TableLayoutOptions {
     width?: number;
-    max_column_width?: number;
+    maxColumnWidth?: number;
     sample?: number;
-    column_overhead?: number;
-    table_overhead?: number;
+    columnOverhead?: number;
+    tableOverhead?: number;
 }
 
 const DEFAULT_MAX_COLUMN_WIDTH = 40;
 const DEFAULT_COLUMN_OVERHEAD = 3;
 const DEFAULT_TABLE_OVERHEAD = 1;
 
-export function infer_columns(rows: ReadonlyArray<Record<string, unknown>>): ResultColumn[] {
+export function inferColumns(rows: ReadonlyArray<Record<string, unknown>>): ResultColumn[] {
     const names: string[] = [];
     const seen = new Set<string>();
 
@@ -54,10 +54,10 @@ export function infer_columns(rows: ReadonlyArray<Record<string, unknown>>): Res
 
         for (const row of rows) {
             const value = row[name];
-            const candidate = value_role(value);
+            const candidate = valueRole(value);
             if (candidate === 'none' || candidate === 'unknown') continue;
             role = candidate;
-            type = value_type_name(value);
+            type = valueTypeName(value);
             break;
         }
 
@@ -65,26 +65,26 @@ export function infer_columns(rows: ReadonlyArray<Record<string, unknown>>): Res
     });
 }
 
-export function plan_table(
+export function planTable(
     rows: ReadonlyArray<Record<string, unknown>>,
     columns: ReadonlyArray<ResultColumn>,
     options: TableLayoutOptions = {},
 ): TablePlan {
-    const max_column_width = options.max_column_width ?? DEFAULT_MAX_COLUMN_WIDTH;
-    const column_overhead = options.column_overhead ?? DEFAULT_COLUMN_OVERHEAD;
-    const table_overhead = options.table_overhead ?? DEFAULT_TABLE_OVERHEAD;
+    const maxColumnWidth = options.maxColumnWidth ?? DEFAULT_MAX_COLUMN_WIDTH;
+    const columnOverhead = options.columnOverhead ?? DEFAULT_COLUMN_OVERHEAD;
+    const tableOverhead = options.tableOverhead ?? DEFAULT_TABLE_OVERHEAD;
     const sample = options.sample ?? rows.length;
     const measured = rows.slice(0, Math.max(sample, 0));
 
     let truncated = false;
 
     const natural = columns.map((column) => {
-        let width = display_width(column.name);
+        let width = displayWidth(column.name);
         for (const row of measured) {
-            width = Math.max(width, display_width(format_value(row[column.name])));
+            width = Math.max(width, displayWidth(formatValue(row[column.name])));
         }
-        if (width > max_column_width) truncated = true;
-        return {column, width: Math.min(width, max_column_width)};
+        if (width > maxColumnWidth) truncated = true;
+        return {column, width: Math.min(width, maxColumnWidth)};
     });
 
     if (options.width === undefined) {
@@ -93,20 +93,20 @@ export function plan_table(
 
     const planned: PlannedColumn[] = [];
     const dropped: ResultColumn[] = [];
-    let used = table_overhead;
+    let used = tableOverhead;
 
     for (const entry of natural) {
-        const required = entry.width + column_overhead;
+        const required = entry.width + columnOverhead;
         if (planned.length > 0 && used + required > options.width) {
             dropped.push(entry.column);
             continue;
         }
         if (planned.length === 0 && used + required > options.width) {
-            const available = options.width - used - column_overhead;
+            const available = options.width - used - columnOverhead;
             const width = Math.max(available, 1);
             if (width < entry.width) truncated = true;
             planned.push({column: entry.column, width});
-            used += width + column_overhead;
+            used += width + columnOverhead;
             continue;
         }
         planned.push(entry);
@@ -116,6 +116,6 @@ export function plan_table(
     return {columns: planned, dropped, truncated};
 }
 
-export function cell_text(value: unknown, width: number): string {
-    return truncate_to_width(format_value(value), width);
+export function cellText(value: unknown, width: number): string {
+    return truncateToWidth(formatValue(value), width);
 }

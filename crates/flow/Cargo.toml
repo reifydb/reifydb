@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 description = "Flow execution substrate: the flow transaction/state layer and the operator contract"
 
+[lib]
+doctest = false
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 

@@ -10,7 +10,7 @@ use std::{
 };
 
 use dashmap::{DashMap, DashSet};
-use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_core::interface::{catalog::id::SubscriptionId, change::StagedBatch};
 use reifydb_runtime::sync::{
 	mutex::Mutex,
 	rwlock::{RwLock, RwLockReadGuard},
@@ -20,7 +20,7 @@ use tokio::sync::Notify;
 use tracing::instrument;
 
 struct SubscriptionBuffer {
-	queue: VecDeque<Columns>,
+	queue: VecDeque<StagedBatch>,
 	capacity: usize,
 	overrun: Option<u16>,
 
@@ -98,7 +98,7 @@ impl SubscriptionStore {
 		self.inner.remove(id).is_some()
 	}
 
-	pub fn drain(&self, id: &SubscriptionId, max_batches: usize) -> Vec<Columns> {
+	pub fn drain(&self, id: &SubscriptionId, max_batches: usize) -> Vec<StagedBatch> {
 		match self.inner.get_mut(id) {
 			Some(mut buf) => {
 				let count = max_batches.min(buf.queue.len());
@@ -108,7 +108,7 @@ impl SubscriptionStore {
 		}
 	}
 
-	pub fn drain_into(&self, id: &SubscriptionId, max_batches: usize, out: &mut Vec<Columns>) {
+	pub fn drain_into(&self, id: &SubscriptionId, max_batches: usize, out: &mut Vec<StagedBatch>) {
 		if let Some(mut buf) = self.inner.get_mut(id) {
 			let count = max_batches.min(buf.queue.len());
 			out.extend(buf.queue.drain(..count));
@@ -128,7 +128,7 @@ impl SubscriptionStore {
 	}
 
 	#[instrument(name = "subscription::commit_staged", level = "debug", skip(self, staged), fields(subs = staged.len()))]
-	pub fn commit_staged(&self, staged: HashMap<SubscriptionId, Vec<Columns>>) {
+	pub fn commit_staged(&self, staged: HashMap<SubscriptionId, Vec<StagedBatch>>) {
 		if staged.is_empty() {
 			return;
 		}
@@ -137,7 +137,7 @@ impl SubscriptionStore {
 	}
 
 	#[inline]
-	fn append_staged_under_coord(&self, staged: HashMap<SubscriptionId, Vec<Columns>>) {
+	fn append_staged_under_coord(&self, staged: HashMap<SubscriptionId, Vec<StagedBatch>>) {
 		let _write = self.coord.write();
 		for (id, columns_vec) in staged {
 			let Some(mut buf) = self.inner.get_mut(&id) else {
@@ -148,7 +148,7 @@ impl SubscriptionStore {
 				buf.overrun = Some(overran.saturating_add(saturating_u16(staged_count)));
 				continue;
 			}
-			for (idx, columns) in columns_vec.into_iter().enumerate() {
+			for (idx, batch) in columns_vec.into_iter().enumerate() {
 				reifydb_assertions! {
 					let cap = buf.capacity;
 					assert!(
@@ -163,7 +163,7 @@ impl SubscriptionStore {
 					buf.overrun = Some(saturating_u16(discarded));
 					break;
 				}
-				buf.queue.push_back(columns);
+				buf.queue.push_back(batch);
 			}
 		}
 	}
@@ -182,8 +182,8 @@ impl SubscriptionStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
-	use reifydb_value::fragment::Fragment;
+	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+	use reifydb_value::{fragment::Fragment, value::diff_type::DiffType};
 
 	use super::*;
 
@@ -191,9 +191,9 @@ mod tests {
 		Columns::new(vec![ColumnWithName::new(Fragment::internal("test"), ColumnBuffer::uint1(vec![value]))])
 	}
 
-	fn stage(id: SubscriptionId, values: &[u8]) -> HashMap<SubscriptionId, Vec<Columns>> {
+	fn stage(id: SubscriptionId, values: &[u8]) -> HashMap<SubscriptionId, Vec<StagedBatch>> {
 		let mut map = HashMap::new();
-		map.insert(id, values.iter().copied().map(test_columns).collect());
+		map.insert(id, values.iter().copied().map(|v| (DiffType::Insert, test_columns(v))).collect());
 		map
 	}
 

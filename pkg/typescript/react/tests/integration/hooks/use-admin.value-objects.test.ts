@@ -2,18 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useAdminOne, useAdminMany, get_connection, clear_connection, Shape} from '../../../src';
-import {wait_for_database} from '../setup';
+import {useAdminOne, useAdminMany, getConnection, clearConnection, Shape} from '../../../src';
+import {waitForDatabase} from '../setup';
 
 describe('useAdmin with Value Objects and Shapes', () => {
     beforeAll(async () => {
-        await wait_for_database();
-        const conn = get_connection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN});
+        await waitForDatabase();
+        const conn = getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN});
         await conn.connect();
     }, 30000);
 
     afterAll(() => {
-        clear_connection();
+        clearConnection();
     });
 
     describe('Value Objects', () => {
@@ -32,7 +32,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.error).toBeUndefined();
@@ -54,7 +54,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                     expect(result.current.error).toBeDefined();
                 });
 
@@ -75,7 +75,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].num.type).toBe('Int4');
@@ -95,7 +95,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].bigNum.type).toBe('Int8');
@@ -117,7 +117,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].value.type).toBe('Uint1');
@@ -137,7 +137,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].value.type).toBe('Uint4');
@@ -159,7 +159,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].value.type).toBe('Float4');
@@ -179,7 +179,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].value.type).toBe('Float8');
@@ -199,7 +199,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.error).toBeUndefined();
@@ -224,7 +224,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].text.type).toBe('Utf8');
@@ -244,7 +244,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.error).toBeUndefined();
@@ -270,7 +270,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].date.type).toBe('Date');
@@ -290,7 +290,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].timestamp.type).toBe('DateTime');
@@ -310,7 +310,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].time.type).toBe('Time');
@@ -330,7 +330,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].duration.type).toBe('Duration');
@@ -352,7 +352,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].id.type).toBe('Uuid4');
@@ -372,7 +372,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].id.type).toBe('Uuid7');
@@ -394,7 +394,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].flag.type).toBe('Boolean');
@@ -414,7 +414,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
                 );
 
                 await waitFor(() => {
-                    expect(result.current.is_executing).toBe(false);
+                    expect(result.current.isExecuting).toBe(false);
                 });
 
                 expect(result.current.result!.rows[0].nothing.type).toBe('None');
@@ -437,7 +437,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
                 expect(result.current.error).toBeDefined();
             });
 
@@ -458,7 +458,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
                 expect(result.current.error).toBeDefined();
             });
 
@@ -479,7 +479,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
                 expect(result.current.error).toBeDefined();
             });
         });
@@ -498,7 +498,7 @@ describe('useAdmin with Value Objects and Shapes', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
                 expect(result.current.error).toBeDefined();
             });
         });

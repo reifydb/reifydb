@@ -13,7 +13,7 @@ export interface ExecutionResult {
   data?: Record<string, unknown>[];
   error?: string;
   diagnostic?: Diagnostic;
-  execution_time: number;
+  executionTime: number;
 }
 
 export interface Executor {
@@ -27,6 +27,6 @@ export interface HistoryEntry {
   query: string;
   timestamp: number;
   success: boolean;
-  row_count?: number;
-  execution_time: number;
+  rowCount?: number;
+  executionTime: number;
 }

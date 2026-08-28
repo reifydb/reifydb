@@ -10,7 +10,7 @@ use std::time::Duration as StdDuration;
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
+	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 	state::timer::TimerKind,
 };
@@ -28,7 +28,10 @@ use reifydb_sdk::{
 };
 use reifydb_value::{
 	config::Config,
-	value::{constraint::TypeConstraint, datetime::DateTime, duration::Duration, value_type::ValueType},
+	value::{
+		constraint::TypeConstraint, datetime::DateTime, diff_type::DiffType, duration::Duration,
+		value_type::ValueType,
+	},
 };
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(20);

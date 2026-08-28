@@ -288,7 +288,7 @@ describe('DateTimeValue', () => {
     describe('timestamp methods', () => {
         it('should get timestamp in seconds', () => {
             const datetime = DateTimeValue.fromYMDHMS(2009, 2, 13, 23, 31, 30);
-            expect(datetime.to_epoch_secs()).toBe(1234567890);
+            expect(datetime.toEpochSecs()).toBe(1234567890);
         });
 
         it('should get timestamp in nanoseconds', () => {
@@ -301,7 +301,7 @@ describe('DateTimeValue', () => {
 
         it('should return undefined for undefined datetime', () => {
             const datetime = new DateTimeValue(undefined);
-            expect(datetime.to_epoch_secs()).toBeUndefined();
+            expect(datetime.toEpochSecs()).toBeUndefined();
             expect(datetime.timestampNanos()).toBeUndefined();
         });
     });

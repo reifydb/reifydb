@@ -12,7 +12,7 @@ export class Client {
      * @param options Optional configuration
      * @returns Connected WebSocket client
      */
-    static async connect_ws(url: string, options: Omit<WsClientOptions, 'url'> = {}): Promise<WsClient> {
+    static async connectWs(url: string, options: Omit<WsClientOptions, 'url'> = {}): Promise<WsClient> {
         return WsClient.connect({url, ...options});
     }
 
@@ -22,7 +22,7 @@ export class Client {
      * @param options Optional configuration
      * @returns HTTP client (sync, no connection to await)
      */
-    static connect_http(url: string, options: Omit<HttpClientOptions, 'url'> = {}): HttpClient {
+    static connectHttp(url: string, options: Omit<HttpClientOptions, 'url'> = {}): HttpClient {
         return HttpClient.connect({url, ...options});
     }
 
@@ -32,7 +32,7 @@ export class Client {
      * @param options Optional configuration
      * @returns JSON HTTP client (sync, no connection to await)
      */
-    static connect_json_http(url: string, options: Omit<JsonHttpClientOptions, 'url'> = {}): JsonHttpClient {
+    static connectJsonHttp(url: string, options: Omit<JsonHttpClientOptions, 'url'> = {}): JsonHttpClient {
         return JsonHttpClient.connect({url, ...options});
     }
 
@@ -42,13 +42,13 @@ export class Client {
      * @param options Optional configuration
      * @returns Connected JSON WebSocket client
      */
-    static async connect_json_ws(url: string, options: Omit<JsonWsClientOptions, 'url'> = {}): Promise<JsonWsClient> {
+    static async connectJsonWs(url: string, options: Omit<JsonWsClientOptions, 'url'> = {}): Promise<JsonWsClient> {
         return JsonWsClient.connect({url, ...options});
     }
 }
 
 export {rbcf} from "./rbcf";
-export {TYPE_CODE, type_name_from_code} from "./rbcf";
+export {TYPE_CODE, typeNameFromCode} from "./rbcf";
 export type {WireFrame, WireColumn, TypeName} from "./rbcf";
 export {CONTENT_TYPE_JSON, CONTENT_TYPE_RBCF, CONTENT_TYPE_PROTO} from "./content-types";
 export {ReifyError, asFrameResults} from "@reifydb/core";
@@ -69,6 +69,7 @@ export type {
     ChangeMessage,
     SubscriptionCallbacks,
     SubscriptionOperation,
+    SubscriptionRow,
     HydrationConfig,
     SubscriptionConfig,
     BatchSubscribeRequest,
@@ -88,7 +89,7 @@ export type {
     LogoutResponse,
 } from './types';
 export {
-    default_hydration_config,
-    default_subscription_config,
-    build_subscription_rql,
+    defaultHydrationConfig,
+    defaultSubscriptionConfig,
+    buildSubscriptionRql,
 } from './types';

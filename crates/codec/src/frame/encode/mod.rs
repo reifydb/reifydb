@@ -7,7 +7,10 @@ mod varlen;
 
 use reifydb_value::{
 	encoding::LeBytes,
-	value::frame::{data::FrameColumnData, frame::Frame},
+	value::{
+		diff_type::DiffType,
+		frame::{data::FrameColumnData, frame::Frame},
+	},
 };
 use tracing::{Span, instrument};
 
@@ -82,7 +85,8 @@ fn encode_frame(frame: &Frame, buf: &mut Vec<u8>, options: &EncodeOptions) -> Re
 	encode_frame_columns(frame, buf, options)?;
 
 	let frame_size = (buf.len() - frame_start) as u32;
-	write_frame_header(buf, frame_start, row_count, column_count, meta_flags, frame_size);
+	let op = frame.op.map_or(0, DiffType::as_u8);
+	write_frame_header(buf, frame_start, row_count, column_count, meta_flags, op, frame_size);
 	Ok(())
 }
 
@@ -148,13 +152,14 @@ fn write_frame_header(
 	row_count: u32,
 	column_count: u16,
 	meta_flags: u8,
+	op: u8,
 	frame_size: u32,
 ) {
 	let h = frame_start;
 	buf[h..h + 4].copy_from_slice(&row_count.to_le_bytes());
 	buf[h + 4..h + 6].copy_from_slice(&column_count.to_le_bytes());
 	buf[h + 6] = meta_flags;
-	buf[h + 7] = 0;
+	buf[h + 7] = op;
 	buf[h + 8..h + 12].copy_from_slice(&frame_size.to_le_bytes());
 }
 

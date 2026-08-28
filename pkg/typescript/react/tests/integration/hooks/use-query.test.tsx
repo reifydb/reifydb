@@ -7,25 +7,25 @@ import {
     useQueryOne,
     useQueryMany,
     ConnectionProvider,
-    get_connection,
-    clear_connection,
+    getConnection,
+    clearConnection,
     Shape,
     useCommandOne
 } from '../../../src';
-import {wait_for_database} from '../setup';
+import {waitForDatabase} from '../setup';
 // @ts-ignore
 import React from "react";
 
 describe('useQuery Hooks', () => {
     beforeAll(async () => {
-        await wait_for_database();
+        await waitForDatabase();
         // Ensure we're connected before tests
-        const conn = get_connection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN});
+        const conn = getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN});
         await conn.connect();
     }, 30000);
 
     afterAll(() => {
-        clear_connection();
+        clearConnection();
     });
 
     describe('useQueryOne', () => {
@@ -39,11 +39,11 @@ describe('useQuery Hooks', () => {
                 )
             );
 
-            expect(result.current.is_executing).toBe(true);
+            expect(result.current.isExecuting).toBe(true);
             expect(result.current.result).toBeUndefined();
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
                 expect(result.current.result).toBeDefined();
             });
 
@@ -64,7 +64,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
 
@@ -78,7 +78,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({num: 1});
@@ -99,7 +99,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({result: 10});
@@ -127,7 +127,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             const person = result.current.result!.rows[0];
@@ -143,7 +143,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
                 expect(result.current.error).toBeDefined();
             });
 
@@ -156,7 +156,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.error).toBeUndefined();
@@ -178,7 +178,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
                 expect(result.current.results).toBeDefined();
             });
 
@@ -198,7 +198,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(1);
@@ -218,7 +218,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.results![0].rows[0]).toEqual({first: 10});
@@ -238,7 +238,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.results![0].rows[0]).toEqual({value: 100});
@@ -252,7 +252,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(1);
@@ -277,7 +277,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(3);
@@ -298,7 +298,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             // When one query fails, the entire batch fails
@@ -324,8 +324,8 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result1.current.is_executing).toBe(false);
-                expect(result2.current.is_executing).toBe(false);
+                expect(result1.current.isExecuting).toBe(false);
+                expect(result2.current.isExecuting).toBe(false);
             });
 
             expect(result1.current.result!.rows[0]).toEqual({value: 100});
@@ -346,7 +346,7 @@ describe('useQuery Hooks', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({value: 999});
@@ -354,7 +354,7 @@ describe('useQuery Hooks', () => {
 
         it('should support config override in hooks', async () => {
             const shape = Shape.object({test: Shape.string()});
-            const override_config = {url: process.env.REIFYDB_WS_URL!, options: {timeout_ms: 2000}};
+            const overrideConfig = {url: process.env.REIFYDB_WS_URL!, options: {timeoutMs: 2000}};
 
             // Use override config (different timeout to ensure it's treated as a separate connection)
             const {result, unmount} = renderHook(() =>
@@ -362,19 +362,19 @@ describe('useQuery Hooks', () => {
                     `MAP {test: 'override'}`,
                     undefined,
                     shape,
-                    {connection_config: override_config}
+                    {connectionConfig: overrideConfig}
                 )
             );
 
             await waitFor(() => {
-                expect(result.current.is_executing).toBe(false);
+                expect(result.current.isExecuting).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({test: 'override'});
 
             // Clean up the override connection
             unmount();
-            await clear_connection(override_config);
+            await clearConnection(overrideConfig);
         });
     });
 });

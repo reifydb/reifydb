@@ -26,7 +26,7 @@ export enum ColumnEncoding {
     DeltaRle = 5,
 }
 
-export function dict_index_width_from_flags(flags: number): number {
+export function dictIndexWidthFromFlags(flags: number): number {
     switch ((flags >> 4) & 0x03) {
         case 0: return 1;
         case 1: return 2;
@@ -35,7 +35,7 @@ export function dict_index_width_from_flags(flags: number): number {
     }
 }
 
-export function dict_index_width_to_flags(width: number): number {
+export function dictIndexWidthToFlags(width: number): number {
     switch (width) {
         case 1: return 0 << 4;
         case 2: return 1 << 4;
@@ -44,7 +44,7 @@ export function dict_index_width_to_flags(width: number): number {
     }
 }
 
-export {TYPE_CODE, type_name_from_code} from '@reifydb/core';
+export {TYPE_CODE, typeNameFromCode} from '@reifydb/core';
 export type {TypeName} from '@reifydb/core';
 
 // TypeTag byte layout for typeinfo bytes: (option_depth << 6) | kind.

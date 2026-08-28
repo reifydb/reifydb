@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Trait contract for ReifyDB routines, shared by callers and implementations"
 
+[lib]
+doctest = false
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 

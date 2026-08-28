@@ -8,6 +8,7 @@ import {
     Value, TypeValuePair, isOptionType, unwrapOptionType
 } from './value';
 import {NONE_VALUE} from './constant';
+import {Column} from './types';
 
 
 export function decode(pair: TypeValuePair): Value {
@@ -71,4 +72,15 @@ export function decode(pair: TypeValuePair): Value {
         default:
             throw new Error(`Unsupported type: ${pair.type}`);
     }
+}
+
+export function columnsToRows(columns: Column[]): Record<string, Value>[] {
+    const rowCount = columns[0]?.payload.length ?? 0;
+    return Array.from({length: rowCount}, (_, i) => {
+        const row: Record<string, Value> = {};
+        for (const col of columns) {
+            row[col.name] = decode({type: col.type, value: col.payload[i]});
+        }
+        return row;
+    });
 }

@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
-import {wait_for_database} from "../setup";
+import {waitForDatabase} from "../setup";
 import {Client, JsonWsClient} from "../../../src";
 import {assertMeta} from "../helpers";
 
 
 describe('Statement', () => {
-    let ws_client: JsonWsClient;
+    let wsClient: JsonWsClient;
 
     beforeAll(async () => {
-        await wait_for_database();
+        await waitForDatabase();
     }, 30000);
 
 
     beforeEach(async () => {
         try {
-            ws_client = await Client.connect_json_ws(process.env.REIFYDB_WS_URL, {
-                timeout_ms: 10000,
+            wsClient = await Client.connectJsonWs(process.env.REIFYDB_WS_URL, {
+                timeoutMs: 10000,
                 token: process.env.REIFYDB_TOKEN,
             });
         } catch (error) {
@@ -28,36 +28,36 @@ describe('Statement', () => {
 
 
     afterEach(async () => {
-        if (ws_client) {
+        if (wsClient) {
             try {
-                ws_client.disconnect();
+                wsClient.disconnect();
             } catch (error) {
                 console.error('Error during disconnect:', error);
             }
-            ws_client = null;
+            wsClient = null;
         }
     });
 
     describe('admin', () => {
 
         it('no statements', async () => {
-            const frames = await ws_client.admin('');
+            const frames = await wsClient.admin('');
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('single empty statement', async () => {
-            const frames = await ws_client.admin(';');
+            const frames = await wsClient.admin(';');
             expect(frames).toHaveLength(0);
         }, 1000);
 
 
         it('many empty statement', async () => {
-            const frames = await ws_client.admin(';;;;;');
+            const frames = await wsClient.admin(';;;;;');
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('mixed empty and non empty', async () => {
-            const frames = await ws_client.admin(
+            const frames = await wsClient.admin(
                 ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}'
             );
             expect(frames).toHaveLength(2);
@@ -71,7 +71,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('single statement', async () => {
-            const frames = await ws_client.admin('MAP {result: 1};');
+            const frames = await wsClient.admin('MAP {result: 1};');
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
@@ -79,7 +79,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, but same structure', async () => {
-            const frames = await ws_client.admin(
+            const frames = await wsClient.admin(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP {result: 2};' +
                 'MAP {result: 3};'
@@ -97,7 +97,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, different structure', async () => {
-            const frames = await ws_client.admin(
+            const frames = await wsClient.admin(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP { a: 2, b: 3 };' +
                 "MAP {result: 'ReifyDB'};"
@@ -121,23 +121,23 @@ describe('Statement', () => {
     describe('command', () => {
 
         it('no statements', async () => {
-            const frames = await ws_client.command('');
+            const frames = await wsClient.command('');
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('single empty statement', async () => {
-            const frames = await ws_client.command(';');
+            const frames = await wsClient.command(';');
             expect(frames).toHaveLength(0);
         }, 1000);
 
 
         it('many empty statement', async () => {
-            const frames = await ws_client.command(';;;;;');
+            const frames = await wsClient.command(';;;;;');
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('mixed empty and non empty', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}'
             );
             expect(frames).toHaveLength(2);
@@ -151,7 +151,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('single statement', async () => {
-            const frames = await ws_client.command('MAP {result: 1};');
+            const frames = await wsClient.command('MAP {result: 1};');
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
@@ -159,7 +159,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, but same structure', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP {result: 2};' +
                 'MAP {result: 3};'
@@ -177,7 +177,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, different structure', async () => {
-            const frames = await ws_client.command(
+            const frames = await wsClient.command(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP { a: 2, b: 3 };' +
                 "MAP {result: 'ReifyDB'};"
@@ -202,23 +202,23 @@ describe('Statement', () => {
     describe('query', () => {
 
         it('no statements', async () => {
-            const frames = await ws_client.query('');
+            const frames = await wsClient.query('');
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('single empty statement', async () => {
-            const frames = await ws_client.query(';');
+            const frames = await wsClient.query(';');
             expect(frames).toHaveLength(0);
         }, 1000);
 
 
         it('many empty statement', async () => {
-            const frames = await ws_client.query(';;;;;');
+            const frames = await wsClient.query(';;;;;');
             expect(frames).toHaveLength(0);
         }, 1000);
 
         it('mixed empty and non empty', async () => {
-            const frames = await ws_client.query(
+            const frames = await wsClient.query(
                 ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}'
             );
             expect(frames).toHaveLength(2);
@@ -232,7 +232,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('single statement', async () => {
-            const frames = await ws_client.query('MAP {result: 1};');
+            const frames = await wsClient.query('MAP {result: 1};');
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
@@ -240,7 +240,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, but same structure', async () => {
-            const frames = await ws_client.query(
+            const frames = await wsClient.query(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP {result: 2};' +
                 'MAP {result: 3};'
@@ -258,7 +258,7 @@ describe('Statement', () => {
         }, 1000);
 
         it('multiple statements, different structure', async () => {
-            const frames = await ws_client.query(
+            const frames = await wsClient.query(
                 'OUTPUT MAP {result: 1};' +
                 'OUTPUT MAP { a: 2, b: 3 };' +
                 "MAP {result: 'ReifyDB'};"
@@ -282,28 +282,28 @@ describe('Statement', () => {
 
     describe('with_meta', () => {
         it('admin', async () => {
-            const { data, meta } = await ws_client.admin_with_meta(';');
+            const { data, meta } = await wsClient.adminWithMeta(';');
             expect(data).toHaveLength(0);
             expect(meta).toBeDefined();
             assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
         });
 
         it('command', async () => {
-            const { data, meta } = await ws_client.command_with_meta(';');
+            const { data, meta } = await wsClient.commandWithMeta(';');
             expect(data).toHaveLength(0);
             expect(meta).toBeDefined();
             assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
         });
 
         it('query', async () => {
-            const { data, meta } = await ws_client.query_with_meta(';');
+            const { data, meta } = await wsClient.queryWithMeta(';');
             expect(data).toHaveLength(0);
             expect(meta).toBeDefined();
             assertMeta(meta, '0x99aa06d3014798d86001c324468d497f');
         });
 
         it('send', async () => {
-            const { data, meta } = await ws_client.send_with_meta({
+            const { data, meta } = await wsClient.sendWithMeta({
                 id: 'test-send',
                 type: 'Query',
                 payload: {

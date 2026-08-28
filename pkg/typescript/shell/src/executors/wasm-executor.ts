@@ -1,20 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { infer_columns } from '@reifydb/core';
+import { inferColumns } from '@reifydb/core';
 import type { Executor, ExecutionResult } from '../types';
 
-/**
- * Interface for WebAssembly database instances.
- * This matches the WasmDB interface from reifydb-wasm.
- */
 export interface WasmDB {
   admin(rql: string): Promise<unknown> | unknown;
 }
 
-/**
- * Executor adapter for WebAssembly-based ReifyDB instances.
- */
 export class WasmExecutor implements Executor {
   private db: WasmDB;
 
@@ -33,11 +26,11 @@ export class WasmExecutor implements Executor {
       return {
         success: true,
         data: [],
-        execution_time: 0,
+        executionTime: 0,
       };
     }
 
-    const start_time = performance.now();
+    const startTime = performance.now();
 
     try {
       const results = await this.db.admin(query);
@@ -47,8 +40,8 @@ export class WasmExecutor implements Executor {
       return {
         success: true,
         data,
-        columns: infer_columns(data),
-        execution_time: Math.round(endTime - start_time),
+        columns: inferColumns(data),
+        executionTime: Math.round(endTime - startTime),
       };
     } catch (error) {
       const endTime = performance.now();
@@ -56,14 +49,13 @@ export class WasmExecutor implements Executor {
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
-        execution_time: Math.round(endTime - start_time),
+        executionTime: Math.round(endTime - startTime),
       };
     }
   }
 
   async getTables(): Promise<string[]> {
     try {
-      // Query system catalog for tables
       const result = await this.db.admin('FROM system::tables MAP { namespace, name }');
       if (Array.isArray(result)) {
         return result.map((row: Record<string, unknown>) => {
@@ -78,17 +70,16 @@ export class WasmExecutor implements Executor {
     }
   }
 
-  async getShape(table_name: string): Promise<string | null> {
+  async getShape(tableName: string): Promise<string | null> {
     try {
-      // Query system catalog for table shape
       const result = await this.db.admin(
-        `FROM system::columns FILTER table = "${table_name}" MAP { name, type }`
+        `FROM system::columns FILTER table = "${tableName}" MAP { name, type }`
       );
       if (Array.isArray(result) && result.length > 0) {
         const columns = result.map((row: Record<string, unknown>) =>
           `  ${row.name}: ${row.type}`
         ).join(',\n');
-        return `${table_name} {\n${columns}\n}`;
+        return `${tableName} {\n${columns}\n}`;
       }
       return null;
     } catch {

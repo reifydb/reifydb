@@ -3,9 +3,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { encode_base58, is_base58 } from "../src/base58";
+import { encodeBase58, isBase58 } from "../src/base58";
 
-function bytes_from(hex: string): Uint8Array {
+function bytesFrom(hex: string): Uint8Array {
   const clean = hex.replace(/\s+/g, "");
   const out = new Uint8Array(clean.length / 2);
   for (let i = 0; i < out.length; i += 1) {
@@ -14,7 +14,7 @@ function bytes_from(hex: string): Uint8Array {
   return out;
 }
 
-describe("encode_base58", () => {
+describe("encodeBase58", () => {
   // Canonical Bitcoin / Solana base58 vectors. Source: well-known reference
   // implementations (e.g. bitcoinjs-lib bs58 README).
   it.each<[string, string]>([
@@ -31,17 +31,17 @@ describe("encode_base58", () => {
       "1NS17iag9jJgTHD1VXjvLCEnZuQ3rJDE9L",
     ],
   ])("encodes hex %s -> %s", (hex, expected) => {
-    expect(encode_base58(bytes_from(hex))).toBe(expected);
+    expect(encodeBase58(bytesFrom(hex))).toBe(expected);
   });
 
   it("encodes long leading-zero runs as leading '1's", () => {
-    expect(encode_base58(new Uint8Array(8))).toBe("11111111");
+    expect(encodeBase58(new Uint8Array(8))).toBe("11111111");
   });
 
   it("does not emit ambiguous characters (0, O, I, l)", () => {
     const sample = new Uint8Array(64);
     for (let i = 0; i < sample.length; i += 1) sample[i] = i;
-    const out = encode_base58(sample);
+    const out = encodeBase58(sample);
     expect(out).not.toContain("0");
     expect(out).not.toContain("O");
     expect(out).not.toContain("I");
@@ -49,19 +49,19 @@ describe("encode_base58", () => {
   });
 });
 
-describe("is_base58", () => {
+describe("isBase58", () => {
   it("accepts valid alphabet strings", () => {
-    expect(is_base58("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")).toBe(true);
-    expect(is_base58("a3gV")).toBe(true);
-    expect(is_base58("1NS17iag9jJgTHD1VXjvLCEnZuQ3rJDE9L")).toBe(true);
+    expect(isBase58("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")).toBe(true);
+    expect(isBase58("a3gV")).toBe(true);
+    expect(isBase58("1NS17iag9jJgTHD1VXjvLCEnZuQ3rJDE9L")).toBe(true);
   });
 
   it("rejects strings with ambiguous characters", () => {
-    expect(is_base58("0OIl")).toBe(false);
-    expect(is_base58("A0")).toBe(false);
+    expect(isBase58("0OIl")).toBe(false);
+    expect(isBase58("A0")).toBe(false);
   });
 
   it("rejects empty strings", () => {
-    expect(is_base58("")).toBe(false);
+    expect(isBase58("")).toBe(false);
   });
 });

@@ -9,6 +9,7 @@ description = "Macros for ReifyDB"
 
 [lib]
 proc-macro = true
+doctest = false
 
 [dependencies]
 reifydb-macro-impl = { workspace = true }

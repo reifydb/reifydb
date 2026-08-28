@@ -2,26 +2,26 @@
 // Copyright (c) 2026 ReifyDB
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import {useCommandExecutor, get_connection, clear_connection, Shape} from '../../../src';
-import {wait_for_database} from '../setup';
+import {useCommandExecutor, getConnection, clearConnection, Shape} from '../../../src';
+import {waitForDatabase} from '../setup';
 
 describe('useCommandExecutor Hook (JSON WS)', () => {
     beforeAll(async () => {
-        await wait_for_database();
+        await waitForDatabase();
         // Ensure we're connected before tests
-        const conn = get_connection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN, format: 'json'});
+        const conn = getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN, format: 'json'});
         await conn.connect();
     }, 30000);
 
 
     afterAll(() => {
-        clear_connection();
+        clearConnection();
     });
 
     it('should execute a simple command', async () => {
         const {result} = renderHook(() => useCommandExecutor());
 
-        expect(result.current.is_executing).toBe(false);
+        expect(result.current.isExecuting).toBe(false);
         expect(result.current.results).toBeUndefined();
 
         // Execute command with shape for primitive result
@@ -33,11 +33,11 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
             );
         });
 
-        expect(result.current.is_executing).toBe(true);
+        expect(result.current.isExecuting).toBe(true);
 
         // Wait for results
         await waitFor(() => {
-            expect(result.current.is_executing).toBe(false);
+            expect(result.current.isExecuting).toBe(false);
             expect(result.current.results).toBeDefined();
         });
 
@@ -64,7 +64,7 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.is_executing).toBe(false);
+            expect(result.current.isExecuting).toBe(false);
             expect(result.current.results).toBeDefined();
         });
 
@@ -87,7 +87,7 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.is_executing).toBe(false);
+            expect(result.current.isExecuting).toBe(false);
             expect(result.current.results).toBeDefined();
         });
 
@@ -103,7 +103,7 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.is_executing).toBe(false);
+            expect(result.current.isExecuting).toBe(false);
             expect(result.current.error).toBeDefined();
         });
 
@@ -133,7 +133,7 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.is_executing).toBe(false);
+            expect(result.current.isExecuting).toBe(false);
         });
 
         // Should only have results from second command
@@ -150,7 +150,7 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
         });
 
         await waitFor(() => {
-            expect(result.current.is_executing).toBe(false);
+            expect(result.current.isExecuting).toBe(false);
         });
 
         expect(result.current.error).toBeUndefined();
@@ -178,8 +178,8 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
         });
 
         await waitFor(() => {
-            expect(result1.current.is_executing).toBe(false);
-            expect(result2.current.is_executing).toBe(false);
+            expect(result1.current.isExecuting).toBe(false);
+            expect(result2.current.isExecuting).toBe(false);
         });
 
         // Each hook should have its own results
@@ -199,14 +199,14 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
             );
         });
 
-        expect(result.current.is_executing).toBe(true);
+        expect(result.current.isExecuting).toBe(true);
 
         // Cancel it
         act(() => {
-            result.current.cancel_command();
+            result.current.cancelCommand();
         });
 
-        expect(result.current.is_executing).toBe(false);
+        expect(result.current.isExecuting).toBe(false);
         expect(result.current.error).toBe('Command cancelled');
     });
 });

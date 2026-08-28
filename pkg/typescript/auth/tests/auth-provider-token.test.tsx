@@ -44,14 +44,14 @@ function Probe({ outRef }: { outRef: { current: ProbeRef | null } }) {
   return null;
 }
 
-function fake_client(): AuthCapableClient {
+function fakeClient(): AuthCapableClient {
   return {
-    login_challenge: vi.fn(),
+    loginChallenge: vi.fn(),
     logout: vi.fn().mockResolvedValue(undefined),
   };
 }
 
-function fake_transport(client: AuthCapableClient): AuthTransport {
+function fakeTransport(client: AuthCapableClient): AuthTransport {
   return {
     kind: "http",
     connect: vi.fn(() => Promise.resolve(client)),
@@ -75,13 +75,13 @@ function mount(transport: AuthTransport, ref: { current: ProbeRef | null }) {
 
 // The shape a server-minted guest session arrives in: a bare token bound to an
 // identity, with no credential and no wallet behind it.
-function token_session(over: Partial<AuthSession> = {}): AuthSession {
+function tokenSession(over: Partial<AuthSession> = {}): AuthSession {
   return {
     token: "guest-token",
     identity: IDENTITY,
-    wallet_address: IDENTITY,
+    walletAddress: IDENTITY,
     method: "token",
-    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    expiresAt: Math.floor(Date.now() / 1000) + 3600,
     ...over,
   };
 }
@@ -97,14 +97,14 @@ afterEach(() => {
 
 describe("AuthProvider (adopted token session)", () => {
   it("adoptSession reaches authenticated and connects with the token", async () => {
-    const client = fake_client();
-    const transport = fake_transport(client);
+    const client = fakeClient();
+    const transport = fakeTransport(client);
     const ref: { current: ProbeRef | null } = { current: null };
     mount(transport, ref);
 
     expect(ref.current?.status).toBe("disconnected");
     act(() => {
-      ref.current?.adoptSession(token_session());
+      ref.current?.adoptSession(tokenSession());
     });
 
     await waitFor(() => {
@@ -118,12 +118,12 @@ describe("AuthProvider (adopted token session)", () => {
   it("persists the adopted session so a reload keeps the same identity", async () => {
     // A guest only exists as long as this token survives: losing it on reload
     // would strand everything the guest created behind an unreachable identity.
-    const transport = fake_transport(fake_client());
+    const transport = fakeTransport(fakeClient());
     const ref: { current: ProbeRef | null } = { current: null };
     mount(transport, ref);
 
     act(() => {
-      ref.current?.adoptSession(token_session());
+      ref.current?.adoptSession(tokenSession());
     });
     await waitFor(() => expect(ref.current?.status).toBe("authenticated"));
 
@@ -134,8 +134,8 @@ describe("AuthProvider (adopted token session)", () => {
   });
 
   it("restores a stored token session on mount without any wallet", async () => {
-    writeStoredSession(NS, token_session());
-    const transport = fake_transport(fake_client());
+    writeStoredSession(NS, tokenSession());
+    const transport = fakeTransport(fakeClient());
     const ref: { current: ProbeRef | null } = { current: null };
     mount(transport, ref);
 
@@ -149,9 +149,9 @@ describe("AuthProvider (adopted token session)", () => {
   it("drops an expired token session instead of restoring it", async () => {
     writeStoredSession(
       NS,
-      token_session({ expires_at: Math.floor(Date.now() / 1000) - 1 }),
+      tokenSession({ expiresAt: Math.floor(Date.now() / 1000) - 1 }),
     );
-    const transport = fake_transport(fake_client());
+    const transport = fakeTransport(fakeClient());
     const ref: { current: ProbeRef | null } = { current: null };
     mount(transport, ref);
 
@@ -160,12 +160,12 @@ describe("AuthProvider (adopted token session)", () => {
   });
 
   it("tears down the adopted session on signOut", async () => {
-    const transport = fake_transport(fake_client());
+    const transport = fakeTransport(fakeClient());
     const ref: { current: ProbeRef | null } = { current: null };
     mount(transport, ref);
 
     act(() => {
-      ref.current?.adoptSession(token_session());
+      ref.current?.adoptSession(tokenSession());
     });
     await waitFor(() => expect(ref.current?.status).toBe("authenticated"));
 
@@ -181,7 +181,7 @@ describe("AuthProvider (adopted token session)", () => {
     // method would come back out of storage and be trusted on the next mount.
     expect(() =>
       writeStoredSession(NS, {
-        ...token_session(),
+        ...tokenSession(),
         method: "smoke-signal",
       } as unknown as AuthSession),
     ).toThrow();

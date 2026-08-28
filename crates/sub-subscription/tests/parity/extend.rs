@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::interface::change::StagedBatch;
 use reifydb_value::value::Value;
 
 use crate::common::{Row, normalize_aggregated, random_rows, run_path_incremental, run_path_snapshot};
@@ -33,10 +33,10 @@ fn as_i64(value: Value) -> i64 {
 	}
 }
 
-fn qty_and_doubled(batches: Vec<Columns>) -> Vec<(i64, i64)> {
+fn qty_and_doubled(batches: Vec<StagedBatch>) -> Vec<(i64, i64)> {
 	// Pulls (qty, qty_x2) per row so the assertion is independent of batch and row ordering.
 	let mut out = Vec::new();
-	for cols in batches {
+	for (_, cols) in batches {
 		let qty_col = cols
 			.iter()
 			.find(|c| c.name().text() == "qty")

@@ -5,9 +5,9 @@ import {Client, WsClient, HttpClient, JsonHttpClient, JsonWsClient, type WsClien
 
 interface ConnectionState {
     client: WsClient | HttpClient | JsonHttpClient | JsonWsClient | null;
-    is_connected: boolean;
-    is_connecting: boolean;
-    connection_error: string | null;
+    isConnected: boolean;
+    isConnecting: boolean;
+    connectionError: string | null;
     listeners: Set<(state: ConnectionState) => void>;
 }
 
@@ -20,7 +20,7 @@ export interface ConnectionConfig {
 
 export const DEFAULT_CONFIG: ConnectionConfig = {
     url: 'ws://127.0.0.1:8090',
-    options: {timeout_ms: 30_000},
+    options: {timeoutMs: 30_000},
 };
 
 export const DEFAULT_URL = 'ws://127.0.0.1:8090';
@@ -28,84 +28,84 @@ export const DEFAULT_URL = 'ws://127.0.0.1:8090';
 export class Connection {
     private state: ConnectionState = {
         client: null,
-        is_connected: false,
-        is_connecting: false,
-        connection_error: null,
+        isConnected: false,
+        isConnecting: false,
+        connectionError: null,
         listeners: new Set(),
     };
     private config: ConnectionConfig;
-    private connect_promise: Promise<void> | null = null;
+    private connectPromise: Promise<void> | null = null;
 
     constructor(config: ConnectionConfig = DEFAULT_CONFIG) {
         this.config = {...DEFAULT_CONFIG, ...config};
     }
 
-    set_config(config: ConnectionConfig): void {
+    setConfig(config: ConnectionConfig): void {
         this.config = config;
     }
 
-    get_config(): ConnectionConfig {
+    getConfig(): ConnectionConfig {
         return this.config;
     }
 
     async connect(url?: string, options?: Omit<WsClientOptions, 'url'>): Promise<void> {
-        if (this.state.is_connected) {
+        if (this.state.isConnected) {
             return;
         }
 
         // If already connecting, wait for the in-flight connection
-        if (this.connect_promise) {
-            return this.connect_promise;
+        if (this.connectPromise) {
+            return this.connectPromise;
         }
 
-        const connect_url = url || this.config.url || DEFAULT_CONFIG.url!;
-        const connect_options = {token: this.config.token, ...this.config.options, ...options};
+        const connectUrl = url || this.config.url || DEFAULT_CONFIG.url!;
+        const connectOptions = {token: this.config.token, ...this.config.options, ...options};
 
-        this.update_state({
-            is_connecting: true,
-            connection_error: null,
+        this.updateState({
+            isConnecting: true,
+            connectionError: null,
         });
 
-        this.connect_promise = (async () => {
+        this.connectPromise = (async () => {
             try {
-                const isHttp = connect_url.startsWith('http://') || connect_url.startsWith('https://');
+                const isHttp = connectUrl.startsWith('http://') || connectUrl.startsWith('https://');
                 const isJson = this.config.format === 'json';
                 let client: WsClient | HttpClient | JsonHttpClient | JsonWsClient;
                 if (isHttp) {
                     client = isJson
-                        ? Client.connect_json_http(connect_url, connect_options)
-                        : Client.connect_http(connect_url, connect_options);
+                        ? Client.connectJsonHttp(connectUrl, connectOptions)
+                        : Client.connectHttp(connectUrl, connectOptions);
                 } else {
                     client = isJson
-                        ? await Client.connect_json_ws(connect_url, connect_options)
-                        : await Client.connect_ws(connect_url, connect_options);
+                        ? await Client.connectJsonWs(connectUrl, connectOptions)
+                        : await Client.connectWs(connectUrl, connectOptions);
                 }
-                this.update_state({
+                this.updateState({
                     client,
-                    is_connected: true,
-                    is_connecting: false,
-                    connection_error: null,
+                    isConnected: true,
+                    isConnecting: false,
+                    connectionError: null,
                 });
             } catch (err) {
-                const error_message = err instanceof Error ? err.message : 'Failed to connect to ReifyDB';
-                console.error('[Connection] Connection failed:', error_message, err);
-                this.update_state({
+                const errorMessage = err instanceof Error ? err.message : 'Failed to connect to ReifyDB';
+                console.error('[Connection] Connection failed:', errorMessage, err);
+                this.updateState({
                     client: null,
-                    is_connected: false,
-                    is_connecting: false,
-                    connection_error: error_message,
+                    isConnected: false,
+                    isConnecting: false,
+                    connectionError: errorMessage,
                 });
                 throw err;
             } finally {
-                this.connect_promise = null;
+                this.connectPromise = null;
             }
         })();
 
-        return this.connect_promise;
+        return this.connectPromise;
     }
 
     async disconnect(): Promise<void> {
-        this.connect_promise = null;
+        this.connectPromise = null;
         if (this.state.client) {
             try {
                 if ('disconnect' in this.state.client) {
@@ -116,11 +116,11 @@ export class Connection {
             }
         }
 
-        this.update_state({
+        this.updateState({
             client: null,
-            is_connected: false,
-            is_connecting: false,
-            connection_error: null,
+            isConnected: false,
+            isConnecting: false,
+            connectionError: null,
         });
     }
 
@@ -129,23 +129,23 @@ export class Connection {
         await this.connect(url, options);
     }
 
-    get_client(): WsClient | HttpClient | JsonHttpClient | JsonWsClient | null {
+    getClient(): WsClient | HttpClient | JsonHttpClient | JsonWsClient | null {
         return this.state.client;
     }
 
-    is_connected(): boolean {
-        return this.state.is_connected;
+    isConnected(): boolean {
+        return this.state.isConnected;
     }
 
-    is_connecting(): boolean {
-        return this.state.is_connecting;
+    isConnecting(): boolean {
+        return this.state.isConnecting;
     }
 
-    get_connection_error(): string | null {
-        return this.state.connection_error;
+    getConnectionError(): string | null {
+        return this.state.connectionError;
     }
 
-    get_state(): Omit<ConnectionState, 'listeners'> {
+    getState(): Omit<ConnectionState, 'listeners'> {
         const {listeners, ...state} = this.state;
         return state;
     }
@@ -159,7 +159,7 @@ export class Connection {
         };
     }
 
-    private update_state(updates: Partial<ConnectionState>): void {
+    private updateState(updates: Partial<ConnectionState>): void {
         this.state = {
             ...this.state,
             ...updates,

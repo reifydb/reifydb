@@ -18,8 +18,8 @@ use tokio::{runtime::Runtime, time::sleep};
 use crate::{
 	common::{cleanup_server, create_server_instance, start_server_and_get_ws_port},
 	ws::subscription::{
-		SubscriptionTestHarness, create_test_table, find_column, get_op_value, recv_multiple_with_timeout,
-		recv_with_timeout, unique_table_name,
+		SubscriptionTestHarness, create_test_table, find_column, get_op_value, get_row_numbers,
+		recv_multiple_with_timeout, recv_with_timeout, unique_table_name,
 	},
 };
 
@@ -85,7 +85,7 @@ fn test_op_insert_callback() {
 		assert_eq!(change.subscription_id, sub_id);
 
 		let op = get_op_value(&change.body, 0);
-		assert_eq!(op, Some(1), "_op should be 1 for INSERT");
+		assert_eq!(op, Some(1), "op should be 1 for INSERT");
 
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.payload.len(), 2, "Should have 2 rows");
@@ -107,7 +107,7 @@ fn test_op_update_callback() {
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 		let insert_change = ctx.recv().await.expect("Should receive insert notification");
 		let insert_op = get_op_value(&insert_change.body, 0);
-		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
+		assert_eq!(insert_op, Some(1), "op should be 1 for INSERT");
 
 		ctx.update(&table, "id == 1", "id: id, name: 'alice_updated'").await?;
 
@@ -115,7 +115,7 @@ fn test_op_update_callback() {
 		assert_eq!(update_change.subscription_id, sub_id);
 
 		let op = get_op_value(&update_change.body, 0);
-		assert_eq!(op, Some(2), "_op should be 2 for UPDATE");
+		assert_eq!(op, Some(2), "op should be 2 for UPDATE");
 
 		let name_col = find_column(&update_change.body, "name").expect("name column should exist");
 		assert_eq!(name_col.payload[0], "alice_updated");
@@ -133,7 +133,7 @@ fn test_op_remove_callback() {
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 		let insert_change = ctx.recv().await.expect("Should receive insert notification");
 		let insert_op = get_op_value(&insert_change.body, 0);
-		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
+		assert_eq!(insert_op, Some(1), "op should be 1 for INSERT");
 
 		ctx.delete(&table, "id == 1").await?;
 
@@ -141,7 +141,7 @@ fn test_op_remove_callback() {
 		assert_eq!(delete_change.subscription_id, sub_id);
 
 		let op = get_op_value(&delete_change.body, 0);
-		assert_eq!(op, Some(3), "_op should be 3 for DELETE");
+		assert_eq!(op, Some(3), "op should be 3 for DELETE");
 
 		ctx.close(&sub_id).await
 	});
@@ -1063,4 +1063,61 @@ fn test_stress_connect_query_disconnect_cycles() {
 	});
 
 	cleanup_server(Some(server));
+}
+
+#[test]
+fn test_row_number_is_stable_across_insert_update_remove() {
+	// A subscriber keys its local state on the row number, so the identity it inserts under must
+	// be the identity it later updates and finally removes; if it drifted, the client would leak
+	// the stale row and delete one it never saw.
+	SubscriptionTestHarness::run(|mut ctx| async move {
+		let table = ctx.create_table("sub_rownum_lifecycle", "id: int4, name: utf8").await?;
+		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
+
+		ctx.insert(&table, "{ id: 1, name: 'a' }").await?;
+		let insert = ctx.recv().await.expect("insert change");
+		let inserted = get_row_numbers(&insert.body);
+		assert_eq!(inserted.len(), 1, "the insert must carry exactly one row number");
+		assert_eq!(get_op_value(&insert.body, 0), Some(1));
+
+		ctx.update(&table, "id == 1", "name: 'b'").await?;
+		let update = ctx.recv().await.expect("update change");
+		assert_eq!(get_op_value(&update.body, 0), Some(2));
+		assert_eq!(get_row_numbers(&update.body), inserted, "an update must not mint a new identity");
+
+		ctx.delete(&table, "id == 1").await?;
+		let remove = ctx.recv().await.expect("remove change");
+		assert_eq!(get_op_value(&remove.body, 0), Some(3));
+		assert_eq!(get_row_numbers(&remove.body), inserted, "a remove must name the row that was inserted");
+
+		ctx.close(&sub_id).await
+	});
+}
+
+#[test]
+fn test_user_id_column_is_independent_of_the_row_number() {
+	// `id` is an ordinary user column: it may repeat and it carries no identity. Keying on it
+	// would make two rows sharing an `id` indistinguishable, which is exactly what the row number
+	// exists to prevent.
+	SubscriptionTestHarness::run(|mut ctx| async move {
+		let table = ctx.create_table("sub_rownum_vs_id", "id: int4, name: utf8").await?;
+		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
+
+		ctx.insert(&table, "{ id: 5, name: 'a' }, { id: 5, name: 'b' }").await?;
+		let change = ctx.recv().await.expect("insert change");
+
+		let id_col = find_column(&change.body, "id").expect("id column should exist");
+		assert_eq!(id_col.payload, vec!["5".to_string(), "5".to_string()], "both rows share one user id");
+
+		let row_numbers = get_row_numbers(&change.body);
+		assert_eq!(row_numbers.len(), 2, "every row must carry its own row number");
+		assert_ne!(row_numbers[0], row_numbers[1], "two rows sharing a user id must still be distinguishable");
+
+		assert!(
+			!id_col.payload.iter().any(|v| row_numbers.iter().any(|rn| rn.to_string() == *v)),
+			"the row number must not be sourced from the user id column"
+		);
+
+		ctx.close(&sub_id).await
+	});
 }

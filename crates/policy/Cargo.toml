@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Policy engine for ReifyDB — compiles, caches, and evaluates security policies"
 
+[lib]
+doctest = false
+
 [features]
 default = []
 

@@ -11,7 +11,10 @@ use std::{
 };
 
 use dashmap::DashMap;
-use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_core::{
+	interface::{catalog::id::SubscriptionId, change::StagedBatch},
+	value::column::columns::Columns,
+};
 use reifydb_runtime::{
 	context::{clock::Clock, rng::Rng},
 	sync::mutex::Mutex,
@@ -22,7 +25,7 @@ use reifydb_subscription::{
 };
 use reifydb_value::{
 	reifydb_assertions,
-	value::{duration::Duration, frame::frame::Frame, uuid::Uuid7},
+	value::{diff_type::DiffType, duration::Duration, frame::frame::Frame, uuid::Uuid7},
 };
 use tokio::sync::Notify;
 use tracing::{debug, instrument, trace};
@@ -31,8 +34,8 @@ use crate::subscription::wire_sink::WireSink;
 
 pub type ConnectionId = Uuid7;
 
-type PromoteDrain<S> = (Vec<Columns>, Option<BatchId>, <S as WireSink>::Format, S);
-type ThrottleReady<S> = (SubscriptionId, Vec<Columns>, <S as WireSink>::Format, S);
+type PromoteDrain<S> = (Vec<StagedBatch>, Option<BatchId>, <S as WireSink>::Format, S);
+type ThrottleReady<S> = (SubscriptionId, Vec<StagedBatch>, <S as WireSink>::Format, S);
 
 #[derive(Debug)]
 pub enum PromoteResult {
@@ -119,7 +122,7 @@ impl FlushGate {
 
 struct ThrottleState {
 	gate: FlushGate,
-	pending: Vec<Columns>,
+	pending: Vec<StagedBatch>,
 }
 
 impl ThrottleState {
@@ -136,7 +139,7 @@ impl ThrottleState {
 }
 
 struct WarmingBuffer {
-	buffered: Vec<Columns>,
+	buffered: Vec<StagedBatch>,
 	cap: usize,
 	overflowed: bool,
 }
@@ -150,7 +153,7 @@ impl WarmingBuffer {
 		}
 	}
 
-	fn push(&mut self, columns: Columns) {
+	fn push(&mut self, batch: StagedBatch) {
 		if self.overflowed {
 			return;
 		}
@@ -159,7 +162,7 @@ impl WarmingBuffer {
 			self.buffered.clear();
 			return;
 		}
-		self.buffered.push(columns);
+		self.buffered.push(batch);
 	}
 }
 
@@ -296,7 +299,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		&self,
 		batch_id: BatchId,
 		subscription_id: SubscriptionId,
-		buffered: Vec<Columns>,
+		buffered: Vec<StagedBatch>,
 		count: usize,
 	) -> PromoteResult {
 		let Some(batch) = self.batches.get(&batch_id) else {
@@ -310,8 +313,8 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 				.pending
 				.entry(subscription_id)
 				.or_insert_with(|| MemberPending::new(linger, throttle));
-			for columns in buffered {
-				entry.push(Frame::from(columns), now);
+			for (op, columns) in buffered {
+				entry.push(Frame::from(columns).with_op(op), now);
 			}
 		}
 		for waker in self.wakers.lock().iter() {
@@ -324,13 +327,13 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	fn flush_buffered_to_sink(
 		&self,
 		subscription_id: SubscriptionId,
-		buffered: Vec<Columns>,
+		buffered: Vec<StagedBatch>,
 		format: S::Format,
 		sink: S,
 		count: usize,
 	) -> PromoteResult {
-		for columns in buffered {
-			match sink.send_change(subscription_id, columns, format) {
+		for (op, columns) in buffered {
+			match sink.send_change(subscription_id, op, columns, format) {
 				DeliveryResult::Delivered => {}
 				DeliveryResult::Disconnected => return PromoteResult::Disconnected,
 			}
@@ -562,6 +565,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		&self,
 		batch_id: BatchId,
 		subscription_id: &SubscriptionId,
+		op: DiffType,
 		columns: Columns,
 	) -> DeliveryResult {
 		let Some(batch) = self.batches.get(&batch_id) else {
@@ -573,7 +577,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		batch.pending
 			.entry(*subscription_id)
 			.or_insert_with(|| MemberPending::new(linger, throttle))
-			.push(Frame::from(columns), now);
+			.push(Frame::from(columns).with_op(op), now);
 		DeliveryResult::Delivered
 	}
 
@@ -581,12 +585,13 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	fn send_now_and_mark(
 		&self,
 		subscription_id: &SubscriptionId,
+		op: DiffType,
 		columns: Columns,
 		format: S::Format,
 		sink: S,
 		now: u64,
 	) -> DeliveryResult {
-		match sink.send_change(*subscription_id, columns, format) {
+		match sink.send_change(*subscription_id, op, columns, format) {
 			DeliveryResult::Delivered => {
 				if let Some(mut s) = self.subscriptions.get_mut(subscription_id) {
 					s.throttle.gate.last_sent_at = Some(now);
@@ -598,9 +603,9 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	}
 
 	#[inline]
-	fn queue_throttled(&self, state: &mut SubscriptionState<S>, columns: Columns) -> DeliveryResult {
+	fn queue_throttled(&self, state: &mut SubscriptionState<S>, op: DiffType, columns: Columns) -> DeliveryResult {
 		let was_empty = state.throttle.pending.is_empty();
-		state.throttle.pending.push(columns);
+		state.throttle.pending.push((op, columns));
 		state.throttle.gate.on_pending(self.clock.now().to_millis());
 		if was_empty {
 			self.throttle_pending.fetch_add(1, Ordering::AcqRel);
@@ -648,8 +653,8 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 
 		let mut dead_subs: Vec<SubscriptionId> = Vec::new();
 		for (sub_id, drained, format, sink) in throttle_ready {
-			for columns in drained {
-				match sink.send_change(sub_id, columns, format) {
+			for (op, columns) in drained {
+				match sink.send_change(sub_id, op, columns, format) {
 					DeliveryResult::Delivered => {}
 					DeliveryResult::Disconnected => {
 						dead_subs.push(sub_id);
@@ -705,9 +710,9 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 }
 
 impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
-	fn try_deliver(&self, subscription_id: &SubscriptionId, columns: Columns) -> DeliveryResult {
+	fn try_deliver(&self, subscription_id: &SubscriptionId, op: DiffType, columns: Columns) -> DeliveryResult {
 		if let Some(batch_id) = self.batch_for(subscription_id) {
-			return self.deliver_to_batch_member(batch_id, subscription_id, columns);
+			return self.deliver_to_batch_member(batch_id, subscription_id, op, columns);
 		}
 
 		let mut state = match self.subscriptions.get_mut(subscription_id) {
@@ -716,7 +721,7 @@ impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
 		};
 
 		if let Some(buffer) = state.warming.as_mut() {
-			buffer.push(columns);
+			buffer.push((op, columns));
 			return DeliveryResult::Delivered;
 		}
 
@@ -729,15 +734,15 @@ impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
 				let format = state.format;
 				let sink = state.sink.clone();
 				drop(state);
-				self.send_now_and_mark(subscription_id, columns, format, sink, now)
+				self.send_now_and_mark(subscription_id, op, columns, format, sink, now)
 			} else {
-				self.queue_throttled(&mut state, columns)
+				self.queue_throttled(&mut state, op, columns)
 			}
 		} else {
 			let format = state.format;
 			let sink = state.sink.clone();
 			drop(state);
-			sink.send_change(*subscription_id, columns, format)
+			sink.send_change(*subscription_id, op, columns, format)
 		}
 	}
 

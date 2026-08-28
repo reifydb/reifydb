@@ -8,7 +8,7 @@ use reifydb_codec::{
 	row::operator::state::StateCodec,
 };
 use reifydb_core::{
-	interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
+	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::{HeapSize, OperatorSample},
 };
 use reifydb_flow::{
@@ -27,7 +27,7 @@ use reifydb_flow::{
 };
 use reifydb_value::{
 	config::Config,
-	value::{duration::Duration, row_number::RowNumber},
+	value::{diff_type::DiffType, duration::Duration, row_number::RowNumber},
 };
 use tracing::debug;
 

@@ -20,14 +20,14 @@ worker. Deployed publicly at uptime.reifydb.com.
 ## Quick start
 
 ```sh
-cd webapp && pnpm install && pnpm build && cd ..
-cargo run -p reifydb-uptime
+cd web && pnpm install && pnpm build && cd ..
+cargo run -p reifydb-uptime-backend
 ```
 
 Open http://localhost:8080 and create a monitor - no account needed.
-Without `webapp/dist`, the binary still builds and serves a placeholder page.
+Without `web/dist`, the binary still builds and serves a placeholder page.
 
-For UI development run `pnpm dev` in `webapp/` (Vite on :5173, proxying `/api`
+For UI development run `pnpm dev` in `web/` (Vite on :5173, proxying `/api`
 and `/db` to :8080) while the binary is running. `pnpm dev:local` does the same
 but resolves the `@reifydb/*` packages from the local sources in
 `pkg/typescript` instead of the published npm packages.

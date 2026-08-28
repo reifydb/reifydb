@@ -12,10 +12,10 @@ use reifydb_core::{
 			object::ObjectId,
 			vtable::VTableId,
 		},
-		change::{Change, ChangeOrigin, Diff, DiffType, Diffs},
+		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 };
-use reifydb_value::value::{datetime::DateTime, dictionary::DictionaryId};
+use reifydb_value::value::{datetime::DateTime, dictionary::DictionaryId, diff_type::DiffType};
 use tracing::instrument;
 
 use crate::{

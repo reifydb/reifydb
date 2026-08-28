@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Flow subsystem for stream processing and data flows"
 
+[lib]
+doctest = false
+
 [features]
 default = []
 chaos = []

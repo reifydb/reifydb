@@ -8,7 +8,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::flow::OperatorId,
-		change::{Change, Diff, DiffType, Diffs},
+		change::{Change, Diff, Diffs},
 		flow::OperatorCapability,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -27,7 +27,7 @@ use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
 use reifydb_value::{
 	config::Config,
 	fragment::Fragment,
-	value::{Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
+	value::{Value, datetime::DateTime, diff_type::DiffType, row_number::RowNumber, system_columns::SystemColumns},
 };
 
 /// Echoing every diff back drives both the input borrow path and the output builder path in a single apply, which

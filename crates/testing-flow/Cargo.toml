@@ -8,6 +8,9 @@ authors.workspace = true
 repository.workspace = true
 description = "Test harness that drives the flow subsystem's own reclamation sweep against a real engine"
 
+[lib]
+doctest = false
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 

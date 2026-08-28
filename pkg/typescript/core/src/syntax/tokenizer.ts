@@ -52,7 +52,7 @@ function match(pattern: RegExp, source: string, position: number): string | null
     return result === null ? null : result[0];
 }
 
-function classify_word(word: string): RqlTokenKind {
+function classifyWord(word: string): RqlTokenKind {
     const lowered = word.toLowerCase();
     if (KEYWORD_SET.has(lowered)) return 'keyword';
     if (LITERAL_SET.has(lowered)) return 'constant';
@@ -60,14 +60,14 @@ function classify_word(word: string): RqlTokenKind {
     return 'identifier';
 }
 
-function classify_call(word: string): RqlTokenKind {
+function classifyCall(word: string): RqlTokenKind {
     const lowered = word.toLowerCase();
     if (KEYWORD_SET.has(lowered)) return 'keyword';
     if (TYPE_SET.has(lowered)) return 'type';
     return 'function';
 }
 
-function scan_string(source: string, position: number): number {
+function scanString(source: string, position: number): number {
     const quote = source[position];
     let index = position + 1;
     while (index < source.length) {
@@ -82,10 +82,10 @@ function scan_string(source: string, position: number): number {
     return Math.min(index, source.length);
 }
 
-export function tokenize_rql(source: string): RqlToken[] {
+export function tokenizeRql(source: string): RqlToken[] {
     const tokens: RqlToken[] = [];
     let position = 0;
-    let after_separator = false;
+    let afterSeparator = false;
 
     const push = (kind: RqlTokenKind, end: number): void => {
         tokens.push({kind, start: position, end});
@@ -93,7 +93,7 @@ export function tokenize_rql(source: string): RqlToken[] {
     };
 
     while (position < source.length) {
-        if (after_separator) {
+        if (afterSeparator) {
             const white = match(WHITESPACE, source, position);
             if (white !== null) {
                 push('white', position + white.length);
@@ -102,31 +102,31 @@ export function tokenize_rql(source: string): RqlToken[] {
 
             const chained = match(NAMESPACE_HEAD, source, position);
             if (chained !== null) {
-                after_separator = false;
+                afterSeparator = false;
                 push('namespace', position + chained.length);
                 continue;
             }
 
             const called = match(CALL_NAME, source, position);
             if (called !== null) {
-                after_separator = false;
+                afterSeparator = false;
                 push('function', position + called.length);
                 continue;
             }
 
             const leaf = match(WORD, source, position);
             if (leaf !== null) {
-                after_separator = false;
+                afterSeparator = false;
                 push('entity', position + leaf.length);
                 continue;
             }
 
-            after_separator = false;
+            afterSeparator = false;
         }
 
-        const system_column = match(SYSTEM_COLUMN, source, position);
-        if (system_column !== null) {
-            push('variable.predefined', position + system_column.length);
+        const systemColumn = match(SYSTEM_COLUMN, source, position);
+        if (systemColumn !== null) {
+            push('variable.predefined', position + systemColumn.length);
             continue;
         }
 
@@ -144,14 +144,14 @@ export function tokenize_rql(source: string): RqlToken[] {
 
         const separator = match(NAMESPACE_SEPARATOR, source, position);
         if (separator !== null) {
-            after_separator = true;
+            afterSeparator = true;
             push('operator', position + separator.length);
             continue;
         }
 
-        const named_argument = match(NAMED_ARGUMENT, source, position);
-        if (named_argument !== null) {
-            push('key', position + named_argument.length);
+        const namedArgument = match(NAMED_ARGUMENT, source, position);
+        if (namedArgument !== null) {
+            push('key', position + namedArgument.length);
             continue;
         }
 
@@ -163,13 +163,13 @@ export function tokenize_rql(source: string): RqlToken[] {
 
         const call = match(CALL_NAME, source, position);
         if (call !== null) {
-            push(classify_call(call), position + call.length);
+            push(classifyCall(call), position + call.length);
             continue;
         }
 
         const word = match(WORD, source, position);
         if (word !== null) {
-            push(classify_word(word), position + word.length);
+            push(classifyWord(word), position + word.length);
             continue;
         }
 
@@ -193,7 +193,7 @@ export function tokenize_rql(source: string): RqlToken[] {
 
         const char = source[position];
         if (char === '"' || char === "'") {
-            push('string', scan_string(source, position));
+            push('string', scanString(source, position));
             continue;
         }
 

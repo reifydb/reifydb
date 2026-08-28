@@ -58,7 +58,7 @@ export const defaultTheme: TerminalTheme = {
 /**
  * ReifyDB product theme - zinc-900 ground with the indigo brand accent
  */
-export const reifydb_dark_theme: TerminalTheme = {
+export const reifydbDarkTheme: TerminalTheme = {
   background: '#18181b',
   foreground: '#e4e4e7',
   cursor: '#7e85f2',

@@ -4,7 +4,7 @@
 import type { languages } from 'monaco-editor';
 import { RQL_KEYWORDS, RQL_LITERALS, RQL_OPERATORS, RQL_TYPES } from '@reifydb/core';
 
-export const rql_language_definition: languages.IMonarchLanguage = {
+export const rqlLanguageDefinition: languages.IMonarchLanguage = {
   defaultToken: '',
   ignoreCase: true,
 
@@ -126,7 +126,7 @@ export const rql_language_definition: languages.IMonarchLanguage = {
   },
 };
 
-export const rql_language_configuration: languages.LanguageConfiguration = {
+export const rqlLanguageConfiguration: languages.LanguageConfiguration = {
   comments: {
     lineComment: '#',
   },

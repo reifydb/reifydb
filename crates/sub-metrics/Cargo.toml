@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Metric collection subsystem for ReifyDB"
 
+[lib]
+doctest = false
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 

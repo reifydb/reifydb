@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import {tokenize_rql, type RqlTokenKind} from '@reifydb/core';
+import {tokenizeRql, type RqlTokenKind} from '@reifydb/core';
 import {RESET, sgr, type AnsiStyle} from '../ansi';
 import type {Highlighter} from '../types';
 
 export type RqlPalette = Partial<Record<RqlTokenKind, AnsiStyle>>;
 
-export const reifydb_dark_palette: RqlPalette = {
+export const reifydbDarkPalette: RqlPalette = {
   keyword: {color: '#818cf8', bold: true},
   string: {color: '#a5b4fc'},
   number: {color: '#a5b4fc', bold: true},
@@ -20,7 +20,7 @@ export const reifydb_dark_palette: RqlPalette = {
   function: {color: '#fbbf24'},
 };
 
-export function rql_highlighter(palette: RqlPalette = reifydb_dark_palette): Highlighter {
+export function rqlHighlighter(palette: RqlPalette = reifydbDarkPalette): Highlighter {
   const prefixes = new Map<RqlTokenKind, string>();
   for (const [kind, style] of Object.entries(palette)) {
     if (style) prefixes.set(kind as RqlTokenKind, sgr(style));
@@ -31,7 +31,7 @@ export function rql_highlighter(palette: RqlPalette = reifydb_dark_palette): Hig
     const end = offset + line.length;
     let painted = '';
 
-    for (const token of tokenize_rql((context ?? '') + line)) {
+    for (const token of tokenizeRql((context ?? '') + line)) {
       const start = Math.max(token.start, offset);
       const stop = Math.min(token.end, end);
       if (start >= stop) continue;

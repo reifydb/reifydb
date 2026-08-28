@@ -17,6 +17,7 @@ use reifydb_value::{
 		container::{blob::BlobContainer, number::NumberContainer, utf8::Utf8Container},
 		datetime::DateTime,
 		decimal::Decimal,
+		diff_type::DiffType,
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 		int::Int,
 		row_number::RowNumber,
@@ -83,6 +84,7 @@ struct FrameHeader {
 	row_count: usize,
 	column_count: usize,
 	meta_flags: u8,
+	op: Option<DiffType>,
 }
 
 fn decode_frame(data: &[u8], start: usize) -> Result<(Frame, usize), DecodeError> {
@@ -99,6 +101,7 @@ fn decode_frame(data: &[u8], start: usize) -> Result<(Frame, usize), DecodeError
 		Frame {
 			system: SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
 			columns,
+			op: header.op,
 		},
 		pos,
 	))
@@ -114,7 +117,7 @@ fn read_frame_header(data: &[u8], start: usize) -> Result<(FrameHeader, usize), 
 	pos += 2;
 	let meta_flags = data[pos];
 	pos += 1;
-	let _reserved = data[pos];
+	let op = DiffType::from_u8(data[pos]);
 	pos += 1;
 	let _frame_size = read_u32(data, pos);
 	pos += 4;
@@ -123,6 +126,7 @@ fn read_frame_header(data: &[u8], start: usize) -> Result<(FrameHeader, usize), 
 			row_count,
 			column_count,
 			meta_flags,
+			op,
 		},
 		pos,
 	))

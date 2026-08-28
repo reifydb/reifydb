@@ -1,0 +1,1 @@
+create table smoke::items { id: int4, label: utf8 }

@@ -1,0 +1,197 @@
+use std::{
+  env,
+  ffi::OsStr,
+  path::{Path, PathBuf},
+  process::Command,
+};
+
+fn rustc_sysroot(rustc: &OsStr) -> Result<PathBuf, String> {
+  let output = Command::new(rustc)
+    .args(["--print", "sysroot"])
+    .output()
+    .map_err(|err| format!("failed to execute {}: {err}", rustc.to_string_lossy()))?;
+  if !output.status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    return Err(format!(
+      "{} --print sysroot exited with {}: {}",
+      rustc.to_string_lossy(),
+      output.status,
+      stderr.trim()
+    ));
+  }
+  let stdout = String::from_utf8(output.stdout)
+    .map_err(|err| format!("rustc returned a non-UTF-8 sysroot: {err}"))?;
+  let sysroot = stdout.trim();
+  if sysroot.is_empty() {
+    return Err("rustc returned an empty sysroot".to_owned());
+  }
+  Ok(PathBuf::from(sysroot))
+}
+
+fn reactor_crt_path(sysroot: &Path, target: &str) -> PathBuf {
+  sysroot
+    .join("lib")
+    .join("rustlib")
+    .join(target)
+    .join("lib")
+    .join("self-contained")
+    .join("crt1-reactor.o")
+}
+
+fn wasi_sysroot_lib_dir(wasi_sdk_path: &Path, wasi_target: &str) -> PathBuf {
+  wasi_sdk_path
+    .join("share")
+    .join("wasi-sysroot")
+    .join("lib")
+    .join(wasi_target)
+}
+
+fn emnapi_link_library(has_threads: bool) -> &'static str {
+  // The `napi-rs` archive variants reference `napi_*` symbols through the
+  // default `env` wasm import module, matching the plain `extern "C"`
+  // declarations in `crates/sys` (only `napi_add_env_cleanup_hook` and
+  // `napi_remove_env_cleanup_hook` use the `napi` import module, see
+  // `crates/napi/src/lib.rs`). The plain `libemnapi(-mt).a` archives use the
+  // `napi` import module for every `napi_*` reference and do not link against
+  // the Rust objects.
+  //
+  // The threaded archive (`emnapi-napi-rs-mt`) ships the FULL emnapi
+  // composition: the C `async_work.c` / `threadsafe_function.c`
+  // implementations backed by the uv threadpool, matching emscripten's
+  // `emnapi-mt`. The non-threaded archive (`emnapi-basic-napi-rs`) follows
+  // the "basic" model: async work and thread-safe functions stay wasm
+  // imports resolved by the `@emnapi/core/plugins` JavaScript
+  // implementations that every generated loader wires up.
+  if has_threads {
+    "emnapi-napi-rs-mt"
+  } else {
+    "emnapi-basic-napi-rs"
+  }
+}
+
+pub fn setup() {
+  let link_dir = env::var("EMNAPI_LINK_DIR").expect("EMNAPI_LINK_DIR must be set");
+  let target = env::var("TARGET").expect("TARGET must be set by Cargo");
+  let has_threads = matches!(
+    target.as_str(),
+    "wasm32-wasi" | "wasm32-wasi-preview1-threads" | "wasm32-wasip1-threads"
+  ) || target.ends_with("-threads");
+
+  println!("cargo:rerun-if-env-changed=EMNAPI_LINK_DIR");
+  println!("cargo:rerun-if-env-changed=RUSTC");
+  println!("cargo:rerun-if-env-changed=TARGET");
+  println!("cargo:rerun-if-env-changed=WASI_SDK_PATH");
+  println!("cargo:rustc-link-search={link_dir}");
+  let emnapi_library = emnapi_link_library(has_threads);
+  let emnapi_archive = Path::new(&link_dir).join(format!("lib{emnapi_library}.a"));
+  assert!(
+    emnapi_archive.is_file(),
+    "emnapi archive for {target} is missing at {}. Install emnapi v2 with support for the {target} archive",
+    emnapi_archive.display()
+  );
+  println!("cargo:rustc-link-lib=static={emnapi_library}");
+  println!("cargo:rustc-link-arg=--export=malloc");
+  println!("cargo:rustc-link-arg=--export=free");
+  // `@emnapi/core` v2 creates and destroys the native environment through
+  // these archive-defined exports during `napiModule.init()`; without them
+  // loading fails at runtime with `_emnapi_create_env is not a function`.
+  println!("cargo:rustc-link-arg=--export=emnapi_create_env");
+  println!("cargo:rustc-link-arg=--export=emnapi_delete_env");
+  println!("cargo:rustc-link-arg=--export=napi_register_wasm_v1");
+  // `napi` defines `napi_prepare_wasm_env_cleanup`, but `napi-build` and `napi`
+  // are versioned independently: a new `napi-build` can be unified with a `napi`
+  // that predates the symbol. Keep the export conditional so that combination
+  // still links instead of failing with an unresolved export. The generated
+  // loaders guard the call with `typeof … === 'function'` for the same reason,
+  // which is why `examples/napi/__tests__/wasi-env-cleanup-export.spec.ts`
+  // asserts the export really is present in the built artifact — a missing
+  // barrier is otherwise completely silent.
+  println!("cargo:rustc-link-arg=--export-if-defined=napi_prepare_wasm_env_cleanup");
+  // The settlement half of the same barrier: the loaders poll it to know when the settles the
+  // barrier queued have actually been dispatched, instead of destroying the environment while
+  // they are still in the threadsafe-function queue. Conditional for the same reason.
+  println!("cargo:rustc-link-arg=--export-if-defined=napi_wasm_env_cleanup_pending");
+  println!("cargo:rustc-link-arg=--export-if-defined=node_api_module_get_api_version_v1");
+  println!("cargo:rustc-link-arg=--export-table");
+  if has_threads {
+    println!("cargo:rustc-link-arg=--export-if-defined=emnapi_async_worker_create");
+    println!("cargo:rustc-link-arg=--export-if-defined=emnapi_async_worker_init");
+  }
+  println!("cargo:rustc-link-arg=--export-if-defined=emnapi_thread_crashed");
+  println!("cargo:rustc-link-arg=--import-memory");
+  println!("cargo:rustc-link-arg=--import-undefined");
+  println!("cargo:rustc-link-arg=--max-memory=4294967296");
+  // lld only allocates 1MiB for the WebAssembly stack.
+  // 64000000 bytes = 64MiB
+  println!("cargo:rustc-link-arg=-zstack-size=64000000");
+  println!("cargo:rustc-link-arg=--no-check-features");
+
+  let rustc = env::var_os("RUSTC").expect("RUSTC must be set by Cargo");
+  let sysroot = rustc_sysroot(&rustc).unwrap_or_else(|error| {
+    panic!(
+      "failed to locate crt1-reactor.o for {target}: {error}. Ensure RUSTC points to the compiler Cargo is using"
+    )
+  });
+  let crt_reactor_path = reactor_crt_path(&sysroot, &target);
+  assert!(
+    crt_reactor_path.is_file(),
+    "failed to locate crt1-reactor.o for {target} at {}. Install the Rust standard library for this target",
+    crt_reactor_path.display()
+  );
+  println!("cargo:rustc-link-arg={}", crt_reactor_path.display());
+  println!("cargo:rustc-link-arg=--export=_initialize");
+
+  if let Ok(wasi_sdk_path) = env::var("WASI_SDK_PATH") {
+    let wasi_target = if has_threads {
+      "wasm32-wasip1-threads"
+    } else {
+      "wasm32-wasip1"
+    };
+    let wasi_lib_dir = wasi_sysroot_lib_dir(Path::new(&wasi_sdk_path), wasi_target);
+    println!("cargo:rustc-link-search=native={}", wasi_lib_dir.display());
+    if wasi_lib_dir.join("libsetjmp.a").is_file() {
+      println!("cargo:rustc-link-lib=static=setjmp");
+    }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn resolves_bare_rustc_through_path() {
+    let sysroot = rustc_sysroot(OsStr::new("rustc")).expect("failed to resolve rustc from PATH");
+    assert!(sysroot.is_absolute());
+    assert!(sysroot.is_dir());
+  }
+
+  #[test]
+  fn constructs_reactor_crt_path_from_sysroot() {
+    assert_eq!(
+      reactor_crt_path(Path::new("/toolchain"), "wasm32-wasip1-threads"),
+      Path::new("/toolchain")
+        .join("lib")
+        .join("rustlib")
+        .join("wasm32-wasip1-threads")
+        .join("lib")
+        .join("self-contained")
+        .join("crt1-reactor.o")
+    );
+  }
+
+  #[test]
+  fn preserves_spaces_in_wasi_sysroot_path() {
+    let path = wasi_sysroot_lib_dir(Path::new("/toolchains/WASI SDK"), "wasm32-wasip1-threads");
+    assert_eq!(
+      path,
+      Path::new("/toolchains/WASI SDK/share/wasi-sysroot/lib/wasm32-wasip1-threads")
+    );
+  }
+
+  #[test]
+  fn selects_v2_emnapi_archives_by_threading_model() {
+    assert_eq!(emnapi_link_library(false), "emnapi-basic-napi-rs");
+    assert_eq!(emnapi_link_library(true), "emnapi-napi-rs-mt");
+  }
+}

@@ -17,7 +17,7 @@ fn test_recv_insert_notification() {
 		assert_eq!(change.subscription_id, sub_id);
 
 		let op = get_op_value(&change.body, 0);
-		assert_eq!(op, Some(1), "_op should be 1 for INSERT");
+		assert_eq!(op, Some(1), "op should be 1 for INSERT");
 
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.payload[0], "1");
@@ -39,7 +39,7 @@ fn test_recv_update_notification() {
 
 		let insert_change = ctx.recv().await.expect("Should receive insert notification");
 		let insert_op = get_op_value(&insert_change.body, 0);
-		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
+		assert_eq!(insert_op, Some(1), "op should be 1 for INSERT");
 
 		ctx.update(&table, "id == 1", "id: id, name: 'alice_updated'").await?;
 
@@ -47,7 +47,7 @@ fn test_recv_update_notification() {
 		assert_eq!(update_change.subscription_id, sub_id);
 
 		let op = get_op_value(&update_change.body, 0);
-		assert_eq!(op, Some(2), "_op should be 2 for UPDATE");
+		assert_eq!(op, Some(2), "op should be 2 for UPDATE");
 
 		let name_col = find_column(&update_change.body, "name").expect("name column should exist");
 		assert_eq!(name_col.payload[0], "alice_updated");
@@ -66,7 +66,7 @@ fn test_recv_delete_notification() {
 
 		let insert_change = ctx.recv().await.expect("Should receive insert notification");
 		let insert_op = get_op_value(&insert_change.body, 0);
-		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
+		assert_eq!(insert_op, Some(1), "op should be 1 for INSERT");
 
 		ctx.delete(&table, "id == 1").await?;
 
@@ -74,7 +74,7 @@ fn test_recv_delete_notification() {
 		assert_eq!(delete_change.subscription_id, sub_id);
 
 		let op = get_op_value(&delete_change.body, 0);
-		assert_eq!(op, Some(3), "_op should be 3 for DELETE");
+		assert_eq!(op, Some(3), "op should be 3 for DELETE");
 
 		ctx.close(&sub_id).await
 	});

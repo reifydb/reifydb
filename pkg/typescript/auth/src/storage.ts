@@ -5,7 +5,7 @@ import type { AuthSession } from "./types";
 
 const SUFFIX = ".auth";
 
-function key_for(namespace: string): string {
+function keyFor(namespace: string): string {
   return `${namespace}${SUFFIX}`;
 }
 
@@ -16,32 +16,31 @@ function key_for(namespace: string): string {
 // (degraded: the session will not survive a reload).
 const TAB_ID_KEY = "reifydb.auth.tab";
 
-function new_tab_id(): string {
+function newTabId(): string {
   try {
     if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
       return crypto.randomUUID();
     }
   } catch {
-    // crypto unavailable; fall through to the cheap fallback
   }
   return `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-function resolve_tab_id(): string {
+function resolveTabId(): string {
   if (typeof window === "undefined") return "ssr";
   try {
     const existing = sessionStorage.getItem(TAB_ID_KEY);
     if (existing) return existing;
-    const id = new_tab_id();
+    const id = newTabId();
     sessionStorage.setItem(TAB_ID_KEY, id);
     return id;
   } catch {
     // sessionStorage unavailable (private mode, disabled): ephemeral id.
-    return new_tab_id();
+    return newTabId();
   }
 }
 
-const TAB_ID = resolve_tab_id();
+const TAB_ID = resolveTabId();
 
 // Scopes a caller's namespace to this browser tab. AuthProvider feeds the
 // result into every storage operation so each tab gets its own slot and the
@@ -50,7 +49,7 @@ export function tabScopedNamespace(namespace: string): string {
   return `${namespace}.${TAB_ID}`;
 }
 
-function is_auth_session(v: unknown): v is AuthSession {
+function isAuthSession(v: unknown): v is AuthSession {
   if (v === null || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
   if (
@@ -67,14 +66,14 @@ function is_auth_session(v: unknown): v is AuthSession {
   return (
     typeof o.token === "string" && o.token.length > 0 &&
     typeof o.identity === "string" && o.identity.length > 0 &&
-    typeof o.wallet_address === "string" && o.wallet_address.length > 0 &&
-    typeof o.expires_at === "number" && Number.isFinite(o.expires_at) && o.expires_at > 0
+    typeof o.walletAddress === "string" && o.walletAddress.length > 0 &&
+    typeof o.expiresAt === "number" && Number.isFinite(o.expiresAt) && o.expiresAt > 0
   );
 }
 
-function safe_remove(namespace: string): void {
+function safeRemove(namespace: string): void {
   try {
-    localStorage.removeItem(key_for(namespace));
+    localStorage.removeItem(keyFor(namespace));
   } catch {
     // localStorage may be unavailable; ignore
   }
@@ -84,7 +83,7 @@ export function readStoredSession(namespace: string): AuthSession | null {
   if (typeof window === "undefined") return null;
   let raw: string | null;
   try {
-    raw = localStorage.getItem(key_for(namespace));
+    raw = localStorage.getItem(keyFor(namespace));
   } catch {
     return null;
   }
@@ -93,15 +92,15 @@ export function readStoredSession(namespace: string): AuthSession | null {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    safe_remove(namespace);
+    safeRemove(namespace);
     return null;
   }
-  if (!is_auth_session(parsed)) {
-    safe_remove(namespace);
+  if (!isAuthSession(parsed)) {
+    safeRemove(namespace);
     return null;
   }
-  if (parsed.expires_at <= Date.now() / 1000) {
-    safe_remove(namespace);
+  if (parsed.expiresAt <= Date.now() / 1000) {
+    safeRemove(namespace);
     return null;
   }
   return parsed;
@@ -109,11 +108,11 @@ export function readStoredSession(namespace: string): AuthSession | null {
 
 export function writeStoredSession(namespace: string, session: AuthSession): void {
   if (typeof window === "undefined") return;
-  if (!is_auth_session(session)) {
+  if (!isAuthSession(session)) {
     throw new Error("@reifydb/auth: refusing to persist malformed session");
   }
   try {
-    localStorage.setItem(key_for(namespace), JSON.stringify(session));
+    localStorage.setItem(keyFor(namespace), JSON.stringify(session));
   } catch {
     // localStorage may be unavailable (private mode, full quota); ignore.
   }
@@ -121,11 +120,11 @@ export function writeStoredSession(namespace: string, session: AuthSession): voi
 
 export function clearStoredSession(namespace: string): void {
   if (typeof window === "undefined") return;
-  safe_remove(namespace);
+  safeRemove(namespace);
 }
 
 export function storageKeyFor(namespace: string): string {
-  return key_for(namespace);
+  return keyFor(namespace);
 }
 
 // Closed tabs leave their per-tab slot in localStorage forever - nothing ever
@@ -136,12 +135,12 @@ export function sweepExpiredSessions(baseNamespace: string): void {
   if (typeof window === "undefined") return;
   try {
     const now = Date.now() / 1000;
-    const own_key = key_for(tabScopedNamespace(baseNamespace));
+    const ownKey = keyFor(tabScopedNamespace(baseNamespace));
     const prefix = `${baseNamespace}.`;
     const dead: string[] = [];
     for (let i = 0; i < localStorage.length; i += 1) {
       const k = localStorage.key(i);
-      if (k == null || k === own_key) continue;
+      if (k == null || k === ownKey) continue;
       if (!k.startsWith(prefix) || !k.endsWith(SUFFIX)) continue;
       const raw = localStorage.getItem(k);
       if (raw == null) continue;
@@ -151,7 +150,7 @@ export function sweepExpiredSessions(baseNamespace: string): void {
       } catch {
         continue;
       }
-      if (is_auth_session(parsed) && parsed.expires_at <= now) {
+      if (isAuthSession(parsed) && parsed.expiresAt <= now) {
         dead.push(k);
       }
     }

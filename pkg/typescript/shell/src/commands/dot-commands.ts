@@ -175,14 +175,14 @@ async function showShape(args: string[], context: DotCommandContext): Promise<vo
     return;
   }
 
-  const table_name = args[0];
-  const shape = await context.executor.getShape(table_name);
+  const tableName = args[0];
+  const shape = await context.executor.getShape(tableName);
 
   if (shape) {
     terminal.writeln('');
     terminal.writeln(shape);
     terminal.writeln('');
   } else {
-    terminal.writeln(`${C.red}Table not found: ${table_name}${C.reset}`);
+    terminal.writeln(`${C.red}Table not found: ${tableName}${C.reset}`);
   }
 }

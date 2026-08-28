@@ -23,10 +23,10 @@ export function useSubscription<S extends ShapeNode = any>(
 ): {
     data: InferShape<S>[];
     changes: ChangeEvent<InferShape<S>>[];
-    is_subscribed: boolean;
-    is_subscribing: boolean;
+    isSubscribed: boolean;
+    isSubscribing: boolean;
     error: string | undefined;
-    subscription_id: string | undefined;
+    subscriptionId: string | undefined;
 } {
     const {
         state,
@@ -35,8 +35,8 @@ export function useSubscription<S extends ShapeNode = any>(
     } = useSubscriptionExecutor<InferShape<S>>(options);
 
     // Serialize params for stable comparison (objects create new refs each render)
-    const params_key = useMemo(() => JSON.stringify(params), [params]);
-    const config_key = useMemo(() => JSON.stringify(options?.config), [options?.config]);
+    const paramsKey = useMemo(() => JSON.stringify(params), [params]);
+    const configKey = useMemo(() => JSON.stringify(options?.config), [options?.config]);
 
     useEffect(() => {
         if (options?.enabled === false) return;
@@ -46,14 +46,14 @@ export function useSubscription<S extends ShapeNode = any>(
         return () => {
             unsubscribe();
         };
-    }, [rql, params_key, shape, config_key, options?.enabled, subscribe, unsubscribe]);
+    }, [rql, paramsKey, shape, configKey, options?.enabled, subscribe, unsubscribe]);
 
     return {
         data: state.data,
         changes: state.changes,
-        is_subscribed: state.is_subscribed,
-        is_subscribing: state.is_subscribing,
+        isSubscribed: state.isSubscribed,
+        isSubscribing: state.isSubscribing,
         error: state.error,
-        subscription_id: state.subscription_id
+        subscriptionId: state.subscriptionId
     };
 }
