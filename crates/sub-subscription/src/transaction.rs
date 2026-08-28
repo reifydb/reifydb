@@ -172,25 +172,6 @@ fn ephemeral_storage_range<'a>(
 	Box::new(query.range(range, scope, batch_size))
 }
 
-fn ephemeral_storage_range_rev<'a>(
-	state: &HashMap<EncodedKey, EncodedBytes>,
-	query: &'a MultiReadTransaction,
-	version: CommitVersion,
-	range: EncodedKeyRange,
-	scope: RangeScope,
-	batch_size: usize,
-) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a> {
-	if is_state_range(&range) {
-		let mut items = state_items(state, &range, version);
-		items.sort_by(|a, b| match (a, b) {
-			(Ok(a), Ok(b)) => b.key.cmp(&a.key),
-			_ => Ordering::Equal,
-		});
-		return Box::new(items.into_iter());
-	}
-	Box::new(query.range_rev(range, scope, batch_size))
-}
-
 fn ephemeral_fetch_state_external(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	version: CommitVersion,
@@ -288,15 +269,6 @@ impl FlowTransaction for EphemeralTransaction {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		ephemeral_storage_range(&self.state, &self.query, self.version, range, scope, batch_size)
-	}
-
-	fn storage_range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-		scope: RangeScope,
-		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		ephemeral_storage_range_rev(&self.state, &self.query, self.version, range, scope, batch_size)
 	}
 
 	fn fetch_state_external(&mut self, keys: Vec<EncodedKey>, items: &mut Vec<MultiVersionRow>) -> Result<()> {

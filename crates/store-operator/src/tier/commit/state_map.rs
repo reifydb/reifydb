@@ -61,15 +61,6 @@ impl StateMap {
 		}
 	}
 
-	pub fn last(
-		&self,
-		operator: OperatorId,
-		lower: Bound<EncodedKey>,
-		upper: Bound<EncodedKey>,
-	) -> Option<(&EncodedKey, &StateEntry)> {
-		self.range(operator, lower, upper).next_back()
-	}
-
 	pub(super) fn slot(&mut self, key: StateKey) -> btree_map::Entry<'_, EncodedKey, StateEntry> {
 		self.operators.entry(key.0).or_default().entry(key.1)
 	}

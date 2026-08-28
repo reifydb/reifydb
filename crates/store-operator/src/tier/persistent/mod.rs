@@ -96,6 +96,12 @@ impl OperatorPersistentTier {
 		}
 	}
 
+	pub fn last_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
+		match self {
+			Self::Sqlite(storage) => storage.last_batch(operator, range, batch_size),
+		}
+	}
+
 	pub fn checkpoint_get(&self, flow: FlowId) -> Option<CommitVersion> {
 		match self {
 			Self::Sqlite(storage) => storage.checkpoint_get(flow),
@@ -220,6 +226,10 @@ impl OperatorPersistentTier {
 	}
 
 	pub fn range_batch(&self, _operator: OperatorId, _range: EncodedKeyRange, _batch_size: u64) -> OperatorBatch {
+		match *self {}
+	}
+
+	pub fn last_batch(&self, _operator: OperatorId, _range: EncodedKeyRange, _batch_size: u64) -> OperatorBatch {
 		match *self {}
 	}
 

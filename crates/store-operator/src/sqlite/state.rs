@@ -19,7 +19,7 @@ use crate::{
 		sql::{
 			ANCHORS_DROP_OPERATOR_SQL, STATE_CONTAINS_SQL, STATE_DROP_SQL, STATE_EXISTS_SQL,
 			STATE_GET_CHUNK, STATE_GET_SQL, STATE_KEY_COUNT_SQL, STATE_KEYS_AFTER_SQL,
-			STATE_KEYS_FIRST_SQL, STATE_SIZE_CHUNK, range_sql, state_gets_sql, state_sizes_sql,
+			STATE_KEYS_FIRST_SQL, STATE_SIZE_CHUNK, last_sql, range_sql, state_gets_sql, state_sizes_sql,
 		},
 	},
 	types::OperatorBatch,
@@ -152,6 +152,53 @@ impl SqliteOperatorStorage {
 
 		let mut items = Vec::new();
 		while let Some(row) = rows.next().expect("operator state scan failed") {
+			let key: Vec<u8> = row.get(0).expect("operator state rows carry a blob key");
+			let bytes: Vec<u8> = row.get(1).expect("operator state rows carry a blob payload");
+			items.push((EncodedKey::new(key), decode_row(bytes)));
+		}
+		record_page(items.len() as u64, 0);
+
+		let has_more = items.len() as u64 > limit;
+		items.truncate(limit as usize);
+		OperatorBatch {
+			items,
+			has_more,
+		}
+	}
+
+	#[instrument(name = "store::operator::persistent::sqlite::last_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
+	pub fn last_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
+		if !self.state_written() {
+			return OperatorBatch::empty();
+		}
+		let sql = last_sql(range.start.as_ref(), range.end.as_ref());
+		let mut blobs: Vec<&[u8]> = Vec::with_capacity(2);
+		if let Bound::Included(key) | Bound::Excluded(key) = range.start.as_ref() {
+			blobs.push(key.as_slice());
+		}
+		if let Bound::Included(key) | Bound::Excluded(key) = range.end.as_ref() {
+			blobs.push(key.as_slice());
+		}
+
+		let limit = batch_size.max(1);
+		let operator_param = operator.0 as i64;
+		let limit_param = limit.min(i64::MAX as u64 - 1) as i64 + 1;
+		let mut bound_params: Vec<&dyn ToSql> = Vec::with_capacity(blobs.len() + 2);
+		bound_params.push(&operator_param);
+		for blob in &blobs {
+			bound_params.push(blob);
+		}
+		bound_params.push(&limit_param);
+
+		let guard = self.read_conn();
+		let Some(conn) = guard.as_ref() else {
+			return OperatorBatch::empty();
+		};
+		let mut stmt = conn.prepare_cached(sql).expect("operator state descending scan could not be prepared");
+		let mut rows = stmt.query(bound_params.as_slice()).expect("operator state descending scan failed");
+
+		let mut items = Vec::new();
+		while let Some(row) = rows.next().expect("operator state descending scan failed") {
 			let key: Vec<u8> = row.get(0).expect("operator state rows carry a blob key");
 			let bytes: Vec<u8> = row.get(1).expect("operator state rows carry a blob payload");
 			items.push((EncodedKey::new(key), decode_row(bytes)));

@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::{cmp::Ordering, collections::BTreeMap, ops::Bound};
+
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
+	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
+	actors::pending::PendingWrite,
 	interface::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionBatch, MultiVersionRow},
@@ -13,7 +16,7 @@ use reifydb_core::{
 	key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey, node_prefix},
 	metrics::scan::ScanCounters,
 };
-use reifydb_store_operator::types::ANCHOR_VALUE_BYTES;
+use reifydb_store_operator::{store::OperatorStore, types::ANCHOR_VALUE_BYTES};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};
@@ -25,7 +28,6 @@ pub struct StateRange {
 	pub range: EncodedKeyRange,
 	pub limit: Option<usize>,
 	pub site: &'static str,
-	pub reverse: bool,
 }
 
 impl StateRange {
@@ -34,16 +36,6 @@ impl StateRange {
 			range,
 			limit: None,
 			site,
-			reverse: false,
-		}
-	}
-
-	pub fn reverse(range: EncodedKeyRange, site: &'static str) -> Self {
-		Self {
-			range,
-			limit: None,
-			site,
-			reverse: true,
 		}
 	}
 
@@ -148,23 +140,14 @@ pub trait StateExtension: FlowTransaction {
 	#[instrument(name = "flow::state::range", level = "debug", skip(self, query), fields(
 		operator_id = id.0,
 		site = query.site,
-		reverse = query.reverse,
 		rows_fetched = field::Empty,
 		rows_tombstoned = field::Empty
 	))]
 	fn state_range(&mut self, id: OperatorId, query: StateRange) -> Result<MultiVersionBatch> {
 		let before = ScanCounters::sample();
 		let prefixed_range = query.range.with_prefix(EncodedKey::new(node_prefix(id)));
-		let batch_size = if query.reverse {
-			1024
-		} else {
-			query.limit.map_or(1024, |limit| limit.saturating_add(1).min(1024))
-		};
-		let iter = if query.reverse {
-			self.range_rev(prefixed_range, RangeScope::All, batch_size)
-		} else {
-			self.range(prefixed_range, RangeScope::All, batch_size)
-		};
+		let batch_size = query.limit.map_or(1024, |limit| limit.saturating_add(1).min(1024));
+		let iter = self.range(prefixed_range, RangeScope::All, batch_size);
 		let mut items = Vec::new();
 		let mut has_more = false;
 		for result in iter {
@@ -184,6 +167,82 @@ pub trait StateExtension: FlowTransaction {
 		})
 	}
 
+	#[instrument(name = "flow::state::last", level = "debug", skip(self, range), fields(
+		operator_id = id.0,
+		found = field::Empty
+	))]
+	fn state_last(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<Option<MultiVersionRow>> {
+		let prefix = node_prefix(id);
+		let prefixed_range = range.with_prefix(EncodedKey::new(prefix.clone()));
+		let mut merged = BTreeMap::new();
+		self.pending_layers()
+			.collect_range((prefixed_range.start.as_ref(), prefixed_range.end.as_ref()), &mut merged);
+		let pending: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
+
+		let version = self.version();
+		let store = self.operator_store();
+		let mut index = 0usize;
+		let mut stored = stored_candidate(&store, id, &prefix, range.clone());
+
+		let found = loop {
+			match (pending.get(index), stored.take()) {
+				(None, None) => break None,
+				(None, Some((_, key, bytes))) => {
+					break Some(MultiVersionRow {
+						key,
+						bytes,
+						version,
+					});
+				}
+				(Some((key, write)), None) => {
+					index += 1;
+					if let PendingWrite::Set(value) = write {
+						break Some(MultiVersionRow {
+							key: key.clone(),
+							bytes: value.clone(),
+							version,
+						});
+					}
+				}
+				(Some((pending_key, write)), Some((inner, key, bytes))) => match pending_key.cmp(&key) {
+					Ordering::Greater => {
+						index += 1;
+						stored = Some((inner, key, bytes));
+						if let PendingWrite::Set(value) = write {
+							break Some(MultiVersionRow {
+								key: pending_key.clone(),
+								bytes: value.clone(),
+								version,
+							});
+						}
+					}
+					Ordering::Less => {
+						break Some(MultiVersionRow {
+							key,
+							bytes,
+							version,
+						});
+					}
+					Ordering::Equal => {
+						index += 1;
+						if let PendingWrite::Set(value) = write {
+							break Some(MultiVersionRow {
+								key: pending_key.clone(),
+								bytes: value.clone(),
+								version,
+							});
+						}
+						let shadowed =
+							EncodedKeyRange::new(range.start.clone(), Bound::Excluded(inner));
+						stored = stored_candidate(&store, id, &prefix, shadowed);
+					}
+				},
+			}
+		};
+		Span::current().record("found", found.is_some());
+		Ok(found)
+	}
+
 	#[instrument(name = "flow::state::clear", level = "trace", skip(self), fields(
 		operator_id = id.0,
 		keys_removed = field::Empty
@@ -200,6 +259,20 @@ pub trait StateExtension: FlowTransaction {
 }
 
 impl<T: FlowTransaction> StateExtension for T {}
+
+fn stored_candidate(
+	store: &OperatorStore,
+	id: OperatorId,
+	prefix: &[u8],
+	range: EncodedKeyRange,
+) -> Option<(EncodedKey, EncodedKey, EncodedBytes)> {
+	store.state_last(id, range).map(|(inner, row)| {
+		let mut scoped = Vec::with_capacity(prefix.len() + inner.len());
+		scoped.extend_from_slice(prefix);
+		scoped.extend_from_slice(inner.as_slice());
+		(inner, EncodedKey::new(scoped), row.into_bytes())
+	})
+}
 
 #[inline]
 fn classify_state_write<T: FlowTransaction>(

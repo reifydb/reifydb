@@ -204,35 +204,6 @@ pub(crate) fn deferred_storage_range<'a>(
 	Box::new(query.range(range, scope, batch_size))
 }
 
-pub(crate) fn deferred_storage_range_rev<'a>(
-	operators: Option<&OperatorStore>,
-	query: &'a MultiReadTransaction,
-	state_query: &'a MultiReadTransaction,
-	version: CommitVersion,
-	range: EncodedKeyRange,
-	scope: RangeScope,
-	batch_size: usize,
-) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a> {
-	if let Some(OperatorRangeScope {
-		operator,
-		inner,
-	}) = operator_state_scope(&range)
-	{
-		let mut items = OperatorStateRangeIter::new(
-			operators.expect(NO_OPERATOR_STORE).clone(),
-			operator,
-			inner,
-			batch_size,
-			version,
-		)
-		.collect::<Vec<_>>();
-		items.reverse();
-		return Box::new(items.into_iter());
-	}
-	let query = deferred_range_target(query, state_query, &range);
-	Box::new(query.range_rev(range, scope, batch_size))
-}
-
 fn deferred_range_target<'a>(
 	query: &'a MultiReadTransaction,
 	state_query: &'a MultiReadTransaction,
@@ -365,23 +336,6 @@ impl FlowTransaction for DeferredTransaction {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		deferred_storage_range(
-			self.substrate.operators.as_ref(),
-			&self.query,
-			&self.state_query,
-			self.version,
-			range,
-			scope,
-			batch_size,
-		)
-	}
-
-	fn storage_range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-		scope: RangeScope,
-		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		deferred_storage_range_rev(
 			self.substrate.operators.as_ref(),
 			&self.query,
 			&self.state_query,

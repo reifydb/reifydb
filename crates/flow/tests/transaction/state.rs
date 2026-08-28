@@ -588,28 +588,6 @@ fn deferred_reads_owned_rows_at_state_version() {
 }
 
 #[test]
-fn probe_reverse_limit_one_round_trips() {
-	// A reverse scan with a small limit must not page the entire keyspace in limit-sized chunks.
-	let engine = TestEngine::new();
-	let operator = OperatorId(1);
-	for i in 0..5000 {
-		seed_state_row(&engine, operator, &make_key(&format!("k{i:05}")), make_value("v"));
-	}
-	let range = || {
-		EncodedKeyRange::new(
-			Bound::Included(make_key("k00000").into_encoded()),
-			Bound::Excluded(make_key("k99999").into_encoded()),
-		)
-	};
-	let mut txn = deferred_shared(&engine);
-	let batch = txn.state_range(operator, StateRange::reverse(range(), "probe").limit(1)).unwrap();
-	assert_eq!(batch.items.len(), 1);
-	assert_eq!(batch.items[0].key, full_key(operator, &make_key("k04999")));
-	let batch = txn.state_range(operator, StateRange::reverse(range(), "probe")).unwrap();
-	assert_eq!(batch.items.len(), 5000);
-}
-
-#[test]
 fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
 	// The write path no longer reads a pre-image; classify_pending resolves every unclassified key in one
 	// batch at drain. A key that is already durable must still emit Replace carrying its exact byte size,

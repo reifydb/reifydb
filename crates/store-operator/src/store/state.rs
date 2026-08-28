@@ -690,6 +690,93 @@ impl StandardOperatorStore {
 			has_more,
 		}
 	}
+
+	#[instrument(name = "store::operator::state_last", level = "trace", skip(self, range), fields(operator = operator.0))]
+	pub fn state_last(&self, operator: OperatorId, range: EncodedKeyRange) -> Option<(EncodedKey, EncodedPodRow)> {
+		let mut buffer_end = range.end.clone();
+		let first = self.commit.state_last_page(
+			operator,
+			range.start.as_ref(),
+			buffer_end.as_ref(),
+			STATE_LAST_PAGE,
+		);
+		let mut stored_done = first.dropped || self.persistent.is_none();
+		let mut buffer = first.items;
+		let mut buffer_done = buffer.len() < STATE_LAST_PAGE;
+		let mut buffer_index = 0usize;
+		if let Some((key, _)) = buffer.last() {
+			buffer_end = Bound::Excluded(key.clone());
+		}
+
+		let mut stored: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
+		let mut stored_index = 0usize;
+		let mut stored_end = range.end.clone();
+
+		loop {
+			if buffer_index == buffer.len() && !buffer_done {
+				let page = self.commit.state_last_page(
+					operator,
+					range.start.as_ref(),
+					buffer_end.as_ref(),
+					STATE_LAST_PAGE,
+				);
+				buffer = page.items;
+				buffer_index = 0;
+				buffer_done = buffer.len() < STATE_LAST_PAGE;
+				if let Some((key, _)) = buffer.last() {
+					buffer_end = Bound::Excluded(key.clone());
+				}
+			}
+			if stored_index == stored.len() && !stored_done {
+				let persistent = self
+					.persistent
+					.as_ref()
+					.expect("a store without a persistent tier never reaches a stored page");
+				let batch = persistent.last_batch(
+					operator,
+					EncodedKeyRange::new(range.start.clone(), stored_end.clone()),
+					STATE_LAST_PAGE as u64,
+				);
+				stored_done = !batch.has_more;
+				stored = batch.items;
+				stored_index = 0;
+				if let Some((key, _)) = stored.last() {
+					stored_end = Bound::Excluded(key.clone());
+				}
+			}
+
+			match (buffer.get(buffer_index), stored.get(stored_index)) {
+				(None, None) => return None,
+				(Some((key, entry)), None) => {
+					buffer_index += 1;
+					if let Some(row) = entry {
+						return Some((key.clone(), row.clone()));
+					}
+				}
+				(None, Some((key, row))) => return Some((key.clone(), row.clone())),
+				(Some((buffer_key, entry)), Some((stored_key, stored_row))) => {
+					match buffer_key.cmp(stored_key) {
+						Ordering::Greater => {
+							buffer_index += 1;
+							if let Some(row) = entry {
+								return Some((buffer_key.clone(), row.clone()));
+							}
+						}
+						Ordering::Less => {
+							return Some((stored_key.clone(), stored_row.clone()));
+						}
+						Ordering::Equal => {
+							buffer_index += 1;
+							stored_index += 1;
+							if let Some(row) = entry {
+								return Some((buffer_key.clone(), row.clone()));
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 impl OperatorStore {
@@ -747,12 +834,20 @@ impl OperatorStore {
 			Self::Standard(store) => store.range_batch(operator, range, batch_size),
 		}
 	}
+
+	pub fn state_last(&self, operator: OperatorId, range: EncodedKeyRange) -> Option<(EncodedKey, EncodedPodRow)> {
+		match self {
+			Self::Standard(store) => store.state_last(operator, range),
+		}
+	}
 }
 
 #[cfg(reifydb_assertions)]
 fn value_bytes(row: &EncodedPodRow) -> ByteSize {
 	ByteSize::from_bytes(row.bytes().len() as u64)
 }
+
+const STATE_LAST_PAGE: usize = 64;
 
 enum SizeProbe {
 	Known(Option<ByteSize>),

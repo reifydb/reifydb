@@ -141,6 +141,52 @@ macro_rules! range_sql_variant {
 	};
 }
 
+pub(super) fn last_sql(start: Bound<&EncodedKey>, end: Bound<&EncodedKey>) -> &'static str {
+	match (start, end) {
+		(Bound::Unbounded, Bound::Unbounded) => range_sql_variant!(r#" ORDER BY "key" DESC LIMIT ?2"#),
+		(Bound::Unbounded, Bound::Included(_)) => {
+			range_sql_variant!(r#" AND "key" <= ?2"#, r#" ORDER BY "key" DESC LIMIT ?3"#)
+		}
+		(Bound::Unbounded, Bound::Excluded(_)) => {
+			range_sql_variant!(r#" AND "key" < ?2"#, r#" ORDER BY "key" DESC LIMIT ?3"#)
+		}
+		(Bound::Included(_), Bound::Unbounded) => {
+			range_sql_variant!(r#" AND "key" >= ?2"#, r#" ORDER BY "key" DESC LIMIT ?3"#)
+		}
+		(Bound::Excluded(_), Bound::Unbounded) => {
+			range_sql_variant!(r#" AND "key" > ?2"#, r#" ORDER BY "key" DESC LIMIT ?3"#)
+		}
+		(Bound::Included(_), Bound::Included(_)) => {
+			range_sql_variant!(
+				r#" AND "key" >= ?2"#,
+				r#" AND "key" <= ?3"#,
+				r#" ORDER BY "key" DESC LIMIT ?4"#
+			)
+		}
+		(Bound::Included(_), Bound::Excluded(_)) => {
+			range_sql_variant!(
+				r#" AND "key" >= ?2"#,
+				r#" AND "key" < ?3"#,
+				r#" ORDER BY "key" DESC LIMIT ?4"#
+			)
+		}
+		(Bound::Excluded(_), Bound::Included(_)) => {
+			range_sql_variant!(
+				r#" AND "key" > ?2"#,
+				r#" AND "key" <= ?3"#,
+				r#" ORDER BY "key" DESC LIMIT ?4"#
+			)
+		}
+		(Bound::Excluded(_), Bound::Excluded(_)) => {
+			range_sql_variant!(
+				r#" AND "key" > ?2"#,
+				r#" AND "key" < ?3"#,
+				r#" ORDER BY "key" DESC LIMIT ?4"#
+			)
+		}
+	}
+}
+
 pub(super) fn range_sql(start: Bound<&EncodedKey>, end: Bound<&EncodedKey>) -> &'static str {
 	match (start, end) {
 		(Bound::Unbounded, Bound::Unbounded) => range_sql_variant!(r#" ORDER BY "key" ASC LIMIT ?2"#),

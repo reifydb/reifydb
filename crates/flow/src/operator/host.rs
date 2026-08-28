@@ -227,7 +227,6 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 				range,
 				limit,
 				site: "operator::host_visit",
-				reverse: false,
 			},
 		)?;
 		for r in batch.items {
@@ -241,15 +240,13 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
-		let batch = self
-			.txn
-			.state_range(self.operator, StateRange::reverse(range, "operator::host_last").limit(1))?;
-		for r in batch.items {
-			if let Some(decoded) = OperatorStateKey::decode(&r.key)
-				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
-			{
-				return Ok(Some((inner, EncodedPodRow::from(r.bytes))));
-			}
+		let Some(r) = self.txn.state_last(self.operator, range)? else {
+			return Ok(None);
+		};
+		if let Some(decoded) = OperatorStateKey::decode(&r.key)
+			&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
+		{
+			return Ok(Some((inner, EncodedPodRow::from(r.bytes))));
 		}
 		Ok(None)
 	}

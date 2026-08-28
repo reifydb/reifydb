@@ -47,7 +47,7 @@ use crate::{
 	operator::sink::DurableSink,
 	timer::{Timer, TimerDue},
 	transaction::{
-		read::{flow_merge_pending_iterator, flow_merge_pending_iterator_rev},
+		read::flow_merge_pending_iterator,
 		substrate::FlowSubstrate,
 	},
 };
@@ -138,13 +138,6 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>;
 
-	fn storage_range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-		scope: RangeScope,
-		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>;
-
 	fn fetch_state_external(&mut self, keys: Vec<EncodedKey>, items: &mut Vec<MultiVersionRow>) -> Result<()>;
 
 	fn pending(&self) -> &Pending {
@@ -195,20 +188,6 @@ pub trait FlowTransaction: Sized + Send + 'static {
 		let version = self.version();
 		let storage_iter = self.storage_range(range, scope, batch_size);
 		Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, version))
-	}
-
-	fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-		scope: RangeScope,
-		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		let mut merged = BTreeMap::new();
-		self.pending_layers().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
-		let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
-		let version = self.version();
-		let storage_iter = self.storage_range_rev(range, scope, batch_size);
-		Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, version))
 	}
 
 	fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {

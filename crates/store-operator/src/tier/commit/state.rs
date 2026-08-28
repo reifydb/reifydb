@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Ordering, iter::Peekable, ops::Bound};
+use std::{
+	cmp::Ordering,
+	iter::{Peekable, Rev},
+	ops::Bound,
+};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
@@ -73,29 +77,29 @@ impl OperatorCommitBuffer {
 		}
 	}
 
-	pub fn state_last(
+	pub fn state_last_page(
 		&self,
 		operator: OperatorId,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
-	) -> Option<(EncodedKey, Option<EncodedPodRow>)> {
+		limit: usize,
+	) -> BufferedStateRange {
 		let lower = owned(start);
 		let upper = owned(end);
-		if is_empty_range(&lower, &upper) {
-			return None;
-		}
 
 		let inner = self.shared().inner.lock();
-		let live = inner.live.state.last(operator, lower.clone(), upper.clone());
-		let flight = inner.in_flight.as_ref().and_then(|batch| batch.state.last(operator, lower, upper));
-		match (live, flight) {
-			(Some((key, entry)), None) => Some((key.clone(), entry.post.clone())),
-			(None, Some((key, entry))) => Some((key.clone(), entry.post.clone())),
-			(Some((live_key, live_entry)), Some((flight_key, flight_entry))) => match live_key.cmp(flight_key) {
-				Ordering::Less => Some((flight_key.clone(), flight_entry.post.clone())),
-				_ => Some((live_key.clone(), live_entry.post.clone())),
-			},
-			(None, None) => None,
+		let mut items = Vec::new();
+		if limit > 0 && !is_empty_range(&lower, &upper) {
+			let live = inner.live.state.range(operator, lower.clone(), upper.clone());
+			let flight = match inner.in_flight.as_ref() {
+				Some(batch) => batch.state.range(operator, lower, upper),
+				None => Range::default(),
+			};
+			items = merge_back(live, flight, limit);
+		}
+		BufferedStateRange {
+			items,
+			dropped: inner.any_drop(|marker| is_state_drop(marker, operator)),
 		}
 	}
 }
@@ -112,6 +116,40 @@ fn merge(live: Range<'_>, flight: Range<'_>, limit: usize) -> Vec<(EncodedKey, O
 			(Some((live_key, _)), Some((flight_key, _))) => match live_key.cmp(flight_key) {
 				Ordering::Less => Side::Live,
 				Ordering::Greater => Side::Flight,
+				Ordering::Equal => Side::Both,
+			},
+		};
+		match winner {
+			Side::Live => {
+				let (key, entry) = live.next().expect("the peeked live entry is still pending");
+				items.push((key.clone(), entry.post.clone()));
+			}
+			Side::Flight => {
+				let (key, entry) = flight.next().expect("the peeked in-flight entry is still pending");
+				items.push((key.clone(), entry.post.clone()));
+			}
+			Side::Both => {
+				let (key, entry) = live.next().expect("the peeked live entry is still pending");
+				flight.next();
+				items.push((key.clone(), entry.post.clone()));
+			}
+		}
+	}
+	items
+}
+
+fn merge_back(live: Range<'_>, flight: Range<'_>, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
+	let mut live: Peekable<Rev<Range<'_>>> = live.rev().peekable();
+	let mut flight: Peekable<Rev<Range<'_>>> = flight.rev().peekable();
+	let mut items = Vec::new();
+	while items.len() < limit {
+		let winner = match (live.peek(), flight.peek()) {
+			(None, None) => break,
+			(Some(_), None) => Side::Live,
+			(None, Some(_)) => Side::Flight,
+			(Some((live_key, _)), Some((flight_key, _))) => match live_key.cmp(flight_key) {
+				Ordering::Greater => Side::Live,
+				Ordering::Less => Side::Flight,
 				Ordering::Equal => Side::Both,
 			},
 		};
