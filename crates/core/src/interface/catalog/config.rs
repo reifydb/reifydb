@@ -63,7 +63,7 @@ pub enum ConfigKey {
 	MultiFlushInterval,
 	MultiFlushBudgetBytes,
 	MultiWalAutocheckpoint,
-	OperatorFlushBudgetBytes,
+	OperatorResidentBudget,
 	OperatorWalAutocheckpoint,
 	FlowTick,
 	FlowSampleInterval,
@@ -121,7 +121,7 @@ impl ConfigKey {
 			Self::MultiFlushInterval,
 			Self::MultiFlushBudgetBytes,
 			Self::MultiWalAutocheckpoint,
-			Self::OperatorFlushBudgetBytes,
+			Self::OperatorResidentBudget,
 			Self::OperatorWalAutocheckpoint,
 			Self::FlowTick,
 			Self::FlowSampleInterval,
@@ -173,7 +173,7 @@ impl ConfigKey {
 			Self::MultiPointBufferShardBytes => Value::Uint8(4 * 1024 * 1024),
 			Self::MultiRangeBufferShardBytes => Value::Uint8(4 * 1024 * 1024),
 			Self::OperatorPointBufferShardBytes => Value::Uint8(512 * 1024),
-			Self::OperatorRangeBufferShardBytes => Value::Uint8(15 * 512 * 1024),
+			Self::OperatorRangeBufferShardBytes => Value::Uint8(2 * 1024 * 1024),
 			Self::MultiPointBufferShards => Value::Uint2(16),
 			Self::MultiRangeBufferShards => Value::Uint2(16),
 			Self::OperatorPointBufferShards => Value::Uint2(16),
@@ -181,7 +181,7 @@ impl ConfigKey {
 			Self::MultiFlushInterval => Value::duration_seconds(60),
 			Self::MultiFlushBudgetBytes => Value::Uint8(4 * 1024 * 1024),
 			Self::MultiWalAutocheckpoint => Value::Uint8(50000),
-			Self::OperatorFlushBudgetBytes => Value::Uint8(100 * 1024 * 1024),
+			Self::OperatorResidentBudget => Value::Uint8(100 * 1024 * 1024),
 			Self::OperatorWalAutocheckpoint => Value::Uint8(1000000),
 			Self::FlowTick => Value::duration_seconds(1),
 			Self::FlowSampleInterval => Value::duration_seconds(60),
@@ -352,7 +352,7 @@ impl ConfigKey {
 				 I/O; lower values keep the WAL small at the cost of more frequent checkpoints. Read once \
 				 at boot; changing it requires a restart."
 			}
-			Self::OperatorFlushBudgetBytes => {
+			Self::OperatorResidentBudget => {
 				"Maximum bytes the persistent-flush class moves from the operator commit buffer to \
 				 the SQLite tier in one slice. Bounds how long a single flush holds the lane, so a \
 				 large backlog drains across ticks instead of stalling every other retention class \
@@ -494,7 +494,7 @@ impl ConfigKey {
 			Self::MultiFlushInterval => true,
 			Self::MultiFlushBudgetBytes => false,
 			Self::MultiWalAutocheckpoint => true,
-			Self::OperatorFlushBudgetBytes => true,
+			Self::OperatorResidentBudget => true,
 			Self::OperatorWalAutocheckpoint => true,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => false,
@@ -552,7 +552,7 @@ impl ConfigKey {
 			Self::MultiFlushInterval => &[ValueType::Duration],
 			Self::MultiFlushBudgetBytes => &[ValueType::Uint8],
 			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
-			Self::OperatorFlushBudgetBytes => &[ValueType::Uint8],
+			Self::OperatorResidentBudget => &[ValueType::Uint8],
 			Self::OperatorWalAutocheckpoint => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::FlowSampleInterval => &[ValueType::Duration],
@@ -610,7 +610,7 @@ impl ConfigKey {
 			Self::MultiFlushInterval => false,
 			Self::MultiFlushBudgetBytes => false,
 			Self::MultiWalAutocheckpoint => false,
-			Self::OperatorFlushBudgetBytes => false,
+			Self::OperatorResidentBudget => false,
 			Self::OperatorWalAutocheckpoint => false,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => true,
@@ -773,10 +773,10 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
-			Self::OperatorFlushBudgetBytes => match value {
+			Self::OperatorResidentBudget => match value {
 				Value::Uint8(n) if *n > 0 => Ok(()),
 				Value::Uint8(_) => {
-					Err("OPERATOR_FLUSH_BUDGET_BYTES must be greater than zero".to_string())
+					Err("OPERATOR_RESIDENT_BUDGET must be greater than zero".to_string())
 				}
 				_ => Ok(()),
 			},
@@ -961,7 +961,7 @@ impl fmt::Display for ConfigKey {
 			Self::MultiFlushInterval => write!(f, "MULTI_FLUSH_INTERVAL"),
 			Self::MultiFlushBudgetBytes => write!(f, "MULTI_FLUSH_BUDGET_BYTES"),
 			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
-			Self::OperatorFlushBudgetBytes => write!(f, "OPERATOR_FLUSH_BUDGET_BYTES"),
+			Self::OperatorResidentBudget => write!(f, "OPERATOR_RESIDENT_BUDGET"),
 			Self::OperatorWalAutocheckpoint => write!(f, "OPERATOR_WAL_AUTOCHECKPOINT"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::FlowSampleInterval => write!(f, "FLOW_SAMPLE_INTERVAL"),
@@ -1023,7 +1023,7 @@ impl FromStr for ConfigKey {
 			"MULTI_FLUSH_INTERVAL" => Ok(Self::MultiFlushInterval),
 			"MULTI_FLUSH_BUDGET_BYTES" => Ok(Self::MultiFlushBudgetBytes),
 			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
-			"OPERATOR_FLUSH_BUDGET_BYTES" => Ok(Self::OperatorFlushBudgetBytes),
+			"OPERATOR_RESIDENT_BUDGET" => Ok(Self::OperatorResidentBudget),
 			"OPERATOR_WAL_AUTOCHECKPOINT" => Ok(Self::OperatorWalAutocheckpoint),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"FLOW_SAMPLE_INTERVAL" => Ok(Self::FlowSampleInterval),
@@ -1225,7 +1225,7 @@ mod tests {
 		assert!(all.contains(&ConfigKey::RetentionEvictMaxBatchesPerTick));
 		assert!(all.contains(&ConfigKey::MultiFlushInterval));
 		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
-		assert!(all.contains(&ConfigKey::OperatorFlushBudgetBytes));
+		assert!(all.contains(&ConfigKey::OperatorResidentBudget));
 		assert!(all.contains(&ConfigKey::OperatorWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcConsumeWaitTimeout));
@@ -1606,11 +1606,11 @@ mod tests {
 
 	#[test]
 	fn test_operator_flush_budget_bytes_metadata() {
-		assert_eq!(ConfigKey::OperatorFlushBudgetBytes.default_value(), Value::Uint8(100 * 1024 * 1024));
-		assert_eq!(ConfigKey::OperatorFlushBudgetBytes.expected_types(), &[ValueType::Uint8]);
-		assert!(!ConfigKey::OperatorFlushBudgetBytes.is_optional());
+		assert_eq!(ConfigKey::OperatorResidentBudget.default_value(), Value::Uint8(100 * 1024 * 1024));
+		assert_eq!(ConfigKey::OperatorResidentBudget.expected_types(), &[ValueType::Uint8]);
+		assert!(!ConfigKey::OperatorResidentBudget.is_optional());
 		assert!(
-			ConfigKey::OperatorFlushBudgetBytes.requires_restart(),
+			ConfigKey::OperatorResidentBudget.requires_restart(),
 			"the budget sizes a MemoryBudget built once with the commit tier; declaring it live would \
 			 promise a rewrite that no running store can adopt"
 		);
@@ -1620,22 +1620,22 @@ mod tests {
 	fn test_operator_flush_budget_bytes_rejects_zero() {
 		// A zero budget moves nothing per slice, so the flush lane spins forever on a backlog it
 		// is never allowed to drain.
-		match ConfigKey::OperatorFlushBudgetBytes.accept(Value::Uint8(0)).unwrap_err() {
+		match ConfigKey::OperatorResidentBudget.accept(Value::Uint8(0)).unwrap_err() {
 			AcceptError::InvalidValue(reason) => {
 				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
 			}
 			other => panic!("expected InvalidValue, got {other:?}"),
 		}
-		assert_eq!(ConfigKey::OperatorFlushBudgetBytes.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
+		assert_eq!(ConfigKey::OperatorResidentBudget.accept(Value::Uint8(1)).unwrap(), Value::Uint8(1));
 	}
 
 	#[test]
 	fn test_operator_flush_budget_bytes_round_trips_through_display_and_from_str() {
 		assert_eq!(
-			"OPERATOR_FLUSH_BUDGET_BYTES".parse::<ConfigKey>().unwrap(),
-			ConfigKey::OperatorFlushBudgetBytes
+			"OPERATOR_RESIDENT_BUDGET".parse::<ConfigKey>().unwrap(),
+			ConfigKey::OperatorResidentBudget
 		);
-		assert_eq!(format!("{}", ConfigKey::OperatorFlushBudgetBytes), "OPERATOR_FLUSH_BUDGET_BYTES");
+		assert_eq!(format!("{}", ConfigKey::OperatorResidentBudget), "OPERATOR_RESIDENT_BUDGET");
 	}
 
 	#[test]

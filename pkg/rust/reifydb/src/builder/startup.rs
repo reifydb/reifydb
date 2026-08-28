@@ -53,7 +53,7 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::MultiWalAutocheckpoint,
 	ConfigKey::CdcWalAutocheckpoint,
 	ConfigKey::OperatorWalAutocheckpoint,
-	ConfigKey::OperatorFlushBudgetBytes,
+	ConfigKey::OperatorResidentBudget,
 	ConfigKey::MultiFlushBudgetBytes,
 	ConfigKey::CdcCommitBufferBytes,
 	ConfigKey::CdcBlockCutBytes,
@@ -162,7 +162,7 @@ pub(crate) fn resolve_startup_configs(
 		multi_wal_autocheckpoint: uint8(ConfigKey::MultiWalAutocheckpoint) as u32,
 		cdc_wal_autocheckpoint: uint8(ConfigKey::CdcWalAutocheckpoint) as u32,
 		operator_wal_autocheckpoint: uint8(ConfigKey::OperatorWalAutocheckpoint) as u32,
-		operator_flush_budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorFlushBudgetBytes)),
+		operator_flush_budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorResidentBudget)),
 		cdc_commit,
 		cdc_read,
 	})
