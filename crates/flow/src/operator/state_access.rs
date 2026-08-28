@@ -4,8 +4,25 @@
 use std::hash::Hash;
 
 use reifydb_codec::row::operator::state::{OperatorState, decode};
-use reifydb_core::{key::operator_state::IntoGroupStateKey, metrics::heap::HeapSize, state::timer::StateStore};
-use reifydb_value::Result;
+use reifydb_core::{
+	key::operator_state::{IntoGroupStateKey, row_number_counter_key},
+	metrics::heap::HeapSize,
+	state::timer::StateStore,
+};
+use reifydb_value::{Result, value::row_number::RowNumber};
+
+pub fn mint_row_numbers<S>(store: &mut S, count: u64) -> Result<RowNumber>
+where
+	S: StateStore + ?Sized,
+{
+	let key = row_number_counter_key();
+	let seed = match store.state_get(&key)? {
+		Some(row) => decode::<u64>(&row)?,
+		None => 1,
+	};
+	store.state_set(&key, (seed + count).encode_state()?)?;
+	Ok(RowNumber(seed))
+}
 
 pub fn get<K, V>(store: &mut dyn StateStore, key: &K) -> Result<Option<V>>
 where

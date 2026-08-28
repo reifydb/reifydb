@@ -40,7 +40,7 @@ use tracing::instrument;
 
 use super::{
 	column::JoinedColumnsBuilder,
-	snapshot::{PublishedRight, SnapshotLedger},
+	snapshot::{Numbering, PublishedRight, SnapshotLedger},
 	state::{JoinSide, JoinState},
 	store::group_bytes,
 	strategy::{JoinContext, JoinStrategy, UpdateKeys},
@@ -414,8 +414,8 @@ impl JoinOperator {
 			JoinSide::Left => {
 				if self.snapshot {
 					let ledger = self.snapshot_ledger();
-					for (right, _) in ledger.published(host, group, row_number)? {
-						match right {
+					for entry in ledger.published(host, group, row_number)? {
+						match entry.right {
 							PublishedRight::Unmatched => {
 								ledger.release_unmatched(host, group, row_number)?
 							}
@@ -497,7 +497,10 @@ impl JoinOperator {
 	}
 
 	pub(crate) fn snapshot_ledger(&self) -> SnapshotLedger {
-		SnapshotLedger::new()
+		SnapshotLedger::new(match self.strategy {
+			JoinStrategy::LatestLeft(_) | JoinStrategy::LatestInner(_) => Numbering::LeftRow,
+			JoinStrategy::Left(_) | JoinStrategy::Inner(_) => Numbering::Pair,
+		})
 	}
 
 	#[instrument(name = "flow::operator::join::compute_keys", level = "trace", skip_all, fields(rows = columns.row_count()))]
@@ -576,7 +579,7 @@ impl JoinOperator {
 		host: &mut dyn HostContext,
 		left: &Columns,
 		left_idx: usize,
-		identity: Identity,
+		identity: Identity<'_>,
 	) -> Result<Emitted> {
 		let left_row_number = left.row_numbers()[left_idx];
 
@@ -599,9 +602,13 @@ impl JoinOperator {
 		&self,
 		host: &mut dyn HostContext,
 		keys: &[EncodedKey],
-		identity: Identity,
+		identity: Identity<'_>,
 	) -> Result<(Vec<RowNumber>, Vec<usize>, Vec<usize>)> {
 		match identity {
+			Identity::Carried(supplied) => {
+				let (fresh, existing) = (0..keys.len()).partition(|index| supplied[*index].1);
+				Ok((supplied.iter().map(|(number, _)| *number).collect(), fresh, existing))
+			}
 			Identity::Mint => {
 				let minted = host.get_or_create_row_numbers(GroupId::ROOT, keys)?;
 				let (fresh, existing) = (0..keys.len()).partition(|index| minted[*index].1);
@@ -640,7 +647,7 @@ impl JoinOperator {
 		host: &mut dyn HostContext,
 		left: &Columns,
 		left_indices: &[usize],
-		identity: Identity,
+		identity: Identity<'_>,
 	) -> Result<Emitted> {
 		if left_indices.is_empty() {
 			return Ok(Emitted::empty());
@@ -692,7 +699,7 @@ impl JoinOperator {
 		left: &Columns,
 		left_idx: usize,
 		right: &Columns,
-		identity: Identity,
+		identity: Identity<'_>,
 	) -> Result<Emitted> {
 		let right_count = right.row_count();
 		if right_count == 0 {
@@ -721,7 +728,7 @@ impl JoinOperator {
 		left: &Columns,
 		right: &Columns,
 		right_idx: usize,
-		identity: Identity,
+		identity: Identity<'_>,
 	) -> Result<Emitted> {
 		let left_count = left.row_count();
 		if left_count == 0 {
@@ -751,7 +758,7 @@ impl JoinOperator {
 		left_indices: &[usize],
 		right: &Columns,
 		right_indices: &[usize],
-		identity: Identity,
+		identity: Identity<'_>,
 	) -> Result<Emitted> {
 		let left_count = left_indices.len();
 		let right_count = right_indices.len();

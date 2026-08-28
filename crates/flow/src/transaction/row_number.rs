@@ -18,7 +18,10 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
+		operator_state::{
+			GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
+			row_number_counter_key,
+		},
 	},
 };
 use reifydb_value::{Result, value::row_number::RowNumber};
@@ -27,8 +30,6 @@ use crate::transaction::{
 	FlowTransaction,
 	state::{StateExtension, StateRange},
 };
-
-const ROW_NUMBER_COUNTER_SUFFIX: &[u8] = b"rn";
 
 const MAPPING_SWEEP_PAGE: usize = 1024;
 
@@ -41,7 +42,7 @@ fn mapping_range(group: GroupId) -> EncodedKeyRange {
 }
 
 pub fn counter_key() -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
+	row_number_counter_key()
 }
 
 fn present_keys(

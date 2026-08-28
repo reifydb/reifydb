@@ -459,6 +459,12 @@ pub fn keyspace_inner_range(group: GroupId, keyspace: Keyspace) -> EncodedKeyRan
 	EncodedKeyRange::prefix(&keyspace_inner_prefix(group, keyspace))
 }
 
+pub const ROW_NUMBER_COUNTER_SUFFIX: &[u8] = b"rn";
+
+pub fn row_number_counter_key() -> GroupStateKey {
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
+}
+
 pub fn keyspace_inner_range_upto(group: GroupId, keyspace: Keyspace, suffix: &[u8]) -> EncodedKeyRange {
 	let mut bound = keyspace_inner_prefix(group, keyspace);
 	bound.extend_from_slice(suffix);

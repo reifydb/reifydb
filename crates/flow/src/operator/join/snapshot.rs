@@ -40,6 +40,7 @@ use crate::{
 			},
 		},
 		state::store::{state_get, state_remove, state_set},
+		state_access::mint_row_numbers,
 	},
 };
 
@@ -52,6 +53,13 @@ const SLOT: RowNumber = RowNumber::MAX;
 pub(crate) enum PublishedRight {
 	Row(RowNumber),
 	Unmatched,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Published {
+	pub(crate) right: PublishedRight,
+	pub(crate) version: ContentVersion,
+	pub(crate) row_number: RowNumber,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -78,6 +86,8 @@ struct PublishedEntry {
 	right: u64,
 
 	version: u64,
+
+	row_number: u64,
 }
 
 #[operator_state]
@@ -86,11 +96,21 @@ struct PublishedSet {
 	entries: Vec<PublishedEntry>,
 }
 
-pub(crate) struct SnapshotLedger;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Numbering {
+	Pair,
+	LeftRow,
+}
+
+pub(crate) struct SnapshotLedger {
+	numbering: Numbering,
+}
 
 impl SnapshotLedger {
-	pub(crate) fn new() -> Self {
-		Self
+	pub(crate) fn new(numbering: Numbering) -> Self {
+		Self {
+			numbering,
+		}
 	}
 
 	fn published_key(&self, group: GroupId, left: RowNumber) -> GroupStateKey {
@@ -141,27 +161,39 @@ impl SnapshotLedger {
 		left: RowNumber,
 		right: RowNumber,
 		content: &EncodedBytes,
-	) -> Result<()> {
+	) -> Result<(RowNumber, bool)> {
 		let version = ContentVersion::of(content);
 		let mut set = self.published_set(host, group, left)?;
-		match set.entries.iter().position(|entry| entry.tag == TAG_JOINED && entry.right == right.0) {
-			Some(index) => {
-				let previous = ContentVersion(set.entries[index].version);
-				if previous == version {
-					return Ok(());
+		let published =
+			match set.entries.iter().position(|entry| entry.tag == TAG_JOINED && entry.right == right.0) {
+				Some(index) => {
+					let previous = ContentVersion(set.entries[index].version);
+					let row_number = RowNumber(set.entries[index].row_number);
+					if previous == version {
+						return Ok((row_number, false));
+					}
+					self.unpin(host, group, right, previous)?;
+					set.entries[index].version = version.0;
+					(row_number, false)
 				}
-				self.unpin(host, group, right, previous)?;
-				set.entries[index].version = version.0;
-			}
-			None => set.entries.push(PublishedEntry {
-				tag: TAG_JOINED,
-				right: right.0,
-				version: version.0,
-			}),
-		}
+				None => {
+					let row_number = match self.numbering {
+						Numbering::LeftRow => left,
+						Numbering::Pair => mint_row_numbers(host, 1)?,
+					};
+					set.entries.push(PublishedEntry {
+						tag: TAG_JOINED,
+						right: right.0,
+						version: version.0,
+						row_number: row_number.0,
+					});
+					(row_number, true)
+				}
+			};
 		sort_entries(&mut set);
 		self.write_published_set(host, group, left, &set)?;
-		self.pin(host, group, right, version)
+		self.pin(host, group, right, version)?;
+		Ok(published)
 	}
 
 	pub(crate) fn published(
@@ -169,11 +201,17 @@ impl SnapshotLedger {
 		host: &mut dyn HostContext,
 		group: GroupId,
 		left: RowNumber,
-	) -> Result<Vec<(PublishedRight, ContentVersion)>> {
+	) -> Result<Vec<Published>> {
 		Ok(self.published_set(host, group, left)?
 			.entries
 			.iter()
-			.filter_map(|entry| right_of(entry).map(|right| (right, ContentVersion(entry.version))))
+			.filter_map(|entry| {
+				right_of(entry).map(|right| Published {
+					right,
+					version: ContentVersion(entry.version),
+					row_number: RowNumber(entry.row_number),
+				})
+			})
 			.collect())
 	}
 
@@ -182,18 +220,24 @@ impl SnapshotLedger {
 		host: &mut dyn HostContext,
 		group: GroupId,
 		left: RowNumber,
-	) -> Result<()> {
+	) -> Result<(RowNumber, bool)> {
 		let mut set = self.published_set(host, group, left)?;
-		if set.entries.iter().any(|entry| entry.tag == TAG_UNMATCHED) {
-			return Ok(());
+		if let Some(entry) = set.entries.iter().find(|entry| entry.tag == TAG_UNMATCHED) {
+			return Ok((RowNumber(entry.row_number), false));
 		}
+		let row_number = match self.numbering {
+			Numbering::LeftRow => left,
+			Numbering::Pair => mint_row_numbers(host, 1)?,
+		};
 		set.entries.push(PublishedEntry {
 			tag: TAG_UNMATCHED,
 			right: 0,
 			version: 0,
+			row_number: row_number.0,
 		});
 		sort_entries(&mut set);
-		self.write_published_set(host, group, left, &set)
+		self.write_published_set(host, group, left, &set)?;
+		Ok((row_number, true))
 	}
 
 	pub(crate) fn release_unmatched(
@@ -354,7 +398,7 @@ mod tests {
 	const GROUP: GroupId = GroupId(3);
 
 	fn ledger() -> SnapshotLedger {
-		SnapshotLedger::new()
+		SnapshotLedger::new(Numbering::Pair)
 	}
 
 	fn b(txn: &mut DeferredTransaction) -> TxnHostContext<'_, DeferredTransaction> {
@@ -499,7 +543,11 @@ mod tests {
 			"the version the left row no longer holds must be released"
 		);
 		assert_eq!(
-			ledger.published(&mut b(&mut txn), GROUP, rn(1)).unwrap(),
+			ledger.published(&mut b(&mut txn), GROUP, rn(1))
+				.unwrap()
+				.into_iter()
+				.map(|entry| (entry.right, entry.version))
+				.collect::<Vec<_>>(),
 			vec![(PublishedRight::Row(rn(7)), ContentVersion::of(&second))],
 			"and the pair must now name the version it was republished against"
 		);
@@ -517,15 +565,19 @@ mod tests {
 		ledger.publish(&mut b(&mut txn), GROUP, rn(1), rn(8), &encoded_bytes(b"b")).unwrap();
 		ledger.publish(&mut b(&mut txn), GROUP, rn(2), rn(9), &encoded_bytes(b"c")).unwrap();
 
-		let mut rights: Vec<PublishedRight> =
-			ledger.published(&mut b(&mut txn), GROUP, rn(1)).unwrap().into_iter().map(|(r, _)| r).collect();
+		let mut rights: Vec<PublishedRight> = ledger
+			.published(&mut b(&mut txn), GROUP, rn(1))
+			.unwrap()
+			.into_iter()
+			.map(|entry| entry.right)
+			.collect();
 		rights.sort_by_key(published_order);
 		assert_eq!(rights, vec![PublishedRight::Row(rn(7)), PublishedRight::Row(rn(8))]);
 		assert_eq!(
 			ledger.published(&mut b(&mut txn), GROUP, rn(2))
 				.unwrap()
 				.into_iter()
-				.map(|(r, _)| r)
+				.map(|entry| entry.right)
 				.collect::<Vec<_>>(),
 			vec![PublishedRight::Row(rn(9))]
 		);
@@ -582,32 +634,53 @@ pub(crate) fn publish_joined(
 	let mut diffs =
 		stream_join_blocks_encoded(host, ctx.right_store, key_hash, true, |host, opposite, encoded| {
 			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
+			if opposite_indices.is_empty() {
+				return Ok(Vec::new());
+			}
+			reifydb_assertions! {
+				assert!(
+					encoded.len() == opposite_indices.len(),
+					"the ledger walks {} encoded rights while the cartesian walks {} opposite rows; \
+					 the two must stay positionally aligned or every published pair takes another \
+					 pair's row number",
+					encoded.len(),
+					opposite_indices.len()
+				);
+			}
+			let mut carried = Vec::with_capacity(left_numbers.len() * encoded.len());
+			for left_number in &left_numbers {
+				for (right_number, content) in encoded {
+					carried.push(ctx.ledger.publish(
+						host,
+						group,
+						*left_number,
+						*right_number,
+						content,
+					)?);
+				}
+			}
 			let joined = ctx.operator.join_columns_cartesian(
 				host,
 				left,
 				left_indices,
 				opposite,
 				&opposite_indices,
-				Identity::Mint,
+				Identity::Carried(&carried),
 			)?;
-			if joined.is_empty() {
-				return Ok(Vec::new());
-			}
-			for left_number in &left_numbers {
-				for (right_number, content) in encoded {
-					ctx.ledger.publish(host, group, *left_number, *right_number, content)?;
-				}
-			}
 			Ok(joined.published())
 		})?;
 
 	if !diffs.is_empty() || !outer {
 		return Ok(diffs);
 	}
+	let mut carried = Vec::with_capacity(left_numbers.len());
 	for left_number in &left_numbers {
-		ctx.ledger.publish_unmatched(host, group, *left_number)?;
+		carried.push(ctx.ledger.publish_unmatched(host, group, *left_number)?);
 	}
-	diffs.extend(ctx.operator.unmatched_left_columns_batch(host, left, left_indices, Identity::Mint)?.published());
+	diffs.extend(ctx
+		.operator
+		.unmatched_left_columns_batch(host, left, left_indices, Identity::Carried(&carried))?
+		.published());
 	Ok(diffs)
 }
 
@@ -621,12 +694,17 @@ pub(crate) fn withdraw_joined(
 	let group = ctx.right_store.group_of(key_hash);
 	let left_number = left.row_numbers()[left_idx];
 	let mut out = Vec::new();
-	for (right, _) in ctx.ledger.published(host, group, left_number)? {
-		let right_number = match right {
+	for entry in ctx.ledger.published(host, group, left_number)? {
+		let carried = [(entry.row_number, false)];
+		let right_number = match entry.right {
 			PublishedRight::Unmatched => {
 				ctx.ledger.release_unmatched(host, group, left_number)?;
-				let unmatched =
-					ctx.operator.unmatched_left_columns(host, left, left_idx, Identity::Consume)?;
+				let unmatched = ctx.operator.unmatched_left_columns(
+					host,
+					left,
+					left_idx,
+					Identity::Carried(&carried),
+				)?;
 				out.extend(unmatched.withdrawn());
 				continue;
 			}
@@ -647,7 +725,7 @@ pub(crate) fn withdraw_joined(
 			&[left_idx],
 			&opposite,
 			&[0],
-			Identity::Consume,
+			Identity::Carried(&carried),
 		)?;
 		out.extend(joined.withdrawn());
 	}
@@ -706,8 +784,8 @@ pub(crate) fn withdraw_slot(
 	left_idx: usize,
 ) -> Result<Option<Columns>> {
 	let left_number = left.row_numbers()[left_idx];
-	for (right, _) in ctx.ledger.published(host, group, left_number)? {
-		let right_number = match right {
+	for entry in ctx.ledger.published(host, group, left_number)? {
+		let right_number = match entry.right {
 			PublishedRight::Unmatched => {
 				ctx.ledger.release_unmatched(host, group, left_number)?;
 				return Ok(Some(ctx.operator.unmatched_left_latest(left, &[left_idx])));
@@ -738,10 +816,13 @@ pub(crate) fn retain_published_slot(
 		return Ok(None);
 	};
 	let mut records = ctx.ledger.published(host, group, left)?;
-	let Some((right, recorded)) = records.pop() else {
+	let Some(entry) = records.pop() else {
 		return Ok(None);
 	};
-	if !records.is_empty() || right != PublishedRight::Row(SLOT) || recorded != ContentVersion::of(&content) {
+	if !records.is_empty()
+		|| entry.right != PublishedRight::Row(SLOT)
+		|| entry.version != ContentVersion::of(&content)
+	{
 		return Ok(None);
 	}
 	Ok(Some(slot))

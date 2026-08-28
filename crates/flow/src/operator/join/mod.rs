@@ -9,12 +9,14 @@ pub mod store;
 pub mod strategy;
 
 use reifydb_core::{interface::change::Diff, value::column::columns::Columns};
+use reifydb_value::value::row_number::RowNumber;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Identity {
+pub(crate) enum Identity<'a> {
 	Mint,
 	Existing,
 	Consume,
+	Carried(&'a [(RowNumber, bool)]),
 }
 
 pub(crate) struct Emitted {
