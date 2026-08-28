@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	sync::atomic::{AtomicBool, Ordering},
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
 	thread,
 	time::Instant,
 };
@@ -14,17 +17,23 @@ use reifydb_core::{
 	key::operator_state::GroupId,
 };
 use reifydb_runtime::{
-	actor::{context::CancellationToken, system::ActorSystem},
+	actor::{
+		context::{CancellationToken, Context},
+		mailbox::ActorRef,
+		system::ActorSystem,
+		traits::{Actor, Directive},
+	},
 	context::clock::Clock,
 	shutdown::Shutdown,
+	sync::waiter::WaiterHandle,
 };
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::{
 	byte_size::ByteSize,
-	value::{datetime::DateTime, row_number::RowNumber},
+	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
 
-use super::*;
+use super::actor::*;
 use crate::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
 	store::OperatorStore,
@@ -32,7 +41,7 @@ use crate::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
 		point::OperatorPointConfig,
 		range::OperatorRangeConfig,
-		resident::FLUSH_BUDGET_BYTES,
+		resident::{FLUSH_BUDGET_BYTES, OperatorResidentState},
 	},
 	types::{BufferedState, DurablePre, OperatorWrite},
 };
@@ -71,7 +80,7 @@ fn buffer_fixture() -> (OperatorResidentState, SqliteOperatorStorage, ActorRef<F
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
 	(buffer, storage, actor_ref, guard)
 }
 
@@ -411,9 +420,9 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
 
-	let actor = OperatorFlushActor::new(buffer.clone());
+	let actor = ResidentFlushActor::new(buffer.clone());
 	let cancel = CancellationToken::new();
 	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
 	let mut state = actor.init(&ctx);
@@ -575,9 +584,9 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorResidentState::with_budget(entry_bytes(0, "at-shutdown") * 4);
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
 
-	let actor = OperatorFlushActor::new(buffer.clone());
+	let actor = ResidentFlushActor::new(buffer.clone());
 	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
 	let mut state = actor.init(&ctx);
 
@@ -605,9 +614,9 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorResidentState::with_budget(entry_bytes(0, "at-cancel") * 4);
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
 
-	let actor = OperatorFlushActor::new(buffer.clone());
+	let actor = ResidentFlushActor::new(buffer.clone());
 	let cancel = CancellationToken::new();
 	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
 	let mut state = actor.init(&ctx);
@@ -644,7 +653,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	let budget = entry_bytes(0, "under-the-budget") * (entries - 1) as u64;
 	let buffer = OperatorResidentState::with_budget(budget);
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
 	buffer.attach_flusher(actor_ref);
 
 	for index in 0..entries - 1 {
@@ -711,15 +720,15 @@ fn a_buffer_a_hair_over_the_cap_evicts_a_hair_not_a_whole_slice() {
 }
 
 fn flusher_fixture()
--> (OperatorFlushActor, OperatorResidentState, Context<FlushMessage>, ActorSystem, SqliteTempPathGuard) {
+-> (ResidentFlushActor, OperatorResidentState, Context<FlushMessage>, ActorSystem, SqliteTempPathGuard) {
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
-	let actor = OperatorFlushActor::new(buffer.clone());
+	let actor_ref = ResidentFlushActor::spawn(&spawner, buffer.clone());
+	let actor = ResidentFlushActor::new(buffer.clone());
 	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
 	(actor, buffer, ctx, actor_system, guard)
 }

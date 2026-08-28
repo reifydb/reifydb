@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(test)]
-mod tests;
-
 use std::sync::Arc;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -33,11 +30,11 @@ pub enum FlushMessage {
 	},
 }
 
-pub struct OperatorFlushActor {
+pub struct ResidentFlushActor {
 	buffer: OperatorResidentState,
 }
 
-impl OperatorFlushActor {
+impl ResidentFlushActor {
 	pub fn new(buffer: OperatorResidentState) -> Self {
 		Self {
 			buffer,
@@ -76,7 +73,7 @@ pub fn flush_pending(actor_ref: &ActorRef<FlushMessage>) -> bool {
 	waiter.wait_timeout(FLUSH_PENDING_TIMEOUT)
 }
 
-impl Actor for OperatorFlushActor {
+impl Actor for ResidentFlushActor {
 	type State = ();
 	type Message = FlushMessage;
 

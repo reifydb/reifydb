@@ -31,21 +31,23 @@ use reifydb_store::metrics::PageCacheMetrics;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
 	config::OperatorPersistentConfig,
-	flush::OperatorFlushActor,
 	tier::{
 		persistent::sqlite::{SqliteOperatorStorage, filter::OperatorStateKeySource},
 		point::OperatorPointConfig,
 		range::OperatorRangeConfig,
+		resident::flush::actor::ResidentFlushActor,
 	},
 };
 use crate::{
 	config::OperatorStoreConfig,
-	flush::{FlushMessage, flush_now, flush_pending},
 	tier::{
 		persistent::OperatorPersistentTier,
 		point::{OperatorPointKeyspaceMetrics, OperatorPointShardMetrics, OperatorPointTier},
 		range::{OperatorRangeKeyspaceMetrics, OperatorRangeShardMetrics, OperatorRangeTier},
-		resident::OperatorResidentState,
+		resident::{
+			OperatorResidentState,
+			flush::actor::{FlushMessage, flush_now, flush_pending},
+		},
 	},
 };
 
@@ -101,7 +103,7 @@ impl StandardOperatorStore {
 			let flush = config
 				.persistent
 				.as_ref()
-				.map(|_| OperatorFlushActor::spawn(&spawner, resident.clone()));
+				.map(|_| ResidentFlushActor::spawn(&spawner, resident.clone()));
 			let filter = config.persistent.as_ref().map(|persistent| {
 				let storage = persistent.storage.sqlite_storage().clone();
 				let actor = FilterActor::spawn(&spawner);

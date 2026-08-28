@@ -18,12 +18,12 @@ use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
-	flush::flush_now,
 	store::{CheckpointInterlock, StandardOperatorStore},
 	tier::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
 		point::OperatorPointConfig,
 		range::OperatorRangeConfig,
+		resident::flush::actor::flush_now,
 	},
 	types::{DurablePre, OperatorWrite},
 };

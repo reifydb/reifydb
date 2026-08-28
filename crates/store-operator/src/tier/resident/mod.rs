@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod batch;
+pub mod flush;
 pub mod state_map;
 
 mod anchor;
@@ -31,12 +32,14 @@ use reifydb_runtime::{
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 
 use crate::{
-	flush::FlushMessage,
 	tier::{
 		persistent::OperatorPersistentTier,
 		point::OperatorPointTier,
 		range::OperatorRangeTier,
-		resident::batch::{DropMarker, FlushBatch, StateKey},
+		resident::{
+			batch::{DropMarker, FlushBatch, StateKey},
+			flush::actor::FlushMessage,
+		},
 	},
 	types::{DurablePre, OperatorWrite},
 };

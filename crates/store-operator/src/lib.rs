@@ -9,7 +9,6 @@
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
 pub mod config;
-pub mod flush;
 pub mod store;
 pub mod tier;
 pub mod types;
