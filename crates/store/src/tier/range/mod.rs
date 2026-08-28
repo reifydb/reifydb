@@ -129,6 +129,7 @@ struct Partition<R> {
 	pinned: PinnedCount,
 	bytes: usize,
 	tick: u64,
+	created: u64,
 	materializes: u64,
 	written_at: u64,
 	covered: bool,
@@ -136,6 +137,7 @@ struct Partition<R> {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct Progress {
+	created: u64,
 	materializes: u64,
 	written_at: u64,
 }
@@ -143,6 +145,7 @@ struct Progress {
 impl<R> Partition<R> {
 	fn progress(&self) -> Progress {
 		Progress {
+			created: self.created,
 			materializes: self.materializes,
 			written_at: self.written_at,
 		}

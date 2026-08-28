@@ -454,6 +454,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				pinned: PinnedCount::new(),
 				bytes: partition_overhead::<D>(),
 				tick,
+				created: tick,
 				materializes: 0,
 				written_at: 0,
 				covered: false,

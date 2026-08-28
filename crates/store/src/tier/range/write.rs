@@ -144,7 +144,8 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	fn place(&self, index: usize, partition: &D::Partition, key: EncodedKey, entry: Entry<D::Row>) -> bool {
-		let resident = self.shard(index).lock().partitions.get(partition).map(|target| target.covered);
+		let mut shard = self.shard(index).lock();
+		let resident = shard.partitions.get(partition).map(|target| target.covered);
 		let admit = D::admits_unproven_writes()
 			|| match resident {
 				Some(covered) => covered,
@@ -154,7 +155,6 @@ impl<D: RangeDomain> RangeTier<D> {
 			return false;
 		}
 
-		let mut shard = self.shard(index).lock();
 		if let Some(target) = shard.partitions.get(partition)
 			&& let Some(resident) = target.entries.get(&key)
 			&& !supersedes::<D>(resident, &entry)
@@ -175,6 +175,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				pinned: PinnedCount::new(),
 				bytes: partition_overhead::<D>(),
 				tick: next,
+				created: next,
 				materializes: 0,
 				written_at: 0,
 				covered: true,
@@ -339,6 +340,7 @@ mod tests {
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,
+				created: 0,
 				materializes: 0,
 				written_at: 0,
 				covered: true,
@@ -669,6 +671,7 @@ mod tests {
 				pinned: PinnedCount::new(),
 				bytes: PARTITION_OVERHEAD,
 				tick: 0,
+				created: 0,
 				materializes: 0,
 				written_at: 0,
 				covered: false,

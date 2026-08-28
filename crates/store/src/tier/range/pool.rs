@@ -514,6 +514,7 @@ mod tests {
 					pinned: PinnedCount::new(),
 					bytes: PARTITION_OVERHEAD,
 					tick,
+					created: tick,
 					materializes: 0,
 					written_at: 0,
 					covered: true,
