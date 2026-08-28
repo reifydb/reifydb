@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	fmt,
 	mem::replace,
 	ops::{Bound, RangeBounds},
 };
@@ -112,8 +113,8 @@ impl<K: Clone, V: Clone> Clone for SortedVecMap<K, V> {
 	}
 }
 
-impl<K: std::fmt::Debug, V: std::fmt::Debug> std::fmt::Debug for SortedVecMap<K, V> {
-	fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<K: fmt::Debug, V: fmt::Debug> fmt::Debug for SortedVecMap<K, V> {
+	fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
 		out.debug_map().entries(self.iter()).finish()
 	}
 }

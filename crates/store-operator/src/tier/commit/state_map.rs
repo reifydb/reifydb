@@ -238,16 +238,9 @@ fn revolution(operators: &[OperatorId], cursor: Option<StateKey>) -> Vec<Segment
 	segments
 }
 
+#[derive(Default)]
 pub struct Range<'a> {
 	inner: Option<btree_map::Range<'a, EncodedKey, StateEntry>>,
-}
-
-impl Default for Range<'_> {
-	fn default() -> Self {
-		Self {
-			inner: None,
-		}
-	}
 }
 
 impl<'a> Iterator for Range<'a> {

@@ -13,7 +13,7 @@ mod state;
 mod tests;
 
 use std::{
-	iter,
+	fmt, iter,
 	sync::{
 		Arc, OnceLock,
 		atomic::{AtomicBool, Ordering},
@@ -116,8 +116,8 @@ pub struct OperatorCommitBuffer {
 	shared: Arc<Shared>,
 }
 
-impl std::fmt::Debug for OperatorCommitBuffer {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for OperatorCommitBuffer {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("OperatorCommitBuffer").field("budget", &self.budget()).finish()
 	}
 }

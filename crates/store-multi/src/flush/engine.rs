@@ -365,7 +365,7 @@ mod tests {
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
-	use crate::tier::{VersionedGetResult, point::MultiPointConfig};
+	use crate::tier::{VersionedGetResult, commit::memory::storage::MemoryRowStorage, point::MultiPointConfig};
 
 	fn ek(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes())
@@ -381,7 +381,7 @@ mod tests {
 	}
 
 	fn budget_for(keys: &[String], value: &str) -> ByteSize {
-		let storage = crate::tier::commit::memory::storage::MemoryRowStorage::new();
+		let storage = MemoryRowStorage::new();
 		for key in keys {
 			storage.set(
 				CommitVersion(1),

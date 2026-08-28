@@ -177,16 +177,14 @@ fn split_bounded<K: Ord + Clone, V>(
 	force_first: bool,
 ) -> (BTreeMap<K, V>, ByteSize) {
 	let mut taken = ByteSize::ZERO;
-	let mut count = 0usize;
 	let mut boundary: Option<K> = None;
-	for (key, value) in source.iter() {
+	for (count, (key, value)) in source.iter().enumerate() {
 		let cost = charge(key, value);
 		if !(force_first && count == 0) && taken.saturating_add(cost) > budget {
 			boundary = Some(key.clone());
 			break;
 		}
 		taken = taken.saturating_add(cost);
-		count += 1;
 	}
 	let Some(boundary) = boundary else {
 		return (mem::take(source), taken);
