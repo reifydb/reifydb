@@ -9,7 +9,7 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, OperatorSample},
 };
 use reifydb_flow::{
-	operator::state::seal::{coord::Coord, domain::SealDomain, policy::is_sealed},
+	operator::state::seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{

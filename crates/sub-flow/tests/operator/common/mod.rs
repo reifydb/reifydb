@@ -6,7 +6,7 @@
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
@@ -98,7 +98,7 @@ impl GuestOperator for ParityWindow {
 				let window_bucket = (timestamp / WINDOW_SIZE) * WINDOW_SIZE;
 				let key = OperatorStateKey::inner_encoded(
 					GroupId::ROOT,
-					Keyspace::CUSTOM_NOT_CACHED,
+					KeyspaceId::CUSTOM_NOT_CACHED,
 					window_bucket.to_be_bytes(),
 				);
 				let new_count = self.state_get::<i64>(ctx, &key)?.unwrap_or(0) + 1;

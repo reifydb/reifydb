@@ -105,7 +105,7 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 		util::sorted::SortedVecMap,
 	};
 	use reifydb_value::byte_size::ByteSize;
@@ -127,8 +127,8 @@ mod tests {
 
 	const OP_A: OperatorId = OperatorId(1);
 	const GROUP_A: GroupId = GroupId(10);
-	const CACHED: Keyspace = Keyspace::ACCUMULATOR;
-	const UNCACHED: Keyspace = Keyspace::CUSTOM_NOT_CACHED;
+	const CACHED: KeyspaceId = KeyspaceId::ACCUMULATOR;
+	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
 
 	fn tier() -> RangeTier<D> {
 		RangeTier::<D>::new(RangeConfig {
@@ -139,7 +139,7 @@ mod tests {
 		.expect("a tier with a byte budget must be constructed")
 	}
 
-	fn key(keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
+	fn key(keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
 		OperatorStateKey::inner_encoded(GROUP_A, keyspace, suffix).into_encoded()
 	}
 
@@ -147,7 +147,7 @@ mod tests {
 		EncodedPodRow::new(body.as_bytes())
 	}
 
-	fn partition(keyspace: Keyspace) -> TestPartition {
+	fn partition(keyspace: KeyspaceId) -> TestPartition {
 		TestPartition {
 			dimension: OP_A,
 			group: GROUP_A,

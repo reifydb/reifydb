@@ -862,7 +862,7 @@ impl StandardMultiStore {
 		collected: &mut BTreeMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
 	) -> Option<Result<()>> {
-		let (Some(range), true) = (&self.range, scan.table.cache_policy().caches_ranges()) else {
+		let (Some(range), true) = (&self.range, scan.table.cache_tiers().caches_ranges()) else {
 			return None;
 		};
 		match range.serve_persistent_chunk(
@@ -929,7 +929,7 @@ impl StandardMultiStore {
 		cursor: &RangeCursor,
 		batch: &RangeBatch,
 	) -> Result<()> {
-		let (Some(range), true) = (&self.range, scan.table.cache_policy().caches_ranges()) else {
+		let (Some(range), true) = (&self.range, scan.table.cache_tiers().caches_ranges()) else {
 			return Ok(());
 		};
 		let MultiVersionScope::AsOf {
@@ -1294,7 +1294,7 @@ mod cache_tests {
 		},
 		key::{
 			EncodableKey,
-			operator_state::{GroupId, Keyspace, OperatorStateKey},
+			operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 			row::RowKey,
 		},
 	};
@@ -1412,9 +1412,13 @@ mod cache_tests {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 		let point = store.point.clone().expect("point tier configured");
 
-		let opkey =
-			OperatorStateKey::new(OperatorId(7), GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, vec![1, 2, 3])
-				.encode();
+		let opkey = OperatorStateKey::new(
+			OperatorId(7),
+			GroupId::ROOT,
+			KeyspaceId::CUSTOM_NOT_CACHED,
+			vec![1, 2, 3],
+		)
+		.encode();
 		MultiVersionCommit::commit(
 			&store,
 			cow_vec![Delta::Set {

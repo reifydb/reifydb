@@ -16,7 +16,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		operator_state::{
-			GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range, node_prefix,
+			GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range, node_prefix,
 		},
 	},
 };
@@ -49,11 +49,11 @@ pub fn anchor_key(group: GroupId, side: u8, row_number: RowNumber) -> GroupState
 	let mut suffix = Vec::with_capacity(ANCHOR_SUFFIX_LEN);
 	suffix.push(side);
 	suffix.extend_from_slice(&encode_u64_asc(row_number.0));
-	OperatorStateKey::inner_encoded(group, Keyspace::SEAL_ANCHOR, suffix)
+	OperatorStateKey::inner_encoded(group, KeyspaceId::SEAL_ANCHOR, suffix)
 }
 
 pub fn anchor_range(group: GroupId) -> EncodedKeyRange {
-	keyspace_inner_range(group, Keyspace::SEAL_ANCHOR)
+	keyspace_inner_range(group, KeyspaceId::SEAL_ANCHOR)
 }
 
 pub fn decode_anchor_suffix(suffix: &[u8]) -> Option<(u8, RowNumber)> {

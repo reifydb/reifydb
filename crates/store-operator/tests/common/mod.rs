@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
@@ -487,7 +487,7 @@ impl testscript::runner::Runner for Runner {
 }
 
 fn encode_key(suffix: &[u8], keyspace: u8) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GroupId(DEFAULT_GROUP), Keyspace(keyspace), suffix).as_encoded().clone()
+	OperatorStateKey::inner_encoded(GroupId(DEFAULT_GROUP), KeyspaceId(keyspace), suffix).as_encoded().clone()
 }
 
 fn key_name(key: &EncodedKey) -> Vec<u8> {

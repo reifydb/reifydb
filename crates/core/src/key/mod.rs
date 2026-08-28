@@ -450,7 +450,7 @@ pub mod tests {
 			namespace::NamespaceKey,
 			namespace_sumtype::NamespaceSumTypeKey,
 			namespace_table::NamespaceTableKey,
-			operator_state::{GroupId, Keyspace, OperatorStateKey},
+			operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 			property::ColumnPropertyKey,
 			relationship::RelationshipKey,
 			row::RowKey,
@@ -738,7 +738,7 @@ pub mod tests {
 		let key = Key::OperatorState(OperatorStateKey {
 			operator: OperatorId(0xCAFEBABE),
 			group: GroupId::ROOT,
-			keyspace: Keyspace::CUSTOM_NOT_CACHED,
+			keyspace: KeyspaceId::CUSTOM_NOT_CACHED,
 			suffix: vec![1, 2, 3],
 		});
 

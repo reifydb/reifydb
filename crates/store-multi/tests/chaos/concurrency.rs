@@ -24,7 +24,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, Keyspace, OperatorStateKey},
+		operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 		row::RowKey,
 	},
 };
@@ -36,7 +36,7 @@ const STORAGE: StorageId = StorageId::Table(TableId(1));
 const OP_NODE: OperatorId = OperatorId(9);
 
 fn conc_op_key(row: u64) -> reifydb_codec::key::encoded::EncodedKey {
-	OperatorStateKey::encoded(OP_NODE, GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, row.to_be_bytes().to_vec())
+	OperatorStateKey::encoded(OP_NODE, GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, row.to_be_bytes().to_vec())
 }
 
 fn scan_op_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool) -> Vec<(u64, Vec<u8>)> {

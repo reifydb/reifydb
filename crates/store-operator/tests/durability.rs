@@ -12,7 +12,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -59,7 +59,7 @@ fn store_at(path: &Path) -> OperatorStore {
 }
 
 fn key(suffix: u8) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GROUP, Keyspace::ACCUMULATOR, [suffix]).as_encoded().clone()
+	OperatorStateKey::inner_encoded(GROUP, KeyspaceId::ACCUMULATOR, [suffix]).as_encoded().clone()
 }
 
 fn row(body: &str) -> EncodedPodRow {

@@ -29,7 +29,7 @@ use crate::{
 		},
 		host::HostContext,
 		state::{
-			seal::{domain::SealDomain, gate::EvictionGate, ledger::FiredAt, policy::is_sealed},
+			seal::{domain::SealDomain, gate::EvictionGate, ledger::FiredAt, rule::is_sealed},
 			store,
 		},
 	},
@@ -599,7 +599,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::state::seal::{coord::Coord, policy::EvictionPolicy},
+		operator::state::seal::{coord::Coord, rule::EvictionRule},
 		window::engine::config::WindowEngineConfig,
 	};
 
@@ -612,7 +612,7 @@ mod tests {
 	}
 
 	fn evict_instant(oldest: u64, span: Duration) -> DateTime {
-		EvictionPolicy::rolling(span).eviction_instant_from_order(oldest).at()
+		EvictionRule::rolling(span).eviction_instant_from_order(oldest).at()
 	}
 
 	#[test]

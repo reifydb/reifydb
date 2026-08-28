@@ -4,7 +4,7 @@
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace},
+	key::operator_state::{GroupId, KeyspaceId},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -76,7 +76,7 @@ pub struct OperatorSealAnchorCensus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorStateCensus {
 	pub operator: OperatorId,
-	pub keyspace: Keyspace,
+	pub keyspace: KeyspaceId,
 	pub keys: u64,
 	pub key_bytes: ByteSize,
 	pub value_bytes: ByteSize,

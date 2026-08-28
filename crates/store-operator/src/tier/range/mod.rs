@@ -14,7 +14,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_store::{
 	coverage::ExclusiveUpperEnd,
@@ -38,7 +38,7 @@ pub struct OperatorDomain;
 pub struct PartitionId {
 	pub operator: OperatorId,
 	pub group: GroupId,
-	pub keyspace: Keyspace,
+	pub keyspace: KeyspaceId,
 }
 
 impl PartitionId {
@@ -54,7 +54,7 @@ impl PartitionId {
 		Some(Self {
 			operator,
 			group,
-			keyspace: Keyspace(encode_u8(bytes[offset])),
+			keyspace: KeyspaceId(encode_u8(bytes[offset])),
 		})
 	}
 
@@ -72,17 +72,17 @@ impl PartitionId {
 	}
 
 	pub fn caches_ranges(&self) -> bool {
-		self.keyspace.cache_policy().caches_ranges()
+		self.keyspace.cache_tiers().caches_ranges()
 	}
 }
 
-static POLICY_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
+static CACHE_TIERS_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 	let mut floor = [0u8; 256];
 	let mut lowest = 0u8;
 	for keyspace in 0..=u8::MAX {
 		if keyspace > 0
-			&& Keyspace(keyspace).cache_policy().caches_ranges()
-				!= Keyspace(keyspace - 1).cache_policy().caches_ranges()
+			&& KeyspaceId(keyspace).cache_tiers().caches_ranges()
+				!= KeyspaceId(keyspace - 1).cache_tiers().caches_ranges()
 		{
 			lowest = keyspace;
 		}
@@ -94,7 +94,7 @@ static POLICY_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 impl RangeDomain for OperatorDomain {
 	type Dimension = OperatorId;
 	type Partition = PartitionId;
-	type Slot = Keyspace;
+	type Slot = KeyspaceId;
 	type Row = EncodedPodRow;
 
 	const PREFIX_LEN: usize = PartitionId::PREFIX_LEN;
@@ -124,13 +124,13 @@ impl RangeDomain for OperatorDomain {
 		partition.caches_ranges()
 	}
 
-	fn policy_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
-		let floor = POLICY_RUN_FLOOR[partition.keyspace.0 as usize];
+	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
+		let floor = CACHE_TIERS_RUN_FLOOR[partition.keyspace.0 as usize];
 		if floor == partition.keyspace.0 {
 			return partition.span().1;
 		}
 		PartitionId {
-			keyspace: Keyspace(floor),
+			keyspace: KeyspaceId(floor),
 			..*partition
 		}
 		.span()
@@ -142,7 +142,7 @@ impl RangeDomain for OperatorDomain {
 	}
 
 	fn slot_at(index: usize) -> Self::Slot {
-		Keyspace(index as u8)
+		KeyspaceId(index as u8)
 	}
 
 	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {
@@ -155,7 +155,7 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	};
 	use reifydb_store::{
 		coverage::{
@@ -176,7 +176,7 @@ mod tests {
 			.expect("a tier with a byte budget must be constructed")
 	}
 
-	fn key(keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
+	fn key(keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
 		OperatorStateKey::inner_encoded(GROUP_A, keyspace, suffix).into_encoded()
 	}
 
@@ -187,7 +187,7 @@ mod tests {
 	fn claim(
 		tier: &OperatorRangeTier,
 		operator: OperatorId,
-		keyspace: Keyspace,
+		keyspace: KeyspaceId,
 		page: &[(EncodedKey, EncodedPodRow)],
 	) {
 		let range = keyspace_inner_range(GROUP_A, keyspace);
@@ -206,7 +206,7 @@ mod tests {
 		assert_eq!(tier.materialize(&scan, &gap, page), Materialize::Materialized);
 	}
 
-	fn serve_ram(tier: &OperatorRangeTier, operator: OperatorId, keyspace: Keyspace) -> Option<Vec<EncodedKey>> {
+	fn serve_ram(tier: &OperatorRangeTier, operator: OperatorId, keyspace: KeyspaceId) -> Option<Vec<EncodedKey>> {
 		let range = keyspace_inner_range(GROUP_A, keyspace);
 		let scan = tier.plan_scan(operator, &range)?;
 		let mut out: Vec<EncodedKey> = Vec::new();
@@ -240,29 +240,29 @@ mod tests {
 	}
 
 	#[test]
-	fn a_keyspace_the_operator_policy_never_caches_is_declined() {
-		// The cache policy must reach the tier here, or a never-cached keyspace goes resident.
+	fn a_keyspace_the_operator_never_caches_is_declined() {
+		// The declared cache tiers must reach the tier here, or a never-cached keyspace goes resident.
 		let tier = tier();
-		let at = key(Keyspace::CUSTOM_NOT_CACHED, b"a");
+		let at = key(KeyspaceId::CUSTOM_NOT_CACHED, b"a");
 
 		tier.insert(OP_A, at.clone(), row("v"));
 
 		assert_eq!(tier.entries(), 0);
 		assert_eq!(tier.lookup(OP_A, &at), None);
-		assert!(tier.plan_scan(OP_A, &keyspace_inner_range(GROUP_A, Keyspace::CUSTOM_NOT_CACHED)).is_none());
+		assert!(tier.plan_scan(OP_A, &keyspace_inner_range(GROUP_A, KeyspaceId::CUSTOM_NOT_CACHED)).is_none());
 	}
 
 	#[test]
 	fn a_claim_and_a_serve_round_trip_for_the_operator_that_made_it() {
 		// The operator must reach the coverage index, or one operator's claim answers another operator's read.
 		let tier = tier();
-		let at = key(Keyspace::ACCUMULATOR, b"a");
-		claim(&tier, OP_A, Keyspace::ACCUMULATOR, &[(at.clone(), row("v"))]);
+		let at = key(KeyspaceId::ACCUMULATOR, b"a");
+		claim(&tier, OP_A, KeyspaceId::ACCUMULATOR, &[(at.clone(), row("v"))]);
 
-		assert_eq!(serve_ram(&tier, OP_A, Keyspace::ACCUMULATOR), Some(vec![at.clone()]));
+		assert_eq!(serve_ram(&tier, OP_A, KeyspaceId::ACCUMULATOR), Some(vec![at.clone()]));
 		assert_eq!(tier.lookup(OP_A, &at), Some(Some(row("v"))));
 
-		assert_eq!(serve_ram(&tier, OP_B, Keyspace::ACCUMULATOR), None);
+		assert_eq!(serve_ram(&tier, OP_B, KeyspaceId::ACCUMULATOR), None);
 		assert_eq!(tier.lookup(OP_B, &at), None);
 	}
 
@@ -270,8 +270,8 @@ mod tests {
 	fn invalidating_an_operator_withdraws_the_claim_it_made() {
 		// A claim that outlives its operator answers absences for rows the persistent tier still holds.
 		let tier = tier();
-		let at = key(Keyspace::ACCUMULATOR, b"a");
-		claim(&tier, OP_A, Keyspace::ACCUMULATOR, &[(at.clone(), row("v"))]);
+		let at = key(KeyspaceId::ACCUMULATOR, b"a");
+		claim(&tier, OP_A, KeyspaceId::ACCUMULATOR, &[(at.clone(), row("v"))]);
 		assert_eq!(tier.lookup(OP_A, &at), Some(Some(row("v"))));
 
 		tier.invalidate_operator(OP_A);
@@ -279,6 +279,6 @@ mod tests {
 		assert_eq!(tier.entries(), 0);
 		assert_eq!(tier.intervals(), 0);
 		assert_eq!(tier.lookup(OP_A, &at), None);
-		assert_eq!(serve_ram(&tier, OP_A, Keyspace::ACCUMULATOR), None);
+		assert_eq!(serve_ram(&tier, OP_A, KeyspaceId::ACCUMULATOR), None);
 	}
 }

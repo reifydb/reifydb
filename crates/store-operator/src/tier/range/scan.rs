@@ -11,7 +11,7 @@ mod tests {
 	};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	};
 	use reifydb_store::{
 		coverage::{
@@ -28,8 +28,8 @@ mod tests {
 
 	const OP: OperatorId = OperatorId(1);
 	const GROUP: GroupId = GroupId(10);
-	const CACHED: Keyspace = Keyspace::ACCUMULATOR;
-	const UNCACHED: Keyspace = Keyspace::CUSTOM_NOT_CACHED;
+	const CACHED: KeyspaceId = KeyspaceId::ACCUMULATOR;
+	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
 
 	fn tier(limit: u64, gap_guard: usize) -> OperatorRangeTier {
 		OperatorRangeTier::new(OperatorRangeConfig {
@@ -44,7 +44,7 @@ mod tests {
 		tier(ByteSize::from_mib(1).as_bytes(), 4)
 	}
 
-	fn key(keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
+	fn key(keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
 		OperatorStateKey::inner_encoded(GROUP, keyspace, suffix).into_encoded()
 	}
 
@@ -52,7 +52,7 @@ mod tests {
 		EncodedPodRow::new(body.as_bytes())
 	}
 
-	fn partition(keyspace: Keyspace) -> PartitionId {
+	fn partition(keyspace: KeyspaceId) -> PartitionId {
 		PartitionId {
 			operator: OP,
 			group: GROUP,
@@ -60,14 +60,14 @@ mod tests {
 		}
 	}
 
-	fn whole(keyspace: Keyspace) -> Interval {
+	fn whole(keyspace: KeyspaceId) -> Interval {
 		let (start, end) = partition(keyspace).span();
 		Interval::new(start, end)
 	}
 
 	/// A range from the start of `top` to the end of `bottom`; keyspaces encode inverted, so `top`
 	/// must be the numerically larger of the two to give an ascending key range.
-	fn across(top: Keyspace, bottom: Keyspace) -> EncodedKeyRange {
+	fn across(top: KeyspaceId, bottom: KeyspaceId) -> EncodedKeyRange {
 		EncodedKeyRange::new(Bound::Included(key(top, b"")), keyspace_inner_range(GROUP, bottom).end)
 	}
 
@@ -189,7 +189,7 @@ mod tests {
 		let tier = tier(ByteSize::from_mib(1).as_bytes(), 1);
 		let top = GROUP;
 		let bottom = GroupId(GROUP.0 - 1);
-		let span_of = |group: GroupId, keyspace: Keyspace| {
+		let span_of = |group: GroupId, keyspace: KeyspaceId| {
 			PartitionId {
 				operator: OP,
 				group,
@@ -202,9 +202,11 @@ mod tests {
 			keyspace_inner_range(bottom, UNCACHED).end,
 		);
 
-		let upper = Interval::new(span_of(top, Keyspace(UNCACHED.0 - 1)).0, span_of(top, Keyspace(0x00)).1);
-		let lower =
-			Interval::new(span_of(bottom, Keyspace(0xff)).0, span_of(bottom, Keyspace(UNCACHED.0 + 1)).1);
+		let upper = Interval::new(span_of(top, KeyspaceId(UNCACHED.0 - 1)).0, span_of(top, KeyspaceId(0x00)).1);
+		let lower = Interval::new(
+			span_of(bottom, KeyspaceId(0xff)).0,
+			span_of(bottom, KeyspaceId(UNCACHED.0 + 1)).1,
+		);
 		assert!(
 			claim(&tier, &range, &upper, &[]) == Materialize::Materialized,
 			"an empty proven span is still a claim"
@@ -298,7 +300,7 @@ mod tests {
 	fn a_materialize_into_a_keyspace_that_is_never_cached_leaves_the_tier_exactly_as_it_found_it() {
 		// Taking these rows would admit a keyspace the tier is configured never to hold.
 		let tier = roomy();
-		let range = across(UNCACHED, Keyspace(UNCACHED.0 - 1));
+		let range = across(UNCACHED, KeyspaceId(UNCACHED.0 - 1));
 		let at = key(UNCACHED, b"a");
 
 		assert!(
@@ -325,8 +327,8 @@ mod tests {
 		// A coalesced gap hands materialize one multi-keyspace span; refusing it whole leaves cross-keyspace
 		// reads permanently uncached.
 		let tier = roomy();
-		let top = Keyspace::BUFFER;
-		let bottom = Keyspace::ACCUMULATOR;
+		let top = KeyspaceId::BUFFER;
+		let bottom = KeyspaceId::ACCUMULATOR;
 		let head = key(top, b"a");
 		let tail = key(bottom, b"m");
 		let span = Interval::new(head.clone(), whole(bottom).end);
@@ -360,8 +362,8 @@ mod tests {
 		// store read per keyspace byte the scan crossed. Folding an exempt keyspace into a cached run would
 		// also hide it from the gap guard.
 		let tier = roomy();
-		let top = Keyspace::BUFFER;
-		let bottom = Keyspace::ACCUMULATOR;
+		let top = KeyspaceId::BUFFER;
+		let bottom = KeyspaceId::ACCUMULATOR;
 
 		let merged = tier.plan_scan(OP, &across(top, bottom)).expect("a two-keyspace range must be plannable");
 		assert_eq!(
@@ -374,7 +376,7 @@ mod tests {
 		);
 
 		let split = tier
-			.plan_scan(OP, &across(Keyspace::CUSTOM_CACHED, Keyspace::SEAL_ANCHOR))
+			.plan_scan(OP, &across(KeyspaceId::CUSTOM_CACHED, KeyspaceId::SEAL_ANCHOR))
 			.expect("a range straddling an uncacheable keyspace must be plannable");
 		assert_eq!(
 			split.segments().len(),

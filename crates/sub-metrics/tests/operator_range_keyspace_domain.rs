@@ -28,7 +28,7 @@ fn operator_range_keyspace_is_dimensioned_by_keyspace_name_not_by_shard() {
 	assert_eq!(spec.shape, DomainShape::Wide);
 	assert_eq!(spec.dimensions.len(), 1, "exactly one dimension");
 	assert_eq!(spec.dimensions[0].name, "keyspace");
-	// The dimension value is Keyspace::name(), never the raw u8, so the column must be Utf8.
+	// The dimension value is KeyspaceId::name(), never the raw u8, so the column must be Utf8.
 	assert_eq!(spec.dimensions[0].data_type, ValueType::Utf8);
 	assert!(!spec.dimensions[0].optional, "every row must know its keyspace");
 	assert!(spec.dimensions.iter().all(|d| d.name != "shard"), "a keyspace must never carry a shard dimension");

@@ -12,7 +12,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
 	engine::FlowEngineInner,
-	operator::{BoxedHostOperator, state::seal::policy::seal_horizon},
+	operator::{BoxedHostOperator, state::seal::rule::seal_horizon},
 	transaction::{FlowTransaction, watermark::SourceWatermarks},
 };
 

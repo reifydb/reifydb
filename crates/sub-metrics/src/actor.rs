@@ -28,7 +28,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::Tier,
 	},
-	key::operator_state::Keyspace,
+	key::operator_state::KeyspaceId,
 	metrics::{
 		execution::StatementMetrics,
 		sample::{MetricKind, Reading},
@@ -519,8 +519,8 @@ fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 	rows.extend(store.anchor_census().into_iter().map(|entry| MetricsRow {
 		dimensions: vec![
 			Value::Uint8(entry.operator.0),
-			Value::Utf8(Keyspace::SEAL_ANCHOR.name().to_string()),
-			Value::Utf8(phase_name(Keyspace::SEAL_ANCHOR).to_string()),
+			Value::Utf8(KeyspaceId::SEAL_ANCHOR.name().to_string()),
+			Value::Utf8(phase_name(KeyspaceId::SEAL_ANCHOR).to_string()),
 		],
 		measures: vec![
 			level_count("keys", entry.keys),
@@ -532,7 +532,7 @@ fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 	rows
 }
 
-fn phase_name(keyspace: Keyspace) -> &'static str {
+fn phase_name(keyspace: KeyspaceId) -> &'static str {
 	if keyspace.is_data() {
 		"data"
 	} else {

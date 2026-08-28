@@ -21,15 +21,15 @@ use reifydb_value::{
 };
 
 #[derive(Clone, Copy)]
-pub(crate) enum CoercePolicy {
+pub(crate) enum CoerceMode {
 	Error,
 	None,
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct NonePolicyConvert;
+pub(crate) struct NoneConvert;
 
-impl Convert for NonePolicyConvert {
+impl Convert for NoneConvert {
 	fn convert<From, To>(&self, from: From, _fragment: impl Into<Fragment>) -> Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
@@ -43,11 +43,11 @@ pub(crate) fn coerce_column(
 	ctx: &FunctionContext,
 	data: &ColumnBuffer,
 	target: ValueType,
-	policy: CoercePolicy,
+	mode: CoerceMode,
 ) -> StdResult<ColumnBuffer, RoutineError> {
 	let fragment = &ctx.fragment;
-	let cast = match policy {
-		CoercePolicy::Error => cast_column_data(
+	let cast = match mode {
+		CoerceMode::Error => cast_column_data(
 			TargetConvert {
 				target: None,
 			},
@@ -55,7 +55,7 @@ pub(crate) fn coerce_column(
 			target,
 			fragment,
 		)?,
-		CoercePolicy::None => cast_column_data(NonePolicyConvert, data, target, fragment)?,
+		CoerceMode::None => cast_column_data(NoneConvert, data, target, fragment)?,
 	};
 	Ok(cast)
 }
@@ -94,7 +94,7 @@ mod tests {
 		value::{identity::IdentityId, value_type::ValueType},
 	};
 
-	use super::{CoercePolicy, NonePolicyConvert, coerce_column, promote_all};
+	use super::{CoerceMode, NoneConvert, coerce_column, promote_all};
 
 	fn ctx() -> FunctionContext<'static> {
 		static RUNTIME: LazyLock<RuntimeContext> = LazyLock::new(|| RuntimeContext::testing(0, 0));
@@ -109,11 +109,11 @@ mod tests {
 	#[test]
 	fn none_policy_matches_targetconvert_none_arm() {
 		// A checked_convert failure must become Ok(None) here, not an error.
-		let out: Option<i8> = NonePolicyConvert.convert(300i16, Fragment::internal("300")).unwrap();
+		let out: Option<i8> = NoneConvert.convert(300i16, Fragment::internal("300")).unwrap();
 		assert_eq!(out, None);
-		let out: Option<i8> = NonePolicyConvert.convert(100i16, Fragment::internal("100")).unwrap();
+		let out: Option<i8> = NoneConvert.convert(100i16, Fragment::internal("100")).unwrap();
 		assert_eq!(out, Some(100));
-		// TargetConvert with the default (Error) policy errors on the same input.
+		// TargetConvert with the default (Error) mode errors on the same input.
 		let err = TargetConvert {
 			target: None,
 		}
@@ -126,16 +126,16 @@ mod tests {
 		// Out-of-range must surface as the house cast diagnostic, not a generic failure.
 		let ctx = ctx();
 		let data = ColumnBuffer::int2([300]);
-		let err = coerce_column(&ctx, &data, ValueType::Int1, CoercePolicy::Error).unwrap_err();
+		let err = coerce_column(&ctx, &data, ValueType::Int1, CoerceMode::Error).unwrap_err();
 		assert_eq!(err.into_diagnostic().code, "NUMBER_002");
 	}
 
 	#[test]
 	fn none_policy_turns_overflow_into_none() {
-		// The same input the Error policy rejects must become an undefined row here.
+		// The same input the Error mode rejects must become an undefined row here.
 		let ctx = ctx();
 		let data = ColumnBuffer::int2([300, 100]);
-		let cast = coerce_column(&ctx, &data, ValueType::Int1, CoercePolicy::None).unwrap();
+		let cast = coerce_column(&ctx, &data, ValueType::Int1, CoerceMode::None).unwrap();
 		assert!(!cast.is_defined(0));
 		assert!(cast.is_defined(1));
 	}
@@ -149,7 +149,7 @@ mod tests {
 			inner: Box::new(inner),
 			bitvec: BitVec::from_slice(&[true, false, true]),
 		};
-		let cast = coerce_column(&ctx, &data, ValueType::Int4, CoercePolicy::Error).unwrap();
+		let cast = coerce_column(&ctx, &data, ValueType::Int4, CoerceMode::Error).unwrap();
 		assert_eq!(cast.get_type(), ValueType::Option(Box::new(ValueType::Int4)));
 		assert!(cast.is_defined(0));
 		assert!(!cast.is_defined(1));

@@ -8,7 +8,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::catalog::flow::FlowId,
-	key::operator_state::{Keyspace, OperatorStateKey},
+	key::operator_state::{KeyspaceId, OperatorStateKey},
 };
 use reifydb_store_operator::{
 	store::OperatorStore,
@@ -99,7 +99,7 @@ pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> 
 			continue;
 		};
 		let anchor = OperatorStateKey::decode_inner(inner.as_slice())
-			.filter(|(_, keyspace, _)| *keyspace == Keyspace::SEAL_ANCHOR)
+			.filter(|(_, keyspace, _)| *keyspace == KeyspaceId::SEAL_ANCHOR)
 			.map(|(group, _, suffix)| {
 				(
 					group,

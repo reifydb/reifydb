@@ -311,7 +311,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				ids.iter()
 					.filter(|id| {
 						let (start, span_end) = D::span(id);
-						let end = span_end.min(D::policy_run_end(id));
+						let end = span_end.min(D::cache_tiers_run_end(id));
 						coverage.set(D::dimension(id))
 							.and_then(|set| set.covering(&start))
 							.is_some_and(|claim| claim.end >= end)
@@ -432,7 +432,7 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 		metrics::{
 			collect::MetricsCollector,
 			sample::{MetricsSample, Reading},
@@ -475,7 +475,7 @@ mod tests {
 		tier(ByteSize::from_mib(1).as_bytes(), 1)
 	}
 
-	fn key(keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
+	fn key(keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
 		OperatorStateKey::inner_encoded(GROUP_A, keyspace, suffix).into_encoded()
 	}
 
@@ -483,7 +483,7 @@ mod tests {
 		EncodedPodRow::new(body.as_bytes())
 	}
 
-	fn part(keyspace: Keyspace) -> TestPartition {
+	fn part(keyspace: KeyspaceId) -> TestPartition {
 		TestPartition {
 			dimension: OP_A,
 			group: GROUP_A,
@@ -575,10 +575,10 @@ mod tests {
 	#[test]
 	fn eviction_retracts_the_claim_it_drops_the_rows_of() {
 		// An evicted key must fall through, never resolve as a proven absence the tier cannot back.
-		let k = key(Keyspace::ACCUMULATOR, b"a");
+		let k = key(KeyspaceId::ACCUMULATOR, b"a");
 		let rows = vec![(k.clone(), Entry::row(row("v")))];
 		let tier = tier(cost(&rows) as u64 - 1, 1);
-		seed(&tier, part(Keyspace::ACCUMULATOR), rows);
+		seed(&tier, part(KeyspaceId::ACCUMULATOR), rows);
 
 		assert_eq!(probe(&tier, &k), Some(Some(row("v"))), "the seeded row must be resident to begin with");
 
@@ -595,11 +595,11 @@ mod tests {
 	#[test]
 	fn eviction_never_drops_an_unflushed_removal() {
 		// Dropping a removal the persistent tier has not seen resurrects the row it still holds.
-		let live = key(Keyspace::ACCUMULATOR, b"a");
-		let gone = key(Keyspace::ACCUMULATOR, b"b");
+		let live = key(KeyspaceId::ACCUMULATOR, b"a");
+		let gone = key(KeyspaceId::ACCUMULATOR, b"b");
 		let rows = vec![(live.clone(), Entry::row(row("v"))), (gone.clone(), Entry::deleted())];
 		let tier = tier(cost(&rows) as u64 - 1, 1);
-		seed(&tier, part(Keyspace::ACCUMULATOR), rows);
+		seed(&tier, part(KeyspaceId::ACCUMULATOR), rows);
 
 		tier.evict_to_capacity(0);
 
@@ -616,11 +616,11 @@ mod tests {
 	#[test]
 	fn an_entirely_pinned_partition_is_never_offered_as_a_victim() {
 		// The budget loop must stop at an all-pinned floor, or it spins forever on the same partition.
-		let first = key(Keyspace::ACCUMULATOR, b"a");
-		let second = key(Keyspace::ACCUMULATOR, b"b");
+		let first = key(KeyspaceId::ACCUMULATOR, b"a");
+		let second = key(KeyspaceId::ACCUMULATOR, b"b");
 		let rows = vec![(first, Entry::deleted()), (second, Entry::deleted())];
 		let tier = tier(cost(&rows) as u64 - 1, 1);
-		seed(&tier, part(Keyspace::ACCUMULATOR), rows);
+		seed(&tier, part(KeyspaceId::ACCUMULATOR), rows);
 
 		tier.evict_to_capacity(0);
 
@@ -633,7 +633,7 @@ mod tests {
 	#[test]
 	fn a_materialize_that_reclaims_the_span_stops_the_rows_being_dropped() {
 		// A materialize racing the drop must keep its rows, or its fresh claim stands over nothing.
-		let k = key(Keyspace::ACCUMULATOR, b"a");
+		let k = key(KeyspaceId::ACCUMULATOR, b"a");
 		let rows = vec![(k.clone(), Entry::row(row("v")))];
 		let fired = Arc::new(AtomicBool::new(false));
 		let tier = RangeTier::<D>::with_interlock(
@@ -642,11 +642,11 @@ mod tests {
 				if fired.swap(true, AtomicOrdering::SeqCst) {
 					return;
 				}
-				seed(tier, id, vec![(key(Keyspace::ACCUMULATOR, b"z"), Entry::row(row("late")))]);
+				seed(tier, id, vec![(key(KeyspaceId::ACCUMULATOR, b"z"), Entry::row(row("late")))]);
 			}),
 		)
 		.expect("a tier with a byte budget must be constructed");
-		seed(&tier, part(Keyspace::ACCUMULATOR), rows);
+		seed(&tier, part(KeyspaceId::ACCUMULATOR), rows);
 
 		tier.evict_to_capacity(0);
 
@@ -658,15 +658,15 @@ mod tests {
 	#[test]
 	fn eviction_releases_exactly_the_bytes_the_insert_charged() {
 		// A tally that drifts from the budget wedges the shard over its limit or lets it grow unbounded.
-		let hot = key(Keyspace::BUFFER, b"b");
-		let cold = key(Keyspace::ACCUMULATOR, b"a");
+		let hot = key(KeyspaceId::BUFFER, b"b");
+		let cold = key(KeyspaceId::ACCUMULATOR, b"a");
 		let cold_rows = vec![(cold.clone(), Entry::row(row("aaaaaaaa")))];
 		let hot_rows = vec![(hot.clone(), Entry::row(row("b")))];
 		let total = cost(&cold_rows) + cost(&hot_rows);
 		let tier = tier(total as u64 - 1, 1);
 
-		seed(&tier, part(Keyspace::ACCUMULATOR), cold_rows.clone());
-		seed(&tier, part(Keyspace::BUFFER), hot_rows.clone());
+		seed(&tier, part(KeyspaceId::ACCUMULATOR), cold_rows.clone());
+		seed(&tier, part(KeyspaceId::BUFFER), hot_rows.clone());
 
 		assert_eq!(tier.resident_bytes(), ByteSize::from_bytes(total as u64));
 		assert_eq!(tier.tallied_bytes(), tier.resident_bytes());
@@ -685,19 +685,19 @@ mod tests {
 	#[test]
 	fn eviction_splits_a_claim_that_coalesced_across_two_partitions() {
 		// A coalesced claim must split on eviction, or it covers the evicted partition or loses the survivor.
-		let cold = key(Keyspace::ACCUMULATOR, b"a");
-		let hot = key(Keyspace::BUFFER, b"b");
+		let cold = key(KeyspaceId::ACCUMULATOR, b"a");
+		let hot = key(KeyspaceId::BUFFER, b"b");
 		let cold_rows = vec![(cold.clone(), Entry::row(row("v")))];
 		let hot_rows = vec![(hot.clone(), Entry::row(row("v")))];
 		let tier = tier((cost(&cold_rows) + cost(&hot_rows)) as u64 - 1, 1);
 
-		seed(&tier, part(Keyspace::ACCUMULATOR), cold_rows);
-		seed(&tier, part(Keyspace::BUFFER), hot_rows);
+		seed(&tier, part(KeyspaceId::ACCUMULATOR), cold_rows);
+		seed(&tier, part(KeyspaceId::BUFFER), hot_rows);
 		assert_eq!(tier.intervals(), 1, "two touching partitions must coalesce into one claim");
 
 		tier.evict_to_capacity(0);
 
-		let (start, end) = part(Keyspace::BUFFER).span();
+		let (start, end) = part(KeyspaceId::BUFFER).span();
 		assert_eq!(claims(&tier), vec![Interval::new(start, end)], "only the survivor stays claimed");
 		assert_eq!(probe(&tier, &cold), None, "the evicted partition falls through");
 		assert_eq!(probe(&tier, &hot), Some(Some(row("v"))), "the survivor still answers");
@@ -724,8 +724,8 @@ mod tests {
 		let tier = roomy();
 		seed(
 			&tier,
-			part(Keyspace::ACCUMULATOR),
-			vec![(key(Keyspace::ACCUMULATOR, b"a"), Entry::row(row("v")))],
+			part(KeyspaceId::ACCUMULATOR),
+			vec![(key(KeyspaceId::ACCUMULATOR, b"a"), Entry::row(row("v")))],
 		);
 		tier.shard(0).lock().gaps.record(&scan_plan(2, false));
 

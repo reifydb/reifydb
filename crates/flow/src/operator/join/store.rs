@@ -21,7 +21,7 @@ use reifydb_core::interface::catalog::{
 	flow::OperatorId,
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
+	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	value::column::columns::Columns,
 };
 use reifydb_value::{
@@ -86,7 +86,7 @@ impl Store {
 		let mut suffix = Vec::with_capacity(1 + 8);
 		suffix.push(self.side.tag());
 		suffix.extend_from_slice(&fingerprint.to_le_bytes());
-		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::JOIN_SCHEMA, suffix)
+		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::JOIN_SCHEMA, suffix)
 	}
 
 	fn row_key(&self, group: GroupId, row_number: RowNumber) -> GroupStateKey {

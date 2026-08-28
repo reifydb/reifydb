@@ -12,7 +12,7 @@ use reifydb_codec::key::{
 use reifydb_value::util::hash::xxh3_128;
 
 use super::{EncodableKey, KeyKind};
-use crate::interface::catalog::flow::OperatorId;
+use crate::interface::{catalog::flow::OperatorId, store::CacheTiers};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -72,35 +72,17 @@ impl GroupSet {
 pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
 	let mut de = KeyDeserializer::from_bytes(inner);
 	let group = GroupId(de.read_u128().ok()?);
-	let keyspace = Keyspace(de.read_u8().ok()?);
+	let keyspace = KeyspaceId(de.read_u8().ok()?);
 	if !keyspace.is_data() {
 		return None;
 	}
 	inner.starts_with(&group_inner_prefix(group)).then_some(group)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CachePolicy {
-	Neither,
-	Point,
-	Range,
-	Both,
-}
-
-impl CachePolicy {
-	pub fn caches_points(&self) -> bool {
-		matches!(self, Self::Point | Self::Both)
-	}
-
-	pub fn caches_ranges(&self) -> bool {
-		matches!(self, Self::Range | Self::Both)
-	}
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Keyspace(pub u8);
+pub struct KeyspaceId(pub u8);
 
-impl Keyspace {
+impl KeyspaceId {
 	pub const HIGHEST_DATA: u8 = 0x7F;
 
 	pub const ROW_NUMBER_MAPPING: Self = Self(0xFE);
@@ -223,17 +205,17 @@ impl Keyspace {
 		!self.is_data()
 	}
 
-	pub fn cache_policy(&self) -> CachePolicy {
+	pub fn cache_tiers(&self) -> CacheTiers {
 		match *self {
-			Self::CUSTOM_NOT_CACHED => CachePolicy::Neither,
-			Self::EXPIRY => CachePolicy::Range,
-			Self::TIMER_WHEEL => CachePolicy::Range,
-			Self::ENGINE_META => CachePolicy::Range,
-			Self::JOIN_PIN => CachePolicy::Range,
-			Self::ROW_NUMBER_MAPPING => CachePolicy::Range,
-			Self::ACCUMULATOR => CachePolicy::Range,
-			Self::WINDOW_META => CachePolicy::Range,
-			_ => CachePolicy::Both,
+			Self::CUSTOM_NOT_CACHED => CacheTiers::Neither,
+			Self::EXPIRY => CacheTiers::Range,
+			Self::TIMER_WHEEL => CacheTiers::Range,
+			Self::ENGINE_META => CacheTiers::Range,
+			Self::JOIN_PIN => CacheTiers::Range,
+			Self::ROW_NUMBER_MAPPING => CacheTiers::Range,
+			Self::ACCUMULATOR => CacheTiers::Range,
+			Self::WINDOW_META => CacheTiers::Range,
+			_ => CacheTiers::Both,
 		}
 	}
 
@@ -256,12 +238,12 @@ pub fn is_framed_inner(inner: &[u8]) -> bool {
 pub struct OperatorStateKey {
 	pub operator: OperatorId,
 	pub group: GroupId,
-	pub keyspace: Keyspace,
+	pub keyspace: KeyspaceId,
 	pub suffix: Vec<u8>,
 }
 
 impl OperatorStateKey {
-	pub fn new(operator: OperatorId, group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> Self {
+	pub fn new(operator: OperatorId, group: GroupId, keyspace: KeyspaceId, suffix: impl Into<Vec<u8>>) -> Self {
 		Self {
 			operator,
 			group,
@@ -270,14 +252,14 @@ impl OperatorStateKey {
 		}
 	}
 
-	pub fn root(operator: OperatorId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> Self {
+	pub fn root(operator: OperatorId, keyspace: KeyspaceId, suffix: impl Into<Vec<u8>>) -> Self {
 		Self::new(operator, GroupId::ROOT, keyspace, suffix)
 	}
 
 	pub fn encoded(
 		operator: OperatorId,
 		group: GroupId,
-		keyspace: Keyspace,
+		keyspace: KeyspaceId,
 		suffix: impl AsRef<[u8]>,
 	) -> EncodedKey {
 		let suffix = suffix.as_ref();
@@ -299,23 +281,23 @@ impl OperatorStateKey {
 
 	pub const KEYSPACE_INNER_OFFSET: u32 = size_of::<u128>() as u32;
 
-	pub fn decode_keyspace(stored: u8) -> Keyspace {
-		Keyspace(KeyDeserializer::from_bytes(&[stored]).read_u8().expect("a single byte decodes as u8"))
+	pub fn decode_keyspace(stored: u8) -> KeyspaceId {
+		KeyspaceId(KeyDeserializer::from_bytes(&[stored]).read_u8().expect("a single byte decodes as u8"))
 	}
 
-	pub fn inner_encoded(group: GroupId, keyspace: Keyspace, suffix: impl AsRef<[u8]>) -> GroupStateKey {
+	pub fn inner_encoded(group: GroupId, keyspace: KeyspaceId, suffix: impl AsRef<[u8]>) -> GroupStateKey {
 		let suffix = suffix.as_ref();
 		let mut serializer = KeySerializer::with_capacity(20 + suffix.len());
 		serializer.extend_u128(group.0).extend_u8(keyspace.0).extend_raw(suffix);
 		GroupStateKey(serializer.to_encoded_key())
 	}
 
-	pub fn decode_inner(inner: &[u8]) -> Option<(GroupId, Keyspace, Vec<u8>)> {
+	pub fn decode_inner(inner: &[u8]) -> Option<(GroupId, KeyspaceId, Vec<u8>)> {
 		let mut de = KeyDeserializer::from_bytes(inner);
 		let group = de.read_u128().ok()?;
 		let keyspace = de.read_u8().ok()?;
 		let suffix = de.read_raw(de.remaining()).ok()?.to_vec();
-		Some((GroupId(group), Keyspace(keyspace), suffix))
+		Some((GroupId(group), KeyspaceId(keyspace), suffix))
 	}
 
 	pub fn node_range(operator: OperatorId) -> EncodedKeyRange {
@@ -364,7 +346,7 @@ impl EncodableKey for OperatorStateKey {
 		Some(Self {
 			operator: OperatorId(operator),
 			group: GroupId(group),
-			keyspace: Keyspace(keyspace),
+			keyspace: KeyspaceId(keyspace),
 			suffix,
 		})
 	}
@@ -374,11 +356,11 @@ impl EncodableKey for OperatorStateKey {
 pub struct GroupStateKey(EncodedKey);
 
 impl GroupStateKey {
-	pub fn new(group: GroupId, keyspace: Keyspace, suffix: impl AsRef<[u8]>) -> Self {
+	pub fn new(group: GroupId, keyspace: KeyspaceId, suffix: impl AsRef<[u8]>) -> Self {
 		OperatorStateKey::inner_encoded(group, keyspace, suffix)
 	}
 
-	pub fn root(keyspace: Keyspace, suffix: impl AsRef<[u8]>) -> Self {
+	pub fn root(keyspace: KeyspaceId, suffix: impl AsRef<[u8]>) -> Self {
 		Self::new(GroupId::ROOT, keyspace, suffix)
 	}
 
@@ -410,10 +392,10 @@ impl GroupStateKey {
 		OperatorStateKey::decode_inner(self.0.as_slice()).map(|(group, _, _)| group)
 	}
 
-	pub fn keyspace(&self) -> Option<Keyspace> {
+	pub fn keyspace(&self) -> Option<KeyspaceId> {
 		let bytes = self.0.as_slice();
 		let offset = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize;
-		(bytes.len() > offset).then(|| Keyspace(encode_u8(bytes[offset])))
+		(bytes.len() > offset).then(|| KeyspaceId(encode_u8(bytes[offset])))
 	}
 }
 
@@ -445,7 +427,7 @@ fn group_inner_prefix(group: GroupId) -> Vec<u8> {
 	serializer.finish().as_ref().to_vec()
 }
 
-fn keyspace_inner_prefix(group: GroupId, keyspace: Keyspace) -> Vec<u8> {
+fn keyspace_inner_prefix(group: GroupId, keyspace: KeyspaceId) -> Vec<u8> {
 	let mut prefix = group_inner_prefix(group);
 	prefix.push(encode_u8(keyspace.0));
 	prefix
@@ -455,17 +437,17 @@ pub fn group_inner_range(group: GroupId) -> EncodedKeyRange {
 	EncodedKeyRange::prefix(&group_inner_prefix(group))
 }
 
-pub fn keyspace_inner_range(group: GroupId, keyspace: Keyspace) -> EncodedKeyRange {
+pub fn keyspace_inner_range(group: GroupId, keyspace: KeyspaceId) -> EncodedKeyRange {
 	EncodedKeyRange::prefix(&keyspace_inner_prefix(group, keyspace))
 }
 
 pub const ROW_NUMBER_COUNTER_SUFFIX: &[u8] = b"rn";
 
 pub fn row_number_counter_key() -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
+	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
 }
 
-pub fn keyspace_inner_range_upto(group: GroupId, keyspace: Keyspace, suffix: &[u8]) -> EncodedKeyRange {
+pub fn keyspace_inner_range_upto(group: GroupId, keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKeyRange {
 	let mut bound = keyspace_inner_prefix(group, keyspace);
 	bound.extend_from_slice(suffix);
 	EncodedKeyRange::new(keyspace_inner_range(group, keyspace).start, EncodedKeyRange::prefix(&bound).end)
@@ -474,14 +456,14 @@ pub fn keyspace_inner_range_upto(group: GroupId, keyspace: Keyspace, suffix: &[u
 pub fn group_data_inner_range(group: GroupId) -> EncodedKeyRange {
 	let prefix = group_inner_prefix(group);
 	let mut start = prefix.clone();
-	start.push(encode_u8(Keyspace::HIGHEST_DATA));
+	start.push(encode_u8(KeyspaceId::HIGHEST_DATA));
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), EncodedKeyRange::prefix(&prefix).end)
 }
 
 pub fn group_identity_inner_range(group: GroupId) -> EncodedKeyRange {
 	let prefix = group_inner_prefix(group);
 	let mut end = prefix.clone();
-	end.push(encode_u8(Keyspace::HIGHEST_DATA));
+	end.push(encode_u8(KeyspaceId::HIGHEST_DATA));
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(prefix)), Bound::Excluded(EncodedKey::new(end)))
 }
 
@@ -503,7 +485,7 @@ fn group_prefix(operator: OperatorId, group: GroupId) -> Vec<u8> {
 	serializer.finish().as_ref().to_vec()
 }
 
-fn keyspace_prefix(operator: OperatorId, group: GroupId, keyspace: Keyspace) -> Vec<u8> {
+fn keyspace_prefix(operator: OperatorId, group: GroupId, keyspace: KeyspaceId) -> Vec<u8> {
 	let mut prefix = group_prefix(operator, group);
 	prefix.push(encode_u8(keyspace.0));
 	prefix
@@ -517,21 +499,21 @@ pub fn group_range(operator: OperatorId, group: GroupId) -> EncodedKeyRange {
 	EncodedKeyRange::prefix(&group_prefix(operator, group))
 }
 
-pub fn keyspace_range(operator: OperatorId, group: GroupId, keyspace: Keyspace) -> EncodedKeyRange {
+pub fn keyspace_range(operator: OperatorId, group: GroupId, keyspace: KeyspaceId) -> EncodedKeyRange {
 	EncodedKeyRange::prefix(&keyspace_prefix(operator, group, keyspace))
 }
 
 pub fn group_data_range(operator: OperatorId, group: GroupId) -> EncodedKeyRange {
 	let prefix = group_prefix(operator, group);
 	let mut start = prefix.clone();
-	start.push(encode_u8(Keyspace::HIGHEST_DATA));
+	start.push(encode_u8(KeyspaceId::HIGHEST_DATA));
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), EncodedKeyRange::prefix(&prefix).end)
 }
 
 pub fn group_identity_range(operator: OperatorId, group: GroupId) -> EncodedKeyRange {
 	let prefix = group_prefix(operator, group);
 	let mut end = prefix.clone();
-	end.push(encode_u8(Keyspace::HIGHEST_DATA));
+	end.push(encode_u8(KeyspaceId::HIGHEST_DATA));
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(prefix)), Bound::Excluded(EncodedKey::new(end)))
 }
 
@@ -540,18 +522,18 @@ mod tests {
 	use std::{ops::Bound, slice};
 
 	use super::{
-		CachePolicy, EncodedKey, EncodedKeyRange, GroupId, GroupSet, KeySerializer, Keyspace, OperatorStateKey,
-		group_data_inner_range, group_data_of_inner, group_data_range, group_identity_inner_range,
-		group_identity_range, group_inner_prefix, group_inner_range, group_range, is_framed_inner,
-		keyspace_range, node_prefix, node_range,
+		CacheTiers, EncodedKey, EncodedKeyRange, GroupId, GroupSet, KeySerializer, KeyspaceId,
+		OperatorStateKey, group_data_inner_range, group_data_of_inner, group_data_range,
+		group_identity_inner_range, group_identity_range, group_inner_prefix, group_inner_range, group_range,
+		is_framed_inner, keyspace_range, node_prefix, node_range,
 	};
 	use crate::{interface::catalog::flow::OperatorId, key::EncodableKey};
 
 	const NODES: [u64; 4] = [1, 17, 300, 70_000];
 	const GROUPS: [u128; 8] = [1, 2, 127, 128, 1000, 100_000, 1 << 30, u128::MAX];
-	const DATA_KEYSPACES: [Keyspace; 4] =
-		[Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::RUNNING, Keyspace::CUSTOM_NOT_CACHED];
-	const IDENTITY_KEYSPACES: [Keyspace; 1] = [Keyspace::ROW_NUMBER_MAPPING];
+	const DATA_KEYSPACES: [KeyspaceId; 4] =
+		[KeyspaceId::ACCUMULATOR, KeyspaceId::BUFFER, KeyspaceId::RUNNING, KeyspaceId::CUSTOM_NOT_CACHED];
+	const IDENTITY_KEYSPACES: [KeyspaceId; 1] = [KeyspaceId::ROW_NUMBER_MAPPING];
 
 	#[derive(Clone, Copy, PartialEq, Debug)]
 	enum Phase {
@@ -560,54 +542,54 @@ mod tests {
 	}
 
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
-	/// be cached in. Both are written down rather than read back from `is_data` and `cache_policy`, or
+	/// be cached in. Both are written down rather than read back from `is_data` and `cache_tiers`, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, Keyspace, Phase, CachePolicy); 35] = [
-		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity, CachePolicy::Range),
-		("NODE_COUNTER", Keyspace::NODE_COUNTER, Phase::Identity, CachePolicy::Both),
-		("SOURCE_WATERMARK", Keyspace::SOURCE_WATERMARK, Phase::Identity, CachePolicy::Both),
-		("TIMER_WHEEL", Keyspace::TIMER_WHEEL, Phase::Identity, CachePolicy::Range),
-		("TIMER_INDEX", Keyspace::TIMER_INDEX, Phase::Identity, CachePolicy::Both),
-		("ACCUMULATOR", Keyspace::ACCUMULATOR, Phase::Data, CachePolicy::Range),
-		("BUFFER", Keyspace::BUFFER, Phase::Data, CachePolicy::Both),
-		("RUNNING", Keyspace::RUNNING, Phase::Data, CachePolicy::Both),
-		("EMIT", Keyspace::EMIT, Phase::Data, CachePolicy::Both),
-		("EXPIRY", Keyspace::EXPIRY, Phase::Data, CachePolicy::Range),
-		("COUNT", Keyspace::COUNT, Phase::Data, CachePolicy::Both),
-		("ROW_INDEX", Keyspace::ROW_INDEX, Phase::Data, CachePolicy::Both),
-		("SESSION", Keyspace::SESSION, Phase::Data, CachePolicy::Both),
-		("ROLLING_META", Keyspace::ROLLING_META, Phase::Data, CachePolicy::Both),
-		("ENGINE_META", Keyspace::ENGINE_META, Phase::Data, CachePolicy::Range),
-		("DISTINCT_ENTRY", Keyspace::DISTINCT_ENTRY, Phase::Data, CachePolicy::Both),
-		("WINDOW_META", Keyspace::WINDOW_META, Phase::Data, CachePolicy::Range),
-		("JOIN_LEFT", Keyspace::JOIN_LEFT, Phase::Data, CachePolicy::Both),
-		("JOIN_RIGHT", Keyspace::JOIN_RIGHT, Phase::Data, CachePolicy::Both),
-		("JOIN_SCHEMA", Keyspace::JOIN_SCHEMA, Phase::Data, CachePolicy::Both),
-		("RINGBUFFER_FORWARD", Keyspace::RINGBUFFER_FORWARD, Phase::Data, CachePolicy::Both),
-		("RINGBUFFER_ENTRY", Keyspace::RINGBUFFER_ENTRY, Phase::Data, CachePolicy::Both),
-		("GATE_VISIBILITY", Keyspace::GATE_VISIBILITY, Phase::Data, CachePolicy::Both),
-		("DISTINCT_LAYOUT", Keyspace::DISTINCT_LAYOUT, Phase::Data, CachePolicy::Both),
-		("RINGBUFFER_EXPIRY", Keyspace::RINGBUFFER_EXPIRY, Phase::Data, CachePolicy::Both),
-		("RINGBUFFER_TTL_ARM", Keyspace::RINGBUFFER_TTL_ARM, Phase::Data, CachePolicy::Both),
-		("SEAL_LEDGER", Keyspace::SEAL_LEDGER, Phase::Data, CachePolicy::Both),
-		("JOIN_PUBLISHED", Keyspace::JOIN_PUBLISHED, Phase::Data, CachePolicy::Both),
-		("JOIN_PIN", Keyspace::JOIN_PIN, Phase::Data, CachePolicy::Range),
-		("RINGBUFFER_META", Keyspace::RINGBUFFER_META, Phase::Data, CachePolicy::Both),
-		("REAP_QUEUE", Keyspace::REAP_QUEUE, Phase::Data, CachePolicy::Both),
-		("SEAL_ANCHOR", Keyspace::SEAL_ANCHOR, Phase::Data, CachePolicy::Both),
-		("CUSTOM_CACHED_BELOW", Keyspace::CUSTOM_CACHED_BELOW, Phase::Data, CachePolicy::Both),
-		("CUSTOM_NOT_CACHED", Keyspace::CUSTOM_NOT_CACHED, Phase::Data, CachePolicy::Neither),
-		("CUSTOM_CACHED", Keyspace::CUSTOM_CACHED, Phase::Data, CachePolicy::Both),
+	const CENSUS: [(&str, KeyspaceId, Phase, CacheTiers); 35] = [
+		("ROW_NUMBER_MAPPING", KeyspaceId::ROW_NUMBER_MAPPING, Phase::Identity, CacheTiers::Range),
+		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, CacheTiers::Both),
+		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, CacheTiers::Both),
+		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, CacheTiers::Range),
+		("TIMER_INDEX", KeyspaceId::TIMER_INDEX, Phase::Identity, CacheTiers::Both),
+		("ACCUMULATOR", KeyspaceId::ACCUMULATOR, Phase::Data, CacheTiers::Range),
+		("BUFFER", KeyspaceId::BUFFER, Phase::Data, CacheTiers::Both),
+		("RUNNING", KeyspaceId::RUNNING, Phase::Data, CacheTiers::Both),
+		("EMIT", KeyspaceId::EMIT, Phase::Data, CacheTiers::Both),
+		("EXPIRY", KeyspaceId::EXPIRY, Phase::Data, CacheTiers::Range),
+		("COUNT", KeyspaceId::COUNT, Phase::Data, CacheTiers::Both),
+		("ROW_INDEX", KeyspaceId::ROW_INDEX, Phase::Data, CacheTiers::Both),
+		("SESSION", KeyspaceId::SESSION, Phase::Data, CacheTiers::Both),
+		("ROLLING_META", KeyspaceId::ROLLING_META, Phase::Data, CacheTiers::Both),
+		("ENGINE_META", KeyspaceId::ENGINE_META, Phase::Data, CacheTiers::Range),
+		("DISTINCT_ENTRY", KeyspaceId::DISTINCT_ENTRY, Phase::Data, CacheTiers::Both),
+		("WINDOW_META", KeyspaceId::WINDOW_META, Phase::Data, CacheTiers::Range),
+		("JOIN_LEFT", KeyspaceId::JOIN_LEFT, Phase::Data, CacheTiers::Both),
+		("JOIN_RIGHT", KeyspaceId::JOIN_RIGHT, Phase::Data, CacheTiers::Both),
+		("JOIN_SCHEMA", KeyspaceId::JOIN_SCHEMA, Phase::Data, CacheTiers::Both),
+		("RINGBUFFER_FORWARD", KeyspaceId::RINGBUFFER_FORWARD, Phase::Data, CacheTiers::Both),
+		("RINGBUFFER_ENTRY", KeyspaceId::RINGBUFFER_ENTRY, Phase::Data, CacheTiers::Both),
+		("GATE_VISIBILITY", KeyspaceId::GATE_VISIBILITY, Phase::Data, CacheTiers::Both),
+		("DISTINCT_LAYOUT", KeyspaceId::DISTINCT_LAYOUT, Phase::Data, CacheTiers::Both),
+		("RINGBUFFER_EXPIRY", KeyspaceId::RINGBUFFER_EXPIRY, Phase::Data, CacheTiers::Both),
+		("RINGBUFFER_TTL_ARM", KeyspaceId::RINGBUFFER_TTL_ARM, Phase::Data, CacheTiers::Both),
+		("SEAL_LEDGER", KeyspaceId::SEAL_LEDGER, Phase::Data, CacheTiers::Both),
+		("JOIN_PUBLISHED", KeyspaceId::JOIN_PUBLISHED, Phase::Data, CacheTiers::Both),
+		("JOIN_PIN", KeyspaceId::JOIN_PIN, Phase::Data, CacheTiers::Range),
+		("RINGBUFFER_META", KeyspaceId::RINGBUFFER_META, Phase::Data, CacheTiers::Both),
+		("REAP_QUEUE", KeyspaceId::REAP_QUEUE, Phase::Data, CacheTiers::Both),
+		("SEAL_ANCHOR", KeyspaceId::SEAL_ANCHOR, Phase::Data, CacheTiers::Both),
+		("CUSTOM_CACHED_BELOW", KeyspaceId::CUSTOM_CACHED_BELOW, Phase::Data, CacheTiers::Both),
+		("CUSTOM_NOT_CACHED", KeyspaceId::CUSTOM_NOT_CACHED, Phase::Data, CacheTiers::Neither),
+		("CUSTOM_CACHED", KeyspaceId::CUSTOM_CACHED, Phase::Data, CacheTiers::Both),
 	];
 
-	/// Counts `Keyspace` constants from the source text. There is no reflection over associated
+	/// Counts `KeyspaceId` constants from the source text. There is no reflection over associated
 	/// constants, so this is the only way the census can notice a keyspace nobody listed.
 	fn declared_keyspaces() -> usize {
 		let source = include_str!("operator_state.rs");
 		let body = source
-			.split("impl Keyspace {")
+			.split("impl KeyspaceId {")
 			.nth(1)
-			.expect("the Keyspace impl block is where the constants are declared");
+			.expect("the KeyspaceId impl block is where the constants are declared");
 		let body = body.split("\n}\n").next().expect("the impl block is closed");
 		body.lines()
 			.filter(|line| {
@@ -628,8 +610,11 @@ mod tests {
 		assert!(OperatorStateKey::decode_inner(&bare).is_none());
 		assert!(!is_framed_inner(&bare));
 
-		let framed =
-			OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, 7u64.to_be_bytes());
+		let framed = OperatorStateKey::inner_encoded(
+			GroupId::ROOT,
+			KeyspaceId::CUSTOM_NOT_CACHED,
+			7u64.to_be_bytes(),
+		);
 		assert!(is_framed_inner(framed.as_slice()));
 		assert!(
 			!contains(&group_identity_inner_range(GroupId(7)), framed.as_slice()),
@@ -698,7 +683,7 @@ mod tests {
 			}
 			keys.push(OperatorStateKey::root(
 				OperatorId(operator),
-				Keyspace::NODE_COUNTER,
+				KeyspaceId::NODE_COUNTER,
 				b"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_vec(),
 			));
 		}
@@ -735,7 +720,7 @@ mod tests {
 		let encodings: Vec<Vec<u8>> = GROUPS
 			.iter()
 			.map(|group| {
-				OperatorStateKey::new(OperatorId(1), GroupId(*group), Keyspace::ACCUMULATOR, vec![])
+				OperatorStateKey::new(OperatorId(1), GroupId(*group), KeyspaceId::ACCUMULATOR, vec![])
 					.encode()
 					.as_slice()
 					.to_vec()
@@ -816,12 +801,12 @@ mod tests {
 		}
 
 		assert_eq!(
-			Keyspace::CUSTOM_NOT_CACHED.name(),
+			KeyspaceId::CUSTOM_NOT_CACHED.name(),
 			"CUSTOM_NOT_CACHED",
 			"a custom keyspace names the admission side it sits on; there is no unnamed fallback to absorb it"
 		);
 		assert_eq!(
-			Keyspace::CUSTOM_CACHED.name(),
+			KeyspaceId::CUSTOM_CACHED.name(),
 			"CUSTOM_CACHED",
 			"a custom keyspace names the admission side it sits on; there is no unnamed fallback to absorb it"
 		);
@@ -834,7 +819,7 @@ mod tests {
 		// which reads as a cold cache rather than as a policy mistake.
 		for (name, keyspace, _, policy) in CENSUS {
 			assert_eq!(
-				keyspace.cache_policy(),
+				keyspace.cache_tiers(),
 				policy,
 				"{name} ({:#04x}) is cached on a different side than the census records",
 				keyspace.0
@@ -842,7 +827,7 @@ mod tests {
 		}
 
 		let neither: Vec<&str> =
-			CENSUS.iter().filter(|(_, _, _, p)| *p == CachePolicy::Neither).map(|(n, ..)| *n).collect();
+			CENSUS.iter().filter(|(_, _, _, p)| *p == CacheTiers::Neither).map(|(n, ..)| *n).collect();
 		assert_eq!(
 			neither,
 			["CUSTOM_NOT_CACHED"],
@@ -851,7 +836,7 @@ mod tests {
 		);
 
 		assert!(
-			Keyspace(0x43).cache_policy() == CachePolicy::Both,
+			KeyspaceId(0x43).cache_tiers() == CacheTiers::Both,
 			"an undeclared keyspace must default to cacheable, or a custom operator silently loses \
 			 both tiers"
 		);
@@ -863,7 +848,7 @@ mod tests {
 		assert_eq!(
 			CENSUS.len(),
 			declared_keyspaces(),
-			"a keyspace was added to Keyspace without being added to the census, so nothing below \
+			"a keyspace was added to KeyspaceId without being added to the census, so nothing below \
 			 ever looks at its byte"
 		);
 
@@ -902,9 +887,12 @@ mod tests {
 	fn root_entries_sit_outside_every_group_range() {
 		// the root-scoped counter must sit outside every group range, or reclaiming a group erases it
 		for operator in NODES {
-			let counter =
-				OperatorStateKey::root(OperatorId(operator), Keyspace::NODE_COUNTER, b"mint".to_vec())
-					.encode();
+			let counter = OperatorStateKey::root(
+				OperatorId(operator),
+				KeyspaceId::NODE_COUNTER,
+				b"mint".to_vec(),
+			)
+			.encode();
 			for group in GROUPS {
 				let range = group_range(OperatorId(operator), GroupId(group));
 				assert!(
@@ -938,17 +926,17 @@ mod tests {
 		// a keyspace range must isolate exactly one keyspace of one group, or scans mix incompatible payloads
 		let operator = OperatorId(17);
 		let group = GroupId(42);
-		let range = keyspace_range(operator, group, Keyspace::BUFFER);
+		let range = keyspace_range(operator, group, KeyspaceId::BUFFER);
 
-		let inside = OperatorStateKey::new(operator, group, Keyspace::BUFFER, vec![1]).encode();
+		let inside = OperatorStateKey::new(operator, group, KeyspaceId::BUFFER, vec![1]).encode();
 		assert!(contains(&range, inside.as_slice()));
 
-		for other in [Keyspace::ACCUMULATOR, Keyspace::RUNNING, Keyspace::ROW_NUMBER_MAPPING] {
+		for other in [KeyspaceId::ACCUMULATOR, KeyspaceId::RUNNING, KeyspaceId::ROW_NUMBER_MAPPING] {
 			let key = OperatorStateKey::new(operator, group, other, vec![1]).encode();
 			assert!(!contains(&range, key.as_slice()), "keyspace {other:?} leaked into the buffer range");
 		}
 
-		let other_group = OperatorStateKey::new(operator, GroupId(43), Keyspace::BUFFER, vec![1]).encode();
+		let other_group = OperatorStateKey::new(operator, GroupId(43), KeyspaceId::BUFFER, vec![1]).encode();
 		assert!(!contains(&range, other_group.as_slice()), "another group's buffer leaked into the range");
 	}
 
@@ -957,7 +945,7 @@ mod tests {
 		let key = OperatorStateKey::new(
 			OperatorId(0xDEAD_BEEF),
 			GroupId(123_456),
-			Keyspace::CUSTOM_NOT_CACHED,
+			KeyspaceId::CUSTOM_NOT_CACHED,
 			vec![1, 2, 3, 4],
 		);
 		assert_eq!(OperatorStateKey::decode(&key.encode()), Some(key));
@@ -966,7 +954,7 @@ mod tests {
 	#[test]
 	fn keys_still_decode_as_operator_state_of_their_node() {
 		// every key of this kind must still decode to its own operator, or state is misrouted into the CDC log
-		let key = OperatorStateKey::new(OperatorId(9), GroupId(4), Keyspace::ACCUMULATOR, vec![1]).encode();
+		let key = OperatorStateKey::new(OperatorId(9), GroupId(4), KeyspaceId::ACCUMULATOR, vec![1]).encode();
 
 		let decoded = OperatorStateKey::decode(&key).expect("must remain decodable as its key kind");
 		assert_eq!(decoded.operator, OperatorId(9));
@@ -976,7 +964,7 @@ mod tests {
 	fn an_inner_key_composed_with_its_node_prefix_reproduces_the_full_key() {
 		// inner key plus node prefix must reproduce the full key, or state written through the API is
 		// unreachable
-		let key = OperatorStateKey::new(OperatorId(17), GroupId(42), Keyspace::BUFFER, vec![9, 9]);
+		let key = OperatorStateKey::new(OperatorId(17), GroupId(42), KeyspaceId::BUFFER, vec![9, 9]);
 
 		let mut composed = node_prefix(OperatorId(17));
 		composed.extend_from_slice(key.inner().as_slice());
@@ -989,14 +977,14 @@ mod tests {
 		// group 0's inner range has no byte-wise successor, so it must stay bounded by the operator prefix
 		let range = group_inner_range(GroupId::ROOT).with_prefix(EncodedKey::new(node_prefix(OperatorId(17))));
 
-		let own = OperatorStateKey::root(OperatorId(17), Keyspace::NODE_COUNTER, vec![1]).encode();
+		let own = OperatorStateKey::root(OperatorId(17), KeyspaceId::NODE_COUNTER, vec![1]).encode();
 		assert!(contains(&range, own.as_slice()), "the operator's own counter must be in range");
 
 		for operator in NODES {
 			if operator == 17 {
 				continue;
 			}
-			for keyspace in [Keyspace::NODE_COUNTER, Keyspace::ACCUMULATOR] {
+			for keyspace in [KeyspaceId::NODE_COUNTER, KeyspaceId::ACCUMULATOR] {
 				let foreign =
 					OperatorStateKey::new(OperatorId(operator), GroupId::ROOT, keyspace, vec![1])
 						.encode();
@@ -1033,12 +1021,12 @@ mod tests {
 
 	#[test]
 	fn decode_inner_round_trips_the_tail() {
-		let key = OperatorStateKey::new(OperatorId(3), GroupId(77), Keyspace::EMIT, vec![4, 5, 6]);
+		let key = OperatorStateKey::new(OperatorId(3), GroupId(77), KeyspaceId::EMIT, vec![4, 5, 6]);
 		let (group, keyspace, suffix) =
 			OperatorStateKey::decode_inner(key.inner().as_slice()).expect("inner must decode");
 
 		assert_eq!(group, GroupId(77));
-		assert_eq!(keyspace, Keyspace::EMIT);
+		assert_eq!(keyspace, KeyspaceId::EMIT);
 		assert_eq!(suffix, vec![4, 5, 6]);
 	}
 
@@ -1050,14 +1038,14 @@ mod tests {
 		let hashed = OperatorStateKey::new(
 			OperatorId(17),
 			GroupId::of(&EncodedKey::new(long.to_vec())),
-			Keyspace::ACCUMULATOR,
+			KeyspaceId::ACCUMULATOR,
 			vec![0; 8],
 		)
 		.encode();
 		let short = OperatorStateKey::new(
 			OperatorId(17),
 			GroupId::of(&EncodedKey::new(b"g".to_vec())),
-			Keyspace::ACCUMULATOR,
+			KeyspaceId::ACCUMULATOR,
 			vec![0; 8],
 		)
 		.encode();

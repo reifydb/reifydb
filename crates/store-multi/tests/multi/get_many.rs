@@ -8,14 +8,14 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, store::MultiVersionCommit},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, Keyspace, OperatorStateKey},
+		operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 	},
 };
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::util::cowvec::CowVec;
 
 fn fns(node: u64, payload: &[u8]) -> EncodedKey {
-	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, payload.to_vec()).encode()
+	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, payload.to_vec()).encode()
 }
 
 fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {

@@ -19,7 +19,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::{
-		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
+		GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range,
 	},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
@@ -153,7 +153,7 @@ where
 }
 
 pub(crate) fn meta_range() -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::ROOT, Keyspace::WINDOW_META)
+	keyspace_inner_range(GroupId::ROOT, KeyspaceId::WINDOW_META)
 }
 
 const META_SWEEP_PAGE: usize = 1024;
@@ -256,7 +256,7 @@ impl HeapSize for RunningKey {
 
 impl IntoGroupStateKey for &RunningKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::RUNNING, self.slot.as_bytes())
+		OperatorStateKey::inner_encoded(self.group, KeyspaceId::RUNNING, self.slot.as_bytes())
 	}
 }
 
@@ -296,7 +296,7 @@ impl HeapSize for WindowStateKey {
 
 impl IntoGroupStateKey for &WindowStateKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::ACCUMULATOR, self.slot.as_bytes())
+		OperatorStateKey::inner_encoded(self.group, KeyspaceId::ACCUMULATOR, self.slot.as_bytes())
 	}
 }
 
@@ -332,7 +332,7 @@ impl HeapSize for BufferKey {
 
 impl IntoGroupStateKey for &BufferKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::BUFFER, self.slot.as_bytes())
+		OperatorStateKey::inner_encoded(self.group, KeyspaceId::BUFFER, self.slot.as_bytes())
 	}
 }
 
@@ -359,13 +359,13 @@ impl HeapSize for EmitKey {
 
 impl IntoGroupStateKey for &EmitKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::EMIT, encode_u64_asc(self.row.0))
+		OperatorStateKey::inner_encoded(self.group, KeyspaceId::EMIT, encode_u64_asc(self.row.0))
 	}
 }
 
 impl IntoGroupStateKey for &MetaKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::WINDOW_META, &self.0)
+		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::WINDOW_META, &self.0)
 	}
 }
 
@@ -395,7 +395,7 @@ impl ExpiryAnchor {
 
 pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey> {
 	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
-	if keyspace != Keyspace::ACCUMULATOR {
+	if keyspace != KeyspaceId::ACCUMULATOR {
 		return None;
 	}
 	Some(WindowStateKey::new(group, EncodedKey::new(suffix)))
@@ -403,7 +403,7 @@ pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey
 
 pub(crate) fn decode_meta_key(key: &EncodedKey) -> Option<MetaKey> {
 	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
-	(group == GroupId::ROOT && keyspace == Keyspace::WINDOW_META).then(|| MetaKey(EncodedKey::new(suffix)))
+	(group == GroupId::ROOT && keyspace == KeyspaceId::WINDOW_META).then(|| MetaKey(EncodedKey::new(suffix)))
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 
 use crate::{
@@ -24,7 +24,7 @@ pub(super) struct TestDomain;
 pub(super) struct TestPartition {
 	pub dimension: OperatorId,
 	pub group: GroupId,
-	pub slot: Keyspace,
+	pub slot: KeyspaceId,
 }
 
 impl TestPartition {
@@ -40,7 +40,7 @@ impl TestPartition {
 		Some(Self {
 			dimension,
 			group,
-			slot: Keyspace(encode_u8(bytes[offset])),
+			slot: KeyspaceId(encode_u8(bytes[offset])),
 		})
 	}
 
@@ -58,17 +58,17 @@ impl TestPartition {
 	}
 
 	pub fn caches_ranges(&self) -> bool {
-		self.slot.cache_policy().caches_ranges()
+		self.slot.cache_tiers().caches_ranges()
 	}
 }
 
-static POLICY_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
+static CACHE_TIERS_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 	let mut floor = [0u8; 256];
 	let mut lowest = 0u8;
 	for keyspace in 0..=u8::MAX {
 		if keyspace > 0
-			&& Keyspace(keyspace).cache_policy().caches_ranges()
-				!= Keyspace(keyspace - 1).cache_policy().caches_ranges()
+			&& KeyspaceId(keyspace).cache_tiers().caches_ranges()
+				!= KeyspaceId(keyspace - 1).cache_tiers().caches_ranges()
 		{
 			lowest = keyspace;
 		}
@@ -80,7 +80,7 @@ static POLICY_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 impl RangeDomain for TestDomain {
 	type Dimension = OperatorId;
 	type Partition = TestPartition;
-	type Slot = Keyspace;
+	type Slot = KeyspaceId;
 	type Row = EncodedPodRow;
 
 	const PREFIX_LEN: usize = TestPartition::PREFIX_LEN;
@@ -110,13 +110,13 @@ impl RangeDomain for TestDomain {
 		partition.caches_ranges()
 	}
 
-	fn policy_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
-		let floor = POLICY_RUN_FLOOR[partition.slot.0 as usize];
+	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
+		let floor = CACHE_TIERS_RUN_FLOOR[partition.slot.0 as usize];
 		if floor == partition.slot.0 {
 			return partition.span().1;
 		}
 		TestPartition {
-			slot: Keyspace(floor),
+			slot: KeyspaceId(floor),
 			..*partition
 		}
 		.span()
@@ -128,7 +128,7 @@ impl RangeDomain for TestDomain {
 	}
 
 	fn slot_at(index: usize) -> Self::Slot {
-		Keyspace(index as u8)
+		KeyspaceId(index as u8)
 	}
 
 	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {
@@ -142,7 +142,7 @@ pub(super) struct AdmittingDomain;
 impl RangeDomain for AdmittingDomain {
 	type Dimension = OperatorId;
 	type Partition = TestPartition;
-	type Slot = Keyspace;
+	type Slot = KeyspaceId;
 	type Row = EncodedPodRow;
 
 	const PREFIX_LEN: usize = TestPartition::PREFIX_LEN;
@@ -172,8 +172,8 @@ impl RangeDomain for AdmittingDomain {
 		TestDomain::caches_ranges(partition)
 	}
 
-	fn policy_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
-		TestDomain::policy_run_end(partition)
+	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
+		TestDomain::cache_tiers_run_end(partition)
 	}
 
 	fn admits_unproven_writes() -> bool {

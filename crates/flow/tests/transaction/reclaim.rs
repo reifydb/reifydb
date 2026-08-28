@@ -10,7 +10,7 @@ use reifydb_core::{
 	actors::pending::PendingLayers,
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, group_inner_range},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, group_inner_range},
 };
 use reifydb_flow::transaction::{
 	ChangeCoordinate, DeferredParams, FlowTransaction,
@@ -58,11 +58,11 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 }
 
 fn seed_identity(txn: &mut DeferredTransaction, id: GroupId) {
-	write(txn, id, Keyspace::ROW_NUMBER_MAPPING, 1);
-	write(txn, id, Keyspace::ROW_NUMBER_MAPPING, 2);
+	write(txn, id, KeyspaceId::ROW_NUMBER_MAPPING, 1);
+	write(txn, id, KeyspaceId::ROW_NUMBER_MAPPING, 2);
 }
 
-fn write(txn: &mut DeferredTransaction, group: GroupId, keyspace: Keyspace, suffix: u8) {
+fn write(txn: &mut DeferredTransaction, group: GroupId, keyspace: KeyspaceId, suffix: u8) {
 	let key = OperatorStateKey::inner_encoded(group, keyspace, vec![suffix]);
 	txn.state_set(NODE, &key, payload()).unwrap();
 }
@@ -93,7 +93,7 @@ fn a_bounded_identity_reclaim_reports_that_rows_remain() {
 	let mut txn = deferred(&engine);
 	let id = GroupId::of(&EncodedKey::new(b"chunky"));
 	for suffix in 0..4u8 {
-		write(&mut txn, id, Keyspace::ROW_NUMBER_MAPPING, suffix);
+		write(&mut txn, id, KeyspaceId::ROW_NUMBER_MAPPING, suffix);
 	}
 
 	let partial = txn.reclaim_group_identity(NODE, id, 2).unwrap();
@@ -112,10 +112,10 @@ fn a_budget_stopping_between_keyspaces_resumes_where_it_left_off() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	let id = GroupId::of(&EncodedKey::new(b"outlives-its-budget"));
-	write(&mut txn, id, Keyspace::ROW_NUMBER_MAPPING, 1);
-	write(&mut txn, id, Keyspace::ROW_NUMBER_MAPPING, 2);
-	write(&mut txn, id, Keyspace::TIMER_WHEEL, 1);
-	write(&mut txn, id, Keyspace::TIMER_WHEEL, 2);
+	write(&mut txn, id, KeyspaceId::ROW_NUMBER_MAPPING, 1);
+	write(&mut txn, id, KeyspaceId::ROW_NUMBER_MAPPING, 2);
+	write(&mut txn, id, KeyspaceId::TIMER_WHEEL, 1);
+	write(&mut txn, id, KeyspaceId::TIMER_WHEEL, 2);
 
 	let partial = txn.reclaim_group_identity(NODE, id, 3).unwrap();
 

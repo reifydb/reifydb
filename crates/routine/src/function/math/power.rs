@@ -17,7 +17,7 @@ use reifydb_value::{
 
 use crate::function::{
 	math::arith::dispatch::{ensure_arity, ensure_numeric},
-	support::coerce::{CoercePolicy, all_rows_none, coerce_column, promote_pair},
+	support::coerce::{CoerceMode, all_rows_none, coerce_column, promote_pair},
 };
 
 pub struct Power {
@@ -76,8 +76,8 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				actual: ValueType::Any,
 			});
 		}
-		let base_cast = coerce_column(ctx, &args[0], promoted.clone(), CoercePolicy::Error)?;
-		let exp_cast = coerce_column(ctx, &args[1], promoted.clone(), CoercePolicy::Error)?;
+		let base_cast = coerce_column(ctx, &args[0], promoted.clone(), CoerceMode::Error)?;
+		let exp_cast = coerce_column(ctx, &args[1], promoted.clone(), CoerceMode::Error)?;
 
 		let (base_inner, base_bv) = base_cast.unwrap_option();
 		let (exp_inner, exp_bv) = exp_cast.unwrap_option();

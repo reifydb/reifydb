@@ -15,7 +15,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -53,7 +53,7 @@ fn roomy() -> RangeTier<D> {
 	tier(ByteSize::from_mib(1).as_bytes())
 }
 
-fn key(group: GroupId, keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
+fn key(group: GroupId, keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
 	OperatorStateKey::inner_encoded(group, keyspace, suffix).into_encoded()
 }
 
@@ -66,14 +66,14 @@ fn footprint(key: &EncodedKey, row: &EncodedPodRow) -> usize {
 }
 
 fn per_partition_bytes() -> u64 {
-	(PARTITION_OVERHEAD + footprint(&key(GROUP_A, Keyspace::ACCUMULATOR, b"a"), &row("v"))) as u64
+	(PARTITION_OVERHEAD + footprint(&key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a"), &row("v"))) as u64
 }
 
 fn materialize(
 	tier: &RangeTier<D>,
 	operator: OperatorId,
 	group: GroupId,
-	keyspace: Keyspace,
+	keyspace: KeyspaceId,
 	page: &[(EncodedKey, EncodedPodRow)],
 ) -> TestPartition {
 	let range = keyspace_inner_range(group, keyspace);
@@ -100,7 +100,7 @@ fn first_gap<X: RangeDomain>(scan: &RangeScan<X>) -> Option<Interval> {
 	})
 }
 
-fn one_row_partition(tier: &RangeTier<D>, operator: OperatorId, group: GroupId, keyspace: Keyspace) -> EncodedKey {
+fn one_row_partition(tier: &RangeTier<D>, operator: OperatorId, group: GroupId, keyspace: KeyspaceId) -> EncodedKey {
 	let k = key(group, keyspace, b"a");
 	materialize(tier, operator, group, keyspace, &[(k.clone(), row("v"))]);
 	k
@@ -151,8 +151,8 @@ fn covers(tier: &RangeTier<D>, operator: OperatorId, range: &EncodedKeyRange) ->
 #[test]
 fn invalidate_operator_drops_only_its_own_claims() {
 	let tier = roomy();
-	let dropped = one_row_partition(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR);
-	let spared = one_row_partition(&tier, OP_B, GROUP_A, Keyspace::ACCUMULATOR);
+	let dropped = one_row_partition(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR);
+	let spared = one_row_partition(&tier, OP_B, GROUP_A, KeyspaceId::ACCUMULATOR);
 	assert_eq!(tier.partitions(), 2, "the two operators must own separate partitions, or nothing is under test");
 
 	tier.invalidate_operator(OP_A);
@@ -176,25 +176,25 @@ fn a_materialize_that_does_not_fit_the_budget_is_refused_whole_and_evicts_nothin
 		&tier,
 		OP_A,
 		GROUP_A,
-		Keyspace::ACCUMULATOR,
-		&[(key(GROUP_A, Keyspace::ACCUMULATOR, b"a"), row("v"))],
+		KeyspaceId::ACCUMULATOR,
+		&[(key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a"), row("v"))],
 	);
 	materialize(
 		&tier,
 		OP_A,
 		GROUP_B,
-		Keyspace::ACCUMULATOR,
-		&[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("v"))],
+		KeyspaceId::ACCUMULATOR,
+		&[(key(GROUP_B, KeyspaceId::ACCUMULATOR, b"a"), row("v"))],
 	);
 	assert_eq!(tier.resident_bytes().as_bytes(), per_partition * 2, "the fixture must fill the budget exactly");
 	let before = tier.resident_bytes();
 
 	let third = GroupId(12);
-	let range = keyspace_inner_range(third, Keyspace::ACCUMULATOR);
+	let range = keyspace_inner_range(third, KeyspaceId::ACCUMULATOR);
 	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("the uncovered keyspace must plan as a gap");
 	let page: Vec<(EncodedKey, EncodedPodRow)> = (0..64u8)
-		.map(|index| (key(third, Keyspace::ACCUMULATOR, &[index]), row("a fairly long row body")))
+		.map(|index| (key(third, KeyspaceId::ACCUMULATOR, &[index]), row("a fairly long row body")))
 		.collect();
 
 	assert!(
@@ -207,7 +207,7 @@ fn a_materialize_that_does_not_fit_the_budget_is_refused_whole_and_evicts_nothin
 	assert_eq!(tier.partitions(), 2);
 	assert_eq!(tier.resident_bytes(), before, "a refused materialize must not be charged a single byte");
 	assert_eq!(
-		tier.lookup(OP_A, &key(third, Keyspace::ACCUMULATOR, &[0u8])),
+		tier.lookup(OP_A, &key(third, KeyspaceId::ACCUMULATOR, &[0u8])),
 		None,
 		"a refused materialize must roll its rows back, or a later read answers from a row no claim ever proved"
 	);
@@ -219,10 +219,10 @@ fn a_materialize_that_does_not_fit_the_budget_is_refused_whole_and_evicts_nothin
 fn growing_past_the_budget_evicts_a_whole_partition_and_releases_its_bytes() {
 	let per_partition = per_partition_bytes();
 	let tier = tier(per_partition * 2);
-	let old = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
-	let grown = key(GROUP_B, Keyspace::ACCUMULATOR, b"a");
-	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(old.clone(), row("v"))]);
-	materialize(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR, &[(grown.clone(), row("v"))]);
+	let old = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
+	let grown = key(GROUP_B, KeyspaceId::ACCUMULATOR, b"a");
+	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[(old.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_B, KeyspaceId::ACCUMULATOR, &[(grown.clone(), row("v"))]);
 	assert_eq!(tier.partitions(), 2, "two partitions fit exactly, so nothing may be evicted yet");
 	assert_eq!(tier.metrics().evictions, 0);
 
@@ -250,12 +250,12 @@ fn growing_past_the_budget_evicts_a_whole_partition_and_releases_its_bytes() {
 
 fn three_partition_tier() -> (RangeTier<D>, EncodedKey, EncodedKey, EncodedKey) {
 	let tier = tier(per_partition_bytes() * 3);
-	let touched = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
-	let idle = key(GROUP_B, Keyspace::ACCUMULATOR, b"a");
-	let grown = key(GroupId(12), Keyspace::ACCUMULATOR, b"a");
-	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(touched.clone(), row("v"))]);
-	materialize(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR, &[(idle.clone(), row("v"))]);
-	materialize(&tier, OP_A, GroupId(12), Keyspace::ACCUMULATOR, &[(grown.clone(), row("v"))]);
+	let touched = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
+	let idle = key(GROUP_B, KeyspaceId::ACCUMULATOR, b"a");
+	let grown = key(GroupId(12), KeyspaceId::ACCUMULATOR, b"a");
+	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[(touched.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_B, KeyspaceId::ACCUMULATOR, &[(idle.clone(), row("v"))]);
+	materialize(&tier, OP_A, GroupId(12), KeyspaceId::ACCUMULATOR, &[(grown.clone(), row("v"))]);
 	(tier, touched, idle, grown)
 }
 
@@ -281,7 +281,7 @@ fn assert_idle_partition_was_the_victim(tier: &RangeTier<D>, touched: &EncodedKe
 fn a_range_hit_refreshes_the_partition_against_eviction() {
 	let (tier, touched, idle, grown) = three_partition_tier();
 
-	assert!(serve_ram(&tier, OP_A, &keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR), 64).is_some());
+	assert!(serve_ram(&tier, OP_A, &keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR), 64).is_some());
 	tier.overwrite(OP_A, grown.clone(), row("a very much longer row body than the one it replaces"));
 
 	assert_idle_partition_was_the_victim(&tier, &touched, &idle);
@@ -301,7 +301,7 @@ fn a_lookup_hit_refreshes_the_partition_against_eviction() {
 fn charge_and_release_balance_across_the_partition_lifecycle() {
 	let per_partition = per_partition_bytes();
 	let tier = tier(per_partition * 2);
-	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let k = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
 	let balanced = |stage: &str| {
 		assert_eq!(
 			tier.resident_bytes(),
@@ -311,7 +311,7 @@ fn charge_and_release_balance_across_the_partition_lifecycle() {
 		);
 	};
 
-	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[(k.clone(), row("v"))]);
 	assert_eq!(tier.resident_bytes().as_bytes(), per_partition);
 	balanced("materialize");
 
@@ -327,15 +327,15 @@ fn charge_and_release_balance_across_the_partition_lifecycle() {
 	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "an operator drop must release every byte it removed");
 	balanced("operator drop");
 
-	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[(k.clone(), row("v"))]);
 	materialize(
 		&tier,
 		OP_A,
 		GROUP_B,
-		Keyspace::ACCUMULATOR,
-		&[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("v"))],
+		KeyspaceId::ACCUMULATOR,
+		&[(key(GROUP_B, KeyspaceId::ACCUMULATOR, b"a"), row("v"))],
 	);
-	tier.overwrite(OP_A, key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("a very much longer row body indeed"));
+	tier.overwrite(OP_A, key(GROUP_B, KeyspaceId::ACCUMULATOR, b"a"), row("a very much longer row body indeed"));
 	assert!(tier.metrics().evictions > 0, "the fixture must actually evict, or this stage proves nothing");
 	balanced("evict");
 
@@ -353,12 +353,12 @@ fn charge_and_release_balance_across_the_partition_lifecycle() {
 #[test]
 fn a_long_key_charges_its_heap_bytes() {
 	let tier = roomy();
-	let short = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
-	let long = key(GROUP_A, Keyspace::ACCUMULATOR, &[7u8; 64]);
+	let short = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
+	let long = key(GROUP_A, KeyspaceId::ACCUMULATOR, &[7u8; 64]);
 	assert_eq!(short.heap_bytes(), 0, "the short fixture must stay inline, or the comparison below is meaningless");
 	assert!(long.heap_bytes() > 0, "the long fixture must spill to the heap, or nothing tests heap accounting");
 
-	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(short.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[(short.clone(), row("v"))]);
 	let after_short = tier.resident_bytes().as_bytes();
 	tier.overwrite(OP_A, long.clone(), row("v"));
 
@@ -393,7 +393,7 @@ fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 	assert_eq!(tier.shard_limit_bytes(), ByteSize::from_mib(64));
 
 	for group in 0..64u128 {
-		one_row_partition(&tier, OP_A, GroupId(group), Keyspace::ACCUMULATOR);
+		one_row_partition(&tier, OP_A, GroupId(group), KeyspaceId::ACCUMULATOR);
 	}
 	assert_eq!(tier.partitions(), 64);
 	assert!(
@@ -404,7 +404,7 @@ fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
 }
 
-fn keyspace_row(tier: &RangeTier<D>, keyspace: Keyspace) -> RangeSlotMetrics<D> {
+fn keyspace_row(tier: &RangeTier<D>, keyspace: KeyspaceId) -> RangeSlotMetrics<D> {
 	tier.slot_metrics()
 		.into_iter()
 		.find(|row| row.slot == keyspace)
@@ -416,17 +416,17 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 	let tier = roomy();
 	let per_partition = per_partition_bytes();
 
-	one_row_partition(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR);
-	one_row_partition(&tier, OP_A, GROUP_B, Keyspace::ACCUMULATOR);
-	one_row_partition(&tier, OP_A, GROUP_A, Keyspace::BUFFER);
+	one_row_partition(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR);
+	one_row_partition(&tier, OP_A, GROUP_B, KeyspaceId::ACCUMULATOR);
+	one_row_partition(&tier, OP_A, GROUP_A, KeyspaceId::BUFFER);
 
-	let accumulator = keyspace_row(&tier, Keyspace::ACCUMULATOR);
+	let accumulator = keyspace_row(&tier, KeyspaceId::ACCUMULATOR);
 	assert_eq!(accumulator.partitions, 2);
 	assert_eq!(accumulator.intervals, 2);
 	assert_eq!(accumulator.entries, 2);
 	assert_eq!(accumulator.used, ByteSize::from_bytes(per_partition * 2));
 
-	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
+	let buffer = keyspace_row(&tier, KeyspaceId::BUFFER);
 	assert_eq!(buffer.partitions, 1);
 	assert_eq!(buffer.intervals, 1);
 	assert_eq!(buffer.entries, 1);
@@ -449,19 +449,19 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 #[test]
 fn an_eviction_is_charged_to_the_evicted_partition_keyspace() {
 	let tier = tier(per_partition_bytes() * 2);
-	let accumulator = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
-	let buffer = key(GROUP_A, Keyspace::BUFFER, b"a");
-	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(accumulator.clone(), row("v"))]);
-	materialize(&tier, OP_A, GROUP_A, Keyspace::BUFFER, &[(buffer.clone(), row("v"))]);
+	let accumulator = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
+	let buffer = key(GROUP_A, KeyspaceId::BUFFER, b"a");
+	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[(accumulator.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, KeyspaceId::BUFFER, &[(buffer.clone(), row("v"))]);
 
 	tier.overwrite(OP_A, buffer.clone(), row("a very much longer row body than the one it replaces"));
 
 	assert_eq!(tier.metrics().evictions, 1, "the fixture must evict, or the attribution below proves nothing");
-	let accumulator = keyspace_row(&tier, Keyspace::ACCUMULATOR);
+	let accumulator = keyspace_row(&tier, KeyspaceId::ACCUMULATOR);
 	assert_eq!(accumulator.counters.evictions, 1);
 	assert_eq!(accumulator.partitions, 0, "the evicted partition must be gone from its keyspace's resident state");
 
-	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
+	let buffer = keyspace_row(&tier, KeyspaceId::BUFFER);
 	assert_eq!(buffer.counters.evictions, 0, "the survivor must not be charged for the victim's eviction");
 	assert_eq!(buffer.partitions, 1);
 }
@@ -470,7 +470,7 @@ fn an_eviction_is_charged_to_the_evicted_partition_keyspace() {
 fn a_materialize_that_races_a_retraction_refuses_rather_than_reinstating_the_claim() {
 	let fired = Arc::new(AtomicBool::new(false));
 	let seen = fired.clone();
-	let victim = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let victim = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
 	let raced = victim.clone();
 	let hook: MaterializeInterlock<D> = Box::new(move |tier: &RangeTier<D>, _partition: TestPartition| {
 		if !seen.swap(true, Ordering::Relaxed) {
@@ -488,7 +488,7 @@ fn a_materialize_that_races_a_retraction_refuses_rather_than_reinstating_the_cla
 	)
 	.expect("a tier with a byte budget must be constructed");
 
-	let range = keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR);
+	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
 	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
 
@@ -518,7 +518,7 @@ fn a_materialize_that_races_a_retraction_refuses_rather_than_reinstating_the_cla
 fn a_refused_materialize_must_not_delete_a_row_written_while_it_was_placing() {
 	let fired = Arc::new(AtomicBool::new(false));
 	let seen = fired.clone();
-	let contested = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let contested = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
 	let raced = contested.clone();
 	let hook: MaterializeInterlock<D> = Box::new(move |tier: &RangeTier<D>, _partition: TestPartition| {
 		if !seen.swap(true, Ordering::Relaxed) {
@@ -537,7 +537,7 @@ fn a_refused_materialize_must_not_delete_a_row_written_while_it_was_placing() {
 	)
 	.expect("a tier with a byte budget must be constructed");
 
-	let range = keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR);
+	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
 	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
 
@@ -570,8 +570,8 @@ fn a_concurrent_materialize_never_refuses_another_materialize() {
 				tier,
 				OP_A,
 				GROUP_B,
-				Keyspace::ACCUMULATOR,
-				&[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("v"))],
+				KeyspaceId::ACCUMULATOR,
+				&[(key(GROUP_B, KeyspaceId::ACCUMULATOR, b"a"), row("v"))],
 			);
 		}
 	});
@@ -586,10 +586,10 @@ fn a_concurrent_materialize_never_refuses_another_materialize() {
 	)
 	.expect("a tier with a byte budget must be constructed");
 
-	let range = keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR);
+	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
 	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
-	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let k = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
 
 	assert!(
 		tier.materialize(&scan, &gap, &[(k.clone(), row("v"))]) == Materialize::Materialized,
@@ -607,8 +607,8 @@ fn a_materialize_places_its_rows_before_it_publishes_the_claim() {
 	let readable = Arc::new(AtomicBool::new(false));
 	let proven_absent = Arc::new(AtomicBool::new(false));
 	let (seen, saw_row, saw_proof) = (fired.clone(), readable.clone(), proven_absent.clone());
-	let scanned = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
-	let unscanned = key(GROUP_A, Keyspace::ACCUMULATOR, b"b");
+	let scanned = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
+	let unscanned = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"b");
 	let (probed, absent) = (scanned.clone(), unscanned.clone());
 	let hook: MaterializeInterlock<D> = Box::new(move |tier: &RangeTier<D>, _partition: TestPartition| {
 		seen.store(true, Ordering::Relaxed);
@@ -626,7 +626,7 @@ fn a_materialize_places_its_rows_before_it_publishes_the_claim() {
 	)
 	.expect("a tier with a byte budget must be constructed");
 
-	let range = keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR);
+	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
 	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
 
@@ -660,7 +660,7 @@ const MIX: [u8; 18] = [0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4];
 const SWEEP_KEYS: u64 = 8;
 
 fn sweep_key(group: u128, n: u64) -> EncodedKey {
-	key(GroupId(group), Keyspace::ACCUMULATOR, format!("k{n}").as_bytes())
+	key(GroupId(group), KeyspaceId::ACCUMULATOR, format!("k{n}").as_bytes())
 }
 
 fn sweep_domain() -> Vec<EncodedKey> {
@@ -687,7 +687,7 @@ fn sweep_tier<X: Sweep>(budget: u64) -> RangeTier<X> {
 }
 
 fn sweep_materialize<X: Sweep>(tier: &RangeTier<X>, group: u128) {
-	let range = keyspace_inner_range(GroupId(group), Keyspace::ACCUMULATOR);
+	let range = keyspace_inner_range(GroupId(group), KeyspaceId::ACCUMULATOR);
 	let Some(scan) = tier.plan_scan(OP_A, &range) else {
 		return;
 	};

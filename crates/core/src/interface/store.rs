@@ -33,14 +33,14 @@ pub enum EntryKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EntryPolicy {
+pub enum CacheTiers {
 	Neither,
 	Point,
 	Range,
 	Both,
 }
 
-impl EntryPolicy {
+impl CacheTiers {
 	pub fn caches_points(&self) -> bool {
 		matches!(self, Self::Point | Self::Both)
 	}
@@ -51,10 +51,10 @@ impl EntryPolicy {
 }
 
 impl EntryKind {
-	pub fn cache_policy(&self) -> EntryPolicy {
+	pub fn cache_tiers(&self) -> CacheTiers {
 		match self {
-			Self::Source(_) => EntryPolicy::Both,
-			Self::Multi | Self::PartitionedSource(_) => EntryPolicy::Point,
+			Self::Source(_) => CacheTiers::Both,
+			Self::Multi | Self::PartitionedSource(_) => CacheTiers::Point,
 		}
 	}
 }

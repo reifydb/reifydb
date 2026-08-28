@@ -65,7 +65,7 @@ pub trait RangeDomain: Copy + Debug + 'static {
 
 	fn caches_ranges(partition: &Self::Partition) -> bool;
 
-	fn policy_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd;
+	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd;
 
 	fn supersedes(_resident: &Self::Row, _incoming: &Self::Row) -> bool {
 		true

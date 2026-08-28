@@ -335,7 +335,7 @@ mod commit_integration {
 		key::{
 			EncodableKey,
 			cdc_consumer::{CdcConsumerKey, CdcConsumerKeyRange},
-			operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+			operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 		},
 	};
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
@@ -494,7 +494,7 @@ mod commit_integration {
 	}
 
 	fn state_inner(suffix: &[u8]) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, suffix)
+		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, suffix)
 	}
 
 	fn state_slice(entries: &[(OperatorId, &GroupStateKey, u8)]) -> FlowSlice {

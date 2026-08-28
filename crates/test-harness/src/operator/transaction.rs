@@ -11,7 +11,7 @@ use reifydb_core::{
 	key::{
 		Key,
 		kind::KeyKind,
-		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	},
 };
 use reifydb_flow::transaction::{
@@ -32,7 +32,7 @@ pub fn make_row(body: &str) -> EncodedPodRow {
 }
 
 pub fn key(s: &str) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, s.as_bytes())
+	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, s.as_bytes())
 }
 
 pub fn engine() -> TestEngine {

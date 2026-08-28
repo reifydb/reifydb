@@ -26,7 +26,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		consolidate::consolidate_diffs,
 	},
-	key::operator_state::Keyspace,
+	key::operator_state::KeyspaceId,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::{
@@ -73,7 +73,7 @@ fn routines() -> Routines {
 	default_in_process_monoids(b).configure()
 }
 
-fn count_keyspace(state: &State, keyspace: Keyspace) -> usize {
+fn count_keyspace(state: &State, keyspace: KeyspaceId) -> usize {
 	state.iter().filter(|(key, _)| keyspace_of(key) == Some(keyspace)).count()
 }
 
@@ -190,7 +190,7 @@ mod distinct {
 		let replay = drive(CLOCK_REPLAY_MS, ALL);
 
 		assert!(
-			count_keyspace(&live.state, Keyspace::DISTINCT_ENTRY) >= 8,
+			count_keyspace(&live.state, KeyspaceId::DISTINCT_ENTRY) >= 8,
 			"too few distinct entries survived; the comparison would prove nothing about ordering"
 		);
 		assert_eq!(live.emitted, replay.emitted, "emitted diffs must not depend on the wall clock");
@@ -226,10 +226,10 @@ mod distinct {
 		// the comparisons above claim to cover, they would pass forever on emptiness.
 		let run = drive(CLOCK_LIVE_MS, ALL);
 		for keyspace in [
-			Keyspace::DISTINCT_ENTRY,
-			Keyspace::DISTINCT_LAYOUT,
-			Keyspace::ROW_NUMBER_MAPPING,
-			Keyspace::NODE_COUNTER,
+			KeyspaceId::DISTINCT_ENTRY,
+			KeyspaceId::DISTINCT_LAYOUT,
+			KeyspaceId::ROW_NUMBER_MAPPING,
+			KeyspaceId::NODE_COUNTER,
 		] {
 			assert!(
 				count_keyspace(&run.state, keyspace) > 0,
@@ -373,7 +373,7 @@ mod time_window {
 		let live_pre = live.pre_settle.as_ref().expect("the drive snapshots before settling");
 		let replay_pre = replay.pre_settle.as_ref().expect("the drive snapshots before settling");
 		assert!(
-			count_keyspace(live_pre, Keyspace::TIMER_WHEEL) > 0,
+			count_keyspace(live_pre, KeyspaceId::TIMER_WHEEL) > 0,
 			"no timer was armed before settling, so the wheel comparison is vacuous"
 		);
 		assert_identical_bytes("time-window/clock/pre-settle", live_pre, replay_pre);
@@ -381,7 +381,7 @@ mod time_window {
 		assert_eq!(live.emitted, replay.emitted, "emitted diffs must not depend on the wall clock");
 		assert_identical_bytes("time-window/clock", &live.state, &replay.state);
 		assert_eq!(
-			count_keyspace(&live.state, Keyspace::TIMER_WHEEL),
+			count_keyspace(&live.state, KeyspaceId::TIMER_WHEEL),
 			0,
 			"settling must drain the wheel to quiescence"
 		);
@@ -580,8 +580,8 @@ mod join {
 		let replay = drive(CLOCK_REPLAY_MS, ALL);
 
 		assert!(
-			count_keyspace(&live.state, Keyspace::JOIN_LEFT) > 0
-				&& count_keyspace(&live.state, Keyspace::JOIN_RIGHT) > 0,
+			count_keyspace(&live.state, KeyspaceId::JOIN_LEFT) > 0
+				&& count_keyspace(&live.state, KeyspaceId::JOIN_RIGHT) > 0,
 			"one join side holds no state, so the comparison would not cover the join keyspaces"
 		);
 		assert_eq!(live.emitted, replay.emitted, "emitted diffs must not depend on the wall clock");

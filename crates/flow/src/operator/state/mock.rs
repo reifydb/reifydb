@@ -11,7 +11,7 @@ use reifydb_codec::{
 	row::{operator::state::decode, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_value::{
@@ -86,7 +86,7 @@ impl MockStore {
 		Ok(())
 	}
 
-	fn keyspace_count(&self, keyspace: Keyspace) -> usize {
+	fn keyspace_count(&self, keyspace: KeyspaceId) -> usize {
 		self.data
 			.keys()
 			.filter(|k| OperatorStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == keyspace))
@@ -94,18 +94,19 @@ impl MockStore {
 	}
 
 	pub(crate) fn index_entry_count(&mut self) -> usize {
-		self.keyspace_count(Keyspace::EXPIRY)
+		self.keyspace_count(KeyspaceId::EXPIRY)
 	}
 
 	pub(crate) fn buffer_entry_count(&mut self) -> usize {
-		self.keyspace_count(Keyspace::BUFFER)
+		self.keyspace_count(KeyspaceId::BUFFER)
 	}
 
 	pub(crate) fn buffer_coord_count<A: WindowAccumulator>(&mut self) -> usize {
 		self.data
 			.iter()
 			.filter(|(k, _)| {
-				OperatorStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == Keyspace::BUFFER)
+				OperatorStateKey::decode_inner(k)
+					.is_some_and(|(_, found, _)| found == KeyspaceId::BUFFER)
 			})
 			.map(|(_, bytes)| {
 				decode::<BTreeMap<u64, A>>(bytes).expect("persisted window buffer must decode").len()
@@ -114,11 +115,11 @@ impl MockStore {
 	}
 
 	pub(crate) fn running_entry_count(&mut self) -> usize {
-		self.keyspace_count(Keyspace::RUNNING)
+		self.keyspace_count(KeyspaceId::RUNNING)
 	}
 
 	pub(crate) fn meta_entry_count(&mut self) -> usize {
-		self.keyspace_count(Keyspace::WINDOW_META)
+		self.keyspace_count(KeyspaceId::WINDOW_META)
 	}
 
 	pub(crate) fn drop_accumulator_entries(&mut self) -> usize {
@@ -127,7 +128,7 @@ impl MockStore {
 			.keys()
 			.filter(|k| {
 				OperatorStateKey::decode_inner(k)
-					.is_some_and(|(_, found, _)| found == Keyspace::ACCUMULATOR)
+					.is_some_and(|(_, found, _)| found == KeyspaceId::ACCUMULATOR)
 			})
 			.cloned()
 			.collect();
@@ -154,12 +155,12 @@ impl MockStore {
 	}
 
 	pub(crate) fn mapping_entry_count(&mut self) -> usize {
-		self.keyspace_count(Keyspace::ROW_NUMBER_MAPPING)
+		self.keyspace_count(KeyspaceId::ROW_NUMBER_MAPPING)
 	}
 
 	pub(crate) fn seed_mapping_key(&mut self, suffix: u8) {
 		self.data.insert(
-			OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::ROW_NUMBER_MAPPING, vec![suffix])
+			OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::ROW_NUMBER_MAPPING, vec![suffix])
 				.as_slice()
 				.to_vec(),
 			EncodedPodRow::new(&[0u8]),

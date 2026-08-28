@@ -5,7 +5,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::PendingLayers,
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
@@ -149,6 +149,6 @@ fn the_source_watermark_key_round_trips() {
 		OperatorStateKey::decode_inner(key.as_slice()).expect("the key must decode as inner state");
 
 	assert_eq!(group, GroupId::ROOT);
-	assert_eq!(keyspace, Keyspace::SOURCE_WATERMARK);
+	assert_eq!(keyspace, KeyspaceId::SOURCE_WATERMARK);
 	assert!(suffix.is_empty());
 }

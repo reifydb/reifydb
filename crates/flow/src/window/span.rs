@@ -102,7 +102,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::operator::state::seal::policy::{is_sealed, seal_horizon};
+	use crate::operator::state::seal::rule::{is_sealed, seal_horizon};
 
 	#[test]
 	fn for_coord_aligns_datetime_to_span() {

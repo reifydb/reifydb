@@ -6,7 +6,7 @@
 use std::{cell::Cell, path::Path};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::key::operator_state::{GroupId, Keyspace, OperatorStateKey};
+use reifydb_core::key::operator_state::{GroupId, KeyspaceId, OperatorStateKey};
 use reifydb_runtime::{
 	actor::system::{ActorSpawner, ActorSystem},
 	context::clock::Clock,
@@ -148,7 +148,7 @@ fn store_from(spawner: &ActorSpawner, config: SqliteConfig) -> OperatorStore {
 }
 
 pub fn key(group: u64, keyspace: u8, suffix: u64) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GroupId(group.into()), Keyspace(keyspace), (suffix as u16).to_be_bytes())
+	OperatorStateKey::inner_encoded(GroupId(group.into()), KeyspaceId(keyspace), (suffix as u16).to_be_bytes())
 		.as_encoded()
 		.clone()
 }

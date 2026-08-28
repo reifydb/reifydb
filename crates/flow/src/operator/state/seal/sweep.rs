@@ -3,21 +3,21 @@
 
 use reifydb_value::value::datetime::DateTime;
 
-use crate::operator::state::seal::{ledger::FiredAt, policy::SealPolicy};
+use crate::operator::state::seal::{ledger::FiredAt, rule::SealRule};
 
 pub struct SealSweep {
-	policy: SealPolicy,
+	rule: SealRule,
 }
 
 impl SealSweep {
-	pub fn new(policy: SealPolicy) -> Self {
+	pub fn new(rule: SealRule) -> Self {
 		Self {
-			policy,
+			rule,
 		}
 	}
 
 	pub fn horizon(&self, fired: FiredAt) -> Option<DateTime> {
-		self.policy.sealed_anchor(fired.at())
+		self.rule.sealed_anchor(fired.at())
 	}
 }
 
@@ -51,11 +51,11 @@ mod tests {
 		// Arming computes `anchor + admissible + 1`; the sweep must invert it exactly or a window
 		// seals its neighbour instead of itself. The two halves live in separate files and have
 		// drifted apart before.
-		let policy = SealPolicy::tumbling(ms(1_000), ms(200));
-		let sweep = SealSweep::new(policy);
+		let rule = SealRule::tumbling(ms(1_000), ms(200));
+		let sweep = SealSweep::new(rule);
 
 		let anchor = order(5_000);
-		let instant = policy.seal_instant_from_order(anchor).at();
+		let instant = rule.seal_instant_from_order(anchor).at();
 
 		assert_eq!(sweep.horizon(fired(instant.to_order())), Some(DateTime::from_millis(5_000)));
 	}
@@ -65,7 +65,7 @@ mod tests {
 		// A cold-restart wheel can present an instant earlier than the admissible span. Wrapping
 		// through u64 there yields a horizon near u64::MAX and seals every window the operator owns in
 		// one tick.
-		let sweep = SealSweep::new(SealPolicy::tumbling(ms(1_000), ms(200)));
+		let sweep = SealSweep::new(SealRule::tumbling(ms(1_000), ms(200)));
 
 		assert!(sweep.horizon(fired(order(0))).is_none());
 		assert!(sweep.horizon(fired(order(1_200))).is_none(), "the anchor would be 0 - 1, not 0");
@@ -73,10 +73,10 @@ mod tests {
 	}
 
 	#[test]
-	fn an_inert_policy_still_sweeps_by_the_fired_instant_alone() {
+	fn an_inert_rule_still_sweeps_by_the_fired_instant_alone() {
 		// Callers gate on is_inert() before sweeping; this pins the arithmetic for one that does
 		// not, so the horizon lands one millisecond behind the fired instant rather than wrapping.
-		let sweep = SealSweep::new(SealPolicy::tumbling(ms(0), ms(0)));
+		let sweep = SealSweep::new(SealRule::tumbling(ms(0), ms(0)));
 
 		assert_eq!(sweep.horizon(fired(order(5_000))), Some(DateTime::from_millis(4_999)));
 	}

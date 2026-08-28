@@ -6,7 +6,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::pending::PendingLayers,
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
@@ -331,7 +331,7 @@ fn remove_by_prefix_reclaims_every_mapping_under_the_prefix() {
 #[test]
 fn the_row_number_counter_never_collides_with_the_interners_group_counter() {
 	// Both counters live in the root group's NODE_COUNTER keyspace and must not alias.
-	let group_counter = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, vec![]);
+	let group_counter = OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::NODE_COUNTER, vec![]);
 	assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");
 	assert_ne!(mapping_key(GROUP, &key("x")), counter_key(), "a mapping key must never equal the counter key");
 }

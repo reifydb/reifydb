@@ -24,7 +24,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	},
 	row::Row,
 	state::timer::TimerKind,
@@ -201,7 +201,7 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 		}
 	}
 
-	fn erase_group_state(&mut self, groups: &[GroupId], erase: impl Fn(Keyspace) -> bool) -> usize {
+	fn erase_group_state(&mut self, groups: &[GroupId], erase: impl Fn(KeyspaceId) -> bool) -> usize {
 		let mut state = self.context.state_store().lock();
 		let before = state.len();
 		state.retain(|key, _| {
@@ -1021,7 +1021,7 @@ pub mod tests {
 		state.assert_typed_value::<i64>(probe_row_key(3 * MILLI).as_encoded(), &3i64);
 	}
 
-	fn group_state_key(operator: OperatorId, group: GroupId, keyspace: Keyspace) -> OperatorStateKey {
+	fn group_state_key(operator: OperatorId, group: GroupId, keyspace: KeyspaceId) -> OperatorStateKey {
 		// Must compose the key the way the substrate does, or seeded state is unaddressable by the sweep's
 		// phase ranges.
 		OperatorStateKey::new(operator, group, keyspace, b"k".to_vec())
@@ -1034,12 +1034,12 @@ pub mod tests {
 		// both at once would let an operator that answers Insert pass.
 		const NODE: OperatorId = OperatorId(1);
 		const GROUP: GroupId = GroupId(7);
-		let accumulator = group_state_key(NODE, GROUP, Keyspace::ACCUMULATOR).encode();
-		let mapping = group_state_key(NODE, GROUP, Keyspace::ROW_NUMBER_MAPPING).encode();
+		let accumulator = group_state_key(NODE, GROUP, KeyspaceId::ACCUMULATOR).encode();
+		let mapping = group_state_key(NODE, GROUP, KeyspaceId::ROW_NUMBER_MAPPING).encode();
 		let mut harness = ExternCOperatorHarnessBuilder::<TestOperator>::new()
 			.with_node_id(NODE)
-			.with_initial_state(group_state_key(NODE, GROUP, Keyspace::ACCUMULATOR), vec![1])
-			.with_initial_state(group_state_key(NODE, GROUP, Keyspace::ROW_NUMBER_MAPPING), vec![2])
+			.with_initial_state(group_state_key(NODE, GROUP, KeyspaceId::ACCUMULATOR), vec![1])
+			.with_initial_state(group_state_key(NODE, GROUP, KeyspaceId::ROW_NUMBER_MAPPING), vec![2])
 			.build()
 			.unwrap();
 
@@ -1058,12 +1058,12 @@ pub mod tests {
 	fn erasing_a_group_never_reaches_the_root_scoped_row_number_counter() {
 		// the root group holds the row number counter; erasing it would mint duplicate row numbers
 		const NODE: OperatorId = OperatorId(1);
-		let counter = group_state_key(NODE, GroupId::ROOT, Keyspace::NODE_COUNTER).encode();
-		let timer = group_state_key(NODE, GroupId::ROOT, Keyspace::TIMER_WHEEL).encode();
+		let counter = group_state_key(NODE, GroupId::ROOT, KeyspaceId::NODE_COUNTER).encode();
+		let timer = group_state_key(NODE, GroupId::ROOT, KeyspaceId::TIMER_WHEEL).encode();
 		let mut harness = ExternCOperatorHarnessBuilder::<TestOperator>::new()
 			.with_node_id(NODE)
-			.with_initial_state(group_state_key(NODE, GroupId::ROOT, Keyspace::NODE_COUNTER), vec![2])
-			.with_initial_state(group_state_key(NODE, GroupId::ROOT, Keyspace::TIMER_WHEEL), vec![3])
+			.with_initial_state(group_state_key(NODE, GroupId::ROOT, KeyspaceId::NODE_COUNTER), vec![2])
+			.with_initial_state(group_state_key(NODE, GroupId::ROOT, KeyspaceId::TIMER_WHEEL), vec![3])
 			.build()
 			.unwrap();
 

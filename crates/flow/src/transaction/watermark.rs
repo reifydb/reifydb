@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 };
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 use tracing::{info, warn};
@@ -16,7 +16,7 @@ use crate::transaction::{
 const IMPLAUSIBLE_JUMP_MS: u64 = 3_600_000;
 
 pub fn source_watermark_key() -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::SOURCE_WATERMARK, vec![])
+	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::SOURCE_WATERMARK, vec![])
 }
 
 pub struct SourceWatermarks;

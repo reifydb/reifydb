@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{Keyspace, OperatorStateKey},
+	key::operator_state::{KeyspaceId, OperatorStateKey},
 };
 use reifydb_store::tier::point::{
 	PointConfig, PointDomain, PointMetrics, PointShardMetrics, PointSlotMetrics, PointTier,
@@ -26,7 +26,7 @@ pub struct OperatorDomain;
 
 impl PointDomain for OperatorDomain {
 	type Dimension = OperatorId;
-	type Slot = Keyspace;
+	type Slot = KeyspaceId;
 	type Row = EncodedPodRow;
 
 	const SLOTS: usize = 256;
@@ -43,11 +43,11 @@ impl PointDomain for OperatorDomain {
 	}
 
 	fn caches_points(slot: usize) -> bool {
-		Keyspace(slot as u8).cache_policy().caches_points()
+		KeyspaceId(slot as u8).cache_tiers().caches_points()
 	}
 
 	fn slot_at(index: usize) -> Self::Slot {
-		Keyspace(index as u8)
+		KeyspaceId(index as u8)
 	}
 
 	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {

@@ -17,7 +17,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	value::column::columns::Columns,
 };
 use reifydb_evaluate::expression::{
@@ -110,11 +110,11 @@ impl DistinctPlan {
 	}
 
 	pub(super) fn entry_key(group: GroupId) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(group, Keyspace::DISTINCT_ENTRY, vec![])
+		OperatorStateKey::inner_encoded(group, KeyspaceId::DISTINCT_ENTRY, vec![])
 	}
 
 	pub(super) fn layout_storage_key() -> GroupStateKey {
-		GroupStateKey::root(Keyspace::DISTINCT_LAYOUT, vec![LAYOUT_KEY_PREFIX])
+		GroupStateKey::root(KeyspaceId::DISTINCT_LAYOUT, vec![LAYOUT_KEY_PREFIX])
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_entry", level = "trace", skip_all)]

@@ -54,7 +54,7 @@ use crate::{
 		join::{Emitted, Identity},
 		state::{
 			reaper::{StoreReaper, drain, drain_group, enqueue, queue_key, queued},
-			seal::{ledger::FiredAt, policy::SealPolicy},
+			seal::{ledger::FiredAt, rule::SealRule},
 		},
 	},
 	timer::Timer,
@@ -303,7 +303,7 @@ impl JoinOperator {
 		if cleared.is_empty() && armed.is_empty() {
 			return Ok(());
 		}
-		let policy = SealPolicy::of(retention);
+		let rule = SealRule::of(retention);
 		let resolved = Self::resolve_groups(cleared, armed)?;
 		let mut order: Vec<GroupId> = Vec::new();
 		let mut touched: HashSet<GroupId> = HashSet::new();
@@ -329,7 +329,7 @@ impl JoinOperator {
 			host.state_set(
 				&Self::anchor_key(group, side, *row_number),
 				SealAnchor {
-					expiry: policy.seal_instant(*at).at(),
+					expiry: rule.seal_instant(*at).at(),
 				}
 				.encode_state()?,
 			)?;
@@ -1043,7 +1043,7 @@ mod seal_tests {
 	use reifydb_codec::row::operator::state::decode;
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator_state::{Keyspace, group_inner_range, keyspace_inner_range},
+		key::operator_state::{KeyspaceId, group_inner_range, keyspace_inner_range},
 		value::column::buffer::ColumnBuffer,
 	};
 	use reifydb_rql::expression::parse_expression;
@@ -1202,7 +1202,7 @@ mod seal_tests {
 	fn armed_timers(op: &JoinOperator, txn: &mut DeferredTransaction) -> usize {
 		txn.state_range(
 			op.operator,
-			StateRange::forward(keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL), "test"),
+			StateRange::forward(keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL), "test"),
 		)
 		.unwrap()
 		.items
@@ -1220,7 +1220,12 @@ mod seal_tests {
 			.len()
 	}
 
-	fn ledger_rows(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId, keyspace: Keyspace) -> usize {
+	fn ledger_rows(
+		op: &JoinOperator,
+		txn: &mut DeferredTransaction,
+		group: GroupId,
+		keyspace: KeyspaceId,
+	) -> usize {
 		txn.state_range(op.operator, StateRange::forward(keyspace_inner_range(group, keyspace), "test"))
 			.unwrap()
 			.items
@@ -1548,21 +1553,21 @@ mod seal_tests {
 		insert(&op, &mut txn, JoinSide::Left, &left);
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
-			ledger_rows(&op, &mut txn, group, Keyspace::JOIN_PUBLISHED),
+			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PUBLISHED),
 			1,
 			"precondition: it published"
 		);
-		assert_eq!(ledger_rows(&op, &mut txn, group, Keyspace::JOIN_PIN), 1, "precondition: it pinned");
+		assert_eq!(ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PIN), 1, "precondition: it pinned");
 
 		fire(&mut op, &mut txn, at_millis(15_001), group);
 
 		assert_eq!(
-			ledger_rows(&op, &mut txn, group, Keyspace::JOIN_PUBLISHED),
+			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PUBLISHED),
 			0,
 			"the published pair must go with the left row that owned it"
 		);
 		assert_eq!(
-			ledger_rows(&op, &mut txn, group, Keyspace::JOIN_PIN),
+			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PIN),
 			0,
 			"and its last reference must take the pin with it"
 		);
@@ -1582,7 +1587,7 @@ mod seal_tests {
 		insert(&op, &mut txn, JoinSide::Left, &late);
 		let group = group_of(&hash_of(&op, JoinSide::Left, &early, 0));
 		assert_eq!(
-			ledger_rows(&op, &mut txn, group, Keyspace::JOIN_PUBLISHED),
+			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PUBLISHED),
 			2,
 			"precondition: both published"
 		);
@@ -1590,12 +1595,12 @@ mod seal_tests {
 		fire(&mut op, &mut txn, at_millis(15_001), group);
 
 		assert_eq!(
-			ledger_rows(&op, &mut txn, group, Keyspace::JOIN_PUBLISHED),
+			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PUBLISHED),
 			1,
 			"exactly the sealed row's pair goes, never its neighbour's"
 		);
 		assert_eq!(
-			ledger_rows(&op, &mut txn, group, Keyspace::JOIN_PIN),
+			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PIN),
 			1,
 			"and the pin the sibling still references must stay"
 		);

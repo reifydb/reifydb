@@ -19,7 +19,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	metrics::heap::HeapSize,
 	value::column::columns::Columns,
 };
@@ -141,7 +141,7 @@ impl TakeOperator {
 
 impl TakePlan {
 	fn state_key() -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM_NOT_CACHED, b"")
+		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::CUSTOM_NOT_CACHED, b"")
 	}
 
 	fn load_take_state(&self, host: &mut dyn HostContext) -> Result<TakeState> {

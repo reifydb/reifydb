@@ -726,7 +726,7 @@ fn split_at_partitions<D: RangeDomain>(
 		let bound = if ram {
 			D::span(&partition).1
 		} else {
-			D::policy_run_end(&partition)
+			D::cache_tiers_run_end(&partition)
 		};
 		let end = bound.min(whole.end.clone());
 		let piece = Interval::new(start, end.clone());
@@ -768,7 +768,7 @@ mod tests {
 	};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	};
 	use reifydb_value::byte_size::ByteSize;
 
@@ -788,8 +788,8 @@ mod tests {
 
 	const OP: OperatorId = OperatorId(1);
 	const GROUP: GroupId = GroupId(10);
-	const CACHED: Keyspace = Keyspace::ACCUMULATOR;
-	const UNCACHED: Keyspace = Keyspace::CUSTOM_NOT_CACHED;
+	const CACHED: KeyspaceId = KeyspaceId::ACCUMULATOR;
+	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
 
 	fn tier(limit: u64, gap_guard: usize) -> RangeTier<D> {
 		RangeTier::<D>::new(RangeConfig {
@@ -804,7 +804,7 @@ mod tests {
 		tier(ByteSize::from_mib(1).as_bytes(), 4)
 	}
 
-	fn key(keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
+	fn key(keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
 		OperatorStateKey::inner_encoded(GROUP, keyspace, suffix).into_encoded()
 	}
 
@@ -812,7 +812,7 @@ mod tests {
 		EncodedPodRow::new(body.as_bytes())
 	}
 
-	fn partition(keyspace: Keyspace) -> TestPartition {
+	fn partition(keyspace: KeyspaceId) -> TestPartition {
 		TestPartition {
 			dimension: OP,
 			group: GROUP,
@@ -820,14 +820,14 @@ mod tests {
 		}
 	}
 
-	fn whole(keyspace: Keyspace) -> Interval {
+	fn whole(keyspace: KeyspaceId) -> Interval {
 		let (start, end) = partition(keyspace).span();
 		Interval::new(start, end)
 	}
 
 	/// A range from the start of `top` to the end of `bottom`; keyspaces encode inverted, so `top`
 	/// must be the numerically larger of the two to give an ascending key range.
-	fn across(top: Keyspace, bottom: Keyspace) -> EncodedKeyRange {
+	fn across(top: KeyspaceId, bottom: KeyspaceId) -> EncodedKeyRange {
 		EncodedKeyRange::new(Bound::Included(key(top, b"")), keyspace_inner_range(GROUP, bottom).end)
 	}
 
@@ -947,13 +947,13 @@ mod tests {
 	fn a_cross_keyspace_span_is_split_so_every_segment_lies_in_one_partition() {
 		// A coalesced claim must split per partition, or only the segment start's partition answers.
 		let tier = roomy();
-		let top = Keyspace::SESSION;
-		let middle = Keyspace(top.0 - 1);
-		let bottom = Keyspace(top.0 - 2);
+		let top = KeyspaceId::SESSION;
+		let middle = KeyspaceId(top.0 - 1);
+		let bottom = KeyspaceId(top.0 - 2);
 		let range = across(top, bottom);
 
 		for keyspace in [top, middle, bottom] {
-			assert!(keyspace.cache_policy().caches_ranges());
+			assert!(keyspace.cache_tiers().caches_ranges());
 			assert!(claim(
 				&tier,
 				&range,
@@ -993,14 +993,14 @@ mod tests {
 	}
 
 	#[test]
-	fn a_wide_gap_splits_once_per_cache_policy_run_while_ram_still_splits_once_per_partition() {
+	fn a_wide_gap_splits_once_per_cache_tiers_run_while_ram_still_splits_once_per_partition() {
 		// A gap piece per keyspace byte made a group-wide scan build ~97 pieces that coalesce_gaps then
 		// merged back into ~3; the run is the unit that survives, so emitting bytes is pure waste. RAM must
 		// keep splitting per partition, because serve resolves one partition from the segment start and a
 		// merged RAM piece would silently answer only the first partition's rows.
-		let top = Keyspace(UNCACHED.0 + 8);
-		let below = Keyspace(UNCACHED.0 - 1);
-		let bottom = Keyspace(UNCACHED.0 - 8);
+		let top = KeyspaceId(UNCACHED.0 + 8);
+		let below = KeyspaceId(UNCACHED.0 - 1);
+		let bottom = KeyspaceId(UNCACHED.0 - 8);
 		let span = Interval::new(whole(top).start, whole(bottom).end);
 
 		let mut gap = Vec::new();
@@ -1040,7 +1040,7 @@ mod tests {
 					Some(partition(below))
 				),
 			],
-			"seventeen keyspaces holding one exempt byte must split into three policy runs, each carrying \
+			"seventeen keyspaces holding one exempt byte must split into three cache tier runs, each carrying \
 			 the first partition of its run so the miss tally stays per run"
 		);
 
@@ -1067,8 +1067,8 @@ mod tests {
 		// persistent tier for a span the claim already proved empty, which is both a wasted read and, once
 		// the claim is the only proof, a different answer.
 		let tier = roomy();
-		let top = Keyspace::BUFFER;
-		let bottom = Keyspace::ACCUMULATOR;
+		let top = KeyspaceId::BUFFER;
+		let bottom = KeyspaceId::ACCUMULATOR;
 		let range = across(top, bottom);
 
 		assert!(claim(&tier, &range, &whole(top), &[]) == Materialize::Materialized);

@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_flow::{
 	operator::state::{
 		reaper::{drain, enqueue},
-		seal::{coord::Coord, domain::SealDomain, policy::is_sealed},
+		seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 	},
 	window::{
 		accumulator::WindowAccumulator,

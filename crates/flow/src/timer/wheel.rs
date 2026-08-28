@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
+		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	},
 	state::timer::TimerKind,
 };
@@ -100,7 +100,7 @@ impl TimerWheel {
 	}
 
 	pub fn next_due_stored(operator: OperatorId, store: &OperatorStore) -> Option<TimerDue> {
-		let wheel = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
+		let wheel = keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL);
 		let batch = store.range_batch(operator, wheel, 1);
 		let (key, _) = batch.items.first()?;
 		let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
@@ -120,7 +120,7 @@ impl TimerWheel {
 			return Ok((Vec::new(), None));
 		}
 		let take = limit.min(MAX_TIMERS_PER_SCAN);
-		let wheel = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
+		let wheel = keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL);
 		let batch = txn.state_range(
 			operator,
 			StateRange::forward(wheel, "timer::take_due").limit(take.saturating_add(1)),
@@ -174,14 +174,14 @@ fn timer_suffix(due: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
 }
 
 fn timer_key(due: DateTime, kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_WHEEL, timer_suffix(due, kind, key))
+	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::TIMER_WHEEL, timer_suffix(due, kind, key))
 }
 
 fn index_key(kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
 	let mut suffix = Vec::with_capacity(1 + key.len());
 	suffix.push(kind as u8);
 	suffix.extend_from_slice(key.as_ref());
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_INDEX, suffix)
+	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::TIMER_INDEX, suffix)
 }
 
 fn armed_at(operator: OperatorId, txn: &mut impl FlowTransaction, index: &GroupStateKey) -> Result<Option<DateTime>> {

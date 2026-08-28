@@ -125,7 +125,7 @@ mod tests {
 	};
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+		key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 		state::timer::StateStore,
 	};
 	use reifydb_flow::{
@@ -163,7 +163,7 @@ mod tests {
 			version: CommitVersion(7),
 		});
 		let mut host = TxnHostContext::new(&mut txn, NODE);
-		let absent = OperatorStateKey::inner_encoded(GroupId::of(&key("absent")), Keyspace::ACCUMULATOR, []);
+		let absent = OperatorStateKey::inner_encoded(GroupId::of(&key("absent")), KeyspaceId::ACCUMULATOR, []);
 
 		assert!(host.state_get(&absent).unwrap().is_none());
 
@@ -171,7 +171,7 @@ mod tests {
 	}
 
 	fn stored_key(suffix: &str) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::ACCUMULATOR, suffix.as_bytes())
+		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::ACCUMULATOR, suffix.as_bytes())
 	}
 
 	#[test]

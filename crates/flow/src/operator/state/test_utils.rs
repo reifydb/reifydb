@@ -3,7 +3,7 @@
 
 pub mod test {
 	use reifydb_codec::row::pod::EncodedPodRow;
-	use reifydb_core::key::operator_state::{GroupStateKey, Keyspace};
+	use reifydb_core::key::operator_state::{GroupStateKey, KeyspaceId};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_value::value::identity::IdentityId;
@@ -13,7 +13,7 @@ pub mod test {
 	}
 
 	pub fn test_key(suffix: &str) -> GroupStateKey {
-		GroupStateKey::root(Keyspace::CUSTOM_NOT_CACHED, format!("test_{}", suffix).into_bytes())
+		GroupStateKey::root(KeyspaceId::CUSTOM_NOT_CACHED, format!("test_{}", suffix).into_bytes())
 	}
 
 	pub fn assert_row_eq(actual: &EncodedPodRow, expected: &EncodedPodRow) {

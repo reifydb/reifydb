@@ -4,7 +4,7 @@
 use std::mem::size_of;
 
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
 };
@@ -118,7 +118,7 @@ impl HeapSize for CountKey {
 
 impl IntoGroupStateKey for &CountKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.0, Keyspace::COUNT, vec![])
+		OperatorStateKey::inner_encoded(self.0, KeyspaceId::COUNT, vec![])
 	}
 }
 
@@ -133,7 +133,7 @@ impl HeapSize for RowIndexKey {
 
 impl IntoGroupStateKey for &RowIndexKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.0, Keyspace::ROW_INDEX, self.1.0.to_be_bytes())
+		OperatorStateKey::inner_encoded(self.0, KeyspaceId::ROW_INDEX, self.1.0.to_be_bytes())
 	}
 }
 
@@ -148,7 +148,7 @@ impl HeapSize for SessionKey {
 
 impl IntoGroupStateKey for &SessionKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.0, Keyspace::SESSION, vec![])
+		OperatorStateKey::inner_encoded(self.0, KeyspaceId::SESSION, vec![])
 	}
 }
 
@@ -163,7 +163,7 @@ impl HeapSize for EngineMetaKey {
 
 impl IntoGroupStateKey for &EngineMetaKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.0, Keyspace::ENGINE_META, vec![])
+		OperatorStateKey::inner_encoded(self.0, KeyspaceId::ENGINE_META, vec![])
 	}
 }
 
@@ -178,7 +178,7 @@ impl HeapSize for RollingMetaKey {
 
 impl IntoGroupStateKey for &RollingMetaKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(self.0, Keyspace::ROLLING_META, vec![])
+		OperatorStateKey::inner_encoded(self.0, KeyspaceId::ROLLING_META, vec![])
 	}
 }
 

@@ -11,14 +11,14 @@ use reifydb_codec::{
 	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
+	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	state::timer::StateStore,
 };
 use reifydb_value::Result;
 use tracing::instrument;
 
 pub(crate) fn expiry_range() -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::ROOT, Keyspace::EXPIRY)
+	keyspace_inner_range(GroupId::ROOT, KeyspaceId::EXPIRY)
 }
 
 pub(crate) fn expiry_key<G>(expiry: u64, group: &G, suffix: &[u8]) -> GroupStateKey
@@ -31,11 +31,11 @@ where
 	tail.extend_from_slice(&encode_u64(expiry));
 	tail.extend_from_slice(group);
 	tail.extend_from_slice(suffix);
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::EXPIRY, tail)
+	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::EXPIRY, tail)
 }
 
 fn due_range(threshold: u64) -> EncodedKeyRange {
-	let start = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::EXPIRY, encode_u64(threshold));
+	let start = OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::EXPIRY, encode_u64(threshold));
 	EncodedKeyRange::new(Bound::Included(start.as_encoded().clone()), expiry_range().end)
 }
 

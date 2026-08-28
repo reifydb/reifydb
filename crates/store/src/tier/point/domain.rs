@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{Keyspace, OperatorStateKey},
+	key::operator_state::{KeyspaceId, OperatorStateKey},
 };
 
 use crate::tier::point::PointDomain;
@@ -17,18 +17,18 @@ use crate::tier::point::PointDomain;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TestDomain;
 
-pub(super) fn keyspace_of(key: &EncodedKey) -> Option<Keyspace> {
+pub(super) fn keyspace_of(key: &EncodedKey) -> Option<KeyspaceId> {
 	let bytes = key.as_slice();
 	let offset = OperatorStateKey::KEYSPACE_INNER_OFFSET as usize;
 	if bytes.len() <= offset {
 		return None;
 	}
-	Some(Keyspace(encode_u8(bytes[offset])))
+	Some(KeyspaceId(encode_u8(bytes[offset])))
 }
 
 impl PointDomain for TestDomain {
 	type Dimension = OperatorId;
-	type Slot = Keyspace;
+	type Slot = KeyspaceId;
 	type Row = EncodedPodRow;
 
 	const SLOTS: usize = 256;
@@ -40,11 +40,11 @@ impl PointDomain for TestDomain {
 	}
 
 	fn caches_points(slot: usize) -> bool {
-		Keyspace(slot as u8).cache_policy().caches_points()
+		KeyspaceId(slot as u8).cache_tiers().caches_points()
 	}
 
 	fn slot_at(index: usize) -> Self::Slot {
-		Keyspace(index as u8)
+		KeyspaceId(index as u8)
 	}
 
 	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {
@@ -57,7 +57,7 @@ pub(super) struct ChainingDomain;
 
 impl PointDomain for ChainingDomain {
 	type Dimension = OperatorId;
-	type Slot = Keyspace;
+	type Slot = KeyspaceId;
 	type Row = EncodedPodRow;
 
 	const SLOTS: usize = 256;
@@ -69,7 +69,7 @@ impl PointDomain for ChainingDomain {
 	}
 
 	fn caches_points(slot: usize) -> bool {
-		Keyspace(slot as u8).cache_policy().caches_points()
+		KeyspaceId(slot as u8).cache_tiers().caches_points()
 	}
 
 	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {
@@ -83,7 +83,7 @@ impl PointDomain for ChainingDomain {
 	}
 
 	fn slot_at(index: usize) -> Self::Slot {
-		Keyspace(index as u8)
+		KeyspaceId(index as u8)
 	}
 
 	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {

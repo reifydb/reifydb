@@ -9,14 +9,14 @@ use reifydb_codec::{
 };
 use reifydb_core::key::{
 	EncodableKey,
-	operator_state::{Keyspace, OperatorStateKey},
+	operator_state::{KeyspaceId, OperatorStateKey},
 };
 
-pub const ROW_STAMPED: &[Keyspace] = &[Keyspace::DISTINCT_ENTRY, Keyspace::DISTINCT_LAYOUT];
+pub const ROW_STAMPED: &[KeyspaceId] = &[KeyspaceId::DISTINCT_ENTRY, KeyspaceId::DISTINCT_LAYOUT];
 
 pub type State = Vec<(EncodedKey, EncodedBytes)>;
 
-pub fn keyspace_of(key: &EncodedKey) -> Option<Keyspace> {
+pub fn keyspace_of(key: &EncodedKey) -> Option<KeyspaceId> {
 	OperatorStateKey::decode(key).map(|state| state.keyspace)
 }
 

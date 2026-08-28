@@ -29,7 +29,7 @@ use crate::{
 		host::HostContext,
 		state::{
 			reaper::{drain, enqueue},
-			seal::{coord::Coord, ledger::FiredAt, policy::SealPolicy, sweep::SealSweep},
+			seal::{coord::Coord, ledger::FiredAt, rule::SealRule, sweep::SealSweep},
 		},
 		state_access::get,
 	},
@@ -339,7 +339,7 @@ pub fn apply_tumbling_engine(
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		SealPolicy::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero)),
+		SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero)),
 		ExpiryAnchor::WindowStart,
 	)?;
 
@@ -583,7 +583,7 @@ pub fn apply_sliding_engine(
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		SealPolicy::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero)),
+		SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero)),
 		ExpiryAnchor::WindowStart,
 	)?;
 
@@ -817,7 +817,7 @@ pub fn apply_session_engine(
 		&mut buckets,
 		&mut arrival,
 		&window_max_ts,
-		operator.session_policy(),
+		operator.session_rule(),
 		ExpiryAnchor::LastEvent,
 	)?;
 
@@ -850,13 +850,13 @@ fn gate_and_arm_seals(
 	buckets: &mut EngineBuckets,
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
 	window_max_ts: &HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
-	policy: SealPolicy,
+	rule: SealRule,
 	anchor: ExpiryAnchor,
 ) -> Result<()> {
-	if policy.is_inert() || operator.is_count_based() {
+	if rule.is_inert() || operator.is_count_based() {
 		return Ok(());
 	}
-	let gate = operator.seal_gate(host, policy)?;
+	let gate = operator.seal_gate(host, rule)?;
 	let mut sealed: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut rearm: Vec<(Hash128, u64, Option<u64>, u64)> = Vec::new();
 	let mut dropped = 0u64;
@@ -902,13 +902,13 @@ fn seal_due_windows(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	fired: FiredAt,
-	policy: SealPolicy,
+	rule: SealRule,
 ) -> Result<Vec<Diff>> {
-	if policy.is_inert() {
+	if rule.is_inert() {
 		return Ok(Vec::new());
 	}
 	operator.advance_seal_ledger(host, fired)?;
-	let Some(threshold) = SealSweep::new(policy).horizon(fired) else {
+	let Some(threshold) = SealSweep::new(rule).horizon(fired) else {
 		return Ok(Vec::new());
 	};
 	let config = operator.engine_config();
@@ -922,7 +922,7 @@ fn seal_due_windows(
 			enqueue(host, window.group_id)?;
 		}
 		if !res.is_empty() {
-			let due = fired.at().saturating_add(policy.admissible().duration());
+			let due = fired.at().saturating_add(rule.admissible().duration());
 			host.arm_timer(due, TimerKind::Maintenance, &EncodedKey::new(Vec::new()))?;
 		}
 		*operator.core.tumbling_engine_slot() = Some(engine);
@@ -950,8 +950,8 @@ pub fn seal_session_engine(
 	host: &mut dyn HostContext,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
-	let policy = operator.session_policy();
-	seal_due_windows(operator, host, fired, policy)
+	let rule = operator.session_rule();
+	seal_due_windows(operator, host, fired, rule)
 }
 
 pub fn seal_engine_windows(
@@ -962,18 +962,18 @@ pub fn seal_engine_windows(
 	let Some(window_size) = operator.size_duration() else {
 		return Ok(Vec::new());
 	};
-	let policy = SealPolicy::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
-	seal_due_windows(operator, host, fired, policy)
+	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
+	seal_due_windows(operator, host, fired, rule)
 }
 
 #[cfg(test)]
 mod tests {
 	use reifydb_value::{factory::time::at_millis, value::duration::Duration};
 
-	use super::SealPolicy;
+	use super::SealRule;
 	use crate::operator::state::seal::{
 		coord::Coord,
-		policy::{is_sealed, seal_horizon},
+		rule::{is_sealed, seal_horizon},
 	};
 
 	#[test]
@@ -983,10 +983,10 @@ mod tests {
 		// at watermark >= at, so reproducing the strict gate needs the +1 seal_instant carries.
 		let cutoff_ms = 19u64;
 		let cutoff = Duration::from_milliseconds(cutoff_ms as i64).expect("representable span");
-		let policy = SealPolicy::tumbling(cutoff, Duration::from_milliseconds_const(0));
+		let rule = SealRule::tumbling(cutoff, Duration::from_milliseconds_const(0));
 		let last = 10u64;
 		let order = |millis: u64| at_millis(millis).to_order();
-		let sealed = |wm: u64| policy.seal_instant_from_order(order(last)).at().to_order() <= order(wm);
+		let sealed = |wm: u64| rule.seal_instant_from_order(order(last)).at().to_order() <= order(wm);
 		let pre_timer_gate = |wm: u64| wm.saturating_sub(last) > cutoff_ms;
 
 		for wm in 0..100u64 {

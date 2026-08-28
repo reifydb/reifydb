@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace},
+	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId},
 	metrics::heap::HeapSize,
 };
 use reifydb_flow::{
@@ -64,13 +64,13 @@ impl IntoGroupStateKey for &TestPair {
 		suffix.extend_from_slice(self.0.0.as_bytes());
 		suffix.push(0xFF);
 		suffix.extend_from_slice(self.1.0.as_bytes());
-		GroupStateKey::root(Keyspace::CUSTOM_NOT_CACHED, suffix)
+		GroupStateKey::root(KeyspaceId::CUSTOM_NOT_CACHED, suffix)
 	}
 }
 
 impl IntoGroupStateKey for &TestKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		GroupStateKey::root(Keyspace::CUSTOM_NOT_CACHED, self.0.as_bytes())
+		GroupStateKey::root(KeyspaceId::CUSTOM_NOT_CACHED, self.0.as_bytes())
 	}
 }
 
@@ -429,7 +429,7 @@ impl HeapSize for CachedKey {
 
 impl IntoGroupStateKey for &CachedKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		GroupStateKey::root(Keyspace::ACCUMULATOR, self.0.as_bytes())
+		GroupStateKey::root(KeyspaceId::ACCUMULATOR, self.0.as_bytes())
 	}
 }
 

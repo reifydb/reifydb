@@ -704,7 +704,7 @@ fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::key::operator_state::Keyspace;
+	use reifydb_core::key::operator_state::KeyspaceId;
 	use reifydb_store_cdc::tier::read::CdcReadMetrics;
 	use reifydb_store_operator::tier::{point::OperatorPointMetrics, range::OperatorRangeMetrics};
 
@@ -712,7 +712,7 @@ mod tests {
 
 	fn point_sample() -> OperatorPointKeyspaceMetrics {
 		OperatorPointKeyspaceMetrics {
-			slot: Keyspace::SOURCE_WATERMARK,
+			slot: KeyspaceId::SOURCE_WATERMARK,
 			used: ByteSize::from_bytes(12_401),
 			entries: 231,
 			counters: OperatorPointMetrics {
@@ -729,7 +729,7 @@ mod tests {
 
 	fn range_sample() -> OperatorRangeKeyspaceMetrics {
 		OperatorRangeKeyspaceMetrics {
-			slot: Keyspace::SOURCE_WATERMARK,
+			slot: KeyspaceId::SOURCE_WATERMARK,
 			used: ByteSize::from_bytes(20_733),
 			partitions: 115,
 			intervals: 203,
@@ -773,17 +773,17 @@ mod tests {
 		// CUSTOM_NOT_CACHED and CUSTOM_CACHED are declared constants, not gaps: relabelling either as
 		// CUSTOM_0x40 hides which admission side a keyspace sits on.
 		let mut metrics = point_sample();
-		metrics.slot = Keyspace::CUSTOM_NOT_CACHED;
+		metrics.slot = KeyspaceId::CUSTOM_NOT_CACHED;
 		let row = operator_point_keyspace_row(&metrics);
 		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_NOT_CACHED".to_string())]);
 
 		let mut metrics = point_sample();
-		metrics.slot = Keyspace::CUSTOM_CACHED;
+		metrics.slot = KeyspaceId::CUSTOM_CACHED;
 		let row = operator_point_keyspace_row(&metrics);
 		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_CACHED".to_string())]);
 
 		let mut metrics = range_sample();
-		metrics.slot = Keyspace::CUSTOM_NOT_CACHED;
+		metrics.slot = KeyspaceId::CUSTOM_NOT_CACHED;
 		let row = operator_range_keyspace_row(&metrics);
 		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_NOT_CACHED".to_string())]);
 	}

@@ -407,7 +407,7 @@ mod tests {
 		row::{operator::state::decode, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
-		key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey},
+		key::operator_state::{GroupStateKey, KeyspaceId, OperatorStateKey},
 		state::timer::{TimerKind, TimerStore},
 	};
 	use reifydb_value::{
@@ -433,7 +433,7 @@ mod tests {
 	}
 
 	impl CountingStore {
-		fn keyspace_count(&self, keyspace: Keyspace) -> usize {
+		fn keyspace_count(&self, keyspace: KeyspaceId) -> usize {
 			self.data
 				.keys()
 				.filter(|k| {
@@ -444,11 +444,11 @@ mod tests {
 
 		fn accumulator_count(&self) -> usize {
 			// Meta and the expiry index share the store, so count only the accumulator keyspace.
-			self.keyspace_count(Keyspace::ACCUMULATOR)
+			self.keyspace_count(KeyspaceId::ACCUMULATOR)
 		}
 
 		fn meta_entry_count(&self) -> usize {
-			self.keyspace_count(Keyspace::WINDOW_META)
+			self.keyspace_count(KeyspaceId::WINDOW_META)
 		}
 
 		fn row_mapping_count(&self) -> usize {

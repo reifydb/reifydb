@@ -5,5 +5,5 @@ pub mod coord;
 pub mod domain;
 pub mod gate;
 pub mod ledger;
-pub mod policy;
+pub mod rule;
 pub mod sweep;

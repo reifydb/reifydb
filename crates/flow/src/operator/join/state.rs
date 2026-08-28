@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::operator_state::Keyspace;
+use reifydb_core::key::operator_state::KeyspaceId;
 
 use crate::operator::join::store::Store;
 
@@ -26,10 +26,10 @@ pub(crate) enum JoinSide {
 }
 
 impl JoinSide {
-	pub(crate) fn keyspace(&self) -> Keyspace {
+	pub(crate) fn keyspace(&self) -> KeyspaceId {
 		match self {
-			Self::Left => Keyspace::JOIN_LEFT,
-			Self::Right => Keyspace::JOIN_RIGHT,
+			Self::Left => KeyspaceId::JOIN_LEFT,
+			Self::Right => KeyspaceId::JOIN_RIGHT,
 		}
 	}
 

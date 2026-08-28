@@ -8,7 +8,7 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
@@ -45,7 +45,8 @@ fn iterator_entries(entries: Vec<(GroupStateKey, EncodedPodRow)>) -> Vec<(GroupS
 }
 
 fn is_seal_anchor(key: &GroupStateKey) -> bool {
-	OperatorStateKey::decode_inner(key.as_slice()).is_some_and(|(_, keyspace, _)| keyspace == Keyspace::SEAL_ANCHOR)
+	OperatorStateKey::decode_inner(key.as_slice())
+		.is_some_and(|(_, keyspace, _)| keyspace == KeyspaceId::SEAL_ANCHOR)
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
@@ -775,7 +776,7 @@ mod seal_anchor_guard_tests {
 			catalog::{config::ConfigKey, flow::OperatorId},
 			store::MultiVersionRow,
 		},
-		key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 		state::timer::{StateStore, TimerStore},
 	};
 	use reifydb_flow::{
@@ -1025,7 +1026,7 @@ mod seal_anchor_guard_tests {
 		}
 	}
 
-	fn framed(keyspace: Keyspace) -> Vec<u8> {
+	fn framed(keyspace: KeyspaceId) -> Vec<u8> {
 		OperatorStateKey::inner_encoded(GroupId(7), keyspace, [0u8; 9]).as_slice().to_vec()
 	}
 
@@ -1043,7 +1044,7 @@ mod seal_anchor_guard_tests {
 	#[test]
 	fn a_guest_write_to_the_seal_anchor_keyspace_is_refused() {
 		// A guest anchor reaches the commit path, where routing decodes its body and panics the committer.
-		let key = framed(Keyspace::SEAL_ANCHOR);
+		let key = framed(KeyspaceId::SEAL_ANCHOR);
 		let value = EncodedPodRow::new(&[0u8; 4]);
 
 		let (set, set_reached) = with_context(|ctx| {
@@ -1060,7 +1061,7 @@ mod seal_anchor_guard_tests {
 	#[test]
 	fn a_guest_write_to_its_own_keyspace_still_reaches_the_host() {
 		// A guard keyed on anything wider than the one keyspace would silently break every guest operator.
-		let key = framed(Keyspace::CUSTOM_NOT_CACHED);
+		let key = framed(KeyspaceId::CUSTOM_NOT_CACHED);
 		let value = EncodedPodRow::new(&[0u8; 4]);
 
 		let (set, set_reached) = with_context(|ctx| {

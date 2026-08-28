@@ -14,7 +14,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	metrics::scan::ScanCounters,
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
@@ -33,7 +33,7 @@ use reifydb_store_operator::{
 };
 use reifydb_value::byte_size::ByteSize;
 
-const CACHED: Keyspace = Keyspace::CUSTOM_CACHED;
+const CACHED: KeyspaceId = KeyspaceId::CUSTOM_CACHED;
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -75,7 +75,7 @@ fn key(suffix: u8) -> EncodedKey {
 	OperatorStateKey::inner_encoded(GROUP, CACHED, [suffix]).as_encoded().clone()
 }
 
-fn key_in(keyspace: Keyspace, suffix: u8) -> EncodedKey {
+fn key_in(keyspace: KeyspaceId, suffix: u8) -> EncodedKey {
 	OperatorStateKey::inner_encoded(GROUP, keyspace, [suffix]).as_encoded().clone()
 }
 
@@ -537,7 +537,7 @@ fn a_flushed_removal_still_reads_back_as_absent() {
 fn a_keyspace_declared_not_cached_never_occupies_the_point_tier() {
 	// These three were measured holding 11.67 MiB of a 64 MiB budget for 0.097% of hits, so every entry they take
 	// is one a hot keyspace loses to eviction.
-	for keyspace in [Keyspace::CUSTOM_NOT_CACHED, Keyspace::JOIN_PIN, Keyspace::ENGINE_META] {
+	for keyspace in [KeyspaceId::CUSTOM_NOT_CACHED, KeyspaceId::JOIN_PIN, KeyspaceId::ENGINE_META] {
 		let (store, _storage, _guard) = cached_store();
 		let key = key_in(keyspace, 1);
 		put(&store, OP_A, key.clone(), row("durable"));
@@ -572,7 +572,7 @@ fn a_keyspace_declared_cached_still_occupies_the_point_tier() {
 	// The control for the refusal above: a gate that refuses everything passes that test while turning the tier
 	// off.
 	let (store, _storage, _guard) = cached_store();
-	put(&store, OP_A, key_in(Keyspace::CUSTOM_CACHED, 1), row("durable"));
+	put(&store, OP_A, key_in(KeyspaceId::CUSTOM_CACHED, 1), row("durable"));
 	assert!(store.flush_pending_blocking());
 
 	assert_eq!(point_entries(&store), 1, "a cached keyspace must be admitted, or the gate is a blanket off switch");
@@ -582,7 +582,7 @@ fn a_keyspace_declared_cached_still_occupies_the_point_tier() {
 fn a_refused_keyspace_reads_absent_without_remembering_the_absence() {
 	// An absence costs the same entry overhead as a row, so the refusal must cover the absence path too.
 	let (store, storage, _guard) = cached_store();
-	let key = key_in(Keyspace::JOIN_PIN, 1);
+	let key = key_in(KeyspaceId::JOIN_PIN, 1);
 	storage.apply_batch(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key.clone(),
@@ -603,7 +603,7 @@ fn an_expiry_write_never_occupies_the_point_tier() {
 	// The expiry index is drained by range scans and never point read, so an entry the write-through admits can
 	// never win its budget back with a hit.
 	let (store, _storage, _guard) = cached_store();
-	let key = key_in(Keyspace::EXPIRY, 1);
+	let key = key_in(KeyspaceId::EXPIRY, 1);
 	put(&store, OP_A, key.clone(), row("armed"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 
@@ -632,7 +632,7 @@ fn a_timer_wheel_write_never_occupies_the_point_tier() {
 	// The timer wheel is read only by the due-ordered scan that drains it, so admitting its rows buys no hit at
 	// all.
 	let (store, _storage, _guard) = cached_store();
-	let key = key_in(Keyspace::TIMER_WHEEL, 1);
+	let key = key_in(KeyspaceId::TIMER_WHEEL, 1);
 	put(&store, OP_A, key.clone(), row("armed"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 
@@ -660,8 +660,8 @@ fn a_timer_wheel_write_never_occupies_the_point_tier() {
 fn a_point_read_of_an_expiry_key_remembers_neither_the_row_nor_the_absence() {
 	// A refused keyspace that still caches "nothing here" gives back exactly the budget the refusal freed.
 	let (store, storage, _guard) = cached_store();
-	let present = key_in(Keyspace::EXPIRY, 1);
-	let absent = key_in(Keyspace::EXPIRY, 2);
+	let present = key_in(KeyspaceId::EXPIRY, 1);
+	let absent = key_in(KeyspaceId::EXPIRY, 2);
 	storage.apply_batch(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: present.clone(),
@@ -701,7 +701,7 @@ fn a_root_group_key_round_trips_through_the_point_tier() {
 	// A key carrying the root group rather than a real one must still be admitted, or every read of it pays a
 	// persistent lookup while the tier reads correctly and hides the cost.
 	let (store, _storage, _guard) = cached_store();
-	let key = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, [1]).as_encoded().clone();
+	let key = OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::NODE_COUNTER, [1]).as_encoded().clone();
 	put(&store, OP_A, key.clone(), row("counter"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 

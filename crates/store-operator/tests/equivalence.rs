@@ -14,7 +14,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{
-		GroupId, Keyspace, OperatorStateKey, group_data_inner_range, keyspace_inner_range,
+		GroupId, KeyspaceId, OperatorStateKey, group_data_inner_range, keyspace_inner_range,
 		keyspace_inner_range_upto,
 	},
 	metrics::scan::ScanCounters,
@@ -34,7 +34,7 @@ use reifydb_store_operator::{
 };
 use reifydb_value::byte_size::ByteSize;
 
-const CACHED: Keyspace = Keyspace::CUSTOM_CACHED;
+const CACHED: KeyspaceId = KeyspaceId::CUSTOM_CACHED;
 
 const SEED: u64 = 0x9E3779B97F4A7C15;
 
@@ -47,10 +47,15 @@ const GROUPS: u64 = 2;
 const SUFFIXES: u64 = 160;
 
 /// The subset the range tier is allowed to cache, which is what the read-cost gate may measure.
-const CACHED_KEYSPACES: [Keyspace; 2] = [CACHED, Keyspace::JOIN_PUBLISHED];
+const CACHED_KEYSPACES: [KeyspaceId; 2] = [CACHED, KeyspaceId::JOIN_PUBLISHED];
 
-const KEYSPACES: [Keyspace; 5] =
-	[CACHED, Keyspace::JOIN_PUBLISHED, Keyspace::EXPIRY, Keyspace::CUSTOM_NOT_CACHED, Keyspace::TIMER_WHEEL];
+const KEYSPACES: [KeyspaceId; 5] = [
+	CACHED,
+	KeyspaceId::JOIN_PUBLISHED,
+	KeyspaceId::EXPIRY,
+	KeyspaceId::CUSTOM_NOT_CACHED,
+	KeyspaceId::TIMER_WHEEL,
+];
 
 const BATCHES: [u64; 4] = [2, 7, 64, 1024];
 

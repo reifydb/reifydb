@@ -9,7 +9,7 @@
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 	util::bloom::hash_item,
 };
 use reifydb_filter::{
@@ -37,7 +37,7 @@ const OTHER: OperatorId = OperatorId(2);
 const GROUP: GroupId = GroupId(1);
 
 fn key(suffix: u8) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GROUP, Keyspace::ACCUMULATOR, [suffix]).as_encoded().clone()
+	OperatorStateKey::inner_encoded(GROUP, KeyspaceId::ACCUMULATOR, [suffix]).as_encoded().clone()
 }
 
 fn row(body: &str) -> EncodedPodRow {

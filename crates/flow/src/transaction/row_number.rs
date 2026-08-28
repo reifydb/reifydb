@@ -19,7 +19,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		operator_state::{
-			GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
+			GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range,
 			row_number_counter_key,
 		},
 	},
@@ -34,11 +34,11 @@ use crate::transaction::{
 const MAPPING_SWEEP_PAGE: usize = 1024;
 
 pub fn mapping_key(group: GroupId, key: &EncodedKey) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key)
+	OperatorStateKey::inner_encoded(group, KeyspaceId::ROW_NUMBER_MAPPING, key)
 }
 
 fn mapping_range(group: GroupId) -> EncodedKeyRange {
-	keyspace_inner_range(group, Keyspace::ROW_NUMBER_MAPPING)
+	keyspace_inner_range(group, KeyspaceId::ROW_NUMBER_MAPPING)
 }
 
 pub fn counter_key() -> GroupStateKey {
@@ -260,7 +260,7 @@ pub trait RowNumberExtension: FlowTransaction {
 		group: GroupId,
 		key_prefix: &[u8],
 	) -> Result<()> {
-		let inner_prefix = OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
+		let inner_prefix = OperatorStateKey::inner_encoded(group, KeyspaceId::ROW_NUMBER_MAPPING, key_prefix);
 		let base = EncodedKeyRange::prefix(inner_prefix.as_ref());
 		let mut lower = base.start.clone();
 		loop {

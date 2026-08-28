@@ -10,7 +10,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
 	metrics::heap::{HeapSize, OperatorSample},
 	value::column::columns::Columns,
 };
@@ -60,7 +60,7 @@ impl HeapSize for VisibilityKey {
 
 impl IntoGroupStateKey for &VisibilityKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::GATE_VISIBILITY, encode_u64_asc(self.0.0))
+		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::GATE_VISIBILITY, encode_u64_asc(self.0.0))
 	}
 }
 
@@ -318,7 +318,7 @@ mod tests {
 	use std::ops::Bound;
 
 	use reifydb_core::key::operator_state::{
-		GroupId, IntoGroupStateKey, Keyspace, OperatorStateKey, group_inner_range,
+		GroupId, IntoGroupStateKey, KeyspaceId, OperatorStateKey, group_inner_range,
 	};
 	use reifydb_value::value::row_number::RowNumber;
 
@@ -333,7 +333,7 @@ mod tests {
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())
 			.expect("a visibility marker must decode as a structured operator-state key");
 		assert_eq!(group, GroupId::ROOT, "gate visibility must not live inside a reclaimable group");
-		assert_eq!(keyspace, Keyspace::GATE_VISIBILITY);
+		assert_eq!(keyspace, KeyspaceId::GATE_VISIBILITY);
 		assert_eq!(suffix, 42u64.to_be_bytes().to_vec());
 	}
 

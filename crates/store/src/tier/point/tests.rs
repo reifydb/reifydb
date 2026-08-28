@@ -9,7 +9,7 @@ use std::sync::{
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -18,7 +18,7 @@ use crate::tier::point::{
 	domain::{ChainingDomain as C, TestDomain as D, keyspace_of},
 };
 
-const CACHED: Keyspace = Keyspace::CUSTOM_CACHED;
+const CACHED: KeyspaceId = KeyspaceId::CUSTOM_CACHED;
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -41,7 +41,7 @@ fn roomy() -> PointTier<D> {
 	tier(ByteSize::from_mib(1).as_bytes())
 }
 
-fn key(group: GroupId, keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
+fn key(group: GroupId, keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
 	OperatorStateKey::inner_encoded(group, keyspace, suffix).into_encoded()
 }
 
@@ -63,7 +63,7 @@ fn footprint(key: &EncodedKey, row: &Option<EncodedPodRow>) -> usize {
 	ENTRY_OVERHEAD + key.heap_bytes() + row.as_ref().map_or(0, EncodedPodRow::len)
 }
 
-fn keyspace_row(tier: &PointTier<D>, keyspace: Keyspace) -> PointSlotMetrics<D> {
+fn keyspace_row(tier: &PointTier<D>, keyspace: KeyspaceId) -> PointSlotMetrics<D> {
 	tier.slot_metrics()
 		.into_iter()
 		.find(|row| row.slot == keyspace)
@@ -476,7 +476,7 @@ fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	let tier = roomy();
 	let accumulator = key(GROUP_A, CACHED, b"a");
-	let buffer = key(GROUP_A, Keyspace::BUFFER, b"a");
+	let buffer = key(GROUP_A, KeyspaceId::BUFFER, b"a");
 
 	assert!(tier.get(OP_A, &accumulator).is_none());
 	fill(&tier, OP_A, accumulator.clone(), Some(row("v")));
@@ -491,7 +491,7 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	assert_eq!(accumulator.counters.misses, 1);
 	assert_eq!(accumulator.entries, 1);
 
-	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
+	let buffer = keyspace_row(&tier, KeyspaceId::BUFFER);
 	assert_eq!(buffer.counters.hits, 0, "a miss in one keyspace must not borrow the other keyspace's hit");
 	assert_eq!(buffer.counters.misses, 1);
 	assert_eq!(buffer.entries, 0, "a keyspace with no resident entry is still reported once a counter moved");
@@ -503,17 +503,17 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 #[test]
 fn contains_charges_the_same_keyspace_slots_as_get() {
 	let tier = roomy();
-	let known = key(GROUP_A, Keyspace::EMIT, b"a");
-	let unknown = key(GROUP_A, Keyspace::EXPIRY, b"a");
+	let known = key(GROUP_A, KeyspaceId::EMIT, b"a");
+	let unknown = key(GROUP_A, KeyspaceId::EXPIRY, b"a");
 
 	tier.overwrite(OP_A, known.clone(), row("v"));
 	assert_eq!(tier.contains(OP_A, &known), Some(true));
 	assert_eq!(tier.contains(OP_A, &unknown), None);
 
-	assert_eq!(keyspace_row(&tier, Keyspace::EMIT).counters.hits, 1);
-	assert_eq!(keyspace_row(&tier, Keyspace::EMIT).counters.misses, 0);
-	assert_eq!(keyspace_row(&tier, Keyspace::EXPIRY).counters.misses, 1);
-	assert_eq!(keyspace_row(&tier, Keyspace::EXPIRY).counters.hits, 0);
+	assert_eq!(keyspace_row(&tier, KeyspaceId::EMIT).counters.hits, 1);
+	assert_eq!(keyspace_row(&tier, KeyspaceId::EMIT).counters.misses, 0);
+	assert_eq!(keyspace_row(&tier, KeyspaceId::EXPIRY).counters.misses, 1);
+	assert_eq!(keyspace_row(&tier, KeyspaceId::EXPIRY).counters.hits, 0);
 }
 
 #[test]
@@ -526,14 +526,14 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 	for group in [GROUP_A, GROUP_B] {
 		fill(&tier, OP_A, key(group, CACHED, b"a"), sample_row.clone());
 	}
-	let buffer_key = key(GROUP_A, Keyspace::BUFFER, b"a");
+	let buffer_key = key(GROUP_A, KeyspaceId::BUFFER, b"a");
 	fill(&tier, OP_A, buffer_key.clone(), sample_row.clone());
 
 	let accumulator = keyspace_row(&tier, CACHED);
 	assert_eq!(accumulator.entries, 2);
 	assert_eq!(accumulator.used, ByteSize::from_bytes(per_entry * 2));
 
-	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
+	let buffer = keyspace_row(&tier, KeyspaceId::BUFFER);
 	assert_eq!(buffer.entries, 1);
 	assert_eq!(buffer.used, ByteSize::from_bytes(per_entry));
 
@@ -547,10 +547,10 @@ fn keyspace_counters_are_summed_across_every_shard() {
 	let tier = sharded(ByteSize::from_mib(64).as_bytes(), 4);
 
 	for group in 0..64u128 {
-		tier.overwrite(OP_A, key(GroupId(group), Keyspace::SOURCE_WATERMARK, b"a"), row("v"));
+		tier.overwrite(OP_A, key(GroupId(group), KeyspaceId::SOURCE_WATERMARK, b"a"), row("v"));
 	}
 	for group in 0..64u128 {
-		assert!(tier.get(OP_A, &key(GroupId(group), Keyspace::SOURCE_WATERMARK, b"a")).is_some());
+		assert!(tier.get(OP_A, &key(GroupId(group), KeyspaceId::SOURCE_WATERMARK, b"a")).is_some());
 	}
 
 	assert!(
@@ -560,7 +560,7 @@ fn keyspace_counters_are_summed_across_every_shard() {
 
 	let reported = tier.slot_metrics();
 	assert_eq!(reported.len(), 1, "one keyspace spread over four shards must collapse to a single row");
-	assert_eq!(reported[0].slot, Keyspace::SOURCE_WATERMARK);
+	assert_eq!(reported[0].slot, KeyspaceId::SOURCE_WATERMARK);
 	assert_eq!(reported[0].counters.hits, 64);
 	assert_eq!(reported[0].entries, 64);
 }
@@ -573,7 +573,7 @@ fn an_eviction_is_charged_to_the_evicted_entry_keyspace() {
 	let tier = tier(per_entry);
 
 	fill(&tier, OP_A, key(GROUP_A, CACHED, b"a"), sample_row.clone());
-	fill(&tier, OP_A, key(GROUP_A, Keyspace::BUFFER, b"a"), sample_row.clone());
+	fill(&tier, OP_A, key(GROUP_A, KeyspaceId::BUFFER, b"a"), sample_row.clone());
 
 	assert_eq!(tier.evictions(), 1, "the fixture must actually evict, or the attribution below proves nothing");
 
@@ -581,7 +581,7 @@ fn an_eviction_is_charged_to_the_evicted_entry_keyspace() {
 	assert_eq!(accumulator.counters.evictions, 1);
 	assert_eq!(accumulator.entries, 0, "the evicted entry must be gone from its keyspace's resident state");
 
-	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
+	let buffer = keyspace_row(&tier, KeyspaceId::BUFFER);
 	assert_eq!(buffer.counters.evictions, 0, "the survivor must not be charged for the victim's eviction");
 	assert_eq!(buffer.entries, 1);
 }
@@ -590,7 +590,7 @@ fn an_eviction_is_charged_to_the_evicted_entry_keyspace() {
 fn fill_counters_are_charged_to_the_filled_keyspace() {
 	let tier = roomy();
 	let accumulator = key(GROUP_A, CACHED, b"a");
-	let buffer = key(GROUP_A, Keyspace::BUFFER, b"a");
+	let buffer = key(GROUP_A, KeyspaceId::BUFFER, b"a");
 
 	assert!(tier.begin_fill(OP_A, &accumulator));
 	assert!(!tier.begin_fill(OP_A, &accumulator), "a second fill of the same key must be declined as duplicate");
@@ -603,7 +603,7 @@ fn fill_counters_are_charged_to_the_filled_keyspace() {
 	assert_eq!(accumulator.counters.fills_duplicate, 1);
 	assert_eq!(accumulator.counters.fills_dirty_aborted, 1);
 
-	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
+	let buffer = keyspace_row(&tier, KeyspaceId::BUFFER);
 	assert_eq!(buffer.counters.fills_started, 1);
 	assert_eq!(buffer.counters.fills_duplicate, 0, "the duplicate belongs to the keyspace that was refilled");
 	assert_eq!(buffer.counters.fills_dirty_aborted, 0);
@@ -616,11 +616,11 @@ fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 	let tier = roomy();
 	assert!(tier.slot_metrics().is_empty(), "an untouched tier must not surface its 256 empty slots");
 
-	let resident = key(GROUP_A, Keyspace::JOIN_LEFT, b"a");
+	let resident = key(GROUP_A, KeyspaceId::JOIN_LEFT, b"a");
 	let charged = footprint(&resident, &Some(row("v"))) as u64;
 	tier.overwrite(OP_A, resident.clone(), row("v"));
 	assert_eq!(tier.slot_metrics().len(), 1, "the keyspace that was written must be the only one reported");
-	assert_eq!(tier.slot_metrics()[0].slot, Keyspace::JOIN_LEFT);
+	assert_eq!(tier.slot_metrics()[0].slot, KeyspaceId::JOIN_LEFT);
 	assert_eq!(
 		tier.slot_metrics()[0].entries,
 		1,
@@ -640,7 +640,7 @@ fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 #[test]
 fn an_overwrite_publishes_the_row_instead_of_dropping_the_entry() {
 	let tier = roomy();
-	let k = key(GROUP_A, Keyspace::NODE_COUNTER, b"a");
+	let k = key(GROUP_A, KeyspaceId::NODE_COUNTER, b"a");
 
 	tier.overwrite(OP_A, k.clone(), row("v1"));
 	assert_eq!(body(&tier.get(OP_A, &k).expect("an overwritten key must be known")), "v1");
@@ -654,7 +654,7 @@ fn an_overwrite_publishes_the_row_instead_of_dropping_the_entry() {
 #[test]
 fn an_overwrite_dirties_an_in_flight_fill_so_the_stale_row_cannot_publish() {
 	let tier = roomy();
-	let k = key(GROUP_A, Keyspace::NODE_COUNTER, b"a");
+	let k = key(GROUP_A, KeyspaceId::NODE_COUNTER, b"a");
 
 	assert!(tier.begin_fill(OP_A, &k), "the fill must start before the overwrite for this to prove anything");
 	tier.overwrite(OP_A, k.clone(), row("flushed"));
@@ -671,12 +671,12 @@ fn an_overwrite_dirties_an_in_flight_fill_so_the_stale_row_cannot_publish() {
 	assert_eq!(tier.metrics().fills_dirty_aborted, 1);
 }
 
-const EXCLUDED: [Keyspace; 5] = [
-	Keyspace::CUSTOM_NOT_CACHED,
-	Keyspace::JOIN_PIN,
-	Keyspace::ENGINE_META,
-	Keyspace::EXPIRY,
-	Keyspace::TIMER_WHEEL,
+const EXCLUDED: [KeyspaceId; 5] = [
+	KeyspaceId::CUSTOM_NOT_CACHED,
+	KeyspaceId::JOIN_PIN,
+	KeyspaceId::ENGINE_META,
+	KeyspaceId::EXPIRY,
+	KeyspaceId::TIMER_WHEEL,
 ];
 
 #[test]
@@ -836,7 +836,7 @@ fn the_index_stays_consistent_with_the_slab() {
 #[test]
 fn an_excluded_keyspace_read_acquires_no_shard() {
 	let tier = sharded(ByteSize::from_mib(1).as_bytes(), 4);
-	let k = key(GROUP_A, Keyspace::TIMER_WHEEL, b"a");
+	let k = key(GROUP_A, KeyspaceId::TIMER_WHEEL, b"a");
 
 	for _ in 0..32 {
 		assert_eq!(tier.get(OP_A, &k), None);
@@ -853,7 +853,7 @@ fn an_excluded_keyspace_read_acquires_no_shard() {
 		assert_eq!(shard.entries, 0);
 	}
 	assert_eq!(
-		keyspace_row(&tier, Keyspace::TIMER_WHEEL).counters.misses,
+		keyspace_row(&tier, KeyspaceId::TIMER_WHEEL).counters.misses,
 		32,
 		"the miss must still be charged to the keyspace, or the read is invisible"
 	);

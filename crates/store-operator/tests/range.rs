@@ -13,7 +13,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	metrics::scan::ScanCounters,
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
@@ -60,7 +60,7 @@ fn cached_store_with(
 	(store, storage, guard)
 }
 
-fn key_in(keyspace: Keyspace, suffix: u8) -> EncodedKey {
+fn key_in(keyspace: KeyspaceId, suffix: u8) -> EncodedKey {
 	OperatorStateKey::inner_encoded(GROUP, keyspace, [suffix]).as_encoded().clone()
 }
 
@@ -77,14 +77,14 @@ fn bodies(batch: &OperatorBatch) -> Vec<String> {
 }
 
 fn accumulator_range() -> EncodedKeyRange {
-	keyspace_inner_range(GROUP, Keyspace::ACCUMULATOR)
+	keyspace_inner_range(GROUP, KeyspaceId::ACCUMULATOR)
 }
 
 fn seed_accumulator(storage: &SqliteOperatorStorage, count: u8) {
 	for suffix in 1..=count {
 		storage.apply_batch(&[OperatorWrite::Insert {
 			operator: OP_A,
-			key: key_in(Keyspace::ACCUMULATOR, suffix),
+			key: key_in(KeyspaceId::ACCUMULATOR, suffix),
 			post: row(&format!("v{suffix}")),
 		}]);
 	}
@@ -160,7 +160,7 @@ fn a_range_over_a_keyspace_no_scan_proved_falls_through_and_still_answers_in_ful
 	let (store, storage, _guard) = cached_store();
 	seed_accumulator(&storage, 3);
 
-	assert!(store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 2)).is_some(), "the point read warms one key");
+	assert!(store.get(OP_A, &key_in(KeyspaceId::ACCUMULATOR, 2)).is_some(), "the point read warms one key");
 	assert_eq!(
 		range_partitions(&store),
 		0,
@@ -192,8 +192,8 @@ fn a_new_key_and_a_rewrite_together_leave_the_claim_whole_and_current() {
 	assert_eq!(bodies(&primed), ["v1", "v2", "v3"]);
 	assert_eq!(range_partitions(&store), 1, "the claim must start standing or the writes prove nothing");
 
-	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 4), row("v4"));
-	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 1), row("rewritten"));
+	put(&store, OP_A, key_in(KeyspaceId::ACCUMULATOR, 4), row("v4"));
+	put(&store, OP_A, key_in(KeyspaceId::ACCUMULATOR, 1), row("rewritten"));
 	assert!(store.flush_pending_blocking(), "both writes must reach sqlite before the claim is put to the test");
 
 	assert_eq!(
@@ -233,11 +233,11 @@ fn a_range_materialize_that_does_not_fit_its_own_budget_evicts_no_point_entry() 
 	seed_accumulator(&storage, 8);
 	storage.apply_batch(&[OperatorWrite::Insert {
 		operator: OP_A,
-		key: key_in(Keyspace::COUNT, 1),
+		key: key_in(KeyspaceId::COUNT, 1),
 		post: row("pinned"),
 	}]);
 
-	assert!(store.get(OP_A, &key_in(Keyspace::COUNT, 1)).is_some(), "the point read warms an entry of its own");
+	assert!(store.get(OP_A, &key_in(KeyspaceId::COUNT, 1)).is_some(), "the point read warms an entry of its own");
 	let point_used = point_tier(&store).resident_bytes();
 	let point_held = point_entries(&store);
 	assert!(point_used.as_bytes() > 0, "the point budget must be carrying something or eviction is unobservable");
@@ -267,7 +267,7 @@ fn a_range_materialize_that_does_not_fit_its_own_budget_evicts_no_point_entry() 
 	);
 	assert_eq!(
 		body(&store
-			.get(OP_A, &key_in(Keyspace::COUNT, 1))
+			.get(OP_A, &key_in(KeyspaceId::COUNT, 1))
 			.expect("the point entry survives the refused materialize")),
 		"pinned"
 	);
@@ -281,18 +281,18 @@ fn a_range_spanning_two_claimed_keyspaces_is_served_from_the_claims_it_crosses()
 	for suffix in 1..=2u8 {
 		storage.apply_batch(&[OperatorWrite::Insert {
 			operator: OP_A,
-			key: key_in(Keyspace::COUNT, suffix),
+			key: key_in(KeyspaceId::COUNT, suffix),
 			post: row(&format!("c{suffix}")),
 		}]);
 	}
 
 	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
-	assert_eq!(bodies(&store.range_batch(OP_A, keyspace_inner_range(GROUP, Keyspace::COUNT), 64)), ["c1", "c2"]);
+	assert_eq!(bodies(&store.range_batch(OP_A, keyspace_inner_range(GROUP, KeyspaceId::COUNT), 64)), ["c1", "c2"]);
 	assert_eq!(range_partitions(&store), 2, "both keyspaces must be claimed or the span proves nothing");
 
 	let spanning = EncodedKeyRange::new(
-		keyspace_inner_range(GROUP, Keyspace::COUNT).start,
-		keyspace_inner_range(GROUP, Keyspace::ACCUMULATOR).end,
+		keyspace_inner_range(GROUP, KeyspaceId::COUNT).start,
+		keyspace_inner_range(GROUP, KeyspaceId::ACCUMULATOR).end,
 	);
 	let counters = range_tier(&store).metrics();
 	let before = ScanCounters::sample();
@@ -318,7 +318,7 @@ fn a_write_of_a_key_the_claim_never_held_keeps_the_claim_and_still_serves_it() {
 	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
 	assert_eq!(range_partitions(&store), 1, "the claim must start standing or the write proves nothing");
 
-	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 4), row("v4"));
+	put(&store, OP_A, key_in(KeyspaceId::ACCUMULATOR, 4), row("v4"));
 
 	assert_eq!(
 		range_partitions(&store),
@@ -361,7 +361,7 @@ fn a_write_of_a_key_the_claim_holds_updates_it_in_place() {
 	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
 	assert_eq!(range_partitions(&store), 1, "the claim must start standing or the write proves nothing");
 
-	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 2), row("rewritten"));
+	put(&store, OP_A, key_in(KeyspaceId::ACCUMULATOR, 2), row("rewritten"));
 
 	assert_eq!(
 		range_partitions(&store),
@@ -400,7 +400,7 @@ fn a_removal_of_a_key_the_claim_holds_hides_that_key_and_keeps_the_claim() {
 
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator: OP_A,
-		key: key_in(Keyspace::ACCUMULATOR, 2),
+		key: key_in(KeyspaceId::ACCUMULATOR, 2),
 		pre: DurablePre::Present(ByteSize::from_bytes(row("v2").bytes().len() as u64)),
 	}]);
 
@@ -432,7 +432,7 @@ fn a_flushed_removal_demotes_its_row_to_a_proven_absence_and_leaves_the_rest_sta
 
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator: OP_A,
-		key: key_in(Keyspace::ACCUMULATOR, 2),
+		key: key_in(KeyspaceId::ACCUMULATOR, 2),
 		pre: DurablePre::Present(ByteSize::from_bytes(row("v2").bytes().len() as u64)),
 	}]);
 	assert!(store.flush_pending_blocking(), "the tombstone must reach sqlite before the claim is put to the test");
@@ -447,7 +447,7 @@ fn a_flushed_removal_demotes_its_row_to_a_proven_absence_and_leaves_the_rest_sta
 	assert_eq!(bodies(&served), ["v1", "v3"], "the kept claim must not serve the row the flush erased");
 	assert_eq!(scanned.fetched, 0, "the answer must have come from the claim the flushed removal left standing");
 	assert_eq!(
-		store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 2)),
+		store.get(OP_A, &key_in(KeyspaceId::ACCUMULATOR, 2)),
 		None,
 		"and the demoted key must answer a point read as a proven absence, not fall through to sqlite"
 	);
@@ -464,7 +464,7 @@ fn a_removal_of_a_key_the_claim_never_held_keeps_the_claim() {
 
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator: OP_A,
-		key: key_in(Keyspace::ACCUMULATOR, 9),
+		key: key_in(KeyspaceId::ACCUMULATOR, 9),
 		pre: DurablePre::Absent,
 	}]);
 	assert!(store.flush_pending_blocking(), "the tombstone must reach sqlite through the same flush path");
@@ -503,7 +503,7 @@ fn a_written_row_too_big_for_the_range_budget_takes_the_whole_claim_with_it() {
 	assert_eq!(range_partitions(&store), 1, "the small materialize must fit its budget or nothing below is tested");
 
 	let huge = "x".repeat(8192);
-	put(&store, OP_A, key_in(Keyspace::ACCUMULATOR, 4), row(&huge));
+	put(&store, OP_A, key_in(KeyspaceId::ACCUMULATOR, 4), row(&huge));
 	assert_eq!(
 		range_partitions(&store),
 		0,
@@ -532,7 +532,7 @@ fn dropping_one_operators_state_forgets_every_claim_and_row_it_cached() {
 	for suffix in 1..=3u8 {
 		storage.apply_batch(&[OperatorWrite::Insert {
 			operator: OP_B,
-			key: key_in(Keyspace::ACCUMULATOR, suffix),
+			key: key_in(KeyspaceId::ACCUMULATOR, suffix),
 			post: row(&format!("b{suffix}")),
 		}]);
 	}
@@ -559,7 +559,7 @@ fn dropping_one_operators_state_forgets_every_claim_and_row_it_cached() {
 
 	assert!(store.flush_pending_blocking(), "the drop must reach sqlite before the mask stops hiding the tiers");
 	assert_eq!(
-		store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 1)),
+		store.get(OP_A, &key_in(KeyspaceId::ACCUMULATOR, 1)),
 		None,
 		"a claim that outlived the drop answers the point read and resurrects a row sqlite no longer holds"
 	);
@@ -581,14 +581,14 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_still_materializes_th
 	// decline as "the tier is full" starves the rest of the scan, and the starved keyspaces re-read
 	// sqlite on every pass forever.
 	let (store, storage, _guard) = cached_store();
-	let uncached = Keyspace::CUSTOM_NOT_CACHED;
-	let cached = Keyspace::CUSTOM_CACHED_BELOW;
+	let uncached = KeyspaceId::CUSTOM_NOT_CACHED;
+	let cached = KeyspaceId::CUSTOM_CACHED_BELOW;
 	assert!(
-		!uncached.cache_policy().caches_ranges(),
+		!uncached.cache_tiers().caches_ranges(),
 		"the fixture needs a keyspace the range tier keeps out and the scan crosses first"
 	);
 	assert!(
-		cached.cache_policy().caches_ranges(),
+		cached.cache_tiers().caches_ranges(),
 		"the fixture needs a keyspace the range tier admits and the scan reaches second"
 	);
 	assert_eq!(cached.0 + 1, uncached.0, "the two keyspaces must be adjacent, or the scan never orders them");

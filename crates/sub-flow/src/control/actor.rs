@@ -735,7 +735,7 @@ mod pull_protocol {
 		key::{
 			Key,
 			kind::KeyKind,
-			operator_state::{Keyspace, OperatorStateKey},
+			operator_state::{KeyspaceId, OperatorStateKey},
 		},
 	};
 	use reifydb_flow::{
@@ -1775,7 +1775,7 @@ mod pull_protocol {
 					.into_iter()
 					.filter(|(key, _)| {
 						OperatorStateKey::decode_inner(key.as_slice())
-							.is_some_and(|(_, ks, _)| ks == Keyspace::RINGBUFFER_META)
+							.is_some_and(|(_, ks, _)| ks == KeyspaceId::RINGBUFFER_META)
 					})
 					.map(|(_, row)| {
 						decode_ringbuffer_metadata(&EncodedPodRow::new(row.body()))

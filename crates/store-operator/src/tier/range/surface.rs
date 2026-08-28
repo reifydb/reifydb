@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, group_inner_range, keyspace_inner_range},
 };
 use reifydb_store::{
 	coverage::{
@@ -43,7 +43,7 @@ fn roomy() -> OperatorRangeTier {
 	tier(ByteSize::from_mib(1).as_bytes())
 }
 
-fn key(group: GroupId, keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
+fn key(group: GroupId, keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
 	OperatorStateKey::inner_encoded(group, keyspace, suffix).into_encoded()
 }
 
@@ -59,7 +59,7 @@ fn materialize(
 	tier: &OperatorRangeTier,
 	operator: OperatorId,
 	group: GroupId,
-	keyspace: Keyspace,
+	keyspace: KeyspaceId,
 	page: &[(EncodedKey, EncodedPodRow)],
 ) -> PartitionId {
 	let range = keyspace_inner_range(group, keyspace);
@@ -86,7 +86,12 @@ fn first_gap(scan: &RangeScan) -> Option<Interval> {
 	})
 }
 
-fn one_row_partition(tier: &OperatorRangeTier, operator: OperatorId, group: GroupId, keyspace: Keyspace) -> EncodedKey {
+fn one_row_partition(
+	tier: &OperatorRangeTier,
+	operator: OperatorId,
+	group: GroupId,
+	keyspace: KeyspaceId,
+) -> EncodedKey {
 	let k = key(group, keyspace, b"a");
 	materialize(tier, operator, group, keyspace, &[(k.clone(), row("v"))]);
 	k
@@ -131,14 +136,14 @@ fn serve_ram(
 #[test]
 fn a_covered_span_answers_a_range_and_an_uncovered_one_falls_through() {
 	let tier = roomy();
-	let range = keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR);
+	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
 
 	assert!(serve_ram(&tier, OP_A, &range, 64).is_none(), "nothing is covered yet, so the read must fall through");
 	assert_eq!(tier.metrics().misses, 1);
 
-	let a = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
-	let b = key(GROUP_A, Keyspace::ACCUMULATOR, b"b");
-	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(a.clone(), row("v1")), (b.clone(), row("v2"))]);
+	let a = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
+	let b = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"b");
+	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[(a.clone(), row("v1")), (b.clone(), row("v2"))]);
 
 	let served = serve_ram(&tier, OP_A, &range, 64).expect("a covered span must answer its own range");
 	assert_eq!(
@@ -160,12 +165,12 @@ fn a_covered_span_answers_a_range_and_an_uncovered_one_falls_through() {
 fn a_range_serves_only_the_slice_it_was_asked_for() {
 	let tier = roomy();
 	let keys: Vec<EncodedKey> =
-		[b"a", b"b", b"c", b"d"].iter().map(|s| key(GROUP_A, Keyspace::ACCUMULATOR, *s)).collect();
+		[b"a", b"b", b"c", b"d"].iter().map(|s| key(GROUP_A, KeyspaceId::ACCUMULATOR, *s)).collect();
 	let page: Vec<(EncodedKey, EncodedPodRow)> =
 		keys.iter().enumerate().map(|(index, k)| (k.clone(), row(&format!("v{index}")))).collect();
-	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &page);
+	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &page);
 
-	let limited = serve_ram(&tier, OP_A, &keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR), 2)
+	let limited = serve_ram(&tier, OP_A, &keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR), 2)
 		.expect("the covered span must answer");
 	assert_eq!(
 		bodies(&limited),
@@ -195,7 +200,7 @@ fn a_range_serves_only_the_slice_it_was_asked_for() {
 #[test]
 fn a_lookup_of_a_key_the_claim_holds_serves_the_row() {
 	let tier = roomy();
-	let k = one_row_partition(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR);
+	let k = one_row_partition(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR);
 
 	assert_eq!(tier.lookup(OP_A, &k), Some(Some(row("v"))), "the claim must hand back the row it holds");
 	assert_eq!(tier.metrics().point_hits, 1);
@@ -205,8 +210,8 @@ fn a_lookup_of_a_key_the_claim_holds_serves_the_row() {
 #[test]
 fn a_lookup_of_a_key_inside_a_claim_that_holds_no_row_is_a_definitive_absence() {
 	let tier = roomy();
-	let held = one_row_partition(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR);
-	let absent = key(GROUP_A, Keyspace::ACCUMULATOR, b"zzz");
+	let held = one_row_partition(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR);
+	let absent = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"zzz");
 	assert_ne!(held, absent);
 
 	assert_eq!(
@@ -218,7 +223,7 @@ fn a_lookup_of_a_key_inside_a_claim_that_holds_no_row_is_a_definitive_absence() 
 	assert_eq!(tier.metrics().point_hits, 1, "a definitive absence is answered work, not a fall-through");
 	assert_eq!(tier.metrics().point_misses, 0);
 
-	let uncovered = key(GROUP_B, Keyspace::ACCUMULATOR, b"a");
+	let uncovered = key(GROUP_B, KeyspaceId::ACCUMULATOR, b"a");
 	assert_eq!(
 		tier.lookup(OP_A, &uncovered),
 		None,
@@ -230,14 +235,14 @@ fn a_lookup_of_a_key_inside_a_claim_that_holds_no_row_is_a_definitive_absence() 
 #[test]
 fn a_lookup_with_nothing_covered_falls_through_and_charges_a_point_miss() {
 	let tier = roomy();
-	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let k = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
 
 	assert_eq!(tier.lookup(OP_A, &k), None, "an empty tier must never answer absent for a key the store may hold");
 	assert_eq!(tier.metrics().point_misses, 1);
 	assert_eq!(tier.metrics().point_hits, 0);
 	assert_eq!(tier.metrics().misses, 0, "a point read must not be charged to the range counters");
 
-	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v"))]);
+	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[(k.clone(), row("v"))]);
 	assert!(tier.lookup(OP_A, &k).is_some(), "the control: the same key answers once a scan covered it");
 	assert_eq!(tier.metrics().point_misses, 1, "the materialize must not retroactively change the earlier miss");
 }
@@ -245,7 +250,7 @@ fn a_lookup_with_nothing_covered_falls_through_and_charges_a_point_miss() {
 #[test]
 fn an_overwrite_never_creates_a_claim() {
 	let tier = roomy();
-	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
+	let k = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
 
 	tier.overwrite(OP_A, k.clone(), row("v"));
 
@@ -255,7 +260,7 @@ fn an_overwrite_never_creates_a_claim() {
 	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "a write that cached nothing must be charged nothing");
 	assert_eq!(tier.lookup(OP_A, &k), None, "and the key must stay unknown rather than become a false claim");
 
-	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[]);
+	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[]);
 	tier.overwrite(OP_A, k.clone(), row("v"));
 	assert_eq!(
 		tier.lookup(OP_A, &k),
@@ -267,14 +272,14 @@ fn an_overwrite_never_creates_a_claim() {
 #[test]
 fn a_materialize_keeps_a_row_already_resident_rather_than_replacing_it() {
 	let tier = roomy();
-	let k = key(GROUP_A, Keyspace::ACCUMULATOR, b"a");
-	materialize(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR, &[(k.clone(), row("v1"))]);
+	let k = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
+	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[(k.clone(), row("v1"))]);
 
-	let range = keyspace_inner_range(GROUP_B, Keyspace::ACCUMULATOR);
+	let range = keyspace_inner_range(GROUP_B, KeyspaceId::ACCUMULATOR);
 	let scan = tier.plan_scan(OP_A, &range).expect("an uncovered keyspace must be plannable");
 	tier.overwrite(OP_A, k.clone(), row("v2"));
 	let gap = first_gap(&scan).expect("the uncovered keyspace must plan as a gap");
-	tier.materialize(&scan, &gap, &[(key(GROUP_B, Keyspace::ACCUMULATOR, b"a"), row("other"))]);
+	tier.materialize(&scan, &gap, &[(key(GROUP_B, KeyspaceId::ACCUMULATOR, b"a"), row("other"))]);
 
 	assert_eq!(
 		tier.lookup(OP_A, &k),
@@ -308,12 +313,12 @@ fn a_key_too_short_to_carry_a_keyspace_is_declined_not_cached() {
 	);
 	assert_eq!(tier.metrics().point_hits, 0);
 
-	let shortest_valid = key(GROUP_A, Keyspace::ACCUMULATOR, b"");
+	let shortest_valid = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"");
 	assert_eq!(shortest_valid.len(), 17, "group plus keyspace with an empty suffix is the shortest valid key");
 	assert!(PartitionId::of(OP_A, &shortest_valid).is_some(), "the shortest valid key must not be declined");
 }
 
-const EXCLUDED: [Keyspace; 1] = [Keyspace::CUSTOM_NOT_CACHED];
+const EXCLUDED: [KeyspaceId; 1] = [KeyspaceId::CUSTOM_NOT_CACHED];
 
 #[test]
 fn no_admission_path_lets_an_excluded_keyspace_into_the_tier() {
@@ -346,7 +351,7 @@ fn no_admission_path_lets_an_excluded_keyspace_into_the_tier() {
 	assert_eq!(tier.resident_bytes(), ByteSize::ZERO);
 
 	assert!(
-		tier.plan_scan(OP_A, &keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR)).is_some(),
+		tier.plan_scan(OP_A, &keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR)).is_some(),
 		"the control: a gate that refused every keyspace would pass the assertions above while turning the \
          whole tier into an off switch, and that only shows up as a throughput loss in a replay"
 	);
@@ -384,7 +389,7 @@ fn a_tier_without_a_byte_budget_is_not_constructed() {
 	assert_eq!(OperatorRangeConfig::testing().gap_guard, DEFAULT_GAP_GUARD);
 }
 
-fn keyspace_row(tier: &OperatorRangeTier, keyspace: Keyspace) -> OperatorRangeKeyspaceMetrics {
+fn keyspace_row(tier: &OperatorRangeTier, keyspace: KeyspaceId) -> OperatorRangeKeyspaceMetrics {
 	tier.slot_metrics()
 		.into_iter()
 		.find(|row| row.slot == keyspace)
@@ -394,11 +399,11 @@ fn keyspace_row(tier: &OperatorRangeTier, keyspace: Keyspace) -> OperatorRangeKe
 #[test]
 fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	let tier = roomy();
-	let accumulator_range = keyspace_inner_range(GROUP_A, Keyspace::ACCUMULATOR);
-	let buffer_range = keyspace_inner_range(GROUP_A, Keyspace::BUFFER);
+	let accumulator_range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
+	let buffer_range = keyspace_inner_range(GROUP_A, KeyspaceId::BUFFER);
 
 	assert!(serve_ram(&tier, OP_A, &accumulator_range, 64).is_none());
-	one_row_partition(&tier, OP_A, GROUP_A, Keyspace::ACCUMULATOR);
+	one_row_partition(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR);
 	assert!(serve_ram(&tier, OP_A, &accumulator_range, 64).is_some());
 	assert!(serve_ram(&tier, OP_A, &buffer_range, 64).is_none());
 
@@ -409,7 +414,7 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
          surface as 256 rows of zeros"
 	);
 
-	let accumulator = keyspace_row(&tier, Keyspace::ACCUMULATOR);
+	let accumulator = keyspace_row(&tier, KeyspaceId::ACCUMULATOR);
 	assert_eq!(accumulator.counters.hits, 1);
 	assert_eq!(
 		accumulator.counters.misses, 2,
@@ -419,7 +424,7 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	assert_eq!(accumulator.partitions, 1);
 	assert_eq!(accumulator.entries, 1);
 
-	let buffer = keyspace_row(&tier, Keyspace::BUFFER);
+	let buffer = keyspace_row(&tier, KeyspaceId::BUFFER);
 	assert_eq!(buffer.counters.hits, 0, "a miss in one keyspace must not borrow the other keyspace's hit");
 	assert_eq!(buffer.counters.misses, 1);
 	assert_eq!(
@@ -438,18 +443,18 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 #[test]
 fn point_counters_are_charged_to_the_keyspace_that_was_looked_up() {
 	let tier = roomy();
-	let known = one_row_partition(&tier, OP_A, GROUP_A, Keyspace::EMIT);
-	let unknown = key(GROUP_A, Keyspace::JOIN_LEFT, b"a");
+	let known = one_row_partition(&tier, OP_A, GROUP_A, KeyspaceId::EMIT);
+	let unknown = key(GROUP_A, KeyspaceId::JOIN_LEFT, b"a");
 
 	assert_eq!(tier.lookup(OP_A, &known), Some(Some(row("v"))));
-	assert_eq!(tier.lookup(OP_A, &key(GROUP_A, Keyspace::EMIT, b"zzz")), Some(None));
+	assert_eq!(tier.lookup(OP_A, &key(GROUP_A, KeyspaceId::EMIT, b"zzz")), Some(None));
 	assert_eq!(tier.lookup(OP_A, &unknown), None);
 
-	assert_eq!(keyspace_row(&tier, Keyspace::EMIT).counters.point_hits, 2);
-	assert_eq!(keyspace_row(&tier, Keyspace::EMIT).counters.point_misses, 0);
-	assert_eq!(keyspace_row(&tier, Keyspace::JOIN_LEFT).counters.point_misses, 1);
-	assert_eq!(keyspace_row(&tier, Keyspace::JOIN_LEFT).counters.point_hits, 0);
-	assert_eq!(keyspace_row(&tier, Keyspace::EMIT).counters.hits, 0, "a point read is not a range hit");
+	assert_eq!(keyspace_row(&tier, KeyspaceId::EMIT).counters.point_hits, 2);
+	assert_eq!(keyspace_row(&tier, KeyspaceId::EMIT).counters.point_misses, 0);
+	assert_eq!(keyspace_row(&tier, KeyspaceId::JOIN_LEFT).counters.point_misses, 1);
+	assert_eq!(keyspace_row(&tier, KeyspaceId::JOIN_LEFT).counters.point_hits, 0);
+	assert_eq!(keyspace_row(&tier, KeyspaceId::EMIT).counters.hits, 0, "a point read is not a range hit");
 }
 
 #[test]
@@ -462,11 +467,16 @@ fn keyspace_counters_are_summed_across_every_shard() {
 	.expect("a sharded tier must be constructed");
 
 	for group in 0..64u128 {
-		one_row_partition(&tier, OP_A, GroupId(group), Keyspace::SOURCE_WATERMARK);
+		one_row_partition(&tier, OP_A, GroupId(group), KeyspaceId::SOURCE_WATERMARK);
 	}
 	for group in 0..64u128 {
-		assert!(serve_ram(&tier, OP_A, &keyspace_inner_range(GroupId(group), Keyspace::SOURCE_WATERMARK), 64)
-			.is_some());
+		assert!(serve_ram(
+			&tier,
+			OP_A,
+			&keyspace_inner_range(GroupId(group), KeyspaceId::SOURCE_WATERMARK),
+			64
+		)
+		.is_some());
 	}
 
 	assert!(
@@ -476,7 +486,7 @@ fn keyspace_counters_are_summed_across_every_shard() {
 
 	let reported = tier.slot_metrics();
 	assert_eq!(reported.len(), 1, "one keyspace spread over four shards must collapse to a single row");
-	assert_eq!(reported[0].slot, Keyspace::SOURCE_WATERMARK);
+	assert_eq!(reported[0].slot, KeyspaceId::SOURCE_WATERMARK);
 	assert_eq!(reported[0].counters.hits, 64);
 	assert_eq!(reported[0].counters.materializes, 64);
 	assert_eq!(reported[0].partitions, 64);
@@ -488,9 +498,9 @@ fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 	let tier = roomy();
 	assert!(tier.slot_metrics().is_empty());
 
-	let resident = one_row_partition(&tier, OP_A, GROUP_A, Keyspace::JOIN_LEFT);
+	let resident = one_row_partition(&tier, OP_A, GROUP_A, KeyspaceId::JOIN_LEFT);
 	assert_eq!(tier.slot_metrics().len(), 1, "resident state alone must be enough to report a keyspace");
-	assert_eq!(tier.slot_metrics()[0].slot, Keyspace::JOIN_LEFT);
+	assert_eq!(tier.slot_metrics()[0].slot, KeyspaceId::JOIN_LEFT);
 
 	assert!(tier.lookup(OP_A, &resident).is_some());
 	tier.invalidate_operator(OP_A);

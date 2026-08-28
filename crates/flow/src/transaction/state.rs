@@ -17,7 +17,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey, node_prefix},
+	key::operator_state::{GroupStateKey, KeyspaceId, OperatorStateKey, node_prefix},
 	metrics::scan::ScanCounters,
 };
 use reifydb_store_operator::{store::OperatorStore, types::ANCHOR_VALUE_BYTES};
@@ -297,7 +297,7 @@ fn classify_state_write<T: FlowTransaction>(
 	key: &GroupStateKey,
 	scoped: &EncodedKey,
 ) -> Result<()> {
-	if key.keyspace() == Some(Keyspace::SEAL_ANCHOR) {
+	if key.keyspace() == Some(KeyspaceId::SEAL_ANCHOR) {
 		return classify_durable_anchor(txn, id, key, scoped);
 	}
 	Ok(())

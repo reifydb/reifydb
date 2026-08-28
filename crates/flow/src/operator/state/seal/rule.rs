@@ -48,11 +48,11 @@ impl SealedThrough {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SealPolicy {
+pub struct SealRule {
 	admissible: AdmissibleSpan,
 }
 
-impl SealPolicy {
+impl SealRule {
 	pub fn tumbling(size: Duration, lateness: Duration) -> Self {
 		Self::extended_by_seal(size, lateness)
 	}
@@ -111,11 +111,11 @@ pub fn is_sealed<C: Coord>(anchor: C, horizon: C) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EvictionPolicy {
+pub struct EvictionRule {
 	span: Duration,
 }
 
-impl EvictionPolicy {
+impl EvictionRule {
 	pub fn rolling(span: Duration) -> Self {
 		Self {
 			span,
@@ -146,10 +146,10 @@ mod tests {
 		// The wheel fires inclusively (`at <= watermark`) but the seal gate is strict - a window
 		// closes once the watermark has passed its whole admissible span, not on reaching it. The +1
 		// is what converts one into the other.
-		let policy = SealPolicy::tumbling(ms(1_000), ms(200));
+		let rule = SealRule::tumbling(ms(1_000), ms(200));
 
-		assert_eq!(policy.admissible().duration(), ms(1_200));
-		assert_eq!(policy.seal_instant(at_millis(5_000)).at(), at_millis(6_201));
+		assert_eq!(rule.admissible().duration(), ms(1_200));
+		assert_eq!(rule.seal_instant(at_millis(5_000)).at(), at_millis(6_201));
 	}
 
 	#[test]
@@ -157,15 +157,15 @@ mod tests {
 		// The ledger holds the instant a seal timer fired, a whole admissible span ahead of the
 		// newest window that timer actually sealed. Treating the ledger itself as the immutable
 		// frontier erases the accumulator of a window that is still open and still taking rows.
-		let policy = SealPolicy::tumbling(ms(30_000), ms(45_000));
+		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 		let ledger = at_millis(358_262);
 
-		let anchor = policy.sealed_anchor(ledger).expect("the ledger is past one admissible span");
+		let anchor = rule.sealed_anchor(ledger).expect("the ledger is past one admissible span");
 
 		assert_eq!(anchor, at_millis(283_261), "ledger - (size + lateness) - 1");
 		assert!(anchor < ledger, "a frontier at or past the ledger reclaims windows that have not sealed");
 		assert_eq!(
-			policy.seal_instant(anchor).at(),
+			rule.seal_instant(anchor).at(),
 			ledger,
 			"and it is the exact inverse of arming, so a window anchored here sealed at precisely \
 			 this ledger rather than one millisecond either side of it"
@@ -176,11 +176,11 @@ mod tests {
 	fn a_ledger_short_of_one_admissible_span_has_sealed_nothing() {
 		// Early in a operator's life the ledger sits below its own span. Wrapping through u64 would put
 		// the anchor near u64::MAX and report every window sealed, reclaiming the operator in one sweep.
-		let policy = SealPolicy::tumbling(ms(30_000), ms(45_000));
+		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 
-		assert_eq!(policy.sealed_anchor(at_millis(0)), None);
-		assert_eq!(policy.sealed_anchor(at_millis(75_000)), None, "the anchor would be 0 - 1, not 0");
-		assert_eq!(policy.sealed_anchor(at_millis(75_001)), Some(at_millis(0)));
+		assert_eq!(rule.sealed_anchor(at_millis(0)), None);
+		assert_eq!(rule.sealed_anchor(at_millis(75_000)), None, "the anchor would be 0 - 1, not 0");
+		assert_eq!(rule.sealed_anchor(at_millis(75_001)), Some(at_millis(0)));
 	}
 
 	#[test]
@@ -188,8 +188,8 @@ mod tests {
 		// Rolling admits a late event inside the lateness but evicts on the bare span, which is why
 		// SealInstant and EvictionInstant are separate types. An eviction that also waited out the
 		// lateness keeps every rolling window one lateness-period too wide, inflating every aggregate.
-		let admission = SealPolicy::rolling(ms(1_000), ms(200));
-		let eviction = EvictionPolicy::rolling(ms(1_000));
+		let admission = SealRule::rolling(ms(1_000), ms(200));
+		let eviction = EvictionRule::rolling(ms(1_000));
 
 		assert_eq!(admission.seal_instant(at_millis(5_000)).at(), at_millis(6_201));
 		assert_eq!(eviction.eviction_instant(at_millis(5_000)).at(), at_millis(6_000));
@@ -199,7 +199,7 @@ mod tests {
 	fn an_eviction_instant_never_carries_the_strict_gate_plus_one() {
 		// The +1 belongs to the seal gate alone. Eviction is a retention boundary, not a gate, so
 		// carrying the +1 there retains one millisecond too much on every rolling window, forever.
-		let eviction = EvictionPolicy::rolling(ms(0));
+		let eviction = EvictionRule::rolling(ms(0));
 
 		assert_eq!(eviction.eviction_instant(at_millis(7_000)).at(), at_millis(7_000));
 	}
@@ -208,10 +208,10 @@ mod tests {
 	fn every_kind_admits_its_own_base_span_plus_lateness() {
 		// Tumbling and sliding admit size + lateness, session admits gap + lateness, rolling
 		// admits span + lateness. A divergence here is a behaviour change, not a refactor.
-		assert_eq!(SealPolicy::tumbling(ms(1_000), ms(50)).admissible().duration(), ms(1_050));
-		assert_eq!(SealPolicy::sliding(ms(1_000), ms(50)).admissible().duration(), ms(1_050));
-		assert_eq!(SealPolicy::session(ms(300), ms(50)).admissible().duration(), ms(350));
-		assert_eq!(SealPolicy::rolling(ms(2_000), ms(50)).admissible().duration(), ms(2_050));
+		assert_eq!(SealRule::tumbling(ms(1_000), ms(50)).admissible().duration(), ms(1_050));
+		assert_eq!(SealRule::sliding(ms(1_000), ms(50)).admissible().duration(), ms(1_050));
+		assert_eq!(SealRule::session(ms(300), ms(50)).admissible().duration(), ms(350));
+		assert_eq!(SealRule::rolling(ms(2_000), ms(50)).admissible().duration(), ms(2_050));
 	}
 
 	#[test]
@@ -222,11 +222,11 @@ mod tests {
 		let enormous = Duration::from_nanoseconds_const(i64::MAX);
 
 		for lateness in [ms(0), ms(1), enormous] {
-			let policy = SealPolicy::tumbling(ms(1_000), lateness);
+			let rule = SealRule::tumbling(ms(1_000), lateness);
 			assert!(
-				policy.admissible().duration() >= ms(1_000),
+				rule.admissible().duration() >= ms(1_000),
 				"admissible {:?} fell below the 1000ms window for lateness {lateness:?}",
-				policy.admissible().duration()
+				rule.admissible().duration()
 			);
 		}
 	}

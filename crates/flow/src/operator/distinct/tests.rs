@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -87,7 +87,7 @@ fn persisted_rows(op: &DistinctOperator, txn: &mut DeferredTransaction) -> BTree
 	let batch = txn.state_range(op.plan.operator, StateRange::forward(EncodedKeyRange::all(), "test")).unwrap();
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
-		if decoded.keyspace == Keyspace::DISTINCT_ENTRY {
+		if decoded.keyspace == KeyspaceId::DISTINCT_ENTRY {
 			out.insert(decoded.inner().as_bytes().to_vec(), item.bytes.to_vec());
 		}
 	}
@@ -108,7 +108,7 @@ fn entry_groups(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Vec<Gro
 	let batch = txn.state_range(op.plan.operator, StateRange::forward(EncodedKeyRange::all(), "test")).unwrap();
 	for item in batch.items {
 		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
-		if decoded.keyspace == Keyspace::DISTINCT_ENTRY {
+		if decoded.keyspace == KeyspaceId::DISTINCT_ENTRY {
 			out.push(decoded.group);
 		}
 	}

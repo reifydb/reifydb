@@ -7,7 +7,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::{
-		GroupId, GroupStateKey, Keyspace, OperatorStateKey, group_data_inner_range, group_inner_range,
+		GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, group_data_inner_range, group_inner_range,
 		keyspace_inner_range,
 	},
 	state::timer::StateStore,
@@ -38,7 +38,7 @@ impl Reaper for StoreReaper {
 }
 
 pub fn queue_key(group: GroupId) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::REAP_QUEUE, encode_u128(group.0))
+	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::REAP_QUEUE, encode_u128(group.0))
 }
 
 pub fn enqueue(store: &mut dyn StateStore, group: GroupId) -> Result<()> {
@@ -66,7 +66,7 @@ pub fn queued(store: &mut dyn StateStore, limit: usize) -> Result<Queued> {
 	let mut groups: Vec<GroupId> = Vec::new();
 	let mut more = false;
 	store.state_range_visit(
-		keyspace_inner_range(GroupId::ROOT, Keyspace::REAP_QUEUE),
+		keyspace_inner_range(GroupId::ROOT, KeyspaceId::REAP_QUEUE),
 		Some(limit.saturating_add(1)),
 		&mut |key, _| {
 			if let Some((_, _, suffix)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())

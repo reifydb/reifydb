@@ -20,7 +20,7 @@ use crate::{
 			coord::Coord,
 			gate::SealGate,
 			ledger::FiredAt,
-			policy::{SealPolicy, SealedThrough},
+			rule::{SealRule, SealedThrough},
 		},
 	},
 	window::{
@@ -51,8 +51,8 @@ impl WindowOperator {
 		SessionKind::with_gap(self.session_gap())
 	}
 
-	pub(super) fn session_policy(&self) -> SealPolicy {
-		self.session_kind().seal_policy(self.lateness().unwrap_or_else(Duration::zero))
+	pub(super) fn session_rule(&self) -> SealRule {
+		self.session_kind().seal_rule(self.lateness().unwrap_or_else(Duration::zero))
 	}
 
 	pub(super) fn load_session_tracker(
@@ -169,9 +169,9 @@ impl WindowOperator {
 		self.meta_slot().advance_seal_ledger(host, fired.at().to_order())
 	}
 
-	pub(super) fn seal_gate(&mut self, host: &mut dyn HostContext, policy: SealPolicy) -> Result<SealGate> {
+	pub(super) fn seal_gate(&mut self, host: &mut dyn HostContext, rule: SealRule) -> Result<SealGate> {
 		let watermark = host.flow_watermark()?;
 		let ledger = self.seal_ledger(host)?;
-		Ok(SealGate::new(policy, Some(ledger), watermark))
+		Ok(SealGate::new(rule, Some(ledger), watermark))
 	}
 }

@@ -6,7 +6,7 @@ use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use crate::{
 	operator::state::seal::{
 		coord::Coord,
-		policy::{EvictionPolicy, SealPolicy},
+		rule::{EvictionRule, SealRule},
 	},
 	window::coord::RowSpan,
 };
@@ -28,12 +28,12 @@ impl RollingOverTime {
 		self.size.try_add(self.lag).unwrap_or(self.lag)
 	}
 
-	pub fn seal_policy(&self, lateness: Duration) -> SealPolicy {
-		SealPolicy::rolling(self.span(), lateness)
+	pub fn seal_rule(&self, lateness: Duration) -> SealRule {
+		SealRule::rolling(self.span(), lateness)
 	}
 
-	pub fn eviction_policy(&self) -> EvictionPolicy {
-		EvictionPolicy::rolling(self.span())
+	pub fn eviction_rule(&self) -> EvictionRule {
+		EvictionRule::rolling(self.span())
 	}
 
 	pub fn eviction_cutoff(&self, ledger: DateTime) -> Option<DateTime> {
@@ -41,7 +41,7 @@ impl RollingOverTime {
 	}
 
 	pub fn seal_horizon(&self, ledger: DateTime, lateness: Duration) -> DateTime {
-		ledger.saturating_sub_span(self.seal_policy(lateness).admissible().duration())
+		ledger.saturating_sub_span(self.seal_rule(lateness).admissible().duration())
 	}
 }
 

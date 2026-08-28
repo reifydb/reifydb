@@ -14,7 +14,7 @@ use reifydb_value::{
 
 use crate::function::{
 	math::arith::dispatch::{ensure_arity, ensure_numeric},
-	support::coerce::{CoercePolicy, all_rows_none, coerce_column, promote_all},
+	support::coerce::{CoerceMode, all_rows_none, coerce_column, promote_all},
 };
 
 pub struct Clamp {
@@ -78,9 +78,9 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 				actual: ValueType::Any,
 			});
 		}
-		let v_cast = coerce_column(ctx, &args[0], promoted.clone(), CoercePolicy::Error)?;
-		let lo_cast = coerce_column(ctx, &args[1], promoted.clone(), CoercePolicy::Error)?;
-		let hi_cast = coerce_column(ctx, &args[2], promoted.clone(), CoercePolicy::Error)?;
+		let v_cast = coerce_column(ctx, &args[0], promoted.clone(), CoerceMode::Error)?;
+		let lo_cast = coerce_column(ctx, &args[1], promoted.clone(), CoerceMode::Error)?;
+		let hi_cast = coerce_column(ctx, &args[2], promoted.clone(), CoerceMode::Error)?;
 
 		let (v_inner, v_bv) = v_cast.unwrap_option();
 		let (lo_inner, lo_bv) = lo_cast.unwrap_option();

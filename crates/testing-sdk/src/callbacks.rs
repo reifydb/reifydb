@@ -53,7 +53,12 @@ unsafe fn get_test_context(ctx: *mut ExternCContextRaw) -> &'static TestContext 
 	}
 }
 
-fn test_state_envelope(operator_id: u64, group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> EncodedKey {
+fn test_state_envelope(
+	operator_id: u64,
+	group: GroupId,
+	keyspace: KeyspaceId,
+	suffix: impl Into<Vec<u8>>,
+) -> EncodedKey {
 	OperatorStateKey::encoded(OperatorId(operator_id), group, keyspace, suffix.into())
 }
 
@@ -405,7 +410,7 @@ use std::{ops::Bound, ptr};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, group_identity_inner_range, node_prefix},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, group_identity_inner_range, node_prefix},
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
@@ -658,7 +663,7 @@ extern "C" fn test_get_or_create_row_numbers(
 		let counter_key = test_state_envelope(
 			operator_id,
 			GroupId::ROOT,
-			Keyspace::NODE_COUNTER,
+			KeyspaceId::NODE_COUNTER,
 			b"__row_number_alloc__".to_vec(),
 		);
 		let key_refs = if keys_len == 0 {
@@ -675,7 +680,7 @@ extern "C" fn test_get_or_create_row_numbers(
 			let map_key = test_state_envelope(
 				operator_id,
 				GroupId(group),
-				Keyspace::ROW_NUMBER_MAPPING,
+				KeyspaceId::ROW_NUMBER_MAPPING,
 				key_bytes.to_vec(),
 			);
 			match test_ctx.get_state(&map_key) {
@@ -723,7 +728,7 @@ extern "C" fn test_get_or_create_row_numbers_for_pairs(
 		let counter_key = test_state_envelope(
 			operator_id,
 			GroupId::ROOT,
-			Keyspace::NODE_COUNTER,
+			KeyspaceId::NODE_COUNTER,
 			b"__row_number_alloc__".to_vec(),
 		);
 		let key_refs = if pairs_len == 0 {
@@ -740,7 +745,7 @@ extern "C" fn test_get_or_create_row_numbers_for_pairs(
 			let map_key = test_state_envelope(
 				operator_id,
 				GroupId(*groups.add(i)),
-				Keyspace::ROW_NUMBER_MAPPING,
+				KeyspaceId::ROW_NUMBER_MAPPING,
 				key_bytes.to_vec(),
 			);
 			match test_ctx.get_state(&map_key) {
@@ -787,7 +792,7 @@ extern "C" fn test_remove_row_number(
 		let map_key = test_state_envelope(
 			operator_id,
 			GroupId(group),
-			Keyspace::ROW_NUMBER_MAPPING,
+			KeyspaceId::ROW_NUMBER_MAPPING,
 			key_bytes.to_vec(),
 		);
 		test_ctx.remove_state(&map_key);
@@ -819,7 +824,7 @@ extern "C" fn test_remove_row_numbers_below(
 		let boundary = test_state_envelope(
 			operator_id,
 			GroupId(group),
-			Keyspace::ROW_NUMBER_MAPPING,
+			KeyspaceId::ROW_NUMBER_MAPPING,
 			upper_bytes.to_vec(),
 		)
 		.as_slice()
@@ -827,7 +832,7 @@ extern "C" fn test_remove_row_numbers_below(
 		let prefix = test_state_envelope(
 			operator_id,
 			GroupId(group),
-			Keyspace::ROW_NUMBER_MAPPING,
+			KeyspaceId::ROW_NUMBER_MAPPING,
 			Vec::<u8>::new(),
 		)
 		.as_slice()

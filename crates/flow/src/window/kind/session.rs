@@ -3,7 +3,7 @@
 
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
-use crate::{operator::state::seal::policy::SealPolicy, window::coord::EventCoord};
+use crate::{operator::state::seal::rule::SealRule, window::coord::EventCoord};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SessionTracker {
@@ -86,8 +86,8 @@ impl SessionKind {
 		}
 	}
 
-	pub fn seal_policy(&self, lateness: Duration) -> SealPolicy {
-		SealPolicy::session(self.gap, lateness)
+	pub fn seal_rule(&self, lateness: Duration) -> SealRule {
+		SealRule::session(self.gap, lateness)
 	}
 
 	pub fn assign(&self, tracker: &mut SessionTracker, coord: EventCoord) -> SessionAssignment {

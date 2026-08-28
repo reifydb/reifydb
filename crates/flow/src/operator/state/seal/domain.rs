@@ -10,7 +10,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::operator::state::seal::{coord::Coord, ledger::SealLedger, policy::SEAL_GATE_STEP};
+use crate::operator::state::seal::{coord::Coord, ledger::SealLedger, rule::SEAL_GATE_STEP};
 
 pub trait SealDomain: Coord {
 	type Lateness: Copy + Debug + Send + Sync;

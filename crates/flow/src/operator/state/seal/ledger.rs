@@ -5,7 +5,7 @@ use reifydb_codec::row::operator::state::{OperatorState, decode};
 #[cfg(feature = "runtime")]
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
 };
@@ -15,7 +15,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 #[cfg(feature = "runtime")]
 use crate::transaction::{FlowTransaction, state::StateExtension};
 use crate::{
-	operator::state::seal::{coord::Coord, policy::SealedThrough},
+	operator::state::seal::{coord::Coord, rule::SealedThrough},
 	timer::Timer,
 };
 
@@ -32,7 +32,7 @@ impl HeapSize for SealLedgerState {
 }
 
 pub fn seal_ledger_key() -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::SEAL_LEDGER, vec![])
+	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::SEAL_LEDGER, vec![])
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -182,7 +182,7 @@ mod tests {
 			OperatorStateKey::decode_inner(key.as_encoded().as_bytes()).expect("structured key");
 
 		assert_eq!(group, GroupId::ROOT);
-		assert_eq!(keyspace, Keyspace::SEAL_LEDGER);
+		assert_eq!(keyspace, KeyspaceId::SEAL_LEDGER);
 		assert!(suffix.is_empty());
 	}
 }

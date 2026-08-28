@@ -17,7 +17,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::{Keyspace, OperatorStateKey},
+		operator_state::{KeyspaceId, OperatorStateKey},
 	},
 	state::timer::TimerKind,
 	value::column::columns::Columns,
@@ -96,10 +96,10 @@ fn snapshot(h: &mut Harness<WindowOperator>) -> Snapshot {
 		let Some(keyspace) = OperatorStateKey::decode(&key).map(|state| state.keyspace) else {
 			continue;
 		};
-		if keyspace == Keyspace::TIMER_WHEEL {
+		if keyspace == KeyspaceId::TIMER_WHEEL {
 			armed_timers += 1;
 		}
-		if keyspace == Keyspace::ENGINE_META {
+		if keyspace == KeyspaceId::ENGINE_META {
 			let meta: EngineMeta = decode(&EncodedPodRow::from(row.clone())).expect("engine meta decodes");
 			metas.push(meta.last_event_time);
 		}

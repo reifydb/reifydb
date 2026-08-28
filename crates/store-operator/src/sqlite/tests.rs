@@ -6,7 +6,7 @@ use std::thread::spawn;
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_sqlite::SqliteConfig;
 use reifydb_value::{
@@ -35,7 +35,7 @@ fn key(group: u128, keyspace: u8, suffix: u8) -> EncodedKey {
 	EncodedKey::new(bytes)
 }
 
-fn real_key(group: GroupId, keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
+fn real_key(group: GroupId, keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKey {
 	OperatorStateKey::inner_encoded(group, keyspace, suffix).into_encoded()
 }
 
@@ -139,7 +139,7 @@ fn a_removed_key_leaves_the_census() {
 fn a_small_group_id_encoded_the_real_way_still_yields_one_bucket_per_keyspace() {
 	let (store, _guard) = OperatorStore::in_memory();
 	let group = GroupId(1);
-	let keyspace = Keyspace(0x10);
+	let keyspace = KeyspaceId(0x10);
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OperatorId(1),
 		key: real_key(group, keyspace, &[0]),
@@ -166,12 +166,12 @@ fn real_keys_of_two_small_groups_now_share_one_keyspace_bucket() {
 	let (store, _guard) = OperatorStore::in_memory();
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OperatorId(1),
-		key: real_key(GroupId(1), Keyspace(0x10), &[0]),
+		key: real_key(GroupId(1), KeyspaceId(0x10), &[0]),
 		post: row(2),
 	}]);
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OperatorId(1),
-		key: real_key(GroupId(2), Keyspace(0x10), &[0]),
+		key: real_key(GroupId(2), KeyspaceId(0x10), &[0]),
 		post: row(2),
 	}]);
 
@@ -179,7 +179,7 @@ fn real_keys_of_two_small_groups_now_share_one_keyspace_bucket() {
 
 	assert_eq!(census.len(), 1, "the census counts keyspaces, so groups must fold together");
 	assert_eq!(census[0].keys, 2, "folding must sum the groups, not drop one");
-	assert_eq!(census[0].keyspace, Keyspace(0x10));
+	assert_eq!(census[0].keyspace, KeyspaceId(0x10));
 }
 
 #[test]
@@ -188,20 +188,20 @@ fn real_keys_split_by_keyspace_within_one_group() {
 	let group = GroupId(1);
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OperatorId(1),
-		key: real_key(group, Keyspace(0x10), &[0]),
+		key: real_key(group, KeyspaceId(0x10), &[0]),
 		post: row(2),
 	}]);
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OperatorId(1),
-		key: real_key(group, Keyspace(0xFE), &[0]),
+		key: real_key(group, KeyspaceId(0xFE), &[0]),
 		post: row(2),
 	}]);
 
 	let census = store.census();
 
 	assert_eq!(census.len(), 2);
-	let keyspaces: Vec<Keyspace> = census.iter().map(|c| c.keyspace).collect();
-	assert_eq!(keyspaces, vec![Keyspace(0xFE), Keyspace(0x10)], "descending keyspace order");
+	let keyspaces: Vec<KeyspaceId> = census.iter().map(|c| c.keyspace).collect();
+	assert_eq!(keyspaces, vec![KeyspaceId(0xFE), KeyspaceId(0x10)], "descending keyspace order");
 }
 
 fn anchor(side: u8, row_number: u64, millis: u64) -> OperatorSealAnchor {
@@ -566,7 +566,7 @@ fn a_table_written_before_the_counters_existed_is_seeded_to_the_same_totals() {
 fn a_long_suffix_never_splits_a_keyspace_bucket() {
 	let (store, _guard) = OperatorStore::in_memory();
 	let group = GroupId(3);
-	let keyspace = Keyspace(0x20);
+	let keyspace = KeyspaceId(0x20);
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OperatorId(1),
 		key: real_key(group, keyspace, &[9; 24]),
@@ -597,7 +597,7 @@ fn a_batch_lands_operator_state_and_its_anchors_together() {
 	store.apply_batch(&[
 		OperatorWrite::Insert {
 			operator: OperatorId(1),
-			key: real_key(GroupId(7), Keyspace(0x1D), &[1]),
+			key: real_key(GroupId(7), KeyspaceId(0x1D), &[1]),
 			post: row(4),
 		},
 		OperatorWrite::AnchorInsert {
@@ -609,7 +609,7 @@ fn a_batch_lands_operator_state_and_its_anchors_together() {
 		},
 	]);
 
-	assert!(store.contains(OperatorId(1), &real_key(GroupId(7), Keyspace(0x1D), &[1])));
+	assert!(store.contains(OperatorId(1), &real_key(GroupId(7), KeyspaceId(0x1D), &[1])));
 	assert_eq!(store.anchors_by_expiry(OperatorId(1), GroupId(7), PAGE), vec![anchor(LEFT, 1, 5_000)]);
 }
 
@@ -665,7 +665,7 @@ fn dropping_an_operators_state_takes_its_anchors_with_it() {
 	let (store, _guard) = OperatorStore::in_memory();
 	store.apply_batch(&[OperatorWrite::Insert {
 		operator: OperatorId(1),
-		key: real_key(GroupId(7), Keyspace(0x1D), &[1]),
+		key: real_key(GroupId(7), KeyspaceId(0x1D), &[1]),
 		post: row(4),
 	}]);
 	store.anchor_set(OperatorId(1), GroupId(7), LEFT, RowNumber(1), DateTime::from_millis(5_000));

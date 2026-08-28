@@ -11,7 +11,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::change::Diff,
-	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	value::column::columns::Columns,
 };
 use reifydb_macro::operator_state;
@@ -114,7 +114,7 @@ impl SnapshotLedger {
 	}
 
 	fn published_key(&self, group: GroupId, left: RowNumber) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, encode_u64_asc(left.0))
+		OperatorStateKey::inner_encoded(group, KeyspaceId::JOIN_PUBLISHED, encode_u64_asc(left.0))
 	}
 
 	fn published_set(&self, host: &mut dyn HostContext, group: GroupId, left: RowNumber) -> Result<PublishedSet> {
@@ -151,7 +151,7 @@ impl SnapshotLedger {
 		let mut suffix = Vec::with_capacity(2 * ROW_NUMBER_BYTES);
 		suffix.extend_from_slice(&encode_u64_asc(right.0));
 		suffix.extend_from_slice(&encode_u64_asc(version.0));
-		OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PIN, suffix)
+		OperatorStateKey::inner_encoded(group, KeyspaceId::JOIN_PIN, suffix)
 	}
 
 	pub(crate) fn publish(

@@ -10,7 +10,7 @@ use reifydb_value::{
 	value::{container::number::NumberContainer, date::Date, value_type::ValueType},
 };
 
-use crate::function::support::coerce::{CoercePolicy, coerce_column};
+use crate::function::support::coerce::{CoerceMode, coerce_column};
 
 pub struct DateNew {
 	info: RoutineInfo,
@@ -86,9 +86,9 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 			ensure_integer(ctx, data, i)?;
 		}
 
-		let year_cast = coerce_column(ctx, &args[0], ValueType::Int4, CoercePolicy::Error)?;
-		let month_cast = coerce_column(ctx, &args[1], ValueType::Int4, CoercePolicy::Error)?;
-		let day_cast = coerce_column(ctx, &args[2], ValueType::Int4, CoercePolicy::Error)?;
+		let year_cast = coerce_column(ctx, &args[0], ValueType::Int4, CoerceMode::Error)?;
+		let month_cast = coerce_column(ctx, &args[1], ValueType::Int4, CoerceMode::Error)?;
+		let day_cast = coerce_column(ctx, &args[2], ValueType::Int4, CoerceMode::Error)?;
 
 		let (year_inner, year_bv) = year_cast.unwrap_option();
 		let (month_inner, month_bv) = month_cast.unwrap_option();

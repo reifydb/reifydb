@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteTempPathGuard;
@@ -62,7 +62,7 @@ const OP: OperatorId = OperatorId(1);
 const GROUP: GroupId = GroupId(7);
 
 fn key(suffix: u8) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GROUP, Keyspace::ACCUMULATOR, [suffix]).as_encoded().clone()
+	OperatorStateKey::inner_encoded(GROUP, KeyspaceId::ACCUMULATOR, [suffix]).as_encoded().clone()
 }
 
 fn row(body: &str) -> EncodedPodRow {
@@ -74,7 +74,7 @@ fn body(row: &EncodedPodRow) -> String {
 }
 
 fn all() -> EncodedKeyRange {
-	keyspace_inner_range(GROUP, Keyspace::ACCUMULATOR)
+	keyspace_inner_range(GROUP, KeyspaceId::ACCUMULATOR)
 }
 
 fn insert(suffix: u8, value: &str) -> OperatorWrite {
