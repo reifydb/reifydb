@@ -5,7 +5,7 @@ use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
 use rusqlite::params;
 use tracing::instrument;
 
-use crate::sqlite::{
+use crate::tier::persistent::sqlite::{
 	SqliteOperatorStorage,
 	sql::{CHECKPOINT_FLOOR_SQL, CHECKPOINT_GET_SQL, CHECKPOINT_LIST_SQL},
 };

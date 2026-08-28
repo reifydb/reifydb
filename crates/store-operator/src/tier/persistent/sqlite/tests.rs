@@ -16,7 +16,9 @@ use reifydb_value::{
 use rusqlite::params;
 
 use crate::{
-	sqlite::{SqliteOperatorStorage as OperatorStore, schema::ensure_schema, sql::ANCHORS_BY_EXPIRY_SQL},
+	tier::persistent::sqlite::{
+		SqliteOperatorStorage as OperatorStore, schema::ensure_schema, sql::ANCHORS_BY_EXPIRY_SQL,
+	},
 	types::{
 		ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, DurablePre, OperatorSealAnchor, OperatorSealAnchorCensus,
 		OperatorStateCensus, OperatorWrite,

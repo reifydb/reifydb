@@ -8,7 +8,7 @@ use rusqlite::{Connection, Rows, params};
 use tracing::instrument;
 
 use crate::{
-	sqlite::{
+	tier::persistent::sqlite::{
 		SqliteOperatorStorage,
 		sql::{
 			ANCHOR_EXISTS_SQL, ANCHOR_GET_SQL, ANCHOR_REMOVE_SQL, ANCHOR_SET_SQL, ANCHORS_BY_EXPIRY_SQL,

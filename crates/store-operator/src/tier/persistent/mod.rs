@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+pub mod filter;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+pub mod sqlite;
+
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::{
@@ -23,10 +27,12 @@ use reifydb_value::{
 };
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::sqlite::SqliteOperatorStorage;
+use crate::tier::persistent::sqlite::SqliteOperatorStorage;
 use crate::{
-	filter::{OperatorAnchors, OperatorKeys},
-	tier::resident::batch::FlushBatch,
+	tier::{
+		persistent::filter::{OperatorAnchors, OperatorKeys},
+		resident::batch::FlushBatch,
+	},
 	types::{OperatorBatch, OperatorSealAnchor, OperatorSealAnchorCensus, OperatorStateCensus},
 };
 

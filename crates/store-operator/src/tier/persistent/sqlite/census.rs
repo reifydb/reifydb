@@ -10,7 +10,7 @@ use rusqlite::{Transaction, params};
 use tracing::instrument;
 
 use crate::{
-	sqlite::{
+	tier::persistent::sqlite::{
 		SqliteOperatorStorage,
 		sql::{
 			ANCHOR_CENSUS_SQL, ANCHOR_COUNT_SQL, ANCHOR_TOTAL_COUNT_SQL, CENSUS_APPLY_SQL,

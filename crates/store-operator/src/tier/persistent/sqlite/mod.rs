@@ -4,6 +4,7 @@
 mod anchor;
 mod census;
 mod checkpoint;
+pub mod filter;
 mod flush;
 pub mod metrics;
 pub mod schema;
@@ -31,7 +32,7 @@ use reifydb_store::{
 use rusqlite::Connection;
 use tracing::instrument;
 
-use crate::{
+use crate::tier::persistent::{
 	filter::{ARMED_CAPACITY_ANCHORS, ARMED_CAPACITY_KEYS, OperatorAnchors, OperatorKeys},
 	sqlite::{anchor::anchor_exists, schema::ensure_schema, state::state_exists},
 };

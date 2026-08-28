@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::metrics::{collect::MetricsCollector, sample::MetricsSample};
 use reifydb_store::{metrics::PageCacheMetrics, sqlite::page_cache_metrics};
 
-use crate::sqlite::SqliteOperatorStorage;
+use crate::tier::persistent::sqlite::SqliteOperatorStorage;
 
 const SQLITE_SCOPE: &str = "sqlite::operator";
 

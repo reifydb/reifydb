@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-pub mod source;
-
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId, util::bloom::hash_item};
 use reifydb_store::filter::FilterDomain;

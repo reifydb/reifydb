@@ -19,9 +19,9 @@ use rusqlite::{ToSql, Transaction, TransactionBehavior, params, params_from_iter
 use tracing::instrument;
 
 #[cfg(reifydb_assertions)]
-use crate::{sqlite::sql::STATE_VALUE_LEN_SQL, types::DurablePre};
+use crate::{tier::persistent::sqlite::sql::STATE_VALUE_LEN_SQL, types::DurablePre};
 use crate::{
-	sqlite::{
+	tier::persistent::sqlite::{
 		SqliteOperatorStorage,
 		anchor::encode_group,
 		census::{batch_delta, flush_delta, zero_operator_buckets},

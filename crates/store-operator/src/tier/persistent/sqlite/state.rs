@@ -13,7 +13,7 @@ use rusqlite::{Connection, Rows, ToSql, Transaction, TransactionBehavior, params
 use tracing::instrument;
 
 use crate::{
-	sqlite::{
+	tier::persistent::sqlite::{
 		SqliteOperatorStorage,
 		census::zero_operator_buckets,
 		sql::{

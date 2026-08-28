@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_filter::source::{FilterSlice, KeyFilterSource};
 use reifydb_store::filter::FilterDomain;
 
-use crate::{filter::OperatorKeys, sqlite::SqliteOperatorStorage};
+use crate::tier::persistent::{filter::OperatorKeys, sqlite::SqliteOperatorStorage};
 
 pub struct OperatorStateKeySource {
 	storage: SqliteOperatorStorage,

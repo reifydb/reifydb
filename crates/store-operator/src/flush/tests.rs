@@ -27,10 +27,11 @@ use reifydb_value::{
 use super::*;
 use crate::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
-	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
 	tier::{
-		persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig,
+		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
+		point::OperatorPointConfig,
+		range::OperatorRangeConfig,
 		resident::FLUSH_BUDGET_BYTES,
 	},
 	types::{BufferedState, DurablePre, OperatorWrite},
