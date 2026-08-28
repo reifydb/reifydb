@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, btree_map::Entry},
+	collections::{BTreeMap, BTreeSet, btree_map::Entry},
 	mem,
 };
 
@@ -47,6 +47,7 @@ pub struct StateEntry {
 pub struct FlushBatch {
 	pub state: StateMap,
 	pub anchors: BTreeMap<AnchorKey, Option<u64>>,
+	pub durable_anchors: BTreeSet<AnchorKey>,
 	pub checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
 	pub drops: Vec<DropMarker>,
 	pub bytes: ByteSize,
@@ -82,7 +83,16 @@ impl FlushBatch {
 		self.bytes = self.bytes.saturating_sub(outgoing).saturating_add(incoming);
 	}
 
-	pub(crate) fn record_anchor(&mut self, key: AnchorKey, expiry: Option<u64>) {
+	pub(crate) fn record_anchor(&mut self, key: AnchorKey, expiry: Option<u64>, durable: bool) {
+		if durable && !self.anchors.contains_key(&key) {
+			self.durable_anchors.insert(key);
+		}
+		if expiry.is_none() && !self.durable_anchors.contains(&key) {
+			if self.anchors.remove(&key).is_some() {
+				self.bytes = self.bytes.saturating_sub(ANCHOR_ENTRY_BYTES);
+			}
+			return;
+		}
 		if self.anchors.insert(key, expiry).is_none() {
 			self.bytes = self.bytes.saturating_add(ANCHOR_ENTRY_BYTES);
 		}
@@ -113,11 +123,18 @@ impl FlushBatch {
 			|_, _| ANCHOR_ENTRY_BYTES,
 			state.is_empty(),
 		);
+		for (key, entry) in &anchors {
+			match entry {
+				Some(_) => self.durable_anchors.insert(*key),
+				None => self.durable_anchors.remove(key),
+			};
+		}
 		let bytes = state_bytes.saturating_add(anchor_bytes);
 		self.bytes = self.bytes.saturating_sub(bytes);
 		FlushBatch {
 			state,
 			anchors,
+			durable_anchors: BTreeSet::new(),
 			checkpoints: mem::take(&mut self.checkpoints),
 			drops: mem::take(&mut self.drops),
 			bytes,
@@ -159,6 +176,7 @@ impl FlushBatch {
 			*bytes = bytes.saturating_sub(ANCHOR_ENTRY_BYTES);
 			false
 		});
+		self.durable_anchors.retain(&keep);
 	}
 }
 

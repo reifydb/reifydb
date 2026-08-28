@@ -90,6 +90,12 @@ impl OperatorPersistentTier {
 		}
 	}
 
+	pub fn anchors_out_of_band(&self) -> bool {
+		match self {
+			Self::Sqlite(storage) => storage.anchors_out_of_band(),
+		}
+	}
+
 	pub fn state_sizes(&self, operator: OperatorId, keys: &[EncodedKey]) -> HashMap<EncodedKey, ByteSize> {
 		match self {
 			Self::Sqlite(storage) => storage.state_sizes(operator, keys),
@@ -224,6 +230,10 @@ impl OperatorPersistentTier {
 	}
 
 	pub fn anchor_filter(&self) -> &KeyFilter<OperatorAnchors> {
+		match *self {}
+	}
+
+	pub fn anchors_out_of_band(&self) -> bool {
 		match *self {}
 	}
 

@@ -142,6 +142,14 @@ pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> 
 				group,
 				side,
 				row_num: row_number,
+				pre: match pending.pre_at(key).or_else(|| deferred.get(key).copied()) {
+					Some(Some(bytes)) => DurablePre::Present(bytes),
+					Some(None) => DurablePre::Absent,
+					None => panic!(
+						"unclassified seal anchor remove on operator {}, group {}",
+						operator.0, group.0
+					),
+				},
 			},
 			(None, PendingWrite::Set(row)) => {
 				let post = EncodedPodRow::from(row.clone());

@@ -529,6 +529,7 @@ fn apply_batch_maps_every_write_variant_onto_its_entry() {
 			group: GROUP_A,
 			side: 1,
 			row_num: RowNumber(8),
+			pre: DurablePre::Present(ANCHOR_ENTRY_BYTES),
 		},
 	]);
 
@@ -1015,4 +1016,196 @@ fn a_selected_slice_stays_resident_until_the_flush_settles() {
 	buffer.complete_flush();
 
 	assert_eq!(resident_bytes(&buffer), ByteSize::ZERO, "the settle is where the memory is actually given back");
+}
+
+#[test]
+fn an_anchor_armed_and_disarmed_before_any_flush_leaves_no_entry_at_all() {
+	// AnchorInsert claims no durable row, so the matching remove has nothing on disk to mask.
+	// Keeping a tombstone here is what grew the group scan to thousands of entries of which
+	// ~1% were live, and every one of those tombstones also cost a no-op DELETE at flush.
+	let buffer = OperatorCommitBuffer::new();
+
+	buffer.apply_batch(&[OperatorWrite::AnchorInsert {
+		operator: OP_A,
+		group: GROUP_A,
+		side: 1,
+		row_num: RowNumber(7),
+		expiry: DateTime::from_millis(1_234),
+	}]);
+	assert_eq!(
+		live_bytes(&buffer),
+		ANCHOR_ENTRY_BYTES,
+		"the armed slot must be charged before the disarm, or the reclaim below proves nothing"
+	);
+
+	buffer.apply_batch(&[OperatorWrite::AnchorRemove {
+		operator: OP_A,
+		group: GROUP_A,
+		side: 1,
+		row_num: RowNumber(7),
+		pre: DurablePre::Absent,
+	}]);
+
+	assert_eq!(
+		buffer.lookup_anchor(OP_A, GROUP_A, 1, RowNumber(7)),
+		BufferedAnchor::Absent,
+		"a never-durable arm/disarm pair must cancel to nothing; a Tombstone here masks a sqlite row \
+		 that was never written and stays resident forever"
+	);
+	assert_eq!(
+		live_bytes(&buffer),
+		ByteSize::ZERO,
+		"the collapsed pair must give its bytes back, otherwise the buffer still grows without bound"
+	);
+	assert!(buffer.take_for_flush().is_none(), "a cancelled pair must not produce a no-op DELETE slice");
+}
+
+#[test]
+fn an_anchor_disarmed_after_its_flush_still_leaves_a_tombstone() {
+	// The mirror of the collapse: once assemble has handed the arm to the persistent tier the
+	// row exists on disk, so the later remove MUST tombstone or the seal timer is orphaned and
+	// fires forever. This is the case that makes the collapse safe to do at all.
+	let buffer = OperatorCommitBuffer::new();
+
+	buffer.apply_batch(&[OperatorWrite::AnchorInsert {
+		operator: OP_A,
+		group: GROUP_A,
+		side: 1,
+		row_num: RowNumber(7),
+		expiry: DateTime::from_millis(1_234),
+	}]);
+	buffer.take_for_flush().expect("the armed anchor is the only pending write, so it forms a slice");
+	buffer.complete_flush();
+
+	buffer.apply_batch(&[OperatorWrite::AnchorRemove {
+		operator: OP_A,
+		group: GROUP_A,
+		side: 1,
+		row_num: RowNumber(7),
+		pre: DurablePre::Absent,
+	}]);
+
+	assert_eq!(
+		buffer.lookup_anchor(OP_A, GROUP_A, 1, RowNumber(7)),
+		BufferedAnchor::Tombstone,
+		"the flush made the row durable, so the buffer must mask it regardless of what the producer \
+		 claimed about the pre-image it saw"
+	);
+}
+
+#[test]
+fn a_producer_claiming_a_durable_pre_image_cannot_stop_a_never_flushed_pair_from_collapsing() {
+	// The producer classifies a remove from what its transaction can SEE, and the commit buffer
+	// is part of that view. An anchor still resident here therefore arrives claimed as Present on
+	// every disarm, even though sqlite holds nothing. Trusting the claim collapses zero pairs and
+	// the buffer grows without bound; only the buffer knows what it has actually flushed.
+	let buffer = OperatorCommitBuffer::new();
+
+	buffer.apply_batch(&[OperatorWrite::AnchorInsert {
+		operator: OP_A,
+		group: GROUP_A,
+		side: 0,
+		row_num: RowNumber(3),
+		expiry: DateTime::from_millis(1_000),
+	}]);
+
+	buffer.apply_batch(&[OperatorWrite::AnchorRemove {
+		operator: OP_A,
+		group: GROUP_A,
+		side: 0,
+		row_num: RowNumber(3),
+		pre: DurablePre::Present(ANCHOR_ENTRY_BYTES),
+	}]);
+
+	assert_eq!(
+		buffer.lookup_anchor(OP_A, GROUP_A, 0, RowNumber(3)),
+		BufferedAnchor::Absent,
+		"the buffer must overrule the producer: it never flushed this slot, so there is no sqlite row \
+		 for a tombstone to mask"
+	);
+	assert_eq!(
+		live_bytes(&buffer),
+		ByteSize::ZERO,
+		"a claim the buffer can disprove must not be able to pin bytes here"
+	);
+}
+
+#[test]
+fn ten_thousand_arm_disarm_cycles_leave_nothing_behind() {
+	// Join sealing arms an anchor per buffered row and disarms it the moment the row matches, so
+	// a busy join runs this cycle continuously. The cost of one cycle must be O(1) in what it
+	// leaves resident; if each pair leaks an entry the group scan degrades linearly and the
+	// mechanism that exists to bound memory becomes the thing that grows it.
+	let buffer = OperatorCommitBuffer::new();
+
+	for row_number in 0..10_000u64 {
+		buffer.apply_batch(&[OperatorWrite::AnchorInsert {
+			operator: OP_A,
+			group: GROUP_A,
+			side: 0,
+			row_num: RowNumber(row_number),
+			expiry: DateTime::from_millis(1_000 + row_number),
+		}]);
+		buffer.apply_batch(&[OperatorWrite::AnchorRemove {
+			operator: OP_A,
+			group: GROUP_A,
+			side: 0,
+			row_num: RowNumber(row_number),
+			pre: DurablePre::Present(ANCHOR_ENTRY_BYTES),
+		}]);
+	}
+
+	assert!(
+		buffer.anchors_for_group(OP_A, GROUP_A).anchors.is_empty(),
+		"every armed slot was disarmed, so the group scan must walk nothing; anything left here is \
+		 read on every anchor_min the join performs"
+	);
+	assert_eq!(
+		live_bytes(&buffer),
+		ByteSize::ZERO,
+		"10k completed cycles must cost no resident bytes, otherwise churn alone fills the buffer"
+	);
+	assert!(buffer.take_for_flush().is_none(), "and none of it may reach sqlite as a no-op DELETE");
+}
+
+#[test]
+fn dropping_a_group_clears_the_durable_marks_that_would_block_a_later_collapse() {
+	// The drop deletes the sqlite rows too, so the marks recording that those rows exist must go
+	// with them. A mark that outlives its row makes every future disarm of that slot tombstone
+	// forever against a row that is not there.
+	let buffer = OperatorCommitBuffer::new();
+
+	buffer.apply_batch(&[OperatorWrite::AnchorInsert {
+		operator: OP_A,
+		group: GROUP_A,
+		side: 0,
+		row_num: RowNumber(5),
+		expiry: DateTime::from_millis(1_000),
+	}]);
+	buffer.take_for_flush().expect("the armed anchor forms a slice");
+	buffer.complete_flush();
+
+	buffer.record_drop(DropMarker::AnchorsGroup(OP_A, GROUP_A));
+
+	buffer.apply_batch(&[OperatorWrite::AnchorInsert {
+		operator: OP_A,
+		group: GROUP_A,
+		side: 0,
+		row_num: RowNumber(5),
+		expiry: DateTime::from_millis(2_000),
+	}]);
+	buffer.apply_batch(&[OperatorWrite::AnchorRemove {
+		operator: OP_A,
+		group: GROUP_A,
+		side: 0,
+		row_num: RowNumber(5),
+		pre: DurablePre::Present(ANCHOR_ENTRY_BYTES),
+	}]);
+
+	assert_eq!(
+		buffer.lookup_anchor(OP_A, GROUP_A, 0, RowNumber(5)),
+		BufferedAnchor::Dropped,
+		"the re-armed slot must collapse to nothing and fall through to the group drop; a Tombstone \
+		 here means a stale durable mark survived the drop"
+	);
 }

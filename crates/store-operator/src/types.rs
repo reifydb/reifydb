@@ -58,6 +58,7 @@ pub enum BufferedAnchor {
 pub struct BufferedAnchorGroup {
 	pub anchors: Vec<(AnchorSlot, Option<u64>)>,
 	pub dropped: bool,
+	pub durable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,5 +126,6 @@ pub enum OperatorWrite {
 		group: GroupId,
 		side: u8,
 		row_num: RowNumber,
+		pre: DurablePre,
 	},
 }

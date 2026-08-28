@@ -633,6 +633,7 @@ fn a_batch_applies_a_set_and_a_later_remove_of_the_same_row_in_order() {
 			group: GroupId(7),
 			side: LEFT,
 			row_num: RowNumber(1),
+			pre: DurablePre::Present(ByteSize::ZERO),
 		},
 	]);
 

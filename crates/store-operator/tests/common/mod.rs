@@ -604,6 +604,7 @@ fn parse_batch(store: &OperatorStore, command: &Command) -> Result<BatchArgs, Bo
 					group,
 					side,
 					row_num,
+					pre: DurablePre::Present(ByteSize::ZERO),
 				});
 			}
 			"ckpt" => {

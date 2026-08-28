@@ -142,6 +142,7 @@ impl StandardOperatorStore {
 					group,
 					side,
 					row_num,
+					..
 				} => {
 					anchors.insert((*operator, *group, *side, *row_num), false);
 					continue;

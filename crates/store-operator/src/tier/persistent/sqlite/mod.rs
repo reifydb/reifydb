@@ -48,6 +48,7 @@ struct StoreInner {
 	cache_hits: AtomicU64,
 	cache_misses: AtomicU64,
 	state_written: AtomicBool,
+	anchors_out_of_band: AtomicBool,
 	filter: KeyFilter<OperatorKeys>,
 	anchor_filter: KeyFilter<OperatorAnchors>,
 }
@@ -87,7 +88,8 @@ impl SqliteOperatorStorage {
 		} else {
 			KeyFilter::<OperatorKeys>::armed(ARMED_CAPACITY_KEYS)
 		};
-		let anchor_filter = if anchor_exists(&conn) {
+		let anchors_preexisting = anchor_exists(&conn);
+		let anchor_filter = if anchors_preexisting {
 			KeyFilter::<OperatorAnchors>::new()
 		} else {
 			KeyFilter::<OperatorAnchors>::armed(ARMED_CAPACITY_ANCHORS)
@@ -99,6 +101,7 @@ impl SqliteOperatorStorage {
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
 				state_written: AtomicBool::new(state_written),
+				anchors_out_of_band: AtomicBool::new(anchors_preexisting),
 				filter,
 				anchor_filter,
 			}),
@@ -126,6 +129,14 @@ impl SqliteOperatorStorage {
 
 	pub fn anchor_filter(&self) -> &KeyFilter<OperatorAnchors> {
 		&self.inner.anchor_filter
+	}
+
+	pub fn anchors_out_of_band(&self) -> bool {
+		self.inner.anchors_out_of_band.load(Ordering::Relaxed)
+	}
+
+	pub(crate) fn mark_anchors_out_of_band(&self) {
+		self.inner.anchors_out_of_band.store(true, Ordering::Relaxed);
 	}
 
 	pub fn set_checkpoint_threshold(&self, frames: u32) {

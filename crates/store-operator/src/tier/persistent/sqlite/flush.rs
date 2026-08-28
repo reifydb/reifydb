@@ -185,6 +185,7 @@ impl SqliteOperatorStorage {
 					group,
 					side,
 					row_num: row_number,
+					..
 				} => transaction
 					.prepare_cached(ANCHOR_REMOVE_SQL)
 					.expect("seal anchor delete could not be prepared")

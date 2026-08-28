@@ -448,23 +448,38 @@ fn record_writes(live: &mut FlushBatch, writes: &[OperatorWrite]) {
 				side,
 				row_num: row_number,
 				expiry,
+			} => {
+				live.record_anchor(
+					(*operator, *group, *side, *row_number),
+					Some(expiry.to_millis()),
+					false,
+				);
 			}
-			| OperatorWrite::AnchorReplace {
+			OperatorWrite::AnchorReplace {
 				operator,
 				group,
 				side,
 				row_num: row_number,
 				expiry,
 			} => {
-				live.record_anchor((*operator, *group, *side, *row_number), Some(expiry.to_millis()));
+				live.record_anchor(
+					(*operator, *group, *side, *row_number),
+					Some(expiry.to_millis()),
+					true,
+				);
 			}
 			OperatorWrite::AnchorRemove {
 				operator,
 				group,
 				side,
 				row_num: row_number,
+				pre,
 			} => {
-				live.record_anchor((*operator, *group, *side, *row_number), None);
+				live.record_anchor(
+					(*operator, *group, *side, *row_number),
+					None,
+					matches!(pre, DurablePre::Present(_)),
+				);
 			}
 		}
 	}

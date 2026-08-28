@@ -80,6 +80,7 @@ impl SqliteOperatorStorage {
 		row_number: RowNumber,
 		expiry: DateTime,
 	) {
+		self.mark_anchors_out_of_band();
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
 			return;

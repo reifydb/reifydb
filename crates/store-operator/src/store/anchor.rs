@@ -89,6 +89,7 @@ impl StandardOperatorStore {
 
 		if !snapshot.dropped
 			&& let Some(persistent) = self.persistent.as_ref()
+			&& (snapshot.durable || persistent.anchors_out_of_band())
 		{
 			let fetch = limit.saturating_add(buffered.len() as u64);
 			let rows = match due {
