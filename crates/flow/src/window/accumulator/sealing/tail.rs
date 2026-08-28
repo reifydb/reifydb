@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, fmt::Debug};
+use std::fmt::Debug;
 
 use reifydb_codec::row::operator::state::{OperatorState, StateCodec};
-use reifydb_core::metrics::heap::HeapSize;
+use reifydb_core::{metrics::heap::HeapSize, util::sorted::SortedVecMap};
 use reifydb_macro::operator_state;
 
 use crate::window::{
@@ -41,7 +41,7 @@ impl<C: Slot, V: Clone> SealingTail<C, V> {
 		self.base.remove(coord);
 	}
 
-	pub fn tail(&self) -> &BTreeMap<C, V> {
+	pub fn tail(&self) -> &SortedVecMap<C, V> {
 		self.base.tail()
 	}
 
@@ -85,7 +85,7 @@ where
 	TailAccumulator<C, V>: OperatorState + StateCodec + HeapSize,
 {
 	type Contribution = (C, V);
-	type Output = BTreeMap<C, V>;
+	type Output = SortedVecMap<C, V>;
 
 	fn add(&mut self, contribution: &(C, V)) {
 		self.events.add(contribution.0, contribution.1.clone());
@@ -95,7 +95,7 @@ where
 		self.events.remove(&contribution.0);
 	}
 
-	fn finalize(&self) -> Option<BTreeMap<C, V>> {
+	fn finalize(&self) -> Option<SortedVecMap<C, V>> {
 		(!self.events.is_empty()).then(|| self.events.tail().clone())
 	}
 
@@ -217,7 +217,7 @@ mod tests {
 		let sealed_map = sealed.finalize().expect("non-empty");
 		let unsealed_map = unsealed.finalize().expect("non-empty");
 		assert_eq!(unsealed_map.len(), 4);
-		let surviving: BTreeMap<DateTime, i64> =
+		let surviving: SortedVecMap<DateTime, i64> =
 			unsealed_map.iter().filter(|(k, _)| **k >= at_millis(5)).map(|(k, v)| (*k, *v)).collect();
 		assert_eq!(sealed_map, surviving);
 	}

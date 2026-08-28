@@ -3,11 +3,20 @@
 
 use std::{
 	fmt,
+	marker::PhantomData,
 	mem::replace,
 	ops::{Bound, RangeBounds},
 };
 
+use serde::{
+	Deserialize, Deserializer, Serialize, Serializer,
+	de::{SeqAccess, Visitor},
+	ser::SerializeSeq,
+};
+
 use crate::metrics::heap::HeapSize;
+
+const DECODE_CAPACITY_CAP: usize = 1024;
 
 pub struct SortedVecMap<K, V> {
 	slots: Vec<(K, V)>,
@@ -32,11 +41,27 @@ impl<K, V> SortedVecMap<K, V> {
 		self.slots.clear();
 	}
 
-	pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+	pub fn pop_first(&mut self) -> Option<(K, V)> {
+		(!self.slots.is_empty()).then(|| self.slots.remove(0))
+	}
+
+	pub fn first_key_value(&self) -> Option<(&K, &V)> {
+		self.slots.first().map(|(key, value)| (key, value))
+	}
+
+	pub fn last_key_value(&self) -> Option<(&K, &V)> {
+		self.slots.last().map(|(key, value)| (key, value))
+	}
+
+	pub fn iter(&self) -> impl DoubleEndedIterator<Item = (&K, &V)> {
 		self.slots.iter().map(|(key, value)| (key, value))
 	}
 
-	pub fn values(&self) -> impl Iterator<Item = &V> {
+	pub fn keys(&self) -> impl DoubleEndedIterator<Item = &K> {
+		self.slots.iter().map(|(key, _)| key)
+	}
+
+	pub fn values(&self) -> impl DoubleEndedIterator<Item = &V> {
 		self.slots.iter().map(|(_, value)| value)
 	}
 }
@@ -170,6 +195,41 @@ impl<K: Ord, V> Extend<(K, V)> for SortedVecMap<K, V> {
 	}
 }
 
+impl<K: Serialize, V: Serialize> Serialize for SortedVecMap<K, V> {
+	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		let mut seq = serializer.serialize_seq(Some(self.slots.len()))?;
+		for slot in &self.slots {
+			seq.serialize_element(slot)?;
+		}
+		seq.end()
+	}
+}
+
+struct SlotVisitor<K, V>(PhantomData<(K, V)>);
+
+impl<'de, K: Deserialize<'de> + Ord, V: Deserialize<'de>> Visitor<'de> for SlotVisitor<K, V> {
+	type Value = SortedVecMap<K, V>;
+
+	fn expecting(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+		out.write_str("a sequence of key value pairs")
+	}
+
+	fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+		let mut slots: Vec<(K, V)> =
+			Vec::with_capacity(seq.size_hint().unwrap_or_default().min(DECODE_CAPACITY_CAP));
+		while let Some(slot) = seq.next_element()? {
+			slots.push(slot);
+		}
+		Ok(slots.into_iter().collect())
+	}
+}
+
+impl<'de, K: Deserialize<'de> + Ord, V: Deserialize<'de>> Deserialize<'de> for SortedVecMap<K, V> {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		deserializer.deserialize_seq(SlotVisitor(PhantomData))
+	}
+}
+
 impl<K: HeapSize, V: HeapSize> HeapSize for SortedVecMap<K, V> {
 	fn heap_size(&self) -> usize {
 		self.slots.heap_size()
@@ -182,6 +242,8 @@ mod tests {
 		collections::BTreeMap,
 		ops::Bound::{Excluded, Included, Unbounded},
 	};
+
+	use postcard::{from_bytes, to_allocvec};
 
 	use super::SortedVecMap;
 	use crate::metrics::heap::HeapSize;
@@ -315,6 +377,94 @@ mod tests {
 			grown.heap_size() > 37 * size_of::<(u64, u64)>(),
 			"a map grown past a doubling holds slack, and reporting only its length hides that"
 		);
+	}
+
+	#[test]
+	fn pop_first_drains_in_the_same_order_as_a_btreemap() {
+		// a pop that hands back anything but the lowest key seals a coordinate that was still live
+		let mut sorted: SortedVecMap<u64, usize> = SortedVecMap::new();
+		let mut expected: BTreeMap<u64, usize> = BTreeMap::new();
+		for (step, key) in scatter(200).into_iter().enumerate() {
+			sorted.insert(key, step);
+			expected.insert(key, step);
+		}
+		assert!(!expected.is_empty(), "the drain must be exercised against a populated map");
+
+		let mut step = 0;
+		loop {
+			let popped = sorted.pop_first();
+			assert_eq!(popped, expected.pop_first(), "pop at step {step}");
+			if popped.is_none() {
+				break;
+			}
+			step += 1;
+		}
+		assert!(sorted.is_empty());
+		assert_eq!(sorted.len(), 0, "a fully drained map must report no slots, not stale capacity");
+		assert_eq!(sorted.pop_first(), None, "the aging loop relies on an empty pop being None, not a panic");
+	}
+
+	#[test]
+	fn last_key_value_and_the_reverse_walk_agree_with_a_btreemap() {
+		// the newest live slot is read from the back, so a wrong tail silently changes what it carries
+		let empty: SortedVecMap<u64, u64> = SortedVecMap::new();
+		assert_eq!(empty.last_key_value(), None);
+		assert_eq!(empty.values().next_back(), None);
+		assert_eq!(empty.keys().next_back(), None);
+
+		let sorted: SortedVecMap<u64, u64> = scatter(200).into_iter().map(|key| (key, key * 3)).collect();
+		let expected: BTreeMap<u64, u64> = scatter(200).into_iter().map(|key| (key, key * 3)).collect();
+		assert_eq!(sorted.last_key_value(), expected.last_key_value());
+		assert_eq!(sorted.values().next_back(), expected.values().next_back());
+		assert_eq!(sorted.keys().next_back(), expected.keys().next_back());
+
+		assert_eq!(
+			sorted.iter().rev().collect::<Vec<_>>(),
+			expected.iter().rev().collect::<Vec<_>>(),
+			"a reverse walk must visit the same pairs in the same order"
+		);
+		assert_eq!(sorted.keys().rev().count(), sorted.len(), "walking back must visit every slot once");
+	}
+
+	#[test]
+	fn a_postcard_round_trip_reproduces_the_bytes_a_btreemap_would_have_written() {
+		// persisted operator state: an encoding that differs from a BTreeMap orphans every stored window
+		for count in [0u64, 1, 37, 300] {
+			let sorted: SortedVecMap<u64, u64> = (0..count).map(|key| (key, key * 7)).collect();
+			let expected: BTreeMap<u64, u64> = (0..count).map(|key| (key, key * 7)).collect();
+			let encoded = to_allocvec(&sorted).expect("a map of plain integers must encode");
+			assert_eq!(
+				encoded,
+				to_allocvec(&expected).expect("a map of plain integers must encode"),
+				"{count} slots must encode to the bytes a BTreeMap writes"
+			);
+			assert_eq!(
+				from_bytes::<SortedVecMap<u64, u64>>(&encoded).expect("its own bytes must decode"),
+				sorted,
+				"{count} slots must survive a round trip"
+			);
+		}
+	}
+
+	#[test]
+	fn decoding_an_out_of_order_stream_restores_the_search_invariant() {
+		// binary search answers wrongly on an unsorted slice instead of failing, so decode must repair
+		let scrambled: Vec<(u64, &str)> = vec![(9, "i"), (2, "b"), (5, "e"), (2, "z"), (0, "a"), (5, "y")];
+		let encoded = to_allocvec(&scrambled).expect("a vec of pairs must encode");
+
+		let decoded: SortedVecMap<u64, String> = from_bytes(&encoded).expect("a seq of pairs must decode");
+
+		assert_eq!(
+			decoded.keys().copied().collect::<Vec<_>>(),
+			vec![0, 2, 5, 9],
+			"a decoded map must be sorted and deduped whatever order it arrived in"
+		);
+		assert_eq!(decoded.get(&2), Some(&"z".to_string()), "a repeated key keeps the last value it carried");
+		assert_eq!(decoded.get(&5), Some(&"y".to_string()));
+		for key in [0u64, 2, 5, 9] {
+			assert!(decoded.contains_key(&key), "every decoded key must be findable by search");
+		}
+		assert_eq!(decoded.get(&7), None, "a key that was never present must not be invented");
 	}
 
 	#[test]

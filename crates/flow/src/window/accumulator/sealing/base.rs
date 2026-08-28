@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
-
-use reifydb_core::metrics::heap::HeapSize;
+use reifydb_core::{metrics::heap::HeapSize, util::sorted::SortedVecMap};
 use reifydb_macro::operator_state;
 
 use crate::{
@@ -18,7 +16,7 @@ pub struct SealingBase<C: Slot, V> {
 	high_water: Option<C>,
 	sealed_high: Option<C>,
 	sealed_count: u64,
-	tail: BTreeMap<C, V>,
+	tail: SortedVecMap<C, V>,
 }
 
 impl<C: Slot, V> Default for SealingBase<C, V> {
@@ -28,7 +26,7 @@ impl<C: Slot, V> Default for SealingBase<C, V> {
 			high_water: None,
 			sealed_high: None,
 			sealed_count: 0,
-			tail: BTreeMap::new(),
+			tail: SortedVecMap::new(),
 		}
 	}
 }
@@ -44,7 +42,7 @@ impl<C: Slot, V> SealingBase<C, V> {
 			high_water: None,
 			sealed_high: None,
 			sealed_count: 0,
-			tail: BTreeMap::new(),
+			tail: SortedVecMap::new(),
 		}
 	}
 
@@ -61,7 +59,7 @@ impl<C: Slot, V> SealingBase<C, V> {
 		let (Some(hw), Some(l)) = (self.high_water, self.immutable) else {
 			return aged;
 		};
-		while let Some((&c, _)) = self.tail.iter().next() {
+		while let Some((&c, _)) = self.tail.first_key_value() {
 			if hw.order_key().span_since(c.order_key()) > l {
 				self.sealed_high = Some(c);
 				self.sealed_count += 1;
@@ -102,7 +100,7 @@ impl<C: Slot, V> SealingBase<C, V> {
 		self.tail.remove(coord);
 	}
 
-	pub fn tail(&self) -> &BTreeMap<C, V> {
+	pub fn tail(&self) -> &SortedVecMap<C, V> {
 		&self.tail
 	}
 
@@ -131,12 +129,76 @@ impl<C: Slot + HeapSize, V: HeapSize> HeapSize for SealingBase<C, V> {
 
 #[cfg(test)]
 mod tests {
+	use std::collections::BTreeMap;
+
 	use reifydb_value::{
 		factory::time::{at_millis, millis},
 		value::datetime::DateTime,
 	};
 
 	use super::*;
+
+	#[test]
+	fn sealing_a_tail_matches_the_btreemap_it_replaced() {
+		// a container that orders or ages differently silently changes the aggregate a window emits
+		let immutable = millis(20);
+		let mut base: SealingBase<DateTime, i64> = SealingBase::immutable(immutable);
+		let mut tail: BTreeMap<DateTime, i64> = BTreeMap::new();
+		let mut high_water: Option<DateTime> = None;
+		let mut sealed_high: Option<DateTime> = None;
+		let mut sealed_count: u64 = 0;
+		let mut aged_apart = false;
+
+		let mut state = 0x2545_F491_4F6C_DD1Du64;
+		for step in 0..600u64 {
+			state ^= state << 13;
+			state ^= state >> 7;
+			state ^= state << 17;
+			let coord = at_millis(step / 4 * 5 + state % 40);
+			let value = step as i64;
+
+			if state % 5 == 4 {
+				base.remove(&coord);
+				tail.remove(&coord);
+				assert_eq!(base.tail().len(), tail.len(), "tail length after a remove at step {step}");
+				continue;
+			}
+
+			let aged = base.push(coord, value);
+			let mut expected_aged: Vec<(DateTime, i64)> = Vec::new();
+			if !matches!(sealed_high, Some(sealed) if coord <= sealed) {
+				high_water = Some(match high_water {
+					Some(hw) if hw >= coord => hw,
+					_ => coord,
+				});
+				tail.insert(coord, value);
+				if let (Some(hw), Some(l)) = (high_water, Some(immutable)) {
+					while let Some((&c, _)) = tail.iter().next() {
+						if hw.order_key().span_since(c.order_key()) > l {
+							sealed_high = Some(c);
+							sealed_count += 1;
+							expected_aged.push(tail.pop_first().expect("non-empty"));
+						} else {
+							break;
+						}
+					}
+				}
+			}
+
+			aged_apart |= !aged.is_empty();
+			assert_eq!(aged, expected_aged, "aged coordinates at step {step}");
+			assert_eq!(base.sealed_count(), sealed_count, "sealed count at step {step}");
+			assert_eq!(base.len(), sealed_count + tail.len() as u64, "total at step {step}");
+			assert_eq!(
+				base.tail().iter().map(|(c, v)| (*c, *v)).collect::<Vec<_>>(),
+				tail.iter().map(|(c, v)| (*c, *v)).collect::<Vec<_>>(),
+				"live tail at step {step}"
+			);
+		}
+
+		assert!(aged_apart, "the run must actually seal something, or it proves nothing about aging");
+		assert!(!tail.is_empty(), "the run must leave live coordinates behind to compare");
+	}
 
 	#[test]
 	fn a_coordinate_exactly_one_immutable_span_behind_the_high_water_stays_live() {
