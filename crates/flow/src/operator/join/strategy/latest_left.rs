@@ -170,13 +170,12 @@ impl LatestLeftHashJoin {
 						right_store: &ctx.state.right,
 					};
 					let mut withdrawn = Vec::new();
-					if let Some(group) = ctx.state.right.group_of(host, key_hash)? {
-						for &idx in indices {
-							if let Some(columns) =
-								withdraw_slot(host, &snapshot_ctx, group, pre, idx)?
-							{
-								withdrawn.push(Diff::remove(columns));
-							}
+					let group = ctx.state.right.group_of(key_hash);
+					for &idx in indices {
+						if let Some(columns) =
+							withdraw_slot(host, &snapshot_ctx, group, pre, idx)?
+						{
+							withdrawn.push(Diff::remove(columns));
 						}
 					}
 					return Ok(withdrawn);
@@ -186,10 +185,9 @@ impl LatestLeftHashJoin {
 					None => ctx.operator.unmatched_left_latest(pre, indices),
 				};
 				let result = vec![Diff::remove(removed)];
-				if let Some(group) = ctx.state.left.group_of(host, key_hash)? {
-					for &idx in indices {
-						ctx.state.left.remove_row_in(host, group, pre.row_numbers()[idx])?;
-					}
+				let group = ctx.state.left.group_of(key_hash);
+				for &idx in indices {
+					ctx.state.left.remove_row_in(host, group, pre.row_numbers()[idx])?;
 				}
 				Ok(result)
 			}
@@ -260,7 +258,7 @@ impl LatestLeftHashJoin {
 						right_store: &ctx.state.right,
 					};
 					let mut result = Vec::new();
-					let withdraw_group = ctx.state.right.group_of(host, keys.pre)?;
+					let withdraw_group = ctx.state.right.group_of(keys.pre);
 					for &idx in indices {
 						if let Some(slot) = republished_slot(
 							host,
@@ -276,12 +274,8 @@ impl LatestLeftHashJoin {
 							));
 							continue;
 						}
-						let withdrawn = match withdraw_group {
-							Some(group) => {
-								withdraw_slot(host, &snapshot_ctx, group, pre, idx)?
-							}
-							None => None,
-						};
+						let withdrawn =
+							withdraw_slot(host, &snapshot_ctx, withdraw_group, pre, idx)?;
 						let published = publish_slot(
 							host,
 							&snapshot_ctx,
@@ -297,16 +291,14 @@ impl LatestLeftHashJoin {
 
 				let prepared = prepare_entry_update(host, &ctx.state.left, keys.pre, post)?;
 				for &idx in indices {
-					if let Some(prepared) = &prepared {
-						update_row_in_entry(
-							host,
-							&ctx.state.left,
-							prepared,
-							pre.row_numbers()[idx],
-							post,
-							idx,
-						)?;
-					}
+					update_row_in_entry(
+						host,
+						&ctx.state.left,
+						&prepared,
+						pre.row_numbers()[idx],
+						post,
+						idx,
+					)?;
 				}
 				let (pre_joined, post_joined) = match read_right_slot(host, &ctx.state.right, keys.pre)?
 				{

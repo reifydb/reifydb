@@ -26,7 +26,6 @@ use crate::{
 	flow::operator::extern_c::{
 		binding::context::ExternCContext,
 		wire::{
-			callbacks::state::GROUP_ABSENT,
 			iterators::ExternCStateIterator,
 			state::{ExternCStateEntry, ExternCStateSlice},
 		},
@@ -375,59 +374,6 @@ fn key_refs(keys: &[EncodedKey]) -> Vec<ExternCKeyRef> {
 		.collect()
 }
 
-pub(crate) fn intern_groups(ctx: &mut ExternCContext, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
-	if groups.is_empty() {
-		return Ok(Vec::new());
-	}
-	let refs = key_refs(groups);
-	let mut ids = vec![0u64; groups.len()];
-	let mut is_new = vec![0u8; groups.len()];
-
-	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; refs borrows groups for the duration of the call, and ids and is_new are live,
-	// initialised arrays of exactly groups.len() slots each for the host to fill.
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.intern_groups)(
-			(*ctx.ctx).operator_id,
-			ctx.ctx,
-			refs.as_ptr(),
-			refs.len(),
-			ids.as_mut_ptr(),
-			is_new.as_mut_ptr(),
-		);
-		if result != EXTERN_C_OK {
-			return Err(SdkError::Other(format!("host_intern_groups failed with code {}", result)));
-		}
-	}
-
-	Ok(ids.into_iter().zip(is_new).map(|(id, new)| (GroupId(id), new != 0)).collect())
-}
-
-pub(crate) fn intern_group(ctx: &mut ExternCContext, group: &EncodedKey) -> Result<(GroupId, bool)> {
-	let bytes = group.as_ref();
-	let mut id = 0u64;
-	let mut is_new = 0u8;
-
-	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; bytes borrows group for the duration of the call, and id and is_new are live,
-	// initialised stack slots the host fills exactly once each.
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.intern_group)(
-			(*ctx.ctx).operator_id,
-			ctx.ctx,
-			bytes.as_ptr(),
-			bytes.len(),
-			&mut id,
-			&mut is_new,
-		);
-		if result != EXTERN_C_OK {
-			return Err(SdkError::Other(format!("host_intern_group failed with code {}", result)));
-		}
-	}
-
-	Ok((GroupId(id), is_new != 0))
-}
-
 pub(crate) fn get_or_create_row_numbers_for_pairs(
 	ctx: &mut ExternCContext,
 	pairs: &[(GroupId, EncodedKey)],
@@ -435,7 +381,7 @@ pub(crate) fn get_or_create_row_numbers_for_pairs(
 	if pairs.is_empty() {
 		return Ok(Vec::new());
 	}
-	let group_ids: Vec<u64> = pairs.iter().map(|(group, _)| group.0).collect();
+	let group_ids: Vec<u128> = pairs.iter().map(|(group, _)| group.0).collect();
 	let refs: Vec<ExternCKeyRef> = pairs
 		.iter()
 		.map(|(_, key)| {
@@ -611,55 +557,6 @@ pub(crate) fn disarm_timer(ctx: &mut ExternCContext, due: DateTime, kind: TimerK
 	}
 
 	Ok(())
-}
-
-pub(crate) fn lookup_groups(ctx: &mut ExternCContext, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
-	if groups.is_empty() {
-		return Ok(Vec::new());
-	}
-	let refs = key_refs(groups);
-	let mut ids = vec![0u64; groups.len()];
-
-	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; refs borrows groups for the duration of the call, and ids is a live, initialised
-	// array of exactly groups.len() u64 slots for the host to fill.
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.lookup_groups)(
-			(*ctx.ctx).operator_id,
-			ctx.ctx,
-			refs.as_ptr(),
-			refs.len(),
-			ids.as_mut_ptr(),
-		);
-		if result != EXTERN_C_OK {
-			return Err(SdkError::Other(format!("host_lookup_groups failed with code {}", result)));
-		}
-	}
-
-	Ok(ids.into_iter().map(|id| (id != GROUP_ABSENT).then_some(GroupId(id))).collect())
-}
-
-pub(crate) fn lookup_group(ctx: &mut ExternCContext, group: &EncodedKey) -> Result<Option<GroupId>> {
-	let bytes = group.as_ref();
-	let mut id = 0u64;
-
-	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; bytes borrows group for the duration of the call, and id is a live, initialised
-	// stack slot the host fills exactly once.
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.lookup_group)(
-			(*ctx.ctx).operator_id,
-			ctx.ctx,
-			bytes.as_ptr(),
-			bytes.len(),
-			&mut id,
-		);
-		if result != EXTERN_C_OK {
-			return Err(SdkError::Other(format!("host_lookup_group failed with code {}", result)));
-		}
-	}
-
-	Ok((id != GROUP_ABSENT).then_some(GroupId(id)))
 }
 
 pub(crate) fn get_or_create_row_numbers(

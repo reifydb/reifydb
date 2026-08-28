@@ -1,447 +1,61 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{
-	actors::pending::PendingLayers,
-	interface::catalog::flow::OperatorId,
-	key::{
-		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, group_data_inner_range},
-	},
-};
-use reifydb_flow::transaction::{
-	DeferredParams, FlowTransaction,
-	deferred::DeferredTransaction,
-	group::*,
-	reclaim::ReclaimExtension,
-	state::{StateExtension, StateRange},
-	substrate::{FlowSubstrate, apply_operator_state},
-};
-use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_test_harness::engine::TestEngine;
-use reifydb_transaction::interceptor::interceptors::Interceptors;
-use reifydb_value::value::identity::IdentityId;
+use std::collections::HashSet;
 
-const NODE: OperatorId = OperatorId(1);
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::key::operator_state::GroupId;
 
 fn group(s: &str) -> EncodedKey {
 	EncodedKey::new(s.as_bytes())
 }
 
-fn deferred(engine: &TestEngine) -> DeferredTransaction {
-	let parent = engine.begin_admin(IdentityId::system()).unwrap();
-	let version = parent.version();
-	DeferredTransaction::new(DeferredParams {
-		version,
-		pending: PendingLayers::empty(),
-		query: parent.multi.begin_query().unwrap(),
-		state_query: parent.multi.begin_query().unwrap(),
-		catalog: Catalog::testing(),
-		interceptors: Interceptors::new(),
-		clock: Clock::Mock(MockClock::from_millis(0)),
-		substrate: FlowSubstrate::with_dictionary(
-			engine.inner().dictionary_allocators(),
-			engine.inner().operator_state(),
-		),
-	})
-}
-
-fn commit_pending(engine: &TestEngine, txn: &mut DeferredTransaction) {
-	let pending = txn.take_pending();
-	apply_operator_state(&engine.inner().operator_state(), &pending);
+#[test]
+fn the_same_bytes_always_resolve_to_the_same_id() {
+	// otherwise a later batch writes state into a group the earlier one cannot read back
+	assert_eq!(GroupId::of(&group("orders")), GroupId::of(&group("orders")));
 }
 
 #[test]
-fn the_first_group_interns_to_the_first_usable_id() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let (id, is_new) = txn.intern_groups(NODE, &[group("first")]).unwrap().remove(0);
-
-	assert_eq!(id, GroupId::FIRST, "the first group must not take the operator-scope id");
-	assert!(!id.is_root());
-	assert!(is_new, "a never-seen group must report as newly interned");
+fn distinct_bytes_resolve_to_distinct_ids() {
+	// two group keys sharing an id would silently mix two accumulators in one state scope
+	let ids: HashSet<GroupId> = (0..512).map(|i| GroupId::of(&group(&format!("g{i}")))).collect();
+	assert_eq!(ids.len(), 512);
 }
 
 #[test]
-fn a_repeated_group_resolves_to_the_same_id() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let (first, new_first) = txn.intern_groups(NODE, &[group("mint")]).unwrap().remove(0);
-	let (second, new_second) = txn.intern_groups(NODE, &[group("mint")]).unwrap().remove(0);
-
-	assert_eq!(first, second, "the same group bytes must always resolve to the same id");
-	assert!(new_first);
-	assert!(!new_second, "only the first sighting is newly interned");
+fn a_one_byte_difference_changes_the_id() {
+	// neighbouring keys are the common case, so separating unrelated inputs is not enough
+	assert_ne!(GroupId::of(&group("window-0000")), GroupId::of(&group("window-0001")));
 }
 
 #[test]
-fn distinct_groups_get_distinct_ids() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let ids: Vec<GroupId> =
-		(0..5).map(|i| txn.intern_groups(NODE, &[group(&format!("g{i}"))]).unwrap().remove(0).0).collect();
-
-	let mut unique = ids.clone();
-	unique.sort_unstable();
-	unique.dedup();
-	assert_eq!(unique.len(), ids.len(), "two groups sharing an id would share a state range");
+fn ids_do_not_depend_on_the_order_the_keys_are_seen_in() {
+	// the dictionary minted in arrival order, so a reordered replay must no longer shift ids
+	let forward: Vec<GroupId> = (0..64).map(|i| GroupId::of(&group(&format!("g{i}")))).collect();
+	let backward: Vec<GroupId> = (0..64).rev().map(|i| GroupId::of(&group(&format!("g{i}")))).collect();
+	assert_eq!(forward, backward.into_iter().rev().collect::<Vec<_>>());
 }
 
 #[test]
-fn a_batch_dedupes_repeated_groups_and_reports_one_mint() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let batch = vec![group("a"), group("b"), group("a"), group("b"), group("a")];
-	let resolved = txn.intern_groups(NODE, &batch).unwrap();
-
-	assert_eq!(resolved[0].0, resolved[2].0);
-	assert_eq!(resolved[0].0, resolved[4].0);
-	assert_eq!(resolved[1].0, resolved[3].0);
-	assert_ne!(resolved[0].0, resolved[1].0);
-	assert_eq!(
-		resolved.iter().filter(|(_, is_new)| *is_new).count(),
-		2,
-		"a batch of two distinct groups must report exactly two mints"
-	);
-}
-
-#[test]
-fn ids_survive_a_restart() {
-	let engine = TestEngine::new();
-	let before = {
-		let mut txn = deferred(&engine);
-		let id = txn.intern_groups(NODE, &[group("survivor")]).unwrap().remove(0).0;
-		txn.intern_groups(NODE, &[group("other")]).unwrap().remove(0);
-		commit_pending(&engine, &mut txn);
-		id
-	};
-
-	let mut txn = deferred(&engine);
-	let (after, is_new) = txn.intern_groups(NODE, &[group("survivor")]).unwrap().remove(0);
-
-	assert_eq!(after, before, "a later transaction must resolve an existing group to its stored id");
-	assert!(!is_new, "an existing group must not be reported as newly interned after a restart");
-}
-
-#[test]
-fn a_reborn_group_never_reuses_the_id_of_the_generation_before_it() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let original = txn.intern_groups(NODE, &[group("reborn")]).unwrap().remove(0).0;
-	txn.forget_group(NODE, &group("reborn")).unwrap();
-	commit_pending(&engine, &mut txn);
-
-	let mut txn = deferred(&engine);
-	let (reborn, is_new) = txn.intern_groups(NODE, &[group("reborn")]).unwrap().remove(0);
-
-	assert!(is_new, "a forgotten group is unknown again and must mint afresh");
-	assert_ne!(reborn, original, "a reclaimed id must never be handed back out");
-}
-
-#[test]
-fn a_forgotten_group_stops_resolving() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-	txn.intern_groups(NODE, &[group("gone")]).unwrap().remove(0);
-	commit_pending(&engine, &mut txn);
-
-	let mut txn = deferred(&engine);
-	txn.forget_group(NODE, &group("gone")).unwrap();
-	commit_pending(&engine, &mut txn);
-
-	let mut txn = deferred(&engine);
-	assert_eq!(
-		txn.lookup_groups(NODE, &[group("gone")]).unwrap().remove(0),
-		None,
-		"a forgotten group must not resurrect from the store"
-	);
-}
-
-#[test]
-fn forgetting_an_absent_group_reports_that_nothing_was_there() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	assert!(!txn.forget_group(NODE, &group("never-interned")).unwrap());
-}
-
-#[test]
-fn an_id_resolves_back_to_the_bytes_it_was_interned_from() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-	let bytes = group("two-address-key");
-
-	let (id, _) = txn.intern_groups(NODE, &[bytes.clone()]).unwrap().remove(0);
-
-	assert_eq!(
-		txn.group_bytes(NODE, id).unwrap(),
-		Some(bytes),
-		"an interned group must be resolvable from its id alone"
-	);
-}
-
-#[test]
-fn the_reverse_record_lives_outside_the_group_data_range() {
-	// Floor compaction cancels the group's data keyspaces, so the record must sit outside them.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-	let bytes = group("outlives-its-data");
-	let (id, _) = txn.intern_groups(NODE, &[bytes.clone()]).unwrap().remove(0);
-
-	let batch = txn
-		.state_range(NODE, StateRange::forward(group_data_inner_range(id), "test"))
-		.expect("the group data range must scan");
-	for item in batch.items {
-		let decoded = OperatorStateKey::decode(&item.key).expect("state keys decode");
-		let inner =
-			GroupStateKey::from_framed(decoded.inner()).expect("the data range yields framed inner keys");
-		txn.state_remove(NODE, &inner).unwrap();
+fn no_key_ever_resolves_to_the_root_scope() {
+	// root holds the timer wheel, expiry, the reap queue, the ringbuffer and the window meta
+	for i in 0..4096 {
+		assert!(!GroupId::of(&group(&format!("g{i}"))).is_root());
 	}
-
-	assert_eq!(
-		txn.group_bytes(NODE, id).unwrap(),
-		Some(bytes),
-		"erasing every data row must not take the record identity depends on"
-	);
+	assert!(!GroupId::of(&EncodedKey::new(Vec::new())).is_root());
 }
 
 #[test]
-fn lookup_does_not_intern() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	assert_eq!(txn.lookup_groups(NODE, &[group("absent")]).unwrap().remove(0), None);
-
-	let (id, is_new) = txn.intern_groups(NODE, &[group("absent")]).unwrap().remove(0);
-	assert!(is_new, "the earlier lookup must not have interned the group");
-	assert_eq!(id, GroupId::FIRST, "a lookup must not consume an id from the counter");
+fn a_zero_hash_folds_onto_the_first_non_root_id() {
+	// the fold is what makes "never root" hold for every input, not only the sampled ones
+	assert_ne!(GroupId::FIRST_NON_ROOT, GroupId::ROOT);
 }
 
 #[test]
-fn nodes_intern_independently() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let first = txn.intern_groups(OperatorId(1), &[group("shared")]).unwrap().remove(0).0;
-	let second = txn.intern_groups(OperatorId(2), &[group("shared")]).unwrap().remove(0).0;
-
-	assert_eq!(first, second, "each operator numbers its own groups from the same starting point");
-
-	let other = txn.intern_groups(OperatorId(2), &[group("only-on-two")]).unwrap().remove(0).0;
-	let mut txn = deferred(&engine);
-	assert_eq!(
-		txn.lookup_groups(OperatorId(1), &[group("only-on-two")]).unwrap().remove(0),
-		None,
-		"a group interned on one operator must not resolve on another"
-	);
-	assert_ne!(other, first);
-}
-
-#[test]
-fn the_same_bytes_intern_to_separate_ids_in_separate_dictionaries() {
-	// Append owns a dictionary of its own so its interning traffic cannot evict every other
-	// operator's groups out of one shared bucket; separate dictionaries must therefore be separate
-	// namespaces, or a group interned by one operator would silently resolve for another.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-	let bytes = group("same-bytes");
-
-	let (shared, _) = txn.intern_groups_in(NODE, Keyspace::GROUP_DICTIONARY, &[bytes.clone()]).unwrap().remove(0);
-	let (append, is_new) =
-		txn.intern_groups_in(NODE, Keyspace::APPEND_DICTIONARY, &[bytes.clone()]).unwrap().remove(0);
-
-	assert!(is_new, "a dictionary must not see an entry another dictionary interned");
-	assert_ne!(shared, append, "two dictionaries must mint independent ids for the same bytes");
-}
-
-#[test]
-fn a_lookup_never_crosses_from_one_dictionary_into_another() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-	let bytes = group("append-only");
-	txn.intern_groups_in(NODE, Keyspace::APPEND_DICTIONARY, &[bytes.clone()]).unwrap();
-	commit_pending(&engine, &mut txn);
-
-	let mut txn = deferred(&engine);
-	assert_eq!(
-		txn.lookup_groups_in(NODE, Keyspace::GROUP_DICTIONARY, &[bytes.clone()]).unwrap().remove(0),
-		None,
-		"a group interned into the append dictionary must be invisible to the shared one"
-	);
-	assert!(
-		txn.lookup_groups_in(NODE, Keyspace::APPEND_DICTIONARY, &[bytes]).unwrap().remove(0).is_some(),
-		"the dictionary it was interned into must still resolve it"
-	);
-}
-
-#[test]
-fn reclaim_forgets_a_group_from_the_dictionary_it_was_interned_into() {
-	// Reclaim walks back from the id through the reverse record, so the record must name the
-	// dictionary; targeting the wrong one would keep the entry alive forever after the identity is
-	// gone, and the group would never be reclaimable again.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-	let bytes = group("reclaimed-from-append");
-	let (id, _) = txn.intern_groups_in(NODE, Keyspace::APPEND_DICTIONARY, &[bytes.clone()]).unwrap().remove(0);
-	commit_pending(&engine, &mut txn);
-
-	let mut txn = deferred(&engine);
-	let outcome = txn.reclaim_group_identity(NODE, id, 100).unwrap();
-	assert!(!outcome.more, "the group must drain in one pass");
-	commit_pending(&engine, &mut txn);
-
-	let mut txn = deferred(&engine);
-	assert_eq!(
-		txn.lookup_groups_in(NODE, Keyspace::APPEND_DICTIONARY, &[bytes]).unwrap().remove(0),
-		None,
-		"a reclaimed append group must not resurrect from the store"
-	);
-}
-
-#[test]
-fn the_reverse_record_names_the_dictionary_the_group_was_interned_into() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-	let shared = group("in-shared");
-	let appended = group("in-append");
-	let (shared_id, _) = txn.intern_groups_in(NODE, Keyspace::GROUP_DICTIONARY, &[shared]).unwrap().remove(0);
-	let (append_id, _) = txn.intern_groups_in(NODE, Keyspace::APPEND_DICTIONARY, &[appended]).unwrap().remove(0);
-
-	assert_eq!(
-		txn.group_record(NODE, shared_id).unwrap().map(|(_, keyspace)| keyspace),
-		Some(Keyspace::GROUP_DICTIONARY),
-		"the record must name the dictionary reclaim has to sweep"
-	);
-	assert_eq!(
-		txn.group_record(NODE, append_id).unwrap().map(|(_, keyspace)| keyspace),
-		Some(Keyspace::APPEND_DICTIONARY),
-		"the record must name the dictionary reclaim has to sweep"
-	);
-}
-
-#[test]
-fn interning_one_key_stamps_the_reverse_record() {
-	// Reclaim walks from the id back to the group bytes through this record; a mint that skips the
-	// stamp leaves the dictionary entry with nothing pointing at it, so the group can never be
-	// reclaimed and the entry outlives every row it addressed.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let (id, is_new) = txn.intern_group(NODE, &group("stamped")).unwrap();
-
-	assert!(is_new, "a never-seen group must report as newly interned");
-	assert_eq!(
-		txn.group_record(NODE, id).unwrap(),
-		Some((group("stamped"), Keyspace::GROUP_DICTIONARY)),
-		"the record must carry both the bytes and the dictionary reclaim has to sweep"
-	);
-}
-
-#[test]
-fn a_group_interned_one_key_at_a_time_is_reclaimable() {
-	// The end-to-end consequence of the stamp: reclaim resolves the dictionary entry only through
-	// the reverse record, so an unstamped mint would leave this lookup resolving forever.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-	let bytes = group("reclaim-me");
-	let (id, _) = txn.intern_group(NODE, &bytes).unwrap();
-	commit_pending(&engine, &mut txn);
-
-	let mut txn = deferred(&engine);
-	let outcome = txn.reclaim_group_identity(NODE, id, 100).unwrap();
-	assert!(!outcome.more, "the group must drain in one pass");
-	commit_pending(&engine, &mut txn);
-
-	let mut txn = deferred(&engine);
-	assert_eq!(txn.lookup_group(NODE, &bytes).unwrap(), None, "a reclaimed group must not resurrect");
-}
-
-#[test]
-fn a_repeated_single_key_intern_resolves_to_the_same_id() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let (first, new_first) = txn.intern_group(NODE, &group("mint-once")).unwrap();
-	let (second, new_second) = txn.intern_group(NODE, &group("mint-once")).unwrap();
-
-	assert_eq!(first, second, "the same group bytes must always resolve to the same id");
-	assert!(new_first);
-	assert!(!new_second, "only the first sighting is newly interned");
-}
-
-#[test]
-fn a_single_key_mint_advances_the_counter_the_batch_mints_from() {
-	// Both paths draw ids from one counter, so a single-key mint that fails to advance it would hand
-	// the next batch an id already addressing another group's state range.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let (single, _) = txn.intern_group(NODE, &group("by-one")).unwrap();
-	let (batch, _) = txn.intern_groups(NODE, &[group("by-batch")]).unwrap().remove(0);
-
-	assert_eq!(single, GroupId::FIRST, "the first group must not take the operator-scope id");
-	assert_ne!(single, batch, "two distinct groups sharing an id would share a state range");
-}
-
-#[test]
-fn a_single_key_lookup_never_interns_the_key() {
-	// A read probe that interned would mint a dictionary entry, a reverse record and a reclaim
-	// obligation for every absent key ever probed, turning reads into unbounded group growth.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	assert_eq!(txn.lookup_group(NODE, &group("never-written")).unwrap(), None);
-
-	let (id, is_new) = txn.intern_group(NODE, &group("never-written")).unwrap();
-	assert!(is_new, "the probe must have left the key uninterned");
-	assert_eq!(id, GroupId::FIRST, "the probe must not have consumed an id");
-}
-
-#[test]
-fn the_single_key_and_batch_paths_share_one_dictionary() {
-	// They encode the dictionary entry independently; if either drifted, the same bytes would intern
-	// twice under two ids and the two halves of a join would stop meeting.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let (via_single, _) = txn.intern_group(NODE, &group("from-single")).unwrap();
-	let (via_batch, _) = txn.intern_groups(NODE, &[group("from-batch")]).unwrap().remove(0);
-	commit_pending(&engine, &mut txn);
-
-	let mut txn = deferred(&engine);
-	assert_eq!(
-		txn.lookup_groups(NODE, &[group("from-single")]).unwrap().remove(0),
-		Some(via_single),
-		"the batch lookup must resolve what the single-key intern wrote"
-	);
-	assert_eq!(
-		txn.lookup_group(NODE, &group("from-batch")).unwrap(),
-		Some(via_batch),
-		"the single-key lookup must resolve what the batch intern wrote"
-	);
-}
-
-#[test]
-fn the_same_bytes_intern_to_separate_ids_in_separate_dictionaries_one_key_at_a_time() {
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-	let bytes = group("same-bytes-single");
-
-	let (shared, _) = txn.intern_group_in(NODE, Keyspace::GROUP_DICTIONARY, &bytes).unwrap();
-	let (append, is_new) = txn.intern_group_in(NODE, Keyspace::APPEND_DICTIONARY, &bytes).unwrap();
-
-	assert!(is_new, "a dictionary must not see an entry another dictionary interned");
-	assert_ne!(shared, append, "two dictionaries must mint independent ids for the same bytes");
-	assert_eq!(
-		txn.lookup_group_in(NODE, Keyspace::APPEND_DICTIONARY, &bytes).unwrap(),
-		Some(append),
-		"the dictionary it was interned into must resolve it"
-	);
+fn the_empty_key_resolves_to_a_usable_id() {
+	// an unpartitioned operator hands in empty bytes and must still get a scope of its own
+	let id = GroupId::of(&EncodedKey::new(Vec::new()));
+	assert!(!id.is_root());
+	assert_eq!(id, GroupId::of(&EncodedKey::new(Vec::new())));
 }

@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::change::{Change, Diff},
+	key::operator_state::GroupId,
 	state::timer::TimerKind,
 	value::column::columns::Columns,
 };
@@ -73,11 +74,6 @@ fn route_engine_columns(
 	)
 }
 
-fn intern_window_group(host: &mut dyn HostContext, hash: Hash128, span: WindowSpan<DateTime>) -> Result<()> {
-	host.intern_group(&window_group_key(hash, span.start.to_order()))?;
-	Ok(())
-}
-
 #[allow(clippy::too_many_arguments)]
 fn push_count_event(
 	buckets: &mut EngineBuckets,
@@ -131,7 +127,6 @@ fn route_count_tumbling(
 					let ordinal = operator.get_and_increment_global_count(host, *hash)?;
 					let window_id = rows.window_id(ordinal);
 					operator.store_row_index(host, *hash, post.row_numbers()[row_idx], window_id)?;
-					intern_window_group(host, *hash, ordinal_window_span(window_id))?;
 					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
 					let coord = slot_coord(true, times[row_idx], post.row_numbers()[row_idx].0);
 					push_count_event(
@@ -198,7 +193,6 @@ fn route_count_tumbling(
 							post.row_numbers()[row_idx],
 							window_id,
 						)?;
-						intern_window_group(host, *hash, ordinal_window_span(window_id))?;
 						let contribution =
 							operator.core.build_contribution(post, &post_cols, row_idx);
 						let coord =
@@ -349,7 +343,7 @@ pub fn apply_tumbling_engine(
 		ExpiryAnchor::WindowStart,
 	)?;
 
-	let groups = intern_batch(host, &arrival)?;
+	let groups = intern_batch(&arrival);
 
 	let engine_config = operator.engine_config();
 	let engine_immutable = operator.immutable();
@@ -378,9 +372,9 @@ pub fn apply_tumbling_engine(
 }
 
 #[instrument(name = "flow::operator::window::intern", level = "trace", skip_all, fields(windows = arrival.len()))]
-fn intern_batch(host: &mut dyn HostContext, arrival: &[(Hash128, WindowSpan<DateTime>)]) -> Result<WindowGroups> {
+fn intern_batch(arrival: &[(Hash128, WindowSpan<DateTime>)]) -> WindowGroups {
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
-	intern_window_groups(host, &windows)
+	intern_window_groups(&windows)
 }
 
 fn sliding_insert_anchors(
@@ -444,7 +438,6 @@ pub fn apply_sliding_engine(
 							post.row_numbers()[row_idx],
 							*wid,
 						)?;
-						intern_window_group(host, *hash, operator.sliding_window_span(*wid))?;
 						push_count_event(
 							&mut buckets,
 							&mut group_values,
@@ -533,11 +526,6 @@ pub fn apply_sliding_engine(
 								post.row_numbers()[row_idx],
 								*wid,
 							)?;
-							intern_window_group(
-								host,
-								*hash,
-								operator.sliding_window_span(*wid),
-							)?;
 							push_count_event(
 								&mut buckets,
 								&mut group_values,
@@ -599,7 +587,7 @@ pub fn apply_sliding_engine(
 		ExpiryAnchor::WindowStart,
 	)?;
 
-	let groups = intern_batch(host, &arrival)?;
+	let groups = intern_batch(&arrival);
 
 	let engine_config = operator.engine_config();
 	let engine_immutable = operator.immutable();
@@ -682,7 +670,6 @@ pub fn apply_session_engine(
 							post.row_numbers()[row_idx],
 							session_id,
 						)?;
-						intern_window_group(host, *hash, ordinal_window_span(session_id))?;
 						let contribution =
 							operator.core.build_contribution(post, &slot_cols, row_idx);
 						let coord = slot_coord(false, event_ts, post.row_numbers()[row_idx].0);
@@ -761,11 +748,6 @@ pub fn apply_session_engine(
 								post.row_numbers()[row_idx],
 								session_id,
 							)?;
-							intern_window_group(
-								host,
-								*hash,
-								ordinal_window_span(session_id),
-							)?;
 							let contribution = operator
 								.core
 								.build_contribution(post, &post_cols, row_idx);
@@ -839,7 +821,7 @@ pub fn apply_session_engine(
 		ExpiryAnchor::LastEvent,
 	)?;
 
-	let groups = intern_batch(host, &arrival)?;
+	let groups = intern_batch(&arrival);
 
 	let engine_config = operator.engine_config();
 	let engine_immutable = operator.immutable();
@@ -875,20 +857,13 @@ fn gate_and_arm_seals(
 		return Ok(());
 	}
 	let gate = operator.seal_gate(host, policy)?;
-	let lookup_keys: Vec<EncodedKey> =
-		buckets.keys().map(|(hash, span)| window_group_key(*hash, span.start.to_order())).collect();
-	let known = host.lookup_groups(&lookup_keys)?;
 	let mut sealed: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut rearm: Vec<(Hash128, u64, Option<u64>, u64)> = Vec::new();
 	let mut dropped = 0u64;
 	{
-		for ((key, events), group) in buckets.iter().zip(known) {
-			let prior_last = match group {
-				Some(group) => {
-					get::<_, EngineMeta>(host, &EngineMetaKey(group))?.map(|m| m.last_event_time)
-				}
-				None => None,
-			};
+		for (key, events) in buckets.iter() {
+			let group = GroupId::of(&window_group_key(key.0, key.1.start.to_order()));
+			let prior_last = get::<_, EngineMeta>(host, &EngineMetaKey(group))?.map(|m| m.last_event_time);
 			let batch_last = window_max_ts.get(key).map(|ts| ts.to_order());
 			let last = prior_last.max(batch_last);
 			let window_start = key.1.start.to_order();

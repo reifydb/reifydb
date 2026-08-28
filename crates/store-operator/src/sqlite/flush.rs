@@ -23,6 +23,7 @@ use crate::{sqlite::sql::STATE_VALUE_LEN_SQL, types::DurablePre};
 use crate::{
 	sqlite::{
 		SqliteOperatorStorage,
+		anchor::encode_group,
 		census::{batch_delta, flush_delta, zero_operator_buckets},
 		sql::{
 			ANCHOR_REMOVE_SQL, ANCHOR_SET_SQL, ANCHORS_DROP_GROUP_SQL, ANCHORS_DROP_OPERATOR_SQL,
@@ -173,7 +174,7 @@ impl SqliteOperatorStorage {
 					.expect("seal anchor write could not be prepared")
 					.execute(params![
 						operator.0 as i64,
-						group.0 as i64,
+						encode_group(*group),
 						*side as i64,
 						row_number.0 as i64,
 						expiry.to_millis() as i64
@@ -189,7 +190,7 @@ impl SqliteOperatorStorage {
 					.expect("seal anchor delete could not be prepared")
 					.execute(params![
 						operator.0 as i64,
-						group.0 as i64,
+						encode_group(*group),
 						*side as i64,
 						row_number.0 as i64
 					])
@@ -254,7 +255,7 @@ impl SqliteOperatorStorage {
 					transaction
 						.prepare_cached(ANCHORS_DROP_GROUP_SQL)
 						.expect("seal anchor group delete could not be prepared")
-						.execute(params![operator.0 as i64, group.0 as i64])
+						.execute(params![operator.0 as i64, encode_group(*group)])
 						.expect("seal anchor group delete failed");
 				}
 			}
@@ -283,14 +284,14 @@ impl SqliteOperatorStorage {
 			match entry {
 				Some(millis) => anchor_sets.push(vec![
 					Box::new(operator.0 as i64),
-					Box::new(group.0 as i64),
+					Box::new(encode_group(*group)),
 					Box::new(*side as i64),
 					Box::new(row_number.0 as i64),
 					Box::new(*millis as i64),
 				]),
 				None => anchor_removes.push(vec![
 					Box::new(operator.0 as i64),
-					Box::new(group.0 as i64),
+					Box::new(encode_group(*group)),
 					Box::new(*side as i64),
 					Box::new(row_number.0 as i64),
 				]),

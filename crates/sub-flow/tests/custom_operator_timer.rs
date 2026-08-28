@@ -11,7 +11,7 @@ use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::DiffType, flow::OperatorCapability},
-	key::operator_state::{Keyspace, OperatorStateKey},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
@@ -116,8 +116,6 @@ impl GuestOperator for Alarm {
 					.row_time()
 					.expect("the substrate must populate #time on an event-time source");
 				let key = group_key(g);
-				// Interning carries the node's retention position forward at this row's event time.
-				ctx.intern_groups(&[key.clone()])?;
 				let wake = DateTime::from_millis(at.to_millis() + DELAY_MS);
 				ctx.arm_timer(wake, TimerKind::Seal, &key)?;
 			}
@@ -128,7 +126,7 @@ impl GuestOperator for Alarm {
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> SdkResult<()> {
 		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
 		let key = group_key(g);
-		let group = ctx.intern_groups(&[key.clone()])?.remove(0).0;
+		let group = GroupId::of(&key);
 
 		// Per-group state, so the group has something for the retention pass to erase once it ages
 		// past its horizon. Without it a group is nothing but an identity and reclaim has no work.
@@ -321,7 +319,7 @@ impl GuestOperator for Snooze {
 					.row_time()
 					.expect("the substrate must populate #time on an event-time source");
 				let key = group_key(g);
-				let group = ctx.intern_groups(&[key.clone()])?.remove(0).0;
+				let group = GroupId::of(&key);
 				let armed_key = OperatorStateKey::inner_encoded(group, SNOOZE_ARMED, []);
 
 				if let Some(prior) = self.state_get::<i64>(ctx, &armed_key)? {
@@ -342,7 +340,7 @@ impl GuestOperator for Snooze {
 
 	fn on_timer(&mut self, ctx: &mut impl GuestContext, timer: Timer<'_>) -> SdkResult<()> {
 		let g = i32::from_be_bytes(timer.key.try_into().expect("the timer key round-trips the group key"));
-		let group = ctx.intern_groups(&[group_key(g)])?.remove(0).0;
+		let group = GroupId::of(&group_key(g));
 		let fired_at = timer.due.to_millis() as i64;
 
 		// Keyed by the firing instant, not the group, so a timer that should have been cancelled

@@ -5,7 +5,11 @@ use std::{cmp::Ordering, collections::BTreeMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, pod::EncodedPodRow},
+	row::{
+		bytes::EncodedBytes,
+		operator::state::{OperatorState, decode},
+		pod::EncodedPodRow,
+	},
 };
 use reifydb_core::{
 	actors::pending::PendingWrite,
@@ -22,6 +26,14 @@ use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};
 
 use crate::transaction::{FlowTransaction, anchor::decode_anchor_suffix, scope::scoped_key};
+
+pub(crate) fn encode_payload<T: OperatorState>(value: &T) -> Result<EncodedPodRow> {
+	Ok(value.encode_state()?)
+}
+
+pub(crate) fn decode_payload<T: OperatorState>(row: &EncodedPodRow) -> Result<T> {
+	Ok(decode(row)?)
+}
 
 #[derive(Debug, Clone)]
 pub struct StateRange {

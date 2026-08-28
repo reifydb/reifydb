@@ -159,16 +159,12 @@ where
 				state_lookup_keys.push(state_key(group));
 			}
 		}
-		let interned = store.intern_groups(&state_lookup_keys)?;
-		let state_pairs: Vec<(GroupId, EncodedKey)> = interned
+		let state_pairs: Vec<(GroupId, EncodedKey)> =
+			state_lookup_keys.iter().map(|key| (GroupId::of(key), key.clone())).collect();
+		let resolved_rows: Vec<(GroupId, RowNumber)> = state_pairs
 			.iter()
-			.zip(&state_lookup_keys)
-			.map(|((group_id, _), key)| (*group_id, key.clone()))
-			.collect();
-		let resolved_rows: Vec<(GroupId, RowNumber)> = interned
-			.into_iter()
 			.zip(store.get_or_create_row_numbers_for_pairs(&state_pairs)?)
-			.map(|((group_id, _), (row_number, _is_new))| (group_id, row_number))
+			.map(|((group_id, _), (row_number, _is_new))| (*group_id, row_number))
 			.collect();
 		reifydb_assertions! {
 			let resolved = resolved_rows.len();
@@ -209,12 +205,8 @@ where
 		if lookup_keys.is_empty() {
 			return Ok(StateRows::new());
 		}
-		let interned = store.intern_groups(&lookup_keys)?;
-		let pairs: Vec<(GroupId, EncodedKey)> = interned
-			.iter()
-			.zip(&lookup_keys)
-			.map(|((group_id, _), key)| (*group_id, key.clone()))
-			.collect();
+		let pairs: Vec<(GroupId, EncodedKey)> =
+			lookup_keys.iter().map(|key| (GroupId::of(key), key.clone())).collect();
 		let resolved_rows = store.get_or_create_row_numbers_for_pairs(&pairs)?;
 		reifydb_assertions! {
 			let resolved = resolved_rows.len();
@@ -229,7 +221,7 @@ where
 		}
 		Ok(resolve_order
 			.into_iter()
-			.zip(interned)
+			.zip(pairs)
 			.zip(resolved_rows)
 			.map(|((group, (group_id, _)), (row_number, _is_new))| (group, (group_id, row_number)))
 			.collect())
@@ -424,7 +416,7 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::state::timer::StateStore;
+	use reifydb_core::key::operator_state::GroupId;
 	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
 
 	use super::{RollingTopKBuffer, RollingTopKEmit, RollingTopKEngine, TopKEmit};
@@ -524,13 +516,7 @@ mod tests {
 			_ => panic!("precondition: the first ranking is an insert"),
 		};
 
-		let group = store
-			.lookup_groups(&[state_key(&1)])
-			.unwrap()
-			.into_iter()
-			.next()
-			.unwrap()
-			.expect("applying the group interns it");
+		let group = GroupId::of(&state_key(&1));
 		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
 		assert!(
 			store.contains_row_mapping(group, &ranked_key),
@@ -569,16 +555,8 @@ mod tests {
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
-		// The mapping is scoped to the interned group, not ROOT, and reclamation deletes by group prefix - a
-		// lookup under the wrong group would report absence and pass while the mapping leaked, so the group is
-		// read back rather than assumed from the allocator.
-		let group = store
-			.lookup_groups(&[state_key(&1)])
-			.unwrap()
-			.into_iter()
-			.next()
-			.unwrap()
-			.expect("applying the group interns it");
+		// the mapping is scoped to the group, not ROOT, and reclamation deletes by group prefix
+		let group = GroupId::of(&state_key(&1));
 		assert!(store.contains_row_mapping(group, &ranked_key), "publishing the ranking mints its mapping");
 
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();

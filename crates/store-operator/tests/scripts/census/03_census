@@ -5,7 +5,7 @@ census
 ---
 count=0
 
-# One bucket per operator and keyspace; a key costs 9 framing bytes plus its suffix and a row its body
+# One bucket per operator and keyspace; a key costs 17 framing bytes plus its suffix and a row its body
 # alone.
 
 set a=1
@@ -13,7 +13,7 @@ flush
 census
 ---
 ok
-operator 1 keyspace 0x10 keys=1 key_bytes=10 value_bytes=1
+operator 1 keyspace 0x10 keys=1 key_bytes=18 value_bytes=1
 count=1
 
 set bb=22
@@ -21,7 +21,7 @@ flush
 census
 ---
 ok
-operator 1 keyspace 0x10 keys=2 key_bytes=21 value_bytes=3
+operator 1 keyspace 0x10 keys=2 key_bytes=37 value_bytes=3
 count=1
 
 # A second keyspace is a separate bucket. Keyspace bytes are stored inverted, so 0x11 sorts ahead of 0x10.
@@ -31,8 +31,8 @@ flush
 census
 ---
 ok
-operator 1 keyspace 0x11 keys=1 key_bytes=10 value_bytes=1
-operator 1 keyspace 0x10 keys=2 key_bytes=21 value_bytes=3
+operator 1 keyspace 0x11 keys=1 key_bytes=18 value_bytes=1
+operator 1 keyspace 0x10 keys=2 key_bytes=37 value_bytes=3
 count=2
 
 # An overwrite moves value bytes without changing the key count; counting it as a new key would inflate the
@@ -43,8 +43,8 @@ flush
 census
 ---
 ok
-operator 1 keyspace 0x11 keys=1 key_bytes=10 value_bytes=1
-operator 1 keyspace 0x10 keys=2 key_bytes=21 value_bytes=5
+operator 1 keyspace 0x11 keys=1 key_bytes=18 value_bytes=1
+operator 1 keyspace 0x10 keys=2 key_bytes=37 value_bytes=5
 count=2
 
 # A neighbouring operator gets its own buckets.
@@ -54,9 +54,9 @@ flush
 census
 ---
 ok
-operator 1 keyspace 0x11 keys=1 key_bytes=10 value_bytes=1
-operator 1 keyspace 0x10 keys=2 key_bytes=21 value_bytes=5
-operator 2 keyspace 0x10 keys=1 key_bytes=10 value_bytes=1
+operator 1 keyspace 0x11 keys=1 key_bytes=18 value_bytes=1
+operator 1 keyspace 0x10 keys=2 key_bytes=37 value_bytes=5
+operator 2 keyspace 0x10 keys=1 key_bytes=18 value_bytes=1
 count=3
 
 # A delete removes the key from its bucket, and a bucket that empties drops out of the census entirely.
@@ -66,8 +66,8 @@ flush
 census
 ---
 ok
-operator 1 keyspace 0x10 keys=2 key_bytes=21 value_bytes=5
-operator 2 keyspace 0x10 keys=1 key_bytes=10 value_bytes=1
+operator 1 keyspace 0x10 keys=2 key_bytes=37 value_bytes=5
+operator 2 keyspace 0x10 keys=1 key_bytes=18 value_bytes=1
 count=2
 
 # Dropping an operator empties every bucket it owns.
@@ -77,5 +77,5 @@ flush
 census
 ---
 ok
-operator 2 keyspace 0x10 keys=1 key_bytes=10 value_bytes=1
+operator 2 keyspace 0x10 keys=1 key_bytes=18 value_bytes=1
 count=1

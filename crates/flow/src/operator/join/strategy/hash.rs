@@ -283,7 +283,7 @@ pub(crate) fn add_to_state_entry_batch(
 	}
 	let shape = build_shape(columns);
 	store.set_row_shape(host, &shape)?;
-	let group = store.group_for(host, key_hash)?;
+	let group = store.group_of(key_hash);
 	for &idx in indices {
 		let row = encode_row(&shape, columns, idx, host.written_at());
 		store.write_row(host, group, columns.row_numbers()[idx], &row)?;
@@ -301,16 +301,13 @@ pub(crate) fn prepare_entry_update(
 	store: &Store,
 	key_hash: &Hash128,
 	post: &Columns,
-) -> Result<Option<EntryUpdate>> {
+) -> Result<EntryUpdate> {
 	let shape = build_shape(post);
 	store.set_row_shape(host, &shape)?;
-	let Some(group) = store.group_of(host, key_hash)? else {
-		return Ok(None);
-	};
-	Ok(Some(EntryUpdate {
-		group,
+	Ok(EntryUpdate {
+		group: store.group_of(key_hash),
 		shape,
-	}))
+	})
 }
 
 pub(crate) fn update_row_in_entry(

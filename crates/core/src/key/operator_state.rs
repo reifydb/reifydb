@@ -9,18 +9,28 @@ use reifydb_codec::key::{
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
+use reifydb_value::util::hash::xxh3_128;
 
 use super::{EncodableKey, KeyKind};
 use crate::interface::catalog::flow::OperatorId;
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GroupId(pub u64);
+pub struct GroupId(pub u128);
 
 impl GroupId {
 	pub const ROOT: Self = Self(0);
 
-	pub const FIRST: Self = Self(1);
+	pub const FIRST_NON_ROOT: Self = Self(1);
+
+	pub fn of(key: &EncodedKey) -> Self {
+		let hash = xxh3_128(key.as_slice()).0;
+		if hash == Self::ROOT.0 {
+			Self::FIRST_NON_ROOT
+		} else {
+			Self(hash)
+		}
+	}
 
 	pub fn is_root(&self) -> bool {
 		*self == Self::ROOT
@@ -54,14 +64,14 @@ impl GroupSet {
 		self.0.is_empty()
 	}
 
-	pub fn as_raw_parts(&self) -> (*const u64, usize) {
-		(self.0.as_ptr() as *const u64, self.0.len())
+	pub fn as_raw_parts(&self) -> (*const u128, usize) {
+		(self.0.as_ptr() as *const u128, self.0.len())
 	}
 }
 
 pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
 	let mut de = KeyDeserializer::from_bytes(inner);
-	let group = GroupId(de.read_u64().ok()?);
+	let group = GroupId(de.read_u128().ok()?);
 	let keyspace = Keyspace(de.read_u8().ok()?);
 	if !keyspace.is_data() {
 		return None;
@@ -95,19 +105,13 @@ impl Keyspace {
 
 	pub const ROW_NUMBER_MAPPING: Self = Self(0xFE);
 
-	pub const GROUP_DICTIONARY: Self = Self(0xFD);
-
 	pub const NODE_COUNTER: Self = Self(0xFC);
-
-	pub const GROUP_RECORD: Self = Self(0xFB);
 
 	pub const SOURCE_WATERMARK: Self = Self(0xFA);
 
 	pub const TIMER_WHEEL: Self = Self(0xF9);
 
 	pub const TIMER_INDEX: Self = Self(0xF8);
-
-	pub const APPEND_DICTIONARY: Self = Self(0xF7);
 
 	pub const ACCUMULATOR: Self = Self(0x10);
 
@@ -172,13 +176,10 @@ impl Keyspace {
 	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
 			Self::ROW_NUMBER_MAPPING => "ROW_NUMBER_MAPPING",
-			Self::GROUP_DICTIONARY => "GROUP_DICTIONARY",
 			Self::NODE_COUNTER => "NODE_COUNTER",
-			Self::GROUP_RECORD => "GROUP_RECORD",
 			Self::SOURCE_WATERMARK => "SOURCE_WATERMARK",
 			Self::TIMER_WHEEL => "TIMER_WHEEL",
 			Self::TIMER_INDEX => "TIMER_INDEX",
-			Self::APPEND_DICTIONARY => "APPEND_DICTIONARY",
 			Self::ACCUMULATOR => "ACCUMULATOR",
 			Self::BUFFER => "BUFFER",
 			Self::RUNNING => "RUNNING",
@@ -230,8 +231,6 @@ impl Keyspace {
 			Self::ENGINE_META => CachePolicy::Range,
 			Self::JOIN_PIN => CachePolicy::Range,
 			Self::ROW_NUMBER_MAPPING => CachePolicy::Range,
-			Self::GROUP_RECORD => CachePolicy::Range,
-			Self::GROUP_DICTIONARY => CachePolicy::Range,
 			Self::ACCUMULATOR => CachePolicy::Range,
 			Self::WINDOW_META => CachePolicy::Range,
 			_ => CachePolicy::Both,
@@ -243,10 +242,8 @@ impl Keyspace {
 			|| matches!(
 				*self,
 				Self::ROW_NUMBER_MAPPING
-					| Self::GROUP_DICTIONARY | Self::NODE_COUNTER
-					| Self::GROUP_RECORD | Self::SOURCE_WATERMARK
+					| Self::NODE_COUNTER | Self::SOURCE_WATERMARK
 					| Self::TIMER_WHEEL | Self::TIMER_INDEX
-					| Self::APPEND_DICTIONARY
 			)
 	}
 }
@@ -284,23 +281,23 @@ impl OperatorStateKey {
 		suffix: impl AsRef<[u8]>,
 	) -> EncodedKey {
 		let suffix = suffix.as_ref();
-		let mut serializer = KeySerializer::with_capacity(20 + suffix.len());
+		let mut serializer = KeySerializer::with_capacity(28 + suffix.len());
 		serializer
 			.extend_u8(KeyKind::OperatorState as u8)
 			.extend_u64(operator.0)
-			.extend_u64(group.0)
+			.extend_u128(group.0)
 			.extend_u8(keyspace.0)
 			.extend_raw(suffix);
 		serializer.to_encoded_key()
 	}
 
 	pub fn inner(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(12 + self.suffix.len());
-		serializer.extend_u64(self.group.0).extend_u8(self.keyspace.0).extend_raw(&self.suffix);
+		let mut serializer = KeySerializer::with_capacity(20 + self.suffix.len());
+		serializer.extend_u128(self.group.0).extend_u8(self.keyspace.0).extend_raw(&self.suffix);
 		serializer.to_encoded_key()
 	}
 
-	pub const KEYSPACE_INNER_OFFSET: u32 = size_of::<u64>() as u32;
+	pub const KEYSPACE_INNER_OFFSET: u32 = size_of::<u128>() as u32;
 
 	pub fn decode_keyspace(stored: u8) -> Keyspace {
 		Keyspace(KeyDeserializer::from_bytes(&[stored]).read_u8().expect("a single byte decodes as u8"))
@@ -308,14 +305,14 @@ impl OperatorStateKey {
 
 	pub fn inner_encoded(group: GroupId, keyspace: Keyspace, suffix: impl AsRef<[u8]>) -> GroupStateKey {
 		let suffix = suffix.as_ref();
-		let mut serializer = KeySerializer::with_capacity(12 + suffix.len());
-		serializer.extend_u64(group.0).extend_u8(keyspace.0).extend_raw(suffix);
+		let mut serializer = KeySerializer::with_capacity(20 + suffix.len());
+		serializer.extend_u128(group.0).extend_u8(keyspace.0).extend_raw(suffix);
 		GroupStateKey(serializer.to_encoded_key())
 	}
 
 	pub fn decode_inner(inner: &[u8]) -> Option<(GroupId, Keyspace, Vec<u8>)> {
 		let mut de = KeyDeserializer::from_bytes(inner);
-		let group = de.read_u64().ok()?;
+		let group = de.read_u128().ok()?;
 		let keyspace = de.read_u8().ok()?;
 		let suffix = de.read_raw(de.remaining()).ok()?.to_vec();
 		Some((GroupId(group), Keyspace(keyspace), suffix))
@@ -341,11 +338,11 @@ impl EncodableKey for OperatorStateKey {
 	const KIND: KeyKind = KeyKind::OperatorState;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(20 + self.suffix.len());
+		let mut serializer = KeySerializer::with_capacity(28 + self.suffix.len());
 		serializer
 			.extend_u8(KeyKind::OperatorState as u8)
 			.extend_u64(self.operator.0)
-			.extend_u64(self.group.0)
+			.extend_u128(self.group.0)
 			.extend_u8(self.keyspace.0)
 			.extend_raw(&self.suffix);
 		serializer.to_encoded_key()
@@ -360,7 +357,7 @@ impl EncodableKey for OperatorStateKey {
 		}
 
 		let operator = de.read_u64().ok()?;
-		let group = de.read_u64().ok()?;
+		let group = de.read_u128().ok()?;
 		let keyspace = de.read_u8().ok()?;
 		let suffix = de.read_raw(de.remaining()).ok()?.to_vec();
 
@@ -443,8 +440,8 @@ impl IntoGroupStateKey for GroupStateKey {
 }
 
 fn group_inner_prefix(group: GroupId) -> Vec<u8> {
-	let mut serializer = KeySerializer::with_capacity(12);
-	serializer.extend_u64(group.0);
+	let mut serializer = KeySerializer::with_capacity(20);
+	serializer.extend_u128(group.0);
 	serializer.finish().as_ref().to_vec()
 }
 
@@ -495,8 +492,8 @@ pub fn node_prefix(operator: OperatorId) -> Vec<u8> {
 }
 
 fn group_prefix(operator: OperatorId, group: GroupId) -> Vec<u8> {
-	let mut serializer = KeySerializer::with_capacity(20);
-	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(operator.0).extend_u64(group.0);
+	let mut serializer = KeySerializer::with_capacity(28);
+	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(operator.0).extend_u128(group.0);
 	serializer.finish().as_ref().to_vec()
 }
 
@@ -545,10 +542,10 @@ mod tests {
 	use crate::{interface::catalog::flow::OperatorId, key::EncodableKey};
 
 	const NODES: [u64; 4] = [1, 17, 300, 70_000];
-	const GROUPS: [u64; 8] = [1, 2, 127, 128, 1000, 100_000, 1 << 30, u64::MAX];
+	const GROUPS: [u128; 8] = [1, 2, 127, 128, 1000, 100_000, 1 << 30, u128::MAX];
 	const DATA_KEYSPACES: [Keyspace; 4] =
 		[Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::RUNNING, Keyspace::CUSTOM_NOT_CACHED];
-	const IDENTITY_KEYSPACES: [Keyspace; 2] = [Keyspace::GROUP_RECORD, Keyspace::ROW_NUMBER_MAPPING];
+	const IDENTITY_KEYSPACES: [Keyspace; 1] = [Keyspace::ROW_NUMBER_MAPPING];
 
 	#[derive(Clone, Copy, PartialEq, Debug)]
 	enum Phase {
@@ -559,12 +556,9 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and `cache_policy`, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, Keyspace, Phase, CachePolicy); 38] = [
+	const CENSUS: [(&str, Keyspace, Phase, CachePolicy); 35] = [
 		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity, CachePolicy::Range),
-		("APPEND_DICTIONARY", Keyspace::APPEND_DICTIONARY, Phase::Identity, CachePolicy::Both),
-		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity, CachePolicy::Range),
 		("NODE_COUNTER", Keyspace::NODE_COUNTER, Phase::Identity, CachePolicy::Both),
-		("GROUP_RECORD", Keyspace::GROUP_RECORD, Phase::Identity, CachePolicy::Range),
 		("SOURCE_WATERMARK", Keyspace::SOURCE_WATERMARK, Phase::Identity, CachePolicy::Both),
 		("TIMER_WHEEL", Keyspace::TIMER_WHEEL, Phase::Identity, CachePolicy::Range),
 		("TIMER_INDEX", Keyspace::TIMER_INDEX, Phase::Identity, CachePolicy::Both),
@@ -618,17 +612,14 @@ mod tests {
 	}
 
 	#[test]
-	fn a_bare_row_number_key_is_indistinguishable_from_another_groups_prefix() {
-		// a bare row number equals a group prefix, so it is erased with that group on reclaim, never errors
+	fn a_bare_row_number_key_is_too_short_to_be_read_as_a_framed_key() {
+		// a bare u64 is half a group prefix, so the framing check must decline it rather than read past its end
 		let mut bare = KeySerializer::with_capacity(4);
 		bare.extend_u64(7u64);
 		let bare = bare.finish().as_ref().to_vec();
 
-		assert_eq!(bare, group_inner_prefix(GroupId(7)), "a bare row number encodes as a group prefix");
-		assert!(
-			contains(&group_identity_inner_range(GroupId(7)), &bare),
-			"so reclaiming group 7 erases it with the row-number mappings"
-		);
+		assert!(bare.len() < group_inner_prefix(GroupId(7)).len(), "a bare row number cannot span a group");
+		assert!(OperatorStateKey::decode_inner(&bare).is_none());
 		assert!(!is_framed_inner(&bare));
 
 		let framed =
@@ -701,7 +692,7 @@ mod tests {
 			}
 			keys.push(OperatorStateKey::root(
 				OperatorId(operator),
-				Keyspace::GROUP_DICTIONARY,
+				Keyspace::NODE_COUNTER,
 				b"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_vec(),
 			));
 		}
@@ -903,19 +894,16 @@ mod tests {
 
 	#[test]
 	fn root_entries_sit_outside_every_group_range() {
-		// the root-scoped dictionary entry must sit outside every group range, or reclaiming a group erases it
+		// the root-scoped counter must sit outside every group range, or reclaiming a group erases it
 		for operator in NODES {
-			let dictionary = OperatorStateKey::root(
-				OperatorId(operator),
-				Keyspace::GROUP_DICTIONARY,
-				b"mint-pubkey".to_vec(),
-			)
-			.encode();
+			let counter =
+				OperatorStateKey::root(OperatorId(operator), Keyspace::NODE_COUNTER, b"mint".to_vec())
+					.encode();
 			for group in GROUPS {
 				let range = group_range(OperatorId(operator), GroupId(group));
 				assert!(
-					!contains(&range, dictionary.as_slice()),
-					"group {group} range must not contain the root group's dictionary entry"
+					!contains(&range, counter.as_slice()),
+					"group {group} range must not contain the root group's counter"
 				);
 			}
 		}
@@ -949,7 +937,7 @@ mod tests {
 		let inside = OperatorStateKey::new(operator, group, Keyspace::BUFFER, vec![1]).encode();
 		assert!(contains(&range, inside.as_slice()));
 
-		for other in [Keyspace::ACCUMULATOR, Keyspace::RUNNING, Keyspace::GROUP_RECORD] {
+		for other in [Keyspace::ACCUMULATOR, Keyspace::RUNNING, Keyspace::ROW_NUMBER_MAPPING] {
 			let key = OperatorStateKey::new(operator, group, other, vec![1]).encode();
 			assert!(!contains(&range, key.as_slice()), "keyspace {other:?} leaked into the buffer range");
 		}
@@ -995,14 +983,14 @@ mod tests {
 		// group 0's inner range has no byte-wise successor, so it must stay bounded by the operator prefix
 		let range = group_inner_range(GroupId::ROOT).with_prefix(EncodedKey::new(node_prefix(OperatorId(17))));
 
-		let own = OperatorStateKey::root(OperatorId(17), Keyspace::GROUP_DICTIONARY, vec![1]).encode();
-		assert!(contains(&range, own.as_slice()), "the operator's own dictionary entry must be in range");
+		let own = OperatorStateKey::root(OperatorId(17), Keyspace::NODE_COUNTER, vec![1]).encode();
+		assert!(contains(&range, own.as_slice()), "the operator's own counter must be in range");
 
 		for operator in NODES {
 			if operator == 17 {
 				continue;
 			}
-			for keyspace in [Keyspace::GROUP_DICTIONARY, Keyspace::ACCUMULATOR] {
+			for keyspace in [Keyspace::NODE_COUNTER, Keyspace::ACCUMULATOR] {
 				let foreign =
 					OperatorStateKey::new(OperatorId(operator), GroupId::ROOT, keyspace, vec![1])
 						.encode();
@@ -1049,21 +1037,27 @@ mod tests {
 	}
 
 	#[test]
-	fn interned_group_keys_stay_compact() {
-		// interning must keep state keys far smaller than embedding raw group bytes in every key
-		let interned =
-			OperatorStateKey::new(OperatorId(17), GroupId(123_456), Keyspace::ACCUMULATOR, vec![0; 8])
-				.encode();
-		let raw_group_bytes = b"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU\
-		                        So11111111111111111111111111111111111111112"
-			.len() + 8;
+	fn a_state_key_stays_compact_however_long_the_group_key_is() {
+		// a hashed group id must keep the state key fixed-width, never embedding the raw group bytes
+		let long = b"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU\
+		             So11111111111111111111111111111111111111112";
+		let hashed = OperatorStateKey::new(
+			OperatorId(17),
+			GroupId::of(&EncodedKey::new(long.to_vec())),
+			Keyspace::ACCUMULATOR,
+			vec![0; 8],
+		)
+		.encode();
+		let short = OperatorStateKey::new(
+			OperatorId(17),
+			GroupId::of(&EncodedKey::new(b"g".to_vec())),
+			Keyspace::ACCUMULATOR,
+			vec![0; 8],
+		)
+		.encode();
 
-		assert!(
-			interned.as_slice().len() * 3 < raw_group_bytes,
-			"an interned state key ({} bytes) must stay far below a raw-group key ({} bytes)",
-			interned.as_slice().len(),
-			raw_group_bytes
-		);
+		assert_eq!(hashed.as_slice().len(), short.as_slice().len(), "group key length must not reach the key");
+		assert!(hashed.as_slice().len() * 2 < long.len() + 8, "and must stay far below embedding the bytes");
 	}
 
 	#[test]
@@ -1148,18 +1142,18 @@ mod tests {
 		let set = GroupSet::new([]);
 
 		assert!(set.is_empty());
-		assert!(!set.contains(GroupId::FIRST));
+		assert!(!set.contains(GroupId::FIRST_NON_ROOT));
 	}
 
 	#[test]
-	fn a_group_set_hands_the_ffi_boundary_a_plain_u64_array() {
-		// GroupId must stay repr(transparent) over u64, or the FFI slice cast reads the wrong bytes
+	fn a_group_set_hands_the_ffi_boundary_a_plain_u128_array() {
+		// GroupId must stay repr(transparent) over u128, or the FFI slice cast reads the wrong bytes
 		let set = GroupSet::new([GroupId(3), GroupId(1), GroupId(2)]);
 		let (ptr, len) = set.as_raw_parts();
 
 		assert_eq!(len, 3);
-		// SAFETY: the slice is alive for the whole assertion and GroupId is repr(transparent) over u64.
+		// SAFETY: the slice is alive for the whole assertion and GroupId is repr(transparent) over u128.
 		let raw = unsafe { slice::from_raw_parts(ptr, len) };
-		assert_eq!(raw, &[1u64, 2, 3]);
+		assert_eq!(raw, &[1u128, 2, 3]);
 	}
 }

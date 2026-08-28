@@ -179,19 +179,6 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 			 wheel too")
 	}
 
-	pub fn group_id(&self, group_key: &[u8]) -> Option<GroupId> {
-		let dictionary_key = OperatorStateKey::encoded(
-			self.operator_id,
-			GroupId::ROOT,
-			Keyspace::GROUP_DICTIONARY,
-			group_key,
-		);
-		self.context
-			.get_state(&dictionary_key)
-			.filter(|bytes| bytes.len() >= 8)
-			.map(|bytes| GroupId(u64::from_le_bytes(bytes[..8].try_into().unwrap())))
-	}
-
 	pub fn reclaim_groups(&mut self, groups: &[GroupId]) -> ReclaimedGroups {
 		let removed = self.erase_group_state(groups, |_| true);
 		Self::reclaimed(groups, removed)
@@ -1068,24 +1055,23 @@ pub mod tests {
 	}
 
 	#[test]
-	fn erasing_a_group_never_reaches_the_root_scoped_dictionary_that_resolves_it() {
-		// The root group holds every group's interning dictionary and id counter; erasing it would mint
-		// duplicate ids.
+	fn erasing_a_group_never_reaches_the_root_scoped_row_number_counter() {
+		// the root group holds the row number counter; erasing it would mint duplicate row numbers
 		const NODE: OperatorId = OperatorId(1);
-		let dictionary = group_state_key(NODE, GroupId::ROOT, Keyspace::GROUP_DICTIONARY).encode();
 		let counter = group_state_key(NODE, GroupId::ROOT, Keyspace::NODE_COUNTER).encode();
+		let timer = group_state_key(NODE, GroupId::ROOT, Keyspace::TIMER_WHEEL).encode();
 		let mut harness = ExternCOperatorHarnessBuilder::<TestOperator>::new()
 			.with_node_id(NODE)
-			.with_initial_state(group_state_key(NODE, GroupId::ROOT, Keyspace::GROUP_DICTIONARY), vec![1])
 			.with_initial_state(group_state_key(NODE, GroupId::ROOT, Keyspace::NODE_COUNTER), vec![2])
+			.with_initial_state(group_state_key(NODE, GroupId::ROOT, Keyspace::TIMER_WHEEL), vec![3])
 			.build()
 			.unwrap();
 
 		harness.reclaim_groups(&[GroupId::ROOT]);
 
 		let state = harness.snapshot_state();
-		assert!(state.contains_key(&dictionary), "the dictionary survives even a sweep naming the root group");
-		assert!(state.contains_key(&counter), "so does the id counter");
+		assert!(state.contains_key(&counter), "the counter survives even a sweep naming the root group");
+		assert!(state.contains_key(&timer), "so does the timer wheel");
 	}
 }
 

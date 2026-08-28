@@ -13,7 +13,7 @@ use reifydb_codec::{
 	row::operator::state::OperatorState,
 };
 use reifydb_core::{key::operator_state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::Result;
 
 use crate::{
 	operator::state_access::{get_classified, put},
@@ -87,7 +87,7 @@ where
 			return Ok(Vec::new());
 		}
 		let mut meta_loaded = self.load_meta(store, &buckets)?;
-		let buffer_rows = self.resolve_buffer_rows(store, &buckets, &meta_loaded, &row_key)?;
+		let buffer_rows = self.resolve_buffer_rows(&buckets, &meta_loaded, &row_key)?;
 
 		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, Running, Output>> = BTreeMap::new();
 
@@ -101,7 +101,7 @@ where
 						Some(resolved) => resolved.clone(),
 						None => {
 							let key = row_key(&group);
-							let group_id = store.intern_group(&key)?.0;
+							let group_id = GroupId::of(&key);
 							(group_id, key)
 						}
 					};
@@ -255,7 +255,6 @@ where
 
 	fn resolve_buffer_rows<K>(
 		&mut self,
-		store: &mut dyn StateStore,
 		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C>,
 		row_key: &K,
@@ -274,22 +273,8 @@ where
 				group_keys.push(row_key(group));
 			}
 		}
-		if group_keys.is_empty() {
-			return Ok(buffer_rows);
-		}
-		let interned = store.intern_groups(&group_keys)?;
-		reifydb_assertions! {
-			let resolved = interned.len();
-			let requested = group_keys.len();
-			assert!(
-				resolved == requested,
-				"intern_groups returned {resolved} groups for {requested} group keys; \
-				 the zip below pairs resolve_order with the interned ids by position, so a length \
-				 mismatch would silently leave some groups without a buffer_rows entry and route \
-				 them through the per-bucket intern fallback, diverging behaviour"
-			);
-		}
-		for ((group, key), (group_id, _)) in resolve_order.into_iter().zip(group_keys).zip(interned) {
+		for (group, key) in resolve_order.into_iter().zip(group_keys) {
+			let group_id = GroupId::of(&key);
 			buffer_rows.insert(group, (group_id, key));
 		}
 		Ok(buffer_rows)
@@ -305,7 +290,7 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::state::timer::StateStore;
+	use reifydb_core::key::operator_state::GroupId;
 	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
 
 	use crate::{
@@ -390,13 +375,7 @@ mod tests {
 		assert_eq!(published.len(), 1);
 		assert!(matches!(published[0].kind, EmitKind::Insert), "precondition: the group publishes once");
 
-		let group_id = store
-			.lookup_groups(&[row_key(&1)])
-			.unwrap()
-			.into_iter()
-			.next()
-			.unwrap()
-			.expect("precondition: the group is interned");
+		let group_id = GroupId::of(&row_key(&1));
 		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
 		assert!(
 			store.contains_row_mapping(group_id, &row_key(&1)),

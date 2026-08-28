@@ -344,12 +344,9 @@ where
 			}
 		}
 
-		let groups = intern_window_groups(
-			ctx,
-			buckets.keys().map(|(group, span)| {
-				((group.clone(), span.start), self.aggregator.encode_row_key(group, span.start))
-			}),
-		)?;
+		let groups = intern_window_groups(buckets.keys().map(|(group, span)| {
+			((group.clone(), span.start), self.aggregator.encode_row_key(group, span.start))
+		}));
 
 		let results = {
 			let Self {

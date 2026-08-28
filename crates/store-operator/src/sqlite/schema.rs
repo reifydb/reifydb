@@ -15,7 +15,7 @@ pub(crate) fn ensure_schema(conn: &Connection) {
 
 		CREATE TABLE IF NOT EXISTS "operator_seal_anchor" (
 			"operator" INTEGER NOT NULL,
-			"group" INTEGER NOT NULL,
+			"group" BLOB NOT NULL,
 			"side" INTEGER NOT NULL,
 			"row_number" INTEGER NOT NULL,
 			"expiry" INTEGER NOT NULL,

@@ -75,7 +75,7 @@ fn buffer_fixture() -> (OperatorCommitBuffer, SqliteOperatorStorage, ActorRef<Fl
 }
 
 fn key(suffix: u8) -> EncodedKey {
-	let mut bytes = 7u64.to_be_bytes().to_vec();
+	let mut bytes = 7u128.to_be_bytes().to_vec();
 	bytes.push(0x10);
 	bytes.push(suffix);
 	EncodedKey::new(bytes)

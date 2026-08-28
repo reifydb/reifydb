@@ -144,9 +144,9 @@ fn rolling_span(operator: &WindowOperator, lag: Duration) -> Duration {
 type RollingEngineBuckets<C> = RollingBuckets<Hash128, C, (WindowSlotKey, Vec<Option<Value>>)>;
 
 #[instrument(name = "flow::operator::window::intern_partitions", level = "trace", skip_all, fields(partitions = touched.len()))]
-fn intern_partitions(host: &mut dyn HostContext, touched: &[Hash128]) -> Result<WindowGroups> {
+fn intern_partitions(touched: &[Hash128]) -> WindowGroups {
 	let partitions: Vec<(Hash128, u64)> = touched.iter().map(|hash| (*hash, 0)).collect();
-	intern_window_groups(host, &partitions)
+	intern_window_groups(&partitions)
 }
 
 fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
@@ -367,7 +367,7 @@ fn apply_rolling<C: RollingDomain>(
 	let runnable = rolling_runnable(operator, &kinds);
 	let armed_before = rolling_earliest_expiry::<C>(operator, host, runnable, lag)?;
 
-	let groups = intern_partitions(host, &touched)?;
+	let groups = intern_partitions(&touched);
 	let results = if runnable {
 		let engine = C::engine(operator, true, lag);
 		engine.apply_running(
@@ -680,7 +680,6 @@ mod tests {
 	#[derive(Default)]
 	struct MockStore {
 		state: TestHashMap<Vec<u8>, EncodedPodRow>,
-		groups: TestHashMap<Vec<u8>, GroupId>,
 		rows: TestHashMap<(GroupId, Vec<u8>), u64>,
 		next_row: u64,
 	}
@@ -712,26 +711,6 @@ mod tests {
 	}
 
 	impl StateStore for MockStore {
-		fn intern_groups(&mut self, groups: &[EncodedKey]) -> ValueResult<Vec<(GroupId, bool)>> {
-			let mut interned = Vec::with_capacity(groups.len());
-			for group in groups {
-				let bytes = group.as_bytes().to_vec();
-				match self.groups.get(&bytes) {
-					Some(id) => interned.push((*id, false)),
-					None => {
-						let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
-						self.groups.insert(bytes, next);
-						interned.push((next, true));
-					}
-				}
-			}
-			Ok(interned)
-		}
-
-		fn lookup_groups(&mut self, groups: &[EncodedKey]) -> ValueResult<Vec<Option<GroupId>>> {
-			Ok(groups.iter().map(|group| self.groups.get(group.as_bytes()).copied()).collect())
-		}
-
 		fn state_get(&mut self, key: &GroupStateKey) -> ValueResult<Option<EncodedPodRow>> {
 			Ok(self.state.get(key.as_slice()).cloned())
 		}

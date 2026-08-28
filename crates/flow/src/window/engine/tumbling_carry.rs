@@ -147,7 +147,7 @@ where
 		}
 		let retention = self.retention;
 		let mut meta_loaded = self.load_meta(store, &buckets)?;
-		let slot_resolved = self.resolve_survivor_rows(store, &buckets, &meta_loaded, &row_key)?;
+		let slot_resolved = self.resolve_survivor_rows(&buckets, &meta_loaded, &row_key)?;
 
 		let mut earliest_affected: HashMap<G, C> = HashMap::new();
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
@@ -158,7 +158,7 @@ where
 			let slot_key = row_key(&group, span.start);
 			let group_id = match &slot_pre {
 				Some((gid, _)) => *gid,
-				None => store.intern_group(&slot_key)?.0,
+				None => GroupId::of(&slot_key),
 			};
 			if !entry.windows.contains_key(&span.start) && slot_pre.is_none() {
 				continue;
@@ -214,21 +214,17 @@ where
 
 			let coords: Vec<C> = meta.windows.range(start..).map(|(c, _)| *c).collect();
 			let coord_keys: Vec<EncodedKey> = coords.iter().map(|coord| row_key(&group, *coord)).collect();
-			let coord_groups = store.lookup_groups(&coord_keys)?;
-
 			let mut emptied: Vec<C> = Vec::new();
 			let mut pending: Vec<PendingCarry<C, Output>> = Vec::new();
-			for ((coord, slot_key), coord_group) in coords.into_iter().zip(coord_keys).zip(coord_groups) {
+			for (coord, slot_key) in coords.into_iter().zip(coord_keys) {
 				let span = meta.windows.get(&coord).expect("window entry present").span;
-				let finalized = match coord_group {
-					Some(coord_group) => get::<_, Accumulator>(
-						store,
-						&WindowStateKey::new(coord_group, slot_key.clone()),
-					)?
-					.and_then(|a| a.finalize())
-					.map(|value| (coord_group, value)),
-					None => None,
-				};
+				let coord_group = GroupId::of(&slot_key);
+				let finalized = get::<_, Accumulator>(
+					store,
+					&WindowStateKey::new(coord_group, slot_key.clone()),
+				)?
+				.and_then(|a| a.finalize())
+				.map(|value| (coord_group, value));
 				let emitted = finalized.as_ref().and_then(|(coord_group, value)| {
 					build_output(&group, span, value, prev_carry.as_ref())
 						.map(|out| (*coord_group, value, out))
@@ -253,7 +249,6 @@ where
 					None => {
 						if let Some(prev) =
 							meta.windows.get(&coord).and_then(|w| w.last_output.clone())
-							&& let Some(coord_group) = coord_group
 						{
 							pending.push(PendingCarry {
 								group_id: coord_group,
@@ -313,10 +308,7 @@ where
 					.collect();
 				let sealed_keys: Vec<EncodedKey> =
 					to_seal.iter().map(|first| row_key(&group, *first)).collect();
-				let sealed_groups = store.lookup_groups(&sealed_keys)?;
-				for ((first, sealed_key), sealed_group) in
-					to_seal.into_iter().zip(sealed_keys).zip(sealed_groups)
-				{
+				for (first, sealed_key) in to_seal.into_iter().zip(sealed_keys) {
 					let carry_out = meta
 						.windows
 						.get(&first)
@@ -326,10 +318,9 @@ where
 					meta.windows.remove(&first);
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
-					if let Some(sealed_group) = sealed_group {
-						remove(store, &WindowStateKey::new(sealed_group, sealed_key.clone()))?;
-						store.remove_row_number(sealed_group, &sealed_key)?;
-					}
+					let sealed_group = GroupId::of(&sealed_key);
+					remove(store, &WindowStateKey::new(sealed_group, sealed_key.clone()))?;
+					store.remove_row_number(sealed_group, &sealed_key)?;
 				}
 			}
 		}
@@ -364,7 +355,6 @@ where
 
 	fn resolve_survivor_rows<K>(
 		&mut self,
-		store: &mut dyn StateStore,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C, Carry, Output>,
 		row_key: &K,
@@ -383,21 +373,7 @@ where
 				survivor_keys.push(row_key(group, span.start));
 			}
 		}
-		let interned = store.intern_groups(&survivor_keys)?;
-		let resolved_rows: Vec<(GroupId, EncodedKey)> =
-			survivor_keys.iter().cloned().zip(interned).map(|(key, (group, _))| (group, key)).collect();
-		reifydb_assertions! {
-			let survivors = survivor_keys.len();
-			let resolved = resolved_rows.len();
-			assert!(
-				resolved == survivors,
-				"intern_group must return exactly one group per survivor key; a short batch would \
-				 leave a surviving slot with no resolved group, so the slot_resolved zip below pairs it with None \
-				 and apply silently skips the slot instead of folding into the existing window state \
-				 (survivor_keys={survivors}, resolved_rows={resolved})"
-			);
-		}
-		let mut resolved_rows = resolved_rows.into_iter();
+		let mut resolved_rows = survivor_keys.into_iter().map(|key| (GroupId::of(&key), key));
 		Ok(slot_survives
 			.into_iter()
 			.map(|survives| {
@@ -452,7 +428,6 @@ mod tests {
 	#[derive(Default)]
 	struct CountingStore {
 		data: HashMap<Vec<u8>, EncodedPodRow>,
-		groups: HashMap<Vec<u8>, GroupId>,
 		rows: HashMap<(GroupId, Vec<u8>), RowNumber>,
 		next_row: u64,
 	}
@@ -529,26 +504,6 @@ mod tests {
 	}
 
 	impl StateStore for CountingStore {
-		fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
-			let mut interned = Vec::with_capacity(groups.len());
-			for group in groups {
-				let bytes = group.as_bytes().to_vec();
-				match self.groups.get(&bytes) {
-					Some(id) => interned.push((*id, false)),
-					None => {
-						let next = GroupId(self.groups.len() as u64 + GroupId::FIRST.0);
-						self.groups.insert(bytes, next);
-						interned.push((next, true));
-					}
-				}
-			}
-			Ok(interned)
-		}
-
-		fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
-			Ok(groups.iter().map(|group| self.groups.get(group.as_bytes()).copied()).collect())
-		}
-
 		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 			Ok(self.data.get(key.as_slice()).cloned())
 		}

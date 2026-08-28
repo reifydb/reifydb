@@ -266,7 +266,7 @@ fn repeated_reads_of_one_remembered_key_cost_one_miss() {
 fn a_key_too_short_to_carry_a_keyspace_is_declined_not_cached() {
 	let tier = roomy();
 
-	for bytes in [vec![], vec![0u8], vec![0u8; 8]] {
+	for bytes in [vec![], vec![0u8], vec![0u8; 8], vec![0u8; 16]] {
 		let short = EncodedKey::new(&bytes);
 		assert_eq!(keyspace_of(&short), None, "a {} byte key cannot carry a keyspace", bytes.len());
 
@@ -284,7 +284,7 @@ fn a_key_too_short_to_carry_a_keyspace_is_declined_not_cached() {
 	assert_eq!(tier.misses(), 0, "an undecodable key is not attributable to a keyspace, so it counts as neither");
 
 	let shortest_valid = key(GROUP_A, CACHED, b"");
-	assert_eq!(shortest_valid.len(), 9, "group plus keyspace with an empty suffix is the shortest valid key");
+	assert_eq!(shortest_valid.len(), 17, "group plus keyspace with an empty suffix is the shortest valid key");
 	assert!(keyspace_of(&shortest_valid).is_some(), "the shortest valid key must not be declined");
 }
 
@@ -461,7 +461,7 @@ fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 		);
 	}
 
-	for group in 0..64u64 {
+	for group in 0..64u128 {
 		tier.overwrite(OP_A, key(GroupId(group), CACHED, b"a"), row("v"));
 	}
 	assert_eq!(tier.entries(), 64);
@@ -546,10 +546,10 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 fn keyspace_counters_are_summed_across_every_shard() {
 	let tier = sharded(ByteSize::from_mib(64).as_bytes(), 4);
 
-	for group in 0..64u64 {
+	for group in 0..64u128 {
 		tier.overwrite(OP_A, key(GroupId(group), Keyspace::SOURCE_WATERMARK, b"a"), row("v"));
 	}
-	for group in 0..64u64 {
+	for group in 0..64u128 {
 		assert!(tier.get(OP_A, &key(GroupId(group), Keyspace::SOURCE_WATERMARK, b"a")).is_some());
 	}
 

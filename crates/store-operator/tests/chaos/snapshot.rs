@@ -179,7 +179,7 @@ fn interleave(rng: &mut StdRng, harness: &Harness, oracle: &mut Oracle, p: &Para
 				for config in &harness.configs {
 					config.store.anchor_set(
 						FROZEN,
-						GroupId(GROUP),
+						GroupId(GROUP.into()),
 						0,
 						RowNumber(row_number),
 						DateTime::from_millis(expiry),

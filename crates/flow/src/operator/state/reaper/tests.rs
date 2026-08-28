@@ -168,7 +168,7 @@ fn reaping_takes_both_ends_of_the_data_range_and_spares_both_ends_of_the_identit
 	let mut store = MockStore::default();
 	let lowest_data = key(DOOMED, Keyspace(0x00), 1);
 	let highest_data = key(DOOMED, Keyspace(Keyspace::HIGHEST_DATA), 1);
-	let lowest_identity = key(DOOMED, Keyspace::APPEND_DICTIONARY, 1);
+	let lowest_identity = key(DOOMED, Keyspace::TIMER_INDEX, 1);
 	let highest_identity = key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, 1);
 	for k in [&lowest_data, &highest_data, &lowest_identity, &highest_identity] {
 		seed(&mut store, k);
@@ -215,7 +215,7 @@ fn the_reap_scan_never_fetches_an_identity_key() {
 	}
 	for i in 0..2 {
 		seed(&mut store, &key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, i));
-		seed(&mut store, &key(DOOMED, Keyspace::APPEND_DICTIONARY, i));
+		seed(&mut store, &key(DOOMED, Keyspace::TIMER_INDEX, i));
 	}
 	let before = store.rows_visited();
 
@@ -269,7 +269,7 @@ fn the_merged_scan_partitions_by_keyspace_not_by_scan_order() {
 	let mut store = MockStore::default();
 	let lowest_data = key(DOOMED, Keyspace(0x00), 1);
 	let highest_data = key(DOOMED, Keyspace(Keyspace::HIGHEST_DATA), 1);
-	let lowest_identity = key(DOOMED, Keyspace::APPEND_DICTIONARY, 1);
+	let lowest_identity = key(DOOMED, Keyspace::TIMER_INDEX, 1);
 	let highest_identity = key(DOOMED, Keyspace::ROW_NUMBER_MAPPING, 1);
 	for k in [&lowest_data, &highest_data, &lowest_identity, &highest_identity] {
 		seed(&mut store, k);

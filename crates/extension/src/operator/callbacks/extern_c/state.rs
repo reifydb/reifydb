@@ -21,7 +21,6 @@ use reifydb_sdk::{
 		},
 	},
 	flow::operator::extern_c::wire::{
-		callbacks::state::GROUP_ABSENT,
 		context::ExternCContextRaw,
 		iterators::ExternCStateIterator,
 		state::{ExternCStateEntry, ExternCStateSlice},
@@ -462,7 +461,7 @@ pub(super) extern "C" fn host_state_iterator_free(iterator: *mut ExternCStateIte
 pub(super) extern "C" fn host_get_or_create_row_numbers(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u64,
+	group: u128,
 	keys: *const ExternCKeyRef,
 	keys_len: usize,
 	row_numbers_out: *mut u64,
@@ -500,7 +499,7 @@ pub(super) extern "C" fn host_get_or_create_row_numbers(
 pub(super) extern "C" fn host_remove_row_number(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u64,
+	group: u128,
 	key_ptr: *const u8,
 	key_len: usize,
 ) -> i32 {
@@ -524,7 +523,7 @@ pub(super) extern "C" fn host_remove_row_number(
 pub(super) extern "C" fn host_remove_row_numbers_below(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u64,
+	group: u128,
 	upper_ptr: *const u8,
 	upper_len: usize,
 	output: *mut ExternCBuffer,
@@ -597,7 +596,7 @@ pub(super) extern "C" fn host_arm_timer(
 pub(super) extern "C" fn host_reclaim_group_identity(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u64,
+	group: u128,
 	limit: usize,
 	removed_out: *mut usize,
 	more_out: *mut u8,
@@ -624,7 +623,7 @@ pub(super) extern "C" fn host_reclaim_group_identity(
 pub(super) extern "C" fn host_reclaim_group_identity_keys(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u64,
+	group: u128,
 	keys: *const ExternCKeyRef,
 	keys_len: usize,
 	removed_out: *mut usize,
@@ -721,47 +720,10 @@ pub(super) extern "C" fn host_disarm_timer(
 	}
 }
 
-pub(super) extern "C" fn host_intern_groups(
-	_operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	groups: *const ExternCKeyRef,
-	groups_len: usize,
-	ids_out: *mut u64,
-	is_new_out: *mut u8,
-) -> i32 {
-	if ctx.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-	if groups_len > 0 && (groups.is_null() || ids_out.is_null() || is_new_out.is_null()) {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: `ctx` is null-checked above, and for a non-zero `groups_len` so are `groups`, `ids_out` and
-	// `is_new_out`; the guest must pass back the ExternCContextRaw the host handed it for this call, `groups`
-	// satisfying encoded_keys, and both out arrays valid and aligned for `groups_len` writes -
-	// intern_groups returns exactly one id per group.
-	unsafe {
-		let host = get_host_mut(&mut *ctx);
-		let Some(keys) = encoded_keys(groups, groups_len) else {
-			return EXTERN_C_ERROR_NULL_PTR;
-		};
-		match host.intern_groups(&keys) {
-			Ok(interned) => {
-				for (index, (group, is_new)) in interned.iter().enumerate() {
-					*ids_out.add(index) = group.0;
-					*is_new_out.add(index) = *is_new as u8;
-				}
-				EXTERN_C_OK
-			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
-		}
-	}
-}
-
 pub(super) extern "C" fn host_get_or_create_row_numbers_for_pairs(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	groups: *const u64,
+	groups: *const u128,
 	keys: *const ExternCKeyRef,
 	pairs_len: usize,
 	row_numbers_out: *mut u64,
@@ -795,99 +757,6 @@ pub(super) extern "C" fn host_get_or_create_row_numbers_for_pairs(
 					*row_numbers_out.add(index) = row_number.0;
 					*is_new_out.add(index) = *is_new as u8;
 				}
-				EXTERN_C_OK
-			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
-		}
-	}
-}
-
-pub(super) extern "C" fn host_lookup_groups(
-	_operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	groups: *const ExternCKeyRef,
-	groups_len: usize,
-	ids_out: *mut u64,
-) -> i32 {
-	if ctx.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-	if groups_len > 0 && (groups.is_null() || ids_out.is_null()) {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: `ctx` is null-checked above, and for a non-zero `groups_len` so are `groups` and
-	// `ids_out`; the guest must pass back the ExternCContextRaw the host handed it for this call, `groups`
-	// satisfying encoded_keys, and an `ids_out` valid and aligned for `groups_len` u64 writes -
-	// lookup_groups returns exactly one entry per group.
-	unsafe {
-		let host = get_host_mut(&mut *ctx);
-		let Some(keys) = encoded_keys(groups, groups_len) else {
-			return EXTERN_C_ERROR_NULL_PTR;
-		};
-		match host.lookup_groups(&keys) {
-			Ok(found) => {
-				for (index, group) in found.iter().enumerate() {
-					*ids_out.add(index) = group.map_or(GROUP_ABSENT, |group| group.0);
-				}
-				EXTERN_C_OK
-			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
-		}
-	}
-}
-
-pub(super) extern "C" fn host_intern_group(
-	_operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	key_ptr: *const u8,
-	key_len: usize,
-	id_out: *mut u64,
-	is_new_out: *mut u8,
-) -> i32 {
-	if ctx.is_null() || id_out.is_null() || is_new_out.is_null() || (key_len > 0 && key_ptr.is_null()) {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: `ctx`, `id_out` and `is_new_out` are null-checked above, as is `key_ptr` whenever `key_len` is
-	// non-zero; the guest must pass back the ExternCContextRaw the host handed it for this call (discharging
-	// get_host_mut), a `key_ptr` valid for reads of `key_len` bytes (discharging encoded_key) and out pointers
-	// valid and aligned for one write each.
-	unsafe {
-		let host = get_host_mut(&mut *ctx);
-		let key = encoded_key(key_ptr, key_len);
-		match host.intern_group(&key) {
-			Ok((group, is_new)) => {
-				*id_out = group.0;
-				*is_new_out = is_new as u8;
-				EXTERN_C_OK
-			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
-		}
-	}
-}
-
-pub(super) extern "C" fn host_lookup_group(
-	_operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	key_ptr: *const u8,
-	key_len: usize,
-	id_out: *mut u64,
-) -> i32 {
-	if ctx.is_null() || id_out.is_null() || (key_len > 0 && key_ptr.is_null()) {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: `ctx` and `id_out` are null-checked above, as is `key_ptr` whenever `key_len` is non-zero; the
-	// guest must pass back the ExternCContextRaw the host handed it for this call (discharging get_host_mut),
-	// a `key_ptr` valid for reads of `key_len` bytes (discharging encoded_key) and an `id_out` valid and
-	// aligned for one u64 write.
-	unsafe {
-		let host = get_host_mut(&mut *ctx);
-		let key = encoded_key(key_ptr, key_len);
-		match host.lookup_group(&key) {
-			Ok(found) => {
-				*id_out = found.map_or(GROUP_ABSENT, |group| group.0);
 				EXTERN_C_OK
 			}
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
@@ -986,14 +855,6 @@ mod seal_anchor_guard_tests {
 
 		fn state_last(&mut self, _range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 			Ok(None)
-		}
-
-		fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
-			Ok(groups.iter().map(|_| (GroupId::ROOT, false)).collect())
-		}
-
-		fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
-			Ok(groups.iter().map(|_| None).collect())
 		}
 
 		fn get_or_create_row_numbers(

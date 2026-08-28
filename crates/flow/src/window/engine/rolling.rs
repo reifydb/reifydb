@@ -77,7 +77,7 @@ pub enum RollingExpiry<G, Output> {
 pub struct RollingIndexEntry<G> {
 	group: G,
 	slot_key: Vec<u8>,
-	group_id: u64,
+	group_id: u128,
 }
 
 fn coord_min_key<C: Slot, A>(buffer: &RollingBuffer<C, A>) -> Option<u64> {

@@ -233,13 +233,11 @@ impl LeftHashJoin {
 			emitted
 		};
 
-		let left_group = ctx.state.left.group_of(host, key_hash)?;
+		let left_group = ctx.state.left.group_of(key_hash);
 		for &idx in indices {
 			let row_number = pre.row_numbers()[idx];
 			ctx.operator.cleanup_left_row_joins(host, *row_number)?;
-			if let Some(group) = left_group {
-				ctx.state.left.remove_row_in(host, group, row_number)?;
-			}
+			ctx.state.left.remove_row_in(host, left_group, row_number)?;
 		}
 		Ok(result)
 	}
@@ -283,12 +281,9 @@ impl LeftHashJoin {
 			}
 		}
 
-		let right_group = ctx.state.right.group_of(host, key_hash)?;
+		let right_group = ctx.state.right.group_of(key_hash);
 		for &idx in indices {
-			let row_number = pre.row_numbers()[idx];
-			if let Some(group) = right_group {
-				ctx.state.right.remove_row_in(host, group, row_number)?;
-			}
+			ctx.state.right.remove_row_in(host, right_group, pre.row_numbers()[idx])?;
 		}
 
 		if !ctx.operator.snapshot && !ctx.state.right.contains_key(host, key_hash)? {

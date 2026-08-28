@@ -154,8 +154,8 @@ mod tests {
 	}
 
 	#[test]
-	fn a_dylib_read_resolves_a_group_without_creating_one() {
-		// A read must never intern, or groups already reclaimed resurrect and the dictionary never shrinks.
+	fn a_dylib_read_of_an_absent_group_writes_nothing() {
+		// a probe that wrote would resurrect groups the reaper had already erased
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
@@ -163,16 +163,11 @@ mod tests {
 			version: CommitVersion(7),
 		});
 		let mut host = TxnHostContext::new(&mut txn, NODE);
+		let absent = OperatorStateKey::inner_encoded(GroupId::of(&key("absent")), Keyspace::ACCUMULATOR, []);
 
-		assert_eq!(host.lookup_groups(&[key("absent")]).unwrap(), vec![None]);
+		assert!(host.state_get(&absent).unwrap().is_none());
 
-		let interned: Vec<GroupId> =
-			host.intern_groups(&[key("absent")]).unwrap().into_iter().map(|(group, _)| group).collect();
-		assert_eq!(
-			interned,
-			vec![GroupId::FIRST],
-			"the earlier read must not have consumed an id from the counter"
-		);
+		assert!(host.state_range(EncodedKeyRange::all()).unwrap().is_empty(), "the probe must leave no row");
 	}
 
 	fn stored_key(suffix: &str) -> GroupStateKey {

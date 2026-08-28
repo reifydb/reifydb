@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, node_prefix},
+		operator_state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
 	},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
@@ -37,7 +37,6 @@ use crate::{
 		FlowTransaction,
 		anchor::{SealAnchorExtension, SealPage, anchor_key},
 		dictionary::DictionaryExtension,
-		group::GroupExtension,
 		reclaim::ReclaimExtension,
 		row_number::RowNumberExtension,
 		state::{StateExtension, StateRange},
@@ -249,38 +248,6 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 			return Ok(Some((inner, EncodedPodRow::from(r.bytes))));
 		}
 		Ok(None)
-	}
-
-	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
-		self.txn.intern_groups(self.operator, groups)
-	}
-
-	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
-		self.txn.lookup_groups(self.operator, groups)
-	}
-
-	fn intern_groups_in(&mut self, keyspace: Keyspace, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
-		self.txn.intern_groups_in(self.operator, keyspace, groups)
-	}
-
-	fn lookup_groups_in(&mut self, keyspace: Keyspace, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
-		self.txn.lookup_groups_in(self.operator, keyspace, groups)
-	}
-
-	fn intern_group(&mut self, group: &EncodedKey) -> Result<(GroupId, bool)> {
-		self.txn.intern_group(self.operator, group)
-	}
-
-	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
-		self.txn.lookup_group(self.operator, group)
-	}
-
-	fn intern_group_in(&mut self, keyspace: Keyspace, group: &EncodedKey) -> Result<(GroupId, bool)> {
-		self.txn.intern_group_in(self.operator, keyspace, group)
-	}
-
-	fn lookup_group_in(&mut self, keyspace: Keyspace, group: &EncodedKey) -> Result<Option<GroupId>> {
-		self.txn.lookup_group_in(self.operator, keyspace, group)
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {

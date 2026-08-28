@@ -309,7 +309,7 @@ fn a_key_too_short_to_carry_a_keyspace_is_declined_not_cached() {
 	assert_eq!(tier.metrics().point_hits, 0);
 
 	let shortest_valid = key(GROUP_A, Keyspace::ACCUMULATOR, b"");
-	assert_eq!(shortest_valid.len(), 9, "group plus keyspace with an empty suffix is the shortest valid key");
+	assert_eq!(shortest_valid.len(), 17, "group plus keyspace with an empty suffix is the shortest valid key");
 	assert!(PartitionId::of(OP_A, &shortest_valid).is_some(), "the shortest valid key must not be declined");
 }
 
@@ -461,10 +461,10 @@ fn keyspace_counters_are_summed_across_every_shard() {
 	})
 	.expect("a sharded tier must be constructed");
 
-	for group in 0..64u64 {
+	for group in 0..64u128 {
 		one_row_partition(&tier, OP_A, GroupId(group), Keyspace::SOURCE_WATERMARK);
 	}
-	for group in 0..64u64 {
+	for group in 0..64u128 {
 		assert!(serve_ram(&tier, OP_A, &keyspace_inner_range(GroupId(group), Keyspace::SOURCE_WATERMARK), 64)
 			.is_some());
 	}

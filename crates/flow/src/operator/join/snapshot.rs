@@ -576,11 +576,7 @@ pub(crate) fn publish_joined(
 	if left_indices.is_empty() {
 		return Ok(Vec::new());
 	}
-	let group = match ctx.right_store.group_of(host, key_hash)? {
-		Some(group) => group,
-		None if outer => ctx.right_store.group_for(host, key_hash)?,
-		None => return Ok(Vec::new()),
-	};
+	let group = ctx.right_store.group_of(key_hash);
 	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 
 	let mut diffs =
@@ -622,9 +618,7 @@ pub(crate) fn withdraw_joined(
 	left: &Columns,
 	left_idx: usize,
 ) -> Result<Vec<Diff>> {
-	let Some(group) = ctx.right_store.group_of(host, key_hash)? else {
-		return Ok(Vec::new());
-	};
+	let group = ctx.right_store.group_of(key_hash);
 	let left_number = left.row_numbers()[left_idx];
 	let mut out = Vec::new();
 	for (right, _) in ctx.ledger.published(host, group, left_number)? {
@@ -685,11 +679,7 @@ pub(crate) fn publish_slot(
 	if left_indices.is_empty() {
 		return Ok(None);
 	}
-	let group = match ctx.right_store.group_of(host, key_hash)? {
-		Some(group) => group,
-		None if outer => ctx.right_store.group_for(host, key_hash)?,
-		None => return Ok(None),
-	};
+	let group = ctx.right_store.group_of(key_hash);
 	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 
 	let Some((content, slot)) = ctx.right_store.slot(host, group)? else {
@@ -767,9 +757,7 @@ pub(crate) fn retire_right(
 	key_hash: &Hash128,
 	row_number: RowNumber,
 ) -> Result<()> {
-	let Some(group) = ctx.right_store.group_of(host, key_hash)? else {
-		return Ok(());
-	};
+	let group = ctx.right_store.group_of(key_hash);
 	let Some(content) = ctx.right_store.get_row_in(host, group, row_number)? else {
 		return Ok(());
 	};

@@ -228,8 +228,6 @@ mod distinct {
 		for keyspace in [
 			Keyspace::DISTINCT_ENTRY,
 			Keyspace::DISTINCT_LAYOUT,
-			Keyspace::GROUP_DICTIONARY,
-			Keyspace::GROUP_RECORD,
 			Keyspace::ROW_NUMBER_MAPPING,
 			Keyspace::NODE_COUNTER,
 		] {

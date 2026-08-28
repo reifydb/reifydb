@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, slice::from_ref};
+use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -105,20 +105,6 @@ pub trait GuestContext {
 	fn written_at(&self) -> DateTime;
 	fn state(&mut self) -> impl GuestState + '_;
 	fn dictionary(&mut self) -> impl GuestDictionary + '_;
-	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>>;
-	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
-	fn intern_group(&mut self, group: &EncodedKey) -> Result<(GroupId, bool)> {
-		Ok(self.intern_groups(from_ref(group))?
-			.into_iter()
-			.next()
-			.expect("intern_groups answers every requested key"))
-	}
-	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
-		Ok(self.lookup_groups(from_ref(group))?
-			.into_iter()
-			.next()
-			.expect("lookup_groups answers every requested key"))
-	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn get_or_create_row_numbers_for_pairs(
 		&mut self,

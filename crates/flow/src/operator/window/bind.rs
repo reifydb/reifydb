@@ -60,7 +60,7 @@ impl WindowOperator {
 		host: &mut dyn HostContext,
 		group_hash: Hash128,
 	) -> Result<SessionTracker> {
-		let group = self.partition_group(host, group_hash)?;
+		let group = self.partition_group(group_hash);
 		self.meta_slot().load_session(host, group)
 	}
 
@@ -70,7 +70,7 @@ impl WindowOperator {
 		group_hash: Hash128,
 		tracker: &SessionTracker,
 	) -> Result<()> {
-		let group = self.partition_group(host, group_hash)?;
+		let group = self.partition_group(group_hash);
 		self.meta_slot().save_session(host, group, tracker)
 	}
 
@@ -117,8 +117,8 @@ impl WindowOperator {
 		)
 	}
 
-	pub(super) fn partition_group(&self, host: &mut dyn HostContext, partition: Hash128) -> Result<GroupId> {
-		Ok(host.intern_group(&partition_group_key(partition))?.0)
+	pub(super) fn partition_group(&self, partition: Hash128) -> GroupId {
+		GroupId::of(&partition_group_key(partition))
 	}
 
 	pub fn store_row_index(
@@ -128,7 +128,7 @@ impl WindowOperator {
 		row_number: RowNumber,
 		window_id: u64,
 	) -> Result<()> {
-		let group = self.partition_group(host, group_hash)?;
+		let group = self.partition_group(group_hash);
 		Mint::new(self.meta_slot()).record_membership(host, group, row_number, window_id)
 	}
 
@@ -138,7 +138,7 @@ impl WindowOperator {
 		group_hash: Hash128,
 		row_number: RowNumber,
 	) -> Result<Vec<u64>> {
-		let group = self.partition_group(host, group_hash)?;
+		let group = self.partition_group(group_hash);
 		Mint::new(self.meta_slot()).membership(host, group, row_number)
 	}
 
@@ -148,7 +148,7 @@ impl WindowOperator {
 		group_hash: Hash128,
 		row_number: RowNumber,
 	) -> Result<()> {
-		let group = self.partition_group(host, group_hash)?;
+		let group = self.partition_group(group_hash);
 		Mint::new(self.meta_slot()).drop_membership(host, group, row_number)
 	}
 
@@ -157,7 +157,7 @@ impl WindowOperator {
 		host: &mut dyn HostContext,
 		group_hash: Hash128,
 	) -> Result<OrdinalCoord> {
-		let group = self.partition_group(host, group_hash)?;
+		let group = self.partition_group(group_hash);
 		Mint::new(self.meta_slot()).ordinal(host, group)
 	}
 

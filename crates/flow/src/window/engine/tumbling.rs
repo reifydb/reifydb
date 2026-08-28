@@ -74,7 +74,7 @@ pub struct ExpiredWindow<G, C> {
 pub struct TumblingIndexEntry<G, C> {
 	group: G,
 	window_start: C,
-	group_id: u64,
+	group_id: u128,
 	slot_key: Vec<u8>,
 }
 
@@ -499,7 +499,10 @@ mod tests {
 	fn group_slot(group: &u32, window_start: DateTime) -> (GroupId, EncodedKey) {
 		// The shape a sub-flow window driver installs: every window interns as its own
 		// (partition, coord) group sharing one empty row key, so the group alone separates them.
-		(GroupId(u64::from(*group) * 1_000_000 + window_start.to_order()), EncodedKey::new(Vec::new()))
+		(
+			GroupId(u128::from(*group) * 1_000_000 + u128::from(window_start.to_order())),
+			EncodedKey::new(Vec::new()),
+		)
 	}
 
 	fn apply_group_scoped(

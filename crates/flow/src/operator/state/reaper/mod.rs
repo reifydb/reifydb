@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	key::{decode_u64, encode_u64},
+	key::{decode_u128, encode_u128},
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
@@ -38,7 +38,7 @@ impl Reaper for StoreReaper {
 }
 
 pub fn queue_key(group: GroupId) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::REAP_QUEUE, encode_u64(group.0))
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::REAP_QUEUE, encode_u128(group.0))
 }
 
 pub fn enqueue(store: &mut dyn StateStore, group: GroupId) -> Result<()> {
@@ -70,10 +70,10 @@ pub fn queued(store: &mut dyn StateStore, limit: usize) -> Result<Queued> {
 		Some(limit.saturating_add(1)),
 		&mut |key, _| {
 			if let Some((_, _, suffix)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
-				&& let Ok(bytes) = <[u8; 8]>::try_from(suffix.as_slice())
+				&& let Ok(bytes) = <[u8; 16]>::try_from(suffix.as_slice())
 			{
 				if groups.len() < limit {
-					groups.push(GroupId(decode_u64(bytes)));
+					groups.push(GroupId(decode_u128(bytes)));
 				} else {
 					more = true;
 				}

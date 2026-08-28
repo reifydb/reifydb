@@ -244,14 +244,10 @@ impl HostOperator for DistinctOperator {
 			layout_changed_at: None,
 		};
 
-		let group_keys: Vec<EncodedKey> = ordered.iter().map(|hash| DistinctPlan::group_bytes(*hash)).collect();
-		let interned = host.intern_groups(&group_keys)?;
 		let mut groups: HashMap<Hash128, GroupId> = HashMap::with_capacity(ordered.len());
-		for (hash, (group, is_new)) in ordered.iter().zip(interned) {
+		for hash in ordered.iter() {
+			let group = GroupId::of(&DistinctPlan::group_bytes(*hash));
 			groups.insert(*hash, group);
-			if is_new {
-				continue;
-			}
 			match plan.load_entry(host, group)? {
 				LoadedEntry::Present(entry) => {
 					state.entries.insert(*hash, entry);

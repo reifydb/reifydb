@@ -13,7 +13,7 @@ use reifydb_value::{
 
 use crate::tier::commit::batch::AnchorSlot;
 
-pub const ANCHOR_KEY_BYTES: ByteSize = ByteSize::from_bytes(25);
+pub const ANCHOR_KEY_BYTES: ByteSize = ByteSize::from_bytes(33);
 
 pub const ANCHOR_VALUE_BYTES: ByteSize = ByteSize::from_bytes(8);
 

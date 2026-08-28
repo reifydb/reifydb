@@ -162,8 +162,8 @@ impl InnerHashJoin {
 		}
 
 		let group = match ctx.side {
-			JoinSide::Left => ctx.state.left.group_of(host, key_hash)?,
-			JoinSide::Right => ctx.state.right.group_of(host, key_hash)?,
+			JoinSide::Left => ctx.state.left.group_of(key_hash),
+			JoinSide::Right => ctx.state.right.group_of(key_hash),
 		};
 		for &idx in indices {
 			let row_number = pre.row_numbers()[idx];
@@ -172,14 +172,12 @@ impl InnerHashJoin {
 				ctx.operator.cleanup_left_row_joins(host, *row_number)?;
 			}
 
-			if let Some(group) = group {
-				match ctx.side {
-					JoinSide::Left => {
-						ctx.state.left.remove_row_in(host, group, row_number)?;
-					}
-					JoinSide::Right => {
-						ctx.state.right.remove_row_in(host, group, row_number)?;
-					}
+			match ctx.side {
+				JoinSide::Left => {
+					ctx.state.left.remove_row_in(host, group, row_number)?;
+				}
+				JoinSide::Right => {
+					ctx.state.right.remove_row_in(host, group, row_number)?;
 				}
 			}
 		}

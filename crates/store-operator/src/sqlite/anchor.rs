@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::encode_u128;
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use rusqlite::{Connection, Rows, params};
@@ -30,7 +31,7 @@ impl SqliteOperatorStorage {
 		let conn = guard.as_ref()?;
 		let mut stmt = conn.prepare_cached(ANCHOR_GET_SQL).expect("seal anchor read could not be prepared");
 		let mut rows = stmt
-			.query(params![operator.0 as i64, group.0 as i64, side as i64, row_number.0 as i64])
+			.query(params![operator.0 as i64, encode_group(group), side as i64, row_number.0 as i64])
 			.expect("seal anchor read failed");
 		let row = rows.next().expect("seal anchor read failed")?;
 		Some(decode_expiry(row.get(0).expect("seal anchors carry an expiry")))
@@ -45,7 +46,7 @@ impl SqliteOperatorStorage {
 		let mut stmt =
 			conn.prepare_cached(ANCHORS_BY_EXPIRY_SQL).expect("seal anchor scan could not be prepared");
 		let rows = stmt
-			.query(params![operator.0 as i64, group.0 as i64, limit as i64])
+			.query(params![operator.0 as i64, encode_group(group), limit as i64])
 			.expect("seal anchor scan failed");
 		collect_anchors(rows)
 	}
@@ -65,7 +66,7 @@ impl SqliteOperatorStorage {
 		let mut stmt =
 			conn.prepare_cached(ANCHORS_DUE_SQL).expect("seal anchor due scan could not be prepared");
 		let rows = stmt
-			.query(params![operator.0 as i64, group.0 as i64, at.to_millis() as i64, limit as i64])
+			.query(params![operator.0 as i64, encode_group(group), at.to_millis() as i64, limit as i64])
 			.expect("seal anchor due scan failed");
 		collect_anchors(rows)
 	}
@@ -87,7 +88,7 @@ impl SqliteOperatorStorage {
 			.expect("seal anchor write could not be prepared")
 			.execute(params![
 				operator.0 as i64,
-				group.0 as i64,
+				encode_group(group),
 				side as i64,
 				row_number.0 as i64,
 				expiry.to_millis() as i64
@@ -103,7 +104,7 @@ impl SqliteOperatorStorage {
 		};
 		conn.prepare_cached(ANCHOR_REMOVE_SQL)
 			.expect("seal anchor delete could not be prepared")
-			.execute(params![operator.0 as i64, group.0 as i64, side as i64, row_number.0 as i64])
+			.execute(params![operator.0 as i64, encode_group(group), side as i64, row_number.0 as i64])
 			.expect("seal anchor delete failed");
 	}
 
@@ -115,7 +116,7 @@ impl SqliteOperatorStorage {
 		};
 		conn.prepare_cached(ANCHORS_DROP_GROUP_SQL)
 			.expect("seal anchor group delete could not be prepared")
-			.execute(params![operator.0 as i64, group.0 as i64])
+			.execute(params![operator.0 as i64, encode_group(group)])
 			.expect("seal anchor group delete failed");
 	}
 
@@ -130,6 +131,10 @@ impl SqliteOperatorStorage {
 			.execute(params![operator.0 as i64])
 			.expect("seal anchor operator delete failed");
 	}
+}
+
+pub(super) fn encode_group(group: GroupId) -> [u8; 16] {
+	encode_u128(group.0)
 }
 
 pub(super) fn anchor_exists(conn: &Connection) -> bool {

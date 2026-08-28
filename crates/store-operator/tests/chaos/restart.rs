@@ -125,7 +125,7 @@ fn mutate(rng: &mut StdRng, store: &OperatorStore, oracle: &mut Oracle, p: &Para
 			oracle.anchor_set(operator, group, side, row_number, expiry);
 			store.anchor_set(
 				OperatorId(operator),
-				GroupId(group),
+				GroupId(group.into()),
 				side,
 				RowNumber(row_number),
 				DateTime::from_millis(expiry),
@@ -136,7 +136,7 @@ fn mutate(rng: &mut StdRng, store: &OperatorStore, oracle: &mut Oracle, p: &Para
 			let side = rng.random_range(0u32..p.sides as u32) as u8;
 			let row_number = rng.random_range(1..=p.anchor_rows);
 			oracle.anchor_remove(operator, group, side, row_number);
-			store.anchor_remove(OperatorId(operator), GroupId(group), side, RowNumber(row_number));
+			store.anchor_remove(OperatorId(operator), GroupId(group.into()), side, RowNumber(row_number));
 		}
 		10 => {
 			let flow = rng.random_range(1..=p.flows);
@@ -158,7 +158,7 @@ fn mutate(rng: &mut StdRng, store: &OperatorStore, oracle: &mut Oracle, p: &Para
 				let group = rng.random_range(1..=p.groups);
 
 				oracle.anchors_remove_group(operator, group);
-				store.anchors_remove_group(OperatorId(operator), GroupId(group));
+				store.anchors_remove_group(OperatorId(operator), GroupId(group.into()));
 			}
 		},
 	}

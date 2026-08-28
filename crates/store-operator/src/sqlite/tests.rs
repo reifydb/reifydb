@@ -28,7 +28,7 @@ const RIGHT: u8 = 1;
 const APPEND: u8 = 0xFF;
 const PAGE: u64 = 64;
 
-fn key(group: u64, keyspace: u8, suffix: u8) -> EncodedKey {
+fn key(group: u128, keyspace: u8, suffix: u8) -> EncodedKey {
 	let mut bytes = group.to_be_bytes().to_vec();
 	bytes.push(keyspace);
 	bytes.push(suffix);

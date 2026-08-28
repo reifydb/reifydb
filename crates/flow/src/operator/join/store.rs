@@ -78,12 +78,8 @@ impl Store {
 		}
 	}
 
-	fn resolve(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<Option<GroupId>> {
-		host.lookup_group(&group_bytes(hash))
-	}
-
-	pub(crate) fn intern(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<GroupId> {
-		Ok(host.intern_group(&group_bytes(hash))?.0)
+	pub(crate) fn group_of(&self, hash: &Hash128) -> GroupId {
+		GroupId::of(&group_bytes(hash))
 	}
 
 	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> GroupStateKey {
@@ -109,8 +105,7 @@ impl Store {
 		row_number: RowNumber,
 		row: &EncodedPodRow,
 	) -> Result<()> {
-		let group = self.intern(host, hash)?;
-		self.write_row(host, group, row_number, row)
+		self.write_row(host, self.group_of(hash), row_number, row)
 	}
 
 	pub(crate) fn write_row(
@@ -122,14 +117,6 @@ impl Store {
 	) -> Result<()> {
 		let key = self.row_key(group, row_number);
 		state_set(host, &key, row.clone())
-	}
-
-	pub(crate) fn group_of(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<Option<GroupId>> {
-		self.resolve(host, hash)
-	}
-
-	pub(crate) fn group_for(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<GroupId> {
-		self.intern(host, hash)
 	}
 
 	pub(crate) fn get_row_in(
@@ -149,10 +136,7 @@ impl Store {
 		row_number: RowNumber,
 		row: &EncodedPodRow,
 	) -> Result<bool> {
-		let Some(group) = self.resolve(host, hash)? else {
-			return Ok(false);
-		};
-		self.update_row_in(host, group, row_number, row)
+		self.update_row_in(host, self.group_of(hash), row_number, row)
 	}
 
 	pub(crate) fn update_row_in(
@@ -176,9 +160,7 @@ impl Store {
 		hash: &Hash128,
 		row_number: RowNumber,
 	) -> Result<bool> {
-		let Some(group) = self.resolve(host, hash)? else {
-			return Ok(false);
-		};
+		let group = self.group_of(hash);
 		if self.get_row_in(host, group, row_number)?.is_none() {
 			return Ok(false);
 		}
@@ -204,9 +186,7 @@ impl Store {
 		after: Option<&RowNumber>,
 		limit: usize,
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-		let Some(group) = self.resolve(host, hash)? else {
-			return Ok(Vec::new());
-		};
+		let group = self.group_of(hash);
 		let mut range = self.rows_range(group);
 		if let Some(after) = after {
 			range.start = Bound::Excluded(self.row_key(group, *after).into_encoded());
@@ -241,10 +221,7 @@ impl Store {
 	}
 
 	pub(crate) fn contains_key(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<bool> {
-		let Some(group) = self.resolve(host, hash)? else {
-			return Ok(false);
-		};
-		let range = self.rows_range(group);
+		let range = self.rows_range(self.group_of(hash));
 		Ok(state_range(host, range).next().transpose()?.is_some())
 	}
 
@@ -298,13 +275,19 @@ fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
+	use reifydb_core::key::operator_state::node_range;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 	use crate::{
 		operator::host::TxnHostContext,
-		transaction::{FlowTransaction, deferred::DeferredTransaction, group::GroupExtension, mock::FlowTxn},
+		transaction::{
+			FlowTransaction,
+			deferred::DeferredTransaction,
+			mock::FlowTxn,
+			state::{StateExtension, StateRange},
+		},
 	};
 
 	fn h(v: u128) -> Hash128 {
@@ -332,9 +315,7 @@ mod tests {
 		hash: &Hash128,
 		row_number: RowNumber,
 	) -> Result<Option<EncodedBytes>> {
-		let Some(group) = store.group_of(&mut b(txn, operator), hash)? else {
-			return Ok(None);
-		};
+		let group = store.group_of(hash);
 		store.get_row_in(&mut b(txn, operator), group, row_number)
 	}
 
@@ -379,27 +360,22 @@ mod tests {
 		assert_eq!(right_row.as_slice(), &[0x20u8][..]);
 
 		assert_eq!(
-			txn.lookup_groups(operator, &[group_bytes(&h(0xAAA))]).unwrap().remove(0),
-			txn.lookup_groups(operator, &[group_bytes(&h(0xAAA))]).unwrap().remove(0),
-			"both sides must intern the same key to one group id"
-		);
-		assert!(
-			txn.lookup_groups(operator, &[group_bytes(&h(0xAAA))]).unwrap().remove(0).is_some(),
-			"storing a row must intern its join key"
+			left.group_of(&h(0xAAA)),
+			right.group_of(&h(0xAAA)),
+			"both sides must resolve the same key to one group id"
 		);
 	}
 
 	#[test]
-	fn reads_never_intern_a_key() {
-		// A resolution that interned instead of looking up would mint a dictionary entry, an
-		// activity-index row and a reclaim obligation for every absent key probed, turning a
-		// read into unbounded group growth.
+	fn a_read_probe_writes_nothing() {
+		// a probe that wrote would mint an activity-index row and a reclaim obligation per absent key
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(51);
 		let store = Store::new(JoinSide::Left);
 
 		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		let before = txn.state_range(operator, StateRange::forward(node_range(operator), "test")).unwrap();
 
 		assert!(get_row(&store, operator, &mut txn, &h(0xCCC), rn(1)).unwrap().is_none());
 		assert!(store.rows_for_key(&mut b(&mut txn, operator), &h(0xCCC), None, 8).unwrap().is_empty());
@@ -407,10 +383,8 @@ mod tests {
 		assert!(!store.remove_row(&mut b(&mut txn, operator), &h(0xCCC), rn(1)).unwrap());
 		assert!(!store.update_row(&mut b(&mut txn, operator), &h(0xCCC), rn(1), &row(0x20)).unwrap());
 
-		assert!(
-			txn.lookup_groups(operator, &[group_bytes(&h(0xCCC))]).unwrap().remove(0).is_none(),
-			"a read probe must resolve the key, never intern it"
-		);
+		let after = txn.state_range(operator, StateRange::forward(node_range(operator), "test")).unwrap();
+		assert_eq!(after.items.len(), before.items.len(), "no probe may leave a row behind");
 	}
 
 	#[test]
@@ -496,11 +470,7 @@ mod tests {
 		let store = Store::new(JoinSide::Left);
 		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
 		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(3), &row(0x30)).unwrap();
-		let group = txn
-			.lookup_groups(operator, &[group_bytes(&h(0xAAA))])
-			.unwrap()
-			.remove(0)
-			.expect("the write interned it");
+		let group = store.group_of(&h(0xAAA));
 
 		store.remove_row_in(&mut b(&mut txn, operator), group, rn(2)).unwrap();
 		store.remove_row_in(&mut b(&mut txn, operator), group, rn(2)).unwrap();

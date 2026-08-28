@@ -104,8 +104,8 @@ fn assert_only_bounded_bookkeeping_survives(db: &TestDb, operator: u64, schemas:
 	);
 	assert_eq!(
 		column_values(frame, "keys"),
-		vec![Value::Uint8(schemas), Value::Uint8(2)],
-		"one schema per side that saw rows and two counters, never a key per row; surface now: {:?}",
+		vec![Value::Uint8(schemas), Value::Uint8(1)],
+		"one schema per side that saw rows and one row number counter, never a key per row; surface now: {:?}",
 		db.query(&state_of(operator))
 	);
 }

@@ -303,26 +303,6 @@ impl GuestContext for InProcessContext<'_> {
 			_marker: PhantomData,
 		}
 	}
-	fn intern_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<(GroupId, bool)>> {
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).intern_groups(groups) }.map_err(to_sdk_err)
-	}
-	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<Option<GroupId>>> {
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).lookup_groups(groups) }.map_err(to_sdk_err)
-	}
-	fn intern_group(&mut self, group: &EncodedKey) -> SdkResult<(GroupId, bool)> {
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).intern_group(group) }.map_err(to_sdk_err)
-	}
-	fn lookup_group(&mut self, group: &EncodedKey) -> SdkResult<Option<GroupId>> {
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).lookup_group(group) }.map_err(to_sdk_err)
-	}
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.

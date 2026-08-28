@@ -419,11 +419,7 @@ use reifydb_sdk::{
 		},
 	},
 	flow::operator::extern_c::wire::{
-		callbacks::{
-			OperatorCallbacks,
-			dictionary::DictionaryCallbacks,
-			state::{GROUP_ABSENT, StateCallbacks},
-		},
+		callbacks::{OperatorCallbacks, dictionary::DictionaryCallbacks, state::StateCallbacks},
 		context::ExternCContextRaw,
 		iterators::ExternCStateIterator,
 		state::{ExternCStateEntry, ExternCStateSlice},
@@ -438,69 +434,6 @@ use crate::{
 		test_release,
 	},
 };
-
-extern "C" fn test_intern_groups(
-	operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	groups: *const ExternCKeyRef,
-	groups_len: usize,
-	ids_out: *mut u64,
-	is_new_out: *mut u8,
-) -> i32 {
-	if ctx.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-	if groups_len > 0 && (groups.is_null() || ids_out.is_null() || is_new_out.is_null()) {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: ctx checked; groups and both out arrays checked when groups_len > 0; writes stay under groups_len.
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-		let counter_key = test_state_envelope(
-			operator_id,
-			GroupId::ROOT,
-			Keyspace::NODE_COUNTER,
-			b"__group_alloc__".to_vec(),
-		);
-		let group_refs = if groups_len == 0 {
-			&[]
-		} else {
-			from_raw_parts(groups, groups_len)
-		};
-		for (i, group_ref) in group_refs.iter().enumerate() {
-			let group_bytes = if group_ref.len == 0 {
-				&[][..]
-			} else {
-				from_raw_parts(group_ref.ptr, group_ref.len)
-			};
-			let dictionary_key = test_state_envelope(
-				operator_id,
-				GroupId::ROOT,
-				Keyspace::GROUP_DICTIONARY,
-				group_bytes.to_vec(),
-			);
-			match test_ctx.get_state(&dictionary_key) {
-				Some(bytes) if bytes.len() >= 8 => {
-					*ids_out.add(i) = u64::from_le_bytes(bytes[..8].try_into().unwrap());
-					*is_new_out.add(i) = 0;
-				}
-				_ => {
-					let current = test_ctx
-						.get_state(&counter_key)
-						.and_then(|b| <[u8; 8]>::try_from(b.as_slice()).ok())
-						.map(u64::from_le_bytes)
-						.unwrap_or(GroupId::FIRST.0);
-					test_ctx.set_state(counter_key.clone(), (current + 1).to_le_bytes().to_vec());
-					test_ctx.set_state(dictionary_key, current.to_le_bytes().to_vec());
-					*ids_out.add(i) = current;
-					*is_new_out.add(i) = 1;
-				}
-			}
-		}
-		EXTERN_C_OK
-	}
-}
 
 extern "C" fn test_arm_timer(
 	_operator_id: u64,
@@ -594,7 +527,7 @@ fn test_in_identity_range(prefix: &[u8], range: &EncodedKeyRange, key: &EncodedK
 extern "C" fn test_reclaim_group_identity(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u64,
+	group: u128,
 	limit: usize,
 	removed_out: *mut usize,
 	more_out: *mut u8,
@@ -629,7 +562,7 @@ extern "C" fn test_reclaim_group_identity(
 extern "C" fn test_reclaim_group_identity_keys(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	_group: u64,
+	_group: u128,
 	keys: *const ExternCKeyRef,
 	keys_len: usize,
 	removed_out: *mut usize,
@@ -703,88 +636,10 @@ extern "C" fn test_flow_watermark(
 	EXTERN_C_OK
 }
 
-extern "C" fn test_lookup_groups(
-	operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	groups: *const ExternCKeyRef,
-	groups_len: usize,
-	ids_out: *mut u64,
-) -> i32 {
-	if ctx.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-	if groups_len > 0 && (groups.is_null() || ids_out.is_null()) {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: ctx checked; groups and ids_out checked when groups_len > 0; writes stay under groups_len.
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-		let group_refs = if groups_len == 0 {
-			&[]
-		} else {
-			from_raw_parts(groups, groups_len)
-		};
-		for (i, group_ref) in group_refs.iter().enumerate() {
-			let group_bytes = if group_ref.len == 0 {
-				&[][..]
-			} else {
-				from_raw_parts(group_ref.ptr, group_ref.len)
-			};
-			let dictionary_key = test_state_envelope(
-				operator_id,
-				GroupId::ROOT,
-				Keyspace::GROUP_DICTIONARY,
-				group_bytes.to_vec(),
-			);
-			*ids_out.add(i) = match test_ctx.get_state(&dictionary_key) {
-				Some(bytes) if bytes.len() >= 8 => u64::from_le_bytes(bytes[..8].try_into().unwrap()),
-				_ => GROUP_ABSENT,
-			};
-		}
-		EXTERN_C_OK
-	}
-}
-
-extern "C" fn test_intern_group(
-	operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	key_ptr: *const u8,
-	key_len: usize,
-	id_out: *mut u64,
-	is_new_out: *mut u8,
-) -> i32 {
-	if ctx.is_null() || id_out.is_null() || is_new_out.is_null() || (key_len > 0 && key_ptr.is_null()) {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-	let group = ExternCKeyRef {
-		ptr: key_ptr,
-		len: key_len,
-	};
-	test_intern_groups(operator_id, ctx, &group, 1, id_out, is_new_out)
-}
-
-extern "C" fn test_lookup_group(
-	operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	key_ptr: *const u8,
-	key_len: usize,
-	id_out: *mut u64,
-) -> i32 {
-	if ctx.is_null() || id_out.is_null() || (key_len > 0 && key_ptr.is_null()) {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-	let group = ExternCKeyRef {
-		ptr: key_ptr,
-		len: key_len,
-	};
-	test_lookup_groups(operator_id, ctx, &group, 1, id_out)
-}
-
 extern "C" fn test_get_or_create_row_numbers(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u64,
+	group: u128,
 	keys: *const ExternCKeyRef,
 	keys_len: usize,
 	row_numbers_out: *mut u64,
@@ -848,7 +703,7 @@ extern "C" fn test_get_or_create_row_numbers(
 extern "C" fn test_get_or_create_row_numbers_for_pairs(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	groups: *const u64,
+	groups: *const u128,
 	keys: *const ExternCKeyRef,
 	pairs_len: usize,
 	row_numbers_out: *mut u64,
@@ -913,7 +768,7 @@ extern "C" fn test_get_or_create_row_numbers_for_pairs(
 extern "C" fn test_remove_row_number(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u64,
+	group: u128,
 	key_ptr: *const u8,
 	key_len: usize,
 ) -> i32 {
@@ -943,7 +798,7 @@ extern "C" fn test_remove_row_number(
 extern "C" fn test_remove_row_numbers_below(
 	operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	group: u64,
+	group: u128,
 	upper_ptr: *const u8,
 	upper_len: usize,
 	output: *mut ExternCBuffer,
@@ -1128,10 +983,6 @@ pub fn create_test_callbacks() -> OperatorCallbacks {
 			get_or_create_row_numbers_for_pairs: test_get_or_create_row_numbers_for_pairs,
 			remove_row_number: test_remove_row_number,
 			remove_row_numbers_below: test_remove_row_numbers_below,
-			intern_groups: test_intern_groups,
-			lookup_groups: test_lookup_groups,
-			intern_group: test_intern_group,
-			lookup_group: test_lookup_group,
 			arm_timer: test_arm_timer,
 			disarm_timer: test_disarm_timer,
 			flow_watermark: test_flow_watermark,

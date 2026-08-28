@@ -22,9 +22,8 @@ use crate::{
 	timer::{Timer, TimerDue},
 	transaction::{
 		FlowTransaction,
-		group::{decode_payload, encode_payload},
 		scope::scoped_key,
-		state::{StateExtension, StateRange},
+		state::{StateExtension, StateRange, decode_payload, encode_payload},
 	},
 };
 

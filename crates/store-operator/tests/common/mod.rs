@@ -29,11 +29,11 @@ use testscript::command::{ArgumentConsumer, Command};
 
 /// Every script names its keys by a short suffix; the runner wraps that suffix in the group/keyspace frame the
 /// store expects, so keys carry the keyspace byte the census triggers read while goldens stay readable.
-const KEY_PREFIX_LEN: usize = 9;
+const KEY_PREFIX_LEN: usize = 17;
 
 const DEFAULT_OPERATOR: u64 = 1;
 
-const DEFAULT_GROUP: u64 = 1;
+const DEFAULT_GROUP: u128 = 1;
 
 const DEFAULT_KEYSPACE: u8 = 0x10;
 

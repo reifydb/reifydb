@@ -9,7 +9,7 @@ mod surface;
 use std::{borrow::Cow, sync::LazyLock};
 
 use reifydb_codec::{
-	key::{decode_u64, encode_u8, encoded::EncodedKey},
+	key::{decode_u128, encode_u8, encoded::EncodedKey},
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
@@ -50,7 +50,7 @@ impl PartitionId {
 		if bytes.len() <= offset {
 			return None;
 		}
-		let group = GroupId(decode_u64(bytes[..offset].try_into().ok()?));
+		let group = GroupId(decode_u128(bytes[..offset].try_into().ok()?));
 		Some(Self {
 			operator,
 			group,

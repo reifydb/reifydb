@@ -169,7 +169,7 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext
 	let engine_config = WindowEngineConfig::builder().build();
 
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
-	let groups = intern_window_groups(host, &windows)?;
+	let groups = intern_window_groups(&windows);
 
 	let diffs = finish_tumbling_engine(
 		core,

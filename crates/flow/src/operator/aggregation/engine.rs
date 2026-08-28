@@ -60,18 +60,13 @@ pub(crate) fn partition_group_key(partition: Hash128) -> EncodedKey {
 	EncodedKey::new(bytes)
 }
 
-#[instrument(name = "flow::operator::aggregation::intern_groups", level = "trace", skip_all, fields(windows = windows.len()))]
-pub(crate) fn intern_window_groups(host: &mut dyn HostContext, windows: &[(Hash128, u64)]) -> Result<WindowGroups> {
-	if windows.is_empty() {
-		return Ok(WindowGroups::new());
-	}
-	let keys: Vec<EncodedKey> = windows.iter().map(|(p, w)| window_group_key(*p, *w)).collect();
-	let interned = host.intern_groups(&keys)?;
-	Ok(windows.iter().copied().zip(interned.into_iter().map(|(group, _)| group)).collect())
+#[instrument(name = "flow::operator::aggregation::window_groups", level = "trace", skip_all, fields(windows = windows.len()))]
+pub(crate) fn intern_window_groups(windows: &[(Hash128, u64)]) -> WindowGroups {
+	windows.iter().map(|&(p, w)| ((p, w), GroupId::of(&window_group_key(p, w)))).collect()
 }
 
 pub(crate) fn group_of(groups: &WindowGroups, partition: Hash128, window_id: u64) -> GroupId {
-	*groups.get(&(partition, window_id)).expect("every routed window is interned before the engine runs")
+	*groups.get(&(partition, window_id)).expect("every routed window is resolved before the engine runs")
 }
 
 pub(crate) fn slot_coord(is_count: bool, event_ts: DateTime, row_number: u64) -> WindowSlotKey {

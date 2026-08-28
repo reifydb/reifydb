@@ -8,8 +8,6 @@ use crate::{
 	},
 };
 
-pub const GROUP_ABSENT: u64 = 0;
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct StateCallbacks {
@@ -76,7 +74,7 @@ pub struct StateCallbacks {
 	pub get_or_create_row_numbers: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		group: u64,
+		group: u128,
 		keys: *const ExternCKeyRef,
 		keys_len: usize,
 		row_numbers_out: *mut u64,
@@ -86,7 +84,7 @@ pub struct StateCallbacks {
 	pub get_or_create_row_numbers_for_pairs: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		groups: *const u64,
+		groups: *const u128,
 		keys: *const ExternCKeyRef,
 		pairs_len: usize,
 		row_numbers_out: *mut u64,
@@ -96,7 +94,7 @@ pub struct StateCallbacks {
 	pub remove_row_number: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		group: u64,
+		group: u128,
 		key: *const u8,
 		key_len: usize,
 	) -> i32,
@@ -104,44 +102,10 @@ pub struct StateCallbacks {
 	pub remove_row_numbers_below: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		group: u64,
+		group: u128,
 		upper: *const u8,
 		upper_len: usize,
 		output: *mut ExternCBuffer,
-	) -> i32,
-
-	pub intern_groups: extern "C" fn(
-		operator_id: u64,
-		ctx: *mut ExternCContextRaw,
-		groups: *const ExternCKeyRef,
-		groups_len: usize,
-		ids_out: *mut u64,
-		is_new_out: *mut u8,
-	) -> i32,
-
-	pub lookup_groups: extern "C" fn(
-		operator_id: u64,
-		ctx: *mut ExternCContextRaw,
-		groups: *const ExternCKeyRef,
-		groups_len: usize,
-		ids_out: *mut u64,
-	) -> i32,
-
-	pub intern_group: extern "C" fn(
-		operator_id: u64,
-		ctx: *mut ExternCContextRaw,
-		key: *const u8,
-		key_len: usize,
-		id_out: *mut u64,
-		is_new_out: *mut u8,
-	) -> i32,
-
-	pub lookup_group: extern "C" fn(
-		operator_id: u64,
-		ctx: *mut ExternCContextRaw,
-		key: *const u8,
-		key_len: usize,
-		id_out: *mut u64,
 	) -> i32,
 
 	pub arm_timer: extern "C" fn(
@@ -172,7 +136,7 @@ pub struct StateCallbacks {
 	pub reclaim_group_identity: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		group: u64,
+		group: u128,
 		limit: usize,
 		removed_out: *mut usize,
 		more_out: *mut u8,
@@ -181,7 +145,7 @@ pub struct StateCallbacks {
 	pub reclaim_group_identity_keys: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		group: u64,
+		group: u128,
 		keys: *const ExternCKeyRef,
 		keys_len: usize,
 		removed_out: *mut usize,

@@ -108,7 +108,7 @@ fn store_with_range_budget(cached: bool, range_bytes: u64) -> (OperatorStore, Sq
 
 fn key(rng: &mut Rng) -> (OperatorId, EncodedKey) {
 	let operator = OperatorId(1 + rng.below(OPERATORS));
-	let group = GroupId(1 + rng.below(GROUPS));
+	let group = GroupId((1 + rng.below(GROUPS)) as u128);
 	let keyspace = KEYSPACES[rng.below(KEYSPACES.len() as u64) as usize];
 	let suffix = rng.below(SUFFIXES);
 	(operator, OperatorStateKey::inner_encoded(group, keyspace, suffix.to_be_bytes()).as_encoded().clone())
@@ -149,7 +149,7 @@ fn assert_same_range(
 }
 
 fn random_range(rng: &mut Rng) -> EncodedKeyRange {
-	let group = GroupId(1 + rng.below(GROUPS));
+	let group = GroupId((1 + rng.below(GROUPS)) as u128);
 	let keyspace = KEYSPACES[rng.below(KEYSPACES.len() as u64) as usize];
 	match rng.below(3) {
 		0 => keyspace_inner_range(group, keyspace),
@@ -162,7 +162,7 @@ fn sweep(cached: &OperatorStore, oracle: &OperatorStore, step: u64) {
 	for operator in 1..=OPERATORS {
 		let operator = OperatorId(operator);
 		for group in 1..=GROUPS {
-			let group = GroupId(group);
+			let group = GroupId(group as u128);
 			for keyspace in KEYSPACES {
 				for batch in [3, 1024] {
 					let range = keyspace_inner_range(group, keyspace);
@@ -182,7 +182,12 @@ fn drain_cacheable(store: &OperatorStore) {
 	for operator in 1..=OPERATORS {
 		for group in 1..=GROUPS {
 			for keyspace in CACHED_KEYSPACES {
-				drain(store, OperatorId(operator), &keyspace_inner_range(GroupId(group), keyspace), 64);
+				drain(
+					store,
+					OperatorId(operator),
+					&keyspace_inner_range(GroupId(group as u128), keyspace),
+					64,
+				);
 			}
 		}
 	}

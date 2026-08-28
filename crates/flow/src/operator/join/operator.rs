@@ -8,7 +8,7 @@ use std::{
 
 use postcard::to_extend;
 use reifydb_codec::{
-	key::{decode_u64, encode_u64, encoded::EncodedKey, serializer::KeySerializer},
+	key::{decode_u128, encode_u128, encoded::EncodedKey, serializer::KeySerializer},
 	row::operator::state::OperatorState,
 };
 use reifydb_core::{
@@ -242,17 +242,17 @@ impl JoinOperator {
 	}
 
 	fn timer_key(group: GroupId) -> EncodedKey {
-		EncodedKey::new(encode_u64(group.0))
+		EncodedKey::new(encode_u128(group.0))
 	}
 
 	fn timer_group(key: &EncodedKey) -> Result<GroupId> {
-		let bytes = <[u8; 8]>::try_from(key.as_slice()).map_err(|_| {
+		let bytes = <[u8; 16]>::try_from(key.as_slice()).map_err(|_| {
 			Error::from(FlowStateError::Decode {
 				state: "join seal timer key",
-				cause: format!("expected eight group bytes, found {}", key.as_slice().len()),
+				cause: format!("expected sixteen group bytes, found {}", key.as_slice().len()),
 			})
 		})?;
-		Ok(GroupId(decode_u64(bytes)))
+		Ok(GroupId(decode_u128(bytes)))
 	}
 
 	fn side_of(tag: u8) -> Result<JoinSide> {
@@ -265,7 +265,6 @@ impl JoinOperator {
 	}
 
 	fn resolve_groups(
-		host: &mut dyn HostContext,
 		cleared: &[(Hash128, RowNumber)],
 		armed: &[(Hash128, RowNumber, DateTime)],
 	) -> Result<HashMap<Hash128, GroupId>> {
@@ -276,14 +275,7 @@ impl JoinOperator {
 				distinct.push(*hash);
 			}
 		}
-		let keys: Vec<EncodedKey> = distinct.iter().map(group_bytes).collect();
-		let mut resolved: HashMap<Hash128, GroupId> = HashMap::new();
-		for (hash, group) in distinct.into_iter().zip(host.lookup_groups(&keys)?) {
-			if let Some(group) = group {
-				resolved.insert(hash, group);
-			}
-		}
-		Ok(resolved)
+		Ok(distinct.into_iter().map(|hash| (hash, GroupId::of(&group_bytes(&hash)))).collect())
 	}
 
 	fn resync_timers(host: &mut dyn HostContext, order: &[GroupId]) -> Result<()> {
@@ -312,7 +304,7 @@ impl JoinOperator {
 			return Ok(());
 		}
 		let policy = SealPolicy::of(retention);
-		let resolved = Self::resolve_groups(host, cleared, armed)?;
+		let resolved = Self::resolve_groups(cleared, armed)?;
 		let mut order: Vec<GroupId> = Vec::new();
 		let mut touched: HashSet<GroupId> = HashSet::new();
 
@@ -1058,7 +1050,6 @@ mod seal_tests {
 		transaction::{
 			ChangeCoordinate, FlowTransaction,
 			deferred::DeferredTransaction,
-			group::GroupExtension,
 			mock::FlowTxn,
 			row_number::RowNumberExtension,
 			state::{StateExtension, StateRange},
@@ -1186,8 +1177,8 @@ mod seal_tests {
 		op.compute_join_keys(columns, exprs(op, side)).unwrap()[row_idx].expect("the join key is defined")
 	}
 
-	fn group_of(op: &JoinOperator, txn: &mut DeferredTransaction, hash: &Hash128) -> Option<GroupId> {
-		txn.lookup_groups(op.operator, &[group_bytes(hash)]).unwrap().remove(0)
+	fn group_of(hash: &Hash128) -> GroupId {
+		GroupId::of(&group_bytes(hash))
 	}
 
 	fn anchor_of(
@@ -1263,8 +1254,7 @@ mod seal_tests {
 
 		insert(&op, &mut txn, JoinSide::Left, &left);
 
-		let group = group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &left, 0))
-			.expect("storing a row must intern its join key");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
 			anchor_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
@@ -1285,8 +1275,7 @@ mod seal_tests {
 
 		update(&op, &mut txn, JoinSide::Left, &pre, &post);
 
-		let group =
-			group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &post, 0)).expect("the key is interned");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &post, 0));
 		assert_eq!(armed_timers(&op, &mut txn), 1, "an update re-arms one timer, it does not add one");
 		assert_eq!(
 			anchor_of(&op, &mut txn, group, JoinSide::Left, 42),
@@ -1303,8 +1292,7 @@ mod seal_tests {
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&op, &mut txn, JoinSide::Left, &left);
-		let group =
-			group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &left, 0)).expect("the key is interned");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 
 		fire(&mut op, &mut txn, at_millis(15_000), group);
 
@@ -1325,8 +1313,7 @@ mod seal_tests {
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&op, &mut txn, JoinSide::Left, &left);
-		let group =
-			group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &left, 0)).expect("the key is interned");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 
 		remove(&op, &mut txn, JoinSide::Left, &left);
 
@@ -1348,8 +1335,7 @@ mod seal_tests {
 		let late = rows(&[7], &[2], at_millis(50_000));
 		insert(&op, &mut txn, JoinSide::Left, &early);
 		insert(&op, &mut txn, JoinSide::Left, &late);
-		let group =
-			group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &early, 0)).expect("the key is interned");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &early, 0));
 
 		fire(&mut op, &mut txn, at_millis(15_001), group);
 
@@ -1371,8 +1357,7 @@ mod seal_tests {
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&op, &mut txn, JoinSide::Left, &left);
-		let group =
-			group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &left, 0)).expect("the key is interned");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 
 		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 
@@ -1394,8 +1379,7 @@ mod seal_tests {
 
 		insert(&op, &mut txn, JoinSide::Left, &left);
 
-		let group = group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &left, 0))
-			.expect("the row must still intern its key");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(anchor_of(&op, &mut txn, group, JoinSide::Left, 42), None, "no retention means no anchor");
 		assert_eq!(armed_timers(&op, &mut txn), 0, "and no timer");
 	}
@@ -1408,8 +1392,7 @@ mod seal_tests {
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&op, &mut txn, JoinSide::Left, &left);
-		let group =
-			group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &left, 0)).expect("the key is interned");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert!(unmatched_mapping(&op, &mut txn, 42).is_some(), "precondition: the row published downstream");
 
 		let emitted = fire(&mut op, &mut txn, at_millis(15_001), group);
@@ -1425,19 +1408,18 @@ mod seal_tests {
 
 	#[test]
 	fn a_key_whose_last_row_sealed_loses_the_group_that_carried_it() {
-		// The dictionary entry and the group record only leave through the reaper, so the seal must queue it.
+		// a group's rows only leave through the reaper, so the seal must queue it
 		let engine = TestEngine::new();
 		let mut op = join(9, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&op, &mut txn, JoinSide::Left, &left);
 		let hash = hash_of(&op, JoinSide::Left, &left, 0);
-		let group = group_of(&op, &mut txn, &hash).expect("the key is interned");
+		let group = group_of(&hash);
 
 		fire(&mut op, &mut txn, at_millis(15_001), group);
 
-		assert_eq!(group_of(&op, &mut txn, &hash), None, "the dictionary entry must go");
-		assert_eq!(group_rows(&op, &mut txn, group), 0, "and the group's range must be left empty");
+		assert_eq!(group_rows(&op, &mut txn, group), 0, "the group's range must be left empty");
 		assert_eq!(armed_timers(&op, &mut txn), 0, "and the timer that drove the seal must not re-arm");
 	}
 
@@ -1451,7 +1433,7 @@ mod seal_tests {
 		insert(&op, &mut txn, JoinSide::Left, &left);
 		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 		let hash = hash_of(&op, JoinSide::Left, &left, 0);
-		let group = group_of(&op, &mut txn, &hash).expect("the key is interned");
+		let group = group_of(&hash);
 
 		fire(&mut op, &mut txn, at_millis(15_001), group);
 
@@ -1465,7 +1447,6 @@ mod seal_tests {
 			1,
 			"an unsealed side keeps its rows and no anchor holds the group open on its behalf"
 		);
-		assert!(group_of(&op, &mut txn, &hash).is_some(), "so the group that still carries it must survive");
 	}
 
 	#[test]
@@ -1478,7 +1459,7 @@ mod seal_tests {
 		insert(&op, &mut txn, JoinSide::Left, &left);
 		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 		let hash = hash_of(&op, JoinSide::Left, &left, 0);
-		let group = group_of(&op, &mut txn, &hash).expect("the key is interned");
+		let group = group_of(&hash);
 
 		fire(&mut op, &mut txn, at_millis(15_001), group);
 
@@ -1510,8 +1491,7 @@ mod seal_tests {
 
 		insert(&op, &mut txn, JoinSide::Left, &left);
 
-		let group =
-			group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &left, 0)).expect("the key is interned");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
 			anchor_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
@@ -1536,8 +1516,7 @@ mod seal_tests {
 
 		insert(&op, &mut txn, JoinSide::Left, &left);
 
-		let group =
-			group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &left, 0)).expect("the key is interned");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
 			anchor_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
@@ -1560,8 +1539,7 @@ mod seal_tests {
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 		insert(&op, &mut txn, JoinSide::Left, &left);
-		let group =
-			group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &left, 0)).expect("the key is interned");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
 			ledger_rows(&op, &mut txn, group, Keyspace::JOIN_PUBLISHED),
 			1,
@@ -1595,8 +1573,7 @@ mod seal_tests {
 		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 		insert(&op, &mut txn, JoinSide::Left, &early);
 		insert(&op, &mut txn, JoinSide::Left, &late);
-		let group =
-			group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &early, 0)).expect("the key is interned");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &early, 0));
 		assert_eq!(
 			ledger_rows(&op, &mut txn, group, Keyspace::JOIN_PUBLISHED),
 			2,
@@ -1627,8 +1604,7 @@ mod seal_tests {
 		let mut txn = txn_at(&engine, 100);
 		let left = rows(&[7], &[42], at_millis(5_000));
 		insert(&op, &mut txn, JoinSide::Left, &left);
-		let group =
-			group_of(&op, &mut txn, &hash_of(&op, JoinSide::Left, &left, 0)).expect("the key is interned");
+		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		commit(&engine, &mut txn);
 		assert_eq!(
 			store.anchors_by_expiry(op.operator, group, 16).len(),

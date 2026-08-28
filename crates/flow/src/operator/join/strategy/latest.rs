@@ -25,7 +25,7 @@ pub(crate) fn overwrite_right_slot(
 	}
 	let shape = build_shape(columns);
 	right.set_row_shape(host, &shape)?;
-	let group = right.intern(host, key_hash)?;
+	let group = right.group_of(key_hash);
 	let mut stored: Option<EncodedPodRow> = None;
 	for &idx in indices {
 		let row = encode_row(&shape, columns, idx, host.written_at());
@@ -44,10 +44,7 @@ pub(crate) fn read_right_slot(
 	right: &Store,
 	key_hash: &Hash128,
 ) -> Result<Option<Columns>> {
-	let Some(group) = right.group_of(host, key_hash)? else {
-		return Ok(None);
-	};
-	Ok(right.slot(host, group)?.map(|(_, columns)| columns))
+	Ok(right.slot(host, right.group_of(key_hash))?.map(|(_, columns)| columns))
 }
 
 #[instrument(name = "flow::operator::join::latest::remove_right_slot", level = "trace", skip_all)]

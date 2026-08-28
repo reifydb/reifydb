@@ -344,7 +344,7 @@ mod tests {
 		// group encoding cannot quietly re-create the overlap.
 		let key = (&VisibilityKey(RowNumber(42))).into_group_state_key();
 
-		for group in [1u64, 127, 128, 14_336, 14_591, 16_383, 16_384] {
+		for group in [1u128, 127, 128, 14_336, 14_591, 16_383, 16_384] {
 			let range = group_inner_range(GroupId(group));
 			let start = match &range.start {
 				Bound::Included(s) => key.as_bytes() >= s.as_bytes(),

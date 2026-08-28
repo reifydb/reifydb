@@ -167,7 +167,7 @@ fn anchor_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Param
 			for config in &harness.configs {
 				config.store.anchor_set(
 					OperatorId(operator),
-					GroupId(group),
+					GroupId(group.into()),
 					side,
 					RowNumber(row_number),
 					DateTime::from_millis(expiry),
@@ -179,7 +179,7 @@ fn anchor_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Param
 			for config in &harness.configs {
 				config.store.anchor_remove(
 					OperatorId(operator),
-					GroupId(group),
+					GroupId(group.into()),
 					side,
 					RowNumber(row_number),
 				);
@@ -236,7 +236,7 @@ fn drop_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Params)
 			let group = rng.random_range(1..=p.groups);
 			state.oracle.anchors_remove_group(operator, group);
 			for config in &harness.configs {
-				config.store.anchors_remove_group(OperatorId(operator), GroupId(group));
+				config.store.anchors_remove_group(OperatorId(operator), GroupId(group.into()));
 			}
 		}
 	}
@@ -444,7 +444,7 @@ pub fn check_anchor_get(
 	for config in configs {
 		let got = config
 			.store
-			.anchor_get(OperatorId(operator), GroupId(group), side, RowNumber(row_number))
+			.anchor_get(OperatorId(operator), GroupId(group.into()), side, RowNumber(row_number))
 			.map(|at| at.to_millis());
 		assert_eq!(
 			got, expected,
@@ -472,11 +472,11 @@ pub fn check_anchor_scan(
 		let got = match due {
 			Some(at) => config.store.anchors_due(
 				OperatorId(operator),
-				GroupId(group),
+				GroupId(group.into()),
 				DateTime::from_millis(at),
 				limit,
 			),
-			None => config.store.anchors_by_expiry(OperatorId(operator), GroupId(group), limit),
+			None => config.store.anchors_by_expiry(OperatorId(operator), GroupId(group.into()), limit),
 		};
 		let have: Vec<u64> = got.iter().map(|anchor| anchor.expiry.to_millis()).collect();
 		assert_eq!(
@@ -727,14 +727,14 @@ fn random_batch(rng: &mut StdRng, state: &mut State, p: &Params, step: u32) -> B
 				writes.push(match held {
 					true => OperatorWrite::AnchorReplace {
 						operator: OperatorId(operator),
-						group: GroupId(group),
+						group: GroupId(group.into()),
 						side,
 						row_num: RowNumber(row_number),
 						expiry: DateTime::from_millis(expiry),
 					},
 					false => OperatorWrite::AnchorInsert {
 						operator: OperatorId(operator),
-						group: GroupId(group),
+						group: GroupId(group.into()),
 						side,
 						row_num: RowNumber(row_number),
 						expiry: DateTime::from_millis(expiry),
@@ -748,7 +748,7 @@ fn random_batch(rng: &mut StdRng, state: &mut State, p: &Params, step: u32) -> B
 				state.oracle.anchor_remove(operator, group, side, row_number);
 				writes.push(OperatorWrite::AnchorRemove {
 					operator: OperatorId(operator),
-					group: GroupId(group),
+					group: GroupId(group.into()),
 					side,
 					row_num: RowNumber(row_number),
 				});

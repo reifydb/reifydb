@@ -392,7 +392,7 @@ fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 	}
 	assert_eq!(tier.shard_limit_bytes(), ByteSize::from_mib(64));
 
-	for group in 0..64u64 {
+	for group in 0..64u128 {
 		one_row_partition(&tier, OP_A, GroupId(group), Keyspace::ACCUMULATOR);
 	}
 	assert_eq!(tier.partitions(), 64);
@@ -654,12 +654,12 @@ impl Lcg {
 	}
 }
 
-const SWEEP_GROUPS: u64 = 24;
+const SWEEP_GROUPS: u128 = 24;
 
 const MIX: [u8; 18] = [0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4];
 const SWEEP_KEYS: u64 = 8;
 
-fn sweep_key(group: u64, n: u64) -> EncodedKey {
+fn sweep_key(group: u128, n: u64) -> EncodedKey {
 	key(GroupId(group), Keyspace::ACCUMULATOR, format!("k{n}").as_bytes())
 }
 
@@ -667,7 +667,7 @@ fn sweep_domain() -> Vec<EncodedKey> {
 	(1..=SWEEP_GROUPS).flat_map(|group| (0..SWEEP_KEYS).map(move |n| sweep_key(group, n))).collect()
 }
 
-fn sweep_page(group: u64) -> Vec<(EncodedKey, EncodedPodRow)> {
+fn sweep_page(group: u128) -> Vec<(EncodedKey, EncodedPodRow)> {
 	(0..SWEEP_KEYS).map(|n| (sweep_key(group, n), row("m"))).collect()
 }
 
@@ -686,7 +686,7 @@ fn sweep_tier<X: Sweep>(budget: u64) -> RangeTier<X> {
 	.expect("a tier with a byte budget must be constructed")
 }
 
-fn sweep_materialize<X: Sweep>(tier: &RangeTier<X>, group: u64) {
+fn sweep_materialize<X: Sweep>(tier: &RangeTier<X>, group: u128) {
 	let range = keyspace_inner_range(GroupId(group), Keyspace::ACCUMULATOR);
 	let Some(scan) = tier.plan_scan(OP_A, &range) else {
 		return;
@@ -717,7 +717,7 @@ fn sweep_step<X: Sweep>(tier: &RangeTier<X>, rng: &mut Lcg, domain: &[EncodedKey
 	let at = domain[(rng.next() % domain.len() as u64) as usize].clone();
 	match MIX[(rng.next() % MIX.len() as u64) as usize] {
 		0 => tier.insert(OP_A, at, row("i")),
-		1 => sweep_materialize(tier, rng.next() % SWEEP_GROUPS + 1),
+		1 => sweep_materialize(tier, rng.next() as u128 % SWEEP_GROUPS + 1),
 		2 => tier.invalidate(OP_A, &at),
 		3 => tier.evict_to_capacity(0),
 		_ => tier.clear(),

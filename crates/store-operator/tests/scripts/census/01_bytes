@@ -8,33 +8,33 @@ bytes
 ---
 bytes 1 => 0
 
-# A framed key is 8 group bytes plus 1 keyspace byte plus its suffix, and a row is its body alone: "a" costs
-# 10 + 1.
+# A framed key is 16 group bytes plus 1 keyspace byte plus its suffix, and a row is its body alone: "a" costs
+# 18 + 1.
 
 set a=1
 flush
 bytes
 ---
 ok
-bytes 1 => 11
+bytes 1 => 19
 
-# "bb" costs 11 + 2.
+# "bb" costs 19 + 2.
 
 set bb=22
 flush
 bytes
 ---
 ok
-bytes 1 => 24
+bytes 1 => 40
 
-# An anchor is charged a flat 25 key bytes plus 8 value bytes.
+# An anchor is charged a flat 33 key bytes plus 8 value bytes.
 
 anchor_set row=1 at=100
 flush
 bytes
 ---
 ok
-bytes 1 => 57
+bytes 1 => 81
 
 # A neighbouring operator is billed separately.
 
@@ -44,8 +44,8 @@ bytes
 bytes op=2
 ---
 ok
-bytes 1 => 57
-bytes 2 => 11
+bytes 1 => 81
+bytes 2 => 19
 
 # A removed key stops being counted.
 
@@ -54,7 +54,7 @@ flush
 bytes
 ---
 ok
-bytes 1 => 46
+bytes 1 => 62
 
 # A removed anchor stops being counted too.
 
@@ -63,7 +63,7 @@ flush
 bytes
 ---
 ok
-bytes 1 => 13
+bytes 1 => 21
 
 # An operator that owns nothing costs nothing.
 
