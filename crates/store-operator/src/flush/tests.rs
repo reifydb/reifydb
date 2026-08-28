@@ -730,7 +730,7 @@ fn a_flusher_with_no_config_attached_keeps_the_compiled_default_budget() {
 	assert_eq!(
 		buffer.budget(),
 		FLUSH_BUDGET_BYTES,
-		"an unattached flusher must keep the compiled 4 MiB default rather than adopt zero"
+		"an unattached flusher must keep the compiled 100 MiB default rather than adopt zero"
 	);
-	assert_eq!(FLUSH_BUDGET_BYTES, ByteSize::from_mib(4), "the compiled fallback is the documented 4 MiB");
+	assert_eq!(FLUSH_BUDGET_BYTES, ByteSize::from_mib(100), "the compiled fallback is the documented 100 MiB");
 }

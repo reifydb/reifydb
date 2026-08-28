@@ -45,7 +45,6 @@ type PoolConfigSources = (
 	Option<CdcReadConfig>,
 	u32,
 	ByteSize,
-	ByteSize,
 );
 
 fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, Value)]) -> Result<PoolConfigSources> {
@@ -68,7 +67,6 @@ fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, V
 		resolved.cdc_read,
 		resolved.operator_wal_autocheckpoint,
 		resolved.operator_flush_budget,
-		resolved.multi_flush_budget,
 	))
 }
 
@@ -227,7 +225,6 @@ impl EmbeddedBuilder {
 			cdc_read,
 			operator_wal_autocheckpoint,
 			operator_flush_budget,
-			multi_flush_budget,
 		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		install_fatal(runtime_config.fatal);
@@ -250,7 +247,6 @@ impl EmbeddedBuilder {
 				cdc_wal_autocheckpoint,
 				operator_wal_autocheckpoint,
 				operator_flush_budget,
-				multi_flush_budget,
 				&spawner,
 			);
 		let catalog_cache = CatalogCache::new();

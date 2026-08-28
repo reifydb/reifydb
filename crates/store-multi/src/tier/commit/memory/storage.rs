@@ -10,7 +10,6 @@ use std::{
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
-use reifydb_store::tier::commit::CommitCensus;
 use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
 use tracing::{Span, field, instrument};
 
@@ -19,9 +18,12 @@ use crate::{
 	tier::{
 		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch,
 		TierStorage, VersionedGetResult,
-		commit::memory::entry::{
-			CurrentMap, Entries, Entry, HistoricalMap, OldestIndex, entry_bytes, entry_bytes_with,
-			oldest_version, reconcile_oldest,
+		commit::{
+			census::CommitCensus,
+			memory::entry::{
+				CurrentMap, Entries, Entry, HistoricalMap, OldestIndex, entry_bytes, entry_bytes_with,
+				oldest_version, reconcile_oldest,
+			},
 		},
 	},
 };

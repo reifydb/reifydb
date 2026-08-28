@@ -110,10 +110,10 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 		)));
 		let config: Arc<dyn GetConfig> = Arc::new(catalog.clone());
 
-		if let Some(commit_tier) = store.commit_tier() {
+		if let Some(flush_engine) = store.flush_engine() {
 			registry.register(Box::new(Measured::new(
 				PersistentFlushTask::new(
-					commit_tier,
+					flush_engine,
 					config.clone(),
 					plane.clone(),
 					engine.clock().clone(),

@@ -33,6 +33,8 @@ use reifydb_store_operator::{
 };
 use reifydb_value::byte_size::ByteSize;
 
+const CACHED: Keyspace = Keyspace::CUSTOM_CACHED;
+
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
 const GROUP: GroupId = GroupId(7);
@@ -70,7 +72,7 @@ fn cached_store_on(storage: SqliteOperatorStorage) -> OperatorStore {
 }
 
 fn key(suffix: u8) -> EncodedKey {
-	OperatorStateKey::inner_encoded(GROUP, Keyspace::ACCUMULATOR, [suffix]).as_encoded().clone()
+	OperatorStateKey::inner_encoded(GROUP, CACHED, [suffix]).as_encoded().clone()
 }
 
 fn key_in(keyspace: Keyspace, suffix: u8) -> EncodedKey {
@@ -90,14 +92,14 @@ fn bodies(batch: &OperatorBatch) -> Vec<String> {
 }
 
 fn accumulator_range() -> EncodedKeyRange {
-	keyspace_inner_range(GROUP, Keyspace::ACCUMULATOR)
+	keyspace_inner_range(GROUP, CACHED)
 }
 
 fn seed_accumulator(storage: &SqliteOperatorStorage, count: u8) {
 	for suffix in 1..=count {
 		storage.apply_batch(&[OperatorWrite::Insert {
 			operator: OP_A,
-			key: key_in(Keyspace::ACCUMULATOR, suffix),
+			key: key_in(CACHED, suffix),
 			post: row(&format!("v{suffix}")),
 		}]);
 	}
@@ -683,32 +685,33 @@ fn a_point_read_of_an_expiry_key_remembers_neither_the_row_nor_the_absence() {
 }
 
 #[test]
-fn a_row_number_mapping_write_still_occupies_the_point_tier() {
+fn a_cached_keyspace_write_still_occupies_the_point_tier() {
 	// The control for the two refusals above: a refusal list that widened past the measurement turns the tier into
-	// an off switch.
+	// an off switch. Named for the property, not for one keyspace, so retuning the refusal list cannot silently
+	// retire the control by moving its exemplar onto the refused side.
 	let (store, _storage, _guard) = cached_store();
-	put(&store, OP_A, key_in(Keyspace::ROW_NUMBER_MAPPING, 1), row("durable"));
+	put(&store, OP_A, key_in(CACHED, 1), row("durable"));
 	assert!(store.flush_pending_blocking());
 
 	assert_eq!(point_entries(&store), 1, "a cached keyspace must still be admitted after the refusal list grew");
 }
 
 #[test]
-fn a_group_dictionary_key_round_trips_through_the_point_tier() {
-	// GROUP_DICTIONARY is the one cached keyspace keyed on the root group, and a tier that declines it reads
-	// correctly while paying a persistent lookup on every single read.
+fn a_root_group_key_round_trips_through_the_point_tier() {
+	// A key carrying the root group rather than a real one must still be admitted, or every read of it pays a
+	// persistent lookup while the tier reads correctly and hides the cost.
 	let (store, _storage, _guard) = cached_store();
-	let key = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::GROUP_DICTIONARY, [1]).as_encoded().clone();
-	put(&store, OP_A, key.clone(), row("dictionary"));
+	let key = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, [1]).as_encoded().clone();
+	put(&store, OP_A, key.clone(), row("counter"));
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite through the flush path");
 
-	assert_eq!(point_entries(&store), 1, "the flush write-through must admit a root-group dictionary key");
+	assert_eq!(point_entries(&store), 1, "the flush write-through must admit a root-group key");
 
 	let before = point_tier(&store).metrics();
 	for _ in 0..4 {
 		assert_eq!(
-			body(&store.get(OP_A, &key).expect("the dictionary key stays readable")),
-			"dictionary",
+			body(&store.get(OP_A, &key).expect("the root-group key stays readable")),
+			"counter",
 			"a root-group key must read back exactly what the flush made durable"
 		);
 	}
@@ -716,7 +719,7 @@ fn a_group_dictionary_key_round_trips_through_the_point_tier() {
 
 	assert_eq!(
 		after.fills_started, before.fills_started,
-		"the flush already held the row; a fill here means every dictionary read pays sqlite again"
+		"the flush already held the row; a fill here means every root-group read pays sqlite again"
 	);
 	assert_eq!(
 		after.hits,
@@ -732,19 +735,16 @@ fn a_cached_absence_survives_the_range_fill_that_materializes_over_it() {
 	seed_accumulator(&storage, 3);
 	storage.apply_batch(&[OperatorWrite::Insert {
 		operator: OP_A,
-		key: key_in(Keyspace::ACCUMULATOR, 9),
+		key: key_in(CACHED, 9),
 		post: row("gone"),
 	}]);
 	storage.apply_batch(&[OperatorWrite::Remove {
 		operator: OP_A,
-		key: key_in(Keyspace::ACCUMULATOR, 9),
+		key: key_in(CACHED, 9),
 		pre: DurablePre::Present(ByteSize::from_bytes(row("gone").bytes().len() as u64)),
 	}]);
 
-	assert!(
-		store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 9)).is_none(),
-		"the key is gone but still passes the filter"
-	);
+	assert!(store.get(OP_A, &key_in(CACHED, 9)).is_none(), "the key is gone but still passes the filter");
 	assert_eq!(point_entries(&store), 1, "the absence itself must be cached, otherwise this test proves nothing");
 
 	assert_eq!(bodies(&store.range_batch(OP_A, accumulator_range(), 64)), ["v1", "v2", "v3"]);
@@ -765,7 +765,7 @@ fn a_cached_absence_survives_the_range_fill_that_materializes_over_it() {
 
 	let counters = point_tier(&store).metrics();
 	let before = ScanCounters::sample();
-	assert!(store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 9)).is_none(), "the key is still absent from sqlite");
+	assert!(store.get(OP_A, &key_in(CACHED, 9)).is_none(), "the key is still absent from sqlite");
 	let scanned = before.since();
 	let after = point_tier(&store).metrics();
 
@@ -787,28 +787,28 @@ fn a_proven_span_outranks_the_absence_the_point_tier_remembers() {
 	for suffix in 4..=5u8 {
 		storage.apply_batch(&[OperatorWrite::Insert {
 			operator: OP_A,
-			key: key_in(Keyspace::ACCUMULATOR, suffix),
+			key: key_in(CACHED, suffix),
 			post: row("later"),
 		}]);
 		storage.apply_batch(&[OperatorWrite::Remove {
 			operator: OP_A,
-			key: key_in(Keyspace::ACCUMULATOR, suffix),
+			key: key_in(CACHED, suffix),
 			pre: DurablePre::Present(ByteSize::from_bytes(row("later").bytes().len() as u64)),
 		}]);
 	}
 
-	assert!(store.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 4)).is_none(), "the key starts absent");
-	assert!(!store.contains(OP_A, &key_in(Keyspace::ACCUMULATOR, 5)), "and so does the one contains will read");
+	assert!(store.get(OP_A, &key_in(CACHED, 4)).is_none(), "the key starts absent");
+	assert!(!store.contains(OP_A, &key_in(CACHED, 5)), "and so does the one contains will read");
 	assert_eq!(point_entries(&store), 2, "both absences must be remembered, or the contradiction never arises");
 
 	storage.apply_batch(&[OperatorWrite::Insert {
 		operator: OP_A,
-		key: key_in(Keyspace::ACCUMULATOR, 4),
+		key: key_in(CACHED, 4),
 		post: row("v4"),
 	}]);
 	storage.apply_batch(&[OperatorWrite::Insert {
 		operator: OP_A,
-		key: key_in(Keyspace::ACCUMULATOR, 5),
+		key: key_in(CACHED, 5),
 		post: row("v5"),
 	}]);
 
@@ -821,14 +821,12 @@ fn a_proven_span_outranks_the_absence_the_point_tier_remembers() {
 	assert_eq!(range_tier(&store).partitions(), 1, "the scan must materialize its span or nothing below is tested");
 
 	assert_eq!(
-		body(&store
-			.get(OP_A, &key_in(Keyspace::ACCUMULATOR, 4))
-			.expect("the proven span must answer the point read")),
+		body(&store.get(OP_A, &key_in(CACHED, 4)).expect("the proven span must answer the point read")),
 		"v4",
 		"an absence that outranks the span makes the store deny a row its own range answer returns"
 	);
 	assert!(
-		store.contains(OP_A, &key_in(Keyspace::ACCUMULATOR, 5)),
+		store.contains(OP_A, &key_in(CACHED, 5)),
 		"contains must take the same arm as get, or a branch on the key goes the wrong way"
 	);
 	assert_eq!(
@@ -838,13 +836,13 @@ fn a_proven_span_outranks_the_absence_the_point_tier_remembers() {
 	);
 
 	assert_eq!(
-		point_tier(&store).get(OP_A, &key_in(Keyspace::ACCUMULATOR, 4)),
+		point_tier(&store).get(OP_A, &key_in(CACHED, 4)),
 		Some(Some(row("v4"))),
 		"the contradicted absence must be repaired in place; left standing it answers wrongly again the \
 		 moment the bucket is dropped"
 	);
 	assert_eq!(
-		point_tier(&store).get(OP_A, &key_in(Keyspace::ACCUMULATOR, 5)),
+		point_tier(&store).get(OP_A, &key_in(CACHED, 5)),
 		Some(Some(row("v5"))),
 		"the contains path repairs its own absences or it leaves the same contradiction behind"
 	);

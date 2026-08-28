@@ -28,8 +28,6 @@ use reifydb_runtime::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_store::tier::commit::CommitTier;
 use reifydb_value::{count::Count, util::cowvec::CowVec};
 use tracing::instrument;
 
@@ -49,11 +47,8 @@ use crate::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{
 	config::PersistentConfig,
-	tier::{
-		commit::domain::{MultiCommitTier, MultiState, commit_config},
-		point::MultiPointConfig,
-		range::MultiRangeConfig,
-	},
+	flush::engine::FlushEngine,
+	tier::{point::MultiPointConfig, range::MultiRangeConfig},
 };
 
 pub mod multi;
@@ -97,8 +92,7 @@ pub struct StandardMultiStoreInner {
 	pub(crate) range: Option<MultiRangeTier>,
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	#[allow(dead_code)]
-	pub(crate) commit_tier: Option<MultiCommitTier>,
+	pub(crate) flush_engine: Option<Arc<FlushEngine>>,
 	#[allow(dead_code)]
 	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	#[allow(dead_code)]
@@ -128,7 +122,7 @@ impl StandardMultiStore {
 		let range = config.persistent.is_some().then(|| config.range.and_then(MultiRangeTier::new)).flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		let (persistent, commit_tier, filter) = {
+		let (persistent, flush_engine, filter) = {
 			let persistent_config = config.persistent.clone();
 			let persistent = persistent_config.as_ref().map(|c| c.storage.clone());
 			let filter = persistent.as_ref().map(|tier| {
@@ -142,23 +136,22 @@ impl StandardMultiStore {
 				.expect("multi current filter source could not be registered");
 				actor
 			});
-			let commit_tier = match (persistent.as_ref(), persistent_config.as_ref()) {
-				(Some(persistent_storage), Some(persistent_settings)) => {
-					CommitTier::new(commit_config(persistent_settings.flush_budget), |_budget| {
-						MultiState::new(
-							commit.clone(),
-							persistent_storage.clone(),
-							row_settings_provider.clone(),
-							eviction_watermark.clone(),
-							config.event_bus.clone(),
-						)
-						.with_point(point.clone())
-						.with_range(range.clone())
-					})
-				}
+			let flush_engine = match (persistent.as_ref(), persistent_config.as_ref()) {
+				(Some(persistent_storage), Some(_)) => Some(Arc::new(
+					FlushEngine::new(
+						commit.clone(),
+						persistent_storage.clone(),
+						row_settings_provider.clone(),
+						eviction_watermark.clone(),
+						config.clock.clone(),
+						config.event_bus.clone(),
+					)
+					.with_point(point.clone())
+					.with_range(range.clone()),
+				)),
 				_ => None,
 			};
-			(persistent, commit_tier, filter)
+			(persistent, flush_engine, filter)
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
@@ -176,7 +169,7 @@ impl StandardMultiStore {
 			point,
 			range,
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			commit_tier,
+			flush_engine,
 			row_settings_provider,
 			eviction_watermark,
 			event_bus: config.event_bus,
@@ -187,8 +180,8 @@ impl StandardMultiStore {
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn commit_tier(&self) -> Option<MultiCommitTier> {
-		self.commit_tier.clone()
+	pub fn flush_engine(&self) -> Option<Arc<FlushEngine>> {
+		self.flush_engine.clone()
 	}
 
 	pub fn insert_read_key(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
@@ -283,17 +276,17 @@ impl StandardMultiStore {
 
 	pub fn flush_pending_blocking(&self) {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		if let Some(tier) = self.commit_tier.as_ref() {
+		if let Some(engine) = self.flush_engine.as_ref() {
 			self.event_bus.wait_for_completion();
-			tier.flush_pending();
+			engine.flush_pending();
 		}
 	}
 
 	pub fn flush_all_blocking(&self) {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		if let Some(tier) = self.commit_tier.as_ref() {
+		if let Some(engine) = self.flush_engine.as_ref() {
 			self.event_bus.wait_for_completion();
-			tier.flush_all();
+			engine.flush_all();
 		}
 	}
 }
@@ -415,68 +408,5 @@ impl StandardMultiStore {
 		})
 		.unwrap();
 		(store, guard)
-	}
-}
-
-#[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
-mod tests {
-	use reifydb_core::event::EventBus;
-	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
-	use reifydb_value::byte_size::ByteSize;
-
-	use super::*;
-	use crate::{
-		config::{CommitBufferConfig, DEFAULT_FLUSH_BUDGET, MultiStoreConfig, PersistentConfig},
-		tier::{commit::buffer::MultiCommitBufferTier, point::MultiPointConfig, range::MultiRangeConfig},
-	};
-
-	fn store_with_budget(budget: Option<ByteSize>) -> (StandardMultiStore, SqliteTempPathGuard) {
-		let clock = Clock::testing();
-		let actor_system = ActorSystem::testing(clock.clone());
-		let spawner = actor_system.spawner();
-		let event_bus = EventBus::new(&spawner);
-		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
-		let persistent = match budget {
-			Some(budget) => persistent.flush_budget(budget),
-			None => persistent,
-		};
-		let store = StandardMultiStore::new(MultiStoreConfig {
-			commit: CommitBufferConfig {
-				storage: MultiCommitBufferTier::memory(),
-			},
-			persistent: Some(persistent),
-			point: Some(MultiPointConfig::testing()),
-			range: Some(MultiRangeConfig::testing()),
-			retention: Default::default(),
-			merge_config: Default::default(),
-			event_bus,
-			spawner,
-			clock,
-		})
-		.unwrap();
-		(store, guard)
-	}
-
-	#[test]
-	fn the_configured_flush_budget_reaches_the_commit_tier() {
-		// the budget is both the drain slice size and the off-tick trigger threshold, so a tier
-		// built from a hardcoded const ignores the operator's sizing entirely
-		let configured = ByteSize::from_mib(32);
-		let (store, _guard) = store_with_budget(Some(configured));
-
-		let tier = store.commit_tier().expect("a persistent tier must build a commit tier");
-
-		assert_eq!(tier.budget().limit(), configured);
-		assert_ne!(tier.budget().limit(), DEFAULT_FLUSH_BUDGET);
-	}
-
-	#[test]
-	fn an_unconfigured_flush_budget_falls_back_to_the_shared_default() {
-		// without this the fallback could drift away from the catalog default and nothing would say so
-		let (store, _guard) = store_with_budget(None);
-
-		let tier = store.commit_tier().expect("a persistent tier must build a commit tier");
-
-		assert_eq!(tier.budget().limit(), DEFAULT_FLUSH_BUDGET);
 	}
 }

@@ -9,7 +9,6 @@ use reifydb_core::{
 	interface::store::EntryKind,
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
-use reifydb_store::tier::commit::CommitCensus;
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
 
 use crate::{
@@ -17,7 +16,10 @@ use crate::{
 	tier::{
 		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage,
 		VersionedGetResult,
-		commit::memory::storage::{EvictedVersion, MemoryRowStorage},
+		commit::{
+			census::CommitCensus,
+			memory::storage::{EvictedVersion, MemoryRowStorage},
+		},
 	},
 };
 

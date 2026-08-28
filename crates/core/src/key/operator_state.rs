@@ -229,6 +229,11 @@ impl Keyspace {
 			Self::TIMER_WHEEL => CachePolicy::Range,
 			Self::ENGINE_META => CachePolicy::Range,
 			Self::JOIN_PIN => CachePolicy::Range,
+			Self::ROW_NUMBER_MAPPING => CachePolicy::Range,
+			Self::GROUP_RECORD => CachePolicy::Range,
+			Self::GROUP_DICTIONARY => CachePolicy::Range,
+			Self::ACCUMULATOR => CachePolicy::Range,
+			Self::WINDOW_META => CachePolicy::Range,
 			_ => CachePolicy::Both,
 		}
 	}
@@ -555,15 +560,15 @@ mod tests {
 	/// be cached in. Both are written down rather than read back from `is_data` and `cache_policy`, or
 	/// a keyspace changing sides would pass unremarked.
 	const CENSUS: [(&str, Keyspace, Phase, CachePolicy); 38] = [
-		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity, CachePolicy::Both),
+		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity, CachePolicy::Range),
 		("APPEND_DICTIONARY", Keyspace::APPEND_DICTIONARY, Phase::Identity, CachePolicy::Both),
-		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity, CachePolicy::Both),
+		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity, CachePolicy::Range),
 		("NODE_COUNTER", Keyspace::NODE_COUNTER, Phase::Identity, CachePolicy::Both),
-		("GROUP_RECORD", Keyspace::GROUP_RECORD, Phase::Identity, CachePolicy::Both),
+		("GROUP_RECORD", Keyspace::GROUP_RECORD, Phase::Identity, CachePolicy::Range),
 		("SOURCE_WATERMARK", Keyspace::SOURCE_WATERMARK, Phase::Identity, CachePolicy::Both),
 		("TIMER_WHEEL", Keyspace::TIMER_WHEEL, Phase::Identity, CachePolicy::Range),
 		("TIMER_INDEX", Keyspace::TIMER_INDEX, Phase::Identity, CachePolicy::Both),
-		("ACCUMULATOR", Keyspace::ACCUMULATOR, Phase::Data, CachePolicy::Both),
+		("ACCUMULATOR", Keyspace::ACCUMULATOR, Phase::Data, CachePolicy::Range),
 		("BUFFER", Keyspace::BUFFER, Phase::Data, CachePolicy::Both),
 		("RUNNING", Keyspace::RUNNING, Phase::Data, CachePolicy::Both),
 		("EMIT", Keyspace::EMIT, Phase::Data, CachePolicy::Both),
@@ -574,7 +579,7 @@ mod tests {
 		("ROLLING_META", Keyspace::ROLLING_META, Phase::Data, CachePolicy::Both),
 		("ENGINE_META", Keyspace::ENGINE_META, Phase::Data, CachePolicy::Range),
 		("DISTINCT_ENTRY", Keyspace::DISTINCT_ENTRY, Phase::Data, CachePolicy::Both),
-		("WINDOW_META", Keyspace::WINDOW_META, Phase::Data, CachePolicy::Both),
+		("WINDOW_META", Keyspace::WINDOW_META, Phase::Data, CachePolicy::Range),
 		("JOIN_LEFT", Keyspace::JOIN_LEFT, Phase::Data, CachePolicy::Both),
 		("JOIN_RIGHT", Keyspace::JOIN_RIGHT, Phase::Data, CachePolicy::Both),
 		("JOIN_SCHEMA", Keyspace::JOIN_SCHEMA, Phase::Data, CachePolicy::Both),

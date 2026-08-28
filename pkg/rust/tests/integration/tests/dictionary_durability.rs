@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb::{
-	Frame, SqliteConfig, Value, WithSubsystem,
+	ConfigKey, Frame, SqliteConfig, Value, WithSubsystem,
 	core::key::kind::KeyKind,
 	embedded,
 	testing::db::{TempDbPath, TestDb},
@@ -107,13 +107,21 @@ fn dictionary_entries_reach_disk_without_a_graceful_stop() {
 	// shutdown, and that entries no longer land in the multi store at all.
 	let path = TempDbPath::new("dict_nostop");
 
-	let db = TestDb::sqlite_at(&path);
+	// The flush cadence is pinned, never left at its default: the sleep below is the only window the
+	// periodic flush gets, and a default raised past it turns both assertions vacuous - the multi tier
+	// creates its table lazily on first write, so an unflushed multi.db has no table to count at all.
+	let db = TestDb::from(
+		embedded::sqlite(SqliteConfig::new(&path))
+			.with_configs([(ConfigKey::MultiFlushInterval, Value::duration_seconds(1))])
+			.build()
+			.unwrap(),
+	);
 	db.admin("create namespace app");
 	db.admin("create dictionary app::syms for utf8 as uint4");
 	db.admin("create table app::t { sym: utf8 with { dictionary: app::syms } }");
 	db.command("insert app::t [{ sym: 'wsol' }]");
 
-	// Give the periodic flush (5s interval) ample time to reach the persistent tier.
+	// Give the periodic flush (1s interval, pinned above) ample time to reach the persistent tier.
 	thread::sleep(Duration::from_secs(12));
 
 	// Skip Drop, which would run the graceful shutdown flush. This is the crash case.

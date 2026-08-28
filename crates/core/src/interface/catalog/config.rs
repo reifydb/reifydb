@@ -172,15 +172,15 @@ impl ConfigKey {
 			Self::CdcReadBufferBytes => Value::Uint8(256 * 1024 * 1024),
 			Self::MultiPointBufferShardBytes => Value::Uint8(4 * 1024 * 1024),
 			Self::MultiRangeBufferShardBytes => Value::Uint8(4 * 1024 * 1024),
-			Self::OperatorPointBufferShardBytes => Value::Uint8(4 * 1024 * 1024),
-			Self::OperatorRangeBufferShardBytes => Value::Uint8(4 * 1024 * 1024),
+			Self::OperatorPointBufferShardBytes => Value::Uint8(512 * 1024),
+			Self::OperatorRangeBufferShardBytes => Value::Uint8(15 * 512 * 1024),
 			Self::MultiPointBufferShards => Value::Uint2(16),
 			Self::MultiRangeBufferShards => Value::Uint2(16),
 			Self::OperatorPointBufferShards => Value::Uint2(16),
 			Self::OperatorRangeBufferShards => Value::Uint2(16),
-			Self::MultiFlushInterval => Value::duration_seconds(120),
+			Self::MultiFlushInterval => Value::duration_seconds(60),
 			Self::MultiFlushBudgetBytes => Value::Uint8(4 * 1024 * 1024),
-			Self::MultiWalAutocheckpoint => Value::Uint8(1000000),
+			Self::MultiWalAutocheckpoint => Value::Uint8(50000),
 			Self::OperatorFlushBudgetBytes => Value::Uint8(100 * 1024 * 1024),
 			Self::OperatorWalAutocheckpoint => Value::Uint8(1000000),
 			Self::FlowTick => Value::duration_seconds(1),
@@ -1218,7 +1218,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 54);
+		assert_eq!(all.len(), 53);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
@@ -1606,7 +1606,7 @@ mod tests {
 
 	#[test]
 	fn test_operator_flush_budget_bytes_metadata() {
-		assert_eq!(ConfigKey::OperatorFlushBudgetBytes.default_value(), Value::Uint8(4 * 1024 * 1024));
+		assert_eq!(ConfigKey::OperatorFlushBudgetBytes.default_value(), Value::Uint8(100 * 1024 * 1024));
 		assert_eq!(ConfigKey::OperatorFlushBudgetBytes.expected_types(), &[ValueType::Uint8]);
 		assert!(!ConfigKey::OperatorFlushBudgetBytes.is_optional());
 		assert!(

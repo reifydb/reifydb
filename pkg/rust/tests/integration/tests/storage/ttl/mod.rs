@@ -22,6 +22,7 @@ pub fn ttl_db(path: impl AsRef<std::path::Path>, extra: impl IntoIterator<Item =
 		(ConfigKey::RetentionStartupGrace, Value::duration_seconds(1)),
 		(ConfigKey::RetentionEvictInterval, Value::duration_seconds(1)),
 		(ConfigKey::EpochBucketInterval, Value::duration_seconds(1)),
+		(ConfigKey::MultiFlushInterval, Value::duration_seconds(1)),
 	];
 	configs.extend(extra);
 	TestDb::from(embedded::sqlite(SqliteConfig::new(path)).with_configs(configs).build().unwrap())

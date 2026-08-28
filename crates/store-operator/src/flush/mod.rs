@@ -6,11 +6,13 @@ mod tests;
 
 use std::sync::Arc;
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_runtime::actor::system::ActorSpawner;
 use reifydb_runtime::{
 	actor::{
 		context::Context,
 		mailbox::ActorRef,
-		system::{ActorConfig, ActorSpawner},
+		system::ActorConfig,
 		traits::{Actor, Directive},
 	},
 	sync::waiter::WaiterHandle,

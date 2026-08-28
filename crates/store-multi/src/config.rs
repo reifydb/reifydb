@@ -5,7 +5,7 @@ use reifydb_core::event::EventBus;
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
+use reifydb_value::value::duration::Duration;
 
 use crate::tier::{
 	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, point::MultiPointConfig,
@@ -65,25 +65,16 @@ pub struct CommitBufferConfig {
 	pub storage: MultiCommitBufferTier,
 }
 
-pub const DEFAULT_FLUSH_BUDGET: ByteSize = ByteSize::from_mib(4);
-
 #[derive(Clone)]
 pub struct PersistentConfig {
 	pub storage: MultiPersistentTier,
-	pub flush_budget: ByteSize,
 }
 
 impl PersistentConfig {
 	pub fn opened(storage: MultiPersistentTier) -> Self {
 		Self {
 			storage,
-			flush_budget: DEFAULT_FLUSH_BUDGET,
 		}
-	}
-
-	pub fn flush_budget(mut self, flush_budget: ByteSize) -> Self {
-		self.flush_budget = flush_budget;
-		self
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
