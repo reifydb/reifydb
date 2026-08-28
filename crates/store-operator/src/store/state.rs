@@ -458,8 +458,13 @@ impl StandardOperatorStore {
 	pub fn range_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
 		let limit = batch_size.max(1);
 		let target = (limit as usize).saturating_add(1);
-		let snapshot = self.commit.state_range(operator, range.start.as_ref(), range.end.as_ref());
-		let buffered = snapshot.items;
+		let mut buffer_lower = range.start.clone();
+		let snapshot = self.commit.state_page(operator, buffer_lower.as_ref(), range.end.as_ref(), target);
+		let mut buffered = snapshot.items;
+		let mut buffer_exhausted = buffered.len() < target;
+		if let Some((key, _)) = buffered.last() {
+			buffer_lower = Bound::Excluded(key.clone());
+		}
 		let mut exhausted = snapshot.dropped;
 		let mut items: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 		let mut buffer_index = 0usize;
@@ -480,6 +485,17 @@ impl StandardOperatorStore {
 		let mut materializing = true;
 
 		while items.len() < target {
+			if buffer_index == buffered.len() && !buffer_exhausted {
+				let next =
+					self.commit.state_page(operator, buffer_lower.as_ref(), range.end.as_ref(), target);
+				buffer_exhausted = next.items.len() < target;
+				if let Some((key, _)) = next.items.last() {
+					buffer_lower = Bound::Excluded(key.clone());
+				}
+				buffered = next.items;
+				buffer_index = 0;
+				continue;
+			}
 			if page_index == page.len() && !exhausted {
 				page = Vec::new();
 				page_index = 0;
