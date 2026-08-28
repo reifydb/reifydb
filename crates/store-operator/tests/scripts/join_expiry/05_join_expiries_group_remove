@@ -1,0 +1,72 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+join_expiry_set row=1 at=100
+join_expiry_set row=2 at=200 group=2
+set a=1
+flush
+---
+ok
+
+# The named group is emptied while its sibling keeps its timers; masking by operator alone would disarm every
+# timer the operator owns.
+
+join_expiries_group_remove
+join_expiries_by_time
+join_expiry_get row=1
+join_expiries_by_time group=2
+join_expiry_get row=2 group=2
+---
+count=0
+join_expiry 0/1 => None
+0/2 => 200
+count=1
+join_expiry 0/2 => 200
+
+# A join expiry drop must never touch operator state.
+
+get a
+range
+---
+"a" => "1"
+"a" => "1"
+has_more=false
+
+# A join expiry armed after the group removal must survive it, otherwise the group is left with no timer at all.
+
+join_expiry_set row=3 at=300
+join_expiries_by_time
+join_expiry_get row=3
+---
+0/3 => 300
+count=1
+join_expiry 0/3 => 300
+
+flush
+join_expiries_by_time
+join_expiries_by_time group=2
+join_expiry_get row=1
+join_expiry_get row=3
+get a
+---
+ok
+0/3 => 300
+count=1
+0/2 => 200
+count=1
+join_expiry 0/1 => None
+join_expiry 0/3 => 300
+"a" => "1"
+
+# Removing a group that holds nothing is a no-op.
+
+join_expiries_group_remove group=9
+flush
+join_expiries_by_time
+join_expiries_by_time group=2
+---
+ok
+0/3 => 300
+count=1
+0/2 => 200
+count=1

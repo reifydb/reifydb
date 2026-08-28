@@ -19,10 +19,10 @@ total_bytes => 38
 bytes 1 => 19
 bytes 2 => 19
 
-# Anchors count towards the total at the same flat rate they do per operator.
+# Join expiries count towards the total at the same flat rate they do per operator.
 
-anchor_set row=1 at=100
-anchor_set row=2 at=200 op=2
+join_expiry_set row=1 at=100
+join_expiry_set row=2 at=200 op=2
 flush
 total_bytes
 bytes
@@ -33,7 +33,7 @@ total_bytes => 120
 bytes 1 => 60
 bytes 2 => 60
 
-# Dropping one operator's state takes its anchors with it and leaves the neighbour's share standing.
+# Dropping one operator's state takes its join expiries with it and leaves the neighbour's share standing.
 
 drop_state
 flush

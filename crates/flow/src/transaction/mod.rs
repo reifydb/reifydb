@@ -28,10 +28,10 @@ use reifydb_transaction::{
 };
 use reifydb_value::{Result, byte_size::ByteSize, value::datetime::DateTime};
 
-pub mod anchor;
 pub mod deferred;
 pub mod dictionary;
 pub mod frontier;
+pub mod join_expiry;
 #[cfg(test)]
 pub(crate) mod mock;
 pub mod read;

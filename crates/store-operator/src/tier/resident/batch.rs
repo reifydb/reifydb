@@ -16,24 +16,24 @@ use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 
 use crate::{
 	tier::resident::{census::BufferCensus, state_map::StateMap},
-	types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, DurablePre},
+	types::{DurablePre, JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES},
 };
 
 pub type StateKey = (OperatorId, EncodedKey);
 
-pub type AnchorKey = (OperatorId, GroupId, u8, RowNumber);
+pub type JoinExpiryKey = (OperatorId, GroupId, u8, RowNumber);
 
-pub type AnchorSlot = (u8, RowNumber);
+pub type JoinExpirySlot = (u8, RowNumber);
 
-pub const ANCHOR_ENTRY_BYTES: ByteSize = ANCHOR_KEY_BYTES.saturating_add(ANCHOR_VALUE_BYTES);
+pub const JOIN_EXPIRY_ENTRY_BYTES: ByteSize = JOIN_EXPIRY_KEY_BYTES.saturating_add(JOIN_EXPIRY_VALUE_BYTES);
 
 pub const MAX_FREQUENCY: u8 = 15;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DropMarker {
 	OperatorState(OperatorId),
-	AnchorsOperator(OperatorId),
-	AnchorsGroup(OperatorId, GroupId),
+	JoinExpiriesOperator(OperatorId),
+	JoinExpiriesGroup(OperatorId, GroupId),
 }
 
 #[derive(Debug, Clone)]
@@ -46,8 +46,8 @@ pub struct StateEntry {
 #[derive(Debug, Default)]
 pub struct FlushBatch {
 	pub state: StateMap,
-	pub anchors: BTreeMap<AnchorKey, Option<u64>>,
-	pub durable_anchors: BTreeSet<AnchorKey>,
+	pub join_expiries: BTreeMap<JoinExpiryKey, Option<u64>>,
+	pub durable_join_expiries: BTreeSet<JoinExpiryKey>,
 	pub checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
 	pub drops: Vec<DropMarker>,
 	pub bytes: ByteSize,
@@ -83,23 +83,26 @@ impl FlushBatch {
 		self.bytes = self.bytes.saturating_sub(outgoing).saturating_add(incoming);
 	}
 
-	pub(crate) fn record_anchor(&mut self, key: AnchorKey, expiry: Option<u64>, durable: bool) {
-		if durable && !self.anchors.contains_key(&key) {
-			self.durable_anchors.insert(key);
+	pub(crate) fn record_join_expiry(&mut self, key: JoinExpiryKey, expiry: Option<u64>, durable: bool) {
+		if durable && !self.join_expiries.contains_key(&key) {
+			self.durable_join_expiries.insert(key);
 		}
-		if expiry.is_none() && !self.durable_anchors.contains(&key) {
-			if self.anchors.remove(&key).is_some() {
-				self.bytes = self.bytes.saturating_sub(ANCHOR_ENTRY_BYTES);
+		if expiry.is_none() && !self.durable_join_expiries.contains(&key) {
+			if self.join_expiries.remove(&key).is_some() {
+				self.bytes = self.bytes.saturating_sub(JOIN_EXPIRY_ENTRY_BYTES);
 			}
 			return;
 		}
-		if self.anchors.insert(key, expiry).is_none() {
-			self.bytes = self.bytes.saturating_add(ANCHOR_ENTRY_BYTES);
+		if self.join_expiries.insert(key, expiry).is_none() {
+			self.bytes = self.bytes.saturating_add(JOIN_EXPIRY_ENTRY_BYTES);
 		}
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.state.is_empty() && self.anchors.is_empty() && self.checkpoints.is_empty() && self.drops.is_empty()
+		self.state.is_empty()
+			&& self.join_expiries.is_empty()
+			&& self.checkpoints.is_empty()
+			&& self.drops.is_empty()
 	}
 
 	pub(super) fn drain_within(&mut self, budget: ByteSize) -> FlushBatch {
@@ -117,24 +120,24 @@ impl FlushBatch {
 	}
 
 	fn assemble(&mut self, state: StateMap, state_bytes: ByteSize, budget: ByteSize) -> FlushBatch {
-		let (anchors, anchor_bytes) = split_bounded(
-			&mut self.anchors,
+		let (join_expiries, join_expiry_bytes) = split_bounded(
+			&mut self.join_expiries,
 			budget.saturating_sub(state_bytes),
-			|_, _| ANCHOR_ENTRY_BYTES,
+			|_, _| JOIN_EXPIRY_ENTRY_BYTES,
 			state.is_empty(),
 		);
-		for (key, entry) in &anchors {
+		for (key, entry) in &join_expiries {
 			match entry {
-				Some(_) => self.durable_anchors.insert(*key),
-				None => self.durable_anchors.remove(key),
+				Some(_) => self.durable_join_expiries.insert(*key),
+				None => self.durable_join_expiries.remove(key),
 			};
 		}
-		let bytes = state_bytes.saturating_add(anchor_bytes);
+		let bytes = state_bytes.saturating_add(join_expiry_bytes);
 		self.bytes = self.bytes.saturating_sub(bytes);
 		FlushBatch {
 			state,
-			anchors,
-			durable_anchors: BTreeSet::new(),
+			join_expiries,
+			durable_join_expiries: BTreeSet::new(),
 			checkpoints: mem::take(&mut self.checkpoints),
 			drops: mem::take(&mut self.drops),
 			bytes,
@@ -145,13 +148,13 @@ impl FlushBatch {
 		match marker {
 			DropMarker::OperatorState(operator) => {
 				self.drop_state(operator, census);
-				self.retain_anchors(|(candidate, _, _, _)| *candidate != operator, census);
+				self.retain_join_expiries(|(candidate, _, _, _)| *candidate != operator, census);
 			}
-			DropMarker::AnchorsOperator(operator) => {
-				self.retain_anchors(|(candidate, _, _, _)| *candidate != operator, census);
+			DropMarker::JoinExpiriesOperator(operator) => {
+				self.retain_join_expiries(|(candidate, _, _, _)| *candidate != operator, census);
 			}
-			DropMarker::AnchorsGroup(operator, group) => {
-				self.retain_anchors(
+			DropMarker::JoinExpiriesGroup(operator, group) => {
+				self.retain_join_expiries(
 					|(candidate, candidate_group, _, _)| {
 						*candidate != operator || *candidate_group != group
 					},
@@ -173,19 +176,19 @@ impl FlushBatch {
 		}
 	}
 
-	fn retain_anchors(&mut self, keep: impl Fn(&AnchorKey) -> bool, census: &mut BufferCensus) {
+	fn retain_join_expiries(&mut self, keep: impl Fn(&JoinExpiryKey) -> bool, census: &mut BufferCensus) {
 		let bytes = &mut self.bytes;
-		self.anchors.retain(|key, entry| {
+		self.join_expiries.retain(|key, entry| {
 			if keep(key) {
 				return true;
 			}
-			*bytes = bytes.saturating_sub(ANCHOR_ENTRY_BYTES);
+			*bytes = bytes.saturating_sub(JOIN_EXPIRY_ENTRY_BYTES);
 			if entry.is_some() {
-				census.retract_anchor(key.0);
+				census.retract_join_expiry(key.0);
 			}
 			false
 		});
-		self.durable_anchors.retain(&keep);
+		self.durable_join_expiries.retain(&keep);
 	}
 }
 

@@ -175,9 +175,9 @@ fn interleave(rng: &mut StdRng, harness: &Harness, oracle: &mut Oracle, p: &Para
 			_ => {
 				let expiry = rng.random_range(1..=64u64);
 				let row_number = index as u64 + 1;
-				oracle.anchor_set(FROZEN.0, GROUP, 0, row_number, expiry);
+				oracle.join_expiry_set(FROZEN.0, GROUP, 0, row_number, expiry);
 				for config in &harness.configs {
-					config.store.anchor_set(
+					config.store.join_expiry_set(
 						FROZEN,
 						GroupId(GROUP.into()),
 						0,

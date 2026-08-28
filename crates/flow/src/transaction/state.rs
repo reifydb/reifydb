@@ -20,12 +20,12 @@ use reifydb_core::{
 	key::operator_state::{GroupStateKey, KeyspaceId, OperatorStateKey, node_prefix},
 	metrics::scan::ScanCounters,
 };
-use reifydb_store_operator::{store::OperatorStore, types::ANCHOR_VALUE_BYTES};
+use reifydb_store_operator::{store::OperatorStore, types::JOIN_EXPIRY_VALUE_BYTES};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};
 
-use crate::transaction::{FlowTransaction, anchor::decode_anchor_suffix, scope::scoped_key};
+use crate::transaction::{FlowTransaction, join_expiry::decode_join_expiry_suffix, scope::scoped_key};
 
 pub(crate) fn encode_payload<T: OperatorState>(value: &T) -> Result<EncodedPodRow> {
 	Ok(value.encode_state()?)
@@ -297,14 +297,14 @@ fn classify_state_write<T: FlowTransaction>(
 	key: &GroupStateKey,
 	scoped: &EncodedKey,
 ) -> Result<()> {
-	if key.keyspace() == Some(KeyspaceId::SEAL_ANCHOR) {
-		return classify_durable_anchor(txn, id, key, scoped);
+	if key.keyspace() == Some(KeyspaceId::JOIN_ROW_EXPIRY) {
+		return classify_durable_join_expiry(txn, id, key, scoped);
 	}
 	Ok(())
 }
 
 #[inline]
-fn classify_durable_anchor<T: FlowTransaction>(
+fn classify_durable_join_expiry<T: FlowTransaction>(
 	txn: &mut T,
 	id: OperatorId,
 	key: &GroupStateKey,
@@ -313,13 +313,15 @@ fn classify_durable_anchor<T: FlowTransaction>(
 	if txn.is_classified(scoped) {
 		return Ok(());
 	}
-	let Some((group, side, row_number)) = OperatorStateKey::decode_inner(key.as_slice())
-		.and_then(|(group, _, suffix)| decode_anchor_suffix(&suffix).map(|(side, row)| (group, side, row)))
+	let Some((group, side, row_number)) =
+		OperatorStateKey::decode_inner(key.as_slice()).and_then(|(group, _, suffix)| {
+			decode_join_expiry_suffix(&suffix).map(|(side, row)| (group, side, row))
+		})
 	else {
 		return Ok(());
 	};
-	let present = txn.operator_store().anchor_get(id, group, side, row_number).is_some();
-	txn.classify(scoped, present.then_some(ANCHOR_VALUE_BYTES));
+	let present = txn.operator_store().join_expiry_get(id, group, side, row_number).is_some();
+	txn.classify(scoped, present.then_some(JOIN_EXPIRY_VALUE_BYTES));
 	Ok(())
 }
 

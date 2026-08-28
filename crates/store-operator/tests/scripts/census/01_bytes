@@ -27,9 +27,9 @@ bytes
 ok
 bytes 1 => 40
 
-# An anchor is charged a flat 33 key bytes plus 8 value bytes.
+# A join expiry is charged a flat 33 key bytes plus 8 value bytes.
 
-anchor_set row=1 at=100
+join_expiry_set row=1 at=100
 flush
 bytes
 ---
@@ -56,9 +56,9 @@ bytes
 ok
 bytes 1 => 62
 
-# A removed anchor stops being counted too.
+# A removed join expiry stops being counted too.
 
-anchor_remove row=1
+join_expiry_remove row=1
 flush
 bytes
 ---

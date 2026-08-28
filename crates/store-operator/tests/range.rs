@@ -20,10 +20,9 @@ use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
-	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
 	tier::{
-		persistent::OperatorPersistentTier,
+		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
 		point::{OperatorPointConfig, OperatorPointTier},
 		range::{OperatorRangeConfig, OperatorRangeTier},
 	},

@@ -18,8 +18,8 @@ use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::transaction::{
-	anchor::{decode_anchor_expiry, decode_anchor_suffix},
 	frontier::OutputFrontiers,
+	join_expiry::{decode_join_expiry, decode_join_expiry_suffix},
 	scope::{OperatorScope, operator_state_coordinates},
 };
 
@@ -98,36 +98,36 @@ pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> 
 		else {
 			continue;
 		};
-		let anchor = OperatorStateKey::decode_inner(inner.as_slice())
-			.filter(|(_, keyspace, _)| *keyspace == KeyspaceId::SEAL_ANCHOR)
+		let join_expiry = OperatorStateKey::decode_inner(inner.as_slice())
+			.filter(|(_, keyspace, _)| *keyspace == KeyspaceId::JOIN_ROW_EXPIRY)
 			.map(|(group, _, suffix)| {
 				(
 					group,
-					decode_anchor_suffix(&suffix)
-						.expect("seal anchor keys are written only through anchor_key"),
+					decode_join_expiry_suffix(&suffix)
+						.expect("join expiry keys are written only through join_expiry_key"),
 				)
 			});
-		writes.push(match (anchor, write) {
+		writes.push(match (join_expiry, write) {
 			(Some((group, (side, row_number))), PendingWrite::Set(row)) => {
-				let expiry = decode_anchor_expiry(row)
-					.expect("seal anchor rows are written only through SealAnchor");
+				let at = decode_join_expiry(row)
+					.expect("join expiry rows are written only through JoinRowExpiry");
 				match pending.pre_at(key).or_else(|| deferred.get(key).copied()) {
-					Some(Some(_)) => OperatorWrite::AnchorReplace {
+					Some(Some(_)) => OperatorWrite::JoinExpiryReplace {
 						operator,
 						group,
 						side,
 						row_num: row_number,
-						expiry,
+						at,
 					},
-					Some(None) => OperatorWrite::AnchorInsert {
+					Some(None) => OperatorWrite::JoinExpiryInsert {
 						operator,
 						group,
 						side,
 						row_num: row_number,
-						expiry,
+						at,
 					},
 					None => panic!(
-						"unclassified seal anchor write on operator {}, group {}",
+						"unclassified join expiry write on operator {}, group {}",
 						operator.0, group.0
 					),
 				}
@@ -137,7 +137,7 @@ pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> 
 				PendingWrite::Remove {
 					..
 				},
-			) => OperatorWrite::AnchorRemove {
+			) => OperatorWrite::JoinExpiryRemove {
 				operator,
 				group,
 				side,
@@ -146,7 +146,7 @@ pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> 
 					Some(Some(bytes)) => DurablePre::Present(bytes),
 					Some(None) => DurablePre::Absent,
 					None => panic!(
-						"unclassified seal anchor remove on operator {}, group {}",
+						"unclassified join expiry remove on operator {}, group {}",
 						operator.0, group.0
 					),
 				},

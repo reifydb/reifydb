@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Seeded operation generator plus the per-read differential checks. State, seal anchors, checkpoints, census and
+//! Seeded operation generator plus the per-read differential checks. State, join expiries, checkpoints, census and
 //! the operator-scoped drops all sit on one flat keyspace, so interleaving them in a single stream is what
 //! exercises the paths where one subsystem's write is meant to be invisible to another's read.
 
@@ -20,7 +20,7 @@ use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
 	fixtures::{Config, Harness, KEYSPACES, key, row},
-	oracle::{AnchorRow, CensusRow, CheckpointModel, Oracle},
+	oracle::{CensusRow, CheckpointModel, JoinExpiryRow, Oracle},
 };
 
 #[derive(Clone, Debug)]
@@ -30,13 +30,13 @@ pub struct Params {
 	pub keyspaces: u64,
 	pub suffixes: u64,
 	pub flows: u64,
-	pub anchor_rows: u64,
+	pub join_expiry_rows: u64,
 	pub sides: u8,
 	pub expiry_span: u64,
 	pub min_steps: u32,
 	pub max_steps: u32,
 	pub write_pct: u32,
-	pub anchor_pct: u32,
+	pub join_expiry_pct: u32,
 	pub checkpoint_pct: u32,
 	pub flush_pct: u32,
 	pub drop_pct: u32,
@@ -66,9 +66,9 @@ pub fn drive(seed: u64, p: Params) {
 			write_step(&mut rng, &harness, &mut state, &p, step);
 			continue;
 		}
-		cut += p.anchor_pct;
+		cut += p.join_expiry_pct;
 		if roll < cut {
-			anchor_step(&mut rng, &harness, &mut state, &p);
+			join_expiry_step(&mut rng, &harness, &mut state, &p);
 			continue;
 		}
 		cut += p.checkpoint_pct;
@@ -155,17 +155,17 @@ fn write_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Params
 	flush_eager_models(harness, state);
 }
 
-fn anchor_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Params) {
+fn join_expiry_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Params) {
 	let operator = rng.random_range(1..=p.operators);
 	let group = rng.random_range(1..=p.groups);
 	let side = rng.random_range(0u32..p.sides as u32) as u8;
-	let row_number = rng.random_range(1..=p.anchor_rows);
+	let row_number = rng.random_range(1..=p.join_expiry_rows);
 	match rng.random_range(0u32..10) {
 		0..=6 => {
 			let expiry = rng.random_range(1..=p.expiry_span);
-			state.oracle.anchor_set(operator, group, side, row_number, expiry);
+			state.oracle.join_expiry_set(operator, group, side, row_number, expiry);
 			for config in &harness.configs {
-				config.store.anchor_set(
+				config.store.join_expiry_set(
 					OperatorId(operator),
 					GroupId(group.into()),
 					side,
@@ -175,9 +175,9 @@ fn anchor_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Param
 			}
 		}
 		_ => {
-			state.oracle.anchor_remove(operator, group, side, row_number);
+			state.oracle.join_expiry_remove(operator, group, side, row_number);
 			for config in &harness.configs {
-				config.store.anchor_remove(
+				config.store.join_expiry_remove(
 					OperatorId(operator),
 					GroupId(group.into()),
 					side,
@@ -227,16 +227,16 @@ fn drop_step(rng: &mut StdRng, harness: &Harness, state: &mut State, p: &Params)
 			}
 		}
 		1 => {
-			state.oracle.anchors_drop_operator(operator);
+			state.oracle.join_expiries_drop_operator(operator);
 			for config in &harness.configs {
-				config.store.anchors_drop_operator(OperatorId(operator));
+				config.store.join_expiries_drop_operator(OperatorId(operator));
 			}
 		}
 		_ => {
 			let group = rng.random_range(1..=p.groups);
-			state.oracle.anchors_remove_group(operator, group);
+			state.oracle.join_expiries_remove_group(operator, group);
 			for config in &harness.configs {
-				config.store.anchors_remove_group(OperatorId(operator), GroupId(group.into()));
+				config.store.join_expiries_remove_group(OperatorId(operator), GroupId(group.into()));
 			}
 		}
 	}
@@ -267,8 +267,8 @@ fn read_step(rng: &mut StdRng, harness: &Harness, state: &State, p: &Params, ste
 		5 => {
 			let group = rng.random_range(1..=p.groups);
 			let side = rng.random_range(0u32..p.sides as u32) as u8;
-			let row_number = rng.random_range(1..=p.anchor_rows);
-			check_anchor_get(&harness.configs, &state.oracle, operator, group, side, row_number, step);
+			let row_number = rng.random_range(1..=p.join_expiry_rows);
+			check_join_expiry_get(&harness.configs, &state.oracle, operator, group, side, row_number, step);
 		}
 		6 => {
 			let group = rng.random_range(1..=p.groups);
@@ -277,7 +277,7 @@ fn read_step(rng: &mut StdRng, harness: &Harness, state: &State, p: &Params, ste
 				0 => None,
 				_ => Some(rng.random_range(1..=p.expiry_span)),
 			};
-			check_anchor_scan(&harness.configs, &state.oracle, operator, group, due, limit, step);
+			check_join_expiry_scan(&harness.configs, &state.oracle, operator, group, due, limit, step);
 		}
 		7 => {
 			check_census(&harness.configs, &state.oracle, step);
@@ -294,15 +294,23 @@ fn read_step(rng: &mut StdRng, harness: &Harness, state: &State, p: &Params, ste
 /// against the same model rather than three against each other.
 pub fn verify(configs: &[Config], oracle: &Oracle, p: &Params, step: u32) {
 	check_census(configs, oracle, step);
-	check_anchor_census(configs, oracle, step);
+	check_join_expiry_census(configs, oracle, step);
 	check_checkpoint_entries(configs, oracle, p.flows, step);
 	for operator in 1..=p.operators {
 		check_bytes(configs, oracle, operator, step);
 		check_drain(configs, oracle, operator, 1, step);
 		check_drain(configs, oracle, operator, p.max_batch, step);
 		for group in 1..=p.groups {
-			check_anchor_scan(configs, oracle, operator, group, None, u64::MAX, step);
-			check_anchor_scan(configs, oracle, operator, group, Some(p.expiry_span / 2), u64::MAX, step);
+			check_join_expiry_scan(configs, oracle, operator, group, None, u64::MAX, step);
+			check_join_expiry_scan(
+				configs,
+				oracle,
+				operator,
+				group,
+				Some(p.expiry_span / 2),
+				u64::MAX,
+				step,
+			);
 		}
 	}
 	check_total_bytes(configs, oracle, step);
@@ -431,7 +439,7 @@ pub fn check_drain(configs: &[Config], oracle: &Oracle, operator: u64, limit: u6
 	}
 }
 
-pub fn check_anchor_get(
+pub fn check_join_expiry_get(
 	configs: &[Config],
 	oracle: &Oracle,
 	operator: u64,
@@ -440,15 +448,15 @@ pub fn check_anchor_get(
 	row_number: u64,
 	step: u32,
 ) {
-	let expected = oracle.anchor_get(operator, group, side, row_number);
+	let expected = oracle.join_expiry_get(operator, group, side, row_number);
 	for config in configs {
 		let got = config
 			.store
-			.anchor_get(OperatorId(operator), GroupId(group.into()), side, RowNumber(row_number))
+			.join_expiry_get(OperatorId(operator), GroupId(group.into()), side, RowNumber(row_number))
 			.map(|at| at.to_millis());
 		assert_eq!(
 			got, expected,
-			"ANCHOR_GET mismatch: config={} step={step} operator={operator} group={group} side={side} row={row_number} store={got:?} oracle={expected:?}",
+			"JOIN_EXPIRY_GET mismatch: config={} step={step} operator={operator} group={group} side={side} row={row_number} store={got:?} oracle={expected:?}",
 			config.name
 		);
 	}
@@ -456,8 +464,8 @@ pub fn check_anchor_get(
 
 /// Expiry ties are broken differently by each tier, so the contract checked here is the one that is actually
 /// specified: ascending by expiry, exactly the `limit` smallest eligible expiries, and every returned slot a real
-/// eligible anchor carrying its own expiry.
-pub fn check_anchor_scan(
+/// eligible join expiry carrying its own expiry.
+pub fn check_join_expiry_scan(
 	configs: &[Config],
 	oracle: &Oracle,
 	operator: u64,
@@ -466,22 +474,22 @@ pub fn check_anchor_scan(
 	limit: u64,
 	step: u32,
 ) {
-	let eligible = oracle.eligible_anchors(operator, group, due);
+	let eligible = oracle.eligible_join_expiries(operator, group, due);
 	let want: Vec<u64> = eligible.iter().take(limit as usize).map(|row| row.expiry).collect();
 	for config in configs {
 		let got = match due {
-			Some(at) => config.store.anchors_due(
+			Some(at) => config.store.join_expiries_due(
 				OperatorId(operator),
 				GroupId(group.into()),
 				DateTime::from_millis(at),
 				limit,
 			),
-			None => config.store.anchors_by_expiry(OperatorId(operator), GroupId(group.into()), limit),
+			None => config.store.join_expiries_by_time(OperatorId(operator), GroupId(group.into()), limit),
 		};
-		let have: Vec<u64> = got.iter().map(|anchor| anchor.expiry.to_millis()).collect();
+		let have: Vec<u64> = got.iter().map(|expiry| expiry.at.to_millis()).collect();
 		assert_eq!(
 			have, want,
-			"ANCHOR_SCAN expiry sequence mismatch: config={} step={step} operator={operator} group={group} due={due:?} limit={limit} store={have:?} oracle={want:?}",
+			"JOIN_EXPIRY_SCAN expiry sequence mismatch: config={} step={step} operator={operator} group={group} due={due:?} limit={limit} store={have:?} oracle={want:?}",
 			config.name
 		);
 
@@ -492,31 +500,31 @@ pub fn check_anchor_scan(
 		assert_eq!(
 			slots.len(),
 			total,
-			"ANCHOR_SCAN returned a slot twice: config={} step={step} operator={operator} group={group} due={due:?} limit={limit}",
+			"JOIN_EXPIRY_SCAN returned a slot twice: config={} step={step} operator={operator} group={group} due={due:?} limit={limit}",
 			config.name
 		);
-		for anchor in &got {
+		for expiry in &got {
 			assert!(
-				eligible.contains(&AnchorRow {
-					expiry: anchor.expiry.to_millis(),
-					side: anchor.side,
-					row_number: anchor.row_number.0,
+				eligible.contains(&JoinExpiryRow {
+					expiry: expiry.at.to_millis(),
+					side: expiry.side,
+					row_number: expiry.row_number.0,
 				}),
-				"ANCHOR_SCAN returned a slot the oracle does not hold at that expiry: config={} step={step} operator={operator} group={group} due={due:?} anchor={anchor:?}",
+				"JOIN_EXPIRY_SCAN returned a slot the oracle does not hold at that expiry: config={} step={step} operator={operator} group={group} due={due:?} expiry={expiry:?}",
 				config.name
 			);
 		}
 
 		if limit as usize >= eligible.len() {
 			let mut got_rows: Vec<(u64, u8, u64)> =
-				got.iter().map(|a| (a.expiry.to_millis(), a.side, a.row_number.0)).collect();
+				got.iter().map(|a| (a.at.to_millis(), a.side, a.row_number.0)).collect();
 			let mut want_rows: Vec<(u64, u8, u64)> =
 				eligible.iter().map(|r| (r.expiry, r.side, r.row_number)).collect();
 			got_rows.sort_unstable();
 			want_rows.sort_unstable();
 			assert_eq!(
 				got_rows, want_rows,
-				"ANCHOR_SCAN set mismatch under an unbounded limit: config={} step={step} operator={operator} group={group} due={due:?}",
+				"JOIN_EXPIRY_SCAN set mismatch under an unbounded limit: config={} step={step} operator={operator} group={group} due={due:?}",
 				config.name
 			);
 		}
@@ -549,17 +557,21 @@ pub fn check_census(configs: &[Config], oracle: &Oracle, step: u32) {
 	}
 }
 
-pub fn check_anchor_census(configs: &[Config], oracle: &Oracle, step: u32) {
-	let expected = oracle.anchor_census();
+pub fn check_join_expiry_census(configs: &[Config], oracle: &Oracle, step: u32) {
+	let expected = oracle.join_expiry_census();
 	for config in configs {
 		if !config.census_exact() {
 			continue;
 		}
-		let got: Vec<(u64, u64)> =
-			config.store.anchor_census().into_iter().map(|entry| (entry.operator.0, entry.keys)).collect();
+		let got: Vec<(u64, u64)> = config
+			.store
+			.join_expiry_census()
+			.into_iter()
+			.map(|entry| (entry.operator.0, entry.keys))
+			.collect();
 		assert_eq!(
 			got, expected,
-			"ANCHOR_CENSUS mismatch: config={} step={step} store={got:?} oracle={expected:?}",
+			"JOIN_EXPIRY_CENSUS mismatch: config={} step={step} store={got:?} oracle={expected:?}",
 			config.name
 		);
 	}
@@ -678,7 +690,7 @@ fn random_batch(rng: &mut StdRng, state: &mut State, p: &Params, step: u32) -> B
 	let mut checkpoints = Vec::new();
 	let mut deletes = Vec::new();
 	let mut state_slots: Vec<(u64, EncodedKey)> = Vec::new();
-	let mut anchor_slots: Vec<(u64, u64, u8, u64)> = Vec::new();
+	let mut join_expiry_slots: Vec<(u64, u64, u8, u64)> = Vec::new();
 	let count = rng.random_range(1..=p.max_writes);
 	for _ in 0..count {
 		let operator = rng.random_range(1..=p.operators);
@@ -719,34 +731,34 @@ fn random_batch(rng: &mut StdRng, state: &mut State, p: &Params, step: u32) -> B
 			}
 			6..=8 => {
 				let (operator, group, side, row_number) =
-					batch_anchor_slot(rng, state, p, operator, &anchor_slots);
-				anchor_slots.push((operator, group, side, row_number));
+					batch_join_expiry_slot(rng, state, p, operator, &join_expiry_slots);
+				join_expiry_slots.push((operator, group, side, row_number));
 				let expiry = rng.random_range(1..=p.expiry_span);
-				let held = state.oracle.anchor_get(operator, group, side, row_number).is_some();
-				state.oracle.anchor_set(operator, group, side, row_number, expiry);
+				let held = state.oracle.join_expiry_get(operator, group, side, row_number).is_some();
+				state.oracle.join_expiry_set(operator, group, side, row_number, expiry);
 				writes.push(match held {
-					true => OperatorWrite::AnchorReplace {
+					true => OperatorWrite::JoinExpiryReplace {
 						operator: OperatorId(operator),
 						group: GroupId(group.into()),
 						side,
 						row_num: RowNumber(row_number),
-						expiry: DateTime::from_millis(expiry),
+						at: DateTime::from_millis(expiry),
 					},
-					false => OperatorWrite::AnchorInsert {
+					false => OperatorWrite::JoinExpiryInsert {
 						operator: OperatorId(operator),
 						group: GroupId(group.into()),
 						side,
 						row_num: RowNumber(row_number),
-						expiry: DateTime::from_millis(expiry),
+						at: DateTime::from_millis(expiry),
 					},
 				});
 			}
 			_ => {
 				let (operator, group, side, row_number) =
-					batch_anchor_slot(rng, state, p, operator, &anchor_slots);
-				anchor_slots.push((operator, group, side, row_number));
-				state.oracle.anchor_remove(operator, group, side, row_number);
-				writes.push(OperatorWrite::AnchorRemove {
+					batch_join_expiry_slot(rng, state, p, operator, &join_expiry_slots);
+				join_expiry_slots.push((operator, group, side, row_number));
+				state.oracle.join_expiry_remove(operator, group, side, row_number);
+				writes.push(OperatorWrite::JoinExpiryRemove {
 					operator: OperatorId(operator),
 					group: GroupId(group.into()),
 					side,
@@ -792,9 +804,9 @@ fn batch_state_slot(
 	}
 }
 
-/// The anchor twin of `batch_state_slot`, for the same reason: an insert/replace claim is only checked where the
-/// slot is sometimes already held, and the in-batch overlay only where one batch touches a slot twice.
-fn batch_anchor_slot(
+/// The join expiry twin of `batch_state_slot`, for the same reason: an insert/replace claim is only checked where
+/// the slot is sometimes already held, and the in-batch overlay only where one batch touches a slot twice.
+fn batch_join_expiry_slot(
 	rng: &mut StdRng,
 	state: &State,
 	p: &Params,
@@ -803,15 +815,15 @@ fn batch_anchor_slot(
 ) -> (u64, u64, u8, u64) {
 	match rng.random_range(0u32..100) {
 		0..=29 if !batch.is_empty() => batch[pick_index(rng, batch.len())],
-		30..=64 if state.oracle.anchor_len() > 0 => {
-			let index = pick_index(rng, state.oracle.anchor_len());
-			state.oracle.nth_anchor_slot(index).expect("the index is inside the live set")
+		30..=64 if state.oracle.join_expiry_len() > 0 => {
+			let index = pick_index(rng, state.oracle.join_expiry_len());
+			state.oracle.nth_join_expiry_slot(index).expect("the index is inside the live set")
 		}
 		_ => (
 			operator,
 			rng.random_range(1..=p.groups),
 			rng.random_range(0u32..p.sides as u32) as u8,
-			rng.random_range(1..=p.anchor_rows),
+			rng.random_range(1..=p.join_expiry_rows),
 		),
 	}
 }
@@ -831,13 +843,13 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 		keyspaces: rng.random_range(1..=4u64),
 		suffixes: pick(&mut rng, &[8u64, 24, 64, 160]),
 		flows: rng.random_range(1..=6u64),
-		anchor_rows: pick(&mut rng, &[4u64, 12, 40]),
+		join_expiry_rows: pick(&mut rng, &[4u64, 12, 40]),
 		sides: rng.random_range(1..=2u32) as u8,
 		expiry_span: pick(&mut rng, &[4u64, 16, 64]),
 		min_steps,
 		max_steps: min_steps + rng.random_range(40..=140u32),
 		write_pct: rng.random_range(20..=40u32),
-		anchor_pct: rng.random_range(10..=25u32),
+		join_expiry_pct: rng.random_range(10..=25u32),
 		checkpoint_pct: rng.random_range(4..=12u32),
 		flush_pct: rng.random_range(5..=25u32),
 		drop_pct: rng.random_range(1..=6u32),

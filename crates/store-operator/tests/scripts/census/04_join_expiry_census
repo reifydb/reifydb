@@ -1,0 +1,57 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+join_expiry_census
+---
+count=0
+
+# The join expiry census counts per operator, folding every group together.
+
+join_expiry_set row=1 at=100
+join_expiry_set row=2 at=200
+join_expiry_set row=3 at=300 group=2
+flush
+join_expiry_census
+---
+ok
+operator 1 => 3
+count=1
+
+join_expiry_set row=9 at=900 op=2
+flush
+join_expiry_census
+---
+ok
+operator 1 => 3
+operator 2 => 1
+count=2
+
+join_expiry_remove row=1
+flush
+join_expiry_census
+---
+ok
+operator 1 => 2
+operator 2 => 1
+count=2
+
+# Removing a group takes its join expiries out of the count.
+
+join_expiries_group_remove group=2
+flush
+join_expiry_census
+---
+ok
+operator 1 => 1
+operator 2 => 1
+count=2
+
+# An operator with no join expiries left drops out rather than reporting zero.
+
+join_expiries_drop
+flush
+join_expiry_census
+---
+ok
+operator 2 => 1
+count=1

@@ -21,16 +21,19 @@ use tracing::instrument;
 #[cfg(reifydb_assertions)]
 use crate::{tier::persistent::sqlite::sql::STATE_VALUE_LEN_SQL, types::DurablePre};
 use crate::{
-	tier::persistent::sqlite::{
-		SqliteOperatorStorage,
-		anchor::encode_group,
-		census::{batch_delta, flush_delta, zero_operator_buckets},
-		sql::{
-			ANCHOR_REMOVE_SQL, ANCHOR_SET_SQL, ANCHORS_DROP_GROUP_SQL, ANCHORS_DROP_OPERATOR_SQL,
-			CHECKPOINT_REMOVE_SQL, CHECKPOINT_SET_SQL, STATE_DROP_SQL, STATE_REMOVE_SQL, STATE_SET_SQL,
+	tier::{
+		persistent::sqlite::{
+			SqliteOperatorStorage,
+			census::{batch_delta, flush_delta, zero_operator_buckets},
+			join_expiry::encode_group,
+			sql::{
+				CHECKPOINT_REMOVE_SQL, CHECKPOINT_SET_SQL, JOIN_EXPIRIES_DROP_GROUP_SQL,
+				JOIN_EXPIRIES_DROP_OPERATOR_SQL, JOIN_EXPIRY_REMOVE_SQL, JOIN_EXPIRY_SET_SQL,
+				STATE_DROP_SQL, STATE_REMOVE_SQL, STATE_SET_SQL,
+			},
 		},
+		resident::batch::{DropMarker, FlushBatch},
 	},
-	tier::resident::batch::{DropMarker, FlushBatch},
 	types::OperatorWrite,
 };
 
@@ -51,17 +54,17 @@ static STATE_REMOVE_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
 	)
 });
 
-static ANCHOR_SET_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
+static JOIN_EXPIRY_SET_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
 	format!(
-		r#"INSERT INTO "operator_seal_anchor" ("operator", "group", "side", "row_number", "expiry") VALUES {}
-		   ON CONFLICT ("operator", "group", "side", "row_number") DO UPDATE SET "expiry" = excluded."expiry""#,
+		r#"INSERT INTO "operator_join_expiry" ("operator", "group", "side", "row_number", "at") VALUES {}
+		   ON CONFLICT ("operator", "group", "side", "row_number") DO UPDATE SET "at" = excluded."at""#,
 		values_placeholders(FLUSH_CHUNK, 5)
 	)
 });
 
-static ANCHOR_REMOVE_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
+static JOIN_EXPIRY_REMOVE_CHUNK_SQL: LazyLock<String> = LazyLock::new(|| {
 	format!(
-		r#"DELETE FROM "operator_seal_anchor" WHERE ("operator", "group", "side", "row_number") IN (VALUES {})"#,
+		r#"DELETE FROM "operator_join_expiry" WHERE ("operator", "group", "side", "row_number") IN (VALUES {})"#,
 		values_placeholders(FLUSH_CHUNK, 4)
 	)
 });
@@ -104,20 +107,20 @@ impl SqliteOperatorStorage {
 					key,
 					..
 				} => self.filter().add((*operator, key)),
-				OperatorWrite::AnchorInsert {
+				OperatorWrite::JoinExpiryInsert {
 					operator,
 					group,
 					side,
 					row_num,
 					..
 				}
-				| OperatorWrite::AnchorReplace {
+				| OperatorWrite::JoinExpiryReplace {
 					operator,
 					group,
 					side,
 					row_num,
 					..
-				} => self.anchor_filter().add((*operator, *group, *side, *row_num)),
+				} => self.join_expiry_filter().add((*operator, *group, *side, *row_num)),
 				_ => {}
 			}
 		}
@@ -156,46 +159,46 @@ impl SqliteOperatorStorage {
 					.expect("operator state delete could not be prepared")
 					.execute(params![operator.0 as i64, key.as_slice()])
 					.expect("operator state delete failed"),
-				OperatorWrite::AnchorInsert {
+				OperatorWrite::JoinExpiryInsert {
 					operator,
 					group,
 					side,
 					row_num: row_number,
-					expiry,
+					at,
 				}
-				| OperatorWrite::AnchorReplace {
+				| OperatorWrite::JoinExpiryReplace {
 					operator,
 					group,
 					side,
 					row_num: row_number,
-					expiry,
+					at,
 				} => transaction
-					.prepare_cached(ANCHOR_SET_SQL)
-					.expect("seal anchor write could not be prepared")
+					.prepare_cached(JOIN_EXPIRY_SET_SQL)
+					.expect("join expiry write could not be prepared")
 					.execute(params![
 						operator.0 as i64,
 						encode_group(*group),
 						*side as i64,
 						row_number.0 as i64,
-						expiry.to_millis() as i64
+						at.to_millis() as i64
 					])
-					.expect("seal anchor write failed"),
-				OperatorWrite::AnchorRemove {
+					.expect("join expiry write failed"),
+				OperatorWrite::JoinExpiryRemove {
 					operator,
 					group,
 					side,
 					row_num: row_number,
 					..
 				} => transaction
-					.prepare_cached(ANCHOR_REMOVE_SQL)
-					.expect("seal anchor delete could not be prepared")
+					.prepare_cached(JOIN_EXPIRY_REMOVE_SQL)
+					.expect("join expiry delete could not be prepared")
 					.execute(params![
 						operator.0 as i64,
 						encode_group(*group),
 						*side as i64,
 						row_number.0 as i64
 					])
-					.expect("seal anchor delete failed"),
+					.expect("join expiry delete failed"),
 			};
 		}
 		batch_delta(writes).apply(&transaction);
@@ -205,7 +208,7 @@ impl SqliteOperatorStorage {
 	#[instrument(name = "store::operator::persistent::sqlite::flush_batch", level = "debug", skip(self, batch), fields(
 		drop_count = batch.drops.len(),
 		state_count = batch.state.len(),
-		anchor_count = batch.anchors.len(),
+		join_expiry_count = batch.join_expiries.len(),
 		checkpoint_count = batch.checkpoints.len()
 	))]
 	pub fn flush_batch(&self, batch: &FlushBatch) {
@@ -217,9 +220,9 @@ impl SqliteOperatorStorage {
 				self.filter().add((operator, key));
 			}
 		}
-		for ((operator, group, side, row_number), entry) in &batch.anchors {
+		for ((operator, group, side, row_number), entry) in &batch.join_expiries {
 			if entry.is_some() {
-				self.anchor_filter().add((*operator, *group, *side, *row_number));
+				self.join_expiry_filter().add((*operator, *group, *side, *row_number));
 			}
 		}
 		let guard = self.inner.conn.lock();
@@ -239,25 +242,25 @@ impl SqliteOperatorStorage {
 						.execute(params![operator.0 as i64])
 						.expect("operator state drop failed");
 					transaction
-						.prepare_cached(ANCHORS_DROP_OPERATOR_SQL)
-						.expect("seal anchor operator delete could not be prepared")
+						.prepare_cached(JOIN_EXPIRIES_DROP_OPERATOR_SQL)
+						.expect("join expiry operator delete could not be prepared")
 						.execute(params![operator.0 as i64])
-						.expect("seal anchor operator delete failed");
+						.expect("join expiry operator delete failed");
 					zero_operator_buckets(&transaction, *operator);
 				}
-				DropMarker::AnchorsOperator(operator) => {
+				DropMarker::JoinExpiriesOperator(operator) => {
 					transaction
-						.prepare_cached(ANCHORS_DROP_OPERATOR_SQL)
-						.expect("seal anchor operator delete could not be prepared")
+						.prepare_cached(JOIN_EXPIRIES_DROP_OPERATOR_SQL)
+						.expect("join expiry operator delete could not be prepared")
 						.execute(params![operator.0 as i64])
-						.expect("seal anchor operator delete failed");
+						.expect("join expiry operator delete failed");
 				}
-				DropMarker::AnchorsGroup(operator, group) => {
+				DropMarker::JoinExpiriesGroup(operator, group) => {
 					transaction
-						.prepare_cached(ANCHORS_DROP_GROUP_SQL)
-						.expect("seal anchor group delete could not be prepared")
+						.prepare_cached(JOIN_EXPIRIES_DROP_GROUP_SQL)
+						.expect("join expiry group delete could not be prepared")
 						.execute(params![operator.0 as i64, encode_group(*group)])
-						.expect("seal anchor group delete failed");
+						.expect("join expiry group delete failed");
 				}
 			}
 		}
@@ -279,18 +282,18 @@ impl SqliteOperatorStorage {
 		execute_chunked(&transaction, &STATE_REMOVE_CHUNK_SQL, STATE_REMOVE_SQL, &state_removes);
 		flush_delta(batch).apply(&transaction);
 
-		let mut anchor_sets: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
-		let mut anchor_removes: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
-		for ((operator, group, side, row_number), entry) in &batch.anchors {
+		let mut join_expiry_sets: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
+		let mut join_expiry_removes: Vec<Vec<Box<dyn ToSql>>> = Vec::new();
+		for ((operator, group, side, row_number), entry) in &batch.join_expiries {
 			match entry {
-				Some(millis) => anchor_sets.push(vec![
+				Some(millis) => join_expiry_sets.push(vec![
 					Box::new(operator.0 as i64),
 					Box::new(encode_group(*group)),
 					Box::new(*side as i64),
 					Box::new(row_number.0 as i64),
 					Box::new(*millis as i64),
 				]),
-				None => anchor_removes.push(vec![
+				None => join_expiry_removes.push(vec![
 					Box::new(operator.0 as i64),
 					Box::new(encode_group(*group)),
 					Box::new(*side as i64),
@@ -298,8 +301,13 @@ impl SqliteOperatorStorage {
 				]),
 			}
 		}
-		execute_chunked(&transaction, &ANCHOR_SET_CHUNK_SQL, ANCHOR_SET_SQL, &anchor_sets);
-		execute_chunked(&transaction, &ANCHOR_REMOVE_CHUNK_SQL, ANCHOR_REMOVE_SQL, &anchor_removes);
+		execute_chunked(&transaction, &JOIN_EXPIRY_SET_CHUNK_SQL, JOIN_EXPIRY_SET_SQL, &join_expiry_sets);
+		execute_chunked(
+			&transaction,
+			&JOIN_EXPIRY_REMOVE_CHUNK_SQL,
+			JOIN_EXPIRY_REMOVE_SQL,
+			&join_expiry_removes,
+		);
 
 		for (flow, entry) in &batch.checkpoints {
 			match entry {

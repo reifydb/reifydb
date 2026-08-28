@@ -1,0 +1,76 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+join_expiry_get row=1
+---
+join_expiry 0/1 => None
+
+join_expiry_set row=1 at=100
+join_expiry_get row=1
+---
+join_expiry 0/1 => 100
+
+# Re-arming must replace the deadline, otherwise the seal fires against a superseded one.
+
+join_expiry_set row=1 at=900
+join_expiry_get row=1
+---
+join_expiry 0/1 => 900
+
+flush
+join_expiry_get row=1
+---
+ok
+join_expiry 0/1 => 900
+
+# The side and the group are part of the join expiry identity, not decoration.
+
+join_expiry_set row=1 at=200 side=1
+join_expiry_set row=1 at=300 group=2
+join_expiry_get row=1
+join_expiry_get row=1 side=1
+join_expiry_get row=1 group=2
+---
+join_expiry 0/1 => 900
+join_expiry 1/1 => 200
+join_expiry 0/1 => 300
+
+flush
+join_expiry_get row=1
+join_expiry_get row=1 side=1
+join_expiry_get row=1 group=2
+---
+ok
+join_expiry 0/1 => 900
+join_expiry 1/1 => 200
+join_expiry 0/1 => 300
+
+# So is the operator.
+
+join_expiry_set row=1 at=400 op=2
+join_expiry_get row=1
+join_expiry_get row=1 op=2
+---
+join_expiry 0/1 => 900
+join_expiry 0/1 => 400
+
+flush
+join_expiry_get row=1
+join_expiry_get row=1 op=2
+---
+ok
+join_expiry 0/1 => 900
+join_expiry 0/1 => 400
+
+# An expiry of zero is a real deadline, not an absent one.
+
+join_expiry_set row=2 at=0
+join_expiry_get row=2
+---
+join_expiry 0/2 => 0
+
+flush
+join_expiry_get row=2
+---
+ok
+join_expiry 0/2 => 0

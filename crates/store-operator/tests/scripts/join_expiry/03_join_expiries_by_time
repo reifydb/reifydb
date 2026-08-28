@@ -1,19 +1,19 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the Apache-2.0, see license.md file
 
-anchors_by_expiry
+join_expiries_by_time
 ---
 count=0
 
-anchor_set row=1 at=300
-anchor_set row=2 at=100
-anchor_set row=3 at=200
+join_expiry_set row=1 at=300
+join_expiry_set row=2 at=100
+join_expiry_set row=3 at=200
 ---
 ok
 
 # The scan is ordered by deadline, not by row number; sealing in the wrong order fires the wrong timers first.
 
-anchors_by_expiry
+join_expiries_by_time
 ---
 0/2 => 100
 0/3 => 200
@@ -21,7 +21,7 @@ anchors_by_expiry
 count=3
 
 flush
-anchors_by_expiry
+join_expiries_by_time
 ---
 ok
 0/2 => 100
@@ -29,10 +29,10 @@ ok
 0/1 => 300
 count=3
 
-# A re-armed anchor must move in the order rather than keeping its durable position.
+# A re-armed join expiry must move in the order rather than keeping its durable position.
 
-anchor_set row=1 at=50
-anchors_by_expiry
+join_expiry_set row=1 at=50
+join_expiries_by_time
 ---
 0/1 => 50
 0/2 => 100
@@ -41,15 +41,15 @@ count=3
 
 # The limit takes the front of the order, not an arbitrary page.
 
-anchors_by_expiry limit=2
+join_expiries_by_time limit=2
 ---
 0/1 => 50
 0/2 => 100
 count=2
 
 flush
-anchors_by_expiry limit=2
-anchors_by_expiry
+join_expiries_by_time limit=2
+join_expiries_by_time
 ---
 ok
 0/1 => 50
@@ -62,15 +62,15 @@ count=3
 
 # The scan stays inside its group and its operator.
 
-anchors_by_expiry group=2
-anchors_by_expiry op=2
+join_expiries_by_time group=2
+join_expiries_by_time op=2
 ---
 count=0
 count=0
 
-anchor_set row=7 at=10 group=2
-anchors_by_expiry group=2
-anchors_by_expiry
+join_expiry_set row=7 at=10 group=2
+join_expiries_by_time group=2
+join_expiries_by_time
 ---
 0/7 => 10
 count=1
@@ -80,8 +80,8 @@ count=1
 count=3
 
 flush
-anchors_by_expiry group=2
-anchors_by_expiry
+join_expiries_by_time group=2
+join_expiries_by_time
 ---
 ok
 0/7 => 10

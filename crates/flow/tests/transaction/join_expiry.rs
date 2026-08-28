@@ -8,8 +8,8 @@ use reifydb_core::{
 };
 use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,
-	anchor::{SealAnchor, SealAnchorExtension, anchor_key},
 	deferred::DeferredTransaction,
+	join_expiry::{JoinRowExpiry, JoinRowExpiryExtension, join_expiry_key},
 	state::StateExtension,
 	substrate::{FlowSubstrate, apply_operator_state, classify_pending, operator_writes},
 };
@@ -47,16 +47,16 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 }
 
 fn arm(txn: &mut DeferredTransaction, side: u8, row_number: u64, millis: u64) {
-	let row = SealAnchor {
-		expiry: at_millis(millis),
+	let row = JoinRowExpiry {
+		at: at_millis(millis),
 	}
 	.encode_state()
 	.unwrap();
-	txn.state_set(NODE, &anchor_key(GROUP, side, RowNumber(row_number)), row).unwrap();
+	txn.state_set(NODE, &join_expiry_key(GROUP, side, RowNumber(row_number)), row).unwrap();
 }
 
 fn clear(txn: &mut DeferredTransaction, side: u8, row_number: u64) {
-	txn.state_remove(NODE, &anchor_key(GROUP, side, RowNumber(row_number))).unwrap();
+	txn.state_remove(NODE, &join_expiry_key(GROUP, side, RowNumber(row_number))).unwrap();
 }
 
 fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
@@ -74,8 +74,8 @@ fn commit_writes(engine: &TestEngine, txn: &mut DeferredTransaction) -> Vec<Oper
 }
 
 #[test]
-fn an_armed_anchor_reaches_the_typed_table_rather_than_the_opaque_key_value_rows() {
-	// Routed to the wrong table an anchor is an opaque blob again, seekable by nothing but a full group scan.
+fn an_armed_join_expiry_reaches_the_typed_table_rather_than_the_opaque_key_value_rows() {
+	// Routed to the wrong table a join expiry is an opaque blob again, seekable by nothing but a full group scan.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 42, 5_000);
@@ -84,17 +84,18 @@ fn an_armed_anchor_reaches_the_typed_table_rather_than_the_opaque_key_value_rows
 
 	let store = engine.inner().operator_state();
 	assert_eq!(
-		store.anchor_get(NODE, GROUP, LEFT, RowNumber(42)),
+		store.join_expiry_get(NODE, GROUP, LEFT, RowNumber(42)),
 		Some(at_millis(5_000)),
-		"the anchor must be readable by its typed tuple"
+		"the join expiry must be readable by its typed tuple"
 	);
-	assert_eq!(store.anchors_by_expiry(NODE, GROUP, 8).len(), 1);
-	assert_eq!(txn.anchor_min(NODE, GROUP).unwrap(), Some(at_millis(5_000)));
+	assert_eq!(store.join_expiries_by_time(NODE, GROUP, 8).len(), 1);
+	assert_eq!(txn.join_expiry_min(NODE, GROUP).unwrap(), Some(at_millis(5_000)));
 }
 
 #[test]
-fn an_anchor_removed_after_its_row_committed_is_invisible_to_the_minimum() {
-	// Without shadowing the minimum names an anchor whose row is gone, and the group arms a timer sealing nothing.
+fn a_join_expiry_removed_after_its_row_committed_is_invisible_to_the_minimum() {
+	// Without shadowing the minimum names a join expiry whose row is gone, and the group arms a timer freeing
+	// nothing.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 5_000);
@@ -104,16 +105,16 @@ fn an_anchor_removed_after_its_row_committed_is_invisible_to_the_minimum() {
 	clear(&mut txn, LEFT, 1);
 
 	assert!(
-		engine.inner().operator_state().anchor_get(NODE, GROUP, LEFT, RowNumber(1)).is_some(),
-		"precondition: the removed anchor's row is still in the table"
+		engine.inner().operator_state().join_expiry_get(NODE, GROUP, LEFT, RowNumber(1)).is_some(),
+		"precondition: the removed join expiry's row is still in the table"
 	);
 	assert_eq!(
-		txn.anchor_min(NODE, GROUP).unwrap(),
+		txn.join_expiry_min(NODE, GROUP).unwrap(),
 		Some(at_millis(9_000)),
 		"a pending remove must hide its own committed row from the minimum"
 	);
 	assert_eq!(
-		txn.anchor_at(NODE, GROUP, LEFT, RowNumber(1)).unwrap(),
+		txn.join_expiry_at(NODE, GROUP, LEFT, RowNumber(1)).unwrap(),
 		None,
 		"and the point read must agree with it"
 	);
@@ -121,7 +122,7 @@ fn an_anchor_removed_after_its_row_committed_is_invisible_to_the_minimum() {
 
 #[test]
 fn an_expiry_moved_later_in_the_batch_wins_over_the_committed_earlier_one() {
-	// A stale earlier expiry arms the timer before the row's real deadline and seals a live row: silent data loss.
+	// A stale earlier expiry arms the timer before the row's real deadline and frees a live row: silent data loss.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 5_000);
@@ -130,16 +131,16 @@ fn an_expiry_moved_later_in_the_batch_wins_over_the_committed_earlier_one() {
 	arm(&mut txn, LEFT, 1, 20_000);
 
 	assert_eq!(
-		engine.inner().operator_state().anchor_get(NODE, GROUP, LEFT, RowNumber(1)),
+		engine.inner().operator_state().join_expiry_get(NODE, GROUP, LEFT, RowNumber(1)),
 		Some(at_millis(5_000)),
 		"precondition: the table still carries the earlier expiry"
 	);
 	assert_eq!(
-		txn.anchor_min(NODE, GROUP).unwrap(),
+		txn.join_expiry_min(NODE, GROUP).unwrap(),
 		Some(at_millis(20_000)),
 		"the batch's own later expiry must win, not the committed earlier one"
 	);
-	assert_eq!(txn.anchor_at(NODE, GROUP, LEFT, RowNumber(1)).unwrap(), Some(at_millis(20_000)));
+	assert_eq!(txn.join_expiry_at(NODE, GROUP, LEFT, RowNumber(1)).unwrap(), Some(at_millis(20_000)));
 }
 
 #[test]
@@ -154,7 +155,7 @@ fn a_move_later_never_hides_an_untouched_neighbour_that_is_now_the_earliest() {
 	arm(&mut txn, LEFT, 1, 20_000);
 
 	assert_eq!(
-		txn.anchor_min(NODE, GROUP).unwrap(),
+		txn.join_expiry_min(NODE, GROUP).unwrap(),
 		Some(at_millis(9_000)),
 		"the untouched neighbour is now the earliest and must be the one that answers"
 	);
@@ -162,7 +163,7 @@ fn a_move_later_never_hides_an_untouched_neighbour_that_is_now_the_earliest() {
 
 #[test]
 fn a_group_with_more_pending_removes_than_one_page_still_finds_the_true_minimum() {
-	// A fixed page bound returns an anchor the batch already removed, and every extra remove pushes it further.
+	// A fixed page bound returns a join expiry the batch already removed, and every extra remove pushes it further.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	for row_number in 1u64..=8 {
@@ -175,14 +176,14 @@ fn a_group_with_more_pending_removes_than_one_page_still_finds_the_true_minimum(
 	}
 
 	assert_eq!(
-		txn.anchor_min(NODE, GROUP).unwrap(),
+		txn.join_expiry_min(NODE, GROUP).unwrap(),
 		Some(at_millis(6_000)),
-		"five removes must be stepped over to reach the sixth anchor"
+		"five removes must be stepped over to reach the sixth join expiry"
 	);
 }
 
 #[test]
-fn a_group_whose_every_anchor_was_removed_reports_no_minimum_at_all() {
+fn a_group_whose_every_join_expiry_was_removed_reports_no_minimum_at_all() {
 	// A leftover minimum re-arms a timer on an empty group, which keeps it out of reclamation forever.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
@@ -195,12 +196,12 @@ fn a_group_whose_every_anchor_was_removed_reports_no_minimum_at_all() {
 		clear(&mut txn, LEFT, row_number);
 	}
 
-	assert_eq!(txn.anchor_min(NODE, GROUP).unwrap(), None);
+	assert_eq!(txn.join_expiry_min(NODE, GROUP).unwrap(), None);
 }
 
 #[test]
-fn the_seal_page_folds_a_batchs_own_due_anchor_in_with_the_committed_ones() {
-	// An anchor armed and already due in this batch has no committed row, so the table alone never seals it.
+fn the_due_page_folds_a_batchs_own_due_join_expiry_in_with_the_committed_ones() {
+	// A join expiry armed and already due in this batch has no committed row, so the table alone never frees it.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 3_000);
@@ -209,20 +210,20 @@ fn the_seal_page_folds_a_batchs_own_due_anchor_in_with_the_committed_ones() {
 	arm(&mut txn, LEFT, 2, 4_000);
 	arm(&mut txn, LEFT, 3, 90_000);
 
-	let page = txn.anchor_seal_page(NODE, GROUP, at_millis(5_000), 16).unwrap();
+	let page = txn.join_due_page(NODE, GROUP, at_millis(5_000), 16).unwrap();
 
 	assert_eq!(
 		page.due,
 		vec![(LEFT, RowNumber(1)), (LEFT, RowNumber(2))],
-		"both the committed and the batch's own due anchor must be returned, earliest first"
+		"both the committed and the batch's own due join expiry must be returned, earliest first"
 	);
-	assert_eq!(page.next, Some(at_millis(90_000)), "and the next arming is the earliest anchor past the fire");
+	assert_eq!(page.next, Some(at_millis(90_000)), "and the next arming is the earliest join expiry past the fire");
 	assert!(!page.more);
 }
 
 #[test]
-fn the_seal_page_never_returns_an_anchor_the_batch_already_removed() {
-	// A removed anchor handed back as due frees its row a second time, against state that is already gone.
+fn the_due_page_never_returns_a_join_expiry_the_batch_already_removed() {
+	// A removed join expiry handed back as due frees its row a second time, against state that is already gone.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 3_000);
@@ -231,7 +232,7 @@ fn the_seal_page_never_returns_an_anchor_the_batch_already_removed() {
 
 	clear(&mut txn, LEFT, 1);
 
-	let page = txn.anchor_seal_page(NODE, GROUP, at_millis(5_000), 16).unwrap();
+	let page = txn.join_due_page(NODE, GROUP, at_millis(5_000), 16).unwrap();
 
 	assert_eq!(page.due, vec![(LEFT, RowNumber(2))]);
 	assert_eq!(page.next, None);
@@ -239,8 +240,9 @@ fn the_seal_page_never_returns_an_anchor_the_batch_already_removed() {
 }
 
 #[test]
-fn a_seal_page_narrower_than_the_group_reports_that_it_has_more_to_give() {
-	// An under-reporting page leaves due anchors armed below the watermark, which the wheel refuses to accept.
+fn a_due_page_narrower_than_the_group_reports_that_it_has_more_to_give() {
+	// An under-reporting page leaves due join expiries armed below the watermark, which the wheel refuses to
+	// accept.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	for row_number in 1u64..=6 {
@@ -248,62 +250,62 @@ fn a_seal_page_narrower_than_the_group_reports_that_it_has_more_to_give() {
 	}
 	commit(&engine, &mut txn);
 
-	let first = txn.anchor_seal_page(NODE, GROUP, at_millis(10_000), 2).unwrap();
+	let first = txn.join_due_page(NODE, GROUP, at_millis(10_000), 2).unwrap();
 	assert_eq!(first.due, vec![(LEFT, RowNumber(1)), (LEFT, RowNumber(2))]);
-	assert!(first.more, "four anchors are still due and the page must say so");
+	assert!(first.more, "four join expiries are still due and the page must say so");
 
 	for (side, row_number) in &first.due {
 		clear(&mut txn, *side, row_number.0);
 	}
 
-	let second = txn.anchor_seal_page(NODE, GROUP, at_millis(10_000), 2).unwrap();
+	let second = txn.join_due_page(NODE, GROUP, at_millis(10_000), 2).unwrap();
 	assert_eq!(
 		second.due,
 		vec![(LEFT, RowNumber(3)), (LEFT, RowNumber(4))],
-		"the next page must resume past the anchors the first one consumed"
+		"the next page must resume past the join expiries the first one consumed"
 	);
 	assert!(second.more);
 }
 
 #[test]
-fn an_anchor_only_ever_written_in_this_batch_is_read_back_without_a_committed_row() {
-	// A merge that consulted only the table would report no anchors for a batch that just armed them.
+fn a_join_expiry_only_ever_written_in_this_batch_is_read_back_without_a_committed_row() {
+	// A merge that consulted only the table would report no join expiries for a batch that just armed them.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 
 	arm(&mut txn, LEFT, 1, 5_000);
 
-	assert_eq!(txn.anchor_min(NODE, GROUP).unwrap(), Some(at_millis(5_000)));
-	assert_eq!(txn.anchor_at(NODE, GROUP, LEFT, RowNumber(1)).unwrap(), Some(at_millis(5_000)));
+	assert_eq!(txn.join_expiry_min(NODE, GROUP).unwrap(), Some(at_millis(5_000)));
+	assert_eq!(txn.join_expiry_at(NODE, GROUP, LEFT, RowNumber(1)).unwrap(), Some(at_millis(5_000)));
 }
 
 #[test]
-fn one_groups_anchors_never_answer_for_another() {
-	// A shadow range that spilled would let a neighbouring group's earlier anchor seal this group's rows.
+fn one_groups_join_expiries_never_answer_for_another() {
+	// A shadow range that spilled would let a neighbouring group's earlier join expiry free this group's rows.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 9_000);
-	let other = anchor_key(GroupId(8), LEFT, RowNumber(1));
-	let row = SealAnchor {
-		expiry: at_millis(1_000),
+	let other = join_expiry_key(GroupId(8), LEFT, RowNumber(1));
+	let row = JoinRowExpiry {
+		at: at_millis(1_000),
 	}
 	.encode_state()
 	.unwrap();
 	txn.state_set(NODE, &other, row).unwrap();
 	commit(&engine, &mut txn);
 
-	assert_eq!(txn.anchor_min(NODE, GROUP).unwrap(), Some(at_millis(9_000)));
-	assert_eq!(txn.anchor_min(NODE, GroupId(8)).unwrap(), Some(at_millis(1_000)));
+	assert_eq!(txn.join_expiry_min(NODE, GROUP).unwrap(), Some(at_millis(9_000)));
+	assert_eq!(txn.join_expiry_min(NODE, GroupId(8)).unwrap(), Some(at_millis(1_000)));
 }
 
 #[test]
-fn re_arming_an_anchor_the_store_already_holds_classifies_as_a_replace() {
+fn re_arming_a_join_expiry_the_store_already_holds_classifies_as_a_replace() {
 	// An insert claimed for a tuple the table already carries inflates a census bucket that must stay flat.
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
 	arm(&mut txn, LEFT, 1, 5_000);
 	assert!(
-		matches!(commit_writes(&engine, &mut txn).as_slice(), [OperatorWrite::AnchorInsert { .. }]),
+		matches!(commit_writes(&engine, &mut txn).as_slice(), [OperatorWrite::JoinExpiryInsert { .. }]),
 		"precondition: the first arming has no committed row and must classify as an insert"
 	);
 
@@ -312,34 +314,34 @@ fn re_arming_an_anchor_the_store_already_holds_classifies_as_a_replace() {
 
 	match writes.as_slice() {
 		[
-			OperatorWrite::AnchorReplace {
+			OperatorWrite::JoinExpiryReplace {
 				operator,
 				group,
 				side,
 				row_num,
-				expiry,
+				at,
 			},
 		] => {
 			assert_eq!(*operator, NODE);
 			assert_eq!(*group, GROUP);
 			assert_eq!(*side, LEFT);
 			assert_eq!(*row_num, RowNumber(1));
-			assert_eq!(*expiry, at_millis(20_000), "the replace must carry the batch's own new expiry");
+			assert_eq!(*at, at_millis(20_000), "the replace must carry the batch's own new expiry");
 		}
-		other => panic!("a re-arm over a committed anchor must classify as a replace, got {other:?}"),
+		other => panic!("a re-arm over a committed join expiry must classify as a replace, got {other:?}"),
 	}
 
 	let store = engine.inner().operator_state();
-	assert_eq!(store.anchor_get(NODE, GROUP, LEFT, RowNumber(1)), Some(at_millis(20_000)));
+	assert_eq!(store.join_expiry_get(NODE, GROUP, LEFT, RowNumber(1)), Some(at_millis(20_000)));
 	assert_eq!(
-		store.anchors_by_expiry(NODE, GROUP, 8).len(),
+		store.join_expiries_by_time(NODE, GROUP, 8).len(),
 		1,
-		"a re-arm moves the one anchor, it never leaves a second behind"
+		"a re-arm moves the one join expiry, it never leaves a second behind"
 	);
 	assert_eq!(
-		store.anchor_census().iter().find(|entry| entry.operator == NODE).map(|entry| entry.keys),
+		store.join_expiry_census().iter().find(|entry| entry.operator == NODE).map(|entry| entry.keys),
 		Some(1),
-		"and the operator still owns exactly one anchor"
+		"and the operator still owns exactly one join expiry"
 	);
 }
 
@@ -357,12 +359,14 @@ fn a_re_arm_raised_on_a_later_transaction_is_a_replace_too() {
 
 	match writes.as_slice() {
 		[
-			OperatorWrite::AnchorReplace {
-				expiry,
+			OperatorWrite::JoinExpiryReplace {
+				at,
 				..
 			},
-		] => assert_eq!(*expiry, at_millis(20_000)),
-		other => panic!("a fresh transaction must still see the committed anchor as present, got {other:?}"),
+		] => assert_eq!(*at, at_millis(20_000)),
+		other => {
+			panic!("a fresh transaction must still see the committed join expiry as present, got {other:?}")
+		}
 	}
-	assert_eq!(engine.inner().operator_state().anchors_by_expiry(NODE, GROUP, 8).len(), 1);
+	assert_eq!(engine.inner().operator_state().join_expiries_by_time(NODE, GROUP, 8).len(), 1);
 }

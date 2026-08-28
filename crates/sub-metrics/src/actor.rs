@@ -46,7 +46,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::{
 	store::OperatorStore,
-	types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES},
+	types::{JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES},
 };
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
@@ -516,17 +516,20 @@ fn flow_state_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 			],
 		})
 		.collect();
-	rows.extend(store.anchor_census().into_iter().map(|entry| MetricsRow {
+	rows.extend(store.join_expiry_census().into_iter().map(|entry| MetricsRow {
 		dimensions: vec![
 			Value::Uint8(entry.operator.0),
-			Value::Utf8(KeyspaceId::SEAL_ANCHOR.name().to_string()),
-			Value::Utf8(phase_name(KeyspaceId::SEAL_ANCHOR).to_string()),
+			Value::Utf8(KeyspaceId::JOIN_ROW_EXPIRY.name().to_string()),
+			Value::Utf8(phase_name(KeyspaceId::JOIN_ROW_EXPIRY).to_string()),
 		],
 		measures: vec![
 			level_count("keys", entry.keys),
-			level_bytes("key_bytes", (ANCHOR_KEY_BYTES * entry.keys).as_bytes()),
-			level_bytes("value_bytes", (ANCHOR_VALUE_BYTES * entry.keys).as_bytes()),
-			level_bytes("total_bytes", ((ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES) * entry.keys).as_bytes()),
+			level_bytes("key_bytes", (JOIN_EXPIRY_KEY_BYTES * entry.keys).as_bytes()),
+			level_bytes("value_bytes", (JOIN_EXPIRY_VALUE_BYTES * entry.keys).as_bytes()),
+			level_bytes(
+				"total_bytes",
+				((JOIN_EXPIRY_KEY_BYTES + JOIN_EXPIRY_VALUE_BYTES) * entry.keys).as_bytes(),
+			),
 		],
 	}));
 	rows

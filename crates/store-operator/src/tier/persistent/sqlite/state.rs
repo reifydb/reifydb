@@ -17,7 +17,7 @@ use crate::{
 		SqliteOperatorStorage,
 		census::zero_operator_buckets,
 		sql::{
-			ANCHORS_DROP_OPERATOR_SQL, STATE_CONTAINS_SQL, STATE_DROP_SQL, STATE_EXISTS_SQL,
+			JOIN_EXPIRIES_DROP_OPERATOR_SQL, STATE_CONTAINS_SQL, STATE_DROP_SQL, STATE_EXISTS_SQL,
 			STATE_GET_CHUNK, STATE_GET_SQL, STATE_KEY_COUNT_SQL, STATE_KEYS_AFTER_SQL,
 			STATE_KEYS_FIRST_SQL, STATE_SIZE_CHUNK, last_sql, range_sql, state_gets_sql, state_sizes_sql,
 		},
@@ -224,8 +224,8 @@ impl SqliteOperatorStorage {
 		transaction.execute(STATE_DROP_SQL, params![operator.0 as i64]).expect("operator state drop failed");
 		zero_operator_buckets(&transaction, operator);
 		transaction
-			.execute(ANCHORS_DROP_OPERATOR_SQL, params![operator.0 as i64])
-			.expect("seal anchor drop failed");
+			.execute(JOIN_EXPIRIES_DROP_OPERATOR_SQL, params![operator.0 as i64])
+			.expect("join expiry drop failed");
 		transaction.commit().expect("operator state drop could not commit");
 	}
 

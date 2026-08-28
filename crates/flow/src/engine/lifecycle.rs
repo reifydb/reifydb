@@ -177,8 +177,8 @@ mod tests {
 	}
 
 	#[test]
-	fn removing_a_flow_drops_its_operators_seal_anchors() {
-		// Anchors live outside the key-value rows now, so a drop that spares them leaks a row per sealed group.
+	fn removing_a_flow_drops_its_operators_join_row_expiries() {
+		// Join expiries live outside the key-value rows now, so a drop that spares them leaks a row per group.
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
@@ -205,15 +205,22 @@ mod tests {
 		inner.insert_operator(FlowId(1), operator, Box::new(SourceSeriesOperator::new(operator)));
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
-		store.anchor_set(operator, GroupId(3), 0, RowNumber(1), DateTime::from_millis(5_000));
-		store.anchor_set(operator, GroupId(4), 0, RowNumber(1), DateTime::from_millis(6_000));
-		assert!(store.bytes(operator) > ByteSize::ZERO, "precondition: the operator's anchors are resident");
+		store.join_expiry_set(operator, GroupId(3), 0, RowNumber(1), DateTime::from_millis(5_000));
+		store.join_expiry_set(operator, GroupId(4), 0, RowNumber(1), DateTime::from_millis(6_000));
+		assert!(
+			store.bytes(operator) > ByteSize::ZERO,
+			"precondition: the operator's join expiries are resident"
+		);
 
 		inner.remove_flow(FlowId(1));
 
-		assert_eq!(store.anchors_by_expiry(operator, GroupId(3), 16), Vec::new());
-		assert_eq!(store.anchors_by_expiry(operator, GroupId(4), 16), Vec::new());
-		assert_eq!(store.bytes(operator), ByteSize::ZERO, "the retired operator's anchors must be dropped");
+		assert_eq!(store.join_expiries_by_time(operator, GroupId(3), 16), Vec::new());
+		assert_eq!(store.join_expiries_by_time(operator, GroupId(4), 16), Vec::new());
+		assert_eq!(
+			store.bytes(operator),
+			ByteSize::ZERO,
+			"the retired operator's join expiries must be dropped"
+		);
 		assert_eq!(
 			store.total_bytes(),
 			ByteSize::ZERO,

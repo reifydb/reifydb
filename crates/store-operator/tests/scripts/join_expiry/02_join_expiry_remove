@@ -1,0 +1,73 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+join_expiry_set row=1 at=100
+join_expiry_set row=2 at=200
+flush
+---
+ok
+
+# A disarmed timer must stay disarmed; reading through to the durable row re-arms it.
+
+join_expiry_remove row=1
+join_expiry_get row=1
+join_expiry_get row=2
+join_expiries_by_time
+---
+join_expiry 0/1 => None
+join_expiry 0/2 => 200
+0/2 => 200
+count=1
+
+flush
+join_expiry_get row=1
+join_expiry_get row=2
+join_expiries_by_time
+---
+ok
+join_expiry 0/1 => None
+join_expiry 0/2 => 200
+0/2 => 200
+count=1
+
+# Removing a join expiry that was never armed is a no-op.
+
+join_expiry_remove row=9
+join_expiry_get row=9
+join_expiry_get row=2
+---
+join_expiry 0/9 => None
+join_expiry 0/2 => 200
+
+# The slot can be armed again after the removal.
+
+join_expiry_set row=1 at=500
+join_expiry_get row=1
+join_expiries_by_time
+---
+join_expiry 0/1 => 500
+0/2 => 200
+0/1 => 500
+count=2
+
+flush
+join_expiry_get row=1
+join_expiries_by_time
+---
+ok
+join_expiry 0/1 => 500
+0/2 => 200
+0/1 => 500
+count=2
+
+# A removal is scoped to its slot: the same row number on the other side survives.
+
+join_expiry_set row=1 at=600 side=1
+flush
+join_expiry_remove row=1
+join_expiry_get row=1
+join_expiry_get row=1 side=1
+---
+ok
+join_expiry 0/1 => None
+join_expiry 1/1 => 600

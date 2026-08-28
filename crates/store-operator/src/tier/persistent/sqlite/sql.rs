@@ -88,37 +88,37 @@ pub(super) const CENSUS_ZERO_OPERATOR_SQL: &str = r#"UPDATE "operator_state_cens
 	   SET "keys" = 0, "key_bytes" = 0, "value_bytes" = 0
 	   WHERE "operator" = ?1"#;
 
-pub(crate) const ANCHORS_BY_EXPIRY_SQL: &str = r#"SELECT "side", "row_number", "expiry" FROM "operator_seal_anchor"
+pub(crate) const JOIN_EXPIRIES_BY_TIME_SQL: &str = r#"SELECT "side", "row_number", "at" FROM "operator_join_expiry"
 	   WHERE "operator" = ?1 AND "group" = ?2
-	   ORDER BY "expiry" ASC LIMIT ?3"#;
+	   ORDER BY "at" ASC LIMIT ?3"#;
 
-pub(super) const ANCHORS_DUE_SQL: &str = r#"SELECT "side", "row_number", "expiry" FROM "operator_seal_anchor"
-	   WHERE "operator" = ?1 AND "group" = ?2 AND "expiry" <= ?3
-	   ORDER BY "expiry" ASC LIMIT ?4"#;
+pub(super) const JOIN_EXPIRIES_DUE_SQL: &str = r#"SELECT "side", "row_number", "at" FROM "operator_join_expiry"
+	   WHERE "operator" = ?1 AND "group" = ?2 AND "at" <= ?3
+	   ORDER BY "at" ASC LIMIT ?4"#;
 
-pub(super) const ANCHOR_GET_SQL: &str = r#"SELECT "expiry" FROM "operator_seal_anchor"
+pub(super) const JOIN_EXPIRY_GET_SQL: &str = r#"SELECT "at" FROM "operator_join_expiry"
 	   WHERE "operator" = ?1 AND "group" = ?2 AND "side" = ?3 AND "row_number" = ?4"#;
 
-pub(super) const ANCHOR_SET_SQL: &str = r#"INSERT INTO "operator_seal_anchor" ("operator", "group", "side", "row_number", "expiry")
+pub(super) const JOIN_EXPIRY_SET_SQL: &str = r#"INSERT INTO "operator_join_expiry" ("operator", "group", "side", "row_number", "at")
 	   VALUES (?1, ?2, ?3, ?4, ?5)
 	   ON CONFLICT ("operator", "group", "side", "row_number")
-	   DO UPDATE SET "expiry" = excluded."expiry""#;
+	   DO UPDATE SET "at" = excluded."at""#;
 
-pub(super) const ANCHOR_REMOVE_SQL: &str = r#"DELETE FROM "operator_seal_anchor"
+pub(super) const JOIN_EXPIRY_REMOVE_SQL: &str = r#"DELETE FROM "operator_join_expiry"
 	   WHERE "operator" = ?1 AND "group" = ?2 AND "side" = ?3 AND "row_number" = ?4"#;
 
-pub(super) const ANCHORS_DROP_OPERATOR_SQL: &str = r#"DELETE FROM "operator_seal_anchor" WHERE "operator" = ?1"#;
+pub(super) const JOIN_EXPIRIES_DROP_OPERATOR_SQL: &str = r#"DELETE FROM "operator_join_expiry" WHERE "operator" = ?1"#;
 
-pub(super) const ANCHORS_DROP_GROUP_SQL: &str =
-	r#"DELETE FROM "operator_seal_anchor" WHERE "operator" = ?1 AND "group" = ?2"#;
+pub(super) const JOIN_EXPIRIES_DROP_GROUP_SQL: &str =
+	r#"DELETE FROM "operator_join_expiry" WHERE "operator" = ?1 AND "group" = ?2"#;
 
-pub(super) const ANCHOR_EXISTS_SQL: &str = r#"SELECT EXISTS(SELECT 1 FROM "operator_seal_anchor")"#;
+pub(super) const JOIN_EXPIRY_EXISTS_SQL: &str = r#"SELECT EXISTS(SELECT 1 FROM "operator_join_expiry")"#;
 
-pub(super) const ANCHOR_COUNT_SQL: &str = r#"SELECT COUNT(*) FROM "operator_seal_anchor" WHERE "operator" = ?1"#;
+pub(super) const JOIN_EXPIRY_COUNT_SQL: &str = r#"SELECT COUNT(*) FROM "operator_join_expiry" WHERE "operator" = ?1"#;
 
-pub(super) const ANCHOR_TOTAL_COUNT_SQL: &str = r#"SELECT COUNT(*) FROM "operator_seal_anchor""#;
+pub(super) const JOIN_EXPIRY_TOTAL_COUNT_SQL: &str = r#"SELECT COUNT(*) FROM "operator_join_expiry""#;
 
-pub(super) const ANCHOR_CENSUS_SQL: &str = r#"SELECT "operator", COUNT(*) FROM "operator_seal_anchor"
+pub(super) const JOIN_EXPIRY_CENSUS_SQL: &str = r#"SELECT "operator", COUNT(*) FROM "operator_join_expiry"
 	   GROUP BY "operator" ORDER BY "operator""#;
 
 pub(super) const CHECKPOINT_GET_SQL: &str = r#"SELECT "version" FROM "flow_checkpoint" WHERE "flow" = ?1"#;

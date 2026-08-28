@@ -244,7 +244,7 @@ impl testscript::runner::Runner for Runner {
 				}
 			}
 
-			"anchor_set" => {
+			"join_expiry_set" => {
 				let mut args = command.consume_args();
 				let operator = operator_of(&mut args)?;
 				let group = group_of(&mut args)?;
@@ -253,11 +253,17 @@ impl testscript::runner::Runner for Runner {
 				let expiry: u64 = args.lookup_parse("at")?.ok_or("at not given")?;
 				args.reject_rest()?;
 
-				self.store.anchor_set(operator, group, side, row_number, DateTime::from_millis(expiry));
+				self.store.join_expiry_set(
+					operator,
+					group,
+					side,
+					row_number,
+					DateTime::from_millis(expiry),
+				);
 				self.maybe_flush();
 			}
 
-			"anchor_get" => {
+			"join_expiry_get" => {
 				let mut args = command.consume_args();
 				let operator = operator_of(&mut args)?;
 				let group = group_of(&mut args)?;
@@ -265,19 +271,19 @@ impl testscript::runner::Runner for Runner {
 				let row_number = RowNumber(args.lookup_parse("row")?.ok_or("row not given")?);
 				args.reject_rest()?;
 
-				match self.store.anchor_get(operator, group, side, row_number) {
+				match self.store.join_expiry_get(operator, group, side, row_number) {
 					Some(expiry) => writeln!(
 						output,
-						"anchor {}/{} => {}",
+						"join_expiry {}/{} => {}",
 						side,
 						row_number.0,
 						expiry.to_millis()
 					)?,
-					None => writeln!(output, "anchor {}/{} => None", side, row_number.0)?,
+					None => writeln!(output, "join_expiry {}/{} => None", side, row_number.0)?,
 				}
 			}
 
-			"anchor_remove" => {
+			"join_expiry_remove" => {
 				let mut args = command.consume_args();
 				let operator = operator_of(&mut args)?;
 				let group = group_of(&mut args)?;
@@ -285,50 +291,50 @@ impl testscript::runner::Runner for Runner {
 				let row_number = RowNumber(args.lookup_parse("row")?.ok_or("row not given")?);
 				args.reject_rest()?;
 
-				self.store.anchor_remove(operator, group, side, row_number);
+				self.store.join_expiry_remove(operator, group, side, row_number);
 				self.maybe_flush();
 			}
 
-			"anchors_group_remove" => {
+			"join_expiries_group_remove" => {
 				let mut args = command.consume_args();
 				let operator = operator_of(&mut args)?;
 				let group = group_of(&mut args)?;
 				args.reject_rest()?;
 
-				self.store.anchors_remove_group(operator, group);
+				self.store.join_expiries_remove_group(operator, group);
 				self.maybe_flush();
 			}
 
-			"anchors_drop" => {
+			"join_expiries_drop" => {
 				let mut args = command.consume_args();
 				let operator = operator_of(&mut args)?;
 				args.reject_rest()?;
 
-				self.store.anchors_drop_operator(operator);
+				self.store.join_expiries_drop_operator(operator);
 				self.maybe_flush();
 			}
 
-			"anchors_by_expiry" => {
+			"join_expiries_by_time" => {
 				let mut args = command.consume_args();
 				let operator = operator_of(&mut args)?;
 				let group = group_of(&mut args)?;
 				let limit: u64 = args.lookup_parse("limit")?.unwrap_or(DEFAULT_LIMIT);
 				args.reject_rest()?;
 
-				let anchors = self.store.anchors_by_expiry(operator, group, limit);
-				for anchor in &anchors {
+				let expiries = self.store.join_expiries_by_time(operator, group, limit);
+				for expiry in &expiries {
 					writeln!(
 						output,
 						"{}/{} => {}",
-						anchor.side,
-						anchor.row_number.0,
-						anchor.expiry.to_millis()
+						expiry.side,
+						expiry.row_number.0,
+						expiry.at.to_millis()
 					)?;
 				}
-				writeln!(output, "count={}", anchors.len())?;
+				writeln!(output, "count={}", expiries.len())?;
 			}
 
-			"anchors_due" => {
+			"join_expiries_due" => {
 				let mut args = command.consume_args();
 				let operator = operator_of(&mut args)?;
 				let group = group_of(&mut args)?;
@@ -336,23 +342,24 @@ impl testscript::runner::Runner for Runner {
 				let at: u64 = args.lookup_parse("at")?.ok_or("at not given")?;
 				args.reject_rest()?;
 
-				let anchors = self.store.anchors_due(operator, group, DateTime::from_millis(at), limit);
-				for anchor in &anchors {
+				let expiries =
+					self.store.join_expiries_due(operator, group, DateTime::from_millis(at), limit);
+				for expiry in &expiries {
 					writeln!(
 						output,
 						"{}/{} => {}",
-						anchor.side,
-						anchor.row_number.0,
-						anchor.expiry.to_millis()
+						expiry.side,
+						expiry.row_number.0,
+						expiry.at.to_millis()
 					)?;
 				}
-				writeln!(output, "count={}", anchors.len())?;
+				writeln!(output, "count={}", expiries.len())?;
 			}
 
-			"anchor_census" => {
+			"join_expiry_census" => {
 				command.consume_args().reject_rest()?;
 
-				let census = self.store.anchor_census();
+				let census = self.store.join_expiry_census();
 				for entry in &census {
 					writeln!(output, "operator {} => {}", entry.operator.0, entry.keys)?;
 				}
@@ -535,7 +542,7 @@ fn parse_batch(store: &OperatorStore, command: &Command) -> Result<BatchArgs, Bo
 	let mut operator = OperatorId(DEFAULT_OPERATOR);
 	let mut keyspace = DEFAULT_KEYSPACE;
 	let mut pending_state: BTreeMap<(OperatorId, EncodedKey), Option<ByteSize>> = BTreeMap::new();
-	let mut pending_anchors: BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool> = BTreeMap::new();
+	let mut pending_join_expiries: BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool> = BTreeMap::new();
 	let mut writes: Vec<OperatorWrite> = Vec::new();
 	let mut checkpoints: Vec<(FlowId, CommitVersion)> = Vec::new();
 	let mut deletes: Vec<FlowId> = Vec::new();
@@ -562,44 +569,51 @@ fn parse_batch(store: &OperatorStore, command: &Command) -> Result<BatchArgs, Bo
 				pending_state.insert((operator, key.clone()), None);
 				writes.push(state_remove(operator, key, pre));
 			}
-			"anchor_set" => {
+			"join_expiry_set" => {
 				let parts: Vec<&str> = arg.value.split('/').collect();
 				if parts.len() != 4 {
-					return Err("anchor_set needs group/side/row/millis".into());
+					return Err("join_expiry_set needs group/side/row/millis".into());
 				}
 				let group = GroupId(parts[0].parse()?);
 				let side: u8 = parts[1].parse()?;
 				let row_num = RowNumber(parts[2].parse()?);
-				let expiry = DateTime::from_millis(parts[3].parse()?);
-				let held = pending_anchor(store, &pending_anchors, operator, group, side, row_num);
-				pending_anchors.insert((operator, group, side, row_num), true);
+				let at = DateTime::from_millis(parts[3].parse()?);
+				let held = pending_join_expiry(
+					store,
+					&pending_join_expiries,
+					operator,
+					group,
+					side,
+					row_num,
+				);
+				pending_join_expiries.insert((operator, group, side, row_num), true);
 				writes.push(match held {
-					true => OperatorWrite::AnchorReplace {
+					true => OperatorWrite::JoinExpiryReplace {
 						operator,
 						group,
 						side,
 						row_num,
-						expiry,
+						at,
 					},
-					false => OperatorWrite::AnchorInsert {
+					false => OperatorWrite::JoinExpiryInsert {
 						operator,
 						group,
 						side,
 						row_num,
-						expiry,
+						at,
 					},
 				});
 			}
-			"anchor_remove" => {
+			"join_expiry_remove" => {
 				let parts: Vec<&str> = arg.value.split('/').collect();
 				if parts.len() != 3 {
-					return Err("anchor_remove needs group/side/row".into());
+					return Err("join_expiry_remove needs group/side/row".into());
 				}
 				let group = GroupId(parts[0].parse()?);
 				let side: u8 = parts[1].parse()?;
 				let row_num = RowNumber(parts[2].parse()?);
-				pending_anchors.insert((operator, group, side, row_num), false);
-				writes.push(OperatorWrite::AnchorRemove {
+				pending_join_expiries.insert((operator, group, side, row_num), false);
+				writes.push(OperatorWrite::JoinExpiryRemove {
 					operator,
 					group,
 					side,
@@ -635,7 +649,7 @@ fn pending_pre(
 	}
 }
 
-fn pending_anchor(
+fn pending_join_expiry(
 	store: &OperatorStore,
 	overlay: &BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool>,
 	operator: OperatorId,
@@ -645,7 +659,7 @@ fn pending_anchor(
 ) -> bool {
 	match overlay.get(&(operator, group, side, row_num)) {
 		Some(pending) => *pending,
-		None => store.anchor_get(operator, group, side, row_num).is_some(),
+		None => store.join_expiry_get(operator, group, side, row_num).is_some(),
 	}
 }
 
