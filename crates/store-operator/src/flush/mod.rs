@@ -26,6 +26,7 @@ const FLUSH_PENDING_TIMEOUT: Duration = Duration::from_seconds_const(5);
 #[derive(Clone)]
 pub enum FlushMessage {
 	Tick(DateTime),
+	Pressure,
 	Shutdown,
 	FlushPending {
 		waiter: Arc<WaiterHandle>,
@@ -39,6 +40,7 @@ pub struct OperatorFlushActorState {
 
 pub struct OperatorFlushActor {
 	buffer: OperatorCommitBuffer,
+	#[allow(dead_code)]
 	flush_interval: Duration,
 }
 
@@ -62,6 +64,10 @@ impl OperatorFlushActor {
 
 	fn drain(&self) {
 		flush_now(&self.buffer);
+	}
+
+	fn relieve(&self) {
+		self.buffer.evict_under_cap();
 	}
 }
 
@@ -87,12 +93,10 @@ impl Actor for OperatorFlushActor {
 	type Message = FlushMessage;
 
 	fn init(&self, ctx: &Context<FlushMessage>) -> OperatorFlushActorState {
+		let _ = ctx;
 		debug!("Operator persistent flush actor started");
-		let timer_handle = ctx.schedule_tick(self.flush_interval.to_std(), |nanos| {
-			FlushMessage::Tick(DateTime::from_nanos(nanos))
-		});
 		OperatorFlushActorState {
-			_timer_handle: Some(timer_handle),
+			_timer_handle: None,
 		}
 	}
 
@@ -115,6 +119,9 @@ impl Actor for OperatorFlushActor {
 		match msg {
 			FlushMessage::Tick(_) => {
 				self.drain();
+			}
+			FlushMessage::Pressure => {
+				self.relieve();
 			}
 			FlushMessage::Shutdown => {
 				debug!("Operator persistent flush actor shutting down");

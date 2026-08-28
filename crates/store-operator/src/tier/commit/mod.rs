@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod batch;
+pub mod state_map;
 
 mod anchor;
 mod census;
@@ -12,9 +13,11 @@ mod state;
 mod tests;
 
 use std::{
-	borrow::Cow,
 	iter,
-	sync::{Arc, OnceLock},
+	sync::{
+		Arc, OnceLock,
+		atomic::{AtomicBool, Ordering},
+	},
 };
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId, util::budget::MemoryBudget};
@@ -23,18 +26,14 @@ use reifydb_runtime::{
 	sync::{
 		condvar::Condvar,
 		mutex::{Mutex, MutexGuard},
-		waiter::WaiterHandle,
 	},
 };
-use reifydb_store::tier::commit::{
-	CommitCensus, CommitConfig, CommitDomain, CommitTier, CommitWaker, Settlement, Slice,
-};
-use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
+use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 
 use crate::{
 	flush::FlushMessage,
 	tier::{
-		commit::batch::{ANCHOR_ENTRY_BYTES, DropMarker, FlushBatch, state_entry_bytes},
+		commit::batch::{DropMarker, FlushBatch, StateKey},
 		persistent::OperatorPersistentTier,
 		point::OperatorPointTier,
 		range::OperatorRangeTier,
@@ -44,15 +43,26 @@ use crate::{
 
 pub const FLUSH_BUDGET_BYTES: ByteSize = ByteSize::from_mib(4);
 
-const TICK_INTERVAL: Duration = Duration::from_seconds_const(120);
+pub const SLICE_BYTES: ByteSize = ByteSize::from_mib(4);
 
-pub type OperatorCommitTier = CommitTier<OperatorCommitDomain>;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OperatorCommitMetrics {
+	pub wakes: u64,
+	pub slices: u64,
+	pub persisted: u64,
+	pub reclaimed: u64,
+	pub evicted: u64,
+	pub budget_exhausted: u64,
+	pub released: ByteSize,
+	pub backlog: ByteSize,
+}
 
 #[derive(Debug, Default)]
 struct BufferInner {
 	live: FlushBatch,
 	in_flight: Option<Arc<FlushBatch>>,
 	flushing: bool,
+	cursor: Option<StateKey>,
 }
 
 impl BufferInner {
@@ -78,129 +88,31 @@ pub struct Shared {
 	drain: Mutex<()>,
 	sinks: OnceLock<OperatorSinks>,
 	budget: Arc<MemoryBudget>,
+	slice: ByteSize,
+	waker: Mutex<Option<ActorRef<FlushMessage>>>,
+	metrics: Mutex<OperatorCommitMetrics>,
+	triggered: AtomicBool,
 }
 
 impl Shared {
-	fn new(budget: Arc<MemoryBudget>) -> Self {
+	fn new(cap: ByteSize) -> Self {
 		Self {
 			inner: Mutex::new(BufferInner::default()),
 			idle: Condvar::new(),
 			drain: Mutex::new(()),
 			sinks: OnceLock::new(),
-			budget,
+			budget: Arc::new(MemoryBudget::new(cap)),
+			slice: cap.min(SLICE_BYTES),
+			waker: Mutex::new(None),
+			metrics: Mutex::new(OperatorCommitMetrics::default()),
+			triggered: AtomicBool::new(false),
 		}
-	}
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct OperatorCommitDomain;
-
-impl CommitDomain for OperatorCommitDomain {
-	type State = Shared;
-	type Batch = Arc<FlushBatch>;
-	type Ack = ();
-	type Cutoff = ();
-	type Kind = ();
-
-	const SCOPE: &'static str = "store::operator::commit";
-
-	const MAX_SLICES_PER_TICK: usize = usize::MAX;
-
-	fn cutoff(_state: &Self::State) -> Option<Self::Cutoff> {
-		Some(())
-	}
-
-	fn cutoff_all() -> Self::Cutoff {}
-
-	fn kinds(_state: &Self::State) -> Vec<Self::Kind> {
-		vec![()]
-	}
-
-	fn select(
-		state: &Self::State,
-		_kind: Self::Kind,
-		_cutoff: Self::Cutoff,
-		budget: ByteSize,
-	) -> Option<Slice<Self>> {
-		let mut inner = state.inner.lock();
-		if inner.live.is_empty() {
-			return None;
-		}
-		let batch = Arc::new(inner.live.split_within(budget));
-		let more = !inner.live.is_empty();
-		inner.in_flight = Some(Arc::clone(&batch));
-		inner.flushing = true;
-		Some(Slice {
-			bytes: batch.bytes,
-			batch,
-			more,
-		})
-	}
-
-	fn persist(state: &Self::State, batch: &Self::Batch) -> reifydb_value::Result<Self::Ack> {
-		let sinks = state.sinks.get().expect("the operator commit tier flushed before its sinks were attached");
-		sinks.persistent.flush_batch(batch);
-		invalidate_flushed(sinks.point.as_ref(), sinks.range.as_ref(), batch);
-		Ok(())
-	}
-
-	fn settle(state: &Self::State, batch: Self::Batch, _ack: Self::Ack) -> Settlement {
-		{
-			let mut inner = state.inner.lock();
-			inner.in_flight = None;
-			inner.flushing = false;
-		}
-		state.idle.notify_all();
-		let entries = (batch.state.len() + batch.anchors.len()) as u64;
-		Settlement {
-			released: batch.bytes,
-			entries,
-			reclaimed: entries,
-		}
-	}
-
-	fn resident_bytes(state: &Self::State) -> ByteSize {
-		state.inner.lock().resident_bytes()
-	}
-
-	fn kind_name(_kind: Self::Kind) -> Cow<'static, str> {
-		Cow::Borrowed("all")
-	}
-
-	fn census(state: &Self::State) -> CommitCensus {
-		let inner = state.inner.lock();
-		let mut walked = walk(&inner.live);
-		if let Some(batch) = inner.in_flight.as_ref() {
-			walked = walked.saturating_add(walk(batch));
-		}
-		CommitCensus {
-			counted: state.budget.used(),
-			walked,
-		}
-	}
-}
-
-fn walk(batch: &FlushBatch) -> ByteSize {
-	let mut total = ByteSize::ZERO;
-	for (key, entry) in &batch.state {
-		total = total.saturating_add(state_entry_bytes(key, entry));
-	}
-	total.saturating_add(ANCHOR_ENTRY_BYTES * batch.anchors.len() as u64)
-}
-
-struct FlushWaker(ActorRef<FlushMessage>);
-
-impl CommitWaker for FlushWaker {
-	fn wake(&self) {
-		let _ = self.0.send(FlushMessage::FlushPending {
-			waiter: Arc::new(WaiterHandle::new()),
-		});
 	}
 }
 
 #[derive(Clone)]
 pub struct OperatorCommitBuffer {
-	tier: OperatorCommitTier,
+	shared: Arc<Shared>,
 }
 
 impl std::fmt::Debug for OperatorCommitBuffer {
@@ -221,25 +133,17 @@ impl OperatorCommitBuffer {
 	}
 
 	pub fn with_budget(budget: ByteSize) -> Self {
-		let tier = CommitTier::new(
-			CommitConfig {
-				budget: Some(budget),
-				interval: TICK_INTERVAL,
-			},
-			Shared::new,
-		)
-		.expect("the operator commit tier is always built with a budget");
 		Self {
-			tier,
+			shared: Arc::new(Shared::new(budget)),
 		}
 	}
 
 	pub(crate) fn shared(&self) -> &Shared {
-		self.tier.state()
+		&self.shared
 	}
 
 	pub fn attach_flusher(&self, flusher: ActorRef<FlushMessage>) {
-		self.tier.attach_waker(Arc::new(FlushWaker(flusher)));
+		*self.shared.waker.lock() = Some(flusher);
 	}
 
 	pub fn attach_sinks(
@@ -248,7 +152,7 @@ impl OperatorCommitBuffer {
 		point: Option<OperatorPointTier>,
 		range: Option<OperatorRangeTier>,
 	) {
-		let _ = self.shared().sinks.set(OperatorSinks {
+		let _ = self.shared.sinks.set(OperatorSinks {
 			persistent,
 			point,
 			range,
@@ -256,7 +160,17 @@ impl OperatorCommitBuffer {
 	}
 
 	pub fn budget(&self) -> ByteSize {
-		self.tier.budget().limit()
+		self.shared.budget.limit()
+	}
+
+	pub fn slice(&self) -> ByteSize {
+		self.shared.slice
+	}
+
+	pub fn metrics(&self) -> OperatorCommitMetrics {
+		let mut metrics = *self.shared.metrics.lock();
+		metrics.backlog = self.shared.inner.lock().resident_bytes();
+		metrics
 	}
 
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
@@ -299,23 +213,123 @@ impl OperatorCommitBuffer {
 	}
 
 	pub fn flush_guard(&self) -> MutexGuard<'_, ()> {
-		self.shared().drain.lock()
+		self.shared.drain.lock()
 	}
 
 	pub fn take_for_flush(&self) -> Option<Arc<FlushBatch>> {
-		self.tier.take((), (), self.budget()).map(|slice| slice.batch)
+		self.take_drain_slice()
 	}
 
 	pub fn complete_flush(&self) {
-		let Some(batch) = self.shared().inner.lock().in_flight.clone() else {
+		let Some(batch) = self.shared.inner.lock().in_flight.clone() else {
 			return;
 		};
-		self.tier.settle(batch, ());
+		self.settle(batch);
 	}
 
 	pub fn flush_all(&self) {
 		let _guard = self.flush_guard();
-		self.tier.flush_all();
+		while let Some(batch) = self.take_drain_slice() {
+			self.persist(&batch);
+			self.settle(batch);
+		}
+	}
+
+	pub fn evict_under_cap(&self) {
+		let _guard = self.flush_guard();
+		while self.shared.budget.over_budget() {
+			let Some(batch) = self.take_evict_slice() else {
+				break;
+			};
+			self.persist(&batch);
+			self.settle(batch);
+		}
+	}
+
+	fn take_drain_slice(&self) -> Option<Arc<FlushBatch>> {
+		let mut inner = self.shared.inner.lock();
+		if inner.live.is_empty() {
+			return None;
+		}
+		let batch = Arc::new(inner.live.drain_within(self.shared.slice));
+		if !inner.live.is_empty() {
+			self.shared.metrics.lock().budget_exhausted += 1;
+		}
+		inner.in_flight = Some(Arc::clone(&batch));
+		inner.flushing = true;
+		Some(batch)
+	}
+
+	fn take_evict_slice(&self) -> Option<Arc<FlushBatch>> {
+		let mut inner = self.shared.inner.lock();
+		if inner.live.is_empty() {
+			return None;
+		}
+		let cursor = inner.cursor.take();
+		let (taken, cursor) = inner.live.evict_within(self.shared.slice, cursor);
+		inner.cursor = cursor;
+		if taken.is_empty() {
+			return None;
+		}
+		let batch = Arc::new(taken);
+		inner.in_flight = Some(Arc::clone(&batch));
+		inner.flushing = true;
+		Some(batch)
+	}
+
+	fn persist(&self, batch: &Arc<FlushBatch>) {
+		let sinks = self.shared.sinks.get().expect("the operator commit tier flushed before its sinks were attached");
+		sinks.persistent.flush_batch(batch);
+		invalidate_flushed(sinks.point.as_ref(), sinks.range.as_ref(), batch);
+	}
+
+	fn settle(&self, batch: Arc<FlushBatch>) {
+		{
+			let mut inner = self.shared.inner.lock();
+			inner.in_flight = None;
+			inner.flushing = false;
+		}
+		self.shared.idle.notify_all();
+		self.shared.budget.release(batch.bytes);
+		self.shared.triggered.store(false, Ordering::Release);
+
+		let entries = (batch.state.len() + batch.anchors.len()) as u64;
+		{
+			let mut metrics = self.shared.metrics.lock();
+			metrics.slices += 1;
+			metrics.persisted += entries;
+			metrics.reclaimed += entries;
+			metrics.evicted += batch.state.len() as u64;
+			metrics.released = metrics.released.saturating_add(batch.bytes);
+		}
+
+		reifydb_assertions! {
+			let inner = self.shared.inner.lock();
+			let mut walked = walk(&inner.live);
+			if let Some(pending) = inner.in_flight.as_ref() {
+				walked = walked.saturating_add(walk(pending));
+			}
+			let counted = self.shared.budget.used();
+			assert_eq!(
+				counted, walked,
+				"store::operator::commit commit tier byte counter drifted: the budget carries {}, the resident set walks to {}",
+				counted, walked
+			);
+		}
+	}
+
+	fn observe_write(&self) {
+		if !self.shared.budget.over_budget() {
+			return;
+		}
+		if self.shared.triggered.swap(true, Ordering::AcqRel) {
+			return;
+		}
+		self.shared.metrics.lock().wakes += 1;
+		let waker = self.shared.waker.lock().clone();
+		if let Some(waker) = waker {
+			let _ = waker.send(FlushMessage::Pressure);
+		}
 	}
 
 	pub(crate) fn write<R>(&self, mutate: impl FnOnce(&mut FlushBatch) -> R) -> R {
@@ -329,9 +343,21 @@ impl OperatorCommitBuffer {
 			shared.budget.release(before.saturating_sub(after));
 			out
 		};
-		self.tier.observe_write();
+		self.observe_write();
 		out
 	}
+}
+
+#[cfg(reifydb_assertions)]
+use crate::tier::commit::batch::{ANCHOR_ENTRY_BYTES, state_entry_bytes};
+
+#[cfg(reifydb_assertions)]
+fn walk(batch: &FlushBatch) -> ByteSize {
+	let mut total = ByteSize::ZERO;
+	for ((_, key), entry) in &batch.state {
+		total = total.saturating_add(state_entry_bytes(key, entry));
+	}
+	total.saturating_add(ANCHOR_ENTRY_BYTES * batch.anchors.len() as u64)
 }
 
 fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&OperatorRangeTier>, batch: &FlushBatch) {
@@ -352,18 +378,18 @@ fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&Operator
 		match &entry.post {
 			Some(row) => {
 				if let Some(range) = range {
-					range.overwrite(*operator, key.clone(), row.clone());
+					range.overwrite(operator, key.clone(), row.clone());
 				}
 				if let Some(point) = point {
-					point.overwrite(*operator, key.clone(), row.clone());
+					point.overwrite(operator, key.clone(), row.clone());
 				}
 			}
 			None => {
 				if let Some(range) = range {
-					range.retract(*operator, key);
+					range.retract(operator, key);
 				}
 				if let Some(point) = point {
-					point.invalidate(*operator, key);
+					point.invalidate(operator, key);
 				}
 			}
 		}

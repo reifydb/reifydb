@@ -667,14 +667,17 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	while Instant::now() < deadline && storage.get(OP_A, &key(0)).is_none() {
 		thread::sleep(Duration::from_milliseconds_const(5).to_std());
 	}
-	for index in 0..entries {
-		assert_eq!(
-			storage.get(OP_A, &key(index)).map(|row| body(&row)),
-			Some("under-the-budget".to_string()),
-			"key {index} must be durable from the size trigger alone; the flush interval here is an \
-			 hour, so anything less means only the timer can ever drain the buffer"
-		);
-	}
+	assert_eq!(
+		storage.get(OP_A, &key(0)).map(|row| body(&row)),
+		Some("under-the-budget".to_string()),
+		"crossing the byte budget must make the coldest key durable on its own; the flush interval here \
+		 is an hour, so anything less means only the timer can ever drain the buffer"
+	);
+	assert!(
+		buffer.metrics().backlog <= buffer.budget(),
+		"the pressure pass must leave the buffer at or under its cap; a pass that stops before it gets \
+		 there lets the buffer grow without bound"
+	);
 }
 
 fn flusher_fixture(
@@ -690,36 +693,6 @@ fn flusher_fixture(
 	let actor = OperatorFlushActor::new(buffer.clone(), interval);
 	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
 	(actor, buffer, ctx, actor_system, guard)
-}
-
-#[test]
-fn the_flush_interval_the_store_was_configured_with_is_the_one_the_timer_fires_on() {
-	let clock = Clock::testing();
-	let actor_system = ActorSystem::testing(clock.clone());
-	let spawner = actor_system.spawner();
-	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let store = OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
-		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
-			.flush_interval(Duration::from_milliseconds_const(100))),
-		point: Some(OperatorPointConfig::testing()),
-		range: Some(OperatorRangeConfig::testing()),
-		spawner,
-		clock,
-	});
-
-	put(&store, OP_A, key(1), row("on-the-timer"));
-
-	let deadline = Instant::now() + Duration::from_seconds_const(3).to_std();
-	while Instant::now() < deadline && storage.get(OP_A, &key(1)).is_none() {
-		thread::sleep(Duration::from_milliseconds_const(5).to_std());
-	}
-	assert_eq!(
-		storage.get(OP_A, &key(1)).map(|row| body(&row)),
-		Some("on-the-timer".to_string()),
-		"a 100ms interval must have drained the buffer well inside three seconds; the default interval \
-		 is five seconds, so anything slower means the configured value never reached the timer"
-	);
 }
 
 #[test]

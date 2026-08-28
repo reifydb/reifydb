@@ -3,26 +3,28 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::row::pod::EncodedPodRow;
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::OperatorStateKey};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	tier::commit::{
 		OperatorCommitBuffer,
-		batch::{AnchorKey, FlushBatch, StateKey},
+		batch::{AnchorKey, FlushBatch},
 		resident,
 	},
 	types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, OperatorSealAnchorCensus, OperatorStateCensus},
 };
 
-fn live_state<'a>(batches: impl Iterator<Item = &'a FlushBatch>) -> BTreeMap<&'a StateKey, &'a EncodedPodRow> {
+fn live_state<'a>(
+	batches: impl Iterator<Item = &'a FlushBatch>,
+) -> BTreeMap<(OperatorId, &'a EncodedKey), &'a EncodedPodRow> {
 	let mut view = BTreeMap::new();
 	for batch in batches {
 		for (key, entry) in &batch.state {
 			match &entry.post {
 				Some(row) => view.insert(key, row),
-				None => view.remove(key),
+				None => view.remove(&key),
 			};
 		}
 	}
@@ -73,8 +75,8 @@ impl OperatorCommitBuffer {
 		let mut buckets: BTreeMap<(OperatorId, u8), OperatorStateCensus> = BTreeMap::new();
 		for ((operator, key), row) in live_state(resident(&inner)) {
 			let stored = *key.as_slice().get(offset).expect("state keys carry a keyspace byte");
-			let bucket = buckets.entry((*operator, stored)).or_insert(OperatorStateCensus {
-				operator: *operator,
+			let bucket = buckets.entry((operator, stored)).or_insert(OperatorStateCensus {
+				operator,
 				keyspace: OperatorStateKey::decode_keyspace(stored),
 				keys: 0,
 				key_bytes: ByteSize::ZERO,

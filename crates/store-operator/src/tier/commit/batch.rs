@@ -14,7 +14,10 @@ use reifydb_core::{
 };
 use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 
-use crate::types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, DurablePre};
+use crate::{
+	tier::commit::state_map::StateMap,
+	types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, DurablePre},
+};
 
 pub type StateKey = (OperatorId, EncodedKey);
 
@@ -23,6 +26,8 @@ pub type AnchorKey = (OperatorId, GroupId, u8, RowNumber);
 pub type AnchorSlot = (u8, RowNumber);
 
 pub const ANCHOR_ENTRY_BYTES: ByteSize = ANCHOR_KEY_BYTES.saturating_add(ANCHOR_VALUE_BYTES);
+
+pub const MAX_FREQUENCY: u8 = 15;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DropMarker {
@@ -35,11 +40,12 @@ pub enum DropMarker {
 pub struct StateEntry {
 	pub post: Option<EncodedPodRow>,
 	pub durable_pre: DurablePre,
+	pub count: u8,
 }
 
 #[derive(Debug, Default)]
 pub struct FlushBatch {
-	pub state: BTreeMap<StateKey, StateEntry>,
+	pub state: StateMap,
 	pub anchors: BTreeMap<AnchorKey, Option<u64>>,
 	pub checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
 	pub drops: Vec<DropMarker>,
@@ -49,21 +55,31 @@ pub struct FlushBatch {
 impl FlushBatch {
 	pub(crate) fn record_state(&mut self, key: StateKey, post: Option<EncodedPodRow>, durable_pre: DurablePre) {
 		let incoming = post_bytes(&post);
-		match self.state.entry(key) {
+		let key_bytes = ByteSize::from_bytes(key.1.len() as u64);
+		let mut admitted = false;
+		let outgoing = match self.state.slot(key) {
 			Entry::Occupied(mut slot) => {
-				let outgoing = post_bytes(&slot.get().post);
-				slot.get_mut().post = post;
-				self.bytes = self.bytes.saturating_sub(outgoing).saturating_add(incoming);
+				let entry = slot.get_mut();
+				let outgoing = post_bytes(&entry.post);
+				entry.post = post;
+				entry.count = entry.count.saturating_add(1).min(MAX_FREQUENCY);
+				outgoing
 			}
 			Entry::Vacant(slot) => {
-				let key_bytes = ByteSize::from_bytes(slot.key().1.len() as u64);
 				slot.insert(StateEntry {
 					post,
 					durable_pre,
+					count: 1,
 				});
-				self.bytes = self.bytes.saturating_add(key_bytes).saturating_add(incoming);
+				admitted = true;
+				ByteSize::ZERO
 			}
+		};
+		if admitted {
+			self.state.admit();
+			self.bytes = self.bytes.saturating_add(key_bytes);
 		}
+		self.bytes = self.bytes.saturating_sub(outgoing).saturating_add(incoming);
 	}
 
 	pub(crate) fn record_anchor(&mut self, key: AnchorKey, expiry: Option<u64>) {
@@ -76,8 +92,17 @@ impl FlushBatch {
 		self.state.is_empty() && self.anchors.is_empty() && self.checkpoints.is_empty() && self.drops.is_empty()
 	}
 
-	pub(super) fn split_within(&mut self, budget: ByteSize) -> FlushBatch {
-		let (state, state_bytes) = split_bounded(&mut self.state, budget, state_entry_bytes, true);
+	pub(super) fn drain_within(&mut self, budget: ByteSize) -> FlushBatch {
+		let (state, state_bytes) = self.state.take_within(budget, true);
+		self.assemble(state, state_bytes, budget)
+	}
+
+	pub(super) fn evict_within(&mut self, budget: ByteSize, cursor: Option<StateKey>) -> (FlushBatch, Option<StateKey>) {
+		let swept = self.state.sweep(budget, cursor);
+		(self.assemble(swept.taken, swept.bytes, budget), swept.cursor)
+	}
+
+	fn assemble(&mut self, state: StateMap, state_bytes: ByteSize, budget: ByteSize) -> FlushBatch {
 		let (anchors, anchor_bytes) = split_bounded(
 			&mut self.anchors,
 			budget.saturating_sub(state_bytes),
@@ -98,7 +123,7 @@ impl FlushBatch {
 	pub(super) fn clear_drop(&mut self, marker: DropMarker) {
 		match marker {
 			DropMarker::OperatorState(operator) => {
-				self.retain_state(|(candidate, _)| *candidate != operator);
+				self.drop_state(operator);
 				self.retain_anchors(|(candidate, _, _, _)| *candidate != operator);
 			}
 			DropMarker::AnchorsOperator(operator) => {
@@ -112,15 +137,13 @@ impl FlushBatch {
 		}
 	}
 
-	fn retain_state(&mut self, keep: impl Fn(&StateKey) -> bool) {
-		let bytes = &mut self.bytes;
-		self.state.retain(|key, entry| {
-			if keep(key) {
-				return true;
-			}
-			*bytes = bytes.saturating_sub(state_entry_bytes(key, entry));
-			false
-		});
+	fn drop_state(&mut self, operator: OperatorId) {
+		let Some(keys) = self.state.remove_operator(operator) else {
+			return;
+		};
+		for (key, entry) in keys.iter() {
+			self.bytes = self.bytes.saturating_sub(state_entry_bytes(key, entry));
+		}
 	}
 
 	fn retain_anchors(&mut self, keep: impl Fn(&AnchorKey) -> bool) {
@@ -139,8 +162,8 @@ fn post_bytes(post: &Option<EncodedPodRow>) -> ByteSize {
 	post.as_ref().map_or(ByteSize::ZERO, |row| ByteSize::from_bytes(row.bytes().len() as u64))
 }
 
-pub(crate) fn state_entry_bytes(key: &StateKey, entry: &StateEntry) -> ByteSize {
-	ByteSize::from_bytes(key.1.len() as u64).saturating_add(post_bytes(&entry.post))
+pub(crate) fn state_entry_bytes(key: &EncodedKey, entry: &StateEntry) -> ByteSize {
+	ByteSize::from_bytes(key.len() as u64).saturating_add(post_bytes(&entry.post))
 }
 
 fn split_bounded<K: Ord + Clone, V>(

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Ordering, collections::BTreeMap, ops::Bound};
+use std::{cmp::Ordering, iter::Peekable, ops::Bound};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
@@ -9,7 +9,8 @@ use reifydb_core::interface::catalog::flow::OperatorId;
 use crate::{
 	tier::commit::{
 		OperatorCommitBuffer,
-		batch::{DropMarker, StateEntry, StateKey},
+		batch::{DropMarker, StateEntry},
+		state_map::Range,
 	},
 	types::{BufferedState, BufferedStateRange, DurablePre},
 };
@@ -24,12 +25,11 @@ impl OperatorCommitBuffer {
 	}
 
 	pub fn lookup_state(&self, operator: OperatorId, key: &EncodedKey) -> BufferedState {
-		let composite = (operator, key.clone());
 		let inner = self.shared().inner.lock();
-		if let Some(entry) = inner.live.state.get(&composite) {
+		if let Some(entry) = inner.live.state.lookup(operator, key) {
 			return buffered_state(entry);
 		}
-		if let Some(entry) = inner.in_flight.as_ref().and_then(|batch| batch.state.get(&composite)) {
+		if let Some(entry) = inner.in_flight.as_ref().and_then(|batch| batch.state.lookup(operator, key)) {
 			return buffered_state(entry);
 		}
 		if inner.any_drop(|marker| is_state_drop(marker, operator)) {
@@ -44,29 +44,107 @@ impl OperatorCommitBuffer {
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 	) -> BufferedStateRange {
-		let lower = match start {
-			Bound::Included(key) => Bound::Included((operator, key.clone())),
-			Bound::Excluded(key) => Bound::Excluded((operator, key.clone())),
-			Bound::Unbounded => Bound::Included((operator, EncodedKey::new(Vec::new()))),
-		};
-		let upper = match end {
-			Bound::Included(key) => Bound::Included((operator, key.clone())),
-			Bound::Excluded(key) => Bound::Excluded((operator, key.clone())),
-			Bound::Unbounded => Bound::Unbounded,
-		};
+		self.state_page(operator, start, end, usize::MAX)
+	}
+
+	pub fn state_page(
+		&self,
+		operator: OperatorId,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		limit: usize,
+	) -> BufferedStateRange {
+		let lower = owned(start);
+		let upper = owned(end);
 
 		let inner = self.shared().inner.lock();
-		let mut merged: BTreeMap<EncodedKey, Option<EncodedPodRow>> = BTreeMap::new();
-		if !is_empty_range(&lower, &upper) {
-			if let Some(batch) = inner.in_flight.as_ref() {
-				collect_state(&batch.state, operator, (lower.clone(), upper.clone()), &mut merged);
-			}
-			collect_state(&inner.live.state, operator, (lower, upper), &mut merged);
+		let mut items = Vec::new();
+		if limit > 0 && !is_empty_range(&lower, &upper) {
+			let live = inner.live.state.range(operator, lower.clone(), upper.clone());
+			let flight = match inner.in_flight.as_ref() {
+				Some(batch) => batch.state.range(operator, lower, upper),
+				None => Range::default(),
+			};
+			items = merge(live, flight, limit);
 		}
 		BufferedStateRange {
-			items: merged.into_iter().collect(),
+			items,
 			dropped: inner.any_drop(|marker| is_state_drop(marker, operator)),
 		}
+	}
+
+	pub fn state_last(
+		&self,
+		operator: OperatorId,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+	) -> Option<(EncodedKey, Option<EncodedPodRow>)> {
+		let lower = owned(start);
+		let upper = owned(end);
+		if is_empty_range(&lower, &upper) {
+			return None;
+		}
+
+		let inner = self.shared().inner.lock();
+		let live = inner.live.state.last(operator, lower.clone(), upper.clone());
+		let flight = inner.in_flight.as_ref().and_then(|batch| batch.state.last(operator, lower, upper));
+		match (live, flight) {
+			(Some((key, entry)), None) => Some((key.clone(), entry.post.clone())),
+			(None, Some((key, entry))) => Some((key.clone(), entry.post.clone())),
+			(Some((live_key, live_entry)), Some((flight_key, flight_entry))) => match live_key.cmp(flight_key) {
+				Ordering::Less => Some((flight_key.clone(), flight_entry.post.clone())),
+				_ => Some((live_key.clone(), live_entry.post.clone())),
+			},
+			(None, None) => None,
+		}
+	}
+}
+
+fn merge(live: Range<'_>, flight: Range<'_>, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
+	let mut live: Peekable<Range<'_>> = live.peekable();
+	let mut flight: Peekable<Range<'_>> = flight.peekable();
+	let mut items = Vec::new();
+	while items.len() < limit {
+		let winner = match (live.peek(), flight.peek()) {
+			(None, None) => break,
+			(Some(_), None) => Side::Live,
+			(None, Some(_)) => Side::Flight,
+			(Some((live_key, _)), Some((flight_key, _))) => match live_key.cmp(flight_key) {
+				Ordering::Less => Side::Live,
+				Ordering::Greater => Side::Flight,
+				Ordering::Equal => Side::Both,
+			},
+		};
+		match winner {
+			Side::Live => {
+				let (key, entry) = live.next().expect("the peeked live entry is still pending");
+				items.push((key.clone(), entry.post.clone()));
+			}
+			Side::Flight => {
+				let (key, entry) = flight.next().expect("the peeked in-flight entry is still pending");
+				items.push((key.clone(), entry.post.clone()));
+			}
+			Side::Both => {
+				let (key, entry) = live.next().expect("the peeked live entry is still pending");
+				flight.next();
+				items.push((key.clone(), entry.post.clone()));
+			}
+		}
+	}
+	items
+}
+
+enum Side {
+	Live,
+	Flight,
+	Both,
+}
+
+fn owned(bound: Bound<&EncodedKey>) -> Bound<EncodedKey> {
+	match bound {
+		Bound::Included(key) => Bound::Included(key.clone()),
+		Bound::Excluded(key) => Bound::Excluded(key.clone()),
+		Bound::Unbounded => Bound::Unbounded,
 	}
 }
 
@@ -84,7 +162,7 @@ fn is_state_drop(marker: &DropMarker, operator: OperatorId) -> bool {
 	}
 }
 
-fn is_empty_range(lower: &Bound<StateKey>, upper: &Bound<StateKey>) -> bool {
+fn is_empty_range(lower: &Bound<EncodedKey>, upper: &Bound<EncodedKey>) -> bool {
 	let (Bound::Included(start) | Bound::Excluded(start)) = lower else {
 		return false;
 	};
@@ -95,19 +173,5 @@ fn is_empty_range(lower: &Bound<StateKey>, upper: &Bound<StateKey>) -> bool {
 		Ordering::Greater => true,
 		Ordering::Equal => matches!(lower, Bound::Excluded(_)) || matches!(upper, Bound::Excluded(_)),
 		Ordering::Less => false,
-	}
-}
-
-fn collect_state(
-	source: &BTreeMap<StateKey, StateEntry>,
-	operator: OperatorId,
-	range: (Bound<StateKey>, Bound<StateKey>),
-	out: &mut BTreeMap<EncodedKey, Option<EncodedPodRow>>,
-) {
-	for ((candidate, key), entry) in source.range(range) {
-		if *candidate != operator {
-			break;
-		}
-		out.insert(key.clone(), entry.post.clone());
 	}
 }

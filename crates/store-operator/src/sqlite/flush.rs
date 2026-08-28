@@ -212,7 +212,7 @@ impl SqliteOperatorStorage {
 		}
 		for ((operator, key), entry) in &batch.state {
 			if entry.post.is_some() {
-				self.filter().add((*operator, key));
+				self.filter().add((operator, key));
 			}
 		}
 		for ((operator, group, side, row_number), entry) in &batch.anchors {
@@ -392,10 +392,10 @@ fn verify_flush_classification(transaction: &Transaction, batch: &FlushBatch) {
 		})
 		.collect();
 	for ((operator, key), entry) in &batch.state {
-		let observed = match dropped.contains(operator) {
+		let observed = match dropped.contains(&operator) {
 			true => None,
-			false => durable_value_len(transaction, *operator, key),
+			false => durable_value_len(transaction, operator, key),
 		};
-		assert_claim(*operator, entry.durable_pre, observed);
+		assert_claim(operator, entry.durable_pre, observed);
 	}
 }
