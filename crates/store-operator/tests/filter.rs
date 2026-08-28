@@ -22,10 +22,15 @@ use reifydb_sqlite::SqliteConfig;
 use reifydb_store::filter::KeyFilter;
 use reifydb_store_operator::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
-	filter::{ARMED_CAPACITY_KEYS, OperatorKeys, source::OperatorStateKeySource},
-	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
-	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
+	tier::{
+		persistent::{
+			filter::{ARMED_CAPACITY_KEYS, OperatorKeys},
+			sqlite::{SqliteOperatorStorage, filter::OperatorStateKeySource},
+		},
+		point::OperatorPointConfig,
+		range::OperatorRangeConfig,
+	},
 	types::{DurablePre, OperatorWrite},
 };
 use reifydb_value::byte_size::ByteSize;
