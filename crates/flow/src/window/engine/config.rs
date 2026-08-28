@@ -43,13 +43,13 @@ impl WindowEngineConfigBuilder {
 	}
 }
 
-pub struct TumblingCarryConfig<C: WindowAnchor> {
+pub struct TumblingCarryConfig<S: WindowAnchor> {
 	base: WindowEngineConfig,
-	retention: Option<SlotSpan<C>>,
+	retention: Option<SlotSpan<S>>,
 }
 
-impl<C: WindowAnchor> TumblingCarryConfig<C> {
-	pub fn builder(base: WindowEngineConfig) -> TumblingCarryConfigBuilder<C> {
+impl<S: WindowAnchor> TumblingCarryConfig<S> {
+	pub fn builder(base: WindowEngineConfig) -> TumblingCarryConfigBuilder<S> {
 		TumblingCarryConfigBuilder::new(base)
 	}
 
@@ -57,17 +57,17 @@ impl<C: WindowAnchor> TumblingCarryConfig<C> {
 		self.base.clone()
 	}
 
-	pub fn retention(&self) -> Option<SlotSpan<C>> {
+	pub fn retention(&self) -> Option<SlotSpan<S>> {
 		self.retention
 	}
 }
 
-pub struct TumblingCarryConfigBuilder<C: WindowAnchor> {
+pub struct TumblingCarryConfigBuilder<S: WindowAnchor> {
 	base: WindowEngineConfig,
-	retention: Option<SlotSpan<C>>,
+	retention: Option<SlotSpan<S>>,
 }
 
-impl<C: WindowAnchor> TumblingCarryConfigBuilder<C> {
+impl<S: WindowAnchor> TumblingCarryConfigBuilder<S> {
 	fn new(base: WindowEngineConfig) -> Self {
 		Self {
 			base,
@@ -75,12 +75,12 @@ impl<C: WindowAnchor> TumblingCarryConfigBuilder<C> {
 		}
 	}
 
-	pub fn retention(mut self, retention: Option<SlotSpan<C>>) -> Self {
+	pub fn retention(mut self, retention: Option<SlotSpan<S>>) -> Self {
 		self.retention = retention;
 		self
 	}
 
-	pub fn build(self) -> TumblingCarryConfig<C> {
+	pub fn build(self) -> TumblingCarryConfig<S> {
 		TumblingCarryConfig {
 			base: self.base,
 			retention: self.retention,

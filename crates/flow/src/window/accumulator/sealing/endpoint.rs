@@ -14,13 +14,13 @@ use crate::window::{
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
-pub struct SealingEndpoint<C: Slot, V> {
-	base: SealingBase<C, V>,
-	sealed_open: Option<(C, V)>,
-	sealed_close: Option<(C, V)>,
+pub struct SealingEndpoint<S: Slot, V> {
+	base: SealingBase<S, V>,
+	sealed_open: Option<(S, V)>,
+	sealed_close: Option<(S, V)>,
 }
 
-impl<C: Slot, V> Default for SealingEndpoint<C, V> {
+impl<S: Slot, V> Default for SealingEndpoint<S, V> {
 	fn default() -> Self {
 		Self {
 			base: SealingBase::default(),
@@ -30,12 +30,12 @@ impl<C: Slot, V> Default for SealingEndpoint<C, V> {
 	}
 }
 
-impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
-	pub fn immutable(immutable: SlotSpan<C>) -> Self {
+impl<S: Slot, V: Clone> SealingEndpoint<S, V> {
+	pub fn immutable(immutable: SlotSpan<S>) -> Self {
 		Self::maybe_immutable(Some(immutable))
 	}
 
-	pub fn maybe_immutable(immutable: Option<SlotSpan<C>>) -> Self {
+	pub fn maybe_immutable(immutable: Option<SlotSpan<S>>) -> Self {
 		Self {
 			base: SealingBase::maybe_immutable(immutable),
 			sealed_open: None,
@@ -69,7 +69,7 @@ impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
 		}
 	}
 
-	fn seal(&mut self, c: C, v: V) {
+	fn seal(&mut self, c: S, v: V) {
 		self.sealed_open = Some(match self.sealed_open.take() {
 			Some((sc, sv)) if sc <= c => (sc, sv),
 			_ => (c, v.clone()),
@@ -81,22 +81,22 @@ impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
 	}
 }
 
-impl<C, V> WindowAccumulator for SealingEndpoint<C, V>
+impl<S, V> WindowAccumulator for SealingEndpoint<S, V>
 where
-	C: Slot + Hash,
+	S: Slot + Hash,
 	V: Clone + Debug + PartialEq,
-	SealingEndpoint<C, V>: OperatorState + StateCodec + HeapSize,
+	SealingEndpoint<S, V>: OperatorState + StateCodec + HeapSize,
 {
-	type Contribution = (C, V);
+	type Contribution = (S, V);
 	type Output = (V, V);
 
-	fn add(&mut self, contribution: &(C, V)) {
+	fn add(&mut self, contribution: &(S, V)) {
 		for (c, v) in self.base.push(contribution.0, contribution.1.clone()) {
 			self.seal(c, v);
 		}
 	}
 
-	fn remove(&mut self, contribution: &(C, V)) {
+	fn remove(&mut self, contribution: &(S, V)) {
 		self.base.remove(&contribution.0);
 	}
 
@@ -112,7 +112,7 @@ where
 	}
 }
 
-impl<C: Slot + HeapSize, V: HeapSize> HeapSize for SealingEndpoint<C, V> {
+impl<S: Slot + HeapSize, V: HeapSize> HeapSize for SealingEndpoint<S, V> {
 	fn heap_size(&self) -> usize {
 		self.base.heap_size() + self.sealed_open.heap_size() + self.sealed_close.heap_size()
 	}
@@ -179,7 +179,7 @@ mod tests {
 
 	#[test]
 	fn sealing_endpoint_close_is_the_latest_surviving_row_not_the_open() {
-		// Only the earliest sealed coordinate is kept, so retracting the live tail must never make close report
+		// Only the earliest sealed slot is kept, so retracting the live tail must never make close report
 		// the window's first value as its last.
 		let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::immutable(millis(10));
 		accumulator.add(&(at_millis(0), 1));

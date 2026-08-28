@@ -28,7 +28,7 @@ use crate::{
 	},
 };
 
-pub type RollingTopKBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
+pub type RollingTopKBuffer<S, Accumulator> = BTreeMap<S, Accumulator>;
 
 pub type RollingTopKEmit<SK, Output> = BTreeMap<SK, Output>;
 
@@ -48,36 +48,36 @@ pub enum TopKEmit<Output> {
 	},
 }
 
-type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
+type MetaLoaded<G, S> = HashMap<G, BatchMeta<S>>;
 type StateRows<G> = HashMap<G, (GroupId, RowNumber)>;
 
-struct GroupSlot<C, Accumulator, SK, Output> {
+struct GroupSlot<S, Accumulator, SK, Output> {
 	group_id: GroupId,
 	state_row_number: RowNumber,
-	buffer: RollingTopKBuffer<C, Accumulator>,
+	buffer: RollingTopKBuffer<S, Accumulator>,
 	prior_emit: RollingTopKEmit<SK, Output>,
 	buffer_changed: bool,
 }
 
-pub struct RollingTopKEngine<G, C, Accumulator, SK, Output> {
+pub struct RollingTopKEngine<G, S, Accumulator, SK, Output> {
 	meta_sweep: MetaSweep,
-	_pd: PhantomData<(G, C, Accumulator, SK, Output)>,
+	_pd: PhantomData<(G, S, Accumulator, SK, Output)>,
 }
 
-impl<G, C, Accumulator, SK, Output> RollingTopKEngine<G, C, Accumulator, SK, Output>
+impl<G, S, Accumulator, SK, Output> RollingTopKEngine<G, S, Accumulator, SK, Output>
 where
 	G: Clone + Eq + Ord + Hash + Debug,
-	C: Slot + Hash,
+	S: Slot + Hash,
 	Accumulator: WindowAccumulator,
 	SK: Clone + Eq + Ord + Hash + Debug,
 	Output: Clone + Debug + PartialEq,
 	for<'a> &'a G: IntoEncodedKey,
-	C: HeapSize,
+	S: HeapSize,
 	SK: HeapSize,
 	Output: HeapSize,
-	GroupMeta<C>: OperatorState,
+	GroupMeta<S>: OperatorState,
 	RollingTopKEmit<SK, Output>: OperatorState,
-	RollingTopKBuffer<C, Accumulator>: OperatorState,
+	RollingTopKBuffer<S, Accumulator>: OperatorState,
 {
 	pub fn new(_config: WindowEngineConfig) -> Self {
 		Self {
@@ -87,14 +87,14 @@ where
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		self.meta_sweep.sweep::<GroupMeta<C>>(store, threshold)
+		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
 	}
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn apply<SKF, RKF, CB>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
+		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
 		capacity: usize,
 		state_key: SKF,
 		row_key: RKF,
@@ -103,7 +103,7 @@ where
 	where
 		SKF: Fn(&G) -> EncodedKey,
 		RKF: Fn(&G, &SK) -> EncodedKey,
-		CB: Fn(&G, &RollingTopKBuffer<C, Accumulator>) -> RollingTopKEmit<SK, Output>,
+		CB: Fn(&G, &RollingTopKBuffer<S, Accumulator>) -> RollingTopKEmit<SK, Output>,
 	{
 		if buckets.is_empty() {
 			return Ok(Vec::new());
@@ -126,9 +126,9 @@ where
 	fn load_meta(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
-	) -> Result<MetaLoaded<G, C>> {
-		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
+		buckets: &RollingBuckets<G, S, Accumulator::Contribution>,
+	) -> Result<MetaLoaded<G, S>> {
+		let mut meta_loaded: MetaLoaded<G, S> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
 				let batch = load_batch_meta(store, &meta_key_for(group))?;
@@ -141,8 +141,8 @@ where
 	fn resolve_state_rows<SKF>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
-		meta_loaded: &MetaLoaded<G, C>,
+		buckets: &RollingBuckets<G, S, Accumulator::Contribution>,
+		meta_loaded: &MetaLoaded<G, S>,
 		state_key: &SKF,
 	) -> Result<StateRows<G>>
 	where
@@ -152,9 +152,9 @@ where
 		let mut resolve_order: Vec<G> = Vec::new();
 		let mut state_lookup_keys: Vec<EncodedKey> = Vec::new();
 		let mut seen: BTreeSet<G> = BTreeSet::new();
-		for (group, coord) in buckets.keys() {
+		for (group, slot) in buckets.keys() {
 			let initial_high_water = meta_loaded.get(group).and_then(|m| m.initial);
-			if initial_high_water.is_none_or(|hw| *coord >= hw) && seen.insert(group.clone()) {
+			if initial_high_water.is_none_or(|hw| *slot >= hw) && seen.insert(group.clone()) {
 				resolve_order.push(group.clone());
 				state_lookup_keys.push(state_key(group));
 			}
@@ -186,7 +186,7 @@ where
 	fn resolve_fallback_rows<SKF>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
+		buckets: &RollingBuckets<G, S, Accumulator::Contribution>,
 		state_rows: &StateRows<G>,
 		state_key: &SKF,
 	) -> Result<StateRows<G>>
@@ -231,22 +231,22 @@ where
 	fn apply_events_into_buffers<SKF>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
-		meta_loaded: &mut MetaLoaded<G, C>,
+		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
+		meta_loaded: &mut MetaLoaded<G, S>,
 		state_rows: &StateRows<G>,
 		state_key: &SKF,
 		capacity: usize,
-	) -> Result<BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>>>
+	) -> Result<BTreeMap<G, GroupSlot<S, Accumulator, SK, Output>>>
 	where
 		SKF: Fn(&G) -> EncodedKey,
 	{
-		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>> = BTreeMap::new();
+		let mut group_slots: BTreeMap<G, GroupSlot<S, Accumulator, SK, Output>> = BTreeMap::new();
 		let fallback_rows = self.resolve_fallback_rows(store, &buckets, state_rows, state_key)?;
 
-		for ((group, coord), events) in buckets {
+		for ((group, slot), events) in buckets {
 			let meta = meta_loaded.entry(group.clone()).or_default();
 
-			let slot = match group_slots.get_mut(&group) {
+			let group_slot = match group_slots.get_mut(&group) {
 				Some(s) => s,
 				None => {
 					let (group_id, state_row_number) = match state_rows.get(&group) {
@@ -255,7 +255,7 @@ where
 							.get(&group)
 							.expect("every group outside state_rows was resolved upfront"),
 					};
-					let buffer: RollingTopKBuffer<C, Accumulator> =
+					let buffer: RollingTopKBuffer<S, Accumulator> =
 						get_classified(store, &BufferKey::of_row(group_id, state_row_number))?
 							.unwrap_or_default();
 					let prior_emit: RollingTopKEmit<SK, Output> =
@@ -275,7 +275,7 @@ where
 				}
 			};
 
-			let mut accumulator = slot.buffer.remove(&coord).unwrap_or_default();
+			let mut accumulator = group_slot.buffer.remove(&slot).unwrap_or_default();
 			let mut touched = false;
 			for event in events {
 				match event {
@@ -293,25 +293,25 @@ where
 				}
 			}
 			if !accumulator.is_empty() {
-				slot.buffer.insert(coord, accumulator);
+				group_slot.buffer.insert(slot, accumulator);
 			}
 			if !touched {
 				continue;
 			}
-			while slot.buffer.len() > capacity {
-				slot.buffer.pop_first();
+			while group_slot.buffer.len() > capacity {
+				group_slot.buffer.pop_first();
 			}
-			slot.buffer_changed = true;
+			group_slot.buffer_changed = true;
 
 			reifydb_assertions! {
 				let next_high_water = match meta.high_water() {
-					Some(hw) if hw > coord => hw,
-					_ => coord,
+					Some(hw) if hw > slot => hw,
+					_ => slot,
 				};
 				assert!(
-					next_high_water >= coord,
-					"high_water regressed below the window coord it just admitted, so the next batch would \
-					 treat an already-processed window as late and silently drop its events (coord={coord:?}, \
+					next_high_water >= slot,
+					"high_water regressed below the window slot it just admitted, so the next batch would \
+					 treat an already-processed window as late and silently drop its events (slot={slot:?}, \
 					 prev_high_water={prev:?}, next_high_water={next_high_water:?})",
 					prev = meta.high_water()
 				);
@@ -319,12 +319,12 @@ where
 					assert!(
 						next_high_water >= prev,
 						"high_water moved backwards across an admit, breaking the monotonic late-event \
-						 cutoff that buried-window dropping relies on (coord={coord:?}, prev_high_water={prev:?}, \
+						 cutoff that buried-window dropping relies on (slot={slot:?}, prev_high_water={prev:?}, \
 						 next_high_water={next_high_water:?})"
 					);
 				}
 			}
-			meta.observe(coord);
+			meta.observe(slot);
 		}
 
 		Ok(group_slots)
@@ -333,26 +333,26 @@ where
 	fn diff_emits<RKF, CB>(
 		&mut self,
 		store: &mut dyn StateStore,
-		group_slots: BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>>,
+		group_slots: BTreeMap<G, GroupSlot<S, Accumulator, SK, Output>>,
 		row_key: &RKF,
 		combine: &CB,
 	) -> Result<Vec<TopKEmit<Output>>>
 	where
 		RKF: Fn(&G, &SK) -> EncodedKey,
-		CB: Fn(&G, &RollingTopKBuffer<C, Accumulator>) -> RollingTopKEmit<SK, Output>,
+		CB: Fn(&G, &RollingTopKBuffer<S, Accumulator>) -> RollingTopKEmit<SK, Output>,
 	{
 		let mut emits: Vec<TopKEmit<Output>> = Vec::new();
 
-		for (group, slot) in group_slots {
-			if !slot.buffer_changed {
+		for (group, group_slot) in group_slots {
+			if !group_slot.buffer_changed {
 				continue;
 			}
-			let new_emit = combine(&group, &slot.buffer);
+			let new_emit = combine(&group, &group_slot.buffer);
 
 			let new_keys: Vec<EncodedKey> = new_emit.keys().map(|sk| row_key(&group, sk)).collect();
-			let new_rows = store.get_or_create_row_numbers(slot.group_id, &new_keys)?;
+			let new_rows = store.get_or_create_row_numbers(group_slot.group_id, &new_keys)?;
 			for ((sk, new_out), (rn, is_new)) in new_emit.iter().zip(new_rows) {
-				match (is_new, slot.prior_emit.get(sk)) {
+				match (is_new, group_slot.prior_emit.get(sk)) {
 					(true, _) => {
 						emits.push(TopKEmit::Insert {
 							row_number: rn,
@@ -378,9 +378,9 @@ where
 				}
 			}
 			let removed: Vec<(&SK, &Output)> =
-				slot.prior_emit.iter().filter(|(sk, _)| !new_emit.contains_key(sk)).collect();
+				group_slot.prior_emit.iter().filter(|(sk, _)| !new_emit.contains_key(sk)).collect();
 			let removed_keys: Vec<EncodedKey> = removed.iter().map(|(sk, _)| row_key(&group, sk)).collect();
-			let removed_rows = store.get_or_create_row_numbers(slot.group_id, &removed_keys)?;
+			let removed_rows = store.get_or_create_row_numbers(group_slot.group_id, &removed_keys)?;
 			for ((_, prior_out), (rn, _is_new_alloc)) in removed.iter().zip(removed_rows) {
 				emits.push(TopKEmit::Remove {
 					row_number: rn,
@@ -388,25 +388,29 @@ where
 				});
 			}
 			for key in &removed_keys {
-				store.remove_row_number(slot.group_id, key)?;
+				store.remove_row_number(group_slot.group_id, key)?;
 			}
 
-			if slot.buffer.is_empty() {
-				remove(store, &BufferKey::of_row(slot.group_id, slot.state_row_number))?;
+			if group_slot.buffer.is_empty() {
+				remove(store, &BufferKey::of_row(group_slot.group_id, group_slot.state_row_number))?;
 			} else {
-				put(store, &BufferKey::of_row(slot.group_id, slot.state_row_number), slot.buffer)?;
+				put(
+					store,
+					&BufferKey::of_row(group_slot.group_id, group_slot.state_row_number),
+					group_slot.buffer,
+				)?;
 			}
 			if new_emit.is_empty() {
-				remove(store, &EmitKey::new(slot.group_id, slot.state_row_number))?;
+				remove(store, &EmitKey::new(group_slot.group_id, group_slot.state_row_number))?;
 			} else {
-				put(store, &EmitKey::new(slot.group_id, slot.state_row_number), new_emit)?;
+				put(store, &EmitKey::new(group_slot.group_id, group_slot.state_row_number), new_emit)?;
 			}
 		}
 
 		Ok(emits)
 	}
 
-	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
 		persist_batch_meta(store, meta_loaded)
 	}
 }
@@ -548,7 +552,7 @@ mod tests {
 		// emitted Remove does not close it: Remove withdraws the view row, not the mapping.
 		let mut store = MockStore::default();
 		// `combine` publishes the ranking under secondary key 0, so the ranked row's mapping is
-		// row_key(group=1, sk=0), distinct from the rolling coord (10).
+		// row_key(group=1, sk=0), distinct from the rolling slot (10).
 		let ranked_key = row_key(&1, &0);
 
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
@@ -619,7 +623,7 @@ mod tests {
 	}
 	#[test]
 	fn per_coord_churn_matches_a_recomputed_ranking_oracle() {
-		// The buffer lives as per-coord entries and the ranking as a separate last_emit entry, but
+		// The buffer lives as per-slot entries and the ranking as a separate last_emit entry, but
 		// the engine must still emit what a from-scratch recombine would. A single ranked key
 		// reduces the visible state to one value, checked against a live-buffer oracle each batch.
 		const CAP: usize = 4;
@@ -635,23 +639,23 @@ mod tests {
 		let mut live: BTreeMap<u64, (i64, u64)> = BTreeMap::new();
 		let mut added: Vec<(u64, i64)> = Vec::new();
 		let mut visible: Option<i64> = None;
-		let mut coord_base = 100u64;
+		let mut slot_base = 100u64;
 
 		for round in 0..200u64 {
 			let mut plan: Vec<(u64, i64, bool)> = Vec::new();
 			for _ in 0..=roll(3) {
-				let coord = coord_base + roll(20);
+				let slot = slot_base + roll(20);
 				let value = roll(1_000) as i64 + 1;
-				plan.push((coord, value, true));
-				added.push((coord, value));
+				plan.push((slot, value, true));
+				added.push((slot, value));
 			}
 			if round % 3 == 2 && !added.is_empty() {
-				let (coord, value) = added.remove((roll(added.len() as u64)) as usize);
-				plan.push((coord, value, false));
+				let (slot, value) = added.remove((roll(added.len() as u64)) as usize);
+				plan.push((slot, value, false));
 			}
 
-			for &(coord, value, is_add) in &plan {
-				let e = live.entry(coord).or_insert((0, 0));
+			for &(slot, value, is_add) in &plan {
+				let e = live.entry(slot).or_insert((0, 0));
 				if is_add {
 					e.0 += value;
 					e.1 += 1;
@@ -659,10 +663,10 @@ mod tests {
 					e.0 -= value;
 					e.1 -= 1;
 					if e.1 == 0 {
-						live.remove(&coord);
+						live.remove(&slot);
 					}
 				} else {
-					live.remove(&coord);
+					live.remove(&slot);
 				}
 			}
 			while live.len() > CAP {
@@ -671,13 +675,13 @@ mod tests {
 			}
 
 			let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
-			for &(coord, value, is_add) in &plan {
+			for &(slot, value, is_add) in &plan {
 				let ev = if is_add {
 					AccumulatorEvent::Add(value)
 				} else {
 					AccumulatorEvent::Remove(value)
 				};
-				buckets.entry((1u32, at_millis(coord))).or_default().push(ev);
+				buckets.entry((1u32, at_millis(slot))).or_default().push(ev);
 			}
 			let emits = engine.apply(&mut store, buckets, CAP, state_key, row_key, combine).unwrap();
 			for e in &emits {
@@ -702,7 +706,7 @@ mod tests {
 				Some(live.values().map(|(s, _)| *s).sum::<i64>())
 			};
 			assert_eq!(visible, oracle, "visible ranking diverged from the oracle after round {round}");
-			coord_base += roll(10);
+			slot_base += roll(10);
 		}
 	}
 }

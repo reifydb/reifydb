@@ -28,15 +28,15 @@ pub trait SealFold {
 }
 
 #[operator_state]
-pub struct SealingFold<C: Slot, F: SealFold> {
-	base: SealingBase<C, F::Value>,
+pub struct SealingFold<S: Slot, F: SealFold> {
+	base: SealingBase<S, F::Value>,
 	params: F::Params,
 	sealed: F::State,
 	last_sealed: Option<F::Value>,
 	marker: PhantomData<fn() -> F>,
 }
 
-impl<C: Slot, F: SealFold> Clone for SealingFold<C, F> {
+impl<S: Slot, F: SealFold> Clone for SealingFold<S, F> {
 	fn clone(&self) -> Self {
 		Self {
 			base: self.base.clone(),
@@ -48,7 +48,7 @@ impl<C: Slot, F: SealFold> Clone for SealingFold<C, F> {
 	}
 }
 
-impl<C: Slot, F: SealFold> Debug for SealingFold<C, F> {
+impl<S: Slot, F: SealFold> Debug for SealingFold<S, F> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("SealingFold")
 			.field("base", &self.base)
@@ -59,7 +59,7 @@ impl<C: Slot, F: SealFold> Debug for SealingFold<C, F> {
 	}
 }
 
-impl<C: Slot, F: SealFold> Default for SealingFold<C, F> {
+impl<S: Slot, F: SealFold> Default for SealingFold<S, F> {
 	fn default() -> Self {
 		Self {
 			base: SealingBase::default(),
@@ -71,8 +71,8 @@ impl<C: Slot, F: SealFold> Default for SealingFold<C, F> {
 	}
 }
 
-impl<C: Slot, F: SealFold> SealingFold<C, F> {
-	pub fn new(immutable: SlotSpan<C>, params: F::Params) -> Self {
+impl<S: Slot, F: SealFold> SealingFold<S, F> {
+	pub fn new(immutable: SlotSpan<S>, params: F::Params) -> Self {
 		Self::maybe_immutable(Some(immutable), params)
 	}
 
@@ -80,7 +80,7 @@ impl<C: Slot, F: SealFold> SealingFold<C, F> {
 		Self::maybe_immutable(None, params)
 	}
 
-	pub fn maybe_immutable(immutable: Option<SlotSpan<C>>, params: F::Params) -> Self {
+	pub fn maybe_immutable(immutable: Option<SlotSpan<S>>, params: F::Params) -> Self {
 		Self {
 			base: SealingBase::maybe_immutable(immutable),
 			params,
@@ -107,23 +107,23 @@ impl<C: Slot, F: SealFold> SealingFold<C, F> {
 	}
 }
 
-impl<C, F> WindowAccumulator for SealingFold<C, F>
+impl<S, F> WindowAccumulator for SealingFold<S, F>
 where
-	C: Slot + Hash,
+	S: Slot + Hash,
 	F: SealFold,
-	SealingFold<C, F>: OperatorState + StateCodec + HeapSize,
+	SealingFold<S, F>: OperatorState + StateCodec + HeapSize,
 {
-	type Contribution = (C, F::Value);
+	type Contribution = (S, F::Value);
 	type Output = F::Output;
 
-	fn add(&mut self, contribution: &(C, F::Value)) {
+	fn add(&mut self, contribution: &(S, F::Value)) {
 		for (_, v) in self.base.push(contribution.0, contribution.1.clone()) {
 			F::fold(&self.params, &mut self.sealed, self.last_sealed.as_ref(), &v);
 			self.last_sealed = Some(v);
 		}
 	}
 
-	fn remove(&mut self, contribution: &(C, F::Value)) {
+	fn remove(&mut self, contribution: &(S, F::Value)) {
 		self.base.remove(&contribution.0);
 	}
 
@@ -142,7 +142,7 @@ where
 	}
 }
 
-impl<C: Slot + HeapSize, F: SealFold> HeapSize for SealingFold<C, F>
+impl<S: Slot + HeapSize, F: SealFold> HeapSize for SealingFold<S, F>
 where
 	F::Value: HeapSize,
 	F::State: HeapSize,
@@ -290,7 +290,7 @@ mod tests {
 
 	#[test]
 	fn sealing_fold_does_not_fold_a_corrected_coordinate_twice() {
-		// A repeat of an already sealed coordinate is a correction to that row, never a second contribution.
+		// A repeat of an already sealed slot is a correction to that row, never a second contribution.
 		let mut accumulator: SealingFold<DateTime, SumFold> = SealingFold::new(millis(1), ());
 		accumulator.add(&(at_millis(0), 10.0));
 		accumulator.add(&(at_millis(2), 20.0));
@@ -398,7 +398,7 @@ mod tests {
 
 	#[test]
 	fn sealing_fold_len_collapses_a_repeated_key_and_drops_on_live_removal() {
-		// A repeated coordinate is one corrected observation, never two.
+		// A repeated slot is one corrected observation, never two.
 		let mut accumulator: SealingFold<DateTime, AbsPathFold> = SealingFold::new(millis(10), ());
 		accumulator.add(&(at_millis(0), 10.0));
 		accumulator.add(&(at_millis(0), 25.0));

@@ -29,33 +29,33 @@ use crate::{
 	},
 };
 
-type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
+type MetaLoaded<G, S> = HashMap<G, BatchMeta<S>>;
 type BufferRows<G> = HashMap<G, (GroupId, EncodedKey)>;
 
-struct GroupSlot<C, Accumulator, Running, Output> {
+struct GroupSlot<S, Accumulator, Running, Output> {
 	group_id: GroupId,
 	key: EncodedKey,
-	buffer: RollingBuffer<C, Accumulator>,
+	buffer: RollingBuffer<S, Accumulator>,
 	running: Running,
 	buffer_changed: bool,
 	prior_output: Option<Output>,
 }
 
-pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
+pub struct RollingIncrementalEngine<G, S, Accumulator, Running> {
 	meta_sweep: MetaSweep,
-	_pd: PhantomData<(G, C, Accumulator, Running)>,
+	_pd: PhantomData<(G, S, Accumulator, Running)>,
 }
 
-impl<G, C, Accumulator, Running> RollingIncrementalEngine<G, C, Accumulator, Running>
+impl<G, S, Accumulator, Running> RollingIncrementalEngine<G, S, Accumulator, Running>
 where
 	G: Clone + Eq + Ord + Hash + Debug,
-	C: Slot + Hash,
+	S: Slot + Hash,
 	Accumulator: WindowAccumulator,
 	Running: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
-	C: HeapSize,
-	GroupMeta<C>: OperatorState,
-	RollingBuffer<C, Accumulator>: OperatorState + HeapSize,
+	S: HeapSize,
+	GroupMeta<S>: OperatorState,
+	RollingBuffer<S, Accumulator>: OperatorState + HeapSize,
 {
 	pub fn new(_config: WindowEngineConfig) -> Self {
 		Self {
@@ -65,14 +65,14 @@ where
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		self.meta_sweep.sweep::<GroupMeta<C>>(store, threshold)
+		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
 	}
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn apply<K, WC, CR, Output>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
+		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
 		capacity: usize,
 		row_key: K,
 		window_contribution: WC,
@@ -81,7 +81,7 @@ where
 	where
 		K: Fn(&G) -> EncodedKey,
 		WC: Fn(&Accumulator::Output) -> Running::Contribution,
-		CR: Fn(&G, &Running, &Accumulator::Output, C) -> Option<Output>,
+		CR: Fn(&G, &Running, &Accumulator::Output, S) -> Option<Output>,
 	{
 		if buckets.is_empty() {
 			return Ok(Vec::new());
@@ -89,12 +89,12 @@ where
 		let mut meta_loaded = self.load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(&buckets, &meta_loaded, &row_key)?;
 
-		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, Running, Output>> = BTreeMap::new();
+		let mut group_slots: BTreeMap<G, GroupSlot<S, Accumulator, Running, Output>> = BTreeMap::new();
 
-		for ((group, coord), events) in buckets {
+		for ((group, slot), events) in buckets {
 			let meta = meta_loaded.entry(group.clone()).or_default();
 
-			let slot = match group_slots.get_mut(&group) {
+			let group_slot = match group_slots.get_mut(&group) {
 				Some(s) => s,
 				None => {
 					let (group_id, key) = match buffer_rows.get(&group) {
@@ -105,16 +105,16 @@ where
 							(group_id, key)
 						}
 					};
-					let buffer: RollingBuffer<C, Accumulator> =
+					let buffer: RollingBuffer<S, Accumulator> =
 						get_classified(store, &WindowStateKey::new(group_id, key.clone()))?
 							.unwrap_or_default();
 					let running: Running =
 						get_classified(store, &RunningKey::new(group_id, key.clone()))?
 							.unwrap_or_default();
 					let prior_output = match buffer.iter().next_back() {
-						Some((coord, accumulator)) => {
+						Some((slot, accumulator)) => {
 							accumulator.finalize().and_then(|newest| {
-								combine_running(&group, &running, &newest, *coord)
+								combine_running(&group, &running, &newest, *slot)
 							})
 						}
 						None => None,
@@ -134,7 +134,7 @@ where
 				}
 			};
 
-			let mut accumulator = slot.buffer.remove(&coord).unwrap_or_default();
+			let mut accumulator = group_slot.buffer.remove(&slot).unwrap_or_default();
 			let old_value = accumulator.finalize();
 			let mut touched = false;
 			for event in events {
@@ -158,47 +158,51 @@ where
 			let new_value = accumulator.finalize();
 
 			if let Some(old) = &old_value {
-				slot.running.remove(&window_contribution(old));
+				group_slot.running.remove(&window_contribution(old));
 			}
 			if let Some(new) = &new_value {
-				slot.running.add(&window_contribution(new));
+				group_slot.running.add(&window_contribution(new));
 			}
 
 			if !accumulator.is_empty() {
-				slot.buffer.insert(coord, accumulator);
+				group_slot.buffer.insert(slot, accumulator);
 			}
-			while slot.buffer.len() > capacity {
-				if let Some((_, evicted)) = slot.buffer.pop_first()
+			while group_slot.buffer.len() > capacity {
+				if let Some((_, evicted)) = group_slot.buffer.pop_first()
 					&& let Some(value) = evicted.finalize()
 				{
-					slot.running.remove(&window_contribution(&value));
+					group_slot.running.remove(&window_contribution(&value));
 				}
 			}
-			slot.buffer_changed = true;
+			group_slot.buffer_changed = true;
 
-			meta.observe(coord);
+			meta.observe(slot);
 		}
 
 		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
 		let mut pending: Vec<(G, Output, bool)> = Vec::new();
-		for (group, slot) in group_slots {
-			if !slot.buffer_changed {
+		for (group, group_slot) in group_slots {
+			if !group_slot.buffer_changed {
 				continue;
 			}
-			let output = match slot.buffer.iter().next_back() {
-				Some((coord, accumulator)) => accumulator
-					.finalize()
-					.and_then(|newest| combine_running(&group, &slot.running, &newest, *coord)),
+			let output = match group_slot.buffer.iter().next_back() {
+				Some((slot, accumulator)) => accumulator.finalize().and_then(|newest| {
+					combine_running(&group, &group_slot.running, &newest, *slot)
+				}),
 				None => None,
 			};
-			put(store, &WindowStateKey::new(slot.group_id, slot.key.clone()), slot.buffer)?;
-			put(store, &RunningKey::new(slot.group_id, slot.key.clone()), slot.running)?;
+			put(
+				store,
+				&WindowStateKey::new(group_slot.group_id, group_slot.key.clone()),
+				group_slot.buffer,
+			)?;
+			put(store, &RunningKey::new(group_slot.group_id, group_slot.key.clone()), group_slot.running)?;
 
 			if let Some(out) = output {
-				pairs.push((slot.group_id, slot.key));
+				pairs.push((group_slot.group_id, group_slot.key));
 				pending.push((group, out, false));
-			} else if let Some(prior) = slot.prior_output {
-				pairs.push((slot.group_id, slot.key));
+			} else if let Some(prior) = group_slot.prior_output {
+				pairs.push((group_slot.group_id, group_slot.key));
 				pending.push((group, prior, true));
 			}
 		}
@@ -241,9 +245,9 @@ where
 	fn load_meta(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
-	) -> Result<MetaLoaded<G, C>> {
-		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
+		buckets: &RollingBuckets<G, S, Accumulator::Contribution>,
+	) -> Result<MetaLoaded<G, S>> {
+		let mut meta_loaded: MetaLoaded<G, S> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
 				let batch = load_batch_meta(store, &meta_key_for(group))?;
@@ -255,8 +259,8 @@ where
 
 	fn resolve_buffer_rows<K>(
 		&mut self,
-		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
-		meta_loaded: &MetaLoaded<G, C>,
+		buckets: &RollingBuckets<G, S, Accumulator::Contribution>,
+		meta_loaded: &MetaLoaded<G, S>,
 		row_key: &K,
 	) -> Result<BufferRows<G>>
 	where
@@ -266,9 +270,9 @@ where
 		let mut resolve_order: Vec<G> = Vec::new();
 		let mut group_keys: Vec<EncodedKey> = Vec::new();
 		let mut seen: BTreeSet<G> = BTreeSet::new();
-		for (group, coord) in buckets.keys() {
+		for (group, slot) in buckets.keys() {
 			let initial_high_water = meta_loaded.get(group).and_then(|m| m.initial);
-			if initial_high_water.is_none_or(|hw| *coord >= hw) && seen.insert(group.clone()) {
+			if initial_high_water.is_none_or(|hw| *slot >= hw) && seen.insert(group.clone()) {
 				resolve_order.push(group.clone());
 				group_keys.push(row_key(group));
 			}
@@ -280,7 +284,7 @@ where
 		Ok(buffer_rows)
 	}
 
-	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
 		persist_batch_meta(store, meta_loaded)
 	}
 }
@@ -321,7 +325,7 @@ mod tests {
 	#[test]
 	fn buffer_survives_restart_without_running_collision() {
 		// `buffers` and `running` are keyed by the same RowNumber, so sharing a keyspace lets
-		// `running` (flushed last) clobber the buffer's store slot. A live engine hides it by
+		// `running` (flushed last) clobber the buffer's store group_slot. A live engine hides it by
 		// serving both from memory; a restart is one of the two ways a read reaches the store.
 		let mut store = MockStore::default();
 

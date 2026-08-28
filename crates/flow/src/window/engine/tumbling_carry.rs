@@ -34,13 +34,13 @@ use crate::{
 
 #[operator_state]
 #[derive(Debug, Clone)]
-pub struct WindowEntry<C, Carry, Output> {
-	span: WindowSpan<C>,
+pub struct WindowEntry<S, Carry, Output> {
+	span: WindowSpan<S>,
 	carry_out: Option<Carry>,
 	last_output: Option<Output>,
 }
 
-impl<C: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for WindowEntry<C, Carry, Output> {
+impl<S: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for WindowEntry<S, Carry, Output> {
 	fn heap_size(&self) -> usize {
 		self.span.heap_size() + self.carry_out.heap_size() + self.last_output.heap_size()
 	}
@@ -48,14 +48,14 @@ impl<C: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for WindowEntry<C,
 
 #[operator_state]
 #[derive(Debug, Clone)]
-pub struct CarryMeta<C, Carry, Output> {
-	high_water: Option<C>,
-	sealed_up_to: Option<C>,
+pub struct CarryMeta<S, Carry, Output> {
+	high_water: Option<S>,
+	sealed_up_to: Option<S>,
 	sealed_carry: Option<Carry>,
-	windows: BTreeMap<C, WindowEntry<C, Carry, Output>>,
+	windows: BTreeMap<S, WindowEntry<S, Carry, Output>>,
 }
 
-impl<C: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for CarryMeta<C, Carry, Output> {
+impl<S: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for CarryMeta<S, Carry, Output> {
 	fn heap_size(&self) -> usize {
 		self.high_water.heap_size()
 			+ self.sealed_up_to.heap_size()
@@ -64,7 +64,7 @@ impl<C: HeapSize, Carry: HeapSize, Output: HeapSize> HeapSize for CarryMeta<C, C
 	}
 }
 
-impl<C, Carry, Output> Default for CarryMeta<C, Carry, Output> {
+impl<S, Carry, Output> Default for CarryMeta<S, Carry, Output> {
 	fn default() -> Self {
 		Self {
 			high_water: None,
@@ -75,7 +75,7 @@ impl<C, Carry, Output> Default for CarryMeta<C, Carry, Output> {
 	}
 }
 
-impl<C: WindowAnchor, Carry, Output> MetaHighWater for CarryMeta<C, Carry, Output>
+impl<S: WindowAnchor, Carry, Output> MetaHighWater for CarryMeta<S, Carry, Output>
 where
 	Self: OperatorState,
 {
@@ -84,37 +84,37 @@ where
 	}
 }
 
-type MetaLoaded<G, C, Carry, Output> = HashMap<G, CarryMeta<C, Carry, Output>>;
+type MetaLoaded<G, S, Carry, Output> = HashMap<G, CarryMeta<S, Carry, Output>>;
 type SlotResolved = Vec<Option<(GroupId, EncodedKey)>>;
 
-struct PendingCarry<C, Output> {
+struct PendingCarry<S, Output> {
 	group_id: GroupId,
 	key: EncodedKey,
-	span: WindowSpan<C>,
+	span: WindowSpan<S>,
 	value: Output,
 	withdraw: bool,
 }
 
-pub struct TumblingCarryEngine<G, C: WindowAnchor, Accumulator, Carry, Output> {
+pub struct TumblingCarryEngine<G, S: WindowAnchor, Accumulator, Carry, Output> {
 	meta_sweep: MetaSweep,
-	retention: Option<SlotSpan<C>>,
+	retention: Option<SlotSpan<S>>,
 	_pd: PhantomData<(G, Accumulator, Carry, Output)>,
 }
 
-impl<G, C, Accumulator, Carry, Output> TumblingCarryEngine<G, C, Accumulator, Carry, Output>
+impl<G, S, Accumulator, Carry, Output> TumblingCarryEngine<G, S, Accumulator, Carry, Output>
 where
 	G: Clone + Eq + Ord + Hash + Debug,
-	C: WindowAnchor + Hash,
+	S: WindowAnchor + Hash,
 	Accumulator: WindowAccumulator,
 	Carry: Clone + Debug,
 	Output: Clone + Debug,
 	for<'a> &'a G: IntoEncodedKey,
-	C: HeapSize,
+	S: HeapSize,
 	Carry: HeapSize,
 	Output: HeapSize,
-	CarryMeta<C, Carry, Output>: OperatorState,
+	CarryMeta<S, Carry, Output>: OperatorState,
 {
-	pub fn new(config: TumblingCarryConfig<C>) -> Self {
+	pub fn new(config: TumblingCarryConfig<S>) -> Self {
 		Self {
 			meta_sweep: MetaSweep::default(),
 			retention: config.retention(),
@@ -123,23 +123,23 @@ where
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		self.meta_sweep.sweep::<CarryMeta<C, Carry, Output>>(store, threshold)
+		self.meta_sweep.sweep::<CarryMeta<S, Carry, Output>>(store, threshold)
 	}
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn apply<K, NA, BO, CF>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
+		buckets: TumblingBuckets<G, S, Accumulator::Contribution>,
 		row_key: K,
 		new_accumulator: NA,
 		build_output: BO,
 		carry_forward: CF,
-	) -> Result<Vec<WindowResult<G, C, Output>>>
+	) -> Result<Vec<WindowResult<G, S, Output>>>
 	where
-		K: Fn(&G, C) -> EncodedKey,
+		K: Fn(&G, S) -> EncodedKey,
 		NA: Fn() -> Accumulator,
-		BO: Fn(&G, WindowSpan<C>, &Accumulator::Output, Option<&Carry>) -> Option<Output>,
+		BO: Fn(&G, WindowSpan<S>, &Accumulator::Output, Option<&Carry>) -> Option<Output>,
 		CF: Fn(&Accumulator::Output, Option<&Carry>) -> Option<Carry>,
 	{
 		if buckets.is_empty() {
@@ -149,7 +149,7 @@ where
 		let mut meta_loaded = self.load_meta(store, &buckets)?;
 		let slot_resolved = self.resolve_survivor_rows(&buckets, &meta_loaded, &row_key)?;
 
-		let mut earliest_affected: HashMap<G, C> = HashMap::new();
+		let mut earliest_affected: HashMap<G, S> = HashMap::new();
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
 			let entry = meta_loaded.entry(group.clone()).or_default();
 			if matches!(entry.sealed_up_to, Some(s) if span.start <= s) {
@@ -203,7 +203,7 @@ where
 			}
 		}
 
-		let mut results: Vec<WindowResult<G, C, Output>> = Vec::new();
+		let mut results: Vec<WindowResult<G, S, Output>> = Vec::new();
 		for (group, start) in earliest_affected {
 			let meta = meta_loaded.get_mut(&group).expect("affected group has meta");
 
@@ -212,34 +212,34 @@ where
 				None => meta.sealed_carry.clone(),
 			};
 
-			let coords: Vec<C> = meta.windows.range(start..).map(|(c, _)| *c).collect();
-			let coord_keys: Vec<EncodedKey> = coords.iter().map(|coord| row_key(&group, *coord)).collect();
-			let mut emptied: Vec<C> = Vec::new();
-			let mut pending: Vec<PendingCarry<C, Output>> = Vec::new();
-			for (coord, slot_key) in coords.into_iter().zip(coord_keys) {
-				let span = meta.windows.get(&coord).expect("window entry present").span;
-				let coord_group = GroupId::of(&slot_key);
+			let slots: Vec<S> = meta.windows.range(start..).map(|(c, _)| *c).collect();
+			let slot_keys: Vec<EncodedKey> = slots.iter().map(|slot| row_key(&group, *slot)).collect();
+			let mut emptied: Vec<S> = Vec::new();
+			let mut pending: Vec<PendingCarry<S, Output>> = Vec::new();
+			for (slot, slot_key) in slots.into_iter().zip(slot_keys) {
+				let span = meta.windows.get(&slot).expect("window entry present").span;
+				let slot_group = GroupId::of(&slot_key);
 				let finalized = get::<_, Accumulator>(
 					store,
-					&WindowStateKey::new(coord_group, slot_key.clone()),
+					&WindowStateKey::new(slot_group, slot_key.clone()),
 				)?
 				.and_then(|a| a.finalize())
-				.map(|value| (coord_group, value));
-				let emitted = finalized.as_ref().and_then(|(coord_group, value)| {
+				.map(|value| (slot_group, value));
+				let emitted = finalized.as_ref().and_then(|(slot_group, value)| {
 					build_output(&group, span, value, prev_carry.as_ref())
-						.map(|out| (*coord_group, value, out))
+						.map(|out| (*slot_group, value, out))
 				});
 				match emitted {
-					Some((coord_group, value, out)) => {
+					Some((slot_group, value, out)) => {
 						let new_carry = carry_forward(value, prev_carry.as_ref());
-						let w = meta.windows.get_mut(&coord).expect("window entry present");
+						let w = meta.windows.get_mut(&slot).expect("window entry present");
 						w.carry_out = new_carry.clone();
 						w.last_output = Some(out.clone());
 						if new_carry.is_some() {
 							prev_carry = new_carry;
 						}
 						pending.push(PendingCarry {
-							group_id: coord_group,
+							group_id: slot_group,
 							key: slot_key,
 							span,
 							value: out,
@@ -248,17 +248,17 @@ where
 					}
 					None => {
 						if let Some(prev) =
-							meta.windows.get(&coord).and_then(|w| w.last_output.clone())
+							meta.windows.get(&slot).and_then(|w| w.last_output.clone())
 						{
 							pending.push(PendingCarry {
-								group_id: coord_group,
+								group_id: slot_group,
 								key: slot_key,
 								span,
 								value: prev,
 								withdraw: true,
 							});
 						}
-						emptied.push(coord);
+						emptied.push(slot);
 					}
 				}
 			}
@@ -295,12 +295,12 @@ where
 				});
 			}
 
-			for coord in emptied {
-				meta.windows.remove(&coord);
+			for slot in emptied {
+				meta.windows.remove(&slot);
 			}
 
 			if let (Some(retention), Some(hw)) = (retention, meta.high_water) {
-				let to_seal: Vec<C> = meta
+				let to_seal: Vec<S> = meta
 					.windows
 					.keys()
 					.copied()
@@ -332,9 +332,9 @@ where
 	fn load_meta(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
-	) -> Result<MetaLoaded<G, C, Carry, Output>> {
-		let mut meta_loaded: MetaLoaded<G, C, Carry, Output> = HashMap::new();
+		buckets: &TumblingBuckets<G, S, Accumulator::Contribution>,
+	) -> Result<MetaLoaded<G, S, Carry, Output>> {
+		let mut meta_loaded: MetaLoaded<G, S, Carry, Output> = HashMap::new();
 		let mut by_key: HashMap<GroupStateKey, G> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if meta_loaded.contains_key(group) {
@@ -346,7 +346,7 @@ where
 		let keys: Vec<GroupStateKey> = by_key.keys().cloned().collect();
 		store.state_get_many_visit(&keys, &mut |key, bytes| {
 			if let Some(group) = by_key.get(&key) {
-				meta_loaded.insert(group.clone(), decode::<CarryMeta<C, Carry, Output>>(&bytes)?);
+				meta_loaded.insert(group.clone(), decode::<CarryMeta<S, Carry, Output>>(&bytes)?);
 			}
 			Ok(())
 		})?;
@@ -355,12 +355,12 @@ where
 
 	fn resolve_survivor_rows<K>(
 		&mut self,
-		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
-		meta_loaded: &MetaLoaded<G, C, Carry, Output>,
+		buckets: &TumblingBuckets<G, S, Accumulator::Contribution>,
+		meta_loaded: &MetaLoaded<G, S, Carry, Output>,
 		row_key: &K,
 	) -> Result<SlotResolved>
 	where
-		K: Fn(&G, C) -> EncodedKey,
+		K: Fn(&G, S) -> EncodedKey,
 	{
 		let mut survivor_keys: Vec<EncodedKey> = Vec::new();
 		let mut slot_survives: Vec<bool> = Vec::with_capacity(buckets.len());
@@ -389,7 +389,7 @@ where
 	fn persist_meta(
 		&mut self,
 		store: &mut dyn StateStore,
-		meta_loaded: MetaLoaded<G, C, Carry, Output>,
+		meta_loaded: MetaLoaded<G, S, Carry, Output>,
 	) -> Result<()> {
 		for (group, meta) in meta_loaded {
 			put(store, &meta_key_for(&group), meta)?;
@@ -492,13 +492,13 @@ mod tests {
 
 	impl CountingStore {
 		fn row_number_for(&mut self, group: GroupId, key: &EncodedKey) -> (RowNumber, bool) {
-			let slot = (group, key.as_bytes().to_vec());
-			if let Some(rn) = self.rows.get(&slot) {
+			let slot_key = (group, key.as_bytes().to_vec());
+			if let Some(rn) = self.rows.get(&slot_key) {
 				return (*rn, false);
 			}
 			self.next_row += 1;
 			let rn = RowNumber(self.next_row);
-			self.rows.insert(slot, rn);
+			self.rows.insert(slot_key, rn);
 			(rn, true)
 		}
 	}

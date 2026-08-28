@@ -33,9 +33,9 @@ pub(crate) fn of64(v: f64) -> OrdF64 {
 	OrdF64::new(v).expect("not nan")
 }
 
-pub(crate) enum Op<C> {
-	Add(C),
-	Remove(C),
+pub(crate) enum Op<Contribution> {
+	Add(Contribution),
+	Remove(Contribution),
 }
 
 pub(crate) fn drive<A: WindowAccumulator>(accumulator: &mut A, ops: &[Op<A::Contribution>]) {

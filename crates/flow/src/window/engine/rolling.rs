@@ -40,9 +40,9 @@ use crate::{
 	},
 };
 
-pub type RollingBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
+pub type RollingBuffer<S, Accumulator> = BTreeMap<S, Accumulator>;
 
-pub type RollingBuckets<G, C, Contribution> = BTreeMap<(G, C), Vec<AccumulatorEvent<Contribution>>>;
+pub type RollingBuckets<G, S, Contribution> = BTreeMap<(G, S), Vec<AccumulatorEvent<Contribution>>>;
 
 pub struct RollingResult<G, Output> {
 	pub row_number: RowNumber,
@@ -52,9 +52,9 @@ pub struct RollingResult<G, Output> {
 	pub kind: EmitKind,
 }
 
-pub enum RollingEviction<C: Slot> {
+pub enum RollingEviction<S: Slot> {
 	Capacity(usize),
-	Before(C),
+	Before(S),
 	Nothing,
 }
 
@@ -80,42 +80,42 @@ pub struct RollingIndexEntry<G> {
 	group_id: u128,
 }
 
-fn coord_min_key<C: Slot, A>(buffer: &RollingBuffer<C, A>) -> Option<u64> {
+fn coord_min_key<S: Slot, A>(buffer: &RollingBuffer<S, A>) -> Option<u64> {
 	buffer.keys().next().map(|c| c.order_key().to_order())
 }
 
-type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
+type MetaLoaded<G, S> = HashMap<G, BatchMeta<S>>;
 type BufferRows<G> = HashMap<G, (GroupId, EncodedKey)>;
 
-struct GroupSlot<C, Accumulator, Output> {
+struct GroupSlot<S, Accumulator, Output> {
 	group_id: GroupId,
 	key: EncodedKey,
-	buffer: RollingBuffer<C, Accumulator>,
+	buffer: RollingBuffer<S, Accumulator>,
 	buffer_changed: bool,
 	prior_index_key: Option<u64>,
 	prior_output: Option<Output>,
 }
 
-pub struct RollingEngine<G, C: Slot, Accumulator> {
+pub struct RollingEngine<G, S: Slot, Accumulator> {
 	runnable: bool,
 	meta_sweep: MetaSweep,
 	expire_batch: usize,
-	lag: <C::Coord as Coord>::Span,
+	lag: <S::Coord as Coord>::Span,
 	expiry: ExpiryIndex,
-	_pd: PhantomData<(G, C, Accumulator)>,
+	_pd: PhantomData<(G, S, Accumulator)>,
 }
 
-struct RunnableGroupSlot<C: Slot, Accumulator>
+struct RunnableGroupSlot<S: Slot, Accumulator>
 where
 	Accumulator: WindowAccumulator,
 {
 	group_id: GroupId,
 	key: EncodedKey,
-	buffer: RollingBuffer<C, Accumulator>,
+	buffer: RollingBuffer<S, Accumulator>,
 	running: Accumulator,
 	buffer_changed: bool,
 	prior_min: Option<u64>,
-	old_frontier: Option<C::Coord>,
+	old_frontier: Option<S::Coord>,
 	prior_output: Option<Accumulator::Output>,
 }
 
@@ -127,9 +127,9 @@ fn merge_into<A: WindowAccumulator>(running: &mut A, other: &A) {
 	}
 }
 
-fn frontier_for<C: Slot>(lag: <C::Coord as Coord>::Span, high_water: &Option<C>) -> Option<C::Coord> {
+fn frontier_for<S: Slot>(lag: <S::Coord as Coord>::Span, high_water: &Option<S>) -> Option<S::Coord> {
 	if lag.is_zero() {
-		Some(<C::Coord as Coord>::MAX)
+		Some(<S::Coord as Coord>::MAX)
 	} else {
 		high_water.as_ref().map(|hw| hw.order_key().saturating_sub_span(lag))
 	}
@@ -139,13 +139,13 @@ fn is_merged_coord<C: Coord>(coord: C, frontier: Option<C>) -> bool {
 	frontier.is_some_and(|f| coord <= f)
 }
 
-fn running_below<C: Slot, A: WindowAccumulator>(buffer: &RollingBuffer<C, A>, frontier: Option<C::Coord>) -> A {
+fn running_below<S: Slot, A: WindowAccumulator>(buffer: &RollingBuffer<S, A>, frontier: Option<S::Coord>) -> A {
 	let mut running = A::default();
 	let Some(frontier) = frontier else {
 		return running;
 	};
-	for (coord, accumulator) in buffer.iter() {
-		if coord.order_key() > frontier {
+	for (slot, accumulator) in buffer.iter() {
+		if slot.order_key() > frontier {
 			break;
 		}
 		merge_into(&mut running, accumulator);
@@ -153,15 +153,15 @@ fn running_below<C: Slot, A: WindowAccumulator>(buffer: &RollingBuffer<C, A>, fr
 	running
 }
 
-impl<G, C, Accumulator> RollingEngine<G, C, Accumulator>
+impl<G, S, Accumulator> RollingEngine<G, S, Accumulator>
 where
 	G: Clone + Eq + Ord + Hash + Debug,
-	C: Slot + Hash + HeapSize,
+	S: Slot + Hash + HeapSize,
 	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
-	GroupMeta<C>: OperatorState,
+	GroupMeta<S>: OperatorState,
 	RollingIndexEntry<G>: OperatorState,
-	RollingBuffer<C, Accumulator>: OperatorState,
+	RollingBuffer<S, Accumulator>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
@@ -180,7 +180,7 @@ where
 		engine
 	}
 
-	pub fn with_lag(mut self, lag: <C::Coord as Coord>::Span) -> Self {
+	pub fn with_lag(mut self, lag: <S::Coord as Coord>::Span) -> Self {
 		self.lag = lag;
 		self
 	}
@@ -188,14 +188,14 @@ where
 	pub fn apply<K, CB, Output>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
+		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
 		capacity: usize,
 		row_key: K,
 		combine: CB,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
 		K: Fn(&G) -> (GroupId, EncodedKey),
-		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
+		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
 	{
 		self.apply_evicting(
 			store,
@@ -210,8 +210,8 @@ where
 	pub fn apply_evicting<K, NA, CB, Output>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
-		eviction: RollingEviction<C>,
+		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
+		eviction: RollingEviction<S>,
 		row_key: K,
 		new_accumulator: NA,
 		combine: CB,
@@ -219,7 +219,7 @@ where
 	where
 		K: Fn(&G) -> (GroupId, EncodedKey),
 		NA: Fn() -> Accumulator,
-		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
+		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
 	{
 		if buckets.is_empty() {
 			return Ok(Vec::new());
@@ -246,9 +246,9 @@ where
 	fn load_meta(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
-	) -> Result<MetaLoaded<G, C>> {
-		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
+		buckets: &RollingBuckets<G, S, Accumulator::Contribution>,
+	) -> Result<MetaLoaded<G, S>> {
+		let mut meta_loaded: MetaLoaded<G, S> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
 				let batch = load_batch_meta(store, &meta_key_for(group))?;
@@ -260,8 +260,8 @@ where
 
 	fn resolve_buffer_rows<K>(
 		&mut self,
-		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
-		meta_loaded: &MetaLoaded<G, C>,
+		buckets: &RollingBuckets<G, S, Accumulator::Contribution>,
+		meta_loaded: &MetaLoaded<G, S>,
 		row_key: &K,
 	) -> Result<BufferRows<G>>
 	where
@@ -269,9 +269,9 @@ where
 	{
 		let mut buffer_rows: BufferRows<G> = HashMap::new();
 		let mut seen: BTreeSet<G> = BTreeSet::new();
-		for (group, coord) in buckets.keys() {
+		for (group, slot) in buckets.keys() {
 			let initial_high_water = meta_loaded.get(group).and_then(|m| m.initial);
-			if initial_high_water.is_none_or(|hw| *coord >= hw) && seen.insert(group.clone()) {
+			if initial_high_water.is_none_or(|hw| *slot >= hw) && seen.insert(group.clone()) {
 				let (id, key) = row_key(group);
 				buffer_rows.insert(group.clone(), (id, key));
 			}
@@ -283,33 +283,33 @@ where
 	fn apply_events_into_buffers<K, NA, CB, Output>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
-		meta_loaded: &mut MetaLoaded<G, C>,
+		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
+		meta_loaded: &mut MetaLoaded<G, S>,
 		buffer_rows: &BufferRows<G>,
 		row_key: &K,
-		eviction: &RollingEviction<C>,
+		eviction: &RollingEviction<S>,
 		new_accumulator: &NA,
 		combine: &CB,
 		indexed: bool,
-	) -> Result<BTreeMap<G, GroupSlot<C, Accumulator, Output>>>
+	) -> Result<BTreeMap<G, GroupSlot<S, Accumulator, Output>>>
 	where
 		K: Fn(&G) -> (GroupId, EncodedKey),
 		NA: Fn() -> Accumulator,
-		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
+		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
 	{
-		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, Output>> = BTreeMap::new();
+		let mut group_slots: BTreeMap<G, GroupSlot<S, Accumulator, Output>> = BTreeMap::new();
 
-		for ((group, coord), events) in buckets {
+		for ((group, slot), events) in buckets {
 			let meta = meta_loaded.entry(group.clone()).or_default();
 
-			let slot = match group_slots.get_mut(&group) {
+			let group_slot = match group_slots.get_mut(&group) {
 				Some(s) => s,
 				None => {
 					let (group_id, key) = match buffer_rows.get(&group) {
 						Some(resolved) => resolved.clone(),
 						None => row_key(&group),
 					};
-					let buffer: RollingBuffer<C, Accumulator> =
+					let buffer: RollingBuffer<S, Accumulator> =
 						get_classified(store, &BufferKey::new(group_id, key.clone()))?
 							.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
@@ -338,7 +338,7 @@ where
 				}
 			};
 
-			let mut accumulator = slot.buffer.remove(&coord).unwrap_or_else(new_accumulator);
+			let mut accumulator = group_slot.buffer.remove(&slot).unwrap_or_else(new_accumulator);
 			let mut touched = false;
 			for event in events {
 				match event {
@@ -356,21 +356,21 @@ where
 				}
 			}
 			if !accumulator.is_empty() {
-				slot.buffer.insert(coord, accumulator);
+				group_slot.buffer.insert(slot, accumulator);
 			}
 			if !touched {
 				continue;
 			}
 			match eviction {
 				RollingEviction::Capacity(cap) => {
-					while slot.buffer.len() > *cap {
-						slot.buffer.pop_first();
+					while group_slot.buffer.len() > *cap {
+						group_slot.buffer.pop_first();
 					}
 				}
 				RollingEviction::Before(cutoff) => {
-					while let Some((&oldest, _)) = slot.buffer.iter().next() {
+					while let Some((&oldest, _)) = group_slot.buffer.iter().next() {
 						if oldest <= *cutoff {
-							slot.buffer.pop_first();
+							group_slot.buffer.pop_first();
 						} else {
 							break;
 						}
@@ -378,9 +378,9 @@ where
 				}
 				RollingEviction::Nothing => {}
 			}
-			slot.buffer_changed = true;
+			group_slot.buffer_changed = true;
 
-			meta.observe(coord);
+			meta.observe(slot);
 		}
 		Ok(group_slots)
 	}
@@ -388,23 +388,23 @@ where
 	fn combine_and_collect<CB, Output>(
 		&mut self,
 		store: &mut dyn StateStore,
-		group_slots: BTreeMap<G, GroupSlot<C, Accumulator, Output>>,
+		group_slots: BTreeMap<G, GroupSlot<S, Accumulator, Output>>,
 		combine: &CB,
 		indexed: bool,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
-		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
+		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
 	{
 		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
 		let mut pending: Vec<(G, Output, bool)> = Vec::new();
-		for (group, slot) in group_slots {
-			if !slot.buffer_changed {
+		for (group, group_slot) in group_slots {
+			if !group_slot.buffer_changed {
 				continue;
 			}
 			if indexed {
-				let new_index_key = coord_min_key(&slot.buffer);
-				if new_index_key != slot.prior_index_key {
-					if let Some(old) = slot.prior_index_key {
+				let new_index_key = coord_min_key(&group_slot.buffer);
+				if new_index_key != group_slot.prior_index_key {
+					if let Some(old) = group_slot.prior_index_key {
 						expiry_drop(store, &expiry_key(old, &group, &[]))?;
 					}
 					if let Some(new) = new_index_key {
@@ -413,25 +413,29 @@ where
 							expiry_key(new, &group, &[]),
 							RollingIndexEntry {
 								group: group.clone(),
-								slot_key: slot.key.as_bytes().to_vec(),
-								group_id: slot.group_id.0,
+								slot_key: group_slot.key.as_bytes().to_vec(),
+								group_id: group_slot.group_id.0,
 							},
 						)?;
 					}
 				}
 			}
-			let output = combine(&group, &slot.buffer);
-			if slot.buffer.is_empty() {
-				remove(store, &BufferKey::new(slot.group_id, slot.key.clone()))?;
+			let output = combine(&group, &group_slot.buffer);
+			if group_slot.buffer.is_empty() {
+				remove(store, &BufferKey::new(group_slot.group_id, group_slot.key.clone()))?;
 			} else {
-				put(store, &BufferKey::new(slot.group_id, slot.key.clone()), slot.buffer)?;
+				put(
+					store,
+					&BufferKey::new(group_slot.group_id, group_slot.key.clone()),
+					group_slot.buffer,
+				)?;
 			}
 
 			if let Some(out) = output {
-				pairs.push((slot.group_id, slot.key));
+				pairs.push((group_slot.group_id, group_slot.key));
 				pending.push((group, out, false));
-			} else if let Some(prior) = slot.prior_output {
-				pairs.push((slot.group_id, slot.key));
+			} else if let Some(prior) = group_slot.prior_output {
+				pairs.push((group_slot.group_id, group_slot.key));
 				pending.push((group, prior, true));
 			}
 		}
@@ -474,12 +478,12 @@ where
 	fn load_running(
 		&mut self,
 		store: &mut dyn StateStore,
-		buffer: &RollingBuffer<C, Accumulator>,
+		buffer: &RollingBuffer<S, Accumulator>,
 		group_id: GroupId,
-		slot: &EncodedKey,
-		frontier: Option<C::Coord>,
+		slot_key: &EncodedKey,
+		frontier: Option<S::Coord>,
 	) -> Result<Accumulator> {
-		if let Some(running) = get_classified(store, &RunningKey::new(group_id, slot.clone()))? {
+		if let Some(running) = get_classified(store, &RunningKey::new(group_id, slot_key.clone()))? {
 			return Ok(running);
 		}
 		Ok(running_below(buffer, frontier))
@@ -488,8 +492,8 @@ where
 	pub fn apply_running<K, NA>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
-		eviction: RollingEviction<C>,
+		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
+		eviction: RollingEviction<S>,
 		row_key: K,
 		new_accumulator: NA,
 	) -> Result<Vec<RollingResult<G, Accumulator::Output>>>
@@ -516,24 +520,24 @@ where
 		let mut meta_loaded = self.load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(&buckets, &meta_loaded, &row_key)?;
 
-		let mut group_slots: BTreeMap<G, RunnableGroupSlot<C, Accumulator>> = BTreeMap::new();
-		for ((group, coord), events) in buckets {
+		let mut group_slots: BTreeMap<G, RunnableGroupSlot<S, Accumulator>> = BTreeMap::new();
+		for ((group, slot), events) in buckets {
 			let meta = meta_loaded.entry(group.clone()).or_default();
 
-			let slot = match group_slots.get_mut(&group) {
+			let group_slot = match group_slots.get_mut(&group) {
 				Some(s) => s,
 				None => {
 					let (group_id, key) = match buffer_rows.get(&group) {
 						Some(resolved) => resolved.clone(),
 						None => row_key(&group),
 					};
-					let buffer: RollingBuffer<C, Accumulator> =
+					let buffer: RollingBuffer<S, Accumulator> =
 						get_classified(store, &BufferKey::new(group_id, key.clone()))?
 							.unwrap_or_default();
 					let old_frontier = frontier_for(self.lag, &meta.high_water());
 					let prior_min = coord_min_key(&buffer);
 					let merged_before = prior_min.is_some_and(|m| {
-						is_merged_coord(<C::Coord as Coord>::from_order(m), old_frontier)
+						is_merged_coord(<S::Coord as Coord>::from_order(m), old_frontier)
 					});
 					let running = if merged_before {
 						self.load_running(store, &buffer, group_id, &key, old_frontier)?
@@ -562,7 +566,7 @@ where
 				}
 			};
 
-			let mut accumulator = slot.buffer.get(&coord).cloned().unwrap_or_else(&new_accumulator);
+			let mut accumulator = group_slot.buffer.get(&slot).cloned().unwrap_or_else(&new_accumulator);
 			let before = accumulator.clone();
 			let mut touched = false;
 			for event in events {
@@ -583,60 +587,61 @@ where
 			if !touched {
 				continue;
 			}
-			if is_merged_coord(coord.order_key(), slot.old_frontier) {
+			if is_merged_coord(slot.order_key(), group_slot.old_frontier) {
 				if !before.is_empty() {
-					slot.running.unmerge(&before);
+					group_slot.running.unmerge(&before);
 				}
 				if !accumulator.is_empty() {
-					merge_into(&mut slot.running, &accumulator);
+					merge_into(&mut group_slot.running, &accumulator);
 				}
 			}
 			if !accumulator.is_empty() {
-				slot.buffer.insert(coord, accumulator);
+				group_slot.buffer.insert(slot, accumulator);
 			} else {
-				slot.buffer.remove(&coord);
+				group_slot.buffer.remove(&slot);
 			}
-			slot.buffer_changed = true;
+			group_slot.buffer_changed = true;
 
-			meta.observe(coord);
+			meta.observe(slot);
 		}
 
 		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
 		let mut pending: Vec<(G, Accumulator::Output, bool)> = Vec::new();
-		for (group, mut slot) in group_slots {
-			if !slot.buffer_changed {
+		for (group, mut group_slot) in group_slots {
+			if !group_slot.buffer_changed {
 				continue;
 			}
 			let high_water = meta_loaded.get(&group).expect("touched group has loaded meta").high_water();
 			let new_frontier = frontier_for(self.lag, &high_water);
-			if new_frontier > slot.old_frontier
+			if new_frontier > group_slot.old_frontier
 				&& let Some(upto) = new_frontier
 			{
-				let lo = match slot.old_frontier {
-					Some(after) => Bound::Excluded(C::from_order_key(after)),
+				let lo = match group_slot.old_frontier {
+					Some(after) => Bound::Excluded(S::from_order_key(after)),
 					None => Bound::Unbounded,
 				};
-				let running = &mut slot.running;
+				let running = &mut group_slot.running;
 				for (_, accumulator) in
-					slot.buffer.range((lo, Bound::Included(C::from_order_key(upto))))
+					group_slot.buffer.range((lo, Bound::Included(S::from_order_key(upto))))
 				{
 					merge_into(running, accumulator);
 				}
 			}
 			if let Some(evict_cutoff) = evict_cutoff {
-				let due: Vec<C> = slot.buffer.range(..=evict_cutoff).map(|(coord, _)| *coord).collect();
-				for coord in due {
-					let Some(evicted) = slot.buffer.remove(&coord) else {
+				let due: Vec<S> =
+					group_slot.buffer.range(..=evict_cutoff).map(|(slot, _)| *slot).collect();
+				for slot in due {
+					let Some(evicted) = group_slot.buffer.remove(&slot) else {
 						continue;
 					};
-					if is_merged_coord(coord.order_key(), new_frontier) {
-						slot.running.unmerge(&evicted);
+					if is_merged_coord(slot.order_key(), new_frontier) {
+						group_slot.running.unmerge(&evicted);
 					}
 				}
 			}
-			let new_min = coord_min_key(&slot.buffer);
-			if new_min != slot.prior_min {
-				if let Some(old) = slot.prior_min {
+			let new_min = coord_min_key(&group_slot.buffer);
+			if new_min != group_slot.prior_min {
+				if let Some(old) = group_slot.prior_min {
 					expiry_drop(store, &expiry_key(old, &group, &[]))?;
 				}
 				if let Some(new) = new_min {
@@ -645,35 +650,43 @@ where
 						expiry_key(new, &group, &[]),
 						RollingIndexEntry {
 							group: group.clone(),
-							slot_key: slot.key.as_bytes().to_vec(),
-							group_id: slot.group_id.0,
+							slot_key: group_slot.key.as_bytes().to_vec(),
+							group_id: group_slot.group_id.0,
 						},
 					)?;
 				}
 			}
 			let merged_any = new_min
-				.is_some_and(|m| is_merged_coord(<C::Coord as Coord>::from_order(m), new_frontier));
+				.is_some_and(|m| is_merged_coord(<S::Coord as Coord>::from_order(m), new_frontier));
 			let output = if merged_any {
-				slot.running.finalize()
+				group_slot.running.finalize()
 			} else {
 				None
 			};
-			if slot.buffer.is_empty() {
-				remove(store, &BufferKey::new(slot.group_id, slot.key.clone()))?;
+			if group_slot.buffer.is_empty() {
+				remove(store, &BufferKey::new(group_slot.group_id, group_slot.key.clone()))?;
 			} else {
-				put(store, &BufferKey::new(slot.group_id, slot.key.clone()), slot.buffer)?;
+				put(
+					store,
+					&BufferKey::new(group_slot.group_id, group_slot.key.clone()),
+					group_slot.buffer,
+				)?;
 			}
 			if merged_any {
-				put(store, &RunningKey::new(slot.group_id, slot.key.clone()), slot.running)?;
+				put(
+					store,
+					&RunningKey::new(group_slot.group_id, group_slot.key.clone()),
+					group_slot.running,
+				)?;
 			} else {
-				remove(store, &RunningKey::new(slot.group_id, slot.key.clone()))?;
+				remove(store, &RunningKey::new(group_slot.group_id, group_slot.key.clone()))?;
 			}
 
 			if let Some(out) = output {
-				pairs.push((slot.group_id, slot.key));
+				pairs.push((group_slot.group_id, group_slot.key));
 				pending.push((group, out, false));
-			} else if let Some(prior) = slot.prior_output {
-				pairs.push((slot.group_id, slot.key));
+			} else if let Some(prior) = group_slot.prior_output {
+				pairs.push((group_slot.group_id, group_slot.key));
 				pending.push((group, prior, true));
 			}
 		}
@@ -716,7 +729,7 @@ where
 	pub fn expire_before_running(
 		&mut self,
 		store: &mut dyn StateStore,
-		cutoff: C,
+		cutoff: S,
 	) -> Result<Vec<RollingExpiry<G, Accumulator::Output>>> {
 		reifydb_assertions! {
 			assert!(
@@ -730,19 +743,19 @@ where
 		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
 		let mut pending: Vec<(G, Option<Accumulator::Output>)> = Vec::new();
 		for (index_key, entry) in due {
-			let slot = EncodedKey::new(&entry.slot_key);
+			let slot_key = EncodedKey::new(&entry.slot_key);
 			let group_id = GroupId(entry.group_id);
 			expiry_drop(store, &index_key)?;
 			let frontier = if self.lag.is_zero() {
-				Some(<C::Coord as Coord>::MAX)
+				Some(<S::Coord as Coord>::MAX)
 			} else {
 				let lag = self.lag;
-				get::<_, GroupMeta<C>>(store, &meta_key_for(&entry.group))?
-					.and_then(|meta| frontier_for::<C>(lag, &meta.high_water))
+				get::<_, GroupMeta<S>>(store, &meta_key_for(&entry.group))?
+					.and_then(|meta| frontier_for::<S>(lag, &meta.high_water))
 			};
-			let mut buffer: RollingBuffer<C, Accumulator> =
-				get_classified(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
-			let expired: Vec<C> = buffer.range(..=cutoff).map(|(coord, _)| *coord).collect();
+			let mut buffer: RollingBuffer<S, Accumulator> =
+				get_classified(store, &BufferKey::new(group_id, slot_key.clone()))?.unwrap_or_default();
+			let expired: Vec<S> = buffer.range(..=cutoff).map(|(slot, _)| *slot).collect();
 			if expired.is_empty() {
 				if let Some(new) = coord_min_key(&buffer) {
 					self.expiry.set(
@@ -757,20 +770,20 @@ where
 				}
 				continue;
 			}
-			let mut running = self.load_running(store, &buffer, group_id, &slot, frontier)?;
+			let mut running = self.load_running(store, &buffer, group_id, &slot_key, frontier)?;
 			let mut unmerged_any = false;
-			for coord in expired {
-				let Some(accumulator) = buffer.remove(&coord) else {
+			for slot in expired {
+				let Some(accumulator) = buffer.remove(&slot) else {
 					continue;
 				};
-				if is_merged_coord(coord.order_key(), frontier) {
+				if is_merged_coord(slot.order_key(), frontier) {
 					running.unmerge(&accumulator);
 					unmerged_any = true;
 				}
 			}
 			let new_min = coord_min_key(&buffer);
 			let merged_any =
-				new_min.is_some_and(|m| is_merged_coord(<C::Coord as Coord>::from_order(m), frontier));
+				new_min.is_some_and(|m| is_merged_coord(<S::Coord as Coord>::from_order(m), frontier));
 			let finalized = if merged_any {
 				running.finalize()
 			} else {
@@ -787,9 +800,9 @@ where
 							group_id: entry.group_id,
 						},
 					)?;
-					put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
-					put(store, &RunningKey::new(group_id, slot.clone()), running)?;
-					pairs.push((group_id, slot));
+					put(store, &BufferKey::new(group_id, slot_key.clone()), buffer)?;
+					put(store, &RunningKey::new(group_id, slot_key.clone()), running)?;
+					pairs.push((group_id, slot_key));
 					pending.push((entry.group, Some(value)));
 				}
 				(Some(new), false, _) => {
@@ -802,17 +815,17 @@ where
 							group_id: entry.group_id,
 						},
 					)?;
-					put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
-					remove(store, &RunningKey::new(group_id, slot.clone()))?;
+					put(store, &BufferKey::new(group_id, slot_key.clone()), buffer)?;
+					remove(store, &RunningKey::new(group_id, slot_key.clone()))?;
 					if unmerged_any {
-						pairs.push((group_id, slot));
+						pairs.push((group_id, slot_key));
 						pending.push((entry.group, None));
 					}
 				}
 				_ => {
-					remove(store, &BufferKey::new(group_id, slot.clone()))?;
-					remove(store, &RunningKey::new(group_id, slot.clone()))?;
-					pairs.push((group_id, slot));
+					remove(store, &BufferKey::new(group_id, slot_key.clone()))?;
+					remove(store, &RunningKey::new(group_id, slot_key.clone()))?;
+					pairs.push((group_id, slot_key));
 					pending.push((entry.group, None));
 				}
 			}
@@ -849,7 +862,7 @@ where
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		self.meta_sweep.sweep::<GroupMeta<C>>(store, threshold)
+		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
 	}
 
 	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
@@ -859,11 +872,11 @@ where
 	pub fn expire_before<CB, Output>(
 		&mut self,
 		store: &mut dyn StateStore,
-		cutoff: C,
+		cutoff: S,
 		combine: CB,
 	) -> Result<Vec<RollingExpiry<G, Output>>>
 	where
-		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
+		CB: Fn(&G, &RollingBuffer<S, Accumulator>) -> Option<Output>,
 	{
 		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
 			self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
@@ -871,16 +884,16 @@ where
 		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
 		let mut pending: Vec<(G, Option<Output>)> = Vec::new();
 		for (index_key, entry) in due {
-			let slot = EncodedKey::new(&entry.slot_key);
+			let slot_key = EncodedKey::new(&entry.slot_key);
 			let group_id = GroupId(entry.group_id);
 			expiry_drop(store, &index_key)?;
-			let mut buffer: RollingBuffer<C, Accumulator> =
-				get_classified(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();
+			let mut buffer: RollingBuffer<S, Accumulator> =
+				get_classified(store, &BufferKey::new(group_id, slot_key.clone()))?.unwrap_or_default();
 			if buffer.is_empty() {
 				continue;
 			}
 			let before = buffer.len();
-			buffer.retain(|&coord, _| coord > cutoff);
+			buffer.retain(|&slot, _| slot > cutoff);
 			if buffer.len() == before {
 				if let Some(new) = coord_min_key(&buffer) {
 					self.expiry.set(
@@ -908,13 +921,13 @@ where
 							},
 						)?;
 					}
-					put(store, &BufferKey::new(group_id, slot.clone()), buffer)?;
-					pairs.push((group_id, slot));
+					put(store, &BufferKey::new(group_id, slot_key.clone()), buffer)?;
+					pairs.push((group_id, slot_key));
 					pending.push((entry.group, Some(value)));
 				}
 				_ => {
-					remove(store, &BufferKey::new(group_id, slot.clone()))?;
-					pairs.push((group_id, slot));
+					remove(store, &BufferKey::new(group_id, slot_key.clone()))?;
+					pairs.push((group_id, slot_key));
 					pending.push((entry.group, None));
 				}
 			}
@@ -950,7 +963,7 @@ where
 		Ok(out)
 	}
 
-	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
 		persist_batch_meta(store, meta_loaded)
 	}
 }
@@ -1064,7 +1077,7 @@ mod tests {
 	#[test]
 	fn nothing_to_evict_retains_the_coordinate_at_zero_and_still_indexes_the_group() {
 		// Eviction is inclusive, so clamping a not-yet-elapsed span to Before(0) would make an epoch
-		// coordinate unretainable. The group must still be indexed, or the tick that first has
+		// slot unretainable. The group must still be indexed, or the tick that first has
 		// something to evict cannot see it.
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
@@ -1090,7 +1103,7 @@ mod tests {
 	#[test]
 	fn evicting_before_zero_still_drops_the_coordinate_at_zero() {
 		// The counterpart: a real Before(0) means the span has elapsed and zero is outside the
-		// window, so the coordinate at zero must go. Only the absence of a cutoff retains it.
+		// window, so the slot at zero must go. Only the absence of a cutoff retains it.
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
@@ -1122,7 +1135,7 @@ mod tests {
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
 		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
 		buckets.insert((1u32, at_millis(30)), vec![AccumulatorEvent::Add(3)]);
-		// Before(0) evicts nothing at apply (all coords > 0), so the buffer keeps 10,20,30.
+		// Before(0) evicts nothing at apply (all slots > 0), so the buffer keeps 10,20,30.
 		engine.apply_evicting(
 			&mut store,
 			buckets,
@@ -1134,7 +1147,7 @@ mod tests {
 		.unwrap();
 		assert_eq!(store.index_entry_count(), 1, "the group is indexed by its oldest coord");
 
-		// A tick with no new events for this group evicts coords <= 20; coord 30 survives.
+		// A tick with no new events for this group evicts slots <= 20; slot 30 survives.
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let out = engine.expire_before(&mut store, at_millis(20), sum_combine).unwrap();
 		assert_eq!(out.len(), 1);
@@ -1153,7 +1166,7 @@ mod tests {
 		}
 		assert_eq!(store.index_entry_count(), 1, "still one entry, re-keyed to coord 30");
 
-		// The next tick evicts the last coord: the group empties and is removed.
+		// The next tick evicts the last slot: the group empties and is removed.
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let out = engine.expire_before(&mut store, at_millis(30), sum_combine).unwrap();
 		assert_eq!(out.len(), 1);
@@ -1191,7 +1204,7 @@ mod tests {
 		.unwrap();
 		assert_eq!(store.index_entry_count(), 2);
 
-		// Cutoff 5 is due only for group 2 (oldest coord 5); group 1 (oldest 100) is untouched.
+		// Cutoff 5 is due only for group 2 (oldest slot 5); group 1 (oldest 100) is untouched.
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let out = engine.expire_before(&mut store, at_millis(5), sum_combine).unwrap();
 		assert_eq!(out.len(), 1, "only the group with a due coord is processed");
@@ -1355,7 +1368,7 @@ mod tests {
 			state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
 			(state >> 33) % bound
 		};
-		let mut coord_base = 100u64;
+		let mut slot_base = 100u64;
 		let mut cutoff = 0u64;
 		let mut added: Vec<(u32, u64, i64)> = Vec::new();
 
@@ -1363,24 +1376,24 @@ mod tests {
 			let mut plan: Vec<(u32, u64, i64, bool)> = Vec::new();
 			for _ in 0..=roll(3) {
 				let group = roll(5) as u32;
-				let coord = coord_base + roll(40);
+				let slot = slot_base + roll(40);
 				let value = roll(1_000) as i64 + 1;
-				plan.push((group, coord, value, true));
-				added.push((group, coord, value));
+				plan.push((group, slot, value, true));
+				added.push((group, slot, value));
 			}
 			if round % 4 == 3 && !added.is_empty() {
-				let (group, coord, value) = added.remove((roll(added.len() as u64)) as usize);
-				plan.push((group, coord, value, false));
+				let (group, slot, value) = added.remove((roll(added.len() as u64)) as usize);
+				plan.push((group, slot, value, false));
 			}
 			let build = |plan: &[(u32, u64, i64, bool)]| {
 				let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
-				for &(group, coord, value, is_add) in plan {
+				for &(group, slot, value, is_add) in plan {
 					let event = if is_add {
 						AccumulatorEvent::Add(value)
 					} else {
 						AccumulatorEvent::Remove(value)
 					};
-					buckets.entry((group, at_millis(coord))).or_default().push(event);
+					buckets.entry((group, at_millis(slot))).or_default().push(event);
 				}
 				buckets
 			};
@@ -1410,7 +1423,7 @@ mod tests {
 			);
 
 			if round % 5 == 4 {
-				cutoff = coord_base.saturating_sub(30);
+				cutoff = slot_base.saturating_sub(30);
 				let recombine_exp = recombine
 					.expire_before(&mut recombine_store, at_millis(cutoff), sum_combine)
 					.unwrap();
@@ -1421,9 +1434,9 @@ mod tests {
 					describe_expiries(&runnable_exp),
 					"expiry diverged from the recombine at round {round}"
 				);
-				added.retain(|(_, coord, _)| *coord > cutoff);
+				added.retain(|(_, slot, _)| *slot > cutoff);
 			}
-			coord_base += roll(20);
+			slot_base += roll(20);
 		}
 
 		assert_eq!(
@@ -1449,7 +1462,7 @@ mod tests {
 
 	#[test]
 	fn runnable_engine_bootstraps_running_from_recombine_coords() {
-		// The two paths share per-coord storage, so coords written by apply_evicting must fold into
+		// The two paths share per-slot storage, so slots written by apply_evicting must fold into
 		// the running accumulator the first time the runnable path touches the group, on both the
 		// apply and the expiry path.
 		let mut store = MockStore::default();
@@ -1506,8 +1519,8 @@ mod tests {
 
 	#[test]
 	fn per_coord_storage_leaves_nothing_behind_after_terminal_drain() {
-		// After every group expires no coord, running or expiry-index entry may remain. The two
-		// apply paths share per-coord storage, so a leak on either is the unbounded state growth
+		// After every group expires no slot, running or expiry-index entry may remain. The two
+		// apply paths share per-slot storage, so a leak on either is the unbounded state growth
 		// this engine exists to prevent.
 		let mut store = MockStore::default();
 		let mut recombine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
@@ -1569,7 +1582,7 @@ mod tests {
 			state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
 			(state >> 33) % bound
 		};
-		let mut coord_base = 100u64;
+		let mut slot_base = 100u64;
 		let mut cutoff = 0u64;
 		let mut added: Vec<(u32, u64, i64)> = Vec::new();
 		let mut live: BTreeMap<(u32, u64), (i64, u64)> = BTreeMap::new();
@@ -1585,9 +1598,9 @@ mod tests {
 			let frontier = group_hw.get(&group)?.saturating_sub(lag);
 			let mut sum = 0i64;
 			let mut any = false;
-			for (&(_, coord), &(coord_sum, _)) in live.range((group, 0)..=(group, u64::MAX)) {
-				if coord <= frontier {
-					sum += coord_sum;
+			for (&(_, slot), &(slot_sum, _)) in live.range((group, 0)..=(group, u64::MAX)) {
+				if slot <= frontier {
+					sum += slot_sum;
 					any = true;
 				}
 			}
@@ -1602,34 +1615,34 @@ mod tests {
 			let mut plan: Vec<(u32, u64, i64, bool)> = Vec::new();
 			for _ in 0..=roll(3) {
 				let group = roll(5) as u32;
-				let coord = coord_base + roll(40);
+				let slot = slot_base + roll(40);
 				let value = roll(1_000) as i64 + 1;
-				plan.push((group, coord, value, true));
-				added.push((group, coord, value));
+				plan.push((group, slot, value, true));
+				added.push((group, slot, value));
 			}
 			if round % 4 == 3 && !added.is_empty() {
-				let (group, coord, value) = added.remove((roll(added.len() as u64)) as usize);
-				plan.push((group, coord, value, false));
+				let (group, slot, value) = added.remove((roll(added.len() as u64)) as usize);
+				plan.push((group, slot, value, false));
 			}
 
 			let mut changed: BTreeSet<u32> = BTreeSet::new();
-			for &(group, coord, value, is_add) in &plan {
+			for &(group, slot, value, is_add) in &plan {
 				if is_add {
-					let entry = live.entry((group, coord)).or_insert((0, 0));
+					let entry = live.entry((group, slot)).or_insert((0, 0));
 					entry.0 += value;
 					entry.1 += 1;
-				} else if let Some(entry) = live.get_mut(&(group, coord)) {
+				} else if let Some(entry) = live.get_mut(&(group, slot)) {
 					entry.0 -= value;
 					entry.1 -= 1;
 					if entry.1 == 0 {
-						live.remove(&(group, coord));
+						live.remove(&(group, slot));
 					}
 				} else {
 					continue;
 				}
 				changed.insert(group);
 				let hw = group_hw.entry(group).or_insert(0);
-				*hw = (*hw).max(coord);
+				*hw = (*hw).max(slot);
 			}
 			for &group in &changed {
 				let dead: Vec<(u32, u64)> =
@@ -1640,13 +1653,13 @@ mod tests {
 			}
 
 			let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
-			for &(group, coord, value, is_add) in &plan {
+			for &(group, slot, value, is_add) in &plan {
 				let event = if is_add {
 					AccumulatorEvent::Add(value)
 				} else {
 					AccumulatorEvent::Remove(value)
 				};
-				buckets.entry((group, at_millis(coord))).or_default().push(event);
+				buckets.entry((group, at_millis(slot))).or_default().push(event);
 			}
 			let out = engine
 				.apply_running(
@@ -1678,17 +1691,17 @@ mod tests {
 			}
 
 			if round % 5 == 4 {
-				cutoff = coord_base.saturating_sub(60);
+				cutoff = slot_base.saturating_sub(60);
 				let expiries = engine.expire_before_running(&mut store, at_millis(cutoff)).unwrap();
 				let dead: Vec<(u32, u64)> = live
 					.iter()
-					.filter(|&(&(_, coord), _)| coord <= cutoff)
+					.filter(|&(&(_, slot), _)| slot <= cutoff)
 					.map(|(&key, _)| key)
 					.collect();
 				for key in dead {
 					live.remove(&key);
 				}
-				added.retain(|(_, coord, _)| *coord > cutoff);
+				added.retain(|(_, slot, _)| *slot > cutoff);
 				for e in &expiries {
 					match e {
 						RollingExpiry::Update {
@@ -1714,7 +1727,7 @@ mod tests {
 					);
 				}
 			}
-			coord_base += roll(20);
+			slot_base += roll(20);
 		}
 
 		let drained = engine.expire_before_running(&mut store, past_every_coord()).unwrap();
@@ -1743,16 +1756,16 @@ mod tests {
 
 	#[test]
 	fn lagged_running_holds_back_coords_within_the_lag_horizon() {
-		// A coord contributes only once the group's high water has moved at least lag past it, so a
-		// first event emits nothing, later events pull older coords across the frontier, a
-		// retraction of a pending coord is invisible, and only-pending eviction withdraws the row.
+		// A slot contributes only once the group's high water has moved at least lag past it, so a
+		// first event emits nothing, later events pull older slots across the frontier, a
+		// retraction of a pending slot is invisible, and only-pending eviction withdraws the row.
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config())
 			.with_lag(millis(10));
 
 		let apply = |engine: &mut RollingEngine<u32, DateTime, SumAccumulator>,
 		             store: &mut MockStore,
-		             coord: u64,
+		             slot: u64,
 		             value: i64,
 		             is_add: bool,
 		             cutoff: u64| {
@@ -1762,7 +1775,7 @@ mod tests {
 			} else {
 				AccumulatorEvent::Remove(value)
 			};
-			buckets.insert((1u32, at_millis(coord)), vec![event]);
+			buckets.insert((1u32, at_millis(slot)), vec![event]);
 			engine.apply_running(
 				store,
 				buckets,
@@ -1813,8 +1826,8 @@ mod tests {
 
 	#[test]
 	fn lagged_expiry_retains_pending_coords() {
-		// The blob recombine destroys the whole buffer when a due group has no coord older than
-		// newest - lag, losing pending coords that would have slid into the window later. The fast
+		// The blob recombine destroys the whole buffer when a due group has no slot older than
+		// newest - lag, losing pending slots that would have slid into the window later. The fast
 		// path withdraws the visible row but keeps them for a later event to surface.
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config())

@@ -36,9 +36,9 @@ use crate::{
 	window::span::{Slot, WindowSpan},
 };
 
-pub enum AccumulatorEvent<C> {
-	Add(C),
-	Remove(C),
+pub enum AccumulatorEvent<Contribution> {
+	Add(Contribution),
+	Remove(Contribution),
 }
 
 fn note_when_expiry_capped(expired: usize, expire_batch: usize) {
@@ -65,11 +65,11 @@ pub struct WindowResult<G, Coord, Output> {
 
 #[operator_state]
 #[derive(Debug, Clone)]
-pub struct GroupMeta<K> {
-	pub high_water: Option<K>,
+pub struct GroupMeta<S> {
+	pub high_water: Option<S>,
 }
 
-impl<K> Default for GroupMeta<K> {
+impl<S> Default for GroupMeta<S> {
 	fn default() -> Self {
 		Self {
 			high_water: None,
@@ -77,7 +77,7 @@ impl<K> Default for GroupMeta<K> {
 	}
 }
 
-impl<K> HeapSize for GroupMeta<K> {
+impl<S> HeapSize for GroupMeta<S> {
 	fn heap_size(&self) -> usize {
 		0
 	}
@@ -87,18 +87,18 @@ pub(crate) trait MetaHighWater: OperatorState {
 	fn high_water_order(&self) -> Option<u64>;
 }
 
-impl<C: Slot> MetaHighWater for GroupMeta<C> {
+impl<S: Slot> MetaHighWater for GroupMeta<S> {
 	fn high_water_order(&self) -> Option<u64> {
 		self.high_water.map(|hw| hw.order_key().to_order())
 	}
 }
 
-pub(crate) struct BatchMeta<C> {
-	pub(crate) initial: Option<C>,
-	pub(crate) bumped: Option<C>,
+pub(crate) struct BatchMeta<S> {
+	pub(crate) initial: Option<S>,
+	pub(crate) bumped: Option<S>,
 }
 
-impl<C> Default for BatchMeta<C> {
+impl<S> Default for BatchMeta<S> {
 	fn default() -> Self {
 		Self {
 			initial: None,
@@ -107,35 +107,35 @@ impl<C> Default for BatchMeta<C> {
 	}
 }
 
-impl<C: Slot> BatchMeta<C> {
-	pub(crate) fn observe(&mut self, coord: C) {
+impl<S: Slot> BatchMeta<S> {
+	pub(crate) fn observe(&mut self, slot: S) {
 		match self.high_water() {
-			Some(hw) if coord > hw => self.bumped = Some(coord),
-			None => self.bumped = Some(coord),
+			Some(hw) if slot > hw => self.bumped = Some(slot),
+			None => self.bumped = Some(slot),
 			_ => {}
 		}
 	}
 
-	pub(crate) fn high_water(&self) -> Option<C> {
+	pub(crate) fn high_water(&self) -> Option<S> {
 		self.bumped.or(self.initial)
 	}
 }
 
-pub(crate) fn load_batch_meta<C>(store: &mut dyn StateStore, key: &MetaKey) -> Result<BatchMeta<C>>
+pub(crate) fn load_batch_meta<S>(store: &mut dyn StateStore, key: &MetaKey) -> Result<BatchMeta<S>>
 where
-	C: Slot,
+	S: Slot,
 {
-	let initial = get_classified::<_, GroupMeta<C>>(store, key)?.and_then(|meta| meta.high_water);
+	let initial = get_classified::<_, GroupMeta<S>>(store, key)?.and_then(|meta| meta.high_water);
 	Ok(BatchMeta {
 		initial,
 		bumped: None,
 	})
 }
 
-pub(crate) fn persist_batch_meta<G, C>(store: &mut dyn StateStore, loaded: HashMap<G, BatchMeta<C>>) -> Result<()>
+pub(crate) fn persist_batch_meta<G, S>(store: &mut dyn StateStore, loaded: HashMap<G, BatchMeta<S>>) -> Result<()>
 where
 	for<'a> &'a G: IntoEncodedKey,
-	C: Slot,
+	S: Slot,
 {
 	for (group, batch) in loaded {
 		let Some(bumped) = batch.bumped else {

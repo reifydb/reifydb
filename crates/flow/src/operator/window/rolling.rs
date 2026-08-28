@@ -60,9 +60,9 @@ pub(crate) trait RollingDomain: WindowAnchor + SealDomain + Hash + HeapSize + Se
 
 	fn eviction(operator: &WindowOperator, ledger: DateTime, lag: Self::Span) -> RollingEviction<Self>;
 
-	fn coord(columns: &Columns, row_idx: usize, timestamps: &[DateTime]) -> Self;
+	fn slot(columns: &Columns, row_idx: usize, timestamps: &[DateTime]) -> Self;
 
-	fn slot_key(coord: Self, row_number: u64) -> WindowSlotKey;
+	fn slot_key(slot: Self, row_number: u64) -> WindowSlotKey;
 
 	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<Self>;
 }
@@ -86,11 +86,11 @@ impl RollingDomain for OrdinalCoord {
 		)
 	}
 
-	fn coord(columns: &Columns, row_idx: usize, _timestamps: &[DateTime]) -> OrdinalCoord {
+	fn slot(columns: &Columns, row_idx: usize, _timestamps: &[DateTime]) -> OrdinalCoord {
 		OrdinalCoord::from_row_number(columns.row_numbers()[row_idx])
 	}
 
-	fn slot_key(_coord: OrdinalCoord, row_number: u64) -> WindowSlotKey {
+	fn slot_key(_slot: OrdinalCoord, row_number: u64) -> WindowSlotKey {
 		WindowSlotKey::new(DateTime::default(), row_number)
 	}
 
@@ -119,12 +119,12 @@ impl RollingDomain for DateTime {
 		}
 	}
 
-	fn coord(_columns: &Columns, row_idx: usize, timestamps: &[DateTime]) -> DateTime {
+	fn slot(_columns: &Columns, row_idx: usize, timestamps: &[DateTime]) -> DateTime {
 		timestamps[row_idx]
 	}
 
-	fn slot_key(coord: DateTime, row_number: u64) -> WindowSlotKey {
-		WindowSlotKey::new(coord, row_number)
+	fn slot_key(slot: DateTime, row_number: u64) -> WindowSlotKey {
+		WindowSlotKey::new(slot, row_number)
 	}
 
 	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<DateTime> {
@@ -141,7 +141,7 @@ fn rolling_span(operator: &WindowOperator, lag: Duration) -> Duration {
 	rolling_over_time(operator, lag).span()
 }
 
-type RollingEngineBuckets<C> = RollingBuckets<Hash128, C, (WindowSlotKey, Vec<Option<Value>>)>;
+type RollingEngineBuckets<S> = RollingBuckets<Hash128, S, (WindowSlotKey, Vec<Option<Value>>)>;
 
 #[instrument(name = "flow::operator::window::intern_partitions", level = "trace", skip_all, fields(partitions = touched.len()))]
 fn intern_partitions(touched: &[Hash128]) -> WindowGroups {
@@ -195,10 +195,10 @@ fn timed_row_engine(
 	}
 }
 
-fn combine_rolling<C: RollingDomain>(
-	buffer: &RollingBuffer<C, RowAccumulator>,
+fn combine_rolling<S: RollingDomain>(
+	buffer: &RollingBuffer<S, RowAccumulator>,
 	kinds: &[SlotKind],
-	lag: C::Span,
+	lag: S::Span,
 	immutable: Option<Duration>,
 ) -> Option<Vec<Value>> {
 	let (&newest, _) = buffer.iter().next_back()?;
@@ -217,11 +217,11 @@ fn combine_rolling<C: RollingDomain>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn route_rolling_columns<C: RollingDomain>(
+fn route_rolling_columns<S: RollingDomain>(
 	operator: &WindowOperator,
 	columns: &Columns,
 	is_add: bool,
-	buckets: &mut RollingEngineBuckets<C>,
+	buckets: &mut RollingEngineBuckets<S>,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
 	touched: &mut Vec<Hash128>,
 	touched_set: &mut HashSet<Hash128>,
@@ -231,22 +231,22 @@ fn route_rolling_columns<C: RollingDomain>(
 		return Ok(());
 	}
 	let groups = operator.core.compute_groups(columns)?;
-	let timestamps = if C::arms_timer() {
+	let timestamps = if S::arms_timer() {
 		operator.row_times(columns, row_count)?
 	} else {
 		Vec::new()
 	};
 	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-		let coord = C::coord(columns, row_idx, &timestamps);
-		let slot_key = C::slot_key(coord, columns.row_numbers()[row_idx].0);
+		let slot = S::slot(columns, row_idx, &timestamps);
+		let slot_key = S::slot_key(slot, columns.row_numbers()[row_idx].0);
 		let contribution = (slot_key, operator.core.build_contribution(columns, &slot_cols, row_idx));
 		let event = if is_add {
 			AccumulatorEvent::Add(contribution)
 		} else {
 			AccumulatorEvent::Remove(contribution)
 		};
-		buckets.entry((*hash, coord)).or_default().push(event);
+		buckets.entry((*hash, slot)).or_default().push(event);
 		group_values.entry(*hash).or_insert_with(|| gvals.clone());
 		if touched_set.insert(*hash) {
 			touched.push(*hash);
@@ -268,16 +268,16 @@ pub fn apply_rolling_engine(
 	}
 }
 
-fn apply_rolling<C: RollingDomain>(
+fn apply_rolling<S: RollingDomain>(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	change: Change,
 ) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let immutable = operator.immutable();
-	let lag = C::lag(operator.rolling_lag());
+	let lag = S::lag(operator.rolling_lag());
 
-	let mut buckets: RollingEngineBuckets<C> = BTreeMap::new();
+	let mut buckets: RollingEngineBuckets<S> = BTreeMap::new();
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
 	let mut touched: Vec<Hash128> = Vec::new();
 	let mut touched_set: HashSet<Hash128> = HashSet::new();
@@ -286,7 +286,7 @@ fn apply_rolling<C: RollingDomain>(
 			Diff::Insert {
 				post,
 				..
-			} => route_rolling_columns::<C>(
+			} => route_rolling_columns::<S>(
 				operator,
 				post,
 				true,
@@ -298,7 +298,7 @@ fn apply_rolling<C: RollingDomain>(
 			Diff::Remove {
 				pre,
 				..
-			} => route_rolling_columns::<C>(
+			} => route_rolling_columns::<S>(
 				operator,
 				pre,
 				false,
@@ -312,7 +312,7 @@ fn apply_rolling<C: RollingDomain>(
 				post,
 				..
 			} => {
-				route_rolling_columns::<C>(
+				route_rolling_columns::<S>(
 					operator,
 					pre,
 					false,
@@ -321,7 +321,7 @@ fn apply_rolling<C: RollingDomain>(
 					&mut touched,
 					&mut touched_set,
 				)?;
-				route_rolling_columns::<C>(
+				route_rolling_columns::<S>(
 					operator,
 					post,
 					true,
@@ -339,12 +339,12 @@ fn apply_rolling<C: RollingDomain>(
 	}
 
 	let ledger = operator.seal_ledger(host)?;
-	let eviction = C::eviction(operator, ledger.at(), lag);
+	let eviction = S::eviction(operator, ledger.at(), lag);
 
-	if let Some(horizon) = C::seal_horizon(operator, ledger.at()) {
+	if let Some(horizon) = S::seal_horizon(operator, ledger.at()) {
 		let mut dropped = 0u64;
-		buckets.retain(|&(_, coord), events| {
-			if is_sealed(coord, horizon) {
+		buckets.retain(|&(_, slot), events| {
+			if is_sealed(slot, horizon) {
 				dropped += events.len() as u64;
 				false
 			} else {
@@ -365,11 +365,11 @@ fn apply_rolling<C: RollingDomain>(
 	}
 
 	let runnable = rolling_runnable(operator, &kinds);
-	let armed_before = rolling_earliest_expiry::<C>(operator, host, runnable, lag)?;
+	let armed_before = rolling_earliest_expiry::<S>(operator, host, runnable, lag)?;
 
 	let groups = intern_partitions(&touched);
 	let results = if runnable {
-		let engine = C::engine(operator, true, lag);
+		let engine = S::engine(operator, true, lag);
 		engine.apply_running(
 			host,
 			buckets,
@@ -378,48 +378,48 @@ fn apply_rolling<C: RollingDomain>(
 			|| RowAccumulator::new(&kinds, immutable),
 		)?
 	} else {
-		let engine = C::engine(operator, false, lag);
+		let engine = S::engine(operator, false, lag);
 		engine.apply_evicting(
 			host,
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), store::empty_key()),
 			|| RowAccumulator::new(&kinds, immutable),
-			|_g, buffer| combine_rolling::<C>(buffer, &kinds, lag, immutable),
+			|_g, buffer| combine_rolling::<S>(buffer, &kinds, lag, immutable),
 		)?
 	};
 
-	rearm_rolling_seal::<C>(operator, host, armed_before, runnable, lag)?;
+	rearm_rolling_seal::<S>(operator, host, armed_before, runnable, lag)?;
 
 	let diffs = finish_rolling_results(operator, host, &change, &results, &group_values, &groups)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
-fn rolling_earliest_expiry<C: RollingDomain>(
+fn rolling_earliest_expiry<S: RollingDomain>(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	runnable: bool,
-	lag: C::Span,
-) -> Result<Option<C>> {
-	Ok(C::engine(operator, runnable, lag).earliest_expiry(host)?.map(C::from_order))
+	lag: S::Span,
+) -> Result<Option<S>> {
+	Ok(S::engine(operator, runnable, lag).earliest_expiry(host)?.map(S::from_order))
 }
 
-fn rearm_rolling_seal<C: RollingDomain>(
+fn rearm_rolling_seal<S: RollingDomain>(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
-	before: Option<C>,
+	before: Option<S>,
 	runnable: bool,
-	lag: C::Span,
+	lag: S::Span,
 ) -> Result<()> {
-	if !C::arms_timer() {
+	if !S::arms_timer() {
 		return Ok(());
 	}
-	let after = rolling_earliest_expiry::<C>(operator, host, runnable, lag)?;
+	let after = rolling_earliest_expiry::<S>(operator, host, runnable, lag)?;
 	if before == after {
 		return Ok(());
 	}
 	let gate = EvictionGate::new(rolling_span(operator, operator.rolling_lag()));
-	gate.rearm(host, &EncodedKey::new(Vec::new()), before.map(C::to_order), after.map(C::to_order))
+	gate.rearm(host, &EncodedKey::new(Vec::new()), before.map(S::to_order), after.map(S::to_order))
 }
 
 fn finish_rolling_results(
@@ -807,8 +807,8 @@ mod tests {
 	}
 
 	fn contribution(seq: u64, dollars: [f64; 3]) -> (WindowSlotKey, Vec<Option<Value>>) {
-		let coord = WindowSlotKey::new(DateTime::from_epoch_secs(seq as i64).unwrap(), seq);
-		(coord, dollars.iter().map(|d| Some(Value::float8(*d))).collect())
+		let slot_key = WindowSlotKey::new(DateTime::from_epoch_secs(seq as i64).unwrap(), seq);
+		(slot_key, dollars.iter().map(|d| Some(Value::float8(*d))).collect())
 	}
 
 	fn assert_rows_close(legacy: &[Value], runnable: &[Value], context: &str) {
@@ -844,7 +844,7 @@ mod tests {
 			state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
 			(state >> 33) % bound
 		};
-		let mut coord_base = 1_000u64;
+		let mut slot_base = 1_000u64;
 		let mut cutoff = 0u64;
 		let mut added: Vec<(Hash128, u64, [f64; 3])> = Vec::new();
 
@@ -852,29 +852,29 @@ mod tests {
 			let mut plan: Vec<(Hash128, u64, [f64; 3], bool)> = Vec::new();
 			for _ in 0..=roll(2) {
 				let group = Hash128((roll(4) + 1) as u128);
-				let coord = coord_base + roll(30);
+				let slot = slot_base + roll(30);
 				let dollars = [
 					(roll(1_000_000_000) as f64) / 100.0,
 					(roll(1_000_000) as f64) / 100.0,
 					(roll(100) as f64) / 100.0,
 				];
-				plan.push((group, coord, dollars, true));
-				added.push((group, coord, dollars));
+				plan.push((group, slot, dollars, true));
+				added.push((group, slot, dollars));
 			}
 			if round % 3 == 2 && !added.is_empty() {
-				let (group, coord, dollars) = added.remove(roll(added.len() as u64) as usize);
-				plan.push((group, coord, dollars, false));
+				let (group, slot, dollars) = added.remove(roll(added.len() as u64) as usize);
+				plan.push((group, slot, dollars, false));
 			}
 			let build = |plan: &[(Hash128, u64, [f64; 3], bool)]| {
 				let mut buckets: RollingEngineBuckets<OrdinalCoord> = TestBTreeMap::new();
-				for (group, coord, dollars, is_add) in plan {
-					let c = contribution(*coord, *dollars);
+				for (group, slot, dollars, is_add) in plan {
+					let c = contribution(*slot, *dollars);
 					let event = if *is_add {
 						AccumulatorEvent::Add(c)
 					} else {
 						AccumulatorEvent::Remove(c)
 					};
-					buckets.entry((*group, ordinal(*coord))).or_default().push(event);
+					buckets.entry((*group, ordinal(*slot))).or_default().push(event);
 				}
 				buckets
 			};
@@ -907,7 +907,7 @@ mod tests {
 			}
 
 			if round % 5 == 4 {
-				cutoff = coord_base.saturating_sub(20);
+				cutoff = slot_base.saturating_sub(20);
 				let sk = slot_kinds.clone();
 				let legacy_exp = legacy
 					.expire_before(&mut legacy_store, ordinal(cutoff), |_g, buffer| {
@@ -953,9 +953,9 @@ mod tests {
 						_ => panic!("expiry kind diverged at round {round}"),
 					}
 				}
-				added.retain(|(_, coord, _)| *coord > cutoff);
+				added.retain(|(_, slot, _)| *slot > cutoff);
 			}
-			coord_base += roll(10) + 1;
+			slot_base += roll(10) + 1;
 		}
 
 		// Draining to empty must terminally remove every group in both engines, leaving no

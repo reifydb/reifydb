@@ -14,12 +14,12 @@ use crate::window::{
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
-pub struct SealingMax<C: Slot, V: Ord> {
-	base: SealingBase<C, V>,
+pub struct SealingMax<S: Slot, V: Ord> {
+	base: SealingBase<S, V>,
 	sealed: Option<V>,
 }
 
-impl<C: Slot, V: Ord> Default for SealingMax<C, V> {
+impl<S: Slot, V: Ord> Default for SealingMax<S, V> {
 	fn default() -> Self {
 		Self {
 			base: SealingBase::default(),
@@ -28,12 +28,12 @@ impl<C: Slot, V: Ord> Default for SealingMax<C, V> {
 	}
 }
 
-impl<C: Slot, V: Ord + Clone> SealingMax<C, V> {
-	pub fn immutable(immutable: SlotSpan<C>) -> Self {
+impl<S: Slot, V: Ord + Clone> SealingMax<S, V> {
+	pub fn immutable(immutable: SlotSpan<S>) -> Self {
 		Self::maybe_immutable(Some(immutable))
 	}
 
-	pub fn maybe_immutable(immutable: Option<SlotSpan<C>>) -> Self {
+	pub fn maybe_immutable(immutable: Option<SlotSpan<S>>) -> Self {
 		Self {
 			base: SealingBase::maybe_immutable(immutable),
 			sealed: None,
@@ -67,16 +67,16 @@ impl<C: Slot, V: Ord + Clone> SealingMax<C, V> {
 	}
 }
 
-impl<C, V> WindowAccumulator for SealingMax<C, V>
+impl<S, V> WindowAccumulator for SealingMax<S, V>
 where
-	C: Slot + Hash,
+	S: Slot + Hash,
 	V: Ord + Clone + Debug,
-	SealingMax<C, V>: OperatorState + StateCodec + HeapSize,
+	SealingMax<S, V>: OperatorState + StateCodec + HeapSize,
 {
-	type Contribution = (C, V);
+	type Contribution = (S, V);
 	type Output = V;
 
-	fn add(&mut self, contribution: &(C, V)) {
+	fn add(&mut self, contribution: &(S, V)) {
 		for (_, v) in self.base.push(contribution.0, contribution.1.clone()) {
 			self.sealed = Some(match self.sealed.take() {
 				Some(s) => s.max(v),
@@ -85,7 +85,7 @@ where
 		}
 	}
 
-	fn remove(&mut self, contribution: &(C, V)) {
+	fn remove(&mut self, contribution: &(S, V)) {
 		self.base.remove(&contribution.0);
 	}
 
@@ -98,7 +98,7 @@ where
 	}
 }
 
-impl<C: Slot + HeapSize, V: Ord + HeapSize> HeapSize for SealingMax<C, V> {
+impl<S: Slot + HeapSize, V: Ord + HeapSize> HeapSize for SealingMax<S, V> {
 	fn heap_size(&self) -> usize {
 		self.base.heap_size() + self.sealed.heap_size()
 	}
@@ -145,7 +145,7 @@ mod tests {
 
 	#[test]
 	fn sealing_max_absorb_keeps_the_larger_value_at_a_shared_coordinate() {
-		// Two branches holding the same coordinate must never let the incoming value replace a larger one.
+		// Two branches holding the same slot must never let the incoming value replace a larger one.
 		let mut accumulator: SealingMax<DateTime, i64> = SealingMax::default();
 		accumulator.add(&(at_millis(0), 9));
 		let mut other: SealingMax<DateTime, i64> = SealingMax::default();
@@ -181,9 +181,9 @@ mod tests {
 		// Nothing ages in either arm, so any divergence is an aging rule that fired when it must not.
 		let mut sealed: SealingMax<DateTime, i64> = SealingMax::immutable(millis(1_000));
 		let mut unsealed: SealingMax<DateTime, i64> = SealingMax::default();
-		for (coord, value) in [(0, 5i64), (10, 9), (20, 7)] {
-			sealed.add(&(at_millis(coord), value));
-			unsealed.add(&(at_millis(coord), value));
+		for (slot, value) in [(0, 5i64), (10, 9), (20, 7)] {
+			sealed.add(&(at_millis(slot), value));
+			unsealed.add(&(at_millis(slot), value));
 		}
 
 		sealed.remove(&(at_millis(10), 9));

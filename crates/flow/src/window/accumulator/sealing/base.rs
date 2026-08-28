@@ -11,15 +11,15 @@ use crate::{
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
-pub struct SealingBase<C: Slot, V> {
-	immutable: Option<SlotSpan<C>>,
-	high_water: Option<C>,
-	sealed_high: Option<C>,
+pub struct SealingBase<S: Slot, V> {
+	immutable: Option<SlotSpan<S>>,
+	high_water: Option<S>,
+	sealed_high: Option<S>,
 	sealed_count: u64,
-	tail: SortedVecMap<C, V>,
+	tail: SortedVecMap<S, V>,
 }
 
-impl<C: Slot, V> Default for SealingBase<C, V> {
+impl<S: Slot, V> Default for SealingBase<S, V> {
 	fn default() -> Self {
 		Self {
 			immutable: None,
@@ -31,12 +31,12 @@ impl<C: Slot, V> Default for SealingBase<C, V> {
 	}
 }
 
-impl<C: Slot, V> SealingBase<C, V> {
-	pub fn immutable(immutable: SlotSpan<C>) -> Self {
+impl<S: Slot, V> SealingBase<S, V> {
+	pub fn immutable(immutable: SlotSpan<S>) -> Self {
 		Self::maybe_immutable(Some(immutable))
 	}
 
-	pub fn maybe_immutable(immutable: Option<SlotSpan<C>>) -> Self {
+	pub fn maybe_immutable(immutable: Option<SlotSpan<S>>) -> Self {
 		Self {
 			immutable,
 			high_water: None,
@@ -46,15 +46,15 @@ impl<C: Slot, V> SealingBase<C, V> {
 		}
 	}
 
-	pub fn push(&mut self, coord: C, value: V) -> Vec<(C, V)> {
-		if matches!(self.sealed_high, Some(sealed) if coord <= sealed) {
+	pub fn push(&mut self, slot: S, value: V) -> Vec<(S, V)> {
+		if matches!(self.sealed_high, Some(sealed) if slot <= sealed) {
 			return Vec::new();
 		}
 		self.high_water = Some(match self.high_water {
-			Some(hw) if hw >= coord => hw,
-			_ => coord,
+			Some(hw) if hw >= slot => hw,
+			_ => slot,
 		});
-		self.tail.insert(coord, value);
+		self.tail.insert(slot, value);
 		let mut aged = Vec::new();
 		let (Some(hw), Some(l)) = (self.high_water, self.immutable) else {
 			return aged;
@@ -71,36 +71,36 @@ impl<C: Slot, V> SealingBase<C, V> {
 		aged
 	}
 
-	pub fn absorb<F>(&mut self, other: &Self, combine: F) -> Vec<(C, V)>
+	pub fn absorb<F>(&mut self, other: &Self, combine: F) -> Vec<(S, V)>
 	where
 		V: Clone,
 		F: Fn(&V, &V) -> V,
 	{
 		self.sealed_count += other.sealed_count;
 		let mut aged = Vec::new();
-		for (coord, value) in &other.tail {
-			let merged = match self.tail.get(coord) {
+		for (slot, value) in &other.tail {
+			let merged = match self.tail.get(slot) {
 				Some(mine) => combine(mine, value),
 				None => value.clone(),
 			};
-			aged.extend(self.absorb_push(*coord, merged));
+			aged.extend(self.absorb_push(*slot, merged));
 		}
 		aged
 	}
 
-	fn absorb_push(&mut self, coord: C, value: V) -> Vec<(C, V)> {
-		if matches!(self.sealed_high, Some(sealed) if coord <= sealed) {
+	fn absorb_push(&mut self, slot: S, value: V) -> Vec<(S, V)> {
+		if matches!(self.sealed_high, Some(sealed) if slot <= sealed) {
 			self.sealed_count += 1;
-			return vec![(coord, value)];
+			return vec![(slot, value)];
 		}
-		self.push(coord, value)
+		self.push(slot, value)
 	}
 
-	pub fn remove(&mut self, coord: &C) {
-		self.tail.remove(coord);
+	pub fn remove(&mut self, slot: &S) {
+		self.tail.remove(slot);
 	}
 
-	pub fn tail(&self) -> &SortedVecMap<C, V> {
+	pub fn tail(&self) -> &SortedVecMap<S, V> {
 		&self.tail
 	}
 
@@ -121,7 +121,7 @@ impl<C: Slot, V> SealingBase<C, V> {
 	}
 }
 
-impl<C: Slot + HeapSize, V: HeapSize> HeapSize for SealingBase<C, V> {
+impl<S: Slot + HeapSize, V: HeapSize> HeapSize for SealingBase<S, V> {
 	fn heap_size(&self) -> usize {
 		self.high_water.heap_size() + self.sealed_high.heap_size() + self.tail.heap_size()
 	}
@@ -154,24 +154,24 @@ mod tests {
 			state ^= state << 13;
 			state ^= state >> 7;
 			state ^= state << 17;
-			let coord = at_millis(step / 4 * 5 + state % 40);
+			let slot = at_millis(step / 4 * 5 + state % 40);
 			let value = step as i64;
 
 			if state % 5 == 4 {
-				base.remove(&coord);
-				tail.remove(&coord);
+				base.remove(&slot);
+				tail.remove(&slot);
 				assert_eq!(base.tail().len(), tail.len(), "tail length after a remove at step {step}");
 				continue;
 			}
 
-			let aged = base.push(coord, value);
+			let aged = base.push(slot, value);
 			let mut expected_aged: Vec<(DateTime, i64)> = Vec::new();
-			if !matches!(sealed_high, Some(sealed) if coord <= sealed) {
+			if !matches!(sealed_high, Some(sealed) if slot <= sealed) {
 				high_water = Some(match high_water {
-					Some(hw) if hw >= coord => hw,
-					_ => coord,
+					Some(hw) if hw >= slot => hw,
+					_ => slot,
 				});
-				tail.insert(coord, value);
+				tail.insert(slot, value);
 				if let (Some(hw), Some(l)) = (high_water, Some(immutable)) {
 					while let Some((&c, _)) = tail.iter().next() {
 						if hw.order_key().span_since(c.order_key()) > l {
@@ -216,7 +216,7 @@ mod tests {
 
 	#[test]
 	fn a_corrected_coordinate_that_seals_twice_is_still_one_observation() {
-		// A repeat of an already sealed coordinate is that row arriving again, never a second one.
+		// A repeat of an already sealed slot is that row arriving again, never a second one.
 		let mut base: SealingBase<DateTime, i64> = SealingBase::immutable(millis(1));
 		base.push(at_millis(0), 10);
 		base.push(at_millis(2), 20);
@@ -228,7 +228,7 @@ mod tests {
 
 	#[test]
 	fn a_row_below_the_seal_line_is_dropped_while_one_just_above_it_still_counts() {
-		// The fast path assumes ordered arrival, so a row at or under the highest sealed coordinate is lost.
+		// The fast path assumes ordered arrival, so a row at or under the highest sealed slot is lost.
 		let mut base: SealingBase<DateTime, i64> = SealingBase::immutable(millis(1));
 		base.push(at_millis(0), 1);
 		base.push(at_millis(10), 2);
@@ -261,7 +261,7 @@ mod tests {
 
 	#[test]
 	fn absorbing_a_disjoint_branch_keeps_every_observation_from_both_sides() {
-		// absorb takes coordinate-disjoint branches, so dropping the other side's sealed total undercounts it.
+		// absorb takes slot-disjoint branches, so dropping the other side's sealed total undercounts it.
 		let mut left: SealingBase<DateTime, i64> = SealingBase::immutable(millis(10));
 		left.push(at_millis(0), 1);
 		left.push(at_millis(50), 2);
@@ -285,7 +285,7 @@ mod tests {
 
 	#[test]
 	fn absorb_resolves_a_shared_live_coordinate_through_the_combine_rule() {
-		// A coordinate both branches hold live is one row, so it must collapse to a single counted entry.
+		// A slot both branches hold live is one row, so it must collapse to a single counted entry.
 		let mut left: SealingBase<DateTime, i64> = SealingBase::default();
 		left.push(at_millis(0), 1);
 		let mut right: SealingBase<DateTime, i64> = SealingBase::default();
@@ -299,7 +299,7 @@ mod tests {
 
 	#[test]
 	fn without_an_immutable_span_no_distance_is_far_enough_to_seal() {
-		// Every differential test compares against this arm, so it must retain every coordinate it is given.
+		// Every differential test compares against this arm, so it must retain every slot it is given.
 		let mut base: SealingBase<DateTime, i64> = SealingBase::default();
 		base.push(at_millis(0), 1);
 		base.push(at_millis(1_000_000), 2);

@@ -176,18 +176,6 @@ impl<M> ActorRef<M> {
 #[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 impl<M> ActorRef<M> {
 	#[inline]
-	pub(crate) fn new(
-		processor: Rc<RefCell<Option<Box<dyn FnMut(M)>>>>,
-		alive: Arc<AtomicBool>,
-		queue: Rc<RefCell<Vec<M>>>,
-		processing: Rc<Cell<bool>>,
-	) -> Self {
-		Self {
-			inner: wasm::ActorRefInner::new(processor, alive, queue, processing),
-		}
-	}
-
-	#[inline]
 	pub(crate) fn from_wasm_inner(
 		processor: Rc<RefCell<Option<Box<dyn FnMut(M)>>>>,
 		alive: Arc<AtomicBool>,

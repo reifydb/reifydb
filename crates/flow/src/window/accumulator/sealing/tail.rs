@@ -14,11 +14,11 @@ use crate::window::{
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
-pub struct SealingTail<C: Slot, V> {
-	base: SealingBase<C, V>,
+pub struct SealingTail<S: Slot, V> {
+	base: SealingBase<S, V>,
 }
 
-impl<C: Slot, V> Default for SealingTail<C, V> {
+impl<S: Slot, V> Default for SealingTail<S, V> {
 	fn default() -> Self {
 		Self {
 			base: SealingBase::default(),
@@ -26,22 +26,22 @@ impl<C: Slot, V> Default for SealingTail<C, V> {
 	}
 }
 
-impl<C: Slot, V: Clone> SealingTail<C, V> {
-	pub fn immutable(immutable: SlotSpan<C>) -> Self {
+impl<S: Slot, V: Clone> SealingTail<S, V> {
+	pub fn immutable(immutable: SlotSpan<S>) -> Self {
 		Self {
 			base: SealingBase::immutable(immutable),
 		}
 	}
 
-	pub fn add(&mut self, coord: C, value: V) {
-		self.base.push(coord, value);
+	pub fn add(&mut self, slot: S, value: V) {
+		self.base.push(slot, value);
 	}
 
-	pub fn remove(&mut self, coord: &C) {
-		self.base.remove(coord);
+	pub fn remove(&mut self, slot: &S) {
+		self.base.remove(slot);
 	}
 
-	pub fn tail(&self) -> &SortedVecMap<C, V> {
+	pub fn tail(&self) -> &SortedVecMap<S, V> {
 		self.base.tail()
 	}
 
@@ -50,7 +50,7 @@ impl<C: Slot, V: Clone> SealingTail<C, V> {
 	}
 }
 
-impl<C: Slot + HeapSize, V: HeapSize> HeapSize for SealingTail<C, V> {
+impl<S: Slot + HeapSize, V: HeapSize> HeapSize for SealingTail<S, V> {
 	fn heap_size(&self) -> usize {
 		self.base.heap_size()
 	}
@@ -58,11 +58,11 @@ impl<C: Slot + HeapSize, V: HeapSize> HeapSize for SealingTail<C, V> {
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
-pub struct TailAccumulator<C: Slot, V> {
-	events: SealingTail<C, V>,
+pub struct TailAccumulator<S: Slot, V> {
+	events: SealingTail<S, V>,
 }
 
-impl<C: Slot, V> Default for TailAccumulator<C, V> {
+impl<S: Slot, V> Default for TailAccumulator<S, V> {
 	fn default() -> Self {
 		Self {
 			events: SealingTail::default(),
@@ -70,32 +70,32 @@ impl<C: Slot, V> Default for TailAccumulator<C, V> {
 	}
 }
 
-impl<C: Slot, V: Clone> TailAccumulator<C, V> {
-	pub fn immutable(immutable: SlotSpan<C>) -> Self {
+impl<S: Slot, V: Clone> TailAccumulator<S, V> {
+	pub fn immutable(immutable: SlotSpan<S>) -> Self {
 		Self {
 			events: SealingTail::immutable(immutable),
 		}
 	}
 }
 
-impl<C, V> WindowAccumulator for TailAccumulator<C, V>
+impl<S, V> WindowAccumulator for TailAccumulator<S, V>
 where
-	C: Slot,
+	S: Slot,
 	V: Clone + Debug + PartialEq,
-	TailAccumulator<C, V>: OperatorState + StateCodec + HeapSize,
+	TailAccumulator<S, V>: OperatorState + StateCodec + HeapSize,
 {
-	type Contribution = (C, V);
-	type Output = SortedVecMap<C, V>;
+	type Contribution = (S, V);
+	type Output = SortedVecMap<S, V>;
 
-	fn add(&mut self, contribution: &(C, V)) {
+	fn add(&mut self, contribution: &(S, V)) {
 		self.events.add(contribution.0, contribution.1.clone());
 	}
 
-	fn remove(&mut self, contribution: &(C, V)) {
+	fn remove(&mut self, contribution: &(S, V)) {
 		self.events.remove(&contribution.0);
 	}
 
-	fn finalize(&self) -> Option<SortedVecMap<C, V>> {
+	fn finalize(&self) -> Option<SortedVecMap<S, V>> {
 		(!self.events.is_empty()).then(|| self.events.tail().clone())
 	}
 
@@ -104,7 +104,7 @@ where
 	}
 }
 
-impl<C: Slot + HeapSize, V: HeapSize> HeapSize for TailAccumulator<C, V> {
+impl<S: Slot + HeapSize, V: HeapSize> HeapSize for TailAccumulator<S, V> {
 	fn heap_size(&self) -> usize {
 		self.events.heap_size()
 	}

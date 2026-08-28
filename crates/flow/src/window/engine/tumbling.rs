@@ -41,9 +41,9 @@ use crate::{
 	},
 };
 
-pub type TumblingBuckets<G, C, Contribution> = BTreeMap<(G, WindowSpan<C>), Vec<AccumulatorEvent<Contribution>>>;
+pub type TumblingBuckets<G, S, Contribution> = BTreeMap<(G, WindowSpan<S>), Vec<AccumulatorEvent<Contribution>>>;
 
-type MetaLoaded<G, C> = HashMap<G, BatchMeta<C>>;
+type MetaLoaded<G, S> = HashMap<G, BatchMeta<S>>;
 
 #[derive(Clone)]
 struct ResolvedSlot {
@@ -51,62 +51,62 @@ struct ResolvedSlot {
 	key: EncodedKey,
 }
 
-type SlotResolved<G, C> = HashMap<(G, WindowSpan<C>), ResolvedSlot>;
+type SlotResolved<G, S> = HashMap<(G, WindowSpan<S>), ResolvedSlot>;
 
-struct PendingEmit<G, C, Output> {
+struct PendingEmit<G, S, Output> {
 	group_id: GroupId,
 	key: EncodedKey,
 	group: G,
-	span: WindowSpan<C>,
+	span: WindowSpan<S>,
 	value: Output,
 	prior: Option<Output>,
 	withdraw: bool,
 }
 
-pub struct ExpiredWindow<G, C> {
+pub struct ExpiredWindow<G, S> {
 	pub group: G,
 	pub group_id: GroupId,
-	pub window_start: C,
+	pub window_start: S,
 }
 
 #[operator_state]
 #[derive(Clone)]
-pub struct TumblingIndexEntry<G, C> {
+pub struct TumblingIndexEntry<G, S> {
 	group: G,
-	window_start: C,
+	window_start: S,
 	group_id: u128,
 	slot_key: Vec<u8>,
 }
 
-impl<G, C, Accumulator> Reaper for TumblingEngine<G, C, Accumulator>
+impl<G, S, Accumulator> Reaper for TumblingEngine<G, S, Accumulator>
 where
-	C: WindowAnchor + Hash,
+	S: WindowAnchor + Hash,
 	Accumulator: WindowAccumulator,
 {
 	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
 		match decode_window_state_key(key.as_encoded()) {
-			Some(slot) => remove(store, &slot),
+			Some(slot_key) => remove(store, &slot_key),
 			None => store.state_remove(key),
 		}
 	}
 }
 
-pub struct TumblingEngine<G, C, Accumulator> {
+pub struct TumblingEngine<G, S, Accumulator> {
 	meta_sweep: MetaSweep,
 	expire_batch: usize,
 	dropped_retractions: u64,
 	expiry: ExpiryIndex,
-	_pd: PhantomData<(G, C, Accumulator)>,
+	_pd: PhantomData<(G, S, Accumulator)>,
 }
 
-impl<G, C, Accumulator> TumblingEngine<G, C, Accumulator>
+impl<G, S, Accumulator> TumblingEngine<G, S, Accumulator>
 where
 	G: Clone + Eq + Ord + Hash + Debug,
-	C: WindowAnchor + Hash,
+	S: WindowAnchor + Hash,
 	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
-	GroupMeta<C>: OperatorState,
-	TumblingIndexEntry<G, C>: OperatorState,
+	GroupMeta<S>: OperatorState,
+	TumblingIndexEntry<G, S>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
@@ -127,9 +127,9 @@ where
 		&mut self,
 		store: &mut dyn StateStore,
 		group: &G,
-		window_start: C,
+		window_start: S,
 		id: GroupId,
-		slot: &EncodedKey,
+		slot_key: &EncodedKey,
 		prior: Option<u64>,
 		new: Option<u64>,
 	) -> Result<()> {
@@ -145,7 +145,7 @@ where
 				group: group.clone(),
 				window_start,
 				group_id: id.0,
-				slot_key: slot.as_bytes().to_vec(),
+				slot_key: slot_key.as_bytes().to_vec(),
 			};
 			self.expiry.set(store, expiry_key(new, group, &suffix), entry)?;
 		}
@@ -155,13 +155,13 @@ where
 	pub fn apply<K, NA>(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
-		order: &[(G, WindowSpan<C>)],
+		buckets: TumblingBuckets<G, S, Accumulator::Contribution>,
+		order: &[(G, WindowSpan<S>)],
 		slot_key: K,
 		new_accumulator: NA,
-	) -> Result<Vec<WindowResult<G, C, Accumulator::Output>>>
+	) -> Result<Vec<WindowResult<G, S, Accumulator::Output>>>
 	where
-		K: Fn(&G, C) -> (GroupId, EncodedKey),
+		K: Fn(&G, S) -> (GroupId, EncodedKey),
 		NA: Fn() -> Accumulator,
 	{
 		self.dropped_retractions = 0;
@@ -190,9 +190,9 @@ where
 	fn load_meta(
 		&mut self,
 		store: &mut dyn StateStore,
-		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
-	) -> Result<MetaLoaded<G, C>> {
-		let mut meta_loaded: MetaLoaded<G, C> = HashMap::new();
+		buckets: &TumblingBuckets<G, S, Accumulator::Contribution>,
+	) -> Result<MetaLoaded<G, S>> {
+		let mut meta_loaded: MetaLoaded<G, S> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
 				let batch = load_batch_meta(store, &meta_key_for(group))?;
@@ -202,11 +202,11 @@ where
 		Ok(meta_loaded)
 	}
 
-	fn resolve_slots<K>(order: &[(G, WindowSpan<C>)], slot_key: &K) -> SlotResolved<G, C>
+	fn resolve_slots<K>(order: &[(G, WindowSpan<S>)], slot_key: &K) -> SlotResolved<G, S>
 	where
-		K: Fn(&G, C) -> (GroupId, EncodedKey),
+		K: Fn(&G, S) -> (GroupId, EncodedKey),
 	{
-		let mut resolved: SlotResolved<G, C> = HashMap::with_capacity(order.len());
+		let mut resolved: SlotResolved<G, S> = HashMap::with_capacity(order.len());
 		for (group, span) in order {
 			let (id, key) = slot_key(group, span.start);
 			resolved.insert(
@@ -223,16 +223,16 @@ where
 	fn apply_events<NA>(
 		&mut self,
 		store: &mut dyn StateStore,
-		mut buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
-		order: &[(G, WindowSpan<C>)],
-		slot_resolved: &SlotResolved<G, C>,
-		meta_loaded: &mut MetaLoaded<G, C>,
+		mut buckets: TumblingBuckets<G, S, Accumulator::Contribution>,
+		order: &[(G, WindowSpan<S>)],
+		slot_resolved: &SlotResolved<G, S>,
+		meta_loaded: &mut MetaLoaded<G, S>,
 		new_accumulator: &NA,
-	) -> Result<Vec<WindowResult<G, C, Accumulator::Output>>>
+	) -> Result<Vec<WindowResult<G, S, Accumulator::Output>>>
 	where
 		NA: Fn() -> Accumulator,
 	{
-		let mut pending: Vec<PendingEmit<G, C, Accumulator::Output>> = Vec::new();
+		let mut pending: Vec<PendingEmit<G, S, Accumulator::Output>> = Vec::new();
 
 		for ordered in order {
 			let Some(events) = buckets.remove(ordered) else {
@@ -324,7 +324,7 @@ where
 			);
 		}
 
-		let mut results: Vec<WindowResult<G, C, Accumulator::Output>> = Vec::with_capacity(pending.len());
+		let mut results: Vec<WindowResult<G, S, Accumulator::Output>> = Vec::with_capacity(pending.len());
 		for (emit, (row_number, is_new)) in pending.into_iter().zip(rows) {
 			let kind = if emit.withdraw {
 				reifydb_assertions! {
@@ -356,11 +356,11 @@ where
 		Ok(results)
 	}
 
-	pub fn expire(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<Vec<ExpiredWindow<G, C>>> {
-		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, C>)> =
+	pub fn expire(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<Vec<ExpiredWindow<G, S>>> {
+		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, S>)> =
 			self.expiry.due(store, threshold, self.expire_batch)?;
 
-		let mut out: Vec<ExpiredWindow<G, C>> = Vec::new();
+		let mut out: Vec<ExpiredWindow<G, S>> = Vec::new();
 		for (index_key, entry) in due {
 			expiry_drop(store, &index_key)?;
 			out.push(ExpiredWindow {
@@ -374,12 +374,12 @@ where
 		Ok(out)
 	}
 
-	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
+	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
 		persist_batch_meta(store, meta_loaded)
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		self.meta_sweep.sweep::<GroupMeta<C>>(store, threshold)
+		self.meta_sweep.sweep::<GroupMeta<S>>(store, threshold)
 	}
 }
 
@@ -424,7 +424,9 @@ mod tests {
 		(GroupId::ROOT, row_key(group, window_start))
 	}
 
-	fn order_of<C>(buckets: &TumblingBuckets<u32, DateTime, C>) -> Vec<(u32, WindowSpan<DateTime>)> {
+	fn order_of<Contribution>(
+		buckets: &TumblingBuckets<u32, DateTime, Contribution>,
+	) -> Vec<(u32, WindowSpan<DateTime>)> {
 		buckets.keys().cloned().collect()
 	}
 
@@ -498,7 +500,7 @@ mod tests {
 
 	fn group_slot(group: &u32, window_start: DateTime) -> (GroupId, EncodedKey) {
 		// The shape a sub-flow window driver installs: every window interns as its own
-		// (partition, coord) group sharing one empty row key, so the group alone separates them.
+		// (partition, slot) group sharing one empty row key, so the group alone separates them.
 		(
 			GroupId(u128::from(*group) * 1_000_000 + u128::from(window_start.to_order())),
 			EncodedKey::new(Vec::new()),
@@ -563,9 +565,17 @@ mod tests {
 		let results = apply_group_scoped(&mut engine, &mut store, one_bucket(3, 40, 5));
 		let published = &results[0];
 		let (group, _) = group_slot(&published.group, published.span.start);
-		let (_, slot) = group_slot(&published.group, published.span.start);
-		engine.reindex_window(&mut store, &published.group, published.span.start, group, &slot, None, Some(10))
-			.unwrap();
+		let (_, slot_key) = group_slot(&published.group, published.span.start);
+		engine.reindex_window(
+			&mut store,
+			&published.group,
+			published.span.start,
+			group,
+			&slot_key,
+			None,
+			Some(10),
+		)
+		.unwrap();
 
 		let mut restarted = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let expired = restarted.expire(&mut store, 10).unwrap();
