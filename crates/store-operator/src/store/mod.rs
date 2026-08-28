@@ -40,10 +40,10 @@ use crate::{
 	config::OperatorStoreConfig,
 	flush::{FlushMessage, flush_now, flush_pending},
 	tier::{
-		commit::OperatorCommitBuffer,
 		persistent::OperatorPersistentTier,
 		point::{OperatorPointKeyspaceMetrics, OperatorPointShardMetrics, OperatorPointTier},
 		range::{OperatorRangeKeyspaceMetrics, OperatorRangeShardMetrics, OperatorRangeTier},
+		resident::OperatorResidentState,
 	},
 };
 
@@ -62,7 +62,7 @@ type CheckpointInterlock = Box<dyn Fn(&StandardOperatorStore) + Send + Sync>;
 pub struct StandardOperatorStore(Arc<StandardOperatorStoreInner>);
 
 pub struct StandardOperatorStoreInner {
-	pub(crate) commit: OperatorCommitBuffer,
+	pub(crate) resident: OperatorResidentState,
 	pub(crate) persistent: Option<OperatorPersistentTier>,
 	pub(crate) point: Option<OperatorPointTier>,
 	pub(crate) range: Option<OperatorRangeTier>,
@@ -84,7 +84,7 @@ impl Deref for StandardOperatorStore {
 
 impl StandardOperatorStore {
 	pub fn new(config: OperatorStoreConfig) -> Self {
-		let commit = config.commit.storage;
+		let resident = config.resident.storage;
 		let spawner = config.spawner;
 		let point =
 			config.persistent.is_some().then(|| config.point.and_then(OperatorPointTier::new)).flatten();
@@ -94,10 +94,12 @@ impl StandardOperatorStore {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush, filter) = {
 			if let Some(persistent) = config.persistent.as_ref() {
-				commit.attach_sinks(persistent.storage.clone(), point.clone(), range.clone());
+				resident.attach_sinks(persistent.storage.clone(), point.clone(), range.clone());
 			}
-			let flush =
-				config.persistent.as_ref().map(|_| OperatorFlushActor::spawn(&spawner, commit.clone()));
+			let flush = config
+				.persistent
+				.as_ref()
+				.map(|_| OperatorFlushActor::spawn(&spawner, resident.clone()));
 			let filter = config.persistent.as_ref().map(|persistent| {
 				let storage = persistent.storage.sqlite_storage().clone();
 				let actor = FilterActor::spawn(&spawner);
@@ -125,11 +127,11 @@ impl StandardOperatorStore {
 		let point = persistent.as_ref().and(point);
 		let range = persistent.as_ref().and(range);
 		if let Some(flush) = flush.as_ref() {
-			commit.attach_flusher(flush.clone());
+			resident.attach_flusher(flush.clone());
 		}
 
 		Self(Arc::new(StandardOperatorStoreInner {
-			commit,
+			resident,
 			persistent,
 			point,
 			range,
@@ -156,8 +158,8 @@ impl StandardOperatorStore {
 	#[cfg(not(test))]
 	pub(crate) fn checkpoint_interlock(&self) {}
 
-	pub fn commit(&self) -> &OperatorCommitBuffer {
-		&self.commit
+	pub fn resident_state(&self) -> &OperatorResidentState {
+		&self.resident
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -229,7 +231,7 @@ impl Shutdown for StandardOperatorStore {
 		let Some(persistent) = self.persistent.as_ref() else {
 			return;
 		};
-		flush_now(&self.commit);
+		flush_now(&self.resident);
 		persistent.shutdown();
 	}
 }
@@ -271,9 +273,9 @@ impl OperatorStore {
 		})
 	}
 
-	pub fn commit(&self) -> &OperatorCommitBuffer {
+	pub fn resident_state(&self) -> &OperatorResidentState {
 		match self {
-			Self::Standard(store) => store.commit(),
+			Self::Standard(store) => store.resident_state(),
 		}
 	}
 

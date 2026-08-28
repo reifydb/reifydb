@@ -20,7 +20,7 @@ use reifydb_runtime::{
 use reifydb_value::value::duration::Duration;
 use tracing::debug;
 
-use crate::tier::commit::OperatorCommitBuffer;
+use crate::tier::resident::OperatorResidentState;
 
 const FLUSH_PENDING_TIMEOUT: Duration = Duration::from_seconds_const(5);
 
@@ -34,18 +34,18 @@ pub enum FlushMessage {
 }
 
 pub struct OperatorFlushActor {
-	buffer: OperatorCommitBuffer,
+	buffer: OperatorResidentState,
 }
 
 impl OperatorFlushActor {
-	pub fn new(buffer: OperatorCommitBuffer) -> Self {
+	pub fn new(buffer: OperatorResidentState) -> Self {
 		Self {
 			buffer,
 		}
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn spawn(spawner: &ActorSpawner, buffer: OperatorCommitBuffer) -> ActorRef<FlushMessage> {
+	pub fn spawn(spawner: &ActorSpawner, buffer: OperatorResidentState) -> ActorRef<FlushMessage> {
 		let actor = Self::new(buffer);
 		spawner.spawn_coordination("operator-persistent-flush", actor).actor_ref().clone()
 	}
@@ -59,7 +59,7 @@ impl OperatorFlushActor {
 	}
 }
 
-pub fn flush_now(buffer: &OperatorCommitBuffer) {
+pub fn flush_now(buffer: &OperatorResidentState) {
 	buffer.flush_all();
 }
 

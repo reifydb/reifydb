@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 //! Paginated drain under interleaved writes and flushes. `range_batch` resumes from an excluded lower bound
-//! rather than holding a cursor, so a flush that moves rows from the commit buffer into sqlite between two pulls
+//! rather than holding a cursor, so a flush that moves rows from the resident state into sqlite between two pulls
 //! is exactly where a row can be dropped or served twice. Everything mutated during the drain is kept strictly
 //! outside the drained range, which makes the expected result a fixed snapshot no matter how the pages fall.
 

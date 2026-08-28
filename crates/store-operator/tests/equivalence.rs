@@ -93,7 +93,7 @@ fn store_with_range_budget(cached: bool, range_bytes: u64) -> (OperatorStore, Sq
 	std::mem::forget(actor_system);
 	let (config, guard) = SqliteConfig::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config)),
 		// small shard budgets force evictions so the sampled-LRU and abort paths run, not just fills
 		point: cached.then(|| OperatorPointConfig {

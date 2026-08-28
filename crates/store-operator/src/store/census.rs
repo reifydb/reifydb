@@ -18,21 +18,21 @@ impl StandardOperatorStore {
 	pub fn bytes(&self, operator: OperatorId) -> ByteSize {
 		let durable =
 			self.persistent.as_ref().map(|persistent| persistent.bytes(operator)).unwrap_or(ByteSize::ZERO);
-		durable + self.commit.bytes(operator)
+		durable + self.resident.bytes(operator)
 	}
 
 	#[instrument(name = "store::operator::total_bytes", level = "trace", skip(self), ret)]
 	pub fn total_bytes(&self) -> ByteSize {
 		let durable =
 			self.persistent.as_ref().map(|persistent| persistent.total_bytes()).unwrap_or(ByteSize::ZERO);
-		durable + self.commit.total_bytes()
+		durable + self.resident.total_bytes()
 	}
 
 	#[instrument(name = "store::operator::census", level = "debug", skip(self))]
 	pub fn census(&self) -> Vec<OperatorStateCensus> {
 		let durable = self.persistent.as_ref().map(|persistent| persistent.census()).unwrap_or_default();
 		let mut merged: BTreeMap<(OperatorId, u8), OperatorStateCensus> = BTreeMap::new();
-		for entry in durable.into_iter().chain(self.commit.census()) {
+		for entry in durable.into_iter().chain(self.resident.census()) {
 			let stored = encode_u8(entry.keyspace.0);
 			let bucket = merged.entry((entry.operator, stored)).or_insert(OperatorStateCensus {
 				operator: entry.operator,
@@ -52,7 +52,7 @@ impl StandardOperatorStore {
 	pub fn anchor_census(&self) -> Vec<OperatorSealAnchorCensus> {
 		let durable = self.persistent.as_ref().map(|persistent| persistent.anchor_census()).unwrap_or_default();
 		let mut merged: BTreeMap<OperatorId, u64> = BTreeMap::new();
-		for entry in durable.into_iter().chain(self.commit.anchor_census()) {
+		for entry in durable.into_iter().chain(self.resident.anchor_census()) {
 			*merged.entry(entry.operator).or_insert(0) += entry.keys;
 		}
 		merged.into_iter()

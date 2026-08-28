@@ -8,8 +8,8 @@ use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::Op
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
-	tier::commit::{
-		OperatorCommitBuffer,
+	tier::resident::{
+		OperatorResidentState,
 		batch::{AnchorKey, FlushBatch},
 		resident,
 	},
@@ -48,7 +48,7 @@ fn anchor_bytes(anchors: u64) -> ByteSize {
 	(ANCHOR_KEY_BYTES + ANCHOR_VALUE_BYTES) * anchors
 }
 
-impl OperatorCommitBuffer {
+impl OperatorResidentState {
 	pub fn bytes(&self, operator: OperatorId) -> ByteSize {
 		let inner = self.shared().inner.lock();
 		let mut total = ByteSize::ZERO;

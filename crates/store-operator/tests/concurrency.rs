@@ -50,7 +50,7 @@ fn store() -> (OperatorStore, SqliteTempPathGuard) {
 	std::mem::forget(actor_system);
 	let (config, guard) = SqliteConfig::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config)),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),

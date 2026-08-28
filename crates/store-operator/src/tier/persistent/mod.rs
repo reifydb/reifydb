@@ -26,7 +26,7 @@ use reifydb_value::{
 use crate::sqlite::SqliteOperatorStorage;
 use crate::{
 	filter::{OperatorAnchors, OperatorKeys},
-	tier::commit::batch::FlushBatch,
+	tier::resident::batch::FlushBatch,
 	types::{OperatorBatch, OperatorSealAnchor, OperatorSealAnchorCensus, OperatorStateCensus},
 };
 

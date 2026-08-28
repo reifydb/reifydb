@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 //! Transparency of the operator point tier. The tier caches point reads of the persistent tier, absences
-//! included, and the commit buffer only shadows a key until the flush drains it. A write therefore invalidates
+//! included, and the resident state only shadows a key until the flush drains it. A write therefore invalidates
 //! the entry, because the row it recorded is not durable yet and a stale entry would outlive the shadow and be
 //! served forever; the flush then writes the rows it just made durable back through, because dropping them
 //! would leave the tier empty at the exact moment reads start reaching it. A point read consults the range tier
@@ -20,14 +20,14 @@ use reifydb_core::{
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store_operator::{
-	config::{OperatorCommitConfig, OperatorPersistentConfig, OperatorStoreConfig},
+	config::{OperatorPersistentConfig, OperatorResidentStateConfig, OperatorStoreConfig},
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
 	tier::{
-		commit::OperatorCommitBuffer,
 		persistent::OperatorPersistentTier,
 		point::{OperatorPointConfig, OperatorPointTier},
 		range::{OperatorRangeConfig, OperatorRangeTier},
+		resident::OperatorResidentState,
 	},
 	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
@@ -46,7 +46,7 @@ fn cached_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard)
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
@@ -62,7 +62,7 @@ fn cached_store_on(storage: SqliteOperatorStorage) -> OperatorStore {
 	let actor_system = ActorSystem::testing(clock.clone());
 	let spawner = actor_system.spawner();
 	OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
@@ -306,7 +306,7 @@ fn a_lookup_under_a_disabled_filter_caches_the_absence() {
 
 #[test]
 fn a_memory_only_store_builds_no_read_caches() {
-	// Without a persistent tier the commit buffer never drains, so neither cache could ever be hit and neither
+	// Without a persistent tier the resident state never drains, so neither cache could ever be hit and neither
 	// budget may be reserved.
 	let memory = OperatorStore::testing_memory();
 	assert!(memory.point().is_none(), "the memory tier must not carry a point cache");
@@ -315,7 +315,7 @@ fn a_memory_only_store_builds_no_read_caches() {
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock.clone());
 	let store = OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: None,
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
@@ -426,14 +426,14 @@ fn a_write_in_flight_is_still_shadowed_and_never_lets_the_tier_cache_the_old_row
 	}]);
 
 	put(&store, OP_A, key(1), row("fresh"));
-	let batch = store.commit().take_for_flush().expect("the write is pending and must be taken for flush");
+	let batch = store.resident_state().take_for_flush().expect("the write is pending and must be taken for flush");
 
 	let found = store.get(OP_A, &key(1)).expect("the in-flight write is still the newest value for the key");
 	assert_eq!(body(&found), "fresh", "a read during the flush window must see the in-flight write, not sqlite");
 	assert_eq!(point_entries(&store), 0, "and it must not have cached the row sqlite still holds");
 
 	drop(batch);
-	store.commit().complete_flush();
+	store.resident_state().complete_flush();
 }
 
 #[test]
@@ -856,8 +856,8 @@ fn sliced_store(budget: ByteSize) -> (OperatorStore, SqliteOperatorStorage, Sqli
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
-		commit: OperatorCommitConfig {
-			storage: OperatorCommitBuffer::with_budget(budget),
+		resident: OperatorResidentStateConfig {
+			storage: OperatorResidentState::with_budget(budget),
 		},
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
 		point: Some(OperatorPointConfig::testing()),
@@ -877,7 +877,7 @@ fn a_drain_that_runs_many_slices_writes_back_every_slice_and_not_just_one() {
 		put(&store, OP_A, key(suffix), row(&format!("v{suffix}")));
 	}
 
-	store.commit().flush_all();
+	store.resident_state().flush_all();
 
 	assert_eq!(
 		point_entries(&store),

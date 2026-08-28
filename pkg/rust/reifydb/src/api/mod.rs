@@ -27,11 +27,11 @@ use reifydb_store_multi::{
 	},
 };
 use reifydb_store_operator::{
-	config::{OperatorCommitConfig, OperatorPersistentConfig, OperatorStoreConfig},
+	config::{OperatorPersistentConfig, OperatorResidentStateConfig, OperatorStoreConfig},
 	store::OperatorStore,
 	tier::{
-		commit::OperatorCommitBuffer, persistent::OperatorPersistentTier, point::OperatorPointConfig,
-		range::OperatorRangeConfig,
+		persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig,
+		resident::OperatorResidentState,
 	},
 };
 use reifydb_store_single::{
@@ -255,8 +255,8 @@ fn create_sqlite_store_with(
 	let operator_store = OperatorStore::standard(OperatorStoreConfig {
 		point: operator_point,
 		range: operator_range,
-		commit: OperatorCommitConfig {
-			storage: OperatorCommitBuffer::with_budget(operator_flush_budget),
+		resident: OperatorResidentStateConfig {
+			storage: OperatorResidentState::with_budget(operator_flush_budget),
 		},
 		..OperatorStoreConfig::sqlite(
 			OperatorPersistentConfig::opened(operator_persistent),

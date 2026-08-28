@@ -30,7 +30,7 @@ use crate::{
 			CHECKPOINT_REMOVE_SQL, CHECKPOINT_SET_SQL, STATE_DROP_SQL, STATE_REMOVE_SQL, STATE_SET_SQL,
 		},
 	},
-	tier::commit::batch::{DropMarker, FlushBatch},
+	tier::resident::batch::{DropMarker, FlushBatch},
 	types::OperatorWrite,
 };
 

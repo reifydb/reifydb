@@ -11,7 +11,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::commit::batch::{StateEntry, StateKey, state_entry_bytes};
+use crate::tier::resident::batch::{StateEntry, StateKey, state_entry_bytes};
 
 pub type OperatorKeys = BTreeMap<EncodedKey, StateEntry>;
 

@@ -17,7 +17,7 @@ use crate::{
 			CENSUS_ZERO_OPERATOR_SQL, STATE_BYTES_SQL, STATE_CENSUS_SQL, STATE_TOTAL_BYTES_SQL,
 		},
 	},
-	tier::commit::batch::FlushBatch,
+	tier::resident::batch::FlushBatch,
 	types::{
 		ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, DurablePre, OperatorSealAnchorCensus, OperatorStateCensus,
 		OperatorWrite,

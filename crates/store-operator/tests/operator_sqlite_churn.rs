@@ -35,7 +35,7 @@ fn test_churn(path: &Path) {
 			let (sqlite_config, _guard) = SqliteConfig::in_memory();
 			let sqlite_config = sqlite_config.read_pool_size(read_pool_size);
 			let store = OperatorStore::standard(OperatorStoreConfig {
-				commit: Default::default(),
+				resident: Default::default(),
 				persistent: Some(OperatorPersistentConfig::sqlite(sqlite_config)),
 				point: Some(OperatorPointConfig::testing()),
 				range: Some(OperatorRangeConfig::testing()),

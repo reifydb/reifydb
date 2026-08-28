@@ -6,13 +6,13 @@ use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 
 use crate::tier::{
-	commit::OperatorCommitBuffer, persistent::OperatorPersistentTier, point::OperatorPointConfig,
-	range::OperatorRangeConfig,
+	persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig,
+	resident::OperatorResidentState,
 };
 
 #[derive(Debug, Clone, Default)]
-pub struct OperatorCommitConfig {
-	pub storage: OperatorCommitBuffer,
+pub struct OperatorResidentStateConfig {
+	pub storage: OperatorResidentState,
 }
 
 #[derive(Clone)]
@@ -41,7 +41,7 @@ impl OperatorPersistentConfig {
 
 #[derive(Clone)]
 pub struct OperatorStoreConfig {
-	pub commit: OperatorCommitConfig,
+	pub resident: OperatorResidentStateConfig,
 	pub persistent: Option<OperatorPersistentConfig>,
 	pub point: Option<OperatorPointConfig>,
 	pub range: Option<OperatorRangeConfig>,
@@ -52,7 +52,7 @@ pub struct OperatorStoreConfig {
 impl OperatorStoreConfig {
 	pub fn memory(spawner: ActorSpawner, clock: Clock) -> Self {
 		Self {
-			commit: OperatorCommitConfig::default(),
+			resident: OperatorResidentStateConfig::default(),
 			persistent: None,
 			point: None,
 			range: None,
@@ -64,7 +64,7 @@ impl OperatorStoreConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite(persistent: OperatorPersistentConfig, spawner: ActorSpawner, clock: Clock) -> Self {
 		Self {
-			commit: OperatorCommitConfig::default(),
+			resident: OperatorResidentStateConfig::default(),
 			persistent: Some(persistent),
 			point: None,
 			range: None,

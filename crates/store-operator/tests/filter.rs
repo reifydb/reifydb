@@ -45,14 +45,14 @@ fn row(body: &str) -> EncodedPodRow {
 }
 
 fn store_at(config: SqliteConfig) -> OperatorStore {
-	// an hour-long flush interval keeps the commit buffer out of the way; every row a test wants in sqlite
+	// an hour-long flush interval keeps the resident state out of the way; every row a test wants in sqlite
 	// is written straight through the persistent tier instead
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock.clone());
 	let spawner = actor_system.spawner();
 	std::mem::forget(actor_system);
 	OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config)),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),

@@ -50,7 +50,7 @@ fn cached_store_with(
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
 		point: Some(point),
 		range: Some(range),
@@ -329,7 +329,7 @@ fn a_write_of_a_key_the_claim_never_held_keeps_the_claim_and_still_serves_it() {
 	assert_eq!(
 		bodies(&store.range_batch(OP_A, accumulator_range(), 64)),
 		["v1", "v2", "v3", "v4"],
-		"the shadowed write must still reach the answer through the commit buffer merge"
+		"the shadowed write must still reach the answer through the resident state merge"
 	);
 
 	assert!(store.flush_pending_blocking(), "the write must reach sqlite before the claim is put to the test");

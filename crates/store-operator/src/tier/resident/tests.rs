@@ -22,8 +22,8 @@ use reifydb_value::{
 };
 
 use crate::{
-	tier::commit::{
-		OperatorCommitBuffer,
+	tier::resident::{
+		OperatorResidentState,
 		batch::{ANCHOR_ENTRY_BYTES, DropMarker, StateEntry},
 	},
 	types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, BufferedAnchor, BufferedState, DurablePre, OperatorWrite},
@@ -65,17 +65,17 @@ fn entry_bytes(key_body: &str, row_body: &str) -> ByteSize {
 	ByteSize::from_bytes((key(key_body).len() + row(row_body).bytes().len()) as u64)
 }
 
-fn live_bytes(buffer: &OperatorCommitBuffer) -> ByteSize {
+fn live_bytes(buffer: &OperatorResidentState) -> ByteSize {
 	buffer.shared().inner.lock().live.bytes
 }
 
-fn resident_bytes(buffer: &OperatorCommitBuffer) -> ByteSize {
+fn resident_bytes(buffer: &OperatorResidentState) -> ByteSize {
 	buffer.shared().inner.lock().resident_bytes()
 }
 
 #[test]
 fn a_removed_key_reads_back_as_a_tombstone_not_as_absent() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 
 	assert_eq!(
 		buffer.lookup_state(OP_A, &key("k")),
@@ -100,7 +100,7 @@ fn a_removed_key_reads_back_as_a_tombstone_not_as_absent() {
 
 #[test]
 fn checkpoints_distinguish_a_delete_from_a_never_written_flow() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 
 	assert!(
 		buffer.lookup_checkpoint(FlowId(7)).is_none(),
@@ -125,7 +125,7 @@ fn checkpoints_distinguish_a_delete_from_a_never_written_flow() {
 
 #[test]
 fn taken_entries_stay_readable_until_the_flush_completes() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k"), row("v"), DurablePre::Absent);
 	buffer.record_state_remove(OP_A, key("gone"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(500));
@@ -177,7 +177,7 @@ fn taken_entries_stay_readable_until_the_flush_completes() {
 
 #[test]
 fn a_live_write_shadows_the_same_key_in_the_in_flight_batch() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k"), row("old"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("doomed"), row("old"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
@@ -205,7 +205,7 @@ fn a_live_write_shadows_the_same_key_in_the_in_flight_batch() {
 
 #[test]
 fn state_range_is_ordered_operator_scoped_and_overlays_the_in_flight_batch() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("a"), row("flushing-a"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("b"), row("flushing-b"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("c"), row("flushing-c"), DurablePre::Absent);
@@ -287,8 +287,8 @@ fn a_window_that_spans_nothing_still_reports_a_pending_drop() {
 	assert!(window.dropped, "a pending drop must be reported even when the span is empty");
 }
 
-fn seeded_two_layer_buffer() -> OperatorCommitBuffer {
-	let buffer = OperatorCommitBuffer::new();
+fn seeded_two_layer_buffer() -> OperatorResidentState {
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("a"), row("flushing-a"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("b"), row("flushing-b"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("c"), row("flushing-c"), DurablePre::Absent);
@@ -299,8 +299,8 @@ fn seeded_two_layer_buffer() -> OperatorCommitBuffer {
 	buffer
 }
 
-fn seeded_two_layer_buffer_with_dropped_operator() -> OperatorCommitBuffer {
-	let buffer = OperatorCommitBuffer::new();
+fn seeded_two_layer_buffer_with_dropped_operator() -> OperatorResidentState {
+	let buffer = OperatorResidentState::new();
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
 	buffer.record_state_set(OP_A, key("a"), row("flushing-a"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("b"), row("flushing-b"), DurablePre::Absent);
@@ -314,7 +314,7 @@ fn seeded_two_layer_buffer_with_dropped_operator() -> OperatorCommitBuffer {
 
 #[test]
 fn anchors_for_group_overlays_the_in_flight_batch_and_keeps_tombstones() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(2), DateTime::from_millis(200));
 	buffer.record_anchor_set(OP_A, GROUP_B, 0, RowNumber(3), DateTime::from_millis(300));
@@ -335,7 +335,7 @@ fn anchors_for_group_overlays_the_in_flight_batch_and_keeps_tombstones() {
 
 #[test]
 fn a_drop_clears_what_came_before_it_and_keeps_what_came_after() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("before"), row("v"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	buffer.record_state_set(OP_B, key("untouched"), row("v"), DurablePre::Absent);
@@ -376,7 +376,7 @@ fn a_drop_clears_what_came_before_it_and_keeps_what_came_after() {
 
 #[test]
 fn an_anchor_drop_clears_only_the_anchors_it_names() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k"), row("v"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	buffer.record_anchor_set(OP_A, GROUP_B, 0, RowNumber(2), DateTime::from_millis(200));
@@ -412,7 +412,7 @@ fn an_anchor_drop_clears_only_the_anchors_it_names() {
 
 #[test]
 fn take_for_flush_on_an_empty_buffer_returns_none_and_leaves_flushing_clear() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 
 	assert!(buffer.take_for_flush().is_none(), "an empty tick must not open a transaction");
 
@@ -427,7 +427,7 @@ fn take_for_flush_on_an_empty_buffer_returns_none_and_leaves_flushing_clear() {
 
 #[test]
 fn a_buffer_holding_only_a_drop_is_still_worth_flushing() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
 
 	let batch = buffer
@@ -438,7 +438,7 @@ fn a_buffer_holding_only_a_drop_is_still_worth_flushing() {
 
 #[test]
 fn take_for_flush_sets_flushing_and_complete_flush_clears_it() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k"), row("v"), DurablePre::Absent);
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 
@@ -457,7 +457,7 @@ fn take_for_flush_sets_flushing_and_complete_flush_clears_it() {
 
 #[test]
 fn a_drop_waits_out_an_in_flight_flush_before_clearing() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k"), row("v"), DurablePre::Absent);
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 
@@ -505,7 +505,7 @@ fn a_drop_waits_out_an_in_flight_flush_before_clearing() {
 
 #[test]
 fn apply_batch_maps_every_write_variant_onto_its_entry() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.apply_batch(&[
 		OperatorWrite::Insert {
 			operator: OP_A,
@@ -555,7 +555,7 @@ fn apply_batch_maps_every_write_variant_onto_its_entry() {
 
 #[test]
 fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 
 	buffer.apply_batch_with_checkpoints(
 		&[
@@ -611,7 +611,7 @@ fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
 
 #[test]
 fn a_combined_apply_with_nothing_to_record_leaves_the_buffer_untouched() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 
 	buffer.apply_batch_with_checkpoints(&[], &[], &[]);
 
@@ -624,7 +624,7 @@ fn a_combined_apply_with_nothing_to_record_leaves_the_buffer_untouched() {
 
 #[test]
 fn an_empty_write_batch_leaves_the_buffer_untouched() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.apply_batch(&[]);
 
 	assert!(
@@ -637,7 +637,7 @@ fn an_empty_write_batch_leaves_the_buffer_untouched() {
 fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_nothing() {
 	let entry = entry_bytes("k000", "v000");
 	let budget = entry * 8;
-	let buffer = OperatorCommitBuffer::with_budget(budget);
+	let buffer = OperatorResidentState::with_budget(budget);
 	let total: usize = 53;
 	for index in 0..total {
 		buffer.record_state_set(
@@ -693,7 +693,7 @@ fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_noth
 
 #[test]
 fn a_key_rewritten_after_its_slice_left_reads_and_flushes_as_the_later_value() {
-	let buffer = OperatorCommitBuffer::with_budget(
+	let buffer = OperatorResidentState::with_budget(
 		entry_bytes("k3", "left-behind").saturating_add(entry_bytes("k1", "late")),
 	);
 	buffer.record_state_set(OP_A, key("k1"), row("early"), DurablePre::Absent);
@@ -729,7 +729,7 @@ fn a_key_rewritten_after_its_slice_left_reads_and_flushes_as_the_later_value() {
 
 #[test]
 fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
-	let buffer = OperatorCommitBuffer::with_budget(entry_bytes("k2", "post-drop-a"));
+	let buffer = OperatorResidentState::with_budget(entry_bytes("k2", "post-drop-a"));
 	buffer.record_state_set(OP_A, key("k1"), row("pre-drop"), DurablePre::Absent);
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
 	buffer.record_state_set(OP_A, key("k2"), row("post-drop-a"), DurablePre::Absent);
@@ -765,7 +765,7 @@ fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
 fn anchors_are_handed_out_under_the_same_budget_as_state() {
 	let state = entry_bytes("k1", "v").saturating_add(entry_bytes("k2", "v"));
 	let budget = state.saturating_add(ANCHOR_ENTRY_BYTES * 2);
-	let buffer = OperatorCommitBuffer::with_budget(budget);
+	let buffer = OperatorResidentState::with_budget(budget);
 	buffer.record_state_set(OP_A, key("k1"), row("v"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("k2"), row("v"), DurablePre::Absent);
 	for row_number in 0..10u64 {
@@ -795,7 +795,7 @@ fn anchors_are_handed_out_under_the_same_budget_as_state() {
 
 #[test]
 fn a_key_rewritten_while_its_flush_is_in_flight_is_counted_once() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	let k = state_key("a");
 	buffer.record_state_set(OP_A, k.clone(), row("v1"), DurablePre::Absent);
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
@@ -824,7 +824,7 @@ fn a_key_rewritten_while_its_flush_is_in_flight_is_counted_once() {
 
 #[test]
 fn a_key_removed_while_its_flush_is_in_flight_is_not_counted_at_all() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	let k = state_key("a");
 	buffer.record_state_set(OP_A, k.clone(), row("v1"), DurablePre::Absent);
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
@@ -836,7 +836,7 @@ fn a_key_removed_while_its_flush_is_in_flight_is_not_counted_at_all() {
 
 #[test]
 fn an_anchor_rearmed_while_its_flush_is_in_flight_is_counted_once() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::default());
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::default());
@@ -853,7 +853,7 @@ fn an_anchor_rearmed_while_its_flush_is_in_flight_is_counted_once() {
 
 #[test]
 fn an_anchor_disarmed_while_its_flush_is_in_flight_is_not_counted() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::default());
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 	buffer.record_anchor_remove(OP_A, GROUP_A, 0, RowNumber(1));
@@ -864,7 +864,7 @@ fn an_anchor_disarmed_while_its_flush_is_in_flight_is_not_counted() {
 
 #[test]
 fn a_rewritten_key_charges_its_key_once_and_only_the_row_that_stands() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k1"), row("aaaaaaaa"), DurablePre::Absent);
 	assert_eq!(live_bytes(&buffer), entry_bytes("k1", "aaaaaaaa"), "a first write charges its key and its row");
 
@@ -880,7 +880,7 @@ fn a_rewritten_key_charges_its_key_once_and_only_the_row_that_stands() {
 
 #[test]
 fn a_tombstone_keeps_its_key_charged() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k1"), row("value"), DurablePre::Absent);
 
 	buffer.record_state_remove(OP_A, key("k1"), DurablePre::Absent);
@@ -899,7 +899,7 @@ fn a_tombstone_keeps_its_key_charged() {
 
 #[test]
 fn a_tombstone_recorded_first_charges_its_key() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 
 	buffer.record_state_remove(OP_A, key("k1"), DurablePre::Absent);
 
@@ -912,7 +912,7 @@ fn a_tombstone_recorded_first_charges_its_key() {
 
 #[test]
 fn an_anchor_is_charged_its_fixed_width_once_per_slot() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	assert_eq!(live_bytes(&buffer), ANCHOR_ENTRY_BYTES, "one armed slot is one fixed-width charge");
 
@@ -929,7 +929,7 @@ fn an_anchor_is_charged_its_fixed_width_once_per_slot() {
 
 #[test]
 fn a_split_moves_exactly_the_bytes_the_slice_carries_away() {
-	let buffer = OperatorCommitBuffer::with_budget(entry_bytes("k1", "aaa"));
+	let buffer = OperatorResidentState::with_budget(entry_bytes("k1", "aaa"));
 	buffer.record_state_set(OP_A, key("k1"), row("aaa"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("k2"), row("bbbbb"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
@@ -948,7 +948,7 @@ fn a_split_moves_exactly_the_bytes_the_slice_carries_away() {
 
 #[test]
 fn a_split_that_takes_everything_leaves_the_source_at_zero() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k1"), row("aaa"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	let before = live_bytes(&buffer);
@@ -965,7 +965,7 @@ fn a_split_that_takes_everything_leaves_the_source_at_zero() {
 
 #[test]
 fn a_drop_marker_releases_the_bytes_of_everything_it_clears() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k1"), row("gone"), DurablePre::Absent);
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	buffer.record_state_set(OP_B, key("k2"), row("stays"), DurablePre::Absent);
@@ -982,7 +982,7 @@ fn a_drop_marker_releases_the_bytes_of_everything_it_clears() {
 
 #[test]
 fn an_anchor_group_drop_releases_only_that_group() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
 	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(2), DateTime::from_millis(100));
 	buffer.record_anchor_set(OP_A, GROUP_B, 0, RowNumber(1), DateTime::from_millis(100));
@@ -998,7 +998,7 @@ fn an_anchor_group_drop_releases_only_that_group() {
 
 #[test]
 fn a_selected_slice_stays_resident_until_the_flush_settles() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k1"), row("value"), DurablePre::Absent);
 	let charged = live_bytes(&buffer);
 

@@ -11,15 +11,15 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::interface::catalog::flow::OperatorId;
 
 use crate::{
-	tier::commit::{
-		OperatorCommitBuffer,
+	tier::resident::{
+		OperatorResidentState,
 		batch::{DropMarker, StateEntry},
 		state_map::Range,
 	},
 	types::{BufferedState, BufferedStateRange, DurablePre},
 };
 
-impl OperatorCommitBuffer {
+impl OperatorResidentState {
 	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow, pre: DurablePre) {
 		self.write(|live| live.record_state((operator, key), Some(row), pre));
 	}

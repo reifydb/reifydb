@@ -25,7 +25,7 @@ use reifydb_testing_macro::chaos_test;
 use crate::workload::{Params, drive};
 
 chaos_test!(operator_store_chaos, |seed| {
-	// Flushes stay rare, so the commit buffer keeps real depth over sqlite and reads must merge both layers.
+	// Flushes stay rare, so the resident state keeps real depth over sqlite and reads must merge both layers.
 	drive(
 		seed,
 		Params {

@@ -21,7 +21,7 @@ fn store() -> OperatorStore {
 	let spawner = actor_system.spawner();
 	std::mem::forget(actor_system);
 	OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: None,
 		point: None,
 		range: None,

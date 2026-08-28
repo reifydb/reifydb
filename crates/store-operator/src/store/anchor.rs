@@ -7,7 +7,7 @@ use tracing::instrument;
 
 use crate::{
 	store::{OperatorStore, StandardOperatorStore},
-	tier::commit::batch::DropMarker,
+	tier::resident::batch::DropMarker,
 	types::{BufferedAnchor, OperatorSealAnchor},
 };
 
@@ -21,22 +21,22 @@ impl StandardOperatorStore {
 		row_number: RowNumber,
 		expiry: DateTime,
 	) {
-		self.commit.record_anchor_set(operator, group, side, row_number, expiry);
+		self.resident.record_anchor_set(operator, group, side, row_number, expiry);
 	}
 
 	#[instrument(name = "store::operator::anchor_remove", level = "debug", skip(self), fields(operator = operator.0, group = group.0))]
 	pub fn anchor_remove(&self, operator: OperatorId, group: GroupId, side: u8, row_number: RowNumber) {
-		self.commit.record_anchor_remove(operator, group, side, row_number);
+		self.resident.record_anchor_remove(operator, group, side, row_number);
 	}
 
 	#[instrument(name = "store::operator::anchors_remove_group", level = "debug", skip(self), fields(operator = operator.0, group = group.0))]
 	pub fn anchors_remove_group(&self, operator: OperatorId, group: GroupId) {
-		self.commit.record_drop(DropMarker::AnchorsGroup(operator, group));
+		self.resident.record_drop(DropMarker::AnchorsGroup(operator, group));
 	}
 
 	#[instrument(name = "store::operator::anchors_drop_operator", level = "debug", skip(self), fields(operator = operator.0))]
 	pub fn anchors_drop_operator(&self, operator: OperatorId) {
-		self.commit.record_drop(DropMarker::AnchorsOperator(operator));
+		self.resident.record_drop(DropMarker::AnchorsOperator(operator));
 	}
 
 	#[instrument(name = "store::operator::anchor_get", level = "trace", skip(self), fields(operator = operator.0, group = group.0))]
@@ -47,7 +47,7 @@ impl StandardOperatorStore {
 		side: u8,
 		row_number: RowNumber,
 	) -> Option<DateTime> {
-		match self.commit.lookup_anchor(operator, group, side, row_number) {
+		match self.resident.lookup_anchor(operator, group, side, row_number) {
 			BufferedAnchor::Expiry(millis) => Some(DateTime::from_millis(millis)),
 			BufferedAnchor::Tombstone | BufferedAnchor::Dropped => None,
 			BufferedAnchor::Absent => {
@@ -83,7 +83,7 @@ impl StandardOperatorStore {
 		due: Option<DateTime>,
 		limit: u64,
 	) -> Vec<OperatorSealAnchor> {
-		let snapshot = self.commit.anchors_for_group(operator, group);
+		let snapshot = self.resident.anchors_for_group(operator, group);
 		let buffered = snapshot.anchors;
 		let mut merged: Vec<OperatorSealAnchor> = Vec::new();
 

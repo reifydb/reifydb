@@ -49,7 +49,7 @@ fn store_at(path: &Path) -> OperatorStore {
 	let spawner = actor_system.spawner();
 	std::mem::forget(actor_system);
 	OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(SqliteConfig::new(path))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
@@ -102,7 +102,7 @@ fn a_write_that_was_never_flushed_is_not_there_after_a_restart() {
 		assert!(
 			booted.get(OP, &key(1)).is_none(),
 			"a write that never reached sqlite cannot come back from it; if it does, the write path is \
-			 bypassing the commit buffer and paying a synchronous sqlite write on every flow commit"
+			 bypassing the resident state and paying a synchronous sqlite write on every flow commit"
 		);
 		Ok(())
 	})

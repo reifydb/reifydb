@@ -34,7 +34,7 @@ use tracing::instrument;
 use crate::types::DurablePre;
 use crate::{
 	store::{OperatorStore, StandardOperatorStore},
-	tier::commit::batch::DropMarker,
+	tier::resident::batch::DropMarker,
 	types::{BufferedState, OperatorBatch, OperatorWrite},
 };
 
@@ -44,7 +44,7 @@ impl StandardOperatorStore {
 		reifydb_assertions! {
 			self.verify_classification(writes);
 		}
-		self.commit.apply_batch(writes);
+		self.resident.apply_batch(writes);
 		self.invalidate_read_batch(writes);
 	}
 
@@ -58,13 +58,13 @@ impl StandardOperatorStore {
 		reifydb_assertions! {
 			self.verify_classification(writes);
 		}
-		self.commit.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
+		self.resident.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
 		self.invalidate_read_batch(writes);
 	}
 
 	#[instrument(name = "store::operator::drop_operator_state", level = "debug", skip(self), fields(operator = operator.0))]
 	pub fn drop_operator_state(&self, operator: OperatorId) {
-		self.commit.record_drop(DropMarker::OperatorState(operator));
+		self.resident.record_drop(DropMarker::OperatorState(operator));
 		if let Some(range) = self.range.as_ref() {
 			range.invalidate_operator(operator);
 		}
@@ -167,7 +167,7 @@ impl StandardOperatorStore {
 
 	#[cfg(reifydb_assertions)]
 	fn durable_pre_image(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
-		match self.commit.lookup_state(operator, key) {
+		match self.resident.lookup_state(operator, key) {
 			BufferedState::Row(row) => Some(row),
 			BufferedState::Tombstone | BufferedState::Dropped => None,
 			BufferedState::Absent => self.persistent.as_ref()?.get(operator, key),
@@ -294,7 +294,7 @@ impl StandardOperatorStore {
 	}
 
 	fn resolve_size(&self, operator: OperatorId, key: &EncodedKey) -> SizeProbe {
-		match self.commit.lookup_state(operator, key) {
+		match self.resident.lookup_state(operator, key) {
 			BufferedState::Row(row) => return SizeProbe::Known(Some(row_size(&row))),
 			BufferedState::Tombstone | BufferedState::Dropped => return SizeProbe::Known(None),
 			BufferedState::Absent => {}
@@ -320,7 +320,7 @@ impl StandardOperatorStore {
 
 	#[instrument(name = "store::operator::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
-		match self.commit.lookup_state(operator, key) {
+		match self.resident.lookup_state(operator, key) {
 			BufferedState::Row(row) => Some(row),
 			BufferedState::Tombstone | BufferedState::Dropped => None,
 			BufferedState::Absent => self.persistent_get(operator, key),
@@ -332,7 +332,7 @@ impl StandardOperatorStore {
 		let mut results: Vec<Option<EncodedPodRow>> = Vec::with_capacity(keys.len());
 		let mut buffered: Vec<(usize, &EncodedKey)> = Vec::new();
 		for (index, key) in keys.iter().enumerate() {
-			match self.commit.lookup_state(operator, key) {
+			match self.resident.lookup_state(operator, key) {
 				BufferedState::Row(row) => results.push(Some(row)),
 				BufferedState::Tombstone | BufferedState::Dropped => results.push(None),
 				BufferedState::Absent => {
@@ -417,7 +417,7 @@ impl StandardOperatorStore {
 
 	#[instrument(name = "store::operator::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
-		match self.commit.lookup_state(operator, key) {
+		match self.resident.lookup_state(operator, key) {
 			BufferedState::Row(_) => true,
 			BufferedState::Tombstone | BufferedState::Dropped => false,
 			BufferedState::Absent => self.persistent_contains(operator, key),
@@ -459,7 +459,7 @@ impl StandardOperatorStore {
 		let limit = batch_size.max(1);
 		let target = (limit as usize).saturating_add(1);
 		let mut buffer_lower = range.start.clone();
-		let snapshot = self.commit.state_page(operator, buffer_lower.as_ref(), range.end.as_ref(), target);
+		let snapshot = self.resident.state_page(operator, buffer_lower.as_ref(), range.end.as_ref(), target);
 		let mut buffered = snapshot.items;
 		let mut buffer_exhausted = buffered.len() < target;
 		if let Some((key, _)) = buffered.last() {
@@ -486,7 +486,7 @@ impl StandardOperatorStore {
 
 		while items.len() < target {
 			if buffer_index == buffered.len() && !buffer_exhausted {
-				let next = self.commit.state_page(
+				let next = self.resident.state_page(
 					operator,
 					buffer_lower.as_ref(),
 					range.end.as_ref(),
@@ -698,7 +698,7 @@ impl StandardOperatorStore {
 	#[instrument(name = "store::operator::state_last", level = "trace", skip(self, range), fields(operator = operator.0))]
 	pub fn state_last(&self, operator: OperatorId, range: EncodedKeyRange) -> Option<(EncodedKey, EncodedPodRow)> {
 		let mut buffer_end = range.end.clone();
-		let first = self.commit.state_last_page(
+		let first = self.resident.state_last_page(
 			operator,
 			range.start.as_ref(),
 			buffer_end.as_ref(),
@@ -718,7 +718,7 @@ impl StandardOperatorStore {
 
 		loop {
 			if buffer_index == buffer.len() && !buffer_done {
-				let page = self.commit.state_last_page(
+				let page = self.resident.state_last_page(
 					operator,
 					range.start.as_ref(),
 					buffer_end.as_ref(),

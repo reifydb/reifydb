@@ -28,9 +28,9 @@ pub struct Config {
 	/// The memory tier answers `bytes`/`total_bytes` with zero by contract, so only layered stores can be held
 	/// to the accounted value.
 	pub accounts_bytes: bool,
-	/// Flushed after every mutation, which keeps the commit buffer empty and drives reads through sqlite.
+	/// Flushed after every mutation, which keeps the resident state empty and drives reads through sqlite.
 	pub eager: bool,
-	/// A write-through tier has no commit buffer, so its checkpoint floor is the logical minimum.
+	/// A write-through tier has no resident state, so its checkpoint floor is the logical minimum.
 	pub write_through: bool,
 	/// False once a mutation lands and true again after a flush. The layered census sums sqlite and the buffer
 	/// without an overlay, so a key rewritten or tombstoned in the buffer is double counted or still billed; the

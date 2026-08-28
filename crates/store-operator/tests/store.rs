@@ -39,7 +39,7 @@ fn flushed_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
@@ -54,7 +54,7 @@ fn store_at(config: SqliteConfig) -> OperatorStore {
 	let actor_system = ActorSystem::testing(clock.clone());
 	let spawner = actor_system.spawner();
 	OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::sqlite(config)),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
@@ -415,7 +415,7 @@ fn a_checkpoint_is_served_from_the_buffer_before_the_flush_and_from_sqlite_after
 	assert!(
 		storage.checkpoint_get(FLOW).is_none(),
 		"the checkpoint must not touch sqlite on the commit path; a synchronous write here is what \
-		 the commit buffer exists to remove"
+		 the resident state exists to remove"
 	);
 	assert_eq!(
 		store.checkpoint_get(FLOW),

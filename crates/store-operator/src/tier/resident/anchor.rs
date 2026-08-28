@@ -7,14 +7,14 @@ use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::Gr
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
-	tier::commit::{
-		OperatorCommitBuffer,
+	tier::resident::{
+		OperatorResidentState,
 		batch::{AnchorKey, AnchorSlot, DropMarker},
 	},
 	types::{BufferedAnchor, BufferedAnchorGroup},
 };
 
-impl OperatorCommitBuffer {
+impl OperatorResidentState {
 	pub fn record_anchor_set(
 		&self,
 		operator: OperatorId,

@@ -11,7 +11,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::tier::commit::batch::AnchorSlot;
+use crate::tier::resident::batch::AnchorSlot;
 
 pub const ANCHOR_KEY_BYTES: ByteSize = ByteSize::from_bytes(33);
 

@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 
 use crate::{
-	tier::commit::state_map::StateMap,
+	tier::resident::state_map::StateMap,
 	types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, DurablePre},
 };
 

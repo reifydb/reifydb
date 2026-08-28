@@ -33,10 +33,10 @@ use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
 use crate::{
 	flush::FlushMessage,
 	tier::{
-		commit::batch::{DropMarker, FlushBatch, StateKey},
 		persistent::OperatorPersistentTier,
 		point::OperatorPointTier,
 		range::OperatorRangeTier,
+		resident::batch::{DropMarker, FlushBatch, StateKey},
 	},
 	types::{DurablePre, OperatorWrite},
 };
@@ -47,7 +47,7 @@ pub const SLICE_BYTES: ByteSize = ByteSize::from_mib(4);
 const EVICT_HEADROOM: ByteSize = ByteSize::from_kib(256);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct OperatorCommitMetrics {
+pub struct OperatorResidentStateMetrics {
 	pub wakes: u64,
 	pub slices: u64,
 	pub persisted: u64,
@@ -91,7 +91,7 @@ pub struct Shared {
 	budget: Arc<MemoryBudget>,
 	slice: ByteSize,
 	waker: Mutex<Option<ActorRef<FlushMessage>>>,
-	metrics: Mutex<OperatorCommitMetrics>,
+	metrics: Mutex<OperatorResidentStateMetrics>,
 	triggered: AtomicBool,
 }
 
@@ -105,30 +105,30 @@ impl Shared {
 			budget: Arc::new(MemoryBudget::new(cap)),
 			slice: cap.min(SLICE_BYTES),
 			waker: Mutex::new(None),
-			metrics: Mutex::new(OperatorCommitMetrics::default()),
+			metrics: Mutex::new(OperatorResidentStateMetrics::default()),
 			triggered: AtomicBool::new(false),
 		}
 	}
 }
 
 #[derive(Clone)]
-pub struct OperatorCommitBuffer {
+pub struct OperatorResidentState {
 	shared: Arc<Shared>,
 }
 
-impl fmt::Debug for OperatorCommitBuffer {
+impl fmt::Debug for OperatorResidentState {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("OperatorCommitBuffer").field("budget", &self.budget()).finish()
+		f.debug_struct("OperatorResidentState").field("budget", &self.budget()).finish()
 	}
 }
 
-impl Default for OperatorCommitBuffer {
+impl Default for OperatorResidentState {
 	fn default() -> Self {
 		Self::with_budget(FLUSH_BUDGET_BYTES)
 	}
 }
 
-impl OperatorCommitBuffer {
+impl OperatorResidentState {
 	pub fn new() -> Self {
 		Self::default()
 	}
@@ -168,7 +168,7 @@ impl OperatorCommitBuffer {
 		self.shared.slice
 	}
 
-	pub fn metrics(&self) -> OperatorCommitMetrics {
+	pub fn metrics(&self) -> OperatorResidentStateMetrics {
 		let mut metrics = *self.shared.metrics.lock();
 		metrics.backlog = self.shared.inner.lock().resident_bytes();
 		metrics
@@ -288,7 +288,7 @@ impl OperatorCommitBuffer {
 			.shared
 			.sinks
 			.get()
-			.expect("the operator commit tier flushed before its sinks were attached");
+			.expect("the operator resident state flushed before its sinks were attached");
 		sinks.persistent.flush_batch(batch);
 		invalidate_flushed(sinks.point.as_ref(), sinks.range.as_ref(), batch);
 	}
@@ -322,7 +322,7 @@ impl OperatorCommitBuffer {
 			let counted = self.shared.budget.used();
 			assert_eq!(
 				counted, walked,
-				"store::operator::commit commit tier byte counter drifted: the budget carries {}, the resident set walks to {}",
+				"store::operator::resident resident state byte counter drifted: the budget carries {}, the resident set walks to {}",
 				counted, walked
 			);
 		}
@@ -359,7 +359,7 @@ impl OperatorCommitBuffer {
 }
 
 #[cfg(reifydb_assertions)]
-use crate::tier::commit::batch::{ANCHOR_ENTRY_BYTES, state_entry_bytes};
+use crate::tier::resident::batch::{ANCHOR_ENTRY_BYTES, state_entry_bytes};
 
 #[cfg(reifydb_assertions)]
 fn walk(batch: &FlushBatch) -> ByteSize {

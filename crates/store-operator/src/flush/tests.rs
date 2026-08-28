@@ -30,8 +30,8 @@ use crate::{
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
 	tier::{
-		commit::FLUSH_BUDGET_BYTES, persistent::OperatorPersistentTier, point::OperatorPointConfig,
-		range::OperatorRangeConfig,
+		persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig,
+		resident::FLUSH_BUDGET_BYTES,
 	},
 	types::{BufferedState, DurablePre, OperatorWrite},
 };
@@ -53,7 +53,7 @@ fn store_fixture() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
@@ -63,12 +63,12 @@ fn store_fixture() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard
 	(store, storage, guard)
 }
 
-fn buffer_fixture() -> (OperatorCommitBuffer, SqliteOperatorStorage, ActorRef<FlushMessage>, SqliteTempPathGuard) {
+fn buffer_fixture() -> (OperatorResidentState, SqliteOperatorStorage, ActorRef<FlushMessage>, SqliteTempPathGuard) {
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
 	(buffer, storage, actor_ref, guard)
@@ -130,7 +130,7 @@ fn a_buffered_write_becomes_durable_and_the_buffer_stops_shadowing_it() {
 	assert!(
 		storage.get(OP_A, &key(1)).is_none(),
 		"the write must still be memory only before the flush; a synchronous sqlite write is exactly \
-		 what the commit buffer exists to remove from the flow commit path"
+		 what the resident state exists to remove from the flow commit path"
 	);
 
 	assert!(store.flush_pending_blocking(), "a healthy sqlite tier must report the flush as completed");
@@ -354,7 +354,7 @@ fn an_empty_flush_is_a_no_op_that_leaves_the_flusher_able_to_flush_again() {
 #[test]
 fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None, None);
 	buffer.record_state_set(OP_A, key(1), row("first"), DurablePre::Absent);
 
@@ -408,7 +408,7 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
 
@@ -446,7 +446,7 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 #[should_panic(expected = "operator state flush ran without an open connection")]
 fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None, None);
 
 	buffer.record_state_set(OP_A, key(1), row("never-written"), DurablePre::Absent);
@@ -458,7 +458,7 @@ fn a_flush_that_cannot_reach_sqlite_panics_instead_of_dropping_the_batch() {
 #[test]
 #[should_panic(expected = "flushed before its sinks were attached")]
 fn a_flush_before_the_sinks_are_attached_panics_instead_of_dropping_the_batch() {
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key(1), row("never-written"), DurablePre::Absent);
 
 	flush_now(&buffer);
@@ -517,7 +517,7 @@ fn the_memory_tier_reports_a_flush_as_complete_without_a_flusher() {
 #[test]
 fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "v00") * 8);
+	let buffer = OperatorResidentState::with_budget(entry_bytes(0, "v00") * 8);
 	buffer.attach_sinks(tier(&storage), None, None);
 	for index in 0..67 {
 		buffer.record_state_set(OP_A, key(index), row(&format!("v{index}")), DurablePre::Absent);
@@ -538,7 +538,7 @@ fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer =
-		OperatorCommitBuffer::with_budget(entry_bytes(1, "early").saturating_add(entry_bytes(2, "filler")));
+		OperatorResidentState::with_budget(entry_bytes(1, "early").saturating_add(entry_bytes(2, "filler")));
 	buffer.attach_sinks(tier(&storage), None, None);
 	buffer.record_state_set(OP_A, key(1), row("early"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key(2), row("filler"), DurablePre::Absent);
@@ -572,7 +572,7 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "at-shutdown") * 4);
+	let buffer = OperatorResidentState::with_budget(entry_bytes(0, "at-shutdown") * 4);
 	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
 
@@ -602,7 +602,7 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "at-cancel") * 4);
+	let buffer = OperatorResidentState::with_budget(entry_bytes(0, "at-cancel") * 4);
 	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
 
@@ -641,7 +641,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let entries = 16u8;
 	let budget = entry_bytes(0, "under-the-budget") * (entries - 1) as u64;
-	let buffer = OperatorCommitBuffer::with_budget(budget);
+	let buffer = OperatorResidentState::with_budget(budget);
 	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
 	buffer.attach_flusher(actor_ref);
@@ -681,7 +681,7 @@ fn a_buffer_a_hair_over_the_cap_evicts_a_hair_not_a_whole_slice() {
 	let large = "x".repeat(64 * 1024);
 	let resident = 64u8;
 	let cap = entry_bytes(0, &large) * resident as u64;
-	let buffer = OperatorCommitBuffer::with_budget(cap);
+	let buffer = OperatorResidentState::with_budget(cap);
 	buffer.attach_sinks(tier(&storage), None, None);
 
 	for index in 0..resident {
@@ -710,12 +710,12 @@ fn a_buffer_a_hair_over_the_cap_evicts_a_hair_not_a_whole_slice() {
 }
 
 fn flusher_fixture()
--> (OperatorFlushActor, OperatorCommitBuffer, Context<FlushMessage>, ActorSystem, SqliteTempPathGuard) {
+-> (OperatorFlushActor, OperatorResidentState, Context<FlushMessage>, ActorSystem, SqliteTempPathGuard) {
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 	buffer.attach_sinks(tier(&storage), None, None);
 	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
 	let actor = OperatorFlushActor::new(buffer.clone());

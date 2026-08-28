@@ -410,7 +410,7 @@ impl testscript::runner::Runner for Runner {
 				);
 				args.reject_rest()?;
 
-				let buffer = self.store.commit();
+				let buffer = self.store.resident_state();
 				let name = key_name(&key);
 				match buffer.lookup_state(operator, &key) {
 					BufferedState::Row(row) => {

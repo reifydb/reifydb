@@ -11,17 +11,17 @@ use crate::store::{OperatorStore, StandardOperatorStore};
 impl StandardOperatorStore {
 	#[instrument(name = "store::operator::checkpoint_set", level = "debug", skip(self), fields(flow = flow.0))]
 	pub fn checkpoint_set(&self, flow: FlowId, version: CommitVersion) {
-		self.commit.record_checkpoint_set(flow, version);
+		self.resident.record_checkpoint_set(flow, version);
 	}
 
 	#[instrument(name = "store::operator::checkpoint_delete", level = "debug", skip(self), fields(flow = flow.0))]
 	pub fn checkpoint_delete(&self, flow: FlowId) {
-		self.commit.record_checkpoint_delete(flow);
+		self.resident.record_checkpoint_delete(flow);
 	}
 
 	#[instrument(name = "store::operator::checkpoint_get", level = "trace", skip(self), fields(flow = flow.0))]
 	pub fn checkpoint_get(&self, flow: FlowId) -> Option<CommitVersion> {
-		if let Some(entry) = self.commit.lookup_checkpoint(flow) {
+		if let Some(entry) = self.resident.lookup_checkpoint(flow) {
 			return entry;
 		}
 		self.persistent.as_ref()?.checkpoint_get(flow)
@@ -29,7 +29,7 @@ impl StandardOperatorStore {
 
 	#[instrument(name = "store::operator::checkpoint_floor", level = "trace", skip(self))]
 	pub fn checkpoint_floor(&self) -> Option<CommitVersion> {
-		let buffered = self.commit.checkpoint_floor();
+		let buffered = self.resident.checkpoint_floor();
 		self.checkpoint_interlock();
 		let durable = self.persistent.as_ref().and_then(|persistent| persistent.checkpoint_floor());
 		match (durable, buffered) {
@@ -40,7 +40,7 @@ impl StandardOperatorStore {
 
 	#[instrument(name = "store::operator::checkpoint_list", level = "trace", skip(self))]
 	pub fn checkpoint_list(&self) -> Vec<FlowId> {
-		let buffered = self.commit.checkpoint_entries();
+		let buffered = self.resident.checkpoint_entries();
 		self.checkpoint_interlock();
 		let mut merged: BTreeSet<FlowId> = self
 			.persistent

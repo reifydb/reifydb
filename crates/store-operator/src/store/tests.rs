@@ -34,7 +34,7 @@ fn store_fixture() -> (StandardOperatorStore, SqliteTempPathGuard) {
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let store = StandardOperatorStore::new(OperatorStoreConfig {
-		commit: Default::default(),
+		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
@@ -45,7 +45,7 @@ fn store_fixture() -> (StandardOperatorStore, SqliteTempPathGuard) {
 }
 
 fn flush(store: &StandardOperatorStore) {
-	flush_now(&store.commit);
+	flush_now(&store.resident);
 }
 
 fn flush_once_interlock() -> CheckpointInterlock {
