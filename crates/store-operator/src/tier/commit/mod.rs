@@ -41,9 +41,10 @@ use crate::{
 	types::{DurablePre, OperatorWrite},
 };
 
-pub const FLUSH_BUDGET_BYTES: ByteSize = ByteSize::from_mib(4);
+pub const FLUSH_BUDGET_BYTES: ByteSize = ByteSize::from_mib(100);
 
 pub const SLICE_BYTES: ByteSize = ByteSize::from_mib(4);
+const EVICT_HEADROOM: ByteSize = ByteSize::from_kib(256);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct OperatorCommitMetrics {
@@ -260,13 +261,18 @@ impl OperatorCommitBuffer {
 		Some(batch)
 	}
 
+	fn evict_budget(&self) -> ByteSize {
+		let over = self.shared.budget.used().saturating_sub(self.shared.budget.limit());
+		over.saturating_add(EVICT_HEADROOM).min(self.shared.slice)
+	}
+
 	fn take_evict_slice(&self) -> Option<Arc<FlushBatch>> {
 		let mut inner = self.shared.inner.lock();
 		if inner.live.is_empty() {
 			return None;
 		}
 		let cursor = inner.cursor.take();
-		let (taken, cursor) = inner.live.evict_within(self.shared.slice, cursor);
+		let (taken, cursor) = inner.live.evict_within(self.evict_budget(), cursor);
 		inner.cursor = cursor;
 		if taken.is_empty() {
 			return None;
@@ -278,7 +284,11 @@ impl OperatorCommitBuffer {
 	}
 
 	fn persist(&self, batch: &Arc<FlushBatch>) {
-		let sinks = self.shared.sinks.get().expect("the operator commit tier flushed before its sinks were attached");
+		let sinks = self
+			.shared
+			.sinks
+			.get()
+			.expect("the operator commit tier flushed before its sinks were attached");
 		sinks.persistent.flush_batch(batch);
 		invalidate_flushed(sinks.point.as_ref(), sinks.range.as_ref(), batch);
 	}

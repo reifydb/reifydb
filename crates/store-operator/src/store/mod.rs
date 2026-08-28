@@ -96,9 +96,8 @@ impl StandardOperatorStore {
 			if let Some(persistent) = config.persistent.as_ref() {
 				commit.attach_sinks(persistent.storage.clone(), point.clone(), range.clone());
 			}
-			let flush = config.persistent.as_ref().map(|persistent| {
-				OperatorFlushActor::spawn(&spawner, commit.clone(), persistent.flush_interval)
-			});
+			let flush =
+				config.persistent.as_ref().map(|_| OperatorFlushActor::spawn(&spawner, commit.clone()));
 			let filter = config.persistent.as_ref().map(|persistent| {
 				let storage = persistent.storage.sqlite_storage().clone();
 				let actor = FilterActor::spawn(&spawner);

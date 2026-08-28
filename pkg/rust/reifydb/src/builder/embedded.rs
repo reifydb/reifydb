@@ -30,10 +30,7 @@ use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_value::{
-	byte_size::ByteSize,
-	value::{Value, duration::Duration},
-};
+use reifydb_value::{byte_size::ByteSize, value::Value};
 
 type PoolConfigSources = (
 	MultiCommitBufferTier,
@@ -47,7 +44,6 @@ type PoolConfigSources = (
 	CdcCommitConfig,
 	Option<CdcReadConfig>,
 	u32,
-	Duration,
 	ByteSize,
 	ByteSize,
 );
@@ -71,7 +67,6 @@ fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, V
 		resolved.cdc_commit,
 		resolved.cdc_read,
 		resolved.operator_wal_autocheckpoint,
-		resolved.operator_flush_interval,
 		resolved.operator_flush_budget,
 		resolved.multi_flush_budget,
 	))
@@ -231,7 +226,6 @@ impl EmbeddedBuilder {
 			cdc_commit,
 			cdc_read,
 			operator_wal_autocheckpoint,
-			operator_flush_interval,
 			operator_flush_budget,
 			multi_flush_budget,
 		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
@@ -255,7 +249,6 @@ impl EmbeddedBuilder {
 				cdc_read,
 				cdc_wal_autocheckpoint,
 				operator_wal_autocheckpoint,
-				operator_flush_interval,
 				operator_flush_budget,
 				multi_flush_budget,
 				&spawner,

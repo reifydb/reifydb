@@ -30,6 +30,8 @@ use crate::transaction::{
 
 const ROW_NUMBER_COUNTER_SUFFIX: &[u8] = b"rn";
 
+const MAPPING_SWEEP_PAGE: usize = 1024;
+
 pub fn mapping_key(group: GroupId, key: &EncodedKey) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key)
 }
@@ -224,18 +226,31 @@ pub trait RowNumberExtension: FlowTransaction {
 	) -> Result<Vec<RowNumber>> {
 		let base = mapping_range(group);
 		let boundary = mapping_key(group, upper);
-		let range = EncodedKeyRange::new(Bound::Excluded(boundary.into_encoded()), base.end.clone());
-		let batch = self.state_range(operator, StateRange::forward(range, "rownum::drop_below"))?;
-
-		let mut dropped = Vec::with_capacity(batch.items.len());
-		for item in batch.items {
-			let decoded = OperatorStateKey::decode(&item.key)
-				.expect("state_range must return OperatorState keys");
-			let inner = OperatorStateKey::inner_encoded(decoded.group, decoded.keyspace, decoded.suffix);
-			dropped.push(RowNumber(decode_bytes::<u64>(&item.bytes)?));
-			self.state_remove(operator, &inner)?;
+		let mut lower = Bound::Excluded(boundary.into_encoded());
+		let mut dropped = Vec::new();
+		loop {
+			let range = EncodedKeyRange::new(lower.clone(), base.end.clone());
+			let batch = self.state_range(
+				operator,
+				StateRange::forward(range, "rownum::drop_below").limit(MAPPING_SWEEP_PAGE),
+			)?;
+			let more = batch.has_more;
+			for item in batch.items {
+				let decoded = OperatorStateKey::decode(&item.key)
+					.expect("state_range must return OperatorState keys");
+				let inner = OperatorStateKey::inner_encoded(
+					decoded.group,
+					decoded.keyspace,
+					decoded.suffix,
+				);
+				dropped.push(RowNumber(decode_bytes::<u64>(&item.bytes)?));
+				lower = Bound::Excluded(inner.as_encoded().clone());
+				self.state_remove(operator, &inner)?;
+			}
+			if !more {
+				return Ok(dropped);
+			}
 		}
-		Ok(dropped)
 	}
 
 	fn remove_row_numbers_by_prefix(
@@ -245,16 +260,30 @@ pub trait RowNumberExtension: FlowTransaction {
 		key_prefix: &[u8],
 	) -> Result<()> {
 		let inner_prefix = OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
-		let range = EncodedKeyRange::prefix(inner_prefix.as_ref());
-		let batch = self.state_range(operator, StateRange::forward(range, "rownum::remove_by_prefix"))?;
-
-		for item in batch.items {
-			let decoded = OperatorStateKey::decode(&item.key)
-				.expect("state_range must return OperatorState keys");
-			let inner = OperatorStateKey::inner_encoded(decoded.group, decoded.keyspace, decoded.suffix);
-			self.state_remove(operator, &inner)?;
+		let base = EncodedKeyRange::prefix(inner_prefix.as_ref());
+		let mut lower = base.start.clone();
+		loop {
+			let range = EncodedKeyRange::new(lower.clone(), base.end.clone());
+			let batch = self.state_range(
+				operator,
+				StateRange::forward(range, "rownum::remove_by_prefix").limit(MAPPING_SWEEP_PAGE),
+			)?;
+			let more = batch.has_more;
+			for item in batch.items {
+				let decoded = OperatorStateKey::decode(&item.key)
+					.expect("state_range must return OperatorState keys");
+				let inner = OperatorStateKey::inner_encoded(
+					decoded.group,
+					decoded.keyspace,
+					decoded.suffix,
+				);
+				lower = Bound::Excluded(inner.as_encoded().clone());
+				self.state_remove(operator, &inner)?;
+			}
+			if !more {
+				return Ok(());
+			}
 		}
-		Ok(())
 	}
 }
 

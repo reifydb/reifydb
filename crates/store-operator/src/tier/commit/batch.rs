@@ -97,7 +97,11 @@ impl FlushBatch {
 		self.assemble(state, state_bytes, budget)
 	}
 
-	pub(super) fn evict_within(&mut self, budget: ByteSize, cursor: Option<StateKey>) -> (FlushBatch, Option<StateKey>) {
+	pub(super) fn evict_within(
+		&mut self,
+		budget: ByteSize,
+		cursor: Option<StateKey>,
+	) -> (FlushBatch, Option<StateKey>) {
 		let swept = self.state.sweep(budget, cursor);
 		(self.assemble(swept.taken, swept.bytes, budget), swept.cursor)
 	}

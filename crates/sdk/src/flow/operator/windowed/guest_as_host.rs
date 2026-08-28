@@ -88,6 +88,16 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(())
 	}
 
+	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+		let bound = |b: &Bound<EncodedKey>| match b {
+			Bound::Included(k) => Bound::Included(GroupStateKey::bound_unchecked(k.clone())),
+			Bound::Excluded(k) => Bound::Excluded(GroupStateKey::bound_unchecked(k.clone())),
+			Bound::Unbounded => Bound::Unbounded,
+		};
+		let (start, end) = (bound(&range.start), bound(&range.end));
+		Ok(self.0.state().last_bytes(start.as_ref(), end.as_ref())?)
+	}
+
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
 		Ok(self.0.intern_groups(groups)?)
 	}

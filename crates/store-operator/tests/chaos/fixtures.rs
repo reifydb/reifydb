@@ -144,11 +144,7 @@ fn store_from(spawner: &ActorSpawner, config: SqliteConfig) -> OperatorStore {
 	OperatorStore::standard(OperatorStoreConfig {
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
-		..OperatorStoreConfig::sqlite(
-			OperatorPersistentConfig::sqlite(config).flush_interval(Duration::from_hours_const(1)),
-			spawner.clone(),
-			Clock::Real,
-		)
+		..OperatorStoreConfig::sqlite(OperatorPersistentConfig::sqlite(config), spawner.clone(), Clock::Real)
 	})
 }
 

@@ -43,7 +43,7 @@ use reifydb_store_single::{
 	tier::commit::buffer::SingleCommitBufferTier,
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
-use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
+use reifydb_value::byte_size::ByteSize;
 
 pub mod embedded;
 mod export;
@@ -83,7 +83,6 @@ impl StorageFactory {
 		cdc_read: Option<CdcReadConfig>,
 		cdc_wal_autocheckpoint: u32,
 		operator_wal_autocheckpoint: u32,
-		operator_flush_interval: Duration,
 		operator_flush_budget: ByteSize,
 		multi_flush_budget: ByteSize,
 		spawner: &ActorSpawner,
@@ -103,7 +102,6 @@ impl StorageFactory {
 				cdc_read,
 				cdc_wal_autocheckpoint,
 				operator_wal_autocheckpoint,
-				operator_flush_interval,
 				operator_flush_budget,
 				multi_flush_budget,
 				config.clone(),
@@ -215,7 +213,6 @@ fn create_sqlite_store_with(
 	cdc_read: Option<CdcReadConfig>,
 	cdc_wal_autocheckpoint: u32,
 	operator_wal_autocheckpoint: u32,
-	operator_flush_interval: Duration,
 	operator_flush_budget: ByteSize,
 	multi_flush_budget: ByteSize,
 	config: SqliteConfig,
@@ -265,7 +262,7 @@ fn create_sqlite_store_with(
 			storage: OperatorCommitBuffer::with_budget(operator_flush_budget),
 		},
 		..OperatorStoreConfig::sqlite(
-			OperatorPersistentConfig::opened(operator_persistent).flush_interval(operator_flush_interval),
+			OperatorPersistentConfig::opened(operator_persistent),
 			spawner.clone(),
 			Clock::Real,
 		)

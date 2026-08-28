@@ -232,6 +232,20 @@ impl GuestState for InProcessState<'_> {
 		unsafe { (*self.host).state_range_limited_visit(range, limit, &mut |k, row| Ok(visit(k, row)?)) }
 			.map_err(to_sdk_err)
 	}
+
+	fn last_bytes(
+		&self,
+		start: Bound<&GroupStateKey>,
+		end: Bound<&GroupStateKey>,
+	) -> SdkResult<Option<(GroupStateKey, EncodedPodRow)>> {
+		let range = EncodedKeyRange::new(
+			start.map(|k| k.as_encoded().clone()),
+			end.map(|k| k.as_encoded().clone()),
+		);
+		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
+		unsafe { (*self.host).state_last(range) }.map_err(to_sdk_err)
+	}
 }
 
 pub struct InProcessDictionary<'a> {

@@ -32,9 +32,9 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, RunningKey,
+			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaSweep, RunningKey,
 			config::WindowEngineConfig, load_batch_meta, meta_key_for, note_when_expiry_capped,
-			persist_batch_meta, sweep_stale_meta,
+			persist_batch_meta,
 		},
 		span::Slot,
 	},
@@ -98,7 +98,7 @@ struct GroupSlot<C, Accumulator, Output> {
 
 pub struct RollingEngine<G, C: Slot, Accumulator> {
 	runnable: bool,
-	meta_low_water: Option<u64>,
+	meta_sweep: MetaSweep,
 	expire_batch: usize,
 	lag: <C::Coord as Coord>::Span,
 	expiry: ExpiryIndex,
@@ -166,7 +166,7 @@ where
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
 			runnable: false,
-			meta_low_water: None,
+			meta_sweep: MetaSweep::default(),
 			expire_batch: config.expire_batch(),
 			lag: Default::default(),
 			expiry: ExpiryIndex::default(),
@@ -849,7 +849,7 @@ where
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		sweep_stale_meta::<GroupMeta<C>>(store, threshold, &mut self.meta_low_water)
+		self.meta_sweep.sweep::<GroupMeta<C>>(store, threshold)
 	}
 
 	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {

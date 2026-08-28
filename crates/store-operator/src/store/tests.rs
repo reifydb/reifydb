@@ -3,10 +3,18 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::pod::EncodedPodRow,
+};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::flow::{FlowId, OperatorId},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey, keyspace_inner_range},
+};
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::value::duration::Duration;
+use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
@@ -14,6 +22,7 @@ use crate::{
 	sqlite::SqliteOperatorStorage,
 	store::{CheckpointInterlock, StandardOperatorStore},
 	tier::{persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig},
+	types::{DurablePre, OperatorWrite},
 };
 
 const FLOW_A: FlowId = FlowId(1);
@@ -26,8 +35,7 @@ fn store_fixture() -> (StandardOperatorStore, SqliteTempPathGuard) {
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let store = StandardOperatorStore::new(OperatorStoreConfig {
 		commit: Default::default(),
-		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))
-			.flush_interval(Duration::from_hours_const(1))),
+		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
@@ -48,6 +56,92 @@ fn flush_once_interlock() -> CheckpointInterlock {
 		}
 		flush(store);
 	})
+}
+
+const OP: OperatorId = OperatorId(1);
+const GROUP: GroupId = GroupId(7);
+
+fn key(suffix: u8) -> EncodedKey {
+	OperatorStateKey::inner_encoded(GROUP, Keyspace::ACCUMULATOR, [suffix]).as_encoded().clone()
+}
+
+fn row(body: &str) -> EncodedPodRow {
+	EncodedPodRow::new(body.as_bytes())
+}
+
+fn body(row: &EncodedPodRow) -> String {
+	String::from_utf8(row.body().to_vec()).expect("test bodies are utf8")
+}
+
+fn all() -> EncodedKeyRange {
+	keyspace_inner_range(GROUP, Keyspace::ACCUMULATOR)
+}
+
+fn insert(suffix: u8, value: &str) -> OperatorWrite {
+	OperatorWrite::Insert {
+		operator: OP,
+		key: key(suffix),
+		post: row(value),
+	}
+}
+
+fn remove(store: &StandardOperatorStore, suffix: u8) -> OperatorWrite {
+	let pre = store
+		.get(OP, &key(suffix))
+		.map_or(DurablePre::Absent, |row| DurablePre::Present(ByteSize::from_bytes(row.bytes().len() as u64)));
+	OperatorWrite::Remove {
+		operator: OP,
+		key: key(suffix),
+		pre,
+	}
+}
+
+fn last(store: &StandardOperatorStore) -> Option<(u8, String)> {
+	store.state_last(OP, all()).map(|(key, row)| (key.as_slice()[key.len() - 1], body(&row)))
+}
+
+#[test]
+fn a_buffered_tombstone_hides_the_durable_row_it_deleted_from_the_last_read() {
+	let (store, _guard) = store_fixture();
+
+	store.apply_batch(&[insert(1, "low"), insert(2, "high")]);
+	flush(&store);
+	assert_eq!(last(&store), Some((2, "high".to_string())), "both rows must start out durable");
+
+	store.apply_batch(&[remove(&store, 2)]);
+
+	assert_eq!(
+		last(&store),
+		Some((1, "low".to_string())),
+		"the buffered tombstone on the greatest key must fall through to the next durable row below it"
+	);
+}
+
+#[test]
+fn a_range_whose_every_durable_row_is_buffered_away_reads_as_empty_not_as_the_lowest_row() {
+	let (store, _guard) = store_fixture();
+
+	store.apply_batch(&[insert(1, "low"), insert(2, "mid"), insert(3, "high")]);
+	flush(&store);
+
+	store.apply_batch(&[remove(&store, 3), remove(&store, 2), remove(&store, 1)]);
+
+	assert_eq!(last(&store), None, "a range holding only tombstones has no last row");
+}
+
+#[test]
+fn a_buffered_row_above_the_durable_tail_wins_the_last_read() {
+	let (store, _guard) = store_fixture();
+
+	store.apply_batch(&[insert(1, "low")]);
+	flush(&store);
+	store.apply_batch(&[insert(2, "buffered")]);
+
+	assert_eq!(
+		last(&store),
+		Some((2, "buffered".to_string())),
+		"an unflushed row above the durable tail is the last row in range"
+	);
 }
 
 #[test]

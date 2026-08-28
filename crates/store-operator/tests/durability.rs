@@ -29,7 +29,7 @@ use reifydb_store_operator::{
 use reifydb_testing::tempdir::temp_dir;
 use reifydb_value::{
 	byte_size::ByteSize,
-	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{datetime::DateTime, row_number::RowNumber},
 };
 
 const OP: OperatorId = OperatorId(1);
@@ -50,8 +50,7 @@ fn store_at(path: &Path) -> OperatorStore {
 	std::mem::forget(actor_system);
 	OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
-		persistent: Some(OperatorPersistentConfig::sqlite(SqliteConfig::new(path))
-			.flush_interval(Duration::from_hours_const(1))),
+		persistent: Some(OperatorPersistentConfig::sqlite(SqliteConfig::new(path))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,

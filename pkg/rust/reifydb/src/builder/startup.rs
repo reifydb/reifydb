@@ -18,10 +18,7 @@ use reifydb_store_multi::tier::{
 	range::MultiRangeConfig,
 };
 use reifydb_store_operator::tier::{point::OperatorPointConfig, range::OperatorRangeConfig};
-use reifydb_value::{
-	byte_size::ByteSize,
-	value::{Value, duration::Duration},
-};
+use reifydb_value::{byte_size::ByteSize, value::Value};
 
 use crate::Result;
 
@@ -34,7 +31,6 @@ pub(crate) struct StartupConfig {
 	pub multi_wal_autocheckpoint: u32,
 	pub cdc_wal_autocheckpoint: u32,
 	pub operator_wal_autocheckpoint: u32,
-	pub operator_flush_interval: Duration,
 	pub operator_flush_budget: ByteSize,
 	pub multi_flush_budget: ByteSize,
 	pub cdc_commit: CdcCommitConfig,
@@ -58,7 +54,6 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::MultiWalAutocheckpoint,
 	ConfigKey::CdcWalAutocheckpoint,
 	ConfigKey::OperatorWalAutocheckpoint,
-	ConfigKey::OperatorFlushInterval,
 	ConfigKey::OperatorFlushBudgetBytes,
 	ConfigKey::MultiFlushBudgetBytes,
 	ConfigKey::CdcCommitBufferBytes,
@@ -93,13 +88,6 @@ pub(crate) fn resolve_startup_configs(
 		match resolve(key) {
 			Value::Uint8(v) => v,
 			other => panic!("config key {key} expected Uint8, got {other:?}"),
-		}
-	};
-
-	let duration = |key: ConfigKey| -> Duration {
-		match resolve(key) {
-			Value::Duration(v) => v,
-			other => panic!("config key {key} expected Duration, got {other:?}"),
 		}
 	};
 
@@ -175,7 +163,6 @@ pub(crate) fn resolve_startup_configs(
 		multi_wal_autocheckpoint: uint8(ConfigKey::MultiWalAutocheckpoint) as u32,
 		cdc_wal_autocheckpoint: uint8(ConfigKey::CdcWalAutocheckpoint) as u32,
 		operator_wal_autocheckpoint: uint8(ConfigKey::OperatorWalAutocheckpoint) as u32,
-		operator_flush_interval: duration(ConfigKey::OperatorFlushInterval),
 		operator_flush_budget: ByteSize::from_bytes(uint8(ConfigKey::OperatorFlushBudgetBytes)),
 		multi_flush_budget: ByteSize::from_bytes(uint8(ConfigKey::MultiFlushBudgetBytes)),
 		cdc_commit,

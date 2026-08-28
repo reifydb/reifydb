@@ -46,10 +46,7 @@ pub mod watermark;
 use crate::{
 	operator::sink::DurableSink,
 	timer::{Timer, TimerDue},
-	transaction::{
-		read::flow_merge_pending_iterator,
-		substrate::FlowSubstrate,
-	},
+	transaction::{read::flow_merge_pending_iterator, substrate::FlowSubstrate},
 };
 
 #[derive(Clone, Copy)]

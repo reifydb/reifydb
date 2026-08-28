@@ -32,7 +32,7 @@ use reifydb_store_operator::{
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 	types::{DurablePre, OperatorWrite},
 };
-use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
+use reifydb_value::byte_size::ByteSize;
 
 const SEED: u64 = 0x9E3779B97F4A7C15;
 
@@ -92,7 +92,7 @@ fn store_with_range_budget(cached: bool, range_bytes: u64) -> (OperatorStore, Sq
 	let (config, guard) = SqliteConfig::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
-		persistent: Some(OperatorPersistentConfig::sqlite(config).flush_interval(Duration::from_hours_const(1))),
+		persistent: Some(OperatorPersistentConfig::sqlite(config)),
 		// small shard budgets force evictions so the sampled-LRU and abort paths run, not just fills
 		point: cached.then(|| OperatorPointConfig {
 			shard_bytes: Some(ByteSize::from_bytes(128 * 1024)),

@@ -25,8 +25,8 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, MetaHighWater, WindowResult, WindowStateKey,
-			config::TumblingCarryConfig, meta_key_for, sweep_stale_meta, tumbling::TumblingBuckets,
+			AccumulatorEvent, EmitKind, MetaHighWater, MetaSweep, WindowResult, WindowStateKey,
+			config::TumblingCarryConfig, meta_key_for, tumbling::TumblingBuckets,
 		},
 		span::{SlotSpan, WindowAnchor, WindowSpan},
 	},
@@ -96,7 +96,7 @@ struct PendingCarry<C, Output> {
 }
 
 pub struct TumblingCarryEngine<G, C: WindowAnchor, Accumulator, Carry, Output> {
-	meta_low_water: Option<u64>,
+	meta_sweep: MetaSweep,
 	retention: Option<SlotSpan<C>>,
 	_pd: PhantomData<(G, Accumulator, Carry, Output)>,
 }
@@ -116,14 +116,14 @@ where
 {
 	pub fn new(config: TumblingCarryConfig<C>) -> Self {
 		Self {
-			meta_low_water: None,
+			meta_sweep: MetaSweep::default(),
 			retention: config.retention(),
 			_pd: PhantomData,
 		}
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		sweep_stale_meta::<CarryMeta<C, Carry, Output>>(store, threshold, &mut self.meta_low_water)
+		self.meta_sweep.sweep::<CarryMeta<C, Carry, Output>>(store, threshold)
 	}
 
 	#[allow(clippy::too_many_arguments)]

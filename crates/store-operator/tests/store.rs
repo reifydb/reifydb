@@ -23,7 +23,7 @@ use reifydb_store_operator::{
 };
 use reifydb_value::{
 	byte_size::ByteSize,
-	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{datetime::DateTime, row_number::RowNumber},
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -40,8 +40,7 @@ fn flushed_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
-		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
-			.flush_interval(Duration::from_hours_const(1))),
+		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
@@ -56,7 +55,7 @@ fn store_at(config: SqliteConfig) -> OperatorStore {
 	let spawner = actor_system.spawner();
 	OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
-		persistent: Some(OperatorPersistentConfig::sqlite(config).flush_interval(Duration::from_hours_const(1))),
+		persistent: Some(OperatorPersistentConfig::sqlite(config)),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,

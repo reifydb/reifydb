@@ -588,6 +588,47 @@ fn deferred_reads_owned_rows_at_state_version() {
 }
 
 #[test]
+fn a_pending_remove_hides_the_stored_row_it_deleted_from_the_last_read() {
+	// The flow layer merges its pending writes over the store the same way the store merges buffer over
+	// sqlite, and it has the same resurrection hazard: a pending Remove on the greatest key must not let
+	// the store's copy of that key answer as the last row. The overlay has to keep walking down, and it
+	// must re-ask the store below the suppressed key rather than reuse the candidate it already holds.
+	let engine = TestEngine::new();
+	let operator = OperatorId(1);
+	seed_state_row(&engine, operator, &make_key("a"), make_value("low"));
+	seed_state_row(&engine, operator, &make_key("b"), make_value("high"));
+	let range = || {
+		EncodedKeyRange::new(
+			Bound::Included(make_key("a").into_encoded()),
+			Bound::Included(make_key("z").into_encoded()),
+		)
+	};
+
+	let mut txn = deferred_shared(&engine);
+	assert_eq!(
+		txn.state_last(operator, range()).unwrap().map(|r| r.key),
+		Some(full_key(operator, &make_key("b"))),
+		"both rows must start out visible"
+	);
+
+	txn.state_remove(operator, &make_key("b")).unwrap();
+
+	assert_eq!(
+		txn.state_last(operator, range()).unwrap().map(|r| r.key),
+		Some(full_key(operator, &make_key("a"))),
+		"the pending remove on the greatest key must fall through to the next stored row below it"
+	);
+
+	txn.state_remove(operator, &make_key("a")).unwrap();
+
+	assert_eq!(
+		txn.state_last(operator, range()).unwrap().map(|r| r.key),
+		None,
+		"a range whose every stored row is pending-removed has no last row"
+	);
+}
+
+#[test]
 fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
 	// The write path no longer reads a pre-image; classify_pending resolves every unclassified key in one
 	// batch at drain. A key that is already durable must still emit Replace carrying its exact byte size,

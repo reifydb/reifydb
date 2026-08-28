@@ -335,3 +335,49 @@ fn the_row_number_counter_never_collides_with_the_interners_group_counter() {
 	assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");
 	assert_ne!(mapping_key(GROUP, &key("x")), counter_key(), "a mapping key must never equal the counter key");
 }
+
+#[test]
+fn drop_below_reclaims_a_bound_that_spans_more_than_one_scan_page() {
+	// The scan is paged, so a bound covering more mappings than fit in one page must still reclaim
+	// every one of them. Stopping at the first page strands the tail: those keys keep their row
+	// numbers forever and a re-lookup resolves to a row the operator has already emitted a remove
+	// for.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+
+	let slots: Vec<EncodedKey> = (1..=1027u64).map(slot_key).collect();
+	let minted = txn.get_or_create_row_numbers(NODE, GROUP, &slots).unwrap();
+	assert_eq!(minted.len(), slots.len());
+
+	let upper = EncodedKey::builder().u64(2000u64).u32(0u32).u32(0u32).build();
+	let dropped = txn.remove_row_numbers_below(NODE, GROUP, &upper).unwrap();
+	assert_eq!(dropped.len(), slots.len(), "every mapping under the bound is reclaimed, not just one page of them");
+
+	let remaining = txn.get_row_numbers(NODE, GROUP, &slots).unwrap();
+	assert!(remaining.iter().all(Option::is_none), "no mapping under the bound survives the reclaim");
+}
+
+#[test]
+fn remove_by_prefix_reclaims_a_subtree_that_spans_more_than_one_scan_page() {
+	// Same paging contract for prefix removal, and the page boundary must not become a second
+	// stopping condition that spares part of the subtree while a sibling prefix stays untouched.
+	let engine = TestEngine::new();
+	let mut txn = deferred(&engine);
+
+	let doomed: Vec<EncodedKey> =
+		(0..1027u32).map(|slot| EncodedKey::builder().u64(1u64).u32(slot).build()).collect();
+	let kept = EncodedKey::builder().u64(2u64).u32(7u32).build();
+	txn.get_or_create_row_numbers(NODE, GROUP, &doomed).unwrap();
+	let (kept_rn, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[kept.clone()]).unwrap().remove(0);
+
+	let prefix = EncodedKey::builder().u64(1u64).build();
+	txn.remove_row_numbers_by_prefix(NODE, GROUP, prefix.as_slice()).unwrap();
+
+	let gone = txn.get_row_numbers(NODE, GROUP, &doomed).unwrap();
+	assert!(gone.iter().all(Option::is_none), "the whole prefixed subtree is reclaimed, not just one page of it");
+	assert_eq!(
+		txn.get_row_numbers(NODE, GROUP, &[kept]).unwrap().remove(0),
+		Some(kept_rn),
+		"a sibling prefix survives"
+	);
+}

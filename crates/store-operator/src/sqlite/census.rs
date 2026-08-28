@@ -212,12 +212,7 @@ pub(super) fn batch_delta(writes: &[OperatorWrite]) -> CensusDelta {
 pub(super) fn flush_delta(batch: &FlushBatch) -> CensusDelta {
 	let mut delta = CensusDelta::default();
 	for ((operator, key), entry) in &batch.state {
-		delta.record(
-			operator,
-			key,
-			entry.durable_pre,
-			entry.post.as_ref().map(|row| row.bytes().len() as u64),
-		);
+		delta.record(operator, key, entry.durable_pre, entry.post.as_ref().map(|row| row.bytes().len() as u64));
 	}
 	delta
 }

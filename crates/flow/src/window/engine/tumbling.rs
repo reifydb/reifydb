@@ -33,9 +33,9 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, WindowResult, WindowStateKey,
+			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaSweep, WindowResult, WindowStateKey,
 			config::WindowEngineConfig, decode_window_state_key, load_batch_meta, meta_key_for,
-			note_when_expiry_capped, persist_batch_meta, sweep_stale_meta,
+			note_when_expiry_capped, persist_batch_meta,
 		},
 		span::{WindowAnchor, WindowSpan},
 	},
@@ -92,7 +92,7 @@ where
 }
 
 pub struct TumblingEngine<G, C, Accumulator> {
-	meta_low_water: Option<u64>,
+	meta_sweep: MetaSweep,
 	expire_batch: usize,
 	dropped_retractions: u64,
 	expiry: ExpiryIndex,
@@ -110,7 +110,7 @@ where
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			meta_low_water: None,
+			meta_sweep: MetaSweep::default(),
 			expire_batch: config.expire_batch(),
 			dropped_retractions: 0,
 			expiry: ExpiryIndex::default(),
@@ -379,7 +379,7 @@ where
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		sweep_stale_meta::<GroupMeta<C>>(store, threshold, &mut self.meta_low_water)
+		self.meta_sweep.sweep::<GroupMeta<C>>(store, threshold)
 	}
 }
 

@@ -486,8 +486,12 @@ impl StandardOperatorStore {
 
 		while items.len() < target {
 			if buffer_index == buffered.len() && !buffer_exhausted {
-				let next =
-					self.commit.state_page(operator, buffer_lower.as_ref(), range.end.as_ref(), target);
+				let next = self.commit.state_page(
+					operator,
+					buffer_lower.as_ref(),
+					range.end.as_ref(),
+					target,
+				);
 				buffer_exhausted = next.items.len() < target;
 				if let Some((key, _)) = next.items.last() {
 					buffer_lower = Bound::Excluded(key.clone());

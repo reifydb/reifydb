@@ -29,7 +29,7 @@ use reifydb_store_operator::{
 	},
 	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
-use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
+use reifydb_value::byte_size::ByteSize;
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -51,8 +51,7 @@ fn cached_store_with(
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
-		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
-			.flush_interval(Duration::from_hours_const(1))),
+		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
 		point: Some(point),
 		range: Some(range),
 		spawner,

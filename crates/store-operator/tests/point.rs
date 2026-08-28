@@ -31,7 +31,7 @@ use reifydb_store_operator::{
 	},
 	types::{DurablePre, OperatorBatch, OperatorWrite},
 };
-use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
+use reifydb_value::byte_size::ByteSize;
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -45,8 +45,7 @@ fn cached_store() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard)
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
-		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
-			.flush_interval(Duration::from_hours_const(1))),
+		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
@@ -62,8 +61,7 @@ fn cached_store_on(storage: SqliteOperatorStorage) -> OperatorStore {
 	let spawner = actor_system.spawner();
 	OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
-		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))
-			.flush_interval(Duration::from_hours_const(1))),
+		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
@@ -863,8 +861,7 @@ fn sliced_store(budget: ByteSize) -> (OperatorStore, SqliteOperatorStorage, Sqli
 		commit: OperatorCommitConfig {
 			storage: OperatorCommitBuffer::with_budget(budget),
 		},
-		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
-			.flush_interval(Duration::from_hours_const(1))),
+		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,

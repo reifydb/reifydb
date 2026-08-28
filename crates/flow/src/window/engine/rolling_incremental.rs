@@ -20,11 +20,10 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, RunningKey, WindowStateKey,
+			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaSweep, RunningKey, WindowStateKey,
 			config::WindowEngineConfig,
 			load_batch_meta, meta_key_for, persist_batch_meta,
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
-			sweep_stale_meta,
 		},
 		span::Slot,
 	},
@@ -43,7 +42,7 @@ struct GroupSlot<C, Accumulator, Running, Output> {
 }
 
 pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
-	meta_low_water: Option<u64>,
+	meta_sweep: MetaSweep,
 	_pd: PhantomData<(G, C, Accumulator, Running)>,
 }
 
@@ -60,13 +59,13 @@ where
 {
 	pub fn new(_config: WindowEngineConfig) -> Self {
 		Self {
-			meta_low_water: None,
+			meta_sweep: MetaSweep::default(),
 			_pd: PhantomData,
 		}
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
-		sweep_stale_meta::<GroupMeta<C>>(store, threshold, &mut self.meta_low_water)
+		self.meta_sweep.sweep::<GroupMeta<C>>(store, threshold)
 	}
 
 	#[allow(clippy::too_many_arguments)]

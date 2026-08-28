@@ -63,7 +63,6 @@ pub enum ConfigKey {
 	MultiFlushInterval,
 	MultiFlushBudgetBytes,
 	MultiWalAutocheckpoint,
-	OperatorFlushInterval,
 	OperatorFlushBudgetBytes,
 	OperatorWalAutocheckpoint,
 	FlowTick,
@@ -122,7 +121,6 @@ impl ConfigKey {
 			Self::MultiFlushInterval,
 			Self::MultiFlushBudgetBytes,
 			Self::MultiWalAutocheckpoint,
-			Self::OperatorFlushInterval,
 			Self::OperatorFlushBudgetBytes,
 			Self::OperatorWalAutocheckpoint,
 			Self::FlowTick,
@@ -183,8 +181,7 @@ impl ConfigKey {
 			Self::MultiFlushInterval => Value::duration_seconds(120),
 			Self::MultiFlushBudgetBytes => Value::Uint8(4 * 1024 * 1024),
 			Self::MultiWalAutocheckpoint => Value::Uint8(1000000),
-			Self::OperatorFlushInterval => Value::duration_seconds(120),
-			Self::OperatorFlushBudgetBytes => Value::Uint8(4 * 1024 * 1024),
+			Self::OperatorFlushBudgetBytes => Value::Uint8(100 * 1024 * 1024),
 			Self::OperatorWalAutocheckpoint => Value::Uint8(1000000),
 			Self::FlowTick => Value::duration_seconds(1),
 			Self::FlowSampleInterval => Value::duration_seconds(60),
@@ -355,13 +352,6 @@ impl ConfigKey {
 				 I/O; lower values keep the WAL small at the cost of more frequent checkpoints. Read once \
 				 at boot; changing it requires a restart."
 			}
-			Self::OperatorFlushInterval => {
-				"How often the persistent-flush actor drains the in-memory commit buffer into the \
-				 operator store's SQLite tier. Longer intervals coalesce more writes per flush - a \
-				 larger WAL - at the cost of more resident commit-buffer memory and a longer window \
-				 before operator state is materialized in the persistent file. Read once at boot; \
-				 changing it requires a restart."
-			}
 			Self::OperatorFlushBudgetBytes => {
 				"Maximum bytes the persistent-flush class moves from the operator commit buffer to \
 				 the SQLite tier in one slice. Bounds how long a single flush holds the lane, so a \
@@ -504,7 +494,6 @@ impl ConfigKey {
 			Self::MultiFlushInterval => true,
 			Self::MultiFlushBudgetBytes => false,
 			Self::MultiWalAutocheckpoint => true,
-			Self::OperatorFlushInterval => true,
 			Self::OperatorFlushBudgetBytes => true,
 			Self::OperatorWalAutocheckpoint => true,
 			Self::FlowTick => false,
@@ -563,7 +552,6 @@ impl ConfigKey {
 			Self::MultiFlushInterval => &[ValueType::Duration],
 			Self::MultiFlushBudgetBytes => &[ValueType::Uint8],
 			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
-			Self::OperatorFlushInterval => &[ValueType::Duration],
 			Self::OperatorFlushBudgetBytes => &[ValueType::Uint8],
 			Self::OperatorWalAutocheckpoint => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
@@ -622,7 +610,6 @@ impl ConfigKey {
 			Self::MultiFlushInterval => false,
 			Self::MultiFlushBudgetBytes => false,
 			Self::MultiWalAutocheckpoint => false,
-			Self::OperatorFlushInterval => false,
 			Self::OperatorFlushBudgetBytes => false,
 			Self::OperatorWalAutocheckpoint => false,
 			Self::FlowTick => false,
@@ -784,11 +771,6 @@ impl ConfigKey {
 				Value::Uint8(0) => {
 					Err("MULTI_WAL_AUTOCHECKPOINT must be greater than zero".to_string())
 				}
-				_ => Ok(()),
-			},
-			Self::OperatorFlushInterval => match value {
-				Value::Duration(d) if d.is_positive() => Ok(()),
-				Value::Duration(_) => Err("OPERATOR_FLUSH_INTERVAL must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::OperatorFlushBudgetBytes => match value {
@@ -979,7 +961,6 @@ impl fmt::Display for ConfigKey {
 			Self::MultiFlushInterval => write!(f, "MULTI_FLUSH_INTERVAL"),
 			Self::MultiFlushBudgetBytes => write!(f, "MULTI_FLUSH_BUDGET_BYTES"),
 			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
-			Self::OperatorFlushInterval => write!(f, "OPERATOR_FLUSH_INTERVAL"),
 			Self::OperatorFlushBudgetBytes => write!(f, "OPERATOR_FLUSH_BUDGET_BYTES"),
 			Self::OperatorWalAutocheckpoint => write!(f, "OPERATOR_WAL_AUTOCHECKPOINT"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
@@ -1042,7 +1023,6 @@ impl FromStr for ConfigKey {
 			"MULTI_FLUSH_INTERVAL" => Ok(Self::MultiFlushInterval),
 			"MULTI_FLUSH_BUDGET_BYTES" => Ok(Self::MultiFlushBudgetBytes),
 			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
-			"OPERATOR_FLUSH_INTERVAL" => Ok(Self::OperatorFlushInterval),
 			"OPERATOR_FLUSH_BUDGET_BYTES" => Ok(Self::OperatorFlushBudgetBytes),
 			"OPERATOR_WAL_AUTOCHECKPOINT" => Ok(Self::OperatorWalAutocheckpoint),
 			"FLOW_TICK" => Ok(Self::FlowTick),
@@ -1245,7 +1225,6 @@ mod tests {
 		assert!(all.contains(&ConfigKey::RetentionEvictMaxBatchesPerTick));
 		assert!(all.contains(&ConfigKey::MultiFlushInterval));
 		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
-		assert!(all.contains(&ConfigKey::OperatorFlushInterval));
 		assert!(all.contains(&ConfigKey::OperatorFlushBudgetBytes));
 		assert!(all.contains(&ConfigKey::OperatorWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcWalAutocheckpoint));
@@ -1623,36 +1602,6 @@ mod tests {
 			}
 			other => panic!("expected InvalidValue, got {other:?}"),
 		}
-	}
-
-	#[test]
-	fn test_operator_flush_interval_metadata() {
-		assert_eq!(ConfigKey::OperatorFlushInterval.default_value(), Value::duration_seconds(120));
-		assert_eq!(ConfigKey::OperatorFlushInterval.expected_types(), &[ValueType::Duration]);
-		assert!(!ConfigKey::OperatorFlushInterval.is_optional());
-		assert!(ConfigKey::OperatorFlushInterval.requires_restart());
-	}
-
-	#[test]
-	fn test_operator_flush_interval_rejects_zero_and_negative() {
-		// A non-positive interval can never schedule a drain, so the operator commit buffer would
-		// grow without bound instead of being handed to the persistent tier.
-		match ConfigKey::OperatorFlushInterval.accept(Value::duration_seconds(0)).unwrap_err() {
-			AcceptError::InvalidValue(reason) => {
-				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
-			}
-			other => panic!("expected InvalidValue, got {other:?}"),
-		}
-		assert!(matches!(
-			ConfigKey::OperatorFlushInterval.accept(Value::duration_seconds(-5)),
-			Err(AcceptError::InvalidValue(_))
-		));
-	}
-
-	#[test]
-	fn test_operator_flush_interval_round_trips_through_display_and_from_str() {
-		assert_eq!("OPERATOR_FLUSH_INTERVAL".parse::<ConfigKey>().unwrap(), ConfigKey::OperatorFlushInterval);
-		assert_eq!(format!("{}", ConfigKey::OperatorFlushInterval), "OPERATOR_FLUSH_INTERVAL");
 	}
 
 	#[test]

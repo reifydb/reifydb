@@ -4,7 +4,6 @@
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_value::value::duration::Duration;
 
 use crate::tier::{
 	commit::OperatorCommitBuffer, persistent::OperatorPersistentTier, point::OperatorPointConfig,
@@ -19,14 +18,12 @@ pub struct OperatorCommitConfig {
 #[derive(Clone)]
 pub struct OperatorPersistentConfig {
 	pub storage: OperatorPersistentTier,
-	pub flush_interval: Duration,
 }
 
 impl OperatorPersistentConfig {
 	pub fn opened(storage: OperatorPersistentTier) -> Self {
 		Self {
 			storage,
-			flush_interval: Duration::from_seconds(120).unwrap(),
 		}
 	}
 
@@ -39,11 +36,6 @@ impl OperatorPersistentConfig {
 	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
 		let (storage, guard) = OperatorPersistentTier::sqlite_in_memory();
 		(Self::opened(storage), guard)
-	}
-
-	pub fn flush_interval(mut self, interval: Duration) -> Self {
-		self.flush_interval = interval;
-		self
 	}
 }
 

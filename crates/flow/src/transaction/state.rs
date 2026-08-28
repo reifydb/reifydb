@@ -204,39 +204,43 @@ pub trait StateExtension: FlowTransaction {
 						});
 					}
 				}
-				(Some((pending_key, write)), Some((inner, key, bytes))) => match pending_key.cmp(&key) {
-					Ordering::Greater => {
-						index += 1;
-						stored = Some((inner, key, bytes));
-						if let PendingWrite::Set(value) = write {
+				(Some((pending_key, write)), Some((inner, key, bytes))) => {
+					match pending_key.cmp(&key) {
+						Ordering::Greater => {
+							index += 1;
+							stored = Some((inner, key, bytes));
+							if let PendingWrite::Set(value) = write {
+								break Some(MultiVersionRow {
+									key: pending_key.clone(),
+									bytes: value.clone(),
+									version,
+								});
+							}
+						}
+						Ordering::Less => {
 							break Some(MultiVersionRow {
-								key: pending_key.clone(),
-								bytes: value.clone(),
+								key,
+								bytes,
 								version,
 							});
 						}
-					}
-					Ordering::Less => {
-						break Some(MultiVersionRow {
-							key,
-							bytes,
-							version,
-						});
-					}
-					Ordering::Equal => {
-						index += 1;
-						if let PendingWrite::Set(value) = write {
-							break Some(MultiVersionRow {
-								key: pending_key.clone(),
-								bytes: value.clone(),
-								version,
-							});
+						Ordering::Equal => {
+							index += 1;
+							if let PendingWrite::Set(value) = write {
+								break Some(MultiVersionRow {
+									key: pending_key.clone(),
+									bytes: value.clone(),
+									version,
+								});
+							}
+							let shadowed = EncodedKeyRange::new(
+								range.start.clone(),
+								Bound::Excluded(inner),
+							);
+							stored = stored_candidate(&store, id, &prefix, shadowed);
 						}
-						let shadowed =
-							EncodedKeyRange::new(range.start.clone(), Bound::Excluded(inner));
-						stored = stored_candidate(&store, id, &prefix, shadowed);
 					}
-				},
+				}
 			}
 		};
 		Span::current().record("found", found.is_some());

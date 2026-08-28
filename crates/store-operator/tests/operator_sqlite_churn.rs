@@ -15,7 +15,6 @@ use reifydb_store_operator::{
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 };
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
-use reifydb_value::value::duration::Duration;
 use test_each_file::test_each_path;
 
 mod common;
@@ -37,8 +36,7 @@ fn test_churn(path: &Path) {
 			let sqlite_config = sqlite_config.read_pool_size(read_pool_size);
 			let store = OperatorStore::standard(OperatorStoreConfig {
 				commit: Default::default(),
-				persistent: Some(OperatorPersistentConfig::sqlite(sqlite_config)
-					.flush_interval(Duration::from_milliseconds_const(1))),
+				persistent: Some(OperatorPersistentConfig::sqlite(sqlite_config)),
 				point: Some(OperatorPointConfig::testing()),
 				range: Some(OperatorRangeConfig::testing()),
 				spawner,

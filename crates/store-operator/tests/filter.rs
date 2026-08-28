@@ -28,7 +28,7 @@ use reifydb_store_operator::{
 	tier::{point::OperatorPointConfig, range::OperatorRangeConfig},
 	types::{DurablePre, OperatorWrite},
 };
-use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
+use reifydb_value::byte_size::ByteSize;
 
 const OP: OperatorId = OperatorId(1);
 
@@ -53,7 +53,7 @@ fn store_at(config: SqliteConfig) -> OperatorStore {
 	std::mem::forget(actor_system);
 	OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
-		persistent: Some(OperatorPersistentConfig::sqlite(config).flush_interval(Duration::from_hours_const(1))),
+		persistent: Some(OperatorPersistentConfig::sqlite(config)),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,

@@ -8,7 +8,7 @@ pub mod rolling_top_k;
 pub mod tumbling;
 pub mod tumbling_carry;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
 	key::{
@@ -156,39 +156,63 @@ pub(crate) fn meta_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::ROOT, Keyspace::WINDOW_META)
 }
 
-#[instrument(name = "flow::window::sweep_stale_meta", level = "debug", skip_all)]
-pub(crate) fn sweep_stale_meta<M>(
-	store: &mut dyn StateStore,
-	threshold: u64,
-	low_water: &mut Option<u64>,
-) -> Result<usize>
-where
-	M: MetaHighWater + Clone + OperatorState + HeapSize,
-{
-	if low_water.is_some_and(|lw| lw >= threshold) {
-		return Ok(0);
-	}
-	let mut stale: Vec<MetaKey> = Vec::new();
-	let mut min_surviving: Option<u64> = None;
-	store.state_range_visit(meta_range(), None, &mut |key, bytes| {
-		if let Some(hw) = decode::<M>(&bytes)?.high_water_order() {
-			if hw < threshold {
-				let Some(key) = decode_meta_key(key.as_encoded()) else {
-					return Ok(());
-				};
-				stale.push(key);
-			} else {
-				min_surviving = Some(min_surviving.map_or(hw, |m| m.min(hw)));
-			}
+const META_SWEEP_PAGE: usize = 1024;
+
+#[derive(Default)]
+pub(crate) struct MetaSweep {
+	low_water: Option<u64>,
+	cursor: Option<EncodedKey>,
+	surviving: Option<u64>,
+}
+
+impl MetaSweep {
+	#[instrument(name = "flow::window::sweep_stale_meta", level = "debug", skip_all)]
+	pub(crate) fn sweep<M>(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize>
+	where
+		M: MetaHighWater + Clone + OperatorState + HeapSize,
+	{
+		if self.cursor.is_none() && self.low_water.is_some_and(|lw| lw >= threshold) {
+			return Ok(0);
 		}
-		Ok(())
-	})?;
-	*low_water = min_surviving;
-	let count = stale.len();
-	for key in &stale {
-		remove(store, key)?;
+		let full = meta_range();
+		let range = match self.cursor.take() {
+			Some(key) => EncodedKeyRange::new(Bound::Excluded(key), full.end),
+			None => full,
+		};
+		let mut stale: Vec<MetaKey> = Vec::new();
+		let mut surviving = self.surviving;
+		let mut visited = 0usize;
+		let mut furthest: Option<EncodedKey> = None;
+		store.state_range_visit(range, Some(META_SWEEP_PAGE), &mut |key, bytes| {
+			visited += 1;
+			let high_water = decode::<M>(&bytes)?.high_water_order();
+			let encoded = key.into_encoded();
+			if let Some(hw) = high_water {
+				if hw < threshold {
+					if let Some(meta) = decode_meta_key(&encoded) {
+						stale.push(meta);
+					}
+				} else {
+					surviving = Some(surviving.map_or(hw, |m| m.min(hw)));
+				}
+			}
+			furthest = Some(encoded);
+			Ok(())
+		})?;
+		if visited < META_SWEEP_PAGE {
+			self.low_water = surviving;
+			self.surviving = None;
+		} else {
+			self.low_water = None;
+			self.surviving = surviving;
+			self.cursor = furthest;
+		}
+		let count = stale.len();
+		for key in &stale {
+			remove(store, key)?;
+		}
+		Ok(count)
 	}
-	Ok(count)
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -422,5 +446,89 @@ mod archived_projection_tests {
 			high_water: None,
 		};
 		assert_eq!(via_storage(&empty), None);
+	}
+}
+
+#[cfg(test)]
+mod meta_sweep_tests {
+	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
+
+	use super::*;
+	use crate::operator::state::mock::MockStore;
+
+	fn meta_key(index: u32) -> MetaKey {
+		MetaKey(EncodedKey::new(index.to_be_bytes().to_vec()))
+	}
+
+	fn seed(store: &mut MockStore, count: u32, high_water: impl Fn(u32) -> DateTime) {
+		for index in 0..count {
+			set(
+				store,
+				&meta_key(index),
+				&GroupMeta {
+					high_water: Some(high_water(index)),
+				},
+			)
+			.expect("seeding a group meta must succeed");
+		}
+	}
+
+	#[test]
+	fn a_meta_sweep_stops_at_one_page_and_resumes_past_its_cursor() {
+		// The sweep runs on every window apply over a keyspace that grows with the group count, so
+		// one call must never walk more than a page. Without the parked cursor the next call
+		// restarts at the first key and the tail is never reached at all.
+		let mut store = MockStore::default();
+		let total = META_SWEEP_PAGE as u32 + 3;
+		seed(&mut store, total, |_| at_millis(200));
+
+		let mut sweep = MetaSweep::default();
+		let threshold = at_millis(50).to_order();
+
+		assert_eq!(sweep.sweep::<GroupMeta<DateTime>>(&mut store, threshold).unwrap(), 0);
+		assert_eq!(store.rows_visited(), META_SWEEP_PAGE, "one call must visit at most one page");
+
+		assert_eq!(sweep.sweep::<GroupMeta<DateTime>>(&mut store, threshold).unwrap(), 0);
+		assert_eq!(
+			store.rows_visited(),
+			total as usize,
+			"the next call must resume past the cursor rather than rescan the first page"
+		);
+	}
+
+	#[test]
+	fn a_paged_meta_sweep_publishes_the_low_water_of_every_page_it_walked() {
+		// The low-water guard skips the whole scan while the smallest surviving high water is at or
+		// above the threshold. A pass that spans several pages must fold every page into that
+		// minimum: publishing only the final page's minimum makes the guard skip a group that has
+		// since gone stale, and its meta then leaks forever.
+		let mut store = MockStore::default();
+		let total = META_SWEEP_PAGE as u32 + 3;
+		seed(&mut store, total, |index| {
+			if index == 0 {
+				at_millis(100)
+			} else {
+				at_millis(200)
+			}
+		});
+
+		let mut sweep = MetaSweep::default();
+		let early = at_millis(50).to_order();
+		assert_eq!(sweep.sweep::<GroupMeta<DateTime>>(&mut store, early).unwrap(), 0);
+		assert_eq!(sweep.sweep::<GroupMeta<DateTime>>(&mut store, early).unwrap(), 0);
+
+		let walked = store.rows_visited();
+		assert_eq!(sweep.sweep::<GroupMeta<DateTime>>(&mut store, at_millis(90).to_order()).unwrap(), 0);
+		assert_eq!(
+			store.rows_visited(),
+			walked,
+			"a completed revolution must publish a low water the guard can skip on"
+		);
+
+		assert_eq!(
+			sweep.sweep::<GroupMeta<DateTime>>(&mut store, at_millis(150).to_order()).unwrap(),
+			1,
+			"the group whose high water sits below the threshold is stale and must be reclaimed"
+		);
 	}
 }

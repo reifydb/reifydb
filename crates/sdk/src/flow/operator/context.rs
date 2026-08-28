@@ -69,6 +69,19 @@ pub trait GuestState {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
+
+	fn last_bytes(
+		&self,
+		start: Bound<&GroupStateKey>,
+		end: Bound<&GroupStateKey>,
+	) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+		let mut last = None;
+		self.range_bytes_visit(start, end, None, &mut |key, payload| {
+			last = Some((key, payload));
+			Ok(())
+		})?;
+		Ok(last)
+	}
 }
 
 pub trait GuestDictionary {

@@ -43,10 +43,6 @@ const GROUP_B: GroupId = GroupId(11);
 const SIDE: u8 = 0;
 const FLOW: FlowId = FlowId(7);
 
-fn idle_interval() -> Duration {
-	Duration::from_hours_const(1)
-}
-
 fn tier(storage: &SqliteOperatorStorage) -> OperatorPersistentTier {
 	OperatorPersistentTier::Sqlite(storage.clone())
 }
@@ -58,8 +54,7 @@ fn store_fixture() -> (OperatorStore, SqliteOperatorStorage, SqliteTempPathGuard
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
 		commit: Default::default(),
-		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))
-			.flush_interval(idle_interval())),
+		persistent: Some(OperatorPersistentConfig::opened(OperatorPersistentTier::Sqlite(storage.clone()))),
 		point: Some(OperatorPointConfig::testing()),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
@@ -75,7 +70,7 @@ fn buffer_fixture() -> (OperatorCommitBuffer, SqliteOperatorStorage, ActorRef<Fl
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
 	(buffer, storage, actor_ref, guard)
 }
 
@@ -415,9 +410,9 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
 
-	let actor = OperatorFlushActor::new(buffer.clone(), idle_interval());
+	let actor = OperatorFlushActor::new(buffer.clone());
 	let cancel = CancellationToken::new();
 	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
 	let mut state = actor.init(&ctx);
@@ -579,9 +574,9 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "at-shutdown") * 4);
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
 
-	let actor = OperatorFlushActor::new(buffer.clone(), idle_interval());
+	let actor = OperatorFlushActor::new(buffer.clone());
 	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
 	let mut state = actor.init(&ctx);
 
@@ -609,9 +604,9 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::with_budget(entry_bytes(0, "at-cancel") * 4);
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
 
-	let actor = OperatorFlushActor::new(buffer.clone(), idle_interval());
+	let actor = OperatorFlushActor::new(buffer.clone());
 	let cancel = CancellationToken::new();
 	let ctx = Context::new(actor_ref, actor_system.clone(), cancel.clone());
 	let mut state = actor.init(&ctx);
@@ -648,7 +643,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	let budget = entry_bytes(0, "under-the-budget") * (entries - 1) as u64;
 	let buffer = OperatorCommitBuffer::with_budget(budget);
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), idle_interval());
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
 	buffer.attach_flusher(actor_ref);
 
 	for index in 0..entries - 1 {
@@ -680,30 +675,58 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	);
 }
 
-fn flusher_fixture(
-	interval: Duration,
-) -> (OperatorFlushActor, OperatorCommitBuffer, Context<FlushMessage>, ActorSystem, SqliteTempPathGuard) {
+#[test]
+fn a_buffer_a_hair_over_the_cap_evicts_a_hair_not_a_whole_slice() {
+	let (storage, _guard) = SqliteOperatorStorage::in_memory();
+	let large = "x".repeat(64 * 1024);
+	let resident = 64u8;
+	let cap = entry_bytes(0, &large) * resident as u64;
+	let buffer = OperatorCommitBuffer::with_budget(cap);
+	buffer.attach_sinks(tier(&storage), None, None);
+
+	for index in 0..resident {
+		buffer.record_state_set(OP_A, key(index), row(&large), DurablePre::Absent);
+	}
+	assert!(
+		buffer.metrics().backlog <= cap,
+		"the buffer must still be at or under its cap before the overshoot, or this measures the wrong thing"
+	);
+
+	buffer.record_state_set(OP_A, key(resident), row(&large), DurablePre::Absent);
+	buffer.evict_under_cap();
+
+	assert!(
+		buffer.metrics().backlog <= cap,
+		"eviction must leave the buffer at or under its cap; stopping above it lets the buffer grow \
+		 without bound"
+	);
+	assert!(
+		buffer.metrics().evicted <= 8,
+		"one entry of overshoot must cost about one entry of eviction plus the headroom, not the whole \
+		 4 MiB slice; got {} of {} entries written back",
+		buffer.metrics().evicted,
+		resident + 1
+	);
+}
+
+fn flusher_fixture()
+-> (OperatorFlushActor, OperatorCommitBuffer, Context<FlushMessage>, ActorSystem, SqliteTempPathGuard) {
 	let clock = Clock::testing();
 	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqliteOperatorStorage::in_memory();
 	let buffer = OperatorCommitBuffer::new();
 	buffer.attach_sinks(tier(&storage), None, None);
-	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone(), interval);
-	let actor = OperatorFlushActor::new(buffer.clone(), interval);
+	let actor_ref = OperatorFlushActor::spawn(&spawner, buffer.clone());
+	let actor = OperatorFlushActor::new(buffer.clone());
 	let ctx = Context::new(actor_ref, actor_system.clone(), CancellationToken::new());
 	(actor, buffer, ctx, actor_system, guard)
 }
 
 #[test]
-fn a_tick_with_no_config_attached_keeps_the_compiled_default_and_does_not_panic() {
-	let (actor, buffer, ctx, _system, _guard) = flusher_fixture(idle_interval());
-	let mut state = actor.init(&ctx);
-	buffer.record_state_set(OP_A, key(1), row("no-config"), DurablePre::Absent);
+fn a_flusher_with_no_config_attached_keeps_the_compiled_default_budget() {
+	let (_actor, buffer, _ctx, _system, _guard) = flusher_fixture();
 
-	let directive = actor.handle(&mut state, FlushMessage::Tick(DateTime::from_millis(1)), &ctx);
-
-	assert!(matches!(directive, Directive::Continue), "a tick without a config handle must keep the actor alive");
 	assert_eq!(
 		buffer.budget(),
 		FLUSH_BUDGET_BYTES,
