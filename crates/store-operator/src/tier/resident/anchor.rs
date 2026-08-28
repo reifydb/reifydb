@@ -23,11 +23,13 @@ impl OperatorResidentState {
 		row_number: RowNumber,
 		expiry: DateTime,
 	) {
-		self.write(|live| live.record_anchor((operator, group, side, row_number), Some(expiry.to_millis()), true));
+		self.write(|write| {
+			write.record_anchor((operator, group, side, row_number), Some(expiry.to_millis()), true)
+		});
 	}
 
 	pub fn record_anchor_remove(&self, operator: OperatorId, group: GroupId, side: u8, row_number: RowNumber) {
-		self.write(|live| live.record_anchor((operator, group, side, row_number), None, true));
+		self.write(|write| write.record_anchor((operator, group, side, row_number), None, true));
 	}
 
 	pub fn lookup_anchor(

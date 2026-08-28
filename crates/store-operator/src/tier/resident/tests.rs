@@ -26,7 +26,10 @@ use crate::{
 		OperatorResidentState,
 		batch::{ANCHOR_ENTRY_BYTES, DropMarker, StateEntry},
 	},
-	types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, BufferedAnchor, BufferedState, DurablePre, OperatorWrite},
+	types::{
+		ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, BufferedAnchor, BufferedState, DurablePre,
+		OperatorSealAnchorCensus, OperatorStateCensus, OperatorWrite,
+	},
 };
 
 const OP_A: OperatorId = OperatorId(1);
@@ -1023,7 +1026,7 @@ fn an_anchor_armed_and_disarmed_before_any_flush_leaves_no_entry_at_all() {
 	// AnchorInsert claims no durable row, so the matching remove has nothing on disk to mask.
 	// Keeping a tombstone here is what grew the group scan to thousands of entries of which
 	// ~1% were live, and every one of those tombstones also cost a no-op DELETE at flush.
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 
 	buffer.apply_batch(&[OperatorWrite::AnchorInsert {
 		operator: OP_A,
@@ -1065,7 +1068,7 @@ fn an_anchor_disarmed_after_its_flush_still_leaves_a_tombstone() {
 	// The mirror of the collapse: once assemble has handed the arm to the persistent tier the
 	// row exists on disk, so the later remove MUST tombstone or the seal timer is orphaned and
 	// fires forever. This is the case that makes the collapse safe to do at all.
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 
 	buffer.apply_batch(&[OperatorWrite::AnchorInsert {
 		operator: OP_A,
@@ -1099,7 +1102,7 @@ fn a_producer_claiming_a_durable_pre_image_cannot_stop_a_never_flushed_pair_from
 	// is part of that view. An anchor still resident here therefore arrives claimed as Present on
 	// every disarm, even though sqlite holds nothing. Trusting the claim collapses zero pairs and
 	// the buffer grows without bound; only the buffer knows what it has actually flushed.
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 
 	buffer.apply_batch(&[OperatorWrite::AnchorInsert {
 		operator: OP_A,
@@ -1136,7 +1139,7 @@ fn ten_thousand_arm_disarm_cycles_leave_nothing_behind() {
 	// a busy join runs this cycle continuously. The cost of one cycle must be O(1) in what it
 	// leaves resident; if each pair leaks an entry the group scan degrades linearly and the
 	// mechanism that exists to bound memory becomes the thing that grows it.
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 
 	for row_number in 0..10_000u64 {
 		buffer.apply_batch(&[OperatorWrite::AnchorInsert {
@@ -1173,7 +1176,7 @@ fn dropping_a_group_clears_the_durable_marks_that_would_block_a_later_collapse()
 	// The drop deletes the sqlite rows too, so the marks recording that those rows exist must go
 	// with them. A mark that outlives its row makes every future disarm of that slot tombstone
 	// forever against a row that is not there.
-	let buffer = OperatorCommitBuffer::new();
+	let buffer = OperatorResidentState::new();
 
 	buffer.apply_batch(&[OperatorWrite::AnchorInsert {
 		operator: OP_A,
@@ -1207,5 +1210,85 @@ fn dropping_a_group_clears_the_durable_marks_that_would_block_a_later_collapse()
 		BufferedAnchor::Dropped,
 		"the re-armed slot must collapse to nothing and fall through to the group drop; a Tombstone \
 		 here means a stale durable mark survived the drop"
+	);
+}
+
+fn assert_census_holds(buffer: &OperatorResidentState, step: &str) {
+	// Nothing else reads the running aggregate, so a missed delta drifts silently and every later metric is wrong.
+	assert_eq!(buffer.census(), buffer.census_by_scan(), "the state census drifted after {step}");
+	assert_eq!(
+		buffer.anchor_census(),
+		buffer.anchor_census_by_scan(),
+		"the anchor census drifted after {step}"
+	);
+}
+
+#[test]
+fn every_mutation_path_keeps_the_census_equal_to_a_fresh_scan() {
+	// Keys touched only while they sit in the in-flight batch are deliberate: a delta taken against the live batch alone misses them.
+	let buffer = OperatorResidentState::new();
+	let first = state_key("k1");
+	let second = state_key("k2");
+	let flushed = state_key("k4");
+	let neighbour = state_key("k5");
+
+	buffer.record_state_set(OP_A, first.clone(), row("v1"), DurablePre::Absent);
+	assert_census_holds(&buffer, "the first write");
+
+	buffer.record_state_set(OP_A, second.clone(), row("v2"), DurablePre::Absent);
+	buffer.record_state_set(OP_A, flushed.clone(), row("v4"), DurablePre::Absent);
+	assert_census_holds(&buffer, "two more writes");
+
+	buffer.record_state_set(OP_A, first.clone(), row("v1-longer"), DurablePre::Absent);
+	assert_census_holds(&buffer, "an overwrite inside the live batch");
+
+	buffer.record_anchor_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
+	buffer.record_anchor_set(OP_A, GROUP_B, 0, RowNumber(2), DateTime::from_millis(200));
+	assert_census_holds(&buffer, "two armed anchors");
+
+	buffer.take_for_flush().expect("the seeded batch must be takeable");
+	assert_census_holds(&buffer, "the slice moving into flight");
+
+	buffer.record_state_set(OP_A, first.clone(), row("v1-live"), DurablePre::Absent);
+	assert_census_holds(&buffer, "an overwrite of a key only the in-flight batch holds");
+
+	buffer.record_state_remove(OP_A, second.clone(), DurablePre::Absent);
+	assert_census_holds(&buffer, "a tombstone over a key only the in-flight batch holds");
+
+	buffer.record_anchor_remove(OP_A, GROUP_A, 0, RowNumber(1));
+	assert_census_holds(&buffer, "an anchor collapsed while its arm is in flight");
+
+	buffer.complete_flush();
+	assert_census_holds(&buffer, "the flush completing");
+
+	buffer.record_state_set(OP_B, neighbour.clone(), row("v5"), DurablePre::Absent);
+	buffer.record_anchor_set(OP_A, GROUP_B, 0, RowNumber(2), DateTime::from_millis(300));
+	buffer.record_anchor_set(OP_B, GROUP_A, 0, RowNumber(3), DateTime::from_millis(400));
+	assert_census_holds(&buffer, "a second operator joining");
+
+	buffer.record_drop(DropMarker::AnchorsGroup(OP_A, GROUP_B));
+	assert_census_holds(&buffer, "a group anchor drop");
+
+	buffer.record_drop(DropMarker::OperatorState(OP_A));
+	assert_census_holds(&buffer, "an operator drop");
+
+	assert_eq!(
+		buffer.census(),
+		vec![OperatorStateCensus {
+			operator: OP_B,
+			keyspace: OperatorStateKey::decode_keyspace(0x10),
+			keys: 1,
+			key_bytes: ByteSize::from_bytes(neighbour.len() as u64),
+			value_bytes: ByteSize::from_bytes(row("v5").bytes().len() as u64),
+		}],
+		"only the untouched operator's key may survive the drop"
+	);
+	assert_eq!(
+		buffer.anchor_census(),
+		vec![OperatorSealAnchorCensus {
+			operator: OP_B,
+			keys: 1,
+		}],
+		"and only the untouched operator's anchor"
 	);
 }

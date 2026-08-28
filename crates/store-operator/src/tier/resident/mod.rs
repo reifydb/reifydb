@@ -14,14 +14,19 @@ mod state;
 mod tests;
 
 use std::{
-	fmt, iter,
+	fmt,
 	sync::{
 		Arc, OnceLock,
 		atomic::{AtomicBool, Ordering},
 	},
 };
 
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId, util::budget::MemoryBudget};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::flow::{FlowId, OperatorId},
+	util::budget::MemoryBudget,
+};
 use reifydb_runtime::{
 	actor::mailbox::ActorRef,
 	sync::{
@@ -37,7 +42,8 @@ use crate::{
 		point::OperatorPointTier,
 		range::OperatorRangeTier,
 		resident::{
-			batch::{DropMarker, FlushBatch, StateKey},
+			batch::{AnchorKey, DropMarker, FlushBatch, StateKey},
+			census::{BufferCensus, release_in_flight},
 			flush::actor::FlushMessage,
 		},
 	},
@@ -67,6 +73,7 @@ struct BufferInner {
 	in_flight: Option<Arc<FlushBatch>>,
 	flushing: bool,
 	cursor: Option<StateKey>,
+	census: BufferCensus,
 }
 
 impl BufferInner {
@@ -181,7 +188,7 @@ impl OperatorResidentState {
 		if writes.is_empty() {
 			return;
 		}
-		self.write(|live| record_writes(live, writes));
+		self.write(|write| record_writes(write, writes));
 	}
 
 	pub fn apply_batch_with_checkpoints(
@@ -193,13 +200,13 @@ impl OperatorResidentState {
 		if writes.is_empty() && checkpoints.is_empty() && checkpoint_deletes.is_empty() {
 			return;
 		}
-		self.write(|live| {
-			record_writes(live, writes);
+		self.write(|write| {
+			record_writes(write, writes);
 			for (flow, version) in checkpoints {
-				live.checkpoints.insert(*flow, Some(*version));
+				write.record_checkpoint(*flow, Some(*version));
 			}
 			for flow in checkpoint_deletes {
-				live.checkpoints.insert(*flow, None);
+				write.record_checkpoint(*flow, None);
 			}
 		});
 	}
@@ -210,10 +217,16 @@ impl OperatorResidentState {
 		while inner.flushing {
 			shared.idle.wait(&mut inner);
 		}
-		let before = inner.live.bytes;
-		inner.live.clear_drop(marker);
-		inner.live.drops.push(marker);
-		shared.budget.release(before.saturating_sub(inner.live.bytes));
+		let BufferInner {
+			live,
+			census,
+			..
+		} = &mut *inner;
+		let before = live.bytes;
+		live.clear_drop(marker, census);
+		live.drops.push(marker);
+		let after = live.bytes;
+		shared.budget.release(before.saturating_sub(after));
 	}
 
 	pub fn flush_guard(&self) -> MutexGuard<'_, ()> {
@@ -255,6 +268,7 @@ impl OperatorResidentState {
 		if inner.live.is_empty() {
 			return None;
 		}
+		release_in_flight(&mut inner);
 		let batch = Arc::new(inner.live.drain_within(self.shared.slice));
 		if !inner.live.is_empty() {
 			self.shared.metrics.lock().budget_exhausted += 1;
@@ -274,6 +288,7 @@ impl OperatorResidentState {
 		if inner.live.is_empty() {
 			return None;
 		}
+		release_in_flight(&mut inner);
 		let cursor = inner.cursor.take();
 		let (taken, cursor) = inner.live.evict_within(self.evict_budget(), cursor);
 		inner.cursor = cursor;
@@ -299,7 +314,7 @@ impl OperatorResidentState {
 	fn settle(&self, batch: Arc<FlushBatch>) {
 		{
 			let mut inner = self.shared.inner.lock();
-			inner.in_flight = None;
+			release_in_flight(&mut inner);
 			inner.flushing = false;
 		}
 		self.shared.idle.notify_all();
@@ -345,12 +360,24 @@ impl OperatorResidentState {
 		}
 	}
 
-	pub(crate) fn write<R>(&self, mutate: impl FnOnce(&mut FlushBatch) -> R) -> R {
+	pub(crate) fn write<R>(&self, mutate: impl FnOnce(&mut BufferWrite<'_>) -> R) -> R {
 		let out = {
 			let shared = self.shared();
 			let mut inner = shared.inner.lock();
 			let before = inner.live.bytes;
-			let out = mutate(&mut inner.live);
+			let out = {
+				let BufferInner {
+					live,
+					in_flight,
+					census,
+					..
+				} = &mut *inner;
+				mutate(&mut BufferWrite {
+					live,
+					in_flight: in_flight.as_deref(),
+					census,
+				})
+			};
 			let after = inner.live.bytes;
 			shared.budget.charge(after.saturating_sub(before));
 			shared.budget.release(before.saturating_sub(after));
@@ -358,6 +385,65 @@ impl OperatorResidentState {
 		};
 		self.observe_write();
 		out
+	}
+}
+
+pub(crate) struct BufferWrite<'a> {
+	live: &'a mut FlushBatch,
+	in_flight: Option<&'a FlushBatch>,
+	census: &'a mut BufferCensus,
+}
+
+impl BufferWrite<'_> {
+	pub(crate) fn record_state(&mut self, key: StateKey, post: Option<EncodedPodRow>, durable_pre: DurablePre) {
+		let previous = merged_state(self.live, self.in_flight, key.0, &key.1);
+		let incoming = value_bytes(post.as_ref());
+		if let Some(bytes) = previous {
+			self.census.retract_state(key.0, &key.1, bytes);
+		}
+		if let Some(bytes) = incoming {
+			self.census.admit_state(key.0, &key.1, bytes);
+		}
+		self.live.record_state(key, post, durable_pre);
+	}
+
+	pub(crate) fn record_anchor(&mut self, key: AnchorKey, expiry: Option<u64>, durable: bool) {
+		let before = merged_anchor(self.live, self.in_flight, &key);
+		self.live.record_anchor(key, expiry, durable);
+		let after = merged_anchor(self.live, self.in_flight, &key);
+		match (before, after) {
+			(false, true) => self.census.admit_anchor(key.0),
+			(true, false) => self.census.retract_anchor(key.0),
+			_ => {}
+		}
+	}
+
+	pub(crate) fn record_checkpoint(&mut self, flow: FlowId, version: Option<CommitVersion>) {
+		self.live.checkpoints.insert(flow, version);
+	}
+}
+
+fn value_bytes(post: Option<&EncodedPodRow>) -> Option<u64> {
+	post.map(|row| row.bytes().len() as u64)
+}
+
+fn merged_state(
+	live: &FlushBatch,
+	in_flight: Option<&FlushBatch>,
+	operator: OperatorId,
+	key: &EncodedKey,
+) -> Option<u64> {
+	let entry = match live.state.lookup(operator, key) {
+		Some(entry) => entry,
+		None => in_flight?.state.lookup(operator, key)?,
+	};
+	value_bytes(entry.post.as_ref())
+}
+
+fn merged_anchor(live: &FlushBatch, in_flight: Option<&FlushBatch>, key: &AnchorKey) -> bool {
+	match live.anchors.get(key) {
+		Some(entry) => entry.is_some(),
+		None => in_flight.and_then(|batch| batch.anchors.get(key)).is_some_and(|entry| entry.is_some()),
 	}
 }
 
@@ -409,11 +495,7 @@ fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&Operator
 	}
 }
 
-fn resident(inner: &BufferInner) -> impl Iterator<Item = &FlushBatch> {
-	inner.in_flight.as_deref().into_iter().chain(iter::once(&inner.live))
-}
-
-fn record_writes(live: &mut FlushBatch, writes: &[OperatorWrite]) {
+fn record_writes(live: &mut BufferWrite<'_>, writes: &[OperatorWrite]) {
 	for write in writes {
 		match write {
 			OperatorWrite::Insert {

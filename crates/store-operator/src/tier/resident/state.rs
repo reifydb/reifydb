@@ -21,11 +21,11 @@ use crate::{
 
 impl OperatorResidentState {
 	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow, pre: DurablePre) {
-		self.write(|live| live.record_state((operator, key), Some(row), pre));
+		self.write(|write| write.record_state((operator, key), Some(row), pre));
 	}
 
 	pub fn record_state_remove(&self, operator: OperatorId, key: EncodedKey, pre: DurablePre) {
-		self.write(|live| live.record_state((operator, key), None, pre));
+		self.write(|write| write.record_state((operator, key), None, pre));
 	}
 
 	pub fn lookup_state(&self, operator: OperatorId, key: &EncodedKey) -> BufferedState {

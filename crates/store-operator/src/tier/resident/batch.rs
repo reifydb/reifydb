@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 
 use crate::{
-	tier::resident::state_map::StateMap,
+	tier::resident::{census::BufferCensus, state_map::StateMap},
 	types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES, DurablePre},
 };
 
@@ -141,39 +141,48 @@ impl FlushBatch {
 		}
 	}
 
-	pub(super) fn clear_drop(&mut self, marker: DropMarker) {
+	pub(super) fn clear_drop(&mut self, marker: DropMarker, census: &mut BufferCensus) {
 		match marker {
 			DropMarker::OperatorState(operator) => {
-				self.drop_state(operator);
-				self.retain_anchors(|(candidate, _, _, _)| *candidate != operator);
+				self.drop_state(operator, census);
+				self.retain_anchors(|(candidate, _, _, _)| *candidate != operator, census);
 			}
 			DropMarker::AnchorsOperator(operator) => {
-				self.retain_anchors(|(candidate, _, _, _)| *candidate != operator);
+				self.retain_anchors(|(candidate, _, _, _)| *candidate != operator, census);
 			}
 			DropMarker::AnchorsGroup(operator, group) => {
-				self.retain_anchors(|(candidate, candidate_group, _, _)| {
-					*candidate != operator || *candidate_group != group
-				});
+				self.retain_anchors(
+					|(candidate, candidate_group, _, _)| {
+						*candidate != operator || *candidate_group != group
+					},
+					census,
+				);
 			}
 		}
 	}
 
-	fn drop_state(&mut self, operator: OperatorId) {
+	fn drop_state(&mut self, operator: OperatorId, census: &mut BufferCensus) {
 		let Some(keys) = self.state.remove_operator(operator) else {
 			return;
 		};
 		for (key, entry) in keys.iter() {
 			self.bytes = self.bytes.saturating_sub(state_entry_bytes(key, entry));
+			if let Some(row) = &entry.post {
+				census.retract_state(operator, key, row.bytes().len() as u64);
+			}
 		}
 	}
 
-	fn retain_anchors(&mut self, keep: impl Fn(&AnchorKey) -> bool) {
+	fn retain_anchors(&mut self, keep: impl Fn(&AnchorKey) -> bool, census: &mut BufferCensus) {
 		let bytes = &mut self.bytes;
-		self.anchors.retain(|key, _| {
+		self.anchors.retain(|key, entry| {
 			if keep(key) {
 				return true;
 			}
 			*bytes = bytes.saturating_sub(ANCHOR_ENTRY_BYTES);
+			if entry.is_some() {
+				census.retract_anchor(key.0);
+			}
 			false
 		});
 		self.durable_anchors.retain(&keep);
