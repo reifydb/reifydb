@@ -8,8 +8,8 @@
 
 use proc_macro::TokenStream;
 use reifydb_macro_impl::{
-	derive_from_frame_with_crate, derive_heap_size as derive_heap_size_impl, expand_catalog_shape,
-	operator_state_with_crate,
+	derive_from_frame_with_crate, derive_heap_size as derive_heap_size_impl, derive_key as derive_key_impl,
+	expand_catalog_shape, operator_state_with_crate,
 };
 
 #[proc_macro]
@@ -25,6 +25,11 @@ pub fn derive_from_frame(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(HeapSize)]
 pub fn derive_heap_size(input: TokenStream) -> TokenStream {
 	derive_heap_size_impl(input.into()).into()
+}
+
+#[proc_macro_derive(Key)]
+pub fn derive_key(input: TokenStream) -> TokenStream {
+	derive_key_impl(input.into()).into()
 }
 
 #[proc_macro_attribute]

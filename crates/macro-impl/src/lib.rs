@@ -10,6 +10,7 @@ pub mod catalog_shape;
 pub mod from_frame;
 pub mod generate;
 pub mod heap_size;
+pub mod key;
 pub mod operator_state;
 pub mod parse;
 
@@ -25,6 +26,10 @@ pub fn expand_catalog_shape(input: TokenStream) -> TokenStream {
 
 pub fn derive_heap_size(input: TokenStream) -> TokenStream {
 	heap_size::derive_heap_size(input)
+}
+
+pub fn derive_key(input: TokenStream) -> TokenStream {
+	key::derive_key(input)
 }
 
 pub fn operator_state_with_crate(attr: TokenStream, item: TokenStream, crate_path: &str) -> TokenStream {

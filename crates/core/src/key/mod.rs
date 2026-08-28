@@ -140,6 +140,7 @@ pub mod system_version;
 pub mod table;
 pub mod token;
 pub mod transaction_version;
+pub mod typed;
 pub mod variant_handler;
 pub mod version_epoch;
 pub mod view;

@@ -12,7 +12,10 @@ use reifydb_codec::key::{
 use reifydb_value::util::hash::xxh3_128;
 
 use super::{EncodableKey, KeyKind};
-use crate::interface::{catalog::flow::OperatorId, store::CacheTiers};
+use crate::{
+	interface::{catalog::flow::OperatorId, store::CacheTiers},
+	metrics::heap::HeapSize,
+};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -34,6 +37,12 @@ impl GroupId {
 
 	pub fn is_root(&self) -> bool {
 		*self == Self::ROOT
+	}
+}
+
+impl HeapSize for GroupId {
+	fn heap_size(&self) -> usize {
+		0
 	}
 }
 
