@@ -9,12 +9,12 @@ use std::{collections::BTreeMap, ops::Bound};
 
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::key::operator_state::OperatorStateKey;
-use reifydb_store_operator::types::{ANCHOR_KEY_BYTES, ANCHOR_VALUE_BYTES};
+use reifydb_store_operator::types::{JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES};
 use reifydb_value::byte_size::ByteSize;
 
 type StateKey = (u64, Vec<u8>);
 
-type AnchorKey = (u64, u64, u8, u64);
+type JoinExpiryKey = (u64, u64, u8, u64);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CensusRow {
@@ -26,7 +26,7 @@ pub struct CensusRow {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AnchorRow {
+pub struct JoinExpiryRow {
 	pub expiry: u64,
 	pub side: u8,
 	pub row_number: u64,
@@ -35,7 +35,7 @@ pub struct AnchorRow {
 #[derive(Clone, Default)]
 pub struct Oracle {
 	state: BTreeMap<StateKey, EncodedPodRow>,
-	anchors: BTreeMap<AnchorKey, u64>,
+	join_expiries: BTreeMap<JoinExpiryKey, u64>,
 	checkpoints: BTreeMap<u64, u64>,
 }
 
@@ -50,25 +50,25 @@ impl Oracle {
 
 	pub fn drop_operator_state(&mut self, operator: u64) {
 		self.state.retain(|(candidate, _), _| *candidate != operator);
-		self.anchors.retain(|(candidate, _, _, _), _| *candidate != operator);
+		self.join_expiries.retain(|(candidate, _, _, _), _| *candidate != operator);
 	}
 
-	pub fn anchor_set(&mut self, operator: u64, group: u64, side: u8, row_number: u64, expiry: u64) {
-		self.anchors.insert((operator, group, side, row_number), expiry);
+	pub fn join_expiry_set(&mut self, operator: u64, group: u64, side: u8, row_number: u64, expiry: u64) {
+		self.join_expiries.insert((operator, group, side, row_number), expiry);
 	}
 
-	pub fn anchor_remove(&mut self, operator: u64, group: u64, side: u8, row_number: u64) {
-		self.anchors.remove(&(operator, group, side, row_number));
+	pub fn join_expiry_remove(&mut self, operator: u64, group: u64, side: u8, row_number: u64) {
+		self.join_expiries.remove(&(operator, group, side, row_number));
 	}
 
-	pub fn anchors_remove_group(&mut self, operator: u64, group: u64) {
-		self.anchors.retain(|(candidate, candidate_group, _, _), _| {
+	pub fn join_expiries_remove_group(&mut self, operator: u64, group: u64) {
+		self.join_expiries.retain(|(candidate, candidate_group, _, _), _| {
 			*candidate != operator || *candidate_group != group
 		});
 	}
 
-	pub fn anchors_drop_operator(&mut self, operator: u64) {
-		self.anchors.retain(|(candidate, _, _, _), _| *candidate != operator);
+	pub fn join_expiries_drop_operator(&mut self, operator: u64) {
+		self.join_expiries.retain(|(candidate, _, _, _), _| *candidate != operator);
 	}
 
 	pub fn checkpoint_set(&mut self, flow: u64, version: u64) {
@@ -103,13 +103,13 @@ impl Oracle {
 		self.state.keys().nth(index).cloned()
 	}
 
-	pub fn anchor_len(&self) -> usize {
-		self.anchors.len()
+	pub fn join_expiry_len(&self) -> usize {
+		self.join_expiries.len()
 	}
 
-	/// Indexed sampling over the live anchor slots, for the same reason `nth_state_slot` exists.
-	pub fn nth_anchor_slot(&self, index: usize) -> Option<(u64, u64, u8, u64)> {
-		self.anchors.keys().nth(index).copied()
+	/// Indexed sampling over the live join expiry slots, for the same reason `nth_state_slot` exists.
+	pub fn nth_join_expiry_slot(&self, index: usize) -> Option<(u64, u64, u8, u64)> {
+		self.join_expiries.keys().nth(index).copied()
 	}
 
 	pub fn checkpoint_get(&self, flow: u64) -> Option<u64> {
@@ -152,9 +152,9 @@ impl Oracle {
 		buckets.into_values().collect()
 	}
 
-	pub fn anchor_census(&self) -> Vec<(u64, u64)> {
+	pub fn join_expiry_census(&self) -> Vec<(u64, u64)> {
 		let mut buckets: BTreeMap<u64, u64> = BTreeMap::new();
-		for (operator, _, _, _) in self.anchors.keys() {
+		for (operator, _, _, _) in self.join_expiries.keys() {
 			*buckets.entry(*operator).or_insert(0) += 1;
 		}
 		buckets.into_iter().collect()
@@ -167,30 +167,31 @@ impl Oracle {
 			.filter(|((candidate, _), _)| *candidate == operator)
 			.map(|((_, key), row)| (key.len() + row.bytes().len()) as u64)
 			.sum();
-		let anchors = self.anchors.keys().filter(|(candidate, _, _, _)| *candidate == operator).count() as u64;
-		state + anchor_bytes(anchors)
+		let join_expiries =
+			self.join_expiries.keys().filter(|(candidate, _, _, _)| *candidate == operator).count() as u64;
+		state + join_expiry_bytes(join_expiries)
 	}
 
 	pub fn total_bytes(&self) -> u64 {
 		let state: u64 = self.state.iter().map(|((_, key), row)| (key.len() + row.bytes().len()) as u64).sum();
-		state + anchor_bytes(self.anchors.len() as u64)
+		state + join_expiry_bytes(self.join_expiries.len() as u64)
 	}
 
-	pub fn anchor_get(&self, operator: u64, group: u64, side: u8, row_number: u64) -> Option<u64> {
-		self.anchors.get(&(operator, group, side, row_number)).copied()
+	pub fn join_expiry_get(&self, operator: u64, group: u64, side: u8, row_number: u64) -> Option<u64> {
+		self.join_expiries.get(&(operator, group, side, row_number)).copied()
 	}
 
-	/// Every anchor of the group that qualifies, ordered by expiry then by slot. A tier is free to break expiry
-	/// ties differently, so callers compare expiries positionally and slots as a set.
-	pub fn eligible_anchors(&self, operator: u64, group: u64, due: Option<u64>) -> Vec<AnchorRow> {
-		let mut rows: Vec<AnchorRow> = self
-			.anchors
+	/// Every join expiry of the group that qualifies, ordered by expiry then by slot. A tier is free to break
+	/// expiry ties differently, so callers compare expiries positionally and slots as a set.
+	pub fn eligible_join_expiries(&self, operator: u64, group: u64, due: Option<u64>) -> Vec<JoinExpiryRow> {
+		let mut rows: Vec<JoinExpiryRow> = self
+			.join_expiries
 			.iter()
 			.filter(|((candidate, candidate_group, _, _), _)| {
 				*candidate == operator && *candidate_group == group
 			})
 			.filter(|(_, expiry)| due.is_none_or(|at| **expiry <= at))
-			.map(|((_, _, side, row_number), expiry)| AnchorRow {
+			.map(|((_, _, side, row_number), expiry)| JoinExpiryRow {
 				expiry: *expiry,
 				side: *side,
 				row_number: *row_number,
@@ -201,8 +202,8 @@ impl Oracle {
 	}
 }
 
-fn anchor_bytes(count: u64) -> u64 {
-	(ANCHOR_KEY_BYTES.as_bytes() + ANCHOR_VALUE_BYTES.as_bytes()) * count
+fn join_expiry_bytes(count: u64) -> u64 {
+	(JOIN_EXPIRY_KEY_BYTES.as_bytes() + JOIN_EXPIRY_VALUE_BYTES.as_bytes()) * count
 }
 
 fn in_bounds(key: &[u8], start: &Bound<Vec<u8>>, end: &Bound<Vec<u8>>) -> bool {

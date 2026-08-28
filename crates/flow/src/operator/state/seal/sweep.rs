@@ -17,7 +17,7 @@ impl SealSweep {
 	}
 
 	pub fn horizon(&self, fired: FiredAt) -> Option<DateTime> {
-		self.rule.sealed_anchor(fired.at())
+		self.rule.horizon_at(fired.at())
 	}
 }
 
@@ -48,14 +48,14 @@ mod tests {
 
 	#[test]
 	fn the_sweep_horizon_inverts_the_seal_instant_exactly() {
-		// Arming computes `anchor + admissible + 1`; the sweep must invert it exactly or a window
+		// Arming computes `event + admissible + 1`; the sweep must invert it exactly or a window
 		// seals its neighbour instead of itself. The two halves live in separate files and have
 		// drifted apart before.
 		let rule = SealRule::tumbling(ms(1_000), ms(200));
 		let sweep = SealSweep::new(rule);
 
-		let anchor = order(5_000);
-		let instant = rule.seal_instant_from_order(anchor).at();
+		let event = order(5_000);
+		let instant = rule.seal_instant_from_order(event).at();
 
 		assert_eq!(sweep.horizon(fired(instant.to_order())), Some(DateTime::from_millis(5_000)));
 	}
@@ -68,7 +68,7 @@ mod tests {
 		let sweep = SealSweep::new(SealRule::tumbling(ms(1_000), ms(200)));
 
 		assert!(sweep.horizon(fired(order(0))).is_none());
-		assert!(sweep.horizon(fired(order(1_200))).is_none(), "the anchor would be 0 - 1, not 0");
+		assert!(sweep.horizon(fired(order(1_200))).is_none(), "the horizon would be 0 - 1, not 0");
 		assert_eq!(sweep.horizon(fired(order(1_201))), Some(DateTime::from_millis(0)));
 	}
 

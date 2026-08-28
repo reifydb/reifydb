@@ -11,11 +11,11 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::tier::resident::batch::AnchorSlot;
+use crate::tier::resident::batch::JoinExpirySlot;
 
-pub const ANCHOR_KEY_BYTES: ByteSize = ByteSize::from_bytes(33);
+pub const JOIN_EXPIRY_KEY_BYTES: ByteSize = ByteSize::from_bytes(33);
 
-pub const ANCHOR_VALUE_BYTES: ByteSize = ByteSize::from_bytes(8);
+pub const JOIN_EXPIRY_VALUE_BYTES: ByteSize = ByteSize::from_bytes(8);
 
 #[derive(Debug, Clone)]
 pub struct OperatorBatch {
@@ -47,7 +47,7 @@ pub struct BufferedStateRange {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BufferedAnchor {
+pub enum BufferedJoinExpiry {
 	Expiry(u64),
 	Tombstone,
 	Dropped,
@@ -55,21 +55,21 @@ pub enum BufferedAnchor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BufferedAnchorGroup {
-	pub anchors: Vec<(AnchorSlot, Option<u64>)>,
+pub struct BufferedJoinExpiryGroup {
+	pub join_expiries: Vec<(JoinExpirySlot, Option<u64>)>,
 	pub dropped: bool,
 	pub durable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OperatorSealAnchor {
+pub struct StoredJoinRowExpiry {
 	pub side: u8,
 	pub row_number: RowNumber,
-	pub expiry: DateTime,
+	pub at: DateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OperatorSealAnchorCensus {
+pub struct StoredJoinRowExpiryCensus {
 	pub operator: OperatorId,
 	pub keys: u64,
 }
@@ -107,21 +107,21 @@ pub enum OperatorWrite {
 		key: EncodedKey,
 		pre: DurablePre,
 	},
-	AnchorInsert {
+	JoinExpiryInsert {
 		operator: OperatorId,
 		group: GroupId,
 		side: u8,
 		row_num: RowNumber,
-		expiry: DateTime,
+		at: DateTime,
 	},
-	AnchorReplace {
+	JoinExpiryReplace {
 		operator: OperatorId,
 		group: GroupId,
 		side: u8,
 		row_num: RowNumber,
-		expiry: DateTime,
+		at: DateTime,
 	},
-	AnchorRemove {
+	JoinExpiryRemove {
 		operator: OperatorId,
 		group: GroupId,
 		side: u8,

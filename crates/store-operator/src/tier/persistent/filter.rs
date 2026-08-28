@@ -8,7 +8,7 @@ use reifydb_value::value::row_number::RowNumber;
 
 pub const ARMED_CAPACITY_KEYS: u64 = 1_000_000;
 
-pub const ARMED_CAPACITY_ANCHORS: u64 = 1_000_000;
+pub const ARMED_CAPACITY_JOIN_EXPIRIES: u64 = 1_000_000;
 
 pub struct OperatorKeys;
 
@@ -20,9 +20,9 @@ impl FilterDomain for OperatorKeys {
 	}
 }
 
-pub struct OperatorAnchors;
+pub struct JoinExpiryKeys;
 
-impl FilterDomain for OperatorAnchors {
+impl FilterDomain for JoinExpiryKeys {
 	type Key<'a> = (OperatorId, GroupId, u8, RowNumber);
 
 	fn hash(key: Self::Key<'_>) -> u64 {

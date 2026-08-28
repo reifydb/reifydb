@@ -1631,10 +1631,7 @@ mod tests {
 
 	#[test]
 	fn test_operator_flush_budget_bytes_round_trips_through_display_and_from_str() {
-		assert_eq!(
-			"OPERATOR_RESIDENT_BUDGET".parse::<ConfigKey>().unwrap(),
-			ConfigKey::OperatorResidentBudget
-		);
+		assert_eq!("OPERATOR_RESIDENT_BUDGET".parse::<ConfigKey>().unwrap(), ConfigKey::OperatorResidentBudget);
 		assert_eq!(format!("{}", ConfigKey::OperatorResidentBudget), "OPERATOR_RESIDENT_BUDGET");
 	}
 

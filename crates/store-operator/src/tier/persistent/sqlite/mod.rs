@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-mod anchor;
 mod census;
 mod checkpoint;
 pub mod filter;
 mod flush;
+mod join_expiry;
 pub mod metrics;
 pub mod schema;
 pub mod sql;
@@ -33,8 +33,8 @@ use rusqlite::Connection;
 use tracing::instrument;
 
 use crate::tier::persistent::{
-	filter::{ARMED_CAPACITY_ANCHORS, ARMED_CAPACITY_KEYS, OperatorAnchors, OperatorKeys},
-	sqlite::{anchor::anchor_exists, schema::ensure_schema, state::state_exists},
+	filter::{ARMED_CAPACITY_JOIN_EXPIRIES, ARMED_CAPACITY_KEYS, JoinExpiryKeys, OperatorKeys},
+	sqlite::{join_expiry::join_expiry_exists, schema::ensure_schema, state::state_exists},
 };
 
 #[derive(Clone)]
@@ -48,9 +48,9 @@ struct StoreInner {
 	cache_hits: AtomicU64,
 	cache_misses: AtomicU64,
 	state_written: AtomicBool,
-	anchors_out_of_band: AtomicBool,
+	join_expiries_out_of_band: AtomicBool,
 	filter: KeyFilter<OperatorKeys>,
-	anchor_filter: KeyFilter<OperatorAnchors>,
+	join_expiry_filter: KeyFilter<JoinExpiryKeys>,
 }
 
 const OPEN_MESSAGES: OpenMessages = OpenMessages {
@@ -88,11 +88,11 @@ impl SqliteOperatorStorage {
 		} else {
 			KeyFilter::<OperatorKeys>::armed(ARMED_CAPACITY_KEYS)
 		};
-		let anchors_preexisting = anchor_exists(&conn);
-		let anchor_filter = if anchors_preexisting {
-			KeyFilter::<OperatorAnchors>::new()
+		let join_expiries_preexisting = join_expiry_exists(&conn);
+		let join_expiry_filter = if join_expiries_preexisting {
+			KeyFilter::<JoinExpiryKeys>::new()
 		} else {
-			KeyFilter::<OperatorAnchors>::armed(ARMED_CAPACITY_ANCHORS)
+			KeyFilter::<JoinExpiryKeys>::armed(ARMED_CAPACITY_JOIN_EXPIRIES)
 		};
 		Self {
 			inner: Arc::new(StoreInner {
@@ -101,9 +101,9 @@ impl SqliteOperatorStorage {
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
 				state_written: AtomicBool::new(state_written),
-				anchors_out_of_band: AtomicBool::new(anchors_preexisting),
+				join_expiries_out_of_band: AtomicBool::new(join_expiries_preexisting),
 				filter,
-				anchor_filter,
+				join_expiry_filter,
 			}),
 		}
 	}
@@ -127,16 +127,16 @@ impl SqliteOperatorStorage {
 		&self.inner.filter
 	}
 
-	pub fn anchor_filter(&self) -> &KeyFilter<OperatorAnchors> {
-		&self.inner.anchor_filter
+	pub fn join_expiry_filter(&self) -> &KeyFilter<JoinExpiryKeys> {
+		&self.inner.join_expiry_filter
 	}
 
-	pub fn anchors_out_of_band(&self) -> bool {
-		self.inner.anchors_out_of_band.load(Ordering::Relaxed)
+	pub fn join_expiries_out_of_band(&self) -> bool {
+		self.inner.join_expiries_out_of_band.load(Ordering::Relaxed)
 	}
 
-	pub(crate) fn mark_anchors_out_of_band(&self) {
-		self.inner.anchors_out_of_band.store(true, Ordering::Relaxed);
+	pub(crate) fn mark_join_expiries_out_of_band(&self) {
+		self.inner.join_expiries_out_of_band.store(true, Ordering::Relaxed);
 	}
 
 	pub fn set_checkpoint_threshold(&self, frames: u32) {

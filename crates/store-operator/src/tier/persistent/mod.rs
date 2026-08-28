@@ -30,10 +30,10 @@ use reifydb_value::{
 use crate::tier::persistent::sqlite::SqliteOperatorStorage;
 use crate::{
 	tier::{
-		persistent::filter::{OperatorAnchors, OperatorKeys},
+		persistent::filter::{JoinExpiryKeys, OperatorKeys},
 		resident::batch::FlushBatch,
 	},
-	types::{OperatorBatch, OperatorSealAnchor, OperatorSealAnchorCensus, OperatorStateCensus},
+	types::{OperatorBatch, OperatorStateCensus, StoredJoinRowExpiry, StoredJoinRowExpiryCensus},
 };
 
 #[derive(Clone)]
@@ -84,15 +84,15 @@ impl OperatorPersistentTier {
 		}
 	}
 
-	pub fn anchor_filter(&self) -> &KeyFilter<OperatorAnchors> {
+	pub fn join_expiry_filter(&self) -> &KeyFilter<JoinExpiryKeys> {
 		match self {
-			Self::Sqlite(storage) => storage.anchor_filter(),
+			Self::Sqlite(storage) => storage.join_expiry_filter(),
 		}
 	}
 
-	pub fn anchors_out_of_band(&self) -> bool {
+	pub fn join_expiries_out_of_band(&self) -> bool {
 		match self {
-			Self::Sqlite(storage) => storage.anchors_out_of_band(),
+			Self::Sqlite(storage) => storage.join_expiries_out_of_band(),
 		}
 	}
 
@@ -150,13 +150,13 @@ impl OperatorPersistentTier {
 		}
 	}
 
-	pub fn anchor_census(&self) -> Vec<OperatorSealAnchorCensus> {
+	pub fn join_expiry_census(&self) -> Vec<StoredJoinRowExpiryCensus> {
 		match self {
-			Self::Sqlite(storage) => storage.anchor_census(),
+			Self::Sqlite(storage) => storage.join_expiry_census(),
 		}
 	}
 
-	pub fn anchor_get(
+	pub fn join_expiry_get(
 		&self,
 		operator: OperatorId,
 		group: GroupId,
@@ -164,25 +164,30 @@ impl OperatorPersistentTier {
 		row_number: RowNumber,
 	) -> Option<DateTime> {
 		match self {
-			Self::Sqlite(storage) => storage.anchor_get(operator, group, side, row_number),
+			Self::Sqlite(storage) => storage.join_expiry_get(operator, group, side, row_number),
 		}
 	}
 
-	pub fn anchors_by_expiry(&self, operator: OperatorId, group: GroupId, limit: u64) -> Vec<OperatorSealAnchor> {
+	pub fn join_expiries_by_time(
+		&self,
+		operator: OperatorId,
+		group: GroupId,
+		limit: u64,
+	) -> Vec<StoredJoinRowExpiry> {
 		match self {
-			Self::Sqlite(storage) => storage.anchors_by_expiry(operator, group, limit),
+			Self::Sqlite(storage) => storage.join_expiries_by_time(operator, group, limit),
 		}
 	}
 
-	pub fn anchors_due(
+	pub fn join_expiries_due(
 		&self,
 		operator: OperatorId,
 		group: GroupId,
 		at: DateTime,
 		limit: u64,
-	) -> Vec<OperatorSealAnchor> {
+	) -> Vec<StoredJoinRowExpiry> {
 		match self {
-			Self::Sqlite(storage) => storage.anchors_due(operator, group, at, limit),
+			Self::Sqlite(storage) => storage.join_expiries_due(operator, group, at, limit),
 		}
 	}
 
@@ -229,11 +234,11 @@ impl OperatorPersistentTier {
 		match *self {}
 	}
 
-	pub fn anchor_filter(&self) -> &KeyFilter<OperatorAnchors> {
+	pub fn join_expiry_filter(&self) -> &KeyFilter<JoinExpiryKeys> {
 		match *self {}
 	}
 
-	pub fn anchors_out_of_band(&self) -> bool {
+	pub fn join_expiries_out_of_band(&self) -> bool {
 		match *self {}
 	}
 
@@ -273,11 +278,11 @@ impl OperatorPersistentTier {
 		match *self {}
 	}
 
-	pub fn anchor_census(&self) -> Vec<OperatorSealAnchorCensus> {
+	pub fn join_expiry_census(&self) -> Vec<StoredJoinRowExpiryCensus> {
 		match *self {}
 	}
 
-	pub fn anchor_get(
+	pub fn join_expiry_get(
 		&self,
 		_operator: OperatorId,
 		_group: GroupId,
@@ -287,22 +292,22 @@ impl OperatorPersistentTier {
 		match *self {}
 	}
 
-	pub fn anchors_by_expiry(
+	pub fn join_expiries_by_time(
 		&self,
 		_operator: OperatorId,
 		_group: GroupId,
 		_limit: u64,
-	) -> Vec<OperatorSealAnchor> {
+	) -> Vec<StoredJoinRowExpiry> {
 		match *self {}
 	}
 
-	pub fn anchors_due(
+	pub fn join_expiries_due(
 		&self,
 		_operator: OperatorId,
 		_group: GroupId,
 		_at: DateTime,
 		_limit: u64,
-	) -> Vec<OperatorSealAnchor> {
+	) -> Vec<StoredJoinRowExpiry> {
 		match *self {}
 	}
 

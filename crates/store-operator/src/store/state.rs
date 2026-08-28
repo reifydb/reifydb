@@ -76,7 +76,7 @@ impl StandardOperatorStore {
 	#[cfg(reifydb_assertions)]
 	fn verify_classification(&self, writes: &[OperatorWrite]) {
 		let mut overlay: BTreeMap<(OperatorId, EncodedKey), Option<ByteSize>> = BTreeMap::new();
-		let mut anchors: BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool> = BTreeMap::new();
+		let mut join_expiries: BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool> = BTreeMap::new();
 		for write in writes {
 			let (operator, key, claimed, post) = match write {
 				OperatorWrite::Insert {
@@ -103,15 +103,15 @@ impl StandardOperatorStore {
 					},
 					None,
 				),
-				OperatorWrite::AnchorInsert {
+				OperatorWrite::JoinExpiryInsert {
 					operator,
 					group,
 					side,
 					row_num,
 					..
 				} => {
-					self.verify_anchor_claim(
-						&mut anchors,
+					self.verify_join_expiry_claim(
+						&mut join_expiries,
 						*operator,
 						*group,
 						*side,
@@ -120,15 +120,15 @@ impl StandardOperatorStore {
 					);
 					continue;
 				}
-				OperatorWrite::AnchorReplace {
+				OperatorWrite::JoinExpiryReplace {
 					operator,
 					group,
 					side,
 					row_num,
 					..
 				} => {
-					self.verify_anchor_claim(
-						&mut anchors,
+					self.verify_join_expiry_claim(
+						&mut join_expiries,
 						*operator,
 						*group,
 						*side,
@@ -137,14 +137,14 @@ impl StandardOperatorStore {
 					);
 					continue;
 				}
-				OperatorWrite::AnchorRemove {
+				OperatorWrite::JoinExpiryRemove {
 					operator,
 					group,
 					side,
 					row_num,
 					..
 				} => {
-					anchors.insert((*operator, *group, *side, *row_num), false);
+					join_expiries.insert((*operator, *group, *side, *row_num), false);
 					continue;
 				}
 			};
@@ -176,7 +176,7 @@ impl StandardOperatorStore {
 	}
 
 	#[cfg(reifydb_assertions)]
-	fn verify_anchor_claim(
+	fn verify_join_expiry_claim(
 		&self,
 		overlay: &mut BTreeMap<(OperatorId, GroupId, u8, RowNumber), bool>,
 		operator: OperatorId,
@@ -188,13 +188,13 @@ impl StandardOperatorStore {
 		let slot = (operator, group, side, row_num);
 		let observed = match overlay.get(&slot) {
 			Some(pending) => *pending,
-			None => self.anchor_get(operator, group, side, row_num).is_some(),
+			None => self.join_expiry_get(operator, group, side, row_num).is_some(),
 		};
 		assert_eq!(
 			claimed, observed,
-			"operator {} classified an anchor write against a slot the store does not hold; the census \
-			 never bills anchors, but the unclassified anchor write is removed on the strength of these \
-			 claims, so a wrong one leaves a caller no variant that describes what it did",
+			"operator {} classified a join expiry write against a slot the store does not hold; the \
+			 census never bills join expiries, but the unclassified join expiry write is removed on the \
+			 strength of these claims, so a wrong one leaves a caller no variant that describes what it did",
 			operator.0
 		);
 		overlay.insert(slot, true);
@@ -255,13 +255,13 @@ impl StandardOperatorStore {
 					key,
 					..
 				} => self.remove_range_read(*operator, key),
-				OperatorWrite::AnchorInsert {
+				OperatorWrite::JoinExpiryInsert {
 					..
 				}
-				| OperatorWrite::AnchorReplace {
+				| OperatorWrite::JoinExpiryReplace {
 					..
 				}
-				| OperatorWrite::AnchorRemove {
+				| OperatorWrite::JoinExpiryRemove {
 					..
 				} => {}
 			}

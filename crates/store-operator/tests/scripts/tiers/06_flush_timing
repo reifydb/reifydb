@@ -66,16 +66,16 @@ ok
 ok
 "c" => "3"
 
-# Anchors and their state ride the same flush.
+# Join expiries and their state ride the same flush.
 
-anchor_set row=1 at=100
+join_expiry_set row=1 at=100
 set d=4
 persistent_get d
 flush
 persistent_get d
-anchor_get row=1
+join_expiry_get row=1
 ---
 "d" => None
 ok
 "d" => "4"
-anchor 0/1 => 100
+join_expiry 0/1 => 100

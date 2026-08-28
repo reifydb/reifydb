@@ -22,7 +22,7 @@ use common::Runner;
 
 test_each_path! { in "crates/store-operator/tests/scripts/state" as operator_churn_state => test_churn }
 test_each_path! { in "crates/store-operator/tests/scripts/checkpoint" as operator_churn_checkpoint => test_churn }
-test_each_path! { in "crates/store-operator/tests/scripts/anchor" as operator_churn_anchor => test_churn }
+test_each_path! { in "crates/store-operator/tests/scripts/join_expiry" as operator_churn_join_expiry => test_churn }
 
 fn test_churn(path: &Path) {
 	// the flusher races every command here, so a read that depends on where a row currently lives must fail

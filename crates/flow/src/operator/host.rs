@@ -35,8 +35,8 @@ use crate::{
 	timer::{Timer, extension::TimerExtension},
 	transaction::{
 		FlowTransaction,
-		anchor::{SealAnchorExtension, SealPage, anchor_key},
 		dictionary::DictionaryExtension,
+		join_expiry::{JoinDuePage, JoinRowExpiryExtension, join_expiry_key},
 		reclaim::ReclaimExtension,
 		row_number::RowNumberExtension,
 		state::{StateExtension, StateRange},
@@ -48,20 +48,20 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 
-	fn anchor_at(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>>;
+	fn join_expiry_at(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>>;
 
-	fn anchor_min(&mut self, group: GroupId) -> Result<Option<DateTime>>;
+	fn join_expiry_min(&mut self, group: GroupId) -> Result<Option<DateTime>>;
 
-	fn anchor_seal_page(&mut self, group: GroupId, at: DateTime, budget: usize) -> Result<SealPage>;
+	fn join_due_page(&mut self, group: GroupId, at: DateTime, budget: usize) -> Result<JoinDuePage>;
 
-	fn clear_anchors(&mut self, group: GroupId, budget: usize) -> Result<()> {
+	fn clear_join_expiries(&mut self, group: GroupId, budget: usize) -> Result<()> {
 		loop {
-			let page = self.anchor_seal_page(group, DateTime::MAX, budget)?;
+			let page = self.join_due_page(group, DateTime::MAX, budget)?;
 			if page.due.is_empty() {
 				return Ok(());
 			}
 			for (side, row_number) in &page.due {
-				self.state_remove(&anchor_key(group, *side, *row_number))?;
+				self.state_remove(&join_expiry_key(group, *side, *row_number))?;
 			}
 			if !page.more {
 				return Ok(());
@@ -293,16 +293,16 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.disarm_timer_by_key(self.operator, kind, key)
 	}
 
-	fn anchor_at(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>> {
-		self.txn.anchor_at(self.operator, group, side, row_number)
+	fn join_expiry_at(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>> {
+		self.txn.join_expiry_at(self.operator, group, side, row_number)
 	}
 
-	fn anchor_min(&mut self, group: GroupId) -> Result<Option<DateTime>> {
-		self.txn.anchor_min(self.operator, group)
+	fn join_expiry_min(&mut self, group: GroupId) -> Result<Option<DateTime>> {
+		self.txn.join_expiry_min(self.operator, group)
 	}
 
-	fn anchor_seal_page(&mut self, group: GroupId, at: DateTime, budget: usize) -> Result<SealPage> {
-		self.txn.anchor_seal_page(self.operator, group, at, budget)
+	fn join_due_page(&mut self, group: GroupId, at: DateTime, budget: usize) -> Result<JoinDuePage> {
+		self.txn.join_due_page(self.operator, group, at, budget)
 	}
 
 	fn config_uint8(&self, key: ConfigKey) -> u64 {

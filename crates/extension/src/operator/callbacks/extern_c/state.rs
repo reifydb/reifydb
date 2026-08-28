@@ -44,9 +44,9 @@ fn iterator_entries(entries: Vec<(GroupStateKey, EncodedPodRow)>) -> Vec<(GroupS
 	entries.into_iter().map(|(key, row)| (key, row.bytes().clone())).collect()
 }
 
-fn is_seal_anchor(key: &GroupStateKey) -> bool {
+fn is_join_row_expiry(key: &GroupStateKey) -> bool {
 	OperatorStateKey::decode_inner(key.as_slice())
-		.is_some_and(|(_, keyspace, _)| keyspace == KeyspaceId::SEAL_ANCHOR)
+		.is_some_and(|(_, keyspace, _)| keyspace == KeyspaceId::JOIN_ROW_EXPIRY)
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
@@ -106,7 +106,7 @@ pub(super) extern "C" fn host_state_set(
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 
-		if is_seal_anchor(&key) {
+		if is_join_row_expiry(&key) {
 			return EXTERN_C_ERROR_INTERNAL;
 		}
 
@@ -139,7 +139,7 @@ pub(super) extern "C" fn host_state_remove(
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 
-		if is_seal_anchor(&key) {
+		if is_join_row_expiry(&key) {
 			return EXTERN_C_ERROR_INTERNAL;
 		}
 
@@ -766,7 +766,7 @@ pub(super) extern "C" fn host_get_or_create_row_numbers_for_pairs(
 }
 
 #[cfg(test)]
-mod seal_anchor_guard_tests {
+mod join_row_expiry_guard_tests {
 	use std::{cell::Cell, iter::empty, rc::Rc};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
@@ -784,7 +784,7 @@ mod seal_anchor_guard_tests {
 			host::HostContext,
 			state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 		},
-		transaction::anchor::SealPage,
+		transaction::join_expiry::JoinDuePage,
 	};
 	use reifydb_value::{
 		Result,
@@ -905,7 +905,7 @@ mod seal_anchor_guard_tests {
 			Ok(())
 		}
 
-		fn anchor_at(
+		fn join_expiry_at(
 			&mut self,
 			_group: GroupId,
 			_side: u8,
@@ -914,12 +914,12 @@ mod seal_anchor_guard_tests {
 			Ok(None)
 		}
 
-		fn anchor_min(&mut self, _group: GroupId) -> Result<Option<DateTime>> {
+		fn join_expiry_min(&mut self, _group: GroupId) -> Result<Option<DateTime>> {
 			Ok(None)
 		}
 
-		fn anchor_seal_page(&mut self, _group: GroupId, _at: DateTime, _budget: usize) -> Result<SealPage> {
-			Ok(SealPage {
+		fn join_due_page(&mut self, _group: GroupId, _at: DateTime, _budget: usize) -> Result<JoinDuePage> {
+			Ok(JoinDuePage {
 				due: Vec::new(),
 				next: None,
 				more: false,
@@ -1042,9 +1042,9 @@ mod seal_anchor_guard_tests {
 	}
 
 	#[test]
-	fn a_guest_write_to_the_seal_anchor_keyspace_is_refused() {
-		// A guest anchor reaches the commit path, where routing decodes its body and panics the committer.
-		let key = framed(KeyspaceId::SEAL_ANCHOR);
+	fn a_guest_write_to_the_join_row_expiry_keyspace_is_refused() {
+		// A guest write reaches the commit path, where routing decodes its body and panics the committer.
+		let key = framed(KeyspaceId::JOIN_ROW_EXPIRY);
 		let value = EncodedPodRow::new(&[0u8; 4]);
 
 		let (set, set_reached) = with_context(|ctx| {
@@ -1052,7 +1052,7 @@ mod seal_anchor_guard_tests {
 		});
 		let (removed, remove_reached) = with_context(|ctx| host_state_remove(1, ctx, key.as_ptr(), key.len()));
 
-		assert_eq!(set, EXTERN_C_ERROR_INTERNAL, "a guest must not be able to write a seal anchor");
+		assert_eq!(set, EXTERN_C_ERROR_INTERNAL, "a guest must not be able to write a join row expiry");
 		assert_eq!(removed, EXTERN_C_ERROR_INTERNAL, "nor remove one");
 		assert!(!set_reached, "and the refusal must land before the host is touched");
 		assert!(!remove_reached);

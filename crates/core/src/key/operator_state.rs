@@ -147,7 +147,7 @@ impl KeyspaceId {
 
 	pub const REAP_QUEUE: Self = Self(0x2A);
 
-	pub const SEAL_ANCHOR: Self = Self(0x2B);
+	pub const JOIN_ROW_EXPIRY: Self = Self(0x2B);
 
 	pub const CUSTOM_CACHED_BELOW: Self = Self(0x3F);
 
@@ -188,7 +188,7 @@ impl KeyspaceId {
 			Self::JOIN_PIN => "JOIN_PIN",
 			Self::RINGBUFFER_META => "RINGBUFFER_META",
 			Self::REAP_QUEUE => "REAP_QUEUE",
-			Self::SEAL_ANCHOR => "SEAL_ANCHOR",
+			Self::JOIN_ROW_EXPIRY => "JOIN_ROW_EXPIRY",
 			Self::CUSTOM_CACHED_BELOW => "CUSTOM_CACHED_BELOW",
 			Self::CUSTOM_NOT_CACHED => "CUSTOM_NOT_CACHED",
 			Self::CUSTOM_CACHED => "CUSTOM_CACHED",
@@ -576,7 +576,7 @@ mod tests {
 		("JOIN_PIN", KeyspaceId::JOIN_PIN, Phase::Data, CacheTiers::Range),
 		("RINGBUFFER_META", KeyspaceId::RINGBUFFER_META, Phase::Data, CacheTiers::Both),
 		("REAP_QUEUE", KeyspaceId::REAP_QUEUE, Phase::Data, CacheTiers::Both),
-		("SEAL_ANCHOR", KeyspaceId::SEAL_ANCHOR, Phase::Data, CacheTiers::Both),
+		("JOIN_ROW_EXPIRY", KeyspaceId::JOIN_ROW_EXPIRY, Phase::Data, CacheTiers::Both),
 		("CUSTOM_CACHED_BELOW", KeyspaceId::CUSTOM_CACHED_BELOW, Phase::Data, CacheTiers::Both),
 		("CUSTOM_NOT_CACHED", KeyspaceId::CUSTOM_NOT_CACHED, Phase::Data, CacheTiers::Neither),
 		("CUSTOM_CACHED", KeyspaceId::CUSTOM_CACHED, Phase::Data, CacheTiers::Both),

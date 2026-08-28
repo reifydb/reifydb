@@ -89,16 +89,16 @@ impl SealRule {
 		self.admissible.0.is_zero()
 	}
 
-	pub fn seal_instant(self, anchor: DateTime) -> SealInstant {
-		SealInstant(anchor.saturating_add(self.admissible.0).saturating_add(SEAL_GATE_STEP))
+	pub fn seal_instant(self, event: DateTime) -> SealInstant {
+		SealInstant(event.saturating_add(self.admissible.0).saturating_add(SEAL_GATE_STEP))
 	}
 
-	pub fn seal_instant_from_order(self, anchor_order: u64) -> SealInstant {
-		self.seal_instant(<DateTime as Coord>::from_order(anchor_order))
+	pub fn seal_instant_from_order(self, event_order: u64) -> SealInstant {
+		self.seal_instant(<DateTime as Coord>::from_order(event_order))
 	}
 
-	pub fn sealed_anchor(self, at: DateTime) -> Option<DateTime> {
-		at.checked_sub(self.admissible.0).and_then(|anchor| anchor.checked_sub(SEAL_GATE_STEP))
+	pub fn horizon_at(self, at: DateTime) -> Option<DateTime> {
+		at.checked_sub(self.admissible.0).and_then(|horizon| horizon.checked_sub(SEAL_GATE_STEP))
 	}
 }
 
@@ -106,8 +106,8 @@ pub fn seal_horizon<C: Coord>(watermark: C, lateness: C::Span) -> C {
 	watermark.saturating_sub_span(lateness)
 }
 
-pub fn is_sealed<C: Coord>(anchor: C, horizon: C) -> bool {
-	anchor < horizon
+pub fn is_sealed<C: Coord>(event: C, horizon: C) -> bool {
+	event < horizon
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,12 +122,12 @@ impl EvictionRule {
 		}
 	}
 
-	pub fn eviction_instant(self, anchor: DateTime) -> EvictionInstant {
-		EvictionInstant(anchor.saturating_add(self.span))
+	pub fn eviction_instant(self, event: DateTime) -> EvictionInstant {
+		EvictionInstant(event.saturating_add(self.span))
 	}
 
-	pub fn eviction_instant_from_order(self, anchor_order: u64) -> EvictionInstant {
-		self.eviction_instant(<DateTime as Coord>::from_order(anchor_order))
+	pub fn eviction_instant_from_order(self, event_order: u64) -> EvictionInstant {
+		self.eviction_instant(<DateTime as Coord>::from_order(event_order))
 	}
 }
 
@@ -153,21 +153,21 @@ mod tests {
 	}
 
 	#[test]
-	fn the_sealed_anchor_trails_the_ledger_by_the_whole_admissible_span() {
+	fn the_horizon_trails_the_ledger_by_the_whole_admissible_span() {
 		// The ledger holds the instant a seal timer fired, a whole admissible span ahead of the
 		// newest window that timer actually sealed. Treating the ledger itself as the immutable
 		// frontier erases the accumulator of a window that is still open and still taking rows.
 		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 		let ledger = at_millis(358_262);
 
-		let anchor = rule.sealed_anchor(ledger).expect("the ledger is past one admissible span");
+		let horizon = rule.horizon_at(ledger).expect("the ledger is past one admissible span");
 
-		assert_eq!(anchor, at_millis(283_261), "ledger - (size + lateness) - 1");
-		assert!(anchor < ledger, "a frontier at or past the ledger reclaims windows that have not sealed");
+		assert_eq!(horizon, at_millis(283_261), "ledger - (size + lateness) - 1");
+		assert!(horizon < ledger, "a frontier at or past the ledger reclaims windows that have not sealed");
 		assert_eq!(
-			rule.seal_instant(anchor).at(),
+			rule.seal_instant(horizon).at(),
 			ledger,
-			"and it is the exact inverse of arming, so a window anchored here sealed at precisely \
+			"and it is the exact inverse of arming, so a window at this horizon sealed at precisely \
 			 this ledger rather than one millisecond either side of it"
 		);
 	}
@@ -175,12 +175,12 @@ mod tests {
 	#[test]
 	fn a_ledger_short_of_one_admissible_span_has_sealed_nothing() {
 		// Early in a operator's life the ledger sits below its own span. Wrapping through u64 would put
-		// the anchor near u64::MAX and report every window sealed, reclaiming the operator in one sweep.
+		// the horizon near u64::MAX and report every window sealed, reclaiming the operator in one sweep.
 		let rule = SealRule::tumbling(ms(30_000), ms(45_000));
 
-		assert_eq!(rule.sealed_anchor(at_millis(0)), None);
-		assert_eq!(rule.sealed_anchor(at_millis(75_000)), None, "the anchor would be 0 - 1, not 0");
-		assert_eq!(rule.sealed_anchor(at_millis(75_001)), Some(at_millis(0)));
+		assert_eq!(rule.horizon_at(at_millis(0)), None);
+		assert_eq!(rule.horizon_at(at_millis(75_000)), None, "the horizon would be 0 - 1, not 0");
+		assert_eq!(rule.horizon_at(at_millis(75_001)), Some(at_millis(0)));
 	}
 
 	#[test]

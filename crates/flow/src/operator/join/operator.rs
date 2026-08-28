@@ -58,7 +58,7 @@ use crate::{
 		},
 	},
 	timer::Timer,
-	transaction::anchor::{SealAnchor, anchor_key as seal_anchor_key},
+	transaction::join_expiry::{JoinRowExpiry, join_expiry_key as txn_join_expiry_key},
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -237,8 +237,8 @@ impl JoinOperator {
 		}
 	}
 
-	fn anchor_key(group: GroupId, side: JoinSide, row_number: RowNumber) -> GroupStateKey {
-		seal_anchor_key(group, side.tag(), row_number)
+	fn join_expiry_key(group: GroupId, side: JoinSide, row_number: RowNumber) -> GroupStateKey {
+		txn_join_expiry_key(group, side.tag(), row_number)
 	}
 
 	fn timer_key(group: GroupId) -> EncodedKey {
@@ -258,7 +258,7 @@ impl JoinOperator {
 	fn side_of(tag: u8) -> Result<JoinSide> {
 		JoinSide::from_tag(tag).ok_or_else(|| {
 			Error::from(FlowStateError::Decode {
-				state: "join seal anchor key",
+				state: "join expiry key",
 				cause: format!("unknown join side tag {tag}"),
 			})
 		})
@@ -280,7 +280,7 @@ impl JoinOperator {
 
 	fn resync_timers(host: &mut dyn HostContext, order: &[GroupId]) -> Result<()> {
 		for group in order {
-			match host.anchor_min(*group)? {
+			match host.join_expiry_min(*group)? {
 				Some(earliest) => {
 					host.arm_timer(earliest, TimerKind::Maintenance, &Self::timer_key(*group))?
 				}
@@ -290,7 +290,7 @@ impl JoinOperator {
 		Ok(())
 	}
 
-	fn move_anchors(
+	fn move_join_expiries(
 		&self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
@@ -315,7 +315,7 @@ impl JoinOperator {
 			if touched.insert(group) {
 				order.push(group);
 			}
-			host.state_remove(&Self::anchor_key(group, side, *row_number))?;
+			host.state_remove(&Self::join_expiry_key(group, side, *row_number))?;
 		}
 
 		for (hash, row_number, at) in armed {
@@ -327,9 +327,9 @@ impl JoinOperator {
 			}
 			host.state_remove(&queue_key(group))?;
 			host.state_set(
-				&Self::anchor_key(group, side, *row_number),
-				SealAnchor {
-					expiry: rule.seal_instant(*at).at(),
+				&Self::join_expiry_key(group, side, *row_number),
+				JoinRowExpiry {
+					at: rule.seal_instant(*at).at(),
 				}
 				.encode_state()?,
 			)?;
@@ -356,7 +356,7 @@ impl JoinOperator {
 			};
 			armed.push((*hash, columns.row_numbers()[row_idx], *at));
 		}
-		self.move_anchors(host, side, &[], &armed)
+		self.move_join_expiries(host, side, &[], &armed)
 	}
 
 	fn clear_batch(
@@ -376,10 +376,10 @@ impl JoinOperator {
 			};
 			cleared.push((*hash, columns.row_numbers()[row_idx]));
 		}
-		self.move_anchors(host, side, &cleared, &[])
+		self.move_join_expiries(host, side, &cleared, &[])
 	}
 
-	fn move_row_anchor(
+	fn move_row_join_expiry(
 		&self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
@@ -399,10 +399,10 @@ impl JoinOperator {
 		if let (Some(hash), Some(at)) = (keys.1, post.time().get(row_idx).copied()) {
 			armed.push((hash, post.row_numbers()[row_idx], at));
 		}
-		self.move_anchors(host, side, &cleared, &armed)
+		self.move_join_expiries(host, side, &cleared, &armed)
 	}
 
-	fn free_sealed_row(
+	fn free_expired_join_row(
 		&self,
 		host: &mut dyn HostContext,
 		state: &JoinState,
@@ -439,10 +439,10 @@ impl JoinOperator {
 				state.right.remove_row_in(host, group, row_number)?;
 			}
 		}
-		host.state_remove(&Self::anchor_key(group, side, row_number))
+		host.state_remove(&Self::join_expiry_key(group, side, row_number))
 	}
 
-	fn seal_group(&mut self, host: &mut dyn HostContext, fired: FiredAt, group: GroupId) -> Result<()> {
+	fn free_due_join_rows(&mut self, host: &mut dyn HostContext, fired: FiredAt, group: GroupId) -> Result<()> {
 		let Some(span) = self.widest_retention() else {
 			return Ok(());
 		};
@@ -464,16 +464,16 @@ impl JoinOperator {
 		let state = JoinState::new();
 		let mut next_arm: Option<DateTime>;
 		loop {
-			let page = host.anchor_seal_page(group, fired.at(), SEAL_BATCH)?;
+			let page = host.join_due_page(group, fired.at(), SEAL_BATCH)?;
 			let mut due: Vec<(JoinSide, RowNumber)> = Vec::with_capacity(page.due.len());
 			for (tag, row_number) in &page.due {
 				due.push((Self::side_of(*tag)?, *row_number));
 			}
 			for (side, row_number) in due.iter().filter(|(side, _)| *side == JoinSide::Left) {
-				self.free_sealed_row(host, &state, group, *side, *row_number)?;
+				self.free_expired_join_row(host, &state, group, *side, *row_number)?;
 			}
 			for (side, row_number) in due.iter().filter(|(side, _)| *side == JoinSide::Right) {
-				self.free_sealed_row(host, &state, group, *side, *row_number)?;
+				self.free_expired_join_row(host, &state, group, *side, *row_number)?;
 			}
 			next_arm = page.next;
 			if !page.more || page.due.is_empty() {
@@ -486,7 +486,7 @@ impl JoinOperator {
 			return Ok(());
 		}
 		if !state.left.holds_rows(host, group)? && !state.right.holds_rows(host, group)? {
-			host.clear_anchors(group, SEAL_BATCH)?;
+			host.clear_join_expiries(group, SEAL_BATCH)?;
 			enqueue(host, group)?;
 			let drained = drain_group(host, group, &mut StoreReaper, SEAL_BATCH)?;
 			if drained.still_queued {
@@ -883,7 +883,7 @@ impl HostOperator for JoinOperator {
 
 	fn on_timer(&mut self, host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
 		if timer.kind == TimerKind::Maintenance {
-			self.seal_group(host, FiredAt::of(&timer), Self::timer_group(&timer.key)?)?;
+			self.free_due_join_rows(host, FiredAt::of(&timer), Self::timer_group(&timer.key)?)?;
 		}
 		Ok(None)
 	}
@@ -1031,7 +1031,14 @@ impl JoinOperator {
 					.handle_update_both_undefined(host, pre, post, row_idx, &mut ctx)?,
 			};
 			result.extend(diffs);
-			self.move_row_anchor(host, side, pre, post, row_idx, (pre_keys[row_idx], post_keys[row_idx]))?;
+			self.move_row_join_expiry(
+				host,
+				side,
+				pre,
+				post,
+				row_idx,
+				(pre_keys[row_idx], post_keys[row_idx]),
+			)?;
 		}
 
 		Ok(())
@@ -1188,15 +1195,15 @@ mod seal_tests {
 		GroupId::of(&group_bytes(hash))
 	}
 
-	fn anchor_of(
+	fn join_expiry_of(
 		op: &JoinOperator,
 		txn: &mut DeferredTransaction,
 		group: GroupId,
 		side: JoinSide,
 		row_number: u64,
 	) -> Option<DateTime> {
-		let key = JoinOperator::anchor_key(group, side, RowNumber(row_number));
-		txn.state_get(op.operator, &key).unwrap().map(|row| decode::<SealAnchor>(&row).unwrap().expiry)
+		let key = JoinOperator::join_expiry_key(group, side, RowNumber(row_number));
+		txn.state_get(op.operator, &key).unwrap().map(|row| decode::<JoinRowExpiry>(&row).unwrap().at)
 	}
 
 	fn armed_timers(op: &JoinOperator, txn: &mut DeferredTransaction) -> usize {
@@ -1252,13 +1259,15 @@ mod seal_tests {
 	}
 
 	fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
-		// Anchors only reach the typed table through the batch, and the seal path reads them differently there.
+		// Join expiries only reach the typed table through the batch, and the free path reads them differently
+		// there.
 		apply_operator_state(&engine.inner().operator_state(), &txn.take_pending());
 	}
 
 	#[test]
 	fn an_inserted_row_is_armed_one_retention_past_its_own_event_time() {
-		// anchor must be the row's own event time, not wall-clock, or a backfilled row evicts on arrival
+		// the join expiry must be the row's own event time, not wall-clock, or a backfilled row evicts on
+		// arrival
 		let engine = TestEngine::new();
 		let op = join(1, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1268,7 +1277,7 @@ mod seal_tests {
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
-			anchor_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
 			"the due time is event time + retention + the strict gate step"
 		);
@@ -1290,7 +1299,7 @@ mod seal_tests {
 		let group = group_of(&hash_of(&op, JoinSide::Left, &post, 0));
 		assert_eq!(armed_timers(&op, &mut txn), 1, "an update re-arms one timer, it does not add one");
 		assert_eq!(
-			anchor_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(30_001)),
 			"and the due time follows the row's own last write"
 		);
@@ -1298,7 +1307,7 @@ mod seal_tests {
 
 	#[test]
 	fn a_row_still_inside_its_retention_survives_a_maintenance_tick() {
-		// The gate is strict: a row whose due time lands one tick past the fire must not seal yet.
+		// The gate is strict: a row whose due time lands one tick past the fire must not expire yet.
 		let engine = TestEngine::new();
 		let mut op = join(3, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1310,16 +1319,17 @@ mod seal_tests {
 
 		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 1, "the row must keep its state");
 		assert_eq!(
-			anchor_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
-			"and its anchor must survive untouched"
+			"and its join expiry must survive untouched"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 1, "its timer is not due and must be armed again");
 	}
 
 	#[test]
-	fn removing_a_row_takes_its_anchor_and_its_timer_with_it() {
-		// A source delete leaves no row to seal, so an anchor left behind fires against state that is gone.
+	fn removing_a_row_takes_its_join_expiry_and_its_timer_with_it() {
+		// A source delete leaves no row to expire, so a join expiry left behind fires against state that is
+		// gone.
 		let engine = TestEngine::new();
 		let op = join(4, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1330,16 +1340,17 @@ mod seal_tests {
 		remove(&op, &mut txn, JoinSide::Left, &left);
 
 		assert_eq!(
-			anchor_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
 			None,
-			"the anchor must go with the row"
+			"the join expiry must go with the row"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 0, "and the timer that addressed it must be disarmed");
 	}
 
 	#[test]
-	fn a_sibling_row_under_the_same_key_outlives_its_neighbours_seal() {
-		// A join group holds many rows, so sealing must free exactly one and re-arm on the next earliest.
+	fn a_sibling_row_under_the_same_key_outlives_its_neighbours_expiry() {
+		// A join group holds many rows, so freeing due rows must free exactly one and re-arm on the next
+		// earliest.
 		let engine = TestEngine::new();
 		let mut op = join(5, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1351,19 +1362,24 @@ mod seal_tests {
 
 		fire(&mut op, &mut txn, at_millis(15_001), group);
 
-		assert_eq!(anchor_of(&op, &mut txn, group, JoinSide::Left, 1), None, "the due row's anchor must go");
 		assert_eq!(
-			anchor_of(&op, &mut txn, group, JoinSide::Left, 2),
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 1),
+			None,
+			"the due row's join expiry must go"
+		);
+		assert_eq!(
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 2),
 			Some(at_millis(60_001)),
-			"its neighbour under the same key must keep its own anchor"
+			"its neighbour under the same key must keep its own join expiry"
 		);
 		assert_eq!(side_rows(&op, &mut txn, group, JoinSide::Left), 1, "exactly one row was freed");
-		assert_eq!(armed_timers(&op, &mut txn), 1, "and the group re-arms on the next earliest anchor");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "and the group re-arms on the next earliest join expiry");
 	}
 
 	#[test]
-	fn right_side_traffic_never_extends_a_left_rows_anchor() {
-		// A match is not a write to the left row; advancing its anchor would keep a joined row alive forever.
+	fn right_side_traffic_never_extends_a_left_rows_join_expiry() {
+		// A match is not a write to the left row; advancing its join expiry would keep a joined row alive
+		// forever.
 		let engine = TestEngine::new();
 		let op = join(6, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1374,16 +1390,16 @@ mod seal_tests {
 		insert(&op, &mut txn, JoinSide::Right, &rows(&[7], &[99], at_millis(9_000)));
 
 		assert_eq!(
-			anchor_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
-			"the left anchor must still name the left row's own last write"
+			"the left join expiry must still name the left row's own last write"
 		);
 		assert_eq!(armed_timers(&op, &mut txn), 1, "and a side with no retention must arm nothing of its own");
 	}
 
 	#[test]
 	fn a_join_without_a_retention_arms_nothing_at_all() {
-		// Arming without a retention leaves one timer and one anchor per row that nothing ever collects.
+		// Arming without a retention leaves one timer and one join expiry per row that nothing ever collects.
 		let engine = TestEngine::new();
 		let op = join(7, None, None);
 		let mut txn = txn_at(&engine, 100);
@@ -1392,13 +1408,17 @@ mod seal_tests {
 		insert(&op, &mut txn, JoinSide::Left, &left);
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
-		assert_eq!(anchor_of(&op, &mut txn, group, JoinSide::Left, 42), None, "no retention means no anchor");
+		assert_eq!(
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
+			None,
+			"no retention means no join expiry"
+		);
 		assert_eq!(armed_timers(&op, &mut txn), 0, "and no timer");
 	}
 
 	#[test]
-	fn a_sealed_row_frees_its_state_its_anchor_and_its_output_mapping_without_emitting() {
-		// A sealed row is frozen downstream, so it must emit nothing while its mapping is reclaimed.
+	fn an_expired_row_frees_its_state_its_join_expiry_and_its_output_mapping_without_emitting() {
+		// An expired row is frozen downstream, so it must emit nothing while its mapping is reclaimed.
 		let engine = TestEngine::new();
 		let mut op = join(8, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1409,8 +1429,8 @@ mod seal_tests {
 
 		let emitted = fire(&mut op, &mut txn, at_millis(15_001), group);
 
-		assert!(emitted.is_none(), "sealing must publish no diff at all");
-		assert_eq!(anchor_of(&op, &mut txn, group, JoinSide::Left, 42), None, "the anchor must go");
+		assert!(emitted.is_none(), "freeing an expired row must publish no diff at all");
+		assert_eq!(join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42), None, "the join expiry must go");
 		assert_eq!(
 			unmatched_mapping(&op, &mut txn, 42),
 			None,
@@ -1419,8 +1439,8 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_key_whose_last_row_sealed_loses_the_group_that_carried_it() {
-		// a group's rows only leave through the reaper, so the seal must queue it
+	fn a_key_whose_last_row_expired_loses_the_group_that_carried_it() {
+		// a group's rows only leave through the reaper, so freeing the last row must queue it
 		let engine = TestEngine::new();
 		let mut op = join(9, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1432,7 +1452,7 @@ mod seal_tests {
 		fire(&mut op, &mut txn, at_millis(15_001), group);
 
 		assert_eq!(group_rows(&op, &mut txn, group), 0, "the group's range must be left empty");
-		assert_eq!(armed_timers(&op, &mut txn), 0, "and the timer that drove the seal must not re-arm");
+		assert_eq!(armed_timers(&op, &mut txn), 0, "and the timer that drove the expiry must not re-arm");
 	}
 
 	#[test]
@@ -1457,13 +1477,13 @@ mod seal_tests {
 		assert_eq!(
 			side_rows(&op, &mut txn, group, JoinSide::Right),
 			1,
-			"an unsealed side keeps its rows and no anchor holds the group open on its behalf"
+			"an unexpired side keeps its rows and no join expiry holds the group open on its behalf"
 		);
 	}
 
 	#[test]
 	fn a_row_short_of_its_own_retention_holds_the_groups_timer_open() {
-		// The two sides seal on independent spans, so the group re-arms on whichever anchor is next due.
+		// The two sides expire on independent spans, so the group re-arms on whichever join expiry is next due.
 		let engine = TestEngine::new();
 		let mut op = join(11, Some(seconds(10)), Some(seconds(3_600)));
 		let mut txn = txn_at(&engine, 100);
@@ -1481,20 +1501,21 @@ mod seal_tests {
 			"the left row is past its own retention"
 		);
 		assert_eq!(
-			anchor_of(&op, &mut txn, group, JoinSide::Right, 99),
+			join_expiry_of(&op, &mut txn, group, JoinSide::Right, 99),
 			Some(at_millis(3_609_001)),
-			"the right row keeps the anchor its own longer retention gave it"
+			"the right row keeps the join expiry its own longer retention gave it"
 		);
 		assert_eq!(
 			armed_timers(&op, &mut txn),
 			1,
-			"and the group re-arms on that anchor rather than dropping it"
+			"and the group re-arms on that join expiry rather than dropping it"
 		);
 	}
 
 	#[test]
-	fn a_latest_join_seals_its_left_side_and_arms_nothing_on_the_right() {
-		// A slot overwritten in place carries no per-row anchor, so a right retention there could never fire.
+	fn a_latest_join_expires_its_left_side_and_arms_nothing_on_the_right() {
+		// A slot overwritten in place carries no per-row join expiry, so a right retention there could never
+		// fire.
 		let engine = TestEngine::new();
 		let op = join_with(12, false, true, Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
@@ -1505,21 +1526,21 @@ mod seal_tests {
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
-			anchor_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
-			"the left side is an ordinary row set and must seal normally"
+			"the left side is an ordinary row set and must expire normally"
 		);
 		assert_eq!(
-			anchor_of(&op, &mut txn, group, JoinSide::Right, 99),
+			join_expiry_of(&op, &mut txn, group, JoinSide::Right, 99),
 			None,
 			"the right slot must arm nothing"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "so only the left anchor addresses the group");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "so only the left join expiry addresses the group");
 	}
 
 	#[test]
-	fn a_snapshot_join_seals_its_left_side_and_arms_nothing_on_the_right() {
-		// A pinned right row must outlive the left rows that published against it, so it must never seal.
+	fn a_snapshot_join_expires_its_left_side_and_arms_nothing_on_the_right() {
+		// A pinned right row must outlive the left rows that published against it, so it must never expire.
 		let engine = TestEngine::new();
 		let op = join_with(13, true, false, Some(seconds(10)), Some(seconds(10)));
 		let mut txn = txn_at(&engine, 100);
@@ -1530,21 +1551,21 @@ mod seal_tests {
 
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		assert_eq!(
-			anchor_of(&op, &mut txn, group, JoinSide::Left, 42),
+			join_expiry_of(&op, &mut txn, group, JoinSide::Left, 42),
 			Some(at_millis(15_001)),
-			"the left side is unaffected by the flag and must seal normally"
+			"the left side is unaffected by the flag and must expire normally"
 		);
 		assert_eq!(
-			anchor_of(&op, &mut txn, group, JoinSide::Right, 99),
+			join_expiry_of(&op, &mut txn, group, JoinSide::Right, 99),
 			None,
 			"the pinned right row must not arm"
 		);
-		assert_eq!(armed_timers(&op, &mut txn), 1, "so only the left anchor addresses the group");
+		assert_eq!(armed_timers(&op, &mut txn), 1, "so only the left join expiry addresses the group");
 	}
 
 	#[test]
-	fn a_sealed_left_row_releases_the_snapshot_ledger_it_held() {
-		// A pin is refcounted, so a left row that seals without releasing holds its retired copy forever.
+	fn an_expired_left_row_releases_the_snapshot_ledger_it_held() {
+		// A pin is refcounted, so a left row that expires without releasing holds its retired copy forever.
 		let engine = TestEngine::new();
 		let mut op = join_with(14, true, false, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1575,8 +1596,8 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_siblings_pin_on_the_same_right_row_survives_its_neighbours_seal() {
-		// Release must be scoped to the sealing left row, or a live sibling loses the version it published.
+	fn a_siblings_pin_on_the_same_right_row_survives_its_neighbours_expiry() {
+		// Release must be scoped to the expiring left row, or a live sibling loses the version it published.
 		let engine = TestEngine::new();
 		let mut op = join_with(15, true, false, Some(seconds(10)), None);
 		let mut txn = txn_at(&engine, 100);
@@ -1597,7 +1618,7 @@ mod seal_tests {
 		assert_eq!(
 			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PUBLISHED),
 			1,
-			"exactly the sealed row's pair goes, never its neighbour's"
+			"exactly the expired row's pair goes, never its neighbour's"
 		);
 		assert_eq!(
 			ledger_rows(&op, &mut txn, group, KeyspaceId::JOIN_PIN),
@@ -1607,9 +1628,9 @@ mod seal_tests {
 	}
 
 	#[test]
-	fn a_committed_anchor_leaves_no_row_behind_once_its_group_seals() {
-		// The reaper sweeps the key-value rows only, so an anchor in the typed table outlives every group it
-		// seals.
+	fn a_committed_join_expiry_leaves_no_row_behind_once_its_group_expires() {
+		// The reaper sweeps the key-value rows only, so a join expiry in the typed table outlives every group
+		// it frees.
 		let engine = TestEngine::new();
 		let store = engine.inner().operator_state();
 		let mut op = join(16, Some(seconds(10)), None);
@@ -1619,18 +1640,18 @@ mod seal_tests {
 		let group = group_of(&hash_of(&op, JoinSide::Left, &left, 0));
 		commit(&engine, &mut txn);
 		assert_eq!(
-			store.anchors_by_expiry(op.operator, group, 16).len(),
+			store.join_expiries_by_time(op.operator, group, 16).len(),
 			1,
-			"precondition: the anchor is in the table, not merely in the batch"
+			"precondition: the join expiry is in the table, not merely in the batch"
 		);
 
 		fire(&mut op, &mut txn, at_millis(15_001), group);
 		commit(&engine, &mut txn);
 
 		assert_eq!(
-			store.anchors_by_expiry(op.operator, group, 16),
+			store.join_expiries_by_time(op.operator, group, 16),
 			Vec::new(),
-			"a group driven through seal, enqueue and drain must leave no anchor row"
+			"a group driven through free, enqueue and drain must leave no join expiry row"
 		);
 	}
 }

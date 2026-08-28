@@ -13,17 +13,17 @@ pub(crate) fn ensure_schema(conn: &Connection) {
 			PRIMARY KEY ("operator", "key")
 		) WITHOUT ROWID;
 
-		CREATE TABLE IF NOT EXISTS "operator_seal_anchor" (
+		CREATE TABLE IF NOT EXISTS "operator_join_expiry" (
 			"operator" INTEGER NOT NULL,
 			"group" BLOB NOT NULL,
 			"side" INTEGER NOT NULL,
 			"row_number" INTEGER NOT NULL,
-			"expiry" INTEGER NOT NULL,
+			"at" INTEGER NOT NULL,
 			PRIMARY KEY ("operator", "group", "side", "row_number")
 		) WITHOUT ROWID;
 
-		CREATE INDEX IF NOT EXISTS "operator_seal_anchor_due"
-			ON "operator_seal_anchor" ("operator", "group", "expiry");
+		CREATE INDEX IF NOT EXISTS "operator_join_expiry_due"
+			ON "operator_join_expiry" ("operator", "group", "at");
 
 		CREATE TABLE IF NOT EXISTS "flow_checkpoint" (
 			"flow" INTEGER NOT NULL PRIMARY KEY,

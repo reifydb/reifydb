@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-mod anchor;
 mod census;
 mod checkpoint;
+mod join_expiry;
 mod state;
 #[cfg(test)]
 mod tests;
@@ -210,8 +210,8 @@ impl StandardOperatorStore {
 		self.persistent.as_ref().map(|tier| tier.filter().metrics())
 	}
 
-	pub fn persistent_anchor_filter_metrics(&self) -> Option<FilterMetrics> {
-		self.persistent.as_ref().map(|tier| tier.anchor_filter().metrics())
+	pub fn persistent_join_expiry_filter_metrics(&self) -> Option<FilterMetrics> {
+		self.persistent.as_ref().map(|tier| tier.join_expiry_filter().metrics())
 	}
 
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
@@ -344,9 +344,9 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn persistent_anchor_filter_metrics(&self) -> Option<FilterMetrics> {
+	pub fn persistent_join_expiry_filter_metrics(&self) -> Option<FilterMetrics> {
 		match self {
-			Self::Standard(store) => store.persistent_anchor_filter_metrics(),
+			Self::Standard(store) => store.persistent_join_expiry_filter_metrics(),
 		}
 	}
 

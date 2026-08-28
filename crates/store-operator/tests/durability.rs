@@ -231,7 +231,7 @@ fn a_drop_recorded_before_a_flush_is_still_a_drop_after_a_restart() {
 		let store = store_at(dir);
 		put(&store, OP, key(1), row("before"));
 		put(&store, OTHER, key(1), row("neighbour"));
-		store.anchor_set(OP, GROUP, SIDE, RowNumber(1), DateTime::from_millis(100));
+		store.join_expiry_set(OP, GROUP, SIDE, RowNumber(1), DateTime::from_millis(100));
 		assert!(store.flush_pending_blocking(), "the pre-drop rows must be durable for the drop to have work");
 
 		store.drop_operator_state(OP);
@@ -246,8 +246,8 @@ fn a_drop_recorded_before_a_flush_is_still_a_drop_after_a_restart() {
 			 first restart"
 		);
 		assert!(
-			booted.anchor_get(OP, GROUP, SIDE, RowNumber(1)).is_none(),
-			"dropping operator state takes that operator's anchors with it"
+			booted.join_expiry_get(OP, GROUP, SIDE, RowNumber(1)).is_none(),
+			"dropping operator state takes that operator's join expiries with it"
 		);
 		assert_eq!(
 			body(&booted, OP, 2).as_deref(),

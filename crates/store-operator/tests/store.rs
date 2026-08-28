@@ -19,7 +19,7 @@ use reifydb_store_operator::{
 	sqlite::SqliteOperatorStorage,
 	store::OperatorStore,
 	tier::{persistent::OperatorPersistentTier, point::OperatorPointConfig, range::OperatorRangeConfig},
-	types::{DurablePre, OperatorBatch, OperatorSealAnchor, OperatorWrite},
+	types::{DurablePre, OperatorBatch, OperatorWrite, StoredJoinRowExpiry},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -288,68 +288,68 @@ fn a_scan_stays_inside_its_operator_when_a_neighbour_holds_the_same_keys() {
 }
 
 #[test]
-fn a_due_scan_fills_its_page_even_when_buffered_removals_hide_the_earliest_anchors() {
+fn a_due_scan_fills_its_page_even_when_buffered_removals_hide_the_earliest_join_expiries() {
 	let (store, storage, _guard) = flushed_store();
 	for (row_number, millis) in [(1u64, 100u64), (2, 200), (3, 300), (4, 400), (5, 500)] {
-		storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(row_number), DateTime::from_millis(millis));
+		storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(row_number), DateTime::from_millis(millis));
 	}
 
-	store.anchor_remove(OP_A, GROUP_A, SIDE, RowNumber(1));
-	store.anchor_remove(OP_A, GROUP_A, SIDE, RowNumber(2));
+	store.join_expiry_remove(OP_A, GROUP_A, SIDE, RowNumber(1));
+	store.join_expiry_remove(OP_A, GROUP_A, SIDE, RowNumber(2));
 
-	let due = store.anchors_due(OP_A, GROUP_A, DateTime::from_millis(1_000), 3);
+	let due = store.join_expiries_due(OP_A, GROUP_A, DateTime::from_millis(1_000), 3);
 
 	assert_eq!(
 		due,
 		vec![
-			OperatorSealAnchor {
+			StoredJoinRowExpiry {
 				side: SIDE,
 				row_number: RowNumber(3),
-				expiry: DateTime::from_millis(300),
+				at: DateTime::from_millis(300),
 			},
-			OperatorSealAnchor {
+			StoredJoinRowExpiry {
 				side: SIDE,
 				row_number: RowNumber(4),
-				expiry: DateTime::from_millis(400),
+				at: DateTime::from_millis(400),
 			},
-			OperatorSealAnchor {
+			StoredJoinRowExpiry {
 				side: SIDE,
 				row_number: RowNumber(5),
-				expiry: DateTime::from_millis(500),
+				at: DateTime::from_millis(500),
 			},
 		],
 		"the buffered removals sit at the front of the expiry order, so a sqlite fetch sized to the limit \
-		 returns three rows of which two are hidden; the seal loop would then drain one anchor per tick \
+		 returns three rows of which two are hidden; the free loop would then drain one join expiry per tick \
 		 and never catch up"
 	);
 }
 
 #[test]
-fn a_buffered_expiry_reorders_the_flushed_anchors() {
+fn a_buffered_expiry_reorders_the_flushed_join_expiries() {
 	let (store, storage, _guard) = flushed_store();
-	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
-	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(2), DateTime::from_millis(200));
-	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(3), DateTime::from_millis(300));
+	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
+	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(2), DateTime::from_millis(200));
+	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(3), DateTime::from_millis(300));
 
-	store.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(3), DateTime::from_millis(50));
+	store.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(3), DateTime::from_millis(50));
 
-	let anchors = store.anchors_by_expiry(OP_A, GROUP_A, 3);
+	let expiries = store.join_expiries_by_time(OP_A, GROUP_A, 3);
 
 	assert_eq!(
-		anchors.iter().map(|anchor| anchor.row_number).collect::<Vec<RowNumber>>(),
+		expiries.iter().map(|expiry| expiry.row_number).collect::<Vec<RowNumber>>(),
 		vec![RowNumber(3), RowNumber(1), RowNumber(2)],
 		"the buffered expiry must supersede the flushed one and re-sort the scan; keeping the sqlite \
-		 ordering seals the rows in the wrong order and drops the moved anchor to the back of the page"
+		 ordering frees the rows in the wrong order and drops the moved join expiry to the back of the page"
 	);
 	assert_eq!(
-		anchors[0].expiry,
+		expiries[0].at,
 		DateTime::from_millis(50),
 		"the served expiry must be the buffered one, not the stale flushed deadline"
 	);
 	assert_eq!(
-		store.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(3)),
+		store.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(3)),
 		Some(DateTime::from_millis(50)),
-		"a point read of an overridden anchor must agree with the scan"
+		"a point read of an overridden join expiry must agree with the scan"
 	);
 }
 
@@ -366,7 +366,7 @@ fn a_buffered_state_drop_masks_sqlite_while_later_writes_survive() {
 		key: key(1),
 		post: row("neighbour"),
 	}]);
-	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
+	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
 
 	store.drop_operator_state(OP_A);
 
@@ -378,8 +378,8 @@ fn a_buffered_state_drop_masks_sqlite_while_later_writes_survive() {
 	assert!(!store.contains(OP_A, &key(1)));
 	assert!(scan(&store, OP_A).items.is_empty(), "a scan must be masked by the drop just like a point read");
 	assert!(
-		store.anchors_by_expiry(OP_A, GROUP_A, 8).is_empty(),
-		"dropping operator state takes its anchors with it, so the anchor scan must be masked too"
+		store.join_expiries_by_time(OP_A, GROUP_A, 8).is_empty(),
+		"dropping operator state takes its join expiries with it, so the join expiry scan must be masked too"
 	);
 	assert!(
 		storage.get(OP_A, &key(1)).is_some(),
@@ -655,34 +655,34 @@ fn the_memory_tier_reports_the_same_floor_and_list_as_the_sqlite_tier() {
 }
 
 #[test]
-fn a_group_anchor_drop_does_not_mask_a_sibling_group() {
+fn a_group_join_expiry_drop_does_not_mask_a_sibling_group() {
 	let (store, storage, _guard) = flushed_store();
-	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
-	storage.anchor_set(OP_A, GROUP_B, SIDE, RowNumber(2), DateTime::from_millis(200));
+	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
+	storage.join_expiry_set(OP_A, GROUP_B, SIDE, RowNumber(2), DateTime::from_millis(200));
 	storage.apply_batch(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
 	}]);
 
-	store.anchors_remove_group(OP_A, GROUP_A);
+	store.join_expiries_remove_group(OP_A, GROUP_A);
 
 	assert!(
-		store.anchors_by_expiry(OP_A, GROUP_A, 8).is_empty(),
+		store.join_expiries_by_time(OP_A, GROUP_A, 8).is_empty(),
 		"the dropped group must read empty even though its rows are still in sqlite"
 	);
-	assert!(store.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(1)).is_none());
+	assert!(store.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(1)).is_none());
 	assert_eq!(
-		store.anchors_by_expiry(OP_A, GROUP_B, 8),
-		vec![OperatorSealAnchor {
+		store.join_expiries_by_time(OP_A, GROUP_B, 8),
+		vec![StoredJoinRowExpiry {
 			side: SIDE,
 			row_number: RowNumber(2),
-			expiry: DateTime::from_millis(200),
+			at: DateTime::from_millis(200),
 		}],
-		"a sibling group keeps its anchors; masking by operator alone would disarm every timer the \
+		"a sibling group keeps its join expiries; masking by operator alone would disarm every timer the \
 		 operator owns"
 	);
-	assert!(store.get(OP_A, &key(1)).is_some(), "an anchor drop must never mask operator state");
+	assert!(store.get(OP_A, &key(1)).is_some(), "a join expiry drop must never mask operator state");
 }
 
 #[test]
@@ -734,29 +734,31 @@ fn a_zero_length_row_survives_the_sqlite_blob_column_distinctly_from_absence() {
 }
 
 #[test]
-fn an_anchor_the_store_never_wrote_is_rejected_without_reaching_sqlite() {
-	// anchor_get is gated on a bloom filter that only flush and apply populate, so every durable anchor must
-	// arrive through one of those two paths. A seeded anchor that skipped them would be invisible here.
-	// Falsified by dropping the filter population in flush_batch (the flushed anchor stops resolving) or by
-	// removing the gate (the absent probe stops being answered without a read).
+fn a_join_expiry_the_store_never_wrote_is_rejected_without_reaching_sqlite() {
+	// join_expiry_get is gated on a bloom filter that only flush and apply populate, so a seeded row that skipped
+	// both would be invisible here.
 	let (store, _storage, _guard) = flushed_store();
 
-	store.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
-	assert!(store.flush_pending_blocking(), "the anchor must reach the persistent tier before it is probed");
+	store.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
+	assert!(store.flush_pending_blocking(), "the join expiry must reach the persistent tier before it is probed");
 
 	assert_eq!(
-		store.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(1)),
+		store.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(1)),
 		Some(DateTime::from_millis(100)),
-		"an anchor that went through the buffer and flushed must still resolve once the filter gates the read"
+		"a join expiry that went through the buffer and flushed must still resolve once the filter gates the read"
 	);
 
-	let before = store.persistent_anchor_filter_metrics().expect("the persistent tier carries an anchor filter");
+	let before = store
+		.persistent_join_expiry_filter_metrics()
+		.expect("the persistent tier carries a join expiry filter");
 	assert_eq!(
-		store.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(999)),
+		store.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(999)),
 		None,
-		"an anchor that was never written must be rejected by the filter"
+		"a join expiry that was never written must be rejected by the filter"
 	);
-	let after = store.persistent_anchor_filter_metrics().expect("the persistent tier carries an anchor filter");
+	let after = store
+		.persistent_join_expiry_filter_metrics()
+		.expect("the persistent tier carries a join expiry filter");
 	assert_eq!(
 		after.rejected,
 		before.rejected + 1,
@@ -764,12 +766,12 @@ fn an_anchor_the_store_never_wrote_is_rejected_without_reaching_sqlite() {
 		 so only the rejection counter proves the read never reached it"
 	);
 	assert_eq!(
-		store.anchor_get(OP_B, GROUP_A, SIDE, RowNumber(1)),
+		store.join_expiry_get(OP_B, GROUP_A, SIDE, RowNumber(1)),
 		None,
-		"the filter must key on the operator, or one operator's anchors answer another's probes"
+		"the filter must key on the operator, or one operator's join expiries answer another's probes"
 	);
 	assert_eq!(
-		store.anchor_get(OP_A, GROUP_B, SIDE, RowNumber(1)),
+		store.join_expiry_get(OP_A, GROUP_B, SIDE, RowNumber(1)),
 		None,
 		"the filter must key on the group as well as the row number"
 	);

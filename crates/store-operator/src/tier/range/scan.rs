@@ -376,7 +376,7 @@ mod tests {
 		);
 
 		let split = tier
-			.plan_scan(OP, &across(KeyspaceId::CUSTOM_CACHED, KeyspaceId::SEAL_ANCHOR))
+			.plan_scan(OP, &across(KeyspaceId::CUSTOM_CACHED, KeyspaceId::JOIN_ROW_EXPIRY))
 			.expect("a range straddling an uncacheable keyspace must be plannable");
 		assert_eq!(
 			split.segments().len(),

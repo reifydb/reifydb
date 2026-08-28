@@ -198,7 +198,7 @@ fn a_drop_flushes_before_the_writes_recorded_after_it() {
 		key: key(1),
 		post: row("neighbour"),
 	}]);
-	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
+	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
 	put(&store, OP_A, key(2), row("pre-drop-buffered"));
 
 	store.drop_operator_state(OP_A);
@@ -223,8 +223,8 @@ fn a_drop_flushes_before_the_writes_recorded_after_it() {
 		"a pre-drop buffered write must never be replayed into sqlite behind the drop"
 	);
 	assert!(
-		storage.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(1)).is_none(),
-		"dropping operator state takes that operator's anchors with it"
+		storage.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(1)).is_none(),
+		"dropping operator state takes that operator's join expiries with it"
 	);
 	assert!(
 		storage.get(OP_B, &key(1)).is_some(),
@@ -233,80 +233,81 @@ fn a_drop_flushes_before_the_writes_recorded_after_it() {
 }
 
 #[test]
-fn an_anchor_drop_erases_only_the_group_it_names() {
+fn a_join_expiry_drop_erases_only_the_group_it_names() {
 	let (store, storage, _guard) = store_fixture();
-	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
-	storage.anchor_set(OP_A, GROUP_B, SIDE, RowNumber(2), DateTime::from_millis(200));
+	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
+	storage.join_expiry_set(OP_A, GROUP_B, SIDE, RowNumber(2), DateTime::from_millis(200));
 	storage.apply_batch(&[OperatorWrite::Insert {
 		operator: OP_A,
 		key: key(1),
 		post: row("durable"),
 	}]);
 
-	store.anchors_remove_group(OP_A, GROUP_A);
-	store.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(3), DateTime::from_millis(300));
+	store.join_expiries_remove_group(OP_A, GROUP_A);
+	store.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(3), DateTime::from_millis(300));
 
 	assert!(store.flush_pending_blocking(), "the group marker must reach the flusher");
 
 	assert!(
-		storage.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(1)).is_none(),
-		"the named group's flushed anchors must be erased"
+		storage.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(1)).is_none(),
+		"the named group's flushed join expiries must be erased"
 	);
 	assert_eq!(
-		storage.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(3)),
+		storage.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(3)),
 		Some(DateTime::from_millis(300)),
-		"an anchor armed after the group drop must survive it, otherwise the group is left with no timer \
-		 and never seals"
+		"a join expiry armed after the group drop must survive it, otherwise the group is left with no \
+		 timer and never expires"
 	);
 	assert_eq!(
-		storage.anchor_get(OP_A, GROUP_B, SIDE, RowNumber(2)),
+		storage.join_expiry_get(OP_A, GROUP_B, SIDE, RowNumber(2)),
 		Some(DateTime::from_millis(200)),
-		"a sibling group keeps its anchors; a group-wide DELETE that ignores the group disarms every \
+		"a sibling group keeps its join expiries; a group-wide DELETE that ignores the group disarms every \
 		 timer the operator owns"
 	);
-	assert!(storage.get(OP_A, &key(1)).is_some(), "an anchor drop must never touch operator state");
+	assert!(storage.get(OP_A, &key(1)).is_some(), "a join expiry drop must never touch operator state");
 }
 
 #[test]
-fn anchors_flush_as_upserts_and_deletes_and_are_then_served_from_sqlite() {
+fn join_expiries_flush_as_upserts_and_deletes_and_are_then_served_from_sqlite() {
 	let (store, storage, _guard) = store_fixture();
-	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
-	storage.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(2), DateTime::from_millis(200));
+	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(100));
+	storage.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(2), DateTime::from_millis(200));
 
-	store.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(900));
-	store.anchor_remove(OP_A, GROUP_A, SIDE, RowNumber(2));
-	store.anchor_set(OP_A, GROUP_A, SIDE, RowNumber(3), DateTime::from_millis(300));
+	store.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(1), DateTime::from_millis(900));
+	store.join_expiry_remove(OP_A, GROUP_A, SIDE, RowNumber(2));
+	store.join_expiry_set(OP_A, GROUP_A, SIDE, RowNumber(3), DateTime::from_millis(300));
 
-	assert!(store.flush_pending_blocking(), "the anchor batch must reach the flusher");
+	assert!(store.flush_pending_blocking(), "the join expiry batch must reach the flusher");
 
 	assert_eq!(
-		storage.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(1)),
+		storage.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(1)),
 		Some(DateTime::from_millis(900)),
-		"a re-armed anchor must upsert over the flushed expiry; inserting instead of upserting either \
-		 fails the primary key or leaves the seal firing on the stale deadline"
+		"a re-armed join expiry must upsert over the flushed expiry; inserting instead of upserting either \
+		 fails the primary key or leaves the timer firing on the stale deadline"
 	);
 	assert!(
-		storage.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(2)).is_none(),
-		"a removed anchor must flush as a DELETE, otherwise the disarmed timer re-arms itself from sqlite"
+		storage.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(2)).is_none(),
+		"a removed join expiry must flush as a DELETE, otherwise the disarmed timer re-arms itself from \
+		 sqlite"
 	);
 	assert_eq!(
-		storage.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(3)),
+		storage.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(3)),
 		Some(DateTime::from_millis(300)),
-		"a newly armed anchor must be inserted"
+		"a newly armed join expiry must be inserted"
 	);
 
 	assert_eq!(
-		store.anchor_get(OP_A, GROUP_A, SIDE, RowNumber(1)),
+		store.join_expiry_get(OP_A, GROUP_A, SIDE, RowNumber(1)),
 		Some(DateTime::from_millis(900)),
 		"with the buffer drained the point read is served from sqlite and must agree with what was \
 		 written"
 	);
-	let due = store.anchors_due(OP_A, GROUP_A, DateTime::from_millis(1_000), 8);
+	let due = store.join_expiries_due(OP_A, GROUP_A, DateTime::from_millis(1_000), 8);
 	assert_eq!(
-		due.iter().map(|anchor| anchor.row_number).collect::<Vec<RowNumber>>(),
+		due.iter().map(|join_expiry| join_expiry.row_number).collect::<Vec<RowNumber>>(),
 		vec![RowNumber(3), RowNumber(1)],
 		"the due scan now reads sqlite alone, so it must see the re-armed expiry in its new position and \
-		 must not see the deleted anchor"
+		 must not see the deleted join expiry"
 	);
 }
 

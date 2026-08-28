@@ -5,9 +5,9 @@ pub mod batch;
 pub mod flush;
 pub mod state_map;
 
-mod anchor;
 mod census;
 mod checkpoint;
+mod join_expiry;
 mod state;
 
 #[cfg(test)]
@@ -42,7 +42,7 @@ use crate::{
 		point::OperatorPointTier,
 		range::OperatorRangeTier,
 		resident::{
-			batch::{AnchorKey, DropMarker, FlushBatch, StateKey},
+			batch::{DropMarker, FlushBatch, JoinExpiryKey, StateKey},
 			census::{BufferCensus, release_in_flight},
 			flush::actor::FlushMessage,
 		},
@@ -321,7 +321,7 @@ impl OperatorResidentState {
 		self.shared.budget.release(batch.bytes);
 		self.shared.triggered.store(false, Ordering::Release);
 
-		let entries = (batch.state.len() + batch.anchors.len()) as u64;
+		let entries = (batch.state.len() + batch.join_expiries.len()) as u64;
 		{
 			let mut metrics = self.shared.metrics.lock();
 			metrics.slices += 1;
@@ -407,13 +407,13 @@ impl BufferWrite<'_> {
 		self.live.record_state(key, post, durable_pre);
 	}
 
-	pub(crate) fn record_anchor(&mut self, key: AnchorKey, expiry: Option<u64>, durable: bool) {
-		let before = merged_anchor(self.live, self.in_flight, &key);
-		self.live.record_anchor(key, expiry, durable);
-		let after = merged_anchor(self.live, self.in_flight, &key);
+	pub(crate) fn record_join_expiry(&mut self, key: JoinExpiryKey, expiry: Option<u64>, durable: bool) {
+		let before = merged_join_expiry(self.live, self.in_flight, &key);
+		self.live.record_join_expiry(key, expiry, durable);
+		let after = merged_join_expiry(self.live, self.in_flight, &key);
 		match (before, after) {
-			(false, true) => self.census.admit_anchor(key.0),
-			(true, false) => self.census.retract_anchor(key.0),
+			(false, true) => self.census.admit_join_expiry(key.0),
+			(true, false) => self.census.retract_join_expiry(key.0),
 			_ => {}
 		}
 	}
@@ -440,15 +440,15 @@ fn merged_state(
 	value_bytes(entry.post.as_ref())
 }
 
-fn merged_anchor(live: &FlushBatch, in_flight: Option<&FlushBatch>, key: &AnchorKey) -> bool {
-	match live.anchors.get(key) {
+fn merged_join_expiry(live: &FlushBatch, in_flight: Option<&FlushBatch>, key: &JoinExpiryKey) -> bool {
+	match live.join_expiries.get(key) {
 		Some(entry) => entry.is_some(),
-		None => in_flight.and_then(|batch| batch.anchors.get(key)).is_some_and(|entry| entry.is_some()),
+		None => in_flight.and_then(|batch| batch.join_expiries.get(key)).is_some_and(|entry| entry.is_some()),
 	}
 }
 
 #[cfg(reifydb_assertions)]
-use crate::tier::resident::batch::{ANCHOR_ENTRY_BYTES, state_entry_bytes};
+use crate::tier::resident::batch::{JOIN_EXPIRY_ENTRY_BYTES, state_entry_bytes};
 
 #[cfg(reifydb_assertions)]
 fn walk(batch: &FlushBatch) -> ByteSize {
@@ -456,7 +456,7 @@ fn walk(batch: &FlushBatch) -> ByteSize {
 	for ((_, key), entry) in &batch.state {
 		total = total.saturating_add(state_entry_bytes(key, entry));
 	}
-	total.saturating_add(ANCHOR_ENTRY_BYTES * batch.anchors.len() as u64)
+	total.saturating_add(JOIN_EXPIRY_ENTRY_BYTES * batch.join_expiries.len() as u64)
 }
 
 fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&OperatorRangeTier>, batch: &FlushBatch) {
@@ -470,7 +470,7 @@ fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&Operator
 					point.invalidate_operator(*operator);
 				}
 			}
-			DropMarker::AnchorsOperator(_) | DropMarker::AnchorsGroup(_, _) => {}
+			DropMarker::JoinExpiriesOperator(_) | DropMarker::JoinExpiriesGroup(_, _) => {}
 		}
 	}
 	for ((operator, key), entry) in &batch.state {
@@ -524,40 +524,40 @@ fn record_writes(live: &mut BufferWrite<'_>, writes: &[OperatorWrite]) {
 			} => {
 				live.record_state((*operator, key.clone()), None, *pre);
 			}
-			OperatorWrite::AnchorInsert {
+			OperatorWrite::JoinExpiryInsert {
 				operator,
 				group,
 				side,
 				row_num: row_number,
-				expiry,
+				at,
 			} => {
-				live.record_anchor(
+				live.record_join_expiry(
 					(*operator, *group, *side, *row_number),
-					Some(expiry.to_millis()),
+					Some(at.to_millis()),
 					false,
 				);
 			}
-			OperatorWrite::AnchorReplace {
+			OperatorWrite::JoinExpiryReplace {
 				operator,
 				group,
 				side,
 				row_num: row_number,
-				expiry,
+				at,
 			} => {
-				live.record_anchor(
+				live.record_join_expiry(
 					(*operator, *group, *side, *row_number),
-					Some(expiry.to_millis()),
+					Some(at.to_millis()),
 					true,
 				);
 			}
-			OperatorWrite::AnchorRemove {
+			OperatorWrite::JoinExpiryRemove {
 				operator,
 				group,
 				side,
 				row_num: row_number,
 				pre,
 			} => {
-				live.record_anchor(
+				live.record_join_expiry(
 					(*operator, *group, *side, *row_number),
 					None,
 					matches!(pre, DurablePre::Present(_)),
