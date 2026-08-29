@@ -75,6 +75,7 @@ tracing-opentelemetry = { workspace = true, optional = true }
 libc = { workspace = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb = { path = ".", features = ["testing"] }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }
@@ -102,7 +103,7 @@ sub_server_otel = ["dep:reifydb-sub-server-otel", "dep:opentelemetry", "dep:trac
 sub_raft = ["dep:reifydb-sub-raft"]
 sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]
 sub_replication = ["dep:reifydb-sub-replication"]
-testing = ["dep:reifydb-testing", "dep:reifydb-testing-chaos", "dep:reifydb-testing-sdk", "dep:reifydb-test-harness"]
+testing = ["reifydb-core/testing", "dep:reifydb-testing", "dep:reifydb-testing-chaos", "dep:reifydb-testing-sdk", "dep:reifydb-test-harness"]
 
 [[test]]
 name = "testing_surface"

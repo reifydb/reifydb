@@ -13,6 +13,7 @@ use std::{
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
+	default,
 	interface::{
 		catalog::storage::StorageId,
 		store::{EntryKind, classify_key},
@@ -26,7 +27,7 @@ use reifydb_store::{
 	coverage::{
 		cursor::{RangeCursor as TierCursor, ServedChunk as TierChunk},
 		interval::Interval,
-		plan::Segment,
+		plan::{DEFAULT_GAP_GUARD, Segment},
 	},
 	tier::range::{
 		Materialize, RangeConfig, RangeDomain, RangeMetrics, RangeRows, RangeShardMetrics, RangeTier, RowBytes,
@@ -39,7 +40,32 @@ use crate::{
 	tier::{RangeBatch, RangeCursor, RawEntry},
 };
 
-pub type MultiRangeConfig = RangeConfig;
+#[derive(Clone, Copy, Debug)]
+pub struct MultiRangeConfig {
+	pub shard_bytes: Option<ByteSize>,
+	pub shards: usize,
+	pub gap_guard: usize,
+}
+
+impl MultiRangeConfig {
+	pub fn testing() -> Self {
+		Self {
+			shard_bytes: Some(default::store::MULTI_RANGE_BUFFER_SHARD_TESTING),
+			shards: default::store::MULTI_RANGE_BUFFER_SHARDS_TESTING as usize,
+			gap_guard: DEFAULT_GAP_GUARD,
+		}
+	}
+}
+
+impl From<MultiRangeConfig> for RangeConfig {
+	fn from(config: MultiRangeConfig) -> Self {
+		Self {
+			shard_bytes: config.shard_bytes,
+			shards: config.shards,
+			gap_guard: config.gap_guard,
+		}
+	}
+}
 pub type ServedChunk = reifydb_store::coverage::cursor::ServedChunk<RangeBatch>;
 
 const ROW_BUCKET_SHIFT: u32 = 16;
@@ -237,7 +263,7 @@ pub struct MultiRangeTier {
 
 impl MultiRangeTier {
 	pub fn new(config: MultiRangeConfig) -> Option<Self> {
-		let tier = RangeTier::new(config)?;
+		let tier = RangeTier::new(config.into())?;
 		let shards = config.shards.max(1);
 		Some(Self {
 			tier,

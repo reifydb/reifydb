@@ -8,6 +8,7 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
+	default,
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::state::{KeyspaceId, OperatorStateKey},
@@ -17,8 +18,31 @@ use reifydb_core::{
 use reifydb_store::tier::point::{
 	PointBucketMetrics, PointConfig, PointDomain, PointMetrics, PointShardMetrics, PointTier,
 };
+use reifydb_value::byte_size::ByteSize;
 
-pub type OperatorPointConfig = PointConfig;
+#[derive(Clone, Copy, Debug)]
+pub struct OperatorPointConfig {
+	pub shard_bytes: Option<ByteSize>,
+	pub shards: usize,
+}
+
+impl OperatorPointConfig {
+	pub fn testing() -> Self {
+		Self {
+			shard_bytes: Some(default::store::OPERATOR_POINT_BUFFER_SHARD_TESTING),
+			shards: default::store::OPERATOR_POINT_BUFFER_SHARDS_TESTING as usize,
+		}
+	}
+}
+
+impl From<OperatorPointConfig> for PointConfig {
+	fn from(config: OperatorPointConfig) -> Self {
+		Self {
+			shard_bytes: config.shard_bytes,
+			shards: config.shards,
+		}
+	}
+}
 pub type OperatorPointTier = PointTier<OperatorDomain>;
 pub type OperatorPointMetrics = PointMetrics;
 pub type OperatorPointShardMetrics = PointShardMetrics;

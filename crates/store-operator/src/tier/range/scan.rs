@@ -34,11 +34,14 @@ mod tests {
 	const UNCACHED: KeyspaceId = KeyspaceId::CUSTOM_NOT_CACHED;
 
 	fn tier(limit: u64, gap_guard: usize) -> OperatorRangeTier {
-		OperatorRangeTier::new(OperatorRangeConfig {
-			shard_bytes: Some(ByteSize::from_bytes(limit)),
-			shards: 1,
-			gap_guard,
-		})
+		OperatorRangeTier::new(
+			OperatorRangeConfig {
+				shard_bytes: Some(ByteSize::from_bytes(limit)),
+				shards: 1,
+				gap_guard,
+			}
+			.into(),
+		)
 		.expect("a tier with a byte budget must be constructed")
 	}
 

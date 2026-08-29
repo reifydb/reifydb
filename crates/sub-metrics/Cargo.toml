@@ -42,6 +42,7 @@ server = ["dep:reifydb-sub-server"]
 libc = "0.2"
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb = { workspace = true, features = ["sub_metric_profiler", "testing"] }
 reifydb-test-harness = { workspace = true }
 reifydb-store-single = { workspace = true, features = ["sqlite"] }

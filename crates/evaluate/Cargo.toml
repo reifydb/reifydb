@@ -21,5 +21,8 @@ reifydb-runtime = { workspace = true }
 reifydb-value = { workspace = true }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
+
 [build-dependencies]
 reifydb-build = { workspace = true }

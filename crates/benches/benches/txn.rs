@@ -19,14 +19,11 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
 	interface::{
-		catalog::{
-			config::{ConfigKey, GetConfig},
-			id::TableId,
-			storage::StorageId,
-		},
+		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, classify_key},
 	},
 	key::{EncodableKey, row::RowKey},
+	testing::ProfileConfig,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -70,18 +67,6 @@ impl TableLayout {
 	}
 }
 
-struct DefaultConfig;
-
-impl GetConfig for DefaultConfig {
-	fn get_config(&self, key: ConfigKey) -> Value {
-		key.default_value()
-	}
-
-	fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
-		key.default_value()
-	}
-}
-
 fn build_stack() -> (ActorSystem, MultiTransaction) {
 	let actor_system = ActorSystem::testing(Clock::Real);
 	let spawner = actor_system.spawner();
@@ -94,7 +79,7 @@ fn build_stack() -> (ActorSystem, MultiTransaction) {
 		Clock::Real,
 		VersionEpoch::new(),
 		Rng::seeded(42),
-		Arc::new(DefaultConfig),
+		Arc::new(ProfileConfig),
 	)
 	.expect("benchmark transaction stack must build");
 	(actor_system, multi)

@@ -43,3 +43,4 @@ uuid = { workspace = true }
 reifydb-build = { workspace = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }

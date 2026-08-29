@@ -55,7 +55,7 @@ libloading = { workspace = true }
 [dev-dependencies]
 reifydb-routine = { workspace = true }
 reifydb-testing-sdk = { workspace = true }
-reifydb-core = { workspace = true }
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-value = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb = { workspace = true, features = ["testing"] }

@@ -10,7 +10,7 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, key::typed::MultiKey};
+use reifydb_core::{common::CommitVersion, default, key::typed::MultiKey};
 use reifydb_store::tier::{
 	point::{PointConfig, PointDomain, PointMetrics, PointTier},
 	range::RowBytes,
@@ -19,7 +19,29 @@ use reifydb_value::{byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVe
 
 use crate::tier::VersionedGetResult;
 
-pub type MultiPointConfig = PointConfig;
+#[derive(Clone, Copy, Debug)]
+pub struct MultiPointConfig {
+	pub shard_bytes: Option<ByteSize>,
+	pub shards: usize,
+}
+
+impl MultiPointConfig {
+	pub fn testing() -> Self {
+		Self {
+			shard_bytes: Some(default::store::MULTI_POINT_BUFFER_SHARD_TESTING),
+			shards: default::store::MULTI_POINT_BUFFER_SHARDS_TESTING as usize,
+		}
+	}
+}
+
+impl From<MultiPointConfig> for PointConfig {
+	fn from(config: MultiPointConfig) -> Self {
+		Self {
+			shard_bytes: config.shard_bytes,
+			shards: config.shards,
+		}
+	}
+}
 
 #[derive(Clone, Debug)]
 pub struct MultiPointRow {
@@ -134,7 +156,7 @@ pub struct MultiPointTier {
 
 impl MultiPointTier {
 	pub fn new(config: MultiPointConfig) -> Option<Self> {
-		let tier = PointTier::new(config)?;
+		let tier = PointTier::new(config.into())?;
 		let shards = config.shards.max(1);
 		Some(Self {
 			tier,

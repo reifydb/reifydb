@@ -38,5 +38,8 @@ rustls = { workspace = true }
 surge-ping = { workspace = true }
 uuid = { workspace = true }
 
+[dev-dependencies]
+reifydb = { workspace = true, features = ["testing"] }
+
 [build-dependencies]
 reifydb-build = { workspace = true }

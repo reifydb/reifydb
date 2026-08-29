@@ -7,12 +7,7 @@ use std::sync::{
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::{
-	common::CommitVersion,
-	event::EventBus,
-	interface::catalog::config::{ConfigKey, GetConfig},
-	internal_err,
-};
+use reifydb_core::{common::CommitVersion, event::EventBus, internal_err, testing::ProfileConfig};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{
@@ -39,17 +34,6 @@ use reifydb_value::{
 	value::{Value, duration::Duration, identity::IdentityId},
 };
 
-struct DefaultConfig;
-
-impl GetConfig for DefaultConfig {
-	fn get_config(&self, key: ConfigKey) -> Value {
-		key.default_value()
-	}
-	fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
-		key.default_value()
-	}
-}
-
 struct Harness {
 	_actor_system: ActorSystem,
 	begin: CommitBegin,
@@ -69,7 +53,7 @@ fn harness() -> Harness {
 		Clock::Mock(MockClock::from_millis(1000)),
 		VersionEpoch::new(),
 		Rng::seeded(42),
-		Arc::new(DefaultConfig),
+		Arc::new(ProfileConfig),
 	)
 	.unwrap();
 	let single = SingleTransaction::new(SingleStore::testing_memory(), bus.clone());

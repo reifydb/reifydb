@@ -30,6 +30,7 @@ default = []
 chaos = []
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-macro = { workspace = true }
 reifydb-testing-macro = { workspace = true }
 

@@ -19,6 +19,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::{MultiVersionContains, MultiVersionGet},
 	},
+	testing::ProfileConfig,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_runtime::sync::rwlock::RwLock;
@@ -301,16 +302,7 @@ impl MultiTransaction {
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
 
-		struct DummyConfig;
-		impl GetConfig for DummyConfig {
-			fn get_config(&self, key: ConfigKey) -> Value {
-				key.default_value()
-			}
-			fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
-				key.default_value()
-			}
-		}
-		let config = Arc::new(DummyConfig);
+		let config = Arc::new(ProfileConfig);
 
 		Self::new(
 			multi_store,

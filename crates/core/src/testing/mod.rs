@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::duration::Duration;
+use reifydb_value::value::{Value, duration::Duration};
 
-use crate::value::column::columns::Columns;
+use crate::{
+	common::CommitVersion,
+	interface::catalog::config::{ConfigKey, GetConfig},
+	value::column::columns::Columns,
+};
 
 #[derive(Clone, Debug)]
 pub struct CapturedEvent {
@@ -36,5 +40,17 @@ impl TestingChanged {
 		Self {
 			object_type,
 		}
+	}
+}
+
+pub struct ProfileConfig;
+
+impl GetConfig for ProfileConfig {
+	fn get_config(&self, key: ConfigKey) -> Value {
+		key.default_value()
+	}
+
+	fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
+		key.default_value()
 	}
 }

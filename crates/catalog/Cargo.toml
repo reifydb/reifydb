@@ -34,6 +34,7 @@ subtle = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-test-harness = { workspace = true }
 reifydb-engine = { workspace = true, features = ["tokio"] }
 reifydb-testing = { workspace = true }

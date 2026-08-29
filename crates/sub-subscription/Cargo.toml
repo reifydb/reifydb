@@ -39,6 +39,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 rand = { workspace = true }
 reifydb = { workspace = true, features = ["testing"] }
 reifydb-test-harness = { workspace = true, features = ["operator"] }

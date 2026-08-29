@@ -17,3 +17,6 @@ default = []
 reifydb-core = { workspace = true }
 reifydb-value = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }

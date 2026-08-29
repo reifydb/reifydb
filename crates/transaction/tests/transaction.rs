@@ -18,10 +18,8 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
-	interface::{
-		catalog::config::{ConfigKey, GetConfig},
-		store::MultiVersionRow,
-	},
+	interface::store::MultiVersionRow,
+	testing::ProfileConfig,
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
@@ -68,15 +66,6 @@ fn test_serializable(path: &Path) {
 	let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 	let spawner = actor_system.spawner();
 	let bus = EventBus::new(&spawner);
-	struct DefaultConfig;
-	impl GetConfig for DefaultConfig {
-		fn get_config(&self, key: ConfigKey) -> Value {
-			key.default_value()
-		}
-		fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
-			key.default_value()
-		}
-	}
 	let engine = MultiTransaction::new(
 		multi_store,
 		SingleTransaction::new(single_store, bus.clone()),
@@ -85,7 +74,7 @@ fn test_serializable(path: &Path) {
 		Clock::Mock(MockClock::from_millis(1000)),
 		VersionEpoch::new(),
 		Rng::seeded(42),
-		Arc::new(DefaultConfig),
+		Arc::new(ProfileConfig),
 	)
 	.unwrap();
 

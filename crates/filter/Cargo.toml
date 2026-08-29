@@ -18,3 +18,6 @@ reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-value = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }

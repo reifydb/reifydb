@@ -37,3 +37,6 @@ tokio-stream = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
+
+[dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }

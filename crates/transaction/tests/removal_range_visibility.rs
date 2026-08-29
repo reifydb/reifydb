@@ -11,12 +11,9 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
-	interface::catalog::{
-		config::{ConfigKey, GetConfig},
-		id::TableId,
-		storage::StorageId,
-	},
+	interface::catalog::{id::TableId, storage::StorageId},
 	key::row::RowKey,
+	testing::ProfileConfig,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -41,16 +38,6 @@ use reifydb_value::{
 	value::{Value, row_number::RowNumber},
 };
 
-struct DefaultConfig;
-impl GetConfig for DefaultConfig {
-	fn get_config(&self, key: ConfigKey) -> Value {
-		key.default_value()
-	}
-	fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
-		key.default_value()
-	}
-}
-
 fn test_engine() -> MultiTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
@@ -66,7 +53,7 @@ fn test_engine() -> MultiTransaction {
 		Clock::Mock(MockClock::from_millis(1000)),
 		VersionEpoch::new(),
 		Rng::seeded(42),
-		Arc::new(DefaultConfig),
+		Arc::new(ProfileConfig),
 	)
 	.unwrap()
 }

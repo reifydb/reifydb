@@ -33,6 +33,20 @@ impl fmt::Display for AcceptError {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum ConfigProfile {
+	Production,
+	Testing,
+}
+
+pub fn active_config_profile() -> ConfigProfile {
+	if cfg!(feature = "testing") {
+		ConfigProfile::Testing
+	} else {
+		ConfigProfile::Production
+	}
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ConfigKey {
 	OracleWindowSize,
 	QueryRowBatchSize,
@@ -154,6 +168,13 @@ impl ConfigKey {
 	}
 
 	pub fn default_value(&self) -> Value {
+		match active_config_profile() {
+			ConfigProfile::Production => self.production_value(),
+			ConfigProfile::Testing => self.testing_value(),
+		}
+	}
+
+	pub fn production_value(&self) -> Value {
 		match self {
 			Self::OracleWindowSize => Value::Uint8(default::query::ORACLE_WINDOW_SIZE),
 			Self::QueryRowBatchSize => Value::Uint2(default::query::ROW_BATCH_SIZE),

@@ -46,6 +46,7 @@ tracing = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-testing-sdk = { workspace = true }
 
 [[test]]
