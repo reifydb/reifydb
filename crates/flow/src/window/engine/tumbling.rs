@@ -9,14 +9,14 @@ use std::{
 };
 
 use reifydb_codec::{
-	key::{
-		encode_u64,
-		encoded::{EncodedKey, IntoEncodedKey},
-	},
-	row::operator::state::OperatorState,
+	key::{encode_u64, encoded::EncodedKey},
+	row::operator::state::{OperatorState, StateCodec},
 };
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey},
+	key::operator::{
+		keyspace::expiry::TumblingExpiry,
+		state::{GroupId, GroupStateKey},
+	},
 	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
@@ -34,7 +34,7 @@ use crate::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaSweep, WindowResult, WindowStateKey,
-			config::WindowEngineConfig, decode_window_state_key, load_batch_meta, meta_key_for,
+			config::WindowEngineConfig, decode_window_state_key, group_hash, load_batch_meta, meta_key_for,
 			note_when_expiry_capped, persist_batch_meta,
 		},
 		span::{WindowAnchor, WindowSpan},
@@ -95,7 +95,7 @@ pub struct TumblingEngine<G, S, Accumulator> {
 	meta_sweep: MetaSweep,
 	expire_batch: usize,
 	dropped_retractions: u64,
-	expiry: ExpiryIndex,
+	expiry: ExpiryIndex<TumblingExpiry>,
 	_pd: PhantomData<(G, S, Accumulator)>,
 }
 
@@ -104,7 +104,7 @@ where
 	G: Clone + Eq + Ord + Hash + Debug,
 	S: WindowAnchor + Hash,
 	Accumulator: WindowAccumulator,
-	for<'a> &'a G: IntoEncodedKey,
+	G: StateCodec,
 	GroupMeta<S>: OperatorState,
 	TumblingIndexEntry<G, S>: OperatorState,
 {
@@ -138,7 +138,7 @@ where
 		}
 		let suffix = encode_u64(window_start.order_key().to_order());
 		if let Some(old) = prior {
-			expiry_drop(store, &expiry_key(old, group, &suffix))?;
+			expiry_drop(store, &expiry_key::<TumblingExpiry>(old, group_hash(group)?, &suffix))?;
 		}
 		if let Some(new) = new {
 			let entry = TumblingIndexEntry {
@@ -147,7 +147,11 @@ where
 				group_id: id.0,
 				slot_key: slot_key.as_bytes().to_vec(),
 			};
-			self.expiry.set(store, expiry_key(new, group, &suffix), entry)?;
+			self.expiry.set(
+				store,
+				expiry_key::<TumblingExpiry>(new, group_hash(group)?, &suffix),
+				entry,
+			)?;
 		}
 		Ok(())
 	}
@@ -195,7 +199,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, S> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let batch = load_batch_meta(store, &meta_key_for(group))?;
+				let batch = load_batch_meta(store, &meta_key_for(group_hash(group)?))?;
 				meta_loaded.insert(group.clone(), batch);
 			}
 		}
@@ -409,7 +413,7 @@ mod tests {
 			engine::{
 				AccumulatorEvent, EmitKind, GroupMeta, MetaHighWater, WindowResult,
 				config::WindowEngineConfig,
-				meta_key_for,
+				group_hash, meta_key_for,
 				tumbling::{TumblingBuckets, TumblingEngine},
 			},
 			span::WindowSpan,
@@ -604,14 +608,18 @@ mod tests {
 		reindex_window(&mut store, &w0.group, w0.span.start, None, Some(10)).unwrap();
 		let w100 = seed_window(&mut store, 100, 7);
 		reindex_window(&mut store, &w100.group, w100.span.start, None, Some(90)).unwrap();
-		assert_eq!(store.index_entry_count(), 2, "both live windows are indexed");
+		assert_eq!(store.tumbling_index_entry_count(), 2, "both live windows are indexed");
 
 		// Threshold 10: only the window whose expiry (10) is at/under the threshold is due.
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let expired = engine.expire(&mut store, 10).unwrap();
 		assert_eq!(expired.len(), 1, "exactly one window is due, not the whole population");
 		assert_eq!(expired[0].window_start, at_millis(0));
-		assert_eq!(store.index_entry_count(), 1, "the due window's index entry is gone, the other remains");
+		assert_eq!(
+			store.tumbling_index_entry_count(),
+			1,
+			"the due window's index entry is gone, the other remains"
+		);
 
 		// Expiry is the seal's own index and nothing else: the accumulators behind both windows are
 		// still on disk here, and the reaper is what collects them at or below the ledger.
@@ -619,7 +627,7 @@ mod tests {
 		let later = engine.expire(&mut store, 1000).unwrap();
 		assert_eq!(later.len(), 1);
 		assert_eq!(later[0].window_start, at_millis(100));
-		assert_eq!(store.index_entry_count(), 0);
+		assert_eq!(store.tumbling_index_entry_count(), 0);
 	}
 
 	#[test]
@@ -631,14 +639,14 @@ mod tests {
 		let mut store = MockStore::default();
 		let window = seed_window(&mut store, 0, 5);
 		reindex_window(&mut store, &window.group, window.span.start, None, Some(10)).unwrap();
-		assert_eq!(store.index_entry_count(), 1, "precondition: the live window is indexed");
+		assert_eq!(store.tumbling_index_entry_count(), 1, "precondition: the live window is indexed");
 
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let expired = engine.expire(&mut store, 10).unwrap();
 
 		assert_eq!(expired.len(), 1);
 		assert_eq!(
-			store.index_entry_count(),
+			store.tumbling_index_entry_count(),
 			0,
 			"expire must clear the row before it hands the group back for the caller to enqueue"
 		);
@@ -647,7 +655,7 @@ mod tests {
 		reap_group(&mut store, expired[0].group_id, &mut StoreReaper, 256).unwrap();
 
 		assert_eq!(
-			store.index_entry_count(),
+			store.tumbling_index_entry_count(),
 			0,
 			"a group driven through expire, enqueue and reap must leave no expiry row behind"
 		);
@@ -661,14 +669,18 @@ mod tests {
 		let mut store = MockStore::default();
 		let w = seed_window(&mut store, 0, 5);
 		reindex_window(&mut store, &w.group, w.span.start, None, Some(10)).unwrap();
-		assert_eq!(store.index_entry_count(), 1, "precondition: the window is indexed");
+		assert_eq!(store.tumbling_index_entry_count(), 1, "precondition: the window is indexed");
 		assert_eq!(store.drop_accumulator_entries(), 1, "precondition: the reaper erased the accumulator");
 
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let expired = engine.expire(&mut store, 10).unwrap();
 
 		assert_eq!(expired.len(), 1, "the stale entry must still drain, or the index would grow forever");
-		assert_eq!(store.index_entry_count(), 0, "a stale entry drops itself on the scan that finds it");
+		assert_eq!(
+			store.tumbling_index_entry_count(),
+			0,
+			"a stale entry drops itself on the scan that finds it"
+		);
 	}
 
 	#[test]
@@ -814,7 +826,7 @@ mod tests {
 		// One below the expiry: not due, and the scan leaves the index intact.
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		assert!(engine.expire(&mut store, 49).unwrap().is_empty());
-		assert_eq!(store.index_entry_count(), 1);
+		assert_eq!(store.tumbling_index_entry_count(), 1);
 
 		// Exactly at the expiry: due (the face folds the strict close boundary into the threshold).
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
@@ -831,7 +843,7 @@ mod tests {
 			let w = seed_window(&mut store, start, 1);
 			reindex_window(&mut store, &w.group, w.span.start, None, Some(due)).unwrap();
 		}
-		assert_eq!(store.index_entry_count(), 3);
+		assert_eq!(store.tumbling_index_entry_count(), 3);
 
 		let capped = WindowEngineConfig::builder().expire_batch(2).build();
 
@@ -840,13 +852,13 @@ mod tests {
 		assert_eq!(first.len(), 2, "one tick drains at most expire_batch windows");
 		assert_eq!(first[0].window_start, at_millis(200), "inverted key order: newest due drains first");
 		assert_eq!(first[1].window_start, at_millis(100));
-		assert_eq!(store.index_entry_count(), 1, "the deferred window keeps its index entry");
+		assert_eq!(store.tumbling_index_entry_count(), 1, "the deferred window keeps its index entry");
 
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(capped);
 		let second = engine.expire(&mut store, 1000).unwrap();
 		assert_eq!(second.len(), 1, "the next tick picks up the deferred backlog");
 		assert_eq!(second[0].window_start, at_millis(0));
-		assert_eq!(store.index_entry_count(), 0);
+		assert_eq!(store.tumbling_index_entry_count(), 0);
 	}
 
 	#[test]
@@ -856,7 +868,7 @@ mod tests {
 		// Index at 10, then a later event advances the window's expiry to 80.
 		reindex_window(&mut store, &w.group, w.span.start, None, Some(10)).unwrap();
 		reindex_window(&mut store, &w.group, w.span.start, Some(10), Some(80)).unwrap();
-		assert_eq!(store.index_entry_count(), 1, "re-keying must not leave the old entry behind");
+		assert_eq!(store.tumbling_index_entry_count(), 1, "re-keying must not leave the old entry behind");
 
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		assert!(engine.expire(&mut store, 10).unwrap().is_empty(), "no longer due at the old expiry");
@@ -1040,7 +1052,7 @@ mod tests {
 	}
 
 	fn read_high_water(store: &mut MockStore, group: u32) -> Option<u64> {
-		get::<_, GroupMeta<DateTime>>(store, &meta_key_for(&group))
+		get::<_, GroupMeta<DateTime>>(store, &meta_key_for(group_hash(&group).unwrap()))
 			.unwrap()
 			.and_then(|meta| meta.high_water_order())
 	}
@@ -1074,7 +1086,7 @@ mod tests {
 		let mut store = MockStore::default();
 		put(
 			&mut store,
-			&meta_key_for(&1u32),
+			&meta_key_for(group_hash(&1u32).unwrap()),
 			GroupMeta::<DateTime> {
 				high_water: None,
 			},

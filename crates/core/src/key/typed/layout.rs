@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::key::typed::{Key, direction::Direction};
+use crate::key::typed::{
+	Key,
+	direction::{Asc, Desc, Direction, KeyScalar},
+};
 
 pub trait KeyLayout: Key {
 	const COLUMNS: &'static [KeyColumn];
@@ -11,6 +14,56 @@ pub trait KeyLayout: Key {
 	fn from_key_values(values: &[KeyValue]) -> Option<Self>
 	where
 		Self: Sized;
+}
+
+impl KeyLayout for () {
+	const COLUMNS: &'static [KeyColumn] = &[];
+
+	fn key_values(&self) -> Vec<KeyValue> {
+		Vec::new()
+	}
+
+	fn from_key_values(values: &[KeyValue]) -> Option<Self> {
+		values.is_empty().then_some(())
+	}
+}
+
+impl<T: KeyScalar> KeyLayout for Asc<T> {
+	const COLUMNS: &'static [KeyColumn] = &[KeyColumn {
+		name: "value",
+		ty: T::COLUMN_TYPE,
+		direction: Direction::Asc,
+	}];
+
+	fn key_values(&self) -> Vec<KeyValue> {
+		vec![self.0.to_key_value()]
+	}
+
+	fn from_key_values(values: &[KeyValue]) -> Option<Self> {
+		match values {
+			[value] => T::from_key_value(*value).map(Asc),
+			_ => None,
+		}
+	}
+}
+
+impl<T: KeyScalar> KeyLayout for Desc<T> {
+	const COLUMNS: &'static [KeyColumn] = &[KeyColumn {
+		name: "value",
+		ty: T::COLUMN_TYPE,
+		direction: Direction::Desc,
+	}];
+
+	fn key_values(&self) -> Vec<KeyValue> {
+		vec![self.0.to_key_value()]
+	}
+
+	fn from_key_values(values: &[KeyValue]) -> Option<Self> {
+		match values {
+			[value] => T::from_key_value(*value).map(Desc),
+			_ => None,
+		}
+	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

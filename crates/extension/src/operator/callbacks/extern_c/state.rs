@@ -792,13 +792,12 @@ mod join_row_expiry_guard_tests {
 			Ok(())
 		}
 
-		fn state_range_visit(
+		fn state_page(
 			&mut self,
 			_range: EncodedKeyRange,
 			_limit: Option<usize>,
-			_visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-		) -> Result<()> {
-			Ok(())
+		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+			Ok(Vec::new())
 		}
 
 		fn state_last(&mut self, _range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {

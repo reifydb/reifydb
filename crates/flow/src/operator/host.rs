@@ -212,28 +212,28 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.state_remove(self.operator, key)
 	}
 
-	fn state_range_visit(
+	fn state_page(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let batch = self.txn.state_range(
 			self.operator,
 			StateRange {
 				range,
 				limit,
-				site: "operator::host_visit",
+				site: "operator::host_page",
 			},
 		)?;
+		let mut out = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
 			if let Some(decoded) = OperatorStateKey::decode(&r.key)
 				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 			{
-				visit(inner, EncodedPodRow::from(r.bytes))?;
+				out.push((inner, EncodedPodRow::from(r.bytes)));
 			}
 		}
-		Ok(())
+		Ok(out)
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {

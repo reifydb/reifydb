@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{
-	key::{decode_u128, encode_u128},
-	row::pod::EncodedPodRow,
-};
+use std::ops::Bound;
+
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
-	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, group_data_inner_range, group_inner_range,
-		keyspace_inner_range,
+	key::operator::{
+		keyspace::expiry::{ReapQueue, ReapQueueKey},
+		state::{GroupId, GroupStateKey, OperatorStateKey},
 	},
-	state::timer::StateStore,
+	key::typed::direction::Desc,
+	state::{timer::StateStore, typed::{TypedStateStore, typed_key}},
 };
 use reifydb_value::{Result, reifydb_assertions};
 
@@ -38,7 +38,9 @@ impl Reaper for StoreReaper {
 }
 
 pub fn queue_key(group: GroupId) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::REAP_QUEUE, encode_u128(group.0))
+	typed_key::<ReapQueue>(GroupId::ROOT, &ReapQueueKey {
+		group: Desc(group),
+	})
 }
 
 pub fn enqueue(store: &mut dyn StateStore, group: GroupId) -> Result<()> {
@@ -63,24 +65,9 @@ impl DrainOutcome {
 }
 
 pub fn queued(store: &mut dyn StateStore, limit: usize) -> Result<Queued> {
-	let mut groups: Vec<GroupId> = Vec::new();
-	let mut more = false;
-	store.state_range_visit(
-		keyspace_inner_range(GroupId::ROOT, KeyspaceId::REAP_QUEUE),
-		Some(limit.saturating_add(1)),
-		&mut |key, _| {
-			if let Some((_, _, suffix)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
-				&& let Ok(bytes) = <[u8; 16]>::try_from(suffix.as_slice())
-			{
-				if groups.len() < limit {
-					groups.push(GroupId(decode_u128(bytes)));
-				} else {
-					more = true;
-				}
-			}
-			Ok(())
-		},
-	)?;
+	let page = store.state_scan_in::<ReapQueue>(GroupId::ROOT, Bound::Unbounded, Some(limit.saturating_add(1)))?;
+	let more = page.len() > limit;
+	let groups = page.into_iter().take(limit).map(|(suffix, _)| suffix.group.0).collect();
 	Ok(Queued {
 		groups,
 		more,
@@ -100,21 +87,16 @@ struct GroupScan {
 fn scan_group(store: &mut dyn StateStore, group: GroupId, budget: usize) -> Result<Option<GroupScan>> {
 	let mut identity = Vec::new();
 	let mut data = Vec::new();
-	let mut seen = 0usize;
-	store.state_range_visit(group_inner_range(group), Some(budget.saturating_add(1)), &mut |key, _| {
-		seen += 1;
-		if seen > budget {
-			return Ok(());
-		}
+	let keys = store.group_sweep(group, false, Some(budget.saturating_add(1)))?;
+	if keys.len() > budget {
+		return Ok(None);
+	}
+	for key in keys {
 		match OperatorStateKey::decode_inner(key.as_encoded().as_bytes()) {
 			Some((_, keyspace, _)) if keyspace.is_data() => data.push(key),
 			Some(_) => identity.push(key),
 			None => {}
 		}
-		Ok(())
-	})?;
-	if seen > budget {
-		return Ok(None);
 	}
 	Ok(Some(GroupScan {
 		identity,
@@ -138,11 +120,7 @@ where
 		reaper.reap(store, key)?;
 	}
 	reifydb_assertions! {
-		let mut leftover = 0usize;
-		store.state_range_visit(group_data_inner_range(group), None, &mut |_, _| {
-			leftover += 1;
-			Ok(())
-		})?;
+		let leftover = store.group_sweep(group, true, None)?.len();
 		assert!(
 			leftover == 0,
 			"group {} still holds {leftover} data rows in its own partition; forgetting its dictionary \
@@ -222,13 +200,7 @@ pub fn reap_group<R>(store: &mut dyn StateStore, group: GroupId, reaper: &mut R,
 where
 	R: Reaper,
 {
-	let mut doomed: Vec<GroupStateKey> = Vec::new();
-	store.state_range_visit(group_data_inner_range(group), Some(budget), &mut |key, _payload| {
-		if doomed.len() < budget {
-			doomed.push(key);
-		}
-		Ok(())
-	})?;
+	let doomed = store.group_sweep(group, true, Some(budget))?;
 	for key in &doomed {
 		reaper.reap(store, key)?;
 	}

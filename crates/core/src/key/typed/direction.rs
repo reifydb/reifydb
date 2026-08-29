@@ -12,7 +12,7 @@ use reifydb_value::{
 use crate::{
 	key::{
 		operator::state::GroupId,
-		typed::{Key, layout::KeyValue},
+		typed::{Key, layout::{KeyColumnType, KeyValue}},
 	},
 	metrics::heap::HeapSize,
 	state::{join::ContentVersion, timer::TimerKind},
@@ -69,6 +69,7 @@ impl<T: HeapSize> HeapSize for Desc<T> {
 pub trait KeyScalar: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {
 	const MIN: Self;
 	const MAX: Self;
+	const COLUMN_TYPE: KeyColumnType;
 
 	fn successor(&self) -> Option<Self>;
 
@@ -82,6 +83,7 @@ pub trait KeyScalar: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'stat
 impl KeyScalar for u8 {
 	const MIN: Self = u8::MIN;
 	const MAX: Self = u8::MAX;
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::U8;
 
 	fn successor(&self) -> Option<Self> {
 		self.checked_add(1)
@@ -105,6 +107,7 @@ impl KeyScalar for u8 {
 impl KeyScalar for u64 {
 	const MIN: Self = u64::MIN;
 	const MAX: Self = u64::MAX;
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::U64;
 
 	fn successor(&self) -> Option<Self> {
 		self.checked_add(1)
@@ -128,6 +131,7 @@ impl KeyScalar for u64 {
 impl KeyScalar for [u8; 16] {
 	const MIN: Self = [0x00; 16];
 	const MAX: Self = [0xff; 16];
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::Blob16;
 
 	fn successor(&self) -> Option<Self> {
 		let mut out = *self;
@@ -171,6 +175,7 @@ impl KeyScalar for [u8; 16] {
 impl KeyScalar for GroupId {
 	const MIN: Self = GroupId(u128::MIN);
 	const MAX: Self = GroupId(u128::MAX);
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::Blob16;
 
 	fn successor(&self) -> Option<Self> {
 		self.0.checked_add(1).map(GroupId)
@@ -194,6 +199,7 @@ impl KeyScalar for GroupId {
 impl KeyScalar for RowNumber {
 	const MIN: Self = RowNumber(u64::MIN);
 	const MAX: Self = RowNumber(u64::MAX);
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::U64;
 
 	fn successor(&self) -> Option<Self> {
 		self.0.checked_add(1).map(RowNumber)
@@ -217,6 +223,7 @@ impl KeyScalar for RowNumber {
 impl KeyScalar for ContentVersion {
 	const MIN: Self = ContentVersion(u64::MIN);
 	const MAX: Self = ContentVersion(u64::MAX);
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::U64;
 
 	fn successor(&self) -> Option<Self> {
 		self.0.checked_add(1).map(ContentVersion)
@@ -240,6 +247,7 @@ impl KeyScalar for ContentVersion {
 impl KeyScalar for RowShapeFingerprint {
 	const MIN: Self = RowShapeFingerprint(Hash64(u64::MIN));
 	const MAX: Self = RowShapeFingerprint(Hash64(u64::MAX));
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::U64;
 
 	fn successor(&self) -> Option<Self> {
 		self.0.0.checked_add(1).map(|next| RowShapeFingerprint(Hash64(next)))
@@ -263,6 +271,7 @@ impl KeyScalar for RowShapeFingerprint {
 impl KeyScalar for Hash128 {
 	const MIN: Self = Hash128(u128::MIN);
 	const MAX: Self = Hash128(u128::MAX);
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::Blob16;
 
 	fn successor(&self) -> Option<Self> {
 		self.0.checked_add(1).map(Hash128)
@@ -286,6 +295,7 @@ impl KeyScalar for Hash128 {
 impl KeyScalar for Partition {
 	const MIN: Self = Partition(u128::MIN);
 	const MAX: Self = Partition(u128::MAX);
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::Blob16;
 
 	fn successor(&self) -> Option<Self> {
 		self.0.checked_add(1).map(Partition)
@@ -309,6 +319,7 @@ impl KeyScalar for Partition {
 impl KeyScalar for DateTime {
 	const MIN: Self = DateTime::EPOCH;
 	const MAX: Self = DateTime::MAX;
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::U64;
 
 	fn successor(&self) -> Option<Self> {
 		self.to_bits().checked_add(1).map(DateTime::from_bits)
@@ -332,6 +343,7 @@ impl KeyScalar for DateTime {
 impl KeyScalar for TimerKind {
 	const MIN: Self = TimerKind::Seal;
 	const MAX: Self = TimerKind::Maintenance;
+	const COLUMN_TYPE: KeyColumnType = KeyColumnType::U8;
 
 	fn successor(&self) -> Option<Self> {
 		TimerKind::from_u8(*self as u8 + 1)

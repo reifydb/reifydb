@@ -1050,7 +1050,11 @@ mod seal_tests {
 	use reifydb_codec::row::operator::state::decode;
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator::state::{KeyspaceId, group_inner_range, keyspace_inner_range},
+		key::operator::{
+			keyspace::join::{JoinLeft, JoinRight},
+			state::{KeyspaceId, group_inner_range, keyspace_inner_range},
+			traits::Keyspace,
+		},
 		value::column::buffer::ColumnBuffer,
 	};
 	use reifydb_rql::expression::parse_expression;
@@ -1221,7 +1225,12 @@ mod seal_tests {
 	}
 
 	fn side_rows(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId, side: JoinSide) -> usize {
-		txn.state_range(op.operator, StateRange::forward(keyspace_inner_range(group, side.keyspace()), "test"))
+		// Names the keyspace through the typed constants so a renumbered side fails here, not silently.
+		let keyspace = match side {
+			JoinSide::Left => JoinLeft::ID,
+			JoinSide::Right => JoinRight::ID,
+		};
+		txn.state_range(op.operator, StateRange::forward(keyspace_inner_range(group, keyspace), "test"))
 			.unwrap()
 			.items
 			.len()

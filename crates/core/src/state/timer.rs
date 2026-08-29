@@ -11,7 +11,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::key::operator::state::{GroupId, GroupStateKey};
+use crate::key::operator::state::{GroupId, GroupStateKey, group_data_inner_range, group_inner_range};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
@@ -53,21 +53,23 @@ pub trait StateStore {
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
 
-	// FIXME remove
-	fn state_range_visit(
+	fn state_page(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()>;
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
+
+	fn group_sweep(&mut self, group: GroupId, data_only: bool, limit: Option<usize>) -> Result<Vec<GroupStateKey>> {
+		let range = if data_only {
+			group_data_inner_range(group)
+		} else {
+			group_inner_range(group)
+		};
+		Ok(self.state_page(range, limit)?.into_iter().map(|(key, _)| key).collect())
+	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
-		let mut last = None;
-		self.state_range_visit(range, None, &mut |key, payload| {
-			last = Some((key, payload));
-			Ok(())
-		})?;
-		Ok(last)
+		Ok(self.state_page(range, None)?.pop())
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;

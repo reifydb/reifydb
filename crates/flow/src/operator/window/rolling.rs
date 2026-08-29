@@ -734,15 +734,13 @@ mod tests {
 			self.state.remove(key.as_slice());
 			Ok(())
 		}
-		fn state_range_visit(
+		fn state_page(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> ValueResult<()>,
-		) -> ValueResult<()> {
-			// The backing map is a HashMap, so without this sort the visit order is arbitrary and the real
+		) -> ValueResult<Vec<(GroupStateKey, EncodedPodRow)>> {
+			// The backing map is a HashMap, so without this sort the page order is arbitrary and the real
 			// store's key order is not reproduced.
-			let mut seen = 0usize;
 			let mut entries: Vec<(Vec<u8>, EncodedPodRow)> = self
 				.state
 				.iter()
@@ -763,18 +761,17 @@ mod tests {
 				.map(|(k, v)| (k.clone(), v.clone()))
 				.collect();
 			entries.sort_by(|a, b| a.0.cmp(&b.0));
-			for (k, v) in entries {
-				if let Some(limit) = limit
-					&& seen >= limit
-				{
-					break;
-				}
-				let k = GroupStateKey::from_framed(EncodedKey::new(k))
-					.expect("fake store holds an unframed state key");
-				visit(k, v)?;
-				seen += 1;
+			if let Some(limit) = limit {
+				entries.truncate(limit);
 			}
-			Ok(())
+			Ok(entries
+				.into_iter()
+				.map(|(k, v)| {
+					let k = GroupStateKey::from_framed(EncodedKey::new(k))
+						.expect("fake store holds an unframed state key");
+					(k, v)
+				})
+				.collect())
 		}
 		fn get_or_create_row_numbers(
 			&mut self,

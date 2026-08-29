@@ -97,17 +97,18 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(())
 	}
 
-	fn state_range_visit(
+	fn state_page(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let (start, end) = (OwnedBound::of(&range.start), OwnedBound::of(&range.end));
+		let mut out = Vec::new();
 		self.0.state().range_bytes_visit(start.borrow(), end.borrow(), limit, &mut |k, v| {
-			visit(k, v).map_err(Into::into)
+			out.push((k, v));
+			Ok(())
 		})?;
-		Ok(())
+		Ok(out)
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {

@@ -249,12 +249,11 @@ mod tests {
 			Ok(())
 		}
 
-		fn state_range_visit(
+		fn state_page(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-		) -> Result<()> {
+		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
 				Bound::Excluded(s) => k > s.as_bytes(),
@@ -275,12 +274,14 @@ mod tests {
 			if let Some(limit) = limit {
 				matched.truncate(limit);
 			}
-			for (k, b) in matched {
-				let k = GroupStateKey::from_framed(EncodedKey::new(k))
-					.expect("fake store holds an unframed state key");
-				visit(k, b)?;
-			}
-			Ok(())
+			Ok(matched
+				.into_iter()
+				.map(|(k, b)| {
+					let k = GroupStateKey::from_framed(EncodedKey::new(k))
+						.expect("fake store holds an unframed state key");
+					(k, b)
+				})
+				.collect())
 		}
 
 		fn get_or_create_row_numbers(

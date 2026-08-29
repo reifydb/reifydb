@@ -3,6 +3,7 @@
 
 pub mod join;
 pub mod timer;
+pub mod typed;
 
 pub mod horizon {
 	use reifydb_value::value::datetime::DateTime;

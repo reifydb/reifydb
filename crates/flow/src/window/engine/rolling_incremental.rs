@@ -9,8 +9,8 @@ use std::{
 };
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::state::OperatorState,
+	key::encoded::EncodedKey,
+	row::operator::state::{OperatorState, StateCodec},
 };
 use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize, state::timer::StateStore};
 use reifydb_value::Result;
@@ -22,7 +22,7 @@ use crate::{
 		engine::{
 			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, MetaSweep, RunningKey, WindowStateKey,
 			config::WindowEngineConfig,
-			load_batch_meta, meta_key_for, persist_batch_meta,
+			group_hash, load_batch_meta, meta_key_for, persist_batch_meta,
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
 		},
 		span::Slot,
@@ -52,7 +52,7 @@ where
 	S: Slot + Hash,
 	Accumulator: WindowAccumulator,
 	Running: WindowAccumulator,
-	for<'a> &'a G: IntoEncodedKey,
+	G: StateCodec,
 	S: HeapSize,
 	GroupMeta<S>: OperatorState,
 	RollingBuffer<S, Accumulator>: OperatorState + HeapSize,
@@ -250,7 +250,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, S> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let batch = load_batch_meta(store, &meta_key_for(group))?;
+				let batch = load_batch_meta(store, &meta_key_for(group_hash(group)?))?;
 				meta_loaded.insert(group.clone(), batch);
 			}
 		}

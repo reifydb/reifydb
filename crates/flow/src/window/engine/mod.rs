@@ -13,19 +13,27 @@ use std::{collections::HashMap, ops::Bound};
 use reifydb_codec::{
 	key::{
 		encode_u64_asc,
-		encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
+		encoded::{EncodedKey, IntoEncodedKey},
 	},
-	row::operator::state::{OperatorState, decode},
+	row::operator::state::{OperatorState, StateCodec, decode, encode},
 };
 use reifydb_core::{
-	key::operator::state::{
-		GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range,
+	key::operator::{
+		keyspace::window::{WindowMeta, WindowMetaKey},
+		state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
 	},
 	metrics::heap::HeapSize,
-	state::timer::StateStore,
+	state::{
+		timer::StateStore,
+		typed::{SuffixBytes, TypedStateStore},
+	},
 };
 use reifydb_macro::operator_state;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	util::hash::{Hash128, xxh3_128},
+	value::row_number::RowNumber,
+};
 use tracing::{debug, instrument};
 
 use crate::{
@@ -134,7 +142,7 @@ where
 
 pub(crate) fn persist_batch_meta<G, S>(store: &mut dyn StateStore, loaded: HashMap<G, BatchMeta<S>>) -> Result<()>
 where
-	for<'a> &'a G: IntoEncodedKey,
+	G: StateCodec,
 	S: Slot,
 {
 	for (group, batch) in loaded {
@@ -143,7 +151,7 @@ where
 		};
 		set(
 			store,
-			&meta_key_for(&group),
+			&meta_key_for(group_hash(&group)?),
 			&GroupMeta {
 				high_water: Some(bumped),
 			},
@@ -152,16 +160,12 @@ where
 	Ok(())
 }
 
-pub(crate) fn meta_range() -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::ROOT, KeyspaceId::WINDOW_META)
-}
-
 const META_SWEEP_PAGE: usize = 1024;
 
 #[derive(Default)]
 pub(crate) struct MetaSweep {
 	low_water: Option<u64>,
-	cursor: Option<EncodedKey>,
+	cursor: Option<WindowMetaKey>,
 	surviving: Option<u64>,
 }
 
@@ -174,31 +178,29 @@ impl MetaSweep {
 		if self.cursor.is_none() && self.low_water.is_some_and(|lw| lw >= threshold) {
 			return Ok(0);
 		}
-		let full = meta_range();
-		let range = match self.cursor.take() {
-			Some(key) => EncodedKeyRange::new(Bound::Excluded(key), full.end),
-			None => full,
-		};
+		let cursor = self.cursor.take();
+		let page = store.state_scan_in::<WindowMeta>(
+			GroupId::ROOT,
+			match &cursor {
+				Some(key) => Bound::Excluded(key),
+				None => Bound::Unbounded,
+			},
+			Some(META_SWEEP_PAGE),
+		)?;
+		let visited = page.len();
 		let mut stale: Vec<MetaKey> = Vec::new();
 		let mut surviving = self.surviving;
-		let mut visited = 0usize;
-		let mut furthest: Option<EncodedKey> = None;
-		store.state_range_visit(range, Some(META_SWEEP_PAGE), &mut |key, bytes| {
-			visited += 1;
-			let high_water = decode::<M>(&bytes)?.high_water_order();
-			let encoded = key.into_encoded();
-			if let Some(hw) = high_water {
+		let mut furthest: Option<WindowMetaKey> = None;
+		for (suffix, bytes) in page {
+			if let Some(hw) = decode::<M>(&bytes)?.high_water_order() {
 				if hw < threshold {
-					if let Some(meta) = decode_meta_key(&encoded) {
-						stale.push(meta);
-					}
+					stale.push(MetaKey(EncodedKey::new(suffix.to_suffix_bytes())));
 				} else {
 					surviving = Some(surviving.map_or(hw, |m| m.min(hw)));
 				}
 			}
-			furthest = Some(encoded);
-			Ok(())
-		})?;
+			furthest = Some(suffix);
+		}
 		if visited < META_SWEEP_PAGE {
 			self.low_water = surviving;
 			self.surviving = None;
@@ -354,11 +356,12 @@ impl IntoGroupStateKey for &MetaKey {
 	}
 }
 
-pub fn meta_key_for<G>(group: &G) -> MetaKey
-where
-	for<'a> &'a G: IntoEncodedKey,
-{
-	MetaKey(group.into_encoded_key())
+pub(crate) fn group_hash<G: StateCodec>(group: &G) -> Result<Hash128> {
+	Ok(xxh3_128(encode(group)?.body()))
+}
+
+pub fn meta_key_for(group: Hash128) -> MetaKey {
+	MetaKey((&group).into_encoded_key())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -384,11 +387,6 @@ pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey
 		return None;
 	}
 	Some(WindowStateKey::new(group, EncodedKey::new(suffix)))
-}
-
-pub(crate) fn decode_meta_key(key: &EncodedKey) -> Option<MetaKey> {
-	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
-	(group == GroupId::ROOT && keyspace == KeyspaceId::WINDOW_META).then(|| MetaKey(EncodedKey::new(suffix)))
 }
 
 #[cfg(test)]
@@ -442,7 +440,9 @@ mod meta_sweep_tests {
 	use crate::operator::state::mock::MockStore;
 
 	fn meta_key(index: u32) -> MetaKey {
-		MetaKey(EncodedKey::new(index.to_be_bytes().to_vec()))
+		// Built through the production constructor so the fixture can never seed a key shape the
+		// typed sweep would refuse to read back.
+		meta_key_for(Hash128::from(index as u128))
 	}
 
 	fn seed(store: &mut MockStore, count: u32, high_water: impl Fn(u32) -> DateTime) {
@@ -510,9 +510,14 @@ mod meta_sweep_tests {
 			"a completed revolution must publish a low water the guard can skip on"
 		);
 
+		// Driven to the end of the revolution rather than one page: which page holds the stale group
+		// is a property of the key order, and the guarantee under test is that a revolution reaches it.
+		let mut reclaimed = 0;
+		for _ in 0..2 {
+			reclaimed += sweep.sweep::<GroupMeta<DateTime>>(&mut store, at_millis(150).to_order()).unwrap();
+		}
 		assert_eq!(
-			sweep.sweep::<GroupMeta<DateTime>>(&mut store, at_millis(150).to_order()).unwrap(),
-			1,
+			reclaimed, 1,
 			"the group whose high water sits below the threshold is stale and must be reclaimed"
 		);
 	}

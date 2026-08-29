@@ -4,10 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_codec::{
-	key::{
-		decode_u64_asc, encode_u64_asc, encode_u128_asc,
-		encoded::{EncodedKey, EncodedKeyRange},
-	},
+	key::{encode_u64_asc, encode_u128_asc, encoded::EncodedKey},
 	row::{
 		bytes::EncodedBytes,
 		operator::state::{decode_body, encode},
@@ -21,7 +18,14 @@ use reifydb_core::interface::catalog::{
 	flow::OperatorId,
 };
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+	key::{
+		operator::{
+			keyspace::join::{JoinLeft, JoinRight},
+			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		},
+		typed::direction::Asc,
+	},
+	state::typed::TypedStateStore,
 	value::column::columns::Columns,
 };
 use reifydb_value::{
@@ -38,11 +42,10 @@ use crate::{
 	operator::{
 		host::HostContext,
 		join::strategy::hash::columns_from_block,
-		state::store::{state_get, state_range, state_remove, state_set},
+		state::store::{state_get, state_set},
 	},
 };
 
-const ROW_NUMBER_BYTES: usize = 8;
 const SLOT: RowNumber = RowNumber::MAX;
 
 pub(crate) fn group_bytes(hash: &Hash128) -> EncodedKey {
@@ -89,12 +92,52 @@ impl Store {
 		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::JOIN_SCHEMA, suffix)
 	}
 
-	fn row_key(&self, group: GroupId, row_number: RowNumber) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(group, self.side.keyspace(), encode_u64_asc(row_number.0))
+	fn read_row(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		row_number: RowNumber,
+	) -> Result<Option<EncodedPodRow>> {
+		let suffix = Asc(row_number);
+		match self.side {
+			JoinSide::Left => host.state_get_in::<JoinLeft>(group, &suffix),
+			JoinSide::Right => host.state_get_in::<JoinRight>(group, &suffix),
+		}
 	}
 
-	fn rows_range(&self, group: GroupId) -> EncodedKeyRange {
-		keyspace_inner_range(group, self.side.keyspace())
+	fn store_row(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		row_number: RowNumber,
+		row: EncodedPodRow,
+	) -> Result<()> {
+		let suffix = Asc(row_number);
+		match self.side {
+			JoinSide::Left => host.state_set_in::<JoinLeft>(group, &suffix, row),
+			JoinSide::Right => host.state_set_in::<JoinRight>(group, &suffix, row),
+		}
+	}
+
+	fn scan_rows(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		from: Bound<&Asc<RowNumber>>,
+		limit: Option<usize>,
+	) -> Result<Vec<(Asc<RowNumber>, EncodedPodRow)>> {
+		match self.side {
+			JoinSide::Left => host.state_scan_in::<JoinLeft>(group, from, limit),
+			JoinSide::Right => host.state_scan_in::<JoinRight>(group, from, limit),
+		}
+	}
+
+	fn erase_row(&self, host: &mut dyn HostContext, group: GroupId, row_number: RowNumber) -> Result<()> {
+		let suffix = Asc(row_number);
+		match self.side {
+			JoinSide::Left => host.state_remove_in::<JoinLeft>(group, &suffix),
+			JoinSide::Right => host.state_remove_in::<JoinRight>(group, &suffix),
+		}
 	}
 
 	#[instrument(name = "flow::operator::join::store::put_row", level = "trace", skip_all)]
@@ -115,8 +158,7 @@ impl Store {
 		row_number: RowNumber,
 		row: &EncodedPodRow,
 	) -> Result<()> {
-		let key = self.row_key(group, row_number);
-		state_set(host, &key, row.clone())
+		self.store_row(host, group, row_number, row.clone())
 	}
 
 	pub(crate) fn get_row_in(
@@ -125,8 +167,7 @@ impl Store {
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<Option<EncodedBytes>> {
-		let key = self.row_key(group, row_number);
-		Ok(state_get(host, &key)?.as_ref().map(body_bytes))
+		Ok(self.read_row(host, group, row_number)?.as_ref().map(body_bytes))
 	}
 
 	pub(crate) fn update_row(
@@ -146,11 +187,10 @@ impl Store {
 		row_number: RowNumber,
 		row: &EncodedPodRow,
 	) -> Result<bool> {
-		let key = self.row_key(group, row_number);
-		if state_get(host, &key)?.is_none() {
+		if self.read_row(host, group, row_number)?.is_none() {
 			return Ok(false);
 		}
-		state_set(host, &key, row.clone())?;
+		self.store_row(host, group, row_number, row.clone())?;
 		Ok(true)
 	}
 
@@ -174,8 +214,7 @@ impl Store {
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<()> {
-		let key = self.row_key(group, row_number);
-		state_remove(host, &key)
+		self.erase_row(host, group, row_number)
 	}
 
 	#[instrument(name = "flow::operator::join::rows_for_key", level = "trace", skip_all, fields(limit = limit))]
@@ -187,42 +226,30 @@ impl Store {
 		limit: usize,
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 		let group = self.group_of(hash);
-		let mut range = self.rows_range(group);
-		if let Some(after) = after {
-			range.start = Bound::Excluded(self.row_key(group, *after).into_encoded());
-		}
-		let mut out = Vec::new();
-		for entry in state_range(host, range) {
-			let (full_key, bytes) = entry?;
-			if let Some(rn) = row_number_from_key(full_key.as_slice()) {
-				out.push((rn, body_bytes(&EncodedPodRow::from(bytes))));
-				if out.len() >= limit {
-					break;
-				}
-			}
-		}
-
-		Ok(out)
+		let after = after.copied().map(Asc);
+		let from = match &after {
+			Some(suffix) => Bound::Excluded(suffix),
+			None => Bound::Unbounded,
+		};
+		Ok(self.scan_rows(host, group, from, Some(limit))?
+			.into_iter()
+			.map(|(suffix, row)| (suffix.0, body_bytes(&row)))
+			.collect())
 	}
 
 	pub(crate) fn holds_rows(&self, host: &mut dyn HostContext, group: GroupId) -> Result<bool> {
-		Ok(state_range(host, self.rows_range(group)).next().transpose()?.is_some())
+		Ok(!self.scan_rows(host, group, Bound::Unbounded, Some(1))?.is_empty())
 	}
 
 	pub(crate) fn row_numbers_in(&self, host: &mut dyn HostContext, group: GroupId) -> Result<Vec<RowNumber>> {
-		let mut out = Vec::new();
-		for entry in state_range(host, self.rows_range(group)) {
-			let (full_key, _) = entry?;
-			if let Some(row_number) = row_number_from_key(full_key.as_slice()) {
-				out.push(row_number);
-			}
-		}
-		Ok(out)
+		Ok(self.scan_rows(host, group, Bound::Unbounded, None)?
+			.into_iter()
+			.map(|(suffix, _)| suffix.0)
+			.collect())
 	}
 
 	pub(crate) fn contains_key(&self, host: &mut dyn HostContext, hash: &Hash128) -> Result<bool> {
-		let range = self.rows_range(self.group_of(hash));
-		Ok(state_range(host, range).next().transpose()?.is_some())
+		self.holds_rows(host, self.group_of(hash))
 	}
 
 	pub(crate) fn get_row_shape(
@@ -262,14 +289,6 @@ impl Store {
 		})?;
 		state_set(host, &key, row)
 	}
-}
-
-fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
-	if bytes.len() < ROW_NUMBER_BYTES {
-		return None;
-	}
-	let suffix: [u8; ROW_NUMBER_BYTES] = bytes[bytes.len() - ROW_NUMBER_BYTES..].try_into().ok()?;
-	Some(RowNumber(decode_u64_asc(suffix)))
 }
 
 #[cfg(test)]

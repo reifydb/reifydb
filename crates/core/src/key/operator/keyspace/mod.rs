@@ -9,6 +9,8 @@ pub mod root;
 pub mod timer;
 pub mod window;
 
+#[cfg(test)]
+use crate::key::{operator::state::GroupId, typed::Key};
 use crate::{
 	interface::store::CacheTiers,
 	key::{
@@ -116,8 +118,6 @@ catalogue!(
 
 #[cfg(test)]
 fn round_trips<K: Keyspace>() {
-	use crate::key::{operator::state::GroupId, typed::Key};
-
 	// low() is every column at the start of its own order, so a join that hardcoded a column to its
 	// minimum would round trip against low() alone; stepping the suffix first is what makes the
 	// probe able to fail

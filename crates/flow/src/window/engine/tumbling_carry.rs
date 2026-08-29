@@ -9,8 +9,8 @@ use std::{
 };
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::state::{OperatorState, decode},
+	key::encoded::EncodedKey,
+	row::operator::state::{OperatorState, StateCodec, decode},
 };
 use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
@@ -26,7 +26,7 @@ use crate::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, MetaHighWater, MetaSweep, WindowResult, WindowStateKey,
-			config::TumblingCarryConfig, meta_key_for, tumbling::TumblingBuckets,
+			config::TumblingCarryConfig, group_hash, meta_key_for, tumbling::TumblingBuckets,
 		},
 		span::{SlotSpan, WindowAnchor, WindowSpan},
 	},
@@ -108,7 +108,7 @@ where
 	Accumulator: WindowAccumulator,
 	Carry: Clone + Debug,
 	Output: Clone + Debug,
-	for<'a> &'a G: IntoEncodedKey,
+	G: StateCodec,
 	S: HeapSize,
 	Carry: HeapSize,
 	Output: HeapSize,
@@ -341,7 +341,7 @@ where
 				continue;
 			}
 			meta_loaded.insert(group.clone(), CarryMeta::default());
-			by_key.insert((&meta_key_for(group)).into_group_state_key(), group.clone());
+			by_key.insert((&meta_key_for(group_hash(group)?)).into_group_state_key(), group.clone());
 		}
 		let keys: Vec<GroupStateKey> = by_key.keys().cloned().collect();
 		store.state_get_many_visit(&keys, &mut |key, bytes| {
@@ -392,7 +392,7 @@ where
 		meta_loaded: MetaLoaded<G, S, Carry, Output>,
 	) -> Result<()> {
 		for (group, meta) in meta_loaded {
-			put(store, &meta_key_for(&group), meta)?;
+			put(store, &meta_key_for(group_hash(&group)?), meta)?;
 		}
 		Ok(())
 	}
@@ -527,12 +527,11 @@ mod tests {
 			self.data.remove(key.as_slice());
 			Ok(())
 		}
-		fn state_range_visit(
+		fn state_page(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-		) -> Result<()> {
+		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
 				Bound::Excluded(s) => k > s.as_bytes(),
@@ -553,12 +552,14 @@ mod tests {
 			if let Some(limit) = limit {
 				matched.truncate(limit);
 			}
-			for (k, b) in matched {
-				let k = GroupStateKey::from_framed(EncodedKey::new(k))
-					.expect("fake store holds an unframed state key");
-				visit(k, b)?;
-			}
-			Ok(())
+			Ok(matched
+				.into_iter()
+				.map(|(k, b)| {
+					let k = GroupStateKey::from_framed(EncodedKey::new(k))
+						.expect("fake store holds an unframed state key");
+					(k, b)
+				})
+				.collect())
 		}
 		fn get_or_create_row_numbers(
 			&mut self,

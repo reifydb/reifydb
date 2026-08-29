@@ -10,11 +10,14 @@ use std::{
 };
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::state::OperatorState,
+	key::encoded::EncodedKey,
+	row::operator::state::{OperatorState, StateCodec},
 };
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey},
+	key::operator::{
+		keyspace::expiry::Expiry,
+		state::{GroupId, GroupStateKey},
+	},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
 };
@@ -33,7 +36,7 @@ use crate::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaSweep, RunningKey,
-			config::WindowEngineConfig, load_batch_meta, meta_key_for, note_when_expiry_capped,
+			config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for, note_when_expiry_capped,
 			persist_batch_meta,
 		},
 		span::Slot,
@@ -101,7 +104,7 @@ pub struct RollingEngine<G, S: Slot, Accumulator> {
 	meta_sweep: MetaSweep,
 	expire_batch: usize,
 	lag: <S::Coord as Coord>::Span,
-	expiry: ExpiryIndex,
+	expiry: ExpiryIndex<Expiry>,
 	_pd: PhantomData<(G, S, Accumulator)>,
 }
 
@@ -158,7 +161,7 @@ where
 	G: Clone + Eq + Ord + Hash + Debug,
 	S: Slot + Hash + HeapSize,
 	Accumulator: WindowAccumulator,
-	for<'a> &'a G: IntoEncodedKey,
+	G: StateCodec,
 	GroupMeta<S>: OperatorState,
 	RollingIndexEntry<G>: OperatorState,
 	RollingBuffer<S, Accumulator>: OperatorState,
@@ -251,7 +254,7 @@ where
 		let mut meta_loaded: MetaLoaded<G, S> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
-				let batch = load_batch_meta(store, &meta_key_for(group))?;
+				let batch = load_batch_meta(store, &meta_key_for(group_hash(group)?))?;
 				meta_loaded.insert(group.clone(), batch);
 			}
 		}
@@ -405,12 +408,15 @@ where
 				let new_index_key = coord_min_key(&group_slot.buffer);
 				if new_index_key != group_slot.prior_index_key {
 					if let Some(old) = group_slot.prior_index_key {
-						expiry_drop(store, &expiry_key(old, &group, &[]))?;
+						expiry_drop(
+							store,
+							&expiry_key::<Expiry>(old, group_hash(&group)?, &[]),
+						)?;
 					}
 					if let Some(new) = new_index_key {
 						self.expiry.set(
 							store,
-							expiry_key(new, &group, &[]),
+							expiry_key::<Expiry>(new, group_hash(&group)?, &[]),
 							RollingIndexEntry {
 								group: group.clone(),
 								slot_key: group_slot.key.as_bytes().to_vec(),
@@ -642,12 +648,12 @@ where
 			let new_min = coord_min_key(&group_slot.buffer);
 			if new_min != group_slot.prior_min {
 				if let Some(old) = group_slot.prior_min {
-					expiry_drop(store, &expiry_key(old, &group, &[]))?;
+					expiry_drop(store, &expiry_key::<Expiry>(old, group_hash(&group)?, &[]))?;
 				}
 				if let Some(new) = new_min {
 					self.expiry.set(
 						store,
-						expiry_key(new, &group, &[]),
+						expiry_key::<Expiry>(new, group_hash(&group)?, &[]),
 						RollingIndexEntry {
 							group: group.clone(),
 							slot_key: group_slot.key.as_bytes().to_vec(),
@@ -750,7 +756,7 @@ where
 				Some(<S::Coord as Coord>::MAX)
 			} else {
 				let lag = self.lag;
-				get::<_, GroupMeta<S>>(store, &meta_key_for(&entry.group))?
+				get::<_, GroupMeta<S>>(store, &meta_key_for(group_hash(&entry.group)?))?
 					.and_then(|meta| frontier_for::<S>(lag, &meta.high_water))
 			};
 			let mut buffer: RollingBuffer<S, Accumulator> =
@@ -760,7 +766,7 @@ where
 				if let Some(new) = coord_min_key(&buffer) {
 					self.expiry.set(
 						store,
-						expiry_key(new, &entry.group, &[]),
+						expiry_key::<Expiry>(new, group_hash(&entry.group)?, &[]),
 						RollingIndexEntry {
 							group: entry.group.clone(),
 							slot_key: entry.slot_key.clone(),
@@ -793,7 +799,7 @@ where
 				(Some(new), true, Some(value)) => {
 					self.expiry.set(
 						store,
-						expiry_key(new, &entry.group, &[]),
+						expiry_key::<Expiry>(new, group_hash(&entry.group)?, &[]),
 						RollingIndexEntry {
 							group: entry.group.clone(),
 							slot_key: entry.slot_key.clone(),
@@ -808,7 +814,7 @@ where
 				(Some(new), false, _) => {
 					self.expiry.set(
 						store,
-						expiry_key(new, &entry.group, &[]),
+						expiry_key::<Expiry>(new, group_hash(&entry.group)?, &[]),
 						RollingIndexEntry {
 							group: entry.group.clone(),
 							slot_key: entry.slot_key.clone(),
@@ -898,7 +904,7 @@ where
 				if let Some(new) = coord_min_key(&buffer) {
 					self.expiry.set(
 						store,
-						expiry_key(new, &entry.group, &[]),
+						expiry_key::<Expiry>(new, group_hash(&entry.group)?, &[]),
 						RollingIndexEntry {
 							group: entry.group.clone(),
 							slot_key: entry.slot_key.clone(),
@@ -913,7 +919,7 @@ where
 					if let Some(new) = coord_min_key(&buffer) {
 						self.expiry.set(
 							store,
-							expiry_key(new, &entry.group, &[]),
+							expiry_key::<Expiry>(new, group_hash(&entry.group)?, &[]),
 							RollingIndexEntry {
 								group: entry.group.clone(),
 								slot_key: entry.slot_key.clone(),

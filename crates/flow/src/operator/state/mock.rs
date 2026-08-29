@@ -97,6 +97,10 @@ impl MockStore {
 		self.keyspace_count(KeyspaceId::EXPIRY)
 	}
 
+	pub(crate) fn tumbling_index_entry_count(&mut self) -> usize {
+		self.keyspace_count(KeyspaceId::TUMBLING_EXPIRY)
+	}
+
 	pub(crate) fn buffer_entry_count(&mut self) -> usize {
 		self.keyspace_count(KeyspaceId::BUFFER)
 	}
@@ -277,12 +281,11 @@ impl StateStore for MockStore {
 		self.data.remove(key.as_slice());
 		Ok(())
 	}
-	fn state_range_visit(
+	fn state_page(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let after_start = |k: &[u8]| match &range.start {
 			Bound::Included(s) => k >= s.as_bytes(),
 			Bound::Excluded(s) => k > s.as_bytes(),
@@ -303,13 +306,15 @@ impl StateStore for MockStore {
 		if let Some(limit) = limit {
 			matched.truncate(limit);
 		}
-		for (k, b) in matched {
-			let k = GroupStateKey::from_framed(EncodedKey::new(k))
-				.expect("fake store holds an unframed state key");
-			self.rows_visited += 1;
-			visit(k, b)?;
-		}
-		Ok(())
+		Ok(matched
+			.into_iter()
+			.map(|(k, b)| {
+				let k = GroupStateKey::from_framed(EncodedKey::new(k))
+					.expect("fake store holds an unframed state key");
+				self.rows_visited += 1;
+				(k, b)
+			})
+			.collect())
 	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		Ok(keys.iter().map(|key| self.row_number_for(group, key)).collect())
