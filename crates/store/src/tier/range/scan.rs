@@ -51,6 +51,24 @@ impl<D: RangeDomain> RangeScan<D> {
 
 impl<D: RangeDomain> RangeTier<D> {
 	pub fn plan_scan(&self, dimension: D::Dimension, range: &KeyRange<D::Key>) -> Option<RangeScan<D>> {
+		self.plan_scan_within(dimension, None, range)
+	}
+
+	pub fn plan_scan_in(
+		&self,
+		dimension: D::Dimension,
+		partition: D::Partition,
+		range: &KeyRange<D::Key>,
+	) -> Option<RangeScan<D>> {
+		self.plan_scan_within(dimension, Some(partition), range)
+	}
+
+	fn plan_scan_within(
+		&self,
+		dimension: D::Dimension,
+		confined: Option<D::Partition>,
+		range: &KeyRange<D::Key>,
+	) -> Option<RangeScan<D>> {
 		let lo = match range.start.as_ref() {
 			Included(key) => key.clone(),
 			Excluded(key) => key.successor()?,
@@ -67,7 +85,10 @@ impl<D: RangeDomain> RangeTier<D> {
 			let anchor = lo.clone();
 			let lo = advance_to_head::<D>(&coverage, dimension, lo, &hi);
 			let advanced = lo != anchor;
-			let head = partition_at::<D>(dimension, &lo)?;
+			let head = match confined {
+				Some(partition) => partition,
+				None => partition_at::<D>(dimension, &lo)?,
+			};
 			let (_, head_end) = D::span(&head);
 			if hi <= head_end && !D::caches_ranges(&head) {
 				return None;
@@ -75,7 +96,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			let vacant = CoverageSet::new();
 			let claims = coverage.set(dimension).unwrap_or(&vacant);
 			let planned = plan(claims, lo.clone(), hi.clone(), self.gap_guard(), |gap| {
-				exempt_gap::<D>(dimension, gap)
+				exempt_gap::<D>(dimension, confined, gap)
 			});
 			let held = claims.contains(&lo);
 			(lo, head, planned, held, self.retractions(), advanced)
@@ -97,12 +118,13 @@ impl<D: RangeDomain> RangeTier<D> {
 			));
 		}
 		for segment in &planned.segments {
-			split_at_partitions::<D>(dimension, segment, &mut pieces);
+			split_at_partitions::<D>(dimension, confined, segment, &mut pieces);
 		}
 		let pieces = coalesce_gaps::<D>(pieces);
 		if pieces.is_empty() {
 			return Some(RangeScan {
 				dimension,
+				confined,
 				advanced,
 				segments: Vec::new(),
 				gaps: planned.gaps - planned.exempted,
@@ -201,6 +223,7 @@ impl<D: RangeDomain> RangeTier<D> {
 
 		Some(RangeScan {
 			dimension,
+			confined,
 			advanced,
 			segments: pieces.into_iter().map(|(segment, _)| segment).collect(),
 			gaps: planned.gaps - planned.exempted,
@@ -225,7 +248,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			return ServedChunk::Served(Vec::new());
 		};
 
-		let Some(partition) = D::partition(scan.dimension, &segment.start) else {
+		let Some(partition) = scan.confined.or_else(|| D::partition(scan.dimension, &segment.start)) else {
 			return ServedChunk::Gap;
 		};
 		if !D::caches_ranges(&partition) {
@@ -310,7 +333,8 @@ impl<D: RangeDomain> RangeTier<D> {
 		let mut claimed: Vec<usize> = Vec::new();
 		if !span.is_empty() {
 			loop {
-				let Some(partition) = D::partition(scan.dimension, &start) else {
+				let Some(partition) = scan.confined.or_else(|| D::partition(scan.dimension, &start))
+				else {
 					let Some(anchor) = rows
 						.first()
 						.and_then(|(key, _)| D::partition(scan.dimension, key))
@@ -433,7 +457,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		span: &Interval<D::Key>,
 		rows: &[(D::Key, D::Row)],
 	) -> bool {
-		let Some(partition) = D::partition(scan.dimension, &span.start) else {
+		let Some(partition) = scan.confined.or_else(|| D::partition(scan.dimension, &span.start)) else {
 			return false;
 		};
 		if !D::caches_ranges(&partition) {
@@ -629,11 +653,11 @@ fn unaddressable_gap<D: RangeDomain>(gap: &Interval<D::Key>) -> bool {
 	D::first_addressable(&gap.start).is_some_and(|aligned| gap.end <= ExclusiveUpperEnd::Key(aligned))
 }
 
-fn exempt_gap<D: RangeDomain>(dimension: D::Dimension, gap: &Interval<D::Key>) -> bool {
+fn exempt_gap<D: RangeDomain>(dimension: D::Dimension, confined: Option<D::Partition>, gap: &Interval<D::Key>) -> bool {
 	if unaddressable_gap::<D>(gap) {
 		return true;
 	}
-	let Some(partition) = D::partition(dimension, &gap.start) else {
+	let Some(partition) = confined.or_else(|| D::partition(dimension, &gap.start)) else {
 		return false;
 	};
 	if D::caches_ranges(&partition) {
@@ -681,6 +705,7 @@ fn coalesce_gaps<D: RangeDomain>(
 
 fn split_at_partitions<D: RangeDomain>(
 	dimension: D::Dimension,
+	confined: Option<D::Partition>,
 	segment: &Segment<D::Key>,
 	out: &mut Vec<(Segment<D::Key>, Option<D::Partition>)>,
 ) {
@@ -697,7 +722,7 @@ fn split_at_partitions<D: RangeDomain>(
 		if !whole.end.covers(&start) {
 			return;
 		}
-		let Some(partition) = D::partition(dimension, &start) else {
+		let Some(partition) = confined.or_else(|| D::partition(dimension, &start)) else {
 			let bound = match D::first_addressable(&start) {
 				Some(aligned) => ExclusiveUpperEnd::Key(aligned),
 				None => whole.end.clone(),
@@ -1011,6 +1036,7 @@ mod tests {
 		let mut gap = Vec::new();
 		split_at_partitions::<D>(
 			OP,
+			None,
 			&Segment::Gap {
 				interval: span.clone(),
 				exempt: false,
@@ -1050,7 +1076,7 @@ mod tests {
 		);
 
 		let mut ram = Vec::new();
-		split_at_partitions::<D>(OP, &Segment::Resident(span), &mut ram);
+		split_at_partitions::<D>(OP, None, &Segment::Resident(span), &mut ram);
 		assert_eq!(
 			ram.len(),
 			(bottom.0..=top.0).len(),

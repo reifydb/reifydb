@@ -27,7 +27,25 @@ fn absence_interlock() {
 
 impl<D: RangeDomain> RangeTier<D> {
 	pub fn lookup(&self, dimension: D::Dimension, key: &D::Key) -> Option<Option<D::Row>> {
-		let partition = D::partition(dimension, key)?;
+		self.lookup_within(dimension, None, key)
+	}
+
+	pub fn lookup_in(
+		&self,
+		dimension: D::Dimension,
+		partition: D::Partition,
+		key: &D::Key,
+	) -> Option<Option<D::Row>> {
+		self.lookup_within(dimension, Some(partition), key)
+	}
+
+	fn lookup_within(
+		&self,
+		dimension: D::Dimension,
+		confined: Option<D::Partition>,
+		key: &D::Key,
+	) -> Option<Option<D::Row>> {
+		let partition = confined.or_else(|| D::partition(dimension, key))?;
 		if !D::caches_ranges(&partition) {
 			return None;
 		}

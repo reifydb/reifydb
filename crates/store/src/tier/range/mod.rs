@@ -52,7 +52,9 @@ pub trait RangeDomain: Copy + Debug + 'static {
 
 	const GAP_SCOPE: &'static str;
 
-	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Option<Self::Partition>;
+	fn partition(_dimension: Self::Dimension, _key: &Self::Key) -> Option<Self::Partition> {
+		None
+	}
 
 	fn first_addressable(_key: &Self::Key) -> Option<Self::Key> {
 		None
@@ -185,6 +187,7 @@ fn account(bytes: &mut usize, budget: &MemoryBudget, old: usize, new: usize) {
 
 pub struct RangeScan<D: RangeDomain> {
 	pub(super) dimension: D::Dimension,
+	pub(super) confined: Option<D::Partition>,
 	pub(super) advanced: bool,
 	pub(super) segments: Vec<Segment<D::Key>>,
 	pub(super) gaps: usize,

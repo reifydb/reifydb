@@ -35,8 +35,16 @@ fn write_interlock() {
 
 impl<D: RangeDomain> RangeTier<D> {
 	pub fn overwrite(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
+		self.overwrite_within(dimension, None, key, row)
+	}
+
+	pub fn overwrite_in(&self, dimension: D::Dimension, partition: D::Partition, key: D::Key, row: D::Row) {
+		self.overwrite_within(dimension, Some(partition), key, row)
+	}
+
+	fn overwrite_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: D::Key, row: D::Row) {
 		self.lower_head(dimension, &key);
-		let Some(partition) = self.cacheable(dimension, &key) else {
+		let Some(partition) = self.cacheable(dimension, confined, &key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -46,8 +54,16 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	pub fn insert(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
+		self.insert_within(dimension, None, key, row)
+	}
+
+	pub fn insert_in(&self, dimension: D::Dimension, partition: D::Partition, key: D::Key, row: D::Row) {
+		self.insert_within(dimension, Some(partition), key, row)
+	}
+
+	fn insert_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: D::Key, row: D::Row) {
 		self.lower_head(dimension, &key);
-		let Some(partition) = self.cacheable(dimension, &key) else {
+		let Some(partition) = self.cacheable(dimension, confined, &key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -62,7 +78,15 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	pub fn mark_deleted(&self, dimension: D::Dimension, key: &D::Key) {
-		let Some(partition) = self.cacheable(dimension, key) else {
+		self.mark_deleted_within(dimension, None, key)
+	}
+
+	pub fn mark_deleted_in(&self, dimension: D::Dimension, partition: D::Partition, key: &D::Key) {
+		self.mark_deleted_within(dimension, Some(partition), key)
+	}
+
+	fn mark_deleted_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: &D::Key) {
+		let Some(partition) = self.cacheable(dimension, confined, key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -80,7 +104,7 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	pub fn retract(&self, dimension: D::Dimension, key: &D::Key) {
-		let Some(partition) = self.cacheable(dimension, key) else {
+		let Some(partition) = self.cacheable(dimension, None, key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -90,7 +114,7 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	pub fn invalidate(&self, dimension: D::Dimension, key: &D::Key) {
-		let Some(partition) = self.cacheable(dimension, key) else {
+		let Some(partition) = self.cacheable(dimension, None, key) else {
 			return;
 		};
 		let index = self.shard_index(&partition);
@@ -134,8 +158,13 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 	}
 
-	fn cacheable(&self, dimension: D::Dimension, key: &D::Key) -> Option<D::Partition> {
-		D::partition(dimension, key).filter(D::caches_ranges)
+	fn cacheable(
+		&self,
+		dimension: D::Dimension,
+		confined: Option<D::Partition>,
+		key: &D::Key,
+	) -> Option<D::Partition> {
+		confined.or_else(|| D::partition(dimension, key)).filter(D::caches_ranges)
 	}
 
 	fn participates(&self, index: usize, partition: &D::Partition) -> bool {
