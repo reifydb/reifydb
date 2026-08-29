@@ -8,6 +8,8 @@ mod state;
 #[cfg(test)]
 mod tests;
 
+pub use state::StateLastIter;
+
 #[cfg(test)]
 use std::sync::OnceLock;
 use std::{ops::Deref, sync::Arc};
