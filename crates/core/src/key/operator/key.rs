@@ -7,7 +7,7 @@ use reifydb_codec::key::{
 	serializer::KeySerializer,
 };
 
-use super::{EncodableKey, KeyKind};
+use super::super::{EncodableKey, KeyKind};
 use crate::interface::catalog::flow::{FlowId, OperatorId};
 
 #[derive(Debug, Clone, PartialEq)]

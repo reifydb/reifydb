@@ -28,7 +28,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::Tier,
 	},
-	key::operator_state::KeyspaceId,
+	key::operator::state::KeyspaceId,
 	metrics::{
 		execution::StatementMetrics,
 		sample::{MetricKind, Reading},

@@ -5,11 +5,11 @@
 use std::cell::RefCell;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::util::sorted::SortedVecMap;
+use reifydb_core::{key::typed::ExclusiveUpperEnd, util::sorted::SortedVecMap};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
-	coverage::{ExclusiveUpperEnd, entry::Entry, successor},
+	coverage::entry::Entry,
 	tier::range::{
 		Partition, PinnedCount, RangeDomain, RangeTier, Shard, account, entry_footprint, head::in_head_band,
 		partition_overhead,
@@ -251,7 +251,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		if !self.retractions_unchanged(token) {
 			return;
 		}
-		coverage.extend(dimension, key.clone(), ExclusiveUpperEnd::Key(successor(key)));
+		coverage.extend(dimension, key.clone(), ExclusiveUpperEnd::just_past(key));
 	}
 }
 
@@ -272,7 +272,10 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+		key::{
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+			typed::ExclusiveUpperEnd,
+		},
 		util::sorted::SortedVecMap,
 	};
 	use reifydb_value::byte_size::ByteSize;
@@ -280,10 +283,8 @@ mod tests {
 	use super::arm_write_interlock;
 	use crate::{
 		coverage::{
-			ExclusiveUpperEnd,
 			entry::{Entry, PinnedCount},
 			interval::Interval,
-			successor,
 		},
 		tier::range::{
 			Partition, RangeConfig, RangeTier,
@@ -384,7 +385,7 @@ mod tests {
 	}
 
 	fn island(at: &EncodedKey) -> Interval {
-		Interval::new(at.clone(), ExclusiveUpperEnd::Key(successor(at)))
+		Interval::new(at.clone(), ExclusiveUpperEnd::just_past(at))
 	}
 
 	#[test]

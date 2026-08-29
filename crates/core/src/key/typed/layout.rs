@@ -28,7 +28,7 @@ mod tests {
 	use super::{KeyColumn, KeyColumnType, KeyLayout};
 	use crate::{
 		key::{
-			operator_state::GroupId,
+			operator::state::GroupId,
 			typed::{
 				Key,
 				direction::{Asc, Desc, Direction, KeyField},

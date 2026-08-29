@@ -10,7 +10,7 @@ use reifydb_codec::{
 		pod::EncodedPodRow,
 	},
 };
-use reifydb_core::key::operator_state::GroupStateKey;
+use reifydb_core::key::operator::state::GroupStateKey;
 use reifydb_value::error::Error as ValueError;
 
 use crate::{

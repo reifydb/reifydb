@@ -15,7 +15,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::{
+		operator::state::{
 			GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range, node_prefix,
 		},
 	},

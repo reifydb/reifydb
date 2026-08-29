@@ -8,7 +8,7 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey},
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
@@ -723,7 +723,7 @@ mod join_row_expiry_guard_tests {
 			catalog::{config::ConfigKey, flow::OperatorId},
 			store::MultiVersionRow,
 		},
-		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+		key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 		state::timer::{StateStore, TimerStore},
 	};
 	use reifydb_flow::{

@@ -10,7 +10,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	key::{operator_state::GroupId, typed::Key},
+	key::{operator::state::GroupId, typed::Key},
 	metrics::heap::HeapSize,
 	state::{join::ContentVersion, timer::TimerKind},
 };
@@ -285,7 +285,7 @@ mod tests {
 
 	use super::{Asc, Desc, Direction, KeyField, KeyScalar};
 	use crate::{
-		key::{operator_state::GroupId, typed::Key},
+		key::{operator::state::GroupId, typed::Key},
 		metrics::heap::HeapSize,
 		state::{join::ContentVersion, timer::TimerKind},
 	};

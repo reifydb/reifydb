@@ -10,7 +10,7 @@ use reifydb_codec::row::{
 use reifydb_core::{
 	interface::{catalog::config::ConfigKey, change::Diff},
 	internal,
-	key::operator_state::GroupId,
+	key::operator::state::GroupId,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_value::{

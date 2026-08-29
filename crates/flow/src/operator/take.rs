@@ -19,7 +19,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	metrics::heap::HeapSize,
 	value::column::columns::Columns,
 };

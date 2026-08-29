@@ -335,7 +335,7 @@ mod commit_integration {
 		key::{
 			EncodableKey,
 			cdc_consumer::{CdcConsumerKey, CdcConsumerKeyRange},
-			operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+			operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 		},
 	};
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};

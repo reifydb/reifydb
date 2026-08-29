@@ -5,7 +5,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
 	row::{bytes::EncodedBytes, shape::RowShape},
 };
-use reifydb_core::key::operator_state::{GroupStateKey, KeyspaceId};
+use reifydb_core::key::operator::state::{GroupStateKey, KeyspaceId};
 use reifydb_value::value::Value;
 
 pub fn get_values(shape: &RowShape, bytes: &EncodedBytes) -> Vec<Value> {

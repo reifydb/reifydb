@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
+		operator::state::{GroupId, GroupStateKey, OperatorStateKey, node_prefix},
 	},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };

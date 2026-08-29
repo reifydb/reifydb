@@ -17,7 +17,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::operator_state::{GroupStateKey, KeyspaceId, OperatorStateKey, node_prefix},
+	key::operator::state::{GroupStateKey, KeyspaceId, OperatorStateKey, node_prefix},
 	metrics::scan::ScanCounters,
 };
 use reifydb_store_operator::{store::OperatorStore, types::JOIN_EXPIRY_VALUE_BYTES};

@@ -17,18 +17,19 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
 };
-use reifydb_core::util::{budget::MemoryBudget, sorted::SortedVecMap};
+use reifydb_core::{
+	key::typed::ExclusiveUpperEnd,
+	util::{budget::MemoryBudget, sorted::SortedVecMap},
+};
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::coverage::{
-	ExclusiveUpperEnd,
 	entry::{Entry, PinnedCount},
 	index::CoverageIndex,
 	interval::Interval,
 	plan::{DEFAULT_GAP_GUARD, GapHistogram, Segment},
 	retraction::Retractions,
-	successor,
 };
 
 pub trait RowBytes {
@@ -121,7 +122,7 @@ pub fn proven_span(gap: &Interval, last_key: Option<&EncodedKey>, exhausted: boo
 		return Some(gap.clone());
 	}
 	let last = last_key?;
-	Some(Interval::new(gap.start.clone(), ExclusiveUpperEnd::Key(successor(last)).min(gap.end.clone())))
+	Some(Interval::new(gap.start.clone(), ExclusiveUpperEnd::just_past(last).min(gap.end.clone())))
 }
 
 struct Partition<R> {

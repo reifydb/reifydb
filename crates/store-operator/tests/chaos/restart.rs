@@ -12,7 +12,7 @@ use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::GroupId,
+	key::operator::state::GroupId,
 };
 use reifydb_store_operator::{
 	store::OperatorStore,

@@ -17,7 +17,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::{EncodableKey, Key, kind::KeyKind, operator_state::OperatorStateKey},
+	key::{EncodableKey, Key, kind::KeyKind, operator::state::OperatorStateKey},
 	state::timer::TimerKind,
 };
 use reifydb_flow::{

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId},
 	metrics::heap::HeapSize,
 };
 use reifydb_flow::{

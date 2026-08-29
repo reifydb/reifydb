@@ -13,7 +13,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,

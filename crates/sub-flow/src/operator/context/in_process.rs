@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Diff},
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey},
 	state::timer::TimerKind,
 };
 use reifydb_flow::operator::{host::HostContext, state::reclaim::ReclaimOutcome};

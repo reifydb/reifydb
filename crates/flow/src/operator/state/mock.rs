@@ -11,7 +11,7 @@ use reifydb_codec::{
 	row::{operator::state::decode, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_value::{

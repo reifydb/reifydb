@@ -10,7 +10,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::GroupId,
+	key::operator::state::GroupId,
 };
 use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 

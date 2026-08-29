@@ -10,18 +10,17 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 #[cfg(reifydb_assertions)]
-use reifydb_core::key::operator_state::GroupId;
+use reifydb_core::key::operator::state::GroupId;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
+	key::typed::{ExclusiveUpperEnd, Key},
 };
 use reifydb_store::{
 	coverage::{
-		ExclusiveUpperEnd,
 		cursor::{RangeCursor, ServedChunk},
 		interval::Interval,
 		plan::Segment,
-		successor,
 	},
 	tier::range::{Materialize, proven_span, scan_range},
 };
@@ -542,9 +541,11 @@ impl StandardOperatorStore {
 											claim_start = batch
 												.items
 												.last()
-												.map(|(key, _)| {
-													successor(key)
-												});
+												.and_then(
+													|(key, _)| {
+														key.successor()
+													},
+												);
 										}
 										Materialize::Refused => {
 											materializing = false

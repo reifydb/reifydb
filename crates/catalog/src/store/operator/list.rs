@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, Operator, OperatorId},
 	key::{
 		EncodableKey,
-		operator::{OperatorByFlowKey, OperatorKey},
+		operator::key::{OperatorByFlowKey, OperatorKey},
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};

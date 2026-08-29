@@ -17,15 +17,16 @@ use reifydb_core::{
 		catalog::storage::StorageId,
 		store::{EntryKind, classify_key},
 	},
-	key::row::RowKey,
+	key::{
+		row::RowKey,
+		typed::{ExclusiveUpperEnd, Key},
+	},
 };
 use reifydb_store::{
 	coverage::{
-		ExclusiveUpperEnd,
 		cursor::{RangeCursor as TierCursor, ServedChunk as TierChunk},
 		interval::Interval,
 		plan::Segment,
-		successor,
 	},
 	tier::range::{
 		Materialize, RangeConfig, RangeDomain, RangeMetrics, RangeRows, RangeShardMetrics, RangeTier, RowBytes,
@@ -322,7 +323,7 @@ impl MultiRangeTier {
 				)
 			})
 			.collect();
-		let span = Interval::new(lo.clone(), ExclusiveUpperEnd::Key(successor(through)));
+		let span = Interval::new(lo.clone(), ExclusiveUpperEnd::just_past(through));
 		matches!(self.tier.materialize(&scan, &span, &rows), Materialize::Materialized)
 	}
 
@@ -346,13 +347,13 @@ impl MultiRangeTier {
 			return ServedChunk::Gap;
 		}
 		let lo = match cursor.last_key() {
-			Some(last) if *last >= range_lo => successor(last),
-			_ => range_lo.clone(),
+			Some(last) if *last >= range_lo => last.successor(),
+			_ => Some(range_lo.clone()),
 		};
-		if lo > range_hi {
+		let Some(lo) = lo.filter(|lo| *lo <= range_hi) else {
 			return ServedChunk::Gap;
-		}
-		let hi = ExclusiveUpperEnd::Key(successor(&range_hi));
+		};
+		let hi = ExclusiveUpperEnd::just_past(&range_hi);
 		let range = EncodedKeyRange::new(Bound::Included(lo.clone()), Bound::Included(range_hi.clone()));
 
 		let Some(scan) = self.tier.plan_scan(table, &range) else {

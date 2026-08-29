@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteTempPathGuard;

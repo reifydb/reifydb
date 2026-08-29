@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::operator_state::OperatorStateKey;
+use reifydb_core::key::operator::state::OperatorStateKey;
 use rusqlite::Connection;
 
 pub(crate) fn ensure_schema(conn: &Connection) {

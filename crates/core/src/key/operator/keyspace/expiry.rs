@@ -6,11 +6,13 @@ use reifydb_value::util::hash::Hash128;
 use crate::{
 	interface::store::CacheTiers,
 	key::{
-		operator_state::{GroupId, KeyspaceId},
+		operator::{
+			state::{GroupId, KeyspaceId},
+			traits::Keyspace,
+		},
 		typed::{
 			Key,
 			direction::{Desc, Direction, KeyField},
-			keyspace::Keyspace,
 			layout::{KeyColumn, KeyColumnType, KeyLayout},
 		},
 	},

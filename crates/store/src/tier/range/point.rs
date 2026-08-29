@@ -105,17 +105,17 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+		key::{
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+			typed::ExclusiveUpperEnd,
+		},
 		util::sorted::SortedVecMap,
 	};
 	use reifydb_value::byte_size::ByteSize;
 
 	use super::arm_absence_interlock;
 	use crate::{
-		coverage::{
-			ExclusiveUpperEnd,
-			entry::{Entry, PinnedCount},
-		},
+		coverage::entry::{Entry, PinnedCount},
 		tier::range::{
 			Partition, RangeConfig, RangeTier,
 			domain::{TestDomain as D, TestPartition},

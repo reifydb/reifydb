@@ -11,11 +11,13 @@ mod tests {
 	};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+		key::{
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			typed::ExclusiveUpperEnd,
+		},
 	};
 	use reifydb_store::{
 		coverage::{
-			ExclusiveUpperEnd,
 			cursor::{RangeCursor, ServedChunk},
 			interval::Interval,
 			plan::Segment,

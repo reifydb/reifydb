@@ -2,9 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
 
 use crate::{
-	coverage::{ExclusiveUpperEnd, index::CoverageIndex, successor},
+	coverage::index::CoverageIndex,
 	tier::range::{RangeDomain, RangeTier},
 };
 
@@ -68,7 +69,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 		let proven = match first {
 			Some(key) => key.clone(),
-			None => successor(through),
+			None => through.successor().unwrap_or_else(|| end.clone()),
 		};
 		let proven = if proven.as_slice() > end.as_slice() {
 			end

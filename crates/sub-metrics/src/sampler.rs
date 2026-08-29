@@ -704,7 +704,7 @@ fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::key::operator_state::KeyspaceId;
+	use reifydb_core::key::operator::state::KeyspaceId;
 	use reifydb_store_cdc::tier::read::CdcReadMetrics;
 	use reifydb_store_operator::tier::{point::OperatorPointMetrics, range::OperatorRangeMetrics};
 

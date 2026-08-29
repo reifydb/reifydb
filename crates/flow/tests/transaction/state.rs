@@ -14,7 +14,7 @@ use reifydb_core::{
 	interface::catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 		row::RowKey,
 	},
 };

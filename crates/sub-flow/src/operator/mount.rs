@@ -125,7 +125,7 @@ mod tests {
 	};
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 		state::timer::StateStore,
 	};
 	use reifydb_flow::{

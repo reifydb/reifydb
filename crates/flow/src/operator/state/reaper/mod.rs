@@ -6,7 +6,7 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
-	key::operator_state::{
+	key::operator::state::{
 		GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, group_data_inner_range, group_inner_range,
 		keyspace_inner_range,
 	},

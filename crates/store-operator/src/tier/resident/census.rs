@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, btree_map::Entry};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::OperatorStateKey};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::OperatorStateKey};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{

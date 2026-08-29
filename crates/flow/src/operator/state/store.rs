@@ -5,7 +5,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
-use reifydb_core::key::operator_state::GroupStateKey;
+use reifydb_core::key::operator::state::GroupStateKey;
 use reifydb_value::Result;
 
 use super::iter::StateIterator;
@@ -45,7 +45,7 @@ pub mod tests {
 
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{OperatorStateKey, node_prefix},
+		key::operator::state::{OperatorStateKey, node_prefix},
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;

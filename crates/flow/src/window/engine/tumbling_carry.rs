@@ -13,7 +13,7 @@ use reifydb_codec::{
 	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
 };
@@ -407,7 +407,7 @@ mod tests {
 		row::{operator::state::decode, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
-		key::operator_state::{GroupStateKey, KeyspaceId, OperatorStateKey},
+		key::operator::state::{GroupStateKey, KeyspaceId, OperatorStateKey},
 		state::timer::{TimerKind, TimerStore},
 	};
 	use reifydb_value::{

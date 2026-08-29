@@ -15,7 +15,7 @@ use reifydb_core::{
 	key::{
 		Key,
 		kind::KeyKind,
-		operator_state::{GroupStateKey, NODE_PREFIX_LEN, OperatorStateKey, extend_node_prefix, node_prefix},
+		operator::state::{GroupStateKey, NODE_PREFIX_LEN, OperatorStateKey, extend_node_prefix, node_prefix},
 	},
 };
 

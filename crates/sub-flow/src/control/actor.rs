@@ -735,7 +735,7 @@ mod pull_protocol {
 		key::{
 			Key,
 			kind::KeyKind,
-			operator_state::{KeyspaceId, OperatorStateKey},
+			operator::state::{KeyspaceId, OperatorStateKey},
 		},
 	};
 	use reifydb_flow::{

@@ -432,7 +432,7 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+		key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 		metrics::{
 			collect::MetricsCollector,
 			sample::{MetricsSample, Reading},

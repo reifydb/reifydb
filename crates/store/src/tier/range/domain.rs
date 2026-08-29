@@ -9,13 +9,13 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::{
+		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+		typed::ExclusiveUpperEnd,
+	},
 };
 
-use crate::{
-	coverage::ExclusiveUpperEnd,
-	tier::range::{RangeDomain, prefix_successor},
-};
+use crate::tier::range::{RangeDomain, prefix_successor};
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TestDomain;

@@ -11,7 +11,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::key::operator_state::{GroupId, GroupStateKey};
+use crate::key::operator::state::{GroupId, GroupStateKey};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]

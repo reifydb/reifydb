@@ -1,19 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::key::typed::MultiKey;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum Cursor<S> {
-	#[default]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Cursor<S, K = MultiKey> {
 	NotStarted,
 	InProgress {
-		last_key: EncodedKey,
+		last_key: K,
 	},
 	Exhausted {
-		last_key: Option<EncodedKey>,
+		last_key: Option<K>,
 		stop: Option<S>,
 	},
+}
+
+impl<S, K> Default for Cursor<S, K> {
+	fn default() -> Self {
+		Cursor::NotStarted
+	}
 }
 
 pub type RangeCursor = Cursor<()>;
@@ -22,13 +27,13 @@ pub trait ScannedStop {
 	fn scanned(&self) -> bool;
 }
 
-impl<S: ScannedStop> Cursor<S> {
+impl<S: ScannedStop, K> Cursor<S, K> {
 	pub fn scanned_to_end(&self) -> bool {
 		matches!(self, Cursor::Exhausted { stop: Some(s), .. } if s.scanned())
 	}
 }
 
-impl<S> Cursor<S> {
+impl<S, K: Clone> Cursor<S, K> {
 	pub fn new() -> Self {
 		Self::default()
 	}
@@ -44,7 +49,7 @@ impl<S> Cursor<S> {
 		matches!(self, Cursor::Exhausted { .. })
 	}
 
-	pub fn last_key(&self) -> Option<&EncodedKey> {
+	pub fn last_key(&self) -> Option<&K> {
 		match self {
 			Cursor::NotStarted => None,
 			Cursor::InProgress {
@@ -67,7 +72,7 @@ impl<S> Cursor<S> {
 		}
 	}
 
-	pub fn advance(&mut self, key: EncodedKey) {
+	pub fn advance(&mut self, key: K) {
 		*self = match self {
 			Cursor::Exhausted {
 				stop,
@@ -82,7 +87,7 @@ impl<S> Cursor<S> {
 		};
 	}
 
-	pub fn resume(&mut self, key: EncodedKey) {
+	pub fn resume(&mut self, key: K) {
 		*self = Cursor::InProgress {
 			last_key: key,
 		};
@@ -139,6 +144,8 @@ impl<B> ServedChunk<B> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_codec::key::encoded::EncodedKey;
+
 	use super::*;
 
 	fn key(bytes: &[u8]) -> EncodedKey {

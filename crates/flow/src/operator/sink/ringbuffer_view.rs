@@ -29,7 +29,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, node_prefix},
+		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, node_prefix},
 		partitioned_row::PartitionedRowKey,
 		ringbuffer::RingBufferMetadataKey,
 		row::RowKey,

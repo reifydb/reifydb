@@ -10,7 +10,7 @@ use reifydb_core::{
 	actors::pending::PendingLayers,
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, group_inner_range},
+	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey, group_inner_range},
 };
 use reifydb_flow::transaction::{
 	ChangeCoordinate, DeferredParams, FlowTransaction,

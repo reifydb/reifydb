@@ -3,7 +3,7 @@
 
 pub mod test {
 	use reifydb_codec::row::pod::EncodedPodRow;
-	use reifydb_core::key::operator_state::{GroupStateKey, KeyspaceId};
+	use reifydb_core::key::operator::state::{GroupStateKey, KeyspaceId};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_value::value::identity::IdentityId;

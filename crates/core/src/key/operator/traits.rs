@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use crate::{
 	interface::store::CacheTiers,
 	key::{
-		operator_state::{GroupId, KeyspaceId},
+		operator::state::{GroupId, KeyspaceId},
 		typed::{Key, layout::KeyLayout},
 	},
 };

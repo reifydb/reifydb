@@ -4,7 +4,7 @@
 use std::mem::size_of;
 
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
 };
@@ -304,7 +304,9 @@ mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
-	use reifydb_core::key::operator_state::{GroupId, IntoGroupStateKey, OperatorStateKey, group_data_inner_range};
+	use reifydb_core::key::operator::state::{
+		GroupId, IntoGroupStateKey, OperatorStateKey, group_data_inner_range,
+	};
 	use reifydb_value::{factory::time::at_millis, value::row_number::RowNumber};
 
 	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta};

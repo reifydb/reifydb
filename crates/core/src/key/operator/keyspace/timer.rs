@@ -6,11 +6,13 @@ use reifydb_value::{util::hash::xxh3_128, value::datetime::DateTime};
 use crate::{
 	interface::store::CacheTiers,
 	key::{
-		operator_state::{GroupId, KeyspaceId},
+		operator::{
+			state::{GroupId, KeyspaceId},
+			traits::Keyspace,
+		},
 		typed::{
 			Key,
 			direction::{Asc, Direction, KeyField},
-			keyspace::Keyspace,
 			layout::{KeyColumn, KeyColumnType, KeyLayout},
 		},
 	},

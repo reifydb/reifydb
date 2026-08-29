@@ -6,7 +6,7 @@
 use std::{cell::Cell, path::Path};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
-use reifydb_core::key::operator_state::{GroupId, KeyspaceId, OperatorStateKey};
+use reifydb_core::key::operator::state::{GroupId, KeyspaceId, OperatorStateKey};
 use reifydb_runtime::{
 	actor::system::{ActorSpawner, ActorSystem},
 	context::clock::Clock,

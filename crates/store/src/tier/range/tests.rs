@@ -15,7 +15,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 };
 use reifydb_value::byte_size::ByteSize;
 

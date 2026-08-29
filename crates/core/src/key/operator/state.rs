@@ -11,7 +11,7 @@ use reifydb_codec::key::{
 };
 use reifydb_value::util::hash::xxh3_128;
 
-use super::{EncodableKey, KeyKind};
+use super::super::{EncodableKey, KeyKind};
 use crate::{
 	interface::{catalog::flow::OperatorId, store::CacheTiers},
 	metrics::heap::HeapSize,
@@ -674,7 +674,7 @@ mod tests {
 	/// Counts `KeyspaceId` constants from the source text. There is no reflection over associated
 	/// constants, so this is the only way the census can notice a keyspace nobody listed.
 	fn declared_keyspaces() -> usize {
-		let source = include_str!("operator_state.rs");
+		let source = include_str!("state.rs");
 		let body = source
 			.split("impl KeyspaceId {")
 			.nth(1)

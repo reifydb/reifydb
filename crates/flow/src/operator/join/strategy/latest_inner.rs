@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::change::Diff, key::operator_state::GroupId, value::column::columns::Columns};
+use reifydb_core::{interface::change::Diff, key::operator::state::GroupId, value::column::columns::Columns};
 use reifydb_value::{Result, util::hash::Hash128};
 use tracing::instrument;
 

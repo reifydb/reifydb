@@ -13,7 +13,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
 };
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::GroupId};
 use reifydb_store_operator::types::{DurablePre, OperatorWrite};
 use reifydb_value::{
 	byte_size::ByteSize,

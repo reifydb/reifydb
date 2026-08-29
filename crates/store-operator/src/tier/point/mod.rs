@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{KeyspaceId, OperatorStateKey},
+	key::operator::state::{KeyspaceId, OperatorStateKey},
 };
 use reifydb_store::tier::point::{
 	PointConfig, PointDomain, PointMetrics, PointShardMetrics, PointSlotMetrics, PointTier,

@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };

@@ -11,7 +11,7 @@ use reifydb_core::{
 	key::{
 		Key,
 		kind::KeyKind,
-		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	},
 };
 use reifydb_flow::transaction::{

@@ -14,7 +14,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::GroupId,
+	key::operator::state::GroupId,
 	metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::shutdown::Shutdown;

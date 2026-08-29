@@ -12,7 +12,7 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::GroupId,
+	key::operator::state::GroupId,
 };
 use reifydb_store_operator::types::{DurablePre, OperatorWrite};
 use reifydb_testing_chaos::fuzz::{pick, run_reported, split};

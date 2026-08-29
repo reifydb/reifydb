@@ -93,7 +93,7 @@ mod tests {
 	use reifydb_core::{
 		common::TimeDomain,
 		interface::catalog::id::{SeriesId, ViewId},
-		key::operator_state::GroupId,
+		key::operator::state::GroupId,
 	};
 	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
 	use reifydb_runtime::context::RuntimeContext;

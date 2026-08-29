@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, OperatorStateKey, group_identity_inner_range},
+		operator::state::{GroupId, GroupStateKey, OperatorStateKey, group_identity_inner_range},
 	},
 };
 use reifydb_value::{Result, count::Count, reifydb_assertions};

@@ -14,7 +14,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator_state::{GroupId, OperatorStateKey},
+	key::operator::state::{GroupId, OperatorStateKey},
 };
 use reifydb_value::{
 	byte_size::ByteSize,

@@ -35,8 +35,11 @@ mod tests {
 	use crate::{
 		interface::store::CacheTiers,
 		key::{
-			operator_state::{GroupId, KeyspaceId},
-			typed::{Key, keyspace::Keyspace},
+			operator::{
+				state::{GroupId, KeyspaceId},
+				traits::Keyspace,
+			},
+			typed::Key,
 		},
 	};
 

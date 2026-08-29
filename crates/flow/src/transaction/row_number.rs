@@ -18,7 +18,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, row_number_counter_key},
+		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, row_number_counter_key},
 	},
 };
 use reifydb_value::{Result, value::row_number::RowNumber};

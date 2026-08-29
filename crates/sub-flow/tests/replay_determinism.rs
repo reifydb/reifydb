@@ -26,7 +26,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		consolidate::consolidate_diffs,
 	},
-	key::operator_state::KeyspaceId,
+	key::operator::state::KeyspaceId,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::{

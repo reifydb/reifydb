@@ -21,7 +21,7 @@ use reifydb_core::interface::catalog::{
 	flow::OperatorId,
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	value::column::columns::Columns,
 };
 use reifydb_value::{
@@ -275,7 +275,7 @@ fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
-	use reifydb_core::key::operator_state::node_range;
+	use reifydb_core::key::operator::state::node_range;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::value::value_type::ValueType;
 

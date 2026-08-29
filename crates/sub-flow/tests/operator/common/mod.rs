@@ -6,7 +6,7 @@
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},

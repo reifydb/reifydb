@@ -6,7 +6,7 @@ use reifydb_core::{
 		change::CatalogTrackOperatorChangeOperations,
 		flow::{FlowId, OperatorId},
 	},
-	key::operator::{OperatorByFlowKey, OperatorKey},
+	key::operator::key::{OperatorByFlowKey, OperatorKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 

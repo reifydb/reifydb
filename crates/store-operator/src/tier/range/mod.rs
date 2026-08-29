@@ -14,14 +14,13 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
-};
-use reifydb_store::{
-	coverage::ExclusiveUpperEnd,
-	tier::range::{
-		RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics, RangeSlotMetrics, RangeTier,
-		prefix_successor,
+	key::{
+		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+		typed::ExclusiveUpperEnd,
 	},
+};
+use reifydb_store::tier::range::{
+	RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics, RangeSlotMetrics, RangeTier, prefix_successor,
 };
 
 pub type OperatorRangeConfig = RangeConfig;
@@ -155,7 +154,7 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+		key::operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	};
 	use reifydb_store::{
 		coverage::{

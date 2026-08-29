@@ -18,7 +18,7 @@ use reifydb_codec::{
 	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
-	key::operator_state::{
+	key::operator::state::{
 		GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range,
 	},
 	metrics::heap::HeapSize,

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
-	key::operator_state::GroupId,
+	key::operator::state::GroupId,
 };
 use reifydb_value::{
 	Result,

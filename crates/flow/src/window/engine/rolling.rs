@@ -14,7 +14,7 @@ use reifydb_codec::{
 	row::operator::state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
 };
@@ -973,7 +973,7 @@ mod tests {
 	use std::collections::{BTreeMap, BTreeSet};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::operator_state::GroupId;
+	use reifydb_core::key::operator::state::GroupId;
 	use reifydb_value::{
 		factory::time::{at_millis, millis},
 		value::datetime::DateTime,

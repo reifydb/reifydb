@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_core::key::operator_state::KeyspaceId;
+use reifydb_core::key::operator::state::KeyspaceId;
 
 use super::*;
 use crate::operator::state::mock::MockStore;

@@ -7,11 +7,13 @@ use reifydb_value::value::row_number::RowNumber;
 use crate::{
 	interface::store::CacheTiers,
 	key::{
-		operator_state::{GroupId, KeyspaceId},
+		operator::{
+			state::{GroupId, KeyspaceId},
+			traits::Keyspace,
+		},
 		typed::{
 			Key,
 			direction::{Asc, Desc, Direction, KeyField},
-			keyspace::Keyspace,
 			layout::{KeyColumn, KeyColumnType, KeyLayout},
 		},
 	},

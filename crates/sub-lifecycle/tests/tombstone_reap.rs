@@ -23,7 +23,7 @@ use reifydb_core::{
 		},
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
 };
 use reifydb_runtime::{context::clock::Clock, version_epoch::VersionEpoch};

@@ -16,7 +16,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::operator_state::KeyspaceId,
+	key::operator::state::KeyspaceId,
 	value::column::columns::Columns,
 };
 use reifydb_flow::{

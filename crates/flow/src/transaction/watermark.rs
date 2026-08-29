@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 };
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 use tracing::{info, warn};

@@ -17,7 +17,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::{KeyspaceId, OperatorStateKey},
+		operator::state::{KeyspaceId, OperatorStateKey},
 	},
 	state::timer::TimerKind,
 	value::column::columns::Columns,

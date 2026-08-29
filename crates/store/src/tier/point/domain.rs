@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{KeyspaceId, OperatorStateKey},
+	key::operator::state::{KeyspaceId, OperatorStateKey},
 };
 
 use crate::tier::point::PointDomain;

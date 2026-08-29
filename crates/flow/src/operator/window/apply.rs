@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::change::{Change, Diff},
-	key::operator_state::GroupId,
+	key::operator::state::GroupId,
 	state::timer::TimerKind,
 	value::column::columns::Columns,
 };

@@ -12,7 +12,7 @@ use std::{collections::HashMap, hash::Hash};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	key::operator_state::GroupId,
+	key::operator::state::GroupId,
 	state::timer::{StateStore, TimerStore},
 };
 use reifydb_flow::{
@@ -84,7 +84,7 @@ pub(crate) fn window_engine_config(_config: &Config) -> WindowEngineConfig {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::key::operator_state::group_data_of_inner;
+	use reifydb_core::key::operator::state::group_data_of_inner;
 
 	use crate::flow::operator::state::utils::empty_key;
 

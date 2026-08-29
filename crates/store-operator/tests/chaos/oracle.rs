@@ -8,7 +8,7 @@
 use std::{collections::BTreeMap, ops::Bound};
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_core::key::operator_state::OperatorStateKey;
+use reifydb_core::key::operator::state::OperatorStateKey;
 use reifydb_store_operator::types::{JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES};
 use reifydb_value::byte_size::ByteSize;
 

@@ -410,7 +410,7 @@ use std::{ops::Bound, ptr};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, group_identity_inner_range, node_prefix},
+	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey, group_identity_inner_range, node_prefix},
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{

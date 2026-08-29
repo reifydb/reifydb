@@ -4,7 +4,7 @@
 use std::{ptr, slice::from_raw_parts};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::key::operator_state::GroupStateKey;
+use reifydb_core::key::operator::state::GroupStateKey;
 use reifydb_sdk::common::extern_c::wire::{
 	buffer::ExternCBuffer,
 	key_ref::ExternCKeyRef,

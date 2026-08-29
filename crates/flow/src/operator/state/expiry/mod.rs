@@ -11,7 +11,7 @@ use reifydb_codec::{
 	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
 	state::timer::StateStore,
 };
 use reifydb_value::Result;
@@ -138,7 +138,7 @@ impl ExpiryIndex {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::key::operator_state::GroupStateKey;
+	use reifydb_core::key::operator::state::GroupStateKey;
 	use reifydb_macro::operator_state;
 
 	use super::{ExpiryIndex, expiry_drop, expiry_due, expiry_earliest, expiry_key, expiry_set};

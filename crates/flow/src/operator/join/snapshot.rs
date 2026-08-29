@@ -11,7 +11,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::change::Diff,
-	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	state::join::ContentVersion,
 	value::column::columns::Columns,
 };

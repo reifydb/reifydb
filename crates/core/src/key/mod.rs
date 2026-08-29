@@ -32,7 +32,7 @@ use namespace_source::NamespaceSourceKey;
 use namespace_sumtype::NamespaceSumTypeKey;
 use namespace_table::NamespaceTableKey;
 use namespace_view::NamespaceViewKey;
-use operator_state::OperatorStateKey;
+use operator::state::OperatorStateKey;
 use output_frontier::OutputFrontierKey;
 use partition::PartitionKey;
 use partitioned_row::PartitionedRowKey;
@@ -89,7 +89,6 @@ pub mod identity_attribute;
 pub mod identity_attribute_value;
 pub mod index;
 pub mod index_entry;
-pub mod keyspace;
 pub mod kind;
 pub mod migration;
 pub mod migration_event;
@@ -109,7 +108,6 @@ pub mod namespace_table;
 pub mod namespace_view;
 pub mod operator;
 pub mod operator_settings;
-pub mod operator_state;
 pub mod output_frontier;
 pub mod partition;
 pub mod partitioned_row;
@@ -452,7 +450,7 @@ pub mod tests {
 			namespace::NamespaceKey,
 			namespace_sumtype::NamespaceSumTypeKey,
 			namespace_table::NamespaceTableKey,
-			operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 			property::ColumnPropertyKey,
 			relationship::RelationshipKey,
 			row::RowKey,

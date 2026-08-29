@@ -4,7 +4,7 @@
 use std::{cell::RefCell, collections::HashMap};
 
 use reifydb_codec::row::bytes::EncodedBytes;
-use reifydb_core::key::operator_state::GroupStateKey;
+use reifydb_core::key::operator::state::GroupStateKey;
 
 pub type StateIteratorHandle = u64;
 type StateIteratorBatch = (*const (Vec<u8>, Vec<u8>), usize);
@@ -81,7 +81,7 @@ pub(crate) fn free_iterator(handle: StateIteratorHandle) -> bool {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::key::operator_state::{GroupId, KeyspaceId, OperatorStateKey};
+	use reifydb_core::key::operator::state::{GroupId, KeyspaceId, OperatorStateKey};
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;

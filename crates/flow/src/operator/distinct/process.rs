@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::{
 	interface::change::Diff,
-	key::operator_state::GroupId,
+	key::operator::state::GroupId,
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_evaluate::expression::context::EvalContext;

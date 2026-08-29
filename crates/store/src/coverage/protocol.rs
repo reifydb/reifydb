@@ -11,8 +11,9 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::key::typed::ExclusiveUpperEnd;
 
-use crate::coverage::{ExclusiveUpperEnd, interval::CoverageSet, retraction::Retractions, successor};
+use crate::coverage::{interval::CoverageSet, retraction::Retractions};
 
 type PartId = u8;
 
@@ -32,7 +33,7 @@ fn part_of(key: &EncodedKey) -> PartId {
 }
 
 fn island(at: &EncodedKey) -> Hull {
-	(at.clone(), ExclusiveUpperEnd::Key(successor(at)))
+	(at.clone(), ExclusiveUpperEnd::just_past(at))
 }
 
 fn widen(slot: &mut Option<Hull>, span: Hull) {
@@ -138,7 +139,7 @@ impl ModelCache {
 
 	fn materialize(&self, lo: &EncodedKey, through: &EncodedKey, rows: &[(EncodedKey, u64)]) -> bool {
 		let token = self.retractions.token();
-		let span = (lo.clone(), ExclusiveUpperEnd::Key(successor(through)));
+		let span = (lo.clone(), ExclusiveUpperEnd::just_past(through));
 		if self.place(rows, &span).is_none() {
 			return false;
 		}

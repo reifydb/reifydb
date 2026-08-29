@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::GroupId, util::bloom::hash_item};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::GroupId, util::bloom::hash_item};
 use reifydb_store::filter::FilterDomain;
 use reifydb_value::value::row_number::RowNumber;
 

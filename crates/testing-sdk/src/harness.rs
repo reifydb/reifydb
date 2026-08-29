@@ -24,7 +24,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+		operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	},
 	row::Row,
 	state::timer::TimerKind,

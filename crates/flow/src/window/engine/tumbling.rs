@@ -16,7 +16,7 @@ use reifydb_codec::{
 	row::operator::state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey},
 	state::timer::StateStore,
 };
 use reifydb_macro::operator_state;
@@ -391,7 +391,7 @@ mod tests {
 	};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::{key::operator_state::GroupId, metrics::heap::HeapSize};
+	use reifydb_core::{key::operator::state::GroupId, metrics::heap::HeapSize};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{Result, factory::time::at_millis, value::datetime::DateTime};
 

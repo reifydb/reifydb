@@ -13,7 +13,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{
+	key::operator::state::{
 		GroupId, KeyspaceId, OperatorStateKey, group_data_inner_range, keyspace_inner_range,
 		keyspace_inner_range_upto,
 	},

@@ -18,7 +18,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator_state::{GroupId, GroupStateKey},
+	key::operator::state::{GroupId, GroupStateKey},
 	metrics::{heap::OperatorSample, instruments::counter::Counter},
 	state::timer::TimerKind,
 	value::column::{ColumnWithName, columns::Columns},
@@ -1050,7 +1050,7 @@ mod seal_tests {
 	use reifydb_codec::row::operator::state::decode;
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator_state::{KeyspaceId, group_inner_range, keyspace_inner_range},
+		key::operator::state::{KeyspaceId, group_inner_range, keyspace_inner_range},
 		value::column::buffer::ColumnBuffer,
 	};
 	use reifydb_rql::expression::parse_expression;

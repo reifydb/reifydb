@@ -5,7 +5,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::PendingLayers,
 	interface::catalog::flow::OperatorId,
-	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_flow::transaction::{
 	DeferredParams, FlowTransaction,

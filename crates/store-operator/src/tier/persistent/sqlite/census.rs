@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::OperatorStateKey};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::OperatorStateKey};
 use reifydb_value::byte_size::ByteSize;
 use rusqlite::{Transaction, params};
 use tracing::instrument;

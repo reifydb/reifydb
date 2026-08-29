@@ -4,17 +4,18 @@
 use std::ops::Bound::{Excluded, Included, Unbounded};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
-use reifydb_core::util::sorted::SortedVecMap;
+use reifydb_core::{
+	key::typed::{ExclusiveUpperEnd, Key},
+	util::sorted::SortedVecMap,
+};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::{
 	coverage::{
-		ExclusiveUpperEnd,
 		cursor::{RangeCursor, ServedChunk},
 		entry::{Entry, PinnedCount},
 		interval::{CoverageSet, Interval},
 		plan::{Segment, plan},
-		successor,
 	},
 	tier::range::{
 		Materialize, Partition, RangeDomain, RangeRows, RangeScan, RangeTier, Shard, entry_footprint,
@@ -53,11 +54,11 @@ impl<D: RangeDomain> RangeTier<D> {
 	pub fn plan_scan(&self, dimension: D::Dimension, range: &EncodedKeyRange) -> Option<RangeScan<D>> {
 		let lo = match range.start.as_ref() {
 			Included(key) => key.clone(),
-			Excluded(key) => successor(key),
+			Excluded(key) => key.successor()?,
 			Unbounded => return None,
 		};
 		let hi = match range.end.as_ref() {
-			Included(key) => ExclusiveUpperEnd::Key(successor(key)),
+			Included(key) => ExclusiveUpperEnd::just_past(key),
 			Excluded(key) => ExclusiveUpperEnd::Key(key.clone()),
 			Unbounded => ExclusiveUpperEnd::Top,
 		};
@@ -217,13 +218,13 @@ impl<D: RangeDomain> RangeTier<D> {
 		limit: usize,
 	) -> ServedChunk<RangeRows<D>> {
 		let start = match cursor.last_key() {
-			Some(last) if last.as_slice() >= segment.start.as_slice() => successor(last),
-			_ => segment.start.clone(),
+			Some(last) if last.as_slice() >= segment.start.as_slice() => last.successor(),
+			_ => Some(segment.start.clone()),
 		};
-		if !segment.end.covers(&start) {
+		let Some(start) = start.filter(|start| segment.end.covers(start)) else {
 			cursor.finish();
 			return ServedChunk::Served(Vec::new());
-		}
+		};
 
 		let Some(partition) = D::partition(scan.dimension, &segment.start) else {
 			return ServedChunk::Gap;
@@ -768,14 +769,16 @@ mod tests {
 	};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator_state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+		key::{
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			typed::ExclusiveUpperEnd,
+		},
 	};
 	use reifydb_value::byte_size::ByteSize;
 
 	use super::split_at_partitions;
 	use crate::{
 		coverage::{
-			ExclusiveUpperEnd,
 			cursor::{RangeCursor, ServedChunk},
 			interval::Interval,
 			plan::Segment,

@@ -20,8 +20,8 @@ use reifydb_core::{
 		EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
 		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, classify_key, classify_range,
 	},
+	key::typed::Key,
 };
-use reifydb_store::coverage::successor;
 use reifydb_value::{
 	reifydb_assertions,
 	util::{cowvec::CowVec, hex},
@@ -943,7 +943,10 @@ impl StandardMultiStore {
 		}
 		let range_start = EncodedKey::new(scan.start);
 		let lo = match resumed_at {
-			Some(last) => successor(last).max(range_start),
+			Some(last) => match last.successor() {
+				Some(next) => next.max(range_start),
+				None => return Ok(()),
+			},
 			None => range_start,
 		};
 		let through = match (cursor.scanned_to_end(), cursor.is_exhausted(), cursor.last_key()) {
@@ -1294,7 +1297,7 @@ mod cache_tests {
 		},
 		key::{
 			EncodableKey,
-			operator_state::{GroupId, KeyspaceId, OperatorStateKey},
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 			row::RowKey,
 		},
 	};

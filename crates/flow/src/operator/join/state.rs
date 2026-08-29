@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::operator_state::KeyspaceId;
+use reifydb_core::key::operator::state::KeyspaceId;
 
 use crate::operator::join::store::Store;
 

@@ -8,7 +8,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::catalog::flow::FlowId,
-	key::operator_state::{KeyspaceId, OperatorStateKey},
+	key::operator::state::{KeyspaceId, OperatorStateKey},
 };
 use reifydb_store_operator::{
 	store::OperatorStore,

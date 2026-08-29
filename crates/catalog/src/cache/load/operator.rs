@@ -7,7 +7,7 @@ use reifydb_core::{
 		catalog::flow::{FlowId, Operator, OperatorId},
 		store::MultiVersionRow,
 	},
-	key::operator::OperatorKey,
+	key::operator::key::OperatorKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 

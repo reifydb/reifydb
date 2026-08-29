@@ -12,7 +12,7 @@
 
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::operator_state::KeyspaceId,
+	key::operator::state::KeyspaceId,
 	value::column::columns::Columns,
 };
 use reifydb_flow::operator::aggregation::operator::AggregateOperator;

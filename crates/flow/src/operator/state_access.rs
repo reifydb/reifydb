@@ -5,7 +5,7 @@ use std::hash::Hash;
 
 use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_core::{
-	key::operator_state::{IntoGroupStateKey, row_number_counter_key},
+	key::operator::state::{IntoGroupStateKey, row_number_counter_key},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
 };
@@ -137,7 +137,7 @@ mod tests {
 		row::pod::EncodedPodRow,
 	};
 	use reifydb_core::{
-		key::operator_state::{GroupId, GroupStateKey, KeyspaceId},
+		key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
 		state::timer::{TimerKind, TimerStore},
 	};
 	use reifydb_macro::operator_state;
