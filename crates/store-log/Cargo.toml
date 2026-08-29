@@ -1,0 +1,21 @@
+[package]
+name = "reifydb-store-log"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Append-only segmented log over a faultable IO seam"
+
+[lib]
+doctest = false
+
+[features]
+default = []
+testing = []
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+reifydb-runtime = { workspace = true }

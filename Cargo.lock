@@ -3492,6 +3492,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-store-log"
+version = "0.9.0"
+dependencies = [
+ "reifydb-build",
+ "reifydb-runtime",
+]
+
+[[package]]
 name = "reifydb-store-multi"
 version = "0.9.0"
 dependencies = [
