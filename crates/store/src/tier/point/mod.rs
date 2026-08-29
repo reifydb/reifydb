@@ -19,8 +19,7 @@ use std::{
 };
 
 use hashbrown::HashTable;
-use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::util::budget::MemoryBudget;
+use reifydb_core::{key::typed::Key, metrics::heap::HeapSize, util::budget::MemoryBudget};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::byte_size::ByteSize;
 
@@ -28,6 +27,7 @@ use crate::tier::range::RowBytes;
 
 pub trait PointDomain: Copy + Debug + 'static {
 	type Dimension: Copy + Eq + Hash + Send + Sync + 'static;
+	type Key: Key;
 	type MetricBucket: Copy + Eq + Debug + Send + Sync + 'static;
 	type Row: RowBytes + Clone + Send + Sync + 'static;
 
@@ -35,7 +35,7 @@ pub trait PointDomain: Copy + Debug + 'static {
 
 	const SCOPE: &'static str;
 
-	fn metric_bucket(key: &EncodedKey) -> Option<usize>;
+	fn metric_bucket(key: &Self::Key) -> Option<usize>;
 
 	fn caches_points(bucket: usize) -> bool;
 
@@ -65,13 +65,13 @@ impl PointConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PointKey<K> {
-	pub dimension: K,
-	pub key: EncodedKey,
+pub struct PointKey<D, K> {
+	pub dimension: D,
+	pub key: K,
 }
 
 struct Entry<D: PointDomain> {
-	key: PointKey<D::Dimension>,
+	key: PointKey<D::Dimension, D::Key>,
 	row: Option<D::Row>,
 	tick: u64,
 }
@@ -87,17 +87,17 @@ const ENTRY_OVERHEAD: usize = entry_overhead::<domain::TestDomain>();
 
 const EVICTION_SAMPLE: usize = 8;
 
-fn entry_footprint<D: PointDomain>(key: &PointKey<D::Dimension>, row: &Option<D::Row>) -> usize {
-	entry_overhead::<D>() + key.key.heap_bytes() + row.as_ref().map_or(0, RowBytes::row_bytes)
+fn entry_footprint<D: PointDomain>(key: &PointKey<D::Dimension, D::Key>, row: &Option<D::Row>) -> usize {
+	entry_overhead::<D>() + key.key.heap_size() + row.as_ref().map_or(0, RowBytes::row_bytes)
 }
 
 const BUCKET_SEED: u64 = 0xD6E8_FEB8_6659_FD93;
 
-fn bucket_hash<K: Hash>(dimension: &K, key: &EncodedKey) -> u64 {
+fn bucket_hash<D: Hash, K: Hash>(dimension: &D, key: &K) -> u64 {
 	let mut hasher = DefaultHasher::new();
 	hasher.write_u64(BUCKET_SEED);
 	dimension.hash(&mut hasher);
-	key.as_slice().hash(&mut hasher);
+	key.hash(&mut hasher);
 	hasher.finish()
 }
 
@@ -105,12 +105,7 @@ fn entry_hash<D: PointDomain>(entry: &Entry<D>) -> u64 {
 	bucket_hash(&entry.key.dimension, &entry.key.key)
 }
 
-fn find_position<D: PointDomain>(
-	shard: &Shard<D>,
-	hash: u64,
-	dimension: D::Dimension,
-	key: &EncodedKey,
-) -> Option<u32> {
+fn find_position<D: PointDomain>(shard: &Shard<D>, hash: u64, dimension: D::Dimension, key: &D::Key) -> Option<u32> {
 	let Shard {
 		index,
 		entries,
@@ -164,7 +159,7 @@ type BucketCounters = Box<[PointMetrics]>;
 struct Shard<D: PointDomain> {
 	index: HashTable<u32>,
 	entries: Vec<Entry<D>>,
-	filling: HashMap<PointKey<D::Dimension>, bool>,
+	filling: HashMap<PointKey<D::Dimension, D::Key>, bool>,
 	budget: MemoryBudget,
 	next_tick: u64,
 	rng: u64,
@@ -173,7 +168,8 @@ struct Shard<D: PointDomain> {
 }
 
 #[cfg(test)]
-pub(crate) type FillInterlock<D> = Box<dyn Fn(&PointTier<D>, &PointKey<<D as PointDomain>::Dimension>) + Send + Sync>;
+pub(crate) type FillInterlock<D> =
+	Box<dyn Fn(&PointTier<D>, &PointKey<<D as PointDomain>::Dimension, <D as PointDomain>::Key>) + Send + Sync>;
 
 struct PoolInner<D: PointDomain> {
 	shards: Box<[Mutex<Shard<D>>]>,

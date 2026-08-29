@@ -9,7 +9,10 @@ use std::sync::{
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+	key::{
+		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+		typed::MultiKey,
+	},
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -409,7 +412,7 @@ fn finish_fill_publishes_under_the_lock_that_cleared_the_marker() {
 	let probed = Arc::new(AtomicBool::new(false));
 	let flag = acquired.clone();
 	let seen = probed.clone();
-	let hook: FillInterlock<D> = Box::new(move |tier: &PointTier<D>, id: &PointKey<OperatorId>| {
+	let hook: FillInterlock<D> = Box::new(move |tier: &PointTier<D>, id: &PointKey<OperatorId, MultiKey>| {
 		seen.store(true, Ordering::Relaxed);
 		flag.store(tier.shard_for(id).try_lock().is_some(), Ordering::Relaxed);
 	});

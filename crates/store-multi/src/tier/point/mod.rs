@@ -10,7 +10,7 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, key::typed::MultiKey};
 use reifydb_store::tier::{
 	point::{PointConfig, PointDomain, PointMetrics, PointTier},
 	range::RowBytes,
@@ -65,6 +65,7 @@ pub struct MultiPointDomain;
 
 impl PointDomain for MultiPointDomain {
 	type Dimension = ();
+	type Key = MultiKey;
 	type MetricBucket = ();
 	type Row = MultiPointRow;
 

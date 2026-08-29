@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::point::{
@@ -10,7 +9,7 @@ use crate::tier::point::{
 };
 
 impl<D: PointDomain> PointTier<D> {
-	pub fn get(&self, dimension: D::Dimension, key: &EncodedKey) -> Option<Option<D::Row>> {
+	pub fn get(&self, dimension: D::Dimension, key: &D::Key) -> Option<Option<D::Row>> {
 		let bucket = D::metric_bucket(key)?;
 		if !D::caches_points(bucket) {
 			self.charge_excluded_miss(bucket);
@@ -35,7 +34,7 @@ impl<D: PointDomain> PointTier<D> {
 		Some(row)
 	}
 
-	pub fn contains(&self, dimension: D::Dimension, key: &EncodedKey) -> Option<bool> {
+	pub fn contains(&self, dimension: D::Dimension, key: &D::Key) -> Option<bool> {
 		let bucket = D::metric_bucket(key)?;
 		if !D::caches_points(bucket) {
 			self.charge_excluded_miss(bucket);
@@ -60,7 +59,7 @@ impl<D: PointDomain> PointTier<D> {
 		Some(present)
 	}
 
-	pub fn begin_fill(&self, dimension: D::Dimension, key: &EncodedKey) -> bool {
+	pub fn begin_fill(&self, dimension: D::Dimension, key: &D::Key) -> bool {
 		let Some(bucket) = D::metric_bucket(key) else {
 			return false;
 		};
@@ -83,7 +82,7 @@ impl<D: PointDomain> PointTier<D> {
 		true
 	}
 
-	pub fn finish_fill(&self, dimension: D::Dimension, key: EncodedKey, row: Option<D::Row>) -> bool {
+	pub fn finish_fill(&self, dimension: D::Dimension, key: D::Key, row: Option<D::Row>) -> bool {
 		let Some(bucket) = D::metric_bucket(&key) else {
 			return false;
 		};
@@ -108,7 +107,7 @@ impl<D: PointDomain> PointTier<D> {
 		true
 	}
 
-	pub fn abort_fill(&self, dimension: D::Dimension, key: &EncodedKey) {
+	pub fn abort_fill(&self, dimension: D::Dimension, key: &D::Key) {
 		if D::metric_bucket(key).is_none() {
 			return;
 		}
@@ -122,7 +121,7 @@ impl<D: PointDomain> PointTier<D> {
 		});
 	}
 
-	pub fn overwrite(&self, dimension: D::Dimension, key: EncodedKey, row: D::Row) {
+	pub fn overwrite(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
 		let Some(bucket) = D::metric_bucket(&key) else {
 			return;
 		};
@@ -137,7 +136,7 @@ impl<D: PointDomain> PointTier<D> {
 		insert_entry(&mut shard, bucket, id, Some(row));
 	}
 
-	pub fn invalidate(&self, dimension: D::Dimension, key: &EncodedKey) {
+	pub fn invalidate(&self, dimension: D::Dimension, key: &D::Key) {
 		let Some(bucket) = D::metric_bucket(key) else {
 			return;
 		};
@@ -207,7 +206,12 @@ impl<D: PointDomain> PointTier<D> {
 	}
 }
 
-fn insert_entry<D: PointDomain>(shard: &mut Shard<D>, bucket: usize, id: PointKey<D::Dimension>, row: Option<D::Row>) {
+fn insert_entry<D: PointDomain>(
+	shard: &mut Shard<D>,
+	bucket: usize,
+	id: PointKey<D::Dimension, D::Key>,
+	row: Option<D::Row>,
+) {
 	if !D::caches_points(bucket) {
 		return;
 	}

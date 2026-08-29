@@ -11,7 +11,6 @@ use std::{
 };
 
 use hashbrown::HashTable;
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 	util::budget::MemoryBudget,
@@ -53,19 +52,19 @@ impl<D: PointDomain> PointTier<D> {
 		})
 	}
 
-	pub fn shard_index(&self, dimension: D::Dimension, key: &EncodedKey) -> usize {
+	pub fn shard_index(&self, dimension: D::Dimension, key: &D::Key) -> usize {
 		let mut hasher = DefaultHasher::new();
 		dimension.hash(&mut hasher);
-		key.as_slice().hash(&mut hasher);
+		key.hash(&mut hasher);
 		(hasher.finish() % self.inner.shards.len() as u64) as usize
 	}
 
-	pub(super) fn shard_at(&self, dimension: D::Dimension, key: &EncodedKey) -> &Mutex<Shard<D>> {
+	pub(super) fn shard_at(&self, dimension: D::Dimension, key: &D::Key) -> &Mutex<Shard<D>> {
 		&self.inner.shards[self.shard_index(dimension, key)]
 	}
 
 	#[cfg(test)]
-	pub(super) fn shard_for(&self, key: &PointKey<D::Dimension>) -> &Mutex<Shard<D>> {
+	pub(super) fn shard_for(&self, key: &PointKey<D::Dimension, D::Key>) -> &Mutex<Shard<D>> {
 		self.shard_at(key.dimension, &key.key)
 	}
 

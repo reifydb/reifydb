@@ -9,7 +9,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{KeyspaceId, OperatorStateKey},
+	key::{
+		operator::state::{KeyspaceId, OperatorStateKey},
+		typed::MultiKey,
+	},
 };
 use reifydb_store::tier::point::{
 	PointBucketMetrics, PointConfig, PointDomain, PointMetrics, PointShardMetrics, PointTier,
@@ -26,6 +29,7 @@ pub struct OperatorDomain;
 
 impl PointDomain for OperatorDomain {
 	type Dimension = OperatorId;
+	type Key = MultiKey;
 	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 
