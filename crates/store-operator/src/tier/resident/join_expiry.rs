@@ -8,8 +8,9 @@ use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
 	tier::resident::{
-		OperatorResidentState,
-		batch::{DropMarker, JoinExpiryKey, JoinExpirySlot},
+		OperatorResidentState, record_join_expiry,
+		batch::{DropMarker, JoinExpirySlot},
+		slot::{SlotJoinExpiries, SlotJoinKey},
 	},
 	types::{BufferedJoinExpiry, BufferedJoinExpiryGroup},
 };
@@ -23,13 +24,13 @@ impl OperatorResidentState {
 		row_number: RowNumber,
 		expiry: DateTime,
 	) {
-		self.write(|write| {
-			write.record_join_expiry((operator, group, side, row_number), Some(expiry.to_millis()), true)
+		self.write_slot(operator, |inner| {
+			record_join_expiry(inner, (group, side, row_number), Some(expiry.to_millis()), true)
 		});
 	}
 
 	pub fn record_join_expiry_remove(&self, operator: OperatorId, group: GroupId, side: u8, row_number: RowNumber) {
-		self.write(|write| write.record_join_expiry((operator, group, side, row_number), None, true));
+		self.write_slot(operator, |inner| record_join_expiry(inner, (group, side, row_number), None, true));
 	}
 
 	pub fn lookup_join_expiry(
@@ -39,15 +40,19 @@ impl OperatorResidentState {
 		side: u8,
 		row_number: RowNumber,
 	) -> BufferedJoinExpiry {
-		let composite = (operator, group, side, row_number);
-		let inner = self.shared().inner.lock();
-		if let Some(entry) = inner.live.join_expiries.get(&composite) {
-			return buffered_join_expiry(*entry);
+		let composite = (group, side, row_number);
+		if let Some(slot) = self.shared().slot(operator) {
+			let inner = slot.inner.lock();
+			if let Some(entry) = inner.live.join_expiries.get(&composite) {
+				return buffered_join_expiry(*entry);
+			}
+			if let Some(entry) =
+				inner.in_flight.as_ref().and_then(|pending| pending.join_expiries.get(&composite))
+			{
+				return buffered_join_expiry(*entry);
+			}
 		}
-		if let Some(entry) = inner.in_flight.as_ref().and_then(|batch| batch.join_expiries.get(&composite)) {
-			return buffered_join_expiry(*entry);
-		}
-		if inner.any_drop(|marker| is_join_expiry_drop(marker, operator, group)) {
+		if self.shared().dropped(|marker| is_join_expiry_drop(marker, operator, group)) {
 			return BufferedJoinExpiry::Dropped;
 		}
 		BufferedJoinExpiry::Absent
@@ -55,20 +60,24 @@ impl OperatorResidentState {
 
 	pub fn join_expiries_for_group(&self, operator: OperatorId, group: GroupId) -> BufferedJoinExpiryGroup {
 		let range = (
-			Bound::Included((operator, group, u8::MIN, RowNumber(u64::MIN))),
-			Bound::Included((operator, group, u8::MAX, RowNumber(u64::MAX))),
+			Bound::Included((group, u8::MIN, RowNumber(u64::MIN))),
+			Bound::Included((group, u8::MAX, RowNumber(u64::MAX))),
 		);
 
-		let inner = self.shared().inner.lock();
 		let mut merged: BTreeMap<JoinExpirySlot, Option<u64>> = BTreeMap::new();
-		if let Some(batch) = inner.in_flight.as_ref() {
-			collect_join_expiries(&batch.join_expiries, range, &mut merged);
+		let mut durable = false;
+		if let Some(slot) = self.shared().slot(operator) {
+			let inner = slot.inner.lock();
+			if let Some(pending) = inner.in_flight.as_ref() {
+				collect_join_expiries(&pending.join_expiries, range, &mut merged);
+			}
+			collect_join_expiries(&inner.live.join_expiries, range, &mut merged);
+			durable = inner.live.durable_join_expiries.range(range).next().is_some();
 		}
-		collect_join_expiries(&inner.live.join_expiries, range, &mut merged);
 		BufferedJoinExpiryGroup {
 			join_expiries: merged.into_iter().collect(),
-			dropped: inner.any_drop(|marker| is_join_expiry_drop(marker, operator, group)),
-			durable: inner.live.durable_join_expiries.range(range).next().is_some(),
+			dropped: self.shared().dropped(|marker| is_join_expiry_drop(marker, operator, group)),
+			durable,
 		}
 	}
 }
@@ -92,11 +101,11 @@ fn is_join_expiry_drop(marker: &DropMarker, operator: OperatorId, group: GroupId
 }
 
 fn collect_join_expiries(
-	source: &BTreeMap<JoinExpiryKey, Option<u64>>,
-	range: (Bound<JoinExpiryKey>, Bound<JoinExpiryKey>),
+	source: &SlotJoinExpiries,
+	range: (Bound<SlotJoinKey>, Bound<SlotJoinKey>),
 	out: &mut BTreeMap<JoinExpirySlot, Option<u64>>,
 ) {
-	for ((_, _, side, row_number), entry) in source.range(range) {
+	for ((_, side, row_number), entry) in source.range(range) {
 		out.insert((*side, *row_number), *entry);
 	}
 }

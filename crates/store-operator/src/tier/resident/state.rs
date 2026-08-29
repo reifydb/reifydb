@@ -3,6 +3,7 @@
 
 use std::{
 	cmp::Ordering,
+	collections::btree_map,
 	iter::{Peekable, Rev},
 	ops::Bound,
 };
@@ -12,31 +13,32 @@ use reifydb_core::interface::catalog::flow::OperatorId;
 
 use crate::{
 	tier::resident::{
-		OperatorResidentState,
+		OperatorResidentState, record_state,
 		batch::{DropMarker, StateEntry},
-		state_map::Range,
+		slot::OperatorKeys,
 	},
 	types::{BufferedState, BufferedStateRange, DurablePre},
 };
 
+type KeyRange<'a> = btree_map::Range<'a, EncodedKey, StateEntry>;
+
 impl OperatorResidentState {
 	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow, pre: DurablePre) {
-		self.write(|write| write.record_state((operator, key), Some(row), pre));
+		self.write_slot(operator, |inner| record_state(inner, key, Some(row), pre));
 	}
 
 	pub fn record_state_remove(&self, operator: OperatorId, key: EncodedKey, pre: DurablePre) {
-		self.write(|write| write.record_state((operator, key), None, pre));
+		self.write_slot(operator, |inner| record_state(inner, key, None, pre));
 	}
 
 	pub fn lookup_state(&self, operator: OperatorId, key: &EncodedKey) -> BufferedState {
-		let inner = self.shared().inner.lock();
-		if let Some(entry) = inner.live.state.lookup(operator, key) {
-			return buffered_state(entry);
+		if let Some(slot) = self.shared().slot(operator) {
+			let found = slot.inner.lock().lookup(key).map(buffered_state);
+			if let Some(found) = found {
+				return found;
+			}
 		}
-		if let Some(entry) = inner.in_flight.as_ref().and_then(|batch| batch.state.lookup(operator, key)) {
-			return buffered_state(entry);
-		}
-		if inner.any_drop(|marker| is_state_drop(marker, operator)) {
+		if self.shared().dropped(|marker| is_state_drop(marker, operator)) {
 			return BufferedState::Dropped;
 		}
 		BufferedState::Absent
@@ -58,23 +60,7 @@ impl OperatorResidentState {
 		end: Bound<&EncodedKey>,
 		limit: usize,
 	) -> BufferedStateRange {
-		let lower = owned(start);
-		let upper = owned(end);
-
-		let inner = self.shared().inner.lock();
-		let mut items = Vec::new();
-		if limit > 0 && !is_empty_range(&lower, &upper) {
-			let live = inner.live.state.range(operator, lower.clone(), upper.clone());
-			let flight = match inner.in_flight.as_ref() {
-				Some(batch) => batch.state.range(operator, lower, upper),
-				None => Range::default(),
-			};
-			items = merge(live, flight, limit);
-		}
-		BufferedStateRange {
-			items,
-			dropped: inner.any_drop(|marker| is_state_drop(marker, operator)),
-		}
+		self.page(operator, start, end, limit, merge)
 	}
 
 	pub fn state_last_page(
@@ -84,29 +70,44 @@ impl OperatorResidentState {
 		end: Bound<&EncodedKey>,
 		limit: usize,
 	) -> BufferedStateRange {
+		self.page(operator, start, end, limit, merge_back)
+	}
+
+	fn page(
+		&self,
+		operator: OperatorId,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		limit: usize,
+		combine: fn(KeyRange<'_>, KeyRange<'_>, usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)>,
+	) -> BufferedStateRange {
 		let lower = owned(start);
 		let upper = owned(end);
-
-		let inner = self.shared().inner.lock();
+		let empty = OperatorKeys::new();
 		let mut items = Vec::new();
-		if limit > 0 && !is_empty_range(&lower, &upper) {
-			let live = inner.live.state.range(operator, lower.clone(), upper.clone());
-			let flight = match inner.in_flight.as_ref() {
-				Some(batch) => batch.state.range(operator, lower, upper),
-				None => Range::default(),
-			};
-			items = merge_back(live, flight, limit);
+
+		if let Some(slot) = self.shared().slot(operator) {
+			let inner = slot.inner.lock();
+			if limit > 0 && !is_empty_range(&lower, &upper) {
+				let live = inner.live.state.range((lower.clone(), upper.clone()));
+				let flight = match inner.in_flight.as_ref() {
+					Some(pending) => pending.state.range((lower, upper)),
+					None => empty.range::<EncodedKey, _>(..),
+				};
+				items = combine(live, flight, limit);
+			}
 		}
+
 		BufferedStateRange {
 			items,
-			dropped: inner.any_drop(|marker| is_state_drop(marker, operator)),
+			dropped: self.shared().dropped(|marker| is_state_drop(marker, operator)),
 		}
 	}
 }
 
-fn merge(live: Range<'_>, flight: Range<'_>, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
-	let mut live: Peekable<Range<'_>> = live.peekable();
-	let mut flight: Peekable<Range<'_>> = flight.peekable();
+fn merge(live: KeyRange<'_>, flight: KeyRange<'_>, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
+	let mut live: Peekable<KeyRange<'_>> = live.peekable();
+	let mut flight: Peekable<KeyRange<'_>> = flight.peekable();
 	let mut items = Vec::new();
 	while items.len() < limit {
 		let winner = match (live.peek(), flight.peek()) {
@@ -138,9 +139,9 @@ fn merge(live: Range<'_>, flight: Range<'_>, limit: usize) -> Vec<(EncodedKey, O
 	items
 }
 
-fn merge_back(live: Range<'_>, flight: Range<'_>, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
-	let mut live: Peekable<Rev<Range<'_>>> = live.rev().peekable();
-	let mut flight: Peekable<Rev<Range<'_>>> = flight.rev().peekable();
+fn merge_back(live: KeyRange<'_>, flight: KeyRange<'_>, limit: usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)> {
+	let mut live: Peekable<Rev<KeyRange<'_>>> = live.rev().peekable();
+	let mut flight: Peekable<Rev<KeyRange<'_>>> = flight.rev().peekable();
 	let mut items = Vec::new();
 	while items.len() < limit {
 		let winner = match (live.peek(), flight.peek()) {

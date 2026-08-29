@@ -34,8 +34,29 @@ use crate::{
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
+const FLOW_A: FlowId = FlowId(101);
+const FLOW_B: FlowId = FlowId(102);
 const GROUP_A: GroupId = GroupId(10);
 const GROUP_B: GroupId = GroupId(11);
+
+fn insert(operator: OperatorId, name: &str, value: &str) -> OperatorWrite {
+	OperatorWrite::Insert {
+		operator,
+		key: key(name),
+		post: row(value),
+	}
+}
+
+fn write_in_flow(buffer: &OperatorResidentState, flow: FlowId, version: u64, writes: &[OperatorWrite]) {
+	buffer.apply_batch_with_checkpoints(writes, &[(flow, CommitVersion(version))], &[]);
+}
+
+fn operators_of(batch: &crate::tier::resident::batch::FlushBatch) -> Vec<OperatorId> {
+	let mut seen: Vec<OperatorId> = batch.state.iter().map(|((operator, _), _)| operator).collect();
+	seen.sort_unstable();
+	seen.dedup();
+	seen
+}
 
 fn key(bytes: &str) -> EncodedKey {
 	EncodedKey::new(bytes.as_bytes())
@@ -69,11 +90,36 @@ fn entry_bytes(key_body: &str, row_body: &str) -> ByteSize {
 }
 
 fn live_bytes(buffer: &OperatorResidentState) -> ByteSize {
-	buffer.shared().inner.lock().live.bytes
+	let mut total = ByteSize::ZERO;
+	for operator in buffer.shared().operators() {
+		let Some(slot) = buffer.shared().slot(operator) else {
+			continue;
+		};
+		let bytes = slot.inner.lock().live.bytes;
+		total = total.saturating_add(bytes);
+	}
+	total
 }
 
 fn resident_bytes(buffer: &OperatorResidentState) -> ByteSize {
-	buffer.shared().inner.lock().resident_bytes()
+	buffer.resident_bytes()
+}
+
+fn live_bytes_of(buffer: &OperatorResidentState, operator: OperatorId) -> ByteSize {
+	buffer.shared().slot(operator).map_or(ByteSize::ZERO, |slot| {
+		let bytes = slot.inner.lock().live.bytes;
+		bytes
+	})
+}
+
+fn flushing(buffer: &OperatorResidentState) -> bool {
+	buffer.shared().global.lock().flushing
+}
+
+fn any_in_flight(buffer: &OperatorResidentState) -> bool {
+	buffer.shared().operators().into_iter().any(|operator| {
+		buffer.shared().slot(operator).is_some_and(|slot| slot.inner.lock().in_flight.is_some())
+	})
 }
 
 #[test]
@@ -419,13 +465,12 @@ fn take_for_flush_on_an_empty_buffer_returns_none_and_leaves_flushing_clear() {
 
 	assert!(buffer.take_for_flush().is_none(), "an empty tick must not open a transaction");
 
-	let inner = buffer.shared().inner.lock();
 	assert!(
-		!inner.flushing,
+		!flushing(&buffer),
 		"a refused take must leave the flag clear, otherwise every later drop blocks forever on a \
 		 flush that never runs"
 	);
-	assert!(inner.in_flight.is_none(), "nothing was taken, so there is no in-flight layer to read through");
+	assert!(!any_in_flight(&buffer), "nothing was taken, so there is no in-flight layer to read through");
 }
 
 #[test]
@@ -445,17 +490,13 @@ fn take_for_flush_sets_flushing_and_complete_flush_clears_it() {
 	buffer.record_state_set(OP_A, key("k"), row("v"), DurablePre::Absent);
 	buffer.take_for_flush().expect("the seeded batch must be takeable");
 
-	{
-		let inner = buffer.shared().inner.lock();
-		assert!(inner.flushing, "a taken batch must mark the buffer flushing so drops wait it out");
-		assert!(inner.in_flight.is_some(), "the taken batch stays readable while the flush runs");
-	}
+	assert!(flushing(&buffer), "a taken batch must mark the buffer flushing so drops wait it out");
+	assert!(any_in_flight(&buffer), "the taken batch stays readable while the flush runs");
 
 	buffer.complete_flush();
 
-	let inner = buffer.shared().inner.lock();
-	assert!(!inner.flushing, "a completed flush must release waiting drops");
-	assert!(inner.in_flight.is_none(), "the flushed batch now lives in sqlite and must not be read twice");
+	assert!(!flushing(&buffer), "a completed flush must release waiting drops");
+	assert!(!any_in_flight(&buffer), "the flushed batch now lives in sqlite and must not be read twice");
 }
 
 #[test]
@@ -638,47 +679,119 @@ fn an_empty_write_batch_leaves_the_buffer_untouched() {
 }
 
 #[test]
-fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_nothing() {
-	let entry = entry_bytes("k000", "v000");
-	let budget = entry * 8;
-	let buffer = OperatorResidentState::with_budget(budget);
-	let total: usize = 53;
-	for index in 0..total {
-		buffer.record_state_set(
-			OP_A,
-			key(&format!("k{index:03}")),
-			row(&format!("v{index:03}")),
-			DurablePre::Absent,
-		);
+fn a_flow_whose_operators_still_hold_live_state_does_not_get_its_checkpoint_written() {
+	// the checkpoint is the resume point; writing it while state is still in ram promises sqlite rows
+	// that a crash would take with it, and replay never revisits a version at or below it
+	let buffer = OperatorResidentState::with_budget(entry_bytes("k1", "v1"));
+	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
+	write_in_flow(&buffer, FLOW_B, 20, &[insert(OP_B, "k2", "v2")]);
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+	assert_eq!(
+		first.checkpoints.get(&FLOW_A).copied(),
+		Some(Some(CommitVersion(10))),
+		"the flow this slice drained completely is safe to check point in the same transaction"
+	);
+	assert!(
+		!first.checkpoints.contains_key(&FLOW_B),
+		"the flow the budget stopped before still holds live state, so its checkpoint must wait"
+	);
+	buffer.complete_flush();
+
+	let second = buffer.take_for_flush().expect("the second flow makes a second slice");
+	assert_eq!(
+		second.checkpoints.get(&FLOW_B).copied(),
+		Some(Some(CommitVersion(20))),
+		"the held checkpoint must go out with the state that earns it, or the flow never advances"
+	);
+}
+
+#[test]
+fn a_checkpoint_with_no_pending_state_is_written_without_waiting_for_a_drain() {
+	// a flow that only advanced its cursor writes a checkpoint and no state; gating it on a drain that
+	// never comes strands it and pins cdc retention forever
+	let buffer = OperatorResidentState::new();
+	buffer.record_checkpoint_set(FLOW_A, CommitVersion(77));
+
+	let batch = buffer.take_for_flush().expect("a checkpoint alone is worth a transaction");
+	assert!(batch.state.is_empty(), "the flow wrote no state, so none may be invented for it");
+	assert_eq!(
+		batch.checkpoints.get(&FLOW_A).copied(),
+		Some(Some(CommitVersion(77))),
+		"nothing is pending for this flow, so everything it claims is already durable"
+	);
+}
+
+#[test]
+fn the_flow_waiting_longest_drains_first() {
+	// draining in flow-id order lets a busy low-numbered flow starve the rest; ordering by how long a
+	// flow has waited is what makes every checkpoint eventually advance
+	let buffer = OperatorResidentState::with_budget(entry_bytes("k1", "v1"));
+	write_in_flow(&buffer, FLOW_B, 20, &[insert(OP_B, "k2", "v2")]);
+	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
+
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+	assert_eq!(
+		operators_of(&first),
+		vec![OP_B],
+		"the flow that has been pending longest must go first even though its id sorts last"
+	);
+}
+
+#[test]
+fn an_operator_with_no_flow_drains_without_blocking_any_checkpoint() {
+	// state that never arrived through a flow slice has no checkpoint to earn and no flow to hold back;
+	// treating it as belonging to one would stall an unrelated flow behind it forever
+	let buffer = OperatorResidentState::new();
+	buffer.record_state_set(OP_A, key("orphan"), row("v"), DurablePre::Absent);
+	buffer.record_checkpoint_set(FLOW_A, CommitVersion(5));
+
+	let batch = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+	assert!(batch.state.contains_key(&(OP_A, key("orphan"))), "untagged state must still be made durable");
+	assert_eq!(
+		batch.checkpoints.get(&FLOW_A).copied(),
+		Some(Some(CommitVersion(5))),
+		"an operator with no flow claims no flow, so it must not hold one back"
+	);
+}
+
+#[test]
+fn a_buffer_far_past_the_budget_drains_whole_flows_and_loses_nothing() {
+	// the budget stops the drain before it starts the next flow, never inside one; an operator split
+	// across two slices would write half its state under a checkpoint that claims all of it
+	let entry = entry_bytes("k0", "v0");
+	let buffer = OperatorResidentState::with_budget(entry * 2);
+	for index in 0..5u64 {
+		write_in_flow(&buffer, FLOW_A, index + 1, &[insert(OP_A, &format!("k{index}"), &format!("v{index}"))]);
+	}
+	for index in 5..10u64 {
+		write_in_flow(&buffer, FLOW_B, index + 1, &[insert(OP_B, &format!("k{index}"), &format!("v{index}"))]);
 	}
 
 	let mut seen: Vec<String> = Vec::new();
 	let mut slices = 0;
 	while let Some(batch) = buffer.take_for_flush() {
-		assert!(
-			batch.bytes <= budget,
-			"a slice of {} is past the budget of {budget}; an unbounded slice is exactly the \
-			 multi-second transaction this split exists to prevent",
-			batch.bytes
-		);
 		slices += 1;
-		for ((_, taken), entry) in &batch.state {
-			seen.push(String::from_utf8(taken.as_slice().to_vec()).expect("test keys are utf8"));
+		assert!(slices <= 4, "the drain must make progress on every take or it never terminates");
+		assert_eq!(
+			operators_of(&batch).len(),
+			1,
+			"a slice that mixes operators from two flows has crossed a boundary the byte budget was \
+			 only ever allowed to stop at"
+		);
+		for ((operator, taken), _) in &batch.state {
 			assert_eq!(
-				entry_body(entry),
-				format!("v{}", &seen[seen.len() - 1][1..]),
-				"a slice must carry each key together with its own value"
+				live_bytes_of(&buffer, operator),
+				ByteSize::ZERO,
+				"the operator kept live state behind, so this slice split it; its flow checkpoint \
+				 would then promise state that never reached sqlite"
 			);
+			seen.push(String::from_utf8(taken.as_slice().to_vec()).expect("test keys are utf8"));
 		}
 		buffer.complete_flush();
-		assert!(slices <= total, "the split must make progress on every take or the drain never terminates");
 	}
 
-	assert_eq!(
-		slices,
-		(entry * total as u64).as_bytes().div_ceil(budget.as_bytes()) as usize,
-		"the buffer must be handed out in full slices plus a remainder"
-	);
+	assert_eq!(slices, 2, "two flows drain as two whole slices, one each");
 	let mut unique = seen.clone();
 	unique.sort();
 	unique.dedup();
@@ -689,25 +802,23 @@ fn a_buffer_far_past_the_budget_hands_out_bounded_slices_that_together_lose_noth
 	);
 	assert_eq!(
 		seen.len(),
-		total,
+		10,
 		"every buffered key must reach exactly one slice; a key left behind by the last take is committed \
 		 operator state that never becomes durable"
 	);
 }
 
 #[test]
-fn a_key_rewritten_after_its_slice_left_reads_and_flushes_as_the_later_value() {
-	let buffer = OperatorResidentState::with_budget(
-		entry_bytes("k3", "left-behind").saturating_add(entry_bytes("k1", "late")),
-	);
+fn a_key_rewritten_during_its_flush_flushes_as_the_later_value() {
+	// carrying the in-flight value into the next slice would overwrite the rewrite in sqlite and roll
+	// the key silently back to a value the operator has already replaced
+	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k1"), row("early"), DurablePre::Absent);
-	buffer.record_state_set(OP_A, key("k2"), row("filler"), DurablePre::Absent);
-	buffer.record_state_set(OP_A, key("k3"), row("left-behind"), DurablePre::Absent);
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
 	assert_eq!(first.state.get(&(OP_A, key("k1"))).map(entry_body), Some("early".to_string()));
-	buffer.record_state_set(OP_A, key("k1"), row("late"), DurablePre::Absent);
 
+	buffer.record_state_set(OP_A, key("k1"), row("late"), DurablePre::Absent);
 	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k1")) else {
 		panic!("the rewritten key must read from the live layer")
 	};
@@ -719,25 +830,27 @@ fn a_key_rewritten_after_its_slice_left_reads_and_flushes_as_the_later_value() {
 	);
 	buffer.complete_flush();
 
-	let second = buffer.take_for_flush().expect("the leftover and the rewrite make a second slice");
+	let second = buffer.take_for_flush().expect("the rewrite recorded during the flush makes a second slice");
 	assert_eq!(
 		second.state.get(&(OP_A, key("k1"))).map(entry_body),
 		Some("late".to_string()),
 		"the later slice must carry the later value; carrying the earlier one would overwrite the rewrite \
 		 in sqlite and silently roll the key back"
 	);
-	assert_eq!(second.state.get(&(OP_A, key("k3"))).map(entry_body), Some("left-behind".to_string()));
 	buffer.complete_flush();
-	assert!(buffer.take_for_flush().is_none(), "the split must terminate once everything has been handed out");
+	assert!(buffer.take_for_flush().is_none(), "the drain must terminate once everything has been handed out");
 }
 
 #[test]
 fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
-	let buffer = OperatorResidentState::with_budget(entry_bytes("k2", "post-drop-a"));
-	buffer.record_state_set(OP_A, key("k1"), row("pre-drop"), DurablePre::Absent);
+	// a marker replayed in a later slice deletes the post-drop rows an earlier slice already made
+	// durable, so every marker must ride the first slice out and never appear again
+	let entry = entry_bytes("k2", "post-drop");
+	let buffer = OperatorResidentState::with_budget(entry);
+	write_in_flow(&buffer, FLOW_A, 1, &[insert(OP_A, "k1", "pre-drop")]);
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
-	buffer.record_state_set(OP_A, key("k2"), row("post-drop-a"), DurablePre::Absent);
-	buffer.record_state_set(OP_A, key("k3"), row("post-drop-b"), DurablePre::Absent);
+	write_in_flow(&buffer, FLOW_A, 2, &[insert(OP_A, "k2", "post-drop")]);
+	write_in_flow(&buffer, FLOW_B, 3, &[insert(OP_B, "k3", "other-flow")]);
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
 	assert_eq!(
@@ -749,52 +862,46 @@ fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
 		!first.state.contains_key(&(OP_A, key("k1"))),
 		"a write recorded before the drop must have been cleared, not carried into a slice"
 	);
+	assert!(first.state.contains_key(&(OP_A, key("k2"))), "the post-drop write rides out with its own flow");
 	buffer.complete_flush();
 
-	let second = buffer.take_for_flush().expect("a leftover write makes a second slice");
+	let second = buffer.take_for_flush().expect("the second flow makes a second slice");
 	assert!(
 		second.drops.is_empty(),
 		"a marker replayed in a later slice deletes the post-drop rows the first slice already made durable"
 	);
-	assert_eq!(second.state.len(), 1, "the leftover must still be handed out under the budget");
 	assert!(
-		second.state.contains_key(&(OP_A, key("k3"))),
-		"the write the first slice could not fit must be the one left for the second"
+		second.state.contains_key(&(OP_B, key("k3"))),
+		"the flow the budget stopped before must be the one left for the second slice"
 	);
 	buffer.complete_flush();
-	assert!(buffer.take_for_flush().is_none(), "both post-drop writes must have been handed out");
+	assert!(buffer.take_for_flush().is_none(), "both flows must have been handed out");
 }
 
 #[test]
-fn join_expiries_are_handed_out_under_the_same_budget_as_state() {
-	let state = entry_bytes("k1", "v").saturating_add(entry_bytes("k2", "v"));
-	let budget = state.saturating_add(JOIN_EXPIRY_ENTRY_BYTES * 2);
-	let buffer = OperatorResidentState::with_budget(budget);
+fn join_expiries_travel_with_their_operators_state_in_one_slice() {
+	// an expiry stranded in a later slice than the state it guards is a timer that fires against rows
+	// sqlite does not have yet
+	let buffer = OperatorResidentState::with_budget(entry_bytes("k1", "v"));
 	buffer.record_state_set(OP_A, key("k1"), row("v"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("k2"), row("v"), DurablePre::Absent);
 	for row_number in 0..10u64 {
 		buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(row_number), DateTime::from_millis(100));
 	}
 
-	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
+	let first = buffer.take_for_flush().expect("the seeded buffer yields a slice");
+	assert_eq!(first.state.len(), 2, "the operator hands out all of its state at once, budget or not");
 	assert_eq!(
-		first.bytes.saturating_sub(JOIN_EXPIRY_ENTRY_BYTES * first.join_expiries.len() as u64),
-		state,
-		"state is taken first because it dominates the write cost"
-	);
-	assert_eq!(
-		first.bytes, budget,
-		"the join expiries must fill the remainder of the budget rather than travel unbounded beside the state"
+		first.join_expiries.len(),
+		10,
+		"every armed expiry must leave with the state of the same operator, not trail it by a slice"
 	);
 	buffer.complete_flush();
 
-	let mut join_expiries = first.join_expiries.len();
-	while let Some(batch) = buffer.take_for_flush() {
-		assert!(batch.bytes <= budget, "every join expiry slice must respect the budget too");
-		join_expiries += batch.join_expiries.len();
-		buffer.complete_flush();
-	}
-	assert_eq!(join_expiries, 10, "every armed join expiry must reach exactly one slice or a timer is lost");
+	assert!(
+		buffer.take_for_flush().is_none(),
+		"nothing may be left behind; a stranded expiry never becomes durable and the timer is lost"
+	);
 }
 
 #[test]
@@ -932,17 +1039,22 @@ fn a_join_expiry_is_charged_its_fixed_width_once_per_slot() {
 }
 
 #[test]
-fn a_split_moves_exactly_the_bytes_the_slice_carries_away() {
+fn a_flow_boundary_split_moves_exactly_the_bytes_the_slice_carries_away() {
+	// a byte counted on both sides of the split makes the budget believe it is over cap forever, and
+	// one counted on neither makes it flush on a buffer that never grew
 	let buffer = OperatorResidentState::with_budget(entry_bytes("k1", "aaa"));
-	buffer.record_state_set(OP_A, key("k1"), row("aaa"), DurablePre::Absent);
-	buffer.record_state_set(OP_A, key("k2"), row("bbbbb"), DurablePre::Absent);
+	write_in_flow(&buffer, FLOW_A, 1, &[insert(OP_A, "k1", "aaa")]);
 	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
+	write_in_flow(&buffer, FLOW_B, 2, &[insert(OP_B, "k2", "bbbbb")]);
 	let before = live_bytes(&buffer);
 
 	let taken = buffer.take_for_flush().expect("the seeded buffer yields a slice");
 
 	assert!(taken.bytes > ByteSize::ZERO, "a slice that carries rows must carry a charge");
-	assert!(live_bytes(&buffer) > ByteSize::ZERO, "the budget must have left something behind to split at all");
+	assert!(
+		live_bytes(&buffer) > ByteSize::ZERO,
+		"the budget must have stopped at the flow boundary and left something behind to split at all"
+	);
 	assert_eq!(
 		taken.bytes.saturating_add(live_bytes(&buffer)),
 		before,

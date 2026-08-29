@@ -3,15 +3,13 @@
 
 use std::{
 	collections::{BTreeMap, btree_map},
-	mem,
 	ops::Bound,
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_value::byte_size::ByteSize;
 
-use crate::tier::resident::batch::{StateEntry, StateKey, state_entry_bytes};
+use crate::tier::resident::batch::{StateEntry, StateKey};
 
 pub type OperatorKeys = BTreeMap<EncodedKey, StateEntry>;
 
@@ -19,12 +17,6 @@ pub type OperatorKeys = BTreeMap<EncodedKey, StateEntry>;
 pub struct StateMap {
 	operators: BTreeMap<OperatorId, OperatorKeys>,
 	len: usize,
-}
-
-pub(super) struct Swept {
-	pub taken: StateMap,
-	pub bytes: ByteSize,
-	pub cursor: Option<StateKey>,
 }
 
 impl StateMap {
@@ -61,181 +53,11 @@ impl StateMap {
 		}
 	}
 
-	pub(super) fn slot(&mut self, key: StateKey) -> btree_map::Entry<'_, EncodedKey, StateEntry> {
-		self.operators.entry(key.0).or_default().entry(key.1)
-	}
-
-	pub(super) fn admit(&mut self) {
-		self.len += 1;
-	}
-
 	pub(super) fn insert(&mut self, operator: OperatorId, key: EncodedKey, entry: StateEntry) {
 		if self.operators.entry(operator).or_default().insert(key, entry).is_none() {
 			self.len += 1;
 		}
 	}
-
-	pub(super) fn remove_operator(&mut self, operator: OperatorId) -> Option<OperatorKeys> {
-		let keys = self.operators.remove(&operator)?;
-		self.len -= keys.len();
-		Some(keys)
-	}
-
-	pub(super) fn take_within(&mut self, budget: ByteSize, force_first: bool) -> (StateMap, ByteSize) {
-		let mut taken = ByteSize::ZERO;
-		let mut count = 0usize;
-		let mut boundary: Option<StateKey> = None;
-		'search: for (operator, keys) in self.operators.iter() {
-			for (key, entry) in keys.iter() {
-				let cost = state_entry_bytes(key, entry);
-				if !(force_first && count == 0) && taken.saturating_add(cost) > budget {
-					boundary = Some((*operator, key.clone()));
-					break 'search;
-				}
-				taken = taken.saturating_add(cost);
-				count += 1;
-			}
-		}
-
-		let Some((boundary_operator, boundary_key)) = boundary else {
-			return (mem::take(self), taken);
-		};
-
-		let mut remainder = self.operators.split_off(&boundary_operator);
-		let mut head = mem::take(&mut self.operators);
-		let mut drained = false;
-		if let Some(keys) = remainder.get_mut(&boundary_operator) {
-			let tail = keys.split_off(&boundary_key);
-			let front = mem::replace(keys, tail);
-			drained = keys.is_empty();
-			if !front.is_empty() {
-				head.insert(boundary_operator, front);
-			}
-		}
-		if drained {
-			remainder.remove(&boundary_operator);
-		}
-		self.operators = remainder;
-		self.len -= count;
-
-		(
-			StateMap {
-				operators: head,
-				len: count,
-			},
-			taken,
-		)
-	}
-
-	pub(super) fn sweep(&mut self, budget: ByteSize, cursor: Option<StateKey>) -> Swept {
-		let total = self.len;
-		let operators: Vec<OperatorId> = self.operators.keys().copied().collect();
-		let mut victims: Vec<StateKey> = Vec::new();
-		let mut fallback: Vec<StateKey> = Vec::new();
-		let mut fallback_bytes = ByteSize::ZERO;
-		let mut coldest: Option<u8> = None;
-		let mut examined = 0usize;
-		let mut taken = ByteSize::ZERO;
-		let mut last: Option<StateKey> = cursor.clone();
-		let mut filled = false;
-
-		'sweep: for (operator, lower, upper) in revolution(&operators, cursor) {
-			let Some(keys) = self.operators.get_mut(&operator) else {
-				continue;
-			};
-			for (key, entry) in keys.range_mut((lower, upper)) {
-				examined += 1;
-				last = Some((operator, key.clone()));
-				if entry.count == 0 {
-					taken = taken.saturating_add(state_entry_bytes(key, entry));
-					victims.push((operator, key.clone()));
-					if taken >= budget {
-						filled = true;
-						break 'sweep;
-					}
-				} else {
-					entry.count /= 2;
-					let rank = entry.count;
-					let cost = state_entry_bytes(key, entry);
-					match coldest {
-						Some(current) if rank > current => {}
-						Some(current) if rank == current => {
-							if fallback_bytes < budget {
-								fallback_bytes = fallback_bytes.saturating_add(cost);
-								fallback.push((operator, key.clone()));
-							}
-						}
-						_ => {
-							coldest = Some(rank);
-							fallback.clear();
-							fallback_bytes = cost;
-							fallback.push((operator, key.clone()));
-						}
-					}
-				}
-				if examined >= total {
-					break 'sweep;
-				}
-			}
-		}
-
-		if victims.is_empty() && !filled {
-			victims = fallback;
-		}
-
-		let mut map = StateMap::default();
-		let mut bytes = ByteSize::ZERO;
-		for (operator, key) in victims {
-			let Some(keys) = self.operators.get_mut(&operator) else {
-				continue;
-			};
-			let Some(entry) = keys.remove(&key) else {
-				continue;
-			};
-			let drained = keys.is_empty();
-			if drained {
-				self.operators.remove(&operator);
-			}
-			self.len -= 1;
-			bytes = bytes.saturating_add(state_entry_bytes(&key, &entry));
-			map.insert(operator, key, entry);
-		}
-
-		Swept {
-			taken: map,
-			bytes,
-			cursor: last,
-		}
-	}
-}
-
-type Segment = (OperatorId, Bound<EncodedKey>, Bound<EncodedKey>);
-
-fn revolution(operators: &[OperatorId], cursor: Option<StateKey>) -> Vec<Segment> {
-	let Some((operator, key)) = cursor else {
-		return operators.iter().map(|operator| (*operator, Bound::Unbounded, Bound::Unbounded)).collect();
-	};
-	let start = operators.partition_point(|candidate| *candidate < operator);
-	let resumed = operators.get(start).is_some_and(|candidate| *candidate == operator);
-	let mut segments = Vec::with_capacity(operators.len() + 1);
-	if resumed {
-		segments.push((operator, Bound::Excluded(key.clone()), Bound::Unbounded));
-	}
-	let head = if resumed {
-		start + 1
-	} else {
-		start
-	};
-	for candidate in &operators[head..] {
-		segments.push((*candidate, Bound::Unbounded, Bound::Unbounded));
-	}
-	for candidate in &operators[..start] {
-		segments.push((*candidate, Bound::Unbounded, Bound::Unbounded));
-	}
-	if resumed {
-		segments.push((operator, Bound::Unbounded, Bound::Included(key)));
-	}
-	segments
 }
 
 #[derive(Default)]
