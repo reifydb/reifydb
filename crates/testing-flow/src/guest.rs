@@ -61,8 +61,8 @@ impl<C: GuestOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version: CommitVersion(self.version),
 			pending: PendingLayers::with_top(mem::take(&mut self.pending)),
-			query,
-			state_query,
+			query: Some(query),
+			state_query: Some(state_query),
 			catalog: Catalog::testing(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(1000)),

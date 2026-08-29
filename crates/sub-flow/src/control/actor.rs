@@ -1028,8 +1028,8 @@ mod pull_protocol {
 			let mut txn = DeferredTransaction::new(DeferredParams {
 				version: self.engine.current_version().expect("current version"),
 				pending: PendingLayers::empty(),
-				query: self.engine.multi().begin_query().expect("query"),
-				state_query: self.engine.multi().begin_query().expect("state query"),
+				query: Some(self.engine.multi().begin_query().expect("query")),
+				state_query: Some(self.engine.multi().begin_query().expect("state query")),
 				catalog: self.engine.catalog(),
 				interceptors: self.engine.create_interceptors(),
 				clock: self.engine.clock().clone(),
@@ -1947,8 +1947,8 @@ mod tick_failures {
 		let mut txn = DeferredTransaction::new(DeferredParams {
 			version,
 			pending: PendingLayers::empty(),
-			query,
-			state_query,
+			query: Some(query),
+			state_query: Some(state_query),
 			catalog: engine.catalog(),
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
