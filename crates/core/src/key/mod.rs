@@ -89,6 +89,7 @@ pub mod identity_attribute;
 pub mod identity_attribute_value;
 pub mod index;
 pub mod index_entry;
+pub mod keyspace;
 pub mod kind;
 pub mod migration;
 pub mod migration_event;

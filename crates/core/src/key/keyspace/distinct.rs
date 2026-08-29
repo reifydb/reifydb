@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use crate::{
+	interface::store::CacheTiers,
+	key::{
+		operator_state::{GroupId, KeyspaceId},
+		typed::{
+			Key,
+			direction::{Desc, Direction, KeyField},
+			keyspace::Keyspace,
+			layout::{KeyColumn, KeyColumnType, KeyLayout},
+		},
+	},
+	metrics::heap::HeapSize,
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+pub struct DistinctEntryKey {
+	pub group: Desc<GroupId>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Key, HeapSize)]
+pub struct DistinctLayoutKey {}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DistinctEntry;
+
+impl Keyspace for DistinctEntry {
+	const ID: KeyspaceId = KeyspaceId::DISTINCT_ENTRY;
+	const NAME: &'static str = "DISTINCT_ENTRY";
+	const CACHE: CacheTiers = CacheTiers::Both;
+
+	type Key = DistinctEntryKey;
+	type Suffix = ();
+
+	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+		(key.group.0, ())
+	}
+
+	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::Key {
+		DistinctEntryKey {
+			group: Desc(group),
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DistinctLayout;
+
+impl Keyspace for DistinctLayout {
+	const ID: KeyspaceId = KeyspaceId::DISTINCT_LAYOUT;
+	const NAME: &'static str = "DISTINCT_LAYOUT";
+	const CACHE: CacheTiers = CacheTiers::Both;
+
+	type Key = DistinctLayoutKey;
+	type Suffix = DistinctLayoutKey;
+
+	fn split(key: &Self::Key) -> (GroupId, Self::Suffix) {
+		(GroupId::ROOT, *key)
+	}
+
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::Key {
+		suffix
+	}
+}

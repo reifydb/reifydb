@@ -68,11 +68,7 @@ pub trait GuestState {
 	fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> Result<Vec<(GroupStateKey, T)>>;
 	fn get_many<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, T)>>;
 	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>>;
-	fn range<T: OperatorState>(
-		&self,
-		start: KeyBound<'_>,
-		end: KeyBound<'_>,
-	) -> Result<Vec<(GroupStateKey, T)>>;
+	fn range<T: OperatorState>(&self, start: KeyBound<'_>, end: KeyBound<'_>) -> Result<Vec<(GroupStateKey, T)>>;
 	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
 
 	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()>;
@@ -91,11 +87,7 @@ pub trait GuestState {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
 
-	fn last_bytes(
-		&self,
-		start: KeyBound<'_>,
-		end: KeyBound<'_>,
-	) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+	fn last_bytes(&self, start: KeyBound<'_>, end: KeyBound<'_>) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 		let mut last = None;
 		self.range_bytes_visit(start, end, None, &mut |key, payload| {
 			last = Some((key, payload));

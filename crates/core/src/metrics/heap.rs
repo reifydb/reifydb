@@ -8,7 +8,10 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, shape::fingerprint::RowShapeFingerprint},
+};
 pub use reifydb_macro::HeapSize;
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -22,12 +25,15 @@ use reifydb_value::{
 		identity::IdentityId,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
+		partition::Partition,
 		percentile::{Centroid, Percentiles},
 		row_number::RowNumber,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 	},
 };
+
+use crate::state::{join::ContentVersion, timer::TimerKind};
 
 pub trait HeapSize {
 	fn heap_size(&self) -> usize;
@@ -127,6 +133,7 @@ zero_heap!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, 
 zero_heap!(
 	OrderedF32, OrderedF64, Date, DateTime, Time, Duration, IdentityId, Uuid4, Uuid7, RowNumber, Hash128, Centroid
 );
+zero_heap!(Partition, RowShapeFingerprint, TimerKind, ContentVersion);
 
 const BIGNUM_APPROX_HEAP: usize = 32;
 

@@ -200,9 +200,9 @@ fn column_type(inner: &[TokenTree]) -> Option<&'static str> {
 	};
 
 	match head.as_str() {
-		"u8" => Some("U8"),
-		"u64" | "RowNumber" => Some("U64"),
-		"GroupId" => Some("Blob16"),
+		"u8" | "TimerKind" => Some("U8"),
+		"u64" | "RowNumber" | "DateTime" | "RowShapeFingerprint" | "ContentVersion" => Some("U64"),
+		"GroupId" | "Hash128" | "Partition" => Some("Blob16"),
 		_ => None,
 	}
 }
@@ -397,6 +397,38 @@ mod tests {
 		let out = expand("struct CustomKey { blob: Asc<[u8; 16]> }");
 		assert!(!out.contains("compile_error"), "{out}");
 		assert!(out.contains("KeyColumnType :: Blob16"), "{out}");
+	}
+
+	#[test]
+	fn every_catalogue_field_type_maps_to_its_declared_width() {
+		// the width here is what sqlite's column and the fixed width row both take; mapping a type one
+		// column too narrow silently truncates every value the keyspace ever writes
+		for (inner, column) in [
+			("u8", "U8"),
+			("TimerKind", "U8"),
+			("u64", "U64"),
+			("RowNumber", "U64"),
+			("DateTime", "U64"),
+			("RowShapeFingerprint", "U64"),
+			("ContentVersion", "U64"),
+			("GroupId", "Blob16"),
+			("Hash128", "Blob16"),
+			("Partition", "Blob16"),
+		] {
+			let out = expand(&format!("struct ProbeKey {{ field: Asc<{inner}> }}"));
+			assert!(!out.contains("compile_error"), "{inner}: {out}");
+			assert!(out.contains(&format!("KeyColumnType :: {column}")), "{inner}: {out}");
+		}
+	}
+
+	#[test]
+	fn a_type_outside_the_closed_set_is_rejected_by_name() {
+		// R19 keeps the mapping a closed list: a guessed fallback would give a new field type a width
+		// nobody chose, so an unmapped name must name itself in the error instead
+		let out = expand("struct ProbeKey { field: Asc<Duration> }");
+		assert!(out.contains("compile_error"), "{out}");
+		assert!(out.contains("Duration"), "{out}");
+		assert!(out.contains("no key column type"), "{out}");
 	}
 
 	#[test]

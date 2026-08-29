@@ -23,12 +23,14 @@ use crate::{
 		status::{EXTERN_C_END_OF_ITERATION, EXTERN_C_NOT_FOUND, EXTERN_C_OK},
 	},
 	error::{Result, SdkError},
-	flow::operator::context::KeyBound,
-	flow::operator::extern_c::{
-		binding::context::ExternCContext,
-		wire::{
-			iterators::ExternCStateIterator,
-			state::{ExternCStateEntry, ExternCStateSlice},
+	flow::operator::{
+		context::KeyBound,
+		extern_c::{
+			binding::context::ExternCContext,
+			wire::{
+				iterators::ExternCStateIterator,
+				state::{ExternCStateEntry, ExternCStateSlice},
+			},
 		},
 	},
 };

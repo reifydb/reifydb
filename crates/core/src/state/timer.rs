@@ -13,7 +13,7 @@ use reifydb_value::{
 
 use crate::key::operator_state::{GroupId, GroupStateKey};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub enum TimerKind {
 	Seal = 0,

@@ -104,6 +104,12 @@ impl KeyspaceId {
 
 	pub const TIMER_INDEX: Self = Self(0xF8);
 
+	pub const JOIN_ROW_MAPPING: Self = Self(0xF7);
+
+	pub const GROUP_ROW_MAPPING: Self = Self(0xF6);
+
+	pub const GUEST_ROW_MAPPING: Self = Self(0xF5);
+
 	pub const ACCUMULATOR: Self = Self(0x10);
 
 	pub const BUFFER: Self = Self(0x11);
@@ -158,6 +164,22 @@ impl KeyspaceId {
 
 	pub const JOIN_ROW_EXPIRY: Self = Self(0x2B);
 
+	pub const GUEST_ACCUMULATOR: Self = Self(0x2C);
+
+	pub const GUEST_BUFFER: Self = Self(0x2D);
+
+	pub const GUEST_RUNNING: Self = Self(0x2E);
+
+	pub const TUMBLING_EXPIRY: Self = Self(0x2F);
+
+	pub const PARTITIONED_RINGBUFFER_ENTRY: Self = Self(0x30);
+
+	pub const PARTITIONED_RINGBUFFER_EXPIRY: Self = Self(0x31);
+
+	pub const PARTITIONED_RINGBUFFER_TTL_ARM: Self = Self(0x32);
+
+	pub const PARTITIONED_RINGBUFFER_META: Self = Self(0x33);
+
 	pub const CUSTOM_NOT_CACHED: Self = Self(0x40);
 
 	pub fn name(&self) -> Cow<'static, str> {
@@ -167,6 +189,9 @@ impl KeyspaceId {
 			Self::SOURCE_WATERMARK => "SOURCE_WATERMARK",
 			Self::TIMER_WHEEL => "TIMER_WHEEL",
 			Self::TIMER_INDEX => "TIMER_INDEX",
+			Self::JOIN_ROW_MAPPING => "JOIN_ROW_MAPPING",
+			Self::GROUP_ROW_MAPPING => "GROUP_ROW_MAPPING",
+			Self::GUEST_ROW_MAPPING => "GUEST_ROW_MAPPING",
 			Self::ACCUMULATOR => "ACCUMULATOR",
 			Self::BUFFER => "BUFFER",
 			Self::RUNNING => "RUNNING",
@@ -194,6 +219,14 @@ impl KeyspaceId {
 			Self::RINGBUFFER_META => "RINGBUFFER_META",
 			Self::REAP_QUEUE => "REAP_QUEUE",
 			Self::JOIN_ROW_EXPIRY => "JOIN_ROW_EXPIRY",
+			Self::GUEST_ACCUMULATOR => "GUEST_ACCUMULATOR",
+			Self::GUEST_BUFFER => "GUEST_BUFFER",
+			Self::GUEST_RUNNING => "GUEST_RUNNING",
+			Self::TUMBLING_EXPIRY => "TUMBLING_EXPIRY",
+			Self::PARTITIONED_RINGBUFFER_ENTRY => "PARTITIONED_RINGBUFFER_ENTRY",
+			Self::PARTITIONED_RINGBUFFER_EXPIRY => "PARTITIONED_RINGBUFFER_EXPIRY",
+			Self::PARTITIONED_RINGBUFFER_TTL_ARM => "PARTITIONED_RINGBUFFER_TTL_ARM",
+			Self::PARTITIONED_RINGBUFFER_META => "PARTITIONED_RINGBUFFER_META",
 			Self::CUSTOM_NOT_CACHED => "CUSTOM_NOT_CACHED",
 			_ => return Cow::Owned(format!("{:#04x}", self.0)),
 		}
@@ -216,7 +249,12 @@ impl KeyspaceId {
 			Self::ENGINE_META => CacheTiers::Range,
 			Self::JOIN_PIN => CacheTiers::Range,
 			Self::ROW_NUMBER_MAPPING => CacheTiers::Range,
+			Self::JOIN_ROW_MAPPING => CacheTiers::Range,
+			Self::GROUP_ROW_MAPPING => CacheTiers::Range,
+			Self::GUEST_ROW_MAPPING => CacheTiers::Range,
 			Self::ACCUMULATOR => CacheTiers::Range,
+			Self::GUEST_ACCUMULATOR => CacheTiers::Range,
+			Self::TUMBLING_EXPIRY => CacheTiers::Range,
 			Self::WINDOW_META => CacheTiers::Range,
 			_ => CacheTiers::Both,
 		}
@@ -233,6 +271,8 @@ impl KeyspaceId {
 				Self::ROW_NUMBER_MAPPING
 					| Self::NODE_COUNTER | Self::SOURCE_WATERMARK
 					| Self::TIMER_WHEEL | Self::TIMER_INDEX
+					| Self::JOIN_ROW_MAPPING | Self::GROUP_ROW_MAPPING
+					| Self::GUEST_ROW_MAPPING
 			)
 	}
 }
@@ -569,12 +609,15 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and `cache_tiers`, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, CacheTiers); 33] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, CacheTiers); 44] = [
 		("ROW_NUMBER_MAPPING", KeyspaceId::ROW_NUMBER_MAPPING, Phase::Identity, CacheTiers::Range),
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, CacheTiers::Both),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, CacheTiers::Both),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, CacheTiers::Range),
 		("TIMER_INDEX", KeyspaceId::TIMER_INDEX, Phase::Identity, CacheTiers::Both),
+		("JOIN_ROW_MAPPING", KeyspaceId::JOIN_ROW_MAPPING, Phase::Identity, CacheTiers::Range),
+		("GROUP_ROW_MAPPING", KeyspaceId::GROUP_ROW_MAPPING, Phase::Identity, CacheTiers::Range),
+		("GUEST_ROW_MAPPING", KeyspaceId::GUEST_ROW_MAPPING, Phase::Identity, CacheTiers::Range),
 		("ACCUMULATOR", KeyspaceId::ACCUMULATOR, Phase::Data, CacheTiers::Range),
 		("BUFFER", KeyspaceId::BUFFER, Phase::Data, CacheTiers::Both),
 		("RUNNING", KeyspaceId::RUNNING, Phase::Data, CacheTiers::Both),
@@ -602,6 +645,29 @@ mod tests {
 		("RINGBUFFER_META", KeyspaceId::RINGBUFFER_META, Phase::Data, CacheTiers::Both),
 		("REAP_QUEUE", KeyspaceId::REAP_QUEUE, Phase::Data, CacheTiers::Both),
 		("JOIN_ROW_EXPIRY", KeyspaceId::JOIN_ROW_EXPIRY, Phase::Data, CacheTiers::Both),
+		("GUEST_ACCUMULATOR", KeyspaceId::GUEST_ACCUMULATOR, Phase::Data, CacheTiers::Range),
+		("GUEST_BUFFER", KeyspaceId::GUEST_BUFFER, Phase::Data, CacheTiers::Both),
+		("GUEST_RUNNING", KeyspaceId::GUEST_RUNNING, Phase::Data, CacheTiers::Both),
+		("TUMBLING_EXPIRY", KeyspaceId::TUMBLING_EXPIRY, Phase::Data, CacheTiers::Range),
+		(
+			"PARTITIONED_RINGBUFFER_ENTRY",
+			KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY,
+			Phase::Data,
+			CacheTiers::Both,
+		),
+		(
+			"PARTITIONED_RINGBUFFER_EXPIRY",
+			KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY,
+			Phase::Data,
+			CacheTiers::Both,
+		),
+		(
+			"PARTITIONED_RINGBUFFER_TTL_ARM",
+			KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM,
+			Phase::Data,
+			CacheTiers::Both,
+		),
+		("PARTITIONED_RINGBUFFER_META", KeyspaceId::PARTITIONED_RINGBUFFER_META, Phase::Data, CacheTiers::Both),
 		("CUSTOM_NOT_CACHED", KeyspaceId::CUSTOM_NOT_CACHED, Phase::Data, CacheTiers::Neither),
 	];
 

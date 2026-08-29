@@ -397,7 +397,11 @@ mod tests {
 
 	use crate::{
 		operator::{
-			state::{mock::MockStore, seal::coord::Coord},
+			state::{
+				mock::MockStore,
+				reaper::{StoreReaper, enqueue, reap_group},
+				seal::coord::Coord,
+			},
 			state_access::{get, put},
 		},
 		window::{
@@ -616,6 +620,37 @@ mod tests {
 		assert_eq!(later.len(), 1);
 		assert_eq!(later[0].window_start, at_millis(100));
 		assert_eq!(store.index_entry_count(), 0);
+	}
+
+	#[test]
+	fn a_window_drops_its_expiry_row_before_its_group_is_ever_enqueued_for_reaping() {
+		// The expiry row lives in the root group keyed by due time, not by the group id, so the reaper
+		// provably cannot reach it: spares_the_root_group_so_the_expiry_index_drains_on_its_own pins
+		// that it must not try. Dropping the row after the enqueue instead of before would therefore
+		// strand it behind a group id nothing can resolve again, and nothing downstream would notice.
+		let mut store = MockStore::default();
+		let window = seed_window(&mut store, 0, 5);
+		reindex_window(&mut store, &window.group, window.span.start, None, Some(10)).unwrap();
+		assert_eq!(store.index_entry_count(), 1, "precondition: the live window is indexed");
+
+		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let expired = engine.expire(&mut store, 10).unwrap();
+
+		assert_eq!(expired.len(), 1);
+		assert_eq!(
+			store.index_entry_count(),
+			0,
+			"expire must clear the row before it hands the group back for the caller to enqueue"
+		);
+
+		enqueue(&mut store, expired[0].group_id).unwrap();
+		reap_group(&mut store, expired[0].group_id, &mut StoreReaper, 256).unwrap();
+
+		assert_eq!(
+			store.index_entry_count(),
+			0,
+			"a group driven through expire, enqueue and reap must leave no expiry row behind"
+		);
 	}
 
 	#[test]

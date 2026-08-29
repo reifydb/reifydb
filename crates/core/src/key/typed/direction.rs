@@ -3,11 +3,16 @@
 
 use std::{cmp::Ordering, fmt::Debug, hash::Hash};
 
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_codec::row::shape::fingerprint::RowShapeFingerprint;
+use reifydb_value::{
+	util::hash::{Hash64, Hash128},
+	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
+};
 
 use crate::{
 	key::{operator_state::GroupId, typed::Key},
 	metrics::heap::HeapSize,
+	state::{join::ContentVersion, timer::TimerKind},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -152,6 +157,84 @@ impl KeyScalar for RowNumber {
 	}
 }
 
+impl KeyScalar for ContentVersion {
+	const MIN: Self = ContentVersion(u64::MIN);
+	const MAX: Self = ContentVersion(u64::MAX);
+
+	fn successor(&self) -> Option<Self> {
+		self.0.checked_add(1).map(ContentVersion)
+	}
+
+	fn predecessor(&self) -> Option<Self> {
+		self.0.checked_sub(1).map(ContentVersion)
+	}
+}
+
+impl KeyScalar for RowShapeFingerprint {
+	const MIN: Self = RowShapeFingerprint(Hash64(u64::MIN));
+	const MAX: Self = RowShapeFingerprint(Hash64(u64::MAX));
+
+	fn successor(&self) -> Option<Self> {
+		self.0.0.checked_add(1).map(|next| RowShapeFingerprint(Hash64(next)))
+	}
+
+	fn predecessor(&self) -> Option<Self> {
+		self.0.0.checked_sub(1).map(|previous| RowShapeFingerprint(Hash64(previous)))
+	}
+}
+
+impl KeyScalar for Hash128 {
+	const MIN: Self = Hash128(u128::MIN);
+	const MAX: Self = Hash128(u128::MAX);
+
+	fn successor(&self) -> Option<Self> {
+		self.0.checked_add(1).map(Hash128)
+	}
+
+	fn predecessor(&self) -> Option<Self> {
+		self.0.checked_sub(1).map(Hash128)
+	}
+}
+
+impl KeyScalar for Partition {
+	const MIN: Self = Partition(u128::MIN);
+	const MAX: Self = Partition(u128::MAX);
+
+	fn successor(&self) -> Option<Self> {
+		self.0.checked_add(1).map(Partition)
+	}
+
+	fn predecessor(&self) -> Option<Self> {
+		self.0.checked_sub(1).map(Partition)
+	}
+}
+
+impl KeyScalar for DateTime {
+	const MIN: Self = DateTime::EPOCH;
+	const MAX: Self = DateTime::MAX;
+
+	fn successor(&self) -> Option<Self> {
+		self.to_bits().checked_add(1).map(DateTime::from_bits)
+	}
+
+	fn predecessor(&self) -> Option<Self> {
+		self.to_bits().checked_sub(1).map(DateTime::from_bits)
+	}
+}
+
+impl KeyScalar for TimerKind {
+	const MIN: Self = TimerKind::Seal;
+	const MAX: Self = TimerKind::Maintenance;
+
+	fn successor(&self) -> Option<Self> {
+		TimerKind::from_u8(*self as u8 + 1)
+	}
+
+	fn predecessor(&self) -> Option<Self> {
+		(*self as u8).checked_sub(1).and_then(TimerKind::from_u8)
+	}
+}
+
 impl<T: KeyScalar> Key for Asc<T> {
 	fn low() -> Self {
 		Asc(T::MIN)
@@ -194,13 +277,97 @@ impl<T> KeyField for Desc<T> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::row_number::RowNumber;
+	use reifydb_codec::row::shape::fingerprint::RowShapeFingerprint;
+	use reifydb_value::{
+		util::hash::{Hash64, Hash128},
+		value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
+	};
 
 	use super::{Asc, Desc, Direction, KeyField, KeyScalar};
 	use crate::{
 		key::{operator_state::GroupId, typed::Key},
 		metrics::heap::HeapSize,
+		state::{join::ContentVersion, timer::TimerKind},
 	};
+
+	fn walks_its_whole_domain<T: KeyScalar>(low: T, high: T) {
+		// every scalar must agree that MIN and MAX are the ends and that stepping is immediate, or an
+		// exclusive upper end silently drops the row that sorts between a key and its successor
+		assert_eq!(T::MIN.predecessor(), None, "MIN must have no predecessor");
+		assert_eq!(T::MAX.successor(), None, "MAX must have no successor");
+		assert!(T::MIN <= low && high <= T::MAX, "the probes must lie inside the declared bounds");
+		assert!(low < high);
+		let next = low.successor().expect("a value below MAX must have a successor");
+		assert!(next > low);
+		assert_eq!(next.predecessor(), Some(low), "predecessor must undo successor exactly");
+	}
+
+	#[test]
+	fn content_version_walks_its_whole_domain() {
+		walks_its_whole_domain(ContentVersion(7), ContentVersion(9));
+	}
+
+	#[test]
+	fn row_shape_fingerprint_walks_its_whole_domain() {
+		walks_its_whole_domain(RowShapeFingerprint(Hash64(7)), RowShapeFingerprint(Hash64(9)));
+	}
+
+	#[test]
+	fn hash128_walks_its_whole_domain() {
+		walks_its_whole_domain(Hash128(7), Hash128(9));
+	}
+
+	#[test]
+	fn partition_walks_its_whole_domain() {
+		walks_its_whole_domain(Partition(7), Partition(9));
+	}
+
+	#[test]
+	fn datetime_walks_its_whole_domain() {
+		walks_its_whole_domain(DateTime::from_bits(7), DateTime::from_bits(9));
+	}
+
+	#[test]
+	fn timer_kind_walks_its_whole_domain() {
+		walks_its_whole_domain(TimerKind::Grace, TimerKind::RowTtl);
+	}
+
+	#[test]
+	fn timer_kind_orders_by_its_repr_discriminant() {
+		// the key column stores the discriminant byte, so an Ord that disagreed with `as u8` would sort
+		// the wheel index differently in memory than in sqlite
+		let mut kinds = vec![TimerKind::Maintenance, TimerKind::Seal, TimerKind::RowTtl, TimerKind::Grace];
+		kinds.sort();
+		let discriminants: Vec<u8> = kinds.iter().map(|kind| *kind as u8).collect();
+		assert_eq!(discriminants, vec![0, 1, 2, 3]);
+	}
+
+	#[test]
+	fn timer_kind_successor_stops_at_the_last_declared_variant() {
+		// from_u8 is what bounds the walk; a wider MAX would hand out a variant that does not exist
+		assert_eq!(TimerKind::Maintenance.successor(), None);
+		assert_eq!(TimerKind::Seal.predecessor(), None);
+		assert_eq!(TimerKind::Seal.successor(), Some(TimerKind::Grace));
+	}
+
+	#[test]
+	fn datetime_orders_by_the_bits_the_key_column_stores() {
+		// the column is written as to_bits(), so Ord disagreeing with bit order would make a wheel scan
+		// return rows the range never contained
+		assert!(DateTime::from_bits(1) < DateTime::from_bits(2));
+		assert_eq!(<Desc<DateTime> as Key>::low(), Desc(DateTime::MAX));
+		assert_eq!(<Asc<DateTime> as Key>::low(), Asc(DateTime::EPOCH));
+	}
+
+	#[test]
+	fn desc_of_every_new_scalar_starts_at_its_maximum() {
+		// Desc<T>::low() is T::MAX by definition; a scalar whose MAX is not its true top would start a
+		// descending scan below the first row and skip it
+		assert_eq!(<Desc<Hash128> as Key>::low(), Desc(Hash128(u128::MAX)));
+		assert_eq!(<Desc<Partition> as Key>::low(), Desc(Partition(u128::MAX)));
+		assert_eq!(<Desc<ContentVersion> as Key>::low(), Desc(ContentVersion(u64::MAX)));
+		assert_eq!(<Desc<TimerKind> as Key>::low(), Desc(TimerKind::Maintenance));
+	}
 
 	#[test]
 	fn asc_orders_like_the_inner_value() {

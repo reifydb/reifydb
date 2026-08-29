@@ -3,7 +3,6 @@
 
 pub mod utils;
 
-
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
@@ -85,9 +84,9 @@ impl<'a> State<'a> {
 		end: KeyBound<'_>,
 	) -> Result<Vec<(GroupStateKey, T)>> {
 		extern_c::range(self.ctx, start, end, usize::MAX)?
-		.into_iter()
-		.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
-		.collect()
+			.into_iter()
+			.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
+			.collect()
 	}
 
 	pub fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
@@ -120,9 +119,8 @@ impl<'a> State<'a> {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
-		for (seen, (k, row)) in extern_c::range(self.ctx, start, end, limit.unwrap_or(usize::MAX))?
-		.into_iter()
-		.enumerate()
+		for (seen, (k, row)) in
+			extern_c::range(self.ctx, start, end, limit.unwrap_or(usize::MAX))?.into_iter().enumerate()
 		{
 			if limit.is_some_and(|l| seen >= l) {
 				break;

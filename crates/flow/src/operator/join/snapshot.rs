@@ -12,6 +12,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::change::Diff,
 	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+	state::join::ContentVersion,
 	value::column::columns::Columns,
 };
 use reifydb_macro::operator_state;
@@ -19,10 +20,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	reifydb_assertions,
-	util::{
-		cowvec::CowVec,
-		hash::{Hash128, xxh3_64},
-	},
+	util::{cowvec::CowVec, hash::Hash128},
 	value::row_number::RowNumber,
 };
 
@@ -60,15 +58,6 @@ pub(crate) struct Published {
 	pub(crate) right: PublishedRight,
 	pub(crate) version: ContentVersion,
 	pub(crate) row_number: RowNumber,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct ContentVersion(u64);
-
-impl ContentVersion {
-	pub(crate) fn of(encoded: &EncodedBytes) -> Self {
-		Self(xxh3_64(&encoded.0).0)
-	}
 }
 
 #[operator_state]

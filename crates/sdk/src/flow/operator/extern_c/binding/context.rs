@@ -216,11 +216,7 @@ impl GuestState for State<'_> {
 	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>> {
 		State::keys_with_prefix(self, prefix)
 	}
-	fn range<T: OperatorState>(
-		&self,
-		start: KeyBound<'_>,
-		end: KeyBound<'_>,
-	) -> Result<Vec<(GroupStateKey, T)>> {
+	fn range<T: OperatorState>(&self, start: KeyBound<'_>, end: KeyBound<'_>) -> Result<Vec<(GroupStateKey, T)>> {
 		State::range(self, start, end)
 	}
 

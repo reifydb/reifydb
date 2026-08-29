@@ -3,8 +3,6 @@
 
 use std::fmt::Debug;
 
-use reifydb_codec::row::operator::state::OperatorState;
-
 use crate::{
 	interface::store::CacheTiers,
 	key::{
@@ -20,7 +18,6 @@ pub trait Keyspace: Copy + Debug + 'static {
 
 	type Key: KeyLayout;
 	type Suffix: Key;
-	type Row: OperatorState;
 
 	fn split(key: &Self::Key) -> (GroupId, Self::Suffix);
 
