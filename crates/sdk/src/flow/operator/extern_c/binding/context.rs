@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use core::ffi::c_void;
-use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -26,7 +25,7 @@ use crate::{
 	error::Result,
 	flow::operator::{
 		column::row::Row,
-		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit},
+		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit, KeyBound},
 		dictionary::Dictionary,
 		diff::DiffStart,
 		extern_c::{
@@ -219,8 +218,8 @@ impl GuestState for State<'_> {
 	}
 	fn range<T: OperatorState>(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		start: KeyBound<'_>,
+		end: KeyBound<'_>,
 	) -> Result<Vec<(GroupStateKey, T)>> {
 		State::range(self, start, end)
 	}
@@ -243,8 +242,8 @@ impl GuestState for State<'_> {
 
 	fn range_bytes_visit(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		start: KeyBound<'_>,
+		end: KeyBound<'_>,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {

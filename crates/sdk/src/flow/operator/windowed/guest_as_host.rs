@@ -17,9 +17,35 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::flow::operator::context::{GuestContext, GuestState};
+use crate::flow::operator::context::{GuestContext, GuestState, KeyBound};
 
 pub struct GuestAsHost<'a, C: GuestContext>(pub &'a mut C);
+
+enum OwnedBound {
+	Included(GroupStateKey),
+	Excluded(GroupStateKey),
+}
+
+impl OwnedBound {
+	fn of(bound: &Bound<EncodedKey>) -> Self {
+		match bound {
+			Bound::Included(key) => Self::Included(GroupStateKey::bound_unchecked(key.clone())),
+			Bound::Excluded(key) => Self::Excluded(GroupStateKey::bound_unchecked(key.clone())),
+			Bound::Unbounded => unreachable!(
+				"a guest state scan must name both ends; the window engine builds only keyspace \
+				 ranges, so an unbounded end means a caller invented a range the guest boundary \
+				 cannot admit"
+			),
+		}
+	}
+
+	fn borrow(&self) -> KeyBound<'_> {
+		match self {
+			Self::Included(key) => KeyBound::Included(key),
+			Self::Excluded(key) => KeyBound::Excluded(key),
+		}
+	}
+}
 
 impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
@@ -77,25 +103,16 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
-		let bound = |b: &Bound<EncodedKey>| match b {
-			Bound::Included(k) => Bound::Included(GroupStateKey::bound_unchecked(k.clone())),
-			Bound::Excluded(k) => Bound::Excluded(GroupStateKey::bound_unchecked(k.clone())),
-			Bound::Unbounded => Bound::Unbounded,
-		};
-		let (start, end) = (bound(&range.start), bound(&range.end));
-		let (start, end) = (start.as_ref(), end.as_ref());
-		self.0.state().range_bytes_visit(start, end, limit, &mut |k, v| visit(k, v).map_err(Into::into))?;
+		let (start, end) = (OwnedBound::of(&range.start), OwnedBound::of(&range.end));
+		self.0.state().range_bytes_visit(start.borrow(), end.borrow(), limit, &mut |k, v| {
+			visit(k, v).map_err(Into::into)
+		})?;
 		Ok(())
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
-		let bound = |b: &Bound<EncodedKey>| match b {
-			Bound::Included(k) => Bound::Included(GroupStateKey::bound_unchecked(k.clone())),
-			Bound::Excluded(k) => Bound::Excluded(GroupStateKey::bound_unchecked(k.clone())),
-			Bound::Unbounded => Bound::Unbounded,
-		};
-		let (start, end) = (bound(&range.start), bound(&range.end));
-		Ok(self.0.state().last_bytes(start.as_ref(), end.as_ref())?)
+		let (start, end) = (OwnedBound::of(&range.start), OwnedBound::of(&range.end));
+		Ok(self.0.state().last_bytes(start.borrow(), end.borrow())?)
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {

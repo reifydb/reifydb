@@ -3,7 +3,6 @@
 
 pub mod utils;
 
-use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -18,7 +17,7 @@ use reifydb_value::error::Error as ValueError;
 use crate::{
 	error::{Result, SdkError},
 	flow::operator::{
-		context::{GuestContext, GuestState},
+		context::{GuestContext, GuestState, KeyBound},
 		extern_c::binding::{context::ExternCContext, state as extern_c},
 	},
 };
@@ -82,15 +81,10 @@ impl<'a> State<'a> {
 
 	pub fn range<T: OperatorState>(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		start: KeyBound<'_>,
+		end: KeyBound<'_>,
 	) -> Result<Vec<(GroupStateKey, T)>> {
-		extern_c::range(
-			self.ctx,
-			start.map(GroupStateKey::as_encoded),
-			end.map(GroupStateKey::as_encoded),
-			usize::MAX,
-		)?
+		extern_c::range(self.ctx, start, end, usize::MAX)?
 		.into_iter()
 		.map(|(k, row)| Ok((framed(k)?, decode_payload(&EncodedPodRow::from(row))?)))
 		.collect()
@@ -121,17 +115,12 @@ impl<'a> State<'a> {
 
 	pub fn range_bytes_visit(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		start: KeyBound<'_>,
+		end: KeyBound<'_>,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
-		for (seen, (k, row)) in extern_c::range(
-			self.ctx,
-			start.map(GroupStateKey::as_encoded),
-			end.map(GroupStateKey::as_encoded),
-			limit.unwrap_or(usize::MAX),
-		)?
+		for (seen, (k, row)) in extern_c::range(self.ctx, start, end, limit.unwrap_or(usize::MAX))?
 		.into_iter()
 		.enumerate()
 		{

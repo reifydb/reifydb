@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{marker::PhantomData, mem, ops::Bound};
+use std::{marker::PhantomData, mem};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -17,7 +17,7 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
 		column::{row::Row, sink::in_process::InProcessRowSink},
-		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit},
+		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit, KeyBound},
 		state::{decode_payload, encode_payload},
 	},
 };
@@ -180,13 +180,10 @@ impl GuestState for InProcessState<'_> {
 	}
 	fn range<T: OperatorState>(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		start: KeyBound<'_>,
+		end: KeyBound<'_>,
 	) -> SdkResult<Vec<(GroupStateKey, T)>> {
-		let range = EncodedKeyRange::new(
-			start.map(|k| k.as_encoded().clone()),
-			end.map(|k| k.as_encoded().clone()),
-		);
+		let range = EncodedKeyRange::new(start.to_encoded(), end.to_encoded());
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.host).state_range(range) }.map_err(to_sdk_err)?;
@@ -217,15 +214,12 @@ impl GuestState for InProcessState<'_> {
 
 	fn range_bytes_visit(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		start: KeyBound<'_>,
+		end: KeyBound<'_>,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
-		let range = EncodedKeyRange::new(
-			start.map(|k| k.as_encoded().clone()),
-			end.map(|k| k.as_encoded().clone()),
-		);
+		let range = EncodedKeyRange::new(start.to_encoded(), end.to_encoded());
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
 		// cannot reach the context, so it cannot re-enter the host while this borrow is live.
@@ -235,13 +229,10 @@ impl GuestState for InProcessState<'_> {
 
 	fn last_bytes(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		start: KeyBound<'_>,
+		end: KeyBound<'_>,
 	) -> SdkResult<Option<(GroupStateKey, EncodedPodRow)>> {
-		let range = EncodedKeyRange::new(
-			start.map(|k| k.as_encoded().clone()),
-			end.map(|k| k.as_encoded().clone()),
-		);
+		let range = EncodedKeyRange::new(start.to_encoded(), end.to_encoded());
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_last(range) }.map_err(to_sdk_err)

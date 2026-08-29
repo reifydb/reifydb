@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
+use std::{ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -23,6 +23,7 @@ use crate::{
 		status::{EXTERN_C_END_OF_ITERATION, EXTERN_C_NOT_FOUND, EXTERN_C_OK},
 	},
 	error::{Result, SdkError},
+	flow::operator::context::KeyBound,
 	flow::operator::extern_c::{
 		binding::context::ExternCContext,
 		wire::{
@@ -212,7 +213,6 @@ pub(crate) fn prefix(
 	}
 }
 
-const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
@@ -222,8 +222,8 @@ const BOUND_EXCLUDED: u8 = 2;
 ))]
 pub(crate) fn range(
 	ctx: &ExternCContext,
-	start: Bound<&EncodedKey>,
-	end: Bound<&EncodedKey>,
+	start: KeyBound<'_>,
+	end: KeyBound<'_>,
 	limit: usize,
 ) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let mut iterator: *mut ExternCStateIterator = null_mut();
@@ -233,15 +233,25 @@ pub(crate) fn range(
 	// callback. The handle the host opens is passed once to collect_iterator_results, which owns and frees it.
 	unsafe {
 		let (start_ptr, start_len, start_bound_type) = match start {
-			Bound::Unbounded => (ptr::null(), 0, BOUND_UNBOUNDED),
-			Bound::Included(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_INCLUDED),
-			Bound::Excluded(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_EXCLUDED),
+			KeyBound::Included(key) => {
+				let bytes = key.as_bytes();
+				(bytes.as_ptr(), bytes.len(), BOUND_INCLUDED)
+			}
+			KeyBound::Excluded(key) => {
+				let bytes = key.as_bytes();
+				(bytes.as_ptr(), bytes.len(), BOUND_EXCLUDED)
+			}
 		};
 
 		let (end_ptr, end_len, end_bound_type) = match end {
-			Bound::Unbounded => (ptr::null(), 0, BOUND_UNBOUNDED),
-			Bound::Included(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_INCLUDED),
-			Bound::Excluded(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_EXCLUDED),
+			KeyBound::Included(key) => {
+				let bytes = key.as_bytes();
+				(bytes.as_ptr(), bytes.len(), BOUND_INCLUDED)
+			}
+			KeyBound::Excluded(key) => {
+				let bytes = key.as_bytes();
+				(bytes.as_ptr(), bytes.len(), BOUND_EXCLUDED)
+			}
 		};
 
 		let result = ((*ctx.ctx).callbacks.state.range)(

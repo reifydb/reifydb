@@ -25,6 +25,27 @@ use crate::{
 	flow::operator::column::{row::Row, sink::RowSink},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyBound<'a> {
+	Included(&'a GroupStateKey),
+	Excluded(&'a GroupStateKey),
+}
+
+impl<'a> KeyBound<'a> {
+	pub fn key(&self) -> &'a GroupStateKey {
+		match *self {
+			Self::Included(key) | Self::Excluded(key) => key,
+		}
+	}
+
+	pub fn to_encoded(&self) -> Bound<EncodedKey> {
+		match *self {
+			Self::Included(key) => Bound::Included(key.as_encoded().clone()),
+			Self::Excluded(key) => Bound::Excluded(key.as_encoded().clone()),
+		}
+	}
+}
+
 pub trait GuestEmit {
 	type Sink: RowSink;
 	fn sink(&mut self) -> &mut Self::Sink;
@@ -49,8 +70,8 @@ pub trait GuestState {
 	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>>;
 	fn range<T: OperatorState>(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		start: KeyBound<'_>,
+		end: KeyBound<'_>,
 	) -> Result<Vec<(GroupStateKey, T)>>;
 	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
 
@@ -64,16 +85,16 @@ pub trait GuestState {
 
 	fn range_bytes_visit(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		start: KeyBound<'_>,
+		end: KeyBound<'_>,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
 
 	fn last_bytes(
 		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
+		start: KeyBound<'_>,
+		end: KeyBound<'_>,
 	) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 		let mut last = None;
 		self.range_bytes_visit(start, end, None, &mut |key, payload| {
