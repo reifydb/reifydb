@@ -31,10 +31,9 @@ const ALWAYS_ON: [&str; 5] =
 	["retention-evict-silent", "historical-gc", "epoch-log", "queue-lease-reap", "queue-retention"];
 
 /// Classes this subsystem registers no lifecycle task for on this fixture; adding one is a reviewed decision that
-/// exempts it from the coverage assertion below. Two need a persistent tier the memory store lacks and
-/// cdc-truncate needs a CdcStore in the IoC.
-const CONDITIONAL: [RetentionClass; 3] =
-	[RetentionClass::PersistentFlush, RetentionClass::CdcTruncate, RetentionClass::TombstoneReap];
+/// exempts it from the coverage assertion below. Persistent-flush needs a flush engine the memory store lacks
+/// and cdc-truncate needs a CdcStore in the IoC.
+const CONDITIONAL: [RetentionClass; 2] = [RetentionClass::PersistentFlush, RetentionClass::CdcTruncate];
 
 fn lifecycle(subsystem: &dyn Subsystem) -> &LifecycleSubsystem {
 	subsystem
@@ -150,27 +149,6 @@ fn omits_persistent_flush_when_the_store_has_no_persistent_tier() {
 	assert!(
 		!names.iter().any(|n| n == "persistent-flush"),
 		"persistent-flush must not register on a memory-only store; registered: {names:?}"
-	);
-}
-
-#[test]
-fn omits_tombstone_reap_when_the_store_has_no_persistent_tier() {
-	// With no persistent tier there are no tables holding flushed tombstones, so registering the task would only
-	// schedule a no-op. The positive direction rides the sqlite-backed store tests.
-	let test_engine = TestEngine::new();
-	let engine: StandardEngine = test_engine.inner().clone();
-	let ioc = engine
-		.ioc()
-		.clone()
-		.register(engine.clone())
-		.register(LifecycleRegistry::new())
-		.register(RetentionMetrics::new());
-
-	let names = task_names(create(&ioc).as_ref());
-
-	assert!(
-		!names.iter().any(|n| n == "tombstone-reap"),
-		"tombstone-reap must not register on a memory-only store; registered: {names:?}"
 	);
 }
 
@@ -297,7 +275,7 @@ fn no_retention_class_is_left_without_an_executor_by_accident() {
 
 /// Classes the factory registers no task for on a memory store, each because the tier it operates on is
 /// absent. The factory must say so on the shared registry rather than leave the boot report to guess.
-const PERSISTENT_ONLY: [RetentionClass; 2] = [RetentionClass::PersistentFlush, RetentionClass::TombstoneReap];
+const PERSISTENT_ONLY: [RetentionClass; 1] = [RetentionClass::PersistentFlush];
 
 #[test]
 fn a_store_without_a_persistent_tier_declares_the_persistent_lanes_absent() {
@@ -393,7 +371,7 @@ fn the_factory_declares_onto_the_registered_coverage_not_a_private_default() {
 	create(&ioc);
 
 	assert_eq!(coverage.owner(RetentionClass::EpochLog), Some("epoch-log"));
-	assert_eq!(coverage.absence(RetentionClass::TombstoneReap), Some("store has no persistent tier"));
+	assert_eq!(coverage.absence(RetentionClass::PersistentFlush), Some("store has no flush engine"));
 }
 
 #[test]

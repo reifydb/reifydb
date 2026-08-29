@@ -56,10 +56,7 @@ mod tests {
 	use reifydb_value::value::duration::Duration;
 
 	use super::Measured;
-	use crate::plane::{
-		RetentionPlane,
-		ledger::{FloorScope, FloorSource},
-	};
+	use crate::plane::{RetentionPlane, ledger::FloorSource};
 
 	struct NoFloors;
 
@@ -77,10 +74,6 @@ mod tests {
 		}
 
 		fn consumer_position(&self) -> CommitVersion {
-			CommitVersion(u64::MAX)
-		}
-
-		fn flush_watermark(&self, _scope: FloorScope) -> CommitVersion {
 			CommitVersion(u64::MAX)
 		}
 	}
@@ -103,7 +96,7 @@ mod tests {
 		}
 
 		fn classes(&self) -> &'static [RetentionClass] {
-			&[RetentionClass::RowTtl, RetentionClass::TombstoneReap]
+			&[RetentionClass::RowTtl, RetentionClass::CdcTruncate]
 		}
 
 		fn run_slice(&mut self) -> Progress {
@@ -129,7 +122,7 @@ mod tests {
 
 		assert_eq!(runs.load(Ordering::SeqCst), 1, "the wrapped task must still run exactly once");
 		assert_eq!(plane.snapshot(RetentionClass::RowTtl).slices, 1);
-		assert_eq!(plane.snapshot(RetentionClass::TombstoneReap).slices, 1);
+		assert_eq!(plane.snapshot(RetentionClass::CdcTruncate).slices, 1);
 	}
 
 	#[test]

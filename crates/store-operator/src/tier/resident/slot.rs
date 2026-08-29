@@ -3,7 +3,7 @@
 
 use std::{
 	collections::{BTreeMap, BTreeSet, btree_map::Entry},
-	mem::take,
+	mem,
 	sync::Arc,
 };
 
@@ -145,7 +145,7 @@ impl OperatorLive {
 	}
 
 	pub fn clear_state(&mut self, census: &mut SlotCensus) -> OperatorKeys {
-		let keys = take(&mut self.state);
+		let keys = mem::take(&mut self.state);
 		for (key, entry) in keys.iter() {
 			self.bytes = self.bytes.saturating_sub(state_entry_bytes(key, entry));
 			if let Some(row) = &entry.post {

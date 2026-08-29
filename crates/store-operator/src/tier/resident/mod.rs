@@ -16,8 +16,7 @@ mod tests;
 
 use std::{
 	collections::{BTreeMap, BTreeSet},
-	fmt,
-	mem::take,
+	fmt, mem,
 	sync::{
 		Arc, OnceLock,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -453,7 +452,7 @@ impl OperatorResidentState {
 			self.shared.metrics.lock().budget_exhausted += 1;
 		}
 
-		batch.drops = take(&mut global.drops);
+		batch.drops = mem::take(&mut global.drops);
 		global.in_flight_checkpoints = batch.checkpoints.clone();
 		global.in_flight_drops = batch.drops.clone();
 		global.in_flight_operators = touched;
@@ -479,7 +478,7 @@ impl OperatorResidentState {
 	}
 
 	fn release_in_flight(&self, global: &mut GlobalInner) {
-		let operators = take(&mut global.in_flight_operators);
+		let operators = mem::take(&mut global.in_flight_operators);
 		for operator in operators {
 			let Some(slot) = self.shared.slot(operator) else {
 				continue;
@@ -710,8 +709,8 @@ fn clear_drop(inner: &mut SlotInner, marker: DropMarker) {
 
 fn take_all(inner: &mut SlotInner) -> OperatorLive {
 	let taken = OperatorLive {
-		state: take(&mut inner.live.state),
-		join_expiries: take(&mut inner.live.join_expiries),
+		state: mem::take(&mut inner.live.state),
+		join_expiries: mem::take(&mut inner.live.join_expiries),
 		durable_join_expiries: BTreeSet::new(),
 		bytes: inner.live.bytes,
 	};

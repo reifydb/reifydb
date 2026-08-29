@@ -24,7 +24,6 @@ pub(super) fn build_create_current_sql(table_name: &str) -> String {
 			value BLOB,\
 			updated_at INTEGER\
 		) WITHOUT ROWID;\
-		CREATE INDEX IF NOT EXISTS \"{0}__tombstone\" ON \"{0}\" (version) WHERE value IS NULL;\
 		CREATE INDEX IF NOT EXISTS \"{0}__expiry\" ON \"{0}\" (updated_at) \
 			WHERE value IS NOT NULL AND updated_at IS NOT NULL;",
 		table_name
@@ -42,15 +41,6 @@ pub(super) fn build_expired_keys_sql(table_name: &str, has_cursor: bool, limit: 
 	}
 	sql.push_str(&format!(" ORDER BY updated_at, key LIMIT {}", limit));
 	sql
-}
-
-pub(super) fn build_reap_tombstones_sql(table_name: &str, limit: usize) -> String {
-	format!(
-		"DELETE FROM \"{0}\" WHERE key IN (\
-			SELECT key FROM \"{0}\" WHERE value IS NULL AND version <= ?1 LIMIT {1}\
-		) AND value IS NULL",
-		table_name, limit
-	)
 }
 
 pub(super) fn build_get_current_sql(table_name: &str) -> String {
@@ -113,6 +103,16 @@ pub(super) fn build_chunked_upsert_sql(table_name: &str, chunk: usize) -> String
 		table_name,
 		values_placeholders(chunk, 4)
 	)
+}
+
+pub(super) fn build_delete_current_sql(table_name: &str, key_count: usize, returning: bool) -> String {
+	let placeholders = build_placeholders(key_count);
+	let suffix = if returning {
+		" RETURNING key"
+	} else {
+		""
+	};
+	format!("DELETE FROM \"{}\" WHERE key IN ({}) AND version <= ?{}", table_name, placeholders, suffix)
 }
 
 pub(super) fn build_delete_below_version_sql(

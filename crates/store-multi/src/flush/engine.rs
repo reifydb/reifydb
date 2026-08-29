@@ -726,11 +726,15 @@ mod tests {
 	}
 
 	#[test]
-	fn sweep_seeds_tombstone_into_read_tier() {
+	fn sweep_seeds_a_delete_of_a_persisted_row_into_the_read_tier() {
 		let point = MultiPointTier::new(MultiPointConfig::testing()).unwrap();
 		let (actor, _guard) = build_engine_with_point(Arc::new(AllPersistent), CommitVersion(2), point.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(21)));
 		let key = ek("k");
+		actor.persistent
+			.set(CommitVersion(1), HashMap::from([(kind, vec![(key.clone(), Some(val("v1")))])]))
+			.unwrap();
+		point.insert(key.clone(), CommitVersion(1), Some(val("v1")));
 		write(&actor.commit, kind, &key, 1, "v1");
 		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
 
@@ -738,8 +742,8 @@ mod tests {
 
 		assert!(
 			matches!(point.get(&key, CommitVersion(2)), VersionedGetResult::Tombstone),
-			"an evicted tombstone must be seeded into the point tier as a definitive miss, not left absent \
-			 (which would fall through and risk resurrecting an older value)"
+			"an evicted delete that matched a persisted row must be seeded into the point tier as a \
+			 definitive miss, never left holding the value it deleted"
 		);
 	}
 
@@ -858,10 +862,13 @@ mod tests {
 	}
 
 	#[test]
-	fn sweep_persists_tombstone_so_deleted_keys_stay_deleted_after_eviction() {
+	fn sweep_removes_the_persisted_row_so_deleted_keys_stay_deleted_after_eviction() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
 		let kind = EntryKind::Source(StorageId::Table(TableId(12)));
 		let key = ek("k");
+		actor.persistent
+			.set(CommitVersion(1), HashMap::from([(kind, vec![(key.clone(), Some(val("v1")))])]))
+			.unwrap();
 		write(&actor.commit, kind, &key, 1, "v1");
 		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
 
@@ -877,9 +884,9 @@ mod tests {
 		assert!(
 			matches!(
 				actor.persistent.get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
-				VersionedGetResult::Tombstone
+				VersionedGetResult::NotFound
 			),
-			"the persisted latest value must be the tombstone - the row must not resurrect"
+			"the persisted row must be gone - leaving it behind resurrects v1 once the buffer drops it"
 		);
 	}
 
@@ -1033,10 +1040,13 @@ mod tests {
 	}
 
 	#[test]
-	fn flush_all_persists_latest_tombstone_above_watermark() {
+	fn flush_all_removes_the_persisted_row_for_a_delete_above_the_watermark() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(1)));
 		let kind = EntryKind::Source(StorageId::Table(TableId(102)));
 		let key = ek("k");
+		actor.persistent
+			.set(CommitVersion(5), HashMap::from([(kind, vec![(key.clone(), Some(val("v5")))])]))
+			.unwrap();
 		write(&actor.commit, kind, &key, 5, "v5");
 		actor.commit.set(CommitVersion(9), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
 
@@ -1045,9 +1055,9 @@ mod tests {
 		assert!(
 			matches!(
 				actor.persistent.get(kind, key.as_ref(), CommitVersion(u64::MAX)).unwrap(),
-				VersionedGetResult::Tombstone
+				VersionedGetResult::NotFound
 			),
-			"a delete committed above the watermark must persist as a tombstone, not resurrect"
+			"a delete committed above the watermark must remove the persisted row, not resurrect v5"
 		);
 	}
 

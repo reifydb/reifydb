@@ -34,7 +34,7 @@ use reifydb_store::{
 	metrics::PageCacheMetrics,
 	sqlite::{OpenMessages, open, page_cache_metrics, pool::ReadPool},
 };
-use reifydb_value::{Result, error, reifydb_assertions, util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{Result, error, util::cowvec::CowVec, value::datetime::DateTime};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior,
 	params, params_from_iter,
@@ -51,9 +51,9 @@ use crate::{
 			entry::{current_table_name, current_table_name_to_entry},
 			query::{
 				build_chunked_upsert_sql, build_create_current_sql, build_current_exists_sql,
-				build_current_keys_sql, build_delete_below_version_sql, build_delete_keys_sql,
-				build_expired_keys_sql, build_get_current_sql, build_get_many_current_sql,
-				build_max_version_sql, build_range_current_sql, build_reap_tombstones_sql,
+				build_current_keys_sql, build_delete_below_version_sql, build_delete_current_sql,
+				build_delete_keys_sql, build_expired_keys_sql, build_get_current_sql,
+				build_get_many_current_sql, build_max_version_sql, build_range_current_sql,
 				build_upsert_current_sql, prefix_upper_bound, version_from_bytes, version_to_bytes,
 			},
 		},
@@ -86,8 +86,6 @@ struct SqlitePersistentStorageInner {
 	table_sql: Map<EntryKind, Arc<TableSql>>,
 	cache_hits: AtomicU64,
 	cache_misses: AtomicU64,
-	reaped_high_water: Map<EntryKind, Arc<AtomicU64>>,
-	resurrections: AtomicU64,
 	filter: KeyFilter<MultiKeys>,
 
 	written_high_water: AtomicU64,
@@ -99,6 +97,8 @@ struct TableSql {
 	get_sql: String,
 	upsert_sql: String,
 	chunked_upsert_sql: String,
+	delete_sql: String,
+	chunked_delete_sql: String,
 	create_sql: String,
 }
 
@@ -108,12 +108,16 @@ impl TableSql {
 		let get_sql = build_get_current_sql(&table_name);
 		let upsert_sql = build_upsert_current_sql(&table_name);
 		let chunked_upsert_sql = build_chunked_upsert_sql(&table_name, UPSERT_CHUNK);
+		let delete_sql = build_delete_current_sql(&table_name, 1, false);
+		let chunked_delete_sql = build_delete_current_sql(&table_name, UPSERT_CHUNK, true);
 		let create_sql = build_create_current_sql(&table_name);
 		Self {
 			table_name,
 			get_sql,
 			upsert_sql,
 			chunked_upsert_sql,
+			delete_sql,
+			chunked_delete_sql,
 			create_sql,
 		}
 	}
@@ -151,8 +155,6 @@ impl SqlitePersistentStorage {
 				table_sql: Map::new(),
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
-				reaped_high_water: Map::new(),
-				resurrections: AtomicU64::new(0),
 				filter,
 				written_high_water: AtomicU64::new(0),
 				opened_high_water: OnceLock::new(),
@@ -402,41 +404,6 @@ impl SqlitePersistentStorage {
 		Ok(out)
 	}
 
-	pub fn reap_tombstones(
-		&self,
-		kind: EntryKind,
-		cutoff_version: CommitVersion,
-		limit: usize,
-	) -> Result<(u64, bool)> {
-		if limit == 0 {
-			return Ok((0, false));
-		}
-		let limit = limit.min(i64::MAX as usize);
-		let table_name = &current_table_name(kind);
-		let sql = build_reap_tombstones_sql(table_name, limit);
-		let cutoff = version_to_bytes(cutoff_version);
-		let guard = self.lock_conn();
-		let Some(conn) = guard.as_ref() else {
-			return Ok((0, false));
-		};
-		let reaped = match conn.execute(&sql, params![cutoff.as_slice()]) {
-			Ok(n) => n as u64,
-			Err(e) if e.to_string().contains("no such table") => return Ok((0, false)),
-			Err(e) => {
-				return Err(error!(internal(format!(
-					"Failed to reap tombstones from {}: {}",
-					table_name, e
-				))));
-			}
-		};
-		self.inner
-			.reaped_high_water
-			.get_or_insert_with(kind, || Arc::new(AtomicU64::new(0)))
-			.fetch_max(cutoff_version.0, Ordering::Relaxed);
-
-		Ok((reaped, reaped == limit as u64))
-	}
-
 	pub fn expired_keys(
 		&self,
 		table: EntryKind,
@@ -494,47 +461,6 @@ impl SqlitePersistentStorage {
 		Ok(out)
 	}
 
-	pub fn resurrections(&self) -> u64 {
-		self.inner.resurrections.load(Ordering::Relaxed)
-	}
-
-	#[cfg(reifydb_assertions)]
-	fn assert_no_resurrection(
-		&self,
-		tx: &Transaction,
-		kind: EntryKind,
-		table_sql: &TableSql,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) {
-		let Some(high_water) = self.inner.reaped_high_water.get(&kind) else {
-			return;
-		};
-		let high_water = high_water.load(Ordering::Relaxed);
-		if version.0 > high_water {
-			return;
-		}
-		let exists = tx
-			.prepare_cached(&table_sql.get_sql)
-			.and_then(|mut check| check.exists(params![key.as_slice()]))
-			.unwrap_or(true);
-		if !exists {
-			self.inner.resurrections.fetch_add(1, Ordering::Relaxed);
-		}
-		assert!(
-			exists,
-			"resurrection: flush inserted an absent key into {} at version {} at or below that entry's own \
-			 reaped-tombstone high-water {}; every version <= a reap cutoff was already durable for that \
-			 entry when the reap ran (TombstoneReap floors on the per-kind flush watermark), so this write \
-			 can only rematerialize a reaped removal - the floor contract or flush monotonicity is broken \
-			 (key={:?})",
-			table_sql.table_name,
-			version.0,
-			high_water,
-			key.as_slice()
-		);
-	}
-
 	fn upsert_entries_collecting_accepted(
 		&self,
 		tx: &Transaction,
@@ -553,13 +479,20 @@ impl SqlitePersistentStorage {
 			.prepare_cached(&table_sql.upsert_sql)
 			.map_err(|e| error!(internal(format!("Failed to prepare persistent upsert: {}", e))))?;
 
-		let mut chunks = entries.chunks_exact(UPSERT_CHUNK);
+		let mut sets: Vec<&(EncodedKey, Option<CowVec<u8>>)> = Vec::with_capacity(entries.len());
+		let mut removals: Vec<&EncodedKey> = Vec::new();
+		for entry in entries {
+			if entry.1.is_some() {
+				sets.push(entry);
+			} else {
+				removals.push(&entry.0);
+			}
+		}
+
+		let mut chunks = sets.chunks_exact(UPSERT_CHUNK);
 		for chunk in chunks.by_ref() {
 			let mut boxed: Vec<Box<dyn ToSql>> = Vec::with_capacity(chunk.len() * 4);
-			for (key, value) in chunk {
-				reifydb_assertions! {
-					self.assert_no_resurrection(tx, table, table_sql, key, version);
-				}
+			for (key, value) in chunk.iter().copied() {
 				self.inner.filter.add((table, key));
 				boxed.push(Box::new(key.as_slice().to_vec()));
 				boxed.push(Box::new(new_version_bytes.to_vec()));
@@ -580,10 +513,7 @@ impl SqlitePersistentStorage {
 			}
 		}
 
-		for (key, value) in chunks.remainder() {
-			reifydb_assertions! {
-				self.assert_no_resurrection(tx, table, table_sql, key, version);
-			}
+		for (key, value) in chunks.remainder().iter().copied() {
 			self.inner.filter.add((table, key));
 			let value_slice = value.as_ref().map(|v| v.as_slice());
 			let affected = single_stmt
@@ -596,6 +526,57 @@ impl SqlitePersistentStorage {
 				.map_err(|e| error!(internal(format!("Failed to upsert persistent row: {}", e))))?;
 			if affected > 0 {
 				accepted.push(key.clone());
+			}
+		}
+
+		self.delete_entries_collecting_accepted(tx, table_sql, &new_version_bytes, &removals, accepted)?;
+
+		Ok(())
+	}
+
+	fn delete_entries_collecting_accepted(
+		&self,
+		tx: &Transaction,
+		table_sql: &TableSql,
+		version_bytes: &[u8],
+		removals: &[&EncodedKey],
+		accepted: &mut Vec<EncodedKey>,
+	) -> Result<()> {
+		if removals.is_empty() {
+			return Ok(());
+		}
+		let mut chunk_stmt = tx
+			.prepare_cached(&table_sql.chunked_delete_sql)
+			.map_err(|e| error!(internal(format!("Failed to prepare chunked persistent delete: {}", e))))?;
+		let mut single_stmt = tx
+			.prepare_cached(&table_sql.delete_sql)
+			.map_err(|e| error!(internal(format!("Failed to prepare persistent delete: {}", e))))?;
+
+		let mut chunks = removals.chunks_exact(UPSERT_CHUNK);
+		for chunk in chunks.by_ref() {
+			let mut boxed: Vec<Box<dyn ToSql>> = Vec::with_capacity(chunk.len() + 1);
+			for key in chunk.iter() {
+				boxed.push(Box::new(key.as_slice().to_vec()));
+			}
+			boxed.push(Box::new(version_bytes.to_vec()));
+			let flat: Vec<&dyn ToSql> = boxed.iter().map(|p| p.as_ref()).collect();
+			let returned = chunk_stmt
+				.query_map(params_from_iter(flat), |row| row.get::<_, Vec<u8>>(0))
+				.map_err(|e| error!(internal(format!("Failed to delete persistent rows: {}", e))))?;
+			for key_bytes in returned {
+				let key_bytes = key_bytes.map_err(|e| {
+					error!(internal(format!("Failed to read deleted persistent key: {}", e)))
+				})?;
+				accepted.push(EncodedKey::new(key_bytes));
+			}
+		}
+
+		for key in chunks.remainder().iter().copied() {
+			let affected = single_stmt
+				.execute(params![key.as_slice(), version_bytes])
+				.map_err(|e| error!(internal(format!("Failed to delete persistent row: {}", e))))?;
+			if affected > 0 {
+				accepted.push((*key).clone());
 			}
 		}
 
@@ -1165,12 +1146,11 @@ mod tests {
 	}
 
 	#[test]
-	fn a_range_does_not_fetch_the_tombstones_it_would_only_discard() {
-		// The timer probe asks for one row and used to receive every tombstone in the prefix,
+	fn a_range_does_not_fetch_deleted_rows_because_the_delete_removed_them() {
+		// The timer probe asks for one row and used to receive every dead row in the prefix,
 		// because LIMIT applies after the WHERE: measured at 1,837 rows fetched per probe, 100%
-		// of them dead. Filtering in SQL is only sound because `collected_to_batch` drops a None
-		// value for every scope, and the commit buffer only ever holds versions ABOVE what was
-		// flushed to persistent - so a persistent tombstone has no lower tier left to shadow.
+		// of them dead. A removal now deletes the row outright rather than rewriting it to a
+		// none value, so the dead rows are not there to be scanned past in the first place.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		let mut writes = Vec::new();
 		for i in 1..=50u64 {
@@ -1183,7 +1163,12 @@ mod tests {
 		}
 		s.set(CommitVersion(2), HashMap::from([(table(), deletes)])).unwrap();
 		s.set(CommitVersion(3), HashMap::from([(table(), vec![(key(200), Some(row(b"alive")))])])).unwrap();
-		assert_eq!(s.count_current(table()).unwrap(), 51, "precondition: 50 tombstones are physically present");
+		assert_eq!(
+			s.count_current(table()).unwrap(),
+			1,
+			"the 50 removals must delete their rows outright; rewriting them to a none value \
+			 leaves 50 dead rows for every later scan to page through and discard"
+		);
 
 		let before = ScanCounters::sample();
 		let mut cursor = RangeCursor::default();
@@ -1204,9 +1189,9 @@ mod tests {
 		assert_eq!(
 			batch.entries.iter().map(|e| e.key.clone()).collect::<Vec<_>>(),
 			vec![key(200)],
-			"a tombstoned key must not surface, and the one live row must"
+			"a deleted key must not surface, and the one live row must"
 		);
-		assert_eq!(scanned.fetched, 1, "the 50 tombstones must never cross into Rust");
+		assert_eq!(scanned.fetched, 1, "the 50 deleted rows must never cross into Rust");
 		assert_eq!(scanned.tombstones, 0);
 	}
 
@@ -1334,8 +1319,9 @@ mod tests {
 			"the bare version index must not be created; it is written on every row and read by no query plan, got {indices:?}"
 		);
 		assert!(
-			indices.contains(&format!("{table_name}__tombstone")),
-			"the tombstone index serves the reap sweep and must survive, got {indices:?}"
+			!indices.contains(&format!("{table_name}__tombstone")),
+			"the tombstone index must not be created; a removal deletes its row outright, so nothing \
+			 writes a valueless row for it to index, got {indices:?}"
 		);
 		assert!(
 			!indices.iter().any(|n| n.ends_with("__created_nanos") || n.ends_with("__updated_nanos")),
@@ -1489,12 +1475,10 @@ mod tests {
 	}
 
 	#[test]
-	fn reap_then_flush_of_newer_versions_records_no_resurrection() {
-		// A reap floors on the flush watermark, so every later flush carries a higher version; a
-		// re-insert of the reaped key is a legitimate fresh write and must not trip the tripwire.
+	fn a_key_written_again_after_a_removal_comes_back() {
+		// A removal must leave no row behind, or the parked one wins the CAS and strands the key absent.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
-		s.reap_tombstones(table(), CommitVersion(2), 100).unwrap();
 
 		s.set(
 			CommitVersion(3),
@@ -1502,33 +1486,8 @@ mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(
-			s.resurrections(),
-			0,
-			"writes above the reap high-water are ordinary flushes; counting them would make the tripwire \
-			 fire on every healthy re-insert"
-		);
-		assert!(visible(&s, &key(1)), "a fresh write after a reaped removal must land");
-	}
-
-	#[test]
-	fn a_reap_high_water_does_not_carry_across_entry_kinds() {
-		// An entry with nothing pending reaps ahead of one still buffering, so a cutoff must never be charged
-		// to another entry's first-time insert.
-		let other = EntryKind::Source(StorageId::Table(TableId(2)));
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(CommitVersion(5), HashMap::from([(other, vec![(key(1), None)])])).unwrap();
-		s.reap_tombstones(other, CommitVersion(5), 100).unwrap();
-
-		s.set(CommitVersion(4), HashMap::from([(table(), vec![(key(9), Some(row(b"fresh")))])])).unwrap();
-
-		assert_eq!(
-			s.resurrections(),
-			0,
-			"a first-ever insert into an unreaped entry is absent by definition; charging it against \
-			 another entry's cutoff makes the tripwire fire on healthy writes"
-		);
-		assert!(visible(&s, &key(9)), "the fresh row must land");
+		assert!(visible(&s, &key(1)), "a fresh write after a removal must land");
+		assert!(visible(&s, &key(2)), "an unrelated key in the same batch must land too");
 	}
 
 	#[test]
@@ -1574,34 +1533,15 @@ mod tests {
 		}
 	}
 
-	#[cfg(reifydb_assertions)]
 	#[test]
-	#[should_panic(expected = "resurrection")]
-	fn flush_below_the_reap_high_water_of_an_absent_key_trips_the_resurrection_assertion() {
-		// Positive control: silence in the test above could otherwise mean the tripwire is wired to
-		// nothing. Flushing below the reap high-water is what a reap outrunning the flush watermark does.
+	fn a_write_below_a_removals_version_still_lands_because_versions_arrive_out_of_order() {
+		// Batches reach this tier unordered, so a lower version after a removal is an ordinary write.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
-		s.reap_tombstones(table(), CommitVersion(5), 100).unwrap();
 
-		s.set(CommitVersion(4), HashMap::from([(table(), vec![(key(1), Some(row(b"ghost")))])])).unwrap();
-	}
+		s.set(CommitVersion(4), HashMap::from([(table(), vec![(key(1), Some(row(b"earlier")))])])).unwrap();
 
-	#[cfg(reifydb_assertions)]
-	#[test]
-	#[should_panic(expected = "resurrection")]
-	fn sweep_below_the_reap_high_water_of_an_absent_key_trips_the_resurrection_assertion() {
-		// The sweep flush has its own upsert loop, so the tripwire must exist there independently or a
-		// sweep-only resurrection passes silently.
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
-		s.reap_tombstones(table(), CommitVersion(5), 100).unwrap();
-
-		s.persist_sweep(vec![(
-			CommitVersion(4),
-			HashMap::from([(table(), vec![(key(1), Some(row(b"ghost")))])]),
-		)])
-		.unwrap();
+		assert!(visible(&s, &key(1)), "the row must land: nothing on disk outranks it after the removal");
 	}
 
 	#[test]
@@ -1617,60 +1557,6 @@ mod tests {
 			s.persist_sweep(batches).is_err(),
 			"a shut-down persistent tier must refuse the sweep loudly so the buffer is not dropped"
 		);
-	}
-
-	#[test]
-	fn reap_tombstones_removes_null_valued_rows_and_leaves_live_rows() {
-		// A tombstone is a row stored with no value; the reaper must physically delete only those, never
-		// a live row, even one below the cutoff.
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"live")))])])).unwrap();
-		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(2), None)])])).unwrap();
-		s.set(CommitVersion(3), HashMap::from([(table(), vec![(key(3), Some(row(b"live")))])])).unwrap();
-		assert_eq!(s.count_current(table()).unwrap(), 3, "the tombstone counts as a physical row until reaped");
-
-		let (reaped, more) = s.reap_tombstones(table(), CommitVersion(10), 100).unwrap();
-
-		assert_eq!(reaped, 1, "only the NULL-valued row is a tombstone");
-		assert!(!more, "a batch below the limit reports no remaining backlog");
-		assert_eq!(s.count_current(table()).unwrap(), 2, "the tombstone row must be physically gone");
-		assert!(visible(&s, &key(1)), "a live row must never be reaped");
-		assert!(visible(&s, &key(3)), "a live row above the tombstone must never be reaped");
-	}
-
-	#[test]
-	fn reap_tombstones_respects_the_cutoff() {
-		// The flush-watermark cutoff exists to stop a tombstone being reaped while its superseding write
-		// may still be unflushed.
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
-
-		let (below, _) = s.reap_tombstones(table(), CommitVersion(4), 100).unwrap();
-		assert_eq!(below, 0, "a tombstone at version 5 must not be reaped under a cutoff of 4");
-		assert_eq!(s.count_current(table()).unwrap(), 1, "the tombstone must still be present");
-
-		let (at, _) = s.reap_tombstones(table(), CommitVersion(5), 100).unwrap();
-		assert_eq!(at, 1, "the cutoff is inclusive: version 5 is reapable at cutoff 5");
-		assert_eq!(s.count_current(table()).unwrap(), 0);
-	}
-
-	#[test]
-	fn reap_tombstones_is_bounded_by_limit_and_reports_more() {
-		// One reap call may physically delete at most `limit` tombstones so the write connection is never held
-		// for an unbounded delete; the remaining tombstones are reported as backlog and drain on later calls.
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		for n in 1..=3u64 {
-			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), None)])])).unwrap();
-		}
-
-		let (first, more_first) = s.reap_tombstones(table(), CommitVersion(10), 2).unwrap();
-		assert_eq!(first, 2, "a limit of 2 caps the first call at two tombstones");
-		assert!(more_first, "hitting the limit must report backlog remaining");
-
-		let (second, more_second) = s.reap_tombstones(table(), CommitVersion(10), 2).unwrap();
-		assert_eq!(second, 1, "the third tombstone drains on the next call");
-		assert!(!more_second, "a sub-limit batch reports no further backlog");
-		assert_eq!(s.count_current(table()).unwrap(), 0);
 	}
 
 	#[test]
@@ -1831,43 +1717,6 @@ mod tests {
 		assert!(
 			details.iter().any(|d| d.contains(&format!("{table_name}__expiry"))),
 			"expiry discovery must use the partial expiry index; query plan was {details:?}"
-		);
-	}
-
-	#[test]
-	fn tombstone_discovery_uses_the_partial_index() {
-		// The plain version index would scan the whole live set once most rows are below the cutoff; the
-		// partial index over valueless rows keeps discovery proportional to the garbage. Asserted through
-		// the query plan, never by timing.
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		for n in 1..=200u64 {
-			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(row(b"live")))])]))
-				.unwrap();
-		}
-		for n in 201..=203u64 {
-			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), None)])])).unwrap();
-		}
-		let table_name = s.table_sql(table()).table_name.clone();
-
-		let guard = s.inner.conn.lock();
-		let conn = guard.as_ref().expect("write connection is present");
-		conn.execute_batch("ANALYZE").unwrap();
-		let sql = format!(
-			"EXPLAIN QUERY PLAN SELECT key FROM \"{0}\" WHERE value IS NULL AND version <= ?1 LIMIT 100",
-			table_name
-		);
-		let zero = [0u8; 8];
-		let details: Vec<String> = conn
-			.prepare(&sql)
-			.unwrap()
-			.query_map([zero.as_slice()], |r| r.get::<_, String>(3))
-			.unwrap()
-			.map(|r| r.unwrap())
-			.collect();
-
-		assert!(
-			details.iter().any(|d| d.contains(&format!("{table_name}__tombstone"))),
-			"reap discovery must use the partial tombstone index; query plan was {details:?}"
 		);
 	}
 }

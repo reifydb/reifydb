@@ -6,7 +6,7 @@ use std::{fmt, str::FromStr};
 use reifydb_runtime::version_epoch::BUCKET_WIDTH;
 use reifydb_value::value::{Value, duration::Duration, value_type::ValueType};
 
-use crate::common::CommitVersion;
+use crate::{common::CommitVersion, default};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AcceptError {
@@ -81,8 +81,6 @@ pub enum ConfigKey {
 	MetricsFlushInterval,
 	MetricsSampleInterval,
 	MetricsSnapshotInterval,
-	TombstoneReapInterval,
-	TombstoneReapBatchSize,
 	QueueLeaseReapInterval,
 	QueueLeaseReapBatchSize,
 	QueueRetentionInterval,
@@ -139,8 +137,6 @@ impl ConfigKey {
 			Self::MetricsFlushInterval,
 			Self::MetricsSampleInterval,
 			Self::MetricsSnapshotInterval,
-			Self::TombstoneReapInterval,
-			Self::TombstoneReapBatchSize,
 			Self::QueueLeaseReapInterval,
 			Self::QueueLeaseReapBatchSize,
 			Self::QueueRetentionInterval,
@@ -148,65 +144,170 @@ impl ConfigKey {
 		]
 	}
 
+	fn duration_or_none(duration: Option<Duration>) -> Value {
+		match duration {
+			Some(duration) => Value::Duration(duration),
+			None => Value::None {
+				inner: ValueType::Duration,
+			},
+		}
+	}
+
 	pub fn default_value(&self) -> Value {
 		match self {
-			Self::OracleWindowSize => Value::Uint8(500),
-			Self::QueryRowBatchSize => Value::Uint2(128),
-			Self::QueryMemoryLimit => Value::Uint8(1024 * 1024 * 1024),
-			Self::RetentionEvictInterval => Value::duration_seconds(60),
-			Self::RetentionEvictBatchSize => Value::Uint8(1024),
-			Self::RetentionEvictMaxBatchesPerTick => Value::Uint8(8),
-			Self::EpochBucketInterval => Value::duration_seconds(60),
-			Self::RetentionStartupGrace => Value::duration_seconds(300),
-			Self::MaxRetentionHorizonFloor => Value::duration_seconds(7 * 24 * 60 * 60),
-			Self::HistoricalGcBatchSize => Value::Uint8(50_000),
-			Self::HistoricalGcInterval => Value::duration_seconds(30),
-			Self::CdcTtlDuration => Value::None {
-				inner: ValueType::Duration,
-			},
-			Self::CdcTtlScanInterval => Value::duration_seconds(30),
-			Self::CdcTtlScanBatchSize => Value::Uint8(8192),
-			Self::CdcWalAutocheckpoint => Value::Uint8(1000000),
-			Self::CdcCommitBufferBytes => Value::Uint8(256 * 1024 * 1024),
-			Self::CdcBlockCutBytes => Value::Uint8(4 * 1024 * 1024),
-			Self::CdcReadBufferBytes => Value::Uint8(256 * 1024 * 1024),
-			Self::MultiPointBufferShardBytes => Value::Uint8(4 * 1024 * 1024),
-			Self::MultiRangeBufferShardBytes => Value::Uint8(4 * 1024 * 1024),
-			Self::OperatorPointBufferShardBytes => Value::Uint8(512 * 1024),
-			Self::OperatorRangeBufferShardBytes => Value::Uint8(2 * 1024 * 1024),
-			Self::MultiPointBufferShards => Value::Uint2(16),
-			Self::MultiRangeBufferShards => Value::Uint2(16),
-			Self::OperatorPointBufferShards => Value::Uint2(16),
-			Self::OperatorRangeBufferShards => Value::Uint2(16),
-			Self::MultiFlushInterval => Value::duration_seconds(60),
-			Self::MultiFlushBudgetBytes => Value::Uint8(4 * 1024 * 1024),
-			Self::MultiWalAutocheckpoint => Value::Uint8(50000),
-			Self::OperatorResidentBudget => Value::Uint8(100 * 1024 * 1024),
-			Self::OperatorWalAutocheckpoint => Value::Uint8(1000000),
-			Self::FlowTick => Value::duration_seconds(1),
-			Self::FlowSampleInterval => Value::duration_seconds(60),
-			Self::FlowBacklogMemoryLimit => Value::Uint8(64 * 1024 * 1024),
-			Self::FlowPullBatchBytes => Value::Uint8(8 * 1024 * 1024),
-			Self::FlowLoadBatchBytes => Value::Uint8(8 * 1024 * 1024),
-			Self::CdcConsumeWaitTimeout => Value::duration_seconds(30),
-			Self::FlowJoinProbeBlockSize => Value::Uint8(1024),
-			Self::ThreadsAsync => Value::Uint2(1),
-			Self::ThreadsCoordination => Value::Uint2(2),
-			Self::ThreadsFlow => Value::Uint2(2),
-			Self::ThreadsTask => Value::Uint2(2),
-			Self::ThreadsCompute => Value::Uint2(2),
-			Self::SubscriptionWorkerThreads => Value::Uint2(0),
-			Self::MetricsFlushInterval => Value::duration_seconds(10),
-			Self::MetricsSampleInterval => Value::duration_seconds(10),
-			Self::MetricsSnapshotInterval => Value::None {
-				inner: ValueType::Duration,
-			},
-			Self::TombstoneReapInterval => Value::duration_seconds(1),
-			Self::TombstoneReapBatchSize => Value::Uint8(1024),
-			Self::QueueLeaseReapInterval => Value::duration_seconds(5),
-			Self::QueueLeaseReapBatchSize => Value::Uint8(1024),
-			Self::QueueRetentionInterval => Value::duration_seconds(60),
-			Self::QueueRetentionBatchSize => Value::Uint8(1024),
+			Self::OracleWindowSize => Value::Uint8(default::query::ORACLE_WINDOW_SIZE),
+			Self::QueryRowBatchSize => Value::Uint2(default::query::ROW_BATCH_SIZE),
+			Self::QueryMemoryLimit => Value::Uint8(default::query::MEMORY_LIMIT.as_bytes()),
+			Self::RetentionEvictInterval => Value::Duration(default::retention::EVICT_INTERVAL),
+			Self::RetentionEvictBatchSize => Value::Uint8(default::retention::EVICT_BATCH_SIZE),
+			Self::RetentionEvictMaxBatchesPerTick => {
+				Value::Uint8(default::retention::EVICT_MAX_BATCHES_PER_TICK)
+			}
+			Self::EpochBucketInterval => Value::Duration(default::retention::EPOCH_BUCKET_INTERVAL),
+			Self::RetentionStartupGrace => Value::Duration(default::retention::STARTUP_GRACE),
+			Self::MaxRetentionHorizonFloor => Value::Duration(default::retention::MAX_HORIZON_FLOOR),
+			Self::HistoricalGcBatchSize => Value::Uint8(default::retention::HISTORICAL_GC_BATCH_SIZE),
+			Self::HistoricalGcInterval => Value::Duration(default::retention::HISTORICAL_GC_INTERVAL),
+			Self::CdcTtlDuration => Self::duration_or_none(default::cdc::TTL),
+			Self::CdcTtlScanInterval => Value::Duration(default::cdc::TTL_SCAN_INTERVAL),
+			Self::CdcTtlScanBatchSize => Value::Uint8(default::cdc::TTL_SCAN_BATCH_SIZE),
+			Self::CdcWalAutocheckpoint => Value::Uint8(default::cdc::WAL_AUTOCHECKPOINT_PAGES),
+			Self::CdcCommitBufferBytes => Value::Uint8(default::cdc::COMMIT_BUFFER.as_bytes()),
+			Self::CdcBlockCutBytes => Value::Uint8(default::cdc::BLOCK_CUT.as_bytes()),
+			Self::CdcReadBufferBytes => Value::Uint8(default::cdc::READ_BUFFER.as_bytes()),
+			Self::MultiPointBufferShardBytes => {
+				Value::Uint8(default::store::MULTI_POINT_BUFFER_SHARD.as_bytes())
+			}
+			Self::MultiRangeBufferShardBytes => {
+				Value::Uint8(default::store::MULTI_RANGE_BUFFER_SHARD.as_bytes())
+			}
+			Self::OperatorPointBufferShardBytes => {
+				Value::Uint8(default::store::OPERATOR_POINT_BUFFER_SHARD.as_bytes())
+			}
+			Self::OperatorRangeBufferShardBytes => {
+				Value::Uint8(default::store::OPERATOR_RANGE_BUFFER_SHARD.as_bytes())
+			}
+			Self::MultiPointBufferShards => Value::Uint2(default::store::MULTI_POINT_BUFFER_SHARDS),
+			Self::MultiRangeBufferShards => Value::Uint2(default::store::MULTI_RANGE_BUFFER_SHARDS),
+			Self::OperatorPointBufferShards => Value::Uint2(default::store::OPERATOR_POINT_BUFFER_SHARDS),
+			Self::OperatorRangeBufferShards => Value::Uint2(default::store::OPERATOR_RANGE_BUFFER_SHARDS),
+			Self::MultiFlushInterval => Value::Duration(default::store::MULTI_FLUSH_INTERVAL),
+			Self::MultiFlushBudgetBytes => Value::Uint8(default::store::MULTI_FLUSH_BUDGET.as_bytes()),
+			Self::MultiWalAutocheckpoint => Value::Uint8(default::store::MULTI_WAL_AUTOCHECKPOINT_PAGES),
+			Self::OperatorResidentBudget => {
+				Value::Uint8(default::store::OPERATOR_RESIDENT_BUDGET.as_bytes())
+			}
+			Self::OperatorWalAutocheckpoint => {
+				Value::Uint8(default::store::OPERATOR_WAL_AUTOCHECKPOINT_PAGES)
+			}
+			Self::FlowTick => Value::Duration(default::flow::TICK),
+			Self::FlowSampleInterval => Value::Duration(default::flow::SAMPLE_INTERVAL),
+			Self::FlowBacklogMemoryLimit => Value::Uint8(default::flow::BACKLOG_MEMORY_LIMIT.as_bytes()),
+			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH.as_bytes()),
+			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH.as_bytes()),
+			Self::CdcConsumeWaitTimeout => Value::Duration(default::cdc::CONSUME_WAIT_TIMEOUT),
+			Self::FlowJoinProbeBlockSize => Value::Uint8(default::flow::JOIN_PROBE_BLOCK_SIZE),
+			Self::ThreadsAsync => Value::Uint2(default::threads::ASYNC),
+			Self::ThreadsCoordination => Value::Uint2(default::threads::COORDINATION),
+			Self::ThreadsFlow => Value::Uint2(default::threads::FLOW),
+			Self::ThreadsTask => Value::Uint2(default::threads::TASK),
+			Self::ThreadsCompute => Value::Uint2(default::threads::COMPUTE),
+			Self::SubscriptionWorkerThreads => Value::Uint2(default::threads::SUBSCRIPTION_WORKER),
+			Self::MetricsFlushInterval => Value::Duration(default::metrics::FLUSH_INTERVAL),
+			Self::MetricsSampleInterval => Value::Duration(default::metrics::SAMPLE_INTERVAL),
+			Self::MetricsSnapshotInterval => Self::duration_or_none(default::metrics::SNAPSHOT_INTERVAL),
+			Self::QueueLeaseReapInterval => Value::Duration(default::queue::LEASE_REAP_INTERVAL),
+			Self::QueueLeaseReapBatchSize => Value::Uint8(default::queue::LEASE_REAP_BATCH_SIZE),
+			Self::QueueRetentionInterval => Value::Duration(default::queue::RETENTION_INTERVAL),
+			Self::QueueRetentionBatchSize => Value::Uint8(default::queue::RETENTION_BATCH_SIZE),
+		}
+	}
+
+	pub fn testing_value(&self) -> Value {
+		match self {
+			Self::OracleWindowSize => Value::Uint8(default::query::ORACLE_WINDOW_SIZE_TESTING),
+			Self::QueryRowBatchSize => Value::Uint2(default::query::ROW_BATCH_SIZE_TESTING),
+			Self::QueryMemoryLimit => Value::Uint8(default::query::MEMORY_LIMIT_TESTING.as_bytes()),
+			Self::RetentionEvictInterval => Value::Duration(default::retention::EVICT_INTERVAL_TESTING),
+			Self::RetentionEvictBatchSize => Value::Uint8(default::retention::EVICT_BATCH_SIZE_TESTING),
+			Self::RetentionEvictMaxBatchesPerTick => {
+				Value::Uint8(default::retention::EVICT_MAX_BATCHES_PER_TICK_TESTING)
+			}
+			Self::EpochBucketInterval => Value::Duration(default::retention::EPOCH_BUCKET_INTERVAL_TESTING),
+			Self::RetentionStartupGrace => Value::Duration(default::retention::STARTUP_GRACE_TESTING),
+			Self::MaxRetentionHorizonFloor => {
+				Value::Duration(default::retention::MAX_HORIZON_FLOOR_TESTING)
+			}
+			Self::HistoricalGcBatchSize => {
+				Value::Uint8(default::retention::HISTORICAL_GC_BATCH_SIZE_TESTING)
+			}
+			Self::HistoricalGcInterval => {
+				Value::Duration(default::retention::HISTORICAL_GC_INTERVAL_TESTING)
+			}
+			Self::CdcTtlDuration => Self::duration_or_none(default::cdc::TTL_TESTING),
+			Self::CdcTtlScanInterval => Value::Duration(default::cdc::TTL_SCAN_INTERVAL_TESTING),
+			Self::CdcTtlScanBatchSize => Value::Uint8(default::cdc::TTL_SCAN_BATCH_SIZE_TESTING),
+			Self::CdcWalAutocheckpoint => Value::Uint8(default::cdc::WAL_AUTOCHECKPOINT_PAGES_TESTING),
+			Self::CdcCommitBufferBytes => Value::Uint8(default::cdc::COMMIT_BUFFER_TESTING.as_bytes()),
+			Self::CdcBlockCutBytes => Value::Uint8(default::cdc::BLOCK_CUT_TESTING.as_bytes()),
+			Self::CdcReadBufferBytes => Value::Uint8(default::cdc::READ_BUFFER_TESTING.as_bytes()),
+			Self::MultiPointBufferShardBytes => {
+				Value::Uint8(default::store::MULTI_POINT_BUFFER_SHARD_TESTING.as_bytes())
+			}
+			Self::MultiRangeBufferShardBytes => {
+				Value::Uint8(default::store::MULTI_RANGE_BUFFER_SHARD_TESTING.as_bytes())
+			}
+			Self::OperatorPointBufferShardBytes => {
+				Value::Uint8(default::store::OPERATOR_POINT_BUFFER_SHARD_TESTING.as_bytes())
+			}
+			Self::OperatorRangeBufferShardBytes => {
+				Value::Uint8(default::store::OPERATOR_RANGE_BUFFER_SHARD_TESTING.as_bytes())
+			}
+			Self::MultiPointBufferShards => Value::Uint2(default::store::MULTI_POINT_BUFFER_SHARDS_TESTING),
+			Self::MultiRangeBufferShards => Value::Uint2(default::store::MULTI_RANGE_BUFFER_SHARDS_TESTING),
+			Self::OperatorPointBufferShards => {
+				Value::Uint2(default::store::OPERATOR_POINT_BUFFER_SHARDS_TESTING)
+			}
+			Self::OperatorRangeBufferShards => {
+				Value::Uint2(default::store::OPERATOR_RANGE_BUFFER_SHARDS_TESTING)
+			}
+			Self::MultiFlushInterval => Value::Duration(default::store::MULTI_FLUSH_INTERVAL_TESTING),
+			Self::MultiFlushBudgetBytes => {
+				Value::Uint8(default::store::MULTI_FLUSH_BUDGET_TESTING.as_bytes())
+			}
+			Self::MultiWalAutocheckpoint => {
+				Value::Uint8(default::store::MULTI_WAL_AUTOCHECKPOINT_PAGES_TESTING)
+			}
+			Self::OperatorResidentBudget => {
+				Value::Uint8(default::store::OPERATOR_RESIDENT_BUDGET_TESTING.as_bytes())
+			}
+			Self::OperatorWalAutocheckpoint => {
+				Value::Uint8(default::store::OPERATOR_WAL_AUTOCHECKPOINT_PAGES_TESTING)
+			}
+			Self::FlowTick => Value::Duration(default::flow::TICK_TESTING),
+			Self::FlowSampleInterval => Value::Duration(default::flow::SAMPLE_INTERVAL_TESTING),
+			Self::FlowBacklogMemoryLimit => {
+				Value::Uint8(default::flow::BACKLOG_MEMORY_LIMIT_TESTING.as_bytes())
+			}
+			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH_TESTING.as_bytes()),
+			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH_TESTING.as_bytes()),
+			Self::CdcConsumeWaitTimeout => Value::Duration(default::cdc::CONSUME_WAIT_TIMEOUT_TESTING),
+			Self::FlowJoinProbeBlockSize => Value::Uint8(default::flow::JOIN_PROBE_BLOCK_SIZE_TESTING),
+			Self::ThreadsAsync => Value::Uint2(default::threads::ASYNC_TESTING),
+			Self::ThreadsCoordination => Value::Uint2(default::threads::COORDINATION_TESTING),
+			Self::ThreadsFlow => Value::Uint2(default::threads::FLOW_TESTING),
+			Self::ThreadsTask => Value::Uint2(default::threads::TASK_TESTING),
+			Self::ThreadsCompute => Value::Uint2(default::threads::COMPUTE_TESTING),
+			Self::SubscriptionWorkerThreads => Value::Uint2(default::threads::SUBSCRIPTION_WORKER_TESTING),
+			Self::MetricsFlushInterval => Value::Duration(default::metrics::FLUSH_INTERVAL_TESTING),
+			Self::MetricsSampleInterval => Value::Duration(default::metrics::SAMPLE_INTERVAL_TESTING),
+			Self::MetricsSnapshotInterval => {
+				Self::duration_or_none(default::metrics::SNAPSHOT_INTERVAL_TESTING)
+			}
+			Self::QueueLeaseReapInterval => Value::Duration(default::queue::LEASE_REAP_INTERVAL_TESTING),
+			Self::QueueLeaseReapBatchSize => Value::Uint8(default::queue::LEASE_REAP_BATCH_SIZE_TESTING),
+			Self::QueueRetentionInterval => Value::Duration(default::queue::RETENTION_INTERVAL_TESTING),
+			Self::QueueRetentionBatchSize => Value::Uint8(default::queue::RETENTION_BATCH_SIZE_TESTING),
 		}
 	}
 
@@ -442,12 +543,6 @@ impl ConfigKey {
 				 series. When none, no snapshot is ever written; when set, must be > 0 and not shorter than \
 				 METRICS_SAMPLE_INTERVAL. Read once at boot; changing it requires a restart."
 			}
-			Self::TombstoneReapInterval => {
-				"How often the tombstone reaper scans persistent tables for delete-mode tombstones whose superseding write has flushed."
-			}
-			Self::TombstoneReapBatchSize => {
-				"Max tombstones one reap statement may physically delete per table per slice. Bounds the write-connection hold; remaining tombstones drain on the next slice."
-			}
 			Self::QueueLeaseReapInterval => {
 				"How often the queue reaper scans for leases whose deadline has passed. A dead worker's item cannot be redelivered sooner than this, so it should stay well below any declared lease ttl."
 			}
@@ -512,8 +607,6 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => false,
 			Self::MetricsSampleInterval => true,
 			Self::MetricsSnapshotInterval => true,
-			Self::TombstoneReapInterval => false,
-			Self::TombstoneReapBatchSize => false,
 			Self::QueueLeaseReapInterval => false,
 			Self::QueueLeaseReapBatchSize => false,
 			Self::QueueRetentionInterval => false,
@@ -570,8 +663,6 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => &[ValueType::Duration],
 			Self::MetricsSampleInterval => &[ValueType::Duration],
 			Self::MetricsSnapshotInterval => &[ValueType::Duration],
-			Self::TombstoneReapInterval => &[ValueType::Duration],
-			Self::TombstoneReapBatchSize => &[ValueType::Uint8],
 			Self::QueueLeaseReapInterval => &[ValueType::Duration],
 			Self::QueueLeaseReapBatchSize => &[ValueType::Uint8],
 			Self::QueueRetentionInterval => &[ValueType::Duration],
@@ -628,8 +719,6 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => false,
 			Self::MetricsSampleInterval => false,
 			Self::MetricsSnapshotInterval => true,
-			Self::TombstoneReapInterval => false,
-			Self::TombstoneReapBatchSize => false,
 			Self::QueueLeaseReapInterval => false,
 			Self::QueueLeaseReapBatchSize => false,
 			Self::QueueRetentionInterval => false,
@@ -979,8 +1068,6 @@ impl fmt::Display for ConfigKey {
 			Self::MetricsFlushInterval => write!(f, "METRICS_FLUSH_INTERVAL"),
 			Self::MetricsSampleInterval => write!(f, "METRICS_SAMPLE_INTERVAL"),
 			Self::MetricsSnapshotInterval => write!(f, "METRICS_SNAPSHOT_INTERVAL"),
-			Self::TombstoneReapInterval => write!(f, "TOMBSTONE_REAP_INTERVAL"),
-			Self::TombstoneReapBatchSize => write!(f, "TOMBSTONE_REAP_BATCH_SIZE"),
 			Self::QueueLeaseReapInterval => write!(f, "QUEUE_LEASE_REAP_INTERVAL"),
 			Self::QueueLeaseReapBatchSize => write!(f, "QUEUE_LEASE_REAP_BATCH_SIZE"),
 			Self::QueueRetentionInterval => write!(f, "QUEUE_RETENTION_INTERVAL"),
@@ -1041,8 +1128,6 @@ impl FromStr for ConfigKey {
 			"METRICS_FLUSH_INTERVAL" => Ok(Self::MetricsFlushInterval),
 			"METRICS_SAMPLE_INTERVAL" => Ok(Self::MetricsSampleInterval),
 			"METRICS_SNAPSHOT_INTERVAL" => Ok(Self::MetricsSnapshotInterval),
-			"TOMBSTONE_REAP_INTERVAL" => Ok(Self::TombstoneReapInterval),
-			"TOMBSTONE_REAP_BATCH_SIZE" => Ok(Self::TombstoneReapBatchSize),
 			"QUEUE_LEASE_REAP_INTERVAL" => Ok(Self::QueueLeaseReapInterval),
 			"QUEUE_LEASE_REAP_BATCH_SIZE" => Ok(Self::QueueLeaseReapBatchSize),
 			"QUEUE_RETENTION_INTERVAL" => Ok(Self::QueueRetentionInterval),
@@ -1218,7 +1303,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 53);
+		assert_eq!(all.len(), 51);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));

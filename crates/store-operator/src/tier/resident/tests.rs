@@ -680,8 +680,6 @@ fn an_empty_write_batch_leaves_the_buffer_untouched() {
 
 #[test]
 fn a_flow_whose_operators_still_hold_live_state_does_not_get_its_checkpoint_written() {
-	// the checkpoint is the resume point; writing it while state is still in ram promises sqlite rows
-	// that a crash would take with it, and replay never revisits a version at or below it
 	let buffer = OperatorResidentState::with_budget(entry_bytes("k1", "v1"));
 	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
 	write_in_flow(&buffer, FLOW_B, 20, &[insert(OP_B, "k2", "v2")]);
@@ -708,8 +706,6 @@ fn a_flow_whose_operators_still_hold_live_state_does_not_get_its_checkpoint_writ
 
 #[test]
 fn a_checkpoint_with_no_pending_state_is_written_without_waiting_for_a_drain() {
-	// a flow that only advanced its cursor writes a checkpoint and no state; gating it on a drain that
-	// never comes strands it and pins cdc retention forever
 	let buffer = OperatorResidentState::new();
 	buffer.record_checkpoint_set(FLOW_A, CommitVersion(77));
 
@@ -724,8 +720,6 @@ fn a_checkpoint_with_no_pending_state_is_written_without_waiting_for_a_drain() {
 
 #[test]
 fn the_flow_waiting_longest_drains_first() {
-	// draining in flow-id order lets a busy low-numbered flow starve the rest; ordering by how long a
-	// flow has waited is what makes every checkpoint eventually advance
 	let buffer = OperatorResidentState::with_budget(entry_bytes("k1", "v1"));
 	write_in_flow(&buffer, FLOW_B, 20, &[insert(OP_B, "k2", "v2")]);
 	write_in_flow(&buffer, FLOW_A, 10, &[insert(OP_A, "k1", "v1")]);
@@ -740,8 +734,6 @@ fn the_flow_waiting_longest_drains_first() {
 
 #[test]
 fn an_operator_with_no_flow_drains_without_blocking_any_checkpoint() {
-	// state that never arrived through a flow slice has no checkpoint to earn and no flow to hold back;
-	// treating it as belonging to one would stall an unrelated flow behind it forever
 	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("orphan"), row("v"), DurablePre::Absent);
 	buffer.record_checkpoint_set(FLOW_A, CommitVersion(5));
@@ -757,8 +749,6 @@ fn an_operator_with_no_flow_drains_without_blocking_any_checkpoint() {
 
 #[test]
 fn a_buffer_far_past_the_budget_drains_whole_flows_and_loses_nothing() {
-	// the budget stops the drain before it starts the next flow, never inside one; an operator split
-	// across two slices would write half its state under a checkpoint that claims all of it
 	let entry = entry_bytes("k0", "v0");
 	let buffer = OperatorResidentState::with_budget(entry * 2);
 	for index in 0..5u64 {
@@ -810,8 +800,6 @@ fn a_buffer_far_past_the_budget_drains_whole_flows_and_loses_nothing() {
 
 #[test]
 fn a_key_rewritten_during_its_flush_flushes_as_the_later_value() {
-	// carrying the in-flight value into the next slice would overwrite the rewrite in sqlite and roll
-	// the key silently back to a value the operator has already replaced
 	let buffer = OperatorResidentState::new();
 	buffer.record_state_set(OP_A, key("k1"), row("early"), DurablePre::Absent);
 
@@ -843,8 +831,6 @@ fn a_key_rewritten_during_its_flush_flushes_as_the_later_value() {
 
 #[test]
 fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
-	// a marker replayed in a later slice deletes the post-drop rows an earlier slice already made
-	// durable, so every marker must ride the first slice out and never appear again
 	let entry = entry_bytes("k2", "post-drop");
 	let buffer = OperatorResidentState::with_budget(entry);
 	write_in_flow(&buffer, FLOW_A, 1, &[insert(OP_A, "k1", "pre-drop")]);
@@ -880,8 +866,6 @@ fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
 
 #[test]
 fn join_expiries_travel_with_their_operators_state_in_one_slice() {
-	// an expiry stranded in a later slice than the state it guards is a timer that fires against rows
-	// sqlite does not have yet
 	let buffer = OperatorResidentState::with_budget(entry_bytes("k1", "v"));
 	buffer.record_state_set(OP_A, key("k1"), row("v"), DurablePre::Absent);
 	buffer.record_state_set(OP_A, key("k2"), row("v"), DurablePre::Absent);
@@ -1040,8 +1024,6 @@ fn a_join_expiry_is_charged_its_fixed_width_once_per_slot() {
 
 #[test]
 fn a_flow_boundary_split_moves_exactly_the_bytes_the_slice_carries_away() {
-	// a byte counted on both sides of the split makes the budget believe it is over cap forever, and
-	// one counted on neither makes it flush on a buffer that never grew
 	let buffer = OperatorResidentState::with_budget(entry_bytes("k1", "aaa"));
 	write_in_flow(&buffer, FLOW_A, 1, &[insert(OP_A, "k1", "aaa")]);
 	buffer.record_join_expiry_set(OP_A, GROUP_A, 0, RowNumber(1), DateTime::from_millis(100));
