@@ -12,7 +12,7 @@ use reifydb_core::event::metric::{MultiEviction, MultiPersist, MultiSweptEvent};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::lifecycle::progress::Progress;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_core::{common::CommitVersion, default, interface::store::EntryKind};
 use reifydb_core::{event::EventBus, lifecycle::watermark::EvictionWatermark};
 use reifydb_runtime::{
 	context::clock::Clock,
@@ -40,7 +40,11 @@ use crate::{
 };
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-pub const FLUSH_BYTE_BUDGET: ByteSize = ByteSize::from_mib(4);
+pub const FLUSH_BYTE_BUDGET: ByteSize = if default::TESTING {
+	default::store::MULTI_FLUSH_BUDGET_TESTING
+} else {
+	default::store::MULTI_FLUSH_BUDGET
+};
 
 #[derive(Default)]
 pub struct FlushEngineState {
@@ -125,7 +129,9 @@ impl FlushEngine {
 	fn buffered_entries(&self) -> u64 {
 		self.commit
 			.list_all_entry_kinds()
-			.map(|kinds| kinds.iter().map(|kind| self.commit.count_current(*kind).unwrap_or(0)).sum())
+			.map(|kinds| {
+				kinds.iter().map(|kind| self.commit.estimated_current_count(*kind).unwrap_or(0)).sum()
+			})
 			.unwrap_or(0)
 	}
 

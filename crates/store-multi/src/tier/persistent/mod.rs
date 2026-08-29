@@ -14,7 +14,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 use crate::{
 	MultiVersionScope,
 	filter::MultiKeys,
-	tier::{DisplacedValues, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult},
+	tier::{RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult},
 };
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -203,7 +203,7 @@ impl TierStorage for MultiPersistentTier {
 		}
 	}
 
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<DisplacedValues> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
 		match self {
 			Self::Sqlite(s) => s.set(version, batches),
 		}
@@ -256,7 +256,7 @@ impl TierStorage for MultiPersistentTier {
 		match *self {}
 	}
 
-	fn set(&self, _version: CommitVersion, _batches: TierBatch) -> Result<DisplacedValues> {
+	fn set(&self, _version: CommitVersion, _batches: TierBatch) -> Result<()> {
 		match *self {}
 	}
 

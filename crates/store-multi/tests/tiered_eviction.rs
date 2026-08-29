@@ -167,10 +167,10 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 	commit(&store, &k, 3, "v3");
 
 	let commit_tier = store.commit();
-	let current_before = commit_tier.count_current(kind).unwrap();
-	let historical_before = commit_tier.count_historical(kind).unwrap();
+	let current_before = commit_tier.estimated_current_count(kind).unwrap();
+	let versions_before = commit_tier.get_all_versions(kind, k.as_ref()).unwrap().len();
 	assert_eq!(current_before, 1, "v3 is the current version");
-	assert_eq!(historical_before, 2, "v1 and v2 are historical");
+	assert_eq!(versions_before, 3, "v1 and v2 are historical behind the current v3");
 
 	sweep_through_store(&store, CommitVersion(2), true);
 
@@ -180,8 +180,12 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 		"v2 must be persisted"
 	);
 
-	assert_eq!(commit_tier.count_current(kind).unwrap(), 1, "v3 still current");
-	assert_eq!(commit_tier.count_historical(kind).unwrap(), 0, "v1/v2 dropped from the commit tier's history");
+	assert_eq!(commit_tier.estimated_current_count(kind).unwrap(), 1, "v3 still current");
+	assert_eq!(
+		commit_tier.get_all_versions(kind, k.as_ref()).unwrap().len(),
+		1,
+		"v1/v2 dropped from the commit tier's history, leaving only the current v3"
+	);
 	assert!(
 		matches!(commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(), VersionedGetResult::NotFound),
 		"the commit tier must not answer for an evicted version"
@@ -324,17 +328,17 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	let commit_tier = store.commit();
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
-		let historical = commit_tier.count_historical(kind).unwrap();
+		let versions = commit_tier.get_all_versions(kind, k.as_ref()).unwrap().len();
 		let evicted_gone = matches!(
 			commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(),
 			VersionedGetResult::NotFound
 		);
-		if historical == 0 && evicted_gone {
+		if versions == 1 && evicted_gone {
 			break;
 		}
 		if Instant::now() >= deadline {
 			panic!(
-				"flush actor sweep did not evict <= W within the timeout (historical={historical}, evicted_gone={evicted_gone})"
+				"flush actor sweep did not evict <= W within the timeout (versions={versions}, evicted_gone={evicted_gone})"
 			);
 		}
 		std::thread::yield_now();

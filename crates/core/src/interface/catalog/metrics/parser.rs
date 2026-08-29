@@ -2,11 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::deserializer::KeyDeserializer;
-use reifydb_core::{
+use reifydb_value::value::dictionary::DictionaryId;
+
+use crate::{
 	interface::catalog::{metrics::MetricsId, object::ObjectId},
 	key::{Key, catalog::KeyDeserializerCatalogExt, kind::KeyKind},
 };
-use reifydb_value::value::dictionary::DictionaryId;
 
 pub fn parse_id(key: &[u8]) -> MetricsId {
 	let Some(kind) = Key::kind(key) else {
@@ -51,14 +52,14 @@ fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
 }
 
 #[cfg(test)]
-pub mod tests {
-	use reifydb_core::{
-		interface::catalog::{object::ObjectId, storage::StorageId},
-		key::{EncodableKey, dictionary::DictionaryEntryKey, row::RowKey},
-	};
+mod tests {
 	use reifydb_value::value::{dictionary::DictionaryId, row_number::RowNumber};
 
 	use super::*;
+	use crate::{
+		interface::catalog::{object::ObjectId, storage::StorageId},
+		key::{EncodableKey, dictionary::DictionaryEntryKey, row::RowKey},
+	};
 
 	#[test]
 	fn test_parse_object_id_row() {

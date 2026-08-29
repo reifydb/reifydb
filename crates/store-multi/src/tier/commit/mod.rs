@@ -2,6 +2,5 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod buffer;
-pub mod census;
 pub mod memory;
 pub mod result;

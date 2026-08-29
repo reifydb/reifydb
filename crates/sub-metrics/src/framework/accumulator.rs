@@ -758,7 +758,7 @@ mod tests {
 				Value::Utf8("buffer".to_string()),
 			],
 			measures: vec![Measure {
-				metric: "live_bytes",
+				metric: "estimated_live_bytes",
 				reading: Reading::Bytes(ByteSize::from_bytes(bytes)),
 				kind: MetricKind::Level,
 			}],
@@ -768,7 +768,7 @@ mod tests {
 		let published = acc.roll(now(1_000)).unwrap();
 		let current = surface(&published, MetricsDomain::Storage, Surface::Current);
 		assert_eq!(column_values(current, "id"), vec![Value::Uint8(1), Value::Uint8(2)]);
-		assert_eq!(column_values(current, "live_bytes"), vec![Value::Uint8(100), Value::Uint8(200)]);
+		assert_eq!(column_values(current, "estimated_live_bytes"), vec![Value::Uint8(100), Value::Uint8(200)]);
 
 		acc.push(MetricsDomain::Storage, Surface::Current, vec![storage_row(2, 200)]);
 		let published = acc.roll(now(2_000)).unwrap();
@@ -801,7 +801,10 @@ mod tests {
 			Surface::Current,
 			vec![MetricsRow {
 				dimensions: dimensions.clone(),
-				measures: vec![measure("live_bytes", 100), measure("total_bytes", 300)],
+				measures: vec![
+					measure("estimated_live_bytes", 100),
+					measure("estimated_total_bytes", 300),
+				],
 			}],
 		);
 		acc.roll(now(1_000)).unwrap();
@@ -811,14 +814,14 @@ mod tests {
 			Surface::Current,
 			vec![MetricsRow {
 				dimensions,
-				measures: vec![measure("live_bytes", 150)],
+				measures: vec![measure("estimated_live_bytes", 150)],
 			}],
 		);
 		let published = acc.roll(now(2_000)).unwrap();
 		let current = surface(&published, MetricsDomain::Storage, Surface::Current);
-		assert_eq!(column_values(current, "live_bytes"), vec![Value::Uint8(150)]);
+		assert_eq!(column_values(current, "estimated_live_bytes"), vec![Value::Uint8(150)]);
 		assert_eq!(
-			column_values(current, "total_bytes"),
+			column_values(current, "estimated_total_bytes"),
 			vec![Value::Uint8(300)],
 			"a wipe would republish this as zero; only per-row eviction keeps it"
 		);

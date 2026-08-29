@@ -44,6 +44,7 @@ impl StandardOperatorStore {
 		reifydb_assertions! {
 			self.verify_classification(writes);
 		}
+		let _flushing = self.resident.flush_guard();
 		self.resident.apply_batch(writes);
 		self.invalidate_read_batch(writes);
 	}
@@ -58,6 +59,7 @@ impl StandardOperatorStore {
 		reifydb_assertions! {
 			self.verify_classification(writes);
 		}
+		let _flushing = self.resident.flush_guard();
 		self.resident.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
 		self.invalidate_read_batch(writes);
 	}

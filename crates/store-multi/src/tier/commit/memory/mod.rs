@@ -2,4 +2,5 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod entry;
+pub mod rows;
 pub mod storage;

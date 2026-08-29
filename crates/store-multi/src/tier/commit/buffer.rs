@@ -14,12 +14,8 @@ use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::Cow
 use crate::{
 	MultiVersionScope,
 	tier::{
-		DisplacedValues, HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage,
-		VersionedGetResult,
-		commit::{
-			census::CommitCensus,
-			memory::storage::{EvictedVersion, MemoryRowStorage},
-		},
+		HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult,
+		commit::memory::storage::{EvictedVersion, MemoryRowStorage},
 	},
 };
 
@@ -50,15 +46,9 @@ impl MultiCommitBufferTier {
 		}
 	}
 
-	pub fn count_current(&self, table: EntryKind) -> Result<u64> {
+	pub fn estimated_current_count(&self, table: EntryKind) -> Result<u64> {
 		match self {
-			Self::Memory(s) => s.count_current(table),
-		}
-	}
-
-	pub fn count_historical(&self, table: EntryKind) -> Result<u64> {
-		match self {
-			Self::Memory(s) => s.count_historical(table),
+			Self::Memory(s) => s.estimated_current_count(table),
 		}
 	}
 
@@ -98,15 +88,10 @@ impl MultiCommitBufferTier {
 		}
 	}
 
-	pub fn census(&self) -> CommitCensus {
-		match self {
-			Self::Memory(s) => s.census(),
-		}
-	}
-
 	pub fn metrics(&self) -> MultiCommitMetrics {
 		let kinds = self.list_all_entry_kinds().unwrap_or_default();
-		let current_entries: u64 = kinds.iter().map(|kind| self.count_current(*kind).unwrap_or(0)).sum();
+		let current_entries: u64 =
+			kinds.iter().map(|kind| self.estimated_current_count(*kind).unwrap_or(0)).sum();
 		MultiCommitMetrics {
 			current_bytes: self.current_resident_bytes(),
 			historical_bytes: self.historical_resident_bytes(),
@@ -156,7 +141,8 @@ impl MetricsCollector for MultiCommitBufferTier {
 		out.push(MetricsSample::heap("commit_buffer", "historical_bytes", self.historical_resident_bytes()));
 		let kinds = self.list_all_entry_kinds().unwrap_or_default();
 		out.push(MetricsSample::count("commit_buffer", "table_count", kinds.len() as u64));
-		let current_entries: u64 = kinds.iter().map(|kind| self.count_current(*kind).unwrap_or(0)).sum();
+		let current_entries: u64 =
+			kinds.iter().map(|kind| self.estimated_current_count(*kind).unwrap_or(0)).sum();
 		out.push(MetricsSample::count("commit_buffer", "current_entries", current_entries));
 	}
 }
@@ -177,7 +163,7 @@ impl TierStorage for MultiCommitBufferTier {
 	}
 
 	#[inline]
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<DisplacedValues> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.set(version, batches),
 		}

@@ -58,7 +58,7 @@ fn test_sort_table_storage_stats_multiline_syntax() {
 	// table rows this test sorts are now selected by the object_kind dimension.
 	let multiline_query = "from system::metrics::storage::current
 filter {object_kind == 'table'}
-sort {total_bytes:asc}";
+sort {estimated_total_bytes:asc}";
 
 	await_table_metrics(&db, multiline_query, 2);
 
@@ -66,7 +66,7 @@ sort {total_bytes:asc}";
 
 	let frame = frames.first().expect("Expected at least one frame");
 	let id_col = frame.columns.iter().find(|c| c.name == "id").unwrap();
-	let bytes_col = frame.columns.iter().find(|c| c.name == "total_bytes").unwrap();
+	let bytes_col = frame.columns.iter().find(|c| c.name == "estimated_total_bytes").unwrap();
 
 	let mut data: Vec<(u64, u64)> = Vec::new();
 	for i in 0..id_col.data.len() {
@@ -114,8 +114,8 @@ fn test_asc_is_not_desc() {
 	"#,
 	);
 
-	let asc = "from system::metrics::storage::current\nfilter {object_kind == 'table'}\nsort {total_bytes:asc}";
-	let desc = "from system::metrics::storage::current\nfilter {object_kind == 'table'}\nsort {total_bytes:desc}";
+	let asc = "from system::metrics::storage::current\nfilter {object_kind == 'table'}\nsort {estimated_total_bytes:asc}";
+	let desc = "from system::metrics::storage::current\nfilter {object_kind == 'table'}\nsort {estimated_total_bytes:desc}";
 
 	await_table_metrics(&db, asc, 2);
 
@@ -123,11 +123,11 @@ fn test_asc_is_not_desc() {
 	let frames_desc = db.query(desc);
 
 	let frame_asc = frames_asc.first().unwrap();
-	let bytes_col_asc = frame_asc.columns.iter().find(|c| c.name == "total_bytes").unwrap();
+	let bytes_col_asc = frame_asc.columns.iter().find(|c| c.name == "estimated_total_bytes").unwrap();
 	let first_asc = bytes_col_asc.data.as_string(0).parse::<u64>().unwrap();
 
 	let frame_desc = frames_desc.first().unwrap();
-	let bytes_col_desc = frame_desc.columns.iter().find(|c| c.name == "total_bytes").unwrap();
+	let bytes_col_desc = frame_desc.columns.iter().find(|c| c.name == "estimated_total_bytes").unwrap();
 	let first_desc = bytes_col_desc.data.as_string(0).parse::<u64>().unwrap();
 
 	assert_ne!(
@@ -145,7 +145,7 @@ fn test_asc_is_not_desc() {
 }
 
 #[test]
-fn test_sort_table_storage_stats_by_total_bytes() {
+fn test_sort_table_storage_stats_by_estimated_total_bytes() {
 	let db = new_db_with_metrics();
 
 	db.admin("CREATE NAMESPACE test");
@@ -177,14 +177,14 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 	"#,
 	);
 
-	let asc = "FROM system::metrics::storage::current FILTER {object_kind == 'table'} SORT {total_bytes:ASC}";
+	let asc = "FROM system::metrics::storage::current FILTER {object_kind == 'table'} SORT {estimated_total_bytes:ASC}";
 
 	await_table_metrics(&db, asc, 4);
 
 	let frames_asc = db.query(asc);
 
 	let frame_asc = frames_asc.first().expect("Expected at least one frame");
-	let bytes_col_asc = frame_asc.columns.iter().find(|c| c.name == "total_bytes").unwrap();
+	let bytes_col_asc = frame_asc.columns.iter().find(|c| c.name == "estimated_total_bytes").unwrap();
 
 	let mut byte_values_asc: Vec<u64> = Vec::new();
 	for i in 0..bytes_col_asc.data.len() {
@@ -201,11 +201,11 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 	}
 
 	let frames_desc = db.query(
-		"FROM system::metrics::storage::current FILTER {object_kind == 'table'} SORT {total_bytes:DESC}",
+		"FROM system::metrics::storage::current FILTER {object_kind == 'table'} SORT {estimated_total_bytes:DESC}",
 	);
 
 	let frame_desc = frames_desc.first().expect("Expected at least one frame");
-	let bytes_col_desc = frame_desc.columns.iter().find(|c| c.name == "total_bytes").unwrap();
+	let bytes_col_desc = frame_desc.columns.iter().find(|c| c.name == "estimated_total_bytes").unwrap();
 
 	let mut byte_values_desc: Vec<u64> = Vec::new();
 	for i in 0..bytes_col_desc.data.len() {

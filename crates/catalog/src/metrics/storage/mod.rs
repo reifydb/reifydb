@@ -5,4 +5,3 @@ pub mod cdc;
 pub mod encoding;
 pub mod metrics;
 pub mod multi;
-pub mod parser;

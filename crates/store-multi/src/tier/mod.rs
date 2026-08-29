@@ -15,8 +15,6 @@ use reifydb_value::{Result, util::cowvec::CowVec};
 
 use crate::MultiVersionScope;
 
-pub type DisplacedValues = Vec<(EncodedKey, u64)>;
-
 pub type TierBatch = HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>>;
 
 #[derive(Debug, Clone)]
@@ -122,7 +120,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		Ok(matches!(self.get(table, key, version)?, VersionedGetResult::Value { .. }))
 	}
 
-	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<DisplacedValues>;
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()>;
 
 	fn range_next(
 		&self,

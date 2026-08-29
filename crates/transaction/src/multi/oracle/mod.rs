@@ -535,12 +535,36 @@ mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
+	const PINNED_WINDOW_SIZE: u64 = 500;
+
+	struct PinnedWindowConfig;
+
+	impl GetConfig for PinnedWindowConfig {
+		fn get_config(&self, key: ConfigKey) -> Value {
+			// Window boundaries are placed by arithmetic below, so the size must never follow the profile.
+			match key {
+				ConfigKey::OracleWindowSize => Value::Uint8(PINNED_WINDOW_SIZE),
+				other => other.default_value(),
+			}
+		}
+
+		fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
+			self.get_config(key)
+		}
+	}
+
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
+		build_oracle(start, Arc::new(ProfileConfig))
+	}
+
+	fn create_windowed_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
+		build_oracle(start, Arc::new(PinnedWindowConfig))
+	}
+
+	fn build_oracle(start: impl Into<CommitVersion>, config: Arc<dyn GetConfig>) -> Oracle<MockVersionProvider> {
 		let clock = MockVersionProvider::new(start);
 		let actor_system = ActorSystem::testing(Clock::Real);
 		let spawner = actor_system.spawner();
-
-		let config = Arc::new(ProfileConfig);
 
 		Oracle::new(
 			clock,
@@ -638,8 +662,8 @@ mod tests {
 	fn test_range_only_read_finds_conflict_in_older_window() {
 		// A range-only read must still conflict with a write committed after its read version,
 		// even when that write lives in a window whose start is below the read version.
-		// OracleWindowSize defaults to 500, so a clock at 749 puts T1's commit (750) in window 500.
-		let oracle = create_test_oracle(749);
+		// The window size is pinned to 500, so a clock at 749 puts T1's commit (750) in window 500.
+		let oracle = create_windowed_oracle(749);
 
 		let key_k = create_test_key("k");
 
@@ -657,7 +681,7 @@ mod tests {
 			let inner = oracle.inner.read();
 			assert!(
 				inner.time_windows.contains_key(&CommitVersion(500)),
-				"expected T1's window_start to be 500 (default OracleWindowSize=500); \
+				"expected T1's window_start to be 500 (PINNED_WINDOW_SIZE=500); \
 				 test assumptions invalidated"
 			);
 		}
@@ -679,8 +703,8 @@ mod tests {
 	fn test_range_op_with_keys_scans_all_windows_not_just_bloom_matches() {
 		// A range op must scan every retained window: a bloom match on the transaction's own keys
 		// would skip the window where the range conflict actually lives.
-		// OracleWindowSize defaults to 500, so v=50 and v=750 land in different windows.
-		let oracle = create_test_oracle(49);
+		// The window size is pinned to 500, so v=50 and v=750 land in different windows.
+		let oracle = create_windowed_oracle(49);
 
 		let key_alpha = create_test_key("alpha");
 		let key_beta = create_test_key("beta");
@@ -711,12 +735,12 @@ mod tests {
 			let inner = oracle.inner.read();
 			assert!(
 				inner.time_windows.contains_key(&CommitVersion(0)),
-				"expected T_b's window_start to be 0 (default OracleWindowSize=500); \
+				"expected T_b's window_start to be 0 (PINNED_WINDOW_SIZE=500); \
 				 test assumptions invalidated"
 			);
 			assert!(
 				inner.time_windows.contains_key(&CommitVersion(500)),
-				"expected T_a's window_start to be 500 (default OracleWindowSize=500); \
+				"expected T_a's window_start to be 500 (PINNED_WINDOW_SIZE=500); \
 				 test assumptions invalidated"
 			);
 		}

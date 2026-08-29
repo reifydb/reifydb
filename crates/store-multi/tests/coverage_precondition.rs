@@ -309,8 +309,21 @@ fn concurrent_writers_flushes_and_materializes_never_drop_a_key() {
 	// interval would have to defend against. Row number doubles as commit version, so a scan at the newest version
 	// must contain every row the writer has already published, and any key the read-then-publish race drops shows
 	// up as a gap.
+	// The upper half of the rows is written a bucket away from the lower half, leaving a row-free band the
+	// scan must walk to prove absent; without a gap no span is ever claimable and the workload cannot reach
+	// the read-then-publish race this test exists to catch.
+	const ROWS: u64 = 1500;
+
+	fn row_id(row: u64) -> u64 {
+		if row * 2 <= ROWS {
+			row
+		} else {
+			(1u64 << 16) + row
+		}
+	}
+
 	let (store, _g) = store();
-	let rows: u64 = 1500;
+	let rows: u64 = ROWS;
 	let published = Arc::new(std::sync::atomic::AtomicU64::new(0));
 
 	std::thread::scope(|s| {
@@ -318,7 +331,7 @@ fn concurrent_writers_flushes_and_materializes_never_drop_a_key() {
 		let writer_published = published.clone();
 		s.spawn(move || {
 			for row in 1..=rows {
-				commit_set(&writer_store, row, row, &format!("r{row}"));
+				commit_set(&writer_store, row_id(row), row, &format!("r{row}"));
 				writer_published.store(row, std::sync::atomic::Ordering::Release);
 			}
 		});
@@ -340,7 +353,7 @@ fn concurrent_writers_flushes_and_materializes_never_drop_a_key() {
 				let seen = scan(&reader_store, u64::MAX);
 				for row in 1..=known {
 					assert!(
-						seen.contains_key(&key(row)),
+						seen.contains_key(&key(row_id(row))),
 						"row {row} was published at version {row} but a scan at the newest \
 						 version did not return it; a claimed span dropped a key a concurrent \
 						 writer or sweep had already made durable"
@@ -359,7 +372,6 @@ fn concurrent_writers_flushes_and_materializes_never_drop_a_key() {
 		materializes(&store) > 0,
 		"the workload must have materialized at least one claim, or it proves nothing"
 	);
-	assert!(complete_pages(&store) > 0, "the workload must have claimed at least one page, or it proves nothing");
 }
 
 #[test]

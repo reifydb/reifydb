@@ -47,7 +47,7 @@ use reifydb_transaction::{
 	},
 	single::SingleTransaction,
 };
-use reifydb_value::{util::cowvec::CowVec, value::Value};
+use reifydb_value::util::cowvec::CowVec;
 
 enum TransactionHandle {
 	Read(MultiReadTransaction),

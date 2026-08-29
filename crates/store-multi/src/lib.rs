@@ -39,7 +39,10 @@ use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_value::util::cowvec::CowVec;
 use store::{MultiPersistentProbeMetrics, StandardMultiStore};
-use tier::{commit::buffer::MultiCommitMetrics, point::MultiPointShardMetrics, range::MultiRangeShardMetrics};
+use tier::{
+	VersionedGetResult, commit::buffer::MultiCommitMetrics, point::MultiPointShardMetrics,
+	range::MultiRangeShardMetrics,
+};
 
 pub mod memory {}
 pub mod sqlite {}
@@ -307,6 +310,16 @@ impl MultiStore {
 	) -> Result<HashMap<EncodedKey, MultiVersionRow>> {
 		match self {
 			MultiStore::Standard(store) => store.get_many(keys, version),
+		}
+	}
+
+	pub fn get_many_versioned(
+		&self,
+		keys: &[EncodedKey],
+		version: CommitVersion,
+	) -> Result<HashMap<EncodedKey, VersionedGetResult>> {
+		match self {
+			MultiStore::Standard(store) => store.get_many_versioned(keys, version),
 		}
 	}
 }

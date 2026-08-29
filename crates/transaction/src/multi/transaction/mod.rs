@@ -16,7 +16,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
 	interface::{
-		catalog::config::{ConfigKey, GetConfig},
+		catalog::config::GetConfig,
 		store::{MultiVersionContains, MultiVersionGet},
 	},
 	testing::ProfileConfig,
@@ -34,11 +34,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::MultiStore;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::driver::Raft;
-use reifydb_value::{
-	Result, reifydb_assertions,
-	util::hex,
-	value::{Value, duration::Duration},
-};
+use reifydb_value::{Result, reifydb_assertions, util::hex, value::duration::Duration};
 use tracing::{instrument, warn};
 use version::{StandardVersionProvider, VersionProvider};
 

@@ -6,12 +6,11 @@ use std::{
 	sync,
 };
 
-use reifydb_catalog::metrics::storage::parser::parse_id;
 use reifydb_core::{
 	common::CommitVersion,
 	event::metric::CdcEviction,
 	interface::{
-		catalog::metrics::MetricsId,
+		catalog::metrics::{MetricsId, parser::parse_id},
 		cdc::{Cdc, CdcBatch, CdcChange},
 	},
 };

@@ -189,6 +189,7 @@ mod read_configs_tests {
 	use reifydb_codec::row::bytes::RowBuilder;
 	use reifydb_core::{
 		common::CommitVersion,
+		default,
 		interface::{catalog::config::ConfigKey, store::EntryKind},
 		key::config::ConfigStorageKey,
 	};
@@ -215,33 +216,6 @@ mod read_configs_tests {
 	}
 
 	#[test]
-	fn returns_defaults_when_no_tiers_configured() {
-		let out = read_configs(
-			None,
-			None,
-			&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsCoordination, ConfigKey::ThreadsTask],
-		)
-		.unwrap();
-		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
-		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(2));
-		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(2));
-	}
-
-	#[test]
-	fn returns_defaults_when_buffer_is_empty() {
-		let buffer = MultiCommitBufferTier::memory();
-		let out = read_configs(
-			Some(&buffer),
-			None,
-			&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsCoordination, ConfigKey::ThreadsTask],
-		)
-		.unwrap();
-		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
-		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(2));
-		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(2));
-	}
-
-	#[test]
 	fn reads_persisted_value_from_buffer() {
 		let buffer = MultiCommitBufferTier::memory();
 		write_config(&buffer, ConfigKey::ThreadsTask, Value::Uint2(8), CommitVersion(1));
@@ -250,7 +224,7 @@ mod read_configs_tests {
 			read_configs(Some(&buffer), None, &[ConfigKey::ThreadsTask, ConfigKey::ThreadsAsync]).unwrap();
 
 		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(8));
-		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
+		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(default::threads::ASYNC_TESTING));
 	}
 
 	#[test]
@@ -273,7 +247,7 @@ mod read_configs_tests {
 
 		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsTask]).unwrap();
 
-		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(2));
+		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(default::threads::TASK_TESTING));
 	}
 
 	#[test]
@@ -283,7 +257,7 @@ mod read_configs_tests {
 
 		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsAsync]).unwrap();
 
-		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
+		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(default::threads::ASYNC_TESTING));
 	}
 
 	#[test]

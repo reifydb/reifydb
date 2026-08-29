@@ -10,8 +10,7 @@ use std::{
 
 use reifydb_catalog::metrics::storage::{
 	cdc::{CdcMetrics, CdcMetricsReader},
-	multi::{MultiStorageMetrics, StorageMetricsReader},
-	parser::parse_id,
+	multi::StorageMetricsReader,
 };
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -28,7 +27,10 @@ use reifydb_core::{
 		},
 		store::MetricsProcessedEvent,
 	},
-	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, Tier},
+	interface::{
+		catalog::metrics::{parser::parse_id, storage::MultiStorageMetrics},
+		store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, Tier},
+	},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 };
 use reifydb_runtime::{
@@ -324,16 +326,28 @@ impl TestRunner for Runner {
 					total_cdc += stats;
 				}
 
-				writeln!(output, "current_count: {}", total_storage.current_count)?;
-				writeln!(output, "current_key_bytes: {}", total_storage.current_key_bytes)?;
-				writeln!(output, "current_value_bytes: {}", total_storage.current_value_bytes)?;
-				writeln!(output, "historical_count: {}", total_storage.historical_count)?;
-				writeln!(output, "historical_key_bytes: {}", total_storage.historical_key_bytes)?;
-				writeln!(output, "historical_value_bytes: {}", total_storage.historical_value_bytes)?;
+				writeln!(output, "current_count: {}", total_storage.estimated_current_count)?;
+				writeln!(output, "current_key_bytes: {}", total_storage.estimated_current_key_bytes)?;
+				writeln!(
+					output,
+					"current_value_bytes: {}",
+					total_storage.estimated_current_value_bytes
+				)?;
+				writeln!(output, "historical_count: {}", total_storage.estimated_historical_count)?;
+				writeln!(
+					output,
+					"historical_key_bytes: {}",
+					total_storage.estimated_historical_key_bytes
+				)?;
+				writeln!(
+					output,
+					"historical_value_bytes: {}",
+					total_storage.estimated_historical_value_bytes
+				)?;
 				writeln!(output, "cdc_count: {}", total_cdc.entry_count)?;
 				writeln!(output, "cdc_key_bytes: {}", total_cdc.key_bytes.as_bytes())?;
 				writeln!(output, "cdc_value_bytes: {}", total_cdc.value_bytes.as_bytes())?;
-				writeln!(output, "total_bytes: {}", total_storage.total_bytes())?;
+				writeln!(output, "total_bytes: {}", total_storage.estimated_total_bytes())?;
 			}
 
 			"stats_current" => {
@@ -350,9 +364,13 @@ impl TestRunner for Runner {
 					total_storage += stats;
 				}
 
-				writeln!(output, "current_count: {}", total_storage.current_count)?;
-				writeln!(output, "current_key_bytes: {}", total_storage.current_key_bytes)?;
-				writeln!(output, "current_value_bytes: {}", total_storage.current_value_bytes)?;
+				writeln!(output, "current_count: {}", total_storage.estimated_current_count)?;
+				writeln!(output, "current_key_bytes: {}", total_storage.estimated_current_key_bytes)?;
+				writeln!(
+					output,
+					"current_value_bytes: {}",
+					total_storage.estimated_current_value_bytes
+				)?;
 			}
 
 			"stats_historical" => {
@@ -369,9 +387,17 @@ impl TestRunner for Runner {
 					total_storage += stats;
 				}
 
-				writeln!(output, "historical_count: {}", total_storage.historical_count)?;
-				writeln!(output, "historical_key_bytes: {}", total_storage.historical_key_bytes)?;
-				writeln!(output, "historical_value_bytes: {}", total_storage.historical_value_bytes)?;
+				writeln!(output, "historical_count: {}", total_storage.estimated_historical_count)?;
+				writeln!(
+					output,
+					"historical_key_bytes: {}",
+					total_storage.estimated_historical_key_bytes
+				)?;
+				writeln!(
+					output,
+					"historical_value_bytes: {}",
+					total_storage.estimated_historical_value_bytes
+				)?;
 			}
 
 			"stats_cdc" => {
@@ -407,11 +433,13 @@ impl TestRunner for Runner {
 					total_storage += stats;
 				}
 
-				let total_count = total_storage.current_count + total_storage.historical_count;
-				let current_bytes = total_storage.current_key_bytes + total_storage.current_value_bytes;
-				let historical_bytes =
-					total_storage.historical_key_bytes + total_storage.historical_value_bytes;
-				let total_bytes = total_storage.total_bytes();
+				let total_count = total_storage.estimated_current_count
+					+ total_storage.estimated_historical_count;
+				let current_bytes = total_storage.estimated_current_key_bytes
+					+ total_storage.estimated_current_value_bytes;
+				let historical_bytes = total_storage.estimated_historical_key_bytes
+					+ total_storage.estimated_historical_value_bytes;
+				let total_bytes = total_storage.estimated_total_bytes();
 
 				writeln!(output, "total_count: {}", total_count)?;
 				writeln!(output, "current_bytes: {}", current_bytes)?;

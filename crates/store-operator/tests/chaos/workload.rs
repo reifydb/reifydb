@@ -16,7 +16,10 @@ use reifydb_core::{
 };
 use reifydb_store_operator::types::{DurablePre, OperatorWrite};
 use reifydb_testing_chaos::fuzz::{pick, run_reported, split};
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::{
 	fixtures::{Config, Harness, KEYSPACES, key, row},
@@ -757,12 +760,19 @@ fn random_batch(rng: &mut StdRng, state: &mut State, p: &Params, step: u32) -> B
 				let (operator, group, side, row_number) =
 					batch_join_expiry_slot(rng, state, p, operator, &join_expiry_slots);
 				join_expiry_slots.push((operator, group, side, row_number));
+				// Must be read before the remove: pre drives the tombstone, so a Present claim on a
+				// slot that was never held writes a tombstone the oracle never expects.
+				let held = state.oracle.join_expiry_get(operator, group, side, row_number).is_some();
 				state.oracle.join_expiry_remove(operator, group, side, row_number);
 				writes.push(OperatorWrite::JoinExpiryRemove {
 					operator: OperatorId(operator),
 					group: GroupId(group.into()),
 					side,
 					row_num: RowNumber(row_number),
+					pre: match held {
+						true => DurablePre::Present(ByteSize::ZERO),
+						false => DurablePre::Absent,
+					},
 				});
 			}
 		}
