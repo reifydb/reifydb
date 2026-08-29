@@ -5,6 +5,7 @@
 mod scan;
 #[cfg(test)]
 mod surface;
+pub mod typed;
 
 use std::{borrow::Cow, sync::LazyLock};
 
