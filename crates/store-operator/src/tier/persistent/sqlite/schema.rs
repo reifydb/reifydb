@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::operator::state::OperatorStateKey;
+use reifydb_core::key::operator::{keyspace::KEYSPACES, state::OperatorStateKey};
 use rusqlite::Connection;
+
+use crate::tier::persistent::sqlite::typed::create_table;
 
 pub(crate) fn ensure_schema(conn: &Connection) {
 	conn.execute_batch(
@@ -45,7 +47,17 @@ pub(crate) fn ensure_schema(conn: &Connection) {
 	)
 	.expect("operator state schema could not be created");
 
+	ensure_keyspace_tables(conn);
 	seed_census(conn);
+}
+
+fn ensure_keyspace_tables(conn: &Connection) {
+	let mut batch = String::new();
+	for spec in KEYSPACES {
+		batch.push_str(&create_table(spec));
+		batch.push('\n');
+	}
+	conn.execute_batch(&batch).expect("operator keyspace tables could not be created");
 }
 
 fn seed_census(conn: &Connection) {

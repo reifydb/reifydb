@@ -10,7 +10,10 @@ use reifydb_value::{
 };
 
 use crate::{
-	key::{operator::state::GroupId, typed::Key},
+	key::{
+		operator::state::GroupId,
+		typed::{Key, layout::KeyValue},
+	},
 	metrics::heap::HeapSize,
 	state::{join::ContentVersion, timer::TimerKind},
 };
@@ -70,6 +73,10 @@ pub trait KeyScalar: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'stat
 	fn successor(&self) -> Option<Self>;
 
 	fn predecessor(&self) -> Option<Self>;
+
+	fn to_key_value(&self) -> KeyValue;
+
+	fn from_key_value(value: KeyValue) -> Option<Self>;
 }
 
 impl KeyScalar for u8 {
@@ -83,6 +90,16 @@ impl KeyScalar for u8 {
 	fn predecessor(&self) -> Option<Self> {
 		self.checked_sub(1)
 	}
+	fn to_key_value(&self) -> KeyValue {
+		KeyValue::U8(*self)
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		match value {
+			KeyValue::U8(v) => Some(v),
+			_ => None,
+		}
+	}
 }
 
 impl KeyScalar for u64 {
@@ -95,6 +112,16 @@ impl KeyScalar for u64 {
 
 	fn predecessor(&self) -> Option<Self> {
 		self.checked_sub(1)
+	}
+	fn to_key_value(&self) -> KeyValue {
+		KeyValue::U64(*self)
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		match value {
+			KeyValue::U64(v) => Some(v),
+			_ => None,
+		}
 	}
 }
 
@@ -129,6 +156,16 @@ impl KeyScalar for [u8; 16] {
 		}
 		None
 	}
+	fn to_key_value(&self) -> KeyValue {
+		KeyValue::Blob16(*self)
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		match value {
+			KeyValue::Blob16(v) => Some(v),
+			_ => None,
+		}
+	}
 }
 
 impl KeyScalar for GroupId {
@@ -141,6 +178,16 @@ impl KeyScalar for GroupId {
 
 	fn predecessor(&self) -> Option<Self> {
 		self.0.checked_sub(1).map(GroupId)
+	}
+	fn to_key_value(&self) -> KeyValue {
+		KeyValue::Blob16(self.0.to_be_bytes())
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		match value {
+			KeyValue::Blob16(v) => Some(GroupId(u128::from_be_bytes(v))),
+			_ => None,
+		}
 	}
 }
 
@@ -155,6 +202,16 @@ impl KeyScalar for RowNumber {
 	fn predecessor(&self) -> Option<Self> {
 		self.0.checked_sub(1).map(RowNumber)
 	}
+	fn to_key_value(&self) -> KeyValue {
+		KeyValue::U64(self.0)
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		match value {
+			KeyValue::U64(v) => Some(RowNumber(v)),
+			_ => None,
+		}
+	}
 }
 
 impl KeyScalar for ContentVersion {
@@ -167,6 +224,16 @@ impl KeyScalar for ContentVersion {
 
 	fn predecessor(&self) -> Option<Self> {
 		self.0.checked_sub(1).map(ContentVersion)
+	}
+	fn to_key_value(&self) -> KeyValue {
+		KeyValue::U64(self.0)
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		match value {
+			KeyValue::U64(v) => Some(ContentVersion(v)),
+			_ => None,
+		}
 	}
 }
 
@@ -181,6 +248,16 @@ impl KeyScalar for RowShapeFingerprint {
 	fn predecessor(&self) -> Option<Self> {
 		self.0.0.checked_sub(1).map(|previous| RowShapeFingerprint(Hash64(previous)))
 	}
+	fn to_key_value(&self) -> KeyValue {
+		KeyValue::U64(self.0.0)
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		match value {
+			KeyValue::U64(v) => Some(RowShapeFingerprint(Hash64(v))),
+			_ => None,
+		}
+	}
 }
 
 impl KeyScalar for Hash128 {
@@ -193,6 +270,16 @@ impl KeyScalar for Hash128 {
 
 	fn predecessor(&self) -> Option<Self> {
 		self.0.checked_sub(1).map(Hash128)
+	}
+	fn to_key_value(&self) -> KeyValue {
+		KeyValue::Blob16(self.0.to_be_bytes())
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		match value {
+			KeyValue::Blob16(v) => Some(Hash128(u128::from_be_bytes(v))),
+			_ => None,
+		}
 	}
 }
 
@@ -207,6 +294,16 @@ impl KeyScalar for Partition {
 	fn predecessor(&self) -> Option<Self> {
 		self.0.checked_sub(1).map(Partition)
 	}
+	fn to_key_value(&self) -> KeyValue {
+		KeyValue::Blob16(self.0.to_be_bytes())
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		match value {
+			KeyValue::Blob16(v) => Some(Partition(u128::from_be_bytes(v))),
+			_ => None,
+		}
+	}
 }
 
 impl KeyScalar for DateTime {
@@ -220,6 +317,16 @@ impl KeyScalar for DateTime {
 	fn predecessor(&self) -> Option<Self> {
 		self.to_bits().checked_sub(1).map(DateTime::from_bits)
 	}
+	fn to_key_value(&self) -> KeyValue {
+		KeyValue::U64(self.to_bits())
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		match value {
+			KeyValue::U64(v) => Some(DateTime::from_bits(v)),
+			_ => None,
+		}
+	}
 }
 
 impl KeyScalar for TimerKind {
@@ -232,6 +339,16 @@ impl KeyScalar for TimerKind {
 
 	fn predecessor(&self) -> Option<Self> {
 		(*self as u8).checked_sub(1).and_then(TimerKind::from_u8)
+	}
+	fn to_key_value(&self) -> KeyValue {
+		KeyValue::U8(*self as u8)
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		match value {
+			KeyValue::U8(v) => TimerKind::from_u8(v),
+			_ => None,
+		}
 	}
 }
 
@@ -261,18 +378,40 @@ mod sealed {
 
 pub trait KeyField: sealed::Sealed {
 	const DIRECTION: Direction;
+
+	fn to_key_value(&self) -> KeyValue;
+
+	fn from_key_value(value: KeyValue) -> Option<Self>
+	where
+		Self: Sized;
 }
 
 impl<T> sealed::Sealed for Asc<T> {}
 
 impl<T> sealed::Sealed for Desc<T> {}
 
-impl<T> KeyField for Asc<T> {
+impl<T: KeyScalar> KeyField for Asc<T> {
 	const DIRECTION: Direction = Direction::Asc;
+
+	fn to_key_value(&self) -> KeyValue {
+		self.0.to_key_value()
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		T::from_key_value(value).map(Asc)
+	}
 }
 
-impl<T> KeyField for Desc<T> {
+impl<T: KeyScalar> KeyField for Desc<T> {
 	const DIRECTION: Direction = Direction::Desc;
+
+	fn to_key_value(&self) -> KeyValue {
+		self.0.to_key_value()
+	}
+
+	fn from_key_value(value: KeyValue) -> Option<Self> {
+		T::from_key_value(value).map(Desc)
+	}
 }
 
 #[cfg(test)]

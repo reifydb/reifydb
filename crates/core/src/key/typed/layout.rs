@@ -5,6 +5,12 @@ use crate::key::typed::{Key, direction::Direction};
 
 pub trait KeyLayout: Key {
 	const COLUMNS: &'static [KeyColumn];
+
+	fn key_values(&self) -> Vec<KeyValue>;
+
+	fn from_key_values(values: &[KeyValue]) -> Option<Self>
+	where
+		Self: Sized;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -21,11 +27,28 @@ pub enum KeyColumnType {
 	Blob16,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum KeyValue {
+	U8(u8),
+	U64(u64),
+	Blob16([u8; 16]),
+}
+
+impl KeyValue {
+	pub fn column_type(&self) -> KeyColumnType {
+		match self {
+			Self::U8(_) => KeyColumnType::U8,
+			Self::U64(_) => KeyColumnType::U64,
+			Self::Blob16(_) => KeyColumnType::Blob16,
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use reifydb_value::value::row_number::RowNumber;
 
-	use super::{KeyColumn, KeyColumnType, KeyLayout};
+	use super::{KeyColumn, KeyColumnType, KeyLayout, KeyValue};
 	use crate::{
 		key::{
 			operator::state::GroupId,
@@ -189,5 +212,56 @@ mod tests {
 				row: Asc(RowNumber(0)),
 			})
 		);
+	}
+	#[test]
+	fn key_values_round_trip_through_the_column_values() {
+		// this is the only bridge between a typed key and its sqlite row; a lossy or reordered
+		// conversion writes one key and reads back another, and both directions still look healthy
+		let key = probe(0x0123_4567_89ab_cdef, 7);
+		let values = key.key_values();
+		assert_eq!(ProbeKey::from_key_values(&values), Some(key));
+
+		let join = JoinLeftKey {
+			group: Desc(GroupId(u128::MAX - 3)),
+			row: Asc(RowNumber(42)),
+		};
+		assert_eq!(JoinLeftKey::from_key_values(&join.key_values()), Some(join));
+	}
+
+	#[test]
+	fn key_values_are_positional_and_typed_like_the_columns() {
+		// the binder walks COLUMNS and key_values() in lockstep, so a length or type disagreement binds
+		// a u64 into a blob column and sqlite accepts it without complaint
+		let key = probe(9, 3);
+		let values = key.key_values();
+		assert_eq!(values.len(), ProbeKey::COLUMNS.len());
+		for (value, column) in values.iter().zip(ProbeKey::COLUMNS) {
+			assert_eq!(value.column_type(), column.ty, "column {} binds the wrong width", column.name);
+		}
+		assert_eq!(values[0], KeyValue::U64(9));
+		assert_eq!(values[1], KeyValue::U8(3));
+	}
+
+	#[test]
+	fn a_descending_column_keeps_its_own_value_not_its_complement() {
+		// Desc reverses Ord, not the stored bytes; complementing here would make the sqlite DESC index
+		// and the in memory order disagree while every single key still round trips
+		let key = probe(5, 0);
+		assert_eq!(key.key_values()[0], KeyValue::U64(5));
+	}
+
+	#[test]
+	fn a_value_list_of_the_wrong_length_is_refused() {
+		// a short read means the row had fewer columns than the layout, which is a schema drift, and
+		// filling the tail with defaults would silently address a different key
+		assert_eq!(ProbeKey::from_key_values(&[KeyValue::U64(1)]), None);
+		assert_eq!(ProbeKey::from_key_values(&[KeyValue::U64(1), KeyValue::U8(2), KeyValue::U8(3)]), None);
+	}
+
+	#[test]
+	fn a_value_of_the_wrong_width_is_refused() {
+		// sqlite is dynamically typed, so a blob in an integer column reaches here intact; accepting it
+		// would decode a neighbouring key rather than fail the read
+		assert_eq!(ProbeKey::from_key_values(&[KeyValue::Blob16([0; 16]), KeyValue::U8(2)]), None);
 	}
 }

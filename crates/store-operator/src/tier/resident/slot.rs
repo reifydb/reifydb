@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
+use std::{
+	collections::{BTreeMap, BTreeSet, btree_map::Entry},
+	mem::take,
+	sync::Arc,
+};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
@@ -141,7 +145,7 @@ impl OperatorLive {
 	}
 
 	pub fn clear_state(&mut self, census: &mut SlotCensus) -> OperatorKeys {
-		let keys = std::mem::take(&mut self.state);
+		let keys = take(&mut self.state);
 		for (key, entry) in keys.iter() {
 			self.bytes = self.bytes.saturating_sub(state_entry_bytes(key, entry));
 			if let Some(row) = &entry.post {
@@ -174,7 +178,7 @@ impl OperatorLive {
 #[derive(Debug, Default)]
 pub struct SlotInner {
 	pub live: OperatorLive,
-	pub in_flight: Option<std::sync::Arc<OperatorLive>>,
+	pub in_flight: Option<Arc<OperatorLive>>,
 	pub census: SlotCensus,
 	pub flow: Option<FlowId>,
 	pub pending_seq: Option<u64>,

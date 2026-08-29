@@ -9,127 +9,154 @@ pub mod root;
 pub mod timer;
 pub mod window;
 
+use crate::{
+	interface::store::CacheTiers,
+	key::{
+		operator::{
+			keyspace::{
+				distinct::{DistinctEntry, DistinctLayout},
+				expiry::{Expiry, ReapQueue, TumblingExpiry},
+				join::{
+					JoinLeft, JoinPin, JoinPublished, JoinRight, JoinRowExpiry, JoinRowMapping,
+					JoinSchema,
+				},
+				ringbuffer::{
+					PartitionedRingbufferEntry, PartitionedRingbufferExpiry,
+					PartitionedRingbufferMeta, PartitionedRingbufferTtlArm, RingbufferEntry,
+					RingbufferExpiry, RingbufferForward, RingbufferMeta, RingbufferTtlArm,
+				},
+				root::{
+					CustomNotCached, GateVisibility, GroupRowMapping, GuestRowMapping, NodeCounter,
+					SealLedger, SourceWatermark,
+				},
+				timer::{TimerIndex, TimerWheel},
+				window::{
+					Accumulator, Buffer, Count, Emit, EngineMeta, GuestAccumulator, GuestBuffer,
+					GuestRunning, RollingMeta, RowIndex, Running, Session, WindowMeta,
+				},
+			},
+			state::KeyspaceId,
+			traits::Keyspace,
+		},
+		typed::layout::{KeyColumn, KeyLayout},
+	},
+};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyspaceSpec {
+	pub name: &'static str,
+	pub id: KeyspaceId,
+	pub cache: CacheTiers,
+	pub columns: &'static [KeyColumn],
+}
+
+macro_rules! catalogue {
+	($($keyspace:ty),* $(,)?) => {
+		pub const KEYSPACES: &[KeyspaceSpec] = &[
+			$(KeyspaceSpec {
+				name: <$keyspace as Keyspace>::NAME,
+				id: <$keyspace as Keyspace>::ID,
+				cache: <$keyspace as Keyspace>::CACHE,
+				columns: <<$keyspace as Keyspace>::Key as KeyLayout>::COLUMNS,
+			}),*
+		];
+
+		#[cfg(test)]
+		fn every_keyspace_round_trips() {
+			$(round_trips::<$keyspace>();)*
+		}
+	};
+}
+
+catalogue!(
+	Accumulator,
+	Buffer,
+	Running,
+	Count,
+	Session,
+	RollingMeta,
+	EngineMeta,
+	Emit,
+	RowIndex,
+	WindowMeta,
+	GuestAccumulator,
+	GuestBuffer,
+	GuestRunning,
+	JoinLeft,
+	JoinRight,
+	JoinPublished,
+	JoinPin,
+	JoinSchema,
+	JoinRowExpiry,
+	JoinRowMapping,
+	RingbufferForward,
+	RingbufferEntry,
+	RingbufferExpiry,
+	RingbufferTtlArm,
+	RingbufferMeta,
+	PartitionedRingbufferEntry,
+	PartitionedRingbufferExpiry,
+	PartitionedRingbufferTtlArm,
+	PartitionedRingbufferMeta,
+	TimerWheel,
+	TimerIndex,
+	Expiry,
+	TumblingExpiry,
+	ReapQueue,
+	DistinctEntry,
+	DistinctLayout,
+	SourceWatermark,
+	SealLedger,
+	NodeCounter,
+	GateVisibility,
+	GroupRowMapping,
+	GuestRowMapping,
+	CustomNotCached,
+);
+
+#[cfg(test)]
+fn round_trips<K: Keyspace>() {
+	use crate::key::{operator::state::GroupId, typed::Key};
+
+	// low() is every column at the start of its own order, so a join that hardcoded a column to its
+	// minimum would round trip against low() alone; stepping the suffix first is what makes the
+	// probe able to fail
+	let mut suffix = <K::Suffix as Key>::low();
+	for step in 0..4 {
+		let key = K::join(GroupId(9), suffix.clone());
+		let (group, split) = K::split(&key);
+		assert_eq!(split, suffix, "{}: step {step}: a suffix must survive join then split", K::NAME);
+		assert_eq!(
+			K::join(group, split.clone()),
+			key,
+			"{}: step {step}: split then join must return the same key",
+			K::NAME
+		);
+		let (again_group, again_split) = K::split(&K::join(group, split.clone()));
+		assert_eq!(
+			(again_group, again_split),
+			(group, split),
+			"{}: step {step}: a second round trip must not drift, or the container's identity is \
+			 lost on every rewrite",
+			K::NAME
+		);
+		match suffix.successor() {
+			Some(next) => suffix = next,
+			None => break,
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::collections::HashSet;
 
-	use super::{
-		distinct::{DistinctEntry, DistinctLayout},
-		expiry::{Expiry, ReapQueue, TumblingExpiry},
-		join::{JoinLeft, JoinPin, JoinPublished, JoinRight, JoinRowExpiry, JoinRowMapping, JoinSchema},
-		ringbuffer::{
-			PartitionedRingbufferEntry, PartitionedRingbufferExpiry, PartitionedRingbufferMeta,
-			PartitionedRingbufferTtlArm, RingbufferEntry, RingbufferExpiry, RingbufferForward,
-			RingbufferMeta, RingbufferTtlArm,
-		},
-		root::{
-			CustomNotCached, GateVisibility, GroupRowMapping, GuestRowMapping, NodeCounter, SealLedger,
-			SourceWatermark,
-		},
-		timer::{TimerIndex, TimerWheel},
-		window::{
-			Accumulator, Buffer, Count, Emit, EngineMeta, GuestAccumulator, GuestBuffer, GuestRunning,
-			RollingMeta, RowIndex, Running, Session, WindowMeta,
-		},
-	};
-	use crate::{
-		interface::store::CacheTiers,
-		key::{
-			operator::{
-				state::{GroupId, KeyspaceId},
-				traits::Keyspace,
-			},
-			typed::Key,
-		},
-	};
+	use super::{KEYSPACES, every_keyspace_round_trips};
+	use crate::{interface::store::CacheTiers, key::operator::state::KeyspaceId};
 
-	fn round_trips<K: Keyspace>() {
-		// low() is every column at the start of its own order, so a join that hardcoded a column to its
-		// minimum would round trip against low() alone; stepping the suffix first is what makes the
-		// probe able to fail
-		let mut suffix = <K::Suffix as Key>::low();
-		for step in 0..4 {
-			let key = K::join(GroupId(9), suffix.clone());
-			let (group, split) = K::split(&key);
-			assert_eq!(split, suffix, "{}: step {step}: a suffix must survive join then split", K::NAME);
-			assert_eq!(
-				K::join(group, split.clone()),
-				key,
-				"{}: step {step}: split then join must return the same key",
-				K::NAME
-			);
-			let (again_group, again_split) = K::split(&K::join(group, split.clone()));
-			assert_eq!(
-				(again_group, again_split),
-				(group, split),
-				"{}: step {step}: a second round trip must not drift, or the container's identity is \
-				 lost on every rewrite",
-				K::NAME
-			);
-			match suffix.successor() {
-				Some(next) => suffix = next,
-				None => break,
-			}
-		}
+	fn catalogue() -> Vec<(&'static str, KeyspaceId, CacheTiers)> {
+		KEYSPACES.iter().map(|spec| (spec.name, spec.id, spec.cache)).collect()
 	}
-
-	macro_rules! catalogue {
-		($($keyspace:ty),* $(,)?) => {
-			fn catalogue() -> Vec<(&'static str, KeyspaceId, CacheTiers)> {
-				vec![$((<$keyspace as Keyspace>::NAME, <$keyspace as Keyspace>::ID, <$keyspace as Keyspace>::CACHE)),*]
-			}
-
-			fn every_keyspace_round_trips() {
-				$(round_trips::<$keyspace>();)*
-			}
-		};
-	}
-
-	catalogue!(
-		Accumulator,
-		Buffer,
-		Running,
-		Count,
-		Session,
-		RollingMeta,
-		EngineMeta,
-		Emit,
-		RowIndex,
-		WindowMeta,
-		GuestAccumulator,
-		GuestBuffer,
-		GuestRunning,
-		JoinLeft,
-		JoinRight,
-		JoinPublished,
-		JoinPin,
-		JoinSchema,
-		JoinRowExpiry,
-		JoinRowMapping,
-		RingbufferForward,
-		RingbufferEntry,
-		RingbufferExpiry,
-		RingbufferTtlArm,
-		RingbufferMeta,
-		PartitionedRingbufferEntry,
-		PartitionedRingbufferExpiry,
-		PartitionedRingbufferTtlArm,
-		PartitionedRingbufferMeta,
-		TimerWheel,
-		TimerIndex,
-		Expiry,
-		TumblingExpiry,
-		ReapQueue,
-		DistinctEntry,
-		DistinctLayout,
-		SourceWatermark,
-		SealLedger,
-		NodeCounter,
-		GateVisibility,
-		GroupRowMapping,
-		GuestRowMapping,
-		CustomNotCached,
-	);
 
 	#[test]
 	fn every_keyspace_names_and_tiers_itself_the_way_its_id_does() {

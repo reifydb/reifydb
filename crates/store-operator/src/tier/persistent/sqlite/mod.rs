@@ -10,6 +10,7 @@ pub mod metrics;
 pub mod schema;
 pub mod sql;
 mod state;
+pub mod typed;
 
 #[cfg(test)]
 mod tests;

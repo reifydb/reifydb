@@ -141,7 +141,7 @@ impl<K: KeyspaceRow> AnyBucket for TypedBucket<K> {
 	}
 
 	fn flush(&mut self, _tx: &mut Transaction<'_>) -> Result<()> {
-		unimplemented!("per keyspace bucket flush arrives with the per keyspace sqlite tables at S8")
+		unimplemented!("per keyspace bucket flush arrives with the commit buffer buckets at S11")
 	}
 
 	fn reap_group(&mut self, _group: GroupId, _budget: &mut Budget) -> Result<Resume> {

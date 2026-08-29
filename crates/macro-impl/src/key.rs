@@ -253,6 +253,16 @@ fn expand(name: &str, fields: &[KeyField]) -> TokenStream {
 		));
 	}
 
+	let mut values = String::new();
+	for field in fields {
+		values.push_str(&format!("\n\t\t\tKeyField::to_key_value(&self.{}),", field.name));
+	}
+
+	let mut reads = String::new();
+	for (at, field) in fields.iter().enumerate() {
+		reads.push_str(&format!("\n\t\t\t{}: KeyField::from_key_value(values[{at}])?,", field.name));
+	}
+
 	let mut bounds = String::new();
 	for field in fields {
 		bounds.push_str(&format!("\n\t{}: KeyField,", field.ty));
@@ -295,7 +305,12 @@ fn expand(name: &str, fields: &[KeyField]) -> TokenStream {
 	out.push_str("\tfn partial_cmp(&self, other: &Self) -> Option<::core::cmp::Ordering> {\n");
 	out.push_str("\t\tSome(Ord::cmp(self, other))\n\t}\n}\n\n");
 	out.push_str(&format!("#[automatically_derived]\nimpl KeyLayout for {name} {{\n"));
-	out.push_str(&format!("\tconst COLUMNS: &'static [KeyColumn] = &[{columns}\n\t];\n}}\n\n"));
+	out.push_str(&format!("\tconst COLUMNS: &'static [KeyColumn] = &[{columns}\n\t];\n\n"));
+	out.push_str("\tfn key_values(&self) -> ::std::vec::Vec<KeyValue> {\n");
+	out.push_str(&format!("\t\t::std::vec![{values}\n\t\t]\n\t}}\n\n"));
+	out.push_str("\tfn from_key_values(values: &[KeyValue]) -> Option<Self> {\n");
+	out.push_str(&format!("\t\tif values.len() != {} {{\n\t\t\treturn None;\n\t\t}}\n", fields.len()));
+	out.push_str(&format!("\t\tSome(Self {{{reads}\n\t\t}})\n\t}}\n}}\n\n"));
 	out.push_str(&format!("#[automatically_derived]\nimpl Key for {name} {{\n"));
 	out.push_str(&format!("\tfn low() -> Self {{\n\t\tSelf {{{low}\n\t\t}}\n\t}}\n\n"));
 	out.push_str("\tfn successor(&self) -> Option<Self> {\n");

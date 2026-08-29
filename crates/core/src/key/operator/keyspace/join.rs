@@ -14,7 +14,7 @@ use crate::{
 		typed::{
 			Key,
 			direction::{Asc, Desc, Direction, KeyField},
-			layout::{KeyColumn, KeyColumnType, KeyLayout},
+			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue},
 		},
 	},
 	metrics::heap::HeapSize,
