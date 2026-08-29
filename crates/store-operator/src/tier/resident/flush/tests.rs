@@ -41,7 +41,7 @@ use crate::{
 		persistent::{OperatorPersistentTier, sqlite::SqliteOperatorStorage},
 		point::OperatorPointConfig,
 		range::OperatorRangeConfig,
-		resident::{FLUSH_BUDGET_BYTES, OperatorResidentState},
+		resident::{FLUSH_BUDGET_BYTES, OperatorResidentState, batch::FlushBatch},
 	},
 	types::{BufferedState, DurablePre, OperatorWrite},
 };
@@ -53,7 +53,7 @@ const GROUP_B: GroupId = GroupId(11);
 const SIDE: u8 = 0;
 const FLOW: FlowId = FlowId(7);
 
-fn operators_in(batch: &crate::tier::resident::batch::FlushBatch) -> Vec<OperatorId> {
+fn operators_in(batch: &FlushBatch) -> Vec<OperatorId> {
 	let mut seen: Vec<OperatorId> = batch.state.iter().map(|((operator, _), _)| operator).collect();
 	seen.sort_unstable();
 	seen.dedup();

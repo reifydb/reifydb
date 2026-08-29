@@ -49,7 +49,6 @@ impl OperatorResidentState {
 
 	pub fn durable_position(&self, operator: OperatorId) -> Option<CommitVersion> {
 		let slot = self.shared().slot(operator)?;
-		let durable = slot.inner.lock().durable_position;
-		durable
+		slot.inner.lock().durable_position
 	}
 }

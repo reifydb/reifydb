@@ -16,7 +16,7 @@ mod tests;
 
 use std::{
 	collections::{BTreeMap, BTreeSet},
-	fmt,
+	fmt, mem,
 	sync::{
 		Arc, OnceLock,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -24,7 +24,7 @@ use std::{
 };
 
 use dashmap::DashMap;
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
@@ -452,7 +452,7 @@ impl OperatorResidentState {
 			self.shared.metrics.lock().budget_exhausted += 1;
 		}
 
-		batch.drops = std::mem::take(&mut global.drops);
+		batch.drops = mem::take(&mut global.drops);
 		global.in_flight_checkpoints = batch.checkpoints.clone();
 		global.in_flight_drops = batch.drops.clone();
 		global.in_flight_operators = touched;
@@ -478,7 +478,7 @@ impl OperatorResidentState {
 	}
 
 	fn release_in_flight(&self, global: &mut GlobalInner) {
-		let operators = std::mem::take(&mut global.in_flight_operators);
+		let operators = mem::take(&mut global.in_flight_operators);
 		for operator in operators {
 			let Some(slot) = self.shared.slot(operator) else {
 				continue;
@@ -620,7 +620,7 @@ fn drop_operator(marker: &DropMarker) -> OperatorId {
 pub(crate) fn record_state(
 	inner: &mut SlotInner,
 	key: EncodedKey,
-	post: Option<reifydb_codec::row::pod::EncodedPodRow>,
+	post: Option<EncodedPodRow>,
 	durable_pre: DurablePre,
 ) {
 	let previous = inner.merged_value_bytes(&key);
@@ -709,8 +709,8 @@ fn clear_drop(inner: &mut SlotInner, marker: DropMarker) {
 
 fn take_all(inner: &mut SlotInner) -> OperatorLive {
 	let taken = OperatorLive {
-		state: std::mem::take(&mut inner.live.state),
-		join_expiries: std::mem::take(&mut inner.live.join_expiries),
+		state: mem::take(&mut inner.live.state),
+		join_expiries: mem::take(&mut inner.live.join_expiries),
 		durable_join_expiries: BTreeSet::new(),
 		bytes: inner.live.bytes,
 	};

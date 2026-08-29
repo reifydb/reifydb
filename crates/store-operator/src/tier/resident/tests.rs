@@ -24,7 +24,7 @@ use reifydb_value::{
 use crate::{
 	tier::resident::{
 		OperatorResidentState,
-		batch::{DropMarker, JOIN_EXPIRY_ENTRY_BYTES, StateEntry},
+		batch::{DropMarker, FlushBatch, JOIN_EXPIRY_ENTRY_BYTES, StateEntry},
 	},
 	types::{
 		BufferedJoinExpiry, BufferedState, DurablePre, JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES,
@@ -51,7 +51,7 @@ fn write_in_flow(buffer: &OperatorResidentState, flow: FlowId, version: u64, wri
 	buffer.apply_batch_with_checkpoints(writes, &[(flow, CommitVersion(version))], &[]);
 }
 
-fn operators_of(batch: &crate::tier::resident::batch::FlushBatch) -> Vec<OperatorId> {
+fn operators_of(batch: &FlushBatch) -> Vec<OperatorId> {
 	let mut seen: Vec<OperatorId> = batch.state.iter().map(|((operator, _), _)| operator).collect();
 	seen.sort_unstable();
 	seen.dedup();

@@ -555,7 +555,7 @@ impl SqlitePersistentStorage {
 		let mut chunks = removals.chunks_exact(UPSERT_CHUNK);
 		for chunk in chunks.by_ref() {
 			let mut boxed: Vec<Box<dyn ToSql>> = Vec::with_capacity(chunk.len() + 1);
-			for key in chunk.iter().copied() {
+			for key in chunk.iter() {
 				boxed.push(Box::new(key.as_slice().to_vec()));
 			}
 			boxed.push(Box::new(version_bytes.to_vec()));

@@ -23,6 +23,8 @@ use crate::{
 
 type KeyRange<'a> = btree_map::Range<'a, EncodedKey, StateEntry>;
 
+type CombineFn = fn(KeyRange<'_>, KeyRange<'_>, usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)>;
+
 impl OperatorResidentState {
 	pub fn record_state_set(&self, operator: OperatorId, key: EncodedKey, row: EncodedPodRow, pre: DurablePre) {
 		self.write_slot(operator, |inner| record_state(inner, key, Some(row), pre));
@@ -80,7 +82,7 @@ impl OperatorResidentState {
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 		limit: usize,
-		combine: fn(KeyRange<'_>, KeyRange<'_>, usize) -> Vec<(EncodedKey, Option<EncodedPodRow>)>,
+		combine: CombineFn,
 	) -> BufferedStateRange {
 		let lower = owned(start);
 		let upper = owned(end);
