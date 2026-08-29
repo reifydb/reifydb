@@ -4,8 +4,6 @@
 #[cfg(test)]
 use std::cell::RefCell;
 
-use reifydb_codec::key::encoded::EncodedKey;
-
 use crate::tier::range::{RangeDomain, RangeTier, Shard};
 
 #[cfg(test)]
@@ -28,7 +26,7 @@ fn absence_interlock() {
 }
 
 impl<D: RangeDomain> RangeTier<D> {
-	pub fn lookup(&self, dimension: D::Dimension, key: &EncodedKey) -> Option<Option<D::Row>> {
+	pub fn lookup(&self, dimension: D::Dimension, key: &D::Key) -> Option<Option<D::Row>> {
 		let partition = D::partition(dimension, key)?;
 		if !D::caches_ranges(&partition) {
 			return None;
@@ -57,7 +55,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		Some(None)
 	}
 
-	fn resolve(&self, index: usize, partition: &D::Partition, key: &EncodedKey) -> Option<Option<D::Row>> {
+	fn resolve(&self, index: usize, partition: &D::Partition, key: &D::Key) -> Option<Option<D::Row>> {
 		let mut shard = self.shard(index).lock();
 		let next = shard.next_tick;
 		let bucket = D::metric_bucket(partition);

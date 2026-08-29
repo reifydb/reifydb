@@ -4,7 +4,6 @@
 #[cfg(test)]
 use std::cell::RefCell;
 
-use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{key::typed::ExclusiveUpperEnd, util::sorted::SortedVecMap};
 use reifydb_value::byte_size::ByteSize;
 
@@ -35,7 +34,7 @@ fn write_interlock() {
 }
 
 impl<D: RangeDomain> RangeTier<D> {
-	pub fn overwrite(&self, dimension: D::Dimension, key: EncodedKey, row: D::Row) {
+	pub fn overwrite(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
 		self.lower_head(dimension, &key);
 		let Some(partition) = self.cacheable(dimension, &key) else {
 			return;
@@ -46,7 +45,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 	}
 
-	pub fn insert(&self, dimension: D::Dimension, key: EncodedKey, row: D::Row) {
+	pub fn insert(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
 		self.lower_head(dimension, &key);
 		let Some(partition) = self.cacheable(dimension, &key) else {
 			return;
@@ -62,7 +61,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.evict_to_capacity(index);
 	}
 
-	pub fn mark_deleted(&self, dimension: D::Dimension, key: &EncodedKey) {
+	pub fn mark_deleted(&self, dimension: D::Dimension, key: &D::Key) {
 		let Some(partition) = self.cacheable(dimension, key) else {
 			return;
 		};
@@ -80,7 +79,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.discard(index, &partition, key);
 	}
 
-	pub fn retract(&self, dimension: D::Dimension, key: &EncodedKey) {
+	pub fn retract(&self, dimension: D::Dimension, key: &D::Key) {
 		let Some(partition) = self.cacheable(dimension, key) else {
 			return;
 		};
@@ -90,7 +89,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 	}
 
-	pub fn invalidate(&self, dimension: D::Dimension, key: &EncodedKey) {
+	pub fn invalidate(&self, dimension: D::Dimension, key: &D::Key) {
 		let Some(partition) = self.cacheable(dimension, key) else {
 			return;
 		};
@@ -135,7 +134,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 	}
 
-	fn cacheable(&self, dimension: D::Dimension, key: &EncodedKey) -> Option<D::Partition> {
+	fn cacheable(&self, dimension: D::Dimension, key: &D::Key) -> Option<D::Partition> {
 		D::partition(dimension, key).filter(D::caches_ranges)
 	}
 
@@ -143,7 +142,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.shard(index).lock().partitions.get(partition).is_some_and(|target| target.covered)
 	}
 
-	fn place(&self, index: usize, partition: &D::Partition, key: EncodedKey, entry: Entry<D::Row>) -> bool {
+	fn place(&self, index: usize, partition: &D::Partition, key: D::Key, entry: Entry<D::Row>) -> bool {
 		let mut shard = self.shard(index).lock();
 		let resident = shard.partitions.get(partition).map(|target| target.covered);
 		let admit = D::admits_unproven_writes()
@@ -205,11 +204,11 @@ impl<D: RangeDomain> RangeTier<D> {
 		true
 	}
 
-	fn claims(&self, partition: &D::Partition, key: &EncodedKey) -> bool {
+	fn claims(&self, partition: &D::Partition, key: &D::Key) -> bool {
 		self.coverage().read().contains(D::dimension(partition), key)
 	}
 
-	fn discard(&self, index: usize, partition: &D::Partition, key: &EncodedKey) {
+	fn discard(&self, index: usize, partition: &D::Partition, key: &D::Key) {
 		let mut shard = self.shard(index).lock();
 		let Shard {
 			partitions,
@@ -232,18 +231,16 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.record_retraction();
 	}
 
-	pub(super) fn withdraw(&self, dimension: D::Dimension, key: &EncodedKey) {
+	pub(super) fn withdraw(&self, dimension: D::Dimension, key: &D::Key) {
 		let mut coverage = self.coverage().write();
 		coverage.shrink_key(dimension, key);
-		if in_head_band::<D>(dimension, key)
-			&& coverage.head(dimension).is_some_and(|current| current.as_slice() > key.as_slice())
-		{
+		if in_head_band::<D>(dimension, key) && coverage.head(dimension).is_some_and(|current| current > key) {
 			coverage.set_head(dimension, key.clone());
 		}
 		self.record_retraction();
 	}
 
-	fn claim_island(&self, dimension: D::Dimension, key: &EncodedKey, token: u64) {
+	fn claim_island(&self, dimension: D::Dimension, key: &D::Key, token: u64) {
 		if self.coverage().read().contains(dimension, key) {
 			return;
 		}

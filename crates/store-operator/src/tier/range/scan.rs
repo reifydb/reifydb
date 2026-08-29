@@ -13,7 +13,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
-			typed::ExclusiveUpperEnd,
+			typed::{ExclusiveUpperEnd, range::KeyRange},
 		},
 	};
 	use reifydb_store::{
@@ -81,7 +81,7 @@ mod tests {
 		span: &Interval,
 		rows: &[(EncodedKey, EncodedPodRow)],
 	) -> Materialize {
-		let scan = tier.plan_scan(OP, range).expect("the fixture range must be plannable");
+		let scan = tier.plan_scan(OP, &KeyRange::from(range)).expect("the fixture range must be plannable");
 		tier.materialize(&scan, span, rows)
 	}
 
@@ -128,7 +128,8 @@ mod tests {
 			&[(at(b"f"), row("f")), (at(b"g"), row("g"))]
 		) == Materialize::Materialized);
 
-		let scan = tier.plan_scan(OP, &range).expect("a whole-keyspace range must be plannable");
+		let scan =
+			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 		let keyspace = whole(CACHED);
 
 		assert_eq!(
@@ -173,7 +174,8 @@ mod tests {
 		assert!(claim(&tier, &range, &spanning(&at(b"d"), &at(b"e")), &[(at(b"d"), row("d"))])
 			== Materialize::Materialized);
 
-		let scan = tier.plan_scan(OP, &range).expect("a whole-keyspace range must be plannable");
+		let scan =
+			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 		assert!(scan.degraded(), "three non-exempt gaps against a guard of one must abandon the plan");
 		assert_eq!(
 			scan.segments(),
@@ -220,7 +222,7 @@ mod tests {
 			"an empty proven span is still a claim"
 		);
 
-		let scan = tier.plan_scan(OP, &range).expect("a cross-group range must be plannable");
+		let scan = tier.plan_scan(OP, &KeyRange::from(&range)).expect("a cross-group range must be plannable");
 		assert_eq!(scan.gaps(), 0, "both remaining gaps lie in a keyspace that is never cached");
 		assert!(
 			!scan.degraded(),
@@ -275,7 +277,8 @@ mod tests {
 		tier.mark_deleted(OP, &at(b"a"));
 		tier.mark_deleted(OP, &at(b"b"));
 
-		let scan = tier.plan_scan(OP, &range).expect("a whole-keyspace range must be plannable");
+		let scan =
+			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 		let mut cursor = RangeCursor::new();
 		let chunk = tier.serve(&scan, &span, &mut cursor, 1);
 		assert_eq!(
@@ -286,7 +289,8 @@ mod tests {
 		assert!(cursor.is_exhausted(), "the segment held nothing after the row, so the chunk must be final");
 
 		tier.mark_deleted(OP, &at(b"c"));
-		let scan = tier.plan_scan(OP, &range).expect("a whole-keyspace range must be plannable");
+		let scan =
+			tier.plan_scan(OP, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 		let mut cursor = RangeCursor::new();
 		let chunk = tier.serve(&scan, &span, &mut cursor, 1);
 		assert_eq!(
@@ -338,7 +342,9 @@ mod tests {
 		let span = Interval::new(head.clone(), whole(bottom).end);
 		let rows = [(head.clone(), row("top")), (tail.clone(), row("bottom"))];
 
-		let scan = tier.plan_scan(OP, &across(top, bottom)).expect("a two-keyspace range must be plannable");
+		let scan = tier
+			.plan_scan(OP, &KeyRange::from(&across(top, bottom)))
+			.expect("a two-keyspace range must be plannable");
 		assert!(
 			tier.materialize(&scan, &span, &rows) == Materialize::Materialized,
 			"a materialize spanning two cached partitions must be accepted"
@@ -369,7 +375,9 @@ mod tests {
 		let top = KeyspaceId::BUFFER;
 		let bottom = KeyspaceId::ACCUMULATOR;
 
-		let merged = tier.plan_scan(OP, &across(top, bottom)).expect("a two-keyspace range must be plannable");
+		let merged = tier
+			.plan_scan(OP, &KeyRange::from(&across(top, bottom)))
+			.expect("a two-keyspace range must be plannable");
 		assert_eq!(
 			merged.segments(),
 			[Segment::Gap {
@@ -380,7 +388,7 @@ mod tests {
 		);
 
 		let split = tier
-			.plan_scan(OP, &across(CACHED_ABOVE_UNCACHED, KeyspaceId::JOIN_ROW_EXPIRY))
+			.plan_scan(OP, &KeyRange::from(&across(CACHED_ABOVE_UNCACHED, KeyspaceId::JOIN_ROW_EXPIRY)))
 			.expect("a range straddling an uncacheable keyspace must be plannable");
 		assert_eq!(
 			split.segments().len(),

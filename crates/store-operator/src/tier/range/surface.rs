@@ -9,7 +9,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey, group_inner_range, keyspace_inner_range},
+	key::{
+		operator::state::{GroupId, KeyspaceId, OperatorStateKey, group_inner_range, keyspace_inner_range},
+		typed::range::KeyRange,
+	},
 };
 use reifydb_store::{
 	coverage::{
@@ -63,7 +66,7 @@ fn materialize(
 	page: &[(EncodedKey, EncodedPodRow)],
 ) -> PartitionId {
 	let range = keyspace_inner_range(group, keyspace);
-	let scan = tier.plan_scan(operator, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(operator, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap the fixture can materialize over");
 	assert!(
 		tier.materialize(&scan, &gap, page) == Materialize::Materialized,
@@ -103,7 +106,7 @@ fn serve_ram(
 	range: &EncodedKeyRange,
 	limit: usize,
 ) -> Option<Vec<(EncodedKey, EncodedPodRow)>> {
-	let scan = tier.plan_scan(operator, range)?;
+	let scan = tier.plan_scan(operator, &KeyRange::from(range))?;
 	let mut out: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 	let mut resident = false;
 
@@ -276,7 +279,7 @@ fn a_materialize_keeps_a_row_already_resident_rather_than_replacing_it() {
 	materialize(&tier, OP_A, GROUP_A, KeyspaceId::ACCUMULATOR, &[(k.clone(), row("v1"))]);
 
 	let range = keyspace_inner_range(GROUP_B, KeyspaceId::ACCUMULATOR);
-	let scan = tier.plan_scan(OP_A, &range).expect("an uncovered keyspace must be plannable");
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("an uncovered keyspace must be plannable");
 	tier.overwrite(OP_A, k.clone(), row("v2"));
 	let gap = first_gap(&scan).expect("the uncovered keyspace must plan as a gap");
 	tier.materialize(&scan, &gap, &[(key(GROUP_B, KeyspaceId::ACCUMULATOR, b"a"), row("other"))]);
@@ -329,7 +332,7 @@ fn no_admission_path_lets_an_excluded_keyspace_into_the_tier() {
 		let k = key(GROUP_A, keyspace, b"a");
 
 		assert!(
-			tier.plan_scan(OP_A, &range).is_none(),
+			tier.plan_scan(OP_A, &KeyRange::from(&range)).is_none(),
 			"{} must be refused before the scan starts; a plan that can only be thrown away still takes the \
              shard lock and pays for the scan",
 			keyspace.name()
@@ -351,7 +354,8 @@ fn no_admission_path_lets_an_excluded_keyspace_into_the_tier() {
 	assert_eq!(tier.resident_bytes(), ByteSize::ZERO);
 
 	assert!(
-		tier.plan_scan(OP_A, &keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR)).is_some(),
+		tier.plan_scan(OP_A, &KeyRange::from(&keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR)))
+			.is_some(),
 		"the control: a gate that refused every keyspace would pass the assertions above while turning the \
          whole tier into an off switch, and that only shows up as a throughput loss in a replay"
 	);
@@ -362,7 +366,7 @@ fn a_gap_over_an_excluded_keyspace_never_degrades_the_plan() {
 	let tier = roomy();
 	let range = group_inner_range(GROUP_A);
 
-	let scan = tier.plan_scan(OP_A, &range).expect("a whole-group range must be plannable");
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-group range must be plannable");
 
 	assert!(
 		!scan.degraded(),

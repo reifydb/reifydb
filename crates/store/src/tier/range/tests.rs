@@ -15,7 +15,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+	key::{
+		operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+		typed::{MultiKey, range::KeyRange},
+	},
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -77,7 +80,7 @@ fn materialize(
 	page: &[(EncodedKey, EncodedPodRow)],
 ) -> TestPartition {
 	let range = keyspace_inner_range(group, keyspace);
-	let scan = tier.plan_scan(operator, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(operator, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap the fixture can materialize over");
 	assert!(
 		tier.materialize(&scan, &gap, page) == Materialize::Materialized,
@@ -90,7 +93,7 @@ fn materialize(
 	}
 }
 
-fn first_gap<X: RangeDomain>(scan: &RangeScan<X>) -> Option<Interval> {
+fn first_gap<X: RangeDomain>(scan: &RangeScan<X>) -> Option<Interval<X::Key>> {
 	scan.segments().iter().find_map(|segment| match segment {
 		Segment::Gap {
 			interval,
@@ -112,7 +115,7 @@ fn serve_ram(
 	range: &EncodedKeyRange,
 	limit: usize,
 ) -> Option<Vec<(EncodedKey, EncodedPodRow)>> {
-	let scan = tier.plan_scan(operator, range)?;
+	let scan = tier.plan_scan(operator, &KeyRange::from(range))?;
 	let mut out: Vec<(EncodedKey, EncodedPodRow)> = Vec::new();
 	let mut resident = false;
 
@@ -143,7 +146,7 @@ fn serve_ram(
 }
 
 fn covers(tier: &RangeTier<D>, operator: OperatorId, range: &EncodedKeyRange) -> bool {
-	tier.plan_scan(operator, range)
+	tier.plan_scan(operator, &KeyRange::from(range))
 		.map(|scan| scan.segments().iter().any(|segment| matches!(segment, Segment::Resident(_))))
 		.unwrap_or(false)
 }
@@ -191,7 +194,7 @@ fn a_materialize_that_does_not_fit_the_budget_is_refused_whole_and_evicts_nothin
 
 	let third = GroupId(12);
 	let range = keyspace_inner_range(third, KeyspaceId::ACCUMULATOR);
-	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("the uncovered keyspace must plan as a gap");
 	let page: Vec<(EncodedKey, EncodedPodRow)> = (0..64u8)
 		.map(|index| (key(third, KeyspaceId::ACCUMULATOR, &[index]), row("a fairly long row body")))
@@ -489,7 +492,7 @@ fn a_materialize_that_races_a_retraction_refuses_rather_than_reinstating_the_cla
 	.expect("a tier with a byte budget must be constructed");
 
 	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
-	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
 
 	let published = tier.materialize(&scan, &gap, &[(victim.clone(), row("stale"))]);
@@ -538,7 +541,7 @@ fn a_refused_materialize_must_not_delete_a_row_written_while_it_was_placing() {
 	.expect("a tier with a byte budget must be constructed");
 
 	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
-	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
 
 	let published = tier.materialize(&scan, &gap, &[(contested.clone(), row("scanned"))]);
@@ -587,7 +590,7 @@ fn a_concurrent_materialize_never_refuses_another_materialize() {
 	.expect("a tier with a byte budget must be constructed");
 
 	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
-	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
 	let k = key(GROUP_A, KeyspaceId::ACCUMULATOR, b"a");
 
@@ -627,7 +630,7 @@ fn a_materialize_places_its_rows_before_it_publishes_the_claim() {
 	.expect("a tier with a byte budget must be constructed");
 
 	let range = keyspace_inner_range(GROUP_A, KeyspaceId::ACCUMULATOR);
-	let scan = tier.plan_scan(OP_A, &range).expect("a whole-keyspace range must be plannable");
+	let scan = tier.plan_scan(OP_A, &KeyRange::from(&range)).expect("a whole-keyspace range must be plannable");
 	let gap = first_gap(&scan).expect("an uncovered keyspace must plan as a gap");
 
 	assert!(tier.materialize(&scan, &gap, &[(scanned.clone(), row("v"))]) == Materialize::Materialized);
@@ -671,7 +674,7 @@ fn sweep_page(group: u128) -> Vec<(EncodedKey, EncodedPodRow)> {
 	(0..SWEEP_KEYS).map(|n| (sweep_key(group, n), row("m"))).collect()
 }
 
-trait Sweep: RangeDomain<Dimension = OperatorId, Partition = TestPartition, Row = EncodedPodRow> {}
+trait Sweep: RangeDomain<Dimension = OperatorId, Partition = TestPartition, Key = MultiKey, Row = EncodedPodRow> {}
 
 impl Sweep for D {}
 
@@ -688,7 +691,7 @@ fn sweep_tier<X: Sweep>(budget: u64) -> RangeTier<X> {
 
 fn sweep_materialize<X: Sweep>(tier: &RangeTier<X>, group: u128) {
 	let range = keyspace_inner_range(GroupId(group), KeyspaceId::ACCUMULATOR);
-	let Some(scan) = tier.plan_scan(OP_A, &range) else {
+	let Some(scan) = tier.plan_scan(OP_A, &KeyRange::from(&range)) else {
 		return;
 	};
 	let Some(gap) = first_gap(&scan) else {

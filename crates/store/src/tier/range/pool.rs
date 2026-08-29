@@ -99,7 +99,7 @@ impl<D: RangeDomain> RangeTier<D> {
 		&self.inner.shards
 	}
 
-	pub(super) fn coverage(&self) -> &RwLock<CoverageIndex<D::Dimension>> {
+	pub(super) fn coverage(&self) -> &RwLock<CoverageIndex<D::Dimension, D::Key>> {
 		&self.inner.coverage
 	}
 

@@ -16,12 +16,19 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-		typed::ExclusiveUpperEnd,
+		typed::{ExclusiveUpperEnd, MultiKey},
 	},
 };
 use reifydb_store::tier::range::{
-	RangeBucketMetrics, RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics, RangeTier, prefix_successor,
+	RangeBucketMetrics, RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics, RangeTier,
 };
+
+fn prefix_successor(prefix: &[u8]) -> Option<Vec<u8>> {
+	let last = prefix.iter().rposition(|&byte| byte != 0xff)?;
+	let mut out = prefix[..=last].to_vec();
+	out[last] += 1;
+	Some(out)
+}
 
 pub type OperatorRangeConfig = RangeConfig;
 pub type OperatorRangeTier = RangeTier<OperatorDomain>;
@@ -61,7 +68,7 @@ impl PartitionId {
 		EncodedKey::new(OperatorStateKey::inner_encoded(self.group, self.keyspace, [0u8; 0]).as_bytes())
 	}
 
-	pub fn span(&self) -> (EncodedKey, ExclusiveUpperEnd) {
+	pub fn span(&self) -> (MultiKey, ExclusiveUpperEnd<MultiKey>) {
 		let start = self.prefix();
 		let end = match prefix_successor(start.as_slice()) {
 			Some(successor) => ExclusiveUpperEnd::of(successor),
@@ -72,6 +79,16 @@ impl PartitionId {
 
 	pub fn caches_ranges(&self) -> bool {
 		self.keyspace.cache_tiers().caches_ranges()
+	}
+
+	fn first_addressable(key: &EncodedKey) -> Option<EncodedKey> {
+		let bytes = key.as_slice();
+		if bytes.len() >= Self::PREFIX_LEN {
+			return None;
+		}
+		let mut padded = bytes.to_vec();
+		padded.resize(Self::PREFIX_LEN, 0);
+		Some(EncodedKey::new(padded))
 	}
 }
 
@@ -93,29 +110,33 @@ static CACHE_TIERS_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 impl RangeDomain for OperatorDomain {
 	type Dimension = OperatorId;
 	type Partition = PartitionId;
+	type Key = MultiKey;
 	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 
-	const PREFIX_LEN: usize = PartitionId::PREFIX_LEN;
 	const METRIC_BUCKETS: usize = 256;
 
 	const SCOPE: &'static str = "operator_range";
 
 	const GAP_SCOPE: &'static str = "operator_range::gaps";
 
-	fn partition(dimension: Self::Dimension, key: &EncodedKey) -> Option<Self::Partition> {
+	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Option<Self::Partition> {
 		PartitionId::of(dimension, key)
+	}
+
+	fn first_addressable(key: &Self::Key) -> Option<Self::Key> {
+		PartitionId::first_addressable(key)
 	}
 
 	fn dimension(partition: &Self::Partition) -> Self::Dimension {
 		partition.operator
 	}
 
-	fn span(partition: &Self::Partition) -> (EncodedKey, ExclusiveUpperEnd) {
+	fn span(partition: &Self::Partition) -> (Self::Key, ExclusiveUpperEnd<Self::Key>) {
 		partition.span()
 	}
 
-	fn head_band(_dimension: Self::Dimension) -> Option<(EncodedKey, EncodedKey)> {
+	fn head_band(_dimension: Self::Dimension) -> Option<(Self::Key, Self::Key)> {
 		None
 	}
 
@@ -123,7 +144,7 @@ impl RangeDomain for OperatorDomain {
 		partition.caches_ranges()
 	}
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
+	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
 		let floor = CACHE_TIERS_RUN_FLOOR[partition.keyspace.0 as usize];
 		if floor == partition.keyspace.0 {
 			return partition.span().1;
@@ -154,7 +175,10 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+		key::{
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			typed::range::KeyRange,
+		},
 	};
 	use reifydb_store::{
 		coverage::{
@@ -190,7 +214,9 @@ mod tests {
 		page: &[(EncodedKey, EncodedPodRow)],
 	) {
 		let range = keyspace_inner_range(GROUP_A, keyspace);
-		let scan = tier.plan_scan(operator, &range).expect("a whole-keyspace range must be plannable");
+		let scan = tier
+			.plan_scan(operator, &KeyRange::from(&range))
+			.expect("a whole-keyspace range must be plannable");
 		let gap = scan
 			.segments()
 			.iter()
@@ -207,7 +233,7 @@ mod tests {
 
 	fn serve_ram(tier: &OperatorRangeTier, operator: OperatorId, keyspace: KeyspaceId) -> Option<Vec<EncodedKey>> {
 		let range = keyspace_inner_range(GROUP_A, keyspace);
-		let scan = tier.plan_scan(operator, &range)?;
+		let scan = tier.plan_scan(operator, &KeyRange::from(&range))?;
 		let mut out: Vec<EncodedKey> = Vec::new();
 		let mut resident = false;
 		for segment in scan.segments() {
@@ -248,7 +274,9 @@ mod tests {
 
 		assert_eq!(tier.entries(), 0);
 		assert_eq!(tier.lookup(OP_A, &at), None);
-		assert!(tier.plan_scan(OP_A, &keyspace_inner_range(GROUP_A, KeyspaceId::CUSTOM_NOT_CACHED)).is_none());
+		assert!(tier
+			.plan_scan(OP_A, &KeyRange::from(&keyspace_inner_range(GROUP_A, KeyspaceId::CUSTOM_NOT_CACHED)))
+			.is_none());
 	}
 
 	#[test]

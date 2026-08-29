@@ -14,7 +14,7 @@ use reifydb_core::key::operator::state::GroupId;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::typed::{ExclusiveUpperEnd, Key},
+	key::typed::{ExclusiveUpperEnd, Key, range::KeyRange},
 };
 use reifydb_store::{
 	coverage::{
@@ -476,7 +476,7 @@ impl StandardOperatorStore {
 		let scan = if exhausted {
 			None
 		} else {
-			tier.and_then(|tier| tier.plan_scan(operator, &range))
+			tier.and_then(|tier| tier.plan_scan(operator, &KeyRange::from(&range)))
 		};
 		let mut segment_index = 0usize;
 		let mut cursor = RangeCursor::new();

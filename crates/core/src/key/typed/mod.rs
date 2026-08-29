@@ -10,6 +10,7 @@ use crate::metrics::heap::HeapSize;
 
 pub mod direction;
 pub mod layout;
+pub mod range;
 
 pub trait Key: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {
 	fn low() -> Self;

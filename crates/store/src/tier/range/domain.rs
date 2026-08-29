@@ -11,11 +11,18 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-		typed::ExclusiveUpperEnd,
+		typed::{ExclusiveUpperEnd, MultiKey},
 	},
 };
 
-use crate::tier::range::{RangeDomain, prefix_successor};
+use crate::tier::range::RangeDomain;
+
+fn prefix_successor(prefix: &[u8]) -> Option<Vec<u8>> {
+	let last = prefix.iter().rposition(|&byte| byte != 0xff)?;
+	let mut out = prefix[..=last].to_vec();
+	out[last] += 1;
+	Some(out)
+}
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TestDomain;
@@ -48,7 +55,7 @@ impl TestPartition {
 		EncodedKey::new(OperatorStateKey::inner_encoded(self.group, self.keyspace, [0u8; 0]).as_bytes())
 	}
 
-	pub fn span(&self) -> (EncodedKey, ExclusiveUpperEnd) {
+	pub fn span(&self) -> (MultiKey, ExclusiveUpperEnd<MultiKey>) {
 		let start = self.prefix();
 		let end = match prefix_successor(start.as_slice()) {
 			Some(successor) => ExclusiveUpperEnd::of(successor),
@@ -59,6 +66,16 @@ impl TestPartition {
 
 	pub fn caches_ranges(&self) -> bool {
 		self.keyspace.cache_tiers().caches_ranges()
+	}
+
+	fn first_addressable(key: &EncodedKey) -> Option<EncodedKey> {
+		let bytes = key.as_slice();
+		if bytes.len() >= Self::PREFIX_LEN {
+			return None;
+		}
+		let mut padded = bytes.to_vec();
+		padded.resize(Self::PREFIX_LEN, 0);
+		Some(EncodedKey::new(padded))
 	}
 }
 
@@ -80,29 +97,33 @@ static CACHE_TIERS_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 impl RangeDomain for TestDomain {
 	type Dimension = OperatorId;
 	type Partition = TestPartition;
+	type Key = MultiKey;
 	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 
-	const PREFIX_LEN: usize = TestPartition::PREFIX_LEN;
 	const METRIC_BUCKETS: usize = 256;
 
 	const SCOPE: &'static str = "operator_range";
 
 	const GAP_SCOPE: &'static str = "operator_range::gaps";
 
-	fn partition(dimension: Self::Dimension, key: &EncodedKey) -> Option<Self::Partition> {
+	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Option<Self::Partition> {
 		TestPartition::of(dimension, key)
+	}
+
+	fn first_addressable(key: &Self::Key) -> Option<Self::Key> {
+		TestPartition::first_addressable(key)
 	}
 
 	fn dimension(partition: &Self::Partition) -> Self::Dimension {
 		partition.dimension
 	}
 
-	fn span(partition: &Self::Partition) -> (EncodedKey, ExclusiveUpperEnd) {
+	fn span(partition: &Self::Partition) -> (Self::Key, ExclusiveUpperEnd<Self::Key>) {
 		partition.span()
 	}
 
-	fn head_band(_dimension: Self::Dimension) -> Option<(EncodedKey, EncodedKey)> {
+	fn head_band(_dimension: Self::Dimension) -> Option<(Self::Key, Self::Key)> {
 		None
 	}
 
@@ -110,7 +131,7 @@ impl RangeDomain for TestDomain {
 		partition.caches_ranges()
 	}
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
+	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
 		let floor = CACHE_TIERS_RUN_FLOOR[partition.keyspace.0 as usize];
 		if floor == partition.keyspace.0 {
 			return partition.span().1;
@@ -142,29 +163,33 @@ pub(super) struct AdmittingDomain;
 impl RangeDomain for AdmittingDomain {
 	type Dimension = OperatorId;
 	type Partition = TestPartition;
+	type Key = MultiKey;
 	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 
-	const PREFIX_LEN: usize = TestPartition::PREFIX_LEN;
 	const METRIC_BUCKETS: usize = 256;
 
 	const SCOPE: &'static str = "admitting_range";
 
 	const GAP_SCOPE: &'static str = "admitting_range::gaps";
 
-	fn partition(dimension: Self::Dimension, key: &EncodedKey) -> Option<Self::Partition> {
+	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Option<Self::Partition> {
 		TestDomain::partition(dimension, key)
+	}
+
+	fn first_addressable(key: &Self::Key) -> Option<Self::Key> {
+		TestDomain::first_addressable(key)
 	}
 
 	fn dimension(partition: &Self::Partition) -> Self::Dimension {
 		TestDomain::dimension(partition)
 	}
 
-	fn span(partition: &Self::Partition) -> (EncodedKey, ExclusiveUpperEnd) {
+	fn span(partition: &Self::Partition) -> (Self::Key, ExclusiveUpperEnd<Self::Key>) {
 		TestDomain::span(partition)
 	}
 
-	fn head_band(dimension: Self::Dimension) -> Option<(EncodedKey, EncodedKey)> {
+	fn head_band(dimension: Self::Dimension) -> Option<(Self::Key, Self::Key)> {
 		TestDomain::head_band(dimension)
 	}
 
@@ -172,7 +197,7 @@ impl RangeDomain for AdmittingDomain {
 		TestDomain::caches_ranges(partition)
 	}
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
+	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key> {
 		TestDomain::cache_tiers_run_end(partition)
 	}
 

@@ -13,12 +13,11 @@ mod write;
 
 use std::{borrow::Cow, collections::HashMap, fmt::Debug, hash::Hash, mem::size_of, ops::Bound, sync::Arc};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
+#[cfg(test)]
+use reifydb_core::key::typed::MultiKey;
 use reifydb_core::{
-	key::typed::ExclusiveUpperEnd,
+	key::typed::{ExclusiveUpperEnd, Key},
 	util::{budget::MemoryBudget, sorted::SortedVecMap},
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
@@ -45,10 +44,9 @@ impl RowBytes for EncodedPodRow {
 pub trait RangeDomain: Copy + Debug + 'static {
 	type Dimension: Copy + Eq + Hash + Send + Sync + 'static;
 	type Partition: Copy + Eq + Hash + Send + Sync + 'static;
+	type Key: Key;
 	type MetricBucket: Copy + Eq + Debug + Send + Sync + 'static;
 	type Row: RowBytes + Clone + Send + Sync + 'static;
-
-	const PREFIX_LEN: usize;
 
 	const METRIC_BUCKETS: usize;
 
@@ -56,17 +54,21 @@ pub trait RangeDomain: Copy + Debug + 'static {
 
 	const GAP_SCOPE: &'static str;
 
-	fn partition(dimension: Self::Dimension, key: &EncodedKey) -> Option<Self::Partition>;
+	fn partition(dimension: Self::Dimension, key: &Self::Key) -> Option<Self::Partition>;
+
+	fn first_addressable(_key: &Self::Key) -> Option<Self::Key> {
+		None
+	}
 
 	fn dimension(partition: &Self::Partition) -> Self::Dimension;
 
-	fn span(partition: &Self::Partition) -> (EncodedKey, ExclusiveUpperEnd);
+	fn span(partition: &Self::Partition) -> (Self::Key, ExclusiveUpperEnd<Self::Key>);
 
-	fn head_band(dimension: Self::Dimension) -> Option<(EncodedKey, EncodedKey)>;
+	fn head_band(dimension: Self::Dimension) -> Option<(Self::Key, Self::Key)>;
 
 	fn caches_ranges(partition: &Self::Partition) -> bool;
 
-	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd;
+	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd<Self::Key>;
 
 	fn supersedes(_resident: &Self::Row, _incoming: &Self::Row) -> bool {
 		true
@@ -100,14 +102,7 @@ impl RangeConfig {
 	}
 }
 
-pub fn prefix_successor(prefix: &[u8]) -> Option<Vec<u8>> {
-	let last = prefix.iter().rposition(|&byte| byte != 0xff)?;
-	let mut out = prefix[..=last].to_vec();
-	out[last] += 1;
-	Some(out)
-}
-
-pub type RangeRows<D> = Vec<(EncodedKey, <D as RangeDomain>::Row)>;
+pub type RangeRows<D> = Vec<(<D as RangeDomain>::Key, <D as RangeDomain>::Row)>;
 
 pub fn scan_range(gap: &Interval) -> EncodedKeyRange {
 	let end = match &gap.end {
@@ -117,7 +112,7 @@ pub fn scan_range(gap: &Interval) -> EncodedKeyRange {
 	EncodedKeyRange::new(Bound::Included(gap.start.clone()), end)
 }
 
-pub fn proven_span(gap: &Interval, last_key: Option<&EncodedKey>, exhausted: bool) -> Option<Interval> {
+pub fn proven_span<K: Key>(gap: &Interval<K>, last_key: Option<&K>, exhausted: bool) -> Option<Interval<K>> {
 	if exhausted {
 		return Some(gap.clone());
 	}
@@ -125,8 +120,8 @@ pub fn proven_span(gap: &Interval, last_key: Option<&EncodedKey>, exhausted: boo
 	Some(Interval::new(gap.start.clone(), ExclusiveUpperEnd::just_past(last).min(gap.end.clone())))
 }
 
-struct Partition<R> {
-	entries: SortedVecMap<EncodedKey, Entry<R>>,
+struct Partition<K, R> {
+	entries: SortedVecMap<K, Entry<R>>,
 	pinned: PinnedCount,
 	bytes: usize,
 	tick: u64,
@@ -143,7 +138,7 @@ struct Progress {
 	written_at: u64,
 }
 
-impl<R> Partition<R> {
+impl<K, R> Partition<K, R> {
 	fn progress(&self) -> Progress {
 		Progress {
 			created: self.created,
@@ -154,7 +149,7 @@ impl<R> Partition<R> {
 }
 
 struct Shard<D: RangeDomain> {
-	partitions: HashMap<D::Partition, Partition<D::Row>>,
+	partitions: HashMap<D::Partition, Partition<D::Key, D::Row>>,
 	budget: MemoryBudget,
 	next_tick: u64,
 	writes: u64,
@@ -163,19 +158,19 @@ struct Shard<D: RangeDomain> {
 	bucket_metrics: BucketCounters,
 }
 
-const fn entry_overhead<R>() -> usize {
-	size_of::<(EncodedKey, Entry<R>)>()
+const fn entry_overhead<K, R>() -> usize {
+	size_of::<(K, Entry<R>)>()
 }
 
 #[cfg(test)]
-const ENTRY_OVERHEAD: usize = entry_overhead::<EncodedPodRow>();
+const ENTRY_OVERHEAD: usize = entry_overhead::<MultiKey, EncodedPodRow>();
 
 const fn partition_overhead<D: RangeDomain>() -> usize {
-	size_of::<D::Partition>() + size_of::<Partition<D::Row>>()
+	size_of::<D::Partition>() + size_of::<Partition<D::Key, D::Row>>()
 }
 
-fn entry_footprint<R: RowBytes>(key: &EncodedKey, entry: &Entry<R>) -> usize {
-	entry_overhead::<R>() + key.heap_bytes() + entry.value().map_or(0, RowBytes::row_bytes)
+fn entry_footprint<K: Key, R: RowBytes>(key: &K, entry: &Entry<R>) -> usize {
+	entry_overhead::<K, R>() + key.heap_size() + entry.value().map_or(0, RowBytes::row_bytes)
 }
 
 fn account(bytes: &mut usize, budget: &MemoryBudget, old: usize, new: usize) {
@@ -193,7 +188,7 @@ fn account(bytes: &mut usize, budget: &MemoryBudget, old: usize, new: usize) {
 pub struct RangeScan<D: RangeDomain> {
 	pub(super) dimension: D::Dimension,
 	pub(super) advanced: bool,
-	pub(super) segments: Vec<Segment>,
+	pub(super) segments: Vec<Segment<D::Key>>,
 	pub(super) gaps: usize,
 	pub(super) degraded: bool,
 	pub(super) retractions: u64,
@@ -249,7 +244,7 @@ pub(crate) type ServeInterlock<D> = Box<dyn Fn(&RangeTier<D>) + Send + Sync>;
 
 struct PoolInner<D: RangeDomain> {
 	shards: Box<[Mutex<Shard<D>>]>,
-	coverage: RwLock<CoverageIndex<D::Dimension>>,
+	coverage: RwLock<CoverageIndex<D::Dimension, D::Key>>,
 	retractions: Retractions,
 	gap_guard: usize,
 	#[cfg(test)]
