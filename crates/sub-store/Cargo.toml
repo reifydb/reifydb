@@ -49,5 +49,6 @@ sqlite = [
 ]
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb = { workspace = true, features = ["testing"] }
 reifydb-test-harness = { workspace = true }

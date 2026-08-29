@@ -28,4 +28,5 @@ reifydb-runtime = { workspace = true }
 reifydb-value = { workspace = true, optional = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-testing-macro = { workspace = true }

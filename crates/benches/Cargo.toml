@@ -26,7 +26,7 @@ reifydb = { workspace = true, features = ["sub_server_http", "sub_server_ws", "s
 reifydb-client = { workspace = true, features = ["http", "ws", "grpc"] }
 reifydb-allocator = { workspace = true, features = ["alloc-jemalloc"] }
 reifydb-codec = { workspace = true }
-reifydb-core = { workspace = true }
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-runtime = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }

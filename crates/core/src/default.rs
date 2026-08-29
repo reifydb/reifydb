@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+pub const TESTING: bool = cfg!(feature = "testing");
+
 pub mod query {
 	use reifydb_value::byte_size::ByteSize;
 
@@ -108,6 +110,9 @@ pub mod store {
 
 	pub const OPERATOR_RESIDENT_BUDGET: ByteSize = ByteSize::from_mib(100);
 	pub const OPERATOR_RESIDENT_BUDGET_TESTING: ByteSize = ByteSize::from_kib(64);
+
+	pub const OPERATOR_FLUSH_SLICE: ByteSize = ByteSize::from_mib(4);
+	pub const OPERATOR_FLUSH_SLICE_TESTING: ByteSize = ByteSize::from_kib(16);
 
 	pub const OPERATOR_WAL_AUTOCHECKPOINT_PAGES: u64 = 1_000_000;
 	pub const OPERATOR_WAL_AUTOCHECKPOINT_PAGES_TESTING: u64 = 64;

@@ -13,18 +13,45 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
+	default,
 	interface::catalog::flow::OperatorId,
 	key::operator_state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_store::{
-	coverage::ExclusiveUpperEnd,
+	coverage::{ExclusiveUpperEnd, plan::DEFAULT_GAP_GUARD},
 	tier::range::{
 		RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics, RangeSlotMetrics, RangeTier,
 		prefix_successor,
 	},
 };
+use reifydb_value::byte_size::ByteSize;
 
-pub type OperatorRangeConfig = RangeConfig;
+#[derive(Clone, Copy, Debug)]
+pub struct OperatorRangeConfig {
+	pub shard_bytes: Option<ByteSize>,
+	pub shards: usize,
+	pub gap_guard: usize,
+}
+
+impl OperatorRangeConfig {
+	pub fn testing() -> Self {
+		Self {
+			shard_bytes: Some(default::store::OPERATOR_RANGE_BUFFER_SHARD_TESTING),
+			shards: default::store::OPERATOR_RANGE_BUFFER_SHARDS_TESTING as usize,
+			gap_guard: DEFAULT_GAP_GUARD,
+		}
+	}
+}
+
+impl From<OperatorRangeConfig> for RangeConfig {
+	fn from(config: OperatorRangeConfig) -> Self {
+		Self {
+			shard_bytes: config.shard_bytes,
+			shards: config.shards,
+			gap_guard: config.gap_guard,
+		}
+	}
+}
 pub type OperatorRangeTier = RangeTier<OperatorDomain>;
 pub type OperatorRangeMetrics = RangeMetrics;
 pub type OperatorRangeShardMetrics = RangeShardMetrics;
@@ -172,7 +199,7 @@ mod tests {
 	const GROUP_A: GroupId = GroupId(10);
 
 	fn tier() -> OperatorRangeTier {
-		OperatorRangeTier::new(OperatorRangeConfig::testing())
+		OperatorRangeTier::new(OperatorRangeConfig::testing().into())
 			.expect("a tier with a byte budget must be constructed")
 	}
 

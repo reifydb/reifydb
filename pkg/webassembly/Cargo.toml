@@ -47,4 +47,5 @@ console_error_panic_hook = { workspace = true, optional = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 wasm-bindgen-test = { workspace = true }

@@ -60,6 +60,7 @@ uuid = { workspace = true, optional = true }
 num-bigint = { workspace = true, optional = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 bs58 = { workspace = true }
 ed25519-dalek = { workspace = true }
 reqwest = { workspace = true }

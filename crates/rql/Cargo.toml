@@ -31,6 +31,7 @@ serde_json = { workspace = true }
 postcard = { workspace = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-test-harness = { workspace = true }
 reifydb = { workspace = true }
 reifydb-engine = { workspace = true }

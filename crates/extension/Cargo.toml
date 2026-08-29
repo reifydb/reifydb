@@ -32,3 +32,6 @@ postcard = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }

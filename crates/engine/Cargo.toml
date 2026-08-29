@@ -45,6 +45,7 @@ tracing = { workspace = true }
 postcard = { workspace = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-routine = { workspace = true }
 reifydb-test-harness = { workspace = true }
 

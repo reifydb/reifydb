@@ -21,5 +21,6 @@ uuid = { workspace = true }
 tokio = {workspace = true}
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 test_each_file = { workspace = true }
 

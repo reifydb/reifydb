@@ -489,6 +489,7 @@ mod tests {
 	};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
+	use reifydb_core::testing::ProfileConfig;
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::MockClock};
 	use reifydb_value::value::{Value, duration::Duration};
 
@@ -539,16 +540,7 @@ mod tests {
 		let actor_system = ActorSystem::testing(Clock::Real);
 		let spawner = actor_system.spawner();
 
-		struct DummyConfig;
-		impl GetConfig for DummyConfig {
-			fn get_config(&self, key: ConfigKey) -> Value {
-				key.default_value()
-			}
-			fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
-				key.default_value()
-			}
-		}
-		let config = Arc::new(DummyConfig);
+		let config = Arc::new(ProfileConfig);
 
 		Oracle::new(
 			clock,

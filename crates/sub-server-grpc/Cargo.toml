@@ -45,5 +45,8 @@ num-bigint = { workspace = true }
 # Logging
 tracing = { workspace = true }
 
+[dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
+
 [build-dependencies]
 reifydb-build = { workspace = true }

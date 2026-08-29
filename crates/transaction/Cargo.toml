@@ -41,6 +41,7 @@ uuid = { workspace = true }
 reifydb-sub-raft = { workspace = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-testing = { workspace = true }
 reifydb-testing-chaos = { workspace = true }
 reifydb-testing-macro = { workspace = true }

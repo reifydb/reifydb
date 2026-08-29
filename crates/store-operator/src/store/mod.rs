@@ -90,10 +90,16 @@ impl StandardOperatorStore {
 	pub fn new(config: OperatorStoreConfig) -> Self {
 		let resident = config.resident.storage;
 		let spawner = config.spawner;
-		let point =
-			config.persistent.is_some().then(|| config.point.and_then(OperatorPointTier::new)).flatten();
-		let range =
-			config.persistent.is_some().then(|| config.range.and_then(OperatorRangeTier::new)).flatten();
+		let point = config
+			.persistent
+			.is_some()
+			.then(|| config.point.map(Into::into).and_then(OperatorPointTier::new))
+			.flatten();
+		let range = config
+			.persistent
+			.is_some()
+			.then(|| config.range.map(Into::into).and_then(OperatorRangeTier::new))
+			.flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush, filter) = {

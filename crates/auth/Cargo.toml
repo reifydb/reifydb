@@ -36,3 +36,4 @@ uuid = { workspace = true }
 reqwest = { workspace = true, features = ["blocking", "rustls-no-provider"] }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }

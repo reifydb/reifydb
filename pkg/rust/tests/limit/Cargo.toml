@@ -8,6 +8,6 @@ repository.workspace = true
 publish = false
 
 [dev-dependencies]
-reifydb = { workspace = true }
+reifydb = { workspace = true, features = ["testing"] }
 reifydb-testing = { path = "../../../../crates/testing" }
 test_each_file = { version = "0.3.7" }

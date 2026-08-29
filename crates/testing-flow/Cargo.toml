@@ -29,3 +29,6 @@ reifydb-testing-chaos = { workspace = true, features = ["operator"] }
 reifydb-testing-sdk = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
+
+[dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }

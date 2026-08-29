@@ -53,6 +53,7 @@ serde_bytes = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-test-harness = { workspace = true, features = ["operator"] }
 reifydb-sdk = { workspace = true }
 reifydb-testing-sdk = { workspace = true }

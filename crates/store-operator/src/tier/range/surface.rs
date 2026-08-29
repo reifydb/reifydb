@@ -31,11 +31,14 @@ const GROUP_A: GroupId = GroupId(10);
 const GROUP_B: GroupId = GroupId(11);
 
 fn tier(limit: u64) -> OperatorRangeTier {
-	OperatorRangeTier::new(OperatorRangeConfig {
-		shard_bytes: Some(ByteSize::from_bytes(limit)),
-		shards: 1,
-		gap_guard: DEFAULT_GAP_GUARD,
-	})
+	OperatorRangeTier::new(
+		OperatorRangeConfig {
+			shard_bytes: Some(ByteSize::from_bytes(limit)),
+			shards: 1,
+			gap_guard: DEFAULT_GAP_GUARD,
+		}
+		.into(),
+	)
 	.expect("a tier with a byte budget must be constructed")
 }
 
@@ -377,15 +380,18 @@ fn a_gap_over_an_excluded_keyspace_never_degrades_the_plan() {
 
 #[test]
 fn a_tier_without_a_byte_budget_is_not_constructed() {
-	assert!(OperatorRangeTier::new(OperatorRangeConfig {
-		shard_bytes: None,
-		shards: 16,
-		gap_guard: DEFAULT_GAP_GUARD,
-	})
+	assert!(OperatorRangeTier::new(
+		OperatorRangeConfig {
+			shard_bytes: None,
+			shards: 16,
+			gap_guard: DEFAULT_GAP_GUARD,
+		}
+		.into()
+	)
 	.is_none());
-	assert!(OperatorRangeTier::new(OperatorRangeConfig::testing()).is_some());
-	assert_eq!(OperatorRangeConfig::testing().shards, 16);
-	assert_eq!(OperatorRangeConfig::testing().shard_bytes, Some(ByteSize::from_mib(4)));
+	assert!(OperatorRangeTier::new(OperatorRangeConfig::testing().into()).is_some());
+	assert_eq!(OperatorRangeConfig::testing().shards, 2);
+	assert_eq!(OperatorRangeConfig::testing().shard_bytes, Some(ByteSize::from_kib(16)));
 	assert_eq!(OperatorRangeConfig::testing().gap_guard, DEFAULT_GAP_GUARD);
 }
 
@@ -459,11 +465,14 @@ fn point_counters_are_charged_to_the_keyspace_that_was_looked_up() {
 
 #[test]
 fn keyspace_counters_are_summed_across_every_shard() {
-	let tier = OperatorRangeTier::new(OperatorRangeConfig {
-		shard_bytes: Some(ByteSize::from_mib(64)),
-		shards: 4,
-		gap_guard: DEFAULT_GAP_GUARD,
-	})
+	let tier = OperatorRangeTier::new(
+		OperatorRangeConfig {
+			shard_bytes: Some(ByteSize::from_mib(64)),
+			shards: 4,
+			gap_guard: DEFAULT_GAP_GUARD,
+		}
+		.into(),
+	)
 	.expect("a sharded tier must be constructed");
 
 	for group in 0..64u128 {

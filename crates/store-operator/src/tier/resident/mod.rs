@@ -27,6 +27,7 @@ use dashmap::DashMap;
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
+	default,
 	interface::catalog::flow::{FlowId, OperatorId},
 	util::budget::MemoryBudget,
 };
@@ -53,9 +54,17 @@ use crate::{
 	types::{DurablePre, OperatorWrite},
 };
 
-pub const FLUSH_BUDGET_BYTES: ByteSize = ByteSize::from_mib(100);
+pub const FLUSH_BUDGET_BYTES: ByteSize = if default::TESTING {
+	default::store::OPERATOR_RESIDENT_BUDGET_TESTING
+} else {
+	default::store::OPERATOR_RESIDENT_BUDGET
+};
 
-pub const SLICE_BYTES: ByteSize = ByteSize::from_mib(4);
+pub const SLICE_BYTES: ByteSize = if default::TESTING {
+	default::store::OPERATOR_FLUSH_SLICE_TESTING
+} else {
+	default::store::OPERATOR_FLUSH_SLICE
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct OperatorResidentStateMetrics {

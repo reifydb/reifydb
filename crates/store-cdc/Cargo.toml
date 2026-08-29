@@ -33,6 +33,7 @@ rusqlite = { workspace = true, features = ["bundled"], optional = true }
 zstd = { workspace = true, optional = true }
 
 [dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-testing = { workspace = true }
 reifydb-testing-chaos = { workspace = true }
 reifydb-testing-macro = { workspace = true }
