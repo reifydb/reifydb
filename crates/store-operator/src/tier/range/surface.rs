@@ -390,9 +390,9 @@ fn a_tier_without_a_byte_budget_is_not_constructed() {
 }
 
 fn keyspace_row(tier: &OperatorRangeTier, keyspace: KeyspaceId) -> OperatorRangeKeyspaceMetrics {
-	tier.slot_metrics()
+	tier.bucket_metrics()
 		.into_iter()
-		.find(|row| row.slot == keyspace)
+		.find(|row| row.bucket == keyspace)
 		.unwrap_or_else(|| panic!("keyspace {} must be reported", keyspace.name()))
 }
 
@@ -408,9 +408,9 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	assert!(serve_ram(&tier, OP_A, &buffer_range, 64).is_none());
 
 	assert_eq!(
-		tier.slot_metrics().len(),
+		tier.bucket_metrics().len(),
 		2,
-		"only the two keyspaces that were touched may be reported; a fixed 256 slot table must never \
+		"only the two keyspaces that were touched may be reported; a fixed 256 bucket table must never \
          surface as 256 rows of zeros"
 	);
 
@@ -484,9 +484,9 @@ fn keyspace_counters_are_summed_across_every_shard() {
 		"the fixture must spread hits over more than one shard, or summation is not under test"
 	);
 
-	let reported = tier.slot_metrics();
+	let reported = tier.bucket_metrics();
 	assert_eq!(reported.len(), 1, "one keyspace spread over four shards must collapse to a single row");
-	assert_eq!(reported[0].slot, KeyspaceId::SOURCE_WATERMARK);
+	assert_eq!(reported[0].bucket, KeyspaceId::SOURCE_WATERMARK);
 	assert_eq!(reported[0].counters.hits, 64);
 	assert_eq!(reported[0].counters.materializes, 64);
 	assert_eq!(reported[0].partitions, 64);
@@ -496,19 +496,19 @@ fn keyspace_counters_are_summed_across_every_shard() {
 #[test]
 fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 	let tier = roomy();
-	assert!(tier.slot_metrics().is_empty());
+	assert!(tier.bucket_metrics().is_empty());
 
 	let resident = one_row_partition(&tier, OP_A, GROUP_A, KeyspaceId::JOIN_LEFT);
-	assert_eq!(tier.slot_metrics().len(), 1, "resident state alone must be enough to report a keyspace");
-	assert_eq!(tier.slot_metrics()[0].slot, KeyspaceId::JOIN_LEFT);
+	assert_eq!(tier.bucket_metrics().len(), 1, "resident state alone must be enough to report a keyspace");
+	assert_eq!(tier.bucket_metrics()[0].bucket, KeyspaceId::JOIN_LEFT);
 
 	assert!(tier.lookup(OP_A, &resident).is_some());
 	tier.invalidate_operator(OP_A);
 	assert_eq!(
-		tier.slot_metrics().len(),
+		tier.bucket_metrics().len(),
 		1,
 		"a purge drops resident state but not the counters, so a keyspace with history stays reported"
 	);
-	assert_eq!(tier.slot_metrics()[0].partitions, 0);
-	assert_ne!(tier.slot_metrics()[0].counters, OperatorRangeMetrics::default());
+	assert_eq!(tier.bucket_metrics()[0].partitions, 0);
+	assert_ne!(tier.bucket_metrics()[0].counters, OperatorRangeMetrics::default());
 }

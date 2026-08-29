@@ -130,11 +130,11 @@ impl RowBytes for MultiRow {
 impl RangeDomain for MultiDomain {
 	type Dimension = EntryKind;
 	type Partition = PartitionId;
-	type Slot = ();
+	type MetricBucket = ();
 	type Row = MultiRow;
 
 	const PREFIX_LEN: usize = PartitionId::PREFIX_LEN;
-	const SLOTS: usize = 1;
+	const METRIC_BUCKETS: usize = 1;
 
 	const SCOPE: &'static str = "multi_range";
 
@@ -172,13 +172,13 @@ impl RangeDomain for MultiDomain {
 		true
 	}
 
-	fn slot(_partition: &Self::Partition) -> usize {
+	fn metric_bucket(_partition: &Self::Partition) -> usize {
 		0
 	}
 
-	fn slot_at(_index: usize) -> Self::Slot {}
+	fn metric_bucket_at(_index: usize) -> Self::MetricBucket {}
 
-	fn slot_name(_slot: Self::Slot) -> Cow<'static, str> {
+	fn metric_bucket_name(_slot: Self::MetricBucket) -> Cow<'static, str> {
 		Cow::Borrowed("row")
 	}
 }

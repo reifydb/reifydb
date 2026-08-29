@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_value::byte_size::ByteSize;
 
 use crate::tier::point::{
-	ENTRY_OVERHEAD, FillInterlock, PointConfig, PointKey, PointMetrics, PointSlotMetrics, PointTier,
+	ENTRY_OVERHEAD, FillInterlock, PointBucketMetrics, PointConfig, PointKey, PointMetrics, PointTier,
 	domain::{ChainingDomain as C, TestDomain as D, keyspace_of},
 };
 
@@ -63,10 +63,10 @@ fn footprint(key: &EncodedKey, row: &Option<EncodedPodRow>) -> usize {
 	ENTRY_OVERHEAD + key.heap_bytes() + row.as_ref().map_or(0, EncodedPodRow::len)
 }
 
-fn keyspace_row(tier: &PointTier<D>, keyspace: KeyspaceId) -> PointSlotMetrics<D> {
-	tier.slot_metrics()
+fn keyspace_row(tier: &PointTier<D>, keyspace: KeyspaceId) -> PointBucketMetrics<D> {
+	tier.bucket_metrics()
 		.into_iter()
-		.find(|row| row.slot == keyspace)
+		.find(|row| row.bucket == keyspace)
 		.unwrap_or_else(|| panic!("keyspace {} must be reported", keyspace.name()))
 }
 
@@ -483,7 +483,7 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	assert!(tier.get(OP_A, &accumulator).is_some());
 	assert!(tier.get(OP_A, &buffer).is_none());
 
-	let reported = tier.slot_metrics();
+	let reported = tier.bucket_metrics();
 	assert_eq!(reported.len(), 2, "only the two keyspaces that were touched may be reported");
 
 	let accumulator = keyspace_row(&tier, CACHED);
@@ -537,9 +537,9 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 	assert_eq!(buffer.entries, 1);
 	assert_eq!(buffer.used, ByteSize::from_bytes(per_entry));
 
-	let total: u64 = tier.slot_metrics().iter().map(|row| row.used.as_bytes()).sum();
+	let total: u64 = tier.bucket_metrics().iter().map(|row| row.used.as_bytes()).sum();
 	assert_eq!(ByteSize::from_bytes(total), tier.tallied_bytes(), "every resident byte belongs to one keyspace");
-	assert_eq!(tier.slot_metrics().iter().map(|row| row.entries).sum::<usize>(), tier.entries());
+	assert_eq!(tier.bucket_metrics().iter().map(|row| row.entries).sum::<usize>(), tier.entries());
 }
 
 #[test]
@@ -558,9 +558,9 @@ fn keyspace_counters_are_summed_across_every_shard() {
 		"the fixture must spread hits over more than one shard, or summation is not under test"
 	);
 
-	let reported = tier.slot_metrics();
+	let reported = tier.bucket_metrics();
 	assert_eq!(reported.len(), 1, "one keyspace spread over four shards must collapse to a single row");
-	assert_eq!(reported[0].slot, KeyspaceId::SOURCE_WATERMARK);
+	assert_eq!(reported[0].bucket, KeyspaceId::SOURCE_WATERMARK);
 	assert_eq!(reported[0].counters.hits, 64);
 	assert_eq!(reported[0].entries, 64);
 }
@@ -614,27 +614,27 @@ fn fill_counters_are_charged_to_the_filled_keyspace() {
 #[test]
 fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 	let tier = roomy();
-	assert!(tier.slot_metrics().is_empty(), "an untouched tier must not surface its 256 empty slots");
+	assert!(tier.bucket_metrics().is_empty(), "an untouched tier must not surface its 256 empty buckets");
 
 	let resident = key(GROUP_A, KeyspaceId::JOIN_LEFT, b"a");
 	let charged = footprint(&resident, &Some(row("v"))) as u64;
 	tier.overwrite(OP_A, resident.clone(), row("v"));
-	assert_eq!(tier.slot_metrics().len(), 1, "the keyspace that was written must be the only one reported");
-	assert_eq!(tier.slot_metrics()[0].slot, KeyspaceId::JOIN_LEFT);
+	assert_eq!(tier.bucket_metrics().len(), 1, "the keyspace that was written must be the only one reported");
+	assert_eq!(tier.bucket_metrics()[0].bucket, KeyspaceId::JOIN_LEFT);
 	assert_eq!(
-		tier.slot_metrics()[0].entries,
+		tier.bucket_metrics()[0].entries,
 		1,
 		"the row must carry the keyspace's residency, not only its counters"
 	);
-	assert_eq!(tier.slot_metrics()[0].used, ByteSize::from_bytes(charged));
-	assert_eq!(tier.slot_metrics()[0].counters.hits, 0);
-	assert_eq!(tier.slot_metrics()[0].counters.misses, 0);
+	assert_eq!(tier.bucket_metrics()[0].used, ByteSize::from_bytes(charged));
+	assert_eq!(tier.bucket_metrics()[0].counters.hits, 0);
+	assert_eq!(tier.bucket_metrics()[0].counters.misses, 0);
 
 	assert!(tier.get(OP_A, &resident).is_some());
 	tier.clear();
-	assert_eq!(tier.slot_metrics().len(), 1, "clearing drops resident state but not the counters");
-	assert_eq!(tier.slot_metrics()[0].entries, 0, "and the residency it reports must go with the state");
-	assert_eq!(tier.slot_metrics()[0].counters.hits, 1, "the hit taken before the clear must survive it");
+	assert_eq!(tier.bucket_metrics().len(), 1, "clearing drops resident state but not the counters");
+	assert_eq!(tier.bucket_metrics()[0].entries, 0, "and the residency it reports must go with the state");
+	assert_eq!(tier.bucket_metrics()[0].counters.hits, 1, "the hit taken before the clear must survive it");
 }
 
 #[test]

@@ -160,19 +160,19 @@ impl<D: RangeDomain> RangeTier<D> {
 				let Some(partition) = partition else {
 					continue;
 				};
-				let slot = D::slot(&partition);
+				let bucket = D::metric_bucket(&partition);
 				match tally {
 					Tally::Hit => {
 						shard.metrics.hits += 1;
-						shard.slot_metrics[slot].hits += 1;
+						shard.bucket_metrics[bucket].hits += 1;
 					}
 					Tally::Miss => {
 						shard.metrics.misses += 1;
-						shard.slot_metrics[slot].misses += 1;
+						shard.bucket_metrics[bucket].misses += 1;
 					}
 					Tally::Untallied => {
 						shard.metrics.exempt += 1;
-						shard.slot_metrics[slot].exempt += 1;
+						shard.bucket_metrics[bucket].exempt += 1;
 					}
 				}
 				if D::caches_ranges(&partition) {
@@ -431,21 +431,21 @@ impl<D: RangeDomain> RangeTier<D> {
 		}
 
 		let index = self.shard_index(&partition);
-		let slot = D::slot(&partition);
+		let bucket = D::metric_bucket(&partition);
 		let lands = rows.iter().any(|(key, _)| span.contains(key));
 		let (fresh, inserted, writes) = {
 			let mut inserted = Vec::new();
 			let mut shard = self.shard(index).lock();
 			if !lands && !shard.partitions.contains_key(&partition) {
 				drop(shard);
-				return self.claim_only(scan, span, index, slot);
+				return self.claim_only(scan, span, index, bucket);
 			}
 			let tick = shard.next_tick;
 			let Shard {
 				partitions,
 				budget,
 				metrics,
-				slot_metrics,
+				bucket_metrics,
 				..
 			} = &mut *shard;
 
@@ -488,7 +488,7 @@ impl<D: RangeDomain> RangeTier<D> {
 					partitions.remove(&partition);
 				}
 				metrics.materializes_refused += 1;
-				slot_metrics[slot].materializes_refused += 1;
+				bucket_metrics[bucket].materializes_refused += 1;
 				return false;
 			}
 
@@ -512,7 +512,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				self.roll_back_materialize(index, partition, fresh, &inserted, writes);
 				let mut shard = self.shard(index).lock();
 				shard.metrics.materializes_raced += 1;
-				shard.slot_metrics[slot].materializes_raced += 1;
+				shard.bucket_metrics[bucket].materializes_raced += 1;
 				return false;
 			}
 			coverage.extend(scan.dimension, span.start.clone(), span.end.clone());
@@ -520,18 +520,18 @@ impl<D: RangeDomain> RangeTier<D> {
 
 		let mut shard = self.shard(index).lock();
 		shard.metrics.materializes += 1;
-		shard.slot_metrics[slot].materializes += 1;
+		shard.bucket_metrics[bucket].materializes += 1;
 		true
 	}
 
-	fn claim_only(&self, scan: &RangeScan<D>, span: &Interval, index: usize, slot: usize) -> bool {
+	fn claim_only(&self, scan: &RangeScan<D>, span: &Interval, index: usize, bucket: usize) -> bool {
 		{
 			let mut coverage = self.coverage().write();
 			if !self.retractions_unchanged(scan.retractions) {
 				drop(coverage);
 				let mut shard = self.shard(index).lock();
 				shard.metrics.materializes_raced += 1;
-				shard.slot_metrics[slot].materializes_raced += 1;
+				shard.bucket_metrics[bucket].materializes_raced += 1;
 				return false;
 			}
 			coverage.extend(scan.dimension, span.start.clone(), span.end.clone());
@@ -539,7 +539,7 @@ impl<D: RangeDomain> RangeTier<D> {
 
 		let mut shard = self.shard(index).lock();
 		shard.metrics.materializes += 1;
-		shard.slot_metrics[slot].materializes += 1;
+		shard.bucket_metrics[bucket].materializes += 1;
 		true
 	}
 
@@ -819,7 +819,7 @@ mod tests {
 		TestPartition {
 			dimension: OP,
 			group: GROUP,
-			slot: keyspace,
+			keyspace,
 		}
 	}
 

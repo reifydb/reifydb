@@ -26,8 +26,8 @@ use crate::{
 		plan::{DEFAULT_GAP_GUARD, Segment},
 	},
 	tier::range::{
-		ENTRY_OVERHEAD, Materialize, MaterializeInterlock, RangeConfig, RangeDomain, RangeMetrics, RangeScan,
-		RangeSlotMetrics, RangeTier,
+		ENTRY_OVERHEAD, Materialize, MaterializeInterlock, RangeBucketMetrics, RangeConfig, RangeDomain,
+		RangeMetrics, RangeScan, RangeTier,
 		domain::{AdmittingDomain as A, TestDomain as D, TestPartition},
 		partition_overhead,
 	},
@@ -86,7 +86,7 @@ fn materialize(
 	TestPartition {
 		dimension: operator,
 		group,
-		slot: keyspace,
+		keyspace,
 	}
 }
 
@@ -404,10 +404,10 @@ fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
 }
 
-fn keyspace_row(tier: &RangeTier<D>, keyspace: KeyspaceId) -> RangeSlotMetrics<D> {
-	tier.slot_metrics()
+fn keyspace_row(tier: &RangeTier<D>, keyspace: KeyspaceId) -> RangeBucketMetrics<D> {
+	tier.bucket_metrics()
 		.into_iter()
-		.find(|row| row.slot == keyspace)
+		.find(|row| row.bucket == keyspace)
 		.unwrap_or_else(|| panic!("keyspace {} must be reported", keyspace.name()))
 }
 
@@ -432,18 +432,18 @@ fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 	assert_eq!(buffer.entries, 1);
 	assert_eq!(buffer.used, ByteSize::from_bytes(per_partition));
 
-	let total: u64 = tier.slot_metrics().iter().map(|row| row.used.as_bytes()).sum();
+	let total: u64 = tier.bucket_metrics().iter().map(|row| row.used.as_bytes()).sum();
 	assert_eq!(
 		ByteSize::from_bytes(total),
 		tier.tallied_bytes(),
 		"every resident byte must be attributed to exactly one keyspace, or the table leaks or double counts"
 	);
-	assert_eq!(tier.slot_metrics().iter().map(|row| row.partitions).sum::<usize>(), tier.partitions());
+	assert_eq!(tier.bucket_metrics().iter().map(|row| row.partitions).sum::<usize>(), tier.partitions());
 	assert!(
-		tier.slot_metrics().iter().map(|row| row.intervals).sum::<usize>() >= tier.intervals(),
+		tier.bucket_metrics().iter().map(|row| row.intervals).sum::<usize>() >= tier.intervals(),
 		"every claim must be counted in at least one keyspace, or a fragmenting keyspace reports none"
 	);
-	assert_eq!(tier.slot_metrics().iter().map(|row| row.entries).sum::<usize>(), tier.entries());
+	assert_eq!(tier.bucket_metrics().iter().map(|row| row.entries).sum::<usize>(), tier.entries());
 }
 
 #[test]

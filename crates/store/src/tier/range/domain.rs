@@ -24,7 +24,7 @@ pub(super) struct TestDomain;
 pub(super) struct TestPartition {
 	pub dimension: OperatorId,
 	pub group: GroupId,
-	pub slot: KeyspaceId,
+	pub keyspace: KeyspaceId,
 }
 
 impl TestPartition {
@@ -40,12 +40,12 @@ impl TestPartition {
 		Some(Self {
 			dimension,
 			group,
-			slot: KeyspaceId(encode_u8(bytes[offset])),
+			keyspace: KeyspaceId(encode_u8(bytes[offset])),
 		})
 	}
 
 	pub fn prefix(&self) -> EncodedKey {
-		EncodedKey::new(OperatorStateKey::inner_encoded(self.group, self.slot, [0u8; 0]).as_bytes())
+		EncodedKey::new(OperatorStateKey::inner_encoded(self.group, self.keyspace, [0u8; 0]).as_bytes())
 	}
 
 	pub fn span(&self) -> (EncodedKey, ExclusiveUpperEnd) {
@@ -58,7 +58,7 @@ impl TestPartition {
 	}
 
 	pub fn caches_ranges(&self) -> bool {
-		self.slot.cache_tiers().caches_ranges()
+		self.keyspace.cache_tiers().caches_ranges()
 	}
 }
 
@@ -80,11 +80,11 @@ static CACHE_TIERS_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 impl RangeDomain for TestDomain {
 	type Dimension = OperatorId;
 	type Partition = TestPartition;
-	type Slot = KeyspaceId;
+	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 
 	const PREFIX_LEN: usize = TestPartition::PREFIX_LEN;
-	const SLOTS: usize = 256;
+	const METRIC_BUCKETS: usize = 256;
 
 	const SCOPE: &'static str = "operator_range";
 
@@ -111,28 +111,28 @@ impl RangeDomain for TestDomain {
 	}
 
 	fn cache_tiers_run_end(partition: &Self::Partition) -> ExclusiveUpperEnd {
-		let floor = CACHE_TIERS_RUN_FLOOR[partition.slot.0 as usize];
-		if floor == partition.slot.0 {
+		let floor = CACHE_TIERS_RUN_FLOOR[partition.keyspace.0 as usize];
+		if floor == partition.keyspace.0 {
 			return partition.span().1;
 		}
 		TestPartition {
-			slot: KeyspaceId(floor),
+			keyspace: KeyspaceId(floor),
 			..*partition
 		}
 		.span()
 		.1
 	}
 
-	fn slot(partition: &Self::Partition) -> usize {
-		partition.slot.0 as usize
+	fn metric_bucket(partition: &Self::Partition) -> usize {
+		partition.keyspace.0 as usize
 	}
 
-	fn slot_at(index: usize) -> Self::Slot {
+	fn metric_bucket_at(index: usize) -> Self::MetricBucket {
 		KeyspaceId(index as u8)
 	}
 
-	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {
-		slot.name()
+	fn metric_bucket_name(bucket: Self::MetricBucket) -> Cow<'static, str> {
+		bucket.name()
 	}
 }
 
@@ -142,11 +142,11 @@ pub(super) struct AdmittingDomain;
 impl RangeDomain for AdmittingDomain {
 	type Dimension = OperatorId;
 	type Partition = TestPartition;
-	type Slot = KeyspaceId;
+	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 
 	const PREFIX_LEN: usize = TestPartition::PREFIX_LEN;
-	const SLOTS: usize = 256;
+	const METRIC_BUCKETS: usize = 256;
 
 	const SCOPE: &'static str = "admitting_range";
 
@@ -180,15 +180,15 @@ impl RangeDomain for AdmittingDomain {
 		true
 	}
 
-	fn slot(partition: &Self::Partition) -> usize {
-		TestDomain::slot(partition)
+	fn metric_bucket(partition: &Self::Partition) -> usize {
+		TestDomain::metric_bucket(partition)
 	}
 
-	fn slot_at(index: usize) -> Self::Slot {
-		TestDomain::slot_at(index)
+	fn metric_bucket_at(index: usize) -> Self::MetricBucket {
+		TestDomain::metric_bucket_at(index)
 	}
 
-	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {
-		TestDomain::slot_name(slot)
+	fn metric_bucket_name(bucket: Self::MetricBucket) -> Cow<'static, str> {
+		TestDomain::metric_bucket_name(bucket)
 	}
 }

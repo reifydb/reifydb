@@ -28,27 +28,27 @@ pub(super) fn keyspace_of(key: &EncodedKey) -> Option<KeyspaceId> {
 
 impl PointDomain for TestDomain {
 	type Dimension = OperatorId;
-	type Slot = KeyspaceId;
+	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 
-	const SLOTS: usize = 256;
+	const METRIC_BUCKETS: usize = 256;
 
 	const SCOPE: &'static str = "operator_point";
 
-	fn slot(key: &EncodedKey) -> Option<usize> {
+	fn metric_bucket(key: &EncodedKey) -> Option<usize> {
 		keyspace_of(key).map(|keyspace| keyspace.0 as usize)
 	}
 
-	fn caches_points(slot: usize) -> bool {
-		KeyspaceId(slot as u8).cache_tiers().caches_points()
+	fn caches_points(bucket: usize) -> bool {
+		KeyspaceId(bucket as u8).cache_tiers().caches_points()
 	}
 
-	fn slot_at(index: usize) -> Self::Slot {
+	fn metric_bucket_at(index: usize) -> Self::MetricBucket {
 		KeyspaceId(index as u8)
 	}
 
-	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {
-		slot.name()
+	fn metric_bucket_name(bucket: Self::MetricBucket) -> Cow<'static, str> {
+		bucket.name()
 	}
 }
 
@@ -57,19 +57,19 @@ pub(super) struct ChainingDomain;
 
 impl PointDomain for ChainingDomain {
 	type Dimension = OperatorId;
-	type Slot = KeyspaceId;
+	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 
-	const SLOTS: usize = 256;
+	const METRIC_BUCKETS: usize = 256;
 
 	const SCOPE: &'static str = "chaining_point";
 
-	fn slot(key: &EncodedKey) -> Option<usize> {
+	fn metric_bucket(key: &EncodedKey) -> Option<usize> {
 		keyspace_of(key).map(|keyspace| keyspace.0 as usize)
 	}
 
-	fn caches_points(slot: usize) -> bool {
-		KeyspaceId(slot as u8).cache_tiers().caches_points()
+	fn caches_points(bucket: usize) -> bool {
+		KeyspaceId(bucket as u8).cache_tiers().caches_points()
 	}
 
 	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {
@@ -82,11 +82,11 @@ impl PointDomain for ChainingDomain {
 		true
 	}
 
-	fn slot_at(index: usize) -> Self::Slot {
+	fn metric_bucket_at(index: usize) -> Self::MetricBucket {
 		KeyspaceId(index as u8)
 	}
 
-	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {
-		slot.name()
+	fn metric_bucket_name(bucket: Self::MetricBucket) -> Cow<'static, str> {
+		bucket.name()
 	}
 }

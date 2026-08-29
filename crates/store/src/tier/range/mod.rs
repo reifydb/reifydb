@@ -45,12 +45,12 @@ impl RowBytes for EncodedPodRow {
 pub trait RangeDomain: Copy + Debug + 'static {
 	type Dimension: Copy + Eq + Hash + Send + Sync + 'static;
 	type Partition: Copy + Eq + Hash + Send + Sync + 'static;
-	type Slot: Copy + Eq + Debug + Send + Sync + 'static;
+	type MetricBucket: Copy + Eq + Debug + Send + Sync + 'static;
 	type Row: RowBytes + Clone + Send + Sync + 'static;
 
 	const PREFIX_LEN: usize;
 
-	const SLOTS: usize;
+	const METRIC_BUCKETS: usize;
 
 	const SCOPE: &'static str;
 
@@ -76,11 +76,11 @@ pub trait RangeDomain: Copy + Debug + 'static {
 		false
 	}
 
-	fn slot(partition: &Self::Partition) -> usize;
+	fn metric_bucket(partition: &Self::Partition) -> usize;
 
-	fn slot_at(index: usize) -> Self::Slot;
+	fn metric_bucket_at(index: usize) -> Self::MetricBucket;
 
-	fn slot_name(slot: Self::Slot) -> Cow<'static, str>;
+	fn metric_bucket_name(bucket: Self::MetricBucket) -> Cow<'static, str>;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -160,7 +160,7 @@ struct Shard<D: RangeDomain> {
 	writes: u64,
 	gaps: GapHistogram,
 	metrics: RangeMetrics,
-	slot_metrics: SlotCounters,
+	bucket_metrics: BucketCounters,
 }
 
 const fn entry_overhead<R>() -> usize {
@@ -230,8 +230,8 @@ pub struct RangeShardMetrics {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct RangeSlotMetrics<D: RangeDomain> {
-	pub slot: D::Slot,
+pub struct RangeBucketMetrics<D: RangeDomain> {
+	pub bucket: D::MetricBucket,
 	pub used: ByteSize,
 	pub partitions: usize,
 	pub intervals: usize,
@@ -239,7 +239,7 @@ pub struct RangeSlotMetrics<D: RangeDomain> {
 	pub counters: RangeMetrics,
 }
 
-type SlotCounters = Box<[RangeMetrics]>;
+type BucketCounters = Box<[RangeMetrics]>;
 
 #[cfg(test)]
 pub(crate) type MaterializeInterlock<D> = Box<dyn Fn(&RangeTier<D>, <D as RangeDomain>::Partition) + Send + Sync>;

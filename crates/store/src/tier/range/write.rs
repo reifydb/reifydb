@@ -323,7 +323,7 @@ mod tests {
 		TestPartition {
 			dimension: operator,
 			group: GROUP_A,
-			slot: keyspace,
+			keyspace,
 		}
 	}
 

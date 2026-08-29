@@ -191,7 +191,7 @@ impl StandardOperatorStore {
 	}
 
 	pub fn point_keyspace_metrics(&self) -> Vec<OperatorPointKeyspaceMetrics> {
-		self.point.as_ref().map(OperatorPointTier::slot_metrics).unwrap_or_default()
+		self.point.as_ref().map(OperatorPointTier::bucket_metrics).unwrap_or_default()
 	}
 
 	pub fn range_shard_metrics(&self) -> Vec<OperatorRangeShardMetrics> {
@@ -199,7 +199,7 @@ impl StandardOperatorStore {
 	}
 
 	pub fn range_keyspace_metrics(&self) -> Vec<OperatorRangeKeyspaceMetrics> {
-		self.range.as_ref().map(OperatorRangeTier::slot_metrics).unwrap_or_default()
+		self.range.as_ref().map(OperatorRangeTier::bucket_metrics).unwrap_or_default()
 	}
 
 	pub fn persistent_page_cache_metrics(&self) -> Option<PageCacheMetrics> {

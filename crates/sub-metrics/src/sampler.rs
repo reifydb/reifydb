@@ -464,7 +464,7 @@ fn operator_point_keyspace_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 
 fn operator_point_keyspace_row(metrics: &OperatorPointKeyspaceMetrics) -> MetricsRow {
 	MetricsRow {
-		dimensions: vec![Value::Utf8(metrics.slot.name().to_string())],
+		dimensions: vec![Value::Utf8(metrics.bucket.name().to_string())],
 		measures: vec![
 			level_bytes("used", metrics.used),
 			level_count("entries", metrics.entries as u64),
@@ -510,7 +510,7 @@ fn operator_range_keyspace_rows(store: &OperatorStore) -> Vec<MetricsRow> {
 
 fn operator_range_keyspace_row(metrics: &OperatorRangeKeyspaceMetrics) -> MetricsRow {
 	MetricsRow {
-		dimensions: vec![Value::Utf8(metrics.slot.name().to_string())],
+		dimensions: vec![Value::Utf8(metrics.bucket.name().to_string())],
 		measures: vec![
 			level_bytes("used", metrics.used),
 			level_count("partitions", metrics.partitions as u64),
@@ -712,7 +712,7 @@ mod tests {
 
 	fn point_sample() -> OperatorPointKeyspaceMetrics {
 		OperatorPointKeyspaceMetrics {
-			slot: KeyspaceId::SOURCE_WATERMARK,
+			bucket: KeyspaceId::SOURCE_WATERMARK,
 			used: ByteSize::from_bytes(12_401),
 			entries: 231,
 			counters: OperatorPointMetrics {
@@ -729,7 +729,7 @@ mod tests {
 
 	fn range_sample() -> OperatorRangeKeyspaceMetrics {
 		OperatorRangeKeyspaceMetrics {
-			slot: KeyspaceId::SOURCE_WATERMARK,
+			bucket: KeyspaceId::SOURCE_WATERMARK,
 			used: ByteSize::from_bytes(20_733),
 			partitions: 115,
 			intervals: 203,
@@ -773,12 +773,12 @@ mod tests {
 		// CUSTOM_NOT_CACHED is a declared constant, not a gap: relabelling it as CUSTOM_0x40 hides which
 		// admission side the keyspace sits on.
 		let mut metrics = point_sample();
-		metrics.slot = KeyspaceId::CUSTOM_NOT_CACHED;
+		metrics.bucket = KeyspaceId::CUSTOM_NOT_CACHED;
 		let row = operator_point_keyspace_row(&metrics);
 		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_NOT_CACHED".to_string())]);
 
 		let mut metrics = range_sample();
-		metrics.slot = KeyspaceId::CUSTOM_NOT_CACHED;
+		metrics.bucket = KeyspaceId::CUSTOM_NOT_CACHED;
 		let row = operator_range_keyspace_row(&metrics);
 		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_NOT_CACHED".to_string())]);
 	}

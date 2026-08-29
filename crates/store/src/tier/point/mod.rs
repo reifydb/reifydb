@@ -28,25 +28,25 @@ use crate::tier::range::RowBytes;
 
 pub trait PointDomain: Copy + Debug + 'static {
 	type Dimension: Copy + Eq + Hash + Send + Sync + 'static;
-	type Slot: Copy + Eq + Debug + Send + Sync + 'static;
+	type MetricBucket: Copy + Eq + Debug + Send + Sync + 'static;
 	type Row: RowBytes + Clone + Send + Sync + 'static;
 
-	const SLOTS: usize;
+	const METRIC_BUCKETS: usize;
 
 	const SCOPE: &'static str;
 
-	fn slot(key: &EncodedKey) -> Option<usize>;
+	fn metric_bucket(key: &EncodedKey) -> Option<usize>;
 
-	fn caches_points(slot: usize) -> bool;
+	fn caches_points(bucket: usize) -> bool;
 
 	fn supersede(resident: &mut Self::Row, incoming: Self::Row) -> bool {
 		*resident = incoming;
 		true
 	}
 
-	fn slot_at(index: usize) -> Self::Slot;
+	fn metric_bucket_at(index: usize) -> Self::MetricBucket;
 
-	fn slot_name(slot: Self::Slot) -> Cow<'static, str>;
+	fn metric_bucket_name(bucket: Self::MetricBucket) -> Cow<'static, str>;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -152,14 +152,14 @@ pub struct PointShardMetrics {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct PointSlotMetrics<D: PointDomain> {
-	pub slot: D::Slot,
+pub struct PointBucketMetrics<D: PointDomain> {
+	pub bucket: D::MetricBucket,
 	pub used: ByteSize,
 	pub entries: usize,
 	pub counters: PointMetrics,
 }
 
-type SlotCounters = Box<[PointMetrics]>;
+type BucketCounters = Box<[PointMetrics]>;
 
 struct Shard<D: PointDomain> {
 	index: HashTable<u32>,
@@ -169,7 +169,7 @@ struct Shard<D: PointDomain> {
 	next_tick: u64,
 	rng: u64,
 	metrics: PointMetrics,
-	slot_metrics: SlotCounters,
+	bucket_metrics: BucketCounters,
 }
 
 #[cfg(test)]

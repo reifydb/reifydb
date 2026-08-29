@@ -20,14 +20,14 @@ use reifydb_core::{
 	},
 };
 use reifydb_store::tier::range::{
-	RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics, RangeSlotMetrics, RangeTier, prefix_successor,
+	RangeBucketMetrics, RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics, RangeTier, prefix_successor,
 };
 
 pub type OperatorRangeConfig = RangeConfig;
 pub type OperatorRangeTier = RangeTier<OperatorDomain>;
 pub type OperatorRangeMetrics = RangeMetrics;
 pub type OperatorRangeShardMetrics = RangeShardMetrics;
-pub type OperatorRangeKeyspaceMetrics = RangeSlotMetrics<OperatorDomain>;
+pub type OperatorRangeKeyspaceMetrics = RangeBucketMetrics<OperatorDomain>;
 pub type RangeScan = reifydb_store::tier::range::RangeScan<OperatorDomain>;
 
 #[derive(Clone, Copy, Debug)]
@@ -93,11 +93,11 @@ static CACHE_TIERS_RUN_FLOOR: LazyLock<[u8; 256]> = LazyLock::new(|| {
 impl RangeDomain for OperatorDomain {
 	type Dimension = OperatorId;
 	type Partition = PartitionId;
-	type Slot = KeyspaceId;
+	type MetricBucket = KeyspaceId;
 	type Row = EncodedPodRow;
 
 	const PREFIX_LEN: usize = PartitionId::PREFIX_LEN;
-	const SLOTS: usize = 256;
+	const METRIC_BUCKETS: usize = 256;
 
 	const SCOPE: &'static str = "operator_range";
 
@@ -136,16 +136,16 @@ impl RangeDomain for OperatorDomain {
 		.1
 	}
 
-	fn slot(partition: &Self::Partition) -> usize {
+	fn metric_bucket(partition: &Self::Partition) -> usize {
 		partition.keyspace.0 as usize
 	}
 
-	fn slot_at(index: usize) -> Self::Slot {
+	fn metric_bucket_at(index: usize) -> Self::MetricBucket {
 		KeyspaceId(index as u8)
 	}
 
-	fn slot_name(slot: Self::Slot) -> Cow<'static, str> {
-		slot.name()
+	fn metric_bucket_name(bucket: Self::MetricBucket) -> Cow<'static, str> {
+		bucket.name()
 	}
 }
 

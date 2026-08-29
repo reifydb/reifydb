@@ -60,13 +60,13 @@ impl<D: RangeDomain> RangeTier<D> {
 	fn resolve(&self, index: usize, partition: &D::Partition, key: &EncodedKey) -> Option<Option<D::Row>> {
 		let mut shard = self.shard(index).lock();
 		let next = shard.next_tick;
-		let slot = D::slot(partition);
+		let bucket = D::metric_bucket(partition);
 		let mut answer = None;
 		{
 			let Shard {
 				partitions,
 				metrics,
-				slot_metrics,
+				bucket_metrics,
 				..
 			} = &mut *shard;
 			if let Some(target) = partitions.get_mut(partition)
@@ -75,7 +75,7 @@ impl<D: RangeDomain> RangeTier<D> {
 				answer = Some(entry.value().cloned());
 				target.tick = next;
 				metrics.point_hits += 1;
-				slot_metrics[slot].point_hits += 1;
+				bucket_metrics[bucket].point_hits += 1;
 			}
 		}
 		if answer.is_some() {
@@ -86,16 +86,16 @@ impl<D: RangeDomain> RangeTier<D> {
 
 	fn record_point_hit(&self, index: usize, partition: &D::Partition) {
 		let mut shard = self.shard(index).lock();
-		let slot = D::slot(partition);
+		let bucket = D::metric_bucket(partition);
 		shard.metrics.point_hits += 1;
-		shard.slot_metrics[slot].point_hits += 1;
+		shard.bucket_metrics[bucket].point_hits += 1;
 	}
 
 	fn record_point_miss(&self, index: usize, partition: &D::Partition) {
 		let mut shard = self.shard(index).lock();
-		let slot = D::slot(partition);
+		let bucket = D::metric_bucket(partition);
 		shard.metrics.point_misses += 1;
-		shard.slot_metrics[slot].point_misses += 1;
+		shard.bucket_metrics[bucket].point_misses += 1;
 	}
 }
 
@@ -151,7 +151,7 @@ mod tests {
 		TestPartition {
 			dimension: OP_A,
 			group: GROUP_A,
-			slot: keyspace,
+			keyspace,
 		}
 	}
 
@@ -391,7 +391,7 @@ mod tests {
 
 	#[test]
 	fn a_hit_bumps_the_keyspace_counter_of_its_own_keyspace() {
-		// A counter charged to the wrong slot makes the per-keyspace shape signal meaningless.
+		// A counter charged to the wrong bucket makes the per-keyspace shape signal meaningless.
 		let tier = tier();
 		let id = partition(CACHED);
 		let at = key(CACHED, b"m");
@@ -400,7 +400,7 @@ mod tests {
 		tier.lookup(OP_A, &at);
 
 		let shard = tier.shard_for(&id).lock();
-		assert_eq!(shard.slot_metrics[CACHED.0 as usize].point_hits, 1);
-		assert_eq!(shard.slot_metrics[UNCACHED.0 as usize].point_hits, 0);
+		assert_eq!(shard.bucket_metrics[CACHED.0 as usize].point_hits, 1);
+		assert_eq!(shard.bucket_metrics[UNCACHED.0 as usize].point_hits, 0);
 	}
 }

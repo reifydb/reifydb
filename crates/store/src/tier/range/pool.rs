@@ -19,8 +19,8 @@ use crate::tier::range::{MaterializeInterlock, ServeInterlock};
 use crate::{
 	coverage::{index::CoverageIndex, plan::GapHistogram, retraction::Retractions},
 	tier::range::{
-		Partition, PoolInner, Progress, RangeConfig, RangeDomain, RangeMetrics, RangeShardMetrics,
-		RangeSlotMetrics, RangeTier, Shard, account, entry_footprint,
+		Partition, PoolInner, Progress, RangeBucketMetrics, RangeConfig, RangeDomain, RangeMetrics,
+		RangeShardMetrics, RangeTier, Shard, account, entry_footprint,
 	},
 };
 
@@ -165,7 +165,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			partitions,
 			budget,
 			metrics,
-			slot_metrics,
+			bucket_metrics,
 			..
 		} = &mut *shard;
 		let emptied = {
@@ -198,7 +198,7 @@ impl<D: RangeDomain> RangeTier<D> {
 			budget.release(ByteSize::from_bytes(gone.bytes as u64));
 		}
 		metrics.evictions += 1;
-		slot_metrics[D::slot(victim)].evictions += 1;
+		bucket_metrics[D::metric_bucket(victim)].evictions += 1;
 		true
 	}
 
@@ -253,25 +253,25 @@ impl<D: RangeDomain> RangeTier<D> {
 		out
 	}
 
-	pub fn slot_metrics(&self) -> Vec<RangeSlotMetrics<D>> {
-		let mut used = vec![0u64; D::SLOTS];
-		let mut partitions = vec![0usize; D::SLOTS];
-		let mut intervals = vec![0usize; D::SLOTS];
-		let mut entries = vec![0usize; D::SLOTS];
-		let mut counters = vec![RangeMetrics::default(); D::SLOTS];
+	pub fn bucket_metrics(&self) -> Vec<RangeBucketMetrics<D>> {
+		let mut used = vec![0u64; D::METRIC_BUCKETS];
+		let mut partitions = vec![0usize; D::METRIC_BUCKETS];
+		let mut intervals = vec![0usize; D::METRIC_BUCKETS];
+		let mut entries = vec![0usize; D::METRIC_BUCKETS];
+		let mut counters = vec![RangeMetrics::default(); D::METRIC_BUCKETS];
 
 		let mut resident: Vec<D::Partition> = Vec::new();
 		for shard in self.all_shards() {
 			let shard = shard.lock();
 			for (id, partition) in &shard.partitions {
-				let slot = D::slot(id);
-				used[slot] += partition.bytes as u64;
-				partitions[slot] += 1;
-				entries[slot] += partition.entries.len();
+				let bucket = D::metric_bucket(id);
+				used[bucket] += partition.bytes as u64;
+				partitions[bucket] += 1;
+				entries[bucket] += partition.entries.len();
 				resident.push(*id);
 			}
-			for (slot, source) in shard.slot_metrics.iter().enumerate() {
-				accumulate(&mut counters[slot], source);
+			for (bucket, source) in shard.bucket_metrics.iter().enumerate() {
+				accumulate(&mut counters[bucket], source);
 			}
 		}
 
@@ -282,20 +282,20 @@ impl<D: RangeDomain> RangeTier<D> {
 					continue;
 				};
 				let (start, end) = D::span(&id);
-				intervals[D::slot(&id)] += set.overlapping(&start, &end).len();
+				intervals[D::metric_bucket(&id)] += set.overlapping(&start, &end).len();
 			}
 		}
 
 		let empty = RangeMetrics::default();
-		(0..D::SLOTS)
-			.filter(|slot| partitions[*slot] > 0 || counters[*slot] != empty)
-			.map(|slot| RangeSlotMetrics {
-				slot: D::slot_at(slot),
-				used: ByteSize::from_bytes(used[slot]),
-				partitions: partitions[slot],
-				intervals: intervals[slot],
-				entries: entries[slot],
-				counters: counters[slot],
+		(0..D::METRIC_BUCKETS)
+			.filter(|bucket| partitions[*bucket] > 0 || counters[*bucket] != empty)
+			.map(|bucket| RangeBucketMetrics {
+				bucket: D::metric_bucket_at(bucket),
+				used: ByteSize::from_bytes(used[bucket]),
+				partitions: partitions[bucket],
+				intervals: intervals[bucket],
+				entries: entries[bucket],
+				counters: counters[bucket],
 			})
 			.collect()
 	}
@@ -366,8 +366,8 @@ impl<D: RangeDomain> MetricsCollector for RangeTier<D> {
 				shard.lock().budget.used(),
 			));
 		}
-		for keyspace in self.slot_metrics() {
-			let scope = format!("{}::keyspace::{}", D::SCOPE, D::slot_name(keyspace.slot));
+		for keyspace in self.bucket_metrics() {
+			let scope = format!("{}::keyspace::{}", D::SCOPE, D::metric_bucket_name(keyspace.bucket));
 			out.push(MetricsSample::bytes(scope.clone(), "used_bytes", keyspace.used));
 			out.push(MetricsSample::count(scope.clone(), "partitions", keyspace.partitions as u64));
 			out.push(MetricsSample::count(scope.clone(), "entries", keyspace.entries as u64));
@@ -415,7 +415,7 @@ fn build_shards<D: RangeDomain>(config: RangeConfig, shard_bytes: ByteSize) -> B
 				writes: 0,
 				gaps: GapHistogram::new(),
 				metrics: RangeMetrics::default(),
-				slot_metrics: vec![RangeMetrics::default(); D::SLOTS].into_boxed_slice(),
+				bucket_metrics: vec![RangeMetrics::default(); D::METRIC_BUCKETS].into_boxed_slice(),
 			})
 		})
 		.collect::<Vec<_>>()
@@ -487,7 +487,7 @@ mod tests {
 		TestPartition {
 			dimension: OP_A,
 			group: GROUP_A,
-			slot: keyspace,
+			keyspace,
 		}
 	}
 
