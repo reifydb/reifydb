@@ -183,9 +183,7 @@ pub struct SlotInner {
 
 impl SlotInner {
 	pub fn resident_bytes(&self) -> ByteSize {
-		self.live
-			.bytes
-			.saturating_add(self.in_flight.as_ref().map_or(ByteSize::ZERO, |batch| batch.bytes))
+		self.live.bytes.saturating_add(self.in_flight.as_ref().map_or(ByteSize::ZERO, |batch| batch.bytes))
 	}
 
 	pub fn lookup(&self, key: &EncodedKey) -> Option<&StateEntry> {

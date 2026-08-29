@@ -8,8 +8,9 @@ use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
 	tier::resident::{
-		OperatorResidentState, record_join_expiry,
+		OperatorResidentState,
 		batch::{DropMarker, JoinExpirySlot},
+		record_join_expiry,
 		slot::{SlotJoinExpiries, SlotJoinKey},
 	},
 	types::{BufferedJoinExpiry, BufferedJoinExpiryGroup},

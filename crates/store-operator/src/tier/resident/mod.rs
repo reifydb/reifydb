@@ -55,7 +55,6 @@ use crate::{
 
 pub const FLUSH_BUDGET_BYTES: ByteSize = ByteSize::from_mib(100);
 
-
 pub const SLICE_BYTES: ByteSize = ByteSize::from_mib(4);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -532,10 +531,8 @@ impl OperatorResidentState {
 					continue;
 				};
 				let mut inner = slot.inner.lock();
-				let durable = inner
-					.flow
-					.and_then(|flow| batch.checkpoints.get(&flow).copied())
-					.flatten();
+				let durable =
+					inner.flow.and_then(|flow| batch.checkpoints.get(&flow).copied()).flatten();
 				if let Some(version) = durable {
 					inner.durable_position = Some(version);
 				}
@@ -620,7 +617,12 @@ fn drop_operator(marker: &DropMarker) -> OperatorId {
 	}
 }
 
-pub(crate) fn record_state(inner: &mut SlotInner, key: EncodedKey, post: Option<reifydb_codec::row::pod::EncodedPodRow>, durable_pre: DurablePre) {
+pub(crate) fn record_state(
+	inner: &mut SlotInner,
+	key: EncodedKey,
+	post: Option<reifydb_codec::row::pod::EncodedPodRow>,
+	durable_pre: DurablePre,
+) {
 	let previous = inner.merged_value_bytes(&key);
 	let incoming = post.as_ref().map(|row| row.bytes().len() as u64);
 	if let Some(bytes) = previous {
