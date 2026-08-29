@@ -432,7 +432,10 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
-		key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+		key::{
+			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
+			typed::MultiKey,
+		},
 		metrics::{
 			collect::MetricsCollector,
 			sample::{MetricsSample, Reading},
@@ -555,11 +558,11 @@ mod tests {
 		}
 	}
 
-	fn claims(tier: &RangeTier<D>) -> Vec<Interval> {
+	fn claims(tier: &RangeTier<D>) -> Vec<Interval<MultiKey>> {
 		tier.coverage().read().set(OP_A).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
-	fn scan_plan(gaps: usize, degraded: bool) -> ScanPlan {
+	fn scan_plan(gaps: usize, degraded: bool) -> ScanPlan<MultiKey> {
 		ScanPlan {
 			segments: Vec::new(),
 			gaps,

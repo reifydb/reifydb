@@ -428,7 +428,7 @@ impl MultiRangeTier {
 	}
 }
 
-fn band_ends_the_range(table: EntryKind, stop: &ExclusiveUpperEnd, range_hi: &EncodedKey) -> bool {
+fn band_ends_the_range(table: EntryKind, stop: &ExclusiveUpperEnd<MultiKey>, range_hi: &EncodedKey) -> bool {
 	let Some((_, band_end)) = row_band(table) else {
 		return false;
 	};

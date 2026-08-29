@@ -271,7 +271,7 @@ mod tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
-			typed::ExclusiveUpperEnd,
+			typed::{ExclusiveUpperEnd, MultiKey},
 		},
 		util::sorted::SortedVecMap,
 	};
@@ -377,11 +377,11 @@ mod tests {
 		tier.coverage().read().contains(operator, at)
 	}
 
-	fn intervals(tier: &RangeTier<D>, operator: OperatorId) -> Vec<Interval> {
+	fn intervals(tier: &RangeTier<D>, operator: OperatorId) -> Vec<Interval<MultiKey>> {
 		tier.coverage().read().set(operator).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
-	fn island(at: &EncodedKey) -> Interval {
+	fn island(at: &EncodedKey) -> Interval<MultiKey> {
 		Interval::new(at.clone(), ExclusiveUpperEnd::just_past(at))
 	}
 

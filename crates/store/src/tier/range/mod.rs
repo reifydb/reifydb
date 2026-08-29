@@ -14,10 +14,8 @@ mod write;
 use std::{borrow::Cow, collections::HashMap, fmt::Debug, hash::Hash, mem::size_of, ops::Bound, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
-#[cfg(test)]
-use reifydb_core::key::typed::MultiKey;
 use reifydb_core::{
-	key::typed::{ExclusiveUpperEnd, Key},
+	key::typed::{ExclusiveUpperEnd, Key, MultiKey},
 	util::{budget::MemoryBudget, sorted::SortedVecMap},
 };
 use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
@@ -104,7 +102,7 @@ impl RangeConfig {
 
 pub type RangeRows<D> = Vec<(<D as RangeDomain>::Key, <D as RangeDomain>::Row)>;
 
-pub fn scan_range(gap: &Interval) -> EncodedKeyRange {
+pub fn scan_range(gap: &Interval<MultiKey>) -> EncodedKeyRange {
 	let end = match &gap.end {
 		ExclusiveUpperEnd::Key(key) => Bound::Excluded(key.clone()),
 		ExclusiveUpperEnd::Top => Bound::Unbounded,

@@ -14,7 +14,7 @@ use reifydb_core::key::operator::state::GroupId;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::typed::{ExclusiveUpperEnd, Key, range::KeyRange},
+	key::typed::{ExclusiveUpperEnd, Key, MultiKey, range::KeyRange},
 };
 use reifydb_store::{
 	coverage::{
@@ -480,7 +480,7 @@ impl StandardOperatorStore {
 		};
 		let mut segment_index = 0usize;
 		let mut cursor = RangeCursor::new();
-		let mut pending: Option<(Interval, bool, usize)> = None;
+		let mut pending: Option<(Interval<MultiKey>, bool, usize)> = None;
 		let mut claim_start: Option<EncodedKey> = None;
 		let mut materializing = true;
 

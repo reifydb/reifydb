@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::state::{GroupId, KeyspaceId, OperatorStateKey, group_inner_range, keyspace_inner_range},
-		typed::range::KeyRange,
+		typed::{MultiKey, range::KeyRange},
 	},
 };
 use reifydb_store::{
@@ -79,7 +79,7 @@ fn materialize(
 	}
 }
 
-fn first_gap(scan: &RangeScan) -> Option<Interval> {
+fn first_gap(scan: &RangeScan) -> Option<Interval<MultiKey>> {
 	scan.segments().iter().find_map(|segment| match segment {
 		Segment::Gap {
 			interval,

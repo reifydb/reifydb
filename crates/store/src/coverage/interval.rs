@@ -9,10 +9,10 @@ use std::{
 	},
 };
 
-use reifydb_core::key::typed::{ExclusiveUpperEnd, Key, MultiKey};
+use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Interval<K = MultiKey> {
+pub struct Interval<K> {
 	pub start: K,
 	pub end: ExclusiveUpperEnd<K>,
 }
@@ -35,7 +35,7 @@ impl<K: Key> Interval<K> {
 }
 
 #[derive(Clone, Debug)]
-pub struct CoverageSet<K = MultiKey> {
+pub struct CoverageSet<K> {
 	intervals: BTreeMap<K, ExclusiveUpperEnd<K>>,
 }
 
@@ -202,7 +202,7 @@ impl<K: Key> CoverageSet<K> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
+	use reifydb_core::key::typed::{ExclusiveUpperEnd, Key, MultiKey};
 
 	use super::{CoverageSet, Interval};
 
@@ -214,15 +214,15 @@ mod tests {
 		key.successor().expect("a byte string has no greatest element, so it always has a successor")
 	}
 
-	fn iv(start: &str, end: &str) -> Interval {
+	fn iv(start: &str, end: &str) -> Interval<MultiKey> {
 		Interval::new(k(start), ExclusiveUpperEnd::of(end))
 	}
 
-	fn open(start: &str) -> Interval {
+	fn open(start: &str) -> Interval<MultiKey> {
 		Interval::new(k(start), ExclusiveUpperEnd::Top)
 	}
 
-	fn snapshot(set: &CoverageSet) -> Vec<Interval> {
+	fn snapshot(set: &CoverageSet<MultiKey>) -> Vec<Interval<MultiKey>> {
 		set.iter().collect()
 	}
 

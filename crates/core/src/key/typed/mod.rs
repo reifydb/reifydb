@@ -19,7 +19,7 @@ pub trait Key: Clone + Ord + Hash + Debug + HeapSize + Send + Sync + 'static {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ExclusiveUpperEnd<K = MultiKey> {
+pub enum ExclusiveUpperEnd<K> {
 	Key(K),
 	Top,
 }

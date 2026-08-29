@@ -9,7 +9,7 @@ pub mod range;
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind, key::typed::MultiKey};
 use reifydb_store::coverage::cursor::{Cursor, ScannedStop};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
@@ -77,7 +77,7 @@ pub enum RangeStop {
 	AbsentTable,
 }
 
-pub type RangeCursor = Cursor<RangeStop>;
+pub type RangeCursor = Cursor<RangeStop, MultiKey>;
 
 impl ScannedStop for RangeStop {
 	fn scanned(&self) -> bool {

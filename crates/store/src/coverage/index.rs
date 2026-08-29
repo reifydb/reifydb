@@ -3,11 +3,11 @@
 
 use std::{collections::HashMap, hash::Hash};
 
-use reifydb_core::key::typed::{ExclusiveUpperEnd, Key, MultiKey};
+use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
 
 use crate::coverage::interval::CoverageSet;
 
-pub struct CoverageIndex<D, K = MultiKey> {
+pub struct CoverageIndex<D, K> {
 	sets: HashMap<D, CoverageSet<K>>,
 	heads: HashMap<D, K>,
 }
@@ -86,7 +86,7 @@ impl<D: Hash + Eq + Copy, K: Key> CoverageIndex<D, K> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::typed::ExclusiveUpperEnd;
+	use reifydb_core::key::typed::{ExclusiveUpperEnd, MultiKey};
 
 	use super::CoverageIndex;
 	use crate::coverage::interval::Interval;
@@ -95,11 +95,11 @@ mod tests {
 		EncodedKey::new(bytes)
 	}
 
-	fn index() -> CoverageIndex<u8> {
+	fn index() -> CoverageIndex<u8, MultiKey> {
 		CoverageIndex::new()
 	}
 
-	fn intervals(index: &CoverageIndex<u8>, dimension: u8) -> Vec<Interval> {
+	fn intervals(index: &CoverageIndex<u8, MultiKey>, dimension: u8) -> Vec<Interval<MultiKey>> {
 		index.set(dimension).map(|set| set.iter().collect()).unwrap_or_default()
 	}
 
@@ -239,7 +239,7 @@ mod tests {
 		index.extend(1, k("c"), ExclusiveUpperEnd::of("f"));
 		index.extend(2, k("m"), ExclusiveUpperEnd::of("p"));
 
-		let mut seen: Vec<(u8, Vec<Interval>)> =
+		let mut seen: Vec<(u8, Vec<Interval<MultiKey>>)> =
 			index.iter().map(|(dimension, set)| (dimension, set.iter().collect())).collect();
 		seen.sort_by_key(|(dimension, _)| *dimension);
 

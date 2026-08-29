@@ -8,7 +8,7 @@ use reifydb_codec::key::encoded::EncodedKeyRange;
 use super::MultiKey;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct KeyRange<K = MultiKey> {
+pub struct KeyRange<K> {
 	pub start: Bound<K>,
 	pub end: Bound<K>,
 }

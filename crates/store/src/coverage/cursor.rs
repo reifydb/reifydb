@@ -4,7 +4,7 @@
 use reifydb_core::key::typed::MultiKey;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Cursor<S, K = MultiKey> {
+pub enum Cursor<S, K> {
 	NotStarted,
 	InProgress {
 		last_key: K,
@@ -21,7 +21,7 @@ impl<S, K> Default for Cursor<S, K> {
 	}
 }
 
-pub type RangeCursor = Cursor<()>;
+pub type RangeCursor = Cursor<(), MultiKey>;
 
 pub trait ScannedStop {
 	fn scanned(&self) -> bool;

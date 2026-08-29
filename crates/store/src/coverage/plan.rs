@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::typed::{ExclusiveUpperEnd, Key, MultiKey};
+use reifydb_core::key::typed::{ExclusiveUpperEnd, Key};
 
 use crate::coverage::interval::{CoverageSet, Interval};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Segment<K = MultiKey> {
+pub enum Segment<K> {
 	Resident(Interval<K>),
 	Gap {
 		interval: Interval<K>,
@@ -15,7 +15,7 @@ pub enum Segment<K = MultiKey> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ScanPlan<K = MultiKey> {
+pub struct ScanPlan<K> {
 	pub segments: Vec<Segment<K>>,
 	pub gaps: usize,
 	pub exempted: usize,
@@ -182,7 +182,7 @@ impl GapHistogram {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::key::typed::ExclusiveUpperEnd;
+	use reifydb_core::key::typed::{ExclusiveUpperEnd, MultiKey};
 
 	use super::{DEFAULT_GAP_GUARD, GapHistogram, ScanPlan, Segment, plan};
 	use crate::coverage::interval::{CoverageSet, Interval};
@@ -191,7 +191,7 @@ mod tests {
 		EncodedKey::new(bytes)
 	}
 
-	fn interval_of(segment: &Segment) -> &Interval {
+	fn interval_of(segment: &Segment<MultiKey>) -> &Interval<MultiKey> {
 		match segment {
 			Segment::Resident(interval) => interval,
 			Segment::Gap {
@@ -201,11 +201,11 @@ mod tests {
 		}
 	}
 
-	fn is_gap(segment: &Segment) -> bool {
+	fn is_gap(segment: &Segment<MultiKey>) -> bool {
 		matches!(segment, Segment::Gap { .. })
 	}
 
-	fn counted(gaps: usize, exempt_gaps: usize, degraded: bool) -> ScanPlan {
+	fn counted(gaps: usize, exempt_gaps: usize, degraded: bool) -> ScanPlan<MultiKey> {
 		ScanPlan {
 			segments: Vec::new(),
 			gaps,
@@ -214,7 +214,7 @@ mod tests {
 		}
 	}
 
-	fn punched() -> CoverageSet {
+	fn punched() -> CoverageSet<MultiKey> {
 		let mut coverage = CoverageSet::new();
 		coverage.extend(key(b"b"), ExclusiveUpperEnd::of(b"c"));
 		coverage.extend(key(b"d"), ExclusiveUpperEnd::of(b"e"));
