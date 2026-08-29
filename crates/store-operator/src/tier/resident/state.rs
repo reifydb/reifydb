@@ -13,8 +13,9 @@ use reifydb_core::interface::catalog::flow::OperatorId;
 
 use crate::{
 	tier::resident::{
-		OperatorResidentState, record_state,
+		OperatorResidentState,
 		batch::{DropMarker, StateEntry},
+		record_state,
 		slot::OperatorKeys,
 	},
 	types::{BufferedState, BufferedStateRange, DurablePre},
