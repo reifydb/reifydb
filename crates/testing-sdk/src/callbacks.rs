@@ -800,83 +800,6 @@ extern "C" fn test_remove_row_number(
 	}
 }
 
-extern "C" fn test_remove_row_numbers_below(
-	operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	group: u128,
-	upper_ptr: *const u8,
-	upper_len: usize,
-	output: *mut ExternCBuffer,
-) -> i32 {
-	if ctx.is_null() || output.is_null() || (upper_len > 0 && upper_ptr.is_null()) {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-	// SAFETY: ctx and output are null-checked above and upper_ptr is null-checked whenever
-	// upper_len is non-zero. The buffer written into output is allocated here and its pointer is
-	// null-checked before the copy.
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-		let upper_bytes = if upper_len == 0 {
-			&[][..]
-		} else {
-			from_raw_parts(upper_ptr, upper_len)
-		};
-		let boundary = test_state_envelope(
-			operator_id,
-			GroupId(group),
-			KeyspaceId::ROW_NUMBER_MAPPING,
-			upper_bytes.to_vec(),
-		)
-		.as_slice()
-		.to_vec();
-		let prefix = test_state_envelope(
-			operator_id,
-			GroupId(group),
-			KeyspaceId::ROW_NUMBER_MAPPING,
-			Vec::<u8>::new(),
-		)
-		.as_slice()
-		.to_vec();
-
-		let mut dropped: Vec<u64> = Vec::new();
-		let mut to_remove: Vec<EncodedKey> = Vec::new();
-		for key in test_ctx.state_keys() {
-			let bytes = key.as_slice();
-			if bytes.starts_with(&prefix) && bytes > boundary.as_slice() {
-				if let Some(value) = test_ctx.get_state(&key)
-					&& value.len() >= 8
-				{
-					dropped.push(u64::from_le_bytes(value[..8].try_into().unwrap()));
-				}
-				to_remove.push(key);
-			}
-		}
-		for key in to_remove {
-			test_ctx.remove_state(&key);
-		}
-
-		let mut packed = Vec::with_capacity(dropped.len() * 8);
-		for row_number in dropped {
-			packed.extend_from_slice(&row_number.to_le_bytes());
-		}
-		if packed.is_empty() {
-			(*output).ptr = ptr::null_mut();
-			(*output).len = 0;
-			(*output).cap = 0;
-		} else {
-			let out_ptr = test_alloc(packed.len());
-			if out_ptr.is_null() {
-				return EXTERN_C_ERROR_INTERNAL;
-			}
-			ptr::copy_nonoverlapping(packed.as_ptr(), out_ptr, packed.len());
-			(*output).ptr = out_ptr;
-			(*output).len = packed.len();
-			(*output).cap = packed.len();
-		}
-		EXTERN_C_OK
-	}
-}
-
 extern "C" fn test_dictionary_id_by_name(
 	ctx: *mut ExternCContextRaw,
 	name_ptr: *const u8,
@@ -987,7 +910,6 @@ pub fn create_test_callbacks() -> OperatorCallbacks {
 			get_or_create_row_numbers: test_get_or_create_row_numbers,
 			get_or_create_row_numbers_for_pairs: test_get_or_create_row_numbers_for_pairs,
 			remove_row_number: test_remove_row_number,
-			remove_row_numbers_below: test_remove_row_numbers_below,
 			arm_timer: test_arm_timer,
 			disarm_timer: test_disarm_timer,
 			flow_watermark: test_flow_watermark,

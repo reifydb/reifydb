@@ -145,8 +145,8 @@ where
 		})?;
 		assert!(
 			leftover == 0,
-			"group {} still holds {leftover} data rows; forgetting its dictionary entry now would \
-			 orphan them behind a group id nothing can resolve again",
+			"group {} still holds {leftover} data rows in its own partition; forgetting its dictionary \
+			 entry now would orphan them behind a group id nothing can resolve again",
 			group.0
 		);
 	}

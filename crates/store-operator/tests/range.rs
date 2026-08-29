@@ -30,6 +30,8 @@ use reifydb_store_operator::{
 };
 use reifydb_value::byte_size::ByteSize;
 
+const CACHED_BELOW_UNCACHED: KeyspaceId = KeyspaceId(KeyspaceId::CUSTOM_NOT_CACHED.0 - 1);
+
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
 const GROUP: GroupId = GroupId(7);
@@ -581,7 +583,7 @@ fn a_scan_that_steps_over_a_keyspace_the_tier_never_caches_still_materializes_th
 	// sqlite on every pass forever.
 	let (store, storage, _guard) = cached_store();
 	let uncached = KeyspaceId::CUSTOM_NOT_CACHED;
-	let cached = KeyspaceId::CUSTOM_CACHED_BELOW;
+	let cached = CACHED_BELOW_UNCACHED;
 	assert!(
 		!uncached.cache_tiers().caches_ranges(),
 		"the fixture needs a keyspace the range tier keeps out and the scan crosses first"

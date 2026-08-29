@@ -158,11 +158,7 @@ impl KeyspaceId {
 
 	pub const JOIN_ROW_EXPIRY: Self = Self(0x2B);
 
-	pub const CUSTOM_CACHED_BELOW: Self = Self(0x3F);
-
 	pub const CUSTOM_NOT_CACHED: Self = Self(0x40);
-
-	pub const CUSTOM_CACHED: Self = Self(0x42);
 
 	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
@@ -198,9 +194,7 @@ impl KeyspaceId {
 			Self::RINGBUFFER_META => "RINGBUFFER_META",
 			Self::REAP_QUEUE => "REAP_QUEUE",
 			Self::JOIN_ROW_EXPIRY => "JOIN_ROW_EXPIRY",
-			Self::CUSTOM_CACHED_BELOW => "CUSTOM_CACHED_BELOW",
 			Self::CUSTOM_NOT_CACHED => "CUSTOM_NOT_CACHED",
-			Self::CUSTOM_CACHED => "CUSTOM_CACHED",
 			_ => return Cow::Owned(format!("{:#04x}", self.0)),
 		}
 		.into()
@@ -228,6 +222,10 @@ impl KeyspaceId {
 		}
 	}
 
+	pub fn is_guest_owned(&self) -> bool {
+		matches!(*self, Self::CUSTOM_NOT_CACHED)
+	}
+
 	pub fn is_known(&self) -> bool {
 		self.is_data()
 			|| matches!(
@@ -241,6 +239,16 @@ impl KeyspaceId {
 
 pub fn is_framed_inner(inner: &[u8]) -> bool {
 	inner.is_empty() || OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_known())
+}
+
+pub fn is_guest_framed_inner(inner: &[u8]) -> bool {
+	inner.is_empty()
+		|| OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_guest_owned())
+}
+
+pub fn is_identity_framed_inner(inner: &[u8]) -> bool {
+	OperatorStateKey::decode_inner(inner)
+		.is_some_and(|(_, keyspace, _)| keyspace.is_identity() && keyspace.is_known())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -375,6 +383,14 @@ impl GroupStateKey {
 
 	pub fn from_framed(key: EncodedKey) -> Option<Self> {
 		is_framed_inner(key.as_slice()).then_some(Self(key))
+	}
+
+	pub fn from_guest_framed(key: EncodedKey) -> Option<Self> {
+		is_guest_framed_inner(key.as_slice()).then_some(Self(key))
+	}
+
+	pub fn from_identity_framed(key: EncodedKey) -> Option<Self> {
+		is_identity_framed_inner(key.as_slice()).then_some(Self(key))
 	}
 
 	pub fn bound_unchecked(key: EncodedKey) -> Self {
@@ -553,7 +569,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and `cache_tiers`, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, CacheTiers); 35] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, CacheTiers); 33] = [
 		("ROW_NUMBER_MAPPING", KeyspaceId::ROW_NUMBER_MAPPING, Phase::Identity, CacheTiers::Range),
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, CacheTiers::Both),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, CacheTiers::Both),
@@ -586,9 +602,7 @@ mod tests {
 		("RINGBUFFER_META", KeyspaceId::RINGBUFFER_META, Phase::Data, CacheTiers::Both),
 		("REAP_QUEUE", KeyspaceId::REAP_QUEUE, Phase::Data, CacheTiers::Both),
 		("JOIN_ROW_EXPIRY", KeyspaceId::JOIN_ROW_EXPIRY, Phase::Data, CacheTiers::Both),
-		("CUSTOM_CACHED_BELOW", KeyspaceId::CUSTOM_CACHED_BELOW, Phase::Data, CacheTiers::Both),
 		("CUSTOM_NOT_CACHED", KeyspaceId::CUSTOM_NOT_CACHED, Phase::Data, CacheTiers::Neither),
-		("CUSTOM_CACHED", KeyspaceId::CUSTOM_CACHED, Phase::Data, CacheTiers::Both),
 	];
 
 	/// Counts `KeyspaceId` constants from the source text. There is no reflection over associated
@@ -812,11 +826,6 @@ mod tests {
 		assert_eq!(
 			KeyspaceId::CUSTOM_NOT_CACHED.name(),
 			"CUSTOM_NOT_CACHED",
-			"a custom keyspace names the admission side it sits on; there is no unnamed fallback to absorb it"
-		);
-		assert_eq!(
-			KeyspaceId::CUSTOM_CACHED.name(),
-			"CUSTOM_CACHED",
 			"a custom keyspace names the admission side it sits on; there is no unnamed fallback to absorb it"
 		);
 	}

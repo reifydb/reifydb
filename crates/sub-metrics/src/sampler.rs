@@ -770,17 +770,12 @@ mod tests {
 
 	#[test]
 	fn the_real_custom_keyspace_keeps_its_plain_name() {
-		// CUSTOM_NOT_CACHED and CUSTOM_CACHED are declared constants, not gaps: relabelling either as
-		// CUSTOM_0x40 hides which admission side a keyspace sits on.
+		// CUSTOM_NOT_CACHED is a declared constant, not a gap: relabelling it as CUSTOM_0x40 hides which
+		// admission side the keyspace sits on.
 		let mut metrics = point_sample();
 		metrics.slot = KeyspaceId::CUSTOM_NOT_CACHED;
 		let row = operator_point_keyspace_row(&metrics);
 		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_NOT_CACHED".to_string())]);
-
-		let mut metrics = point_sample();
-		metrics.slot = KeyspaceId::CUSTOM_CACHED;
-		let row = operator_point_keyspace_row(&metrics);
-		assert_eq!(row.dimensions, vec![Value::Utf8("CUSTOM_CACHED".to_string())]);
 
 		let mut metrics = range_sample();
 		metrics.slot = KeyspaceId::CUSTOM_NOT_CACHED;

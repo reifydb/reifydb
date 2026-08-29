@@ -85,7 +85,7 @@ impl Store {
 	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> GroupStateKey {
 		let mut suffix = Vec::with_capacity(1 + 8);
 		suffix.push(self.side.tag());
-		suffix.extend_from_slice(&fingerprint.to_le_bytes());
+		suffix.extend_from_slice(&encode_u64_asc(fingerprint.as_u64()));
 		OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::JOIN_SCHEMA, suffix)
 	}
 

@@ -34,7 +34,7 @@ use reifydb_store_operator::{
 };
 use reifydb_value::byte_size::ByteSize;
 
-const CACHED: KeyspaceId = KeyspaceId::CUSTOM_CACHED;
+const CACHED: KeyspaceId = KeyspaceId::JOIN_LEFT;
 
 const SEED: u64 = 0x9E3779B97F4A7C15;
 

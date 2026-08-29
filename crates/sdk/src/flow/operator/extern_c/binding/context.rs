@@ -35,7 +35,7 @@ use crate::{
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
 					get_or_create_row_numbers_for_pairs, reclaim_group_identity,
-					reclaim_group_identity_keys, remove_row_number, remove_row_numbers_below,
+					reclaim_group_identity_keys, remove_row_number,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -167,10 +167,6 @@ impl ExternCContext {
 
 	pub fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		remove_row_number(self, group, key)
-	}
-
-	pub fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		remove_row_numbers_below(self, group, upper)
 	}
 
 	pub fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
@@ -308,9 +304,6 @@ impl GuestContext for ExternCContext {
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		ExternCContext::remove_row_number(self, group, key)
-	}
-	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		ExternCContext::remove_row_numbers_below(self, group, upper)
 	}
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		ExternCContext::reclaim_group_identity(self, group, limit)

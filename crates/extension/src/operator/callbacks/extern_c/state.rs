@@ -8,7 +8,7 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+	key::operator_state::{GroupId, GroupStateKey},
 	state::timer::TimerKind,
 };
 use reifydb_sdk::{
@@ -30,7 +30,7 @@ use reifydb_value::value::datetime::DateTime;
 
 use super::{
 	context::get_host_mut,
-	marshal::{encoded_bytes, encoded_key, encoded_keys, state_key, state_keys, write_buffer},
+	marshal::{encoded_bytes, encoded_key, encoded_keys, identity_keys, state_key, write_buffer},
 	state_iterator::{self, StateIteratorHandle},
 };
 use crate::procedure::callbacks::extern_c::memory::{host_alloc, host_free};
@@ -42,11 +42,6 @@ struct StateIteratorInternal {
 
 fn iterator_entries(entries: Vec<(GroupStateKey, EncodedPodRow)>) -> Vec<(GroupStateKey, EncodedBytes)> {
 	entries.into_iter().map(|(key, row)| (key, row.bytes().clone())).collect()
-}
-
-fn is_join_row_expiry(key: &GroupStateKey) -> bool {
-	OperatorStateKey::decode_inner(key.as_slice())
-		.is_some_and(|(_, keyspace, _)| keyspace == KeyspaceId::JOIN_ROW_EXPIRY)
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
@@ -106,10 +101,6 @@ pub(super) extern "C" fn host_state_set(
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 
-		if is_join_row_expiry(&key) {
-			return EXTERN_C_ERROR_INTERNAL;
-		}
-
 		match host.state_set(&key, EncodedPodRow::from(encoded_bytes(value_ptr, value_len))) {
 			Ok(_) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
@@ -138,10 +129,6 @@ pub(super) extern "C" fn host_state_remove(
 		let Some(key) = state_key(key_ptr, key_len) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
-
-		if is_join_row_expiry(&key) {
-			return EXTERN_C_ERROR_INTERNAL;
-		}
 
 		match host.state_remove(&key) {
 			Ok(_) => EXTERN_C_OK,
@@ -191,17 +178,15 @@ pub(super) extern "C" fn host_state_prefix(
 		let ctx_handle = &mut *ctx;
 		let host = get_host_mut(ctx_handle);
 
-		let prefix_bytes = if prefix_ptr.is_null() {
-			vec![]
-		} else {
-			from_raw_parts(prefix_ptr, prefix_len).to_vec()
+		if prefix_ptr.is_null() || prefix_len == 0 {
+			return EXTERN_C_ERROR_INTERNAL;
+		}
+
+		let Some(prefix) = state_key(prefix_ptr, prefix_len) else {
+			return EXTERN_C_ERROR_INTERNAL;
 		};
 
-		let range = if prefix_bytes.is_empty() {
-			EncodedKeyRange::all()
-		} else {
-			EncodedKeyRange::prefix(&prefix_bytes)
-		};
+		let range = EncodedKeyRange::prefix(prefix.as_slice());
 
 		match host.state_range_limited(range, (limit != usize::MAX).then_some(limit)) {
 			Ok(entries) => {
@@ -272,7 +257,7 @@ pub(super) extern "C" fn host_state_get_many(
 			} else {
 				from_raw_parts(key_ref.ptr, key_ref.len).to_vec()
 			};
-			let Some(framed) = GroupStateKey::from_framed(EncodedKey::new(bytes)) else {
+			let Some(framed) = GroupStateKey::from_guest_framed(EncodedKey::new(bytes)) else {
 				return EXTERN_C_ERROR_INTERNAL;
 			};
 			encoded_keys.push(framed);
@@ -330,39 +315,39 @@ pub(super) extern "C" fn host_state_range(
 		let host = get_host_mut(ctx_handle);
 
 		let start_bound = match start_bound_type {
-			BOUND_UNBOUNDED => Bound::Unbounded,
-			BOUND_INCLUDED => {
+			BOUND_UNBOUNDED => return EXTERN_C_ERROR_INTERNAL,
+			BOUND_INCLUDED | BOUND_EXCLUDED => {
 				if start_ptr.is_null() {
 					return EXTERN_C_ERROR_NULL_PTR;
 				}
-				let bytes = from_raw_parts(start_ptr, start_len).to_vec();
-				Bound::Included(EncodedKey::new(bytes))
-			}
-			BOUND_EXCLUDED => {
-				if start_ptr.is_null() {
-					return EXTERN_C_ERROR_NULL_PTR;
+				let Some(key) = state_key(start_ptr, start_len) else {
+					return EXTERN_C_ERROR_INTERNAL;
+				};
+				let key = key.into_encoded();
+				if start_bound_type == BOUND_INCLUDED {
+					Bound::Included(key)
+				} else {
+					Bound::Excluded(key)
 				}
-				let bytes = from_raw_parts(start_ptr, start_len).to_vec();
-				Bound::Excluded(EncodedKey::new(bytes))
 			}
 			_ => return EXTERN_C_ERROR_INTERNAL,
 		};
 
 		let end_bound = match end_bound_type {
-			BOUND_UNBOUNDED => Bound::Unbounded,
-			BOUND_INCLUDED => {
+			BOUND_UNBOUNDED => return EXTERN_C_ERROR_INTERNAL,
+			BOUND_INCLUDED | BOUND_EXCLUDED => {
 				if end_ptr.is_null() {
 					return EXTERN_C_ERROR_NULL_PTR;
 				}
-				let bytes = from_raw_parts(end_ptr, end_len).to_vec();
-				Bound::Included(EncodedKey::new(bytes))
-			}
-			BOUND_EXCLUDED => {
-				if end_ptr.is_null() {
-					return EXTERN_C_ERROR_NULL_PTR;
+				let Some(key) = state_key(end_ptr, end_len) else {
+					return EXTERN_C_ERROR_INTERNAL;
+				};
+				let key = key.into_encoded();
+				if end_bound_type == BOUND_INCLUDED {
+					Bound::Included(key)
+				} else {
+					Bound::Excluded(key)
 				}
-				let bytes = from_raw_parts(end_ptr, end_len).to_vec();
-				Bound::Excluded(EncodedKey::new(bytes))
 			}
 			_ => return EXTERN_C_ERROR_INTERNAL,
 		};
@@ -521,44 +506,6 @@ pub(super) extern "C" fn host_remove_row_number(
 	}
 }
 
-pub(super) extern "C" fn host_remove_row_numbers_below(
-	_operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	group: u128,
-	upper_ptr: *const u8,
-	upper_len: usize,
-	output: *mut ExternCBuffer,
-) -> i32 {
-	if ctx.is_null() || output.is_null() || (upper_len > 0 && upper_ptr.is_null()) {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: `ctx` and `output` are null-checked above, as is `upper_ptr` whenever `upper_len` is
-	// non-zero; the guest must pass back the ExternCContextRaw the host handed it for this call, an
-	// `upper_ptr` valid for `upper_len` reads (discharging encoded_key) and an `output` valid and aligned
-	// for one ExternCBuffer write whose buffer it then releases via memory.free.
-	unsafe {
-		let host = get_host_mut(&mut *ctx);
-		let upper = encoded_key(upper_ptr, upper_len);
-		match host.remove_row_numbers_below(GroupId(group), &upper) {
-			Ok(dropped) => {
-				if dropped.is_empty() {
-					(*output).ptr = ptr::null_mut();
-					(*output).len = 0;
-					(*output).cap = 0;
-					return EXTERN_C_OK;
-				}
-				let mut packed = Vec::with_capacity(dropped.len() * 8);
-				for row_number in dropped {
-					packed.extend_from_slice(&row_number.0.to_le_bytes());
-				}
-				write_buffer(output, &packed)
-			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
-		}
-	}
-}
-
 pub(super) extern "C" fn host_arm_timer(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
@@ -639,10 +586,10 @@ pub(super) extern "C" fn host_reclaim_group_identity_keys(
 
 	// SAFETY: `ctx` is null-checked above, as are the out pointers, and so is `keys` whenever `keys_len`
 	// is non-zero; the guest must pass back the ExternCContextRaw the host handed it for this call
-	// (discharging get_host_mut) and `keys` satisfying state_keys.
+	// (discharging get_host_mut) and `keys` satisfying identity_keys.
 	unsafe {
 		let host = get_host_mut(&mut *ctx);
-		let Some(keys) = state_keys(keys, keys_len) else {
+		let Some(keys) = identity_keys(keys, keys_len) else {
 			return EXTERN_C_ERROR_NULL_PTR;
 		};
 		match host.reclaim_group_identity_keys(GroupId(group), &keys) {
@@ -986,10 +933,6 @@ mod join_row_expiry_guard_tests {
 			_groups: &[GroupId],
 			_key: &EncodedKey,
 		) -> Result<Vec<(RowNumber, bool)>> {
-			Ok(Vec::new())
-		}
-
-		fn remove_row_numbers_below(&mut self, _group: GroupId, _upper: &EncodedKey) -> Result<Vec<RowNumber>> {
 			Ok(Vec::new())
 		}
 

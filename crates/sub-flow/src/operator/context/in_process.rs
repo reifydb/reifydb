@@ -341,11 +341,6 @@ impl GuestContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).remove_row_number(group, key) }.map_err(to_sdk_err)
 	}
-	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> SdkResult<Vec<RowNumber>> {
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).remove_row_numbers_below(group, upper) }.map_err(to_sdk_err)
-	}
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> SdkResult<ReclaimOutcome> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.

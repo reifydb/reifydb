@@ -245,12 +245,7 @@ impl RunningKey {
 
 impl HeapSize for RunningKey {
 	fn heap_size(&self) -> usize {
-		match &self.slot {
-			EncodedKey::Inline {
-				..
-			} => 0,
-			EncodedKey::Shared(bytes) => bytes.len(),
-		}
+		self.slot.heap_size()
 	}
 }
 
@@ -285,12 +280,7 @@ impl WindowStateKey {
 
 impl HeapSize for WindowStateKey {
 	fn heap_size(&self) -> usize {
-		match &self.slot {
-			EncodedKey::Inline {
-				..
-			} => 0,
-			EncodedKey::Shared(bytes) => bytes.len(),
-		}
+		self.slot.heap_size()
 	}
 }
 
@@ -321,12 +311,7 @@ impl BufferKey {
 
 impl HeapSize for BufferKey {
 	fn heap_size(&self) -> usize {
-		match &self.slot {
-			EncodedKey::Inline {
-				..
-			} => 0,
-			EncodedKey::Shared(bytes) => bytes.len(),
-		}
+		self.slot.heap_size()
 	}
 }
 

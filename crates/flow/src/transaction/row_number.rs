@@ -19,7 +19,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		operator_state::{
-			GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range,
+			GroupId, GroupStateKey, KeyspaceId, OperatorStateKey,
 			row_number_counter_key,
 		},
 	},
@@ -35,10 +35,6 @@ const MAPPING_SWEEP_PAGE: usize = 1024;
 
 pub fn mapping_key(group: GroupId, key: &EncodedKey) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(group, KeyspaceId::ROW_NUMBER_MAPPING, key)
-}
-
-fn mapping_range(group: GroupId) -> EncodedKeyRange {
-	keyspace_inner_range(group, KeyspaceId::ROW_NUMBER_MAPPING)
 }
 
 pub fn counter_key() -> GroupStateKey {
@@ -217,41 +213,6 @@ pub trait RowNumberExtension: FlowTransaction {
 			}
 		}
 		Ok(())
-	}
-
-	fn remove_row_numbers_below(
-		&mut self,
-		operator: OperatorId,
-		group: GroupId,
-		upper: &EncodedKey,
-	) -> Result<Vec<RowNumber>> {
-		let base = mapping_range(group);
-		let boundary = mapping_key(group, upper);
-		let mut lower = Bound::Excluded(boundary.into_encoded());
-		let mut dropped = Vec::new();
-		loop {
-			let range = EncodedKeyRange::new(lower.clone(), base.end.clone());
-			let batch = self.state_range(
-				operator,
-				StateRange::forward(range, "rownum::drop_below").limit(MAPPING_SWEEP_PAGE),
-			)?;
-			let more = batch.has_more;
-			for item in batch.items {
-				let decoded = OperatorStateKey::decode(&item.key)
-					.expect("state_range must return OperatorState keys");
-				let inner = OperatorStateKey::inner_encoded(
-					decoded.group,
-					decoded.keyspace,
-					decoded.suffix,
-				);
-				dropped.push(RowNumber(decode_bytes::<u64>(&item.bytes)?));
-				lower = Bound::Excluded(inner.as_encoded().clone());
-				self.state_remove(operator, &inner)?;
-			}
-			if !more {
-				return Ok(dropped);
-			}
-		}
 	}
 
 	fn remove_row_numbers_by_prefix(

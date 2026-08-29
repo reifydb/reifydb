@@ -35,7 +35,6 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			get_or_create_row_numbers: state::host_get_or_create_row_numbers,
 			get_or_create_row_numbers_for_pairs: state::host_get_or_create_row_numbers_for_pairs,
 			remove_row_number: state::host_remove_row_number,
-			remove_row_numbers_below: state::host_remove_row_numbers_below,
 			arm_timer: state::host_arm_timer,
 			disarm_timer: state::host_disarm_timer,
 			flow_watermark: state::host_flow_watermark,

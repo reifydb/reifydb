@@ -32,7 +32,7 @@ use reifydb_store_operator::{
 };
 use reifydb_value::byte_size::ByteSize;
 
-const CACHED: KeyspaceId = KeyspaceId::CUSTOM_CACHED;
+const CACHED: KeyspaceId = KeyspaceId::JOIN_LEFT;
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);
@@ -571,7 +571,7 @@ fn a_keyspace_declared_cached_still_occupies_the_point_tier() {
 	// The control for the refusal above: a gate that refuses everything passes that test while turning the tier
 	// off.
 	let (store, _storage, _guard) = cached_store();
-	put(&store, OP_A, key_in(KeyspaceId::CUSTOM_CACHED, 1), row("durable"));
+	put(&store, OP_A, key_in(CACHED, 1), row("durable"));
 	assert!(store.flush_pending_blocking());
 
 	assert_eq!(point_entries(&store), 1, "a cached keyspace must be admitted, or the gate is a blanket off switch");

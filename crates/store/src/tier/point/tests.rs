@@ -18,7 +18,7 @@ use crate::tier::point::{
 	domain::{ChainingDomain as C, TestDomain as D, keyspace_of},
 };
 
-const CACHED: KeyspaceId = KeyspaceId::CUSTOM_CACHED;
+const CACHED: KeyspaceId = KeyspaceId::JOIN_LEFT;
 
 const OP_A: OperatorId = OperatorId(1);
 const OP_B: OperatorId = OperatorId(2);

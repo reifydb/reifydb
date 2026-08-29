@@ -27,11 +27,6 @@ fn key(s: &str) -> EncodedKey {
 	EncodedKey::new(s.as_bytes())
 }
 
-fn slot_key(slot: u64) -> EncodedKey {
-	// The shape the block operators reclaim over: (slot, base, quote).
-	EncodedKey::builder().u64(slot).u32(1u32).u32(2u32).build()
-}
-
 fn deferred(engine: &TestEngine) -> DeferredTransaction {
 	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 	let version = parent.version();
@@ -279,30 +274,6 @@ fn nodes_are_isolated() {
 }
 
 #[test]
-fn drop_below_reclaims_only_mappings_under_the_bound() {
-	// Keys lead with a slot, so dropping below a bound must leave every higher slot mapped.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let (rn10, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(10)]).unwrap().remove(0);
-	let (rn20, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(20)]).unwrap().remove(0);
-	let (rn30, _) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(30)]).unwrap().remove(0);
-
-	let upper = EncodedKey::builder().u64(25u64).u32(0u32).u32(0u32).build();
-	let mut dropped = txn.remove_row_numbers_below(NODE, GROUP, &upper).unwrap();
-	dropped.sort_by_key(|rn| rn.0);
-	assert_eq!(dropped, vec![rn10, rn20], "exactly the below-bound mappings are reclaimed");
-
-	let (rn30_again, is_new30) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(30)]).unwrap().remove(0);
-	assert!(!is_new30, "slot 30 sat above the bound and must remain mapped");
-	assert_eq!(rn30, rn30_again);
-
-	let (rn10_again, is_new10) = txn.get_or_create_row_numbers(NODE, GROUP, &[slot_key(10)]).unwrap().remove(0);
-	assert!(is_new10, "reclaimed slot 10 mints fresh");
-	assert_ne!(rn10, rn10_again, "a reclaimed row number is never reused");
-}
-
-#[test]
 fn remove_by_prefix_reclaims_every_mapping_under_the_prefix() {
 	// Prefix removal must take the whole subtree and nothing that merely sorts beside it.
 	let engine = TestEngine::new();
@@ -334,27 +305,6 @@ fn the_row_number_counter_never_collides_with_the_interners_group_counter() {
 	let group_counter = OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::NODE_COUNTER, vec![]);
 	assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");
 	assert_ne!(mapping_key(GROUP, &key("x")), counter_key(), "a mapping key must never equal the counter key");
-}
-
-#[test]
-fn drop_below_reclaims_a_bound_that_spans_more_than_one_scan_page() {
-	// The scan is paged, so a bound covering more mappings than fit in one page must still reclaim
-	// every one of them. Stopping at the first page strands the tail: those keys keep their row
-	// numbers forever and a re-lookup resolves to a row the operator has already emitted a remove
-	// for.
-	let engine = TestEngine::new();
-	let mut txn = deferred(&engine);
-
-	let slots: Vec<EncodedKey> = (1..=1027u64).map(slot_key).collect();
-	let minted = txn.get_or_create_row_numbers(NODE, GROUP, &slots).unwrap();
-	assert_eq!(minted.len(), slots.len());
-
-	let upper = EncodedKey::builder().u64(2000u64).u32(0u32).u32(0u32).build();
-	let dropped = txn.remove_row_numbers_below(NODE, GROUP, &upper).unwrap();
-	assert_eq!(dropped.len(), slots.len(), "every mapping under the bound is reclaimed, not just one page of them");
-
-	let remaining = txn.get_row_numbers(NODE, GROUP, &slots).unwrap();
-	assert!(remaining.iter().all(Option::is_none), "no mapping under the bound survives the reclaim");
 }
 
 #[test]

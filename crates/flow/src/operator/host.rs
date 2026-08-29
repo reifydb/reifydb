@@ -119,8 +119,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 		key: &EncodedKey,
 	) -> Result<Vec<(RowNumber, bool)>>;
 
-	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
-
 	fn remove_row_numbers_by_prefix(&mut self, group: GroupId, key_prefix: &[u8]) -> Result<()>;
 
 	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
@@ -391,10 +389,6 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		key: &EncodedKey,
 	) -> Result<Vec<(RowNumber, bool)>> {
 		self.txn.get_or_create_row_numbers_for_groups(self.operator, groups, key)
-	}
-
-	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		self.txn.remove_row_numbers_below(self.operator, group, upper)
 	}
 
 	fn remove_row_numbers_by_prefix(&mut self, group: GroupId, key_prefix: &[u8]) -> Result<()> {

@@ -19,14 +19,15 @@ pub(super) unsafe fn encoded_key(ptr: *const u8, len: usize) -> EncodedKey {
 	EncodedKey::new(unsafe { from_raw_parts(ptr, len) })
 }
 
-/// The FFI trust boundary for operator state keys. A dylib operator that hands over unframed bytes
-/// gets an error code rather than a key that would address - and be reclaimed with - another group.
+/// The FFI trust boundary for operator state keys. A dylib operator that hands over unframed bytes,
+/// or bytes naming a keyspace it does not own, gets an error code rather than a key that would
+/// address - and be reclaimed with - another group or a host keyspace.
 ///
 /// # Safety
 /// Same contract as [`encoded_key`]: `ptr` must be valid for reads of `len` bytes.
 pub(super) unsafe fn state_key(ptr: *const u8, len: usize) -> Option<GroupStateKey> {
 	// SAFETY: forwards this function's own contract to encoded_key unchanged.
-	GroupStateKey::from_framed(unsafe { encoded_key(ptr, len) })
+	GroupStateKey::from_guest_framed(unsafe { encoded_key(ptr, len) })
 }
 
 // SAFETY: `keys` must be valid for reads of `len` ExternCKeyRef entries, and every entry with a
@@ -55,11 +56,12 @@ pub(super) unsafe fn encoded_keys(keys: *const ExternCKeyRef, len: usize) -> Opt
 	Some(encoded)
 }
 
-// SAFETY: same contract as [`encoded_keys`]; every entry must additionally carry a framed inner key,
-// and a single unframed entry rejects the whole batch rather than reclaiming a key it cannot name.
-pub(super) unsafe fn state_keys(keys: *const ExternCKeyRef, len: usize) -> Option<Vec<GroupStateKey>> {
+// SAFETY: same contract as [`encoded_keys`]; every entry must additionally name a known identity
+// keyspace, and a single entry that does not rejects the whole batch rather than reclaiming a data
+// key the guest was never entitled to name.
+pub(super) unsafe fn identity_keys(keys: *const ExternCKeyRef, len: usize) -> Option<Vec<GroupStateKey>> {
 	// SAFETY: forwards this function's own contract to encoded_keys unchanged.
-	unsafe { encoded_keys(keys, len) }?.into_iter().map(GroupStateKey::from_framed).collect()
+	unsafe { encoded_keys(keys, len) }?.into_iter().map(GroupStateKey::from_identity_framed).collect()
 }
 
 // SAFETY: `ptr` must be valid for reads of `len` bytes.

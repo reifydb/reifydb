@@ -40,6 +40,8 @@ mod tests {
 		.expect("a tier with a byte budget must be constructed")
 	}
 
+	const CACHED_ABOVE_UNCACHED: KeyspaceId = KeyspaceId(KeyspaceId::CUSTOM_NOT_CACHED.0 + 2);
+
 	fn roomy() -> OperatorRangeTier {
 		tier(ByteSize::from_mib(1).as_bytes(), 4)
 	}
@@ -376,7 +378,7 @@ mod tests {
 		);
 
 		let split = tier
-			.plan_scan(OP, &across(KeyspaceId::CUSTOM_CACHED, KeyspaceId::JOIN_ROW_EXPIRY))
+			.plan_scan(OP, &across(CACHED_ABOVE_UNCACHED, KeyspaceId::JOIN_ROW_EXPIRY))
 			.expect("a range straddling an uncacheable keyspace must be plannable");
 		assert_eq!(
 			split.segments().len(),

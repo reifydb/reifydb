@@ -99,15 +99,6 @@ pub struct StateCallbacks {
 		key_len: usize,
 	) -> i32,
 
-	pub remove_row_numbers_below: extern "C" fn(
-		operator_id: u64,
-		ctx: *mut ExternCContextRaw,
-		group: u128,
-		upper: *const u8,
-		upper_len: usize,
-		output: *mut ExternCBuffer,
-	) -> i32,
-
 	pub arm_timer: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
