@@ -8,20 +8,23 @@ pub mod state_map;
 mod census;
 mod checkpoint;
 mod join_expiry;
+pub mod slot;
 mod state;
 
 #[cfg(test)]
 mod tests;
 
 use std::{
+	collections::{BTreeMap, BTreeSet},
 	fmt,
 	sync::{
 		Arc, OnceLock,
-		atomic::{AtomicBool, Ordering},
+		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
 };
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use dashmap::DashMap;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
@@ -42,9 +45,9 @@ use crate::{
 		point::OperatorPointTier,
 		range::OperatorRangeTier,
 		resident::{
-			batch::{DropMarker, FlushBatch, JoinExpiryKey, StateKey},
-			census::{BufferCensus, release_in_flight},
+			batch::{DropMarker, FlushBatch},
 			flush::actor::FlushMessage,
+			slot::{OperatorLive, Slot, SlotInner, SlotJoinKey},
 		},
 	},
 	types::{DurablePre, OperatorWrite},
@@ -52,8 +55,8 @@ use crate::{
 
 pub const FLUSH_BUDGET_BYTES: ByteSize = ByteSize::from_mib(100);
 
+
 pub const SLICE_BYTES: ByteSize = ByteSize::from_mib(4);
-const EVICT_HEADROOM: ByteSize = ByteSize::from_kib(256);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct OperatorResidentStateMetrics {
@@ -68,23 +71,25 @@ pub struct OperatorResidentStateMetrics {
 }
 
 #[derive(Debug, Default)]
-struct BufferInner {
-	live: FlushBatch,
-	in_flight: Option<Arc<FlushBatch>>,
+struct GlobalInner {
+	checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
+	in_flight_checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
+	drops: Vec<DropMarker>,
+	in_flight_drops: Vec<DropMarker>,
 	flushing: bool,
-	cursor: Option<StateKey>,
-	census: BufferCensus,
+	in_flight_operators: Vec<OperatorId>,
 }
 
-impl BufferInner {
-	fn resident_bytes(&self) -> ByteSize {
-		self.live.bytes.saturating_add(self.in_flight.as_ref().map_or(ByteSize::ZERO, |batch| batch.bytes))
-	}
-
+impl GlobalInner {
 	fn any_drop(&self, predicate: impl Fn(&DropMarker) -> bool) -> bool {
-		self.live.drops.iter().any(&predicate)
-			|| self.in_flight.as_ref().is_some_and(|batch| batch.drops.iter().any(&predicate))
+		self.drops.iter().any(&predicate) || self.in_flight_drops.iter().any(&predicate)
 	}
+}
+
+struct PendingGroup {
+	flow: Option<FlowId>,
+	seq: u64,
+	operators: Vec<OperatorId>,
 }
 
 struct OperatorSinks {
@@ -94,7 +99,10 @@ struct OperatorSinks {
 }
 
 pub struct Shared {
-	inner: Mutex<BufferInner>,
+	slots: DashMap<OperatorId, Arc<Slot>>,
+	global: Mutex<GlobalInner>,
+	drop_epoch: AtomicU64,
+	write_seq: AtomicU64,
 	idle: Condvar,
 	drain: Mutex<()>,
 	sinks: OnceLock<OperatorSinks>,
@@ -108,7 +116,10 @@ pub struct Shared {
 impl Shared {
 	fn new(cap: ByteSize) -> Self {
 		Self {
-			inner: Mutex::new(BufferInner::default()),
+			slots: DashMap::new(),
+			global: Mutex::new(GlobalInner::default()),
+			drop_epoch: AtomicU64::new(0),
+			write_seq: AtomicU64::new(0),
 			idle: Condvar::new(),
 			drain: Mutex::new(()),
 			sinks: OnceLock::new(),
@@ -118,6 +129,30 @@ impl Shared {
 			metrics: Mutex::new(OperatorResidentStateMetrics::default()),
 			triggered: AtomicBool::new(false),
 		}
+	}
+
+	pub(crate) fn slot(&self, operator: OperatorId) -> Option<Arc<Slot>> {
+		self.slots.get(&operator).map(|slot| Arc::clone(slot.value()))
+	}
+
+	pub(crate) fn slot_or_create(&self, operator: OperatorId) -> Arc<Slot> {
+		if let Some(slot) = self.slot(operator) {
+			return slot;
+		}
+		Arc::clone(self.slots.entry(operator).or_default().value())
+	}
+
+	pub(crate) fn operators(&self) -> Vec<OperatorId> {
+		let mut operators: Vec<OperatorId> = self.slots.iter().map(|slot| *slot.key()).collect();
+		operators.sort_unstable();
+		operators
+	}
+
+	pub(crate) fn dropped(&self, predicate: impl Fn(&DropMarker) -> bool) -> bool {
+		if self.drop_epoch.load(Ordering::Acquire) == 0 {
+			return false;
+		}
+		self.global.lock().any_drop(predicate)
 	}
 }
 
@@ -180,15 +215,27 @@ impl OperatorResidentState {
 
 	pub fn metrics(&self) -> OperatorResidentStateMetrics {
 		let mut metrics = *self.shared.metrics.lock();
-		metrics.backlog = self.shared.inner.lock().resident_bytes();
+		metrics.backlog = self.resident_bytes();
 		metrics
+	}
+
+	pub(crate) fn resident_bytes(&self) -> ByteSize {
+		let mut total = ByteSize::ZERO;
+		for operator in self.shared.operators() {
+			let Some(slot) = self.shared.slot(operator) else {
+				continue;
+			};
+			total = total.saturating_add(slot.inner.lock().resident_bytes());
+		}
+		total
 	}
 
 	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
 		if writes.is_empty() {
 			return;
 		}
-		self.write(|write| record_writes(write, writes));
+		self.record_writes(writes, None);
+		self.observe_write();
 	}
 
 	pub fn apply_batch_with_checkpoints(
@@ -200,33 +247,87 @@ impl OperatorResidentState {
 		if writes.is_empty() && checkpoints.is_empty() && checkpoint_deletes.is_empty() {
 			return;
 		}
-		self.write(|write| {
-			record_writes(write, writes);
+		let flow = checkpoints.first().map(|(flow, _)| *flow).or_else(|| checkpoint_deletes.first().copied());
+		self.record_writes(writes, flow);
+		if !checkpoints.is_empty() || !checkpoint_deletes.is_empty() {
+			let mut global = self.shared.global.lock();
 			for (flow, version) in checkpoints {
-				write.record_checkpoint(*flow, Some(*version));
+				global.checkpoints.insert(*flow, Some(*version));
 			}
 			for flow in checkpoint_deletes {
-				write.record_checkpoint(*flow, None);
+				global.checkpoints.insert(*flow, None);
 			}
-		});
+		}
+		self.observe_write();
+	}
+
+	fn record_writes(&self, writes: &[OperatorWrite], flow: Option<FlowId>) {
+		let mut grouped: BTreeMap<OperatorId, Vec<&OperatorWrite>> = BTreeMap::new();
+		for write in writes {
+			grouped.entry(write_operator(write)).or_default().push(write);
+		}
+		for (operator, group) in grouped {
+			let slot = self.shared.slot_or_create(operator);
+			let mut inner = slot.inner.lock();
+			let before = inner.live.bytes;
+			for write in group {
+				apply_write(&mut inner, write);
+			}
+			let after = inner.live.bytes;
+			self.shared.budget.charge(after.saturating_sub(before));
+			self.shared.budget.release(before.saturating_sub(after));
+			if flow.is_some() {
+				inner.flow = flow;
+			}
+			self.mark_pending(&mut inner);
+		}
+	}
+
+	fn mark_pending(&self, inner: &mut SlotInner) {
+		if inner.live.is_empty() {
+			inner.pending_seq = None;
+			return;
+		}
+		if inner.pending_seq.is_none() {
+			inner.pending_seq = Some(self.shared.write_seq.fetch_add(1, Ordering::Relaxed));
+		}
+	}
+
+	pub(crate) fn write_slot<R>(&self, operator: OperatorId, mutate: impl FnOnce(&mut SlotInner) -> R) -> R {
+		let slot = self.shared.slot_or_create(operator);
+		let out = {
+			let mut inner = slot.inner.lock();
+			let before = inner.live.bytes;
+			let out = mutate(&mut inner);
+			let after = inner.live.bytes;
+			self.shared.budget.charge(after.saturating_sub(before));
+			self.shared.budget.release(before.saturating_sub(after));
+			self.mark_pending(&mut inner);
+			out
+		};
+		self.observe_write();
+		out
 	}
 
 	pub fn record_drop(&self, marker: DropMarker) {
-		let shared = self.shared();
-		let mut inner = shared.inner.lock();
-		while inner.flushing {
-			shared.idle.wait(&mut inner);
+		let operator = drop_operator(&marker);
+		{
+			let mut global = self.shared.global.lock();
+			while global.flushing {
+				self.shared.idle.wait(&mut global);
+			}
+			global.drops.push(marker);
+			self.shared.drop_epoch.fetch_add(1, Ordering::Release);
 		}
-		let BufferInner {
-			live,
-			census,
-			..
-		} = &mut *inner;
-		let before = live.bytes;
-		live.clear_drop(marker, census);
-		live.drops.push(marker);
-		let after = live.bytes;
-		shared.budget.release(before.saturating_sub(after));
+		let Some(slot) = self.shared.slot(operator) else {
+			return;
+		};
+		let mut inner = slot.inner.lock();
+		let before = inner.live.bytes;
+		clear_drop(&mut inner, marker);
+		let after = inner.live.bytes;
+		self.shared.budget.release(before.saturating_sub(after));
+		self.mark_pending(&mut inner);
 	}
 
 	pub fn flush_guard(&self) -> MutexGuard<'_, ()> {
@@ -238,10 +339,14 @@ impl OperatorResidentState {
 	}
 
 	pub fn complete_flush(&self) {
-		let Some(batch) = self.shared.inner.lock().in_flight.clone() else {
-			return;
+		let batch = {
+			let global = self.shared.global.lock();
+			if global.in_flight_operators.is_empty() && global.in_flight_checkpoints.is_empty() {
+				return;
+			}
+			self.rebuild_in_flight(&global)
 		};
-		self.settle(batch);
+		self.settle(Arc::new(batch));
 	}
 
 	pub fn flush_all(&self) {
@@ -252,53 +357,161 @@ impl OperatorResidentState {
 		}
 	}
 
-	pub fn evict_under_cap(&self) {
-		let _guard = self.flush_guard();
-		while self.shared.budget.over_budget() {
-			let Some(batch) = self.take_evict_slice() else {
-				break;
+	fn rebuild_in_flight(&self, global: &GlobalInner) -> FlushBatch {
+		let mut batch = FlushBatch::default();
+		for operator in &global.in_flight_operators {
+			let Some(slot) = self.shared.slot(*operator) else {
+				continue;
 			};
-			self.persist(&batch);
-			self.settle(batch);
+			let inner = slot.inner.lock();
+			let Some(pending) = inner.in_flight.as_ref() else {
+				continue;
+			};
+			merge_into_batch(&mut batch, *operator, pending);
 		}
+		batch.checkpoints = global.in_flight_checkpoints.clone();
+		batch.drops = global.in_flight_drops.clone();
+		batch
+	}
+
+	fn pending_groups(&self) -> Vec<PendingGroup> {
+		let mut by_flow: BTreeMap<Option<FlowId>, PendingGroup> = BTreeMap::new();
+		for operator in self.shared.operators() {
+			let Some(slot) = self.shared.slot(operator) else {
+				continue;
+			};
+			let inner = slot.inner.lock();
+			if inner.live.is_empty() {
+				continue;
+			}
+			let flow = inner.flow;
+			let seq = inner.pending_seq.unwrap_or(u64::MAX);
+			drop(inner);
+			let group = by_flow.entry(flow).or_insert(PendingGroup {
+				flow,
+				seq: u64::MAX,
+				operators: Vec::new(),
+			});
+			group.seq = group.seq.min(seq);
+			group.operators.push(operator);
+		}
+		let mut groups: Vec<PendingGroup> = by_flow.into_values().collect();
+		groups.sort_by_key(|group| (group.seq, group.flow.map_or(u64::MAX, |flow| flow.0)));
+		groups
 	}
 
 	fn take_drain_slice(&self) -> Option<Arc<FlushBatch>> {
-		let mut inner = self.shared.inner.lock();
-		if inner.live.is_empty() {
+		let mut global = self.shared.global.lock();
+		self.release_in_flight(&mut global);
+
+		let mut batch = FlushBatch::default();
+		let mut touched: Vec<OperatorId> = Vec::new();
+		let mut exhausted = false;
+
+		for group in self.pending_groups() {
+			if batch.bytes >= self.shared.slice {
+				exhausted = true;
+				break;
+			}
+			for operator in group.operators {
+				let Some(slot) = self.shared.slot(operator) else {
+					continue;
+				};
+				let mut inner = slot.inner.lock();
+				if inner.live.is_empty() {
+					continue;
+				}
+				let taken = take_all(&mut inner);
+				merge_into_batch(&mut batch, operator, &taken);
+				inner.in_flight = Some(Arc::new(taken));
+				inner.pending_seq = None;
+				touched.push(operator);
+			}
+		}
+
+		let blocked = self.flows_with_pending_live();
+		let mut ready: Vec<FlowId> = Vec::new();
+		for flow in global.checkpoints.keys() {
+			if !blocked.contains(flow) {
+				ready.push(*flow);
+			}
+		}
+		for flow in ready {
+			let entry = global.checkpoints.remove(&flow).expect("the flow was listed from this map");
+			batch.checkpoints.insert(flow, entry);
+		}
+
+		if batch.state.is_empty()
+			&& batch.join_expiries.is_empty()
+			&& batch.checkpoints.is_empty()
+			&& global.drops.is_empty()
+		{
 			return None;
 		}
-		release_in_flight(&mut inner);
-		let batch = Arc::new(inner.live.drain_within(self.shared.slice));
-		if !inner.live.is_empty() {
+
+		if exhausted {
 			self.shared.metrics.lock().budget_exhausted += 1;
 		}
-		inner.in_flight = Some(Arc::clone(&batch));
-		inner.flushing = true;
-		Some(batch)
+
+		batch.drops = std::mem::take(&mut global.drops);
+		global.in_flight_checkpoints = batch.checkpoints.clone();
+		global.in_flight_drops = batch.drops.clone();
+		global.in_flight_operators = touched;
+		global.flushing = true;
+		Some(Arc::new(batch))
 	}
 
-	fn evict_budget(&self) -> ByteSize {
-		let over = self.shared.budget.used().saturating_sub(self.shared.budget.limit());
-		over.saturating_add(EVICT_HEADROOM).min(self.shared.slice)
+	fn flows_with_pending_live(&self) -> BTreeSet<FlowId> {
+		let mut blocked = BTreeSet::new();
+		for operator in self.shared.operators() {
+			let Some(slot) = self.shared.slot(operator) else {
+				continue;
+			};
+			let inner = slot.inner.lock();
+			if inner.live.is_empty() {
+				continue;
+			}
+			if let Some(flow) = inner.flow {
+				blocked.insert(flow);
+			}
+		}
+		blocked
 	}
 
-	fn take_evict_slice(&self) -> Option<Arc<FlushBatch>> {
-		let mut inner = self.shared.inner.lock();
-		if inner.live.is_empty() {
-			return None;
+	fn release_in_flight(&self, global: &mut GlobalInner) {
+		let operators = std::mem::take(&mut global.in_flight_operators);
+		for operator in operators {
+			let Some(slot) = self.shared.slot(operator) else {
+				continue;
+			};
+			let mut inner = slot.inner.lock();
+			let Some(pending) = inner.in_flight.take() else {
+				continue;
+			};
+			let SlotInner {
+				live,
+				census,
+				..
+			} = &mut *inner;
+			for (key, entry) in pending.state.iter() {
+				if live.state.contains_key(key) {
+					continue;
+				}
+				if let Some(row) = &entry.post {
+					census.retract_state(key, row.bytes().len() as u64);
+				}
+			}
+			for (key, entry) in pending.join_expiries.iter() {
+				if live.join_expiries.contains_key(key) {
+					continue;
+				}
+				if entry.is_some() {
+					census.retract_join_expiry();
+				}
+			}
 		}
-		release_in_flight(&mut inner);
-		let cursor = inner.cursor.take();
-		let (taken, cursor) = inner.live.evict_within(self.evict_budget(), cursor);
-		inner.cursor = cursor;
-		if taken.is_empty() {
-			return None;
-		}
-		let batch = Arc::new(taken);
-		inner.in_flight = Some(Arc::clone(&batch));
-		inner.flushing = true;
-		Some(batch)
+		global.in_flight_checkpoints.clear();
+		global.in_flight_drops.clear();
 	}
 
 	fn persist(&self, batch: &Arc<FlushBatch>) {
@@ -313,9 +526,22 @@ impl OperatorResidentState {
 
 	fn settle(&self, batch: Arc<FlushBatch>) {
 		{
-			let mut inner = self.shared.inner.lock();
-			release_in_flight(&mut inner);
-			inner.flushing = false;
+			let mut global = self.shared.global.lock();
+			for operator in global.in_flight_operators.clone() {
+				let Some(slot) = self.shared.slot(operator) else {
+					continue;
+				};
+				let mut inner = slot.inner.lock();
+				let durable = inner
+					.flow
+					.and_then(|flow| batch.checkpoints.get(&flow).copied())
+					.flatten();
+				if let Some(version) = durable {
+					inner.durable_position = Some(version);
+				}
+			}
+			self.release_in_flight(&mut global);
+			global.flushing = false;
 		}
 		self.shared.idle.notify_all();
 		self.shared.budget.release(batch.bytes);
@@ -332,12 +558,8 @@ impl OperatorResidentState {
 		}
 
 		reifydb_assertions! {
-			let inner = self.shared.inner.lock();
-			let mut walked = walk(&inner.live);
-			if let Some(pending) = inner.in_flight.as_ref() {
-				walked = walked.saturating_add(walk(pending));
-			}
 			let counted = self.shared.budget.used();
+			let walked = self.resident_bytes();
 			assert_eq!(
 				counted, walked,
 				"store::operator::resident resident state byte counter drifted: the budget carries {}, the resident set walks to {}",
@@ -359,104 +581,155 @@ impl OperatorResidentState {
 			let _ = waker.send(FlushMessage::Pressure);
 		}
 	}
-
-	pub(crate) fn write<R>(&self, mutate: impl FnOnce(&mut BufferWrite<'_>) -> R) -> R {
-		let out = {
-			let shared = self.shared();
-			let mut inner = shared.inner.lock();
-			let before = inner.live.bytes;
-			let out = {
-				let BufferInner {
-					live,
-					in_flight,
-					census,
-					..
-				} = &mut *inner;
-				mutate(&mut BufferWrite {
-					live,
-					in_flight: in_flight.as_deref(),
-					census,
-				})
-			};
-			let after = inner.live.bytes;
-			shared.budget.charge(after.saturating_sub(before));
-			shared.budget.release(before.saturating_sub(after));
-			out
-		};
-		self.observe_write();
-		out
-	}
 }
 
-pub(crate) struct BufferWrite<'a> {
-	live: &'a mut FlushBatch,
-	in_flight: Option<&'a FlushBatch>,
-	census: &'a mut BufferCensus,
-}
-
-impl BufferWrite<'_> {
-	pub(crate) fn record_state(&mut self, key: StateKey, post: Option<EncodedPodRow>, durable_pre: DurablePre) {
-		let previous = merged_state(self.live, self.in_flight, key.0, &key.1);
-		let incoming = value_bytes(post.as_ref());
-		if let Some(bytes) = previous {
-			self.census.retract_state(key.0, &key.1, bytes);
+fn write_operator(write: &OperatorWrite) -> OperatorId {
+	match write {
+		OperatorWrite::Insert {
+			operator,
+			..
 		}
-		if let Some(bytes) = incoming {
-			self.census.admit_state(key.0, &key.1, bytes);
+		| OperatorWrite::Replace {
+			operator,
+			..
 		}
-		self.live.record_state(key, post, durable_pre);
-	}
-
-	pub(crate) fn record_join_expiry(&mut self, key: JoinExpiryKey, expiry: Option<u64>, durable: bool) {
-		let before = merged_join_expiry(self.live, self.in_flight, &key);
-		self.live.record_join_expiry(key, expiry, durable);
-		let after = merged_join_expiry(self.live, self.in_flight, &key);
-		match (before, after) {
-			(false, true) => self.census.admit_join_expiry(key.0),
-			(true, false) => self.census.retract_join_expiry(key.0),
-			_ => {}
+		| OperatorWrite::Remove {
+			operator,
+			..
 		}
-	}
-
-	pub(crate) fn record_checkpoint(&mut self, flow: FlowId, version: Option<CommitVersion>) {
-		self.live.checkpoints.insert(flow, version);
+		| OperatorWrite::JoinExpiryInsert {
+			operator,
+			..
+		}
+		| OperatorWrite::JoinExpiryReplace {
+			operator,
+			..
+		}
+		| OperatorWrite::JoinExpiryRemove {
+			operator,
+			..
+		} => *operator,
 	}
 }
 
-fn value_bytes(post: Option<&EncodedPodRow>) -> Option<u64> {
-	post.map(|row| row.bytes().len() as u64)
+fn drop_operator(marker: &DropMarker) -> OperatorId {
+	match marker {
+		DropMarker::OperatorState(operator)
+		| DropMarker::JoinExpiriesOperator(operator)
+		| DropMarker::JoinExpiriesGroup(operator, _) => *operator,
+	}
 }
 
-fn merged_state(
-	live: &FlushBatch,
-	in_flight: Option<&FlushBatch>,
-	operator: OperatorId,
-	key: &EncodedKey,
-) -> Option<u64> {
-	let entry = match live.state.lookup(operator, key) {
-		Some(entry) => entry,
-		None => in_flight?.state.lookup(operator, key)?,
+pub(crate) fn record_state(inner: &mut SlotInner, key: EncodedKey, post: Option<reifydb_codec::row::pod::EncodedPodRow>, durable_pre: DurablePre) {
+	let previous = inner.merged_value_bytes(&key);
+	let incoming = post.as_ref().map(|row| row.bytes().len() as u64);
+	if let Some(bytes) = previous {
+		inner.census.retract_state(&key, bytes);
+	}
+	if let Some(bytes) = incoming {
+		inner.census.admit_state(&key, bytes);
+	}
+	inner.live.record_state(key, post, durable_pre);
+}
+
+pub(crate) fn record_join_expiry(inner: &mut SlotInner, key: SlotJoinKey, expiry: Option<u64>, durable: bool) {
+	let before = inner.merged_join_expiry(&key);
+	inner.live.record_join_expiry(key, expiry, durable);
+	let after = inner.merged_join_expiry(&key);
+	match (before, after) {
+		(false, true) => inner.census.admit_join_expiry(),
+		(true, false) => inner.census.retract_join_expiry(),
+		_ => {}
+	}
+}
+
+fn apply_write(inner: &mut SlotInner, write: &OperatorWrite) {
+	match write {
+		OperatorWrite::Insert {
+			key,
+			post,
+			..
+		} => record_state(inner, key.clone(), Some(post.clone()), DurablePre::Absent),
+		OperatorWrite::Replace {
+			key,
+			pre_value_bytes,
+			post,
+			..
+		} => record_state(inner, key.clone(), Some(post.clone()), DurablePre::Present(*pre_value_bytes)),
+		OperatorWrite::Remove {
+			key,
+			pre,
+			..
+		} => record_state(inner, key.clone(), None, *pre),
+		OperatorWrite::JoinExpiryInsert {
+			group,
+			side,
+			row_num,
+			at,
+			..
+		} => record_join_expiry(inner, (*group, *side, *row_num), Some(at.to_millis()), false),
+		OperatorWrite::JoinExpiryReplace {
+			group,
+			side,
+			row_num,
+			at,
+			..
+		} => record_join_expiry(inner, (*group, *side, *row_num), Some(at.to_millis()), true),
+		OperatorWrite::JoinExpiryRemove {
+			group,
+			side,
+			row_num,
+			pre,
+			..
+		} => record_join_expiry(inner, (*group, *side, *row_num), None, matches!(pre, DurablePre::Present(_))),
+	}
+}
+
+fn clear_drop(inner: &mut SlotInner, marker: DropMarker) {
+	let SlotInner {
+		live,
+		census,
+		..
+	} = inner;
+	match marker {
+		DropMarker::OperatorState(_) => {
+			live.clear_state(census);
+			live.retain_join_expiries(|_| false, census);
+		}
+		DropMarker::JoinExpiriesOperator(_) => {
+			live.retain_join_expiries(|_| false, census);
+		}
+		DropMarker::JoinExpiriesGroup(_, group) => {
+			live.retain_join_expiries(|(candidate, _, _)| *candidate != group, census);
+		}
+	}
+}
+
+fn take_all(inner: &mut SlotInner) -> OperatorLive {
+	let taken = OperatorLive {
+		state: std::mem::take(&mut inner.live.state),
+		join_expiries: std::mem::take(&mut inner.live.join_expiries),
+		durable_join_expiries: BTreeSet::new(),
+		bytes: inner.live.bytes,
 	};
-	value_bytes(entry.post.as_ref())
+	for (key, entry) in taken.join_expiries.iter() {
+		match entry {
+			Some(_) => inner.live.durable_join_expiries.insert(*key),
+			None => inner.live.durable_join_expiries.remove(key),
+		};
+	}
+	inner.live.bytes = ByteSize::ZERO;
+	taken
 }
 
-fn merged_join_expiry(live: &FlushBatch, in_flight: Option<&FlushBatch>, key: &JoinExpiryKey) -> bool {
-	match live.join_expiries.get(key) {
-		Some(entry) => entry.is_some(),
-		None => in_flight.and_then(|batch| batch.join_expiries.get(key)).is_some_and(|entry| entry.is_some()),
+fn merge_into_batch(batch: &mut FlushBatch, operator: OperatorId, taken: &OperatorLive) {
+	for (key, entry) in taken.state.iter() {
+		batch.state.insert(operator, key.clone(), entry.clone());
 	}
-}
-
-#[cfg(reifydb_assertions)]
-use crate::tier::resident::batch::{JOIN_EXPIRY_ENTRY_BYTES, state_entry_bytes};
-
-#[cfg(reifydb_assertions)]
-fn walk(batch: &FlushBatch) -> ByteSize {
-	let mut total = ByteSize::ZERO;
-	for ((_, key), entry) in &batch.state {
-		total = total.saturating_add(state_entry_bytes(key, entry));
+	for ((group, side, row_number), entry) in taken.join_expiries.iter() {
+		batch.join_expiries.insert((operator, *group, *side, *row_number), *entry);
 	}
-	total.saturating_add(JOIN_EXPIRY_ENTRY_BYTES * batch.join_expiries.len() as u64)
+	batch.bytes = batch.bytes.saturating_add(taken.bytes);
 }
 
 fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&OperatorRangeTier>, batch: &FlushBatch) {
@@ -490,78 +763,6 @@ fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&Operator
 				if let Some(point) = point {
 					point.invalidate(operator, key);
 				}
-			}
-		}
-	}
-}
-
-fn record_writes(live: &mut BufferWrite<'_>, writes: &[OperatorWrite]) {
-	for write in writes {
-		match write {
-			OperatorWrite::Insert {
-				operator,
-				key,
-				post,
-			} => {
-				live.record_state((*operator, key.clone()), Some(post.clone()), DurablePre::Absent);
-			}
-			OperatorWrite::Replace {
-				operator,
-				key,
-				pre_value_bytes,
-				post,
-			} => {
-				live.record_state(
-					(*operator, key.clone()),
-					Some(post.clone()),
-					DurablePre::Present(*pre_value_bytes),
-				);
-			}
-			OperatorWrite::Remove {
-				operator,
-				key,
-				pre,
-			} => {
-				live.record_state((*operator, key.clone()), None, *pre);
-			}
-			OperatorWrite::JoinExpiryInsert {
-				operator,
-				group,
-				side,
-				row_num: row_number,
-				at,
-			} => {
-				live.record_join_expiry(
-					(*operator, *group, *side, *row_number),
-					Some(at.to_millis()),
-					false,
-				);
-			}
-			OperatorWrite::JoinExpiryReplace {
-				operator,
-				group,
-				side,
-				row_num: row_number,
-				at,
-			} => {
-				live.record_join_expiry(
-					(*operator, *group, *side, *row_number),
-					Some(at.to_millis()),
-					true,
-				);
-			}
-			OperatorWrite::JoinExpiryRemove {
-				operator,
-				group,
-				side,
-				row_num: row_number,
-				pre,
-			} => {
-				live.record_join_expiry(
-					(*operator, *group, *side, *row_number),
-					None,
-					matches!(pre, DurablePre::Present(_)),
-				);
 			}
 		}
 	}

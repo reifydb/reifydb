@@ -52,7 +52,7 @@ impl ResidentFlushActor {
 	}
 
 	fn relieve(&self) {
-		self.buffer.evict_under_cap();
+		flush_now(&self.buffer);
 	}
 }
 

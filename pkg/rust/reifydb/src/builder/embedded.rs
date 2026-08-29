@@ -100,6 +100,7 @@ pub struct EmbeddedBuilder {
 	migrations: Option<MigrationSource>,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
 	fast_shutdown: bool,
+	cdc_memory: bool,
 }
 
 impl EmbeddedBuilder {
@@ -127,11 +128,17 @@ impl EmbeddedBuilder {
 			migrations: None,
 			bootstrap_configs: Vec::new(),
 			fast_shutdown: false,
+			cdc_memory: false,
 		}
 	}
 
 	pub fn with_fast_shutdown(mut self) -> Self {
 		self.fast_shutdown = true;
+		self
+	}
+
+	pub fn with_cdc_memory(mut self) -> Self {
+		self.cdc_memory = true;
 		self
 	}
 
@@ -245,6 +252,7 @@ impl EmbeddedBuilder {
 				cdc_commit,
 				cdc_read,
 				cdc_wal_autocheckpoint,
+				self.cdc_memory,
 				operator_wal_autocheckpoint,
 				operator_flush_budget,
 				&spawner,

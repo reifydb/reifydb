@@ -82,6 +82,7 @@ impl StorageFactory {
 		cdc_commit: CdcCommitConfig,
 		cdc_read: Option<CdcReadConfig>,
 		cdc_wal_autocheckpoint: u32,
+		cdc_memory: bool,
 		operator_wal_autocheckpoint: u32,
 		operator_flush_budget: ByteSize,
 		spawner: &ActorSpawner,
@@ -100,6 +101,7 @@ impl StorageFactory {
 				cdc_commit,
 				cdc_read,
 				cdc_wal_autocheckpoint,
+				cdc_memory,
 				operator_wal_autocheckpoint,
 				operator_flush_budget,
 				config.clone(),
@@ -210,6 +212,7 @@ fn create_sqlite_store_with(
 	cdc_commit: CdcCommitConfig,
 	cdc_read: Option<CdcReadConfig>,
 	cdc_wal_autocheckpoint: u32,
+	cdc_memory: bool,
 	operator_wal_autocheckpoint: u32,
 	operator_flush_budget: ByteSize,
 	config: SqliteConfig,
@@ -265,9 +268,14 @@ fn create_sqlite_store_with(
 		)
 	});
 
+	let cdc_persistent = if cdc_memory {
+		CdcPersistentConfig::memory()
+	} else {
+		CdcPersistentConfig::sqlite(cdc_sqlite_config(&config, cdc_wal_autocheckpoint))
+	};
 	let cdc_store = CdcStore::new(CdcStoreConfig {
 		commit: cdc_commit,
-		persistent: CdcPersistentConfig::sqlite(cdc_sqlite_config(&config, cdc_wal_autocheckpoint)),
+		persistent: cdc_persistent,
 		read: cdc_read,
 		spawner: spawner.clone(),
 		clock: Clock::Real,
