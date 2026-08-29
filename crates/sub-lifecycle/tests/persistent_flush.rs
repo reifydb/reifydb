@@ -28,10 +28,7 @@ use reifydb_store_multi::{
 	store::StandardMultiStore,
 };
 use reifydb_sub_lifecycle::{
-	plane::{
-		RetentionPlane,
-		ledger::{FloorScope, FloorSource},
-	},
+	plane::{RetentionPlane, ledger::FloorSource},
 	store::flush::PersistentFlushTask,
 };
 use reifydb_value::{
@@ -58,10 +55,6 @@ impl FloorSource for Unpinned {
 	}
 
 	fn consumer_position(&self) -> CommitVersion {
-		CommitVersion(u64::MAX)
-	}
-
-	fn flush_watermark(&self, _scope: FloorScope) -> CommitVersion {
 		CommitVersion(u64::MAX)
 	}
 }

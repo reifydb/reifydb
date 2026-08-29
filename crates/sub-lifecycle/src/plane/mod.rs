@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::store::EntryKind,
 	lifecycle::{
 		class::{Floor, FloorTerm, RetentionClass},
 		metrics::{ClassSnapshot, RetentionMetrics, StuckOnset},
@@ -21,7 +20,7 @@ use reifydb_runtime::{context::clock::Clock, version_epoch::VersionEpoch};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use tracing::warn;
 
-use crate::plane::ledger::{EngineFloors, FloorScope, FloorSource, HorizonLedger};
+use crate::plane::ledger::{EngineFloors, FloorSource, HorizonLedger};
 
 #[derive(Clone)]
 pub struct RetentionPlane {
@@ -52,7 +51,7 @@ impl RetentionPlane {
 	}
 
 	pub fn cutoff(&self, class: RetentionClass, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
-		self.inner.ledger.cutoff(class, FloorScope::Global, now, ttl)
+		self.inner.ledger.cutoff(class, now, ttl)
 	}
 
 	pub fn cutoff_with_binding(
@@ -61,17 +60,7 @@ impl RetentionPlane {
 		now: DateTime,
 		ttl: Option<Duration>,
 	) -> Option<(Floor, FloorTerm)> {
-		self.inner.ledger.cutoff_with_binding(class, FloorScope::Global, now, ttl)
-	}
-
-	pub fn kind_cutoff_with_binding(
-		&self,
-		class: RetentionClass,
-		kind: EntryKind,
-		now: DateTime,
-		ttl: Option<Duration>,
-	) -> Option<(Floor, FloorTerm)> {
-		self.inner.ledger.cutoff_with_binding(class, FloorScope::Kind(kind), now, ttl)
+		self.inner.ledger.cutoff_with_binding(class, now, ttl)
 	}
 
 	pub fn expiry_cutoff(&self, now: DateTime, ttl: Duration) -> Option<CommitVersion> {

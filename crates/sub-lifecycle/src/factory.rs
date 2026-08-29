@@ -36,12 +36,11 @@ use crate::{
 	plane::{RetentionPlane, horizon::max_retention_horizon, measured::Measured},
 	queue::{reap::QueueLeaseReapTask, retention::QueueRetentionTask},
 	retention::evictor::RetentionEvictTask,
-	store::{flush::PersistentFlushTask, tombstone::TombstoneReapTask},
+	store::flush::PersistentFlushTask,
 	subsystem::LifecycleSubsystem,
 };
 
 const NO_FLUSH_ENGINE: &str = "store has no flush engine";
-const NO_PERSISTENT_TIER: &str = "store has no persistent tier";
 const NO_CDC_STORE: &str = "no cdc store registered";
 
 pub struct LifecycleSubsystemFactory;
@@ -123,20 +122,6 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 			)));
 		} else {
 			coverage.absent(RetentionClass::PersistentFlush, NO_FLUSH_ENGINE);
-		}
-
-		if store.persistent().is_some() {
-			registry.register(Box::new(Measured::new(
-				TombstoneReapTask::new(
-					store.clone(),
-					plane.clone(),
-					engine.clock().clone(),
-					config.clone(),
-				),
-				plane.clone(),
-			)));
-		} else {
-			coverage.absent(RetentionClass::TombstoneReap, NO_PERSISTENT_TIER);
 		}
 
 		registry.register(Box::new(Measured::new(

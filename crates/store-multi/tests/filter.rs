@@ -255,11 +255,8 @@ fn a_store_opened_on_populated_tables_starts_disabled_and_serves_back_every_exis
 }
 
 #[test]
-fn a_tombstoned_key_is_still_reported_maybe_present_after_a_rebuild() {
-	// A tombstone row answers Tombstone from a point read, which is a real answer the caller needs in order
-	// to stop searching lower tiers. Restricting the rebuild scan to live rows would turn every tombstoned
-	// key into a false negative, and the store would fall back to a stale value instead of reporting the
-	// removal. The live neighbour is asserted alongside so a scan that simply lost everything cannot pass.
+fn a_removed_key_is_reported_absent_after_a_rebuild() {
+	// The persistent tier is terminal, so ruling a removed key out is never a fallback to a stale value.
 	let (storage, _guard) = SqlitePersistentStorage::in_memory();
 	storage.set_collecting_accepted(
 		CommitVersion(4),
@@ -270,17 +267,13 @@ fn a_tombstoned_key_is_still_reported_maybe_present_after_a_rebuild() {
 	rebuild(&storage, rebuilding_config(8));
 
 	assert!(storage.filter().metrics().enabled, "a committed rebuild must leave the filter active");
-	assert!(
-		storage.filter().may_contain((EntryKind::Multi, &key(1))),
-		"the rebuild dropped a tombstoned key, so its removal now reads as never-written"
-	);
 	assert!(storage.filter().may_contain((EntryKind::Multi, &key(2))), "the rebuild dropped a live key");
 	assert!(
 		matches!(
 			storage.get(EntryKind::Multi, key(1).as_slice(), CommitVersion(u64::MAX)),
-			Ok(reifydb_store_multi::tier::VersionedGetResult::Tombstone)
+			Ok(reifydb_store_multi::tier::VersionedGetResult::NotFound)
 		),
-		"the tombstone must still be readable through the tier after the swap"
+		"the removed key must read as absent through the tier after the swap"
 	);
 }
 

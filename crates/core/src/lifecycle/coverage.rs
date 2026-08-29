@@ -66,11 +66,11 @@ mod tests {
 		// only from the lifecycle subsystem's own tasks would report an externally reclaimed class
 		// as unreclaimed on every boot - an error indistinguishable from a genuinely dead lane.
 		let coverage = RetentionCoverage::new();
-		coverage.cover(RetentionClass::TombstoneReap, "tombstone-reap");
+		coverage.cover(RetentionClass::RowTtl, "retention-evict-silent");
 		coverage.cover(RetentionClass::CdcTruncate, "cdc-subsystem");
 
 		assert_eq!(coverage.owner(RetentionClass::CdcTruncate), Some("cdc-subsystem"));
-		assert!(coverage.is_covered(RetentionClass::TombstoneReap));
+		assert!(coverage.is_covered(RetentionClass::RowTtl));
 		assert!(
 			!coverage.is_covered(RetentionClass::EpochLog),
 			"a class nobody claimed must stay uncovered so the report can still name it"
@@ -82,10 +82,10 @@ mod tests {
 		// Registration order across subsystems is a builder detail; keeping the first registrant makes
 		// the reported owner stable when subsystems are reordered.
 		let coverage = RetentionCoverage::new();
-		coverage.cover(RetentionClass::TombstoneReap, "tombstone-reap");
-		coverage.cover(RetentionClass::TombstoneReap, "someone-else");
+		coverage.cover(RetentionClass::CdcTruncate, "cdc-truncate");
+		coverage.cover(RetentionClass::CdcTruncate, "someone-else");
 
-		assert_eq!(coverage.owner(RetentionClass::TombstoneReap), Some("tombstone-reap"));
+		assert_eq!(coverage.owner(RetentionClass::CdcTruncate), Some("cdc-truncate"));
 		assert_eq!(coverage.len(), 1, "a second claim must not create a second entry");
 	}
 
@@ -107,14 +107,14 @@ mod tests {
 		// prints an executor name, and would fold the class into the covered set that liveness assertions
 		// read - a lane nothing ever runs would then be expected to record slices.
 		let coverage = RetentionCoverage::new();
-		coverage.absent(RetentionClass::TombstoneReap, "store has no persistent tier");
+		coverage.absent(RetentionClass::CdcTruncate, "no cdc store registered");
 
-		assert_eq!(coverage.absence(RetentionClass::TombstoneReap), Some("store has no persistent tier"));
+		assert_eq!(coverage.absence(RetentionClass::CdcTruncate), Some("no cdc store registered"));
 		assert!(
-			!coverage.is_covered(RetentionClass::TombstoneReap),
+			!coverage.is_covered(RetentionClass::CdcTruncate),
 			"an absent lane has no executor, so it must not count as covered"
 		);
-		assert_eq!(coverage.owner(RetentionClass::TombstoneReap), None);
+		assert_eq!(coverage.owner(RetentionClass::CdcTruncate), None);
 	}
 
 	#[test]

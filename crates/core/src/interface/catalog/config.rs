@@ -81,8 +81,6 @@ pub enum ConfigKey {
 	MetricsFlushInterval,
 	MetricsSampleInterval,
 	MetricsSnapshotInterval,
-	TombstoneReapInterval,
-	TombstoneReapBatchSize,
 	QueueLeaseReapInterval,
 	QueueLeaseReapBatchSize,
 	QueueRetentionInterval,
@@ -139,8 +137,6 @@ impl ConfigKey {
 			Self::MetricsFlushInterval,
 			Self::MetricsSampleInterval,
 			Self::MetricsSnapshotInterval,
-			Self::TombstoneReapInterval,
-			Self::TombstoneReapBatchSize,
 			Self::QueueLeaseReapInterval,
 			Self::QueueLeaseReapBatchSize,
 			Self::QueueRetentionInterval,
@@ -201,8 +197,6 @@ impl ConfigKey {
 			Self::MetricsSnapshotInterval => Value::None {
 				inner: ValueType::Duration,
 			},
-			Self::TombstoneReapInterval => Value::duration_seconds(1),
-			Self::TombstoneReapBatchSize => Value::Uint8(1024),
 			Self::QueueLeaseReapInterval => Value::duration_seconds(5),
 			Self::QueueLeaseReapBatchSize => Value::Uint8(1024),
 			Self::QueueRetentionInterval => Value::duration_seconds(60),
@@ -442,12 +436,6 @@ impl ConfigKey {
 				 series. When none, no snapshot is ever written; when set, must be > 0 and not shorter than \
 				 METRICS_SAMPLE_INTERVAL. Read once at boot; changing it requires a restart."
 			}
-			Self::TombstoneReapInterval => {
-				"How often the tombstone reaper scans persistent tables for delete-mode tombstones whose superseding write has flushed."
-			}
-			Self::TombstoneReapBatchSize => {
-				"Max tombstones one reap statement may physically delete per table per slice. Bounds the write-connection hold; remaining tombstones drain on the next slice."
-			}
 			Self::QueueLeaseReapInterval => {
 				"How often the queue reaper scans for leases whose deadline has passed. A dead worker's item cannot be redelivered sooner than this, so it should stay well below any declared lease ttl."
 			}
@@ -512,8 +500,6 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => false,
 			Self::MetricsSampleInterval => true,
 			Self::MetricsSnapshotInterval => true,
-			Self::TombstoneReapInterval => false,
-			Self::TombstoneReapBatchSize => false,
 			Self::QueueLeaseReapInterval => false,
 			Self::QueueLeaseReapBatchSize => false,
 			Self::QueueRetentionInterval => false,
@@ -570,8 +556,6 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => &[ValueType::Duration],
 			Self::MetricsSampleInterval => &[ValueType::Duration],
 			Self::MetricsSnapshotInterval => &[ValueType::Duration],
-			Self::TombstoneReapInterval => &[ValueType::Duration],
-			Self::TombstoneReapBatchSize => &[ValueType::Uint8],
 			Self::QueueLeaseReapInterval => &[ValueType::Duration],
 			Self::QueueLeaseReapBatchSize => &[ValueType::Uint8],
 			Self::QueueRetentionInterval => &[ValueType::Duration],
@@ -628,8 +612,6 @@ impl ConfigKey {
 			Self::MetricsFlushInterval => false,
 			Self::MetricsSampleInterval => false,
 			Self::MetricsSnapshotInterval => true,
-			Self::TombstoneReapInterval => false,
-			Self::TombstoneReapBatchSize => false,
 			Self::QueueLeaseReapInterval => false,
 			Self::QueueLeaseReapBatchSize => false,
 			Self::QueueRetentionInterval => false,
@@ -979,8 +961,6 @@ impl fmt::Display for ConfigKey {
 			Self::MetricsFlushInterval => write!(f, "METRICS_FLUSH_INTERVAL"),
 			Self::MetricsSampleInterval => write!(f, "METRICS_SAMPLE_INTERVAL"),
 			Self::MetricsSnapshotInterval => write!(f, "METRICS_SNAPSHOT_INTERVAL"),
-			Self::TombstoneReapInterval => write!(f, "TOMBSTONE_REAP_INTERVAL"),
-			Self::TombstoneReapBatchSize => write!(f, "TOMBSTONE_REAP_BATCH_SIZE"),
 			Self::QueueLeaseReapInterval => write!(f, "QUEUE_LEASE_REAP_INTERVAL"),
 			Self::QueueLeaseReapBatchSize => write!(f, "QUEUE_LEASE_REAP_BATCH_SIZE"),
 			Self::QueueRetentionInterval => write!(f, "QUEUE_RETENTION_INTERVAL"),
@@ -1041,8 +1021,6 @@ impl FromStr for ConfigKey {
 			"METRICS_FLUSH_INTERVAL" => Ok(Self::MetricsFlushInterval),
 			"METRICS_SAMPLE_INTERVAL" => Ok(Self::MetricsSampleInterval),
 			"METRICS_SNAPSHOT_INTERVAL" => Ok(Self::MetricsSnapshotInterval),
-			"TOMBSTONE_REAP_INTERVAL" => Ok(Self::TombstoneReapInterval),
-			"TOMBSTONE_REAP_BATCH_SIZE" => Ok(Self::TombstoneReapBatchSize),
 			"QUEUE_LEASE_REAP_INTERVAL" => Ok(Self::QueueLeaseReapInterval),
 			"QUEUE_LEASE_REAP_BATCH_SIZE" => Ok(Self::QueueLeaseReapBatchSize),
 			"QUEUE_RETENTION_INTERVAL" => Ok(Self::QueueRetentionInterval),
@@ -1218,7 +1196,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 53);
+		assert_eq!(all.len(), 51);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));

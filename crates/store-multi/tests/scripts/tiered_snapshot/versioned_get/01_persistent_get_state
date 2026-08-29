@@ -1,13 +1,13 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the Apache-2.0, see license.md file
 
-# Verifies storage classifies Value / Tombstone / NotFound in a single
-# query (the non-lossy get). An absent key and an in-range delete must be distinguishable -
-# the old Option<value> return collapsed both to None.
+# Verifies storage classifies Value / NotFound in a single query (the non-lossy get).
+# The persistent tier is terminal and materializes a delete by removing the row, so an
+# absent key and a deleted key are the same answer here; the buffer, which still holds
+# versions, is what distinguishes Tombstone.
 #
 # Coupled-flush model: a single watermark W=2 governs every sweep below. The first
-# sweep persists the live v1 row; the second sweep (after the delete) persists the
-# v2 tombstone as the new latest-<=W row.
+# sweep persists the live v1 row; the second sweep (after the delete) removes it.
 
 watermark 2
 ---
@@ -38,18 +38,18 @@ persistent_get_state k version=0
 ---
 "k" => notfound
 
-# Delete at v2; sweep at W=2 persists the tombstone as the latest-<=W row
+# Delete at v2; sweep at W=2 removes the row rather than storing a valueless one
 remove_with_pre k=alive version=2
 flush
 ---
 ok
 
-# In-range delete is a Tombstone, distinct from NotFound
+# The row is gone, so an in-range delete reads as notfound
 persistent_get_state k version=2
 ---
-"k" => tombstone
+"k" => notfound
 
-# Persistent keeps only the latest row; below the tombstone version -> notfound
+# Nothing survives the delete, so no earlier version is readable either
 persistent_get_state k version=1
 ---
 "k" => notfound

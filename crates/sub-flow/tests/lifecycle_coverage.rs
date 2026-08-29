@@ -73,7 +73,7 @@ fn a_lifecycle_task_still_owns_the_classes_it_registered() {
 /// Executors that exist only when the store has the tier they operate on. On a memory store the
 /// factory skips them, so their classes have no owner and the boot report names them - accurate,
 /// not a defect. Every other class must be claimed on any store.
-const STORAGE_CONDITIONAL: &[RetentionClass] = &[RetentionClass::PersistentFlush, RetentionClass::TombstoneReap];
+const STORAGE_CONDITIONAL: &[RetentionClass] = &[RetentionClass::PersistentFlush];
 
 #[test]
 fn every_retention_class_a_memory_database_can_reclaim_has_an_owner() {

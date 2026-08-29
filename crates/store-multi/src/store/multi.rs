@@ -1888,19 +1888,20 @@ mod probe_tests {
 	}
 
 	#[test]
-	fn a_tombstoned_key_counts_a_probe_but_never_an_absence() {
+	fn a_deleted_key_counts_a_probe_and_an_absence() {
 		let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 
 		let k = RowKey::encoded(STORAGE, 5);
+		seed_persistent(&store, vec![(k.clone(), value("doomed"))]);
 		seed_persistent(&store, vec![(k.clone(), None)]);
 
 		let before = probes(&store);
-		assert!(store.get(&k, CommitVersion(9)).unwrap().is_none(), "a tombstone reads as no row");
+		assert!(store.get(&k, CommitVersion(9)).unwrap().is_none(), "a deleted key reads as no row");
 		assert_eq!(
 			probes(&store),
-			(before.0 + 1, before.1),
-			"the tombstone was found in sqlite, so the read was not wasted. Counting it as absent \
-			 credits a filter with a saving it cannot make and inflates the measured ceiling"
+			(before.0 + 1, before.1 + 1),
+			"the delete removed the row, so sqlite came back with nothing and the read was wasted. \
+			 Counting it as a hit would deny a filter a saving it can actually make"
 		);
 	}
 
@@ -1909,11 +1910,15 @@ mod probe_tests {
 		let (store, _guard) = store_over_populated_persistent();
 
 		let resident = RowKey::encoded(STORAGE, 1);
-		let tombstoned = RowKey::encoded(STORAGE, 2);
+		let deleted = RowKey::encoded(STORAGE, 2);
 		let missing_a = RowKey::encoded(STORAGE, 3);
 		let missing_b = RowKey::encoded(STORAGE, 4);
 		let buffered = RowKey::encoded(STORAGE, 5);
-		seed_persistent(&store, vec![(resident.clone(), value("resident")), (tombstoned.clone(), None)]);
+		seed_persistent(
+			&store,
+			vec![(resident.clone(), value("resident")), (deleted.clone(), value("doomed"))],
+		);
+		seed_persistent(&store, vec![(deleted.clone(), None)]);
 		MultiVersionCommit::commit(
 			&store,
 			cow_vec![Delta::Set {
@@ -1929,7 +1934,7 @@ mod probe_tests {
 			.get_many(
 				&[
 					resident.clone(),
-					tombstoned.clone(),
+					deleted.clone(),
 					missing_a.clone(),
 					missing_b.clone(),
 					buffered.clone(),
@@ -1941,9 +1946,9 @@ mod probe_tests {
 
 		assert_eq!(
 			probes(&store),
-			(before.0 + 4, before.1 + 2),
-			"four of the five keys fell through to sqlite and two of those came back with nothing. \
-			 The buffered key must not count at all, and the tombstone must count as a probe only"
+			(before.0 + 4, before.1 + 3),
+			"four of the five keys fell through to sqlite and three of those came back with nothing. \
+			 The buffered key must not count at all, and the deleted key must count as a wasted probe"
 		);
 	}
 

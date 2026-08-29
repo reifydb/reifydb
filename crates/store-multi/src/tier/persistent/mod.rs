@@ -113,17 +113,6 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn reap_tombstones(
-		&self,
-		kind: EntryKind,
-		cutoff_version: CommitVersion,
-		limit: usize,
-	) -> Result<(u64, bool)> {
-		match self {
-			Self::Sqlite(s) => s.reap_tombstones(kind, cutoff_version, limit),
-		}
-	}
-
 	pub fn set_collecting_accepted(&self, version: CommitVersion, batches: TierBatch) -> Result<Vec<EncodedKey>> {
 		match self {
 			Self::Sqlite(s) => s.set_collecting_accepted(version, batches),
@@ -183,15 +172,6 @@ impl MultiPersistentTier {
 	}
 
 	pub fn list_current_entries(&self) -> Result<Vec<EntryKind>> {
-		match *self {}
-	}
-
-	pub fn reap_tombstones(
-		&self,
-		_kind: EntryKind,
-		_cutoff_version: CommitVersion,
-		_limit: usize,
-	) -> Result<(u64, bool)> {
 		match *self {}
 	}
 
