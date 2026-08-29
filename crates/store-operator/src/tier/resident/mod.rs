@@ -17,7 +17,6 @@ mod tests;
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	fmt,
-	ops::Bound,
 	sync::{
 		Arc, OnceLock,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -46,7 +45,7 @@ use crate::{
 		point::OperatorPointTier,
 		range::OperatorRangeTier,
 		resident::{
-			batch::{DropMarker, FlushBatch, StateKey, state_entry_bytes},
+			batch::{DropMarker, FlushBatch},
 			flush::actor::FlushMessage,
 			slot::{OperatorLive, Slot, SlotInner, SlotJoinKey},
 		},
@@ -56,8 +55,8 @@ use crate::{
 
 pub const FLUSH_BUDGET_BYTES: ByteSize = ByteSize::from_mib(100);
 
+
 pub const SLICE_BYTES: ByteSize = ByteSize::from_mib(4);
-const EVICT_HEADROOM: ByteSize = ByteSize::from_kib(256);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct OperatorResidentStateMetrics {
@@ -77,7 +76,6 @@ struct GlobalInner {
 	in_flight_checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
 	drops: Vec<DropMarker>,
 	in_flight_drops: Vec<DropMarker>,
-	cursor: Option<StateKey>,
 	flushing: bool,
 	in_flight_operators: Vec<OperatorId>,
 }
@@ -359,17 +357,6 @@ impl OperatorResidentState {
 		}
 	}
 
-	pub fn evict_under_cap(&self) {
-		let _guard = self.flush_guard();
-		while self.shared.budget.over_budget() {
-			let Some(batch) = self.take_evict_slice() else {
-				break;
-			};
-			self.persist(&batch);
-			self.settle(batch);
-		}
-	}
-
 	fn rebuild_in_flight(&self, global: &GlobalInner) -> FlushBatch {
 		let mut batch = FlushBatch::default();
 		for operator in &global.in_flight_operators {
@@ -489,110 +476,6 @@ impl OperatorResidentState {
 			}
 		}
 		blocked
-	}
-
-	fn evict_budget(&self) -> ByteSize {
-		let over = self.shared.budget.used().saturating_sub(self.shared.budget.limit());
-		over.saturating_add(EVICT_HEADROOM).min(self.shared.slice)
-	}
-
-	fn take_evict_slice(&self) -> Option<Arc<FlushBatch>> {
-		let mut global = self.shared.global.lock();
-		self.release_in_flight(&mut global);
-
-		let budget = self.evict_budget();
-		let cursor = global.cursor.take();
-		let operators = self.shared.operators();
-		let order = revolution(&operators, cursor.as_ref().map(|(operator, _)| *operator));
-
-		let mut batch = FlushBatch::default();
-		let mut touched: Vec<OperatorId> = Vec::new();
-		let mut taken = ByteSize::ZERO;
-		let mut last: Option<StateKey> = cursor.clone();
-		let mut fallback: Vec<(OperatorId, EncodedKey)> = Vec::new();
-		let mut fallback_bytes = ByteSize::ZERO;
-		let mut coldest: Option<u8> = None;
-		let mut victims: BTreeMap<OperatorId, Vec<EncodedKey>> = BTreeMap::new();
-		let mut filled = false;
-
-		for (index, operator) in order.iter().enumerate() {
-			let Some(slot) = self.shared.slot(*operator) else {
-				continue;
-			};
-			let mut inner = slot.inner.lock();
-			let lower = match (index, cursor.as_ref()) {
-				(0, Some((candidate, key))) if candidate == operator => Bound::Excluded(key.clone()),
-				_ => Bound::Unbounded,
-			};
-			for (key, entry) in inner.live.state.range_mut((lower, Bound::Unbounded)) {
-				last = Some((*operator, key.clone()));
-				if entry.count == 0 {
-					taken = taken.saturating_add(state_entry_bytes(key, entry));
-					victims.entry(*operator).or_default().push(key.clone());
-					if taken >= budget {
-						filled = true;
-						break;
-					}
-					continue;
-				}
-				entry.count /= 2;
-				let rank = entry.count;
-				let cost = state_entry_bytes(key, entry);
-				match coldest {
-					Some(current) if rank > current => {}
-					Some(current) if rank == current => {
-						if fallback_bytes < budget {
-							fallback_bytes = fallback_bytes.saturating_add(cost);
-							fallback.push((*operator, key.clone()));
-						}
-					}
-					_ => {
-						coldest = Some(rank);
-						fallback.clear();
-						fallback_bytes = cost;
-						fallback.push((*operator, key.clone()));
-					}
-				}
-			}
-			if filled {
-				break;
-			}
-		}
-
-		if victims.is_empty() && !filled {
-			for (operator, key) in fallback {
-				victims.entry(operator).or_default().push(key);
-			}
-		}
-
-		if victims.is_empty() {
-			global.cursor = None;
-			return None;
-		}
-
-		for (operator, keys) in victims {
-			let Some(slot) = self.shared.slot(operator) else {
-				continue;
-			};
-			let mut inner = slot.inner.lock();
-			let evicted = evict_keys(&mut inner, &keys);
-			if evicted.is_empty() {
-				continue;
-			}
-			merge_into_batch(&mut batch, operator, &evicted);
-			inner.in_flight = Some(Arc::new(evicted));
-			touched.push(operator);
-		}
-
-		if batch.state.is_empty() {
-			global.cursor = last;
-			return None;
-		}
-
-		global.cursor = last;
-		global.in_flight_operators = touched;
-		global.flushing = true;
-		Some(Arc::new(batch))
 	}
 
 	fn release_in_flight(&self, global: &mut GlobalInner) {
@@ -839,20 +722,6 @@ fn take_all(inner: &mut SlotInner) -> OperatorLive {
 	taken
 }
 
-fn evict_keys(inner: &mut SlotInner, keys: &[EncodedKey]) -> OperatorLive {
-	let mut taken = OperatorLive::default();
-	for key in keys {
-		let Some(entry) = inner.live.state.remove(key) else {
-			continue;
-		};
-		let cost = state_entry_bytes(key, &entry);
-		inner.live.bytes = inner.live.bytes.saturating_sub(cost);
-		taken.bytes = taken.bytes.saturating_add(cost);
-		taken.state.insert(key.clone(), entry);
-	}
-	taken
-}
-
 fn merge_into_batch(batch: &mut FlushBatch, operator: OperatorId, taken: &OperatorLive) {
 	for (key, entry) in taken.state.iter() {
 		batch.state.insert(operator, key.clone(), entry.clone());
@@ -861,17 +730,6 @@ fn merge_into_batch(batch: &mut FlushBatch, operator: OperatorId, taken: &Operat
 		batch.join_expiries.insert((operator, *group, *side, *row_number), *entry);
 	}
 	batch.bytes = batch.bytes.saturating_add(taken.bytes);
-}
-
-fn revolution(operators: &[OperatorId], from: Option<OperatorId>) -> Vec<OperatorId> {
-	let Some(from) = from else {
-		return operators.to_vec();
-	};
-	let start = operators.iter().position(|candidate| *candidate >= from).unwrap_or(0);
-	let mut order = Vec::with_capacity(operators.len());
-	order.extend_from_slice(&operators[start..]);
-	order.extend_from_slice(&operators[..start]);
-	order
 }
 
 fn invalidate_flushed(point: Option<&OperatorPointTier>, range: Option<&OperatorRangeTier>, batch: &FlushBatch) {

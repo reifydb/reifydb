@@ -24,8 +24,6 @@ pub type JoinExpirySlot = (u8, RowNumber);
 
 pub const JOIN_EXPIRY_ENTRY_BYTES: ByteSize = JOIN_EXPIRY_KEY_BYTES.saturating_add(JOIN_EXPIRY_VALUE_BYTES);
 
-pub const MAX_FREQUENCY: u8 = 15;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DropMarker {
 	OperatorState(OperatorId),
@@ -37,7 +35,6 @@ pub enum DropMarker {
 pub struct StateEntry {
 	pub post: Option<EncodedPodRow>,
 	pub durable_pre: DurablePre,
-	pub count: u8,
 }
 
 #[derive(Debug, Default)]

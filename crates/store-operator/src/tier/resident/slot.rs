@@ -13,7 +13,7 @@ use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{byte_size::ByteSize, value::row_number::RowNumber};
 
 use crate::{
-	tier::resident::batch::{JOIN_EXPIRY_ENTRY_BYTES, MAX_FREQUENCY, StateEntry, state_entry_bytes},
+	tier::resident::batch::{JOIN_EXPIRY_ENTRY_BYTES, StateEntry, state_entry_bytes},
 	types::{DurablePre, OperatorStateCensus},
 };
 
@@ -108,14 +108,12 @@ impl OperatorLive {
 				let entry = slot.get_mut();
 				let outgoing = post_bytes(&entry.post);
 				entry.post = post;
-				entry.count = entry.count.saturating_add(1).min(MAX_FREQUENCY);
 				outgoing
 			}
 			Entry::Vacant(slot) => {
 				slot.insert(StateEntry {
 					post,
 					durable_pre,
-					count: 1,
 				});
 				admitted = true;
 				ByteSize::ZERO

@@ -53,6 +53,13 @@ const GROUP_B: GroupId = GroupId(11);
 const SIDE: u8 = 0;
 const FLOW: FlowId = FlowId(7);
 
+fn operators_in(batch: &crate::tier::resident::batch::FlushBatch) -> Vec<OperatorId> {
+	let mut seen: Vec<OperatorId> = batch.state.iter().map(|((operator, _), _)| operator).collect();
+	seen.sort_unstable();
+	seen.dedup();
+	seen
+}
+
 fn tier(storage: &SqliteOperatorStorage) -> OperatorPersistentTier {
 	OperatorPersistentTier::Sqlite(storage.clone())
 }
@@ -687,7 +694,12 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 }
 
 #[test]
-fn a_buffer_a_hair_over_the_cap_evicts_a_hair_not_a_whole_slice() {
+fn a_hair_over_the_cap_drains_the_whole_flow_and_its_checkpoint_in_one_batch() {
+	// a flow's state and its checkpoint must leave together. the batch carrying a flow's last live
+	// row must carry that flow's checkpoint too, and the byte budget is a hint that yields to the
+	// flow boundary rather than a cut through it. a batch that took part of the flow while its
+	// checkpoint went durable would, after a crash, replay the rows it left behind on top of state
+	// that already absorbed them.
 	let (storage, _guard) = SqliteOperatorStorage::in_memory();
 	let large = "x".repeat(64 * 1024);
 	let resident = 64u8;
@@ -695,28 +707,44 @@ fn a_buffer_a_hair_over_the_cap_evicts_a_hair_not_a_whole_slice() {
 	let buffer = OperatorResidentState::with_budget(cap);
 	buffer.attach_sinks(tier(&storage), None, None);
 
-	for index in 0..resident {
-		buffer.record_state_set(OP_A, key(index), row(&large), DurablePre::Absent);
-	}
-	assert!(
-		buffer.metrics().backlog <= cap,
-		"the buffer must still be at or under its cap before the overshoot, or this measures the wrong thing"
-	);
+	let mut writes: Vec<OperatorWrite> = (0..resident)
+		.map(|index| OperatorWrite::Insert {
+			operator: OP_A,
+			key: key(index),
+			post: row(&large),
+		})
+		.collect();
+	writes.push(OperatorWrite::Insert {
+		operator: OP_B,
+		key: key(resident),
+		post: row(&large),
+	});
+	buffer.apply_batch_with_checkpoints(&writes, &[(FLOW, CommitVersion(41))], &[]);
 
-	buffer.record_state_set(OP_A, key(resident), row(&large), DurablePre::Absent);
-	buffer.evict_under_cap();
+	let slice = buffer.take_for_flush().expect("a buffer past its cap must yield a slice");
 
-	assert!(
-		buffer.metrics().backlog <= cap,
-		"eviction must leave the buffer at or under its cap; stopping above it lets the buffer grow \
-		 without bound"
+	assert_eq!(
+		operators_in(&slice),
+		vec![OP_A, OP_B],
+		"both operators of the flow must leave in one batch; stopping at the byte budget between them \
+		 strands the second operator's rows while the flow's checkpoint claims they are applied"
+	);
+	assert_eq!(
+		slice.state.len(),
+		resident as usize + 1,
+		"one entry of overshoot must drain every row of the flow that owns it; a partial take strands \
+		 rows in memory that the durable checkpoint already claims are applied"
 	);
 	assert!(
-		buffer.metrics().evicted <= 8,
-		"one entry of overshoot must cost about one entry of eviction plus the headroom, not the whole \
-		 4 MiB slice; got {} of {} entries written back",
-		buffer.metrics().evicted,
-		resident + 1
+		slice.bytes > cap,
+		"the byte budget is a hint, not a cut: keeping the flow whole must be allowed to overshoot it, \
+		 otherwise the split that the checkpoint gate exists to prevent comes back"
+	);
+	assert_eq!(
+		slice.checkpoints.get(&FLOW).copied().flatten(),
+		Some(CommitVersion(41)),
+		"the checkpoint must ride out in the same batch as the last of its flow's state; written earlier \
+		 it replays nothing, written later a crash between the two replays state that is already durable"
 	);
 }
 
