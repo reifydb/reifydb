@@ -273,10 +273,7 @@ pub trait StateExtension: FlowTransaction {
 
 impl<T: FlowTransaction> StateExtension for T {}
 
-fn next_stored(
-	scan: &mut StateLastIter<'_>,
-	prefix: &[u8],
-) -> Option<(EncodedKey, EncodedKey, EncodedBytes)> {
+fn next_stored(scan: &mut StateLastIter<'_>, prefix: &[u8]) -> Option<(EncodedKey, EncodedKey, EncodedBytes)> {
 	scan.next().map(|(inner, row)| {
 		let mut scoped = Vec::with_capacity(prefix.len() + inner.len());
 		scoped.extend_from_slice(prefix);

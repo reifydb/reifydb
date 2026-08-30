@@ -17,8 +17,8 @@ use std::{
 	thread::{Builder, JoinHandle, park},
 };
 
-use reifydb_core::common::CommitVersion;
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_core::{common::CommitVersion, delta::Delta};
+use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
 
 use super::{CommitShared, CreateCommitResult, OracleState, SpanTiming};
 use crate::multi::{conflict::ConflictManager, transaction::version::VersionProvider};
@@ -32,6 +32,7 @@ struct CommitPayload {
 	version: CommitVersion,
 	window_size: u64,
 	conflicts: Option<ConflictManager>,
+	deltas: Option<CowVec<Delta>>,
 	result: Option<Result<CreateCommitResult>>,
 }
 
@@ -48,12 +49,13 @@ struct CommitRequest {
 unsafe impl Sync for CommitRequest {}
 
 impl CommitRequest {
-	fn new(version: CommitVersion, window_size: u64, conflicts: ConflictManager) -> Self {
+	fn new(version: CommitVersion, window_size: u64, conflicts: ConflictManager, deltas: CowVec<Delta>) -> Self {
 		Self {
 			payload: UnsafeCell::new(CommitPayload {
 				version,
 				window_size,
 				conflicts: Some(conflicts),
+				deltas: Some(deltas),
 				result: None,
 			}),
 			state: AtomicU32::new(QUEUED),
@@ -207,9 +209,10 @@ where
 		&self,
 		version: CommitVersion,
 		conflicts: ConflictManager,
+		deltas: CowVec<Delta>,
 		window_size: u64,
 	) -> Result<CreateCommitResult> {
-		let request = CommitRequest::new(version, window_size, conflicts);
+		let request = CommitRequest::new(version, window_size, conflicts, deltas);
 		self.queue.push(&request as *const CommitRequest as *mut CommitRequest);
 		loop {
 			if self.queue.sequencer_active() {
@@ -264,8 +267,16 @@ where
 					.conflicts
 					.take()
 					.expect("a queued commit request must carry a conflict manager");
-				let result =
-					self.service(state, payload.version, conflicts, payload.window_size, timing);
+				let deltas =
+					payload.deltas.take().expect("a queued commit request must carry its deltas");
+				let result = self.service(
+					state,
+					payload.version,
+					conflicts,
+					deltas,
+					payload.window_size,
+					timing,
+				);
 				complete_request(request, result);
 				request = next;
 			}

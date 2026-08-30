@@ -180,7 +180,6 @@ impl EventBus {
 			}))
 			.is_err()
 		{
-			crate::probe::emit_dropped();
 			let shutting_down = self.spawner.cancellation_token().is_none_or(|token| token.is_cancelled());
 			assert!(
 				shutting_down,

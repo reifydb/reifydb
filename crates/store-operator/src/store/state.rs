@@ -842,11 +842,10 @@ impl Iterator for StateLastIter<'_> {
 				}
 			}
 			if self.stored_index == self.stored.len() && !self.stored_done {
-				let persistent = self
-					.store
-					.persistent
-					.as_ref()
-					.expect("a store without a persistent tier never reaches a stored page");
+				let persistent =
+					self.store.persistent.as_ref().expect(
+						"a store without a persistent tier never reaches a stored page",
+					);
 				let batch = persistent.last_batch(
 					self.operator,
 					EncodedKeyRange::new(self.start.clone(), self.stored_end.clone()),

@@ -171,10 +171,6 @@ impl WaterMark {
 		self.shared.done_until.fetch_max(version.0, Ordering::SeqCst);
 	}
 
-	pub fn wait_for_mark(&self, index: u64) -> bool {
-		self.wait_for_mark_timeout(CommitVersion(index), Duration::from_seconds(30).unwrap())
-	}
-
 	pub fn register_mark_waiter(&self, index: CommitVersion, waiter: Arc<WaiterHandle>) -> bool {
 		let current_done = self.shared.done_until.load(Ordering::SeqCst);
 		if current_done >= index.0 {
@@ -269,24 +265,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_wait_for_mark() {
-		let watermark = WaterMark::new("watermark".into());
-		watermark.register_in_flight(CommitVersion(1));
-		watermark.register_in_flight(CommitVersion(2));
-		watermark.register_in_flight(CommitVersion(3));
-
-		watermark.mark_finished(CommitVersion(2));
-		watermark.mark_finished(CommitVersion(3));
-
-		assert_eq!(watermark.done_until().0, 0);
-
-		watermark.mark_finished(CommitVersion(1));
-		watermark.wait_for_mark(1);
-		watermark.wait_for_mark(3);
-		assert_eq!(watermark.done_until().0, 3);
-	}
-
-	#[test]
 	fn test_done_until() {
 		let watermark = WaterMark::new("watermark".into());
 		watermark.shared.done_until.store(1, Ordering::SeqCst);
@@ -374,7 +352,7 @@ pub mod tests {
 		let very_old = done_until.0.saturating_sub(OLD_VERSION_THRESHOLD + 10);
 		let clock = Clock::Real;
 		let start = clock.instant();
-		watermark.wait_for_mark(very_old);
+		watermark.wait_for_mark_timeout(CommitVersion(very_old), Duration::from_seconds(30).unwrap());
 		let elapsed = start.elapsed();
 
 		assert!(elapsed.as_millis() < 10, "Old version wait should return immediately");

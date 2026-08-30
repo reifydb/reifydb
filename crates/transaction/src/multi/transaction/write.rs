@@ -16,9 +16,7 @@ use reifydb_core::{
 	event::transaction::PostCommitEvent,
 	interface::{
 		change::Change,
-		store::{
-			MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
-		},
+		store::{MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRow},
 	},
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -93,22 +91,6 @@ impl MultiWriteTransaction {
 	pub fn new(engine: MultiTransaction) -> Result<Self> {
 		let oracle = engine.tm.oracle().clone();
 		let version = oracle.query.register_in_flight_with(|| oracle.version())?;
-
-		let applied = oracle.command.wait_for_mark(version.0);
-		if !applied {
-			warn!(
-				version = version.0,
-				"command transaction opened before the commit watermark reached its snapshot; reads at this version may miss commits that are still being applied"
-			);
-		}
-		reifydb_assertions! {
-			assert!(
-				applied,
-				"waiting for the commit watermark to reach snapshot {} timed out; opening the \
-				 transaction anyway reads a snapshot whose commits are not yet all applied",
-				version.0
-			);
-		}
 
 		let id = TransactionId::generate(oracle.metrics_clock(), oracle.rng());
 		Ok(Self {
@@ -496,14 +478,14 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
-	fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<DeltaEntry>)> {
+	fn commit_pending(&mut self, deltas: CowVec<Delta>) -> Result<CommitVersion> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		let conflict_manager = mem::take(&mut self.conflicts);
 		let base_version = self.base_version();
 
-		let result = self.oracle.new_commit(base_version, conflict_manager);
+		let result = self.oracle.new_commit(base_version, conflict_manager, deltas);
 		self.release_read_snapshot(base_version);
 
 		match result? {
@@ -514,7 +496,8 @@ impl MultiWriteTransaction {
 			CreateCommitResult::TooOld => Err(TransactionError::TooOld.into()),
 			CreateCommitResult::Success(version) => {
 				self.pending_query_pin = Some(version);
-				Ok((version, self.assemble_committed_deltas(version)))
+				self.clear_pending_state();
+				Ok(version)
 			}
 		}
 	}
@@ -523,14 +506,14 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
-	fn commit_pending_unchecked(&mut self) -> Result<(CommitVersion, Vec<DeltaEntry>)> {
+	fn commit_pending_unchecked(&mut self, deltas: CowVec<Delta>) -> Result<CommitVersion> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		let _ = mem::take(&mut self.conflicts);
 		let base_version = self.base_version();
 
-		let result = self.oracle.advance_unchecked(base_version);
+		let result = self.oracle.advance_unchecked(base_version, deltas);
 		self.release_read_snapshot(base_version);
 
 		match result? {
@@ -538,7 +521,8 @@ impl MultiWriteTransaction {
 			CreateCommitResult::TooOld => Err(TransactionError::TooOld.into()),
 			CreateCommitResult::Success(version) => {
 				self.pending_query_pin = Some(version);
-				Ok((version, self.assemble_committed_deltas(version)))
+				self.clear_pending_state();
+				Ok(version)
 			}
 		}
 	}
@@ -552,23 +536,18 @@ impl MultiWriteTransaction {
 	}
 
 	#[inline]
-	fn assemble_committed_deltas(&mut self, version: CommitVersion) -> Vec<DeltaEntry> {
-		reifydb_assertions! {
-			assert_ne!(version, 0);
-		}
-		let _ = mem::take(&mut self.pending_writes);
-		let duplicate_writes = mem::take(&mut self.duplicates);
-		let mut all = mem::take(&mut self.delta_log);
-		all.reserve(duplicate_writes.len());
+	fn build_deltas(&self) -> CowVec<Delta> {
+		CowVec::new(optimize_deltas(
+			self.delta_log.iter().chain(self.duplicates.iter()).map(|pending| pending.delta.clone()),
+			self.preexisting_keys(),
+		))
+	}
 
-		for pending in all.iter_mut() {
-			pending.version = version;
-		}
-		for mut pending in duplicate_writes {
-			pending.version = version;
-			all.push(pending);
-		}
-		all
+	#[inline]
+	fn clear_pending_state(&mut self) {
+		let _ = mem::take(&mut self.pending_writes);
+		let _ = mem::take(&mut self.duplicates);
+		let _ = mem::take(&mut self.delta_log);
 	}
 }
 
@@ -579,8 +558,9 @@ impl MultiWriteTransaction {
 			self.discard();
 			return Ok(CommitVersion(0));
 		}
-		let (commit_version, entries) = self.commit_pending()?;
-		self.finalize_commit(commit_version, entries, flow_changes)
+		let deltas = self.build_deltas();
+		let commit_version = self.commit_pending(deltas.clone())?;
+		self.finalize_commit(commit_version, deltas, flow_changes)
 	}
 
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
@@ -589,28 +569,25 @@ impl MultiWriteTransaction {
 			self.discard();
 			return Ok(CommitVersion(0));
 		}
-		let (commit_version, entries) = self.commit_pending_unchecked()?;
-		self.finalize_commit(commit_version, entries, flow_changes)
+		let deltas = self.build_deltas();
+		let commit_version = self.commit_pending_unchecked(deltas.clone())?;
+		self.finalize_commit(commit_version, deltas, flow_changes)
 	}
 
 	#[inline]
 	fn finalize_commit(
 		&mut self,
 		commit_version: CommitVersion,
-		entries: Vec<DeltaEntry>,
+		deltas: CowVec<Delta>,
 		flow_changes: Vec<Change>,
 	) -> Result<CommitVersion> {
-		if entries.is_empty() {
-			self.discard();
-			return Ok(CommitVersion(0));
-		}
 		reifydb_assertions! {
 			assert_ne!(
 				commit_version, 0,
-				"finalize_commit reached with commit_version=0 but {} non-empty entries; \
+				"finalize_commit reached with commit_version=0 but {} non-empty deltas; \
 				 CommitVersion(0) is the empty/discarded sentinel callers read as 'nothing \
 				 committed', so committing real deltas at it would silently drop them",
-				entries.len()
+				deltas.len()
 			);
 		}
 		let self_lease = self.oracle.leases.try_acquire(commit_version, self.oracle.query.done_until()).ok();
@@ -627,8 +604,6 @@ impl MultiWriteTransaction {
 		if let Some(v) = self.pending_query_pin.take() {
 			self.oracle.query.mark_finished(v);
 		}
-		let deltas = self.optimize_for_storage(&entries);
-
 		let proposed = match self.propose_to_raft(commit_version, &deltas, flow_changes) {
 			Ok(proposed) => proposed,
 			Err(err) => {
@@ -640,10 +615,6 @@ impl MultiWriteTransaction {
 			Ok(version) => return Ok(version),
 			Err(flow_changes) => flow_changes,
 		};
-		if let Err(err) = MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version) {
-			self.oracle.done_commit(commit_version);
-			return Err(err);
-		}
 		self.discard();
 		self.publish(commit_version, deltas, flow_changes);
 		Ok(commit_version)
@@ -687,14 +658,6 @@ impl MultiWriteTransaction {
 		flow_changes: Vec<Change>,
 	) -> Result<core::result::Result<CommitVersion, Vec<Change>>> {
 		Ok(Err(flow_changes))
-	}
-
-	#[inline]
-	fn optimize_for_storage(&self, entries: &[DeltaEntry]) -> CowVec<Delta> {
-		CowVec::new(optimize_deltas(
-			entries.iter().map(|pending| pending.delta.clone()),
-			self.preexisting_keys(),
-		))
 	}
 
 	#[inline]
@@ -864,7 +827,8 @@ mod tests {
 		txn.set(&test_key("race-key"), test_bytes("race-value")).unwrap();
 
 		// Allocate commit_version exactly as commit() would, without finalizing it yet.
-		let (commit_version, entries) = txn.commit_pending().unwrap();
+		let deltas = txn.build_deltas();
+		let commit_version = txn.commit_pending(deltas.clone()).unwrap();
 		assert_ne!(commit_version, CommitVersion(0));
 
 		// An unrelated transaction finishing at a higher version is the real-world trigger.
@@ -883,7 +847,7 @@ mod tests {
 			racer.0, commit_version.0
 		);
 
-		let result = txn.finalize_commit(commit_version, entries, vec![]);
+		let result = txn.finalize_commit(commit_version, deltas, vec![]);
 		assert_eq!(
 			result.unwrap(),
 			commit_version,

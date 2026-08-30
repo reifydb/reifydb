@@ -8,8 +8,6 @@ mod state;
 #[cfg(test)]
 mod tests;
 
-pub use state::StateLastIter;
-
 #[cfg(test)]
 use std::sync::OnceLock;
 use std::{ops::Deref, sync::Arc};
@@ -29,6 +27,7 @@ use reifydb_runtime::{
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::metrics::PageCacheMetrics;
+pub use state::StateLastIter;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{

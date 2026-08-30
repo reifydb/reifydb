@@ -3,8 +3,12 @@
 
 use std::{
 	collections::HashSet,
-	sync::Arc,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
 	thread,
+	thread::JoinHandle,
 	time::{Duration, Instant},
 };
 
@@ -102,11 +106,70 @@ struct Sample {
 	elapsed: Duration,
 	begin: Histogram<u64>,
 	commit: Histogram<u64>,
+	query_begin: Histogram<u64>,
+	query_ops: u64,
 }
 
-fn run_once(threads: usize, layout: TableLayout, iterations: u64) -> Sample {
+const STALL_THREAD_ID: u64 = 1_000;
+
+fn spawn_stall_writer(multi: &MultiTransaction, stall_keys: u64, running: &Arc<AtomicBool>) -> JoinHandle<()> {
+	let multi = multi.clone();
+	let running = running.clone();
+	thread::spawn(move || {
+		let mut round = 0u64;
+		while running.load(Ordering::Relaxed) {
+			let mut txn = multi.begin_command().expect("begin_command must succeed");
+			for index in 0..stall_keys {
+				txn.set(
+					&encoded_key(
+						TableLayout::TablePerThread,
+						STALL_THREAD_ID,
+						round * stall_keys + index,
+					),
+					encoded_bytes(index),
+				)
+				.expect("set must succeed");
+			}
+			txn.commit(vec![]).expect("stall writer keys are disjoint from every other thread");
+			round += 1;
+		}
+	})
+}
+
+fn spawn_readers(
+	multi: &MultiTransaction,
+	readers: usize,
+	running: &Arc<AtomicBool>,
+) -> Vec<JoinHandle<(Histogram<u64>, u64)>> {
+	(0..readers)
+		.map(|_| {
+			let multi = multi.clone();
+			let running = running.clone();
+			thread::spawn(move || {
+				let mut histogram = latency_histogram();
+				let mut ops = 0u64;
+				while running.load(Ordering::Relaxed) {
+					let begin_start = Instant::now();
+					let txn = multi.begin_query().expect("begin_query must succeed");
+					histogram
+						.record(begin_start.elapsed().as_nanos() as u64)
+						.expect("latency within bounds");
+					drop(txn);
+					ops += 1;
+				}
+				(histogram, ops)
+			})
+		})
+		.collect()
+}
+
+fn run_once(threads: usize, layout: TableLayout, iterations: u64, readers: usize, stall_keys: u64) -> Sample {
 	let (_actor_system, multi) = build_stack();
 	let total = iterations * threads as u64;
+
+	let running = Arc::new(AtomicBool::new(true));
+	let reader_handles = spawn_readers(&multi, readers, &running);
+	let stall_handle = (stall_keys > 0).then(|| spawn_stall_writer(&multi, stall_keys, &running));
 
 	let start = Instant::now();
 	let mut handles = Vec::with_capacity(threads);
@@ -134,23 +197,50 @@ fn run_once(threads: usize, layout: TableLayout, iterations: u64) -> Sample {
 	}
 	let (begin_histograms, commit_histograms): (Vec<_>, Vec<_>) =
 		handles.into_iter().map(|handle| handle.join().expect("bench thread panicked")).unzip();
+	let elapsed = start.elapsed();
+
+	running.store(false, Ordering::Relaxed);
+	if let Some(handle) = stall_handle {
+		handle.join().expect("stall writer panicked");
+	}
+	let (query_histograms, query_ops): (Vec<_>, Vec<_>) =
+		reader_handles.into_iter().map(|handle| handle.join().expect("reader thread panicked")).unzip();
 
 	Sample {
 		ops: total,
-		elapsed: start.elapsed(),
+		elapsed,
 		begin: merge(begin_histograms),
 		commit: merge(commit_histograms),
+		query_begin: merge(query_histograms),
+		query_ops: query_ops.into_iter().sum(),
 	}
 }
 
-fn write_txns(report: &mut BenchReport, threads: usize, layout: TableLayout, iterations: u64, repeats: usize) {
-	let samples: Vec<Sample> = (0..repeats).map(|_| run_once(threads, layout, iterations)).collect();
+fn write_txns(
+	report: &mut BenchReport,
+	threads: usize,
+	layout: TableLayout,
+	iterations: u64,
+	repeats: usize,
+	readers: usize,
+	stall_keys: u64,
+) {
+	let samples: Vec<Sample> =
+		(0..repeats).map(|_| run_once(threads, layout, iterations, readers, stall_keys)).collect();
 	let median = median_by_throughput(&samples, |s| (s.ops, s.elapsed));
 
 	let label = layout.label();
 	report.record(&format!("txn_begin/{label} threads={threads}"), median.ops, median.elapsed, &median.begin);
 	report.record(&format!("txn_commit/{label} threads={threads}"), median.ops, median.elapsed, &median.commit);
-	println!("repro= make bench-txn LAYOUTS={label} THREADS={threads}");
+	if readers > 0 {
+		report.record(
+			&format!("txn_query_begin/{label} threads={threads} readers={readers} stall_keys={stall_keys}"),
+			median.query_ops,
+			median.elapsed,
+			&median.query_begin,
+		);
+	}
+	println!("repro= make bench-txn LAYOUTS={label} THREADS={threads} READERS={readers} STALL_KEYS={stall_keys}");
 }
 
 fn verify_key_classification() {
@@ -218,6 +308,15 @@ fn main() {
 	let swept = env_list_usize("THREADS", default_threads);
 	assert!(!swept.is_empty(), "THREADS matched no thread count");
 
+	let readers = env_usize("READERS", 0);
+	let stall_keys = env_u64("STALL_KEYS", 0);
+	assert!(
+		swept.iter().all(|threads| (*threads as u64) < STALL_THREAD_ID),
+		"a writer thread id reached the stall writer's reserved id {STALL_THREAD_ID}, so the stall \
+		 writer would share a table with a measured thread and the benchmark would report conflict \
+		 handling rather than reader latency"
+	);
+
 	let mut report = BenchReport::new("txn");
 	println!(
 		"matrix cells={} layouts={} threads={} iterations={} repeats={}",
@@ -230,7 +329,7 @@ fn main() {
 
 	for layout in &layouts {
 		for threads in &swept {
-			write_txns(&mut report, *threads, *layout, iterations, repeats);
+			write_txns(&mut report, *threads, *layout, iterations, repeats, readers, stall_keys);
 		}
 	}
 	report.save();

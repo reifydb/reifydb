@@ -17,7 +17,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		catalog::config::GetConfig,
-		store::{MultiVersionContains, MultiVersionGet},
+		store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet},
 	},
 	testing::ProfileConfig,
 };
@@ -34,7 +34,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::MultiStore;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::driver::Raft;
-use reifydb_value::{Result, reifydb_assertions, util::hex, value::duration::Duration};
+use reifydb_value::{Result, util::hex, value::duration::Duration};
 use tracing::{instrument, warn};
 use version::{StandardVersionProvider, VersionProvider};
 
@@ -77,14 +77,16 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
+	#[allow(clippy::too_many_arguments)]
 	#[instrument(
 		name = "transaction::manager::new",
 		level = "debug",
-		skip(clock, spawner, metrics_clock, version_epoch, rng, config)
+		skip(clock, spawner, store, metrics_clock, version_epoch, rng, config)
 	)]
 	pub fn new(
 		clock: L,
 		spawner: ActorSpawner,
+		store: Arc<dyn MultiVersionCommit>,
 		metrics_clock: Clock,
 		version_epoch: VersionEpoch,
 		rng: Rng,
@@ -94,7 +96,7 @@ where
 		L: 'static,
 	{
 		let version = clock.next()?;
-		let oracle = Oracle::new(clock, spawner, metrics_clock, version_epoch, rng, config);
+		let oracle = Oracle::new(clock, spawner, store, metrics_clock, version_epoch, rng, config);
 		oracle.query.advance_to(version);
 		oracle.command.advance_to(version);
 		Ok(Self {
@@ -146,21 +148,6 @@ where
 			)
 		} else {
 			let safe_version = self.inner.query.register_in_flight_with(|| self.inner.version())?;
-			let applied = self.inner.command.wait_for_mark(safe_version.0);
-			if !applied {
-				warn!(
-					version = safe_version.0,
-					"query opened before the commit watermark reached its snapshot; reads at this version may miss commits that are still being applied"
-				);
-			}
-			reifydb_assertions! {
-				assert!(
-					applied,
-					"waiting for the commit watermark to reach snapshot {} timed out; opening \
-					 the query anyway reads a snapshot whose commits are not yet all applied",
-					safe_version.0
-				);
-			}
 			TransactionManagerQuery::new_current(
 				TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
 				self.clone(),
@@ -262,7 +249,15 @@ impl Inner {
 		config: Arc<dyn GetConfig>,
 	) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
-		let tm = TransactionManager::new(version_provider, spawner, metrics_clock, version_epoch, rng, config)?;
+		let tm = TransactionManager::new(
+			version_provider,
+			spawner,
+			Arc::new(store.clone()),
+			metrics_clock,
+			version_epoch,
+			rng,
+			config,
+		)?;
 
 		Ok(Self {
 			tm,
