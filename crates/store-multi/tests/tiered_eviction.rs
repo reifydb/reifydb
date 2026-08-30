@@ -24,15 +24,12 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
+use reifydb_store_commit::{MultiVersionScope, VersionedGetResult, store::CommitStore};
 use reifydb_store_multi::{
-	MultiVersionScope,
-	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
+	config::{CommitStoreConfig, MultiStoreConfig, PersistentConfig},
 	flush::ObjectPersistence,
 	store::StandardMultiStore,
-	tier::{
-		TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier, point::MultiPointConfig,
-		range::MultiRangeConfig,
-	},
+	tier::{TierStorage, point::MultiPointConfig, range::MultiRangeConfig},
 };
 use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::duration::Duration};
 
@@ -52,8 +49,8 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 	let event_bus = EventBus::new(&spawner);
 	let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 	let store = StandardMultiStore::new(MultiStoreConfig {
-		commit: CommitBufferConfig {
-			storage: MultiCommitBufferTier::memory(),
+		commit: CommitStoreConfig {
+			storage: CommitStore::new(),
 		},
 		point: Some(MultiPointConfig::testing()),
 		range: Some(MultiRangeConfig::testing()),
@@ -110,11 +107,8 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 	let commit = store.commit();
 	let kinds = commit.list_all_entry_kinds().unwrap();
 	for kind in kinds {
-		let (to_persist, to_compact, _, _) = match commit {
-			MultiCommitBufferTier::Memory(s) => {
-				s.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX))
-			}
-		};
+		let (to_persist, to_compact, _, _) =
+			commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX));
 		if to_compact.is_empty() {
 			continue;
 		}

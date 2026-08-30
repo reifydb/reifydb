@@ -20,7 +20,7 @@ use reifydb_core::{
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
-	change_accumulator::ChangeAccumulator,
+	accumulator::ChangeAccumulator,
 	dictionary::DictionaryAllocatorRegistry,
 	interceptor::interceptors::Interceptors,
 	multi::{RangeScope, transaction::read::MultiReadTransaction},

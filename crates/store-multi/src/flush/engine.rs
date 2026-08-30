@@ -19,24 +19,22 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_store_commit::TierBatch;
+use reifydb_store_commit::store::CommitStore;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_store_commit::store::EvictedVersion;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::byte_size::ByteSize;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::{debug, error, warn};
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::tier::TierBatch;
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::TierStorage;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::tier::commit::memory::storage::EvictedVersion;
 use crate::{
 	flush::ObjectPersistence,
-	tier::{
-		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, point::MultiPointTier,
-		range::MultiRangeTier,
-	},
+	tier::{persistent::MultiPersistentTier, point::MultiPointTier, range::MultiRangeTier},
 };
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -54,7 +52,7 @@ pub struct FlushEngineState {
 
 #[allow(dead_code)]
 pub struct FlushEngine {
-	commit: MultiCommitBufferTier,
+	commit: CommitStore,
 	persistent: MultiPersistentTier,
 	persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
@@ -83,7 +81,7 @@ pub struct SweepOutcome {
 impl FlushEngine {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		commit: MultiCommitBufferTier,
+		commit: CommitStore,
 		persistent: MultiPersistentTier,
 		persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
@@ -292,9 +290,7 @@ impl FlushEngine {
 		cutoff: CommitVersion,
 		budget: ByteSize,
 	) -> (EvictablePersist, EvictableDrop, ByteSize, bool) {
-		match &self.commit {
-			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, budget),
-		}
+		self.commit.collect_evictable_below(kind, cutoff, budget)
 	}
 
 	#[inline]
@@ -368,10 +364,11 @@ mod tests {
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, shutdown::Shutdown};
 	use reifydb_sqlite::SqliteTempPathGuard;
+	use reifydb_store_commit::VersionedGetResult;
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
-	use crate::tier::{VersionedGetResult, commit::memory::storage::MemoryRowStorage, point::MultiPointConfig};
+	use crate::tier::point::MultiPointConfig;
 
 	fn ek(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes())
@@ -381,13 +378,13 @@ mod tests {
 		CowVec::new(s.as_bytes().to_vec())
 	}
 
-	fn write(buffer: &MultiCommitBufferTier, kind: EntryKind, key: &EncodedKey, version: u64, value: &str) {
+	fn write(buffer: &CommitStore, kind: EntryKind, key: &EncodedKey, version: u64, value: &str) {
 		buffer.set(CommitVersion(version), HashMap::from([(kind, vec![(key.clone(), Some(val(value)))])]))
 			.unwrap();
 	}
 
 	fn budget_for(keys: &[String], value: &str) -> ByteSize {
-		let storage = MemoryRowStorage::new();
+		let storage = CommitStore::new();
 		for key in keys {
 			storage.set(
 				CommitVersion(1),
@@ -431,7 +428,7 @@ mod tests {
 		persistence: Arc<dyn ObjectPersistence>,
 		watermark: Option<CommitVersion>,
 	) -> (FlushEngine, SqliteTempPathGuard) {
-		let buffer = MultiCommitBufferTier::memory();
+		let buffer = CommitStore::new();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
@@ -471,7 +468,7 @@ mod tests {
 		persistence: Arc<dyn ObjectPersistence>,
 		watermark: CommitVersion,
 	) -> (FlushEngine, SqliteTempPathGuard, SweepCollector) {
-		let buffer = MultiCommitBufferTier::memory();
+		let buffer = CommitStore::new();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
@@ -548,7 +545,7 @@ mod tests {
 		watermark: CommitVersion,
 		point: MultiPointTier,
 	) -> (FlushEngine, SqliteTempPathGuard) {
-		let buffer = MultiCommitBufferTier::memory();
+		let buffer = CommitStore::new();
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);

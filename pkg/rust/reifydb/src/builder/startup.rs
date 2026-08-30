@@ -13,10 +13,8 @@ use reifydb_store_cdc::{
 	config::CdcCommitConfig,
 	tier::{commit::CdcCommitBufferTier, read::CdcReadConfig},
 };
-use reifydb_store_multi::tier::{
-	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, point::MultiPointConfig,
-	range::MultiRangeConfig,
-};
+use reifydb_store_commit::store::CommitStore;
+use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
 use reifydb_store_operator::tier::{point::OperatorPointConfig, range::OperatorRangeConfig};
 use reifydb_value::{byte_size::ByteSize, value::Value};
 
@@ -61,7 +59,7 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 ];
 
 pub(crate) fn resolve_startup_configs(
-	buffer: &MultiCommitBufferTier,
+	buffer: &CommitStore,
 	persistent: Option<&MultiPersistentTier>,
 	overrides: &[(ConfigKey, Value)],
 ) -> Result<StartupConfig> {

@@ -46,7 +46,8 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_store_multi::{MultiStore, tier::VersionedGetResult};
+use reifydb_store_commit::VersionedGetResult;
+use reifydb_store_multi::MultiStore;
 use reifydb_store_operator::{
 	store::OperatorStore,
 	types::{JOIN_EXPIRY_KEY_BYTES, JOIN_EXPIRY_VALUE_BYTES},

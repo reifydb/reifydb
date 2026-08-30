@@ -26,13 +26,14 @@ use reifydb_filter::{
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown};
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store::filter::KeyFilter;
+use reifydb_store_commit::{TierBatch, store::CommitStore};
 use reifydb_store_multi::{
-	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
+	config::{CommitStoreConfig, MultiStoreConfig, PersistentConfig},
 	filter::{ARMED_CAPACITY_KEYS, MultiKeys, source::MultiCurrentKeySource},
 	store::StandardMultiStore,
 	tier::{
-		TierBatch, TierStorage, commit::buffer::MultiCommitBufferTier,
-		persistent::sqlite::storage::SqlitePersistentStorage, point::MultiPointConfig, range::MultiRangeConfig,
+		TierStorage, persistent::sqlite::storage::SqlitePersistentStorage, point::MultiPointConfig,
+		range::MultiRangeConfig,
 	},
 };
 use reifydb_value::util::cowvec::CowVec;
@@ -62,8 +63,8 @@ fn store_at(config: SqliteConfig) -> StandardMultiStore {
 	let event_bus = EventBus::new(&spawner);
 	std::mem::forget(actor_system);
 	StandardMultiStore::new(MultiStoreConfig {
-		commit: CommitBufferConfig {
-			storage: MultiCommitBufferTier::memory(),
+		commit: CommitStoreConfig {
+			storage: CommitStore::new(),
 		},
 		persistent: Some(PersistentConfig::sqlite(config)),
 		point: Some(MultiPointConfig::testing()),
@@ -271,7 +272,7 @@ fn a_removed_key_is_reported_absent_after_a_rebuild() {
 	assert!(
 		matches!(
 			storage.get(EntryKind::Multi, key(1).as_slice(), CommitVersion(u64::MAX)),
-			Ok(reifydb_store_multi::tier::VersionedGetResult::NotFound)
+			Ok(reifydb_store_commit::VersionedGetResult::NotFound)
 		),
 		"the removed key must read as absent through the tier after the swap"
 	);

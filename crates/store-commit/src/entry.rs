@@ -12,7 +12,7 @@ use reifydb_runtime::sync::{
 use reifydb_value::util::cowvec::CowVec;
 use tracing::instrument;
 
-use super::rows::{ActiveRows, ClosedRows};
+use crate::rows::{ActiveRows, ClosedRows};
 
 pub(super) type Value = Option<CowVec<u8>>;
 

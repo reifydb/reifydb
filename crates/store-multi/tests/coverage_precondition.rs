@@ -22,7 +22,8 @@ use reifydb_core::{
 	key::row::RowKey,
 	lifecycle::watermark::EvictionWatermark,
 };
-use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
+use reifydb_store_commit::MultiVersionScope;
+use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));

@@ -25,10 +25,8 @@ use reifydb_runtime::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_store_cdc::{config::CdcCommitConfig, tier::read::CdcReadConfig};
-use reifydb_store_multi::tier::{
-	commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, point::MultiPointConfig,
-	range::MultiRangeConfig,
-};
+use reifydb_store_commit::store::CommitStore;
+use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
 use reifydb_store_operator::tier::{point::OperatorPointConfig, range::OperatorRangeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -70,7 +68,7 @@ use tracing_subscriber::filter::LevelFilter;
 use crate::system::raise_fd_limit;
 
 type PoolConfigSources = (
-	MultiCommitBufferTier,
+	CommitStore,
 	Option<MultiPersistentTier>,
 	PoolConfig,
 	Option<MultiPointConfig>,
@@ -85,14 +83,14 @@ type PoolConfigSources = (
 );
 
 fn pool_config_from_sources(factory: &StorageFactory, overrides: &[(ConfigKey, Value)]) -> Result<PoolConfigSources> {
-	let multi_commit_buffer = factory.open_multi_commit_buffer();
+	let multi_commit_store = factory.open_multi_commit_store();
 	let multi_persistent = factory.open_multi_persistent();
-	let resolved = resolve_startup_configs(&multi_commit_buffer, multi_persistent.as_ref(), overrides)?;
+	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
 		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);
 	}
 	Ok((
-		multi_commit_buffer,
+		multi_commit_store,
 		multi_persistent,
 		resolved.pools,
 		resolved.multi_point,
@@ -324,7 +322,7 @@ impl ServerBuilder {
 		raise_fd_limit();
 
 		let (
-			multi_commit_buffer,
+			multi_commit_store,
 			multi_persistent,
 			pool_config,
 			multi_point_buffer,
@@ -347,8 +345,8 @@ impl ServerBuilder {
 		let rng = runtime.rng().clone();
 
 		let (multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus) =
-			self.storage_factory.create_with_multi_commit_buffer(
-				multi_commit_buffer,
+			self.storage_factory.create_with_multi_commit_store(
+				multi_commit_store,
 				multi_persistent,
 				multi_point_buffer,
 				multi_range_buffer,

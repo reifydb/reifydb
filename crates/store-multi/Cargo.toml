@@ -25,6 +25,7 @@ reifydb-filter = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sqlite = { workspace = true, optional = true }
 reifydb-store = { workspace = true }
+reifydb-store-commit = { workspace = true }
 reifydb-value = { workspace = true }
 
 tracing = { workspace = true }

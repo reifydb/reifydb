@@ -9,13 +9,10 @@ use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::{filter::KeyFilter, metrics::PageCacheMetrics};
+use reifydb_store_commit::{MultiVersionScope, RangeBatch, RangeCursor, TierBatch, VersionedGetResult};
 use reifydb_value::{Result, value::datetime::DateTime};
 
-use crate::{
-	MultiVersionScope,
-	filter::MultiKeys,
-	tier::{RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult},
-};
+use crate::{filter::MultiKeys, tier::TierStorage};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
@@ -292,5 +289,3 @@ impl TierStorage for MultiPersistentTier {
 		match *self {}
 	}
 }
-
-impl TierBackend for MultiPersistentTier {}

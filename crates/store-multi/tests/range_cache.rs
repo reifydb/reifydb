@@ -20,11 +20,8 @@ use reifydb_core::{
 	},
 	key::row::RowKey,
 };
-use reifydb_store_multi::{
-	MultiVersionScope,
-	store::StandardMultiStore,
-	tier::{TierStorage, commit::buffer::MultiCommitBufferTier},
-};
+use reifydb_store_commit::MultiVersionScope;
+use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
 use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec};
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));
@@ -58,11 +55,8 @@ fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 	// the actor runs; the invalidate step is what clears bucket completeness.
 	let commit = store.commit();
 	for kind in commit.list_all_entry_kinds().unwrap() {
-		let (to_persist, to_compact, _, _) = match commit {
-			MultiCommitBufferTier::Memory(s) => {
-				s.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX))
-			}
-		};
+		let (to_persist, to_compact, _, _) =
+			commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX));
 		if to_compact.is_empty() {
 			continue;
 		}

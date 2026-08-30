@@ -12,10 +12,11 @@ use reifydb_core::{
 	delta::Delta,
 	interface::store::{EntryKind, MultiVersionCommit},
 };
+use reifydb_store_commit::{MultiVersionScope, RangeCursor};
 use reifydb_store_multi::{
-	MultiStore, MultiVersionScope,
+	MultiStore,
 	store::StandardMultiStore,
-	tier::{RangeCursor, TierStorage, persistent::MultiPersistentTier},
+	tier::{TierStorage, persistent::MultiPersistentTier},
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 

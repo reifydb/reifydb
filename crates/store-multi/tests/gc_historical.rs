@@ -15,7 +15,7 @@ use reifydb_core::{
 		store::EntryKind,
 	},
 };
-use reifydb_store_multi::tier::{HistoricalCursor, TierStorage, commit::buffer::MultiCommitBufferTier};
+use reifydb_store_commit::{HistoricalCursor, store::CommitStore};
 use reifydb_value::util::cowvec::CowVec;
 
 fn object() -> EntryKind {
@@ -30,17 +30,17 @@ fn val(s: &str) -> CowVec<u8> {
 	CowVec::new(s.as_bytes().to_vec())
 }
 
-fn stored_versions(storage: &MultiCommitBufferTier, k: &EncodedKey) -> usize {
+fn stored_versions(storage: &CommitStore, k: &EncodedKey) -> usize {
 	// Every version the buffer still holds for the key, current one included, so an assertion pins both
 	// what the sweep dropped and what it had to leave standing.
 	storage.get_all_versions(object(), k.as_ref()).unwrap().len()
 }
 
-fn stored_versions_across(storage: &MultiCommitBufferTier, keys: u8) -> usize {
+fn stored_versions_across(storage: &CommitStore, keys: u8) -> usize {
 	(0..keys).map(|i| stored_versions(storage, &key(&format!("k-{i:03}")))).sum()
 }
 
-fn write_n_versions(storage: &MultiCommitBufferTier, k: &EncodedKey, n: u64) {
+fn write_n_versions(storage: &CommitStore, k: &EncodedKey, n: u64) {
 	// Each successive write supersedes the prior current and demotes it to historical.
 	let kind = object();
 	for v in 1..=n {
@@ -49,7 +49,7 @@ fn write_n_versions(storage: &MultiCommitBufferTier, k: &EncodedKey, n: u64) {
 	}
 }
 
-fn sweep(storage: &MultiCommitBufferTier, kind: EntryKind, cutoff: CommitVersion, batch_size: usize) -> u64 {
+fn sweep(storage: &CommitStore, kind: EntryKind, cutoff: CommitVersion, batch_size: usize) -> u64 {
 	// Returns the total versions deleted across every batch, not just the last one.
 	let mut cursor = HistoricalCursor::default();
 	let mut total = 0u64;
@@ -71,7 +71,7 @@ fn sweep(storage: &MultiCommitBufferTier, kind: EntryKind, cutoff: CommitVersion
 
 #[test]
 fn memory_sweep_drops_only_versions_below_cutoff() {
-	let storage = MultiCommitBufferTier::memory();
+	let storage = CommitStore::new();
 	let k = key("k");
 	write_n_versions(&storage, &k, 100);
 
@@ -99,7 +99,7 @@ fn memory_sweep_drops_only_versions_below_cutoff() {
 
 #[test]
 fn sqlite_sweep_drops_only_versions_below_cutoff() {
-	let storage = MultiCommitBufferTier::memory();
+	let storage = CommitStore::new();
 	let k = key("k");
 	write_n_versions(&storage, &k, 100);
 
@@ -124,7 +124,7 @@ fn sqlite_sweep_drops_only_versions_below_cutoff() {
 
 #[test]
 fn sweep_with_cutoff_zero_is_noop() {
-	let storage = MultiCommitBufferTier::memory();
+	let storage = CommitStore::new();
 	let k = key("k");
 	write_n_versions(&storage, &k, 10);
 
@@ -135,7 +135,7 @@ fn sweep_with_cutoff_zero_is_noop() {
 
 #[test]
 fn sweep_with_cutoff_above_max_drops_all_historical() {
-	let storage = MultiCommitBufferTier::memory();
+	let storage = CommitStore::new();
 	let k = key("k");
 	write_n_versions(&storage, &k, 10);
 
@@ -148,7 +148,7 @@ fn sweep_with_cutoff_above_max_drops_all_historical() {
 
 #[test]
 fn sweep_paginates_across_many_keys() {
-	let storage = MultiCommitBufferTier::memory();
+	let storage = CommitStore::new();
 	for i in 0..50u8 {
 		let k = key(&format!("k-{i:03}"));
 		// Write 5 versions per key. v1..v4 land in historical, v5 in current.
@@ -174,7 +174,7 @@ fn sweep_paginates_across_many_keys() {
 fn sweep_does_not_touch_current_even_below_cutoff() {
 	// Out-of-order writes can leave the current version below the cutoff while newer historical rows
 	// exist; the scan covers the historical side only, so current must survive regardless.
-	let storage = MultiCommitBufferTier::memory();
+	let storage = CommitStore::new();
 	let k = key("k");
 
 	storage.set(CommitVersion(10), HashMap::from([(object(), vec![(k.clone(), Some(val("v10")))])])).unwrap();
@@ -196,7 +196,7 @@ fn sweep_does_not_touch_current_even_below_cutoff() {
 
 #[test]
 fn list_all_entry_kinds_returns_known_objects() {
-	let storage = MultiCommitBufferTier::memory();
+	let storage = CommitStore::new();
 
 	let s1 = EntryKind::Source(StorageId::Table(TableId(100)));
 	let s2 = EntryKind::Source(StorageId::Table(TableId(200)));

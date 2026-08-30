@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::common::CommitVersion;
-use reifydb_store_multi::MultiVersionScope;
+use reifydb_store_commit::MultiVersionScope;
 use reifydb_value::{Result, value::duration::Duration};
 
 use crate::multi::transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction};

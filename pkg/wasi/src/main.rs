@@ -53,10 +53,10 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_cdc::{config::CdcStoreConfig, store::CdcStore};
+use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
-	config::{CommitBufferConfig, MultiStoreConfig},
-	tier::commit::buffer::MultiCommitBufferTier,
+	config::{CommitStoreConfig, MultiStoreConfig},
 };
 use reifydb_store_operator::{OperatorStoreVersion, store::OperatorStore};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
@@ -100,8 +100,8 @@ impl Bridge {
 		let eventbus = EventBus::new(&spawner);
 
 		let multi_store = MultiStore::standard(MultiStoreConfig {
-			commit: CommitBufferConfig {
-				storage: MultiCommitBufferTier::memory(),
+			commit: CommitStoreConfig {
+				storage: CommitStore::new(),
 			},
 			persistent: None,
 			point: None,

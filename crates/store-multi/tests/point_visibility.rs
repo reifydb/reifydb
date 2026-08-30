@@ -20,8 +20,8 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, row::RowKey},
 };
+use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::{
-	MultiVersionScope,
 	store::StandardMultiStore,
 	tier::{point::MultiPointConfig, range::MultiRangeConfig},
 };

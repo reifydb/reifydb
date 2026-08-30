@@ -19,7 +19,7 @@ use reifydb_flow::{
 	engine::{COMPLETENESS_OBJECT, FlowEngineInner, frontier::WatermarkHolds},
 	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction},
 };
-use reifydb_transaction::{change_accumulator::ChangeAccumulator, transaction::Transaction};
+use reifydb_transaction::{accumulator::ChangeAccumulator, transaction::Transaction};
 use reifydb_value::{
 	Result,
 	value::{Value, identity::IdentityId},

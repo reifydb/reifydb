@@ -22,6 +22,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_store::coverage::successor;
+use reifydb_store_commit::{
+	MultiVersionScope, RangeBatch, RangeCursor, RangeStop, TierBatch, VersionedGetResult, store::CommitStore,
+};
 use reifydb_value::{
 	reifydb_assertions,
 	util::{cowvec::CowVec, hex},
@@ -30,11 +33,8 @@ use tracing::instrument;
 
 use super::StandardMultiStore;
 use crate::{
-	MultiVersionScope, Result,
-	tier::{
-		RangeBatch, RangeCursor, RangeStop, TierBatch, TierStorage, VersionedGetResult,
-		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, range::ServedChunk,
-	},
+	Result,
+	tier::{TierStorage, persistent::MultiPersistentTier, range::ServedChunk},
 };
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
@@ -601,7 +601,7 @@ pub fn collected_to_batch(
 
 #[inline]
 fn step_all_tiers(
-	buffer: Option<&MultiCommitBufferTier>,
+	buffer: Option<&CommitStore>,
 	buffer_cursor: &mut RangeCursor,
 	persistent: Option<&MultiPersistentTier>,
 	persistent_cursor: &mut RangeCursor,
@@ -622,7 +622,7 @@ fn step_all_tiers(
 }
 
 pub fn scan_tiers_latest(
-	buffer: Option<&MultiCommitBufferTier>,
+	buffer: Option<&CommitStore>,
 	persistent: Option<&MultiPersistentTier>,
 	range: EncodedKeyRange,
 	scope: MultiVersionScope,
@@ -1327,15 +1327,14 @@ mod cache_tests {
 			row::RowKey,
 		},
 	};
+	use reifydb_store_commit::{MultiVersionScope, RangeStop, RawEntry, VersionedGetResult};
 	use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec};
 
 	use super::MultiVersionRangeCursor;
 	use crate::{
-		MultiVersionScope,
 		store::StandardMultiStore,
 		tier::{
-			RangeStop, RawEntry, TierStorage, VersionedGetResult,
-			commit::buffer::MultiCommitBufferTier,
+			TierStorage,
 			point::MultiPointConfig,
 			range::{MultiRangeConfig, PartitionId},
 		},
@@ -1358,11 +1357,8 @@ mod cache_tests {
 	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 		let commit = store.commit();
 		for kind in commit.list_all_entry_kinds().unwrap() {
-			let (to_persist, to_compact, _consumed, _more) = match commit {
-				MultiCommitBufferTier::Memory(s) => {
-					s.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX))
-				}
-			};
+			let (to_persist, to_compact, _consumed, _more) =
+				commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX));
 			if to_compact.is_empty() {
 				continue;
 			}
@@ -1780,13 +1776,13 @@ mod probe_tests {
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown};
 	use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+	use reifydb_store_commit::{TierBatch, store::CommitStore};
 	use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 	use crate::{
-		config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
+		config::{CommitStoreConfig, MultiStoreConfig, PersistentConfig},
 		store::StandardMultiStore,
 		tier::{
-			TierBatch, commit::buffer::MultiCommitBufferTier,
 			persistent::sqlite::storage::SqlitePersistentStorage, point::MultiPointConfig,
 			range::MultiRangeConfig,
 		},
@@ -1830,8 +1826,8 @@ mod probe_tests {
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
 		let store = StandardMultiStore::new(MultiStoreConfig {
-			commit: CommitBufferConfig {
-				storage: MultiCommitBufferTier::memory(),
+			commit: CommitStoreConfig {
+				storage: CommitStore::new(),
 			},
 			persistent: Some(PersistentConfig::sqlite(sqlite_config)),
 			point: Some(MultiPointConfig::testing()),

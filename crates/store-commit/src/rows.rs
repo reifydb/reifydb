@@ -12,7 +12,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::common::CommitVersion;
 use reifydb_value::reifydb_assertions;
 
-use super::entry::{Value, entry_bytes_with};
+use crate::entry::{Value, entry_bytes_with};
 
 pub(super) type VersionMap = BTreeMap<Reverse<CommitVersion>, Value>;
 

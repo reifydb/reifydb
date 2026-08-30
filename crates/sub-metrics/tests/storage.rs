@@ -38,11 +38,11 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
+use reifydb_store_commit::{MultiVersionScope, store::CommitStore};
 use reifydb_store_multi::{
-	MultiStore, MultiVersionScope,
-	config::{CommitBufferConfig, MultiStoreConfig},
+	MultiStore,
+	config::{CommitStoreConfig, MultiStoreConfig},
 	store::StandardMultiStore,
-	tier::commit::buffer::MultiCommitBufferTier,
 };
 use reifydb_store_single::SingleStore;
 use reifydb_sub_metrics::{
@@ -60,7 +60,7 @@ use test_each_file::test_each_path;
 test_each_path! { in "crates/sub-metrics/tests/scripts/storage" as metric_memory => test_memory }
 
 fn test_memory(path: &Path) {
-	let data_storage = MultiCommitBufferTier::memory();
+	let data_storage = CommitStore::new();
 	runner::run_path(&mut Runner::new(data_storage), path).expect("test failed")
 }
 
@@ -111,7 +111,7 @@ pub struct Runner {
 }
 
 impl Runner {
-	fn new(data_storage: MultiCommitBufferTier) -> Self {
+	fn new(data_storage: CommitStore) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let spawner = actor_system.spawner();
@@ -122,7 +122,7 @@ impl Runner {
 
 		let multi_store = MultiStore::Standard(
 			StandardMultiStore::new(MultiStoreConfig {
-				commit: CommitBufferConfig {
+				commit: CommitStoreConfig {
 					storage: data_storage,
 				},
 				persistent: None,

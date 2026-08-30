@@ -20,8 +20,8 @@ use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use reifydb_value::{error::Error, value::uuid::Uuid7};
 use uuid::{Builder, Uuid};
 
+pub mod accumulator;
 pub mod change;
-pub mod change_accumulator;
 pub mod commit;
 pub mod delta;
 pub mod dictionary;

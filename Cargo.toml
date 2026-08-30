@@ -32,6 +32,7 @@ members = [
     "crates/sqlite",
     "crates/store",
     "crates/store-cdc",
+    "crates/store-commit",
     "crates/store-multi",
     "crates/store-operator",
     "crates/store-single",
@@ -117,6 +118,7 @@ default-members = [
     "crates/sqlite",
     "crates/store",
     "crates/store-cdc",
+    "crates/store-commit",
     "crates/store-multi",
     "crates/store-operator",
     "crates/store-single",
@@ -242,6 +244,7 @@ reifydb-rql-graphql = { version = "0.9.0", path = "crates/rql-graphql" }
 reifydb-sqlite = { version = "0.9.0", path = "crates/sqlite" }
 reifydb-store = { version = "0.9.0", path = "crates/store" }
 reifydb-store-cdc = { version = "0.9.0", path = "crates/store-cdc" }
+reifydb-store-commit = { version = "0.9.0", path = "crates/store-commit" }
 reifydb-store-multi = { version = "0.9.0", path = "crates/store-multi" }
 reifydb-store-operator = { version = "0.9.0", path = "crates/store-operator" }
 reifydb-store-single = { version = "0.9.0", path = "crates/store-single" }

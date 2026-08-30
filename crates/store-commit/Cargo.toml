@@ -1,0 +1,26 @@
+[package]
+name = "reifydb-store-commit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Commit buffer holding committed multi-version rows before they are swept to persistent storage"
+
+[lib]
+doctest = false
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+reifydb-codec = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-store = { workspace = true }
+reifydb-value = { workspace = true }
+
+tracing = { workspace = true }
+
+[dev-dependencies]
+reifydb-core = { workspace = true, features = ["testing"] }

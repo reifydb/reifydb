@@ -33,7 +33,7 @@ use reifydb_flow::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
-	change_accumulator::ChangeAccumulator,
+	accumulator::ChangeAccumulator,
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 };
 use reifydb_value::{Result, error::Error, value::datetime::DateTime};

@@ -10,10 +10,11 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_sqlite::SqliteConfig;
+use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::{
-	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
+	config::{CommitStoreConfig, MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
-	tier::{commit::buffer::MultiCommitBufferTier, point::MultiPointConfig, range::MultiRangeConfig},
+	tier::{point::MultiPointConfig, range::MultiRangeConfig},
 };
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;
@@ -35,8 +36,8 @@ fn test_tiered(path: &Path) {
 			let (sqlite_config, _guard) = SqliteConfig::in_memory();
 			let sqlite_config = sqlite_config.read_pool_size(read_pool_size);
 			let store = StandardMultiStore::new(MultiStoreConfig {
-				commit: CommitBufferConfig {
-					storage: MultiCommitBufferTier::memory(),
+				commit: CommitStoreConfig {
+					storage: CommitStore::new(),
 				},
 				point: Some(MultiPointConfig::testing()),
 				range: Some(MultiRangeConfig::testing()),
