@@ -216,29 +216,25 @@ mod read_configs_tests {
 
 	#[test]
 	fn returns_defaults_when_no_tiers_configured() {
-		let out = read_configs(
-			None,
-			None,
-			&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsCoordination, ConfigKey::ThreadsTask],
-		)
-		.unwrap();
-		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
-		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(2));
-		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(2));
+		// Compared against the key's own default rather than a literal: the default is profile dependent,
+		// so a literal pins whichever profile the test happened to build under and not this function.
+		let keys = [ConfigKey::ThreadsAsync, ConfigKey::ThreadsCoordination, ConfigKey::ThreadsTask];
+		let out = read_configs(None, None, &keys).unwrap();
+		for key in keys {
+			assert_eq!(out[&key], key.default_value(), "{key} must fall back to its own default");
+		}
 	}
 
 	#[test]
 	fn returns_defaults_when_buffer_is_empty() {
+		// A buffer holding nothing must read the same as no buffer at all; the values are the key's own
+		// defaults rather than literals because the default is profile dependent.
 		let buffer = MultiCommitBufferTier::memory();
-		let out = read_configs(
-			Some(&buffer),
-			None,
-			&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsCoordination, ConfigKey::ThreadsTask],
-		)
-		.unwrap();
-		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
-		assert_eq!(out[&ConfigKey::ThreadsCoordination], Value::Uint2(2));
-		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(2));
+		let keys = [ConfigKey::ThreadsAsync, ConfigKey::ThreadsCoordination, ConfigKey::ThreadsTask];
+		let out = read_configs(Some(&buffer), None, &keys).unwrap();
+		for key in keys {
+			assert_eq!(out[&key], key.default_value(), "{key} must fall back to its own default");
+		}
 	}
 
 	#[test]
@@ -249,8 +245,14 @@ mod read_configs_tests {
 		let out =
 			read_configs(Some(&buffer), None, &[ConfigKey::ThreadsTask, ConfigKey::ThreadsAsync]).unwrap();
 
-		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(8));
-		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
+		// The persisted key is a literal because the write above chose it; the unwritten one is named
+		// through the key, because its default is profile dependent and a literal would pin the profile.
+		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(8), "a persisted value must win over the default");
+		assert_eq!(
+			out[&ConfigKey::ThreadsAsync],
+			ConfigKey::ThreadsAsync.default_value(),
+			"a key nobody persisted must still read as its own default"
+		);
 	}
 
 	#[test]
@@ -273,7 +275,10 @@ mod read_configs_tests {
 
 		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsTask]).unwrap();
 
-		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(2));
+		// The default, not the value the tombstone buried, and named through the key so the assertion does
+		// not pin a profile.
+		assert_ne!(out[&ConfigKey::ThreadsTask], Value::Uint2(12), "a tombstoned value must not survive");
+		assert_eq!(out[&ConfigKey::ThreadsTask], ConfigKey::ThreadsTask.default_value());
 	}
 
 	#[test]
@@ -283,7 +288,13 @@ mod read_configs_tests {
 
 		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsAsync]).unwrap();
 
-		assert_eq!(out[&ConfigKey::ThreadsAsync], Value::Uint2(1));
+		// Zero threads is refused by the key, so the default is what is left; named through the key rather
+		// than written as a literal, which would pin whichever profile the test built under.
+		assert_eq!(
+			out[&ConfigKey::ThreadsAsync],
+			ConfigKey::ThreadsAsync.default_value(),
+			"a value the key refuses must not reach the caller"
+		);
 	}
 
 	#[test]
