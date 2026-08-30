@@ -18,8 +18,7 @@ use reifydb_core::{
 		operator::{
 			keyspace::join::{JoinRowExpiry as JoinRowExpirySpace, JoinRowExpirySuffix},
 			state::{
-				GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range,
-				node_prefix,
+				GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range, node_prefix,
 			},
 		},
 		typed::direction::Asc,
@@ -52,10 +51,13 @@ pub struct JoinDuePage {
 }
 
 pub fn join_expiry_key(group: GroupId, side: u8, row_number: RowNumber) -> GroupStateKey {
-	typed_key::<JoinRowExpirySpace>(group, &JoinRowExpirySuffix {
-		side: Asc(side),
-		row: Asc(row_number),
-	})
+	typed_key::<JoinRowExpirySpace>(
+		group,
+		&JoinRowExpirySuffix {
+			side: Asc(side),
+			row: Asc(row_number),
+		},
+	)
 }
 
 pub fn join_expiry_range(group: GroupId) -> EncodedKeyRange {

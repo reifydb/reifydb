@@ -29,18 +29,24 @@ pub(crate) fn expiry_range<K: Keyspace>() -> EncodedKeyRange {
 }
 
 pub(crate) fn rolling_expiry_key(threshold: u64, owner: Hash128) -> GroupStateKey {
-	typed_key::<Expiry>(GroupId::ROOT, &ExpiryKey {
-		threshold: Desc(threshold),
-		owner: Desc(owner),
-	})
+	typed_key::<Expiry>(
+		GroupId::ROOT,
+		&ExpiryKey {
+			threshold: Desc(threshold),
+			owner: Desc(owner),
+		},
+	)
 }
 
 pub(crate) fn tumbling_expiry_key(threshold: u64, owner: Hash128, window_start: u64) -> GroupStateKey {
-	typed_key::<TumblingExpiry>(GroupId::ROOT, &TumblingExpiryKey {
-		threshold: Desc(threshold),
-		owner: Desc(owner),
-		window_start: Desc(window_start),
-	})
+	typed_key::<TumblingExpiry>(
+		GroupId::ROOT,
+		&TumblingExpiryKey {
+			threshold: Desc(threshold),
+			owner: Desc(owner),
+			window_start: Desc(window_start),
+		},
+	)
 }
 
 pub(crate) trait ExpirySuffix: SuffixBytes {
@@ -85,7 +91,11 @@ pub(crate) fn expiry_drop(store: &mut dyn StateStore, key: &GroupStateKey) -> Re
 }
 
 #[instrument(name = "flow::seal::expiry_due", level = "debug", skip_all)]
-pub(crate) fn expiry_due<K, E>(store: &mut dyn StateStore, threshold: u64, limit: usize) -> Result<Vec<(GroupStateKey, E)>>
+pub(crate) fn expiry_due<K, E>(
+	store: &mut dyn StateStore,
+	threshold: u64,
+	limit: usize,
+) -> Result<Vec<(GroupStateKey, E)>>
 where
 	K: Keyspace,
 	K::Suffix: ExpirySuffix,
@@ -119,7 +129,9 @@ where
 	K::Suffix: ExpirySuffix,
 {
 	let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_bytes()).expect("expiry key must decode");
-	K::Suffix::from_suffix_bytes(&suffix).expect("an expiry key must carry every column its keyspace declares").threshold()
+	K::Suffix::from_suffix_bytes(&suffix)
+		.expect("an expiry key must carry every column its keyspace declares")
+		.threshold()
 }
 
 struct PendingScan {

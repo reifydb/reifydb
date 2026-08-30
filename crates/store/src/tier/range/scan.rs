@@ -1164,22 +1164,18 @@ mod tests {
 		let range = keyspace_inner_range(GROUP, CACHED);
 		let at = |suffix: &[u8]| key(CACHED, suffix);
 
-		assert!(
-			claim(
-				&tier,
-				&range,
-				&Interval::new(at(b"a"), ExclusiveUpperEnd::Top),
-				&[(at(b"a"), row("a1"))]
-			) == Materialize::Materialized
-		);
+		assert!(claim(
+			&tier,
+			&range,
+			&Interval::new(at(b"a"), ExclusiveUpperEnd::Top),
+			&[(at(b"a"), row("a1"))]
+		) == Materialize::Materialized);
 
 		let ExclusiveUpperEnd::Key(boundary) = partition(CACHED).group_end() else {
 			panic!("a group below the top of the key space must have a boundary");
 		};
 		assert!(
-			intervals(&tier)
-				.iter()
-				.all(|held| held.end <= ExclusiveUpperEnd::Key(boundary.clone())),
+			intervals(&tier).iter().all(|held| held.end <= ExclusiveUpperEnd::Key(boundary.clone())),
 			"no claim may reach past the group the span started in"
 		);
 	}

@@ -11,10 +11,7 @@ pub mod tumbling_carry;
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
-	key::{
-		encode_u64_asc,
-		encoded::EncodedKey,
-	},
+	key::{encode_u64_asc, encoded::EncodedKey},
 	row::operator::state::{OperatorState, StateCodec, decode, encode},
 };
 use reifydb_core::{

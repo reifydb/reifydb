@@ -41,7 +41,11 @@ pub struct TimerWheel;
 impl TimerWheel {
 	pub fn arm(operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
 		if !timer.kind.is_unique() {
-			txn.state_set(operator, &timer_key(timer.due, timer.kind, &timer.key), encode_payload(&timer.key.to_vec())?)?;
+			txn.state_set(
+				operator,
+				&timer_key(timer.due, timer.kind, &timer.key),
+				encode_payload(&timer.key.to_vec())?,
+			)?;
 			return Ok(());
 		}
 		let index = index_key(timer.kind, &timer.key);
@@ -65,7 +69,11 @@ impl TimerWheel {
 			}
 			txn.state_remove(operator, &stale)?;
 		}
-		txn.state_set(operator, &timer_key(timer.due, timer.kind, &timer.key), encode_payload(&timer.key.to_vec())?)?;
+		txn.state_set(
+			operator,
+			&timer_key(timer.due, timer.kind, &timer.key),
+			encode_payload(&timer.key.to_vec())?,
+		)?;
 		txn.state_set(operator, &index, encode_payload(&timer.due)?)?;
 		Ok(())
 	}
@@ -191,10 +199,13 @@ fn timer_key(due: DateTime, kind: TimerKind, key: &EncodedKey) -> GroupStateKey 
 }
 
 fn index_key(kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
-	typed_key::<TimerIndexSpace>(GroupId::ROOT, &TimerIndexKey {
-		kind: Asc(kind),
-		id: Asc(timer_id(key.as_slice())),
-	})
+	typed_key::<TimerIndexSpace>(
+		GroupId::ROOT,
+		&TimerIndexKey {
+			kind: Asc(kind),
+			id: Asc(timer_id(key.as_slice())),
+		},
+	)
 }
 
 fn armed_key(row: &EncodedPodRow) -> Result<EncodedKey> {

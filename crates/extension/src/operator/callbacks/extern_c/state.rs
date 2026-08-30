@@ -742,8 +742,7 @@ mod join_row_expiry_guard_tests {
 		key::operator::{
 			keyspace::join::JoinRowMappingKey,
 			state::{
-				GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range,
-				keyspace_inner_range_split,
+				GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_split,
 			},
 		},
 		state::timer::{StateStore, TimerStore},
@@ -815,7 +814,7 @@ mod join_row_expiry_guard_tests {
 			Ok(())
 		}
 
-		fn state_page(
+		fn state_page_inner(
 			&mut self,
 			_range: EncodedKeyRange,
 			_limit: Option<usize>,
@@ -835,7 +834,10 @@ mod join_row_expiry_guard_tests {
 			Ok(Vec::new())
 		}
 
-		fn get_or_create_row_numbers_for_groups(&mut self, _groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+		fn get_or_create_row_numbers_for_groups(
+			&mut self,
+			_groups: &[GroupId],
+		) -> Result<Vec<(RowNumber, bool)>> {
 			Ok(Vec::new())
 		}
 

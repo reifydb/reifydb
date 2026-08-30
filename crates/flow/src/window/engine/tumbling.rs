@@ -147,11 +147,7 @@ where
 				group_id: id.0,
 				slot_key: slot_key.as_bytes().to_vec(),
 			};
-			self.expiry.set(
-				store,
-				tumbling_expiry_key(new, group_hash(group)?, order),
-				entry,
-			)?;
+			self.expiry.set(store, tumbling_expiry_key(new, group_hash(group)?, order), entry)?;
 		}
 		Ok(())
 	}

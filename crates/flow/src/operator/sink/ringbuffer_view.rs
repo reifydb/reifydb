@@ -34,9 +34,9 @@ use reifydb_core::{
 				PartitionedRingbufferEntry, PartitionedRingbufferEntryKey, PartitionedRingbufferExpiry,
 				PartitionedRingbufferExpiryKey, PartitionedRingbufferMeta,
 				PartitionedRingbufferMetaKey, PartitionedRingbufferTtlArm,
-				PartitionedRingbufferTtlArmKey, RingbufferEntry, RingbufferEntryKey,
-				RingbufferExpiry, RingbufferExpiryKey, RingbufferMeta, RingbufferMetaKey,
-				RingbufferTtlArm, RingbufferTtlArmKey,
+				PartitionedRingbufferTtlArmKey, RingbufferEntry, RingbufferEntryKey, RingbufferExpiry,
+				RingbufferExpiryKey, RingbufferMeta, RingbufferMetaKey, RingbufferTtlArm,
+				RingbufferTtlArmKey,
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, node_prefix},
 		},
@@ -128,14 +128,14 @@ fn partition_of_values(partition_values: &[Value]) -> Option<Partition> {
 }
 
 fn decode_expiry_key(partition: Option<Partition>, key: &EncodedKey) -> Result<(u64, u64)> {
-	let suffix = OperatorStateKey::decode_inner(key.as_slice())
-		.map(|(_, _, suffix)| suffix.to_vec())
-		.ok_or_else(|| {
+	let suffix = OperatorStateKey::decode_inner(key.as_slice()).map(|(_, _, suffix)| suffix.to_vec()).ok_or_else(
+		|| {
 			Error::from(FlowStateError::Decode {
 				state: "RingBufferExpiry",
 				cause: "expiry key is not a framed operator-state key".to_string(),
 			})
-		})?;
+		},
+	)?;
 	let decoded = match partition {
 		Some(_) => PartitionedRingbufferExpiryKey::from_suffix_bytes(&suffix)
 			.map(|key| (key.expires_at.0, key.row.0.0)),
@@ -150,14 +150,14 @@ fn decode_expiry_key(partition: Option<Partition>, key: &EncodedKey) -> Result<(
 }
 
 fn decode_row_entry_key(partition: Option<Partition>, key: &EncodedKey) -> Result<u64> {
-	let suffix = OperatorStateKey::decode_inner(key.as_slice())
-		.map(|(_, _, suffix)| suffix.to_vec())
-		.ok_or_else(|| {
+	let suffix = OperatorStateKey::decode_inner(key.as_slice()).map(|(_, _, suffix)| suffix.to_vec()).ok_or_else(
+		|| {
 			Error::from(FlowStateError::Decode {
 				state: "RingBufferRowEntry",
 				cause: "row-entry key is not a framed operator-state key".to_string(),
 			})
-		})?;
+		},
+	)?;
 	let decoded = match partition {
 		Some(_) => PartitionedRingbufferEntryKey::from_suffix_bytes(&suffix).map(|key| key.row.0.0),
 		None => RingbufferEntryKey::from_suffix_bytes(&suffix).map(|key| key.row.0.0),
@@ -371,9 +371,12 @@ impl SinkRingBufferViewOperator {
 					row: Asc(storage_rn),
 				},
 			),
-			None => typed_key::<RingbufferEntry>(GroupId::ROOT, &RingbufferEntryKey {
-				row: Asc(storage_rn),
-			}),
+			None => typed_key::<RingbufferEntry>(
+				GroupId::ROOT,
+				&RingbufferEntryKey {
+					row: Asc(storage_rn),
+				},
+			),
 		}
 	}
 
@@ -387,10 +390,13 @@ impl SinkRingBufferViewOperator {
 					row: Asc(storage_rn),
 				},
 			),
-			None => typed_key::<RingbufferExpiry>(GroupId::ROOT, &RingbufferExpiryKey {
-				expires_at: Asc(expires_at),
-				row: Asc(storage_rn),
-			}),
+			None => typed_key::<RingbufferExpiry>(
+				GroupId::ROOT,
+				&RingbufferExpiryKey {
+					expires_at: Asc(expires_at),
+					row: Asc(storage_rn),
+				},
+			),
 		}
 	}
 

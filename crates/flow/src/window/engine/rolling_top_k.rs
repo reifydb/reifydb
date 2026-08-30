@@ -164,8 +164,8 @@ where
 		let resolved_rows: Vec<(GroupId, RowNumber)> = state_pairs
 			.iter()
 			.zip(store.get_or_create_row_numbers_for_groups(
-			&state_pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
-		)?)
+				&state_pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?)
 			.map(|((group_id, _), (row_number, _is_new))| (*group_id, row_number))
 			.collect();
 		reifydb_assertions! {
@@ -565,7 +565,10 @@ mod tests {
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		// the mapping is scoped to the group, not ROOT, and reclamation deletes by group prefix
 		let group = GroupId::of(&state_key(&1));
-		assert!(store.contains_guest_row_mapping(group, &ranked_key), "publishing the ranking mints its mapping");
+		assert!(
+			store.contains_guest_row_mapping(group, &ranked_key),
+			"publishing the ranking mints its mapping"
+		);
 
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);

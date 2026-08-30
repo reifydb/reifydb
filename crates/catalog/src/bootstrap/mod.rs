@@ -247,7 +247,11 @@ mod read_configs_tests {
 
 		// The persisted key is a literal because the write above chose it; the unwritten one is named
 		// through the key, because its default is profile dependent and a literal would pin the profile.
-		assert_eq!(out[&ConfigKey::ThreadsTask], Value::Uint2(8), "a persisted value must win over the default");
+		assert_eq!(
+			out[&ConfigKey::ThreadsTask],
+			Value::Uint2(8),
+			"a persisted value must win over the default"
+		);
 		assert_eq!(
 			out[&ConfigKey::ThreadsAsync],
 			ConfigKey::ThreadsAsync.default_value(),

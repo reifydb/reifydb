@@ -25,7 +25,7 @@ use crate::{
 	error::Result,
 	flow::operator::{
 		column::row::Row,
-		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit, GuestBound},
+		context::{GuestBound, GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit},
 		dictionary::Dictionary,
 		diff::DiffStart,
 		extern_c::{

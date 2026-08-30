@@ -94,7 +94,6 @@ pub struct KeyspaceId(pub u8);
 impl KeyspaceId {
 	pub const HIGHEST_DATA: u8 = 0x7F;
 
-
 	pub const NODE_COUNTER: Self = Self(0xFC);
 
 	pub const SOURCE_WATERMARK: Self = Self(0xFA);
@@ -266,10 +265,9 @@ impl KeyspaceId {
 			|| matches!(
 				*self,
 				Self::NODE_COUNTER
-					| Self::SOURCE_WATERMARK
-					| Self::TIMER_WHEEL | Self::TIMER_INDEX
-					| Self::JOIN_ROW_MAPPING | Self::GROUP_ROW_MAPPING
-					| Self::GUEST_ROW_MAPPING
+					| Self::SOURCE_WATERMARK | Self::TIMER_WHEEL
+					| Self::TIMER_INDEX | Self::JOIN_ROW_MAPPING
+					| Self::GROUP_ROW_MAPPING | Self::GUEST_ROW_MAPPING
 			)
 	}
 }
@@ -642,10 +640,10 @@ mod tests {
 	use std::{ops::Bound, slice};
 
 	use super::{
-		CacheTiers, EncodedKey, EncodedKeyRange, GroupId, GroupSet, KeySerializer, KeyspaceId,
+		CacheTiers, EncodedKey, EncodedKeyRange, GroupId, GroupSet, GroupStateKey, KeySerializer, KeyspaceId,
 		OperatorStateKey, group_data_inner_range, group_data_of_inner, group_data_range,
 		group_identity_inner_range, group_identity_range, group_inner_prefix, group_inner_range, group_range,
-		GroupStateKey, is_framed_inner, is_guest_framed_inner, keyspace_range, node_prefix, node_range,
+		is_framed_inner, is_guest_framed_inner, keyspace_range, node_prefix, node_range,
 	};
 	use crate::{interface::catalog::flow::OperatorId, key::EncodableKey};
 

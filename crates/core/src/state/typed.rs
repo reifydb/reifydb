@@ -186,10 +186,7 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::{encode_u64, encode_u64_asc, encode_u128_asc};
-	use reifydb_value::{
-		util::hash::Hash128,
-		value::row_number::RowNumber,
-	};
+	use reifydb_value::{util::hash::Hash128, value::row_number::RowNumber};
 
 	use super::{SuffixBytes, typed_key};
 	use crate::key::{

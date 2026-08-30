@@ -8,10 +8,7 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
-	key::operator::{
-		keyspace::KEYSPACES,
-		state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range, keyspace_inner_range_split},
-	},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range_split},
 	state::timer::{StateStore, TimerKind, TimerStore},
 };
 use reifydb_flow::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
@@ -20,7 +17,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::flow::operator::context::{GuestContext, GuestState, GuestBound};
+use crate::flow::operator::context::{GuestBound, GuestContext, GuestState};
 
 pub struct GuestAsHost<'a, C: GuestContext>(pub &'a mut C);
 
@@ -28,7 +25,7 @@ fn confine(range: &EncodedKeyRange) -> (GroupId, KeyspaceId, Bound<Vec<u8>>, Bou
 	keyspace_inner_range_split(range).expect(
 		"a guest state scan must stay inside one group and keyspace; the window engine builds only \
 		 keyspace ranges, so a range that does not split is one a caller invented and the guest \
-		 boundary cannot admit"
+		 boundary cannot admit",
 	)
 }
 
@@ -82,25 +79,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(())
 	}
 
-	fn group_sweep(&mut self, group: GroupId, data_only: bool, limit: Option<usize>) -> Result<Vec<GroupStateKey>> {
-		let mut keyspaces: Vec<KeyspaceId> =
-			KEYSPACES.iter().map(|spec| spec.id).filter(|id| !data_only || id.is_data()).collect();
-		keyspaces.sort_by(|left, right| right.0.cmp(&left.0));
-
-		let mut swept = Vec::new();
-		for keyspace in keyspaces {
-			let remaining = match limit {
-				Some(limit) if swept.len() >= limit => break,
-				Some(limit) => Some(limit - swept.len()),
-				None => None,
-			};
-			let page = self.state_page(keyspace_inner_range(group, keyspace), remaining)?;
-			swept.extend(page.into_iter().map(|(key, _)| key));
-		}
-		Ok(swept)
-	}
-
-	fn state_page(
+	fn state_page_inner(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,

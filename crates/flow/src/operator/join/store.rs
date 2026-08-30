@@ -86,10 +86,13 @@ impl Store {
 	}
 
 	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> GroupStateKey {
-		typed_key::<JoinSchema>(GroupId::ROOT, &JoinSchemaKey {
-			side: Asc(self.side.tag()),
-			fingerprint: Asc(fingerprint),
-		})
+		typed_key::<JoinSchema>(
+			GroupId::ROOT,
+			&JoinSchemaKey {
+				side: Asc(self.side.tag()),
+				fingerprint: Asc(fingerprint),
+			},
+		)
 	}
 
 	fn read_row(

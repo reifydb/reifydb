@@ -5,12 +5,17 @@ use std::ops::Bound;
 
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
-	key::operator::{
-		keyspace::expiry::{ReapQueue, ReapQueueKey},
-		state::{GroupId, GroupStateKey, OperatorStateKey},
+	key::{
+		operator::{
+			keyspace::expiry::{ReapQueue, ReapQueueKey},
+			state::{GroupId, GroupStateKey, OperatorStateKey},
+		},
+		typed::direction::Desc,
 	},
-	key::typed::direction::Desc,
-	state::{timer::StateStore, typed::{TypedStateStore, typed_key}},
+	state::{
+		timer::StateStore,
+		typed::{TypedStateStore, typed_key},
+	},
 };
 use reifydb_value::{Result, reifydb_assertions};
 
@@ -38,9 +43,12 @@ impl Reaper for StoreReaper {
 }
 
 pub fn queue_key(group: GroupId) -> GroupStateKey {
-	typed_key::<ReapQueue>(GroupId::ROOT, &ReapQueueKey {
-		group: Desc(group),
-	})
+	typed_key::<ReapQueue>(
+		GroupId::ROOT,
+		&ReapQueueKey {
+			group: Desc(group),
+		},
+	)
 }
 
 pub fn enqueue(store: &mut dyn StateStore, group: GroupId) -> Result<()> {

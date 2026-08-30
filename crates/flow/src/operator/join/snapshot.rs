@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{
-	row::{
-		bytes::EncodedBytes,
-		operator::state::{decode, encode},
-		pod::EncodedPodRow,
-	},
+use reifydb_codec::row::{
+	bytes::EncodedBytes,
+	operator::state::{decode, encode},
+	pod::EncodedPodRow,
 };
 use reifydb_core::{
 	interface::change::Diff,
@@ -141,10 +139,13 @@ impl SnapshotLedger {
 	}
 
 	fn pin_key(&self, group: GroupId, right: RowNumber, version: ContentVersion) -> GroupStateKey {
-		typed_key::<JoinPin>(group, &JoinPinSuffix {
-			row: Asc(right),
-			version: Asc(version),
-		})
+		typed_key::<JoinPin>(
+			group,
+			&JoinPinSuffix {
+				row: Asc(right),
+				version: Asc(version),
+			},
+		)
 	}
 
 	pub(crate) fn publish(

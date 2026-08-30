@@ -67,9 +67,12 @@ pub fn guest_mapping_key(group: GroupId, key: &EncodedKey) -> Result<GroupStateK
 		)));
 	}
 	id[..bytes.len()].copy_from_slice(bytes);
-	Ok(typed_key::<GuestRowMapping>(group, &GuestRowMappingKey {
-		id: Asc(id),
-	}))
+	Ok(typed_key::<GuestRowMapping>(
+		group,
+		&GuestRowMappingKey {
+			id: Asc(id),
+		},
+	))
 }
 
 pub fn counter_key() -> GroupStateKey {

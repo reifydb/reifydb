@@ -11,7 +11,9 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::key::operator::state::{GroupId, GroupStateKey, group_data_inner_range, group_inner_range};
+use crate::key::operator::state::{
+	GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range, keyspace_inner_range_split,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
@@ -57,15 +59,36 @@ pub trait StateStore {
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		debug_assert!(
+			keyspace_inner_range_split(&range).is_some(),
+			"a state page must stay inside one group and one keyspace; {range:?} spans more than one"
+		);
+		self.state_page_inner(range, limit)
+	}
+
+	fn state_page_inner(
+		&mut self,
+		range: EncodedKeyRange,
+		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
 	fn group_sweep(&mut self, group: GroupId, data_only: bool, limit: Option<usize>) -> Result<Vec<GroupStateKey>> {
-		let range = if data_only {
-			group_data_inner_range(group)
-		} else {
-			group_inner_range(group)
-		};
-		Ok(self.state_page(range, limit)?.into_iter().map(|(key, _)| key).collect())
+		let mut swept = Vec::new();
+		for id in (u8::MIN..=u8::MAX).rev() {
+			let keyspace = KeyspaceId(id);
+			if data_only && !keyspace.is_data() {
+				continue;
+			}
+			let remaining = match limit {
+				Some(limit) if swept.len() >= limit => break,
+				Some(limit) => Some(limit - swept.len()),
+				None => None,
+			};
+			let page = self.state_page(keyspace_inner_range(group, keyspace), remaining)?;
+			swept.extend(page.into_iter().map(|(key, _)| key));
+		}
+		Ok(swept)
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {

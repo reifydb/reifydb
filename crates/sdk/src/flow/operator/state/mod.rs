@@ -16,7 +16,7 @@ use reifydb_value::error::Error as ValueError;
 use crate::{
 	error::{Result, SdkError},
 	flow::operator::{
-		context::{GuestContext, GuestState, GuestBound},
+		context::{GuestBound, GuestContext, GuestState},
 		extern_c::binding::{context::ExternCContext, state as extern_c},
 	},
 };
@@ -123,9 +123,10 @@ impl<'a> State<'a> {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
-		for (seen, (k, row)) in extern_c::range(self.ctx, group, keyspace, start, end, limit.unwrap_or(usize::MAX))?
-			.into_iter()
-			.enumerate()
+		for (seen, (k, row)) in
+			extern_c::range(self.ctx, group, keyspace, start, end, limit.unwrap_or(usize::MAX))?
+				.into_iter()
+				.enumerate()
 		{
 			if limit.is_some_and(|l| seen >= l) {
 				break;

@@ -249,7 +249,7 @@ mod tests {
 			Ok(())
 		}
 
-		fn state_page(
+		fn state_page_inner(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
@@ -292,7 +292,10 @@ mod tests {
 			Ok(keys.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
 		}
 
-		fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+		fn get_or_create_row_numbers_for_groups(
+			&mut self,
+			groups: &[GroupId],
+		) -> Result<Vec<(RowNumber, bool)>> {
 			Ok(groups.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
 		}
 

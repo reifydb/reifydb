@@ -58,7 +58,9 @@ fn inner(keyspace: KeyspaceId, suffix: u8) -> EncodedKey {
 }
 
 fn seeded_state() -> HashMap<EncodedKey, EncodedBytes> {
-	SEEDED.iter().map(|(keyspace, suffix)| (inner(*keyspace, *suffix), EncodedBytes(CowVec::new(vec![7u8])))).collect()
+	SEEDED.iter()
+		.map(|(keyspace, suffix)| (inner(*keyspace, *suffix), EncodedBytes(CowVec::new(vec![7u8]))))
+		.collect()
 }
 
 fn expected_in_scan_order(keep: impl Fn(KeyspaceId) -> bool) -> Vec<EncodedKey> {
@@ -79,8 +81,7 @@ fn a_guest_group_sweep_returns_what_a_single_scan_over_the_group_would() {
 	// complemented, so that order is DESCENDING by keyspace id: a sweep that walked the catalogue in
 	// ascending id order would return the same set in the wrong order and only surface as a reaper
 	// that reaps the same keys twice and misses others.
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<SweepOp>::new().build().expect("harness");
+	let mut harness = ExternCOperatorHarnessBuilder::<SweepOp>::new().build().expect("harness");
 	harness.restore_state(seeded_state());
 	let mut ctx = harness.create_operator_context();
 
@@ -94,8 +95,7 @@ fn a_guest_group_sweep_returns_what_a_single_scan_over_the_group_would() {
 fn a_data_only_guest_group_sweep_leaves_the_identity_keyspaces_alone() {
 	// data_only is what separates reaping a group's rows from reclaiming its identity; a sweep that
 	// ignored the flag would delete the row number mappings the group is still addressed by.
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<SweepOp>::new().build().expect("harness");
+	let mut harness = ExternCOperatorHarnessBuilder::<SweepOp>::new().build().expect("harness");
 	harness.restore_state(seeded_state());
 	let mut ctx = harness.create_operator_context();
 
@@ -114,8 +114,7 @@ fn a_guest_group_sweep_spends_one_budget_across_every_keyspace() {
 	// The single scan took one limit; the sweep splits it across keyspaces, so the budget has to be
 	// decremented as it goes. A per-keyspace limit would return up to limit * keyspaces keys and blow
 	// the reaper's budget, and the reaper's "is there more" probe asks for exactly budget + 1.
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<SweepOp>::new().build().expect("harness");
+	let mut harness = ExternCOperatorHarnessBuilder::<SweepOp>::new().build().expect("harness");
 	harness.restore_state(seeded_state());
 	let mut ctx = harness.create_operator_context();
 

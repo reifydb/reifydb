@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, pod::EncodedPodRow},
+	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -99,10 +99,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 	fn state_range_iter(&mut self, range: EncodedKeyRange) -> StateIterator<'_>;
 
 	fn state_clear(&mut self) -> Result<()>;
-
-	fn state_scan_all(&mut self) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
-		self.state_range_iter(EncodedKeyRange::all()).collect()
-	}
 
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
 
@@ -211,7 +207,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.state_remove(self.operator, key)
 	}
 
-	fn state_page(
+	fn state_page_inner(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,

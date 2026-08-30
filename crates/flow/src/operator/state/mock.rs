@@ -287,7 +287,7 @@ impl StateStore for MockStore {
 		self.data.remove(key.as_slice());
 		Ok(())
 	}
-	fn state_page(
+	fn state_page_inner(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,

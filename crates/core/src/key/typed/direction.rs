@@ -12,7 +12,10 @@ use reifydb_value::{
 use crate::{
 	key::{
 		operator::state::GroupId,
-		typed::{Key, layout::{KeyColumnType, KeyValue}},
+		typed::{
+			Key,
+			layout::{KeyColumnType, KeyValue},
+		},
 	},
 	metrics::heap::HeapSize,
 	state::{join::ContentVersion, timer::TimerKind},

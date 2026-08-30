@@ -17,7 +17,7 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
 		column::{row::Row, sink::in_process::InProcessRowSink},
-		context::{GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit, GuestBound},
+		context::{GuestBound, GuestContext, GuestDictionary, GuestEmit, GuestState, GuestUpdateEmit},
 		state::{decode_payload, encode_payload},
 	},
 };

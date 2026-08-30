@@ -436,8 +436,7 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{
-		GroupId, KeyspaceId, OperatorStateKey, group_identity_inner_range, keyspace_inner_range_in,
-		node_prefix,
+		GroupId, KeyspaceId, OperatorStateKey, group_identity_inner_range, keyspace_inner_range_in, node_prefix,
 	},
 	state::timer::TimerKind,
 };

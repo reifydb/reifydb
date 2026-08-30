@@ -210,8 +210,8 @@ where
 		let mut results: Vec<RollingResult<G, Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
 			let rows = store.get_or_create_row_numbers_for_groups(
-			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
-		)?;
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
 			for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{

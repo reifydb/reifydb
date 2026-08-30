@@ -26,8 +26,8 @@ use reifydb_core::{
 		},
 		typed::direction::Asc,
 	},
-	state::typed::typed_key,
 	metrics::heap::HeapSize,
+	state::typed::typed_key,
 	value::column::columns::Columns,
 };
 use reifydb_macro::operator_state;
@@ -148,9 +148,12 @@ impl TakeOperator {
 
 impl TakePlan {
 	fn state_key() -> GroupStateKey {
-		typed_key::<CustomNotCached>(GroupId::ROOT, &CustomNotCachedKey {
-			id: Asc([0u8; 16]),
-		})
+		typed_key::<CustomNotCached>(
+			GroupId::ROOT,
+			&CustomNotCachedKey {
+				id: Asc([0u8; 16]),
+			},
+		)
 	}
 
 	fn load_take_state(&self, host: &mut dyn HostContext) -> Result<TakeState> {

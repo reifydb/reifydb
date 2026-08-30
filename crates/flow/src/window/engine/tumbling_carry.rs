@@ -266,8 +266,8 @@ where
 			let pairs: Vec<(GroupId, EncodedKey)> =
 				pending.iter().map(|p| (p.group_id, p.key.clone())).collect();
 			let rows = store.get_or_create_row_numbers_for_groups(
-			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
-		)?;
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
 			reifydb_assertions! {
 				let requested = pairs.len();
 				let returned = rows.len();
@@ -529,7 +529,7 @@ mod tests {
 			self.data.remove(key.as_slice());
 			Ok(())
 		}
-		fn state_page(
+		fn state_page_inner(
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
@@ -570,8 +570,14 @@ mod tests {
 		) -> Result<Vec<(RowNumber, bool)>> {
 			Ok(keys.iter().map(|key| self.row_number_for(group, key)).collect())
 		}
-		fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
-			Ok(groups.iter().map(|group| self.row_number_for(*group, &EncodedKey::new(Vec::new()))).collect())
+		fn get_or_create_row_numbers_for_groups(
+			&mut self,
+			groups: &[GroupId],
+		) -> Result<Vec<(RowNumber, bool)>> {
+			Ok(groups
+				.iter()
+				.map(|group| self.row_number_for(*group, &EncodedKey::new(Vec::new())))
+				.collect())
 		}
 		fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 			self.rows.remove(&(group, key.as_bytes().to_vec()));

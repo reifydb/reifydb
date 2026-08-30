@@ -408,10 +408,7 @@ where
 				let new_index_key = coord_min_key(&group_slot.buffer);
 				if new_index_key != group_slot.prior_index_key {
 					if let Some(old) = group_slot.prior_index_key {
-						expiry_drop(
-							store,
-							&rolling_expiry_key(old, group_hash(&group)?),
-						)?;
+						expiry_drop(store, &rolling_expiry_key(old, group_hash(&group)?))?;
 					}
 					if let Some(new) = new_index_key {
 						self.expiry.set(
@@ -702,8 +699,8 @@ where
 		let mut results: Vec<RollingResult<G, Accumulator::Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
 			let rows = store.get_or_create_row_numbers_for_groups(
-			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
-		)?;
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
 			for (((group, value, withdrawn), (group_id, key)), (row_number, is_new)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
@@ -846,8 +843,8 @@ where
 		let mut out: Vec<RollingExpiry<G, Accumulator::Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
 			let rows = store.get_or_create_row_numbers_for_groups(
-			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
-		)?;
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
 			for (((group, value), (group_id, key)), (row_number, _)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
@@ -950,8 +947,8 @@ where
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
 			let rows = store.get_or_create_row_numbers_for_groups(
-			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
-		)?;
+				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
+			)?;
 			for (((group, value), (group_id, key)), (row_number, _)) in
 				pending.into_iter().zip(pairs).zip(rows)
 			{
